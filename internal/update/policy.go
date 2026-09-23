@@ -76,7 +76,7 @@ func PolicyForInstallation(detection install.Detection) InstallPolicy {
 		policy.Command = "cm install"
 	default:
 		policy.Action = PolicyUnsupported
-		policy.Message = "Unable to determine how chatgpt-mcp was installed"
+		policy.Message = "Unable to determine how CodeMCP was installed"
 	}
 	return policy
 }
@@ -88,14 +88,14 @@ func PackageManagerPlanFor(method install.Method) (PackageManagerPlan, bool) {
 			Method:  method,
 			Name:    "Homebrew",
 			Refresh: PackageManagerCommand{Name: "brew", Args: []string{"update"}},
-			Apply:   PackageManagerCommand{Name: "brew", Args: []string{"upgrade", "--cask", "chatgpt-mcp"}},
+			Apply:   PackageManagerCommand{Name: "brew", Args: []string{"upgrade", "--cask", HomebrewCask}},
 		}, true
 	case install.MethodScoop:
 		return PackageManagerPlan{
 			Method:  method,
 			Name:    "Scoop",
 			Refresh: PackageManagerCommand{Name: "scoop", Args: []string{"update"}},
-			Apply:   PackageManagerCommand{Name: "scoop", Args: []string{"update", "mew/chatgpt-mcp"}},
+			Apply:   PackageManagerCommand{Name: "scoop", Args: []string{"update", ScoopPackage}},
 		}, true
 	default:
 		return PackageManagerPlan{}, false

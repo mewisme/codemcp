@@ -109,18 +109,18 @@ func runPackageManagerCommand(ctx context.Context, command updatepkg.PackageMana
 	switch key {
 	case "brew\x00update":
 		process = exec.CommandContext(ctx, "brew", "update")
-	case "brew\x00upgrade\x00--cask\x00chatgpt-mcp":
-		process = exec.CommandContext(ctx, "brew", "upgrade", "--cask", "chatgpt-mcp")
+	case "brew\x00upgrade\x00--cask\x00" + updatepkg.HomebrewCask:
+		process = exec.CommandContext(ctx, "brew", "upgrade", "--cask", updatepkg.HomebrewCask)
 	case "scoop\x00update":
 		if runtime.GOOS == "windows" {
 			return runScoopPowerShell(ctx, false)
 		}
 		process = exec.CommandContext(ctx, "scoop", "update")
-	case "scoop\x00update\x00mew/chatgpt-mcp":
+	case "scoop\x00update\x00" + updatepkg.ScoopPackage:
 		if runtime.GOOS == "windows" {
 			return runScoopPowerShell(ctx, true)
 		}
-		process = exec.CommandContext(ctx, "scoop", "update", "mew/chatgpt-mcp")
+		process = exec.CommandContext(ctx, "scoop", "update", updatepkg.ScoopPackage)
 	default:
 		return "", fmt.Errorf("unsupported package manager command: %s %s", command.Name, strings.Join(command.Args, " "))
 	}
@@ -136,19 +136,19 @@ func runScoopPowerShell(ctx context.Context, apply bool) (string, error) {
 	switch shell {
 	case "pwsh":
 		if apply {
-			process = exec.CommandContext(ctx, "pwsh", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& scoop update mew/chatgpt-mcp")
+			process = exec.CommandContext(ctx, "pwsh", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& scoop update "+updatepkg.ScoopPackage)
 		} else {
 			process = exec.CommandContext(ctx, "pwsh", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& scoop update")
 		}
 	case "powershell.exe":
 		if apply {
-			process = exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& scoop update mew/chatgpt-mcp")
+			process = exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& scoop update "+updatepkg.ScoopPackage)
 		} else {
 			process = exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& scoop update")
 		}
 	case "powershell":
 		if apply {
-			process = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& scoop update mew/chatgpt-mcp")
+			process = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& scoop update "+updatepkg.ScoopPackage)
 		} else {
 			process = exec.CommandContext(ctx, "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "& scoop update")
 		}

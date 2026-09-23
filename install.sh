@@ -2,8 +2,8 @@
 #
 # CodeMCP bootstrap installer for macOS / Linux.
 #
-# curl -fsSL https://get.mewis.me/chatgpt-mcp.sh | sh
-# curl -fsSL https://get.mewis.me/chatgpt-mcp.sh | sh -s -- --uninstall
+# curl -fsSL https://get.mewis.me/codemcp.sh | sh
+# curl -fsSL https://get.mewis.me/codemcp.sh | sh -s -- --uninstall
 #
 # Environment:
 #   CM_VERSION           release tag (default: latest)
@@ -17,7 +17,8 @@ REPO="mewisme/codemcp"
 INSTALL_DIR="${CM_INSTALL_DIR:-$HOME/.cm}"
 BIN_DIR="${CM_BIN_DIR:-$HOME/.local/bin}"
 OIDC_ISSUER="https://token.actions.githubusercontent.com"
-SIGNATURE_NAME="checksums.txt.sigstore.json"
+CHECKSUM_NAME="codemcp_checksums.txt"
+SIGNATURE_NAME="${CHECKSUM_NAME}.sigstore.json"
 
 for arg in "$@"; do
 	case "$arg" in
@@ -57,9 +58,9 @@ fi
 }
 case "$version" in v*) ;; *) version="v$version" ;; esac
 ver="${version#v}"
-asset="chatgpt-mcp_${ver}_${os}_${arch}.tar.gz"
+asset="codemcp_${ver}_${os}_${arch}.tar.gz"
 url="https://github.com/$REPO/releases/download/$version/$asset"
-checksums_url="https://github.com/$REPO/releases/download/$version/checksums.txt"
+checksums_url="https://github.com/$REPO/releases/download/$version/$CHECKSUM_NAME"
 signature_url="https://github.com/$REPO/releases/download/$version/$SIGNATURE_NAME"
 cert_identity="https://github.com/$REPO/.github/workflows/release.yml@refs/tags/$version"
 
@@ -67,7 +68,7 @@ echo "Installing CodeMCP $version ($os/$arch)..."
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 archive="$tmp/$asset"
-checksums="$tmp/checksums.txt"
+checksums="$tmp/$CHECKSUM_NAME"
 signature="$tmp/$SIGNATURE_NAME"
 curl -fsSL "$url" -o "$archive" || {
 	echo "cm: download failed: $url" >&2
@@ -107,7 +108,7 @@ if [ "$signature_available" -eq 1 ] && command -v cosign >/dev/null 2>&1; then
 		--certificate-oidc-issuer="$OIDC_ISSUER" \
 		"$checksums"; then
 		sigstore_ok=1
-		echo "Sigstore signature verified for checksums.txt."
+		echo "Sigstore signature verified for $CHECKSUM_NAME."
 	else
 		echo "cm: Sigstore/cosign verification failed for $SIGNATURE_NAME" >&2
 		exit 1

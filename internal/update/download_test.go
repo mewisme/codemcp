@@ -29,9 +29,9 @@ func TestDownloaderDownload(t *testing.T) {
 		switch r.URL.Path {
 		case "/" + assetName:
 			_, _ = w.Write(archive)
-		case "/checksums.txt":
+		case "/codemcp_checksums.txt":
 			_, _ = w.Write(checksums)
-		case "/checksums.txt.sigstore.json":
+		case "/codemcp_checksums.txt.sigstore.json":
 			_, _ = w.Write([]byte("test-signature"))
 		default:
 			http.NotFound(w, r)
@@ -123,7 +123,7 @@ func TestDownloaderCleansUpOnChecksumMismatch(t *testing.T) {
 			_, _ = w.Write([]byte("test-signature"))
 			return
 		}
-		if strings.HasSuffix(r.URL.Path, "checksums.txt") {
+		if strings.HasSuffix(r.URL.Path, "codemcp_checksums.txt") {
 			fmt.Fprintf(w, "%064d  %s\n", 0, assetName)
 			return
 		}
@@ -149,14 +149,14 @@ func TestDownloaderRejectsHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	release := Release{Version: "v1.2.3", ArchiveName: assetName, ArchiveURL: "http://example.test/" + assetName, ChecksumName: ChecksumName, ChecksumURL: "https://example.test/checksums.txt", SignatureName: ChecksumSignatureName, SignatureURL: "https://example.test/checksums.txt.sigstore.json"}
+	release := Release{Version: "v1.2.3", ArchiveName: assetName, ArchiveURL: "http://example.test/" + assetName, ChecksumName: ChecksumName, ChecksumURL: "https://example.test/codemcp_checksums.txt", SignatureName: ChecksumSignatureName, SignatureURL: "https://example.test/codemcp_checksums.txt.sigstore.json"}
 	if _, err := (Downloader{TempDir: t.TempDir()}).Download(context.Background(), release); err == nil {
 		t.Fatal("HTTP release URL was accepted")
 	}
 }
 
 func TestDownloaderRejectsUnexpectedAssetName(t *testing.T) {
-	release := Release{Version: "v1.2.3", ArchiveName: "unexpected.tar.gz", ArchiveURL: "https://example.test/unexpected.tar.gz", ChecksumName: ChecksumName, ChecksumURL: "https://example.test/checksums.txt", SignatureName: ChecksumSignatureName, SignatureURL: "https://example.test/checksums.txt.sigstore.json"}
+	release := Release{Version: "v1.2.3", ArchiveName: "unexpected.tar.gz", ArchiveURL: "https://example.test/unexpected.tar.gz", ChecksumName: ChecksumName, ChecksumURL: "https://example.test/codemcp_checksums.txt", SignatureName: ChecksumSignatureName, SignatureURL: "https://example.test/codemcp_checksums.txt.sigstore.json"}
 	if _, err := (Downloader{TempDir: t.TempDir()}).Download(context.Background(), release); err == nil {
 		t.Fatal("unexpected release asset name was accepted")
 	}
@@ -200,9 +200,9 @@ func TestDownloaderEmitsFileChecksumAndExtractionTrace(t *testing.T) {
 		switch r.URL.Path {
 		case "/" + assetName:
 			_, _ = w.Write(archive)
-		case "/checksums.txt":
+		case "/codemcp_checksums.txt":
 			_, _ = w.Write(checksums)
-		case "/checksums.txt.sigstore.json":
+		case "/codemcp_checksums.txt.sigstore.json":
 			_, _ = w.Write([]byte("test-signature"))
 		default:
 			http.NotFound(w, r)

@@ -8,9 +8,12 @@ import (
 
 const (
 	DefaultOwner          = "mewisme"
-	DefaultRepo           = "codemcp"
-	ChecksumName          = "checksums.txt"
-	ChecksumSignatureName = "checksums.txt.sigstore.json"
+	PackageName           = "codemcp"
+	DefaultRepo           = PackageName
+	HomebrewCask          = PackageName
+	ScoopPackage          = "mew/" + PackageName
+	ChecksumName          = PackageName + "_checksums.txt"
+	ChecksumSignatureName = ChecksumName + ".sigstore.json"
 )
 
 type Release struct {
@@ -38,7 +41,7 @@ func AssetName(version, goos, goarch string) (string, error) {
 	if goos == "windows" {
 		ext = ".zip"
 	}
-	return fmt.Sprintf("chatgpt-mcp_%s_%s_%s%s", strings.TrimPrefix(version, "v"), goos, goarch, ext), nil
+	return fmt.Sprintf("%s_%s_%s_%s%s", PackageName, strings.TrimPrefix(version, "v"), goos, goarch, ext), nil
 }
 
 func CurrentAssetName(version string) (string, error) {

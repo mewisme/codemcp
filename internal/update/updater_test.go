@@ -284,9 +284,9 @@ func updateReleaseFixture(t *testing.T, version string, binary []byte, validChec
 		switch r.URL.Path {
 		case "/" + assetName:
 			_, _ = w.Write(archive)
-		case "/checksums.txt":
+		case "/codemcp_checksums.txt":
 			_, _ = w.Write(checksums)
-		case "/checksums.txt.sigstore.json":
+		case "/codemcp_checksums.txt.sigstore.json":
 			_, _ = w.Write([]byte("test-signature"))
 		default:
 			http.NotFound(w, r)

@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	ErrCurrentNotManaged = errors.New("current install target is not managed by chatgpt-mcp")
+	ErrCurrentNotManaged = errors.New("current install target is not managed by CodeMCP")
 	ErrVersionConflict   = errors.New("install version already exists with different binary content")
 )
 

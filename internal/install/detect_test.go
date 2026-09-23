@@ -34,13 +34,24 @@ func TestDetectPackageManagersBeforeDirectShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	homebrew := filepath.Join(string(filepath.Separator), "opt", "homebrew", "Caskroom", "chatgpt-mcp", "1.2.3", layout.BinaryName)
+	homebrew := filepath.Join(string(filepath.Separator), "opt", "homebrew", "Caskroom", "codemcp", "1.2.3", layout.BinaryName)
 	if detection := detect(homebrew, "v1.2.3", layout, "", "", "", ""); detection.Method != MethodHomebrew {
 		t.Fatalf("homebrew method = %q", detection.Method)
 	}
-	scoop := filepath.Join(string(filepath.Separator), "Users", "Mew", "scoop", "apps", "chatgpt-mcp", "current", layout.BinaryName)
+	scoop := filepath.Join(string(filepath.Separator), "Users", "Mew", "scoop", "apps", "codemcp", "current", layout.BinaryName)
 	if detection := detect(scoop, "v1.2.3", layout, "", "", "", ""); detection.Method != MethodScoop {
 		t.Fatalf("scoop method = %q", detection.Method)
+	}
+}
+
+func TestLegacyScoopPackagePathIsMigrationOnly(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "Users", "Mew", "scoop")
+	legacy := filepath.Join(root, "apps", "chatgpt-mcp", "current", "chatgpt-mcp.exe")
+	if isScoopPath(legacy, root) {
+		t.Fatal("current Scoop detector accepted legacy package identity")
+	}
+	if !isLegacyScoopPackagePath(legacy, root) {
+		t.Fatal("legacy Scoop package path was not recognized by migration detector")
 	}
 }
 

@@ -147,7 +147,7 @@ func verifyChatGPTMCPBinary(path string) bool {
 }
 
 func isScoopCandidate(path, target, scoopRoot string) bool {
-	if isScoopPath(path, scoopRoot) || isScoopPath(target, scoopRoot) {
+	if isScoopPath(path, scoopRoot) || isScoopPath(target, scoopRoot) || isLegacyScoopPackagePath(path, scoopRoot) || isLegacyScoopPackagePath(target, scoopRoot) {
 		return true
 	}
 	if strings.TrimSpace(scoopRoot) == "" {
@@ -155,4 +155,13 @@ func isScoopCandidate(path, target, scoopRoot string) bool {
 	}
 	shims := filepath.Join(scoopRoot, "shims")
 	return withinPath(shims, path) || withinPath(shims, target)
+}
+
+func isLegacyScoopPackagePath(path, scoopRoot string) bool {
+	normalized := normalizedPath(path)
+	if strings.Contains(normalized, "/scoop/apps/chatgpt-mcp/") {
+		return true
+	}
+	scoopRoot = strings.TrimSpace(scoopRoot)
+	return scoopRoot != "" && withinPath(scoopRoot, path) && strings.Contains(normalized, "/apps/chatgpt-mcp/")
 }

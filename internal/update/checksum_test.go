@@ -12,7 +12,7 @@ import (
 func TestVerifyChecksum(t *testing.T) {
 	dir := t.TempDir()
 	archive := filepath.Join(dir, "asset.tar.gz")
-	checksums := filepath.Join(dir, "checksums.txt")
+	checksums := filepath.Join(dir, "codemcp_checksums.txt")
 	content := []byte("archive")
 	if err := os.WriteFile(archive, content, 0600); err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestVerifyChecksum(t *testing.T) {
 func TestVerifyChecksumRequiresExactAsset(t *testing.T) {
 	dir := t.TempDir()
 	archive := filepath.Join(dir, "asset.tar.gz")
-	checksums := filepath.Join(dir, "checksums.txt")
+	checksums := filepath.Join(dir, "codemcp_checksums.txt")
 	if err := os.WriteFile(archive, []byte("archive"), 0600); err != nil {
 		t.Fatal(err)
 	}

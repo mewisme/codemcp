@@ -10,9 +10,9 @@ func TestAssetName(t *testing.T) {
 	tests := []struct {
 		version, goos, goarch, want string
 	}{
-		{"v1.2.3", "linux", "amd64", "chatgpt-mcp_1.2.3_linux_amd64.tar.gz"},
-		{"1.2.3", "darwin", "arm64", "chatgpt-mcp_1.2.3_darwin_arm64.tar.gz"},
-		{"v1.2.3", "windows", "amd64", "chatgpt-mcp_1.2.3_windows_amd64.zip"},
+		{"v1.2.3", "linux", "amd64", "codemcp_1.2.3_linux_amd64.tar.gz"},
+		{"1.2.3", "darwin", "arm64", "codemcp_1.2.3_darwin_arm64.tar.gz"},
+		{"v1.2.3", "windows", "amd64", "codemcp_1.2.3_windows_amd64.zip"},
 	}
 	for _, test := range tests {
 		got, err := AssetName(test.version, test.goos, test.goarch)

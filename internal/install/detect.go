@@ -117,11 +117,11 @@ func isHomebrewPath(path string) bool {
 
 func isScoopPath(path, scoopRoot string) bool {
 	normalized := normalizedPath(path)
-	if strings.Contains(normalized, "/scoop/apps/chatgpt-mcp/") {
+	if strings.Contains(normalized, "/scoop/apps/codemcp/") {
 		return true
 	}
 	scoopRoot = strings.TrimSpace(scoopRoot)
-	return scoopRoot != "" && withinPath(scoopRoot, path) && strings.Contains(normalized, "/apps/chatgpt-mcp/")
+	return scoopRoot != "" && withinPath(scoopRoot, path) && strings.Contains(normalized, "/apps/codemcp/")
 }
 
 func isGoInstallPath(executable, home, goBin, goPath string) bool {

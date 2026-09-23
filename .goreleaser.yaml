@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
-project_name: chatgpt-mcp
+project_name: codemcp
 
 before:
   hooks:
@@ -9,7 +9,7 @@ before:
     - go mod verify
 
 builds:
-  - id: chatgpt-mcp
+  - id: codemcp
     main: .
     binary: cm
     env:
@@ -31,12 +31,12 @@ builds:
 # Keep macOS binaries untouched for Gatekeeper compatibility.
 upx:
   - enabled: true
-    ids: [chatgpt-mcp]
+    ids: [codemcp]
     goos: [linux, windows]
     compress: best
 
 archives:
-  - id: chatgpt-mcp
+  - id: codemcp
     formats: [tar.gz]
     files:
       - LICENSE
@@ -51,7 +51,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
-  name_template: checksums.txt
+  name_template: codemcp_checksums.txt
 
 signs:
   - id: checksums
@@ -70,7 +70,7 @@ snapshot:
 release:
   github:
     owner: mewisme
-    name: chatgpt-mcp
+    name: codemcp
 
 changelog:
   use: git
@@ -80,10 +80,12 @@ changelog:
       - '^chore:'
       - '^docs:'
 
-# Generate dist/scoop/chatgpt-mcp.json; the release workflow uploads it as
+# Generate dist/scoop/codemcp.json; the release workflow uploads it as
 # a release asset and scoop-mew syncs it through repository_dispatch.
 scoops:
-  - name: chatgpt-mcp
+  - name: codemcp
+    ids:
+      - codemcp
     url_template: "https://github.com/mewisme/codemcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     homepage: "https://github.com/mewisme/codemcp"
     description: "Self-hosted MCP 2026-07-28 runtime with local tools, upstream MCP aggregation, and OpenAI tunnel support"
@@ -95,12 +97,12 @@ scoops:
       name: scoop-mew
       branch: main
 
-# Generate dist/homebrew/Casks/chatgpt-mcp.rb; the release workflow uploads
+# Generate dist/homebrew/Casks/codemcp.rb; the release workflow uploads
 # it as a release asset and homebrew-mew syncs it through repository_dispatch.
 homebrew_casks:
-  - name: chatgpt-mcp
+  - name: codemcp
     ids:
-      - chatgpt-mcp
+      - codemcp
     binaries:
       - cm
     homepage: "https://github.com/mewisme/codemcp"

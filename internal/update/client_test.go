@@ -18,7 +18,7 @@ func TestClientLatest(t *testing.T) {
 		gotPath = r.URL.Path
 		gotAgent = r.Header.Get("User-Agent")
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"tag_name":"v1.2.3","draft":false,"assets":[{"name":%q,"browser_download_url":"https://example.test/archive"},{"name":"checksums.txt","browser_download_url":"https://example.test/checksums"},{"name":"checksums.txt.sigstore.json","browser_download_url":"https://example.test/signature"}]}`, asset)
+		fmt.Fprintf(w, `{"tag_name":"v1.2.3","draft":false,"assets":[{"name":%q,"browser_download_url":"https://example.test/archive"},{"name":"codemcp_checksums.txt","browser_download_url":"https://example.test/checksums"},{"name":"codemcp_checksums.txt.sigstore.json","browser_download_url":"https://example.test/signature"}]}`, asset)
 	}))
 	defer server.Close()
 
@@ -65,7 +65,7 @@ func TestClientVersion(t *testing.T) {
 	var gotPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		fmt.Fprintf(w, `{"tag_name":"v1.2.3","assets":[{"name":%q,"browser_download_url":"https://example.test/archive"},{"name":"checksums.txt","browser_download_url":"https://example.test/checksums"},{"name":"checksums.txt.sigstore.json","browser_download_url":"https://example.test/signature"}]}`, asset)
+		fmt.Fprintf(w, `{"tag_name":"v1.2.3","assets":[{"name":%q,"browser_download_url":"https://example.test/archive"},{"name":"codemcp_checksums.txt","browser_download_url":"https://example.test/checksums"},{"name":"codemcp_checksums.txt.sigstore.json","browser_download_url":"https://example.test/signature"}]}`, asset)
 	}))
 	defer server.Close()
 	release, err := (Client{BaseURL: server.URL, HTTPClient: server.Client()}).Version(context.Background(), "1.2.3")
@@ -86,7 +86,7 @@ func TestClientVersionRejectsTagMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, `{"tag_name":"v1.2.4","assets":[{"name":%q,"browser_download_url":"https://example.test/archive"},{"name":"checksums.txt","browser_download_url":"https://example.test/checksums"},{"name":"checksums.txt.sigstore.json","browser_download_url":"https://example.test/signature"}]}`, asset)
+		fmt.Fprintf(w, `{"tag_name":"v1.2.4","assets":[{"name":%q,"browser_download_url":"https://example.test/archive"},{"name":"codemcp_checksums.txt","browser_download_url":"https://example.test/checksums"},{"name":"codemcp_checksums.txt.sigstore.json","browser_download_url":"https://example.test/signature"}]}`, asset)
 	}))
 	defer server.Close()
 	if _, err := (Client{BaseURL: server.URL, HTTPClient: server.Client()}).Version(context.Background(), "v1.2.3"); err == nil {

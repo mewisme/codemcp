@@ -93,11 +93,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          test -f dist/scoop/chatgpt-mcp.json
-          test -f dist/homebrew/Casks/chatgpt-mcp.rb
+          test -f dist/scoop/codemcp.json
+          test -f dist/homebrew/Casks/codemcp.rb
           gh release upload "${GITHUB_REF_NAME}" \
-            dist/scoop/chatgpt-mcp.json \
-            dist/homebrew/Casks/chatgpt-mcp.rb \
+            dist/scoop/codemcp.json \
+            dist/homebrew/Casks/codemcp.rb \
             --clobber
 
       - name: Trigger package manager sync
@@ -109,7 +109,7 @@ jobs:
             exit 0
           fi
           payload=$(jq -n \
-            --arg name "chatgpt-mcp" \
+            --arg name "codemcp" \
             --arg tag "${GITHUB_REF_NAME}" \
             '{event_type:"sync-package",client_payload:{name:$name,tag:$tag}}')
           for repo in homebrew-mew scoop-mew; do

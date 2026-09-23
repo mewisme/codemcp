@@ -49,8 +49,8 @@ func TestPackageManagerPlanFor(t *testing.T) {
 		refresh PackageManagerCommand
 		apply   PackageManagerCommand
 	}{
-		{install.MethodHomebrew, "Homebrew", PackageManagerCommand{Name: "brew", Args: []string{"update"}}, PackageManagerCommand{Name: "brew", Args: []string{"upgrade", "--cask", "chatgpt-mcp"}}},
-		{install.MethodScoop, "Scoop", PackageManagerCommand{Name: "scoop", Args: []string{"update"}}, PackageManagerCommand{Name: "scoop", Args: []string{"update", "mew/chatgpt-mcp"}}},
+		{install.MethodHomebrew, "Homebrew", PackageManagerCommand{Name: "brew", Args: []string{"update"}}, PackageManagerCommand{Name: "brew", Args: []string{"upgrade", "--cask", "codemcp"}}},
+		{install.MethodScoop, "Scoop", PackageManagerCommand{Name: "scoop", Args: []string{"update"}}, PackageManagerCommand{Name: "scoop", Args: []string{"update", "mew/codemcp"}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

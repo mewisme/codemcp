@@ -1,6 +1,6 @@
 # CodeMCP bootstrap installer for Windows (PowerShell).
 #
-# irm https://get.mewis.me/chatgpt-mcp.ps1 | iex
+# irm https://get.mewis.me/codemcp.ps1 | iex
 #
 # Environment:
 #   CM_VERSION           release tag (default: latest)
@@ -19,7 +19,8 @@ $defaultInstall = Join-Path $HOME '.cm'
 $installDir = if ($env:CM_INSTALL_DIR) { $env:CM_INSTALL_DIR } else { $defaultInstall }
 $current = Join-Path $installDir 'current'
 $oidcIssuer = 'https://token.actions.githubusercontent.com'
-$signatureName = 'checksums.txt.sigstore.json'
+$checksumName = 'codemcp_checksums.txt'
+$signatureName = "$checksumName.sigstore.json"
 $binaryName = 'cm.exe'
 
 function ConvertTo-CodeMCPArchitecture {
@@ -204,9 +205,9 @@ if (-not $version) {
 if (-not $version) { throw 'cm: could not resolve latest version; set CM_VERSION.' }
 if ($version -notmatch '^v') { $version = "v$version" }
 $ver = $version.TrimStart('v')
-$asset = "chatgpt-mcp_${ver}_windows_${arch}.zip"
+$asset = "codemcp_${ver}_windows_${arch}.zip"
 $url = "https://github.com/$repo/releases/download/$version/$asset"
-$checksumsUrl = "https://github.com/$repo/releases/download/$version/checksums.txt"
+$checksumsUrl = "https://github.com/$repo/releases/download/$version/$checksumName"
 $signatureUrl = "https://github.com/$repo/releases/download/$version/$signatureName"
 $certIdentity = "https://github.com/$repo/.github/workflows/release.yml@refs/tags/$version"
 Write-Host "Installing CodeMCP $version (windows/$arch)..."
@@ -215,7 +216,7 @@ $tmp = Join-Path $env:TEMP ("cm-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 try {
   $zip = Join-Path $tmp $asset
-  $checksums = Join-Path $tmp 'checksums.txt'
+  $checksums = Join-Path $tmp $checksumName
   $signature = Join-Path $tmp $signatureName
   Invoke-WebRequest -Uri $url -OutFile $zip
   Invoke-WebRequest -Uri $checksumsUrl -OutFile $checksums
@@ -246,7 +247,7 @@ try {
       throw "cm: Sigstore/cosign verification failed for $signatureName"
     }
     $sigstoreOk = $true
-    Write-Host 'Sigstore signature verified for checksums.txt.'
+    Write-Host "Sigstore signature verified for $checksumName."
   }
 
   if (-not $sigstoreOk) {
