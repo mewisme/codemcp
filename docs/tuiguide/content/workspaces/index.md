@@ -1,6 +1,6 @@
 # Workspaces
 
-Workspaces define project roots that `chatgpt-mcp` can operate on. The Workspaces area also owns workspace containers and the Project Context builder.
+Workspaces define project roots that `CodeMCP` can operate on. The Workspaces area also owns workspace containers and the Project Context builder.
 
 ## Workspace list and details
 

@@ -1,8 +1,8 @@
 package instructioncontext
 
 const (
-	agentWorkflowIntroduction = "Use chatgpt-mcp as a multi-workspace coding agent with explicit workspace targeting."
-	serverIntroduction        = "Use chatgpt-mcp for local, workspace-aware coding and project operations."
+	agentWorkflowIntroduction = "Use CodeMCP as a multi-workspace coding agent with explicit workspace targeting."
+	serverIntroduction        = "Use CodeMCP for local, workspace-aware coding and project operations."
 	serverWorkspaceBootstrap  = "For project work, obtain a workspace_id with workspace_register unless one is already provided; use workspace_status to inspect its registered root, persisted shell cwd, and allowed directories. If the user provides a wsc_* workspace container, call workspace_container_context first and choose concrete member ws_* workspace IDs for actual work."
 	serverContextBootstrap    = "Call agent_status when runtime or permission details are needed. Use list_skills when skill summaries need to be discovered independently from project_context."
 

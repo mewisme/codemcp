@@ -1,6 +1,6 @@
 # Shell & Execution
 
-Shell configuration changes how `chatgpt-mcp` locates and launches commands; it does not define a separate sandbox or a user-selectable approval mode.
+Shell configuration changes how `CodeMCP` locates and launches commands; it does not define a separate sandbox or a user-selectable approval mode.
 
 ## Executable search path
 
@@ -12,6 +12,6 @@ Keep these concerns separate:
 
 - **Workspace access** defines which filesystem roots a concrete `ws_*` workspace may reach.
 - **Control guard and approvals** protect selected control-plane/destructive/host/external actions.
-- **OS isolation** is external to `chatgpt-mcp` when you need a kernel-level sandbox.
+- **OS isolation** is external to `CodeMCP` when you need a kernel-level sandbox.
 
 Changing shell path configuration does not broaden workspace access or bypass approval/control-guard behavior.

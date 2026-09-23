@@ -12,8 +12,8 @@ describe("RequestsPage", () => {
 
   it("shows approval history, filters it, and resolves a pending request", async () => {
     const user = userEvent.setup()
-    const pending = request("req_pending", "pending", "cgm update")
-    const consumed = request("req_consumed", "consumed", "cgm install")
+    const pending = request("req_pending", "pending", "cm update")
+    const consumed = request("req_consumed", "consumed", "cm install")
     let items = [pending, consumed]
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = requestPath(input)
@@ -29,20 +29,20 @@ describe("RequestsPage", () => {
     }))
 
     renderPage()
-    expect(await screen.findByText("Allow cgm update")).toBeInTheDocument()
-    expect(screen.getByText("Allow cgm install")).toBeInTheDocument()
+    expect(await screen.findByText("Allow cm update")).toBeInTheDocument()
+    expect(screen.getByText("Allow cm install")).toBeInTheDocument()
     expect(screen.getByText("1 pending")).toBeInTheDocument()
 
     const search = screen.getByPlaceholderText("Search request, tool, source...")
     await user.type(search, "consumed")
-    expect(screen.queryByText("Allow cgm update")).not.toBeInTheDocument()
-    expect(screen.getByText("Allow cgm install")).toBeInTheDocument()
+    expect(screen.queryByText("Allow cm update")).not.toBeInTheDocument()
+    expect(screen.getByText("Allow cm install")).toBeInTheDocument()
     await user.clear(search)
 
-    await user.click(screen.getByText("Allow cgm update"))
+    await user.click(screen.getByText("Allow cm update"))
     expect(await screen.findByText(/Control approval request · req_pending/)).toBeInTheDocument()
     await user.click(screen.getByRole("tab", { name: "Details" }))
-    expect(screen.getByRole("code").textContent).toContain('"command": "cgm update"')
+    expect(screen.getByRole("code").textContent).toContain('"command": "cm update"')
     await user.click(screen.getByRole("button", { name: /Approve/ }))
     await waitFor(() => expect(screen.getAllByText("approved").length).toBeGreaterThan(0))
     await waitFor(() => expect(screen.getByText("0 pending")).toBeInTheDocument())

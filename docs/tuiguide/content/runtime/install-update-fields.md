@@ -2,10 +2,6 @@
 
 ## Managed Install
 
-### Skip cgm alias
-
-When enabled, installation does not create/configure the `cgm` alias. Use this when the managed binary should be installed without modifying the convenience command alias.
-
 ### Allow development build
 
 Allows installation of a development/non-release build where the normal managed-install validation would otherwise reject it. This is an explicit opt-in intended for development/testing workflows.

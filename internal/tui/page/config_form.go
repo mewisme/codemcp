@@ -92,7 +92,7 @@ func newConfigConvertEditor(current configformat.Format) (component.Editor, *con
 }
 
 func newConfigBundleEditor(export bool) (component.Editor, *configBundleFormData) {
-	data := &configBundleFormData{Path: "chatgpt-mcp-config.cgm"}
+	data := &configBundleFormData{Path: "codemcp-config.cgm"}
 	var pathField huh.Field
 	primary, description := "import", "Import a configuration bundle and managed secrets."
 	if export {

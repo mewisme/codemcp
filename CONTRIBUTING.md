@@ -1,4 +1,4 @@
-# Contributing to chatgpt-mcp
+# Contributing to CodeMCP
 
 Thanks for contributing. This guide covers how to propose changes; detailed build, test, CI, and release steps live in [docs/development.md](docs/development.md).
 
@@ -23,7 +23,7 @@ Quick path:
 ```bash
 pnpm --dir web install
 node scripts/prepare-web-embed.mjs
-CHATGPT_MCP_CONFIG_DIR="$(mktemp -d)" go test ./...
+CM_CONFIG_DIR="$(mktemp -d)" go test ./...
 go build -trimpath ./
 ```
 
@@ -33,7 +33,7 @@ Fast local gate (subset of CI):
 ./scripts/check.sh
 ```
 
-Tests must never use the real default/global config directory. Always isolate with `CHATGPT_MCP_CONFIG_DIR` or `--config-dir`. See [docs/development.md](docs/development.md).
+Tests must never use the real default/global config directory. Always isolate with `CM_CONFIG_DIR` or `--config-dir`. See [docs/development.md](docs/development.md).
 
 ## Pull requests
 
@@ -46,7 +46,7 @@ Suggested local checks before opening a PR:
 
 ```bash
 ./scripts/check.sh
-CHATGPT_MCP_CONFIG_DIR="$(mktemp -d)" go test ./...
+CM_CONFIG_DIR="$(mktemp -d)" go test ./...
 go vet ./...
 pnpm --dir web test
 pnpm --dir web lint
@@ -60,7 +60,7 @@ For changes that affect services, tunnel connectivity, runtime logs, configurati
 
 Use the GitHub issue templates:
 
-- **Bug report** — include OS, `cgm version`, repro steps, expected vs actual
+- **Bug report** — include OS, `cm version`, repro steps, expected vs actual
 - **Feature request** — describe the problem, proposal, and alternatives
 
 Questions about product security boundaries belong in discussion or docs issues; vulnerability reports belong in [SECURITY.md](SECURITY.md).

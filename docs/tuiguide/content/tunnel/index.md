@@ -24,7 +24,7 @@ Editing an existing managed tunnel first fetches current remote metadata. The lo
 
 **Use managed tunnel** writes the selected managed tunnel into the local runtime configuration. Blank secret/key fields can preserve an existing configured secret when that is supported by the operation.
 
-The CLI equivalent is `cgm tunnel use <tunnel_id>` (`select` and `switch` are aliases). `--runtime-api-key` supplies a separate Read + Use credential when no runtime key is already stored, and `--enable` enables the selected tunnel after applying it. The admin key is only used for management discovery and is never substituted for the runtime credential.
+The CLI equivalent is `cm tunnel use <tunnel_id>` (`select` and `switch` are aliases). `--runtime-api-key` supplies a separate Read + Use credential when no runtime key is already stored, and `--enable` enables the selected tunnel after applying it. The admin key is only used for management discovery and is never substituted for the runtime credential.
 
 ## Delete behavior
 

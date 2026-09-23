@@ -4,13 +4,13 @@ Use `serve` for a foreground process and `up` for the normal managed background 
 
 | Mode | Command | Best for |
 | --- | --- | --- |
-| Foreground | `cgm serve` | development, one-off testing, direct terminal output |
-| Managed | `cgm up` | normal daily use, remote servers, restartable background operation |
+| Foreground | `cm serve` | development, one-off testing, direct terminal output |
+| Managed | `cm up` | normal daily use, remote servers, restartable background operation |
 
 ## Foreground runtime
 
 ```bash
-cgm serve
+cm serve
 ```
 
 The process stays attached to the current terminal. Closing that terminal or SSH session can stop it.
@@ -18,8 +18,8 @@ The process stays attached to the current terminal. Closing that terminal or SSH
 Useful variants:
 
 ```bash
-cgm serve --verbose
-cgm serve --debug
+cm serve --verbose
+cm serve --debug
 ```
 
 The default ChatGPT setup still uses OpenAI Secure MCP Tunnel; a foreground runtime starts the configured tunnel along with the local runtime.
@@ -29,28 +29,28 @@ The default ChatGPT setup still uses OpenAI Secure MCP Tunnel; a foreground runt
 Start or reconcile the managed service:
 
 ```bash
-cgm up
+cm up
 ```
 
 Inspect it:
 
 ```bash
-cgm status
+cm status
 ```
 
 Restart it:
 
 ```bash
-cgm restart
+cm restart
 ```
 
 Stop and remove the managed service definition:
 
 ```bash
-cgm down
+cm down
 ```
 
-`down` preserves configuration, workspaces, secrets, and runtime logs. Use `cgm uninit` only when you intentionally want to remove the selected local config/state root.
+`down` preserves configuration, workspaces, secrets, and runtime logs. Use `cm uninit` only when you intentionally want to remove the selected local config/state root.
 
 `up` is idempotent: it creates a missing service, starts a stopped service, reconciles a stale definition, or reports an already healthy runtime.
 
@@ -61,7 +61,7 @@ If a foreground `serve` process already owns the selected config root, `up` refu
 ### Linux
 
 ```bash
-cgm up
+cm up
 ```
 
 uses a user systemd service.
@@ -69,25 +69,25 @@ uses a user systemd service.
 For a machine-level service that starts with the machine:
 
 ```bash
-cgm up --system
+cm up --system
 ```
 
-The CLI may elevate the service-management operation through `sudo`, but the `chatgpt-mcp` runtime itself is configured to run as the invoking user rather than root.
+The CLI may elevate the service-management operation through `sudo`, but the `CodeMCP` runtime itself is configured to run as the invoking user rather than root.
 
 On remote Linux, use `--system` when a user service would otherwise stop after the final login because user lingering is disabled.
 
 ### macOS
 
-`cgm up` uses a user LaunchAgent. `cgm up --system` uses a system LaunchDaemon while keeping the runtime under the invoking user's identity.
+`cm up` uses a user LaunchAgent. `cm up --system` uses a system LaunchDaemon while keeping the runtime under the invoking user's identity.
 
 ### Windows
 
-`cgm up` uses a per-user Task Scheduler task with least privilege. It does not run the runtime as LocalSystem.
+`cm up` uses a per-user Task Scheduler task with least privilege. It does not run the runtime as LocalSystem.
 
 ## Status
 
 ```bash
-cgm status
+cm status
 ```
 
 Use status as the first operational overview. It reports the selected config root, runtime/service state, transport state, tunnel state, relevant endpoints, and registered resource summaries.
@@ -95,7 +95,7 @@ Use status as the first operational overview. It reports the selected config roo
 For tunnel-specific state:
 
 ```bash
-cgm tunnel status
+cm tunnel status
 ```
 
 ## Logs
@@ -105,34 +105,34 @@ Runtime events are persisted under the selected config root and can be replayed 
 History:
 
 ```bash
-cgm logs
-cgm logs -n 200
-cgm logs --verbose
-cgm logs --debug
+cm logs
+cm logs -n 200
+cm logs --verbose
+cm logs --debug
 ```
 
 Follow:
 
 ```bash
-cgm logs -f
+cm logs -f
 ```
 
 Useful filters:
 
 ```bash
-cgm logs --since 30m
-cgm logs --level warn
-cgm logs --component SERVER,TUNNEL
-cgm logs --workspace ws_...
-cgm logs --tool run_command --status error
-cgm logs --grep timeout
+cm logs --since 30m
+cm logs --level warn
+cm logs --component SERVER,TUNNEL
+cm logs --workspace ws_...
+cm logs --tool run_command --status error
+cm logs --grep timeout
 ```
 
 Locate or clear the journal:
 
 ```bash
-cgm logs path
-cgm logs clear --force
+cm logs path
+cm logs clear --force
 ```
 
 Use `--log-format=json` when consuming event output programmatically. See [CLI reference](cli-reference.md#logs) for the full filter surface.
@@ -144,8 +144,8 @@ Supported configuration mutations are applied to the running runtime through its
 If the runtime is stopped, persisted changes take effect on the next start.
 
 ```bash
-cgm config set server.port 41021
-cgm config verify
+cm config set server.port 41021
+cm config verify
 ```
 
 See [Configuration](configuration.md).
@@ -157,10 +157,10 @@ The normal managed runtime automatically starts the configured OpenAI Secure MCP
 Useful commands:
 
 ```bash
-cgm tunnel status
-cgm tunnel enable
-cgm tunnel disable
-cgm tunnel run
+cm tunnel status
+cm tunnel enable
+cm tunnel disable
+cm tunnel run
 ```
 
 `tunnel run` is a foreground tunnel-only operation; normal `serve` / `up` own the usual integrated lifecycle.
@@ -172,25 +172,25 @@ See [OpenAI + ChatGPT](openai-chatgpt.md) for setup.
 Check without changing the installation:
 
 ```bash
-cgm upgrade check
+cm upgrade check
 ```
 
 Upgrade a managed direct installation:
 
 ```bash
-cgm upgrade
+cm upgrade
 ```
 
 Install an exact version, including an intentional downgrade:
 
 ```bash
-cgm upgrade --version vX.Y.Z
+cm upgrade --version vX.Y.Z
 ```
 
 Keep a running managed runtime on its current in-memory version until a later restart:
 
 ```bash
-cgm upgrade --no-restart
+cm upgrade --no-restart
 ```
 
 Direct managed updates stage the target version, verify release checksums, switch the stable installation target, restart a matching managed runtime when requested, and roll back if the new runtime cannot become ready. A foreground `serve` process is never killed by the updater; restart it manually to load the new binary.
@@ -202,9 +202,9 @@ Homebrew and Scoop installations remain owned by their package managers. Develop
 Each selected config root is an independent runtime instance:
 
 ```bash
-cgm up
-cgm --config-dir ~/cgm-dev up
-cgm --config-dir ~/cgm-test up
+cm up
+cm --config-dir ~/cm-dev up
+cm --config-dir ~/cm-test up
 ```
 
 Configuration, workspaces, secrets, logs, runtime control state, and service identity remain scoped to the selected root.
@@ -214,7 +214,7 @@ Configuration, workspaces, secrets, logs, runtime control state, and service ide
 Open the full-screen Command Center:
 
 ```bash
-cgm tui
+cm tui
 ```
 
 The TUI can inspect runtime state, logs, requests, workspaces, tunnel state, configuration, and lifecycle actions without replacing the scriptable CLI. See [TUI Command Center](tui.md).
@@ -224,9 +224,9 @@ The TUI can inspect runtime state, logs, requests, workspaces, tunnel state, con
 Start with:
 
 ```bash
-cgm status
-cgm tunnel status
-cgm logs --debug -n 200
+cm status
+cm tunnel status
+cm logs --debug -n 200
 ```
 
 Then use [Troubleshooting](troubleshooting.md) for symptom-specific fixes.

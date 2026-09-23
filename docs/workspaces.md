@@ -1,6 +1,6 @@
 # Workspaces
 
-A workspace is the concrete project boundary that `chatgpt-mcp` uses for filesystem, shell, Git, process, project-context, memory, rule, skill, and checkpoint operations.
+A workspace is the concrete project boundary that `CodeMCP` uses for filesystem, shell, Git, process, project-context, memory, rule, skill, and checkpoint operations.
 
 The important distinction is:
 
@@ -14,14 +14,14 @@ A workspace container never becomes a filesystem permission boundary and never r
 ## Register a workspace
 
 ```bash
-cgm workspace register ~/projects/my-project
+cm workspace register ~/projects/my-project
 ```
 
 Inspect it:
 
 ```bash
-cgm workspace list
-cgm workspace show ws_...
+cm workspace list
+cm workspace show ws_...
 ```
 
 Workspace IDs are derived from the canonical workspace path. Existing legacy IDs may remain usable as aliases after migration or relocation.
@@ -39,15 +39,15 @@ registered workspace root
 Add a narrow workspace-specific directory when a project genuinely needs files outside its root:
 
 ```bash
-cgm workspace access add ws_... /path/to/build-cache
-cgm workspace access list ws_...
-cgm workspace access remove ws_... /path/to/build-cache
+cm workspace access add ws_... /path/to/build-cache
+cm workspace access list ws_...
+cm workspace access remove ws_... /path/to/build-cache
 ```
 
 Global extra roots apply to every workspace and should be used more carefully:
 
 ```bash
-cgm config set permissions.allow_dirs /path/one,/path/two
+cm config set permissions.allow_dirs /path/one,/path/two
 ```
 
 Paths are canonicalized and symlink escapes are rejected. Read [Security](security.md#workspace-boundary) for the full boundary.
@@ -78,7 +78,7 @@ This isolation is why concrete `ws_*` targets remain required even when several 
 If the project directory has already been renamed or moved, relocate the existing workspace instead of registering the destination as an unrelated project:
 
 ```bash
-cgm workspace relocate ws_... /new/path/to/project
+cm workspace relocate ws_... /new/path/to/project
 ```
 
 Relocation updates the trusted root and derives the new path-based workspace ID. The previous ID is retained as a legacy alias, workspace-scoped persistent state follows the project, and container membership is preserved.
@@ -90,10 +90,10 @@ Relocate does **not** move project files. It is a trusted local control-plane op
 Containers group registered workspaces for orchestration:
 
 ```bash
-cgm workspace container list
-cgm workspace container create "Backend projects"
-cgm workspace container add wsc_... ws_... ws_...
-cgm workspace container show wsc_...
+cm workspace container list
+cm workspace container create "Backend projects"
+cm workspace container add wsc_... ws_... ws_...
+cm workspace container show wsc_...
 ```
 
 A `wsc_*` ID answers “which workspaces belong together?”, not “which filesystem may this tool access?”.

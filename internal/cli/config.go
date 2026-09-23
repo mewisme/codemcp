@@ -15,7 +15,7 @@ import (
 	"go.mewis.me/codemcp/internal/logger"
 )
 
-const defaultConfigBundleFile = "chatgpt-mcp-config.cgm"
+const defaultConfigBundleFile = "codemcp-config.cgm"
 
 func configCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "config", Aliases: []string{"cfg"}, Short: "Read and update validated runtime configuration", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
@@ -238,7 +238,7 @@ func configConvertCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:               "convert <json|yaml|toml>",
 		Aliases:           []string{"transform"},
-		Short:             "Convert all structured chatgpt-mcp config/state files to one format",
+		Short:             "Convert all structured CodeMCP config/state files to one format",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeConfigFormat,
 		RunE: func(cmd *cobra.Command, args []string) error {

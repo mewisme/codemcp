@@ -101,7 +101,7 @@ func CleartextHTTPActive(cfg Config) bool {
 }
 
 func CleartextHTTPWarning() string {
-	return "WARNING: server.expose is not none — bearer tokens and request contents travel on cleartext HTTP; chatgpt-mcp has no built-in TLS (prefer Secure MCP Tunnel, a TLS reverse proxy, or a trusted/encrypted network)"
+	return "WARNING: server.expose is not none — bearer tokens and request contents travel on cleartext HTTP; CodeMCP has no built-in TLS (prefer Secure MCP Tunnel, a TLS reverse proxy, or a trusted/encrypted network)"
 }
 
 func SecurityWarnings(cfg Config) []string {

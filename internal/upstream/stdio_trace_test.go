@@ -52,7 +52,7 @@ func TestStdioCloseTraceIncludesExitCodeAndDuration(t *testing.T) {
 func TestStdioStartFailureTraceIncludesExitCodeAndDuration(t *testing.T) {
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
-	_, err := startStdio(ctx, Server{ID: "stdio-missing", Transport: "stdio", Command: "chatgpt-mcp-definitely-missing-executable"})
+	_, err := startStdio(ctx, Server{ID: "stdio-missing", Transport: "stdio", Command: "codemcp-definitely-missing-executable"})
 	if err == nil {
 		t.Fatal("missing stdio executable unexpectedly started")
 	}

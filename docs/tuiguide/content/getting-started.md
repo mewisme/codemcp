@@ -1,6 +1,6 @@
 # Getting Started with the TUI
 
-The `cgm tui` Command Center is the interactive interface for `chatgpt-mcp`. It is intended for human-operated workflows such as browsing registered resources, editing configuration, reviewing approval requests, checking runtime state, and running lifecycle actions. Normal `cgm ...` commands remain the stable interface for scripts and automation.
+The `cm tui` Command Center is the interactive interface for `CodeMCP`. It is intended for human-operated workflows such as browsing registered resources, editing configuration, reviewing approval requests, checking runtime state, and running lifecycle actions. Normal `cm ...` commands remain the stable interface for scripts and automation.
 
 ## Navigation model
 

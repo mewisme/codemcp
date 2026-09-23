@@ -352,7 +352,7 @@ export function SettingsPage() {
                   <Alert variant="destructive">
                     <AlertDescription>
                       Bearer tokens and request contents travel on cleartext
-                      HTTP. chatgpt-mcp has no built-in TLS — use a trusted or
+                      HTTP. CodeMCP has no built-in TLS — use a trusted or
                       already encrypted network, terminate TLS in a reverse
                       proxy, or prefer Secure MCP Tunnel.
                     </AlertDescription>
@@ -397,7 +397,7 @@ export function SettingsPage() {
               >
                 <Textarea
                   className="min-h-40 font-mono"
-                  placeholder={"/tmp\n/var/tmp/chatgpt-mcp"}
+                  placeholder={"/tmp\n/var/tmp/codemcp"}
                   value={config.permissions.allow_dirs.join("\n")}
                   onChange={(event) =>
                     setConfig({
@@ -532,7 +532,7 @@ export function SettingsPage() {
                   label="MCP authentication"
                   configured={config.auth.mcp_token_configured}
                   checked={config.auth.mcp_enabled}
-                  command="cgm auth mcp create"
+                  command="cm auth mcp create"
                   onCheckedChange={(enabled) =>
                     setConfig({
                       ...config,
@@ -545,7 +545,7 @@ export function SettingsPage() {
                   label="Admin authentication"
                   configured={config.auth.admin_token_configured}
                   checked={config.auth.admin_enabled}
-                  command="cgm auth admin create"
+                  command="cm auth admin create"
                   onCheckedChange={(enabled) =>
                     setConfig({
                       ...config,

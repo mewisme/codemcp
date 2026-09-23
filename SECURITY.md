@@ -10,7 +10,7 @@ https://github.com/mewisme/codemcp/security/advisories/new
 
 Please include:
 
-- Affected version (`cgm version`) and platform (OS/arch)
+- Affected version (`cm version`) and platform (OS/arch)
 - Description of the issue and impact
 - Steps to reproduce or a proof of concept when possible
 - Any known mitigations

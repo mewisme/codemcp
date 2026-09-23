@@ -69,13 +69,13 @@ go mod verify
 Run tests with an explicit isolated config root:
 
 ```bash
-CHATGPT_MCP_CONFIG_DIR="$(mktemp -d)" go test ./...
+CM_CONFIG_DIR="$(mktemp -d)" go test ./...
 ```
 
 Race detector:
 
 ```bash
-CHATGPT_MCP_CONFIG_DIR="$(mktemp -d)" go test -race ./...
+CM_CONFIG_DIR="$(mktemp -d)" go test -race ./...
 ```
 
 Vet:
@@ -103,7 +103,7 @@ Use either:
 or:
 
 ```text
-CHATGPT_MCP_CONFIG_DIR=<isolated-temp>
+CM_CONFIG_DIR=<isolated-temp>
 ```
 
 The release smoke also creates a default-root sentinel and verifies that the selected test flow does not mutate it.
@@ -133,7 +133,7 @@ node scripts/install-local.mjs --no-deps
 node scripts/install-local.mjs --from-dist
 ```
 
-Both `chatgpt-mcp` and `cgm` are installed beside the Go binary (`cgm` is a symlink on Unix and a command shim on Windows).
+Managed installs expose only the `cm` executable.
 
 ## Release smoke
 
@@ -141,21 +141,21 @@ Build a native binary:
 
 ```bash
 node scripts/prepare-web-embed.mjs
-go build -trimpath -o chatgpt-mcp ./
+go build -trimpath -o cm ./
 ```
 
 Run:
 
 ```bash
-node scripts/smoke-release.mjs ./chatgpt-mcp
+node scripts/smoke-release.mjs ./cm
 ```
 
 The portable smoke verifies behavior such as:
 
 - managed direct self-install and idempotent reinstall
-- fresh `install --no-alias` preserves the canonical command without creating `cgm`
-- `cgm tui --help` is present and documents the Command Center
-- `cgm tui` refuses redirected/non-TTY execution without writing a full-screen UI
+- repeated managed install preserves the canonical `cm` command without creating legacy executable aliases
+- `cm tui --help` is present and documents the Command Center
+- `cm tui` refuses redirected/non-TTY execution without writing a full-screen UI
 - stable workspace/request/upstream plain and JSON CLI output remains usable outside the TUI
 - isolated init/uninit
 - config verify/convert/transform
@@ -189,11 +189,11 @@ Control-approval native smoke additionally verifies:
 - mismatch does not consume the valid grant/capability
 - deny/cancel/expiry lifecycle
 - hard-deny guards remain non-approvable
-- MCP tool context cannot self-approve through `cgm request approve/deny`
+- MCP tool context cannot self-approve through `cm request approve/deny`
 - CLI plain/JSON behavior and non-TTY safety
 - Admin loopback and remote-auth policy
 
-The portable runtime smoke also checks that `request_control_approval` is present in the MCP catalog and that `cgm request list` reaches the running runtime. A dedicated native TUI release gate exercises route parsing, non-TTY refusal, Commands/resource navigation model integration, and public-command capability parity without attempting to drive a real alternate-screen terminal session inside CI.
+The portable runtime smoke also checks that `request_control_approval` is present in the MCP catalog and that `cm request list` reaches the running runtime. A dedicated native TUI release gate exercises route parsing, non-TTY refusal, Commands/resource navigation model integration, and public-command capability parity without attempting to drive a real alternate-screen terminal session inside CI.
 
 Updater and control-approval integration gates run in every native Linux, macOS, and Windows CI/release job. Cross-build jobs continue to compile all six release OS/architecture targets.
 
@@ -237,7 +237,7 @@ Pushes to `main` and pull requests run:
 - installer validation
 - module verification
 - local install smoke
-- package alias smoke
+- managed install smoke
 - control approval smoke
 - TUI route/model/parity release gate
 - Go tests
@@ -250,7 +250,7 @@ Pushes to `main` and pull requests run:
 
 - Unix installer validation
 - module verification
-- local install/package alias smoke
+- local managed-install smoke
 - control approval smoke
 - TUI route/model/parity release gate
 - Go tests
@@ -262,7 +262,7 @@ Pushes to `main` and pull requests run:
 
 - PowerShell installer validation
 - module verification
-- local install/package alias smoke
+- local managed-install smoke
 - control approval smoke
 - TUI route/model/parity release gate
 - Go tests
@@ -279,10 +279,9 @@ All six release targets are compiled after the native/web prerequisites are avai
 Unix installer layout uses immutable versions and stable current/command links:
 
 ```text
-~/.chatgpt-mcp/versions/<version>/...
-~/.chatgpt-mcp/current -> selected version
-~/.local/bin/chatgpt-mcp -> stable current path
-~/.local/bin/cgm -> stable current path
+~/.cm/versions/<version>/...
+~/.cm/current -> selected version
+~/.local/bin/cm -> stable current path
 ```
 
 Windows uses versioned directories plus a stable `current` directory junction so upgrades do not overwrite the executable currently held open by a managed runtime.
@@ -325,7 +324,7 @@ Use the next semantic version appropriate for the release instead of copying thi
 
 ```bash
 git diff --check
-CHATGPT_MCP_CONFIG_DIR="$(mktemp -d)" go test ./...
+CM_CONFIG_DIR="$(mktemp -d)" go test ./...
 go vet ./...
 pnpm --dir web test
 pnpm --dir web lint

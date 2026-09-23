@@ -150,7 +150,7 @@ func TestManagedBinaryTraceReportsStagingAndReuse(t *testing.T) {
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
 	root := t.TempDir()
-	source := filepath.Join(t.TempDir(), "go-build-trace", "b001", "exe", "chatgpt-mcp")
+	source := filepath.Join(t.TempDir(), "go-build-trace", "b001", "exe", "cm")
 	if err := os.MkdirAll(filepath.Dir(source), 0755); err != nil {
 		t.Fatal(err)
 	}

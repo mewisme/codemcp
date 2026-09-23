@@ -1,9 +1,9 @@
 # Getting started
 
-This is the default `chatgpt-mcp` path: install one local runtime, register the projects ChatGPT may use, connect it through OpenAI Secure MCP Tunnel, and keep the runtime running as a managed service.
+This is the default `CodeMCP` path: install one local runtime, register the projects ChatGPT may use, connect it through OpenAI Secure MCP Tunnel, and keep the runtime running as a managed service.
 
 ```text
-install → init → register workspace → configure tunnel → cgm up → connect ChatGPT
+install → init → register workspace → configure tunnel → cm up → connect ChatGPT
 ```
 
 ## Requirements
@@ -20,57 +20,57 @@ Docker is not required. Git is optional unless you want to use Git tools.
 ### Linux / macOS
 
 ```bash
-curl -fsSL get.mewis.me/chatgpt-mcp.sh | sh
+curl -fsSL get.mewis.me/codemcp.sh | sh
 ```
 
 ### Windows PowerShell
 
 ```powershell
-irm https://get.mewis.me/chatgpt-mcp.ps1 | iex
+irm https://get.mewis.me/codemcp.ps1 | iex
 ```
 
 ### Homebrew
 
 ```bash
 brew tap mewisme/mew
-brew install --cask chatgpt-mcp
+brew install --cask codemcp
 ```
 
 ### Scoop
 
 ```powershell
 scoop bucket add mew https://github.com/mewisme/scoop-mew
-scoop install mew/chatgpt-mcp
+scoop install mew/codemcp
 ```
 
-The installed commands are `chatgpt-mcp` and its shorter alias, `cgm`.
+The installed executable is `cm`.
 
 ## 2. Initialize
 
 ```bash
-cgm init
+cm init
 ```
 
 The default config/state root is:
 
 ```text
-~/.config/chatgpt-mcp/
+~/.cm/
 ```
 
-For isolated instances, tests, or development runs, select another root with `--config-dir` or `CHATGPT_MCP_CONFIG_DIR`. See [Configuration](configuration.md#config-root).
+For isolated instances, tests, or development runs, select another root with `--config-dir` or `CM_CONFIG_DIR`. See [Configuration](configuration.md#config-root).
 
 ## 3. Register a workspace
 
 Register only project roots you want ChatGPT to reach:
 
 ```bash
-cgm workspace register ~/projects/my-project
+cm workspace register ~/projects/my-project
 ```
 
 The command returns a stable `ws_*` workspace ID. Filesystem, shell, Git, process, context, memory, rules, skills, and checkpoint operations use explicit workspace targets.
 
 ```bash
-cgm workspace list
+cm workspace list
 ```
 
 Read [Workspaces](workspaces.md) before adding extra filesystem roots or using workspace containers.
@@ -80,7 +80,7 @@ Read [Workspaces](workspaces.md) before adding extra filesystem roots or using w
 Create a tunnel in OpenAI Platform and a restricted runtime API key with **Tunnels Read + Use**, then configure them locally:
 
 ```bash
-cgm tunnel configure \
+cm tunnel configure \
   --enabled \
   --id tunnel_... \
   --api-key 'sk-...'
@@ -89,7 +89,7 @@ cgm tunnel configure \
 Check the local configuration:
 
 ```bash
-cgm tunnel status
+cm tunnel status
 ```
 
 The tunnel ID is an identifier. The runtime API key is a secret used only to authenticate the tunnel client; do not use a Platform Admin API key as the long-lived runtime key.
@@ -101,20 +101,20 @@ For tunnel creation, associations, permissions, Developer Mode, and ChatGPT app 
 For normal use, start the managed background runtime:
 
 ```bash
-cgm up
+cm up
 ```
 
 Inspect it:
 
 ```bash
-cgm status
-cgm tunnel status
+cm status
+cm tunnel status
 ```
 
 For one-off foreground testing, use:
 
 ```bash
-cgm serve
+cm serve
 ```
 
 `serve` stays attached to the current terminal. On a remote server, prefer a managed service instead of relying on an SSH session. See [Runtime and operations](runtime.md).
@@ -137,16 +137,16 @@ Then test with a read-only action such as listing registered workspaces or readi
 Useful commands:
 
 ```bash
-cgm status
-cgm tunnel status
-cgm logs -f
-cgm config verify
+cm status
+cm tunnel status
+cm logs -f
+cm config verify
 ```
 
 For interactive operation:
 
 ```bash
-cgm tui
+cm tui
 ```
 
 ## Next steps

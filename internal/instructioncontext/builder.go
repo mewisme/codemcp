@@ -124,7 +124,7 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 		if id == "" {
 			id = "rule"
 		}
-		globalRules = append(globalRules, rules.Rule{Path: filepath.ToSlash("managed://global-rules/" + id), Source: "chatgpt-mcp", Content: content, AlwaysApply: true})
+		globalRules = append(globalRules, rules.Rule{Path: filepath.ToSlash("managed://global-rules/" + id), Source: "CodeMCP", Content: content, AlwaysApply: true})
 	}
 	sources = markLoadedSources(sources, projectMemory, unconditionalRules, skillSummaries)
 	value := InstructionContext{

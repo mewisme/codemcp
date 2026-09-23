@@ -1,32 +1,32 @@
 # Configuration
 
-`chatgpt-mcp` keeps persistent configuration and runtime state under one selected config root. Use this guide for the configuration model and common operations; use `cgm config explain` for the exhaustive schema of the installed version.
+`CodeMCP` keeps persistent configuration and runtime state under one selected config root. Use this guide for the configuration model and common operations; use `cm config explain` for the exhaustive schema of the installed version.
 
 ## Config root
 
 Default:
 
 ```text
-~/.config/chatgpt-mcp/
+~/.cm/
 ```
 
 Select another root per command:
 
 ```bash
-cgm --config-dir /path/to/instance status
+cm --config-dir /path/to/instance status
 ```
 
 or by environment:
 
 ```bash
-export CHATGPT_MCP_CONFIG_DIR=/path/to/instance
+export CM_CONFIG_DIR=/path/to/instance
 ```
 
 Precedence is:
 
 ```text
 --config-dir
-> CHATGPT_MCP_CONFIG_DIR
+> CM_CONFIG_DIR
 > default user config root
 ```
 
@@ -35,32 +35,32 @@ A config root owns that instance's configuration, workspaces, secrets, upstream/
 ## Inspect configuration
 
 ```bash
-cgm config get
-cgm config list
-cgm config get server
-cgm config get admin.enabled
+cm config get
+cm config list
+cm config get server
+cm config get admin.enabled
 ```
 
 Structured display is available where supported:
 
 ```bash
-cgm config list --json
-cgm config list --yaml
-cgm config list --toml
+cm config list --json
+cm config list --yaml
+cm config list --toml
 ```
 
 Sensitive fields are redacted.
 
 ## Explain the schema
 
-`cgm config explain` is the authoritative configuration reference for the installed binary:
+`cm config explain` is the authoritative configuration reference for the installed binary:
 
 ```bash
-cgm config explain
-cgm config explain server
-cgm config explain server.expose.mode
-cgm config explain shell.path
-cgm config explain shell.path --json
+cm config explain
+cm config explain server
+cm config explain server.expose.mode
+cm config explain shell.path
+cm config explain shell.path --json
 ```
 
 A branch explains a subtree; a leaf reports its type, built-in default, editability, valid values, guidance, and related settings where applicable.
@@ -70,9 +70,9 @@ The public docs intentionally do not duplicate every schema field, because that 
 ## Set values
 
 ```bash
-cgm config set server.enabled false
-cgm config set server.port 41021
-cgm config set admin.enabled true
+cm config set server.enabled false
+cm config set server.port 41021
+cm config set admin.enabled true
 ```
 
 Values are parsed according to the schema and validated before persistence. `key=value` syntax is also accepted by the CLI.
@@ -88,8 +88,8 @@ Network-affecting changes such as listener ports or exposure are rebound transac
 Verify after meaningful access/network changes:
 
 ```bash
-cgm config verify
-cgm config verify --strict
+cm config verify
+cm config verify --strict
 ```
 
 ## Storage format
@@ -97,17 +97,17 @@ cgm config verify --strict
 JSON is the default structured format. YAML and TOML are also supported:
 
 ```bash
-cgm init --json
-cgm init --yaml
-cgm init --toml
+cm init --json
+cm init --yaml
+cm init --toml
 ```
 
 Convert an existing managed structured state tree:
 
 ```bash
-cgm config convert json
-cgm config convert yaml
-cgm config convert toml
+cm config convert json
+cm config convert yaml
+cm config convert toml
 ```
 
 Conversion validates the managed state before activating the new representation.
@@ -121,13 +121,13 @@ MCP/Admin endpoint credentials are represented by one-way hashes where appropria
 Migrate older plaintext credential state:
 
 ```bash
-cgm config migrate
+cm config migrate
 ```
 
 Encrypt legacy plaintext secret-store files:
 
 ```bash
-cgm config migrate secrets
+cm config migrate secrets
 ```
 
 See [Security](security.md) for the storage and trust model.
@@ -137,19 +137,19 @@ See [Security](security.md) for the storage and trust model.
 MCP and Admin endpoint authentication are separate policies:
 
 ```bash
-cgm auth status
-cgm auth mcp create
-cgm auth admin create
-cgm auth mcp enable
-cgm auth admin enable
+cm auth status
+cm auth mcp create
+cm auth admin create
+cm auth mcp enable
+cm auth admin enable
 ```
 
 Direct authenticated HTTP clients use the credential expected by that endpoint/transport. The OpenAI tunnel runtime API key is different: it authenticates the tunnel client to OpenAI and is not an MCP/Admin bearer token.
 
-Generic protected `cgm mcp http` uses OAuth as its canonical transport auth. Legacy static MCP bearer compatibility is controlled by:
+Generic protected `cm mcp http` uses OAuth as its canonical transport auth. Legacy static MCP bearer compatibility is controlled by:
 
 ```bash
-cgm config set auth.mcp_legacy_bearer false
+cm config set auth.mcp_legacy_bearer false
 ```
 
 ## Network exposure
@@ -157,7 +157,7 @@ cgm config set auth.mcp_legacy_bearer false
 The safest direct-listener posture is loopback-only:
 
 ```bash
-cgm config set server.expose none
+cm config set server.expose none
 ```
 
 Other supported exposure modes can bind selected interfaces or broader addresses, but non-loopback direct HTTP changes the trust model and requires the appropriate authentication/insecure-HTTP acknowledgement.
@@ -165,7 +165,7 @@ Other supported exposure modes can bind selected interfaces or broader addresses
 For ChatGPT, prefer the Secure MCP Tunnel instead of opening the MCP listener publicly:
 
 ```bash
-cgm tunnel configure --enabled --id tunnel_... --api-key 'sk-...'
+cm tunnel configure --enabled --id tunnel_... --api-key 'sk-...'
 ```
 
 Read [Security](security.md#network-exposure) before widening exposure.
@@ -175,19 +175,19 @@ Read [Security](security.md#network-exposure) before widening exposure.
 Register concrete project roots with:
 
 ```bash
-cgm workspace register ~/projects/my-project
+cm workspace register ~/projects/my-project
 ```
 
 Workspace-specific extra roots:
 
 ```bash
-cgm workspace access add ws_... /path/to/cache
+cm workspace access add ws_... /path/to/cache
 ```
 
 Global extra roots:
 
 ```bash
-cgm config set permissions.allow_dirs /path/one,/path/two
+cm config set permissions.allow_dirs /path/one,/path/two
 ```
 
 See [Workspaces](workspaces.md) for the canonical `ws_*` / `wsc_*` model and effective scope rules.
@@ -196,7 +196,7 @@ See [Workspaces](workspaces.md) for the canonical `ws_*` / `wsc_*` model and eff
 
 Shell commands inherit the runtime process environment, with configured `shell.path` entries prepended to `PATH`.
 
-`chatgpt-mcp` does not claim to provide a configurable kernel-level process sandbox. Workspace containment, protected control-plane state, and runtime approval/control-guard rules are application-level boundaries. Use an OS sandbox, container/VM, or separate operating-system identity when stronger isolation is required.
+`CodeMCP` does not claim to provide a configurable kernel-level process sandbox. Workspace containment, protected control-plane state, and runtime approval/control-guard rules are application-level boundaries. Use an OS sandbox, container/VM, or separate operating-system identity when stronger isolation is required.
 
 See [Security](security.md#shell-execution-boundary).
 
@@ -205,21 +205,21 @@ See [Security](security.md#shell-execution-boundary).
 Configure the default ChatGPT transport:
 
 ```bash
-cgm tunnel configure \
+cm tunnel configure \
   --enabled \
   --id tunnel_... \
   --api-key 'sk-...'
 ```
 
-See [OpenAI + ChatGPT](openai-chatgpt.md) for Platform and ChatGPT setup. Use `cgm tunnel --help` for the current local/managed tunnel command surface.
+See [OpenAI + ChatGPT](openai-chatgpt.md) for Platform and ChatGPT setup. Use `cm tunnel --help` for the current local/managed tunnel command surface.
 
 ## Upstream MCP configuration
 
 Manage upstream servers with:
 
 ```bash
-cgm upstream --help
-cgm upstream server --help
+cm upstream --help
+cm upstream server --help
 ```
 
 See [MCP and upstreams](mcp.md).
@@ -229,23 +229,23 @@ See [MCP and upstreams](mcp.md).
 Export the selected portable configuration/state plus managed reversible secrets:
 
 ```bash
-cgm config export
+cm config export
 ```
 
 Import it on another supported installation:
 
 ```bash
-cgm config import
+cm config import
 ```
 
-Both default to `chatgpt-mcp-config.cgm` in the current directory; provide an explicit path when needed.
+Both default to `codemcp-config.cgm` in the current directory; provide an explicit path when needed.
 
 The portable bundle intentionally excludes transient machine-owned state such as runtime control/PIDs, logs, service-manager definitions, shell session history, checkpoints, and update cache. Import requires the selected runtime to be stopped and protects existing state unless replacement is explicitly requested.
 
 ## Remove local config/state
 
 ```bash
-cgm uninit
+cm uninit
 ```
 
 `uninit` removes the selected config/state root. It is different from uninstalling the binary. Stop the matching managed service first when appropriate.

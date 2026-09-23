@@ -1,6 +1,6 @@
 <div align="center">
 
-# chatgpt-mcp
+# CodeMCP
 
 **A secure, workspace-bound bridge between ChatGPT and your machine.**
 
@@ -15,17 +15,17 @@ Single Go binary · OpenAI Secure MCP Tunnel · Linux, macOS, and Windows
 
 </div>
 
-`chatgpt-mcp` lets ChatGPT work with local projects through explicitly registered workspaces. The default setup uses **OpenAI Secure MCP Tunnel**, so the runtime can stay private without exposing an inbound MCP port to the public internet.
+`CodeMCP` lets ChatGPT work with local projects through explicitly registered workspaces. The default setup uses **OpenAI Secure MCP Tunnel**, so the runtime can stay private without exposing an inbound MCP port to the public internet.
 
 ## Overview
 
 <p align="center">
-  <img src="docs/architecture/overview.svg" alt="chatgpt-mcp architecture overview" width="100%">
+  <img src="docs/architecture/overview.svg" alt="CodeMCP architecture overview" width="100%">
 </p>
 
-The main path is intentionally small: ChatGPT reaches the local runtime through the Secure MCP Tunnel, then `chatgpt-mcp` applies workspace scope before filesystem, shell, Git, process, or upstream MCP work happens.
+The main path is intentionally small: ChatGPT reaches the local runtime through the Secure MCP Tunnel, then `CodeMCP` applies workspace scope before filesystem, shell, Git, process, or upstream MCP work happens.
 
-### Why chatgpt-mcp
+### Why CodeMCP
 
 - **Private by default for ChatGPT** — the Secure MCP Tunnel is outbound-only from your machine; public MCP ingress is not required.
 - **Workspace-bound access** — filesystem, shell, Git, process, context, memory, rules, skills, and checkpoints operate against explicit `ws_*` workspace targets.
@@ -38,43 +38,43 @@ The main path is intentionally small: ChatGPT reaches the local runtime through 
 ### Linux / macOS
 
 ```bash
-curl -fsSL get.mewis.me/chatgpt-mcp.sh | sh
+curl -fsSL get.mewis.me/codemcp.sh | sh
 ```
 
 ### Windows PowerShell
 
 ```powershell
-irm https://get.mewis.me/chatgpt-mcp.ps1 | iex
+irm https://get.mewis.me/codemcp.ps1 | iex
 ```
 
 ### Homebrew
 
 ```bash
 brew tap mewisme/mew
-brew install --cask chatgpt-mcp
+brew install --cask codemcp
 ```
 
 ### Scoop
 
 ```powershell
 scoop bucket add mew https://github.com/mewisme/scoop-mew
-scoop install mew/chatgpt-mcp
+scoop install mew/codemcp
 ```
 
-Both `chatgpt-mcp` and the shorter `cgm` command are installed. The examples below use `cgm`.
+The installed executable is `cm`.
 
 ## 5-minute setup
 
 ### 1. Initialize
 
 ```bash
-cgm init
+cm init
 ```
 
 ### 2. Register the project ChatGPT may work with
 
 ```bash
-cgm workspace register ~/projects/my-project
+cm workspace register ~/projects/my-project
 ```
 
 The command returns a stable `ws_*` workspace ID. Register only roots you intentionally want the runtime to reach.
@@ -84,7 +84,7 @@ The command returns a stable `ws_*` workspace ID. Register only roots you intent
 Create a tunnel and a restricted runtime API key in OpenAI Platform, then configure them locally:
 
 ```bash
-cgm tunnel configure \
+cm tunnel configure \
   --enabled \
   --id tunnel_... \
   --api-key 'sk-...'
@@ -95,14 +95,14 @@ The runtime key should have **Tunnels Read + Use**. It is not an OpenAI Admin AP
 ### 4. Start the managed runtime
 
 ```bash
-cgm up
+cm up
 ```
 
 Verify locally:
 
 ```bash
-cgm status
-cgm tunnel status
+cm status
+cm tunnel status
 ```
 
 ### 5. Connect ChatGPT
@@ -116,34 +116,34 @@ The complete Platform permissions and ChatGPT setup flow is in [Connect ChatGPT 
 For interactive administration:
 
 ```bash
-cgm tui
+cm tui
 ```
 
 For scripts and automation, use the normal CLI:
 
 ```bash
-cgm status
-cgm workspace list
-cgm logs -f
-cgm config verify
+cm status
+cm workspace list
+cm logs -f
+cm config verify
 ```
 
-Use `cgm <command> --help` for the live command surface. The exhaustive command inventory lives in the [CLI reference](docs/cli-reference.md), not in this README.
+Use `cm <command> --help` for the live command surface. The exhaustive command inventory lives in the [CLI reference](docs/cli-reference.md), not in this README.
 
 ## Other MCP clients
 
 The tunnel-first flow above is the default ChatGPT setup. Generic local MCP clients can instead use dedicated `stdio` or local Streamable HTTP transports:
 
 ```bash
-cgm mcp stdio --workspace ~/projects/my-project
-cgm mcp http --workspace ws_...
+cm mcp stdio --workspace ~/projects/my-project
+cm mcp http --workspace ws_...
 ```
 
 See [MCP clients and upstream servers](docs/mcp.md).
 
 ## Security model
 
-`chatgpt-mcp` provides an application-level workspace and control-plane boundary, not a kernel sandbox. Paths are canonicalized, symlink escapes are rejected, trusted control-plane mutations are separated from ordinary workspace operations, and sensitive managed credentials are not stored as plaintext structured config.
+`CodeMCP` provides an application-level workspace and control-plane boundary, not a kernel sandbox. Paths are canonicalized, symlink escapes are rejected, trusted control-plane mutations are separated from ordinary workspace operations, and sensitive managed credentials are not stored as plaintext structured config.
 
 If you need isolation from deliberately hostile native code running as the same OS user, use an OS sandbox, container/VM, or separate operating-system identity.
 

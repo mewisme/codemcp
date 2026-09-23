@@ -27,7 +27,7 @@ func TestFormatInstructionsStableOrderingAndByteCount(t *testing.T) {
 			{Path: "/workspace/AGENTS.md", Kind: SectionProject, Source: "agents", Content: "project instruction"},
 			{Path: "/workspace/CLAUDE.md", Kind: SectionProject, Source: "claude", Content: "claude fallback", Truncated: true},
 		}},
-		GlobalRules: []rules.Rule{{Path: "managed://global-rules/base", Source: "chatgpt-mcp", Content: "managed rule"}},
+		GlobalRules: []rules.Rule{{Path: "managed://global-rules/base", Source: "CodeMCP", Content: "managed rule"}},
 		Rules:       []rules.Rule{{Path: "/workspace/.agents/rules/global.md", Source: ".agents", Content: "global rule"}},
 		Skills:      []skills.Skill{{Name: "release", Description: "Release workflow", Source: ".agents", Path: "/workspace/.agents/skills/release/SKILL.md"}},
 	}

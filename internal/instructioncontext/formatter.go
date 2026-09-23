@@ -53,7 +53,7 @@ func FormatInstructions(value InstructionContext) (string, int) {
 		blocks = append(blocks, formatBlock("Skills", skillsText))
 	}
 	blocks = append(blocks, formatBlock("Quick pointers", QuickPointers))
-	text := "# chatgpt-mcp project context\n\n" + strings.Join(blocks, "\n\n")
+	text := "# CodeMCP project context\n\n" + strings.Join(blocks, "\n\n")
 	return text, len([]byte(text))
 }
 

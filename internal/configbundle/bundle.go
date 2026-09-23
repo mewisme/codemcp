@@ -35,7 +35,9 @@ const (
 	maxBundleBytes     = 256 << 20
 	maxStateBytes      = 128 << 20
 	maxBundleFileBytes = 64 << 20
-	bundleKeyMaterial  = "chatgpt-mcp portable config bundle v1 / mewis.me"
+	// Keep the released v1 key material stable so CodeMCP can import bundles
+	// produced by released v0.2.24 installations.
+	legacyBundleKeyMaterialV1 = "chatgpt-mcp portable config bundle v1 / mewis.me"
 )
 
 type Platform struct {
@@ -800,7 +802,7 @@ func decode(data []byte) (Bundle, error) {
 }
 
 func bundleAEAD() (cipher.AEAD, error) {
-	key := sha256.Sum256([]byte(bundleKeyMaterial))
+	key := sha256.Sum256([]byte(legacyBundleKeyMaterialV1))
 	block, err := aes.NewCipher(key[:])
 	if err != nil {
 		return nil, err

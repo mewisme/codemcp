@@ -113,7 +113,7 @@ export function OverviewPage() {
           <AlertDescription>
             Network exposure is enabled (server.expose is not none). Bearer
             tokens and request contents travel on cleartext HTTP —
-            chatgpt-mcp has no built-in TLS. Prefer Secure MCP Tunnel, a TLS
+            CodeMCP has no built-in TLS. Prefer Secure MCP Tunnel, a TLS
             reverse proxy, or a trusted encrypted network.
           </AlertDescription>
         </Alert>

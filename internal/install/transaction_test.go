@@ -180,7 +180,7 @@ func testLayout(t *testing.T) Layout {
 
 func testBinary(t *testing.T, content string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "chatgpt-mcp")
+	path := filepath.Join(t.TempDir(), "codemcp")
 	if err := os.WriteFile(path, []byte(content), 0755); err != nil {
 		t.Fatal(err)
 	}

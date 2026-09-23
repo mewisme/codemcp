@@ -1,16 +1,16 @@
 # TUI Command Center
 
-`cgm tui` is the human-operated terminal interface for `chatgpt-mcp`. The normal CLI remains the stable surface for scripts and automation.
+`cm tui` is the human-operated terminal interface for `CodeMCP`. The normal CLI remains the stable surface for scripts and automation.
 
 ```text
-cgm ...   scriptable CLI
-cgm tui   interactive Command Center
+cm ...   scriptable CLI
+cm tui   interactive Command Center
 ```
 
 ## Start
 
 ```bash
-cgm tui
+cm tui
 ```
 
 The TUI requires a real terminal. Redirected/non-TTY invocation fails instead of writing alternate-screen output into a pipe.
@@ -18,15 +18,15 @@ The TUI requires a real terminal. Redirected/non-TTY invocation fails instead of
 Deep-link directly to a page or resource when useful:
 
 ```bash
-cgm tui workspace
-cgm tui workspace ws_...
-cgm tui mcp github
-cgm tui tunnel
-cgm tui requests
-cgm tui logs
-cgm tui config
-cgm tui runtime
-cgm tui guide
+cm tui workspace
+cm tui workspace ws_...
+cm tui mcp github
+cm tui tunnel
+cm tui requests
+cm tui logs
+cm tui config
+cm tui runtime
+cm tui guide
 ```
 
 ## Global navigation
@@ -155,13 +155,13 @@ Leaving Logs for another top-level page closes its live feeds. Returning reconst
 
 ## Config and Instruction
 
-Config is schema-driven. Use it for typed configuration editing and storage/maintenance operations; exhaustive configuration semantics remain available through `cgm config explain` and [Configuration](configuration.md).
+Config is schema-driven. Use it for typed configuration editing and storage/maintenance operations; exhaustive configuration semantics remain available through `cm config explain` and [Configuration](configuration.md).
 
 Instruction manages Global Context, managed rules, and detected instruction sources used by Project Context assembly.
 
 ## Runtime
 
-Runtime is the operational control surface for service state, authentication, install/update actions, alias state, and version/build information.
+Runtime is the operational control surface for service state, authentication, install/update actions, and version/build information.
 
 For scripts or remote automation, use the equivalent CLI commands instead. See [Runtime and operations](runtime.md).
 
@@ -172,9 +172,9 @@ The Markdown tree under [`tuiguide/`](tuiguide/) is embedded into the binary as 
 Open Commands (`Ctrl+K`) and search for **Guide**, or deep-link directly:
 
 ```bash
-cgm tui guide
-cgm tui guide logs
-cgm tui guide mcp
+cm tui guide
+cm tui guide logs
+cm tui guide mcp
 ```
 
 The embedded Guide intentionally explains the current page/editor instead of duplicating the complete public documentation.
@@ -184,10 +184,10 @@ The embedded Guide intentionally explains the current page/editor instead of dup
 Do not automate the full-screen TUI. Use normal CLI commands and structured output instead:
 
 ```bash
-cgm workspace list --json
-cgm upstream server list --json
-cgm config verify
-cgm status
+cm workspace list --json
+cm upstream server list --json
+cm config verify
+cm status
 ```
 
-Use `cgm <command> --help` and the [CLI reference](cli-reference.md) for the scriptable interface.
+Use `cm <command> --help` and the [CLI reference](cli-reference.md) for the scriptable interface.

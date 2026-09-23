@@ -1,6 +1,6 @@
 # Admin UI (`web/`)
 
-Embedded React admin dashboard for `chatgpt-mcp`. Built with React, TypeScript, Vite, Tailwind CSS, and shadcn/ui; packaged into the Go binary via `scripts/prepare-web-embed.mjs`.
+Embedded React admin dashboard for CodeMCP. Built with React, TypeScript, Vite, Tailwind CSS, and shadcn/ui; packaged into the Go binary via `scripts/prepare-web-embed.mjs`.
 
 ## Requirements
 

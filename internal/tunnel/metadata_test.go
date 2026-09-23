@@ -51,15 +51,15 @@ func TestCreateWithAdminAPIKey(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Fatal(err)
 		}
-		if body["name"] != "Mew Tunnel" || body["description"] != "Created from chatgpt-mcp" {
+		if body["name"] != "Mew Tunnel" || body["description"] != "Created from CodeMCP" {
 			t.Fatalf("body = %#v", body)
 		}
 		w.Header().Set("x-request-id", "req_create")
-		_, _ = w.Write([]byte(`{"id":"tunnel_created","name":"Mew Tunnel","description":"Created from chatgpt-mcp","workspace_ids":["ws_openai"],"organization_ids":["org_test"]}`))
+		_, _ = w.Write([]byte(`{"id":"tunnel_created","name":"Mew Tunnel","description":"Created from CodeMCP","workspace_ids":["ws_openai"],"organization_ids":["org_test"]}`))
 	}))
 	defer server.Close()
 
-	metadata, err := CreateManaged(context.Background(), Config{AdminKey: "sk-admin", ControlPlaneBaseURL: server.URL}, CreateRequest{Name: "Mew Tunnel", Description: "Created from chatgpt-mcp", WorkspaceIDs: []string{"ws_openai"}, OrganizationIDs: []string{"org_test"}})
+	metadata, err := CreateManaged(context.Background(), Config{AdminKey: "sk-admin", ControlPlaneBaseURL: server.URL}, CreateRequest{Name: "Mew Tunnel", Description: "Created from CodeMCP", WorkspaceIDs: []string{"ws_openai"}, OrganizationIDs: []string{"org_test"}})
 	if err != nil {
 		t.Fatal(err)
 	}

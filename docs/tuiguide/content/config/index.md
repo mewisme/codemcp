@@ -2,7 +2,7 @@
 
 Config is the schema-driven settings surface for the current runtime instance. It groups related fields into operational areas instead of presenting the entire schema as one form.
 
-Use `cgm config explain [key]` outside the TUI when you need the exhaustive schema reference for the installed binary.
+Use `cm config explain [key]` outside the TUI when you need the exhaustive schema reference for the installed binary.
 
 ## Editing fields
 

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "chatgpt-mcp overview",
+    "title": "CodeMCP overview",
     "locale": "en",
     "quality_profile": "showcase",
     "viewBox": [1160, 640]
@@ -10,7 +10,7 @@
   "components": [
     { "id": "chatgpt", "type": "external", "label": "ChatGPT", "sublabel": "MCP client", "pos": [40, 260], "size": [140, 64] },
     { "id": "tunnel", "type": "cloud", "label": "OpenAI Secure MCP Tunnel", "sublabel": "default private transport", "pos": [250, 250], "size": [190, 84] },
-    { "id": "runtime", "type": "backend", "label": "chatgpt-mcp", "sublabel": "local runtime", "pos": [520, 250], "size": [170, 84], "tag": "single binary" },
+    { "id": "runtime", "type": "backend", "label": "CodeMCP", "sublabel": "local runtime", "pos": [520, 250], "size": [170, 84], "tag": "single binary" },
     { "id": "workspaces", "type": "security", "label": "Registered Workspaces", "sublabel": "explicit ws_* scopes", "pos": [810, 120], "size": [190, 72] },
     { "id": "execution", "type": "backend", "label": "Filesystem / Shell / Git", "sublabel": "workspace-bound tools", "pos": [810, 250], "size": [190, 72] },
     { "id": "upstreams", "type": "external", "label": "Upstream MCP Servers", "sublabel": "optional aggregation", "pos": [810, 380], "size": [190, 72] },

@@ -1,6 +1,6 @@
 # Embedded TUI Guide
 
-These Markdown files are contextual help for the `cgm tui` Command Center and are embedded directly into the binary. They should explain the current page/editor without duplicating the full public documentation.
+These Markdown files are contextual help for the `cm tui` Command Center and are embedded directly into the binary. They should explain the current page/editor without duplicating the full public documentation.
 
 | Topic | Guide |
 | --- | --- |
@@ -15,6 +15,6 @@ These Markdown files are contextual help for the `cgm tui` Command Center and ar
 | Global Context, rules, and sources | [Instruction](content/instruction/index.md) |
 | Runtime/service/auth/install/update operations | [Runtime & System](content/runtime/index.md) |
 
-The canonical guide tree lives under `content/`. A leaf is a Markdown file; a branch is a directory with `index.md`. Inside the TUI, use `Ctrl+K` and search for **Guide**, or deep-link with `cgm tui guide <topic...>`.
+The canonical guide tree lives under `content/`. A leaf is a Markdown file; a branch is a directory with `index.md`. Inside the TUI, use `Ctrl+K` and search for **Guide**, or deep-link with `cm tui guide <topic...>`.
 
 Only the selected document is rendered. Keep implementation details in development/code documentation and keep broad product concepts in the public docs under `docs/`.

@@ -67,7 +67,7 @@ Optional multiline list of tenant IDs, one per line.
 
 ## Managed Tunnel — Runtime
 
-### Configure cgm to use this tunnel
+### Configure cm to use this tunnel
 
 When enabled during create/update, the local runtime is configured to select the managed tunnel after the management operation succeeds.
 

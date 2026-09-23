@@ -19,8 +19,8 @@ describe("RequestApprovalHost", () => {
   it("shows queued requests with exact arguments and resolves them in order", async () => {
     const user = userEvent.setup()
     let pending = [
-      request("req_first", "cgm update"),
-      request("req_second", "cgm install"),
+      request("req_first", "cm update"),
+      request("req_second", "cm install"),
     ]
     vi.stubGlobal(
       "fetch",
@@ -53,28 +53,28 @@ describe("RequestApprovalHost", () => {
     )
 
     renderHost()
-    expect(await screen.findByText("Allow cgm update")).toBeInTheDocument()
+    expect(await screen.findByText("Allow cm update")).toBeInTheDocument()
     expect(
       screen.getByText("Control approval request · 1 of 2")
     ).toBeInTheDocument()
     await user.click(screen.getByRole("tab", { name: "Details" }))
     expect(screen.getByRole("code").textContent).toContain(
-      '"command": "cgm update"'
+      '"command": "cm update"'
     )
     await user.click(screen.getByRole("button", { name: /Approve/ }))
-    expect(await screen.findByText("Allow cgm install")).toBeInTheDocument()
+    expect(await screen.findByText("Allow cm install")).toBeInTheDocument()
     expect(
       screen.getByText("Control approval request · 1 of 1")
     ).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Deny" }))
     await waitFor(() =>
-      expect(screen.queryByText("Allow cgm install")).not.toBeInTheDocument()
+      expect(screen.queryByText("Allow cm install")).not.toBeInTheDocument()
     )
   })
 
   it("refetches pending requests when the approval SSE reports a new request", async () => {
     let listCalls = 0
-    const pending = request("req_stream", "cgm update --version v2")
+    const pending = request("req_stream", "cm update --version v2")
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
@@ -95,7 +95,7 @@ describe("RequestApprovalHost", () => {
 
     renderHost()
     expect(
-      await screen.findByText("Allow cgm update --version v2")
+      await screen.findByText("Allow cm update --version v2")
     ).toBeInTheDocument()
     expect(listCalls).toBeGreaterThanOrEqual(2)
     expect(toast.warning).toHaveBeenCalledWith("Control approval requested", expect.objectContaining({ description: expect.stringContaining("ws_test"), action: expect.objectContaining({ label: "Review" }) }))
@@ -103,7 +103,7 @@ describe("RequestApprovalHost", () => {
 
   it("drops a stale dialog when resolving it reports a conflict", async () => {
     const user = userEvent.setup()
-    let pending = [request("req_stale", "cgm update")]
+    let pending = [request("req_stale", "cm update")]
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -125,10 +125,10 @@ describe("RequestApprovalHost", () => {
     )
 
     renderHost()
-    expect(await screen.findByText("Allow cgm update")).toBeInTheDocument()
+    expect(await screen.findByText("Allow cm update")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /Approve/ }))
     await waitFor(() =>
-      expect(screen.queryByText("Allow cgm update")).not.toBeInTheDocument()
+      expect(screen.queryByText("Allow cm update")).not.toBeInTheDocument()
     )
   })
 })

@@ -14,7 +14,7 @@ Optional human-readable name for the server. It is presentation metadata; the Se
 
 ### Transport
 
-Selects how `cgm` connects to the upstream server.
+Selects how `cm` connects to the upstream server.
 
 - **HTTP** uses an MCP HTTP endpoint and exposes the HTTP-specific connection/authentication fields.
 - **stdio** launches a local process and communicates over standard input/output.
@@ -29,7 +29,7 @@ Persistent on/off state for the upstream server. Disabled servers remain configu
 
 ### HTTP MCP URL
 
-The MCP endpoint used when Transport is HTTP. This should identify the upstream MCP HTTP endpoint that `cgm` connects to.
+The MCP endpoint used when Transport is HTTP. This should identify the upstream MCP HTTP endpoint that `cm` connects to.
 
 ### Non-sensitive headers
 

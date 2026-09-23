@@ -1,10 +1,10 @@
 # Runtime & System
 
-Runtime is the operational status/control page for the local `chatgpt-mcp` process and managed installation.
+Runtime is the operational status/control page for the local `CodeMCP` process and managed installation.
 
 ## Status
 
-The page aggregates runtime/service state, MCP HTTP transport, authentication state, managed installation/update information, alias state, and build/version information. Refresh reloads this operational snapshot.
+The page aggregates runtime/service state, MCP HTTP transport, authentication state, managed installation/update information, and build/version information. Refresh reloads this operational snapshot.
 
 ## Service lifecycle
 
@@ -28,6 +28,6 @@ Backend failure returns to the editor and preserves its draft. Success commits t
 
 Upgrade checks use verified release metadata. Release downloads/checksums/signatures are validated by the update subsystem before activation.
 
-## Alias and configuration lifecycle
+## Configuration lifecycle
 
-Runtime can install/remove the `cgm` alias for managed installations. Configuration initialization/uninitialization actions that must run outside the current TUI are presented as explicit external command guidance rather than hidden shell execution.
+Configuration initialization/uninitialization actions that must run outside the current TUI are presented as explicit external command guidance rather than hidden shell execution.

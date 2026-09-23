@@ -1,24 +1,24 @@
 # MCP clients and upstreams
 
-For ChatGPT, the recommended/default transport is **OpenAI Secure MCP Tunnel**. Use this guide when you need a generic MCP client such as Cursor, or when `chatgpt-mcp` should aggregate tools from another MCP server.
+For ChatGPT, the recommended/default transport is **OpenAI Secure MCP Tunnel**. Use this guide when you need a generic MCP client such as Cursor, or when `CodeMCP` should aggregate tools from another MCP server.
 
 For the ChatGPT setup, start with [OpenAI + ChatGPT](openai-chatgpt.md).
 
 ## Generic local MCP clients
 
-`cgm mcp` starts an MCP-only transport without the normal Admin server, Secure MCP Tunnel lifecycle, or managed runtime service.
+`cm mcp` starts an MCP-only transport without the normal Admin server, Secure MCP Tunnel lifecycle, or managed runtime service.
 
 ### stdio
 
 ```bash
-cgm mcp stdio
+cm mcp stdio
 ```
 
 Bind the session to one already registered workspace:
 
 ```bash
-cgm mcp stdio --workspace ~/projects/my-project
-cgm mcp stdio --workspace ws_...
+cm mcp stdio --workspace ~/projects/my-project
+cm mcp stdio --workspace ws_...
 ```
 
 Binding does not register or relocate a workspace. The target must already exist in the workspace registry.
@@ -28,9 +28,9 @@ A Cursor project configuration can therefore use:
 ```json
 {
   "mcpServers": {
-    "chatgpt-mcp": {
+    "CodeMCP": {
       "type": "stdio",
-      "command": "cgm",
+      "command": "cm",
       "args": ["mcp", "stdio", "--workspace", "${workspaceFolder}"]
     }
   }
@@ -42,19 +42,19 @@ A Cursor project configuration can therefore use:
 Run the dedicated loopback MCP HTTP server:
 
 ```bash
-cgm mcp http
+cm mcp http
 ```
 
 It exposes the current Streamable HTTP endpoint and legacy SSE compatibility. Disable SSE compatibility when unnecessary:
 
 ```bash
-cgm mcp http --no-sse
+cm mcp http --no-sse
 ```
 
 Bind it to one registered workspace:
 
 ```bash
-cgm mcp http --workspace ws_...
+cm mcp http --workspace ws_...
 ```
 
 The dedicated generic-client HTTP transport is intentionally separate from the tunnel-first ChatGPT path.
@@ -63,10 +63,10 @@ The dedicated generic-client HTTP transport is intentionally separate from the t
 
 `stdio` uses the local child-process boundary and does not require transport OAuth.
 
-Protected `cgm mcp http` uses OAuth as the canonical client authentication flow. Static managed MCP bearer compatibility can be controlled with:
+Protected `cm mcp http` uses OAuth as the canonical client authentication flow. Static managed MCP bearer compatibility can be controlled with:
 
 ```bash
-cgm config set auth.mcp_legacy_bearer false
+cm config set auth.mcp_legacy_bearer false
 ```
 
 The OpenAI Secure MCP Tunnel runtime API key is unrelated to generic MCP client authentication.
@@ -83,31 +83,31 @@ See [Workspaces](workspaces.md) for the canonical workspace model.
 
 ## Upstream MCP aggregation
 
-`chatgpt-mcp` can connect to other MCP servers and expose selected upstream tools through its own catalog.
+`CodeMCP` can connect to other MCP servers and expose selected upstream tools through its own catalog.
 
 Start with:
 
 ```bash
-cgm upstream --help
-cgm upstream server --help
+cm upstream --help
+cm upstream server --help
 ```
 
 Common operations:
 
 ```bash
-cgm upstream server list
-cgm upstream server show <id>
-cgm upstream server status <id>
-cgm upstream server tools <id>
-cgm upstream server enable <id>
-cgm upstream server disable <id>
-cgm upstream server remove <id>
+cm upstream server list
+cm upstream server show <id>
+cm upstream server status <id>
+cm upstream server tools <id>
+cm upstream server enable <id>
+cm upstream server disable <id>
+cm upstream server remove <id>
 ```
 
 ### HTTP upstream
 
 ```bash
-cgm upstream server add example \
+cm upstream server add example \
   --transport http \
   --url https://mcp.example.com/mcp \
   --auth auto \
@@ -117,7 +117,7 @@ cgm upstream server add example \
 ### stdio upstream
 
 ```bash
-cgm upstream server add local-tools \
+cm upstream server add local-tools \
   --transport stdio \
   --command node \
   --arg /path/to/server.mjs \
@@ -125,18 +125,18 @@ cgm upstream server add local-tools \
   --expose all
 ```
 
-Tool exposure can be narrowed with prefixes, allowlists, disabled-tool lists, or exposure modes. Use `cgm upstream server add --help` and `configure --help` for the installed version's exact fields.
+Tool exposure can be narrowed with prefixes, allowlists, disabled-tool lists, or exposure modes. Use `cm upstream server add --help` and `configure --help` for the installed version's exact fields.
 
-`cgm mcp server ...` is a deprecated compatibility path; new automation should use `cgm upstream server ...`.
+`cm mcp server ...` is a deprecated compatibility path; new automation should use `cm upstream server ...`.
 
 ## Upstream OAuth
 
 HTTP upstreams can use managed OAuth:
 
 ```bash
-cgm upstream server auth login <id>
-cgm upstream server auth status <id>
-cgm upstream server auth logout <id>
+cm upstream server auth login <id>
+cm upstream server auth status <id>
+cm upstream server auth logout <id>
 ```
 
 Managed access/refresh tokens and client secrets are stored through the selected config root's secret store rather than ordinary structured configuration.
@@ -157,14 +157,14 @@ Replacement discovery is applied as a complete catalog update rather than intent
 
 ## Protocol profile
 
-The integrated ChatGPT runtime follows the project's current stateless MCP profile and OpenAI tunnel requirements. Generic `cgm mcp stdio` / `cgm mcp http` transports provide standards-compatible client lifecycles for ordinary MCP clients.
+The integrated ChatGPT runtime follows the project's current stateless MCP profile and OpenAI tunnel requirements. Generic `cm mcp stdio` / `cm mcp http` transports provide standards-compatible client lifecycles for ordinary MCP clients.
 
 The current binary is the authoritative source for its supported transport/command surface:
 
 ```bash
-cgm mcp --help
-cgm mcp stdio --help
-cgm mcp http --help
+cm mcp --help
+cm mcp stdio --help
+cm mcp http --help
 ```
 
 Protocol-specific implementation details such as the exact revision, method/header validation, MRTR support, and compatibility behavior are intentionally kept out of the normal setup path because most users do not need them to connect or operate the runtime.

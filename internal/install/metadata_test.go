@@ -9,7 +9,7 @@ import (
 
 func TestReadMetadata(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "install.json")
-	data := []byte(`{"schema":1,"method":"direct","version":"v1.2.3","install_dir":"/tmp/chatgpt-mcp","bin_dir":"/tmp/bin"}`)
+	data := []byte(`{"schema":1,"method":"direct","version":"v1.2.3","install_dir":"/tmp/codemcp","bin_dir":"/tmp/bin"}`)
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}

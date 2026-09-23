@@ -1,6 +1,6 @@
 # Security
 
-`chatgpt-mcp` is designed to give an Agent useful local capabilities without treating the Agent as the owner of the machine's control plane.
+`CodeMCP` is designed to give an Agent useful local capabilities without treating the Agent as the owner of the machine's control plane.
 
 The security model has three ideas:
 
@@ -24,7 +24,7 @@ For the normal ChatGPT setup:
 - keep endpoint authentication enabled;
 - review approval requests before allowing guarded control-plane actions;
 - use an OS sandbox, VM/container, or separate user identity for genuinely hostile workloads;
-- run `cgm config verify --strict` after meaningful access or exposure changes.
+- run `cm config verify --strict` after meaningful access or exposure changes.
 
 ## What the boundary protects
 
@@ -36,7 +36,7 @@ Managed credentials are redacted from normal configuration/status output and rev
 
 ## What the boundary does not provide
 
-A process deliberately running arbitrary native code as the same OS user may have capabilities beyond an application-level policy. It may access files or networking directly without going through `chatgpt-mcp`, manipulate process state, or attempt to escape process-ancestry assumptions.
+A process deliberately running arbitrary native code as the same OS user may have capabilities beyond an application-level policy. It may access files or networking directly without going through `CodeMCP`, manipulate process state, or attempt to escape process-ancestry assumptions.
 
 If the threat model includes hostile code, use an OS-level sandbox, container/VM, or separate operating-system identity with only the required filesystem access.
 
@@ -53,13 +53,13 @@ registered workspace root
 Register a workspace:
 
 ```bash
-cgm workspace register ~/projects/my-project
+cm workspace register ~/projects/my-project
 ```
 
 Add a narrow workspace-specific root:
 
 ```bash
-cgm workspace access add ws_... /path/to/build-cache
+cm workspace access add ws_... /path/to/build-cache
 ```
 
 Paths are canonicalized and symlink escapes are rejected.
@@ -108,7 +108,7 @@ The human-readable title is display metadata. It must summarize the action witho
 
 Some guards are intentionally non-approvable, including attempts to escape workspace/protected paths, tamper with tool-context identity, self-resolve approval requests, or hide a protected mutation inside an unsafe wrapper/compound execution that cannot be bound exactly.
 
-Local operators can review and resolve pending requests through the TUI/Admin surfaces or the `cgm request ...` CLI.
+Local operators can review and resolve pending requests through the TUI/Admin surfaces or the `cm request ...` CLI.
 
 The runtime may also support time-bounded grants for matching command patterns when explicitly approved by the operator. These grants remain runtime-controlled and revocable; they are not an Agent-controlled “allow everything” mode.
 
@@ -131,8 +131,8 @@ MCP/Admin endpoint credentials are represented by hashes where appropriate; plai
 Migrate legacy credentials with:
 
 ```bash
-cgm config migrate
-cgm config migrate secrets
+cm config migrate
+cm config migrate secrets
 ```
 
 The secret store is not a replacement for OS account security. Keep the config root private to the operating-system user.
@@ -150,14 +150,14 @@ If stronger isolation is required, provide it externally with an OS sandbox, VM/
 MCP and Admin endpoint authentication are distinct policies:
 
 ```bash
-cgm auth status
-cgm auth mcp create
-cgm auth admin create
+cm auth status
+cm auth mcp create
+cm auth admin create
 ```
 
 Direct authenticated endpoints expect their own credentials. The OpenAI Secure MCP Tunnel runtime API key is separate and must not be confused with an MCP/Admin bearer token.
 
-Protected generic `cgm mcp http` uses OAuth as its canonical transport authentication. Static MCP bearer compatibility is a migration path controlled by configuration.
+Protected generic `cm mcp http` uses OAuth as its canonical transport authentication. Static MCP bearer compatibility is a migration path controlled by configuration.
 
 Disabling authentication on an enabled HTTP endpoint requires the corresponding explicit loopback acknowledgement and remains restricted by exposure validation. Prefer authenticated endpoints.
 
@@ -166,7 +166,7 @@ Disabling authentication on an enabled HTTP endpoint requires the corresponding 
 Loopback-only is the safe default for direct HTTP listeners:
 
 ```bash
-cgm config set server.expose none
+cm config set server.expose none
 ```
 
 Non-loopback direct exposure requires authentication. Because the built-in direct listener is HTTP rather than built-in TLS, broader exposure also requires an explicit insecure-HTTP acknowledgement and should only be used on an appropriately trusted/encrypted network or behind TLS termination.
@@ -176,8 +176,8 @@ For ChatGPT, prefer OpenAI Secure MCP Tunnel and avoid public MCP ingress entire
 Direct exposure modes such as selected interfaces, `all`, or `0.0.0.0` are advanced configuration and should be reviewed with:
 
 ```bash
-cgm config explain server.expose
-cgm config verify --strict
+cm config explain server.expose
+cm config verify --strict
 ```
 
 ## OpenAI Secure MCP Tunnel credentials
@@ -212,7 +212,7 @@ OAuth discovery/token traffic follows equivalent origin/network safety rules rat
 
 ## Tunnel network model
 
-OpenAI Secure MCP Tunnel establishes outbound HTTPS from the machine running `chatgpt-mcp` to OpenAI's control plane.
+OpenAI Secure MCP Tunnel establishes outbound HTTPS from the machine running `CodeMCP` to OpenAI's control plane.
 
 For the default ChatGPT setup:
 
@@ -237,7 +237,7 @@ Operational metadata such as component, event, workspace, tool, source, status, 
 Locate the selected journal with:
 
 ```bash
-cgm logs path
+cm logs path
 ```
 
 Review diagnostic logs before publishing them because project paths or command output may still be sensitive to your environment.
@@ -247,13 +247,13 @@ Review diagnostic logs before publishing them because project paths or command o
 Tests, experiments, and destructive development flows should use an isolated config root:
 
 ```bash
-CHATGPT_MCP_CONFIG_DIR=/tmp/cgm-test cgm status
+CM_CONFIG_DIR=/tmp/cm-test cm status
 ```
 
 or:
 
 ```bash
-cgm --config-dir /tmp/cgm-test ...
+cm --config-dir /tmp/cm-test ...
 ```
 
 The repository test/release workflow treats avoiding the real default config root as an invariant.
@@ -268,7 +268,7 @@ See [Runtime and operations](runtime.md#service-scope-by-platform).
 
 ## Dangerous combinations
 
-`cgm config verify` warns about settings that materially weaken the default posture; `--strict` turns warnings into verification failure.
+`cm config verify` warns about settings that materially weaken the default posture; `--strict` turns warnings into verification failure.
 
 Examples include:
 

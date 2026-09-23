@@ -1,6 +1,6 @@
 # MCP Servers
 
-The MCP area manages upstream Model Context Protocol servers that `chatgpt-mcp` can expose or proxy.
+The MCP area manages upstream Model Context Protocol servers that `CodeMCP` can expose or proxy.
 
 ## Server list and details
 

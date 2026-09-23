@@ -18,7 +18,7 @@ var root = newRootCommand()
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               cliUseName(),
-		Short:             "Workspace-bound local MCP server for ChatGPT",
+		Short:             "CodeMCP workspace-bound local MCP server for ChatGPT",
 		RunE:              runServer,
 		Version:           version.Short(),
 		SilenceErrors:     true,

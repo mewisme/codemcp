@@ -1,6 +1,6 @@
 # Global Context
 
-Instruction → Global Context is Markdown instruction content managed by `cgm`.
+Instruction → Global Context is Markdown instruction content managed by `cm`.
 
 ## Preview state
 

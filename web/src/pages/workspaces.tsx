@@ -729,7 +729,7 @@ function confirmDescription(
   if (action.kind === "delete-container")
     return `${action.container.name} (${action.container.id}) will be deleted. Registered workspaces and project files remain unchanged.`
   if (action.kind === "unregister")
-    return `${action.workspace.path} will be removed from chatgpt-mcp. Project files will not be deleted.`
+    return `${action.workspace.path} will be removed from CodeMCP. Project files will not be deleted.`
   const names = action.containerIDs
     .map(
       (id) => containers.find((container) => container.id === id)?.name ?? id

@@ -322,6 +322,9 @@ func TestConfigExplainLeafBranchAndJSON(t *testing.T) {
 }
 
 func TestConfigBundleCommandsUseOptionalDefaultFile(t *testing.T) {
+	if defaultConfigBundleFile != "codemcp-config.cgm" {
+		t.Fatalf("default bundle identity = %q", defaultConfigBundleFile)
+	}
 	if got := configBundleFile(nil); got != defaultConfigBundleFile {
 		t.Fatalf("default bundle file = %q", got)
 	}
@@ -350,7 +353,7 @@ func TestConfigHasNoAllowDirSubcommand(t *testing.T) {
 }
 
 func TestPurgeStoredSecretsRemovesPersistedCredentials(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "chatgpt-mcp")
+	root := filepath.Join(t.TempDir(), "codemcp")
 	if err := configformat.MarkRoot(root); err != nil {
 		t.Fatal(err)
 	}
@@ -400,7 +403,7 @@ func TestPurgeStoredSecretsRemovesPersistedCredentials(t *testing.T) {
 }
 
 func TestRemoveConfigRoot(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "chatgpt-mcp")
+	root := filepath.Join(t.TempDir(), "codemcp")
 	if err := os.MkdirAll(root, 0700); err != nil {
 		t.Fatal(err)
 	}

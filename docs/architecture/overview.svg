@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="560" viewBox="0 0 1120 560" role="img" aria-labelledby="title desc">
-  <title id="title">chatgpt-mcp overview</title>
-  <desc id="desc">ChatGPT connects through OpenAI Secure MCP Tunnel to a local chatgpt-mcp runtime. The runtime operates on explicitly registered workspaces, workspace-bound filesystem shell and Git tools, optional upstream MCP servers, and local CLI TUI and Admin control surfaces.</desc>
+  <title id="title">CodeMCP overview</title>
+  <desc id="desc">ChatGPT connects through OpenAI Secure MCP Tunnel to a local CodeMCP runtime. The runtime operates on explicitly registered workspaces, workspace-bound filesystem shell and Git tools, optional upstream MCP servers, and local CLI TUI and Admin control surfaces.</desc>
   <style>
     :root { color-scheme: light dark; }
     .bg { fill: #ffffff; }
@@ -60,7 +60,7 @@
   <text class="label" x="544" y="104">YOUR MACHINE</text>
 
   <rect class="node-main" x="556" y="116" width="190" height="84" rx="12"/>
-  <text class="text" x="651" y="149" text-anchor="middle">chatgpt-mcp</text>
+  <text class="text" x="651" y="149" text-anchor="middle">CodeMCP</text>
   <text class="sub" x="651" y="171" text-anchor="middle">local runtime · single binary</text>
 
   <rect class="boundary" x="790" y="104" width="258" height="206" rx="16"/>

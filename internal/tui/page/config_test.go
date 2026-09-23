@@ -474,11 +474,11 @@ func TestConfigEditorsUseExplicitActionsPickerAndImportConfirmation(t *testing.T
 		t.Fatalf("convert editor init=%v data=%#v", convert.Init() != nil, convertData)
 	}
 	importEditor, importData := newConfigBundleEditor(false)
-	if importData.Force || importData.Path != "chatgpt-mcp-config.cgm" || importEditor.Init() == nil {
+	if importData.Force || importData.Path != "codemcp-config.cgm" || importEditor.Init() == nil {
 		t.Fatalf("import defaults=%#v init=%v", importData, importEditor.Init() != nil)
 	}
 	_, exportData := newConfigBundleEditor(true)
-	if exportData.Force || exportData.Path != "chatgpt-mcp-config.cgm" {
+	if exportData.Force || exportData.Path != "codemcp-config.cgm" {
 		t.Fatalf("export defaults=%#v", exportData)
 	}
 	prepareConfigPageRoot(t)

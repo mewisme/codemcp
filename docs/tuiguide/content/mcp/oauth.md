@@ -24,6 +24,6 @@ Additional scope string requested on top of the normal server/default authorizat
 
 ## Open authorization URL in browser
 
-When enabled, `cgm` attempts to open the authorization URL in the user's browser as part of the login flow. Disabling it keeps the flow usable when browser launching is unavailable; the authorization URL can still be handled manually by the surrounding OAuth flow.
+When enabled, `cm` attempts to open the authorization URL in the user's browser as part of the login flow. Disabling it keeps the flow usable when browser launching is unavailable; the authorization URL can still be handled manually by the surrounding OAuth flow.
 
 Submitting the editor starts authorization. Preflight or OAuth errors keep the editor and draft intact; successful authorization commits the draft before navigating away so the dirty guard does not ask to discard a completed login setup.

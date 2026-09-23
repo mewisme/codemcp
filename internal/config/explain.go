@@ -133,7 +133,7 @@ func branchLabel(key string) string {
 func branchDescription(key string) string {
 	switch key {
 	case "":
-		return "chatgpt-mcp configuration schema."
+		return "CodeMCP configuration schema."
 	case "server":
 		return "MCP HTTP server configuration."
 	case "server.expose":

@@ -6,7 +6,7 @@ Start with a task guide, then use the reference docs only when you need exact co
 
 | I want to… | Read |
 | --- | --- |
-| Install `chatgpt-mcp` and connect ChatGPT | [Getting started](getting-started.md) |
+| Install `CodeMCP` and connect ChatGPT | [Getting started](getting-started.md) |
 | Configure the OpenAI tunnel and ChatGPT app | [OpenAI + ChatGPT](openai-chatgpt.md) |
 | Understand `ws_*`, workspace scope, and `wsc_*` containers | [Workspaces](workspaces.md) |
 | Operate the runtime, services, logs, and updates | [Runtime and operations](runtime.md) |
@@ -26,12 +26,12 @@ Start with a task guide, then use the reference docs only when you need exact co
 The runtime itself is the authoritative source for the live command and configuration surface:
 
 ```bash
-cgm --help
-cgm <command> --help
-cgm config explain [key]
+cm --help
+cm <command> --help
+cm config explain [key]
 ```
 
-Use [CLI reference](cli-reference.md) for the curated command map and useful combinations. Use [Configuration](configuration.md) for configuration concepts; `cgm config explain` provides the exhaustive schema inventory for the installed version.
+Use [CLI reference](cli-reference.md) for the curated command map and useful combinations. Use [Configuration](configuration.md) for configuration concepts; `cm config explain` provides the exhaustive schema inventory for the installed version.
 
 ## Develop and contribute
 
@@ -42,4 +42,4 @@ Use [CLI reference](cli-reference.md) for the curated command map and useful com
 
 ## Embedded TUI help
 
-The contextual guides under [`tuiguide/`](tuiguide/) are embedded into `cgm tui`. They explain the page or editor a user is currently operating and intentionally do not duplicate the full public documentation.
+The contextual guides under [`tuiguide/`](tuiguide/) are embedded into `cm tui`. They explain the page or editor a user is currently operating and intentionally do not duplicate the full public documentation.
