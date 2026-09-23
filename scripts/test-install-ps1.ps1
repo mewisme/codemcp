@@ -10,6 +10,24 @@ if ($errors.Count -gt 0) {
   exit 1
 }
 
+if ($source -match 'INSTALL_ALLOW_CHECKSUM_ONLY') {
+  throw 'PowerShell installer still exposes the obsolete checksum-only opt-in.'
+}
+if ($source -match 'Sigstore/cosign verification is required') {
+  throw 'PowerShell installer still blocks when Sigstore/cosign is unavailable.'
+}
+if ($source -notmatch 'SHA-256 checksum verified, continuing without signature verification') {
+  throw 'PowerShell installer is missing the non-blocking checksum fallback warning.'
+}
+$sigstoreThrows = $ast.FindAll({
+  param($candidate)
+  $candidate -is [System.Management.Automation.Language.ThrowStatementAst] -and
+    $candidate.Extent.Text -match '(?i)(sigstore|cosign)'
+}, $true)
+if ($sigstoreThrows.Count -gt 0) {
+  throw 'PowerShell installer still has a blocking Sigstore/cosign throw path.'
+}
+
 $names = @(
   'ConvertTo-CodeMCPArchitecture',
   'Get-CodeMCPRuntimeArchitecture',

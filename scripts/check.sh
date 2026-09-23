@@ -28,10 +28,13 @@ go test ./internal/outboundpolicy/ ./internal/approval/ ./internal/config/ ./int
 
 echo "==> shellcheck install.sh"
 if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck install.sh
+  shellcheck install.sh scripts/test-install-sh.sh
 else
   echo "skip: shellcheck not installed"
 fi
+
+echo "==> installer verification policy"
+sh scripts/test-install-sh.sh
 
 echo "==> web lint/typecheck (if pnpm available)"
 if command -v pnpm >/dev/null 2>&1 && [[ -d web/node_modules ]]; then

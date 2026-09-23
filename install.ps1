@@ -6,8 +6,6 @@
 #   CM_VERSION           release tag (default: latest)
 #   CM_INSTALL_DIR       install location (default: $HOME\.cm)
 #   CM_ARCH              architecture override: amd64 or arm64
-#   INSTALL_ALLOW_CHECKSUM_ONLY   set to 1 to proceed when Sigstore/cosign
-#                                 verification is unavailable (loud warning)
 
 param(
   [switch]$Uninstall
@@ -228,42 +226,36 @@ try {
   if ($actual -ne $expected) { throw "cm: checksum verification failed for $asset" }
 
   $sigstoreOk = $false
-  $signatureAvailable = $false
+  $sigstoreReason = $null
   try {
     Invoke-WebRequest -Uri $signatureUrl -OutFile $signature
-    $signatureAvailable = $true
   } catch {
-    $signatureAvailable = $false
+    $sigstoreReason = "could not download $signatureName from $signatureUrl"
   }
 
   $cosign = Get-Command cosign -ErrorAction SilentlyContinue
-  if ($signatureAvailable -and $cosign) {
-    & $cosign.Source verify-blob `
-      --bundle=$signature `
-      --certificate-identity=$certIdentity `
-      --certificate-oidc-issuer=$oidcIssuer `
-      $checksums
-    if ($LASTEXITCODE -ne 0) {
-      throw "cm: Sigstore/cosign verification failed for $signatureName"
+  if (-not $sigstoreReason -and $cosign) {
+    try {
+      & $cosign.Source verify-blob `
+        --bundle=$signature `
+        --certificate-identity=$certIdentity `
+        --certificate-oidc-issuer=$oidcIssuer `
+        $checksums
+      if ($LASTEXITCODE -eq 0) {
+        $sigstoreOk = $true
+        Write-Host "Sigstore signature verified for $checksumName."
+      } else {
+        $sigstoreReason = "Sigstore/cosign verification failed for $signatureName"
+      }
+    } catch {
+      $sigstoreReason = "Sigstore/cosign verification failed for ${signatureName}: $($_.Exception.Message)"
     }
-    $sigstoreOk = $true
-    Write-Host "Sigstore signature verified for $checksumName."
+  } elseif (-not $sigstoreReason) {
+    $sigstoreReason = 'cosign is not installed or not on PATH'
   }
 
   if (-not $sigstoreOk) {
-    if ($env:INSTALL_ALLOW_CHECKSUM_ONLY -eq '1') {
-      Write-Warning 'Sigstore/cosign verification unavailable; proceeding with checksum-only install because INSTALL_ALLOW_CHECKSUM_ONLY=1.'
-      Write-Warning "Install cosign and ensure $signatureName is published for full release integrity."
-    } else {
-      $reason = if (-not $signatureAvailable) {
-        "could not download $signatureName from $signatureUrl"
-      } elseif (-not $cosign) {
-        'cosign is not installed or not on PATH'
-      } else {
-        'Sigstore verification did not complete'
-      }
-      throw "cm: Sigstore/cosign verification is required but unavailable ($reason). Install cosign, or set INSTALL_ALLOW_CHECKSUM_ONLY=1 to proceed with checksum-only verification."
-    }
+    Write-Warning "$sigstoreReason; SHA-256 checksum verified, continuing without signature verification."
   }
 
   $extract = Join-Path $tmp 'extract'

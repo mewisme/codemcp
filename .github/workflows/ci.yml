@@ -200,7 +200,7 @@ jobs:
 
       - name: Installer lint
         if: needs.changes.outputs.full == 'true'
-        run: shellcheck install.sh
+        run: shellcheck install.sh scripts/test-install-sh.sh
 
   race:
     name: Race test
@@ -286,7 +286,7 @@ jobs:
 
       - name: Validate Unix installer
         if: needs.changes.outputs.full == 'true' && runner.os != 'Windows'
-        run: sh -n install.sh
+        run: sh scripts/test-install-sh.sh
 
       - name: Validate PowerShell installer
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'

@@ -9,8 +9,6 @@
 #   CM_VERSION           release tag (default: latest)
 #   CM_INSTALL_DIR       bundle location (default: ~/.cm)
 #   CM_BIN_DIR           command location (default: ~/.local/bin)
-#   INSTALL_ALLOW_CHECKSUM_ONLY   set to 1 to proceed when Sigstore/cosign
-#                                 verification is unavailable (loud warning)
 set -eu
 
 REPO="mewisme/codemcp"
@@ -97,37 +95,27 @@ fi
 }
 
 sigstore_ok=0
-signature_available=0
+sigstore_reason=""
 if curl -fsSL "$signature_url" -o "$signature"; then
-	signature_available=1
-fi
-if [ "$signature_available" -eq 1 ] && command -v cosign >/dev/null 2>&1; then
-	if cosign verify-blob \
-		--bundle="$signature" \
-		--certificate-identity="$cert_identity" \
-		--certificate-oidc-issuer="$OIDC_ISSUER" \
-		"$checksums"; then
-		sigstore_ok=1
-		echo "Sigstore signature verified for $CHECKSUM_NAME."
+	if command -v cosign >/dev/null 2>&1; then
+		if cosign verify-blob \
+			--bundle="$signature" \
+			--certificate-identity="$cert_identity" \
+			--certificate-oidc-issuer="$OIDC_ISSUER" \
+			"$checksums"; then
+			sigstore_ok=1
+			echo "Sigstore signature verified for $CHECKSUM_NAME."
+		else
+			sigstore_reason="Sigstore/cosign verification failed for $SIGNATURE_NAME"
+		fi
 	else
-		echo "cm: Sigstore/cosign verification failed for $SIGNATURE_NAME" >&2
-		exit 1
+		sigstore_reason="cosign is not installed or not on PATH"
 	fi
+else
+	sigstore_reason="could not download $SIGNATURE_NAME from $signature_url"
 fi
 if [ "$sigstore_ok" -eq 0 ]; then
-	if [ "${INSTALL_ALLOW_CHECKSUM_ONLY:-}" = "1" ]; then
-		echo "WARNING: Sigstore/cosign verification unavailable; proceeding with checksum-only install because INSTALL_ALLOW_CHECKSUM_ONLY=1." >&2
-		echo "WARNING: Install cosign and ensure $SIGNATURE_NAME is published for full release integrity." >&2
-	else
-		echo "cm: Sigstore/cosign verification is required but unavailable." >&2
-		if [ "$signature_available" -eq 0 ]; then
-			echo "cm: could not download $SIGNATURE_NAME from $signature_url" >&2
-		elif ! command -v cosign >/dev/null 2>&1; then
-			echo "cm: cosign is not installed or not on PATH" >&2
-		fi
-		echo "cm: install cosign, or set INSTALL_ALLOW_CHECKSUM_ONLY=1 to proceed with checksum-only verification." >&2
-		exit 1
-	fi
+	echo "WARNING: $sigstore_reason; SHA-256 checksum verified, continuing without signature verification." >&2
 fi
 
 listing="$tmp/listing.txt"
