@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	shellruntime "go.mewis.me/codemcp/internal/shell"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 )
 
 func TestObservedRunCommandResultRedactsOutput(t *testing.T) {

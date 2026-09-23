@@ -15,7 +15,7 @@ import (
 	"go.mewis.me/codemcp/internal/features"
 	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/ponytail"
-	shellruntime "go.mewis.me/codemcp/internal/shell"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
 )

@@ -2,6 +2,6 @@
 .secrets
 .tmp-*
 cm
-internal/web/dist
+internal/interface/web/dist
 web/dist
 web/node_modules

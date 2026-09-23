@@ -1,10 +1,10 @@
 package app
 
 import (
-	"go.mewis.me/codemcp/internal/activity"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/mcp"
+	"go.mewis.me/codemcp/internal/runtime/activity"
 	"go.mewis.me/codemcp/internal/telemetry"
 	"go.mewis.me/codemcp/internal/tools"
 	tracepkg "go.mewis.me/codemcp/internal/trace"

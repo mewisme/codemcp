@@ -8,7 +8,7 @@ process.noDeprecation = true
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const source = resolve(root, "web/dist")
-const target = resolve(root, "internal/web/dist")
+const target = resolve(root, "internal/interface/web/dist")
 const args = process.argv.slice(2)
 const options = { installDeps: true, fromDist: false }
 
@@ -16,7 +16,7 @@ for (const arg of args) {
   if (arg === "--no-deps") options.installDeps = false
   else if (arg === "--from-dist") options.fromDist = true
   else if (arg === "--help" || arg === "-h") {
-    console.log(`Usage: node scripts/prepare-web-embed.mjs [--no-deps] [--from-dist]\n\nBuild and prepare the embedded Admin UI.\n\nDefault flow:\n  1. pnpm --dir web install --frozen-lockfile\n  2. pnpm --dir web build\n  3. copy web/dist -> internal/web/dist\n\nOptions:\n  --no-deps    Skip pnpm install but still build the web app.\n  --from-dist  Use the existing web/dist and skip install/build.\n  -h, --help   Show this help.`)
+    console.log(`Usage: node scripts/prepare-web-embed.mjs [--no-deps] [--from-dist]\n\nBuild and prepare the embedded Admin UI.\n\nDefault flow:\n  1. pnpm --dir web install --frozen-lockfile\n  2. pnpm --dir web build\n  3. copy web/dist -> internal/interface/web/dist\n\nOptions:\n  --no-deps    Skip pnpm install but still build the web app.\n  --from-dist  Use the existing web/dist and skip install/build.\n  -h, --help   Show this help.`)
     process.exit(0)
   } else fail(`unknown argument: ${arg}`)
 }

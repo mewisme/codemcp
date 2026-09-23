@@ -7,8 +7,8 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/install"
-	"go.mewis.me/codemcp/internal/runtimecontrol"
-	"go.mewis.me/codemcp/internal/runtimeevent"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
+	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	"go.mewis.me/codemcp/internal/systeminfo"
 	"go.mewis.me/codemcp/internal/version"
 )

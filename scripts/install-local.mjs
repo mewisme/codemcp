@@ -23,7 +23,7 @@ Cross-platform local build/install for Linux, Windows, and macOS.
 Default flow:
   1. pnpm --dir web install --frozen-lockfile
   2. pnpm --dir web build
-  3. copy web/dist -> internal/web/dist
+  3. copy web/dist -> internal/interface/web/dist
   4. go build -o <GOBIN>/cm .
 
 Options:

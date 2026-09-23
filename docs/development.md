@@ -50,7 +50,7 @@ pnpm --dir web build
 
 ## Prepare the embedded frontend
 
-The Go binary embeds the built admin dashboard. The prepare script installs frontend dependencies with the frozen lockfile, builds the Admin UI, then copies `web/dist` into `internal/web/dist`:
+The Go binary embeds the built admin dashboard. The prepare script installs frontend dependencies with the frozen lockfile, builds the Admin UI, then copies `web/dist` into `internal/interface/web/dist`:
 
 ```bash
 node scripts/prepare-web-embed.mjs

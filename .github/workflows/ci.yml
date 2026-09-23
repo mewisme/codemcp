@@ -151,8 +151,8 @@ jobs:
       - name: Prepare web fixture
         if: needs.changes.outputs.full == 'true'
         run: |
-          mkdir -p internal/web/dist
-          printf '<!doctype html><html><body>CI</body></html>\n' > internal/web/dist/index.html
+          mkdir -p internal/interface/web/dist
+          printf '<!doctype html><html><body>CI</body></html>\n' > internal/interface/web/dist/index.html
 
       - name: Install security tooling
         if: needs.changes.outputs.full == 'true'
@@ -227,8 +227,8 @@ jobs:
       - name: Prepare web fixture
         if: needs.changes.outputs.full == 'true'
         run: |
-          mkdir -p internal/web/dist
-          printf '<!doctype html><html><body>CI</body></html>\n' > internal/web/dist/index.html
+          mkdir -p internal/interface/web/dist
+          printf '<!doctype html><html><body>CI</body></html>\n' > internal/interface/web/dist/index.html
 
       - name: Test with race detector
         if: needs.changes.outputs.full == 'true'
@@ -362,8 +362,8 @@ jobs:
       - name: Prepare web fixture
         if: needs.changes.outputs.full == 'true'
         run: |
-          mkdir -p internal/web/dist
-          printf '<!doctype html><html><body>CI</body></html>\n' > internal/web/dist/index.html
+          mkdir -p internal/interface/web/dist
+          printf '<!doctype html><html><body>CI</body></html>\n' > internal/interface/web/dist/index.html
 
       - name: Build
         if: needs.changes.outputs.full == 'true'

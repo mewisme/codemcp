@@ -3,7 +3,7 @@ package mcp
 import (
 	"time"
 
-	"go.mewis.me/codemcp/internal/activity"
+	"go.mewis.me/codemcp/internal/runtime/activity"
 )
 
 func (h *HTTPRuntime) EmitActivity(event activity.Event) {

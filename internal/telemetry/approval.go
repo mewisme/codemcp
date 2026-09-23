@@ -1,9 +1,9 @@
 package telemetry
 
 import (
-	"go.mewis.me/codemcp/internal/activity"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/runtime/activity"
 )
 
 func AttachApprovals(manager *approval.Manager, stream *activity.Stream, log *logger.Logger) {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"go.mewis.me/codemcp/internal/runtimecontrol"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/codemcp/internal/runtimecontrol"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	managed "go.mewis.me/codemcp/internal/service"
 )
 

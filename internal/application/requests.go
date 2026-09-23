@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/approval"
-	"go.mewis.me/codemcp/internal/runtimecontrol"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 

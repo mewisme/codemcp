@@ -14,7 +14,7 @@ import (
 	"go.mewis.me/codemcp/internal/configbundle"
 	"go.mewis.me/codemcp/internal/configformat"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
-	"go.mewis.me/codemcp/internal/runtimecontrol"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	"go.mewis.me/codemcp/internal/secretstore"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/upstream"

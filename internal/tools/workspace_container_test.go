@@ -12,7 +12,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/memory"
-	shellruntime "go.mewis.me/codemcp/internal/shell"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/workspace"
 )

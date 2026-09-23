@@ -11,7 +11,7 @@
     "rule_id": "G101",
     "severity": "HIGH",
     "confidence": "LOW",
-    "file": "internal/tui/page/config.go",
+    "file": "internal/interface/tui/page/config.go",
     "details": "Potential hardcoded credentials",
     "code": "ConfigMigrate        ConfigCommand = \"config.migrate\"\n\tConfigMigrateSecrets ConfigCommand = \"config.migrate.secrets\"\n\tConfigConvert        ConfigCommand = \"config.convert\""
   },
@@ -59,6 +59,46 @@
     "rule_id": "G204",
     "severity": "MEDIUM",
     "confidence": "HIGH",
+    "file": "internal/cli/upgrade_package_manager.go",
+    "details": "Subprocess launched with a potential tainted input or cmd arguments",
+    "code": "}\n\t\tprocess = exec.CommandContext(ctx, \"scoop\", \"update\", updatepkg.ScoopPackage)\n\tdefault:"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/cli/upgrade_package_manager.go",
+    "details": "Subprocess launched with a potential tainted input or cmd arguments",
+    "code": "case \"brew\\x00upgrade\\x00--cask\\x00\" + updatepkg.HomebrewCask:\n\t\tprocess = exec.CommandContext(ctx, \"brew\", \"upgrade\", \"--cask\", updatepkg.HomebrewCask)\n\tcase \"scoop\\x00update\":"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/cli/upgrade_package_manager.go",
+    "details": "Subprocess launched with a potential tainted input or cmd arguments",
+    "code": "if apply {\n\t\t\tprocess = exec.CommandContext(ctx, \"powershell.exe\", \"-NoProfile\", \"-NonInteractive\", \"-ExecutionPolicy\", \"Bypass\", \"-Command\", \"& scoop update \"+updatepkg.ScoopPackage)\n\t\t} else {"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/cli/upgrade_package_manager.go",
+    "details": "Subprocess launched with a potential tainted input or cmd arguments",
+    "code": "if apply {\n\t\t\tprocess = exec.CommandContext(ctx, \"powershell\", \"-NoProfile\", \"-NonInteractive\", \"-ExecutionPolicy\", \"Bypass\", \"-Command\", \"& scoop update \"+updatepkg.ScoopPackage)\n\t\t} else {"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/cli/upgrade_package_manager.go",
+    "details": "Subprocess launched with a potential tainted input or cmd arguments",
+    "code": "if apply {\n\t\t\tprocess = exec.CommandContext(ctx, \"pwsh\", \"-NoProfile\", \"-NonInteractive\", \"-ExecutionPolicy\", \"Bypass\", \"-Command\", \"& scoop update \"+updatepkg.ScoopPackage)\n\t\t} else {"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
     "file": "internal/git/git.go",
     "details": "Subprocess launched with variable",
     "code": "func Run(ctx context.Context, cwd string, args ...string) (Result, error) {\n\tcmd := exec.CommandContext(ctx, \"git\", args...)\n\tcmd.Dir = cwd"
@@ -91,7 +131,7 @@
     "rule_id": "G204",
     "severity": "MEDIUM",
     "confidence": "HIGH",
-    "file": "internal/shell/session.go",
+    "file": "internal/runtime/shell/session.go",
     "details": "Subprocess launched with variable",
     "code": "}\n\t\treturn exec.CommandContext(ctx, executable, granted.Invocation.Args...), nil\n\t}"
   },
@@ -99,7 +139,7 @@
     "rule_id": "G204",
     "severity": "MEDIUM",
     "confidence": "HIGH",
-    "file": "internal/shell/session.go",
+    "file": "internal/runtime/shell/session.go",
     "details": "Subprocess launched with variable",
     "code": "}\n\t\treturn exec.CommandContext(ctx, shell, \"-NoProfile\", \"-NonInteractive\", \"-ExecutionPolicy\", \"Bypass\", \"-Command\", effective), nil\n\t}"
   },
@@ -107,17 +147,9 @@
     "rule_id": "G204",
     "severity": "MEDIUM",
     "confidence": "HIGH",
-    "file": "internal/shell/session.go",
+    "file": "internal/runtime/shell/session.go",
     "details": "Subprocess launched with variable",
     "code": "}\n\treturn exec.CommandContext(ctx, shell, \"-c\", command), nil\n}"
-  },
-  {
-    "rule_id": "G301",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
-    "file": "internal/install/alias_unix.go",
-    "details": "Expect directory permissions to be 0750 or less",
-    "code": "func installAliasPlatform(layout Layout) error {\n\tif err := os.MkdirAll(layout.BinDir, 0755); err != nil {\n\t\treturn err"
   },
   {
     "rule_id": "G301",
@@ -259,7 +291,7 @@
     "rule_id": "G304",
     "severity": "MEDIUM",
     "confidence": "HIGH",
-    "file": "internal/runtimeevent/journal.go",
+    "file": "internal/runtime/event/journal.go",
     "details": "Potential file inclusion via variable",
     "code": "func ReadFile(path string, fn func(Event) error) error {\n\tfile, err := os.Open(path)\n\tif err != nil {"
   },
@@ -387,7 +419,7 @@
     "rule_id": "G705",
     "severity": "MEDIUM",
     "confidence": "HIGH",
-    "file": "internal/activity/sse.go",
+    "file": "internal/runtime/activity/sse.go",
     "details": "XSS via taint analysis",
     "code": "func writeActivitySSE(w http.ResponseWriter, event Event) error {\n\t_, err := fmt.Fprintf(w, \"id: %d\\nevent: activity\\ndata: %s\\n\\n\", event.Sequence, Encode(event))\n\treturn err"
   }

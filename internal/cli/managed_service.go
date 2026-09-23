@@ -15,7 +15,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/logger"
-	"go.mewis.me/codemcp/internal/runtimeevent"
+	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	managed "go.mewis.me/codemcp/internal/service"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"

@@ -31,7 +31,7 @@ From the repository root:
 node scripts/prepare-web-embed.mjs
 ```
 
-This installs frontend dependencies (frozen lockfile), builds the UI, and copies `web/dist` into `internal/web/dist` for `go:embed`. Use `--no-deps` to skip install, or `--from-dist` to copy an already-built `web/dist`.
+This installs frontend dependencies (frozen lockfile), builds the UI, and copies `web/dist` into `internal/interface/web/dist` for `go:embed`. Use `--no-deps` to skip install, or `--from-dist` to copy an already-built `web/dist`.
 
 Full backend/frontend workflow, CI gates, and release notes: [docs/development.md](../docs/development.md).
 

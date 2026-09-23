@@ -13,7 +13,7 @@ import (
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/controlguard"
-	shellruntime "go.mewis.me/codemcp/internal/shell"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 

@@ -3,7 +3,7 @@ package mcp
 import (
 	"net/http"
 
-	"go.mewis.me/codemcp/internal/activity"
+	"go.mewis.me/codemcp/internal/runtime/activity"
 )
 
 type SSEHandler struct{ Stream *activity.Stream }

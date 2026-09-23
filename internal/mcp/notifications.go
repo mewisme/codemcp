@@ -1,6 +1,6 @@
 package mcp
 
-import "go.mewis.me/codemcp/internal/activity"
+import "go.mewis.me/codemcp/internal/runtime/activity"
 
 func (h *HTTPRuntime) PublishToolsChanged() {
 	if h != nil {

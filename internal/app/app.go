@@ -6,18 +6,18 @@ import (
 	"sync"
 	"time"
 
-	"go.mewis.me/codemcp/internal/activity"
-	"go.mewis.me/codemcp/internal/admin"
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/interface/admin"
+	"go.mewis.me/codemcp/internal/interface/web"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/mcp"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	"go.mewis.me/codemcp/internal/runtime/activity"
 	"go.mewis.me/codemcp/internal/tools"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
-	"go.mewis.me/codemcp/internal/web"
 )
 
 type App struct {

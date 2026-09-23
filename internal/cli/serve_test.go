@@ -16,7 +16,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
-	"go.mewis.me/codemcp/internal/runtimecontrol"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 )
 
 func TestWaitRuntimeHTTPReadyRequiresMCPAndAdminListeners(t *testing.T) {

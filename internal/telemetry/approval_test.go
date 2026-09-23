@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/codemcp/internal/activity"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/runtime/activity"
 )
 
 func TestAttachApprovalsPublishesSafeActivityAndVisibleRequestNotice(t *testing.T) {

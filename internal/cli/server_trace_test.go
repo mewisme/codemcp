@@ -17,8 +17,8 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
-	"go.mewis.me/codemcp/internal/runtimecontrol"
-	"go.mewis.me/codemcp/internal/runtimeevent"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
+	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 

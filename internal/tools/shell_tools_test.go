@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/checkpoint"
-	shellruntime "go.mewis.me/codemcp/internal/shell"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 

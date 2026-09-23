@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/codemcp/internal/activity"
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/auth"
@@ -21,9 +20,10 @@ import (
 	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/logger"
-	"go.mewis.me/codemcp/internal/runtimecontrol"
-	"go.mewis.me/codemcp/internal/runtimeevent"
-	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/runtime/activity"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
+	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/state"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )

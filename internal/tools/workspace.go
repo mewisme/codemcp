@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"go.mewis.me/codemcp/internal/controlguard"
-	shellruntime "go.mewis.me/codemcp/internal/shell"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 

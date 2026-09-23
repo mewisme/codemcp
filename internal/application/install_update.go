@@ -10,7 +10,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/install"
-	"go.mewis.me/codemcp/internal/runtimecontrol"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	managed "go.mewis.me/codemcp/internal/service"
 	updatepkg "go.mewis.me/codemcp/internal/update"
 	"go.mewis.me/codemcp/internal/version"

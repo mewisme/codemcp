@@ -8,7 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/config"
-	"go.mewis.me/codemcp/internal/runtimeevent"
+	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 

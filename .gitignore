@@ -1,5 +1,5 @@
 apply-*
-/internal/web/dist/
+/internal/interface/web/dist/
 /web/coverage/
 .agents/
 .local/

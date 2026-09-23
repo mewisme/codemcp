@@ -17,8 +17,8 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/logger"
-	"go.mewis.me/codemcp/internal/runtimeevent"
-	shellruntime "go.mewis.me/codemcp/internal/shell"
+	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 )
 
 func TestServeRuntimeControlLogsUnexpectedFailure(t *testing.T) {

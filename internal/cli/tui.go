@@ -3,7 +3,7 @@ package cli
 import (
 	"github.com/spf13/cobra"
 
-	commandtui "go.mewis.me/codemcp/internal/tui"
+	commandtui "go.mewis.me/codemcp/internal/interface/tui"
 )
 
 func tuiCommand() *cobra.Command {
