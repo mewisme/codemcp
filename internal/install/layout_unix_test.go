@@ -13,7 +13,7 @@ func TestDefaultLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := filepath.Join(string(filepath.Separator), "home", "mew")
-	root := filepath.Join(home, ".chatgpt-mcp")
+	root := filepath.Join(home, ".cm")
 	if layout.Root != root || layout.Versions != filepath.Join(root, "versions") || layout.Current != filepath.Join(root, "current") || layout.State != filepath.Join(root, "state") || layout.UpdateCache != filepath.Join(root, "state", "update.json") {
 		t.Fatalf("unexpected install layout: %+v", layout)
 	}

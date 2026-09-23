@@ -11,12 +11,12 @@ if ($errors.Count -gt 0) {
 }
 
 $names = @(
-  'ConvertTo-ChatGPTMCPArchitecture',
-  'Get-ChatGPTMCPRuntimeArchitecture',
-  'Get-ChatGPTMCPOSArchitecture',
-  'Get-ChatGPTMCPProcessorMachineArchitecture',
-  'Get-ChatGPTMCPRegistryProcessorIdentifier',
-  'Resolve-ChatGPTMCPArchitecture'
+  'ConvertTo-CodeMCPArchitecture',
+  'Get-CodeMCPRuntimeArchitecture',
+  'Get-CodeMCPOSArchitecture',
+  'Get-CodeMCPProcessorMachineArchitecture',
+  'Get-CodeMCPRegistryProcessorIdentifier',
+  'Resolve-CodeMCPArchitecture'
 )
 foreach ($name in $names) {
   $node = $ast.Find({ param($candidate) $candidate -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $candidate.Name -eq $name }, $true)
@@ -26,7 +26,7 @@ foreach ($name in $names) {
 
 function Assert-Architecture {
   param([string]$Expected, [hashtable]$Arguments)
-  $actual = Resolve-ChatGPTMCPArchitecture @Arguments
+  $actual = Resolve-CodeMCPArchitecture @Arguments
   if ($actual -ne $Expected) { throw "architecture mismatch: expected '$Expected', got '$actual' for $($Arguments | Out-String)" }
 }
 
@@ -63,11 +63,11 @@ Assert-Architecture 'amd64' (Merge-Arguments $empty @{ Override = 'x64' })
 
 $failed = $false
 $invalidOverride = Merge-Arguments $empty @{ Override = 'x86' }
-try { Resolve-ChatGPTMCPArchitecture @invalidOverride | Out-Null } catch { $failed = $_.Exception.Message -match 'CHATGPT_MCP_ARCH' }
+try { Resolve-CodeMCPArchitecture @invalidOverride | Out-Null } catch { $failed = $_.Exception.Message -match 'CM_ARCH' }
 if (-not $failed) { throw 'invalid architecture override was accepted' }
 
 $failed = $false
-try { Resolve-ChatGPTMCPArchitecture @empty | Out-Null } catch { $failed = $_.Exception.Message -match "runtime=''" -and $_.Exception.Message -match 'OSArchitecture' }
+try { Resolve-CodeMCPArchitecture @empty | Out-Null } catch { $failed = $_.Exception.Message -match "runtime=''" -and $_.Exception.Message -match 'OSArchitecture' }
 if (-not $failed) { throw 'unsupported architecture did not include probe diagnostics' }
 
 Write-Host 'PowerShell installer architecture tests passed.'

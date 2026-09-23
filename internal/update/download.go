@@ -56,7 +56,7 @@ func (d Downloader) Download(ctx context.Context, release Release) (result Artif
 		return Artifact{}, err
 	}
 	tempSpan := tracepkg.Start(ctx, "UPDATE", "update.workspace.create", "Creating update workspace", tracepkg.String("parent", strings.TrimSpace(d.TempDir)))
-	dir, err := os.MkdirTemp(strings.TrimSpace(d.TempDir), "chatgpt-mcp-update-")
+	dir, err := os.MkdirTemp(strings.TrimSpace(d.TempDir), "cm-update-")
 	if err != nil {
 		tempSpan.FailMessage("Update workspace creation failed", err)
 		return Artifact{}, err

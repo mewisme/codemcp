@@ -6,6 +6,28 @@ import (
 	"testing"
 )
 
+func TestDefaultRootPathUsesHomeCM(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skipf("home unavailable: %v", err)
+	}
+	if got, want := DefaultRootPath(), filepath.Join(home, ".cm"); got != want {
+		t.Fatalf("default root = %q, want %q", got, want)
+	}
+}
+
+func TestLegacyConfigDirEnvIsIgnored(t *testing.T) {
+	defer SetRootPath("")
+	t.Setenv("CHATGPT_MCP_CONFIG_DIR", filepath.Join(t.TempDir(), "legacy"))
+	t.Setenv(EnvConfigDir, "")
+	if err := SetRootPath(""); err != nil {
+		t.Fatal(err)
+	}
+	if got := RootPath(); got != DefaultRootPath() {
+		t.Fatalf("legacy config env changed root: got %q want %q", got, DefaultRootPath())
+	}
+}
+
 func TestRootPathPrecedence(t *testing.T) {
 	defer SetRootPath("")
 	envRoot := filepath.Join(t.TempDir(), "env")

@@ -32,7 +32,7 @@ func runPackageManagedUpgrade(cmd *cobra.Command, detection install.Detection, t
 	}
 	log := commandLogger(cmd)
 	startCommandSpinner(cmd, log, "UPDATE", "update.checking", "Checking for updates")
-	checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: "chatgpt-mcp/" + version.Version}}
+	checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}
 	check, err := checker.Check(cmd.Context(), version.Version)
 	log.StopAnimation()
 	if err != nil {

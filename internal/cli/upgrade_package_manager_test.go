@@ -116,8 +116,8 @@ func TestPreparePackageUpgradeHandoffRejectsForegroundRuntime(t *testing.T) {
 
 func TestPackageUpgradePowerShellWaitsForParentAndUsesScoopAfterRuntimeStops(t *testing.T) {
 	plan, _ := updatepkg.PackageManagerPlanFor("scoop")
-	script := packageUpgradePowerShell(packageUpgradeHandoff{ParentPID: 1234, Plan: plan, Target: "v1.2.3", ConfigRoot: `C:\Users\Mew\.chatgpt-mcp`, Runtime: updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true}}, ScriptPath: `C:\Temp\upgrade.ps1`, LogPath: `C:\Temp\upgrade.log`})
-	for _, expected := range []string{"Wait-Process -Id $parentPid", "& cm '--config-dir' 'C:\\Users\\Mew\\.chatgpt-mcp' 'down'", "& scoop update", "& scoop update mew/chatgpt-mcp", "$version = (& cm --version | Out-String)", "$restartRuntime = $true", "& cm '--config-dir' 'C:\\Users\\Mew\\.chatgpt-mcp' 'up'"} {
+	script := packageUpgradePowerShell(packageUpgradeHandoff{ParentPID: 1234, Plan: plan, Target: "v1.2.3", ConfigRoot: `C:\\Users\\Mew\\.cm`, Runtime: updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true}}, ScriptPath: `C:\Temp\upgrade.ps1`, LogPath: `C:\Temp\upgrade.log`})
+	for _, expected := range []string{"Wait-Process -Id $parentPid", "& cm '--config-dir' 'C:\\\\Users\\\\Mew\\\\.cm' 'down'", "& scoop update", "& scoop update mew/chatgpt-mcp", "$version = (& cm --version | Out-String)", "$restartRuntime = $true", "& cm '--config-dir' 'C:\\\\Users\\\\Mew\\\\.cm' 'up'"} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("script missing %q:\n%s", expected, script)
 		}

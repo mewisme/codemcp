@@ -35,7 +35,7 @@ func newSDKBridge(runtime *tools.Runtime) (*sdkBridge, error) {
 	if runtime == nil || runtime.Registry == nil {
 		return nil, errors.New("MCP tools runtime is required")
 	}
-	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "chatgpt-mcp", Version: version.Version}, &sdkmcp.ServerOptions{Capabilities: &sdkmcp.ServerCapabilities{}})
+	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "codemcp", Version: version.Version}, &sdkmcp.ServerOptions{Capabilities: &sdkmcp.ServerCapabilities{}})
 	bridge := &sdkBridge{runtime: runtime, server: server, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}}
 	if err := bridge.syncTools(); err != nil {
 		return nil, err

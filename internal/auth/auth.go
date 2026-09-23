@@ -37,12 +37,7 @@ func VerifyToken(token, encoded string) bool {
 	if strings.HasPrefix(encoded, "argon2id$") {
 		return verifyArgon2ID(token, encoded)
 	}
-	legacy := argon2.IDKey([]byte(token), []byte("chatgpt-mcp-auth"), 1, 64*1024, 4, 32)
-	expected, err := base64.RawStdEncoding.DecodeString(encoded)
-	if err != nil || len(expected) != len(legacy) {
-		return false
-	}
-	return subtle.ConstantTimeCompare(legacy, expected) == 1
+	return false
 }
 
 func verifyArgon2ID(token, encoded string) bool {

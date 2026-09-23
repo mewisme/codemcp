@@ -5,8 +5,8 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-export CHATGPT_MCP_CONFIG_DIR="${CHATGPT_MCP_CONFIG_DIR:-$(mktemp -d)}"
-trap 'rm -rf "${CHATGPT_MCP_CONFIG_DIR}"' EXIT
+export CM_CONFIG_DIR="${CM_CONFIG_DIR:-$(mktemp -d)}"
+trap 'rm -rf "${CM_CONFIG_DIR}"' EXIT
 
 echo "==> gofmt"
 test -z "$(gofmt -l . | tee /dev/stderr)"

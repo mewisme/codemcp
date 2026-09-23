@@ -98,7 +98,7 @@ func InvokingAccountContext(ctx context.Context, scope Scope) (Account, error) {
 
 func ID(configRoot string, scope Scope) string {
 	sum := sha256.Sum256([]byte(filepath.Clean(configRoot)))
-	return "chatgpt-mcp-" + string(scope) + "-" + hex.EncodeToString(sum[:6])
+	return "cm-" + string(scope) + "-" + hex.EncodeToString(sum[:6])
 }
 
 func StableBinaryPath(value string) (string, error) {
@@ -203,7 +203,7 @@ func copyExecutableAtomic(source, destination string) error {
 	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
 		return err
 	}
-	temp, err := os.CreateTemp(filepath.Dir(destination), ".chatgpt-mcp-bin-*")
+	temp, err := os.CreateTemp(filepath.Dir(destination), ".cm-bin-*")
 	if err != nil {
 		return err
 	}

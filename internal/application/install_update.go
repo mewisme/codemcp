@@ -68,7 +68,7 @@ func InstallCurrent(options InstallCurrentOptions) (install.Result, error) {
 }
 
 func CheckForUpdate(ctx context.Context) (updatepkg.CheckResult, error) {
-	checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: "chatgpt-mcp/" + version.Version}}
+	checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}
 	result, err := checker.Check(ctx, version.Version)
 	if err != nil {
 		return updatepkg.CheckResult{}, err
@@ -101,7 +101,7 @@ func ApplyUpdate(ctx context.Context, options UpdateApplyOptions) (UpdateApplyRe
 	if running && runtimeState.Managed && runtimeState.ServiceScope == string(managed.ScopeSystem) && detectServiceScope() == managed.ScopeUser && !options.NoRestart {
 		return UpdateApplyResult{External: &ExternalCommand{Command: "cm upgrade", Reason: "Upgrading a running system service requires elevation and must be launched outside the TUI."}}, nil
 	}
-	updater := updatepkg.Updater{Resolver: updatepkg.Client{UserAgent: "chatgpt-mcp/" + version.Version}, Downloader: updatepkg.Downloader{UserAgent: "chatgpt-mcp/" + version.Version}}
+	updater := updatepkg.Updater{Resolver: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}, Downloader: updatepkg.Downloader{UserAgent: version.ClientName + "/" + version.Version}}
 	result, err := updater.Apply(ctx, updatepkg.ApplyOptions{Layout: overview.Layout, CurrentVersion: version.Version, TargetVersion: strings.TrimSpace(options.TargetVersion)})
 	if err != nil {
 		return UpdateApplyResult{}, err

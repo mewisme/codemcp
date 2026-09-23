@@ -46,7 +46,7 @@ func TestResponseMarshalStampsServerInfoWithoutLosingRawNumbersOrMeta(t *testing
 	if traceparent != "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01" {
 		t.Fatalf("traceparent = %q", traceparent)
 	}
-	assertServerInfoRaw(t, meta[serverInfoMetaKey], "chatgpt-mcp")
+	assertServerInfoRaw(t, meta[serverInfoMetaKey], "codemcp")
 }
 
 func TestResponseMarshalPreservesHandlerAuthoredServerInfo(t *testing.T) {
@@ -161,7 +161,7 @@ func assertServerInfoValue(t *testing.T, raw any) {
 		t.Fatalf("_meta = %#v", raw)
 	}
 	info, ok := meta[serverInfoMetaKey].(map[string]any)
-	if !ok || info["name"] != "chatgpt-mcp" {
+	if !ok || info["name"] != "codemcp" {
 		t.Fatalf("serverInfo = %#v", meta[serverInfoMetaKey])
 	}
 	if version, _ := info["version"].(string); version == "" {

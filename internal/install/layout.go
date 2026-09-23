@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	EnvInstallDir = "CHATGPT_MCP_INSTALL_DIR"
-	EnvBinDir     = "CHATGPT_MCP_BIN_DIR"
+	EnvInstallDir = "CM_INSTALL_DIR"
+	EnvBinDir     = "CM_BIN_DIR"
 )
 
 type Layout struct {

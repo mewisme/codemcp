@@ -14,7 +14,7 @@ const (
 var ServerInstructions = instructioncontext.StaticServerInstructions()
 
 func serverInfo() map[string]any {
-	return map[string]any{"name": "chatgpt-mcp", "version": version.Version}
+	return map[string]any{"name": "codemcp", "version": version.Version}
 }
 
 func Discover() map[string]any {

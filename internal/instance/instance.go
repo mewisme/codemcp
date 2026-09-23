@@ -59,7 +59,7 @@ func (s *Store) LoadOrCreate() (Identity, error) {
 	if err != nil {
 		return Identity{}, err
 	}
-	name := "chatgpt-mcp"
+	name := "codemcp"
 	if hostname, hostnameErr := s.hostname(); hostnameErr == nil && strings.TrimSpace(hostname) != "" {
 		name = strings.TrimSpace(hostname)
 	}

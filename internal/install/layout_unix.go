@@ -15,7 +15,7 @@ func DefaultLayout() (Layout, error) {
 	}
 	root := strings.TrimSpace(os.Getenv(EnvInstallDir))
 	if root == "" {
-		root = filepath.Join(home, ".chatgpt-mcp")
+		root = filepath.Join(home, ".cm")
 	}
 	binDir := strings.TrimSpace(os.Getenv(EnvBinDir))
 	if binDir == "" {
@@ -25,7 +25,7 @@ func DefaultLayout() (Layout, error) {
 }
 
 func defaultLayout(home string) (Layout, error) {
-	return NewLayout(filepath.Join(home, ".chatgpt-mcp"), filepath.Join(home, ".local", "bin"))
+	return NewLayout(filepath.Join(home, ".cm"), filepath.Join(home, ".local", "bin"))
 }
 
 func platformBinaryName() string { return "cm" }

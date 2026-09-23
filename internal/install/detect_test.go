@@ -46,7 +46,7 @@ func TestDetectPackageManagersBeforeDirectShape(t *testing.T) {
 
 func TestDetectGoAndStandaloneInstall(t *testing.T) {
 	home := t.TempDir()
-	layout, err := NewLayout(filepath.Join(home, ".chatgpt-mcp"), filepath.Join(home, ".local", "bin"))
+	layout, err := NewLayout(filepath.Join(home, ".cm"), filepath.Join(home, ".local", "bin"))
 	if err != nil {
 		t.Fatal(err)
 	}

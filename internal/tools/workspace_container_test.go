@@ -58,7 +58,7 @@ func TestWorkspaceContainerToolSchemasAreOrchestrationScoped(t *testing.T) {
 }
 
 func TestNormalRuntimeRegistersWorkspaceContainerTools(t *testing.T) {
-	t.Setenv("CHATGPT_MCP_CONFIG_DIR", t.TempDir())
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	runtime := NewRuntime()
 	for _, name := range []string{"workspace_container_list", "workspace_container_status", "workspace_container_context"} {
 		if _, ok := runtime.Registry.Schema(name); !ok {

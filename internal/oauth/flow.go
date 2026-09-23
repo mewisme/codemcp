@@ -345,7 +345,7 @@ func (s *Store) resolveRegistration(ctx context.Context, config LoginConfig, dis
 	dcrSpan := tracepkg.Start(ctx, "OAUTH", "oauth.registration.dynamic", "Registering OAuth client dynamically", tracepkg.URL("registration_endpoint", discovery.AuthServerMeta.RegistrationEndpoint), tracepkg.Any("grant_types", append([]string(nil), grantTypes...)), tracepkg.Int("scope_count", len(scopes)))
 	response, err := oauthex.RegisterClient(ctx, discovery.AuthServerMeta.RegistrationEndpoint, &oauthex.ClientRegistrationMetadata{
 		RedirectURIs: []string{redirectURL}, TokenEndpointAuthMethod: "none", GrantTypes: grantTypes,
-		ResponseTypes: []string{"code"}, ClientName: "chatgpt-mcp", Scope: strings.Join(scopes, " "), ApplicationType: "native",
+		ResponseTypes: []string{"code"}, ClientName: "codemcp", Scope: strings.Join(scopes, " "), ApplicationType: "native",
 	}, s.clientForTargets(config.ServerURL, discovery.Issuer))
 	if err != nil {
 		dcrSpan.FailMessage("OAuth dynamic client registration failed", errors.New("OAuth dynamic registration request failed"))

@@ -43,7 +43,7 @@ func TestInitWithConfigDirDoesNotTouchDefaultRoot(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv(configformat.EnvConfigDir, "")
-	defaultRoot := filepath.Join(home, ".config", "chatgpt-mcp")
+	defaultRoot := filepath.Join(home, ".cm")
 	if err := os.MkdirAll(defaultRoot, 0700); err != nil {
 		t.Fatal(err)
 	}

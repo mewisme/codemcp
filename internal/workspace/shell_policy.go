@@ -19,7 +19,7 @@ const maxNestedShellDepth = 4
 var (
 	absolutePathLiteral = regexp.MustCompile(`(?i)(?:[a-z]:[\\/]|/)[^\"'()\s,;]+`)
 	inlineMutationAPI   = regexp.MustCompile(`(?i)(?:\bopen\s*\(|\b(?:write_text|write_bytes|writefile|writefilesync|appendfile|appendfilesync|createwritestream|unlink|unlinksync|rename|renamesync|copyfile|copyfilesync|mkdir|mkdirsync|rmdir|rmdirsync|truncate|remove|replace|rmtree|move)\s*\(|\bos\.system\s*\(|\bsubprocess\.|\bchild_process\b|\bexecsync\s*\(|\bspawnsync\s*\()`)
-	toolContextMutation = regexp.MustCompile(`(?i)(?:\bunset\s+CHATGPT_MCP_TOOL_CONTEXT\b|\benv\b[^\r\n;&|]*(?:-u\s+CHATGPT_MCP_TOOL_CONTEXT\b|--unset(?:=|\s+)CHATGPT_MCP_TOOL_CONTEXT\b)|\b(?:set|setx)\s+CHATGPT_MCP_TOOL_CONTEXT\s*=|\bRemove-Item\s+(?:Env:|env:\\)CHATGPT_MCP_TOOL_CONTEXT\b|\bos\.environ\s*\.\s*(?:pop|__delitem__)\s*\(\s*["']CHATGPT_MCP_TOOL_CONTEXT["']|\bdelete\s+process\.env\.CHATGPT_MCP_TOOL_CONTEXT\b)`)
+	toolContextMutation = regexp.MustCompile(`(?i)(?:\bunset\s+CM_TOOL_CONTEXT\b|\benv\b[^\r\n;&|]*(?:-u\s+CM_TOOL_CONTEXT\b|--unset(?:=|\s+)CM_TOOL_CONTEXT\b)|\b(?:set|setx)\s+CM_TOOL_CONTEXT\s*=|\bRemove-Item\s+(?:Env:|env:\\)CM_TOOL_CONTEXT\b|\bos\.environ\s*\.\s*(?:pop|__delitem__)\s*\(\s*["']CM_TOOL_CONTEXT["']|\bdelete\s+process\.env\.CM_TOOL_CONTEXT\b)`)
 	windowsEnvReference = regexp.MustCompile(`%([A-Za-z_][A-Za-z0-9_]*)%`)
 	writeCommands       = map[string]bool{
 		"cp": true, "copy": true, "xcopy": true, "robocopy": true, "install": true, "touch": true, "mkdir": true, "md": true,

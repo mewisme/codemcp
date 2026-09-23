@@ -353,7 +353,7 @@ func TestShellControlGuardProducesChallengeOnlyForDirectLiteralCLI(t *testing.T)
 	if !ok || challenge.TargetTool != "run_command" || challenge.GuardCode != string(controlguard.CodeControlPlaneMutation) || challenge.Command != "cm update" {
 		t.Fatalf("direct challenge = %#v", direct.StructuredContent)
 	}
-	for _, command := range []string{`bash -lc "cm update"`, `exec cm update`, `cm update && echo done`, `unset CHATGPT_MCP_TOOL_CONTEXT`} {
+	for _, command := range []string{`bash -lc "cm update"`, `exec cm update`, `cm update && echo done`, `unset CM_TOOL_CONTEXT`} {
 		result, err := runtime.Call(ctx, "run_command", map[string]any{"workspace_id": workspaceID, "command": command})
 		if err != nil || !result.IsError {
 			t.Fatalf("hard denied command %q = %#v err=%v", command, result, err)

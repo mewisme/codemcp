@@ -38,7 +38,7 @@ func (s *Store) ProbeWWWAuthenticate(ctx context.Context, serverURL string) ([]s
 		"jsonrpc": "2.0", "id": 1, "method": "server/discover",
 		"params": map[string]any{"_meta": map[string]any{
 			"io.modelcontextprotocol/protocolVersion":    "2026-07-28",
-			"io.modelcontextprotocol/clientInfo":         map[string]any{"name": "chatgpt-mcp", "version": "1.0.0"},
+			"io.modelcontextprotocol/clientInfo":         map[string]any{"name": "codemcp", "version": "1.0.0"},
 			"io.modelcontextprotocol/clientCapabilities": map[string]any{},
 		}},
 	})

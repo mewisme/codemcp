@@ -16,7 +16,7 @@ import (
 
 func newContextToolRuntime(t *testing.T) (*Runtime, string, string, *checkpoint.Store) {
 	t.Helper()
-	t.Setenv("CHATGPT_MCP_CONFIG_DIR", t.TempDir())
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	testHome := t.TempDir()
 	t.Setenv("HOME", testHome)
 	t.Setenv("USERPROFILE", testHome)
@@ -126,7 +126,7 @@ func TestContextSkillsRulesAndRemember(t *testing.T) {
 }
 
 func TestProjectContextUsesInjectedEnvironment(t *testing.T) {
-	t.Setenv("CHATGPT_MCP_CONFIG_DIR", t.TempDir())
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	testHome := t.TempDir()
 	t.Setenv("HOME", testHome)
 	t.Setenv("USERPROFILE", testHome)

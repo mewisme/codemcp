@@ -3,9 +3,9 @@
 # irm https://get.mewis.me/chatgpt-mcp.ps1 | iex
 #
 # Environment:
-#   CHATGPT_MCP_VERSION           release tag (default: latest)
-#   CHATGPT_MCP_INSTALL_DIR       install location (default: %LOCALAPPDATA%\chatgpt-mcp)
-#   CHATGPT_MCP_ARCH              architecture override: amd64 or arm64
+#   CM_VERSION           release tag (default: latest)
+#   CM_INSTALL_DIR       install location (default: $HOME\.cm)
+#   CM_ARCH              architecture override: amd64 or arm64
 #   INSTALL_ALLOW_CHECKSUM_ONLY   set to 1 to proceed when Sigstore/cosign
 #                                 verification is unavailable (loud warning)
 
@@ -15,14 +15,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = 'mewisme/codemcp'
-$defaultInstall = Join-Path $env:LOCALAPPDATA 'chatgpt-mcp'
-$installDir = if ($env:CHATGPT_MCP_INSTALL_DIR) { $env:CHATGPT_MCP_INSTALL_DIR } else { $defaultInstall }
+$defaultInstall = Join-Path $HOME '.cm'
+$installDir = if ($env:CM_INSTALL_DIR) { $env:CM_INSTALL_DIR } else { $defaultInstall }
 $current = Join-Path $installDir 'current'
 $oidcIssuer = 'https://token.actions.githubusercontent.com'
 $signatureName = 'checksums.txt.sigstore.json'
 $binaryName = 'cm.exe'
 
-function ConvertTo-ChatGPTMCPArchitecture {
+function ConvertTo-CodeMCPArchitecture {
   param([AllowNull()][object]$Value)
   if ($null -eq $Value) { return $null }
   $text = ([string]$Value).Trim()
@@ -36,7 +36,7 @@ function ConvertTo-ChatGPTMCPArchitecture {
   }
 }
 
-function Get-ChatGPTMCPRuntimeArchitecture {
+function Get-CodeMCPRuntimeArchitecture {
   try {
     $value = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
     if ($null -ne $value) { return $value.ToString() }
@@ -44,7 +44,7 @@ function Get-ChatGPTMCPRuntimeArchitecture {
   return $null
 }
 
-function Get-ChatGPTMCPOSArchitecture {
+function Get-CodeMCPOSArchitecture {
   try {
     return (Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop | Select-Object -First 1).OSArchitecture
   } catch {
@@ -53,7 +53,7 @@ function Get-ChatGPTMCPOSArchitecture {
   return $null
 }
 
-function Get-ChatGPTMCPProcessorMachineArchitecture {
+function Get-CodeMCPProcessorMachineArchitecture {
   try {
     return (Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop | Select-Object -First 1).Architecture
   } catch {
@@ -62,33 +62,33 @@ function Get-ChatGPTMCPProcessorMachineArchitecture {
   return $null
 }
 
-function Get-ChatGPTMCPRegistryProcessorIdentifier {
+function Get-CodeMCPRegistryProcessorIdentifier {
   try {
     return (Get-ItemProperty -Path 'HKLM:\HARDWARE\DESCRIPTION\System\CentralProcessor\0' -Name Identifier -ErrorAction Stop).Identifier
   } catch {}
   return $null
 }
 
-function Resolve-ChatGPTMCPArchitecture {
+function Resolve-CodeMCPArchitecture {
   param(
-    [AllowNull()][string]$Override = $env:CHATGPT_MCP_ARCH,
-    [AllowNull()][string]$RuntimeArchitecture = (Get-ChatGPTMCPRuntimeArchitecture),
+    [AllowNull()][string]$Override = $env:CM_ARCH,
+    [AllowNull()][string]$RuntimeArchitecture = (Get-CodeMCPRuntimeArchitecture),
     [AllowNull()][string]$ProcessorArchitectureW6432 = $env:PROCESSOR_ARCHITEW6432,
     [AllowNull()][string]$ProcessorArchitecture = $env:PROCESSOR_ARCHITECTURE,
-    [AllowNull()][object]$ProcessorMachineArchitecture = (Get-ChatGPTMCPProcessorMachineArchitecture),
+    [AllowNull()][object]$ProcessorMachineArchitecture = (Get-CodeMCPProcessorMachineArchitecture),
     [AllowNull()][string]$ProcessorIdentifier = $env:PROCESSOR_IDENTIFIER,
-    [AllowNull()][string]$RegistryProcessorIdentifier = (Get-ChatGPTMCPRegistryProcessorIdentifier),
-    [AllowNull()][string]$OSArchitecture = (Get-ChatGPTMCPOSArchitecture)
+    [AllowNull()][string]$RegistryProcessorIdentifier = (Get-CodeMCPRegistryProcessorIdentifier),
+    [AllowNull()][string]$OSArchitecture = (Get-CodeMCPOSArchitecture)
   )
 
   if ($Override) {
-    $resolved = ConvertTo-ChatGPTMCPArchitecture $Override
+    $resolved = ConvertTo-CodeMCPArchitecture $Override
     if ($resolved) { return $resolved }
-    throw "cm: unsupported CHATGPT_MCP_ARCH '$Override'; expected amd64 or arm64."
+    throw "cm: unsupported CM_ARCH '$Override'; expected amd64 or arm64."
   }
 
   foreach ($candidate in @($RuntimeArchitecture, $ProcessorArchitectureW6432, $ProcessorArchitecture, $ProcessorIdentifier, $RegistryProcessorIdentifier, $OSArchitecture)) {
-    $resolved = ConvertTo-ChatGPTMCPArchitecture $candidate
+    $resolved = ConvertTo-CodeMCPArchitecture $candidate
     if ($resolved) { return $resolved }
   }
 
@@ -110,10 +110,10 @@ function Resolve-ChatGPTMCPArchitecture {
     "registryIdentifier='$RegistryProcessorIdentifier'",
     "OSArchitecture='$OSArchitecture'"
   ) -join ', '
-  throw "cm: unsupported architecture; probes: $diagnostics. Set CHATGPT_MCP_ARCH=amd64 or arm64 to override."
+  throw "cm: unsupported architecture; probes: $diagnostics. Set CM_ARCH=amd64 or arm64 to override."
 }
 
-function Test-ChatGPTMCPSafeArchivePath {
+function Test-CodeMCPSafeArchivePath {
   param([Parameter(Mandatory = $true)][string]$Name)
   $normalized = $Name.Trim().Replace('\', '/')
   if (-not $normalized -or $normalized -eq '.' -or $normalized.StartsWith('/') -or $normalized.Contains(':')) {
@@ -125,7 +125,7 @@ function Test-ChatGPTMCPSafeArchivePath {
   return $true
 }
 
-function Expand-ChatGPTMCPBinaryFromZip {
+function Expand-CodeMCPBinaryFromZip {
   param(
     [Parameter(Mandatory = $true)][string]$ZipPath,
     [Parameter(Mandatory = $true)][string]$DestinationDir,
@@ -139,7 +139,7 @@ function Expand-ChatGPTMCPBinaryFromZip {
     $matched = $null
     foreach ($entry in $archive.Entries) {
       $name = $entry.FullName
-      if (-not (Test-ChatGPTMCPSafeArchivePath $name)) {
+      if (-not (Test-CodeMCPSafeArchivePath $name)) {
         throw "cm: unsafe archive path '$name'"
       }
       $normalized = $name.Trim().Replace('\', '/')
@@ -195,13 +195,13 @@ if ($Uninstall) {
   return
 }
 
-$arch = Resolve-ChatGPTMCPArchitecture
+$arch = Resolve-CodeMCPArchitecture
 
-$version = $env:CHATGPT_MCP_VERSION
+$version = $env:CM_VERSION
 if (-not $version) {
   $version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name
 }
-if (-not $version) { throw 'cm: could not resolve latest version; set CHATGPT_MCP_VERSION.' }
+if (-not $version) { throw 'cm: could not resolve latest version; set CM_VERSION.' }
 if ($version -notmatch '^v') { $version = "v$version" }
 $ver = $version.TrimStart('v')
 $asset = "chatgpt-mcp_${ver}_windows_${arch}.zip"
@@ -211,7 +211,7 @@ $signatureUrl = "https://github.com/$repo/releases/download/$version/$signatureN
 $certIdentity = "https://github.com/$repo/.github/workflows/release.yml@refs/tags/$version"
 Write-Host "Installing CodeMCP $version (windows/$arch)..."
 
-$tmp = Join-Path $env:TEMP ("chatgpt-mcp-" + [guid]::NewGuid().ToString('N'))
+$tmp = Join-Path $env:TEMP ("cm-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 try {
   $zip = Join-Path $tmp $asset
@@ -266,7 +266,7 @@ try {
   }
 
   $extract = Join-Path $tmp 'extract'
-  $exe = Expand-ChatGPTMCPBinaryFromZip -ZipPath $zip -DestinationDir $extract -MemberName $binaryName
+  $exe = Expand-CodeMCPBinaryFromZip -ZipPath $zip -DestinationDir $extract -MemberName $binaryName
 
   & $exe install
   if ($LASTEXITCODE -ne 0) { throw "cm: self-install failed with exit code $LASTEXITCODE" }

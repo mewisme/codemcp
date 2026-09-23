@@ -12,15 +12,15 @@ const input = process.argv[2]
 if (!input) fail("usage: node scripts/smoke-release.mjs <binary>")
 
 const binary = path.resolve(input)
-const home = await mkdtemp(path.join(tmpdir(), "chatgpt-mcp-release-smoke-"))
+const home = await mkdtemp(path.join(tmpdir(), "cm-release-smoke-"))
 const env = { ...process.env, HOME: home, USERPROFILE: home }
-delete env.CHATGPT_MCP_TOOL_CONTEXT
+delete env.CM_TOOL_CONTEXT
 const installRoot = path.join(home, "managed-install")
 const installBin = process.platform === "win32" ? path.join(installRoot, "current") : path.join(home, "bin")
-env.CHATGPT_MCP_INSTALL_DIR = installRoot
-env.CHATGPT_MCP_BIN_DIR = installBin
+env.CM_INSTALL_DIR = installRoot
+env.CM_BIN_DIR = installBin
 const configDir = path.join(home, "config")
-const defaultConfigDir = path.join(home, ".config", "chatgpt-mcp")
+const defaultConfigDir = path.join(home, ".cm")
 const defaultSentinel = path.join(defaultConfigDir, "release-smoke-sentinel")
 const allowedDir = path.join(home, "allowed")
 const globalArgs = ["--config-dir", configDir]

@@ -101,11 +101,10 @@ func TestMiddlewareAndTokenSources(t *testing.T) {
 	}
 }
 
-func TestVerifyTokenLegacyAndArgon2ID(t *testing.T) {
+func TestVerifyTokenArgon2ID(t *testing.T) {
 	token := "secret-token"
-	legacy := argon2.IDKey([]byte(token), []byte("chatgpt-mcp-auth"), 1, 64*1024, 4, 32)
-	if !VerifyToken(token, base64.RawStdEncoding.EncodeToString(legacy)) {
-		t.Fatal("legacy argon2 token rejected")
+	if VerifyToken(token, base64.RawStdEncoding.EncodeToString([]byte("legacy-hash"))) {
+		t.Fatal("unversioned legacy token hash was accepted")
 	}
 	salt := []byte("12345678")
 	hash := argon2.IDKey([]byte(token), salt, 2, 64*1024, 2, 32)

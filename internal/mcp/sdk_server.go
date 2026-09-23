@@ -27,7 +27,7 @@ func NewSDKServerWithSession(toolRuntime *tools.Runtime, source, sessionID, boun
 	if toolRuntime == nil {
 		toolRuntime = tools.NewRuntime()
 	}
-	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "chatgpt-mcp", Version: version.Version}, &sdkmcp.ServerOptions{Capabilities: &sdkmcp.ServerCapabilities{Tools: &sdkmcp.ToolCapabilities{ListChanged: true}}})
+	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "codemcp", Version: version.Version}, &sdkmcp.ServerOptions{Capabilities: &sdkmcp.ServerCapabilities{Tools: &sdkmcp.ToolCapabilities{ListChanged: true}}})
 	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace}
 	for _, schema := range filterHeaderSafeTools(toolRuntime.List()) {
 		if err := adapter.addTool(schema); err != nil {

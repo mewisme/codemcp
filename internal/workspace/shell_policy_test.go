@@ -424,7 +424,7 @@ func TestShellPolicyApprovedDestructiveMutationStillEnforcesWorkspaceScope(t *te
 	}
 }
 
-func TestShellPolicyBlocksChatGPTMCPControlPlaneMutations(t *testing.T) {
+func TestShellPolicyBlocksCMControlPlaneMutations(t *testing.T) {
 	root := t.TempDir()
 	manager := newTestManager(t)
 	item, err := manager.Register(root)
@@ -518,12 +518,12 @@ func TestShellPolicyBlocksToolContextClearing(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, command := range []string{
-		"unset CHATGPT_MCP_TOOL_CONTEXT",
-		"env -u CHATGPT_MCP_TOOL_CONTEXT go test ./...",
-		"env --unset=CHATGPT_MCP_TOOL_CONTEXT node test.js",
-		`python -c 'import os; os.environ.pop("CHATGPT_MCP_TOOL_CONTEXT", None)'`,
-		`node -e 'delete process.env.CHATGPT_MCP_TOOL_CONTEXT'`,
-		"Remove-Item Env:CHATGPT_MCP_TOOL_CONTEXT",
+		"unset CM_TOOL_CONTEXT",
+		"env -u CM_TOOL_CONTEXT go test ./...",
+		"env --unset=CM_TOOL_CONTEXT node test.js",
+		`python -c 'import os; os.environ.pop("CM_TOOL_CONTEXT", None)'`,
+		`node -e 'delete process.env.CM_TOOL_CONTEXT'`,
+		"Remove-Item Env:CM_TOOL_CONTEXT",
 	} {
 		err := manager.ValidateShellCommand(item.ID, root, command)
 		guard, ok := controlguard.As(err)
@@ -535,33 +535,37 @@ func TestShellPolicyBlocksToolContextClearing(t *testing.T) {
 
 func TestShellPolicyBlocksProtectedControlPlaneReads(t *testing.T) {
 	home := t.TempDir()
-	controlPlane := filepath.Join(home, ".config", "chatgpt-mcp")
+	controlPlane := filepath.Join(home, ".cm")
+	workspaceRoot := filepath.Join(home, "project")
 	if err := os.MkdirAll(controlPlane, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(workspaceRoot, 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	manager := NewManager(filepath.Join(controlPlane, "workspaces.json"))
 	manager.protectedRoot = canonicalRoot(controlPlane)
-	item, err := manager.Register(home)
+	item, err := manager.Register(workspaceRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, command := range []string{
 		"cat " + filepath.Join(controlPlane, ".runtime-control.json"),
-		"cat .config/chatgpt-mcp/config.json",
-		`cat "$HOME/.config/chatgpt-mcp/config.json"`,
+		"cat ../.cm/config.json",
+		`cat "$HOME/.cm/config.json"`,
 		"Get-Content -Path " + filepath.Join(controlPlane, "config.json"),
-		`bash -lc "cat .config/chatgpt-mcp/config.json"`,
+		`bash -lc "cat ../.cm/config.json"`,
 		`python -c 'print(open("` + filepath.ToSlash(filepath.Join(controlPlane, "config.json")) + `").read())'`,
 	} {
-		err := manager.ValidateShellCommand(item.ID, home, command)
+		err := manager.ValidateShellCommand(item.ID, workspaceRoot, command)
 		guard, ok := controlguard.As(err)
 		if err == nil || !ok || guard.Code != controlguard.CodeProtectedState || guard.Approvable || !strings.Contains(err.Error(), "control-plane state access denied") {
 			t.Fatalf("protected read was not denied: %s: %v", command, err)
 		}
 	}
-	if err := manager.ValidateShellCommand(item.ID, home, "cat README.md"); err != nil {
+	if err := manager.ValidateShellCommand(item.ID, workspaceRoot, "cat README.md"); err != nil {
 		t.Fatalf("normal workspace read rejected: %v", err)
 	}
 }
@@ -569,9 +573,13 @@ func TestShellPolicyBlocksProtectedControlPlaneReads(t *testing.T) {
 func TestShellPolicyBlocksProtectedReadThroughPathAlias(t *testing.T) {
 	base := t.TempDir()
 	realHome := filepath.Join(base, "real")
+	workspaceRoot := filepath.Join(realHome, "project")
 	aliasHome := filepath.Join(base, "alias")
-	controlPlane := filepath.Join(realHome, ".config", "chatgpt-mcp")
+	controlPlane := filepath.Join(realHome, ".cm")
 	if err := os.MkdirAll(controlPlane, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(workspaceRoot, 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(realHome, aliasHome); err != nil {
@@ -579,13 +587,13 @@ func TestShellPolicyBlocksProtectedReadThroughPathAlias(t *testing.T) {
 	}
 	manager := NewManager(filepath.Join(controlPlane, "workspaces.json"))
 	manager.protectedRoot = canonicalRoot(controlPlane)
-	item, err := manager.Register(realHome)
+	item, err := manager.Register(workspaceRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	aliasedConfig := filepath.ToSlash(filepath.Join(aliasHome, ".config", "chatgpt-mcp", "config.json"))
+	aliasedConfig := filepath.ToSlash(filepath.Join(aliasHome, ".cm", "config.json"))
 	command := `python -c 'print(open("` + aliasedConfig + `").read())'`
-	err = manager.ValidateShellCommand(item.ID, realHome, command)
+	err = manager.ValidateShellCommand(item.ID, workspaceRoot, command)
 	if err == nil || !strings.Contains(err.Error(), "control-plane state access denied") {
 		t.Fatalf("aliased protected read was not denied: %v", err)
 	}

@@ -9,7 +9,7 @@ import (
 )
 
 func IsolateConfigHome() (string, func(), error) {
-	home, err := os.MkdirTemp("", "chatgpt-mcp-test-home-")
+	home, err := os.MkdirTemp("", "cm-test-home-")
 	if err != nil {
 		return "", nil, err
 	}

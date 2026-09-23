@@ -181,7 +181,7 @@
     "confidence": "HIGH",
     "file": "internal/configformat/path.go",
     "details": "Potential file inclusion via variable",
-    "code": "func IsManagedRoot(root string) bool {\n\tdata, err := os.ReadFile(filepath.Join(root, rootMarker))\n\treturn err == nil && strings.TrimSpace(string(data)) == \"chatgpt-mcp\""
+    "code": "func IsManagedRoot(root string) bool {\n\tdata, err := os.ReadFile(filepath.Join(root, rootMarker))\n\treturn err == nil && strings.TrimSpace(string(data)) == \"cm\""
   },
   {
     "rule_id": "G304",

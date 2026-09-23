@@ -166,7 +166,7 @@ func TestUseManagedTunnelAutoGeneratesRuntimeKey(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/organization/projects":
 			_, _ = w.Write([]byte(`{"data":[{"id":"proj_default","name":"Default project","status":"active"}]}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/organization/projects/proj_default/service_accounts":
-			_, _ = w.Write([]byte(`{"data":[{"id":"svc_runtime","name":"chatgpt-mcp tunnel runtime"}]}`))
+			_, _ = w.Write([]byte(`{"data":[{"id":"svc_runtime","name":"codemcp tunnel runtime"}]}`))
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/organization/projects/proj_default/service_accounts/svc_runtime/api_keys":
 			var body struct {
 				Scopes []string `json:"scopes"`

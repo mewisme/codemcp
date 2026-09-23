@@ -17,7 +17,7 @@ import (
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
-const runtimeServiceAccountName = "chatgpt-mcp tunnel runtime"
+const runtimeServiceAccountName = "codemcp tunnel runtime"
 
 var runtimeKeyScopes = []string{"api.organization.tunnel.read", "api.organization.tunnel.use"}
 
@@ -110,7 +110,7 @@ func GenerateRuntimeKey(ctx context.Context, cfg Config, projectID string) (Gene
 		return GeneratedRuntimeKey{}, err
 	}
 	path := fmt.Sprintf("/v1/organization/projects/%s/service_accounts/%s/api_keys", url.PathEscape(projectID), url.PathEscape(account.ID))
-	body := map[string]any{"name": "chatgpt-mcp tunnel runtime", "scopes": append([]string(nil), runtimeKeyScopes...)}
+	body := map[string]any{"name": runtimeServiceAccountName, "scopes": append([]string(nil), runtimeKeyScopes...)}
 	var response adminRuntimeKeyResponse
 	if err := adminPlatformRequest(ctx, cfg, http.MethodPost, path, body, &response); err != nil {
 		span.FailMessage("Tunnel runtime API key creation failed", errors.New("OpenAI runtime API key request failed"), tracepkg.String("project_id", projectID), tracepkg.String("service_account_id", account.ID))

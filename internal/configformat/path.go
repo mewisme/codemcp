@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	EnvConfigDir = "CHATGPT_MCP_CONFIG_DIR"
-	rootMarker   = ".chatgpt-mcp-root"
+	EnvConfigDir = "CM_CONFIG_DIR"
+	rootMarker   = ".cm-root"
 )
 
 var rootOverride struct {
@@ -45,9 +45,9 @@ func RootPath() string {
 func DefaultRootPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "chatgpt-mcp"
+		return "cm"
 	}
-	return filepath.Join(home, ".config", "chatgpt-mcp")
+	return filepath.Join(home, ".cm")
 }
 
 func SetRootPath(path string) error {
@@ -97,12 +97,12 @@ func MarkRoot(root string) error {
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(root, rootMarker), []byte("chatgpt-mcp\n"), 0600)
+	return os.WriteFile(filepath.Join(root, rootMarker), []byte("cm\n"), 0600)
 }
 
 func IsManagedRoot(root string) bool {
 	data, err := os.ReadFile(filepath.Join(root, rootMarker))
-	return err == nil && strings.TrimSpace(string(data)) == "chatgpt-mcp"
+	return err == nil && strings.TrimSpace(string(data)) == "cm"
 }
 
 func RemoveRootMarker(root string) error {

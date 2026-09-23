@@ -8,7 +8,7 @@ import (
 )
 
 func TestWindowsTaskIsPerUserLeastPrivilege(t *testing.T) {
-	spec := Spec{ID: "chatgpt-mcp-user-test", Scope: ScopeUser, ConfigRoot: `C:\Users\Mew\.config\chatgpt-mcp`, Binary: `C:\Users\Mew\AppData\Local\chatgpt-mcp\bin\chatgpt-mcp.exe`, Account: Account{Username: `PC\Mew`, HomeDir: `C:\Users\Mew`}}
+	spec := Spec{ID: "cm-user-test", Scope: ScopeUser, ConfigRoot: `C:\\Users\\Mew\\.cm`, Binary: `C:\\Users\\Mew\\.cm\\current\\cm.exe`, Account: Account{Username: `PC\Mew`, HomeDir: `C:\Users\Mew`}}
 	xml, err := WindowsTaskXML(spec)
 	if err != nil {
 		t.Fatal(err)
@@ -30,7 +30,7 @@ func TestWindowsTaskIsPerUserLeastPrivilege(t *testing.T) {
 }
 
 func TestWindowsTaskLaunchesManagedRuntimeWithoutConsoleWindow(t *testing.T) {
-	spec := Spec{ID: "chatgpt-mcp-user-test", Scope: ScopeUser, ConfigRoot: `C:\Users\Mew\.config\chatgpt-mcp`, Binary: `C:\Program Files\chatgpt-mcp\chatgpt-mcp.exe`, EnvironmentHash: "env_test", Account: Account{Username: `PC\Mew`, HomeDir: `C:\Users\Mew`}}
+	spec := Spec{ID: "cm-user-test", Scope: ScopeUser, ConfigRoot: `C:\\Users\\Mew\\.cm`, Binary: `C:\\Program Files\\CodeMCP\\cm.exe`, EnvironmentHash: "env_test", Account: Account{Username: `PC\Mew`, HomeDir: `C:\Users\Mew`}}
 	script := windowsLauncherScript(spec)
 	for _, expected := range []string{`CreateObject("WScript.Shell")`, "shell.CurrentDirectory", "shell.Run(", ", 0, True)", "WScript.Quit exitCode", spec.Binary, "--config-dir", spec.ConfigRoot, "--service-environment-hash", spec.EnvironmentHash} {
 		if !strings.Contains(script, expected) {

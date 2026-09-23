@@ -187,6 +187,11 @@ func (m *Manager) Register(path string) (Workspace, error) {
 		span.FailMessage("Workspace registration failed", err, tracepkg.String("canonical_path", root), tracepkg.Bool("protected", true))
 		return Workspace{}, err
 	}
+	if m.workspaceLocalRootAliasesProtected(root) {
+		err := fmt.Errorf("workspace local .cm root aliases protected global state: %s", root)
+		span.FailMessage("Workspace registration failed", err, tracepkg.String("canonical_path", root), tracepkg.Bool("local_state_alias", true))
+		return Workspace{}, err
+	}
 	item := Workspace{ID: workspaceID(root), Path: root, AllowDirs: []string{}}
 
 	m.mu.Lock()
@@ -713,6 +718,28 @@ func (m *Manager) allowed(id, candidate string) bool {
 
 func (m *Manager) protected(candidate string) bool {
 	return m.protectedRoot != "" && within(m.protectedRoot, candidate)
+}
+
+func (m *Manager) workspaceLocalRootAliasesProtected(workspaceRoot string) bool {
+	if m == nil || m.protectedRoot == "" {
+		return false
+	}
+	localRoot, err := canonicalForContainment(filepath.Join(workspaceRoot, ".cm"), false)
+	if err != nil {
+		return false
+	}
+	return sameCanonicalRoot(localRoot, m.protectedRoot)
+}
+
+func sameCanonicalRoot(left, right string) bool {
+	left, right = canonicalRoot(left), canonicalRoot(right)
+	if left == "" || right == "" {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
 }
 
 func canonicalRoot(path string) string {

@@ -5,6 +5,8 @@ import (
 	"runtime/debug"
 )
 
+const ClientName = "codemcp"
+
 var (
 	Version = "dev"
 	Commit  = "unknown"

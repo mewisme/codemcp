@@ -409,7 +409,7 @@ export type ApprovalEvent = {
   timestamp: string
 }
 
-const adminTokenKey = "chatgpt-mcp-admin-token"
+const adminTokenKey = "cm-admin-token"
 try {
   localStorage.removeItem(adminTokenKey)
 } catch {

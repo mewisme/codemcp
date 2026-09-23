@@ -28,7 +28,7 @@ func TestOfficialGoSDKStreamableInterop(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "chatgpt-mcp-conformance", Version: "1.0.0"}, nil)
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "codemcp-conformance", Version: "1.0.0"}, nil)
 	session, err := client.Connect(ctx, &sdkmcp.StreamableClientTransport{Endpoint: server.URL}, nil)
 	if err != nil {
 		t.Fatalf("official SDK connect: %v", err)

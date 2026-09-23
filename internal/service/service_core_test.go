@@ -36,6 +36,22 @@ func TestSpecHelpers(t *testing.T) {
 	}
 }
 
+func TestMachineNamespaceUsesCM(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "home")
+	if got, want := DefaultConfigRoot(Account{HomeDir: home}), filepath.Join(home, ".cm"); got != want {
+		t.Fatalf("default config root = %q, want %q", got, want)
+	}
+	for _, scope := range []Scope{ScopeUser, ScopeSystem} {
+		id := ID(filepath.Join(home, ".cm"), scope)
+		if !strings.HasPrefix(id, "cm-"+string(scope)+"-") {
+			t.Fatalf("service id = %q", id)
+		}
+		if strings.Contains(id, "chatgpt-mcp") {
+			t.Fatalf("service id contains legacy namespace: %q", id)
+		}
+	}
+}
+
 func TestRunCommand(t *testing.T) {
 	output, err := runCommand("go", "env", "GOOS")
 	if err != nil || strings.TrimSpace(output) == "" {

@@ -35,7 +35,7 @@ func TestLifecycleEmitsBackendInspectionAndOperationFacts(t *testing.T) {
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
 	manager := &traceTestManager{}
-	spec := Spec{ID: "chatgpt-mcp-user-trace", Scope: ScopeUser, ConfigRoot: t.TempDir()}
+	spec := Spec{ID: "cm-user-trace", Scope: ScopeUser, ConfigRoot: t.TempDir()}
 	probeCalls := 0
 	probe := func(context.Context) (runtimecontrol.RuntimeStatus, bool, error) {
 		probeCalls++
@@ -76,7 +76,7 @@ func TestLifecycleEmitsBackendInspectionAndOperationFacts(t *testing.T) {
 func TestWaitRuntimeReadyEmitsOnlyMeaningfulProbeChanges(t *testing.T) {
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
-	spec := Spec{ID: "chatgpt-mcp-user-trace", Scope: ScopeUser}
+	spec := Spec{ID: "cm-user-trace", Scope: ScopeUser}
 	responses := []struct {
 		status  runtimecontrol.RuntimeStatus
 		running bool

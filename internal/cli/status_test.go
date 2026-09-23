@@ -27,8 +27,8 @@ func TestStatusReportsManagedRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	started := time.Now().Add(-time.Minute).UTC()
-	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_status", Managed: true, ServiceID: "chatgpt-mcp-system-test", ServiceScope: "system", StartedAt: started, Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult {
-		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_status", Managed: true, ServiceID: "chatgpt-mcp-system-test", ServiceScope: "system", StartedAt: started, ConfigRoot: root, ServerPort: cfg.Server.Port, AdminEnabled: cfg.Admin.Enabled, AdminPort: cfg.Admin.Port, Exposure: cfg.Server.Expose.Mode, TunnelEnabled: true, TunnelConfigured: true, TunnelReady: true, TunnelID: "tunnel_status"}
+	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_status", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult {
+		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_status", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, ConfigRoot: root, ServerPort: cfg.Server.Port, AdminEnabled: cfg.Admin.Enabled, AdminPort: cfg.Admin.Port, Exposure: cfg.Server.Expose.Mode, TunnelEnabled: true, TunnelConfigured: true, TunnelReady: true, TunnelID: "tunnel_status"}
 	}, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func TestStatusReportsManagedRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, expected := range []string{"✓ CodeMCP is running", "Runtime", "session     run_status", "managed     system ·", "service     chatgpt-mcp-system-test", "Endpoints", "Config", "auth        mcp off · admin off", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected", "id          tunnel_status"} {
+	for _, expected := range []string{"✓ CodeMCP is running", "Runtime", "session     run_status", "managed     system ·", "service     cm-system-test", "Endpoints", "Config", "auth        mcp off · admin off", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected", "id          tunnel_status"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("status missing %q: %s", expected, text)
 		}
@@ -71,8 +71,8 @@ func TestStatusReportsStartingRuntime(t *testing.T) {
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
-	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_starting", Managed: true, ServiceID: "chatgpt-mcp-user-test", ServiceScope: "user", StartedAt: time.Now().UTC(), Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult {
-		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_starting", Starting: true, Managed: true, ServiceID: "chatgpt-mcp-user-test", ServiceScope: "user", ConfigRoot: root, ServerEnabled: false, TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true}
+	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_starting", Managed: true, ServiceID: "cm-user-test", ServiceScope: "user", StartedAt: time.Now().UTC(), Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult {
+		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_starting", Starting: true, Managed: true, ServiceID: "cm-user-test", ServiceScope: "user", ConfigRoot: root, ServerEnabled: false, TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true}
 	}, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -104,8 +104,8 @@ func TestStatusVerboseReportsOperationalDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	started := time.Now().Add(-time.Minute).UTC()
-	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_verbose", Managed: true, ServiceID: "chatgpt-mcp-system-test", ServiceScope: "system", StartedAt: started, Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult {
-		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_verbose", Managed: true, ServiceID: "chatgpt-mcp-system-test", ServiceScope: "system", StartedAt: started, ConfigRoot: root, ServerPort: cfg.Server.Port, AdminEnabled: cfg.Admin.Enabled, AdminPort: cfg.Admin.Port, Exposure: cfg.Server.Expose.Mode, TunnelConfigured: true, TunnelID: "tunnel_verbose"}
+	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_verbose", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult {
+		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_verbose", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, ConfigRoot: root, ServerPort: cfg.Server.Port, AdminEnabled: cfg.Admin.Enabled, AdminPort: cfg.Admin.Port, Exposure: cfg.Server.Expose.Mode, TunnelConfigured: true, TunnelID: "tunnel_verbose"}
 	}, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)

@@ -18,7 +18,7 @@ import (
 func TestGlobalInstructionsAndWorkspaceContextAPI(t *testing.T) {
 	configRoot := t.TempDir()
 	home := t.TempDir()
-	t.Setenv("CHATGPT_MCP_CONFIG_DIR", configRoot)
+	t.Setenv("CM_CONFIG_DIR", configRoot)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0755); err != nil {
@@ -81,7 +81,7 @@ func TestGlobalInstructionsAndWorkspaceContextAPI(t *testing.T) {
 }
 
 func TestWorkspaceContextAPISupportsSubprojectAndLimits(t *testing.T) {
-	t.Setenv("CHATGPT_MCP_CONFIG_DIR", t.TempDir())
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -126,7 +126,7 @@ func TestWorkspaceContextAPISupportsSubprojectAndLimits(t *testing.T) {
 
 func TestWorkspaceContextAPISupportsSelectiveMemory(t *testing.T) {
 	configRoot := t.TempDir()
-	t.Setenv("CHATGPT_MCP_CONFIG_DIR", configRoot)
+	t.Setenv("CM_CONFIG_DIR", configRoot)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -162,7 +162,7 @@ func TestWorkspaceContextAPISupportsSelectiveMemory(t *testing.T) {
 }
 
 func TestInstructionSettingsGETOnlyReportsDetectedSources(t *testing.T) {
-	t.Setenv("CHATGPT_MCP_CONFIG_DIR", t.TempDir())
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

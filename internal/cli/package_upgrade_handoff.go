@@ -31,13 +31,13 @@ func preparePackageUpgradeHandoff(plan updatepkg.PackageManagerPlan, target, con
 	if runtime.GOOS == "windows" {
 		ext = ".ps1"
 	}
-	file, err := os.CreateTemp("", "chatgpt-mcp-upgrade-*"+ext)
+	file, err := os.CreateTemp("", "cm-upgrade-*"+ext)
 	if err != nil {
 		return packageUpgradeHandoff{}, err
 	}
 	path := file.Name()
 	_ = file.Close()
-	logPath := filepath.Join(os.TempDir(), "chatgpt-mcp-upgrade-"+strconv.FormatInt(time.Now().UnixNano(), 10)+".log")
+	logPath := filepath.Join(os.TempDir(), "cm-upgrade-"+strconv.FormatInt(time.Now().UnixNano(), 10)+".log")
 	handoff := packageUpgradeHandoff{ParentPID: os.Getpid(), Plan: plan, Target: target, ConfigRoot: configRoot, Runtime: state, NoRestart: noRestart, ScriptPath: path, LogPath: logPath}
 	content, err := packageUpgradeScript(handoff)
 	if err != nil {

@@ -22,14 +22,14 @@ func TestClientLatest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	release, err := (Client{BaseURL: server.URL, HTTPClient: server.Client(), UserAgent: "chatgpt-mcp/test"}).Latest(context.Background())
+	release, err := (Client{BaseURL: server.URL, HTTPClient: server.Client(), UserAgent: "codemcp/test"}).Latest(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if gotPath != "/repos/mewisme/codemcp/releases/latest" {
 		t.Fatalf("request path = %q", gotPath)
 	}
-	if gotAgent != "chatgpt-mcp/test" {
+	if gotAgent != "codemcp/test" {
 		t.Fatalf("user agent = %q", gotAgent)
 	}
 	if release.Version != "v1.2.3" || release.ArchiveName != asset || release.ArchiveURL != "https://example.test/archive" || release.ChecksumURL != "https://example.test/checksums" || release.SignatureURL != "https://example.test/signature" {

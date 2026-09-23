@@ -15,21 +15,13 @@ func DefaultLayout() (Layout, error) {
 	}
 	root := strings.TrimSpace(os.Getenv(EnvInstallDir))
 	if root == "" {
-		localAppData := strings.TrimSpace(os.Getenv("LOCALAPPDATA"))
-		if localAppData == "" {
-			localAppData = filepath.Join(home, "AppData", "Local")
-		}
-		root = filepath.Join(localAppData, "chatgpt-mcp")
+		root = filepath.Join(home, ".cm")
 	}
 	return NewLayout(root, filepath.Join(root, "current"))
 }
 
-func defaultLayout(home, localAppData string) (Layout, error) {
-	localAppData = strings.TrimSpace(localAppData)
-	if localAppData == "" {
-		localAppData = filepath.Join(home, "AppData", "Local")
-	}
-	root := filepath.Join(localAppData, "chatgpt-mcp")
+func defaultLayout(home, _ string) (Layout, error) {
+	root := filepath.Join(home, ".cm")
 	return NewLayout(root, filepath.Join(root, "current"))
 }
 

@@ -30,5 +30,5 @@ func InvokingAccount(scope Scope) (Account, error) {
 }
 
 func DefaultConfigRoot(account Account) string {
-	return filepath.Join(account.HomeDir, ".config", "chatgpt-mcp")
+	return filepath.Join(account.HomeDir, ".cm")
 }

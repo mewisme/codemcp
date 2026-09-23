@@ -113,7 +113,7 @@ func (api API) authorizeApprovalRequest(w http.ResponseWriter, r *http.Request) 
 		return false
 	}
 	if strings.TrimSpace(cfg.Auth.AdminTokenHash) == "" || !auth.ValidateRequestHash(r, cfg.Auth.AdminTokenHash) {
-		w.Header().Set("WWW-Authenticate", `Bearer realm="chatgpt-mcp"`)
+		w.Header().Set("WWW-Authenticate", `Bearer realm="codemcp"`)
 		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 		return false
 	}

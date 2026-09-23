@@ -34,8 +34,8 @@ func upgradeCommand() *cobra.Command {
 			return fmt.Errorf("managed direct installation not found: %w", err)
 		}
 		updater := updatepkg.Updater{
-			Resolver:   updatepkg.Client{UserAgent: "chatgpt-mcp/" + version.Version},
-			Downloader: updatepkg.Downloader{UserAgent: "chatgpt-mcp/" + version.Version},
+			Resolver:   updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version},
+			Downloader: updatepkg.Downloader{UserAgent: version.ClientName + "/" + version.Version},
 		}
 		options := updatepkg.ApplyOptions{Layout: layout, CurrentVersion: version.Version, TargetVersion: targetVersion}
 		startCommandSpinner(cmd, log, "UPDATE", "update.checking", "Checking for updates")
@@ -108,7 +108,7 @@ func upgradeCheckCommand() *cobra.Command {
 		log := commandLogger(cmd)
 		logCommandStep(cmd, "UPDATE", "update.release.checking", "Resolving latest release", logger.WithVerbose("current", version.Version))
 		startCommandSpinner(cmd, log, "UPDATE", "update.checking", "Checking for updates")
-		checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: "chatgpt-mcp/" + version.Version}}
+		checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}
 		result, err := checker.Check(cmd.Context(), version.Version)
 		if err != nil {
 			return fmt.Errorf("check latest release: %w", err)

@@ -187,7 +187,7 @@ jobs:
       - name: Go coverage gate
         if: needs.changes.outputs.full == 'true'
         env:
-          CHATGPT_MCP_CONFIG_DIR: ${{ runner.temp }}/chatgpt-mcp-coverage-test
+          CM_CONFIG_DIR: ${{ runner.temp }}/cm-coverage-test
         run: |
           go test -count=1 -coverprofile="${RUNNER_TEMP}/coverage.out" ./...
           coverage=$(go tool cover -func="${RUNNER_TEMP}/coverage.out" | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
@@ -233,7 +233,7 @@ jobs:
       - name: Test with race detector
         if: needs.changes.outputs.full == 'true'
         env:
-          CHATGPT_MCP_CONFIG_DIR: ${{ runner.temp }}/chatgpt-mcp-go-race-test
+          CM_CONFIG_DIR: ${{ runner.temp }}/cm-go-race-test
         run: go test -count=1 -race ./...
 
   native:
@@ -305,7 +305,7 @@ jobs:
       - name: Test
         if: needs.changes.outputs.full == 'true'
         env:
-          CHATGPT_MCP_CONFIG_DIR: ${{ runner.temp }}/chatgpt-mcp-go-test
+          CM_CONFIG_DIR: ${{ runner.temp }}/cm-go-test
         run: go test -count=1 ./...
 
       - name: Vet

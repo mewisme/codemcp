@@ -482,26 +482,33 @@ func TestWorkspaceAllowDirPersistsAndRejectsSymlinkEscape(t *testing.T) {
 
 func TestControlPlaneStateIsExcludedFromWorkspaceScope(t *testing.T) {
 	home := t.TempDir()
-	controlPlane := filepath.Join(home, ".config", "chatgpt-mcp")
+	controlPlane := filepath.Join(home, ".cm")
+	workspaceRoot := filepath.Join(home, "project")
 	if err := os.MkdirAll(controlPlane, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(workspaceRoot, 0700); err != nil {
 		t.Fatal(err)
 	}
 	manager := NewManager(filepath.Join(controlPlane, "workspaces.json"))
 	manager.protectedRoot = canonicalRoot(controlPlane)
-	item, err := manager.Register(home)
+	if _, err := manager.Register(home); err == nil {
+		t.Fatal("home workspace was accepted even though its .cm aliases global state")
+	}
+	item, err := manager.Register(workspaceRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	regular := filepath.Join(home, "project.txt")
+	regular := filepath.Join(workspaceRoot, "project.txt")
 	expectedRegular, err := canonicalForContainment(regular, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := manager.ResolvePath(item.ID, home, regular, false); err != nil || got != expectedRegular {
+	if got, err := manager.ResolvePath(item.ID, workspaceRoot, regular, false); err != nil || got != expectedRegular {
 		t.Fatalf("normal workspace path = %q, want %q err=%v", got, expectedRegular, err)
 	}
 	for _, path := range []string{controlPlane, filepath.Join(controlPlane, "config.json"), filepath.Join(controlPlane, "tunnel.json")} {
-		if _, err := manager.ResolvePath(item.ID, home, path, false); err == nil {
+		if _, err := manager.ResolvePath(item.ID, workspaceRoot, path, false); err == nil {
 			t.Fatalf("protected control-plane path was accessible: %s", path)
 		}
 	}

@@ -17,7 +17,7 @@ import (
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
-const machineOutputAnnotation = "chatgpt-mcp.machine-output"
+const machineOutputAnnotation = "cm.machine-output"
 
 var commandLoggers sync.Map
 

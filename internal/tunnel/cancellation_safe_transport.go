@@ -167,7 +167,7 @@ func (c *cancellationSafeConnection) Close() error {
 func (c *cancellationSafeConnection) SessionID() string { return c.base.SessionID() }
 
 func (c *cancellationSafeConnection) prepareRoute(ctx context.Context, request *jsonrpc.Request) (*cancellationRoute, *jsonrpc.Request, error) {
-	wireID, err := jsonrpc.MakeID(fmt.Sprintf("__chatgpt_mcp_tunnel_%x", c.sequence.Add(1)))
+	wireID, err := jsonrpc.MakeID(fmt.Sprintf("__cm_tunnel_%x", c.sequence.Add(1)))
 	if err != nil {
 		return nil, nil, err
 	}

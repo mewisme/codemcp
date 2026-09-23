@@ -20,7 +20,7 @@ func TestServiceIdentityIsStablePerRootAndScope(t *testing.T) {
 }
 
 func TestServiceArgsAlwaysPersistExplicitConfigRoot(t *testing.T) {
-	spec := Spec{ID: "chatgpt-mcp-user-test", Scope: ScopeUser, ConfigRoot: filepath.Join(t.TempDir(), "config"), EnvironmentHash: "env-hash"}
+	spec := Spec{ID: "cm-user-test", Scope: ScopeUser, ConfigRoot: filepath.Join(t.TempDir(), "config"), EnvironmentHash: "env-hash"}
 	args := Args(spec)
 	if len(args) != 10 || args[0] != "--config-dir" || args[1] != spec.ConfigRoot || args[2] != "_service" || args[3] != "run" || args[8] != "--service-environment-hash" || args[9] != "env-hash" {
 		t.Fatalf("args = %#v", args)

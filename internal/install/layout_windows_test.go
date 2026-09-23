@@ -9,12 +9,11 @@ import (
 
 func TestDefaultLayout(t *testing.T) {
 	home := `C:\Users\Mew`
-	localAppData := `C:\Users\Mew\AppData\Local`
-	layout, err := defaultLayout(home, localAppData)
+	layout, err := defaultLayout(home, `C:\Users\Mew\AppData\Local`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := filepath.Join(localAppData, "cm")
+	root := filepath.Join(home, ".cm")
 	if layout.Root != root || layout.Current != filepath.Join(root, "current") || layout.State != filepath.Join(root, "state") || layout.UpdateCache != filepath.Join(root, "state", "update.json") {
 		t.Fatalf("unexpected install layout: %+v", layout)
 	}
@@ -23,13 +22,13 @@ func TestDefaultLayout(t *testing.T) {
 	}
 }
 
-func TestDefaultLayoutFallsBackToUserProfile(t *testing.T) {
+func TestDefaultLayoutIgnoresLocalAppData(t *testing.T) {
 	home := `C:\Users\Mew`
-	layout, err := defaultLayout(home, "")
+	layout, err := defaultLayout(home, `D:\Other\Local`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := filepath.Join(home, "AppData", "Local", "cm")
+	expected := filepath.Join(home, ".cm")
 	if layout.Root != expected {
 		t.Fatalf("root = %q, want %q", layout.Root, expected)
 	}

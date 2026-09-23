@@ -125,7 +125,7 @@ func TestHTTPManySessionsCanShareWorkspace(t *testing.T) {
 }
 
 func TestHTTPSessionProjectContextCanTargetMultipleIsolatedWorkspaces(t *testing.T) {
-	t.Setenv("CHATGPT_MCP_CONFIG_DIR", t.TempDir())
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	fixture := newIsolationHTTPFixture(t)
 	if err := os.WriteFile(filepath.Join(fixture.first.Path, "AGENTS.md"), []byte("first workspace"), 0644); err != nil {
 		t.Fatal(err)
@@ -148,7 +148,7 @@ func TestHTTPSessionProjectContextCanTargetMultipleIsolatedWorkspaces(t *testing
 }
 
 func TestHTTPSessionContainerContextOrchestratesMembersWithoutGrantingOrMerging(t *testing.T) {
-	t.Setenv("CHATGPT_MCP_CONFIG_DIR", t.TempDir())
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	fixture := newIsolationHTTPFixture(t)
 	if err := os.WriteFile(filepath.Join(fixture.first.Path, "AGENTS.md"), []byte("container first sentinel"), 0644); err != nil {
 		t.Fatal(err)

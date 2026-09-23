@@ -11,7 +11,7 @@ import (
 	"sync"
 )
 
-const servicePrefix = "chatgpt-mcp"
+const servicePrefix = "codemcp"
 
 const (
 	Marker       = "<secret-file>"

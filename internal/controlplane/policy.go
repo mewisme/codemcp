@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	ToolContextEnv     = "CHATGPT_MCP_TOOL_CONTEXT"
-	ControlApprovalEnv = "CHATGPT_MCP_CONTROL_APPROVAL"
+	ToolContextEnv     = "CM_TOOL_CONTEXT"
+	ControlApprovalEnv = "CM_CONTROL_APPROVAL"
 )
 
 var readOnlyPaths = map[string]bool{

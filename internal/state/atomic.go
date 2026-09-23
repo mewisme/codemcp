@@ -15,7 +15,7 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(dir, ".chatgpt-mcp-*")
+	file, err := os.CreateTemp(dir, ".cm-*")
 	if err != nil {
 		return err
 	}

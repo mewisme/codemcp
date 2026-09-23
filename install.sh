@@ -6,16 +6,16 @@
 # curl -fsSL https://get.mewis.me/chatgpt-mcp.sh | sh -s -- --uninstall
 #
 # Environment:
-#   CHATGPT_MCP_VERSION           release tag (default: latest)
-#   CHATGPT_MCP_INSTALL_DIR       bundle location (default: ~/.chatgpt-mcp)
-#   CHATGPT_MCP_BIN_DIR           command location (default: ~/.local/bin)
+#   CM_VERSION           release tag (default: latest)
+#   CM_INSTALL_DIR       bundle location (default: ~/.cm)
+#   CM_BIN_DIR           command location (default: ~/.local/bin)
 #   INSTALL_ALLOW_CHECKSUM_ONLY   set to 1 to proceed when Sigstore/cosign
 #                                 verification is unavailable (loud warning)
 set -eu
 
 REPO="mewisme/codemcp"
-INSTALL_DIR="${CHATGPT_MCP_INSTALL_DIR:-$HOME/.chatgpt-mcp}"
-BIN_DIR="${CHATGPT_MCP_BIN_DIR:-$HOME/.local/bin}"
+INSTALL_DIR="${CM_INSTALL_DIR:-$HOME/.cm}"
+BIN_DIR="${CM_BIN_DIR:-$HOME/.local/bin}"
 OIDC_ISSUER="https://token.actions.githubusercontent.com"
 SIGNATURE_NAME="checksums.txt.sigstore.json"
 
@@ -44,7 +44,7 @@ case "$arch" in
 	*) echo "cm: unsupported architecture '$arch'." >&2; exit 1 ;;
 esac
 
-version="${CHATGPT_MCP_VERSION:-}"
+version="${CM_VERSION:-}"
 if [ -z "$version" ]; then
 	version="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest" | sed -n 's#.*/releases/tag/##p')"
 fi
@@ -52,7 +52,7 @@ if [ -z "$version" ]; then
 	version="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1)"
 fi
 [ -n "$version" ] || {
-	echo "cm: could not resolve latest version; set CHATGPT_MCP_VERSION (e.g. v0.1.0)." >&2
+	echo "cm: could not resolve latest version; set CM_VERSION (e.g. v0.1.0)." >&2
 	exit 1
 }
 case "$version" in v*) ;; *) version="v$version" ;; esac

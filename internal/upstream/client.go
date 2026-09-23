@@ -480,7 +480,7 @@ func (c *rpcConnection) negotiate(ctx context.Context) error {
 	params := map[string]any{
 		"protocolVersion": LegacyProtocol,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "chatgpt-mcp", "version": "1.0.0"},
+		"clientInfo":      map[string]any{"name": "codemcp", "version": "1.0.0"},
 	}
 	var initialized struct {
 		ProtocolVersion string `json:"protocolVersion"`
@@ -1070,7 +1070,7 @@ func requestMeta(ctx context.Context) map[string]any {
 	meta := map[string]any{
 		"io.modelcontextprotocol/protocolVersion": ModernProtocol,
 		"io.modelcontextprotocol/clientInfo": map[string]any{
-			"name": "chatgpt-mcp", "version": "1.0.0",
+			"name": "codemcp", "version": "1.0.0",
 		},
 		"io.modelcontextprotocol/clientCapabilities": map[string]any{},
 	}

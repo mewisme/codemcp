@@ -68,7 +68,7 @@ const realFs = require("node:fs");
 const realFsp = require("node:fs/promises");
 const { createRequire } = Module;
 
-const workspaceRoot = realFs.realpathSync.native(path.resolve(process.env.CHATGPT_MCP_WORKSPACE_ROOT));
+const workspaceRoot = realFs.realpathSync.native(path.resolve(process.env.CM_WORKSPACE_ROOT));
 const projectRequire = createRequire(path.join(workspaceRoot, "package.json"));
 const output = [];
 
@@ -435,7 +435,7 @@ func startWorker(node, workspaceRoot string) (*worker, error) {
 	}
 	cmd := exec.Command(node, args...)
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "CHATGPT_MCP_WORKSPACE_ROOT="+root)
+	cmd.Env = append(os.Environ(), "CM_WORKSPACE_ROOT="+root)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

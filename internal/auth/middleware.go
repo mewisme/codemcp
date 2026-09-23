@@ -47,6 +47,6 @@ func ValidateRequestHash(r *http.Request, expectedHash string) bool {
 }
 
 func unauthorized(w http.ResponseWriter) {
-	w.Header().Set("WWW-Authenticate", `Bearer realm="chatgpt-mcp"`)
+	w.Header().Set("WWW-Authenticate", `Bearer realm="codemcp"`)
 	http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
 }
