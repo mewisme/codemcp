@@ -559,7 +559,7 @@ func configureManagedTunnel(cfg *config.Config, metadata tunnel.Metadata, runtim
 		key = strings.TrimSpace(cfg.Tunnel.APIKey)
 	}
 	if key == "" {
-		return errors.New("runtime API key is required to configure cgm")
+		return errors.New("runtime API key is required to configure cm")
 	}
 	cfg.Tunnel.ID = metadata.ID
 	cfg.Tunnel.APIKey = key

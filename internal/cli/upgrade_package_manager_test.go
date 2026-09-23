@@ -46,21 +46,21 @@ func TestRunPackageManagerPhaseStopsAfterRefreshFailure(t *testing.T) {
 
 func TestVerifyPackageManagedVersion(t *testing.T) {
 	lookup := func(name string) (string, error) {
-		if name == "chatgpt-mcp" {
-			return "/bin/chatgpt-mcp", nil
+		if name == "cm" {
+			return "/bin/cm", nil
 		}
 		return "", errors.New("not found")
 	}
 	readName := ""
 	readVersion := func(_ context.Context, name string) (string, error) {
 		readName = name
-		return "chatgpt-mcp version v1.2.3 (abc123) 2026-09-13", nil
+		return "cm version v1.2.3 (abc123) 2026-09-13", nil
 	}
 	binary, installed, err := verifyPackageManagedVersion(context.Background(), "v1.2.3", lookup, readVersion)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if binary != "/bin/chatgpt-mcp" || installed != "v1.2.3" || readName != "chatgpt-mcp" {
+	if binary != "/bin/cm" || installed != "v1.2.3" || readName != "cm" {
 		t.Fatalf("binary = %q installed = %q read = %q", binary, installed, readName)
 	}
 }
@@ -80,8 +80,8 @@ func TestRunPackageBinaryVersionRejectsUnknownBinary(t *testing.T) {
 }
 
 func TestVerifyPackageManagedVersionRejectsStaleMetadata(t *testing.T) {
-	lookup := func(string) (string, error) { return "/bin/chatgpt-mcp", nil }
-	readVersion := func(context.Context, string) (string, error) { return "chatgpt-mcp version v1.2.2", nil }
+	lookup := func(string) (string, error) { return "/bin/cm", nil }
+	readVersion := func(context.Context, string) (string, error) { return "cm version v1.2.2", nil }
 	_, installed, err := verifyPackageManagedVersion(context.Background(), "v1.2.3", lookup, readVersion)
 	if err == nil || installed != "v1.2.2" || !strings.Contains(err.Error(), "package metadata did not install v1.2.3") {
 		t.Fatalf("installed = %q error = %v", installed, err)
@@ -89,8 +89,8 @@ func TestVerifyPackageManagedVersionRejectsStaleMetadata(t *testing.T) {
 }
 
 func TestVerifyPackageManagedVersionAcceptsNewerReleaseRace(t *testing.T) {
-	lookup := func(string) (string, error) { return "/bin/chatgpt-mcp", nil }
-	readVersion := func(context.Context, string) (string, error) { return "chatgpt-mcp version v1.2.4", nil }
+	lookup := func(string) (string, error) { return "/bin/cm", nil }
+	readVersion := func(context.Context, string) (string, error) { return "cm version v1.2.4", nil }
 	_, installed, err := verifyPackageManagedVersion(context.Background(), "v1.2.3", lookup, readVersion)
 	if err != nil || installed != "v1.2.4" {
 		t.Fatalf("installed = %q error = %v", installed, err)
@@ -98,7 +98,7 @@ func TestVerifyPackageManagedVersionAcceptsNewerReleaseRace(t *testing.T) {
 }
 
 func TestPackageVersionFromOutput(t *testing.T) {
-	for _, output := range []string{"chatgpt-mcp version v0.2.18 (abc) now", "cgm version 0.2.18"} {
+	for _, output := range []string{"cm version v0.2.18 (abc) now", "cm version 0.2.18"} {
 		version, err := packageVersionFromOutput(output)
 		if err != nil || version != "v0.2.18" {
 			t.Fatalf("output = %q version = %q error = %v", output, version, err)
@@ -117,7 +117,7 @@ func TestPreparePackageUpgradeHandoffRejectsForegroundRuntime(t *testing.T) {
 func TestPackageUpgradePowerShellWaitsForParentAndUsesScoopAfterRuntimeStops(t *testing.T) {
 	plan, _ := updatepkg.PackageManagerPlanFor("scoop")
 	script := packageUpgradePowerShell(packageUpgradeHandoff{ParentPID: 1234, Plan: plan, Target: "v1.2.3", ConfigRoot: `C:\Users\Mew\.chatgpt-mcp`, Runtime: updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true}}, ScriptPath: `C:\Temp\upgrade.ps1`, LogPath: `C:\Temp\upgrade.log`})
-	for _, expected := range []string{"Wait-Process -Id $parentPid", "& cgm '--config-dir' 'C:\\Users\\Mew\\.chatgpt-mcp' 'down'", "& scoop update", "& scoop update mew/chatgpt-mcp", "$version = (& cgm --version | Out-String)", "$restartRuntime = $true", "& cgm '--config-dir' 'C:\\Users\\Mew\\.chatgpt-mcp' 'up'"} {
+	for _, expected := range []string{"Wait-Process -Id $parentPid", "& cm '--config-dir' 'C:\\Users\\Mew\\.chatgpt-mcp' 'down'", "& scoop update", "& scoop update mew/chatgpt-mcp", "$version = (& cm --version | Out-String)", "$restartRuntime = $true", "& cm '--config-dir' 'C:\\Users\\Mew\\.chatgpt-mcp' 'up'"} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("script missing %q:\n%s", expected, script)
 		}
@@ -127,7 +127,7 @@ func TestPackageUpgradePowerShellWaitsForParentAndUsesScoopAfterRuntimeStops(t *
 func TestPackageUpgradeShellRestoresSystemRuntime(t *testing.T) {
 	plan, _ := updatepkg.PackageManagerPlanFor("homebrew")
 	script := packageUpgradeShell(packageUpgradeHandoff{ParentPID: 1234, Plan: plan, Target: "v1.2.3", ConfigRoot: "/etc/chatgpt-mcp", Runtime: updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true, ServiceScope: "system"}}, ScriptPath: "/tmp/upgrade.sh", LogPath: "/tmp/upgrade.log"})
-	for _, expected := range []string{"while kill -0 \"$parent_pid\"", "cgm '--config-dir' '/etc/chatgpt-mcp' 'down' '--system'", "brew update", "brew upgrade --cask chatgpt-mcp", "cgm '--config-dir' '/etc/chatgpt-mcp' 'up' '--system'"} {
+	for _, expected := range []string{"while kill -0 \"$parent_pid\"", "cm '--config-dir' '/etc/chatgpt-mcp' 'down' '--system'", "brew update", "brew upgrade --cask chatgpt-mcp", "cm '--config-dir' '/etc/chatgpt-mcp' 'up' '--system'"} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("script missing %q:\n%s", expected, script)
 		}

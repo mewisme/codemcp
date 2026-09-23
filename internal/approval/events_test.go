@@ -10,7 +10,7 @@ import (
 
 func TestApprovalLifecycleEventsAreDeduplicatedAndSafe(t *testing.T) {
 	manager := NewManager("instance-test")
-	challenge, _, err := manager.CreateChallenge(ChallengeInput{SessionID: "session-secret", SessionHash: "hash-session", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cgm update --token secret"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow cgm update"})
+	challenge, _, err := manager.CreateChallenge(ChallengeInput{SessionID: "session-secret", SessionHash: "hash-session", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --token secret"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow cm update"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,12 +28,12 @@ func TestApprovalLifecycleEventsAreDeduplicatedAndSafe(t *testing.T) {
 	if _, err := manager.Approve(request.ID, "admin", "reviewed"); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = manager.MatchApproved(RetryInput{SessionID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cgm update --changed"}})
+	_, _, err = manager.MatchApproved(RetryInput{SessionID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --changed"}})
 	var mismatch *MismatchError
 	if !errors.As(err, &mismatch) {
 		t.Fatalf("mismatch err=%v", err)
 	}
-	if _, matched, err := manager.ClaimApproved(RetryInput{SessionID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cgm update --token secret"}}); err != nil || !matched {
+	if _, matched, err := manager.ClaimApproved(RetryInput{SessionID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --token secret"}}); err != nil || !matched {
 		t.Fatalf("claim matched=%t err=%v", matched, err)
 	}
 	events = manager.Events().Recent(10)
@@ -52,7 +52,7 @@ func TestApprovalExpiryPublishesLifecycleEvent(t *testing.T) {
 	manager := NewManager("instance-test")
 	now := time.Unix(1_700_000_000, 0).UTC()
 	manager.now = func() time.Time { return now }
-	challenge, _, err := manager.CreateChallenge(ChallengeInput{SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cgm update"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Update CodeMCP"})
+	challenge, _, err := manager.CreateChallenge(ChallengeInput{SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Update CodeMCP"})
 	if err != nil {
 		t.Fatal(err)
 	}

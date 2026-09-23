@@ -5,7 +5,7 @@ import "testing"
 func TestReadOnlyCommandPolicy(t *testing.T) {
 	for _, args := range [][]string{
 		{"status"}, {"config", "list"}, {"auth", "status"},
-		{"workspace", "access", "list", "ws_test"}, {"mcp", "server", "show", "server"}, {"tunnel", "status"}, {"alias", "status"}, {"upgrade", "check"}, {"update", "check"},
+		{"workspace", "access", "list", "ws_test"}, {"mcp", "server", "show", "server"}, {"tunnel", "status"}, {"upgrade", "check"}, {"update", "check"},
 		{"request", "list"}, {"request", "view", "req_test"}, {"req", "ls"}, {"req", "show", "req_test"}, {"req", "info", "req_test"},
 		{"st"}, {"cfg", "ls"}, {"ws", "access", "ls", "ws_test"}, {"mcp", "server", "st", "server"}, {"tunnel", "st"}, {"completion", "bash"},
 		{"--config-dir", "/tmp/config", "config", "get", "server.expose"}, {"--verbose", "status"}, {"--help"},
@@ -19,7 +19,7 @@ func TestReadOnlyCommandPolicy(t *testing.T) {
 		{"cfg", "set", "permissions.allow_dirs", "/tmp"}, {"ws", "register", "."},
 		{"auth", "mcp", "create"}, {"workspace", "register", "."}, {"workspace", "access", "add", "ws_test", "/tmp"},
 		{"request", "approve", "req_test"}, {"request", "deny", "req_test"}, {"request", "grant", "revoke", "req_test"}, {"req", "accept", "req_test"}, {"req", "allow", "req_test"}, {"req", "reject", "req_test"},
-		{"mcp", "server", "add", "server"}, {"tunnel", "enable"}, {"alias", "install"}, {"alias", "remove"}, {"upgrade"}, {"update"}, {"serve"}, {},
+		{"mcp", "server", "add", "server"}, {"tunnel", "enable"}, {"upgrade"}, {"update"}, {"serve"}, {},
 	} {
 		if IsReadOnlyArgs(args) {
 			t.Fatalf("mutating command allowed: %#v -> %q", args, PathFromArgs(args))

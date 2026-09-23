@@ -127,7 +127,7 @@ func ManagedRuntimeAction(ctx context.Context, action string, scope managed.Scop
 		return RuntimeActionResult{}, errors.New("system service scope is not supported on Windows; managed services use a per-user Scheduled Task")
 	}
 	if scope == managed.ScopeSystem && detectServiceScope() == managed.ScopeUser {
-		command := "cgm --config-dir " + strconv.Quote(config.RootPath()) + " " + action + " --system"
+		command := "cm --config-dir " + strconv.Quote(config.RootPath()) + " " + action + " --system"
 		return RuntimeActionResult{Action: action, Scope: scope, External: &ExternalCommand{Command: command, Reason: "System service changes require elevation outside the TUI."}}, nil
 	}
 	spec, manager, err := managedService(scope, "")
@@ -181,7 +181,7 @@ func prepareManagedSpec(spec managed.Spec) (managed.Spec, error) {
 		return spec, err
 	}
 	if !source.Exists {
-		return spec, errors.New("chatgpt-mcp is not initialized; run cgm init first")
+		return spec, errors.New("cm is not initialized; run cm init first")
 	}
 	if _, err := config.VerifyRuntime(); err != nil {
 		return spec, err

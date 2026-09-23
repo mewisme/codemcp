@@ -11,7 +11,7 @@ import (
 
 func TestExtractTarBinary(t *testing.T) {
 	archive := filepath.Join(t.TempDir(), "release.tar.gz")
-	writeTarArchive(t, archive, []tarEntry{{name: "LICENSE", content: []byte("license")}, {name: "chatgpt-mcp", content: []byte("binary")}})
+	writeTarArchive(t, archive, []tarEntry{{name: "LICENSE", content: []byte("license")}, {name: "cm", content: []byte("binary")}})
 	binary, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "chatgpt-mcp_1.0.0_linux_amd64.tar.gz")
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +27,7 @@ func TestExtractTarBinary(t *testing.T) {
 
 func TestExtractZipBinary(t *testing.T) {
 	archive := filepath.Join(t.TempDir(), "release.zip")
-	writeZipArchive(t, archive, []zipEntry{{name: "README.md", content: []byte("readme")}, {name: "chatgpt-mcp.exe", content: []byte("binary")}})
+	writeZipArchive(t, archive, []zipEntry{{name: "README.md", content: []byte("readme")}, {name: "cm.exe", content: []byte("binary")}})
 	binary, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "chatgpt-mcp_1.0.0_windows_amd64.zip")
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestExtractRejectsUnsafeArchivePaths(t *testing.T) {
 	for _, name := range []string{"../escape", "/absolute", `C:\\escape`} {
 		t.Run(name, func(t *testing.T) {
 			archive := filepath.Join(t.TempDir(), "release.tar.gz")
-			writeTarArchive(t, archive, []tarEntry{{name: name, content: []byte("bad")}, {name: "chatgpt-mcp", content: []byte("binary")}})
+			writeTarArchive(t, archive, []tarEntry{{name: name, content: []byte("bad")}, {name: "cm", content: []byte("binary")}})
 			if _, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "release.tar.gz"); err == nil {
 				t.Fatal("unsafe archive path was accepted")
 			}
@@ -61,7 +61,7 @@ func TestExtractRejectsArchiveSymlinks(t *testing.T) {
 	}
 	gz := gzip.NewWriter(file)
 	writer := tar.NewWriter(gz)
-	if err := writer.WriteHeader(&tar.Header{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "chatgpt-mcp", Mode: 0777}); err != nil {
+	if err := writer.WriteHeader(&tar.Header{Name: "link", Typeflag: tar.TypeSymlink, Linkname: "cm", Mode: 0777}); err != nil {
 		t.Fatal(err)
 	}
 	if err := writer.Close(); err != nil {
@@ -89,7 +89,7 @@ func TestExtractRejectsArchiveSymlinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := stream.Write([]byte("chatgpt-mcp.exe")); err != nil {
+	if _, err := stream.Write([]byte("cm.exe")); err != nil {
 		t.Fatal(err)
 	}
 	if err := zipWriter.Close(); err != nil {
@@ -105,7 +105,7 @@ func TestExtractRejectsArchiveSymlinks(t *testing.T) {
 
 func TestExtractRequiresRootBinary(t *testing.T) {
 	archive := filepath.Join(t.TempDir(), "release.zip")
-	writeZipArchive(t, archive, []zipEntry{{name: "nested/chatgpt-mcp.exe", content: []byte("binary")}})
+	writeZipArchive(t, archive, []zipEntry{{name: "nested/cm.exe", content: []byte("binary")}})
 	if _, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "release.zip"); err == nil {
 		t.Fatal("nested binary was accepted")
 	}

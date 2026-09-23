@@ -17,7 +17,7 @@ func TestDefaultLayout(t *testing.T) {
 	if layout.Root != root || layout.Versions != filepath.Join(root, "versions") || layout.Current != filepath.Join(root, "current") || layout.State != filepath.Join(root, "state") || layout.UpdateCache != filepath.Join(root, "state", "update.json") {
 		t.Fatalf("unexpected install layout: %+v", layout)
 	}
-	if layout.CanonicalBinary != filepath.Join(home, ".local", "bin", "chatgpt-mcp") || layout.AliasPath != filepath.Join(home, ".local", "bin", "cgm") {
+	if layout.CanonicalBinary != filepath.Join(home, ".local", "bin", "cm") {
 		t.Fatalf("unexpected command paths: %+v", layout)
 	}
 }

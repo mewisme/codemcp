@@ -248,13 +248,13 @@ jobs:
         include:
           - name: Linux
             runner: ubuntu-latest
-            binary: chatgpt-mcp
+            binary: cm
           - name: Windows
             runner: windows-latest
-            binary: chatgpt-mcp.exe
+            binary: cm.exe
           - name: macOS
             runner: macos-latest
-            binary: chatgpt-mcp
+            binary: cm
     steps:
       - name: Skip heavy checks
         if: needs.changes.outputs.full != 'true'
@@ -301,10 +301,6 @@ jobs:
       - name: Local install smoke
         if: needs.changes.outputs.full == 'true'
         run: node scripts/install-local.mjs --from-dist
-
-      - name: Package alias smoke
-        if: needs.changes.outputs.full == 'true'
-        run: node --test scripts/prepare-package-aliases.test.mjs
 
       - name: Test
         if: needs.changes.outputs.full == 'true'
@@ -375,4 +371,4 @@ jobs:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
           CGO_ENABLED: 0
-        run: go build -trimpath -ldflags "-s -w" -o chatgpt-mcp ./
+        run: go build -trimpath -ldflags "-s -w" -o cm ./

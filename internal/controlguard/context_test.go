@@ -6,7 +6,7 @@ import (
 )
 
 func TestApprovalContextRoundTripAndCloning(t *testing.T) {
-	invocation := Invocation{Program: "cgm", Args: []string{"update"}, Command: "cgm update"}
+	invocation := Invocation{Program: "cm", Args: []string{"update"}, Command: "cm update"}
 	ctx := WithApproval(context.Background(), Approval{RequestID: "req_test", Capability: "cap_test", Invocation: invocation})
 	invocation.Args[0] = "changed"
 	value, ok := ApprovalFromContext(ctx)
@@ -41,7 +41,7 @@ func TestGrantContextRoundTrip(t *testing.T) {
 }
 
 func TestSameInvocationIsExact(t *testing.T) {
-	base := Invocation{Program: "cgm", Args: []string{"config", "set", "server.port", "41001"}, Command: "cgm config set server.port 41001"}
+	base := Invocation{Program: "cm", Args: []string{"config", "set", "server.port", "41001"}, Command: "cm config set server.port 41001"}
 	if !SameInvocation(base, base) {
 		t.Fatal("identical invocation did not match")
 	}

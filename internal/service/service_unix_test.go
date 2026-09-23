@@ -10,14 +10,14 @@ import (
 
 func TestStableBinaryPathPreservesLauncherSymlink(t *testing.T) {
 	dir := t.TempDir()
-	target := filepath.Join(dir, "versions", "v1", "chatgpt-mcp")
+	target := filepath.Join(dir, "versions", "v1", "cm")
 	if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("binary"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	launcher := filepath.Join(dir, "bin", "cgm")
+	launcher := filepath.Join(dir, "bin", "cm")
 	if err := os.MkdirAll(filepath.Dir(launcher), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestStableBinaryPathPreservesLauncherSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", filepath.Dir(launcher))
-	resolved, err := StableBinaryPath("cgm")
+	resolved, err := StableBinaryPath("cm")
 	if err != nil {
 		t.Fatal(err)
 	}

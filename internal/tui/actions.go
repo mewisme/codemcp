@@ -31,7 +31,7 @@ func defaultActionRegistry() *action.Registry {
 		navigationAction("app.go.logs-tools", "Tool Calls", Route{Kind: RouteLogsTools}, []string{"logs", "tools", "calls", "tool calls"}),
 		navigationAction("app.go.config", "Config", Route{Kind: RouteConfig}, []string{"config", "settings", "cfg"}, capability.ConfigPath, capability.ConfigGet),
 		navigationAction("app.go.instruction", "Instruction", Route{Kind: RouteInstruction}, []string{"instruction", "instructions", "global", "context", "rules", "sources"}),
-		navigationAction("app.go.runtime", "Runtime", Route{Kind: RouteRuntime}, []string{"runtime", "status", "service"}, capability.AuthStatus, capability.AliasStatus),
+		navigationAction("app.go.runtime", "Runtime", Route{Kind: RouteRuntime}, []string{"runtime", "status", "service"}, capability.AuthStatus),
 		navigationAction("app.go.about", "About", Route{Kind: RouteAbout}, []string{"about", "version", "build", "uptime"}, capability.VersionAbout),
 		navigationAction("app.go.guide", "Guide", Route{Kind: RouteGuide}, []string{"guide", "help", "docs", "documentation"}),
 	}
@@ -89,10 +89,7 @@ func systemActions() []action.Action {
 		systemAction("auth.admin.enable", "Enable admin authentication", "Enable admin token authentication", []string{"auth", "admin", "enable"}, []string{"auth", "admin", "enable"}, tuipage.AuthAdminEnable, false),
 		systemAction("auth.admin.disable", "Disable admin authentication", "Disable admin token authentication", []string{"auth", "admin", "disable"}, []string{"auth", "admin", "disable"}, tuipage.AuthAdminDisable, false),
 		systemAction("auth.admin.rotate", "Rotate admin token", "Rotate the admin token and reveal the replacement once", []string{"auth", "admin", "token", "rotate", "create"}, []string{"auth", "admin", "create"}, tuipage.AuthAdminRotate, false),
-		systemAction("alias.install", "Install cgm alias", "Install the cgm alias for the managed direct installation", []string{"alias", "cgm", "install"}, []string{"alias", "install"}, tuipage.AliasInstall, false),
-		systemAction("alias.remove", "Remove cgm alias", "Remove the cgm alias without removing the managed installation", []string{"alias", "cgm", "remove"}, []string{"alias", "remove"}, tuipage.AliasRemove, false),
 		editorNavigationAction("install.run", "Install managed binary", "System", "Install this binary into the versioned managed layout", []string{"install", "managed", "binary"}, []string{"install"}, func(ctx action.Context) bool { return ctx.Route == string(RouteRuntime) }, func(action.Context) Route { return Route{Kind: RouteRuntime, Action: "install"} }),
-		systemAction("install.cleanup", "Clean legacy installations", "Remove verified legacy standalone installations from PATH", []string{"install", "cleanup", "migrate", "legacy"}, []string{"install", "cleanup"}, tuipage.InstallCleanup, false),
 		systemAction("update.check", "Check for upgrades", "Check the latest available verified release", []string{"upgrade", "update", "check", "latest", "release"}, []string{"upgrade", "check"}, tuipage.UpdateCheck, false),
 		editorNavigationAction("update.apply", "Apply upgrade", "System", "Download, verify, install, and activate an upgrade", []string{"upgrade", "update", "apply", "install", "release"}, []string{"upgrade"}, func(ctx action.Context) bool { return ctx.Route == string(RouteRuntime) }, func(action.Context) Route { return Route{Kind: RouteRuntime, Action: "update"} }),
 	}
@@ -201,7 +198,7 @@ func tunnelActions() []action.Action {
 		}, func(ctx action.Context) Route {
 			return Route{Kind: RouteTunnels, ResourceID: ctx.ResourceID, Action: "edit"}
 		}),
-		editorNavigationAction("tunnel.managed.configure", "Use managed tunnel", "Tunnel", "Configure cgm to use the current managed tunnel", []string{"tunnel", "managed", "use", "select", "switch", "runtime"}, []string{"tunnel", "use"}, func(ctx action.Context) bool {
+		editorNavigationAction("tunnel.managed.configure", "Use managed tunnel", "Tunnel", "Configure cm to use the current managed tunnel", []string{"tunnel", "managed", "use", "select", "switch", "runtime"}, []string{"tunnel", "use"}, func(ctx action.Context) bool {
 			return ctx.Route == string(RouteTunnels) && ctx.ResourceID != "" && tunnelAdminReadAvailable()
 		}, func(ctx action.Context) Route {
 			return Route{Kind: RouteTunnels, ResourceID: ctx.ResourceID, Action: "configure"}

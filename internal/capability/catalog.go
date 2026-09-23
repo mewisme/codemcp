@@ -15,7 +15,6 @@ const RootPath = "<root>"
 const (
 	ServerForeground         ID = "server.foreground"
 	InstallRun               ID = "install.run"
-	InstallCleanup           ID = "install.cleanup"
 	UpdateApply              ID = "update.apply"
 	UpdateCheck              ID = "update.check"
 	ConfigInit               ID = "config.init"
@@ -43,9 +42,6 @@ const (
 	ConfigMigrateSecrets     ID = "config.migrate.secrets"
 	ConfigConvert            ID = "config.convert"
 	ConfigVerify             ID = "config.verify"
-	AliasInstall             ID = "alias.install"
-	AliasRemove              ID = "alias.remove"
-	AliasStatus              ID = "alias.status"
 	AuthMCPRotate            ID = "auth.mcp.rotate"
 	AuthMCPEnable            ID = "auth.mcp.enable"
 	AuthMCPDisable           ID = "auth.mcp.disable"
@@ -104,7 +100,7 @@ const (
 
 var specs = []Spec{
 	{ServerForeground, "serve", []string{RootPath}},
-	{InstallRun, "install", nil}, {InstallCleanup, "install cleanup", nil},
+	{InstallRun, "install", nil},
 	{UpdateApply, "upgrade", nil}, {UpdateCheck, "upgrade check", nil},
 	{ConfigInit, "init", nil}, {ConfigUninit, "uninit", nil},
 	{RuntimeUp, "up", nil}, {RuntimeDown, "down", nil}, {RuntimeRestart, "restart", nil},
@@ -114,7 +110,6 @@ var specs = []Spec{
 	{ConfigPath, "config path", nil}, {ConfigExport, "config export", nil}, {ConfigImport, "config import", nil},
 	{ConfigGet, "config get", []string{"config explain"}}, {ConfigList, "config list", nil}, {ConfigSet, "config set", nil}, {ConfigMigrate, "config migrate", nil},
 	{ConfigMigrateSecrets, "config migrate secrets", nil}, {ConfigConvert, "config convert", nil}, {ConfigVerify, "config verify", nil},
-	{AliasInstall, "alias install", nil}, {AliasRemove, "alias remove", nil}, {AliasStatus, "alias status", nil},
 	{AuthMCPRotate, "auth mcp create", nil}, {AuthMCPEnable, "auth mcp enable", nil}, {AuthMCPDisable, "auth mcp disable", nil},
 	{AuthAdminRotate, "auth admin create", nil}, {AuthAdminEnable, "auth admin enable", nil}, {AuthAdminDisable, "auth admin disable", nil}, {AuthStatus, "auth status", nil},
 	{WorkspaceContainerList, "workspace container list", nil}, {WorkspaceContainerCreate, "workspace container create", nil}, {WorkspaceContainerShow, "workspace container show", nil},

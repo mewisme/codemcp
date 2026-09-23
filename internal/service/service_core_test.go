@@ -24,7 +24,7 @@ func TestSpecHelpers(t *testing.T) {
 	if _, err := NewSpec("", binary, ScopeUser, Account{}); err == nil {
 		t.Fatal("empty config root accepted")
 	}
-	if _, err := StableBinaryPath("definitely-not-a-real-chatgpt-mcp-binary"); err == nil {
+	if _, err := StableBinaryPath("definitely-not-a-real-cm-binary"); err == nil {
 		t.Fatal("missing binary accepted")
 	}
 	spec.EnvironmentHash = "env-hash"
@@ -47,14 +47,14 @@ func TestRunCommand(t *testing.T) {
 	if _, ok := commandSucceeded("go", "env", "GOARCH"); !ok {
 		t.Fatal("expected successful command")
 	}
-	if _, ok := commandSucceeded("definitely-not-a-real-chatgpt-mcp-command"); ok {
+	if _, ok := commandSucceeded("definitely-not-a-real-cm-command"); ok {
 		t.Fatal("missing command succeeded")
 	}
 }
 
 func TestPrepareManagedBinaryStagesTransientGoBuildBinaryByContent(t *testing.T) {
 	root := t.TempDir()
-	source := filepath.Join(t.TempDir(), "go-build123", "b001", "exe", "chatgpt-mcp")
+	source := filepath.Join(t.TempDir(), "go-build123", "b001", "exe", "cm")
 	if err := os.MkdirAll(filepath.Dir(source), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestPrepareManagedBinaryStagesTransientGoBuildBinaryByContent(t *testing.T)
 }
 
 func TestPrepareManagedBinaryKeepsNormalBinaryPath(t *testing.T) {
-	source := filepath.Join(t.TempDir(), "chatgpt-mcp")
+	source := filepath.Join(t.TempDir(), "cm")
 	if err := os.WriteFile(source, []byte("installed-build"), 0755); err != nil {
 		t.Fatal(err)
 	}

@@ -89,11 +89,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Prepare package aliases
-        run: |
-          node scripts/prepare-package-aliases.mjs
-          node scripts/prepare-package-aliases.mjs --check
-
       - name: Attach package manifests
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

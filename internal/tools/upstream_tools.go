@@ -106,7 +106,7 @@ func RegisterUpstreamTools(registry *Registry, manager *upstream.Manager) {
 		return JSONResult(MCPToolsResult{ServerID: serverID, Tools: info, ProxiedTools: proxied, Count: len(values)}), nil
 	})
 
-	register("mcp_call", "MCP Upstream Call", "Invoke a tool on a configured upstream MCP server. Upstream tool semantics are external and are not workspace-enforced by chatgpt-mcp.", `{"type":"object","properties":{"server_id":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object","additionalProperties":true,"default":{}}},"required":["server_id","tool"],"additionalProperties":false}`, `{"type":"object","additionalProperties":true}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
+	register("mcp_call", "MCP Upstream Call", "Invoke a tool on a configured upstream MCP server. Upstream tool semantics are external and are not workspace-enforced by CodeMCP.", `{"type":"object","properties":{"server_id":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object","additionalProperties":true,"default":{}}},"required":["server_id","tool"],"additionalProperties":false}`, `{"type":"object","additionalProperties":true}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
 		serverID, err := requiredString(args, "server_id")
 		if err != nil {
 			return Result{}, err

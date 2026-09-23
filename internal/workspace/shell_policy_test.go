@@ -432,13 +432,12 @@ func TestShellPolicyBlocksChatGPTMCPControlPlaneMutations(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, command := range []string{
-		"cmcp config set permissions.allow_dirs /tmp",
-		"cgm config set permissions.allow_dirs /tmp",
-		"cgm config export backup.cgm",
-		"cgm config import backup.cgm",
-		"chatgpt-mcp auth mcp create",
-		"cmcp workspace access add ws_test /tmp",
-		"cgm update",
+		"cm config set permissions.allow_dirs /tmp",
+		"cm config export backup.cgm",
+		"cm config import backup.cgm",
+		"cm auth mcp create",
+		"cm workspace access add ws_test /tmp",
+		"cm update",
 	} {
 		err := manager.ValidateShellCommand(item.ID, root, command)
 		guard, ok := controlguard.As(err)
@@ -446,7 +445,7 @@ func TestShellPolicyBlocksChatGPTMCPControlPlaneMutations(t *testing.T) {
 			t.Fatalf("control-plane mutation was not denied: %s: %v", command, err)
 		}
 	}
-	for _, command := range []string{"exec cmcp auth admin disable", `bash -lc "cmcp config set server.port 41001"`, `cgm update && echo done`} {
+	for _, command := range []string{"exec cm auth admin disable", `bash -lc "cm config set server.port 41001"`, `cm update && echo done`} {
 		err := manager.ValidateShellCommand(item.ID, root, command)
 		guard, ok := controlguard.As(err)
 		if err == nil || !ok || guard.Code != controlguard.CodeControlPlaneMutation || guard.Approvable || guard.Invocation != nil {
@@ -454,11 +453,10 @@ func TestShellPolicyBlocksChatGPTMCPControlPlaneMutations(t *testing.T) {
 		}
 	}
 	for _, command := range []string{
-		"cmcp status",
-		"cgm status",
-		"cmcp config list",
-		"chatgpt-mcp auth status",
-		"cmcp workspace access list ws_test",
+		"cm status",
+		"cm config list",
+		"cm auth status",
+		"cm workspace access list ws_test",
 	} {
 		if err := manager.ValidateShellCommand(item.ID, root, command); err != nil {
 			t.Fatalf("read-only control-plane command rejected: %s: %v", command, err)
@@ -473,7 +471,7 @@ func TestShellPolicyAllowsOnlyExactApprovedDirectControlPlaneInvocation(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := "cgm config set server.port 41001"
+	command := "cm config set server.port 41001"
 	invocation, ok := DirectControlPlaneInvocation(command)
 	if !ok || invocation == nil {
 		t.Fatalf("invocation = %#v ok=%t", invocation, ok)
@@ -482,7 +480,7 @@ func TestShellPolicyAllowsOnlyExactApprovedDirectControlPlaneInvocation(t *testi
 	if err := manager.ValidateShellCommandContext(ctx, item.ID, root, command); err != nil {
 		t.Fatalf("exact approved invocation denied: %v", err)
 	}
-	for _, changed := range []string{"cgm config set server.port 41002", "cgm config set server.port 41001 && echo done", `bash -lc "cgm config set server.port 41001"`} {
+	for _, changed := range []string{"cm config set server.port 41002", "cm config set server.port 41001 && echo done", `bash -lc "cm config set server.port 41001"`} {
 		err := manager.ValidateShellCommandContext(ctx, item.ID, root, changed)
 		guard, typed := controlguard.As(err)
 		if err == nil || !typed || guard.Code != controlguard.CodeControlPlaneMutation {
@@ -498,14 +496,14 @@ func TestShellPolicyNeverApprovesRequestOrServiceCommands(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, command := range []string{"cgm request approve req_test", "cgm request deny req_test", "cgm request grant revoke req_test", "cgm req accept req_test", "cgm req allow req_test", "cgm req reject req_test", "cgm _service run"} {
+	for _, command := range []string{"cm request approve req_test", "cm request deny req_test", "cm request grant revoke req_test", "cm req accept req_test", "cm req allow req_test", "cm req reject req_test", "cm _service run"} {
 		err := manager.ValidateShellCommand(item.ID, root, command)
 		guard, ok := controlguard.As(err)
 		if err == nil || !ok || guard.Code != controlguard.CodeControlPlaneMutation || guard.Approvable || guard.Invocation != nil {
 			t.Fatalf("hard-denied command became approvable: %q -> %#v / %v", command, guard, err)
 		}
 	}
-	for _, command := range []string{"cgm request list", "cgm request view req_test", "cgm request grant list", "cgm req ls", "cgm req info req_test"} {
+	for _, command := range []string{"cm request list", "cm request view req_test", "cm request grant list", "cm req ls", "cm req info req_test"} {
 		if err := manager.ValidateShellCommand(item.ID, root, command); err != nil {
 			t.Fatalf("read-only request command rejected: %q -> %v", command, err)
 		}
@@ -603,7 +601,7 @@ func TestSimilarCommandPatternIsConservative(t *testing.T) {
 			t.Fatalf("SimilarCommandPattern(%q)=(%q,%t), want %q", command, pattern, ok, want)
 		}
 	}
-	for _, command := range []string{"git", "rm -rf build", "cgm update", "git push && rm -rf build"} {
+	for _, command := range []string{"git", "rm -rf build", "cm update", "git push && rm -rf build"} {
 		if pattern, ok := SimilarCommandPattern(command); ok {
 			t.Fatalf("unsafe/ambiguous command %q produced pattern %q", command, pattern)
 		}

@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 func TestMCPToolContextAllowsOnlyReadOnlyCLICommands(t *testing.T) {
 	t.Setenv(controlplane.ToolContextEnv, "1")
 	root := newRootCommand()
-	for _, path := range [][]string{{"status"}, {"config", "list"}, {"auth", "status"}, {"request", "list"}, {"request", "view"}, {"workspace", "access", "list"}, {"mcp", "server", "show"}, {"tunnel", "status"}, {"alias", "status"}, {"upgrade", "check"}, {"update", "check"}} {
+	for _, path := range [][]string{{"status"}, {"config", "list"}, {"auth", "status"}, {"request", "list"}, {"request", "view"}, {"workspace", "access", "list"}, {"mcp", "server", "show"}, {"tunnel", "status"}, {"upgrade", "check"}, {"update", "check"}} {
 		cmd, _, err := root.Find(path)
 		if err != nil {
 			t.Fatal(err)
@@ -43,7 +43,7 @@ func TestMCPToolContextAllowsOnlyReadOnlyCLICommands(t *testing.T) {
 			t.Fatalf("read-only command denied: %v: %v", path, err)
 		}
 	}
-	for _, path := range [][]string{{"install"}, {"upgrade"}, {"update"}, {"serve"}, {"up"}, {"down"}, {"_service", "run"}, {"logs", "clear", "--force"}, {"config", "set"}, {"config", "convert"}, {"config", "export"}, {"config", "import"}, {"auth", "mcp", "create"}, {"request", "approve"}, {"request", "deny"}, {"workspace", "access", "add"}, {"mcp", "server", "add"}, {"tunnel", "enable"}, {"alias", "install"}, {"alias", "remove"}} {
+	for _, path := range [][]string{{"install"}, {"upgrade"}, {"update"}, {"serve"}, {"up"}, {"down"}, {"_service", "run"}, {"logs", "clear", "--force"}, {"config", "set"}, {"config", "convert"}, {"config", "export"}, {"config", "import"}, {"auth", "mcp", "create"}, {"request", "approve"}, {"request", "deny"}, {"workspace", "access", "add"}, {"mcp", "server", "add"}, {"tunnel", "enable"}} {
 		cmd, _, err := root.Find(path)
 		if err != nil {
 			t.Fatal(err)
@@ -110,7 +110,7 @@ func TestMCPToolContextApprovalMismatchDoesNotBurnCapability(t *testing.T) {
 func mintToolContextCapability(t *testing.T, cliArgs []string) (*approval.Manager, string) {
 	t.Helper()
 	manager := approval.NewManager("instance-test")
-	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cgm " + strings.Join(cliArgs, " ")}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "denied", Title: "Allow command"})
+	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm " + strings.Join(cliArgs, " ")}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "denied", Title: "Allow command"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func mintToolContextCapability(t *testing.T, cliArgs []string) (*approval.Manage
 	if _, err := manager.Approve(request.ID, "test", ""); err != nil {
 		t.Fatal(err)
 	}
-	_, capability, matched, err := manager.ClaimApprovedCLI(approval.RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cgm " + strings.Join(cliArgs, " ")}}, approval.CLIInvocation{Program: "cgm", Args: cliArgs})
+	_, capability, matched, err := manager.ClaimApprovedCLI(approval.RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm " + strings.Join(cliArgs, " ")}}, approval.CLIInvocation{Program: "cm", Args: cliArgs})
 	if err != nil || !matched || capability == "" {
 		t.Fatalf("mint capability=%q matched=%t err=%v", capability, matched, err)
 	}

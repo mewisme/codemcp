@@ -55,7 +55,7 @@ func TestUpdaterApplyLatest(t *testing.T) {
 	binary, artifactDir := updateTestBinary(t, "new")
 	calls := 0
 	updater := Updater{Resolver: fakeResolver{latest: Release{Version: "v1.1.0"}}, Downloader: fakeArtifactSource{binary: binary, calls: &calls}}
-	result, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", NoAlias: true})
+	result, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestUpdaterResolvePlansUpdateWithoutDownloading(t *testing.T) {
 	installCurrentVersion(t, layout, "v1.0.0", "old")
 	calls := 0
 	updater := Updater{Resolver: fakeResolver{latest: Release{Version: "v1.1.0"}}, Downloader: fakeArtifactSource{calls: &calls}}
-	result, err := updater.Resolve(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", NoAlias: true})
+	result, err := updater.Resolve(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestUpdaterApplyUsesResolvedReleaseWithoutResolvingAgain(t *testing.T) {
 	calls := 0
 	release := Release{Version: "v1.1.0"}
 	updater := Updater{Resolver: failingResolver{}, Downloader: fakeArtifactSource{binary: binary, calls: &calls}}
-	result, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", NoAlias: true, ResolvedRelease: &release})
+	result, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", ResolvedRelease: &release})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestUpdaterNoopsWhenLatestIsNotNewer(t *testing.T) {
 			installCurrentVersion(t, layout, "v1.0.0", "current")
 			calls := 0
 			updater := Updater{Resolver: fakeResolver{latest: Release{Version: latest}}, Downloader: fakeArtifactSource{calls: &calls}}
-			result, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", NoAlias: true})
+			result, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -131,7 +131,7 @@ func TestUpdaterExplicitVersionAllowsDowngrade(t *testing.T) {
 	binary, _ := updateTestBinary(t, "downgrade")
 	calls := 0
 	resolver := fakeResolver{versions: map[string]Release{"v1.1.0": {Version: "v1.1.0"}}}
-	result, err := (Updater{Resolver: resolver, Downloader: fakeArtifactSource{binary: binary, calls: &calls}}).Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.2.0", TargetVersion: "1.1.0", NoAlias: true})
+	result, err := (Updater{Resolver: resolver, Downloader: fakeArtifactSource{binary: binary, calls: &calls}}).Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.2.0", TargetVersion: "1.1.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestUpdaterExplicitVersionRejectsResolverMismatch(t *testing.T) {
 	layout := updateTestLayout(t)
 	installCurrentVersion(t, layout, "v1.0.0", "current")
 	resolver := fakeResolver{versions: map[string]Release{"v1.1.0": {Version: "v1.2.0"}}}
-	if _, err := (Updater{Resolver: resolver}).Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", TargetVersion: "v1.1.0", NoAlias: true}); err == nil {
+	if _, err := (Updater{Resolver: resolver}).Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", TargetVersion: "v1.1.0"}); err == nil {
 		t.Fatal("resolver version mismatch was accepted")
 	}
 }
@@ -165,21 +165,17 @@ func TestUpdaterRefusesStaleRunningVersion(t *testing.T) {
 	}
 }
 
-func TestUpdaterPreservesMissingAlias(t *testing.T) {
+func TestUpdaterDoesNotCreateHistoricalAlias(t *testing.T) {
 	layout := updateTestLayout(t)
 	installCurrentVersion(t, layout, "v1.0.0", "old")
 	binary, _ := updateTestBinary(t, "new")
 	calls := 0
 	updater := Updater{Resolver: fakeResolver{latest: Release{Version: "v1.1.0"}}, Downloader: fakeArtifactSource{binary: binary, calls: &calls}}
-	if _, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", NoAlias: true}); err != nil {
+	if _, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"}); err != nil {
 		t.Fatal(err)
 	}
-	status, err := install.StatusAlias(layout)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.State != install.AliasMissing {
-		t.Fatalf("alias state = %q", status.State)
+	if _, err := os.Lstat(filepath.Join(layout.BinDir, "cgm")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("historical alias unexpectedly created: %v", err)
 	}
 }
 
@@ -189,7 +185,7 @@ func TestUpdaterVerifiedReleaseDownloadActivates(t *testing.T) {
 	server, release := updateReleaseFixture(t, "v1.1.0", []byte("new-release"), true)
 	defer server.Close()
 	updater := Updater{Resolver: fakeResolver{latest: release}, Downloader: Downloader{HTTPClient: server.Client(), TempDir: t.TempDir(), SignatureVerifier: acceptTestSignature}}
-	result, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", NoAlias: true})
+	result, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +217,7 @@ func TestUpdaterBadChecksumNeverActivates(t *testing.T) {
 	server, release := updateReleaseFixture(t, "v1.1.0", []byte("new-release"), false)
 	defer server.Close()
 	updater := Updater{Resolver: fakeResolver{latest: release}, Downloader: Downloader{HTTPClient: server.Client(), TempDir: t.TempDir(), SignatureVerifier: acceptTestSignature}}
-	_, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", NoAlias: true})
+	_, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"})
 	if !errors.Is(err, ErrChecksumMismatch) {
 		t.Fatalf("error = %v", err)
 	}
@@ -252,7 +248,7 @@ func TestUpdaterApplyEmitsDeepTrace(t *testing.T) {
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
 	updater := Updater{Resolver: fakeResolver{latest: Release{Version: "v1.1.0", ArchiveName: "fixture"}}, Downloader: fakeArtifactSource{binary: binary, calls: &calls}}
-	if _, err := updater.Apply(ctx, ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0", NoAlias: true}); err != nil {
+	if _, err := updater.Apply(ctx, ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"update.apply.started", "update.current.read.completed", "update.target.resolve.completed", "update.artifact.download.completed", "update.install.completed", "update.apply.completed", "update.artifact.cleanup.completed"} {
@@ -312,7 +308,7 @@ func updateTestLayout(t *testing.T) install.Layout {
 func updateTestBinary(t *testing.T, content string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
-	path := filepath.Join(dir, "chatgpt-mcp")
+	path := filepath.Join(dir, "cm")
 	if err := os.WriteFile(path, []byte(content), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +318,7 @@ func updateTestBinary(t *testing.T, content string) (string, string) {
 func installCurrentVersion(t *testing.T, layout install.Layout, version, content string) {
 	t.Helper()
 	binary, _ := updateTestBinary(t, content)
-	if _, err := install.Install(install.Options{Layout: layout, Version: version, Source: binary, NoAlias: true}); err != nil {
+	if _, err := install.Install(install.Options{Layout: layout, Version: version, Source: binary}); err != nil {
 		t.Fatal(err)
 	}
 }

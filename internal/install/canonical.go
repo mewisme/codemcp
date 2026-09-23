@@ -3,6 +3,7 @@ package install
 import (
 	"errors"
 	"fmt"
+	"os"
 )
 
 var ErrCanonicalConflict = errors.New("canonical command path is occupied by another file")
@@ -60,4 +61,18 @@ func RemoveCanonical(layout Layout) (CanonicalStatus, error) {
 		return CanonicalStatus{}, err
 	}
 	return StatusCanonical(layout)
+}
+
+func ensureCurrentBinary(layout Layout) error {
+	if _, _, err := CurrentVersion(layout); err != nil {
+		return err
+	}
+	info, err := os.Stat(layout.CurrentBinary)
+	if err != nil {
+		return fmt.Errorf("current binary unavailable: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("current binary is not a regular file: %s", layout.CurrentBinary)
+	}
+	return nil
 }

@@ -20,7 +20,7 @@ func TerminalIO(in io.Reader, out io.Writer) bool {
 
 func Run(ctx context.Context, route Route, in io.Reader, out io.Writer) error {
 	if !TerminalIO(in, out) {
-		return errors.New("cgm tui requires terminal stdin and stdout")
+		return errors.New("cm tui requires terminal stdin and stdout")
 	}
 	if ctx == nil {
 		ctx = context.Background()

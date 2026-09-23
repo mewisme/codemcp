@@ -18,7 +18,7 @@ body:
     id: version
     attributes:
       label: Version
-      description: Output of `cgm version` (or install method / tag if the binary is unavailable).
+      description: Output of `cm version` (or install method / tag if the binary is unavailable).
       placeholder: e.g. v0.2.9
     validations:
       required: true
@@ -60,7 +60,7 @@ body:
     id: actual
     attributes:
       label: Actual behavior
-      description: Include relevant log snippets (`cgm logs --debug`) with secrets redacted.
+      description: Include relevant log snippets (`cm logs --debug`) with secrets redacted.
     validations:
       required: true
   - type: textarea

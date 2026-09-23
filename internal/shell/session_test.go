@@ -32,7 +32,7 @@ func TestShellEnvironmentForwardsOnlyContextApproval(t *testing.T) {
 		t.Fatalf("unapproved shell inherited capability %q", value)
 	}
 	ctx := controlguard.WithApproval(context.Background(), controlguard.Approval{
-		RequestID: "req_test", Capability: "cap_approved", Invocation: controlguard.Invocation{Program: "cgm", Args: []string{"update"}, Command: "cgm update"},
+		RequestID: "req_test", Capability: "cap_approved", Invocation: controlguard.Invocation{Program: "cm", Args: []string{"update"}, Command: "cm update"},
 	})
 	values := shellEnvironmentMap(ctx, nil)
 	if values[controlplane.ControlApprovalEnv] != "cap_approved" || values[controlplane.ToolContextEnv] != "1" {
@@ -69,7 +69,7 @@ func TestShellEnvironmentOutputIsDeterministic(t *testing.T) {
 }
 
 func TestApprovedControlPlaneCommandUsesCurrentExecutable(t *testing.T) {
-	invocation := controlguard.Invocation{Program: "cgm", Args: []string{"config", "set", "server.port", "41001"}, Command: "cgm config set server.port 41001"}
+	invocation := controlguard.Invocation{Program: "cm", Args: []string{"config", "set", "server.port", "41001"}, Command: "cm config set server.port 41001"}
 	ctx := controlguard.WithApproval(context.Background(), controlguard.Approval{RequestID: "req_test", Capability: "cap_test", Invocation: invocation})
 	cmd, err := commandForPlatform(ctx, invocation.Command)
 	if err != nil {
@@ -87,7 +87,7 @@ func TestApprovedControlPlaneCommandUsesCurrentExecutable(t *testing.T) {
 			t.Fatalf("arg %d = %q want %q", index, cmd.Args[index+1], invocation.Args[index])
 		}
 	}
-	if _, err := commandForPlatform(ctx, "cgm config set server.port 41002"); err == nil {
+	if _, err := commandForPlatform(ctx, "cm config set server.port 41002"); err == nil {
 		t.Fatal("changed approved shell command selected current executable")
 	}
 }

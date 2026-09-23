@@ -66,7 +66,7 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set",
 		Short: "Verify and store an OpenAI tunnel admin key",
-		Long:  "Verify Tunnels Manage access by listing an organization, workspace, or tenant scope, then store the admin key in the secret file store and verification scope in tunnel.<ext>. If no scope flag is provided, cgm first reuses a stored scope or derives one from the currently configured tunnel metadata.",
+		Long:  "Verify Tunnels Manage access by listing an organization, workspace, or tenant scope, then store the admin key in the secret file store and verification scope in tunnel.<ext>. If no scope flag is provided, cm first reuses a stored scope or derives one from the currently configured tunnel metadata.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.preparing", "Preparing tunnel admin key verification")
@@ -215,7 +215,7 @@ func tunnelGetCommand() *cobra.Command {
 		log.Success("TUNNEL", "managed tunnel loaded")
 		logManagedTunnelMetadata(log, metadata)
 		if configure {
-			log.Detail("cgm", "configured")
+			log.Detail("cm", "configured")
 		}
 		return nil
 	}}
@@ -243,7 +243,7 @@ func tunnelUseCommand() *cobra.Command {
 		log.Detail("enabled", true)
 		return nil
 	}}
-	cmd.Flags().StringVar(&runtimeAPIKey, "runtime-api-key", "", "runtime API key for cgm; defaults to the currently configured runtime key")
+	cmd.Flags().StringVar(&runtimeAPIKey, "runtime-api-key", "", "runtime API key for cm; defaults to the currently configured runtime key")
 	cmd.Flags().BoolVar(&autoRuntimeKey, "auto-runtime-key", false, "generate a Read + Use runtime key with the stored OpenAI admin key when no runtime key is configured")
 	cmd.Flags().StringVar(&projectID, "project-id", "", "OpenAI project used for automatic runtime key generation; defaults to the only active project or Default project")
 	return cmd
@@ -256,7 +256,7 @@ func tunnelCreateCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a tunnel with the stored verified admin key",
-		Long:  "Create tunnel metadata through the OpenAI Tunnel Management API. The stored admin key must already pass tunnel admin key verify. Use --configure to select the new tunnel for cgm with a separate runtime API key.",
+		Long:  "Create tunnel metadata through the OpenAI Tunnel Management API. The stored admin key must already pass tunnel admin key verify. Use --configure to select the new tunnel for cm with a separate runtime API key.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "TUNNEL", "tunnel.admin.create.preparing", "Preparing managed tunnel creation")
@@ -354,14 +354,14 @@ func tunnelDeleteCommand() *cobra.Command {
 		return nil
 	}}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "confirm permanent tunnel deletion")
-	cmd.Flags().BoolVar(&clearConfig, "clear-config", false, "clear cgm runtime tunnel config when deleting the selected tunnel")
+	cmd.Flags().BoolVar(&clearConfig, "clear-config", false, "clear cm runtime tunnel config when deleting the selected tunnel")
 	return cmd
 }
 
 func addManagedConfigureFlags(cmd *cobra.Command, configure *bool, runtimeAPIKey *string, enable *bool) {
-	cmd.Flags().BoolVar(configure, "configure", false, "configure cgm to use this tunnel")
-	cmd.Flags().StringVar(runtimeAPIKey, "runtime-api-key", "", "runtime API key for cgm; defaults to the currently configured runtime key")
-	cmd.Flags().BoolVar(enable, "enable", false, "enable the tunnel in cgm when used with --configure")
+	cmd.Flags().BoolVar(configure, "configure", false, "configure cm to use this tunnel")
+	cmd.Flags().StringVar(runtimeAPIKey, "runtime-api-key", "", "runtime API key for cm; defaults to the currently configured runtime key")
+	cmd.Flags().BoolVar(enable, "enable", false, "enable the tunnel in cm when used with --configure")
 }
 
 func configureManagedTunnel(cfg *config.Config, metadata tunnel.Metadata, runtimeAPIKey string, enable bool) error {
@@ -373,7 +373,7 @@ func configureManagedTunnel(cfg *config.Config, metadata tunnel.Metadata, runtim
 		key = strings.TrimSpace(cfg.Tunnel.APIKey)
 	}
 	if key == "" {
-		return errors.New("runtime API key is required to configure cgm; use --runtime-api-key or configure one first")
+		return errors.New("runtime API key is required to configure cm; use --runtime-api-key or configure one first")
 	}
 	cfg.Tunnel.ID = metadata.ID
 	cfg.Tunnel.APIKey = key
@@ -389,7 +389,7 @@ func configureManagedTunnel(cfg *config.Config, metadata tunnel.Metadata, runtim
 func logManagedTunnelDetails(log *logger.Logger, metadata tunnel.Metadata, configured bool) {
 	logManagedTunnelMetadata(log, metadata)
 	if configured {
-		log.Detail("cgm", "configured")
+		log.Detail("cm", "configured")
 	}
 }
 

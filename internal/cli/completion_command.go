@@ -17,7 +17,7 @@ func completionCommand() *cobra.Command {
 	var noDescriptions, goRun bool
 	cmd := &cobra.Command{
 		Use:               "completion <bash|zsh|fish|powershell>",
-		Short:             "Generate shell completion for chatgpt-mcp and cgm",
+		Short:             "Generate shell completion for cm",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeStatic(completionShells...),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -42,9 +42,6 @@ func completionCommand() *cobra.Command {
 				return err
 			}
 			generationSpan.EndMessage("Base shell completion script generated", tracepkg.Int("output_bytes", len(script)))
-			beforeAliases := script
-			script = registerCompletionAliases(shell, cmd.Root().Name(), script)
-			tracepkg.Emit(cmd.Context(), "COMPLETION", "completion.alias-transform", "Applied shell completion alias registration transform", tracepkg.String("shell", shell), tracepkg.Bool("transformed", script != beforeAliases), tracepkg.Int("before_bytes", len(beforeAliases)), tracepkg.Int("after_bytes", len(script)))
 			goRunBytes := 0
 			if goRun {
 				extension := goRunCompletion(shell, cmd.Root().Name())
@@ -93,44 +90,16 @@ func generateCompletion(root *cobra.Command, shell string, descriptions bool) (s
 	return output.String(), err
 }
 
-func registerCompletionAliases(shell, root, script string) string {
-	const binary, alias = "chatgpt-mcp", "cgm"
-	switch shell {
-	case "bash":
-		script = strings.ReplaceAll(script, "-F __start_"+root+" "+root, "-F __start_"+root+" "+binary+" "+alias)
-	case "zsh":
-		script = strings.Replace(script, "#compdef "+root, "#compdef "+binary+" "+alias, 1)
-		script = strings.Replace(script, "compdef _"+root+" "+root, "compdef _"+root+" "+binary+" "+alias, 1)
-	case "fish":
-		lines := strings.Split(script, "\n")
-		for index, line := range lines {
-			needle := "-c " + root
-			if !strings.Contains(line, needle) {
-				continue
-			}
-			other := alias
-			if root == alias {
-				other = binary
-			}
-			lines[index] = line + "\n" + strings.Replace(line, needle, "-c "+other, 1)
-		}
-		script = strings.Join(lines, "\n")
-	case "powershell":
-		script = strings.Replace(script, "-CommandName '"+root+"'", "-CommandName '"+binary+"','"+alias+"'", 1)
-	}
-	return script
-}
-
 func goRunCompletion(shell, root string) string {
 	switch shell {
 	case "bash":
 		return fmt.Sprintf(`
 # Optional source-tree completion for direct "go run ." invocations.
-__chatgpt_mcp_previous_go_completion="$(complete -p go 2>/dev/null | sed -n 's/.* -F \([^ ]*\) .*/\1/p')"
-__chatgpt_mcp_go_run_completion() {
+__cm_previous_go_completion="$(complete -p go 2>/dev/null | sed -n 's/.* -F \([^ ]*\) .*/\1/p')"
+__cm_go_run_completion() {
     if [[ "${COMP_WORDS[1]}" != "run" || "${COMP_WORDS[2]}" != "." ]]; then
-        if [[ -n "${__chatgpt_mcp_previous_go_completion}" ]] && declare -F "${__chatgpt_mcp_previous_go_completion}" >/dev/null; then
-            "${__chatgpt_mcp_previous_go_completion}" "$@"
+        if [[ -n "${__cm_previous_go_completion}" ]] && declare -F "${__cm_previous_go_completion}" >/dev/null; then
+            "${__cm_previous_go_completion}" "$@"
         fi
         return
     fi
@@ -144,16 +113,16 @@ __chatgpt_mcp_go_run_completion() {
     COMP_CWORD=${saved_cword}
     return ${status}
 }
-complete -o default -o nospace -F __chatgpt_mcp_go_run_completion go
+complete -o default -o nospace -F __cm_go_run_completion go
 `, root)
 	case "zsh":
 		return fmt.Sprintf(`
 # Optional source-tree completion for direct "go run ." invocations.
-typeset -g __chatgpt_mcp_previous_go_completion="${_comps[go]}"
-__chatgpt_mcp_go_run_completion() {
+typeset -g __cm_previous_go_completion="${_comps[go]}"
+__cm_go_run_completion() {
     if [[ "${words[2]}" != "run" || "${words[3]}" != "." ]]; then
-        if [[ -n "${__chatgpt_mcp_previous_go_completion}" && "${__chatgpt_mcp_previous_go_completion}" != "__chatgpt_mcp_go_run_completion" ]]; then
-            "${__chatgpt_mcp_previous_go_completion}"
+        if [[ -n "${__cm_previous_go_completion}" && "${__cm_previous_go_completion}" != "__cm_go_run_completion" ]]; then
+            "${__cm_previous_go_completion}"
             return $?
         fi
         return 1
@@ -168,7 +137,7 @@ __chatgpt_mcp_go_run_completion() {
     CURRENT=${saved_current}
     return ${status}
 }
-compdef __chatgpt_mcp_go_run_completion go
+compdef __cm_go_run_completion go
 `, root)
 	default:
 		return ""

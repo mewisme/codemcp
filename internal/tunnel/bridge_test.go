@@ -238,7 +238,7 @@ func TestSDKBridgeApprovalFlowUsesSessionFallback(t *testing.T) {
 			return tools.JSONResult(map[string]any{"approved_request": requestID}), nil
 		}
 		command, _ := args["command"].(string)
-		return tools.Result{}, controlguard.New(controlguard.CodeControlPlaneMutation, "guarded action requires approval", true, &controlguard.Invocation{Program: "cgm", Args: []string{"update"}, Command: command})
+		return tools.Result{}, controlguard.New(controlguard.CodeControlPlaneMutation, "guarded action requires approval", true, &controlguard.Invocation{Program: "cm", Args: []string{"update"}, Command: command})
 	})
 	tools.RegisterApprovalTools(registry, runtime)
 	bridge, err := newSDKBridge(runtime)
@@ -256,7 +256,7 @@ func TestSDKBridgeApprovalFlowUsesSessionFallback(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer session.Close()
-	args := map[string]any{"workspace_id": item.ID, "command": "cgm update"}
+	args := map[string]any{"workspace_id": item.ID, "command": "cm update"}
 	guarded, err := session.CallTool(ctx, &sdkmcp.CallToolParams{Name: "guarded_action", Arguments: args})
 	if err != nil || !guarded.IsError {
 		t.Fatalf("guarded result=%#v err=%v", guarded, err)

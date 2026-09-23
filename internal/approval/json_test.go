@@ -8,7 +8,7 @@ import (
 
 func TestRequestAndChallengeJSONHidePrivateIdentity(t *testing.T) {
 	manager, _ := testManager()
-	input := testChallenge("raw-secret-session", "ws_x", "cgm update")
+	input := testChallenge("raw-secret-session", "ws_x", "cm update")
 	input.SessionHash = "session-fingerprint"
 	challenge, _, err := manager.CreateChallenge(input)
 	if err != nil {
@@ -27,7 +27,7 @@ func TestRequestAndChallengeJSONHidePrivateIdentity(t *testing.T) {
 		if strings.Contains(text, "raw-secret-session") || strings.Contains(text, request.Digest) || strings.Contains(text, challenge.Digest) {
 			t.Fatalf("%s leaked private identity: %s", name, text)
 		}
-		if !strings.Contains(text, `"arguments":{"command":"cgm update","workspace_id":"ws_x"}`) {
+		if !strings.Contains(text, `"arguments":{"command":"cm update","workspace_id":"ws_x"}`) {
 			t.Fatalf("%s missing structured arguments: %s", name, text)
 		}
 	}

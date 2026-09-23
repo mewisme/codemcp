@@ -14,7 +14,6 @@ import (
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
-	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/runtimecontrol"
 	managed "go.mewis.me/codemcp/internal/service"
 	updatepkg "go.mewis.me/codemcp/internal/update"
@@ -31,11 +30,11 @@ func TestRuntimePageBuildsSystemRows(t *testing.T) {
 		page.runtime.SystemService = application.ServiceOverview{Scope: managed.ScopeSystem, Supported: true}
 	}
 	page.auth = application.AuthStatus{MCPConfigured: true, MCPLegacyBearer: true, AdminConfigured: true}
-	page.install = application.InstallationOverview{AliasAvailable: true, Alias: install.AliasStatus{State: install.AliasMissing}}
+	page.install = application.InstallationOverview{}
 	page.about = application.AboutInfo{Version: "v1.2.3"}
 	page.rebuildBrowser("")
 	ids := map[string]bool{}
-	for _, id := range []string{"runtime", "transport.mcp-http", "service.user", "auth.mcp", "auth.admin", "installation", "alias", "update", "about"} {
+	for _, id := range []string{"runtime", "transport.mcp-http", "service.user", "auth.mcp", "auth.admin", "installation", "update", "about"} {
 		if !page.browser.SelectID(id) {
 			t.Fatalf("row missing: %s", id)
 		}
@@ -281,7 +280,7 @@ func TestRuntimeTokenRotationRequiresConfirmAndSecretIsTransient(t *testing.T) {
 func TestRuntimeExternalCommandUsesExplicitOverlay(t *testing.T) {
 	page, _ := NewRuntime(context.Background())
 	page.operationID = 4
-	external := &application.ExternalCommand{Command: "cgm upgrade", Reason: "requires elevation"}
+	external := &application.ExternalCommand{Command: "cm upgrade", Reason: "requires elevation"}
 	page.finishOperation(systemOperationMsg{id: 4, command: UpdateApply, external: external})
 	if page.overlay != systemOverlayExternal || page.external != external {
 		t.Fatalf("external workflow not surfaced: overlay=%v external=%#v", page.overlay, page.external)
@@ -306,7 +305,7 @@ func TestRuntimeForegroundUsesExplicitExternalWorkflow(t *testing.T) {
 	if page.overlay != systemOverlayExternal || page.external == nil {
 		t.Fatalf("foreground workflow not external: overlay=%v external=%#v", page.overlay, page.external)
 	}
-	if page.external.Command != "cgm serve" || !strings.Contains(page.external.Reason, "Exit the TUI") {
+	if page.external.Command != "cm serve" || !strings.Contains(page.external.Reason, "Exit the TUI") {
 		t.Fatalf("foreground workflow=%#v", page.external)
 	}
 }
@@ -317,8 +316,8 @@ func TestRuntimeMCPForegroundCommandsUseExplicitExternalWorkflow(t *testing.T) {
 		command SystemCommand
 		want    string
 	}{
-		{command: MCPStdioForeground, want: "cgm mcp stdio"},
-		{command: MCPHTTPForeground, want: "cgm mcp http"},
+		{command: MCPStdioForeground, want: "cm mcp stdio"},
+		{command: MCPHTTPForeground, want: "cm mcp http"},
 	} {
 		cmd, err := page.openCommand(test.command)
 		if err != nil || cmd != nil {

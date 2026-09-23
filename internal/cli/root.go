@@ -2,8 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,7 +40,6 @@ func newRootCommand() *cobra.Command {
 		requestCommand(),
 		tuiCommand(),
 		configCommand(),
-		aliasCommand(),
 		authCommand(),
 		workspaceCommand(),
 		upstreamCommand(),
@@ -52,23 +49,14 @@ func newRootCommand() *cobra.Command {
 		statusCommand(),
 		completionCommand(),
 		internalServiceCommand(),
-		&cobra.Command{Use: "version", Short: "Show the CodeMCP version and build information", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, args []string) {
+		&cobra.Command{Use: "version", Short: "Show the cm version and build information", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, args []string) {
 			commandLogger(cmd).Notice("VERSION", "cli.version", version.String())
 		}},
 	)
 	return cmd
 }
 
-func cliUseName() string {
-	if value := strings.ToLower(strings.TrimSpace(os.Getenv("CHATGPT_MCP_CLI_NAME"))); value == "cgm" {
-		return "cgm"
-	}
-	base := strings.ToLower(strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe"))
-	if base == "cgm" {
-		return "cgm"
-	}
-	return "chatgpt-mcp"
-}
+func cliUseName() string { return "cm" }
 
 func initCommand() *cobra.Command {
 	var force bool
@@ -110,7 +98,7 @@ func initCommand() *cobra.Command {
 func uninitCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "uninit",
-		Short: "Remove all local chatgpt-mcp configuration and state",
+		Short: "Remove all local CodeMCP configuration and state",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root := config.RootPath()
 			logCommandStep(cmd, "UNINIT", "uninit.removing", "Removing local configuration and state", logger.WithVerbose("root", root))

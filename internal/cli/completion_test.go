@@ -80,37 +80,34 @@ func TestDynamicEntityAndSessionCompletionUsesSelectedConfigRoot(t *testing.T) {
 	}
 }
 
-func TestCompletionScriptsRegisterBinaryAndAlias(t *testing.T) {
-	for _, rootName := range []string{"chatgpt-mcp", "cgm"} {
-		t.Run(rootName, func(t *testing.T) {
-			if rootName == "cgm" {
-				t.Setenv("CHATGPT_MCP_CLI_NAME", "cgm")
+func TestCompletionScriptsRegisterOnlyCM(t *testing.T) {
+	root := newRootCommand()
+	if root.Name() != "cm" {
+		t.Fatalf("root name=%q", root.Name())
+	}
+	for _, test := range []struct {
+		shell string
+		want  []string
+	}{
+		{shell: "bash", want: []string{"__start_cm", " cm"}},
+		{shell: "zsh", want: []string{"#compdef cm", "compdef _cm cm"}},
+		{shell: "fish", want: []string{"complete -c cm"}},
+		{shell: "powershell", want: []string{"-CommandName 'cm'"}},
+	} {
+		script, err := generateCompletion(root, test.shell, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range test.want {
+			if !strings.Contains(script, want) {
+				t.Fatalf("%s completion missing %q", test.shell, want)
 			}
-			root := newRootCommand()
-			if root.Name() != rootName {
-				t.Fatalf("root name=%q", root.Name())
+		}
+		for _, legacy := range []string{"chatgpt-mcp", "cgm", "cmcp"} {
+			if strings.Contains(script, legacy) {
+				t.Fatalf("%s completion unexpectedly registers legacy executable %q", test.shell, legacy)
 			}
-			for _, test := range []struct {
-				shell string
-				want  []string
-			}{
-				{shell: "bash", want: []string{"__start_" + rootName, "chatgpt-mcp cgm"}},
-				{shell: "zsh", want: []string{"#compdef chatgpt-mcp cgm", "compdef _" + rootName + " chatgpt-mcp cgm"}},
-				{shell: "fish", want: []string{"complete -c chatgpt-mcp", "complete -c cgm"}},
-				{shell: "powershell", want: []string{"-CommandName 'chatgpt-mcp','cgm'"}},
-			} {
-				script, err := generateCompletion(root, test.shell, true)
-				if err != nil {
-					t.Fatal(err)
-				}
-				script = registerCompletionAliases(test.shell, root.Name(), script)
-				for _, want := range test.want {
-					if !strings.Contains(script, want) {
-						t.Fatalf("%s completion missing %q", test.shell, want)
-					}
-				}
-			}
-		})
+		}
 	}
 }
 
@@ -118,9 +115,9 @@ func TestCompletionGoRunHooksUseDirectSourceInvocation(t *testing.T) {
 	for _, test := range []struct {
 		shell string
 		start string
-	}{{shell: "bash", start: "__start_chatgpt-mcp"}, {shell: "zsh", start: "_chatgpt-mcp"}} {
-		script := goRunCompletion(test.shell, "chatgpt-mcp")
-		for _, want := range []string{"go run .", test.start, "chatgpt_mcp_go_run_completion"} {
+	}{{shell: "bash", start: "__start_cm"}, {shell: "zsh", start: "_cm"}} {
+		script := goRunCompletion(test.shell, "cm")
+		for _, want := range []string{"go run .", test.start, "__cm_go_run_completion"} {
 			if !strings.Contains(script, want) {
 				t.Fatalf("%s go-run completion missing %q", test.shell, want)
 			}

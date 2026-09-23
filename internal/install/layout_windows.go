@@ -33,6 +33,4 @@ func defaultLayout(home, localAppData string) (Layout, error) {
 	return NewLayout(root, filepath.Join(root, "current"))
 }
 
-func platformBinaryNames() (string, string) {
-	return "chatgpt-mcp.exe", "cgm.cmd"
-}
+func platformBinaryName() string { return "cm.exe" }

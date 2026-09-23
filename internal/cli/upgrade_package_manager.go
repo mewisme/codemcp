@@ -185,7 +185,7 @@ func verifyPackageManagedVersion(ctx context.Context, target string, lookup pack
 		return "", "", err
 	}
 	var binary, commandName string
-	for _, name := range []string{"chatgpt-mcp", "cgm"} {
+	for _, name := range []string{"cm"} {
 		binary, err = lookup(name)
 		if err == nil {
 			commandName = name
@@ -193,7 +193,7 @@ func verifyPackageManagedVersion(ctx context.Context, target string, lookup pack
 		}
 	}
 	if err != nil {
-		return "", "", errors.New("updated chatgpt-mcp command was not found on PATH")
+		return "", "", errors.New("updated cm command was not found on PATH")
 	}
 	output, err := readVersion(ctx, commandName)
 	if err != nil {
@@ -216,10 +216,8 @@ func verifyPackageManagedVersion(ctx context.Context, target string, lookup pack
 func runPackageBinaryVersion(ctx context.Context, commandName string) (string, error) {
 	var process *exec.Cmd
 	switch commandName {
-	case "chatgpt-mcp":
-		process = exec.CommandContext(ctx, "chatgpt-mcp", "--version")
-	case "cgm":
-		process = exec.CommandContext(ctx, "cgm", "--version")
+	case "cm":
+		process = exec.CommandContext(ctx, "cm", "--version")
 	default:
 		return "", fmt.Errorf("unsupported package binary: %s", commandName)
 	}

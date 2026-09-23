@@ -114,7 +114,7 @@ func newManagedTunnelEditor(metadata tunnel.Metadata, create bool) (component.Ed
 			component.Text("Tenant IDs (one per line)", &data.TenantIDs),
 		))},
 		component.EditorSection{ID: "runtime", Title: "Runtime", Description: "Optionally select this tunnel for the local runtime after saving. Blank runtime key reuses the current secret.", Form: component.NewEditorForm(component.Group(
-			component.Switch("Configure cgm to use this tunnel", &data.Configure, "YES", "NO"),
+			component.Switch("Configure cm to use this tunnel", &data.Configure, "YES", "NO"),
 			component.PasswordInput("Runtime API key", &data.RuntimeAPIKey).Placeholder("Blank reuses the current runtime key."),
 			component.Switch("Enable tunnel after configure", &data.Enable, "ENABLED", "DISABLED"),
 		))},

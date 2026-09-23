@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { access, rm, symlink, writeFile } from "node:fs/promises"
-import { basename, delimiter, dirname, resolve } from "node:path"
+import { access } from "node:fs/promises"
+import { delimiter, dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import process from "node:process"
 import { spawnSync } from "node:child_process"
@@ -24,8 +24,7 @@ Default flow:
   1. pnpm --dir web install --frozen-lockfile
   2. pnpm --dir web build
   3. copy web/dist -> internal/web/dist
-  4. go install .
-  5. install cgm alias beside chatgpt-mcp
+  4. go build -o <GOBIN>/cm .
 
 Options:
   --no-deps       Skip pnpm install.
@@ -54,11 +53,9 @@ if (options.prepareOnly) {
   process.exit(0)
 }
 
-run(go, ["install", "."])
 const binaryPath = installedBinaryPath()
-const aliasPath = await installAlias(binaryPath)
+run(go, ["build", "-o", binaryPath, "."])
 console.log(`[OK] installed: ${binaryPath}`)
-console.log(`[OK] alias: ${aliasPath}`)
 
 async function requireFile(relative) {
   try {
@@ -82,26 +79,11 @@ function capture(command, commandArgs) {
 }
 
 function installedBinaryPath() {
-  const name = process.platform === "win32" ? "chatgpt-mcp.exe" : "chatgpt-mcp"
+  const name = process.platform === "win32" ? "cm.exe" : "cm"
   const gobin = capture(go, ["env", "GOBIN"])
   if (gobin) return resolve(gobin, name)
   const gopath = capture(go, ["env", "GOPATH"]).split(delimiter).filter(Boolean)[0]
   return gopath ? resolve(gopath, "bin", name) : name
-}
-
-async function installAlias(binaryPath) {
-  const dir = dirname(binaryPath)
-  if (process.platform === "win32") {
-    await rm(resolve(dir, "cmcp.cmd"), { force: true })
-    const aliasPath = resolve(dir, "cgm.cmd")
-    await writeFile(aliasPath, '@echo off\r\nset "CHATGPT_MCP_CLI_NAME=cgm"\r\n"%~dp0chatgpt-mcp.exe" %*\r\n', "ascii")
-    return aliasPath
-  }
-  await rm(resolve(dir, "cmcp"), { force: true })
-  const aliasPath = resolve(dir, "cgm")
-  await rm(aliasPath, { force: true })
-  await symlink(basename(binaryPath), aliasPath)
-  return aliasPath
 }
 
 function fail(message) {

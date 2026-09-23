@@ -21,7 +21,7 @@ func RegisterWorkspaceListTool(registry *Registry, runtime *Runtime) {
 	registry.MustRegister("workspace_list", Schema{
 		Name:         "workspace_list",
 		Title:        "List Workspaces",
-		Description:  "List workspaces registered on this chatgpt-mcp runtime.",
+		Description:  "List workspaces registered on this CodeMCP runtime.",
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","properties":{"workspaces":{"type":"array","items":{"type":"object","properties":{"workspace_id":{"type":"string"},"workspace_root":{"type":"string"}},"required":["workspace_id","workspace_root"],"additionalProperties":false}},"count":{"type":"integer"}},"required":["workspaces","count"],"additionalProperties":false}`),
 		Annotations:  ToolAnnotations(RiskRead),

@@ -116,7 +116,7 @@ func TestRuntimeControlConsumesOneShotCLIApproval(t *testing.T) {
 	manager := approval.NewManager("instance-test")
 	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{
 		SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command",
-		Arguments: map[string]any{"workspace_id": "ws_x", "command": "cgm update"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "denied", Title: "Allow cgm update",
+		Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "denied", Title: "Allow cm update",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestRuntimeControlConsumesOneShotCLIApproval(t *testing.T) {
 	if _, err := manager.Approve(request.ID, "test", ""); err != nil {
 		t.Fatal(err)
 	}
-	_, capability, matched, err := manager.ClaimApprovedCLI(approval.RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cgm update"}}, approval.CLIInvocation{Program: "cgm", Args: []string{"update"}})
+	_, capability, matched, err := manager.ClaimApprovedCLI(approval.RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}, approval.CLIInvocation{Program: "cm", Args: []string{"update"}})
 	if err != nil || !matched || capability == "" {
 		t.Fatalf("claim capability=%q matched=%t err=%v", capability, matched, err)
 	}
@@ -156,8 +156,8 @@ func TestRuntimeControlRequestListViewApproveAndDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := approval.NewManager("instance-test")
-	first := seedApprovalRequest(t, manager, "session-a", "ws_a", "cgm update")
-	second := seedApprovalRequest(t, manager, "session-b", "ws_b", "cgm install")
+	first := seedApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
+	second := seedApprovalRequest(t, manager, "session-b", "ws_b", "cm install")
 	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -195,7 +195,7 @@ func TestRuntimeControlListsApprovalAfterWaiterCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := approval.NewManager("instance-test")
-	request := seedApprovalRequest(t, manager, "session-a", "ws_a", "cgm update")
+	request := seedApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
 	waitCtx, cancelWait := context.WithCancel(context.Background())
 	cancelWait()
 	if value, err := manager.Wait(waitCtx, request.ID); !errors.Is(err, context.Canceled) || value.Status != approval.StatusPending {

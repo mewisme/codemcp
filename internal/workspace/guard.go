@@ -394,7 +394,7 @@ func externalAccessReasonForInvocation(name string, args []string) (string, bool
 		if packageManagerMutation(args) {
 			return "package-manager network access", true
 		}
-	case "cgm", "cmcp", "chatgpt-mcp":
+	case "cm":
 		if firstCommandArg(args) == "update" {
 			return "control-plane update access", true
 		}

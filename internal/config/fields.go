@@ -233,13 +233,13 @@ func SetValue(cfg *Config, key, raw string) error {
 	case "tunnel.api_key":
 		cfg.Tunnel.APIKey = raw
 	case "tunnel.admin_key", "tunnel.admin_organization_id", "tunnel.admin_workspace_id", "tunnel.admin_tenant_id":
-		return errors.New("tunnel admin credentials cannot be set through config; use chatgpt-mcp tunnel admin key")
+		return errors.New("tunnel admin credentials cannot be set through config; use cm tunnel admin key")
 	case "tunnel.control_plane_base_url":
 		cfg.Tunnel.ControlPlaneBaseURL = raw
 	case "tunnel.organization_id":
 		cfg.Tunnel.OrganizationID = raw
 	case "auth.mcp_token_hash", "auth.admin_token_hash":
-		return errors.New("token hashes cannot be set through config; use chatgpt-mcp auth <mcp|admin> create")
+		return errors.New("token hashes cannot be set through config; use cm auth <mcp|admin> create")
 	default:
 		return fmt.Errorf("unsupported config key: %s", key)
 	}

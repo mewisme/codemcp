@@ -454,10 +454,10 @@ func ValidateRuntimeOwner(status runtimecontrol.RuntimeStatus, running bool, spe
 		return nil
 	}
 	if status.ServiceScope == string(ScopeSystem) && spec.Scope == ScopeUser {
-		return fmt.Errorf("runtime is managed by a system service; use cgm %s --system", action)
+		return fmt.Errorf("runtime is managed by a system service; use cm %s --system", action)
 	}
 	if status.ServiceScope == string(ScopeUser) && spec.Scope == ScopeSystem {
-		return fmt.Errorf("runtime is managed by a user service; use cgm %s", action)
+		return fmt.Errorf("runtime is managed by a user service; use cm %s", action)
 	}
 	return fmt.Errorf("another managed service is already running for this config (service %s, pid %d)", status.ServiceID, status.PID)
 }

@@ -550,7 +550,7 @@ func (page *TunnelPage) openCommand(command TunnelCommand, resourceID string) (t
 			return tunnelOperationMsg{command: command, dashboard: dashboard, err: err}
 		}), nil
 	case TunnelForeground:
-		page.external = &application.ExternalCommand{Command: "cgm tunnel run", Reason: "The foreground tunnel owns the terminal. Exit the TUI before starting it."}
+		page.external = &application.ExternalCommand{Command: "cm tunnel run", Reason: "The foreground tunnel owns the terminal. Exit the TUI before starting it."}
 		page.overlay = tunnelOverlayExternal
 		return nil, nil
 	case TunnelSync:

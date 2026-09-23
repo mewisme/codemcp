@@ -25,7 +25,7 @@ type OAuthLoginRequiredError struct {
 }
 
 func (e *OAuthLoginRequiredError) Error() string {
-	message := fmt.Sprintf("upstream OAuth authorization required for %s; run: chatgpt-mcp mcp server auth login %s", e.ServerID, e.ServerID)
+	message := fmt.Sprintf("upstream OAuth authorization required for %s; run: cm mcp server auth login %s", e.ServerID, e.ServerID)
 	var status *HTTPStatusError
 	if errors.As(e.Cause, &status) && len(status.WWWAuthenticate) > 0 {
 		message += "; challenge: " + strings.Join(status.WWWAuthenticate, ", ")

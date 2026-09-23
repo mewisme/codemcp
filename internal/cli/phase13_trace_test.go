@@ -27,7 +27,7 @@ func TestCompletionTraceKeepsMachineOutputClean(t *testing.T) {
 	if out.Len() == 0 || !strings.Contains(out.String(), "complete") {
 		t.Fatalf("completion output is invalid: %q", out.String())
 	}
-	for _, traceName := range []string{"completion.generate", "completion.alias-transform", "completion.go-run-extension"} {
+	for _, traceName := range []string{"completion.generate", "completion.go-run-extension"} {
 		if strings.Contains(out.String(), traceName) {
 			t.Fatalf("completion trace leaked into stdout: %q", out.String())
 		}
@@ -35,9 +35,6 @@ func TestCompletionTraceKeepsMachineOutputClean(t *testing.T) {
 	events := collector.Snapshot()
 	if !serverTraceHasFields(events, "completion.generate.completed", map[string]any{"shell": "bash", "descriptions_enabled": true, "go_run_added": true, "output_bytes": out.Len()}) {
 		t.Fatalf("missing completion output trace: %#v", events)
-	}
-	if !serverTraceHasFields(events, "completion.alias-transform", map[string]any{"shell": "bash", "transformed": true}) {
-		t.Fatalf("missing completion alias transform trace: %#v", events)
 	}
 	if !serverTraceHasFields(events, "completion.go-run-extension", map[string]any{"shell": "bash", "requested": true, "supported": true, "added": true}) {
 		t.Fatalf("missing go-run completion trace: %#v", events)

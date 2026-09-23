@@ -41,7 +41,7 @@ func newApprovalRuntime(t *testing.T) (*Runtime, string) {
 			return JSONResult(map[string]any{"approved_request": requestID, "command": args["command"]}), nil
 		}
 		command, _ := args["command"].(string)
-		return Result{}, controlguard.New(controlguard.CodeControlPlaneMutation, "guarded action requires approval", true, &controlguard.Invocation{Program: "cgm", Args: []string{"update"}, Command: command})
+		return Result{}, controlguard.New(controlguard.CodeControlPlaneMutation, "guarded action requires approval", true, &controlguard.Invocation{Program: "cm", Args: []string{"update"}, Command: command})
 	})
 	registry.MustRegister("hard_guarded_action", Schema{Name: "hard_guarded_action", InputSchema: guardedSchema.InputSchema}, func(context.Context, map[string]any) (Result, error) {
 		return Result{}, controlguard.New(controlguard.CodeProtectedState, "protected state access denied", false, nil)
@@ -102,17 +102,17 @@ func approvalContext(sessionID string) context.Context {
 func TestRuntimeGuardChallengeApprovalAndExactOneShotRetry(t *testing.T) {
 	runtime, workspaceID := newApprovalRuntime(t)
 	ctx := approvalContext("session-a")
-	args := map[string]any{"workspace_id": workspaceID, "command": "cgm update"}
+	args := map[string]any{"workspace_id": workspaceID, "command": "cm update"}
 	first, err := runtime.Call(ctx, "guarded_action", args)
 	if err != nil || !first.IsError {
 		t.Fatalf("guarded call = %#v err=%v", first, err)
 	}
 	challenge, ok := first.StructuredContent.(approvalRequiredResponse)
-	if !ok || challenge.Code != "approval_required" || challenge.ChallengeID == "" || challenge.WorkspaceID != workspaceID || challenge.TargetTool != "guarded_action" || challenge.Command != "cgm update" || challenge.RequestTool != ApprovalRequestToolName {
+	if !ok || challenge.Code != "approval_required" || challenge.ChallengeID == "" || challenge.WorkspaceID != workspaceID || challenge.TargetTool != "guarded_action" || challenge.Command != "cm update" || challenge.RequestTool != ApprovalRequestToolName {
 		t.Fatalf("challenge = %#v", first.StructuredContent)
 	}
 	arguments, ok := challenge.Arguments.(map[string]any)
-	if !ok || arguments["workspace_id"] != workspaceID || arguments["command"] != "cgm update" {
+	if !ok || arguments["workspace_id"] != workspaceID || arguments["command"] != "cm update" {
 		t.Fatalf("challenge arguments = %#v", challenge.Arguments)
 	}
 
@@ -122,7 +122,7 @@ func TestRuntimeGuardChallengeApprovalAndExactOneShotRetry(t *testing.T) {
 		approvalCall <- approvalToolCallResult{result: result, err: err}
 	}()
 	request := waitForPendingApproval(t, runtime.Approvals)
-	if request.Title != "Update CodeMCP" || request.Command != "cgm update" {
+	if request.Title != "Update CodeMCP" || request.Command != "cm update" {
 		t.Fatalf("request summary/command = %#v", request)
 	}
 	if _, err := runtime.Approvals.Approve(request.ID, "test", "reviewed"); err != nil {
@@ -137,12 +137,12 @@ func TestRuntimeGuardChallengeApprovalAndExactOneShotRetry(t *testing.T) {
 		t.Fatalf("approval resolution = %#v", approved.result.StructuredContent)
 	}
 
-	retry, err := runtime.Call(ctx, "guarded_action", map[string]any{"command": "cgm update", "workspace_id": workspaceID})
+	retry, err := runtime.Call(ctx, "guarded_action", map[string]any{"command": "cm update", "workspace_id": workspaceID})
 	if err != nil || retry.IsError {
 		t.Fatalf("approved retry = %#v err=%v", retry, err)
 	}
 	payload, ok := retry.StructuredContent.(map[string]any)
-	if !ok || payload["approved_request"] != request.ID || payload["command"] != "cgm update" {
+	if !ok || payload["approved_request"] != request.ID || payload["command"] != "cm update" {
 		t.Fatalf("approved retry payload = %#v", retry.StructuredContent)
 	}
 	consumed, ok := runtime.Approvals.Get(request.ID)
@@ -199,7 +199,7 @@ func TestWorkspaceRegisterRequiresLocalApproval(t *testing.T) {
 func TestRuntimeApprovalMismatchDoesNotConsumeGrant(t *testing.T) {
 	runtime, workspaceID := newApprovalRuntime(t)
 	ctx := approvalContext("session-a")
-	args := map[string]any{"workspace_id": workspaceID, "command": "cgm update"}
+	args := map[string]any{"workspace_id": workspaceID, "command": "cm update"}
 	first, _ := runtime.Call(ctx, "guarded_action", args)
 	challenge := first.StructuredContent.(approvalRequiredResponse)
 	request, _, err := runtime.Approvals.CreateRequestWithTitle(challenge.ChallengeID, "session-a", workspaceID, "Update CodeMCP")
@@ -209,7 +209,7 @@ func TestRuntimeApprovalMismatchDoesNotConsumeGrant(t *testing.T) {
 	if _, err := runtime.Approvals.Approve(request.ID, "test", ""); err != nil {
 		t.Fatal(err)
 	}
-	mismatched, err := runtime.Call(ctx, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cgm update --version v2.0.0"})
+	mismatched, err := runtime.Call(ctx, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cm update --version v2.0.0"})
 	if err != nil || !mismatched.IsError {
 		t.Fatalf("mismatch = %#v err=%v", mismatched, err)
 	}
@@ -263,7 +263,7 @@ func TestApprovalRequestToolDenyAndCancellation(t *testing.T) {
 	t.Run("deny", func(t *testing.T) {
 		runtime, workspaceID := newApprovalRuntime(t)
 		ctx := approvalContext("session-a")
-		guarded, _ := runtime.Call(ctx, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cgm update"})
+		guarded, _ := runtime.Call(ctx, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cm update"})
 		challenge := guarded.StructuredContent.(approvalRequiredResponse)
 		resultCh := make(chan approvalToolCallResult, 1)
 		go func() {
@@ -287,7 +287,7 @@ func TestApprovalRequestToolDenyAndCancellation(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		runtime, workspaceID := newApprovalRuntime(t)
 		base := approvalContext("session-a")
-		guarded, _ := runtime.Call(base, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cgm update"})
+		guarded, _ := runtime.Call(base, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cm update"})
 		challenge := guarded.StructuredContent.(approvalRequiredResponse)
 		ctx, cancel := context.WithCancel(base)
 		resultCh := make(chan approvalToolCallResult, 1)
@@ -308,7 +308,7 @@ func TestApprovalRequestToolDenyAndCancellation(t *testing.T) {
 		if _, err := runtime.Approvals.Approve(request.ID, "test", "reviewed after waiter detached"); err != nil {
 			t.Fatal(err)
 		}
-		retry, err := runtime.Call(base, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cgm update"})
+		retry, err := runtime.Call(base, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cm update"})
 		if err != nil || retry.IsError {
 			t.Fatalf("approved retry after waiter detached = %#v err=%v", retry, err)
 		}
@@ -322,7 +322,7 @@ func TestApprovalRequestRejectsFakeChallengeAndSessionMismatch(t *testing.T) {
 	if err != nil || !fake.IsError || !strings.Contains(fake.Content[0].Text, approval.ErrChallengeNotFound.Error()) {
 		t.Fatalf("fake challenge = %#v err=%v", fake, err)
 	}
-	guarded, _ := runtime.Call(ctxA, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cgm update"})
+	guarded, _ := runtime.Call(ctxA, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cm update"})
 	challenge := guarded.StructuredContent.(approvalRequiredResponse)
 	ctxB := approvalContext("session-b")
 	mismatch, err := runtime.Call(ctxB, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": challenge.ChallengeID, "title": "Update CodeMCP"})
@@ -345,15 +345,15 @@ func TestRuntimeDoesNotChallengeNonApprovableGuard(t *testing.T) {
 func TestShellControlGuardProducesChallengeOnlyForDirectLiteralCLI(t *testing.T) {
 	runtime, workspaceID := newApprovalShellRuntime(t)
 	ctx := approvalContext("session-a")
-	direct, err := runtime.Call(ctx, "run_command", map[string]any{"workspace_id": workspaceID, "command": "cgm update"})
+	direct, err := runtime.Call(ctx, "run_command", map[string]any{"workspace_id": workspaceID, "command": "cm update"})
 	if err != nil || !direct.IsError {
 		t.Fatalf("direct guard = %#v err=%v", direct, err)
 	}
 	challenge, ok := direct.StructuredContent.(approvalRequiredResponse)
-	if !ok || challenge.TargetTool != "run_command" || challenge.GuardCode != string(controlguard.CodeControlPlaneMutation) || challenge.Command != "cgm update" {
+	if !ok || challenge.TargetTool != "run_command" || challenge.GuardCode != string(controlguard.CodeControlPlaneMutation) || challenge.Command != "cm update" {
 		t.Fatalf("direct challenge = %#v", direct.StructuredContent)
 	}
-	for _, command := range []string{`bash -lc "cgm update"`, `exec cgm update`, `cgm update && echo done`, `unset CHATGPT_MCP_TOOL_CONTEXT`} {
+	for _, command := range []string{`bash -lc "cm update"`, `exec cm update`, `cm update && echo done`, `unset CHATGPT_MCP_TOOL_CONTEXT`} {
 		result, err := runtime.Call(ctx, "run_command", map[string]any{"workspace_id": workspaceID, "command": command})
 		if err != nil || !result.IsError {
 			t.Fatalf("hard denied command %q = %#v err=%v", command, result, err)
@@ -362,7 +362,7 @@ func TestShellControlGuardProducesChallengeOnlyForDirectLiteralCLI(t *testing.T)
 			t.Fatalf("hard denied command became approval challenge: %q -> %#v", command, result.StructuredContent)
 		}
 	}
-	background, err := runtime.Call(ctx, "start_process", map[string]any{"workspace_id": workspaceID, "command": "cgm update"})
+	background, err := runtime.Call(ctx, "start_process", map[string]any{"workspace_id": workspaceID, "command": "cm update"})
 	if err != nil || !background.IsError {
 		t.Fatalf("background guard = %#v err=%v", background, err)
 	}
@@ -434,7 +434,7 @@ func TestDestructiveShellApprovalIsExactOneShotAndWorkspaceBound(t *testing.T) {
 func TestApprovedShellRetryCarriesOneShotChildCapability(t *testing.T) {
 	runtime, workspaceID := newApprovalDispatchRuntime(t)
 	ctx := approvalContext("session-a")
-	args := map[string]any{"workspace_id": workspaceID, "command": "cgm update"}
+	args := map[string]any{"workspace_id": workspaceID, "command": "cm update"}
 	guarded, _ := runtime.Call(ctx, "run_command", args)
 	challenge := guarded.StructuredContent.(approvalRequiredResponse)
 	request, _, err := runtime.Approvals.CreateRequestWithTitle(challenge.ChallengeID, "session-a", workspaceID, "Update CodeMCP")
@@ -450,7 +450,7 @@ func TestApprovedShellRetryCarriesOneShotChildCapability(t *testing.T) {
 	}
 	payload := retry.StructuredContent.(map[string]any)
 	capability, _ := payload["capability"].(string)
-	if payload["request_id"] != request.ID || capability == "" || payload["command"] != "cgm update" {
+	if payload["request_id"] != request.ID || capability == "" || payload["command"] != "cm update" {
 		t.Fatalf("approved shell payload = %#v", payload)
 	}
 	value, ok := runtime.Approvals.Get(request.ID)

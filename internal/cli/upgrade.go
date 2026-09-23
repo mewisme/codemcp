@@ -14,7 +14,7 @@ import (
 func upgradeCommand() *cobra.Command {
 	var targetVersion string
 	var noRestart bool
-	cmd := &cobra.Command{Use: "upgrade", Aliases: []string{"update"}, Short: "Check for and install chatgpt-mcp upgrades", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "upgrade", Aliases: []string{"update", "upg"}, SuggestFor: []string{"upg"}, Short: "Check for and install cm upgrades", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "UPDATE", "update.installation.detecting", "Detecting current installation")
 		detection, err := install.DetectCurrent(version.Version)
 		if err != nil {
@@ -33,18 +33,11 @@ func upgradeCommand() *cobra.Command {
 		if err != nil {
 			return fmt.Errorf("managed direct installation not found: %w", err)
 		}
-		alias, err := install.StatusAlias(layout)
-		if err != nil {
-			return fmt.Errorf("inspect cgm alias state: %w", err)
-		}
-		if alias.State == install.AliasConflict {
-			return fmt.Errorf("cannot preserve cgm alias state: %w: %s", install.ErrAliasConflict, alias.Path)
-		}
 		updater := updatepkg.Updater{
 			Resolver:   updatepkg.Client{UserAgent: "chatgpt-mcp/" + version.Version},
 			Downloader: updatepkg.Downloader{UserAgent: "chatgpt-mcp/" + version.Version},
 		}
-		options := updatepkg.ApplyOptions{Layout: layout, CurrentVersion: version.Version, TargetVersion: targetVersion, NoAlias: alias.State == install.AliasMissing}
+		options := updatepkg.ApplyOptions{Layout: layout, CurrentVersion: version.Version, TargetVersion: targetVersion}
 		startCommandSpinner(cmd, log, "UPDATE", "update.checking", "Checking for updates")
 		plan, err := updater.Resolve(cmd.Context(), options)
 		if err != nil {

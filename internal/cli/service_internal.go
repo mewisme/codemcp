@@ -23,7 +23,7 @@ func internalServiceCommand() *cobra.Command {
 	var serviceID, serviceScope, environmentHash string
 	run := &cobra.Command{
 		Use:    "run",
-		Short:  "Run chatgpt-mcp as an internal managed service",
+		Short:  "Run CodeMCP as an internal managed service",
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

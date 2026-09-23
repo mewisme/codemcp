@@ -93,7 +93,7 @@ func LoadEnvironment(configRoot, expectedHash string) (EnvironmentSnapshot, erro
 		return EnvironmentSnapshot{}, fmt.Errorf("read managed environment: %w", err)
 	}
 	if expectedHash != "" && environmentHash(data) != expectedHash {
-		return EnvironmentSnapshot{}, errors.New("managed environment snapshot does not match service definition; run cgm up again")
+		return EnvironmentSnapshot{}, errors.New("managed environment snapshot does not match service definition; run cm up again")
 	}
 	var snapshot EnvironmentSnapshot
 	if err := json.Unmarshal(data, &snapshot); err != nil {

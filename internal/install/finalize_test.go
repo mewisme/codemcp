@@ -11,14 +11,14 @@ import (
 
 func TestRollbackResultRestoresCurrentAndMetadata(t *testing.T) {
 	layout := testLayout(t)
-	first, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: testBinary(t, "old"), NoAlias: true})
+	first, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: testBinary(t, "old")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.PreviousMetadata != nil {
 		t.Fatalf("first install previous metadata = %+v", first.PreviousMetadata)
 	}
-	second, err := Install(Options{Layout: layout, Version: "v1.1.0", Source: testBinary(t, "new"), NoAlias: true})
+	second, err := Install(Options{Layout: layout, Version: "v1.1.0", Source: testBinary(t, "new")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,13 +46,13 @@ func TestRollbackResultRestoresCurrentAndMetadata(t *testing.T) {
 
 func TestFinalizeResultKeepsCurrentAndPrevious(t *testing.T) {
 	layout := testLayout(t)
-	if _, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: testBinary(t, "oldest"), NoAlias: true}); err != nil {
+	if _, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: testBinary(t, "oldest")}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Install(Options{Layout: layout, Version: "v1.1.0", Source: testBinary(t, "old"), NoAlias: true}); err != nil {
+	if _, err := Install(Options{Layout: layout, Version: "v1.1.0", Source: testBinary(t, "old")}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := Install(Options{Layout: layout, Version: "v1.2.0", Source: testBinary(t, "new"), NoAlias: true})
+	result, err := Install(Options{Layout: layout, Version: "v1.2.0", Source: testBinary(t, "new")})
 	if err != nil {
 		t.Fatal(err)
 	}

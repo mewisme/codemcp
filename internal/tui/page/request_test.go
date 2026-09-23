@@ -23,8 +23,8 @@ import (
 
 func TestRequestsPageRefreshModesAndDeepLink(t *testing.T) {
 	now := time.Now().UTC()
-	pending := approval.Request{ID: "req_pending_full", Status: approval.StatusPending, WorkspaceID: "ws_a", Source: "tunnel", TargetTool: "run_command", Title: "Allow update", Command: "cgm update", Arguments: []byte(`{"workspace_id":"ws_a","command":"cgm update"}`), GuardReason: "guarded", CreatedAt: now, ExpiresAt: now.Add(time.Minute)}
-	approved := approval.Request{ID: "req_approved_full", Status: approval.StatusApproved, WorkspaceID: "ws_b", Source: "tunnel", TargetTool: "run_command", Title: "Allow install", Command: "cgm install", Arguments: []byte(`{"workspace_id":"ws_b","command":"cgm install"}`), CreatedAt: now.Add(-time.Minute), ExpiresAt: now, ResolvedAt: now, RetryUntil: now.Add(time.Minute)}
+	pending := approval.Request{ID: "req_pending_full", Status: approval.StatusPending, WorkspaceID: "ws_a", Source: "tunnel", TargetTool: "run_command", Title: "Allow update", Command: "cm update", Arguments: []byte(`{"workspace_id":"ws_a","command":"cm update"}`), GuardReason: "guarded", CreatedAt: now, ExpiresAt: now.Add(time.Minute)}
+	approved := approval.Request{ID: "req_approved_full", Status: approval.StatusApproved, WorkspaceID: "ws_b", Source: "tunnel", TargetTool: "run_command", Title: "Allow install", Command: "cm install", Arguments: []byte(`{"workspace_id":"ws_b","command":"cm install"}`), CreatedAt: now.Add(-time.Minute), ExpiresAt: now, ResolvedAt: now, RetryUntil: now.Add(time.Minute)}
 	server := newRequestPageServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/requests":
@@ -85,7 +85,7 @@ func TestRequestsPageRefreshModesAndDeepLink(t *testing.T) {
 	if strings.Contains(view, "Overview") {
 		t.Fatalf("request child repeated breadcrumb title: %q", view)
 	}
-	if strings.Contains(view, "cgm update") {
+	if strings.Contains(view, "cm update") {
 		t.Fatalf("overview still renders raw command: %q", view)
 	}
 	updated, _ = deep.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
@@ -121,7 +121,7 @@ func TestRequestsPageRefreshModesAndDeepLink(t *testing.T) {
 	updated, _ = command.Update(command.refreshCmd()())
 	command = updated.(*RequestsPage)
 	commandView := ansi.Strip(command.View(100, 28))
-	if command.codeViewer == nil || command.codeViewer.Content() != "cgm update" || !strings.Contains(commandView, "cgm update") {
+	if command.codeViewer == nil || command.codeViewer.Content() != "cm update" || !strings.Contains(commandView, "cm update") {
 		t.Fatalf("command child=%q viewer=%#v", commandView, command.codeViewer)
 	}
 
@@ -132,7 +132,7 @@ func TestRequestsPageRefreshModesAndDeepLink(t *testing.T) {
 	updated, _ = arguments.Update(arguments.refreshCmd()())
 	arguments = updated.(*RequestsPage)
 	argumentsView := ansi.Strip(arguments.View(100, 28))
-	if arguments.codeViewer == nil || !strings.Contains(arguments.codeViewer.Content(), `"command": "cgm update"`) || !strings.Contains(argumentsView, `"command": "cgm update"`) || strings.Contains(argumentsView, "v arguments") {
+	if arguments.codeViewer == nil || !strings.Contains(arguments.codeViewer.Content(), `"command": "cm update"`) || !strings.Contains(argumentsView, `"command": "cm update"`) || strings.Contains(argumentsView, "v arguments") {
 		t.Fatalf("arguments child=%q", argumentsView)
 	}
 
@@ -234,7 +234,7 @@ func TestRequestsPageDetailRefreshPreservesScrollOffset(t *testing.T) {
 
 func TestRequestsPageResolutionUsesRoutedEditorWithoutConfirmField(t *testing.T) {
 	now := time.Now().UTC()
-	request := approval.Request{ID: "req_pending", Status: approval.StatusPending, WorkspaceID: "ws_a", TargetTool: "run_command", Title: "Allow update", Arguments: []byte(`{"command":"cgm update"}`), CreatedAt: now, ExpiresAt: now.Add(time.Minute)}
+	request := approval.Request{ID: "req_pending", Status: approval.StatusPending, WorkspaceID: "ws_a", TargetTool: "run_command", Title: "Allow update", Arguments: []byte(`{"command":"cm update"}`), CreatedAt: now, ExpiresAt: now.Add(time.Minute)}
 	resolveCalls := 0
 	server := newRequestPageServer(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -513,9 +513,9 @@ func TestRequestArgumentsRenderExactValues(t *testing.T) {
 
 func TestRequestRowsSearchExactCommandSeparatelyFromTitle(t *testing.T) {
 	page, _ := NewRequests(t.Context(), "")
-	page.requests = []approval.Request{{ID: "req_search", Status: approval.StatusPending, Title: "Update CodeMCP", Command: "cgm update --channel beta"}}
+	page.requests = []approval.Request{{ID: "req_search", Status: approval.StatusPending, Title: "Update CodeMCP", Command: "cm update --channel beta"}}
 	rows := page.requestRows()
-	if len(rows) != 1 || !strings.Contains(rows[0].Search, "cgm update --channel beta") || strings.Contains(rows[0].Title, "cgm update") {
+	if len(rows) != 1 || !strings.Contains(rows[0].Search, "cm update --channel beta") || strings.Contains(rows[0].Title, "cm update") {
 		t.Fatalf("row=%#v", rows)
 	}
 }

@@ -17,12 +17,12 @@ func TestPolicyForInstallation(t *testing.T) {
 		command   string
 	}{
 		{"direct", install.Detection{Method: install.MethodDirect, Metadata: directMetadata}, PolicySelfUpdate, ""},
-		{"legacy-direct", install.Detection{Method: install.MethodDirect}, PolicyInstallFirst, "chatgpt-mcp install"},
-		{"homebrew", install.Detection{Method: install.MethodHomebrew}, PolicyDelegate, "cgm upgrade"},
-		{"scoop", install.Detection{Method: install.MethodScoop}, PolicyDelegate, "cgm upgrade"},
+		{"legacy-direct", install.Detection{Method: install.MethodDirect}, PolicyInstallFirst, "cm install"},
+		{"homebrew", install.Detection{Method: install.MethodHomebrew}, PolicyDelegate, "cm upgrade"},
+		{"scoop", install.Detection{Method: install.MethodScoop}, PolicyDelegate, "cm upgrade"},
 		{"go", install.Detection{Method: install.MethodGo}, PolicyUnsupported, ""},
 		{"development", install.Detection{Method: install.MethodDevelopment}, PolicyUnsupported, ""},
-		{"standalone", install.Detection{Method: install.MethodStandalone}, PolicyInstallFirst, "chatgpt-mcp install"},
+		{"standalone", install.Detection{Method: install.MethodStandalone}, PolicyInstallFirst, "cm install"},
 		{"unknown", install.Detection{Method: install.MethodUnknown}, PolicyUnsupported, ""},
 	}
 	for _, test := range tests {

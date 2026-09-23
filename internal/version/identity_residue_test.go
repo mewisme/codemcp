@@ -34,6 +34,9 @@ func TestRepositoryIdentityHasNoLegacyLinksOutsideMigrationFixtures(t *testing.T
 		}
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
 			t.Fatalf("read tracked file %s: %v", relative, err)
 		}
 		for _, forbidden := range forbiddenRepositoryIdentities {

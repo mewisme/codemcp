@@ -96,7 +96,7 @@ func TestManagedRuntimeActionStagesTransientGoRunBinary(t *testing.T) {
 		t.Skip("go-run staging path assertion is platform-specific")
 	}
 	root := t.TempDir()
-	source := filepath.Join(t.TempDir(), "go-build123", "b001", "exe", "chatgpt-mcp")
+	source := filepath.Join(t.TempDir(), "go-build123", "b001", "exe", "cm")
 	if err := os.MkdirAll(filepath.Dir(source), 0755); err != nil {
 		t.Fatal(err)
 	}

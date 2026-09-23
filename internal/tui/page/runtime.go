@@ -12,7 +12,6 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
-	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/runtimecontrol"
 	managed "go.mewis.me/codemcp/internal/service"
 	"go.mewis.me/codemcp/internal/tui/component"
@@ -44,10 +43,7 @@ const (
 	AuthAdminEnable      SystemCommand = "auth.admin.enable"
 	AuthAdminDisable     SystemCommand = "auth.admin.disable"
 	AuthAdminRotate      SystemCommand = "auth.admin.rotate"
-	AliasInstall         SystemCommand = "alias.install"
-	AliasRemove          SystemCommand = "alias.remove"
 	InstallRun           SystemCommand = "install.run"
-	InstallCleanup       SystemCommand = "install.cleanup"
 	UpdateCheck          SystemCommand = "update.check"
 	UpdateApply          SystemCommand = "update.apply"
 )
@@ -423,31 +419,31 @@ func (page *RuntimePage) openCommand(command SystemCommand) (tea.Cmd, error) {
 	case UpdateApply:
 		return func() tea.Msg { return NavigateMsg{Path: []string{"runtime", "update"}} }, nil
 	case RuntimeForeground:
-		page.external = &application.ExternalCommand{Command: "cgm serve", Reason: "The foreground runtime owns the terminal. Exit the TUI before starting it."}
+		page.external = &application.ExternalCommand{Command: "cm serve", Reason: "The foreground runtime owns the terminal. Exit the TUI before starting it."}
 		page.overlay = systemOverlayExternal
 		return nil, nil
 	case MCPStdioForeground:
-		page.external = &application.ExternalCommand{Command: "cgm mcp stdio", Reason: "The stdio MCP server owns stdin/stdout as its protocol transport. Exit the TUI before starting it."}
+		page.external = &application.ExternalCommand{Command: "cm mcp stdio", Reason: "The stdio MCP server owns stdin/stdout as its protocol transport. Exit the TUI before starting it."}
 		page.overlay = systemOverlayExternal
 		return nil, nil
 	case MCPHTTPForeground:
-		page.external = &application.ExternalCommand{Command: "cgm mcp http", Reason: "The standalone MCP HTTP server is a foreground process. Exit the TUI before starting it."}
+		page.external = &application.ExternalCommand{Command: "cm mcp http", Reason: "The standalone MCP HTTP server is a foreground process. Exit the TUI before starting it."}
 		page.overlay = systemOverlayExternal
 		return nil, nil
 	case ConfigInitialize:
-		page.external = &application.ExternalCommand{Command: "cgm init", Reason: "Initialization creates new plaintext MCP/admin tokens. Run it outside the TUI so the CLI can present the one-time credentials directly."}
+		page.external = &application.ExternalCommand{Command: "cm init", Reason: "Initialization creates new plaintext MCP/admin tokens. Run it outside the TUI so the CLI can present the one-time credentials directly."}
 		page.overlay = systemOverlayExternal
 		return nil, nil
 	case ConfigUninitialize:
-		page.external = &application.ExternalCommand{Command: "cgm uninit", Reason: "Uninitialize permanently removes local CodeMCP configuration and state. Run this destructive command explicitly outside the TUI."}
+		page.external = &application.ExternalCommand{Command: "cm uninit", Reason: "Uninitialize permanently removes local CodeMCP configuration and state. Run this destructive command explicitly outside the TUI."}
 		page.overlay = systemOverlayExternal
 		return nil, nil
-	case AuthMCPRotate, AuthAdminRotate, InstallCleanup, AliasRemove, RuntimeDownUser, RuntimeDownSystem, RuntimeRestartUser, RuntimeRestartSystem:
+	case AuthMCPRotate, AuthAdminRotate, RuntimeDownUser, RuntimeDownSystem, RuntimeRestartUser, RuntimeRestartSystem:
 		page.pending = command
 		page.confirm = component.NewConfirmButtons(page.confirmActionLabel(), "Cancel", false)
 		page.overlay = systemOverlayConfirm
 		return nil, nil
-	case RuntimeUpUser, RuntimeUpSystem, MCPHTTPEnable, MCPHTTPDisable, AuthMCPEnable, AuthMCPDisable, AuthAdminEnable, AuthAdminDisable, AliasInstall, UpdateCheck:
+	case RuntimeUpUser, RuntimeUpSystem, MCPHTTPEnable, MCPHTTPDisable, AuthMCPEnable, AuthMCPDisable, AuthAdminEnable, AuthAdminDisable, UpdateCheck:
 		return page.startOperation(command), nil
 	default:
 		return nil, fmt.Errorf("unsupported system action: %s", command)
@@ -536,14 +532,8 @@ func (page *RuntimePage) startOperation(command SystemCommand) tea.Cmd {
 			msg.token, _, msg.err = application.RotateAuthToken(ctx, "mcp")
 		case AuthAdminRotate:
 			msg.token, _, msg.err = application.RotateAuthToken(ctx, "admin")
-		case AliasInstall:
-			_, msg.err = application.SetAliasInstalled(true)
-		case AliasRemove:
-			_, msg.err = application.SetAliasInstalled(false)
 		case InstallRun:
 			_, msg.err = application.InstallCurrent(installOptions)
-		case InstallCleanup:
-			_, msg.err = application.CleanupLegacyInstallations()
 		case UpdateCheck:
 			msg.update, msg.err = application.CheckForUpdate(ctx)
 		case UpdateApply:
@@ -706,7 +696,7 @@ func (page *RuntimePage) runtimeItems() []runtimeItem {
 	if page.runtime.SystemService.Supported {
 		items = append(items, page.serviceItem(page.runtime.SystemService))
 	}
-	return append(items, page.authItem("mcp"), page.authItem("admin"), page.installItem(), page.aliasItem(), page.updateItem(), page.aboutItem())
+	return append(items, page.authItem("mcp"), page.authItem("admin"), page.installItem(), page.updateItem(), page.aboutItem())
 }
 
 func (page *RuntimePage) syncDetail(items []runtimeItem) error {
@@ -787,15 +777,6 @@ func (page *RuntimePage) runtimeDetailBindings(row component.Row) []component.De
 		add("t", "rotate token", AuthAdminRotate)
 	case "installation":
 		add("i", "install", InstallRun)
-		add("c", "cleanup", InstallCleanup)
-	case "alias":
-		if page.install.AliasAvailable {
-			command, label := AliasInstall, "install"
-			if page.install.Alias.State == install.AliasInstalled {
-				command, label = AliasRemove, "remove"
-			}
-			add("a", label, command)
-		}
 	case "update":
 		add("k", "check", UpdateCheck)
 		add("u", "upgrade", UpdateApply)
@@ -936,7 +917,7 @@ func (page *RuntimePage) authItem(kind string) runtimeItem {
 	}
 	fields := [][2]string{{"Enabled", fmt.Sprint(enabled)}, {"Token", configuredText}}
 	if kind == "mcp" {
-		fields = append(fields, [2]string{"OAuth", "canonical for cgm mcp http"}, [2]string{"Legacy bearer", legacyBearer})
+		fields = append(fields, [2]string{"OAuth", "canonical for cm mcp http"}, [2]string{"Legacy bearer", legacyBearer})
 	}
 	fields = append(fields, [2]string{"Scope", scope}, [2]string{"Security", security})
 	return runtimeItem{row: component.Row{ID: "auth." + kind, Title: title, Description: description, Search: "auth token " + kind}, detailTitle: title, detail: detailFields(fields...)}
@@ -948,19 +929,7 @@ func (page *RuntimePage) installItem() runtimeItem {
 	if page.install.Managed {
 		state = "managed direct · " + page.install.ManagedVersion
 	}
-	return runtimeItem{row: component.Row{ID: "installation", Title: "Managed installation", Description: state, Search: "install managed layout cleanup migration"}, detailTitle: "Managed installation", detail: detailFields([2]string{"Method", method}, [2]string{"Executable", page.install.Detection.Executable}, [2]string{"Root", page.install.Detection.Root}, [2]string{"Managed", fmt.Sprint(page.install.Managed)}, [2]string{"Current", page.install.ManagedVersion}, [2]string{"Update policy", string(page.install.Policy.Action)}, [2]string{"Guidance", page.install.Policy.Message})}
-}
-
-func (page *RuntimePage) aliasItem() runtimeItem {
-	state, path, target := "unavailable", "", ""
-	if page.install.AliasAvailable {
-		state, path, target = string(page.install.Alias.State), page.install.Alias.Path, page.install.Alias.Target
-	}
-	description := state
-	if path != "" {
-		description += " · " + path
-	}
-	return runtimeItem{row: component.Row{ID: "alias", Title: "CLI alias (cgm)", Description: description, Search: "alias cgm command"}, detailTitle: "CLI alias (cgm)", detail: detailFields([2]string{"State", state}, [2]string{"Path", path}, [2]string{"Target", target})}
+	return runtimeItem{row: component.Row{ID: "installation", Title: "Managed installation", Description: state, Search: "install managed layout"}, detailTitle: "Managed installation", detail: detailFields([2]string{"Method", method}, [2]string{"Executable", page.install.Detection.Executable}, [2]string{"Root", page.install.Detection.Root}, [2]string{"Managed", fmt.Sprint(page.install.Managed)}, [2]string{"Current", page.install.ManagedVersion}, [2]string{"Update policy", string(page.install.Policy.Action)}, [2]string{"Guidance", page.install.Policy.Message})}
 }
 
 func (page *RuntimePage) updateItem() runtimeItem {
@@ -1019,10 +988,6 @@ func (page *RuntimePage) confirmActionLabel() string {
 	switch page.pending {
 	case AuthMCPRotate, AuthAdminRotate:
 		return "Rotate"
-	case InstallCleanup:
-		return "Clean"
-	case AliasRemove:
-		return "Remove"
 	case RuntimeDownUser, RuntimeDownSystem:
 		return "Stop & remove"
 	case RuntimeRestartUser, RuntimeRestartSystem:
@@ -1038,10 +1003,6 @@ func (page *RuntimePage) confirmTitle() string {
 		return "Rotate MCP token?"
 	case AuthAdminRotate:
 		return "Rotate admin token?"
-	case InstallCleanup:
-		return "Clean legacy installations?"
-	case AliasRemove:
-		return "Remove cgm alias?"
 	case RuntimeDownUser, RuntimeDownSystem:
 		return "Stop and remove managed service?"
 	case RuntimeRestartUser, RuntimeRestartSystem:
@@ -1055,10 +1016,6 @@ func (page *RuntimePage) confirmDescription() string {
 	switch page.pending {
 	case AuthMCPRotate, AuthAdminRotate:
 		return "The previous token stops working immediately. The new plaintext token is shown once and is not persisted by the TUI."
-	case InstallCleanup:
-		return "Only verified legacy standalone installations are eligible for removal; the current executable is preserved."
-	case AliasRemove:
-		return "The managed installation remains intact; only the cgm alias is removed."
 	case RuntimeDownUser, RuntimeDownSystem:
 		return "The managed service is stopped and uninstalled. Configuration and runtime logs are preserved."
 	case RuntimeRestartUser, RuntimeRestartSystem:
@@ -1076,14 +1033,8 @@ func operationNotice(msg systemOperationMsg) string {
 		return fmt.Sprintf("Update check: %s · latest %s", msg.update.Status, msg.update.Latest)
 	}
 	switch msg.command {
-	case AliasInstall:
-		return "cgm alias installed"
-	case AliasRemove:
-		return "cgm alias removed"
 	case InstallRun:
 		return "Managed installation updated"
-	case InstallCleanup:
-		return "Legacy installation cleanup completed"
 	case UpdateApply:
 		return "Update completed"
 	case AuthMCPEnable, AuthAdminEnable:
@@ -1103,8 +1054,6 @@ func systemOperationTitle(command SystemCommand) string {
 		return "Verifying and applying update"
 	case InstallRun:
 		return "Installing managed binary"
-	case InstallCleanup:
-		return "Cleaning legacy installations"
 	case MCPHTTPEnable, MCPHTTPDisable:
 		return "Updating MCP HTTP server"
 	case AuthMCPRotate, AuthAdminRotate:

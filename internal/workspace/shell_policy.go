@@ -62,7 +62,7 @@ func (m *Manager) ValidateShellCommandContext(ctx context.Context, id, baseDirec
 				return nil
 			}
 		}
-		return controlguard.New(controlguard.CodeControlPlaneMutation, "control-plane mutation denied from MCP shell: chatgpt-mcp configuration and permissions cannot be changed through shell tools", approvable, invocation)
+		return controlguard.New(controlguard.CodeControlPlaneMutation, "control-plane mutation denied from MCP shell: cm configuration and permissions cannot be changed through shell tools", approvable, invocation)
 	}
 	if !m.IsMutationCommand(command) {
 		return nil
@@ -145,7 +145,7 @@ func DirectControlPlaneInvocation(command string) (*controlguard.Invocation, boo
 		return nil, false
 	}
 	tokens, err := shellWords(segments[0])
-	if err != nil || len(tokens) == 0 || !isChatGPTMCPBinary(tokens[0]) {
+	if err != nil || len(tokens) == 0 || !isCMBinary(tokens[0]) {
 		return nil, false
 	}
 	args := append([]string(nil), tokens[1:]...)
@@ -168,7 +168,7 @@ func SimilarCommandPattern(command string) (string, bool) {
 	if name == "" || len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		return "", false
 	}
-	if isChatGPTMCPBinary(name) {
+	if isCMBinary(name) {
 		return "", false
 	}
 	prefix := []string{name, args[0]}
@@ -419,7 +419,7 @@ func isControlPlaneMutation(command string, depth int) bool {
 			continue
 		}
 		name, args := commandName(tokens)
-		if isChatGPTMCPBinary(name) && !controlplane.IsReadOnlyArgs(args) {
+		if isCMBinary(name) && !controlplane.IsReadOnlyArgs(args) {
 			return true
 		}
 		if inner, ok := nestedShellCommand(name, args); ok && isControlPlaneMutation(inner, depth+1) {
@@ -429,9 +429,9 @@ func isControlPlaneMutation(command string, depth int) bool {
 	return false
 }
 
-func isChatGPTMCPBinary(name string) bool {
+func isCMBinary(name string) bool {
 	switch strings.ToLower(strings.TrimSuffix(filepath.Base(name), ".exe")) {
-	case "chatgpt-mcp", "cgm", "cmcp":
+	case "cm":
 		return true
 	default:
 		return false

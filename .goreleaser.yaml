@@ -11,7 +11,7 @@ before:
 builds:
   - id: chatgpt-mcp
     main: .
-    binary: chatgpt-mcp
+    binary: cm
     env:
       - CGO_ENABLED=0
     goos:
@@ -102,7 +102,7 @@ homebrew_casks:
     ids:
       - chatgpt-mcp
     binaries:
-      - chatgpt-mcp
+      - cm
     homepage: "https://github.com/mewisme/codemcp"
     description: "Self-hosted MCP 2026-07-28 runtime with local tools, upstream MCP aggregation, and OpenAI tunnel support"
     directory: Casks
@@ -111,7 +111,7 @@ homebrew_casks:
       post:
         install: |
           if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/chatgpt-mcp"]
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/cm"]
           end
     repository:
       owner: mewisme

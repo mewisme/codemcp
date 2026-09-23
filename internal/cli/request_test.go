@@ -20,8 +20,8 @@ func TestRequestCLIListViewApproveDenyAliasesAndOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := approval.NewManager("instance-test")
-	first := seedApprovalRequest(t, manager, "session-a", "ws_a", "cgm config set server.port 41001")
-	second := seedApprovalRequest(t, manager, "session-b", "ws_b", "cgm update")
+	first := seedApprovalRequest(t, manager, "session-a", "ws_a", "cm config set server.port 41001")
+	second := seedApprovalRequest(t, manager, "session-b", "ws_b", "cm update")
 	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestRequestCLIPlainAndJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := approval.NewManager("instance-test")
-	request := seedApprovalRequest(t, manager, "session-a", "ws_a", "cgm update")
+	request := seedApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
 	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -133,8 +133,8 @@ func TestRequestCLIAmbiguousPrefixAndStoppedRuntimeFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := approval.NewManager("instance-test")
-	seedApprovalRequest(t, manager, "session-a", "ws_a", "cgm update")
-	seedApprovalRequest(t, manager, "session-b", "ws_b", "cgm install")
+	seedApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
+	seedApprovalRequest(t, manager, "session-b", "ws_b", "cm install")
 	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)

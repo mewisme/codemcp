@@ -34,7 +34,6 @@ type ApplyOptions struct {
 	Layout          install.Layout
 	CurrentVersion  string
 	TargetVersion   string
-	NoAlias         bool
 	ResolvedRelease *Release
 }
 
@@ -59,7 +58,7 @@ func (u Updater) Resolve(ctx context.Context, options ApplyOptions) (ApplyResult
 }
 
 func (u Updater) Apply(ctx context.Context, options ApplyOptions) (ApplyResult, error) {
-	applySpan := tracepkg.Start(ctx, "UPDATE", "update.apply", "Applying update", tracepkg.String("running_version", options.CurrentVersion), tracepkg.String("requested_target", strings.TrimSpace(options.TargetVersion)), tracepkg.Bool("no_alias", options.NoAlias))
+	applySpan := tracepkg.Start(ctx, "UPDATE", "update.apply", "Applying update", tracepkg.String("running_version", options.CurrentVersion), tracepkg.String("requested_target", strings.TrimSpace(options.TargetVersion)))
 	result, err := u.resolve(ctx, options)
 	if err != nil {
 		applySpan.FailMessage("Update failed", err)
@@ -98,7 +97,7 @@ func (u Updater) Apply(ctx context.Context, options ApplyOptions) (ApplyResult, 
 		installer = install.Install
 	}
 	installSpan := tracepkg.Start(ctx, "UPDATE", "update.install", "Installing resolved update", tracepkg.String("version", result.Target), tracepkg.String("source", artifact.Binary), tracepkg.String("layout", options.Layout.Root))
-	installed, err := installer(install.Options{Context: ctx, Layout: options.Layout, Version: result.Target, Source: artifact.Binary, NoAlias: options.NoAlias})
+	installed, err := installer(install.Options{Context: ctx, Layout: options.Layout, Version: result.Target, Source: artifact.Binary})
 	if err != nil {
 		installSpan.FailMessage("Resolved update installation failed", err)
 		applySpan.FailMessage("Update failed", err)

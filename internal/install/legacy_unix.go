@@ -10,6 +10,9 @@ import (
 	"strings"
 )
 
+func historicalBinaryName() string { return "chatgpt-mcp" }
+func historicalAliasName() string  { return "cgm" }
+
 func platformPackageManagerOwnsPath(path string) bool {
 	normalized := normalizedPath(path)
 	for _, marker := range []string{"/nix/store/", "/snap/", "/flatpak/", "/opt/local/", "/cellar/", "/caskroom/"} {

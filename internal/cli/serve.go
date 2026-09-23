@@ -38,7 +38,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		return err
 	}
 	if !source.Exists {
-		err := errors.New("chatgpt-mcp is not initialized; run chatgpt-mcp init")
+		err := errors.New("cm is not initialized; run cm init")
 		configSpan.FailMessage("Server runtime config unavailable", err, tracepkg.String("path", source.Path), tracepkg.String("format", string(source.Format)), tracepkg.Bool("exists", false))
 		return err
 	}

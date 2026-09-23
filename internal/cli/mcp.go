@@ -89,7 +89,7 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 		return err
 	}
 	if cfg.Auth.MCPEnabled && cfg.Auth.MCPTokenHash == "" {
-		return errors.New("MCP authentication is enabled but no credential is configured; run cgm auth mcp create")
+		return errors.New("MCP authentication is enabled but no credential is configured; run cm auth mcp create")
 	}
 	if !mcpHTTPLoopbackHost(host) {
 		return errors.New("standalone MCP HTTP is currently loopback-only; use 127.0.0.1, ::1, or localhost")
@@ -159,7 +159,7 @@ func runMCPStdio(cmd *cobra.Command, workspace string) (runErr error) {
 		return err
 	}
 	if !source.Exists {
-		return errors.New("chatgpt-mcp is not initialized; run chatgpt-mcp init")
+		return errors.New("cm is not initialized; run cm init")
 	}
 	cfg, err := config.LoadRuntime()
 	if err != nil {
@@ -244,7 +244,7 @@ func (writeCloser) Close() error { return nil }
 
 func legacyMCPServerCommand() *cobra.Command {
 	server := upstreamServerCommand()
-	server.Deprecated = "use 'cgm upstream server' instead"
+	server.Deprecated = "use 'cm upstream server' instead"
 	server.Short = "Deprecated: manage upstream MCP servers"
 	return server
 }

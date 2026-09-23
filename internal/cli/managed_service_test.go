@@ -91,7 +91,7 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
-	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cgm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
+	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
 	manager := &fakeServiceManager{}
 	var output bytes.Buffer
 	cmd := &cobra.Command{Use: "test"}
@@ -104,7 +104,7 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 		t.Fatalf("manager after up = %#v", manager)
 	}
 	text := output.String()
-	for _, expected := range []string{"Managed service definition installed", "Managed service backend started", "Managed runtime ready", "Managed service installed", "Server started", "OpenAI Secure MCP Tunnel is disabled", "View logs: cgm logs -f", "Stop service: cgm down", "session", "pid"} {
+	for _, expected := range []string{"Managed service definition installed", "Managed service backend started", "Managed runtime ready", "Managed service installed", "Server started", "OpenAI Secure MCP Tunnel is disabled", "View logs: cm logs -f", "Stop service: cm down", "session", "pid"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("up output missing %q: %s", expected, text)
 		}
@@ -166,7 +166,7 @@ func TestManagedUpAllowsHTTPTransportWhenDisabledTunnelSecretIsMissing(t *testin
 		t.Fatal("strict config load unexpectedly accepted missing tunnel secrets")
 	}
 
-	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cgm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
+	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
 	manager := &fakeServiceManager{}
 	cmd := &cobra.Command{Use: "test"}
 	cmd.SetContext(context.Background())
@@ -199,7 +199,7 @@ func TestManagedRestartKeepsServiceInstalledAndStartsNewRuntime(t *testing.T) {
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
-	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cgm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
+	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
 	manager := &fakeServiceManager{}
 	var output bytes.Buffer
 	cmd := &cobra.Command{Use: "test"}
@@ -302,7 +302,7 @@ func TestManagedRestartUpdatesChangedDefinitionWithoutUninstall(t *testing.T) {
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
-	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cgm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
+	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
 	manager := &fakeServiceManager{}
 	cmd := &cobra.Command{Use: "test"}
 	cmd.SetContext(context.Background())
@@ -406,7 +406,7 @@ func TestManagedSystemSpecStagesTransientGoRunBinaryBeforeElevation(t *testing.T
 	if err := configformat.SetRootPath(rootPath); err != nil {
 		t.Fatal(err)
 	}
-	source := filepath.Join(t.TempDir(), "go-build123", "b001", "exe", "chatgpt-mcp")
+	source := filepath.Join(t.TempDir(), "go-build123", "b001", "exe", "cm")
 	if err := os.MkdirAll(filepath.Dir(source), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -436,7 +436,7 @@ func TestManagedSystemSpecStagesTransientGoRunBinaryBeforeElevation(t *testing.T
 func TestManagedScopeConflictUsesSystemFlagHint(t *testing.T) {
 	spec := managed.Spec{Scope: managed.ScopeUser}
 	err := managedScopeConflict(runtimeStatusResult{Managed: true, ServiceID: "system", ServiceScope: string(managed.ScopeSystem), PID: 123}, spec, "down")
-	if err == nil || !strings.Contains(err.Error(), "cgm down --system") {
+	if err == nil || !strings.Contains(err.Error(), "cm down --system") {
 		t.Fatalf("error = %v, want --system hint", err)
 	}
 }

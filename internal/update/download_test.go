@@ -241,9 +241,9 @@ func releaseArchive(t *testing.T, assetName string, binary []byte) []byte {
 	dir := t.TempDir()
 	path := filepath.Join(dir, assetName)
 	if runtime.GOOS == "windows" {
-		writeZipArchive(t, path, []zipEntry{{name: "chatgpt-mcp.exe", content: binary}})
+		writeZipArchive(t, path, []zipEntry{{name: "cm.exe", content: binary}})
 	} else {
-		writeTarArchive(t, path, []tarEntry{{name: "chatgpt-mcp", content: binary}})
+		writeTarArchive(t, path, []tarEntry{{name: "cm", content: binary}})
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {

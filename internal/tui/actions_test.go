@@ -301,7 +301,7 @@ func TestSystemActionAvailabilityFollowsRouteAndPlatform(t *testing.T) {
 		return false
 	}
 	ctx := action.Context{Route: string(RouteRuntime)}
-	for _, id := range []string{"system.refresh", "runtime.up.user", "runtime.down.user", "runtime.restart.user", "runtime.foreground", "mcp.stdio.foreground", "mcp.http.foreground", "auth.mcp.rotate", "auth.admin.rotate", "alias.install", "alias.remove", "install.run", "install.cleanup", "update.check", "update.apply"} {
+	for _, id := range []string{"system.refresh", "runtime.up.user", "runtime.down.user", "runtime.restart.user", "runtime.foreground", "mcp.stdio.foreground", "mcp.http.foreground", "auth.mcp.rotate", "auth.admin.rotate", "install.run", "update.check", "update.apply"} {
 		if !has(ctx, id) {
 			t.Fatalf("system action missing: %s", id)
 		}

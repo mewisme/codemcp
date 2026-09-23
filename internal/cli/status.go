@@ -95,7 +95,7 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 		snapshotComplete = true
 		if debug || format == logger.FormatJSON {
 			log := commandLogger(cmd)
-			log.Warning("STATUS", "status.not-initialized", "chatgpt-mcp is not initialized", nil)
+			log.Warning("STATUS", "status.not-initialized", "CodeMCP is not initialized", nil)
 			log.Detail("config", source.Path)
 			return nil
 		}

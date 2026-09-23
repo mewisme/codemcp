@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+func historicalBinaryName() string { return "chatgpt-mcp.exe" }
+func historicalAliasName() string  { return "cgm.cmd" }
+
 func platformPackageManagerOwnsPath(path string) bool {
 	normalized := normalizedPath(path)
 	for _, marker := range []string{"/scoop/apps/", "/scoop/shims/", "/chocolatey/", "/microsoft/winget/", "/windowsapps/"} {

@@ -23,7 +23,7 @@ func ExtractBinary(archivePath, destinationDir, archiveName string) (string, err
 
 func ExtractBinaryContext(ctx context.Context, archivePath, destinationDir, archiveName string) (string, error) {
 	span := tracepkg.Start(ctx, "UPDATE", "update.archive.extract", "Extracting release archive", tracepkg.String("archive", archivePath), tracepkg.String("destination", destinationDir), tracepkg.String("asset", archiveName))
-	binaryName := "chatgpt-mcp"
+	binaryName := "cm"
 	var path string
 	var err error
 	switch {

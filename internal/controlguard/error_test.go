@@ -6,7 +6,7 @@ import (
 )
 
 func TestErrorSupportsWrappedTypeAndCodeChecks(t *testing.T) {
-	invocation := &Invocation{Program: "cgm", Args: []string{"update"}, Command: "cgm update"}
+	invocation := &Invocation{Program: "cm", Args: []string{"update"}, Command: "cm update"}
 	guard := New(CodeControlPlaneMutation, "control-plane mutation denied", true, invocation)
 	wrapped := fmt.Errorf("shell rejected command: %w", guard)
 	value, ok := As(wrapped)

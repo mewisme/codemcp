@@ -144,7 +144,7 @@ func TestStatusNotInitialized(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	if !strings.Contains(text, "! CodeMCP is not initialized") || !strings.Contains(text, "chatgpt-mcp init") {
+	if !strings.Contains(text, "! CodeMCP is not initialized") || !strings.Contains(text, "cm init") {
 		t.Fatalf("unexpected uninitialized status: %s", text)
 	}
 }

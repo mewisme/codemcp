@@ -8,9 +8,7 @@ import (
 )
 
 type installFormData struct {
-	NoAlias       bool
-	Force         bool
-	MigrateLegacy bool
+	Force bool
 }
 
 type updateFormData struct {
@@ -19,11 +17,9 @@ type updateFormData struct {
 }
 
 func newInstallEditor() (component.Editor, *installFormData) {
-	data := &installFormData{MigrateLegacy: true}
-	editor := component.NewEditor("install", component.EditorSection{ID: "install", Title: "Managed Install", Description: "Install this binary into the managed layout and optionally configure the cgm alias.", Form: component.NewEditorForm(component.Group(
-		component.Switch("Skip cgm alias", &data.NoAlias, "YES", "NO"),
+	data := &installFormData{}
+	editor := component.NewEditor("install", component.EditorSection{ID: "install", Title: "Managed Install", Description: "Install this binary into the managed layout as the canonical cm executable.", Form: component.NewEditorForm(component.Group(
 		component.Switch("Allow development build", &data.Force, "YES", "NO"),
-		component.Switch("Clean verified legacy installations", &data.MigrateLegacy, "YES", "NO"),
 	))})
 	return editor, data
 }
@@ -32,7 +28,7 @@ func (data *installFormData) Options() application.InstallCurrentOptions {
 	if data == nil {
 		return application.InstallCurrentOptions{}
 	}
-	return application.InstallCurrentOptions{NoAlias: data.NoAlias, Force: data.Force, MigrateLegacy: data.MigrateLegacy}
+	return application.InstallCurrentOptions{Force: data.Force}
 }
 
 func newUpdateEditor() (component.Editor, *updateFormData) {

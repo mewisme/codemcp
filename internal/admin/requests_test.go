@@ -20,8 +20,8 @@ import (
 
 func TestApprovalAPIListDetailApproveAndDeny(t *testing.T) {
 	manager := approval.NewManager("instance-test")
-	first := seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cgm update")
-	second := seedAdminApprovalRequest(t, manager, "session-b", "ws_b", "cgm install")
+	first := seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
+	second := seedAdminApprovalRequest(t, manager, "session-b", "ws_b", "cm install")
 	handler := New(API{Approvals: manager, Config: config.NewRuntimeStore(config.Default())})
 
 	list := localAdminRequest(http.MethodGet, "/api/requests?status=pending&workspace_id=ws_a", nil)
@@ -37,7 +37,7 @@ func TestApprovalAPIListDetailApproveAndDeny(t *testing.T) {
 
 	recorder = httptest.NewRecorder()
 	handler.ServeHTTP(recorder, localAdminRequest(http.MethodGet, "/api/requests/"+first.ID[:8], nil))
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), first.ID) || !strings.Contains(recorder.Body.String(), `"command":"cgm update"`) {
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), first.ID) || !strings.Contains(recorder.Body.String(), `"command":"cm update"`) {
 		t.Fatalf("detail status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 
@@ -56,7 +56,7 @@ func TestApprovalAPIListDetailApproveAndDeny(t *testing.T) {
 
 func TestApprovalAPIRemoteRequiresEnabledAdminAuthentication(t *testing.T) {
 	manager := approval.NewManager("instance-test")
-	seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cgm update")
+	seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
 	cfg := config.Default()
 	cfg.Auth.AdminEnabled = false
 	cfg.Auth.AdminTokenHash = auth.HashToken("admin-test")
@@ -97,7 +97,7 @@ func TestApprovalAPIRemoteRequiresEnabledAdminAuthentication(t *testing.T) {
 
 func TestApprovalAPIIgnoresForwardedLoopbackAddress(t *testing.T) {
 	manager := approval.NewManager("instance-test")
-	seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cgm update")
+	seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
 	cfg := config.Default()
 	cfg.Auth.AdminEnabled = false
 	handler := New(API{Approvals: manager, Config: config.NewRuntimeStore(cfg)})
@@ -130,9 +130,9 @@ func TestApprovalSSEPublishesLifecycleWithoutArguments(t *testing.T) {
 	if !scanUntil(scanner, "event: ready", time.Second) {
 		t.Fatal("approval SSE missing ready event")
 	}
-	created := seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cgm update --version v2")
+	created := seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update --version v2")
 	line := scanEventData(t, scanner, approval.EventRequested)
-	if !strings.Contains(line, created.ID) || strings.Contains(line, "cgm update") || strings.Contains(line, "arguments") {
+	if !strings.Contains(line, created.ID) || strings.Contains(line, "cm update") || strings.Contains(line, "arguments") {
 		t.Fatalf("unsafe approval SSE data=%q", line)
 	}
 }
@@ -148,7 +148,7 @@ func TestApprovalSSESubscribesBeforeReadyFlush(t *testing.T) {
 			return
 		}
 		writer.flushed = true
-		seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cgm update --version v2")
+		seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update --version v2")
 	}
 	done := make(chan struct{})
 	go func() {

@@ -135,7 +135,7 @@ func TestCurrentVersionAcceptsCanonicalizedInstallRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: testBinary(t, "current"), NoAlias: true}); err != nil {
+	if _, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: testBinary(t, "current")}); err != nil {
 		t.Fatal(err)
 	}
 	version, _, err := CurrentVersion(layout)
@@ -145,7 +145,7 @@ func TestCurrentVersionAcceptsCanonicalizedInstallRoot(t *testing.T) {
 	if version != "v1.0.0" {
 		t.Fatalf("current version = %q", version)
 	}
-	second, err := Install(Options{Layout: layout, Version: "v1.1.0", Source: testBinary(t, "next"), NoAlias: true})
+	second, err := Install(Options{Layout: layout, Version: "v1.1.0", Source: testBinary(t, "next")})
 	if err != nil {
 		t.Fatal(err)
 	}

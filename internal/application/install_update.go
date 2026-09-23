@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -23,15 +22,11 @@ type InstallationOverview struct {
 	Managed        bool
 	Layout         install.Layout
 	ManagedVersion string
-	Alias          install.AliasStatus
-	AliasAvailable bool
 	CachedUpdate   *updatepkg.CachedCheck
 }
 
 type InstallCurrentOptions struct {
-	NoAlias       bool
-	Force         bool
-	MigrateLegacy bool
+	Force bool
 }
 
 type UpdateApplyOptions struct {
@@ -58,15 +53,10 @@ func LoadInstallationOverview() (InstallationOverview, error) {
 	if err != nil {
 		return InstallationOverview{}, err
 	}
-	overview.Managed, overview.Layout, overview.AliasAvailable = true, layout, true
+	overview.Managed, overview.Layout = true, layout
 	if managedVersion, _, currentErr := install.CurrentVersion(layout); currentErr == nil {
 		overview.ManagedVersion = managedVersion
 	}
-	alias, err := install.StatusAlias(layout)
-	if err != nil {
-		return InstallationOverview{}, err
-	}
-	overview.Alias = alias
 	if cached, ok, cacheErr := updatepkg.ReadFreshCache(layout.UpdateCache, version.Version, time.Now(), updatepkg.DefaultCacheTTL); cacheErr == nil && ok {
 		overview.CachedUpdate = &cached
 	}
@@ -74,33 +64,7 @@ func LoadInstallationOverview() (InstallationOverview, error) {
 }
 
 func InstallCurrent(options InstallCurrentOptions) (install.Result, error) {
-	return install.Install(install.Options{Version: version.Version, NoAlias: options.NoAlias, Force: options.Force, MigrateLegacy: options.MigrateLegacy})
-}
-
-func CleanupLegacyInstallations() (install.LegacyCleanupResult, error) {
-	layout, err := install.DefaultLayout()
-	if err != nil {
-		return install.LegacyCleanupResult{}, err
-	}
-	source, err := os.Executable()
-	if err != nil {
-		return install.LegacyCleanupResult{}, err
-	}
-	return install.CleanupLegacyInstallations(install.LegacyCleanupOptions{Layout: layout, Source: source, PreserveSource: true})
-}
-
-func SetAliasInstalled(enabled bool) (install.AliasStatus, error) {
-	overview, err := LoadInstallationOverview()
-	if err != nil {
-		return install.AliasStatus{}, err
-	}
-	if !overview.Managed {
-		return install.AliasStatus{}, errors.New("managed installation not found; run cgm install first")
-	}
-	if enabled {
-		return install.InstallAlias(overview.Layout)
-	}
-	return install.RemoveAlias(overview.Layout)
+	return install.Install(install.Options{Version: version.Version, Force: options.Force})
 }
 
 func CheckForUpdate(ctx context.Context) (updatepkg.CheckResult, error) {
@@ -130,18 +94,15 @@ func ApplyUpdate(ctx context.Context, options UpdateApplyOptions) (UpdateApplyRe
 	if !overview.Managed {
 		return UpdateApplyResult{}, errors.New("managed direct installation not found")
 	}
-	if overview.Alias.State == install.AliasConflict {
-		return UpdateApplyResult{}, fmt.Errorf("cannot preserve cgm alias state: %w: %s", install.ErrAliasConflict, overview.Alias.Path)
-	}
 	runtimeState, running, err := runtimeStatusFast(ctx)
 	if err != nil {
 		return UpdateApplyResult{}, err
 	}
 	if running && runtimeState.Managed && runtimeState.ServiceScope == string(managed.ScopeSystem) && detectServiceScope() == managed.ScopeUser && !options.NoRestart {
-		return UpdateApplyResult{External: &ExternalCommand{Command: "cgm upgrade", Reason: "Upgrading a running system service requires elevation and must be launched outside the TUI."}}, nil
+		return UpdateApplyResult{External: &ExternalCommand{Command: "cm upgrade", Reason: "Upgrading a running system service requires elevation and must be launched outside the TUI."}}, nil
 	}
 	updater := updatepkg.Updater{Resolver: updatepkg.Client{UserAgent: "chatgpt-mcp/" + version.Version}, Downloader: updatepkg.Downloader{UserAgent: "chatgpt-mcp/" + version.Version}}
-	result, err := updater.Apply(ctx, updatepkg.ApplyOptions{Layout: overview.Layout, CurrentVersion: version.Version, TargetVersion: strings.TrimSpace(options.TargetVersion), NoAlias: overview.Alias.State == install.AliasMissing})
+	result, err := updater.Apply(ctx, updatepkg.ApplyOptions{Layout: overview.Layout, CurrentVersion: version.Version, TargetVersion: strings.TrimSpace(options.TargetVersion)})
 	if err != nil {
 		return UpdateApplyResult{}, err
 	}

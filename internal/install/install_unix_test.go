@@ -22,7 +22,7 @@ func TestInstallLifecycle(t *testing.T) {
 	if result.AlreadyInstalled {
 		t.Fatal("first install reported already installed")
 	}
-	if result.Canonical.State != CanonicalInstalled || result.Alias.State != AliasInstalled || !result.AliasInstalled {
+	if result.Canonical.State != CanonicalInstalled {
 		t.Fatalf("install result = %+v", result)
 	}
 	assertCurrentVersion(t, layout, "v1.0.0")
@@ -42,45 +42,22 @@ func TestInstallLifecycle(t *testing.T) {
 	}
 }
 
-func TestInstallRepairsMissingAlias(t *testing.T) {
+func TestInstallDoesNotCreateAlias(t *testing.T) {
 	layout := testLayout(t)
 	source := testBinary(t, "release-v1")
 	if _, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: source}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := RemoveAlias(layout); err != nil {
-		t.Fatal(err)
+	aliasPath := filepath.Join(layout.BinDir, historicalAliasName())
+	if _, err := os.Lstat(aliasPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("historical alias unexpectedly created: %v", err)
 	}
 	result, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: source})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.AlreadyInstalled {
-		t.Fatal("repair install reported already installed")
-	}
-	if result.Alias.State != AliasInstalled {
-		t.Fatalf("alias state = %q", result.Alias.State)
-	}
-}
-
-func TestInstallNoAlias(t *testing.T) {
-	layout := testLayout(t)
-	result, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: testBinary(t, "release-v1"), NoAlias: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.AliasInstalled {
-		t.Fatal("alias installed with --no-alias")
-	}
-	status, err := StatusAlias(layout)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.State != AliasMissing {
-		t.Fatalf("alias state = %q", status.State)
-	}
-	if result.Canonical.State != CanonicalInstalled {
-		t.Fatalf("canonical state = %q", result.Canonical.State)
+	if !result.AlreadyInstalled {
+		t.Fatal("second install without alias was not idempotent")
 	}
 }
 
@@ -106,7 +83,7 @@ func TestInstallDevelopmentRequiresForce(t *testing.T) {
 
 func TestInstallNormalizesReleaseVersionPrefix(t *testing.T) {
 	layout := testLayout(t)
-	result, err := Install(Options{Layout: layout, Version: "1.2.3", Source: testBinary(t, "release"), NoAlias: true})
+	result, err := Install(Options{Layout: layout, Version: "1.2.3", Source: testBinary(t, "release")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +121,7 @@ func TestInstallEmitsDeepTrace(t *testing.T) {
 	layout := testLayout(t)
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
-	result, err := Install(Options{Context: ctx, Layout: layout, Version: "v1.0.0", Source: testBinary(t, "release-v1"), NoAlias: true})
+	result, err := Install(Options{Context: ctx, Layout: layout, Version: "v1.0.0", Source: testBinary(t, "release-v1")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +148,7 @@ func TestInstallEmitsDeepTrace(t *testing.T) {
 func TestInstallRollbackTraceReportsSubResults(t *testing.T) {
 	layout := testLayout(t)
 	source := testBinary(t, "release-v1")
-	if _, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: source, NoAlias: true}); err != nil {
+	if _, err := Install(Options{Layout: layout, Version: "v1.0.0", Source: source}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(layout.Root, 0555); err != nil {
@@ -180,7 +157,7 @@ func TestInstallRollbackTraceReportsSubResults(t *testing.T) {
 	defer os.Chmod(layout.Root, 0755)
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
-	_, err := Install(Options{Context: ctx, Layout: layout, Version: "v1.0.0", Source: source, NoAlias: true})
+	_, err := Install(Options{Context: ctx, Layout: layout, Version: "v1.0.0", Source: source})
 	if err == nil {
 		t.Skip("filesystem permissions did not force metadata write failure")
 	}
@@ -194,7 +171,7 @@ func TestInstallRollbackTraceReportsSubResults(t *testing.T) {
 	if rollback == nil {
 		t.Fatalf("missing rollback trace: %#v", events)
 	}
-	for _, key := range []string{"activation_rollback_ok", "canonical_cleanup_attempted", "canonical_cleanup_ok", "alias_cleanup_attempted", "alias_cleanup_ok", "legacy_restore_attempted", "legacy_restore_ok", "duration_ms"} {
+	for _, key := range []string{"activation_rollback_ok", "canonical_cleanup_attempted", "canonical_cleanup_ok", "duration_ms"} {
 		if !installTraceEventHasField(*rollback, key) {
 			t.Fatalf("rollback trace missing %q: %#v", key, *rollback)
 		}

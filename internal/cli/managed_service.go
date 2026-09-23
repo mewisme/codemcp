@@ -120,7 +120,7 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 		return err
 	}
 	if !source.Exists {
-		return errors.New("chatgpt-mcp is not initialized; run chatgpt-mcp init first")
+		return errors.New("cm is not initialized; run cm init first")
 	}
 	if _, err := config.VerifyRuntime(); err != nil {
 		return err
@@ -162,7 +162,7 @@ func saveManagedEnvironmentContext(ctx context.Context, spec managed.Spec) (stri
 		return "", err
 	}
 	if !source.Exists {
-		return "", errors.New("chatgpt-mcp is not initialized; run chatgpt-mcp init first")
+		return "", errors.New("cm is not initialized; run cm init first")
 	}
 	cfg, err := config.LoadRuntime()
 	if err != nil {
@@ -255,7 +255,7 @@ func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager
 		return err
 	}
 	if !source.Exists {
-		return errors.New("chatgpt-mcp is not initialized; run chatgpt-mcp init first")
+		return errors.New("cm is not initialized; run cm init first")
 	}
 	if _, err := config.VerifyRuntime(); err != nil {
 		return err
@@ -559,15 +559,15 @@ func logManagedHints(log *logger.Logger, spec managed.Spec) {
 	} else if warning := managed.PersistenceWarning(spec); warning != "" {
 		log.Warning("SERVICE", "service.persistence.warning", warning, nil)
 		if runtime.GOOS == "linux" && spec.Account.Username != "" {
-			log.Detail("machine service", "cgm up --system")
+			log.Detail("machine service", "cm up --system")
 		}
 	} else {
 		log.Notice("SERVICE", "service.detached", "Runtime will continue independently of this terminal")
 	}
-	log.Notice("SERVICE", "service.logs-hint", "View logs: cgm logs -f")
-	stop := "cgm down"
+	log.Notice("SERVICE", "service.logs-hint", "View logs: cm logs -f")
+	stop := "cm down"
 	if spec.Scope == managed.ScopeSystem && runtime.GOOS != "windows" {
-		stop = "cgm down --system"
+		stop = "cm down --system"
 	}
 	log.Notice("SERVICE", "service.stop-hint", "Stop service: "+stop)
 }

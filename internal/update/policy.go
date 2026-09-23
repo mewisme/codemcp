@@ -45,7 +45,7 @@ func PolicyForInstallation(detection install.Detection) InstallPolicy {
 		if detection.Metadata == nil {
 			policy.Action = PolicyInstallFirst
 			policy.Message = "Direct installation is not managed yet"
-			policy.Command = "chatgpt-mcp install"
+			policy.Command = "cm install"
 			return policy
 		}
 		if detection.Metadata.Method != install.MethodDirect {
@@ -59,11 +59,11 @@ func PolicyForInstallation(detection install.Detection) InstallPolicy {
 	case install.MethodHomebrew:
 		policy.Action = PolicyDelegate
 		policy.Message = "Managed by Homebrew"
-		policy.Command = "cgm upgrade"
+		policy.Command = "cm upgrade"
 	case install.MethodScoop:
 		policy.Action = PolicyDelegate
 		policy.Message = "Managed by Scoop"
-		policy.Command = "cgm upgrade"
+		policy.Command = "cm upgrade"
 	case install.MethodGo:
 		policy.Action = PolicyUnsupported
 		policy.Message = "Self-update is unavailable for Go installations"
@@ -73,7 +73,7 @@ func PolicyForInstallation(detection install.Detection) InstallPolicy {
 	case install.MethodStandalone:
 		policy.Action = PolicyInstallFirst
 		policy.Message = "Standalone binary is not installed into the managed layout"
-		policy.Command = "chatgpt-mcp install"
+		policy.Command = "cm install"
 	default:
 		policy.Action = PolicyUnsupported
 		policy.Message = "Unable to determine how chatgpt-mcp was installed"

@@ -290,10 +290,10 @@ func updateInstallVersions(t *testing.T, layout install.Layout) install.Result {
 	if err := os.WriteFile(newBinary, []byte("new"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := install.Install(install.Options{Layout: layout, Version: "v1.0.0", Source: oldBinary, NoAlias: true}); err != nil {
+	if _, err := install.Install(install.Options{Layout: layout, Version: "v1.0.0", Source: oldBinary}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := install.Install(install.Options{Layout: layout, Version: "v1.1.0", Source: newBinary, NoAlias: true})
+	result, err := install.Install(install.Options{Layout: layout, Version: "v1.1.0", Source: newBinary})
 	if err != nil {
 		t.Fatal(err)
 	}

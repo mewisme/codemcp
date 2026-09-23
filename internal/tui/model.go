@@ -1732,7 +1732,7 @@ func routeDescription(route Route) string {
 	}
 	switch route.Kind {
 	case RouteHome:
-		return "Keyboard-first command center for chatgpt-mcp."
+		return "Keyboard-first command center for CodeMCP."
 	case RouteWorkspaces:
 		return "Browse registered workspaces and workspace containers."
 	case RouteContainers:
