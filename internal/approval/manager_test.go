@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/controlguard"
 )
 
 func TestManagerCoalescesChallengeAndRequest(t *testing.T) {
@@ -24,7 +24,7 @@ func TestManagerCoalescesChallengeAndRequest(t *testing.T) {
 		t.Fatalf("second challenge = %#v created=%t err=%v", second, created, err)
 	}
 	request, created, err := manager.CreateRequest(first.ID, "session-a", "ws_x")
-	if err != nil || !created || request.Status != StatusPending || request.Title != "Update ChatGPT MCP" || request.Command != "cgm update" {
+	if err != nil || !created || request.Status != StatusPending || request.Title != "Update CodeMCP" || request.Command != "cgm update" {
 		t.Fatalf("request = %#v created=%t err=%v", request, created, err)
 	}
 	reused, created, err := manager.CreateRequest(first.ID, "session-a", "ws_x")
@@ -574,9 +574,9 @@ func testChallenge(sessionID, workspaceID, command string) ChallengeInput {
 	title := "Run shell command"
 	switch command {
 	case "cgm update":
-		title = "Update ChatGPT MCP"
+		title = "Update CodeMCP"
 	case "cgm install":
-		title = "Install ChatGPT MCP"
+		title = "Install CodeMCP"
 	}
 	return ChallengeInput{
 		SessionID: sessionID, SessionHash: "hash-" + sessionID, WorkspaceID: workspaceID, Source: "tunnel", TargetTool: "run_command",

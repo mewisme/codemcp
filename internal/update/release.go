@@ -8,7 +8,7 @@ import (
 
 const (
 	DefaultOwner          = "mewisme"
-	DefaultRepo           = "chatgpt-mcp"
+	DefaultRepo           = "codemcp"
 	ChecksumName          = "checksums.txt"
 	ChecksumSignatureName = "checksums.txt.sigstore.json"
 )

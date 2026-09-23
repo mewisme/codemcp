@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
 )
 
 var ruleRoots = []struct {

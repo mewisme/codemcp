@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/tui/action"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/tui/action"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 func TestWorkspaceActionAvailabilityFollowsRouteContext(t *testing.T) {

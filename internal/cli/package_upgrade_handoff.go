@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	updatepkg "go.mewis.me/chatgpt-mcp/internal/update"
+	updatepkg "go.mewis.me/codemcp/internal/update"
 )
 
 type packageUpgradeHandoff struct {

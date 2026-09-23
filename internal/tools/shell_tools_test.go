@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func newShellToolTestRuntime(t *testing.T) (*Runtime, string, string) {

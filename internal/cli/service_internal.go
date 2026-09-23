@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/logger"
+	managed "go.mewis.me/codemcp/internal/service"
 )
 
 type serviceRuntimeInfo struct {

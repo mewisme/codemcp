@@ -13,15 +13,15 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
-	"go.mewis.me/chatgpt-mcp/internal/tui/action"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
-	tuipage "go.mewis.me/chatgpt-mcp/internal/tui/page"
-	"go.mewis.me/chatgpt-mcp/internal/tui/palette"
-	"go.mewis.me/chatgpt-mcp/internal/tui/quickopen"
-	tuistate "go.mewis.me/chatgpt-mcp/internal/tui/state"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/approval"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/tui/action"
+	"go.mewis.me/codemcp/internal/tui/component"
+	tuipage "go.mewis.me/codemcp/internal/tui/page"
+	"go.mewis.me/codemcp/internal/tui/palette"
+	"go.mewis.me/codemcp/internal/tui/quickopen"
+	tuistate "go.mewis.me/codemcp/internal/tui/state"
 )
 
 type overlayKind uint8
@@ -502,7 +502,7 @@ func (model Model) View() tea.View {
 	}
 	view := tea.NewView(content)
 	view.AltScreen = true
-	view.WindowTitle = "ChatGPT MCP · " + model.router.Current().Title()
+	view.WindowTitle = "CodeMCP · " + model.router.Current().Title()
 	view.MouseMode = tea.MouseModeCellMotion
 	view.OnMouse = func(message tea.MouseMsg) tea.Cmd { return component.DispatchMouse(targets, message) }
 	return view
@@ -1420,7 +1420,7 @@ func (model Model) topBorder(width int, border lipgloss.Style) string {
 	if width == 2 {
 		return border.Render("╭╮")
 	}
-	label := " " + model.theme.title.Render("ChatGPT MCP") + " "
+	label := " " + model.theme.title.Render("CodeMCP") + " "
 	used := 2 + lipgloss.Width(label) + 1
 	if used > width {
 		return border.Render("╭" + strings.Repeat("─", width-2) + "╮")

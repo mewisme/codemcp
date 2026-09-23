@@ -21,15 +21,15 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"go.mewis.me/chatgpt-mcp/internal/activity"
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/activity"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestLogsPageLoadsHistoryAndShowsOfflineReconnectState(t *testing.T) {
@@ -1089,7 +1089,7 @@ func TestExecutionFrameTabsDoNotBreakRightBorder(t *testing.T) {
 	info := shellruntime.ExecutionInfo{ID: "exec_tabs", WorkspaceID: "ws_tabs", Command: "go test ./...", StartedAt: started.Format(time.RFC3339Nano)}
 	view := formatExecutionFeed([]shellruntime.ExecutionFeedEvent{
 		{Sequence: 1, Type: shellruntime.ExecutionEventStarted, ExecutionID: info.ID, WorkspaceID: info.WorkspaceID, Execution: &info, Timestamp: info.StartedAt},
-		{Sequence: 2, Type: shellruntime.ExecutionEventOutput, ExecutionID: info.ID, WorkspaceID: info.WorkspaceID, Execution: &info, Data: "ok\tgo.mewis.me/chatgpt-mcp/internal/tui\t1.263s\n?\tgo.mewis.me/chatgpt-mcp/internal/tui/testutil\t[no test files]\n", Timestamp: started.Add(time.Second).Format(time.RFC3339Nano)},
+		{Sequence: 2, Type: shellruntime.ExecutionEventOutput, ExecutionID: info.ID, WorkspaceID: info.WorkspaceID, Execution: &info, Data: "ok\tgo.mewis.me/codemcp/internal/tui\t1.263s\n?\tgo.mewis.me/codemcp/internal/tui/testutil\t[no test files]\n", Timestamp: started.Add(time.Second).Format(time.RFC3339Nano)},
 	}, 80)
 	for _, line := range strings.Split(strings.TrimSuffix(view, "\n"), "\n") {
 		if got := lipgloss.Width(line); got != 80 {

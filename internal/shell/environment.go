@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	"go.mewis.me/chatgpt-mcp/internal/controlplane"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/controlplane"
 )
 
 type environmentValue struct {

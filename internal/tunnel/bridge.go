@@ -14,9 +14,9 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openai/tunnel-client/pkg/tunnelctx"
 
-	localmcp "go.mewis.me/chatgpt-mcp/internal/mcp"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
-	"go.mewis.me/chatgpt-mcp/internal/version"
+	localmcp "go.mewis.me/codemcp/internal/mcp"
+	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/version"
 )
 
 type sdkBridge struct {

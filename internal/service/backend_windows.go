@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type windowsManager struct{ trace tracepkg.Observer }
@@ -109,7 +109,7 @@ func WindowsTaskXML(spec Spec) (string, error) {
 	return fmt.Sprintf(`<?xml version="1.0"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>ChatGPT MCP managed runtime</Description>
+    <Description>CodeMCP managed runtime</Description>
   </RegistrationInfo>
   <Triggers>
     <LogonTrigger>

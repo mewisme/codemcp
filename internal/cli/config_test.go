@@ -10,11 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	mcpoauth "go.mewis.me/chatgpt-mcp/internal/oauth"
-	"go.mewis.me/chatgpt-mcp/internal/secretstore"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	"go.mewis.me/codemcp/internal/secretstore"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 func TestSetConfigValueTyped(t *testing.T) {

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	"go.mewis.me/chatgpt-mcp/internal/version"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/version"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestGetVersionTool(t *testing.T) {

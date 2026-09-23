@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
+	"go.mewis.me/codemcp/internal/config"
 )
 
 func TestExposeFlagSupportsBareAllAndInterfaceLists(t *testing.T) {

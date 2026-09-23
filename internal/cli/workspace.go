@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/logger"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func workspaceCommand() *cobra.Command {

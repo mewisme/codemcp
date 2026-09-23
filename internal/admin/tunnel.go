@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 func (api API) handleTunnelConfig(w http.ResponseWriter, r *http.Request) {

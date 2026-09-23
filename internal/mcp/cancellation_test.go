@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func TestHTTPRuntimeCancellationPropagatesAndSuppressesResponse(t *testing.T) {

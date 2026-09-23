@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/memory"
+	"go.mewis.me/codemcp/internal/memory"
 )
 
 func TestLoadAutoMemory(t *testing.T) {

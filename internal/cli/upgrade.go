@@ -5,10 +5,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/install"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	updatepkg "go.mewis.me/chatgpt-mcp/internal/update"
-	"go.mewis.me/chatgpt-mcp/internal/version"
+	"go.mewis.me/codemcp/internal/install"
+	"go.mewis.me/codemcp/internal/logger"
+	updatepkg "go.mewis.me/codemcp/internal/update"
+	"go.mewis.me/codemcp/internal/version"
 )
 
 func upgradeCommand() *cobra.Command {

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/auth"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/auth"
+	"go.mewis.me/codemcp/internal/config"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type AuthStatus struct {

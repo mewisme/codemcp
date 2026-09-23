@@ -15,10 +15,10 @@ import (
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	mcpoauth "go.mewis.me/chatgpt-mcp/internal/oauth"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
-	"go.mewis.me/chatgpt-mcp/internal/tui/testutil"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	"go.mewis.me/codemcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/tui/testutil"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 type mcpPageClient struct {

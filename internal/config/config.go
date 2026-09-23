@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/features"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/features"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 type Config struct {

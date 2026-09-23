@@ -6,7 +6,7 @@ Do **not** open a public GitHub issue for security vulnerabilities.
 
 Report privately via GitHub Security Advisories:
 
-https://github.com/mewisme/chatgpt-mcp/security/advisories/new
+https://github.com/mewisme/codemcp/security/advisories/new
 
 Please include:
 

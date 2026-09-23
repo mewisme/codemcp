@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/configformat"
 )
 
 func TestConvertFormatAtConvertsStructuredTree(t *testing.T) {

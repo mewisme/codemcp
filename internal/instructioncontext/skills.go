@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
-	"go.mewis.me/chatgpt-mcp/internal/skills"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/skills"
 )
 
 var skillSourcePriority = map[string]int{

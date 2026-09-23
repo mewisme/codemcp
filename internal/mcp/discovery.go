@@ -1,8 +1,8 @@
 package mcp
 
 import (
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
-	"go.mewis.me/chatgpt-mcp/internal/version"
+	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/version"
 )
 
 const (

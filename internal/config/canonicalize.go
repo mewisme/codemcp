@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/configformat"
 )
 
 var startupDeprecatedConfigPaths = [][]string{

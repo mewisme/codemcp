@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/configformat"
 )
 
 type Store struct{ Path string }

@@ -13,11 +13,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/install"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/install"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	managed "go.mewis.me/codemcp/internal/service"
 )
 
 type updateRuntimeManager struct {

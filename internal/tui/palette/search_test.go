@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/tui/action"
+	"go.mewis.me/codemcp/internal/tui/action"
 )
 
 func TestRankPrefersTitleAndCommandPathMatches(t *testing.T) {

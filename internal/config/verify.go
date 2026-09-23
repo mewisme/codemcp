@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/configformat"
 )
 
 type VerifyResult struct {

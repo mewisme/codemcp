@@ -26,7 +26,7 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
       - -s -w
-      - -X go.mewis.me/chatgpt-mcp/internal/version.Version={{.Version}}
+      - -X go.mewis.me/codemcp/internal/version.Version={{.Version}}
 
 # Keep macOS binaries untouched for Gatekeeper compatibility.
 upx:
@@ -84,8 +84,8 @@ changelog:
 # a release asset and scoop-mew syncs it through repository_dispatch.
 scoops:
   - name: chatgpt-mcp
-    url_template: "https://github.com/mewisme/chatgpt-mcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-    homepage: "https://github.com/mewisme/chatgpt-mcp"
+    url_template: "https://github.com/mewisme/codemcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    homepage: "https://github.com/mewisme/codemcp"
     description: "Self-hosted MCP 2026-07-28 runtime with local tools, upstream MCP aggregation, and OpenAI tunnel support"
     license: MIT
     goamd64: v1
@@ -103,7 +103,7 @@ homebrew_casks:
       - chatgpt-mcp
     binaries:
       - chatgpt-mcp
-    homepage: "https://github.com/mewisme/chatgpt-mcp"
+    homepage: "https://github.com/mewisme/codemcp"
     description: "Self-hosted MCP 2026-07-28 runtime with local tools, upstream MCP aggregation, and OpenAI tunnel support"
     directory: Casks
     skip_upload: true

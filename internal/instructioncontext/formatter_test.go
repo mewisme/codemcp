@@ -7,8 +7,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"go.mewis.me/chatgpt-mcp/internal/rules"
-	"go.mewis.me/chatgpt-mcp/internal/skills"
+	"go.mewis.me/codemcp/internal/rules"
+	"go.mewis.me/codemcp/internal/skills"
 )
 
 func TestFormatInstructionsStableOrderingAndByteCount(t *testing.T) {

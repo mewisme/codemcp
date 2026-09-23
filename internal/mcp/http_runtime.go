@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/activity"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/activity"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 type HTTPRuntime struct {

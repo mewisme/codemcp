@@ -6,10 +6,10 @@ import (
 	"errors"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/caveman"
-	"go.mewis.me/chatgpt-mcp/internal/jsruntime"
-	"go.mewis.me/chatgpt-mcp/internal/ponytail"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/caveman"
+	"go.mewis.me/codemcp/internal/jsruntime"
+	"go.mewis.me/codemcp/internal/ponytail"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type NodeResetResult struct {

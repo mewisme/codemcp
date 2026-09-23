@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/caveman"
-	"go.mewis.me/chatgpt-mcp/internal/features"
-	"go.mewis.me/chatgpt-mcp/internal/ponytail"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/caveman"
+	"go.mewis.me/codemcp/internal/features"
+	"go.mewis.me/codemcp/internal/ponytail"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func newAdvancedRuntime(t *testing.T) (*Runtime, string, string) {

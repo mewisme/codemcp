@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func TestResponseMarshalStampsServerInfoWithoutLosingRawNumbersOrMeta(t *testing.T) {

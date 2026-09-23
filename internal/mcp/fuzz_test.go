@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func FuzzDecodeParamsNoPanic(f *testing.F) {

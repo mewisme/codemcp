@@ -7,7 +7,7 @@ import (
 	"errors"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/controlguard"
 )
 
 type Target struct {

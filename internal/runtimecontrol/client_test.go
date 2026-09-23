@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/configformat"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func TestRequestUsesAuthenticatedLoopbackState(t *testing.T) {

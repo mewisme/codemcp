@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/controlguard"
 )
 
 var mutationWord = regexp.MustCompile(`(?i)(^|[^a-z0-9_.-])(rm|rmdir|unlink|mv|rename|del|erase|move|ren|remove-item|move-item|rename-item)([^a-z0-9_.-]|$)|\bgit\s+(?:mv|rm|clean)\b|\bfind\b[\s\S]*\s-delete\b|\b(?:os\.(?:remove|unlink|rename|replace)|shutil\.(?:move|rmtree)|fs\.(?:unlink|rm|rename))\b`)

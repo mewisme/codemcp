@@ -3,9 +3,9 @@ package application
 import (
 	"os"
 
-	"go.mewis.me/chatgpt-mcp/internal/idgen"
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/idgen"
+	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
 )
 
 type InstructionSettings struct {

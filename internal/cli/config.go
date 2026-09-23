@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/logger"
 )
 
 const defaultConfigBundleFile = "chatgpt-mcp-config.cgm"

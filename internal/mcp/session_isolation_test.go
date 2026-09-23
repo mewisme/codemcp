@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type isolationHTTPFixture struct {

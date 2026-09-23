@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/state"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/state"
 )
 
 func TestTunnelRuntimeKeyReplacementRecoversMissingStoredSecret(t *testing.T) {

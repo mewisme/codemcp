@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type WorkspaceContainerListItem struct {

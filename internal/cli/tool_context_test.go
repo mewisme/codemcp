@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	"go.mewis.me/chatgpt-mcp/internal/controlplane"
-	"go.mewis.me/chatgpt-mcp/internal/testutil"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/controlplane"
+	"go.mewis.me/codemcp/internal/testutil"
 )
 
 func TestMain(m *testing.M) {

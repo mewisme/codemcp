@@ -7,9 +7,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
-	"go.mewis.me/chatgpt-mcp/internal/tui/testutil"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/tui/testutil"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 func TestMCPServerFormCreatesNormalizedHTTPServer(t *testing.T) {

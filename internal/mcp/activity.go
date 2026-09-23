@@ -3,7 +3,7 @@ package mcp
 import (
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/activity"
+	"go.mewis.me/codemcp/internal/activity"
 )
 
 func (h *HTTPRuntime) EmitActivity(event activity.Event) {

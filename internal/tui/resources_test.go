@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestQuickOpenResourcesIncludeLocalEntities(t *testing.T) {

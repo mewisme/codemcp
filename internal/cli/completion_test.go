@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	"go.mewis.me/codemcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestConfigCompletionIncludesKeysAndTypedValues(t *testing.T) {

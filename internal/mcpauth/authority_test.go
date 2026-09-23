@@ -53,7 +53,7 @@ func TestOAuthAuthorizationCodePKCEAndRotation(t *testing.T) {
 	}
 	consent := httptest.NewRecorder()
 	handler.ServeHTTP(consent, httptest.NewRequest(http.MethodGet, "/oauth/authorize?"+params.Encode(), nil))
-	if consent.Code != http.StatusOK || !strings.Contains(consent.Body.String(), "Authorize ChatGPT MCP") {
+	if consent.Code != http.StatusOK || !strings.Contains(consent.Body.String(), "Authorize CodeMCP") {
 		t.Fatalf("consent status=%d body=%s", consent.Code, consent.Body.String())
 	}
 	csrf := hiddenInputValue(t, consent.Body.String(), "csrf")

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/install"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/install"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 var (

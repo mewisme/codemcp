@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	gitutil "go.mewis.me/chatgpt-mcp/internal/git"
+	gitutil "go.mewis.me/codemcp/internal/git"
 )
 
 func runGitTest(t *testing.T, cwd string, args ...string) string {

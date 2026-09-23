@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	managed "go.mewis.me/codemcp/internal/service"
 )
 
 func TestRuntimeStatusReturnsStoppedWithoutControlState(t *testing.T) {

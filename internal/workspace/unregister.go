@@ -3,7 +3,7 @@ package workspace
 import (
 	"fmt"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func (m *Manager) Unregister(id string) error {

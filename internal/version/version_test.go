@@ -42,3 +42,15 @@ func TestApplyBuildInfoPreservesExplicitLdflags(t *testing.T) {
 		t.Fatalf("explicit metadata was overwritten: %q %q %q", Version, Commit, Date)
 	}
 }
+
+func TestStringUsesCodeMCPProductIdentity(t *testing.T) {
+	previousVersion, previousCommit, previousDate := Version, Commit, Date
+	defer func() {
+		Version, Commit, Date = previousVersion, previousCommit, previousDate
+	}()
+
+	Version, Commit, Date = "v1.2.3", "abc123", "2026-09-24T00:00:00Z"
+	if got, want := String(), "CodeMCP version v1.2.3 (abc123) 2026-09-24T00:00:00Z"; got != want {
+		t.Fatalf("String() = %q, want %q", got, want)
+	}
+}

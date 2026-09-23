@@ -14,7 +14,7 @@ import (
 
 	tunnelclient "github.com/openai/tunnel-client"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const runtimeServiceAccountName = "chatgpt-mcp tunnel runtime"

@@ -11,9 +11,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type WorkspaceCommand string

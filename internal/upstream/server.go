@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/outboundpolicy"
+	"go.mewis.me/codemcp/internal/outboundpolicy"
 )
 
 type AuthConfig struct {

@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/secretstore"
+	"go.mewis.me/codemcp/internal/secretstore"
 )
 
 func TestMain(m *testing.M) {

@@ -9,7 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"golang.org/x/term"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
+	"go.mewis.me/codemcp/internal/config"
 )
 
 func TerminalIO(in io.Reader, out io.Writer) bool {

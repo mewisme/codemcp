@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/install"
+	"go.mewis.me/codemcp/internal/install"
 )
 
 var ErrSelfUpdateUnavailable = errors.New("self-update unavailable for this installation")

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestProcessManagerResolvesRelocatedWorkspaceAliases(t *testing.T) {

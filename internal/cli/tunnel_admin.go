@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 const tunnelAdminTimeout = 30 * time.Second

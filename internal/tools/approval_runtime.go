@@ -5,9 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func (r *Runtime) prepareApprovalRetry(ctx context.Context, sessionID, workspaceID, source, name string, args map[string]any) (context.Context, approval.Request, *Result, error) {

@@ -7,15 +7,15 @@ import (
 	"net/http"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	mcpnetwork "go.mewis.me/chatgpt-mcp/internal/network"
-	mcpoauth "go.mewis.me/chatgpt-mcp/internal/oauth"
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/config"
+	mcpnetwork "go.mewis.me/codemcp/internal/network"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 const maxRequestBodyBytes int64 = 1 << 20

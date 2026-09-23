@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestLoadLogsAppliesLatestSessionVisibilityTailAndBufferCap(t *testing.T) {

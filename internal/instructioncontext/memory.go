@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
 )
 
 const (

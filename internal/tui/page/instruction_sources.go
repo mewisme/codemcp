@@ -8,10 +8,10 @@ import (
 	"charm.land/bubbles/v2/tree"
 	tea "charm.land/bubbletea/v2"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/tui/component"
 )
 
 type instructionSourceNodeKind uint8

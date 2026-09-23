@@ -14,14 +14,14 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	mcpnetwork "go.mewis.me/chatgpt-mcp/internal/network"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
-	updatepkg "go.mewis.me/chatgpt-mcp/internal/update"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/logger"
+	mcpnetwork "go.mewis.me/codemcp/internal/network"
+	managed "go.mewis.me/codemcp/internal/service"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/tunnel"
+	updatepkg "go.mewis.me/codemcp/internal/update"
 )
 
 type statusSnapshot struct {
@@ -183,14 +183,14 @@ func renderStatusText(out io.Writer, snapshot statusSnapshot, verbose bool) {
 func renderStatusBaseText(out io.Writer, snapshot statusSnapshot, verbose bool) {
 	if snapshot.Running {
 		if snapshot.Runtime.Starting {
-			fmt.Fprintln(out, cliStyled(color.FgHiYellow, color.Bold).Sprint("·"), "ChatGPT MCP is starting")
+			fmt.Fprintln(out, cliStyled(color.FgHiYellow, color.Bold).Sprint("·"), "CodeMCP is starting")
 		} else {
-			fmt.Fprintln(out, cliStyled(color.FgHiGreen, color.Bold).Sprint("✓"), "ChatGPT MCP is running")
+			fmt.Fprintln(out, cliStyled(color.FgHiGreen, color.Bold).Sprint("✓"), "CodeMCP is running")
 		}
 		renderRunningStatus(out, snapshot, verbose)
 		return
 	}
-	fmt.Fprintln(out, cliStyled(color.FgHiRed, color.Bold).Sprint("×"), "ChatGPT MCP is stopped")
+	fmt.Fprintln(out, cliStyled(color.FgHiRed, color.Bold).Sprint("×"), "CodeMCP is stopped")
 	renderStoppedStatus(out, snapshot, verbose)
 }
 
@@ -371,7 +371,7 @@ func renderStatusConfig(out io.Writer, snapshot statusSnapshot, verbose bool) {
 }
 
 func renderStatusUninitialized(out io.Writer) {
-	fmt.Fprintln(out, cliStyled(color.FgHiYellow, color.Bold).Sprint("!"), "ChatGPT MCP is not initialized")
+	fmt.Fprintln(out, cliStyled(color.FgHiYellow, color.Bold).Sprint("!"), "CodeMCP is not initialized")
 	fmt.Fprintln(out, "\n"+cliHeading("Run:"))
 	fmt.Fprintf(out, "  %s init\n", cliUseName())
 }

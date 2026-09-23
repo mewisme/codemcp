@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"go.mewis.me/chatgpt-mcp/internal/outboundpolicy"
+	"go.mewis.me/codemcp/internal/outboundpolicy"
 )
 
 func (s *Store) clientForTargets(trustedOrigins ...string) *http.Client {

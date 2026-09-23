@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/secretstore"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/secretstore"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 var (

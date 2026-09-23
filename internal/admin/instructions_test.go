@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
-	"go.mewis.me/chatgpt-mcp/internal/memory"
-	"go.mewis.me/chatgpt-mcp/internal/projectcontext"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/memory"
+	"go.mewis.me/codemcp/internal/projectcontext"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestGlobalInstructionsAndWorkspaceContextAPI(t *testing.T) {

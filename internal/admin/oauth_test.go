@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	mcpoauth "go.mewis.me/chatgpt-mcp/internal/oauth"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 func TestUpstreamOAuthAdminFlowDoesNotExposeTokens(t *testing.T) {

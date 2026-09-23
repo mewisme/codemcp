@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type LogsQueryOptions struct {

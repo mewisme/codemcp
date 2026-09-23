@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	updatepkg "go.mewis.me/chatgpt-mcp/internal/update"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	updatepkg "go.mewis.me/codemcp/internal/update"
 )
 
 func TestStatusReportsManagedRuntime(t *testing.T) {
@@ -44,7 +44,7 @@ func TestStatusReportsManagedRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, expected := range []string{"✓ ChatGPT MCP is running", "Runtime", "session     run_status", "managed     system ·", "service     chatgpt-mcp-system-test", "Endpoints", "Config", "auth        mcp off · admin off", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected", "id          tunnel_status"} {
+	for _, expected := range []string{"✓ CodeMCP is running", "Runtime", "session     run_status", "managed     system ·", "service     chatgpt-mcp-system-test", "Endpoints", "Config", "auth        mcp off · admin off", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected", "id          tunnel_status"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("status missing %q: %s", expected, text)
 		}
@@ -88,7 +88,7 @@ func TestStatusReportsStartingRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	if !strings.Contains(text, "ChatGPT MCP is starting") || strings.Contains(text, "ChatGPT MCP is running") {
+	if !strings.Contains(text, "CodeMCP is starting") || strings.Contains(text, "CodeMCP is running") {
 		t.Fatalf("starting status=%q", text)
 	}
 }
@@ -144,7 +144,7 @@ func TestStatusNotInitialized(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	if !strings.Contains(text, "! ChatGPT MCP is not initialized") || !strings.Contains(text, "chatgpt-mcp init") {
+	if !strings.Contains(text, "! CodeMCP is not initialized") || !strings.Contains(text, "chatgpt-mcp init") {
 		t.Fatalf("unexpected uninitialized status: %s", text)
 	}
 }

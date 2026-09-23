@@ -12,11 +12,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
-	"go.mewis.me/chatgpt-mcp/internal/tui/testutil"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/tui/testutil"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 func TestTunnelRuntimeEditorsRedactSecretsAndBlankRuntimeKeyPreservesSecret(t *testing.T) {

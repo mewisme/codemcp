@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/auth"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/auth"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 func TestNewSharesToolRuntime(t *testing.T) {

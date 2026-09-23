@@ -15,7 +15,7 @@ import (
 	mcpauth "github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type Discovery struct {

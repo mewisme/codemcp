@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func (api API) handleWorkspaceProcesses(w http.ResponseWriter, r *http.Request, item workspace.Workspace, parts []string) {

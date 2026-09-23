@@ -13,8 +13,8 @@ import (
 	"sort"
 	"strings"
 
-	statepkg "go.mewis.me/chatgpt-mcp/internal/state"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	statepkg "go.mewis.me/codemcp/internal/state"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const environmentVersion = 1

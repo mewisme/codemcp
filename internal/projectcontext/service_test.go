@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
-	"go.mewis.me/chatgpt-mcp/internal/memory"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/memory"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestServiceBuildUsesManagedPolicyAndSelectedSubproject(t *testing.T) {

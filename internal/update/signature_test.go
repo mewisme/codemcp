@@ -9,7 +9,7 @@ import (
 )
 
 func TestReleaseWorkflowIdentity(t *testing.T) {
-	want := "https://github.com/mewisme/chatgpt-mcp/.github/workflows/release.yml@refs/tags/v1.2.3"
+	want := "https://github.com/mewisme/codemcp/.github/workflows/release.yml@refs/tags/v1.2.3"
 	if got := releaseWorkflowIdentity("v1.2.3"); got != want {
 		t.Fatalf("identity = %q, want %q", got, want)
 	}

@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/controlguard"
 )
 
 func TestCanonicalTargetDigestIsStableAndExact(t *testing.T) {

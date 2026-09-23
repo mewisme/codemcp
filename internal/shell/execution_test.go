@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestExecutionHubSnapshotsAndStreamsOutput(t *testing.T) {

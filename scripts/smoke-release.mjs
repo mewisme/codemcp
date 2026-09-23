@@ -42,7 +42,7 @@ try {
   await verifyNoAliasInstall()
   run(["--help"])
   const tuiHelp = run(["tui", "--help"], { quiet: true })
-  if (!tuiHelp.includes("Open the full-screen ChatGPT MCP command center")) fail(`tui help is missing command-center guidance:\n${tuiHelp}`)
+  if (!tuiHelp.includes("Open the full-screen CodeMCP command center")) fail(`tui help is missing command-center guidance:\n${tuiHelp}`)
   const tuiNonTTY = runExpectFailure(["tui"])
   if (!tuiNonTTY.includes("requires terminal stdin and stdout")) fail(`tui non-TTY refusal is unclear:\n${tuiNonTTY}`)
   run(["serve", "--help"])
@@ -90,7 +90,7 @@ try {
   await verifyWorkspaceContainerMCP(serverPort, workspaceID)
   verifyApprovalCLI()
   const foregroundStatus = run(["status"], { quiet: true })
-  for (const expected of ["✓ ChatGPT MCP is running", "session     run_", "mode        foreground", "OpenAI Secure MCP Tunnel is disabled"]) {
+  for (const expected of ["✓ CodeMCP is running", "session     run_", "mode        foreground", "OpenAI Secure MCP Tunnel is disabled"]) {
     if (!foregroundStatus.includes(expected)) fail(`foreground status missing ${JSON.stringify(expected)}:\n${foregroundStatus}`)
   }
 
@@ -139,7 +139,7 @@ try {
   await waitForHealth(`http://127.0.0.1:${reloadedAdminPort}/api/health`, child, () => `${stdout}\n${stderr}`)
 
   const managedStatus = await waitForStatus(child, () => `${stdout}\n${stderr}`)
-  for (const expected of ["✓ ChatGPT MCP is running", "managed     user ·", `service     ${managedServiceID}`, "session     run_", "OpenAI Secure MCP Tunnel is disabled"]) {
+  for (const expected of ["✓ CodeMCP is running", "managed     user ·", `service     ${managedServiceID}`, "session     run_", "OpenAI Secure MCP Tunnel is disabled"]) {
     if (!managedStatus.includes(expected)) fail(`managed status missing ${JSON.stringify(expected)}:\n${managedStatus}`)
   }
   const managedLogs = run(["logs", "--debug", "--event", "server.*", "--grep", "Server", "--tail", "50"], { quiet: true })
@@ -517,7 +517,7 @@ async function waitForStatus(server, output) {
     if (server.exitCode !== null) fail(`serve exited before runtime status became ready with code ${server.exitCode}\n${output().trim()}`)
     const result = spawnSync(binary, [...globalArgs, "status"], { env, encoding: "utf8", windowsHide: true })
     last = [result.stdout, result.stderr].filter(Boolean).join("").trim()
-    if (!result.error && result.status === 0 && last.includes("✓ ChatGPT MCP is running")) return last
+    if (!result.error && result.status === 0 && last.includes("✓ CodeMCP is running")) return last
     await sleep(50)
   }
   fail(`runtime status did not become ready:\n${last}\n${output().trim()}`)

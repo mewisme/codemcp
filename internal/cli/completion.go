@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type configKeyCompletion struct {

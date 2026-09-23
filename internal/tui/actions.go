@@ -7,11 +7,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"go.mewis.me/chatgpt-mcp/docs/tuiguide"
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/capability"
-	"go.mewis.me/chatgpt-mcp/internal/tui/action"
-	tuipage "go.mewis.me/chatgpt-mcp/internal/tui/page"
+	"go.mewis.me/codemcp/docs/tuiguide"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/tui/action"
+	tuipage "go.mewis.me/codemcp/internal/tui/page"
 )
 
 type navigateMsg struct {

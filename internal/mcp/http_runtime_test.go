@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/features"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/features"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func modernRequest(method, body string) *http.Request {

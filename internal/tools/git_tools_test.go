@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func newGitToolTestRuntime(t *testing.T) (*Runtime, string, string) {

@@ -1,6 +1,6 @@
 package mcp
 
-import "go.mewis.me/chatgpt-mcp/internal/activity"
+import "go.mewis.me/codemcp/internal/activity"
 
 func (h *HTTPRuntime) PublishToolsChanged() {
 	if h != nil {

@@ -39,7 +39,7 @@ func applyBuildInfo(info *debug.BuildInfo) {
 }
 
 func String() string {
-	return fmt.Sprintf("chatgpt-mcp version %s (%s) %s", Version, Commit, Date)
+	return fmt.Sprintf("CodeMCP version %s (%s) %s", Version, Commit, Date)
 }
 
 func Short() string {

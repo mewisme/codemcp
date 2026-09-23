@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func newSessionAccessRuntime(t *testing.T) (*Runtime, string, string, *int) {

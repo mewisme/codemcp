@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type linuxManager struct{ trace tracepkg.Observer }
@@ -81,7 +81,7 @@ func LinuxUnit(spec Spec) string {
 	args := append([]string{spec.Binary}, Args(spec)...)
 	lines := []string{
 		"[Unit]",
-		"Description=ChatGPT MCP managed runtime",
+		"Description=CodeMCP managed runtime",
 		"After=network-online.target",
 		"Wants=network-online.target",
 		"StartLimitIntervalSec=0",

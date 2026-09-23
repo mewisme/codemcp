@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func TestProjectBoundWorkspaceSchemaRemovesWorkspaceArgument(t *testing.T) {

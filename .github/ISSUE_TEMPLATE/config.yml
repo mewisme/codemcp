@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
   - name: Documentation
-    url: https://github.com/mewisme/chatgpt-mcp/blob/main/docs/README.md
+    url: https://github.com/mewisme/codemcp/blob/main/docs/README.md
     about: Install, configure, TUI, MCP, and troubleshooting guides
   - name: Security vulnerability report
-    url: https://github.com/mewisme/chatgpt-mcp/security/advisories/new
+    url: https://github.com/mewisme/codemcp/security/advisories/new
     about: Report security issues privately (do not open a public issue)
   - name: Contributing guide
-    url: https://github.com/mewisme/chatgpt-mcp/blob/main/CONTRIBUTING.md
+    url: https://github.com/mewisme/codemcp/blob/main/CONTRIBUTING.md
     about: How to set up a dev environment and open a pull request

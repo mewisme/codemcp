@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/state"
+	"go.mewis.me/codemcp/internal/state"
 )
 
 const MetadataSchema = 1

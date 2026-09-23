@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/state"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/state"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 var relocateStateRename = os.Rename

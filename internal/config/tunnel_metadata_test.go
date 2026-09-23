@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 func TestTunnelMetadataRoundTripAcrossFormats(t *testing.T) {

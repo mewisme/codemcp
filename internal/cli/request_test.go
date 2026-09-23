@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/controlguard"
 )
 
 func TestRequestCLIListViewApproveDenyAliasesAndOutput(t *testing.T) {

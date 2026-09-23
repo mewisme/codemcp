@@ -21,7 +21,7 @@ repos:
       - id: go-imports
         args:
           - "-local"
-          - "go.mewis.me/chatgpt-mcp"
+          - "go.mewis.me/codemcp"
           - "-w"
       - id: go-vet-mod
       - id: go-staticcheck-repo-mod

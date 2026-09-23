@@ -15,11 +15,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type serverTraceCollector struct {

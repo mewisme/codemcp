@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/activity"
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
+	"go.mewis.me/codemcp/internal/activity"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
 )
 
 var (

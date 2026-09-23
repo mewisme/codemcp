@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	statepkg "go.mewis.me/chatgpt-mcp/internal/state"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/controlguard"
+	statepkg "go.mewis.me/codemcp/internal/state"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 const (

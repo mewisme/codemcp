@@ -1,4 +1,4 @@
-module go.mewis.me/chatgpt-mcp
+module go.mewis.me/codemcp
 
 go 1.27.0
 

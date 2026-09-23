@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/controlguard"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type approvalToolCallResult struct {
@@ -118,11 +118,11 @@ func TestRuntimeGuardChallengeApprovalAndExactOneShotRetry(t *testing.T) {
 
 	approvalCall := make(chan approvalToolCallResult, 1)
 	go func() {
-		result, err := runtime.Call(ctx, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": challenge.ChallengeID, "title": "Update ChatGPT MCP"})
+		result, err := runtime.Call(ctx, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": challenge.ChallengeID, "title": "Update CodeMCP"})
 		approvalCall <- approvalToolCallResult{result: result, err: err}
 	}()
 	request := waitForPendingApproval(t, runtime.Approvals)
-	if request.Title != "Update ChatGPT MCP" || request.Command != "cgm update" {
+	if request.Title != "Update CodeMCP" || request.Command != "cgm update" {
 		t.Fatalf("request summary/command = %#v", request)
 	}
 	if _, err := runtime.Approvals.Approve(request.ID, "test", "reviewed"); err != nil {
@@ -202,7 +202,7 @@ func TestRuntimeApprovalMismatchDoesNotConsumeGrant(t *testing.T) {
 	args := map[string]any{"workspace_id": workspaceID, "command": "cgm update"}
 	first, _ := runtime.Call(ctx, "guarded_action", args)
 	challenge := first.StructuredContent.(approvalRequiredResponse)
-	request, _, err := runtime.Approvals.CreateRequestWithTitle(challenge.ChallengeID, "session-a", workspaceID, "Update ChatGPT MCP")
+	request, _, err := runtime.Approvals.CreateRequestWithTitle(challenge.ChallengeID, "session-a", workspaceID, "Update CodeMCP")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestApprovalRequestToolDenyAndCancellation(t *testing.T) {
 		challenge := guarded.StructuredContent.(approvalRequiredResponse)
 		resultCh := make(chan approvalToolCallResult, 1)
 		go func() {
-			result, err := runtime.Call(ctx, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": challenge.ChallengeID, "title": "Update ChatGPT MCP"})
+			result, err := runtime.Call(ctx, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": challenge.ChallengeID, "title": "Update CodeMCP"})
 			resultCh <- approvalToolCallResult{result: result, err: err}
 		}()
 		request := waitForPendingApproval(t, runtime.Approvals)
@@ -292,7 +292,7 @@ func TestApprovalRequestToolDenyAndCancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(base)
 		resultCh := make(chan approvalToolCallResult, 1)
 		go func() {
-			result, err := runtime.Call(ctx, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": challenge.ChallengeID, "title": "Update ChatGPT MCP"})
+			result, err := runtime.Call(ctx, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": challenge.ChallengeID, "title": "Update CodeMCP"})
 			resultCh <- approvalToolCallResult{result: result, err: err}
 		}()
 		request := waitForPendingApproval(t, runtime.Approvals)
@@ -318,14 +318,14 @@ func TestApprovalRequestToolDenyAndCancellation(t *testing.T) {
 func TestApprovalRequestRejectsFakeChallengeAndSessionMismatch(t *testing.T) {
 	runtime, workspaceID := newApprovalRuntime(t)
 	ctxA := approvalContext("session-a")
-	fake, err := runtime.Call(ctxA, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": "chg_missing", "title": "Update ChatGPT MCP"})
+	fake, err := runtime.Call(ctxA, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": "chg_missing", "title": "Update CodeMCP"})
 	if err != nil || !fake.IsError || !strings.Contains(fake.Content[0].Text, approval.ErrChallengeNotFound.Error()) {
 		t.Fatalf("fake challenge = %#v err=%v", fake, err)
 	}
 	guarded, _ := runtime.Call(ctxA, "guarded_action", map[string]any{"workspace_id": workspaceID, "command": "cgm update"})
 	challenge := guarded.StructuredContent.(approvalRequiredResponse)
 	ctxB := approvalContext("session-b")
-	mismatch, err := runtime.Call(ctxB, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": challenge.ChallengeID, "title": "Update ChatGPT MCP"})
+	mismatch, err := runtime.Call(ctxB, ApprovalRequestToolName, map[string]any{"workspace_id": workspaceID, "challenge_id": challenge.ChallengeID, "title": "Update CodeMCP"})
 	if err != nil || !mismatch.IsError || !strings.Contains(mismatch.Content[0].Text, approval.ErrChallengeMismatch.Error()) {
 		t.Fatalf("session mismatch = %#v err=%v", mismatch, err)
 	}
@@ -437,7 +437,7 @@ func TestApprovedShellRetryCarriesOneShotChildCapability(t *testing.T) {
 	args := map[string]any{"workspace_id": workspaceID, "command": "cgm update"}
 	guarded, _ := runtime.Call(ctx, "run_command", args)
 	challenge := guarded.StructuredContent.(approvalRequiredResponse)
-	request, _, err := runtime.Approvals.CreateRequestWithTitle(challenge.ChallengeID, "session-a", workspaceID, "Update ChatGPT MCP")
+	request, _, err := runtime.Approvals.CreateRequestWithTitle(challenge.ChallengeID, "session-a", workspaceID, "Update CodeMCP")
 	if err != nil {
 		t.Fatal(err)
 	}

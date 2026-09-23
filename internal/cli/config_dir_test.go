@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/configformat"
 )
 
 func TestConfigDirFlagOverridesEnvironment(t *testing.T) {

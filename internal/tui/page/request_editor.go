@@ -7,8 +7,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/tui/component"
 )
 
 func (page *RequestsPage) initCreateEditor() {

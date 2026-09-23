@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func TestHTTPRuntimeValidatesAnnotatedToolHeaders(t *testing.T) {

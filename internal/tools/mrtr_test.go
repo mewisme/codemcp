@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 func TestInputRoundContext(t *testing.T) {

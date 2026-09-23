@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
-	"go.mewis.me/chatgpt-mcp/internal/projectcontext"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/projectcontext"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type workspaceRequest struct {

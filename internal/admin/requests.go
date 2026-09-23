@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/auth"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/auth"
 )
 
 const approvalHeartbeatInterval = 15 * time.Second

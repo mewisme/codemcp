@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
 )
 
 func TestInstructionSettingsServiceRoundTripAndDetectSources(t *testing.T) {

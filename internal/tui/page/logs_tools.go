@@ -15,9 +15,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"go.mewis.me/chatgpt-mcp/internal/activity"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/activity"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	"go.mewis.me/codemcp/internal/tui/component"
 )
 
 type logsToolCallFeed struct {

@@ -3,7 +3,7 @@ package mcp
 import (
 	"net/http"
 
-	"go.mewis.me/chatgpt-mcp/internal/activity"
+	"go.mewis.me/codemcp/internal/activity"
 )
 
 type SSEHandler struct{ Stream *activity.Stream }

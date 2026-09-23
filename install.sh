@@ -14,7 +14,7 @@
 #                                 verification is unavailable (loud warning)
 set -eu
 
-REPO="mewisme/chatgpt-mcp"
+REPO="mewisme/codemcp"
 INSTALL_DIR="${CHATGPT_MCP_INSTALL_DIR:-$HOME/.chatgpt-mcp}"
 BIN_DIR="${CHATGPT_MCP_BIN_DIR:-$HOME/.local/bin}"
 NO_ALIAS=0

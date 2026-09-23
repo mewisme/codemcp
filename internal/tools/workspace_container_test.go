@@ -10,11 +10,11 @@ import (
 	"sync"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	"go.mewis.me/chatgpt-mcp/internal/memory"
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/memory"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func newWorkspaceContainerToolFixture(t *testing.T) (*workspace.Manager, *Registry, workspace.WorkspaceContainer, workspace.Workspace, workspace.Workspace) {

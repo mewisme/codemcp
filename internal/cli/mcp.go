@@ -13,17 +13,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/app"
-	"go.mewis.me/chatgpt-mcp/internal/auth"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/mcp"
-	"go.mewis.me/chatgpt-mcp/internal/mcpauth"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/app"
+	"go.mewis.me/codemcp/internal/auth"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/mcp"
+	"go.mewis.me/codemcp/internal/mcpauth"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func mcpCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "mcp", Short: "Serve ChatGPT MCP transports"}
+	cmd := &cobra.Command{Use: "mcp", Short: "Serve CodeMCP transports"}
 	cmd.AddCommand(mcpStdioCommand(), mcpHTTPCommand(), legacyMCPServerCommand())
 	return cmd
 }

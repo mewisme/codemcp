@@ -9,10 +9,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
-	"go.mewis.me/chatgpt-mcp/internal/projectcontext"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/projectcontext"
+	"go.mewis.me/codemcp/internal/tui/component"
 )
 
 type WorkspaceContextSession struct {

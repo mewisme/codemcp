@@ -6,9 +6,9 @@ import (
 	"net/url"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func ListApprovalRequests(ctx context.Context) ([]approval.Request, error) {

@@ -133,7 +133,7 @@ func (a *Authority) Handler(mcpHandler http.Handler) http.Handler {
 }
 
 func (a *Authority) serveProtectedResourceMetadata(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"resource": a.resource, "authorization_servers": []string{a.issuer}, "scopes_supported": []string{ScopeTools}, "bearer_methods_supported": []string{"header"}, "resource_name": "ChatGPT MCP"})
+	writeJSON(w, http.StatusOK, map[string]any{"resource": a.resource, "authorization_servers": []string{a.issuer}, "scopes_supported": []string{ScopeTools}, "bearer_methods_supported": []string{"header"}, "resource_name": "CodeMCP"})
 }
 
 func (a *Authority) serveAuthorizationServerMetadata(w http.ResponseWriter, _ *http.Request) {
@@ -507,4 +507,4 @@ func writeOAuthError(w http.ResponseWriter, status int, code, description string
 	writeJSON(w, status, map[string]any{"error": code, "error_description": description})
 }
 
-var consentTemplate = template.Must(template.New("consent").Parse(`<!doctype html><html><head><meta charset="utf-8"><title>Authorize ChatGPT MCP</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main><h1>Authorize ChatGPT MCP</h1><p><strong>{{if .ClientName}}{{.ClientName}}{{else}}{{.ClientID}}{{end}}</strong> wants access to <code>{{.Resource}}</code>.</p><p>Scope: <code>{{.Scope}}</code></p><form method="post">{{range $key,$value := .Fields}}<input type="hidden" name="{{$key}}" value="{{$value}}">{{end}}<input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" name="decision" value="allow">Allow</button><button type="submit" name="decision" value="deny">Deny</button></form></main></body></html>`))
+var consentTemplate = template.Must(template.New("consent").Parse(`<!doctype html><html><head><meta charset="utf-8"><title>Authorize CodeMCP</title><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main><h1>Authorize CodeMCP</h1><p><strong>{{if .ClientName}}{{.ClientName}}{{else}}{{.ClientID}}{{end}}</strong> wants access to <code>{{.Resource}}</code>.</p><p>Scope: <code>{{.Scope}}</code></p><form method="post">{{range $key,$value := .Fields}}<input type="hidden" name="{{$key}}" value="{{$value}}">{{end}}<input type="hidden" name="csrf" value="{{.CSRF}}"><button type="submit" name="decision" value="allow">Allow</button><button type="submit" name="decision" value="deny">Deny</button></form></main></body></html>`))

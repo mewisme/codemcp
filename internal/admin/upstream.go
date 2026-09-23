@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 type upstreamToolsResponse struct {

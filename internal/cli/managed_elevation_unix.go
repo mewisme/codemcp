@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
+	"go.mewis.me/codemcp/internal/config"
+	managed "go.mewis.me/codemcp/internal/service"
 )
 
 func elevateManagedCommandWithBinary(cmd *cobra.Command, action, environmentHash, binaryPath string) error {

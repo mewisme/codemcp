@@ -7,7 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/tui/component"
 )
 
 type logFrameField struct {

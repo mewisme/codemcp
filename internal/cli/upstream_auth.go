@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	mcpoauth "go.mewis.me/chatgpt-mcp/internal/oauth"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/logger"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func upstreamServerAuthCommand() *cobra.Command {

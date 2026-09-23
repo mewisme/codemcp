@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	updatepkg "go.mewis.me/chatgpt-mcp/internal/update"
+	updatepkg "go.mewis.me/codemcp/internal/update"
 )
 
 func TestRunPackageManagerPhaseUsesRefreshThenApplyCommands(t *testing.T) {

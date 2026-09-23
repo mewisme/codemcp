@@ -1,9 +1,9 @@
 package telemetry
 
 import (
-	"go.mewis.me/chatgpt-mcp/internal/activity"
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
+	"go.mewis.me/codemcp/internal/activity"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/logger"
 )
 
 func AttachApprovals(manager *approval.Manager, stream *activity.Stream, log *logger.Logger) {

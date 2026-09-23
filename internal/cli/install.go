@@ -6,9 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	installpkg "go.mewis.me/chatgpt-mcp/internal/install"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/version"
+	installpkg "go.mewis.me/codemcp/internal/install"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/version"
 )
 
 func installCommand() *cobra.Command {

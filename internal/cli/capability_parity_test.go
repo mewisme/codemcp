@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/capability"
+	"go.mewis.me/codemcp/internal/capability"
 )
 
 var publicCapabilityExemptions = map[string]string{

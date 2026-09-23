@@ -9,11 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/install"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/install"
+	"go.mewis.me/codemcp/internal/logger"
+	managed "go.mewis.me/codemcp/internal/service"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type updateRuntimeState struct {

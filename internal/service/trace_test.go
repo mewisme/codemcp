@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type traceTestManager struct {

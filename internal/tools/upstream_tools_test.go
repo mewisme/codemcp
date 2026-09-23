@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 type bridgeClient struct {

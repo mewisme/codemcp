@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 var ErrAliasConflict = errors.New("alias path is occupied by another file")

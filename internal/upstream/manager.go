@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const toolsCacheTTL = 60 * time.Second

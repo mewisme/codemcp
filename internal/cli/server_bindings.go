@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"slices"
 
-	"go.mewis.me/chatgpt-mcp/internal/app"
-	"go.mewis.me/chatgpt-mcp/internal/config"
+	"go.mewis.me/codemcp/internal/app"
+	"go.mewis.me/codemcp/internal/config"
 )
 
 type httpBindings struct {

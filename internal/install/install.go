@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 var ErrDevelopmentBuild = errors.New("development build cannot be installed as a release without --force")

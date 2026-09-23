@@ -1,5 +1,5 @@
 package mcp
 
-import "go.mewis.me/chatgpt-mcp/internal/tools"
+import "go.mewis.me/codemcp/internal/tools"
 
 type ToolRuntime = tools.Runtime

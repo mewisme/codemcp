@@ -8,9 +8,9 @@ import (
 
 	"charm.land/huh/v2"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/tui/component"
 )
 
 type logsFilterFormData struct {

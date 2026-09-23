@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 var ErrEventStreamGap = errors.New("runtime event stream gap")

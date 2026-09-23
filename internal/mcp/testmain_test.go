@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/testutil"
+	"go.mewis.me/codemcp/internal/testutil"
 )
 
 func TestMain(m *testing.M) {

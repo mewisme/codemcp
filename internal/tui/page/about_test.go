@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
+	"go.mewis.me/codemcp/internal/application"
 )
 
 func TestAboutPageRendersBuildUptimeAndPaths(t *testing.T) {

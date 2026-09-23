@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/controlguard"
 )
 
 func TestShellPolicyRejectsCommonWriteEscapes(t *testing.T) {

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"go.mewis.me/chatgpt-mcp/internal/cli"
+	"go.mewis.me/codemcp/internal/cli"
 )
 
 func main() {

@@ -7,10 +7,10 @@ import (
 	"os"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/secretstore"
-	statepkg "go.mewis.me/chatgpt-mcp/internal/state"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/secretstore"
+	statepkg "go.mewis.me/codemcp/internal/state"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const storeVersion = 1

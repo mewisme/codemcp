@@ -1,0 +1,2 @@
+module=go.mewis.me/chatgpt-mcp
+repository=https://github.com/mewisme/chatgpt-mcp

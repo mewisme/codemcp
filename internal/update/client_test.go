@@ -26,7 +26,7 @@ func TestClientLatest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/repos/mewisme/chatgpt-mcp/releases/latest" {
+	if gotPath != "/repos/mewisme/codemcp/releases/latest" {
 		t.Fatalf("request path = %q", gotPath)
 	}
 	if gotAgent != "chatgpt-mcp/test" {
@@ -72,7 +72,7 @@ func TestClientVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotPath != "/repos/mewisme/chatgpt-mcp/releases/tags/v1.2.3" {
+	if gotPath != "/repos/mewisme/codemcp/releases/tags/v1.2.3" {
 		t.Fatalf("request path = %q", gotPath)
 	}
 	if release.Version != "v1.2.3" {

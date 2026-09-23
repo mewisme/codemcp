@@ -9,10 +9,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
-const legacyModulePath = "go.mewis.me/chatgpt-mcp"
+const (
+	currentModulePath      = "go.mewis.me/codemcp"
+	legacyModulePath       = "go.mewis.me/chatgpt-mcp"
+	legacyGitHubModulePath = "github.com/mewisme/chatgpt-mcp"
+)
 
 type LegacyInstallation struct {
 	Path           string
@@ -222,7 +226,7 @@ func verifyChatGPTMCPBinary(path string) bool {
 	if err != nil {
 		return false
 	}
-	for _, root := range []string{legacyModulePath, "github.com/mewisme/chatgpt-mcp"} {
+	for _, root := range []string{currentModulePath, legacyModulePath, legacyGitHubModulePath} {
 		if info.Main.Path == root || strings.HasPrefix(info.Main.Path, root+"/") {
 			return true
 		}

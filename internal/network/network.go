@@ -5,7 +5,7 @@ import (
 	"net"
 	"sort"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
+	"go.mewis.me/codemcp/internal/config"
 )
 
 const (

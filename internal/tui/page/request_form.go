@@ -1,8 +1,8 @@
 package page
 
 import (
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/tui/component"
 )
 
 type requestCreateFormData struct {

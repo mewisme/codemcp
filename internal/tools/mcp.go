@@ -1,6 +1,6 @@
 package tools
 
-import "go.mewis.me/chatgpt-mcp/internal/upstream"
+import "go.mewis.me/codemcp/internal/upstream"
 
 type MCPBridge struct{ Manager *upstream.Manager }
 

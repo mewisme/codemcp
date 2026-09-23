@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func runCommand(name string, args ...string) (string, error) {

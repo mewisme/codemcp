@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 var completionShells = []string{"bash", "zsh", "fish", "powershell"}

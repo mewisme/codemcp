@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	memorypkg "go.mewis.me/chatgpt-mcp/internal/memory"
-	"go.mewis.me/chatgpt-mcp/internal/secretstore"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	memorypkg "go.mewis.me/codemcp/internal/memory"
+	"go.mewis.me/codemcp/internal/secretstore"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestEncodeSealsAndAuthenticatesBundle(t *testing.T) {

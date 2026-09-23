@@ -15,7 +15,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repo = 'mewisme/chatgpt-mcp'
+$repo = 'mewisme/codemcp'
 $defaultInstall = Join-Path $env:LOCALAPPDATA 'chatgpt-mcp'
 $installDir = if ($env:CHATGPT_MCP_INSTALL_DIR) { $env:CHATGPT_MCP_INSTALL_DIR } else { $defaultInstall }
 $current = Join-Path $installDir 'current'

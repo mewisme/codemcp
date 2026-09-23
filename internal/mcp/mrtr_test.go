@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 func TestRuntimeRelaysInputRoundContext(t *testing.T) {

@@ -9,15 +9,15 @@ import (
 	"runtime"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
-	"go.mewis.me/chatgpt-mcp/internal/memory"
-	"go.mewis.me/chatgpt-mcp/internal/projectcontext"
-	"go.mewis.me/chatgpt-mcp/internal/rules"
-	"go.mewis.me/chatgpt-mcp/internal/skills"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/memory"
+	"go.mewis.me/codemcp/internal/projectcontext"
+	"go.mewis.me/codemcp/internal/rules"
+	"go.mewis.me/codemcp/internal/skills"
+	"go.mewis.me/codemcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type SkillsListResult struct {

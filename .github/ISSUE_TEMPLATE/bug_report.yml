@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for the report. For security vulnerabilities, use [private advisory reporting](https://github.com/mewisme/chatgpt-mcp/security/advisories/new) instead of this form.
+        Thanks for the report. For security vulnerabilities, use [private advisory reporting](https://github.com/mewisme/codemcp/security/advisories/new) instead of this form.
   - type: textarea
     id: summary
     attributes:

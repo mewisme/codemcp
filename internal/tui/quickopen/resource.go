@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/tui/action"
+	"go.mewis.me/codemcp/internal/tui/action"
 )
 
 type Resource struct {

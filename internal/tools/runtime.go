@@ -8,16 +8,16 @@ import (
 	"sync"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/caveman"
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	"go.mewis.me/chatgpt-mcp/internal/features"
-	"go.mewis.me/chatgpt-mcp/internal/idgen"
-	"go.mewis.me/chatgpt-mcp/internal/ponytail"
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/caveman"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/features"
+	"go.mewis.me/codemcp/internal/idgen"
+	"go.mewis.me/codemcp/internal/ponytail"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 const (

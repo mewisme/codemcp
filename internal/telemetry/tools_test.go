@@ -10,9 +10,9 @@ import (
 
 	"github.com/fatih/color"
 
-	"go.mewis.me/chatgpt-mcp/internal/activity"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/activity"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func TestAttachToolsPublishesActivityAndKeepsDefaultLogQuiet(t *testing.T) {

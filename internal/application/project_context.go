@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/instructioncontext"
 )
 
 func ProjectContextEnvironment() (bool, int) {

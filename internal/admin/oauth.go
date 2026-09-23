@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	mcpoauth "go.mewis.me/chatgpt-mcp/internal/oauth"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 type oauthLoginRequest struct {

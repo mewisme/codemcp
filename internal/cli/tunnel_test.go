@@ -10,10 +10,10 @@ import (
 
 	"github.com/fatih/color"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 func TestLogTunnelLifecycleReconnect(t *testing.T) {

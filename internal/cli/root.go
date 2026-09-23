@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/version"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/version"
 )
 
 var root = newRootCommand()
@@ -52,7 +52,7 @@ func newRootCommand() *cobra.Command {
 		statusCommand(),
 		completionCommand(),
 		internalServiceCommand(),
-		&cobra.Command{Use: "version", Short: "Show the chatgpt-mcp version and build information", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, args []string) {
+		&cobra.Command{Use: "version", Short: "Show the CodeMCP version and build information", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, args []string) {
 			commandLogger(cmd).Notice("VERSION", "cli.version", version.String())
 		}},
 	)

@@ -6,7 +6,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func NewSDKHTTPHandler(toolRuntime *tools.Runtime, boundWorkspace string, enableSSE bool) (http.Handler, error) {

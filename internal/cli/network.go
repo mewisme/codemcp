@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	mcpnetwork "go.mewis.me/chatgpt-mcp/internal/network"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/logger"
+	mcpnetwork "go.mewis.me/codemcp/internal/network"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type listenerPlan struct {

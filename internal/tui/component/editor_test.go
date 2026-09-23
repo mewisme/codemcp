@@ -9,7 +9,7 @@ import (
 	"charm.land/huh/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"go.mewis.me/chatgpt-mcp/internal/tui/testutil"
+	"go.mewis.me/codemcp/internal/tui/testutil"
 )
 
 func TestEditorMovesAcrossVisibleSectionsWithoutCompletingForm(t *testing.T) {

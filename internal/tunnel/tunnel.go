@@ -16,9 +16,9 @@ import (
 	tunnelclient "github.com/openai/tunnel-client"
 	tcadmin "github.com/openai/tunnel-client/pkg/controlplane/admin"
 
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/tools"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const (

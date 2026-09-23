@@ -4,8 +4,8 @@ import (
 	"errors"
 	"slices"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 // reloadTestAfterCommit runs after Config.Update and before runtime apply. Tests only.

@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/install"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
-	updatepkg "go.mewis.me/chatgpt-mcp/internal/update"
-	"go.mewis.me/chatgpt-mcp/internal/version"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/install"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	managed "go.mewis.me/codemcp/internal/service"
+	updatepkg "go.mewis.me/codemcp/internal/update"
+	"go.mewis.me/codemcp/internal/version"
 )
 
 type InstallationOverview struct {

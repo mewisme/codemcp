@@ -21,9 +21,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	mcpoauth "go.mewis.me/chatgpt-mcp/internal/oauth"
-	"go.mewis.me/chatgpt-mcp/internal/outboundpolicy"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	"go.mewis.me/codemcp/internal/outboundpolicy"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const (

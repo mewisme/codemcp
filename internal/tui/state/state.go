@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	atomicstate "go.mewis.me/chatgpt-mcp/internal/state"
+	atomicstate "go.mewis.me/codemcp/internal/state"
 )
 
 const Version = 1

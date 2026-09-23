@@ -13,11 +13,11 @@ import (
 	"strings"
 	"sync"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/idgen"
-	"go.mewis.me/chatgpt-mcp/internal/instance"
-	"go.mewis.me/chatgpt-mcp/internal/state"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/idgen"
+	"go.mewis.me/codemcp/internal/instance"
+	"go.mewis.me/codemcp/internal/state"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const storeVersion = 4

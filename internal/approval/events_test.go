@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/controlguard"
 )
 
 func TestApprovalLifecycleEventsAreDeduplicatedAndSafe(t *testing.T) {
@@ -52,7 +52,7 @@ func TestApprovalExpiryPublishesLifecycleEvent(t *testing.T) {
 	manager := NewManager("instance-test")
 	now := time.Unix(1_700_000_000, 0).UTC()
 	manager.now = func() time.Time { return now }
-	challenge, _, err := manager.CreateChallenge(ChallengeInput{SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cgm update"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Update ChatGPT MCP"})
+	challenge, _, err := manager.CreateChallenge(ChallengeInput{SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cgm update"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Update CodeMCP"})
 	if err != nil {
 		t.Fatal(err)
 	}

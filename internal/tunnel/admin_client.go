@@ -20,7 +20,7 @@ import (
 	tctransport "github.com/openai/tunnel-client/pkg/transport"
 	"github.com/openai/tunnel-client/pkg/version"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const adminTunnelTimeout = 30 * time.Second

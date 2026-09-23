@@ -3,7 +3,7 @@ package config
 import (
 	"path/filepath"
 
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/configformat"
 )
 
 func RootPath() string { return configformat.RootPath() }

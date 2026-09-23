@@ -6,7 +6,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	"go.mewis.me/chatgpt-mcp/internal/capability"
+	"go.mewis.me/codemcp/internal/capability"
 )
 
 type Scope string

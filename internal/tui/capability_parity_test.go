@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/capability"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/tui/action"
-	"go.mewis.me/chatgpt-mcp/internal/tui/palette"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/tui/action"
+	"go.mewis.me/codemcp/internal/tui/palette"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 func TestEveryPublicCapabilityHasTUIRepresentation(t *testing.T) {

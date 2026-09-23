@@ -11,7 +11,7 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func TestStdioMessageReaderEnforcesPerMessageLimit(t *testing.T) {

@@ -6,10 +6,10 @@
 
 Single Go binary · OpenAI Secure MCP Tunnel · Linux, macOS, and Windows
 
-[![Latest Release](https://img.shields.io/github/v/release/mewisme/chatgpt-mcp?display_name=tag&sort=semver&style=flat-square)](https://github.com/mewisme/chatgpt-mcp/releases/latest)
-[![CI](https://img.shields.io/github/actions/workflow/status/mewisme/chatgpt-mcp/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/mewisme/chatgpt-mcp/actions/workflows/ci.yml)
-[![Go](https://img.shields.io/github/go-mod/go-version/mewisme/chatgpt-mcp?style=flat-square&logo=go)](go.mod)
-[![License](https://img.shields.io/github/license/mewisme/chatgpt-mcp?style=flat-square)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/mewisme/codemcp?display_name=tag&sort=semver&style=flat-square)](https://github.com/mewisme/codemcp/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/mewisme/codemcp/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/mewisme/codemcp/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/github/go-mod/go-version/mewisme/codemcp?style=flat-square&logo=go)](go.mod)
+[![License](https://img.shields.io/github/license/mewisme/codemcp?style=flat-square)](LICENSE)
 
 [Get started](docs/getting-started.md) · [Connect ChatGPT](docs/openai-chatgpt.md) · [Command Center](docs/tui.md) · [Security](docs/security.md) · [Documentation](docs/README.md)
 

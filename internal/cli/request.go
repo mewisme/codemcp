@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/logger"
 )
 
 const requestControlTimeout = 5 * time.Second

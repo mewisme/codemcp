@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type ProcessStatusResult struct {

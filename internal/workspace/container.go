@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 var ErrContainerNotFound = errors.New("workspace container not found")

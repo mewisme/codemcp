@@ -3,7 +3,7 @@ package admin
 import (
 	"net/http"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
+	"go.mewis.me/codemcp/internal/application"
 )
 
 type instructionSettingsResponse = application.InstructionSettings

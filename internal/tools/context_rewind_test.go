@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
-	"go.mewis.me/chatgpt-mcp/internal/projectcontext"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/projectcontext"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func newContextToolRuntime(t *testing.T) (*Runtime, string, string, *checkpoint.Store) {

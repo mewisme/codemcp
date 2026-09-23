@@ -11,13 +11,13 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"go.mewis.me/chatgpt-mcp/internal/application"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/install"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
-	updatepkg "go.mewis.me/chatgpt-mcp/internal/update"
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/install"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	managed "go.mewis.me/codemcp/internal/service"
+	updatepkg "go.mewis.me/codemcp/internal/update"
 )
 
 func TestRuntimePageBuildsSystemRows(t *testing.T) {

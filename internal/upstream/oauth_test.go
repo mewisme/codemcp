@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	mcpoauth "go.mewis.me/chatgpt-mcp/internal/oauth"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 )
 
 func TestNativeClientUsesStoredOAuthToken(t *testing.T) {

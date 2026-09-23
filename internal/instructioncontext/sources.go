@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
-	"go.mewis.me/chatgpt-mcp/internal/rules"
-	"go.mewis.me/chatgpt-mcp/internal/skills"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/rules"
+	"go.mewis.me/codemcp/internal/skills"
 )
 
 func DiscoverUserSources(home string, policy instructionpolicy.Config) ([]SourceSnapshot, error) {

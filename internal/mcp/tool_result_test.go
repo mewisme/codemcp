@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func TestRuntimeToolCallReturnsMCPResult(t *testing.T) {

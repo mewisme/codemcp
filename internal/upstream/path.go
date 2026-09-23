@@ -1,7 +1,7 @@
 package upstream
 
 import (
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/configformat"
 )
 
 func Path() string {

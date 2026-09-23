@@ -7,8 +7,8 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
-	"go.mewis.me/chatgpt-mcp/internal/version"
+	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/version"
 )
 
 type SDKServer struct {

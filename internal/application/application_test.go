@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func TestInitializeAndAuthLifecycle(t *testing.T) {

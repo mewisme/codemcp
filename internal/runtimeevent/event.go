@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/logger"
+	"go.mewis.me/codemcp/internal/logger"
 )
 
 type Field struct {

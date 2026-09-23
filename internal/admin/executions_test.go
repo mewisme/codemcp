@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestWorkspaceExecutionAPIListSnapshotAndIsolation(t *testing.T) {

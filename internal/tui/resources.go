@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/tui/quickopen"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/tui/quickopen"
+	"go.mewis.me/codemcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func loadQuickOpenResources() ([]quickopen.Resource, error) {

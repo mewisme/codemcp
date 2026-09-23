@@ -8,7 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"go.mewis.me/chatgpt-mcp/internal/idgen"
+	"go.mewis.me/codemcp/internal/idgen"
 )
 
 const (

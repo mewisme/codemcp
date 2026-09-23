@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
 )
 
 func TestDiscoverUserSourcesOnlyReturnsDetectedResources(t *testing.T) {

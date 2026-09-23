@@ -12,11 +12,11 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openai/tunnel-client/pkg/tunnelctx"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestSDKBridgePropagatesTunnelSessionID(t *testing.T) {
@@ -272,7 +272,7 @@ func TestSDKBridgeApprovalFlowUsesSessionFallback(t *testing.T) {
 	resultCh := make(chan *sdkmcp.CallToolResult, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{Name: tools.ApprovalRequestToolName, Arguments: map[string]any{"workspace_id": item.ID, "challenge_id": challengeID, "title": "Update ChatGPT MCP"}})
+		result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{Name: tools.ApprovalRequestToolName, Arguments: map[string]any{"workspace_id": item.ID, "challenge_id": challengeID, "title": "Update CodeMCP"}})
 		if err != nil {
 			errCh <- err
 			return

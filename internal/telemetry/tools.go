@@ -4,9 +4,9 @@ import (
 	"errors"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/activity"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/activity"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func AttachTools(runtime *tools.Runtime, stream *activity.Stream, log *logger.Logger) {

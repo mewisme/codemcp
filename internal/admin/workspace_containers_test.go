@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestWorkspaceContainerAPICRUDAndMembership(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/install"
+	"go.mewis.me/codemcp/internal/install"
 )
 
 func TestPolicyForInstallation(t *testing.T) {

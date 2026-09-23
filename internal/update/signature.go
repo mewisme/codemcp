@@ -10,7 +10,7 @@ import (
 	"github.com/sigstore/sigstore-go/pkg/tuf"
 	"github.com/sigstore/sigstore-go/pkg/verify"
 
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const githubActionsOIDCIssuer = "https://token.actions.githubusercontent.com"

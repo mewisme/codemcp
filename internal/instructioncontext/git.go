@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	gitutil "go.mewis.me/chatgpt-mcp/internal/git"
+	gitutil "go.mewis.me/codemcp/internal/git"
 )
 
 const (

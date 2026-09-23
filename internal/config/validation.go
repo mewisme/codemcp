@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/caveman"
-	"go.mewis.me/chatgpt-mcp/internal/ponytail"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/caveman"
+	"go.mewis.me/codemcp/internal/ponytail"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 func Validate(cfg Config) error {

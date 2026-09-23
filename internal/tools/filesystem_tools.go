@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/checkpoint"
-	patcher "go.mewis.me/chatgpt-mcp/internal/patch"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/checkpoint"
+	patcher "go.mewis.me/codemcp/internal/patch"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func RegisterFilesystemTools(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store) {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/memory"
+	"go.mewis.me/codemcp/internal/memory"
 )
 
 func LoadAutoMemory(store memory.Store, workspaceID string) (AutoMemorySnapshot, error) {

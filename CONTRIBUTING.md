@@ -6,7 +6,7 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Before you start
 
-- Search [existing issues](https://github.com/mewisme/chatgpt-mcp/issues) and PRs to avoid duplicates.
+- Search [existing issues](https://github.com/mewisme/codemcp/issues) and PRs to avoid duplicates.
 - For security vulnerabilities, do **not** open a public issue. Follow [SECURITY.md](SECURITY.md).
 - Prefer a focused PR that does one thing well over a large mixed change.
 
@@ -67,7 +67,7 @@ Questions about product security boundaries belong in discussion or docs issues;
 
 ## Releases and changelog
 
-Releases are cut from tags on `main` via GoReleaser. Release notes live on [GitHub Releases](https://github.com/mewisme/chatgpt-mcp/releases); there is no separate root `CHANGELOG.md`.
+Releases are cut from tags on `main` via GoReleaser. Release notes live on [GitHub Releases](https://github.com/mewisme/codemcp/releases); there is no separate root `CHANGELOG.md`.
 
 ## License
 

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	gitutil "go.mewis.me/chatgpt-mcp/internal/git"
-	"go.mewis.me/chatgpt-mcp/internal/memory"
+	gitutil "go.mewis.me/codemcp/internal/git"
+	"go.mewis.me/codemcp/internal/memory"
 )
 
 func TestBuildAssemblesInstructionContext(t *testing.T) {

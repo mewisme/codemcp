@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	shellruntime "go.mewis.me/chatgpt-mcp/internal/shell"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/controlguard"
+	shellruntime "go.mewis.me/codemcp/internal/shell"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 type WorkspaceRegistrationResult struct {

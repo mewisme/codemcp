@@ -9,15 +9,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/auth"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configbundle"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	mcpoauth "go.mewis.me/chatgpt-mcp/internal/oauth"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	"go.mewis.me/chatgpt-mcp/internal/secretstore"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/auth"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configbundle"
+	"go.mewis.me/codemcp/internal/configformat"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	"go.mewis.me/codemcp/internal/secretstore"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 type ConfigOverview struct {

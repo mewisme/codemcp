@@ -3,7 +3,7 @@ import { Activity, Cloud, FileText, FolderGit2, Home, Server, Settings, Wrench, 
 export type NavItem = { id: string; path: string; title: string; description: string; icon: LucideIcon; parent?: string }
 export type AdminRouteHandle = Pick<NavItem, "title" | "description">
 
-export const adminAppTitle = "ChatGPT MCP"
+export const adminAppTitle = "CodeMCP"
 
 export function adminDocumentTitle(title: string) { return `${title} | ${adminAppTitle}` }
 

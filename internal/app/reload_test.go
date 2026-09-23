@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func TestReloadConfigUpdatesLiveRuntime(t *testing.T) {

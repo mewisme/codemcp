@@ -15,10 +15,10 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	"go.mewis.me/codemcp/internal/tui/component"
 )
 
 func TestRequestsPageRefreshModesAndDeepLink(t *testing.T) {
@@ -513,7 +513,7 @@ func TestRequestArgumentsRenderExactValues(t *testing.T) {
 
 func TestRequestRowsSearchExactCommandSeparatelyFromTitle(t *testing.T) {
 	page, _ := NewRequests(t.Context(), "")
-	page.requests = []approval.Request{{ID: "req_search", Status: approval.StatusPending, Title: "Update ChatGPT MCP", Command: "cgm update --channel beta"}}
+	page.requests = []approval.Request{{ID: "req_search", Status: approval.StatusPending, Title: "Update CodeMCP", Command: "cgm update --channel beta"}}
 	rows := page.requestRows()
 	if len(rows) != 1 || !strings.Contains(rows[0].Search, "cgm update --channel beta") || strings.Contains(rows[0].Title, "cgm update") {
 		t.Fatalf("row=%#v", rows)

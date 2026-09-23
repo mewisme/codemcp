@@ -5,12 +5,12 @@ import (
 	"os"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/install"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	"go.mewis.me/chatgpt-mcp/internal/systeminfo"
-	"go.mewis.me/chatgpt-mcp/internal/version"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/install"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	"go.mewis.me/codemcp/internal/systeminfo"
+	"go.mewis.me/codemcp/internal/version"
 )
 
 type AboutInfo struct {

@@ -12,16 +12,16 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"go.mewis.me/chatgpt-mcp/internal/approval"
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/instructionpolicy"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
-	tuipage "go.mewis.me/chatgpt-mcp/internal/tui/page"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/tui/component"
+	tuipage "go.mewis.me/codemcp/internal/tui/page"
+	"go.mewis.me/codemcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestModelWorkspaceContextSessionsAreScopedAndStable(t *testing.T) {
@@ -362,11 +362,11 @@ func TestConfigEditorRouteLoadsNativePageWithoutCompatibilityShim(t *testing.T) 
 
 func TestModelWindowTitleTracksCurrentRoute(t *testing.T) {
 	model := NewModel(Route{Kind: RouteHome})
-	if got := model.View().WindowTitle; got != "ChatGPT MCP · Home" {
+	if got := model.View().WindowTitle; got != "CodeMCP · Home" {
 		t.Fatalf("window title=%q", got)
 	}
 	model.router.Switch(Route{Kind: RouteRuntime})
-	if got := model.View().WindowTitle; got != "ChatGPT MCP · Runtime" {
+	if got := model.View().WindowTitle; got != "CodeMCP · Runtime" {
 		t.Fatalf("window title after route change=%q", got)
 	}
 }
@@ -421,7 +421,7 @@ func TestModelRendersDeepLinkAndNavigation(t *testing.T) {
 	view := model.View().Content
 	plain := ansi.Strip(view)
 	lines := strings.Split(plain, "\n")
-	if len(lines) < 2 || !strings.Contains(lines[0], "ChatGPT MCP") || strings.Contains(lines[1], "ChatGPT MCP") || !strings.Contains(plain, "Deep-linked resource: github") {
+	if len(lines) < 2 || !strings.Contains(lines[0], "CodeMCP") || strings.Contains(lines[1], "CodeMCP") || !strings.Contains(plain, "Deep-linked resource: github") {
 		t.Fatalf("view = %q", view)
 	}
 	itemsWidth := (100 - 4) - len(headerPages) + 1

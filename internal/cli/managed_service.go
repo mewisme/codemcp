@@ -12,13 +12,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	"go.mewis.me/chatgpt-mcp/internal/runtimeevent"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
-	"go.mewis.me/chatgpt-mcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/runtimeevent"
+	managed "go.mewis.me/codemcp/internal/service"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 const serviceReadyTimeout = managed.DefaultLifecycleTimeout

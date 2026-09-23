@@ -3,7 +3,7 @@ package mcp
 import (
 	"testing"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/instructioncontext"
 )
 
 func TestServerInstructionsUseSharedInstructionGuidance(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 	"github.com/openai/tunnel-client/pkg/tunnelctx"
 )
 
-const sessionMetaKey = "go.mewis.me/chatgpt-mcp/mcp-session-id"
+const sessionMetaKey = "go.mewis.me/codemcp/mcp-session-id"
 
 type sessionTransport struct {
 	base       sdkmcp.Transport

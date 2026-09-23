@@ -8,11 +8,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/configformat"
-	"go.mewis.me/chatgpt-mcp/internal/controlplane"
-	"go.mewis.me/chatgpt-mcp/internal/logger"
-	tracepkg "go.mewis.me/chatgpt-mcp/internal/trace"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/controlplane"
+	"go.mewis.me/codemcp/internal/logger"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 var processCommandArgs = func() []string { return append([]string(nil), os.Args[1:]...) }

@@ -9,9 +9,9 @@ import (
 	"regexp"
 	"strings"
 
-	"go.mewis.me/chatgpt-mcp/internal/commandpattern"
-	"go.mewis.me/chatgpt-mcp/internal/controlguard"
-	"go.mewis.me/chatgpt-mcp/internal/controlplane"
+	"go.mewis.me/codemcp/internal/commandpattern"
+	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/controlplane"
 )
 
 const maxNestedShellDepth = 4

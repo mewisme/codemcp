@@ -14,11 +14,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"go.mewis.me/chatgpt-mcp/internal/instructioncontext"
-	"go.mewis.me/chatgpt-mcp/internal/projectcontext"
-	"go.mewis.me/chatgpt-mcp/internal/rules"
-	"go.mewis.me/chatgpt-mcp/internal/skills"
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/projectcontext"
+	"go.mewis.me/codemcp/internal/rules"
+	"go.mewis.me/codemcp/internal/skills"
+	"go.mewis.me/codemcp/internal/tui/component"
 )
 
 type workspaceContextPreviewTab int

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	gitexec "go.mewis.me/chatgpt-mcp/internal/git"
-	"go.mewis.me/chatgpt-mcp/internal/workspace"
+	gitexec "go.mewis.me/codemcp/internal/git"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 const gitTimeout = 60 * time.Second

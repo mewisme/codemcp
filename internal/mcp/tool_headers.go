@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"go.mewis.me/chatgpt-mcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 const mcpParamHeaderPrefix = "Mcp-Param-"

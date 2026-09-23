@@ -9,8 +9,8 @@ import (
 
 	"charm.land/huh/v2"
 
-	"go.mewis.me/chatgpt-mcp/internal/tui/component"
-	"go.mewis.me/chatgpt-mcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/tui/component"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 type mcpServerFormData struct {

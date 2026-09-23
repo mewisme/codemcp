@@ -5,8 +5,8 @@ import (
 	"strings"
 	"unicode"
 
-	"go.mewis.me/chatgpt-mcp/internal/capability"
-	"go.mewis.me/chatgpt-mcp/internal/tui/action"
+	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/tui/action"
 )
 
 type Result struct {

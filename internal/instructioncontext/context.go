@@ -3,8 +3,8 @@ package instructioncontext
 import (
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/rules"
-	"go.mewis.me/chatgpt-mcp/internal/skills"
+	"go.mewis.me/codemcp/internal/rules"
+	"go.mewis.me/codemcp/internal/skills"
 )
 
 type SectionKind string

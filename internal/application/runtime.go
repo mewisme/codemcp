@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/chatgpt-mcp/internal/config"
-	"go.mewis.me/chatgpt-mcp/internal/runtimecontrol"
-	managed "go.mewis.me/chatgpt-mcp/internal/service"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/runtimecontrol"
+	managed "go.mewis.me/codemcp/internal/service"
 )
 
 const managedReadyTimeout = managed.DefaultLifecycleTimeout
