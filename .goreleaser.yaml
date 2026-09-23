@@ -5,7 +5,7 @@ project_name: codemcp
 
 before:
   hooks:
-    - node scripts/prepare-web-embed.mjs --from-dist
+    - node scripts/prepare-frontend-embed.mjs --from-dist
     - go mod verify
 
 builds:

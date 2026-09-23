@@ -36,27 +36,27 @@ CI remains the source of truth (`govulncheck`, `gosec` baseline, coverage, matri
 ## Install frontend dependencies
 
 ```bash
-pnpm --dir web install
+pnpm --dir frontend install
 ```
 
 ## Frontend checks
 
 ```bash
-pnpm --dir web test
-pnpm --dir web lint
-pnpm --dir web typecheck
-pnpm --dir web build
+pnpm --dir frontend test
+pnpm --dir frontend lint
+pnpm --dir frontend typecheck
+pnpm --dir frontend build
 ```
 
 ## Prepare the embedded frontend
 
-The Go binary embeds the built admin dashboard. The prepare script installs frontend dependencies with the frozen lockfile, builds the Admin UI, then copies `web/dist` into `internal/interface/web/dist`:
+The Go binary embeds the built admin dashboard. The prepare script installs frontend dependencies with the frozen lockfile, builds the Admin UI, then copies `frontend/dist` into `internal/interface/web/dist`:
 
 ```bash
-node scripts/prepare-web-embed.mjs
+node scripts/prepare-frontend-embed.mjs
 ```
 
-Use `--no-deps` to reuse the current frontend installation, or `--from-dist` to copy an already-built `web/dist` without running install/build.
+Use `--no-deps` to reuse the current frontend installation, or `--from-dist` to copy an already-built `frontend/dist` without running install/build.
 
 ## Backend checks
 
@@ -124,7 +124,7 @@ This rule applies especially to commands such as:
 node scripts/install-local.mjs
 ```
 
-The script prepares the web embed and runs the local Go installation flow.
+The script prepares the frontend embed and runs the local Go installation flow.
 
 Variants:
 
@@ -140,7 +140,7 @@ Managed installs expose only the `cm` executable.
 Build a native binary:
 
 ```bash
-node scripts/prepare-web-embed.mjs
+node scripts/prepare-frontend-embed.mjs
 go build -trimpath -o cm ./
 ```
 
@@ -224,13 +224,13 @@ Do not attempt to execute a cross-compiled test binary on the host OS; use nativ
 
 Pushes to `main` and pull requests run:
 
-### Web checks
+### Frontend checks
 
 - test
 - lint
 - typecheck
 - production build
-- web artifact upload for native/cross-build jobs
+- frontend artifact upload for native/cross-build jobs
 
 ### Native Linux
 
@@ -272,7 +272,7 @@ Pushes to `main` and pull requests run:
 
 ### Cross-build matrix
 
-All six release targets are compiled after the native/web prerequisites are available.
+All six release targets are compiled after the native/frontend prerequisites are available.
 
 ## Installer model
 
@@ -326,10 +326,10 @@ Use the next semantic version appropriate for the release instead of copying thi
 git diff --check
 CM_CONFIG_DIR="$(mktemp -d)" go test ./...
 go vet ./...
-pnpm --dir web test
-pnpm --dir web lint
-pnpm --dir web typecheck
-pnpm --dir web build
+pnpm --dir frontend test
+pnpm --dir frontend lint
+pnpm --dir frontend typecheck
+pnpm --dir frontend build
 ```
 
 For changes affecting service behavior, tunnel connectivity, runtime logs, configuration, or MCP protocol behavior, also run the release smoke.

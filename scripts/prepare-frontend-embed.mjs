@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process"
 process.noDeprecation = true
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
-const source = resolve(root, "web/dist")
+const source = resolve(root, "frontend/dist")
 const target = resolve(root, "internal/interface/web/dist")
 const args = process.argv.slice(2)
 const options = { installDeps: true, fromDist: false }
@@ -16,18 +16,18 @@ for (const arg of args) {
   if (arg === "--no-deps") options.installDeps = false
   else if (arg === "--from-dist") options.fromDist = true
   else if (arg === "--help" || arg === "-h") {
-    console.log(`Usage: node scripts/prepare-web-embed.mjs [--no-deps] [--from-dist]\n\nBuild and prepare the embedded Admin UI.\n\nDefault flow:\n  1. pnpm --dir web install --frozen-lockfile\n  2. pnpm --dir web build\n  3. copy web/dist -> internal/interface/web/dist\n\nOptions:\n  --no-deps    Skip pnpm install but still build the web app.\n  --from-dist  Use the existing web/dist and skip install/build.\n  -h, --help   Show this help.`)
+    console.log(`Usage: node scripts/prepare-frontend-embed.mjs [--no-deps] [--from-dist]\n\nBuild and prepare the embedded Admin UI.\n\nDefault flow:\n  1. pnpm --dir frontend install --frozen-lockfile\n  2. pnpm --dir frontend build\n  3. copy frontend/dist -> internal/interface/web/dist\n\nOptions:\n  --no-deps    Skip pnpm install but still build the frontend.\n  --from-dist  Use the existing frontend/dist and skip install/build.\n  -h, --help   Show this help.`)
     process.exit(0)
   } else fail(`unknown argument: ${arg}`)
 }
 
-await requireFile("web/package.json")
-await requireFile("web/pnpm-lock.yaml")
-if (options.fromDist) await requireFile("web/dist/index.html")
+await requireFile("frontend/package.json")
+await requireFile("frontend/pnpm-lock.yaml")
+if (options.fromDist) await requireFile("frontend/dist/index.html")
 
 if (!options.fromDist) {
-  if (options.installDeps) run("pnpm", ["--dir", "web", "install", "--frozen-lockfile"])
-  run("pnpm", ["--dir", "web", "build"])
+  if (options.installDeps) run("pnpm", ["--dir", "frontend", "install", "--frozen-lockfile"])
+  run("pnpm", ["--dir", "frontend", "build"])
 }
 
 await access(resolve(source, "index.html"))
@@ -36,7 +36,7 @@ await mkdir(target, { recursive: true })
 await cp(source, target, { recursive: true })
 await access(resolve(target, "index.html"))
 
-console.log("[OK] web embed prepared")
+console.log("[OK] frontend embed prepared")
 
 async function requireFile(relative) {
   try {

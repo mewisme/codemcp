@@ -36,12 +36,12 @@ fi
 echo "==> installer verification policy"
 sh scripts/test-install-sh.sh
 
-echo "==> web lint/typecheck (if pnpm available)"
-if command -v pnpm >/dev/null 2>&1 && [[ -d web/node_modules ]]; then
-  pnpm --dir web lint
-  pnpm --dir web typecheck
+echo "==> frontend lint/typecheck (if pnpm available)"
+if command -v pnpm >/dev/null 2>&1 && [[ -d frontend/node_modules ]]; then
+  pnpm --dir frontend lint
+  pnpm --dir frontend typecheck
 else
-  echo "skip: pnpm or web/node_modules missing"
+  echo "skip: pnpm or frontend/node_modules missing"
 fi
 
 echo "OK: local checks passed"

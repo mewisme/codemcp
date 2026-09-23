@@ -21,8 +21,8 @@ Requirements:
 Quick path:
 
 ```bash
-pnpm --dir web install
-node scripts/prepare-web-embed.mjs
+pnpm --dir frontend install
+node scripts/prepare-frontend-embed.mjs
 CM_CONFIG_DIR="$(mktemp -d)" go test ./...
 go build -trimpath ./
 ```
@@ -48,10 +48,10 @@ Suggested local checks before opening a PR:
 ./scripts/check.sh
 CM_CONFIG_DIR="$(mktemp -d)" go test ./...
 go vet ./...
-pnpm --dir web test
-pnpm --dir web lint
-pnpm --dir web typecheck
-pnpm --dir web build
+pnpm --dir frontend test
+pnpm --dir frontend lint
+pnpm --dir frontend typecheck
+pnpm --dir frontend build
 ```
 
 For changes that affect services, tunnel connectivity, runtime logs, configuration, or MCP protocol behavior, also run the release smoke described in [docs/development.md](docs/development.md).

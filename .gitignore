@@ -1,6 +1,6 @@
 apply-*
 /internal/interface/web/dist/
-/web/coverage/
+/frontend/coverage/
 .agents/
 .local/
 *.cgm

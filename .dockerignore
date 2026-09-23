@@ -3,5 +3,5 @@
 .tmp-*
 cm
 internal/interface/web/dist
-web/dist
-web/node_modules
+frontend/dist
+frontend/node_modules

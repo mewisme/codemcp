@@ -62,12 +62,12 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Build web
+      - name: Build frontend
         run: |
-          pnpm --dir web install --frozen-lockfile
-          pnpm --dir web build
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir frontend build
 
       - name: Install UPX
         uses: crazy-max/ghaction-upx@c83f378efc804f828e988debb88ed6116feb2368 # v4.0.0
