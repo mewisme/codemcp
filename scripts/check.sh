@@ -5,8 +5,9 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 
-export CM_CONFIG_DIR="${CM_CONFIG_DIR:-$(mktemp -d)}"
-trap 'rm -rf "${CM_CONFIG_DIR}"' EXIT
+check_config_dir="$(mktemp -d)"
+trap 'rm -rf "${check_config_dir}"' EXIT
+export CM_CONFIG_DIR="${check_config_dir}"
 
 echo "==> gofmt"
 test -z "$(gofmt -l . | tee /dev/stderr)"

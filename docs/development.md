@@ -33,10 +33,38 @@ pre-commit run --all-files
 
 CI remains the source of truth (`govulncheck`, `gosec` baseline, coverage, matrix tests).
 
+## Makefile developer facade
+
+The root `Makefile` is a thin convenience layer over the canonical Go, pnpm, and repository scripts. Run `make` or `make help` to list the supported developer targets.
+
+Common workflows:
+
+```bash
+make bootstrap
+make prepare
+make check-embed
+make check
+make test
+make test-race
+make build
+make run ARGS="status --json"
+make up
+make status
+make logs ARGS="-f"
+make tui
+make frontend-dev
+```
+
+`make bootstrap` is the explicit dependency-install step. Ordinary `make prepare`, `run`, `up`, and `restart` reuse the existing frontend installation by default; override `PREPARE_ARGS` only when needed.
+
+`make test` and `make test-race` always allocate a fresh `CM_CONFIG_DIR` and remove it after the test command. The Makefile intentionally has no CI, release/publish, or destructive clean target.
+
+The direct commands below remain the underlying debugging interface.
+
 ## Install frontend dependencies
 
 ```bash
-pnpm --dir frontend install
+pnpm --dir frontend install --frozen-lockfile
 ```
 
 ## Frontend checks
@@ -56,7 +84,7 @@ The Go binary embeds the built admin dashboard. The prepare script installs fron
 node scripts/prepare-frontend-embed.mjs
 ```
 
-Use `--no-deps` to reuse the current frontend installation, or `--from-dist` to copy an already-built `frontend/dist` without running install/build.
+Use `--no-deps` to reuse the current frontend installation, or `--from-dist` to copy an already-built `frontend/dist` without running install/build. Use `--check` for a read-only verification that `frontend/dist` and `internal/interface/web/dist` are identical.
 
 ## Backend checks
 
