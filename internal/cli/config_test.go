@@ -99,7 +99,7 @@ func TestTunnelAdminCredentialsCannotBypassVerificationThroughConfigSet(t *testi
 	}
 }
 
-func TestFeatureConfigTraversal(t *testing.T) {
+func TestIntegrationConfigTraversal(t *testing.T) {
 	cfg := config.Default()
 	value, err := getConfigValue(cfg, "integrations")
 	if err != nil {

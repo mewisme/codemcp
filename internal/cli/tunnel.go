@@ -22,7 +22,7 @@ import (
 )
 
 func tunnelCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "tunnel", Short: "Manage the builtin OpenAI Secure MCP Tunnel"}
+	cmd := &cobra.Command{Use: "tunnel", Short: "Manage the OpenAI Secure MCP Tunnel"}
 	cmd.AddCommand(tunnelAdminCommand(), tunnelListCommand(), tunnelGetCommand(), tunnelUseCommand(), tunnelCreateCommand(), tunnelUpdateCommand(), tunnelDeleteCommand(), tunnelStatusCommand(), tunnelSyncCommand(), tunnelConfigureCommand(), tunnelToggleCommand(true), tunnelToggleCommand(false), tunnelRunCommand())
 	return cmd
 }
@@ -215,7 +215,7 @@ func tunnelSyncCommand() *cobra.Command {
 func tunnelConfigureCommand() *cobra.Command {
 	var enabled bool
 	var id, apiKey, controlPlaneBaseURL, organizationID string
-	cmd := &cobra.Command{Use: "configure", Short: "Configure the builtin OpenAI Secure MCP Tunnel", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "configure", Short: "Configure the OpenAI Secure MCP Tunnel", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.config.preparing", "Preparing tunnel configuration update")
 		input := application.TunnelRuntimeInput{}
 		if cmd.Flags().Changed("enabled") {
@@ -252,9 +252,9 @@ func tunnelConfigureCommand() *cobra.Command {
 }
 
 func tunnelToggleCommand(enabled bool) *cobra.Command {
-	use, short := "disable", "Disable the builtin OpenAI Secure MCP Tunnel"
+	use, short := "disable", "Disable the OpenAI Secure MCP Tunnel"
 	if enabled {
-		use, short = "enable", "Enable the builtin OpenAI Secure MCP Tunnel"
+		use, short = "enable", "Enable the OpenAI Secure MCP Tunnel"
 	}
 	return &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.state.updating", "Updating tunnel enabled state", logger.WithVerbose("enabled", enabled))
@@ -271,7 +271,7 @@ func tunnelToggleCommand(enabled bool) *cobra.Command {
 }
 
 func tunnelRunCommand() *cobra.Command {
-	return &cobra.Command{Use: "run", Short: "Run the builtin OpenAI Secure MCP Tunnel in the foreground", RunE: func(cmd *cobra.Command, args []string) (runErr error) {
+	return &cobra.Command{Use: "run", Short: "Run the OpenAI Secure MCP Tunnel in the foreground", RunE: func(cmd *cobra.Command, args []string) (runErr error) {
 		logCommandStep(cmd, "TUNNEL", "tunnel.runtime.loading", "Loading tunnel runtime configuration")
 		cfg, err := config.Load()
 		if err != nil {

@@ -261,7 +261,7 @@ func TestHealthReportsAdminAuthState(t *testing.T) {
 	}
 }
 
-func TestConfigAPIOmitsLegacyInteractiveField(t *testing.T) {
+func TestConfigAPIUsesCurrentIntegrationReadModel(t *testing.T) {
 	cfg := config.Default()
 	cfg.Auth.MCPEnabled = false
 	cfg.Auth.AdminEnabled = false
@@ -273,8 +273,16 @@ func TestConfigAPIOmitsLegacyInteractiveField(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
 	}
-	if strings.Contains(recorder.Body.String(), `"interactive"`) {
-		t.Fatalf("legacy interactive field exposed: %s", recorder.Body.String())
+	body := recorder.Body.String()
+	for _, legacy := range []string{`"interactive"`, `"features"`, `"builtins"`} {
+		if strings.Contains(body, legacy) {
+			t.Fatalf("legacy config authority %s exposed: %s", legacy, body)
+		}
+	}
+	for _, want := range []string{`"integrations"`, `"ponytail"`, `"caveman"`, `"rtk"`, `"codegraph"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("integration read model missing %s: %s", want, body)
+		}
 	}
 }
 
@@ -452,6 +460,62 @@ func TestConfigAPIIntegrationActivePatchUsesCanonicalField(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), `"caveman":{"enabled"`) || !strings.Contains(recorder.Body.String(), `"caveman":{"active":false,"mode":"full"}`) {
 		t.Fatalf("non-canonical integration field leaked into response: %s", recorder.Body.String())
+	}
+}
+
+func TestConfigAPIExecutableIntegrationPatchUpdatesRuntimeState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfg := config.Default()
+	cfg.Auth.MCPEnabled = false
+	cfg.Auth.AdminEnabled = false
+	cfg.Server.AllowUnauthenticatedLoopback = true
+	store := config.NewRuntimeStore(cfg)
+	runtime := tools.NewRuntimeWithIntegrations(cfg.Integrations)
+	handler := New(API{Config: store, Tools: runtime, saveConfig: func(config.Config) error { return nil }})
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"integrations":{"rtk":{"enabled":false},"codegraph":{"enabled":true}}}`)))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
+	}
+	stored := store.Snapshot().Integrations
+	if stored.RTK.Enabled || !stored.CodeGraph.Enabled {
+		t.Fatalf("stored executable integrations = %#v", stored)
+	}
+	live := runtime.Integrations()
+	if live.RTK.Enabled || !live.CodeGraph.Enabled {
+		t.Fatalf("runtime executable integrations = %#v", live)
+	}
+	for _, want := range []string{
+		`"rtk":{"enabled":false,"path":""}`,
+		`"codegraph":{"enabled":true,"path":""}`,
+	} {
+		if !strings.Contains(recorder.Body.String(), want) {
+			t.Fatalf("integration response missing %q: %s", want, recorder.Body.String())
+		}
+	}
+}
+
+func TestConfigAPIExecutableIntegrationPatchRejectsRelativePaths(t *testing.T) {
+	cfg := config.Default()
+	cfg.Auth.MCPEnabled = false
+	cfg.Auth.AdminEnabled = false
+	cfg.Server.AllowUnauthenticatedLoopback = true
+	for _, body := range []string{
+		`{"integrations":{"rtk":{"path":"relative/rtk"}}}`,
+		`{"integrations":{"codegraph":{"path":"relative/codegraph"}}}`,
+	} {
+		store := config.NewRuntimeStore(cfg)
+		handler := New(API{Config: store})
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(body)))
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("body=%s status=%d want=%d response=%s", body, recorder.Code, http.StatusBadRequest, recorder.Body.String())
+		}
+		if got := store.Snapshot().Integrations; got != cfg.Integrations {
+			t.Fatalf("invalid executable integration patch mutated store: %#v", got)
+		}
 	}
 }
 

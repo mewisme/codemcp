@@ -73,6 +73,22 @@ func TestConfigDashboardContainsExactlySixDomains(t *testing.T) {
 	}
 }
 
+func TestConfigIntegrationsDomainCoversAllFirstPartyIntegrations(t *testing.T) {
+	prepareConfigPageRoot(t)
+	page, err := NewConfigRoute(t.Context(), "integrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := page.Update(page.Init()())
+	page = updated.(*ConfigPage)
+	view := ansi.Strip(page.View(110, 38))
+	for _, want := range []string{"Ponytail active", "Caveman active", "RTK enabled", "RTK executable", "CodeGraph enabled", "CodeGraph executable"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("integrations domain missing %q: %q", want, view)
+		}
+	}
+}
+
 func TestConfigPageTitleStartsAtWorkspaceTitlePosition(t *testing.T) {
 	prepareConfigPageRoot(t)
 	page, _ := NewConfig(t.Context())

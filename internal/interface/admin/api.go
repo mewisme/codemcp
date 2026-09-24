@@ -73,13 +73,20 @@ type serverPatch struct {
 }
 
 type integrationPatch struct {
-	Ponytail *integrationStatePatch `json:"ponytail,omitempty"`
-	Caveman  *integrationStatePatch `json:"caveman,omitempty"`
+	Ponytail  *integrationStatePatch      `json:"ponytail,omitempty"`
+	Caveman   *integrationStatePatch      `json:"caveman,omitempty"`
+	RTK       *integrationExecutablePatch `json:"rtk,omitempty"`
+	CodeGraph *integrationExecutablePatch `json:"codegraph,omitempty"`
 }
 
 type integrationStatePatch struct {
 	Active *bool   `json:"active,omitempty"`
 	Mode   *string `json:"mode,omitempty"`
+}
+
+type integrationExecutablePatch struct {
+	Enabled *bool   `json:"enabled,omitempty"`
+	Path    *string `json:"path,omitempty"`
 }
 
 func New(api API) http.Handler {
@@ -195,6 +202,22 @@ func (api API) handleConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			if patch.Integrations.Caveman != nil && patch.Integrations.Caveman.Mode != nil {
 				next.Integrations.Caveman.Mode = strings.ToLower(strings.TrimSpace(*patch.Integrations.Caveman.Mode))
+			}
+			if patch.Integrations.RTK != nil {
+				if patch.Integrations.RTK.Enabled != nil {
+					next.Integrations.RTK.Enabled = *patch.Integrations.RTK.Enabled
+				}
+				if patch.Integrations.RTK.Path != nil {
+					next.Integrations.RTK.Path = strings.TrimSpace(*patch.Integrations.RTK.Path)
+				}
+			}
+			if patch.Integrations.CodeGraph != nil {
+				if patch.Integrations.CodeGraph.Enabled != nil {
+					next.Integrations.CodeGraph.Enabled = *patch.Integrations.CodeGraph.Enabled
+				}
+				if patch.Integrations.CodeGraph.Path != nil {
+					next.Integrations.CodeGraph.Path = strings.TrimSpace(*patch.Integrations.CodeGraph.Path)
+				}
 			}
 		}
 		if err == nil {

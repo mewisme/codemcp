@@ -26,7 +26,6 @@ CLI / TUI / Admin HTTP / embedded web / protocol entrypoints
 | `approval` | domain | Approval state and challenge semantics |
 | `auth` | domain | Authentication primitives |
 | `capability` | application | Capability metadata/catalog contracts |
-| `caveman` | integration (transitional) | Caveman implementation until Integrations ownership cutover |
 | `checkpoint` | history (transitional) | Durable checkpoint history until History ownership cutover |
 | `cli` | interface | Top-level process/CLI workflow and command presentation |
 | `commandpattern` | domain | Command matching semantics |
@@ -35,7 +34,6 @@ CLI / TUI / Admin HTTP / embedded web / protocol entrypoints
 | `configformat` | persistence | Structured configuration encoding/root paths |
 | `controlguard` | domain | Control-plane mutation guard semantics |
 | `controlplane` | runtime | Process/control-plane execution policy helpers |
-| `features` | application (transitional) | Legacy optional-feature configuration facade |
 | `git` | platform | Git process adapter |
 | `history` | history | Reserved durable-history ownership root |
 | `idgen` | domain | Stable/random identifier primitives |
@@ -43,7 +41,7 @@ CLI / TUI / Admin HTTP / embedded web / protocol entrypoints
 | `instance` | persistence | Instance identity persistence |
 | `instructioncontext` | application | Canonical instruction/project-context read model |
 | `instructionpolicy` | domain/persistence | Instruction discovery and policy |
-| `integrations` | integration | Reserved first-party optional Integration ownership root |
+| `integrations` | integration | First-party Integration ownership for Ponytail, Caveman, RTK, and CodeGraph |
 | `interface` | interface | Human/browser presentation adapters |
 | `jsruntime` | runtime | Managed JavaScript execution |
 | `logger` | runtime | Runtime/log presentation primitives |
@@ -56,7 +54,6 @@ CLI / TUI / Admin HTTP / embedded web / protocol entrypoints
 | `oslock` | platform | Cross-process advisory file-lock primitive for runtime ownership and serialized state mutation |
 | `outboundpolicy` | domain | Outbound network safety policy |
 | `patch` | domain | Deterministic patch primitive |
-| `ponytail` | integration (transitional) | Ponytail implementation until Integrations ownership cutover |
 | `projectcontext` | application | Project Context orchestration/read model |
 | `rules` | domain/persistence | Rule discovery/model |
 | `runtime` | runtime | Process, activity, control, event, and shell mechanics |

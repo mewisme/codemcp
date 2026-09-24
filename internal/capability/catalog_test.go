@@ -186,3 +186,40 @@ func TestCatalogAdminRequestLookupMatchesConcreteResourcePaths(t *testing.T) {
 		t.Fatal("unknown concrete route unexpectedly resolved")
 	}
 }
+
+func TestFirstPartyIntegrationsHaveCanonicalCapabilities(t *testing.T) {
+	groups := map[string][]ID{
+		"ponytail": {IntegrationPonytailTurn},
+		"caveman":  {IntegrationCavemanTurn},
+		"rtk": {
+			IntegrationRTKStatus,
+			IntegrationRTKEnable,
+			IntegrationRTKDisable,
+			IntegrationRTKProbe,
+			IntegrationRTKInstall,
+		},
+		"codegraph": {
+			IntegrationCodeGraphStatus,
+			IntegrationCodeGraphProbe,
+			IntegrationCodeGraphInstall,
+			IntegrationCodeGraphWorkspaceStatus,
+			IntegrationCodeGraphWorkspaceInit,
+			IntegrationCodeGraphWorkspaceSync,
+			IntegrationCodeGraphExplore,
+		},
+	}
+	for integration, ids := range groups {
+		if len(ids) == 0 {
+			t.Fatalf("integration %s has no canonical capability", integration)
+		}
+		prefix := "integration." + integration + "."
+		for _, id := range ids {
+			if !strings.HasPrefix(string(id), prefix) {
+				t.Fatalf("integration %s capability %q does not use prefix %q", integration, id, prefix)
+			}
+			if _, ok := Lookup(id); !ok {
+				t.Fatalf("integration %s capability %q is missing from catalog", integration, id)
+			}
+		}
+	}
+}

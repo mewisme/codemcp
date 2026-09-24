@@ -1758,7 +1758,7 @@ func routeDescription(route Route) string {
 	case RouteAbout:
 		return "Build and runtime information."
 	case RouteGuide:
-		return "Browse embedded TUI documentation by feature."
+		return "Browse embedded TUI documentation by topic."
 	default:
 		return ""
 	}

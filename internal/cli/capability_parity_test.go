@@ -100,6 +100,16 @@ func TestPublicCapabilityExemptionsAreExplicitAndCurrent(t *testing.T) {
 	}
 }
 
+func TestLegacyFeatureAndBuiltinsCommandGroupsAreAbsent(t *testing.T) {
+	root := newRootCommand()
+	for _, command := range root.Commands() {
+		switch command.Name() {
+		case "feature", "features", "builtin", "builtins":
+			t.Fatalf("legacy command group is still public: %s", command.Name())
+		}
+	}
+}
+
 func collectRunnablePublicPaths(root *cobra.Command) []string {
 	paths := []string{}
 	var walk func(*cobra.Command, []string, bool)

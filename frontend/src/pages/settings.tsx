@@ -82,7 +82,7 @@ export function SettingsPage() {
       setConfig(next)
       setSavedConfig(next)
       setMessage(
-        "Saved. Runtime, transport, listener, feature, auth, filesystem, and shell execution changes were applied live."
+        "Saved. Runtime, transport, listener, integration, auth, filesystem, and shell execution changes were applied live."
       )
       setError("")
     } catch (value) {
@@ -417,8 +417,9 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle>First-party integrations</CardTitle>
               <CardDescription>
-                Set the default active state for first-party response integrations.
-                Their controller tools remain available.
+                Configure first-party CodeMCP integrations. Ponytail and Caveman
+                control response behavior; RTK and CodeGraph manage
+                executable-backed coding workflows.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -512,6 +513,77 @@ export function SettingsPage() {
                     </SelectContent>
                   </Select>
                 </SettingField>
+                <Toggle
+                  label="RTK"
+                  description="Enable RTK command rewriting and executable resolution."
+                  checked={config.integrations.rtk.enabled}
+                  onCheckedChange={(enabled) =>
+                    setConfig({
+                      ...config,
+                      integrations: {
+                        ...config.integrations,
+                        rtk: { ...config.integrations.rtk, enabled },
+                      },
+                    })
+                  }
+                />
+                <SettingField
+                  label="RTK executable"
+                  description="Optional absolute executable path. Leave blank for system or verified managed resolution."
+                >
+                  <Input
+                    value={config.integrations.rtk.path}
+                    onChange={(event) =>
+                      setConfig({
+                        ...config,
+                        integrations: {
+                          ...config.integrations,
+                          rtk: {
+                            ...config.integrations.rtk,
+                            path: event.target.value,
+                          },
+                        },
+                      })
+                    }
+                  />
+                </SettingField>
+                <Toggle
+                  label="CodeGraph"
+                  description="Enable CodeGraph runtime resolution and native codegraph_explore support."
+                  checked={config.integrations.codegraph.enabled}
+                  onCheckedChange={(enabled) =>
+                    setConfig({
+                      ...config,
+                      integrations: {
+                        ...config.integrations,
+                        codegraph: {
+                          ...config.integrations.codegraph,
+                          enabled,
+                        },
+                      },
+                    })
+                  }
+                />
+                <SettingField
+                  label="CodeGraph executable"
+                  description="Optional absolute executable path. Leave blank for system or verified managed resolution."
+                >
+                  <Input
+                    value={config.integrations.codegraph.path}
+                    onChange={(event) =>
+                      setConfig({
+                        ...config,
+                        integrations: {
+                          ...config.integrations,
+                          codegraph: {
+                            ...config.integrations.codegraph,
+                            path: event.target.value,
+                          },
+                        },
+                      })
+                    }
+                  />
+                </SettingField>
               </FieldGroup>
             </CardContent>
           </Card>
@@ -562,7 +634,9 @@ export function SettingsPage() {
             <CardHeader>
               <CardTitle>Managed execution environment</CardTitle>
               <CardDescription>
-                Shell commands inherit the runtime environment. Additional executable search paths are prepended to PATH for foreground and background execution.
+                Shell commands inherit the runtime environment. Additional
+                executable search paths are prepended to PATH for foreground and
+                background execution.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -577,7 +651,10 @@ export function SettingsPage() {
                   onChange={(event) =>
                     setConfig({
                       ...config,
-                      shell: { ...config.shell, path: parseLines(event.target.value) },
+                      shell: {
+                        ...config.shell,
+                        path: parseLines(event.target.value),
+                      },
                     })
                   }
                 />

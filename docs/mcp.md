@@ -151,7 +151,7 @@ See [Security](security.md#upstream-http-outbound-policy) for the exact boundary
 
 ## Tool catalog changes
 
-The visible tool catalog can change when upstream servers are added, removed, enabled, disabled, or rediscovered, or when local feature/configuration state changes the available tool surface.
+The visible tool catalog can change when upstream servers are added, removed, enabled, disabled, or rediscovered, or when local integration/configuration state changes the available tool surface.
 
 Replacement discovery is applied as a complete catalog update rather than intentionally exposing a partially refreshed upstream.
 

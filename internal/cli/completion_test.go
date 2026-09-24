@@ -32,6 +32,24 @@ func TestConfigCompletionIncludesKeysAndTypedValues(t *testing.T) {
 	}
 }
 
+func TestConfigCompletionUsesIntegrationsNamespaceOnly(t *testing.T) {
+	values, directive := completeConfigSelection(nil, nil, "")
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Fatalf("selection directive=%v", directive)
+	}
+	for _, want := range []string{"integrations", "integrations.ponytail.active", "integrations.caveman.active", "integrations.rtk.enabled", "integrations.codegraph.enabled"} {
+		if !hasCompletion(values, want) {
+			t.Fatalf("config completion missing %q: %#v", want, values)
+		}
+	}
+	for _, value := range values {
+		candidate, _, _ := strings.Cut(value, "\t")
+		if strings.HasPrefix(candidate, "features") || strings.HasPrefix(candidate, "builtins") {
+			t.Fatalf("legacy config namespace exposed by completion: %q", candidate)
+		}
+	}
+}
+
 func TestDynamicEntityAndSessionCompletionUsesSelectedConfigRoot(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := t.TempDir()

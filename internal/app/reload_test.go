@@ -30,7 +30,7 @@ func TestReloadConfigUpdatesLiveRuntime(t *testing.T) {
 		t.Fatalf("runtime config = %#v", got)
 	}
 	if _, ok := app.Tools.Registry.Schema("ponytail_turn"); !ok {
-		t.Fatal("inactive feature controller tool disappeared")
+		t.Fatal("inactive integration controller tool disappeared")
 	}
 }
 
