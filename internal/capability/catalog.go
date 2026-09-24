@@ -120,6 +120,12 @@ const (
 	IntegrationCodeGraphInstall      ID = "integration.codegraph.install"
 )
 
+const (
+	IntegrationCodeGraphWorkspaceStatus ID = "integration.codegraph.workspace.status"
+	IntegrationCodeGraphWorkspaceInit   ID = "integration.codegraph.workspace.init"
+	IntegrationCodeGraphWorkspaceSync   ID = "integration.codegraph.workspace.sync"
+)
+
 var specs = buildSpecs()
 
 func buildSpecs() []Spec {

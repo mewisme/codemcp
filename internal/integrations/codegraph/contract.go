@@ -15,6 +15,8 @@ const (
 	ProbeOutputLimit = 16 << 10
 	MaxOutputBytes   = 256 << 10
 	ProbeTimeout     = 2 * time.Second
+	InitTimeout      = 2 * time.Minute
+	SyncTimeout      = 30 * time.Second
 )
 
 type ExecutableState string
@@ -72,6 +74,10 @@ func ManagedRoot(configRoot string) (string, error) {
 func SystemExecutable() string { return "codegraph" }
 
 func VersionProbeArgs() []string { return []string{"--version"} }
+
+func InitArgs(projectRoot string) []string { return []string{"init", "--yes", projectRoot} }
+
+func SyncArgs(projectRoot string) []string { return []string{"sync", projectRoot} }
 
 func SystemInstallHints(goos string) []InstallHint {
 	if strings.TrimSpace(goos) == "windows" {
