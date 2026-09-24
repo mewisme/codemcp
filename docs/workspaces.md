@@ -28,6 +28,23 @@ New registrations receive a stable `ws_*` identity persisted in `<workspace>/.cm
 
 The workspace-local `.cm/` root is CodeMCP-owned state. Registration creates its ownership marker lazily. A symlinked `.cm`, an invalid marker, or a non-empty unowned `.cm` is rejected rather than claimed. The effective global CodeMCP root (normally `$HOME/.cm`, or the selected `CM_CONFIG_DIR`) is never accepted as workspace-local state.
 
+Workspace-owned durable state follows one local layout:
+
+```text
+<workspace>/.cm/
+├── workspace.json
+├── memory/
+│   └── MEMORY.md
+├── checkpoints/
+├── state/
+│   └── shell.json
+├── rules/
+├── skills/
+└── prompts/
+```
+
+Memory, rewind/checkpoint history, shell session history, and native CodeMCP rules/skills are resolved through this workspace-local state service. `.cm/prompts/` is the canonical workspace Prompt root for Prompt storage. Runtime-only execution feeds that are currently in memory are not duplicated into global workspace state. The global registry remains an ID/root lookup and does not become the primary store for these workspace-owned domains.
+
 ## Effective filesystem scope
 
 A workspace can reach:

@@ -136,7 +136,7 @@ func TestWorkspaceContextAPISupportsSelectiveMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store := memory.NewStore(configRoot)
+	store := memory.NewWorkspaceStore(configRoot, manager)
 	for _, entry := range []memory.Entry{
 		{Scope: "tui", Key: "theme", Note: "Use Charm default component styles."},
 		{Scope: "release", Key: "ci", Note: "Publish with GitHub Actions."},

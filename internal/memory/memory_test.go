@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestParseRenderCanonicalMemoryRoundTrip(t *testing.T) {
@@ -95,6 +97,24 @@ func TestStoreLoadDocumentAndSaveDocument(t *testing.T) {
 	}
 	if len(document.Entries) != 1 || document.Entries[0].Key != "package-manager" {
 		t.Fatalf("document = %#v", document)
+	}
+}
+
+func TestWorkspaceStoreUsesLocalCMRoot(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewWorkspaceStore(t.TempDir(), manager)
+	path, err := store.SaveDocument(item.ID, Document{Entries: []Entry{{Scope: "project", Note: "local"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, ".cm", "memory", "MEMORY.md")
+	if path != want {
+		t.Fatalf("memory path=%q want=%q", path, want)
 	}
 }
 

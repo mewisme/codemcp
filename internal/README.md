@@ -72,7 +72,7 @@ CLI / TUI / Admin HTTP / embedded web / protocol entrypoints
 | `update` | platform | Release resolution/download/activation |
 | `upstream` | runtime/integration | Upstream MCP client/runtime |
 | `version` | domain | Product/build identity |
-| `workspace` | domain/persistence | Workspace identity, global registry/path policy, and canonical workspace-local `.cm` state ownership |
+| `workspace` | domain/persistence | Workspace identity, global registry/path policy, and canonical workspace-local `.cm` state ownership used by memory, checkpoints, shell state, native rules/skills, and workspace Prompt paths |
 
 ## Boundary rules
 

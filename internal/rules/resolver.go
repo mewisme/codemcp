@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/instructionpolicy"
+	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
 var ruleRoots = []struct {
@@ -21,7 +22,13 @@ var ruleRoots = []struct {
 }
 
 func Discover(workspaceRoot string) ([]Rule, error) {
-	return discoverAt(workspaceRoot, nil)
+	result, err := discoverAt(workspaceRoot, nil)
+	if err != nil {
+		return nil, err
+	}
+	walkRules(workspacestate.New(workspaceRoot).RulesRoot(), ".cm", 0, &result)
+	sort.Slice(result, func(i, j int) bool { return result[i].Path < result[j].Path })
+	return result, nil
 }
 
 func DiscoverUser(home string, policy instructionpolicy.Config) ([]Rule, error) {

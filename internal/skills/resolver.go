@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/instructionpolicy"
+	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
 var skillRoots = []struct {
@@ -22,7 +23,22 @@ var skillRoots = []struct {
 }
 
 func Discover(workspaceRoot string) ([]Skill, error) {
-	return discoverAt(workspaceRoot, nil)
+	result, err := discoverAt(workspaceRoot, nil)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, skill := range result {
+		seen[skill.Path] = true
+	}
+	walkSkills(workspacestate.New(workspaceRoot).SkillsRoot(), ".cm", 0, &result, seen)
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Name == result[j].Name {
+			return result[i].Path < result[j].Path
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result, nil
 }
 
 func DiscoverUser(home string, policy instructionpolicy.Config) ([]Skill, error) {

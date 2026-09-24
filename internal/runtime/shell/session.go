@@ -56,7 +56,6 @@ type ExecResult struct {
 
 type Manager struct {
 	workspaces *workspace.Manager
-	root       string
 	executions *ExecutionHub
 	mu         sync.Mutex
 	sessions   map[string]*session
@@ -82,11 +81,11 @@ func NewManager(workspaces *workspace.Manager, root string) *Manager {
 	return NewManagerWithExecutions(workspaces, root, NewExecutionHub())
 }
 
-func NewManagerWithExecutions(workspaces *workspace.Manager, root string, executions *ExecutionHub) *Manager {
+func NewManagerWithExecutions(workspaces *workspace.Manager, _ string, executions *ExecutionHub) *Manager {
 	if executions == nil {
 		executions = NewExecutionHub()
 	}
-	return &Manager{workspaces: workspaces, root: root, executions: executions, sessions: map[string]*session{}, timeout: defaultCommandTimeout}
+	return &Manager{workspaces: workspaces, executions: executions, sessions: map[string]*session{}, timeout: defaultCommandTimeout}
 }
 
 func (m *Manager) Executions() *ExecutionHub {
@@ -243,7 +242,11 @@ func (m *Manager) session(workspaceID, workspaceRoot string) (*session, error) {
 }
 
 func (m *Manager) load(workspaceID, workspaceRoot string) (SessionState, error) {
-	data, err := os.ReadFile(m.statePath(workspaceID))
+	path, pathErr := m.statePath(workspaceID)
+	if pathErr != nil {
+		return SessionState{}, pathErr
+	}
+	data, err := os.ReadFile(path)
 	if err == nil {
 		var state SessionState
 		if json.Unmarshal(data, &state) == nil && (state.Version == 0 || state.Version == sessionStateVersion) && state.WorkspaceID == workspaceID && strings.TrimSpace(state.CWD) != "" {
@@ -278,13 +281,20 @@ func (m *Manager) load(workspaceID, workspaceRoot string) (SessionState, error) 
 }
 
 func (m *Manager) save(state SessionState) error {
-	path := m.statePath(state.WorkspaceID)
+	path, err := m.statePath(state.WorkspaceID)
+	if err != nil {
+		return err
+	}
 	state.Version = sessionStateVersion
 	return statepkg.WriteJSONAtomic(path, state, 0600)
 }
 
-func (m *Manager) statePath(workspaceID string) string {
-	return filepath.Join(m.root, "workspaces", workspaceID, "shell.json")
+func (m *Manager) statePath(workspaceID string) (string, error) {
+	local, err := m.workspaces.LocalState(workspaceID)
+	if err != nil {
+		return "", err
+	}
+	return local.StatePath("shell.json")
 }
 
 func (m *Manager) resolveDirectory(workspaceID, workspaceRoot, input string) (string, error) {

@@ -94,7 +94,7 @@ type Service struct {
 }
 
 func New(workspaces *workspace.Manager, toolProfile func() instructioncontext.ToolProfile) *Service {
-	return &Service{Workspaces: workspaces, MemoryStore: memory.NewStore(memory.DefaultRoot()), PolicyStore: instructionpolicy.DefaultStore(), ToolProfile: toolProfile}
+	return &Service{Workspaces: workspaces, MemoryStore: memory.NewWorkspaceStore(memory.DefaultRoot(), workspaces), PolicyStore: instructionpolicy.DefaultStore(), ToolProfile: toolProfile}
 }
 
 func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (Result, error) {

@@ -95,7 +95,7 @@ type AgentStatusResult struct {
 type ProjectContextEnvironment func() (bool, int)
 
 func RegisterContextTools(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store, environments ...ProjectContextEnvironment) {
-	memoryStore := memory.NewStore(memory.DefaultRoot())
+	memoryStore := memory.NewWorkspaceStore(memory.DefaultRoot(), workspaces)
 	memoryIndex := memory.NewHybridIndex(memory.NewLocalEmbedder(), memory.DefaultHybridWeights())
 	memoryLifecycle := memory.NewIndexLifecycle(memoryStore, memoryIndex)
 	policyStore := instructionpolicy.DefaultStore()

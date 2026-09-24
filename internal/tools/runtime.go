@@ -55,7 +55,7 @@ func NewRuntimeWithFeatures(featureConfig features.Config) *Runtime {
 
 func NewRuntimeWithAccess(featureConfig features.Config, globalAllowDirs []string, environments ...ProjectContextEnvironment) *Runtime {
 	workspaces := workspace.NewManagerWithGlobalAllowDirs(workspace.DefaultStorePath(), globalAllowDirs)
-	checkpoints := checkpoint.NewStore(checkpoint.DefaultRoot())
+	checkpoints := checkpoint.NewWorkspaceStore(checkpoint.DefaultRoot(), workspaces)
 	upstreams := upstream.NewManager(upstream.NewStore(upstream.Path()))
 	_ = upstreams.Load()
 	registry := NewRegistry()

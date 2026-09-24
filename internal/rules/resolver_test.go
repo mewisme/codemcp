@@ -48,3 +48,22 @@ func TestAlwaysApplyRule(t *testing.T) {
 		t.Fatalf("rules = %#v", values)
 	}
 }
+
+func TestDiscoverIncludesNativeWorkspaceRules(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".cm", "rules")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "native.md")
+	if err := os.WriteFile(path, []byte("---\nalwaysApply: true\n---\nNative CodeMCP rule"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	values, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 || values[0].Path != path || values[0].Source != ".cm" {
+		t.Fatalf("native rules=%#v", values)
+	}
+}

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestCheckpointBeforeAndRestore(t *testing.T) {
@@ -293,6 +295,19 @@ func TestCheckpointMetadataUsesCanonicalJSON(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(store.Path("ws_test"), "data", id, "manifest.json")); err != nil {
 		t.Fatalf("checkpoint manifest is not JSON: %v", err)
+	}
+}
+
+func TestWorkspaceCheckpointStoreUsesLocalCMRoot(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(workspaceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := NewWorkspaceStore(t.TempDir(), manager)
+	if got, want := store.Path(item.ID), filepath.Join(workspaceRoot, ".cm", "checkpoints"); got != want {
+		t.Fatalf("checkpoint path=%q want=%q", got, want)
 	}
 }
 

@@ -19,6 +19,7 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/state"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 const (
@@ -31,6 +32,7 @@ const (
 
 type Store struct {
 	Root              string
+	Workspaces        *workspace.Manager
 	MaxCount          int
 	Retention         time.Duration
 	MaxFileBytes      int64
@@ -114,7 +116,18 @@ func NewStore(root string) *Store {
 	return &Store{Root: root, MaxCount: defaultMaxCount, Retention: defaultRetention, MaxFileBytes: defaultMaxFile, MaxDirectoryDepth: maxDirectoryDepth}
 }
 
+func NewWorkspaceStore(root string, workspaces *workspace.Manager) *Store {
+	store := NewStore(root)
+	store.Workspaces = workspaces
+	return store
+}
+
 func (s *Store) Path(workspaceID string) string {
+	if s.Workspaces != nil {
+		if local, err := s.Workspaces.LocalState(workspaceID); err == nil {
+			return local.CheckpointRoot()
+		}
+	}
 	return filepath.Join(s.Root, "workspaces", workspaceID, "checkpoints")
 }
 

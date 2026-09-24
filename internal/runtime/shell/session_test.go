@@ -156,7 +156,7 @@ func TestShellPersistsCWD(t *testing.T) {
 		t.Fatalf("persisted cwd = %q, want %q", status.CWD, child)
 	}
 
-	reloaded := NewManager(manager.workspaces, manager.root)
+	reloaded := NewManager(manager.workspaces, t.TempDir())
 	status, err = reloaded.Status(workspaceID)
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +295,14 @@ func TestShellStateUsesCanonicalJSON(t *testing.T) {
 	if _, err := manager.Status(item.ID); err != nil {
 		t.Fatal(err)
 	}
-	statePath := filepath.Join(root, "workspaces", item.ID, "shell.json")
+	local, err := workspaces.LocalState(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	statePath, err := local.StatePath("shell.json")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := os.Stat(statePath); err != nil {
 		t.Fatalf("shell state is not JSON: %v", err)
 	}

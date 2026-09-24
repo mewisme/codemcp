@@ -9,6 +9,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/state"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 const (
@@ -27,12 +28,16 @@ type Document struct {
 }
 
 type Store struct {
-	Path string
-	Root string
+	Path       string
+	Root       string
+	Workspaces *workspace.Manager
 }
 
 func DefaultRoot() string        { return configformat.RootPath() }
 func NewStore(root string) Store { return Store{Root: root} }
+func NewWorkspaceStore(root string, workspaces *workspace.Manager) Store {
+	return Store{Root: root, Workspaces: workspaces}
+}
 
 func (s Store) Read() (string, error) {
 	path := s.Path
@@ -52,6 +57,11 @@ func (s Store) Write(value string) error {
 }
 
 func (s Store) WorkspacePath(workspaceID string) string {
+	if s.Workspaces != nil {
+		if local, err := s.Workspaces.LocalState(workspaceID); err == nil {
+			return filepath.Join(local.MemoryRoot(), "MEMORY.md")
+		}
+	}
 	root := s.Root
 	if root == "" {
 		root = DefaultRoot()
