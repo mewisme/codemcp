@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -52,6 +53,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"projectcontext":     "application",
 	"rules":              "domain",
 	"runtime":            "runtime",
+	"sequence":           "domain",
 	"secretstore":        "persistence",
 	"service":            "platform",
 	"skills":             "domain",
@@ -135,6 +137,27 @@ func TestInterfaceAdaptersDoNotImportSiblingAdapters(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestRepresentativeWorkspaceAdaptersCannotBypassApplicationMutationOwner(t *testing.T) {
+	root := architectureRepositoryRoot(t)
+	files := []string{
+		"internal/cli/workspace.go",
+		"internal/interface/admin/workspaces.go",
+		"internal/interface/admin/workspace_containers.go",
+		"internal/interface/tui/page/workspace.go",
+		"internal/interface/tui/page/workspace_editor.go",
+	}
+	directMutation := regexp.MustCompile(`(?:page\.)?manager\.(?:Register|Unregister|Relocate|CreateContainer|RenameContainer|DeleteContainer|AddAllowDir|RemoveAllowDir|AddWorkspacesToContainer|RemoveWorkspacesFromContainer|AddWorkspaceToContainers|RemoveWorkspaceFromContainers)\s*\(`)
+	for _, name := range files {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if match := directMutation.Find(data); match != nil {
+			t.Errorf("%s bypasses canonical workspace application owner via %q", name, string(match))
 		}
 	}
 }

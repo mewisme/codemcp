@@ -1,8 +1,10 @@
 package approval
 
 import (
-	"sync"
+	"strings"
 	"time"
+
+	"go.mewis.me/codemcp/internal/sequence"
 )
 
 const (
@@ -33,28 +35,17 @@ type Event struct {
 
 type EventObserver func(Event)
 
-type EventOverflow struct {
-	DroppedSequence uint64 `json:"dropped_sequence"`
-}
-
-type EventSubscription struct {
-	Events      chan Event
-	Overflow    chan EventOverflow
-	workspaceID string
-	overflow    bool
-	closed      bool
-}
+type EventOverflow = sequence.Overflow
+type EventSubscription = sequence.Subscription[Event]
 
 type EventStream struct {
-	mu           sync.RWMutex
-	subs         map[chan Event]*EventSubscription
-	recent       []Event
-	maxRecent    int
-	nextSequence uint64
+	stream *sequence.Stream[Event]
 }
 
 func newEventStream() *EventStream {
-	return &EventStream{subs: map[chan Event]*EventSubscription{}, maxRecent: 64}
+	return &EventStream{stream: sequence.New[Event](64, 16, func(event *Event, value uint64) {
+		event.Sequence = value
+	})}
 }
 
 func (s *EventStream) Subscribe() *EventSubscription {
@@ -62,55 +53,43 @@ func (s *EventStream) Subscribe() *EventSubscription {
 }
 
 func (s *EventStream) SubscribeWorkspace(workspaceID string) *EventSubscription {
-	if s == nil {
-		return nil
+	if s == nil || s.stream == nil {
+		var stream *sequence.Stream[Event]
+		sub, _ := stream.Subscribe(nil, 0)
+		return sub
 	}
-	sub := &EventSubscription{Events: make(chan Event, 16), Overflow: make(chan EventOverflow, 1), workspaceID: workspaceID}
-	s.mu.Lock()
-	s.subs[sub.Events] = sub
-	s.mu.Unlock()
+	workspaceID = strings.TrimSpace(workspaceID)
+	var filter sequence.Predicate[Event]
+	if workspaceID != "" {
+		filter = func(event Event) bool { return event.WorkspaceID == workspaceID }
+	}
+	sub, _ := s.stream.Subscribe(filter, 0)
 	return sub
 }
 
 func (s *EventStream) Unsubscribe(sub *EventSubscription) {
-	if s == nil || sub == nil {
+	if s == nil || s.stream == nil {
 		return
 	}
-	s.mu.Lock()
-	if current := s.subs[sub.Events]; current != nil && !current.closed {
-		delete(s.subs, sub.Events)
-		close(current.Events)
-		close(current.Overflow)
-		current.closed = true
-	}
-	s.mu.Unlock()
+	s.stream.Unsubscribe(sub)
 }
 
 func (s *EventStream) Recent(limit int) []Event {
-	if s == nil || limit <= 0 {
+	if s == nil || s.stream == nil {
 		return nil
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if limit > len(s.recent) {
-		limit = len(s.recent)
-	}
-	result := make([]Event, limit)
-	copy(result, s.recent[len(s.recent)-limit:])
-	return result
+	return s.stream.Recent(limit)
 }
 
 func (s *EventStream) LatestSequence() uint64 {
-	if s == nil {
+	if s == nil || s.stream == nil {
 		return 0
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.nextSequence
+	return s.stream.LatestSequence()
 }
 
 func (s *EventStream) Publish(event Event) {
-	if s == nil {
+	if s == nil || s.stream == nil {
 		return
 	}
 	if event.Timestamp.IsZero() {
@@ -118,26 +97,5 @@ func (s *EventStream) Publish(event Event) {
 	} else {
 		event.Timestamp = event.Timestamp.UTC()
 	}
-	s.mu.Lock()
-	s.nextSequence++
-	event.Sequence = s.nextSequence
-	s.recent = append(s.recent, event)
-	if len(s.recent) > s.maxRecent {
-		s.recent = append([]Event(nil), s.recent[len(s.recent)-s.maxRecent:]...)
-	}
-	for _, sub := range s.subs {
-		if sub.closed || sub.overflow {
-			continue
-		}
-		if sub.workspaceID != "" && event.WorkspaceID != sub.workspaceID {
-			continue
-		}
-		select {
-		case sub.Events <- event:
-		default:
-			sub.overflow = true
-			sub.Overflow <- EventOverflow{DroppedSequence: event.Sequence}
-		}
-	}
-	s.mu.Unlock()
+	s.stream.Publish(event)
 }

@@ -1,11 +1,12 @@
 package admin
 
 import (
-	"errors"
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -19,47 +20,50 @@ type workspaceRelocateRequest struct {
 	Path string `json:"path"`
 }
 
-func (api API) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
+func (api API) workspaceOperations() *application.WorkspaceService {
 	manager := api.workspaceManager()
-	if manager == nil {
+	return application.NewWorkspaceService(manager, func(context.Context) error {
+		if api.Tools == nil || api.Tools.Workspaces == nil {
+			return nil
+		}
+		return api.Tools.ReloadWorkspaces()
+	})
+}
+
+func (api API) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
+	operations := api.workspaceOperations()
+	if operations.Manager() == nil {
 		http.Error(w, "workspace registry unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
-		values, err := manager.List()
+		result, err := operations.List(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeWorkspaceOperationError(w, err, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, values)
+		writeJSON(w, result.Value)
 	case http.MethodPost:
 		var request workspaceRequest
 		if err := decodeJSONBody(w, r, &request); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if strings.TrimSpace(request.Path) == "" {
-			http.Error(w, "path is required", http.StatusBadRequest)
-			return
-		}
-		value, err := manager.Register(request.Path)
+		result, err := operations.Register(r.Context(), request.Path)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 			return
 		}
-		if err := api.syncWorkspaceRuntime(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, value)
+		writeJSON(w, result.Value)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
 func (api API) handleWorkspace(w http.ResponseWriter, r *http.Request) {
-	manager := api.workspaceManager()
+	operations := api.workspaceOperations()
+	manager := operations.Manager()
 	if manager == nil {
 		http.Error(w, "workspace registry unavailable", http.StatusServiceUnavailable)
 		return
@@ -70,33 +74,30 @@ func (api API) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
-	value, err := manager.Get(id)
+	result, err := operations.Get(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, workspace.ErrNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-		} else {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
+		writeWorkspaceOperationError(w, err, http.StatusInternalServerError)
 		return
 	}
+	value := result.Value
 	if len(parts) == 2 && parts[1] == "context" {
-		api.handleWorkspaceContext(w, r, manager, value)
+		api.handleWorkspaceContext(w, r, manager, value.ID)
 		return
 	}
 	if len(parts) == 2 && parts[1] == "relocate" {
-		api.handleWorkspaceRelocate(w, r, manager, value)
+		api.handleWorkspaceRelocate(w, r, operations, value.ID)
 		return
 	}
 	if len(parts) == 2 && parts[1] == "containers" {
-		api.handleWorkspaceContainersMembership(w, r, manager, value)
+		api.handleWorkspaceContainersMembership(w, r, operations, value.ID)
 		return
 	}
 	if len(parts) >= 2 && parts[1] == "executions" {
-		api.handleWorkspaceExecutions(w, r, value, parts[2:])
+		api.handleWorkspaceExecutions(w, r, value.ID, parts[2:])
 		return
 	}
 	if len(parts) >= 2 && parts[1] == "processes" {
-		api.handleWorkspaceProcesses(w, r, value, parts[2:])
+		api.handleWorkspaceProcesses(w, r, value.ID, parts[2:])
 		return
 	}
 	if len(parts) != 1 {
@@ -107,12 +108,8 @@ func (api API) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, value)
 	case http.MethodDelete:
-		if err := manager.Unregister(id); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if err := api.syncWorkspaceRuntime(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if _, err := operations.Unregister(r.Context(), value.ID); err != nil {
+			writeWorkspaceOperationError(w, err, http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -121,7 +118,7 @@ func (api API) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (api API) handleWorkspaceRelocate(w http.ResponseWriter, r *http.Request, manager *workspace.Manager, item workspace.Workspace) {
+func (api API) handleWorkspaceRelocate(w http.ResponseWriter, r *http.Request, operations *application.WorkspaceService, workspaceID string) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -131,23 +128,15 @@ func (api API) handleWorkspaceRelocate(w http.ResponseWriter, r *http.Request, m
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(request.Path) == "" {
-		http.Error(w, "path is required", http.StatusBadRequest)
-		return
-	}
-	value, err := manager.Relocate(item.ID, request.Path)
+	result, err := operations.Relocate(r.Context(), workspaceID, request.Path)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 		return
 	}
-	if err := api.syncWorkspaceRuntime(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, value)
+	writeJSON(w, result.Value.After)
 }
 
-func (api API) handleWorkspaceContext(w http.ResponseWriter, r *http.Request, manager *workspace.Manager, item workspace.Workspace) {
+func (api API) handleWorkspaceContext(w http.ResponseWriter, r *http.Request, manager *workspace.Manager, workspaceID string) {
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -167,7 +156,7 @@ func (api API) handleWorkspaceContext(w http.ResponseWriter, r *http.Request, ma
 		}
 	}
 	defaults := projectcontext.DefaultOptions()
-	result, err := service.Build(r.Context(), item.ID, projectcontext.Options{
+	result, err := service.Build(r.Context(), workspaceID, projectcontext.Options{
 		Path:                strings.TrimSpace(r.URL.Query().Get("path")),
 		MemoryQuery:         strings.TrimSpace(r.URL.Query().Get("memory_query")),
 		MaxMemoryEntries:    queryInt(r, "max_memory_entries", defaults.MaxMemoryEntries, projectcontext.MinMemoryEntries, projectcontext.MaxMemoryEntries),
@@ -184,6 +173,21 @@ func (api API) handleWorkspaceContext(w http.ResponseWriter, r *http.Request, ma
 		return
 	}
 	writeJSON(w, result)
+}
+
+func writeWorkspaceOperationError(w http.ResponseWriter, err error, fallback int) {
+	status := fallback
+	switch application.ErrorCodeOf(err) {
+	case application.ErrorInvalidArgument:
+		status = http.StatusBadRequest
+	case application.ErrorNotFound:
+		status = http.StatusNotFound
+	case application.ErrorConflict:
+		status = http.StatusConflict
+	case application.ErrorUnavailable:
+		status = http.StatusInternalServerError
+	}
+	http.Error(w, err.Error(), status)
 }
 
 func queryInt(r *http.Request, key string, fallback, min, max int) int {

@@ -9,12 +9,11 @@ import (
 	"time"
 
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
-	"go.mewis.me/codemcp/internal/workspace"
 )
 
 const executionHeartbeatInterval = 15 * time.Second
 
-func (api API) handleWorkspaceExecutions(w http.ResponseWriter, r *http.Request, item workspace.Workspace, parts []string) {
+func (api API) handleWorkspaceExecutions(w http.ResponseWriter, r *http.Request, workspaceID string, parts []string) {
 	hub := api.executionHub()
 	if hub == nil {
 		http.Error(w, "execution stream unavailable", http.StatusServiceUnavailable)
@@ -25,7 +24,7 @@ func (api API) handleWorkspaceExecutions(w http.ResponseWriter, r *http.Request,
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		writeJSON(w, hub.List(item.ID, queryInt(r, "limit", 50, 1, 100)))
+		writeJSON(w, hub.List(workspaceID, queryInt(r, "limit", 50, 1, 100)))
 		return
 	}
 	if len(parts) == 1 && parts[0] == "stream" {
@@ -33,7 +32,7 @@ func (api API) handleWorkspaceExecutions(w http.ResponseWriter, r *http.Request,
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		serveWorkspaceExecutionFeed(w, r, hub, item.ID, executionHeartbeatInterval)
+		serveWorkspaceExecutionFeed(w, r, hub, workspaceID, executionHeartbeatInterval)
 		return
 	}
 	id := strings.TrimSpace(parts[0])
@@ -46,7 +45,7 @@ func (api API) handleWorkspaceExecutions(w http.ResponseWriter, r *http.Request,
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		serveExecutionEvents(w, r, hub, item.ID, id, executionHeartbeatInterval)
+		serveExecutionEvents(w, r, hub, workspaceID, id, executionHeartbeatInterval)
 		return
 	}
 	if len(parts) != 1 {
@@ -57,7 +56,7 @@ func (api API) handleWorkspaceExecutions(w http.ResponseWriter, r *http.Request,
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	snapshot, err := hub.Get(item.ID, id)
+	snapshot, err := hub.Get(workspaceID, id)
 	if err != nil {
 		writeExecutionError(w, err)
 		return

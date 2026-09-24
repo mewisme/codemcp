@@ -1,12 +1,10 @@
 package admin
 
 import (
-	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
-	"go.mewis.me/codemcp/internal/workspace"
+	"go.mewis.me/codemcp/internal/application"
 )
 
 type workspaceContainerRequest struct {
@@ -22,59 +20,52 @@ type workspaceContainersMembershipRequest struct {
 }
 
 func (api API) handleWorkspaceContainers(w http.ResponseWriter, r *http.Request) {
-	manager := api.workspaceManager()
-	if manager == nil {
+	operations := api.workspaceOperations()
+	if operations.Manager() == nil {
 		http.Error(w, "workspace registry unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
-		values, err := manager.ListContainers()
+		result, err := operations.ListContainers(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeWorkspaceOperationError(w, err, http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, values)
+		writeJSON(w, result.Value)
 	case http.MethodPost:
 		var request workspaceContainerRequest
 		if err := decodeJSONBody(w, r, &request); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		value, err := manager.CreateContainer(request.Name)
+		result, err := operations.CreateContainer(r.Context(), request.Name)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 			return
 		}
-		if err := api.syncWorkspaceRuntime(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, value)
+		writeJSON(w, result.Value)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
 func (api API) handleWorkspaceContainer(w http.ResponseWriter, r *http.Request) {
-	manager := api.workspaceManager()
-	if manager == nil {
-		http.Error(w, "workspace registry unavailable", http.StatusServiceUnavailable)
-		return
-	}
+	operations := api.workspaceOperations()
 	parts := strings.Split(strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/workspace-containers/"), "/"), "/")
 	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
 		http.NotFound(w, r)
 		return
 	}
 	id := parts[0]
-	value, err := manager.GetContainer(id)
+	result, err := operations.GetContainer(r.Context(), id)
 	if err != nil {
-		writeWorkspaceContainerError(w, err)
+		writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 		return
 	}
+	value := result.Value
 	if len(parts) == 2 && parts[1] == "workspaces" {
-		api.handleWorkspaceContainerMembers(w, r, manager, value)
+		api.handleWorkspaceContainerMembers(w, r, operations, value.ID)
 		return
 	}
 	if len(parts) != 1 {
@@ -90,23 +81,15 @@ func (api API) handleWorkspaceContainer(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		updated, err := manager.RenameContainer(id, request.Name)
+		updated, err := operations.RenameContainer(r.Context(), value.ID, request.Name)
 		if err != nil {
-			writeWorkspaceContainerError(w, err)
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 			return
 		}
-		if err := api.syncWorkspaceRuntime(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, updated)
+		writeJSON(w, updated.Value)
 	case http.MethodDelete:
-		if err := manager.DeleteContainer(id); err != nil {
-			writeWorkspaceContainerError(w, err)
-			return
-		}
-		if err := api.syncWorkspaceRuntime(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if _, err := operations.DeleteContainer(r.Context(), value.ID); err != nil {
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -115,92 +98,66 @@ func (api API) handleWorkspaceContainer(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (api API) handleWorkspaceContainerMembers(w http.ResponseWriter, r *http.Request, manager *workspace.Manager, container workspace.WorkspaceContainer) {
+func (api API) handleWorkspaceContainerMembers(w http.ResponseWriter, r *http.Request, operations *application.WorkspaceService, containerID string) {
 	switch r.Method {
 	case http.MethodGet:
-		values, err := manager.WorkspacesForContainer(container.ID)
+		result, err := operations.WorkspacesForContainer(r.Context(), containerID)
 		if err != nil {
-			writeWorkspaceContainerError(w, err)
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, values)
+		writeJSON(w, result.Value)
 	case http.MethodPost, http.MethodDelete:
 		var request workspaceContainerMembersRequest
 		if err := decodeJSONBody(w, r, &request); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		var value workspace.WorkspaceContainer
+		var result application.Result[application.WorkspaceContainerView]
 		var err error
 		if r.Method == http.MethodPost {
-			value, err = manager.AddWorkspacesToContainer(container.ID, request.WorkspaceIDs)
+			result, err = operations.AddWorkspacesToContainer(r.Context(), containerID, request.WorkspaceIDs)
 		} else {
-			value, err = manager.RemoveWorkspacesFromContainer(container.ID, request.WorkspaceIDs)
+			result, err = operations.RemoveWorkspacesFromContainer(r.Context(), containerID, request.WorkspaceIDs)
 		}
 		if err != nil {
-			writeWorkspaceContainerError(w, err)
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 			return
 		}
-		if err := api.syncWorkspaceRuntime(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, value)
+		writeJSON(w, result.Value)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
-func (api API) handleWorkspaceContainersMembership(w http.ResponseWriter, r *http.Request, manager *workspace.Manager, item workspace.Workspace) {
+func (api API) handleWorkspaceContainersMembership(w http.ResponseWriter, r *http.Request, operations *application.WorkspaceService, workspaceID string) {
 	switch r.Method {
 	case http.MethodGet:
-		values, err := manager.ContainersForWorkspace(item.ID)
+		result, err := operations.ContainersForWorkspace(r.Context(), workspaceID)
 		if err != nil {
-			writeWorkspaceContainerError(w, err)
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, values)
+		writeJSON(w, result.Value)
 	case http.MethodPost, http.MethodDelete:
 		var request workspaceContainersMembershipRequest
 		if err := decodeJSONBody(w, r, &request); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		var values []workspace.WorkspaceContainer
+		var result application.Result[[]application.WorkspaceContainerView]
 		var err error
 		if r.Method == http.MethodPost {
-			values, err = manager.AddWorkspaceToContainers(item.ID, request.ContainerIDs)
+			result, err = operations.AddWorkspaceToContainers(r.Context(), workspaceID, request.ContainerIDs)
 		} else {
-			values, err = manager.RemoveWorkspaceFromContainers(item.ID, request.ContainerIDs)
+			result, err = operations.RemoveWorkspaceFromContainers(r.Context(), workspaceID, request.ContainerIDs)
 		}
 		if err != nil {
-			writeWorkspaceContainerError(w, err)
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 			return
 		}
-		if err := api.syncWorkspaceRuntime(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, values)
+		writeJSON(w, result.Value)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
-}
-
-func (api API) syncWorkspaceRuntime() error {
-	if api.Tools == nil || api.Tools.Workspaces == nil {
-		return nil
-	}
-	if err := api.Tools.ReloadWorkspaces(); err != nil {
-		return fmt.Errorf("workspace registry saved but runtime workspace reload failed: %w", err)
-	}
-	return nil
-}
-
-func writeWorkspaceContainerError(w http.ResponseWriter, err error) {
-	status := http.StatusBadRequest
-	if errors.Is(err, workspace.ErrContainerNotFound) || errors.Is(err, workspace.ErrNotFound) {
-		status = http.StatusNotFound
-	}
-	http.Error(w, err.Error(), status)
 }

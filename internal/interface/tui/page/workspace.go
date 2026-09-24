@@ -54,6 +54,7 @@ const (
 type WorkspacePage struct {
 	ctx             context.Context
 	manager         *workspace.Manager
+	operations      *application.WorkspaceService
 	containers      bool
 	resourceID      string
 	section         string
@@ -124,7 +125,9 @@ func newWorkspacePage(ctx context.Context, containers bool, resourceID, section,
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	page := &WorkspacePage{ctx: ctx, manager: workspace.NewManager(workspace.DefaultStorePath()), containers: containers, resourceID: strings.TrimSpace(resourceID), section: strings.TrimSpace(section), action: strings.TrimSpace(action), contextSession: session}
+	manager := workspace.NewManager(workspace.DefaultStorePath())
+	page := &WorkspacePage{ctx: ctx, manager: manager, containers: containers, resourceID: strings.TrimSpace(resourceID), section: strings.TrimSpace(section), action: strings.TrimSpace(action), contextSession: session}
+	page.workspaceOperations()
 	if err := page.reload(); err != nil {
 		return nil, err
 	}
@@ -502,12 +505,9 @@ func (page *WorkspacePage) updateConfirm(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		var err error
 		if page.command == WorkspaceUnregister {
-			err = page.manager.Unregister(page.targetID)
+			_, err = page.workspaceOperations().Unregister(page.ctx, page.targetID)
 		} else {
-			err = page.manager.DeleteContainer(page.targetID)
-		}
-		if err == nil {
-			err = page.syncRuntimeWorkspaces()
+			_, err = page.workspaceOperations().DeleteContainer(page.ctx, page.targetID)
 		}
 		if err != nil {
 			page.err = err
@@ -526,20 +526,6 @@ func (page *WorkspacePage) updateConfirm(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	return page.confirm.Update(msg)
-}
-
-func (page *WorkspacePage) syncRuntimeWorkspaces() error {
-	ctx := page.ctx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	_, _, err := reloadWorkspaceRuntime(ctx)
-	if err != nil {
-		return fmt.Errorf("workspace registry saved but running runtime reload failed: %w", err)
-	}
-	return nil
 }
 
 func (page *WorkspacePage) updateMembers() error {
@@ -562,22 +548,38 @@ func (page *WorkspacePage) updateMembers() error {
 	sort.Strings(add)
 	sort.Strings(remove)
 	if len(add) > 0 {
-		if _, err := page.manager.AddWorkspacesToContainer(page.targetID, add); err != nil {
-			return err
-		}
-		if err := page.syncRuntimeWorkspaces(); err != nil {
+		if _, err := page.workspaceOperations().AddWorkspacesToContainer(page.ctx, page.targetID, add); err != nil {
 			return err
 		}
 	}
 	if len(remove) > 0 {
-		if _, err := page.manager.RemoveWorkspacesFromContainer(page.targetID, remove); err != nil {
-			return err
-		}
-		if err := page.syncRuntimeWorkspaces(); err != nil {
+		if _, err := page.workspaceOperations().RemoveWorkspacesFromContainer(page.ctx, page.targetID, remove); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (page *WorkspacePage) workspaceOperations() *application.WorkspaceService {
+	if page == nil {
+		return application.NewWorkspaceService(nil, nil)
+	}
+	if page.operations != nil {
+		return page.operations
+	}
+	if page.manager == nil {
+		page.manager = workspace.NewManager(workspace.DefaultStorePath())
+	}
+	page.operations = application.NewWorkspaceService(page.manager, func(reloadCtx context.Context) error {
+		if reloadCtx == nil {
+			reloadCtx = context.Background()
+		}
+		reloadCtx, cancel := context.WithTimeout(reloadCtx, 5*time.Second)
+		defer cancel()
+		_, _, err := reloadWorkspaceRuntime(reloadCtx)
+		return err
+	})
+	return page.operations
 }
 
 func (page *WorkspacePage) reload() error {

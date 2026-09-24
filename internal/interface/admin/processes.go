@@ -6,10 +6,9 @@ import (
 	"strings"
 
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
-	"go.mewis.me/codemcp/internal/workspace"
 )
 
-func (api API) handleWorkspaceProcesses(w http.ResponseWriter, r *http.Request, item workspace.Workspace, parts []string) {
+func (api API) handleWorkspaceProcesses(w http.ResponseWriter, r *http.Request, workspaceID string, parts []string) {
 	if api.Tools == nil || api.Tools.Processes == nil {
 		http.Error(w, "process manager unavailable", http.StatusServiceUnavailable)
 		return
@@ -19,7 +18,7 @@ func (api API) handleWorkspaceProcesses(w http.ResponseWriter, r *http.Request, 
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		values, err := api.Tools.Processes.Status(item.ID, "")
+		values, err := api.Tools.Processes.Status(workspaceID, "")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -34,7 +33,7 @@ func (api API) handleWorkspaceProcesses(w http.ResponseWriter, r *http.Request, 
 	id := strings.TrimSpace(parts[0])
 	switch r.Method {
 	case http.MethodGet:
-		values, err := api.Tools.Processes.Status(item.ID, id)
+		values, err := api.Tools.Processes.Status(workspaceID, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
@@ -45,7 +44,7 @@ func (api API) handleWorkspaceProcesses(w http.ResponseWriter, r *http.Request, 
 		}
 		writeJSON(w, values[0])
 	case http.MethodDelete:
-		if err := api.Tools.Processes.ClearFinished(item.ID, id); err != nil {
+		if err := api.Tools.Processes.ClearFinished(workspaceID, id); err != nil {
 			if errors.Is(err, shellruntime.ErrProcessRunning) {
 				http.Error(w, err.Error(), http.StatusConflict)
 			} else {

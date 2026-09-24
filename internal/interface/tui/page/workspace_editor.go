@@ -7,8 +7,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/huh/v2"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
-	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func (page *WorkspacePage) initWorkspaceEditor() error {
@@ -146,23 +146,24 @@ func (page *WorkspacePage) applyWorkspaceEditor() error {
 		return nil
 	}
 	var err error
+	operations := page.workspaceOperations()
 	switch page.command {
 	case WorkspaceRegister:
-		_, err = page.manager.Register(page.value)
+		_, err = operations.Register(page.ctx, page.value)
 	case WorkspaceRelocate:
-		var relocated workspace.Workspace
-		relocated, err = page.manager.Relocate(page.targetID, page.value)
+		var relocated application.Result[application.WorkspaceRelocation]
+		relocated, err = operations.Relocate(page.ctx, page.targetID, page.value)
 		if err == nil {
-			page.targetID = relocated.ID
+			page.targetID = relocated.Value.After.ID
 		}
 	case WorkspaceAccessAdd:
-		_, err = page.manager.AddAllowDir(page.targetID, page.value)
+		_, err = operations.AddAllowDir(page.ctx, page.targetID, page.value)
 	case WorkspaceAccessRemove:
-		_, err = page.manager.RemoveAllowDir(page.targetID, page.value)
+		_, err = operations.RemoveAllowDir(page.ctx, page.targetID, page.value)
 	case WorkspaceContainerCreate:
-		_, err = page.manager.CreateContainer(page.value)
+		_, err = operations.CreateContainer(page.ctx, page.value)
 	case WorkspaceContainerRename:
-		_, err = page.manager.RenameContainer(page.targetID, page.value)
+		_, err = operations.RenameContainer(page.ctx, page.targetID, page.value)
 	case WorkspaceContainerMembers:
 		return page.updateMembers()
 	default:
@@ -171,7 +172,7 @@ func (page *WorkspacePage) applyWorkspaceEditor() error {
 	if err != nil {
 		return err
 	}
-	return page.syncRuntimeWorkspaces()
+	return nil
 }
 
 func (page *WorkspacePage) workspaceEditorNavigation(command WorkspaceCommand, resourceID string) tea.Cmd {

@@ -139,6 +139,9 @@ func TestToolCallHistoryIsBoundedIndependentlyFromGeneralActivity(t *testing.T) 
 		stream.Publish(Event{Kind: string(EventSystem), Message: "system"})
 		stream.Publish(Event{CallID: fmt.Sprintf("call_%04d", index), Kind: string(EventToolCall), Tool: "run_command"})
 	}
+	for range MaxRecentEvents * 2 {
+		stream.Publish(Event{Kind: string(EventSystem), Message: "system burst"})
+	}
 	sub, recent := stream.SubscribeToolCallsDetailed(MaxRecentToolCalls)
 	defer stream.UnsubscribeDetailed(sub)
 	if len(recent) != MaxRecentToolCalls {
