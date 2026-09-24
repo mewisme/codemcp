@@ -54,7 +54,6 @@ func newRootCommand() *cobra.Command {
 			commandLogger(cmd).Notice("VERSION", "cli.version", version.String())
 		}},
 	)
-	configureHelpPresentation(cmd)
 	bindCanonicalCommandOperations(cmd)
 	return cmd
 }

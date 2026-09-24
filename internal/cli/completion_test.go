@@ -119,6 +119,14 @@ func TestCompletionScriptsRegisterOnlyCM(t *testing.T) {
 				t.Fatalf("%s completion unexpectedly registers legacy executable %q", test.shell, legacy)
 			}
 		}
+		if strings.Contains(script, "\x1b") {
+			t.Fatalf("%s completion contains ANSI control bytes", test.shell)
+		}
+		for _, fragment := range []string{"┌", "│", "└", "◆", "◇", "✓"} {
+			if strings.Contains(script, fragment) {
+				t.Fatalf("%s completion contains CLI presentation fragment %q", test.shell, fragment)
+			}
+		}
 	}
 }
 
