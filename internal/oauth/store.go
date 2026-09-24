@@ -1,13 +1,13 @@
 package oauth
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
-	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/secretstore"
 	statepkg "go.mewis.me/codemcp/internal/state"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -198,7 +198,7 @@ func (s *Store) readDiskLocked() (diskStore, error) {
 		span.FailMessage("OAuth store read failed", errors.New("OAuth store read failed"))
 		return diskStore{}, fmt.Errorf("read oauth store: %w", err)
 	}
-	if err := configformat.UnmarshalPath(s.path, data, &state); err != nil {
+	if err := json.Unmarshal(data, &state); err != nil {
 		span.FailMessage("OAuth store decode failed", errors.New("OAuth store decode failed"), tracepkg.Int64("bytes", int64(len(data))))
 		return diskStore{}, fmt.Errorf("decode oauth store: %w", err)
 	}
@@ -210,11 +210,7 @@ func (s *Store) readDiskLocked() (diskStore, error) {
 	if state.Credentials == nil {
 		state.Credentials = map[string]Credential{}
 	}
-	format := ""
-	if detected, detectErr := configformat.Detect(s.path); detectErr == nil {
-		format = string(detected)
-	}
-	span.EndMessage("OAuth store read", tracepkg.Bool("exists", true), tracepkg.String("format", format), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("store_version", state.Version), tracepkg.Int("entry_count", len(state.Credentials)))
+	span.EndMessage("OAuth store read", tracepkg.Bool("exists", true), tracepkg.String("format", "json"), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("store_version", state.Version), tracepkg.Int("entry_count", len(state.Credentials)))
 	return state, nil
 }
 
@@ -238,6 +234,7 @@ func (s *Store) loadSecret(id, field, stored string) (string, bool, error) {
 func (s *Store) writeLocked(previous, next diskStore) error {
 	span := tracepkg.StartObserver(s.trace, "OAUTH", "oauth.store.write", "Writing OAuth store", tracepkg.String("store_path", s.path), tracepkg.Bool("atomic", true), tracepkg.Int("entry_count", len(next.Credentials)))
 	persisted := cloneDiskStore(next)
+	persisted.Version = storeVersion
 	for id, credential := range persisted.Credentials {
 		if credential.ClientSecret != "" {
 			credential.ClientSecret = secretstore.Marker
@@ -250,7 +247,7 @@ func (s *Store) writeLocked(previous, next diskStore) error {
 		}
 		persisted.Credentials[id] = credential
 	}
-	data, err := configformat.MarshalPath(s.path, persisted)
+	data, err := statepkg.MarshalJSON(persisted)
 	if err != nil {
 		span.FailMessage("OAuth store encode failed", errors.New("OAuth store encode failed"))
 		return fmt.Errorf("encode oauth store: %w", err)
@@ -276,11 +273,7 @@ func (s *Store) writeLocked(previous, next diskStore) error {
 		span.FailMessage("OAuth protected-value persistence failed", errors.New("OAuth protected-value persistence failed"), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("protected_value_changes", len(changes)), tracepkg.Bool("store_rollback_succeeded", restoreErr == nil))
 		return errors.Join(err, restoreErr)
 	}
-	format := ""
-	if detected, detectErr := configformat.Detect(s.path); detectErr == nil {
-		format = string(detected)
-	}
-	span.EndMessage("OAuth store written", tracepkg.String("format", format), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("store_version", storeVersion), tracepkg.Int("entry_count", len(next.Credentials)), tracepkg.Int("protected_value_changes", len(changes)))
+	span.EndMessage("OAuth store written", tracepkg.String("format", "json"), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("store_version", storeVersion), tracepkg.Int("entry_count", len(next.Credentials)), tracepkg.Int("protected_value_changes", len(changes)))
 	return nil
 }
 

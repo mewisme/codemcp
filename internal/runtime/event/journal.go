@@ -1,22 +1,21 @@
 package event
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
 
 	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/state"
 )
 
 const (
 	DefaultMaxBytes int64 = 10 << 20
 	DefaultMaxFiles       = 5
+	MaxEventBytes         = state.DefaultMaxJSONLLineBytes
 )
 
 type Options struct {
@@ -68,25 +67,26 @@ func (j *Journal) Append(event Event) error {
 	if j == nil {
 		return nil
 	}
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(event); err != nil {
-		return err
+	if event.Version == 0 {
+		event.Version = Version
 	}
-	data := buffer.Bytes()
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	if err := j.rotateIfNeeded(int64(len(data))); err != nil {
-		return err
+	if event.Version != Version {
+		return fmt.Errorf("unsupported runtime event version: %d", event.Version)
 	}
-	file, err := os.OpenFile(j.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	data, err := json.Marshal(event)
 	if err != nil {
 		return err
 	}
-	_, writeErr := file.Write(data)
-	closeErr := file.Close()
-	return errors.Join(writeErr, closeErr)
+	incoming := int64(len(data) + 1)
+	if incoming > MaxEventBytes {
+		return fmt.Errorf("runtime event exceeds %d byte limit", MaxEventBytes)
+	}
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if err := j.rotateIfNeeded(incoming); err != nil {
+		return err
+	}
+	return state.AppendJSONL(j.path, event, 0600, MaxEventBytes)
 }
 
 func (j *Journal) Clear() error {
@@ -152,30 +152,20 @@ func (j *Journal) FilesOldestFirst() []string {
 }
 
 func ReadFile(path string, fn func(Event) error) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	reader := bufio.NewReader(file)
-	for {
-		line, err := reader.ReadBytes('\n')
-		if len(line) > 0 {
-			var event Event
-			if decodeErr := json.Unmarshal(line, &event); decodeErr != nil {
-				return decodeErr
-			}
-			if fn != nil {
-				if fnErr := fn(event); fnErr != nil {
-					return fnErr
-				}
-			}
-		}
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
-		if err != nil {
+	return state.ReadJSONL(path, MaxEventBytes, func(line []byte) error {
+		var event Event
+		if err := json.Unmarshal(line, &event); err != nil {
 			return err
 		}
-	}
+		if event.Version == 0 {
+			event.Version = Version
+		}
+		if event.Version != Version {
+			return fmt.Errorf("unsupported runtime event version: %d", event.Version)
+		}
+		if fn != nil {
+			return fn(event)
+		}
+		return nil
+	})
 }

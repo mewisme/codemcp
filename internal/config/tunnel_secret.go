@@ -12,6 +12,7 @@ import (
 )
 
 type tunnelSecret struct {
+	Version              int    `json:"version"`
 	RuntimeKeyConfigured bool   `json:"runtime_key_configured,omitempty"`
 	AdminKeyConfigured   bool   `json:"admin_key_configured,omitempty"`
 	APIKey               string `json:"api_key,omitempty"`
@@ -22,6 +23,8 @@ type tunnelSecret struct {
 	AdminReadAccess      bool   `json:"admin_read_access,omitempty"`
 	AdminManageAccess    bool   `json:"admin_manage_access,omitempty"`
 }
+
+const tunnelSecretVersion = 1
 
 var (
 	tunnelRuntimeSecretName = secretstore.Name("tunnel", "runtime-key")
@@ -54,9 +57,13 @@ func loadTunnelSecretAt(path string) (tunnelSecret, error) {
 		return tunnelSecret{}, err
 	}
 	var secret tunnelSecret
-	if err := configformat.UnmarshalPath(path, data, &secret); err != nil {
+	if err := configformat.Unmarshal(configformat.JSON, data, &secret); err != nil {
 		return tunnelSecret{}, err
 	}
+	if secret.Version != 0 && secret.Version != tunnelSecretVersion {
+		return tunnelSecret{}, fmt.Errorf("unsupported tunnel state version: %d", secret.Version)
+	}
+	secret.Version = tunnelSecretVersion
 	return secret, nil
 }
 
@@ -131,6 +138,7 @@ func saveTunnelSecretAt(path string, cfg tunnel.Config) error {
 		return err
 	}
 	stored := tunnelSecret{
+		Version:              tunnelSecretVersion,
 		RuntimeKeyConfigured: cfg.APIKey != "", AdminKeyConfigured: cfg.AdminKey != "",
 		AdminOrganizationID: cfg.AdminOrganizationID, AdminWorkspaceID: cfg.AdminWorkspaceID, AdminTenantID: cfg.AdminTenantID,
 		AdminReadAccess: cfg.AdminReadAccess, AdminManageAccess: cfg.AdminManageAccess,
@@ -162,15 +170,12 @@ func saveTunnelSecretAt(path string, cfg tunnel.Config) error {
 }
 
 func mergeTunnelSecretData(path string, stored tunnelSecret, runtime tunnel.Config) ([]byte, error) {
-	format, err := configformat.Detect(path)
+	stored.Version = tunnelSecretVersion
+	overlayData, err := configformat.Marshal(configformat.JSON, stored)
 	if err != nil {
 		return nil, err
 	}
-	overlayData, err := configformat.Marshal(format, stored)
-	if err != nil {
-		return nil, err
-	}
-	overlay, err := configformat.DecodeGeneric(format, overlayData)
+	overlay, err := configformat.DecodeGeneric(configformat.JSON, overlayData)
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +184,7 @@ func mergeTunnelSecretData(path string, stored tunnelSecret, runtime tunnel.Conf
 		return nil, errors.New("tunnel configuration must encode as an object")
 	}
 	overlayRoot["runtime_key_configured"] = stored.RuntimeKeyConfigured
+	overlayRoot["version"] = int64(tunnelSecretVersion)
 	overlayRoot["admin_key_configured"] = stored.AdminKeyConfigured
 	overlayRoot["admin_organization_id"] = stored.AdminOrganizationID
 	overlayRoot["admin_workspace_id"] = stored.AdminWorkspaceID
@@ -189,7 +195,7 @@ func mergeTunnelSecretData(path string, stored tunnelSecret, runtime tunnel.Conf
 	var base any = map[string]any{}
 	existingData, _, readErr := readConfigFile(path)
 	if readErr == nil {
-		base, err = configformat.DecodeGeneric(format, existingData)
+		base, err = configformat.DecodeGeneric(configformat.JSON, existingData)
 		if err != nil {
 			return nil, fmt.Errorf("decode existing tunnel configuration for merge: %w", err)
 		}
@@ -208,5 +214,5 @@ func mergeTunnelSecretData(path string, stored tunnelSecret, runtime tunnel.Conf
 			merged["admin_key"] = secretMarkerValue(runtime.AdminKey)
 		}
 	}
-	return configformat.EncodeGeneric(format, merged)
+	return configformat.EncodeGeneric(configformat.JSON, merged)
 }

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -590,7 +591,7 @@ func (s *Store) readIndex(workspaceID string) (Index, error) {
 		return Index{}, err
 	}
 	var index Index
-	if err := configformat.UnmarshalPath(s.indexPath(workspaceID), data, &index); err != nil {
+	if err := json.Unmarshal(data, &index); err != nil {
 		return Index{}, err
 	}
 	if index.Version != indexVersion {
@@ -619,7 +620,7 @@ func (s *Store) readManifest(workspaceID, id string) (*Manifest, error) {
 		return nil, err
 	}
 	var manifest Manifest
-	if err := configformat.UnmarshalPath(s.manifestPath(workspaceID, id), data, &manifest); err != nil {
+	if err := json.Unmarshal(data, &manifest); err != nil {
 		return nil, err
 	}
 	if manifest.Version != indexVersion {
@@ -658,11 +659,11 @@ func (s *Store) checkpointDir(workspaceID, id string) string {
 }
 
 func (s *Store) indexPath(workspaceID string) string {
-	return filepath.Join(s.Path(workspaceID), "index"+configformat.ExtensionForRoot(s.Root))
+	return filepath.Join(s.Path(workspaceID), "index.json")
 }
 
 func (s *Store) manifestPath(workspaceID, id string) string {
-	return filepath.Join(s.checkpointDir(workspaceID, id), "manifest"+configformat.ExtensionForRoot(s.Root))
+	return filepath.Join(s.checkpointDir(workspaceID, id), "manifest.json")
 }
 
 func (s *Store) maxCount() int {
@@ -752,11 +753,7 @@ func within(root, candidate string) bool {
 }
 
 func writeStructuredAtomic(path string, value any, mode os.FileMode) error {
-	data, err := configformat.MarshalPath(path, value)
-	if err != nil {
-		return err
-	}
-	return state.WriteFileAtomic(path, data, mode)
+	return state.WriteJSONAtomic(path, value, mode)
 }
 
 func minInt(a, b int) int {

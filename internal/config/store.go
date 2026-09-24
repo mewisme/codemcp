@@ -22,14 +22,14 @@ func (s *Store) Load() (map[string]any, error) {
 		return nil, err
 	}
 	var value map[string]any
-	if err := configformat.UnmarshalPath(s.Path, data, &value); err != nil {
+	if err := configformat.Unmarshal(configformat.JSON, data, &value); err != nil {
 		return nil, err
 	}
 	return value, nil
 }
 
 func (s *Store) Save(value map[string]any) error {
-	data, err := configformat.MarshalPath(s.Path, value)
+	data, err := configformat.Marshal(configformat.JSON, value)
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,6 +33,14 @@ func TestTunnelMetadataRoundTripUsesJSON(t *testing.T) {
 	}
 	if filepath.Ext(path) != ".json" {
 		t.Fatalf("path = %s", path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stored tunnelMetadataFile
+	if err := json.Unmarshal(data, &stored); err != nil || stored.Version != tunnelMetadataVersion {
+		t.Fatalf("stored metadata = %#v err=%v", stored, err)
 	}
 	loaded, err := LoadTunnelMetadata(metadata.ID)
 	if err != nil {

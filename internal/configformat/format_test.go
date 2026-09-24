@@ -62,16 +62,18 @@ func TestDiscoverMainConfig(t *testing.T) {
 	}
 }
 
-func TestStructuredPathFollowsMainConfigExtension(t *testing.T) {
+func TestStructuredPathUsesCanonicalJSONExtension(t *testing.T) {
 	for _, name := range []string{"config.json", "config.yaml", "config.yml", "config.toml"} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
 			if err := os.WriteFile(filepath.Join(root, name), []byte("{}\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			wantExt := filepath.Ext(name)
-			if got := filepath.Ext(StructuredPath(root, "workspaces")); got != wantExt {
-				t.Fatalf("extension = %q, want %q", got, wantExt)
+			if got := filepath.Ext(StructuredPath(root, "workspaces")); got != ".json" {
+				t.Fatalf("extension = %q, want .json", got)
+			}
+			if got := ExtensionForRoot(root); got != ".json" {
+				t.Fatalf("root extension = %q, want .json", got)
 			}
 		})
 	}

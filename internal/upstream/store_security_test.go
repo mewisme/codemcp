@@ -20,7 +20,7 @@ func TestStoreKeepsSensitiveHeaderAndEnvInSecretFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	if strings.Contains(text, "header-private-value") || strings.Contains(text, "env-private-value") || !strings.Contains(text, "secret-file") || !strings.Contains(text, `"X-Test": "ok"`) || !strings.Contains(text, `"MODE": "test"`) {
+	if strings.Contains(text, "header-private-value") || strings.Contains(text, "env-private-value") || !strings.Contains(text, `"version": 1`) || !strings.Contains(text, "secret-file") || !strings.Contains(text, `"X-Test": "ok"`) || !strings.Contains(text, `"MODE": "test"`) {
 		t.Fatalf("upstream file persistence = %s", data)
 	}
 	loaded, err := store.Load()
@@ -54,7 +54,7 @@ func TestLegacyUpstreamSecretsMigrateToSecretFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(migrated), "legacy-header-value") || strings.Contains(string(migrated), "legacy-env-value") || strings.Count(string(migrated), "secret-file") < 2 {
+	if strings.Contains(string(migrated), "legacy-header-value") || strings.Contains(string(migrated), "legacy-env-value") || !strings.Contains(string(migrated), `"version": 1`) || strings.Count(string(migrated), "secret-file") < 2 {
 		t.Fatalf("upstream file was not migrated: %s", migrated)
 	}
 }

@@ -60,11 +60,7 @@ func pruneDeprecatedConfigKeys(path string, paths [][]string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	format, err := configformat.Detect(path)
-	if err != nil {
-		return 0, err
-	}
-	decoded, err := configformat.DecodeGeneric(format, data)
+	decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
 	if err != nil {
 		return 0, fmt.Errorf("decode %s for startup canonicalization: %w", path, err)
 	}
@@ -81,7 +77,7 @@ func pruneDeprecatedConfigKeys(path string, paths [][]string) (int, error) {
 	if removed == 0 {
 		return 0, nil
 	}
-	encoded, err := configformat.EncodeGeneric(format, root)
+	encoded, err := configformat.EncodeGeneric(configformat.JSON, root)
 	if err != nil {
 		return 0, fmt.Errorf("encode %s after startup canonicalization: %w", path, err)
 	}

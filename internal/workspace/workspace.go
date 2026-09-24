@@ -507,7 +507,7 @@ func (m *Manager) ensureLoaded() error {
 	}
 
 	var stored storeFile
-	if err := configformat.UnmarshalPath(m.path, data, &stored); err != nil {
+	if err := configformat.Unmarshal(configformat.JSON, data, &stored); err != nil {
 		span.FailMessage("Workspace registry decode failed", err, tracepkg.Int64("bytes", int64(len(data))))
 		return fmt.Errorf("decode workspace registry: %w", err)
 	}
@@ -582,11 +582,7 @@ func (m *Manager) ensureLoaded() error {
 			return fmt.Errorf("persist migrated workspace registry: %w", err)
 		}
 	}
-	format := ""
-	if detected, detectErr := configformat.Detect(m.path); detectErr == nil {
-		format = string(detected)
-	}
-	span.EndMessage("Workspace registry loaded", tracepkg.Bool("exists", true), tracepkg.String("format", format), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("registry_version", stored.Version), tracepkg.Int("current_version", storeVersion), tracepkg.Int("workspaces", len(m.items)), tracepkg.Int("containers", len(m.containers)), tracepkg.Bool("migrated", migrated), tracepkg.Int("migrated_workspace_ids", migratedIDs), tracepkg.Int("rewritten_state_files", rewrittenFiles))
+	span.EndMessage("Workspace registry loaded", tracepkg.Bool("exists", true), tracepkg.String("format", "json"), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("registry_version", stored.Version), tracepkg.Int("current_version", storeVersion), tracepkg.Int("workspaces", len(m.items)), tracepkg.Int("containers", len(m.containers)), tracepkg.Bool("migrated", migrated), tracepkg.Int("migrated_workspace_ids", migratedIDs), tracepkg.Int("rewritten_state_files", rewrittenFiles))
 	return nil
 }
 
@@ -664,15 +660,14 @@ func rewriteWorkspaceStateIDs(root, legacyID, canonicalID string) (int, error) {
 	}
 	rewritten := 0
 	for _, path := range paths {
-		format, err := configformat.Detect(path)
-		if err != nil {
+		if !strings.EqualFold(filepath.Ext(path), ".json") {
 			continue
 		}
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return rewritten, err
 		}
-		decoded, err := configformat.DecodeGeneric(format, data)
+		decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
 		if err != nil {
 			return rewritten, fmt.Errorf("decode workspace state %s: %w", path, err)
 		}
@@ -688,7 +683,7 @@ func rewriteWorkspaceStateIDs(root, legacyID, canonicalID string) (int, error) {
 			return rewritten, fmt.Errorf("workspace state %s belongs to unexpected workspace %s", path, value)
 		}
 		object["workspace_id"] = canonicalID
-		encoded, err := configformat.EncodeGeneric(format, object)
+		encoded, err := configformat.EncodeGeneric(configformat.JSON, object)
 		if err != nil {
 			return rewritten, fmt.Errorf("encode workspace state %s: %w", path, err)
 		}
@@ -828,7 +823,8 @@ func (m *Manager) saveLocked() error {
 		}
 		return left < right
 	})
-	data, err := configformat.MarshalPath(m.path, storeFile{Version: storeVersion, Workspaces: items, Containers: containers})
+	stored := storeFile{Version: storeVersion, Workspaces: items, Containers: containers}
+	data, err := state.MarshalJSON(stored)
 	if err != nil {
 		span.FailMessage("Workspace registry encoding failed", err)
 		return err
@@ -837,11 +833,7 @@ func (m *Manager) saveLocked() error {
 		span.FailMessage("Workspace registry persistence failed", err, tracepkg.Int64("bytes", int64(len(data))))
 		return err
 	}
-	format := ""
-	if detected, detectErr := configformat.Detect(m.path); detectErr == nil {
-		format = string(detected)
-	}
-	span.EndMessage("Workspace registry persisted", tracepkg.String("format", format), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("registry_version", storeVersion), tracepkg.Int("workspaces", len(items)), tracepkg.Int("containers", len(containers)))
+	span.EndMessage("Workspace registry persisted", tracepkg.String("format", "json"), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("registry_version", storeVersion), tracepkg.Int("workspaces", len(items)), tracepkg.Int("containers", len(containers)))
 	return nil
 }
 

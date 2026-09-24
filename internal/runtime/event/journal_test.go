@@ -22,7 +22,7 @@ func TestJournalPersistsHiddenEventsAndSanitizesSecrets(t *testing.T) {
 	if err := ReadFile(journal.Path(), func(event Event) error { got = event; return nil }); err != nil {
 		t.Fatal(err)
 	}
-	if got.Level != "debug" || got.Visibility != logger.VisibilityDebug || got.WorkspaceID != "ws_test" || got.Tool != "run_command" || got.Status != "ok" || got.RunID != "run_test" || got.PID != 42 {
+	if got.Version != Version || got.Level != "debug" || got.Visibility != logger.VisibilityDebug || got.WorkspaceID != "ws_test" || got.Tool != "run_command" || got.Status != "ok" || got.RunID != "run_test" || got.PID != 42 {
 		t.Fatalf("event = %#v", got)
 	}
 	data, err := os.ReadFile(journal.Path())

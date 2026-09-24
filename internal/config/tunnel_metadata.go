@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,11 +12,17 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/state"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
+
+const tunnelMetadataVersion = 1
+
+type tunnelMetadataFile struct {
+	Version int `json:"version"`
+	tunnel.Metadata
+}
 
 func TunnelMetadataDir() string { return filepath.Join(RootPath(), "tunnels") }
 
@@ -27,18 +34,7 @@ func TunnelMetadataPath(id string) (string, error) {
 	if id == "." || id == ".." || strings.ContainsAny(id, `/\\`) || filepath.Base(id) != id {
 		return "", fmt.Errorf("invalid tunnel id %q", id)
 	}
-	source, err := Source()
-	if err != nil {
-		return "", err
-	}
-	ext := source.Ext
-	if ext == "" {
-		ext = configformat.Extension(source.Format)
-	}
-	if ext == "" {
-		ext = ".json"
-	}
-	return filepath.Join(TunnelMetadataDir(), id+ext), nil
+	return filepath.Join(TunnelMetadataDir(), id+".json"), nil
 }
 
 func LoadTunnelMetadata(id string) (tunnel.Metadata, error) {
@@ -59,8 +55,8 @@ func LoadTunnelMetadata(id string) (tunnel.Metadata, error) {
 	if err != nil {
 		return tunnel.Metadata{}, err
 	}
-	var metadata tunnel.Metadata
-	if err := configformat.UnmarshalPath(path, data, &metadata); err != nil {
+	metadata, err := decodeTunnelMetadata(data)
+	if err != nil {
 		return tunnel.Metadata{}, fmt.Errorf("decode tunnel metadata %s: %w", path, err)
 	}
 	if strings.TrimSpace(metadata.ID) == "" {
@@ -89,7 +85,7 @@ func SaveTunnelMetadataContext(ctx context.Context, metadata tunnel.Metadata) (s
 	if metadata.FetchedAt.IsZero() {
 		metadata.FetchedAt = time.Now().UTC()
 	}
-	data, err := configformat.MarshalPath(path, metadata)
+	data, err := state.MarshalJSON(tunnelMetadataFile{Version: tunnelMetadataVersion, Metadata: metadata})
 	if err != nil {
 		span.FailMessage("Tunnel metadata cache encoding failed", err)
 		return "", err
@@ -109,11 +105,7 @@ func SaveTunnelMetadataContext(ctx context.Context, metadata tunnel.Metadata) (s
 		span.FailMessage("Tunnel metadata cache persistence failed", err, tracepkg.Int64("bytes", int64(len(data))))
 		return "", err
 	}
-	format := ""
-	if detected, detectErr := configformat.Detect(path); detectErr == nil {
-		format = string(detected)
-	}
-	span.EndMessage("Tunnel metadata cache persisted", tracepkg.String("format", format), tracepkg.Int64("bytes", int64(len(data))))
+	span.EndMessage("Tunnel metadata cache persisted", tracepkg.String("format", "json"), tracepkg.Int64("bytes", int64(len(data))))
 	return path, nil
 }
 
@@ -179,16 +171,16 @@ func ListTunnelMetadata() ([]tunnel.Metadata, error) {
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !entry.Type().IsRegular() {
 			continue
 		}
-		path := filepath.Join(TunnelMetadataDir(), entry.Name())
-		if _, err := configformat.Detect(path); err != nil {
+		if !strings.EqualFold(filepath.Ext(entry.Name()), ".json") {
 			continue
 		}
+		path := filepath.Join(TunnelMetadataDir(), entry.Name())
 		data, err := readTunnelMetadataFile(root, filepath.Join("tunnels", entry.Name()))
 		if err != nil {
 			return nil, err
 		}
-		var metadata tunnel.Metadata
-		if err := configformat.UnmarshalPath(path, data, &metadata); err != nil {
+		metadata, err := decodeTunnelMetadata(data)
+		if err != nil {
 			return nil, fmt.Errorf("decode tunnel metadata %s: %w", path, err)
 		}
 		if strings.TrimSpace(metadata.ID) == "" {
@@ -201,6 +193,17 @@ func ListTunnelMetadata() ([]tunnel.Metadata, error) {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result, nil
+}
+
+func decodeTunnelMetadata(data []byte) (tunnel.Metadata, error) {
+	var stored tunnelMetadataFile
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return tunnel.Metadata{}, err
+	}
+	if stored.Version != 0 && stored.Version != tunnelMetadataVersion {
+		return tunnel.Metadata{}, fmt.Errorf("unsupported tunnel metadata version: %d", stored.Version)
+	}
+	return stored.Metadata, nil
 }
 
 func openTunnelMetadataRoot(create bool) (*os.Root, error) {

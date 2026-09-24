@@ -8,6 +8,8 @@ import (
 	"go.mewis.me/codemcp/internal/logger"
 )
 
+const Version = 1
+
 type Field struct {
 	Key        string            `json:"key"`
 	Value      any               `json:"value,omitempty"`
@@ -15,6 +17,7 @@ type Field struct {
 }
 
 type Event struct {
+	Version      int               `json:"version"`
 	Sequence     uint64            `json:"sequence,omitempty"`
 	Time         time.Time         `json:"time"`
 	RunID        string            `json:"run_id,omitempty"`
@@ -47,7 +50,7 @@ type Metadata struct {
 }
 
 func fromLoggerEvent(event logger.Event, metadata Metadata) Event {
-	result := Event{Time: event.Time.UTC(), RunID: metadata.RunID, PID: metadata.PID, Level: event.Level.String(), Visibility: event.Visibility, Kind: event.Kind.String(), Name: event.Name, Component: event.Component, Message: sanitizeString(event.Message), Managed: metadata.Managed, ServiceID: metadata.ServiceID, ServiceScope: metadata.ServiceScope}
+	result := Event{Version: Version, Time: event.Time.UTC(), RunID: metadata.RunID, PID: metadata.PID, Level: event.Level.String(), Visibility: event.Visibility, Kind: event.Kind.String(), Name: event.Name, Component: event.Component, Message: sanitizeString(event.Message), Managed: metadata.Managed, ServiceID: metadata.ServiceID, ServiceScope: metadata.ServiceScope}
 	if event.Err != nil {
 		result.Error = sanitizeString(event.Err.Error())
 	}

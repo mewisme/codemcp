@@ -146,22 +146,13 @@ func PathFor(root, name string, format Format) string {
 }
 
 func StructuredPath(root, name string) string {
-	return filepath.Join(root, name+ExtensionForRoot(root))
+	return filepath.Join(root, name+".json")
 }
 
 func ExtensionForRoot(root string) string {
-	source, err := Discover(root)
-	if err != nil || source.Ext == "" {
-		return ".json"
-	}
-	return source.Ext
+	return ".json"
 }
 
 func StructuredPathFrom(path, name string) string {
-	root := filepath.Dir(path)
-	ext := filepath.Ext(path)
-	if _, err := Detect(path); err != nil {
-		ext = ".json"
-	}
-	return filepath.Join(root, name+ext)
+	return filepath.Join(filepath.Dir(path), name+".json")
 }

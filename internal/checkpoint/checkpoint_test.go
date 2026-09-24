@@ -276,7 +276,7 @@ func TestCheckpointRejectsPathEscape(t *testing.T) {
 	}
 }
 
-func TestCheckpointMetadataFollowsRootConfigFormat(t *testing.T) {
+func TestCheckpointMetadataUsesCanonicalJSON(t *testing.T) {
 	stateRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(stateRoot, "config.yaml"), []byte("server: {}\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -291,15 +291,15 @@ func TestCheckpointMetadataFollowsRootConfigFormat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(store.Path("ws_test"), "index.yaml")); err != nil {
-		t.Fatalf("checkpoint index did not follow YAML format: %v", err)
+	if _, err := os.Stat(filepath.Join(store.Path("ws_test"), "index.json")); err != nil {
+		t.Fatalf("checkpoint index is not JSON: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(store.Path("ws_test"), "data", id, "manifest.yaml")); err != nil {
-		t.Fatalf("checkpoint manifest did not follow YAML format: %v", err)
+	if _, err := os.Stat(filepath.Join(store.Path("ws_test"), "data", id, "manifest.json")); err != nil {
+		t.Fatalf("checkpoint manifest is not JSON: %v", err)
 	}
 }
 
-func TestCheckpointYAMLManifestPreservesColonContent(t *testing.T) {
+func TestCheckpointJSONManifestPreservesColonContent(t *testing.T) {
 	stateRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(stateRoot, "config.yaml"), []byte("server: {}\n"), 0600); err != nil {
 		t.Fatal(err)
@@ -315,22 +315,22 @@ func TestCheckpointYAMLManifestPreservesColonContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifestPath := filepath.Join(store.Path("ws_test"), "data", id, "manifest.yaml")
+	manifestPath := filepath.Join(store.Path("ws_test"), "data", id, "manifest.json")
 	manifest, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(manifest), "content: |") || !strings.Contains(string(manifest), "name: value") {
-		t.Fatalf("manifest content is not encoded as a YAML block scalar:\n%s", manifest)
+	if !strings.Contains(string(manifest), `"content": "name: value\nurl: https://example.com\nheader: x:y\nplain"`) {
+		t.Fatalf("manifest content was not JSON encoded intact:\n%s", manifest)
 	}
 	if _, err := store.PreviewRestore("ws_test", workspaceRoot, id); err != nil {
-		t.Fatalf("preview failed to decode YAML checkpoint: %v", err)
+		t.Fatalf("preview failed to decode JSON checkpoint: %v", err)
 	}
 	if err := os.WriteFile(file, []byte("changed"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Restore("ws_test", workspaceRoot, id); err != nil {
-		t.Fatalf("restore failed to decode YAML checkpoint: %v", err)
+		t.Fatalf("restore failed to decode JSON checkpoint: %v", err)
 	}
 	restored, err := os.ReadFile(file)
 	if err != nil {

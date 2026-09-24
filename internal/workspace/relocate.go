@@ -162,15 +162,14 @@ func rewriteRelocatedWorkspaceState(root, oldID, newID, oldRoot, newRoot string)
 	}
 	rewritten := 0
 	for _, path := range paths {
-		format, err := configformat.Detect(path)
-		if err != nil {
+		if !strings.EqualFold(filepath.Ext(path), ".json") {
 			continue
 		}
 		data, err := os.ReadFile(path) // #nosec G304 -- path is emitted by filepath.WalkDir under the workspace-owned state root.
 		if err != nil {
 			return rewritten, err
 		}
-		decoded, err := configformat.DecodeGeneric(format, data)
+		decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
 		if err != nil {
 			if isCheckpointManifestPath(path) {
 				continue
@@ -181,7 +180,7 @@ func rewriteRelocatedWorkspaceState(root, oldID, newID, oldRoot, newRoot string)
 		if !changed {
 			continue
 		}
-		encoded, err := configformat.EncodeGeneric(format, updated)
+		encoded, err := configformat.EncodeGeneric(configformat.JSON, updated)
 		if err != nil {
 			return rewritten, fmt.Errorf("encode workspace state %s: %w", path, err)
 		}
@@ -195,7 +194,7 @@ func rewriteRelocatedWorkspaceState(root, oldID, newID, oldRoot, newRoot string)
 
 func isCheckpointManifestPath(path string) bool {
 	clean := filepath.ToSlash(filepath.Clean(path))
-	return strings.Contains(clean, "/checkpoints/data/") && strings.HasPrefix(filepath.Base(clean), "manifest.")
+	return strings.Contains(clean, "/checkpoints/data/") && filepath.Base(clean) == "manifest.json"
 }
 
 func relocateStateValue(value any, oldID, newID, oldRoot, newRoot string) (any, bool) {

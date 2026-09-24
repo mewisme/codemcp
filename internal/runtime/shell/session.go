@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,11 +22,13 @@ import (
 )
 
 const (
+	sessionStateVersion   = 1
 	maxHistory            = 50
 	defaultCommandTimeout = 120 * time.Second
 )
 
 type SessionState struct {
+	Version        int      `json:"version"`
 	WorkspaceID    string   `json:"workspace_id"`
 	CWD            string   `json:"cwd"`
 	StartedAt      string   `json:"started_at"`
@@ -135,7 +138,7 @@ func (m *Manager) Reset(workspaceID, path string) (Status, error) {
 	current.mu.Lock()
 	defer current.mu.Unlock()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	current.state = SessionState{WorkspaceID: workspaceID, CWD: target, StartedAt: now, UpdatedAt: now, RecentCommands: []string{}}
+	current.state = SessionState{Version: sessionStateVersion, WorkspaceID: workspaceID, CWD: target, StartedAt: now, UpdatedAt: now, RecentCommands: []string{}}
 	if err := m.save(current.state); err != nil {
 		return Status{}, err
 	}
@@ -243,7 +246,9 @@ func (m *Manager) load(workspaceID, workspaceRoot string) (SessionState, error) 
 	data, err := os.ReadFile(m.statePath(workspaceID))
 	if err == nil {
 		var state SessionState
-		if configformat.UnmarshalPath(m.statePath(workspaceID), data, &state) == nil && state.WorkspaceID == workspaceID && strings.TrimSpace(state.CWD) != "" {
+		if json.Unmarshal(data, &state) == nil && (state.Version == 0 || state.Version == sessionStateVersion) && state.WorkspaceID == workspaceID && strings.TrimSpace(state.CWD) != "" {
+			legacy := state.Version == 0
+			state.Version = sessionStateVersion
 			resolved, resolveErr := m.resolveDirectory(workspaceID, workspaceRoot, state.CWD)
 			if resolveErr == nil {
 				state.CWD = resolved
@@ -253,6 +258,11 @@ func (m *Manager) load(workspaceID, workspaceRoot string) (SessionState, error) 
 				if len(state.RecentCommands) > maxHistory {
 					state.RecentCommands = append([]string(nil), state.RecentCommands[len(state.RecentCommands)-maxHistory:]...)
 				}
+				if legacy {
+					if err := m.save(state); err != nil {
+						return SessionState{}, err
+					}
+				}
 				return state, nil
 			}
 		}
@@ -260,7 +270,7 @@ func (m *Manager) load(workspaceID, workspaceRoot string) (SessionState, error) 
 		return SessionState{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	state := SessionState{WorkspaceID: workspaceID, CWD: workspaceRoot, StartedAt: now, UpdatedAt: now, RecentCommands: []string{}}
+	state := SessionState{Version: sessionStateVersion, WorkspaceID: workspaceID, CWD: workspaceRoot, StartedAt: now, UpdatedAt: now, RecentCommands: []string{}}
 	if err := m.save(state); err != nil {
 		return SessionState{}, err
 	}
@@ -269,15 +279,12 @@ func (m *Manager) load(workspaceID, workspaceRoot string) (SessionState, error) 
 
 func (m *Manager) save(state SessionState) error {
 	path := m.statePath(state.WorkspaceID)
-	data, err := configformat.MarshalPath(path, state)
-	if err != nil {
-		return err
-	}
-	return statepkg.WriteFileAtomic(path, data, 0600)
+	state.Version = sessionStateVersion
+	return statepkg.WriteJSONAtomic(path, state, 0600)
 }
 
 func (m *Manager) statePath(workspaceID string) string {
-	return filepath.Join(m.root, "workspaces", workspaceID, "shell"+configformat.ExtensionForRoot(m.root))
+	return filepath.Join(m.root, "workspaces", workspaceID, "shell.json")
 }
 
 func (m *Manager) resolveDirectory(workspaceID, workspaceRoot, input string) (string, error) {

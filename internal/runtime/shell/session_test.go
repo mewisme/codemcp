@@ -2,6 +2,7 @@ package shell
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -282,13 +283,13 @@ func TestShellReset(t *testing.T) {
 	}
 }
 
-func TestShellStateFollowsRootConfigFormat(t *testing.T) {
+func TestShellStateUsesCanonicalJSON(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("[server]\nport = 37421\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	workspaceRoot := t.TempDir()
-	workspaces := workspace.NewManager(filepath.Join(root, "workspaces.toml"))
+	workspaces := workspace.NewManager(filepath.Join(root, "workspaces.json"))
 	item, err := workspaces.Register(workspaceRoot)
 	if err != nil {
 		t.Fatal(err)
@@ -297,8 +298,17 @@ func TestShellStateFollowsRootConfigFormat(t *testing.T) {
 	if _, err := manager.Status(item.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(root, "workspaces", item.ID, "shell.toml")); err != nil {
-		t.Fatalf("shell state did not follow TOML format: %v", err)
+	statePath := filepath.Join(root, "workspaces", item.ID, "shell.json")
+	if _, err := os.Stat(statePath); err != nil {
+		t.Fatalf("shell state is not JSON: %v", err)
+	}
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state SessionState
+	if err := json.Unmarshal(data, &state); err != nil || state.Version != sessionStateVersion {
+		t.Fatalf("shell state = %#v err=%v", state, err)
 	}
 }
 

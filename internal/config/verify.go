@@ -37,7 +37,7 @@ func verifyAt(root string, runtimeMode bool) (VerifyResult, error) {
 	if !source.Exists {
 		return VerifyResult{}, errors.New("configuration is not initialized")
 	}
-	files, err := collectStructuredFiles(root)
+	files, err := collectCurrentStructuredFiles(root)
 	if err != nil {
 		return VerifyResult{}, err
 	}
@@ -45,14 +45,14 @@ func verifyAt(root string, runtimeMode bool) (VerifyResult, error) {
 		if runtimeMode && isCheckpointStateFile(root, file.path) {
 			continue
 		}
-		if file.ext != source.Ext {
-			return VerifyResult{}, fmt.Errorf("structured config format mismatch: %s uses %s, expected %s", file.path, file.ext, source.Ext)
+		if file.ext != ".json" {
+			return VerifyResult{}, fmt.Errorf("structured state format mismatch: %s uses %s, expected .json", file.path, file.ext)
 		}
 		data, err := os.ReadFile(file.path)
 		if err != nil {
 			return VerifyResult{}, err
 		}
-		if _, err := configformat.DecodeGeneric(file.format, data); err != nil {
+		if _, err := configformat.DecodeGeneric(configformat.JSON, data); err != nil {
 			return VerifyResult{}, fmt.Errorf("decode %s: %w", file.path, err)
 		}
 	}
@@ -68,6 +68,35 @@ func verifyAt(root string, runtimeMode bool) (VerifyResult, error) {
 		return VerifyResult{}, err
 	}
 	return VerifyResult{Format: source.Format, Ext: source.Ext, Files: len(files), Warnings: SecurityWarnings(cfg)}, nil
+}
+
+func collectCurrentStructuredFiles(root string) ([]structuredFile, error) {
+	files := make([]structuredFile, 0)
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".json" && ext != ".yaml" && ext != ".yml" && ext != ".toml" {
+			return nil
+		}
+		base := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
+		if !structuredStateNames[base] && !isTunnelMetadataFile(root, path) {
+			return nil
+		}
+		files = append(files, structuredFile{path: path, base: base, format: configformat.JSON, ext: ext})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, errors.New("no structured config files found")
+	}
+	return files, nil
 }
 
 func isCheckpointStateFile(root, path string) bool {

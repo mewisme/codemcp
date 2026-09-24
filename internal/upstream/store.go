@@ -1,16 +1,18 @@
 package upstream
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
-	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/secretstore"
 	"go.mewis.me/codemcp/internal/state"
 )
+
+const storeVersion = 1
 
 type Store struct {
 	Path    string
@@ -20,6 +22,7 @@ type Store struct {
 }
 
 type diskStore struct {
+	Version int      `json:"version"`
 	Servers []Server `json:"servers"`
 }
 
@@ -127,16 +130,15 @@ func (s *Store) readDisk() ([]Server, error) {
 		return nil, err
 	}
 	var stored diskStore
-	if err := configformat.UnmarshalPath(s.Path, data, &stored); err != nil {
-		format, formatErr := configformat.Detect(s.Path)
-		if formatErr != nil || format != configformat.JSON {
-			return nil, err
-		}
+	if err := json.Unmarshal(data, &stored); err != nil {
 		var legacy []Server
-		if legacyErr := configformat.UnmarshalPath(s.Path, data, &legacy); legacyErr != nil {
+		if legacyErr := json.Unmarshal(data, &legacy); legacyErr != nil {
 			return nil, err
 		}
 		return legacy, nil
+	}
+	if stored.Version != 0 && stored.Version != storeVersion {
+		return nil, fmt.Errorf("unsupported upstream store version: %d", stored.Version)
 	}
 	if stored.Servers == nil {
 		stored.Servers = []Server{}
@@ -163,7 +165,7 @@ func (s *Store) saveWithPrevious(previous, servers []Server) error {
 		return err
 	}
 	defer root.Close()
-	data, err := configformat.MarshalPath(s.Path, diskStore{Servers: persisted})
+	data, err := state.MarshalJSON(diskStore{Version: storeVersion, Servers: persisted})
 	if err != nil {
 		return err
 	}
