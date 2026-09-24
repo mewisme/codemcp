@@ -1,10 +1,14 @@
 package cli
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
 )
 
 func TestAuthCommandUsesNestedHierarchy(t *testing.T) {
@@ -53,6 +57,42 @@ func TestUsefulCommandAliasesResolve(t *testing.T) {
 		resolved, _, err := root.Find(test.path)
 		if err != nil || resolved.Name() != test.want {
 			t.Fatalf("alias path %v resolved to %v: %v", test.path, resolved, err)
+		}
+	}
+}
+
+func TestAuthStatusUsesStructuredPresenterWithoutHashes(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := t.TempDir()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Auth.MCPEnabled = true
+	cfg.Auth.AdminEnabled = false
+	cfg.Auth.MCPTokenHash = "mcp-sensitive-hash"
+	cfg.Auth.AdminTokenHash = "admin-sensitive-hash"
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.SetArgs([]string{"--config-dir", root, "auth", "status"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, expected := range []string{"Authentication", "MCP", "Admin", "enabled", "configured", "legacy bearer"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("auth status missing %q: %q", expected, text)
+		}
+	}
+	for _, forbidden := range []string{"mcp-sensitive-hash", "admin-sensitive-hash", "enabled=true", "configured=true"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("auth status exposed legacy/detail value %q: %q", forbidden, text)
 		}
 	}
 }

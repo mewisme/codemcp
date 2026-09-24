@@ -1,14 +1,17 @@
 package cli
 
 import (
+	"bytes"
 	"context"
-	"fmt"
+	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/logger"
 )
 
@@ -44,10 +47,8 @@ func requestGrantListCommand() *cobra.Command {
 		if asJSON {
 			return writeResultJSON(cmd, grants)
 		}
-		log.Success("REQUEST", "runtime session grants loaded", "count", len(grants))
-		for _, grant := range grants {
-			log.Detail(grant.ID, fmt.Sprintf("workspace=%s pattern=%s expires=%s", grant.WorkspaceID, grant.SimilarCommandPattern, grant.GrantExpiresAt.Format(time.RFC3339Nano)))
-		}
+		log.StopAnimation()
+		renderRuntimeGrants(commandPresenter(cmd), grants)
 		return nil
 	}}
 	cmd.Flags().StringVar(&workspaceID, "workspace", "", "filter grants by workspace ID")
@@ -133,10 +134,8 @@ func requestListCommand() *cobra.Command {
 		if asJSON {
 			return writeResultJSON(cmd, requests)
 		}
-		log.Success("REQUEST", "control approval requests loaded", "count", len(requests))
-		for _, request := range requests {
-			log.Detail(request.ID, fmt.Sprintf("status=%s workspace=%s tool=%s title=%s", request.Status, request.WorkspaceID, request.TargetTool, request.Title))
-		}
+		log.StopAnimation()
+		renderApprovalRequests(commandPresenter(cmd), requests)
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -161,7 +160,7 @@ func requestViewCommand() *cobra.Command {
 			return writeResultJSON(cmd, request)
 		}
 		log.StopAnimation()
-		printApprovalRequest(cmd, request)
+		renderApprovalRequest(commandPresenter(cmd), request)
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -219,50 +218,100 @@ func requestResolveCommand(approve bool) *cobra.Command {
 	return cmd
 }
 
-func printApprovalRequest(cmd *cobra.Command, request approval.Request) {
-	log := commandLogger(cmd)
-	log.Info("REQUEST", "control approval request", "id", request.ID)
-	log.Detail("status", request.Status)
-	log.Detail("title", request.Title)
-	log.Detail("workspace", request.WorkspaceID)
-	log.Detail("tool", request.TargetTool)
+func renderApprovalRequests(presenter *presentation.Presenter, requests []approval.Request) {
+	if len(requests) == 0 {
+		presenter.Status(presentation.StatusInfo, "No control approval requests")
+		return
+	}
+	rows := make([]presentation.Row, 0, len(requests))
+	for _, request := range requests {
+		rows = append(rows, presentation.Row{request.ID, string(request.Status), request.WorkspaceID, request.TargetTool, request.Title})
+	}
+	presenter.Section("Control approval requests")
+	presenter.Rows([]string{"ID", "Status", "Workspace", "Tool", "Title"}, rows...)
+}
+
+func renderRuntimeGrants(presenter *presentation.Presenter, grants []approval.Request) {
+	if len(grants) == 0 {
+		presenter.Status(presentation.StatusInfo, "No active runtime session grants")
+		return
+	}
+	rows := make([]presentation.Row, 0, len(grants))
+	for _, grant := range grants {
+		rows = append(rows, presentation.Row{grant.ID, grant.WorkspaceID, grant.SimilarCommandPattern, formatRequestTime(grant.GrantExpiresAt)})
+	}
+	presenter.Section("Runtime session grants")
+	presenter.Rows([]string{"ID", "Workspace", "Pattern", "Expires"}, rows...)
+}
+
+func renderApprovalRequest(presenter *presentation.Presenter, request approval.Request) {
+	fields := []presentation.Field{
+		{Label: "id", Value: request.ID},
+		{Label: "status", Value: request.Status},
+		{Label: "title", Value: request.Title},
+		{Label: "workspace", Value: request.WorkspaceID},
+		{Label: "tool", Value: request.TargetTool},
+	}
 	if request.Source != "" {
-		log.Detail("source", request.Source)
+		fields = append(fields, presentation.Field{Label: "source", Value: request.Source})
 	}
 	if request.SessionHash != "" {
-		log.Detail("session", request.SessionHash)
+		fields = append(fields, presentation.Field{Label: "session", Value: request.SessionHash})
 	}
-	log.Detail("guard", request.GuardCode)
-	log.Detail("created", request.CreatedAt.Format(time.RFC3339Nano))
-	log.Detail("expires", request.ExpiresAt.Format(time.RFC3339Nano))
+	fields = append(fields,
+		presentation.Field{Label: "guard", Value: request.GuardCode},
+		presentation.Field{Label: "created", Value: formatRequestTime(request.CreatedAt)},
+		presentation.Field{Label: "expires", Value: formatRequestTime(request.ExpiresAt)},
+	)
 	if !request.ResolvedAt.IsZero() {
-		log.Detail("resolved", request.ResolvedAt.Format(time.RFC3339Nano))
+		fields = append(fields, presentation.Field{Label: "resolved", Value: formatRequestTime(request.ResolvedAt)})
 	}
 	if request.ResolvedBy != "" {
-		log.Detail("resolved_by", request.ResolvedBy)
+		fields = append(fields, presentation.Field{Label: "resolved by", Value: request.ResolvedBy})
 	}
 	if request.Reason != "" {
-		log.Detail("reason", request.Reason)
+		fields = append(fields, presentation.Field{Label: "reason", Value: request.Reason})
 	}
 	if !request.RetryUntil.IsZero() {
-		log.Detail("retry_until", request.RetryUntil.Format(time.RFC3339Nano))
+		fields = append(fields, presentation.Field{Label: "retry until", Value: formatRequestTime(request.RetryUntil)})
 	}
 	if request.RuntimeSessionGrant {
-		log.Detail("runtime_grant", "all MCP sessions until expiry")
+		fields = append(fields, presentation.Field{Label: "runtime grant", Value: "all MCP sessions until expiry"})
 		if !request.GrantExpiresAt.IsZero() {
-			log.Detail("grant_expires", request.GrantExpiresAt.Format(time.RFC3339Nano))
+			fields = append(fields, presentation.Field{Label: "grant expires", Value: formatRequestTime(request.GrantExpiresAt)})
 		}
 		if request.SimilarCommandPattern != "" {
-			log.Detail("similar_pattern", request.SimilarCommandPattern)
+			fields = append(fields, presentation.Field{Label: "similar pattern", Value: request.SimilarCommandPattern})
 		}
 	}
 	if !request.ConsumedAt.IsZero() {
-		log.Detail("consumed", request.ConsumedAt.Format(time.RFC3339Nano))
-	}
-	if len(request.Arguments) > 0 {
-		log.Detail("arguments", string(request.Arguments))
+		fields = append(fields, presentation.Field{Label: "consumed", Value: formatRequestTime(request.ConsumedAt)})
 	}
 	if request.GuardReason != "" {
-		log.Detail("reason_guard", request.GuardReason)
+		fields = append(fields, presentation.Field{Label: "guard reason", Value: request.GuardReason})
 	}
+	presenter.Section("Control approval request")
+	presenter.Fields(fields...)
+	if len(request.Arguments) > 0 {
+		presenter.Spacer()
+		presenter.Note("Arguments", formatApprovalArguments(request.Arguments))
+	}
+}
+
+func formatApprovalArguments(arguments json.RawMessage) string {
+	if len(arguments) == 0 {
+		return ""
+	}
+	var output bytes.Buffer
+	if err := json.Indent(&output, arguments, "", "  "); err == nil {
+		return output.String()
+	}
+	return strings.TrimSpace(string(arguments))
+}
+
+func formatRequestTime(value time.Time) string {
+	if value.IsZero() {
+		return "-"
+	}
+	return value.Format(time.RFC3339Nano)
 }

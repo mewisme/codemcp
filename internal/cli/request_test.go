@@ -7,8 +7,10 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
 )
@@ -29,7 +31,7 @@ func TestRequestCLIListViewApproveDenyAliasesAndOutput(t *testing.T) {
 	defer control.Close()
 
 	plain := executeRequestCommand(t, root, []string{"request", "ls"})
-	if !strings.Contains(plain, first.ID) || !strings.Contains(plain, second.ID) || !strings.Contains(plain, "status=pending") {
+	if !strings.Contains(plain, first.ID) || !strings.Contains(plain, second.ID) || !strings.Contains(plain, "Status") || !strings.Contains(plain, "pending") {
 		t.Fatalf("plain request list = %q", plain)
 	}
 	firstPrefix := uniqueRequestPrefix(first.ID, second.ID)
@@ -39,7 +41,7 @@ func TestRequestCLIListViewApproveDenyAliasesAndOutput(t *testing.T) {
 		t.Fatalf("view json = %q value=%#v err=%v", viewJSON, viewed, err)
 	}
 	viewPlain := executeRequestCommand(t, root, []string{"request", "show", firstPrefix})
-	if !strings.Contains(viewPlain, first.Title) || !strings.Contains(viewPlain, "workspace") || !strings.Contains(viewPlain, "arguments") {
+	if !strings.Contains(viewPlain, first.Title) || !strings.Contains(viewPlain, "workspace") || !strings.Contains(viewPlain, "Arguments") {
 		t.Fatalf("plain request view = %q", viewPlain)
 	}
 
@@ -56,6 +58,63 @@ func TestRequestCLIListViewApproveDenyAliasesAndOutput(t *testing.T) {
 	stored, err := manager.Resolve(second.ID)
 	if err != nil || stored.Status != approval.StatusDenied || stored.ResolvedBy != "cli" || stored.Reason != "not now" {
 		t.Fatalf("denied request = %#v err=%v", stored, err)
+	}
+}
+
+func TestRequestReadPresentationKeepsListSafeAndViewExact(t *testing.T) {
+	request := approval.Request{
+		ID:          "req_safe",
+		Status:      approval.StatusPending,
+		WorkspaceID: "ws_safe",
+		TargetTool:  "run_command",
+		Title:       "Review exact command",
+		Arguments:   json.RawMessage(`{"workspace_id":"ws_safe","command":"deploy --token TOP-SECRET"}`),
+		GuardCode:   controlguard.CodeExternalMutation,
+		GuardReason: "external mutation requires approval",
+	}
+
+	var listOutput bytes.Buffer
+	renderApprovalRequests(presentation.New(&listOutput, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), []approval.Request{request})
+	listText := listOutput.String()
+	for _, expected := range []string{"Control approval requests", "req_safe", "pending", "ws_safe", "run_command", "Review exact command"} {
+		if !strings.Contains(listText, expected) {
+			t.Fatalf("request list missing %q: %q", expected, listText)
+		}
+	}
+	for _, forbidden := range []string{"TOP-SECRET", "deploy --token", "external mutation requires approval"} {
+		if strings.Contains(listText, forbidden) {
+			t.Fatalf("request list leaked detail %q: %q", forbidden, listText)
+		}
+	}
+
+	var viewOutput bytes.Buffer
+	renderApprovalRequest(presentation.New(&viewOutput, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), request)
+	viewText := viewOutput.String()
+	for _, expected := range []string{"Control approval request", "req_safe", "Arguments", "deploy --token TOP-SECRET", "external mutation requires approval"} {
+		if !strings.Contains(viewText, expected) {
+			t.Fatalf("request view missing %q: %q", expected, viewText)
+		}
+	}
+}
+
+func TestRuntimeGrantListUsesStructuredSafeFields(t *testing.T) {
+	grant := approval.Request{
+		ID:                    "req_grant",
+		WorkspaceID:           "ws_grant",
+		SimilarCommandPattern: "git push **",
+		GrantExpiresAt:        time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC),
+		Arguments:             json.RawMessage(`{"command":"git push origin main","token":"DO-NOT-LIST"}`),
+	}
+	var output bytes.Buffer
+	renderRuntimeGrants(presentation.New(&output, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), []approval.Request{grant})
+	text := output.String()
+	for _, expected := range []string{"Runtime session grants", "req_grant", "ws_grant", "git push **", "2026-09-25T12:00:00Z"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("runtime grant list missing %q: %q", expected, text)
+		}
+	}
+	if strings.Contains(text, "DO-NOT-LIST") || strings.Contains(text, "git push origin main") {
+		t.Fatalf("runtime grant list leaked exact arguments: %q", text)
 	}
 }
 

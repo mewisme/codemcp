@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 )
 
@@ -74,21 +75,34 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 	if !listMode && strings.TrimSpace(key) != "" {
 		if _, ok := value.(map[string]any); !ok {
 			if text, ok := value.(string); ok {
-				cmd.Println(text)
+				fmt.Fprintln(commandResultWriter(cmd), text)
 				return nil
 			}
 			text, err := compactConfigValue(value)
 			if err != nil {
 				return err
 			}
-			cmd.Println(text)
+			fmt.Fprintln(commandResultWriter(cmd), text)
 			return nil
 		}
 	}
 	lines := make([]string, 0)
 	flattenConfigTree(strings.TrimSpace(key), value, &lines)
+	if commandResultModeFor(cmd) == resultModeHuman {
+		rows := make([]presentation.Row, 0, len(lines))
+		for _, line := range lines {
+			name, value, ok := strings.Cut(line, " = ")
+			if !ok {
+				rows = append(rows, presentation.Row{line, ""})
+				continue
+			}
+			rows = append(rows, presentation.Row{name, value})
+		}
+		commandPresenter(cmd).Rows([]string{"Key", "Value"}, rows...)
+		return nil
+	}
 	for _, line := range lines {
-		cmd.Println(line)
+		fmt.Fprintln(commandResultWriter(cmd), line)
 	}
 	return nil
 }

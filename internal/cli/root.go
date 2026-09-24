@@ -1,13 +1,13 @@
 package cli
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/version"
@@ -175,10 +175,20 @@ func authStatusCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			log := commandLogger(cmd)
-			log.Info("AUTH", "authentication status")
-			log.Detail("mcp", fmt.Sprintf("enabled=%t configured=%t legacy_bearer=%t", status.MCPEnabled, status.MCPConfigured, status.MCPLegacyBearer))
-			log.Detail("admin", fmt.Sprintf("enabled=%t configured=%t", status.AdminEnabled, status.AdminConfigured))
+			presenter := commandPresenter(cmd)
+			presenter.Section("Authentication")
+			presenter.Subsection("MCP")
+			presenter.NestedFields(
+				presentation.Field{Label: "enabled", Value: status.MCPEnabled},
+				presentation.Field{Label: "configured", Value: status.MCPConfigured},
+				presentation.Field{Label: "legacy bearer", Value: status.MCPLegacyBearer},
+			)
+			presenter.Spacer()
+			presenter.Subsection("Admin")
+			presenter.NestedFields(
+				presentation.Field{Label: "enabled", Value: status.AdminEnabled},
+				presentation.Field{Label: "configured", Value: status.AdminConfigured},
+			)
 			return nil
 		},
 	}

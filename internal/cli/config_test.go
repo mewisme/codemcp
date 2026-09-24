@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
@@ -223,6 +225,83 @@ func TestConfigJSONOutputAndRedaction(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("JSON output missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestConfigJSONResultStaysCleanUnderVerboseAndDebug(t *testing.T) {
+	for _, flag := range []string{"--verbose", "--debug"} {
+		t.Run(flag, func(t *testing.T) {
+			defer configformat.SetRootPath("")
+			root := t.TempDir()
+			if err := configformat.SetRootPath(root); err != nil {
+				t.Fatal(err)
+			}
+			cfg := config.Default()
+			cfg.Auth.MCPTokenHash = "mcp-secret"
+			if err := config.Save(cfg); err != nil {
+				t.Fatal(err)
+			}
+
+			var stdout, stderr bytes.Buffer
+			cmd := newRootCommand()
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			cmd.SetArgs([]string{"--config-dir", root, flag, "config", "list", "--json"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			var result map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+				t.Fatalf("%s stdout is not pure JSON: %q err=%v", flag, stdout.String(), err)
+			}
+			if strings.Contains(stdout.String(), "mcp-secret") || !strings.Contains(stdout.String(), redactedValue) {
+				t.Fatalf("%s JSON redaction output=%q", flag, stdout.String())
+			}
+			if stderr.Len() == 0 {
+				t.Fatalf("%s expected diagnostics on stderr", flag)
+			}
+		})
+	}
+}
+
+func TestConfigHumanListUsesPresenterRowsWhilePlainRemainsCompatible(t *testing.T) {
+	cfg := config.Default()
+
+	var humanOutput bytes.Buffer
+	human := &cobra.Command{}
+	human.SetOut(presentation.WrapWriter(&humanOutput, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	if err := printConfigSelection(human, cfg, "admin", true, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"Key", "Value", "admin.enabled", "admin.port"} {
+		if !strings.Contains(humanOutput.String(), expected) {
+			t.Fatalf("human config output missing %q: %q", expected, humanOutput.String())
+		}
+	}
+
+	var plainOutput bytes.Buffer
+	plain := &cobra.Command{}
+	plain.SetOut(&plainOutput)
+	if err := printConfigSelection(plain, cfg, "admin", true, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"admin.enabled = true", "admin.port = 37422"} {
+		if !strings.Contains(plainOutput.String(), expected) {
+			t.Fatalf("plain config output missing %q: %q", expected, plainOutput.String())
+		}
+	}
+}
+
+func TestConfigScalarGetKeepsRawValueContract(t *testing.T) {
+	cfg := config.Default()
+	var output bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	if err := printConfigSelection(cmd, cfg, "server.port", false, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if output.String() != "37421\n" {
+		t.Fatalf("scalar config get = %q", output.String())
 	}
 }
 
