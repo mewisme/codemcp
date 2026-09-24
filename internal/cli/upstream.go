@@ -541,7 +541,7 @@ func loadUpstreamManager() (*upstream.Manager, error) {
 
 func loadUpstreamManagerForCommand(cmd *cobra.Command) (*upstream.Manager, error) {
 	logCommandStep(cmd, "MCP", "mcp.store.loading", "Loading upstream MCP configuration")
-	logCommandDebug(cmd, "MCP", "mcp.store.path", "Upstream MCP configuration path resolved", logger.WithDebug("path", upstream.Path()))
+	logCommandDebug(cmd, "UPSTREAM", "upstream.store.path", "Upstream configuration path resolved", logger.WithDebug("path", upstream.Path()))
 	manager := upstream.NewManager(upstream.NewStore(upstream.Path())).SetTraceObserver(tracepkg.ObserverFromContext(cmd.Context()))
 	if err := manager.Load(); err != nil {
 		return nil, fmt.Errorf("load upstream MCP configuration: %w", err)

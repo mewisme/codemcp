@@ -9,7 +9,7 @@ import (
 )
 
 func TestStoreKeepsSensitiveHeaderAndEnvInSecretFiles(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "upstream.json")
+	path := filepath.Join(t.TempDir(), "upstreams.json")
 	store := NewStore(path)
 	server := Server{ID: "alpha", Name: "Alpha", Transport: "http", URL: "https://example.test/mcp", Headers: map[string]string{"Authorization": "Bearer header-private-value", "X-Test": "ok"}, Env: map[string]string{"API_TOKEN": "env-private-value", "MODE": "test"}}
 	if err := store.Save([]Server{server}); err != nil {
@@ -32,10 +32,10 @@ func TestStoreKeepsSensitiveHeaderAndEnvInSecretFiles(t *testing.T) {
 	}
 }
 
-func TestLegacyUpstreamSecretsMigrateToSecretFiles(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "upstream.json")
-	legacy := diskStore{Servers: []Server{{ID: "alpha", Name: "Alpha", Transport: "http", URL: "https://example.test/mcp", Headers: map[string]string{"Authorization": "Bearer legacy-header-value"}, Env: map[string]string{"API_TOKEN": "legacy-env-value"}}}}
-	data, err := json.MarshalIndent(legacy, "", "  ")
+func TestUpstreamSecretsMigrateToSecretFiles(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upstreams.json")
+	stored := diskStore{Upstreams: []Server{{ID: "alpha", Name: "Alpha", Transport: "http", URL: "https://example.test/mcp", Headers: map[string]string{"Authorization": "Bearer legacy-header-value"}, Env: map[string]string{"API_TOKEN": "legacy-env-value"}}}}
+	data, err := json.MarshalIndent(stored, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,11 +65,11 @@ func TestStoreRejectsSymlinkConfigFile(t *testing.T) {
 	}
 	root := t.TempDir()
 	outside := filepath.Join(t.TempDir(), "outside.json")
-	want := []byte(`{"servers":[]}`)
+	want := []byte(`{"upstreams":[]}`)
 	if err := os.WriteFile(outside, want, 0600); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(root, "upstream.json")
+	path := filepath.Join(root, "upstreams.json")
 	if err := os.Symlink(outside, path); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}

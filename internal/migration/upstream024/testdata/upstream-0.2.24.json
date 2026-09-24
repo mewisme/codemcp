@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "id": "docs",
+      "name": "Docs",
+      "transport": "http",
+      "enabled": true,
+      "url": "https://docs.example.test/mcp",
+      "headers": {
+        "Authorization": "<secret-file>",
+        "X-Team": "docs"
+      },
+      "auth": {
+        "type": "oauth",
+        "scope": "read"
+      },
+      "tool_prefix": "docs",
+      "expose": "allowlist",
+      "tools": ["search", "read"],
+      "disabled_tools": ["delete"],
+      "idle_timeout_sec": 45
+    },
+    {
+      "id": "local",
+      "name": "Local",
+      "transport": "stdio",
+      "enabled": false,
+      "command": "node",
+      "args": ["server.js"],
+      "env": {
+        "API_TOKEN": "<secret-file>",
+        "MODE": "dev"
+      },
+      "cwd": "/workspace",
+      "tool_prefix": "local",
+      "expose": "all"
+    }
+  ]
+}

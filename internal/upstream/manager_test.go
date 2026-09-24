@@ -30,7 +30,7 @@ func TestManagerRollsBackFailedPersist(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManager(NewStore(filepath.Join(file, "upstream.json")))
+	manager := NewManager(NewStore(filepath.Join(file, "upstreams.json")))
 	if err := manager.Add(Server{ID: "a", Name: "A", Transport: "http", URL: "https://a.invalid"}); err == nil {
 		t.Fatal("expected persistence error")
 	}
@@ -285,7 +285,7 @@ func TestManagerCreateBatchIsAtomic(t *testing.T) {
 
 func TestManagerCreateBatchPersistsOnceAndRollsBackFailure(t *testing.T) {
 	root := t.TempDir()
-	store := NewStore(filepath.Join(root, "upstream.json"))
+	store := NewStore(filepath.Join(root, "upstreams.json"))
 	manager := NewManager(store)
 	servers := []Server{{ID: "a", Transport: "stdio", Command: "node"}, {ID: "b", Transport: "http", URL: "https://b.example/mcp"}}
 	if err := manager.CreateBatch(servers); err != nil {
@@ -299,7 +299,7 @@ func TestManagerCreateBatchPersistsOnceAndRollsBackFailure(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	failed := NewManager(NewStore(filepath.Join(file, "upstream.json")))
+	failed := NewManager(NewStore(filepath.Join(file, "upstreams.json")))
 	if err := failed.CreateBatch(servers); err == nil || len(failed.List()) != 0 {
 		t.Fatalf("failed batch err=%v servers=%#v", err, failed.List())
 	}

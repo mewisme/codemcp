@@ -61,7 +61,7 @@ func TestExportExcludesManagedSecretsAndRuntimeState(t *testing.T) {
 		"runtime/environment.json":                  `{"version":1}`,
 		"state/instance.json":                       `{"version":1}`,
 		"oauth.json":                                `{"version":1,"credentials":{"server":{"server_id":"server","client_secret":"oauth-client-secret","access_token":"oauth-access-token","refresh_token":"oauth-refresh-token"}}}`,
-		"upstream.json":                             `{"version":1,"servers":[{"id":"server","headers":{"Authorization":"upstream-header-secret","X-Test":"ok"},"env":{"API_TOKEN":"upstream-env-secret","MODE":"test"}}]}`,
+		"upstreams.json":                            `{"version":1,"upstreams":[{"id":"server","headers":{"Authorization":"upstream-header-secret","X-Test":"ok"},"env":{"API_TOKEN":"upstream-env-secret","MODE":"test"}}]}`,
 		"workspaces/ws_test/checkpoints/index.json": `{"version":1}`,
 		"workspaces/ws_test/shell.json":             `{"workspace_id":"ws_test"}`,
 	} {
@@ -124,6 +124,45 @@ func TestExportRequiresCanonicalConfigJSON(t *testing.T) {
 	}
 	if _, err := os.Stat(destination); !os.IsNotExist(err) {
 		t.Fatalf("legacy-only config unexpectedly exported: %v", err)
+	}
+}
+
+func TestLegacyUpstreamFileIsRejectedWithoutLeakingSecrets(t *testing.T) {
+	secret := "legacy-upstream-secret"
+	data := []byte(`{"version":1,"servers":[{"id":"legacy","headers":{"Authorization":"` + secret + `"}}]}`)
+	if _, err := presentationSafeFile("upstream.json", data); err == nil {
+		t.Fatal("legacy upstream file was accepted for export")
+	} else if strings.Contains(err.Error(), secret) {
+		t.Fatalf("legacy upstream export error leaked secret: %q", err)
+	}
+	sensitive, err := containsSensitiveState("upstream.json", data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sensitive {
+		t.Fatal("legacy upstream secret was not detected")
+	}
+}
+
+func TestMaterializeRejectsLegacyUpstreamFilename(t *testing.T) {
+	configData, err := configformat.Marshal(configformat.JSON, validConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := Bundle{
+		Version: Version,
+		Source:  currentPlatform(),
+		Files: []File{
+			{Path: "config.json", Mode: 0600, Data: configData},
+			{Path: "upstream.json", Mode: 0600, Data: []byte(`{"version":1,"servers":[]}`)},
+		},
+	}
+	root := t.TempDir()
+	if _, err := materialize(root, bundle, currentPlatform()); err == nil || !strings.Contains(err.Error(), "migrated to upstreams.json") {
+		t.Fatalf("legacy upstream materialize error=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "upstream.json")); !os.IsNotExist(err) {
+		t.Fatalf("legacy upstream file was materialized: %v", err)
 	}
 }
 

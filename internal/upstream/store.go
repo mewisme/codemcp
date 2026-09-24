@@ -22,8 +22,8 @@ type Store struct {
 }
 
 type diskStore struct {
-	Version int      `json:"version"`
-	Servers []Server `json:"servers"`
+	Version   int      `json:"version"`
+	Upstreams []Server `json:"upstreams"`
 }
 
 func NewStore(path string) *Store {
@@ -129,21 +129,24 @@ func (s *Store) readDisk() ([]Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, err
+	}
+	if _, legacy := envelope["servers"]; legacy {
+		return nil, errors.New("legacy upstream store schema is unsupported; migrate upstream.json to upstreams.json before runtime startup")
+	}
 	var stored diskStore
 	if err := json.Unmarshal(data, &stored); err != nil {
-		var legacy []Server
-		if legacyErr := json.Unmarshal(data, &legacy); legacyErr != nil {
-			return nil, err
-		}
-		return legacy, nil
+		return nil, err
 	}
 	if stored.Version != 0 && stored.Version != storeVersion {
 		return nil, fmt.Errorf("unsupported upstream store version: %d", stored.Version)
 	}
-	if stored.Servers == nil {
-		stored.Servers = []Server{}
+	if stored.Upstreams == nil {
+		stored.Upstreams = []Server{}
 	}
-	return stored.Servers, nil
+	return stored.Upstreams, nil
 }
 
 func (s *Store) saveWithPrevious(previous, servers []Server) error {
@@ -165,7 +168,7 @@ func (s *Store) saveWithPrevious(previous, servers []Server) error {
 		return err
 	}
 	defer root.Close()
-	data, err := state.MarshalJSON(diskStore{Version: storeVersion, Servers: persisted})
+	data, err := state.MarshalJSON(diskStore{Version: storeVersion, Upstreams: persisted})
 	if err != nil {
 		return err
 	}

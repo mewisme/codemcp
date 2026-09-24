@@ -334,8 +334,10 @@ func presentationSafeFile(relative string, data []byte) ([]byte, error) {
 		return presentationSafeConfig(data)
 	case "oauth.json":
 		return presentationSafeOAuth(data)
-	case "upstream.json":
+	case "upstreams.json":
 		return presentationSafeUpstream(data)
+	case "upstream.json":
+		return nil, errors.New("legacy upstream.json must be migrated to upstreams.json before export")
 	default:
 		return data, nil
 	}
@@ -392,8 +394,8 @@ func presentationSafeUpstream(data []byte) ([]byte, error) {
 	if !ok {
 		return nil, errors.New("upstream export requires an object root")
 	}
-	servers, _ := root["servers"].([]any)
-	for _, value := range servers {
+	upstreams, _ := root["upstreams"].([]any)
+	for _, value := range upstreams {
 		server, ok := value.(map[string]any)
 		if !ok {
 			continue
@@ -439,6 +441,9 @@ func materialize(root string, bundle Bundle, target Platform) (materializeResult
 		relative, ok := safeRelative(item.Path)
 		if !ok {
 			return result, fmt.Errorf("config envelope contains unsafe path: %q", item.Path)
+		}
+		if pathpkg.Clean(relative) == "upstream.json" {
+			return result, errors.New("legacy upstream.json must be migrated to upstreams.json before import")
 		}
 		data := item.Data
 		if topLevelStructured(relative, "config") {
@@ -864,10 +869,28 @@ func containsSensitiveState(relative string, data []byte) (bool, error) {
 				}
 			}
 		}
-	case "upstream.json":
+	case "upstreams.json":
 		decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
 		if err != nil {
 			return false, fmt.Errorf("decode upstream envelope file: %w", err)
+		}
+		root, _ := decoded.(map[string]any)
+		upstreams, _ := root["upstreams"].([]any)
+		for _, value := range upstreams {
+			server, _ := value.(map[string]any)
+			for _, field := range []string{"headers", "env"} {
+				values, _ := server[field].(map[string]any)
+				for key, value := range values {
+					if upstream.SensitiveConfigKey(key) && strings.TrimSpace(fmt.Sprint(value)) != "" {
+						return true, nil
+					}
+				}
+			}
+		}
+	case "upstream.json":
+		decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
+		if err != nil {
+			return false, fmt.Errorf("decode legacy upstream envelope file: %w", err)
 		}
 		root, _ := decoded.(map[string]any)
 		servers, _ := root["servers"].([]any)
@@ -908,7 +931,7 @@ func preserveExistingSecrets(existingRoot, stagedRoot string) error {
 		return err
 	}
 	add(oauthNames)
-	upstreamNames, err := upstream.NewStore(configformat.StructuredPath(existingRoot, "upstream")).SecretEntries()
+	upstreamNames, err := upstream.NewStore(configformat.StructuredPath(existingRoot, "upstreams")).SecretEntries()
 	if err != nil {
 		return err
 	}

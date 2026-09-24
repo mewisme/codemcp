@@ -398,7 +398,7 @@ func TestPurgeStoredSecretsRemovesPersistedCredentials(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "oauth.json"), []byte(`{"version":1,"credentials":{"alpha":{"server_id":"alpha","access_token":"<secret-file>"}}}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "upstream.json"), []byte(`{"servers":[{"id":"alpha","headers":{"Authorization":"<secret-file>"}}]}`), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "upstreams.json"), []byte(`{"version":1,"upstreams":[{"id":"alpha","headers":{"Authorization":"<secret-file>"}}]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := config.TunnelSecretEntries(root)
@@ -409,7 +409,7 @@ func TestPurgeStoredSecretsRemovesPersistedCredentials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	upstreamEntries, err := upstream.NewStore(filepath.Join(root, "upstream.json")).SecretEntries()
+	upstreamEntries, err := upstream.NewStore(filepath.Join(root, "upstreams.json")).SecretEntries()
 	if err != nil {
 		t.Fatal(err)
 	}

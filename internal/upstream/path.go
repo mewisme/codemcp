@@ -5,5 +5,5 @@ import (
 )
 
 func Path() string {
-	return configformat.StructuredPath(configformat.RootPath(), "upstream")
+	return configformat.StructuredPath(configformat.RootPath(), "upstreams")
 }

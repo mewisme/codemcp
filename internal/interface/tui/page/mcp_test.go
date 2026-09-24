@@ -57,7 +57,7 @@ func (*mcpPageClient) PID(string) int { return 4242 }
 func newMCPPageTestHarness(t *testing.T, client *mcpPageClient) (*MCPPage, *upstream.Manager, *mcpoauth.Store, *upstream.Store) {
 	t.Helper()
 	root := t.TempDir()
-	serverStore := upstream.NewStore(filepath.Join(root, "upstream.json"))
+	serverStore := upstream.NewStore(filepath.Join(root, "upstreams.json"))
 	manager := upstream.NewManagerWithClient(serverStore, client)
 	if err := manager.Load(); err != nil {
 		t.Fatal(err)

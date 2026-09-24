@@ -158,7 +158,7 @@ func PurgeStoredSecretsContext(ctx context.Context, root string) error {
 		span.FailMessage("OAuth secret enumeration failed", err)
 		return err
 	}
-	upstreamEntries, err := upstream.NewStore(configformat.StructuredPath(root, "upstream")).SecretEntries()
+	upstreamEntries, err := upstream.NewStore(configformat.StructuredPath(root, "upstreams")).SecretEntries()
 	if err != nil {
 		span.FailMessage("Upstream secret enumeration failed", err)
 		return err
@@ -235,7 +235,7 @@ func removeOwnedConfigRootEntries(root string) error {
 			return err
 		}
 	}
-	for _, stem := range []string{"config", "tunnel", "workspaces", "upstream", "oauth"} {
+	for _, stem := range []string{"config", "tunnel", "workspaces", "upstream", "upstreams", "oauth"} {
 		for _, extension := range []string{".json", ".yaml", ".yml", ".toml"} {
 			if err := removeIfExists(filepath.Join(root, stem+extension)); err != nil {
 				return err

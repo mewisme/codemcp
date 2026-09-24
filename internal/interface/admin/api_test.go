@@ -774,7 +774,7 @@ func TestUpstreamAPIManagementAndRedaction(t *testing.T) {
 }
 
 func TestUpstreamAPIRejectsInvalidConfig(t *testing.T) {
-	manager := upstream.NewManager(upstream.NewStore(filepath.Join(t.TempDir(), "upstream.json")))
+	manager := upstream.NewManager(upstream.NewStore(filepath.Join(t.TempDir(), "upstreams.json")))
 	handler := New(API{Upstream: manager})
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/upstream", strings.NewReader(`{"id":"server-1","name":"Server","transport":"http","enabled":true}`)))
