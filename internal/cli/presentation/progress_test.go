@@ -23,12 +23,12 @@ func TestProgressSessionInteractiveRailKeepsOnlyActivePhaseTransient(t *testing.
 	session.Close()
 
 	got := output.String()
-	for _, want := range []string{"┌  Upgrade CodeMCP", "⠋  Detect installation", "◆  Detect installation", "◆  Download release", "└"} {
+	for _, want := range []string{"┌  Upgrade CodeMCP", "⠋  Detect installation", "◆  Installation detected", "◆  Release downloaded", "└"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("interactive progress missing %q: %q", want, got)
 		}
 	}
-	if strings.Count(got, "◆  Detect installation") != 1 {
+	if strings.Count(got, "◆  Installation detected") != 1 {
 		t.Fatalf("completed phase was not stable exactly once: %q", got)
 	}
 }
@@ -43,7 +43,7 @@ func TestProgressSessionPlainIsDeterministicAndNeverUsesCursorControl(t *testing
 	session.Close()
 
 	got := output.String()
-	if got != "Check release... done\nRuntime reload skipped\n" {
+	if got != "Release checked\nRuntime reload skipped\n" {
 		t.Fatalf("plain progress=%q", got)
 	}
 	if strings.ContainsAny(got, "\r\x1b") {

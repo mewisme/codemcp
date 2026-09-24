@@ -36,6 +36,7 @@ type ProgressSession struct {
 	activeID     string
 	transient    bool
 	begun        bool
+	gap          bool
 	framed       bool
 	closed       bool
 }
@@ -63,10 +64,13 @@ func (session *ProgressSession) Begin(title string) {
 	session.begun = true
 	if session.mode == ModePlain {
 		fmt.Fprintln(session.out, strings.TrimSpace(title))
+		fmt.Fprintln(session.out)
+		session.gap = true
 		return
 	}
 	fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.FrameStart)+"  "+session.theme.Render(RoleHeading, strings.TrimSpace(title)))
 	fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
+	session.gap = true
 	session.framed = true
 }
 
@@ -156,6 +160,21 @@ func (session *ProgressSession) Suspend() {
 	session.clearTransientLocked()
 }
 
+func (session *ProgressSession) Append(render func(*Presenter)) {
+	if session == nil || render == nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return
+	}
+	session.clearTransientLocked()
+	session.gapLocked()
+	render(New(session.out, session.mode, session.capabilities))
+	session.gap = false
+}
+
 func (session *ProgressSession) Begun() bool {
 	if session == nil {
 		return false
@@ -180,13 +199,14 @@ func (session *ProgressSession) CloseWith(message string) {
 	}
 	session.clearTransientLocked()
 	if session.framed && session.mode == ModeHuman {
-		fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
+		session.gapLocked()
 		line := session.theme.Render(RoleRail, session.glyphs.FrameEnd)
 		if message = strings.TrimSpace(message); message != "" {
 			line += "  " + message
 		}
 		fmt.Fprintln(session.out, line)
 	} else if session.begun && session.mode == ModePlain {
+		session.gapLocked()
 		if message = strings.TrimSpace(message); message != "" {
 			fmt.Fprintln(session.out, message)
 		}
@@ -209,14 +229,32 @@ func (session *ProgressSession) renderTerminalLocked(phase ProgressPhase) {
 	}
 	if session.mode == ModePlain {
 		fmt.Fprintln(session.out, plainProgressLine(phase))
+		session.gap = false
 		return
 	}
 	glyph, role := session.terminalStyle(phase.State)
-	line := session.theme.Render(role, glyph) + "  " + phase.Label
+	label := phase.Label
+	if phase.State == ProgressSuccess && phase.Message != "" {
+		label = phase.Message
+	}
+	line := session.theme.Render(role, glyph) + "  " + label
 	if phase.State != ProgressSuccess && phase.Message != "" && !strings.EqualFold(phase.Message, phase.Label) {
 		line += " — " + phase.Message
 	}
 	fmt.Fprintln(session.out, line)
+	session.gap = false
+}
+
+func (session *ProgressSession) gapLocked() {
+	if session.closed || session.gap || !session.begun {
+		return
+	}
+	if session.mode == ModeHuman && session.framed {
+		fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
+	} else if session.mode == ModePlain {
+		fmt.Fprintln(session.out)
+	}
+	session.gap = true
 }
 
 func (session *ProgressSession) clearTransientLocked() {
@@ -248,6 +286,9 @@ func plainProgressLine(phase ProgressPhase) string {
 	label := strings.TrimSpace(phase.Label)
 	switch phase.State {
 	case ProgressSuccess:
+		if phase.Message != "" && !strings.EqualFold(phase.Message, label) {
+			return phase.Message
+		}
 		return label + "... done"
 	case ProgressSkipped:
 		if phase.Message != "" {

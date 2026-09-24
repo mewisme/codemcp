@@ -96,6 +96,30 @@ func TestPresenterCollectionRailUsesChildAndContinuationRows(t *testing.T) {
 	}
 }
 
+func TestPresenterTopLevelBlocksHaveExactlyOneGap(t *testing.T) {
+	var output bytes.Buffer
+	p := New(&output, ModeHuman, Capabilities{Width: 100, Unicode: true, Color: false})
+	p.Frame("Initialize CodeMCP")
+	p.Status(StatusSuccess, "CodeMCP initialized")
+	p.Spacer()
+	p.Spacer()
+	p.Section("Configuration")
+	p.Fields(Field{Label: "config", Value: "/tmp/config.json"})
+	p.FrameEnd("Done")
+
+	want := "┌  Initialize CodeMCP\n" +
+		"│\n" +
+		"✓  CodeMCP initialized\n" +
+		"│\n" +
+		"◆  Configuration\n" +
+		"│  ◆ config — /tmp/config.json\n" +
+		"│\n" +
+		"└  Done\n"
+	if got := output.String(); got != want {
+		t.Fatalf("global block spacing mismatch:\nwant=%q\ngot =%q", want, got)
+	}
+}
+
 func TestPresenterRichPaletteLocalizesColorToStructureAndStateTokens(t *testing.T) {
 	var output bytes.Buffer
 	caps := Capabilities{Width: 100, Unicode: true, Color: true}

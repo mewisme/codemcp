@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/configformat"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func TestConfigDirFlagOverridesEnvironment(t *testing.T) {
@@ -65,6 +67,47 @@ func TestInitWithConfigDirDoesNotTouchDefaultRoot(t *testing.T) {
 	data, err := os.ReadFile(sentinel)
 	if err != nil || string(data) != "keep" {
 		t.Fatalf("default config root was touched: data=%q err=%v", data, err)
+	}
+}
+
+func TestInitPresentationUsesCompletedProgressAndSingleBlockGaps(t *testing.T) {
+	defer configformat.SetRootPath("")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	root := filepath.Join(t.TempDir(), "init-config")
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	caps := presentation.Capabilities{
+		StdoutTTY: true, StderrTTY: true, Width: 100, Unicode: true, RawUnicode: true, Interactive: true,
+	}
+	writer := presentation.WrapWriter(&output, caps)
+	cmd := initCommand()
+	addLoggingFlags(cmd)
+	cmd.SetOut(writer)
+	cmd.SetErr(writer)
+	cmd.SetContext(tracepkg.WithObserver(cmd.Context(), commandTraceObserver(cmd)))
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, expected := range []string{
+		"┌  Initialize CodeMCP",
+		"◆  Saved configuration\n│\n✓  CodeMCP initialized",
+		"│  ◆ config — " + filepath.Join(root, "config.json"),
+		"└  Done",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("init presentation missing %q: %q", expected, text)
+		}
+	}
+	if strings.Contains(text, "◆  Saving configuration") {
+		t.Fatalf("completed progress kept active wording: %q", text)
+	}
+	if strings.Contains(text, "\n│\n│\n") {
+		t.Fatalf("init presentation contains duplicate empty rail lines: %q", text)
 	}
 }
 

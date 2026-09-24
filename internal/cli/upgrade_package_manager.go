@@ -32,7 +32,7 @@ func runPackageManagedUpgrade(cmd *cobra.Command, detection install.Detection, t
 		return fmt.Errorf("--version is unavailable for %s installations; package-manager upgrades follow the latest published manifest", plan.Name)
 	}
 	progress := newCommandProgress(cmd, "UPDATE")
-	progress.Start("update.checking", "Checking for updates", "Update check complete")
+	progress.Start("update.checking", "Checking for updates", "Checked for updates")
 	checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}
 	check, err := checker.Check(cmd.Context(), version.Version)
 	if err != nil {

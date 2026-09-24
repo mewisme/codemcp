@@ -396,7 +396,7 @@ func TestCommandTraceProgressIsVisibleByDefault(t *testing.T) {
 	if err := executeCommand(cmd); err != nil {
 		t.Fatal(err)
 	}
-	if text := output.String(); !strings.Contains(text, "Saving configuration... done") {
+	if text := output.String(); !strings.Contains(text, "Saved configuration") {
 		t.Fatalf("default progress output missing completion: %q", text)
 	}
 }
@@ -426,7 +426,7 @@ func TestCommandTraceProgressRepresentativeSequencesAreOrdered(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	wants := []string{"Saving configuration... done", "Staging installation binary... done", "Fetching tunnel metadata... done"}
+	wants := []string{"Saved configuration", "Staged installation binary", "Fetched tunnel metadata"}
 	previous := -1
 	for _, want := range wants {
 		index := strings.Index(text, want)
@@ -452,7 +452,7 @@ func TestCommandTraceProgressDeduplicatesTerminalEvents(t *testing.T) {
 	observer(completed)
 	closeCommandProgress(cmd, nil)
 	closeCommandLogger(cmd)
-	if count := strings.Count(output.String(), "Saving configuration... done"); count != 1 {
+	if count := strings.Count(output.String(), "Saved configuration"); count != 1 {
 		t.Fatalf("terminal progress rendered %d times: %q", count, output.String())
 	}
 }
@@ -499,7 +499,7 @@ func TestCommandTraceProgressVerboseKeepsDiagnosticsWithoutCursorControl(t *test
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, want := range []string{"Saving configuration... done", "path:", "/tmp/config.json", "bytes:"} {
+	for _, want := range []string{"Saved configuration", "path:", "/tmp/config.json", "bytes:"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("verbose progress missing %q: %q", want, text)
 		}

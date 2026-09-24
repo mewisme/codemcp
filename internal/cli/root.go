@@ -76,7 +76,7 @@ func initCommand() *cobra.Command {
 			fields := []presentation.Field{{Label: "config", Value: result.ConfigPath}, {Label: "format", Value: result.Format}}
 			fields = append(fields, endpointPresentationFields(result.Config)...)
 			fields = append(fields, presentation.Field{Label: "mcp token", Value: result.MCPToken}, presentation.Field{Label: "admin token", Value: result.AdminToken})
-			renderMutationSuccess(cmd, "Initialize CodeMCP", "Configuration created", fields...)
+			renderMutationSuccess(cmd, "Initialize CodeMCP", "CodeMCP initialized", fields...)
 			return nil
 		},
 	}

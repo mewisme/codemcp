@@ -444,18 +444,18 @@ func managedLifecycleProgress(cmd *cobra.Command) *commandProgress {
 func managedLifecycleDoneMessage(event managed.LifecycleEvent) string {
 	switch event.Phase {
 	case "runtime.stopping":
-		return "Managed runtime stopped"
+		return "Stopped managed runtime"
 	case "backend.stopping":
-		return "Managed service backend stopped"
+		return "Stopped managed service backend"
 	case "definition.installing":
 		if strings.HasPrefix(strings.ToLower(event.Message), "updating") {
-			return "Managed service definition updated"
+			return "Updated managed service definition"
 		}
-		return "Managed service definition installed"
+		return "Installed managed service definition"
 	case "definition.uninstalling":
-		return "Managed service definition removed"
+		return "Removed managed service definition"
 	case "backend.starting":
-		return "Managed service backend started"
+		return "Started managed service backend"
 	case "runtime.waiting":
 		return "Managed runtime ready"
 	default:

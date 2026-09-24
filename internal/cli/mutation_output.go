@@ -14,8 +14,7 @@ func renderMutationBlock(cmd *cobra.Command, title string, render func(*presenta
 	presenter := commandPresenter(cmd)
 	if session := takeCommandProgress(cmd); session != nil {
 		if session.Begun() {
-			session.Suspend()
-			render(presenter)
+			session.Append(render)
 			session.CloseWith("Done")
 			return
 		}

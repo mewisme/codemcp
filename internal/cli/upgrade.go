@@ -41,7 +41,7 @@ func upgradeCommand() *cobra.Command {
 			Downloader: updatepkg.Downloader{UserAgent: version.ClientName + "/" + version.Version},
 		}
 		options := updatepkg.ApplyOptions{Layout: layout, CurrentVersion: version.Version, TargetVersion: targetVersion}
-		progress.Start("update.checking", "Checking for updates", "Update check complete")
+		progress.Start("update.checking", "Checking for updates", "Checked for updates")
 		plan, err := updater.Resolve(cmd.Context(), options)
 		if err != nil {
 			progress.Stop()
@@ -104,7 +104,7 @@ func upgradeCheckCommand() *cobra.Command {
 		logCommandStep(cmd, "UPDATE", "update.release.checking", "Resolving latest release", logger.WithVerbose("current", version.Version))
 		progress := newCommandProgress(cmd, "UPDATE")
 		beginMutationProgress(cmd, "Check for updates")
-		progress.Start("update.checking", "Checking for updates", "Update check complete")
+		progress.Start("update.checking", "Checking for updates", "Checked for updates")
 		checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}
 		result, err := checker.Check(cmd.Context(), version.Version)
 		if err != nil {
