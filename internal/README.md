@@ -53,6 +53,7 @@ CLI / TUI / Admin HTTP / embedded web / protocol entrypoints
 | `migration` | persistence | Released-state migration-only readers and transformers |
 | `network` | platform | Network interface discovery |
 | `oauth` | runtime/protocol | OAuth client/state machinery |
+| `oslock` | platform | Cross-process advisory file-lock primitive for runtime ownership and serialized state mutation |
 | `outboundpolicy` | domain | Outbound network safety policy |
 | `patch` | domain | Deterministic patch primitive |
 | `ponytail` | integration (transitional) | Ponytail implementation until Integrations ownership cutover |

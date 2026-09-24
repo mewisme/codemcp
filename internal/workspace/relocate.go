@@ -17,6 +17,14 @@ var relocateStateRename = os.Rename
 
 func (m *Manager) Relocate(id, path string) (Workspace, error) {
 	span := tracepkg.StartObserver(m.trace, "WORKSPACE", "workspace.relocate", "Relocating workspace", tracepkg.String("workspace_id", strings.TrimSpace(id)), tracepkg.String("input_path", path))
+	m.runtimeMu.Lock()
+	defer m.runtimeMu.Unlock()
+	mutation, err := m.beginRegistryMutation()
+	if err != nil {
+		span.FailMessage("Workspace relocation failed", err)
+		return Workspace{}, err
+	}
+	defer mutation.Release()
 	if err := m.ensureLoaded(); err != nil {
 		span.FailMessage("Workspace relocation failed", err)
 		return Workspace{}, err
@@ -38,6 +46,15 @@ func (m *Manager) Relocate(id, path string) (Workspace, error) {
 	item, ok := m.items[oldID]
 	if !ok {
 		err := fmt.Errorf("%w: %s", ErrNotFound, id)
+		span.FailMessage("Workspace relocation failed", err)
+		return Workspace{}, err
+	}
+	if m.runtime != nil && m.runtime.active && m.runtime.locks[oldID] != nil {
+		err := fmt.Errorf("%w: %s: relocate requires inactive runtime ownership", ErrAlreadyActive, oldID)
+		span.FailMessage("Workspace relocation failed", err)
+		return Workspace{}, err
+	}
+	if err := probeWorkspaceRuntimeLock(item); err != nil {
 		span.FailMessage("Workspace relocation failed", err)
 		return Workspace{}, err
 	}

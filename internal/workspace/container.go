@@ -18,6 +18,12 @@ type ContainerContext struct {
 
 func (m *Manager) CreateContainer(name string) (WorkspaceContainer, error) {
 	span := tracepkg.StartObserver(m.trace, "WORKSPACE", "workspace.container.create", "Creating workspace container", tracepkg.String("name", strings.TrimSpace(name)))
+	mutation, err := m.beginRegistryMutation()
+	if err != nil {
+		span.FailMessage("Workspace container creation failed", err)
+		return WorkspaceContainer{}, err
+	}
+	defer mutation.Release()
 	name = strings.TrimSpace(name)
 	if name == "" {
 		err := errors.New("workspace container name is required")
@@ -49,7 +55,7 @@ func (m *Manager) CreateContainer(name string) (WorkspaceContainer, error) {
 		span.EndMessage("Workspace container created", tracepkg.String("container_id", id), tracepkg.String("name", name), tracepkg.Int("workspace_count", 0), tracepkg.Int("allocation_attempts", attempts+1))
 		return container, nil
 	}
-	err := errors.New("failed to allocate unique workspace container id")
+	err = errors.New("failed to allocate unique workspace container id")
 	span.FailMessage("Workspace container creation failed", err, tracepkg.Int("allocation_attempts", 8))
 	return WorkspaceContainer{}, err
 }
@@ -122,6 +128,12 @@ func (m *Manager) ListContainers() ([]WorkspaceContainer, error) {
 
 func (m *Manager) RenameContainer(id, name string) (WorkspaceContainer, error) {
 	span := tracepkg.StartObserver(m.trace, "WORKSPACE", "workspace.container.rename", "Renaming workspace container", tracepkg.String("container_id", strings.TrimSpace(id)), tracepkg.String("name", strings.TrimSpace(name)))
+	mutation, err := m.beginRegistryMutation()
+	if err != nil {
+		span.FailMessage("Workspace container rename failed", err)
+		return WorkspaceContainer{}, err
+	}
+	defer mutation.Release()
 	name = strings.TrimSpace(name)
 	if name == "" {
 		err := errors.New("workspace container name is required")
@@ -155,6 +167,12 @@ func (m *Manager) RenameContainer(id, name string) (WorkspaceContainer, error) {
 
 func (m *Manager) DeleteContainer(id string) error {
 	span := tracepkg.StartObserver(m.trace, "WORKSPACE", "workspace.container.delete", "Deleting workspace container", tracepkg.String("container_id", strings.TrimSpace(id)))
+	mutation, err := m.beginRegistryMutation()
+	if err != nil {
+		span.FailMessage("Workspace container deletion failed", err)
+		return err
+	}
+	defer mutation.Release()
 	if err := m.ensureLoaded(); err != nil {
 		span.FailMessage("Workspace container deletion failed", err)
 		return err
@@ -250,6 +268,11 @@ func (m *Manager) WorkspacesForContainer(containerID string) ([]Workspace, error
 }
 
 func (m *Manager) updateWorkspaceContainerMembership(containerID string, workspaceIDs []string, add bool) (WorkspaceContainer, error) {
+	mutation, err := m.beginRegistryMutation()
+	if err != nil {
+		return WorkspaceContainer{}, err
+	}
+	defer mutation.Release()
 	action := "remove"
 	if add {
 		action = "add"
@@ -292,6 +315,11 @@ func (m *Manager) updateWorkspaceContainerMembership(containerID string, workspa
 }
 
 func (m *Manager) updateWorkspaceContainersForWorkspace(workspaceID string, containerIDs []string, add bool) ([]WorkspaceContainer, error) {
+	mutation, err := m.beginRegistryMutation()
+	if err != nil {
+		return nil, err
+	}
+	defer mutation.Release()
 	action := "remove"
 	if add {
 		action = "add"

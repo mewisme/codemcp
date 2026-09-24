@@ -85,6 +85,13 @@ func (service *WorkspaceService) Manager() *workspace.Manager {
 	return service.manager
 }
 
+func (service *WorkspaceService) RuntimeDiagnostics() workspace.RuntimeDiagnostics {
+	if service == nil || service.manager == nil {
+		return workspace.RuntimeDiagnostics{}
+	}
+	return service.manager.RuntimeDiagnostics()
+}
+
 func (service *WorkspaceService) require(id capability.ID) error {
 	if service == nil || service.manager == nil {
 		return operationError(id, ErrorUnavailable, errors.New("workspace manager is unavailable"))
@@ -454,6 +461,8 @@ func classifyWorkspaceError(operation capability.ID, err error) error {
 	switch {
 	case errors.Is(err, workspace.ErrNotFound), errors.Is(err, workspace.ErrContainerNotFound):
 		return operationError(operation, ErrorNotFound, err)
+	case errors.Is(err, workspace.ErrAlreadyActive), errors.Is(err, workspace.ErrStateLost), errors.Is(err, workspace.ErrRegistryBusy):
+		return operationError(operation, ErrorConflict, err)
 	case errors.Is(err, os.ErrNotExist):
 		return operationError(operation, ErrorInvalidArgument, err)
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):

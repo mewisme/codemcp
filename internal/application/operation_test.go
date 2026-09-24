@@ -217,3 +217,29 @@ func TestWorkspaceMembershipRoutesShareOneCanonicalDispatcherOwner(t *testing.T)
 		t.Fatalf("container membership=%#v", containers.Value)
 	}
 }
+
+func TestWorkspaceServiceExposesRuntimeDiagnosticsAndConflicts(t *testing.T) {
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	service := NewWorkspaceService(manager, nil)
+	registered, err := service.Register(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Activate(); err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Deactivate()
+	diagnostics := service.RuntimeDiagnostics()
+	if !diagnostics.Active || diagnostics.Owned != 1 || len(diagnostics.Workspaces) != 1 || diagnostics.Workspaces[0].WorkspaceID != registered.Value.ID {
+		t.Fatalf("diagnostics=%#v", diagnostics)
+	}
+	if code := ErrorCodeOf(classifyWorkspaceError(capability.WorkspaceRelocate, workspace.ErrAlreadyActive)); code != ErrorConflict {
+		t.Fatalf("active conflict code=%s", code)
+	}
+	if code := ErrorCodeOf(classifyWorkspaceError(capability.WorkspaceShow, workspace.ErrStateLost)); code != ErrorConflict {
+		t.Fatalf("state lost conflict code=%s", code)
+	}
+	if code := ErrorCodeOf(classifyWorkspaceError(capability.WorkspaceRegister, workspace.ErrRegistryBusy)); code != ErrorConflict {
+		t.Fatalf("registry busy conflict code=%s", code)
+	}
+}

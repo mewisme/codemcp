@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/upstream"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestNewSharesToolRuntime(t *testing.T) {
@@ -278,5 +280,39 @@ func TestStopShutsDownUpstreamConnections(t *testing.T) {
 	}
 	if len(client.closed) != 1 || client.closed[0] != "one" {
 		t.Fatalf("closed = %#v", client.closed)
+	}
+}
+
+func TestAppLifecycleOwnsWorkspaceRuntimeLocks(t *testing.T) {
+	configRoot := t.TempDir()
+	t.Setenv("CM_CONFIG_DIR", configRoot)
+	cfg := config.Default()
+	cfg.Tunnel.Enabled = false
+	application, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, err := application.Tools.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	competitor := workspace.NewManager(workspace.DefaultStorePath())
+	if err := competitor.Activate(); !errors.Is(err, workspace.ErrAlreadyActive) {
+		t.Fatalf("competitor activation error=%v", err)
+	}
+	if diagnostics := application.Tools.Workspaces.RuntimeDiagnostics(); !diagnostics.Active || diagnostics.Owned != 1 || diagnostics.Workspaces[0].WorkspaceID != item.ID {
+		t.Fatalf("runtime diagnostics=%#v", diagnostics)
+	}
+	if err := application.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if err := competitor.Activate(); err != nil {
+		t.Fatalf("competitor activation after stop: %v", err)
+	}
+	if err := competitor.Deactivate(); err != nil {
+		t.Fatal(err)
 	}
 }

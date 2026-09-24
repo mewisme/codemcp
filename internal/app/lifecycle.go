@@ -21,6 +21,12 @@ func (a *App) Start(ctx context.Context) error {
 		span.FailMessage("Application runtime bootstrap failed", err)
 		return err
 	}
+	if a.Tools != nil && a.Tools.Workspaces != nil {
+		if err := a.Tools.Workspaces.Activate(); err != nil {
+			span.FailMessage("Workspace runtime ownership activation failed", err)
+			return err
+		}
+	}
 	a.runtimeCtx = ctx
 	if a.Tools != nil {
 		go func() {
@@ -43,6 +49,9 @@ func (a *App) Start(ctx context.Context) error {
 			tunnelSpan.FailMessage("Tunnel runtime start failed", err)
 			span.FailMessage("Application runtime start failed", err)
 			a.runtimeCtx = nil
+			if a.Tools != nil && a.Tools.Workspaces != nil {
+				err = errors.Join(err, a.Tools.Workspaces.Deactivate())
+			}
 			return err
 		}
 		tunnelSpan.EndMessage("Tunnel runtime started", tracepkg.Bool("enabled", a.Tunnel.Status().Enabled), tracepkg.Bool("running", a.Tunnel.Status().Running))
@@ -115,6 +124,9 @@ func (a *App) Stop() error {
 	var stopErr error
 	for err := range errCh {
 		stopErr = errors.Join(stopErr, err)
+	}
+	if a.Tools != nil && a.Tools.Workspaces != nil {
+		stopErr = errors.Join(stopErr, a.Tools.Workspaces.Deactivate())
 	}
 	a.runtimeCtx = nil
 	a.running = false

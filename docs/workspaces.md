@@ -119,11 +119,19 @@ A `wsc_*` ID answers “which workspaces belong together?”, not “which files
 
 Agent-facing container tools can discover the members of a group, but substantial work still targets one or more concrete member `ws_*` IDs individually. Resolving a container does not merge member context, memory, permissions, shell state, or checkpoints.
 
-## Runtime synchronization
+## Runtime ownership and synchronization
 
-Workspace registry changes made through supported control surfaces are synchronized with a running runtime so subsequent workspace reads can see the new registry state without a full runtime restart.
+An active CodeMCP runtime holds one exclusive advisory lock at `<workspace>/.cm/runtime/lock` for every workspace it owns. A second runtime cannot acquire the same workspace state concurrently. Lock metadata records the owning process and instance for diagnostics, while lock authority comes from the operating-system file lock rather than the metadata text.
 
-If an operation reports a synchronization failure, inspect runtime status/logs before assuming the live process adopted the change.
+Global registry mutation serialization is separate from workspace runtime ownership. Safe registry-only changes, such as container metadata and workspace access metadata, use a global mutation lock and do not transfer or steal workspace runtime ownership. Runtime-aware reload reconciles newly registered or removed workspaces while retaining valid existing ownership locks.
+
+If `.cm/workspace.json` or the runtime lock file is removed or replaced while active, workspace access fails closed as a state-ownership conflict instead of silently adopting the replacement. Relocation is rejected while the workspace is actively owned. Unregistration by a different process is likewise rejected while another runtime owns the workspace; an owning runtime can unregister its own workspace and releases that lock only after the registry mutation succeeds.
+
+Cross-process lock acquisition follows a fixed order: runtime ownership coordination, global registry mutation serialization, in-process registry state, then a workspace runtime file lock. This keeps registry mutations and activation/reload ownership changes from taking the same locks in opposite order.
+
+Workspace registry changes made through supported control surfaces are synchronized with a running runtime so subsequent workspace reads can see the new registry state without a full runtime restart. Runtime ownership diagnostics expose whether the manager is active, which workspaces it owns, each runtime lock path/state, and the global registry mutation lock path.
+
+If an operation reports a synchronization or ownership conflict, inspect runtime status/logs before assuming the live process adopted the change.
 
 ## Recommended practice
 
