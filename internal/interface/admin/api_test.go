@@ -297,7 +297,7 @@ func TestConfigAPIIntegrationPatchUpdatesRuntimeActiveState(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
 	}
-	if got := store.Snapshot().Integrations; !got.Ponytail.Active || got.Caveman.Active {
+	if got := store.Snapshot().Integrations; !got.Ponytail.Active || got.Caveman.Active || !got.RTK.Enabled || got.RTK.Path != "" {
 		t.Fatalf("stored integrations = %#v", got)
 	}
 	if _, ok := runtime.Registry.Schema("ponytail_turn"); !ok {
@@ -310,7 +310,7 @@ func TestConfigAPIIntegrationPatchUpdatesRuntimeActiveState(t *testing.T) {
 	if err != nil || result.IsError || len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, `"active":false`) {
 		t.Fatalf("caveman runtime result = %#v err=%v", result, err)
 	}
-	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"}}`) {
+	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""}}`) {
 		t.Fatalf("integration config missing from response: %s", recorder.Body.String())
 	}
 }

@@ -39,6 +39,14 @@ func Validate(cfg Config) error {
 	if _, ok := caveman.NormalizeRuntimeMode(cfg.Integrations.Caveman.Mode); !ok {
 		return fmt.Errorf("integrations.caveman.mode must be lite, full, ultra, wenyan-lite, wenyan-full, or wenyan-ultra: %q", cfg.Integrations.Caveman.Mode)
 	}
+	if path := cfg.Integrations.RTK.Path; path != "" {
+		if path != strings.TrimSpace(path) {
+			return errors.New("integrations.rtk.path must not contain leading or trailing whitespace")
+		}
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("integrations.rtk.path must be absolute: %q", path)
+		}
+	}
 	exposure := NormalizeExposure(cfg.Server.Expose)
 	switch exposure.Mode {
 	case ExposureNone, ExposureAll, ExposureWildcard:

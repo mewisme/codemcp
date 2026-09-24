@@ -23,6 +23,7 @@ const publicConfig = {
   integrations: {
     ponytail: { active: true, mode: "full" },
     caveman: { active: true, mode: "full" },
+    rtk: { enabled: true, path: "" },
   },
 } satisfies PublicConfig
 

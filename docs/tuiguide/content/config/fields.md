@@ -87,6 +87,14 @@ Boolean controlling whether compressed Caveman response style is active by defau
 
 Enum persisted response intensity: `lite`, `full`, `ultra`, `wenyan-lite`, `wenyan-full`, `wenyan-ultra`. The wenyan variants progressively increase classical-Chinese compression. Session-only aliases such as `off` or `wenyan` are not persisted values.
 
+### `integrations.rtk.enabled` — RTK enabled
+
+Boolean controlling RTK executable resolution. When enabled, CodeMCP resolves an explicitly configured executable first, then the system `PATH`, then a checksum-verified managed asset.
+
+### `integrations.rtk.path` — RTK executable
+
+Optional absolute path to an RTK executable. Leave empty to use system/managed resolution. Managed RTK assets live under the CodeMCP config root and are verified before they can become an executable source.
+
 ## Tunnel
 
 ### `tunnel.enabled` — Tunnel

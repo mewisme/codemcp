@@ -81,6 +81,8 @@ var fieldSpecs = []FieldSpec{
 	{Key: "integrations.ponytail.mode", Label: "Ponytail mode", Section: FieldSectionIntegrations, Description: "sets the default Ponytail intensity", Details: "This persisted value selects the default runtime intensity when Ponytail is active. Session-only modes such as review/off are not valid persisted values.", Kind: FieldEnum, Options: []string{"lite", "full", "ultra"}, Values: []FieldValueSpec{{Value: "lite", Description: "Build the requested solution but point out a simpler alternative when useful."}, {Value: "full", Description: "Enforce the reuse/stdlib/native-first ladder and prefer the shortest correct implementation."}, {Value: "ultra", Description: "Apply aggressive YAGNI pressure, favor deletion or minimal implementation, and challenge unnecessary scope."}}, Editable: true, Related: []string{"integrations.ponytail.active"}},
 	{Key: "integrations.caveman.active", Label: "Caveman active", Section: FieldSectionIntegrations, Description: "controls whether Caveman response style is active by default", Details: "Caveman compresses assistant prose while preserving technical meaning, exact code, commands, numbers, and safety-critical clarity.", Kind: FieldBool, Editable: true, Related: []string{"integrations.caveman.mode"}},
 	{Key: "integrations.caveman.mode", Label: "Caveman mode", Section: FieldSectionIntegrations, Description: "sets the default Caveman response intensity and language register", Details: "The persisted mode controls how aggressively response prose is compressed. The wenyan variants use progressively stronger classical Chinese compression. Session-only aliases such as off or wenyan are not persisted modes.", Kind: FieldEnum, Options: []string{"lite", "full", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"}, Values: []FieldValueSpec{{Value: "lite", Description: "Remove filler and hedging while keeping normal professional sentences."}, {Value: "full", Description: "Use terse fragments where clear and aggressively remove nonessential prose."}, {Value: "ultra", Description: "Maximize compression while preserving unambiguous technical meaning."}, {Value: "wenyan-lite", Description: "Use a semi-classical Chinese register with moderate compression."}, {Value: "wenyan-full", Description: "Use strongly compressed classical Chinese sentence patterns."}, {Value: "wenyan-ultra", Description: "Use extreme classical Chinese abbreviation while retaining meaning."}}, Editable: true, Related: []string{"integrations.caveman.active"}},
+	{Key: "integrations.rtk.enabled", Label: "RTK enabled", Section: FieldSectionIntegrations, Description: "controls whether RTK executable resolution is active", Details: "When enabled, CodeMCP resolves RTK in deterministic order: an explicitly configured executable, the system PATH, then a checksum-verified managed asset. Command rewriting is handled separately by the shell integration runtime.", Kind: FieldBool, Editable: true, Related: []string{"integrations.rtk.path"}},
+	{Key: "integrations.rtk.path", Label: "RTK executable", Section: FieldSectionIntegrations, Description: "sets an explicit RTK executable path", Details: "Leave empty to resolve RTK from PATH and then the verified managed asset. A configured value must be an absolute path; runtime resolution validates that it is a non-empty executable file before use.", Kind: FieldString, Editable: true, Related: []string{"integrations.rtk.enabled"}},
 	{Key: "tunnel.enabled", Label: "Tunnel", Section: FieldSectionTunnel, Description: "controls whether the OpenAI Secure MCP Tunnel transport is enabled", Details: "An enabled tunnel requires both tunnel.id and a configured runtime API key. The tunnel can satisfy the requirement that at least one MCP transport remains enabled when the local MCP HTTP server is disabled.", Kind: FieldBool, Editable: true, Related: []string{"tunnel.id", "tunnel.api_key", "server.enabled"}},
 	{Key: "tunnel.id", Label: "Tunnel ID", Section: FieldSectionTunnel, Description: "identifies the OpenAI Secure MCP Tunnel used by this runtime", Details: "The ID is required when the tunnel transport is enabled and is used together with the runtime API key to connect to the configured tunnel.", Kind: FieldString, Editable: true, Related: []string{"tunnel.enabled", "tunnel.api_key"}},
 	{Key: "tunnel.api_key", Label: "Runtime API key", Section: FieldSectionTunnel, Description: "stores the managed runtime credential used to connect to the Secure MCP Tunnel", Details: "The raw runtime key is stored through the secret workflow and is redacted from config views. A configured runtime key is required when the tunnel transport is enabled.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage the runtime key from the Tunnel page.", Related: []string{"tunnel.enabled", "tunnel.id"}},
@@ -222,6 +224,14 @@ func SetValue(cfg *Config, key, raw string) error {
 		default:
 			return errors.New("integrations.caveman.mode must be lite, full, ultra, wenyan-lite, wenyan-full, or wenyan-ultra")
 		}
+	case "integrations.rtk.enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Integrations.RTK.Enabled = value
+	case "integrations.rtk.path":
+		cfg.Integrations.RTK.Path = strings.TrimSpace(raw)
 	case "tunnel.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -308,6 +318,10 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strconv.FormatBool(cfg.Integrations.Caveman.Active), nil
 	case "integrations.caveman.mode":
 		return cfg.Integrations.Caveman.Mode, nil
+	case "integrations.rtk.enabled":
+		return strconv.FormatBool(cfg.Integrations.RTK.Enabled), nil
+	case "integrations.rtk.path":
+		return cfg.Integrations.RTK.Path, nil
 	case "tunnel.enabled":
 		return strconv.FormatBool(cfg.Tunnel.Enabled), nil
 	case "tunnel.id":

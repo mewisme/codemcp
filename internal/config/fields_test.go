@@ -17,13 +17,14 @@ func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 	for key, value := range map[string]string{
 		"server.port": "4000", "server.expose": "true", "admin.enabled": "false",
 		"integrations.ponytail.active": "false", "integrations.ponytail.mode": "ULTRA", "integrations.caveman.active": "false", "integrations.caveman.mode": "WENYAN-ULTRA",
+		"integrations.rtk.enabled": "false", "integrations.rtk.path": "/opt/rtk/bin/rtk",
 		"permissions.allow_dirs": "/tmp\n/var/tmp", "shell.path": "/opt/tools,/usr/local/custom/bin",
 	} {
 		if err := SetValue(&cfg, key, value); err != nil {
 			t.Fatalf("%s: %v", key, err)
 		}
 	}
-	if cfg.Server.Port != 4000 || cfg.Server.Expose.Mode != ExposureWildcard || cfg.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 {
+	if cfg.Server.Port != 4000 || cfg.Server.Expose.Mode != ExposureWildcard || cfg.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "/opt/rtk/bin/rtk" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 {
 		t.Fatalf("cfg=%#v", cfg)
 	}
 	if value, err := RawValue(cfg, "shell.path"); err != nil || value != "/opt/tools,/usr/local/custom/bin" {
@@ -63,6 +64,9 @@ func TestFieldSetValueValidationIsTransactional(t *testing.T) {
 	}
 	if err := SetValue(&cfg, "integrations.caveman.mode", "wenyan"); err == nil || !strings.Contains(err.Error(), "wenyan-lite") {
 		t.Fatalf("caveman err=%v", err)
+	}
+	if err := SetValueValidated(&cfg, "integrations.rtk.path", "relative/rtk"); err == nil || !strings.Contains(err.Error(), "must be absolute") {
+		t.Fatalf("rtk path err=%v", err)
 	}
 }
 

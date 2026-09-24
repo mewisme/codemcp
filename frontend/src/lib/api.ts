@@ -295,6 +295,7 @@ export type PublicConfig = {
         | "wenyan-full"
         | "wenyan-ultra"
     }
+    rtk: { enabled: boolean; path: string }
   }
 }
 export type NetworkAddress = {

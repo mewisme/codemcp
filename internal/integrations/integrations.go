@@ -11,6 +11,7 @@ type ID string
 const (
 	PonytailID ID = "ponytail"
 	CavemanID  ID = "caveman"
+	RTKID      ID = "rtk"
 )
 
 type Identity struct {
@@ -34,13 +35,23 @@ type Caveman struct {
 	Mode   string `json:"mode"`
 }
 
+type RTK struct {
+	Enabled bool   `json:"enabled"`
+	Path    string `json:"path"`
+}
+
 type Config struct {
 	Ponytail Ponytail `json:"ponytail"`
 	Caveman  Caveman  `json:"caveman"`
+	RTK      RTK      `json:"rtk"`
 }
 
 func Default() Config {
-	return Config{Ponytail: Ponytail{Active: true, Mode: "full"}, Caveman: Caveman{Active: true, Mode: "full"}}
+	return Config{
+		Ponytail: Ponytail{Active: true, Mode: "full"},
+		Caveman:  Caveman{Active: true, Mode: "full"},
+		RTK:      RTK{Enabled: true},
+	}
 }
 
 func IdentityFor(id ID) (Identity, bool) {
@@ -49,6 +60,8 @@ func IdentityFor(id ID) (Identity, bool) {
 		return Identity{ID: PonytailID, Name: "Ponytail"}, true
 	case CavemanID:
 		return Identity{ID: CavemanID, Name: "Caveman"}, true
+	case RTKID:
+		return Identity{ID: RTKID, Name: "RTK"}, true
 	default:
 		return Identity{}, false
 	}
