@@ -19,7 +19,7 @@ type configOutputOptions struct {
 }
 
 func addConfigOutputFlags(cmd *cobra.Command, options *configOutputOptions) {
-	cmd.Flags().BoolVar(&options.json, "json", false, "output JSON")
+	addJSONResultFlag(cmd, &options.json)
 }
 
 func redactedConfigTree(cfg config.Config) (map[string]any, error) {
@@ -69,12 +69,7 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 		return err
 	}
 	if options.json {
-		data, err := encodeConfigJSON(wrapConfigTreeValue(key, value))
-		if err != nil {
-			return err
-		}
-		cmd.Print(string(data))
-		return nil
+		return writeResultJSON(cmd, wrapConfigTreeValue(key, value))
 	}
 	if !listMode && strings.TrimSpace(key) != "" {
 		if _, ok := value.(map[string]any); !ok {
@@ -96,17 +91,6 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 		cmd.Println(line)
 	}
 	return nil
-}
-
-func encodeConfigJSON(value any) ([]byte, error) {
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(value); err != nil {
-		return nil, err
-	}
-	return buffer.Bytes(), nil
 }
 
 func flattenConfigTree(prefix string, value any, lines *[]string) {

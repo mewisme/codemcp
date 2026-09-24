@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -80,7 +79,7 @@ func upstreamServerListCommand() *cobra.Command {
 				statuses := manager.ListStatuses(ctx, true)
 				cancel()
 				if asJSON {
-					return printJSON(cmd, statuses)
+					return writeResultJSON(cmd, statuses)
 				}
 				log.Success("MCP", "upstream status loaded", "count", len(statuses))
 				for _, status := range statuses {
@@ -94,7 +93,7 @@ func upstreamServerListCommand() *cobra.Command {
 				for index, server := range servers {
 					views[index] = redactUpstreamServer(server)
 				}
-				return printJSON(cmd, views)
+				return writeResultJSON(cmd, views)
 			}
 			log := commandLogger(cmd)
 			log.Success("MCP", "upstream servers loaded", "count", len(servers))
@@ -108,7 +107,7 @@ func upstreamServerListCommand() *cobra.Command {
 			return nil
 		},
 	}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	cmd.Flags().BoolVar(&refresh, "refresh", false, "connect to each enabled server and refresh health")
 	return cmd
 }
@@ -201,13 +200,13 @@ func upstreamServerShowCommand() *cobra.Command {
 			}
 			server = redactUpstreamServer(server)
 			if asJSON {
-				return printJSON(cmd, server)
+				return writeResultJSON(cmd, server)
 			}
 			logUpstreamServer(commandLogger(cmd), server)
 			return nil
 		},
 	}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -284,14 +283,14 @@ func upstreamServerStatusCommand() *cobra.Command {
 			defer cancel()
 			status := manager.CheckHealth(ctx, args[0], refresh)
 			if asJSON {
-				return printJSON(cmd, status)
+				return writeResultJSON(cmd, status)
 			}
 			logUpstreamStatus(log, status)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&refresh, "refresh", true, "force a new upstream connection/tool list")
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -610,13 +609,4 @@ func loadUpstreamManagerForCommand(cmd *cobra.Command) (*upstreamCommandService,
 	}
 	logCommandDebug(cmd, "MCP", "mcp.store.loaded", "Upstream MCP configuration loaded", logger.WithDebug("count", len(manager.List())))
 	return &upstreamCommandService{ctx: cmd.Context(), service: application.NewUpstreamService(manager)}, nil
-}
-
-func printJSON(cmd *cobra.Command, value any) error {
-	data, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	cmd.Println(string(data))
-	return nil
 }

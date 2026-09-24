@@ -42,7 +42,7 @@ func requestGrantListCommand() *cobra.Command {
 			return err
 		}
 		if asJSON {
-			return printJSON(cmd, grants)
+			return writeResultJSON(cmd, grants)
 		}
 		log.Success("REQUEST", "runtime session grants loaded", "count", len(grants))
 		for _, grant := range grants {
@@ -51,7 +51,7 @@ func requestGrantListCommand() *cobra.Command {
 		return nil
 	}}
 	cmd.Flags().StringVar(&workspaceID, "workspace", "", "filter grants by workspace ID")
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -70,13 +70,13 @@ func requestGrantRevokeCommand() *cobra.Command {
 			return err
 		}
 		if asJSON {
-			return printJSON(cmd, request)
+			return writeResultJSON(cmd, request)
 		}
 		log.Success("REQUEST", "runtime session grant revoked", "id", request.ID)
 		log.Detail("status", request.Status)
 		return nil
 	}}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -102,7 +102,7 @@ func requestCreateDummyCommand() *cobra.Command {
 			return err
 		}
 		if asJSON {
-			return printJSON(cmd, request)
+			return writeResultJSON(cmd, request)
 		}
 		log.Success("REQUEST", "dummy control approval request created", "id", request.ID)
 		log.Detail("workspace", request.WorkspaceID)
@@ -112,7 +112,7 @@ func requestCreateDummyCommand() *cobra.Command {
 	cmd.Flags().StringVar(&workspaceID, "workspace", "ws_dummy", "workspace ID shown on the dummy request")
 	cmd.Flags().StringVar(&title, "title", "Allow dummy command", "request title shown in approval UIs")
 	cmd.Flags().StringVar(&command, "command", "echo dummy approval", "dummy run_command value shown in exact arguments")
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -131,7 +131,7 @@ func requestListCommand() *cobra.Command {
 			return err
 		}
 		if asJSON {
-			return printJSON(cmd, requests)
+			return writeResultJSON(cmd, requests)
 		}
 		log.Success("REQUEST", "control approval requests loaded", "count", len(requests))
 		for _, request := range requests {
@@ -139,7 +139,7 @@ func requestListCommand() *cobra.Command {
 		}
 		return nil
 	}}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -158,13 +158,13 @@ func requestViewCommand() *cobra.Command {
 			return err
 		}
 		if asJSON {
-			return printJSON(cmd, request)
+			return writeResultJSON(cmd, request)
 		}
 		log.StopAnimation()
 		printApprovalRequest(cmd, request)
 		return nil
 	}}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -202,7 +202,7 @@ func requestResolveCommand(approve bool) *cobra.Command {
 			return err
 		}
 		if asJSON {
-			return printJSON(cmd, request)
+			return writeResultJSON(cmd, request)
 		}
 		log.Success("REQUEST", "control approval request "+past, "id", request.ID)
 		log.Detail("status", request.Status)
@@ -215,7 +215,7 @@ func requestResolveCommand(approve bool) *cobra.Command {
 		return nil
 	}}
 	cmd.Flags().StringVar(&reason, "reason", "", "record an optional approval resolution reason")
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 

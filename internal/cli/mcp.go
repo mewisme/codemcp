@@ -146,7 +146,7 @@ func mcpStdioCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "bind this MCP session to a registered workspace ID or path")
-	markMachineOutput(cmd, "always")
+	markMachineOutput(cmd)
 	return cmd
 }
 

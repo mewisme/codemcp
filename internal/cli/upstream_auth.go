@@ -122,7 +122,7 @@ func upstreamServerAuthStatusCommand() *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return printJSON(cmd, status)
+				return writeResultJSON(cmd, status)
 			}
 			log := commandLogger(cmd)
 			if !status.Configured {
@@ -140,7 +140,7 @@ func upstreamServerAuthStatusCommand() *cobra.Command {
 			return nil
 		},
 	}
-	addJSONOutputFlag(command, &asJSON)
+	addJSONResultFlag(command, &asJSON)
 	return command
 }
 

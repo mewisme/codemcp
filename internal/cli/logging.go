@@ -17,8 +17,6 @@ import (
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
-const machineOutputAnnotation = "cm.machine-output"
-
 var commandLoggers sync.Map
 
 type commandProgress struct {
@@ -62,7 +60,7 @@ var traceProgress = map[string]traceProgressSpec{
 func addLoggingFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool("verbose", false, "show additional runtime context")
 	cmd.PersistentFlags().Bool("debug", false, "show full diagnostic logging")
-	cmd.PersistentFlags().String("log-format", "text", "log output format: text or json")
+	cmd.PersistentFlags().String("log-format", "text", "diagnostic log format: text or json; does not change command result format")
 }
 
 func validateLoggingFlags(cmd *cobra.Command, _ []string) error {
@@ -162,36 +160,6 @@ func commandLogWriter(cmd *cobra.Command) io.Writer {
 		return cmd.ErrOrStderr()
 	}
 	return cmd.OutOrStdout()
-}
-
-func addJSONOutputFlag(cmd *cobra.Command, target *bool) {
-	cmd.Flags().BoolVar(target, "json", false, "print JSON")
-	markMachineOutput(cmd, "json")
-}
-
-func markMachineOutput(cmd *cobra.Command, mode string) {
-	if cmd == nil {
-		return
-	}
-	if cmd.Annotations == nil {
-		cmd.Annotations = map[string]string{}
-	}
-	cmd.Annotations[machineOutputAnnotation] = mode
-}
-
-func commandMachineOutput(cmd *cobra.Command) bool {
-	if cmd == nil {
-		return false
-	}
-	switch cmd.Annotations[machineOutputAnnotation] {
-	case "always":
-		return true
-	case "json":
-		flag := cmd.Flags().Lookup("json")
-		return flag != nil && flag.Value.String() == "true"
-	default:
-		return false
-	}
 }
 
 func logCommandStart(cmd *cobra.Command, args []string) {

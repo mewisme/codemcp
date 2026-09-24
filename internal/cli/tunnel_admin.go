@@ -182,7 +182,7 @@ func tunnelListCommand() *cobra.Command {
 			return err
 		}
 		if asJSON {
-			return printJSON(cmd, items)
+			return writeResultJSON(cmd, items)
 		}
 		log.Success("TUNNEL", "managed tunnels loaded", "count", len(items))
 		for _, item := range items {
@@ -191,7 +191,7 @@ func tunnelListCommand() *cobra.Command {
 		return nil
 	}}
 	scopeFlags.add(cmd)
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -210,7 +210,7 @@ func tunnelGetCommand() *cobra.Command {
 		}
 		metadata := result.Metadata
 		if asJSON {
-			return printJSON(cmd, metadata)
+			return writeResultJSON(cmd, metadata)
 		}
 		log.Success("TUNNEL", "managed tunnel loaded")
 		logManagedTunnelMetadata(log, metadata)
@@ -220,7 +220,7 @@ func tunnelGetCommand() *cobra.Command {
 		return nil
 	}}
 	addManagedConfigureFlags(cmd, &configure, &runtimeAPIKey, &enable)
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 

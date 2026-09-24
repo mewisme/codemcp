@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -32,10 +31,7 @@ func configExplainCommand() *cobra.Command {
 			lookupSpan.EndMessage("Config schema explanation resolved", tracepkg.String("key", key), tracepkg.Bool("branch", explanation.Branch), tracepkg.Int("child_count", len(explanation.Children)))
 			if jsonOutput {
 				renderSpan := tracepkg.Start(cmd.Context(), "CONFIG", "config.explain.render", "Rendering config explanation", tracepkg.String("mode", "json"), tracepkg.String("key", key), tracepkg.Int("child_count", len(explanation.Children)))
-				encoder := json.NewEncoder(cmd.OutOrStdout())
-				encoder.SetIndent("", "  ")
-				encoder.SetEscapeHTML(false)
-				if err := encoder.Encode(explanation); err != nil {
+				if err := writeResultJSON(cmd, explanation); err != nil {
 					renderSpan.FailMessage("Config explanation JSON render failed", err, tracepkg.String("mode", "json"), tracepkg.String("key", key), tracepkg.Int("child_count", len(explanation.Children)))
 					return err
 				}
@@ -59,7 +55,7 @@ func configExplainCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output schema explanation as JSON")
+	addJSONResultFlag(cmd, &jsonOutput)
 	cmd.ValidArgsFunction = completeConfigSelection
 	return cmd
 }

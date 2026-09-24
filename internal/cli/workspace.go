@@ -42,7 +42,7 @@ func workspaceDoctorCommand() *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return printJSON(cmd, diagnostic)
+				return writeResultJSON(cmd, diagnostic)
 			}
 			log := commandLogger(cmd)
 			log.Info("WORKSPACE", "workspace local-state diagnostics")
@@ -76,7 +76,7 @@ func workspaceDoctorCommand() *cobra.Command {
 			return nil
 		},
 	}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -138,7 +138,7 @@ func workspaceContainerListCommand() *cobra.Command {
 		}
 		values := result.Value
 		if asJSON {
-			return printJSON(cmd, values)
+			return writeResultJSON(cmd, values)
 		}
 		log := commandLogger(cmd)
 		log.Success("WORKSPACE", "workspace containers loaded", "count", len(values))
@@ -147,7 +147,7 @@ func workspaceContainerListCommand() *cobra.Command {
 		}
 		return nil
 	}}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -175,7 +175,7 @@ func workspaceContainerShowCommand() *cobra.Command {
 		}
 		value := result.Value
 		if asJSON {
-			return printJSON(cmd, value)
+			return writeResultJSON(cmd, value)
 		}
 		log := commandLogger(cmd)
 		log.Info("WORKSPACE", "workspace container details")
@@ -188,7 +188,7 @@ func workspaceContainerShowCommand() *cobra.Command {
 		}
 		return nil
 	}}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -259,7 +259,7 @@ func workspaceAccessCommand() *cobra.Command {
 		}
 		allowDirs := result.Value
 		if listJSON {
-			return printJSON(cmd, allowDirs)
+			return writeResultJSON(cmd, allowDirs)
 		}
 		log := commandLogger(cmd)
 		log.Success("WORKSPACE", "allowed directories loaded", "count", len(allowDirs))
@@ -271,7 +271,7 @@ func workspaceAccessCommand() *cobra.Command {
 		}
 		return nil
 	}}
-	list.Flags().BoolVar(&listJSON, "json", false, "print JSON")
+	addJSONResultFlag(list, &listJSON)
 	cmd.AddCommand(
 		&cobra.Command{Use: "add <workspace_id> <path>", Short: "Grant a workspace access to an additional directory", Args: cobra.ExactArgs(2), ValidArgsFunction: completeWorkspaceThenDirectory, RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := workspaceServiceForCommand(cmd).AddAllowDir(cmd.Context(), args[0], args[1])
@@ -345,7 +345,7 @@ func workspaceListCommand() *cobra.Command {
 			}
 			items := result.Value
 			if asJSON {
-				return printJSON(cmd, items)
+				return writeResultJSON(cmd, items)
 			}
 			log := commandLogger(cmd)
 			log.Success("WORKSPACE", "registered workspaces loaded", "count", len(items))
@@ -366,7 +366,7 @@ func workspaceListCommand() *cobra.Command {
 			return nil
 		},
 	}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 
@@ -384,7 +384,7 @@ func workspaceShowCommand() *cobra.Command {
 			}
 			item := result.Value
 			if asJSON {
-				return printJSON(cmd, item)
+				return writeResultJSON(cmd, item)
 			}
 			log := commandLogger(cmd)
 			log.Info("WORKSPACE", "workspace details")
@@ -418,7 +418,7 @@ func workspaceShowCommand() *cobra.Command {
 			return nil
 		},
 	}
-	addJSONOutputFlag(cmd, &asJSON)
+	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
 

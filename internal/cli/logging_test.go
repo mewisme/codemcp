@@ -196,9 +196,9 @@ func TestMachineJSONOutputKeepsDiagnosticsOnStderr(t *testing.T) {
 	cmd.SetErr(&stderr)
 	child := &cobra.Command{Use: "machine", RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "TEST", "test.machine.loading", "Loading machine output")
-		return printJSON(cmd, map[string]any{"ok": true})
+		return writeResultJSON(cmd, map[string]any{"ok": true})
 	}}
-	addJSONOutputFlag(child, &asJSON)
+	addJSONResultFlag(child, &asJSON)
 	cmd.AddCommand(child)
 	cmd.SetArgs(testCommandArgs(t, "--verbose", "machine", "--json"))
 	if err := executeCommand(cmd); err != nil {
@@ -210,6 +210,90 @@ func TestMachineJSONOutputKeepsDiagnosticsOnStderr(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "Executing command") || !strings.Contains(stderr.String(), "Executing command") || !strings.Contains(stderr.String(), "Loading machine output") {
 		t.Fatalf("diagnostic routing stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestJSONResultModeRoutesDiagnosticsAcrossLogModes(t *testing.T) {
+	tests := []struct {
+		name     string
+		logArgs  []string
+		jsonLogs bool
+	}{
+		{name: "default-text"},
+		{name: "verbose-text", logArgs: []string{"--verbose"}},
+		{name: "debug-text", logArgs: []string{"--debug"}},
+		{name: "default-json-logs", logArgs: []string{"--log-format=json"}, jsonLogs: true},
+		{name: "verbose-json-logs", logArgs: []string{"--verbose", "--log-format=json"}, jsonLogs: true},
+		{name: "debug-json-logs", logArgs: []string{"--debug", "--log-format=json"}, jsonLogs: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			var asJSON bool
+			cmd := newRootCommand()
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			child := &cobra.Command{Use: "result-contract", RunE: func(cmd *cobra.Command, _ []string) error {
+				commandLogger(cmd).Notice("TEST", "test.result.diagnostic", "Result diagnostic")
+				return writeResultJSON(cmd, map[string]any{"value": "<redacted>"})
+			}}
+			addJSONResultFlag(child, &asJSON)
+			cmd.AddCommand(child)
+			args := append([]string{}, test.logArgs...)
+			args = append(args, "result-contract", "--json")
+			cmd.SetArgs(testCommandArgs(t, args...))
+			if err := executeCommand(cmd); err != nil {
+				t.Fatal(err)
+			}
+			var value map[string]any
+			if err := json.Unmarshal(stdout.Bytes(), &value); err != nil || value["value"] != "<redacted>" {
+				t.Fatalf("stdout is not one clean result JSON value: %q err=%v value=%#v", stdout.String(), err, value)
+			}
+			if strings.Contains(stdout.String(), "\x1b") || strings.Contains(stdout.String(), "\r") || strings.Contains(stdout.String(), "\\u003c") {
+				t.Fatalf("stdout contains terminal/escaped presentation residue: %q", stdout.String())
+			}
+			if !strings.Contains(stderr.String(), "Result diagnostic") {
+				t.Fatalf("diagnostic did not route to stderr: %q", stderr.String())
+			}
+			if test.jsonLogs {
+				for _, line := range strings.Split(strings.TrimSpace(stderr.String()), "\n") {
+					var event map[string]any
+					if err := json.Unmarshal([]byte(line), &event); err != nil {
+						t.Fatalf("stderr diagnostic is not JSONL: %q err=%v", line, err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestEveryJSONFlagUsesCanonicalResultMode(t *testing.T) {
+	root := newRootCommand()
+	var visit func(*cobra.Command)
+	visit = func(cmd *cobra.Command) {
+		if flag := cmd.Flags().Lookup("json"); flag != nil {
+			if cmd.Annotations[resultJSONAnnotation] != "true" {
+				t.Errorf("%s exposes --json without canonical result-mode binding", cmd.CommandPath())
+			}
+		}
+		for _, child := range cmd.Commands() {
+			visit(child)
+		}
+	}
+	visit(root)
+}
+
+func TestResultModeSeparatesResultJSONFromDiagnosticJSON(t *testing.T) {
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	if mode := commandResultModeFor(cmd); mode != resultModePlain {
+		t.Fatalf("buffer-backed command mode=%v want plain", mode)
+	}
+	usage := cmd.PersistentFlags().Lookup("log-format").Usage
+	if !strings.Contains(usage, "diagnostic") || !strings.Contains(usage, "does not change command result format") {
+		t.Fatalf("log-format help does not distinguish diagnostics from results: %q", usage)
 	}
 }
 
@@ -304,7 +388,7 @@ func TestMachineOutputTraceStaysOnStderr(t *testing.T) {
 		_, err := cmd.OutOrStdout().Write([]byte("DATA"))
 		return err
 	}}
-	markMachineOutput(child, "always")
+	markMachineOutput(child)
 	cmd.AddCommand(child)
 	cmd.SetArgs(testCommandArgs(t, "--verbose", "trace-machine"))
 	if err := executeCommand(cmd); err != nil {
