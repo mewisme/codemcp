@@ -1,4 +1,4 @@
-import { authHeaders, type ApprovalEvent } from "@/lib/api"
+import { adminRequestHeaders, type ApprovalEvent } from "@/lib/api"
 
 export type ApprovalStreamHandlers = {
   onReady?: () => void
@@ -7,7 +7,8 @@ export type ApprovalStreamHandlers = {
 
 export async function streamApprovals(signal: AbortSignal, handlers: ApprovalStreamHandlers = {}, workspaceID = "") {
   const query = workspaceID ? `?workspace_id=${encodeURIComponent(workspaceID)}` : ""
-  const response = await fetch(`/api/requests/stream${query}`, { headers: authHeaders(), signal })
+  const path = `/api/requests/stream${query}`
+  const response = await fetch(path, { headers: adminRequestHeaders(path), signal })
   if (!response.ok || !response.body) {
     const message = await response.text().catch(() => "")
     throw new Error(message.trim() || `Approval stream ${response.status}`)

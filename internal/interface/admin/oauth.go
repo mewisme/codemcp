@@ -93,7 +93,7 @@ func (api API) handleUpstreamOAuth(w http.ResponseWriter, r *http.Request, manag
 
 func (api API) OAuthCallbackHandler() http.Handler {
 	api = api.withOAuth()
-	return http.HandlerFunc(api.handleOAuthCallback)
+	return withCanonicalOperation(http.HandlerFunc(api.handleOAuthCallback))
 }
 
 func (api API) handleOAuthCallback(w http.ResponseWriter, r *http.Request) {

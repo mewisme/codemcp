@@ -1,4 +1,4 @@
-import { authHeaders, type ExecutionEvent, type ExecutionFeedEvent, type ExecutionFeedSnapshot, type ExecutionSnapshot } from "@/lib/api"
+import { adminRequestHeaders, type ExecutionEvent, type ExecutionFeedEvent, type ExecutionFeedSnapshot, type ExecutionSnapshot } from "@/lib/api"
 
 export type ExecutionStreamHandlers = {
   onSnapshot?: (snapshot: ExecutionSnapshot) => void
@@ -12,7 +12,7 @@ export type ExecutionFeedHandlers = {
 
 export async function streamExecution(workspaceID: string, executionID: string, signal: AbortSignal, handlers: ExecutionStreamHandlers = {}) {
   const path = `/api/workspaces/${encodeURIComponent(workspaceID)}/executions/${encodeURIComponent(executionID)}/stream`
-  const response = await fetch(path, { headers: authHeaders(), signal })
+  const response = await fetch(path, { headers: adminRequestHeaders(path), signal })
   if (!response.ok || !response.body) {
     const message = await response.text().catch(() => "")
     throw new Error(message.trim() || `Execution stream ${response.status}`)
@@ -56,7 +56,7 @@ export async function streamExecution(workspaceID: string, executionID: string, 
 
 export async function streamWorkspaceExecutions(workspaceID: string, signal: AbortSignal, handlers: ExecutionFeedHandlers = {}) {
   const path = `/api/workspaces/${encodeURIComponent(workspaceID)}/executions/stream`
-  const response = await fetch(path, { headers: authHeaders(), signal })
+  const response = await fetch(path, { headers: adminRequestHeaders(path), signal })
   if (!response.ok || !response.body) {
     const message = await response.text().catch(() => "")
     throw new Error(message.trim() || `Execution feed ${response.status}`)

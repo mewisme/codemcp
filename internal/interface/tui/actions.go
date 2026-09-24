@@ -97,7 +97,7 @@ func systemActions() []action.Action {
 
 func systemAction(id, title, description string, keywords, commandPath []string, command tuipage.SystemCommand, systemOnly bool) action.Action {
 	return action.Action{
-		ID: id, Title: title, Category: "System", Description: description, Keywords: keywords, CommandPath: commandPath, Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
+		ID: id, Title: title, Category: "System", Description: description, Keywords: keywords, CommandPath: commandPath, Operation: operationForCommandPath(commandPath), Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
 		Available: func(ctx action.Context) bool {
 			return ctx.Route == string(RouteRuntime) && (!systemOnly || runtime.GOOS != "windows")
 		},
@@ -119,7 +119,7 @@ func logsActions() []action.Action {
 
 func logsAction(id, title, description string, keywords, commandPath []string, command tuipage.LogsCommand) action.Action {
 	return action.Action{
-		ID: id, Title: title, Category: "Logs", Description: description, Keywords: keywords, CommandPath: commandPath, Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
+		ID: id, Title: title, Category: "Logs", Description: description, Keywords: keywords, CommandPath: commandPath, Operation: operationForCommandPath(commandPath), Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
 		Available: func(ctx action.Context) bool { return ctx.Route == string(RouteLogs) },
 		Run: func(context.Context, action.Context) tea.Cmd {
 			return func() tea.Msg { return tuipage.LogsCommandMsg{Command: command} }
@@ -142,7 +142,7 @@ func configActions() []action.Action {
 
 func configAction(id, title, description string, keywords, commandPath []string, command tuipage.ConfigCommand) action.Action {
 	return action.Action{
-		ID: id, Title: title, Category: "Config", Description: description, Keywords: keywords, CommandPath: commandPath, Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
+		ID: id, Title: title, Category: "Config", Description: description, Keywords: keywords, CommandPath: commandPath, Operation: operationForCommandPath(commandPath), Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
 		Available: func(ctx action.Context) bool { return ctx.Route == string(RouteConfig) },
 		Run: func(_ context.Context, ctx action.Context) tea.Cmd {
 			return func() tea.Msg { return tuipage.ConfigCommandMsg{Command: command, ResourceID: ctx.ResourceID} }
@@ -166,7 +166,7 @@ func requestActions() []action.Action {
 
 func requestAction(id, title, description string, keywords, commandPath []string, command tuipage.RequestCommand, needsResource bool) action.Action {
 	return action.Action{
-		ID: id, Title: title, Category: "Requests", Description: description, Keywords: keywords, CommandPath: commandPath, Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
+		ID: id, Title: title, Category: "Requests", Description: description, Keywords: keywords, CommandPath: commandPath, Operation: operationForCommandPath(commandPath), Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
 		Available: func(ctx action.Context) bool {
 			if ctx.Route != string(RouteRequests) {
 				return false
@@ -209,7 +209,7 @@ func tunnelActions() []action.Action {
 
 func tunnelAction(id, title, description string, keywords, commandPath []string, command tuipage.TunnelCommand, route RouteKind, needsResource bool) action.Action {
 	return action.Action{
-		ID: id, Title: title, Category: "Tunnel", Description: description, Keywords: keywords, CommandPath: commandPath, Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
+		ID: id, Title: title, Category: "Tunnel", Description: description, Keywords: keywords, CommandPath: commandPath, Operation: operationForCommandPath(commandPath), Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
 		Available: func(ctx action.Context) bool {
 			if ctx.Route != string(route) || needsResource && ctx.ResourceID == "" {
 				return false
@@ -257,7 +257,7 @@ func mcpActions() []action.Action {
 
 func mcpAction(id, title, description string, keywords, commandPath []string, command tuipage.MCPCommand, needsResource bool) action.Action {
 	return action.Action{
-		ID: id, Title: title, Category: "MCP", Description: description, Keywords: keywords, CommandPath: commandPath, Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
+		ID: id, Title: title, Category: "MCP", Description: description, Keywords: keywords, CommandPath: commandPath, Operation: operationForCommandPath(commandPath), Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
 		Available: func(ctx action.Context) bool {
 			return !needsResource || ctx.Route == string(RouteMCP) && ctx.ResourceID != ""
 		},
@@ -325,7 +325,7 @@ func workspaceContextNavigationAction(id, title, description, section string) ac
 
 func workspaceAction(id, title, description string, keywords, commandPath []string, command tuipage.WorkspaceCommand, needsResource, container bool) action.Action {
 	return action.Action{
-		ID: id, Title: title, Category: "Workspace", Description: description, Keywords: keywords, CommandPath: commandPath, Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
+		ID: id, Title: title, Category: "Workspace", Description: description, Keywords: keywords, CommandPath: commandPath, Operation: operationForCommandPath(commandPath), Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
 		Available: func(ctx action.Context) bool {
 			if !needsResource {
 				return true
@@ -354,16 +354,21 @@ func navigationAction(id, title string, route Route, keywords []string, capabili
 
 func editorNavigationAction(id, title, category, description string, keywords, commandPath []string, available func(action.Context) bool, route func(action.Context) Route) action.Action {
 	return action.Action{
-		ID: id, Title: title, Category: category, Description: description, Keywords: keywords, CommandPath: commandPath, Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal, Available: available,
+		ID: id, Title: title, Category: category, Description: description, Keywords: keywords, CommandPath: commandPath, Operation: operationForCommandPath(commandPath), Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal, Available: available,
 		Run: func(_ context.Context, ctx action.Context) tea.Cmd {
 			return func() tea.Msg { return navigateMsg{route: route(ctx)} }
 		},
 	}
 }
 
+func operationForCommandPath(commandPath []string) capability.ID {
+	id, _ := capability.ForPath(strings.Join(commandPath, " "))
+	return id
+}
+
 func capabilitiesForCommandPath(commandPath []string) []capability.ID {
-	id, ok := capability.ForPath(strings.Join(commandPath, " "))
-	if !ok {
+	id := operationForCommandPath(commandPath)
+	if id == "" {
 		return nil
 	}
 	return []capability.ID{id}

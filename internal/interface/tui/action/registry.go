@@ -43,6 +43,11 @@ func (registry *Registry) Register(action Action) error {
 	if _, exists := registry.items[action.ID]; exists {
 		return fmt.Errorf("duplicate action id: %s", action.ID)
 	}
+	if action.Operation != "" {
+		if _, ok := capability.Lookup(action.Operation); !ok {
+			return fmt.Errorf("action %q references unknown operation %q", action.ID, action.Operation)
+		}
+	}
 	seenCapabilities := map[capability.ID]bool{}
 	for _, id := range action.Capabilities {
 		if _, ok := capability.Lookup(id); !ok {
@@ -52,6 +57,9 @@ func (registry *Registry) Register(action Action) error {
 			return fmt.Errorf("action %q repeats capability %q", action.ID, id)
 		}
 		seenCapabilities[id] = true
+	}
+	if action.Operation != "" && !seenCapabilities[action.Operation] {
+		action.Capabilities = append(action.Capabilities, action.Operation)
 	}
 	registry.items[action.ID] = action
 	registry.order = append(registry.order, action.ID)

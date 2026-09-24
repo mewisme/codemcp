@@ -38,6 +38,24 @@ func TestEveryPublicCapabilityHasTUIRepresentation(t *testing.T) {
 	}
 }
 
+func TestExecutableTUIActionsCarryCanonicalOperationIDs(t *testing.T) {
+	for _, item := range defaultActionRegistry().All() {
+		if len(item.CommandPath) == 0 {
+			continue
+		}
+		want, mapped := capability.ForPath(strings.Join(item.CommandPath, " "))
+		if !mapped {
+			if item.Operation != "" {
+				t.Errorf("action %s has operation %s for unmapped path %q", item.ID, item.Operation, strings.Join(item.CommandPath, " "))
+			}
+			continue
+		}
+		if item.Operation != want {
+			t.Errorf("action %s operation=%s want=%s for %q", item.ID, item.Operation, want, strings.Join(item.CommandPath, " "))
+		}
+	}
+}
+
 func TestMappedCapabilitiesArePaletteDiscoverableByCanonicalCLIPath(t *testing.T) {
 	registry := defaultActionRegistry()
 	for _, spec := range capability.All() {

@@ -1,3 +1,5 @@
+import { browserOperationHeaders } from "@/lib/operations"
+
 export type Tool = {
   name: string
   title?: string
@@ -429,17 +431,21 @@ export class ApiError extends Error {
   }
 }
 
-export function authHeaders(): HeadersInit {
+export function adminRequestHeaders(
+  path: string,
+  method = "GET",
+  initial?: HeadersInit,
+) {
+  const headers = browserOperationHeaders(path, method, initial)
   const token = adminToken.get()
-  return token ? { Authorization: `Bearer ${token}` } : {}
+  if (token) headers.set("Authorization", `Bearer ${token}`)
+  return headers
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers)
+  const headers = adminRequestHeaders(path, init?.method ?? "GET", init?.headers)
   if (init?.body !== undefined && init.body !== null)
     headers.set("Content-Type", "application/json")
-  const token = adminToken.get()
-  if (token) headers.set("Authorization", `Bearer ${token}`)
   const response = await fetch(path, { ...init, headers })
   const text = response.status === 204 ? "" : await response.text()
   if (!response.ok)

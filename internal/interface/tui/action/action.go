@@ -32,6 +32,7 @@ type Action struct {
 	Description  string
 	Keywords     []string
 	CommandPath  []string
+	Operation    capability.ID
 	Capabilities []capability.ID
 	Shortcut     key.Binding
 	Scope        Scope

@@ -18,7 +18,7 @@ import { Item, ItemContent, ItemDescription, ItemGroup, ItemHeader, ItemTitle } 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { adminApi, authHeaders, type ActivityEvent } from "@/lib/api"
+import { adminApi, adminRequestHeaders, type ActivityEvent } from "@/lib/api"
 
 type ActivityStreamHandlers = { onReady: () => void; onEvent: (event: ActivityEvent) => void; onGap: (from: number, to: number) => void }
 
@@ -134,7 +134,8 @@ function formatDateTime(value: string) { const date = new Date(value); return Nu
 function errorText(value: unknown) { return value instanceof Error ? value.message : String(value) }
 
 async function streamActivity(signal: AbortSignal, handlers: ActivityStreamHandlers) {
-  const response = await fetch("/api/activity/stream?history=100", { headers: authHeaders(), signal })
+  const path = "/api/activity/stream?history=100"
+  const response = await fetch(path, { headers: adminRequestHeaders(path), signal })
   if (!response.ok || !response.body) { const message = await response.text().catch(() => ""); throw new Error(message.trim() || `Activity stream ${response.status}`) }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()

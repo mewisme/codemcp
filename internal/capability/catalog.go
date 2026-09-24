@@ -311,6 +311,39 @@ func ForAdmin(method, path string) (ID, bool) {
 	return "", false
 }
 
+func ForAdminRequest(method, path string) (ID, bool) {
+	want := normalizeAdminBinding(AdminBinding{Method: method, Path: path})
+	for _, spec := range specs {
+		for _, binding := range spec.Admin {
+			candidate := normalizeAdminBinding(binding)
+			if candidate.Method == want.Method && matchAdminPath(candidate.Path, want.Path) {
+				return spec.ID, true
+			}
+		}
+	}
+	return "", false
+}
+
+func matchAdminPath(pattern, path string) bool {
+	patternParts := strings.Split(strings.Trim(pattern, "/"), "/")
+	pathParts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(patternParts) != len(pathParts) {
+		return false
+	}
+	for index, part := range patternParts {
+		if strings.HasPrefix(part, "{") && strings.HasSuffix(part, "}") {
+			if strings.TrimSpace(pathParts[index]) == "" {
+				return false
+			}
+			continue
+		}
+		if part != pathParts[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func ForMCPTool(name string) (ID, bool) {
 	name = strings.TrimSpace(name)
 	for _, spec := range specs {

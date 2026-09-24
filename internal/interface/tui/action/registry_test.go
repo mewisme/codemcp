@@ -24,6 +24,20 @@ func TestRegistryRejectsInvalidAndDuplicateActions(t *testing.T) {
 	if _, err := NewRegistry(Action{ID: "cap", Title: "Capability", Capabilities: []capability.ID{capability.VersionAbout, capability.VersionAbout}}); err == nil {
 		t.Fatal("duplicate capability unexpectedly accepted")
 	}
+	if _, err := NewRegistry(Action{ID: "operation", Title: "Operation", Operation: "unknown"}); err == nil {
+		t.Fatal("unknown operation unexpectedly accepted")
+	}
+}
+
+func TestRegistryOperationIsCanonicalCapability(t *testing.T) {
+	registry, err := NewRegistry(Action{ID: "about", Title: "About", Operation: capability.VersionAbout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	item, ok := registry.Get("about")
+	if !ok || item.Operation != capability.VersionAbout || !reflect.DeepEqual(item.Capabilities, []capability.ID{capability.VersionAbout}) {
+		t.Fatalf("action=%#v ok=%t", item, ok)
+	}
 }
 
 func TestRegistryOrderingAvailabilityAndExecution(t *testing.T) {

@@ -55,6 +55,36 @@ func TestPublicCommandsHaveCanonicalCapabilities(t *testing.T) {
 	}
 }
 
+func TestRunnableCLICommandsCarryCanonicalOperationAnnotations(t *testing.T) {
+	root := newRootCommand()
+	var walk func(*cobra.Command, []string, bool)
+	walk = func(command *cobra.Command, prefix []string, hiddenAncestor bool) {
+		hidden := hiddenAncestor || command.Hidden
+		path := prefix
+		if command != root {
+			path = append(append([]string(nil), prefix...), command.Name())
+		}
+		if command.Runnable() && !hidden {
+			key := capability.RootPath
+			if command != root {
+				key = capability.NormalizePath(strings.Join(path, " "))
+			}
+			want, mapped := capability.ForPath(key)
+			got, annotated := canonicalCommandOperation(command)
+			if mapped && (!annotated || got != want) {
+				t.Errorf("%s annotation=%q,%t want=%q,true", key, got, annotated, want)
+			}
+			if !mapped && annotated {
+				t.Errorf("%s unexpectedly annotated as %q", key, got)
+			}
+		}
+		for _, child := range command.Commands() {
+			walk(child, path, hidden)
+		}
+	}
+	walk(root, nil, false)
+}
+
 func TestPublicCapabilityExemptionsAreExplicitAndCurrent(t *testing.T) {
 	actual := map[string]bool{}
 	for _, path := range collectRunnablePublicPaths(newRootCommand()) {

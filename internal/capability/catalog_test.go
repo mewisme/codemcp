@@ -155,3 +155,31 @@ func TestLookupReturnsDetachedSpec(t *testing.T) {
 		t.Fatal("Lookup returned mutable catalog backing data")
 	}
 }
+
+func TestCatalogAdminRequestLookupMatchesConcreteResourcePaths(t *testing.T) {
+	cases := []struct {
+		method string
+		path   string
+		want   ID
+	}{
+		{"GET", "/api/workspaces/ws_123", WorkspaceShow},
+		{"POST", "/api/workspaces/ws_123/relocate", WorkspaceRelocate},
+		{"GET", "/api/workspaces/ws_123/executions/exec_456", ExecutionView},
+		{"DELETE", "/api/workspace-containers/wsc_123/workspaces", WorkspaceContainerRemove},
+		{"GET", "/api/upstream/server_a/auth/status", MCPAuthStatus},
+		{"PUT", "/api/tunnel/managed/tun_123", TunnelUpdate},
+		{"GET", "/oauth/callback/server_a", OAuthCallbackComplete},
+	}
+	for _, tc := range cases {
+		got, ok := ForAdminRequest(tc.method, tc.path)
+		if !ok || got != tc.want {
+			t.Errorf("%s %s = %q, %t; want %q, true", tc.method, tc.path, got, ok, tc.want)
+		}
+	}
+	if _, ok := ForAdminRequest("POST", "/api/health"); ok {
+		t.Fatal("unsupported method unexpectedly resolved")
+	}
+	if _, ok := ForAdminRequest("GET", "/api/workspaces/ws_123/unknown"); ok {
+		t.Fatal("unknown concrete route unexpectedly resolved")
+	}
+}

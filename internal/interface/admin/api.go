@@ -119,7 +119,7 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/tunnel/managed/use", api.handleManagedTunnelUse)
 	mux.HandleFunc("/api/tunnel/managed/", api.handleManagedTunnel)
 	mux.HandleFunc("/api/tunnel", api.handleTunnel)
-	return mux
+	return withCanonicalOperation(mux)
 }
 
 func (api API) handleNetworkInterfaces(w http.ResponseWriter, r *http.Request) {
