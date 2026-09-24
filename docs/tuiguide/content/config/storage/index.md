@@ -12,8 +12,8 @@ Storage contains maintenance operations for persistent configuration/state rathe
 
 ## Import and export
 
-**Export** creates a portable sealed bundle. **Import** restores a bundle and requires explicit confirmation before replacing existing persistent state.
+**Export** creates a portable JSON envelope with managed secrets explicitly excluded. **Import** validates and restores an envelope and requires explicit confirmation before replacing existing persistent state.
 
 Import uses an existing-file picker with manual input fallback. Export accepts a destination that may not exist yet.
 
-See the child bundle topic for the contextual import/export behavior. Use the public [Configuration](../../../../configuration.md) guide for the broader storage model.
+See the child envelope topic for the contextual import/export behavior. Use the public [Configuration](../../../../configuration.md) guide for the broader storage model.

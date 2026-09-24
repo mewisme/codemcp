@@ -2,6 +2,7 @@ package configbundle
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,36 +17,35 @@ import (
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
-func TestEncodeSealsAndAuthenticatesBundle(t *testing.T) {
-	bundle := Bundle{
-		Version: Version, CreatedAt: time.Unix(1, 0).UTC(), Source: Platform{OS: "linux", Arch: "amd64", Home: "/home/mew"},
-		Files:   []File{{Path: "config.json", Mode: 0600, Data: []byte(`{"secret":"plain-marker"}`)}},
-		Secrets: map[string]string{"secret-name": "plain-secret-value"},
+func TestEncodeWritesVersionedJSONEnvelopeWithoutSecrets(t *testing.T) {
+	envelope := Envelope{
+		Version: Version, CreatedAt: time.Unix(1, 0).UTC(), Source: Platform{OS: "linux", Arch: "amd64", Home: "/home/mew"}, SecretPolicy: SecretPolicyExcluded,
+		Files: []File{{Path: "config.json", Mode: 0600, Data: []byte(`{"server":{}}`)}},
 	}
-	encoded, err := encode(bundle)
+	encoded, err := encode(envelope)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, plain := range [][]byte{[]byte("plain-marker"), []byte("plain-secret-value")} {
-		if bytes.Contains(encoded, plain) {
-			t.Fatalf("sealed bundle leaked plaintext %q", plain)
-		}
+	if !json.Valid(encoded) {
+		t.Fatalf("export is not JSON: %q", encoded)
+	}
+	if bytes.Contains(encoded, []byte(`"secrets"`)) || !bytes.Contains(encoded, []byte(`"secret_policy": "excluded"`)) {
+		t.Fatalf("secret policy envelope = %s", encoded)
 	}
 	decoded, err := decode(encoded)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Secrets["secret-name"] != "plain-secret-value" || string(decoded.Files[0].Data) != `{"secret":"plain-marker"}` {
-		t.Fatalf("decoded bundle = %#v", decoded)
+	if decoded.SecretPolicy != SecretPolicyExcluded || string(decoded.Files[0].Data) != `{"server":{}}` {
+		t.Fatalf("decoded envelope = %#v", decoded)
 	}
-	tampered := append([]byte(nil), encoded...)
-	tampered[len(tampered)-1] ^= 1
-	if _, err := decode(tampered); err == nil || !strings.Contains(err.Error(), "authentication failed") {
-		t.Fatalf("tampered bundle error = %v", err)
+	withSecrets := []byte(`{"version":1,"created_at":"2026-09-24T00:00:00Z","source":{"os":"linux","arch":"amd64"},"secret_policy":"excluded","files":[],"secrets":{"x":"plain"}}`)
+	if _, err := decode(withSecrets); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("secret-bearing envelope error = %v", err)
 	}
 }
 
-func TestExportIncludesLogicalSecretsAndSkipsRuntimeState(t *testing.T) {
+func TestExportExcludesManagedSecretsAndRuntimeState(t *testing.T) {
 	root := t.TempDir()
 	writeConfigFile(t, root, validConfig())
 	if err := os.WriteFile(filepath.Join(root, "tunnel.json"), []byte("{\n  \"runtime_key_configured\": true\n}\n"), 0600); err != nil {
@@ -60,6 +60,8 @@ func TestExportIncludesLogicalSecretsAndSkipsRuntimeState(t *testing.T) {
 		"logs/runtime.jsonl":                        "runtime log\n",
 		"runtime/environment.json":                  `{"version":1}`,
 		"state/instance.json":                       `{"version":1}`,
+		"oauth.json":                                `{"version":1,"credentials":{"server":{"server_id":"server","client_secret":"oauth-client-secret","access_token":"oauth-access-token","refresh_token":"oauth-refresh-token"}}}`,
+		"upstream.json":                             `{"version":1,"servers":[{"id":"server","headers":{"Authorization":"upstream-header-secret","X-Test":"ok"},"env":{"API_TOKEN":"upstream-env-secret","MODE":"test"}}]}`,
 		"workspaces/ws_test/checkpoints/index.json": `{"version":1}`,
 		"workspaces/ws_test/shell.json":             `{"workspace_id":"ws_test"}`,
 	} {
@@ -71,27 +73,38 @@ func TestExportIncludesLogicalSecretsAndSkipsRuntimeState(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	destination := filepath.Join(t.TempDir(), "backup.cgm")
+	destination := filepath.Join(t.TempDir(), "backup.json")
 	result, err := Export(root, destination, ExportOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Secrets != 1 || result.SkippedFiles < 6 {
+	if result.SkippedFiles < 6 {
 		t.Fatalf("result = %#v", result)
 	}
 	raw, err := os.ReadFile(destination)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(raw, []byte("sk-portable-secret")) {
+	if !json.Valid(raw) || bytes.Contains(raw, []byte("sk-portable-secret")) || bytes.Contains(raw, []byte(`"secrets"`)) {
 		t.Fatal("export leaked secret plaintext")
 	}
 	bundle, err := decode(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bundle.Secrets[secretName] != "sk-portable-secret" {
-		t.Fatalf("secrets = %#v", bundle.Secrets)
+	if bundle.SecretPolicy != SecretPolicyExcluded {
+		t.Fatalf("secret policy = %q", bundle.SecretPolicy)
+	}
+	for _, file := range bundle.Files {
+		text := string(file.Data)
+		for _, secret := range []string{"mcp-hash", "admin-hash", "oauth-client-secret", "oauth-access-token", "oauth-refresh-token", "upstream-header-secret", "upstream-env-secret"} {
+			if strings.Contains(text, secret) {
+				t.Fatalf("presentation-safe export leaked %q in %s", secret, file.Path)
+			}
+		}
+		if file.Path == "config.json" && (strings.Contains(text, "mcp_token_hash") || strings.Contains(text, "admin_token_hash")) {
+			t.Fatalf("sensitive credential verifier remained in config export: %s", text)
+		}
 	}
 	for _, file := range bundle.Files {
 		if excludedFile(file.Path) {
@@ -105,7 +118,7 @@ func TestExportRequiresCanonicalConfigJSON(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("[server]\nport = 37421\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	destination := filepath.Join(t.TempDir(), "backup.cgm")
+	destination := filepath.Join(t.TempDir(), "backup.json")
 	if _, err := Export(root, destination, ExportOptions{}); err == nil || !strings.Contains(err.Error(), "configuration is not initialized") {
 		t.Fatalf("legacy-only config export error = %v", err)
 	}
@@ -240,34 +253,59 @@ func TestNormalizeMainConfigPreservesUnknownKeys(t *testing.T) {
 	}
 }
 
-func TestImportRestoresSecretAndRollsBackInvalidReplacement(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "config")
-	bundleFile := filepath.Join(t.TempDir(), "portable.cgm")
+func TestImportPreservesExistingSecretsAndRejectsInvalidEnvelopeBeforeMutation(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "config")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeConfigFile(t, root, validConfig())
+	if err := configformat.MarkRoot(root); err != nil {
+		t.Fatal(err)
+	}
+	secretName := secretstore.Name("tunnel", "runtime-key")
+	if err := secretstore.New(root).Set(secretName, "sk-existing"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "tunnel.json"), []byte("{\n  \"version\": 1,\n  \"runtime_key_configured\": true\n}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	cfg := validConfig()
+	cfg.Server.Port = 40200
 	configData, err := configformat.Marshal(configformat.JSON, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secretName := secretstore.Name("tunnel", "runtime-key")
-	good := Bundle{
-		Version: Version, CreatedAt: time.Now().UTC(), Source: currentPlatform(),
-		Files: []File{
-			{Path: "config.json", Mode: 0600, Data: configData},
-			{Path: "tunnel.json", Mode: 0600, Data: []byte("{\n  \"runtime_key_configured\": true\n}\n")},
-		},
-		Secrets: map[string]string{secretName: "sk-imported"},
-	}
-	writeBundleFile(t, bundleFile, good)
-	result, err := Import(root, bundleFile, ImportOptions{})
+	configData, err = presentationSafeConfig(configData)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Secrets != 1 || result.Files < 2 {
+	envelopeFile := filepath.Join(t.TempDir(), "portable.json")
+	good := Envelope{
+		Version: Version, CreatedAt: time.Now().UTC(), Source: currentPlatform(), SecretPolicy: SecretPolicyExcluded,
+		Files: []File{{Path: "config.json", Mode: 0600, Data: configData}},
+	}
+	writeEnvelopeFile(t, envelopeFile, good)
+	result, err := Import(root, envelopeFile, ImportOptions{Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Files != 1 {
 		t.Fatalf("result = %#v", result)
 	}
+	if result.BackupPath == "" {
+		t.Fatal("forced import did not retain a backup")
+	}
+	if err := os.RemoveAll(result.BackupPath); err != nil {
+		t.Fatal(err)
+	}
 	secret, err := secretstore.New(root).Get(secretName)
-	if err != nil || secret != "sk-imported" {
+	if err != nil || secret != "sk-existing" {
 		t.Fatalf("secret = %q err=%v", secret, err)
+	}
+	tunnelData, err := os.ReadFile(filepath.Join(root, "tunnel.json"))
+	if err != nil || !strings.Contains(string(tunnelData), `"runtime_key_configured": true`) {
+		t.Fatalf("tunnel secret metadata = %s err=%v", tunnelData, err)
 	}
 	if _, err := config.VerifyAt(root); err != nil {
 		t.Fatal(err)
@@ -283,9 +321,13 @@ func TestImportRestoresSecretAndRollsBackInvalidReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	badFile := filepath.Join(t.TempDir(), "bad.cgm")
-	writeBundleFile(t, badFile, Bundle{Version: Version, CreatedAt: time.Now().UTC(), Source: currentPlatform(), Files: []File{{Path: "config.json", Mode: 0600, Data: badData}}})
-	if _, err := Import(root, badFile, ImportOptions{Force: true}); err == nil || !strings.Contains(err.Error(), "verify imported configuration") {
+	badData, err = presentationSafeConfig(badData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	badFile := filepath.Join(t.TempDir(), "bad.json")
+	writeEnvelopeFile(t, badFile, Envelope{Version: Version, CreatedAt: time.Now().UTC(), Source: currentPlatform(), SecretPolicy: SecretPolicyExcluded, Files: []File{{Path: "config.json", Mode: 0600, Data: badData}}})
+	if _, err := Import(root, badFile, ImportOptions{Force: true}); err == nil || !strings.Contains(err.Error(), "before activation") {
 		t.Fatalf("invalid import error = %v", err)
 	}
 	restored, err := os.ReadFile(filepath.Join(root, "config.json"))
@@ -296,8 +338,17 @@ func TestImportRestoresSecretAndRollsBackInvalidReplacement(t *testing.T) {
 		t.Fatal("failed import did not restore previous config root")
 	}
 	secret, err = secretstore.New(root).Get(secretName)
-	if err != nil || secret != "sk-imported" {
+	if err != nil || secret != "sk-existing" {
 		t.Fatalf("rolled back secret = %q err=%v", secret, err)
+	}
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".config-backup-") || strings.HasPrefix(entry.Name(), ".config-failed-import-") || strings.HasPrefix(entry.Name(), ".config-import-") {
+			t.Fatalf("invalid import left transactional residue: %s", entry.Name())
+		}
 	}
 }
 
@@ -308,6 +359,7 @@ func TestImportForceMergesExistingMainConfig(t *testing.T) {
 	}
 	existing := map[string]any{
 		"server": map[string]any{"port": int64(40100), "existing_only": true},
+		"auth":   map[string]any{"mcp_token_hash": "target-mcp-hash", "admin_token_hash": "target-admin-hash"},
 		"custom": map[string]any{"nested": "keep"},
 	}
 	existingData, err := configformat.EncodeGeneric(configformat.JSON, existing)
@@ -326,8 +378,12 @@ func TestImportForceMergesExistingMainConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bundleFile := filepath.Join(t.TempDir(), "merge.cgm")
-	writeBundleFile(t, bundleFile, Bundle{Version: Version, CreatedAt: time.Now().UTC(), Source: currentPlatform(), Files: []File{{Path: "config.json", Mode: 0600, Data: importedData}}})
+	importedData, err = presentationSafeConfig(importedData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundleFile := filepath.Join(t.TempDir(), "merge.json")
+	writeEnvelopeFile(t, bundleFile, Envelope{Version: Version, CreatedAt: time.Now().UTC(), Source: currentPlatform(), SecretPolicy: SecretPolicyExcluded, Files: []File{{Path: "config.json", Mode: 0600, Data: importedData}}})
 	if _, err := Import(root, bundleFile, ImportOptions{Force: true}); err != nil {
 		t.Fatal(err)
 	}
@@ -341,9 +397,21 @@ func TestImportForceMergesExistingMainConfig(t *testing.T) {
 	}
 	result := raw.(map[string]any)
 	server := result["server"].(map[string]any)
+	auth := result["auth"].(map[string]any)
 	custom := result["custom"].(map[string]any)
-	if server["port"] != int64(40200) || server["existing_only"] != true || custom["nested"] != "keep" {
+	if server["port"] != int64(40200) || server["existing_only"] != true || auth["mcp_token_hash"] != "target-mcp-hash" || auth["admin_token_hash"] != "target-admin-hash" || custom["nested"] != "keep" {
 		t.Fatalf("merged import = %#v", result)
+	}
+}
+
+func TestValidateEnvelopeRejectsSensitiveState(t *testing.T) {
+	data, err := configformat.Marshal(configformat.JSON, validConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope := Envelope{Version: Version, CreatedAt: time.Now().UTC(), Source: currentPlatform(), SecretPolicy: SecretPolicyExcluded, Files: []File{{Path: "config.json", Data: data}}}
+	if err := validateEnvelope(envelope); err == nil || !strings.Contains(err.Error(), "sensitive state") {
+		t.Fatalf("sensitive envelope error = %v", err)
 	}
 }
 
@@ -365,7 +433,7 @@ func writeConfigFile(t *testing.T, root string, cfg config.Config) {
 	}
 }
 
-func writeBundleFile(t *testing.T, path string, bundle Bundle) {
+func writeEnvelopeFile(t *testing.T, path string, bundle Bundle) {
 	t.Helper()
 	data, err := encode(bundle)
 	if err != nil {

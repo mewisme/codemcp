@@ -87,11 +87,11 @@ func TestGuideFolderOverviewAndNestedTopics(t *testing.T) {
 	if page.tab != 0 || !strings.Contains(ansi.Strip(page.View(100, 30)), "Configuration") {
 		t.Fatalf("left arrow did not return to overview: tab=%d", page.tab)
 	}
-	nested, err := NewGuide(t.Context(), "config/storage/bundles")
+	nested, err := NewGuide(t.Context(), "config/storage/envelopes")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(ansi.Strip(nested.View(100, 30)), "Configuration Bundles") {
+	if !strings.Contains(ansi.Strip(nested.View(100, 30)), "Configuration Envelopes") {
 		t.Fatal("deep nested guide did not render")
 	}
 }

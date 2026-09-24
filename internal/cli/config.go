@@ -14,7 +14,7 @@ import (
 	"go.mewis.me/codemcp/internal/logger"
 )
 
-const defaultConfigBundleFile = "codemcp-config.cgm"
+const defaultConfigBundleFile = "codemcp-config.json"
 
 func configCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "config", Aliases: []string{"cfg"}, Short: "Read and update validated runtime configuration", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
@@ -46,18 +46,18 @@ func configExportCommand() *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "export [file]",
-		Short: "Export portable configuration, state, and secrets into one sealed bundle",
-		Long:  "Export portable configuration, state, and secrets into one sealed bundle. The default file is " + defaultConfigBundleFile + " in the current directory.",
+		Short: "Export portable non-secret configuration and state as JSON",
+		Long:  "Export portable non-secret configuration and state as a versioned JSON envelope. Managed secrets are excluded. The default file is " + defaultConfigBundleFile + " in the current directory.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			file := configBundleFile(args)
-			logCommandStep(cmd, "CONFIG", "config.export.preparing", "Exporting configuration bundle", logger.WithVerbose("file", file))
+			logCommandStep(cmd, "CONFIG", "config.export.preparing", "Exporting configuration envelope", logger.WithVerbose("file", file))
 			result, err := application.ExportConfigContext(cmd.Context(), file, force)
 			if err != nil {
-				return fmt.Errorf("export configuration bundle: %w", err)
+				return fmt.Errorf("export configuration envelope: %w", err)
 			}
 			log := commandLogger(cmd)
-			log.Success("CONFIG", "configuration exported", "files", result.Files, "secrets", result.Secrets)
+			log.Success("CONFIG", "configuration exported", "files", result.Files)
 			log.Detail("file", result.Path)
 			log.Detail("source", result.Source.OS+"/"+result.Source.Arch)
 			if result.SkippedFiles > 0 {
@@ -74,20 +74,20 @@ func configImportCommand() *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{
 		Use:   "import [file]",
-		Short: "Import a portable configuration bundle and restore its secrets",
-		Long:  "Import a portable configuration bundle and restore its secrets. The default file is " + defaultConfigBundleFile + " in the current directory.",
+		Short: "Import a portable JSON configuration envelope",
+		Long:  "Import a versioned JSON configuration envelope. The envelope never carries managed secrets; existing target secrets are preserved on forced imports. The default file is " + defaultConfigBundleFile + " in the current directory.",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			file := configBundleFile(args)
-			logCommandStep(cmd, "CONFIG", "config.import.preparing", "Importing configuration bundle", logger.WithVerbose("file", file))
+			logCommandStep(cmd, "CONFIG", "config.import.preparing", "Importing configuration envelope", logger.WithVerbose("file", file))
 			ctx, cancel := context.WithTimeout(cmd.Context(), 2*time.Second)
 			defer cancel()
 			result, err := application.ImportConfig(ctx, file, force)
 			if err != nil {
-				return fmt.Errorf("import configuration bundle: %w", err)
+				return fmt.Errorf("import configuration envelope: %w", err)
 			}
 			log := commandLogger(cmd)
-			log.Success("CONFIG", "configuration imported", "files", result.Files, "secrets", result.Secrets)
+			log.Success("CONFIG", "configuration imported", "files", result.Files)
 			log.Detail("source", result.Source.OS+"/"+result.Source.Arch)
 			log.Detail("target", result.Target.OS+"/"+result.Target.Arch)
 			if result.SkippedPaths > 0 {

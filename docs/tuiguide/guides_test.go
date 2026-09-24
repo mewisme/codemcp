@@ -43,10 +43,10 @@ func TestMarkdownReturnsOnlyRequestedTopic(t *testing.T) {
 
 func TestFolderConventionBuildsArbitraryGuideHierarchy(t *testing.T) {
 	for id, parent := range map[string]string{
-		"config":                 "",
-		"config/shell":           "config",
-		"config/storage":         "config",
-		"config/storage/bundles": "config/storage",
+		"config":                   "",
+		"config/shell":             "config",
+		"config/storage":           "config",
+		"config/storage/envelopes": "config/storage",
 	} {
 		topic, ok := Lookup(id)
 		if !ok || topic.Parent != parent {
@@ -57,8 +57,8 @@ func TestFolderConventionBuildsArbitraryGuideHierarchy(t *testing.T) {
 	if len(children) != 3 || children[0].ID != "config/fields" || children[1].ID != "config/shell" || children[2].ID != "config/storage" {
 		t.Fatalf("config children=%#v", children)
 	}
-	markdown, err := Markdown("config/storage/bundles")
-	if err != nil || !strings.Contains(markdown, "# Configuration Bundles") {
+	markdown, err := Markdown("config/storage/envelopes")
+	if err != nil || !strings.Contains(markdown, "# Configuration Envelopes") {
 		t.Fatalf("nested markdown err=%v content=%q", err, markdown)
 	}
 }

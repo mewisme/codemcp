@@ -53,7 +53,6 @@ type configOperationMsg struct {
 	mutation    application.ConfigMutationResult
 	verify      config.VerifyResult
 	files       int
-	secrets     int
 	migrated    int
 	path        string
 	err         error
@@ -509,9 +508,9 @@ func (page *ConfigPage) finishOperation(msg configOperationMsg) tea.Cmd {
 	case ConfigMigrateSecrets:
 		page.notice = fmt.Sprintf("Secret files encrypted at rest · %d migrated", msg.migrated)
 	case ConfigExport:
-		page.notice = fmt.Sprintf("Configuration exported · %d files · %d secrets · %s", msg.files, msg.secrets, msg.path)
+		page.notice = fmt.Sprintf("Configuration exported · %d files · secrets excluded · %s", msg.files, msg.path)
 	case ConfigImport:
-		page.notice = fmt.Sprintf("Configuration imported · %d files · %d secrets", msg.files, msg.secrets)
+		page.notice = fmt.Sprintf("Configuration imported · %d files · target secrets preserved", msg.files)
 	}
 	if page.editor != nil {
 		page.editor.SetSubmitting(false)
@@ -665,8 +664,8 @@ func (page *ConfigPage) storageRows() []component.Row {
 		{ID: "verify", Title: "Verify configuration", Description: "Validate stored configuration and structured files", Meta: string(page.overview.Source.Format)},
 		{ID: "migrate", Title: "Migrate legacy credentials", Description: "Move legacy credentials into secret store", Meta: "credential maintenance"},
 		{ID: "migrate-secrets", Title: "Encrypt secret files", Description: "Encrypt plaintext secret-store files at rest", Meta: "at-rest encryption"},
-		{ID: "export", Title: "Export configuration bundle", Description: "Export configuration and managed secrets", Meta: "bundle"},
-		{ID: "import", Title: "Import configuration bundle", Description: "Import configuration and managed secrets", Meta: "bundle"},
+		{ID: "export", Title: "Export configuration envelope", Description: "Export portable non-secret configuration/state as JSON", Meta: "JSON"},
+		{ID: "import", Title: "Import configuration envelope", Description: "Import JSON configuration/state while preserving target secrets", Meta: "JSON"},
 	}
 }
 

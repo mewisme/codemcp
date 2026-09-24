@@ -311,14 +311,17 @@ func TestConfigExportImportPreservesSafetyAndState(t *testing.T) {
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
-	bundle := filepath.Join(base, "backup.cgm")
+	bundle := filepath.Join(base, "backup.json")
 	if _, err := ExportConfig(bundle, false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ExportConfig(bundle, false); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("export overwrite safety err=%v", err)
 	}
-	if _, err := SetConfigField(t.Context(), "server.port", "40234"); err != nil {
+	cfg.Server.Port = 40234
+	cfg.Auth.MCPTokenHash = "target-mcp-hash"
+	cfg.Auth.AdminTokenHash = "target-admin-hash"
+	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ImportConfig(context.Background(), bundle, false); err == nil || !strings.Contains(err.Error(), "already exists") {
@@ -331,7 +334,7 @@ func TestConfigExportImportPreservesSafetyAndState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != 40123 || loaded.Auth.MCPTokenHash != "mcp-hash" || loaded.Auth.AdminTokenHash != "admin-hash" {
+	if loaded.Server.Port != 40123 || loaded.Auth.MCPTokenHash != "target-mcp-hash" || loaded.Auth.AdminTokenHash != "target-admin-hash" {
 		t.Fatalf("import did not restore original config: %#v", loaded)
 	}
 }

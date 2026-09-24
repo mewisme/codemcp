@@ -66,9 +66,9 @@ func (page *ConfigPage) submitConfigEditor() tea.Cmd {
 		}
 		data := *page.bundleForm
 		page.editor.SetSubmitting(true)
-		return page.startOperation(ConfigExport, "Exporting configuration bundle", func(context.Context) configOperationMsg {
+		return page.startOperation(ConfigExport, "Exporting configuration envelope", func(context.Context) configOperationMsg {
 			result, err := application.ExportConfig(data.Path, data.Force)
-			return configOperationMsg{command: ConfigExport, path: result.Path, files: result.Files, secrets: result.Secrets, err: err}
+			return configOperationMsg{command: ConfigExport, path: result.Path, files: result.Files, err: err}
 		})
 	case ConfigImport:
 		page.confirm = component.NewConfirmButtons("Import", "Cancel", false)
@@ -102,9 +102,9 @@ func (page *ConfigPage) updateConfigImportConfirm(msg tea.KeyPressMsg) tea.Cmd {
 		data := *page.bundleForm
 		page.confirm = component.ConfirmButtons{}
 		page.editor.SetSubmitting(true)
-		return page.startOperation(ConfigImport, "Importing configuration bundle", func(ctx context.Context) configOperationMsg {
+		return page.startOperation(ConfigImport, "Importing configuration envelope", func(ctx context.Context) configOperationMsg {
 			result, err := application.ImportConfig(ctx, data.Path, data.Force)
-			return configOperationMsg{command: ConfigImport, files: result.Files, secrets: result.Secrets, err: err}
+			return configOperationMsg{command: ConfigImport, files: result.Files, err: err}
 		})
 	default:
 		return page.confirm.Update(msg)
@@ -150,8 +150,8 @@ func (page *ConfigPage) configEditorMouseTargets(originX, originY, z int) []comp
 func (page *ConfigPage) configImportConfirmBody(width int) string {
 	bodyWidth := component.ModalContentWidth(width)
 	return strings.Join([]string{
-		component.WrapContent(component.Title("Import configuration bundle?"), bodyWidth), "",
-		component.WrapContent(component.Muted("Current configuration/state may be replaced. Managed secrets from the bundle may also be imported."), bodyWidth), "",
+		component.WrapContent(component.Title("Import configuration envelope?"), bodyWidth), "",
+		component.WrapContent(component.Muted("Current configuration/state may be replaced. Managed secrets are not imported and existing target secrets are preserved."), bodyWidth), "",
 		page.confirm.View(), component.WrapContent(component.Muted("Enter confirm · Esc keep editing"), bodyWidth),
 	}, "\n")
 }

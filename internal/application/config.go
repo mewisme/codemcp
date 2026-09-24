@@ -372,38 +372,34 @@ func ExportConfig(destination string, force bool) (configbundle.ExportResult, er
 }
 
 func ExportConfigContext(ctx context.Context, destination string, force bool) (configbundle.ExportResult, error) {
-	span := tracepkg.Start(ctx, "CONFIG", "config.export", "Exporting portable configuration bundle", tracepkg.String("source_root", config.RootPath()), tracepkg.String("destination", destination), tracepkg.Bool("force", force))
-	if err := MigrateLegacySecretsContext(ctx); err != nil {
-		span.FailMessage("Configuration bundle export failed", err, tracepkg.String("destination", destination))
-		return configbundle.ExportResult{}, err
-	}
+	span := tracepkg.Start(ctx, "CONFIG", "config.export", "Exporting portable configuration envelope", tracepkg.String("source_root", config.RootPath()), tracepkg.String("destination", destination), tracepkg.Bool("force", force))
 	result, err := configbundle.Export(config.RootPath(), destination, configbundle.ExportOptions{Force: force})
 	if err != nil {
-		span.FailMessage("Configuration bundle export failed", err, tracepkg.String("destination", destination))
+		span.FailMessage("Configuration envelope export failed", err, tracepkg.String("destination", destination))
 		return configbundle.ExportResult{}, err
 	}
-	span.EndMessage("Configuration bundle exported", tracepkg.String("destination", result.Path), tracepkg.Int("files", result.Files), tracepkg.Int("secrets", result.Secrets), tracepkg.Int("skipped_files", result.SkippedFiles), tracepkg.String("source_platform", result.Source.OS+"/"+result.Source.Arch))
+	span.EndMessage("Configuration envelope exported", tracepkg.String("destination", result.Path), tracepkg.Int("files", result.Files), tracepkg.Int("skipped_files", result.SkippedFiles), tracepkg.String("source_platform", result.Source.OS+"/"+result.Source.Arch))
 	return result, nil
 }
 
 func ImportConfig(ctx context.Context, source string, force bool) (configbundle.ImportResult, error) {
-	span := tracepkg.Start(ctx, "CONFIG", "config.import", "Importing portable configuration bundle", tracepkg.String("source", source), tracepkg.String("destination_root", config.RootPath()), tracepkg.Bool("force", force))
+	span := tracepkg.Start(ctx, "CONFIG", "config.import", "Importing portable configuration envelope", tracepkg.String("source", source), tracepkg.String("destination_root", config.RootPath()), tracepkg.Bool("force", force))
 	running, err := RuntimeRunning(ctx)
 	if err != nil {
-		span.FailMessage("Configuration bundle import runtime check failed", err)
+		span.FailMessage("Configuration envelope import runtime check failed", err)
 		return configbundle.ImportResult{}, err
 	}
 	if running {
 		err := errors.New("runtime is running; stop it before importing configuration")
-		span.FailMessage("Configuration bundle import refused", err, tracepkg.Bool("runtime_running", true))
+		span.FailMessage("Configuration envelope import refused", err, tracepkg.Bool("runtime_running", true))
 		return configbundle.ImportResult{}, err
 	}
 	result, err := configbundle.Import(config.RootPath(), source, configbundle.ImportOptions{Force: force})
 	if err != nil {
-		span.FailMessage("Configuration bundle import failed", err, tracepkg.String("source", source))
+		span.FailMessage("Configuration envelope import failed", err, tracepkg.String("source", source))
 		return configbundle.ImportResult{}, err
 	}
-	span.EndMessage("Configuration bundle imported", tracepkg.String("source", source), tracepkg.String("destination_root", config.RootPath()), tracepkg.Int("files", result.Files), tracepkg.Int("secrets", result.Secrets), tracepkg.Int("skipped_paths", result.SkippedPaths), tracepkg.Int("skipped_files", result.SkippedFiles), tracepkg.Bool("backup_created", result.BackupPath != ""), tracepkg.String("source_platform", result.Source.OS+"/"+result.Source.Arch), tracepkg.String("target_platform", result.Target.OS+"/"+result.Target.Arch))
+	span.EndMessage("Configuration envelope imported", tracepkg.String("source", source), tracepkg.String("destination_root", config.RootPath()), tracepkg.Int("files", result.Files), tracepkg.Int("skipped_paths", result.SkippedPaths), tracepkg.Int("skipped_files", result.SkippedFiles), tracepkg.Bool("backup_created", result.BackupPath != ""), tracepkg.String("source_platform", result.Source.OS+"/"+result.Source.Arch), tracepkg.String("target_platform", result.Target.OS+"/"+result.Target.Arch))
 	return result, nil
 }
 

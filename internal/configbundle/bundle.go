@@ -2,11 +2,6 @@ package configbundle
 
 import (
 	"bytes"
-	"compress/gzip"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,14 +25,11 @@ import (
 )
 
 const (
-	Version            = 1
-	magic              = "CGMCFG\x00\x01"
-	maxBundleBytes     = 256 << 20
-	maxStateBytes      = 128 << 20
-	maxBundleFileBytes = 64 << 20
-	// Keep the released v1 key material stable so CodeMCP can import bundles
-	// produced by released v0.2.24 installations.
-	legacyBundleKeyMaterialV1 = "chatgpt-mcp portable config bundle v1 / mewis.me"
+	Version              = 1
+	SecretPolicyExcluded = "excluded"
+	maxBundleBytes       = 256 << 20
+	maxStateBytes        = 128 << 20
+	maxBundleFileBytes   = 64 << 20
 )
 
 type Platform struct {
@@ -52,13 +44,15 @@ type File struct {
 	Data []byte `json:"data"`
 }
 
-type Bundle struct {
-	Version   int               `json:"version"`
-	CreatedAt time.Time         `json:"created_at"`
-	Source    Platform          `json:"source"`
-	Files     []File            `json:"files"`
-	Secrets   map[string]string `json:"secrets,omitempty"`
+type Envelope struct {
+	Version      int       `json:"version"`
+	CreatedAt    time.Time `json:"created_at"`
+	Source       Platform  `json:"source"`
+	SecretPolicy string    `json:"secret_policy"`
+	Files        []File    `json:"files"`
 }
+
+type Bundle = Envelope
 
 type ExportOptions struct {
 	Force bool
@@ -67,7 +61,6 @@ type ExportOptions struct {
 type ExportResult struct {
 	Path         string
 	Files        int
-	Secrets      int
 	SkippedFiles int
 	Source       Platform
 }
@@ -78,7 +71,6 @@ type ImportOptions struct {
 
 type ImportResult struct {
 	Files        int
-	Secrets      int
 	SkippedPaths int
 	SkippedFiles int
 	BackupPath   string
@@ -127,13 +119,9 @@ func Export(root, destination string, options ExportOptions) (ExportResult, erro
 	if err != nil {
 		return ExportResult{}, err
 	}
-	secrets, err := collectSecrets(root)
-	if err != nil {
-		return ExportResult{}, err
-	}
 	platform := currentPlatform()
-	bundle := Bundle{Version: Version, CreatedAt: time.Now().UTC(), Source: platform, Files: files, Secrets: secrets}
-	encoded, err := encode(bundle)
+	envelope := Envelope{Version: Version, CreatedAt: time.Now().UTC(), Source: platform, SecretPolicy: SecretPolicyExcluded, Files: files}
+	encoded, err := encode(envelope)
 	if err != nil {
 		return ExportResult{}, err
 	}
@@ -143,7 +131,7 @@ func Export(root, destination string, options ExportOptions) (ExportResult, erro
 	if err := state.WriteFileAtomic(destination, encoded, 0600); err != nil {
 		return ExportResult{}, err
 	}
-	return ExportResult{Path: destination, Files: len(files), Secrets: len(secrets), SkippedFiles: skippedFiles, Source: platform}, nil
+	return ExportResult{Path: destination, Files: len(files), SkippedFiles: skippedFiles, Source: platform}, nil
 }
 
 func Import(root, source string, options ImportOptions) (ImportResult, error) {
@@ -158,15 +146,12 @@ func Import(root, source string, options ImportOptions) (ImportResult, error) {
 	if within(root, source) {
 		return ImportResult{}, errors.New("config import file must be outside the selected config root")
 	}
-	bundle, err := readBundle(source)
+	bundle, err := readEnvelope(source)
 	if err != nil {
 		return ImportResult{}, err
 	}
-	if bundle.Version != Version {
-		return ImportResult{}, fmt.Errorf("unsupported config bundle version: %d", bundle.Version)
-	}
-	if strings.TrimSpace(bundle.Source.OS) == "" {
-		return ImportResult{}, errors.New("config bundle source platform is missing")
+	if err := validateEnvelope(bundle); err != nil {
+		return ImportResult{}, err
 	}
 	hasTarget, err := directoryHasContent(root)
 	if err != nil {
@@ -183,6 +168,12 @@ func Import(root, source string, options ImportOptions) (ImportResult, error) {
 	if err != nil {
 		return ImportResult{}, err
 	}
+	stageActive := true
+	defer func() {
+		if stageActive {
+			_ = os.RemoveAll(stage)
+		}
+	}()
 	target := currentPlatform()
 	materialized, err := materialize(stage, bundle, target)
 	if err != nil {
@@ -192,9 +183,20 @@ func Import(root, source string, options ImportOptions) (ImportResult, error) {
 		if err := mergeImportedMainConfig(root, stage); err != nil {
 			return ImportResult{}, err
 		}
+		if err := preserveExistingSecrets(root, stage); err != nil {
+			return ImportResult{}, err
+		}
 	}
 	if err := configformat.MarkRoot(stage); err != nil {
 		return ImportResult{}, err
+	}
+	if _, err := config.VerifyAt(stage); err != nil {
+		return ImportResult{}, fmt.Errorf("verify imported configuration before activation: %w", err)
+	}
+	if hasTarget {
+		if err := rebindExistingSecretStore(root, stage); err != nil {
+			return ImportResult{}, fmt.Errorf("prepare preserved secrets for activation: %w", err)
+		}
 	}
 	backup := ""
 	if _, err := os.Stat(root); err == nil {
@@ -225,23 +227,12 @@ func Import(root, source string, options ImportOptions) (ImportResult, error) {
 		}
 		return ImportResult{}, fmt.Errorf("activate imported config root: %w", err)
 	}
-	changes := make([]secretstore.Change, 0, len(bundle.Secrets))
-	secretNames := make([]string, 0, len(bundle.Secrets))
-	for name := range bundle.Secrets {
-		secretNames = append(secretNames, name)
-	}
-	sort.Strings(secretNames)
-	for _, name := range secretNames {
-		changes = append(changes, secretstore.Change{Name: name, Value: bundle.Secrets[name]})
-	}
-	if err := secretstore.New(root).Apply(changes); err != nil {
-		return ImportResult{}, rollback(fmt.Errorf("restore imported secrets: %w", err))
-	}
+	stageActive = false
 	if _, err := config.VerifyAt(root); err != nil {
 		return ImportResult{}, rollback(fmt.Errorf("verify imported configuration: %w", err))
 	}
 	return ImportResult{
-		Files: materialized.files, Secrets: len(bundle.Secrets), SkippedPaths: materialized.skippedPaths,
+		Files: materialized.files, SkippedPaths: materialized.skippedPaths,
 		SkippedFiles: materialized.skippedFiles, BackupPath: backup, Source: bundle.Source, Target: target,
 	}, nil
 }
@@ -300,9 +291,13 @@ func collectFiles(root string) ([]File, int, error) {
 		if len(data) > maxBundleFileBytes {
 			return fmt.Errorf("config state file is too large to export: %s", relative)
 		}
+		data, err = presentationSafeFile(relative, data)
+		if err != nil {
+			return err
+		}
 		total += int64(len(data))
 		if total > maxStateBytes {
-			return errors.New("config bundle payload exceeds size limit")
+			return errors.New("config envelope payload exceeds size limit")
 		}
 		files = append(files, File{Path: relative, Mode: uint32(info.Mode().Perm()), Data: data})
 		return nil
@@ -316,7 +311,7 @@ func collectFiles(root string) ([]File, int, error) {
 
 func excludedFile(relative string) bool {
 	relative = pathpkg.Clean(strings.TrimPrefix(relative, "./"))
-	if relative == ".runtime-control.json" || relative == "state/instance.json" || relative == "state/update.json" {
+	if relative == ".runtime-control.json" || relative == "tunnel.json" || relative == "state/instance.json" || relative == "state/update.json" {
 		return true
 	}
 	for _, prefix := range []string{"logs/", "runtime/", "state/secrets/"} {
@@ -333,50 +328,86 @@ func excludedFile(relative string) bool {
 	return false
 }
 
-func collectSecrets(root string) (map[string]string, error) {
-	required := map[string]bool{}
-	add := func(values []string) {
-		for _, value := range values {
-			if strings.TrimSpace(value) != "" {
-				required[value] = true
+func presentationSafeFile(relative string, data []byte) ([]byte, error) {
+	switch pathpkg.Clean(relative) {
+	case "config.json":
+		return presentationSafeConfig(data)
+	case "oauth.json":
+		return presentationSafeOAuth(data)
+	case "upstream.json":
+		return presentationSafeUpstream(data)
+	default:
+		return data, nil
+	}
+}
+
+func presentationSafeConfig(data []byte) ([]byte, error) {
+	decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
+	if err != nil {
+		return nil, fmt.Errorf("decode config for export: %w", err)
+	}
+	root, ok := decoded.(map[string]any)
+	if !ok {
+		return nil, errors.New("config export requires an object root")
+	}
+	if auth, ok := root["auth"].(map[string]any); ok {
+		delete(auth, "mcp_token_hash")
+		delete(auth, "admin_token_hash")
+	}
+	if tunnel, ok := root["tunnel"].(map[string]any); ok {
+		delete(tunnel, "api_key")
+		delete(tunnel, "admin_key")
+	}
+	return configformat.EncodeGeneric(configformat.JSON, root)
+}
+
+func presentationSafeOAuth(data []byte) ([]byte, error) {
+	decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
+	if err != nil {
+		return nil, fmt.Errorf("decode OAuth state for export: %w", err)
+	}
+	root, ok := decoded.(map[string]any)
+	if !ok {
+		return nil, errors.New("OAuth export requires an object root")
+	}
+	credentials, _ := root["credentials"].(map[string]any)
+	for _, value := range credentials {
+		credential, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		delete(credential, "client_secret")
+		delete(credential, "access_token")
+		delete(credential, "refresh_token")
+	}
+	return configformat.EncodeGeneric(configformat.JSON, root)
+}
+
+func presentationSafeUpstream(data []byte) ([]byte, error) {
+	decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
+	if err != nil {
+		return nil, fmt.Errorf("decode upstream state for export: %w", err)
+	}
+	root, ok := decoded.(map[string]any)
+	if !ok {
+		return nil, errors.New("upstream export requires an object root")
+	}
+	servers, _ := root["servers"].([]any)
+	for _, value := range servers {
+		server, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, field := range []string{"headers", "env"} {
+			values, _ := server[field].(map[string]any)
+			for key := range values {
+				if upstream.SensitiveConfigKey(key) {
+					delete(values, key)
+				}
 			}
 		}
 	}
-	tunnelEntries, err := config.TunnelSecretEntries(root)
-	if err != nil {
-		return nil, err
-	}
-	add(tunnelEntries)
-	oauthEntries, err := oauth.NewStore(configformat.StructuredPath(root, "oauth")).SecretEntries()
-	if err != nil {
-		return nil, err
-	}
-	add(oauthEntries)
-	upstreamEntries, err := upstream.NewStore(configformat.StructuredPath(root, "upstream")).SecretEntries()
-	if err != nil {
-		return nil, err
-	}
-	add(upstreamEntries)
-	optionalRelay := secretstore.Name("cluster", "relay-token")
-	names := make([]string, 0, len(required)+1)
-	for name := range required {
-		names = append(names, name)
-	}
-	names = append(names, optionalRelay)
-	sort.Strings(names)
-	store := secretstore.New(root)
-	result := map[string]string{}
-	for _, name := range names {
-		value, err := store.Get(name)
-		if errors.Is(err, secretstore.ErrNotFound) && name == optionalRelay {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		result[name] = value
-	}
-	return result, nil
+	return configformat.EncodeGeneric(configformat.JSON, root)
 }
 
 func materialize(root string, bundle Bundle, target Platform) (materializeResult, error) {
@@ -407,7 +438,7 @@ func materialize(root string, bundle Bundle, target Platform) (materializeResult
 	for _, item := range files {
 		relative, ok := safeRelative(item.Path)
 		if !ok {
-			return result, fmt.Errorf("config bundle contains unsafe path: %q", item.Path)
+			return result, fmt.Errorf("config envelope contains unsafe path: %q", item.Path)
 		}
 		data := item.Data
 		if topLevelStructured(relative, "config") {
@@ -435,12 +466,12 @@ func materialize(root string, bundle Bundle, target Platform) (materializeResult
 			data = normalized
 		}
 		if previous, exists := written[relative]; exists {
-			return result, fmt.Errorf("config bundle path collision after platform normalization: %s (%s, %s)", relative, previous, item.Path)
+			return result, fmt.Errorf("config envelope path collision after platform normalization: %s (%s, %s)", relative, previous, item.Path)
 		}
 		written[relative] = item.Path
 		destination := filepath.Join(root, filepath.FromSlash(relative))
 		if !within(root, destination) {
-			return result, fmt.Errorf("config bundle path escapes target root: %s", relative)
+			return result, fmt.Errorf("config envelope path escapes target root: %s", relative)
 		}
 		if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
 			return result, err
@@ -456,15 +487,15 @@ func materialize(root string, bundle Bundle, target Platform) (materializeResult
 func normalizeMainConfig(data []byte, source, target Platform) ([]byte, int, error) {
 	raw, err := configformat.DecodeGeneric(configformat.JSON, data)
 	if err != nil {
-		return nil, 0, fmt.Errorf("decode bundled config: %w", err)
+		return nil, 0, fmt.Errorf("decode envelope config: %w", err)
 	}
 	root, ok := raw.(map[string]any)
 	if !ok {
-		return nil, 0, errors.New("bundled config must be an object")
+		return nil, 0, errors.New("envelope config must be an object")
 	}
 	cfg := config.Default()
 	if err := configformat.Unmarshal(configformat.JSON, data, &cfg); err != nil {
-		return nil, 0, fmt.Errorf("decode bundled config: %w", err)
+		return nil, 0, fmt.Errorf("decode envelope config: %w", err)
 	}
 	skipped := 0
 	if permissions, ok := root["permissions"].(map[string]any); ok {
@@ -541,7 +572,7 @@ func normalizeWorkspaceRegistry(file File, source, target Platform) ([]byte, map
 	}
 	var registry workspaceRegistry
 	if err := configformat.Unmarshal(format, file.Data, &registry); err != nil {
-		return nil, nil, nil, 0, fmt.Errorf("decode bundled workspace registry: %w", err)
+		return nil, nil, nil, 0, fmt.Errorf("decode envelope workspace registry: %w", err)
 	}
 	mapping := map[string]string{}
 	roots := map[string]string{}
@@ -701,16 +732,16 @@ func appendUnique(values []string, value string) []string {
 	return append(values, value)
 }
 
-func readBundle(file string) (Bundle, error) {
+func readEnvelope(file string) (Bundle, error) {
 	info, err := os.Stat(file)
 	if err != nil {
 		return Bundle{}, err
 	}
 	if !info.Mode().IsRegular() {
-		return Bundle{}, errors.New("config bundle is not a regular file")
+		return Bundle{}, errors.New("config envelope is not a regular file")
 	}
 	if info.Size() > maxBundleBytes {
-		return Bundle{}, errors.New("config bundle exceeds size limit")
+		return Bundle{}, errors.New("config envelope exceeds size limit")
 	}
 	data, err := os.ReadFile(file)
 	if err != nil {
@@ -720,90 +751,309 @@ func readBundle(file string) (Bundle, error) {
 }
 
 func encode(bundle Bundle) ([]byte, error) {
-	plain, err := json.Marshal(bundle)
-	if err != nil {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(bundle); err != nil {
 		return nil, err
 	}
-	if len(plain) > maxBundleBytes {
-		return nil, errors.New("config bundle payload exceeds size limit")
+	if buffer.Len() > maxBundleBytes {
+		return nil, errors.New("config envelope exceeds size limit")
 	}
-	var compressed bytes.Buffer
-	zipper := gzip.NewWriter(&compressed)
-	if _, err := zipper.Write(plain); err != nil {
-		return nil, err
-	}
-	if err := zipper.Close(); err != nil {
-		return nil, err
-	}
-	aead, err := bundleAEAD()
-	if err != nil {
-		return nil, err
-	}
-	nonce := make([]byte, aead.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, err
-	}
-	sealed := aead.Seal(nil, nonce, compressed.Bytes(), []byte(magic))
-	result := make([]byte, 0, len(magic)+len(nonce)+len(sealed))
-	result = append(result, []byte(magic)...)
-	result = append(result, nonce...)
-	result = append(result, sealed...)
-	if len(result) > maxBundleBytes {
-		return nil, errors.New("config bundle exceeds size limit")
-	}
-	return result, nil
+	return buffer.Bytes(), nil
 }
 
 func decode(data []byte) (Bundle, error) {
-	if len(data) < len(magic) || string(data[:len(magic)]) != magic {
-		return Bundle{}, errors.New("invalid config bundle header")
-	}
-	aead, err := bundleAEAD()
-	if err != nil {
-		return Bundle{}, err
-	}
-	offset := len(magic)
-	if len(data) < offset+aead.NonceSize()+aead.Overhead() {
-		return Bundle{}, errors.New("config bundle is truncated")
-	}
-	nonce := data[offset : offset+aead.NonceSize()]
-	ciphertext := data[offset+aead.NonceSize():]
-	compressed, err := aead.Open(nil, nonce, ciphertext, []byte(magic))
-	if err != nil {
-		return Bundle{}, errors.New("config bundle authentication failed")
-	}
-	zipper, err := gzip.NewReader(bytes.NewReader(compressed))
-	if err != nil {
-		return Bundle{}, fmt.Errorf("open config bundle payload: %w", err)
-	}
-	defer zipper.Close()
-	plain, err := io.ReadAll(io.LimitReader(zipper, maxBundleBytes+1))
-	if err != nil {
-		return Bundle{}, err
-	}
-	if len(plain) > maxBundleBytes {
-		return Bundle{}, errors.New("config bundle payload exceeds size limit")
+	if len(data) > maxBundleBytes {
+		return Bundle{}, errors.New("config envelope exceeds size limit")
 	}
 	var bundle Bundle
-	if err := json.Unmarshal(plain, &bundle); err != nil {
-		return Bundle{}, fmt.Errorf("decode config bundle payload: %w", err)
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&bundle); err != nil {
+		return Bundle{}, fmt.Errorf("decode config envelope: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return Bundle{}, errors.New("config envelope contains multiple JSON values")
+		}
+		return Bundle{}, fmt.Errorf("decode config envelope trailing data: %w", err)
 	}
 	if bundle.Files == nil {
 		bundle.Files = []File{}
 	}
-	if bundle.Secrets == nil {
-		bundle.Secrets = map[string]string{}
-	}
 	return bundle, nil
 }
 
-func bundleAEAD() (cipher.AEAD, error) {
-	key := sha256.Sum256([]byte(legacyBundleKeyMaterialV1))
-	block, err := aes.NewCipher(key[:])
-	if err != nil {
-		return nil, err
+func validateEnvelope(envelope Envelope) error {
+	if envelope.Version != Version {
+		return fmt.Errorf("unsupported config envelope version: %d", envelope.Version)
 	}
-	return cipher.NewGCM(block)
+	if envelope.CreatedAt.IsZero() {
+		return errors.New("config envelope created_at is missing")
+	}
+	if strings.TrimSpace(envelope.Source.OS) == "" || strings.TrimSpace(envelope.Source.Arch) == "" {
+		return errors.New("config envelope source platform is incomplete")
+	}
+	if envelope.SecretPolicy != SecretPolicyExcluded {
+		return fmt.Errorf("unsupported config envelope secret policy: %q", envelope.SecretPolicy)
+	}
+	if len(envelope.Files) == 0 {
+		return errors.New("config envelope contains no files")
+	}
+	seen := map[string]bool{}
+	total := int64(0)
+	hasConfig := false
+	for _, file := range envelope.Files {
+		relative, ok := safeRelative(file.Path)
+		if !ok {
+			return fmt.Errorf("config envelope contains unsafe path: %q", file.Path)
+		}
+		if excludedFile(relative) {
+			return fmt.Errorf("config envelope contains non-portable or secret state: %s", relative)
+		}
+		if seen[relative] {
+			return fmt.Errorf("config envelope contains duplicate path: %s", relative)
+		}
+		seen[relative] = true
+		if relative == "config.json" {
+			hasConfig = true
+		}
+		if len(file.Data) > maxBundleFileBytes {
+			return fmt.Errorf("config envelope file exceeds size limit: %s", relative)
+		}
+		sensitive, err := containsSensitiveState(relative, file.Data)
+		if err != nil {
+			return err
+		}
+		if sensitive {
+			return fmt.Errorf("config envelope contains sensitive state: %s", relative)
+		}
+		total += int64(len(file.Data))
+		if total > maxStateBytes {
+			return errors.New("config envelope state exceeds size limit")
+		}
+	}
+	if !hasConfig {
+		return errors.New("config envelope is missing config.json")
+	}
+	return nil
+}
+
+func containsSensitiveState(relative string, data []byte) (bool, error) {
+	switch pathpkg.Clean(relative) {
+	case "config.json":
+		decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
+		if err != nil {
+			return false, fmt.Errorf("decode config envelope file %s: %w", relative, err)
+		}
+		root, ok := decoded.(map[string]any)
+		if !ok {
+			return false, errors.New("config envelope config.json must contain an object")
+		}
+		if auth, ok := root["auth"].(map[string]any); ok {
+			for _, key := range []string{"mcp_token_hash", "admin_token_hash"} {
+				if value, exists := auth[key]; exists && strings.TrimSpace(fmt.Sprint(value)) != "" {
+					return true, nil
+				}
+			}
+		}
+		if tunnel, ok := root["tunnel"].(map[string]any); ok {
+			for _, key := range []string{"api_key", "admin_key"} {
+				if value, exists := tunnel[key]; exists && strings.TrimSpace(fmt.Sprint(value)) != "" {
+					return true, nil
+				}
+			}
+		}
+	case "oauth.json":
+		decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
+		if err != nil {
+			return false, fmt.Errorf("decode OAuth envelope file: %w", err)
+		}
+		root, _ := decoded.(map[string]any)
+		credentials, _ := root["credentials"].(map[string]any)
+		for _, value := range credentials {
+			credential, _ := value.(map[string]any)
+			for _, key := range []string{"client_secret", "access_token", "refresh_token"} {
+				if value, exists := credential[key]; exists && strings.TrimSpace(fmt.Sprint(value)) != "" {
+					return true, nil
+				}
+			}
+		}
+	case "upstream.json":
+		decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
+		if err != nil {
+			return false, fmt.Errorf("decode upstream envelope file: %w", err)
+		}
+		root, _ := decoded.(map[string]any)
+		servers, _ := root["servers"].([]any)
+		for _, value := range servers {
+			server, _ := value.(map[string]any)
+			for _, field := range []string{"headers", "env"} {
+				values, _ := server[field].(map[string]any)
+				for key, value := range values {
+					if upstream.SensitiveConfigKey(key) && strings.TrimSpace(fmt.Sprint(value)) != "" {
+						return true, nil
+					}
+				}
+			}
+		}
+	}
+	return false, nil
+}
+
+func preserveExistingSecrets(existingRoot, stagedRoot string) error {
+	if err := preserveExistingSecretMetadata(existingRoot, stagedRoot); err != nil {
+		return err
+	}
+	names := map[string]bool{}
+	add := func(values []string) {
+		for _, value := range values {
+			if strings.TrimSpace(value) != "" {
+				names[value] = true
+			}
+		}
+	}
+	tunnelNames, err := config.TunnelSecretEntries(existingRoot)
+	if err != nil {
+		return err
+	}
+	add(tunnelNames)
+	oauthNames, err := oauth.NewStore(configformat.StructuredPath(existingRoot, "oauth")).SecretEntries()
+	if err != nil {
+		return err
+	}
+	add(oauthNames)
+	upstreamNames, err := upstream.NewStore(configformat.StructuredPath(existingRoot, "upstream")).SecretEntries()
+	if err != nil {
+		return err
+	}
+	add(upstreamNames)
+	optionalRelay := secretstore.Name("cluster", "relay-token")
+	names[optionalRelay] = true
+	ordered := make([]string, 0, len(names))
+	for name := range names {
+		ordered = append(ordered, name)
+	}
+	sort.Strings(ordered)
+	source := secretstore.New(existingRoot)
+	changes := make([]secretstore.Change, 0, len(ordered))
+	for _, name := range ordered {
+		value, err := source.Get(name)
+		if errors.Is(err, secretstore.ErrNotFound) && name == optionalRelay {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("read existing secret %s: %w", name, err)
+		}
+		changes = append(changes, secretstore.Change{Name: name, Value: value})
+	}
+	if len(changes) == 0 {
+		return nil
+	}
+	if err := secretstore.New(stagedRoot).Apply(changes); err != nil {
+		return fmt.Errorf("stage existing secrets: %w", err)
+	}
+	return nil
+}
+
+func preserveExistingSecretMetadata(existingRoot, stagedRoot string) error {
+	root, err := os.OpenRoot(existingRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	file, err := root.Open("tunnel.json")
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxBundleFileBytes {
+		_ = file.Close()
+		return errors.New("existing tunnel secret metadata is not a bounded regular file")
+	}
+	data, readErr := io.ReadAll(io.LimitReader(file, maxBundleFileBytes+1))
+	closeErr := file.Close()
+	if readErr != nil {
+		return readErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if len(data) > maxBundleFileBytes {
+		return errors.New("existing tunnel secret metadata exceeds size limit")
+	}
+	return state.WriteFileAtomic(filepath.Join(stagedRoot, "tunnel.json"), data, 0600)
+}
+
+func rebindExistingSecretStore(existingRoot, stagedRoot string) error {
+	source := filepath.Join(existingRoot, "state", "secrets")
+	destination := filepath.Join(stagedRoot, "state", "secrets")
+	if err := os.RemoveAll(destination); err != nil {
+		return err
+	}
+	info, err := os.Stat(source)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return errors.New("existing secret store is not a directory")
+	}
+	root, err := os.OpenRoot(source)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == source {
+			return os.MkdirAll(destination, 0700)
+		}
+		relative, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("existing secret store contains symlink: %s", relative)
+		}
+		target := filepath.Join(destination, relative)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0700)
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("existing secret store contains non-regular file: %s", relative)
+		}
+		file, err := root.Open(relative)
+		if err != nil {
+			return err
+		}
+		data, readErr := io.ReadAll(io.LimitReader(file, maxBundleFileBytes+1))
+		closeErr := file.Close()
+		if readErr != nil {
+			return readErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if len(data) > maxBundleFileBytes {
+			return fmt.Errorf("existing secret store file exceeds size limit: %s", relative)
+		}
+		return state.WriteFileAtomic(target, data, 0600)
+	})
 }
 
 func directoryHasContent(root string) (bool, error) {

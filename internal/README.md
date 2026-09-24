@@ -31,7 +31,7 @@ CLI / TUI / Admin HTTP / embedded web / protocol entrypoints
 | `cli` | interface | Top-level process/CLI workflow and command presentation |
 | `commandpattern` | domain | Command matching semantics |
 | `config` | domain | Configuration model and validation |
-| `configbundle` | persistence | Portable configuration bundle persistence |
+| `configbundle` | persistence | Portable JSON configuration envelope persistence |
 | `configformat` | persistence | Structured configuration encoding/root paths |
 | `controlguard` | domain | Control-plane mutation guard semantics |
 | `controlplane` | runtime | Process/control-plane execution policy helpers |

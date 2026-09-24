@@ -3,4 +3,3 @@ apply-*
 /frontend/coverage/
 .agents/
 .local/
-*.cgm

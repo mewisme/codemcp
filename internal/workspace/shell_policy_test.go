@@ -433,8 +433,8 @@ func TestShellPolicyBlocksCMControlPlaneMutations(t *testing.T) {
 	}
 	for _, command := range []string{
 		"cm config set permissions.allow_dirs /tmp",
-		"cm config export backup.cgm",
-		"cm config import backup.cgm",
+		"cm config export backup.json",
+		"cm config import backup.json",
 		"cm auth mcp create",
 		"cm workspace access add ws_test /tmp",
 		"cm update",

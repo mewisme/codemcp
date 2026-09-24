@@ -353,24 +353,24 @@ func TestConfigExplainLeafBranchAndJSON(t *testing.T) {
 	}
 }
 
-func TestConfigBundleCommandsUseOptionalDefaultFile(t *testing.T) {
-	if defaultConfigBundleFile != "codemcp-config.cgm" {
-		t.Fatalf("default bundle identity = %q", defaultConfigBundleFile)
+func TestConfigEnvelopeCommandsUseOptionalDefaultFile(t *testing.T) {
+	if defaultConfigBundleFile != "codemcp-config.json" {
+		t.Fatalf("default envelope identity = %q", defaultConfigBundleFile)
 	}
 	if got := configBundleFile(nil); got != defaultConfigBundleFile {
-		t.Fatalf("default bundle file = %q", got)
+		t.Fatalf("default envelope file = %q", got)
 	}
-	if got := configBundleFile([]string{"custom.cgm"}); got != "custom.cgm" {
-		t.Fatalf("custom bundle file = %q", got)
+	if got := configBundleFile([]string{"custom.json"}); got != "custom.json" {
+		t.Fatalf("custom envelope file = %q", got)
 	}
 	for _, command := range []*cobra.Command{configExportCommand(), configImportCommand()} {
 		if err := command.Args(command, nil); err != nil {
 			t.Fatalf("%s rejected default file: %v", command.Name(), err)
 		}
-		if err := command.Args(command, []string{"custom.cgm"}); err != nil {
+		if err := command.Args(command, []string{"custom.json"}); err != nil {
 			t.Fatalf("%s rejected custom file: %v", command.Name(), err)
 		}
-		if err := command.Args(command, []string{"one.cgm", "two.cgm"}); err == nil {
+		if err := command.Args(command, []string{"one.json", "two.json"}); err == nil {
 			t.Fatalf("%s accepted multiple files", command.Name())
 		}
 	}

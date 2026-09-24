@@ -79,20 +79,20 @@ func configFieldFormValue(data *configFieldFormData) string {
 }
 
 func newConfigBundleEditor(export bool) (component.Editor, *configBundleFormData) {
-	data := &configBundleFormData{Path: "codemcp-config.cgm"}
+	data := &configBundleFormData{Path: "codemcp-config.json"}
 	var pathField huh.Field
-	primary, description := "import", "Import a configuration bundle and managed secrets."
+	primary, description := "import", "Import a versioned JSON configuration envelope. Managed secrets are excluded."
 	if export {
-		primary, description = "export", "Export configuration and managed secrets to a bundle file. The destination may not exist yet."
-		pathField = component.Input("Bundle file", &data.Path).Validate(validateConfigBundlePath)
+		primary, description = "export", "Export portable non-secret configuration/state to a JSON envelope. The destination may not exist yet."
+		pathField = component.Input("Envelope file", &data.Path).Validate(validateConfigBundlePath)
 	} else {
-		pathField = component.NewPathField("Bundle file", &data.Path, component.PathFieldOptions{Kind: component.PathKindFile, Validate: validateConfigBundlePath})
+		pathField = component.NewPathField("Envelope file", &data.Path, component.PathFieldOptions{Kind: component.PathKindFile, Validate: validateConfigBundlePath})
 	}
 	forceLabel := "Overwrite destination if it exists"
 	if !export {
 		forceLabel = "Replace existing configuration/state"
 	}
-	editor := component.NewEditor(primary, component.EditorSection{ID: "bundle", Title: "Bundle", Description: description, Form: component.NewEditorForm(component.Group(
+	editor := component.NewEditor(primary, component.EditorSection{ID: "bundle", Title: "JSON envelope", Description: description, Form: component.NewEditorForm(component.Group(
 		pathField,
 		component.Switch(forceLabel, &data.Force, "YES", "NO"),
 	))})
@@ -101,10 +101,10 @@ func newConfigBundleEditor(export bool) (component.Editor, *configBundleFormData
 
 func validateConfigBundlePath(value string) error {
 	if strings.TrimSpace(value) == "" {
-		return fmt.Errorf("bundle file is required")
+		return fmt.Errorf("envelope file is required")
 	}
 	if filepath.Clean(value) == "." {
-		return fmt.Errorf("bundle file must name a file")
+		return fmt.Errorf("envelope file must name a file")
 	}
 	return nil
 }

@@ -51,7 +51,7 @@ func TestParseRoute(t *testing.T) {
 		{[]string{"version"}, Route{Kind: RouteAbout}},
 		{[]string{"guide"}, Route{Kind: RouteGuide}},
 		{[]string{"help", "mcp"}, Route{Kind: RouteGuide, ResourceID: "mcp"}},
-		{[]string{"guide", "config", "storage", "bundles"}, Route{Kind: RouteGuide, ResourceID: "config/storage/bundles"}},
+		{[]string{"guide", "config", "storage", "envelopes"}, Route{Kind: RouteGuide, ResourceID: "config/storage/envelopes"}},
 	}
 	for _, test := range tests {
 		got, err := ParseRoute(test.args)
@@ -167,8 +167,8 @@ func TestEditorRouteStacksFollowSemanticAncestry(t *testing.T) {
 			[]Route{{Kind: RouteGuide}, {Kind: RouteGuide, ResourceID: "mcp"}},
 		},
 		{
-			Route{Kind: RouteGuide, ResourceID: "config/storage/bundles"},
-			[]Route{{Kind: RouteGuide}, {Kind: RouteGuide, ResourceID: "config"}, {Kind: RouteGuide, ResourceID: "config/storage"}, {Kind: RouteGuide, ResourceID: "config/storage/bundles"}},
+			Route{Kind: RouteGuide, ResourceID: "config/storage/envelopes"},
+			[]Route{{Kind: RouteGuide}, {Kind: RouteGuide, ResourceID: "config"}, {Kind: RouteGuide, ResourceID: "config/storage"}, {Kind: RouteGuide, ResourceID: "config/storage/envelopes"}},
 		},
 	}
 	for _, test := range tests {
@@ -221,7 +221,7 @@ func TestRouteBreadcrumbLabelsUseNavigableAncestry(t *testing.T) {
 		{Route{Kind: RouteLogsTools, ResourceID: "call_demo"}, []string{"Tool Calls", "call_demo"}},
 		{Route{Kind: RouteConfig, Section: "storage", Action: "export"}, []string{"Config", "Storage", "Export"}},
 		{Route{Kind: RouteInstruction, ResourceID: "rule_demo", Section: "rules", Action: "edit"}, []string{"Rules", "Edit rule_demo"}},
-		{Route{Kind: RouteGuide, ResourceID: "config/storage/bundles"}, []string{"Guide", "Config", "Storage", "Bundles"}},
+		{Route{Kind: RouteGuide, ResourceID: "config/storage/envelopes"}, []string{"Guide", "Config", "Storage", "Envelopes"}},
 	}
 	for _, test := range tests {
 		_, labels := routeBreadcrumb(test.route)
@@ -273,7 +273,7 @@ func TestRouteBreadcrumbInventoryCoversAllChildFamilies(t *testing.T) {
 		{Kind: RouteInstruction, ResourceID: "rule_a", Section: "rules", Action: "edit"},
 		{Kind: RouteRuntime, ResourceID: "service"},
 		{Kind: RouteRuntime, Action: "install"},
-		{Kind: RouteGuide, ResourceID: "config/storage/bundles"},
+		{Kind: RouteGuide, ResourceID: "config/storage/envelopes"},
 	}
 	for _, route := range routes {
 		stack, labels := routeBreadcrumb(route)

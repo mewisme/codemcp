@@ -226,7 +226,7 @@ See [MCP and upstreams](mcp.md).
 
 ## Portable backup and transfer
 
-Export the selected portable configuration/state plus managed reversible secrets:
+Export the selected portable non-secret configuration/state:
 
 ```bash
 cm config export
@@ -238,9 +238,9 @@ Import it on another supported installation:
 cm config import
 ```
 
-Both default to `codemcp-config.cgm` in the current directory; provide an explicit path when needed.
+Both default to `codemcp-config.json` in the current directory; provide an explicit path when needed.
 
-The portable bundle intentionally excludes transient machine-owned state such as runtime control/PIDs, logs, service-manager definitions, shell session history, checkpoints, and update cache. Import requires the selected runtime to be stopped and protects existing state unless replacement is explicitly requested.
+The versioned JSON envelope declares `secret_policy: "excluded"`: managed secret-store values are never exported or imported. A forced import preserves the target secret store. The envelope also excludes transient machine-owned state such as runtime control/PIDs, logs, service-manager definitions, shell session history, checkpoints, and update cache. Import validates the staged configuration before replacing the selected root, requires the selected runtime to be stopped, and protects existing state unless replacement is explicitly requested.
 
 ## Remove local config/state
 

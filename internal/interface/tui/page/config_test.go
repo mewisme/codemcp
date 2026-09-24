@@ -470,11 +470,11 @@ func TestConfigPageOldOperationCannotOverwriteNewOperation(t *testing.T) {
 
 func TestConfigEditorsUseExplicitActionsPickerAndImportConfirmation(t *testing.T) {
 	importEditor, importData := newConfigBundleEditor(false)
-	if importData.Force || importData.Path != "codemcp-config.cgm" || importEditor.Init() == nil {
+	if importData.Force || importData.Path != "codemcp-config.json" || importEditor.Init() == nil {
 		t.Fatalf("import defaults=%#v init=%v", importData, importEditor.Init() != nil)
 	}
 	_, exportData := newConfigBundleEditor(true)
-	if exportData.Force || exportData.Path != "codemcp-config.cgm" {
+	if exportData.Force || exportData.Path != "codemcp-config.json" {
 		t.Fatalf("export defaults=%#v", exportData)
 	}
 	prepareConfigPageRoot(t)
@@ -487,7 +487,7 @@ func TestConfigEditorsUseExplicitActionsPickerAndImportConfirmation(t *testing.T
 	if page.editor == nil || page.bundleForm == nil {
 		t.Fatalf("import editor=%v data=%v", page.editor != nil, page.bundleForm != nil)
 	}
-	bundle := filepath.Join(t.TempDir(), "settings.cgm")
+	bundle := filepath.Join(t.TempDir(), "settings.json")
 	if err := os.WriteFile(bundle, []byte("bundle"), 0600); err != nil {
 		t.Fatal(err)
 	}

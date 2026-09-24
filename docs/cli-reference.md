@@ -370,9 +370,9 @@ cm config export
 cm config import
 ```
 
-Both commands default to `codemcp-config.cgm` in the current directory. Pass an explicit file only when a custom path/name is needed, for example `cm config export laptop.cgm` and `cm config import laptop.cgm`.
+Both commands default to `codemcp-config.json` in the current directory. Pass an explicit file only when a custom path/name is needed, for example `cm config export laptop.json` and `cm config import laptop.json`.
 
-`config export` creates one sealed bundle containing portable persistent config/state plus all currently managed reversible secrets. `config import` restores that bundle on Linux, macOS, or Windows and rebuilds the destination secret store instead of copying source secret files. Existing config/state requires `--force` on import; an existing bundle requires `--force` on export. Import requires the selected runtime to be stopped.
+`config export` creates a versioned JSON envelope containing portable persistent config/state and an explicit `secret_policy: "excluded"`. Managed secret-store values are not portable through this envelope. `config import` validates and stages the complete envelope before activating it on Linux, macOS, or Windows; a forced import preserves the destination secret store. Existing config/state requires `--force` on import; an existing envelope requires `--force` on export. Import requires the selected runtime to be stopped.
 
 Machine-local filesystem paths are normalized during import. Home-relative paths are mapped to the destination user's home when the corresponding directory exists; unavailable paths and workspaces are skipped. Runtime control state, logs, managed-service environment snapshots, instance identity, shell session state, checkpoints, update cache, and raw secret-store files are intentionally not migrated.
 
