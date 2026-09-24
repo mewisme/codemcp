@@ -49,7 +49,7 @@ func registerCore(registry *Registry, workspaces *workspace.Manager, checkpoints
 	registerCoreWithManagers(registry, workspaces, checkpoints, environment, shell, shellruntime.NewProcessManager(workspaces, shell))
 }
 
-func registerCoreWithManagers(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store, environment ProjectContextEnvironment, shell *shellruntime.Manager, processes *shellruntime.ProcessManager) {
+func registerCoreWithManagers(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store, environment ProjectContextEnvironment, shell *shellruntime.Manager, processes *shellruntime.ProcessManager, providerSets ...ProjectContextProviders) {
 	registry.MustRegister("get_version", coreSchema("get_version", "Get the running CodeMCP server version, build metadata, server uptime, and machine uptime.", `{"type":"object","properties":{},"additionalProperties":false}`, `{"type":"object","properties":{"version":{"type":"string"},"commit":{"type":"string"},"build_time":{"type":"string"},"server_started_at":{"type":"string"},"server_uptime":{"type":"string"},"server_uptime_seconds":{"type":"integer","minimum":0},"machine_uptime":{"type":"string"},"machine_uptime_seconds":{"type":"integer","minimum":0}},"required":["version","commit","build_time","server_started_at","server_uptime","server_uptime_seconds","machine_uptime","machine_uptime_seconds"],"additionalProperties":false}`, RiskRead), func(context.Context, map[string]any) (Result, error) {
 		now := time.Now().UTC()
 		serverUptime := now.Sub(processStartedAt)
@@ -68,7 +68,11 @@ func registerCoreWithManagers(registry *Registry, workspaces *workspace.Manager,
 	RegisterFilesystemTools(registry, workspaces, checkpoints)
 	RegisterShellTools(registry, workspaces, shell, processes)
 	RegisterGitTools(registry, workspaces)
-	RegisterContextTools(registry, workspaces, checkpoints, environment)
+	providers := ProjectContextProviders{}
+	if len(providerSets) > 0 {
+		providers = providerSets[0]
+	}
+	registerContextTools(registry, workspaces, checkpoints, providers, environment)
 	RegisterRewindTools(registry, workspaces, checkpoints)
 	RegisterAdvancedTools(registry, workspaces)
 	registry.MustRegister("read_files", coreSchema("read_files", "Read multiple text files with rooted workspace access and a bounded combined payload.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"paths":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":32}},"required":["workspace_id","paths"],"additionalProperties":false}`, `{"type":"object","properties":{"files":{"type":"array","items":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"],"additionalProperties":false}},"count":{"type":"integer"}},"required":["files","count"],"additionalProperties":false}`, RiskRead), handleReadFiles(workspaces))

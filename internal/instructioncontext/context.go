@@ -97,6 +97,13 @@ type IntegrationInstruction struct {
 	Content string `json:"content"`
 }
 
+type IntegrationDiagnostic struct {
+	ID      string `json:"id"`
+	Source  string `json:"source"`
+	State   string `json:"state"`
+	Message string `json:"message"`
+}
+
 type InstructionBlockBudget struct {
 	Title         string `json:"title"`
 	Required      bool   `json:"required"`
@@ -119,6 +126,7 @@ type InstructionContext struct {
 	Rules                   []rules.Rule             `json:"rules"`
 	Skills                  []skills.Skill           `json:"skills"`
 	IntegrationInstructions []IntegrationInstruction `json:"integration_instructions,omitempty"`
+	IntegrationDiagnostics  []IntegrationDiagnostic  `json:"integration_diagnostics,omitempty"`
 	Sources                 []SourceSnapshot         `json:"sources"`
 	ToolProfile             ToolProfile              `json:"tool_profile"`
 	AgentWorkflow           string                   `json:"agent_workflow"`

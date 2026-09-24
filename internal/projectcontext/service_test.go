@@ -134,6 +134,47 @@ func TestServiceIncludesIntegrationInstructionsInProviderOrder(t *testing.T) {
 	}
 }
 
+func TestServiceIncludesIntegrationProjectionDiagnosticsWithoutRenderingThem(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(ServiceOptions{
+		Workspaces:  manager,
+		PolicyStore: &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")},
+		IntegrationProjectionProviders: []IntegrationProjectionProvider{
+			func(_ context.Context, workspaceID, projectRoot string) (IntegrationProjection, error) {
+				if workspaceID != item.ID || projectRoot != root {
+					t.Fatalf("provider args workspace=%q root=%q", workspaceID, projectRoot)
+				}
+				return IntegrationProjection{
+					Instructions: []instructioncontext.IntegrationInstruction{{ID: "CodeGraph", Source: "test", Content: "use codegraph guidance"}},
+					Diagnostics:  []instructioncontext.IntegrationDiagnostic{{ID: "CodeGraph", Source: "test", State: "stale", Message: "stale graph diagnostic"}},
+				}, nil
+			},
+		},
+	})
+	result, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if values := result.InstructionContext.IntegrationInstructions; len(values) != 1 || values[0].ID != "CodeGraph" {
+		t.Fatalf("integration instructions=%#v", values)
+	}
+	if values := result.InstructionContext.IntegrationDiagnostics; len(values) != 1 || values[0].State != "stale" {
+		t.Fatalf("integration diagnostics=%#v", values)
+	}
+	text := result.InstructionContext.InstructionsText
+	if !strings.Contains(text, "use codegraph guidance") {
+		t.Fatalf("projection guidance missing from instructions: %s", text)
+	}
+	if strings.Contains(text, "stale graph diagnostic") {
+		t.Fatalf("structured diagnostic leaked into rendered instructions: %s", text)
+	}
+}
+
 func TestServiceRejectsDuplicateIntegrationInstructionIDs(t *testing.T) {
 	root := t.TempDir()
 	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))

@@ -6,7 +6,16 @@ import (
 	"errors"
 
 	"go.mewis.me/codemcp/internal/integrations/codegraph"
+	"go.mewis.me/codemcp/internal/projectcontext"
 )
+
+func codeGraphProjectContextProviders(runtime *Runtime) ProjectContextProviders {
+	return ProjectContextProviders{Projections: []projectcontext.IntegrationProjectionProvider{
+		codegraph.ProjectContextProjectionProvider(func() (*codegraph.Runtime, error) {
+			return runtime.codeGraphRuntimeSnapshot(), nil
+		}, runtime.Workspaces),
+	}}
+}
 
 func codeGraphToolEntries(runtime *Runtime) map[string]Entry {
 	return map[string]Entry{

@@ -94,7 +94,15 @@ type AgentStatusResult struct {
 
 type ProjectContextEnvironment func() (bool, int)
 
+type ProjectContextProviders struct {
+	Projections []projectcontext.IntegrationProjectionProvider
+}
+
 func RegisterContextTools(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store, environments ...ProjectContextEnvironment) {
+	registerContextTools(registry, workspaces, checkpoints, ProjectContextProviders{}, environments...)
+}
+
+func registerContextTools(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store, providers ProjectContextProviders, environments ...ProjectContextEnvironment) {
 	memoryStore := memory.NewWorkspaceStore(memory.DefaultRoot(), workspaces)
 	memoryIndex := memory.NewHybridIndex(memory.NewLocalEmbedder(), memory.DefaultHybridWeights())
 	memoryLifecycle := memory.NewIndexLifecycle(memoryStore, memoryIndex)
@@ -110,7 +118,8 @@ func RegisterContextTools(registry *Registry, workspaces *workspace.Manager, che
 		ToolProfile: func() instructioncontext.ToolProfile {
 			return instructioncontext.ToolProfile{Name: "full", Count: len(registry.ListSchemas())}
 		},
-		Environment: environment,
+		Environment:                    environment,
+		IntegrationProjectionProviders: append([]projectcontext.IntegrationProjectionProvider(nil), providers.Projections...),
 	})
 	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
 		registry.MustRegister(name, Schema{

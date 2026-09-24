@@ -32,6 +32,7 @@ type BuildOptions struct {
 	SkipMemory              bool
 	SkipSkills              bool
 	IntegrationInstructions []IntegrationInstruction
+	IntegrationDiagnostics  []IntegrationDiagnostic
 	AdminEnabled            bool
 	AdminPort               int
 	Now                     func() time.Time
@@ -127,7 +128,10 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 	value := InstructionContext{
 		Root: root, WorkspaceID: workspaceID, WorkspaceRoots: roots, Environment: environment,
 		Git: gitSnapshot, ProjectMemory: projectMemory, AutoMemory: autoMemory, GlobalContext: strings.TrimSpace(opts.Policy.Context), GlobalRules: globalRules,
-		Rules: unconditionalRules, Skills: skillSummaries, IntegrationInstructions: append([]IntegrationInstruction(nil), opts.IntegrationInstructions...), Sources: sources, ToolProfile: opts.ToolProfile,
+		Rules: unconditionalRules, Skills: skillSummaries,
+		IntegrationInstructions: append([]IntegrationInstruction(nil), opts.IntegrationInstructions...),
+		IntegrationDiagnostics:  append([]IntegrationDiagnostic(nil), opts.IntegrationDiagnostics...),
+		Sources:                 sources, ToolProfile: opts.ToolProfile,
 		AgentWorkflow: AgentWorkflow(), LoadedAt: loadedAt,
 	}
 	if err := ApplyFormattedInstructionsLimit(&value, opts.MaxInstructionBytes); err != nil {

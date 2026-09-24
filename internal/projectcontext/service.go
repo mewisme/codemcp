@@ -86,32 +86,42 @@ func DefaultOptions() Options {
 }
 
 type Service struct {
-	Workspaces           *workspace.Manager
-	MemoryStore          memory.Store
-	PolicyStore          *instructionpolicy.Store
-	ToolProfile          func() instructioncontext.ToolProfile
-	Environment          func() (bool, int)
-	IntegrationProviders []IntegrationInstructionProvider
+	Workspaces                     *workspace.Manager
+	MemoryStore                    memory.Store
+	PolicyStore                    *instructionpolicy.Store
+	ToolProfile                    func() instructioncontext.ToolProfile
+	Environment                    func() (bool, int)
+	IntegrationProviders           []IntegrationInstructionProvider
+	IntegrationProjectionProviders []IntegrationProjectionProvider
 }
 
 type IntegrationInstructionProvider func(context.Context, string, string) ([]instructioncontext.IntegrationInstruction, error)
 
+type IntegrationProjection struct {
+	Instructions []instructioncontext.IntegrationInstruction
+	Diagnostics  []instructioncontext.IntegrationDiagnostic
+}
+
+type IntegrationProjectionProvider func(context.Context, string, string) (IntegrationProjection, error)
+
 type ServiceOptions struct {
-	Workspaces           *workspace.Manager
-	MemoryStore          *memory.Store
-	PolicyStore          *instructionpolicy.Store
-	ToolProfile          func() instructioncontext.ToolProfile
-	Environment          func() (bool, int)
-	IntegrationProviders []IntegrationInstructionProvider
+	Workspaces                     *workspace.Manager
+	MemoryStore                    *memory.Store
+	PolicyStore                    *instructionpolicy.Store
+	ToolProfile                    func() instructioncontext.ToolProfile
+	Environment                    func() (bool, int)
+	IntegrationProviders           []IntegrationInstructionProvider
+	IntegrationProjectionProviders []IntegrationProjectionProvider
 }
 
 func NewService(options ServiceOptions) *Service {
 	service := &Service{
-		Workspaces:           options.Workspaces,
-		PolicyStore:          options.PolicyStore,
-		ToolProfile:          options.ToolProfile,
-		Environment:          options.Environment,
-		IntegrationProviders: append([]IntegrationInstructionProvider(nil), options.IntegrationProviders...),
+		Workspaces:                     options.Workspaces,
+		PolicyStore:                    options.PolicyStore,
+		ToolProfile:                    options.ToolProfile,
+		Environment:                    options.Environment,
+		IntegrationProviders:           append([]IntegrationInstructionProvider(nil), options.IntegrationProviders...),
+		IntegrationProjectionProviders: append([]IntegrationProjectionProvider(nil), options.IntegrationProjectionProviders...),
 	}
 	if options.MemoryStore != nil {
 		service.MemoryStore = *options.MemoryStore
@@ -192,6 +202,41 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 			}
 		}
 	}
+	integrationDiagnostics := make([]instructioncontext.IntegrationDiagnostic, 0)
+	seenDiagnosticIDs := map[string]bool{}
+	for _, provider := range s.IntegrationProjectionProviders {
+		if provider == nil {
+			continue
+		}
+		projection, err := provider(ctx, item.ID, root)
+		if err != nil {
+			return Result{}, err
+		}
+		for _, value := range projection.Instructions {
+			id := strings.TrimSpace(value.ID)
+			if id != "" {
+				if seenIntegrationIDs[id] {
+					return Result{}, errors.New("duplicate project context integration instruction id: " + id)
+				}
+				seenIntegrationIDs[id] = true
+			}
+			if strings.TrimSpace(value.Content) != "" {
+				integrationInstructions = append(integrationInstructions, value)
+			}
+		}
+		for _, value := range projection.Diagnostics {
+			id := strings.TrimSpace(value.ID)
+			if id != "" {
+				if seenDiagnosticIDs[id] {
+					return Result{}, errors.New("duplicate project context integration diagnostic id: " + id)
+				}
+				seenDiagnosticIDs[id] = true
+			}
+			if strings.TrimSpace(value.Message) != "" {
+				integrationDiagnostics = append(integrationDiagnostics, value)
+			}
+		}
+	}
 	value, err := instructioncontext.Build(ctx, instructioncontext.BuildOptions{
 		Root: root, WorkspaceID: item.ID, WorkspaceRoot: item.Path, CWD: item.Path, WorkspaceRoots: roots, MemoryStore: s.MemoryStore,
 		Memory: instructioncontext.MemoryLoadOptions{ImportMaxDepth: instructioncontext.DefaultImportMaxDepth, MaxBytesPerSection: opts.MaxSectionBytes, MaxLinesPerSection: opts.MaxLinesPerSection},
@@ -199,6 +244,7 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 		MemoryQuery: opts.MemoryQuery, MaxMemoryEntries: opts.MaxMemoryEntries, MaxMemoryBytes: opts.MaxMemoryBytes,
 		SkipGit: !opts.IncludeGit, SkipMemory: !opts.IncludeMemory, SkipSkills: !opts.IncludeSkills,
 		IntegrationInstructions: integrationInstructions,
+		IntegrationDiagnostics:  integrationDiagnostics,
 		AdminEnabled:            adminEnabled, AdminPort: adminPort,
 	})
 	if err != nil {

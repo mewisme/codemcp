@@ -6,6 +6,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/integrations/codegraph"
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -37,6 +38,7 @@ func ProjectContextToolProfile(ctx context.Context) instructioncontext.ToolProfi
 
 func NewProjectContextService(ctx context.Context, manager *workspace.Manager) *projectcontext.Service {
 	profile := ProjectContextToolProfile(ctx)
+	codeGraph := NewCodeGraphService(manager)
 	return projectcontext.NewService(projectcontext.ServiceOptions{
 		Workspaces: manager,
 		ToolProfile: func() instructioncontext.ToolProfile {
@@ -44,5 +46,8 @@ func NewProjectContextService(ctx context.Context, manager *workspace.Manager) *
 		},
 		Environment:          ProjectContextEnvironment,
 		IntegrationProviders: []projectcontext.IntegrationInstructionProvider{RTKProjectContextInstruction},
+		IntegrationProjectionProviders: []projectcontext.IntegrationProjectionProvider{
+			codegraph.ProjectContextProjectionProvider(codeGraph.runtime, manager),
+		},
 	})
 }
