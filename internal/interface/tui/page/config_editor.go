@@ -9,7 +9,6 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
-	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
 
@@ -32,9 +31,6 @@ func (page *ConfigPage) initConfigEditor() error {
 			return err
 		}
 		page.command, page.targetKey, page.editor, page.fieldForm = ConfigEdit, spec.Key, &editor, data
-	case page.section == "storage" && page.action == "convert":
-		editor, data := newConfigConvertEditor(page.overview.Source.Format)
-		page.command, page.editor, page.convertForm = ConfigConvert, &editor, data
 	case page.section == "storage" && page.action == "export":
 		editor, data := newConfigBundleEditor(true)
 		page.command, page.editor, page.bundleForm = ConfigExport, &editor, data
@@ -63,20 +59,6 @@ func (page *ConfigPage) submitConfigEditor() tea.Cmd {
 		return page.startOperation(ConfigEdit, "Saving configuration", func(ctx context.Context) configOperationMsg {
 			result, err := application.SetConfigField(ctx, key, raw)
 			return configOperationMsg{command: ConfigEdit, mutation: result, err: err}
-		})
-	case ConfigConvert:
-		if page.convertForm == nil {
-			return nil
-		}
-		format, err := configformat.Parse(page.convertForm.Format)
-		if err != nil {
-			page.editor.SetFeedback("", err)
-			return nil
-		}
-		page.editor.SetSubmitting(true)
-		return page.startOperation(ConfigConvert, "Converting configuration format", func(context.Context) configOperationMsg {
-			count, err := application.ConvertConfig(format)
-			return configOperationMsg{command: ConfigConvert, format: format, converted: count, err: err}
 		})
 	case ConfigExport:
 		if page.bundleForm == nil {
@@ -136,7 +118,7 @@ func (page *ConfigPage) configEditorParentNavigation() tea.Cmd {
 	path := []string{"config"}
 	if page.command == ConfigEdit && page.targetKey != "" {
 		path = []string{"config", page.targetKey}
-	} else if page.command == ConfigConvert || page.command == ConfigExport || page.command == ConfigImport {
+	} else if page.command == ConfigExport || page.command == ConfigImport {
 		path = []string{"config", "storage"}
 	}
 	return func() tea.Msg { return NavigateMsg{Path: path, Replace: true} }

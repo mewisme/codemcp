@@ -76,7 +76,7 @@ func TestFetchTunnelStatusUsesPersistedMetadata(t *testing.T) {
 	cfg := config.Default()
 	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
 	cfg.Server.AllowUnauthenticatedLoopback = true
-	if err := config.SaveAs(cfg, configformat.JSON); err != nil {
+	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := config.SaveTunnelMetadata(tunnel.Metadata{ID: "tunnel_test", Name: "Persisted tunnel"}); err != nil {

@@ -247,45 +247,41 @@ func TestConfigSaveSeparatesTunnelSecrets(t *testing.T) {
 	}
 }
 
-func TestConfigRoundTripAcrossFormats(t *testing.T) {
-	for _, format := range []configformat.Format{configformat.JSON, configformat.YAML, configformat.TOML} {
-		t.Run(string(format), func(t *testing.T) {
-			root := t.TempDir()
-			configPath := configformat.PathFor(root, "config", format)
-			secretPath := configformat.PathFor(root, "tunnel", format)
-			cfg := Default()
-			cfg.Auth.MCPTokenHash = "mcp-hash"
-			cfg.Auth.AdminTokenHash = "admin-hash"
-			cfg.Tunnel.ID = "tunnel_0123456789abcdef0123456789abcdef"
-			cfg.Tunnel.APIKey = "tunnel-secret"
-			cfg.Tunnel.AdminKey = "admin-secret"
-			cfg.Tunnel.AdminOrganizationID = "org-admin"
-			cfg.Shell.Path = []string{filepath.Join(root, "bin")}
-			if err := saveAt(configPath, secretPath, cfg); err != nil {
-				t.Fatal(err)
-			}
-			loaded, err := loadAt(configPath, secretPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if loaded.Server.Port != cfg.Server.Port || loaded.Auth.MCPTokenHash != cfg.Auth.MCPTokenHash || loaded.Tunnel.APIKey != cfg.Tunnel.APIKey || loaded.Tunnel.AdminKey != cfg.Tunnel.AdminKey || loaded.Tunnel.AdminOrganizationID != cfg.Tunnel.AdminOrganizationID || len(loaded.Shell.Path) != 1 || loaded.Shell.Path[0] != cfg.Shell.Path[0] {
-				t.Fatalf("round trip = %#v", loaded)
-			}
-			mainData, err := os.ReadFile(configPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(string(mainData), "tunnel-secret") || strings.Contains(string(mainData), "admin-secret") || strings.Contains(string(mainData), "org-admin") {
-				t.Fatalf("main %s config leaked tunnel secret: %s", format, mainData)
-			}
-			secretData, err := os.ReadFile(secretPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if strings.Contains(string(secretData), "tunnel-secret") || strings.Contains(string(secretData), "admin-secret") || !strings.Contains(string(secretData), "org-admin") {
-				t.Fatalf("tunnel %s file leaked secret or lost scope: %s", format, secretData)
-			}
-		})
+func TestConfigJSONRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.json")
+	secretPath := filepath.Join(root, "tunnel.json")
+	cfg := Default()
+	cfg.Auth.MCPTokenHash = "mcp-hash"
+	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.Tunnel.ID = "tunnel_0123456789abcdef0123456789abcdef"
+	cfg.Tunnel.APIKey = "tunnel-secret"
+	cfg.Tunnel.AdminKey = "admin-secret"
+	cfg.Tunnel.AdminOrganizationID = "org-admin"
+	cfg.Shell.Path = []string{filepath.Join(root, "bin")}
+	if err := saveAt(configPath, secretPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadAt(configPath, secretPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Server.Port != cfg.Server.Port || loaded.Auth.MCPTokenHash != cfg.Auth.MCPTokenHash || loaded.Tunnel.APIKey != cfg.Tunnel.APIKey || loaded.Tunnel.AdminKey != cfg.Tunnel.AdminKey || loaded.Tunnel.AdminOrganizationID != cfg.Tunnel.AdminOrganizationID || len(loaded.Shell.Path) != 1 || loaded.Shell.Path[0] != cfg.Shell.Path[0] {
+		t.Fatalf("round trip = %#v", loaded)
+	}
+	mainData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(mainData), "tunnel-secret") || strings.Contains(string(mainData), "admin-secret") || strings.Contains(string(mainData), "org-admin") {
+		t.Fatalf("main JSON config leaked tunnel secret: %s", mainData)
+	}
+	secretData, err := os.ReadFile(secretPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(secretData), "tunnel-secret") || strings.Contains(string(secretData), "admin-secret") || !strings.Contains(string(secretData), "org-admin") {
+		t.Fatalf("tunnel JSON file leaked secret or lost scope: %s", secretData)
 	}
 }
 
@@ -463,92 +459,23 @@ func TestLegacyShellPolicyFieldsArePreservedOnSave(t *testing.T) {
 	}
 }
 
-func TestLegacyConfigWithoutFeaturesKeepsEnabledDefaults(t *testing.T) {
-	for _, format := range []configformat.Format{configformat.JSON, configformat.YAML, configformat.TOML} {
-		for _, legacyInteractive := range []struct {
-			name  string
-			value bool
-		}{{name: "interactive-true", value: true}, {name: "interactive-false", value: false}} {
-			t.Run(string(format)+"/"+legacyInteractive.name, func(t *testing.T) {
-				root := t.TempDir()
-				configPath := configformat.PathFor(root, "config", format)
-				secretPath := configformat.PathFor(root, "tunnel", format)
-				legacy := map[string]any{
-					"interactive": legacyInteractive.value,
-					"server":      map[string]any{"port": int64(37421), "expose": map[string]any{"mode": "none", "interfaces": []any{}}},
-					"admin":       map[string]any{"enabled": false, "port": int64(37422)},
-					"auth":        map[string]any{"mcp_enabled": false, "admin_enabled": false},
-					"tunnel":      map[string]any{"enabled": false},
-				}
-				data, err := configformat.EncodeGeneric(format, legacy)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(configPath, data, 0600); err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := loadAt(configPath, secretPath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !loaded.Server.Enabled {
-					t.Fatalf("legacy %s config disabled MCP HTTP", format)
-				}
-				if !loaded.Features.Ponytail.Active || loaded.Features.Ponytail.Mode != "full" || !loaded.Features.Caveman.Active || loaded.Features.Caveman.Mode != "full" {
-					t.Fatalf("legacy %s features = %#v", format, loaded.Features)
-				}
-				unchanged, err := os.ReadFile(configPath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				unchangedValue, err := configformat.DecodeGeneric(format, unchanged)
-				if err != nil {
-					t.Fatal(err)
-				}
-				unchangedRoot, ok := unchangedValue.(map[string]any)
-				if !ok {
-					t.Fatalf("loaded config = %#v", unchangedValue)
-				}
-				if _, exists := unchangedRoot["interactive"]; !exists {
-					t.Fatalf("read-only load rewrote legacy %s config", format)
-				}
-				if err := saveAt(configPath, secretPath, loaded); err != nil {
-					t.Fatal(err)
-				}
-				saved, err := os.ReadFile(configPath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				value, err := configformat.DecodeGeneric(format, saved)
-				if err != nil {
-					t.Fatal(err)
-				}
-				savedRoot, ok := value.(map[string]any)
-				if !ok {
-					t.Fatalf("saved config = %#v", value)
-				}
-				if _, exists := savedRoot["interactive"]; !exists {
-					t.Fatalf("legacy interactive key was removed from %s config: %s", format, saved)
-				}
-			})
-		}
-	}
-}
-
-func TestPartialFeaturesKeepMissingFeatureDefault(t *testing.T) {
-	for _, format := range []configformat.Format{configformat.JSON, configformat.YAML, configformat.TOML} {
-		t.Run(string(format), func(t *testing.T) {
+func TestLegacyJSONConfigWithoutFeaturesKeepsEnabledDefaults(t *testing.T) {
+	for _, legacyInteractive := range []struct {
+		name  string
+		value bool
+	}{{name: "interactive-true", value: true}, {name: "interactive-false", value: false}} {
+		t.Run(legacyInteractive.name, func(t *testing.T) {
 			root := t.TempDir()
-			configPath := configformat.PathFor(root, "config", format)
-			secretPath := configformat.PathFor(root, "tunnel", format)
-			partial := map[string]any{
-				"server":   map[string]any{"port": int64(37421), "expose": map[string]any{"mode": "none", "interfaces": []any{}}},
-				"admin":    map[string]any{"enabled": false, "port": int64(37422)},
-				"auth":     map[string]any{"mcp_enabled": false, "admin_enabled": false},
-				"features": map[string]any{"ponytail": map[string]any{"enabled": false}},
-				"tunnel":   map[string]any{"enabled": false},
+			configPath := filepath.Join(root, "config.json")
+			secretPath := filepath.Join(root, "tunnel.json")
+			legacy := map[string]any{
+				"interactive": legacyInteractive.value,
+				"server":      map[string]any{"port": int64(37421), "expose": map[string]any{"mode": "none", "interfaces": []any{}}},
+				"admin":       map[string]any{"enabled": false, "port": int64(37422)},
+				"auth":        map[string]any{"mcp_enabled": false, "admin_enabled": false},
+				"tunnel":      map[string]any{"enabled": false},
 			}
-			data, err := configformat.EncodeGeneric(format, partial)
+			data, err := configformat.EncodeGeneric(configformat.JSON, legacy)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -559,52 +486,99 @@ func TestPartialFeaturesKeepMissingFeatureDefault(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if loaded.Features.Ponytail.Active || loaded.Features.Ponytail.Mode != "full" || !loaded.Features.Caveman.Active || loaded.Features.Caveman.Mode != "full" {
-				t.Fatalf("partial %s features = %#v", format, loaded.Features)
+			if !loaded.Server.Enabled {
+				t.Fatal("legacy JSON config disabled MCP HTTP")
+			}
+			if !loaded.Features.Ponytail.Active || loaded.Features.Ponytail.Mode != "full" || !loaded.Features.Caveman.Active || loaded.Features.Caveman.Mode != "full" {
+				t.Fatalf("legacy JSON features = %#v", loaded.Features)
+			}
+			unchanged, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			unchangedValue, err := configformat.DecodeGeneric(configformat.JSON, unchanged)
+			if err != nil {
+				t.Fatal(err)
+			}
+			unchangedRoot := unchangedValue.(map[string]any)
+			if _, exists := unchangedRoot["interactive"]; !exists {
+				t.Fatal("read-only load rewrote legacy JSON config")
+			}
+			if err := saveAt(configPath, secretPath, loaded); err != nil {
+				t.Fatal(err)
+			}
+			saved, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			value, err := configformat.DecodeGeneric(configformat.JSON, saved)
+			if err != nil {
+				t.Fatal(err)
+			}
+			savedRoot := value.(map[string]any)
+			if _, exists := savedRoot["interactive"]; !exists {
+				t.Fatalf("legacy interactive key was removed from JSON config: %s", saved)
 			}
 		})
 	}
 }
 
-func TestFeatureConfigSerializesActiveOnly(t *testing.T) {
-	for _, format := range []configformat.Format{configformat.JSON, configformat.YAML, configformat.TOML} {
-		t.Run(string(format), func(t *testing.T) {
-			cfg := Default()
-			cfg.Features.Ponytail.Active = false
-			data, err := configformat.Marshal(format, cfg)
-			if err != nil {
-				t.Fatal(err)
-			}
-			raw, err := configformat.DecodeGeneric(format, data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			root, ok := raw.(map[string]any)
-			if !ok {
-				t.Fatalf("root = %#v", raw)
-			}
-			if _, exists := root["interactive"]; exists {
-				t.Fatalf("obsolete interactive key serialized: %#v", root)
-			}
-			featureValues, ok := root["features"].(map[string]any)
-			if !ok {
-				t.Fatalf("features = %#v", root["features"])
-			}
-			ponytail, ok := featureValues["ponytail"].(map[string]any)
-			if !ok || ponytail["active"] != false || ponytail["mode"] != "full" {
-				t.Fatalf("ponytail = %#v", featureValues["ponytail"])
-			}
-			if _, exists := ponytail["enabled"]; exists {
-				t.Fatalf("legacy enabled key was serialized: %#v", ponytail)
-			}
-			caveman, ok := featureValues["caveman"].(map[string]any)
-			if !ok || caveman["active"] != true || caveman["mode"] != "full" {
-				t.Fatalf("caveman = %#v", featureValues["caveman"])
-			}
-			if _, exists := caveman["enabled"]; exists {
-				t.Fatalf("legacy enabled key was serialized: %#v", caveman)
-			}
-		})
+func TestPartialJSONFeaturesKeepMissingFeatureDefault(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.json")
+	secretPath := filepath.Join(root, "tunnel.json")
+	partial := map[string]any{
+		"server":   map[string]any{"port": int64(37421), "expose": map[string]any{"mode": "none", "interfaces": []any{}}},
+		"admin":    map[string]any{"enabled": false, "port": int64(37422)},
+		"auth":     map[string]any{"mcp_enabled": false, "admin_enabled": false},
+		"features": map[string]any{"ponytail": map[string]any{"enabled": false}},
+		"tunnel":   map[string]any{"enabled": false},
+	}
+	data, err := configformat.EncodeGeneric(configformat.JSON, partial)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadAt(configPath, secretPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Features.Ponytail.Active || loaded.Features.Ponytail.Mode != "full" || !loaded.Features.Caveman.Active || loaded.Features.Caveman.Mode != "full" {
+		t.Fatalf("partial JSON features = %#v", loaded.Features)
+	}
+}
+
+func TestFeatureConfigSerializesActiveOnlyInJSON(t *testing.T) {
+	cfg := Default()
+	cfg.Features.Ponytail.Active = false
+	data, err := configformat.Marshal(configformat.JSON, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := configformat.DecodeGeneric(configformat.JSON, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := raw.(map[string]any)
+	if _, exists := root["interactive"]; exists {
+		t.Fatalf("obsolete interactive key serialized: %#v", root)
+	}
+	featureValues := root["features"].(map[string]any)
+	ponytail := featureValues["ponytail"].(map[string]any)
+	if ponytail["active"] != false || ponytail["mode"] != "full" {
+		t.Fatalf("ponytail = %#v", ponytail)
+	}
+	if _, exists := ponytail["enabled"]; exists {
+		t.Fatalf("legacy enabled key was serialized: %#v", ponytail)
+	}
+	caveman := featureValues["caveman"].(map[string]any)
+	if caveman["active"] != true || caveman["mode"] != "full" {
+		t.Fatalf("caveman = %#v", caveman)
+	}
+	if _, exists := caveman["enabled"]; exists {
+		t.Fatalf("legacy enabled key was serialized: %#v", caveman)
 	}
 }
 
@@ -652,39 +626,37 @@ func TestLegacyServerHostMigratesToExpose(t *testing.T) {
 	}
 }
 
-func TestLegacyBooleanExposureMigratesAcrossFormats(t *testing.T) {
-	for _, format := range []configformat.Format{configformat.JSON, configformat.YAML, configformat.TOML} {
-		for _, test := range []struct {
-			name  string
-			value bool
-			want  ExposureMode
-		}{{"disabled", false, ExposureNone}, {"enabled", true, ExposureWildcard}} {
-			t.Run(string(format)+"/"+test.name, func(t *testing.T) {
-				root := t.TempDir()
-				path := configformat.PathFor(root, "config", format)
-				secretPath := configformat.PathFor(root, "tunnel", format)
-				legacy := map[string]any{
-					"server": map[string]any{"port": int64(37421), "expose": test.value},
-					"admin":  map[string]any{"enabled": false, "port": int64(37422)},
-					"auth":   map[string]any{"mcp_enabled": false, "admin_enabled": false},
-					"tunnel": map[string]any{"enabled": false},
-				}
-				data, err := configformat.EncodeGeneric(format, legacy)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, data, 0600); err != nil {
-					t.Fatal(err)
-				}
-				loaded, err := loadAt(path, secretPath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if loaded.Server.Expose.Mode != test.want || len(loaded.Server.Expose.Interfaces) != 0 {
-					t.Fatalf("expose = %#v", loaded.Server.Expose)
-				}
-			})
-		}
+func TestLegacyBooleanExposureMigratesInJSON(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value bool
+		want  ExposureMode
+	}{{"disabled", false, ExposureNone}, {"enabled", true, ExposureWildcard}} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "config.json")
+			secretPath := filepath.Join(root, "tunnel.json")
+			legacy := map[string]any{
+				"server": map[string]any{"port": int64(37421), "expose": test.value},
+				"admin":  map[string]any{"enabled": false, "port": int64(37422)},
+				"auth":   map[string]any{"mcp_enabled": false, "admin_enabled": false},
+				"tunnel": map[string]any{"enabled": false},
+			}
+			data, err := configformat.EncodeGeneric(configformat.JSON, legacy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := loadAt(path, secretPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if loaded.Server.Expose.Mode != test.want || len(loaded.Server.Expose.Interfaces) != 0 {
+				t.Fatalf("expose = %#v", loaded.Server.Expose)
+			}
+		})
 	}
 }
 
@@ -713,45 +685,41 @@ func TestClearingTunnelAPIKeyPreservesTunnelConfigFile(t *testing.T) {
 	}
 }
 
-func TestConfigSaveDeepMergesUnknownKeysAcrossFormats(t *testing.T) {
-	for _, format := range []configformat.Format{configformat.JSON, configformat.YAML, configformat.TOML} {
-		t.Run(string(format), func(t *testing.T) {
-			root := t.TempDir()
-			configPath := configformat.PathFor(root, "config", format)
-			secretPath := configformat.PathFor(root, "tunnel", format)
-			existing := map[string]any{
-				"server": map[string]any{"port": int64(3000), "legacy_flag": true},
-				"custom": map[string]any{"nested": "keep"},
-				"shell":  map[string]any{"path": []any{}, "legacy_mode": "keep"},
-			}
-			data, err := configformat.EncodeGeneric(format, existing)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(configPath, data, 0600); err != nil {
-				t.Fatal(err)
-			}
-			cfg := Default()
-			cfg.Server.Port = 41001
-			if err := saveAt(configPath, secretPath, cfg); err != nil {
-				t.Fatal(err)
-			}
-			saved, err := os.ReadFile(configPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			raw, err := configformat.DecodeGeneric(format, saved)
-			if err != nil {
-				t.Fatal(err)
-			}
-			rootValue := raw.(map[string]any)
-			server := rootValue["server"].(map[string]any)
-			shell := rootValue["shell"].(map[string]any)
-			custom := rootValue["custom"].(map[string]any)
-			if fmt.Sprint(server["port"]) != "41001" || server["legacy_flag"] != true || shell["legacy_mode"] != "keep" || custom["nested"] != "keep" {
-				t.Fatalf("merged %s config = %#v", format, rootValue)
-			}
-		})
+func TestConfigJSONSaveDeepMergesUnknownKeys(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.json")
+	secretPath := filepath.Join(root, "tunnel.json")
+	existing := map[string]any{
+		"server": map[string]any{"port": int64(3000), "legacy_flag": true},
+		"custom": map[string]any{"nested": "keep"},
+		"shell":  map[string]any{"path": []any{}, "legacy_mode": "keep"},
+	}
+	data, err := configformat.EncodeGeneric(configformat.JSON, existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Default()
+	cfg.Server.Port = 41001
+	if err := saveAt(configPath, secretPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := configformat.DecodeGeneric(configformat.JSON, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootValue := raw.(map[string]any)
+	server := rootValue["server"].(map[string]any)
+	shell := rootValue["shell"].(map[string]any)
+	custom := rootValue["custom"].(map[string]any)
+	if fmt.Sprint(server["port"]) != "41001" || server["legacy_flag"] != true || shell["legacy_mode"] != "keep" || custom["nested"] != "keep" {
+		t.Fatalf("merged JSON config = %#v", rootValue)
 	}
 }
 

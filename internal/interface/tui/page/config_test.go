@@ -235,10 +235,10 @@ func TestConfigStoragePageCentralizesMaintenanceActions(t *testing.T) {
 	updated, _ := page.Update(page.Init()())
 	page = updated.(*ConfigPage)
 	rows := page.configRows()
-	if len(rows) != 6 {
+	if len(rows) != 5 {
 		t.Fatalf("maintenance actions=%d rows=%#v", len(rows), rows)
 	}
-	wantIDs := []string{"verify", "migrate", "migrate-secrets", "convert", "export", "import"}
+	wantIDs := []string{"verify", "migrate", "migrate-secrets", "export", "import"}
 	for index, want := range wantIDs {
 		if rows[index].ID != want {
 			t.Fatalf("maintenance row %d=%q want=%q", index, rows[index].ID, want)
@@ -293,13 +293,13 @@ func TestConfigStorageOpenRunsMaintenanceAction(t *testing.T) {
 	page, _ := NewConfigRoute(t.Context(), "storage")
 	updated, _ := page.Update(page.Init()())
 	page = updated.(*ConfigPage)
-	_, cmd := page.Update(component.BrowserOpenMsg{Row: component.Row{ID: "convert"}})
+	_, cmd := page.Update(component.BrowserOpenMsg{Row: component.Row{ID: "export"}})
 	if cmd == nil || page.overlay != configOverlayNone {
-		t.Fatalf("convert cmd=%v overlay=%d", cmd != nil, page.overlay)
+		t.Fatalf("export cmd=%v overlay=%d", cmd != nil, page.overlay)
 	}
 	navigate, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(navigate.Path, "/") != "config/storage/convert" {
-		t.Fatalf("convert navigation=%#v", navigate)
+	if !ok || strings.Join(navigate.Path, "/") != "config/storage/export" {
+		t.Fatalf("export navigation=%#v", navigate)
 	}
 }
 
@@ -469,10 +469,6 @@ func TestConfigPageOldOperationCannotOverwriteNewOperation(t *testing.T) {
 }
 
 func TestConfigEditorsUseExplicitActionsPickerAndImportConfirmation(t *testing.T) {
-	convert, convertData := newConfigConvertEditor(configformat.JSON)
-	if convert.Init() == nil || convertData.Format != "json" {
-		t.Fatalf("convert editor init=%v data=%#v", convert.Init() != nil, convertData)
-	}
 	importEditor, importData := newConfigBundleEditor(false)
 	if importData.Force || importData.Path != "codemcp-config.cgm" || importEditor.Init() == nil {
 		t.Fatalf("import defaults=%#v init=%v", importData, importEditor.Init() != nil)

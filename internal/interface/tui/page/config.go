@@ -12,7 +12,6 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
-	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
 
@@ -26,7 +25,6 @@ const (
 	ConfigVerify         ConfigCommand = "config.verify"
 	ConfigMigrate        ConfigCommand = "config.migrate"
 	ConfigMigrateSecrets ConfigCommand = "config.migrate.secrets"
-	ConfigConvert        ConfigCommand = "config.convert"
 	ConfigExport         ConfigCommand = "config.export"
 	ConfigImport         ConfigCommand = "config.import"
 )
@@ -54,8 +52,6 @@ type configOperationMsg struct {
 	command     ConfigCommand
 	mutation    application.ConfigMutationResult
 	verify      config.VerifyResult
-	format      configformat.Format
-	converted   int
 	files       int
 	secrets     int
 	migrated    int
@@ -79,7 +75,6 @@ type ConfigPage struct {
 	command         ConfigCommand
 	targetKey       string
 	fieldForm       *configFieldFormData
-	convertForm     *configConvertFormData
 	bundleForm      *configBundleFormData
 	operationCancel context.CancelFunc
 	operationID     uint64
@@ -447,8 +442,6 @@ func (page *ConfigPage) openCommand(command ConfigCommand, resourceID string) (t
 			migrated, err := application.MigrateSecretEncryption()
 			return configOperationMsg{command: command, migrated: migrated, err: err}
 		}), nil
-	case ConfigConvert:
-		return func() tea.Msg { return NavigateMsg{Path: []string{"config", "storage", "convert"}} }, nil
 	case ConfigExport:
 		return func() tea.Msg { return NavigateMsg{Path: []string{"config", "storage", "export"}} }, nil
 	case ConfigImport:
@@ -515,8 +508,6 @@ func (page *ConfigPage) finishOperation(msg configOperationMsg) tea.Cmd {
 		page.notice = "Legacy credentials migrated to the secret store"
 	case ConfigMigrateSecrets:
 		page.notice = fmt.Sprintf("Secret files encrypted at rest · %d migrated", msg.migrated)
-	case ConfigConvert:
-		page.notice = fmt.Sprintf("Configuration converted to %s · %d files", msg.format, msg.converted)
 	case ConfigExport:
 		page.notice = fmt.Sprintf("Configuration exported · %d files · %d secrets · %s", msg.files, msg.secrets, msg.path)
 	case ConfigImport:
@@ -674,7 +665,6 @@ func (page *ConfigPage) storageRows() []component.Row {
 		{ID: "verify", Title: "Verify configuration", Description: "Validate stored configuration and structured files", Meta: string(page.overview.Source.Format)},
 		{ID: "migrate", Title: "Migrate legacy credentials", Description: "Move legacy credentials into secret store", Meta: "credential maintenance"},
 		{ID: "migrate-secrets", Title: "Encrypt secret files", Description: "Encrypt plaintext secret-store files at rest", Meta: "at-rest encryption"},
-		{ID: "convert", Title: "Convert storage format", Description: "Convert persisted configuration format", Meta: string(page.overview.Source.Format)},
 		{ID: "export", Title: "Export configuration bundle", Description: "Export configuration and managed secrets", Meta: "bundle"},
 		{ID: "import", Title: "Import configuration bundle", Description: "Import configuration and managed secrets", Meta: "bundle"},
 	}
@@ -688,8 +678,6 @@ func configMaintenanceCommand(id string) (ConfigCommand, bool) {
 		return ConfigMigrate, true
 	case "migrate-secrets":
 		return ConfigMigrateSecrets, true
-	case "convert":
-		return ConfigConvert, true
 	case "export":
 		return ConfigExport, true
 	case "import":

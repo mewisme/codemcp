@@ -52,10 +52,8 @@ type ConfigMutationResult struct {
 type configReloadResult = runtimecontrol.ReloadResult
 
 type InitOptions struct {
-	Context        context.Context
-	Force          bool
-	Format         configformat.Format
-	FormatSelected bool
+	Context context.Context
+	Force   bool
 }
 
 type InitResult struct {
@@ -71,7 +69,7 @@ func Initialize(options InitOptions) (result InitResult, resultErr error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	span := tracepkg.Start(ctx, "CONFIG", "config.initialize", "Initializing configuration", tracepkg.Bool("force", options.Force), tracepkg.Bool("format_selected", options.FormatSelected), tracepkg.String("requested_format", string(options.Format)))
+	span := tracepkg.Start(ctx, "CONFIG", "config.initialize", "Initializing configuration", tracepkg.Bool("force", options.Force))
 	defer func() {
 		if resultErr != nil {
 			span.FailMessage("Configuration initialization failed", resultErr)
@@ -86,18 +84,8 @@ func Initialize(options InitOptions) (result InitResult, resultErr error) {
 		return InitResult{}, err
 	}
 	sourceSpan.EndMessage("Configuration source resolved", tracepkg.String("path", source.Path), tracepkg.String("format", string(source.Format)), tracepkg.Bool("exists", source.Exists))
-	format := options.Format
-	if !options.FormatSelected {
-		format = configformat.JSON
-		if source.Exists {
-			format = source.Format
-		}
-	}
 	if source.Exists && !options.Force {
 		return InitResult{}, errors.New("configuration already exists; use --force to rotate tokens")
-	}
-	if source.Exists && options.FormatSelected && format != source.Format {
-		return InitResult{}, fmt.Errorf("cannot change storage format with init --force; convert configuration to %s first", format)
 	}
 	cfg := config.Default()
 	if source.Exists {
@@ -121,25 +109,18 @@ func Initialize(options InitOptions) (result InitResult, resultErr error) {
 	}
 	validateSpan.EndMessage("Initial configuration validated")
 	path := source.Path
-	persistSpan := tracepkg.Start(ctx, "CONFIG", "config.persist", "Persisting initial configuration", tracepkg.String("path", path), tracepkg.String("format", string(format)), tracepkg.Bool("replace", source.Exists), tracepkg.Bool("atomic", true))
-	if source.Exists {
-		if err := config.Save(cfg); err != nil {
-			persistSpan.FailMessage("Initial configuration persistence failed", err)
-			return InitResult{}, err
-		}
-	} else {
-		if err := config.SaveAs(cfg, format); err != nil {
-			persistSpan.FailMessage("Initial configuration persistence failed", err)
-			return InitResult{}, err
-		}
-		path = config.PathForFormat(format)
+	persistSpan := tracepkg.Start(ctx, "CONFIG", "config.persist", "Persisting initial configuration", tracepkg.String("path", path), tracepkg.String("format", string(configformat.JSON)), tracepkg.Bool("replace", source.Exists), tracepkg.Bool("atomic", true))
+	if err := config.Save(cfg); err != nil {
+		persistSpan.FailMessage("Initial configuration persistence failed", err)
+		return InitResult{}, err
 	}
-	persistFields := []tracepkg.Field{tracepkg.String("path", path), tracepkg.String("format", string(format))}
+	path = config.Path()
+	persistFields := []tracepkg.Field{tracepkg.String("path", path), tracepkg.String("format", string(configformat.JSON))}
 	if info, statErr := os.Stat(path); statErr == nil {
 		persistFields = append(persistFields, tracepkg.Int64("bytes", info.Size()))
 	}
 	persistSpan.EndMessage("Initial configuration persisted", persistFields...)
-	result = InitResult{Config: cfg, ConfigPath: path, Format: format, MCPToken: mcpToken, AdminToken: adminToken}
+	result = InitResult{Config: cfg, ConfigPath: path, Format: configformat.JSON, MCPToken: mcpToken, AdminToken: adminToken}
 	return result, nil
 }
 
@@ -384,25 +365,6 @@ func VerifyConfigContext(ctx context.Context) (config.VerifyResult, error) {
 	}
 	span.EndMessage("Configuration and state verified", tracepkg.String("root", config.RootPath()), tracepkg.String("format", string(result.Format)), tracepkg.Int("files", result.Files))
 	return result, nil
-}
-
-func ConvertConfig(format configformat.Format) (int, error) {
-	return ConvertConfigContext(context.Background(), format)
-}
-
-func ConvertConfigContext(ctx context.Context, format configformat.Format) (int, error) {
-	span := tracepkg.Start(ctx, "CONFIG", "config.convert", "Converting structured configuration", tracepkg.String("target_format", string(format)), tracepkg.String("root", config.RootPath()))
-	if err := MigrateLegacySecretsContext(ctx); err != nil {
-		span.FailMessage("Configuration format conversion failed", err, tracepkg.String("target_format", string(format)))
-		return 0, err
-	}
-	converted, err := config.ConvertFormat(format)
-	if err != nil {
-		span.FailMessage("Configuration format conversion failed", err, tracepkg.String("target_format", string(format)))
-		return 0, err
-	}
-	span.EndMessage("Configuration format converted", tracepkg.String("target_format", string(format)), tracepkg.Int("files", converted), tracepkg.String("config", config.PathForFormat(format)))
-	return converted, nil
 }
 
 func ExportConfig(destination string, force bool) (configbundle.ExportResult, error) {

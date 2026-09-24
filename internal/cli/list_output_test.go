@@ -79,7 +79,7 @@ func TestTunnelListDefaultsToPlainAndSupportsJSON(t *testing.T) {
 	cfg.Tunnel.AdminKey = "admin-test"
 	cfg.Tunnel.AdminWorkspaceID = "ws_admin"
 	cfg.Tunnel.ControlPlaneBaseURL = server.URL
-	if err := config.SaveAs(cfg, configformat.JSON); err != nil {
+	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	plain := executeRequestCommand(t, root, []string{"tunnel", "list"})

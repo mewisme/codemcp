@@ -20,7 +20,7 @@ func TestReadOnlyCommandPolicy(t *testing.T) {
 		}
 	}
 	for _, args := range [][]string{
-		{"config", "set", "permissions.allow_dirs", "/tmp"}, {"config", "convert", "yaml"}, {"config", "export", "backup.cgm"}, {"config", "import", "backup.cgm"},
+		{"config", "set", "permissions.allow_dirs", "/tmp"}, {"config", "export", "backup.cgm"}, {"config", "import", "backup.cgm"},
 		{"cfg", "set", "permissions.allow_dirs", "/tmp"}, {"ws", "register", "."},
 		{"auth", "mcp", "create"}, {"workspace", "register", "."}, {"workspace", "access", "add", "ws_test", "/tmp"},
 		{"request", "approve", "req_test"}, {"request", "deny", "req_test"}, {"request", "grant", "revoke", "req_test"}, {"req", "accept", "req_test"}, {"req", "allow", "req_test"}, {"req", "reject", "req_test"},

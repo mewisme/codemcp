@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 
 	"go.mewis.me/codemcp/internal/configformat"
@@ -8,18 +9,20 @@ import (
 
 func RootPath() string { return configformat.RootPath() }
 
-func Source() (configformat.Source, error) { return configformat.Discover(RootPath()) }
-
 func DefaultPath() string { return filepath.Join(RootPath(), "config.json") }
 
-func PathForFormat(format configformat.Format) string {
-	return configformat.PathFor(RootPath(), "config", format)
+func Source() (configformat.Source, error) { return SourceAt(RootPath()) }
+
+func SourceAt(root string) (configformat.Source, error) {
+	path := filepath.Join(root, "config.json")
+	_, err := os.Stat(path)
+	if err == nil {
+		return configformat.Source{Path: path, Format: configformat.JSON, Ext: ".json", Exists: true}, nil
+	}
+	if os.IsNotExist(err) {
+		return configformat.Source{Path: path, Format: configformat.JSON, Ext: ".json", Exists: false}, nil
+	}
+	return configformat.Source{}, err
 }
 
-func Path() string {
-	source, err := Source()
-	if err != nil {
-		return DefaultPath()
-	}
-	return source.Path
-}
+func Path() string { return DefaultPath() }

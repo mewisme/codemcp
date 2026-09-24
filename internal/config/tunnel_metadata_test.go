@@ -13,46 +13,7 @@ import (
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
-func TestTunnelMetadataRoundTripAcrossFormats(t *testing.T) {
-	for _, format := range []configformat.Format{configformat.JSON, configformat.YAML, configformat.TOML} {
-		t.Run(string(format), func(t *testing.T) {
-			defer configformat.SetRootPath("")
-			root := filepath.Join(t.TempDir(), "config")
-			if err := configformat.SetRootPath(root); err != nil {
-				t.Fatal(err)
-			}
-			cfg := Default()
-			cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
-			cfg.Server.AllowUnauthenticatedLoopback = true
-			if err := SaveAs(cfg, format); err != nil {
-				t.Fatal(err)
-			}
-			metadata := tunnel.Metadata{ID: "tunnel_test", Name: "Test tunnel", Description: "Persisted", WorkspaceIDs: []string{"ws_test"}, FetchedAt: time.Now().UTC().Truncate(time.Second)}
-			path, err := SaveTunnelMetadata(metadata)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if filepath.Ext(path) != configformat.Extension(format) {
-				t.Fatalf("path = %s", path)
-			}
-			loaded, err := LoadTunnelMetadata(metadata.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if loaded.ID != metadata.ID || loaded.Name != metadata.Name || len(loaded.WorkspaceIDs) != 1 || loaded.WorkspaceIDs[0] != "ws_test" {
-				t.Fatalf("metadata = %#v", loaded)
-			}
-			if err := RemoveTunnelMetadata(metadata.ID); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := os.Stat(path); !os.IsNotExist(err) {
-				t.Fatalf("metadata file survived removal: %v", err)
-			}
-		})
-	}
-}
-
-func TestSyncTunnelMetadataCreatesMissingPersistedFile(t *testing.T) {
+func TestTunnelMetadataRoundTripUsesJSON(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := filepath.Join(t.TempDir(), "config")
 	if err := configformat.SetRootPath(root); err != nil {
@@ -61,7 +22,42 @@ func TestSyncTunnelMetadataCreatesMissingPersistedFile(t *testing.T) {
 	cfg := Default()
 	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
 	cfg.Server.AllowUnauthenticatedLoopback = true
-	if err := SaveAs(cfg, configformat.YAML); err != nil {
+	if err := Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	metadata := tunnel.Metadata{ID: "tunnel_test", Name: "Test tunnel", Description: "Persisted", WorkspaceIDs: []string{"ws_test"}, FetchedAt: time.Now().UTC().Truncate(time.Second)}
+	path, err := SaveTunnelMetadata(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Ext(path) != ".json" {
+		t.Fatalf("path = %s", path)
+	}
+	loaded, err := LoadTunnelMetadata(metadata.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ID != metadata.ID || loaded.Name != metadata.Name || len(loaded.WorkspaceIDs) != 1 || loaded.WorkspaceIDs[0] != "ws_test" {
+		t.Fatalf("metadata = %#v", loaded)
+	}
+	if err := RemoveTunnelMetadata(metadata.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("metadata file survived removal: %v", err)
+	}
+}
+
+func TestSyncTunnelMetadataCreatesMissingPersistedJSONFile(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := filepath.Join(t.TempDir(), "config")
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	cfg := Default()
+	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
+	cfg.Server.AllowUnauthenticatedLoopback = true
+	if err := Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +75,7 @@ func TestSyncTunnelMetadataCreatesMissingPersistedFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if metadata.Name != "Synced tunnel" || filepath.Ext(path) != ".yaml" {
+	if metadata.Name != "Synced tunnel" || filepath.Ext(path) != ".json" {
 		t.Fatalf("metadata=%#v path=%s", metadata, path)
 	}
 	loaded, err := LoadTunnelMetadata("tunnel_test")
@@ -92,7 +88,7 @@ func TestSyncTunnelMetadataCreatesMissingPersistedFile(t *testing.T) {
 }
 
 func TestTunnelMetadataPathRejectsTraversal(t *testing.T) {
-	for _, id := range []string{"", ".", "..", "../escape", "nested/id", `nested\\id`} {
+	for _, id := range []string{"", ".", "..", "../escape", "nested/id", `nested\id`} {
 		if _, err := TunnelMetadataPath(id); err == nil {
 			t.Fatalf("accepted unsafe id %q", id)
 		}
@@ -111,7 +107,7 @@ func TestTunnelMetadataRejectsSymlinkDirectoryEscape(t *testing.T) {
 	cfg := Default()
 	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
 	cfg.Server.AllowUnauthenticatedLoopback = true
-	if err := SaveAs(cfg, configformat.JSON); err != nil {
+	if err := Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	outside := t.TempDir()

@@ -32,13 +32,6 @@ func TestConfigCompletionIncludesKeysAndTypedValues(t *testing.T) {
 	}
 }
 
-func TestConfigFormatCompletion(t *testing.T) {
-	formats, _ := completeConfigFormat(nil, nil, "t")
-	if len(formats) != 1 || formats[0] != "toml" {
-		t.Fatalf("format completions = %#v", formats)
-	}
-}
-
 func TestDynamicEntityAndSessionCompletionUsesSelectedConfigRoot(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := t.TempDir()

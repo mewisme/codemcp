@@ -30,7 +30,7 @@ func VerifyRuntime() (VerifyResult, error) {
 }
 
 func verifyAt(root string, runtimeMode bool) (VerifyResult, error) {
-	source, err := configformat.Discover(root)
+	source, err := SourceAt(root)
 	if err != nil {
 		return VerifyResult{}, err
 	}

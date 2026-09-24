@@ -11,7 +11,6 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
-	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/logger"
 )
 
@@ -36,7 +35,6 @@ func configCommand() *cobra.Command {
 		configExplainCommand(),
 		configSetCommand(),
 		configMigrateCommand(),
-		configConvertCommand(),
 		configExportCommand(),
 		configImportCommand(),
 		configVerifyCommand(),
@@ -144,7 +142,7 @@ func configListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list [key]",
 		Aliases: []string{"ls"},
-		Short:   "List redacted configuration with optional subtree and output format",
+		Short:   "List redacted configuration with optional subtree",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "CONFIG", "config.loading", "Loading configuration")
@@ -234,37 +232,12 @@ func configMigrateSecretsCommand() *cobra.Command {
 	}}
 }
 
-func configConvertCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:               "convert <json|yaml|toml>",
-		Aliases:           []string{"transform"},
-		Short:             "Convert all structured CodeMCP config/state files to one format",
-		Args:              cobra.ExactArgs(1),
-		ValidArgsFunction: completeConfigFormat,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			logCommandStep(cmd, "CONFIG", "config.format.converting", "Converting structured configuration", logger.WithVerbose("target", args[0]))
-			format, err := configformat.Parse(args[0])
-			if err != nil {
-				return err
-			}
-			converted, err := application.ConvertConfigContext(cmd.Context(), format)
-			if err != nil {
-				return fmt.Errorf("convert configuration to %s: %w", format, err)
-			}
-			log := commandLogger(cmd)
-			log.Success("CONFIG", "configuration format converted", "format", format, "files", converted)
-			log.Detail("config", config.PathForFormat(format))
-			return nil
-		},
-	}
-}
-
 func configVerifyCommand() *cobra.Command {
 	var strict bool
 	cmd := &cobra.Command{
 		Use:     "verify",
 		Aliases: []string{"validate"},
-		Short:   "Verify structured config/state format consistency and configuration validity",
+		Short:   "Verify JSON configuration and structured state consistency",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "CONFIG", "config.verifying", "Verifying configuration and state")

@@ -203,57 +203,36 @@ func TestConfigParentTraversalAndFlatOutput(t *testing.T) {
 	}
 }
 
-func TestConfigOutputFormatsAndRedaction(t *testing.T) {
+func TestConfigJSONOutputAndRedaction(t *testing.T) {
 	cfg := config.Default()
 	cfg.Auth.MCPTokenHash = "mcp-secret"
 	cfg.Auth.AdminTokenHash = "admin-secret"
 	cfg.Tunnel.APIKey = "tunnel-secret"
 
-	for _, test := range []struct {
-		name    string
-		options configOutputOptions
-		want    []string
-	}{
-		{name: "json", options: configOutputOptions{json: true}, want: []string{`"auth"`, `"mcp_token_hash": "<redacted>"`}},
-		{name: "yaml", options: configOutputOptions{yaml: true}, want: []string{"auth:", `mcp_token_hash: <redacted>`}},
-		{name: "toml", options: configOutputOptions{toml: true}, want: []string{"[auth]", `mcp_token_hash = '<redacted>'`}},
-		{name: "format yaml", options: configOutputOptions{format: "yaml"}, want: []string{"auth:", `admin_token_hash: <redacted>`}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			cmd := &cobra.Command{}
-			var out bytes.Buffer
-			cmd.SetOut(&out)
-			if err := printConfigSelection(cmd, cfg, "", true, test.options); err != nil {
-				t.Fatal(err)
-			}
-			text := out.String()
-			if strings.Contains(text, "mcp-secret") || strings.Contains(text, "admin-secret") || strings.Contains(text, "tunnel-secret") {
-				t.Fatalf("secret leaked in %s output: %s", test.name, text)
-			}
-			for _, want := range test.want {
-				if !strings.Contains(text, want) {
-					t.Fatalf("%s output missing %q:\n%s", test.name, want, text)
-				}
-			}
-		})
+	cmd := &cobra.Command{}
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	if err := printConfigSelection(cmd, cfg, "", true, configOutputOptions{json: true}); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestConfigOutputFormatConflict(t *testing.T) {
-	if _, _, err := resolveConfigOutputFormat(configOutputOptions{format: "json", yaml: true}); err == nil {
-		t.Fatal("expected conflicting output formats to fail")
+	text := out.String()
+	if strings.Contains(text, "mcp-secret") || strings.Contains(text, "admin-secret") || strings.Contains(text, "tunnel-secret") {
+		t.Fatalf("secret leaked in JSON output: %s", text)
 	}
-	format, selected, err := resolveConfigOutputFormat(configOutputOptions{format: "json", json: true})
-	if err != nil || !selected || format != configformat.JSON {
-		t.Fatalf("same format flags = %q selected=%t err=%v", format, selected, err)
+	for _, want := range []string{`"auth"`, `"mcp_token_hash": "<redacted>"`, `"admin_token_hash": "<redacted>"`} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("JSON output missing %q:\n%s", want, text)
+		}
 	}
 }
 
 func TestConfigCommandAliases(t *testing.T) {
 	cmd := configCommand()
-	convert, _, err := cmd.Find([]string{"transform"})
-	if err != nil || convert.Name() != "convert" {
-		t.Fatalf("transform alias = %v %v", convert, err)
+	if convert, _, err := cmd.Find([]string{"convert"}); err == nil && convert != cmd {
+		t.Fatalf("convert command still exposed: %v", convert)
+	}
+	if transform, _, err := cmd.Find([]string{"transform"}); err == nil && transform != cmd {
+		t.Fatalf("transform alias still exposed: %v", transform)
 	}
 	verify, _, err := cmd.Find([]string{"validate"})
 	if err != nil || verify.Name() != "verify" {
@@ -270,6 +249,59 @@ func TestConfigCommandAliases(t *testing.T) {
 	root.SilenceErrors = true
 	if err := root.Execute(); err == nil {
 		t.Fatal("config reload positional fallback unexpectedly succeeded")
+	}
+}
+
+func TestCurrentConfigCommandsAdvertiseJSONOnly(t *testing.T) {
+	root := newRootCommand()
+	initCmd, _, err := root.Find([]string{"init"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"format", "json", "yaml", "toml"} {
+		if flag := initCmd.Flags().Lookup(name); flag != nil {
+			t.Fatalf("init still exposes storage-format flag --%s", name)
+		}
+	}
+	configCmd, _, err := root.Find([]string{"config"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, child := range configCmd.Commands() {
+		if child.Name() == "convert" {
+			t.Fatal("config convert command is still registered")
+		}
+		for _, alias := range child.Aliases {
+			if alias == "transform" {
+				t.Fatalf("config command %s still exposes transform alias", child.Name())
+			}
+		}
+	}
+	for _, path := range [][]string{{"init"}, {"config"}, {"config", "get"}, {"config", "list"}, {"config", "verify"}} {
+		cmd, _, err := root.Find(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.ToLower(strings.Join([]string{cmd.Use, cmd.Short, cmd.Long, cmd.Example}, "\n"))
+		for _, forbidden := range []string{"yaml", "toml"} {
+			if strings.Contains(text, forbidden) {
+				t.Fatalf("%s advertises %s config support: %q", strings.Join(path, " "), forbidden, text)
+			}
+		}
+	}
+	for _, path := range [][]string{{"config", "get"}, {"config", "list"}} {
+		cmd, _, err := root.Find(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd.Flags().Lookup("json") == nil {
+			t.Fatalf("%s lost JSON output flag", strings.Join(path, " "))
+		}
+		for _, name := range []string{"format", "yaml", "toml"} {
+			if flag := cmd.Flags().Lookup(name); flag != nil {
+				t.Fatalf("%s still exposes --%s", strings.Join(path, " "), name)
+			}
+		}
 	}
 }
 

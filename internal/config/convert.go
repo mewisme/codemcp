@@ -33,10 +33,6 @@ type structuredFile struct {
 	ext    string
 }
 
-func ConvertFormat(target configformat.Format) (int, error) {
-	return convertFormatAt(RootPath(), target)
-}
-
 func convertFormatAt(root string, target configformat.Format) (int, error) {
 	source, err := configformat.Discover(root)
 	if err != nil {

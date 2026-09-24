@@ -70,8 +70,8 @@ func TestVerifyRuntimeAtIgnoresInvalidCheckpointState(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("config.yaml", `{"server":{"port":37421,"allow_unauthenticated_loopback":true,"expose":{"mode":"none","interfaces":[]}},"admin":{"enabled":false,"port":37422},"auth":{"mcp_enabled":false,"admin_enabled":false},"tunnel":{"enabled":false}}`)
-	write("workspaces.yaml", `[]`)
+	write("config.json", `{"server":{"port":37421,"allow_unauthenticated_loopback":true,"expose":{"mode":"none","interfaces":[]}},"admin":{"enabled":false,"port":37422},"auth":{"mcp_enabled":false,"admin_enabled":false},"tunnel":{"enabled":false}}`)
+	write("workspaces.json", `[]`)
 	write("workspaces/ws_test/checkpoints/index.yaml", "version: 1\ncheckpoints: []\n")
 	write("workspaces/ws_test/checkpoints/data/cp_test/manifest.yaml", "version: 1\nfiles:\n  - content: first\n      broken: value\n")
 	if _, err := verifyAt(root, false); err == nil {
@@ -81,7 +81,7 @@ func TestVerifyRuntimeAtIgnoresInvalidCheckpointState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Format != "yaml" || result.Ext != ".yaml" || result.Files != 4 {
+	if result.Format != "json" || result.Ext != ".json" || result.Files != 4 {
 		t.Fatalf("runtime verify result = %#v", result)
 	}
 }

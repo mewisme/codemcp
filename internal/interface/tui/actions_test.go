@@ -124,7 +124,6 @@ func TestEditorActionsNavigateToEditorRoutes(t *testing.T) {
 		{"tunnel.admin.key.set", action.Context{Route: string(RouteTunnel)}, Route{Kind: RouteTunnel, Section: "admin-key", Action: "edit"}},
 		{"tunnel.managed.create", action.Context{Route: string(RouteTunnels)}, Route{Kind: RouteTunnels, Action: "create"}},
 		{"tunnel.managed.update", action.Context{Route: string(RouteTunnels), ResourceID: "tun_demo"}, Route{Kind: RouteTunnels, ResourceID: "tun_demo", Action: "edit"}},
-		{"config.convert", action.Context{Route: string(RouteConfig)}, Route{Kind: RouteConfig, Section: "storage", Action: "convert"}},
 		{"config.export", action.Context{Route: string(RouteConfig)}, Route{Kind: RouteConfig, Section: "storage", Action: "export"}},
 		{"config.import", action.Context{Route: string(RouteConfig)}, Route{Kind: RouteConfig, Section: "storage", Action: "import"}},
 		{"logs.filter", action.Context{Route: string(RouteLogs)}, Route{Kind: RouteLogs, Action: "filter"}},
@@ -256,7 +255,7 @@ func TestConfigActionAvailabilityFollowsRouteContext(t *testing.T) {
 		return false
 	}
 	ctx := action.Context{Route: string(RouteConfig)}
-	for _, id := range []string{"config.refresh", "config.edit", "config.verify", "config.migrate", "config.migrate.secrets", "config.convert", "config.export", "config.import"} {
+	for _, id := range []string{"config.refresh", "config.edit", "config.verify", "config.migrate", "config.migrate.secrets", "config.export", "config.import"} {
 		if !has(ctx, id) {
 			t.Fatalf("config action missing: %s", id)
 		}

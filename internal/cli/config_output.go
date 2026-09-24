@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,53 +10,16 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/config"
-	"go.mewis.me/codemcp/internal/configformat"
 )
 
 const redactedValue = config.RedactedValue
 
 type configOutputOptions struct {
-	format string
-	json   bool
-	yaml   bool
-	toml   bool
+	json bool
 }
 
 func addConfigOutputFlags(cmd *cobra.Command, options *configOutputOptions) {
-	cmd.Flags().StringVar(&options.format, "format", "", "output format: json, yaml, or toml")
 	cmd.Flags().BoolVar(&options.json, "json", false, "output JSON")
-	cmd.Flags().BoolVar(&options.yaml, "yaml", false, "output YAML")
-	cmd.Flags().BoolVar(&options.toml, "toml", false, "output TOML")
-}
-
-func resolveConfigOutputFormat(options configOutputOptions) (configformat.Format, bool, error) {
-	selected := make([]configformat.Format, 0, 4)
-	if strings.TrimSpace(options.format) != "" {
-		format, err := configformat.Parse(options.format)
-		if err != nil {
-			return "", false, err
-		}
-		selected = append(selected, format)
-	}
-	if options.json {
-		selected = append(selected, configformat.JSON)
-	}
-	if options.yaml {
-		selected = append(selected, configformat.YAML)
-	}
-	if options.toml {
-		selected = append(selected, configformat.TOML)
-	}
-	if len(selected) == 0 {
-		return "", false, nil
-	}
-	format := selected[0]
-	for _, current := range selected[1:] {
-		if current != format {
-			return "", false, errors.New("only one output format may be selected")
-		}
-	}
-	return format, true, nil
 }
 
 func redactedConfigTree(cfg config.Config) (map[string]any, error) {
@@ -106,12 +68,8 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 	if err != nil {
 		return err
 	}
-	format, structured, err := resolveConfigOutputFormat(options)
-	if err != nil {
-		return err
-	}
-	if structured {
-		data, err := configformat.EncodeGeneric(format, wrapConfigTreeValue(key, value))
+	if options.json {
+		data, err := encodeConfigJSON(wrapConfigTreeValue(key, value))
 		if err != nil {
 			return err
 		}
@@ -138,6 +96,17 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 		cmd.Println(line)
 	}
 	return nil
+}
+
+func encodeConfigJSON(value any) ([]byte, error) {
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(value); err != nil {
+		return nil, err
+	}
+	return buffer.Bytes(), nil
 }
 
 func flattenConfigTree(prefix string, value any, lines *[]string) {

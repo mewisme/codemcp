@@ -61,20 +61,13 @@ func cliUseName() string { return "cm" }
 
 func initCommand() *cobra.Command {
 	var force bool
-	var formatName string
-	var jsonFormat, yamlFormat, tomlFormat bool
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize configuration and authentication tokens",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "INIT", "init.preparing", "Preparing configuration initialization")
-			options := configOutputOptions{format: formatName, json: jsonFormat, yaml: yamlFormat, toml: tomlFormat}
-			format, selected, err := resolveConfigOutputFormat(options)
-			if err != nil {
-				return err
-			}
-			logCommandDebug(cmd, "INIT", "init.format.resolved", "Configuration format resolved", logger.WithDebug("format", format), logger.WithDebug("selected", selected), logger.WithDebug("force", force))
-			result, err := application.Initialize(application.InitOptions{Context: cmd.Context(), Force: force, Format: format, FormatSelected: selected})
+			logCommandDebug(cmd, "INIT", "init.format.resolved", "Configuration format resolved", logger.WithDebug("format", "json"), logger.WithDebug("force", force))
+			result, err := application.Initialize(application.InitOptions{Context: cmd.Context(), Force: force})
 			if err != nil {
 				return err
 			}
@@ -89,10 +82,6 @@ func initCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&force, "force", false, "rewrite config and rotate both tokens if already initialized")
-	cmd.Flags().StringVar(&formatName, "format", "", "storage format: json, yaml, or toml")
-	cmd.Flags().BoolVar(&jsonFormat, "json", false, "use JSON storage")
-	cmd.Flags().BoolVar(&yamlFormat, "yaml", false, "use YAML storage")
-	cmd.Flags().BoolVar(&tomlFormat, "toml", false, "use TOML storage")
 	return cmd
 }
 

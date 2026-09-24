@@ -8,7 +8,6 @@ import (
 	"charm.land/huh/v2"
 
 	"go.mewis.me/codemcp/internal/config"
-	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
 
@@ -18,10 +17,6 @@ type configFieldFormData struct {
 	Enum string
 	Key  string
 	Kind config.FieldKind
-}
-
-type configConvertFormData struct {
-	Format string
 }
 
 type configBundleFormData struct {
@@ -81,14 +76,6 @@ func configFieldFormValue(data *configFieldFormData) string {
 	default:
 		return data.Raw
 	}
-}
-
-func newConfigConvertEditor(current configformat.Format) (component.Editor, *configConvertFormData) {
-	data := &configConvertFormData{Format: string(current)}
-	editor := component.NewEditor("convert", component.EditorSection{ID: "format", Title: "Format", Description: "Convert all structured configuration and state files to the selected format.", Form: component.NewEditorForm(component.Group(
-		component.Select("Target format", &data.Format, huh.NewOption("JSON", "json"), huh.NewOption("YAML", "yaml"), huh.NewOption("TOML", "toml")),
-	))})
-	return editor, data
 }
 
 func newConfigBundleEditor(export bool) (component.Editor, *configBundleFormData) {

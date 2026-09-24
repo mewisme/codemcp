@@ -198,7 +198,7 @@ func loadAtWithTunnelSecretPolicy(configPath, secretPath string, policy tunnelSe
 		}
 		return cfg, err
 	}
-	if err := configformat.UnmarshalPath(configPath, data, &cfg); err != nil {
+	if err := configformat.Unmarshal(configformat.JSON, data, &cfg); err != nil {
 		return cfg, err
 	}
 	cfg.Server.Expose = NormalizeExposure(cfg.Server.Expose)
@@ -228,7 +228,7 @@ func migrateLegacyServerConfig(path string, data []byte, cfg *Config) error {
 	var legacy struct {
 		Server map[string]any `json:"server"`
 	}
-	if err := configformat.UnmarshalPath(path, data, &legacy); err != nil {
+	if err := configformat.Unmarshal(configformat.JSON, data, &legacy); err != nil {
 		return err
 	}
 	if _, exists := legacy.Server["expose"]; exists {
@@ -250,15 +250,7 @@ func migrateLegacyServerConfig(path string, data []byte, cfg *Config) error {
 }
 
 func Save(cfg Config) error {
-	source, err := Source()
-	if err != nil {
-		return err
-	}
-	return saveAt(source.Path, configformat.StructuredPathFrom(source.Path, "tunnel"), cfg)
-}
-
-func SaveAs(cfg Config, format configformat.Format) error {
-	path := PathForFormat(format)
+	path := DefaultPath()
 	return saveAt(path, configformat.StructuredPathFrom(path, "tunnel"), cfg)
 }
 
@@ -318,15 +310,11 @@ func saveAtWithSecretSaver(configPath, secretPath string, cfg Config, saveSecret
 const secretFileMarker = "<secret-file>"
 
 func mergeConfigData(path string, persisted, runtime Config) ([]byte, error) {
-	format, err := configformat.Detect(path)
+	overlayData, err := configformat.Marshal(configformat.JSON, persisted)
 	if err != nil {
 		return nil, err
 	}
-	overlayData, err := configformat.Marshal(format, persisted)
-	if err != nil {
-		return nil, err
-	}
-	overlay, err := configformat.DecodeGeneric(format, overlayData)
+	overlay, err := configformat.DecodeGeneric(configformat.JSON, overlayData)
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +333,7 @@ func mergeConfigData(path string, persisted, runtime Config) ([]byte, error) {
 	var base any = map[string]any{}
 	existingData, _, readErr := readConfigFile(path)
 	if readErr == nil {
-		base, err = configformat.DecodeGeneric(format, existingData)
+		base, err = configformat.DecodeGeneric(configformat.JSON, existingData)
 		if err != nil {
 			return nil, fmt.Errorf("decode existing configuration for merge: %w", err)
 		}
@@ -371,7 +359,7 @@ func mergeConfigData(path string, persisted, runtime Config) ([]byte, error) {
 			}
 		}
 	}
-	return configformat.EncodeGeneric(format, merged)
+	return configformat.EncodeGeneric(configformat.JSON, merged)
 }
 
 func ensureGenericObject(root map[string]any, key string) map[string]any {

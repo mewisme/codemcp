@@ -28,7 +28,7 @@ func TestCapabilitySmokeReadNavigation(t *testing.T) {
 
 func TestCapabilitySmokeWriteThroughActionPageAndApplication(t *testing.T) {
 	withCapabilityTestRoot(t)
-	if _, err := application.Initialize(application.InitOptions{Format: configformat.JSON, FormatSelected: true}); err != nil {
+	if _, err := application.Initialize(application.InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := application.SetConfigField(t.Context(), "server.allow_unauthenticated_loopback", "true"); err != nil {

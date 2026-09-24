@@ -109,7 +109,7 @@ func Export(root, destination string, options ExportOptions) (ExportResult, erro
 	if within(root, destination) {
 		return ExportResult{}, errors.New("config export file must be outside the selected config root")
 	}
-	source, err := configformat.Discover(root)
+	source, err := config.SourceAt(root)
 	if err != nil {
 		return ExportResult{}, err
 	}
@@ -411,7 +411,7 @@ func materialize(root string, bundle Bundle, target Platform) (materializeResult
 		}
 		data := item.Data
 		if topLevelStructured(relative, "config") {
-			normalized, skipped, err := normalizeMainConfig(relative, data, bundle.Source, target)
+			normalized, skipped, err := normalizeMainConfig(data, bundle.Source, target)
 			if err != nil {
 				return result, err
 			}
@@ -453,12 +453,8 @@ func materialize(root string, bundle Bundle, target Platform) (materializeResult
 	return result, nil
 }
 
-func normalizeMainConfig(relative string, data []byte, source, target Platform) ([]byte, int, error) {
-	format, err := configformat.Detect(relative)
-	if err != nil {
-		return nil, 0, err
-	}
-	raw, err := configformat.DecodeGeneric(format, data)
+func normalizeMainConfig(data []byte, source, target Platform) ([]byte, int, error) {
+	raw, err := configformat.DecodeGeneric(configformat.JSON, data)
 	if err != nil {
 		return nil, 0, fmt.Errorf("decode bundled config: %w", err)
 	}
@@ -467,7 +463,7 @@ func normalizeMainConfig(relative string, data []byte, source, target Platform) 
 		return nil, 0, errors.New("bundled config must be an object")
 	}
 	cfg := config.Default()
-	if err := configformat.Unmarshal(format, data, &cfg); err != nil {
+	if err := configformat.Unmarshal(configformat.JSON, data, &cfg); err != nil {
 		return nil, 0, fmt.Errorf("decode bundled config: %w", err)
 	}
 	skipped := 0
@@ -492,7 +488,7 @@ func normalizeMainConfig(relative string, data []byte, source, target Platform) 
 			}
 		}
 	}
-	encoded, err := configformat.EncodeGeneric(format, root)
+	encoded, err := configformat.EncodeGeneric(configformat.JSON, root)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -500,11 +496,11 @@ func normalizeMainConfig(relative string, data []byte, source, target Platform) 
 }
 
 func mergeImportedMainConfig(existingRoot, stagedRoot string) error {
-	existing, err := configformat.Discover(existingRoot)
+	existing, err := config.SourceAt(existingRoot)
 	if err != nil {
 		return fmt.Errorf("discover existing configuration for merge: %w", err)
 	}
-	staged, err := configformat.Discover(stagedRoot)
+	staged, err := config.SourceAt(stagedRoot)
 	if err != nil {
 		return fmt.Errorf("discover imported configuration for merge: %w", err)
 	}
@@ -519,11 +515,11 @@ func mergeImportedMainConfig(existingRoot, stagedRoot string) error {
 	if err != nil {
 		return err
 	}
-	existingRaw, err := configformat.DecodeGeneric(existing.Format, existingData)
+	existingRaw, err := configformat.DecodeGeneric(configformat.JSON, existingData)
 	if err != nil {
 		return fmt.Errorf("decode existing configuration for import merge: %w", err)
 	}
-	stagedRaw, err := configformat.DecodeGeneric(staged.Format, stagedData)
+	stagedRaw, err := configformat.DecodeGeneric(configformat.JSON, stagedData)
 	if err != nil {
 		return fmt.Errorf("decode imported configuration for merge: %w", err)
 	}
@@ -531,7 +527,7 @@ func mergeImportedMainConfig(existingRoot, stagedRoot string) error {
 	if !ok {
 		return errors.New("configuration import merge requires object roots")
 	}
-	data, err := configformat.EncodeGeneric(staged.Format, merged)
+	data, err := configformat.EncodeGeneric(configformat.JSON, merged)
 	if err != nil {
 		return err
 	}

@@ -98,13 +98,6 @@ func completeConfigSet(_ *cobra.Command, args []string, toComplete string) ([]st
 	}
 }
 
-func completeConfigFormat(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	if len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	return filterCompletions([]string{"json", "yaml", "toml"}, toComplete), cobra.ShellCompDirectiveNoFileComp
-}
-
 func completeWorkspaceID(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp

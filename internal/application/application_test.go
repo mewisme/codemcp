@@ -26,6 +26,19 @@ func TestInitializeAndAuthLifecycle(t *testing.T) {
 	if result.ConfigPath != filepath.Join(root, "config.json") || result.Format != configformat.JSON {
 		t.Fatalf("init result = %#v", result)
 	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configFiles []string
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "config.") {
+			configFiles = append(configFiles, entry.Name())
+		}
+	}
+	if len(configFiles) != 1 || configFiles[0] != "config.json" {
+		t.Fatalf("fresh init config files=%v", configFiles)
+	}
 	if !strings.HasPrefix(result.MCPToken, "mcp_") || !strings.HasPrefix(result.AdminToken, "admin_") {
 		t.Fatalf("generated tokens have unexpected format")
 	}
@@ -58,17 +71,17 @@ func TestInitializeAndAuthLifecycle(t *testing.T) {
 	}
 }
 
-func TestInitializePreservesFormatOnForce(t *testing.T) {
+func TestInitializeForcePreservesJSONAndExistingConfig(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := filepath.Join(t.TempDir(), "config")
 	if err := configformat.SetRootPath(root); err != nil {
 		t.Fatal(err)
 	}
-	first, err := Initialize(InitOptions{Format: configformat.YAML, FormatSelected: true})
+	first, err := Initialize(InitOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Format != configformat.YAML {
+	if first.Format != configformat.JSON || filepath.Ext(first.ConfigPath) != ".json" {
 		t.Fatalf("format = %s", first.Format)
 	}
 	if _, err := Initialize(InitOptions{}); err == nil {
@@ -81,7 +94,7 @@ func TestInitializePreservesFormatOnForce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if forced.Format != configformat.YAML || filepath.Ext(forced.ConfigPath) != ".yaml" {
+	if forced.Format != configformat.JSON || filepath.Ext(forced.ConfigPath) != ".json" {
 		t.Fatalf("forced result = %#v", forced)
 	}
 	loaded, err := config.Load()
@@ -91,8 +104,10 @@ func TestInitializePreservesFormatOnForce(t *testing.T) {
 	if loaded.Server.Port != 40123 {
 		t.Fatalf("init --force reset existing config: %#v", loaded.Server)
 	}
-	if _, err := Initialize(InitOptions{Force: true, Format: configformat.TOML, FormatSelected: true}); err == nil {
-		t.Fatal("init force unexpectedly changed storage format")
+	for _, name := range []string{"config.yaml", "config.yml", "config.toml"} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Fatalf("alternate config file exists after init --force: %s err=%v", name, err)
+		}
 	}
 }
 
@@ -280,41 +295,6 @@ func applicationTraceContains(events []tracepkg.Event, name string) bool {
 		}
 	}
 	return false
-}
-
-func TestConfigConvertRoundTripJSONYAMLTOML(t *testing.T) {
-	defer configformat.SetRootPath("")
-	root := filepath.Join(t.TempDir(), "config")
-	if err := configformat.SetRootPath(root); err != nil {
-		t.Fatal(err)
-	}
-	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
-	cfg.Server.Port = 40123
-	cfg.Features.Ponytail.Mode = "ultra"
-	if err := config.SaveAs(cfg, configformat.JSON); err != nil {
-		t.Fatal(err)
-	}
-	for _, format := range []configformat.Format{configformat.YAML, configformat.TOML, configformat.JSON} {
-		if _, err := ConvertConfig(format); err != nil {
-			t.Fatalf("convert to %s: %v", format, err)
-		}
-		verified, err := VerifyConfig()
-		if err != nil {
-			t.Fatalf("verify %s: %v", format, err)
-		}
-		if verified.Format != format {
-			t.Fatalf("verified format=%s want=%s", verified.Format, format)
-		}
-		loaded, err := config.Load()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if loaded.Server.Port != 40123 || loaded.Features.Ponytail.Mode != "ultra" || loaded.Auth.MCPTokenHash != "mcp-hash" || loaded.Auth.AdminTokenHash != "admin-hash" {
-			t.Fatalf("round trip changed config after %s: %#v", format, loaded)
-		}
-	}
 }
 
 func TestConfigExportImportPreservesSafetyAndState(t *testing.T) {

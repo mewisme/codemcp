@@ -100,6 +100,20 @@ func TestExportIncludesLogicalSecretsAndSkipsRuntimeState(t *testing.T) {
 	}
 }
 
+func TestExportRequiresCanonicalConfigJSON(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("[server]\nport = 37421\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(t.TempDir(), "backup.cgm")
+	if _, err := Export(root, destination, ExportOptions{}); err == nil || !strings.Contains(err.Error(), "configuration is not initialized") {
+		t.Fatalf("legacy-only config export error = %v", err)
+	}
+	if _, err := os.Stat(destination); !os.IsNotExist(err) {
+		t.Fatalf("legacy-only config unexpectedly exported: %v", err)
+	}
+}
+
 func TestMaterializeMapsHomePathsAndWorkspaceStateAcrossPlatforms(t *testing.T) {
 	targetHome := t.TempDir()
 	for _, relative := range []string{"allowed", "bin", "projects/app"} {
@@ -210,7 +224,7 @@ func TestNormalizeMainConfigPreservesUnknownKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	normalized, _, err := normalizeMainConfig("config.json", data, currentPlatform(), currentPlatform())
+	normalized, _, err := normalizeMainConfig(data, currentPlatform(), currentPlatform())
 	if err != nil {
 		t.Fatal(err)
 	}

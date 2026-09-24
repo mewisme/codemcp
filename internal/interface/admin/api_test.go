@@ -99,7 +99,7 @@ func TestTunnelConfigurePreservesSecretFromSerializedConfigStore(t *testing.T) {
 	cfg.Auth.AdminEnabled = false
 	cfg.Server.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel = tunnel.Config{Enabled: false, ID: "tunnel_store", APIKey: "store-secret", AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL}
-	if err := config.SaveAs(cfg, configformat.JSON); err != nil {
+	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	client := tunnel.NewConfigured(tunnel.Config{Enabled: false, ID: "tunnel_runtime", APIKey: "stale-runtime-secret"}, nil)

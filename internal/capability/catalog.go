@@ -32,7 +32,6 @@ const (
 	ConfigSet                ID = "config.set"
 	ConfigMigrate            ID = "config.migrate"
 	ConfigMigrateSecrets     ID = "config.migrate.secrets"
-	ConfigConvert            ID = "config.convert"
 	ConfigVerify             ID = "config.verify"
 	AuthMCPRotate            ID = "auth.mcp.rotate"
 	AuthMCPEnable            ID = "auth.mcp.enable"
@@ -143,7 +142,6 @@ func buildSpecs() []Spec {
 		operatorMutation(ConfigSet, "config set", RiskState, false),
 		operatorSensitive(ConfigMigrate, "config migrate", false),
 		operatorSensitive(ConfigMigrateSecrets, "config migrate secrets", false),
-		operatorSensitive(ConfigConvert, "config convert", false, "config transform"),
 		operatorQuery(ConfigVerify, "config verify", "config validate"),
 		operatorSensitive(AuthMCPRotate, "auth mcp create", false),
 		operatorSensitive(AuthMCPEnable, "auth mcp enable", false),

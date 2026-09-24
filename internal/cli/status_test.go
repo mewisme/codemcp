@@ -150,7 +150,7 @@ func TestStatusNotInitialized(t *testing.T) {
 }
 
 func TestStatusHelpers(t *testing.T) {
-	if got := compactStatusPath("/definitely/not/home/config.toml"); got == "" {
+	if got := compactStatusPath("/definitely/not/home/config.json"); got == "" {
 		t.Fatal("compactStatusPath returned empty path")
 	}
 	for duration, expected := range map[time.Duration]string{5 * time.Second: "5s", 2*time.Minute + 3*time.Second: "2m 03s", 3*time.Hour + 4*time.Minute: "3h 04m", 25*time.Hour + 2*time.Minute: "1d 01h 02m"} {
@@ -163,7 +163,7 @@ func TestStatusHelpers(t *testing.T) {
 func TestRenderStatusConfigUsesCachedUpdateWithoutNetwork(t *testing.T) {
 	checkedAt := time.Date(2026, 9, 4, 12, 0, 0, 0, time.Local)
 	available := &updatepkg.CachedCheck{CheckResult: updatepkg.CheckResult{Current: "v1.0.0", Latest: "v1.1.0", Status: updatepkg.StatusAvailable}, CheckedAt: checkedAt}
-	snapshot := statusSnapshot{Source: configformat.Source{Path: "/tmp/config.toml", Exists: true}, Config: config.Default(), Update: available}
+	snapshot := statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default(), Update: available}
 	var output bytes.Buffer
 	renderStatusConfig(&output, snapshot, false)
 	if !strings.Contains(output.String(), "v1.1.0 available") || strings.Contains(output.String(), "checked") {
@@ -188,7 +188,7 @@ func TestRenderStatusConfigSurfacesSecurityWarnings(t *testing.T) {
 	cfg := config.Default()
 	cfg.Server.Expose.Mode = config.ExposureAll
 	cfg.Server.AllowInsecureHTTP = true
-	snapshot := statusSnapshot{Source: configformat.Source{Path: "/tmp/config.toml", Exists: true}, Config: cfg}
+	snapshot := statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: cfg}
 	var output bytes.Buffer
 	renderStatusConfig(&output, snapshot, false)
 	text := output.String()
