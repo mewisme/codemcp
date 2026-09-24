@@ -12,19 +12,25 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
-var commandLoggers sync.Map
+var (
+	commandLoggers          sync.Map
+	commandProgressSessions sync.Map
+)
 
 type commandProgress struct {
 	cmd       *cobra.Command
 	log       *logger.Logger
 	component string
 	name      string
+	label     string
 	done      string
+	session   *presentation.ProgressSession
 }
 
 type traceProgressSpec struct {
@@ -111,7 +117,7 @@ func startCommandSpinner(cmd *cobra.Command, log *logger.Logger, component, name
 }
 
 func newCommandProgress(cmd *cobra.Command, component string) *commandProgress {
-	return &commandProgress{cmd: cmd, log: commandLogger(cmd), component: component}
+	return &commandProgress{cmd: cmd, log: commandLogger(cmd), component: component, session: commandProgressSession(cmd)}
 }
 
 func (p *commandProgress) Start(name, message, done string) {
@@ -119,8 +125,8 @@ func (p *commandProgress) Start(name, message, done string) {
 		return
 	}
 	p.Complete()
-	p.name, p.done = name, done
-	startCommandSpinner(p.cmd, p.log, p.component, name, message)
+	p.name, p.label, p.done = name, message, done
+	p.session.Update(presentation.ProgressPhase{ID: name, Label: message, State: presentation.ProgressRunning})
 	p.log.Verbose(p.component, name, message)
 }
 
@@ -128,17 +134,80 @@ func (p *commandProgress) Complete() {
 	if p == nil || p.name == "" {
 		return
 	}
-	p.log.StopAnimation()
-	p.log.Ready(p.component, p.name+".completed", p.done)
-	p.name, p.done = "", ""
+	p.session.Success(p.name, p.label, p.done)
+	if format, _ := commandLogFormat(p.cmd); format == logger.FormatJSON {
+		p.log.Ready(p.component, p.name+".completed", p.done)
+	} else {
+		p.log.Verbose(p.component, p.name+".completed", p.done)
+	}
+	p.name, p.label, p.done = "", "", ""
 }
 
 func (p *commandProgress) Stop() {
 	if p == nil {
 		return
 	}
-	p.log.StopAnimation()
-	p.name, p.done = "", ""
+	p.session.Suspend()
+	p.name, p.label, p.done = "", "", ""
+}
+
+func commandProgressSession(cmd *cobra.Command) *presentation.ProgressSession {
+	if cmd == nil {
+		return presentation.NewProgressSession(io.Discard, presentation.ModeJSON, presentation.Capabilities{})
+	}
+	if value, ok := commandProgressSessions.Load(cmd); ok {
+		return value.(*presentation.ProgressSession)
+	}
+	mode := presentation.ModePlain
+	if commandMachineOutput(cmd) {
+		mode = presentation.ModeJSON
+	} else if commandResultModeFor(cmd) == resultModeHuman {
+		mode = presentation.ModeHuman
+	}
+	capabilities := commandTerminalCapabilities(cmd)
+	verbose, debug := commandLogMode(cmd)
+	format, _ := commandLogFormat(cmd)
+	if format == logger.FormatJSON {
+		mode = presentation.ModeJSON
+	}
+	if verbose || debug || format != logger.FormatText {
+		capabilities.Animation = false
+		capabilities.CursorControl = false
+	}
+	created := presentation.NewProgressSession(commandResultWriter(cmd), mode, capabilities)
+	value, loaded := commandProgressSessions.LoadOrStore(cmd, created)
+	if loaded {
+		created.Close()
+		return value.(*presentation.ProgressSession)
+	}
+	return created
+}
+
+func closeCommandProgress(cmd *cobra.Command, cause error) {
+	if cmd == nil {
+		return
+	}
+	if value, ok := commandProgressSessions.LoadAndDelete(cmd); ok {
+		session := value.(*presentation.ProgressSession)
+		if cause != nil {
+			session.FailActive(cause.Error())
+		}
+		session.Close()
+	}
+}
+
+type commandDiagnosticWriter struct {
+	cmd *cobra.Command
+	out io.Writer
+}
+
+func (writer commandDiagnosticWriter) Write(data []byte) (int, error) {
+	if writer.cmd != nil {
+		if value, ok := commandProgressSessions.Load(writer.cmd); ok {
+			value.(*presentation.ProgressSession).Suspend()
+		}
+	}
+	return writer.out.Write(data)
 }
 
 func commandLogMode(cmd *cobra.Command) (bool, bool) {
@@ -158,9 +227,9 @@ func commandLogWriter(cmd *cobra.Command) io.Writer {
 		return io.Discard
 	}
 	if commandMachineOutput(cmd) {
-		return cmd.ErrOrStderr()
+		return commandDiagnosticWriter{cmd: cmd, out: cmd.ErrOrStderr()}
 	}
-	return cmd.OutOrStdout()
+	return commandDiagnosticWriter{cmd: cmd, out: cmd.OutOrStdout()}
 }
 
 func logCommandStart(cmd *cobra.Command, args []string) {
@@ -269,29 +338,81 @@ func commandTraceObserver(cmd *cobra.Command) tracepkg.Observer {
 		for _, field := range event.Fields {
 			fields = append(fields, logger.WithVerbose(field.Key, field.Value))
 		}
+		if spec, ok := commandTraceProgressSpec(event); ok {
+			log := commandLogger(cmd)
+			session := commandProgressSession(cmd)
+			phase := tracePresentationPhase(event, spec)
+			if !session.Update(phase) {
+				return
+			}
+			if commandMachineOutput(cmd) {
+				log.Verbose(event.Component, event.Name, event.Message, fields...)
+				return
+			}
+			format, _ := commandLogFormat(cmd)
+			if format == logger.FormatJSON {
+				renderTraceProgressDiagnostic(log, event, spec, fields)
+				return
+			}
+			log.Verbose(event.Component, event.Name, phase.Message, fields...)
+			return
+		}
 		if commandMachineOutput(cmd) {
 			commandLogger(cmd).Verbose(event.Component, event.Name, event.Message, fields...)
 			return
 		}
-		if spec, ok := commandTraceProgressSpec(event); ok {
-			log := commandLogger(cmd)
-			switch event.Phase {
-			case tracepkg.PhaseStart:
-				startCommandSpinner(cmd, log, event.Component, event.Name, spec.start)
-				log.Verbose(event.Component, event.Name, spec.start, fields...)
-			case tracepkg.PhaseEnd:
-				message := spec.done
-				if strings.Contains(strings.ToLower(event.Message), "skipped") {
-					message = event.Message
-				}
-				log.Ready(event.Component, event.Name, message, fields...)
-			case tracepkg.PhaseError:
-				log.StopAnimation()
-				log.Verbose(event.Component, event.Name, event.Message, fields...)
-			}
-			return
-		}
 		commandLogger(cmd).Verbose(event.Component, event.Name, event.Message, fields...)
+	}
+}
+
+func tracePresentationPhase(event tracepkg.Event, spec traceProgressSpec) presentation.ProgressPhase {
+	phase := presentation.ProgressPhase{ID: traceProgressID(event), Label: spec.start, Message: event.Message}
+	switch event.Phase {
+	case tracepkg.PhaseStart:
+		phase.State = presentation.ProgressRunning
+		phase.Message = spec.start
+	case tracepkg.PhaseEnd:
+		phase.State = presentation.ProgressSuccess
+		phase.Message = spec.done
+		if strings.Contains(strings.ToLower(event.Message), "skipped") {
+			phase.State = presentation.ProgressSkipped
+			phase.Message = event.Message
+		}
+	case tracepkg.PhaseError:
+		phase.State = presentation.ProgressFailed
+	}
+	return phase
+}
+
+func traceProgressID(event tracepkg.Event) string {
+	name := strings.TrimSpace(event.Name)
+	switch event.Phase {
+	case tracepkg.PhaseStart:
+		return strings.TrimSuffix(name, ".started")
+	case tracepkg.PhaseEnd:
+		return strings.TrimSuffix(name, ".completed")
+	case tracepkg.PhaseError:
+		return strings.TrimSuffix(name, ".failed")
+	default:
+		return name
+	}
+}
+
+func renderTraceProgressDiagnostic(log *logger.Logger, event tracepkg.Event, spec traceProgressSpec, fields []logger.Field) {
+	if log == nil {
+		return
+	}
+	switch event.Phase {
+	case tracepkg.PhaseStart:
+		log.Verbose(event.Component, event.Name, spec.start, fields...)
+	case tracepkg.PhaseEnd:
+		message := spec.done
+		if strings.Contains(strings.ToLower(event.Message), "skipped") {
+			message = event.Message
+		}
+		log.Ready(event.Component, event.Name, message, fields...)
+	case tracepkg.PhaseError:
+		log.Verbose(event.Component, event.Name, event.Message, fields...)
 	}
 }
 

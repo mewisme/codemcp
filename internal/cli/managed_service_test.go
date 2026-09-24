@@ -104,7 +104,7 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 		t.Fatalf("manager after up = %#v", manager)
 	}
 	text := output.String()
-	for _, expected := range []string{"Managed service definition installed", "Managed service backend started", "Managed runtime ready", "Managed service installed", "Server started", "OpenAI Secure MCP Tunnel is disabled", "View logs: cm logs -f", "Stop service: cm down", "session", "pid"} {
+	for _, expected := range []string{"Installing managed service definition... done", "Starting managed service backend... done", "Waiting for managed runtime readiness... done", "Managed service installed", "Server started", "OpenAI Secure MCP Tunnel is disabled", "View logs: cm logs -f", "Stop service: cm down", "session", "pid"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("up output missing %q: %s", expected, text)
 		}
@@ -126,7 +126,7 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 	if _, err := os.Stat(config.Path()); err != nil {
 		t.Fatalf("down removed config: %v", err)
 	}
-	for _, expected := range []string{"Managed runtime stopped", "Managed service backend stopped", "Managed service definition removed", "Server stopped", "Managed service removed", "config preserved", "logs preserved"} {
+	for _, expected := range []string{"Stopping managed runtime... done", "Stopping managed service backend... done", "Removing managed service definition... done", "Server stopped", "Managed service removed", "config preserved", "logs preserved"} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf("down output missing %q: %s", expected, output.String())
 		}
@@ -221,7 +221,7 @@ func TestManagedRestartKeepsServiceInstalledAndStartsNewRuntime(t *testing.T) {
 		t.Fatalf("restart reused runtime session %q", previousRunID)
 	}
 	text := output.String()
-	for _, expected := range []string{"Managed runtime stopped", "Managed service backend stopped", "Managed service backend started", "Managed runtime ready", "Managed service restarted", "Server started"} {
+	for _, expected := range []string{"Stopping current managed runtime... done", "Stopping managed service backend... done", "Starting managed service backend... done", "Waiting for managed runtime readiness... done", "Managed service restarted", "Server started"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("restart output missing %q: %s", expected, text)
 		}

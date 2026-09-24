@@ -20,6 +20,7 @@ func TestGlyphSetsRespectUnicodeCapability(t *testing.T) {
 
 func TestASCIIGlyphSetContainsOnlyASCII(t *testing.T) {
 	values := []string{
+		ASCIIGlyphs.FrameStart, ASCIIGlyphs.FrameEnd,
 		ASCIIGlyphs.Success, ASCIIGlyphs.Error, ASCIIGlyphs.Warning, ASCIIGlyphs.Info,
 		ASCIIGlyphs.Active, ASCIIGlyphs.Rail, ASCIIGlyphs.PhaseDone, ASCIIGlyphs.PhasePending,
 		ASCIIGlyphs.Branch, ASCIIGlyphs.LastBranch, ASCIIGlyphs.Horizontal, ASCIIGlyphs.Separator,

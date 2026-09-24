@@ -195,10 +195,12 @@ func executeCommand(command *cobra.Command) error {
 		executed = command
 	}
 	if err != nil {
+		closeCommandProgress(executed, err)
 		logCommandFailure(executed, err, started)
 		closeCommandLogger(executed)
 		return err
 	}
+	closeCommandProgress(executed, nil)
 	logCommandCompleted(executed, started)
 	closeCommandLogger(executed)
 	return nil

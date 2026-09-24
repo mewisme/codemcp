@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -395,8 +396,142 @@ func TestCommandTraceProgressIsVisibleByDefault(t *testing.T) {
 	if err := executeCommand(cmd); err != nil {
 		t.Fatal(err)
 	}
-	if text := output.String(); !strings.Contains(text, "Configuration saved") {
+	if text := output.String(); !strings.Contains(text, "Saving configuration... done") {
 		t.Fatalf("default progress output missing completion: %q", text)
+	}
+}
+
+func TestCommandTraceProgressRepresentativeSequencesAreOrdered(t *testing.T) {
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.AddCommand(&cobra.Command{Use: "progress-sequence", RunE: func(cmd *cobra.Command, _ []string) error {
+		for _, phase := range []struct {
+			component string
+			name      string
+			message   string
+		}{
+			{component: "CONFIG", name: "config.persist", message: "Persisting configuration"},
+			{component: "INSTALL", name: "install.stage", message: "Staging installation"},
+			{component: "TUNNEL", name: "tunnel.metadata.fetch", message: "Fetching tunnel metadata"},
+		} {
+			span := tracepkg.Start(cmd.Context(), phase.component, phase.name, phase.message)
+			span.End()
+		}
+		return nil
+	}})
+	cmd.SetArgs(testCommandArgs(t, "progress-sequence"))
+	if err := executeCommand(cmd); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	wants := []string{"Saving configuration... done", "Staging installation binary... done", "Fetching tunnel metadata... done"}
+	previous := -1
+	for _, want := range wants {
+		index := strings.Index(text, want)
+		if index < 0 || index <= previous {
+			t.Fatalf("progress sequence missing or out of order %q: %q", want, text)
+		}
+		previous = index
+	}
+	if strings.ContainsAny(text, "\r\x1b") {
+		t.Fatalf("plain progress sequence contains terminal control bytes: %q", text)
+	}
+}
+
+func TestCommandTraceProgressDeduplicatesTerminalEvents(t *testing.T) {
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	observer := commandTraceObserver(cmd)
+	observer(tracepkg.Event{Component: "CONFIG", Name: "config.persist.started", Message: "Persisting configuration", Phase: tracepkg.PhaseStart})
+	completed := tracepkg.Event{Component: "CONFIG", Name: "config.persist.completed", Message: "Configuration persisted", Phase: tracepkg.PhaseEnd}
+	observer(completed)
+	observer(completed)
+	closeCommandProgress(cmd, nil)
+	closeCommandLogger(cmd)
+	if count := strings.Count(output.String(), "Saving configuration... done"); count != 1 {
+		t.Fatalf("terminal progress rendered %d times: %q", count, output.String())
+	}
+}
+
+func TestCommandTraceProgressFailureIsStableAndErrorChainRemainsAvailable(t *testing.T) {
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.AddCommand(&cobra.Command{Use: "progress-failure", RunE: func(cmd *cobra.Command, _ []string) error {
+		cause := errors.New("disk full")
+		span := tracepkg.Start(cmd.Context(), "CONFIG", "config.persist", "Persisting configuration")
+		span.FailMessage("Configuration persist failed", cause)
+		return fmt.Errorf("save config: %w", cause)
+	}})
+	cmd.SetArgs(testCommandArgs(t, "--debug", "progress-failure"))
+	err := executeCommand(cmd)
+	if err == nil {
+		t.Fatal("expected progress failure")
+	}
+	text := output.String()
+	for _, want := range []string{"Saving configuration... failed: Configuration persist failed", "save config: disk full", "error_chain="} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("failure output missing %q: %s", want, text)
+		}
+	}
+	if strings.Contains(text, "\r") {
+		t.Fatalf("debug progress left transient carriage return: %q", text)
+	}
+}
+
+func TestCommandTraceProgressVerboseKeepsDiagnosticsWithoutCursorControl(t *testing.T) {
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.AddCommand(&cobra.Command{Use: "progress-verbose", RunE: func(cmd *cobra.Command, _ []string) error {
+		span := tracepkg.Start(cmd.Context(), "CONFIG", "config.persist", "Persisting configuration", tracepkg.String("path", "/tmp/config.json"))
+		span.EndMessage("Configuration persisted", tracepkg.Int("bytes", 12))
+		return nil
+	}})
+	cmd.SetArgs(testCommandArgs(t, "--verbose", "progress-verbose"))
+	if err := executeCommand(cmd); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{"Saving configuration... done", "path:", "/tmp/config.json", "bytes:"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("verbose progress missing %q: %q", want, text)
+		}
+	}
+	if strings.ContainsAny(text, "\r\x1b") {
+		t.Fatalf("verbose progress contains transient control bytes: %q", text)
+	}
+}
+
+func TestCommandTraceProgressJSONDiagnosticsStayJSONL(t *testing.T) {
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.AddCommand(&cobra.Command{Use: "progress-json", RunE: func(cmd *cobra.Command, _ []string) error {
+		span := tracepkg.Start(cmd.Context(), "CONFIG", "config.persist", "Persisting configuration", tracepkg.String("path", "/tmp/config.json"))
+		span.EndMessage("Configuration persisted")
+		return nil
+	}})
+	cmd.SetArgs(testCommandArgs(t, "--log-format=json", "progress-json"))
+	if err := executeCommand(cmd); err != nil {
+		t.Fatal(err)
+	}
+	text := strings.TrimSpace(output.String())
+	if text == "" || strings.Contains(text, "... done") || strings.Contains(text, "\r") {
+		t.Fatalf("JSON diagnostic progress was corrupted: %q", text)
+	}
+	for _, line := range strings.Split(text, "\n") {
+		var event map[string]any
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			t.Fatalf("progress diagnostic is not JSONL: %q: %v", line, err)
+		}
 	}
 }
 

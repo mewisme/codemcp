@@ -1,6 +1,8 @@
 package presentation
 
 type GlyphSet struct {
+	FrameStart   string
+	FrameEnd     string
 	Success      string
 	Error        string
 	Warning      string
@@ -16,6 +18,8 @@ type GlyphSet struct {
 }
 
 var UnicodeGlyphs = GlyphSet{
+	FrameStart:   "┌",
+	FrameEnd:     "└",
 	Success:      "✓",
 	Error:        "×",
 	Warning:      "!",
@@ -31,6 +35,8 @@ var UnicodeGlyphs = GlyphSet{
 }
 
 var ASCIIGlyphs = GlyphSet{
+	FrameStart:   "+",
+	FrameEnd:     "+",
 	Success:      "[OK]",
 	Error:        "[ERR]",
 	Warning:      "[!]",

@@ -26,7 +26,7 @@ func TestPresenterRepresentativeHumanUnicode(t *testing.T) {
 			t.Fatalf("output missing %q:\n%s", want, got)
 		}
 	}
-	if strings.Contains(got, "[") {
+	if strings.Contains(got, "\x1b[") {
 		t.Fatalf("plain-color human output contains ANSI: %q", got)
 	}
 }
@@ -68,7 +68,7 @@ func TestPresenterPlainIsDeterministicAndWidthAware(t *testing.T) {
 	if !strings.Contains(first.String(), "critical-value-that-must-not-be-truncated") {
 		t.Fatalf("critical value was truncated: %q", first.String())
 	}
-	if strings.Contains(first.String(), "[") {
+	if strings.Contains(first.String(), "\x1b[") {
 		t.Fatalf("plain output contains ANSI: %q", first.String())
 	}
 }
@@ -80,7 +80,7 @@ func TestPresenterMarkdownUsesInjectedCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := output.String()
-	if !strings.Contains(got, "Heading") || strings.Contains(got, "[") {
+	if !strings.Contains(got, "Heading") || strings.Contains(got, "\x1b[") {
 		t.Fatalf("markdown output=%q", got)
 	}
 }
