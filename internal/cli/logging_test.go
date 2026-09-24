@@ -297,6 +297,68 @@ func TestResultModeSeparatesResultJSONFromDiagnosticJSON(t *testing.T) {
 	}
 }
 
+func TestRootColorFlagsAndEnvironmentPrecedence(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		noColorEnv string
+		forceEnv   string
+		wantANSI   bool
+	}{
+		{name: "plain-non-tty", args: []string{"version"}, wantANSI: false},
+		{name: "explicit-color", args: []string{"--color", "version"}, wantANSI: true},
+		{name: "explicit-no-color", args: []string{"--no-color", "version"}, forceEnv: "1", wantANSI: false},
+		{name: "explicit-no-color-wins-both-flags", args: []string{"--color", "--no-color", "version"}, wantANSI: false},
+		{name: "no-color-env", args: []string{"version"}, noColorEnv: "1", forceEnv: "1", wantANSI: false},
+		{name: "force-color-env", args: []string{"version"}, forceEnv: "1", wantANSI: true},
+		{name: "explicit-color-overrides-no-color-env", args: []string{"--color", "version"}, noColorEnv: "1", wantANSI: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", test.noColorEnv)
+			t.Setenv("FORCE_COLOR", test.forceEnv)
+			var output bytes.Buffer
+			cmd := newRootCommand()
+			cmd.SetOut(&output)
+			cmd.SetErr(&output)
+			cmd.SetArgs(testCommandArgs(t, test.args...))
+			if err := executeCommand(cmd); err != nil {
+				t.Fatal(err)
+			}
+			hasANSI := strings.Contains(output.String(), "\x1b[")
+			if hasANSI != test.wantANSI {
+				t.Fatalf("ANSI=%t want %t output=%q", hasANSI, test.wantANSI, output.String())
+			}
+		})
+	}
+}
+
+func TestJSONMachineOutputIgnoresColorForStdout(t *testing.T) {
+	t.Setenv("FORCE_COLOR", "1")
+	var stdout, stderr bytes.Buffer
+	var asJSON bool
+	cmd := newRootCommand()
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	child := &cobra.Command{Use: "colored-json", RunE: func(cmd *cobra.Command, _ []string) error {
+		commandLogger(cmd).Notice("TEST", "test.colored-json", "Diagnostic")
+		return writeResultJSON(cmd, map[string]any{"ok": true})
+	}}
+	addJSONResultFlag(child, &asJSON)
+	cmd.AddCommand(child)
+	cmd.SetArgs(testCommandArgs(t, "--color", "colored-json", "--json"))
+	if err := executeCommand(cmd); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "\x1b[") {
+		t.Fatalf("machine result stdout contains ANSI: %q", stdout.String())
+	}
+	var result map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil || result["ok"] != true {
+		t.Fatalf("stdout=%q result=%#v err=%v", stdout.String(), result, err)
+	}
+}
+
 func TestCommandTraceObserverUsesSharedVerboseLogger(t *testing.T) {
 	var output bytes.Buffer
 	cmd := newRootCommand()

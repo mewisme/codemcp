@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/logger"
@@ -160,9 +160,9 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 		renderLegacyStatus(cmd, snapshot)
 		return nil
 	}
-	if snapshot.Running && transientTunnelState(statusTunnelState(snapshot.Runtime, true)) && logger.CanAnimate(cmd.OutOrStdout()) {
+	if snapshot.Running && transientTunnelState(statusTunnelState(snapshot.Runtime, true)) && commandAnimationEligible(cmd) {
 		renderStatusBaseText(cmd.OutOrStdout(), snapshot, verbose)
-		fmt.Fprintln(cmd.OutOrStdout(), "\n"+cliHeading("Tunnel"))
+		fmt.Fprintln(cmd.OutOrStdout(), "\n"+cliHeading(cmd.OutOrStdout(), "Tunnel"))
 		snapshot.Runtime = animateRuntimeTunnelState(cmd, snapshot.Runtime, statusTunnelWatchTimeout)
 		snapshot.Tunnel.Running = snapshot.Runtime.TunnelRunning
 		snapshot.Tunnel.Ready = snapshot.Runtime.TunnelReady
@@ -181,22 +181,23 @@ func renderStatusText(out io.Writer, snapshot statusSnapshot, verbose bool) {
 }
 
 func renderStatusBaseText(out io.Writer, snapshot statusSnapshot, verbose bool) {
+	glyphs := cliGlyphs(out)
 	if snapshot.Running {
 		if snapshot.Runtime.Starting {
-			fmt.Fprintln(out, cliStyled(color.FgHiYellow, color.Bold).Sprint("·"), "CodeMCP is starting")
+			fmt.Fprintln(out, cliTone(out, presentation.RoleWarning, glyphs.Active), "CodeMCP is starting")
 		} else {
-			fmt.Fprintln(out, cliStyled(color.FgHiGreen, color.Bold).Sprint("✓"), "CodeMCP is running")
+			fmt.Fprintln(out, cliTone(out, presentation.RoleSuccess, glyphs.Success), "CodeMCP is running")
 		}
 		renderRunningStatus(out, snapshot, verbose)
 		return
 	}
-	fmt.Fprintln(out, cliStyled(color.FgHiRed, color.Bold).Sprint("×"), "CodeMCP is stopped")
+	fmt.Fprintln(out, cliTone(out, presentation.RoleDanger, glyphs.Error), "CodeMCP is stopped")
 	renderStoppedStatus(out, snapshot, verbose)
 }
 
 func renderRunningStatus(out io.Writer, snapshot statusSnapshot, verbose bool) {
 	status := snapshot.Runtime
-	fmt.Fprintln(out, "\n"+cliHeading("Runtime"))
+	fmt.Fprintln(out, "\n"+cliHeading(out, "Runtime"))
 	statusField(out, "pid", status.PID)
 	if status.RunID != "" {
 		statusField(out, "session", shortSessionID(status.RunID))
@@ -215,7 +216,7 @@ func renderRunningStatus(out io.Writer, snapshot statusSnapshot, verbose bool) {
 			statusField(out, "service", status.ServiceID)
 		}
 	} else if status.Managed {
-		statusField(out, "managed", strings.TrimSpace(status.ServiceScope+" · "+runtimeBackendLabel(status.ServiceScope)))
+		statusField(out, "managed", strings.TrimSpace(status.ServiceScope+" "+cliSeparator(out)+" "+runtimeBackendLabel(status.ServiceScope)))
 		statusField(out, "service", status.ServiceID)
 	} else {
 		statusField(out, "mode", "foreground")
@@ -230,15 +231,15 @@ func renderStoppedStatus(out io.Writer, snapshot statusSnapshot, verbose bool) {
 	if len(snapshot.Services) == 0 {
 		return
 	}
-	fmt.Fprintln(out, "\n"+cliHeading("Service"))
+	fmt.Fprintln(out, "\n"+cliHeading(out, "Service"))
 	for _, item := range snapshot.Services {
-		statusField(out, string(item.spec.Scope), fmt.Sprintf("installed · %s", managedBackendLabel(item.manager, item.spec)))
+		statusField(out, string(item.spec.Scope), fmt.Sprintf("installed %s %s", cliSeparator(out), managedBackendLabel(item.manager, item.spec)))
 	}
 }
 
 func renderStatusEndpoints(out io.Writer, snapshot statusSnapshot, verbose bool) {
 	cfg := snapshot.Config
-	fmt.Fprintln(out, "\n"+cliHeading("Endpoints"))
+	fmt.Fprintln(out, "\n"+cliHeading(out, "Endpoints"))
 	if !verbose {
 		if cfg.Server.Enabled {
 			statusField(out, "mcp http", endpointURL(mcpnetwork.LoopbackHost, cfg.Server.Port, "/mcp"))
@@ -250,7 +251,7 @@ func renderStatusEndpoints(out io.Writer, snapshot statusSnapshot, verbose bool)
 		} else {
 			statusField(out, "admin", "disabled")
 		}
-		statusField(out, "exposure", statusExposureSummary(snapshot))
+		statusField(out, "exposure", statusExposureSummary(out, snapshot))
 		return
 	}
 	statusField(out, "expose", cfg.Server.Expose.Mode)
@@ -277,7 +278,7 @@ func renderStatusEndpoints(out io.Writer, snapshot statusSnapshot, verbose bool)
 		if name == "" {
 			name = address.Scope
 		}
-		fmt.Fprintf(out, "\n  %s\n", cliHeading(name))
+		fmt.Fprintf(out, "\n  %s\n", cliHeading(out, name))
 		if cfg.Server.Enabled {
 			statusNestedField(out, "mcp http", endpointURL(address.Host, cfg.Server.Port, "/mcp"))
 		}
@@ -294,7 +295,7 @@ func renderStatusEndpoints(out io.Writer, snapshot statusSnapshot, verbose bool)
 }
 
 func renderStatusTunnel(out io.Writer, snapshot statusSnapshot, verbose bool) {
-	fmt.Fprintln(out, "\n"+cliHeading("Tunnel"))
+	fmt.Fprintln(out, "\n"+cliHeading(out, "Tunnel"))
 	renderStatusTunnelBody(out, snapshot, verbose)
 }
 
@@ -333,7 +334,7 @@ func renderStatusTunnelBody(out io.Writer, snapshot statusSnapshot, verbose bool
 		}
 	}
 	if verbose && snapshot.Tunnel.AdminKeyConfigured && snapshot.Tunnel.AdminScope != nil {
-		statusField(out, "admin", "configured · "+formatTunnelAdminScope(*snapshot.Tunnel.AdminScope))
+		statusField(out, "admin", "configured "+cliSeparator(out)+" "+formatTunnelAdminScope(*snapshot.Tunnel.AdminScope))
 	}
 	if verbose && snapshot.Tunnel.MetadataError != "" {
 		statusField(out, "metadata", "unavailable: "+snapshot.Tunnel.MetadataError)
@@ -345,7 +346,7 @@ func renderStatusTunnelBody(out io.Writer, snapshot statusSnapshot, verbose bool
 
 func renderStatusConfig(out io.Writer, snapshot statusSnapshot, verbose bool) {
 	cfg := snapshot.Config
-	fmt.Fprintln(out, "\n"+cliHeading("Config"))
+	fmt.Fprintln(out, "\n"+cliHeading(out, "Config"))
 	path := compactStatusPath(snapshot.Source.Path)
 	if verbose {
 		path = snapshot.Source.Path
@@ -355,10 +356,12 @@ func renderStatusConfig(out io.Writer, snapshot statusSnapshot, verbose bool) {
 	if verbose {
 		statusField(out, "format", snapshot.Source.Format)
 	}
-	statusField(out, "transports", fmt.Sprintf("http %s · tunnel %s", onOff(cfg.Server.Enabled), onOff(cfg.Tunnel.Enabled)))
-	statusField(out, "auth", fmt.Sprintf("mcp %s · admin %s", onOff(cfg.Auth.MCPEnabled), onOff(cfg.Auth.AdminEnabled)))
+	separator := cliSeparator(out)
+	statusField(out, "transports", fmt.Sprintf("http %s %s tunnel %s", onOff(cfg.Server.Enabled), separator, onOff(cfg.Tunnel.Enabled)))
+	statusField(out, "auth", fmt.Sprintf("mcp %s %s admin %s", onOff(cfg.Auth.MCPEnabled), separator, onOff(cfg.Auth.AdminEnabled)))
+	glyphs := cliGlyphs(out)
 	for _, warning := range config.SecurityWarnings(cfg) {
-		fmt.Fprintln(out, "  "+cliStyled(color.FgHiYellow, color.Bold).Sprint("!")+" "+warning)
+		fmt.Fprintln(out, "  "+cliTone(out, presentation.RoleWarning, glyphs.Warning)+" "+warning)
 	}
 	statusField(out, "workspaces", snapshot.Workspaces)
 	statusField(out, "upstreams", snapshot.Upstreams)
@@ -371,8 +374,8 @@ func renderStatusConfig(out io.Writer, snapshot statusSnapshot, verbose bool) {
 }
 
 func renderStatusUninitialized(out io.Writer) {
-	fmt.Fprintln(out, cliStyled(color.FgHiYellow, color.Bold).Sprint("!"), "CodeMCP is not initialized")
-	fmt.Fprintln(out, "\n"+cliHeading("Run:"))
+	fmt.Fprintln(out, cliTone(out, presentation.RoleWarning, cliGlyphs(out).Warning), "CodeMCP is not initialized")
+	fmt.Fprintln(out, "\n"+cliHeading(out, "Run:"))
 	fmt.Fprintf(out, "  %s init\n", cliUseName())
 }
 
@@ -449,20 +452,20 @@ func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {
 }
 
 func statusField(out io.Writer, label string, value any) {
-	fmt.Fprintf(out, "  %s %v\n", cliDim(fmt.Sprintf("%-11s", label)), value)
+	fmt.Fprintf(out, "  %s %v\n", cliDim(out, fmt.Sprintf("%-11s", label)), value)
 }
 func statusNestedField(out io.Writer, label string, value any) {
-	fmt.Fprintf(out, "    %s %v\n", cliDim(fmt.Sprintf("%-9s", label)), value)
+	fmt.Fprintf(out, "    %s %v\n", cliDim(out, fmt.Sprintf("%-9s", label)), value)
 }
 
 func statusStateField(out io.Writer, label string, value any) {
-	fmt.Fprintf(out, "  %s %s\n", cliDim(fmt.Sprintf("%-11s", label)), cliState(value))
+	fmt.Fprintf(out, "  %s %s\n", cliDim(out, fmt.Sprintf("%-11s", label)), cliState(out, value))
 }
 
-func statusExposureSummary(snapshot statusSnapshot) string {
+func statusExposureSummary(out io.Writer, snapshot statusSnapshot) string {
 	mode := string(snapshot.Config.Server.Expose.Mode)
 	if snapshot.ListenerError != nil {
-		return mode + " · network unavailable"
+		return mode + " " + cliSeparator(out) + " network unavailable"
 	}
 	count := statusNetworkInterfaceCount(snapshot.ListenerPlan.Addresses)
 	if count == 0 {
@@ -472,7 +475,7 @@ func statusExposureSummary(snapshot statusSnapshot) string {
 	if count == 1 {
 		label = "network interface"
 	}
-	return fmt.Sprintf("%s · %d %s", mode, count, label)
+	return fmt.Sprintf("%s %s %d %s", mode, cliSeparator(out), count, label)
 }
 
 func statusNetworkInterfaceCount(addresses []mcpnetwork.Address) int {
@@ -571,17 +574,18 @@ func tunnelStateActionMessage(state string) string {
 
 func renderTunnelStateLine(out io.Writer, state string) {
 	message := "OpenAI Secure MCP Tunnel is " + state
+	glyphs := cliGlyphs(out)
 	switch state {
 	case "connected":
-		fmt.Fprintln(out, cliStyled(color.FgHiGreen, color.Bold).Sprint("✓"), message)
+		fmt.Fprintln(out, cliTone(out, presentation.RoleSuccess, glyphs.Success), message)
 	case "starting", "connecting", "reconnecting":
-		fmt.Fprintln(out, cliStyled(color.FgHiCyan, color.Bold).Sprint("⠋"), message)
+		fmt.Fprintln(out, cliTone(out, presentation.RoleAccent, glyphs.Active), message)
 	case "failed":
-		fmt.Fprintln(out, cliStyled(color.FgHiRed, color.Bold).Sprint("×"), message)
+		fmt.Fprintln(out, cliTone(out, presentation.RoleDanger, glyphs.Error), message)
 	case "degraded":
-		fmt.Fprintln(out, cliStyled(color.FgHiYellow, color.Bold).Sprint("!"), message)
+		fmt.Fprintln(out, cliTone(out, presentation.RoleWarning, glyphs.Warning), message)
 	default:
-		fmt.Fprintln(out, cliDim("·"), message)
+		fmt.Fprintln(out, cliDim(out, glyphs.PhasePending), message)
 	}
 }
 

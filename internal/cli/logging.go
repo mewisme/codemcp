@@ -80,7 +80,8 @@ func commandLogger(cmd *cobra.Command) *logger.Logger {
 	if debug {
 		level = logger.Debug
 	}
-	created := logger.NewWithOptions(logger.Options{Level: level, Mode: logger.ModeFor(verbose, debug), Format: format, Writer: commandLogWriter(cmd)})
+	capabilities := commandTerminalCapabilities(cmd)
+	created := logger.NewWithOptions(logger.Options{Level: level, Mode: logger.ModeFor(verbose, debug), Format: format, Writer: commandLogWriter(cmd), Terminal: &logger.TerminalOptions{Color: capabilities.Color, Unicode: capabilities.Unicode, RawUnicode: capabilities.RawUnicode, Animate: capabilities.Animation}})
 	if cmd == nil {
 		return created
 	}
@@ -104,7 +105,7 @@ func closeCommandLogger(cmd *cobra.Command) {
 func startCommandSpinner(cmd *cobra.Command, log *logger.Logger, component, name, message string) {
 	format, err := commandLogFormat(cmd)
 	verbose, debug := commandLogMode(cmd)
-	if err == nil && format == logger.FormatText && !verbose && !debug && logger.CanAnimate(commandLogWriter(cmd)) {
+	if err == nil && format == logger.FormatText && !verbose && !debug && commandAnimationEligible(cmd) {
 		log.Action(component, name, message)
 	}
 }

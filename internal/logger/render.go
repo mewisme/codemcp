@@ -3,7 +3,6 @@ package logger
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"reflect"
 	"strings"
 	"time"
@@ -66,13 +65,13 @@ func (l *Logger) renderTextEvent(event Event) {
 		if len(event.Fields) > 0 {
 			value = event.Fields[0].Value
 		}
-		fmt.Fprintf(l.out, "    %s %v\n", styled(color.Faint).Sprint(event.Message+":"), value)
+		fmt.Fprintf(l.out, "    %s %v\n", l.styled(color.Faint).Sprint(event.Message+":"), value)
 		return
 	}
 	if l.showTime() {
-		fmt.Fprint(l.out, styled(color.Faint).Sprint(l.eventTime(event).Format("15:04:05")), " ")
+		fmt.Fprint(l.out, l.styled(color.Faint).Sprint(l.eventTime(event).Format("15:04:05")), " ")
 	}
-	fmt.Fprint(l.out, symbolStyle(event.Kind).Sprint(symbol(event.Kind)), " ", capitalizeIconMessage(event.Message))
+	fmt.Fprint(l.out, l.symbolStyle(event.Kind).Sprint(l.symbol(event.Kind)), " ", capitalizeIconMessage(event.Message))
 	if event.Err != nil {
 		fmt.Fprint(l.out, ": ", event.Err)
 	}
@@ -81,7 +80,7 @@ func (l *Logger) renderTextEvent(event Event) {
 		if field.Visibility > l.visibility() {
 			continue
 		}
-		renderField(l.out, field.Key, field.Value)
+		l.renderField(field.Key, field.Value)
 	}
 }
 
@@ -95,10 +94,12 @@ func (l *Logger) startSpinner(event Event) {
 	}
 	message := capitalizeIconMessage(event.Message)
 	if l.showTime() {
-		message = styled(color.Faint).Sprint(l.eventTime(event).Format("15:04:05")) + " " + message
+		message = l.styled(color.Faint).Sprint(l.eventTime(event).Format("15:04:05")) + " " + message
 	}
-	value := spinnerlib.New(randomSpinnerCharset(), defaultSpinnerRate, spinnerlib.WithWriter(l.out))
-	_ = value.Color("fgHiCyan", "bold")
+	value := spinnerlib.New(randomSpinnerCharset(l.rawUnicodeEnabled()), defaultSpinnerRate, spinnerlib.WithWriter(l.out))
+	if l.terminal == nil || l.terminal.Color {
+		_ = value.Color("fgHiCyan", "bold")
+	}
 	value.HideCursor = false
 	value.Suffix = " " + message
 	state := &spinnerState{event: event, spinner: value}
@@ -154,14 +155,14 @@ func capitalizeIconMessage(message string) string {
 func (l *Logger) renderDebugText(event Event) {
 	level := levelCode(event.Level)
 	if l.showTime() {
-		fmt.Fprint(l.out, styled(color.Faint).Sprint(l.eventTime(event).Format("15:04:05")), " ")
+		fmt.Fprint(l.out, l.styled(color.Faint).Sprint(l.eventTime(event).Format("15:04:05")), " ")
 	}
-	fmt.Fprintf(l.out, "%s %-10s %s %s", levelStyle(level).Sprintf("%-3s", level), styled(color.FgHiBlue, color.Bold).Sprintf("%-10s", strings.ToUpper(event.Component)), styled(color.Faint).Sprint(event.Name), event.Message)
+	fmt.Fprintf(l.out, "%s %-10s %s %s", l.levelStyle(level).Sprintf("%-3s", level), l.styled(color.FgHiBlue, color.Bold).Sprintf("%-10s", strings.ToUpper(event.Component)), l.styled(color.Faint).Sprint(event.Name), event.Message)
 	for _, field := range event.Fields {
-		fmt.Fprintf(l.out, " %s=%v", styled(color.Faint).Sprint(field.Key), field.Value)
+		fmt.Fprintf(l.out, " %s=%v", l.styled(color.Faint).Sprint(field.Key), field.Value)
 	}
 	if event.Err != nil {
-		fmt.Fprintf(l.out, " %s=%v", styled(color.Faint).Sprint("error"), event.Err)
+		fmt.Fprintf(l.out, " %s=%v", l.styled(color.Faint).Sprint("error"), event.Err)
 	}
 	fmt.Fprintln(l.out)
 }
@@ -181,23 +182,23 @@ func (l *Logger) renderJSON(event Event) {
 	_ = json.NewEncoder(l.out).Encode(value)
 }
 
-func renderField(out io.Writer, key string, value any) {
+func (l *Logger) renderField(key string, value any) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		key = "value"
 	}
-	label := styled(color.Faint).Sprint(key + ":")
+	label := l.styled(color.Faint).Sprint(key + ":")
 	if values, ok := stringSlice(value); ok && len(values) > 1 {
-		fmt.Fprintf(out, "    %s\n", label)
+		fmt.Fprintf(l.out, "    %s\n", label)
 		for _, item := range values {
-			fmt.Fprintf(out, "      %s %s\n", styled(color.Faint).Sprint("-"), item)
+			fmt.Fprintf(l.out, "      %s %s\n", l.styled(color.Faint).Sprint("-"), item)
 		}
 		return
 	}
 	if values, ok := stringSlice(value); ok && len(values) == 1 {
 		value = values[0]
 	}
-	fmt.Fprintf(out, "    %s %v\n", label, value)
+	fmt.Fprintf(l.out, "    %s %v\n", label, value)
 }
 
 func stringSlice(value any) ([]string, bool) {
@@ -225,7 +226,21 @@ func jsonValue(value any) any {
 	return value
 }
 
-func symbol(kind Kind) string {
+func (l *Logger) symbol(kind Kind) string {
+	if !l.unicodeEnabled() {
+		switch kind {
+		case KindAction:
+			return "*"
+		case KindSuccess:
+			return "[OK]"
+		case KindWarning:
+			return "[!]"
+		case KindError:
+			return "[ERR]"
+		default:
+			return "[i]"
+		}
+	}
 	switch kind {
 	case KindAction:
 		return spinnerlib.CharSets[14][0]
@@ -240,18 +255,18 @@ func symbol(kind Kind) string {
 	}
 }
 
-func symbolStyle(kind Kind) *color.Color {
+func (l *Logger) symbolStyle(kind Kind) *color.Color {
 	switch kind {
 	case KindAction:
-		return styled(color.FgHiCyan, color.Bold)
+		return l.styled(color.FgHiCyan, color.Bold)
 	case KindSuccess:
-		return styled(color.FgHiGreen, color.Bold)
+		return l.styled(color.FgHiGreen, color.Bold)
 	case KindWarning:
-		return styled(color.FgHiYellow, color.Bold)
+		return l.styled(color.FgHiYellow, color.Bold)
 	case KindError:
-		return styled(color.FgHiRed, color.Bold)
+		return l.styled(color.FgHiRed, color.Bold)
 	default:
-		return styled(color.FgHiBlack, color.Bold)
+		return l.styled(color.FgHiBlack, color.Bold)
 	}
 }
 
@@ -268,15 +283,15 @@ func levelCode(level Level) string {
 	}
 }
 
-func levelStyle(level string) *color.Color {
+func (l *Logger) levelStyle(level string) *color.Color {
 	switch level {
 	case "DBG":
-		return styled(color.FgHiBlack)
+		return l.styled(color.FgHiBlack)
 	case "WRN":
-		return styled(color.FgHiYellow, color.Bold)
+		return l.styled(color.FgHiYellow, color.Bold)
 	case "ERR":
-		return styled(color.FgHiRed, color.Bold)
+		return l.styled(color.FgHiRed, color.Bold)
 	default:
-		return styled(color.FgHiCyan, color.Bold)
+		return l.styled(color.FgHiCyan, color.Bold)
 	}
 }

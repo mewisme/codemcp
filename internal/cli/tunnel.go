@@ -73,7 +73,7 @@ func runTunnelStatus(cmd *cobra.Command, _ []string) error {
 		cmd.Println(string(data))
 		return nil
 	}
-	if runtimeRunning && transientTunnelState(tunnelCLIState(cfg.Tunnel, status, true)) && logger.CanAnimate(cmd.OutOrStdout()) {
+	if runtimeRunning && transientTunnelState(tunnelCLIState(cfg.Tunnel, status, true)) && commandAnimationEligible(cmd) {
 		runtimeStatus = animateRuntimeTunnelState(cmd, runtimeStatus, statusTunnelWatchTimeout)
 		status.Running = runtimeStatus.TunnelRunning
 		status.Ready = runtimeStatus.TunnelReady
@@ -88,7 +88,7 @@ func runTunnelStatus(cmd *cobra.Command, _ []string) error {
 func renderTunnelStatusText(out io.Writer, cfg tunnel.Config, status tunnel.Status, runtimeRunning, verbose bool) {
 	state := tunnelCLIState(cfg, status, runtimeRunning)
 	renderTunnelStateLine(out, state)
-	fmt.Fprintln(out, "\n"+cliHeading("Tunnel"))
+	fmt.Fprintln(out, "\n"+cliHeading(out, "Tunnel"))
 	statusStateField(out, "status", state)
 	statusField(out, "enabled", status.Enabled)
 	statusField(out, "configured", tunnel.Configured(cfg))
@@ -119,7 +119,7 @@ func renderTunnelStatusText(out io.Writer, cfg tunnel.Config, status tunnel.Stat
 		}
 	}
 	if status.AdminKeyConfigured && status.AdminScope != nil {
-		statusField(out, "admin", "configured · "+formatTunnelAdminScope(*status.AdminScope))
+		statusField(out, "admin", "configured "+cliSeparator(out)+" "+formatTunnelAdminScope(*status.AdminScope))
 	} else if verbose {
 		statusField(out, "admin", "not configured")
 	}

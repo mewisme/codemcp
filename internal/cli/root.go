@@ -28,6 +28,7 @@ func newRootCommand() *cobra.Command {
 	addExposeFlag(cmd)
 	addConfigDirFlag(cmd)
 	addLoggingFlags(cmd)
+	addTerminalPresentationFlags(cmd)
 	cmd.AddCommand(
 		installCommand(),
 		upgradeCommand(),

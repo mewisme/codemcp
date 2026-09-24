@@ -172,7 +172,8 @@ func logReplayLogger(cmd *cobra.Command, showTime bool) *logger.Logger {
 	if showTime {
 		timeMode = logger.TimeShow
 	}
-	return logger.NewWithOptions(logger.Options{Level: logger.Debug, Mode: logger.ModeFor(verbose, debug), Format: format, TimeMode: timeMode, Writer: commandLogWriter(cmd)})
+	capabilities := commandTerminalCapabilities(cmd)
+	return logger.NewWithOptions(logger.Options{Level: logger.Debug, Mode: logger.ModeFor(verbose, debug), Format: format, TimeMode: timeMode, Writer: commandLogWriter(cmd), Terminal: &logger.TerminalOptions{Color: capabilities.Color, Unicode: capabilities.Unicode, RawUnicode: capabilities.RawUnicode, Animate: false}})
 }
 
 func renderRuntimeEvent(log *logger.Logger, event runtimeevent.Event) {
@@ -222,10 +223,11 @@ func (replay *runtimeReplay) renderSessionHeader(event runtimeevent.Event) {
 	}
 	pid := ""
 	if event.PID > 0 {
-		pid = fmt.Sprintf(" · pid %d", event.PID)
+		pid = fmt.Sprintf(" %s pid %d", cliSeparator(replay.out), event.PID)
 	}
-	line := fmt.Sprintf("%s── session %s%s · %s ──", prefix, shortSessionID(event.RunID), pid, mode)
-	fmt.Fprintln(replay.out, cliDim(line))
+	glyphs := cliGlyphs(replay.out)
+	line := fmt.Sprintf("%s%s%s session %s%s %s %s %s%s", prefix, glyphs.Horizontal, glyphs.Horizontal, shortSessionID(event.RunID), pid, glyphs.Separator, mode, glyphs.Horizontal, glyphs.Horizontal)
+	fmt.Fprintln(replay.out, cliDim(replay.out, line))
 }
 
 func shortSessionID(value string) string {

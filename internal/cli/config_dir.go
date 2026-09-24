@@ -36,6 +36,7 @@ func prepareCommand(cmd *cobra.Command, args []string) error {
 	if err := validateLoggingFlags(cmd, args); err != nil {
 		return err
 	}
+	prepareCommandPresentation(cmd)
 	cmd.SetContext(tracepkg.WithObserver(cmd.Context(), commandTraceObserver(cmd)))
 	logCommandStart(cmd, args)
 	if controlplane.ToolContextActive() && !controlplane.IsReadOnlyPath(relativeCommandPath(cmd)) {

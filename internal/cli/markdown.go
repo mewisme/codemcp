@@ -2,22 +2,22 @@ package cli
 
 import (
 	"io"
-	"os"
 	"strings"
 
 	"charm.land/glamour/v2"
-	"golang.org/x/term"
+
+	"go.mewis.me/codemcp/internal/cli/presentation"
 )
 
-const defaultMarkdownWidth = 100
+const defaultMarkdownWidth = presentation.DefaultWidth
 
 func renderMarkdown(writer io.Writer, source string) error {
-	width := markdownWidth(writer)
-	options := []glamour.TermRendererOption{glamour.WithWordWrap(width)}
-	if os.Getenv("NO_COLOR") != "" || !markdownTerminal(writer) {
+	capabilities := presentation.DetectWriter(writer)
+	options := []glamour.TermRendererOption{glamour.WithWordWrap(capabilities.Width)}
+	if !capabilities.Color {
 		options = append(options, glamour.WithStandardStyle("ascii"))
 	} else {
-		options = append(options, glamour.WithEnvironmentConfig())
+		options = append(options, glamour.WithStandardStyle("dark"))
 	}
 	renderer, err := glamour.NewTermRenderer(options...)
 	if err != nil {
@@ -32,18 +32,11 @@ func renderMarkdown(writer io.Writer, source string) error {
 }
 
 func markdownWidth(writer io.Writer) int {
-	if !markdownTerminal(writer) {
-		return defaultMarkdownWidth
-	}
-	value := writer.(interface{ Fd() uintptr })
-	if width, _, err := term.GetSize(int(value.Fd())); err == nil && width > 0 {
-		return width
-	}
-	return defaultMarkdownWidth
+	return presentation.DetectWriter(writer).Width
 }
 
 func markdownTerminal(writer io.Writer) bool {
-	type fdWriter interface{ Fd() uintptr }
-	value, ok := writer.(fdWriter)
-	return ok && term.IsTerminal(int(value.Fd()))
+	return presentation.DetectWriter(writer).StdoutTTY
 }
+
+func markdownColor(writer io.Writer) bool { return presentation.DetectWriter(writer).Color }

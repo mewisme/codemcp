@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -42,8 +41,8 @@ func configExplainCommand() *cobra.Command {
 			writer := cmd.OutOrStdout()
 			width := markdownWidth(writer)
 			terminal := markdownTerminal(writer)
-			style := "environment"
-			if os.Getenv("NO_COLOR") != "" || !terminal {
+			style := "dark"
+			if !markdownColor(writer) {
 				style = "ascii"
 			}
 			renderSpan := tracepkg.Start(cmd.Context(), "CONFIG", "config.explain.render", "Rendering config explanation Markdown", tracepkg.String("mode", "markdown"), tracepkg.String("key", key), tracepkg.Int("child_count", len(explanation.Children)), tracepkg.Int("markdown_bytes", len(markdown)), tracepkg.Int("terminal_width", width), tracepkg.Bool("terminal", terminal), tracepkg.String("style", style))

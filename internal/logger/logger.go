@@ -21,6 +21,14 @@ type Options struct {
 	Format   Format
 	TimeMode TimeMode
 	Writer   io.Writer
+	Terminal *TerminalOptions
+}
+
+type TerminalOptions struct {
+	Color      bool
+	Unicode    bool
+	RawUnicode bool
+	Animate    bool
 }
 
 type Logger struct {
@@ -31,6 +39,7 @@ type Logger struct {
 	out      io.Writer
 	now      func() time.Time
 	animate  bool
+	terminal *TerminalOptions
 	eventMu  sync.Mutex
 	renderMu sync.Mutex
 	spinMu   sync.Mutex
@@ -63,10 +72,20 @@ func NewWithOptions(options Options) *Logger {
 	if options.Format == "" {
 		options.Format = FormatText
 	}
-	return &Logger{level: options.Level, mode: options.Mode, format: options.Format, timeMode: options.TimeMode, out: options.Writer, now: time.Now, animate: options.Format == FormatText && options.Mode != ModeDebug && terminalWriter(options.Writer)}
+	animate := options.Format == FormatText && options.Mode != ModeDebug && terminalWriter(options.Writer)
+	var terminalOptions *TerminalOptions
+	if options.Terminal != nil {
+		value := *options.Terminal
+		terminalOptions = &value
+		animate = options.Format == FormatText && options.Mode != ModeDebug && value.Animate
+	}
+	return &Logger{level: options.Level, mode: options.Mode, format: options.Format, timeMode: options.TimeMode, out: options.Writer, now: time.Now, animate: animate, terminal: terminalOptions}
 }
 
-func randomSpinnerCharset() []string {
+func randomSpinnerCharset(unicode bool) []string {
+	if !unicode {
+		return []string{".", "*", "+", "x", "o", "O"}
+	}
 	var random [1]byte
 	if _, err := cryptorand.Read(random[:]); err == nil {
 		id := spinnerCharacterSets[int(random[0])%len(spinnerCharacterSets)]
@@ -278,10 +297,26 @@ func kindForLevel(level Level) Kind {
 	}
 }
 
-func styled(attrs ...color.Attribute) *color.Color {
+func (l *Logger) styled(attrs ...color.Attribute) *color.Color {
 	value := color.New(attrs...)
+	if l != nil && l.terminal != nil {
+		if l.terminal.Color {
+			value.EnableColor()
+		} else {
+			value.DisableColor()
+		}
+		return value
+	}
 	if os.Getenv("NO_COLOR") != "" {
 		value.DisableColor()
 	}
 	return value
+}
+
+func (l *Logger) unicodeEnabled() bool {
+	return l == nil || l.terminal == nil || l.terminal.Unicode
+}
+
+func (l *Logger) rawUnicodeEnabled() bool {
+	return l == nil || l.terminal == nil || l.terminal.RawUnicode
 }

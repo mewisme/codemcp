@@ -68,10 +68,35 @@ func TestRandomSpinnerCharsetUsesAllowedSets(t *testing.T) {
 		}
 	}
 	for range 100 {
-		charset := randomSpinnerCharset()
+		charset := randomSpinnerCharset(true)
 		if len(charset) == 0 || !allowed[charset[0]] {
 			t.Fatalf("unexpected charset: %#v", charset)
 		}
+	}
+	for _, frame := range randomSpinnerCharset(false) {
+		for _, value := range frame {
+			if value > 0x7f {
+				t.Fatalf("ASCII spinner frame %q contains non-ASCII rune %q", frame, value)
+			}
+		}
+	}
+}
+
+func TestInjectedTerminalOptionsControlColorAndUnicode(t *testing.T) {
+	var output bytes.Buffer
+	terminal := &TerminalOptions{Color: false, Unicode: false, Animate: false}
+	log := NewWithOptions(Options{Level: Info, Writer: &output, Terminal: terminal})
+	log.Ready("SERVER", "server.ready", "Server ready")
+	if text := output.String(); text != "[OK] Server ready\n" || strings.Contains(text, "\x1b[") {
+		t.Fatalf("ASCII logger output = %q", text)
+	}
+
+	output.Reset()
+	terminal = &TerminalOptions{Color: true, Unicode: true, Animate: false}
+	log = NewWithOptions(Options{Level: Info, Writer: &output, Terminal: terminal})
+	log.Ready("SERVER", "server.ready", "Server ready")
+	if text := output.String(); !strings.Contains(text, "✓") || !strings.Contains(text, "Server ready") || !strings.Contains(text, "\x1b[") {
+		t.Fatalf("Unicode colored logger output = %q", text)
 	}
 }
 
@@ -294,9 +319,10 @@ func TestLegacyFieldsAndEventNamesCoverErrorShapes(t *testing.T) {
 
 func TestRenderHelpersCoverSlicesErrorsSymbolsAndLevels(t *testing.T) {
 	var output bytes.Buffer
-	renderField(&output, "items", []string{"one", "two"})
-	renderField(&output, "single", [1]string{"value"})
-	renderField(&output, "", 42)
+	log := NewWithOptions(Options{Level: Info, Writer: &output, Terminal: &TerminalOptions{Color: false, Unicode: true}})
+	log.renderField("items", []string{"one", "two"})
+	log.renderField("single", [1]string{"value"})
+	log.renderField("", 42)
 	text := output.String()
 	for _, want := range []string{"items:", "- one", "- two", "single: value", "value: 42"} {
 		if !strings.Contains(text, want) {
@@ -313,13 +339,13 @@ func TestRenderHelpersCoverSlicesErrorsSymbolsAndLevels(t *testing.T) {
 		t.Fatalf("json error=%v", got)
 	}
 	for _, kind := range []Kind{KindInfo, KindAction, KindSuccess, KindWarning, KindError} {
-		if symbol(kind) == "" || symbolStyle(kind) == nil {
+		if log.symbol(kind) == "" || log.symbolStyle(kind) == nil {
 			t.Fatalf("kind=%v symbol/style missing", kind)
 		}
 	}
 	for _, level := range []Level{Debug, Info, Warn, Error} {
 		code := levelCode(level)
-		if code == "" || levelStyle(code) == nil {
+		if code == "" || log.levelStyle(code) == nil {
 			t.Fatalf("level=%v code/style missing", level)
 		}
 	}

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 )
 
 type commandResultMode uint8
@@ -31,7 +31,13 @@ func commandResultModeFor(cmd *cobra.Command) commandResultMode {
 			return resultModeJSON
 		}
 	}
-	if logger.CanAnimate(cmd.OutOrStdout()) {
+	if capabilities, ok := presentation.FromWriter(cmd.OutOrStdout()); ok {
+		if capabilities.Interactive {
+			return resultModeHuman
+		}
+		return resultModePlain
+	}
+	if detectCommandTerminalCapabilities(cmd, false, commandExplicitMachineOutput(cmd)).Interactive {
 		return resultModeHuman
 	}
 	return resultModePlain
@@ -62,7 +68,11 @@ func commandMachineOutput(cmd *cobra.Command) bool {
 	if cmd == nil {
 		return false
 	}
-	return cmd.Annotations[machineOutputAnnotation] == "true" || commandResultModeFor(cmd) == resultModeJSON
+	return commandExplicitMachineOutput(cmd) || commandResultModeFor(cmd) == resultModeJSON
+}
+
+func commandExplicitMachineOutput(cmd *cobra.Command) bool {
+	return cmd != nil && cmd.Annotations[machineOutputAnnotation] == "true"
 }
 
 func commandResultWriter(cmd *cobra.Command) io.Writer {

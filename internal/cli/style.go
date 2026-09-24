@@ -2,33 +2,44 @@ package cli
 
 import (
 	"fmt"
-	"os"
+	"io"
 
-	"github.com/fatih/color"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 )
 
-func cliStyled(attrs ...color.Attribute) *color.Color {
-	value := color.New(attrs...)
-	if os.Getenv("NO_COLOR") != "" {
-		value.DisableColor()
-	}
-	return value
+func cliTheme(out io.Writer) presentation.Theme {
+	return presentation.NewTheme(presentation.DetectWriter(out))
 }
 
-func cliDim(value any) string        { return cliStyled(color.Faint).Sprint(value) }
-func cliHeading(value string) string { return cliStyled(color.Bold).Sprint(value) }
+func cliGlyphs(out io.Writer) presentation.GlyphSet {
+	return presentation.Glyphs(presentation.DetectWriter(out))
+}
 
-func cliState(value any) string {
+func cliSeparator(out io.Writer) string { return cliGlyphs(out).Separator }
+
+func cliDim(out io.Writer, value any) string {
+	return cliTheme(out).Render(presentation.RoleMuted, value)
+}
+
+func cliHeading(out io.Writer, value string) string {
+	return cliTheme(out).Render(presentation.RoleHeading, value)
+}
+
+func cliTone(out io.Writer, role presentation.Role, value any) string {
+	return cliTheme(out).Render(role, value)
+}
+
+func cliState(out io.Writer, value any) string {
 	text := fmt.Sprint(value)
 	switch text {
 	case "connected", "ready", "running":
-		return cliStyled(color.FgHiGreen, color.Bold).Sprint(text)
+		return cliTone(out, presentation.RoleSuccess, text)
 	case "connecting", "reconnecting":
-		return cliStyled(color.FgHiCyan, color.Bold).Sprint(text)
+		return cliTone(out, presentation.RoleAccent, text)
 	case "unreachable", "failed", "error":
-		return cliStyled(color.FgHiRed, color.Bold).Sprint(text)
+		return cliTone(out, presentation.RoleDanger, text)
 	case "stopped", "offline", "disabled", "not configured":
-		return cliDim(text)
+		return cliDim(out, text)
 	default:
 		return text
 	}
