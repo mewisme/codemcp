@@ -162,15 +162,17 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 	}
 	presenter := commandPresenter(cmd)
 	if snapshot.Running && transientTunnelState(statusTunnelState(snapshot.Runtime, true)) && commandAnimationEligible(cmd) {
+		presenter.Frame("CodeMCP status")
 		renderStatusBase(presenter, snapshot, verbose)
 		presenter.Spacer()
-		presenter.Section("Tunnel")
 		snapshot.Runtime = animateRuntimeTunnelState(cmd, snapshot.Runtime, statusTunnelWatchTimeout)
 		snapshot.Tunnel.Running = snapshot.Runtime.TunnelRunning
 		snapshot.Tunnel.Ready = snapshot.Runtime.TunnelReady
 		snapshot.Tunnel.Restarting = snapshot.Runtime.TunnelRestarting
 		snapshot.Tunnel.LastError = snapshot.Runtime.TunnelLastError
+		renderStatusTunnelSection(presenter, statusTunnelState(snapshot.Runtime, true))
 		renderStatusTunnelBody(presenter, snapshot, verbose)
+		presenter.FrameEnd("Status complete")
 		return nil
 	}
 	renderStatus(presenter, snapshot, verbose)
@@ -178,8 +180,10 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 }
 
 func renderStatus(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
+	presenter.Frame("CodeMCP status")
 	renderStatusBase(presenter, snapshot, verbose)
 	renderStatusTunnel(presenter, snapshot, verbose)
+	presenter.FrameEnd("Status complete")
 }
 
 func renderStatusBase(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
@@ -233,6 +237,9 @@ func renderRunningStatus(presenter *presentation.Presenter, snapshot statusSnaps
 }
 
 func renderStoppedStatus(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
+	presenter.Spacer()
+	presenter.Section("Runtime")
+	presenter.Fields(presentation.Field{Label: "status", Value: "stopped"})
 	renderStatusEndpoints(presenter, snapshot, verbose)
 	renderStatusConfig(presenter, snapshot, verbose)
 	if len(snapshot.Services) == 0 {
@@ -316,8 +323,21 @@ func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSna
 
 func renderStatusTunnel(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
 	presenter.Spacer()
-	presenter.Section("Tunnel")
+	status := snapshot.Runtime
+	if !snapshot.Running {
+		status = runtimeStatusResult{TunnelEnabled: snapshot.Config.Tunnel.Enabled, TunnelConfigured: tunnel.Configured(snapshot.Config.Tunnel), TunnelID: snapshot.Config.Tunnel.ID}
+	}
+	renderStatusTunnelSection(presenter, statusTunnelState(status, snapshot.Running))
 	renderStatusTunnelBody(presenter, snapshot, verbose)
+}
+
+func renderStatusTunnelSection(presenter *presentation.Presenter, state string) {
+	kind := statusPresentationKind(state)
+	if kind == presentation.StatusSuccess || kind == presentation.StatusInfo {
+		presenter.Section("Tunnel")
+		return
+	}
+	presenter.StateSection(kind, "Tunnel")
 }
 
 func renderStatusTunnelBody(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
@@ -326,7 +346,7 @@ func renderStatusTunnelBody(presenter *presentation.Presenter, snapshot statusSn
 		status = runtimeStatusResult{TunnelEnabled: snapshot.Config.Tunnel.Enabled, TunnelConfigured: tunnel.Configured(snapshot.Config.Tunnel), TunnelID: snapshot.Config.Tunnel.ID}
 	}
 	state := statusTunnelState(status, snapshot.Running)
-	presenter.Status(statusPresentationKind(state), "OpenAI Secure MCP Tunnel is "+state)
+	presenter.ChildState(statusPresentationKind(state), "OpenAI Secure MCP Tunnel", state)
 	fields := []presentation.Field{}
 	if verbose {
 		fields = append(fields,
@@ -390,7 +410,7 @@ func renderStatusConfig(presenter *presentation.Presenter, snapshot statusSnapsh
 	)
 	presenter.Fields(fields...)
 	for _, warning := range config.SecurityWarnings(cfg) {
-		presenter.Status(presentation.StatusWarning, warning)
+		presenter.ChildStatus(presentation.StatusWarning, warning)
 	}
 	secondary := []presentation.Field{
 		{Label: "workspaces", Value: snapshot.Workspaces},
@@ -406,9 +426,11 @@ func renderStatusConfig(presenter *presentation.Presenter, snapshot statusSnapsh
 }
 
 func renderStatusUninitialized(presenter *presentation.Presenter) {
+	presenter.Frame("CodeMCP status")
 	presenter.Status(presentation.StatusWarning, "CodeMCP is not initialized")
 	presenter.Spacer()
 	presenter.Note("Run:", cliUseName()+" init")
+	presenter.FrameEnd("Not initialized")
 }
 
 func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {
@@ -514,6 +536,8 @@ func statusPresentationKind(state string) presentation.StatusKind {
 		return presentation.StatusError
 	case "degraded":
 		return presentation.StatusWarning
+	case "starting", "connecting", "reconnecting", "disabled", "not configured", "offline":
+		return presentation.StatusInactive
 	default:
 		return presentation.StatusInfo
 	}

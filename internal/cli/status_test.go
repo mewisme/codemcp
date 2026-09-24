@@ -221,10 +221,13 @@ func TestRenderStatusUsesCanonicalPresenterCapabilities(t *testing.T) {
 	var unicodeOutput bytes.Buffer
 	renderStatus(presentation.New(&unicodeOutput, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), snapshot, false)
 	unicodeText := unicodeOutput.String()
-	for _, expected := range []string{"✓ CodeMCP is running", "Runtime", "Endpoints", "Config", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected"} {
+	for _, expected := range []string{"┌  CodeMCP status", "✓  CodeMCP is running", "◆  Runtime", "│  ◆ pid — 4242", "◆  Endpoints", "◆  Config", "◆  Tunnel", "│  ✓ OpenAI Secure MCP Tunnel — connected", "└  Status complete"} {
 		if !strings.Contains(unicodeText, expected) {
 			t.Fatalf("unicode status missing %q: %s", expected, unicodeText)
 		}
+	}
+	if strings.ContainsRune(unicodeText, 'ℹ') {
+		t.Fatalf("unicode status contains information-source glyph: %q", unicodeText)
 	}
 	if strings.Contains(unicodeText, "\x1b[") {
 		t.Fatalf("color-disabled status contains ANSI: %q", unicodeText)
@@ -247,25 +250,28 @@ func TestRenderStatusUsesCanonicalPresenterCapabilities(t *testing.T) {
 
 func TestRenderStatusRuntimeAndTunnelStatesAcrossPresentationModes(t *testing.T) {
 	cases := []struct {
-		name       string
-		snapshot   statusSnapshot
-		humanWant  string
-		plainWant  string
-		tunnelWant string
+		name            string
+		snapshot        statusSnapshot
+		humanWant       string
+		plainWant       string
+		humanTunnelWant string
+		plainTunnelWant string
 	}{
 		{
-			name:       "starting",
-			snapshot:   statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default(), Running: true, Runtime: runtimeStatusResult{Starting: true, TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true}},
-			humanWant:  "! CodeMCP is starting",
-			plainWant:  "[!] CodeMCP is starting",
-			tunnelWant: "OpenAI Secure MCP Tunnel is connecting",
+			name:            "starting",
+			snapshot:        statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default(), Running: true, Runtime: runtimeStatusResult{Starting: true, TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true}},
+			humanWant:       "!  CodeMCP is starting",
+			plainWant:       "[!] CodeMCP is starting",
+			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel — connecting",
+			plainTunnelWant: "OpenAI Secure MCP Tunnel is connecting",
 		},
 		{
-			name:       "stopped",
-			snapshot:   statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default()},
-			humanWant:  "× CodeMCP is stopped",
-			plainWant:  "[ERR] CodeMCP is stopped",
-			tunnelWant: "OpenAI Secure MCP Tunnel is disabled",
+			name:            "stopped",
+			snapshot:        statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default()},
+			humanWant:       "×  CodeMCP is stopped",
+			plainWant:       "[ERR] CodeMCP is stopped",
+			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel — disabled",
+			plainTunnelWant: "OpenAI Secure MCP Tunnel is disabled",
 		},
 	}
 	for _, test := range cases {
@@ -273,16 +279,52 @@ func TestRenderStatusRuntimeAndTunnelStatesAcrossPresentationModes(t *testing.T)
 			var human, plain bytes.Buffer
 			renderStatus(presentation.New(&human, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), test.snapshot, false)
 			renderStatus(presentation.New(&plain, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: false, Color: false}), test.snapshot, false)
-			if !strings.Contains(human.String(), test.humanWant) || !strings.Contains(human.String(), test.tunnelWant) {
+			if !strings.Contains(human.String(), test.humanWant) || !strings.Contains(human.String(), test.humanTunnelWant) {
 				t.Fatalf("human %s status=%q", test.name, human.String())
 			}
-			if !strings.Contains(plain.String(), test.plainWant) || !strings.Contains(plain.String(), test.tunnelWant) {
+			if !strings.Contains(plain.String(), test.plainWant) || !strings.Contains(plain.String(), test.plainTunnelWant) {
 				t.Fatalf("plain %s status=%q", test.name, plain.String())
 			}
 			if strings.ContainsAny(plain.String(), "\r\x1b") {
 				t.Fatalf("plain %s status contains terminal control bytes: %q", test.name, plain.String())
 			}
 		})
+	}
+}
+
+func TestRenderStatusDisabledTunnelGoldenRailHierarchy(t *testing.T) {
+	snapshot := statusSnapshot{
+		Source:  configformat.Source{Path: "/tmp/config.json", Exists: true},
+		Config:  config.Default(),
+		Running: true,
+		Runtime: runtimeStatusResult{PID: 4242, RunID: "run_abcd"},
+	}
+	var output bytes.Buffer
+	renderStatus(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), snapshot, false)
+	text := output.String()
+	ordered := []string{
+		"┌  CodeMCP status",
+		"✓  CodeMCP is running",
+		"◆  Runtime",
+		"│  ◆ pid — 4242",
+		"◆  Endpoints",
+		"│  ◆ mcp http —",
+		"◆  Config",
+		"│  ◆ transports —",
+		"◇  Tunnel",
+		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
+		"└  Status complete",
+	}
+	position := -1
+	for _, expected := range ordered {
+		next := strings.Index(text[position+1:], expected)
+		if next < 0 {
+			t.Fatalf("status rail missing ordered segment %q: %q", expected, text)
+		}
+		position += next + 1
+	}
+	if strings.Contains(text, "\nRuntime\n") || strings.Contains(text, "\nEndpoints\n") {
+		t.Fatalf("rich status contains detached section headings: %q", text)
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -219,35 +220,42 @@ func requestResolveCommand(approve bool) *cobra.Command {
 }
 
 func renderApprovalRequests(presenter *presentation.Presenter, requests []approval.Request) {
+	presenter.Frame("Control approval requests")
 	if len(requests) == 0 {
-		presenter.Status(presentation.StatusInfo, "No control approval requests")
+		presenter.StateSection(presentation.StatusInactive, "No control approval requests")
+		presenter.FrameEnd("Done")
 		return
 	}
 	rows := make([]presentation.Row, 0, len(requests))
 	for _, request := range requests {
 		rows = append(rows, presentation.Row{request.ID, string(request.Status), request.WorkspaceID, request.TargetTool, request.Title})
 	}
-	presenter.Section("Control approval requests")
+	presenter.Section(fmt.Sprintf("Loaded %d requests", len(requests)))
 	presenter.Rows([]string{"ID", "Status", "Workspace", "Tool", "Title"}, rows...)
+	presenter.FrameEnd("Done")
 }
 
 func renderRuntimeGrants(presenter *presentation.Presenter, grants []approval.Request) {
+	presenter.Frame("Runtime session grants")
 	if len(grants) == 0 {
-		presenter.Status(presentation.StatusInfo, "No active runtime session grants")
+		presenter.StateSection(presentation.StatusInactive, "No active runtime session grants")
+		presenter.FrameEnd("Done")
 		return
 	}
 	rows := make([]presentation.Row, 0, len(grants))
 	for _, grant := range grants {
 		rows = append(rows, presentation.Row{grant.ID, grant.WorkspaceID, grant.SimilarCommandPattern, formatRequestTime(grant.GrantExpiresAt)})
 	}
-	presenter.Section("Runtime session grants")
+	presenter.Section(fmt.Sprintf("Loaded %d active grants", len(grants)))
 	presenter.Rows([]string{"ID", "Workspace", "Pattern", "Expires"}, rows...)
+	presenter.FrameEnd("Done")
 }
 
 func renderApprovalRequest(presenter *presentation.Presenter, request approval.Request) {
+	presenter.Frame("Approval request")
+	presenter.StateSection(approvalPresentationKind(request.Status), approvalStatusLabel(request.Status))
 	fields := []presentation.Field{
 		{Label: "id", Value: request.ID},
-		{Label: "status", Value: request.Status},
 		{Label: "title", Value: request.Title},
 		{Label: "workspace", Value: request.WorkspaceID},
 		{Label: "tool", Value: request.TargetTool},
@@ -290,12 +298,13 @@ func renderApprovalRequest(presenter *presentation.Presenter, request approval.R
 	if request.GuardReason != "" {
 		fields = append(fields, presentation.Field{Label: "guard reason", Value: request.GuardReason})
 	}
-	presenter.Section("Control approval request")
 	presenter.Fields(fields...)
 	if len(request.Arguments) > 0 {
 		presenter.Spacer()
-		presenter.Note("Arguments", formatApprovalArguments(request.Arguments))
+		presenter.Section("Arguments")
+		presenter.List(formatApprovalArguments(request.Arguments))
 	}
+	presenter.FrameEnd(approvalOutro(request.Status))
 }
 
 func formatApprovalArguments(arguments json.RawMessage) string {
@@ -314,4 +323,32 @@ func formatRequestTime(value time.Time) string {
 		return "-"
 	}
 	return value.Format(time.RFC3339Nano)
+}
+
+func approvalPresentationKind(status approval.Status) presentation.StatusKind {
+	switch status {
+	case approval.StatusApproved, approval.StatusConsumed:
+		return presentation.StatusSuccess
+	case approval.StatusDenied, approval.StatusExpired, approval.StatusCancelled:
+		return presentation.StatusError
+	case approval.StatusPending:
+		return presentation.StatusInactive
+	default:
+		return presentation.StatusInfo
+	}
+}
+
+func approvalStatusLabel(status approval.Status) string {
+	if status == "" {
+		return "Unknown"
+	}
+	value := string(status)
+	return strings.ToUpper(value[:1]) + value[1:]
+}
+
+func approvalOutro(status approval.Status) string {
+	if status == approval.StatusPending {
+		return "Awaiting decision"
+	}
+	return "Done"
 }

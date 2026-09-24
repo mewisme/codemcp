@@ -176,6 +176,23 @@ func authStatusCommand() *cobra.Command {
 				return err
 			}
 			presenter := commandPresenter(cmd)
+			if commandResultModeFor(cmd) == resultModeHuman {
+				presenter.Frame("Authentication")
+				presenter.Section("MCP")
+				presenter.Fields(
+					presentation.Field{Label: "enabled", Value: status.MCPEnabled},
+					presentation.Field{Label: "configured", Value: status.MCPConfigured},
+					presentation.Field{Label: "legacy bearer", Value: status.MCPLegacyBearer},
+				)
+				presenter.Spacer()
+				presenter.Section("Admin")
+				presenter.Fields(
+					presentation.Field{Label: "enabled", Value: status.AdminEnabled},
+					presentation.Field{Label: "configured", Value: status.AdminConfigured},
+				)
+				presenter.FrameEnd("Status complete")
+				return nil
+			}
 			presenter.Section("Authentication")
 			presenter.Subsection("MCP")
 			presenter.NestedFields(

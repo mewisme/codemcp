@@ -23,7 +23,7 @@ var UnicodeGlyphs = GlyphSet{
 	Success:      "✓",
 	Error:        "×",
 	Warning:      "!",
-	Info:         "ℹ",
+	Info:         "·",
 	Active:       "⠋",
 	Rail:         "│",
 	PhaseDone:    "◆",

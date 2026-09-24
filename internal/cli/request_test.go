@@ -90,10 +90,41 @@ func TestRequestReadPresentationKeepsListSafeAndViewExact(t *testing.T) {
 	var viewOutput bytes.Buffer
 	renderApprovalRequest(presentation.New(&viewOutput, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), request)
 	viewText := viewOutput.String()
-	for _, expected := range []string{"Control approval request", "req_safe", "Arguments", "deploy --token TOP-SECRET", "external mutation requires approval"} {
+	for _, expected := range []string{"Approval request", "Pending", "req_safe", "Arguments", "deploy --token TOP-SECRET", "external mutation requires approval"} {
 		if !strings.Contains(viewText, expected) {
 			t.Fatalf("request view missing %q: %q", expected, viewText)
 		}
+	}
+}
+
+func TestRequestRichViewUsesRailHierarchy(t *testing.T) {
+	request := approval.Request{
+		ID:          "req_rail",
+		Status:      approval.StatusPending,
+		WorkspaceID: "ws_rail",
+		TargetTool:  "run_command",
+		Title:       "Review command",
+		Arguments:   json.RawMessage(`{"command":"git push origin feature"}`),
+		GuardCode:   controlguard.CodeExternalMutation,
+	}
+	var output bytes.Buffer
+	renderApprovalRequest(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), request)
+	text := output.String()
+	for _, expected := range []string{
+		"┌  Approval request",
+		"◇  Pending",
+		"│  ◆ id — req_rail",
+		"│  ◆ workspace — ws_rail",
+		"◆  Arguments",
+		"│  ◆ {",
+		"└  Awaiting decision",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("rich request view missing %q: %q", expected, text)
+		}
+	}
+	if strings.ContainsRune(text, 'ℹ') {
+		t.Fatalf("rich request view emitted information-source glyph: %q", text)
 	}
 }
 

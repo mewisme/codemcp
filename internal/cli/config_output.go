@@ -98,7 +98,15 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 			}
 			rows = append(rows, presentation.Row{name, value})
 		}
-		commandPresenter(cmd).Rows([]string{"Key", "Value"}, rows...)
+		presenter := commandPresenter(cmd)
+		presenter.Frame("Configuration")
+		section := strings.TrimSpace(key)
+		if section == "" {
+			section = "Values"
+		}
+		presenter.Section(section)
+		presenter.Rows([]string{"Key", "Value"}, rows...)
+		presenter.FrameEnd("Done")
 		return nil
 	}
 	for _, line := range lines {

@@ -273,10 +273,13 @@ func TestConfigHumanListUsesPresenterRowsWhilePlainRemainsCompatible(t *testing.
 	if err := printConfigSelection(human, cfg, "admin", true, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"Key", "Value", "admin.enabled", "admin.port"} {
+	for _, expected := range []string{"┌  Configuration", "◆  admin", "│  ◆ admin.enabled — true", "│  ◆ admin.port — 37422", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), expected) {
 			t.Fatalf("human config output missing %q: %q", expected, humanOutput.String())
 		}
+	}
+	if strings.Contains(humanOutput.String(), "Key  Value") {
+		t.Fatalf("human config output regressed to table layout: %q", humanOutput.String())
 	}
 
 	var plainOutput bytes.Buffer

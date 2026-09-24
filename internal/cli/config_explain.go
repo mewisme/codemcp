@@ -46,9 +46,16 @@ func configExplainCommand() *cobra.Command {
 				style = "ascii"
 			}
 			renderSpan := tracepkg.Start(cmd.Context(), "CONFIG", "config.explain.render", "Rendering config explanation Markdown", tracepkg.String("mode", "markdown"), tracepkg.String("key", key), tracepkg.Int("child_count", len(explanation.Children)), tracepkg.Int("markdown_bytes", len(markdown)), tracepkg.Int("terminal_width", width), tracepkg.Bool("terminal", terminal), tracepkg.String("style", style))
-			if err := commandPresenter(cmd).Markdown(markdown); err != nil {
+			presenter := commandPresenter(cmd)
+			if commandResultModeFor(cmd) == resultModeHuman {
+				presenter.Frame("Config explanation")
+			}
+			if err := presenter.Markdown(markdown); err != nil {
 				renderSpan.FailMessage("Config explanation Markdown render failed", err, tracepkg.String("mode", "markdown"), tracepkg.String("key", key), tracepkg.Int("child_count", len(explanation.Children)), tracepkg.Int("markdown_bytes", len(markdown)), tracepkg.Int("terminal_width", width), tracepkg.Bool("terminal", terminal), tracepkg.String("style", style))
 				return err
+			}
+			if commandResultModeFor(cmd) == resultModeHuman {
+				presenter.FrameEnd("Done")
 			}
 			renderSpan.EndMessage("Config explanation Markdown rendered", tracepkg.String("mode", "markdown"), tracepkg.String("key", key), tracepkg.Int("child_count", len(explanation.Children)), tracepkg.Int("markdown_bytes", len(markdown)), tracepkg.Int("terminal_width", width), tracepkg.Bool("terminal", terminal), tracepkg.String("style", style))
 			return nil
