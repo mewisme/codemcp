@@ -159,6 +159,7 @@ func (m *Manager) Add(server Server) error {
 	closeSpan := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.connection.close", "Closing changed upstream connection", tracepkg.String("server", normalized.ID))
 	closeErr := m.client.Close(context.Background(), normalized.ID)
 	if closeErr != nil {
+		closeErr = sanitizeRemoteError(previous, closeErr)
 		closeSpan.FailMessage("Changed upstream connection close failed", closeErr)
 	} else {
 		closeSpan.EndMessage("Changed upstream connection closed")
@@ -246,6 +247,7 @@ func (m *Manager) Remove(id string) error {
 	closeSpan := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.connection.close", "Closing removed upstream connection", tracepkg.String("server", id))
 	closeErr := m.client.Close(context.Background(), id)
 	if closeErr != nil {
+		closeErr = sanitizeRemoteError(previous, closeErr)
 		closeSpan.FailMessage("Removed upstream connection close failed", closeErr)
 	} else {
 		closeSpan.EndMessage("Removed upstream connection closed")
@@ -274,12 +276,13 @@ func (m *Manager) Get(id string) (Server, bool) {
 }
 
 func (m *Manager) Disconnect(id string) error {
+	server, _ := m.Get(id)
 	m.mu.Lock()
 	delete(m.cache, id)
 	delete(m.errors, id)
 	m.mu.Unlock()
 	m.stopToolsSubscription(id)
-	return m.client.Close(context.Background(), id)
+	return sanitizeRemoteError(server, m.client.Close(context.Background(), id))
 }
 
 func (m *Manager) List() []Server {
@@ -320,6 +323,7 @@ func (m *Manager) Tools(ctx context.Context, id string, force bool) ([]Tool, err
 		m.stopToolsSubscription(id)
 		disconnectSpan := tracepkg.Start(ctx, "UPSTREAM", "upstream.connection.disconnect", "Disconnecting Upstream server for forced refresh", tracepkg.String("server", id))
 		if err := m.client.Close(ctx, id); err != nil {
+			err = sanitizeRemoteError(server, err)
 			disconnectSpan.FailMessage("Forced upstream disconnect failed", err)
 		} else {
 			disconnectSpan.EndMessage("Upstream server disconnected for forced refresh")
@@ -327,6 +331,7 @@ func (m *Manager) Tools(ctx context.Context, id string, force bool) ([]Tool, err
 	}
 	connectSpan := tracepkg.Start(ctx, "UPSTREAM", "upstream.connection.connect", "Connecting Upstream server", upstreamServerTraceFields(server)...)
 	if err := m.client.Connect(ctx, server); err != nil {
+		err = sanitizeRemoteError(server, err)
 		connectSpan.FailMessage("Upstream connection failed", err)
 		span.FailMessage("Upstream tool discovery failed", err, tracepkg.Bool("cache_hit", false))
 		m.recordError(id, err)
@@ -336,6 +341,7 @@ func (m *Manager) Tools(ctx context.Context, id string, force bool) ([]Tool, err
 	listSpan := tracepkg.Start(ctx, "UPSTREAM", "upstream.tools.list", "Requesting Upstream tool list", tracepkg.String("server", id))
 	tools, err := m.client.Tools(ctx, id)
 	if err != nil {
+		err = sanitizeRemoteError(server, err)
 		listSpan.FailMessage("Upstream tool list failed", err)
 		span.FailMessage("Upstream tool discovery failed", err, tracepkg.Bool("cache_hit", false))
 		m.recordError(id, err)
@@ -361,19 +367,17 @@ func (m *Manager) Call(ctx context.Context, id, tool string, args map[string]any
 }
 
 func (m *Manager) CallWithInput(ctx context.Context, id, tool string, args map[string]any, requestState string, inputResponses map[string]any) (CallResult, error) {
-	server, ok := m.Get(id)
-	if !ok {
-		return CallResult{}, errors.New("unknown upstream server: " + id)
-	}
-	if !server.Enabled {
-		return CallResult{}, errors.New("upstream server disabled: " + id)
+	server, _, err := m.resolveCallableTool(ctx, id, tool)
+	if err != nil {
+		return CallResult{}, err
 	}
 	if err := m.client.Connect(ctx, server); err != nil {
+		err = sanitizeRemoteError(server, err)
 		m.recordError(id, err)
 		return CallResult{}, err
 	}
 	var result CallResult
-	var err error
+	err = nil
 	if client, ok := m.client.(inputRoundClient); ok {
 		result, err = client.CallWithInput(ctx, id, tool, args, requestState, inputResponses)
 	} else {
@@ -383,6 +387,7 @@ func (m *Manager) CallWithInput(ctx context.Context, id, tool string, args map[s
 		result, err = m.client.Call(ctx, id, tool, args)
 	}
 	if err != nil {
+		err = sanitizeRemoteError(server, err)
 		m.recordError(id, err)
 		return CallResult{}, err
 	}
@@ -441,23 +446,40 @@ func (m *Manager) ListStatuses(ctx context.Context, refresh bool) []Status {
 }
 
 func (m *Manager) ProxiedToolNames(server Server, tools []Tool) []string {
-	if !server.Enabled || server.Expose == "none" || server.Expose == "meta_only" {
-		return []string{}
-	}
-	allow := stringSet(server.Tools)
-	deny := stringSet(server.DisabledTools)
 	result := make([]string, 0)
 	for _, tool := range tools {
-		if deny[tool.Name] {
-			continue
-		}
-		if server.Expose == "allowlist" && !allow[tool.Name] {
+		if !ToolIsExposed(server, tool.Name) {
 			continue
 		}
 		result = append(result, ProxyName(server.ToolPrefix, tool.Name))
 	}
 	sort.Strings(result)
 	return result
+}
+
+func (m *Manager) resolveCallableTool(ctx context.Context, id, tool string) (Server, Tool, error) {
+	id = strings.TrimSpace(id)
+	tool = strings.TrimSpace(tool)
+	server, ok := m.Get(id)
+	if !ok {
+		return Server{}, Tool{}, errors.New("unknown upstream server: " + id)
+	}
+	if !server.Enabled {
+		return Server{}, Tool{}, errors.New("upstream server disabled: " + id)
+	}
+	if !ToolIsExposed(server, tool) {
+		return Server{}, Tool{}, toolExposureError(server.ID, tool)
+	}
+	values, err := m.Tools(ctx, server.ID, false)
+	if err != nil {
+		return Server{}, Tool{}, err
+	}
+	for _, value := range values {
+		if value.Name == tool {
+			return server, value, nil
+		}
+	}
+	return Server{}, Tool{}, fmt.Errorf("unknown upstream tool: %s:%s", server.ID, tool)
 }
 
 func (m *Manager) Shutdown(ctx context.Context) error {
@@ -471,7 +493,7 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			if err := m.client.Close(ctx, server.ID); err != nil {
-				errCh <- fmt.Errorf("close upstream %s: %w", server.ID, err)
+				errCh <- fmt.Errorf("close upstream %s: %w", server.ID, sanitizeRemoteError(server, err))
 			}
 		}()
 	}

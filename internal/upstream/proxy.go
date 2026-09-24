@@ -1,6 +1,12 @@
 package upstream
 
-import "strings"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
+
+var ErrToolNotExposed = errors.New("upstream tool is not exposed")
 
 func ProxyName(prefix, tool string) string {
 	prefix = invalidPrefix.ReplaceAllString(strings.TrimSpace(prefix), "_")
@@ -8,11 +14,24 @@ func ProxyName(prefix, tool string) string {
 	return prefix + "__" + tool
 }
 
-func ToolIsProxied(server Server, tool Tool) bool {
-	for _, name := range (&Manager{}).ProxiedToolNames(server, []Tool{tool}) {
-		if name == ProxyName(server.ToolPrefix, tool.Name) {
-			return true
-		}
+func ToolIsExposed(server Server, toolName string) bool {
+	toolName = strings.TrimSpace(toolName)
+	if toolName == "" || !server.Enabled || server.Expose == "none" || server.Expose == "meta_only" {
+		return false
 	}
-	return false
+	if stringSet(server.DisabledTools)[toolName] {
+		return false
+	}
+	if server.Expose == "allowlist" && !stringSet(server.Tools)[toolName] {
+		return false
+	}
+	return true
+}
+
+func ToolIsProxied(server Server, tool Tool) bool {
+	return ToolIsExposed(server, tool.Name)
+}
+
+func toolExposureError(serverID, tool string) error {
+	return fmt.Errorf("%w: %s:%s", ErrToolNotExposed, strings.TrimSpace(serverID), strings.TrimSpace(tool))
 }

@@ -268,3 +268,7 @@ func sanitizeError(err error) string {
 	}
 	return text
 }
+
+func SanitizeError(err error) string {
+	return sanitizeError(err)
+}

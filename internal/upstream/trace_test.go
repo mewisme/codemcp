@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -12,12 +13,16 @@ import (
 type traceTestClient struct {
 	connects int
 	tools    int
+	toolsErr error
 }
 
 func (c *traceTestClient) Connect(context.Context, Server) error { c.connects++; return nil }
 func (*traceTestClient) Close(context.Context, string) error     { return nil }
 func (c *traceTestClient) Tools(context.Context, string) ([]Tool, error) {
 	c.tools++
+	if c.toolsErr != nil {
+		return nil, c.toolsErr
+	}
 	return []Tool{{Name: "echo"}}, nil
 }
 func (*traceTestClient) Call(context.Context, string, string, map[string]any) (CallResult, error) {
@@ -90,6 +95,49 @@ func TestSanitizeProcessArgsAndEnvTraceMetadata(t *testing.T) {
 	fields := upstreamServerTraceFields(Server{ID: "stdio", Transport: "stdio", Command: "node", Args: []string{"server.js"}, Env: map[string]string{"API_TOKEN": "env-secret"}})
 	if strings.Contains(fmt.Sprint(fields), "env-secret") {
 		t.Fatalf("upstream server trace fields leaked env value: %#v", fields)
+	}
+}
+
+func TestRemoteErrorsAreBoundedAndCredentialSafeInTraces(t *testing.T) {
+	secretHeader := "header-super-secret"
+	secretEnv := "env-super-secret"
+	querySecret := "query-super-secret"
+	remoteCause := errors.New(
+		"remote https://example.test/mcp?token=" + querySecret +
+			" failed token=" + secretHeader + " env=" + secretEnv + " " +
+			strings.Repeat("x", maxRemoteErrorBytes),
+	)
+	client := &traceTestClient{toolsErr: remoteCause}
+	events := []tracepkg.Event{}
+	observer := func(event tracepkg.Event) { events = append(events, event) }
+	manager := NewManagerWithClient(nil, client).SetTraceObserver(observer)
+	if err := manager.Add(Server{
+		ID: "demo", Enabled: true, Transport: "http",
+		URL:     "https://example.test/mcp?token=" + querySecret,
+		Headers: map[string]string{"Authorization": "Bearer " + secretHeader},
+		Env:     map[string]string{"PASSWORD": secretEnv},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := tracepkg.WithObserver(t.Context(), observer)
+	_, err := manager.Tools(ctx, "demo", false)
+	if err == nil {
+		t.Fatal("expected remote discovery error")
+	}
+	if !errors.Is(err, remoteCause) {
+		t.Fatalf("remote cause identity lost: %v", err)
+	}
+	if len(err.Error()) > maxRemoteErrorBytes {
+		t.Fatalf("remote error not bounded: %d", len(err.Error()))
+	}
+	text := fmt.Sprint(events)
+	for _, secret := range []string{secretHeader, secretEnv, querySecret} {
+		if strings.Contains(err.Error(), secret) || strings.Contains(text, secret) {
+			t.Fatalf("remote credential leaked %q: err=%q trace=%s", secret, err.Error(), text)
+		}
+	}
+	if !strings.Contains(err.Error(), "token=%3Credacted%3E") {
+		t.Fatalf("remote URL query was not sanitized: %q", err.Error())
 	}
 }
 

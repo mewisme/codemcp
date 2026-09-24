@@ -525,11 +525,12 @@ func (c *rpcConnection) callEraLocked(ctx context.Context, era, method, name str
 	request := rpcRequest{JSONRPC: "2.0", ID: id, Method: method, Params: value}
 	response, err := c.roundTrip(ctx, request, era, name, headers)
 	if err != nil {
+		err = sanitizeRemoteError(c.server, err)
 		span.FailMessage("Upstream MCP method failed", err, tracepkg.Int64("request_id", id))
 		return err
 	}
 	if response.Error != nil {
-		err := &ProtocolError{Code: response.Error.Code, Message: response.Error.Message, Data: response.Error.Data}
+		err := sanitizeRemoteError(c.server, &ProtocolError{Code: response.Error.Code, Message: response.Error.Message, Data: response.Error.Data})
 		span.FailMessage("Upstream MCP method returned protocol error", err, tracepkg.Int64("request_id", id), tracepkg.Int("protocol_error_code", response.Error.Code))
 		return err
 	}
@@ -538,6 +539,7 @@ func (c *rpcConnection) callEraLocked(ctx context.Context, era, method, name str
 		return nil
 	}
 	if err := json.Unmarshal(response.Result, target); err != nil {
+		err = sanitizeRemoteError(c.server, err)
 		span.FailMessage("Upstream MCP result decode failed", err, tracepkg.Int64("request_id", id), tracepkg.Int("result_bytes", len(response.Result)))
 		return err
 	}
