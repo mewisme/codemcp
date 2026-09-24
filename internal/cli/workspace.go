@@ -301,6 +301,13 @@ func workspaceListCommand() *cobra.Command {
 				value := item.Path
 				if !item.Available {
 					value += " · unavailable: " + item.Error
+				} else {
+					hygiene := workspace.InspectLocalStateGitHygiene(cmd.Context(), item.Path)
+					if hygiene.Tracked {
+						value += " · git hygiene: tracked .cm; " + hygiene.Guidance
+					} else if hygiene.Degraded || !hygiene.Protected {
+						value += " · git hygiene: degraded"
+					}
 				}
 				log.Detail(item.ID, value)
 			}
@@ -334,6 +341,19 @@ func workspaceShowCommand() *cobra.Command {
 			log.Detail("available", item.Available)
 			if item.Error != "" {
 				log.Detail("error", item.Error)
+			}
+			if item.Available {
+				hygiene := workspace.InspectLocalStateGitHygiene(cmd.Context(), item.Path)
+				state := "healthy"
+				if hygiene.Tracked {
+					state = "tracked .cm"
+				} else if hygiene.Degraded || !hygiene.Protected {
+					state = "degraded"
+				}
+				log.Detail("git hygiene", state)
+				if hygiene.Guidance != "" {
+					log.Detail("git guidance", hygiene.Guidance)
+				}
 			}
 			if len(item.AllowDirs) == 0 {
 				log.Detail("allow dirs", "none")

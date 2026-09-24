@@ -45,6 +45,24 @@ Workspace-owned durable state follows one local layout:
 
 Memory, rewind/checkpoint history, shell session history, and native CodeMCP rules/skills are resolved through this workspace-local state service. `.cm/prompts/` is the canonical workspace Prompt root for Prompt storage. Runtime-only execution feeds that are currently in memory are not duplicated into global workspace state. The global registry remains an ID/root lookup and does not become the primary store for these workspace-owned domains.
 
+### Git hygiene and local concealment
+
+CodeMCP keeps workspace-local `.cm/` out of normal Git changes without editing the project's committed root `.gitignore`.
+
+- `<workspace>/.cm/.gitignore` contains `*` as defense in depth.
+- Git repositories receive a local `.cm/` rule in repository metadata `info/exclude`. Linked worktrees resolve through the common Git metadata directory.
+- Registration, runtime activation, and runtime reload repair these rules idempotently.
+- Nested repositories are not traversed or modified while repairing the parent workspace.
+- On hosts with a native hidden-file attribute, CodeMCP applies it to `.cm/` on a best-effort basis. Correctness does not depend on visual concealment.
+
+Ignore rules cannot retroactively untrack files already present in the Git index. `cm workspace list`, `cm workspace show`, and runtime diagnostics detect tracked `.cm` state and report the manual remediation command:
+
+```bash
+git rm -r --cached .cm
+```
+
+Review the resulting Git change before committing it. CodeMCP never runs that index mutation automatically.
+
 ## Effective filesystem scope
 
 A workspace can reach:

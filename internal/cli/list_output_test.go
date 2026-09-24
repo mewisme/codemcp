@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -41,6 +42,35 @@ func TestWorkspaceListDefaultsToPlainAndSupportsJSON(t *testing.T) {
 	plain := executeRequestCommand(t, root, []string{"workspace", "list"})
 	if !strings.Contains(plain, items[0].Path) || !strings.Contains(plain, "Registered workspaces loaded") {
 		t.Fatalf("plain=%q", plain)
+	}
+}
+
+func TestWorkspaceListAndShowReportTrackedLocalCMState(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "config")
+	workspaceRoot := t.TempDir()
+	git := exec.Command("git", "init", "-q")
+	git.Dir = workspaceRoot
+	if output, err := git.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	registered := executeRequestCommand(t, root, []string{"workspace", "register", workspaceRoot})
+	id := strings.TrimSpace(strings.Split(strings.Split(registered, "id:")[1], "\n")[0])
+	tracked := filepath.Join(workspaceRoot, workspace.LocalDirName, "tracked.txt")
+	if err := os.WriteFile(tracked, []byte("tracked"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git = exec.Command("git", "add", "-f", ".cm/tracked.txt")
+	git.Dir = workspaceRoot
+	if output, err := git.CombinedOutput(); err != nil {
+		t.Fatalf("git add: %v: %s", err, output)
+	}
+	for name, output := range map[string]string{
+		"list": executeRequestCommand(t, root, []string{"workspace", "list"}),
+		"show": executeRequestCommand(t, root, []string{"workspace", "show", id}),
+	} {
+		if !strings.Contains(output, "tracked .cm") || !strings.Contains(output, workspace.GitTrackedGuidance) {
+			t.Fatalf("%s output missing tracked-state guidance: %q", name, output)
+		}
 	}
 }
 

@@ -146,6 +146,18 @@ func (m *Manager) Reload() error {
 	nextLocks := map[string]*oslock.Lock{}
 	nextRoots := map[string]string{}
 	acquired := map[string]*oslock.Lock{}
+	hygiene := map[string]GitHygieneResult{}
+	for id, item := range items {
+		if !item.Available() {
+			continue
+		}
+		result := EnsureLocalStateGitHygiene(item.Path)
+		if err := result.Error(); err != nil {
+			return fmt.Errorf("repair workspace Git hygiene %s: %w", id, err)
+		}
+		hygiene[id] = result
+		_ = concealLocalState(workspacestate.New(item.Path).Root())
+	}
 	if active {
 		ids := make([]string, 0, len(items))
 		for id := range items {
@@ -189,6 +201,7 @@ func (m *Manager) Reload() error {
 		}
 		m.runtime.locks = nextLocks
 		m.runtime.roots = nextRoots
+		m.runtime.hygiene = hygiene
 	}
 	m.items = items
 	m.containers = containers
@@ -287,6 +300,12 @@ func (m *Manager) Register(path string) (Workspace, error) {
 		return Workspace{}, err
 	}
 	item := Workspace{ID: identity.ID, Path: root, AllowDirs: []string{}}
+	hygiene := EnsureLocalStateGitHygiene(root)
+	if err := hygiene.Error(); err != nil {
+		span.FailMessage("Workspace Git hygiene failed", err, tracepkg.String("workspace_id", item.ID), tracepkg.String("canonical_path", root))
+		return Workspace{}, err
+	}
+	_ = concealLocalState(workspacestate.New(root).Root())
 
 	m.mu.RLock()
 	existing, existed := m.items[item.ID]
@@ -349,7 +368,10 @@ func (m *Manager) Register(path string) (Workspace, error) {
 	if acquired != nil {
 		m.runtime.locks[item.ID] = acquired
 		m.runtime.roots[item.ID] = item.Path
+		m.runtime.hygiene[item.ID] = hygiene
 		acquired = nil
+	} else if m.runtime != nil && m.runtime.active {
+		m.runtime.hygiene[item.ID] = hygiene
 	}
 	span.EndMessage("Workspace registered", tracepkg.String("workspace_id", item.ID), tracepkg.String("canonical_path", root), tracepkg.Bool("existing", existed), tracepkg.Bool("protected", false), tracepkg.Int("allow_dirs", len(item.AllowDirs)))
 	return item, nil

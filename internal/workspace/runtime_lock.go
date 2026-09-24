@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,9 +20,10 @@ var (
 )
 
 type runtimeState struct {
-	active bool
-	locks  map[string]*oslock.Lock
-	roots  map[string]string
+	active  bool
+	locks   map[string]*oslock.Lock
+	roots   map[string]string
+	hygiene map[string]GitHygieneResult
 }
 
 type runtimeLockMetadata struct {
@@ -39,20 +41,21 @@ type RuntimeDiagnostics struct {
 }
 
 type WorkspaceRuntimeDiagnostic struct {
-	WorkspaceID string    `json:"workspace_id"`
-	Root        string    `json:"root"`
-	LockPath    string    `json:"lock_path"`
-	Owned       bool      `json:"owned"`
-	Locked      bool      `json:"locked"`
-	Valid       bool      `json:"valid"`
-	PID         int       `json:"pid,omitempty"`
-	InstanceID  string    `json:"instance_id,omitempty"`
-	StartedAt   time.Time `json:"started_at,omitempty"`
-	Error       string    `json:"error,omitempty"`
+	WorkspaceID string               `json:"workspace_id"`
+	Root        string               `json:"root"`
+	LockPath    string               `json:"lock_path"`
+	Owned       bool                 `json:"owned"`
+	Locked      bool                 `json:"locked"`
+	Valid       bool                 `json:"valid"`
+	PID         int                  `json:"pid,omitempty"`
+	InstanceID  string               `json:"instance_id,omitempty"`
+	StartedAt   time.Time            `json:"started_at,omitempty"`
+	Error       string               `json:"error,omitempty"`
+	GitHygiene  GitHygieneDiagnostic `json:"git_hygiene"`
 }
 
 func newRuntimeState() *runtimeState {
-	return &runtimeState{locks: map[string]*oslock.Lock{}, roots: map[string]string{}}
+	return &runtimeState{locks: map[string]*oslock.Lock{}, roots: map[string]string{}, hygiene: map[string]GitHygieneResult{}}
 }
 
 // Lock order is runtimeMu -> registry mutation file lock -> Manager.mu -> workspace runtime file lock.
@@ -78,6 +81,7 @@ func (m *Manager) Activate() error {
 	}
 	locks := map[string]*oslock.Lock{}
 	roots := map[string]string{}
+	hygiene := map[string]GitHygieneResult{}
 	for _, item := range items {
 		if !item.Available() {
 			continue
@@ -85,6 +89,12 @@ func (m *Manager) Activate() error {
 		if err := validateActiveWorkspaceState(item); err != nil {
 			continue
 		}
+		result := EnsureLocalStateGitHygiene(item.Path)
+		if err := result.Error(); err != nil {
+			return errors.Join(fmt.Errorf("repair workspace Git hygiene %s: %w", item.ID, err), releaseRuntimeLocks(locks))
+		}
+		hygiene[item.ID] = result
+		_ = concealLocalState(workspacestate.New(item.Path).Root())
 		lock, err := m.acquireRuntimeLock(item)
 		if err != nil {
 			return errors.Join(err, releaseRuntimeLocks(locks))
@@ -96,6 +106,7 @@ func (m *Manager) Activate() error {
 	m.runtime.active = true
 	m.runtime.locks = locks
 	m.runtime.roots = roots
+	m.runtime.hygiene = hygiene
 	m.mu.Unlock()
 	return nil
 }
@@ -153,6 +164,7 @@ func (m *Manager) RuntimeDiagnostics() RuntimeDiagnostics {
 			Root:        item.Path,
 			LockPath:    workspacestate.New(item.Path).RuntimeLockPath(),
 			Owned:       owned[item.ID],
+			GitHygiene:  InspectLocalStateGitHygiene(context.Background(), item.Path),
 		}
 		if !item.Available() {
 			diagnostic.Error = item.Error

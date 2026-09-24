@@ -265,6 +265,18 @@ The stable workspace ID does not change. Move or rename the project directory fi
 
 If the old root is temporarily missing, `cm workspace list` keeps the workspace registered and reports it as unavailable. Restore the root or relocate it; do not unregister unless you actually want to remove the registry handle. Unregister keeps local `.cm/` state. Use `cm workspace purge ws_... --yes` only when you intentionally want to delete verified local CodeMCP state.
 
+### `.cm` appears in Git status or is already tracked
+
+CodeMCP repairs two local protection layers automatically: `<workspace>/.cm/.gitignore` contains `*`, and Git repositories receive a local `.cm/` rule in their repository metadata `info/exclude`. The project's committed root `.gitignore` is not edited for this purpose. Linked worktrees use the common repository metadata directory, and nested repositories are not modified as a side effect of repairing the parent workspace.
+
+If `.cm` was already tracked before these rules existed, ignore rules cannot remove it from the index. `cm workspace list` and `cm workspace show <workspace_id>` report this condition and the safe manual remediation:
+
+```bash
+git rm -r --cached .cm
+```
+
+Review the staged deletion before committing. CodeMCP only diagnoses this state; it does not automatically mutate the Git index. On Windows, CodeMCP also requests the native hidden attribute for `.cm/` when supported, but Git protection and workspace correctness do not depend on that attribute.
+
 In `cm tui`, open the workspace detail, press `m` for **Relocate**, choose the new directory, and press `Enter` on the final field to relocate it.
 
 Relocation is intentionally unavailable to MCP tools and agents. It changes the trusted workspace root, so perform it through the local CLI, TUI, or authenticated Admin API instead.
