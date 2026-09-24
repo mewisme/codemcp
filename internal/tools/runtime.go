@@ -14,6 +14,7 @@ import (
 	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/integrations"
 	"go.mewis.me/codemcp/internal/integrations/caveman"
+	"go.mewis.me/codemcp/internal/integrations/codegraph"
 	"go.mewis.me/codemcp/internal/integrations/ponytail"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -28,22 +29,23 @@ const (
 var errTunnelResponseBudgetExceeded = errors.New("tunnel response budget exhausted")
 
 type Runtime struct {
-	Registry        *Registry
-	Workspaces      *workspace.Manager
-	Checkpoints     *checkpoint.Store
-	Upstream        *upstream.Manager
-	CallObserver    CallObserver
-	SessionAccess   *SessionWorkspaceAccessManager
-	Approvals       *approval.Manager
-	Executions      *shellruntime.ExecutionHub
-	Shell           *shellruntime.Manager
-	Processes       *shellruntime.ProcessManager
-	LoopGuard       *ToolLoopGuard
-	sessionMu       sync.Mutex
-	integrationMu   sync.Mutex
-	integrations    integrations.Config
-	ponytailManager *ponytail.Manager
-	cavemanManager  *caveman.Manager
+	Registry         *Registry
+	Workspaces       *workspace.Manager
+	Checkpoints      *checkpoint.Store
+	Upstream         *upstream.Manager
+	CallObserver     CallObserver
+	SessionAccess    *SessionWorkspaceAccessManager
+	Approvals        *approval.Manager
+	Executions       *shellruntime.ExecutionHub
+	Shell            *shellruntime.Manager
+	Processes        *shellruntime.ProcessManager
+	LoopGuard        *ToolLoopGuard
+	sessionMu        sync.Mutex
+	integrationMu    sync.Mutex
+	integrations     integrations.Config
+	ponytailManager  *ponytail.Manager
+	cavemanManager   *caveman.Manager
+	codegraphRuntime *codegraph.Runtime
 }
 
 func NewRuntime() *Runtime {
@@ -107,10 +109,17 @@ func (r *Runtime) SyncIntegrations(integrationConfig integrations.Config) error 
 	if r.cavemanManager == nil {
 		r.cavemanManager = caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))
 	}
+	r.codegraphRuntime = codegraph.New(codegraph.Options{
+		Enabled:        integrationConfig.CodeGraph.Enabled,
+		ConfiguredPath: integrationConfig.CodeGraph.Path,
+	})
 	if err := r.Registry.ReplaceOwned(integrations.Owner(integrations.PonytailID), ponytailToolEntries(r.Workspaces, r.ponytailManager)); err != nil {
 		return err
 	}
 	if err := r.Registry.ReplaceOwned(integrations.Owner(integrations.CavemanID), cavemanToolEntries(r.Workspaces, r.cavemanManager)); err != nil {
+		return err
+	}
+	if err := r.Registry.ReplaceOwned(integrations.Owner(integrations.CodeGraphID), codeGraphToolEntries(r)); err != nil {
 		return err
 	}
 	r.ponytailManager.SetDefaults(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode))
@@ -129,6 +138,15 @@ func (r *Runtime) Integrations() integrations.Config {
 	r.integrationMu.Lock()
 	defer r.integrationMu.Unlock()
 	return r.integrations
+}
+
+func (r *Runtime) codeGraphRuntimeSnapshot() *codegraph.Runtime {
+	if r == nil {
+		return nil
+	}
+	r.integrationMu.Lock()
+	defer r.integrationMu.Unlock()
+	return r.codegraphRuntime
 }
 
 func (r *Runtime) SetGlobalAllowDirs(allowDirs []string) {
