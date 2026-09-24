@@ -565,6 +565,9 @@ func TestIntegrationConfigSerializesActiveOnlyInJSON(t *testing.T) {
 	if _, exists := root["interactive"]; exists {
 		t.Fatalf("obsolete interactive key serialized: %#v", root)
 	}
+	if _, exists := root["features"]; exists {
+		t.Fatalf("legacy features key serialized: %#v", root)
+	}
 	integrationValues := root["integrations"].(map[string]any)
 	ponytail := integrationValues["ponytail"].(map[string]any)
 	if ponytail["active"] != false || ponytail["mode"] != "full" {

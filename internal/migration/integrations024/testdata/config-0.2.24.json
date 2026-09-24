@@ -1,0 +1,21 @@
+{
+  "server": {
+    "enabled": true,
+    "port": 37421,
+    "expose": {
+      "mode": "none",
+      "interfaces": []
+    }
+  },
+  "features": {
+    "ponytail": {
+      "active": false,
+      "mode": "ultra"
+    },
+    "caveman": {
+      "active": true,
+      "mode": "wenyan-ultra"
+    }
+  },
+  "fixture_marker": "released-0.2.24"
+}
