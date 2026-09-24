@@ -96,6 +96,47 @@ func TestPresenterCollectionRailUsesChildAndContinuationRows(t *testing.T) {
 	}
 }
 
+func TestPresenterRichPaletteLocalizesColorToStructureAndStateTokens(t *testing.T) {
+	var output bytes.Buffer
+	caps := Capabilities{Width: 100, Unicode: true, Color: true}
+	p := New(&output, ModeHuman, caps)
+	p.Frame("CodeMCP status")
+	p.Status(StatusSuccess, "CodeMCP is running")
+	p.Spacer()
+	p.Section("Runtime")
+	p.Fields(Field{Label: "pid", Value: 4242})
+	p.Spacer()
+	p.StateSection(StatusInactive, "Tunnel")
+	p.ChildState(StatusInactive, "OpenAI Secure MCP Tunnel", "disabled")
+	p.FrameEnd("Status complete")
+
+	theme := NewTheme(caps)
+	text := output.String()
+	for _, expected := range []string{
+		theme.Render(RoleRail, "┌") + "  " + theme.Render(RoleHeading, "CodeMCP status"),
+		theme.Render(RoleSuccess, "✓") + "  CodeMCP is running",
+		theme.Render(RoleStructure, "◆") + "  " + theme.Render(RoleHeading, "Runtime"),
+		theme.Render(RoleRail, "│") + "  " + theme.Render(RoleStructure, "◆") + " " + theme.Render(RoleLabel, "pid") + " — 4242",
+		theme.Render(RoleMuted, "◇") + "  " + theme.Render(RoleHeading, "Tunnel"),
+		theme.Render(RoleRail, "└") + "  Status complete",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("rich palette missing %q: %q", expected, text)
+		}
+	}
+	for _, forbidden := range []string{
+		theme.Render(RoleActive, "┌"),
+		theme.Render(RoleActive, "Runtime"),
+		theme.Render(RoleStructure, "Runtime"),
+		theme.Render(RoleSuccess, "CodeMCP is running"),
+		theme.Render(RoleActive, "pid"),
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("rich palette leaked role %q into settled text: %q", forbidden, text)
+		}
+	}
+}
+
 func TestPresenterSeparatorFollowsGlyphCapabilities(t *testing.T) {
 	unicode := New(io.Discard, ModeHuman, Capabilities{Unicode: true})
 	ascii := New(io.Discard, ModeHuman, Capabilities{Unicode: false})

@@ -63,8 +63,8 @@ func (session *ProgressSession) Begin(title string) {
 		fmt.Fprintln(session.out, strings.TrimSpace(title))
 		return
 	}
-	fmt.Fprintln(session.out, session.glyphs.FrameStart+"  "+session.theme.Render(RoleHeading, strings.TrimSpace(title)))
-	fmt.Fprintln(session.out, session.glyphs.Rail)
+	fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.FrameStart)+"  "+session.theme.Render(RoleHeading, strings.TrimSpace(title)))
+	fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
 	session.framed = true
 }
 
@@ -165,8 +165,8 @@ func (session *ProgressSession) Close() {
 	}
 	session.clearTransientLocked()
 	if session.framed && session.mode == ModeHuman {
-		fmt.Fprintln(session.out, session.glyphs.Rail)
-		fmt.Fprintln(session.out, session.glyphs.FrameEnd)
+		fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
+		fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.FrameEnd))
 	}
 	session.closed = true
 }
@@ -176,7 +176,7 @@ func (session *ProgressSession) renderRunningLocked(phase ProgressPhase) {
 		return
 	}
 	session.clearTransientLocked()
-	fmt.Fprint(session.out, "\r\x1b[2K", session.theme.Render(RoleAccent, session.glyphs.Active), "  ", phase.Label)
+	fmt.Fprint(session.out, "\r\x1b[2K", session.theme.Render(RoleActive, session.glyphs.Active), "  ", phase.Label)
 	session.transient = true
 }
 
@@ -217,7 +217,7 @@ func (session *ProgressSession) terminalStyle(state ProgressState) (string, Role
 	case ProgressFailed:
 		return session.glyphs.Error, RoleDanger
 	default:
-		return session.glyphs.Info, RoleAccent
+		return session.glyphs.Info, RoleMuted
 	}
 }
 

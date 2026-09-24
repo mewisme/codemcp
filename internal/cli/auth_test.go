@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 )
@@ -93,6 +94,47 @@ func TestAuthStatusUsesStructuredPresenterWithoutHashes(t *testing.T) {
 	for _, forbidden := range []string{"mcp-sensitive-hash", "admin-sensitive-hash", "enabled=true", "configured=true"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("auth status exposed legacy/detail value %q: %q", forbidden, text)
+		}
+	}
+}
+
+func TestAuthStatusRichPaletteKeepsSectionTextNeutral(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := t.TempDir()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	caps := presentation.Capabilities{Width: 100, Unicode: true, Color: true, Interactive: true}
+	cmd := authStatusCommand()
+	cmd.SetOut(presentation.WrapWriter(&output, caps))
+	cmd.SetErr(presentation.WrapWriter(&output, caps))
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	theme := presentation.NewTheme(caps)
+	text := output.String()
+	for _, expected := range []string{
+		theme.Render(presentation.RoleRail, "┌"),
+		theme.Render(presentation.RoleStructure, "◆") + "  " + theme.Render(presentation.RoleHeading, "MCP"),
+		theme.Render(presentation.RoleLabel, "enabled"),
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("auth palette missing %q: %q", expected, text)
+		}
+	}
+	for _, forbidden := range []string{
+		theme.Render(presentation.RoleActive, "Authentication"),
+		theme.Render(presentation.RoleActive, "MCP"),
+		theme.Render(presentation.RoleStructure, "MCP"),
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("auth palette over-colored settled text %q: %q", forbidden, text)
 		}
 	}
 }

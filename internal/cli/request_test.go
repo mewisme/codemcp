@@ -128,6 +128,41 @@ func TestRequestRichViewUsesRailHierarchy(t *testing.T) {
 	}
 }
 
+func TestRequestRichPaletteLocalizesPendingAndStructureColor(t *testing.T) {
+	request := approval.Request{
+		ID:          "req_palette",
+		Status:      approval.StatusPending,
+		WorkspaceID: "ws_palette",
+		TargetTool:  "run_command",
+		Title:       "Review command",
+		GuardCode:   controlguard.CodeExternalMutation,
+	}
+	var output bytes.Buffer
+	caps := presentation.Capabilities{Width: 100, Unicode: true, Color: true}
+	renderApprovalRequest(presentation.New(&output, presentation.ModeHuman, caps), request)
+	theme := presentation.NewTheme(caps)
+	text := output.String()
+	for _, expected := range []string{
+		theme.Render(presentation.RoleRail, "┌"),
+		theme.Render(presentation.RoleMuted, "◇") + "  " + theme.Render(presentation.RoleHeading, "Pending"),
+		theme.Render(presentation.RoleStructure, "◆"),
+		theme.Render(presentation.RoleLabel, "id") + " — req_palette",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("request palette missing %q: %q", expected, text)
+		}
+	}
+	for _, forbidden := range []string{
+		theme.Render(presentation.RoleActive, "Pending"),
+		theme.Render(presentation.RoleStructure, "Pending"),
+		theme.Render(presentation.RoleActive, "req_palette"),
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("request palette over-colored settled text %q: %q", forbidden, text)
+		}
+	}
+}
+
 func TestRuntimeGrantListUsesStructuredSafeFields(t *testing.T) {
 	grant := approval.Request{
 		ID:                    "req_grant",

@@ -295,6 +295,37 @@ func TestConfigHumanListUsesPresenterRowsWhilePlainRemainsCompatible(t *testing.
 	}
 }
 
+func TestConfigRichPaletteSeparatesStructureLabelsAndValues(t *testing.T) {
+	cfg := config.Default()
+	var output bytes.Buffer
+	caps := presentation.Capabilities{Width: 100, Unicode: true, Color: true, Interactive: true}
+	cmd := &cobra.Command{}
+	cmd.SetOut(presentation.WrapWriter(&output, caps))
+	if err := printConfigSelection(cmd, cfg, "admin", true, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	theme := presentation.NewTheme(caps)
+	text := output.String()
+	for _, expected := range []string{
+		theme.Render(presentation.RoleRail, "┌"),
+		theme.Render(presentation.RoleStructure, "◆") + "  " + theme.Render(presentation.RoleHeading, "admin"),
+		theme.Render(presentation.RoleLabel, "admin.enabled") + " — true",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("config palette missing %q: %q", expected, text)
+		}
+	}
+	for _, forbidden := range []string{
+		theme.Render(presentation.RoleActive, "admin"),
+		theme.Render(presentation.RoleStructure, "admin"),
+		theme.Render(presentation.RoleActive, "true"),
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("config palette over-colored settled text %q: %q", forbidden, text)
+		}
+	}
+}
+
 func TestConfigScalarGetKeepsRawValueContract(t *testing.T) {
 	cfg := config.Default()
 	var output bytes.Buffer

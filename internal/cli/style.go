@@ -35,7 +35,7 @@ func cliState(out io.Writer, value any) string {
 	case "connected", "ready", "running":
 		return cliTone(out, presentation.RoleSuccess, text)
 	case "connecting", "reconnecting":
-		return cliTone(out, presentation.RoleAccent, text)
+		return cliTone(out, presentation.RoleActive, text)
 	case "unreachable", "failed", "error":
 		return cliTone(out, presentation.RoleDanger, text)
 	case "stopped", "offline", "disabled", "not configured":

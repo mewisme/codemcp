@@ -328,6 +328,48 @@ func TestRenderStatusDisabledTunnelGoldenRailHierarchy(t *testing.T) {
 	}
 }
 
+func TestRenderStatusRichPaletteKeepsSettledTextNeutral(t *testing.T) {
+	snapshot := statusSnapshot{
+		Source:  configformat.Source{Path: "/tmp/config.json", Exists: true},
+		Config:  config.Default(),
+		Running: true,
+		Runtime: runtimeStatusResult{
+			PID:              4242,
+			RunID:            "run_palette",
+			TunnelEnabled:    true,
+			TunnelConfigured: true,
+			TunnelReady:      true,
+		},
+	}
+	var output bytes.Buffer
+	caps := presentation.Capabilities{Width: 100, Unicode: true, Color: true}
+	renderStatus(presentation.New(&output, presentation.ModeHuman, caps), snapshot, false)
+	theme := presentation.NewTheme(caps)
+	text := output.String()
+
+	for _, expected := range []string{
+		theme.Render(presentation.RoleRail, "┌"),
+		theme.Render(presentation.RoleSuccess, "✓") + "  CodeMCP is running",
+		theme.Render(presentation.RoleStructure, "◆") + "  " + theme.Render(presentation.RoleHeading, "Runtime"),
+		theme.Render(presentation.RoleLabel, "mcp http"),
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("status palette missing %q: %q", expected, text)
+		}
+	}
+	for _, forbidden := range []string{
+		theme.Render(presentation.RoleActive, "┌"),
+		theme.Render(presentation.RoleActive, "Runtime"),
+		theme.Render(presentation.RoleStructure, "Runtime"),
+		theme.Render(presentation.RoleActive, "mcp http"),
+		theme.Render(presentation.RoleSuccess, "CodeMCP is running"),
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("status palette over-colored settled text %q: %q", forbidden, text)
+		}
+	}
+}
+
 func TestRenderStatusVerboseEndpointsUsePresenterNestedFields(t *testing.T) {
 	cfg := config.Default()
 	snapshot := statusSnapshot{

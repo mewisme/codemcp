@@ -10,6 +10,9 @@ type Role uint8
 
 const (
 	RoleValue Role = iota
+	RoleStructure
+	RoleRail
+	RoleActive
 	RoleSuccess
 	RoleDanger
 	RoleWarning
@@ -46,6 +49,12 @@ func (theme Theme) Render(role Role, value any) string {
 
 func roleAttributes(role Role) []color.Attribute {
 	switch role {
+	case RoleStructure:
+		return []color.Attribute{color.FgGreen}
+	case RoleRail:
+		return []color.Attribute{color.Faint}
+	case RoleActive:
+		return []color.Attribute{color.FgHiCyan}
 	case RoleSuccess:
 		return []color.Attribute{color.FgHiGreen, color.Bold}
 	case RoleDanger:

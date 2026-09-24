@@ -72,8 +72,8 @@ func (p *Presenter) Frame(title string) {
 		return
 	}
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(RoleAccent, p.glyphs.FrameStart) + "  " + p.theme.Render(RoleHeading, title))
-		p.line(p.theme.Render(RoleMuted, p.glyphs.Rail))
+		p.line(p.theme.Render(RoleRail, p.glyphs.FrameStart) + "  " + p.theme.Render(RoleHeading, title))
+		p.line(p.theme.Render(RoleRail, p.glyphs.Rail))
 		return
 	}
 	p.line(p.theme.Render(RoleHeading, title))
@@ -85,8 +85,8 @@ func (p *Presenter) FrameEnd(message string) {
 	}
 	message = strings.TrimSpace(message)
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(RoleMuted, p.glyphs.Rail))
-		line := p.theme.Render(RoleAccent, p.glyphs.FrameEnd)
+		p.line(p.theme.Render(RoleRail, p.glyphs.Rail))
+		line := p.theme.Render(RoleRail, p.glyphs.FrameEnd)
 		if message != "" {
 			line += "  " + message
 		}
@@ -106,7 +106,7 @@ func (p *Presenter) Section(title string) {
 		return
 	}
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(RoleAccent, p.glyphs.PhaseDone) + "  " + p.theme.Render(RoleHeading, strings.TrimSpace(title)))
+		p.line(p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + "  " + p.theme.Render(RoleHeading, strings.TrimSpace(title)))
 		return
 	}
 	p.line(p.theme.Render(RoleHeading, strings.TrimSpace(title)))
@@ -137,7 +137,7 @@ func (p *Presenter) Subsection(title string) {
 		return
 	}
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + p.theme.Render(RoleAccent, p.glyphs.PhaseDone) + " " + p.theme.Render(RoleHeading, title))
+		p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + " " + p.theme.Render(RoleHeading, title))
 		return
 	}
 	p.line("  " + p.theme.Render(RoleHeading, title))
@@ -148,7 +148,7 @@ func (p *Presenter) Spacer() {
 		return
 	}
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(RoleMuted, p.glyphs.Rail))
+		p.line(p.theme.Render(RoleRail, p.glyphs.Rail))
 		return
 	}
 	p.line("")
@@ -190,7 +190,7 @@ func (p *Presenter) ChildStatus(kind StatusKind, message string) {
 		return
 	}
 	glyph, role := p.statusStyle(kind)
-	p.line(p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + p.theme.Render(role, glyph) + " " + message)
+	p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(role, glyph) + " " + message)
 }
 
 func (p *Presenter) ChildState(kind StatusKind, label string, value any) {
@@ -224,7 +224,7 @@ func (p *Presenter) fields(indent int, fields ...Field) {
 				p.richField("", field.Label, field.Value, true)
 				continue
 			}
-			p.richField(p.theme.Render(RoleAccent, p.glyphs.PhaseDone), field.Label, field.Value, false)
+			p.richField(p.theme.Render(RoleStructure, p.glyphs.PhaseDone), field.Label, field.Value, false)
 		}
 		return
 	}
@@ -260,9 +260,9 @@ func (p *Presenter) List(items ...string) {
 			if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
 				continue
 			}
-			p.line(p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + p.theme.Render(RoleAccent, p.glyphs.PhaseDone) + " " + lines[0])
+			p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + " " + lines[0])
 			for _, line := range lines[1:] {
-				p.line(p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + line)
+				p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + line)
 			}
 			continue
 		}
@@ -280,7 +280,7 @@ func (p *Presenter) Rows(headers []string, rows ...Row) {
 				continue
 			}
 			if len(row) == 2 {
-				p.richField(p.theme.Render(RoleAccent, p.glyphs.PhaseDone), row[0], row[1], false)
+				p.richField(p.theme.Render(RoleStructure, p.glyphs.PhaseDone), row[0], row[1], false)
 				continue
 			}
 			p.richTextChild(row[0])
@@ -341,10 +341,10 @@ func (p *Presenter) Note(title, body string) {
 	title = strings.TrimSpace(title)
 	if p.mode == ModeHuman {
 		if title != "" {
-			p.line(p.theme.Render(RoleAccent, p.glyphs.Info) + "  " + p.theme.Render(RoleHeading, title))
+			p.line(p.theme.Render(RoleMuted, p.glyphs.Info) + "  " + p.theme.Render(RoleHeading, title))
 		}
 		for _, line := range strings.Split(strings.TrimSpace(body), "\n") {
-			p.line(p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + line)
+			p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + line)
 		}
 		return
 	}
@@ -385,10 +385,10 @@ func (p *Presenter) Markdown(source string) error {
 	output = strings.TrimRight(output, "\n")
 	for _, line := range strings.Split(output, "\n") {
 		if strings.TrimSpace(line) == "" {
-			p.line(p.theme.Render(RoleMuted, p.glyphs.Rail))
+			p.line(p.theme.Render(RoleRail, p.glyphs.Rail))
 			continue
 		}
-		p.line(p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + line)
+		p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + line)
 	}
 	return nil
 }
@@ -404,7 +404,7 @@ func (p *Presenter) statusStyle(kind StatusKind) (string, Role) {
 	case StatusInactive:
 		return p.glyphs.PhasePending, RoleMuted
 	default:
-		return p.glyphs.Info, RoleAccent
+		return p.glyphs.Info, RoleMuted
 	}
 }
 
@@ -414,9 +414,9 @@ func (p *Presenter) richField(glyph, label string, value any, continuation bool)
 	if len(lines) == 0 {
 		lines = []string{""}
 	}
-	prefix := p.theme.Render(RoleMuted, p.glyphs.Rail) + "  "
+	prefix := p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
 	if continuation {
-		prefix += p.theme.Render(RoleMuted, p.glyphs.Rail) + "  "
+		prefix += p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
 	} else {
 		prefix += glyph + " "
 	}
@@ -430,7 +430,7 @@ func (p *Presenter) richField(glyph, label string, value any, continuation bool)
 		line += lines[0]
 	}
 	p.line(line)
-	continuationPrefix := p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + p.theme.Render(RoleMuted, p.glyphs.Rail) + "  "
+	continuationPrefix := p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
 	for _, continuationLine := range lines[1:] {
 		p.line(continuationPrefix + continuationLine)
 	}
@@ -441,9 +441,9 @@ func (p *Presenter) richTextChild(value string) {
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
 		return
 	}
-	p.line(p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + p.theme.Render(RoleAccent, p.glyphs.PhaseDone) + " " + lines[0])
+	p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + " " + lines[0])
 	for _, line := range lines[1:] {
-		p.line(p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + p.theme.Render(RoleMuted, p.glyphs.Rail) + "  " + line)
+		p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + line)
 	}
 }
 

@@ -645,7 +645,7 @@ func renderTunnelStateLine(out io.Writer, state string) {
 	case "connected":
 		fmt.Fprintln(out, cliTone(out, presentation.RoleSuccess, glyphs.Success), message)
 	case "starting", "connecting", "reconnecting":
-		fmt.Fprintln(out, cliTone(out, presentation.RoleAccent, glyphs.Active), message)
+		fmt.Fprintln(out, cliTone(out, presentation.RoleActive, glyphs.Active), message)
 	case "failed":
 		fmt.Fprintln(out, cliTone(out, presentation.RoleDanger, glyphs.Error), message)
 	case "degraded":
