@@ -2,14 +2,6 @@ package capability
 
 import "strings"
 
-type ID string
-
-type Spec struct {
-	ID            ID
-	CanonicalPath string
-	PublicPaths   []string
-}
-
 const RootPath = "<root>"
 
 const (
@@ -96,43 +88,200 @@ const (
 	TunnelDelete             ID = "tunnel.delete"
 	StatusOverview           ID = "status.overview"
 	VersionAbout             ID = "version.about"
+
+	HealthRead                       ID = "health.read"
+	NetworkInterfacesList            ID = "network.interfaces.list"
+	ConfigSnapshotRead               ID = "config.snapshot.read"
+	ConfigPatch                      ID = "config.patch"
+	InstructionSettingsRead          ID = "instructions.settings.read"
+	InstructionSettingsWrite         ID = "instructions.settings.write"
+	WorkspaceContainerMembershipList ID = "workspace.container.membership.list"
+	ProjectContextRead               ID = "project.context.read"
+	ToolInventoryRead                ID = "tools.inventory.read"
+	ExecutionList                    ID = "execution.list"
+	ExecutionView                    ID = "execution.view"
+	ExecutionFeed                    ID = "execution.feed"
+	ExecutionStream                  ID = "execution.stream"
+	ProcessList                      ID = "process.list"
+	ProcessView                      ID = "process.view"
+	ProcessClear                     ID = "process.clear"
+	RequestStream                    ID = "request.stream"
+	TunnelConfigRead                 ID = "tunnel.config.read"
+	ActivityStream                   ID = "activity.stream"
+	ActivityView                     ID = "activity.view"
+	OAuthCallbackComplete            ID = "oauth.callback.complete"
 )
 
-var specs = []Spec{
-	{ServerForeground, "serve", []string{RootPath}},
-	{InstallRun, "install", nil},
-	{UpdateApply, "upgrade", nil}, {UpdateCheck, "upgrade check", nil},
-	{ConfigInit, "init", nil}, {ConfigUninit, "uninit", nil},
-	{RuntimeUp, "up", nil}, {RuntimeDown, "down", nil}, {RuntimeRestart, "restart", nil},
-	{LogsRead, "logs", nil}, {LogsFollow, "logs follow", nil}, {LogsPath, "logs path", nil}, {LogsClear, "logs clear", nil},
-	{RequestList, "request list", nil}, {RequestView, "request view", nil}, {RequestApprove, "request approve", nil}, {RequestDeny, "request deny", nil},
-	{RequestGrantList, "request grant list", nil}, {RequestGrantRevoke, "request grant revoke", nil},
-	{ConfigPath, "config path", nil}, {ConfigExport, "config export", nil}, {ConfigImport, "config import", nil},
-	{ConfigGet, "config get", []string{"config explain"}}, {ConfigList, "config list", nil}, {ConfigSet, "config set", nil}, {ConfigMigrate, "config migrate", nil},
-	{ConfigMigrateSecrets, "config migrate secrets", nil}, {ConfigConvert, "config convert", nil}, {ConfigVerify, "config verify", nil},
-	{AuthMCPRotate, "auth mcp create", nil}, {AuthMCPEnable, "auth mcp enable", nil}, {AuthMCPDisable, "auth mcp disable", nil},
-	{AuthAdminRotate, "auth admin create", nil}, {AuthAdminEnable, "auth admin enable", nil}, {AuthAdminDisable, "auth admin disable", nil}, {AuthStatus, "auth status", nil},
-	{WorkspaceContainerList, "workspace container list", nil}, {WorkspaceContainerCreate, "workspace container create", nil}, {WorkspaceContainerShow, "workspace container show", nil},
-	{WorkspaceContainerRename, "workspace container rename", nil}, {WorkspaceContainerDelete, "workspace container delete", nil}, {WorkspaceContainerAdd, "workspace container add", nil}, {WorkspaceContainerRemove, "workspace container remove", nil},
-	{WorkspaceAccessList, "workspace access list", nil}, {WorkspaceAccessAdd, "workspace access add", nil}, {WorkspaceAccessRemove, "workspace access remove", nil},
-	{WorkspaceRegister, "workspace register", nil}, {WorkspaceList, "workspace list", nil}, {WorkspaceShow, "workspace show", nil}, {WorkspaceRelocate, "workspace relocate", nil}, {WorkspaceUnregister, "workspace unregister", nil},
-	{MCPStdio, "mcp stdio", nil},
-	{MCPHTTP, "mcp http", nil},
-	{MCPServerList, "upstream server list", []string{"mcp server list"}}, {MCPServerAdd, "upstream server add", []string{"mcp server add"}}, {MCPServerConfigure, "upstream server configure", []string{"mcp server configure"}}, {MCPServerShow, "upstream server show", []string{"mcp server show"}},
-	{MCPServerRemove, "upstream server remove", []string{"mcp server remove"}}, {MCPServerEnable, "upstream server enable", []string{"mcp server enable"}}, {MCPServerDisable, "upstream server disable", []string{"mcp server disable"}}, {MCPServerStatus, "upstream server status", []string{"mcp server status"}}, {MCPServerTools, "upstream server tools", []string{"mcp server tools"}},
-	{MCPAuthLogin, "upstream server auth login", []string{"mcp server auth login"}}, {MCPAuthStatus, "upstream server auth status", []string{"mcp server auth status"}}, {MCPAuthLogout, "upstream server auth logout", []string{"mcp server auth logout"}},
-	{TunnelStatus, "tunnel status", nil}, {TunnelSync, "tunnel sync", nil}, {TunnelConfigure, "tunnel configure", nil}, {TunnelEnable, "tunnel enable", nil}, {TunnelDisable, "tunnel disable", nil}, {TunnelForeground, "tunnel run", nil},
-	{TunnelAdminKeySet, "tunnel admin key set", nil}, {TunnelAdminKeyStatus, "tunnel admin key status", nil}, {TunnelAdminKeyVerify, "tunnel admin key verify", nil}, {TunnelAdminKeyRemove, "tunnel admin key remove", nil},
-	{TunnelList, "tunnel list", nil}, {TunnelGet, "tunnel get", nil}, {TunnelUse, "tunnel use", nil}, {TunnelCreate, "tunnel create", nil}, {TunnelUpdate, "tunnel update", nil}, {TunnelDelete, "tunnel delete", nil},
-	{StatusOverview, "status", nil}, {VersionAbout, "version", nil},
+var specs = buildSpecs()
+
+func buildSpecs() []Spec {
+	values := []Spec{
+		operatorRuntime(ServerForeground, "serve", true, RootPath),
+		operatorSensitive(InstallRun, "install", false),
+		operatorSensitive(UpdateApply, "upgrade", true),
+		operatorQueryOpenWorld(UpdateCheck, "upgrade check"),
+		operatorMutation(ConfigInit, "init", RiskState, false),
+		operatorDestructive(ConfigUninit, "uninit", false),
+		operatorRuntime(RuntimeUp, "up", false),
+		operatorRuntime(RuntimeDown, "down", false),
+		operatorRuntime(RuntimeRestart, "restart", false),
+		operatorQuery(LogsRead, "logs"),
+		operatorStream(LogsFollow, "logs follow", false),
+		operatorQuery(LogsPath, "logs path"),
+		operatorDestructive(LogsClear, "logs clear", false),
+		operatorQuery(RequestList, "request list"),
+		operatorQuery(RequestView, "request view"),
+		reviewerMutation(RequestApprove, "request approve"),
+		reviewerMutation(RequestDeny, "request deny"),
+		operatorQuery(RequestGrantList, "request grant list"),
+		reviewerDestructive(RequestGrantRevoke, "request grant revoke"),
+		operatorQuery(ConfigPath, "config path"),
+		operatorMutation(ConfigExport, "config export", RiskState, false),
+		operatorSensitive(ConfigImport, "config import", false),
+		operatorQuery(ConfigGet, "config get", "config explain"),
+		operatorQuery(ConfigList, "config list"),
+		operatorMutation(ConfigSet, "config set", RiskState, false),
+		operatorSensitive(ConfigMigrate, "config migrate", false),
+		operatorSensitive(ConfigMigrateSecrets, "config migrate secrets", false),
+		operatorSensitive(ConfigConvert, "config convert", false, "config transform"),
+		operatorQuery(ConfigVerify, "config verify", "config validate"),
+		operatorSensitive(AuthMCPRotate, "auth mcp create", false),
+		operatorSensitive(AuthMCPEnable, "auth mcp enable", false),
+		operatorSensitive(AuthMCPDisable, "auth mcp disable", false),
+		operatorSensitive(AuthAdminRotate, "auth admin create", false),
+		operatorSensitive(AuthAdminEnable, "auth admin enable", false),
+		operatorSensitive(AuthAdminDisable, "auth admin disable", false),
+		operatorQuery(AuthStatus, "auth status"),
+		operatorQuery(WorkspaceContainerList, "workspace container list"),
+		operatorMutation(WorkspaceContainerCreate, "workspace container create", RiskState, false),
+		operatorQuery(WorkspaceContainerShow, "workspace container show"),
+		operatorMutation(WorkspaceContainerRename, "workspace container rename", RiskState, false),
+		operatorDestructive(WorkspaceContainerDelete, "workspace container delete", false),
+		operatorMutation(WorkspaceContainerAdd, "workspace container add", RiskState, false),
+		operatorMutation(WorkspaceContainerRemove, "workspace container remove", RiskState, false),
+		operatorQuery(WorkspaceAccessList, "workspace access list"),
+		operatorSensitive(WorkspaceAccessAdd, "workspace access add", false),
+		operatorSensitive(WorkspaceAccessRemove, "workspace access remove", false),
+		operatorMutation(WorkspaceRegister, "workspace register", RiskState, false),
+		operatorQuery(WorkspaceList, "workspace list"),
+		operatorQuery(WorkspaceShow, "workspace show"),
+		operatorMutation(WorkspaceRelocate, "workspace relocate", RiskState, false),
+		operatorDestructive(WorkspaceUnregister, "workspace unregister", false),
+		operatorRuntime(MCPStdio, "mcp stdio", false),
+		operatorRuntime(MCPHTTP, "mcp http", true),
+		operatorQuery(MCPServerList, "upstream server list", "mcp server list"),
+		operatorMutation(MCPServerAdd, "upstream server add", RiskSensitive, true, "mcp server add"),
+		operatorMutation(MCPServerConfigure, "upstream server configure", RiskSensitive, true, "mcp server configure"),
+		operatorQuery(MCPServerShow, "upstream server show", "mcp server show"),
+		operatorDestructive(MCPServerRemove, "upstream server remove", true, "mcp server remove"),
+		operatorMutation(MCPServerEnable, "upstream server enable", RiskState, true, "mcp server enable"),
+		operatorMutation(MCPServerDisable, "upstream server disable", RiskState, true, "mcp server disable"),
+		operatorQueryOpenWorld(MCPServerStatus, "upstream server status", "mcp server status"),
+		operatorQueryOpenWorld(MCPServerTools, "upstream server tools", "mcp server tools"),
+		operatorSensitive(MCPAuthLogin, "upstream server auth login", true, "mcp server auth login"),
+		operatorQuery(MCPAuthStatus, "upstream server auth status", "mcp server auth status"),
+		operatorSensitive(MCPAuthLogout, "upstream server auth logout", true, "mcp server auth logout"),
+		operatorQuery(TunnelStatus, "tunnel status"),
+		operatorMutation(TunnelSync, "tunnel sync", RiskSensitive, true),
+		operatorSensitive(TunnelConfigure, "tunnel configure", true),
+		operatorRuntime(TunnelEnable, "tunnel enable", true),
+		operatorRuntime(TunnelDisable, "tunnel disable", true),
+		operatorRuntime(TunnelForeground, "tunnel run", true),
+		operatorSensitive(TunnelAdminKeySet, "tunnel admin key set", true),
+		operatorQuery(TunnelAdminKeyStatus, "tunnel admin key status"),
+		operatorSensitive(TunnelAdminKeyVerify, "tunnel admin key verify", true),
+		operatorSensitive(TunnelAdminKeyRemove, "tunnel admin key remove", false),
+		operatorQueryOpenWorld(TunnelList, "tunnel list"),
+		operatorQueryOpenWorld(TunnelGet, "tunnel get"),
+		operatorSensitive(TunnelUse, "tunnel use", true),
+		operatorMutation(TunnelCreate, "tunnel create", RiskSensitive, true),
+		operatorMutation(TunnelUpdate, "tunnel update", RiskSensitive, true),
+		operatorDeleteRequired(TunnelDelete, "tunnel delete", true),
+		operatorQuery(StatusOverview, "status"),
+		operatorQuery(VersionAbout, "version"),
+	}
+	values = append(values, adminOnlySpecs()...)
+	values = append(values, agentOnlySpecs()...)
+	for index := range values {
+		values[index].Admin = append([]AdminBinding(nil), adminBindings[values[index].ID]...)
+		values[index].MCPTools = append(values[index].MCPTools, mcpToolBindings[values[index].ID]...)
+		values[index].Surfaces = surfaceContracts(values[index])
+	}
+	return values
 }
 
-func All() []Spec { return append([]Spec(nil), specs...) }
+func operatorQuery(id ID, path string, aliases ...string) Spec {
+	return operatorSpec(id, KindQuery, RiskNone, ConfirmationPolicy{Mode: ConfirmationNone}, SemanticEffects{Key: string(id), ReadOnly: true, Idempotent: true}, path, aliases...)
+}
+
+func operatorQueryOpenWorld(id ID, path string, aliases ...string) Spec {
+	spec := operatorQuery(id, path, aliases...)
+	spec.Effects.OpenWorld = true
+	return spec
+}
+
+func operatorStream(id ID, path string, openWorld bool, aliases ...string) Spec {
+	return operatorSpec(id, KindStream, RiskNone, ConfirmationPolicy{Mode: ConfirmationNone}, SemanticEffects{Key: string(id), ReadOnly: true, Idempotent: true, OpenWorld: openWorld}, path, aliases...)
+}
+
+func operatorMutation(id ID, path string, risk MutationRisk, openWorld bool, aliases ...string) Spec {
+	return operatorSpec(id, KindMutation, risk, ConfirmationPolicy{Mode: ConfirmationNone, ControlApproval: true}, SemanticEffects{Key: string(id), Destructive: risk == RiskDestructive, OpenWorld: openWorld}, path, aliases...)
+}
+
+func operatorSensitive(id ID, path string, openWorld bool, aliases ...string) Spec {
+	return operatorMutation(id, path, RiskSensitive, openWorld, aliases...)
+}
+
+func operatorDestructive(id ID, path string, openWorld bool, aliases ...string) Spec {
+	spec := operatorMutation(id, path, RiskDestructive, openWorld, aliases...)
+	spec.Confirmation.Mode = ConfirmationRecommended
+	return spec
+}
+
+func operatorDeleteRequired(id ID, path string, openWorld bool, aliases ...string) Spec {
+	spec := operatorMutation(id, path, RiskDestructive, openWorld, aliases...)
+	spec.Confirmation.Mode = ConfirmationRequired
+	return spec
+}
+
+func operatorRuntime(id ID, path string, openWorld bool, aliases ...string) Spec {
+	return operatorSpec(id, KindRuntime, RiskSensitive, ConfirmationPolicy{Mode: ConfirmationNone, ControlApproval: true}, SemanticEffects{Key: string(id), OpenWorld: openWorld}, path, aliases...)
+}
+
+func reviewerMutation(id ID, path string, aliases ...string) Spec {
+	spec := operatorSpec(id, KindMutation, RiskSensitive, ConfirmationPolicy{Mode: ConfirmationReview}, SemanticEffects{Key: string(id)}, path, aliases...)
+	spec.Audience = AudienceReviewer
+	spec.Authorization = AuthorizationReviewer
+	return spec
+}
+
+func reviewerDestructive(id ID, path string, aliases ...string) Spec {
+	spec := reviewerMutation(id, path, aliases...)
+	spec.Risk = RiskDestructive
+	spec.Effects.Destructive = true
+	return spec
+}
+
+func operatorSpec(id ID, kind Kind, risk MutationRisk, confirmation ConfirmationPolicy, effects SemanticEffects, path string, aliases ...string) Spec {
+	return Spec{
+		ID: id, Kind: kind, Audience: AudienceOperator, Authorization: AuthorizationOperator,
+		Risk: risk, Confirmation: confirmation, Effects: effects,
+		CLI: CLIBinding{CanonicalPath: path, Aliases: append([]string(nil), aliases...)},
+	}
+}
+
+func All() []Spec {
+	out := make([]Spec, len(specs))
+	for i, spec := range specs {
+		out[i] = cloneSpec(spec)
+	}
+	return out
+}
 
 func Lookup(id ID) (Spec, bool) {
 	for _, spec := range specs {
 		if spec.ID == id {
-			return spec, true
+			return cloneSpec(spec), true
 		}
 	}
 	return Spec{}, false
@@ -141,10 +290,7 @@ func Lookup(id ID) (Spec, bool) {
 func ForPath(path string) (ID, bool) {
 	path = NormalizePath(path)
 	for _, spec := range specs {
-		if NormalizePath(spec.CanonicalPath) == path {
-			return spec.ID, true
-		}
-		for _, candidate := range spec.PublicPaths {
+		for _, candidate := range spec.CLIPaths() {
 			if NormalizePath(candidate) == path {
 				return spec.ID, true
 			}
@@ -153,12 +299,37 @@ func ForPath(path string) (ID, bool) {
 	return "", false
 }
 
+func ForAdmin(method, path string) (ID, bool) {
+	want := normalizeAdminBinding(AdminBinding{Method: method, Path: path})
+	for _, spec := range specs {
+		for _, binding := range spec.Admin {
+			if normalizeAdminBinding(binding) == want {
+				return spec.ID, true
+			}
+		}
+	}
+	return "", false
+}
+
+func ForMCPTool(name string) (ID, bool) {
+	name = strings.TrimSpace(name)
+	for _, spec := range specs {
+		for _, tool := range spec.MCPTools {
+			if tool == name {
+				return spec.ID, true
+			}
+		}
+	}
+	return "", false
+}
+
 func SearchText(ids []ID) string {
-	parts := make([]string, 0, len(ids)*2)
+	parts := make([]string, 0, len(ids)*3)
 	for _, id := range ids {
 		if spec, ok := Lookup(id); ok {
-			parts = append(parts, spec.CanonicalPath)
-			parts = append(parts, spec.PublicPaths...)
+			parts = append(parts, spec.CLI.CanonicalPath)
+			parts = append(parts, spec.CLI.Aliases...)
+			parts = append(parts, spec.MCPTools...)
 		}
 	}
 	return strings.Join(parts, " ")
@@ -177,4 +348,12 @@ func NormalizePath(path string) string {
 		kept = append(kept, field)
 	}
 	return strings.Join(kept, " ")
+}
+
+func cloneSpec(spec Spec) Spec {
+	spec.CLI.Aliases = append([]string(nil), spec.CLI.Aliases...)
+	spec.Admin = append([]AdminBinding(nil), spec.Admin...)
+	spec.MCPTools = append([]string(nil), spec.MCPTools...)
+	spec.Surfaces = append([]SurfaceContract(nil), spec.Surfaces...)
+	return spec
 }

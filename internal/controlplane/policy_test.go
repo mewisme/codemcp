@@ -1,6 +1,11 @@
 package controlplane
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"go.mewis.me/codemcp/internal/capability"
+)
 
 func TestReadOnlyCommandPolicy(t *testing.T) {
 	for _, args := range [][]string{
@@ -50,5 +55,24 @@ func TestUpdateAliasCanonicalizesToUpgrade(t *testing.T) {
 	}
 	if got := PathFromArgs([]string{"update"}); got != "upgrade" {
 		t.Fatalf("update alias path=%q want upgrade", got)
+	}
+}
+
+func TestCLIControlPolicyMatchesCanonicalOperationRegistry(t *testing.T) {
+	for _, spec := range capability.All() {
+		if !spec.HasCLI() {
+			continue
+		}
+		path := capability.NormalizePath(spec.CLI.CanonicalPath)
+		if path == capability.RootPath {
+			continue
+		}
+		if got := IsReadOnlyPath(path); got != spec.Effects.ReadOnly {
+			t.Errorf("%s read-only policy=%t want %t", spec.ID, got, spec.Effects.ReadOnly)
+		}
+		args := strings.Fields(path)
+		if got := ApprovalEligibleArgs(args); got != spec.Confirmation.ControlApproval {
+			t.Errorf("%s approval policy=%t want %t", spec.ID, got, spec.Confirmation.ControlApproval)
+		}
 	}
 }

@@ -40,11 +40,13 @@ func TestPublicCommandsHaveCanonicalCapabilities(t *testing.T) {
 	}
 	stale := []string{}
 	for _, spec := range capability.All() {
-		for _, path := range append([]string{spec.CanonicalPath}, spec.PublicPaths...) {
-			path = capability.NormalizePath(path)
-			if !actual[path] {
-				stale = append(stale, fmt.Sprintf("%s (%s)", path, spec.ID))
-			}
+		surface, ok := spec.Surface(capability.SurfaceCLI)
+		if !ok || surface.State != capability.SurfaceRequired {
+			continue
+		}
+		path := capability.NormalizePath(spec.CLI.CanonicalPath)
+		if !actual[path] {
+			stale = append(stale, fmt.Sprintf("%s (%s)", path, spec.ID))
 		}
 	}
 	if len(stale) > 0 {

@@ -24,8 +24,12 @@ func TestEveryPublicCapabilityHasTUIRepresentation(t *testing.T) {
 	}
 	missing := []string{}
 	for _, spec := range capability.All() {
+		surface, ok := spec.Surface(capability.SurfaceTUI)
+		if !ok || surface.State != capability.SurfaceRequired {
+			continue
+		}
 		if len(represented[spec.ID]) == 0 {
-			missing = append(missing, spec.CanonicalPath)
+			missing = append(missing, spec.CLI.CanonicalPath)
 		}
 	}
 	if len(missing) > 0 {
@@ -37,6 +41,10 @@ func TestEveryPublicCapabilityHasTUIRepresentation(t *testing.T) {
 func TestMappedCapabilitiesArePaletteDiscoverableByCanonicalCLIPath(t *testing.T) {
 	registry := defaultActionRegistry()
 	for _, spec := range capability.All() {
+		surface, ok := spec.Surface(capability.SurfaceTUI)
+		if !ok || surface.State != capability.SurfaceRequired {
+			continue
+		}
 		var mapped []action.Action
 		for _, item := range registry.All() {
 			for _, id := range item.Capabilities {
@@ -51,13 +59,13 @@ func TestMappedCapabilitiesArePaletteDiscoverableByCanonicalCLIPath(t *testing.T
 		}
 		found := false
 		for _, item := range mapped {
-			if len(palette.Rank([]action.Action{item}, spec.CanonicalPath, action.Context{})) > 0 {
+			if len(palette.Rank([]action.Action{item}, spec.CLI.CanonicalPath, action.Context{})) > 0 {
 				found = true
 				break
 			}
 		}
 		if !found {
-			t.Errorf("capability %s is not discoverable by %q", spec.ID, spec.CanonicalPath)
+			t.Errorf("capability %s is not discoverable by %q", spec.ID, spec.CLI.CanonicalPath)
 		}
 	}
 }

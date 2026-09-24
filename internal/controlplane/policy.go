@@ -3,22 +3,14 @@ package controlplane
 import (
 	"os"
 	"strings"
+
+	"go.mewis.me/codemcp/internal/capability"
 )
 
 const (
 	ToolContextEnv     = "CM_TOOL_CONTEXT"
 	ControlApprovalEnv = "CM_CONTROL_APPROVAL"
 )
-
-var readOnlyPaths = map[string]bool{
-	"help": true, "version": true, "status": true, "completion": true,
-	"config path": true, "config get": true, "config list": true, "config explain": true, "config verify": true, "config validate": true,
-	"auth status": true, "upgrade check": true,
-	"request list": true, "request view": true, "request grant list": true,
-	"workspace list": true, "workspace show": true, "workspace access list": true,
-	"mcp server list": true, "mcp server show": true, "mcp server status": true, "mcp server tools": true,
-	"tunnel status": true, "logs": true, "logs follow": true, "logs path": true,
-}
 
 var ancestorContextCheck = true
 
@@ -38,7 +30,15 @@ func DisableAncestorContextForTesting() func() {
 
 func IsReadOnlyPath(path string) bool {
 	path = strings.Join(strings.Fields(path), " ")
-	return readOnlyPaths[path] || strings.HasPrefix(path, "completion ")
+	if path == "help" || path == "completion" || strings.HasPrefix(path, "completion ") {
+		return true
+	}
+	id, ok := capability.ForPath(path)
+	if !ok {
+		return false
+	}
+	spec, ok := capability.Lookup(id)
+	return ok && spec.Effects.ReadOnly
 }
 
 func IsReadOnlyArgs(args []string) bool {
@@ -46,17 +46,19 @@ func IsReadOnlyArgs(args []string) bool {
 }
 
 func ApprovalEligibleArgs(args []string) bool {
-	if IsReadOnlyArgs(args) {
-		return false
-	}
 	path := PathFromArgs(args)
 	if path == "" || path == "_service" || strings.HasPrefix(path, "_service ") {
 		return false
 	}
-	if path == "request" || strings.HasPrefix(path, "request ") {
+	if path == "help" || path == "completion" || strings.HasPrefix(path, "completion ") {
 		return false
 	}
-	return true
+	id, ok := capability.ForPath(path)
+	if !ok {
+		return false
+	}
+	spec, ok := capability.Lookup(id)
+	return ok && spec.Confirmation.ControlApproval
 }
 
 func PathFromArgs(args []string) string {
@@ -67,6 +69,17 @@ func PathFromArgs(args []string) string {
 	args = canonicalCommandArgs(args)
 	if args[0] == "help" || args[0] == "version" || args[0] == "status" {
 		return args[0]
+	}
+	for end := len(args); end > 0; end-- {
+		candidate := strings.Join(args[:end], " ")
+		id, ok := capability.ForPath(candidate)
+		if !ok {
+			continue
+		}
+		spec, ok := capability.Lookup(id)
+		if ok && spec.HasCLI() {
+			return capability.NormalizePath(spec.CLI.CanonicalPath)
+		}
 	}
 	if len(args) < 2 {
 		return args[0]
@@ -116,6 +129,8 @@ func canonicalCommandArgs(args []string) []string {
 			result[index] = "config"
 		case "ws":
 			result[index] = "workspace"
+		case "ctr":
+			result[index] = "container"
 		case "ls":
 			result[index] = "list"
 		case "st":

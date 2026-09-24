@@ -1,0 +1,144 @@
+package capability
+
+import "strings"
+
+type ID string
+
+type Kind string
+
+const (
+	KindQuery    Kind = "query"
+	KindMutation Kind = "mutation"
+	KindRuntime  Kind = "runtime"
+	KindStream   Kind = "stream"
+	KindProtocol Kind = "protocol"
+)
+
+type Audience string
+
+const (
+	AudienceOperator Audience = "operator"
+	AudienceReviewer Audience = "reviewer"
+	AudienceAgent    Audience = "agent"
+	AudienceProtocol Audience = "protocol"
+)
+
+type AuthorizationClass string
+
+const (
+	AuthorizationOperator AuthorizationClass = "operator"
+	AuthorizationReviewer AuthorizationClass = "reviewer"
+	AuthorizationAgent    AuthorizationClass = "agent"
+	AuthorizationProtocol AuthorizationClass = "protocol"
+)
+
+type MutationRisk string
+
+const (
+	RiskNone        MutationRisk = "none"
+	RiskState       MutationRisk = "state"
+	RiskSensitive   MutationRisk = "sensitive"
+	RiskDestructive MutationRisk = "destructive"
+)
+
+type ConfirmationMode string
+
+const (
+	ConfirmationNone        ConfirmationMode = "none"
+	ConfirmationRecommended ConfirmationMode = "recommended"
+	ConfirmationRequired    ConfirmationMode = "required"
+	ConfirmationReview      ConfirmationMode = "review-decision"
+)
+
+type ConfirmationPolicy struct {
+	Mode            ConfirmationMode
+	ControlApproval bool
+}
+
+type SemanticEffects struct {
+	Key         string
+	ReadOnly    bool
+	Destructive bool
+	Idempotent  bool
+	OpenWorld   bool
+}
+
+type Surface string
+
+const (
+	SurfaceCLI      Surface = "cli"
+	SurfaceTUI      Surface = "tui"
+	SurfaceBrowser  Surface = "browser"
+	SurfaceAdminAPI Surface = "admin-api"
+	SurfaceMCP      Surface = "mcp"
+	SurfaceTelegram Surface = "telegram"
+)
+
+var AllSurfaces = []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceMCP, SurfaceTelegram}
+
+type SurfaceState string
+
+const (
+	SurfaceRequired SurfaceState = "required"
+	SurfacePlanned  SurfaceState = "planned"
+	SurfaceExempt   SurfaceState = "exempt"
+)
+
+type SurfaceContract struct {
+	Surface Surface
+	State   SurfaceState
+	Reason  string
+}
+
+type CLIBinding struct {
+	CanonicalPath string
+	Aliases       []string
+}
+
+type AdminBinding struct {
+	Method string
+	Path   string
+}
+
+type Spec struct {
+	ID            ID
+	Kind          Kind
+	Audience      Audience
+	Authorization AuthorizationClass
+	Risk          MutationRisk
+	Confirmation  ConfirmationPolicy
+	Effects       SemanticEffects
+	CLI           CLIBinding
+	Admin         []AdminBinding
+	MCPTools      []string
+	Surfaces      []SurfaceContract
+}
+
+func (spec Spec) Surface(surface Surface) (SurfaceContract, bool) {
+	for _, contract := range spec.Surfaces {
+		if contract.Surface == surface {
+			return contract, true
+		}
+	}
+	return SurfaceContract{}, false
+}
+
+func (spec Spec) HasCLI() bool {
+	return NormalizePath(spec.CLI.CanonicalPath) != ""
+}
+
+func (spec Spec) CLIPaths() []string {
+	if !spec.HasCLI() {
+		return nil
+	}
+	paths := make([]string, 0, 1+len(spec.CLI.Aliases))
+	paths = append(paths, spec.CLI.CanonicalPath)
+	paths = append(paths, spec.CLI.Aliases...)
+	return paths
+}
+
+func normalizeAdminBinding(binding AdminBinding) AdminBinding {
+	binding.Method = strings.ToUpper(strings.TrimSpace(binding.Method))
+	binding.Path = "/" + strings.Trim(strings.TrimSpace(binding.Path), "/")
+	return binding
+}
