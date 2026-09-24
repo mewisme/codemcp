@@ -585,10 +585,7 @@ func normalizeWorkspaceRegistry(file File, source, target Platform) ([]byte, map
 		oldID := item.ID
 		item.Path = mapped
 		item.AllowDirs = allowDirs
-		item.ID = workspace.IDForPath(mapped)
-		if oldID != "" && oldID != item.ID {
-			item.LegacyIDs = appendUnique(item.LegacyIDs, oldID)
-		}
+		item.ID = oldID
 		mapping[oldID] = item.ID
 		roots[item.ID] = item.Path
 		items = append(items, item)
@@ -715,15 +712,6 @@ func safeRelative(value string) (string, bool) {
 func currentPlatform() Platform {
 	home, _ := os.UserHomeDir()
 	return Platform{OS: runtime.GOOS, Arch: runtime.GOARCH, Home: home}
-}
-
-func appendUnique(values []string, value string) []string {
-	for _, existing := range values {
-		if existing == value {
-			return values
-		}
-	}
-	return append(values, value)
 }
 
 func readEnvelope(file string) (Bundle, error) {

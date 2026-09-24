@@ -24,7 +24,9 @@ cm workspace list
 cm workspace show ws_...
 ```
 
-Workspace IDs are derived from the canonical workspace path. Existing legacy IDs may remain usable as aliases after migration or relocation.
+New registrations receive a stable `ws_*` identity persisted in `<workspace>/.cm/workspace.json`. Equivalent canonical spellings of the same project root reuse that identity instead of deriving a new ID from the input path string. The global registry maps the workspace ID to its registered root; existing legacy IDs may remain usable as aliases after migration or relocation.
+
+The workspace-local `.cm/` root is CodeMCP-owned state. Registration creates its ownership marker lazily. A symlinked `.cm`, an invalid marker, or a non-empty unowned `.cm` is rejected rather than claimed. The effective global CodeMCP root (normally `$HOME/.cm`, or the selected `CM_CONFIG_DIR`) is never accepted as workspace-local state.
 
 ## Effective filesystem scope
 
@@ -81,7 +83,7 @@ If the project directory has already been renamed or moved, relocate the existin
 cm workspace relocate ws_... /new/path/to/project
 ```
 
-Relocation updates the trusted root and derives the new path-based workspace ID. The previous ID is retained as a legacy alias, workspace-scoped persistent state follows the project, and container membership is preserved.
+The current relocation compatibility flow updates the trusted root and derives a replacement path-based workspace ID. The previous ID is retained as a legacy alias, workspace-scoped persistent state follows the project, and container membership is preserved.
 
 Relocate does **not** move project files. It is a trusted local control-plane operation available through CLI, TUI, and Admin surfaces rather than an Agent filesystem tool.
 

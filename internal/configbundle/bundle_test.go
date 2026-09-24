@@ -191,11 +191,10 @@ func TestMaterializeMapsHomePathsAndWorkspaceStateAcrossPlatforms(t *testing.T) 
 	if len(registry.Workspaces) != 1 || registry.Workspaces[0].Path != filepath.Join(targetHome, "projects", "app") {
 		t.Fatalf("workspaces = %#v", registry.Workspaces)
 	}
-	newID := workspace.IDForPath(registry.Workspaces[0].Path)
-	if registry.Workspaces[0].ID != newID || !contains(registry.Workspaces[0].LegacyIDs, oldID) {
+	if registry.Workspaces[0].ID != oldID {
 		t.Fatalf("workspace identity = %#v", registry.Workspaces[0])
 	}
-	memory, err := os.ReadFile(filepath.Join(stage, "workspaces", newID, "MEMORY.md"))
+	memory, err := os.ReadFile(filepath.Join(stage, "workspaces", oldID, "MEMORY.md"))
 	if err != nil || string(memory) != canonicalMemory {
 		t.Fatalf("memory = %q err=%v", memory, err)
 	}
@@ -463,13 +462,4 @@ func foreignOutsidePath(source Platform) string {
 		return `D:\External\bin`
 	}
 	return "/opt/external/bin"
-}
-
-func contains(values []string, expected string) bool {
-	for _, value := range values {
-		if value == expected {
-			return true
-		}
-	}
-	return false
 }

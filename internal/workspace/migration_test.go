@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
 func writeTestInstanceIdentity(t *testing.T, root, id string) {
@@ -51,8 +53,12 @@ func TestWorkspaceIDsAreStableAcrossInstances(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.ID != second.ID || first.ID != workspaceID(first.Path) || first.Path != second.Path {
-		t.Fatalf("workspace ids are not path-stable: %#v %#v", first, second)
+	if first.ID != second.ID || first.Path != second.Path {
+		t.Fatalf("workspace ids are not locally stable: %#v %#v", first, second)
+	}
+	identity, err := workspacestate.New(workspaceRoot).LoadIdentity()
+	if err != nil || identity.ID != first.ID {
+		t.Fatalf("local identity=%#v err=%v", identity, err)
 	}
 }
 

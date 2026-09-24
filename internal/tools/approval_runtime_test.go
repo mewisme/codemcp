@@ -180,8 +180,8 @@ func TestWorkspaceRegisterRequiresLocalApproval(t *testing.T) {
 	if !ok || challenge.WorkspaceID != approvalControlWorkspace || challenge.TargetTool != "workspace_register" || challenge.GuardCode != string(controlguard.CodeControlPlaneMutation) {
 		t.Fatalf("challenge=%#v", first.StructuredContent)
 	}
-	if _, _, err := manager.ResolveDirectory(workspace.IDForPath(target), target); err == nil {
-		t.Fatal("workspace registered before approval")
+	if items, err := manager.List(); err != nil || len(items) != 0 {
+		t.Fatalf("workspace registered before approval: items=%#v err=%v", items, err)
 	}
 	request, _, err := runtime.Approvals.CreateRequestWithTitle(challenge.ChallengeID, "workspace-register", approvalControlWorkspace, "Register local workspace")
 	if err != nil {

@@ -67,7 +67,7 @@ Register only project roots you want ChatGPT to reach:
 cm workspace register ~/projects/my-project
 ```
 
-The command returns a stable `ws_*` workspace ID. Filesystem, shell, Git, process, context, memory, rules, skills, and checkpoint operations use explicit workspace targets.
+The command returns a stable `ws_*` workspace ID and records its ownership marker in `<workspace>/.cm/workspace.json`. Filesystem, shell, Git, process, context, memory, rules, skills, and checkpoint operations use explicit workspace targets.
 
 ```bash
 cm workspace list

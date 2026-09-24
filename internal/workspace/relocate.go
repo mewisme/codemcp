@@ -10,6 +10,7 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/state"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
+	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
 var relocateStateRename = os.Rename
@@ -41,6 +42,24 @@ func (m *Manager) Relocate(id, path string) (Workspace, error) {
 		return Workspace{}, err
 	}
 	oldRoot := item.Path
+	for registeredID, registered := range m.items {
+		if registeredID != oldID && sameCanonicalRoot(registered.Path, root) {
+			err := fmt.Errorf("workspace already registered for destination: %s", root)
+			span.FailMessage("Workspace relocation failed", err, tracepkg.String("destination_workspace_id", registeredID))
+			return Workspace{}, err
+		}
+	}
+	if identity, identityErr := workspacestate.New(root).LoadIdentity(); identityErr == nil {
+		if identity.ID != oldID {
+			err := fmt.Errorf("workspace destination belongs to %s: %s", identity.ID, root)
+			span.FailMessage("Workspace relocation failed", err, tracepkg.String("destination_workspace_id", identity.ID))
+			return Workspace{}, err
+		}
+	} else if !errors.Is(identityErr, os.ErrNotExist) {
+		err := fmt.Errorf("inspect workspace destination identity: %w", identityErr)
+		span.FailMessage("Workspace relocation failed", err)
+		return Workspace{}, err
+	}
 	newID := workspaceID(root)
 	if filepath.Clean(oldRoot) == filepath.Clean(root) && oldID == newID {
 		span.EndMessage("Workspace already uses requested root", tracepkg.String("workspace_id", oldID), tracepkg.String("root", root), tracepkg.Bool("changed", false))

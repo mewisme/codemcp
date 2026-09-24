@@ -18,9 +18,11 @@ import (
 	"go.mewis.me/codemcp/internal/instance"
 	"go.mewis.me/codemcp/internal/state"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
+	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
-const storeVersion = 4
+const storeVersion = 5
+const LocalDirName = workspacestate.DirectoryName
 
 var ErrNotFound = errors.New("workspace not found")
 
@@ -64,6 +66,10 @@ type Manager struct {
 
 func DefaultStorePath() string {
 	return configformat.StructuredPath(configformat.RootPath(), "workspaces")
+}
+
+func LocalDir(workspaceRoot string) string {
+	return filepath.Join(workspaceRoot, LocalDirName)
 }
 
 func NewManager(path string) *Manager {
@@ -192,11 +198,37 @@ func (m *Manager) Register(path string) (Workspace, error) {
 		span.FailMessage("Workspace registration failed", err, tracepkg.String("canonical_path", root), tracepkg.Bool("local_state_alias", true))
 		return Workspace{}, err
 	}
-	item := Workspace{ID: workspaceID(root), Path: root, AllowDirs: []string{}}
+	preferredID := ""
+	m.mu.RLock()
+	for _, registered := range m.items {
+		if sameCanonicalRoot(registered.Path, root) {
+			preferredID = registered.ID
+			break
+		}
+	}
+	m.mu.RUnlock()
+	identity, _, err := workspacestate.New(root).EnsureIdentity(preferredID)
+	if err != nil {
+		span.FailMessage("Workspace registration failed", err, tracepkg.String("canonical_path", root))
+		return Workspace{}, err
+	}
+	item := Workspace{ID: identity.ID, Path: root, AllowDirs: []string{}}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	existing, existed := m.items[item.ID]
+	if existed && !sameCanonicalRoot(existing.Path, root) {
+		err := fmt.Errorf("workspace identity %s is already registered at %s", item.ID, existing.Path)
+		span.FailMessage("Workspace registration failed", err, tracepkg.String("workspace_id", item.ID), tracepkg.String("canonical_path", root))
+		return Workspace{}, err
+	}
+	for id, registered := range m.items {
+		if id != item.ID && sameCanonicalRoot(registered.Path, root) {
+			err := fmt.Errorf("workspace path is already registered as %s", id)
+			span.FailMessage("Workspace registration failed", err, tracepkg.String("workspace_id", item.ID), tracepkg.String("canonical_path", root))
+			return Workspace{}, err
+		}
+	}
 	if existed {
 		item.AllowDirs = append([]string(nil), existing.AllowDirs...)
 		item.LegacyIDs = append([]string(nil), existing.LegacyIDs...)
@@ -344,6 +376,22 @@ func (m *Manager) CanonicalID(id string) (string, error) {
 		return "", fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return canonical, nil
+}
+
+func (m *Manager) LocalState(id string) (workspacestate.Store, error) {
+	item, err := m.Get(id)
+	if err != nil {
+		return workspacestate.Store{}, err
+	}
+	local := workspacestate.New(item.Path)
+	identity, _, err := local.EnsureIdentity(item.ID)
+	if err != nil {
+		return workspacestate.Store{}, err
+	}
+	if identity.ID != item.ID {
+		return workspacestate.Store{}, fmt.Errorf("workspace identity mismatch: local %s, expected %s", identity.ID, item.ID)
+	}
+	return local, nil
 }
 
 func (m *Manager) Instance() (instance.Identity, error) {
@@ -525,7 +573,7 @@ func (m *Manager) ensureLoaded() error {
 			return err
 		}
 		canonicalID := workspaceID(item.Path)
-		if item.ID != canonicalID {
+		if stored.Version < 5 && item.ID != canonicalID {
 			previousID := item.ID
 			item.ID = canonicalID
 			item.LegacyIDs = appendUniqueString(item.LegacyIDs, previousID)
@@ -719,7 +767,7 @@ func (m *Manager) workspaceLocalRootAliasesProtected(workspaceRoot string) bool 
 	if m == nil || m.protectedRoot == "" {
 		return false
 	}
-	localRoot, err := canonicalForContainment(filepath.Join(workspaceRoot, ".cm"), false)
+	localRoot, err := canonicalForContainment(filepath.Join(workspaceRoot, LocalDirName), false)
 	if err != nil {
 		return false
 	}
@@ -920,8 +968,6 @@ func workspaceID(path string) string {
 func workspaceContainerID() (string, error) {
 	return idgen.New("wsc", 8)
 }
-
-func IDForPath(path string) string { return workspaceID(path) }
 
 func instanceScopedWorkspaceID(instanceID, path string) string {
 	sum := sha256.Sum256([]byte(instanceID + "\x00" + normalizeForID(path)))

@@ -192,7 +192,7 @@ func TestWorkspaceUnregisterCleansContainerMembership(t *testing.T) {
 func TestWorkspaceRegistryV3MigratesContainersField(t *testing.T) {
 	store := filepath.Join(t.TempDir(), "workspaces.json")
 	root := t.TempDir()
-	legacy := map[string]any{"version": 3, "workspaces": []map[string]any{{"id": IDForPath(root), "path": root}}}
+	legacy := map[string]any{"version": 3, "workspaces": []map[string]any{{"id": workspaceID(root), "path": root}}}
 	data, err := json.Marshal(legacy)
 	if err != nil {
 		t.Fatal(err)
@@ -208,7 +208,7 @@ func TestWorkspaceRegistryV3MigratesContainersField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(updated), `"version": 4`) {
+	if !strings.Contains(string(updated), `"version": 5`) {
 		t.Fatalf("registry not migrated: %s", updated)
 	}
 }

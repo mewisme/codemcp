@@ -18,7 +18,7 @@ If a call targets the wrong project, correct the `workspace_id` on that call rat
 
 ## Workspace ID changed after a registry v2 upgrade
 
-Current workspace IDs are stable hashes of canonical workspace paths. Registry v2 instance-scoped IDs are migrated to the stable path-based ID and retained as aliases, so existing conversations using the old ID continue to resolve to the same workspace. If an ID is genuinely unknown, re-run `cm workspace list` or register the canonical path again; the runtime never falls back to another workspace.
+Registry v2 instance-scoped IDs are migrated to the historical canonical-path ID and retained as aliases, so existing conversations using the old ID continue to resolve to the same workspace. New registrations persist their stable identity in `<workspace>/.cm/workspace.json`; equivalent canonical spellings of the same root therefore reuse one identity. If an ID is genuinely unknown, re-run `cm workspace list` or register the canonical path again; the runtime never falls back to another workspace.
 
 ## ChatGPT cannot see the tunnel
 

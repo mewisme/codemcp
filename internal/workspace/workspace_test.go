@@ -39,6 +39,118 @@ func TestRegisterIsStableAndPersistent(t *testing.T) {
 	if !reflect.DeepEqual(got, first) {
 		t.Fatalf("persisted workspace = %#v, want %#v", got, first)
 	}
+	local, err := manager.LocalState(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := local.LoadIdentity()
+	if err != nil || identity.ID != first.ID {
+		t.Fatalf("local identity=%#v err=%v", identity, err)
+	}
+}
+
+func TestRegisterEquivalentCanonicalPathsReuseLocalIdentity(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("symlink creation may require Windows Developer Mode or elevation")
+	}
+	parent := t.TempDir()
+	realParent := filepath.Join(parent, "real")
+	aliasParent := filepath.Join(parent, "alias")
+	root := filepath.Join(realParent, "project")
+	if err := os.MkdirAll(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(realParent, aliasParent); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	manager := newTestManager(t)
+	first, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := manager.Register(filepath.Join(aliasParent, "project"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID != second.ID || first.Path != second.Path || first.Path != canonicalRoot(root) {
+		t.Fatalf("equivalent paths produced different workspaces: first=%#v second=%#v", first, second)
+	}
+}
+
+func TestRegisterRejectsSymlinkedWorkspaceLocalRoot(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("symlink creation may require Windows Developer Mode or elevation")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, LocalDirName)); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := newTestManager(t).Register(root); err == nil {
+		t.Fatal("symlinked workspace .cm was accepted")
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
+		t.Fatalf("symlink target was modified: entries=%#v err=%v", entries, err)
+	}
+}
+
+func TestRegisterRejectsUnownedNonEmptyWorkspaceLocalRoot(t *testing.T) {
+	root := t.TempDir()
+	local := filepath.Join(root, LocalDirName)
+	if err := os.Mkdir(local, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, "foreign.txt"), []byte("foreign"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newTestManager(t).Register(root); err == nil || !strings.Contains(err.Error(), "ownership marker") {
+		t.Fatalf("unowned .cm error=%v", err)
+	}
+}
+
+func TestDefaultManagerRejectsWorkspaceWhoseLocalRootIsGlobalConfigRoot(t *testing.T) {
+	previous := configformat.RootPath()
+	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
+	home := t.TempDir()
+	globalRoot := filepath.Join(home, LocalDirName)
+	if err := os.Mkdir(globalRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := configformat.SetRootPath(globalRoot); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(DefaultStorePath())
+	if _, err := manager.Register(home); err == nil {
+		t.Fatal("workspace whose .cm aliases global config root was accepted")
+	}
+	if _, err := os.Stat(filepath.Join(globalRoot, "workspace.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("global config root was claimed as workspace state: %v", err)
+	}
+}
+
+func TestDefaultHomeWorkspaceCannotClaimGlobalCMRoot(t *testing.T) {
+	previous := configformat.RootPath()
+	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv(configformat.EnvConfigDir, "")
+	if err := configformat.SetRootPath(""); err != nil {
+		t.Fatal(err)
+	}
+	globalRoot := filepath.Join(home, LocalDirName)
+	if err := os.Mkdir(globalRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(DefaultStorePath())
+	if manager.protectedRoot != canonicalRoot(globalRoot) {
+		t.Fatalf("protected root=%q want=%q", manager.protectedRoot, canonicalRoot(globalRoot))
+	}
+	if _, err := manager.Register(home); err == nil {
+		t.Fatal("home workspace claimed the default global .cm root")
+	}
+	if _, err := os.Stat(filepath.Join(globalRoot, "workspace.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("default global .cm was mutated as workspace state: %v", err)
+	}
 }
 
 func TestWorkspaceLifecycleEmitsDeepTrace(t *testing.T) {
@@ -291,7 +403,7 @@ func TestOpenRootForPathRejectsReplacedWorkspaceRootSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	outside := t.TempDir()
-	if err := os.Remove(root); err != nil {
+	if err := os.RemoveAll(root); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, root); err != nil {
