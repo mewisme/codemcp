@@ -35,6 +35,7 @@ type ProgressSession struct {
 	phases       map[string]ProgressPhase
 	activeID     string
 	transient    bool
+	begun        bool
 	framed       bool
 	closed       bool
 }
@@ -59,6 +60,7 @@ func (session *ProgressSession) Begin(title string) {
 	if session.closed || session.mode == ModeJSON || strings.TrimSpace(title) == "" {
 		return
 	}
+	session.begun = true
 	if session.mode == ModePlain {
 		fmt.Fprintln(session.out, strings.TrimSpace(title))
 		return
@@ -154,7 +156,20 @@ func (session *ProgressSession) Suspend() {
 	session.clearTransientLocked()
 }
 
+func (session *ProgressSession) Begun() bool {
+	if session == nil {
+		return false
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	return session.begun && !session.closed
+}
+
 func (session *ProgressSession) Close() {
+	session.CloseWith("")
+}
+
+func (session *ProgressSession) CloseWith(message string) {
 	if session == nil {
 		return
 	}
@@ -166,7 +181,15 @@ func (session *ProgressSession) Close() {
 	session.clearTransientLocked()
 	if session.framed && session.mode == ModeHuman {
 		fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
-		fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.FrameEnd))
+		line := session.theme.Render(RoleRail, session.glyphs.FrameEnd)
+		if message = strings.TrimSpace(message); message != "" {
+			line += "  " + message
+		}
+		fmt.Fprintln(session.out, line)
+	} else if session.begun && session.mode == ModePlain {
+		if message = strings.TrimSpace(message); message != "" {
+			fmt.Fprintln(session.out, message)
+		}
 	}
 	session.closed = true
 }

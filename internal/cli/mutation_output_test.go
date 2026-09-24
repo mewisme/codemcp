@@ -22,15 +22,35 @@ func TestMutationProgressClosesBeforeFinalResultFrame(t *testing.T) {
 	renderMutationSuccess(cmd, "Install CodeMCP", "Installation complete", presentation.Field{Label: "version", Value: "v1.2.3"})
 
 	text := output.String()
-	if strings.Count(text, "┌  Install CodeMCP") != 2 || strings.Count(text, "└") != 2 {
-		t.Fatalf("progress/result frames were not cleanly separated: %q", text)
+	if strings.Count(text, "┌  Install CodeMCP") != 1 || strings.Count(text, "└  Done") != 1 {
+		t.Fatalf("progress/result did not share one frame: %q", text)
 	}
-	progressEnd := strings.Index(text, "└")
-	resultStart := strings.LastIndex(text, "┌  Install CodeMCP")
-	if progressEnd < 0 || resultStart <= progressEnd {
-		t.Fatalf("final result began before progress frame closed: %q", text)
+	progress := strings.Index(text, "Installing binary")
+	result := strings.Index(text, "Installation complete")
+	done := strings.Index(text, "└  Done")
+	if progress < 0 || result <= progress || done <= result {
+		t.Fatalf("progress/result ordering is not continuous: %q", text)
 	}
 	if strings.Count(text, "Installing binary") != 1 || strings.Count(text, "Installation complete") != 1 {
 		t.Fatalf("terminal phases were duplicated: %q", text)
+	}
+}
+
+func TestMutationProgressAndResultShareOnePlainBlock(t *testing.T) {
+	var output bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+
+	beginMutationProgress(cmd, "Install CodeMCP")
+	commandProgressSession(cmd).Success("install.binary", "Installing binary", "Binary installed")
+	renderMutationSuccess(cmd, "Install CodeMCP", "Installation complete", presentation.Field{Label: "version", Value: "v1.2.3"})
+
+	text := output.String()
+	if strings.Count(text, "Install CodeMCP") != 1 {
+		t.Fatalf("plain mutation title duplicated: %q", text)
+	}
+	if !strings.Contains(text, "Installing binary... done") || !strings.Contains(text, "Installation complete") || !strings.HasSuffix(text, "Done\n") {
+		t.Fatalf("plain mutation block is incomplete: %q", text)
 	}
 }

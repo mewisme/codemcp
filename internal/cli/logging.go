@@ -184,16 +184,24 @@ func commandProgressSession(cmd *cobra.Command) *presentation.ProgressSession {
 }
 
 func closeCommandProgress(cmd *cobra.Command, cause error) {
-	if cmd == nil {
+	session := takeCommandProgress(cmd)
+	if session == nil {
 		return
 	}
-	if value, ok := commandProgressSessions.LoadAndDelete(cmd); ok {
-		session := value.(*presentation.ProgressSession)
-		if cause != nil {
-			session.FailActive(cause.Error())
-		}
-		session.Close()
+	if cause != nil {
+		session.FailActive(cause.Error())
 	}
+	session.Close()
+}
+
+func takeCommandProgress(cmd *cobra.Command) *presentation.ProgressSession {
+	if cmd == nil {
+		return nil
+	}
+	if value, ok := commandProgressSessions.LoadAndDelete(cmd); ok {
+		return value.(*presentation.ProgressSession)
+	}
+	return nil
 }
 
 type commandDiagnosticWriter struct {

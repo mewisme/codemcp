@@ -356,81 +356,77 @@ func runManagedDown(cmd *cobra.Command, spec managed.Spec, manager managed.Manag
 		renderMutationResult(cmd, "Stop CodeMCP", presentation.StatusInfo, "Managed service is not installed")
 		return nil
 	}
-	closeCommandProgress(cmd, nil)
-	presenter := commandPresenter(cmd)
-	presenter.Frame("Stop CodeMCP")
-	presenter.ChildStatus(presentation.StatusSuccess, "Server stopped")
-	presenter.Status(presentation.StatusSuccess, "Managed service removed")
-	presenter.Fields(
-		presentation.Field{Label: "config preserved", Value: spec.ConfigRoot},
-		presentation.Field{Label: "logs preserved", Value: filepath.Join(spec.ConfigRoot, "logs")},
-	)
-	presenter.FrameEnd("Done")
+	renderMutationBlock(cmd, "Stop CodeMCP", func(presenter *presentation.Presenter) {
+		presenter.ChildStatus(presentation.StatusSuccess, "Server stopped")
+		presenter.Status(presentation.StatusSuccess, "Managed service removed")
+		presenter.Fields(
+			presentation.Field{Label: "config preserved", Value: spec.ConfigRoot},
+			presentation.Field{Label: "logs preserved", Value: filepath.Join(spec.ConfigRoot, "logs")},
+		)
+	})
 	return nil
 }
 
 func renderManagedLifecycleResult(cmd *cobra.Command, title, message string, spec managed.Spec, manager managed.Manager, status runtimeStatusResult, cfg tunnel.Config) {
-	closeCommandProgress(cmd, nil)
-	presenter := commandPresenter(cmd)
-	presenter.Frame(title)
-	presenter.Status(presentation.StatusSuccess, message)
-	presenter.ChildStatus(presentation.StatusSuccess, "Server started")
-	fields := []presentation.Field{
-		{Label: "scope", Value: spec.Scope},
-		{Label: "backend", Value: managedBackendLabel(manager, spec)},
-	}
-	if spec.Scope == managed.ScopeSystem && spec.Account.Username != "" {
-		fields = append(fields, presentation.Field{Label: "user", Value: spec.Account.Username})
-	}
-	fields = append(fields,
-		presentation.Field{Label: "config", Value: spec.ConfigRoot},
-		presentation.Field{Label: "service", Value: spec.ID},
-	)
-	if status.RunID != "" {
-		fields = append(fields, presentation.Field{Label: "session", Value: shortSessionID(status.RunID)})
-	}
-	fields = append(fields, presentation.Field{Label: "pid", Value: status.PID})
-	if status.ServerEnabled {
-		fields = append(fields, presentation.Field{Label: "mcp http", Value: fmt.Sprintf("http://127.0.0.1:%d/mcp", status.ServerPort)})
-	} else {
-		fields = append(fields, presentation.Field{Label: "mcp http", Value: "disabled"})
-	}
-	if status.AdminEnabled {
-		fields = append(fields, presentation.Field{Label: "admin", Value: fmt.Sprintf("http://127.0.0.1:%d/", status.AdminPort)})
-	}
-	presenter.Fields(fields...)
-	state := statusTunnelState(status, true)
-	presenter.ChildState(statusPresentationKind(state), "OpenAI Secure MCP Tunnel", state)
-	if status.TunnelID != "" {
-		presenter.Fields(presentation.Field{Label: "tunnel id", Value: status.TunnelID})
-	}
-	if state == "connected" {
-		id := strings.TrimSpace(status.TunnelID)
-		if id == "" {
-			id = strings.TrimSpace(cfg.ID)
+	renderMutationBlock(cmd, title, func(presenter *presentation.Presenter) {
+		presenter.Status(presentation.StatusSuccess, message)
+		presenter.ChildStatus(presentation.StatusSuccess, "Server started")
+		fields := []presentation.Field{
+			{Label: "scope", Value: spec.Scope},
+			{Label: "backend", Value: managedBackendLabel(manager, spec)},
 		}
-		if metadata, err := config.LoadTunnelMetadata(id); err == nil {
-			metadataFields := []presentation.Field{}
-			if metadata.Name != "" {
-				metadataFields = append(metadataFields, presentation.Field{Label: "tunnel name", Value: metadata.Name})
-			}
-			if metadata.Description != "" {
-				metadataFields = append(metadataFields, presentation.Field{Label: "tunnel description", Value: metadata.Description})
-			}
-			if scope := tunnelMetadataScope(metadata); scope != "" {
-				metadataFields = append(metadataFields, presentation.Field{Label: "tunnel scope", Value: scope})
-			}
-			presenter.Fields(metadataFields...)
+		if spec.Scope == managed.ScopeSystem && spec.Account.Username != "" {
+			fields = append(fields, presentation.Field{Label: "user", Value: spec.Account.Username})
 		}
-	}
-	if warning := managed.PersistenceWarning(spec); warning != "" {
-		presenter.ChildStatus(presentation.StatusWarning, warning)
-	}
-	presenter.Fields(
-		presentation.Field{Label: "View logs", Value: "cm logs -f"},
-		presentation.Field{Label: "Stop service", Value: managedStopCommand(spec)},
-	)
-	presenter.FrameEnd("Done")
+		fields = append(fields,
+			presentation.Field{Label: "config", Value: spec.ConfigRoot},
+			presentation.Field{Label: "service", Value: spec.ID},
+		)
+		if status.RunID != "" {
+			fields = append(fields, presentation.Field{Label: "session", Value: shortSessionID(status.RunID)})
+		}
+		fields = append(fields, presentation.Field{Label: "pid", Value: status.PID})
+		if status.ServerEnabled {
+			fields = append(fields, presentation.Field{Label: "mcp http", Value: fmt.Sprintf("http://127.0.0.1:%d/mcp", status.ServerPort)})
+		} else {
+			fields = append(fields, presentation.Field{Label: "mcp http", Value: "disabled"})
+		}
+		if status.AdminEnabled {
+			fields = append(fields, presentation.Field{Label: "admin", Value: fmt.Sprintf("http://127.0.0.1:%d/", status.AdminPort)})
+		}
+		presenter.Fields(fields...)
+		state := statusTunnelState(status, true)
+		presenter.ChildState(statusPresentationKind(state), "OpenAI Secure MCP Tunnel", state)
+		if status.TunnelID != "" {
+			presenter.Fields(presentation.Field{Label: "tunnel id", Value: status.TunnelID})
+		}
+		if state == "connected" {
+			id := strings.TrimSpace(status.TunnelID)
+			if id == "" {
+				id = strings.TrimSpace(cfg.ID)
+			}
+			if metadata, err := config.LoadTunnelMetadata(id); err == nil {
+				metadataFields := []presentation.Field{}
+				if metadata.Name != "" {
+					metadataFields = append(metadataFields, presentation.Field{Label: "tunnel name", Value: metadata.Name})
+				}
+				if metadata.Description != "" {
+					metadataFields = append(metadataFields, presentation.Field{Label: "tunnel description", Value: metadata.Description})
+				}
+				if scope := tunnelMetadataScope(metadata); scope != "" {
+					metadataFields = append(metadataFields, presentation.Field{Label: "tunnel scope", Value: scope})
+				}
+				presenter.Fields(metadataFields...)
+			}
+		}
+		if warning := managed.PersistenceWarning(spec); warning != "" {
+			presenter.ChildStatus(presentation.StatusWarning, warning)
+		}
+		presenter.Fields(
+			presentation.Field{Label: "View logs", Value: "cm logs -f"},
+			presentation.Field{Label: "Stop service", Value: managedStopCommand(spec)},
+		)
+	})
 }
 
 func managedStopCommand(spec managed.Spec) string {
