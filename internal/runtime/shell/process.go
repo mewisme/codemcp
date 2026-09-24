@@ -120,17 +120,17 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 		return StartResult{}, err
 	}
 	workspaceID = workspaceItem.ID
-	cwd, err := m.shell.ValidateBackgroundCommand(ctx, workspaceID, command)
+	cwd, plan, err := m.shell.prepareBackgroundCommand(ctx, workspaceID, command)
 	if err != nil {
 		return StartResult{}, err
 	}
 	processCtx := context.WithoutCancel(ctx)
-	cmd, err := commandForPlatform(processCtx, command)
+	cmd, err := commandForPlatform(processCtx, plan.Effective)
 	if err != nil {
 		return StartResult{}, err
 	}
 	cmd.Dir = cwd
-	cmd.Env = shellEnvironment(ctx, m.workspaces.ShellPath())
+	cmd.Env = shellEnvironment(ctx, commandSearchPath(plan, m.workspaces.ShellPath()))
 	configureCommandLifecycle(cmd)
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -151,7 +151,7 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 		return StartResult{}, err
 	}
 	process := &managedProcess{
-		workspace: workspaceID, id: id, command: command, cwd: cwd,
+		workspace: workspaceID, id: id, command: plan.Effective, cwd: cwd,
 		startedAt: time.Now().UTC().Format(time.RFC3339Nano), cmd: cmd, stdout: &logBuffer{}, stderr: &logBuffer{}, done: make(chan struct{}),
 	}
 	m.mu.Lock()
@@ -172,7 +172,7 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 	var execution *ExecutionRun
 	if m.executions != nil {
 		metadata := executionMetadata(ctx)
-		execution = m.executions.Begin(ExecutionInput{WorkspaceID: workspaceID, Tool: "start_process", Command: command, CWD: cwd, Shell: commandShellLanguage(ctx), Source: metadata.Source, CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID})
+		execution = m.executions.Begin(ExecutionInput{WorkspaceID: workspaceID, Tool: "start_process", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: commandShellLanguage(ctx), Source: metadata.Source, CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID})
 		process.mu.Lock()
 		process.execution = execution
 		process.mu.Unlock()
@@ -225,7 +225,7 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 	if execution != nil {
 		executionID = execution.ID()
 	}
-	return StartResult{ID: id, ExecutionID: executionID, PID: cmd.Process.Pid, Command: command, CWD: cwd, StartedAt: process.startedAt}, nil
+	return StartResult{ID: id, ExecutionID: executionID, PID: cmd.Process.Pid, Command: plan.Effective, CWD: cwd, StartedAt: process.startedAt}, nil
 }
 
 func (m *ProcessManager) Status(workspaceID, id string) ([]ProcessInfo, error) {

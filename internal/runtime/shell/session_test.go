@@ -114,6 +114,103 @@ func newShellTestManager(t *testing.T) (*Manager, string, string) {
 	return NewManager(workspaces, filepath.Join(t.TempDir(), "state")), item.ID, item.Path
 }
 
+func TestRTKRewriteIsCanonicalAcrossSourcesAndExecutionHistory(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script RTK fixture")
+	}
+	manager, workspaceID, _ := newShellTestManager(t)
+	rtkPath := writeFakeRTK(t)
+	manager.ConfigureRTK(true, rtkPath)
+
+	for _, test := range []struct {
+		source  string
+		command string
+		want    string
+	}{
+		{source: "stdio", command: "printf source-a", want: "source-a"},
+		{source: "tunnel", command: "printf source-b", want: "source-b"},
+	} {
+		ctx := WithExecutionMetadata(context.Background(), ExecutionMetadata{Source: test.source})
+		result, err := manager.Exec(ctx, workspaceID, test.command)
+		if err != nil {
+			t.Fatalf("%s exec: %v", test.source, err)
+		}
+		if result.Command != "rtk "+test.command || result.Stdout != test.want {
+			t.Fatalf("%s result=%#v", test.source, result)
+		}
+	}
+
+	history := manager.executions.List(workspaceID, 10)
+	if len(history) != 2 {
+		t.Fatalf("history=%#v", history)
+	}
+	for _, entry := range history {
+		if entry.RequestedCommand == "" || entry.EffectiveCommand != "rtk "+entry.SecurityCommand || entry.Command != entry.EffectiveCommand {
+			t.Fatalf("execution identity=%#v", entry)
+		}
+		if entry.SecurityCommand != strings.TrimSpace(entry.RequestedCommand) {
+			t.Fatalf("security command changed by rewrite: %#v", entry)
+		}
+	}
+	if history[0].Source == history[1].Source {
+		t.Fatalf("source metadata lost: %#v", history)
+	}
+
+	status, err := manager.Status(workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status.RecentCommands) != 2 || strings.HasPrefix(status.RecentCommands[0], "rtk ") || strings.HasPrefix(status.RecentCommands[1], "rtk ") {
+		t.Fatalf("recent commands should preserve requested form: %#v", status.RecentCommands)
+	}
+}
+
+func TestRTKRewriteFailurePreventsCommandExecution(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script RTK fixture")
+	}
+	manager, workspaceID, root := newShellTestManager(t)
+	manager.ConfigureRTK(true, writeFakeRTK(t))
+	marker := filepath.Join(root, "should-not-exist")
+	command := "touch " + marker
+	if _, err := manager.Exec(context.Background(), workspaceID, command); err == nil || !strings.Contains(err.Error(), "rewrite command with RTK") {
+		t.Fatalf("rewrite failure err=%v", err)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed rewrite executed original command: %v", err)
+	}
+	if history := manager.executions.List(workspaceID, 10); len(history) != 0 {
+		t.Fatalf("failed rewrite recorded execution=%#v", history)
+	}
+}
+
+func TestRTKSecurityClassificationUsesRequestedCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script RTK fixture")
+	}
+	manager, workspaceID, _ := newShellTestManager(t)
+	manager.ConfigureRTK(true, writeFakeRTK(t))
+	command := "git push --force origin main"
+	_, err := manager.Exec(context.Background(), workspaceID, command)
+	guard, ok := controlguard.As(err)
+	if !ok || guard.Invocation == nil || guard.Invocation.Command != command {
+		t.Fatalf("security guard=%#v err=%v", guard, err)
+	}
+	if strings.HasPrefix(guard.Invocation.Command, "rtk ") {
+		t.Fatalf("security classified rewritten command: %#v", guard.Invocation)
+	}
+}
+
+func writeFakeRTK(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "rtk")
+	script := "#!/bin/sh\nif [ \"$1\" = \"rewrite\" ]; then\n  case \"$2\" in\n    \"printf source-a\"|\"printf source-b\"|\"git push --force origin main\")\n      printf 'rtk %s\\n' \"$2\"\n      exit 0\n      ;;\n    touch\\ *)\n      printf '%s\\n' 'fixture rewrite failure' >&2\n      exit 9\n      ;;\n    *)\n      exit 2\n      ;;\n  esac\nfi\ncommand=\"$1\"\nshift\nexec \"$command\" \"$@\"\n"
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func TestShellExecReturnsParentCancellationBeforeInternalTimeout(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sleep command test")

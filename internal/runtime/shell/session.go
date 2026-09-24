@@ -17,6 +17,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/integrations/rtk"
 	statepkg "go.mewis.me/codemcp/internal/state"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -59,6 +60,7 @@ type Manager struct {
 	executions *ExecutionHub
 	mu         sync.Mutex
 	sessions   map[string]*session
+	rtk        *rtk.Manager
 	timeout    time.Duration
 }
 
@@ -169,12 +171,17 @@ func (m *Manager) Exec(ctx context.Context, workspaceID, command string) (ExecRe
 	if strings.TrimSpace(effective) == "" {
 		effective = pwdCommand()
 	}
-	if err := m.workspaces.ValidateShellCommandContext(ctx, workspaceID, cwd, effective); err != nil {
+	requestedEffective := effective
+	plan, err := m.prepareCommand(ctx, requestedEffective)
+	if err != nil {
+		return ExecResult{}, err
+	}
+	if err := m.workspaces.ValidateShellCommandContext(ctx, workspaceID, cwd, plan.Security); err != nil {
 		return ExecResult{}, err
 	}
 	current.state.CWD = cwd
 	current.state.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	current.state.RecentCommands = append(current.state.RecentCommands, effective)
+	current.state.RecentCommands = append(current.state.RecentCommands, requestedEffective)
 	if len(current.state.RecentCommands) > maxHistory {
 		current.state.RecentCommands = append([]string(nil), current.state.RecentCommands[len(current.state.RecentCommands)-maxHistory:]...)
 	}
@@ -185,10 +192,10 @@ func (m *Manager) Exec(ctx context.Context, workspaceID, command string) (ExecRe
 		source = executionSource(ctx)
 	}
 	run := m.executions.Begin(ExecutionInput{
-		WorkspaceID: workspaceID, Tool: "run_command", Command: effective, CWD: cwd, Shell: commandShellLanguage(ctx), Source: source,
+		WorkspaceID: workspaceID, Tool: "run_command", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: commandShellLanguage(ctx), Source: source,
 		CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID,
 	})
-	result, err := runOnce(ctx, effective, cwd, m.timeout, run, m.workspaces.ShellPath())
+	result, err := runOnce(ctx, plan.Effective, cwd, m.timeout, run, commandSearchPath(plan, m.workspaces.ShellPath()))
 	if saveErr := m.save(current.state); saveErr != nil && err == nil {
 		return ExecResult{}, saveErr
 	}
@@ -196,34 +203,43 @@ func (m *Manager) Exec(ctx context.Context, workspaceID, command string) (ExecRe
 }
 
 func (m *Manager) ValidateBackgroundCommand(ctx context.Context, workspaceID, command string) (string, error) {
+	cwd, _, err := m.prepareBackgroundCommand(ctx, workspaceID, command)
+	return cwd, err
+}
+
+func (m *Manager) prepareBackgroundCommand(ctx context.Context, workspaceID, command string) (string, commandPlan, error) {
 	item, err := m.workspaces.Get(workspaceID)
 	if err != nil {
-		return "", err
+		return "", commandPlan{}, err
 	}
 	workspaceID = item.ID
 	current, err := m.session(workspaceID, item.Path)
 	if err != nil {
-		return "", err
+		return "", commandPlan{}, err
 	}
 	current.mu.Lock()
 	defer current.mu.Unlock()
 
 	cwd, err := m.resolveDirectory(workspaceID, item.Path, current.state.CWD)
 	if err != nil {
-		return "", err
+		return "", commandPlan{}, err
 	}
 	current.state.CWD = cwd
-	if err := m.workspaces.ValidateShellCommandContext(ctx, workspaceID, cwd, command); err != nil {
-		return "", err
-	}
 	effectiveCWD, effective, err := m.applyCWDDirectives(workspaceID, cwd, command)
 	if err != nil {
-		return "", err
+		return "", commandPlan{}, err
 	}
 	if strings.TrimSpace(effective) != strings.TrimSpace(command) || filepath.Clean(effectiveCWD) != filepath.Clean(cwd) {
-		return "", errors.New("background process command must not contain cwd-changing directives; change the shell cwd first")
+		return "", commandPlan{}, errors.New("background process command must not contain cwd-changing directives; change the shell cwd first")
 	}
-	return cwd, nil
+	plan, err := m.prepareCommand(ctx, effective)
+	if err != nil {
+		return "", commandPlan{}, err
+	}
+	if err := m.workspaces.ValidateShellCommandContext(ctx, workspaceID, cwd, plan.Security); err != nil {
+		return "", commandPlan{}, err
+	}
+	return cwd, plan, nil
 }
 
 func (m *Manager) session(workspaceID, workspaceRoot string) (*session, error) {

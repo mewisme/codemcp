@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -63,6 +64,13 @@ type Resolution struct {
 	Source   Source `json:"source"`
 	Path     string `json:"path,omitempty"`
 	Verified bool   `json:"verified"`
+}
+
+type RewriteResult struct {
+	Requested  string `json:"requested"`
+	Effective  string `json:"effective"`
+	Executable string `json:"executable,omitempty"`
+	Rewritten  bool   `json:"rewritten"`
 }
 
 type Status struct {
@@ -245,6 +253,46 @@ func (m *Manager) Status() (Status, error) {
 	return status, nil
 }
 
+func (m *Manager) Rewrite(ctx context.Context, command string) (RewriteResult, error) {
+	requested := strings.TrimSpace(command)
+	result := RewriteResult{Requested: requested, Effective: requested}
+	if requested == "" || m == nil || !m.enabled {
+		return result, nil
+	}
+	resolution, err := m.Resolve()
+	if err != nil {
+		return result, err
+	}
+	if resolution.Source == SourceUnavailable || resolution.Source == SourceDisabled || resolution.Path == "" {
+		return result, nil
+	}
+	runCtx, cancel := context.WithTimeout(nonNilContext(ctx), probeTimeout)
+	run, runErr := m.run(runCtx, resolution.Path, "rewrite", requested)
+	cancel()
+	if runErr != nil {
+		return result, fmt.Errorf("rewrite command with RTK: %w", runErr)
+	}
+	switch run.ExitCode {
+	case 1, 2:
+		return result, nil
+	case 0, 3:
+	default:
+		return result, fmt.Errorf("rewrite command with RTK: %w", commandError(run))
+	}
+	effective := strings.TrimSpace(run.Stdout)
+	if effective == requested {
+		return result, nil
+	}
+	name := executableName(resolution.Path)
+	if effective == "" || !strings.HasPrefix(strings.ToLower(effective), strings.ToLower(name)+" ") {
+		return result, fmt.Errorf("rtk rewrite is not routed through %s: %q", name, effective)
+	}
+	result.Effective = effective
+	result.Executable = resolution.Path
+	result.Rewritten = true
+	return result, nil
+}
+
 func (m *Manager) Probe(ctx context.Context) (ProbeResult, error) {
 	status, err := m.Status()
 	if err != nil {
@@ -304,6 +352,7 @@ func nonNilContext(ctx context.Context) context.Context {
 
 func runCommand(ctx context.Context, path string, args ...string) (runResult, error) {
 	cmd := exec.CommandContext(ctx, path, args...)
+	cmd.Env = safeEnvironment()
 	stdout, stderr := &boundedBuffer{}, &boundedBuffer{}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	err := cmd.Run()
@@ -352,6 +401,27 @@ func commandError(result runResult) error {
 		message = fmt.Sprintf("exit code %d", result.ExitCode)
 	}
 	return errors.New(message)
+}
+
+func executableName(path string) string {
+	name := strings.ToLower(filepath.Base(strings.TrimSpace(path)))
+	return strings.TrimSuffix(name, ".exe")
+}
+
+func safeEnvironment() []string {
+	allowed := map[string]struct{}{"home": {}, "lang": {}, "path": {}, "systemroot": {}, "temp": {}, "tmp": {}, "userprofile": {}, "windir": {}}
+	result := make([]string, 0, len(allowed))
+	for _, entry := range os.Environ() {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		if _, keep := allowed[strings.ToLower(key)]; keep {
+			result = append(result, entry)
+		}
+	}
+	sort.Strings(result)
+	return result
 }
 
 func unixInstallHints() []InstallHint {

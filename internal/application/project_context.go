@@ -42,6 +42,7 @@ func NewProjectContextService(ctx context.Context, manager *workspace.Manager) *
 		ToolProfile: func() instructioncontext.ToolProfile {
 			return profile
 		},
-		Environment: ProjectContextEnvironment,
+		Environment:          ProjectContextEnvironment,
+		IntegrationProviders: []projectcontext.IntegrationInstructionProvider{RTKProjectContextInstruction},
 	})
 }

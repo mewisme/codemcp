@@ -36,6 +36,7 @@ type Runtime struct {
 	SessionAccess   *SessionWorkspaceAccessManager
 	Approvals       *approval.Manager
 	Executions      *shellruntime.ExecutionHub
+	Shell           *shellruntime.Manager
 	Processes       *shellruntime.ProcessManager
 	LoopGuard       *ToolLoopGuard
 	sessionMu       sync.Mutex
@@ -66,7 +67,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	executions := shellruntime.NewExecutionHub()
 	shell := shellruntime.NewManagerWithExecutions(workspaces, shellruntime.DefaultStateRoot(), executions)
 	processes := shellruntime.NewProcessManagerWithExecutions(workspaces, shell, executions)
-	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Executions: executions, Processes: processes, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
+	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Executions: executions, Shell: shell, Processes: processes, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
 	RegisterWorkspaceTools(registry, workspaces, shell)
 	RegisterWorkspaceListTool(registry, runtime)
 	RegisterWorkspaceContainerTools(registry, workspaces)
@@ -114,6 +115,9 @@ func (r *Runtime) SyncIntegrations(integrationConfig integrations.Config) error 
 	}
 	r.ponytailManager.SetDefaults(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode))
 	r.cavemanManager.SetDefaults(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))
+	if r.Shell != nil {
+		r.Shell.ConfigureRTK(integrationConfig.RTK.Enabled, integrationConfig.RTK.Path)
+	}
 	r.integrations = integrationConfig
 	return nil
 }

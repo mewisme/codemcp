@@ -110,6 +110,11 @@ const (
 	ActivityStream                   ID = "activity.stream"
 	ActivityView                     ID = "activity.view"
 	OAuthCallbackComplete            ID = "oauth.callback.complete"
+	IntegrationRTKStatus             ID = "integration.rtk.status"
+	IntegrationRTKEnable             ID = "integration.rtk.enable"
+	IntegrationRTKDisable            ID = "integration.rtk.disable"
+	IntegrationRTKProbe              ID = "integration.rtk.probe"
+	IntegrationRTKInstall            ID = "integration.rtk.install"
 )
 
 var specs = buildSpecs()
@@ -200,6 +205,7 @@ func buildSpecs() []Spec {
 		operatorQuery(StatusOverview, "status"),
 		operatorQuery(VersionAbout, "version"),
 	}
+	values = append(values, integrationSpecs()...)
 	values = append(values, adminOnlySpecs()...)
 	values = append(values, agentOnlySpecs()...)
 	for index := range values {

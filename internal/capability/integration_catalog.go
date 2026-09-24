@@ -1,0 +1,11 @@
+package capability
+
+func integrationSpecs() []Spec {
+	return []Spec{
+		{ID: IntegrationRTKStatus, Kind: KindQuery, Audience: AudienceOperator, Authorization: AuthorizationOperator, Risk: RiskNone, Confirmation: ConfirmationPolicy{Mode: ConfirmationNone}, Effects: SemanticEffects{Key: string(IntegrationRTKStatus), ReadOnly: true, Idempotent: true}},
+		{ID: IntegrationRTKEnable, Kind: KindMutation, Audience: AudienceOperator, Authorization: AuthorizationOperator, Risk: RiskState, Confirmation: ConfirmationPolicy{Mode: ConfirmationNone, ControlApproval: true}, Effects: SemanticEffects{Key: string(IntegrationRTKEnable), Idempotent: true}},
+		{ID: IntegrationRTKDisable, Kind: KindMutation, Audience: AudienceOperator, Authorization: AuthorizationOperator, Risk: RiskState, Confirmation: ConfirmationPolicy{Mode: ConfirmationNone, ControlApproval: true}, Effects: SemanticEffects{Key: string(IntegrationRTKDisable), Idempotent: true}},
+		{ID: IntegrationRTKProbe, Kind: KindQuery, Audience: AudienceOperator, Authorization: AuthorizationOperator, Risk: RiskNone, Confirmation: ConfirmationPolicy{Mode: ConfirmationNone}, Effects: SemanticEffects{Key: string(IntegrationRTKProbe), ReadOnly: true, Idempotent: true}},
+		{ID: IntegrationRTKInstall, Kind: KindMutation, Audience: AudienceOperator, Authorization: AuthorizationOperator, Risk: RiskSensitive, Confirmation: ConfirmationPolicy{Mode: ConfirmationNone, ControlApproval: true}, Effects: SemanticEffects{Key: string(IntegrationRTKInstall), OpenWorld: true}},
+	}
+}

@@ -1,11 +1,60 @@
 package shell
 
 import (
+	"context"
 	"encoding/hex"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestProcessStartUsesCanonicalRTKRewritePlan(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script RTK fixture")
+	}
+	shellManager, workspaceID, _ := newShellTestManager(t)
+	shellManager.ConfigureRTK(true, writeFakeRTK(t))
+	manager := NewProcessManagerWithExecutions(shellManager.workspaces, shellManager, shellManager.executions)
+
+	ctx := WithExecutionMetadata(context.Background(), ExecutionMetadata{Source: "admin"})
+	result, err := manager.Start(ctx, workspaceID, "printf source-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Command != "rtk printf source-a" {
+		t.Fatalf("start=%#v", result)
+	}
+	manager.mu.Lock()
+	process := manager.processes[result.ID]
+	manager.mu.Unlock()
+	if process == nil {
+		t.Fatal("managed process missing")
+	}
+	select {
+	case <-process.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("background process did not finish")
+	}
+	items, err := manager.Status(workspaceID, result.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Command != "rtk printf source-a" {
+		t.Fatalf("process status=%#v", items)
+	}
+	snapshot, err := shellManager.executions.Get(workspaceID, result.ExecutionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := snapshot.Execution
+	if info.RequestedCommand != "printf source-a" || info.EffectiveCommand != "rtk printf source-a" || info.SecurityCommand != "printf source-a" || info.Source != "admin" {
+		t.Fatalf("execution identity=%#v", info)
+	}
+	if strings.TrimSpace(snapshot.Stdout) != "source-a" {
+		t.Fatalf("stdout=%q stderr=%q", snapshot.Stdout, snapshot.Stderr)
+	}
+}
 
 func TestProcessIDUsesCompactHex(t *testing.T) {
 	id, err := processID()

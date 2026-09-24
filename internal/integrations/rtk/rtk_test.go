@@ -205,6 +205,79 @@ func TestConfiguredPathFailureDoesNotSilentlyFallBack(t *testing.T) {
 	}
 }
 
+func TestRewriteUsesResolvedRTKAndPreservesRequestedCommand(t *testing.T) {
+	path := testExecutable(t, "rtk")
+	manager := New(Options{Enabled: true, ConfiguredPath: path})
+	manager.run = func(_ context.Context, got string, args ...string) (runResult, error) {
+		if got != path || len(args) != 2 || args[0] != "rewrite" || args[1] != "git status --short" {
+			t.Fatalf("run path=%q args=%v", got, args)
+		}
+		return runResult{Stdout: "rtk git status --short\n"}, nil
+	}
+	result, err := manager.Rewrite(context.Background(), " git status --short ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Requested != "git status --short" || result.Effective != "rtk git status --short" || result.Executable != path || !result.Rewritten {
+		t.Fatalf("rewrite=%#v", result)
+	}
+}
+
+func TestRewriteDeclineLeavesCommandUnchanged(t *testing.T) {
+	path := testExecutable(t, "rtk")
+	for _, exitCode := range []int{1, 2} {
+		manager := New(Options{Enabled: true, ConfiguredPath: path})
+		manager.run = func(context.Context, string, ...string) (runResult, error) {
+			return runResult{ExitCode: exitCode}, nil
+		}
+		result, err := manager.Rewrite(context.Background(), "printf unchanged")
+		if err != nil {
+			t.Fatalf("exit=%d err=%v", exitCode, err)
+		}
+		if result.Rewritten || result.Requested != "printf unchanged" || result.Effective != "printf unchanged" || result.Executable != "" {
+			t.Fatalf("exit=%d rewrite=%#v", exitCode, result)
+		}
+	}
+}
+
+func TestRewriteFailureFailsClosed(t *testing.T) {
+	path := testExecutable(t, "rtk")
+	manager := New(Options{Enabled: true, ConfiguredPath: path})
+	manager.run = func(context.Context, string, ...string) (runResult, error) {
+		return runResult{ExitCode: 9, Stderr: "rewrite failed"}, nil
+	}
+	if _, err := manager.Rewrite(context.Background(), "git status"); err == nil || !strings.Contains(err.Error(), "rewrite failed") {
+		t.Fatalf("err=%v", err)
+	}
+
+	manager.run = func(context.Context, string, ...string) (runResult, error) {
+		return runResult{Stdout: "git status --short\n"}, nil
+	}
+	if _, err := manager.Rewrite(context.Background(), "git status"); err == nil || !strings.Contains(err.Error(), "not routed through rtk") {
+		t.Fatalf("malformed rewrite err=%v", err)
+	}
+}
+
+func TestSafeEnvironmentDoesNotForwardUnrelatedSecrets(t *testing.T) {
+	t.Setenv("CODEMCP_RTK_SECRET_TEST", "do-not-forward")
+	t.Setenv("HOME", t.TempDir())
+	values := safeEnvironment()
+	for _, value := range values {
+		if strings.HasPrefix(value, "CODEMCP_RTK_SECRET_TEST=") {
+			t.Fatalf("secret-like environment forwarded: %q", value)
+		}
+	}
+	foundHome := false
+	for _, value := range values {
+		if strings.HasPrefix(strings.ToUpper(value), "HOME=") {
+			foundHome = true
+		}
+	}
+	if !foundHome {
+		t.Fatalf("safe environment=%v", values)
+	}
+}
+
 func TestProbeReturnsTypedResult(t *testing.T) {
 	path := testExecutable(t, "rtk")
 	manager := New(Options{Enabled: true, ConfiguredPath: path})

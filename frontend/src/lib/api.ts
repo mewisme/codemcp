@@ -47,6 +47,9 @@ export type ExecutionInfo = {
   workspace_id: string
   tool: string
   command: string
+  requested_command?: string
+  effective_command?: string
+  security_command?: string
   cwd: string
   source?: string
   started_at: string
