@@ -52,6 +52,18 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"setting.read.completed"}, "config get", "config list", "config diff")
 	add(commandTraceInstrumented, []string{"config.why.lookup.completed", "config.why.render.completed"}, "config why")
 	add(commandTraceInstrumented, []string{"setting.set.completed"}, "config set")
+	add(commandTraceInstrumented, []string{"setting.set.completed"},
+		"server enable", "server disable", "server port", "server expose mode", "server interface add", "server interface remove",
+		"server insecure http allow", "server insecure http deny", "server loopback auth allow", "server loopback auth require",
+		"admin enable", "admin disable", "admin port",
+		"auth mcp legacy bearer enable", "auth mcp legacy bearer disable",
+		"permissions allow dir add", "permissions allow dir remove",
+		"shell path",
+		"integration ponytail enable", "integration ponytail disable", "integration ponytail mode",
+		"integration caveman enable", "integration caveman disable", "integration caveman mode",
+		"integration rtk enable", "integration rtk disable", "integration rtk path",
+		"integration codegraph enable", "integration codegraph disable", "integration codegraph path",
+	)
 	add(commandTraceInstrumented, []string{"setting.unset.completed"}, "config unset")
 	add(commandTraceInstrumented, []string{"setting.rotate.completed"}, "config rotate")
 	add(commandTraceInstrumented, []string{"setting.reveal.completed"}, "config reveal")

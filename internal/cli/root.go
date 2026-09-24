@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -46,6 +47,11 @@ func newRootCommand() *cobra.Command {
 		upstreamCommand(),
 		mcpCommand(),
 		tunnelCommand(),
+		serverSettingsCommand(),
+		adminSettingsCommand(),
+		permissionsSettingsCommand(),
+		shellSettingsCommand(),
+		integrationSettingsCommand(),
 		serveCommand(),
 		statusCommand(),
 		completionCommand(),
@@ -116,23 +122,34 @@ func authCommand() *cobra.Command {
 func authKindCommand(kind string) *cobra.Command {
 	cmd := &cobra.Command{Use: kind, Short: "Manage " + kind + " authentication"}
 	cmd.AddCommand(authCreateCommand(kind), authToggleCommand(kind, true), authToggleCommand(kind, false))
+	if kind == "mcp" {
+		legacy := &cobra.Command{Use: "legacy", Short: "Manage legacy MCP compatibility"}
+		bearer := &cobra.Command{Use: "bearer", Short: "Manage legacy MCP bearer compatibility"}
+		bearer.AddCommand(
+			scopedToggleCommand("enable", "Enable legacy MCP bearer compatibility", "Legacy MCP bearer compatibility enabled", "auth.mcp_legacy_bearer", true),
+			scopedToggleCommand("disable", "Disable legacy MCP bearer compatibility", "Legacy MCP bearer compatibility disabled", "auth.mcp_legacy_bearer", false),
+		)
+		legacy.AddCommand(bearer)
+		cmd.AddCommand(legacy)
+	}
 	return cmd
 }
 
 func authCreateCommand(kind string) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create or rotate the " + kind + " token",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "AUTH", "auth.token.rotating", "Creating or rotating authentication token", logger.WithVerbose("type", kind))
-			token, _, err := application.RotateAuthToken(cmd.Context(), kind)
+			result, err := settingService().Rotate(cmd.Context(), "auth."+kind+"_token")
 			if err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, "Authentication", "Token rotated", presentation.Field{Label: "type", Value: kind}, presentation.Field{Label: strings.ToUpper(kind), Value: token})
+			renderMutationSuccess(cmd, "Authentication", "Token rotated", presentation.Field{Label: "type", Value: kind}, presentation.Field{Label: strings.ToUpper(kind), Value: result.Value})
 			return nil
 		},
 	}
+	return markScopedSettings(cmd, "auth."+kind+"_token")
 }
 
 func authToggleCommand(kind string, enabled bool) *cobra.Command {
@@ -140,12 +157,12 @@ func authToggleCommand(kind string, enabled bool) *cobra.Command {
 	if enabled {
 		action = "enable"
 	}
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   action,
 		Short: action + " " + kind + " authentication",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "AUTH", "auth.state.updating", "Updating authentication state", logger.WithVerbose("type", kind), logger.WithVerbose("enabled", enabled))
-			if _, err := application.SetAuthEnabled(cmd.Context(), kind, enabled); err != nil {
+			if err := scopedSettingSet(cmd, "auth."+kind+"_enabled", strconv.FormatBool(enabled)); err != nil {
 				return err
 			}
 			state := "disabled"
@@ -156,6 +173,7 @@ func authToggleCommand(kind string, enabled bool) *cobra.Command {
 			return nil
 		},
 	}
+	return markScopedSettings(cmd, "auth."+kind+"_enabled")
 }
 
 func authStatusCommand() *cobra.Command {

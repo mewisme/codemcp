@@ -62,7 +62,7 @@ var virtualSettingSpecs = []FieldSpec{
 		ScopedCommands: []string{"tunnel admin key status"},
 	},
 
-	{Key: "upstream.servers[<id>].enabled", Label: "Upstream enabled", Section: FieldSectionIntegrations, Kind: FieldBool, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "upstream.servers", ScopedCommands: []string{"upstream server configure"}, Selector: upstreamServerSelector("upstream.servers[<id>].enabled")},
+	{Key: "upstream.servers[<id>].enabled", Label: "Upstream enabled", Section: FieldSectionIntegrations, Kind: FieldBool, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "upstream.servers", ScopedCommands: []string{"upstream server configure", "upstream server enable", "upstream server disable"}, Selector: upstreamServerSelector("upstream.servers[<id>].enabled")},
 	{Key: "upstream.servers[<id>].name", Label: "Upstream name", Section: FieldSectionIntegrations, Kind: FieldString, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "upstream.servers", ScopedCommands: []string{"upstream server configure"}, Selector: upstreamServerSelector("upstream.servers[<id>].name")},
 	{Key: "upstream.servers[<id>].transport", Label: "Upstream transport", Section: FieldSectionIntegrations, Kind: FieldEnum, Options: []string{"stdio", "http"}, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "upstream.servers", ScopedCommands: []string{"upstream server configure"}, Selector: upstreamServerSelector("upstream.servers[<id>].transport")},
 	{Key: "upstream.servers[<id>].command", Label: "Upstream command", Section: FieldSectionIntegrations, Kind: FieldString, Virtual: true, Readable: true, Writable: true, Clearable: true, ApplicationOwner: "upstream.servers", ScopedCommands: []string{"upstream server configure"}, Selector: upstreamServerSelector("upstream.servers[<id>].command")},
@@ -168,6 +168,22 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 	}
 
 	switch spec.Key {
+	case "server.enabled":
+		spec.ScopedCommands = []string{"server enable", "server disable"}
+	case "server.expose.mode":
+		spec.ScopedCommands = []string{"server expose mode"}
+	case "server.expose.interfaces":
+		spec.ScopedCommands = []string{"server interface add", "server interface remove"}
+	case "server.port":
+		spec.ScopedCommands = []string{"server port"}
+	case "server.allow_insecure_http":
+		spec.ScopedCommands = []string{"server insecure http allow", "server insecure http deny"}
+	case "server.allow_unauthenticated_loopback":
+		spec.ScopedCommands = []string{"server loopback auth allow", "server loopback auth require"}
+	case "admin.enabled":
+		spec.ScopedCommands = []string{"admin enable", "admin disable"}
+	case "admin.port":
+		spec.ScopedCommands = []string{"admin port"}
 	case "auth.mcp_enabled":
 		spec.ApplicationOwner = "auth"
 		spec.ScopedCommands = []string{"auth mcp enable", "auth mcp disable"}
@@ -176,13 +192,33 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ScopedCommands = []string{"auth admin enable", "auth admin disable"}
 	case "auth.mcp_legacy_bearer":
 		spec.ApplicationOwner = "auth"
-		spec.ScopedExemption = "no dedicated scoped CLI facade on current main"
+		spec.ScopedCommands = []string{"auth mcp legacy bearer enable", "auth mcp legacy bearer disable"}
 	case "auth.mcp_token_hash", "auth.admin_token_hash":
 		spec.InternalOnly = true
 		spec.Readable, spec.Writable, spec.DefaultReset = false, false, false
 		spec.ReadKey, spec.WriteKey = "", ""
 		spec.Presentation = SettingPresentationInternal
 		spec.ApplicationOwner = "auth.credentials"
+	case "permissions.allow_dirs":
+		spec.ScopedCommands = []string{"permissions allow dir add", "permissions allow dir remove"}
+	case "shell.path":
+		spec.ScopedCommands = []string{"shell path"}
+	case "integrations.ponytail.active":
+		spec.ScopedCommands = []string{"integration ponytail enable", "integration ponytail disable"}
+	case "integrations.ponytail.mode":
+		spec.ScopedCommands = []string{"integration ponytail mode"}
+	case "integrations.caveman.active":
+		spec.ScopedCommands = []string{"integration caveman enable", "integration caveman disable"}
+	case "integrations.caveman.mode":
+		spec.ScopedCommands = []string{"integration caveman mode"}
+	case "integrations.rtk.enabled":
+		spec.ScopedCommands = []string{"integration rtk enable", "integration rtk disable"}
+	case "integrations.rtk.path":
+		spec.ScopedCommands = []string{"integration rtk path"}
+	case "integrations.codegraph.enabled":
+		spec.ScopedCommands = []string{"integration codegraph enable", "integration codegraph disable"}
+	case "integrations.codegraph.path":
+		spec.ScopedCommands = []string{"integration codegraph path"}
 	case "tunnel.enabled":
 		spec.ApplicationOwner = "tunnel.runtime"
 		spec.ScopedCommands = []string{"tunnel configure", "tunnel enable", "tunnel disable"}
@@ -213,9 +249,6 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ScopedCommands = []string{"tunnel admin key status", "tunnel admin key verify"}
 	}
 
-	if len(spec.ScopedCommands) == 0 && spec.ScopedExemption == "" && !spec.InternalOnly {
-		spec.ScopedExemption = scopedSettingExemption(spec.Domain)
-	}
 	return spec
 }
 
@@ -224,17 +257,6 @@ func settingDomain(key string) string {
 		return key[:index]
 	}
 	return key
-}
-
-func scopedSettingExemption(domain string) string {
-	switch domain {
-	case "server", "admin", "permissions", "shell":
-		return "no dedicated scoped CLI facade on current main"
-	case "integrations":
-		return "integration is persisted through the config surface on current main"
-	default:
-		return "config-only setting on current main"
-	}
 }
 
 func upstreamServerSelector(template string) *FieldSelectorSpec {

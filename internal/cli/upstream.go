@@ -145,27 +145,45 @@ func upstreamServerConfigureCommand() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			manager, err := loadUpstreamManagerForCommand(cmd)
+			service, err := application.LoadUpstreamService(cmd.Context())
 			if err != nil {
 				return err
 			}
-			server, ok := manager.Get(args[0])
-			if !ok {
-				return fmt.Errorf("unknown upstream server: %s", args[0])
-			}
-			server, err = applyUpstreamFlags(cmd, server, flags, false)
+			current, err := service.Get(cmd.Context(), args[0])
 			if err != nil {
 				return err
 			}
-			if err := manager.Add(server); err != nil {
+			server, err := applyUpstreamFlags(cmd, current.Value, flags, false)
+			if err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, "Upstream server", "Upstream server updated", presentation.Field{Label: "id", Value: server.ID})
+			result, err := service.Update(cmd.Context(), args[0], server)
+			if err != nil {
+				return err
+			}
+			renderMutationSuccess(cmd, "Upstream server", "Upstream server updated", presentation.Field{Label: "id", Value: result.Value.ID})
 			return nil
 		},
 	}
 	bindUpstreamFlags(cmd, &flags, false)
-	return cmd
+	return markScopedSettings(cmd,
+		"upstream.servers[<id>].enabled",
+		"upstream.servers[<id>].name",
+		"upstream.servers[<id>].transport",
+		"upstream.servers[<id>].command",
+		"upstream.servers[<id>].args",
+		"upstream.servers[<id>].cwd",
+		"upstream.servers[<id>].url",
+		"upstream.servers[<id>].bearer_token_env_var",
+		"upstream.servers[<id>].auth.type",
+		"upstream.servers[<id>].auth.scope",
+		"upstream.servers[<id>].tool_prefix",
+		"upstream.servers[<id>].expose",
+		"upstream.servers[<id>].tools",
+		"upstream.servers[<id>].disabled_tools",
+		"upstream.servers[<id>].idle_timeout_sec",
+		"upstream.servers[<id>].allow_private_network",
+	)
 }
 
 func upstreamServerShowCommand() *cobra.Command {
@@ -224,28 +242,29 @@ func upstreamServerToggleCommand(enabled bool) *cobra.Command {
 	if enabled {
 		action = "enable"
 	}
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:               action + " <id>",
 		Short:             action + " an Upstream server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			manager, err := loadUpstreamManagerForCommand(cmd)
+			service, err := application.LoadUpstreamService(cmd.Context())
 			if err != nil {
 				return err
 			}
-			server, ok := manager.Get(args[0])
-			if !ok {
-				return fmt.Errorf("unknown upstream server: %s", args[0])
+			if enabled {
+				_, err = service.Enable(cmd.Context(), args[0])
+			} else {
+				_, err = service.Disable(cmd.Context(), args[0])
 			}
-			server.Enabled = enabled
-			if err := manager.Add(server); err != nil {
+			if err != nil {
 				return err
 			}
 			renderMutationSuccess(cmd, "Upstream server", strings.ToUpper(action[:1])+action[1:]+"d", presentation.Field{Label: "id", Value: args[0]})
 			return nil
 		},
 	}
+	return markScopedSettings(cmd, "upstream.servers[<id>].enabled")
 }
 
 func upstreamServerStatusCommand() *cobra.Command {
