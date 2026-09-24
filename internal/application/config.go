@@ -163,7 +163,7 @@ func PurgeStoredSecretsContext(ctx context.Context, root string) error {
 		span.FailMessage("Upstream secret enumeration failed", err)
 		return err
 	}
-	entries = append(entries, secretstore.Name("cluster", "relay-token"))
+	entries = append(entries, secretstore.AccountName(secretstore.DomainCluster, "relay-token"))
 	entries = append(entries, oauthEntries...)
 	entries = append(entries, upstreamEntries...)
 	changes := make([]secretstore.Change, 0, len(entries))

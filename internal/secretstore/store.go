@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -13,12 +12,51 @@ import (
 
 const servicePrefix = "codemcp"
 
+type Domain string
+
+const (
+	DomainTunnel   Domain = "tunnel"
+	DomainOAuth    Domain = "oauth"
+	DomainUpstream Domain = "upstream"
+	DomainCluster  Domain = "cluster"
+)
+
 const (
 	Marker       = "<secret-file>"
 	LegacyMarker = "<os-keyring>"
 )
 
-var ErrNotFound = errors.New("secret not found")
+var (
+	ErrNotFound    = errors.New("secret not found")
+	ErrUnavailable = errors.New("secret store unavailable")
+)
+
+type Error struct {
+	Operation string
+	Account   string
+	Err       error
+}
+
+func (e *Error) Error() string {
+	if e == nil {
+		return "secret store error"
+	}
+	message := "secret store " + strings.TrimSpace(e.Operation) + " failed"
+	if account := strings.TrimSpace(e.Account); account != "" {
+		message += " for account " + account
+	}
+	if e.Err != nil {
+		message += ": " + e.Err.Error()
+	}
+	return message
+}
+
+func (e *Error) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Err
+}
 
 type Backend interface {
 	Set(service, account, value string) error
@@ -29,6 +67,7 @@ type Backend interface {
 type Store struct {
 	service string
 	backend Backend
+	initErr error
 }
 
 type Change struct {
@@ -50,10 +89,15 @@ var (
 )
 
 func New(root string) *Store {
-	absolute, err := filepath.Abs(strings.TrimSpace(root))
-	if err != nil || absolute == "" {
-		absolute = filepath.Clean(root)
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return &Store{initErr: &Error{Operation: "initialize", Err: errors.Join(ErrUnavailable, errors.New("config root is required"))}}
 	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return &Store{initErr: &Error{Operation: "initialize", Err: errors.Join(ErrUnavailable, err)}}
+	}
+	absolute = filepath.Clean(absolute)
 	sum := sha256.Sum256([]byte(absolute))
 	backendMu.RLock()
 	factory := defaultBackendFactory
@@ -69,28 +113,35 @@ func Name(parts ...string) string {
 	return strings.Join(encoded, "/")
 }
 
+func AccountName(domain Domain, parts ...string) string {
+	values := make([]string, 0, len(parts)+1)
+	values = append(values, string(domain))
+	values = append(values, parts...)
+	return Name(values...)
+}
+
 func IsMarker(value string) bool {
 	value = strings.TrimSpace(value)
 	return value == Marker || value == LegacyMarker
 }
 
 func (s *Store) Get(name string) (string, error) {
-	if s == nil || s.backend == nil {
-		return "", errors.New("secret store unavailable")
+	if err := s.ready("read", name); err != nil {
+		return "", err
 	}
 	value, err := s.backend.Get(s.service, name)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return "", ErrNotFound
 		}
-		return "", fmt.Errorf("read secret %s: %w", name, err)
+		return "", &Error{Operation: "read", Account: name, Err: err}
 	}
 	return value, nil
 }
 
 func (s *Store) Set(name, value string) error {
-	if s == nil || s.backend == nil {
-		return errors.New("secret store unavailable")
+	if err := s.ready("write", name); err != nil {
+		return err
 	}
 	if value == "" {
 		err := s.backend.Delete(s.service, name)
@@ -98,30 +149,37 @@ func (s *Store) Set(name, value string) error {
 			return nil
 		}
 		if err != nil {
-			return fmt.Errorf("delete secret %s: %w", name, err)
+			return &Error{Operation: "delete", Account: name, Err: err}
 		}
 		return nil
 	}
 	if err := s.backend.Set(s.service, name, value); err != nil {
-		return fmt.Errorf("write secret %s: %w", name, err)
+		return &Error{Operation: "write", Account: name, Err: err}
 	}
 	return nil
 }
 
 func (s *Store) MigrateLegacyFiles() (int, error) {
-	if s == nil || s.backend == nil {
-		return 0, errors.New("secret store unavailable")
+	if err := s.ready("migrate", ""); err != nil {
+		return 0, err
 	}
 	migrator, ok := s.backend.(interface{ MigrateLegacyFiles() (int, error) })
 	if !ok {
 		return 0, nil
 	}
-	return migrator.MigrateLegacyFiles()
+	count, err := migrator.MigrateLegacyFiles()
+	if err != nil {
+		return count, &Error{Operation: "migrate", Err: err}
+	}
+	return count, nil
 }
 
 func (s *Store) Apply(changes []Change) error {
 	if len(changes) == 0 {
 		return nil
+	}
+	if err := s.ready("apply", ""); err != nil {
+		return err
 	}
 	latest := map[string]string{}
 	order := make([]string, 0, len(changes))
@@ -138,7 +196,10 @@ func (s *Store) Apply(changes []Change) error {
 	if backend, ok := s.backend.(interface {
 		Apply(service string, changes []Change) error
 	}); ok {
-		return backend.Apply(s.service, normalized)
+		if err := backend.Apply(s.service, normalized); err != nil {
+			return &Error{Operation: "apply", Err: err}
+		}
+		return nil
 	}
 	snapshots := make([]snapshot, 0, len(order))
 	for _, name := range order {
@@ -159,6 +220,19 @@ func (s *Store) Apply(changes []Change) error {
 			return errors.Join(err, rollbackErr)
 		}
 		applied++
+	}
+	return nil
+}
+
+func (s *Store) ready(operation, account string) error {
+	if s == nil {
+		return &Error{Operation: operation, Account: account, Err: ErrUnavailable}
+	}
+	if s.initErr != nil {
+		return &Error{Operation: operation, Account: account, Err: s.initErr}
+	}
+	if s.backend == nil || strings.TrimSpace(s.service) == "" {
+		return &Error{Operation: operation, Account: account, Err: ErrUnavailable}
 	}
 	return nil
 }

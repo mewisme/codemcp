@@ -152,7 +152,7 @@ func (b *fileBackend) masterKey() ([]byte, error) {
 	}
 	defer root.Close()
 	dir := filepath.Join("state", "secrets")
-	if err := root.MkdirAll(dir, 0700); err != nil {
+	if err := ensureSecretDirectory(root, true); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(dir, masterKeyName)

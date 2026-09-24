@@ -51,6 +51,9 @@ func (b *fileBackend) set(service, account, value string) error {
 		return err
 	}
 	defer root.Close()
+	if err := ensureSecretDirectory(root, true); err != nil {
+		return err
+	}
 	return state.WriteFileAtomicRoot(root, relative, sealed, 0600)
 }
 
@@ -67,6 +70,11 @@ func (b *fileBackend) Get(service, account string) (string, error) {
 		return "", err
 	}
 	defer root.Close()
+	if err := ensureSecretDirectory(root, false); errors.Is(err, os.ErrNotExist) {
+		return "", ErrNotFound
+	} else if err != nil {
+		return "", err
+	}
 	data, err := readRootedSecretFile(root, relative, maxSecretEnvelopeSize)
 	if errors.Is(err, os.ErrNotExist) {
 		return "", ErrNotFound
@@ -120,6 +128,11 @@ func (b *fileBackend) Apply(service string, changes []Change) error {
 		return err
 	}
 	defer root.Close()
+	if err := ensureSecretDirectory(root, hasWrite); errors.Is(err, os.ErrNotExist) && !hasWrite {
+		return nil
+	} else if err != nil {
+		return err
+	}
 	for index := range mutations {
 		previous, err := readRootedSecretFile(root, mutations[index].relative, maxSecretEnvelopeSize)
 		if errors.Is(err, os.ErrNotExist) {
@@ -188,6 +201,11 @@ func (b *fileBackend) delete(service, account string) error {
 		return err
 	}
 	defer root.Close()
+	if err := ensureSecretDirectory(root, false); errors.Is(err, os.ErrNotExist) {
+		return ErrNotFound
+	} else if err != nil {
+		return err
+	}
 	if err := root.Remove(relative); errors.Is(err, os.ErrNotExist) {
 		return ErrNotFound
 	} else {
@@ -238,6 +256,29 @@ func (b *fileBackend) openConfigRoot(create bool) (*os.Root, error) {
 		}
 	}
 	return os.OpenRoot(b.configRoot)
+}
+
+func ensureSecretDirectory(root *os.Root, create bool) error {
+	if root == nil {
+		return errors.New("secret config root is unavailable")
+	}
+	dir := filepath.Join("state", "secrets")
+	if create {
+		if err := root.MkdirAll(dir, 0700); err != nil {
+			return err
+		}
+	}
+	info, err := root.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("secret directory is not a directory: %s", dir)
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
+		return fmt.Errorf("secret directory permissions are too broad: %s has %#o", dir, info.Mode().Perm())
+	}
+	return nil
 }
 
 func readRootedRegularFile(root *os.Root, relative string) ([]byte, error) {

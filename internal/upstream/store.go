@@ -223,7 +223,7 @@ func mapSecretChanges(id, kind string, previous, next map[string]string) []secre
 }
 
 func upstreamSecretName(id, kind, key string) string {
-	return secretstore.Name("upstream", id, kind, key)
+	return secretstore.AccountName(secretstore.DomainUpstream, id, kind, key)
 }
 
 func serversByID(values []Server) map[string]Server {

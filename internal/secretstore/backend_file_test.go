@@ -279,6 +279,30 @@ func TestFileBackendRejectsBroadSecretPermissions(t *testing.T) {
 	}
 }
 
+func TestFileBackendRejectsBroadSecretDirectoryPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows permission bits are not equivalent")
+	}
+	root := t.TempDir()
+	store := New(root)
+	name := AccountName(DomainOAuth, "access-token")
+	if err := store.Set(name, "secret-value"); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "state", "secrets")
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	_, err := New(root).Get(name)
+	if err == nil || !strings.Contains(err.Error(), "secret directory permissions are too broad") {
+		t.Fatalf("broad secret directory permissions err=%v", err)
+	}
+	var storeErr *Error
+	if !errors.As(err, &storeErr) || storeErr.Operation != "read" {
+		t.Fatalf("typed error=%#v err=%v", storeErr, err)
+	}
+}
+
 func TestFileBackendRejectsBroadMasterKeyPermissions(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows permission bits are not equivalent")

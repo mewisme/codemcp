@@ -27,8 +27,8 @@ type tunnelSecret struct {
 const tunnelSecretVersion = 1
 
 var (
-	tunnelRuntimeSecretName = secretstore.Name("tunnel", "runtime-key")
-	tunnelAdminSecretName   = secretstore.Name("tunnel", "admin-key")
+	tunnelRuntimeSecretName = secretstore.AccountName(secretstore.DomainTunnel, "runtime-key")
+	tunnelAdminSecretName   = secretstore.AccountName(secretstore.DomainTunnel, "admin-key")
 )
 
 func TunnelSecretPath() string { return configformat.StructuredPath(RootPath(), "tunnel") }

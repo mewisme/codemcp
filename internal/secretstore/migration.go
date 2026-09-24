@@ -27,6 +27,11 @@ func (b *fileBackend) MigrateLegacyFiles() (int, error) {
 	}
 	defer root.Close()
 	dir := filepath.Join("state", "secrets")
+	if err := ensureSecretDirectory(root, false); errors.Is(err, os.ErrNotExist) {
+		return 0, nil
+	} else if err != nil {
+		return 0, err
+	}
 	directory, err := root.Open(dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return 0, nil

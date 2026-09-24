@@ -936,7 +936,7 @@ func preserveExistingSecrets(existingRoot, stagedRoot string) error {
 		return err
 	}
 	add(upstreamNames)
-	optionalRelay := secretstore.Name("cluster", "relay-token")
+	optionalRelay := secretstore.AccountName(secretstore.DomainCluster, "relay-token")
 	names[optionalRelay] = true
 	ordered := make([]string, 0, len(names))
 	for name := range names {

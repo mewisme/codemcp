@@ -300,7 +300,9 @@ func oauthSecretChanges(previous, next diskStore) []secretstore.Change {
 	return changes
 }
 
-func oauthSecretName(id, field string) string { return secretstore.Name("oauth", id, field) }
+func oauthSecretName(id, field string) string {
+	return secretstore.AccountName(secretstore.DomainOAuth, id, field)
+}
 
 func cloneDiskStore(value diskStore) diskStore {
 	result := diskStore{Version: value.Version, Credentials: make(map[string]Credential, len(value.Credentials))}
