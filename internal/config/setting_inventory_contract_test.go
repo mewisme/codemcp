@@ -153,10 +153,12 @@ func TestUniversalDynamicSettingSelectorsAreUnambiguous(t *testing.T) {
 		}
 	}
 	for _, invalid := range []string{
+		"upstream.servers[<id>].enabled",
 		"upstream.servers.docs.v2.enabled",
 		"upstream.servers[].enabled",
 		"upstream.servers[docs/v2].enabled",
 		"upstream.servers[docs%2Fv2].enabled",
+		"tunnel.managed[<id>].name",
 		"tunnel.managed[].name",
 		"mcp.profiles[default].enabled",
 		"logs[default].level",

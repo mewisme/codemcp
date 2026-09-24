@@ -133,11 +133,11 @@ func MatchSettingSelector(key string) (FieldSelectorMatch, bool) {
 			continue
 		}
 		encoded := strings.TrimSuffix(strings.TrimPrefix(key, before), after)
-		if encoded == "" || strings.ContainsAny(encoded, "[]/") {
+		if encoded == "" || encoded == "<id>" || strings.ContainsAny(encoded, "[]/") {
 			continue
 		}
 		id, err := url.PathUnescape(encoded)
-		if err != nil || id == "" || strings.ContainsAny(id, "[]/") {
+		if err != nil || id == "" || id == "<id>" || strings.ContainsAny(id, "[]/") {
 			continue
 		}
 		return FieldSelectorMatch{Spec: cloneFieldSpec(spec), ResourceID: id}, true
