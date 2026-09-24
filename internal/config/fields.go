@@ -24,18 +24,38 @@ const (
 )
 
 type FieldSpec struct {
-	Key         string
-	Label       string
-	Section     FieldSection
-	Description string
-	Details     string
-	Kind        FieldKind
-	Options     []string
-	Values      []FieldValueSpec
-	Editable    bool
-	Sensitive   bool
-	Guidance    string
-	Related     []string
+	Key                string
+	Label              string
+	Section            FieldSection
+	Description        string
+	Details            string
+	Kind               FieldKind
+	Options            []string
+	Values             []FieldValueSpec
+	Editable           bool
+	Sensitive          bool
+	Guidance           string
+	Related            []string
+	ReadKey            string
+	WriteKey           string
+	Domain             string
+	Readable           bool
+	Writable           bool
+	Secret             bool
+	Derived            bool
+	Clearable          bool
+	DefaultReset       bool
+	Rotatable          bool
+	Revealable         bool
+	Verifiable         bool
+	ConfiguredStateKey string
+	Presentation       SettingPresentationPolicy
+	ApplicationOwner   string
+	ScopedCommands     []string
+	ScopedExemption    string
+	InternalOnly       bool
+	Virtual            bool
+	Selector           *FieldSelectorSpec
 }
 
 type FieldValueSpec struct {
@@ -118,6 +138,11 @@ func cloneFieldSpec(spec FieldSpec) FieldSpec {
 	spec.Options = append([]string(nil), spec.Options...)
 	spec.Values = append([]FieldValueSpec(nil), spec.Values...)
 	spec.Related = append([]string(nil), spec.Related...)
+	spec.ScopedCommands = append([]string(nil), spec.ScopedCommands...)
+	if spec.Selector != nil {
+		selector := *spec.Selector
+		spec.Selector = &selector
+	}
 	return spec
 }
 
