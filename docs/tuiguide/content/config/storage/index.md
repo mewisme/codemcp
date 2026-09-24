@@ -8,7 +8,7 @@ Storage contains maintenance operations for persistent configuration/state rathe
 
 ## Migrate and convert
 
-**Migrate** moves supported legacy credential state into the managed secret store. **Convert** changes the structured configuration/state representation among supported formats while preserving validated semantics.
+**Migrate** moves supported legacy credential state into the managed secret store and converts legacy secret files to encrypted JSON envelopes. **Convert** changes the structured configuration/state representation among supported formats while preserving validated semantics.
 
 ## Import and export
 

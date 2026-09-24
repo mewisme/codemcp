@@ -1,28 +1,36 @@
 package secretstore
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 const (
-	encryptedPrefix = "cgmsecret1:"
-	masterKeyName   = ".master.key"
-	masterKeySize   = 32
+	secretEnvelopeVersion = 1
+	secretAlgorithm       = "AES-256-GCM"
+	masterKeyName         = ".master.key"
+	masterKeySize         = 32
+	maxSecretEnvelopeSize = 1 << 20
 )
 
-func isEncryptedBlob(data []byte) bool {
-	return strings.HasPrefix(string(data), encryptedPrefix)
+type secretEnvelope struct {
+	Version    int    `json:"version"`
+	Algorithm  string `json:"algorithm"`
+	KeyID      string `json:"key_id"`
+	Nonce      string `json:"nonce"`
+	Ciphertext string `json:"ciphertext"`
 }
 
-func (b *fileBackend) seal(plaintext []byte) ([]byte, error) {
+func (b *fileBackend) seal(plaintext []byte, keyID string) ([]byte, error) {
 	key, err := b.masterKey()
 	if err != nil {
 		return nil, err
@@ -39,19 +47,40 @@ func (b *fileBackend) seal(plaintext []byte) ([]byte, error) {
 	if _, err := rand.Read(nonce); err != nil {
 		return nil, err
 	}
-	sealed := gcm.Seal(nonce, nonce, plaintext, nil)
-	encoded := encryptedPrefix + base64.StdEncoding.EncodeToString(sealed)
-	return []byte(encoded), nil
+	ciphertext := gcm.Seal(nil, nonce, plaintext, secretAAD(keyID))
+	envelope := secretEnvelope{
+		Version:    secretEnvelopeVersion,
+		Algorithm:  secretAlgorithm,
+		KeyID:      keyID,
+		Nonce:      base64.RawStdEncoding.EncodeToString(nonce),
+		Ciphertext: base64.RawStdEncoding.EncodeToString(ciphertext),
+	}
+	data, err := json.MarshalIndent(envelope, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	data = append(data, '\n')
+	if len(data) > maxSecretEnvelopeSize {
+		return nil, errors.New("encrypted secret envelope exceeds size limit")
+	}
+	return data, nil
 }
 
-func (b *fileBackend) open(data []byte) ([]byte, error) {
-	raw := string(data)
-	if !strings.HasPrefix(raw, encryptedPrefix) {
-		return nil, errors.New("secret blob is not encrypted")
-	}
-	payload, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(raw, encryptedPrefix))
+func (b *fileBackend) open(data []byte, keyID string) ([]byte, error) {
+	envelope, err := decodeSecretEnvelope(data)
 	if err != nil {
-		return nil, fmt.Errorf("decode encrypted secret: %w", err)
+		return nil, err
+	}
+	if envelope.KeyID != keyID {
+		return nil, errors.New("encrypted secret envelope key id does not match its path")
+	}
+	nonce, err := base64.RawStdEncoding.DecodeString(envelope.Nonce)
+	if err != nil {
+		return nil, fmt.Errorf("decode encrypted secret nonce: %w", err)
+	}
+	ciphertext, err := base64.RawStdEncoding.DecodeString(envelope.Ciphertext)
+	if err != nil {
+		return nil, fmt.Errorf("decode encrypted secret ciphertext: %w", err)
 	}
 	key, err := b.masterKey()
 	if err != nil {
@@ -65,20 +94,55 @@ func (b *fileBackend) open(data []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(payload) < gcm.NonceSize() {
-		return nil, errors.New("encrypted secret is truncated")
+	if len(nonce) != gcm.NonceSize() {
+		return nil, fmt.Errorf("encrypted secret nonce has invalid length %d", len(nonce))
 	}
-	nonce, ciphertext := payload[:gcm.NonceSize()], payload[gcm.NonceSize():]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if len(ciphertext) < gcm.Overhead() {
+		return nil, errors.New("encrypted secret ciphertext is truncated")
+	}
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, secretAAD(keyID))
 	if err != nil {
 		return nil, fmt.Errorf("decrypt secret: %w", err)
 	}
 	return plaintext, nil
 }
 
+func decodeSecretEnvelope(data []byte) (secretEnvelope, error) {
+	if len(data) == 0 || len(data) > maxSecretEnvelopeSize {
+		return secretEnvelope{}, errors.New("encrypted secret envelope has invalid size")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var envelope secretEnvelope
+	if err := decoder.Decode(&envelope); err != nil {
+		return secretEnvelope{}, fmt.Errorf("decode encrypted secret envelope: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return secretEnvelope{}, errors.New("encrypted secret envelope contains multiple JSON values")
+		}
+		return secretEnvelope{}, fmt.Errorf("decode encrypted secret envelope trailing data: %w", err)
+	}
+	if envelope.Version != secretEnvelopeVersion {
+		return secretEnvelope{}, fmt.Errorf("unsupported encrypted secret envelope version: %d", envelope.Version)
+	}
+	if envelope.Algorithm != secretAlgorithm {
+		return secretEnvelope{}, fmt.Errorf("unsupported encrypted secret algorithm: %q", envelope.Algorithm)
+	}
+	if envelope.KeyID == "" || envelope.Nonce == "" || envelope.Ciphertext == "" {
+		return secretEnvelope{}, errors.New("encrypted secret envelope is incomplete")
+	}
+	return envelope, nil
+}
+
+func secretAAD(keyID string) []byte {
+	return []byte(fmt.Sprintf("codemcp-secret-envelope-v%d\x00%s", secretEnvelopeVersion, keyID))
+}
+
 func (b *fileBackend) masterKey() ([]byte, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	b.keyMu.Lock()
+	defer b.keyMu.Unlock()
 	if len(b.key) == masterKeySize {
 		return b.key, nil
 	}
@@ -158,7 +222,7 @@ func createMasterKeyTemp(root *os.Root, dir string) (string, *os.File, error) {
 }
 
 func readMasterKey(root *os.Root, path string) ([]byte, error) {
-	data, err := readRootedRegularFile(root, path)
+	data, err := readRootedSecretFile(root, path, masterKeySize)
 	if err != nil {
 		return nil, err
 	}

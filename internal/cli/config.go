@@ -221,13 +221,13 @@ func configMigrateCommand() *cobra.Command {
 }
 
 func configMigrateSecretsCommand() *cobra.Command {
-	return &cobra.Command{Use: "secrets", Short: "Encrypt plaintext secret-store files at rest", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "CONFIG", "config.secrets.encrypt.migrating", "Encrypting plaintext secret files")
-		migrated, err := application.MigrateSecretEncryptionContext(cmd.Context())
+	return &cobra.Command{Use: "secrets", Short: "Migrate legacy secret files to encrypted JSON envelopes", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		logCommandStep(cmd, "CONFIG", "config.secrets.envelope.migrating", "Migrating legacy secret files to encrypted JSON envelopes")
+		migrated, err := application.MigrateSecretEnvelopesContext(cmd.Context())
 		if err != nil {
-			return fmt.Errorf("migrate secret encryption: %w", err)
+			return fmt.Errorf("migrate secret envelopes: %w", err)
 		}
-		commandLogger(cmd).Success("CONFIG", "secret files encrypted at rest", "migrated", migrated)
+		commandLogger(cmd).Success("CONFIG", "legacy secret files migrated to encrypted JSON envelopes", "migrated", migrated)
 		return nil
 	}}
 }

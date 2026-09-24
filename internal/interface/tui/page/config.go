@@ -437,8 +437,8 @@ func (page *ConfigPage) openCommand(command ConfigCommand, resourceID string) (t
 			return configOperationMsg{command: command, err: err}
 		}), nil
 	case ConfigMigrateSecrets:
-		return page.startOperation(command, "Encrypting secret files", func(context.Context) configOperationMsg {
-			migrated, err := application.MigrateSecretEncryption()
+		return page.startOperation(command, "Migrating secret files", func(context.Context) configOperationMsg {
+			migrated, err := application.MigrateSecretEnvelopes()
 			return configOperationMsg{command: command, migrated: migrated, err: err}
 		}), nil
 	case ConfigExport:
@@ -506,7 +506,7 @@ func (page *ConfigPage) finishOperation(msg configOperationMsg) tea.Cmd {
 	case ConfigMigrate:
 		page.notice = "Legacy credentials migrated to the secret store"
 	case ConfigMigrateSecrets:
-		page.notice = fmt.Sprintf("Secret files encrypted at rest · %d migrated", msg.migrated)
+		page.notice = fmt.Sprintf("Secret files migrated to encrypted JSON envelopes · %d migrated", msg.migrated)
 	case ConfigExport:
 		page.notice = fmt.Sprintf("Configuration exported · %d files · secrets excluded · %s", msg.files, msg.path)
 	case ConfigImport:
@@ -663,7 +663,7 @@ func (page *ConfigPage) storageRows() []component.Row {
 	return []component.Row{
 		{ID: "verify", Title: "Verify configuration", Description: "Validate stored configuration and structured files", Meta: string(page.overview.Source.Format)},
 		{ID: "migrate", Title: "Migrate legacy credentials", Description: "Move legacy credentials into secret store", Meta: "credential maintenance"},
-		{ID: "migrate-secrets", Title: "Encrypt secret files", Description: "Encrypt plaintext secret-store files at rest", Meta: "at-rest encryption"},
+		{ID: "migrate-secrets", Title: "Migrate secret files", Description: "Convert legacy secret files to encrypted JSON envelopes", Meta: "JSON envelope"},
 		{ID: "export", Title: "Export configuration envelope", Description: "Export portable non-secret configuration/state as JSON", Meta: "JSON"},
 		{ID: "import", Title: "Import configuration envelope", Description: "Import JSON configuration/state while preserving target secrets", Meta: "JSON"},
 	}

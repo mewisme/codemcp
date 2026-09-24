@@ -53,7 +53,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"config.explain.schema.completed", "config.explain.render.completed"}, "config explain")
 	add(commandTraceInstrumented, []string{"config.field.mutate.completed"}, "config set")
 	add(commandTraceInstrumented, []string{"config.secrets.migrate.completed"}, "config migrate")
-	add(commandTraceInstrumented, []string{"config.secrets.encrypt.migrate.completed"}, "config migrate secrets")
+	add(commandTraceInstrumented, []string{"config.secrets.envelope.migrate.completed"}, "config migrate secrets")
 	add(commandTraceInstrumented, []string{"config.export.completed"}, "config export")
 	add(commandTraceInstrumented, []string{"config.import.completed"}, "config import")
 	add(commandTraceInstrumented, []string{"config.verify.completed"}, "config verify")

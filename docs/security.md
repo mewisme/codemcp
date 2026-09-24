@@ -124,7 +124,7 @@ This prevents an Agent from simply reading an internal runtime-control credentia
 
 Long-lived reversible credentials such as OpenAI tunnel keys, upstream OAuth tokens/client secrets, and sensitive upstream environment/header values are stored through a per-config-root secret store rather than as plaintext structured configuration.
 
-Secret values are encrypted at rest with a per-root key in the current file-backed implementation. Structured config keeps only non-secret metadata/configured-state markers.
+Secret values are encrypted at rest with AES-256-GCM and persisted as versioned JSON envelopes containing a key identifier, nonce, ciphertext, and algorithm metadata. The per-root master key remains separate from those envelopes with restrictive filesystem permissions; the secret-store subtree is excluded from portable configuration exports and normal logs. Structured config keeps only non-secret metadata/configured-state markers.
 
 MCP/Admin endpoint credentials are represented by hashes where appropriate; plaintext endpoint tokens are shown only when created/rotated.
 

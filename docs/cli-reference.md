@@ -340,7 +340,7 @@ Migrate legacy plaintext credentials to the per-config-root secret file store:
 cm config migrate
 ```
 
-Encrypt plaintext files already in the per-config-root secret store (AES-256-GCM at rest):
+Migrate legacy per-config-root secret files to versioned JSON envelopes encrypted with AES-256-GCM:
 
 ```bash
 cm config migrate secrets

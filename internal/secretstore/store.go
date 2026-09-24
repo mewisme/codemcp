@@ -108,16 +108,15 @@ func (s *Store) Set(name, value string) error {
 	return nil
 }
 
-// MigratePlaintext: memory backends are a no-op; already-encrypted blobs are left unchanged.
-func (s *Store) MigratePlaintext() (int, error) {
+func (s *Store) MigrateLegacyFiles() (int, error) {
 	if s == nil || s.backend == nil {
 		return 0, errors.New("secret store unavailable")
 	}
-	migrator, ok := s.backend.(interface{ MigratePlaintext() (int, error) })
+	migrator, ok := s.backend.(interface{ MigrateLegacyFiles() (int, error) })
 	if !ok {
 		return 0, nil
 	}
-	return migrator.MigratePlaintext()
+	return migrator.MigrateLegacyFiles()
 }
 
 func (s *Store) Apply(changes []Change) error {
@@ -131,6 +130,15 @@ func (s *Store) Apply(changes []Change) error {
 			order = append(order, change.Name)
 		}
 		latest[change.Name] = change.Value
+	}
+	normalized := make([]Change, 0, len(order))
+	for _, name := range order {
+		normalized = append(normalized, Change{Name: name, Value: latest[name]})
+	}
+	if backend, ok := s.backend.(interface {
+		Apply(service string, changes []Change) error
+	}); ok {
+		return backend.Apply(s.service, normalized)
 	}
 	snapshots := make([]snapshot, 0, len(order))
 	for _, name := range order {

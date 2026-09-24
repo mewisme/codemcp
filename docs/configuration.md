@@ -114,7 +114,7 @@ Conversion validates the managed state before activating the new representation.
 
 ## Secrets
 
-Long-lived reversible credentials such as tunnel runtime keys, upstream OAuth credentials, and sensitive upstream header/environment values are stored through the selected config root's managed secret store rather than as plaintext values in ordinary structured config.
+Long-lived reversible credentials such as tunnel runtime keys, upstream OAuth credentials, and sensitive upstream header/environment values are stored through the selected config root's managed secret store rather than as plaintext values in ordinary structured config. Current file-backed secrets are versioned JSON envelopes containing only encryption metadata, nonce, and ciphertext; plaintext credentials are not persisted in those envelopes.
 
 MCP/Admin endpoint credentials are represented by one-way hashes where appropriate. Normal config/status output does not reveal managed secrets.
 
@@ -124,7 +124,7 @@ Migrate older plaintext credential state:
 cm config migrate
 ```
 
-Encrypt legacy plaintext secret-store files:
+Migrate legacy secret-store files to encrypted JSON envelopes:
 
 ```bash
 cm config migrate secrets
