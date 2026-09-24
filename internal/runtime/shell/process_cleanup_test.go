@@ -17,7 +17,13 @@ func TestProcessManagerResolvesRelocatedWorkspaceAliases(t *testing.T) {
 		t.Setenv("SHELL", "/bin/sh")
 	}
 	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
-	item, err := manager.Register(t.TempDir())
+	parent := t.TempDir()
+	oldRoot := filepath.Join(parent, "old")
+	newRoot := filepath.Join(parent, "new")
+	if err := os.Mkdir(oldRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
+	item, err := manager.Register(oldRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,9 +37,15 @@ func TestProcessManagerResolvesRelocatedWorkspaceAliases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	relocated, err := manager.Relocate(item.ID, t.TempDir())
+	if err := os.Rename(oldRoot, newRoot); err != nil {
+		t.Fatal(err)
+	}
+	relocated, err := manager.Relocate(item.ID, newRoot)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if relocated.ID != item.ID {
+		t.Fatalf("stable workspace id changed: got=%s want=%s", relocated.ID, item.ID)
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {

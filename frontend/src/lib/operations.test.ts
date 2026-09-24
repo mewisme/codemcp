@@ -14,6 +14,7 @@ describe("browser canonical operation adapter", () => {
 
   it("maps concrete resource routes to canonical operations", () => {
     expect(browserOperationFor("GET", "/api/workspaces/ws_test")).toBe("workspace.show")
+    expect(browserOperationFor("POST", "/api/workspaces/ws_test/purge")).toBe("workspace.purge")
     expect(browserOperationFor("POST", "/api/workspaces/ws_test/containers")).toBe("workspace.container.add")
     expect(browserOperationFor("GET", "/api/workspaces/ws_test/executions/exec_1/stream")).toBe("execution.stream")
     expect(browserOperationFor("DELETE", "/api/upstream/local/auth/logout")).toBe("mcp.auth.logout")

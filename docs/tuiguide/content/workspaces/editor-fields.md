@@ -10,7 +10,7 @@ Required directory path that becomes the registered workspace root. The field is
 
 ### New workspace path
 
-Required directory path for the same project after its directory has already been renamed or moved. `Enter` on this final field performs the relocate action. It updates the registered root, derives the new canonical workspace ID, keeps the previous ID as a legacy alias, and migrates workspace-scoped state. It never moves or renames project files itself.
+Required directory path for the same project after its directory has already been renamed or moved. `Enter` on this final field performs the relocate action. It preserves the stable workspace ID and requires the destination to contain the same local `.cm/workspace.json` identity. It never moves or renames project files itself.
 
 ## Add Access Directory
 

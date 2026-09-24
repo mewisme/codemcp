@@ -79,8 +79,11 @@ func (m *Manager) Activate() error {
 	locks := map[string]*oslock.Lock{}
 	roots := map[string]string{}
 	for _, item := range items {
+		if !item.Available() {
+			continue
+		}
 		if err := validateActiveWorkspaceState(item); err != nil {
-			return errors.Join(err, releaseRuntimeLocks(locks))
+			continue
 		}
 		lock, err := m.acquireRuntimeLock(item)
 		if err != nil {
@@ -151,7 +154,9 @@ func (m *Manager) RuntimeDiagnostics() RuntimeDiagnostics {
 			LockPath:    workspacestate.New(item.Path).RuntimeLockPath(),
 			Owned:       owned[item.ID],
 		}
-		if err := validateActiveWorkspaceState(item); err != nil {
+		if !item.Available() {
+			diagnostic.Error = item.Error
+		} else if err := validateActiveWorkspaceState(item); err != nil {
 			diagnostic.Error = err.Error()
 		} else {
 			diagnostic.Valid = true
@@ -179,6 +184,22 @@ func (m *Manager) RuntimeDiagnostics() RuntimeDiagnostics {
 		result.Workspaces = append(result.Workspaces, diagnostic)
 	}
 	return result
+}
+
+func (m *Manager) validateOwnedWorkspaceBeforeMutation(id string) error {
+	m.mu.RLock()
+	if m.runtime == nil || !m.runtime.active {
+		m.mu.RUnlock()
+		return nil
+	}
+	canonical := m.canonicalIDLocked(strings.TrimSpace(id))
+	item, ok := m.items[canonical]
+	owned := ok && m.runtime.locks[canonical] != nil
+	m.mu.RUnlock()
+	if !owned {
+		return nil
+	}
+	return validateActiveWorkspaceState(item)
 }
 
 func (m *Manager) validateRuntimeOwnership(id string) error {

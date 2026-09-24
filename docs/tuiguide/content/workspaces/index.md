@@ -6,9 +6,9 @@ Workspaces define project roots that `CodeMCP` can operate on. The Workspaces ar
 
 The main Workspaces tab lists registered roots. Open a row with `Enter` to view its ID, path, access configuration, and child actions. Registering a workspace opens a full-page editor with a directory picker and manual path fallback.
 
-If the project directory has already been renamed or moved, press `m` from the workspace detail (or choose **Relocate** from Commands). Relocate opens a routed full-page directory editor. Pressing `Enter` on its final field rebinds the existing workspace to that directory; it does not move project files. The path-derived canonical workspace ID changes and the previous ID remains a legacy alias. Container membership and workspace-scoped persistent state follow the new ID.
+If the project directory has already been renamed or moved, press `m` from the workspace detail (or choose **Relocate** from Commands). Relocate opens a routed full-page directory editor. Pressing `Enter` on its final field rebinds the same stable workspace ID to the moved directory; it does not move project files. The destination must contain the same local `.cm/workspace.json` identity, so project-local state and container membership remain attached to that ID.
 
-Unregister removes the workspace record without deleting project files and therefore requires confirmation.
+Unavailable roots remain listed with their stable ID rather than being silently deleted. Unregister removes the workspace record without deleting project files or local `.cm/` state. **Purge local state** is a separate destructive confirmation that removes verified `.cm/` state while leaving other project files unchanged.
 
 ## Additional access directories
 

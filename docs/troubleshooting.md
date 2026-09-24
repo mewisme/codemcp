@@ -261,7 +261,9 @@ Do not register the destination as a separate workspace if it is the same projec
 cm workspace relocate ws_... /new/path/to/project
 ```
 
-The canonical workspace ID changes because IDs are derived from canonical paths, but the previous ID remains a legacy alias. Persistent workspace state and container membership follow the new ID, and state paths under the old root are rebased to the new root. The operation does not rename or move the project directory itself.
+The stable workspace ID does not change. Move or rename the project directory first so `.cm/` moves with it, then run relocate. The destination must carry the same `.cm/workspace.json` identity; CodeMCP rejects a missing/different identity and also rejects ambiguous copied state where the same identity still exists at both source and destination. Container membership remains attached to the same ID, and access paths nested under the old project root are rebased. Relocate does not rename or move the project directory itself.
+
+If the old root is temporarily missing, `cm workspace list` keeps the workspace registered and reports it as unavailable. Restore the root or relocate it; do not unregister unless you actually want to remove the registry handle. Unregister keeps local `.cm/` state. Use `cm workspace purge ws_... --yes` only when you intentionally want to delete verified local CodeMCP state.
 
 In `cm tui`, open the workspace detail, press `m` for **Relocate**, choose the new directory, and press `Enter` on the final field to relocate it.
 

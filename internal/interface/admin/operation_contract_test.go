@@ -22,6 +22,7 @@ func TestPublicAdminOperationsHaveCanonicalIDs(t *testing.T) {
 		{Method: "DELETE", Path: "/api/workspaces/{workspace_id}"},
 		{Method: "GET", Path: "/api/workspaces/{workspace_id}/context"},
 		{Method: "POST", Path: "/api/workspaces/{workspace_id}/relocate"},
+		{Method: "POST", Path: "/api/workspaces/{workspace_id}/purge"},
 		{Method: "GET", Path: "/api/workspaces/{workspace_id}/containers"},
 		{Method: "POST", Path: "/api/workspaces/{workspace_id}/containers"},
 		{Method: "DELETE", Path: "/api/workspaces/{workspace_id}/containers"},

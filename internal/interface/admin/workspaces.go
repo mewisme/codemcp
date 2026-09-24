@@ -20,6 +20,10 @@ type workspaceRelocateRequest struct {
 	Path string `json:"path"`
 }
 
+type workspacePurgeRequest struct {
+	Confirm bool `json:"confirm"`
+}
+
 func (api API) workspaceOperations() *application.WorkspaceService {
 	manager := api.workspaceManager()
 	return application.NewWorkspaceService(manager, func(context.Context) error {
@@ -88,6 +92,10 @@ func (api API) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		api.handleWorkspaceRelocate(w, r, operations, value.ID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "purge" {
+		api.handleWorkspacePurge(w, r, operations, value.ID)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "containers" {
 		api.handleWorkspaceContainersMembership(w, r, operations, value.ID)
 		return
@@ -134,6 +142,24 @@ func (api API) handleWorkspaceRelocate(w http.ResponseWriter, r *http.Request, o
 		return
 	}
 	writeJSON(w, result.Value.After)
+}
+
+func (api API) handleWorkspacePurge(w http.ResponseWriter, r *http.Request, operations *application.WorkspaceService, workspaceID string) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	var request workspacePurgeRequest
+	if err := decodeJSONBody(w, r, &request); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	result, err := operations.Purge(r.Context(), workspaceID, request.Confirm)
+	if err != nil {
+		writeWorkspaceOperationError(w, err, http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, result.Value)
 }
 
 func (api API) handleWorkspaceContext(w http.ResponseWriter, r *http.Request, manager *workspace.Manager, workspaceID string) {

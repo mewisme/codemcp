@@ -151,22 +151,21 @@ func TestWorkspaceMutationsSynchronizeRunningRuntime(t *testing.T) {
 		t.Fatalf("workspaces=%#v err=%v", items, err)
 	}
 	workspaceID := items[0].ID
-	relocatedRoot := filepath.Join(t.TempDir(), "relocated")
-	if err := os.MkdirAll(relocatedRoot, 0700); err != nil {
+	relocatedRoot := filepath.Join(filepath.Dir(workspacePath), "relocated")
+	if err := os.Rename(workspacePath, relocatedRoot); err != nil {
 		t.Fatal(err)
 	}
 	workspacePage.command, workspacePage.targetID, workspacePage.value = WorkspaceRelocate, workspaceID, relocatedRoot
 	if err := workspacePage.applyWorkspaceEditor(); err != nil {
 		t.Fatal(err)
 	}
-	if workspacePage.targetID == workspaceID {
-		t.Fatal("relocate did not update page target to canonical workspace id")
+	if workspacePage.targetID != workspaceID {
+		t.Fatalf("relocate changed stable workspace id: got=%s want=%s", workspacePage.targetID, workspaceID)
 	}
-	legacy, err := workspacePage.manager.Get(workspaceID)
-	if err != nil || legacy.ID != workspacePage.targetID {
-		t.Fatalf("legacy workspace lookup=%#v err=%v", legacy, err)
+	stable, err := workspacePage.manager.Get(workspaceID)
+	if err != nil || stable.ID != workspaceID || stable.Path != filepath.Clean(relocatedRoot) {
+		t.Fatalf("stable workspace lookup=%#v err=%v", stable, err)
 	}
-	workspaceID = workspacePage.targetID
 	extra := t.TempDir()
 	workspacePage.command, workspacePage.targetID, workspacePage.value = WorkspaceAccessAdd, workspaceID, extra
 	if err := workspacePage.applyWorkspaceEditor(); err != nil {

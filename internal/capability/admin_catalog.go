@@ -11,6 +11,7 @@ var adminBindings = map[ID][]AdminBinding{
 	WorkspaceRegister:                {{Method: "POST", Path: "/api/workspaces"}},
 	WorkspaceShow:                    {{Method: "GET", Path: "/api/workspaces/{workspace_id}"}},
 	WorkspaceUnregister:              {{Method: "DELETE", Path: "/api/workspaces/{workspace_id}"}},
+	WorkspacePurge:                   {{Method: "POST", Path: "/api/workspaces/{workspace_id}/purge"}},
 	ProjectContextRead:               {{Method: "GET", Path: "/api/workspaces/{workspace_id}/context"}},
 	WorkspaceRelocate:                {{Method: "POST", Path: "/api/workspaces/{workspace_id}/relocate"}},
 	WorkspaceContainerMembershipList: {{Method: "GET", Path: "/api/workspaces/{workspace_id}/containers"}, {Method: "GET", Path: "/api/workspace-containers/{container_id}/workspaces"}},
@@ -67,7 +68,7 @@ var adminBindings = map[ID][]AdminBinding{
 var browserRequiredIDs = idSet(
 	HealthRead, NetworkInterfacesList, ConfigSnapshotRead, ConfigPatch,
 	InstructionSettingsRead, InstructionSettingsWrite,
-	WorkspaceList, WorkspaceRegister, WorkspaceShow, WorkspaceUnregister, ProjectContextRead,
+	WorkspaceList, WorkspaceRegister, WorkspaceShow, WorkspaceUnregister, WorkspacePurge, ProjectContextRead,
 	WorkspaceContainerList, WorkspaceContainerCreate, WorkspaceContainerShow, WorkspaceContainerRename, WorkspaceContainerDelete,
 	WorkspaceContainerMembershipList, WorkspaceContainerAdd, WorkspaceContainerRemove,
 	ToolInventoryRead,

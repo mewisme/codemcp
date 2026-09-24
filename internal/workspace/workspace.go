@@ -25,13 +25,31 @@ import (
 const storeVersion = 5
 const LocalDirName = workspacestate.DirectoryName
 
-var ErrNotFound = errors.New("workspace not found")
+var (
+	ErrNotFound    = errors.New("workspace not found")
+	ErrUnavailable = errors.New("workspace unavailable")
+)
 
 type Workspace struct {
 	ID        string   `json:"id"`
 	Path      string   `json:"path"`
 	AllowDirs []string `json:"allow_dirs,omitempty"`
 	LegacyIDs []string `json:"legacy_ids,omitempty"`
+	Error     string   `json:"error,omitempty"`
+}
+
+func (item Workspace) Available() bool {
+	return strings.TrimSpace(item.Error) == ""
+}
+
+func (item Workspace) unavailableError() error {
+	if item.Available() {
+		return nil
+	}
+	if strings.TrimSpace(item.ID) == "" {
+		return fmt.Errorf("%w: %s", ErrUnavailable, item.Error)
+	}
+	return fmt.Errorf("%w: %s: %s", ErrUnavailable, item.ID, item.Error)
 }
 
 // WorkspaceContainer is an orchestration scope only. It groups concrete
@@ -136,9 +154,11 @@ func (m *Manager) Reload() error {
 		sort.Strings(ids)
 		for _, id := range ids {
 			item := items[id]
+			if !item.Available() {
+				continue
+			}
 			if err := validateActiveWorkspaceState(item); err != nil {
-				_ = releaseRuntimeLocks(acquired)
-				return err
+				continue
 			}
 			if lock := currentLocks[id]; lock != nil {
 				same, err := lock.SameFile(workspacestate.New(item.Path).RuntimeLockPath())
@@ -374,6 +394,10 @@ func (m *Manager) AddAllowDir(id, path string) (Workspace, error) {
 		span.FailMessage("Adding workspace allowed directory failed", err)
 		return Workspace{}, err
 	}
+	if err := item.unavailableError(); err != nil {
+		span.FailMessage("Adding workspace allowed directory failed", err)
+		return Workspace{}, err
+	}
 	previousCount := len(item.AllowDirs)
 	item.AllowDirs = normalizeRoots(append(item.AllowDirs, root))
 	m.items[canonical] = item
@@ -419,6 +443,10 @@ func (m *Manager) RemoveAllowDir(id, path string) (Workspace, error) {
 		span.FailMessage("Removing workspace allowed directory failed", err)
 		return Workspace{}, err
 	}
+	if err := item.unavailableError(); err != nil {
+		span.FailMessage("Removing workspace allowed directory failed", err)
+		return Workspace{}, err
+	}
 	previousCount := len(item.AllowDirs)
 	filtered := item.AllowDirs[:0]
 	removed := false
@@ -447,6 +475,9 @@ func (m *Manager) RemoveAllowDir(id, path string) (Workspace, error) {
 func (m *Manager) EffectiveRoots(id string) ([]string, error) {
 	item, err := m.Get(id)
 	if err != nil {
+		return nil, err
+	}
+	if err := item.unavailableError(); err != nil {
 		return nil, err
 	}
 	m.mu.RLock()
@@ -478,7 +509,7 @@ func (m *Manager) Get(id string) (Workspace, error) {
 	if err := m.validateRuntimeOwnership(canonical); err != nil {
 		return Workspace{}, err
 	}
-	return item, nil
+	return m.annotateAvailability(item), nil
 }
 
 func (m *Manager) CanonicalID(id string) (string, error) {
@@ -499,15 +530,10 @@ func (m *Manager) LocalState(id string) (workspacestate.Store, error) {
 	if err != nil {
 		return workspacestate.Store{}, err
 	}
-	local := workspacestate.New(item.Path)
-	identity, _, err := local.EnsureIdentity(item.ID)
-	if err != nil {
+	if err := item.unavailableError(); err != nil {
 		return workspacestate.Store{}, err
 	}
-	if identity.ID != item.ID {
-		return workspacestate.Store{}, fmt.Errorf("workspace identity mismatch: local %s, expected %s", identity.ID, item.ID)
-	}
-	return local, nil
+	return workspacestate.New(item.Path), nil
 }
 
 func (m *Manager) Instance() (instance.Identity, error) {
@@ -520,10 +546,21 @@ func (m *Manager) List() ([]Workspace, error) {
 		return nil, err
 	}
 	m.mu.RLock()
-	defer m.mu.RUnlock()
+	active := m.runtime != nil && m.runtime.active
 	items := make([]Workspace, 0, len(m.items))
 	for _, item := range m.items {
-		items = append(items, item)
+		items = append(items, m.annotateAvailability(item))
+	}
+	m.mu.RUnlock()
+	if active {
+		for index, item := range items {
+			if !item.Available() {
+				continue
+			}
+			if err := validateActiveWorkspaceState(item); err != nil {
+				items[index].Error = err.Error()
+			}
+		}
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })
 	return items, nil
@@ -548,6 +585,9 @@ func (m *Manager) AdvertisedIDs() ([]string, error) {
 func (m *Manager) ResolveDirectory(id, input string) (Workspace, string, error) {
 	item, err := m.Get(id)
 	if err != nil {
+		return Workspace{}, "", err
+	}
+	if err := item.unavailableError(); err != nil {
 		return Workspace{}, "", err
 	}
 	if strings.TrimSpace(input) == "" {
@@ -722,8 +762,17 @@ func (m *Manager) ensureLoadedUnderRegistryLock() error {
 			migratedIDs++
 			rewrittenFiles += rewritten
 		}
+		if stored.Version < 5 {
+			if root, rootErr := canonicalExistingDirectory(item.Path); rootErr == nil {
+				if _, _, identityErr := workspacestate.New(root).EnsureIdentity(item.ID); identityErr != nil {
+					span.FailMessage("Workspace identity migration failed", identityErr, tracepkg.String("workspace_id", item.ID), tracepkg.String("root", root))
+					return identityErr
+				}
+			}
+		}
 		item.AllowDirs = normalizeRoots(item.AllowDirs)
 		item.LegacyIDs = normalizeIDs(item.LegacyIDs, item.ID)
+		item = m.annotateAvailability(item)
 		if existing, ok := m.items[item.ID]; ok && filepath.Clean(existing.Path) != filepath.Clean(item.Path) {
 			err := fmt.Errorf("workspace registry id collision: %s", item.ID)
 			span.FailMessage("Workspace registry validation failed", err, tracepkg.String("workspace_id", item.ID))
@@ -763,6 +812,33 @@ func (m *Manager) ensureLoadedUnderRegistryLock() error {
 	}
 	span.EndMessage("Workspace registry loaded", tracepkg.Bool("exists", true), tracepkg.String("format", "json"), tracepkg.Int64("bytes", int64(len(data))), tracepkg.Int("registry_version", stored.Version), tracepkg.Int("current_version", storeVersion), tracepkg.Int("workspaces", len(m.items)), tracepkg.Int("containers", len(m.containers)), tracepkg.Bool("migrated", migrated), tracepkg.Int("migrated_workspace_ids", migratedIDs), tracepkg.Int("rewritten_state_files", rewrittenFiles))
 	return nil
+}
+
+func (m *Manager) annotateAvailability(item Workspace) Workspace {
+	item.Error = ""
+	if m.protected(item.Path) {
+		item.Error = fmt.Sprintf("workspace root is inside protected control-plane state: %s", item.Path)
+		return item
+	}
+	root, err := canonicalExistingDirectory(item.Path)
+	if err != nil {
+		item.Error = err.Error()
+		return item
+	}
+	if !sameCanonicalRoot(root, item.Path) {
+		item.Error = fmt.Sprintf("workspace root identity changed: registered %s, resolves to %s", item.Path, root)
+		return item
+	}
+	local := workspacestate.New(item.Path)
+	identity, err := local.LoadIdentity()
+	if err != nil {
+		item.Error = err.Error()
+		return item
+	}
+	if identity.ID != item.ID {
+		item.Error = fmt.Sprintf("workspace identity mismatch: local %s, expected %s", identity.ID, item.ID)
+	}
+	return item
 }
 
 func (m *Manager) canonicalIDLocked(id string) string {
@@ -987,6 +1063,7 @@ func (m *Manager) saveLocked() error {
 	span := tracepkg.StartObserver(m.trace, "WORKSPACE", "workspace.registry.persist", "Persisting workspace registry", tracepkg.String("path", m.path), tracepkg.Int("workspaces", len(m.items)), tracepkg.Int("containers", len(m.containers)), tracepkg.Bool("atomic", true))
 	items := make([]Workspace, 0, len(m.items))
 	for _, item := range m.items {
+		item.Error = ""
 		items = append(items, item)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })

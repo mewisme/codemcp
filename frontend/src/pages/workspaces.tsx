@@ -66,6 +66,7 @@ type ConfirmAction =
   | { kind: "rename-container"; container: WorkspaceContainer; name: string }
   | { kind: "delete-container"; container: WorkspaceContainer }
   | { kind: "unregister"; workspace: Workspace }
+  | { kind: "purge"; workspace: Workspace }
 
 export function WorkspacesPage() {
   const navigate = useNavigate()
@@ -197,6 +198,8 @@ export function WorkspacesPage() {
         await adminApi.removeWorkspaceContainer(action.container.id)
       } else if (action.kind === "unregister") {
         await adminApi.removeWorkspace(action.workspace.id)
+      } else if (action.kind === "purge") {
+        await adminApi.purgeWorkspace(action.workspace.id)
       } else if (action.mode === "add") {
         await adminApi.addWorkspaceContainers(
           action.workspace.id,
@@ -291,6 +294,9 @@ export function WorkspacesPage() {
                   onRemove={() => openMembership(item, "remove")}
                   onUnregister={() =>
                     setConfirmAction({ kind: "unregister", workspace: item })
+                  }
+                  onPurge={() =>
+                    setConfirmAction({ kind: "purge", workspace: item })
                   }
                 />
               ))}
@@ -604,6 +610,7 @@ export function WorkspacesPage() {
               variant={
                 confirmAction?.kind === "delete-container" ||
                 confirmAction?.kind === "unregister" ||
+                confirmAction?.kind === "purge" ||
                 (confirmAction?.kind === "membership" &&
                   confirmAction.mode === "remove")
                   ? "destructive"
@@ -627,6 +634,7 @@ function WorkspaceRow({
   onAdd,
   onRemove,
   onUnregister,
+  onPurge,
 }: {
   item: Workspace
   containers: WorkspaceContainer[]
@@ -634,6 +642,7 @@ function WorkspaceRow({
   onAdd: () => void
   onRemove: () => void
   onUnregister: () => void
+  onPurge: () => void
 }) {
   const count = containers.filter((container) =>
     container.workspace_ids?.includes(item.id)
@@ -669,6 +678,9 @@ function WorkspaceRow({
               {count} container{count === 1 ? "" : "s"}
             </Badge>
           ) : null}
+          {item.available === false ? (
+            <Badge variant="destructive">Unavailable</Badge>
+          ) : null}
         </div>
       </ItemContent>
       <ItemActions onClick={(event) => event.stopPropagation()}>
@@ -700,6 +712,10 @@ function WorkspaceRow({
               <Trash2 />
               Unregister workspace
             </DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onClick={onPurge}>
+              <Trash2 />
+              Purge local .cm state
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </ItemActions>
@@ -713,6 +729,7 @@ function confirmTitle(action: ConfirmAction | null) {
   if (action.kind === "rename-container") return "Rename workspace container?"
   if (action.kind === "delete-container") return "Delete workspace container?"
   if (action.kind === "unregister") return "Unregister workspace?"
+  if (action.kind === "purge") return "Purge workspace local state?"
   return action.mode === "add"
     ? "Add workspace to containers?"
     : "Remove workspace from containers?"
@@ -729,7 +746,9 @@ function confirmDescription(
   if (action.kind === "delete-container")
     return `${action.container.name} (${action.container.id}) will be deleted. Registered workspaces and project files remain unchanged.`
   if (action.kind === "unregister")
-    return `${action.workspace.path} will be removed from CodeMCP. Project files will not be deleted.`
+    return `${action.workspace.path} will be removed from CodeMCP. Project files and local .cm state will not be deleted.`
+  if (action.kind === "purge")
+    return `${action.workspace.path} will be unregistered and its local .cm state will be permanently deleted. Project files outside .cm remain unchanged.`
   const names = action.containerIDs
     .map(
       (id) => containers.find((container) => container.id === id)?.name ?? id
@@ -746,6 +765,7 @@ function confirmLabel(action: ConfirmAction | null) {
   if (action.kind === "rename-container") return "Rename"
   if (action.kind === "delete-container") return "Delete"
   if (action.kind === "unregister") return "Unregister"
+  if (action.kind === "purge") return "Purge"
   return action.mode === "add" ? "Add" : "Remove"
 }
 

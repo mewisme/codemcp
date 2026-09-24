@@ -144,6 +144,7 @@ cm
     │   └── remove
     ├── container
     ├── list
+    ├── purge
     ├── register
     ├── relocate
     ├── show
@@ -417,7 +418,7 @@ If the project directory has already been renamed or moved, rebind the existing 
 cm workspace relocate ws_... /new/path/to/project
 ```
 
-`relocate` does not move project files. It updates the registered canonical root after the filesystem move, derives the new path-based workspace ID, retains the previous ID as a legacy alias, migrates workspace-scoped persistent state, rewrites state paths rooted under the old project directory, preserves container membership, and synchronizes a running runtime before returning. Workspace-specific extra roots that were inside the old root are rebased to the new root; unrelated external access roots are left unchanged. Managed background processes that were already started remain addressable through the relocated workspace while the current runtime is alive.
+`relocate` does not move project files. Move or rename the project first so its local `.cm/` state moves with it, then relocate. The stable `ws_*` ID is preserved. The destination must contain that same `.cm/workspace.json` identity; missing, mismatched, or ambiguously copied local state is rejected. Container membership remains attached to the same ID. Workspace-specific extra roots that were inside the old root are rebased to the new root; unrelated external access roots are left unchanged.
 
 Manage logical workspace containers:
 
@@ -445,11 +446,19 @@ workspace_container_context(container_id="wsc_...")
 
 When the runtime is already running, every successful CLI workspace-registry mutation synchronously reloads runtime state before returning. This covers workspace register/relocate/unregister, access add/remove, container create/rename/delete, and membership add/remove. The next MCP read therefore sees the change without restarting the runtime or reconnecting the MCP session. If runtime synchronization fails, the CLI reports the failure even though the registry mutation may already have been persisted.
 
-Remove the registry handle without deleting project files:
+Remove the registry handle without deleting project files or local `.cm/` state:
 
 ```bash
 cm workspace unregister ws_...
 ```
+
+Delete workspace-local CodeMCP state explicitly:
+
+```bash
+cm workspace purge ws_... --yes
+```
+
+`purge` is destructive and requires `--yes`. It unregisters the workspace when needed and deletes only the verified `<workspace>/.cm/` tree; project files outside `.cm/` are unchanged. Registered roots that disappear remain listed as unavailable until restored, relocated, unregistered, or purged.
 
 Additional workspace roots:
 

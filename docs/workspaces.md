@@ -100,9 +100,25 @@ If the project directory has already been renamed or moved, relocate the existin
 cm workspace relocate ws_... /new/path/to/project
 ```
 
-The current relocation compatibility flow updates the trusted root and derives a replacement path-based workspace ID. The previous ID is retained as a legacy alias, workspace-scoped persistent state follows the project, and container membership is preserved.
+Relocate preserves the existing stable `ws_*` identity. Move or rename the project directory first so its local `.cm/` state moves with it, then rebind the registry to the new root. The destination must contain the same `.cm/workspace.json` identity; a different identity, a missing identity, or copies of the same identity at both source and destination are rejected as ambiguous. Container membership remains attached to the same workspace ID, and workspace access roots nested under the old project root are rebased.
 
 Relocate does **not** move project files. It is a trusted local control-plane operation available through CLI, TUI, and Admin surfaces rather than an Agent filesystem tool.
+
+If a registered root disappears or its local identity becomes invalid, the registry entry remains present with the same ID but is reported as unavailable. Healthy sibling workspaces remain usable. Restore the original project root/local identity or relocate the workspace after moving the project; do not treat temporary filesystem unavailability as deletion of workspace identity.
+
+Unregister removes only the registry handle and container membership. It does not delete project files or workspace-local `.cm/` state:
+
+```bash
+cm workspace unregister ws_...
+```
+
+Deleting local CodeMCP state is a separate destructive operation and requires explicit confirmation:
+
+```bash
+cm workspace purge ws_... --yes
+```
+
+Purge unregisters the workspace when necessary and removes only the verified `<workspace>/.cm/` tree. It does not remove project files outside `.cm/`; symlinked or mismatched local state is rejected instead of followed.
 
 ## Workspace containers
 
@@ -125,7 +141,7 @@ An active CodeMCP runtime holds one exclusive advisory lock at `<workspace>/.cm/
 
 Global registry mutation serialization is separate from workspace runtime ownership. Safe registry-only changes, such as container metadata and workspace access metadata, use a global mutation lock and do not transfer or steal workspace runtime ownership. Runtime-aware reload reconciles newly registered or removed workspaces while retaining valid existing ownership locks.
 
-If `.cm/workspace.json` or the runtime lock file is removed or replaced while active, workspace access fails closed as a state-ownership conflict instead of silently adopting the replacement. Relocation is rejected while the workspace is actively owned. Unregistration by a different process is likewise rejected while another runtime owns the workspace; an owning runtime can unregister its own workspace and releases that lock only after the registry mutation succeeds.
+If `.cm/workspace.json` or the runtime lock file is removed or replaced while active, workspace access fails closed as a state-ownership conflict instead of silently adopting the replacement. An owning runtime may relocate only after the project and its existing `.cm/` state have physically moved together, so the held runtime lock is still the same file at the destination. Unregistration by a different process is rejected while another runtime owns the workspace; an owning runtime can unregister its own workspace and releases that lock only after the registry mutation succeeds.
 
 Cross-process lock acquisition follows a fixed order: runtime ownership coordination, global registry mutation serialization, in-process registry state, then a workspace runtime file lock. This keeps registry mutations and activation/reload ownership changes from taking the same locks in opposite order.
 

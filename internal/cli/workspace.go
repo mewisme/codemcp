@@ -21,6 +21,7 @@ func workspaceCommand() *cobra.Command {
 		workspaceShowCommand(),
 		workspaceRelocateCommand(),
 		workspaceUnregisterCommand(),
+		workspacePurgeCommand(),
 		workspaceAccessCommand(),
 		workspaceContainerCommand(),
 	)
@@ -297,7 +298,11 @@ func workspaceListCommand() *cobra.Command {
 			log := commandLogger(cmd)
 			log.Success("WORKSPACE", "registered workspaces loaded", "count", len(items))
 			for _, item := range items {
-				log.Detail(item.ID, item.Path)
+				value := item.Path
+				if !item.Available {
+					value += " · unavailable: " + item.Error
+				}
+				log.Detail(item.ID, value)
 			}
 			return nil
 		},
@@ -326,6 +331,10 @@ func workspaceShowCommand() *cobra.Command {
 			log.Info("WORKSPACE", "workspace details")
 			log.Detail("id", item.ID)
 			log.Detail("root", item.Path)
+			log.Detail("available", item.Available)
+			if item.Error != "" {
+				log.Detail("error", item.Error)
+			}
 			if len(item.AllowDirs) == 0 {
 				log.Detail("allow dirs", "none")
 			} else {
@@ -344,7 +353,7 @@ func workspaceShowCommand() *cobra.Command {
 func workspaceUnregisterCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:               "unregister <workspace_id>",
-		Short:             "Remove a workspace handle without deleting project files",
+		Short:             "Remove a workspace handle without deleting project files or local .cm state",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWorkspaceID,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -357,8 +366,36 @@ func workspaceUnregisterCommand() *cobra.Command {
 			log.Success("WORKSPACE", "workspace unregistered")
 			log.Detail("id", item.ID)
 			log.Detail("root", item.Path)
-			log.Detail("files", "unchanged")
+			log.Detail("project files", "unchanged")
+			log.Detail("local .cm", "unchanged")
 			return nil
 		},
 	}
+}
+
+func workspacePurgeCommand() *cobra.Command {
+	var confirm bool
+	cmd := &cobra.Command{
+		Use:               "purge <workspace_id_or_path>",
+		Short:             "Delete workspace-local .cm state after explicit confirmation",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceID,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := workspaceServiceForCommand(cmd).Purge(cmd.Context(), args[0], confirm)
+			if err != nil {
+				return err
+			}
+			item := result.Value
+			log := commandLogger(cmd)
+			log.Success("WORKSPACE", "workspace local state deleted")
+			if item.ID != "" {
+				log.Detail("id", item.ID)
+			}
+			log.Detail("root", item.Path)
+			log.Detail("project files", "unchanged")
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&confirm, "yes", false, "confirm destructive deletion of workspace-local state")
+	return cmd
 }

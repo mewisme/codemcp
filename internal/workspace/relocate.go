@@ -1,19 +1,16 @@
 package workspace
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
-	"go.mewis.me/codemcp/internal/configformat"
-	"go.mewis.me/codemcp/internal/state"
+	"go.mewis.me/codemcp/internal/oslock"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
-var relocateStateRename = os.Rename
+var relocateRegistrySave = func(manager *Manager) error { return manager.saveLocked() }
 
 func (m *Manager) Relocate(id, path string) (Workspace, error) {
 	span := tracepkg.StartObserver(m.trace, "WORKSPACE", "workspace.relocate", "Relocating workspace", tracepkg.String("workspace_id", strings.TrimSpace(id)), tracepkg.String("input_path", path))
@@ -25,10 +22,7 @@ func (m *Manager) Relocate(id, path string) (Workspace, error) {
 		return Workspace{}, err
 	}
 	defer mutation.Release()
-	if err := m.ensureLoaded(); err != nil {
-		span.FailMessage("Workspace relocation failed", err)
-		return Workspace{}, err
-	}
+
 	root, err := canonicalExistingDirectory(path)
 	if err != nil {
 		span.FailMessage("Workspace relocation failed", err)
@@ -39,232 +33,118 @@ func (m *Manager) Relocate(id, path string) (Workspace, error) {
 		span.FailMessage("Workspace relocation failed", err)
 		return Workspace{}, err
 	}
+	if m.workspaceLocalRootAliasesProtected(root) {
+		err := fmt.Errorf("workspace local .cm root aliases protected global state: %s", root)
+		span.FailMessage("Workspace relocation failed", err)
+		return Workspace{}, err
+	}
+
+	m.mu.RLock()
+	canonical := m.canonicalIDLocked(strings.TrimSpace(id))
+	current, found := m.items[canonical]
+	owned := found && m.runtime != nil && m.runtime.active && m.runtime.locks[canonical] != nil
+	m.mu.RUnlock()
+	if found && !owned && current.Available() {
+		if err := probeWorkspaceRuntimeLock(current); err != nil {
+			span.FailMessage("Workspace relocation failed", err)
+			return Workspace{}, err
+		}
+	}
+
+	local := workspacestate.New(root)
+	identity, err := local.LoadIdentity()
+	if err != nil {
+		err = fmt.Errorf("workspace relocation destination must contain an existing CodeMCP identity: %w", err)
+		span.FailMessage("Workspace relocation failed", err, tracepkg.String("root", root))
+		return Workspace{}, err
+	}
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	oldID := m.canonicalIDLocked(strings.TrimSpace(id))
-	item, ok := m.items[oldID]
+	canonical = m.canonicalIDLocked(strings.TrimSpace(id))
+	item, ok := m.items[canonical]
 	if !ok {
 		err := fmt.Errorf("%w: %s", ErrNotFound, id)
 		span.FailMessage("Workspace relocation failed", err)
 		return Workspace{}, err
 	}
-	if m.runtime != nil && m.runtime.active && m.runtime.locks[oldID] != nil {
-		err := fmt.Errorf("%w: %s: relocate requires inactive runtime ownership", ErrAlreadyActive, oldID)
-		span.FailMessage("Workspace relocation failed", err)
+	if identity.ID != item.ID {
+		err := fmt.Errorf("workspace identity mismatch at destination: found %s, expected %s", identity.ID, item.ID)
+		span.FailMessage("Workspace relocation failed", err, tracepkg.String("workspace_id", item.ID), tracepkg.String("root", root))
 		return Workspace{}, err
 	}
-	if err := probeWorkspaceRuntimeLock(item); err != nil {
-		span.FailMessage("Workspace relocation failed", err)
-		return Workspace{}, err
-	}
+
 	oldRoot := item.Path
-	for registeredID, registered := range m.items {
-		if registeredID != oldID && sameCanonicalRoot(registered.Path, root) {
+	sameRoot := sameCanonicalRoot(oldRoot, root)
+	for _, existing := range m.items {
+		if existing.ID != item.ID && sameCanonicalRoot(existing.Path, root) {
 			err := fmt.Errorf("workspace already registered for destination: %s", root)
-			span.FailMessage("Workspace relocation failed", err, tracepkg.String("destination_workspace_id", registeredID))
+			span.FailMessage("Workspace relocation failed", err, tracepkg.String("destination_workspace_id", existing.ID))
 			return Workspace{}, err
 		}
 	}
-	if identity, identityErr := workspacestate.New(root).LoadIdentity(); identityErr == nil {
-		if identity.ID != oldID {
-			err := fmt.Errorf("workspace destination belongs to %s: %s", identity.ID, root)
-			span.FailMessage("Workspace relocation failed", err, tracepkg.String("destination_workspace_id", identity.ID))
+	if !sameRoot {
+		if sourceIdentity, sourceErr := workspacestate.New(oldRoot).LoadIdentity(); sourceErr == nil && sourceIdentity.ID == item.ID {
+			err := fmt.Errorf("workspace identity is present at both source and destination; copied %s state is ambiguous: %s", LocalDirName, item.ID)
+			span.FailMessage("Workspace relocation failed", err, tracepkg.String("workspace_id", item.ID), tracepkg.String("source_root", oldRoot), tracepkg.String("root", root))
 			return Workspace{}, err
 		}
-	} else if !errors.Is(identityErr, os.ErrNotExist) {
-		err := fmt.Errorf("inspect workspace destination identity: %w", identityErr)
-		span.FailMessage("Workspace relocation failed", err)
-		return Workspace{}, err
-	}
-	newID := workspaceID(root)
-	if filepath.Clean(oldRoot) == filepath.Clean(root) && oldID == newID {
-		span.EndMessage("Workspace already uses requested root", tracepkg.String("workspace_id", oldID), tracepkg.String("root", root), tracepkg.Bool("changed", false))
-		return item, nil
-	}
-	if existing, exists := m.items[newID]; exists && existing.ID != oldID {
-		err := fmt.Errorf("workspace already registered for destination: %s", root)
-		span.FailMessage("Workspace relocation failed", err, tracepkg.String("destination_workspace_id", newID))
-		return Workspace{}, err
-	}
-	if target := m.aliases[newID]; target != "" && target != oldID {
-		err := fmt.Errorf("workspace destination is reserved by legacy workspace id: %s", newID)
-		span.FailMessage("Workspace relocation failed", err, tracepkg.String("destination_workspace_id", newID), tracepkg.String("alias_target", target))
-		return Workspace{}, err
 	}
 
-	previousItems := cloneWorkspaceItems(m.items)
-	previousContainers := cloneWorkspaceContainers(m.containers)
-	previousAliases := cloneAliases(m.aliases)
-
-	stateMoved, err := m.migrateRelocatedWorkspaceState(oldID, newID, oldRoot, root)
-	if err != nil {
-		span.FailMessage("Workspace relocation failed", err)
-		return Workspace{}, err
+	active := m.runtime != nil && m.runtime.active
+	if active {
+		lock := m.runtime.locks[item.ID]
+		if lock == nil {
+			err := fmt.Errorf("workspace runtime lock missing during relocation: %s", item.ID)
+			span.FailMessage("Workspace relocation failed", err)
+			return Workspace{}, err
+		}
+		same, sameErr := lock.SameFile(local.RuntimeLockPath())
+		if sameErr != nil {
+			err := fmt.Errorf("verify workspace runtime lock during relocation: %w", sameErr)
+			span.FailMessage("Workspace relocation failed", err)
+			return Workspace{}, err
+		}
+		if !same {
+			err := fmt.Errorf("active workspace relocation requires existing %s state to move with the workspace: %s", LocalDirName, item.ID)
+			span.FailMessage("Workspace relocation failed", err)
+			return Workspace{}, err
+		}
+	} else {
+		lock, acquired, lockErr := oslock.TryAcquire(local.RuntimeLockPath(), oslock.Exclusive)
+		if lockErr != nil {
+			span.FailMessage("Workspace relocation failed", lockErr)
+			return Workspace{}, lockErr
+		}
+		if !acquired {
+			err := fmt.Errorf("%w: %s", ErrAlreadyActive, item.ID)
+			span.FailMessage("Workspace relocation failed", err)
+			return Workspace{}, err
+		}
+		defer lock.Release()
 	}
 
-	delete(m.items, oldID)
-	item.ID = newID
+	previous := item
 	item.Path = root
+	item.AllowDirs = append([]string(nil), item.AllowDirs...)
 	for index, allowDir := range item.AllowDirs {
 		if relocated, ok := relocateAbsolutePath(allowDir, oldRoot, root); ok {
 			item.AllowDirs[index] = relocated
 		}
 	}
 	item.AllowDirs = normalizeRoots(item.AllowDirs)
-	item.LegacyIDs = normalizeIDs(append(item.LegacyIDs, oldID), newID)
-	m.items[newID] = item
-	for containerID, container := range m.containers {
-		for index, workspaceID := range container.WorkspaceIDs {
-			if workspaceID == oldID {
-				container.WorkspaceIDs[index] = newID
-			}
-		}
-		container.WorkspaceIDs = normalizeContainerWorkspaceIDs(container.WorkspaceIDs, m.items)
-		m.containers[containerID] = container
-	}
-	for alias, target := range m.aliases {
-		if target == oldID || alias == newID {
-			delete(m.aliases, alias)
-		}
-	}
-	for _, alias := range item.LegacyIDs {
-		if err := m.registerAliasLocked(alias, newID); err != nil {
-			m.items, m.containers, m.aliases = previousItems, previousContainers, previousAliases
-			if stateMoved {
-				_, _ = m.migrateRelocatedWorkspaceState(newID, oldID, root, oldRoot)
-			}
-			span.FailMessage("Workspace relocation failed", err)
-			return Workspace{}, err
-		}
-	}
-	if err := m.saveLocked(); err != nil {
-		m.items, m.containers, m.aliases = previousItems, previousContainers, previousAliases
-		if stateMoved {
-			_, _ = m.migrateRelocatedWorkspaceState(newID, oldID, root, oldRoot)
-		}
+	item.Error = ""
+	m.items[item.ID] = item
+	if err := relocateRegistrySave(m); err != nil {
+		m.items[item.ID] = previous
 		span.FailMessage("Workspace relocation failed", err)
 		return Workspace{}, err
 	}
-	span.EndMessage("Workspace relocated", tracepkg.String("legacy_workspace_id", oldID), tracepkg.String("workspace_id", newID), tracepkg.String("previous_root", oldRoot), tracepkg.String("root", root), tracepkg.Bool("state_migrated", stateMoved))
+	if active {
+		m.runtime.roots[item.ID] = root
+	}
+	span.EndMessage("Workspace relocated", tracepkg.String("workspace_id", item.ID), tracepkg.String("previous_root", oldRoot), tracepkg.String("root", root), tracepkg.Bool("changed", !sameRoot))
 	return item, nil
-}
-
-func (m *Manager) migrateRelocatedWorkspaceState(oldID, newID, oldRoot, newRoot string) (bool, error) {
-	if oldID == newID {
-		return false, nil
-	}
-	root := filepath.Join(filepath.Dir(m.path), "workspaces")
-	oldState := filepath.Join(root, oldID)
-	newState := filepath.Join(root, newID)
-	if _, err := os.Stat(oldState); errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	} else if err != nil {
-		return false, fmt.Errorf("inspect workspace state: %w", err)
-	}
-	if _, err := os.Stat(newState); err == nil {
-		return false, fmt.Errorf("cannot relocate workspace state: destination already exists: %s", newState)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return false, fmt.Errorf("inspect destination workspace state: %w", err)
-	}
-	if _, err := rewriteRelocatedWorkspaceState(oldState, oldID, newID, oldRoot, newRoot); err != nil {
-		return false, err
-	}
-	if err := os.MkdirAll(root, 0700); err != nil {
-		return false, err
-	}
-	if err := relocateStateRename(oldState, newState); err != nil {
-		_, rollbackErr := rewriteRelocatedWorkspaceState(oldState, newID, oldID, newRoot, oldRoot)
-		if rollbackErr != nil {
-			return false, fmt.Errorf("relocate workspace state %s -> %s: %w; rollback state rewrite: %v", oldID, newID, err, rollbackErr)
-		}
-		return false, fmt.Errorf("relocate workspace state %s -> %s: %w", oldID, newID, err)
-	}
-	return true, nil
-}
-
-func rewriteRelocatedWorkspaceState(root, oldID, newID, oldRoot, newRoot string) (int, error) {
-	paths := []string{}
-	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if !entry.IsDir() {
-			paths = append(paths, path)
-		}
-		return nil
-	}); err != nil {
-		return 0, err
-	}
-	rewritten := 0
-	for _, path := range paths {
-		if !strings.EqualFold(filepath.Ext(path), ".json") {
-			continue
-		}
-		data, err := os.ReadFile(path) // #nosec G304 -- path is emitted by filepath.WalkDir under the workspace-owned state root.
-		if err != nil {
-			return rewritten, err
-		}
-		decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
-		if err != nil {
-			if isCheckpointManifestPath(path) {
-				continue
-			}
-			return rewritten, fmt.Errorf("decode workspace state %s: %w", path, err)
-		}
-		updated, changed := relocateStateValue(decoded, oldID, newID, oldRoot, newRoot)
-		if !changed {
-			continue
-		}
-		encoded, err := configformat.EncodeGeneric(configformat.JSON, updated)
-		if err != nil {
-			return rewritten, fmt.Errorf("encode workspace state %s: %w", path, err)
-		}
-		if err := state.WriteFileAtomic(path, encoded, 0600); err != nil {
-			return rewritten, fmt.Errorf("rewrite workspace state %s: %w", path, err)
-		}
-		rewritten++
-	}
-	return rewritten, nil
-}
-
-func isCheckpointManifestPath(path string) bool {
-	clean := filepath.ToSlash(filepath.Clean(path))
-	return strings.Contains(clean, "/checkpoints/data/") && filepath.Base(clean) == "manifest.json"
-}
-
-func relocateStateValue(value any, oldID, newID, oldRoot, newRoot string) (any, bool) {
-	switch typed := value.(type) {
-	case map[string]any:
-		changed := false
-		result := make(map[string]any, len(typed))
-		for key, item := range typed {
-			if key == "workspace_id" {
-				if text, ok := item.(string); ok && text == oldID {
-					result[key], changed = newID, true
-					continue
-				}
-			}
-			updated, itemChanged := relocateStateValue(item, oldID, newID, oldRoot, newRoot)
-			result[key] = updated
-			changed = changed || itemChanged
-		}
-		return result, changed
-	case []any:
-		changed := false
-		result := make([]any, len(typed))
-		for index, item := range typed {
-			updated, itemChanged := relocateStateValue(item, oldID, newID, oldRoot, newRoot)
-			result[index] = updated
-			changed = changed || itemChanged
-		}
-		return result, changed
-	case string:
-		if relocated, ok := relocateAbsolutePath(typed, oldRoot, newRoot); ok {
-			return relocated, true
-		}
-	}
-	return value, false
 }
 
 func relocateAbsolutePath(value, oldRoot, newRoot string) (string, bool) {

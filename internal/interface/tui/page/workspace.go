@@ -22,6 +22,7 @@ const (
 	WorkspaceRegister         WorkspaceCommand = "workspace.register"
 	WorkspaceRelocate         WorkspaceCommand = "workspace.relocate"
 	WorkspaceUnregister       WorkspaceCommand = "workspace.unregister"
+	WorkspacePurge            WorkspaceCommand = "workspace.purge"
 	WorkspaceAccessAdd        WorkspaceCommand = "workspace.access.add"
 	WorkspaceAccessRemove     WorkspaceCommand = "workspace.access.remove"
 	WorkspaceContainerCreate  WorkspaceCommand = "workspace.container.create"
@@ -477,15 +478,21 @@ func (page *WorkspacePage) openCommand(command WorkspaceCommand, resourceID stri
 	switch command {
 	case WorkspaceRegister, WorkspaceRelocate, WorkspaceAccessAdd, WorkspaceAccessRemove, WorkspaceContainerCreate, WorkspaceContainerRename, WorkspaceContainerMembers:
 		return page.workspaceEditorNavigation(command, page.targetID), nil
-	case WorkspaceUnregister, WorkspaceContainerDelete:
-		if command == WorkspaceUnregister {
+	case WorkspaceUnregister, WorkspacePurge, WorkspaceContainerDelete:
+		if command == WorkspaceUnregister || command == WorkspacePurge {
 			if _, err := page.manager.Get(page.targetID); err != nil {
 				return nil, err
 			}
 		} else if _, err := page.manager.GetContainer(page.targetID); err != nil {
 			return nil, err
 		}
-		page.confirm = component.NewConfirmButtons("Delete", "Cancel", false)
+		affirmative := "Delete"
+		if command == WorkspaceUnregister {
+			affirmative = "Unregister"
+		} else if command == WorkspacePurge {
+			affirmative = "Purge"
+		}
+		page.confirm = component.NewConfirmButtons(affirmative, "Cancel", false)
 		page.overlay = workspaceOverlayConfirm
 		return nil, nil
 	default:
@@ -506,6 +513,8 @@ func (page *WorkspacePage) updateConfirm(msg tea.KeyPressMsg) tea.Cmd {
 		var err error
 		if page.command == WorkspaceUnregister {
 			_, err = page.workspaceOperations().Unregister(page.ctx, page.targetID)
+		} else if page.command == WorkspacePurge {
+			_, err = page.workspaceOperations().Purge(page.ctx, page.targetID, true)
 		} else {
 			_, err = page.workspaceOperations().DeleteContainer(page.ctx, page.targetID)
 		}
@@ -759,6 +768,7 @@ func (page *WorkspacePage) syncWorkspaceDetail() error {
 		component.DetailPageBinding{Key: "+", Desc: "add access", Message: WorkspaceCommandMsg{Command: WorkspaceAccessAdd, ResourceID: item.ID}},
 		component.DetailPageBinding{Key: "-", Desc: "remove access", Message: WorkspaceCommandMsg{Command: WorkspaceAccessRemove, ResourceID: item.ID}},
 		component.DetailPageBinding{Key: "d", Desc: "unregister", Message: WorkspaceCommandMsg{Command: WorkspaceUnregister, ResourceID: item.ID}},
+		component.DetailPageBinding{Key: "x", Desc: "purge", Message: WorkspaceCommandMsg{Command: WorkspacePurge, ResourceID: item.ID}},
 		component.DetailPageBinding{Key: "r", Desc: "refresh", Message: workspaceRefreshDetailMsg{}},
 	)
 	page.detail.SetBindings(bindings...)
@@ -842,13 +852,17 @@ func workspaceMemberLabel(item workspace.Workspace) string {
 func (page *WorkspacePage) confirmTitle() string {
 	if page.command == WorkspaceUnregister {
 		return "Unregister workspace " + page.targetID + "?"
+	} else if page.command == WorkspacePurge {
+		return "Purge workspace local state " + page.targetID + "?"
 	}
 	return "Delete container " + page.targetID + "?"
 }
 
 func (page *WorkspacePage) confirmDescription() string {
 	if page.command == WorkspaceUnregister {
-		return "The workspace handle and workspace-scoped state will be removed. Project files are unchanged."
+		return "The workspace handle will be removed. Project files and local .cm state are unchanged."
+	} else if page.command == WorkspacePurge {
+		return "This deletes local .cm state after confirmation. Project files are unchanged."
 	}
 	return "The container record will be removed. Registered workspaces and project files are unchanged."
 }
@@ -861,6 +875,8 @@ func workspaceSuccess(command WorkspaceCommand) string {
 		return "Workspace relocated"
 	case WorkspaceUnregister:
 		return "Workspace unregistered"
+	case WorkspacePurge:
+		return "Workspace local state deleted"
 	case WorkspaceAccessAdd:
 		return "Access directory added"
 	case WorkspaceAccessRemove:

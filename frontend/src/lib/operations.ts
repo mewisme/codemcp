@@ -17,6 +17,7 @@ const bindings: Binding[] = [
   { method: "POST", pattern: "/api/workspaces", operation: "workspace.register" },
   { method: "GET", pattern: "/api/workspaces/{workspace_id}", operation: "workspace.show" },
   { method: "DELETE", pattern: "/api/workspaces/{workspace_id}", operation: "workspace.unregister" },
+  { method: "POST", pattern: "/api/workspaces/{workspace_id}/purge", operation: "workspace.purge" },
   { method: "GET", pattern: "/api/workspaces/{workspace_id}/context", operation: "project.context.read" },
   { method: "GET", pattern: "/api/workspaces/{workspace_id}/containers", operation: "workspace.container.membership.list" },
   { method: "POST", pattern: "/api/workspaces/{workspace_id}/containers", operation: "workspace.container.add" },

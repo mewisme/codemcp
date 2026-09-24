@@ -55,6 +55,7 @@ const (
 	WorkspaceShow            ID = "workspace.show"
 	WorkspaceRelocate        ID = "workspace.relocate"
 	WorkspaceUnregister      ID = "workspace.unregister"
+	WorkspacePurge           ID = "workspace.purge"
 	MCPStdio                 ID = "mcp.stdio"
 	MCPHTTP                  ID = "mcp.http"
 	MCPServerList            ID = "mcp.server.list"
@@ -164,7 +165,8 @@ func buildSpecs() []Spec {
 		operatorQuery(WorkspaceList, "workspace list"),
 		operatorQuery(WorkspaceShow, "workspace show"),
 		operatorMutation(WorkspaceRelocate, "workspace relocate", RiskState, false),
-		operatorDestructive(WorkspaceUnregister, "workspace unregister", false),
+		operatorMutation(WorkspaceUnregister, "workspace unregister", RiskState, false),
+		operatorDeleteRequired(WorkspacePurge, "workspace purge", false),
 		operatorRuntime(MCPStdio, "mcp stdio", false),
 		operatorRuntime(MCPHTTP, "mcp http", true),
 		operatorQuery(MCPServerList, "upstream server list", "mcp server list"),

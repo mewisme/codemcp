@@ -8,7 +8,13 @@ export type Tool = {
   outputSchema?: unknown
   annotations?: Record<string, unknown>
 }
-export type Workspace = { id: string; path: string; allow_dirs?: string[] }
+export type Workspace = {
+  id: string
+  path: string
+  allow_dirs?: string[]
+  available?: boolean
+  error?: string
+}
 export type WorkspaceContainer = {
   id: string
   name: string
@@ -480,6 +486,11 @@ export const adminApi = {
   removeWorkspace: (id: string) =>
     api<void>(`/api/workspaces/${encodeURIComponent(id)}`, {
       method: "DELETE",
+    }),
+  purgeWorkspace: (id: string) =>
+    api<Workspace>(`/api/workspaces/${encodeURIComponent(id)}/purge`, {
+      method: "POST",
+      body: JSON.stringify({ confirm: true }),
     }),
   workspaceContainers: () =>
     api<WorkspaceContainer[]>("/api/workspace-containers"),

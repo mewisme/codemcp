@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -241,5 +242,34 @@ func TestWorkspaceServiceExposesRuntimeDiagnosticsAndConflicts(t *testing.T) {
 	}
 	if code := ErrorCodeOf(classifyWorkspaceError(capability.WorkspaceRegister, workspace.ErrRegistryBusy)); code != ErrorConflict {
 		t.Fatalf("registry busy conflict code=%s", code)
+	}
+}
+
+func TestWorkspacePurgeRequiresConfirmationAndLeavesProjectFiles(t *testing.T) {
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	service := NewWorkspaceService(manager, nil)
+	root := t.TempDir()
+	registered, err := service.Register(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(root, "project.txt")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Purge(t.Context(), registered.Value.ID, false); ErrorCodeOf(err) != ErrorInvalidArgument {
+		t.Fatalf("unconfirmed purge err=%v code=%s", err, ErrorCodeOf(err))
+	}
+	if _, err := os.Stat(filepath.Join(root, workspace.LocalDirName)); err != nil {
+		t.Fatalf("unconfirmed purge changed local state: %v", err)
+	}
+	if _, err := service.Purge(t.Context(), registered.Value.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Get(registered.Value.ID); !errors.Is(err, workspace.ErrNotFound) {
+		t.Fatalf("workspace remains registered: %v", err)
+	}
+	if data, err := os.ReadFile(sentinel); err != nil || string(data) != "keep" {
+		t.Fatalf("project file data=%q err=%v", data, err)
 	}
 }

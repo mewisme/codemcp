@@ -275,6 +275,7 @@ func workspaceActions() []action.Action {
 			return Route{Kind: RouteWorkspaces, ResourceID: ctx.ResourceID, Action: "relocate"}
 		}),
 		workspaceAction("workspace.unregister", "Unregister", "Unregister the current workspace without deleting project files", []string{"workspace", "unregister"}, []string{"workspace", "unregister"}, tuipage.WorkspaceUnregister, true, false),
+		workspaceAction("workspace.purge", "Purge local state", "Delete local .cm state for the current workspace after confirmation", []string{"workspace", "purge", "delete", "state"}, []string{"workspace", "purge"}, tuipage.WorkspacePurge, true, false),
 		editorNavigationAction("workspace.access.add", "Add access directory", "Workspace", "Grant the current workspace access to an additional directory", []string{"workspace", "access", "add"}, []string{"workspace", "access", "add"}, func(ctx action.Context) bool { return ctx.Route == string(RouteWorkspaces) && ctx.ResourceID != "" }, func(ctx action.Context) Route {
 			return Route{Kind: RouteWorkspaces, ResourceID: ctx.ResourceID, Section: "access", Action: "add"}
 		}),

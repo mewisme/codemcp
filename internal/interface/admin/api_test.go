@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -585,13 +586,20 @@ func TestWorkspaceAPICRUD(t *testing.T) {
 
 func TestWorkspaceAPIRelocate(t *testing.T) {
 	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
-	oldRoot := t.TempDir()
-	newRoot := t.TempDir()
+	parent := t.TempDir()
+	oldRoot := filepath.Join(parent, "old")
+	newRoot := filepath.Join(parent, "new")
+	if err := os.Mkdir(oldRoot, 0755); err != nil {
+		t.Fatal(err)
+	}
 	item, err := manager.Register(oldRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	handler := New(API{Workspaces: manager})
+	if err := os.Rename(oldRoot, newRoot); err != nil {
+		t.Fatal(err)
+	}
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/workspaces/"+item.ID+"/relocate", strings.NewReader(`{"path":`+jsonString(newRoot)+`}`)))
 	if recorder.Code != http.StatusOK {
@@ -601,12 +609,47 @@ func TestWorkspaceAPIRelocate(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &relocated); err != nil {
 		t.Fatal(err)
 	}
-	if relocated.ID == item.ID || relocated.Path == item.Path {
+	if relocated.ID != item.ID || relocated.Path == item.Path {
 		t.Fatalf("relocated=%#v", relocated)
 	}
 	resolved, err := manager.Get(item.ID)
-	if err != nil || resolved.ID != relocated.ID {
-		t.Fatalf("legacy lookup=%#v err=%v", resolved, err)
+	if err != nil || resolved.ID != item.ID || resolved.Path != relocated.Path {
+		t.Fatalf("stable lookup=%#v err=%v", resolved, err)
+	}
+}
+
+func TestWorkspaceAPIPurgeRequiresConfirmationAndKeepsProjectFiles(t *testing.T) {
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	root := t.TempDir()
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sentinel := filepath.Join(root, "project.txt")
+	if err := os.WriteFile(sentinel, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(API{Workspaces: manager})
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/workspaces/"+item.ID+"/purge", strings.NewReader(`{"confirm":false}`)))
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unconfirmed purge status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, workspace.LocalDirName)); err != nil {
+		t.Fatalf("local state removed without confirmation: %v", err)
+	}
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/workspaces/"+item.ID+"/purge", strings.NewReader(`{"confirm":true}`)))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("purge status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, workspace.LocalDirName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("local state still exists: %v", err)
+	}
+	if data, err := os.ReadFile(sentinel); err != nil || string(data) != "keep" {
+		t.Fatalf("project file changed: data=%q err=%v", data, err)
 	}
 }
 

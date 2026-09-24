@@ -18,6 +18,8 @@ type WorkspaceView struct {
 	Path      string   `json:"path"`
 	AllowDirs []string `json:"allow_dirs,omitempty"`
 	LegacyIDs []string `json:"legacy_ids,omitempty"`
+	Available bool     `json:"available"`
+	Error     string   `json:"error,omitempty"`
 }
 
 type WorkspaceContainerView struct {
@@ -38,6 +40,7 @@ type WorkspaceOperations interface {
 	Register(context.Context, string) (Result[WorkspaceView], error)
 	Relocate(context.Context, string, string) (Result[WorkspaceRelocation], error)
 	Unregister(context.Context, string) (Result[WorkspaceView], error)
+	Purge(context.Context, string, bool) (Result[WorkspaceView], error)
 	AddAllowDir(context.Context, string, string) (Result[WorkspaceView], error)
 	RemoveAllowDir(context.Context, string, string) (Result[WorkspaceView], error)
 	ListContainers(context.Context) (Result[[]WorkspaceContainerView], error)
@@ -205,6 +208,28 @@ func (service *WorkspaceService) Unregister(ctx context.Context, id string) (Res
 			return WorkspaceView{}, classifyWorkspaceError(capability.WorkspaceUnregister, err)
 		}
 		if err := service.reconcileOnce(ctx, capability.WorkspaceUnregister); err != nil {
+			return WorkspaceView{}, err
+		}
+		return workspaceView(value), nil
+	})
+}
+
+func (service *WorkspaceService) Purge(ctx context.Context, target string, confirm bool) (Result[WorkspaceView], error) {
+	return runOperation(ctx, "WORKSPACE", capability.WorkspacePurge, "Purging workspace local state", []tracepkg.Field{tracepkg.String("target", strings.TrimSpace(target)), tracepkg.Bool("confirmed", confirm)}, func() (WorkspaceView, error) {
+		if err := service.require(capability.WorkspacePurge); err != nil {
+			return WorkspaceView{}, err
+		}
+		if err := requireApplicationText(capability.WorkspacePurge, "workspace id or path", target); err != nil {
+			return WorkspaceView{}, err
+		}
+		if !confirm {
+			return WorkspaceView{}, operationError(capability.WorkspacePurge, ErrorInvalidArgument, workspace.ErrPurgeNotConfirmed)
+		}
+		value, err := service.manager.DeleteState(target)
+		if err != nil {
+			return WorkspaceView{}, classifyWorkspaceError(capability.WorkspacePurge, err)
+		}
+		if err := service.reconcileOnce(ctx, capability.WorkspacePurge); err != nil {
 			return WorkspaceView{}, err
 		}
 		return workspaceView(value), nil
@@ -463,6 +488,10 @@ func classifyWorkspaceError(operation capability.ID, err error) error {
 		return operationError(operation, ErrorNotFound, err)
 	case errors.Is(err, workspace.ErrAlreadyActive), errors.Is(err, workspace.ErrStateLost), errors.Is(err, workspace.ErrRegistryBusy):
 		return operationError(operation, ErrorConflict, err)
+	case errors.Is(err, workspace.ErrUnavailable):
+		return operationError(operation, ErrorUnavailable, err)
+	case errors.Is(err, workspace.ErrPurgeNotConfirmed):
+		return operationError(operation, ErrorInvalidArgument, err)
 	case errors.Is(err, os.ErrNotExist):
 		return operationError(operation, ErrorInvalidArgument, err)
 	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
@@ -473,7 +502,7 @@ func classifyWorkspaceError(operation capability.ID, err error) error {
 }
 
 func workspaceView(value workspace.Workspace) WorkspaceView {
-	return WorkspaceView{ID: value.ID, Path: value.Path, AllowDirs: append([]string(nil), value.AllowDirs...), LegacyIDs: append([]string(nil), value.LegacyIDs...)}
+	return WorkspaceView{ID: value.ID, Path: value.Path, AllowDirs: append([]string(nil), value.AllowDirs...), LegacyIDs: append([]string(nil), value.LegacyIDs...), Available: value.Available(), Error: value.Error}
 }
 
 func workspaceViews(values []workspace.Workspace) []WorkspaceView {
@@ -507,6 +536,11 @@ type WorkspacePathInput struct {
 
 type WorkspaceRegisterInput struct {
 	Path string
+}
+
+type WorkspacePurgeInput struct {
+	Target  string
+	Confirm bool
 }
 
 type WorkspaceContainerInput struct {
@@ -560,6 +594,10 @@ func BindWorkspaceOperations(dispatcher *Dispatcher, service *WorkspaceService) 
 		})},
 		{capability.WorkspaceUnregister, typedOperation[WorkspaceIDInput](capability.WorkspaceUnregister, func(ctx context.Context, input WorkspaceIDInput) (any, error) {
 			result, err := service.Unregister(ctx, input.ID)
+			return result.Value, err
+		})},
+		{capability.WorkspacePurge, typedOperation[WorkspacePurgeInput](capability.WorkspacePurge, func(ctx context.Context, input WorkspacePurgeInput) (any, error) {
+			result, err := service.Purge(ctx, input.Target, input.Confirm)
 			return result.Value, err
 		})},
 		{capability.WorkspaceAccessList, typedOperation[WorkspaceIDInput](capability.WorkspaceAccessList, func(ctx context.Context, input WorkspaceIDInput) (any, error) {
