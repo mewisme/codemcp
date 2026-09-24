@@ -370,10 +370,10 @@ func TestDefaultServerUsesExposurePolicy(t *testing.T) {
 	}
 }
 
-func TestDefaultFeaturesActive(t *testing.T) {
+func TestDefaultIntegrationsActive(t *testing.T) {
 	cfg := Default()
-	if !cfg.Features.Ponytail.Active || cfg.Features.Ponytail.Mode != "full" || !cfg.Features.Caveman.Active || cfg.Features.Caveman.Mode != "full" {
-		t.Fatalf("features = %#v", cfg.Features)
+	if !cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "full" || !cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "full" {
+		t.Fatalf("integrations = %#v", cfg.Integrations)
 	}
 }
 
@@ -383,13 +383,13 @@ func TestValidatePonytailDefaultMode(t *testing.T) {
 	cfg.Auth.AdminEnabled = false
 	cfg.Server.AllowUnauthenticatedLoopback = true
 	for _, mode := range []string{"lite", "full", "ultra"} {
-		cfg.Features.Ponytail.Mode = mode
+		cfg.Integrations.Ponytail.Mode = mode
 		if err := Validate(cfg); err != nil {
 			t.Fatalf("mode %q rejected: %v", mode, err)
 		}
 	}
 	for _, mode := range []string{"", "off", "review", "max"} {
-		cfg.Features.Ponytail.Mode = mode
+		cfg.Integrations.Ponytail.Mode = mode
 		if err := Validate(cfg); err == nil {
 			t.Fatalf("mode %q accepted", mode)
 		}
@@ -402,13 +402,13 @@ func TestValidateCavemanDefaultMode(t *testing.T) {
 	cfg.Auth.AdminEnabled = false
 	cfg.Server.AllowUnauthenticatedLoopback = true
 	for _, mode := range []string{"lite", "full", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"} {
-		cfg.Features.Caveman.Mode = mode
+		cfg.Integrations.Caveman.Mode = mode
 		if err := Validate(cfg); err != nil {
 			t.Fatalf("mode %q rejected: %v", mode, err)
 		}
 	}
 	for _, mode := range []string{"", "off", "wenyan", "commit", "review", "compress", "max"} {
-		cfg.Features.Caveman.Mode = mode
+		cfg.Integrations.Caveman.Mode = mode
 		if err := Validate(cfg); err == nil {
 			t.Fatalf("mode %q accepted", mode)
 		}
@@ -459,7 +459,7 @@ func TestLegacyShellPolicyFieldsArePreservedOnSave(t *testing.T) {
 	}
 }
 
-func TestLegacyJSONConfigWithoutFeaturesKeepsEnabledDefaults(t *testing.T) {
+func TestLegacyJSONConfigWithoutIntegrationsKeepsEnabledDefaults(t *testing.T) {
 	for _, legacyInteractive := range []struct {
 		name  string
 		value bool
@@ -489,8 +489,8 @@ func TestLegacyJSONConfigWithoutFeaturesKeepsEnabledDefaults(t *testing.T) {
 			if !loaded.Server.Enabled {
 				t.Fatal("legacy JSON config disabled MCP HTTP")
 			}
-			if !loaded.Features.Ponytail.Active || loaded.Features.Ponytail.Mode != "full" || !loaded.Features.Caveman.Active || loaded.Features.Caveman.Mode != "full" {
-				t.Fatalf("legacy JSON features = %#v", loaded.Features)
+			if !loaded.Integrations.Ponytail.Active || loaded.Integrations.Ponytail.Mode != "full" || !loaded.Integrations.Caveman.Active || loaded.Integrations.Caveman.Mode != "full" {
+				t.Fatalf("legacy JSON integrations = %#v", loaded.Integrations)
 			}
 			unchanged, err := os.ReadFile(configPath)
 			if err != nil {
@@ -523,16 +523,16 @@ func TestLegacyJSONConfigWithoutFeaturesKeepsEnabledDefaults(t *testing.T) {
 	}
 }
 
-func TestPartialJSONFeaturesKeepMissingFeatureDefault(t *testing.T) {
+func TestPartialJSONIntegrationsKeepMissingIntegrationDefault(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.json")
 	secretPath := filepath.Join(root, "tunnel.json")
 	partial := map[string]any{
-		"server":   map[string]any{"port": int64(37421), "expose": map[string]any{"mode": "none", "interfaces": []any{}}},
-		"admin":    map[string]any{"enabled": false, "port": int64(37422)},
-		"auth":     map[string]any{"mcp_enabled": false, "admin_enabled": false},
-		"features": map[string]any{"ponytail": map[string]any{"enabled": false}},
-		"tunnel":   map[string]any{"enabled": false},
+		"server":       map[string]any{"port": int64(37421), "expose": map[string]any{"mode": "none", "interfaces": []any{}}},
+		"admin":        map[string]any{"enabled": false, "port": int64(37422)},
+		"auth":         map[string]any{"mcp_enabled": false, "admin_enabled": false},
+		"integrations": map[string]any{"ponytail": map[string]any{"active": false}},
+		"tunnel":       map[string]any{"enabled": false},
 	}
 	data, err := configformat.EncodeGeneric(configformat.JSON, partial)
 	if err != nil {
@@ -545,14 +545,14 @@ func TestPartialJSONFeaturesKeepMissingFeatureDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Features.Ponytail.Active || loaded.Features.Ponytail.Mode != "full" || !loaded.Features.Caveman.Active || loaded.Features.Caveman.Mode != "full" {
-		t.Fatalf("partial JSON features = %#v", loaded.Features)
+	if loaded.Integrations.Ponytail.Active || loaded.Integrations.Ponytail.Mode != "full" || !loaded.Integrations.Caveman.Active || loaded.Integrations.Caveman.Mode != "full" {
+		t.Fatalf("partial JSON integrations = %#v", loaded.Integrations)
 	}
 }
 
-func TestFeatureConfigSerializesActiveOnlyInJSON(t *testing.T) {
+func TestIntegrationConfigSerializesActiveOnlyInJSON(t *testing.T) {
 	cfg := Default()
-	cfg.Features.Ponytail.Active = false
+	cfg.Integrations.Ponytail.Active = false
 	data, err := configformat.Marshal(configformat.JSON, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -565,15 +565,15 @@ func TestFeatureConfigSerializesActiveOnlyInJSON(t *testing.T) {
 	if _, exists := root["interactive"]; exists {
 		t.Fatalf("obsolete interactive key serialized: %#v", root)
 	}
-	featureValues := root["features"].(map[string]any)
-	ponytail := featureValues["ponytail"].(map[string]any)
+	integrationValues := root["integrations"].(map[string]any)
+	ponytail := integrationValues["ponytail"].(map[string]any)
 	if ponytail["active"] != false || ponytail["mode"] != "full" {
 		t.Fatalf("ponytail = %#v", ponytail)
 	}
 	if _, exists := ponytail["enabled"]; exists {
 		t.Fatalf("legacy enabled key was serialized: %#v", ponytail)
 	}
-	caveman := featureValues["caveman"].(map[string]any)
+	caveman := integrationValues["caveman"].(map[string]any)
 	if caveman["active"] != true || caveman["mode"] != "full" {
 		t.Fatalf("caveman = %#v", caveman)
 	}

@@ -47,21 +47,21 @@ type authPatch struct {
 }
 
 type publicConfig struct {
-	Server      config.ServerConfig      `json:"server"`
-	Admin       config.AdminConfig       `json:"admin"`
-	Auth        authSettings             `json:"auth"`
-	Permissions config.PermissionsConfig `json:"permissions"`
-	Shell       config.ShellConfig       `json:"shell"`
-	Features    config.FeaturesConfig    `json:"features"`
+	Server       config.ServerConfig       `json:"server"`
+	Admin        config.AdminConfig        `json:"admin"`
+	Auth         authSettings              `json:"auth"`
+	Permissions  config.PermissionsConfig  `json:"permissions"`
+	Shell        config.ShellConfig        `json:"shell"`
+	Integrations config.IntegrationsConfig `json:"integrations"`
 }
 
 type configPatch struct {
-	Server      *serverPatch              `json:"server,omitempty"`
-	Admin       *config.AdminConfig       `json:"admin,omitempty"`
-	Auth        *authPatch                `json:"auth,omitempty"`
-	Permissions *config.PermissionsConfig `json:"permissions,omitempty"`
-	Shell       *config.ShellConfig       `json:"shell,omitempty"`
-	Features    *featurePatch             `json:"features,omitempty"`
+	Server       *serverPatch              `json:"server,omitempty"`
+	Admin        *config.AdminConfig       `json:"admin,omitempty"`
+	Auth         *authPatch                `json:"auth,omitempty"`
+	Permissions  *config.PermissionsConfig `json:"permissions,omitempty"`
+	Shell        *config.ShellConfig       `json:"shell,omitempty"`
+	Integrations *integrationPatch         `json:"integrations,omitempty"`
 }
 
 type serverPatch struct {
@@ -72,25 +72,14 @@ type serverPatch struct {
 	AllowUnauthenticatedLoopback *bool                  `json:"allow_unauthenticated_loopback,omitempty"`
 }
 
-type featurePatch struct {
-	Ponytail *featureStatePatch `json:"ponytail,omitempty"`
-	Caveman  *featureStatePatch `json:"caveman,omitempty"`
+type integrationPatch struct {
+	Ponytail *integrationStatePatch `json:"ponytail,omitempty"`
+	Caveman  *integrationStatePatch `json:"caveman,omitempty"`
 }
 
-type featureStatePatch struct {
-	Active  *bool   `json:"active,omitempty"`
-	Enabled *bool   `json:"enabled,omitempty"`
-	Mode    *string `json:"mode,omitempty"`
-}
-
-func (patch *featureStatePatch) active() *bool {
-	if patch == nil {
-		return nil
-	}
-	if patch.Active != nil {
-		return patch.Active
-	}
-	return patch.Enabled
+type integrationStatePatch struct {
+	Active *bool   `json:"active,omitempty"`
+	Mode   *string `json:"mode,omitempty"`
 }
 
 func New(api API) http.Handler {
@@ -194,18 +183,18 @@ func (api API) handleConfig(w http.ResponseWriter, r *http.Request) {
 				next.Shell.Path, err = config.NormalizeShellPath(patch.Shell.Path)
 			}
 		}
-		if err == nil && patch.Features != nil {
-			if active := patch.Features.Ponytail.active(); active != nil {
-				next.Features.Ponytail.Active = *active
+		if err == nil && patch.Integrations != nil {
+			if patch.Integrations.Ponytail != nil && patch.Integrations.Ponytail.Active != nil {
+				next.Integrations.Ponytail.Active = *patch.Integrations.Ponytail.Active
 			}
-			if patch.Features.Ponytail != nil && patch.Features.Ponytail.Mode != nil {
-				next.Features.Ponytail.Mode = strings.ToLower(strings.TrimSpace(*patch.Features.Ponytail.Mode))
+			if patch.Integrations.Ponytail != nil && patch.Integrations.Ponytail.Mode != nil {
+				next.Integrations.Ponytail.Mode = strings.ToLower(strings.TrimSpace(*patch.Integrations.Ponytail.Mode))
 			}
-			if active := patch.Features.Caveman.active(); active != nil {
-				next.Features.Caveman.Active = *active
+			if patch.Integrations.Caveman != nil && patch.Integrations.Caveman.Active != nil {
+				next.Integrations.Caveman.Active = *patch.Integrations.Caveman.Active
 			}
-			if patch.Features.Caveman != nil && patch.Features.Caveman.Mode != nil {
-				next.Features.Caveman.Mode = strings.ToLower(strings.TrimSpace(*patch.Features.Caveman.Mode))
+			if patch.Integrations.Caveman != nil && patch.Integrations.Caveman.Mode != nil {
+				next.Integrations.Caveman.Mode = strings.ToLower(strings.TrimSpace(*patch.Integrations.Caveman.Mode))
 			}
 		}
 		if err == nil {
@@ -258,7 +247,7 @@ func (api API) upstreamManager() *upstream.Manager {
 
 func publicConfigView(cfg config.Config) publicConfig {
 	return publicConfig{
-		Server: cfg.Server, Admin: cfg.Admin, Permissions: cfg.Permissions, Shell: cfg.Shell, Features: cfg.Features,
+		Server: cfg.Server, Admin: cfg.Admin, Permissions: cfg.Permissions, Shell: cfg.Shell, Integrations: cfg.Integrations,
 		Auth: authSettings{
 			MCPEnabled: cfg.Auth.MCPEnabled, AdminEnabled: cfg.Auth.AdminEnabled,
 			MCPTokenConfigured: cfg.Auth.MCPTokenHash != "", AdminTokenConfigured: cfg.Auth.AdminTokenHash != "",
@@ -268,7 +257,9 @@ func publicConfigView(cfg config.Config) publicConfig {
 
 func (api API) commitConfig(next, previous config.Config) error {
 	if api.ReloadConfig == nil {
-		_, err := api.Config.Update(func(config.Config) (config.Config, error) { return next, api.persistConfigWithFeatures(next, previous) })
+		_, err := api.Config.Update(func(config.Config) (config.Config, error) {
+			return next, api.persistConfigWithIntegrations(next, previous)
+		})
 		return err
 	}
 	if err := api.persistConfig(next); err != nil {
@@ -280,12 +271,12 @@ func (api API) commitConfig(next, previous config.Config) error {
 	return nil
 }
 
-func (api API) persistConfigWithFeatures(next, previous config.Config) error {
+func (api API) persistConfigWithIntegrations(next, previous config.Config) error {
 	if err := api.persistConfig(next); err != nil {
 		return err
 	}
-	if next.Features != previous.Features && api.Tools != nil {
-		if err := api.Tools.SyncFeatures(next.Features); err != nil {
+	if next.Integrations != previous.Integrations && api.Tools != nil {
+		if err := api.Tools.SyncIntegrations(next.Integrations); err != nil {
 			return errors.Join(err, api.persistConfig(previous))
 		}
 	}

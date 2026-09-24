@@ -20,7 +20,7 @@ func (a *App) Bootstrap() error {
 		}
 		if a.Tools == nil {
 			cfg := a.Config.Snapshot()
-			a.Tools = tools.NewRuntimeWithAccess(cfg.Features, cfg.Permissions.AllowDirs, func() (bool, int) {
+			a.Tools = tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) {
 				current := a.Config.Snapshot()
 				return current.Admin.Enabled, current.Admin.Port
 			})

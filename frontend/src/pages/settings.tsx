@@ -155,7 +155,7 @@ export function SettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Configure runtime listeners, security, filesystem access, features, and the managed execution environment."
+        description="Configure runtime listeners, security, filesystem access, first-party integrations, and the managed execution environment."
       />
       <PageError message={error} />
       {message ? (
@@ -168,7 +168,7 @@ export function SettingsPage() {
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="network">Network</TabsTrigger>
           <TabsTrigger value="permissions">Permissions</TabsTrigger>
-          <TabsTrigger value="features">Features</TabsTrigger>
+          <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="authentication">Authentication</TabsTrigger>
           <TabsTrigger value="environment">Environment</TabsTrigger>
         </ScrollableTabsList>
@@ -412,27 +412,27 @@ export function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent className="mt-6" value="features">
+        <TabsContent className="mt-6" value="integrations">
           <Card>
             <CardHeader>
-              <CardTitle>Built-in modes</CardTitle>
+              <CardTitle>First-party integrations</CardTitle>
               <CardDescription>
-                Set the default active state for built-in response modes. Their
-                controller tools remain available.
+                Set the default active state for first-party response integrations.
+                Their controller tools remain available.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <FieldGroup>
                 <Toggle
                   label="Ponytail"
-                  description="Keep the built-in Ponytail coding mode active by default."
-                  checked={config.features.ponytail.active}
+                  description="Keep the Ponytail coding integration active by default."
+                  checked={config.integrations.ponytail.active}
                   onCheckedChange={(active) =>
                     setConfig({
                       ...config,
-                      features: {
-                        ...config.features,
-                        ponytail: { ...config.features.ponytail, active },
+                      integrations: {
+                        ...config.integrations,
+                        ponytail: { ...config.integrations.ponytail, active },
                       },
                     })
                   }
@@ -442,15 +442,15 @@ export function SettingsPage() {
                   description="Default intensity for new workspace mode state. Review remains session-only."
                 >
                   <Select
-                    value={config.features.ponytail.mode}
+                    value={config.integrations.ponytail.mode}
                     onValueChange={(mode) =>
                       setConfig({
                         ...config,
-                        features: {
-                          ...config.features,
+                        integrations: {
+                          ...config.integrations,
                           ponytail: {
-                            ...config.features.ponytail,
-                            mode: mode as PublicConfig["features"]["ponytail"]["mode"],
+                            ...config.integrations.ponytail,
+                            mode: mode as PublicConfig["integrations"]["ponytail"]["mode"],
                           },
                         },
                       })
@@ -469,13 +469,13 @@ export function SettingsPage() {
                 <Toggle
                   label="Caveman"
                   description="Keep Caveman mode active by default."
-                  checked={config.features.caveman.active}
+                  checked={config.integrations.caveman.active}
                   onCheckedChange={(active) =>
                     setConfig({
                       ...config,
-                      features: {
-                        ...config.features,
-                        caveman: { ...config.features.caveman, active },
+                      integrations: {
+                        ...config.integrations,
+                        caveman: { ...config.integrations.caveman, active },
                       },
                     })
                   }
@@ -485,15 +485,15 @@ export function SettingsPage() {
                   description="Default Caveman level for new workspace mode state. Wenyan levels use classical Chinese compression."
                 >
                   <Select
-                    value={config.features.caveman.mode}
+                    value={config.integrations.caveman.mode}
                     onValueChange={(mode) =>
                       setConfig({
                         ...config,
-                        features: {
-                          ...config.features,
+                        integrations: {
+                          ...config.integrations,
                           caveman: {
-                            ...config.features.caveman,
-                            mode: mode as PublicConfig["features"]["caveman"]["mode"],
+                            ...config.integrations.caveman,
+                            mode: mode as PublicConfig["integrations"]["caveman"]["mode"],
                           },
                         },
                       })

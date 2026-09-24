@@ -95,7 +95,7 @@ var configDomains = []configDomain{
 	{ID: "runtime", Title: "Runtime & Network", Description: "MCP HTTP and admin server configuration"},
 	{ID: "access", Title: "Access & Security", Description: "Authentication and filesystem access"},
 	{ID: "shell", Title: "Shell & Execution", Description: "Approval, sandbox, environment, and network policy"},
-	{ID: "features", Title: "Features", Description: "Ponytail and Caveman behavior"},
+	{ID: "integrations", Title: "Integrations", Description: "Ponytail and Caveman integrations"},
 	{ID: "tunnel", Title: "Tunnel", Description: "OpenAI Secure MCP Tunnel configuration"},
 	{ID: "storage", Title: "Storage & Maintenance", Description: "Storage, verification, import, export, and migration"},
 }
@@ -792,8 +792,8 @@ func configSectionForRoute(resourceID string) (config.FieldSection, bool) {
 		return config.FieldSectionAccess, true
 	case "shell":
 		return config.FieldSectionShell, true
-	case "features":
-		return config.FieldSectionFeatures, true
+	case "integrations":
+		return config.FieldSectionIntegrations, true
 	case "tunnel":
 		return config.FieldSectionTunnel, true
 	default:
@@ -888,8 +888,8 @@ func (page *ConfigPage) domainSummary(domain string) string {
 			return "inherits runtime PATH · risk-based mutation approvals"
 		}
 		return fmt.Sprintf("%d extra PATH entries · risk-based mutation approvals", len(cfg.Shell.Path))
-	case "features":
-		return fmt.Sprintf("Ponytail %s · Caveman %s", configOnOff(cfg.Features.Ponytail.Active), configOnOff(cfg.Features.Caveman.Active))
+	case "integrations":
+		return fmt.Sprintf("Ponytail %s · Caveman %s", configOnOff(cfg.Integrations.Ponytail.Active), configOnOff(cfg.Integrations.Caveman.Active))
 	case "tunnel":
 		return fmt.Sprintf("%s · runtime key %s · admin key %s", configOnOff(cfg.Tunnel.Enabled), configuredState(cfg.Tunnel.APIKey), configuredState(cfg.Tunnel.AdminKey))
 	case "storage":

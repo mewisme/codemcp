@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
-	"go.mewis.me/codemcp/internal/caveman"
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/controlguard"
-	"go.mewis.me/codemcp/internal/features"
 	"go.mewis.me/codemcp/internal/idgen"
-	"go.mewis.me/codemcp/internal/ponytail"
+	"go.mewis.me/codemcp/internal/integrations"
+	"go.mewis.me/codemcp/internal/integrations/caveman"
+	"go.mewis.me/codemcp/internal/integrations/ponytail"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -39,21 +39,21 @@ type Runtime struct {
 	Processes       *shellruntime.ProcessManager
 	LoopGuard       *ToolLoopGuard
 	sessionMu       sync.Mutex
-	featureMu       sync.Mutex
-	features        features.Config
+	integrationMu   sync.Mutex
+	integrations    integrations.Config
 	ponytailManager *ponytail.Manager
 	cavemanManager  *caveman.Manager
 }
 
 func NewRuntime() *Runtime {
-	return NewRuntimeWithFeatures(features.Default())
+	return NewRuntimeWithIntegrations(integrations.Default())
 }
 
-func NewRuntimeWithFeatures(featureConfig features.Config) *Runtime {
-	return NewRuntimeWithAccess(featureConfig, nil)
+func NewRuntimeWithIntegrations(integrationConfig integrations.Config) *Runtime {
+	return NewRuntimeWithAccess(integrationConfig, nil)
 }
 
-func NewRuntimeWithAccess(featureConfig features.Config, globalAllowDirs []string, environments ...ProjectContextEnvironment) *Runtime {
+func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs []string, environments ...ProjectContextEnvironment) *Runtime {
 	workspaces := workspace.NewManagerWithGlobalAllowDirs(workspace.DefaultStorePath(), globalAllowDirs)
 	checkpoints := checkpoint.NewWorkspaceStore(checkpoint.DefaultRoot(), workspaces)
 	upstreams := upstream.NewManager(upstream.NewStore(upstream.Path()))
@@ -66,7 +66,7 @@ func NewRuntimeWithAccess(featureConfig features.Config, globalAllowDirs []strin
 	executions := shellruntime.NewExecutionHub()
 	shell := shellruntime.NewManagerWithExecutions(workspaces, shellruntime.DefaultStateRoot(), executions)
 	processes := shellruntime.NewProcessManagerWithExecutions(workspaces, shell, executions)
-	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Executions: executions, Processes: processes, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(featureConfig.Ponytail.Active, ponytail.Mode(featureConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(featureConfig.Caveman.Active, caveman.Mode(featureConfig.Caveman.Mode))}
+	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Executions: executions, Processes: processes, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
 	RegisterWorkspaceTools(registry, workspaces, shell)
 	RegisterWorkspaceListTool(registry, runtime)
 	RegisterWorkspaceContainerTools(registry, workspaces)
@@ -77,7 +77,7 @@ func NewRuntimeWithAccess(featureConfig features.Config, globalAllowDirs []strin
 	registerCoreWithManagers(registry, workspaces, checkpoints, environment, shell, processes)
 	RegisterApprovalTools(registry, runtime)
 	RegisterUpstreamTools(registry, upstreams)
-	if err := runtime.SyncFeatures(featureConfig); err != nil {
+	if err := runtime.SyncIntegrations(integrationConfig); err != nil {
 		panic(err)
 	}
 
@@ -94,34 +94,37 @@ func (r *Runtime) RefreshUpstreams(ctx context.Context, force bool) error {
 	return RefreshUpstreamProxies(ctx, r.Registry, r.Upstream, force)
 }
 
-func (r *Runtime) SyncFeatures(featureConfig features.Config) error {
+func (r *Runtime) SyncIntegrations(integrationConfig integrations.Config) error {
 	if r == nil || r.Registry == nil || r.Workspaces == nil {
 		return errors.New("tool runtime is unavailable")
 	}
-	r.featureMu.Lock()
-	defer r.featureMu.Unlock()
+	r.integrationMu.Lock()
+	defer r.integrationMu.Unlock()
 	if r.ponytailManager == nil {
-		r.ponytailManager = ponytail.NewManager(featureConfig.Ponytail.Active, ponytail.Mode(featureConfig.Ponytail.Mode))
+		r.ponytailManager = ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode))
 	}
 	if r.cavemanManager == nil {
-		r.cavemanManager = caveman.NewManager(featureConfig.Caveman.Active, caveman.Mode(featureConfig.Caveman.Mode))
+		r.cavemanManager = caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))
 	}
-	if err := r.Registry.ReplaceOwnedPrefix("feature:", featureToolEntries(r.Workspaces, r.ponytailManager, r.cavemanManager)); err != nil {
+	if err := r.Registry.ReplaceOwned(integrations.Owner(integrations.PonytailID), ponytailToolEntries(r.Workspaces, r.ponytailManager)); err != nil {
 		return err
 	}
-	r.ponytailManager.SetDefaults(featureConfig.Ponytail.Active, ponytail.Mode(featureConfig.Ponytail.Mode))
-	r.cavemanManager.SetDefaults(featureConfig.Caveman.Active, caveman.Mode(featureConfig.Caveman.Mode))
-	r.features = featureConfig
+	if err := r.Registry.ReplaceOwned(integrations.Owner(integrations.CavemanID), cavemanToolEntries(r.Workspaces, r.cavemanManager)); err != nil {
+		return err
+	}
+	r.ponytailManager.SetDefaults(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode))
+	r.cavemanManager.SetDefaults(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))
+	r.integrations = integrationConfig
 	return nil
 }
 
-func (r *Runtime) Features() features.Config {
+func (r *Runtime) Integrations() integrations.Config {
 	if r == nil {
-		return features.Config{}
+		return integrations.Config{}
 	}
-	r.featureMu.Lock()
-	defer r.featureMu.Unlock()
-	return r.features
+	r.integrationMu.Lock()
+	defer r.integrationMu.Unlock()
+	return r.integrations
 }
 
 func (r *Runtime) SetGlobalAllowDirs(allowDirs []string) {

@@ -9,21 +9,21 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 )
 
-func TestFieldSetValuePreservesTypedBehaviorAndLegacyAliases(t *testing.T) {
+func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 	cfg := Default()
 	cfg.Auth.MCPEnabled = false
 	cfg.Auth.AdminEnabled = false
 	cfg.Server.AllowUnauthenticatedLoopback = true
 	for key, value := range map[string]string{
 		"server.port": "4000", "server.expose": "true", "admin.enabled": "false",
-		"features.ponytail.enabled": "false", "features.ponytail.mode": "ULTRA", "features.caveman.enabled": "false", "features.caveman.mode": "WENYAN-ULTRA",
+		"integrations.ponytail.active": "false", "integrations.ponytail.mode": "ULTRA", "integrations.caveman.active": "false", "integrations.caveman.mode": "WENYAN-ULTRA",
 		"permissions.allow_dirs": "/tmp\n/var/tmp", "shell.path": "/opt/tools,/usr/local/custom/bin",
 	} {
 		if err := SetValue(&cfg, key, value); err != nil {
 			t.Fatalf("%s: %v", key, err)
 		}
 	}
-	if cfg.Server.Port != 4000 || cfg.Server.Expose.Mode != ExposureWildcard || cfg.Admin.Enabled || cfg.Features.Ponytail.Active || cfg.Features.Ponytail.Mode != "ultra" || cfg.Features.Caveman.Active || cfg.Features.Caveman.Mode != "wenyan-ultra" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 {
+	if cfg.Server.Port != 4000 || cfg.Server.Expose.Mode != ExposureWildcard || cfg.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 {
 		t.Fatalf("cfg=%#v", cfg)
 	}
 	if value, err := RawValue(cfg, "shell.path"); err != nil || value != "/opt/tools,/usr/local/custom/bin" {
@@ -58,10 +58,10 @@ func TestFieldSetValueValidationIsTransactional(t *testing.T) {
 	if !cfg.Server.Enabled {
 		t.Fatal("invalid transport update mutated config")
 	}
-	if err := SetValue(&cfg, "features.ponytail.mode", "review"); err == nil || err.Error() != "features.ponytail.mode must be lite, full, or ultra" {
+	if err := SetValue(&cfg, "integrations.ponytail.mode", "review"); err == nil || err.Error() != "integrations.ponytail.mode must be lite, full, or ultra" {
 		t.Fatalf("ponytail err=%v", err)
 	}
-	if err := SetValue(&cfg, "features.caveman.mode", "wenyan"); err == nil || !strings.Contains(err.Error(), "wenyan-lite") {
+	if err := SetValue(&cfg, "integrations.caveman.mode", "wenyan"); err == nil || !strings.Contains(err.Error(), "wenyan-lite") {
 		t.Fatalf("caveman err=%v", err)
 	}
 }
@@ -137,7 +137,7 @@ func TestFieldsReturnsDefensiveCopy(t *testing.T) {
 	}
 }
 
-func TestExplainResolvesLeafBranchRootAndAlias(t *testing.T) {
+func TestExplainResolvesLeafBranchAndRoot(t *testing.T) {
 	leaf, err := Explain("shell.path")
 	if err != nil {
 		t.Fatal(err)
@@ -159,9 +159,8 @@ func TestExplainResolvesLeafBranchRootAndAlias(t *testing.T) {
 	if !root.Branch || !hasExplanationChild(root, "shell") || !hasExplanationChild(root, "server") {
 		t.Fatalf("root=%#v", root)
 	}
-	alias, err := Explain("features.ponytail.enabled")
-	if err != nil || alias.Key != "features.ponytail.active" {
-		t.Fatalf("alias=%#v err=%v", alias, err)
+	if _, err := Explain("integrations.ponytail.enabled"); err == nil || !strings.Contains(err.Error(), "unsupported config key") {
+		t.Fatalf("legacy alias unexpectedly resolved: %v", err)
 	}
 	if _, err := Explain("does.not.exist"); err == nil || !strings.Contains(err.Error(), "unsupported config key") {
 		t.Fatalf("unsupported err=%v", err)
@@ -235,7 +234,7 @@ func hasExplanationChild(parent Explanation, key string) bool {
 }
 
 func TestFieldPresentationMetadataCoversRegistry(t *testing.T) {
-	valid := map[FieldSection]bool{FieldSectionRuntime: true, FieldSectionAccess: true, FieldSectionShell: true, FieldSectionFeatures: true, FieldSectionTunnel: true}
+	valid := map[FieldSection]bool{FieldSectionRuntime: true, FieldSectionAccess: true, FieldSectionShell: true, FieldSectionIntegrations: true, FieldSectionTunnel: true}
 	seen := map[string]bool{}
 	for _, spec := range Fields() {
 		if strings.TrimSpace(spec.Label) == "" {

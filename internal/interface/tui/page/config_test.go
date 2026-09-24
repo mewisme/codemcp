@@ -50,7 +50,7 @@ func TestConfigPageLoadsAndNeverRendersSecrets(t *testing.T) {
 			t.Fatalf("config page leaked %s", secret)
 		}
 	}
-	for _, want := range []string{"Runtime & Network", "Access & Security", "Shell & Execution", "Features", "Tunnel", "Storage & Maintenance", "configured"} {
+	for _, want := range []string{"Runtime & Network", "Access & Security", "Shell & Execution", "Integrations", "Tunnel", "Storage & Maintenance", "configured"} {
 		if !strings.Contains(model, want) {
 			t.Fatalf("config rows missing %q: %q", want, model)
 		}

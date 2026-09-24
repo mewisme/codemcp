@@ -6,9 +6,9 @@ import (
 	"errors"
 	"time"
 
-	"go.mewis.me/codemcp/internal/caveman"
+	"go.mewis.me/codemcp/internal/integrations/caveman"
+	"go.mewis.me/codemcp/internal/integrations/ponytail"
 	"go.mewis.me/codemcp/internal/jsruntime"
-	"go.mewis.me/codemcp/internal/ponytail"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -70,9 +70,9 @@ func RegisterAdvancedTools(registry *Registry, workspaces *workspace.Manager) {
 
 }
 
-func featureToolEntries(workspaces *workspace.Manager, ponytailManager *ponytail.Manager, cavemanManager *caveman.Manager) map[string]map[string]Entry {
-	return map[string]map[string]Entry{
-		"feature:ponytail": {"ponytail_turn": featureEntry("ponytail_turn", "Ponytail Turn Controller", "Built-in Ponytail controller. Call before each user-facing coding response; configured active/mode values seed each workspace state. Pass the exact current user prompt.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"prompt":{"type":"string"},"action":{"type":"string","enum":["turn","refresh","status"],"default":"turn"}},"required":["workspace_id","prompt"],"additionalProperties":false}`, `{"type":"object","properties":{"available":{"type":"boolean"},"mode":{"type":"string","enum":["off","lite","full","ultra","review"]},"active":{"type":"boolean"},"active_instructions":{"type":"string"},"refresh_hint":{"type":"string"}},"required":["available","mode","active"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+func ponytailToolEntries(workspaces *workspace.Manager, ponytailManager *ponytail.Manager) map[string]Entry {
+	return map[string]Entry{
+		"ponytail_turn": integrationEntry("ponytail_turn", "Ponytail Turn Controller", "Ponytail integration controller. Call before each user-facing coding response; configured active/mode values seed each workspace state. Pass the exact current user prompt.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"prompt":{"type":"string"},"action":{"type":"string","enum":["turn","refresh","status"],"default":"turn"}},"required":["workspace_id","prompt"],"additionalProperties":false}`, `{"type":"object","properties":{"available":{"type":"boolean"},"mode":{"type":"string","enum":["off","lite","full","ultra","review"]},"active":{"type":"boolean"},"active_instructions":{"type":"string"},"refresh_hint":{"type":"string"}},"required":["available","mode","active"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 			item, err := workspaceFromArgs(workspaces, args)
 			if err != nil {
 				return Result{}, err
@@ -90,8 +90,13 @@ func featureToolEntries(workspaces *workspace.Manager, ponytailManager *ponytail
 				return Result{}, err
 			}
 			return JSONResult(value), nil
-		})},
-		"feature:caveman": {"caveman_turn": featureEntry("caveman_turn", "Caveman Turn Controller", "Built-in Caveman controller. Call before each user-facing response; configured active/mode values seed each workspace state. Pass the exact current user prompt.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"prompt":{"type":"string"},"action":{"type":"string","enum":["turn","refresh","status"],"default":"turn"}},"required":["workspace_id","prompt"],"additionalProperties":false}`, `{"type":"object","properties":{"available":{"type":"boolean"},"mode":{"type":"string","enum":["off","lite","full","ultra","wenyan-lite","wenyan-full","wenyan-ultra"]},"active":{"type":"boolean"},"active_instructions":{"type":"string"},"refresh_hint":{"type":"string"}},"required":["available","mode","active"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+		}),
+	}
+}
+
+func cavemanToolEntries(workspaces *workspace.Manager, cavemanManager *caveman.Manager) map[string]Entry {
+	return map[string]Entry{
+		"caveman_turn": integrationEntry("caveman_turn", "Caveman Turn Controller", "Caveman integration controller. Call before each user-facing response; configured active/mode values seed each workspace state. Pass the exact current user prompt.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"prompt":{"type":"string"},"action":{"type":"string","enum":["turn","refresh","status"],"default":"turn"}},"required":["workspace_id","prompt"],"additionalProperties":false}`, `{"type":"object","properties":{"available":{"type":"boolean"},"mode":{"type":"string","enum":["off","lite","full","ultra","wenyan-lite","wenyan-full","wenyan-ultra"]},"active":{"type":"boolean"},"active_instructions":{"type":"string"},"refresh_hint":{"type":"string"}},"required":["available","mode","active"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 			item, err := workspaceFromArgs(workspaces, args)
 			if err != nil {
 				return Result{}, err
@@ -109,10 +114,10 @@ func featureToolEntries(workspaces *workspace.Manager, ponytailManager *ponytail
 				return Result{}, err
 			}
 			return JSONResult(value), nil
-		})},
+		}),
 	}
 }
 
-func featureEntry(name, title, description, input, output string, risk Risk, handler Handler) Entry {
+func integrationEntry(name, title, description, input, output string, risk Risk, handler Handler) Entry {
 	return Entry{Schema: Schema{Name: name, Title: title, Description: description, InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: ToolAnnotations(risk)}, Handler: handler}
 }

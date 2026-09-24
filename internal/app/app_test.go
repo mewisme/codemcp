@@ -91,7 +91,7 @@ func TestReloadConfigSwitchesMCPHTTPRuntime(t *testing.T) {
 
 func TestNewKeepsControllerToolsWhenFeatureInactive(t *testing.T) {
 	cfg := config.Default()
-	cfg.Features.Ponytail.Active = false
+	cfg.Integrations.Ponytail.Active = false
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestNewKeepsControllerToolsWhenFeatureInactive(t *testing.T) {
 	if _, ok := app.Tools.Registry.Schema("caveman_turn"); !ok {
 		t.Fatal("caveman controller tool missing")
 	}
-	if app.Tools.Features().Ponytail.Active {
+	if app.Tools.Integrations().Ponytail.Active {
 		t.Fatal("ponytail active state was not preserved")
 	}
 }

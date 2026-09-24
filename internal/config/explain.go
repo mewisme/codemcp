@@ -146,12 +146,12 @@ func branchDescription(key string) string {
 		return "Filesystem access configuration."
 	case "shell":
 		return "Shell execution, event retention, approval, environment, sandbox, and network configuration."
-	case "features":
-		return "Optional runtime feature configuration."
-	case "features.ponytail":
-		return "Ponytail feature defaults."
-	case "features.caveman":
-		return "Caveman feature defaults."
+	case "integrations":
+		return "First-party integration configuration."
+	case "integrations.ponytail":
+		return "Ponytail integration defaults."
+	case "integrations.caveman":
+		return "Caveman integration defaults."
 	case "tunnel":
 		return "OpenAI Secure MCP Tunnel configuration."
 	default:

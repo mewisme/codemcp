@@ -69,21 +69,21 @@ List of additional executable directories prepended to the inherited runtime `PA
 
 Shell commands otherwise inherit the runtime process environment. The application still enforces workspace mutation containment, protected control-plane state, and risk-based approval for destructive, host, or external mutations. Strong OS-level process isolation should be provided externally when required.
 
-## Features
+## Integrations
 
-### `features.ponytail.active` — Ponytail active
+### `integrations.ponytail.active` — Ponytail active
 
 Boolean controlling whether Ponytail guidance is active by default.
 
-### `features.ponytail.mode` — Ponytail mode
+### `integrations.ponytail.mode` — Ponytail mode
 
 Enum default intensity: `lite`, `full`, or `ultra`. Lite builds the requested solution but may point out simpler alternatives; full enforces reuse/stdlib/native-first and shortest-correct implementation; ultra applies aggressive YAGNI pressure and challenges unnecessary scope.
 
-### `features.caveman.active` — Caveman active
+### `integrations.caveman.active` — Caveman active
 
 Boolean controlling whether compressed Caveman response style is active by default.
 
-### `features.caveman.mode` — Caveman mode
+### `integrations.caveman.mode` — Caveman mode
 
 Enum persisted response intensity: `lite`, `full`, `ultra`, `wenyan-lite`, `wenyan-full`, `wenyan-ultra`. The wenyan variants progressively increase classical-Chinese compression. Session-only aliases such as `off` or `wenyan` are not persisted values.
 

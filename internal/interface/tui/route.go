@@ -646,8 +646,8 @@ func configBreadcrumbResourceLabel(resourceID string) string {
 		return "Access & Security"
 	case "shell":
 		return "Shell & Execution"
-	case "features":
-		return "Features"
+	case "integrations":
+		return "Integrations"
 	case "tunnel":
 		return "Tunnel"
 	case "storage":

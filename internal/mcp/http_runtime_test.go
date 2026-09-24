@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"go.mewis.me/codemcp/internal/features"
+	"go.mewis.me/codemcp/internal/integrations"
 	"go.mewis.me/codemcp/internal/tools"
 )
 
@@ -161,9 +161,9 @@ func TestHTTPRuntimeToolCallRequiresMatchingNameHeader(t *testing.T) {
 }
 
 func TestHTTPRuntimePonytailUsesBuiltInConfiguredMode(t *testing.T) {
-	featureConfig := features.Default()
-	featureConfig.Ponytail.Mode = "ultra"
-	toolRuntime := tools.NewRuntimeWithFeatures(featureConfig)
+	integrationConfig := integrations.Default()
+	integrationConfig.Ponytail.Mode = "ultra"
+	toolRuntime := tools.NewRuntimeWithIntegrations(integrationConfig)
 	item, err := toolRuntime.Workspaces.Register(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -185,9 +185,9 @@ func TestHTTPRuntimePonytailUsesBuiltInConfiguredMode(t *testing.T) {
 }
 
 func TestHTTPRuntimeCavemanUsesBuiltInConfiguredMode(t *testing.T) {
-	featureConfig := features.Default()
-	featureConfig.Caveman.Mode = "wenyan-ultra"
-	toolRuntime := tools.NewRuntimeWithFeatures(featureConfig)
+	integrationConfig := integrations.Default()
+	integrationConfig.Caveman.Mode = "wenyan-ultra"
+	toolRuntime := tools.NewRuntimeWithIntegrations(integrationConfig)
 	item, err := toolRuntime.Workspaces.Register(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

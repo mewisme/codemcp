@@ -283,7 +283,7 @@ export type PublicConfig = {
   }
   permissions: { allow_dirs: string[] }
   shell: { path: string[] }
-  features: {
+  integrations: {
     ponytail: { active: boolean; mode: "lite" | "full" | "ultra" }
     caveman: {
       active: boolean

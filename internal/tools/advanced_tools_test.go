@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"go.mewis.me/codemcp/internal/caveman"
-	"go.mewis.me/codemcp/internal/features"
-	"go.mewis.me/codemcp/internal/ponytail"
+	"go.mewis.me/codemcp/internal/integrations"
+	"go.mewis.me/codemcp/internal/integrations/caveman"
+	"go.mewis.me/codemcp/internal/integrations/ponytail"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -25,7 +25,7 @@ func newAdvancedRuntime(t *testing.T) (*Runtime, string, string) {
 	RegisterWorkspaceTools(registry, workspaces)
 	RegisterAdvancedTools(registry, workspaces)
 	runtime := &Runtime{Registry: registry, Workspaces: workspaces, ponytailManager: ponytail.NewManager(true, ponytail.Full), cavemanManager: caveman.NewManager(true, caveman.Full)}
-	if err := runtime.SyncFeatures(features.Default()); err != nil {
+	if err := runtime.SyncIntegrations(integrations.Default()); err != nil {
 		t.Fatal(err)
 	}
 	return runtime, item.ID, item.Path
@@ -53,10 +53,10 @@ func TestFeatureToolsStayRegisteredWhileActiveStateChanges(t *testing.T) {
 	if value, ok := first.StructuredContent.(caveman.Result); !ok || !value.Active {
 		t.Fatalf("default caveman result = %#v", first.StructuredContent)
 	}
-	featureConfig := features.Default()
-	featureConfig.Ponytail.Active = false
-	featureConfig.Caveman.Active = false
-	if err := runtime.SyncFeatures(featureConfig); err != nil {
+	integrationConfig := integrations.Default()
+	integrationConfig.Ponytail.Active = false
+	integrationConfig.Caveman.Active = false
+	if err := runtime.SyncIntegrations(integrationConfig); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := runtime.Registry.Schema("ponytail_turn"); !ok {
@@ -72,8 +72,8 @@ func TestFeatureToolsStayRegisteredWhileActiveStateChanges(t *testing.T) {
 	if value, ok := second.StructuredContent.(caveman.Result); !ok || value.Active {
 		t.Fatalf("inactive caveman result = %#v", second.StructuredContent)
 	}
-	featureConfig.Caveman.Active = true
-	if err := runtime.SyncFeatures(featureConfig); err != nil {
+	integrationConfig.Caveman.Active = true
+	if err := runtime.SyncIntegrations(integrationConfig); err != nil {
 		t.Fatal(err)
 	}
 	third, err := runtime.Call(context.Background(), "caveman_turn", map[string]any{"workspace_id": workspaceID, "prompt": "continue"})
@@ -87,9 +87,9 @@ func TestFeatureToolsStayRegisteredWhileActiveStateChanges(t *testing.T) {
 
 func TestCavemanToolReturnsBuiltInInstructions(t *testing.T) {
 	runtime, workspaceID, _ := newAdvancedRuntime(t)
-	featureConfig := features.Default()
-	featureConfig.Caveman.Mode = "wenyan-full"
-	if err := runtime.SyncFeatures(featureConfig); err != nil {
+	integrationConfig := integrations.Default()
+	integrationConfig.Caveman.Mode = "wenyan-full"
+	if err := runtime.SyncIntegrations(integrationConfig); err != nil {
 		t.Fatal(err)
 	}
 	result, err := runtime.Call(context.Background(), "caveman_turn", map[string]any{"workspace_id": workspaceID, "prompt": "continue", "action": "refresh"})
@@ -104,9 +104,9 @@ func TestCavemanToolReturnsBuiltInInstructions(t *testing.T) {
 
 func TestPonytailToolReturnsBuiltInInstructionsAndConfiguredMode(t *testing.T) {
 	runtime, workspaceID, _ := newAdvancedRuntime(t)
-	featureConfig := features.Default()
-	featureConfig.Ponytail.Mode = "ultra"
-	if err := runtime.SyncFeatures(featureConfig); err != nil {
+	integrationConfig := integrations.Default()
+	integrationConfig.Ponytail.Mode = "ultra"
+	if err := runtime.SyncIntegrations(integrationConfig); err != nil {
 		t.Fatal(err)
 	}
 	result, err := runtime.Call(context.Background(), "ponytail_turn", map[string]any{"workspace_id": workspaceID, "prompt": "continue"})

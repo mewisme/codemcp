@@ -20,13 +20,13 @@ func TestReloadConfigUpdatesLiveRuntime(t *testing.T) {
 	next := cfg
 	next.Auth.MCPEnabled = true
 	next.Auth.MCPTokenHash = "hash"
-	next.Features.Ponytail.Active = false
+	next.Integrations.Ponytail.Active = false
 	next.Permissions.AllowDirs = []string{t.TempDir()}
 	if err := app.ReloadConfig(next); err != nil {
 		t.Fatal(err)
 	}
 	got := app.Config.Snapshot()
-	if !got.Auth.MCPEnabled || got.Features.Ponytail.Active || len(got.Permissions.AllowDirs) != 1 {
+	if !got.Auth.MCPEnabled || got.Integrations.Ponytail.Active || len(got.Permissions.AllowDirs) != 1 {
 		t.Fatalf("runtime config = %#v", got)
 	}
 	if _, ok := app.Tools.Registry.Schema("ponytail_turn"); !ok {
@@ -89,7 +89,7 @@ func TestReloadConfigFailedApplyRestoresCommittedConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	previous := app.Config.Snapshot()
-	if err := app.Tools.Registry.ReplaceOwned("feature:ponytail", nil); err != nil {
+	if err := app.Tools.Registry.ReplaceOwned("integration:ponytail", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.Tools.Registry.Register("ponytail_turn", tools.Schema{Name: "ponytail_turn"}, func(context.Context, map[string]any) (tools.Result, error) {
@@ -100,7 +100,7 @@ func TestReloadConfigFailedApplyRestoresCommittedConfig(t *testing.T) {
 	next := previous
 	next.Auth.MCPEnabled = true
 	next.Auth.MCPTokenHash = "hash"
-	next.Features.Ponytail.Active = !previous.Features.Ponytail.Active
+	next.Integrations.Ponytail.Active = !previous.Integrations.Ponytail.Active
 	next.Permissions.AllowDirs = []string{t.TempDir()}
 	next.Shell.Path = []string{t.TempDir()}
 	if err := app.ReloadConfig(next); err == nil {
@@ -110,8 +110,8 @@ func TestReloadConfigFailedApplyRestoresCommittedConfig(t *testing.T) {
 	if got.Auth.MCPEnabled != previous.Auth.MCPEnabled || got.Auth.MCPTokenHash != previous.Auth.MCPTokenHash {
 		t.Fatalf("committed auth not restored: %#v", got.Auth)
 	}
-	if got.Features.Ponytail.Active != previous.Features.Ponytail.Active {
-		t.Fatalf("committed features not restored: %#v", got.Features)
+	if got.Integrations.Ponytail.Active != previous.Integrations.Ponytail.Active {
+		t.Fatalf("committed integrations not restored: %#v", got.Integrations)
 	}
 	if len(got.Permissions.AllowDirs) != len(previous.Permissions.AllowDirs) {
 		t.Fatalf("committed permissions not restored: %#v", got.Permissions)
@@ -122,8 +122,8 @@ func TestReloadConfigFailedApplyRestoresCommittedConfig(t *testing.T) {
 	if runtimePath := app.Tools.Workspaces.ShellPath(); len(runtimePath) != len(previous.Shell.Path) {
 		t.Fatalf("runtime shell path = %#v, want %#v", runtimePath, previous.Shell.Path)
 	}
-	if app.Tools.Features().Ponytail.Active != previous.Features.Ponytail.Active {
-		t.Fatalf("runtime features = %#v", app.Tools.Features())
+	if app.Tools.Integrations().Ponytail.Active != previous.Integrations.Ponytail.Active {
+		t.Fatalf("runtime integrations = %#v", app.Tools.Integrations())
 	}
 }
 

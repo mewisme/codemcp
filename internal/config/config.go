@@ -10,18 +10,18 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/configformat"
-	"go.mewis.me/codemcp/internal/features"
+	"go.mewis.me/codemcp/internal/integrations"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 type Config struct {
-	Server      ServerConfig      `json:"server"`
-	Admin       AdminConfig       `json:"admin"`
-	Auth        AuthConfig        `json:"auth"`
-	Permissions PermissionsConfig `json:"permissions"`
-	Shell       ShellConfig       `json:"shell"`
-	Features    FeaturesConfig    `json:"features"`
-	Tunnel      tunnel.Config     `json:"tunnel"`
+	Server       ServerConfig       `json:"server"`
+	Admin        AdminConfig        `json:"admin"`
+	Auth         AuthConfig         `json:"auth"`
+	Permissions  PermissionsConfig  `json:"permissions"`
+	Shell        ShellConfig        `json:"shell"`
+	Integrations IntegrationsConfig `json:"integrations"`
+	Tunnel       tunnel.Config      `json:"tunnel"`
 }
 
 type PermissionsConfig struct {
@@ -67,10 +67,10 @@ type AuthConfig struct {
 	AdminTokenHash  string `json:"admin_token_hash,omitempty"`
 }
 
-type FeaturesConfig = features.Config
+type IntegrationsConfig = integrations.Config
 
 func Default() Config {
-	return Config{Server: ServerConfig{Enabled: true, Port: 37421, Expose: ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}}, Admin: AdminConfig{Enabled: true, Port: 37422}, Auth: AuthConfig{MCPEnabled: true, MCPLegacyBearer: true, AdminEnabled: true}, Permissions: PermissionsConfig{AllowDirs: []string{}}, Shell: ShellConfig{Path: []string{}}, Features: features.Default(), Tunnel: tunnel.Config{Enabled: false}}
+	return Config{Server: ServerConfig{Enabled: true, Port: 37421, Expose: ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}}, Admin: AdminConfig{Enabled: true, Port: 37422}, Auth: AuthConfig{MCPEnabled: true, MCPLegacyBearer: true, AdminEnabled: true}, Permissions: PermissionsConfig{AllowDirs: []string{}}, Shell: ShellConfig{Path: []string{}}, Integrations: integrations.Default(), Tunnel: tunnel.Config{Enabled: false}}
 }
 
 func (value *ExposureConfig) UnmarshalJSON(data []byte) error {

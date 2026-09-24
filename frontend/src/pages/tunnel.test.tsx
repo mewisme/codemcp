@@ -20,7 +20,7 @@ const publicConfig = {
   },
   permissions: { allow_dirs: [] },
   shell: { path: [] },
-  features: {
+  integrations: {
     ponytail: { active: true, mode: "full" },
     caveman: { active: true, mode: "full" },
   },

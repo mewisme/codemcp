@@ -56,7 +56,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	stream := activity.NewStream()
 	configStore := config.NewRuntimeStore(cfg)
 	toolSpan := tracepkg.Start(ctx, "APP", "app.tools.bootstrap", "Bootstrapping tool runtime")
-	toolRuntime := tools.NewRuntimeWithAccess(cfg.Features, cfg.Permissions.AllowDirs, func() (bool, int) {
+	toolRuntime := tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) {
 		current := configStore.Snapshot()
 		return current.Admin.Enabled, current.Admin.Port
 	})

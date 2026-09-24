@@ -2,6 +2,8 @@
 
 Reserved for first-party optional CodeMCP integrations. It is not a generic plugin platform.
 
-New optional first-party capability implementations belong below this root. Transitional top-level implementations such as Ponytail and Caveman stay in place until their dedicated ownership cutover moves their config and lifecycle atomically.
+New optional first-party capability implementations belong below this root.
+
+Ponytail and Caveman are owned here together with the canonical integration identity, status, and configuration contracts. Additional first-party integrations extend this domain without creating a generic plugin authority.
 
 Integrations must not depend on presentation adapters.

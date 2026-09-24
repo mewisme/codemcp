@@ -20,7 +20,7 @@ func (a *App) ReloadConfig(next config.Config) error {
 	}
 	previous := a.Config.Snapshot()
 	httpChanged := previous.Server.Enabled != next.Server.Enabled
-	featuresChanged := previous.Features != next.Features
+	integrationsChanged := previous.Integrations != next.Integrations
 	permissionsChanged := !slices.Equal(previous.Permissions.AllowDirs, next.Permissions.AllowDirs)
 	shellPathChanged := !slices.Equal(previous.Shell.Path, next.Shell.Path)
 	tunnelChanged := previous.Tunnel != next.Tunnel
@@ -32,16 +32,16 @@ func (a *App) ReloadConfig(next config.Config) error {
 	if reloadTestAfterCommit != nil {
 		reloadTestAfterCommit()
 	}
-	if err := a.applyRuntimeConfig(next, httpChanged, featuresChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
+	if err := a.applyRuntimeConfig(next, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
 		_, restoreErr := a.Config.Update(func(config.Config) (config.Config, error) { return previous, nil })
-		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, featuresChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged))
+		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged))
 	}
 	return nil
 }
 
-func (a *App) applyRuntimeConfig(next config.Config, httpChanged, featuresChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
-	if featuresChanged {
-		if err := a.Tools.SyncFeatures(next.Features); err != nil {
+func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
+	if integrationsChanged {
+		if err := a.Tools.SyncIntegrations(next.Integrations); err != nil {
 			return err
 		}
 	}
@@ -77,7 +77,7 @@ func (a *App) applyRuntimeConfig(next config.Config, httpChanged, featuresChange
 	return nil
 }
 
-func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, featuresChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
+func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
 	var rollbackErr error
 	if tunnelChanged && a.Tunnel != nil {
 		if tunnelRuntimeChanged {
@@ -90,8 +90,8 @@ func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, feature
 			rollbackErr = errors.Join(rollbackErr, a.Tunnel.SyncManagementConfig(previous.Tunnel))
 		}
 	}
-	if featuresChanged {
-		rollbackErr = errors.Join(rollbackErr, a.Tools.SyncFeatures(previous.Features))
+	if integrationsChanged {
+		rollbackErr = errors.Join(rollbackErr, a.Tools.SyncIntegrations(previous.Integrations))
 	}
 	if permissionsChanged {
 		a.Tools.SetGlobalAllowDirs(previous.Permissions.AllowDirs)

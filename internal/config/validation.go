@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"go.mewis.me/codemcp/internal/caveman"
-	"go.mewis.me/codemcp/internal/ponytail"
+	"go.mewis.me/codemcp/internal/integrations/caveman"
+	"go.mewis.me/codemcp/internal/integrations/ponytail"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
@@ -33,11 +33,11 @@ func Validate(cfg Config) error {
 	if _, err := NormalizeShellPath(cfg.Shell.Path); err != nil {
 		return err
 	}
-	if _, ok := ponytail.NormalizeRuntimeMode(cfg.Features.Ponytail.Mode); !ok {
-		return fmt.Errorf("features.ponytail.mode must be lite, full, or ultra: %q", cfg.Features.Ponytail.Mode)
+	if _, ok := ponytail.NormalizeRuntimeMode(cfg.Integrations.Ponytail.Mode); !ok {
+		return fmt.Errorf("integrations.ponytail.mode must be lite, full, or ultra: %q", cfg.Integrations.Ponytail.Mode)
 	}
-	if _, ok := caveman.NormalizeRuntimeMode(cfg.Features.Caveman.Mode); !ok {
-		return fmt.Errorf("features.caveman.mode must be lite, full, ultra, wenyan-lite, wenyan-full, or wenyan-ultra: %q", cfg.Features.Caveman.Mode)
+	if _, ok := caveman.NormalizeRuntimeMode(cfg.Integrations.Caveman.Mode); !ok {
+		return fmt.Errorf("integrations.caveman.mode must be lite, full, ultra, wenyan-lite, wenyan-full, or wenyan-ultra: %q", cfg.Integrations.Caveman.Mode)
 	}
 	exposure := NormalizeExposure(cfg.Server.Expose)
 	switch exposure.Mode {
