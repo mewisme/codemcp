@@ -245,6 +245,36 @@ func TestSinkReceivesNormalizedEventBeforeVisibilityFiltering(t *testing.T) {
 	}
 }
 
+func TestLoggerRedactsCredentialMaterialBeforeRenderAndSinks(t *testing.T) {
+	restoreColor := disableColor()
+	defer restoreColor()
+	const secret = "logger-secret-marker"
+	var output bytes.Buffer
+	log := NewWithOptions(Options{Level: Info, Mode: ModeDebug, Writer: &output})
+	sink := &captureSink{}
+	log.AddSink(sink)
+	log.Failure(
+		"CONFIG",
+		"config.failed",
+		"Bearer "+secret,
+		errors.New("token="+secret),
+		With("command", "cm config set tunnel.api_key "+secret),
+		With("authorization", "Bearer "+secret),
+		With("url", "https://example.test/mcp?token="+secret+"&safe=1"),
+	)
+	serialized, err := json.Marshal(sink.events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := output.String() + string(serialized)
+	if strings.Contains(text, secret) {
+		t.Fatalf("logger leaked credential material: %s", text)
+	}
+	if !strings.Contains(text, "<redacted>") {
+		t.Fatalf("logger output missing redaction marker: %s", text)
+	}
+}
+
 func TestLogFormatModeAndEnumMappings(t *testing.T) {
 	for input, want := range map[string]Format{"": FormatText, "TEXT": FormatText, "json": FormatJSON} {
 		got, err := ParseFormat(input)

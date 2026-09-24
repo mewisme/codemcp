@@ -13,6 +13,8 @@ import (
 	spinnerlib "github.com/briandowns/spinner"
 	"github.com/fatih/color"
 	"golang.org/x/term"
+
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type Options struct {
@@ -157,6 +159,13 @@ func (l *Logger) normalize(event Event) Event {
 	}
 	if event.Time.IsZero() {
 		event.Time = l.now()
+	}
+	event.Message = tracepkg.SanitizeText(event.Message)
+	if event.Err != nil {
+		event.Err = errors.New(tracepkg.SanitizeText(event.Err.Error()))
+	}
+	for index, field := range event.Fields {
+		event.Fields[index] = Field{Key: field.Key, Value: tracepkg.SanitizeValue(field.Key, field.Value), Visibility: field.Visibility}
 	}
 	return event
 }

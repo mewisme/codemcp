@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/outboundpolicy"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type AuthConfig struct {
@@ -37,8 +38,7 @@ type Server struct {
 }
 
 func SensitiveConfigKey(key string) bool {
-	lower := strings.ToLower(strings.TrimSpace(key))
-	return strings.Contains(lower, "authorization") || strings.Contains(lower, "token") || strings.Contains(lower, "secret") || strings.Contains(lower, "password") || strings.Contains(lower, "api-key") || strings.Contains(lower, "cookie") || strings.HasSuffix(lower, "_key") || strings.HasSuffix(lower, "key")
+	return tracepkg.SensitiveName(key)
 }
 
 func ParseAssignments(values []string, label string) (map[string]string, error) {
@@ -56,6 +56,8 @@ func ParseAssignments(values []string, label string) (map[string]string, error) 
 
 func RedactServer(server Server) Server {
 	value := server
+	value.URL = tracepkg.SanitizeURL(server.URL)
+	value.Args = tracepkg.SanitizeArgs(server.Args)
 	value.Headers = CloneStringMap(server.Headers)
 	for key := range value.Headers {
 		if SensitiveConfigKey(key) {

@@ -3,11 +3,21 @@ package shell
 import (
 	"context"
 	"encoding/hex"
+	"os/exec"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestManagedProcessInfoRedactsCredentialCommand(t *testing.T) {
+	const secret = "process-secret-marker"
+	process := &managedProcess{id: "proc_test", command: "cm config set tunnel.api_key " + secret, cmd: &exec.Cmd{}}
+	info := process.info()
+	if strings.Contains(info.Command, secret) || !strings.Contains(info.Command, "<redacted>") {
+		t.Fatalf("process info leaked credential command: %#v", info)
+	}
+}
 
 func TestProcessStartUsesCanonicalRTKRewritePlan(t *testing.T) {
 	if runtime.GOOS == "windows" {

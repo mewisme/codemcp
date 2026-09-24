@@ -208,12 +208,27 @@ func TestSettingServiceTunnelSecretPresentationAndTraceAreSafe(t *testing.T) {
 	if presented.Value == secret || !strings.Contains(presented.Value, "********") {
 		t.Fatalf("secret presentation=%#v", presented)
 	}
+	const shortSecret = "tiny-secret"
+	shortResult, err := service.Set(ctx, "tunnel.api_key", shortSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shortResult.Value != "********" {
+		t.Fatalf("short secret presentation can reveal material: %#v", shortResult)
+	}
+	shortPresented, err := service.Present(ctx, "tunnel.api_key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shortPresented.Value != "********" {
+		t.Fatalf("short secret masked preview=%#v", shortPresented)
+	}
 	encoded, err := json.Marshal(events)
 	if err != nil {
 		t.Fatal(err)
 	}
 	traceText := string(encoded)
-	if strings.Contains(traceText, secret) {
+	if strings.Contains(traceText, secret) || strings.Contains(traceText, shortSecret) {
 		t.Fatalf("setting trace leaked secret: %s", traceText)
 	}
 	if !strings.Contains(traceText, "setting.set") || !strings.Contains(traceText, "tunnel.api_key") {

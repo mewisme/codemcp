@@ -1,7 +1,9 @@
 package approval
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,7 +12,8 @@ import (
 
 func TestApprovalLifecycleEventsAreDeduplicatedAndSafe(t *testing.T) {
 	manager := NewManager("instance-test")
-	challenge, _, err := manager.CreateChallenge(ChallengeInput{SessionID: "session-secret", SessionHash: "hash-session", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --token secret"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow cm update"})
+	const commandSecret = "approval-command-secret-marker"
+	challenge, _, err := manager.CreateChallenge(ChallengeInput{SessionID: "session-secret", SessionHash: "hash-session", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --token " + commandSecret}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow cm update"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,6 +28,13 @@ func TestApprovalLifecycleEventsAreDeduplicatedAndSafe(t *testing.T) {
 	if len(events) != 1 || events[0].Name != EventRequested || events[0].RequestID != request.ID || events[0].SessionHash != "hash-session" {
 		t.Fatalf("requested events=%#v", events)
 	}
+	encoded, err := json.Marshal(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), commandSecret) {
+		t.Fatalf("approval notification leaked command secret: %s", encoded)
+	}
 	if _, err := manager.Approve(request.ID, "admin", "reviewed"); err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +43,7 @@ func TestApprovalLifecycleEventsAreDeduplicatedAndSafe(t *testing.T) {
 	if !errors.As(err, &mismatch) {
 		t.Fatalf("mismatch err=%v", err)
 	}
-	if _, matched, err := manager.ClaimApproved(RetryInput{SessionID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --token secret"}}); err != nil || !matched {
+	if _, matched, err := manager.ClaimApproved(RetryInput{SessionID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --token " + commandSecret}}); err != nil || !matched {
 		t.Fatalf("claim matched=%t err=%v", matched, err)
 	}
 	events = manager.Events().Recent(10)
@@ -45,6 +55,13 @@ func TestApprovalLifecycleEventsAreDeduplicatedAndSafe(t *testing.T) {
 		if events[i].Name != name || events[i].RequestID != request.ID {
 			t.Fatalf("event[%d]=%#v", i, events[i])
 		}
+	}
+	encoded, err = json.Marshal(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), commandSecret) {
+		t.Fatalf("approval lifecycle notifications leaked command secret: %s", encoded)
 	}
 }
 

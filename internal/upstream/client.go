@@ -1138,36 +1138,5 @@ func sortedMapKeys(values map[string]string) []string {
 }
 
 func sanitizeProcessArgs(args []string) []string {
-	result := append([]string(nil), args...)
-	redactNext := false
-	for index, arg := range result {
-		lower := strings.ToLower(strings.TrimSpace(arg))
-		if redactNext {
-			result[index] = "<redacted>"
-			redactNext = false
-			continue
-		}
-		if equal := strings.IndexByte(lower, '='); equal > 0 {
-			name := strings.TrimLeft(lower[:equal], "-")
-			if sensitiveArgumentName(name) {
-				result[index] = arg[:equal+1] + "<redacted>"
-			}
-			continue
-		}
-		name := strings.TrimLeft(lower, "-")
-		if sensitiveArgumentName(name) {
-			redactNext = true
-		}
-	}
-	return result
-}
-
-func sensitiveArgumentName(name string) bool {
-	name = strings.NewReplacer("-", "_", ".", "_").Replace(strings.ToLower(strings.TrimSpace(name)))
-	for _, fragment := range []string{"token", "password", "passwd", "secret", "api_key", "apikey", "authorization", "credential"} {
-		if strings.Contains(name, fragment) {
-			return true
-		}
-	}
-	return false
+	return tracepkg.SanitizeArgs(args)
 }

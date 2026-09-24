@@ -3,6 +3,8 @@ package trace
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -83,6 +85,63 @@ func TestURLFieldSanitizesCredentialQuery(t *testing.T) {
 	value, _ := fieldValue(events[0], "url")
 	if value == "https://example.com/callback?access_token=abc&state=def&safe=1" {
 		t.Fatalf("URL was not sanitized: %v", value)
+	}
+}
+
+func TestMaskSecretDoesNotRevealShortSecrets(t *testing.T) {
+	for _, secret := range []string{"a", "short123", "123456789012345"} {
+		masked := MaskSecret(secret, true)
+		if masked != "********" || strings.Contains(masked, secret) {
+			t.Fatalf("short secret %q masked as %q", secret, masked)
+		}
+	}
+	if got := MaskSecret("", false); got != "not configured" {
+		t.Fatalf("unconfigured mask=%q", got)
+	}
+	if got := MaskSecret("abcdefghijklmnop", true); got != "ab********op" {
+		t.Fatalf("medium mask=%q", got)
+	}
+}
+
+func TestSanitizeArgsAndCommandRedactCredentialArguments(t *testing.T) {
+	const secret = "super-secret-marker"
+	args := []string{
+		"config", "set", "tunnel.api_key", secret,
+		"--header", "Authorization=Bearer " + secret,
+		"--env", "API_TOKEN=" + secret,
+		"https://example.test/mcp?token=" + secret + "&safe=1",
+	}
+	safe := SanitizeArgs(args)
+	joined := strings.Join(safe, " ")
+	if strings.Contains(joined, secret) {
+		t.Fatalf("sanitized args leaked secret: %#v", safe)
+	}
+	for _, want := range []string{"tunnel.api_key", redactedValue, "Authorization=<redacted>", "API_TOKEN=<redacted>", "safe=1"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("sanitized args missing %q: %#v", want, safe)
+		}
+	}
+
+	command := "cm config set tunnel.api_key \"super-secret-marker with spaces\""
+	safeCommand := SanitizeCommand(command)
+	if strings.Contains(safeCommand, "super-secret-marker") || !strings.Contains(safeCommand, redactedValue) {
+		t.Fatalf("sanitized command=%q", safeCommand)
+	}
+	if got := SanitizeCommand("printf 'safe command'"); got != "printf 'safe command'" {
+		t.Fatalf("non-sensitive command changed: %q", got)
+	}
+}
+
+func TestTraceNormalizesCommandAndArgsFields(t *testing.T) {
+	const secret = "trace-secret-marker"
+	events := []Event{}
+	EmitObserver(func(event Event) { events = append(events, event) }, "SHELL", "shell.test", "test",
+		String("command", "cm config set tunnel.api_key "+secret),
+		Any("args", []string{"--api-key", secret}),
+	)
+	data := fmt.Sprint(events)
+	if strings.Contains(data, secret) {
+		t.Fatalf("trace leaked secret: %s", data)
 	}
 }
 

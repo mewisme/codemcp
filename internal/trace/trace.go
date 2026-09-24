@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -135,6 +136,227 @@ func Any(key string, value any) Field                  { return Field{Key: key, 
 func Sensitive(key string, value any) Field            { return Field{Key: key, Value: configuredState(value)} }
 func URL(key, value string) Field                      { return Field{Key: key, Value: SanitizeURL(value)} }
 
+const redactedValue = "<redacted>"
+
+var (
+	secretTokenPattern      = regexp.MustCompile(`(?i)\b(?:mcp|admin|runtime)_[A-Za-z0-9_-]{20,}\b`)
+	bearerPattern           = regexp.MustCompile(`(?i)(bearer\s+)[^\s,;]+`)
+	secretAssignmentPattern = regexp.MustCompile(`(?i)(\b(?:authorization|api[-_.]?key|token|password|passwd|secret|credential)\b\s*(?:=|:)\s*)([^\s,;]+)`)
+)
+
+func MaskSecret(raw string, configured bool) string {
+	if !configured {
+		return "not configured"
+	}
+	runes := []rune(strings.TrimSpace(raw))
+	if len(runes) < 16 {
+		return "********"
+	}
+	if len(runes) < 24 {
+		return string(runes[:2]) + "********" + string(runes[len(runes)-2:])
+	}
+	return string(runes[:4]) + "********" + string(runes[len(runes)-4:])
+}
+
+func SensitiveName(key string) bool {
+	key = strings.ToLower(strings.TrimSpace(key))
+	key = strings.NewReplacer("-", "_", ".", "_", " ", "_", ":", "_").Replace(key)
+	key = strings.Trim(key, "_")
+	if key == "authorization" || key == "cookie" || key == "set_cookie" || key == "token" || key == "key" || key == "oauth_code" || key == "oauth_state" {
+		return true
+	}
+	for _, fragment := range []string{"access_token", "refresh_token", "bearer_token", "client_secret", "secret", "admin_key", "runtime_api_key", "api_key", "apikey", "token_hash", "password", "passwd", "signature", "credential"} {
+		if strings.Contains(key, fragment) {
+			return true
+		}
+	}
+	return strings.HasSuffix(key, "_secret") || strings.HasSuffix(key, "_key") || strings.HasSuffix(key, "_token")
+}
+
+func SanitizeText(value string) string {
+	value = bearerPattern.ReplaceAllString(value, "${1}<redacted>")
+	value = secretAssignmentPattern.ReplaceAllStringFunc(value, func(match string) string {
+		parts := secretAssignmentPattern.FindStringSubmatch(match)
+		if len(parts) == 3 {
+			masked := strings.TrimSpace(parts[2])
+			if masked == redactedValue || masked == "[redacted]" {
+				return match
+			}
+			return parts[1] + redactedValue
+		}
+		return redactedValue
+	})
+	return secretTokenPattern.ReplaceAllString(value, redactedValue)
+}
+
+func SanitizeValue(key string, value any) any {
+	key = strings.TrimSpace(key)
+	if SensitiveName(key) {
+		if text, ok := value.(string); ok {
+			trimmed := strings.TrimSpace(text)
+			if trimmed == redactedValue || trimmed == "[redacted]" || trimmed == "configured" || trimmed == "not configured" {
+				return text
+			}
+		}
+		return redactedValue
+	}
+	switch typed := value.(type) {
+	case map[string]any:
+		return SanitizeMap(typed)
+	case []any:
+		result := make([]any, len(typed))
+		for index, item := range typed {
+			result[index] = SanitizeValue("", item)
+		}
+		return result
+	case []string:
+		if strings.EqualFold(key, "args") {
+			return SanitizeArgs(typed)
+		}
+		result := make([]string, len(typed))
+		for index, item := range typed {
+			result[index] = SanitizeText(item)
+		}
+		return result
+	case string:
+		if strings.EqualFold(key, "command") {
+			return SanitizeCommand(typed)
+		}
+		if looksLikeURLKey(key) {
+			return SanitizeURL(typed)
+		}
+		return SanitizeText(typed)
+	case error:
+		return SanitizeText(typed.Error())
+	default:
+		return value
+	}
+}
+
+func SanitizeMap(value map[string]any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	result := make(map[string]any, len(value))
+	settingKey, _ := value["key"].(string)
+	redactValue := SensitiveName(settingKey)
+	for key, item := range value {
+		if redactValue && strings.EqualFold(strings.TrimSpace(key), "value") {
+			result[key] = redactedValue
+			continue
+		}
+		result[key] = SanitizeValue(key, item)
+	}
+	return result
+}
+
+func SanitizeArgs(args []string) []string {
+	result := append([]string(nil), args...)
+	redactNext := false
+	for index, arg := range result {
+		trimmed := strings.TrimSpace(arg)
+		if redactNext {
+			result[index] = redactedValue
+			redactNext = false
+			continue
+		}
+		if equal := strings.IndexByte(trimmed, '='); equal > 0 {
+			name := strings.TrimLeft(strings.TrimSpace(trimmed[:equal]), "-")
+			if SensitiveName(name) {
+				prefix := arg[:strings.Index(arg, "=")+1]
+				result[index] = prefix + redactedValue
+				continue
+			}
+		}
+		if colon := strings.IndexByte(trimmed, ':'); colon > 0 {
+			name := strings.TrimLeft(strings.TrimSpace(trimmed[:colon]), "-")
+			if SensitiveName(name) {
+				prefix := arg[:strings.Index(arg, ":")+1]
+				result[index] = prefix + " " + redactedValue
+				continue
+			}
+		}
+		if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
+			result[index] = SanitizeURL(strings.Trim(trimmed, "'\""))
+			continue
+		}
+		name := strings.TrimLeft(strings.Trim(trimmed, "'\""), "-")
+		if SensitiveName(name) {
+			redactNext = true
+			continue
+		}
+	}
+	return result
+}
+
+func SanitizeCommand(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return ""
+	}
+	tokens := commandTokens(command)
+	if len(tokens) == 0 {
+		return command
+	}
+	sanitized := SanitizeArgs(tokens)
+	changed := false
+	for index := range tokens {
+		if tokens[index] != sanitized[index] {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return command
+	}
+	return strings.Join(sanitized, " ")
+}
+
+func commandTokens(command string) []string {
+	var tokens []string
+	var current strings.Builder
+	var quote rune
+	escaped := false
+	flush := func() {
+		if current.Len() == 0 {
+			return
+		}
+		tokens = append(tokens, current.String())
+		current.Reset()
+	}
+	for _, char := range command {
+		if escaped {
+			current.WriteRune(char)
+			escaped = false
+			continue
+		}
+		if char == '\\' && quote != '\'' {
+			current.WriteRune(char)
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			current.WriteRune(char)
+			if char == quote {
+				quote = 0
+			}
+			continue
+		}
+		if char == '\'' || char == '"' {
+			quote = char
+			current.WriteRune(char)
+			continue
+		}
+		if char == ' ' || char == '\t' || char == '\r' || char == '\n' {
+			flush()
+			continue
+		}
+		current.WriteRune(char)
+	}
+	flush()
+	return tokens
+}
+
 func SanitizeURL(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -151,7 +373,7 @@ func SanitizeURL(raw string) string {
 			continue
 		}
 		for index := range values {
-			values[index] = "<redacted>"
+			values[index] = redactedValue
 		}
 		query[key] = values
 	}
@@ -178,8 +400,14 @@ func normalizeEvent(event Event) Event {
 	for index, field := range event.Fields {
 		key := strings.TrimSpace(field.Key)
 		value := field.Value
-		if sensitiveKey(key) {
+		if SensitiveName(key) {
 			value = configuredState(value)
+		} else if strings.EqualFold(key, "command") {
+			value = SanitizeCommand(fmt.Sprint(value))
+		} else if strings.EqualFold(key, "args") {
+			if args, ok := value.([]string); ok {
+				value = SanitizeArgs(args)
+			}
 		} else if looksLikeURLKey(key) {
 			value = SanitizeURL(fmt.Sprint(value))
 		}
@@ -215,24 +443,10 @@ func configuredState(value any) string {
 	return "configured"
 }
 
-func sensitiveKey(key string) bool {
-	key = strings.ToLower(strings.TrimSpace(key))
-	key = strings.NewReplacer("-", "_", ".", "_", " ", "_").Replace(key)
-	if key == "authorization" || key == "cookie" || key == "set_cookie" || key == "token" || key == "oauth_code" || key == "oauth_state" {
-		return true
-	}
-	for _, fragment := range []string{"access_token", "refresh_token", "bearer_token", "client_secret", "admin_key", "runtime_api_key", "api_key", "apikey", "token_hash", "password", "signature", "credential"} {
-		if strings.Contains(key, fragment) {
-			return true
-		}
-	}
-	return false
-}
-
 func sensitiveQueryKey(key string) bool {
 	key = strings.ToLower(strings.TrimSpace(key))
 	key = strings.NewReplacer("-", "_", ".", "_", " ", "_").Replace(key)
-	if sensitiveKey(key) {
+	if SensitiveName(key) {
 		return true
 	}
 	return key == "token" || key == "code" || key == "state" || key == "sig" || strings.HasSuffix(key, "_token") || strings.HasSuffix(key, "_signature")

@@ -27,6 +27,18 @@ func TestShellEnvironmentMarksMCPToolContext(t *testing.T) {
 	}
 }
 
+func TestStatusFromStateRedactsCredentialCommands(t *testing.T) {
+	const secret = "history-secret-marker"
+	status := statusFromState(SessionState{RecentCommands: []string{
+		"printf safe",
+		"cm config set tunnel.api_key " + secret,
+	}})
+	joined := strings.Join(status.RecentCommands, " ")
+	if strings.Contains(joined, secret) || !strings.Contains(joined, "<redacted>") {
+		t.Fatalf("shell status leaked credential command: %#v", status.RecentCommands)
+	}
+}
+
 func TestShellEnvironmentForwardsOnlyContextApproval(t *testing.T) {
 	t.Setenv(controlplane.ControlApprovalEnv, "cap_inherited")
 	if value := shellEnvironmentMap(context.Background(), nil)[controlplane.ControlApprovalEnv]; value != "" {

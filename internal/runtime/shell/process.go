@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/idgen"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -225,7 +226,7 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 	if execution != nil {
 		executionID = execution.ID()
 	}
-	return StartResult{ID: id, ExecutionID: executionID, PID: cmd.Process.Pid, Command: plan.Effective, CWD: cwd, StartedAt: process.startedAt}, nil
+	return StartResult{ID: id, ExecutionID: executionID, PID: cmd.Process.Pid, Command: tracepkg.SanitizeCommand(plan.Effective), CWD: cwd, StartedAt: process.startedAt}, nil
 }
 
 func (m *ProcessManager) Status(workspaceID, id string) ([]ProcessInfo, error) {
@@ -530,7 +531,7 @@ func (p *managedProcess) info() ProcessInfo {
 		pid = p.cmd.Process.Pid
 	}
 	return ProcessInfo{
-		ID: p.id, ExecutionID: processExecutionID(p.execution), PID: pid, Command: p.command, CWD: p.cwd, StartedAt: p.startedAt,
+		ID: p.id, ExecutionID: processExecutionID(p.execution), PID: pid, Command: tracepkg.SanitizeCommand(p.command), CWD: p.cwd, StartedAt: p.startedAt,
 		Running: p.exitCode == nil, ExitCode: cloneInt(p.exitCode), Signal: cloneString(p.signal),
 	}
 }

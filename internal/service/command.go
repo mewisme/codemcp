@@ -24,6 +24,7 @@ func runCommandObserver(observer tracepkg.Observer, name string, args ...string)
 	output, err := command.CombinedOutput()
 	text := strings.TrimSpace(string(output))
 	if err != nil {
+		safeArgs := strings.Join(tracepkg.SanitizeArgs(args), " ")
 		exitCode := -1
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -31,9 +32,9 @@ func runCommandObserver(observer tracepkg.Observer, name string, args ...string)
 		}
 		span.FailMessage("Managed service command failed", errors.New("external command failed"), tracepkg.Int("exit_code", exitCode), tracepkg.Int64("output_bytes", int64(len(output))))
 		if text != "" {
-			return text, fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, text)
+			return text, fmt.Errorf("%s %s: %w: %s", name, safeArgs, err, text)
 		}
-		return text, fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
+		return text, fmt.Errorf("%s %s: %w", name, safeArgs, err)
 	}
 	span.EndMessage("Managed service command completed", tracepkg.Int("exit_code", 0), tracepkg.Int64("output_bytes", int64(len(output))))
 	return text, nil
@@ -50,26 +51,5 @@ func commandSucceededObserver(observer tracepkg.Observer, name string, args ...s
 }
 
 func sanitizeServiceCommandArgs(args []string) []string {
-	result := append([]string(nil), args...)
-	redactNext := false
-	for index, arg := range result {
-		lower := strings.ToLower(strings.TrimSpace(arg))
-		if redactNext {
-			result[index] = "<redacted>"
-			redactNext = false
-			continue
-		}
-		for _, fragment := range []string{"password", "secret", "token", "api-key", "api_key", "apikey"} {
-			if strings.Contains(lower, fragment) {
-				if strings.Contains(arg, "=") {
-					key, _, _ := strings.Cut(arg, "=")
-					result[index] = key + "=<redacted>"
-				} else {
-					redactNext = true
-				}
-				break
-			}
-		}
-	}
-	return result
+	return tracepkg.SanitizeArgs(args)
 }

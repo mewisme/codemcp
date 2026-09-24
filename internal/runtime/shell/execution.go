@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"go.mewis.me/codemcp/internal/idgen"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const (
@@ -217,7 +218,9 @@ func (h *ExecutionHub) Begin(input ExecutionInput) *ExecutionRun {
 	h.mu.Lock()
 	id := idgen.Must("exec", 8)
 	record := &executionRecord{info: ExecutionInfo{
-		ID: id, WorkspaceID: strings.TrimSpace(input.WorkspaceID), Tool: tool, Command: input.Command, RequestedCommand: input.RequestedCommand, EffectiveCommand: input.EffectiveCommand, SecurityCommand: input.SecurityCommand, CWD: input.CWD, Shell: strings.TrimSpace(input.Shell),
+		ID: id, WorkspaceID: strings.TrimSpace(input.WorkspaceID), Tool: tool,
+		Command: tracepkg.SanitizeCommand(input.Command), RequestedCommand: tracepkg.SanitizeCommand(input.RequestedCommand), EffectiveCommand: tracepkg.SanitizeCommand(input.EffectiveCommand), SecurityCommand: tracepkg.SanitizeCommand(input.SecurityCommand),
+		CWD: input.CWD, Shell: strings.TrimSpace(input.Shell),
 		Source: strings.TrimSpace(input.Source), CallID: strings.TrimSpace(input.CallID), SessionHash: strings.TrimSpace(input.SessionHash),
 		ReceivedByInstanceID: strings.TrimSpace(input.ReceivedByInstanceID), ExecutedByInstanceID: strings.TrimSpace(input.ExecutedByInstanceID),
 		StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Status: ExecutionStatusRunning,

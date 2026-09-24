@@ -436,7 +436,7 @@ func (s *SettingService) presentSecret(ctx context.Context, spec config.FieldSpe
 		default:
 			return SettingResult{Value: "********", Configured: boolPointer(true)}, nil
 		}
-		return SettingResult{Value: secretPreview(raw, true), Configured: boolPointer(true)}, nil
+		return SettingResult{Value: tracepkg.MaskSecret(raw, true), Configured: boolPointer(true)}, nil
 	default:
 		return SettingResult{Value: "********", Configured: boolPointer(true)}, nil
 	}
@@ -808,21 +808,6 @@ func settingBaseline(defaults config.Config, spec config.FieldSpec) (string, boo
 		return "", false, err
 	}
 	return value, true, nil
-}
-
-func secretPreview(raw string, configured bool) string {
-	if !configured {
-		return "not configured"
-	}
-	raw = strings.TrimSpace(raw)
-	runes := []rune(raw)
-	if len(runes) < 8 {
-		return "********"
-	}
-	if len(runes) < 16 {
-		return string(runes[:2]) + "********" + string(runes[len(runes)-2:])
-	}
-	return string(runes[:4]) + "********" + string(runes[len(runes)-4:])
 }
 
 func settingMutationFinish(span *tracepkg.Span, operation, key string, result *SettingResult, resultErr *error) func() {

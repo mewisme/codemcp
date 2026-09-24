@@ -58,6 +58,41 @@ func TestExecutionHubSnapshotsAndStreamsOutput(t *testing.T) {
 	}
 }
 
+func TestExecutionHubRedactsCredentialCommandsFromHistoryAndFeed(t *testing.T) {
+	const secret = "execution-secret-marker"
+	command := "cm config set tunnel.api_key " + secret
+	hub := NewExecutionHub()
+	run := hub.Begin(ExecutionInput{
+		WorkspaceID:      "ws_test",
+		Tool:             "run_command",
+		Command:          command,
+		RequestedCommand: command,
+		EffectiveCommand: command,
+		SecurityCommand:  command,
+	})
+	snapshot, err := hub.Get("ws_test", run.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join([]string{
+		snapshot.Execution.Command,
+		snapshot.Execution.RequestedCommand,
+		snapshot.Execution.EffectiveCommand,
+		snapshot.Execution.SecurityCommand,
+	}, " ")
+	if strings.Contains(joined, secret) || !strings.Contains(joined, "<redacted>") {
+		t.Fatalf("execution metadata leaked credential command: %#v", snapshot.Execution)
+	}
+	feed, feedSnapshot := hub.SubscribeFeed("ws_test")
+	defer hub.UnsubscribeFeed(feed)
+	if len(feedSnapshot.Events) != 1 || feedSnapshot.Events[0].Execution == nil {
+		t.Fatalf("feed snapshot=%#v", feedSnapshot)
+	}
+	if strings.Contains(feedSnapshot.Events[0].Execution.Command, secret) {
+		t.Fatalf("execution feed leaked credential command: %#v", feedSnapshot.Events[0])
+	}
+}
+
 func TestExecutionHubFeedRetainsLatestEvents(t *testing.T) {
 	hub := NewExecutionHub()
 	for i := 0; i < MaxExecutionFeedEvents+17; i++ {

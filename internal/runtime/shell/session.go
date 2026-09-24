@@ -19,6 +19,7 @@ import (
 	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/integrations/rtk"
 	statepkg "go.mewis.me/codemcp/internal/state"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -181,7 +182,7 @@ func (m *Manager) Exec(ctx context.Context, workspaceID, command string) (ExecRe
 	}
 	current.state.CWD = cwd
 	current.state.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	current.state.RecentCommands = append(current.state.RecentCommands, requestedEffective)
+	current.state.RecentCommands = append(current.state.RecentCommands, tracepkg.SanitizeCommand(requestedEffective))
 	if len(current.state.RecentCommands) > maxHistory {
 		current.state.RecentCommands = append([]string(nil), current.state.RecentCommands[len(current.state.RecentCommands)-maxHistory:]...)
 	}
@@ -374,6 +375,9 @@ func (m *Manager) applyCWDDirectives(workspaceID, currentCWD, command string) (s
 
 func statusFromState(state SessionState) Status {
 	recent := append([]string(nil), state.RecentCommands...)
+	for index := range recent {
+		recent[index] = tracepkg.SanitizeCommand(recent[index])
+	}
 	if len(recent) > 10 {
 		recent = recent[len(recent)-10:]
 	}
@@ -419,7 +423,7 @@ func runOnce(ctx context.Context, command, cwd string, timeout time.Duration, ex
 	execution.Finish(status, &exitCode, false)
 	stdoutText, stdoutTruncated := stdout.snapshot()
 	stderrText, stderrTruncated := stderr.snapshot()
-	return ExecResult{Command: command, CWD: cwd, Stdout: strings.TrimSpace(stdoutText), Stderr: strings.TrimSpace(stderrText), StdoutTruncated: stdoutTruncated, StderrTruncated: stderrTruncated, ExitCode: exitCode, TimedOut: false}, nil
+	return ExecResult{Command: tracepkg.SanitizeCommand(command), CWD: cwd, Stdout: strings.TrimSpace(stdoutText), Stderr: strings.TrimSpace(stderrText), StdoutTruncated: stdoutTruncated, StderrTruncated: stderrTruncated, ExitCode: exitCode, TimedOut: false}, nil
 }
 
 func commandForPlatform(ctx context.Context, command string) (*exec.Cmd, error) {
