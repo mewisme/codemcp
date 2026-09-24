@@ -53,6 +53,12 @@ build: prepare
 	mkdir -p dist
 	$(GO) build -trimpath -o dist/cm .
 
+init:
+	$(CM) init $(ARGS)
+
+uninit:
+	$(CM) uninit $(ARGS)
+
 run: prepare
 	$(CM) $(ARGS)
 
