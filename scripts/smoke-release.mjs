@@ -208,11 +208,11 @@ ${workspacePlain}`)
   const workspaceJSON = JSON.parse(run(["workspace", "list", "--json"], { quiet: true }))
   if (!Array.isArray(workspaceJSON)) fail("workspace list JSON fallback did not return an array")
 
-  const upstreamPlain = run(["mcp", "server", "list"], { quiet: true })
-  if (!upstreamPlain.includes("Upstream servers loaded")) fail(`MCP server list fallback did not render plain output:
+  const upstreamPlain = run(["upstream", "server", "list"], { quiet: true })
+  if (!upstreamPlain.includes("Upstream servers loaded")) fail(`Upstream list fallback did not render plain output:
 ${upstreamPlain}`)
-  const upstreamJSON = JSON.parse(run(["mcp", "server", "list", "--json"], { quiet: true }))
-  if (!Array.isArray(upstreamJSON)) fail("MCP server list JSON fallback did not return an array")
+  const upstreamJSON = JSON.parse(run(["upstream", "server", "list", "--json"], { quiet: true }))
+  if (!Array.isArray(upstreamJSON)) fail("Upstream list JSON fallback did not return an array")
 }
 
 async function verifySelfInstall() {

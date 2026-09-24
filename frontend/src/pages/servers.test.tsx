@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { ServersPage } from "@/pages/servers"
+import { UpstreamsPage } from "@/pages/servers"
 
 const server = { id: "local", name: "Local server", transport: "http", enabled: true, url: "http://127.0.0.1:3000/mcp", auth: { type: "none" }, expose: "all" }
 
@@ -18,7 +18,7 @@ describe("servers page", () => {
       throw new Error(`Unhandled request: ${url.pathname}${url.search}`)
     }))
     const user = userEvent.setup()
-    render(<TooltipProvider><ServersPage /></TooltipProvider>)
+    render(<TooltipProvider><UpstreamsPage /></TooltipProvider>)
     expect(await screen.findByText("Local server")).toBeInTheDocument()
     expect(screen.queryByRole("tab", { name: "Overview" })).not.toBeInTheDocument()
     await user.click(screen.getByText("Local server"))
@@ -44,12 +44,12 @@ describe("servers page", () => {
       throw new Error(`Unhandled request: ${request.method} ${url.pathname}${url.search}`)
     }))
     const user = userEvent.setup()
-    render(<TooltipProvider><ServersPage /></TooltipProvider>)
-    const addButtons = await screen.findAllByRole("button", { name: "Add MCP server" })
+    render(<TooltipProvider><UpstreamsPage /></TooltipProvider>)
+    const addButtons = await screen.findAllByRole("button", { name: "Add Upstream" })
     await user.click(addButtons[0])
     await user.click(screen.getByRole("tab", { name: "JSON import" }))
-    fireEvent.change(screen.getByLabelText("MCP server JSON"), { target: { value: JSON.stringify({ mcpServers: { local_tools: { command: "node", args: ["./server.js"] }, docs: { type: "http", url: "https://example.com/mcp" } } }) } })
-    expect(screen.getByText("Detected 2 servers")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Upstream JSON"), { target: { value: JSON.stringify({ mcpServers: { local_tools: { command: "node", args: ["./server.js"] }, docs: { type: "http", url: "https://example.com/mcp" } } }) } })
+    expect(screen.getByText("Detected 2 Upstreams")).toBeInTheDocument()
     expect(screen.getByText("2 valid")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Import 2 servers" }))
     expect((await screen.findAllByText("local_tools")).length).toBeGreaterThan(0)
@@ -74,11 +74,11 @@ describe("servers page", () => {
       throw new Error(`Unhandled request: ${request.method} ${url.pathname}${url.search}`)
     }))
     const user = userEvent.setup()
-    render(<TooltipProvider><ServersPage /></TooltipProvider>)
+    render(<TooltipProvider><UpstreamsPage /></TooltipProvider>)
     await user.click(await screen.findByText("Local server"))
     await user.click(await screen.findByRole("button", { name: "Edit" }))
     await user.click(screen.getByRole("tab", { name: "JSON" }))
-    const editor = screen.getByLabelText("MCP server JSON")
+    const editor = screen.getByLabelText("Upstream JSON")
     const value = JSON.parse((editor as HTMLTextAreaElement).value)
     value.name = "Edited server"
     fireEvent.change(editor, { target: { value: JSON.stringify(value) } })

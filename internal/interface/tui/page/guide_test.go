@@ -17,8 +17,8 @@ func TestGuideIndexBrowsesTopicMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plain := ansi.Strip(page.View(100, 30))
-	for _, want := range []string{"TUI Guide", "Getting Started", "MCP Servers", "10 topics"} {
+	plain := ansi.Strip(page.View(100, 48))
+	for _, want := range []string{"TUI Guide", "Getting Started", "Upstreams", "10 topics"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("guide index missing %q: %q", want, plain)
 		}
@@ -46,7 +46,7 @@ func TestGuideTopicLoadsOnlySelectedMarkdownWithGlamourViewer(t *testing.T) {
 		t.Fatal("guide viewer source differs from selected embedded topic")
 	}
 	plain := ansi.Strip(page.View(100, 30))
-	if !strings.Contains(plain, "MCP Servers") || !strings.Contains(plain, "Use Topics for detailed documentation") || strings.Contains(plain, "Shell & Execution") {
+	if !strings.Contains(plain, "Upstreams") || !strings.Contains(plain, "Use Topics for detailed documentation") || strings.Contains(plain, "Shell & Execution") {
 		t.Fatalf("selected guide render=%q", plain)
 	}
 	if page.viewer.RenderError() != nil {

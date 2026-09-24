@@ -41,7 +41,7 @@ cm completion fish | source
 cm completion powershell | Out-String | Invoke-Expression
 ```
 
-Each generated script registers `cm` only. Dynamic completion includes config keys and typed values, workspace IDs, upstream MCP IDs, recent runtime session IDs, and directory arguments where appropriate. For example, `cm cfg set per<Tab>` completes `permissions.allow_dirs`, while `cm cfg set auth.mcp_enabled <Tab>` offers `true` and `false`.
+Each generated script registers `cm` only. Dynamic completion includes config keys and typed values, workspace IDs, Upstream IDs, recent runtime session IDs, and directory arguments where appropriate. For example, `cm cfg set per<Tab>` completes `permissions.allow_dirs`, while `cm cfg set auth.mcp_enabled <Tab>` offers `true` and `false`.
 
 For source-tree development with direct `go run .` invocations, Bash and Zsh can opt into the Go wrapper hook:
 
@@ -202,7 +202,7 @@ Pending requests expire after 60 seconds. Approval does not grant a general CLI 
 cm tui
 cm tui workspace
 cm tui workspace ws_...
-cm tui mcp github
+cm tui upstream github
 cm tui logs
 cm tui config
 ```
@@ -497,7 +497,7 @@ cm tunnel run
 
 See [OpenAI + ChatGPT setup](openai-chatgpt.md) for Platform/ChatGPT configuration.
 
-## Upstream MCP servers
+## Upstreams
 
 ```bash
 cm upstream --help
@@ -509,9 +509,9 @@ cm upstream server tools <id>
 cm upstream server auth --help
 ```
 
-Use the server subcommands to add, inspect, update, or remove upstream MCP definitions supported by the current binary.
+Use the server subcommands to add, inspect, update, or remove Upstream definitions supported by the current binary.
 
-`cm mcp server ...` is retained temporarily as a deprecated compatibility path. New scripts and documentation should use `cm upstream server ...`.
+The former `cm mcp server ...` management path has been removed. Use `cm upstream server ...` for Upstream management.
 
 ## Generic MCP clients
 

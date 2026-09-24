@@ -72,6 +72,26 @@ func TestMCPCommandDoesNotExposeServerManagement(t *testing.T) {
 	}
 }
 
+func TestUpstreamHelpUsesCanonicalTerminology(t *testing.T) {
+	cmd := upstreamCommand()
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.SetArgs([]string{"--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if !strings.Contains(text, "Manage Upstream servers") || !strings.Contains(text, "server") {
+		t.Fatalf("upstream help missing canonical terminology: %q", text)
+	}
+	for _, legacy := range []string{"MCP Servers", "upstream MCP server", "Upstream MCP server"} {
+		if strings.Contains(text, legacy) {
+			t.Fatalf("upstream help retained legacy terminology %q: %q", legacy, text)
+		}
+	}
+}
+
 func TestRenderUpstreamStatusUsesCLIFormatter(t *testing.T) {
 	var output bytes.Buffer
 	status := upstream.Status{ID: "demo", Name: "Demo", Enabled: true, Transport: "http", Auth: "oauth", Health: upstream.HealthConnected, Connected: true, ToolCount: 2, Expose: "all", ProxiedTools: []string{"demo_one", "demo_two"}}

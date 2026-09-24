@@ -1,20 +1,20 @@
-# MCP JSON Creation
+# Upstream JSON Creation
 
-When adding an MCP server, the create page has **Form** and **JSON** modes. JSON mode uses a multiline editor and the same canonical parser/domain validation as non-TUI MCP configuration.
+When adding an Upstream, the create page has **Form** and **JSON** modes. JSON mode uses a multiline editor and the same canonical parser/domain validation as non-TUI Upstream configuration.
 
 ## Accepted shape
 
-The canonical schema supports MCP server definitions including the common `{ "mcpServers": { ... } }` shape as well as the parser-supported raw/array forms. Transport can be inferred from `command` (stdio) or `url` (HTTP) when unambiguous. Conflicting command+URL input without a clear transport is rejected.
+The canonical schema supports Upstream definitions, including the common MCP-client `{ "mcpServers": { ... } }` shape as well as the parser-supported raw/array forms. Transport can be inferred from `command` (stdio) or `url` (HTTP) when unambiguous. Conflicting command+URL input without a clear transport is rejected.
 
-## Multiple servers
+## Multiple Upstreams
 
-JSON mode may create multiple servers in one submission. Creation uses create-only atomic batch semantics: the complete batch is validated first, duplicate IDs and already-existing IDs are rejected, and persistence failure rolls back the whole batch rather than leaving partial servers.
+JSON mode may create multiple Upstreams in one submission. Creation uses create-only atomic batch semantics: the complete batch is validated first, duplicate IDs and already-existing IDs are rejected, and persistence failure rolls back the whole batch rather than leaving partial Upstreams.
 
 ## Form/JSON draft synchronization
 
 Form and JSON have separate drafts and baselines. Switching modes synchronizes only when the source changed and the destination has not independently changed since the last synchronization. If both drafts diverged, the destination is preserved instead of being overwritten silently.
 
-A single-server JSON draft can round-trip back to Form. A multi-server JSON draft cannot be silently collapsed into a single Form server.
+A single-Upstream JSON draft can round-trip back to Form. A multi-Upstream JSON draft cannot be silently collapsed into a single Form Upstream.
 
 ## Errors and secrets
 

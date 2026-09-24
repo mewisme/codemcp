@@ -201,7 +201,7 @@ cm tunnel configure \
 
 See [OpenAI + ChatGPT](openai-chatgpt.md) for Platform and ChatGPT setup. Use `cm tunnel --help` for the current local/managed tunnel command surface.
 
-## Upstream MCP configuration
+## Upstream configuration
 
 Manage upstream servers with:
 

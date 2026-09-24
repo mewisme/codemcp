@@ -16,7 +16,7 @@ import (
 )
 
 func upstreamServerAuthCommand() *cobra.Command {
-	command := &cobra.Command{Use: "auth", Short: "Manage OAuth authorization for an upstream MCP server"}
+	command := &cobra.Command{Use: "auth", Short: "Manage OAuth authorization for an Upstream server"}
 	command.AddCommand(upstreamServerAuthLoginCommand(), upstreamServerAuthStatusCommand(), upstreamServerAuthLogoutCommand())
 	return command
 }
@@ -27,7 +27,7 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 	var timeout time.Duration
 	command := &cobra.Command{
 		Use:               "login <id>",
-		Short:             "Authorize an HTTP MCP server with OAuth",
+		Short:             "Authorize an HTTP Upstream with OAuth",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,7 +50,7 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			logCommandStep(cmd, "OAUTH", "oauth.authorization.preparing", "Preparing upstream OAuth authorization", logger.WithVerbose("server", server.ID))
 			store := oauthStoreForCommand(cmd)
 			log := commandLogger(cmd)
-			beginMutationProgress(cmd, "Authorize upstream MCP server")
+			beginMutationProgress(cmd, "Authorize Upstream server")
 			startCommandSpinner(cmd, log, "OAUTH", "oauth.starting", "Starting OAuth authorization")
 			credential, err := store.Login(ctx, mcpoauth.LoginConfig{
 				ServerID: server.ID, ServerURL: server.URL, Scope: server.Auth.Scope, Issuer: issuer,
@@ -73,14 +73,14 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			startCommandSpinner(cmd, log, "MCP", "mcp.health.checking", "Checking upstream MCP health")
-			healthSpan := tracepkg.Start(ctx, "OAUTH", "oauth.post-login.health", "Checking upstream MCP health after OAuth login", tracepkg.String("server", server.ID))
+			startCommandSpinner(cmd, log, "UPSTREAM", "upstream.health.checking", "Checking Upstream health")
+			healthSpan := tracepkg.Start(ctx, "OAUTH", "oauth.post-login.health", "Checking Upstream health after OAuth login", tracepkg.String("server", server.ID))
 			status := manager.CheckHealth(ctx, server.ID, true)
 			if status.Health != "connected" {
-				healthSpan.FailMessage("Post-login upstream MCP health check failed", fmt.Errorf("upstream MCP health check did not connect"), tracepkg.String("health", string(status.Health)))
-				log.Warn("MCP", "OAuth completed but upstream health check did not connect", "error", status.LastError)
+				healthSpan.FailMessage("Post-login Upstream health check failed", fmt.Errorf("upstream health check did not connect"), tracepkg.String("health", string(status.Health)))
+				log.Warn("UPSTREAM", "OAuth completed but Upstream health check did not connect", "error", status.LastError)
 			} else {
-				healthSpan.EndMessage("Post-login upstream MCP health check connected", tracepkg.String("health", string(status.Health)), tracepkg.Int("tool_count", status.ToolCount))
+				healthSpan.EndMessage("Post-login Upstream health check connected", tracepkg.String("health", string(status.Health)), tracepkg.Int("tool_count", status.ToolCount))
 			}
 			fields := []presentation.Field{
 				{Label: "server", Value: server.ID},
@@ -92,7 +92,7 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			if !credential.ExpiresAt.IsZero() {
 				fields = append(fields, presentation.Field{Label: "expires", Value: credential.ExpiresAt.Format(time.RFC3339)})
 			}
-			renderMutationSuccess(cmd, "Authorize upstream MCP server", "Authorization stored", fields...)
+			renderMutationSuccess(cmd, "Authorize Upstream server", "Authorization stored", fields...)
 			return nil
 		},
 	}
@@ -163,7 +163,7 @@ func renderUpstreamOAuthStatus(presenter *presentation.Presenter, status mcpoaut
 func upstreamServerAuthLogoutCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:               "logout <id>",
-		Short:             "Delete stored OAuth credentials for an upstream MCP server",
+		Short:             "Delete stored OAuth credentials for an Upstream server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
 		RunE: func(cmd *cobra.Command, args []string) error {

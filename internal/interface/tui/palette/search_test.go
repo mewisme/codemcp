@@ -25,8 +25,8 @@ func TestRankPrefersTitleAndCommandPathMatches(t *testing.T) {
 
 func TestRankBoostsCurrentResource(t *testing.T) {
 	actions := []action.Action{
-		{ID: "generic", Title: "Configure server", Category: "MCP", CommandPath: []string{"mcp", "server", "configure"}},
-		{ID: "current", Title: "Configure github", Category: "MCP", Keywords: []string{"github"}, CommandPath: []string{"mcp", "server", "configure", "github"}},
+		{ID: "generic", Title: "Configure server", Category: "Upstream", CommandPath: []string{"upstream", "server", "configure"}},
+		{ID: "current", Title: "Configure github", Category: "Upstream", Keywords: []string{"github"}, CommandPath: []string{"upstream", "server", "configure", "github"}},
 	}
 	results := Rank(actions, "configure", action.Context{Route: "mcp", ResourceID: "github"})
 	if len(results) != 2 || results[0].Action.ID != "current" {

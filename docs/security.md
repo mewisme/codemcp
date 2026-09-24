@@ -198,7 +198,7 @@ See [OpenAI + ChatGPT](openai-chatgpt.md).
 
 ## Upstream HTTP outbound policy
 
-HTTP upstream MCP connections use outbound URL controls intended to reduce SSRF and request-smuggling risk. The current policy includes checks such as:
+HTTP Upstream connections use outbound URL controls intended to reduce SSRF and request-smuggling risk. The current policy includes checks such as:
 
 - rejecting URL userinfo;
 - requiring HTTPS for ordinary non-loopback public targets;

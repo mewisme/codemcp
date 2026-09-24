@@ -115,14 +115,14 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 		return err
 	}
 	workspaceSpan.EndMessage("Workspace count queried", tracepkg.Int("count", len(workspaces)))
-	upstreamSpan := tracepkg.Start(ctx, "STATUS", "status.upstreams.query", "Querying upstream MCP count")
+	upstreamSpan := tracepkg.Start(ctx, "STATUS", "status.upstreams.query", "Querying Upstream count")
 	upstreams, err := loadUpstreamManagerForCommand(cmd)
 	if err != nil {
-		upstreamSpan.FailMessage("Upstream MCP count query failed", err)
+		upstreamSpan.FailMessage("Upstream count query failed", err)
 		return err
 	}
 	upstreamCount := len(upstreams.List())
-	upstreamSpan.EndMessage("Upstream MCP count queried", tracepkg.Int("count", upstreamCount))
+	upstreamSpan.EndMessage("Upstream count queried", tracepkg.Int("count", upstreamCount))
 	logCommandStep(cmd, "STATUS", "status.runtime.inspecting", "Inspecting runtime control endpoint")
 	runtimeSpan := tracepkg.Start(ctx, "STATUS", "status.runtime-control.query", "Querying runtime control status")
 	runtimeCtx, cancel := context.WithTimeout(ctx, time.Second)

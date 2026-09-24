@@ -8,7 +8,7 @@ import (
 
 func TestSPAHandlerServesIndexWithoutRedirect(t *testing.T) {
 	handler := Handler()
-	for _, target := range []string{"/", "/index.html", "/overview", "/workspaces", "/tools", "/servers", "/tunnel", "/activity", "/settings"} {
+	for _, target := range []string{"/", "/index.html", "/overview", "/workspaces", "/tools", "/upstreams", "/servers", "/tunnel", "/activity", "/settings"} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
 		if recorder.Code != http.StatusOK {

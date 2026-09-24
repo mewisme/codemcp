@@ -1,6 +1,6 @@
-# MCP Servers
+# Upstreams
 
-The MCP area manages upstream Model Context Protocol servers that `CodeMCP` can expose or proxy.
+The Upstreams area manages remote Model Context Protocol endpoints that `CodeMCP` can expose or proxy.
 
 ## Server list and details
 
@@ -46,4 +46,4 @@ Long tool refreshes are cancellable. The page retains clear cancellation state r
 
 HTTP servers with OAuth-capable auth can open the OAuth Login editor. It accepts issuer/settings and a switch controlling whether the authorization URL should be opened in a browser. The authorization URL is surfaced while login is in progress; browser-open failure does not necessarily abort a login that can continue manually.
 
-Credentials are stored through the managed OAuth store and tokens are never rendered in the TUI. Logout removes managed OAuth credentials while preserving the MCP server configuration.
+Credentials are stored through the managed OAuth store and tokens are never rendered in the TUI. Logout removes managed OAuth credentials while preserving the Upstream configuration.

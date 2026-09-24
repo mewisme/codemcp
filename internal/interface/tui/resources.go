@@ -36,7 +36,7 @@ func loadQuickOpenResources() ([]quickopen.Resource, error) {
 		if item.Transport == "stdio" {
 			endpoint = item.Command
 		}
-		resources = append(resources, quickopen.Resource{ID: item.ID, Title: item.ID, Kind: "MCP server", Description: endpoint, Keywords: []string{item.Name, item.Transport, item.Expose, endpoint}, Path: []string{"mcp", item.ID}})
+		resources = append(resources, quickopen.Resource{ID: item.ID, Title: item.ID, Kind: "Upstream", Description: endpoint, Keywords: []string{item.Name, item.Transport, item.Expose, endpoint}, Path: []string{"upstream", item.ID}})
 	}
 	source, err := config.Source()
 	if err != nil {
@@ -68,7 +68,7 @@ func pageQuickOpenResources() []quickopen.Resource {
 		{ID: "home", Title: "Home", Kind: "Page", Path: []string{"home"}},
 		{ID: "workspaces", Title: "Workspaces", Kind: "Page", Path: []string{"workspaces"}},
 		{ID: "containers", Title: "Workspaces · Containers", Kind: "Page", Keywords: []string{"workspace", "container", "containers"}, Path: []string{"containers"}},
-		{ID: "mcp", Title: "MCP Servers", Kind: "Page", Path: []string{"mcp"}},
+		{ID: "mcp", Title: "Upstreams", Kind: "Page", Path: []string{"upstream"}},
 		{ID: "tunnel", Title: "Tunnel", Kind: "Page", Path: []string{"tunnel"}},
 		{ID: "tunnels", Title: "Managed Tunnels", Kind: "Page", Path: []string{"tunnels"}},
 		{ID: "requests", Title: "Requests", Kind: "Page", Path: []string{"requests"}},

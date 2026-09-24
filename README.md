@@ -23,14 +23,14 @@ Single Go binary · OpenAI Secure MCP Tunnel · Linux, macOS, and Windows
   <img src="docs/architecture/overview.svg" alt="CodeMCP architecture overview" width="100%">
 </p>
 
-The main path is intentionally small: ChatGPT reaches the local runtime through the Secure MCP Tunnel, then `CodeMCP` applies workspace scope before filesystem, shell, Git, process, or upstream MCP work happens.
+The main path is intentionally small: ChatGPT reaches the local runtime through the Secure MCP Tunnel, then `CodeMCP` applies workspace scope before filesystem, shell, Git, process, or Upstream work happens.
 
 ### Why CodeMCP
 
 - **Private by default for ChatGPT** — the Secure MCP Tunnel is outbound-only from your machine; public MCP ingress is not required.
 - **Workspace-bound access** — filesystem, shell, Git, process, context, memory, rules, skills, and checkpoints operate against explicit `ws_*` workspace targets.
 - **Local control stays local** — use the CLI, full-screen TUI, or embedded Admin UI to inspect and operate the runtime.
-- **MCP aggregation** — optionally expose tools from upstream MCP servers through the same runtime.
+- **Upstream aggregation** — optionally expose tools from remote MCP endpoints through the same runtime.
 - **One cross-platform binary** — native releases for Linux, macOS, and Windows on amd64 and arm64, with managed background-service support.
 
 ## Install
@@ -139,7 +139,7 @@ cm mcp stdio --workspace ~/projects/my-project
 cm mcp http --workspace ws_...
 ```
 
-See [MCP clients and upstream servers](docs/mcp.md).
+See [MCP clients and Upstreams](docs/mcp.md).
 
 ## Security model
 
@@ -159,7 +159,7 @@ Read [Security](docs/security.md) before widening network exposure or filesystem
 | Run, stop, inspect, update, and read logs | [Runtime and operations](docs/runtime.md) |
 | Use the full-screen terminal UI | [TUI Command Center](docs/tui.md) |
 | Configure auth, exposure, storage, and runtime settings | [Configuration](docs/configuration.md) |
-| Connect generic clients or upstream MCP servers | [MCP and upstreams](docs/mcp.md) |
+| Connect generic MCP clients or configure Upstreams | [MCP clients and Upstreams](docs/mcp.md) |
 | Look up commands and flags | [CLI reference](docs/cli-reference.md) |
 | Understand trust boundaries | [Security](docs/security.md) |
 | Diagnose common failures | [Troubleshooting](docs/troubleshooting.md) |

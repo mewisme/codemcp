@@ -1,6 +1,6 @@
-# MCP clients and upstreams
+# MCP clients and Upstreams
 
-For ChatGPT, the recommended/default transport is **OpenAI Secure MCP Tunnel**. Use this guide when you need a generic MCP client such as Cursor, or when `CodeMCP` should aggregate tools from another MCP server.
+For ChatGPT, the recommended/default transport is **OpenAI Secure MCP Tunnel**. Use this guide when you need a generic MCP client such as Cursor, or when `CodeMCP` should aggregate tools from an Upstream.
 
 For the ChatGPT setup, start with [OpenAI + ChatGPT](openai-chatgpt.md).
 
@@ -81,9 +81,9 @@ Workspace containers (`wsc_*`) remain orchestration groups and are never substit
 
 See [Workspaces](workspaces.md) for the canonical workspace model.
 
-## Upstream MCP aggregation
+## Upstream aggregation
 
-`CodeMCP` can connect to other MCP servers and expose selected upstream tools through its own catalog.
+`CodeMCP` can connect to remote MCP endpoints as Upstreams and expose selected tools through its own catalog.
 
 Start with:
 
@@ -127,7 +127,7 @@ cm upstream server add local-tools \
 
 Tool exposure can be narrowed with prefixes, allowlists, disabled-tool lists, or exposure modes. Use `cm upstream server add --help` and `configure --help` for the installed version's exact fields.
 
-`cm mcp server ...` is a deprecated compatibility path; new automation should use `cm upstream server ...`.
+The former `cm mcp server ...` management path has been removed; use `cm upstream server ...`.
 
 ## Upstream OAuth
 
@@ -151,9 +151,9 @@ See [Security](security.md#upstream-http-outbound-policy) for the exact boundary
 
 ## Tool catalog changes
 
-The visible tool catalog can change when upstream servers are added, removed, enabled, disabled, or rediscovered, or when local integration/configuration state changes the available tool surface.
+The visible tool catalog can change when Upstreams are added, removed, enabled, disabled, or rediscovered, or when local integration/configuration state changes the available tool surface.
 
-Replacement discovery is applied as a complete catalog update rather than intentionally exposing a partially refreshed upstream.
+Replacement discovery is applied as a complete catalog update rather than intentionally exposing a partially refreshed Upstream.
 
 ## Protocol profile
 

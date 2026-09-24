@@ -38,13 +38,13 @@ type upstreamFlags struct {
 }
 
 func upstreamCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "upstream", Short: "Manage upstream MCP servers"}
+	cmd := &cobra.Command{Use: "upstream", Short: "Manage Upstream servers"}
 	cmd.AddCommand(upstreamServerCommand())
 	return cmd
 }
 
 func upstreamServerCommand() *cobra.Command {
-	server := &cobra.Command{Use: "server", Short: "Manage configured upstream MCP servers"}
+	server := &cobra.Command{Use: "server", Short: "Manage configured Upstream servers"}
 	server.AddCommand(
 		upstreamServerListCommand(),
 		upstreamServerAddCommand(),
@@ -65,7 +65,7 @@ func upstreamServerListCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List configured upstream MCP servers",
+		Short:   "List configured Upstream servers",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			manager, err := loadUpstreamManagerForCommand(cmd)
 			if err != nil {
@@ -74,7 +74,7 @@ func upstreamServerListCommand() *cobra.Command {
 			if refresh {
 				log := commandLogger(cmd)
 				if !asJSON {
-					startCommandSpinner(cmd, log, "MCP", "mcp.status.refreshing", "Refreshing upstream MCP status")
+					startCommandSpinner(cmd, log, "UPSTREAM", "upstream.status.refreshing", "Refreshing Upstream status")
 				}
 				ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 				statuses := manager.ListStatuses(ctx, true)
@@ -106,7 +106,7 @@ func upstreamServerAddCommand() *cobra.Command {
 	var flags upstreamFlags
 	cmd := &cobra.Command{
 		Use:   "add <id>",
-		Short: "Add an upstream MCP server",
+		Short: "Add an Upstream server",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			manager, err := loadUpstreamManagerForCommand(cmd)
@@ -141,7 +141,7 @@ func upstreamServerConfigureCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "configure <id>",
 		Aliases:           []string{"set"},
-		Short:             "Update selected fields on an existing upstream MCP server",
+		Short:             "Update selected fields on an existing Upstream server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -199,7 +199,7 @@ func upstreamServerShowCommand() *cobra.Command {
 func upstreamServerRemoveCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:               "remove <id>",
-		Short:             "Remove an upstream MCP server",
+		Short:             "Remove an Upstream server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -226,7 +226,7 @@ func upstreamServerToggleCommand(enabled bool) *cobra.Command {
 	}
 	return &cobra.Command{
 		Use:               action + " <id>",
-		Short:             action + " an upstream MCP server",
+		Short:             action + " an Upstream server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -253,7 +253,7 @@ func upstreamServerStatusCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "status <id>",
 		Aliases:           []string{"st"},
-		Short:             "Check one upstream MCP server",
+		Short:             "Check one Upstream server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -263,7 +263,7 @@ func upstreamServerStatusCommand() *cobra.Command {
 			}
 			log := commandLogger(cmd)
 			if !asJSON {
-				startCommandSpinner(cmd, log, "MCP", "mcp.status.checking", "Checking upstream MCP status")
+				startCommandSpinner(cmd, log, "UPSTREAM", "upstream.status.checking", "Checking Upstream status")
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 			defer cancel()
@@ -331,7 +331,7 @@ func renderUpstreamServer(presenter *presentation.Presenter, server upstream.Ser
 }
 
 func renderUpstreamStatus(presenter *presentation.Presenter, status upstream.Status) {
-	presenter.Frame("Upstream MCP server status")
+	presenter.Frame("Upstream server status")
 	presenter.StateSection(upstreamHealthPresentationKind(status.Health), upstreamHealthLabel(status.Health))
 	fields := []presentation.Field{
 		{Label: "id", Value: status.ID},
@@ -374,7 +374,7 @@ func upstreamServerToolsCommand() *cobra.Command {
 	var refresh bool
 	cmd := &cobra.Command{
 		Use:               "tools <id>",
-		Short:             "List tools exposed by one upstream MCP server",
+		Short:             "List tools exposed by one Upstream server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -383,7 +383,7 @@ func upstreamServerToolsCommand() *cobra.Command {
 				return err
 			}
 			log := commandLogger(cmd)
-			startCommandSpinner(cmd, log, "MCP", "mcp.tools.loading", "Loading upstream MCP tools")
+			startCommandSpinner(cmd, log, "UPSTREAM", "upstream.tools.loading", "Loading Upstream tools")
 			ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 			defer cancel()
 			values, err := manager.Tools(ctx, args[0], refresh)
@@ -399,7 +399,7 @@ func upstreamServerToolsCommand() *cobra.Command {
 				proxied[name] = true
 			}
 			presenter := commandPresenter(cmd)
-			presenter.Frame("Upstream MCP tools")
+			presenter.Frame("Upstream tools")
 			if len(values) == 0 {
 				presenter.StateSection(presentation.StatusInactive, "No tools exposed by upstream server")
 				presenter.Fields(presentation.Field{Label: "server", Value: args[0]})
@@ -425,9 +425,9 @@ func upstreamServerToolsCommand() *cobra.Command {
 }
 
 func renderUpstreamServerList(presenter *presentation.Presenter, servers []upstream.Server) {
-	presenter.Frame("Upstream MCP servers")
+	presenter.Frame("Upstream servers")
 	if len(servers) == 0 {
-		presenter.StateSection(presentation.StatusInactive, "No upstream MCP servers configured")
+		presenter.StateSection(presentation.StatusInactive, "No Upstream servers configured")
 		presenter.FrameEnd("Done")
 		return
 	}
@@ -449,9 +449,9 @@ func renderUpstreamServerList(presenter *presentation.Presenter, servers []upstr
 }
 
 func renderUpstreamStatusList(presenter *presentation.Presenter, statuses []upstream.Status) {
-	presenter.Frame("Upstream MCP status")
+	presenter.Frame("Upstream status")
 	if len(statuses) == 0 {
-		presenter.StateSection(presentation.StatusInactive, "No upstream MCP servers configured")
+		presenter.StateSection(presentation.StatusInactive, "No Upstream servers configured")
 		presenter.FrameEnd("Done")
 		return
 	}
@@ -664,12 +664,12 @@ func (adapter *upstreamCommandService) Disconnect(id string) error {
 }
 
 func loadUpstreamManagerForCommand(cmd *cobra.Command) (*upstreamCommandService, error) {
-	logCommandStep(cmd, "MCP", "mcp.store.loading", "Loading upstream MCP configuration")
+	logCommandStep(cmd, "UPSTREAM", "upstream.store.loading", "Loading Upstream configuration")
 	logCommandDebug(cmd, "UPSTREAM", "upstream.store.path", "Upstream configuration path resolved", logger.WithDebug("path", upstream.Path()))
 	manager := upstream.NewManager(upstream.NewStore(upstream.Path())).SetTraceObserver(tracepkg.ObserverFromContext(cmd.Context()))
 	if err := manager.Load(); err != nil {
-		return nil, fmt.Errorf("load upstream MCP configuration: %w", err)
+		return nil, fmt.Errorf("load Upstream configuration: %w", err)
 	}
-	logCommandDebug(cmd, "MCP", "mcp.store.loaded", "Upstream MCP configuration loaded", logger.WithDebug("count", len(manager.List())))
+	logCommandDebug(cmd, "UPSTREAM", "upstream.store.loaded", "Upstream configuration loaded", logger.WithDebug("count", len(manager.List())))
 	return &upstreamCommandService{ctx: cmd.Context(), service: application.NewUpstreamService(manager)}, nil
 }

@@ -75,7 +75,7 @@ func TestModelExplicitReplaceDestinationsBypassRememberedRoutes(t *testing.T) {
 	}{
 		{name: "workspaces", remembered: Route{Kind: RouteWorkspaces, ResourceID: "ws_old"}, path: []string{"workspaces"}, want: Route{Kind: RouteWorkspaces}},
 		{name: "containers", remembered: Route{Kind: RouteContainers, ResourceID: "wsc_old"}, path: []string{"containers"}, want: Route{Kind: RouteContainers}},
-		{name: "mcp", remembered: Route{Kind: RouteMCP, ResourceID: "server_old"}, path: []string{"mcp"}, want: Route{Kind: RouteMCP}},
+		{name: "upstream", remembered: Route{Kind: RouteMCP, ResourceID: "server_old"}, path: []string{"upstream"}, want: Route{Kind: RouteMCP}},
 		{name: "tunnels", remembered: Route{Kind: RouteTunnels, ResourceID: "tun_old"}, path: []string{"tunnels"}, want: Route{Kind: RouteTunnels}},
 		{name: "runtime", remembered: Route{Kind: RouteRuntime, ResourceID: "old"}, path: []string{"runtime"}, want: Route{Kind: RouteRuntime}},
 		{name: "config", remembered: Route{Kind: RouteConfig, ResourceID: "server.port"}, path: []string{"config"}, want: Route{Kind: RouteConfig}},
@@ -260,7 +260,7 @@ func TestModelMCPOAuthEditorDeepLinkUsesDirtyNavigationGuard(t *testing.T) {
 	if model.currentPage == nil || model.currentPage.OverlayActive() || !model.currentPage.InputActive() {
 		t.Fatalf("OAuth deep link page=%v overlay=%t input=%t", model.currentPage != nil, model.currentPage != nil && model.currentPage.OverlayActive(), model.currentPage != nil && model.currentPage.InputActive())
 	}
-	if got := ansi.Strip(model.View().Content); !strings.Contains(got, "MCP  /  secure  /  OAuth  /  Login") || !strings.Contains(got, "enter next") {
+	if got := ansi.Strip(model.View().Content); !strings.Contains(got, "Upstreams  /  secure  /  OAuth  /  Login") || !strings.Contains(got, "enter next") {
 		t.Fatalf("OAuth deep link view=%q", got)
 	}
 	updated, _ = model.Update(tea.KeyPressMsg{Code: 'i', Text: "https://issuer.example"})
@@ -429,9 +429,9 @@ func TestModelRendersDeepLinkAndNavigation(t *testing.T) {
 	if 1 < itemsWidth%len(headerPages) {
 		cellWidth++
 	}
-	active := model.theme.navActive.Padding(0).Width(cellWidth).Align(lipgloss.Center).Render("MCP")
+	active := model.theme.navActive.Padding(0).Width(cellWidth).Align(lipgloss.Center).Render("Upstreams")
 	if !strings.Contains(view, active) {
-		t.Fatal("MCP header button is not active")
+		t.Fatal("Upstreams header button is not active")
 	}
 	updated, command := model.Update(navigateMsg{route: Route{Kind: RouteLogs}, sibling: true})
 	model = updated.(Model)
@@ -449,7 +449,7 @@ func TestModelRendersEmbeddedGuideDeepLink(t *testing.T) {
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 32})
 	model = updated.(Model)
 	plain := ansi.Strip(model.View().Content)
-	if !strings.Contains(plain, "MCP Servers") || !strings.Contains(plain, "Use Topics for detailed documentation") || strings.Contains(plain, "Shell & Execution") {
+	if !strings.Contains(plain, "Upstreams") || !strings.Contains(plain, "Use Topics for detailed documentation") || strings.Contains(plain, "Shell & Execution") {
 		t.Fatalf("guide deep-link=%q", plain)
 	}
 	if len(model.router.stack) != 2 || model.router.stack[0] != (Route{Kind: RouteGuide}) {

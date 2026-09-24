@@ -7,7 +7,7 @@ These Markdown files are contextual help for the `cm tui` Command Center and are
 | Getting started and navigation | [Getting Started](content/getting-started.md) |
 | Editors and forms | [Editors & Forms](content/editors/index.md) |
 | Workspaces, containers, and Project Context | [Workspaces](content/workspaces/index.md) |
-| Upstream MCP servers and OAuth | [MCP Servers](content/mcp/index.md) |
+| Upstreams and OAuth | [Upstreams](content/mcp/index.md) |
 | OpenAI Secure MCP Tunnel | [Tunnel](content/tunnel/index.md) |
 | Requests and approvals | [Requests & Approvals](content/requests/index.md) |
 | Runtime, command execution, and tool-call logs | [Logs](content/logs/index.md) |

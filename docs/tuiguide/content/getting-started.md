@@ -4,7 +4,7 @@ The `cm tui` Command Center is the interactive interface for `CodeMCP`. It is in
 
 ## Navigation model
 
-The top navigation owns the major operational areas: Workspaces, MCP, Tunnel, Requests, Logs, Config, Instruction, and Runtime. `Alt+Left` and `Alt+Right` cycle these areas with wrap-around. Child pages remain owned by their parent area, so opening a workspace, MCP server, managed tunnel, log event, or request does not change the active top-level section.
+The top navigation owns the major operational areas: Workspaces, Upstreams, Tunnel, Requests, Logs, Config, Instruction, and Runtime. `Alt+Left` and `Alt+Right` cycle these areas with wrap-around. Child pages remain owned by their parent area, so opening a workspace, Upstream, managed tunnel, log event, or request does not change the active top-level section.
 
 `Esc` always acts on the nearest active layer. It closes an active editor/child page back to its semantic parent, then returns to Home, and exits from Home. Destructive confirmation dialogs and transient overlays consume `Esc` before normal page navigation. `Backspace` is also a back-navigation key when the current page is not actively editing text.
 

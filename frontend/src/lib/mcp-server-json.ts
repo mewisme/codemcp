@@ -1,9 +1,9 @@
-import type { MCPServer } from "@/lib/api"
+import type { UpstreamServer } from "@/lib/api"
 
-export type MCPServerJSONItem = { key: string; server?: MCPServer; errors: string[] }
-export type MCPServerJSONAnalysis = { kind: "single" | "collection"; items: MCPServerJSONItem[]; error?: string }
+export type UpstreamServerJSONItem = { key: string; server?: UpstreamServer; errors: string[] }
+export type UpstreamServerJSONAnalysis = { kind: "single" | "collection"; items: UpstreamServerJSONItem[]; error?: string }
 
-export function analyzeMCPServerJSON(text: string): MCPServerJSONAnalysis {
+export function analyzeUpstreamServerJSON(text: string): UpstreamServerJSONAnalysis {
   const trimmed = text.trim()
   if (!trimmed) return { kind: "single", items: [], error: "Enter a server JSON object or an mcpServers map." }
   let root: unknown
@@ -18,7 +18,7 @@ export function analyzeMCPServerJSON(text: string): MCPServerJSONAnalysis {
   return { kind: "single", items: [normalizeItem(root, "server")] }
 }
 
-export function formatMCPServerJSON(text: string) {
+export function formatUpstreamServerJSON(text: string) {
   return JSON.stringify(JSON.parse(text), null, 2)
 }
 
@@ -26,7 +26,7 @@ export function serverJSONExample() {
   return JSON.stringify({ mcpServers: { local: { command: "node", args: ["./server.js"], env: { NODE_ENV: "production" } }, docs: { type: "http", url: "https://example.com/mcp", headers: { Authorization: "Bearer ..." } } } }, null, 2)
 }
 
-function normalizeItem(value: unknown, key: string, fallbackID = ""): MCPServerJSONItem {
+function normalizeItem(value: unknown, key: string, fallbackID = ""): UpstreamServerJSONItem {
   if (!isRecord(value)) return { key, errors: ["Server entry must be an object."] }
   const errors: string[] = []
   const id = stringValue(value.id, "id", errors) || fallbackID.trim()
@@ -41,7 +41,7 @@ function normalizeItem(value: unknown, key: string, fallbackID = ""): MCPServerJ
   const expose = stringValue(value.expose, "expose", errors) || "all"
   if (!["all", "allowlist", "meta_only", "none"].includes(expose)) errors.push("expose must be all, allowlist, meta_only, or none.")
   const auth = authValue(value.auth, transport, errors)
-  const server: MCPServer = {
+  const server: UpstreamServer = {
     id,
     name: stringValue(value.name, "name", errors) || id,
     transport,
@@ -67,7 +67,7 @@ function normalizeItem(value: unknown, key: string, fallbackID = ""): MCPServerJ
   return { key: id || key, server: errors.length === 0 ? cleanServer(server) : undefined, errors }
 }
 
-function normalizeTransport(raw: string, command: string, url: string, errors: string[]): MCPServer["transport"] {
+function normalizeTransport(raw: string, command: string, url: string, errors: string[]): UpstreamServer["transport"] {
   if (!raw) {
     if (command) return "stdio"
     if (url) return "http"
@@ -124,13 +124,13 @@ function stringMap(value: unknown, key: string, errors: string[]) {
   return result
 }
 
-function markDuplicateIDs(items: MCPServerJSONItem[]) {
+function markDuplicateIDs(items: UpstreamServerJSONItem[]) {
   const counts = new Map<string, number>()
   for (const item of items) if (item.server?.id) counts.set(item.server.id, (counts.get(item.server.id) || 0) + 1)
   return items.map((item) => item.server && (counts.get(item.server.id) || 0) > 1 ? { ...item, server: undefined, errors: [...item.errors, `duplicate server id: ${item.server.id}.`] } : item)
 }
 
-function cleanServer(server: MCPServer): MCPServer {
+function cleanServer(server: UpstreamServer): UpstreamServer {
   const result = { ...server }
   if (!result.tool_prefix) delete result.tool_prefix
   if (!result.cwd) delete result.cwd

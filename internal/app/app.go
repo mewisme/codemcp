@@ -70,12 +70,12 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	} else {
 		workspaceSpan.EndMessage("Workspace registry loaded", tracepkg.Int("workspace_count", len(workspaces)))
 	}
-	upstreamSpan := tracepkg.Start(ctx, "APP", "app.upstream.bootstrap", "Bootstrapping upstream MCP manager")
+	upstreamSpan := tracepkg.Start(ctx, "APP", "app.upstream.bootstrap", "Bootstrapping Upstream manager")
 	upstreamCount := 0
 	if toolRuntime.Upstream != nil {
 		upstreamCount = len(toolRuntime.Upstream.List())
 	}
-	upstreamSpan.EndMessage("Upstream MCP manager bootstrapped", tracepkg.Int("server_count", upstreamCount))
+	upstreamSpan.EndMessage("Upstream manager bootstrapped", tracepkg.Int("server_count", upstreamCount))
 	toolRuntime.SetShellPath(cfg.Shell.Path)
 	var mcpRuntime *mcp.HTTPRuntime
 	if cfg.Server.Enabled {

@@ -132,9 +132,9 @@ export function OverviewPage() {
           icon={Wrench}
         />
         <DashboardCard
-          title="MCP Servers"
+          title="Upstreams"
           value={data ? `${data.enabledServers}/${data.servers}` : "-"}
-          description="Enabled upstream servers"
+          description="Enabled Upstreams"
           icon={Server}
         />
         <DashboardCard

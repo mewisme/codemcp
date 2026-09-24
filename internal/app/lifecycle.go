@@ -32,15 +32,15 @@ func (a *App) Start(ctx context.Context) error {
 		go func() {
 			refreshCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			defer cancel()
-			refreshSpan := tracepkg.Start(refreshCtx, "APP", "app.upstream.initial-discovery", "Starting initial upstream MCP discovery", tracepkg.Bool("force_refresh", false))
+			refreshSpan := tracepkg.Start(refreshCtx, "APP", "app.upstream.initial-discovery", "Starting initial Upstream discovery", tracepkg.Bool("force_refresh", false))
 			if err := a.Tools.RefreshUpstreams(refreshCtx, false); err != nil {
-				refreshSpan.FailMessage("Initial upstream MCP discovery failed", err)
+				refreshSpan.FailMessage("Initial Upstream discovery failed", err)
 				if refreshCtx.Err() == nil && a.Logger != nil {
 					a.Logger.Warning("UPSTREAM", "upstream.bootstrap.failed", "Initial upstream proxy discovery failed", err)
 				}
 				return
 			}
-			refreshSpan.EndMessage("Initial upstream MCP discovery completed")
+			refreshSpan.EndMessage("Initial Upstream discovery completed")
 		}()
 	}
 	if a.Tunnel != nil {
@@ -104,15 +104,15 @@ func (a *App) Stop() error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			upstreamSpan := tracepkg.StartObserver(a.trace, "APP", "app.upstream.shutdown", "Shutting down upstream MCP manager")
+			upstreamSpan := tracepkg.StartObserver(a.trace, "APP", "app.upstream.shutdown", "Shutting down Upstream manager")
 			if err := a.Upstream.Shutdown(ctx); err != nil {
-				upstreamSpan.FailMessage("Upstream MCP manager shutdown failed", err)
+				upstreamSpan.FailMessage("Upstream manager shutdown failed", err)
 				if a.Logger != nil {
 					a.Logger.Failure("UPSTREAM", "upstream.shutdown.failed", "Upstream shutdown failed", err)
 				}
 				errCh <- err
 			} else {
-				upstreamSpan.EndMessage("Upstream MCP manager shut down")
+				upstreamSpan.EndMessage("Upstream manager shut down")
 				if a.Logger != nil {
 					a.Logger.Verbose("UPSTREAM", "upstream.stopped", "Upstream servers stopped")
 				}

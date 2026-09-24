@@ -20,7 +20,7 @@ Deep-link directly to a page or resource when useful:
 ```bash
 cm tui workspace
 cm tui workspace ws_...
-cm tui mcp github
+cm tui upstream github
 cm tui tunnel
 cm tui requests
 cm tui logs
@@ -64,7 +64,7 @@ Commands is the primary discovery surface. There is no separate Quick Open workf
 The top-level navigation covers:
 
 ```text
-Workspaces | MCP | Tunnel | Requests | Logs | Config | Instruction | Runtime
+Workspaces | Upstreams | Tunnel | Requests | Logs | Config | Instruction | Runtime
 ```
 
 Child resources remain owned by their parent area. Additional resources such as workspace containers, managed tunnels, About/build information, and embedded Guide topics are reachable through Commands or deep links.
@@ -91,13 +91,13 @@ A workspace detail can relocate a project after its directory has already moved.
 
 Workspace containers (`wsc_*`) are grouping/orchestration resources, not filesystem scopes. See [Workspaces](workspaces.md).
 
-## MCP
+## Upstreams
 
-The MCP area manages upstream MCP servers, health/tool discovery, tool exposure, and OAuth where supported.
+The Upstreams area manages remote MCP endpoints, health/tool discovery, tool exposure, and OAuth where supported.
 
 Server creation supports both form-driven setup and canonical JSON input. Sensitive environment/header values remain managed as secrets rather than being echoed into normal detail views.
 
-See [MCP and upstreams](mcp.md).
+See [MCP clients and Upstreams](mcp.md).
 
 ## Tunnel
 

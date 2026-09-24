@@ -68,7 +68,7 @@ CLI / TUI / Admin HTTP / embedded web / protocol entrypoints
 | `trace` | runtime | Diagnostic tracing |
 | `tunnel` | runtime/integration | OpenAI Secure MCP Tunnel transport/client |
 | `update` | platform | Release resolution/download/activation |
-| `upstream` | runtime/integration | Upstream MCP client/runtime |
+| `upstream` | runtime/integration | Upstream client/runtime |
 | `version` | domain | Product/build identity |
 | `workspace` | domain/persistence | Workspace identity, global registry/path policy, and canonical workspace-local `.cm` state ownership used by memory, checkpoints, shell state, native rules/skills, and workspace Prompt paths |
 

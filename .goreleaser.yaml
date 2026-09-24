@@ -88,7 +88,7 @@ scoops:
       - codemcp
     url_template: "https://github.com/mewisme/codemcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     homepage: "https://github.com/mewisme/codemcp"
-    description: "Self-hosted MCP 2026-07-28 runtime with local tools, upstream MCP aggregation, and OpenAI tunnel support"
+    description: "Self-hosted MCP 2026-07-28 runtime with local tools, Upstream aggregation, and OpenAI tunnel support"
     license: MIT
     goamd64: v1
     skip_upload: true
@@ -106,7 +106,7 @@ homebrew_casks:
     binaries:
       - cm
     homepage: "https://github.com/mewisme/codemcp"
-    description: "Self-hosted MCP 2026-07-28 runtime with local tools, upstream MCP aggregation, and OpenAI tunnel support"
+    description: "Self-hosted MCP 2026-07-28 runtime with local tools, Upstream aggregation, and OpenAI tunnel support"
     directory: Casks
     skip_upload: true
     hooks:

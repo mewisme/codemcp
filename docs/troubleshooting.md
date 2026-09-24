@@ -397,7 +397,7 @@ then rerun the installer. Start the managed runtime again afterward:
 cm up
 ```
 
-## Upstream MCP refresh fails
+## Upstream refresh fails
 
 Upstream proxy replacement is atomic. A failed discovery/schema refresh should leave the previous proxy catalog active.
 

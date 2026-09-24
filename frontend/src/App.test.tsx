@@ -61,7 +61,7 @@ describe("admin app runtime smoke", () => {
         "Manage global context, rules, and detected user-level instruction sources.",
       tools:
         "Inspect every tool exposed by the local runtime and enabled upstream servers, including schemas and behavioral hints.",
-      servers: "Add MCP server",
+      upstreams: "Add Upstream",
       tunnel: "OpenAI Secure MCP Tunnel",
       activity:
         "Live MCP requests, tool calls, and runtime lifecycle events. Tool calls open as addressable child routes.",

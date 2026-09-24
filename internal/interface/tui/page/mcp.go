@@ -146,7 +146,7 @@ func newMCPRoutePageAction(ctx context.Context, resourceID, section, action stri
 		ctx = context.Background()
 	}
 	if manager == nil {
-		return nil, fmt.Errorf("MCP manager is required")
+		return nil, fmt.Errorf("upstream manager is required")
 	}
 	if store == nil {
 		store = mcpoauth.NewStore(mcpoauth.Path())
@@ -318,7 +318,7 @@ func (page *MCPPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		return page, cmd
 	case component.BrowserOpenMsg:
 		if page.resourceID == "" && msg.Row.ID != "" {
-			return page, func() tea.Msg { return NavigateMsg{Path: []string{"mcp", msg.Row.ID}} }
+			return page, func() tea.Msg { return NavigateMsg{Path: []string{"upstream", msg.Row.ID}} }
 		}
 		return page, nil
 	case tea.KeyPressMsg:
@@ -563,15 +563,15 @@ func (page *MCPPage) submitJSONEditor() tea.Cmd {
 		return nil
 	}
 	page.acceptServerDrafts()
-	message := "MCP server added"
-	path := []string{"mcp"}
+	message := "Upstream added"
+	path := []string{"upstream"}
 	if len(servers) == 1 {
-		path = []string{"mcp", servers[0].ID}
+		path = []string{"upstream", servers[0].ID}
 	} else {
-		message = fmt.Sprintf("Added %d MCP servers", len(servers))
+		message = fmt.Sprintf("Added %d Upstreams", len(servers))
 	}
 	navigation := func() tea.Msg { return NavigateMsg{Path: path} }
-	return tea.Batch(navigation, func() tea.Msg { return ToastMsg{Title: "MCP", Message: message, Tone: component.ToneSuccess} })
+	return tea.Batch(navigation, func() tea.Msg { return ToastMsg{Title: "Upstream", Message: message, Tone: component.ToneSuccess} })
 }
 
 func (page *MCPPage) acceptServerDrafts() {
@@ -714,15 +714,15 @@ func (page *MCPPage) editorParentNavigation() tea.Cmd {
 	if page == nil {
 		return nil
 	}
-	path := []string{"mcp"}
+	path := []string{"upstream"}
 	switch page.command {
 	case UpstreamServerConfigure:
 		if page.targetID != "" {
-			path = []string{"mcp", page.targetID}
+			path = []string{"upstream", page.targetID}
 		}
 	case UpstreamAuthLogin:
 		if page.targetID != "" {
-			path = []string{"mcp", page.targetID, "oauth"}
+			path = []string{"upstream", page.targetID, "oauth"}
 		}
 	}
 	return func() tea.Msg { return NavigateMsg{Path: path} }
@@ -778,18 +778,18 @@ func (page *MCPPage) submitServerEditor() tea.Cmd {
 	page.editor.SetFeedback("", nil)
 	page.err = nil
 	page.acceptServerDrafts()
-	message := "MCP server updated"
+	message := "Upstream updated"
 	if create {
-		message = "MCP server added"
+		message = "Upstream added"
 	}
-	navigation := func() tea.Msg { return NavigateMsg{Path: []string{"mcp", server.ID}} }
-	return tea.Batch(navigation, func() tea.Msg { return ToastMsg{Title: "MCP", Message: message, Tone: component.ToneSuccess} })
+	navigation := func() tea.Msg { return NavigateMsg{Path: []string{"upstream", server.ID}} }
+	return tea.Batch(navigation, func() tea.Msg { return ToastMsg{Title: "Upstream", Message: message, Tone: component.ToneSuccess} })
 }
 
 func (page *MCPPage) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	switch msg.String() {
 	case "a":
-		return func() tea.Msg { return NavigateMsg{Path: []string{"mcp", "create"}} }, true
+		return func() tea.Msg { return NavigateMsg{Path: []string{"upstream", "create"}} }, true
 	}
 	return nil, false
 }
@@ -799,12 +799,12 @@ func (page *MCPPage) openCommand(command UpstreamCommand, resourceID string) (te
 	page.command, page.targetID = command, strings.TrimSpace(resourceID)
 	switch command {
 	case UpstreamServerAdd:
-		return func() tea.Msg { return NavigateMsg{Path: []string{"mcp", "create"}} }, nil
+		return func() tea.Msg { return NavigateMsg{Path: []string{"upstream", "create"}} }, nil
 	case UpstreamServerConfigure:
 		if _, ok := page.manager.Get(page.targetID); !ok {
 			return nil, fmt.Errorf("unknown upstream server: %s", page.targetID)
 		}
-		return func() tea.Msg { return NavigateMsg{Path: []string{"mcp", page.targetID, "edit"}} }, nil
+		return func() tea.Msg { return NavigateMsg{Path: []string{"upstream", page.targetID, "edit"}} }, nil
 	case UpstreamServerRemove:
 		if _, ok := page.manager.Get(page.targetID); !ok {
 			return nil, fmt.Errorf("unknown upstream server: %s", page.targetID)
@@ -832,7 +832,7 @@ func (page *MCPPage) openCommand(command UpstreamCommand, resourceID string) (te
 		if server.Auth.Type == "none" {
 			return nil, fmt.Errorf("OAuth is disabled for %s", server.ID)
 		}
-		return func() tea.Msg { return NavigateMsg{Path: []string{"mcp", server.ID, "oauth", "login"}} }, nil
+		return func() tea.Msg { return NavigateMsg{Path: []string{"upstream", server.ID, "oauth", "login"}} }, nil
 	case UpstreamAuthLogout:
 		if _, ok := page.manager.Get(page.targetID); !ok {
 			return nil, fmt.Errorf("unknown upstream server: %s", page.targetID)
@@ -866,9 +866,9 @@ func (page *MCPPage) updateConfirm(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		delete(page.status, target)
 		delete(page.tools, target)
-		page.notice = "MCP server removed"
+		page.notice = "Upstream removed"
 		page.closeOverlay()
-		return func() tea.Msg { return NavigateMsg{Path: []string{"mcp"}, Replace: true} }
+		return func() tea.Msg { return NavigateMsg{Path: []string{"upstream"}, Replace: true} }
 	case UpstreamAuthLogout:
 		if err := page.oauthStore.Delete(target); err != nil {
 			page.err = err
@@ -894,9 +894,9 @@ func (page *MCPPage) toggleServer(enabled bool) error {
 	if err != nil {
 		return err
 	}
-	page.notice = "MCP server disabled"
+	page.notice = "Upstream disabled"
 	if enabled {
-		page.notice = "MCP server enabled"
+		page.notice = "Upstream enabled"
 	}
 	return page.reload()
 }
@@ -1037,8 +1037,8 @@ func (page *MCPPage) finishOAuth(msg mcpOAuthDoneMsg) tea.Cmd {
 	page.oauthForm = nil
 	message := "OAuth authorization stored"
 	return tea.Batch(
-		func() tea.Msg { return NavigateMsg{Path: []string{"mcp", msg.id, "oauth"}} },
-		func() tea.Msg { return ToastMsg{Title: "MCP", Message: message, Tone: component.ToneSuccess} },
+		func() tea.Msg { return NavigateMsg{Path: []string{"upstream", msg.id, "oauth"}} },
+		func() tea.Msg { return ToastMsg{Title: "Upstream", Message: message, Tone: component.ToneSuccess} },
 	)
 }
 
@@ -1097,7 +1097,7 @@ func (page *MCPPage) reload() error {
 	if err != nil {
 		return err
 	}
-	page.browser = component.NewBrowser(page.ctx, "Upstream MCP servers", rows, nil).WithHelpBindings(component.Binding([]string{"a"}, "a", "add"))
+	page.browser = component.NewBrowser(page.ctx, "Upstreams", rows, nil).WithHelpBindings(component.Binding([]string{"a"}, "a", "add"))
 	page.browser.SetHelpExpanded(helpExpanded)
 	if page.width > 0 && page.height > 0 {
 		updated, _ := page.browser.Update(tea.WindowSizeMsg{Width: page.width, Height: page.height})
@@ -1130,7 +1130,7 @@ func (page *MCPPage) rows() ([]component.Row, error) {
 func (page *MCPPage) syncDetail() error {
 	server, ok := page.manager.Get(page.resourceID)
 	if !ok {
-		return fmt.Errorf("MCP server not found: %s", page.resourceID)
+		return fmt.Errorf("upstream not found: %s", page.resourceID)
 	}
 	redacted := upstream.RedactServer(server)
 	content := ""
@@ -1163,9 +1163,9 @@ func (page *MCPPage) syncDetail() error {
 	bindings := make([]component.DetailPageBinding, 0, 10)
 	if page.section == "" {
 		bindings = append(bindings,
-			component.DetailPageBinding{Key: "h", Desc: "health", Message: NavigateMsg{Path: []string{"mcp", server.ID, "health"}}},
-			component.DetailPageBinding{Key: "v", Desc: "tools", Message: NavigateMsg{Path: []string{"mcp", server.ID, "tools"}}},
-			component.DetailPageBinding{Key: "u", Desc: "oauth", Message: NavigateMsg{Path: []string{"mcp", server.ID, "oauth"}}},
+			component.DetailPageBinding{Key: "h", Desc: "health", Message: NavigateMsg{Path: []string{"upstream", server.ID, "health"}}},
+			component.DetailPageBinding{Key: "v", Desc: "tools", Message: NavigateMsg{Path: []string{"upstream", server.ID, "tools"}}},
+			component.DetailPageBinding{Key: "u", Desc: "oauth", Message: NavigateMsg{Path: []string{"upstream", server.ID, "oauth"}}},
 		)
 	}
 	toggle := UpstreamServerEnable
@@ -1173,13 +1173,13 @@ func (page *MCPPage) syncDetail() error {
 		toggle = UpstreamServerDisable
 	}
 	bindings = append(bindings,
-		component.DetailPageBinding{Key: "e", Desc: "configure", Message: NavigateMsg{Path: []string{"mcp", server.ID, "edit"}}},
+		component.DetailPageBinding{Key: "e", Desc: "configure", Message: NavigateMsg{Path: []string{"upstream", server.ID, "edit"}}},
 		component.DetailPageBinding{Key: "space", HelpKey: "space", Desc: "toggle", Message: UpstreamCommandMsg{Command: toggle, ResourceID: server.ID}},
 		component.DetailPageBinding{Key: "r", Desc: "health", Message: UpstreamCommandMsg{Command: UpstreamServerHealth, ResourceID: server.ID}},
 		component.DetailPageBinding{Key: "t", Desc: "tools", Message: UpstreamCommandMsg{Command: UpstreamServerTools, ResourceID: server.ID}},
 	)
 	if server.Transport == "http" && server.Auth.Type != "none" {
-		bindings = append(bindings, component.DetailPageBinding{Key: "o", Desc: "login", Message: NavigateMsg{Path: []string{"mcp", server.ID, "oauth", "login"}}})
+		bindings = append(bindings, component.DetailPageBinding{Key: "o", Desc: "login", Message: NavigateMsg{Path: []string{"upstream", server.ID, "oauth", "login"}}})
 	}
 	if status, err := page.oauthStore.Status(server.ID); err == nil && status.Configured {
 		bindings = append(bindings, component.DetailPageBinding{Key: "l", Desc: "logout", Message: UpstreamCommandMsg{Command: UpstreamAuthLogout, ResourceID: server.ID}})
@@ -1277,14 +1277,14 @@ func (page *MCPPage) confirmTitle() string {
 	if page.command == UpstreamAuthLogout {
 		return "Remove OAuth authorization for " + page.targetID + "?"
 	}
-	return "Remove MCP server " + page.targetID + "?"
+	return "Remove Upstream " + page.targetID + "?"
 }
 
 func (page *MCPPage) confirmDescription() string {
 	if page.command == UpstreamAuthLogout {
-		return "Stored OAuth credentials will be deleted. The MCP server configuration is preserved."
+		return "Stored OAuth credentials will be deleted. The Upstream configuration is preserved."
 	}
-	return "The MCP server configuration and its managed OAuth credentials will be removed. External server data is unchanged."
+	return "The Upstream configuration and its managed OAuth credentials will be removed. External server data is unchanged."
 }
 
 func waitMCPEvent(events <-chan tea.Msg) tea.Cmd {

@@ -11,7 +11,7 @@ const (
 	RouteHome        RouteKind = "home"
 	RouteWorkspaces  RouteKind = "workspaces"
 	RouteContainers  RouteKind = "containers"
-	RouteMCP         RouteKind = "mcp"
+	RouteMCP         RouteKind = "upstream"
 	RouteTunnel      RouteKind = "tunnel"
 	RouteTunnels     RouteKind = "tunnels"
 	RouteRequests    RouteKind = "requests"
@@ -41,7 +41,7 @@ type headerPage struct {
 
 var headerPages = []headerPage{
 	{Kind: RouteWorkspaces, Label: "Workspaces", CompactLabel: "Work"},
-	{Kind: RouteMCP, Label: "MCP"},
+	{Kind: RouteMCP, Label: "Upstreams", CompactLabel: "Up"},
 	{Kind: RouteTunnel, Label: "Tunnel", CompactLabel: "Tun"},
 	{Kind: RouteRequests, Label: "Requests", CompactLabel: "Req"},
 	{Kind: RouteLogs, Label: "Logs"},
@@ -198,7 +198,7 @@ func parseMCPRoute(parts []string) (Route, error) {
 	}
 	section, ok := normalizeRouteSection(RouteMCP, parts[2])
 	if !ok {
-		return Route{}, fmt.Errorf("unsupported mcp child section %q", parts[2])
+		return Route{}, fmt.Errorf("unsupported Upstream child section %q", parts[2])
 	}
 	route.Section = section
 	if len(parts) == 3 {
@@ -451,7 +451,7 @@ func parseRouteKind(value string) (RouteKind, bool) {
 		return RouteWorkspaces, true
 	case "container", "containers", "workspace-container", "workspace-containers":
 		return RouteContainers, true
-	case "mcp", "server", "servers":
+	case "upstream", "upstreams":
 		return RouteMCP, true
 	case "tunnel":
 		return RouteTunnel, true
@@ -482,7 +482,7 @@ func parseRouteKind(value string) (RouteKind, bool) {
 
 func (route Route) Title() string {
 	base := map[RouteKind]string{
-		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "MCP Servers", RouteTunnel: "Tunnel", RouteTunnels: "Managed Tunnels",
+		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "Upstreams", RouteTunnel: "Tunnel", RouteTunnels: "Managed Tunnels",
 		RouteRequests: "Requests", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RouteInstruction: "Instruction", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
 	}[route.Kind]
 	if route.Kind == RouteRequests && route.Mode != "" {
@@ -610,7 +610,7 @@ func breadcrumbRootLabel(kind RouteKind) string {
 	case RouteContainers:
 		return "Containers"
 	case RouteMCP:
-		return "MCP"
+		return "Upstreams"
 	case RouteTunnel:
 		return "Tunnel"
 	case RouteTunnels:
@@ -660,7 +660,7 @@ func configBreadcrumbResourceLabel(resourceID string) string {
 func breadcrumbSegmentLabel(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "mcp":
-		return "MCP"
+		return "Upstreams"
 	case "tui":
 		return "TUI"
 	case "oauth":

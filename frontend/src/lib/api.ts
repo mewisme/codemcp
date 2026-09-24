@@ -200,11 +200,11 @@ export type ProjectContextOptions = {
   include_memory?: boolean
   include_skills?: boolean
 }
-export type MCPAuth = {
+export type UpstreamAuth = {
   type?: "auto" | "oauth" | "none" | string
   scope?: string
 }
-export type MCPServer = {
+export type UpstreamServer = {
   id: string
   name: string
   transport: "http" | "stdio" | string
@@ -216,14 +216,14 @@ export type MCPServer = {
   url?: string
   headers?: Record<string, string>
   bearer_token_env_var?: string
-  auth?: MCPAuth
+  auth?: UpstreamAuth
   tool_prefix?: string
   expose?: "all" | "allowlist" | "meta_only" | "none" | string
   tools?: string[]
   disabled_tools?: string[]
   idle_timeout_sec?: number
 }
-export type MCPServerStatus = {
+export type UpstreamServerStatus = {
   id: string
   name: string
   enabled: boolean
@@ -237,12 +237,12 @@ export type MCPServerStatus = {
   last_error?: string
   pid?: number
 }
-export type MCPServerTools = {
+export type UpstreamServerTools = {
   server_id: string
   tools: Tool[]
   proxied_tools: string[]
 }
-export type MCPServerOAuthStatus = {
+export type UpstreamOAuthStatus = {
   server_id: string
   configured: boolean
   issuer?: string
@@ -254,7 +254,7 @@ export type MCPServerOAuthStatus = {
   expires_at?: string
   expired: boolean
 }
-export type MCPServerOAuthLogin = {
+export type UpstreamOAuthLogin = {
   redirect_origin: string
   issuer?: string
   client_id?: string
@@ -262,7 +262,7 @@ export type MCPServerOAuthLogin = {
   client_metadata_url?: string
   scope?: string
 }
-export type MCPServerOAuthSession = {
+export type UpstreamOAuthSession = {
   session_id: string
   authorization_url: string
   expires_at: string
@@ -567,35 +567,35 @@ export const adminApi = {
       `/api/workspaces/${encodeURIComponent(id)}/executions/${encodeURIComponent(executionID)}`
     ),
   tools: () => api<Tool[]>("/api/tools"),
-  upstream: () => api<MCPServer[]>("/api/upstream"),
+  upstream: () => api<UpstreamServer[]>("/api/upstream"),
   upstreamServer: (id: string) =>
-    api<MCPServer>(`/api/upstream/${encodeURIComponent(id)}`),
-  addUpstream: (server: MCPServer) =>
-    api<MCPServer>("/api/upstream", {
+    api<UpstreamServer>(`/api/upstream/${encodeURIComponent(id)}`),
+  addUpstream: (server: UpstreamServer) =>
+    api<UpstreamServer>("/api/upstream", {
       method: "POST",
       body: JSON.stringify(server),
     }),
-  updateUpstream: (id: string, server: MCPServer) =>
-    api<MCPServer>(`/api/upstream/${encodeURIComponent(id)}`, {
+  updateUpstream: (id: string, server: UpstreamServer) =>
+    api<UpstreamServer>(`/api/upstream/${encodeURIComponent(id)}`, {
       method: "PUT",
       body: JSON.stringify(server),
     }),
   removeUpstream: (id: string) =>
     api<void>(`/api/upstream/${encodeURIComponent(id)}`, { method: "DELETE" }),
   upstreamStatus: (id: string, refresh = true) =>
-    api<MCPServerStatus>(
+    api<UpstreamServerStatus>(
       `/api/upstream/${encodeURIComponent(id)}/status?refresh=${refresh}`
     ),
   upstreamTools: (id: string, refresh = false) =>
-    api<MCPServerTools>(
+    api<UpstreamServerTools>(
       `/api/upstream/${encodeURIComponent(id)}/tools?refresh=${refresh}`
     ),
   upstreamOAuthStatus: (id: string) =>
-    api<MCPServerOAuthStatus>(
+    api<UpstreamOAuthStatus>(
       `/api/upstream/${encodeURIComponent(id)}/auth/status`
     ),
-  beginUpstreamOAuth: (id: string, request: MCPServerOAuthLogin) =>
-    api<MCPServerOAuthSession>(
+  beginUpstreamOAuth: (id: string, request: UpstreamOAuthLogin) =>
+    api<UpstreamOAuthSession>(
       `/api/upstream/${encodeURIComponent(id)}/auth/login`,
       { method: "POST", body: JSON.stringify(request) }
     ),

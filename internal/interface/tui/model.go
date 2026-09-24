@@ -292,7 +292,7 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return model.updatePage(msg)
 	case tuipage.UpstreamCommandMsg:
 		if err := model.ensureMCPPage(msg.ResourceID); err != nil {
-			return model, model.showToast("MCP", err.Error(), component.ToneDanger)
+			return model, model.showToast("Upstream", err.Error(), component.ToneDanger)
 		}
 		return model.updatePage(msg)
 	case tuipage.TunnelCommandMsg:
@@ -1738,7 +1738,7 @@ func routeDescription(route Route) string {
 	case RouteContainers:
 		return "Browse the Containers tab inside Workspaces."
 	case RouteMCP:
-		return "Manage configured upstream MCP servers."
+		return "Manage configured Upstream servers."
 	case RouteTunnel:
 		return "Manage runtime and OpenAI Secure MCP Tunnel state."
 	case RouteTunnels:

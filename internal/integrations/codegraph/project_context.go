@@ -78,7 +78,7 @@ func projectContextProjection(runtimeProvider ProjectContextRuntimeProvider, wor
 			Content: strings.Join([]string{
 				"Use the CM-native `codegraph_explore` tool first for codebase architecture, symbol relationships, call paths, dependency exploration, and targeted source discovery before broad grep/read exploration.",
 				"Prefer precise workspace file reads when exact source text, line-level details, or files outside the indexed project are needed; CodeGraph complements rather than replaces targeted reads.",
-				"`codegraph_explore` performs a bounded incremental sync before querying an indexed project; do not start `codegraph serve --mcp` or wire the upstream MCP server.",
+				"`codegraph_explore` performs a bounded incremental sync before querying an indexed project; do not start `codegraph serve --mcp` or wire the CodeGraph MCP server.",
 				"Treat source returned by `codegraph_explore` as already read unless it is stale, incomplete, unavailable, or outside the indexed project.",
 			}, "\n"),
 		}},

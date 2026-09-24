@@ -1,6 +1,6 @@
-# MCP OAuth Fields
+# Upstream OAuth Fields
 
-The OAuth login editor configures optional discovery/client overrides for an HTTP MCP server before starting authorization. All text fields are optional unless the remote OAuth flow itself requires the corresponding value.
+The OAuth login editor configures optional discovery/client overrides for an HTTP Upstream before starting authorization. All text fields are optional unless the remote OAuth flow itself requires the corresponding value.
 
 ## Issuer override
 

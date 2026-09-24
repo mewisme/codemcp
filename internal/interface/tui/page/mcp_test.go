@@ -72,9 +72,9 @@ func newMCPPageTestHarness(t *testing.T, client *mcpPageClient) (*MCPPage, *upst
 
 func TestMCPMutationNoticeRendersBesidePageTitle(t *testing.T) {
 	page, _, _, _ := newMCPPageTestHarness(t, &mcpPageClient{})
-	page.notice = "MCP server added"
+	page.notice = "Upstream added"
 	line := strings.Split(ansi.Strip(page.View(100, 24)), "\n")[0]
-	if !strings.Contains(line, "Upstream MCP servers  · MCP server added") {
+	if !strings.Contains(line, "Upstreams  · Upstream added") {
 		t.Fatalf("MCP title notice=%q", line)
 	}
 }
@@ -126,7 +126,7 @@ func TestMCPResourceUsesRoutedChildDetailPage(t *testing.T) {
 		t.Fatal("health child navigation returned no command")
 	}
 	navigate, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(navigate.Path, "/") != "mcp/docs/health" {
+	if !ok || strings.Join(navigate.Path, "/") != "upstream/docs/health" {
 		t.Fatalf("health navigation=%#v", navigate)
 	}
 	health, err := newMCPRoutePage(t.Context(), "docs", "health", manager, oauthStore)
@@ -156,7 +156,7 @@ func TestMCPRoutedServerEditorsAndSecretRedaction(t *testing.T) {
 			t.Fatalf("create editor missing %q: %q", want, view)
 		}
 	}
-	if strings.Contains(view, "Create MCP Server") {
+	if strings.Contains(view, "Create Upstream") {
 		t.Fatalf("create editor retained redundant page title: %q", view)
 	}
 	testutil.AssertLinesFit(t, create.View(40, 18), 40)
@@ -272,7 +272,7 @@ func TestMCPDetailRemovalKeepsDetailUntilParentNavigation(t *testing.T) {
 		t.Fatalf("intermediate MCP detail render=%q", got)
 	}
 	message, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(message.Path, "/") != "mcp" || !message.Replace {
+	if !ok || strings.Join(message.Path, "/") != "upstream" || !message.Replace {
 		t.Fatalf("navigation=%#v", message)
 	}
 }
@@ -357,7 +357,7 @@ func TestMCPPageOAuthEmitsURLStoresCredentialAndLogoutPreservesServer(t *testing
 			t.Fatalf("OAuth editor missing %q: %q", want, view)
 		}
 	}
-	if strings.Contains(view, "Authorize MCP Server") {
+	if strings.Contains(view, "Authorize Upstream") {
 		t.Fatalf("OAuth editor retained redundant page title: %q", view)
 	}
 	if page.OverlayActive() || page.oauthForm == nil || !page.oauthForm.OpenBrowser {
@@ -415,7 +415,7 @@ func TestMCPPageOAuthEmitsURLStoresCredentialAndLogoutPreservesServer(t *testing
 		if next == nil {
 			continue
 		}
-		if navigate, ok := next().(NavigateMsg); ok && strings.Join(navigate.Path, "/") == "mcp/secure/oauth" {
+		if navigate, ok := next().(NavigateMsg); ok && strings.Join(navigate.Path, "/") == "upstream/secure/oauth" {
 			foundNavigation = true
 		}
 	}
@@ -437,7 +437,7 @@ func TestMCPPageOAuthEmitsURLStoresCredentialAndLogoutPreservesServer(t *testing
 		t.Fatalf("oauth remained after logout: %#v err=%v", status, err)
 	}
 	if _, ok := manager.Get("secure"); !ok {
-		t.Fatal("OAuth logout removed MCP server configuration")
+		t.Fatal("OAuth logout removed Upstream configuration")
 	}
 }
 
@@ -588,7 +588,7 @@ func TestUpstreamServerEditorCancelReturnsToParent(t *testing.T) {
 		t.Fatal("create cancel returned no navigation")
 	}
 	message, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(message.Path, "/") != "mcp" {
+	if !ok || strings.Join(message.Path, "/") != "upstream" {
 		t.Fatalf("create cancel=%#v", message)
 	}
 	if err := manager.Add(upstream.Server{ID: "docs", Transport: "http", URL: "https://example.test/mcp", Enabled: true}); err != nil {
@@ -603,7 +603,7 @@ func TestUpstreamServerEditorCancelReturnsToParent(t *testing.T) {
 		t.Fatal("edit cancel returned no navigation")
 	}
 	message, ok = cmd().(NavigateMsg)
-	if !ok || strings.Join(message.Path, "/") != "mcp/docs" {
+	if !ok || strings.Join(message.Path, "/") != "upstream/docs" {
 		t.Fatalf("edit cancel=%#v", message)
 	}
 }
@@ -745,11 +745,11 @@ func TestMCPCreateJSONMultipleStaysAuthoritativeAndCreatesAtomically(t *testing.
 			continue
 		}
 		if navigation, ok := next().(NavigateMsg); ok {
-			foundNavigation = strings.Join(navigation.Path, "/") == "mcp"
+			foundNavigation = strings.Join(navigation.Path, "/") == "upstream"
 		}
 	}
 	if !foundNavigation {
-		t.Fatal("multi create did not navigate to MCP list")
+		t.Fatal("multi create did not navigate to Upstream list")
 	}
 }
 

@@ -87,7 +87,7 @@ func newUpstreamServerEditor(server upstream.Server, create bool) (component.Edi
 	data := newMCPServerFormData(server, create)
 	generalFields := []huh.Field{}
 	if create {
-		generalFields = append(generalFields, component.Input("Server ID", &data.ID).Validate(requiredValue("server id")))
+		generalFields = append(generalFields, component.Input("Upstream ID", &data.ID).Validate(requiredValue("server id")))
 	}
 	generalFields = append(generalFields,
 		component.Input("Display name", &data.Name),
@@ -163,7 +163,7 @@ func mcpServerFormSnapshot(data *mcpServerFormData) string {
 
 func serverFromMCPForm(data *mcpServerFormData, existing upstream.Server, create bool) (upstream.Server, error) {
 	if data == nil {
-		return upstream.Server{}, fmt.Errorf("MCP server form is unavailable")
+		return upstream.Server{}, fmt.Errorf("upstream form is unavailable")
 	}
 	server := existing
 	if create {
