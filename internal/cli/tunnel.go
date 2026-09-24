@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -32,7 +31,10 @@ func normalizeTunnelIDs(values []string) []string {
 }
 
 func tunnelStatusCommand() *cobra.Command {
-	return &cobra.Command{Use: "status", Aliases: []string{"st"}, Short: "Show tunnel configuration, runtime state, and metadata", Args: cobra.NoArgs, RunE: runTunnelStatus}
+	var asJSON bool
+	cmd := &cobra.Command{Use: "status", Aliases: []string{"st"}, Short: "Show tunnel configuration, runtime state, and metadata", Args: cobra.NoArgs, RunE: runTunnelStatus}
+	addJSONResultFlag(cmd, &asJSON)
+	return cmd
 }
 
 func runTunnelStatus(cmd *cobra.Command, _ []string) error {
@@ -61,17 +63,8 @@ func runTunnelStatus(cmd *cobra.Command, _ []string) error {
 			status.ID = runtimeStatus.TunnelID
 		}
 	}
-	format, err := commandLogFormat(cmd)
-	if err != nil {
-		return err
-	}
-	if format == logger.FormatJSON {
-		data, err := json.Marshal(status)
-		if err != nil {
-			return err
-		}
-		cmd.Println(string(data))
-		return nil
+	if commandResultModeFor(cmd) == resultModeJSON {
+		return writeResultJSON(cmd, status)
 	}
 	if runtimeRunning && transientTunnelState(tunnelCLIState(cfg.Tunnel, status, true)) && commandAnimationEligible(cmd) {
 		runtimeStatus = animateRuntimeTunnelState(cmd, runtimeStatus, statusTunnelWatchTimeout)

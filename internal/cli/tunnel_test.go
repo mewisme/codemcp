@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
@@ -66,6 +67,31 @@ func TestTunnelCommandAdminHierarchy(t *testing.T) {
 		if err != nil || resolved.Name() != "use" {
 			t.Fatalf("tunnel alias %q resolved to %v: %v", alias, resolved, err)
 		}
+	}
+}
+
+func TestTunnelStatusResultJSONIsIndependentFromDiagnosticLogFormat(t *testing.T) {
+	root := &cobra.Command{Use: "cm"}
+	addLoggingFlags(root)
+	cmd := tunnelStatusCommand()
+	root.AddCommand(cmd)
+	var output bytes.Buffer
+	cmd.SetOut(&output)
+
+	if cmd.Flags().Lookup("json") == nil {
+		t.Fatal("tunnel status does not expose canonical --json result flag")
+	}
+	if err := root.PersistentFlags().Set("log-format", "json"); err != nil {
+		t.Fatal(err)
+	}
+	if mode := commandResultModeFor(cmd); mode != resultModePlain {
+		t.Fatalf("--log-format=json changed result mode to %v", mode)
+	}
+	if err := cmd.Flags().Set("json", "true"); err != nil {
+		t.Fatal(err)
+	}
+	if mode := commandResultModeFor(cmd); mode != resultModeJSON {
+		t.Fatalf("--json result mode = %v", mode)
 	}
 }
 

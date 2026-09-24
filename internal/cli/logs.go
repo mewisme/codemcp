@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
@@ -187,12 +188,22 @@ type runtimeReplay struct {
 	out       io.Writer
 	format    logger.Format
 	showTime  bool
+	theme     presentation.Theme
+	glyphs    presentation.GlyphSet
 	lastRunID string
 }
 
 func newRuntimeReplay(cmd *cobra.Command, showTime bool) *runtimeReplay {
 	format, _ := commandLogFormat(cmd)
-	return &runtimeReplay{log: logReplayLogger(cmd, showTime), out: commandLogWriter(cmd), format: format, showTime: showTime}
+	capabilities := commandTerminalCapabilities(cmd)
+	return &runtimeReplay{
+		log:      logReplayLogger(cmd, showTime),
+		out:      commandLogWriter(cmd),
+		format:   format,
+		showTime: showTime,
+		theme:    presentation.NewTheme(capabilities),
+		glyphs:   presentation.Glyphs(capabilities),
+	}
 }
 
 func (replay *runtimeReplay) Render(event runtimeevent.Event) {
@@ -223,11 +234,10 @@ func (replay *runtimeReplay) renderSessionHeader(event runtimeevent.Event) {
 	}
 	pid := ""
 	if event.PID > 0 {
-		pid = fmt.Sprintf(" %s pid %d", cliSeparator(replay.out), event.PID)
+		pid = fmt.Sprintf(" %s pid %d", replay.glyphs.Separator, event.PID)
 	}
-	glyphs := cliGlyphs(replay.out)
-	line := fmt.Sprintf("%s%s%s session %s%s %s %s %s%s", prefix, glyphs.Horizontal, glyphs.Horizontal, shortSessionID(event.RunID), pid, glyphs.Separator, mode, glyphs.Horizontal, glyphs.Horizontal)
-	fmt.Fprintln(replay.out, cliDim(replay.out, line))
+	line := fmt.Sprintf("%s%s%s session %s%s %s %s %s%s", prefix, replay.glyphs.Horizontal, replay.glyphs.Horizontal, shortSessionID(event.RunID), pid, replay.glyphs.Separator, mode, replay.glyphs.Horizontal, replay.glyphs.Horizontal)
+	fmt.Fprintln(replay.out, replay.theme.Render(presentation.RoleMuted, line))
 }
 
 func shortSessionID(value string) string {

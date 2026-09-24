@@ -178,3 +178,23 @@ func TestASCIIOverrideParsingIsBounded(t *testing.T) {
 		t.Fatal("ASCII glyphs contain Unicode rail characters")
 	}
 }
+
+func TestWindowsBufferedUnicodeStillUsesASCIIRawGlyphs(t *testing.T) {
+	var output bytes.Buffer
+	caps := Detect(DetectOptions{
+		Stdout:      &output,
+		HumanResult: true,
+		Platform:    "windows",
+		LookupEnv:   env(map[string]string{"WT_SESSION": "1"}),
+		IsTerminal:  func(io.Writer) bool { return true },
+	})
+	if !caps.Unicode || caps.RawUnicode {
+		t.Fatalf("windows capabilities = %#v", caps)
+	}
+	if Glyphs(caps).PhaseDone != "◆" {
+		t.Fatalf("buffered glyph set = %#v", Glyphs(caps))
+	}
+	if RawGlyphs(caps).PhaseDone != "*" || strings.Contains(RawGlyphs(caps).Branch, "─") {
+		t.Fatalf("raw Windows glyph set is not ASCII-safe: %#v", RawGlyphs(caps))
+	}
+}

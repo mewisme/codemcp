@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -505,13 +504,6 @@ func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {
 	logCachedUpdate(log, snapshot.Update)
 }
 
-func statusField(out io.Writer, label string, value any) {
-	fmt.Fprintf(out, "  %s %v\n", cliDim(out, fmt.Sprintf("%-11s", label)), value)
-}
-func statusStateField(out io.Writer, label string, value any) {
-	fmt.Fprintf(out, "  %s %s\n", cliDim(out, fmt.Sprintf("%-11s", label)), cliState(out, value))
-}
-
 func statusExposureSummary(snapshot statusSnapshot, separator string) string {
 	mode := string(snapshot.Config.Server.Expose.Mode)
 	if snapshot.ListenerError != nil {
@@ -635,23 +627,6 @@ func tunnelStateActionMessage(state string) string {
 		return "Reconnecting OpenAI Secure MCP Tunnel"
 	default:
 		return "Connecting OpenAI Secure MCP Tunnel"
-	}
-}
-
-func renderTunnelStateLine(out io.Writer, state string) {
-	message := "OpenAI Secure MCP Tunnel is " + state
-	glyphs := cliGlyphs(out)
-	switch state {
-	case "connected":
-		fmt.Fprintln(out, cliTone(out, presentation.RoleSuccess, glyphs.Success), message)
-	case "starting", "connecting", "reconnecting":
-		fmt.Fprintln(out, cliTone(out, presentation.RoleActive, glyphs.Active), message)
-	case "failed":
-		fmt.Fprintln(out, cliTone(out, presentation.RoleDanger, glyphs.Error), message)
-	case "degraded":
-		fmt.Fprintln(out, cliTone(out, presentation.RoleWarning, glyphs.Warning), message)
-	default:
-		fmt.Fprintln(out, cliDim(out, glyphs.PhasePending), message)
 	}
 }
 

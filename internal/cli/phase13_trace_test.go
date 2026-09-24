@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/configformat"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
@@ -64,7 +65,7 @@ func TestConfigExplainTraceReportsSchemaAndMarkdownRenderFacts(t *testing.T) {
 	if !ok {
 		t.Fatalf("missing config explain render trace: %#v", events)
 	}
-	for key, want := range map[string]any{"mode": "markdown", "terminal_width": defaultMarkdownWidth, "style": "ascii"} {
+	for key, want := range map[string]any{"mode": "markdown", "terminal_width": presentation.DefaultWidth, "style": "ascii"} {
 		got, found := serverTraceField(render, key)
 		if !found || fmt.Sprint(got) != fmt.Sprint(want) {
 			t.Fatalf("config explain %s=%v, want %v: %#v", key, got, want, render)
