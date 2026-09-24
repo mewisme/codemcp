@@ -47,6 +47,14 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("integrations.rtk.path must be absolute: %q", path)
 		}
 	}
+	if path := cfg.Integrations.CodeGraph.Path; path != "" {
+		if path != strings.TrimSpace(path) {
+			return errors.New("integrations.codegraph.path must not contain leading or trailing whitespace")
+		}
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("integrations.codegraph.path must be absolute: %q", path)
+		}
+	}
 	exposure := NormalizeExposure(cfg.Server.Expose)
 	switch exposure.Mode {
 	case ExposureNone, ExposureAll, ExposureWildcard:

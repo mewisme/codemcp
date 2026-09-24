@@ -9,9 +9,10 @@ import (
 type ID string
 
 const (
-	PonytailID ID = "ponytail"
-	CavemanID  ID = "caveman"
-	RTKID      ID = "rtk"
+	PonytailID  ID = "ponytail"
+	CavemanID   ID = "caveman"
+	RTKID       ID = "rtk"
+	CodeGraphID ID = "codegraph"
 )
 
 type Identity struct {
@@ -40,17 +41,24 @@ type RTK struct {
 	Path    string `json:"path"`
 }
 
+type CodeGraph struct {
+	Enabled bool   `json:"enabled"`
+	Path    string `json:"path"`
+}
+
 type Config struct {
-	Ponytail Ponytail `json:"ponytail"`
-	Caveman  Caveman  `json:"caveman"`
-	RTK      RTK      `json:"rtk"`
+	Ponytail  Ponytail  `json:"ponytail"`
+	Caveman   Caveman   `json:"caveman"`
+	RTK       RTK       `json:"rtk"`
+	CodeGraph CodeGraph `json:"codegraph"`
 }
 
 func Default() Config {
 	return Config{
-		Ponytail: Ponytail{Active: true, Mode: "full"},
-		Caveman:  Caveman{Active: true, Mode: "full"},
-		RTK:      RTK{Enabled: true},
+		Ponytail:  Ponytail{Active: true, Mode: "full"},
+		Caveman:   Caveman{Active: true, Mode: "full"},
+		RTK:       RTK{Enabled: true},
+		CodeGraph: CodeGraph{Enabled: false},
 	}
 }
 
@@ -62,6 +70,8 @@ func IdentityFor(id ID) (Identity, bool) {
 		return Identity{ID: CavemanID, Name: "Caveman"}, true
 	case RTKID:
 		return Identity{ID: RTKID, Name: "RTK"}, true
+	case CodeGraphID:
+		return Identity{ID: CodeGraphID, Name: "CodeGraph"}, true
 	default:
 		return Identity{}, false
 	}

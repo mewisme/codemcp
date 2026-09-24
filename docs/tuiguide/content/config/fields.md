@@ -95,6 +95,14 @@ Boolean controlling RTK executable resolution. When enabled, CodeMCP resolves an
 
 Optional absolute path to an RTK executable. Leave empty to use system/managed resolution. Managed RTK assets live under the CodeMCP config root and are verified before they can become an executable source.
 
+### `integrations.codegraph.enabled` — CodeGraph enabled
+
+Boolean controlling CodeGraph runtime resolution. CodeGraph is disabled by default. When enabled, CodeMCP resolves an explicitly configured executable first, then the system `PATH`, then a checksum-verified managed asset.
+
+### `integrations.codegraph.path` — CodeGraph executable
+
+Optional absolute path to a CodeGraph executable. Leave empty to use system/managed resolution. Managed CodeGraph bundles are verified as a complete file tree before execution.
+
 ## Tunnel
 
 ### `tunnel.enabled` — Tunnel

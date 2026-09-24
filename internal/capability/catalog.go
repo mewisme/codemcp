@@ -115,6 +115,9 @@ const (
 	IntegrationRTKDisable            ID = "integration.rtk.disable"
 	IntegrationRTKProbe              ID = "integration.rtk.probe"
 	IntegrationRTKInstall            ID = "integration.rtk.install"
+	IntegrationCodeGraphStatus       ID = "integration.codegraph.status"
+	IntegrationCodeGraphProbe        ID = "integration.codegraph.probe"
+	IntegrationCodeGraphInstall      ID = "integration.codegraph.install"
 )
 
 var specs = buildSpecs()

@@ -22,7 +22,7 @@ const config = {
   },
   permissions: { allow_dirs: [] },
   shell: { path: [] },
-  integrations: { ponytail: { active: true, mode: "full" }, caveman: { active: true, mode: "full" }, rtk: { enabled: true, path: "" } },
+  integrations: { ponytail: { active: true, mode: "full" }, caveman: { active: true, mode: "full" }, rtk: { enabled: true, path: "" }, codegraph: { enabled: false, path: "" } },
 }
 const tunnel = {
   provider: "openai",

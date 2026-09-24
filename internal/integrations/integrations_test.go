@@ -4,7 +4,7 @@ import "testing"
 
 func TestDefaultActivatesFirstPartyIntegrations(t *testing.T) {
 	value := Default()
-	if !value.Ponytail.Active || value.Ponytail.Mode != "full" || !value.Caveman.Active || value.Caveman.Mode != "full" || !value.RTK.Enabled || value.RTK.Path != "" {
+	if !value.Ponytail.Active || value.Ponytail.Mode != "full" || !value.Caveman.Active || value.Caveman.Mode != "full" || !value.RTK.Enabled || value.RTK.Path != "" || value.CodeGraph.Enabled || value.CodeGraph.Path != "" {
 		t.Fatalf("default integrations = %#v", value)
 	}
 }
@@ -17,6 +17,7 @@ func TestCanonicalIntegrationIdentityAndOwner(t *testing.T) {
 		{PonytailID, "Ponytail"},
 		{CavemanID, "Caveman"},
 		{RTKID, "RTK"},
+		{CodeGraphID, "CodeGraph"},
 	} {
 		identity, ok := IdentityFor(test.id)
 		if !ok || identity.ID != test.id || identity.Name != test.name {

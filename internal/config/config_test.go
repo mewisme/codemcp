@@ -372,7 +372,7 @@ func TestDefaultServerUsesExposurePolicy(t *testing.T) {
 
 func TestDefaultIntegrationsActive(t *testing.T) {
 	cfg := Default()
-	if !cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "full" || !cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "full" || !cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "" {
+	if !cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "full" || !cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "full" || !cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "" || cfg.Integrations.CodeGraph.Enabled || cfg.Integrations.CodeGraph.Path != "" {
 		t.Fatalf("integrations = %#v", cfg.Integrations)
 	}
 }

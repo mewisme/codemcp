@@ -299,6 +299,7 @@ export type PublicConfig = {
         | "wenyan-ultra"
     }
     rtk: { enabled: boolean; path: string }
+    codegraph: { enabled: boolean; path: string }
   }
 }
 export type NetworkAddress = {

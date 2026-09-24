@@ -24,6 +24,7 @@ const publicConfig = {
     ponytail: { active: true, mode: "full" },
     caveman: { active: true, mode: "full" },
     rtk: { enabled: true, path: "" },
+    codegraph: { enabled: false, path: "" },
   },
 } satisfies PublicConfig
 
