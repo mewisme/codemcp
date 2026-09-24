@@ -51,16 +51,16 @@ const (
 )
 
 type ConfirmationPolicy struct {
-	Mode            ConfirmationMode
-	ControlApproval bool
+	Mode            ConfirmationMode `json:"mode"`
+	ControlApproval bool             `json:"control_approval"`
 }
 
 type SemanticEffects struct {
-	Key         string
-	ReadOnly    bool
-	Destructive bool
-	Idempotent  bool
-	OpenWorld   bool
+	Key         string `json:"key"`
+	ReadOnly    bool   `json:"read_only"`
+	Destructive bool   `json:"destructive"`
+	Idempotent  bool   `json:"idempotent"`
+	OpenWorld   bool   `json:"open_world"`
 }
 
 type Surface string
@@ -85,19 +85,19 @@ const (
 )
 
 type SurfaceContract struct {
-	Surface Surface
-	State   SurfaceState
-	Reason  string
+	Surface Surface      `json:"surface"`
+	State   SurfaceState `json:"state"`
+	Reason  string       `json:"reason,omitempty"`
 }
 
 type CLIBinding struct {
-	CanonicalPath string
-	Aliases       []string
+	CanonicalPath string   `json:"canonical_path,omitempty"`
+	Aliases       []string `json:"aliases,omitempty"`
 }
 
 type AdminBinding struct {
-	Method string
-	Path   string
+	Method string `json:"method"`
+	Path   string `json:"path"`
 }
 
 type Spec struct {

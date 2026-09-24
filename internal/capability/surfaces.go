@@ -1,5 +1,24 @@
 package capability
 
+const (
+	reasonAgentOnly        = "agent-only operation is exposed through MCP tools"
+	reasonProtocolOnly     = "protocol-only operation is not a human interface action"
+	reasonNoCLI            = "no current CLI command owns this operation"
+	reasonNoTUI            = "no current TUI action owns this operation"
+	reasonNoBrowser        = "no current Browser workflow owns this operation"
+	reasonNoAdminAPI       = "no current Admin API route owns this operation"
+	reasonNoMCP            = "operation has no MCP tool binding"
+	reasonTelegramPending  = "Telegram interface is not implemented yet"
+	reasonTelegramExcluded = "operation is outside Telegram administration scope"
+	reasonNotApplicable    = "surface is not applicable"
+)
+
+var knownSurfaceReasons = map[string]struct{}{
+	reasonAgentOnly: {}, reasonProtocolOnly: {}, reasonNoCLI: {}, reasonNoTUI: {},
+	reasonNoBrowser: {}, reasonNoAdminAPI: {}, reasonNoMCP: {}, reasonTelegramPending: {},
+	reasonTelegramExcluded: {}, reasonNotApplicable: {},
+}
+
 func surfaceContracts(spec Spec) []SurfaceContract {
 	contracts := make([]SurfaceContract, 0, len(AllSurfaces))
 	for _, surface := range AllSurfaces {
@@ -43,7 +62,7 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 		case SurfaceTelegram:
 			if spec.Audience == AudienceOperator || spec.Audience == AudienceReviewer {
 				contract.State = SurfacePlanned
-				contract.Reason = "Telegram interface is not implemented yet"
+				contract.Reason = reasonTelegramPending
 			} else {
 				contract.State = SurfaceExempt
 				contract.Reason = exemptionReason(spec, surface)
@@ -57,24 +76,29 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 func exemptionReason(spec Spec, surface Surface) string {
 	switch spec.Audience {
 	case AudienceAgent:
-		return "agent-only operation is exposed through MCP tools"
+		return reasonAgentOnly
 	case AudienceProtocol:
-		return "protocol-only operation is not a human interface action"
+		return reasonProtocolOnly
 	}
 	switch surface {
 	case SurfaceCLI:
-		return "no current CLI command owns this operation"
+		return reasonNoCLI
 	case SurfaceTUI:
-		return "no current TUI action owns this operation"
+		return reasonNoTUI
 	case SurfaceBrowser:
-		return "no current Browser workflow owns this operation"
+		return reasonNoBrowser
 	case SurfaceAdminAPI:
-		return "no current Admin API route owns this operation"
+		return reasonNoAdminAPI
 	case SurfaceMCP:
-		return "operation has no MCP tool binding"
+		return reasonNoMCP
 	case SurfaceTelegram:
-		return "operation is outside Telegram administration scope"
+		return reasonTelegramExcluded
 	default:
-		return "surface is not applicable"
+		return reasonNotApplicable
 	}
+}
+
+func validSurfaceReason(reason string) bool {
+	_, ok := knownSurfaceReasons[reason]
+	return ok
 }

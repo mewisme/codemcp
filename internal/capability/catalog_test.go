@@ -94,19 +94,22 @@ func assertSurfaceContractComplete(t *testing.T, spec Spec) {
 		seen[contract.Surface] = true
 		switch contract.State {
 		case SurfaceRequired:
+			if !SurfaceActive(contract.Surface) {
+				t.Fatalf("operation %s requires inactive surface %s", spec.ID, contract.Surface)
+			}
 			if strings.TrimSpace(contract.Reason) != "" {
 				t.Fatalf("operation %s required surface %s has exemption reason %q", spec.ID, contract.Surface, contract.Reason)
 			}
 		case SurfacePlanned:
-			if contract.Surface != SurfaceTelegram {
-				t.Fatalf("operation %s uses planned state for active surface %s", spec.ID, contract.Surface)
+			if SurfaceActive(contract.Surface) {
+				t.Fatalf("operation %s keeps planned state on active surface %s", spec.ID, contract.Surface)
 			}
-			if strings.TrimSpace(contract.Reason) == "" {
-				t.Fatalf("operation %s planned surface %s lacks reason", spec.ID, contract.Surface)
+			if !validSurfaceReason(contract.Reason) {
+				t.Fatalf("operation %s planned surface %s has unbounded reason %q", spec.ID, contract.Surface, contract.Reason)
 			}
 		case SurfaceExempt:
-			if strings.TrimSpace(contract.Reason) == "" {
-				t.Fatalf("operation %s exempt surface %s lacks reason", spec.ID, contract.Surface)
+			if !validSurfaceReason(contract.Reason) {
+				t.Fatalf("operation %s exempt surface %s has unbounded reason %q", spec.ID, contract.Surface, contract.Reason)
 			}
 		default:
 			t.Fatalf("operation %s has invalid surface state %q for %s", spec.ID, contract.State, contract.Surface)
