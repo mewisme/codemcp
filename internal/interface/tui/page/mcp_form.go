@@ -83,7 +83,7 @@ func newMCPServerFormData(server upstream.Server, create bool) mcpServerFormData
 	return data
 }
 
-func newMCPServerEditor(server upstream.Server, create bool) (component.Editor, *mcpServerFormData) {
+func newUpstreamServerEditor(server upstream.Server, create bool) (component.Editor, *mcpServerFormData) {
 	data := newMCPServerFormData(server, create)
 	generalFields := []huh.Field{}
 	if create {

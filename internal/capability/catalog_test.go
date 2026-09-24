@@ -169,7 +169,7 @@ func TestCatalogAdminRequestLookupMatchesConcreteResourcePaths(t *testing.T) {
 		{"POST", "/api/workspaces/ws_123/relocate", WorkspaceRelocate},
 		{"GET", "/api/workspaces/ws_123/executions/exec_456", ExecutionView},
 		{"DELETE", "/api/workspace-containers/wsc_123/workspaces", WorkspaceContainerRemove},
-		{"GET", "/api/upstream/server_a/auth/status", MCPAuthStatus},
+		{"GET", "/api/upstream/server_a/auth/status", UpstreamAuthStatus},
 		{"PUT", "/api/tunnel/managed/tun_123", TunnelUpdate},
 		{"GET", "/oauth/callback/server_a", OAuthCallbackComplete},
 	}
@@ -219,6 +219,47 @@ func TestFirstPartyIntegrationsHaveCanonicalCapabilities(t *testing.T) {
 			}
 			if _, ok := Lookup(id); !ok {
 				t.Fatalf("integration %s capability %q is missing from catalog", integration, id)
+			}
+		}
+	}
+}
+
+func TestUpstreamOperationsUseOneCanonicalIdentity(t *testing.T) {
+	want := []ID{
+		UpstreamServerList,
+		UpstreamServerAdd,
+		UpstreamServerConfigure,
+		UpstreamServerShow,
+		UpstreamServerRemove,
+		UpstreamServerEnable,
+		UpstreamServerDisable,
+		UpstreamServerStatus,
+		UpstreamServerTools,
+		UpstreamAuthLogin,
+		UpstreamAuthStatus,
+		UpstreamAuthLogout,
+		UpstreamCall,
+	}
+	seen := map[ID]bool{}
+	for _, id := range want {
+		if !strings.HasPrefix(string(id), "upstream.") {
+			t.Fatalf("upstream operation has non-upstream identity: %q", id)
+		}
+		if seen[id] {
+			t.Fatalf("duplicate upstream operation identity: %q", id)
+		}
+		seen[id] = true
+		if _, ok := Lookup(id); !ok {
+			t.Fatalf("upstream operation missing from catalog: %q", id)
+		}
+	}
+	for _, spec := range All() {
+		if strings.HasPrefix(string(spec.ID), "mcp.server.") || strings.HasPrefix(string(spec.ID), "mcp.auth.") {
+			t.Fatalf("legacy managed-upstream operation identity remains: %q", spec.ID)
+		}
+		for _, path := range spec.CLIPaths() {
+			if strings.HasPrefix(NormalizePath(path), "mcp server") {
+				t.Fatalf("legacy managed-upstream CLI path remains on %q: %q", spec.ID, path)
 			}
 		}
 	}

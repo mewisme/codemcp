@@ -117,9 +117,9 @@ func TestEditorActionsNavigateToEditorRoutes(t *testing.T) {
 		{"workspace.access.add", action.Context{Route: string(RouteWorkspaces), ResourceID: "ws_demo"}, Route{Kind: RouteWorkspaces, ResourceID: "ws_demo", Section: "access", Action: "add"}},
 		{"workspace.container.create", action.Context{Route: string(RouteHome)}, Route{Kind: RouteContainers, Action: "create"}},
 		{"workspace.container.rename", action.Context{Route: string(RouteContainers), ResourceID: "wsc_demo"}, Route{Kind: RouteContainers, ResourceID: "wsc_demo", Action: "edit"}},
-		{"mcp.server.add", action.Context{Route: string(RouteHome)}, Route{Kind: RouteMCP, Action: "create"}},
-		{"mcp.server.configure", action.Context{Route: string(RouteMCP), ResourceID: "github"}, Route{Kind: RouteMCP, ResourceID: "github", Action: "edit"}},
-		{"mcp.server.auth.login", action.Context{Route: string(RouteMCP), ResourceID: "github"}, Route{Kind: RouteMCP, ResourceID: "github", Section: "oauth", Action: "login"}},
+		{"upstream.server.add", action.Context{Route: string(RouteHome)}, Route{Kind: RouteMCP, Action: "create"}},
+		{"upstream.server.configure", action.Context{Route: string(RouteMCP), ResourceID: "github"}, Route{Kind: RouteMCP, ResourceID: "github", Action: "edit"}},
+		{"upstream.server.auth.login", action.Context{Route: string(RouteMCP), ResourceID: "github"}, Route{Kind: RouteMCP, ResourceID: "github", Section: "oauth", Action: "login"}},
 		{"tunnel.configure", action.Context{Route: string(RouteTunnel)}, Route{Kind: RouteTunnel, Action: "edit"}},
 		{"tunnel.admin.key.set", action.Context{Route: string(RouteTunnel)}, Route{Kind: RouteTunnel, Section: "admin-key", Action: "edit"}},
 		{"tunnel.managed.create", action.Context{Route: string(RouteTunnels)}, Route{Kind: RouteTunnels, Action: "create"}},
@@ -153,14 +153,14 @@ func TestMCPActionAvailabilityFollowsRouteContext(t *testing.T) {
 		}
 		return false
 	}
-	if !has(action.Context{Route: string(RouteHome)}, "mcp.server.add") || !has(action.Context{Route: string(RouteHome)}, "mcp.server.status") {
+	if !has(action.Context{Route: string(RouteHome)}, "upstream.server.add") || !has(action.Context{Route: string(RouteHome)}, "upstream.server.status") {
 		t.Fatal("global MCP actions are unavailable")
 	}
-	if has(action.Context{Route: string(RouteMCP)}, "mcp.server.configure") || has(action.Context{Route: string(RouteMCP)}, "mcp.server.tools") {
+	if has(action.Context{Route: string(RouteMCP)}, "upstream.server.configure") || has(action.Context{Route: string(RouteMCP)}, "upstream.server.tools") {
 		t.Fatal("resource MCP actions available without a resource")
 	}
 	ctx := action.Context{Route: string(RouteMCP), ResourceID: "github"}
-	for _, id := range []string{"mcp.server.configure", "mcp.server.remove", "mcp.server.enable", "mcp.server.disable", "mcp.server.tools", "mcp.server.auth.login", "mcp.server.auth.logout"} {
+	for _, id := range []string{"upstream.server.configure", "upstream.server.remove", "upstream.server.enable", "upstream.server.disable", "upstream.server.tools", "upstream.server.auth.login", "upstream.server.auth.logout"} {
 		if !has(ctx, id) {
 			t.Fatalf("MCP context action missing: %s", id)
 		}

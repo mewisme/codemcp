@@ -30,7 +30,7 @@ func (c *bridgeClient) Call(context.Context, string, string, map[string]any) (up
 }
 func (*bridgeClient) PID(string) int { return 0 }
 
-func TestMCPBridgeAndProxyRegistration(t *testing.T) {
+func TestUpstreamBridgeAndProxyRegistration(t *testing.T) {
 	client := &bridgeClient{
 		tools: []upstream.Tool{{
 			Name: "echo", Description: "Echo",
@@ -47,9 +47,9 @@ func TestMCPBridgeAndProxyRegistration(t *testing.T) {
 	registry := NewRegistry()
 	RegisterUpstreamTools(registry, manager)
 
-	toolsResult, err := registry.Call(context.Background(), "mcp_tools", map[string]any{"server_id": "demo"})
+	toolsResult, err := registry.Call(context.Background(), "upstream_tools", map[string]any{"server_id": "demo"})
 	if err != nil || toolsResult.IsError {
-		t.Fatalf("mcp_tools failed: %#v %v", toolsResult, err)
+		t.Fatalf("upstream_tools failed: %#v %v", toolsResult, err)
 	}
 	found := false
 	for _, schema := range registry.ListSchemas() {
@@ -73,7 +73,7 @@ func TestMCPBridgeAndProxyRegistration(t *testing.T) {
 	}
 }
 
-func TestMCPCallNormalizesUpstreamError(t *testing.T) {
+func TestUpstreamCallNormalizesError(t *testing.T) {
 	client := &bridgeClient{
 		result: upstream.CallResult{Content: []upstream.Content{{Type: "text", Text: "bad"}}, IsError: true},
 	}
@@ -83,7 +83,7 @@ func TestMCPCallNormalizesUpstreamError(t *testing.T) {
 	}
 	registry := NewRegistry()
 	RegisterUpstreamTools(registry, manager)
-	result, err := registry.Call(context.Background(), "mcp_call", map[string]any{"server_id": "demo", "tool": "x"})
+	result, err := registry.Call(context.Background(), "upstream_call", map[string]any{"server_id": "demo", "tool": "x"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -41,20 +41,32 @@ func TestRedactUpstreamServer(t *testing.T) {
 	}
 }
 
-func TestMCPServerShowDefaultsToTextAndSupportsJSON(t *testing.T) {
+func TestUpstreamServerShowDefaultsToTextAndSupportsJSON(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := filepath.Join(t.TempDir(), "config")
-	if _, err := executeRequestCommandError(root, []string{"mcp", "server", "add", "demo", "--transport", "http", "--url", "https://mcp.example.test", "--header", "Authorization=secret-value"}); err != nil {
+	if _, err := executeRequestCommandError(root, []string{"upstream", "server", "add", "demo", "--transport", "http", "--url", "https://mcp.example.test", "--header", "Authorization=secret-value"}); err != nil {
 		t.Fatal(err)
 	}
-	plain := executeRequestCommand(t, root, []string{"mcp", "server", "show", "demo"})
+	plain := executeRequestCommand(t, root, []string{"upstream", "server", "show", "demo"})
 	if !strings.Contains(plain, "Upstream server") || !strings.Contains(plain, "demo") || !strings.Contains(plain, "<redacted>") || strings.Contains(plain, "secret-value") || strings.HasPrefix(strings.TrimSpace(plain), "{") {
 		t.Fatalf("plain=%q", plain)
 	}
-	structured := executeRequestCommand(t, root, []string{"mcp", "server", "show", "demo", "--json"})
+	structured := executeRequestCommand(t, root, []string{"upstream", "server", "show", "demo", "--json"})
 	var server upstream.Server
 	if err := json.Unmarshal([]byte(strings.TrimSpace(structured)), &server); err != nil || server.ID != "demo" || server.Headers["Authorization"] != "<redacted>" {
 		t.Fatalf("json=%q server=%#v err=%v", structured, server, err)
+	}
+}
+
+func TestMCPCommandDoesNotExposeServerManagement(t *testing.T) {
+	cmd := mcpCommand()
+	if found, _, err := cmd.Find([]string{"server"}); err == nil && found != cmd {
+		t.Fatalf("mcp server compatibility command remains public: %s", found.CommandPath())
+	}
+	for _, child := range cmd.Commands() {
+		if child.Name() == "server" {
+			t.Fatal("mcp server compatibility command remains public")
+		}
 	}
 }
 

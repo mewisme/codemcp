@@ -10,25 +10,25 @@ import (
 	"go.mewis.me/codemcp/internal/upstream"
 )
 
-type MCPServersResult struct {
+type UpstreamServersResult struct {
 	Servers []upstream.Status `json:"servers"`
 	Count   int               `json:"count"`
 }
 
-type MCPToolInfo struct {
+type UpstreamToolInfo struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
 	ProxiedAs   []string `json:"proxied_as"`
 }
 
-type MCPToolsResult struct {
-	ServerID     string        `json:"server_id"`
-	Tools        []MCPToolInfo `json:"tools"`
-	ProxiedTools []string      `json:"proxied_tools"`
-	Count        int           `json:"count"`
+type UpstreamToolsResult struct {
+	ServerID     string             `json:"server_id"`
+	Tools        []UpstreamToolInfo `json:"tools"`
+	ProxiedTools []string           `json:"proxied_tools"`
+	Count        int                `json:"count"`
 }
 
-type MCPCallResult struct {
+type UpstreamCallResult struct {
 	ServerID string             `json:"server_id"`
 	Tool     string             `json:"tool"`
 	Output   any                `json:"output,omitempty"`
@@ -58,7 +58,7 @@ func RegisterUpstreamTools(registry *Registry, manager *upstream.Manager) {
 		registerAnnotated(name, title, description, input, output, ToolAnnotations(risk), handler)
 	}
 
-	registerAnnotated("mcp_servers", "MCP Upstream Servers", "List configured upstream MCP servers with health status.", `{"type":"object","properties":{"refresh":{"type":"boolean","default":false}},"additionalProperties":false}`, `{"type":"object","properties":{"servers":{"type":"array","items":{"type":"object","additionalProperties":true}},"count":{"type":"integer"}},"required":["servers","count"],"additionalProperties":false}`, ToolAnnotationsOpenWorld(RiskRead), func(ctx context.Context, args map[string]any) (Result, error) {
+	registerAnnotated("upstream_servers", "Upstream Servers", "List configured Upstream servers with health status.", `{"type":"object","properties":{"refresh":{"type":"boolean","default":false}},"additionalProperties":false}`, `{"type":"object","properties":{"servers":{"type":"array","items":{"type":"object","additionalProperties":true}},"count":{"type":"integer"}},"required":["servers","count"],"additionalProperties":false}`, ToolAnnotationsOpenWorld(RiskRead), func(ctx context.Context, args map[string]any) (Result, error) {
 		refresh, err := optionalBool(args, "refresh", false)
 		if err != nil {
 			return Result{}, err
@@ -72,10 +72,10 @@ func RegisterUpstreamTools(registry *Registry, manager *upstream.Manager) {
 		if err := RefreshUpstreamProxies(ctx, registry, manager, false); err != nil {
 			// Health listing remains useful even if one proxy cannot be registered.
 		}
-		return JSONResult(MCPServersResult{Servers: statuses, Count: len(statuses)}), nil
+		return JSONResult(UpstreamServersResult{Servers: statuses, Count: len(statuses)}), nil
 	})
 
-	registerAnnotated("mcp_tools", "MCP Upstream Tools", "List tools exposed by one configured upstream MCP server and their proxied names.", `{"type":"object","properties":{"server_id":{"type":"string"}},"required":["server_id"],"additionalProperties":false}`, `{"type":"object","properties":{"server_id":{"type":"string"},"tools":{"type":"array","items":{"type":"object","additionalProperties":true}},"proxied_tools":{"type":"array","items":{"type":"string"}},"count":{"type":"integer"}},"required":["server_id","tools","proxied_tools","count"],"additionalProperties":false}`, ToolAnnotationsOpenWorld(RiskRead), func(ctx context.Context, args map[string]any) (Result, error) {
+	registerAnnotated("upstream_tools", "Upstream Tools", "List tools exposed by one configured Upstream server and their proxied names.", `{"type":"object","properties":{"server_id":{"type":"string"}},"required":["server_id"],"additionalProperties":false}`, `{"type":"object","properties":{"server_id":{"type":"string"},"tools":{"type":"array","items":{"type":"object","additionalProperties":true}},"proxied_tools":{"type":"array","items":{"type":"string"}},"count":{"type":"integer"}},"required":["server_id","tools","proxied_tools","count"],"additionalProperties":false}`, ToolAnnotationsOpenWorld(RiskRead), func(ctx context.Context, args map[string]any) (Result, error) {
 		serverID, err := requiredString(args, "server_id")
 		if err != nil {
 			return Result{}, err
@@ -92,7 +92,7 @@ func RegisterUpstreamTools(registry *Registry, manager *upstream.Manager) {
 			return Result{}, err
 		}
 		proxied := manager.ProxiedToolNames(server, values)
-		info := make([]MCPToolInfo, 0, len(values))
+		info := make([]UpstreamToolInfo, 0, len(values))
 		for _, tool := range values {
 			names := []string{}
 			proxy := upstream.ProxyName(server.ToolPrefix, tool.Name)
@@ -101,12 +101,12 @@ func RegisterUpstreamTools(registry *Registry, manager *upstream.Manager) {
 					names = append(names, exposed)
 				}
 			}
-			info = append(info, MCPToolInfo{Name: tool.Name, Description: tool.Description, ProxiedAs: names})
+			info = append(info, UpstreamToolInfo{Name: tool.Name, Description: tool.Description, ProxiedAs: names})
 		}
-		return JSONResult(MCPToolsResult{ServerID: serverID, Tools: info, ProxiedTools: proxied, Count: len(values)}), nil
+		return JSONResult(UpstreamToolsResult{ServerID: serverID, Tools: info, ProxiedTools: proxied, Count: len(values)}), nil
 	})
 
-	register("mcp_call", "MCP Upstream Call", "Invoke a tool on a configured upstream MCP server. Upstream tool semantics are external and are not workspace-enforced by CodeMCP.", `{"type":"object","properties":{"server_id":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object","additionalProperties":true,"default":{}}},"required":["server_id","tool"],"additionalProperties":false}`, `{"type":"object","additionalProperties":true}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
+	register("upstream_call", "Upstream Call", "Invoke a tool on a configured Upstream server. Upstream tool semantics are external and are not workspace-enforced by CodeMCP.", `{"type":"object","properties":{"server_id":{"type":"string"},"tool":{"type":"string"},"arguments":{"type":"object","additionalProperties":true,"default":{}}},"required":["server_id","tool"],"additionalProperties":false}`, `{"type":"object","additionalProperties":true}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
 		serverID, err := requiredString(args, "server_id")
 		if err != nil {
 			return Result{}, err
@@ -126,7 +126,7 @@ func RegisterUpstreamTools(registry *Registry, manager *upstream.Manager) {
 		if value.ResultType == "input_required" {
 			return forwardUpstreamResult(value), nil
 		}
-		result := normalizeMCPCall(serverID, tool, value)
+		result := normalizeUpstreamCall(serverID, tool, value)
 		if value.IsError {
 			result.IsError = true
 		}
@@ -195,7 +195,7 @@ func buildServerProxyEntries(manager *upstream.Manager, server upstream.Server, 
 		}
 		description := strings.TrimSpace(tool.Description)
 		if description == "" {
-			description = "Upstream MCP tool " + server.ID + ":" + tool.Name
+			description = "Upstream tool " + server.ID + ":" + tool.Name
 		}
 		description += " [External upstream: native workspace path policy cannot be generically enforced.]"
 		schema := Schema{
@@ -216,8 +216,8 @@ func buildServerProxyEntries(manager *upstream.Manager, server upstream.Server, 
 	return entries, nil
 }
 
-func normalizeMCPCall(serverID, tool string, value upstream.CallResult) Result {
-	payload := MCPCallResult{ServerID: serverID, Tool: tool, Content: value.Content}
+func normalizeUpstreamCall(serverID, tool string, value upstream.CallResult) Result {
+	payload := UpstreamCallResult{ServerID: serverID, Tool: tool, Content: value.Content}
 	if value.IsError {
 		payload.Error = upstreamText(value)
 	} else if value.StructuredContent != nil {

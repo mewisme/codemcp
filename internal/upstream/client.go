@@ -182,7 +182,7 @@ func (c *NativeClient) traceContext(ctx context.Context) context.Context {
 
 func (c *NativeClient) Connect(ctx context.Context, server Server) error {
 	ctx = c.traceContext(ctx)
-	span := tracepkg.Start(ctx, "MCP", "upstream.native.connect", "Connecting native upstream transport", upstreamServerTraceFields(server)...)
+	span := tracepkg.Start(ctx, "UPSTREAM", "upstream.native.connect", "Connecting native upstream transport", upstreamServerTraceFields(server)...)
 	server, err := NormalizeServer(server)
 	if err != nil {
 		span.FailMessage("Native upstream connection failed", err)
@@ -200,7 +200,7 @@ func (c *NativeClient) Connect(ctx context.Context, server Server) error {
 	}
 	c.mu.Unlock()
 	if existing != nil {
-		replaceSpan := tracepkg.Start(ctx, "MCP", "upstream.native.replace", "Closing stale upstream connection", tracepkg.String("server", server.ID), tracepkg.Int("pid", existing.pid))
+		replaceSpan := tracepkg.Start(ctx, "UPSTREAM", "upstream.native.replace", "Closing stale upstream connection", tracepkg.String("server", server.ID), tracepkg.Int("pid", existing.pid))
 		if err := existing.close(ctx); err != nil {
 			replaceSpan.FailMessage("Stale upstream connection close failed", err)
 			span.FailMessage("Native upstream connection failed", err)
@@ -235,7 +235,7 @@ func (c *NativeClient) Connect(ctx context.Context, server Server) error {
 
 func (c *NativeClient) Close(ctx context.Context, id string) error {
 	ctx = c.traceContext(ctx)
-	span := tracepkg.Start(ctx, "MCP", "upstream.native.close", "Closing native upstream connection", tracepkg.String("server", id))
+	span := tracepkg.Start(ctx, "UPSTREAM", "upstream.native.close", "Closing native upstream connection", tracepkg.String("server", id))
 	c.mu.Lock()
 	connection := c.connections[id]
 	delete(c.connections, id)
@@ -262,7 +262,7 @@ func (c *NativeClient) ClearOAuthCredential(id string) error {
 
 func (c *NativeClient) Tools(ctx context.Context, id string) ([]Tool, error) {
 	ctx = c.traceContext(ctx)
-	span := tracepkg.Start(ctx, "MCP", "upstream.native.tools", "Requesting native upstream tool list", tracepkg.String("server", id))
+	span := tracepkg.Start(ctx, "UPSTREAM", "upstream.native.tools", "Requesting native upstream tool list", tracepkg.String("server", id))
 	connection, err := c.connection(id)
 	if err != nil {
 		span.FailMessage("Native upstream tool list failed", err)
@@ -391,7 +391,7 @@ func (c *rpcConnection) toolDefinition(name string) (Tool, bool) {
 }
 
 func (c *NativeClient) createConnection(ctx context.Context, server Server) (*rpcConnection, error) {
-	span := tracepkg.Start(ctx, "MCP", "upstream.transport.create", "Creating upstream transport", upstreamServerTraceFields(server)...)
+	span := tracepkg.Start(ctx, "UPSTREAM", "upstream.transport.create", "Creating upstream transport", upstreamServerTraceFields(server)...)
 	connection := &rpcConnection{server: server, tools: map[string]Tool{}}
 	if server.Transport == "stdio" {
 		transport, err := startStdio(ctx, server)
@@ -446,7 +446,7 @@ func (c *NativeClient) createConnection(ctx context.Context, server Server) (*rp
 		}
 		connection.http = &httpTransport{url: server.URL, headers: headers, client: outboundpolicy.NewHTTPClient(clientOpts)}
 	}
-	negotiateSpan := tracepkg.Start(ctx, "MCP", "upstream.protocol.negotiate", "Negotiating upstream MCP protocol", tracepkg.String("server", server.ID), tracepkg.String("transport", server.Transport))
+	negotiateSpan := tracepkg.Start(ctx, "UPSTREAM", "upstream.protocol.negotiate", "Negotiating upstream MCP protocol", tracepkg.String("server", server.ID), tracepkg.String("transport", server.Transport))
 	if err := connection.negotiate(ctx); err != nil {
 		negotiateSpan.FailMessage("Upstream MCP protocol negotiation failed", err)
 		_ = connection.close(context.Background())
@@ -516,7 +516,7 @@ func (c *rpcConnection) callEra(ctx context.Context, era, method, name string, p
 }
 
 func (c *rpcConnection) callEraLocked(ctx context.Context, era, method, name string, params map[string]any, headers map[string]string, target any) error {
-	span := tracepkg.Start(ctx, "MCP", "upstream.rpc.call", "Calling upstream MCP method", tracepkg.String("server", c.server.ID), tracepkg.String("transport", c.server.Transport), tracepkg.String("protocol", era), tracepkg.String("method", method), tracepkg.String("name", name))
+	span := tracepkg.Start(ctx, "UPSTREAM", "upstream.rpc.call", "Calling upstream MCP method", tracepkg.String("server", c.server.ID), tracepkg.String("transport", c.server.Transport), tracepkg.String("protocol", era), tracepkg.String("method", method), tracepkg.String("name", name))
 	id := c.nextID.Add(1)
 	value := cloneMap(params)
 	if era == ModernProtocol {
@@ -585,7 +585,7 @@ func (c *rpcConnection) close(ctx context.Context) error {
 func startStdio(ctx context.Context, server Server) (*stdioTransport, error) {
 	args := sanitizeProcessArgs(server.Args)
 	envNames := sortedMapKeys(server.Env)
-	span := tracepkg.Start(ctx, "MCP", "upstream.stdio.spawn", "Starting upstream stdio process", tracepkg.String("server", server.ID), tracepkg.String("executable", server.Command), tracepkg.Any("args", args), tracepkg.String("cwd", server.CWD), tracepkg.Any("env_names", envNames), tracepkg.Int("env_count", len(envNames)))
+	span := tracepkg.Start(ctx, "UPSTREAM", "upstream.stdio.spawn", "Starting upstream stdio process", tracepkg.String("server", server.ID), tracepkg.String("executable", server.Command), tracepkg.Any("args", args), tracepkg.String("cwd", server.CWD), tracepkg.Any("env_names", envNames), tracepkg.Int("env_count", len(envNames)))
 	cmd := exec.Command(server.Command, server.Args...) // #nosec G204 -- stdio executable and arguments are explicit user configuration.
 	if server.CWD != "" {
 		cmd.Dir = server.CWD
@@ -662,7 +662,7 @@ func (t *stdioTransport) close(ctx context.Context) error {
 	if t.cmd != nil && t.cmd.Process != nil {
 		pid = t.cmd.Process.Pid
 	}
-	span := tracepkg.Start(ctx, "MCP", "upstream.stdio.close", "Closing upstream stdio process", tracepkg.String("server", t.server), tracepkg.Int("pid", pid), tracepkg.Int64("uptime_ms", time.Since(t.started).Milliseconds()))
+	span := tracepkg.Start(ctx, "UPSTREAM", "upstream.stdio.close", "Closing upstream stdio process", tracepkg.String("server", t.server), tracepkg.Int("pid", pid), tracepkg.Int64("uptime_ms", time.Since(t.started).Milliseconds()))
 	_ = t.stdin.Close()
 	if t.cmd == nil || t.cmd.Process == nil || t.cmd.ProcessState != nil {
 		exitCode := 0

@@ -58,18 +58,18 @@ const (
 	WorkspacePurge           ID = "workspace.purge"
 	MCPStdio                 ID = "mcp.stdio"
 	MCPHTTP                  ID = "mcp.http"
-	MCPServerList            ID = "mcp.server.list"
-	MCPServerAdd             ID = "mcp.server.add"
-	MCPServerConfigure       ID = "mcp.server.configure"
-	MCPServerShow            ID = "mcp.server.show"
-	MCPServerRemove          ID = "mcp.server.remove"
-	MCPServerEnable          ID = "mcp.server.enable"
-	MCPServerDisable         ID = "mcp.server.disable"
-	MCPServerStatus          ID = "mcp.server.status"
-	MCPServerTools           ID = "mcp.server.tools"
-	MCPAuthLogin             ID = "mcp.auth.login"
-	MCPAuthStatus            ID = "mcp.auth.status"
-	MCPAuthLogout            ID = "mcp.auth.logout"
+	UpstreamServerList       ID = "upstream.server.list"
+	UpstreamServerAdd        ID = "upstream.server.add"
+	UpstreamServerConfigure  ID = "upstream.server.configure"
+	UpstreamServerShow       ID = "upstream.server.show"
+	UpstreamServerRemove     ID = "upstream.server.remove"
+	UpstreamServerEnable     ID = "upstream.server.enable"
+	UpstreamServerDisable    ID = "upstream.server.disable"
+	UpstreamServerStatus     ID = "upstream.server.status"
+	UpstreamServerTools      ID = "upstream.server.tools"
+	UpstreamAuthLogin        ID = "upstream.server.auth.login"
+	UpstreamAuthStatus       ID = "upstream.server.auth.status"
+	UpstreamAuthLogout       ID = "upstream.server.auth.logout"
 	TunnelStatus             ID = "tunnel.status"
 	TunnelSync               ID = "tunnel.sync"
 	TunnelConfigure          ID = "tunnel.configure"
@@ -183,18 +183,18 @@ func buildSpecs() []Spec {
 		operatorDeleteRequired(WorkspacePurge, "workspace purge", false),
 		operatorRuntime(MCPStdio, "mcp stdio", false),
 		operatorRuntime(MCPHTTP, "mcp http", true),
-		operatorQuery(MCPServerList, "upstream server list", "mcp server list"),
-		operatorMutation(MCPServerAdd, "upstream server add", RiskSensitive, true, "mcp server add"),
-		operatorMutation(MCPServerConfigure, "upstream server configure", RiskSensitive, true, "mcp server configure"),
-		operatorQuery(MCPServerShow, "upstream server show", "mcp server show"),
-		operatorDestructive(MCPServerRemove, "upstream server remove", true, "mcp server remove"),
-		operatorMutation(MCPServerEnable, "upstream server enable", RiskState, true, "mcp server enable"),
-		operatorMutation(MCPServerDisable, "upstream server disable", RiskState, true, "mcp server disable"),
-		operatorQueryOpenWorld(MCPServerStatus, "upstream server status", "mcp server status"),
-		operatorQueryOpenWorld(MCPServerTools, "upstream server tools", "mcp server tools"),
-		operatorSensitive(MCPAuthLogin, "upstream server auth login", true, "mcp server auth login"),
-		operatorQuery(MCPAuthStatus, "upstream server auth status", "mcp server auth status"),
-		operatorSensitive(MCPAuthLogout, "upstream server auth logout", true, "mcp server auth logout"),
+		operatorQuery(UpstreamServerList, "upstream server list"),
+		operatorMutation(UpstreamServerAdd, "upstream server add", RiskSensitive, true),
+		operatorMutation(UpstreamServerConfigure, "upstream server configure", RiskSensitive, true),
+		operatorQuery(UpstreamServerShow, "upstream server show"),
+		operatorDestructive(UpstreamServerRemove, "upstream server remove", true),
+		operatorMutation(UpstreamServerEnable, "upstream server enable", RiskState, true),
+		operatorMutation(UpstreamServerDisable, "upstream server disable", RiskState, true),
+		operatorQueryOpenWorld(UpstreamServerStatus, "upstream server status"),
+		operatorQueryOpenWorld(UpstreamServerTools, "upstream server tools"),
+		operatorSensitive(UpstreamAuthLogin, "upstream server auth login", true),
+		operatorQuery(UpstreamAuthStatus, "upstream server auth status"),
+		operatorSensitive(UpstreamAuthLogout, "upstream server auth logout", true),
 		operatorQuery(TunnelStatus, "tunnel status"),
 		operatorMutation(TunnelSync, "tunnel sync", RiskSensitive, true),
 		operatorSensitive(TunnelConfigure, "tunnel configure", true),

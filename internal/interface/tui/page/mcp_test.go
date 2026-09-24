@@ -117,8 +117,8 @@ func TestMCPResourceUsesRoutedChildDetailPage(t *testing.T) {
 	if action == nil {
 		t.Fatal("remove detail action returned no command")
 	}
-	remove, ok := action().(MCPCommandMsg)
-	if !ok || remove.Command != MCPServerRemove || remove.ResourceID != "docs" {
+	remove, ok := action().(UpstreamCommandMsg)
+	if !ok || remove.Command != UpstreamServerRemove || remove.ResourceID != "docs" {
 		t.Fatalf("remove action=%#v", remove)
 	}
 	_, cmd := page.Update(tea.KeyPressMsg{Code: 'h', Text: "h"})
@@ -226,21 +226,21 @@ func TestMCPRoutedServerEditorsAndSecretRedaction(t *testing.T) {
 	if strings.Contains(view, "top-secret") || !strings.Contains(view, "<redacted>") {
 		t.Fatalf("detail secret redaction=%q", view)
 	}
-	if _, err := detail.openCommand(MCPServerDisable, "docs"); err != nil {
+	if _, err := detail.openCommand(UpstreamServerDisable, "docs"); err != nil {
 		t.Fatal(err)
 	}
 	server, _ = manager.Get("docs")
 	if server.Enabled {
 		t.Fatal("server remained enabled")
 	}
-	if _, err := detail.openCommand(MCPServerEnable, "docs"); err != nil {
+	if _, err := detail.openCommand(UpstreamServerEnable, "docs"); err != nil {
 		t.Fatal(err)
 	}
 	server, _ = manager.Get("docs")
 	if !server.Enabled {
 		t.Fatal("server remained disabled")
 	}
-	if _, err := detail.openCommand(MCPServerRemove, "docs"); err != nil {
+	if _, err := detail.openCommand(UpstreamServerRemove, "docs"); err != nil {
 		t.Fatal(err)
 	}
 	detail.confirm = component.NewConfirmButtons("Remove", "Cancel", true)
@@ -260,7 +260,7 @@ func TestMCPDetailRemovalKeepsDetailUntilParentNavigation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := page.openCommand(MCPServerRemove, "docs"); err != nil {
+	if _, err := page.openCommand(UpstreamServerRemove, "docs"); err != nil {
 		t.Fatal(err)
 	}
 	page.confirm = component.NewConfirmButtons("Remove", "Cancel", true)
@@ -286,7 +286,7 @@ func TestMCPPageHealthAndToolsRunAsCommands(t *testing.T) {
 	if err := page.reload(); err != nil {
 		t.Fatal(err)
 	}
-	cmd, err := page.openCommand(MCPServerHealth, "docs")
+	cmd, err := page.openCommand(UpstreamServerHealth, "docs")
 	if err != nil || cmd == nil || page.overlay != mcpOverlayOperation {
 		t.Fatalf("health cmd=%v err=%v overlay=%d", cmd, err, page.overlay)
 	}
@@ -295,7 +295,7 @@ func TestMCPPageHealthAndToolsRunAsCommands(t *testing.T) {
 	if page.status["docs"].Health != upstream.HealthConnected || page.status["docs"].ToolCount != 1 {
 		t.Fatalf("health=%#v", page.status["docs"])
 	}
-	cmd, err = page.openCommand(MCPServerTools, "docs")
+	cmd, err = page.openCommand(UpstreamServerTools, "docs")
 	if err != nil || cmd == nil {
 		t.Fatalf("tools cmd=%v err=%v", cmd, err)
 	}
@@ -312,7 +312,7 @@ func TestMCPPageToolRefreshIsCancellable(t *testing.T) {
 	if err := manager.Add(upstream.Server{ID: "slow", Enabled: true, Transport: "http", URL: "https://example.test/mcp", Expose: "all"}); err != nil {
 		t.Fatal(err)
 	}
-	cmd, err := page.openCommand(MCPServerTools, "slow")
+	cmd, err := page.openCommand(UpstreamServerTools, "slow")
 	if err != nil || cmd == nil {
 		t.Fatalf("cmd=%v err=%v", cmd, err)
 	}
@@ -427,7 +427,7 @@ func TestMCPPageOAuthEmitsURLStoresCredentialAndLogoutPreservesServer(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := detail.openCommand(MCPAuthLogout, "secure"); err != nil {
+	if _, err := detail.openCommand(UpstreamAuthLogout, "secure"); err != nil {
 		t.Fatal(err)
 	}
 	detail.confirm = component.NewConfirmButtons("Logout", "Cancel", true)
@@ -577,7 +577,7 @@ func TestMCPCreateEditorExistingIDFailureKeepsDraft(t *testing.T) {
 	}
 }
 
-func TestMCPServerEditorCancelReturnsToParent(t *testing.T) {
+func TestUpstreamServerEditorCancelReturnsToParent(t *testing.T) {
 	_, manager, oauthStore, _ := newMCPPageTestHarness(t, &mcpPageClient{})
 	create, err := newMCPRoutePageAction(t.Context(), "", "", "create", manager, oauthStore)
 	if err != nil {

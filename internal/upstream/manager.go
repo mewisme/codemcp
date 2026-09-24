@@ -85,37 +85,37 @@ func (m *Manager) SetTraceObserver(observer tracepkg.Observer) *Manager {
 
 func (m *Manager) Load() error {
 	if m.store == nil {
-		tracepkg.EmitObserver(m.trace, "MCP", "upstream.store.load.skipped", "Upstream store load skipped", tracepkg.Bool("configured", false))
+		tracepkg.EmitObserver(m.trace, "UPSTREAM", "upstream.store.load.skipped", "Upstream store load skipped", tracepkg.Bool("configured", false))
 		return nil
 	}
-	span := tracepkg.StartObserver(m.trace, "MCP", "upstream.store.load", "Loading upstream MCP store", tracepkg.String("path", m.store.Path))
+	span := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.store.load", "Loading Upstream store", tracepkg.String("path", m.store.Path))
 	servers, err := m.store.Load()
 	if err != nil {
-		span.FailMessage("Upstream MCP store load failed", err)
+		span.FailMessage("Upstream store load failed", err)
 		return err
 	}
 	loadFields := []tracepkg.Field{tracepkg.String("path", m.store.Path), tracepkg.Int("count", len(servers))}
 	if info, statErr := os.Stat(m.store.Path); statErr == nil {
 		loadFields = append(loadFields, tracepkg.Int64("bytes", info.Size()))
 	}
-	span.EndMessage("Upstream MCP store loaded", loadFields...)
-	normalizeSpan := tracepkg.StartObserver(m.trace, "MCP", "upstream.store.normalize", "Normalizing upstream MCP servers", tracepkg.Int("count", len(servers)))
+	span.EndMessage("Upstream store loaded", loadFields...)
+	normalizeSpan := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.store.normalize", "Normalizing Upstream servers", tracepkg.Int("count", len(servers)))
 	next := make(map[string]Server, len(servers))
 	for _, server := range servers {
 		normalized, err := NormalizeServer(server)
 		if err != nil {
-			normalizeSpan.FailMessage("Upstream MCP server normalization failed", err, tracepkg.String("server", server.ID))
+			normalizeSpan.FailMessage("Upstream server normalization failed", err, tracepkg.String("server", server.ID))
 			return err
 		}
 		next[normalized.ID] = normalized
 	}
-	normalizeSpan.EndMessage("Upstream MCP servers normalized", tracepkg.Int("count", len(next)))
+	normalizeSpan.EndMessage("Upstream servers normalized", tracepkg.Int("count", len(next)))
 	m.mu.Lock()
 	m.servers = next
 	m.cache = map[string]toolCache{}
 	m.errors = map[string]string{}
 	m.mu.Unlock()
-	tracepkg.EmitObserver(m.trace, "MCP", "upstream.cache.reset", "Upstream caches reset", tracepkg.Int("servers", len(next)))
+	tracepkg.EmitObserver(m.trace, "UPSTREAM", "upstream.cache.reset", "Upstream caches reset", tracepkg.Int("servers", len(next)))
 	return nil
 }
 
@@ -127,10 +127,10 @@ func (m *Manager) Reload(ctx context.Context) error {
 }
 
 func (m *Manager) Add(server Server) error {
-	span := tracepkg.StartObserver(m.trace, "MCP", "upstream.server.save", "Saving upstream MCP server", upstreamServerTraceFields(server)...)
+	span := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.server.save", "Saving Upstream server", upstreamServerTraceFields(server)...)
 	normalized, err := NormalizeServer(server)
 	if err != nil {
-		span.FailMessage("Upstream MCP server save failed", err)
+		span.FailMessage("Upstream server save failed", err)
 		return err
 	}
 	m.mu.Lock()
@@ -144,19 +144,19 @@ func (m *Manager) Add(server Server) error {
 			delete(m.servers, normalized.ID)
 		}
 		m.mu.Unlock()
-		span.FailMessage("Upstream MCP server save failed", err, tracepkg.Bool("existing", existed), tracepkg.Any("changed_fields", changed))
+		span.FailMessage("Upstream server save failed", err, tracepkg.Bool("existing", existed), tracepkg.Any("changed_fields", changed))
 		return err
 	}
 	delete(m.cache, normalized.ID)
 	delete(m.errors, normalized.ID)
 	m.mu.Unlock()
-	tracepkg.EmitObserver(m.trace, "MCP", "upstream.cache.invalidated", "Upstream server cache invalidated", tracepkg.String("server", normalized.ID), tracepkg.Bool("tools", true), tracepkg.Bool("errors", true))
+	tracepkg.EmitObserver(m.trace, "UPSTREAM", "upstream.cache.invalidated", "Upstream server cache invalidated", tracepkg.String("server", normalized.ID), tracepkg.Bool("tools", true), tracepkg.Bool("errors", true))
 	if !existed {
-		span.EndMessage("Upstream MCP server saved", append(upstreamServerTraceFields(normalized), tracepkg.Bool("existing", false), tracepkg.Any("changed_fields", changed), tracepkg.Bool("connection_closed", false), tracepkg.Bool("oauth_cleanup_performed", false))...)
+		span.EndMessage("Upstream server saved", append(upstreamServerTraceFields(normalized), tracepkg.Bool("existing", false), tracepkg.Any("changed_fields", changed), tracepkg.Bool("connection_closed", false), tracepkg.Bool("oauth_cleanup_performed", false))...)
 		return nil
 	}
 	m.stopToolsSubscription(normalized.ID)
-	closeSpan := tracepkg.StartObserver(m.trace, "MCP", "upstream.connection.close", "Closing changed upstream connection", tracepkg.String("server", normalized.ID))
+	closeSpan := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.connection.close", "Closing changed upstream connection", tracepkg.String("server", normalized.ID))
 	closeErr := m.client.Close(context.Background(), normalized.ID)
 	if closeErr != nil {
 		closeSpan.FailMessage("Changed upstream connection close failed", closeErr)
@@ -176,10 +176,10 @@ func (m *Manager) Add(server Server) error {
 	}
 	joined := errors.Join(closeErr, oauthErr)
 	if joined != nil {
-		span.FailMessage("Upstream MCP server saved with cleanup failure", joined, tracepkg.Bool("existing", true), tracepkg.Any("changed_fields", changed), tracepkg.Bool("connection_closed", closeErr == nil), tracepkg.Bool("oauth_cleanup_performed", cleanupOAuth))
+		span.FailMessage("Upstream server saved with cleanup failure", joined, tracepkg.Bool("existing", true), tracepkg.Any("changed_fields", changed), tracepkg.Bool("connection_closed", closeErr == nil), tracepkg.Bool("oauth_cleanup_performed", cleanupOAuth))
 		return joined
 	}
-	span.EndMessage("Upstream MCP server saved", append(upstreamServerTraceFields(normalized), tracepkg.Bool("existing", true), tracepkg.Any("changed_fields", changed), tracepkg.Bool("connection_closed", true), tracepkg.Bool("oauth_cleanup_performed", cleanupOAuth))...)
+	span.EndMessage("Upstream server saved", append(upstreamServerTraceFields(normalized), tracepkg.Bool("existing", true), tracepkg.Any("changed_fields", changed), tracepkg.Bool("connection_closed", true), tracepkg.Bool("oauth_cleanup_performed", cleanupOAuth))...)
 	return nil
 }
 
@@ -226,7 +226,7 @@ func (m *Manager) CreateBatch(servers []Server) error {
 }
 
 func (m *Manager) Remove(id string) error {
-	span := tracepkg.StartObserver(m.trace, "MCP", "upstream.server.remove", "Removing upstream MCP server", tracepkg.String("server", id))
+	span := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.server.remove", "Removing Upstream server", tracepkg.String("server", id))
 	m.mu.Lock()
 	previous, existed := m.servers[id]
 	delete(m.servers, id)
@@ -235,15 +235,15 @@ func (m *Manager) Remove(id string) error {
 			m.servers[id] = previous
 		}
 		m.mu.Unlock()
-		span.FailMessage("Upstream MCP server removal failed", err, tracepkg.Bool("existing", existed))
+		span.FailMessage("Upstream server removal failed", err, tracepkg.Bool("existing", existed))
 		return err
 	}
 	delete(m.cache, id)
 	delete(m.errors, id)
 	m.mu.Unlock()
-	tracepkg.EmitObserver(m.trace, "MCP", "upstream.cache.invalidated", "Upstream server cache invalidated", tracepkg.String("server", id), tracepkg.Bool("tools", true), tracepkg.Bool("errors", true))
+	tracepkg.EmitObserver(m.trace, "UPSTREAM", "upstream.cache.invalidated", "Upstream server cache invalidated", tracepkg.String("server", id), tracepkg.Bool("tools", true), tracepkg.Bool("errors", true))
 	m.stopToolsSubscription(id)
-	closeSpan := tracepkg.StartObserver(m.trace, "MCP", "upstream.connection.close", "Closing removed upstream connection", tracepkg.String("server", id))
+	closeSpan := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.connection.close", "Closing removed upstream connection", tracepkg.String("server", id))
 	closeErr := m.client.Close(context.Background(), id)
 	if closeErr != nil {
 		closeSpan.FailMessage("Removed upstream connection close failed", closeErr)
@@ -259,10 +259,10 @@ func (m *Manager) Remove(id string) error {
 	}
 	err := errors.Join(closeErr, oauthErr)
 	if err != nil {
-		span.FailMessage("Upstream MCP server removal cleanup failed", err, tracepkg.Bool("existing", existed))
+		span.FailMessage("Upstream server removal cleanup failed", err, tracepkg.Bool("existing", existed))
 		return err
 	}
-	span.EndMessage("Upstream MCP server removed", tracepkg.Bool("existing", existed), tracepkg.String("transport", previous.Transport), tracepkg.Bool("connection_closed", true), tracepkg.Bool("oauth_cleanup_performed", true))
+	span.EndMessage("Upstream server removed", tracepkg.Bool("existing", existed), tracepkg.String("transport", previous.Transport), tracepkg.Bool("connection_closed", true), tracepkg.Bool("oauth_cleanup_performed", true))
 	return nil
 }
 
@@ -305,50 +305,50 @@ func (m *Manager) Tools(ctx context.Context, id string, force bool) ([]Tool, err
 	if !server.Enabled {
 		return nil, errors.New("upstream server disabled: " + id)
 	}
-	span := tracepkg.Start(ctx, "MCP", "upstream.tools.discover", "Discovering upstream MCP tools", append(upstreamServerTraceFields(server), tracepkg.Bool("force_refresh", force))...)
+	span := tracepkg.Start(ctx, "UPSTREAM", "upstream.tools.discover", "Discovering Upstream tools", append(upstreamServerTraceFields(server), tracepkg.Bool("force_refresh", force))...)
 	m.mu.RLock()
 	cached, hasCache := m.cache[id]
 	m.mu.RUnlock()
 	if !force && hasCache && time.Now().Before(cached.expiresAt) {
 		age := toolsCacheTTL - time.Until(cached.expiresAt)
 		subscriptionStarted := m.ensureToolsSubscription(server)
-		span.EndMessage("Upstream MCP tools loaded from cache", tracepkg.Bool("cache_hit", true), tracepkg.Int64("cache_age_ms", max(0, age.Milliseconds())), tracepkg.Int64("cache_ttl_ms", toolsCacheTTL.Milliseconds()), tracepkg.Int("tool_count", len(cached.tools)), tracepkg.Bool("subscription_started", subscriptionStarted))
+		span.EndMessage("Upstream tools loaded from cache", tracepkg.Bool("cache_hit", true), tracepkg.Int64("cache_age_ms", max(0, age.Milliseconds())), tracepkg.Int64("cache_ttl_ms", toolsCacheTTL.Milliseconds()), tracepkg.Int("tool_count", len(cached.tools)), tracepkg.Bool("subscription_started", subscriptionStarted))
 		return append([]Tool(nil), cached.tools...), nil
 	}
-	tracepkg.Emit(ctx, "MCP", "upstream.tools.cache-miss", "Upstream MCP tools cache miss", tracepkg.String("server", id), tracepkg.Bool("force_refresh", force), tracepkg.Bool("cache_present", hasCache))
+	tracepkg.Emit(ctx, "UPSTREAM", "upstream.tools.cache-miss", "Upstream tools cache miss", tracepkg.String("server", id), tracepkg.Bool("force_refresh", force), tracepkg.Bool("cache_present", hasCache))
 	if force {
 		m.stopToolsSubscription(id)
-		disconnectSpan := tracepkg.Start(ctx, "MCP", "upstream.connection.disconnect", "Disconnecting upstream MCP server for forced refresh", tracepkg.String("server", id))
+		disconnectSpan := tracepkg.Start(ctx, "UPSTREAM", "upstream.connection.disconnect", "Disconnecting Upstream server for forced refresh", tracepkg.String("server", id))
 		if err := m.client.Close(ctx, id); err != nil {
 			disconnectSpan.FailMessage("Forced upstream disconnect failed", err)
 		} else {
-			disconnectSpan.EndMessage("Upstream MCP server disconnected for forced refresh")
+			disconnectSpan.EndMessage("Upstream server disconnected for forced refresh")
 		}
 	}
-	connectSpan := tracepkg.Start(ctx, "MCP", "upstream.connection.connect", "Connecting upstream MCP server", upstreamServerTraceFields(server)...)
+	connectSpan := tracepkg.Start(ctx, "UPSTREAM", "upstream.connection.connect", "Connecting Upstream server", upstreamServerTraceFields(server)...)
 	if err := m.client.Connect(ctx, server); err != nil {
-		connectSpan.FailMessage("Upstream MCP connection failed", err)
-		span.FailMessage("Upstream MCP tool discovery failed", err, tracepkg.Bool("cache_hit", false))
+		connectSpan.FailMessage("Upstream connection failed", err)
+		span.FailMessage("Upstream tool discovery failed", err, tracepkg.Bool("cache_hit", false))
 		m.recordError(id, err)
 		return nil, err
 	}
-	connectSpan.EndMessage("Upstream MCP server connected", tracepkg.Int("pid", m.client.PID(id)))
-	listSpan := tracepkg.Start(ctx, "MCP", "upstream.tools.list", "Requesting upstream MCP tool list", tracepkg.String("server", id))
+	connectSpan.EndMessage("Upstream server connected", tracepkg.Int("pid", m.client.PID(id)))
+	listSpan := tracepkg.Start(ctx, "UPSTREAM", "upstream.tools.list", "Requesting Upstream tool list", tracepkg.String("server", id))
 	tools, err := m.client.Tools(ctx, id)
 	if err != nil {
-		listSpan.FailMessage("Upstream MCP tool list failed", err)
-		span.FailMessage("Upstream MCP tool discovery failed", err, tracepkg.Bool("cache_hit", false))
+		listSpan.FailMessage("Upstream tool list failed", err)
+		span.FailMessage("Upstream tool discovery failed", err, tracepkg.Bool("cache_hit", false))
 		m.recordError(id, err)
 		return nil, err
 	}
-	listSpan.EndMessage("Upstream MCP tool list received", tracepkg.Int("tool_count", len(tools)))
+	listSpan.EndMessage("Upstream tool list received", tracepkg.Int("tool_count", len(tools)))
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
 	m.mu.Lock()
 	m.cache[id] = toolCache{tools: append([]Tool(nil), tools...), expiresAt: time.Now().Add(toolsCacheTTL)}
 	delete(m.errors, id)
 	m.mu.Unlock()
 	subscriptionStarted := m.ensureToolsSubscription(server)
-	span.EndMessage("Upstream MCP tools discovered", tracepkg.Bool("cache_hit", false), tracepkg.Int("tool_count", len(tools)), tracepkg.Int64("cache_ttl_ms", toolsCacheTTL.Milliseconds()), tracepkg.Bool("subscription_started", subscriptionStarted), tracepkg.Int("pid", m.client.PID(id)))
+	span.EndMessage("Upstream tools discovered", tracepkg.Bool("cache_hit", false), tracepkg.Int("tool_count", len(tools)), tracepkg.Int64("cache_ttl_ms", toolsCacheTTL.Milliseconds()), tracepkg.Bool("subscription_started", subscriptionStarted), tracepkg.Int("pid", m.client.PID(id)))
 	return tools, nil
 }
 
@@ -415,7 +415,7 @@ func (m *Manager) ListStatuses(ctx context.Context, refresh bool) []Status {
 			enabled++
 		}
 	}
-	span := tracepkg.Start(ctx, "MCP", "upstream.status.list", "Refreshing upstream MCP status list", tracepkg.Int("server_count", len(servers)), tracepkg.Int("enabled_count", enabled), tracepkg.Bool("refresh", refresh))
+	span := tracepkg.Start(ctx, "UPSTREAM", "upstream.status.list", "Refreshing Upstream status list", tracepkg.Int("server_count", len(servers)), tracepkg.Int("enabled_count", enabled), tracepkg.Bool("refresh", refresh))
 	result := make([]Status, len(servers))
 	var wg sync.WaitGroup
 	for index, server := range servers {
@@ -436,7 +436,7 @@ func (m *Manager) ListStatuses(ctx context.Context, refresh bool) []Status {
 			unreachable++
 		}
 	}
-	span.EndMessage("Upstream MCP status list refreshed", tracepkg.Int("server_count", len(result)), tracepkg.Int("enabled_count", enabled), tracepkg.Int("connected_count", connected), tracepkg.Int("unreachable_count", unreachable), tracepkg.Bool("refresh", refresh))
+	span.EndMessage("Upstream status list refreshed", tracepkg.Int("server_count", len(result)), tracepkg.Int("enabled_count", enabled), tracepkg.Int("connected_count", connected), tracepkg.Int("unreachable_count", unreachable), tracepkg.Bool("refresh", refresh))
 	return result
 }
 
@@ -534,7 +534,7 @@ func (m *Manager) ensureToolsSubscription(server Server) bool {
 	m.mu.Unlock()
 
 	go m.runToolsSubscription(ctx, server.ID, subscription, client)
-	tracepkg.EmitObserver(m.trace, "MCP", "upstream.tools.subscription.started", "Upstream tools-change subscription started", tracepkg.String("server", server.ID))
+	tracepkg.EmitObserver(m.trace, "UPSTREAM", "upstream.tools.subscription.started", "Upstream tools-change subscription started", tracepkg.String("server", server.ID))
 	return true
 }
 
@@ -578,7 +578,7 @@ func (m *Manager) handleToolsChanged(id string) {
 	delete(m.cache, id)
 	handler := m.toolsChanged
 	m.mu.Unlock()
-	tracepkg.EmitObserver(m.trace, "MCP", "upstream.tools.cache-invalidated", "Upstream tools cache invalidated by server notification", tracepkg.String("server", id))
+	tracepkg.EmitObserver(m.trace, "UPSTREAM", "upstream.tools.cache-invalidated", "Upstream tools cache invalidated by server notification", tracepkg.String("server", id))
 	if handler == nil {
 		return
 	}
@@ -657,20 +657,20 @@ func (m *Manager) recordError(id string, err error) {
 
 func (m *Manager) persistLocked() error {
 	if m.store == nil {
-		tracepkg.EmitObserver(m.trace, "MCP", "upstream.store.persist.skipped", "Upstream store persistence skipped", tracepkg.Bool("configured", false), tracepkg.Int("count", len(m.servers)))
+		tracepkg.EmitObserver(m.trace, "UPSTREAM", "upstream.store.persist.skipped", "Upstream store persistence skipped", tracepkg.Bool("configured", false), tracepkg.Int("count", len(m.servers)))
 		return nil
 	}
 	servers := m.listLocked()
-	span := tracepkg.StartObserver(m.trace, "MCP", "upstream.store.persist", "Persisting upstream MCP store", tracepkg.String("path", m.store.Path), tracepkg.Int("count", len(servers)), tracepkg.Bool("atomic", true))
+	span := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.store.persist", "Persisting Upstream store", tracepkg.String("path", m.store.Path), tracepkg.Int("count", len(servers)), tracepkg.Bool("atomic", true))
 	if err := m.store.Save(servers); err != nil {
-		span.FailMessage("Upstream MCP store persistence failed", err)
+		span.FailMessage("Upstream store persistence failed", err)
 		return err
 	}
 	fields := []tracepkg.Field{tracepkg.String("path", m.store.Path), tracepkg.Int("count", len(servers))}
 	if info, err := os.Stat(m.store.Path); err == nil {
 		fields = append(fields, tracepkg.Int64("bytes", info.Size()))
 	}
-	span.EndMessage("Upstream MCP store persisted", fields...)
+	span.EndMessage("Upstream store persisted", fields...)
 	return nil
 }
 

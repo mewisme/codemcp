@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 func TestMCPToolContextAllowsOnlyReadOnlyCLICommands(t *testing.T) {
 	t.Setenv(controlplane.ToolContextEnv, "1")
 	root := newRootCommand()
-	for _, path := range [][]string{{"status"}, {"config", "list"}, {"auth", "status"}, {"request", "list"}, {"request", "view"}, {"workspace", "access", "list"}, {"mcp", "server", "show"}, {"tunnel", "status"}, {"upgrade", "check"}, {"update", "check"}} {
+	for _, path := range [][]string{{"status"}, {"config", "list"}, {"auth", "status"}, {"request", "list"}, {"request", "view"}, {"workspace", "access", "list"}, {"upstream", "server", "show"}, {"tunnel", "status"}, {"upgrade", "check"}, {"update", "check"}} {
 		cmd, _, err := root.Find(path)
 		if err != nil {
 			t.Fatal(err)
@@ -43,7 +43,7 @@ func TestMCPToolContextAllowsOnlyReadOnlyCLICommands(t *testing.T) {
 			t.Fatalf("read-only command denied: %v: %v", path, err)
 		}
 	}
-	for _, path := range [][]string{{"install"}, {"upgrade"}, {"update"}, {"serve"}, {"up"}, {"down"}, {"_service", "run"}, {"logs", "clear", "--force"}, {"config", "set"}, {"config", "export"}, {"config", "import"}, {"auth", "mcp", "create"}, {"request", "approve"}, {"request", "deny"}, {"workspace", "access", "add"}, {"mcp", "server", "add"}, {"tunnel", "enable"}} {
+	for _, path := range [][]string{{"install"}, {"upgrade"}, {"update"}, {"serve"}, {"up"}, {"down"}, {"_service", "run"}, {"logs", "clear", "--force"}, {"config", "set"}, {"config", "export"}, {"config", "import"}, {"auth", "mcp", "create"}, {"request", "approve"}, {"request", "deny"}, {"workspace", "access", "add"}, {"upstream", "server", "add"}, {"tunnel", "enable"}} {
 		cmd, _, err := root.Find(path)
 		if err != nil {
 			t.Fatal(err)

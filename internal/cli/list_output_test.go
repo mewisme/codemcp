@@ -74,16 +74,16 @@ func TestWorkspaceListAndShowReportTrackedLocalCMState(t *testing.T) {
 	}
 }
 
-func TestMCPServerListDefaultsToPlainAndSupportsRedactedJSON(t *testing.T) {
+func TestUpstreamServerListDefaultsToPlainAndSupportsRedactedJSON(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "config")
-	if _, err := executeRequestCommandError(root, []string{"mcp", "server", "add", "demo", "--transport", "http", "--url", "https://mcp.example.test", "--header", "Authorization=secret-value"}); err != nil {
+	if _, err := executeRequestCommandError(root, []string{"upstream", "server", "add", "demo", "--transport", "http", "--url", "https://mcp.example.test", "--header", "Authorization=secret-value"}); err != nil {
 		t.Fatal(err)
 	}
-	plain := executeRequestCommand(t, root, []string{"mcp", "server", "list"})
+	plain := executeRequestCommand(t, root, []string{"upstream", "server", "list"})
 	if !strings.Contains(plain, "demo") || !strings.Contains(plain, "https://mcp.example.test") || strings.Contains(plain, "secret-value") {
 		t.Fatalf("plain=%q", plain)
 	}
-	jsonOutput := executeRequestCommand(t, root, []string{"mcp", "server", "list", "--json"})
+	jsonOutput := executeRequestCommand(t, root, []string{"upstream", "server", "list", "--json"})
 	if strings.Contains(jsonOutput, "secret-value") || !strings.Contains(jsonOutput, "redacted") {
 		t.Fatalf("json=%q", jsonOutput)
 	}

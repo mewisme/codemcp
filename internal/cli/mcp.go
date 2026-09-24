@@ -24,7 +24,7 @@ import (
 
 func mcpCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "mcp", Short: "Serve CodeMCP transports"}
-	cmd.AddCommand(mcpStdioCommand(), mcpHTTPCommand(), legacyMCPServerCommand())
+	cmd.AddCommand(mcpStdioCommand(), mcpHTTPCommand())
 	return cmd
 }
 
@@ -241,10 +241,3 @@ func (readCloser) Close() error { return nil }
 type writeCloser struct{ io.Writer }
 
 func (writeCloser) Close() error { return nil }
-
-func legacyMCPServerCommand() *cobra.Command {
-	server := upstreamServerCommand()
-	server.Deprecated = "use 'cm upstream server' instead"
-	server.Short = "Deprecated: manage upstream MCP servers"
-	return server
-}

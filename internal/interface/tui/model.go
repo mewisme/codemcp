@@ -290,7 +290,7 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return model, model.showToast("Workspaces", err.Error(), component.ToneDanger)
 		}
 		return model.updatePage(msg)
-	case tuipage.MCPCommandMsg:
+	case tuipage.UpstreamCommandMsg:
 		if err := model.ensureMCPPage(msg.ResourceID); err != nil {
 			return model, model.showToast("MCP", err.Error(), component.ToneDanger)
 		}

@@ -22,7 +22,7 @@ type navigateMsg struct {
 func defaultActionRegistry() *action.Registry {
 	actions := []action.Action{
 		navigationAction("app.go.workspaces", "Workspaces", Route{Kind: RouteWorkspaces}, []string{"workspace", "workspaces", "ws", "container", "containers"}, capability.WorkspaceList, capability.WorkspaceShow, capability.WorkspaceAccessList, capability.WorkspaceContainerList, capability.WorkspaceContainerShow),
-		navigationAction("app.go.mcp", "MCP Servers", Route{Kind: RouteMCP}, []string{"mcp", "server", "upstream"}, capability.MCPServerList, capability.MCPServerShow, capability.MCPAuthStatus),
+		navigationAction("app.go.mcp", "MCP Servers", Route{Kind: RouteMCP}, []string{"mcp", "server", "upstream"}, capability.UpstreamServerList, capability.UpstreamServerShow, capability.UpstreamAuthStatus),
 		navigationAction("app.go.tunnel", "Tunnel", Route{Kind: RouteTunnel}, []string{"tunnel", "secure"}, capability.TunnelStatus, capability.TunnelAdminKeyStatus),
 		navigationAction("app.go.tunnels", "Managed Tunnels", Route{Kind: RouteTunnels}, []string{"tunnel", "tunnels", "managed", "openai"}, capability.TunnelList, capability.TunnelGet),
 		navigationAction("app.go.requests", "Requests", Route{Kind: RouteRequests}, []string{"request", "approval"}, capability.RequestView),
@@ -238,30 +238,30 @@ func tunnelAdminManageAvailable() bool {
 
 func mcpActions() []action.Action {
 	return []action.Action{
-		editorNavigationAction("mcp.server.add", "Add server", "MCP", "Add an upstream MCP server", []string{"mcp", "server", "add", "upstream"}, []string{"mcp", "server", "add"}, nil, func(action.Context) Route { return Route{Kind: RouteMCP, Action: "create"} }),
-		editorNavigationAction("mcp.server.configure", "Configure server", "MCP", "Configure the current upstream MCP server", []string{"mcp", "server", "configure", "set"}, []string{"mcp", "server", "configure"}, func(ctx action.Context) bool { return ctx.Route == string(RouteMCP) && ctx.ResourceID != "" }, func(ctx action.Context) Route {
+		editorNavigationAction("upstream.server.add", "Add server", "MCP", "Add an upstream MCP server", []string{"upstream", "server", "add", "mcp"}, []string{"upstream", "server", "add"}, nil, func(action.Context) Route { return Route{Kind: RouteMCP, Action: "create"} }),
+		editorNavigationAction("upstream.server.configure", "Configure server", "MCP", "Configure the current upstream MCP server", []string{"upstream", "server", "configure", "set", "mcp"}, []string{"upstream", "server", "configure"}, func(ctx action.Context) bool { return ctx.Route == string(RouteMCP) && ctx.ResourceID != "" }, func(ctx action.Context) Route {
 			return Route{Kind: RouteMCP, ResourceID: ctx.ResourceID, Action: "edit"}
 		}),
-		mcpAction("mcp.server.remove", "Remove server", "Remove the current upstream MCP server", []string{"mcp", "server", "remove", "delete"}, []string{"mcp", "server", "remove"}, tuipage.MCPServerRemove, true),
-		mcpAction("mcp.server.enable", "Enable server", "Enable the current upstream MCP server", []string{"mcp", "server", "enable"}, []string{"mcp", "server", "enable"}, tuipage.MCPServerEnable, true),
-		mcpAction("mcp.server.disable", "Disable server", "Disable the current upstream MCP server", []string{"mcp", "server", "disable"}, []string{"mcp", "server", "disable"}, tuipage.MCPServerDisable, true),
-		mcpAction("mcp.server.status", "Refresh health", "Refresh upstream MCP health and connection status", []string{"mcp", "server", "status", "health", "refresh"}, []string{"mcp", "server", "status"}, tuipage.MCPServerHealth, false),
-		mcpAction("mcp.server.tools", "View tools", "Load tools exposed by the current upstream MCP server", []string{"mcp", "server", "tools", "refresh"}, []string{"mcp", "server", "tools"}, tuipage.MCPServerTools, true),
-		editorNavigationAction("mcp.server.auth.login", "OAuth login", "MCP", "Authorize the current HTTP MCP server with OAuth", []string{"mcp", "server", "auth", "login", "oauth"}, []string{"mcp", "server", "auth", "login"}, func(ctx action.Context) bool { return ctx.Route == string(RouteMCP) && ctx.ResourceID != "" }, func(ctx action.Context) Route {
+		mcpAction("upstream.server.remove", "Remove server", "Remove the current upstream MCP server", []string{"upstream", "server", "remove", "delete", "mcp"}, []string{"upstream", "server", "remove"}, tuipage.UpstreamServerRemove, true),
+		mcpAction("upstream.server.enable", "Enable server", "Enable the current upstream MCP server", []string{"upstream", "server", "enable", "mcp"}, []string{"upstream", "server", "enable"}, tuipage.UpstreamServerEnable, true),
+		mcpAction("upstream.server.disable", "Disable server", "Disable the current upstream MCP server", []string{"upstream", "server", "disable", "mcp"}, []string{"upstream", "server", "disable"}, tuipage.UpstreamServerDisable, true),
+		mcpAction("upstream.server.status", "Refresh health", "Refresh upstream MCP health and connection status", []string{"upstream", "server", "status", "health", "refresh", "mcp"}, []string{"upstream", "server", "status"}, tuipage.UpstreamServerHealth, false),
+		mcpAction("upstream.server.tools", "View tools", "Load tools exposed by the current upstream MCP server", []string{"upstream", "server", "tools", "refresh", "mcp"}, []string{"upstream", "server", "tools"}, tuipage.UpstreamServerTools, true),
+		editorNavigationAction("upstream.server.auth.login", "OAuth login", "MCP", "Authorize the current HTTP MCP server with OAuth", []string{"upstream", "server", "auth", "login", "oauth", "mcp"}, []string{"upstream", "server", "auth", "login"}, func(ctx action.Context) bool { return ctx.Route == string(RouteMCP) && ctx.ResourceID != "" }, func(ctx action.Context) Route {
 			return Route{Kind: RouteMCP, ResourceID: ctx.ResourceID, Section: "oauth", Action: "login"}
 		}),
-		mcpAction("mcp.server.auth.logout", "OAuth logout", "Remove stored OAuth authorization for the current MCP server", []string{"mcp", "server", "auth", "logout", "oauth"}, []string{"mcp", "server", "auth", "logout"}, tuipage.MCPAuthLogout, true),
+		mcpAction("upstream.server.auth.logout", "OAuth logout", "Remove stored OAuth authorization for the current MCP server", []string{"upstream", "server", "auth", "logout", "oauth", "mcp"}, []string{"upstream", "server", "auth", "logout"}, tuipage.UpstreamAuthLogout, true),
 	}
 }
 
-func mcpAction(id, title, description string, keywords, commandPath []string, command tuipage.MCPCommand, needsResource bool) action.Action {
+func mcpAction(id, title, description string, keywords, commandPath []string, command tuipage.UpstreamCommand, needsResource bool) action.Action {
 	return action.Action{
 		ID: id, Title: title, Category: "MCP", Description: description, Keywords: keywords, CommandPath: commandPath, Operation: operationForCommandPath(commandPath), Capabilities: capabilitiesForCommandPath(commandPath), Scope: action.ScopeGlobal,
 		Available: func(ctx action.Context) bool {
 			return !needsResource || ctx.Route == string(RouteMCP) && ctx.ResourceID != ""
 		},
 		Run: func(_ context.Context, ctx action.Context) tea.Cmd {
-			return func() tea.Msg { return tuipage.MCPCommandMsg{Command: command, ResourceID: ctx.ResourceID} }
+			return func() tea.Msg { return tuipage.UpstreamCommandMsg{Command: command, ResourceID: ctx.ResourceID} }
 		},
 	}
 }

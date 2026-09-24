@@ -47,7 +47,7 @@ func TestMCPServerFormPreservesExistingSecretsWithoutRenderingThem(t *testing.T)
 		Headers: map[string]string{"Authorization": "Bearer top-secret", "X-Mode": "read"},
 		Env:     map[string]string{"API_TOKEN": "env-secret", "MODE": "prod"},
 	}
-	editor, data := newMCPServerEditor(existing, false)
+	editor, data := newUpstreamServerEditor(existing, false)
 	_ = editor.Init()
 	if view := editor.View(); strings.Contains(view, "top-secret") || strings.Contains(view, "env-secret") {
 		t.Fatalf("existing secret rendered in form: %q", view)

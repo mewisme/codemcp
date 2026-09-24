@@ -53,7 +53,7 @@ const (
 	MemoryOptimize                  ID = "memory.optimize"
 	PatchApply                      ID = "patch.apply"
 	HistoryRewind                   ID = "history.rewind"
-	MCPServerCall                   ID = "mcp.server.call"
+	UpstreamCall                    ID = "upstream.call"
 	RequestControlApproval          ID = "request.control-approval"
 	IntegrationPonytailTurn         ID = "integration.ponytail.turn"
 	IntegrationCavemanTurn          ID = "integration.caveman.turn"
@@ -67,8 +67,8 @@ var mcpToolBindings = map[ID][]string{
 	WorkspaceContainerList:          {"workspace_container_list"},
 	WorkspaceContainerShow:          {"workspace_container_status"},
 	ProjectContextRead:              {"project_context"},
-	MCPServerList:                   {"mcp_servers"},
-	MCPServerTools:                  {"mcp_tools"},
+	UpstreamServerList:              {"upstream_servers"},
+	UpstreamServerTools:             {"upstream_tools"},
 	AgentStatusRead:                 {"agent_status"},
 	FileReadText:                    {"read_text_file"},
 	FileReadBinary:                  {"read_file_base64"},
@@ -121,7 +121,7 @@ var mcpToolBindings = map[ID][]string{
 	MemoryOptimize:                  {"optimize_memory"},
 	PatchApply:                      {"apply_patch"},
 	HistoryRewind:                   {"rewind"},
-	MCPServerCall:                   {"mcp_call"},
+	UpstreamCall:                    {"upstream_call"},
 	RequestControlApproval:          {"request_control_approval"},
 	IntegrationPonytailTurn:         {"ponytail_turn"},
 	IntegrationCavemanTurn:          {"caveman_turn"},
@@ -182,7 +182,7 @@ func agentOnlySpecs() []Spec {
 		agentMutationSpec(MemoryOptimize, RiskState, false),
 		agentMutationSpec(PatchApply, RiskState, false),
 		agentMutationSpec(HistoryRewind, RiskDestructive, false),
-		agentMutationSpec(MCPServerCall, RiskSensitive, true),
+		agentMutationSpec(UpstreamCall, RiskSensitive, true),
 		agentApprovalSpec(RequestControlApproval),
 		agentMutationSpec(IntegrationPonytailTurn, RiskState, false),
 		agentMutationSpec(IntegrationCavemanTurn, RiskState, false),
