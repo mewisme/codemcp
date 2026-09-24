@@ -8,8 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
+	mcpnetwork "go.mewis.me/codemcp/internal/network"
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	updatepkg "go.mewis.me/codemcp/internal/update"
 )
@@ -44,7 +46,7 @@ func TestStatusReportsManagedRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, expected := range []string{"✓ CodeMCP is running", "Runtime", "session     run_status", "managed     system ·", "service     cm-system-test", "Endpoints", "Config", "auth        mcp off · admin off", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected", "id          tunnel_status"} {
+	for _, expected := range []string{"✓ CodeMCP is running", "Runtime", "session", "run_status", "managed", "system · systemd", "service", "cm-system-test", "Endpoints", "Config", "mcp off · admin off", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected", "tunnel_status"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("status missing %q: %s", expected, text)
 		}
@@ -121,7 +123,7 @@ func TestStatusVerboseReportsOperationalDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, expected := range []string{"started", "managed     true", "scope       system", "backend", "initialized true", "format"} {
+	for _, expected := range []string{"started", "managed", "true", "scope", "system", "backend", "initialized", "format"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("verbose status missing %q: %s", expected, text)
 		}
@@ -165,20 +167,21 @@ func TestRenderStatusConfigUsesCachedUpdateWithoutNetwork(t *testing.T) {
 	available := &updatepkg.CachedCheck{CheckResult: updatepkg.CheckResult{Current: "v1.0.0", Latest: "v1.1.0", Status: updatepkg.StatusAvailable}, CheckedAt: checkedAt}
 	snapshot := statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default(), Update: available}
 	var output bytes.Buffer
-	renderStatusConfig(&output, snapshot, false)
+	presenter := presentation.New(&output, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true})
+	renderStatusConfig(presenter, snapshot, false)
 	if !strings.Contains(output.String(), "v1.1.0 available") || strings.Contains(output.String(), "checked") {
 		t.Fatalf("cached available output = %q", output.String())
 	}
 
 	output.Reset()
 	snapshot.Update = &updatepkg.CachedCheck{CheckResult: updatepkg.CheckResult{Current: "v1.1.0", Latest: "v1.1.0", Status: updatepkg.StatusUpToDate}, CheckedAt: checkedAt}
-	renderStatusConfig(&output, snapshot, false)
+	renderStatusConfig(presenter, snapshot, false)
 	if strings.Contains(output.String(), "update") {
 		t.Fatalf("non-verbose up-to-date cache should stay hidden: %q", output.String())
 	}
 
 	output.Reset()
-	renderStatusConfig(&output, snapshot, true)
+	renderStatusConfig(presenter, snapshot, true)
 	if !strings.Contains(output.String(), "up to date") || !strings.Contains(output.String(), "checked") {
 		t.Fatalf("verbose cached update output = %q", output.String())
 	}
@@ -190,10 +193,116 @@ func TestRenderStatusConfigSurfacesSecurityWarnings(t *testing.T) {
 	cfg.Server.AllowInsecureHTTP = true
 	snapshot := statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: cfg}
 	var output bytes.Buffer
-	renderStatusConfig(&output, snapshot, false)
+	renderStatusConfig(presentation.New(&output, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), snapshot, false)
 	text := output.String()
 	if !strings.Contains(text, "cleartext HTTP") {
 		t.Fatalf("expected cleartext warning: %q", text)
+	}
+}
+
+func TestRenderStatusUsesCanonicalPresenterCapabilities(t *testing.T) {
+	snapshot := statusSnapshot{
+		Source:  configformat.Source{Path: "/tmp/config.json", Exists: true},
+		Config:  config.Default(),
+		Running: true,
+		Runtime: runtimeStatusResult{
+			PID:              4242,
+			RunID:            "run_presenter",
+			Managed:          true,
+			ServiceScope:     "user",
+			ServiceID:        "cm-user-test",
+			TunnelEnabled:    true,
+			TunnelConfigured: true,
+			TunnelReady:      true,
+			TunnelID:         "tunnel_presenter",
+		},
+	}
+
+	var unicodeOutput bytes.Buffer
+	renderStatus(presentation.New(&unicodeOutput, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), snapshot, false)
+	unicodeText := unicodeOutput.String()
+	for _, expected := range []string{"✓ CodeMCP is running", "Runtime", "Endpoints", "Config", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected"} {
+		if !strings.Contains(unicodeText, expected) {
+			t.Fatalf("unicode status missing %q: %s", expected, unicodeText)
+		}
+	}
+	if strings.Contains(unicodeText, "\x1b[") {
+		t.Fatalf("color-disabled status contains ANSI: %q", unicodeText)
+	}
+
+	var asciiOutput bytes.Buffer
+	renderStatus(presentation.New(&asciiOutput, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: false, Color: false}), snapshot, false)
+	asciiText := asciiOutput.String()
+	for _, expected := range []string{"[OK] CodeMCP is running", "[OK] OpenAI Secure MCP Tunnel is connected", "user |"} {
+		if !strings.Contains(asciiText, expected) {
+			t.Fatalf("ASCII status missing %q: %s", expected, asciiText)
+		}
+	}
+	for _, r := range asciiText {
+		if r > 0x7f {
+			t.Fatalf("ASCII status contains non-ASCII rune %q: %q", r, asciiText)
+		}
+	}
+}
+
+func TestRenderStatusRuntimeAndTunnelStatesAcrossPresentationModes(t *testing.T) {
+	cases := []struct {
+		name       string
+		snapshot   statusSnapshot
+		humanWant  string
+		plainWant  string
+		tunnelWant string
+	}{
+		{
+			name:       "starting",
+			snapshot:   statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default(), Running: true, Runtime: runtimeStatusResult{Starting: true, TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true}},
+			humanWant:  "! CodeMCP is starting",
+			plainWant:  "[!] CodeMCP is starting",
+			tunnelWant: "OpenAI Secure MCP Tunnel is connecting",
+		},
+		{
+			name:       "stopped",
+			snapshot:   statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default()},
+			humanWant:  "× CodeMCP is stopped",
+			plainWant:  "[ERR] CodeMCP is stopped",
+			tunnelWant: "OpenAI Secure MCP Tunnel is disabled",
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			var human, plain bytes.Buffer
+			renderStatus(presentation.New(&human, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), test.snapshot, false)
+			renderStatus(presentation.New(&plain, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: false, Color: false}), test.snapshot, false)
+			if !strings.Contains(human.String(), test.humanWant) || !strings.Contains(human.String(), test.tunnelWant) {
+				t.Fatalf("human %s status=%q", test.name, human.String())
+			}
+			if !strings.Contains(plain.String(), test.plainWant) || !strings.Contains(plain.String(), test.tunnelWant) {
+				t.Fatalf("plain %s status=%q", test.name, plain.String())
+			}
+			if strings.ContainsAny(plain.String(), "\r\x1b") {
+				t.Fatalf("plain %s status contains terminal control bytes: %q", test.name, plain.String())
+			}
+		})
+	}
+}
+
+func TestRenderStatusVerboseEndpointsUsePresenterNestedFields(t *testing.T) {
+	cfg := config.Default()
+	snapshot := statusSnapshot{
+		Source: configformat.Source{Path: "/tmp/config.json", Exists: true},
+		Config: cfg,
+		ListenerPlan: listenerPlan{Addresses: []mcpnetwork.Address{{
+			Host:      "127.0.0.1",
+			Interface: "loopback",
+		}}},
+	}
+	var output bytes.Buffer
+	renderStatusEndpoints(presentation.New(&output, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), snapshot, true)
+	text := output.String()
+	for _, expected := range []string{"Endpoints", "  loopback", "    mcp http", "    admin"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("verbose endpoint presentation missing %q: %s", expected, text)
+		}
 	}
 }
 

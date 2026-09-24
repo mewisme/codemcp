@@ -78,6 +78,31 @@ func (p *Presenter) Section(title string) {
 	p.line(p.theme.Render(RoleHeading, strings.TrimSpace(title)))
 }
 
+func (p *Presenter) Subsection(title string) {
+	if p == nil || p.mode == ModeJSON {
+		return
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return
+	}
+	p.line("  " + p.theme.Render(RoleHeading, title))
+}
+
+func (p *Presenter) Spacer() {
+	if p == nil || p.mode == ModeJSON {
+		return
+	}
+	p.line("")
+}
+
+func (p *Presenter) Separator() string {
+	if p == nil {
+		return ""
+	}
+	return p.glyphs.Separator
+}
+
 func (p *Presenter) Status(kind StatusKind, message string) {
 	if p == nil || p.mode == ModeJSON {
 		return
@@ -91,6 +116,14 @@ func (p *Presenter) Status(kind StatusKind, message string) {
 }
 
 func (p *Presenter) Fields(fields ...Field) {
+	p.fields(2, fields...)
+}
+
+func (p *Presenter) NestedFields(fields ...Field) {
+	p.fields(4, fields...)
+}
+
+func (p *Presenter) fields(indent int, fields ...Field) {
 	if p == nil || p.mode == ModeJSON || len(fields) == 0 {
 		return
 	}
@@ -105,14 +138,14 @@ func (p *Presenter) Fields(fields ...Field) {
 		label := strings.TrimSpace(field.Label)
 		value := fmt.Sprint(field.Value)
 		if stacked {
-			p.line("  " + p.theme.Render(RoleLabel, label))
+			p.line(strings.Repeat(" ", indent) + p.theme.Render(RoleLabel, label))
 			for _, line := range strings.Split(value, "\n") {
-				p.line("    " + line)
+				p.line(strings.Repeat(" ", indent+2) + line)
 			}
 			continue
 		}
 		padding := strings.Repeat(" ", max(1, labelWidth-utf8.RuneCountInString(label)+2))
-		p.line("  " + p.theme.Render(RoleLabel, label) + padding + value)
+		p.line(strings.Repeat(" ", indent) + p.theme.Render(RoleLabel, label) + padding + value)
 	}
 }
 

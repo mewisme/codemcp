@@ -99,7 +99,7 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 			log.Detail("config", source.Path)
 			return nil
 		}
-		renderStatusUninitialized(cmd.OutOrStdout())
+		renderStatusUninitialized(commandPresenter(cmd))
 		return nil
 	}
 	logCommandStep(cmd, "STATUS", "status.config.loading", "Loading runtime configuration")
@@ -160,108 +160,123 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 		renderLegacyStatus(cmd, snapshot)
 		return nil
 	}
+	presenter := commandPresenter(cmd)
 	if snapshot.Running && transientTunnelState(statusTunnelState(snapshot.Runtime, true)) && commandAnimationEligible(cmd) {
-		renderStatusBaseText(cmd.OutOrStdout(), snapshot, verbose)
-		fmt.Fprintln(cmd.OutOrStdout(), "\n"+cliHeading(cmd.OutOrStdout(), "Tunnel"))
+		renderStatusBase(presenter, snapshot, verbose)
+		presenter.Spacer()
+		presenter.Section("Tunnel")
 		snapshot.Runtime = animateRuntimeTunnelState(cmd, snapshot.Runtime, statusTunnelWatchTimeout)
 		snapshot.Tunnel.Running = snapshot.Runtime.TunnelRunning
 		snapshot.Tunnel.Ready = snapshot.Runtime.TunnelReady
 		snapshot.Tunnel.Restarting = snapshot.Runtime.TunnelRestarting
 		snapshot.Tunnel.LastError = snapshot.Runtime.TunnelLastError
-		renderStatusTunnelBody(cmd.OutOrStdout(), snapshot, verbose)
+		renderStatusTunnelBody(presenter, snapshot, verbose)
 		return nil
 	}
-	renderStatusText(cmd.OutOrStdout(), snapshot, verbose)
+	renderStatus(presenter, snapshot, verbose)
 	return nil
 }
 
-func renderStatusText(out io.Writer, snapshot statusSnapshot, verbose bool) {
-	renderStatusBaseText(out, snapshot, verbose)
-	renderStatusTunnel(out, snapshot, verbose)
+func renderStatus(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
+	renderStatusBase(presenter, snapshot, verbose)
+	renderStatusTunnel(presenter, snapshot, verbose)
 }
 
-func renderStatusBaseText(out io.Writer, snapshot statusSnapshot, verbose bool) {
-	glyphs := cliGlyphs(out)
+func renderStatusBase(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
 	if snapshot.Running {
 		if snapshot.Runtime.Starting {
-			fmt.Fprintln(out, cliTone(out, presentation.RoleWarning, glyphs.Active), "CodeMCP is starting")
+			presenter.Status(presentation.StatusWarning, "CodeMCP is starting")
 		} else {
-			fmt.Fprintln(out, cliTone(out, presentation.RoleSuccess, glyphs.Success), "CodeMCP is running")
+			presenter.Status(presentation.StatusSuccess, "CodeMCP is running")
 		}
-		renderRunningStatus(out, snapshot, verbose)
+		renderRunningStatus(presenter, snapshot, verbose)
 		return
 	}
-	fmt.Fprintln(out, cliTone(out, presentation.RoleDanger, glyphs.Error), "CodeMCP is stopped")
-	renderStoppedStatus(out, snapshot, verbose)
+	presenter.Status(presentation.StatusError, "CodeMCP is stopped")
+	renderStoppedStatus(presenter, snapshot, verbose)
 }
 
-func renderRunningStatus(out io.Writer, snapshot statusSnapshot, verbose bool) {
+func renderRunningStatus(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
 	status := snapshot.Runtime
-	fmt.Fprintln(out, "\n"+cliHeading(out, "Runtime"))
-	statusField(out, "pid", status.PID)
+	presenter.Spacer()
+	presenter.Section("Runtime")
+	fields := []presentation.Field{{Label: "pid", Value: status.PID}}
 	if status.RunID != "" {
-		statusField(out, "session", shortSessionID(status.RunID))
+		fields = append(fields, presentation.Field{Label: "session", Value: shortSessionID(status.RunID)})
 	}
 	if verbose && !status.StartedAt.IsZero() {
-		statusField(out, "started", status.StartedAt.Local().Format(time.RFC3339))
+		fields = append(fields, presentation.Field{Label: "started", Value: status.StartedAt.Local().Format(time.RFC3339)})
 	}
 	if !status.StartedAt.IsZero() {
-		statusField(out, "uptime", formatStatusUptime(status.StartedAt))
+		fields = append(fields, presentation.Field{Label: "uptime", Value: formatStatusUptime(status.StartedAt)})
 	}
 	if verbose {
-		statusField(out, "managed", status.Managed)
+		fields = append(fields, presentation.Field{Label: "managed", Value: status.Managed})
 		if status.Managed {
-			statusField(out, "scope", status.ServiceScope)
-			statusField(out, "backend", runtimeBackendLabel(status.ServiceScope))
-			statusField(out, "service", status.ServiceID)
+			fields = append(fields,
+				presentation.Field{Label: "scope", Value: status.ServiceScope},
+				presentation.Field{Label: "backend", Value: runtimeBackendLabel(status.ServiceScope)},
+				presentation.Field{Label: "service", Value: status.ServiceID},
+			)
 		}
 	} else if status.Managed {
-		statusField(out, "managed", strings.TrimSpace(status.ServiceScope+" "+cliSeparator(out)+" "+runtimeBackendLabel(status.ServiceScope)))
-		statusField(out, "service", status.ServiceID)
+		fields = append(fields,
+			presentation.Field{Label: "managed", Value: strings.TrimSpace(status.ServiceScope + " " + presenter.Separator() + " " + runtimeBackendLabel(status.ServiceScope))},
+			presentation.Field{Label: "service", Value: status.ServiceID},
+		)
 	} else {
-		statusField(out, "mode", "foreground")
+		fields = append(fields, presentation.Field{Label: "mode", Value: "foreground"})
 	}
-	renderStatusEndpoints(out, snapshot, verbose)
-	renderStatusConfig(out, snapshot, verbose)
+	presenter.Fields(fields...)
+	renderStatusEndpoints(presenter, snapshot, verbose)
+	renderStatusConfig(presenter, snapshot, verbose)
 }
 
-func renderStoppedStatus(out io.Writer, snapshot statusSnapshot, verbose bool) {
-	renderStatusEndpoints(out, snapshot, verbose)
-	renderStatusConfig(out, snapshot, verbose)
+func renderStoppedStatus(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
+	renderStatusEndpoints(presenter, snapshot, verbose)
+	renderStatusConfig(presenter, snapshot, verbose)
 	if len(snapshot.Services) == 0 {
 		return
 	}
-	fmt.Fprintln(out, "\n"+cliHeading(out, "Service"))
+	presenter.Spacer()
+	presenter.Section("Service")
+	fields := make([]presentation.Field, 0, len(snapshot.Services))
 	for _, item := range snapshot.Services {
-		statusField(out, string(item.spec.Scope), fmt.Sprintf("installed %s %s", cliSeparator(out), managedBackendLabel(item.manager, item.spec)))
+		fields = append(fields, presentation.Field{Label: string(item.spec.Scope), Value: fmt.Sprintf("installed %s %s", presenter.Separator(), managedBackendLabel(item.manager, item.spec))})
 	}
+	presenter.Fields(fields...)
 }
 
-func renderStatusEndpoints(out io.Writer, snapshot statusSnapshot, verbose bool) {
+func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
 	cfg := snapshot.Config
-	fmt.Fprintln(out, "\n"+cliHeading(out, "Endpoints"))
+	presenter.Spacer()
+	presenter.Section("Endpoints")
 	if !verbose {
+		fields := make([]presentation.Field, 0, 3)
 		if cfg.Server.Enabled {
-			statusField(out, "mcp http", endpointURL(mcpnetwork.LoopbackHost, cfg.Server.Port, "/mcp"))
+			fields = append(fields, presentation.Field{Label: "mcp http", Value: endpointURL(mcpnetwork.LoopbackHost, cfg.Server.Port, "/mcp")})
 		} else {
-			statusField(out, "mcp http", "disabled")
+			fields = append(fields, presentation.Field{Label: "mcp http", Value: "disabled"})
 		}
 		if cfg.Admin.Enabled {
-			statusField(out, "admin", endpointURL(mcpnetwork.LoopbackHost, cfg.Admin.Port, "/"))
+			fields = append(fields, presentation.Field{Label: "admin", Value: endpointURL(mcpnetwork.LoopbackHost, cfg.Admin.Port, "/")})
 		} else {
-			statusField(out, "admin", "disabled")
+			fields = append(fields, presentation.Field{Label: "admin", Value: "disabled"})
 		}
-		statusField(out, "exposure", statusExposureSummary(out, snapshot))
+		fields = append(fields, presentation.Field{Label: "exposure", Value: statusExposureSummary(snapshot, presenter.Separator())})
+		presenter.Fields(fields...)
 		return
 	}
-	statusField(out, "expose", cfg.Server.Expose.Mode)
+	fields := []presentation.Field{{Label: "expose", Value: cfg.Server.Expose.Mode}}
 	if len(cfg.Server.Expose.Interfaces) > 0 {
-		statusField(out, "interfaces", strings.Join(cfg.Server.Expose.Interfaces, ", "))
+		fields = append(fields, presentation.Field{Label: "interfaces", Value: strings.Join(cfg.Server.Expose.Interfaces, ", ")})
 	}
 	if snapshot.ListenerError != nil {
-		statusField(out, "network", snapshot.ListenerError.Error())
+		fields = append(fields, presentation.Field{Label: "network", Value: snapshot.ListenerError.Error()})
+		presenter.Fields(fields...)
 		return
 	}
+	presenter.Fields(fields...)
 	addresses := append([]mcpnetwork.Address(nil), snapshot.ListenerPlan.Addresses...)
 	sort.SliceStable(addresses, func(i, j int) bool {
 		left, right := statusAddressPriority(addresses[i]), statusAddressPriority(addresses[j])
@@ -278,105 +293,122 @@ func renderStatusEndpoints(out io.Writer, snapshot statusSnapshot, verbose bool)
 		if name == "" {
 			name = address.Scope
 		}
-		fmt.Fprintf(out, "\n  %s\n", cliHeading(out, name))
+		presenter.Spacer()
+		presenter.Subsection(name)
+		addressFields := []presentation.Field{}
 		if cfg.Server.Enabled {
-			statusNestedField(out, "mcp http", endpointURL(address.Host, cfg.Server.Port, "/mcp"))
+			addressFields = append(addressFields, presentation.Field{Label: "mcp http", Value: endpointURL(address.Host, cfg.Server.Port, "/mcp")})
 		}
 		if cfg.Admin.Enabled {
-			statusNestedField(out, "admin", endpointURL(address.Host, cfg.Admin.Port, "/"))
+			addressFields = append(addressFields, presentation.Field{Label: "admin", Value: endpointURL(address.Host, cfg.Admin.Port, "/")})
 		}
+		presenter.NestedFields(addressFields...)
 	}
+	trailing := []presentation.Field{}
 	if !cfg.Server.Enabled {
-		statusField(out, "mcp http", "disabled")
+		trailing = append(trailing, presentation.Field{Label: "mcp http", Value: "disabled"})
 	}
 	if !cfg.Admin.Enabled && len(addresses) == 0 {
-		statusField(out, "admin", "disabled")
+		trailing = append(trailing, presentation.Field{Label: "admin", Value: "disabled"})
 	}
+	presenter.Fields(trailing...)
 }
 
-func renderStatusTunnel(out io.Writer, snapshot statusSnapshot, verbose bool) {
-	fmt.Fprintln(out, "\n"+cliHeading(out, "Tunnel"))
-	renderStatusTunnelBody(out, snapshot, verbose)
+func renderStatusTunnel(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
+	presenter.Spacer()
+	presenter.Section("Tunnel")
+	renderStatusTunnelBody(presenter, snapshot, verbose)
 }
 
-func renderStatusTunnelBody(out io.Writer, snapshot statusSnapshot, verbose bool) {
+func renderStatusTunnelBody(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
 	status := snapshot.Runtime
 	if !snapshot.Running {
 		status = runtimeStatusResult{TunnelEnabled: snapshot.Config.Tunnel.Enabled, TunnelConfigured: tunnel.Configured(snapshot.Config.Tunnel), TunnelID: snapshot.Config.Tunnel.ID}
 	}
 	state := statusTunnelState(status, snapshot.Running)
-	renderTunnelStateLine(out, state)
+	presenter.Status(statusPresentationKind(state), "OpenAI Secure MCP Tunnel is "+state)
+	fields := []presentation.Field{}
 	if verbose {
-		statusField(out, "enabled", status.TunnelEnabled)
-		statusField(out, "configured", status.TunnelConfigured)
+		fields = append(fields,
+			presentation.Field{Label: "enabled", Value: status.TunnelEnabled},
+			presentation.Field{Label: "configured", Value: status.TunnelConfigured},
+		)
 	}
 	if status.TunnelID != "" {
-		statusField(out, "id", status.TunnelID)
+		fields = append(fields, presentation.Field{Label: "id", Value: status.TunnelID})
 	}
 	if snapshot.Tunnel.Metadata != nil {
 		metadata := snapshot.Tunnel.Metadata
 		if metadata.Name != "" {
-			statusField(out, "name", metadata.Name)
+			fields = append(fields, presentation.Field{Label: "name", Value: metadata.Name})
 		}
 		if verbose {
 			if metadata.Description != "" {
-				statusField(out, "description", metadata.Description)
+				fields = append(fields, presentation.Field{Label: "description", Value: metadata.Description})
 			}
 			if metadata.Creator != "" {
-				statusField(out, "creator", metadata.Creator)
+				fields = append(fields, presentation.Field{Label: "creator", Value: metadata.Creator})
 			}
 			if len(metadata.WorkspaceIDs) > 0 {
-				statusField(out, "workspaces", strings.Join(metadata.WorkspaceIDs, ", "))
+				fields = append(fields, presentation.Field{Label: "workspaces", Value: strings.Join(metadata.WorkspaceIDs, ", ")})
 			}
 			if len(metadata.OrganizationIDs) > 0 {
-				statusField(out, "organizations", strings.Join(metadata.OrganizationIDs, ", "))
+				fields = append(fields, presentation.Field{Label: "organizations", Value: strings.Join(metadata.OrganizationIDs, ", ")})
 			}
 		}
 	}
 	if verbose && snapshot.Tunnel.AdminKeyConfigured && snapshot.Tunnel.AdminScope != nil {
-		statusField(out, "admin", "configured "+cliSeparator(out)+" "+formatTunnelAdminScope(*snapshot.Tunnel.AdminScope))
+		fields = append(fields, presentation.Field{Label: "admin", Value: "configured " + presenter.Separator() + " " + formatTunnelAdminScope(*snapshot.Tunnel.AdminScope)})
 	}
 	if verbose && snapshot.Tunnel.MetadataError != "" {
-		statusField(out, "metadata", "unavailable: "+snapshot.Tunnel.MetadataError)
+		fields = append(fields, presentation.Field{Label: "metadata", Value: "unavailable: " + snapshot.Tunnel.MetadataError})
 	}
 	if verbose && status.TunnelLastError != "" {
-		statusField(out, "error", status.TunnelLastError)
+		fields = append(fields, presentation.Field{Label: "error", Value: status.TunnelLastError})
 	}
+	presenter.Fields(fields...)
 }
 
-func renderStatusConfig(out io.Writer, snapshot statusSnapshot, verbose bool) {
+func renderStatusConfig(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
 	cfg := snapshot.Config
-	fmt.Fprintln(out, "\n"+cliHeading(out, "Config"))
+	presenter.Spacer()
+	presenter.Section("Config")
 	path := compactStatusPath(snapshot.Source.Path)
+	fields := []presentation.Field{}
 	if verbose {
 		path = snapshot.Source.Path
-		statusField(out, "initialized", snapshot.Source.Exists)
+		fields = append(fields, presentation.Field{Label: "initialized", Value: snapshot.Source.Exists})
 	}
-	statusField(out, "file", path)
+	fields = append(fields, presentation.Field{Label: "file", Value: path})
 	if verbose {
-		statusField(out, "format", snapshot.Source.Format)
+		fields = append(fields, presentation.Field{Label: "format", Value: snapshot.Source.Format})
 	}
-	separator := cliSeparator(out)
-	statusField(out, "transports", fmt.Sprintf("http %s %s tunnel %s", onOff(cfg.Server.Enabled), separator, onOff(cfg.Tunnel.Enabled)))
-	statusField(out, "auth", fmt.Sprintf("mcp %s %s admin %s", onOff(cfg.Auth.MCPEnabled), separator, onOff(cfg.Auth.AdminEnabled)))
-	glyphs := cliGlyphs(out)
+	separator := presenter.Separator()
+	fields = append(fields,
+		presentation.Field{Label: "transports", Value: fmt.Sprintf("http %s %s tunnel %s", onOff(cfg.Server.Enabled), separator, onOff(cfg.Tunnel.Enabled))},
+		presentation.Field{Label: "auth", Value: fmt.Sprintf("mcp %s %s admin %s", onOff(cfg.Auth.MCPEnabled), separator, onOff(cfg.Auth.AdminEnabled))},
+	)
+	presenter.Fields(fields...)
 	for _, warning := range config.SecurityWarnings(cfg) {
-		fmt.Fprintln(out, "  "+cliTone(out, presentation.RoleWarning, glyphs.Warning)+" "+warning)
+		presenter.Status(presentation.StatusWarning, warning)
 	}
-	statusField(out, "workspaces", snapshot.Workspaces)
-	statusField(out, "upstreams", snapshot.Upstreams)
+	secondary := []presentation.Field{
+		{Label: "workspaces", Value: snapshot.Workspaces},
+		{Label: "upstreams", Value: snapshot.Upstreams},
+	}
 	if snapshot.Update != nil && (verbose || snapshot.Update.Status == updatepkg.StatusAvailable) {
-		statusField(out, "update", formatCachedUpdate(snapshot.Update))
+		secondary = append(secondary, presentation.Field{Label: "update", Value: formatCachedUpdate(snapshot.Update)})
 		if verbose {
-			statusField(out, "checked", snapshot.Update.CheckedAt.Local().Format(time.RFC3339))
+			secondary = append(secondary, presentation.Field{Label: "checked", Value: snapshot.Update.CheckedAt.Local().Format(time.RFC3339)})
 		}
 	}
+	presenter.Fields(secondary...)
 }
 
-func renderStatusUninitialized(out io.Writer) {
-	fmt.Fprintln(out, cliTone(out, presentation.RoleWarning, cliGlyphs(out).Warning), "CodeMCP is not initialized")
-	fmt.Fprintln(out, "\n"+cliHeading(out, "Run:"))
-	fmt.Fprintf(out, "  %s init\n", cliUseName())
+func renderStatusUninitialized(presenter *presentation.Presenter) {
+	presenter.Status(presentation.StatusWarning, "CodeMCP is not initialized")
+	presenter.Spacer()
+	presenter.Note("Run:", cliUseName()+" init")
 }
 
 func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {
@@ -454,18 +486,14 @@ func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {
 func statusField(out io.Writer, label string, value any) {
 	fmt.Fprintf(out, "  %s %v\n", cliDim(out, fmt.Sprintf("%-11s", label)), value)
 }
-func statusNestedField(out io.Writer, label string, value any) {
-	fmt.Fprintf(out, "    %s %v\n", cliDim(out, fmt.Sprintf("%-9s", label)), value)
-}
-
 func statusStateField(out io.Writer, label string, value any) {
 	fmt.Fprintf(out, "  %s %s\n", cliDim(out, fmt.Sprintf("%-11s", label)), cliState(out, value))
 }
 
-func statusExposureSummary(out io.Writer, snapshot statusSnapshot) string {
+func statusExposureSummary(snapshot statusSnapshot, separator string) string {
 	mode := string(snapshot.Config.Server.Expose.Mode)
 	if snapshot.ListenerError != nil {
-		return mode + " " + cliSeparator(out) + " network unavailable"
+		return mode + " " + separator + " network unavailable"
 	}
 	count := statusNetworkInterfaceCount(snapshot.ListenerPlan.Addresses)
 	if count == 0 {
@@ -475,7 +503,20 @@ func statusExposureSummary(out io.Writer, snapshot statusSnapshot) string {
 	if count == 1 {
 		label = "network interface"
 	}
-	return fmt.Sprintf("%s %s %d %s", mode, cliSeparator(out), count, label)
+	return fmt.Sprintf("%s %s %d %s", mode, separator, count, label)
+}
+
+func statusPresentationKind(state string) presentation.StatusKind {
+	switch state {
+	case "connected", "ready", "running":
+		return presentation.StatusSuccess
+	case "failed", "error", "unreachable":
+		return presentation.StatusError
+	case "degraded":
+		return presentation.StatusWarning
+	default:
+		return presentation.StatusInfo
+	}
 }
 
 func statusNetworkInterfaceCount(addresses []mcpnetwork.Address) int {
@@ -532,9 +573,10 @@ func transientTunnelState(state string) bool {
 }
 
 func animateRuntimeTunnelState(cmd *cobra.Command, status runtimeStatusResult, timeout time.Duration) runtimeStatusResult {
-	log := commandLogger(cmd)
+	progress := commandProgressSession(cmd)
 	state := statusTunnelState(status, true)
-	log.Action("TUNNEL", "tunnel.status."+state, tunnelStateActionMessage(state))
+	progress.Update(presentation.ProgressPhase{ID: "tunnel.status", Label: tunnelStateActionMessage(state), State: presentation.ProgressRunning})
+	defer progress.Suspend()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(cmd.Context(), time.Second)
@@ -550,7 +592,7 @@ func animateRuntimeTunnelState(cmd *cobra.Command, status runtimeStatusResult, t
 		}
 		if nextState != state {
 			state = nextState
-			log.Action("TUNNEL", "tunnel.status."+state, tunnelStateActionMessage(state))
+			progress.Update(presentation.ProgressPhase{ID: "tunnel.status", Label: tunnelStateActionMessage(state), State: presentation.ProgressRunning})
 		}
 		select {
 		case <-cmd.Context().Done():

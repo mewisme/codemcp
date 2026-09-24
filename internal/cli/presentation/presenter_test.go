@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 )
@@ -16,18 +17,29 @@ func TestPresenterRepresentativeHumanUnicode(t *testing.T) {
 		Field{Label: "pid", Value: 4242},
 	)
 	p.Status(StatusSuccess, "Ready")
+	p.Spacer()
+	p.Subsection("Loopback")
+	p.NestedFields(Field{Label: "mcp http", Value: "http://127.0.0.1:37421/mcp"})
 	p.List("alpha", "beta")
 	p.Rows([]string{"Name", "State"}, Row{"one", "ready"}, Row{"two", "offline"})
 	p.Note("Hint", "Use cm status --json for machine output.")
 
 	got := output.String()
-	for _, want := range []string{"CodeMCP status", "Runtime", "status", "running", "✓ Ready", "ℹ alpha", "Name", "State", "Hint"} {
+	for _, want := range []string{"CodeMCP status", "Runtime", "status", "running", "✓ Ready", "  Loopback", "    mcp http", "ℹ alpha", "Name", "State", "Hint"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("output missing %q:\n%s", want, got)
 		}
 	}
 	if strings.Contains(got, "\x1b[") {
 		t.Fatalf("plain-color human output contains ANSI: %q", got)
+	}
+}
+
+func TestPresenterSeparatorFollowsGlyphCapabilities(t *testing.T) {
+	unicode := New(io.Discard, ModeHuman, Capabilities{Unicode: true})
+	ascii := New(io.Discard, ModeHuman, Capabilities{Unicode: false})
+	if unicode.Separator() != UnicodeGlyphs.Separator || ascii.Separator() != ASCIIGlyphs.Separator {
+		t.Fatalf("separators unicode=%q ascii=%q", unicode.Separator(), ascii.Separator())
 	}
 }
 

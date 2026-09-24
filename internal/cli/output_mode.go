@@ -82,6 +82,17 @@ func commandResultWriter(cmd *cobra.Command) io.Writer {
 	return cmd.OutOrStdout()
 }
 
+func commandPresenter(cmd *cobra.Command) *presentation.Presenter {
+	mode := presentation.ModePlain
+	switch commandResultModeFor(cmd) {
+	case resultModeHuman:
+		mode = presentation.ModeHuman
+	case resultModeJSON:
+		mode = presentation.ModeJSON
+	}
+	return presentation.New(commandResultWriter(cmd), mode, commandTerminalCapabilities(cmd))
+}
+
 func writeResultJSON(cmd *cobra.Command, value any) error {
 	encoder := json.NewEncoder(commandResultWriter(cmd))
 	encoder.SetEscapeHTML(false)
