@@ -32,7 +32,7 @@ func TestStoreCreatesPersistentIdentity(t *testing.T) {
 	}
 }
 
-func TestStoreIdentitySurvivesConfigFormatChanges(t *testing.T) {
+func TestStoreIdentityIsIndependentFromConfigState(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(root)
 	store.hostname = func() (string, error) { return "node", nil }
@@ -41,7 +41,7 @@ func TestStoreIdentitySurvivesConfigFormatChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("[server]\nport = 37421\n"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte("{}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	reloaded, err := NewStore(root).Load()

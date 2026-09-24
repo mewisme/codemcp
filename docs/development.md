@@ -141,7 +141,7 @@ This rule applies especially to commands such as:
 - `init`
 - `uninit`
 - `config set`
-- `config convert`
+- `config import`
 - workspace registration/access changes
 - tunnel configuration
 - managed runtime tests
@@ -186,7 +186,7 @@ The portable smoke verifies behavior such as:
 - `cm tui` refuses redirected/non-TTY execution without writing a full-screen UI
 - stable workspace/request/upstream plain and JSON CLI output remains usable outside the TUI
 - isolated init/uninit
-- config verify/convert/transform
+- config verify/export/import
 - config/status commands
 - live config reload
 - listener rebind and failed-bind rollback
@@ -198,6 +198,10 @@ The portable smoke verifies behavior such as:
 - integration coverage for Admin, TUI, and MCP workspace-registration mutations verifies each persistent registry change reloads runtime state before success is reported
 - modern MCP error behavior
 - clean stop/shutdown
+
+## Repository YAML files
+
+YAML files committed to the repository are tooling or repository metadata, not CodeMCP runtime persistence. This includes GitHub workflows and issue templates, Dependabot, GoReleaser and pre-commit configuration, plus pnpm lock/workspace metadata. CodeMCP-owned runtime machine state uses JSON or JSONL only; released YAML/TOML state is handled only by migration readers.
 
 Updater-specific native tests additionally verify:
 

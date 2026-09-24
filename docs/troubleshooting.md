@@ -203,15 +203,7 @@ Run:
 cm config verify
 ```
 
-If you intentionally want one format across the managed state tree:
-
-```bash
-cm config convert json
-cm config convert yaml
-cm config convert toml
-```
-
-Conversion preflights structured state before mutation.
+Current CodeMCP machine state is JSON/JSONL only. If verification reports a YAML/TOML structured-state file, treat it as legacy residue and use the explicit migration path for the released installation rather than converting current state in place.
 
 ## I accidentally used the real config root in a test
 

@@ -45,8 +45,6 @@ Structured display is available where supported:
 
 ```bash
 cm config list --json
-cm config list --yaml
-cm config list --toml
 ```
 
 Sensitive fields are redacted.
@@ -94,23 +92,13 @@ cm config verify --strict
 
 ## Storage format
 
-JSON is the default structured format. YAML and TOML are also supported:
+CodeMCP-owned machine configuration and structured state use JSON. Append-only machine event/history streams use JSONL. Current runtime persistence does not expose alternate YAML/TOML formats or a format-conversion workflow.
 
 ```bash
-cm init --json
-cm init --yaml
-cm init --toml
+cm init
 ```
 
-Convert an existing managed structured state tree:
-
-```bash
-cm config convert json
-cm config convert yaml
-cm config convert toml
-```
-
-Conversion validates the managed state before activating the new representation.
+Released legacy formats are migration inputs only; they are not current CodeMCP persistence formats.
 
 ## Secrets
 

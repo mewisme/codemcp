@@ -1,11 +1,5 @@
 # Config Storage Editor Fields
 
-## Convert
-
-### Target format
-
-Selects the structured format used for configuration/state files after conversion: **JSON**, **YAML**, or **TOML**. Conversion applies to the application's structured configuration/state set rather than one individual field.
-
 ## Export Envelope
 
 ### Envelope file

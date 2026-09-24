@@ -278,9 +278,6 @@ func TestCheckpointRejectsPathEscape(t *testing.T) {
 
 func TestCheckpointMetadataUsesCanonicalJSON(t *testing.T) {
 	stateRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(stateRoot, "config.yaml"), []byte("server: {}\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
 	workspaceRoot := t.TempDir()
 	file := filepath.Join(workspaceRoot, "file.txt")
 	if err := os.WriteFile(file, []byte("before"), 0644); err != nil {
@@ -301,9 +298,6 @@ func TestCheckpointMetadataUsesCanonicalJSON(t *testing.T) {
 
 func TestCheckpointJSONManifestPreservesColonContent(t *testing.T) {
 	stateRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(stateRoot, "config.yaml"), []byte("server: {}\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
 	workspaceRoot := t.TempDir()
 	file := filepath.Join(workspaceRoot, "file.txt")
 	content := "name: value\nurl: https://example.com\nheader: x:y\nplain"

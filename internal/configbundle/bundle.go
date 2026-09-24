@@ -566,12 +566,8 @@ func mergeImportedMainConfig(existingRoot, stagedRoot string) error {
 }
 
 func normalizeWorkspaceRegistry(file File, source, target Platform) ([]byte, map[string]string, map[string]string, int, error) {
-	format, err := configformat.Detect(file.Path)
-	if err != nil {
-		return nil, nil, nil, 0, err
-	}
 	var registry workspaceRegistry
-	if err := configformat.Unmarshal(format, file.Data, &registry); err != nil {
+	if err := configformat.Unmarshal(configformat.JSON, file.Data, &registry); err != nil {
 		return nil, nil, nil, 0, fmt.Errorf("decode envelope workspace registry: %w", err)
 	}
 	mapping := map[string]string{}
@@ -599,7 +595,7 @@ func normalizeWorkspaceRegistry(file File, source, target Platform) ([]byte, map
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Path < items[j].Path })
 	registry.Workspaces = items
-	encoded, err := configformat.Marshal(format, registry)
+	encoded, err := configformat.Marshal(configformat.JSON, registry)
 	if err != nil {
 		return nil, nil, nil, 0, err
 	}
@@ -607,11 +603,10 @@ func normalizeWorkspaceRegistry(file File, source, target Platform) ([]byte, map
 }
 
 func normalizeWorkspaceState(relative string, data []byte, oldID, newID, workspaceRoot string, source, target Platform) ([]byte, error) {
-	format, err := configformat.Detect(relative)
-	if err != nil {
+	if !strings.EqualFold(filepath.Ext(relative), ".json") {
 		return data, nil
 	}
-	decoded, err := configformat.DecodeGeneric(format, data)
+	decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
 	if err != nil {
 		return data, nil
 	}
@@ -629,7 +624,7 @@ func normalizeWorkspaceState(relative string, data []byte, oldID, newID, workspa
 			object["cwd"] = workspaceRoot
 		}
 	}
-	return configformat.EncodeGeneric(format, object)
+	return configformat.EncodeGeneric(configformat.JSON, object)
 }
 
 func portableDirectories(values []string, source, target Platform) ([]string, int) {
@@ -705,8 +700,7 @@ func topLevelStructured(relative, name string) bool {
 	if base != name {
 		return false
 	}
-	_, err := configformat.Detect(relative)
-	return err == nil
+	return strings.EqualFold(filepath.Ext(relative), ".json")
 }
 
 func safeRelative(value string) (string, bool) {

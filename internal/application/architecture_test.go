@@ -45,6 +45,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"mcp":                "runtime",
 	"mcpauth":            "runtime",
 	"memory":             "domain",
+	"migration":          "persistence",
 	"network":            "platform",
 	"oauth":              "runtime",
 	"outboundpolicy":     "domain",

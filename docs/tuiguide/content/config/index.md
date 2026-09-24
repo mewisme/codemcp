@@ -26,7 +26,7 @@ Tunnel settings describe the local Secure MCP Tunnel transport. Runtime/admin cr
 
 ## Storage and maintenance
 
-Storage exposes maintenance actions such as verify, migrate, convert, export, and import. Import uses explicit confirmation before replacing persistent state.
+Storage exposes maintenance actions such as verify, migrate, export, and import. Import uses explicit confirmation before replacing persistent state.
 
 ## Persisted and live state
 

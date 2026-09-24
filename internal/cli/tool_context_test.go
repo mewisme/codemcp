@@ -43,7 +43,7 @@ func TestMCPToolContextAllowsOnlyReadOnlyCLICommands(t *testing.T) {
 			t.Fatalf("read-only command denied: %v: %v", path, err)
 		}
 	}
-	for _, path := range [][]string{{"install"}, {"upgrade"}, {"update"}, {"serve"}, {"up"}, {"down"}, {"_service", "run"}, {"logs", "clear", "--force"}, {"config", "set"}, {"config", "convert"}, {"config", "export"}, {"config", "import"}, {"auth", "mcp", "create"}, {"request", "approve"}, {"request", "deny"}, {"workspace", "access", "add"}, {"mcp", "server", "add"}, {"tunnel", "enable"}} {
+	for _, path := range [][]string{{"install"}, {"upgrade"}, {"update"}, {"serve"}, {"up"}, {"down"}, {"_service", "run"}, {"logs", "clear", "--force"}, {"config", "set"}, {"config", "export"}, {"config", "import"}, {"auth", "mcp", "create"}, {"request", "approve"}, {"request", "deny"}, {"workspace", "access", "add"}, {"mcp", "server", "add"}, {"tunnel", "enable"}} {
 		cmd, _, err := root.Find(path)
 		if err != nil {
 			t.Fatal(err)

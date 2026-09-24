@@ -17,6 +17,16 @@ type VerifyResult struct {
 	Warnings []string
 }
 
+var currentStructuredStateNames = map[string]bool{
+	"config": true, "tunnel": true, "upstream": true, "workspaces": true, "oauth": true,
+	"shell": true, "index": true, "manifest": true,
+}
+
+type currentStructuredFile struct {
+	path string
+	ext  string
+}
+
 func Verify() (VerifyResult, error) {
 	return verifyAt(RootPath(), false)
 }
@@ -70,8 +80,8 @@ func verifyAt(root string, runtimeMode bool) (VerifyResult, error) {
 	return VerifyResult{Format: source.Format, Ext: source.Ext, Files: len(files), Warnings: SecurityWarnings(cfg)}, nil
 }
 
-func collectCurrentStructuredFiles(root string) ([]structuredFile, error) {
-	files := make([]structuredFile, 0)
+func collectCurrentStructuredFiles(root string) ([]currentStructuredFile, error) {
+	files := make([]currentStructuredFile, 0)
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -84,10 +94,10 @@ func collectCurrentStructuredFiles(root string) ([]structuredFile, error) {
 			return nil
 		}
 		base := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		if !structuredStateNames[base] && !isTunnelMetadataFile(root, path) {
+		if !currentStructuredStateNames[base] && !isTunnelMetadataFile(root, path) {
 			return nil
 		}
-		files = append(files, structuredFile{path: path, base: base, format: configformat.JSON, ext: ext})
+		files = append(files, currentStructuredFile{path: path, ext: ext})
 		return nil
 	})
 	if err != nil {
@@ -97,6 +107,14 @@ func collectCurrentStructuredFiles(root string) ([]structuredFile, error) {
 		return nil, errors.New("no structured config files found")
 	}
 	return files, nil
+}
+
+func isTunnelMetadataFile(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return filepath.Dir(relative) == "tunnels"
 }
 
 func isCheckpointStateFile(root, path string) bool {

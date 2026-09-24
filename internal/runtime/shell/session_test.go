@@ -285,9 +285,6 @@ func TestShellReset(t *testing.T) {
 
 func TestShellStateUsesCanonicalJSON(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("[server]\nport = 37421\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
 	workspaceRoot := t.TempDir()
 	workspaces := workspace.NewManager(filepath.Join(root, "workspaces.json"))
 	item, err := workspaces.Register(workspaceRoot)

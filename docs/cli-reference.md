@@ -74,7 +74,6 @@ cm
 │   └── status
 ├── completion
 ├── config
-│   ├── convert
 │   ├── explain
 │   ├── export
 │   ├── get
@@ -219,9 +218,6 @@ See [TUI Command Center](tui.md) for Commands search, mouse behavior, deep links
 
 ```bash
 cm init
-cm init --json
-cm init --yaml
-cm init --toml
 ```
 
 ### Foreground runtime
@@ -354,15 +350,6 @@ cm config verify --strict
 cm config validate
 ```
 
-Convert:
-
-```bash
-cm config convert json
-cm config convert yaml
-cm config convert toml
-cm config transform toml
-```
-
 Portable backup/migration:
 
 ```bash
@@ -380,8 +367,6 @@ Structured display:
 
 ```bash
 cm config list --json
-cm config list --yaml
-cm config list --toml
 ```
 
 ## Authentication

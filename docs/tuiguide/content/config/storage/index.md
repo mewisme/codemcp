@@ -6,9 +6,9 @@ Storage contains maintenance operations for persistent configuration/state rathe
 
 **Verify** checks structured config/state consistency and configuration validity. Use it after access, exposure, format, migration, or manual state changes when you want an explicit health check.
 
-## Migrate and convert
+## Migrate
 
-**Migrate** moves supported legacy credential state into the managed secret store and converts legacy secret files to encrypted JSON envelopes. **Convert** changes the structured configuration/state representation among supported formats while preserving validated semantics.
+**Migrate** moves supported legacy credential state into the managed secret store and converts legacy secret files to encrypted JSON envelopes. Current CodeMCP machine state is JSON/JSONL only; storage does not expose a format-conversion action.
 
 ## Import and export
 

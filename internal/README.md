@@ -50,6 +50,7 @@ CLI / TUI / Admin HTTP / embedded web / protocol entrypoints
 | `mcp` | runtime/protocol | MCP protocol server/runtime plumbing |
 | `mcpauth` | runtime/protocol | MCP OAuth/auth protocol plumbing |
 | `memory` | domain/persistence | Workspace memory model/storage |
+| `migration` | persistence | Released-state migration-only readers and transformers |
 | `network` | platform | Network interface discovery |
 | `oauth` | runtime/protocol | OAuth client/state machinery |
 | `outboundpolicy` | domain | Outbound network safety policy |
