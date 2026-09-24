@@ -2,42 +2,41 @@ package cli
 
 import (
 	"net"
+	"net/url"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
-type configKeyCompletion struct {
-	Key         string
-	Description string
-	Settable    bool
+func completeConfigSelection(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return completeConfigSettingSelection(cmd, args, toComplete, false)
 }
 
-func configKeyCompletions() []configKeyCompletion {
-	fields := config.Fields()
-	result := make([]configKeyCompletion, 0, len(fields)+1)
-	result = append(result, configKeyCompletion{Key: "server.expose", Description: "server network exposure", Settable: true})
-	for _, spec := range fields {
-		settable := spec.Editable
-		if spec.Key == "tunnel.api_key" {
-			settable = true
-		}
-		result = append(result, configKeyCompletion{Key: spec.Key, Description: spec.Description, Settable: settable})
-	}
-	return result
+func completeConfigWhySelection(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	return completeConfigSettingSelection(cmd, args, toComplete, true)
 }
 
-func completeConfigSelection(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+func completeConfigSettingSelection(cmd *cobra.Command, args []string, toComplete string, includeWriteOnly bool) ([]string, cobra.ShellCompDirective) {
 	if len(args) > 0 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	seen := map[string]string{}
-	for _, spec := range configKeyCompletions() {
+	for _, spec := range configPresentationSpecs() {
+		if spec.InternalOnly || (!includeWriteOnly && !spec.Readable && !spec.Secret) {
+			continue
+		}
+		if spec.Selector != nil {
+			for _, key := range completeDynamicSettingKeys(cmd, spec) {
+				seen[key] = spec.Description
+			}
+			continue
+		}
 		seen[spec.Key] = spec.Description
 		parts := strings.Split(spec.Key, ".")
 		for index := 1; index < len(parts); index++ {
@@ -55,26 +54,42 @@ func completeConfigSelection(_ *cobra.Command, args []string, toComplete string)
 	return filterCompletions(values, toComplete), cobra.ShellCompDirectiveNoFileComp
 }
 
-func completeConfigSet(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-	if len(args) == 0 {
-		completions := configKeyCompletions()
-		values := make([]string, 0, len(completions))
-		for _, spec := range completions {
-			if spec.Settable {
-				values = append(values, spec.Key+"\t"+spec.Description)
-			}
+func configPresentationSpecs() []config.FieldSpec {
+	configuredKeys := map[string]struct{}{}
+	settings := config.Settings()
+	for _, spec := range settings {
+		if spec.Secret && spec.ConfiguredStateKey != "" {
+			configuredKeys[spec.ConfiguredStateKey] = struct{}{}
 		}
-		sort.Strings(values)
-		return filterCompletions(values, toComplete), cobra.ShellCompDirectiveNoFileComp
+	}
+	result := make([]config.FieldSpec, 0, len(settings))
+	for _, spec := range settings {
+		if _, surrogate := configuredKeys[spec.Key]; surrogate {
+			continue
+		}
+		result = append(result, spec)
+	}
+	return result
+}
+
+func completeConfigSet(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) == 0 {
+		return completeConfigOperation(cmd, toComplete, func(spec config.FieldSpec) bool { return spec.Writable })
 	}
 	if len(args) > 1 {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	key := args[0]
-	if spec, ok := config.FieldByKey(key); ok && spec.Kind == config.FieldEnum {
+	spec, ok := config.SettingByKey(key)
+	if !ok {
+		if match, matched := config.MatchSettingSelector(key); matched {
+			spec, ok = match.Spec, true
+		}
+	}
+	if ok && spec.Kind == config.FieldEnum {
 		return filterCompletions(spec.Options, toComplete), cobra.ShellCompDirectiveNoFileComp
 	}
-	if spec, ok := config.FieldByKey(key); ok && spec.Kind == config.FieldBool {
+	if ok && spec.Kind == config.FieldBool {
 		return filterCompletions([]string{"true", "false"}, toComplete), cobra.ShellCompDirectiveNoFileComp
 	}
 	switch key {
@@ -96,6 +111,88 @@ func completeConfigSet(_ *cobra.Command, args []string, toComplete string) ([]st
 	default:
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
+}
+
+func completeConfigUnset(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return completeConfigOperation(cmd, toComplete, func(spec config.FieldSpec) bool { return spec.Clearable || spec.DefaultReset })
+}
+
+func completeConfigRotate(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return completeConfigOperation(cmd, toComplete, func(spec config.FieldSpec) bool { return spec.Rotatable })
+}
+
+func completeConfigReveal(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return completeConfigOperation(cmd, toComplete, func(spec config.FieldSpec) bool { return spec.Revealable })
+}
+
+func completeConfigVerify(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	return completeConfigOperation(cmd, toComplete, func(spec config.FieldSpec) bool { return spec.Verifiable })
+}
+
+func completeConfigOperation(cmd *cobra.Command, toComplete string, include func(config.FieldSpec) bool) ([]string, cobra.ShellCompDirective) {
+	values := make([]string, 0)
+	for _, spec := range config.Settings() {
+		if spec.InternalOnly || !include(spec) {
+			continue
+		}
+		if spec.Selector == nil {
+			values = append(values, spec.Key+"\t"+spec.Description)
+			continue
+		}
+		for _, key := range completeDynamicSettingKeys(cmd, spec) {
+			values = append(values, key+"\t"+spec.Description)
+		}
+	}
+	sort.Strings(values)
+	return filterCompletions(values, toComplete), cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeDynamicSettingKeys(cmd *cobra.Command, spec config.FieldSpec) []string {
+	if cmd == nil || spec.Selector == nil {
+		return nil
+	}
+	prepareCompletionConfigRoot(cmd)
+	ctx := cmd.Context()
+	ids := make([]string, 0)
+	switch spec.Selector.Resource {
+	case "upstream.server":
+		service, err := application.LoadUpstreamService(ctx)
+		if err != nil {
+			return nil
+		}
+		result, err := service.List(ctx)
+		if err != nil {
+			return nil
+		}
+		for _, item := range result.Value {
+			ids = append(ids, item.ID)
+		}
+	case "tunnel.managed":
+		items, err := application.ListManagedTunnels(ctx)
+		if err != nil {
+			return nil
+		}
+		for _, item := range items {
+			ids = append(ids, item.ID)
+		}
+	}
+	values := make([]string, 0, len(ids))
+	for _, id := range ids {
+		values = append(values, strings.Replace(spec.Key, "<id>", url.PathEscape(id), 1))
+	}
+	return values
 }
 
 func completeWorkspaceID(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

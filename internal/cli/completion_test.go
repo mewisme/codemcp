@@ -77,6 +77,10 @@ func TestDynamicEntityAndSessionCompletionUsesSelectedConfigRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := newRootCommand()
+	settings, directive := completeConfigSet(cmd, nil, "upstream.servers[")
+	if directive != cobra.ShellCompDirectiveNoFileComp || !hasCompletion(settings, "upstream.servers[docs].enabled") || !hasCompletion(settings, "upstream.servers[docs].url") {
+		t.Fatalf("dynamic setting completions=%#v directive=%v", settings, directive)
+	}
 	workspaces, _ := workspaceCompletions(cmd, "ws_")
 	if !hasCompletion(workspaces, registered.ID) {
 		t.Fatalf("workspace completions = %#v", workspaces)

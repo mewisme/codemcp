@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 )
@@ -146,4 +147,124 @@ func compactConfigValue(value any) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(buffer.String()), nil
+}
+
+func printSettingSelection(cmd *cobra.Command, service *application.SettingService, key string, listMode bool, options configOutputOptions) error {
+	key = strings.TrimSpace(key)
+	if !listMode && key != "" {
+		result, err := service.Read(cmd.Context(), key)
+		if err == nil {
+			if options.json {
+				return writeResultJSON(cmd, map[string]any{result.Spec.Key: settingOutputValue(result)})
+			}
+			fmt.Fprintln(commandResultWriter(cmd), result.Value)
+			return nil
+		}
+		if spec, ok := config.SettingByKey(key); ok && !spec.InternalOnly {
+			return err
+		}
+		if _, ok := config.MatchSettingSelector(key); ok {
+			return err
+		}
+		if len(config.SettingsByPrefix(key)) == 0 {
+			return err
+		}
+	}
+
+	results, err := service.List(cmd.Context(), key)
+	if err != nil {
+		return err
+	}
+	values := make(map[string]any, len(results))
+	for _, result := range results {
+		values[result.Spec.Key] = settingOutputValue(result)
+	}
+	if options.json {
+		return writeResultJSON(cmd, values)
+	}
+
+	keys := make([]string, 0, len(values))
+	for settingKey := range values {
+		keys = append(keys, settingKey)
+	}
+	sort.Strings(keys)
+	if commandResultModeFor(cmd) == resultModeHuman {
+		rows := make([]presentation.Row, 0, len(keys))
+		for _, settingKey := range keys {
+			rows = append(rows, presentation.Row{settingKey, settingDisplayValue(values[settingKey])})
+		}
+		presenter := commandPresenter(cmd)
+		presenter.Frame("Configuration")
+		section := key
+		if section == "" {
+			section = "Settings"
+		}
+		presenter.Section(section)
+		presenter.Rows([]string{"Setting", "Value"}, rows...)
+		presenter.FrameEnd("Done")
+		return nil
+	}
+	for _, settingKey := range keys {
+		fmt.Fprintf(commandResultWriter(cmd), "%s = %s\n", settingKey, settingDisplayValue(values[settingKey]))
+	}
+	return nil
+}
+
+func printSettingDiff(cmd *cobra.Command, service *application.SettingService, prefix string, options configOutputOptions) error {
+	diffs, err := service.Diff(cmd.Context(), strings.TrimSpace(prefix))
+	if err != nil {
+		return err
+	}
+	values := make(map[string]any, len(diffs))
+	for _, diff := range diffs {
+		values[diff.Spec.Key] = map[string]any{
+			"current":  settingOutputValue(diff.SettingResult),
+			"baseline": diff.Baseline,
+		}
+	}
+	if options.json {
+		return writeResultJSON(cmd, values)
+	}
+
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	if commandResultModeFor(cmd) == resultModeHuman {
+		rows := make([]presentation.Row, 0, len(keys))
+		for _, key := range keys {
+			value := values[key].(map[string]any)
+			rows = append(rows, presentation.Row{key, settingDisplayValue(value["current"]), settingDisplayValue(value["baseline"])})
+		}
+		presenter := commandPresenter(cmd)
+		presenter.Frame("Configuration diff")
+		presenter.Section(fmt.Sprintf("Changed %d settings", len(keys)))
+		presenter.Rows([]string{"Setting", "Current", "Baseline"}, rows...)
+		presenter.FrameEnd("Done")
+		return nil
+	}
+	for _, key := range keys {
+		value := values[key].(map[string]any)
+		fmt.Fprintf(commandResultWriter(cmd), "%s = %s (default: %s)\n", key, settingDisplayValue(value["current"]), settingDisplayValue(value["baseline"]))
+	}
+	return nil
+}
+
+func settingOutputValue(result application.SettingResult) any {
+	if result.Configured != nil && !result.Spec.Secret {
+		return *result.Configured
+	}
+	return result.Value
+}
+
+func settingDisplayValue(value any) string {
+	if text, ok := value.(string); ok {
+		return text
+	}
+	text, err := compactConfigValue(value)
+	if err != nil {
+		return fmt.Sprint(value)
+	}
+	return text
 }

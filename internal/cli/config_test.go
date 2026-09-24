@@ -113,7 +113,7 @@ func TestConfigSetSecretValueDoesNotLeakIntoPresentationOrDiagnostics(t *testing
 	if strings.Contains(output, secret) {
 		t.Fatalf("secret mutation value leaked into CLI output: %q", output)
 	}
-	for _, expected := range []string{"Update configuration", "Value saved", "tunnel.api_key"} {
+	for _, expected := range []string{"Update configuration", "Setting saved", "tunnel.api_key"} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("config mutation output missing %q: %q", expected, output)
 		}
@@ -282,8 +282,8 @@ func TestConfigJSONResultStaysCleanUnderVerboseAndDebug(t *testing.T) {
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 				t.Fatalf("%s stdout is not pure JSON: %q err=%v", flag, stdout.String(), err)
 			}
-			if strings.Contains(stdout.String(), "mcp-secret") || !strings.Contains(stdout.String(), redactedValue) {
-				t.Fatalf("%s JSON redaction output=%q", flag, stdout.String())
+			if strings.Contains(stdout.String(), "mcp-secret") || strings.Contains(stdout.String(), "token_hash") || !strings.Contains(stdout.String(), `"auth.mcp_token": "configured"`) {
+				t.Fatalf("%s JSON safe setting projection=%q", flag, stdout.String())
 			}
 			if stderr.Len() == 0 {
 				t.Fatalf("%s expected diagnostics on stderr", flag)
@@ -418,6 +418,12 @@ func TestCurrentConfigCommandsAdvertiseJSONOnly(t *testing.T) {
 			}
 		}
 	}
+	for _, name := range []string{"path", "get", "list", "why", "diff", "set", "unset", "rotate", "reveal", "verify", "export", "import"} {
+		found, _, err := configCmd.Find([]string{name})
+		if err != nil || found == nil || found.Name() != name {
+			t.Fatalf("config %s missing: found=%v err=%v", name, found, err)
+		}
+	}
 	for _, path := range [][]string{{"init"}, {"config"}, {"config", "get"}, {"config", "list"}, {"config", "verify"}} {
 		cmd, _, err := root.Find(path)
 		if err != nil {
@@ -430,7 +436,7 @@ func TestCurrentConfigCommandsAdvertiseJSONOnly(t *testing.T) {
 			}
 		}
 	}
-	for _, path := range [][]string{{"config", "get"}, {"config", "list"}} {
+	for _, path := range [][]string{{"config", "path"}, {"config", "get"}, {"config", "list"}, {"config", "why"}, {"config", "diff"}} {
 		cmd, _, err := root.Find(path)
 		if err != nil {
 			t.Fatal(err)
@@ -444,10 +450,28 @@ func TestCurrentConfigCommandsAdvertiseJSONOnly(t *testing.T) {
 			}
 		}
 	}
+	reveal, _, err := root.Find([]string{"config", "reveal"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reveal.Flags().Lookup("json") != nil {
+		t.Fatal("config reveal unexpectedly exposes structured JSON output")
+	}
+	for _, path := range [][]string{{"config", "export"}, {"config", "import"}} {
+		cmd, _, err := root.Find(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range []string{"format", "yaml", "toml"} {
+			if cmd.Flags().Lookup(name) != nil {
+				t.Fatalf("%s unexpectedly exposes --%s", strings.Join(path, " "), name)
+			}
+		}
+	}
 }
 
-func TestConfigExplainLeafBranchAndJSON(t *testing.T) {
-	leaf := configExplainCommand()
+func TestConfigWhyLeafBranchAndJSON(t *testing.T) {
+	leaf := configWhyCommand()
 	var out bytes.Buffer
 	leaf.SetOut(&out)
 	leaf.SetArgs([]string{"shell.path"})
@@ -455,19 +479,19 @@ func TestConfigExplainLeafBranchAndJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"shell.path", "Executable search paths", "PATH"} {
+	for _, want := range []string{"shell.path", "Executable search paths", "shell", "config", "Baseline"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("leaf explain missing %q:\n%s", want, text)
+			t.Fatalf("leaf why missing %q:\n%s", want, text)
 		}
 	}
-	markdown := configExplanationMarkdown(config.Explanation{Key: "example.key", Label: "Example", Description: "Example description", Kind: "string", Default: "value", Editable: true, Guidance: "Use this setting.", Related: []string{"other.key"}})
-	for _, want := range []string{"# example.key", "**Example**", "- **Type:** `string`", "- **Default:** `value`", "**Guidance:** Use this setting.", "- `other.key`"} {
+	markdown := configWhyMarkdown([]configWhyEntry{{Spec: config.FieldSpec{Key: "example.key", Label: "Example", Description: "Example description", Kind: config.FieldString, Domain: "example", ApplicationOwner: "config", Readable: true, Writable: true, Guidance: "Use this setting.", Related: []string{"other.key"}}, Baseline: "value", HasBaseline: true}})
+	for _, want := range []string{"# example.key", "**Example**", "- **Type:** `string`", "- **Domain:** `example`", "- **Application owner:** `config`", "- **Baseline:** `value`", "**Guidance:** Use this setting.", "- `other.key`"} {
 		if !strings.Contains(markdown, want) {
-			t.Fatalf("markdown explanation missing %q:\n%s", want, markdown)
+			t.Fatalf("why markdown missing %q:\n%s", want, markdown)
 		}
 	}
 
-	branch := configExplainCommand()
+	branch := configWhyCommand()
 	out.Reset()
 	branch.SetOut(&out)
 	branch.SetArgs([]string{"shell"})
@@ -476,10 +500,10 @@ func TestConfigExplainLeafBranchAndJSON(t *testing.T) {
 	}
 	text = out.String()
 	if !strings.Contains(text, "shell.path") {
-		t.Fatalf("branch explain output:\n%s", text)
+		t.Fatalf("branch why output:\n%s", text)
 	}
 
-	jsonCommand := configExplainCommand()
+	jsonCommand := configWhyCommand()
 	out.Reset()
 	jsonCommand.SetOut(&out)
 	jsonCommand.SetArgs([]string{"shell.path", "--json"})
@@ -487,11 +511,197 @@ func TestConfigExplainLeafBranchAndJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	text = out.String()
-	for _, want := range []string{`"key": "shell.path"`, `"label": "Executable search paths"`} {
+	for _, want := range []string{`"key": "shell.path"`, `"label": "Executable search paths"`, `"application_owner": "config"`, `"baseline"`} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("json explain missing %q:\n%s", want, text)
+			t.Fatalf("json why missing %q:\n%s", want, text)
 		}
 	}
+}
+
+func TestConfigExplainIsRemovedWithoutAlias(t *testing.T) {
+	cmd := configCommand()
+	if found, _, err := cmd.Find([]string{"explain"}); err == nil && found != nil && found.Name() == "explain" {
+		t.Fatalf("config explain is still registered: %v", found)
+	}
+	root := newRootCommand()
+	root.SetArgs([]string{"config", "explain", "server.port"})
+	root.SilenceUsage = true
+	root.SilenceErrors = true
+	if err := root.Execute(); err == nil {
+		t.Fatal("config explain compatibility path unexpectedly succeeded")
+	}
+}
+
+func TestUniversalConfigReadProjectionAndWriteOnlySecrets(t *testing.T) {
+	root := isolateUniversalConfigCLI(t)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Server.Port = 40123
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := executeRequestCommandError(root, []string{"config", "list", "auth"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"token_hash", "mcp-configured-hash", "admin-configured-hash"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("config list leaked %q: %s", forbidden, output)
+		}
+	}
+	for _, want := range []string{"auth.mcp_token", "auth.admin_token", "configured"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("config list missing %q: %s", want, output)
+		}
+	}
+
+	output, err = executeRequestCommandError(root, []string{"config", "get", "server.port"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(output) != "40123" {
+		t.Fatalf("config get scalar=%q", output)
+	}
+
+	_, err = executeRequestCommandError(root, []string{"config", "get", "auth.mcp_token"})
+	if err == nil || !strings.Contains(err.Error(), "write-only") {
+		t.Fatalf("write-only secret get err=%v", err)
+	}
+}
+
+func TestUniversalConfigDiffExcludesSecretMaterial(t *testing.T) {
+	root := isolateUniversalConfigCLI(t)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Server.Port++
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := executeRequestCommandError(root, []string{"config", "diff"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, "server.port") {
+		t.Fatalf("config diff missing changed setting: %s", output)
+	}
+	for _, forbidden := range []string{"token_hash", "mcp-configured-hash", "admin-configured-hash"} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("config diff leaked %q: %s", forbidden, output)
+		}
+	}
+}
+
+func TestUniversalConfigCredentialLifecycleIsExplicitAndMetadataGated(t *testing.T) {
+	isolateUniversalConfigCLI(t)
+
+	rotate := configRotateCommand()
+	var out bytes.Buffer
+	rotate.SetOut(&out)
+	rotate.SetArgs([]string{"auth.mcp_token"})
+	if err := rotate.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	token := strings.TrimSpace(out.String())
+	if !strings.HasPrefix(token, "mcp_") {
+		t.Fatalf("rotate output=%q", token)
+	}
+	if !commandExplicitMachineOutput(rotate) {
+		t.Fatal("config rotate is not marked as direct machine output")
+	}
+
+	reveal := configRevealCommand()
+	if reveal.Flags().Lookup("json") != nil {
+		t.Fatal("config reveal unexpectedly exposes --json")
+	}
+	if !commandExplicitMachineOutput(reveal) {
+		t.Fatal("config reveal is not marked as direct machine output")
+	}
+	reveal.SetArgs([]string{"auth.mcp_token"})
+	if err := reveal.Execute(); err == nil || !strings.Contains(err.Error(), "not revealable") {
+		t.Fatalf("metadata-gated reveal err=%v", err)
+	}
+}
+
+func TestUniversalConfigVerifyRetainsGlobalModeAndDelegatesSettingMode(t *testing.T) {
+	isolateUniversalConfigCLI(t)
+	global := configVerifyCommand()
+	if err := global.Execute(); err != nil {
+		t.Fatalf("global config verify failed: %v", err)
+	}
+
+	setting := configVerifyCommand()
+	setting.SetArgs([]string{"tunnel.admin_key"})
+	if err := setting.Execute(); err == nil || !strings.Contains(strings.ToLower(err.Error()), "tunnel admin") {
+		t.Fatalf("setting verify did not reach tunnel credential authority: %v", err)
+	}
+}
+
+func TestUniversalConfigCLIRegistryCoverage(t *testing.T) {
+	cmd := configCommand()
+	for _, spec := range config.Settings() {
+		if spec.InternalOnly {
+			continue
+		}
+		if spec.Writable {
+			assertConfigOperationCompletionContains(t, configSetCommand(), spec, completeConfigSet)
+		}
+		if spec.Clearable || spec.DefaultReset {
+			assertConfigOperationCompletionContains(t, configUnsetCommand(), spec, completeConfigUnset)
+		}
+		if spec.Rotatable {
+			assertConfigOperationCompletionContains(t, configRotateCommand(), spec, completeConfigRotate)
+		}
+		if spec.Revealable {
+			assertConfigOperationCompletionContains(t, configRevealCommand(), spec, completeConfigReveal)
+		}
+		if spec.Verifiable {
+			assertConfigOperationCompletionContains(t, configVerifyCommand(), spec, completeConfigVerify)
+		}
+	}
+	for _, name := range []string{"path", "get", "list", "why", "diff", "set", "unset", "rotate", "reveal", "verify", "export", "import"} {
+		found, _, err := cmd.Find([]string{name})
+		if err != nil || found == nil || found.Name() != name {
+			t.Fatalf("config operation %s missing", name)
+		}
+	}
+}
+
+func assertConfigOperationCompletionContains(t *testing.T, cmd *cobra.Command, spec config.FieldSpec, completion cobra.CompletionFunc) {
+	t.Helper()
+	if spec.Selector != nil {
+		return
+	}
+	values, _ := completion(cmd, nil, "")
+	for _, value := range values {
+		key, _, _ := strings.Cut(value, "	")
+		if key == spec.Key {
+			return
+		}
+	}
+	t.Fatalf("completion for %s does not include eligible setting %s", cmd.Name(), spec.Key)
+}
+
+func isolateUniversalConfigCLI(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "config")
+	previous := configformat.RootPath()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
+	cfg := config.Default()
+	cfg.Auth.MCPTokenHash = "mcp-configured-hash"
+	cfg.Auth.AdminTokenHash = "admin-configured-hash"
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
 func TestConfigEnvelopeCommandsUseOptionalDefaultFile(t *testing.T) {

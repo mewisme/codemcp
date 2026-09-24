@@ -42,9 +42,9 @@ func TestCompletionTraceKeepsMachineOutputClean(t *testing.T) {
 	}
 }
 
-func TestConfigExplainTraceReportsSchemaAndMarkdownRenderFacts(t *testing.T) {
+func TestConfigWhyTraceReportsLookupAndMarkdownRenderFacts(t *testing.T) {
 	collector := &serverTraceCollector{}
-	cmd := configExplainCommand()
+	cmd := configWhyCommand()
 	cmd.SetContext(tracepkg.WithObserver(context.Background(), collector.Observe))
 	var out bytes.Buffer
 	cmd.SetOut(&out)
@@ -53,27 +53,27 @@ func TestConfigExplainTraceReportsSchemaAndMarkdownRenderFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := collector.Snapshot()
-	lookup, ok := serverTraceEvent(events, "config.explain.schema.completed")
+	lookup, ok := serverTraceEvent(events, "config.why.lookup.completed")
 	if !ok {
-		t.Fatalf("missing config explain lookup trace: %#v", events)
+		t.Fatalf("missing config why lookup trace: %#v", events)
 	}
-	childCount, _ := serverTraceField(lookup, "child_count")
-	if fmt.Sprint(childCount) == "0" {
-		t.Fatalf("config explain child_count=%v", childCount)
+	entryCount, _ := serverTraceField(lookup, "entry_count")
+	if fmt.Sprint(entryCount) == "0" {
+		t.Fatalf("config why entry_count=%v", entryCount)
 	}
-	render, ok := serverTraceEvent(events, "config.explain.render.completed")
+	render, ok := serverTraceEvent(events, "config.why.render.completed")
 	if !ok {
-		t.Fatalf("missing config explain render trace: %#v", events)
+		t.Fatalf("missing config why render trace: %#v", events)
 	}
-	for key, want := range map[string]any{"mode": "markdown", "terminal_width": presentation.DefaultWidth, "style": "ascii"} {
+	for key, want := range map[string]any{"mode": "plain", "terminal_width": presentation.DefaultWidth, "terminal": false} {
 		got, found := serverTraceField(render, key)
 		if !found || fmt.Sprint(got) != fmt.Sprint(want) {
-			t.Fatalf("config explain %s=%v, want %v: %#v", key, got, want, render)
+			t.Fatalf("config why %s=%v, want %v: %#v", key, got, want, render)
 		}
 	}
 	markdownBytes, found := serverTraceField(render, "markdown_bytes")
 	if !found || fmt.Sprint(markdownBytes) == "0" {
-		t.Fatalf("config explain markdown_bytes=%v: %#v", markdownBytes, render)
+		t.Fatalf("config why markdown_bytes=%v: %#v", markdownBytes, render)
 	}
 }
 
