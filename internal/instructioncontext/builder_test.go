@@ -106,12 +106,31 @@ func TestBuildLimitsFinalInstructions(t *testing.T) {
 	root := t.TempDir()
 	writeInstructionFile(t, filepath.Join(root, "AGENTS.md"), strings.Repeat("instruction ", 500))
 	value, err := Build(context.Background(), BuildOptions{
-		Root: root, WorkspaceID: "ws_test", WorkspaceRoot: root, CWD: root, WorkspaceRoots: []string{root}, MemoryStore: memory.NewStore(t.TempDir()), MaxInstructionBytes: 512,
+		Root: root, WorkspaceID: "ws_test", WorkspaceRoot: root, CWD: root, WorkspaceRoots: []string{root}, MemoryStore: memory.NewStore(t.TempDir()), MaxInstructionBytes: 6000,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !value.InstructionTruncated || value.InstructionBytes > 512 || value.InstructionBytes != len([]byte(value.InstructionsText)) {
+	if !value.InstructionTruncated || value.InstructionBytes > 6000 || value.InstructionBytes != len([]byte(value.InstructionsText)) {
 		t.Fatalf("value = %#v", value)
+	}
+	for _, required := range []string{"## Agent workflow", "## Tool profile", "## Environment", "## Quick pointers"} {
+		if !strings.Contains(value.InstructionsText, required) {
+			t.Fatalf("required block %q was evicted:\n%s", required, value.InstructionsText)
+		}
+	}
+	if strings.Contains(value.InstructionsText, strings.Repeat("instruction ", 100)) {
+		t.Fatalf("oversized optional project instructions were partially rendered:\n%s", value.InstructionsText)
+	}
+}
+
+func TestBuildRejectsBudgetBelowMandatoryContext(t *testing.T) {
+	root := t.TempDir()
+	_, err := Build(context.Background(), BuildOptions{
+		Root: root, WorkspaceID: "ws_test", WorkspaceRoot: root, CWD: root, WorkspaceRoots: []string{root},
+		MemoryStore: memory.NewStore(t.TempDir()), MaxInstructionBytes: 512, SkipGit: true, SkipMemory: true, SkipSkills: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "required project context minimum") {
+		t.Fatalf("budget error=%v", err)
 	}
 }

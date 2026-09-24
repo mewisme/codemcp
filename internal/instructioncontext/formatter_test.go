@@ -125,12 +125,19 @@ func TestFormatInstructionsOmitsSkippedGit(t *testing.T) {
 }
 
 func TestApplyFormattedInstructionsLimitUTF8(t *testing.T) {
-	value := InstructionContext{ProjectMemory: ProjectMemoryBundle{Sections: []Section{{Path: "/workspace/AGENTS.md", Kind: SectionProject, Content: strings.Repeat("🙂", 200)}}}}
-	ApplyFormattedInstructionsLimit(&value, 257)
-	if !value.InstructionTruncated || value.InstructionBytes > 257 || value.InstructionBytes != len([]byte(value.InstructionsText)) || !utf8.ValidString(value.InstructionsText) {
+	value := InstructionContext{ProjectMemory: ProjectMemoryBundle{Sections: []Section{{Path: "/workspace/AGENTS.md", Kind: SectionProject, Content: strings.Repeat("🙂", 2000)}}}}
+	if err := ApplyFormattedInstructionsLimit(&value, 6000); err != nil {
+		t.Fatal(err)
+	}
+	if !value.InstructionTruncated || value.InstructionBytes > 6000 || value.InstructionBytes != len([]byte(value.InstructionsText)) || !utf8.ValidString(value.InstructionsText) {
 		t.Fatalf("value = %#v", value)
 	}
-	ApplyFormattedInstructionsLimit(nil, 257)
+	if strings.Contains(value.InstructionsText, "🙂") {
+		t.Fatalf("optional UTF-8 block was partially retained:\n%s", value.InstructionsText)
+	}
+	if err := ApplyFormattedInstructionsLimit(nil, 257); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestFormatInstructionsGolden(t *testing.T) {

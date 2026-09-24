@@ -6,6 +6,8 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/projectcontext"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func ProjectContextEnvironment() (bool, int) {
@@ -31,4 +33,15 @@ func ProjectContextToolProfile(ctx context.Context) instructioncontext.ToolProfi
 		name = "full"
 	}
 	return instructioncontext.ToolProfile{Name: name, Count: status.ToolCount}
+}
+
+func NewProjectContextService(ctx context.Context, manager *workspace.Manager) *projectcontext.Service {
+	profile := ProjectContextToolProfile(ctx)
+	return projectcontext.NewService(projectcontext.ServiceOptions{
+		Workspaces: manager,
+		ToolProfile: func() instructioncontext.ToolProfile {
+			return profile
+		},
+		Environment: ProjectContextEnvironment,
+	})
 }

@@ -7,31 +7,39 @@ import (
 	"sort"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/instructionsource"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
-var skillRoots = []struct {
-	Relative string
-	Source   string
-}{
-	{filepath.Join(".claude", "skills"), ".claude"},
-	{filepath.Join(".claudes", "skills"), ".claudes"},
-	{filepath.Join(".agents", "skills"), ".agents"},
-	{filepath.Join(".cursor", "skills"), ".cursor"},
-	{filepath.Join(".codex", "skills"), ".codex"},
+func Discover(workspaceRoot string) ([]Skill, error) {
+	return DiscoverForWorkspace(workspaceRoot, workspaceRoot)
 }
 
-func Discover(workspaceRoot string) ([]Skill, error) {
-	result, err := discoverAt(workspaceRoot, nil)
+func DiscoverForWorkspace(projectRoot, workspaceRoot string) ([]Skill, error) {
+	result := make([]Skill, 0)
+	seen := map[string]bool{}
+	walkSkills(workspacestate.New(workspaceRoot).SkillsRoot(), instructionsource.NativeSource, 0, &result, seen)
+	providers, err := instructionsource.DiscoverDynamicProviders(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]bool{}
-	for _, skill := range result {
-		seen[skill.Path] = true
+	for _, provider := range providers {
+		if provider.SkillsDir != "" {
+			walkSkills(provider.SkillsDir, provider.Name, 0, &result, seen)
+		}
 	}
-	walkSkills(workspacestate.New(workspaceRoot).SkillsRoot(), ".cm", 0, &result, seen)
+	sort.SliceStable(result, func(i, j int) bool { return workspaceSkillLess(result[i], result[j]) })
+	return result, nil
+}
+
+func DiscoverUser(home string, policy instructionpolicy.Config) ([]Skill, error) {
+	_ = home
+	_ = policy
+	result := make([]Skill, 0)
+	seen := map[string]bool{}
+	walkSkills(filepath.Join(configformat.RootPath(), "skills"), instructionsource.NativeSource, 0, &result, seen)
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Name == result[j].Name {
 			return result[i].Path < result[j].Path
@@ -41,12 +49,12 @@ func Discover(workspaceRoot string) ([]Skill, error) {
 	return result, nil
 }
 
-func DiscoverUser(home string, policy instructionpolicy.Config) ([]Skill, error) {
-	return discoverAt(home, func(source string) bool { return policy.Enabled(source, instructionpolicy.ResourceSkills) })
+func DiscoverWithUser(workspaceRoot, home string, policy instructionpolicy.Config) ([]Skill, error) {
+	return DiscoverWithUserForWorkspace(workspaceRoot, workspaceRoot, home, policy)
 }
 
-func DiscoverWithUser(workspaceRoot, home string, policy instructionpolicy.Config) ([]Skill, error) {
-	project, err := Discover(workspaceRoot)
+func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, policy instructionpolicy.Config) ([]Skill, error) {
+	project, err := DiscoverForWorkspace(projectRoot, workspaceRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -54,36 +62,50 @@ func DiscoverWithUser(workspaceRoot, home string, policy instructionpolicy.Confi
 	if err != nil {
 		return nil, err
 	}
-	result := append([]Skill(nil), project...)
-	projectNames := map[string]bool{}
+	ordered := make([]Skill, 0, len(project)+len(user))
 	for _, skill := range project {
-		projectNames[skill.Name] = true
-	}
-	for _, skill := range user {
-		if !projectNames[skill.Name] {
-			result = append(result, skill)
+		if skill.Source == instructionsource.NativeSource {
+			ordered = append(ordered, skill)
 		}
 	}
-	sort.SliceStable(result, func(i, j int) bool { return result[i].Name < result[j].Name })
+	for _, skill := range user {
+		if skill.Source == instructionsource.NativeSource {
+			ordered = append(ordered, skill)
+		}
+	}
+	for _, skill := range project {
+		if skill.Source != instructionsource.NativeSource {
+			ordered = append(ordered, skill)
+		}
+	}
+	seen := map[string]bool{}
+	result := make([]Skill, 0, len(ordered))
+	for _, skill := range ordered {
+		if seen[skill.Name] {
+			continue
+		}
+		seen[skill.Name] = true
+		result = append(result, skill)
+	}
 	return result, nil
 }
 
-func discoverAt(rootPath string, enabled func(string) bool) ([]Skill, error) {
-	result := make([]Skill, 0)
-	seen := map[string]bool{}
-	for _, root := range skillRoots {
-		if enabled != nil && !enabled(root.Source) {
-			continue
-		}
-		walkSkills(filepath.Join(rootPath, root.Relative), root.Source, 0, &result, seen)
+func workspaceSkillLess(left, right Skill) bool {
+	leftSource := instructionsource.Source{Class: instructionsource.ClassDynamicProvider, Provider: left.Source, Path: left.Path}
+	rightSource := instructionsource.Source{Class: instructionsource.ClassDynamicProvider, Provider: right.Source, Path: right.Path}
+	if left.Source == instructionsource.NativeSource {
+		leftSource.Class = instructionsource.ClassWorkspaceNative
 	}
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].Name == result[j].Name {
-			return result[i].Path < result[j].Path
-		}
-		return result[i].Name < result[j].Name
-	})
-	return result, nil
+	if right.Source == instructionsource.NativeSource {
+		rightSource.Class = instructionsource.ClassWorkspaceNative
+	}
+	if value := instructionsource.Compare(leftSource, rightSource); value != 0 {
+		return value < 0
+	}
+	if left.Name != right.Name {
+		return left.Name < right.Name
+	}
+	return left.Path < right.Path
 }
 
 func Load(workspaceRoot, name string, maxBytes int) (Loaded, error) {

@@ -52,3 +52,34 @@ func TestDiscoverIncludesNativeWorkspaceSkills(t *testing.T) {
 		t.Fatalf("native skills=%#v", values)
 	}
 }
+
+func TestDiscoverForWorkspaceUsesSelectedProjectProvidersAndWorkspaceNativeFirst(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	projectRoot := filepath.Join(workspaceRoot, "packages", "app")
+	writeSkill := func(root, provider, name, description string) {
+		t.Helper()
+		dir := filepath.Join(root, provider, "skills", name)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		content := "---\nname: " + name + "\ndescription: " + description + "\n---\nbody\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSkill(projectRoot, ".agents", "project", "project provider")
+	writeSkill(workspaceRoot, ".agents", "parent", "parent provider")
+	writeSkill(workspaceRoot, ".cm", "native", "workspace native")
+	values, err := DiscoverForWorkspace(projectRoot, workspaceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 2 || values[0].Source != ".cm" || values[1].Source != ".agents" {
+		t.Fatalf("skills=%#v", values)
+	}
+	for _, value := range values {
+		if value.Name == "parent" {
+			t.Fatalf("provider discovery walked above selected project: %#v", values)
+		}
+	}
+}

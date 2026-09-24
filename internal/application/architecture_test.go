@@ -38,6 +38,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"instance":           "persistence",
 	"instructioncontext": "application",
 	"instructionpolicy":  "domain",
+	"instructionsource":  "domain",
 	"integrations":       "integration",
 	"interface":          "interface",
 	"jsruntime":          "runtime",

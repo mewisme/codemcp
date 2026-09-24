@@ -96,3 +96,64 @@ func TestDefaultOptionsMatchInstructionContextDefaults(t *testing.T) {
 		t.Fatalf("collector defaults=%#v", options)
 	}
 }
+
+func TestServiceIncludesIntegrationInstructionsInProviderOrder(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := func(id, content string) IntegrationInstructionProvider {
+		return func(_ context.Context, workspaceID, projectRoot string) ([]instructioncontext.IntegrationInstruction, error) {
+			if workspaceID != item.ID || projectRoot != root {
+				t.Fatalf("provider args workspace=%q root=%q", workspaceID, projectRoot)
+			}
+			return []instructioncontext.IntegrationInstruction{{ID: id, Source: "test", Content: content}}, nil
+		}
+	}
+	service := NewService(ServiceOptions{
+		Workspaces:  manager,
+		PolicyStore: &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")},
+		IntegrationProviders: []IntegrationInstructionProvider{
+			provider("Alpha", "alpha guidance"),
+			provider("Beta", "beta guidance"),
+		},
+	})
+	result, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := result.InstructionContext.IntegrationInstructions
+	if len(values) != 2 || values[0].ID != "Alpha" || values[1].ID != "Beta" {
+		t.Fatalf("integration instructions=%#v", values)
+	}
+	text := result.InstructionContext.InstructionsText
+	if !strings.Contains(text, "alpha guidance") || strings.Index(text, "beta guidance") < strings.Index(text, "alpha guidance") {
+		t.Fatalf("integration order changed: %s", text)
+	}
+}
+
+func TestServiceRejectsDuplicateIntegrationInstructionIDs(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(ServiceOptions{
+		Workspaces:  manager,
+		PolicyStore: &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")},
+		IntegrationProviders: []IntegrationInstructionProvider{
+			func(context.Context, string, string) ([]instructioncontext.IntegrationInstruction, error) {
+				return []instructioncontext.IntegrationInstruction{{ID: "same", Content: "first"}}, nil
+			},
+			func(context.Context, string, string) ([]instructioncontext.IntegrationInstruction, error) {
+				return []instructioncontext.IntegrationInstruction{{ID: "same", Content: "second"}}, nil
+			},
+		},
+	})
+	if _, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true}); err == nil || !strings.Contains(err.Error(), "duplicate project context integration instruction id") {
+		t.Fatalf("duplicate integration error=%v", err)
+	}
+}

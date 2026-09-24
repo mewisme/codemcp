@@ -99,14 +99,19 @@ func RegisterContextTools(registry *Registry, workspaces *workspace.Manager, che
 	memoryIndex := memory.NewHybridIndex(memory.NewLocalEmbedder(), memory.DefaultHybridWeights())
 	memoryLifecycle := memory.NewIndexLifecycle(memoryStore, memoryIndex)
 	policyStore := instructionpolicy.DefaultStore()
-	contextService := projectcontext.New(workspaces, func() instructioncontext.ToolProfile {
-		return instructioncontext.ToolProfile{Name: "full", Count: len(registry.ListSchemas())}
-	})
-	if len(environments) > 0 && environments[0] != nil {
-		contextService.Environment = environments[0]
+	var environment ProjectContextEnvironment
+	if len(environments) > 0 {
+		environment = environments[0]
 	}
-	contextService.MemoryStore = memoryStore
-	contextService.PolicyStore = policyStore
+	contextService := projectcontext.NewService(projectcontext.ServiceOptions{
+		Workspaces:  workspaces,
+		MemoryStore: &memoryStore,
+		PolicyStore: policyStore,
+		ToolProfile: func() instructioncontext.ToolProfile {
+			return instructioncontext.ToolProfile{Name: "full", Count: len(registry.ListSchemas())}
+		},
+		Environment: environment,
+	})
 	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
 		registry.MustRegister(name, Schema{
 			Name: name, Title: title, Description: description,

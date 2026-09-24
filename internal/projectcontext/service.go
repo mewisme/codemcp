@@ -86,15 +86,46 @@ func DefaultOptions() Options {
 }
 
 type Service struct {
-	Workspaces  *workspace.Manager
-	MemoryStore memory.Store
-	PolicyStore *instructionpolicy.Store
-	ToolProfile func() instructioncontext.ToolProfile
-	Environment func() (bool, int)
+	Workspaces           *workspace.Manager
+	MemoryStore          memory.Store
+	PolicyStore          *instructionpolicy.Store
+	ToolProfile          func() instructioncontext.ToolProfile
+	Environment          func() (bool, int)
+	IntegrationProviders []IntegrationInstructionProvider
+}
+
+type IntegrationInstructionProvider func(context.Context, string, string) ([]instructioncontext.IntegrationInstruction, error)
+
+type ServiceOptions struct {
+	Workspaces           *workspace.Manager
+	MemoryStore          *memory.Store
+	PolicyStore          *instructionpolicy.Store
+	ToolProfile          func() instructioncontext.ToolProfile
+	Environment          func() (bool, int)
+	IntegrationProviders []IntegrationInstructionProvider
+}
+
+func NewService(options ServiceOptions) *Service {
+	service := &Service{
+		Workspaces:           options.Workspaces,
+		PolicyStore:          options.PolicyStore,
+		ToolProfile:          options.ToolProfile,
+		Environment:          options.Environment,
+		IntegrationProviders: append([]IntegrationInstructionProvider(nil), options.IntegrationProviders...),
+	}
+	if options.MemoryStore != nil {
+		service.MemoryStore = *options.MemoryStore
+	} else {
+		service.MemoryStore = memory.NewWorkspaceStore(memory.DefaultRoot(), options.Workspaces)
+	}
+	if service.PolicyStore == nil {
+		service.PolicyStore = instructionpolicy.DefaultStore()
+	}
+	return service
 }
 
 func New(workspaces *workspace.Manager, toolProfile func() instructioncontext.ToolProfile) *Service {
-	return &Service{Workspaces: workspaces, MemoryStore: memory.NewWorkspaceStore(memory.DefaultRoot(), workspaces), PolicyStore: instructionpolicy.DefaultStore(), ToolProfile: toolProfile}
+	return NewService(ServiceOptions{Workspaces: workspaces, ToolProfile: toolProfile})
 }
 
 func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (Result, error) {
@@ -138,13 +169,37 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 	if !adminEnabled && adminPort == 0 && s.Environment != nil {
 		adminEnabled, adminPort = s.Environment()
 	}
+	integrationInstructions := make([]instructioncontext.IntegrationInstruction, 0)
+	seenIntegrationIDs := map[string]bool{}
+	for _, provider := range s.IntegrationProviders {
+		if provider == nil {
+			continue
+		}
+		values, err := provider(ctx, item.ID, root)
+		if err != nil {
+			return Result{}, err
+		}
+		for _, value := range values {
+			id := strings.TrimSpace(value.ID)
+			if id != "" {
+				if seenIntegrationIDs[id] {
+					return Result{}, errors.New("duplicate project context integration instruction id: " + id)
+				}
+				seenIntegrationIDs[id] = true
+			}
+			if strings.TrimSpace(value.Content) != "" {
+				integrationInstructions = append(integrationInstructions, value)
+			}
+		}
+	}
 	value, err := instructioncontext.Build(ctx, instructioncontext.BuildOptions{
 		Root: root, WorkspaceID: item.ID, WorkspaceRoot: item.Path, CWD: item.Path, WorkspaceRoots: roots, MemoryStore: s.MemoryStore,
 		Memory: instructioncontext.MemoryLoadOptions{ImportMaxDepth: instructioncontext.DefaultImportMaxDepth, MaxBytesPerSection: opts.MaxSectionBytes, MaxLinesPerSection: opts.MaxLinesPerSection},
 		Policy: policy, ToolProfile: profile, MaxInstructionBytes: opts.MaxInstructionBytes,
 		MemoryQuery: opts.MemoryQuery, MaxMemoryEntries: opts.MaxMemoryEntries, MaxMemoryBytes: opts.MaxMemoryBytes,
 		SkipGit: !opts.IncludeGit, SkipMemory: !opts.IncludeMemory, SkipSkills: !opts.IncludeSkills,
-		AdminEnabled: adminEnabled, AdminPort: adminPort,
+		IntegrationInstructions: integrationInstructions,
+		AdminEnabled:            adminEnabled, AdminPort: adminPort,
 	})
 	if err != nil {
 		return Result{}, err

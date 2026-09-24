@@ -6,111 +6,215 @@ import (
 	"sort"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/instructionsource"
 	"go.mewis.me/codemcp/internal/rules"
 	"go.mewis.me/codemcp/internal/skills"
+	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
 func DiscoverUserSources(home string, policy instructionpolicy.Config) ([]SourceSnapshot, error) {
-	home = strings.TrimSpace(home)
-	if home == "" {
-		home, _ = os.UserHomeDir()
-	}
-	values := make([]SourceSnapshot, 0)
-	contexts := append(append([]memoryCandidate(nil), primaryUserMemoryCandidates...), fallbackUserMemoryCandidates...)
-	for _, candidate := range contexts {
-		path := filepath.Join(home, candidate.Relative)
-		info, err := os.Lstat(path)
-		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-			continue
-		}
-		values = append(values, SourceSnapshot{Provider: candidate.Source, Kind: string(instructionpolicy.ResourceContext), Paths: []string{path}, Count: 1, Enabled: policy.Enabled(candidate.Source, instructionpolicy.ResourceContext)})
-	}
-	allRules, err := rules.DiscoverUser(home, instructionpolicy.DefaultConfig())
+	providers, err := instructionsource.DiscoverDynamicProviders(home)
 	if err != nil {
 		return nil, err
 	}
-	values = appendSourceGroups(values, allRules, string(instructionpolicy.ResourceRules), policy)
-	allSkills, err := skills.DiscoverUser(home, instructionpolicy.DefaultConfig())
-	if err != nil {
-		return nil, err
-	}
-	values = appendSkillSourceGroups(values, allSkills, policy)
-	sort.Slice(values, func(i, j int) bool {
-		if values[i].Provider != values[j].Provider {
-			return sourceProviderPriority(values[i].Provider) < sourceProviderPriority(values[j].Provider)
+	values := make([]SourceSnapshot, 0, len(providers)*3)
+	for _, provider := range providers {
+		appendSnapshot := func(kind string, paths []string, enabled bool) {
+			if len(paths) == 0 {
+				return
+			}
+			paths = append([]string(nil), paths...)
+			sort.Strings(paths)
+			values = append(values, SourceSnapshot{
+				Provider: instructionpolicy.ProviderID(provider.Name), Kind: kind, Scope: "user-provider",
+				Paths: paths, Count: len(paths), Enabled: enabled, Loaded: false,
+			})
 		}
-		return values[i].Kind < values[j].Kind
-	})
+		appendSnapshot(string(instructionpolicy.ResourceContext), provider.ContextFiles, policy.Enabled(provider.Name, instructionpolicy.ResourceContext))
+		if provider.RulesDir != "" {
+			appendSnapshot(string(instructionpolicy.ResourceRules), discoverRegularFiles(provider.RulesDir, 3, map[string]bool{".md": true, ".mdc": true}), policy.Enabled(provider.Name, instructionpolicy.ResourceRules))
+		}
+		if provider.SkillsDir != "" {
+			appendSnapshot(string(instructionpolicy.ResourceSkills), discoverSkillFiles(provider.SkillsDir, 3), policy.Enabled(provider.Name, instructionpolicy.ResourceSkills))
+		}
+	}
+	sortSnapshots(values)
 	return values, nil
 }
 
-func appendSourceGroups(values []SourceSnapshot, discovered []rules.Rule, kind string, policy instructionpolicy.Config) []SourceSnapshot {
-	groups := map[string][]string{}
-	for _, item := range discovered {
-		provider := instructionpolicy.ProviderID(item.Source)
-		groups[provider] = append(groups[provider], item.Path)
-	}
-	for provider, paths := range groups {
-		sort.Strings(paths)
-		values = append(values, SourceSnapshot{Provider: provider, Kind: kind, Paths: paths, Count: len(paths), Enabled: policy.Enabled(provider, instructionpolicy.ResourceRules)})
-	}
-	return values
-}
-
-func appendSkillSourceGroups(values []SourceSnapshot, discovered []skills.Skill, policy instructionpolicy.Config) []SourceSnapshot {
-	groups := map[string][]string{}
-	for _, item := range discovered {
-		provider := instructionpolicy.ProviderID(item.Source)
-		groups[provider] = append(groups[provider], item.Path)
-	}
-	for provider, paths := range groups {
-		sort.Strings(paths)
-		values = append(values, SourceSnapshot{Provider: provider, Kind: string(instructionpolicy.ResourceSkills), Paths: paths, Count: len(paths), Enabled: policy.Enabled(provider, instructionpolicy.ResourceSkills)})
-	}
-	return values
-}
-
-func markLoadedSources(values []SourceSnapshot, memory ProjectMemoryBundle, loadedRules []rules.Rule, loadedSkills []skills.Skill) []SourceSnapshot {
-	loadedPaths := map[string]bool{}
-	for _, section := range memory.Sections {
-		if section.Kind == SectionUser {
-			loadedPaths[filepath.Clean(section.Path)] = true
+func LoadedProjectSources(memory ProjectMemoryBundle, loadedRules []rules.Rule, loadedSkills []skills.Skill, workspaceRoot string) []SourceSnapshot {
+	type key struct{ provider, kind, scope string }
+	groups := map[key][]string{}
+	scopeOf := func(source, path string) string {
+		clean := filepath.Clean(path)
+		if source == instructionsource.NativeSource {
+			if withinSourceRoot(clean, workspacestate.New(workspaceRoot).Root()) {
+				return "workspace-native"
+			}
+			if withinSourceRoot(clean, configformat.RootPath()) {
+				return "global-native"
+			}
 		}
+		if strings.HasPrefix(source, ".") {
+			return "workspace-provider"
+		}
+		return "project-root"
+	}
+	for _, section := range memory.Sections {
+		k := key{section.Source, string(instructionpolicy.ResourceContext), scopeOf(section.Source, section.Path)}
+		groups[k] = append(groups[k], section.Path)
 	}
 	for _, rule := range loadedRules {
-		loadedPaths[filepath.Clean(rule.Path)] = true
+		k := key{rule.Source, string(instructionpolicy.ResourceRules), scopeOf(rule.Source, rule.Path)}
+		groups[k] = append(groups[k], rule.Path)
 	}
 	for _, skill := range loadedSkills {
-		loadedPaths[filepath.Clean(skill.Path)] = true
+		k := key{skill.Source, string(instructionpolicy.ResourceSkills), scopeOf(skill.Source, skill.Path)}
+		groups[k] = append(groups[k], skill.Path)
 	}
-	for index := range values {
-		if !values[index].Enabled {
+	values := make([]SourceSnapshot, 0, len(groups)+1)
+	for k, paths := range groups {
+		sort.Strings(paths)
+		values = append(values, SourceSnapshot{Provider: k.provider, Kind: k.kind, Scope: k.scope, Paths: paths, Count: len(paths), Enabled: true, Loaded: true})
+	}
+	prompts := discoverPromptDefinitions(workspacestate.New(workspaceRoot).PromptRoot())
+	if len(prompts) > 0 {
+		values = append(values, SourceSnapshot{Provider: instructionsource.NativeSource, Kind: "prompts", Scope: "workspace-native", Paths: prompts, Count: len(prompts), Enabled: true, Loaded: false})
+	}
+	sortSnapshots(values)
+	return values
+}
+
+func discoverPromptDefinitions(root string) []string {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	result := make([]string, 0)
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || strings.ToLower(filepath.Ext(entry.Name())) != ".json" {
 			continue
 		}
-		for _, path := range values[index].Paths {
-			if loadedPaths[filepath.Clean(path)] {
-				values[index].Loaded = true
-				break
+		path := filepath.Join(root, entry.Name())
+		info, err := os.Lstat(path)
+		if err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+			result = append(result, path)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func discoverRegularFiles(root string, maxDepth int, extensions map[string]bool) []string {
+	result := make([]string, 0)
+	var walk func(string, int)
+	walk = func(dir string, depth int) {
+		if depth > maxDepth {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			if entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			if entry.IsDir() {
+				walk(path, depth+1)
+				continue
+			}
+			if !extensions[strings.ToLower(filepath.Ext(entry.Name()))] {
+				continue
+			}
+			info, err := os.Lstat(path)
+			if err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+				result = append(result, path)
 			}
 		}
 	}
-	return values
+	walk(root, 0)
+	sort.Strings(result)
+	return result
 }
 
-func sourceProviderPriority(provider string) int {
-	switch instructionpolicy.ProviderID(provider) {
-	case "agents":
-		return 0
-	case "claude":
-		return 1
-	case "claudes":
-		return 2
-	case "cursor":
-		return 3
-	case "codex":
-		return 4
-	default:
-		return 5
+func discoverSkillFiles(root string, maxDepth int) []string {
+	result := make([]string, 0)
+	var walk func(string, int)
+	walk = func(dir string, depth int) {
+		if depth > maxDepth {
+			return
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
+			full := filepath.Join(dir, entry.Name())
+			found := false
+			for _, name := range []string{"SKILL.md", "skill.md"} {
+				path := filepath.Join(full, name)
+				info, err := os.Lstat(path)
+				if err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+					result = append(result, path)
+					found = true
+					break
+				}
+			}
+			if !found {
+				walk(full, depth+1)
+			}
+		}
 	}
+	walk(root, 0)
+	sort.Strings(result)
+	return result
+}
+
+func sortSnapshots(values []SourceSnapshot) {
+	sort.Slice(values, func(i, j int) bool {
+		left, right := snapshotSource(values[i]), snapshotSource(values[j])
+		if value := instructionsource.Compare(left, right); value != 0 {
+			return value < 0
+		}
+		if values[i].Kind != values[j].Kind {
+			return values[i].Kind < values[j].Kind
+		}
+		return values[i].Provider < values[j].Provider
+	})
+}
+
+func snapshotSource(value SourceSnapshot) instructionsource.Source {
+	class := instructionsource.ClassDynamicProvider
+	switch value.Scope {
+	case "workspace-native":
+		class = instructionsource.ClassWorkspaceNative
+	case "global-native":
+		class = instructionsource.ClassGlobalNative
+	case "user-provider":
+		class = instructionsource.ClassDynamicProvider
+	case "project-root":
+		class = instructionsource.ClassProjectRoot
+	case "builtin":
+		class = instructionsource.ClassBuiltin
+	}
+	return instructionsource.Source{Class: class, Provider: value.Provider, Path: firstSourcePath(value.Paths)}
+}
+
+func firstSourcePath(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	return paths[0]
+}
+
+func withinSourceRoot(path, root string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	return err == nil && rel != ".." && !filepath.IsAbs(rel) && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

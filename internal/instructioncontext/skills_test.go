@@ -61,7 +61,8 @@ func TestLoadSkillSummariesSupportsAllProviders(t *testing.T) {
 	if len(loaded) != len(providers) {
 		t.Fatalf("skills = %#v", loaded)
 	}
-	for i, provider := range providers {
+	wantOrder := []string{".agents", ".claude", ".claudes", ".codex", ".cursor"}
+	for i, provider := range wantOrder {
 		if loaded[i].Source != provider {
 			t.Fatalf("skill %d = %#v", i, loaded[i])
 		}

@@ -67,3 +67,38 @@ func TestDiscoverIncludesNativeWorkspaceRules(t *testing.T) {
 		t.Fatalf("native rules=%#v", values)
 	}
 }
+
+func TestDiscoverForWorkspaceUsesSelectedProjectProvidersAndWorkspaceNativeFirst(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	projectRoot := filepath.Join(workspaceRoot, "packages", "app")
+	if err := os.MkdirAll(filepath.Join(projectRoot, ".agents", "rules"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectRoot, ".agents", "rules", "project.md"), []byte("---\nalwaysApply: true\n---\nproject provider"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(workspaceRoot, ".agents", "rules"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceRoot, ".agents", "rules", "parent.md"), []byte("---\nalwaysApply: true\n---\nparent provider"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(workspaceRoot, ".cm", "rules"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceRoot, ".cm", "rules", "native.md"), []byte("---\nalwaysApply: true\n---\nworkspace native"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	values, err := DiscoverForWorkspace(projectRoot, workspaceRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 2 || values[0].Source != ".cm" || values[1].Source != ".agents" {
+		t.Fatalf("rules=%#v", values)
+	}
+	for _, value := range values {
+		if value.Content == "parent provider" {
+			t.Fatalf("provider discovery walked above selected project: %#v", values)
+		}
+	}
+}

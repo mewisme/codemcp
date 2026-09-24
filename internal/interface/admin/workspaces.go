@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/application"
-	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -167,20 +166,7 @@ func (api API) handleWorkspaceContext(w http.ResponseWriter, r *http.Request, ma
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
-	toolProfile := func() instructioncontext.ToolProfile {
-		count := 0
-		if api.Tools != nil {
-			count = len(api.Tools.List())
-		}
-		return instructioncontext.ToolProfile{Name: "full", Count: count}
-	}
-	service := projectcontext.New(manager, toolProfile)
-	if api.Config != nil {
-		service.Environment = func() (bool, int) {
-			cfg := api.Config.Snapshot()
-			return cfg.Admin.Enabled, cfg.Admin.Port
-		}
-	}
+	service := application.NewProjectContextService(r.Context(), manager)
 	defaults := projectcontext.DefaultOptions()
 	result, err := service.Build(r.Context(), workspaceID, projectcontext.Options{
 		Path:                strings.TrimSpace(r.URL.Query().Get("path")),

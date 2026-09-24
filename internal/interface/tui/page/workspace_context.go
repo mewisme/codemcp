@@ -10,7 +10,6 @@ import (
 	"charm.land/huh/v2"
 
 	"go.mewis.me/codemcp/internal/application"
-	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 	"go.mewis.me/codemcp/internal/projectcontext"
 )
@@ -135,9 +134,7 @@ func (page *WorkspacePage) initWorkspaceContext() {
 	if page.contextBuild == nil {
 		manager := page.manager
 		page.contextBuild = func(ctx context.Context, workspaceID string, options projectcontext.Options) (projectcontext.Result, error) {
-			profile := application.ProjectContextToolProfile(ctx)
-			service := projectcontext.New(manager, func() instructioncontext.ToolProfile { return profile })
-			service.Environment = application.ProjectContextEnvironment
+			service := application.NewProjectContextService(ctx, manager)
 			return service.Build(ctx, workspaceID, options)
 		}
 	}

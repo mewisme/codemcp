@@ -46,14 +46,12 @@ func TestLoadProjectMemoryPrefersAgentsAndLoadsDistinctFallbacks(t *testing.T) {
 		kind, source, content string
 	}{
 		{"project", "agents", "root agents"},
-		{"project", "agents", "project agents"},
-		{"user", "agents", "user agents"},
 		{"project", "claude", "root claude"},
-		{"project", "claudes", "claudes fallback"},
-		{"project", "cursor", "cursor fallback"},
-		{"project", "codex", "codex fallback"},
 		{"project", "claude", "local claude"},
-		{"user", "claude", "user claude"},
+		{"project", ".agents", "project agents"},
+		{"project", ".claudes", "claudes fallback"},
+		{"project", ".codex", "codex fallback"},
+		{"project", ".cursor", "cursor fallback"},
 	}
 	if len(bundle.Sections) != len(want) {
 		t.Fatalf("sections = %#v", bundle.Sections)
@@ -149,7 +147,7 @@ func TestLoadProjectMemoryAppliesGlobalBudgetByPrecedence(t *testing.T) {
 	if bundle.Sections[0].Path != filepath.Join(root, "AGENTS.md") || bundle.Sections[0].Content != "AAAAAA" || bundle.Sections[0].Truncated {
 		t.Fatalf("primary section = %#v", bundle.Sections[0])
 	}
-	if bundle.Sections[1].Path != filepath.Join(root, ".agents", "AGENTS.md") || bundle.Sections[1].Content != "BBBB" || !bundle.Sections[1].Truncated {
+	if bundle.Sections[1].Path != filepath.Join(root, "CLAUDE.md") || bundle.Sections[1].Content != "DDDD" || !bundle.Sections[1].Truncated {
 		t.Fatalf("secondary section = %#v", bundle.Sections[1])
 	}
 }

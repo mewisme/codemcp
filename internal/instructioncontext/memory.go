@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/instructionsource"
 )
 
 const (
@@ -36,29 +37,10 @@ type memoryCandidate struct {
 	Source   string
 }
 
-var primaryProjectMemoryCandidates = []memoryCandidate{
+var projectMemoryCandidates = []memoryCandidate{
 	{Relative: "AGENTS.md", Kind: SectionProject, Source: "agents"},
-	{Relative: filepath.Join(".agents", "AGENTS.md"), Kind: SectionProject, Source: "agents"},
-}
-
-var fallbackProjectMemoryCandidates = []memoryCandidate{
 	{Relative: "CLAUDE.md", Kind: SectionProject, Source: "claude"},
-	{Relative: filepath.Join(".claude", "CLAUDE.md"), Kind: SectionProject, Source: "claude"},
-	{Relative: filepath.Join(".claudes", "CLAUDE.md"), Kind: SectionProject, Source: "claudes"},
-	{Relative: filepath.Join(".cursor", "AGENTS.md"), Kind: SectionProject, Source: "cursor"},
-	{Relative: filepath.Join(".codex", "AGENTS.md"), Kind: SectionProject, Source: "codex"},
 	{Relative: "CLAUDE.local.md", Kind: SectionProject, Source: "claude"},
-}
-
-var primaryUserMemoryCandidates = []memoryCandidate{
-	{Relative: filepath.Join(".agents", "AGENTS.md"), Kind: SectionUser, Source: "agents"},
-}
-
-var fallbackUserMemoryCandidates = []memoryCandidate{
-	{Relative: filepath.Join(".claude", "CLAUDE.md"), Kind: SectionUser, Source: "claude"},
-	{Relative: filepath.Join(".claudes", "CLAUDE.md"), Kind: SectionUser, Source: "claudes"},
-	{Relative: filepath.Join(".cursor", "AGENTS.md"), Kind: SectionUser, Source: "cursor"},
-	{Relative: filepath.Join(".codex", "AGENTS.md"), Kind: SectionUser, Source: "codex"},
 }
 
 func LoadProjectMemory(root string, opts MemoryLoadOptions) (ProjectMemoryBundle, error) {
@@ -92,10 +74,14 @@ func LoadProjectMemory(root string, opts MemoryLoadOptions) (ProjectMemoryBundle
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
+	providers, err := instructionsource.DiscoverDynamicProviders(root)
+	if err != nil {
+		return ProjectMemoryBundle{}, err
+	}
 	expander := newImportExpander(workspaceRoots, home, opts.ImportMaxDepth, maxBytes, maxLines)
-	capacity := len(primaryProjectMemoryCandidates) + len(fallbackProjectMemoryCandidates)
-	if !opts.DisableUser {
-		capacity += len(primaryUserMemoryCandidates) + len(fallbackUserMemoryCandidates)
+	capacity := len(projectMemoryCandidates)
+	for _, provider := range providers {
+		capacity += len(provider.ContextFiles)
 	}
 	sections := make([]Section, 0, capacity)
 	totalBytes := 0
@@ -144,21 +130,19 @@ func LoadProjectMemory(root string, opts MemoryLoadOptions) (ProjectMemoryBundle
 		sections = append(sections, section)
 		totalBytes += section.LoadedBytes
 	}
-	appendAll := func(base string, candidates []memoryCandidate, userLevel bool) {
+	appendAll := func(base string, candidates []memoryCandidate) {
 		for _, candidate := range candidates {
-			if userLevel && !opts.SourcePolicy.Enabled(candidate.Source, instructionpolicy.ResourceContext) {
-				continue
-			}
 			appendCandidate(base, candidate)
 		}
 	}
-	appendAll(root, primaryProjectMemoryCandidates, false)
-	if !opts.DisableUser {
-		appendAll(home, primaryUserMemoryCandidates, true)
-	}
-	appendAll(root, fallbackProjectMemoryCandidates, false)
-	if !opts.DisableUser {
-		appendAll(home, fallbackUserMemoryCandidates, true)
+	appendAll(root, projectMemoryCandidates)
+	for _, provider := range providers {
+		for _, path := range provider.ContextFiles {
+			if !opts.SourcePolicy.Enabled(provider.Name, instructionpolicy.ResourceContext) {
+				continue
+			}
+			appendCandidate(filepath.Dir(path), memoryCandidate{Relative: filepath.Base(path), Kind: SectionProject, Source: provider.Name})
+		}
 	}
 	return ProjectMemoryBundle{
 		Root: root, WorkspaceRoots: workspaceRoots, Sections: sections, Imports: expander.imports,

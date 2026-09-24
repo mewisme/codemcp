@@ -84,29 +84,47 @@ type ToolProfile struct {
 type SourceSnapshot struct {
 	Provider string   `json:"provider"`
 	Kind     string   `json:"kind"`
+	Scope    string   `json:"scope,omitempty"`
 	Paths    []string `json:"paths"`
 	Count    int      `json:"count"`
 	Enabled  bool     `json:"enabled"`
 	Loaded   bool     `json:"loaded"`
 }
 
+type IntegrationInstruction struct {
+	ID      string `json:"id"`
+	Source  string `json:"source"`
+	Content string `json:"content"`
+}
+
+type InstructionBlockBudget struct {
+	Title         string `json:"title"`
+	Required      bool   `json:"required"`
+	Included      bool   `json:"included"`
+	Truncated     bool   `json:"truncated,omitempty"`
+	OriginalBytes int    `json:"original_bytes"`
+	RenderedBytes int    `json:"rendered_bytes"`
+}
+
 type InstructionContext struct {
-	Root                 string              `json:"root"`
-	WorkspaceID          string              `json:"workspace_id"`
-	WorkspaceRoots       []string            `json:"workspace_roots"`
-	Environment          EnvironmentSnapshot `json:"environment"`
-	Git                  GitSnapshot         `json:"git"`
-	ProjectMemory        ProjectMemoryBundle `json:"project_memory"`
-	AutoMemory           AutoMemorySnapshot  `json:"auto_memory"`
-	GlobalContext        string              `json:"global_context,omitempty"`
-	GlobalRules          []rules.Rule        `json:"global_rules"`
-	Rules                []rules.Rule        `json:"rules"`
-	Skills               []skills.Skill      `json:"skills"`
-	Sources              []SourceSnapshot    `json:"sources"`
-	ToolProfile          ToolProfile         `json:"tool_profile"`
-	AgentWorkflow        string              `json:"agent_workflow"`
-	InstructionsText     string              `json:"instructions_text"`
-	InstructionBytes     int                 `json:"instruction_bytes"`
-	InstructionTruncated bool                `json:"instruction_truncated,omitempty"`
-	LoadedAt             time.Time           `json:"loaded_at"`
+	Root                    string                   `json:"root"`
+	WorkspaceID             string                   `json:"workspace_id"`
+	WorkspaceRoots          []string                 `json:"workspace_roots"`
+	Environment             EnvironmentSnapshot      `json:"environment"`
+	Git                     GitSnapshot              `json:"git"`
+	ProjectMemory           ProjectMemoryBundle      `json:"project_memory"`
+	AutoMemory              AutoMemorySnapshot       `json:"auto_memory"`
+	GlobalContext           string                   `json:"global_context,omitempty"`
+	GlobalRules             []rules.Rule             `json:"global_rules"`
+	Rules                   []rules.Rule             `json:"rules"`
+	Skills                  []skills.Skill           `json:"skills"`
+	IntegrationInstructions []IntegrationInstruction `json:"integration_instructions,omitempty"`
+	Sources                 []SourceSnapshot         `json:"sources"`
+	ToolProfile             ToolProfile              `json:"tool_profile"`
+	AgentWorkflow           string                   `json:"agent_workflow"`
+	InstructionsText        string                   `json:"instructions_text"`
+	InstructionBytes        int                      `json:"instruction_bytes"`
+	InstructionTruncated    bool                     `json:"instruction_truncated,omitempty"`
+	InstructionBudget       []InstructionBlockBudget `json:"instruction_budget,omitempty"`
+	LoadedAt                time.Time                `json:"loaded_at"`
 }

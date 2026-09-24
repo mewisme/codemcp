@@ -196,13 +196,8 @@ func TestContextToolsApplyManagedGlobalPolicyToUserSources(t *testing.T) {
 			t.Fatalf("disabled source leaked %q: %s", unexpected, project.InstructionContext.InstructionsText)
 		}
 	}
-	if len(project.InstructionContext.Sources) != 3 {
+	if len(project.InstructionContext.Sources) != 0 {
 		t.Fatalf("sources = %#v", project.InstructionContext.Sources)
-	}
-	for _, source := range project.InstructionContext.Sources {
-		if source.Provider != "claude" || source.Enabled || source.Loaded {
-			t.Fatalf("disabled source snapshot = %#v", source)
-		}
 	}
 
 	listResult, err := runtime.Call(context.Background(), "list_skills", map[string]any{"workspace_id": workspaceID})
@@ -448,7 +443,7 @@ func TestProjectContextInputControlsCollectorsAndLimits(t *testing.T) {
 	}
 
 	limitedResult, err := runtime.Call(context.Background(), "project_context", map[string]any{
-		"workspace_id": workspaceID, "max_instruction_bytes": 256, "max_section_bytes": 8, "max_lines_per_section": 1,
+		"workspace_id": workspaceID, "max_instruction_bytes": 5000, "max_section_bytes": 8, "max_lines_per_section": 1,
 	})
 	if err != nil || limitedResult.IsError {
 		t.Fatalf("project_context limits failed: %#v %v", limitedResult, err)
@@ -461,8 +456,13 @@ func TestProjectContextInputControlsCollectorsAndLimits(t *testing.T) {
 	if !section.Truncated || section.LoadedBytes > 8 || strings.Contains(section.Content, "second line") {
 		t.Fatalf("section = %#v", section)
 	}
-	if !limited.InstructionContext.InstructionTruncated || limited.InstructionContext.InstructionBytes > 256 {
+	if !limited.InstructionContext.InstructionTruncated || limited.InstructionContext.InstructionBytes > 5000 {
 		t.Fatalf("instruction limit = %#v", limited.InstructionContext)
+	}
+	for _, required := range []string{"## Agent workflow", "## Tool profile", "## Environment", "## Quick pointers"} {
+		if !strings.Contains(limited.InstructionContext.InstructionsText, required) {
+			t.Fatalf("mandatory context %q was evicted: %s", required, limited.InstructionContext.InstructionsText)
+		}
 	}
 }
 

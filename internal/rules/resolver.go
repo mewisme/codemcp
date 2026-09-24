@@ -6,37 +6,49 @@ import (
 	"sort"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/instructionsource"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
-var ruleRoots = []struct {
-	Relative string
-	Source   string
-}{
-	{filepath.Join(".claude", "rules"), ".claude"},
-	{filepath.Join(".claudes", "rules"), ".claudes"},
-	{filepath.Join(".agents", "rules"), ".agents"},
-	{filepath.Join(".cursor", "rules"), ".cursor"},
-	{filepath.Join(".codex", "rules"), ".codex"},
+func Discover(workspaceRoot string) ([]Rule, error) {
+	return DiscoverForWorkspace(workspaceRoot, workspaceRoot)
 }
 
-func Discover(workspaceRoot string) ([]Rule, error) {
-	result, err := discoverAt(workspaceRoot, nil)
+func DiscoverForWorkspace(projectRoot, workspaceRoot string) ([]Rule, error) {
+	result := make([]Rule, 0)
+	walkRules(workspacestate.New(workspaceRoot).RulesRoot(), instructionsource.NativeSource, 0, &result)
+	providers, err := instructionsource.DiscoverDynamicProviders(projectRoot)
 	if err != nil {
 		return nil, err
 	}
-	walkRules(workspacestate.New(workspaceRoot).RulesRoot(), ".cm", 0, &result)
-	sort.Slice(result, func(i, j int) bool { return result[i].Path < result[j].Path })
+	for _, provider := range providers {
+		if provider.RulesDir != "" {
+			walkRules(provider.RulesDir, provider.Name, 0, &result)
+		}
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return workspaceRuleLess(result[i], result[j])
+	})
 	return result, nil
 }
 
 func DiscoverUser(home string, policy instructionpolicy.Config) ([]Rule, error) {
-	return discoverAt(home, func(source string) bool { return policy.Enabled(source, instructionpolicy.ResourceRules) })
+	_ = home
+	_ = policy
+	result := make([]Rule, 0)
+	walkRules(filepath.Join(configformat.RootPath(), "rules"), instructionsource.NativeSource, 0, &result)
+	sort.Slice(result, func(i, j int) bool { return result[i].Path < result[j].Path })
+	return result, nil
 }
 
 func DiscoverWithUser(workspaceRoot, home string, policy instructionpolicy.Config) ([]Rule, error) {
-	project, err := Discover(workspaceRoot)
+	return DiscoverWithUserForWorkspace(workspaceRoot, workspaceRoot, home, policy)
+}
+
+func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, policy instructionpolicy.Config) ([]Rule, error) {
+	project, err := DiscoverForWorkspace(projectRoot, workspaceRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -44,21 +56,38 @@ func DiscoverWithUser(workspaceRoot, home string, policy instructionpolicy.Confi
 	if err != nil {
 		return nil, err
 	}
-	result := append(project, user...)
-	sort.SliceStable(result, func(i, j int) bool { return result[i].Path < result[j].Path })
+	result := make([]Rule, 0, len(project)+len(user))
+	for _, rule := range project {
+		if rule.Source == instructionsource.NativeSource {
+			result = append(result, rule)
+		}
+	}
+	for _, rule := range user {
+		if rule.Source == instructionsource.NativeSource {
+			result = append(result, rule)
+		}
+	}
+	for _, rule := range project {
+		if rule.Source != instructionsource.NativeSource {
+			result = append(result, rule)
+		}
+	}
 	return result, nil
 }
 
-func discoverAt(rootPath string, enabled func(string) bool) ([]Rule, error) {
-	result := make([]Rule, 0)
-	for _, root := range ruleRoots {
-		if enabled != nil && !enabled(root.Source) {
-			continue
-		}
-		walkRules(filepath.Join(rootPath, root.Relative), root.Source, 0, &result)
+func workspaceRuleLess(left, right Rule) bool {
+	leftSource := instructionsource.Source{Class: instructionsource.ClassDynamicProvider, Provider: left.Source, Path: left.Path}
+	rightSource := instructionsource.Source{Class: instructionsource.ClassDynamicProvider, Provider: right.Source, Path: right.Path}
+	if left.Source == instructionsource.NativeSource {
+		leftSource.Class = instructionsource.ClassWorkspaceNative
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Path < result[j].Path })
-	return result, nil
+	if right.Source == instructionsource.NativeSource {
+		rightSource.Class = instructionsource.ClassWorkspaceNative
+	}
+	if value := instructionsource.Compare(leftSource, rightSource); value != 0 {
+		return value < 0
+	}
+	return left.Path < right.Path
 }
 
 func LoadForFile(workspaceRoot, file string) ([]Rule, error) {

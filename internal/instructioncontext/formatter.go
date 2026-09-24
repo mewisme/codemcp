@@ -1,9 +1,9 @@
 package instructioncontext
 
 import (
+	"errors"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	"go.mewis.me/codemcp/internal/rules"
 	"go.mewis.me/codemcp/internal/skills"
@@ -18,43 +18,83 @@ const QuickPointers = `- Use load_path_rules(path) before editing files covered 
 - When the user explicitly asks to remember/save/persist an eligible workspace note, identify a scope and an optional child key. Omit key for a scope-level note and never repeat the scope as its child key. Call memory_get for the target scope/key, reconcile current and new information, then call remember with the complete canonical replacement. New explicit user preferences supersede conflicting older memory; never concatenate contradictions. Use rewind for checkpoint inspection or recovery.`
 
 func FormatInstructions(value InstructionContext) (string, int) {
+	return renderInstructionBlocks(instructionBlocks(value))
+}
+
+type instructionBlock struct {
+	title    string
+	content  string
+	required bool
+}
+
+func instructionBlocks(value InstructionContext) []instructionBlock {
 	workflow := strings.TrimSpace(value.AgentWorkflow)
 	if workflow == "" {
 		workflow = AgentWorkflow()
 	}
-	blocks := []string{
-		formatBlock("Agent workflow", workflow),
-		formatBlock("Tool profile", formatToolProfile(value.ToolProfile)),
-		formatBlock("Environment", formatEnvironment(value.Environment)),
+	blocks := []instructionBlock{
+		{title: "Agent workflow", content: workflow, required: true},
+		{title: "Tool profile", content: formatToolProfile(value.ToolProfile), required: true},
+		{title: "Environment", content: formatEnvironment(value.Environment), required: true},
 	}
 	if !value.Git.Skipped {
-		blocks = append(blocks, formatBlock("Git", formatGit(value.Git)))
+		blocks = append(blocks, instructionBlock{title: "Git", content: formatGit(value.Git)})
 	}
 	if value.AutoMemory.Loaded && strings.TrimSpace(value.AutoMemory.Content) != "" {
-		blocks = append(blocks, formatBlock("Auto memory", shiftMarkdownHeadings(strings.TrimSpace(value.AutoMemory.Content), 1)))
+		blocks = append(blocks, instructionBlock{title: "Auto memory", content: shiftMarkdownHeadings(strings.TrimSpace(value.AutoMemory.Content), 1)})
 	}
 	if strings.TrimSpace(value.GlobalContext) != "" {
-		blocks = append(blocks, formatBlock("Global context", strings.TrimSpace(value.GlobalContext)))
+		blocks = append(blocks, instructionBlock{title: "Global context", content: strings.TrimSpace(value.GlobalContext)})
 	}
 	user, project := splitMemorySections(value.ProjectMemory.Sections)
 	if user != "" {
-		blocks = append(blocks, formatBlock("User instructions", user))
+		blocks = append(blocks, instructionBlock{title: "User instructions", content: user})
 	}
 	if project != "" {
-		blocks = append(blocks, formatBlock("Project instructions", project))
+		blocks = append(blocks, instructionBlock{title: "Project instructions", content: project})
 	}
 	if globalRulesText := formatRules(value.GlobalRules); globalRulesText != "" {
-		blocks = append(blocks, formatBlock("Global rules", globalRulesText))
+		blocks = append(blocks, instructionBlock{title: "Global rules", content: globalRulesText})
 	}
 	if rulesText := formatRules(value.Rules); rulesText != "" {
-		blocks = append(blocks, formatBlock("Always-on rules", rulesText))
+		blocks = append(blocks, instructionBlock{title: "Always-on rules", content: rulesText})
 	}
 	if skillsText := formatSkills(value.Skills); skillsText != "" {
-		blocks = append(blocks, formatBlock("Skills", skillsText))
+		blocks = append(blocks, instructionBlock{title: "Skills", content: skillsText})
 	}
-	blocks = append(blocks, formatBlock("Quick pointers", QuickPointers))
-	text := "# CodeMCP project context\n\n" + strings.Join(blocks, "\n\n")
+	if integrationText := formatIntegrationInstructions(value.IntegrationInstructions); integrationText != "" {
+		blocks = append(blocks, instructionBlock{title: "Integration instructions", content: integrationText, required: true})
+	}
+	blocks = append(blocks, instructionBlock{title: "Quick pointers", content: QuickPointers, required: true})
+	return blocks
+}
+
+func renderInstructionBlocks(blocks []instructionBlock) (string, int) {
+	rendered := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		rendered = append(rendered, formatBlock(block.title, block.content))
+	}
+	text := "# CodeMCP project context\n\n" + strings.Join(rendered, "\n\n")
 	return text, len([]byte(text))
+}
+
+func formatIntegrationInstructions(values []IntegrationInstruction) string {
+	sections := make([]string, 0, len(values))
+	for _, value := range values {
+		content := strings.TrimSpace(value.Content)
+		if content == "" {
+			continue
+		}
+		title := strings.TrimSpace(value.ID)
+		if title == "" {
+			title = "integration"
+		}
+		if source := strings.TrimSpace(value.Source); source != "" {
+			title += " [" + source + "]"
+		}
+		sections = append(sections, "### "+title+"\n"+content)
+	}
+	return strings.Join(sections, "\n\n")
 }
 
 func ApplyFormattedInstructions(value *InstructionContext) {
@@ -66,26 +106,80 @@ func ApplyFormattedInstructions(value *InstructionContext) {
 	}
 	value.InstructionsText, value.InstructionBytes = FormatInstructions(*value)
 	value.InstructionTruncated = false
+	value.InstructionBudget = nil
 }
 
-func ApplyFormattedInstructionsLimit(value *InstructionContext, maxBytes int) {
+func ApplyFormattedInstructionsLimit(value *InstructionContext, maxBytes int) error {
 	if value == nil {
-		return
+		return nil
 	}
 	if maxBytes <= 0 {
 		maxBytes = DefaultInstructionMaxBytes
 	}
-	ApplyFormattedInstructions(value)
-	if value.InstructionBytes <= maxBytes {
-		return
+	if strings.TrimSpace(value.AgentWorkflow) == "" {
+		value.AgentWorkflow = AgentWorkflow()
 	}
-	limited := []byte(value.InstructionsText)[:maxBytes]
-	for len(limited) > 0 && !utf8.Valid(limited) {
-		limited = limited[:len(limited)-1]
+	blocks := instructionBlocks(*value)
+	required := make([]instructionBlock, 0, len(blocks))
+	for _, block := range blocks {
+		if block.required {
+			required = append(required, block)
+		}
 	}
-	value.InstructionsText = string(limited)
-	value.InstructionBytes = len(limited)
-	value.InstructionTruncated = true
+	_, minimumBytes := renderInstructionBlocks(required)
+	if minimumBytes > maxBytes {
+		return fmt.Errorf("max instruction bytes %d cannot hold required project context minimum %d", maxBytes, minimumBytes)
+	}
+	selectedTitles := map[string]bool{}
+	for _, block := range required {
+		selectedTitles[block.title] = true
+	}
+	for _, block := range blocks {
+		if block.required {
+			continue
+		}
+		candidateTitles := make(map[string]bool, len(selectedTitles)+1)
+		for title := range selectedTitles {
+			candidateTitles[title] = true
+		}
+		candidateTitles[block.title] = true
+		candidate := canonicalInstructionBlockSubset(blocks, candidateTitles)
+		_, size := renderInstructionBlocks(candidate)
+		if size <= maxBytes {
+			selectedTitles[block.title] = true
+		}
+	}
+	selected := canonicalInstructionBlockSubset(blocks, selectedTitles)
+	text, size := renderInstructionBlocks(selected)
+	if size > maxBytes {
+		return errors.New("project context instruction budget invariant violated")
+	}
+	value.InstructionsText, value.InstructionBytes = text, size
+	value.InstructionTruncated = len(selected) != len(blocks)
+	value.InstructionBudget = make([]InstructionBlockBudget, 0, len(blocks))
+	for _, block := range blocks {
+		rendered := formatBlock(block.title, block.content)
+		included := selectedTitles[block.title]
+		renderedBytes := 0
+		if included {
+			renderedBytes = len([]byte(rendered))
+		}
+		value.InstructionBudget = append(value.InstructionBudget, InstructionBlockBudget{
+			Title: block.title, Required: block.required, Included: included, Truncated: !included,
+			OriginalBytes: len([]byte(rendered)), RenderedBytes: renderedBytes,
+		})
+	}
+	return nil
+}
+
+func canonicalInstructionBlockSubset(all []instructionBlock, titles map[string]bool) []instructionBlock {
+	result := make([]instructionBlock, 0, len(titles))
+	for _, block := range all {
+		if titles[block.title] {
+			result = append(result, block)
+		}
+	}
+	return result
 }
 
 func formatBlock(title, content string) string {

@@ -15,25 +15,26 @@ import (
 )
 
 type BuildOptions struct {
-	Root                string
-	WorkspaceID         string
-	WorkspaceRoot       string
-	CWD                 string
-	WorkspaceRoots      []string
-	MemoryStore         memory.Store
-	Memory              MemoryLoadOptions
-	Policy              instructionpolicy.Config
-	ToolProfile         ToolProfile
-	MaxInstructionBytes int
-	MemoryQuery         string
-	MaxMemoryEntries    int
-	MaxMemoryBytes      int
-	SkipGit             bool
-	SkipMemory          bool
-	SkipSkills          bool
-	AdminEnabled        bool
-	AdminPort           int
-	Now                 func() time.Time
+	Root                    string
+	WorkspaceID             string
+	WorkspaceRoot           string
+	CWD                     string
+	WorkspaceRoots          []string
+	MemoryStore             memory.Store
+	Memory                  MemoryLoadOptions
+	Policy                  instructionpolicy.Config
+	ToolProfile             ToolProfile
+	MaxInstructionBytes     int
+	MemoryQuery             string
+	MaxMemoryEntries        int
+	MaxMemoryBytes          int
+	SkipGit                 bool
+	SkipMemory              bool
+	SkipSkills              bool
+	IntegrationInstructions []IntegrationInstruction
+	AdminEnabled            bool
+	AdminPort               int
+	Now                     func() time.Time
 }
 
 func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
@@ -68,10 +69,6 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 	if home == "" {
 		home, _ = os.UserHomeDir()
 	}
-	sources, err := DiscoverUserSources(home, opts.Policy)
-	if err != nil {
-		return InstructionContext{}, err
-	}
 	environment, err := LoadEnvironmentSnapshot(EnvironmentOptions{
 		WorkspaceID: workspaceID, WorkspaceRoot: workspaceRoot, CWD: opts.CWD, EffectiveRoots: roots,
 		AdminEnabled: opts.AdminEnabled, AdminPort: opts.AdminPort,
@@ -96,13 +93,13 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 			return InstructionContext{}, err
 		}
 	}
-	unconditionalRules, err := LoadUnconditionalRulesWithUser(root, home, opts.Policy)
+	unconditionalRules, err := LoadUnconditionalRulesWithUserForWorkspace(root, workspaceRoot, home, opts.Policy)
 	if err != nil {
 		return InstructionContext{}, err
 	}
 	skillSummaries := []skills.Skill(nil)
 	if !opts.SkipSkills {
-		skillSummaries, err = LoadSkillSummariesWithUser(root, home, opts.Policy)
+		skillSummaries, err = LoadSkillSummariesWithUserForWorkspace(root, workspaceRoot, home, opts.Policy)
 		if err != nil {
 			return InstructionContext{}, err
 		}
@@ -126,13 +123,15 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 		}
 		globalRules = append(globalRules, rules.Rule{Path: filepath.ToSlash("managed://global-rules/" + id), Source: "CodeMCP", Content: content, AlwaysApply: true})
 	}
-	sources = markLoadedSources(sources, projectMemory, unconditionalRules, skillSummaries)
+	sources := LoadedProjectSources(projectMemory, unconditionalRules, skillSummaries, workspaceRoot)
 	value := InstructionContext{
 		Root: root, WorkspaceID: workspaceID, WorkspaceRoots: roots, Environment: environment,
 		Git: gitSnapshot, ProjectMemory: projectMemory, AutoMemory: autoMemory, GlobalContext: strings.TrimSpace(opts.Policy.Context), GlobalRules: globalRules,
-		Rules: unconditionalRules, Skills: skillSummaries, Sources: sources, ToolProfile: opts.ToolProfile,
+		Rules: unconditionalRules, Skills: skillSummaries, IntegrationInstructions: append([]IntegrationInstruction(nil), opts.IntegrationInstructions...), Sources: sources, ToolProfile: opts.ToolProfile,
 		AgentWorkflow: AgentWorkflow(), LoadedAt: loadedAt,
 	}
-	ApplyFormattedInstructionsLimit(&value, opts.MaxInstructionBytes)
+	if err := ApplyFormattedInstructionsLimit(&value, opts.MaxInstructionBytes); err != nil {
+		return InstructionContext{}, err
+	}
 	return value, nil
 }
