@@ -19,12 +19,64 @@ func workspaceCommand() *cobra.Command {
 		workspaceRegisterCommand(),
 		workspaceListCommand(),
 		workspaceShowCommand(),
+		workspaceDoctorCommand(),
 		workspaceRelocateCommand(),
 		workspaceUnregisterCommand(),
 		workspacePurgeCommand(),
 		workspaceAccessCommand(),
 		workspaceContainerCommand(),
 	)
+	return cmd
+}
+
+func workspaceDoctorCommand() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:               "doctor <workspace_id>",
+		Short:             "Diagnose workspace-local state without modifying it",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceID,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			diagnostic, err := workspaceManagerForCommand(cmd).Diagnose(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return printJSON(cmd, diagnostic)
+			}
+			log := commandLogger(cmd)
+			log.Info("WORKSPACE", "workspace local-state diagnostics")
+			log.Detail("id", diagnostic.WorkspaceID)
+			log.Detail("root", diagnostic.Root)
+			log.Detail("local root", diagnostic.LocalRoot)
+			log.Detail("health", diagnostic.Health)
+			log.Detail("available", diagnostic.Available)
+			log.Detail("size bytes", diagnostic.SizeBytes)
+			log.Detail("files", diagnostic.FileCount)
+			log.Detail("locked", diagnostic.Locked)
+			if diagnostic.LockPID != 0 {
+				log.Detail("lock pid", diagnostic.LockPID)
+			}
+			if diagnostic.LockInstanceID != "" {
+				log.Detail("lock instance", diagnostic.LockInstanceID)
+			}
+			if diagnostic.GitHygiene.Tracked {
+				log.Detail("git hygiene", "tracked .cm")
+			} else if diagnostic.GitHygiene.Degraded || !diagnostic.GitHygiene.Protected {
+				log.Detail("git hygiene", "degraded")
+			} else {
+				log.Detail("git hygiene", "healthy")
+			}
+			if diagnostic.GitHygiene.Guidance != "" {
+				log.Detail("git guidance", diagnostic.GitHygiene.Guidance)
+			}
+			if diagnostic.Error != "" {
+				log.Detail("error", diagnostic.Error)
+			}
+			return nil
+		},
+	}
+	addJSONOutputFlag(cmd, &asJSON)
 	return cmd
 }
 

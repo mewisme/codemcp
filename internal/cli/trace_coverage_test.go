@@ -93,7 +93,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"workspace.relocate.completed", "workspace.registry.persist.completed"}, "workspace relocate")
 	add(commandTraceInstrumented, []string{"workspace.unregister.completed", "workspace.registry.persist.completed"}, "workspace unregister")
 	add(commandTraceInstrumented, []string{"workspace.delete-state.completed"}, "workspace purge")
-	add(commandTraceInstrumented, []string{"workspace.registry.load.completed"}, "workspace list", "workspace show", "workspace access list", "workspace container list", "workspace container show")
+	add(commandTraceInstrumented, []string{"workspace.registry.load.completed"}, "workspace list", "workspace show", "workspace doctor", "workspace access list", "workspace container list", "workspace container show")
 	add(commandTraceInstrumented, []string{"workspace.allow-dir.add.completed"}, "workspace access add")
 	add(commandTraceInstrumented, []string{"workspace.allow-dir.remove.completed"}, "workspace access remove")
 	add(commandTraceInstrumented, []string{"workspace.container.create.completed"}, "workspace container create")

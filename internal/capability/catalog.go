@@ -163,7 +163,7 @@ func buildSpecs() []Spec {
 		operatorSensitive(WorkspaceAccessRemove, "workspace access remove", false),
 		operatorMutation(WorkspaceRegister, "workspace register", RiskState, false),
 		operatorQuery(WorkspaceList, "workspace list"),
-		operatorQuery(WorkspaceShow, "workspace show"),
+		operatorQuery(WorkspaceShow, "workspace show", "workspace doctor"),
 		operatorMutation(WorkspaceRelocate, "workspace relocate", RiskState, false),
 		operatorMutation(WorkspaceUnregister, "workspace unregister", RiskState, false),
 		operatorDeleteRequired(WorkspacePurge, "workspace purge", false),

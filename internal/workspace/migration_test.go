@@ -130,8 +130,8 @@ func TestWorkspaceRegistryMigratesV2InstanceIDAndState(t *testing.T) {
 		if err := json.Unmarshal(data, &object); err != nil {
 			t.Fatal(err)
 		}
-		if object["workspace_id"] != canonicalID {
-			t.Fatalf("state workspace id in %s = %#v", path, object["workspace_id"])
+		if object["workspace_id"] != oldID {
+			t.Fatalf("legacy embedded workspace id in %s = %#v", path, object["workspace_id"])
 		}
 	}
 
