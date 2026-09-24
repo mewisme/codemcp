@@ -2,11 +2,13 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/upstream"
 )
@@ -18,16 +20,20 @@ type upstreamToolsResponse struct {
 }
 
 func (api API) handleUpstreams(w http.ResponseWriter, r *http.Request) {
-	manager := api.upstreamManager()
-	if manager == nil {
+	service := api.upstreamService()
+	if service == nil {
 		http.Error(w, "upstream unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	switch r.Method {
 	case http.MethodGet:
-		values := manager.List()
-		public := make([]upstream.Server, len(values))
-		for index, value := range values {
+		result, err := service.List(r.Context())
+		if err != nil {
+			writeUpstreamOperationError(w, err, http.StatusInternalServerError)
+			return
+		}
+		public := make([]upstream.Server, len(result.Value))
+		for index, value := range result.Value {
 			public[index] = publicUpstream(value)
 		}
 		writeJSON(w, public)
@@ -37,32 +43,20 @@ func (api API) handleUpstreams(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		normalized, err := upstream.NormalizeServer(server)
+		result, err := service.Create(r.Context(), server)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeUpstreamOperationError(w, err, http.StatusInternalServerError)
 			return
 		}
-		if _, exists := manager.Get(normalized.ID); exists {
-			http.Error(w, "upstream server already exists; use PUT to update", http.StatusConflict)
-			return
-		}
-		if err := manager.Add(normalized); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if err := api.refreshUpstreamProxies(); err != nil {
-			http.Error(w, "upstream configuration saved but proxy refresh failed: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		writeJSON(w, publicUpstream(normalized))
+		writeJSON(w, publicUpstream(result.Value))
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
 func (api API) handleUpstream(w http.ResponseWriter, r *http.Request) {
-	manager := api.upstreamManager()
-	if manager == nil {
+	service := api.upstreamService()
+	if service == nil {
 		http.Error(w, "upstream unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -72,17 +66,18 @@ func (api API) handleUpstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := parts[0]
-	server, exists := manager.Get(id)
-	if !exists {
-		http.Error(w, "unknown upstream server: "+id, http.StatusNotFound)
+	result, err := service.Get(r.Context(), id)
+	if err != nil {
+		writeUpstreamOperationError(w, err, http.StatusNotFound)
 		return
 	}
+	server := result.Value
 	if len(parts) == 1 {
-		api.handleUpstreamServer(w, r, manager, server)
+		api.handleUpstreamServer(w, r, service, server)
 		return
 	}
 	if len(parts) == 3 && parts[1] == "auth" {
-		api.handleUpstreamOAuth(w, r, manager, server, parts[2])
+		api.handleUpstreamOAuth(w, r, service.Manager(), server, parts[2])
 		return
 	}
 	if len(parts) != 2 {
@@ -97,7 +92,12 @@ func (api API) handleUpstream(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
-		writeJSON(w, manager.CheckHealth(ctx, id, queryBool(r, "refresh", true)))
+		status, err := service.Status(ctx, id, queryBool(r, "refresh", true))
+		if err != nil {
+			writeUpstreamOperationError(w, err, http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, status.Value)
 	case "tools":
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -105,18 +105,18 @@ func (api API) handleUpstream(w http.ResponseWriter, r *http.Request) {
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
-		values, err := manager.Tools(ctx, id, queryBool(r, "refresh", false))
+		values, err := service.Tools(ctx, id, queryBool(r, "refresh", false))
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
+			writeUpstreamOperationError(w, err, http.StatusBadGateway)
 			return
 		}
-		writeJSON(w, upstreamToolsResponse{ServerID: id, Tools: values, ProxiedTools: manager.ProxiedToolNames(server, values)})
+		writeJSON(w, upstreamToolsResponse{ServerID: id, Tools: values.Value.Tools, ProxiedTools: values.Value.ProxiedTools})
 	default:
 		http.NotFound(w, r)
 	}
 }
 
-func (api API) handleUpstreamServer(w http.ResponseWriter, r *http.Request, manager *upstream.Manager, server upstream.Server) {
+func (api API) handleUpstreamServer(w http.ResponseWriter, r *http.Request, service *application.UpstreamService, server upstream.Server) {
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, publicUpstream(server))
@@ -133,27 +133,15 @@ func (api API) handleUpstreamServer(w http.ResponseWriter, r *http.Request, mana
 		next.ID = server.ID
 		next.Headers = restoreRedactedMap(server.Headers, next.Headers)
 		next.Env = restoreRedactedMap(server.Env, next.Env)
-		normalized, err := upstream.NormalizeServer(next)
+		result, err := service.Update(r.Context(), server.ID, next)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeUpstreamOperationError(w, err, http.StatusInternalServerError)
 			return
 		}
-		if err := manager.Add(normalized); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if err := api.refreshUpstreamProxies(); err != nil {
-			http.Error(w, "upstream configuration saved but proxy refresh failed: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		writeJSON(w, publicUpstream(normalized))
+		writeJSON(w, publicUpstream(result.Value))
 	case http.MethodDelete:
-		if err := manager.Remove(server.ID); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if err := api.refreshUpstreamProxies(); err != nil {
-			http.Error(w, "upstream configuration saved but proxy refresh failed: "+err.Error(), http.StatusBadGateway)
+		if _, err := service.Remove(r.Context(), server.ID); err != nil {
+			writeUpstreamOperationError(w, err, http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -162,14 +150,40 @@ func (api API) handleUpstreamServer(w http.ResponseWriter, r *http.Request, mana
 	}
 }
 
-func (api API) refreshUpstreamProxies() error {
+func (api API) upstreamService() *application.UpstreamService {
 	manager := api.upstreamManager()
-	if api.Tools == nil || manager == nil || api.Tools.Upstream != manager {
+	if manager == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	return tools.RefreshUpstreamProxies(ctx, api.Tools.Registry, manager, false)
+	return application.NewUpstreamService(manager, func(ctx context.Context) error {
+		if api.Tools == nil || api.Tools.Upstream != manager {
+			return nil
+		}
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		refreshCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		if err := tools.RefreshUpstreamProxies(refreshCtx, api.Tools.Registry, manager, false); err != nil {
+			return fmt.Errorf("proxy refresh failed: %w", err)
+		}
+		return nil
+	})
+}
+
+func writeUpstreamOperationError(w http.ResponseWriter, err error, fallback int) {
+	status := fallback
+	switch application.ErrorCodeOf(err) {
+	case application.ErrorInvalidArgument:
+		status = http.StatusBadRequest
+	case application.ErrorNotFound:
+		status = http.StatusNotFound
+	case application.ErrorConflict:
+		status = http.StatusConflict
+	case application.ErrorUnavailable:
+		status = http.StatusBadGateway
+	}
+	http.Error(w, err.Error(), status)
 }
 
 func publicUpstream(server upstream.Server) upstream.Server {

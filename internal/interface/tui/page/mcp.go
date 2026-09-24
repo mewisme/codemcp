@@ -79,6 +79,7 @@ type mcpOAuthDoneMsg struct {
 type MCPPage struct {
 	ctx                context.Context
 	manager            *upstream.Manager
+	operations         *application.UpstreamService
 	oauthStore         *mcpoauth.Store
 	resourceID         string
 	section            string
@@ -151,7 +152,7 @@ func newMCPRoutePageAction(ctx context.Context, resourceID, section, action stri
 		store = mcpoauth.NewStore(mcpoauth.Path())
 	}
 	page := &MCPPage{
-		ctx: ctx, manager: manager, oauthStore: store, resourceID: strings.TrimSpace(resourceID), section: strings.TrimSpace(section), action: strings.TrimSpace(action),
+		ctx: ctx, manager: manager, operations: application.NewUpstreamService(manager), oauthStore: store, resourceID: strings.TrimSpace(resourceID), section: strings.TrimSpace(section), action: strings.TrimSpace(action),
 		status: map[string]upstream.Status{}, tools: map[string][]upstream.Tool{}, openBrowser: application.OpenBrowser,
 	}
 	page.oauthLogin = store.Login
@@ -557,7 +558,7 @@ func (page *MCPPage) submitJSONEditor() tea.Cmd {
 		page.modeErr = err
 		return nil
 	}
-	if err := page.manager.CreateBatch(servers); err != nil {
+	if _, err := page.upstreamOperations().CreateBatch(page.ctx, servers); err != nil {
 		page.modeErr = err
 		return nil
 	}
@@ -764,9 +765,9 @@ func (page *MCPPage) submitServerEditor() tea.Cmd {
 		return nil
 	}
 	if create {
-		err = page.manager.CreateBatch([]upstream.Server{server})
+		_, err = page.upstreamOperations().Create(page.ctx, server)
 	} else {
-		err = page.manager.Add(server)
+		_, err = page.upstreamOperations().Update(page.ctx, page.targetID, server)
 	}
 	if err != nil {
 		page.editor.SetFeedback("", err)
@@ -859,7 +860,7 @@ func (page *MCPPage) updateConfirm(msg tea.KeyPressMsg) tea.Cmd {
 	target := page.targetID
 	switch page.command {
 	case UpstreamServerRemove:
-		if err := page.manager.Remove(target); err != nil {
+		if _, err := page.upstreamOperations().Remove(page.ctx, target); err != nil {
 			page.err = err
 			return nil
 		}
@@ -884,12 +885,13 @@ func (page *MCPPage) updateConfirm(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func (page *MCPPage) toggleServer(enabled bool) error {
-	server, ok := page.manager.Get(page.targetID)
-	if !ok {
-		return fmt.Errorf("unknown upstream server: %s", page.targetID)
+	var err error
+	if enabled {
+		_, err = page.upstreamOperations().Enable(page.ctx, page.targetID)
+	} else {
+		_, err = page.upstreamOperations().Disable(page.ctx, page.targetID)
 	}
-	server.Enabled = enabled
-	if err := page.manager.Add(server); err != nil {
+	if err != nil {
 		return err
 	}
 	page.notice = "MCP server disabled"
@@ -902,10 +904,23 @@ func (page *MCPPage) toggleServer(enabled bool) error {
 func (page *MCPPage) startHealth(id string) tea.Cmd {
 	ctx, cancel := context.WithTimeout(page.ctx, 15*time.Second)
 	page.beginOperation(UpstreamServerHealth, id, "Refreshing MCP health", cancel)
+	operations := page.upstreamOperations()
 	if id == "" {
-		return func() tea.Msg { return mcpHealthMsg{statuses: page.manager.ListStatuses(ctx, true)} }
+		return func() tea.Msg {
+			result, err := operations.Statuses(ctx, true)
+			if err != nil {
+				return mcpHealthMsg{}
+			}
+			return mcpHealthMsg{statuses: result.Value}
+		}
 	}
-	return func() tea.Msg { return mcpHealthMsg{id: id, status: page.manager.CheckHealth(ctx, id, true)} }
+	return func() tea.Msg {
+		result, err := operations.Status(ctx, id, true)
+		if err != nil {
+			return mcpHealthMsg{id: id, status: upstream.Status{ID: id, Health: upstream.HealthUnreachable, LastError: err.Error()}}
+		}
+		return mcpHealthMsg{id: id, status: result.Value}
+	}
 }
 
 func (page *MCPPage) finishHealth(msg mcpHealthMsg) tea.Cmd {
@@ -928,10 +943,21 @@ func (page *MCPPage) finishHealth(msg mcpHealthMsg) tea.Cmd {
 func (page *MCPPage) startTools(id string) tea.Cmd {
 	ctx, cancel := context.WithTimeout(page.ctx, 15*time.Second)
 	page.beginOperation(UpstreamServerTools, id, "Loading MCP tools", cancel)
+	operations := page.upstreamOperations()
 	return func() tea.Msg {
-		values, err := page.manager.Tools(ctx, id, true)
-		return mcpToolsMsg{id: id, tools: values, err: err}
+		result, err := operations.Tools(ctx, id, true)
+		return mcpToolsMsg{id: id, tools: result.Value.Tools, err: err}
 	}
+}
+
+func (page *MCPPage) upstreamOperations() *application.UpstreamService {
+	if page == nil {
+		return application.NewUpstreamService(nil)
+	}
+	if page.operations == nil {
+		page.operations = application.NewUpstreamService(page.manager)
+	}
+	return page.operations
 }
 
 func (page *MCPPage) finishTools(msg mcpToolsMsg) tea.Cmd {

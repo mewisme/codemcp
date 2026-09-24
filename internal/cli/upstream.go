@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/logger"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -539,7 +540,68 @@ func loadUpstreamManager() (*upstream.Manager, error) {
 	return manager, nil
 }
 
-func loadUpstreamManagerForCommand(cmd *cobra.Command) (*upstream.Manager, error) {
+type upstreamCommandService struct {
+	ctx     context.Context
+	service *application.UpstreamService
+}
+
+func (adapter *upstreamCommandService) List() []upstream.Server {
+	result, err := adapter.service.List(adapter.ctx)
+	if err != nil {
+		return nil
+	}
+	return result.Value
+}
+
+func (adapter *upstreamCommandService) Get(id string) (upstream.Server, bool) {
+	result, err := adapter.service.Get(adapter.ctx, id)
+	return result.Value, err == nil
+}
+
+func (adapter *upstreamCommandService) Add(server upstream.Server) error {
+	if _, exists := adapter.service.Manager().Get(server.ID); exists {
+		_, err := adapter.service.Update(adapter.ctx, server.ID, server)
+		return err
+	}
+	_, err := adapter.service.Create(adapter.ctx, server)
+	return err
+}
+
+func (adapter *upstreamCommandService) Remove(id string) error {
+	_, err := adapter.service.Remove(adapter.ctx, id)
+	return err
+}
+
+func (adapter *upstreamCommandService) ListStatuses(ctx context.Context, refresh bool) []upstream.Status {
+	result, err := adapter.service.Statuses(ctx, refresh)
+	if err != nil {
+		return nil
+	}
+	return result.Value
+}
+
+func (adapter *upstreamCommandService) CheckHealth(ctx context.Context, id string, refresh bool) upstream.Status {
+	result, err := adapter.service.Status(ctx, id, refresh)
+	if err != nil {
+		return upstream.Status{ID: id, Health: upstream.HealthUnreachable, LastError: err.Error()}
+	}
+	return result.Value
+}
+
+func (adapter *upstreamCommandService) Tools(ctx context.Context, id string, refresh bool) ([]upstream.Tool, error) {
+	result, err := adapter.service.Tools(ctx, id, refresh)
+	return result.Value.Tools, err
+}
+
+func (adapter *upstreamCommandService) ProxiedToolNames(server upstream.Server, values []upstream.Tool) []string {
+	return adapter.service.Manager().ProxiedToolNames(server, values)
+}
+
+func (adapter *upstreamCommandService) Disconnect(id string) error {
+	return adapter.service.Disconnect(id)
+}
+
+func loadUpstreamManagerForCommand(cmd *cobra.Command) (*upstreamCommandService, error) {
 	logCommandStep(cmd, "MCP", "mcp.store.loading", "Loading upstream MCP configuration")
 	logCommandDebug(cmd, "UPSTREAM", "upstream.store.path", "Upstream configuration path resolved", logger.WithDebug("path", upstream.Path()))
 	manager := upstream.NewManager(upstream.NewStore(upstream.Path())).SetTraceObserver(tracepkg.ObserverFromContext(cmd.Context()))
@@ -547,7 +609,7 @@ func loadUpstreamManagerForCommand(cmd *cobra.Command) (*upstream.Manager, error
 		return nil, fmt.Errorf("load upstream MCP configuration: %w", err)
 	}
 	logCommandDebug(cmd, "MCP", "mcp.store.loaded", "Upstream MCP configuration loaded", logger.WithDebug("count", len(manager.List())))
-	return manager, nil
+	return &upstreamCommandService{ctx: cmd.Context(), service: application.NewUpstreamService(manager)}, nil
 }
 
 func printJSON(cmd *cobra.Command, value any) error {
