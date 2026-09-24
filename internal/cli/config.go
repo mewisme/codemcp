@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 )
@@ -56,13 +57,11 @@ func configExportCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("export configuration envelope: %w", err)
 			}
-			log := commandLogger(cmd)
-			log.Success("CONFIG", "configuration exported", "files", result.Files)
-			log.Detail("file", result.Path)
-			log.Detail("source", result.Source.OS+"/"+result.Source.Arch)
+			fields := []presentation.Field{{Label: "file", Value: result.Path}, {Label: "files", Value: result.Files}, {Label: "source", Value: result.Source.OS + "/" + result.Source.Arch}}
 			if result.SkippedFiles > 0 {
-				log.Detail("non-portable/runtime files skipped", result.SkippedFiles)
+				fields = append(fields, presentation.Field{Label: "non-portable/runtime files skipped", Value: result.SkippedFiles})
 			}
+			renderMutationSuccess(cmd, "Export configuration", "Configuration exported", fields...)
 			return nil
 		},
 	}
@@ -86,19 +85,17 @@ func configImportCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("import configuration envelope: %w", err)
 			}
-			log := commandLogger(cmd)
-			log.Success("CONFIG", "configuration imported", "files", result.Files)
-			log.Detail("source", result.Source.OS+"/"+result.Source.Arch)
-			log.Detail("target", result.Target.OS+"/"+result.Target.Arch)
+			fields := []presentation.Field{{Label: "files", Value: result.Files}, {Label: "source", Value: result.Source.OS + "/" + result.Source.Arch}, {Label: "target", Value: result.Target.OS + "/" + result.Target.Arch}}
 			if result.SkippedPaths > 0 {
-				log.Detail("unavailable platform paths skipped", result.SkippedPaths)
+				fields = append(fields, presentation.Field{Label: "unavailable platform paths skipped", Value: result.SkippedPaths})
 			}
 			if result.SkippedFiles > 0 {
-				log.Detail("orphaned workspace state skipped", result.SkippedFiles)
+				fields = append(fields, presentation.Field{Label: "orphaned workspace state skipped", Value: result.SkippedFiles})
 			}
 			if result.BackupPath != "" {
-				log.Detail("previous config backup retained", result.BackupPath)
+				fields = append(fields, presentation.Field{Label: "previous config backup retained", Value: result.BackupPath})
 			}
+			renderMutationSuccess(cmd, "Import configuration", "Configuration imported", fields...)
 			return nil
 		},
 	}
@@ -173,10 +170,11 @@ func configSetCommand() *cobra.Command {
 				return err
 			}
 			logCommandStep(cmd, "CONFIG", "config.value.updating", "Updating configuration value", logger.WithVerbose("key", key))
+			beginMutationProgress(cmd, "Update configuration")
 			if _, err := application.SetConfigField(cmd.Context(), key, raw); err != nil {
 				return err
 			}
-			commandLogger(cmd).Success("CONFIG", "value saved", "key", key)
+			renderMutationSuccess(cmd, "Update configuration", "Value saved", presentation.Field{Label: "key", Value: key})
 			return nil
 		},
 	}
@@ -213,7 +211,7 @@ func configMigrateCommand() *cobra.Command {
 		if err := application.MigrateLegacySecretsContext(cmd.Context()); err != nil {
 			return fmt.Errorf("migrate legacy credentials: %w", err)
 		}
-		commandLogger(cmd).Success("CONFIG", "credentials migrated to secret file store")
+		renderMutationSuccess(cmd, "Migrate credentials", "Credentials migrated to secret file store")
 		return nil
 	}}
 	cmd.AddCommand(configMigrateSecretsCommand())
@@ -227,7 +225,7 @@ func configMigrateSecretsCommand() *cobra.Command {
 		if err != nil {
 			return fmt.Errorf("migrate secret envelopes: %w", err)
 		}
-		commandLogger(cmd).Success("CONFIG", "legacy secret files migrated to encrypted JSON envelopes", "migrated", migrated)
+		renderMutationSuccess(cmd, "Migrate secret files", "Legacy secret files migrated to encrypted JSON envelopes", presentation.Field{Label: "migrated", Value: migrated})
 		return nil
 	}}
 }

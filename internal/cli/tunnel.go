@@ -198,20 +198,19 @@ func fetchTunnelStatus(ctx context.Context, cfg tunnel.Config) tunnel.Status {
 
 func tunnelSyncCommand() *cobra.Command {
 	return &cobra.Command{Use: "sync", Short: "Fetch and persist metadata for the configured tunnel", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		log := commandLogger(cmd)
 		logCommandStep(cmd, "TUNNEL", "tunnel.metadata.preparing", "Preparing tunnel metadata synchronization")
+		beginMutationProgress(cmd, "Sync OpenAI Secure MCP Tunnel")
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
 		metadata, path, err := application.SyncConfiguredTunnel(ctx)
 		if err != nil {
 			return err
 		}
-		log.Success("TUNNEL", "Tunnel metadata synced")
-		log.Detail("id", metadata.ID)
+		fields := []presentation.Field{{Label: "id", Value: metadata.ID}, {Label: "metadata", Value: path}}
 		if metadata.Name != "" {
-			log.Detail("name", metadata.Name)
+			fields = append(fields, presentation.Field{Label: "name", Value: metadata.Name})
 		}
-		log.Detail("metadata", path)
+		renderMutationSuccess(cmd, "Sync OpenAI Secure MCP Tunnel", "Tunnel metadata synced", fields...)
 		return nil
 	}}
 }
@@ -237,14 +236,14 @@ func tunnelConfigureCommand() *cobra.Command {
 		if cmd.Flags().Changed("organization-id") {
 			input.OrganizationID = &organizationID
 		}
-		log := commandLogger(cmd)
+		beginMutationProgress(cmd, "Configure OpenAI Secure MCP Tunnel")
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		_, err := application.ConfigureTunnelRuntime(ctx, input)
 		cancel()
 		if err != nil {
 			return err
 		}
-		log.Success("TUNNEL", "OpenAI Secure MCP Tunnel configuration saved")
+		renderMutationSuccess(cmd, "Configure OpenAI Secure MCP Tunnel", "Configuration saved")
 		return nil
 	}}
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "enable or disable the OpenAI Secure MCP Tunnel")
@@ -269,7 +268,7 @@ func tunnelToggleCommand(enabled bool) *cobra.Command {
 		if enabled {
 			state = "enabled"
 		}
-		commandLogger(cmd).Success("TUNNEL", "OpenAI Secure MCP Tunnel "+state)
+		renderMutationSuccess(cmd, "OpenAI Secure MCP Tunnel", "OpenAI Secure MCP Tunnel "+state)
 		return nil
 	}}
 }

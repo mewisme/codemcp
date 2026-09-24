@@ -56,8 +56,13 @@ func TestWorkspaceListAndShowReportTrackedLocalCMState(t *testing.T) {
 	if output, err := git.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, output)
 	}
-	registered := executeRequestCommand(t, root, []string{"workspace", "register", workspaceRoot})
-	id := strings.TrimSpace(strings.Split(strings.Split(registered, "id:")[1], "\n")[0])
+	_ = executeRequestCommand(t, root, []string{"workspace", "register", workspaceRoot})
+	jsonOutput := executeRequestCommand(t, root, []string{"workspace", "list", "--json"})
+	var items []workspace.Workspace
+	if err := json.Unmarshal([]byte(strings.TrimSpace(jsonOutput)), &items); err != nil || len(items) != 1 {
+		t.Fatalf("json=%q items=%#v err=%v", jsonOutput, items, err)
+	}
+	id := items[0].ID
 	tracked := filepath.Join(workspaceRoot, workspace.LocalDirName, "tracked.txt")
 	if err := os.WriteFile(tracked, []byte("tracked"), 0600); err != nil {
 		t.Fatal(err)
@@ -129,8 +134,13 @@ func TestTunnelListDefaultsToPlainAndSupportsJSON(t *testing.T) {
 func TestWorkspaceShowAndAccessListDefaultToText(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "config")
 	workspaceRoot := t.TempDir()
-	registered := executeRequestCommand(t, root, []string{"workspace", "register", workspaceRoot})
-	id := strings.TrimSpace(strings.Split(strings.Split(registered, "id:")[1], "\n")[0])
+	_ = executeRequestCommand(t, root, []string{"workspace", "register", workspaceRoot})
+	listJSON := executeRequestCommand(t, root, []string{"workspace", "list", "--json"})
+	var registered []workspace.Workspace
+	if err := json.Unmarshal([]byte(strings.TrimSpace(listJSON)), &registered); err != nil || len(registered) != 1 {
+		t.Fatalf("list json=%q workspaces=%#v err=%v", listJSON, registered, err)
+	}
+	id := registered[0].ID
 	showJSON := executeRequestCommand(t, root, []string{"workspace", "show", id, "--json"})
 	var item workspace.Workspace
 	if err := json.Unmarshal([]byte(strings.TrimSpace(showJSON)), &item); err != nil || item.ID != id {

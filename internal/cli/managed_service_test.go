@@ -104,7 +104,7 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 		t.Fatalf("manager after up = %#v", manager)
 	}
 	text := output.String()
-	for _, expected := range []string{"Installing managed service definition... done", "Starting managed service backend... done", "Waiting for managed runtime readiness... done", "Managed service installed", "Server started", "OpenAI Secure MCP Tunnel is disabled", "View logs: cm logs -f", "Stop service: cm down", "session", "pid"} {
+	for _, expected := range []string{"Installing managed service definition... done", "Starting managed service backend... done", "Waiting for managed runtime readiness... done", "Managed service installed", "Server started", "OpenAI Secure MCP Tunnel is disabled", "View logs", "cm logs -f", "Stop service", "cm down", "session", "pid"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("up output missing %q: %s", expected, text)
 		}

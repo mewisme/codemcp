@@ -92,6 +92,34 @@ func TestConfigSetValidationMatchesSharedDomain(t *testing.T) {
 	}
 }
 
+func TestConfigSetSecretValueDoesNotLeakIntoPresentationOrDiagnostics(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "config")
+	previous := configformat.RootPath()
+	defer configformat.SetRootPath(previous)
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Auth.MCPTokenHash = "mcp-hash"
+	cfg.Auth.AdminTokenHash = "admin-hash"
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	const secret = "sk-runtime-super-secret-value"
+	output, err := executeRequestCommandError(root, []string{"--verbose", "config", "set", "tunnel.api_key", secret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(output, secret) {
+		t.Fatalf("secret mutation value leaked into CLI output: %q", output)
+	}
+	for _, expected := range []string{"Update configuration", "Value saved", "tunnel.api_key"} {
+		if !strings.Contains(output, expected) {
+			t.Fatalf("config mutation output missing %q: %q", expected, output)
+		}
+	}
+}
+
 func TestTunnelAdminCredentialsCannotBypassVerificationThroughConfigSet(t *testing.T) {
 	cfg := config.Default()
 	for _, key := range []string{"tunnel.admin_key", "tunnel.admin_organization_id", "tunnel.admin_workspace_id", "tunnel.admin_tenant_id"} {

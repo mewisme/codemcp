@@ -94,12 +94,7 @@ func workspaceRelocateCommand() *cobra.Command {
 				return err
 			}
 			before, after := result.Value.Before, result.Value.After
-			log := commandLogger(cmd)
-			log.Success("WORKSPACE", "workspace relocated")
-			log.Detail("old id", before.ID)
-			log.Detail("id", after.ID)
-			log.Detail("old root", before.Path)
-			log.Detail("root", after.Path)
+			renderMutationSuccess(cmd, "Workspace", "Workspace relocated", presentation.Field{Label: "old id", Value: before.ID}, presentation.Field{Label: "id", Value: after.ID}, presentation.Field{Label: "old root", Value: before.Path}, presentation.Field{Label: "root", Value: after.Path})
 			return nil
 		},
 	}
@@ -155,10 +150,7 @@ func workspaceContainerCreateCommand() *cobra.Command {
 			return err
 		}
 		value := result.Value
-		log := commandLogger(cmd)
-		log.Success("WORKSPACE", "workspace container created")
-		log.Detail("id", value.ID)
-		log.Detail("name", value.Name)
+		renderMutationSuccess(cmd, "Workspace container", "Workspace container created", presentation.Field{Label: "id", Value: value.ID}, presentation.Field{Label: "name", Value: value.Name})
 		return nil
 	}}
 }
@@ -188,10 +180,7 @@ func workspaceContainerRenameCommand() *cobra.Command {
 			return err
 		}
 		value := result.Value
-		log := commandLogger(cmd)
-		log.Success("WORKSPACE", "workspace container renamed")
-		log.Detail("id", value.ID)
-		log.Detail("name", value.Name)
+		renderMutationSuccess(cmd, "Workspace container", "Workspace container renamed", presentation.Field{Label: "id", Value: value.ID}, presentation.Field{Label: "name", Value: value.Name})
 		return nil
 	}}
 }
@@ -203,11 +192,7 @@ func workspaceContainerDeleteCommand() *cobra.Command {
 			return err
 		}
 		value := result.Value
-		log := commandLogger(cmd)
-		log.Success("WORKSPACE", "workspace container deleted")
-		log.Detail("id", value.ID)
-		log.Detail("name", value.Name)
-		log.Detail("workspaces", "unchanged")
+		renderMutationSuccess(cmd, "Workspace container", "Workspace container deleted", presentation.Field{Label: "id", Value: value.ID}, presentation.Field{Label: "name", Value: value.Name}, presentation.Field{Label: "workspaces", Value: "unchanged"})
 		return nil
 	}}
 }
@@ -230,10 +215,7 @@ func workspaceContainerMembershipCommand(add bool) *cobra.Command {
 			return err
 		}
 		value := result.Value
-		log := commandLogger(cmd)
-		log.Success("WORKSPACE", "workspace container membership updated")
-		log.Detail("container", value.ID)
-		log.Detail(action, args[1:])
+		renderMutationSuccess(cmd, "Workspace container", "Workspace container membership updated", presentation.Field{Label: "container", Value: value.ID}, presentation.Field{Label: action, Value: strings.Join(args[1:], ", ")})
 		return nil
 	}}
 }
@@ -261,10 +243,7 @@ func workspaceAccessCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			log := commandLogger(cmd)
-			log.Success("WORKSPACE", "allowed directory added")
-			log.Detail("id", item.ID)
-			log.Detail("allow_dir", args[1])
+			renderMutationSuccess(cmd, "Workspace access", "Allowed directory added", presentation.Field{Label: "id", Value: item.ID}, presentation.Field{Label: "allow_dir", Value: args[1]})
 			return nil
 		}},
 		&cobra.Command{Use: "remove <workspace_id> <path>", Short: "Revoke an additional directory from a workspace", Args: cobra.ExactArgs(2), ValidArgsFunction: completeWorkspaceThenDirectory, RunE: func(cmd *cobra.Command, args []string) error {
@@ -273,9 +252,7 @@ func workspaceAccessCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			log := commandLogger(cmd)
-			log.Success("WORKSPACE", "allowed directory removed")
-			log.Detail("id", item.ID)
+			renderMutationSuccess(cmd, "Workspace access", "Allowed directory removed", presentation.Field{Label: "id", Value: item.ID}, presentation.Field{Label: "allow_dir", Value: args[1]})
 			return nil
 		}},
 		list,
@@ -305,10 +282,7 @@ func workspaceRegisterCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			log := commandLogger(cmd)
-			log.Success("WORKSPACE", "workspace registered")
-			log.Detail("id", item.ID)
-			log.Detail("root", item.Path)
+			renderMutationSuccess(cmd, "Workspace", "Workspace registered", presentation.Field{Label: "id", Value: item.ID}, presentation.Field{Label: "root", Value: item.Path})
 			return nil
 		},
 	}
@@ -490,12 +464,7 @@ func workspaceUnregisterCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			log := commandLogger(cmd)
-			log.Success("WORKSPACE", "workspace unregistered")
-			log.Detail("id", item.ID)
-			log.Detail("root", item.Path)
-			log.Detail("project files", "unchanged")
-			log.Detail("local .cm", "unchanged")
+			renderMutationSuccess(cmd, "Workspace", "Workspace unregistered", presentation.Field{Label: "id", Value: item.ID}, presentation.Field{Label: "root", Value: item.Path}, presentation.Field{Label: "project files", Value: "unchanged"}, presentation.Field{Label: "local .cm", Value: "unchanged"})
 			return nil
 		},
 	}
@@ -514,13 +483,12 @@ func workspacePurgeCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			log := commandLogger(cmd)
-			log.Success("WORKSPACE", "workspace local state deleted")
+			fields := []presentation.Field{}
 			if item.ID != "" {
-				log.Detail("id", item.ID)
+				fields = append(fields, presentation.Field{Label: "id", Value: item.ID})
 			}
-			log.Detail("root", item.Path)
-			log.Detail("project files", "unchanged")
+			fields = append(fields, presentation.Field{Label: "root", Value: item.Path}, presentation.Field{Label: "project files", Value: "unchanged"})
+			renderMutationSuccess(cmd, "Workspace", "Workspace local state deleted", fields...)
 			return nil
 		},
 	}

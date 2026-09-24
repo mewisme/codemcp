@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/logger"
 	updatepkg "go.mewis.me/codemcp/internal/update"
@@ -15,6 +16,7 @@ func upgradeCommand() *cobra.Command {
 	var targetVersion string
 	var noRestart bool
 	cmd := &cobra.Command{Use: "upgrade", Aliases: []string{"update", "upg"}, SuggestFor: []string{"upg"}, Short: "Check for and install cm upgrades", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		beginMutationProgress(cmd, "Upgrade CodeMCP")
 		logCommandStep(cmd, "UPDATE", "update.installation.detecting", "Detecting current installation")
 		detection, err := install.DetectCurrent(version.Version)
 		if err != nil {
@@ -22,6 +24,7 @@ func upgradeCommand() *cobra.Command {
 		}
 		policy := updatepkg.PolicyForInstallation(detection)
 		log := commandLogger(cmd)
+		progress := newCommandProgress(cmd, "UPDATE")
 		logCommandDebug(cmd, "UPDATE", "update.policy.resolved", "Update policy resolved", logger.WithDebug("method", policy.Method), logger.WithDebug("action", policy.Action))
 		if policy.Action == updatepkg.PolicyDelegate {
 			return runPackageManagedUpgrade(cmd, detection, targetVersion, noRestart)
@@ -38,51 +41,40 @@ func upgradeCommand() *cobra.Command {
 			Downloader: updatepkg.Downloader{UserAgent: version.ClientName + "/" + version.Version},
 		}
 		options := updatepkg.ApplyOptions{Layout: layout, CurrentVersion: version.Version, TargetVersion: targetVersion}
-		startCommandSpinner(cmd, log, "UPDATE", "update.checking", "Checking for updates")
+		progress.Start("update.checking", "Checking for updates", "Update check complete")
 		plan, err := updater.Resolve(cmd.Context(), options)
 		if err != nil {
+			progress.Stop()
 			return fmt.Errorf("check update: %w", err)
 		}
-		log.StopAnimation()
+		progress.Complete()
 		if targetVersion == "" {
 			cacheLatestRelease(cmd, layout, plan.Target)
 		}
 		if !plan.Changed {
+			kind := presentation.StatusInfo
+			message := "Already up to date"
 			if plan.Current == plan.Target {
-				log.Ready("UPDATE", "update.current", "Already up to date")
 			} else {
-				log.Notice("UPDATE", "update.ahead", "Current version is newer than the latest release")
+				message = "Current version is newer than the latest release"
 			}
-			log.Detail("current", plan.Current)
-			log.Detail("latest", plan.Target)
+			renderMutationResult(cmd, "Upgrade CodeMCP", kind, message,
+				presentation.Field{Label: "current", Value: plan.Current},
+				presentation.Field{Label: "latest", Value: plan.Target},
+			)
 			return nil
-		}
-		if targetVersion == "" {
-			log.Ready("UPDATE", "update.available", "Update available")
-			log.Detail("current", plan.Current)
-			log.Detail("latest", plan.Target)
-		} else {
-			log.Ready("UPDATE", "update.target-resolved", "Target version resolved")
-			log.Detail("current", plan.Current)
-			log.Detail("target", plan.Target)
 		}
 		logCommandStep(cmd, "UPDATE", "update.runtime.inspecting", "Inspecting managed runtime state")
 		runtimeState, err := captureUpdateRuntimeState(cmd.Context())
 		if err != nil {
 			return fmt.Errorf("inspect managed runtime before update: %w", err)
 		}
-		startCommandSpinner(cmd, log, "UPDATE", "update.applying", "Applying update "+plan.Target)
 		logCommandStep(cmd, "UPDATE", "update.release.applying", "Downloading and activating release", logger.WithVerbose("target", plan.Target))
 		options.ResolvedRelease = &plan.Release
 		result, err := updater.Apply(cmd.Context(), options)
 		if err != nil {
 			return fmt.Errorf("apply update: %w", err)
 		}
-		log.StopAnimation()
-		log.Ready("UPDATE", "update.applied", "Update applied")
-		log.Detail("previous", result.Current)
-		log.Detail("current", result.Target)
-		log.Detail("binary", result.Install.Staged.Binary)
 		logCommandStep(cmd, "UPDATE", "update.runtime.coordinating", "Coordinating updated managed runtime", logger.WithVerbose("restart", !noRestart))
 		if err := coordinateUpdatedRuntime(cmd, result.Install, runtimeState, noRestart); err != nil {
 			return fmt.Errorf("update to %s failed after activation: %w", result.Target, err)
@@ -94,7 +86,11 @@ func upgradeCommand() *cobra.Command {
 		if result.Downgrade {
 			message = "Version change complete"
 		}
-		log.Success("UPDATE", message)
+		renderMutationSuccess(cmd, "Upgrade CodeMCP", message,
+			presentation.Field{Label: "previous", Value: result.Current},
+			presentation.Field{Label: "current", Value: result.Target},
+			presentation.Field{Label: "binary", Value: result.Install.Staged.Binary},
+		)
 		return nil
 	}}
 	cmd.Flags().StringVar(&targetVersion, "version", "", "install a specific release version (allows explicit downgrade)")
@@ -105,33 +101,37 @@ func upgradeCommand() *cobra.Command {
 
 func upgradeCheckCommand() *cobra.Command {
 	return &cobra.Command{Use: "check", Short: "Check the latest available release", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		log := commandLogger(cmd)
 		logCommandStep(cmd, "UPDATE", "update.release.checking", "Resolving latest release", logger.WithVerbose("current", version.Version))
-		startCommandSpinner(cmd, log, "UPDATE", "update.checking", "Checking for updates")
+		progress := newCommandProgress(cmd, "UPDATE")
+		beginMutationProgress(cmd, "Check for updates")
+		progress.Start("update.checking", "Checking for updates", "Update check complete")
 		checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}
 		result, err := checker.Check(cmd.Context(), version.Version)
 		if err != nil {
+			progress.Stop()
 			return fmt.Errorf("check latest release: %w", err)
 		}
-		log.StopAnimation()
+		progress.Complete()
 		cacheLatestReleaseForCurrentInstall(cmd, result.Latest)
+		kind := presentation.StatusInfo
+		message := ""
 		switch result.Status {
 		case updatepkg.StatusAvailable:
-			log.Notice("UPDATE", "update.available", "New version available")
+			message = "New version available"
 		case updatepkg.StatusUpToDate:
-			log.Ready("UPDATE", "update.current", "Already up to date")
+			message = "Already up to date"
 		case updatepkg.StatusAhead:
-			log.Notice("UPDATE", "update.ahead", "Current version is newer than the latest release")
+			message = "Current version is newer than the latest release"
 		case updatepkg.StatusDevelopment:
-			log.Notice("UPDATE", "update.development", "Development build; latest release shown for reference")
+			message = "Development build; latest release shown for reference"
 		default:
 			return fmt.Errorf("unknown update status %q", result.Status)
 		}
-		log.Detail("current", result.Current)
-		log.Detail("latest", result.Latest)
+		fields := []presentation.Field{{Label: "current", Value: result.Current}, {Label: "latest", Value: result.Latest}}
 		if result.Status == updatepkg.StatusAvailable {
-			log.Detail("run", cliUseName()+" upgrade")
+			fields = append(fields, presentation.Field{Label: "run", Value: cliUseName() + " upgrade"})
 		}
+		renderMutationResult(cmd, "Check for updates", kind, message, fields...)
 		return nil
 	}}
 }

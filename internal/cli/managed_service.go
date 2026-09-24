@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/logger"
@@ -114,6 +115,7 @@ func runRestart(cmd *cobra.Command, _ []string) error {
 }
 
 func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
+	beginMutationProgress(cmd, "Restart CodeMCP")
 	logCommandStep(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
 	source, err := config.Source()
 	if err != nil {
@@ -129,7 +131,6 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 	if err != nil {
 		return err
 	}
-	log := commandLogger(cmd)
 	progress := managedLifecycleProgress(cmd)
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
@@ -142,13 +143,7 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 	}
 	progress.Complete()
 	status := result.Status
-	log.Ready("SERVICE", "service.restarted", "Managed service restarted")
-	logManagedDetails(log, spec, manager)
-	log.Ready("SERVER", "server.started", "Server started")
-	logRuntimeDetails(log, status)
-	logRuntimeTunnelResult(log, status)
-	logRuntimeTunnelMetadata(log, cfg.Tunnel, status, config.LoadTunnelMetadata)
-	logManagedHints(log, spec)
+	renderManagedLifecycleResult(cmd, "Restart CodeMCP", "Managed service restarted", spec, manager, status, cfg.Tunnel)
 	return nil
 }
 
@@ -249,6 +244,7 @@ func resolveManagedConfigRoot(cmd *cobra.Command, scope managed.Scope, account m
 }
 
 func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
+	beginMutationProgress(cmd, "Start CodeMCP")
 	logCommandStep(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
 	source, err := config.Source()
 	if err != nil {
@@ -281,7 +277,6 @@ func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager
 			action = "updated"
 		}
 	}
-	log := commandLogger(cmd)
 	progress := managedLifecycleProgress(cmd)
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
@@ -295,13 +290,14 @@ func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager
 	progress.Complete()
 	status := result.Status
 	if !result.Changed {
-		logManagedAlreadyRunning(cmd, spec, manager, status, cfg.Tunnel)
+		renderManagedLifecycleResult(cmd, "Start CodeMCP", "Managed service already running", spec, manager, status, cfg.Tunnel)
 		return nil
 	}
-	logManagedUp(log, spec, manager, status, action)
-	logRuntimeTunnelResult(log, status)
-	logRuntimeTunnelMetadata(log, cfg.Tunnel, status, config.LoadTunnelMetadata)
-	logManagedHints(log, spec)
+	message := "Managed service " + action
+	if spec.Scope == managed.ScopeSystem {
+		message = "System service " + action
+	}
+	renderManagedLifecycleResult(cmd, "Start CodeMCP", message, spec, manager, status, cfg.Tunnel)
 	return nil
 }
 
@@ -345,7 +341,7 @@ func logManagedStartupFailure(cmd *cobra.Command, spec managed.Spec, manager man
 }
 
 func runManagedDown(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
-	log := commandLogger(cmd)
+	beginMutationProgress(cmd, "Stop CodeMCP")
 	progress := managedLifecycleProgress(cmd)
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
@@ -357,14 +353,92 @@ func runManagedDown(cmd *cobra.Command, spec managed.Spec, manager managed.Manag
 	}
 	progress.Complete()
 	if !result.Changed {
-		log.Notice("SERVICE", "service.not-installed", "Managed service is not installed")
+		renderMutationResult(cmd, "Stop CodeMCP", presentation.StatusInfo, "Managed service is not installed")
 		return nil
 	}
-	log.Ready("SERVICE", "service.stopped", "Server stopped")
-	log.Ready("SERVICE", "service.removed", "Managed service removed")
-	log.Detail("config preserved", spec.ConfigRoot)
-	log.Detail("logs preserved", filepath.Join(spec.ConfigRoot, "logs"))
+	closeCommandProgress(cmd, nil)
+	presenter := commandPresenter(cmd)
+	presenter.Frame("Stop CodeMCP")
+	presenter.ChildStatus(presentation.StatusSuccess, "Server stopped")
+	presenter.Status(presentation.StatusSuccess, "Managed service removed")
+	presenter.Fields(
+		presentation.Field{Label: "config preserved", Value: spec.ConfigRoot},
+		presentation.Field{Label: "logs preserved", Value: filepath.Join(spec.ConfigRoot, "logs")},
+	)
+	presenter.FrameEnd("Done")
 	return nil
+}
+
+func renderManagedLifecycleResult(cmd *cobra.Command, title, message string, spec managed.Spec, manager managed.Manager, status runtimeStatusResult, cfg tunnel.Config) {
+	closeCommandProgress(cmd, nil)
+	presenter := commandPresenter(cmd)
+	presenter.Frame(title)
+	presenter.Status(presentation.StatusSuccess, message)
+	presenter.ChildStatus(presentation.StatusSuccess, "Server started")
+	fields := []presentation.Field{
+		{Label: "scope", Value: spec.Scope},
+		{Label: "backend", Value: managedBackendLabel(manager, spec)},
+	}
+	if spec.Scope == managed.ScopeSystem && spec.Account.Username != "" {
+		fields = append(fields, presentation.Field{Label: "user", Value: spec.Account.Username})
+	}
+	fields = append(fields,
+		presentation.Field{Label: "config", Value: spec.ConfigRoot},
+		presentation.Field{Label: "service", Value: spec.ID},
+	)
+	if status.RunID != "" {
+		fields = append(fields, presentation.Field{Label: "session", Value: shortSessionID(status.RunID)})
+	}
+	fields = append(fields, presentation.Field{Label: "pid", Value: status.PID})
+	if status.ServerEnabled {
+		fields = append(fields, presentation.Field{Label: "mcp http", Value: fmt.Sprintf("http://127.0.0.1:%d/mcp", status.ServerPort)})
+	} else {
+		fields = append(fields, presentation.Field{Label: "mcp http", Value: "disabled"})
+	}
+	if status.AdminEnabled {
+		fields = append(fields, presentation.Field{Label: "admin", Value: fmt.Sprintf("http://127.0.0.1:%d/", status.AdminPort)})
+	}
+	presenter.Fields(fields...)
+	state := statusTunnelState(status, true)
+	presenter.ChildState(statusPresentationKind(state), "OpenAI Secure MCP Tunnel", state)
+	if status.TunnelID != "" {
+		presenter.Fields(presentation.Field{Label: "tunnel id", Value: status.TunnelID})
+	}
+	if state == "connected" {
+		id := strings.TrimSpace(status.TunnelID)
+		if id == "" {
+			id = strings.TrimSpace(cfg.ID)
+		}
+		if metadata, err := config.LoadTunnelMetadata(id); err == nil {
+			metadataFields := []presentation.Field{}
+			if metadata.Name != "" {
+				metadataFields = append(metadataFields, presentation.Field{Label: "tunnel name", Value: metadata.Name})
+			}
+			if metadata.Description != "" {
+				metadataFields = append(metadataFields, presentation.Field{Label: "tunnel description", Value: metadata.Description})
+			}
+			if scope := tunnelMetadataScope(metadata); scope != "" {
+				metadataFields = append(metadataFields, presentation.Field{Label: "tunnel scope", Value: scope})
+			}
+			presenter.Fields(metadataFields...)
+		}
+	}
+	if warning := managed.PersistenceWarning(spec); warning != "" {
+		presenter.ChildStatus(presentation.StatusWarning, warning)
+	}
+	presenter.Fields(
+		presentation.Field{Label: "View logs", Value: "cm logs -f"},
+		presentation.Field{Label: "Stop service", Value: managedStopCommand(spec)},
+	)
+	presenter.FrameEnd("Done")
+}
+
+func managedStopCommand(spec managed.Spec) string {
+	stop := "cm down"
+	if spec.Scope == managed.ScopeSystem && runtime.GOOS != "windows" {
+		stop = "cm down --system"
+	}
+	return stop
 }
 
 func managedLifecycleProgress(cmd *cobra.Command) *commandProgress {
@@ -417,73 +491,6 @@ func waitManagedRuntimeReady(parent context.Context, spec managed.Spec, timeout 
 
 func managedScopeConflict(status runtimeStatusResult, spec managed.Spec, action string) error {
 	return managed.ValidateRuntimeOwner(status, true, spec, action)
-}
-
-func logManagedAlreadyRunning(cmd *cobra.Command, spec managed.Spec, manager managed.Manager, status runtimeStatusResult, cfg tunnel.Config) {
-	log := commandLogger(cmd)
-	log.Ready("SERVICE", "service.already-running", "Managed service already running")
-	logManagedDetails(log, spec, manager)
-	logRuntimeDetails(log, status)
-	logRuntimeTunnelResult(log, status)
-	logRuntimeTunnelMetadata(log, cfg, status, config.LoadTunnelMetadata)
-	logManagedHints(log, spec)
-}
-
-func logManagedUp(log *logger.Logger, spec managed.Spec, manager managed.Manager, status runtimeStatusResult, action string) {
-	message := "Managed service " + action
-	if spec.Scope == managed.ScopeSystem {
-		message = "System service " + action
-	}
-	log.Ready("SERVICE", "service."+action, message)
-	logManagedDetails(log, spec, manager)
-	log.Ready("SERVER", "server.started", "Server started")
-	logRuntimeDetails(log, status)
-}
-
-func logManagedDetails(log *logger.Logger, spec managed.Spec, manager managed.Manager) {
-	log.Detail("scope", spec.Scope)
-	log.Detail("backend", managedBackendLabel(manager, spec))
-	if spec.Scope == managed.ScopeSystem && spec.Account.Username != "" {
-		log.Detail("user", spec.Account.Username)
-	}
-	log.Detail("config", spec.ConfigRoot)
-	log.Detail("service", spec.ID)
-}
-
-func logRuntimeDetails(log *logger.Logger, status runtimeStatusResult) {
-	if status.RunID != "" {
-		log.Detail("session", shortSessionID(status.RunID))
-	}
-	log.Detail("pid", status.PID)
-	if status.ServerEnabled {
-		log.Detail("mcp http", fmt.Sprintf("http://127.0.0.1:%d/mcp", status.ServerPort))
-	} else {
-		log.Detail("mcp http", "disabled")
-	}
-	if status.AdminEnabled {
-		log.Detail("admin", fmt.Sprintf("http://127.0.0.1:%d/", status.AdminPort))
-	}
-}
-
-func logRuntimeTunnelResult(log *logger.Logger, status runtimeStatusResult) {
-	state := statusTunnelState(status, true)
-	switch state {
-	case "connected":
-		log.Ready("TUNNEL", "tunnel.connected", "OpenAI Secure MCP Tunnel connected")
-	case "failed":
-		var err error
-		if status.TunnelLastError != "" {
-			err = errors.New(status.TunnelLastError)
-		}
-		log.Failure("TUNNEL", "tunnel.failed", "OpenAI Secure MCP Tunnel failed", err)
-	case "starting", "connecting", "reconnecting":
-		log.Warning("TUNNEL", "tunnel.pending", "OpenAI Secure MCP Tunnel is still "+state, nil)
-	default:
-		log.Notice("TUNNEL", "tunnel."+strings.ReplaceAll(state, " ", "-"), "OpenAI Secure MCP Tunnel is "+state)
-	}
-	if status.TunnelID != "" {
-		log.Detail("tunnel id", status.TunnelID)
-	}
 }
 
 type tunnelMetadataLoadFunc func(string) (tunnel.Metadata, error)
@@ -551,25 +558,6 @@ func runtimeTunnelSummary(status runtimeStatusResult) string {
 		}
 	}
 	return strings.Join(parts, " · ")
-}
-
-func logManagedHints(log *logger.Logger, spec managed.Spec) {
-	if spec.Scope == managed.ScopeSystem {
-		log.Notice("SERVICE", "service.machine-start", "Service starts automatically with the machine")
-	} else if warning := managed.PersistenceWarning(spec); warning != "" {
-		log.Warning("SERVICE", "service.persistence.warning", warning, nil)
-		if runtime.GOOS == "linux" && spec.Account.Username != "" {
-			log.Detail("machine service", "cm up --system")
-		}
-	} else {
-		log.Notice("SERVICE", "service.detached", "Runtime will continue independently of this terminal")
-	}
-	log.Notice("SERVICE", "service.logs-hint", "View logs: cm logs -f")
-	stop := "cm down"
-	if spec.Scope == managed.ScopeSystem && runtime.GOOS != "windows" {
-		stop = "cm down --system"
-	}
-	log.Notice("SERVICE", "service.stop-hint", "Stop service: "+stop)
 }
 
 func managedBackendLabel(manager managed.Manager, spec managed.Spec) string {

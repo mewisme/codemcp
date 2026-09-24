@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/logger"
@@ -30,31 +31,31 @@ func runPackageManagedUpgrade(cmd *cobra.Command, detection install.Detection, t
 	if strings.TrimSpace(targetVersion) != "" {
 		return fmt.Errorf("--version is unavailable for %s installations; package-manager upgrades follow the latest published manifest", plan.Name)
 	}
-	log := commandLogger(cmd)
-	startCommandSpinner(cmd, log, "UPDATE", "update.checking", "Checking for updates")
+	progress := newCommandProgress(cmd, "UPDATE")
+	progress.Start("update.checking", "Checking for updates", "Update check complete")
 	checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}
 	check, err := checker.Check(cmd.Context(), version.Version)
-	log.StopAnimation()
 	if err != nil {
+		progress.Stop()
 		return fmt.Errorf("check update: %w", err)
 	}
+	progress.Complete()
 	switch check.Status {
 	case updatepkg.StatusUpToDate:
-		log.Ready("UPDATE", "update.current", "Already up to date")
-		log.Detail("current", check.Current)
-		log.Detail("latest", check.Latest)
+		renderMutationResult(cmd, "Upgrade CodeMCP", presentation.StatusInfo, "Already up to date",
+			presentation.Field{Label: "current", Value: check.Current},
+			presentation.Field{Label: "latest", Value: check.Latest},
+		)
 		return nil
 	case updatepkg.StatusAhead:
-		log.Notice("UPDATE", "update.ahead", "Current version is newer than the latest release")
-		log.Detail("current", check.Current)
-		log.Detail("latest", check.Latest)
+		renderMutationResult(cmd, "Upgrade CodeMCP", presentation.StatusInfo, "Current version is newer than the latest release",
+			presentation.Field{Label: "current", Value: check.Current},
+			presentation.Field{Label: "latest", Value: check.Latest},
+		)
 		return nil
 	case updatepkg.StatusDevelopment:
 		return updatepkg.ErrDevelopmentUpdate
 	case updatepkg.StatusAvailable:
-		log.Ready("UPDATE", "update.available", "Update available")
-		log.Detail("current", check.Current)
-		log.Detail("latest", check.Latest)
 	default:
 		return fmt.Errorf("unknown update status %q", check.Status)
 	}
@@ -72,10 +73,11 @@ func runPackageManagedUpgrade(cmd *cobra.Command, detection install.Detection, t
 		_ = os.Remove(handoff.ScriptPath)
 		return fmt.Errorf("launch %s update handoff: %w", plan.Name, err)
 	}
-	log.Ready("UPDATE", "update.package.handoff", plan.Name+" update handed off")
-	log.Detail("target", check.Latest)
-	log.Detail("log", handoff.LogPath)
-	log.Notice("UPDATE", "update.package.detached", "Update continues after this process exits")
+	renderMutationSuccess(cmd, "Upgrade CodeMCP", plan.Name+" update handed off",
+		presentation.Field{Label: "target", Value: check.Latest},
+		presentation.Field{Label: "log", Value: handoff.LogPath},
+		presentation.Field{Label: "state", Value: "update continues after this process exits"},
+	)
 	return nil
 }
 

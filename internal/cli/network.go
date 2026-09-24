@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	mcpnetwork "go.mewis.me/codemcp/internal/network"
@@ -184,6 +185,32 @@ func logEndpointDetails(log *logger.Logger, cfg config.Config) {
 	if !cfg.Admin.Enabled {
 		log.Detail("admin", "disabled")
 	}
+}
+
+func endpointPresentationFields(cfg config.Config) []presentation.Field {
+	fields := []presentation.Field{{Label: "expose", Value: cfg.Server.Expose.Mode}}
+	if len(cfg.Server.Expose.Interfaces) > 0 {
+		fields = append(fields, presentation.Field{Label: "interfaces", Value: strings.Join(cfg.Server.Expose.Interfaces, ", ")})
+	}
+	plan, err := resolveListenerPlan(cfg.Server.Expose)
+	if err != nil {
+		return append(fields, presentation.Field{Label: "network", Value: err.Error()})
+	}
+	for _, address := range plan.Addresses {
+		if cfg.Server.Enabled {
+			fields = append(fields, presentation.Field{Label: endpointDetailLabel("mcp", address), Value: endpointURL(address.Host, cfg.Server.Port, "/mcp")})
+		}
+		if cfg.Admin.Enabled {
+			fields = append(fields, presentation.Field{Label: endpointDetailLabel("admin", address), Value: endpointURL(address.Host, cfg.Admin.Port, "/")})
+		}
+	}
+	if !cfg.Server.Enabled {
+		fields = append(fields, presentation.Field{Label: "mcp http", Value: "disabled"})
+	}
+	if !cfg.Admin.Enabled {
+		fields = append(fields, presentation.Field{Label: "admin", Value: "disabled"})
+	}
+	return fields
 }
 
 func endpointDetailLabel(kind string, address mcpnetwork.Address) string {

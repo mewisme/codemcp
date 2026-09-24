@@ -50,6 +50,7 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			logCommandStep(cmd, "OAUTH", "oauth.authorization.preparing", "Preparing upstream OAuth authorization", logger.WithVerbose("server", server.ID))
 			store := oauthStoreForCommand(cmd)
 			log := commandLogger(cmd)
+			beginMutationProgress(cmd, "Authorize upstream MCP server")
 			startCommandSpinner(cmd, log, "OAUTH", "oauth.starting", "Starting OAuth authorization")
 			credential, err := store.Login(ctx, mcpoauth.LoginConfig{
 				ServerID: server.ID, ServerURL: server.URL, Scope: server.Auth.Scope, Issuer: issuer,
@@ -72,13 +73,6 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			log.Success("OAUTH", "authorization stored", "id", server.ID)
-			log.Detail("issuer", credential.Issuer)
-			log.Detail("registration", credential.Registration)
-			log.Detail("scopes", strings.Join(credential.Scopes, " "))
-			if !credential.ExpiresAt.IsZero() {
-				log.Detail("expires", credential.ExpiresAt.Format(time.RFC3339))
-			}
 			startCommandSpinner(cmd, log, "MCP", "mcp.health.checking", "Checking upstream MCP health")
 			healthSpan := tracepkg.Start(ctx, "OAUTH", "oauth.post-login.health", "Checking upstream MCP health after OAuth login", tracepkg.String("server", server.ID))
 			status := manager.CheckHealth(ctx, server.ID, true)
@@ -87,8 +81,18 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 				log.Warn("MCP", "OAuth completed but upstream health check did not connect", "error", status.LastError)
 			} else {
 				healthSpan.EndMessage("Post-login upstream MCP health check connected", tracepkg.String("health", string(status.Health)), tracepkg.Int("tool_count", status.ToolCount))
-				log.Ready("MCP", "mcp.health.connected", "Upstream MCP server connected")
 			}
+			fields := []presentation.Field{
+				{Label: "server", Value: server.ID},
+				{Label: "issuer", Value: credential.Issuer},
+				{Label: "registration", Value: credential.Registration},
+				{Label: "scopes", Value: strings.Join(credential.Scopes, " ")},
+				{Label: "health", Value: status.Health},
+			}
+			if !credential.ExpiresAt.IsZero() {
+				fields = append(fields, presentation.Field{Label: "expires", Value: credential.ExpiresAt.Format(time.RFC3339)})
+			}
+			renderMutationSuccess(cmd, "Authorize upstream MCP server", "Authorization stored", fields...)
 			return nil
 		},
 	}
@@ -180,7 +184,7 @@ func upstreamServerAuthLogoutCommand() *cobra.Command {
 				return err
 			}
 			disconnectSpan.EndMessage("Upstream disconnected after OAuth logout", tracepkg.Bool("credential_invalidated", true))
-			commandLogger(cmd).Success("OAUTH", "authorization removed", "id", args[0])
+			renderMutationSuccess(cmd, "Upstream OAuth authorization", "Authorization removed", presentation.Field{Label: "server", Value: args[0]})
 			return nil
 		},
 	}

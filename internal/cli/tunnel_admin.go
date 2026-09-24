@@ -83,7 +83,7 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 			defer cancel()
-			log := commandLogger(cmd)
+			beginMutationProgress(cmd, "Configure OpenAI tunnel admin key")
 			var scope *tunnel.AdminScope
 			if scopeFlags.changed(cmd) {
 				value := scopeFlags.scope()
@@ -93,13 +93,15 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			log.Success("TUNNEL", "Admin key verified and saved")
-			log.Detail("scope", formatTunnelAdminScope(verifiedScope))
-			if status, statusErr := application.TunnelAdminKeyStatus(); statusErr == nil {
-				log.Detail("access", formatTunnelAdminAccess(status.Access))
+			fields := []presentation.Field{
+				{Label: "scope", Value: formatTunnelAdminScope(verifiedScope)},
+				{Label: "tunnels", Value: count},
+				{Label: "secret store", Value: "secret file store"},
 			}
-			log.Detail("tunnels", count)
-			log.Detail("secret store", "secret file store")
+			if status, statusErr := application.TunnelAdminKeyStatus(); statusErr == nil {
+				fields = append(fields, presentation.Field{Label: "access", Value: formatTunnelAdminAccess(status.Access)})
+			}
+			renderMutationSuccess(cmd, "Configure OpenAI tunnel admin key", "Admin key verified and saved", fields...)
 			return nil
 		},
 	}
@@ -125,17 +127,16 @@ func tunnelAdminKeyVerifyCommand() *cobra.Command {
 		logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.verifying", "Preparing stored tunnel admin key verification")
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
-		log := commandLogger(cmd)
+		beginMutationProgress(cmd, "Verify OpenAI tunnel admin key")
 		count, scope, err := application.VerifyTunnelAdminKey(ctx)
 		if err != nil {
 			return err
 		}
-		log.Success("TUNNEL", "Admin key verified")
-		log.Detail("scope", formatTunnelAdminScope(scope))
+		fields := []presentation.Field{{Label: "scope", Value: formatTunnelAdminScope(scope)}, {Label: "tunnels", Value: count}}
 		if status, statusErr := application.TunnelAdminKeyStatus(); statusErr == nil {
-			log.Detail("access", formatTunnelAdminAccess(status.Access))
+			fields = append(fields, presentation.Field{Label: "access", Value: formatTunnelAdminAccess(status.Access)})
 		}
-		log.Detail("tunnels", count)
+		renderMutationSuccess(cmd, "Verify OpenAI tunnel admin key", "Admin key verified", fields...)
 		return nil
 	}}
 }
@@ -146,7 +147,7 @@ func tunnelAdminKeyRemoveCommand() *cobra.Command {
 		if err := application.RemoveTunnelAdminKey(cmd.Context()); err != nil {
 			return err
 		}
-		commandLogger(cmd).Success("TUNNEL", "Admin key removed")
+		renderMutationSuccess(cmd, "OpenAI tunnel admin key", "Admin key removed")
 		return nil
 	}}
 }
@@ -190,7 +191,6 @@ func tunnelGetCommand() *cobra.Command {
 	var runtimeAPIKey string
 	cmd := &cobra.Command{Use: "get <tunnel_id>", Short: "Fetch a managed tunnel by id", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.admin.get.preparing", "Preparing managed tunnel lookup", logger.WithVerbose("tunnel_id", args[0]))
-		log := commandLogger(cmd)
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
 		result, err := application.GetManagedTunnel(ctx, args[0], application.ManagedTunnelOptions{Configure: configure, RuntimeAPIKey: runtimeAPIKey, Enable: enable})
@@ -202,9 +202,7 @@ func tunnelGetCommand() *cobra.Command {
 			return writeResultJSON(cmd, metadata)
 		}
 		if configure {
-			log.Success("TUNNEL", "managed tunnel loaded")
-			logManagedTunnelMetadata(log, metadata)
-			log.Detail("cm", "configured")
+			renderMutationSuccess(cmd, "Managed OpenAI tunnel", "Managed tunnel loaded", append(managedTunnelMutationFields(metadata), presentation.Field{Label: "cm", Value: "configured"})...)
 			return nil
 		}
 		renderManagedTunnel(commandPresenter(cmd), metadata)
@@ -306,15 +304,12 @@ func tunnelUseCommand() *cobra.Command {
 		logCommandStep(cmd, "TUNNEL", "tunnel.use.preparing", "Preparing managed tunnel selection", logger.WithVerbose("tunnel_id", args[0]))
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
-		log := commandLogger(cmd)
+		beginMutationProgress(cmd, "Select managed OpenAI tunnel")
 		result, err := application.UseManagedTunnel(ctx, args[0], application.ManagedTunnelUseOptions{RuntimeAPIKey: runtimeAPIKey, AutoGenerateRuntimeKey: autoRuntimeKey, ProjectID: projectID})
 		if err != nil {
 			return err
 		}
-		log.Success("TUNNEL", "Managed tunnel selected")
-		logManagedTunnelMetadata(log, result.Metadata)
-		log.Detail("runtime", "configured")
-		log.Detail("enabled", true)
+		renderMutationSuccess(cmd, "Select managed OpenAI tunnel", "Managed tunnel selected", append(managedTunnelMutationFields(result.Metadata), presentation.Field{Label: "runtime", Value: "configured"}, presentation.Field{Label: "enabled", Value: true})...)
 		return nil
 	}}
 	cmd.Flags().StringVar(&runtimeAPIKey, "runtime-api-key", "", "runtime API key for cm; defaults to the currently configured runtime key")
@@ -337,15 +332,18 @@ func tunnelCreateCommand() *cobra.Command {
 			request := tunnel.CreateRequest{Name: strings.TrimSpace(name), Description: strings.TrimSpace(description), OrganizationIDs: normalizeTunnelIDs(organizationIDs), WorkspaceIDs: normalizeTunnelIDs(workspaceIDs), TenantIDs: normalizeTunnelIDs(tenantIDs)}
 			ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 			defer cancel()
-			log := commandLogger(cmd)
+			beginMutationProgress(cmd, "Create managed OpenAI tunnel")
 			result, err := application.CreateManagedTunnel(ctx, request, application.ManagedTunnelOptions{Configure: configure, RuntimeAPIKey: runtimeAPIKey, Enable: enable})
 			if err != nil {
 				return err
 			}
 			metadata := result.Metadata
-			log.Success("TUNNEL", "Tunnel created")
-			logManagedTunnelDetails(log, metadata, configure)
-			log.Detail("ready", "allow 25-30 seconds before expecting the new tunnel to be active")
+			fields := managedTunnelMutationFields(metadata)
+			if configure {
+				fields = append(fields, presentation.Field{Label: "cm", Value: "configured"})
+			}
+			fields = append(fields, presentation.Field{Label: "ready", Value: "allow 25-30 seconds before expecting the new tunnel to be active"})
+			renderMutationSuccess(cmd, "Create managed OpenAI tunnel", "Tunnel created", fields...)
 			return nil
 		},
 	}
@@ -389,14 +387,17 @@ func tunnelUpdateCommand() *cobra.Command {
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
-		log := commandLogger(cmd)
+		beginMutationProgress(cmd, "Update managed OpenAI tunnel")
 		result, err := application.UpdateManagedTunnel(ctx, args[0], request, application.ManagedTunnelOptions{Configure: configure, RuntimeAPIKey: runtimeAPIKey, Enable: enable})
 		if err != nil {
 			return err
 		}
 		metadata := result.Metadata
-		log.Success("TUNNEL", "Tunnel updated")
-		logManagedTunnelDetails(log, metadata, configure)
+		fields := managedTunnelMutationFields(metadata)
+		if configure {
+			fields = append(fields, presentation.Field{Label: "cm", Value: "configured"})
+		}
+		renderMutationSuccess(cmd, "Update managed OpenAI tunnel", "Tunnel updated", fields...)
 		return nil
 	}}
 	cmd.Flags().StringVar(&name, "name", "", "new tunnel name")
@@ -417,14 +418,17 @@ func tunnelDeleteCommand() *cobra.Command {
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
-		log := commandLogger(cmd)
+		beginMutationProgress(cmd, "Delete managed OpenAI tunnel")
 		result, err := application.DeleteManagedTunnel(ctx, args[0], clearConfig)
 		if err != nil {
 			return err
 		}
 		metadata, cleared := result.Metadata, result.Cleared
-		log.Success("TUNNEL", "Tunnel deleted")
-		logManagedTunnelDetails(log, metadata, cleared)
+		fields := managedTunnelMutationFields(metadata)
+		if cleared {
+			fields = append(fields, presentation.Field{Label: "cm", Value: "configuration cleared"})
+		}
+		renderMutationSuccess(cmd, "Delete managed OpenAI tunnel", "Tunnel deleted", fields...)
 		return nil
 	}}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "confirm permanent tunnel deletion")
@@ -460,39 +464,30 @@ func configureManagedTunnel(cfg *config.Config, metadata tunnel.Metadata, runtim
 	return config.Validate(*cfg)
 }
 
-func logManagedTunnelDetails(log *logger.Logger, metadata tunnel.Metadata, configured bool) {
-	logManagedTunnelMetadata(log, metadata)
-	if configured {
-		log.Detail("cm", "configured")
-	}
-}
-
-func logManagedTunnelMetadata(log *logger.Logger, metadata tunnel.Metadata) {
-	log.Detail("id", metadata.ID)
+func managedTunnelMutationFields(metadata tunnel.Metadata) []presentation.Field {
+	fields := []presentation.Field{{Label: "id", Value: metadata.ID}}
 	if metadata.Name != "" {
-		log.Detail("name", metadata.Name)
+		fields = append(fields, presentation.Field{Label: "name", Value: metadata.Name})
 	}
 	if metadata.Description != "" {
-		log.Detail("description", metadata.Description)
+		fields = append(fields, presentation.Field{Label: "description", Value: metadata.Description})
 	}
 	if metadata.Creator != "" {
-		log.Detail("creator", metadata.Creator)
+		fields = append(fields, presentation.Field{Label: "creator", Value: metadata.Creator})
 	}
 	if len(metadata.OrganizationIDs) > 0 {
-		log.Detail("organizations", metadata.OrganizationIDs)
+		fields = append(fields, presentation.Field{Label: "organizations", Value: strings.Join(metadata.OrganizationIDs, ", ")})
 	}
 	if len(metadata.WorkspaceIDs) > 0 {
-		log.Detail("workspaces", metadata.WorkspaceIDs)
+		fields = append(fields, presentation.Field{Label: "workspaces", Value: strings.Join(metadata.WorkspaceIDs, ", ")})
 	}
 	if len(metadata.TenantIDs) > 0 {
-		log.Detail("tenants", metadata.TenantIDs)
+		fields = append(fields, presentation.Field{Label: "tenants", Value: strings.Join(metadata.TenantIDs, ", ")})
 	}
 	if metadata.RequestID != "" {
-		log.Detail("request", metadata.RequestID)
+		fields = append(fields, presentation.Field{Label: "request", Value: metadata.RequestID})
 	}
-	if !metadata.FetchedAt.IsZero() {
-		log.Detail("fetched", metadata.FetchedAt.Local().Format(time.RFC3339))
-	}
+	return fields
 }
 
 func formatTunnelAdminAccess(access tunnel.AdminAccess) string {

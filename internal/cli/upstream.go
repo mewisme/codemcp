@@ -128,11 +128,7 @@ func upstreamServerAddCommand() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("upstream server disappeared after save: %s", args[0])
 			}
-			log := commandLogger(cmd)
-			log.Success("MCP", "upstream server added", "id", normalized.ID)
-			log.Detail("transport", normalized.Transport)
-			log.Detail("prefix", normalized.ToolPrefix)
-			log.Detail("expose", normalized.Expose)
+			renderMutationSuccess(cmd, "Upstream server", "Upstream server added", presentation.Field{Label: "id", Value: normalized.ID}, presentation.Field{Label: "transport", Value: normalized.Transport}, presentation.Field{Label: "prefix", Value: normalized.ToolPrefix}, presentation.Field{Label: "expose", Value: normalized.Expose})
 			return nil
 		},
 	}
@@ -164,7 +160,7 @@ func upstreamServerConfigureCommand() *cobra.Command {
 			if err := manager.Add(server); err != nil {
 				return err
 			}
-			commandLogger(cmd).Success("MCP", "upstream server updated", "id", server.ID)
+			renderMutationSuccess(cmd, "Upstream server", "Upstream server updated", presentation.Field{Label: "id", Value: server.ID})
 			return nil
 		},
 	}
@@ -217,7 +213,7 @@ func upstreamServerRemoveCommand() *cobra.Command {
 			if err := manager.Remove(args[0]); err != nil {
 				return err
 			}
-			commandLogger(cmd).Success("MCP", "upstream server removed", "id", args[0])
+			renderMutationSuccess(cmd, "Upstream server", "Upstream server removed", presentation.Field{Label: "id", Value: args[0]})
 			return nil
 		},
 	}
@@ -246,7 +242,7 @@ func upstreamServerToggleCommand(enabled bool) *cobra.Command {
 			if err := manager.Add(server); err != nil {
 				return err
 			}
-			commandLogger(cmd).Success("MCP", action+"d", "id", args[0])
+			renderMutationSuccess(cmd, "Upstream server", strings.ToUpper(action[:1])+action[1:]+"d", presentation.Field{Label: "id", Value: args[0]})
 			return nil
 		},
 	}
