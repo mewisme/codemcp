@@ -10,6 +10,8 @@ import (
 
 	"github.com/fatih/color"
 
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/logger"
@@ -99,15 +101,46 @@ func TestRenderTunnelStatusTextIsCLIFirst(t *testing.T) {
 		AdminScope: &tunnel.AdminScope{WorkspaceID: "ws_admin"}, Metadata: &tunnel.Metadata{ID: "tunnel_test", Name: "MCP WSL", Description: "WSL tunnel"},
 	}
 	var output bytes.Buffer
-	renderTunnelStatusText(&output, cfg, status, true, false)
+	renderTunnelStatusText(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), cfg, status, true, false)
 	text := output.String()
-	for _, expected := range []string{"✓ OpenAI Secure MCP Tunnel is connected", "Tunnel", "status      connected", "enabled     true", "configured  true", "id          tunnel_test", "name        MCP WSL", "admin       configured · workspace:ws_admin"} {
+	for _, expected := range []string{"┌  OpenAI Secure MCP Tunnel", "✓  OpenAI Secure MCP Tunnel is connected", "│  ◆ status — connected", "│  ◆ enabled — true", "│  ◆ configured — true", "│  ◆ id — tunnel_test", "│  ◆ name — MCP WSL", "│  ◆ admin — configured · workspace:ws_admin", "└  Status complete"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("output %q missing %q", text, expected)
 		}
 	}
 	if strings.HasPrefix(strings.TrimSpace(text), "{") || strings.Contains(text, `"provider":`) {
 		t.Fatalf("default tunnel status rendered JSON: %q", text)
+	}
+}
+
+func TestTunnelReadRenderersUseRailHierarchyAndRedaction(t *testing.T) {
+	metadata := tunnel.Metadata{
+		ID: "tunnel_one", Name: "One", Description: "First", Creator: "user",
+		WorkspaceIDs: []string{"ws_admin"}, OrganizationIDs: []string{"org_demo"},
+	}
+	var output bytes.Buffer
+	renderManagedTunnelList(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), []tunnel.Metadata{metadata})
+	listText := output.String()
+	for _, expected := range []string{"┌  Managed OpenAI tunnels", "◆  Managed tunnels loaded · 1", "│  ◆ tunnel_one", "│  │  name — One", "│  │  workspaces — ws_admin", "└  Done"} {
+		if !strings.Contains(listText, expected) {
+			t.Fatalf("managed tunnel list missing %q: %q", expected, listText)
+		}
+	}
+	if strings.Contains(listText, "scope=") {
+		t.Fatalf("managed tunnel list retained dense summary: %q", listText)
+	}
+
+	output.Reset()
+	renderTunnelAdminKeyStatus(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), application.TunnelAdminStatus{
+		Configured: true,
+		Scope:      tunnel.AdminScope{WorkspaceID: "ws_admin"},
+		Access:     tunnel.AdminAccess{Read: true, Manage: true},
+	})
+	adminText := output.String()
+	for _, expected := range []string{"┌  OpenAI tunnel admin key", "✓  Admin key configured", "│  ◆ key — <redacted>", "│  ◆ scope — workspace:ws_admin", "│  ◆ access — full management"} {
+		if !strings.Contains(adminText, expected) {
+			t.Fatalf("admin status missing %q: %q", expected, adminText)
+		}
 	}
 }
 

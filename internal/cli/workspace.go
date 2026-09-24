@@ -3,11 +3,12 @@ package cli
 import (
 	"fmt"
 	"os"
-	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/logger"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -140,11 +141,7 @@ func workspaceContainerListCommand() *cobra.Command {
 		if asJSON {
 			return writeResultJSON(cmd, values)
 		}
-		log := commandLogger(cmd)
-		log.Success("WORKSPACE", "workspace containers loaded", "count", len(values))
-		for _, value := range values {
-			log.Detail(value.ID, value.Name+" · "+strconv.Itoa(len(value.WorkspaceIDs))+" workspaces")
-		}
+		renderWorkspaceContainers(commandPresenter(cmd), values)
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -177,15 +174,7 @@ func workspaceContainerShowCommand() *cobra.Command {
 		if asJSON {
 			return writeResultJSON(cmd, value)
 		}
-		log := commandLogger(cmd)
-		log.Info("WORKSPACE", "workspace container details")
-		log.Detail("id", value.ID)
-		log.Detail("name", value.Name)
-		if len(value.WorkspaceIDs) == 0 {
-			log.Detail("workspaces", "none")
-		} else {
-			log.Detail("workspaces", value.WorkspaceIDs)
-		}
+		renderWorkspaceContainer(commandPresenter(cmd), value)
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -261,14 +250,7 @@ func workspaceAccessCommand() *cobra.Command {
 		if listJSON {
 			return writeResultJSON(cmd, allowDirs)
 		}
-		log := commandLogger(cmd)
-		log.Success("WORKSPACE", "allowed directories loaded", "count", len(allowDirs))
-		log.Detail("workspace", args[0])
-		if len(allowDirs) == 0 {
-			log.Detail("allow dirs", "none")
-		} else {
-			log.Detail("allow dirs", allowDirs)
-		}
+		renderWorkspaceAccess(commandPresenter(cmd), args[0], allowDirs)
 		return nil
 	}}
 	addJSONResultFlag(list, &listJSON)
@@ -347,22 +329,7 @@ func workspaceListCommand() *cobra.Command {
 			if asJSON {
 				return writeResultJSON(cmd, items)
 			}
-			log := commandLogger(cmd)
-			log.Success("WORKSPACE", "registered workspaces loaded", "count", len(items))
-			for _, item := range items {
-				value := item.Path
-				if !item.Available {
-					value += " · unavailable: " + item.Error
-				} else {
-					hygiene := workspace.InspectLocalStateGitHygiene(cmd.Context(), item.Path)
-					if hygiene.Tracked {
-						value += " · git hygiene: tracked .cm; " + hygiene.Guidance
-					} else if hygiene.Degraded || !hygiene.Protected {
-						value += " · git hygiene: degraded"
-					}
-				}
-				log.Detail(item.ID, value)
-			}
+			renderWorkspaceList(cmd, commandPresenter(cmd), items)
 			return nil
 		},
 	}
@@ -386,40 +353,129 @@ func workspaceShowCommand() *cobra.Command {
 			if asJSON {
 				return writeResultJSON(cmd, item)
 			}
-			log := commandLogger(cmd)
-			log.Info("WORKSPACE", "workspace details")
-			log.Detail("id", item.ID)
-			log.Detail("root", item.Path)
-			log.Detail("available", item.Available)
-			if item.Error != "" {
-				log.Detail("error", item.Error)
-			}
-			if item.Available {
-				hygiene := workspace.InspectLocalStateGitHygiene(cmd.Context(), item.Path)
-				state := "healthy"
-				if hygiene.Tracked {
-					state = "tracked .cm"
-				} else if hygiene.Degraded || !hygiene.Protected {
-					state = "degraded"
-				}
-				log.Detail("git hygiene", state)
-				if hygiene.Guidance != "" {
-					log.Detail("git guidance", hygiene.Guidance)
-				}
-			}
-			if len(item.AllowDirs) == 0 {
-				log.Detail("allow dirs", "none")
-			} else {
-				log.Detail("allow dirs", item.AllowDirs)
-			}
-			if len(item.LegacyIDs) > 0 {
-				log.Detail("legacy ids", item.LegacyIDs)
-			}
+			renderWorkspace(cmd, commandPresenter(cmd), item)
 			return nil
 		},
 	}
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
+}
+
+func renderWorkspaceList(cmd *cobra.Command, presenter *presentation.Presenter, items []application.WorkspaceView) {
+	presenter.Frame("Registered workspaces")
+	if len(items) == 0 {
+		presenter.StateSection(presentation.StatusInactive, "No registered workspaces")
+		presenter.FrameEnd("Done")
+		return
+	}
+	presenter.Section(fmt.Sprintf("Registered workspaces loaded · %d", len(items)))
+	for _, item := range items {
+		presenter.Subsection(item.ID)
+		fields := []presentation.Field{
+			{Label: "root", Value: item.Path},
+			{Label: "available", Value: item.Available},
+		}
+		if !item.Available {
+			if item.Error != "" {
+				fields = append(fields, presentation.Field{Label: "error", Value: item.Error})
+			}
+		} else {
+			fields = append(fields, workspaceHygieneFields(cmd, item.Path)...)
+		}
+		presenter.NestedFields(fields...)
+	}
+	presenter.FrameEnd("Done")
+}
+
+func renderWorkspace(cmd *cobra.Command, presenter *presentation.Presenter, item application.WorkspaceView) {
+	presenter.Frame("Workspace details")
+	presenter.Section(item.ID)
+	fields := []presentation.Field{
+		{Label: "root", Value: item.Path},
+		{Label: "available", Value: item.Available},
+	}
+	if item.Error != "" {
+		fields = append(fields, presentation.Field{Label: "error", Value: item.Error})
+	}
+	if item.Available {
+		fields = append(fields, workspaceHygieneFields(cmd, item.Path)...)
+	}
+	allowDirs := "none"
+	if len(item.AllowDirs) > 0 {
+		allowDirs = strings.Join(item.AllowDirs, ", ")
+	}
+	fields = append(fields, presentation.Field{Label: "allow dirs", Value: allowDirs})
+	if len(item.LegacyIDs) > 0 {
+		fields = append(fields, presentation.Field{Label: "legacy ids", Value: strings.Join(item.LegacyIDs, ", ")})
+	}
+	presenter.Fields(fields...)
+	presenter.FrameEnd("Done")
+}
+
+func workspaceHygieneFields(cmd *cobra.Command, root string) []presentation.Field {
+	hygiene := workspace.InspectLocalStateGitHygiene(cmd.Context(), root)
+	state := "healthy"
+	if hygiene.Tracked {
+		state = "tracked .cm"
+	} else if hygiene.Degraded || !hygiene.Protected {
+		state = "degraded"
+	}
+	fields := []presentation.Field{{Label: "git hygiene", Value: state}}
+	if hygiene.Guidance != "" {
+		fields = append(fields, presentation.Field{Label: "git guidance", Value: hygiene.Guidance})
+	}
+	return fields
+}
+
+func renderWorkspaceContainers(presenter *presentation.Presenter, values []application.WorkspaceContainerView) {
+	presenter.Frame("Workspace containers")
+	if len(values) == 0 {
+		presenter.StateSection(presentation.StatusInactive, "No workspace containers")
+		presenter.FrameEnd("Done")
+		return
+	}
+	presenter.Section(fmt.Sprintf("Workspace containers loaded · %d", len(values)))
+	for _, value := range values {
+		presenter.Subsection(value.ID)
+		workspaces := "none"
+		if len(value.WorkspaceIDs) > 0 {
+			workspaces = strings.Join(value.WorkspaceIDs, ", ")
+		}
+		presenter.NestedFields(
+			presentation.Field{Label: "name", Value: value.Name},
+			presentation.Field{Label: "workspaces", Value: workspaces},
+		)
+	}
+	presenter.FrameEnd("Done")
+}
+
+func renderWorkspaceContainer(presenter *presentation.Presenter, value application.WorkspaceContainerView) {
+	presenter.Frame("Workspace container details")
+	presenter.Section(value.ID)
+	workspaces := "none"
+	if len(value.WorkspaceIDs) > 0 {
+		workspaces = strings.Join(value.WorkspaceIDs, ", ")
+	}
+	presenter.Fields(
+		presentation.Field{Label: "name", Value: value.Name},
+		presentation.Field{Label: "workspaces", Value: workspaces},
+	)
+	presenter.FrameEnd("Done")
+}
+
+func renderWorkspaceAccess(presenter *presentation.Presenter, workspaceID string, allowDirs []string) {
+	presenter.Frame(fmt.Sprintf("Allowed directories loaded · %d", len(allowDirs)))
+	presenter.Section("Workspace")
+	presenter.Fields(presentation.Field{Label: "id", Value: workspaceID})
+	presenter.Spacer()
+	if len(allowDirs) == 0 {
+		presenter.StateSection(presentation.StatusInactive, "No additional allowed directories")
+		presenter.Fields(presentation.Field{Label: "allow dirs", Value: "none"})
+	} else {
+		presenter.Section("Allowed directories")
+		presenter.List(allowDirs...)
+	}
+	presenter.FrameEnd("Done")
 }
 
 func workspaceUnregisterCommand() *cobra.Command {

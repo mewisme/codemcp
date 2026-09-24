@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/configformat"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	"go.mewis.me/codemcp/internal/upstream"
 )
 
@@ -70,14 +72,43 @@ func TestMCPCommandDoesNotExposeServerManagement(t *testing.T) {
 	}
 }
 
-func TestLogUpstreamStatusUsesCLIFormatter(t *testing.T) {
+func TestRenderUpstreamStatusUsesCLIFormatter(t *testing.T) {
 	var output bytes.Buffer
-	cmd := newRootCommand()
-	cmd.SetOut(&output)
 	status := upstream.Status{ID: "demo", Name: "Demo", Enabled: true, Transport: "http", Auth: "oauth", Health: upstream.HealthConnected, Connected: true, ToolCount: 2, Expose: "all", ProxiedTools: []string{"demo_one", "demo_two"}}
-	logUpstreamStatus(commandLogger(cmd), status)
+	renderUpstreamStatus(presentation.New(&output, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: false}), status)
 	text := output.String()
-	if !strings.Contains(text, "Upstream server connected") || !strings.Contains(text, "health: connected") || !strings.Contains(text, "tools: 2") || strings.HasPrefix(strings.TrimSpace(text), "{") {
+	if !strings.Contains(text, "Upstream server connected") || !strings.Contains(text, "health") || !strings.Contains(text, "connected") || !strings.Contains(text, "tools") || !strings.Contains(text, "2") || strings.HasPrefix(strings.TrimSpace(text), "{") {
 		t.Fatalf("output=%q", text)
+	}
+}
+
+func TestUpstreamReadRenderersUseRailHierarchyWithoutDenseOrSecretValues(t *testing.T) {
+	server := redactUpstreamServer(upstream.Server{
+		ID: "demo", Name: "Demo", Transport: "http", Enabled: true, URL: "https://mcp.example.test", Expose: "all",
+		Headers: map[string]string{"Authorization": "Bearer secret-value", "X-Test": "ok"},
+	})
+	var output bytes.Buffer
+	renderUpstreamServer(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), server)
+	text := output.String()
+	for _, expected := range []string{"┌  Upstream server", "◆  demo", "│  ◆ endpoint — https://mcp.example.test", "<redacted>", "└  Done"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("upstream detail missing %q: %q", expected, text)
+		}
+	}
+	for _, forbidden := range []string{"secret-value", "enabled=", "health=", "tools="} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("upstream detail contains forbidden dense/secret value %q: %q", forbidden, text)
+		}
+	}
+
+	output.Reset()
+	renderUpstreamOAuthStatus(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), mcpoauth.Status{
+		ServerID: "demo", Configured: true, Issuer: "https://issuer.example.test", Registration: "dynamic", Scopes: []string{"openid", "mcp"}, HasRefreshToken: true,
+	})
+	oauthText := output.String()
+	for _, expected := range []string{"┌  Upstream OAuth authorization", "✓  Authorization configured", "│  ◆ server — demo", "│  ◆ issuer — https://issuer.example.test"} {
+		if !strings.Contains(oauthText, expected) {
+			t.Fatalf("oauth detail missing %q: %q", expected, oauthText)
+		}
 	}
 }

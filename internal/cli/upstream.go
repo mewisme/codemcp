@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/logger"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -81,29 +82,18 @@ func upstreamServerListCommand() *cobra.Command {
 				if asJSON {
 					return writeResultJSON(cmd, statuses)
 				}
-				log.Success("MCP", "upstream status loaded", "count", len(statuses))
-				for _, status := range statuses {
-					log.Detail(status.ID, fmt.Sprintf("%s enabled=%t health=%s tools=%d expose=%s", status.Transport, status.Enabled, status.Health, status.ToolCount, status.Expose))
-				}
+				renderUpstreamStatusList(commandPresenter(cmd), statuses)
 				return nil
 			}
 			servers := manager.List()
+			views := make([]upstream.Server, len(servers))
+			for index, server := range servers {
+				views[index] = redactUpstreamServer(server)
+			}
 			if asJSON {
-				views := make([]upstream.Server, len(servers))
-				for index, server := range servers {
-					views[index] = redactUpstreamServer(server)
-				}
 				return writeResultJSON(cmd, views)
 			}
-			log := commandLogger(cmd)
-			log.Success("MCP", "upstream servers loaded", "count", len(servers))
-			for _, server := range servers {
-				endpoint := server.URL
-				if server.Transport == "stdio" {
-					endpoint = server.Command
-				}
-				log.Detail(server.ID, fmt.Sprintf("%s enabled=%t expose=%s endpoint=%s", server.Transport, server.Enabled, server.Expose, endpoint))
-			}
+			renderUpstreamServerList(commandPresenter(cmd), views)
 			return nil
 		},
 	}
@@ -202,7 +192,7 @@ func upstreamServerShowCommand() *cobra.Command {
 			if asJSON {
 				return writeResultJSON(cmd, server)
 			}
-			logUpstreamServer(commandLogger(cmd), server)
+			renderUpstreamServer(commandPresenter(cmd), server)
 			return nil
 		},
 	}
@@ -285,7 +275,7 @@ func upstreamServerStatusCommand() *cobra.Command {
 			if asJSON {
 				return writeResultJSON(cmd, status)
 			}
-			logUpstreamStatus(log, status)
+			renderUpstreamStatus(commandPresenter(cmd), status)
 			return nil
 		},
 	}
@@ -294,85 +284,81 @@ func upstreamServerStatusCommand() *cobra.Command {
 	return cmd
 }
 
-func logUpstreamServer(log interface {
-	Info(string, string, ...any)
-	Detail(string, any)
-}, server upstream.Server) {
+func renderUpstreamServer(presenter *presentation.Presenter, server upstream.Server) {
 	endpoint := server.URL
 	if server.Transport == "stdio" {
 		endpoint = server.Command
 	}
-	log.Info("MCP", "upstream server")
-	log.Detail("id", server.ID)
-	log.Detail("name", server.Name)
-	log.Detail("transport", server.Transport)
-	log.Detail("enabled", server.Enabled)
-	log.Detail("endpoint", endpoint)
-	log.Detail("auth", server.Auth.Type)
-	if server.Auth.Scope != "" {
-		log.Detail("auth scope", server.Auth.Scope)
+	presenter.Frame("Upstream server")
+	presenter.Section(server.ID)
+	fields := []presentation.Field{
+		{Label: "name", Value: server.Name},
+		{Label: "transport", Value: server.Transport},
+		{Label: "enabled", Value: server.Enabled},
+		{Label: "endpoint", Value: endpoint},
+		{Label: "auth", Value: server.Auth.Type},
 	}
-	log.Detail("expose", server.Expose)
-	log.Detail("tool prefix", server.ToolPrefix)
-	log.Detail("idle timeout", fmt.Sprintf("%ds", server.IdleTimeoutSec))
+	if server.Auth.Scope != "" {
+		fields = append(fields, presentation.Field{Label: "auth scope", Value: server.Auth.Scope})
+	}
+	fields = append(fields,
+		presentation.Field{Label: "expose", Value: server.Expose},
+		presentation.Field{Label: "tool prefix", Value: server.ToolPrefix},
+		presentation.Field{Label: "idle timeout", Value: fmt.Sprintf("%ds", server.IdleTimeoutSec)},
+	)
 	if server.AllowPrivateNetwork {
-		log.Detail("allow private network", true)
+		fields = append(fields, presentation.Field{Label: "allow private network", Value: true})
 	}
 	if server.CWD != "" {
-		log.Detail("cwd", server.CWD)
+		fields = append(fields, presentation.Field{Label: "cwd", Value: server.CWD})
 	}
 	if len(server.Args) > 0 {
-		log.Detail("args", server.Args)
+		fields = append(fields, presentation.Field{Label: "args", Value: strings.Join(server.Args, " ")})
 	}
 	if server.BearerTokenEnvVar != "" {
-		log.Detail("bearer env", server.BearerTokenEnvVar)
+		fields = append(fields, presentation.Field{Label: "bearer env", Value: server.BearerTokenEnvVar})
 	}
 	if len(server.Headers) > 0 {
-		log.Detail("headers", sortedAssignments(server.Headers))
+		fields = append(fields, presentation.Field{Label: "headers", Value: strings.Join(sortedAssignments(server.Headers), ", ")})
 	}
 	if len(server.Env) > 0 {
-		log.Detail("env", sortedAssignments(server.Env))
+		fields = append(fields, presentation.Field{Label: "env", Value: strings.Join(sortedAssignments(server.Env), ", ")})
 	}
 	if len(server.Tools) > 0 {
-		log.Detail("tools", server.Tools)
+		fields = append(fields, presentation.Field{Label: "tools", Value: strings.Join(server.Tools, ", ")})
 	}
 	if len(server.DisabledTools) > 0 {
-		log.Detail("disabled tools", server.DisabledTools)
+		fields = append(fields, presentation.Field{Label: "disabled tools", Value: strings.Join(server.DisabledTools, ", ")})
 	}
+	presenter.Fields(fields...)
+	presenter.FrameEnd("Done")
 }
 
-func logUpstreamStatus(log interface {
-	Success(string, string, ...any)
-	Info(string, string, ...any)
-	Warn(string, string, ...any)
-	Detail(string, any)
-}, status upstream.Status) {
-	switch status.Health {
-	case upstream.HealthConnected:
-		log.Success("MCP", "upstream server connected")
-	case upstream.HealthUnreachable:
-		log.Warn("MCP", "upstream server unreachable")
-	default:
-		log.Info("MCP", "upstream server status")
+func renderUpstreamStatus(presenter *presentation.Presenter, status upstream.Status) {
+	presenter.Frame("Upstream MCP server status")
+	presenter.StateSection(upstreamHealthPresentationKind(status.Health), upstreamHealthLabel(status.Health))
+	fields := []presentation.Field{
+		{Label: "id", Value: status.ID},
+		{Label: "name", Value: status.Name},
+		{Label: "health", Value: status.Health},
+		{Label: "enabled", Value: status.Enabled},
+		{Label: "connected", Value: status.Connected},
+		{Label: "transport", Value: status.Transport},
+		{Label: "auth", Value: status.Auth},
+		{Label: "tools", Value: status.ToolCount},
+		{Label: "expose", Value: status.Expose},
 	}
-	log.Detail("id", status.ID)
-	log.Detail("name", status.Name)
-	log.Detail("health", status.Health)
-	log.Detail("enabled", status.Enabled)
-	log.Detail("connected", status.Connected)
-	log.Detail("transport", status.Transport)
-	log.Detail("auth", status.Auth)
-	log.Detail("tools", status.ToolCount)
-	log.Detail("expose", status.Expose)
 	if len(status.ProxiedTools) > 0 {
-		log.Detail("proxied tools", status.ProxiedTools)
+		fields = append(fields, presentation.Field{Label: "proxied tools", Value: strings.Join(status.ProxiedTools, ", ")})
 	}
 	if status.PID != nil {
-		log.Detail("pid", *status.PID)
+		fields = append(fields, presentation.Field{Label: "pid", Value: *status.PID})
 	}
+	presenter.Fields(fields...)
 	if status.LastError != "" {
-		log.Detail("error", status.LastError)
+		presenter.ChildStatus(presentation.StatusWarning, status.LastError)
 	}
+	presenter.FrameEnd("Status complete")
 }
 
 func sortedAssignments(values map[string]string) []string {
@@ -416,20 +402,101 @@ func upstreamServerToolsCommand() *cobra.Command {
 			for _, name := range manager.ProxiedToolNames(server, values) {
 				proxied[name] = true
 			}
-			log.Success("MCP", "upstream tools loaded", "count", len(values))
+			presenter := commandPresenter(cmd)
+			presenter.Frame("Upstream MCP tools")
+			if len(values) == 0 {
+				presenter.StateSection(presentation.StatusInactive, "No tools exposed by upstream server")
+				presenter.Fields(presentation.Field{Label: "server", Value: args[0]})
+				presenter.FrameEnd("Done")
+				return nil
+			}
+			presenter.Section(fmt.Sprintf("Upstream tools loaded · %d", len(values)))
 			for _, tool := range values {
 				proxy := upstream.ProxyName(server.ToolPrefix, tool.Name)
 				state := "hidden"
 				if proxied[proxy] {
 					state = proxy
 				}
-				log.Detail(tool.Name, state)
+				presenter.Subsection(tool.Name)
+				presenter.NestedFields(presentation.Field{Label: "exposed as", Value: state})
 			}
+			presenter.FrameEnd("Done")
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&refresh, "refresh", false, "force a new upstream connection/tool list")
 	return cmd
+}
+
+func renderUpstreamServerList(presenter *presentation.Presenter, servers []upstream.Server) {
+	presenter.Frame("Upstream MCP servers")
+	if len(servers) == 0 {
+		presenter.StateSection(presentation.StatusInactive, "No upstream MCP servers configured")
+		presenter.FrameEnd("Done")
+		return
+	}
+	presenter.Section(fmt.Sprintf("Upstream servers loaded · %d", len(servers)))
+	for _, server := range servers {
+		endpoint := server.URL
+		if server.Transport == "stdio" {
+			endpoint = server.Command
+		}
+		presenter.Subsection(server.ID)
+		presenter.NestedFields(
+			presentation.Field{Label: "transport", Value: server.Transport},
+			presentation.Field{Label: "enabled", Value: server.Enabled},
+			presentation.Field{Label: "expose", Value: server.Expose},
+			presentation.Field{Label: "endpoint", Value: endpoint},
+		)
+	}
+	presenter.FrameEnd("Done")
+}
+
+func renderUpstreamStatusList(presenter *presentation.Presenter, statuses []upstream.Status) {
+	presenter.Frame("Upstream MCP status")
+	if len(statuses) == 0 {
+		presenter.StateSection(presentation.StatusInactive, "No upstream MCP servers configured")
+		presenter.FrameEnd("Done")
+		return
+	}
+	presenter.Section(fmt.Sprintf("Upstream status loaded · %d", len(statuses)))
+	for _, status := range statuses {
+		presenter.Subsection(status.ID)
+		presenter.NestedFields(
+			presentation.Field{Label: "transport", Value: status.Transport},
+			presentation.Field{Label: "enabled", Value: status.Enabled},
+			presentation.Field{Label: "health", Value: status.Health},
+			presentation.Field{Label: "tools", Value: status.ToolCount},
+			presentation.Field{Label: "expose", Value: status.Expose},
+		)
+	}
+	presenter.FrameEnd("Done")
+}
+
+func upstreamHealthPresentationKind(health upstream.Health) presentation.StatusKind {
+	switch health {
+	case upstream.HealthConnected:
+		return presentation.StatusSuccess
+	case upstream.HealthUnreachable:
+		return presentation.StatusWarning
+	case upstream.HealthDisabled:
+		return presentation.StatusInactive
+	default:
+		return presentation.StatusInfo
+	}
+}
+
+func upstreamHealthLabel(health upstream.Health) string {
+	switch health {
+	case upstream.HealthConnected:
+		return "Upstream server connected"
+	case upstream.HealthUnreachable:
+		return "Upstream server unreachable"
+	case upstream.HealthDisabled:
+		return "Upstream server disabled"
+	default:
+		return "Upstream server status"
+	}
 }
 
 func bindUpstreamFlags(cmd *cobra.Command, flags *upstreamFlags, create bool) {

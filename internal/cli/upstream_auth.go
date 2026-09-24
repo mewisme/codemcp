@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/logger"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -124,24 +125,35 @@ func upstreamServerAuthStatusCommand() *cobra.Command {
 			if asJSON {
 				return writeResultJSON(cmd, status)
 			}
-			log := commandLogger(cmd)
-			if !status.Configured {
-				log.Info("OAUTH", "not authorized", "id", args[0])
-				return nil
-			}
-			log.Success("OAUTH", "authorization configured", "id", args[0])
-			log.Detail("issuer", status.Issuer)
-			log.Detail("registration", status.Registration)
-			log.Detail("scopes", strings.Join(status.Scopes, " "))
-			log.Detail("refresh", status.HasRefreshToken)
-			if status.ExpiresAt != nil {
-				log.Detail("expires", status.ExpiresAt.Format(time.RFC3339))
-			}
+			renderUpstreamOAuthStatus(commandPresenter(cmd), status)
 			return nil
 		},
 	}
 	addJSONResultFlag(command, &asJSON)
 	return command
+}
+
+func renderUpstreamOAuthStatus(presenter *presentation.Presenter, status mcpoauth.Status) {
+	presenter.Frame("Upstream OAuth authorization")
+	if !status.Configured {
+		presenter.StateSection(presentation.StatusInactive, "Not authorized")
+		presenter.Fields(presentation.Field{Label: "server", Value: status.ServerID})
+		presenter.FrameEnd("Done")
+		return
+	}
+	presenter.StateSection(presentation.StatusSuccess, "Authorization configured")
+	fields := []presentation.Field{
+		{Label: "server", Value: status.ServerID},
+		{Label: "issuer", Value: status.Issuer},
+		{Label: "registration", Value: status.Registration},
+		{Label: "scopes", Value: strings.Join(status.Scopes, " ")},
+		{Label: "refresh", Value: status.HasRefreshToken},
+	}
+	if status.ExpiresAt != nil {
+		fields = append(fields, presentation.Field{Label: "expires", Value: status.ExpiresAt.Format(time.RFC3339)})
+	}
+	presenter.Fields(fields...)
+	presenter.FrameEnd("Done")
 }
 
 func upstreamServerAuthLogoutCommand() *cobra.Command {

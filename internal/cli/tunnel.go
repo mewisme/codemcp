@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/telemetry"
@@ -81,64 +81,68 @@ func runTunnelStatus(cmd *cobra.Command, _ []string) error {
 		status.LastError = runtimeStatus.TunnelLastError
 	}
 	verbose, _ := commandLogMode(cmd)
-	renderTunnelStatusText(cmd.OutOrStdout(), cfg.Tunnel, status, runtimeRunning, verbose)
+	renderTunnelStatusText(commandPresenter(cmd), cfg.Tunnel, status, runtimeRunning, verbose)
 	return nil
 }
 
-func renderTunnelStatusText(out io.Writer, cfg tunnel.Config, status tunnel.Status, runtimeRunning, verbose bool) {
+func renderTunnelStatusText(presenter *presentation.Presenter, cfg tunnel.Config, status tunnel.Status, runtimeRunning, verbose bool) {
 	state := tunnelCLIState(cfg, status, runtimeRunning)
-	renderTunnelStateLine(out, state)
-	fmt.Fprintln(out, "\n"+cliHeading(out, "Tunnel"))
-	statusStateField(out, "status", state)
-	statusField(out, "enabled", status.Enabled)
-	statusField(out, "configured", tunnel.Configured(cfg))
+	presenter.Frame("OpenAI Secure MCP Tunnel")
+	presenter.StateSection(statusPresentationKind(state), "OpenAI Secure MCP Tunnel is "+state)
+	fields := []presentation.Field{
+		{Label: "status", Value: state},
+		{Label: "enabled", Value: status.Enabled},
+		{Label: "configured", Value: tunnel.Configured(cfg)},
+	}
 	if status.ID != "" {
-		statusField(out, "id", status.ID)
+		fields = append(fields, presentation.Field{Label: "id", Value: status.ID})
 	}
 	if status.Metadata != nil {
 		metadata := status.Metadata
 		if metadata.Name != "" {
-			statusField(out, "name", metadata.Name)
+			fields = append(fields, presentation.Field{Label: "name", Value: metadata.Name})
 		}
 		if verbose {
 			if metadata.Description != "" {
-				statusField(out, "description", metadata.Description)
+				fields = append(fields, presentation.Field{Label: "description", Value: metadata.Description})
 			}
 			if metadata.Creator != "" {
-				statusField(out, "creator", metadata.Creator)
+				fields = append(fields, presentation.Field{Label: "creator", Value: metadata.Creator})
 			}
 			if len(metadata.WorkspaceIDs) > 0 {
-				statusField(out, "workspaces", strings.Join(metadata.WorkspaceIDs, ", "))
+				fields = append(fields, presentation.Field{Label: "workspaces", Value: strings.Join(metadata.WorkspaceIDs, ", ")})
 			}
 			if len(metadata.OrganizationIDs) > 0 {
-				statusField(out, "organizations", strings.Join(metadata.OrganizationIDs, ", "))
+				fields = append(fields, presentation.Field{Label: "organizations", Value: strings.Join(metadata.OrganizationIDs, ", ")})
 			}
 			if len(metadata.TenantIDs) > 0 {
-				statusField(out, "tenants", strings.Join(metadata.TenantIDs, ", "))
+				fields = append(fields, presentation.Field{Label: "tenants", Value: strings.Join(metadata.TenantIDs, ", ")})
 			}
 		}
 	}
 	if status.AdminKeyConfigured && status.AdminScope != nil {
-		statusField(out, "admin", "configured "+cliSeparator(out)+" "+formatTunnelAdminScope(*status.AdminScope))
+		fields = append(fields, presentation.Field{Label: "admin", Value: "configured " + presenter.Separator() + " " + formatTunnelAdminScope(*status.AdminScope)})
 	} else if verbose {
-		statusField(out, "admin", "not configured")
+		fields = append(fields, presentation.Field{Label: "admin", Value: "not configured"})
 	}
 	if verbose {
 		controlPlane := status.ControlPlaneBaseURL
 		if strings.TrimSpace(controlPlane) == "" {
 			controlPlane = "default"
 		}
-		statusField(out, "control plane", controlPlane)
+		fields = append(fields, presentation.Field{Label: "control plane", Value: controlPlane})
 		if !status.StartedAt.IsZero() {
-			statusField(out, "started", status.StartedAt.Local().Format(time.RFC3339))
-		}
-		if status.MetadataError != "" {
-			statusField(out, "metadata", "unavailable: "+status.MetadataError)
-		}
-		if status.LastError != "" {
-			statusField(out, "error", status.LastError)
+			fields = append(fields, presentation.Field{Label: "started", Value: status.StartedAt.Local().Format(time.RFC3339)})
 		}
 	}
+	presenter.Fields(fields...)
+	if verbose && status.MetadataError != "" {
+		presenter.ChildStatus(presentation.StatusWarning, "Metadata unavailable: "+status.MetadataError)
+	}
+	if verbose && status.LastError != "" {
+		presenter.ChildStatus(presentation.StatusError, status.LastError)
+	}
+	presenter.FrameEnd("Status complete")
 }
 
 func tunnelCLIState(cfg tunnel.Config, status tunnel.Status, runtimeRunning bool) string {

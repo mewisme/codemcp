@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/tunnel"
@@ -138,12 +141,34 @@ func TestWorkspaceShowAndAccessListDefaultToText(t *testing.T) {
 		t.Fatalf("show=%q canonical=%q requested=%q", show, item.Path, workspaceRoot)
 	}
 	access := executeRequestCommand(t, root, []string{"workspace", "access", "list", id})
-	if !strings.Contains(access, "Allowed directories loaded") || !strings.Contains(access, "allow dirs: none") || strings.HasPrefix(strings.TrimSpace(access), "[") {
+	if !strings.Contains(access, "Allowed directories loaded") || !strings.Contains(access, "allow dirs") || !strings.Contains(access, "none") || strings.HasPrefix(strings.TrimSpace(access), "[") {
 		t.Fatalf("access=%q", access)
 	}
 	accessJSON := executeRequestCommand(t, root, []string{"workspace", "access", "list", id, "--json"})
 	var allowDirs []string
 	if err := json.Unmarshal([]byte(strings.TrimSpace(accessJSON)), &allowDirs); err != nil || len(allowDirs) != 0 {
 		t.Fatalf("access json=%q allowDirs=%#v err=%v", accessJSON, allowDirs, err)
+	}
+}
+
+func TestWorkspaceReadRenderersUseRailHierarchy(t *testing.T) {
+	var output bytes.Buffer
+	renderWorkspaceContainer(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), application.WorkspaceContainerView{
+		ID: "wsc_demo", Name: "Demo", WorkspaceIDs: []string{"ws_one", "ws_two"},
+	})
+	text := output.String()
+	for _, expected := range []string{"┌  Workspace container details", "◆  wsc_demo", "│  ◆ name — Demo", "│  ◆ workspaces — ws_one, ws_two", "└  Done"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("workspace container detail missing %q: %q", expected, text)
+		}
+	}
+
+	output.Reset()
+	renderWorkspaceAccess(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), "ws_demo", []string{"/data/one", "/data/two"})
+	access := output.String()
+	for _, expected := range []string{"┌  Allowed directories loaded · 2", "◆  Workspace", "│  ◆ id — ws_demo", "◆  Allowed directories", "│  ◆ /data/one", "│  ◆ /data/two"} {
+		if !strings.Contains(access, expected) {
+			t.Fatalf("workspace access missing %q: %q", expected, access)
+		}
 	}
 }

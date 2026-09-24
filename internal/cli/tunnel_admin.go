@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/tunnel"
@@ -113,16 +115,7 @@ func tunnelAdminKeyStatusCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		log := commandLogger(cmd)
-		log.Detail("configured", status.Configured)
-		if status.Configured {
-			log.Detail("key", "<redacted>")
-		}
-		if tunnel.ValidateAdminScope(status.Scope) == nil {
-			log.Detail("scope", formatTunnelAdminScope(status.Scope))
-		}
-		log.Detail("access", formatTunnelAdminAccess(status.Access))
-		log.Detail("secret store", "secret file store")
+		renderTunnelAdminKeyStatus(commandPresenter(cmd), status)
 		return nil
 	}}
 }
@@ -176,7 +169,6 @@ func tunnelListCommand() *cobra.Command {
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
-		log := commandLogger(cmd)
 		items, err := tunnel.ListManaged(ctx, cfg.Tunnel, scope)
 		if err != nil {
 			return err
@@ -184,10 +176,7 @@ func tunnelListCommand() *cobra.Command {
 		if asJSON {
 			return writeResultJSON(cmd, items)
 		}
-		log.Success("TUNNEL", "managed tunnels loaded", "count", len(items))
-		for _, item := range items {
-			log.Detail(item.ID, managedTunnelSummary(item))
-		}
+		renderManagedTunnelList(commandPresenter(cmd), items)
 		return nil
 	}}
 	scopeFlags.add(cmd)
@@ -212,16 +201,101 @@ func tunnelGetCommand() *cobra.Command {
 		if asJSON {
 			return writeResultJSON(cmd, metadata)
 		}
-		log.Success("TUNNEL", "managed tunnel loaded")
-		logManagedTunnelMetadata(log, metadata)
 		if configure {
+			log.Success("TUNNEL", "managed tunnel loaded")
+			logManagedTunnelMetadata(log, metadata)
 			log.Detail("cm", "configured")
+			return nil
 		}
+		renderManagedTunnel(commandPresenter(cmd), metadata)
 		return nil
 	}}
 	addManagedConfigureFlags(cmd, &configure, &runtimeAPIKey, &enable)
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
+}
+
+func renderTunnelAdminKeyStatus(presenter *presentation.Presenter, status application.TunnelAdminStatus) {
+	presenter.Frame("OpenAI tunnel admin key")
+	if status.Configured {
+		presenter.StateSection(presentation.StatusSuccess, "Admin key configured")
+	} else {
+		presenter.StateSection(presentation.StatusInactive, "Admin key not configured")
+	}
+	fields := []presentation.Field{{Label: "configured", Value: status.Configured}}
+	if status.Configured {
+		fields = append(fields, presentation.Field{Label: "key", Value: "<redacted>"})
+	}
+	if tunnel.ValidateAdminScope(status.Scope) == nil {
+		fields = append(fields, presentation.Field{Label: "scope", Value: formatTunnelAdminScope(status.Scope)})
+	}
+	fields = append(fields,
+		presentation.Field{Label: "access", Value: formatTunnelAdminAccess(status.Access)},
+		presentation.Field{Label: "secret store", Value: "secret file store"},
+	)
+	presenter.Fields(fields...)
+	presenter.FrameEnd("Done")
+}
+
+func renderManagedTunnelList(presenter *presentation.Presenter, items []tunnel.Metadata) {
+	presenter.Frame("Managed OpenAI tunnels")
+	if len(items) == 0 {
+		presenter.StateSection(presentation.StatusInactive, "No managed tunnels")
+		presenter.FrameEnd("Done")
+		return
+	}
+	presenter.Section(fmt.Sprintf("Managed tunnels loaded · %d", len(items)))
+	for _, item := range items {
+		presenter.Subsection(item.ID)
+		name := item.Name
+		if name == "" {
+			name = "unnamed"
+		}
+		fields := []presentation.Field{{Label: "name", Value: name}}
+		if len(item.OrganizationIDs) > 0 {
+			fields = append(fields, presentation.Field{Label: "organizations", Value: strings.Join(item.OrganizationIDs, ", ")})
+		}
+		if len(item.WorkspaceIDs) > 0 {
+			fields = append(fields, presentation.Field{Label: "workspaces", Value: strings.Join(item.WorkspaceIDs, ", ")})
+		}
+		if len(item.TenantIDs) > 0 {
+			fields = append(fields, presentation.Field{Label: "tenants", Value: strings.Join(item.TenantIDs, ", ")})
+		}
+		presenter.NestedFields(fields...)
+	}
+	presenter.FrameEnd("Done")
+}
+
+func renderManagedTunnel(presenter *presentation.Presenter, metadata tunnel.Metadata) {
+	presenter.Frame("Managed OpenAI tunnel")
+	presenter.Section(metadata.ID)
+	fields := []presentation.Field{}
+	if metadata.Name != "" {
+		fields = append(fields, presentation.Field{Label: "name", Value: metadata.Name})
+	}
+	if metadata.Description != "" {
+		fields = append(fields, presentation.Field{Label: "description", Value: metadata.Description})
+	}
+	if metadata.Creator != "" {
+		fields = append(fields, presentation.Field{Label: "creator", Value: metadata.Creator})
+	}
+	if len(metadata.OrganizationIDs) > 0 {
+		fields = append(fields, presentation.Field{Label: "organizations", Value: strings.Join(metadata.OrganizationIDs, ", ")})
+	}
+	if len(metadata.WorkspaceIDs) > 0 {
+		fields = append(fields, presentation.Field{Label: "workspaces", Value: strings.Join(metadata.WorkspaceIDs, ", ")})
+	}
+	if len(metadata.TenantIDs) > 0 {
+		fields = append(fields, presentation.Field{Label: "tenants", Value: strings.Join(metadata.TenantIDs, ", ")})
+	}
+	if metadata.RequestID != "" {
+		fields = append(fields, presentation.Field{Label: "request", Value: metadata.RequestID})
+	}
+	if !metadata.FetchedAt.IsZero() {
+		fields = append(fields, presentation.Field{Label: "fetched", Value: metadata.FetchedAt.Local().Format(time.RFC3339)})
+	}
+	presenter.Fields(fields...)
+	presenter.FrameEnd("Done")
 }
 
 func tunnelUseCommand() *cobra.Command {
@@ -419,18 +493,6 @@ func logManagedTunnelMetadata(log *logger.Logger, metadata tunnel.Metadata) {
 	if !metadata.FetchedAt.IsZero() {
 		log.Detail("fetched", metadata.FetchedAt.Local().Format(time.RFC3339))
 	}
-}
-
-func managedTunnelSummary(metadata tunnel.Metadata) string {
-	name := metadata.Name
-	if name == "" {
-		name = "unnamed"
-	}
-	scope := append(append(append([]string{}, metadata.OrganizationIDs...), metadata.WorkspaceIDs...), metadata.TenantIDs...)
-	if len(scope) == 0 {
-		return name
-	}
-	return name + " scope=" + strings.Join(scope, ",")
 }
 
 func formatTunnelAdminAccess(access tunnel.AdminAccess) string {

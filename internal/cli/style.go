@@ -21,10 +21,6 @@ func cliDim(out io.Writer, value any) string {
 	return cliTheme(out).Render(presentation.RoleMuted, value)
 }
 
-func cliHeading(out io.Writer, value string) string {
-	return cliTheme(out).Render(presentation.RoleHeading, value)
-}
-
 func cliTone(out io.Writer, role presentation.Role, value any) string {
 	return cliTheme(out).Render(role, value)
 }
