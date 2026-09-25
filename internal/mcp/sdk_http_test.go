@@ -130,3 +130,91 @@ func TestSDKHTTPTransportsPreserveToolErrorSemantics(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenAIProfileDirectStreamableHTTPUsesOpenAIProjection(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.MustRegister("openai_http_probe", tools.Schema{
+		Name:        "openai_http_probe",
+		Title:       "OpenAI HTTP Probe",
+		Description: "Verify direct OpenAI profile projection.",
+		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`),
+		Annotations: tools.ToolAnnotations(tools.RiskRead),
+	}, func(context.Context, map[string]any) (tools.Result, error) {
+		return tools.TextResult("ok"), nil
+	})
+	handler, err := NewSDKHTTPHandlerWithProfile(&tools.Runtime{Registry: registry}, "", false, OpenAIProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "openai-http-profile-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, &sdkmcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", DisableStandaloneSSE: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	listed, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Tools) != 1 {
+		t.Fatalf("tools=%#v", listed.Tools)
+	}
+	tool := listed.Tools[0]
+	if tool.Meta == nil || tool.Meta["openai/toolInvocation/invoking"] == nil || tool.Meta["openai/toolInvocation/invoked"] == nil {
+		t.Fatalf("OpenAI projection metadata missing: %#v", tool.Meta)
+	}
+}
+
+func TestLegacySSEDoesNotCreateAdditionalProfileAuthority(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.MustRegister("legacy_authority_probe", tools.Schema{
+		Name:        "legacy_authority_probe",
+		Description: "Verify legacy transport authority.",
+		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`),
+		Annotations: tools.ToolAnnotations(tools.RiskRead),
+	}, func(ctx context.Context, _ map[string]any) (tools.Result, error) {
+		return tools.JSONResult(map[string]any{
+			"source":  tools.CallSource(ctx),
+			"session": tools.MCPSessionID(ctx),
+		}), nil
+	})
+	handler, err := NewSDKHTTPHandlerWithProfile(&tools.Runtime{Registry: registry}, "", true, OpenAIProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "legacy-authority-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, &sdkmcp.SSEClientTransport{Endpoint: server.URL + "/mcp/sse"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{Name: "legacy_authority_probe", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || len(result.Content) != 1 {
+		t.Fatalf("result=%#v", result)
+	}
+	text, ok := result.Content[0].(*sdkmcp.TextContent)
+	if !ok {
+		t.Fatalf("content=%#v", result.Content)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(text.Text), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["source"] != "sse" {
+		t.Fatalf("legacy source=%#v", payload)
+	}
+	if _, exists := payload["authorization"]; exists {
+		t.Fatalf("legacy transport invented application authority: %#v", payload)
+	}
+}
