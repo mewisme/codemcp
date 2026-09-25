@@ -11,9 +11,24 @@ import (
 	"github.com/fatih/color"
 
 	"go.mewis.me/codemcp/internal/logger"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 	"go.mewis.me/codemcp/internal/runtime/activity"
 	"go.mewis.me/codemcp/internal/tools"
 )
+
+type telemetryConfigSetProvider struct{}
+
+func (telemetryConfigSetProvider) BindSetApproval(_ context.Context, arguments map[string]any) (mcpconfigwire.SetApprovalBinding, mcpconfigwire.ErrorCode) {
+	changes, _, err := mcpconfigwire.CanonicalSetArguments(arguments)
+	if err != nil {
+		return mcpconfigwire.SetApprovalBinding{}, mcpconfigwire.ErrorInvalidRequest
+	}
+	return mcpconfigwire.SetApprovalBinding{Changes: changes, ConfigRoot: "/telemetry-test", ConfigFingerprint: "telemetry-fingerprint"}, ""
+}
+
+func (telemetryConfigSetProvider) ApplySet(context.Context, map[string]any, mcpconfigwire.SetApprovalBinding) (mcpconfigwire.MutationResult, *mcpconfigwire.MutationError) {
+	return mcpconfigwire.MutationResult{}, &mcpconfigwire.MutationError{Code: mcpconfigwire.ErrorApplyFailed}
+}
 
 func TestAttachToolsPublishesActivityAndKeepsDefaultLogQuiet(t *testing.T) {
 	previous := color.NoColor
@@ -132,5 +147,55 @@ func TestAttachToolsVerboseLogsStartBeforeToolReturns(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "Tool call completed") {
 		t.Fatalf("completion log missing: %q", output.String())
+	}
+}
+
+func TestAttachToolsConfigSetActivityAndVerboseLogNeverExposeValues(t *testing.T) {
+	previous := color.NoColor
+	color.NoColor = true
+	defer func() { color.NoColor = previous }()
+	runtime := tools.NewRuntime()
+	provider := telemetryConfigSetProvider{}
+	runtime.SetConfigSetApprovalProvider(provider)
+	runtime.SetConfigSetApplyProvider(provider)
+	workspace, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := activity.NewStream()
+	var output bytes.Buffer
+	log := logger.NewWithOptions(logger.Options{Level: logger.Info, Mode: logger.ModeVerbose, Writer: &output})
+	AttachTools(runtime, stream, log)
+	privateValue := "telemetry-private-credential-like-value"
+	args := map[string]any{
+		"workspace_id": workspace.ID,
+		"changes": []any{
+			map[string]any{"key": "tunnel.organization_id", "value": privateValue},
+		},
+	}
+	params := map[string]any{"name": mcpconfigwire.SetToolName, "arguments": args}
+	request := map[string]any{"jsonrpc": "2.0", "id": "config-set-call", "method": "tools/call", "params": params}
+	ctx := tools.WithCallSource(context.Background(), "tunnel")
+	ctx = tools.WithApprovalCorrelation(ctx, "telemetry-caller", "telemetry-request")
+	ctx = tools.WithCallDetails(ctx, "tools/call", params)
+	ctx = tools.WithCallRequest(ctx, request)
+	result, err := runtime.Call(ctx, mcpconfigwire.SetToolName, args)
+	if err != nil || !result.IsError {
+		t.Fatalf("config_set result=%#v err=%v", result, err)
+	}
+	events := stream.Recent(10)
+	eventJSON, err := json.Marshal(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(eventJSON) + "\n" + output.String()
+	if strings.Contains(combined, privateValue) {
+		t.Fatalf("config_set telemetry/log leaked user value: %s", combined)
+	}
+	if !strings.Contains(string(eventJSON), "tunnel.organization_id") || !strings.Contains(string(eventJSON), "change_count") {
+		t.Fatalf("config_set activity lost safe summary: %s", eventJSON)
+	}
+	if !strings.Contains(output.String(), "Tool call started") || !strings.Contains(output.String(), "Tool call failed") {
+		t.Fatalf("config_set approval lifecycle missing: %q", output.String())
 	}
 }

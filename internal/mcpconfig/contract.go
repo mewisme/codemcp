@@ -66,6 +66,9 @@ func ProjectSetting(spec config.FieldSpec, value string, configured *bool) (Sett
 		out.Configured = cloneBool(configured)
 		return out, true
 	}
+	if len(value) > MaxValueBytes {
+		return Setting{}, false
+	}
 	copied := value
 	out.Value = &copied
 	if configured != nil {

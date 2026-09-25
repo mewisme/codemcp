@@ -8,6 +8,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/mcpconfig"
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/upstream"
 )
 
@@ -189,5 +190,54 @@ func TestMCPConfigSetApprovalBindingIsPrivateCanonicalAndStateBound(t *testing.T
 				t.Fatalf("code=%q want=%q", code, tc.want)
 			}
 		})
+	}
+}
+
+func TestMCPConfigSetTraceContainsKeysButNeverUserValues(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Permissions.MCPConfigWrite = true
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	provider := NewMCPConfigReadService()
+	privateValue := "trace-private-credential-like-value"
+	args := map[string]any{
+		"changes": []any{
+			map[string]any{"key": "tunnel.organization_id", "value": privateValue},
+		},
+	}
+	events := make([]tracepkg.Event, 0, 16)
+	ctx := tracepkg.WithObserver(t.Context(), func(event tracepkg.Event) {
+		events = append(events, event)
+	})
+	binding, code := provider.BindSetApproval(ctx, args)
+	if code != "" {
+		t.Fatalf("bind code=%q", code)
+	}
+	result, mutationErr := provider.ApplySet(ctx, args, binding)
+	if mutationErr != nil || !result.Changed || result.ChangeCount != 1 {
+		t.Fatalf("result=%#v mutationErr=%#v", result, mutationErr)
+	}
+	data, err := json.Marshal(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	if strings.Contains(text, privateValue) {
+		t.Fatalf("config_set trace leaked user value: %s", text)
+	}
+	if !strings.Contains(text, "tunnel.organization_id") || !strings.Contains(text, "setting.apply") {
+		t.Fatalf("config_set trace lost safe operation metadata: %s", text)
+	}
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(resultJSON), privateValue) {
+		t.Fatalf("config_set result leaked user value: %s", resultJSON)
 	}
 }

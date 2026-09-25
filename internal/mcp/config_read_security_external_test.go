@@ -11,6 +11,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/mcp"
@@ -94,5 +95,74 @@ func TestConfigReadHTTPNeverReturnsManagedSecretsOrUnsafeURLValues(t *testing.T)
 	}
 	if strings.Contains(text, "tunnel.control_plane_base_url") {
 		t.Fatalf("unsafe URL field was exposed over HTTP: %s", text)
+	}
+}
+
+func TestOrdinaryMCPSessionCannotWriteGlobalConfigWithoutOperatorOptIn(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(configformat.EnvConfigDir, root)
+	previous := configformat.RootPath()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
+	cfg := config.Default()
+	cfg.Auth.MCPTokenHash = "configured-mcp-hash"
+	cfg.Auth.AdminTokenHash = "configured-admin-hash"
+	if cfg.Permissions.MCPConfigWrite {
+		t.Fatal("default config unexpectedly enables MCP config writes")
+	}
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := tools.NewRuntime()
+	provider := application.NewMCPConfigReadService()
+	runtime.SetConfigSetApprovalProvider(provider)
+	runtime.SetConfigSetApplyProvider(provider)
+	workspace, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := mcp.NewSDKHTTPHandler(runtime, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "config-write-denial-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, &sdkmcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", DisableStandaloneSSE: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: mcpconfigwire.SetToolName,
+		Arguments: map[string]any{"workspace_id": workspace.ID, "changes": []any{
+			map[string]any{"key": "server.port", "value": "41001"},
+		}},
+	})
+	if err != nil || !result.IsError {
+		t.Fatalf("ordinary MCP write result=%#v err=%v", result, err)
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), string(mcpconfigwire.ErrorAccessDenied)) || strings.Contains(string(data), "approval_required") {
+		t.Fatalf("ordinary MCP write denial=%s", data)
+	}
+	if requests := runtime.Approvals.List(approval.Filter{}); len(requests) != 0 {
+		t.Fatalf("denied ordinary MCP write created approval state: %#v", requests)
+	}
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Server.Port != cfg.Server.Port {
+		t.Fatalf("denied ordinary MCP write mutated config: before=%d after=%d", cfg.Server.Port, loaded.Server.Port)
 	}
 }

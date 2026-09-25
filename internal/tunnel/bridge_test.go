@@ -92,6 +92,80 @@ func TestSDKBridgeConfigGetUsesSameSanitizedWireResult(t *testing.T) {
 	}
 }
 
+func TestSDKBridgeConfigToolsKeepCanonicalSchemasAndEffects(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- bridge.Run(ctx, serverTransport) }()
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "config-tunnel-contract-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{mcpconfigwire.ListToolName, mcpconfigwire.GetToolName, mcpconfigwire.SetToolName} {
+		schema, ok := runtime.Registry.Schema(name)
+		if !ok {
+			t.Fatalf("missing canonical schema %q", name)
+		}
+		expected, err := localmcp.ProjectSDKTool(localmcp.BaseProfile(), localmcp.DescribeTool(schema), localmcp.ToolProjectionOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var actual *sdkmcp.Tool
+		for _, tool := range listed.Tools {
+			if tool != nil && tool.Name == name {
+				actual = tool
+				break
+			}
+		}
+		if actual == nil {
+			t.Fatalf("tunnel discovery missing %q", name)
+		}
+		if expected.Name != actual.Name ||
+			!bridgeSchemaSemanticEqual(expected.InputSchema, actual.InputSchema) ||
+			!bridgeSchemaSemanticEqual(expected.OutputSchema, actual.OutputSchema) ||
+			!reflect.DeepEqual(expected.Annotations, actual.Annotations) {
+			t.Fatalf("tunnel config contract drift for %q\nexpected=%#v\nactual=%#v", name, expected, actual)
+		}
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case err := <-serverDone:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("bridge run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("bridge did not stop")
+	}
+}
+
+func bridgeSchemaSemanticEqual(left, right any) bool {
+	leftJSON, leftErr := json.Marshal(left)
+	rightJSON, rightErr := json.Marshal(right)
+	if leftErr != nil || rightErr != nil {
+		return false
+	}
+	var leftValue, rightValue any
+	if json.Unmarshal(leftJSON, &leftValue) != nil || json.Unmarshal(rightJSON, &rightValue) != nil {
+		return false
+	}
+	return reflect.DeepEqual(leftValue, rightValue)
+}
+
 func TestSDKBridgePropagatesTunnelSessionID(t *testing.T) {
 	registry := tools.NewRegistry()
 	seen := make(chan string, 1)

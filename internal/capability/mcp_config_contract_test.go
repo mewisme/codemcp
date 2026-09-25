@@ -66,3 +66,49 @@ func TestMCPConfigCapabilitiesKeepOperatorAndAgentAuthoritySeparate(t *testing.T
 		}
 	}
 }
+
+func TestMCPConfigCapabilityInventoryPreservesAuthorityAndBindings(t *testing.T) {
+	operations := map[ID]OperationInventory{}
+	for _, operation := range Inventory().Operations {
+		operations[operation.ID] = operation
+	}
+	for _, id := range []ID{ConfigList, ConfigGet, ConfigSet} {
+		operation, ok := operations[id]
+		if !ok {
+			t.Fatalf("operator config operation %q missing from inventory", id)
+		}
+		if operation.Audience != AudienceOperator || operation.Authorization != AuthorizationOperator ||
+			len(operation.MCPTools) != 0 || len(operation.PlannedMCPTools) != 0 {
+			t.Fatalf("operator config inventory authority drifted: %#v", operation)
+		}
+	}
+	for _, tc := range []struct {
+		id   ID
+		tool string
+		kind Kind
+	}{
+		{AgentConfigList, "config_list", KindQuery},
+		{AgentConfigGet, "config_get", KindQuery},
+		{AgentConfigSet, "config_set", KindMutation},
+	} {
+		operation, ok := operations[tc.id]
+		if !ok {
+			t.Fatalf("agent config operation %q missing from inventory", tc.id)
+		}
+		if operation.Audience != AudienceAgent || operation.Authorization != AuthorizationAgent || operation.Kind != tc.kind ||
+			len(operation.MCPTools) != 1 || operation.MCPTools[0] != tc.tool || len(operation.PlannedMCPTools) != 0 {
+			t.Fatalf("agent config inventory drifted: %#v", operation)
+		}
+	}
+	set := operations[AgentConfigSet]
+	if set.Risk != RiskSensitive || set.Confirmation.Mode != ConfirmationRequired || !set.Confirmation.ControlApproval ||
+		set.Effects.ReadOnly || set.Effects.Idempotent {
+		t.Fatalf("config_set inventory security drifted: %#v", set)
+	}
+	for _, id := range []ID{AgentConfigList, AgentConfigGet} {
+		read := operations[id]
+		if read.Risk != RiskNone || read.Confirmation.Mode != ConfirmationNone || !read.Effects.ReadOnly || !read.Effects.Idempotent {
+			t.Fatalf("config read inventory security drifted: %#v", read)
+		}
+	}
+}

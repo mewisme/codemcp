@@ -418,6 +418,59 @@ func TestConfigSetApprovalRejectsSecretsMissingScopeDenialAndUnavailableReviewer
 	})
 }
 
+func TestConfigSetMalformedNestedValueNeverLeaksThroughActivityOrRequestEnvelope(t *testing.T) {
+	harness := newConfigApprovalHarness(t)
+	secret := "nested-credential-like-private-marker"
+	args := map[string]any{
+		"workspace_id": harness.workspaceID,
+		"changes": []any{
+			map[string]any{
+				"key": "server.port",
+				"value": map[string]any{
+					"authorization": "Bearer " + secret,
+					"nested":        []any{map[string]any{"password": secret}},
+				},
+			},
+		},
+	}
+	params := map[string]any{
+		"name":      mcpconfigwire.SetToolName,
+		"arguments": args,
+		"_meta":     map[string]any{"safe": "metadata"},
+	}
+	request := map[string]any{"jsonrpc": "2.0", "id": "nested-call", "method": "tools/call", "params": params}
+	ctx := configApprovalContext("nested-caller", "nested-request")
+	ctx = tools.WithCallDetails(ctx, "tools/call", params)
+	ctx = tools.WithCallRequest(ctx, request)
+	observed := make([]tools.CallObservation, 0, 2)
+	harness.runtime.SetCallObserver(func(value tools.CallObservation) { observed = append(observed, value) })
+
+	result, err := harness.runtime.Call(ctx, mcpconfigwire.SetToolName, args)
+	if err != nil || !result.IsError || harness.applied.Load() != 0 {
+		t.Fatalf("nested malformed result=%#v err=%v applied=%d", result, err, harness.applied.Load())
+	}
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(resultJSON), string(mcpconfigwire.ErrorInvalidRequest)) || strings.Contains(string(resultJSON), secret) {
+		t.Fatalf("nested malformed result leaked or lost safe code: %s", resultJSON)
+	}
+	if requests := harness.runtime.Approvals.List(approval.Filter{}); len(requests) != 0 {
+		t.Fatalf("malformed nested value created approval state: %#v", requests)
+	}
+	observedJSON, err := json.Marshal(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(observedJSON), secret) || strings.Contains(string(observedJSON), "Bearer "+secret) {
+		t.Fatalf("nested malformed value leaked through activity/request envelope: %s", observedJSON)
+	}
+	if !strings.Contains(string(observedJSON), "server.port") || !strings.Contains(string(observedJSON), "change_count") {
+		t.Fatalf("activity lost safe config summary: %s", observedJSON)
+	}
+}
+
 func assertConfigApprovalPublicValueFree(t *testing.T, text, root string, values ...string) {
 	t.Helper()
 	for _, forbidden := range append(values, root, "__codemcp_config_binding", "config_fingerprint") {
