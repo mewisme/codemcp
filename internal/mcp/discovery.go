@@ -38,3 +38,14 @@ func BuildDiscoverResult(profile Profile) DiscoverResult {
 func Discover() DiscoverResult {
 	return BuildDiscoverResult(BaseProfile())
 }
+
+func cacheableCompleteResult(fields map[string]any) map[string]any {
+	result := make(map[string]any, len(fields)+3)
+	for key, value := range fields {
+		result[key] = value
+	}
+	result["resultType"] = "complete"
+	result["ttlMs"] = defaultCacheTTLMS
+	result["cacheScope"] = defaultCacheScope
+	return result
+}

@@ -12,6 +12,7 @@ require (
 	github.com/briandowns/spinner v1.23.2
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/fatih/color v1.19.0
+	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/openai/tunnel-client v0.0.14
 	github.com/pelletier/go-toml/v2 v2.4.3
@@ -79,7 +80,6 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/google/certificate-transparency-go v1.3.3 // indirect
 	github.com/google/go-containerregistry v0.21.7 // indirect
-	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/css v1.0.1 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.29.0 // indirect

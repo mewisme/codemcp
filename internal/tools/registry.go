@@ -44,8 +44,10 @@ func (r *Registry) registerOwned(owner, name string, schema Schema, handler Hand
 	if handler == nil {
 		return fmt.Errorf("tool %q handler is required", name)
 	}
-	if schema.Name == "" {
-		schema.Name = name
+	var err error
+	schema, err = normalizeRegisteredSchema(name, schema)
+	if err != nil {
+		return err
 	}
 	if schema.Name != name {
 		return fmt.Errorf("tool schema name %q does not match registration name %q", schema.Name, name)
@@ -80,10 +82,12 @@ func (r *Registry) ReplaceOwned(owner string, entries map[string]Entry) error {
 		if strings.TrimSpace(name) == "" || entry.Handler == nil {
 			return fmt.Errorf("invalid owned tool %q", name)
 		}
-		if entry.Schema.Name == "" {
-			entry.Schema.Name = name
-			entries[name] = entry
+		var err error
+		entry.Schema, err = normalizeRegisteredSchema(name, entry.Schema)
+		if err != nil {
+			return err
 		}
+		entries[name] = entry
 		if entry.Schema.Name != name {
 			return fmt.Errorf("owned schema name %q does not match %q", entry.Schema.Name, name)
 		}
@@ -131,8 +135,10 @@ func (r *Registry) ReplaceOwnedPrefix(prefix string, replacements map[string]map
 			if name == "" || entry.Handler == nil {
 				return fmt.Errorf("invalid owned tool %q", name)
 			}
-			if entry.Schema.Name == "" {
-				entry.Schema.Name = name
+			var err error
+			entry.Schema, err = normalizeRegisteredSchema(name, entry.Schema)
+			if err != nil {
+				return err
 			}
 			if entry.Schema.Name != name {
 				return fmt.Errorf("owned schema name %q does not match %q", entry.Schema.Name, name)

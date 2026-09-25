@@ -120,6 +120,7 @@ func TestHTTPRuntimeInputRequiredResultStampsServerInfo(t *testing.T) {
 		return tools.Result{
 			ResultType:   "input_required",
 			RequestState: "opaque-state",
+			Meta:         map[string]any{"traceparent": "trace-value"},
 			InputRequests: map[string]any{
 				"confirm": map[string]any{"type": "elicitation", "message": "Continue?", "schema": map[string]any{"type": "boolean"}},
 			},
@@ -141,7 +142,11 @@ func TestHTTPRuntimeInputRequiredResultStampsServerInfo(t *testing.T) {
 	if result["resultType"] != "input_required" || result["requestState"] != "opaque-state" {
 		t.Fatalf("input_required result = %#v", result)
 	}
-	assertServerInfoValue(t, result["_meta"])
+	meta, _ := result["_meta"].(map[string]any)
+	if meta["traceparent"] != "trace-value" {
+		t.Fatalf("input_required metadata was lost: %#v", meta)
+	}
+	assertServerInfoValue(t, meta)
 }
 
 func TestResponseMarshalDoesNotAddResultToProtocolError(t *testing.T) {

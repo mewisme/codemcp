@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 const (
@@ -13,7 +15,7 @@ const (
 	SessionIDHeader       = "Mcp-Session-Id"
 )
 
-func ValidateHTTPHeaders(r *http.Request, req Request, params map[string]any) *Error {
+func validateHTTPMirrorHeaders(r *http.Request, req Request, params map[string]any) *Error {
 	protocolVersion := strings.TrimSpace(r.Header.Get(ProtocolVersionHeader))
 	if protocolVersion == "" {
 		return NewError(ErrHeaderMismatch, "missing MCP-Protocol-Version header")
@@ -54,6 +56,27 @@ func ValidateHTTPHeaders(r *http.Request, req Request, params map[string]any) *E
 		return NewError(ErrHeaderMismatch, "protocol version metadata does not match MCP-Protocol-Version header")
 	}
 	return nil
+}
+
+// ValidateHTTPRoutingHeaders is the single modern HTTP routing guard for
+// method/name mirrors and schema-derived tool parameter headers.
+func ValidateHTTPRoutingHeaders(r *http.Request, req Request, params map[string]any, registry *tools.Registry) *Error {
+	if err := validateHTTPMirrorHeaders(r, req, params); err != nil {
+		return err
+	}
+	args, _ := params["arguments"].(map[string]any)
+	if req.Method != "tools/call" {
+		return validateToolParamHeaders(r, tools.Schema{}, args)
+	}
+	name, _ := params["name"].(string)
+	if registry == nil {
+		return NewError(ErrInternal, "tool registry is unavailable")
+	}
+	schema, ok := registry.Schema(name)
+	if !ok {
+		return validateToolParamHeaders(r, tools.Schema{}, args)
+	}
+	return validateToolParamHeaders(r, schema, args)
 }
 
 func mirroredRequestName(method string, params map[string]any) string {

@@ -155,21 +155,6 @@ func countMCPHeaderAnnotations(value any) int {
 	}
 }
 
-func HeaderSafeTool(schema tools.Schema) bool {
-	_, err := toolHeaderSpecs(schema.InputSchema)
-	return err == nil
-}
-
-func filterHeaderSafeTools(values []tools.Schema) []tools.Schema {
-	out := make([]tools.Schema, 0, len(values))
-	for _, schema := range values {
-		if HeaderSafeTool(schema) {
-			out = append(out, schema)
-		}
-	}
-	return out
-}
-
 func compareToolHeaderValue(kind string, body any, header string) error {
 	switch kind {
 	case "string":

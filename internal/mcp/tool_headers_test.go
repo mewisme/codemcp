@@ -119,8 +119,9 @@ func TestHTTPRuntimeAcceptsEncodedMcpName(t *testing.T) {
 	}
 }
 
-func TestHTTPRuntimeFiltersMalformedAnnotatedToolAndRejectsDirectCall(t *testing.T) {
+func TestHTTPRuntimeRejectsMalformedAnnotatedToolInsteadOfFilteringIt(t *testing.T) {
 	registry := tools.NewRegistry()
+	var calls atomic.Int32
 	registry.MustRegister("bad_header", tools.Schema{
 		Name: "bad_header",
 		InputSchema: json.RawMessage(`{
@@ -128,6 +129,7 @@ func TestHTTPRuntimeFiltersMalformedAnnotatedToolAndRejectsDirectCall(t *testing
 			"properties":{"payload":{"type":"object","x-mcp-header":"Payload"}}
 		}`),
 	}, func(context.Context, map[string]any) (tools.Result, error) {
+		calls.Add(1)
 		return tools.TextResult("should not run"), nil
 	})
 	runtime := NewHTTPRuntimeWithTools(&tools.Runtime{Registry: registry})
@@ -135,17 +137,9 @@ func TestHTTPRuntimeFiltersMalformedAnnotatedToolAndRejectsDirectCall(t *testing
 	listReq := modernRequest("tools/list", `{"jsonrpc":"2.0","id":35,"method":"tools/list","params":{}}`)
 	listRes := httptest.NewRecorder()
 	runtime.ServeHTTP(listRes, listReq)
-	if listRes.Code != http.StatusOK {
-		t.Fatalf("list status=%d body=%s", listRes.Code, listRes.Body.String())
-	}
 	response := decodeResponse(t, listRes)
-	result, _ := response.Result.(map[string]any)
-	items, _ := result["tools"].([]any)
-	for _, item := range items {
-		tool, _ := item.(map[string]any)
-		if tool["name"] == "bad_header" {
-			t.Fatalf("malformed annotated tool was advertised: %#v", tool)
-		}
+	if response.Error == nil || response.Error.Code != ErrInternal {
+		t.Fatalf("list error=%#v body=%s", response.Error, listRes.Body.String())
 	}
 
 	callReq := modernRequest("tools/call", `{"jsonrpc":"2.0","id":36,"method":"tools/call","params":{"name":"bad_header","arguments":{"payload":{}}}}`)
@@ -153,6 +147,18 @@ func TestHTTPRuntimeFiltersMalformedAnnotatedToolAndRejectsDirectCall(t *testing
 	callRes := httptest.NewRecorder()
 	runtime.ServeHTTP(callRes, callReq)
 	assertHeaderMismatch(t, callRes)
+	if calls.Load() != 0 {
+		t.Fatalf("malformed tool handler was called %d times", calls.Load())
+	}
+}
+
+func TestHTTPRuntimeRejectsParamHeadersOutsideToolCalls(t *testing.T) {
+	runtime := NewHTTPRuntimeWithTools(&tools.Runtime{Registry: tools.NewRegistry()})
+	req := modernRequest("tools/list", `{"jsonrpc":"2.0","id":37,"method":"tools/list","params":{}}`)
+	req.Header.Set("Mcp-Param-Stale", "value")
+	res := httptest.NewRecorder()
+	runtime.ServeHTTP(res, req)
+	assertHeaderMismatch(t, res)
 }
 
 func TestToolHeaderSchemaRejectsNestedAndDuplicateAnnotations(t *testing.T) {

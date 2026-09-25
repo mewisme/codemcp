@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -82,6 +83,49 @@ func TestSDKHTTPTransportsOfficialClientInterop(t *testing.T) {
 				if clientInfo["name"] != "transport-test" || clientInfo["version"] != "1.0.0" {
 					t.Fatalf("modern Streamable HTTP client info=%#v", clientInfo)
 				}
+			}
+		})
+	}
+}
+
+func TestSDKHTTPTransportsPreserveToolErrorSemantics(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.MustRegister("transport_error", tools.Schema{Name: "transport_error"}, func(context.Context, map[string]any) (tools.Result, error) {
+		return tools.Result{}, errors.New("denied")
+	})
+	handler, err := NewSDKHTTPHandler(&tools.Runtime{Registry: registry}, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	for _, tc := range []struct {
+		name      string
+		transport sdkmcp.Transport
+	}{
+		{name: "streamable", transport: &sdkmcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", DisableStandaloneSSE: true}},
+		{name: "legacy-sse", transport: &sdkmcp.SSEClientTransport{Endpoint: server.URL + "/mcp/sse"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "transport-error-test", Version: "1.0.0"}, nil)
+			session, err := client.Connect(ctx, tc.transport, nil)
+			if err != nil {
+				t.Fatalf("connect: %v", err)
+			}
+			defer session.Close()
+			result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{Name: "transport_error", Arguments: map[string]any{}})
+			if err != nil {
+				t.Fatalf("call tool: %v", err)
+			}
+			if !result.IsError || len(result.Content) != 1 {
+				t.Fatalf("tool error result = %#v", result)
+			}
+			text, ok := result.Content[0].(*sdkmcp.TextContent)
+			if !ok || text.Text != "denied" {
+				t.Fatalf("tool error content = %#v", result.Content)
 			}
 		})
 	}

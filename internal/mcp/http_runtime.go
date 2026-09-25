@@ -72,7 +72,7 @@ func (h HTTPRuntime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeErrorID(w, req.ID, protocolErr.Code, protocolErr.Message)
 		return
 	}
-	if headerErr := ValidateHTTPHeaders(r, req, params); headerErr != nil {
+	if headerErr := ValidateHTTPRoutingHeaders(r, req, params, h.Server.Tools.Registry); headerErr != nil {
 		writeProtocolErrorStatusID(w, http.StatusBadRequest, req.ID, headerErr)
 		return
 	}
@@ -86,17 +86,6 @@ func (h HTTPRuntime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeErrorID(w, req.ID, ErrInvalidParams, err.Error())
 		return
 	}
-	if req.Method == "tools/call" {
-		name, _ := params["name"].(string)
-		args, _ := params["arguments"].(map[string]any)
-		if schema, ok := h.Server.Tools.Registry.Schema(name); ok {
-			if headerErr := validateToolParamHeaders(r, schema, args); headerErr != nil {
-				writeErrorStatusID(w, http.StatusBadRequest, req.ID, headerErr.Code, headerErr.Message)
-				return
-			}
-		}
-	}
-
 	if req.Method == "subscriptions/listen" {
 		started := time.Now()
 		h.serveSubscription(w, r, req, params)
@@ -120,12 +109,7 @@ func (h HTTPRuntime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		h.emitActivity(req.Method, params, "error", err.Error(), duration)
-		var protocolErr *Error
-		if errors.As(err, &protocolErr) {
-			writeProtocolErrorStatusID(w, http.StatusOK, req.ID, protocolErr)
-			return
-		}
-		writeErrorID(w, req.ID, ErrInternal, err.Error())
+		writeProtocolErrorStatusID(w, http.StatusOK, req.ID, ProtocolError(err))
 		return
 	}
 

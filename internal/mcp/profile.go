@@ -10,6 +10,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 type ProfileID string
@@ -77,15 +78,34 @@ func ProjectTool(profile Profile, descriptor ToolDescriptor, options ToolProject
 	if err != nil {
 		return ProjectedTool{}, fmt.Errorf("project tool %q input schema: %w", descriptor.Name, err)
 	}
+	if err := tools.ValidateSchemaDocument(input, true); err != nil {
+		return ProjectedTool{}, fmt.Errorf("project tool %q input schema: %w", descriptor.Name, err)
+	}
+	if _, err := toolHeaderSpecs(input); err != nil {
+		return ProjectedTool{}, fmt.Errorf("project tool %q header schema: %w", descriptor.Name, err)
+	}
+	if len(descriptor.OutputSchema) > 0 {
+		if err := tools.ValidateSchemaDocument(descriptor.OutputSchema, false); err != nil {
+			return ProjectedTool{}, fmt.Errorf("project tool %q output schema: %w", descriptor.Name, err)
+		}
+	}
 	representation := profile.ToolRepresentation(descriptor)
+	title := strings.TrimSpace(representation.Title)
+	if title == "" {
+		title = descriptor.Name
+	}
+	description := strings.TrimSpace(representation.Description)
+	if description == "" {
+		description = title
+	}
 	return ProjectedTool{
 		Meta:         cloneAnyMap(representation.Meta),
 		Annotations:  descriptor.Effects.annotations(),
-		Description:  strings.TrimSpace(representation.Description),
+		Description:  description,
 		InputSchema:  input,
 		Name:         descriptor.Name,
 		OutputSchema: cloneRawMessage(descriptor.OutputSchema),
-		Title:        strings.TrimSpace(representation.Title),
+		Title:        title,
 	}, nil
 }
 

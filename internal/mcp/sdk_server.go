@@ -43,7 +43,7 @@ func newSDKServerWithProfile(toolRuntime *tools.Runtime, source, sessionID, boun
 	server := sdkmcp.NewServer(implementation, options)
 	callers := approval.NewCallerRegistry()
 	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile}
-	for _, schema := range filterHeaderSafeTools(toolRuntime.List()) {
+	for _, schema := range toolRuntime.List() {
 		if err := adapter.addTool(schema); err != nil {
 			return nil, err
 		}

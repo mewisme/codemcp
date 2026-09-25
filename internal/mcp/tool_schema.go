@@ -14,5 +14,5 @@ func (c *ToolCatalog) Descriptors() []ToolDescriptor {
 	if c == nil || c.Registry == nil {
 		return nil
 	}
-	return DescribeProtocol(filterHeaderSafeTools(c.Registry.ListSchemas())).Tools
+	return DescribeProtocol(c.Registry.ListSchemas()).Tools
 }

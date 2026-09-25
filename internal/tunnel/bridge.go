@@ -83,9 +83,6 @@ func (b *sdkBridge) syncTools() error {
 	}
 	prepared := map[string]preparedTool{}
 	for _, schema := range b.runtime.List() {
-		if !localmcp.HeaderSafeTool(schema) {
-			continue
-		}
 		descriptor := localmcp.DescribeTool(schema)
 		tool, err := localmcp.ProjectSDKTool(localmcp.BaseProfile(), descriptor, localmcp.ToolProjectionOptions{})
 		if err != nil {

@@ -27,7 +27,7 @@ func HandleRequest(runtime *ToolRuntime, req Request) Response {
 	response := Response{JSONRPC: "2.0", ID: req.ID}
 	switch req.Method {
 	case "tools/list":
-		response.Result = map[string]any{"tools": runtime.ListTools(), "ttlMs": defaultCacheTTLMS, "cacheScope": defaultCacheScope}
+		response.Result = cacheableCompleteResult(map[string]any{"tools": runtime.ListTools()})
 	default:
 		response.Error = &Error{Code: ErrMethodNotFound, Message: "method not found"}
 	}

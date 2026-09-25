@@ -62,7 +62,8 @@ func (r Result) MarshalJSON() ([]byte, error) {
 			ResultType    string         `json:"resultType"`
 			InputRequests map[string]any `json:"inputRequests"`
 			RequestState  string         `json:"requestState,omitempty"`
-		}{ResultType: r.ResultType, InputRequests: r.InputRequests, RequestState: r.RequestState})
+			Meta          map[string]any `json:"_meta,omitempty"`
+		}{ResultType: r.ResultType, InputRequests: r.InputRequests, RequestState: r.RequestState, Meta: r.Meta})
 	}
 	type wire struct {
 		Content           []Content      `json:"content"`

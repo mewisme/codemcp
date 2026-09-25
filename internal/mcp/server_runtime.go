@@ -36,12 +36,12 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 	case "server/discover":
 		return BuildDiscoverResult(r.Profile), nil
 	case "tools/list":
-		descriptors := DescribeProtocol(filterHeaderSafeTools(r.Tools.List())).Tools
+		descriptors := DescribeProtocol(r.Tools.List()).Tools
 		projected, err := ProjectTools(r.Profile, descriptors, ToolProjectionOptions{})
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"tools": projected, "ttlMs": defaultCacheTTLMS, "cacheScope": defaultCacheScope, "resultType": "complete"}, nil
+		return cacheableCompleteResult(map[string]any{"tools": projected}), nil
 	case "tools/call":
 		name, _ := params["name"].(string)
 		args, _ := params["arguments"].(map[string]any)
@@ -59,7 +59,7 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 		ctx = upstream.WithRequestMeta(ctx, meta)
 		result, err := r.Tools.Call(ctx, name, args)
 		if errors.Is(err, tools.ErrToolNotFound) {
-			return nil, NewError(ErrInvalidParams, err.Error())
+			return nil, ProtocolError(err)
 		}
 		return result, err
 	default:
