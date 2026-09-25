@@ -16,6 +16,7 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
 )
 
@@ -177,6 +178,138 @@ func TestSettingServiceNormalMutationReloadsRunningRuntimeExactlyOnce(t *testing
 	}
 	if got := calls.Load(); got != 1 || !result.RuntimeReloaded {
 		t.Fatalf("reload calls=%d result=%#v", got, result)
+	}
+}
+
+func TestSettingServiceApplyIsAtomicAndReloadsRunningRuntimeOnce(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/reload" || r.Header.Get("Authorization") != "Bearer token" {
+			t.Fatalf("request=%s %s auth=%q", r.Method, r.URL.Path, r.Header.Get("Authorization"))
+		}
+		calls.Add(1)
+		_ = json.NewEncoder(w).Encode(runtimecontrol.ReloadResult{PID: os.Getpid(), ServerEnabled: true, ServerPort: 40123, AdminPort: 40124})
+	}))
+	defer server.Close()
+	writeRuntimeState(t, root, runtimecontrol.State{
+		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root,
+	})
+
+	service := NewSettingService()
+	applied, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "server.port", Value: "40123"},
+		{Key: "admin.port", Value: "40124"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !applied.RuntimeReloaded || calls.Load() != 1 || len(applied.Results) != 2 {
+		t.Fatalf("applied=%#v reloads=%d", applied, calls.Load())
+	}
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Server.Port != 40123 || loaded.Admin.Port != 40124 {
+		t.Fatalf("multi-setting mutation was not persisted atomically: %#v", loaded)
+	}
+
+	before := loaded
+	_, err = service.Apply(t.Context(), []SettingChange{
+		{Key: "server.port", Value: "40223"},
+		{Key: "admin.port", Value: "70000"},
+	})
+	if err == nil {
+		t.Fatal("invalid multi-setting mutation unexpectedly succeeded")
+	}
+	after, loadErr := config.Load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("failed multi-setting mutation changed persisted config\nbefore=%#v\nafter=%#v", before, after)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("failed mutation triggered runtime reload: %d", calls.Load())
+	}
+}
+
+func TestTunnelAdminGenericBatchAndDomainFacadeConverge(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	service := NewSettingService()
+	batch, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "tunnel.admin.key", Value: "admin-secret"},
+		{Key: "tunnel.admin.workspace_id", Value: "ws_admin"},
+		{Key: "tunnel.admin.enabled", Value: "false"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	batchAdmin := batch.Config.Tunnel.Admin
+
+	base := config.Default()
+	base.Auth.MCPTokenHash = "mcp-configured-hash"
+	base.Auth.AdminTokenHash = "admin-configured-hash"
+	if err := config.Save(base); err != nil {
+		t.Fatal(err)
+	}
+	scope := tunnel.AdminScope{WorkspaceID: "ws_admin"}
+	if _, err := SetTunnelAdminKey(t.Context(), TunnelAdminKeyInput{Key: "admin-secret", Scope: &scope}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetTunnelAdminEnabled(t.Context(), false); err != nil {
+		t.Fatal(err)
+	}
+	domain, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(batchAdmin, domain.Tunnel.Admin) {
+		t.Fatalf("batch/domain admin state mismatch\nbatch=%#v\ndomain=%#v", batchAdmin, domain.Tunnel.Admin)
+	}
+
+	if err := config.Save(base); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Set(t.Context(), "tunnel.admin.key", "admin-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Set(t.Context(), "tunnel.admin.workspace_id", "ws_admin"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Set(t.Context(), "tunnel.admin.enabled", "false"); err != nil {
+		t.Fatal(err)
+	}
+	generic, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(batchAdmin, generic.Tunnel.Admin) {
+		t.Fatalf("batch/generic admin state mismatch\nbatch=%#v\ngeneric=%#v", batchAdmin, generic.Tunnel.Admin)
+	}
+}
+
+func TestTunnelAdminBatchRejectsCompetingScopesBeforePersistence(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	before, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewSettingService().Apply(t.Context(), []SettingChange{
+		{Key: "tunnel.admin.key", Value: "admin-secret"},
+		{Key: "tunnel.admin.organization_id", Value: "org_one"},
+		{Key: "tunnel.admin.workspace_id", Value: "ws_one"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("competing scope mutation err=%v", err)
+	}
+	after, loadErr := config.Load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("competing scope mutation persisted partial state\nbefore=%#v\nafter=%#v", before, after)
 	}
 }
 
@@ -382,6 +515,19 @@ func TestSettingServiceTunnelAdminConfiguredInputsAreOfflineAndInvalidateDerived
 	}
 	if loaded.Tunnel.Admin.Verified || loaded.Tunnel.Admin.ReadAccess || loaded.Tunnel.Admin.ManageAccess {
 		t.Fatalf("scope replacement retained stale derived state: %#v", loaded.Tunnel)
+	}
+	if _, err := service.Verify(t.Context(), "tunnel.admin.key"); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("verification after scope replacement calls=%d want=3", calls.Load())
+	}
+	loaded, err = config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !loaded.Tunnel.Admin.Verified || !loaded.Tunnel.Admin.ReadAccess || !loaded.Tunnel.Admin.ManageAccess || loaded.Tunnel.Admin.OrganizationID != "org_admin" {
+		t.Fatalf("verification after scope replacement state=%#v", loaded.Tunnel.Admin)
 	}
 
 	for _, key := range []string{"tunnel.admin.configured", "tunnel.admin.verified", "tunnel.admin.read_access", "tunnel.admin.manage_access"} {

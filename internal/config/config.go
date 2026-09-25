@@ -173,6 +173,10 @@ func LoadForTunnelAdminKeyReplacement() (Config, error) {
 	return loadForTunnelSecretReplacement(tunnelSecretLoadPolicy{allowMissingAdmin: true})
 }
 
+func LoadForTunnelSecretReplacement(runtimeKey, adminKey bool) (Config, error) {
+	return loadForTunnelSecretReplacement(tunnelSecretLoadPolicy{allowMissingRuntime: runtimeKey, allowMissingAdmin: adminKey})
+}
+
 func loadForTunnelSecretReplacement(policy tunnelSecretLoadPolicy) (Config, error) {
 	source, err := Source()
 	if err != nil {

@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -99,40 +98,17 @@ func SetAuthEnabled(ctx context.Context, kind string, enabled bool) (AuthStatus,
 		return AuthStatus{}, err
 	}
 	normalizeSpan.EndMessage("Authentication kind normalized", tracepkg.String("kind", kind))
-	previous, _, err := loadConfigTraced(ctx, "auth.config.load", "Loading configuration for authentication")
+	key := "auth.mcp_enabled"
+	if kind == "admin" {
+		key = "auth.admin_enabled"
+	}
+	applied, err := NewSettingService().Apply(ctx, []SettingChange{{Key: key, Value: fmt.Sprint(enabled)}})
 	if err != nil {
 		span.FailMessage("Authentication state update failed", err)
 		return AuthStatus{}, err
 	}
-	cfg := previous
-	if kind == "mcp" {
-		if enabled && cfg.Auth.MCPTokenHash == "" {
-			err := errors.New("MCP token is not configured; create one first")
-			span.FailMessage("Authentication state update failed", err)
-			return AuthStatus{}, err
-		}
-		cfg.Auth.MCPEnabled = enabled
-	} else {
-		if enabled && cfg.Auth.AdminTokenHash == "" {
-			err := errors.New("admin token is not configured; create one first")
-			span.FailMessage("Authentication state update failed", err)
-			return AuthStatus{}, err
-		}
-		cfg.Auth.AdminEnabled = enabled
-	}
-	validateSpan := tracepkg.Start(ctx, "AUTH", "auth.config.validate", "Validating authentication configuration", tracepkg.String("kind", kind), tracepkg.Bool("enabled", enabled))
-	if err := config.Validate(cfg); err != nil {
-		validateSpan.FailMessage("Authentication configuration validation failed", err)
-		span.FailMessage("Authentication state update failed", err)
-		return AuthStatus{}, err
-	}
-	validateSpan.EndMessage("Authentication configuration validated")
-	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
-		span.FailMessage("Authentication state update failed", err)
-		return AuthStatus{}, err
-	}
-	status := authStatus(cfg)
-	span.EndMessage("Authentication state updated", tracepkg.String("kind", kind), tracepkg.Bool("enabled", authEnabled(status, kind)), tracepkg.Bool("configured", authConfigured(status, kind)))
+	status := authStatus(applied.Config)
+	span.EndMessage("Authentication state updated", tracepkg.String("kind", kind), tracepkg.Bool("enabled", authEnabled(status, kind)), tracepkg.Bool("configured", authConfigured(status, kind)), tracepkg.Bool("runtime_reloaded", applied.RuntimeReloaded))
 	return status, nil
 }
 

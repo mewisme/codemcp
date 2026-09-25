@@ -75,48 +75,25 @@ func ConfigureTunnelRuntime(ctx context.Context, input TunnelRuntimeInput) (Tunn
 		ctx = context.Background()
 	}
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.runtime.configure", "Configuring local tunnel runtime", tracepkg.Any("changed_fields", tunnelRuntimeInputFields(input)), tracepkg.Bool("runtime_key_replacement", input.APIKey != nil))
-	load := config.Load
-	if input.APIKey != nil {
-		load = config.LoadForTunnelRuntimeKeyReplacement
-	}
-	cfg, _, err := loadConfigWithTracedLoader(ctx, "tunnel.config.load", "Loading tunnel runtime configuration", load)
-	if err != nil {
-		span.FailMessage("Tunnel runtime configuration load failed", err)
-		return TunnelDashboard{}, err
-	}
-	previousConfig := cfg
-	previous := cfg.Tunnel
-	next := previous
+	changes := make([]SettingChange, 0, 5)
 	if input.Enabled != nil {
-		next.Enabled = *input.Enabled
+		changes = append(changes, SettingChange{Key: "tunnel.enabled", Value: fmt.Sprint(*input.Enabled)})
 	}
 	if input.ID != nil {
-		next.ID = strings.TrimSpace(*input.ID)
+		changes = append(changes, SettingChange{Key: "tunnel.id", Value: *input.ID})
 	}
 	if input.APIKey != nil {
-		next.APIKey = strings.TrimSpace(*input.APIKey)
+		changes = append(changes, SettingChange{Key: "tunnel.api_key", Value: *input.APIKey})
 	}
 	if input.ControlPlaneBaseURL != nil {
-		next.ControlPlaneBaseURL = strings.TrimSpace(*input.ControlPlaneBaseURL)
+		changes = append(changes, SettingChange{Key: "tunnel.control_plane_base_url", Value: *input.ControlPlaneBaseURL})
 	}
 	if input.OrganizationID != nil {
-		next.OrganizationID = strings.TrimSpace(*input.OrganizationID)
+		changes = append(changes, SettingChange{Key: "tunnel.organization_id", Value: *input.OrganizationID})
 	}
-	cfg.Tunnel = next
-	if err := config.Validate(cfg); err != nil {
-		span.FailMessage("Tunnel runtime configuration validation failed", err, tracepkg.String("tunnel_id", next.ID), tracepkg.Bool("enabled", next.Enabled))
-		return TunnelDashboard{}, err
-	}
-	metadataSync := tunnel.Configured(next) && (previous.ID != next.ID || previous.APIKey != next.APIKey || previous.ControlPlaneBaseURL != next.ControlPlaneBaseURL)
-	tracepkg.Emit(ctx, "TUNNEL", "tunnel.runtime.metadata-sync-decision", "Resolved tunnel metadata synchronization decision", tracepkg.Bool("metadata_sync", metadataSync), tracepkg.String("tunnel_id", next.ID), tracepkg.URL("control_plane_base_url", next.ControlPlaneBaseURL), tracepkg.Bool("runtime_auth_present", strings.TrimSpace(next.APIKey) != ""))
-	if metadataSync {
-		if _, _, err := config.SyncTunnelMetadata(ctx, next); err != nil {
-			span.FailMessage("Tunnel runtime metadata synchronization failed", err, tracepkg.Bool("metadata_sync", true))
-			return TunnelDashboard{}, fmt.Errorf("persist tunnel metadata: %w", err)
-		}
-	}
-	if _, _, err := saveConfigMutation(ctx, previousConfig, cfg); err != nil {
-		span.FailMessage("Tunnel runtime configuration persistence failed", err, tracepkg.Bool("metadata_sync", metadataSync))
+	applied, err := NewSettingService().Apply(ctx, changes)
+	if err != nil {
+		span.FailMessage("Tunnel runtime configuration persistence failed", err)
 		return TunnelDashboard{}, err
 	}
 	dashboard, err := TunnelStatus()
@@ -124,24 +101,12 @@ func ConfigureTunnelRuntime(ctx context.Context, input TunnelRuntimeInput) (Tunn
 		span.FailMessage("Tunnel runtime status reload failed", err)
 		return TunnelDashboard{}, err
 	}
-	span.EndMessage("Local tunnel runtime configured", tracepkg.String("tunnel_id", dashboard.Config.ID), tracepkg.Bool("enabled", dashboard.Config.Enabled), tracepkg.Bool("metadata_sync", metadataSync), tracepkg.URL("control_plane_base_url", dashboard.Config.ControlPlaneBaseURL), tracepkg.Bool("runtime_auth_present", strings.TrimSpace(dashboard.Config.APIKey) != ""))
+	span.EndMessage("Local tunnel runtime configured", tracepkg.String("tunnel_id", dashboard.Config.ID), tracepkg.Bool("enabled", dashboard.Config.Enabled), tracepkg.Bool("runtime_reloaded", applied.RuntimeReloaded), tracepkg.URL("control_plane_base_url", dashboard.Config.ControlPlaneBaseURL), tracepkg.Bool("runtime_auth_present", strings.TrimSpace(dashboard.Config.APIKey) != ""))
 	return dashboard, nil
 }
 
 func SetTunnelEnabled(ctx context.Context, enabled bool) (TunnelDashboard, error) {
-	previous, err := config.Load()
-	if err != nil {
-		return TunnelDashboard{}, err
-	}
-	cfg := previous
-	cfg.Tunnel.Enabled = enabled
-	if err := config.Validate(cfg); err != nil {
-		return TunnelDashboard{}, err
-	}
-	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
-		return TunnelDashboard{}, err
-	}
-	return TunnelStatus()
+	return ConfigureTunnelRuntime(ctx, TunnelRuntimeInput{Enabled: &enabled})
 }
 
 func SyncConfiguredTunnel(ctx context.Context) (tunnel.Metadata, string, error) {
@@ -189,61 +154,44 @@ func SetTunnelAdminKey(ctx context.Context, input TunnelAdminKeyInput) (tunnel.A
 		fields = append(fields, tunnelAdminScopeFields(*input.Scope)...)
 	}
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin-key.set", "Storing tunnel admin key", fields...)
-	previous, _, err := loadConfigWithTracedLoader(ctx, "tunnel.admin.config.load", "Loading tunnel admin configuration", config.LoadForTunnelAdminKeyReplacement)
-	if err != nil {
-		span.FailMessage("Tunnel admin configuration load failed", err)
-		return tunnel.AdminScope{}, err
-	}
-	cfg := previous
 	key := strings.TrimSpace(input.Key)
 	if key == "" {
 		err := errors.New("OpenAI admin key is required")
 		span.FailMessage("Tunnel admin key validation failed", err, tracepkg.String("key_source", keySource))
 		return tunnel.AdminScope{}, err
 	}
-	candidate := cfg.Tunnel
-	candidate.Admin.Key = key
+	changes := []SettingChange{{Key: "tunnel.admin.key", Value: key}}
 	if input.Scope != nil {
-		if err := tunnel.SetAdminScope(&candidate, *input.Scope); err != nil {
+		scopeChange, err := settingChangeForAdminScope(*input.Scope)
+		if err != nil {
 			span.FailMessage("Tunnel admin scope validation failed", err)
 			return tunnel.AdminScope{}, err
 		}
-	} else {
-		tunnel.InvalidateAdminVerification(&candidate)
+		changes = append(changes, scopeChange)
 	}
-	scope := tunnel.AdminScopeFromConfig(candidate)
-	cfg.Tunnel = candidate
-	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
+	applied, err := NewSettingService().Apply(ctx, changes)
+	if err != nil {
 		span.FailMessage("Tunnel admin key persistence failed", err)
 		return tunnel.AdminScope{}, err
 	}
+	scope := tunnel.AdminScopeFromConfig(applied.Config.Tunnel)
 	span.EndMessage("Tunnel admin key stored", append(tunnelAdminScopeFields(scope), tracepkg.String("key_source", keySource), tracepkg.Bool("verification_invalidated", true))...)
 	return scope, nil
 }
 
 func SetTunnelAdminEnabled(ctx context.Context, enabled bool) (TunnelAdminStatus, error) {
-	previous, _, err := loadConfigTraced(ctx, "tunnel.admin.config.load", "Loading tunnel admin configuration")
-	if err != nil {
-		return TunnelAdminStatus{}, err
-	}
-	cfg := previous
-	tunnel.SetAdminEnabled(&cfg.Tunnel, enabled)
-	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
+	if _, err := NewSettingService().Apply(ctx, []SettingChange{{Key: "tunnel.admin.enabled", Value: fmt.Sprint(enabled)}}); err != nil {
 		return TunnelAdminStatus{}, err
 	}
 	return TunnelAdminKeyStatusContext(ctx)
 }
 
 func SetTunnelAdminScope(ctx context.Context, scope tunnel.AdminScope) (TunnelAdminStatus, error) {
-	previous, _, err := loadConfigTraced(ctx, "tunnel.admin.config.load", "Loading tunnel admin configuration")
+	change, err := settingChangeForAdminScope(scope)
 	if err != nil {
 		return TunnelAdminStatus{}, err
 	}
-	cfg := previous
-	if err := tunnel.SetAdminScope(&cfg.Tunnel, scope); err != nil {
-		return TunnelAdminStatus{}, err
-	}
-	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
+	if _, err := NewSettingService().Apply(ctx, []SettingChange{change}); err != nil {
 		return TunnelAdminStatus{}, err
 	}
 	return TunnelAdminKeyStatusContext(ctx)
@@ -268,6 +216,13 @@ func VerifyTunnelAdminKey(ctx context.Context) (int, tunnel.AdminScope, error) {
 	access, count, err := tunnel.VerifyAdminKey(ctx, cfg.Tunnel)
 	if err != nil {
 		span.FailMessage("Stored tunnel admin access verification failed", errors.New("tunnel admin verification failed"), tunnelAdminScopeFields(scope)...)
+		if tunnel.AdminVerified(cfg.Tunnel) || cfg.Tunnel.Admin.ReadAccess || cfg.Tunnel.Admin.ManageAccess {
+			previous := cfg
+			tunnel.InvalidateAdminVerification(&cfg.Tunnel)
+			if _, _, persistErr := saveConfigMutation(ctx, previous, cfg); persistErr != nil {
+				return 0, scope, errors.Join(err, fmt.Errorf("invalidate stale tunnel admin verification: %w", persistErr))
+			}
+		}
 		return 0, scope, err
 	}
 	previous := cfg
@@ -285,21 +240,12 @@ func RemoveTunnelAdminKey(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin-key.remove", "Removing stored tunnel admin key")
-	previous, _, err := loadConfigWithTracedLoader(ctx, "tunnel.admin.config.load", "Loading tunnel admin configuration", config.LoadForTunnelAdminKeyReplacement)
-	if err != nil {
-		span.FailMessage("Tunnel admin key removal configuration load failed", err)
-		return err
-	}
-	cfg := previous
-	cfg.Tunnel.Admin.Key = ""
-	tunnel.ApplyAdminScope(&cfg.Tunnel, tunnel.AdminScope{})
-	tunnel.InvalidateAdminVerification(&cfg.Tunnel)
-	_, reloaded, err := saveConfigMutation(ctx, previous, cfg)
+	applied, err := NewSettingService().Apply(ctx, []SettingChange{{Key: "tunnel.admin.key", Unset: true}})
 	if err != nil {
 		span.FailMessage("Tunnel admin key removal failed", err)
 		return err
 	}
-	span.EndMessage("Stored tunnel admin key removed", tracepkg.Bool("runtime_reloaded", reloaded))
+	span.EndMessage("Stored tunnel admin key removed", tracepkg.Bool("runtime_reloaded", applied.RuntimeReloaded))
 	return nil
 }
 

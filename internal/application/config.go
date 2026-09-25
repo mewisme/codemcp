@@ -329,29 +329,13 @@ func SetConfigField(ctx context.Context, key, raw string) (ConfigMutationResult,
 		ctx = context.Background()
 	}
 	mutationSpan := tracepkg.Start(ctx, "CONFIG", "config.field.mutate", "Mutating configuration field", tracepkg.String("key", key))
-	previous, source, err := loadConfigTraced(ctx, "config.mutation.load", "Loading configuration for mutation")
+	applied, err := NewSettingService().Apply(ctx, []SettingChange{{Key: key, Value: raw}})
 	if err != nil {
-		mutationSpan.FailMessage("Configuration field mutation failed", err)
-		return ConfigMutationResult{}, err
-	}
-	spec, specOK := config.FieldByKey(key)
-	previousValue := configTraceValue(previous, key, spec, specOK)
-	next := previous
-	validateSpan := tracepkg.Start(ctx, "CONFIG", "config.field.validate", "Validating configuration mutation", tracepkg.String("key", key), tracepkg.Any("previous", previousValue))
-	if err := config.SetValueValidated(&next, key, raw); err != nil {
-		validateSpan.FailMessage("Configuration mutation validation failed", err, tracepkg.String("key", key))
 		mutationSpan.FailMessage("Configuration field mutation failed", err, tracepkg.String("key", key))
 		return ConfigMutationResult{}, err
 	}
-	nextValue := configTraceValue(next, key, spec, specOK)
-	validateSpan.EndMessage("Configuration mutation validated", tracepkg.String("key", key), tracepkg.Any("previous", previousValue), tracepkg.Any("next", nextValue))
-	_, reloaded, err := saveConfigMutation(ctx, previous, next)
-	if err != nil {
-		mutationSpan.FailMessage("Configuration field mutation failed", err)
-		return ConfigMutationResult{}, err
-	}
-	mutationSpan.EndMessage("Configuration field mutated", tracepkg.String("key", key), tracepkg.Any("previous", previousValue), tracepkg.Any("next", nextValue), tracepkg.String("config", source.Path), tracepkg.Bool("runtime_reloaded", reloaded))
-	return ConfigMutationResult{Config: next, RuntimeReloaded: reloaded}, nil
+	mutationSpan.EndMessage("Configuration field mutated", tracepkg.String("key", key), tracepkg.Bool("runtime_reloaded", applied.RuntimeReloaded))
+	return ConfigMutationResult{Config: applied.Config, RuntimeReloaded: applied.RuntimeReloaded}, nil
 }
 
 func VerifyConfig() (config.VerifyResult, error) { return VerifyConfigContext(context.Background()) }
@@ -544,24 +528,6 @@ func loadConfigWithTracedLoader(ctx context.Context, name, message string, load 
 	}
 	span.EndMessage(message+" completed", fields...)
 	return cfg, source, nil
-}
-
-func configTraceValue(cfg config.Config, key string, spec config.FieldSpec, specOK bool) any {
-	if specOK && spec.Sensitive {
-		value, err := config.RawValue(cfg, key)
-		if err != nil || strings.TrimSpace(value) == "" {
-			return "empty"
-		}
-		return "configured"
-	}
-	value, err := config.RedactedValueAt(cfg, key)
-	if err != nil {
-		return "unavailable"
-	}
-	if strings.Contains(strings.ToLower(key), "url") {
-		return tracepkg.SanitizeURL(fmt.Sprint(value))
-	}
-	return value
 }
 
 func ReloadWorkspaces(ctx context.Context) (runtimecontrol.WorkspaceReloadResult, bool, error) {

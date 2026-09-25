@@ -13,6 +13,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
@@ -53,6 +54,36 @@ func TestTunnelRuntimeConfigureSyncAndSecretPersistence(t *testing.T) {
 	}
 	if loaded.Tunnel.Enabled || loaded.Tunnel.ID != id || loaded.Tunnel.APIKey != key || loaded.Tunnel.ControlPlaneBaseURL != server.URL {
 		t.Fatalf("patch configure overwrote unchanged fields: %#v", loaded.Tunnel)
+	}
+}
+
+func TestTunnelRuntimeConfigureBatchReloadsOnce(t *testing.T) {
+	setupTunnelApplicationRoot(t, tunnel.Config{})
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/reload" || r.Header.Get("Authorization") != "Bearer token" {
+			t.Fatalf("request=%s %s auth=%q", r.Method, r.URL.Path, r.Header.Get("Authorization"))
+		}
+		calls.Add(1)
+		_ = json.NewEncoder(w).Encode(runtimecontrol.ReloadResult{PID: os.Getpid()})
+	}))
+	defer server.Close()
+	writeRuntimeState(t, config.RootPath(), runtimecontrol.State{
+		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: config.RootPath(),
+	})
+
+	id, organization, controlPlane := "tunnel_batch", "org_batch", "https://api.example.test"
+	dashboard, err := ConfigureTunnelRuntime(t.Context(), TunnelRuntimeInput{
+		ID: &id, OrganizationID: &organization, ControlPlaneBaseURL: &controlPlane,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("batch tunnel configure reloads=%d want=1", calls.Load())
+	}
+	if dashboard.Config.ID != id || dashboard.Config.OrganizationID != organization || dashboard.Config.ControlPlaneBaseURL != controlPlane {
+		t.Fatalf("dashboard=%#v", dashboard)
 	}
 }
 
@@ -163,6 +194,58 @@ func TestTunnelAdminAndManagedLifecycle(t *testing.T) {
 	status, err = TunnelAdminKeyStatus()
 	if err != nil || status.Configured {
 		t.Fatalf("admin key remained configured: %#v err=%v", status, err)
+	}
+}
+
+func TestTunnelAdminFailedReverificationClearsStaleAccessButKeepsConfiguredInputs(t *testing.T) {
+	var reject atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer admin-secret" {
+			t.Fatalf("authorization=%q", r.Header.Get("Authorization"))
+		}
+		if reject.Load() {
+			if r.Method != http.MethodGet || (r.URL.Path != "/v1/tunnels" && r.URL.Path != "/v1/tunnels/tunnel_00000000000000000000000000000000") {
+				t.Fatalf("reverification request=%s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+			}
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/tunnels" || r.URL.Query().Get("workspace_id") != "ws_admin" {
+			t.Fatalf("request=%s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"tunnels":[{"id":"tunnel_one","workspace_ids":["ws_admin"]}]}`))
+	}))
+	defer server.Close()
+	setupTunnelApplicationRoot(t, tunnel.Config{ControlPlaneBaseURL: server.URL})
+
+	scope := tunnel.AdminScope{WorkspaceID: "ws_admin"}
+	if _, err := SetTunnelAdminKey(t.Context(), TunnelAdminKeyInput{Key: "admin-secret", Scope: &scope}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := VerifyTunnelAdminKey(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	verified, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !verified.Tunnel.Admin.Verified || !verified.Tunnel.Admin.ReadAccess || !verified.Tunnel.Admin.ManageAccess {
+		t.Fatalf("initial verification state=%#v", verified.Tunnel.Admin)
+	}
+
+	reject.Store(true)
+	if _, _, err := VerifyTunnelAdminKey(t.Context()); err == nil {
+		t.Fatal("failed re-verification unexpectedly succeeded")
+	}
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Tunnel.Admin.Key != "admin-secret" || loaded.Tunnel.Admin.WorkspaceID != "ws_admin" {
+		t.Fatalf("failed re-verification destroyed configured inputs: %#v", loaded.Tunnel.Admin)
+	}
+	if loaded.Tunnel.Admin.Verified || loaded.Tunnel.Admin.ReadAccess || loaded.Tunnel.Admin.ManageAccess {
+		t.Fatalf("failed re-verification retained stale access: %#v", loaded.Tunnel.Admin)
 	}
 }
 

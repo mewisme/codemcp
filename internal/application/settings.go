@@ -188,120 +188,33 @@ func (s *SettingService) Set(ctx context.Context, key, raw string) (SettingResul
 
 func (s *SettingService) SetWithOptions(ctx context.Context, key, raw string, options SettingSetOptions) (result SettingResult, resultErr error) {
 	ctx = settingContext(ctx)
-	span := tracepkg.Start(ctx, "CONFIG", "setting.set", "Setting canonical setting", tracepkg.String("key", key))
+	fields := []tracepkg.Field{tracepkg.String("key", key)}
+	if source := strings.TrimSpace(options.SecretSource); source != "" {
+		fields = append(fields, tracepkg.String("secret_source", source))
+	}
+	span := tracepkg.Start(ctx, "CONFIG", "setting.set", "Setting canonical setting", fields...)
 	defer settingMutationFinish(span, "set", key, &result, &resultErr)()
 
 	spec, selector, err := resolveSetting(key)
 	if err != nil {
 		return SettingResult{}, err
 	}
-	if !spec.Writable {
-		return SettingResult{}, fmt.Errorf("setting %q is not writable", key)
-	}
-	if selector != nil {
-		if err := s.setDynamicSetting(ctx, *selector, raw); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Read(ctx, dynamicReadKey(*selector))
-	}
-
-	switch spec.Key {
-	case "auth.mcp_token", "auth.admin_token":
-		return SettingResult{}, fmt.Errorf("setting %q is generated; use rotate", key)
-	case "auth.mcp_enabled", "auth.admin_enabled":
-		enabled, err := parseSettingBool(raw, spec.Key)
+	changes := []SettingChange{{Key: key, Value: raw}}
+	if selector == nil && spec.Key == "tunnel.admin.key" && options.TunnelAdminScope != nil {
+		scopeChange, err := settingChangeForAdminScope(*options.TunnelAdminScope)
 		if err != nil {
 			return SettingResult{}, err
 		}
-		kind := "mcp"
-		if spec.Key == "auth.admin_enabled" {
-			kind = "admin"
-		}
-		if _, err := SetAuthEnabled(ctx, kind, enabled); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Read(ctx, spec.Key)
-	case "tunnel.enabled":
-		enabled, err := parseSettingBool(raw, spec.Key)
-		if err != nil {
-			return SettingResult{}, err
-		}
-		if _, err := SetTunnelEnabled(ctx, enabled); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Read(ctx, spec.Key)
-	case "tunnel.id":
-		value := raw
-		if _, err := ConfigureTunnelRuntime(ctx, TunnelRuntimeInput{ID: &value}); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Read(ctx, spec.Key)
-	case "tunnel.control_plane_base_url":
-		value := raw
-		if _, err := ConfigureTunnelRuntime(ctx, TunnelRuntimeInput{ControlPlaneBaseURL: &value}); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Read(ctx, spec.Key)
-	case "tunnel.organization_id":
-		value := raw
-		if _, err := ConfigureTunnelRuntime(ctx, TunnelRuntimeInput{OrganizationID: &value}); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Read(ctx, spec.Key)
-	case "tunnel.api_key":
-		value := raw
-		if _, err := ConfigureTunnelRuntime(ctx, TunnelRuntimeInput{APIKey: &value}); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Present(ctx, spec.Key)
-	case "tunnel.admin.key":
-		source := strings.TrimSpace(options.SecretSource)
-		if source == "" {
-			source = "setting"
-		}
-		if _, err := SetTunnelAdminKey(ctx, TunnelAdminKeyInput{Key: raw, KeySource: source, Scope: options.TunnelAdminScope}); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Present(ctx, spec.Key)
-	case "tunnel.admin.enabled":
-		enabled, err := parseSettingBool(raw, spec.Key)
-		if err != nil {
-			return SettingResult{}, err
-		}
-		if _, err := SetTunnelAdminEnabled(ctx, enabled); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Read(ctx, spec.Key)
-	case "tunnel.admin.organization_id", "tunnel.admin.workspace_id", "tunnel.admin.tenant_id":
-		value := strings.TrimSpace(raw)
-		if value == "" {
-			return SettingResult{}, fmt.Errorf("setting %q requires a non-empty scope id", spec.Key)
-		}
-		scope := tunnel.AdminScope{}
-		switch spec.Key {
-		case "tunnel.admin.organization_id":
-			scope.OrganizationID = value
-		case "tunnel.admin.workspace_id":
-			scope.WorkspaceID = value
-		case "tunnel.admin.tenant_id":
-			scope.TenantID = value
-		}
-		if _, err := SetTunnelAdminScope(ctx, scope); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Read(ctx, spec.Key)
+		changes = append(changes, scopeChange)
 	}
-
-	mutation, err := SetConfigField(ctx, spec.Key, raw)
+	applied, err := s.Apply(ctx, changes)
 	if err != nil {
 		return SettingResult{}, err
 	}
-	result, err = s.Read(ctx, spec.Key)
-	if err != nil {
-		return SettingResult{}, err
+	if selector != nil && len(applied.Results) == 1 {
+		return applied.Results[0], nil
 	}
-	result.RuntimeReloaded = mutation.RuntimeReloaded
-	return result, nil
+	return settingApplyResultForKey(applied, spec.Key)
 }
 
 func (s *SettingService) Unset(ctx context.Context, key string) (result SettingResult, resultErr error) {
@@ -313,44 +226,14 @@ func (s *SettingService) Unset(ctx context.Context, key string) (result SettingR
 	if err != nil {
 		return SettingResult{}, err
 	}
-	if selector != nil {
-		if !spec.Clearable {
-			return SettingResult{}, fmt.Errorf("setting %q cannot be cleared", key)
-		}
-		if err := s.setDynamicSetting(ctx, *selector, ""); err != nil {
-			return SettingResult{}, err
-		}
-		return s.Read(ctx, dynamicReadKey(*selector))
-	}
-	if spec.Secret {
-		if !spec.Clearable {
-			return SettingResult{}, fmt.Errorf("setting %q cannot be cleared", key)
-		}
-		switch spec.Key {
-		case "tunnel.api_key":
-			value := ""
-			if _, err := ConfigureTunnelRuntime(ctx, TunnelRuntimeInput{APIKey: &value}); err != nil {
-				return SettingResult{}, err
-			}
-			return s.Present(ctx, spec.Key)
-		case "tunnel.admin.key":
-			if err := RemoveTunnelAdminKey(ctx); err != nil {
-				return SettingResult{}, err
-			}
-			return s.Present(ctx, spec.Key)
-		default:
-			return SettingResult{}, fmt.Errorf("setting %q cannot be cleared", key)
-		}
-	}
-	if !spec.DefaultReset {
-		return SettingResult{}, fmt.Errorf("setting %q has no default reset", key)
-	}
-	defaults := config.Default()
-	value, err := config.RawValue(defaults, spec.Key)
+	applied, err := s.Apply(ctx, []SettingChange{{Key: key, Unset: true}})
 	if err != nil {
 		return SettingResult{}, err
 	}
-	return s.Set(ctx, spec.Key, value)
+	if selector != nil && len(applied.Results) == 1 {
+		return applied.Results[0], nil
+	}
+	return settingApplyResultForKey(applied, spec.Key)
 }
 
 func (s *SettingService) Rotate(ctx context.Context, key string) (result SettingResult, resultErr error) {
