@@ -101,17 +101,18 @@ type AdminBinding struct {
 }
 
 type Spec struct {
-	ID            ID
-	Kind          Kind
-	Audience      Audience
-	Authorization AuthorizationClass
-	Risk          MutationRisk
-	Confirmation  ConfirmationPolicy
-	Effects       SemanticEffects
-	CLI           CLIBinding
-	Admin         []AdminBinding
-	MCPTools      []string
-	Surfaces      []SurfaceContract
+	ID              ID
+	Kind            Kind
+	Audience        Audience
+	Authorization   AuthorizationClass
+	Risk            MutationRisk
+	Confirmation    ConfirmationPolicy
+	Effects         SemanticEffects
+	CLI             CLIBinding
+	Admin           []AdminBinding
+	MCPTools        []string
+	PlannedMCPTools []string
+	Surfaces        []SurfaceContract
 }
 
 func (spec Spec) Surface(surface Surface) (SurfaceContract, bool) {

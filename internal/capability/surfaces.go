@@ -8,6 +8,7 @@ const (
 	reasonNoBrowser        = "no current Browser workflow owns this operation"
 	reasonNoAdminAPI       = "no current Admin API route owns this operation"
 	reasonNoMCP            = "operation has no MCP tool binding"
+	reasonMCPPending       = "MCP tool binding is defined but not active yet"
 	reasonTelegramPending  = "Telegram interface is not implemented yet"
 	reasonTelegramExcluded = "operation is outside Telegram administration scope"
 	reasonNotApplicable    = "surface is not applicable"
@@ -15,7 +16,7 @@ const (
 
 var knownSurfaceReasons = map[string]struct{}{
 	reasonAgentOnly: {}, reasonProtocolOnly: {}, reasonNoCLI: {}, reasonNoTUI: {},
-	reasonNoBrowser: {}, reasonNoAdminAPI: {}, reasonNoMCP: {}, reasonTelegramPending: {},
+	reasonNoBrowser: {}, reasonNoAdminAPI: {}, reasonNoMCP: {}, reasonMCPPending: {}, reasonTelegramPending: {},
 	reasonTelegramExcluded: {}, reasonNotApplicable: {},
 }
 
@@ -74,6 +75,9 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 }
 
 func exemptionReason(spec Spec, surface Surface) string {
+	if surface == SurfaceMCP && len(spec.PlannedMCPTools) > 0 {
+		return reasonMCPPending
+	}
 	switch spec.Audience {
 	case AudienceAgent:
 		return reasonAgentOnly

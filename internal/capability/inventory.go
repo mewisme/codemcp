@@ -20,17 +20,18 @@ type InventorySnapshot struct {
 }
 
 type OperationInventory struct {
-	ID            ID                 `json:"id"`
-	Kind          Kind               `json:"kind"`
-	Audience      Audience           `json:"audience"`
-	Authorization AuthorizationClass `json:"authorization"`
-	Risk          MutationRisk       `json:"risk"`
-	Confirmation  ConfirmationPolicy `json:"confirmation"`
-	Effects       SemanticEffects    `json:"effects"`
-	CLI           CLIBinding         `json:"cli"`
-	Admin         []AdminBinding     `json:"admin"`
-	MCPTools      []string           `json:"mcp_tools"`
-	Surfaces      []SurfaceContract  `json:"surfaces"`
+	ID              ID                 `json:"id"`
+	Kind            Kind               `json:"kind"`
+	Audience        Audience           `json:"audience"`
+	Authorization   AuthorizationClass `json:"authorization"`
+	Risk            MutationRisk       `json:"risk"`
+	Confirmation    ConfirmationPolicy `json:"confirmation"`
+	Effects         SemanticEffects    `json:"effects"`
+	CLI             CLIBinding         `json:"cli"`
+	Admin           []AdminBinding     `json:"admin"`
+	MCPTools        []string           `json:"mcp_tools"`
+	PlannedMCPTools []string           `json:"planned_mcp_tools,omitempty"`
+	Surfaces        []SurfaceContract  `json:"surfaces"`
 }
 
 type InventoryDiagnostics struct {
@@ -76,7 +77,8 @@ func Inventory() InventorySnapshot {
 			ID: spec.ID, Kind: spec.Kind, Audience: spec.Audience, Authorization: spec.Authorization,
 			Risk: spec.Risk, Confirmation: spec.Confirmation, Effects: spec.Effects, CLI: spec.CLI,
 			Admin: append([]AdminBinding(nil), spec.Admin...), MCPTools: append([]string(nil), spec.MCPTools...),
-			Surfaces: append([]SurfaceContract(nil), spec.Surfaces...),
+			PlannedMCPTools: append([]string(nil), spec.PlannedMCPTools...),
+			Surfaces:        append([]SurfaceContract(nil), spec.Surfaces...),
 		})
 	}
 	sort.Slice(operations, func(i, j int) bool { return operations[i].ID < operations[j].ID })

@@ -20,7 +20,7 @@ func ProjectApprovalReview(request approval.Request, now time.Time) ApprovalRevi
 	}
 	active := request.Status == approval.StatusPending && (request.ExpiresAt.IsZero() || now.Before(request.ExpiresAt))
 	return ApprovalReviewProjection{
-		Request:   request,
+		Request:   approval.PublicRequest(request),
 		Ephemeral: true,
 		Approve:   active,
 		Deny:      active,

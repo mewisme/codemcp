@@ -12,7 +12,7 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 		"auth.admin_enabled", "auth.admin_token_hash", "auth.mcp_enabled", "auth.mcp_legacy_bearer", "auth.mcp_token_hash",
 		"integrations.caveman.active", "integrations.caveman.mode", "integrations.codegraph.enabled", "integrations.codegraph.path",
 		"integrations.ponytail.active", "integrations.ponytail.mode", "integrations.rtk.enabled", "integrations.rtk.path",
-		"permissions.allow_dirs",
+		"permissions.allow_dirs", "permissions.mcp_config_read", "permissions.mcp_config_write",
 		"notifications.approval.desktop_enabled", "notifications.approval.enabled", "notifications.approval.pending",
 		"notifications.approval.resolved", "notifications.approval.telegram_enabled",
 		"notifications.completion.desktop_enabled", "notifications.completion.enabled", "notifications.completion.telegram_enabled",

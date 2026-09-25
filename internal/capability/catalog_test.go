@@ -79,6 +79,22 @@ func TestCatalogContractsAreCompleteAndUnique(t *testing.T) {
 				t.Fatalf("ForMCPTool(%q)=%q,%t want %q", tool, got, ok, spec.ID)
 			}
 		}
+		for _, tool := range spec.PlannedMCPTools {
+			tool = strings.TrimSpace(tool)
+			if tool == "" {
+				t.Fatalf("operation %s has empty planned MCP tool binding", spec.ID)
+			}
+			if previous, ok := tools[tool]; ok && previous != spec.ID {
+				t.Fatalf("MCP tool %q maps to both %s and %s", tool, previous, spec.ID)
+			}
+			tools[tool] = spec.ID
+			if got, ok := ForPlannedMCPTool(tool); !ok || got != spec.ID {
+				t.Fatalf("ForPlannedMCPTool(%q)=%q,%t want %q", tool, got, ok, spec.ID)
+			}
+			if got, ok := ForMCPTool(tool); ok {
+				t.Fatalf("planned MCP tool %q became active via %s", tool, got)
+			}
+		}
 
 		assertSurfaceContractComplete(t, spec)
 	}
@@ -128,12 +144,12 @@ func TestAgentAndProtocolOnlyOperationsAreExplicit(t *testing.T) {
 		switch spec.Audience {
 		case AudienceAgent:
 			agents++
-			if len(spec.MCPTools) == 0 || spec.HasCLI() || len(spec.Admin) != 0 {
+			if len(spec.MCPTools)+len(spec.PlannedMCPTools) == 0 || spec.HasCLI() || len(spec.Admin) != 0 {
 				t.Fatalf("agent-only operation has non-agent binding: %#v", spec)
 			}
 		case AudienceProtocol:
 			protocols++
-			if spec.HasCLI() || len(spec.MCPTools) != 0 {
+			if spec.HasCLI() || len(spec.MCPTools) != 0 || len(spec.PlannedMCPTools) != 0 {
 				t.Fatalf("protocol-only operation has human/agent binding: %#v", spec)
 			}
 		}
@@ -151,10 +167,11 @@ func TestLookupReturnsDetachedSpec(t *testing.T) {
 	spec.CLI.Aliases = append(spec.CLI.Aliases, "mutated")
 	spec.Admin = append(spec.Admin, AdminBinding{Method: "GET", Path: "/mutated"})
 	spec.MCPTools = append(spec.MCPTools, "mutated")
+	spec.PlannedMCPTools = append(spec.PlannedMCPTools, "planned-mutated")
 	spec.Surfaces[0].State = SurfacePlanned
 
 	again, _ := Lookup(WorkspaceList)
-	if len(again.CLI.Aliases) != len(spec.CLI.Aliases)-1 || len(again.Admin) != len(spec.Admin)-1 || len(again.MCPTools) != len(spec.MCPTools)-1 || again.Surfaces[0].State == SurfacePlanned {
+	if len(again.CLI.Aliases) != len(spec.CLI.Aliases)-1 || len(again.Admin) != len(spec.Admin)-1 || len(again.MCPTools) != len(spec.MCPTools)-1 || len(again.PlannedMCPTools) != len(spec.PlannedMCPTools)-1 || again.Surfaces[0].State == SurfacePlanned {
 		t.Fatal("Lookup returned mutable catalog backing data")
 	}
 }

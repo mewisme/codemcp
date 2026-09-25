@@ -208,6 +208,9 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ApplicationOwner = "auth.credentials"
 	case "permissions.allow_dirs":
 		spec.ScopedCommands = []string{"permissions allow dir add", "permissions allow dir remove"}
+	case "permissions.mcp_config_read", "permissions.mcp_config_write":
+		spec.ApplicationOwner = "permissions.mcp_config"
+		spec.ScopedExemption = "generic config set is the operator facade for MCP config eligibility"
 	case "shell.path":
 		spec.ScopedCommands = []string{"shell path"}
 	case "notifications.approval.enabled":

@@ -2,12 +2,12 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
 const (
@@ -94,22 +94,33 @@ func RegisterApprovalTools(registry *Registry, runtime *Runtime) {
 }
 
 func approvalRequiredResult(challenge approval.Challenge) Result {
-	arguments := decodeApprovalArguments(challenge.Arguments)
+	arguments := approval.PublicArguments(challenge.TargetTool, challenge.Arguments)
+	reason, command := challenge.GuardReason, challenge.Command
+	if challenge.TargetTool == mcpconfigwire.SetToolName {
+		reason = "CodeMCP configuration changes require local approval."
+		command = ""
+	}
 	response := approvalRequiredResponse{
 		Code: "approval_required", ChallengeID: challenge.ID, WorkspaceID: challenge.WorkspaceID, TargetTool: challenge.TargetTool, Arguments: arguments,
-		GuardCode: string(challenge.GuardCode), Reason: challenge.GuardReason, Command: challenge.Command, ExpiresAt: challenge.ExpiresAt, RequestTool: ApprovalRequestToolName,
+		GuardCode: string(challenge.GuardCode), Reason: reason, Command: command, ExpiresAt: challenge.ExpiresAt, RequestTool: ApprovalRequestToolName,
 	}
-	text := fmt.Sprintf("This action requires local approval. Call %s with workspace_id %q, challenge_id %q, and a concise human-readable title summarizing what the exact command will do. The title must describe the action rather than the tool call and must not copy raw command arguments, flags, tokens, secrets, or IDs. If approved, retry %s with exactly the arguments shown in the structured response.", ApprovalRequestToolName, challenge.WorkspaceID, challenge.ID, challenge.TargetTool)
+	text := fmt.Sprintf("This action requires local approval. Call %s with workspace_id %q, challenge_id %q, and a concise human-readable title summarizing what the exact command will do. The title must describe the action rather than the tool call and must not copy raw command arguments, flags, tokens, secrets, or IDs. If approved, retry %s with exactly the original arguments.", ApprovalRequestToolName, challenge.WorkspaceID, challenge.ID, challenge.TargetTool)
+	if challenge.TargetTool != mcpconfigwire.SetToolName {
+		text = fmt.Sprintf("This action requires local approval. Call %s with workspace_id %q, challenge_id %q, and a concise human-readable title summarizing what the exact command will do. The title must describe the action rather than the tool call and must not copy raw command arguments, flags, tokens, secrets, or IDs. If approved, retry %s with exactly the arguments shown in the structured response.", ApprovalRequestToolName, challenge.WorkspaceID, challenge.ID, challenge.TargetTool)
+	}
 	return Result{Content: []Content{{Type: "text", Text: text}}, StructuredContent: response, IsError: true, ResultType: "complete"}
 }
 
 func approvalResolutionResult(request approval.Request) Result {
 	instruction := "Do not retry the guarded action."
 	if request.Status == approval.StatusApproved {
-		instruction = "Retry the target tool with exactly these arguments before retry_until."
+		instruction = "Retry the target tool with exactly the original arguments before retry_until."
+		if request.TargetTool != mcpconfigwire.SetToolName {
+			instruction = "Retry the target tool with exactly these arguments before retry_until."
+		}
 	}
 	response := approvalResolutionResponse{
-		ID: request.ID, Status: request.Status, WorkspaceID: request.WorkspaceID, TargetTool: request.TargetTool, Arguments: decodeApprovalArguments(request.Arguments),
+		ID: request.ID, Status: request.Status, WorkspaceID: request.WorkspaceID, TargetTool: request.TargetTool, Arguments: approval.PublicArguments(request.TargetTool, request.Arguments),
 		RetryUntil: request.RetryUntil, Instruction: instruction,
 	}
 	result := JSONResult(response)
@@ -125,22 +136,11 @@ func approvalMismatchResult(mismatch *approval.MismatchError) Result {
 	}
 	response := approvalMismatchResponse{
 		Code: "approval_mismatch", RequestID: mismatch.RequestID,
-		Expected:    approvalMismatchTarget{Tool: mismatch.TargetTool, Arguments: decodeApprovalArguments(mismatch.Expected)},
-		Actual:      approvalMismatchTarget{Tool: mismatch.TargetTool, Arguments: decodeApprovalArguments(mismatch.Actual)},
+		Expected:    approvalMismatchTarget{Tool: mismatch.TargetTool, Arguments: approval.PublicArguments(mismatch.TargetTool, mismatch.Expected)},
+		Actual:      approvalMismatchTarget{Tool: mismatch.TargetTool, Arguments: approval.PublicArguments(mismatch.TargetTool, mismatch.Actual)},
 		Instruction: "Retry the exact approved target and arguments, or abandon this approval request.",
 	}
 	result := JSONResult(response)
 	result.IsError = true
 	return result
-}
-
-func decodeApprovalArguments(raw json.RawMessage) any {
-	if len(raw) == 0 {
-		return map[string]any{}
-	}
-	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return string(raw)
-	}
-	return value
 }

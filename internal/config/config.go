@@ -26,7 +26,9 @@ type Config struct {
 }
 
 type PermissionsConfig struct {
-	AllowDirs []string `json:"allow_dirs"`
+	AllowDirs      []string `json:"allow_dirs"`
+	MCPConfigRead  bool     `json:"mcp_config_read"`
+	MCPConfigWrite bool     `json:"mcp_config_write"`
 }
 
 type ShellConfig struct {

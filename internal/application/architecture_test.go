@@ -43,6 +43,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"logger":             "runtime",
 	"mcp":                "runtime",
 	"mcpauth":            "runtime",
+	"mcpconfig":          "application",
 	"memory":             "domain",
 	"migration":          "persistence",
 	"network":            "platform",

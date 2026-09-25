@@ -107,6 +107,8 @@ var fieldSpecs = []FieldSpec{
 	{Key: "auth.mcp_token_hash", Label: "MCP credential", Section: FieldSectionAccess, Description: "stores the managed credential hash used by MCP HTTP authentication", Details: "The raw token is never exposed through config views. This field is managed by the MCP authentication workflow and is not directly editable through config set.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage this credential with the MCP auth token workflow.", Related: []string{"auth.mcp_enabled", "server.enabled"}},
 	{Key: "auth.admin_token_hash", Label: "Admin credential", Section: FieldSectionAccess, Description: "stores the managed credential hash used by admin HTTP authentication", Details: "The raw token is never exposed through config views. This field is managed by the admin authentication workflow and is not directly editable through config set.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage this credential with the admin auth token workflow.", Related: []string{"auth.admin_enabled", "admin.enabled"}},
 	{Key: "permissions.allow_dirs", Label: "Allowed directories", Section: FieldSectionAccess, Description: "adds global filesystem roots that registered workspaces may access", Details: "These roots extend workspace-local access for filesystem and shell operations. Paths must be absolute, are normalized, and apply globally in addition to per-workspace allowed directories.", Kind: FieldList, Editable: true},
+	{Key: "permissions.mcp_config_read", Label: "MCP agent config reads", Section: FieldSectionAccess, Description: "allows agent-facing MCP configuration read tools to access the global CodeMCP setting projection", Details: "Disabled by default. MCP transport authentication and workspace access do not grant global configuration access without this explicit operator opt-in.", Kind: FieldBool, Editable: true},
+	{Key: "permissions.mcp_config_write", Label: "MCP agent config writes", Section: FieldSectionAccess, Description: "allows the guarded agent-facing MCP configuration mutation workflow to target eligible global settings", Details: "Disabled by default. Enabling this eligibility does not bypass mandatory local approval for config_set and does not permit managed-secret writes.", Kind: FieldBool, Editable: true, Related: []string{"permissions.mcp_config_read"}},
 	{Key: "shell.path", Label: "Executable search paths", Section: FieldSectionShell, Description: "prepends additional executable directories to PATH for managed shell commands", Details: "Paths must be absolute. Configured entries are prepended to the inherited process PATH for foreground and background shell execution.", Kind: FieldList, Editable: true},
 	{Key: "notifications.approval.enabled", Label: "Approval notifications", Section: FieldSectionRuntime, Description: "controls whether approval lifecycle notifications are delivered to configured providers", Details: "Review surfaces remain independent of this setting. Enabling notifications does not consume or hide approval events from CLI, TUI, Browser, Admin API, or Telegram review surfaces.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.pending", "notifications.approval.resolved", "notifications.approval.desktop_enabled", "notifications.approval.telegram_enabled"}},
 	{Key: "notifications.approval.pending", Label: "Pending approval notifications", Section: FieldSectionRuntime, Description: "controls notification delivery when a request becomes pending", Details: "This policy only controls outbound notification delivery. Pending requests remain visible through every review surface regardless of notification state.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
@@ -251,6 +253,18 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Auth.AdminEnabled = value
 	case "permissions.allow_dirs":
 		cfg.Permissions.AllowDirs = splitFieldList(raw)
+	case "permissions.mcp_config_read":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Permissions.MCPConfigRead = value
+	case "permissions.mcp_config_write":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Permissions.MCPConfigWrite = value
 	case "shell.path":
 		cfg.Shell.Path = splitFieldList(raw)
 	case "notifications.approval.enabled":
@@ -431,6 +445,10 @@ func RawValue(cfg Config, key string) (string, error) {
 		return cfg.Auth.AdminTokenHash, nil
 	case "permissions.allow_dirs":
 		return strings.Join(cfg.Permissions.AllowDirs, ","), nil
+	case "permissions.mcp_config_read":
+		return strconv.FormatBool(cfg.Permissions.MCPConfigRead), nil
+	case "permissions.mcp_config_write":
+		return strconv.FormatBool(cfg.Permissions.MCPConfigWrite), nil
 	case "shell.path":
 		return strings.Join(cfg.Shell.Path, ","), nil
 	case "notifications.approval.enabled":

@@ -59,6 +59,9 @@ const (
 	IntegrationPonytailTurn         ID = "integration.ponytail.turn"
 	IntegrationCavemanTurn          ID = "integration.caveman.turn"
 	IntegrationCodeGraphExplore     ID = "integration.codegraph.explore"
+	AgentConfigList                 ID = "agent.config.list"
+	AgentConfigGet                  ID = "agent.config.get"
+	AgentConfigSet                  ID = "agent.config.set"
 )
 
 var mcpToolBindings = map[ID][]string{
@@ -130,6 +133,12 @@ var mcpToolBindings = map[ID][]string{
 	IntegrationCodeGraphExplore:     {"codegraph_explore"},
 }
 
+var plannedMCPToolBindings = map[ID][]string{
+	AgentConfigList: {"config_list"},
+	AgentConfigGet:  {"config_get"},
+	AgentConfigSet:  {"config_set"},
+}
+
 func agentOnlySpecs() []Spec {
 	return []Spec{
 		agentMutationSpec(AgentComplete, RiskState, false),
@@ -190,6 +199,9 @@ func agentOnlySpecs() []Spec {
 		agentMutationSpec(IntegrationPonytailTurn, RiskState, false),
 		agentMutationSpec(IntegrationCavemanTurn, RiskState, false),
 		agentQuerySpec(IntegrationCodeGraphExplore, false),
+		agentQuerySpec(AgentConfigList, false),
+		agentQuerySpec(AgentConfigGet, false),
+		agentConfigMutationSpec(AgentConfigSet),
 	}
 }
 
@@ -212,5 +224,11 @@ func agentMutationSpec(id ID, risk MutationRisk, openWorld bool) Spec {
 func agentApprovalSpec(id ID) Spec {
 	spec := agentMutationSpec(id, RiskSensitive, false)
 	spec.Confirmation.Mode = ConfirmationReview
+	return spec
+}
+
+func agentConfigMutationSpec(id ID) Spec {
+	spec := agentMutationSpec(id, RiskSensitive, false)
+	spec.Confirmation = ConfirmationPolicy{Mode: ConfirmationRequired, ControlApproval: true}
 	return spec
 }

@@ -252,6 +252,7 @@ func buildSpecs() []Spec {
 	for index := range values {
 		values[index].Admin = append([]AdminBinding(nil), adminBindings[values[index].ID]...)
 		values[index].MCPTools = append(values[index].MCPTools, mcpToolBindings[values[index].ID]...)
+		values[index].PlannedMCPTools = append(values[index].PlannedMCPTools, plannedMCPToolBindings[values[index].ID]...)
 		values[index].Surfaces = surfaceContracts(values[index])
 	}
 	return values
@@ -403,13 +404,26 @@ func ForMCPTool(name string) (ID, bool) {
 	return "", false
 }
 
+func ForPlannedMCPTool(name string) (ID, bool) {
+	name = strings.TrimSpace(name)
+	for _, spec := range specs {
+		for _, tool := range spec.PlannedMCPTools {
+			if tool == name {
+				return spec.ID, true
+			}
+		}
+	}
+	return "", false
+}
+
 func SearchText(ids []ID) string {
-	parts := make([]string, 0, len(ids)*3)
+	parts := make([]string, 0, len(ids)*4)
 	for _, id := range ids {
 		if spec, ok := Lookup(id); ok {
 			parts = append(parts, spec.CLI.CanonicalPath)
 			parts = append(parts, spec.CLI.Aliases...)
 			parts = append(parts, spec.MCPTools...)
+			parts = append(parts, spec.PlannedMCPTools...)
 		}
 	}
 	return strings.Join(parts, " ")
@@ -434,6 +448,7 @@ func cloneSpec(spec Spec) Spec {
 	spec.CLI.Aliases = append([]string(nil), spec.CLI.Aliases...)
 	spec.Admin = append([]AdminBinding(nil), spec.Admin...)
 	spec.MCPTools = append([]string(nil), spec.MCPTools...)
+	spec.PlannedMCPTools = append([]string(nil), spec.PlannedMCPTools...)
 	spec.Surfaces = append([]SurfaceContract(nil), spec.Surfaces...)
 	return spec
 }

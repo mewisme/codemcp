@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
 type CallObservation struct {
@@ -173,22 +174,45 @@ func WithCallRequest(ctx context.Context, request map[string]any) context.Contex
 
 func callRaw(ctx context.Context, source, name string, args map[string]any) map[string]any {
 	method := "tools/call"
-	params := map[string]any{"name": name, "arguments": cloneMap(args)}
+	publicArgs := observableToolArguments(name, args)
+	params := map[string]any{"name": name, "arguments": publicArgs}
 	if ctx != nil {
 		if details, ok := ctx.Value(callDetailsKey{}).(callDetails); ok {
 			if details.Method != "" {
 				method = details.Method
 			}
 			if details.Params != nil {
-				params = cloneMap(details.Params)
+				params = observableToolEnvelope(name, details.Params, publicArgs)
 			}
 			if details.Request != nil {
 				request := cloneMap(details.Request)
-				return map[string]any{"method": method, "source": source, "tool": name, "arguments": cloneMap(args), "params": params, "request": request}
+				if requestParams, ok := request["params"].(map[string]any); ok {
+					request["params"] = observableToolEnvelope(name, requestParams, publicArgs)
+				}
+				return map[string]any{"method": method, "source": source, "tool": name, "arguments": publicArgs, "params": params, "request": request}
 			}
 		}
 	}
-	return map[string]any{"method": method, "source": source, "tool": name, "arguments": cloneMap(args), "params": params}
+	return map[string]any{"method": method, "source": source, "tool": name, "arguments": publicArgs, "params": params}
+}
+
+func observableToolArguments(name string, args map[string]any) map[string]any {
+	if name != mcpconfigwire.SetToolName {
+		return cloneMap(args)
+	}
+	summary := mcpconfigwire.SummarizeArguments(args)
+	return map[string]any{
+		"change_count": summary.ChangeCount,
+		"keys":         append([]string(nil), summary.Keys...),
+	}
+}
+
+func observableToolEnvelope(name string, value, publicArgs map[string]any) map[string]any {
+	out := cloneMap(value)
+	if name == mcpconfigwire.SetToolName {
+		out["arguments"] = cloneMap(publicArgs)
+	}
+	return out
 }
 
 func cloneMap(value map[string]any) map[string]any {
