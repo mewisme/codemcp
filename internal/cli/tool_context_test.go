@@ -110,7 +110,7 @@ func TestMCPToolContextApprovalMismatchDoesNotBurnCapability(t *testing.T) {
 func mintToolContextCapability(t *testing.T, cliArgs []string) (*approval.Manager, string) {
 	t.Helper()
 	manager := approval.NewManager("instance-test")
-	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm " + strings.Join(cliArgs, " ")}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "denied", Title: "Allow command"})
+	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{CallerID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm " + strings.Join(cliArgs, " ")}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "denied", Title: "Allow command"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func mintToolContextCapability(t *testing.T, cliArgs []string) (*approval.Manage
 	if _, err := manager.Approve(request.ID, "test", ""); err != nil {
 		t.Fatal(err)
 	}
-	_, capability, matched, err := manager.ClaimApprovedCLI(approval.RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm " + strings.Join(cliArgs, " ")}}, approval.CLIInvocation{Program: "cm", Args: cliArgs})
+	_, capability, matched, err := manager.ClaimApprovedCLI(approval.RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm " + strings.Join(cliArgs, " ")}}, approval.CLIInvocation{Program: "cm", Args: cliArgs})
 	if err != nil || !matched || capability == "" {
 		t.Fatalf("mint capability=%q matched=%t err=%v", capability, matched, err)
 	}

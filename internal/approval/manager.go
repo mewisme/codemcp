@@ -45,7 +45,7 @@ type Manager struct {
 	challenges            map[string]*challengeRecord
 	challengeByTarget     map[string]string
 	requests              map[string]*requestRecord
-	activeBySession       map[string]string
+	activeByCaller        map[string]string
 	cliCapabilities       map[string]*cliCapabilityRecord
 	runtimeGrants         []runtimeGrant
 	now                   func() time.Time
@@ -61,7 +61,7 @@ type Manager struct {
 
 func NewManager(instanceID string) *Manager {
 	return &Manager{
-		instanceID: strings.TrimSpace(instanceID), challenges: map[string]*challengeRecord{}, challengeByTarget: map[string]string{}, requests: map[string]*requestRecord{}, activeBySession: map[string]string{},
+		instanceID: strings.TrimSpace(instanceID), challenges: map[string]*challengeRecord{}, challengeByTarget: map[string]string{}, requests: map[string]*requestRecord{}, activeByCaller: map[string]string{},
 		cliCapabilities: map[string]*cliCapabilityRecord{}, runtimeGrants: []runtimeGrant{}, now: time.Now, newID: randomID, challengeTTL: DefaultChallengeTTL, requestTTL: DefaultRequestTTL, retryTTL: DefaultRetryTTL, runtimeGrantTTL: DefaultRuntimeGrantTTL, pendingLimit: DefaultPendingLimit, workspacePendingLimit: DefaultWorkspacePendingLimit,
 		events: newEventStream(),
 	}
@@ -78,7 +78,8 @@ func (m *Manager) CreateChallenge(input ChallengeInput) (Challenge, bool, error)
 	if m == nil {
 		return Challenge{}, false, errors.New("approval manager is unavailable")
 	}
-	input.SessionID = strings.TrimSpace(input.SessionID)
+	input.CallerID = strings.TrimSpace(input.CallerID)
+	input.RequestCorrelationID = strings.TrimSpace(input.RequestCorrelationID)
 	input.SessionHash = strings.TrimSpace(input.SessionHash)
 	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
 	input.Source = strings.TrimSpace(input.Source)
@@ -87,7 +88,8 @@ func (m *Manager) CreateChallenge(input ChallengeInput) (Challenge, bool, error)
 	input.Title = strings.TrimSpace(input.Title)
 	input.Command = strings.TrimSpace(input.Command)
 	input.SimilarCommandPattern = strings.TrimSpace(input.SimilarCommandPattern)
-	digest, arguments, err := CanonicalTargetDigest(m.instanceID, Target{SessionID: input.SessionID, WorkspaceID: input.WorkspaceID, Source: input.Source, TargetTool: input.TargetTool, Arguments: input.Arguments, GuardCode: input.GuardCode})
+	callerID := input.CallerID
+	digest, arguments, err := CanonicalTargetDigest(m.instanceID, Target{CallerID: callerID, WorkspaceID: input.WorkspaceID, Source: input.Source, TargetTool: input.TargetTool, Arguments: input.Arguments, GuardCode: input.GuardCode})
 	if err != nil {
 		return Challenge{}, false, err
 	}
@@ -95,7 +97,7 @@ func (m *Manager) CreateChallenge(input ChallengeInput) (Challenge, bool, error)
 	defer m.mu.Unlock()
 	now := m.now().UTC()
 	m.purgeExpiredLocked(now)
-	key := challengeTargetKey(input.SessionID, digest)
+	key := challengeTargetKey(callerID, digest)
 	if id := m.challengeByTarget[key]; id != "" {
 		if record := m.challenges[id]; record != nil {
 			if request := m.requests[record.value.requestID]; request == nil || request.value.Status == StatusPending || request.value.Status == StatusApproved {
@@ -111,7 +113,7 @@ func (m *Manager) CreateChallenge(input ChallengeInput) (Challenge, bool, error)
 	}
 	value := Challenge{
 		ID: id, SessionHash: input.SessionHash, WorkspaceID: input.WorkspaceID, Source: input.Source, TargetTool: input.TargetTool, Arguments: arguments, Digest: digest,
-		GuardCode: input.GuardCode, GuardReason: input.GuardReason, Title: input.Title, Command: input.Command, SimilarCommandPattern: input.SimilarCommandPattern, CreatedAt: now, ExpiresAt: now.Add(m.challengeTTL), sessionID: input.SessionID,
+		GuardCode: input.GuardCode, GuardReason: input.GuardReason, Title: input.Title, Command: input.Command, SimilarCommandPattern: input.SimilarCommandPattern, CreatedAt: now, ExpiresAt: now.Add(m.challengeTTL), callerID: callerID, requestCorrelationID: input.RequestCorrelationID,
 	}
 	m.challenges[id] = &challengeRecord{value: value}
 	m.challengeByTarget[key] = id
@@ -119,15 +121,19 @@ func (m *Manager) CreateChallenge(input ChallengeInput) (Challenge, bool, error)
 	return cloneChallenge(value), true, nil
 }
 
-func (m *Manager) CreateRequest(challengeID, sessionID, workspaceID string) (Request, bool, error) {
-	return m.CreateRequestWithTitle(challengeID, sessionID, workspaceID, "")
+func (m *Manager) CreateRequest(challengeID, callerID, workspaceID string) (Request, bool, error) {
+	return m.CreateRequestWithTitle(challengeID, callerID, workspaceID, "")
 }
 
-func (m *Manager) CreateRequestWithTitle(challengeID, sessionID, workspaceID, title string) (Request, bool, error) {
+func (m *Manager) CreateRequestWithTitle(challengeID, callerID, workspaceID, title string) (Request, bool, error) {
+	return m.CreateRequestWithCorrelation(challengeID, callerID, workspaceID, title)
+}
+
+func (m *Manager) CreateRequestWithCorrelation(challengeID, callerID, workspaceID, title string) (Request, bool, error) {
 	if m == nil {
 		return Request{}, false, errors.New("approval manager is unavailable")
 	}
-	challengeID, sessionID, workspaceID, title = strings.TrimSpace(challengeID), strings.TrimSpace(sessionID), strings.TrimSpace(workspaceID), strings.TrimSpace(title)
+	challengeID, callerID, workspaceID, title = strings.TrimSpace(challengeID), strings.TrimSpace(callerID), strings.TrimSpace(workspaceID), strings.TrimSpace(title)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now().UTC()
@@ -146,7 +152,7 @@ func (m *Manager) CreateRequestWithTitle(challengeID, sessionID, workspaceID, ti
 	if challenge == nil {
 		return Request{}, false, ErrChallengeNotFound
 	}
-	if challenge.value.sessionID != sessionID || challenge.value.WorkspaceID != workspaceID {
+	if challenge.value.callerID != callerID || challenge.value.WorkspaceID != workspaceID {
 		return Request{}, false, ErrChallengeMismatch
 	}
 	if title == "" {
@@ -163,7 +169,7 @@ func (m *Manager) CreateRequestWithTitle(challengeID, sessionID, workspaceID, ti
 			return cloneRequest(request.value), false, nil
 		}
 	}
-	if activeID := m.activeBySession[sessionID]; activeID != "" {
+	if activeID := m.activeByCaller[callerID]; activeID != "" {
 		if active := m.requests[activeID]; active != nil && (active.value.Status == StatusPending || active.value.Status == StatusApproved) {
 			if active.value.Digest != challenge.value.Digest {
 				return Request{}, false, ErrSessionRequestActive
@@ -171,7 +177,7 @@ func (m *Manager) CreateRequestWithTitle(challengeID, sessionID, workspaceID, ti
 			challenge.value.requestID = active.value.ID
 			return cloneRequest(active.value), false, nil
 		}
-		delete(m.activeBySession, sessionID)
+		delete(m.activeByCaller, callerID)
 	}
 	if m.pendingLimit > 0 && m.pendingCountLocked("") >= m.pendingLimit {
 		return Request{}, false, ErrPendingLimit
@@ -186,104 +192,29 @@ func (m *Manager) CreateRequestWithTitle(challengeID, sessionID, workspaceID, ti
 	value := Request{
 		ID: id, Status: StatusPending, WorkspaceID: challenge.value.WorkspaceID, SessionHash: challenge.value.SessionHash, Source: challenge.value.Source, TargetTool: challenge.value.TargetTool,
 		Arguments: cloneRaw(challenge.value.Arguments), Digest: challenge.value.Digest, GuardCode: challenge.value.GuardCode, GuardReason: challenge.value.GuardReason, Title: title, Command: challenge.value.Command, SimilarCommandPattern: challenge.value.SimilarCommandPattern,
-		CreatedAt: now, ExpiresAt: now.Add(m.requestTTL), sessionID: sessionID, challengeID: challenge.value.ID,
+		CreatedAt: now, ExpiresAt: now.Add(m.requestTTL), callerID: callerID, challengeID: challenge.value.ID,
 	}
 	m.requests[id] = &requestRecord{value: value, resolved: make(chan struct{})}
-	m.activeBySession[sessionID] = id
+	m.activeByCaller[callerID] = id
 	challenge.value.requestID = id
 	m.emitLocked(EventPending, value)
 	return cloneRequest(value), true, nil
 }
 
 func (m *Manager) Approve(id, resolvedBy, reason string) (Request, error) {
-	return m.resolve(id, StatusApproved, resolvedBy, reason)
+	return NewReviewService(m).Resolve(ReviewInput{Request: id, Decision: ReviewApprove, ResolvedBy: resolvedBy, Reason: reason})
 }
 
 func (m *Manager) ApproveRuntimeSession(id, resolvedBy, reason string) (Request, error) {
-	if m == nil {
-		return Request{}, errors.New("approval manager is unavailable")
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	now := m.now().UTC()
-	m.purgeExpiredLocked(now)
-	record := m.requests[strings.TrimSpace(id)]
-	if record == nil {
-		return Request{}, ErrRequestNotFound
-	}
-	if record.value.Status != StatusPending {
-		return Request{}, fmt.Errorf("%w: %s", ErrRequestResolved, record.value.Status)
-	}
-	pattern, err := commandpattern.Parse(record.value.SimilarCommandPattern)
-	if err != nil || strings.TrimSpace(record.value.Command) == "" {
-		return Request{}, errors.New("approval request does not support a similar-command runtime grant")
-	}
-	ttl := m.runtimeGrantTTL
-	if ttl <= 0 {
-		ttl = DefaultRuntimeGrantTTL
-	}
-	if ttl > MaxRuntimeGrantTTL {
-		ttl = MaxRuntimeGrantTTL
-	}
-	expiresAt := now.Add(ttl)
-	record.value.Status, record.value.ResolvedAt, record.value.ResolvedBy, record.value.Reason = StatusApproved, now, strings.TrimSpace(resolvedBy), strings.TrimSpace(reason)
-	record.value.RetryUntil = time.Time{}
-	record.value.RuntimeSessionGrant = true
-	record.value.GrantExpiresAt = expiresAt
-	m.runtimeGrants = append(m.runtimeGrants, runtimeGrant{requestID: record.value.ID, workspaceID: record.value.WorkspaceID, targetTool: record.value.TargetTool, pattern: pattern, createdAt: now, expiresAt: expiresAt})
-	m.clearActiveLocked(record.value)
-	m.closeResolvedLocked(record)
-	m.emitLocked(EventApproved, record.value)
-	return cloneRequest(record.value), nil
+	return NewReviewService(m).Resolve(ReviewInput{Request: id, Decision: ReviewApprove, ResolvedBy: resolvedBy, Reason: reason, AllowSimilar: true})
 }
 
 func (m *Manager) RevokeRuntimeGrant(id string) (Request, error) {
-	if m == nil {
-		return Request{}, errors.New("approval manager is unavailable")
-	}
-	id = strings.TrimSpace(id)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	now := m.now().UTC()
-	m.purgeExpiredLocked(now)
-	record := m.requests[id]
-	if record == nil {
-		return Request{}, ErrRequestNotFound
-	}
-	if !record.value.RuntimeSessionGrant || record.value.Status != StatusApproved {
-		return Request{}, ErrRuntimeGrantNotFound
-	}
-	m.removeRuntimeGrantLocked(id)
-	record.value.Status, record.value.ResolvedAt, record.value.Reason = StatusExpired, now, "runtime session grant revoked"
-	record.value.GrantExpiresAt = now
-	m.emitLockedWithSubject(EventRevoked, EventSubjectGrant, record.value)
-	return cloneRequest(record.value), nil
+	return NewReviewService(m).RevokeGrant(id)
 }
 
 func (m *Manager) RevokeRuntimeGrants(workspaceID string) int {
-	if m == nil {
-		return 0
-	}
-	workspaceID = strings.TrimSpace(workspaceID)
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	now := m.now().UTC()
-	m.purgeExpiredLocked(now)
-	changed := 0
-	for index := len(m.runtimeGrants) - 1; index >= 0; index-- {
-		grant := m.runtimeGrants[index]
-		if workspaceID != "" && grant.workspaceID != workspaceID {
-			continue
-		}
-		record := m.requests[grant.requestID]
-		m.runtimeGrants = append(m.runtimeGrants[:index], m.runtimeGrants[index+1:]...)
-		if record != nil && record.value.RuntimeSessionGrant && record.value.Status == StatusApproved {
-			record.value.Status, record.value.ResolvedAt, record.value.Reason = StatusExpired, now, "runtime session grant revoked"
-			record.value.GrantExpiresAt = now
-			m.emitLockedWithSubject(EventRevoked, EventSubjectGrant, record.value)
-		}
-		changed++
-	}
+	changed, _ := NewReviewService(m).RevokeGrants(workspaceID)
 	return changed
 }
 
@@ -317,7 +248,7 @@ func (m *Manager) ListRuntimeGrants(workspaceID string) []Request {
 }
 
 func (m *Manager) Deny(id, resolvedBy, reason string) (Request, error) {
-	return m.resolve(id, StatusDenied, resolvedBy, reason)
+	return NewReviewService(m).Resolve(ReviewInput{Request: id, Decision: ReviewDeny, ResolvedBy: resolvedBy, Reason: reason})
 }
 
 func (m *Manager) Cancel(id, resolvedBy, reason string) (Request, error) {
@@ -419,7 +350,7 @@ func (m *Manager) MatchApproved(input RetryInput) (Request, bool, error) {
 	if m == nil {
 		return Request{}, false, errors.New("approval manager is unavailable")
 	}
-	input.SessionID, input.WorkspaceID, input.Source, input.TargetTool = strings.TrimSpace(input.SessionID), strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.Source), strings.TrimSpace(input.TargetTool)
+	input = normalizeRetryInput(input)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.purgeExpiredLocked(m.now().UTC())
@@ -468,7 +399,7 @@ func (m *Manager) ClaimApprovedCLI(input RetryInput, cli CLIInvocation) (Request
 	if m == nil {
 		return Request{}, "", false, errors.New("approval manager is unavailable")
 	}
-	input.SessionID, input.WorkspaceID, input.Source, input.TargetTool = strings.TrimSpace(input.SessionID), strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.Source), strings.TrimSpace(input.TargetTool)
+	input = normalizeRetryInput(input)
 	cli.Program = strings.TrimSpace(cli.Program)
 	cli.Args = append([]string(nil), cli.Args...)
 	m.mu.Lock()
@@ -533,14 +464,14 @@ func (m *Manager) ConsumeCLI(capability string, args []string) (string, error) {
 }
 
 func (m *Manager) matchApprovedLocked(input RetryInput) (Request, bool, error) {
-	active := m.requests[m.activeBySession[input.SessionID]]
+	active := m.requests[m.activeByCaller[input.CallerID]]
 	if active == nil || active.value.Status != StatusApproved {
 		return Request{}, false, nil
 	}
 	if active.value.TargetTool != input.TargetTool {
 		return Request{}, false, nil
 	}
-	digest, actual, err := CanonicalTargetDigest(m.instanceID, Target{SessionID: input.SessionID, WorkspaceID: input.WorkspaceID, Source: input.Source, TargetTool: input.TargetTool, Arguments: input.Arguments, GuardCode: active.value.GuardCode})
+	digest, actual, err := CanonicalTargetDigest(m.instanceID, Target{CallerID: input.CallerID, WorkspaceID: input.WorkspaceID, Source: input.Source, TargetTool: input.TargetTool, Arguments: input.Arguments, GuardCode: active.value.GuardCode})
 	if err != nil {
 		return Request{}, false, err
 	}
@@ -596,23 +527,11 @@ func (m *Manager) Resolve(value string) (Request, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.purgeExpiredLocked(m.now().UTC())
-	if record := m.requests[value]; record != nil {
-		return cloneRequest(record.value), nil
+	record, err := m.resolveRecordLocked(value)
+	if err != nil {
+		return Request{}, err
 	}
-	var matched *requestRecord
-	for id, record := range m.requests {
-		if !strings.HasPrefix(id, value) {
-			continue
-		}
-		if matched != nil {
-			return Request{}, fmt.Errorf("%w: %s", ErrRequestAmbiguous, value)
-		}
-		matched = record
-	}
-	if matched == nil {
-		return Request{}, fmt.Errorf("%w: %s", ErrRequestNotFound, value)
-	}
-	return cloneRequest(matched.value), nil
+	return cloneRequest(record.value), nil
 }
 
 func (m *Manager) List(filter Filter) []Request {
@@ -762,8 +681,8 @@ func (m *Manager) pendingCountLocked(workspaceID string) int {
 }
 
 func (m *Manager) clearActiveLocked(value Request) {
-	if m.activeBySession[value.sessionID] == value.ID {
-		delete(m.activeBySession, value.sessionID)
+	if m.activeByCaller[value.callerID] == value.ID {
+		delete(m.activeByCaller, value.callerID)
 	}
 }
 
@@ -777,13 +696,23 @@ func (m *Manager) closeResolvedLocked(record *requestRecord) {
 
 func (m *Manager) removeChallengeLocked(value Challenge) {
 	delete(m.challenges, value.ID)
-	key := challengeTargetKey(value.sessionID, value.Digest)
+	key := challengeTargetKey(value.callerID, value.Digest)
 	if m.challengeByTarget[key] == value.ID {
 		delete(m.challengeByTarget, key)
 	}
 }
 
-func challengeTargetKey(sessionID, digest string) string { return sessionID + "\x00" + digest }
+func challengeTargetKey(callerID, digest string) string { return callerID + "\x00" + digest }
+
+func normalizeRetryInput(input RetryInput) RetryInput {
+	input.CallerID = strings.TrimSpace(input.CallerID)
+	input.RequestID = strings.TrimSpace(input.RequestID)
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	input.Source = strings.TrimSpace(input.Source)
+	input.TargetTool = strings.TrimSpace(input.TargetTool)
+	input.Command = strings.TrimSpace(input.Command)
+	return input
+}
 
 func cloneChallenge(value Challenge) Challenge {
 	value.Arguments = cloneRaw(value.Arguments)

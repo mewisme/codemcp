@@ -213,9 +213,13 @@ func TestHTTPRuntimeCavemanUsesBuiltInConfiguredMode(t *testing.T) {
 
 func TestHTTPRuntimePropagatesSessionID(t *testing.T) {
 	registry := tools.NewRegistry()
-	seen := make(chan string, 1)
+	type observed struct {
+		session     string
+		correlation tools.ApprovalCorrelation
+	}
+	seen := make(chan observed, 1)
 	registry.MustRegister("session_probe", tools.Schema{Name: "session_probe", InputSchema: json.RawMessage(`{"type":"object"}`)}, func(ctx context.Context, _ map[string]any) (tools.Result, error) {
-		seen <- tools.MCPSessionID(ctx)
+		seen <- observed{session: tools.MCPSessionID(ctx), correlation: tools.ApprovalCorrelationFromContext(ctx)}
 		return tools.TextResult("ok"), nil
 	})
 	runtime := NewHTTPRuntimeWithTools(&tools.Runtime{Registry: registry})
@@ -227,8 +231,12 @@ func TestHTTPRuntimePropagatesSessionID(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", res.Code, res.Body.String())
 	}
-	if got := <-seen; got != "session-http" {
-		t.Fatalf("session id = %q", got)
+	got := <-seen
+	if got.session != "session-http" {
+		t.Fatalf("session id = %q", got.session)
+	}
+	if got.correlation.CallerID == "" || got.correlation.CallerID == "session-http" || !strings.HasPrefix(got.correlation.CallerID, "apc_") || !strings.HasPrefix(got.correlation.RequestID, "apr_") {
+		t.Fatalf("approval correlation=%#v", got.correlation)
 	}
 }
 

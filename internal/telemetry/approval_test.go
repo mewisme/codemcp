@@ -18,7 +18,7 @@ func TestAttachApprovalsPublishesSafeActivityAndVisibleRequestNotice(t *testing.
 	var output lockedApprovalBuffer
 	detach := AttachApprovals(manager, stream, logger.NewWithWriter(logger.Info, &output))
 	defer detach()
-	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{SessionID: "session-secret", SessionHash: "hash-session", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --secret value"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow cm update"})
+	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{CallerID: "session-secret", SessionHash: "hash-session", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --secret value"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow cm update"})
 	if err != nil {
 		t.Fatal(err)
 	}

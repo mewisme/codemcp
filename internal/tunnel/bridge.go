@@ -14,6 +14,8 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openai/tunnel-client/pkg/tunnelctx"
 
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/idgen"
 	localmcp "go.mewis.me/codemcp/internal/mcp"
 	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/version"
@@ -27,6 +29,7 @@ type sdkBridge struct {
 	sessionNamespace uint64
 	sessionIDs       map[*sdkmcp.ServerSession]string
 	nextSession      uint64
+	approvalCallers  *approval.CallerRegistry
 }
 
 var sdkBridgeNamespace atomic.Uint64
@@ -36,7 +39,7 @@ func newSDKBridge(runtime *tools.Runtime) (*sdkBridge, error) {
 		return nil, errors.New("MCP tools runtime is required")
 	}
 	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "codemcp", Version: version.Version}, &sdkmcp.ServerOptions{Capabilities: &sdkmcp.ServerCapabilities{}})
-	bridge := &sdkBridge{runtime: runtime, server: server, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}}
+	bridge := &sdkBridge{runtime: runtime, server: server, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
 	if err := bridge.syncTools(); err != nil {
 		return nil, err
 	}
@@ -199,6 +202,7 @@ func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {
 		ctx = tools.WithCallSource(ctx, "tunnel")
 		if sessionID := b.sessionID(ctx, request); sessionID != "" {
 			ctx = tools.WithMCPSessionID(ctx, sessionID)
+			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller("tunnel:"+sessionID), idgen.Must("apr", 8))
 		}
 		if request.Params.Meta != nil {
 			delete(request.Params.Meta, sessionMetaKey)

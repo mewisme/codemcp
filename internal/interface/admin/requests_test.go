@@ -54,6 +54,42 @@ func TestApprovalAPIListDetailApproveAndDeny(t *testing.T) {
 	}
 }
 
+func TestApprovalAPIAllowSimilarGrantListAndRevoke(t *testing.T) {
+	manager := approval.NewManager("instance-test")
+	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{
+		CallerID: "session-a", WorkspaceID: "ws_a", Source: "tunnel", TargetTool: "run_command",
+		Arguments: map[string]any{"workspace_id": "ws_a", "command": "git push origin main"},
+		GuardCode: controlguard.CodeExternalMutation, GuardReason: "external mutation denied", Title: "Push commits",
+		Command: "git push origin main", SimilarCommandPattern: "git push **",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _, err := manager.CreateRequest(challenge.ID, "session-a", "ws_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := New(API{Approvals: manager, Config: config.NewRuntimeStore(config.Default())})
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, localAdminRequest(http.MethodPost, "/api/requests/"+request.ID+"/approve", strings.NewReader("{\"allow_similar\":true}")))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "\"runtime_session_grant\":true") {
+		t.Fatalf("approve status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, localAdminRequest(http.MethodGet, "/api/requests/grants?workspace_id=ws_a", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), request.ID) {
+		t.Fatalf("grant list status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, localAdminRequest(http.MethodPost, "/api/requests/grants/"+request.ID+"/revoke", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "\"status\":\"expired\"") {
+		t.Fatalf("grant revoke status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestApprovalAPIRemoteRequiresEnabledAdminAuthentication(t *testing.T) {
 	manager := approval.NewManager("instance-test")
 	seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
@@ -238,7 +274,7 @@ func localAdminRequest(method, target string, body *strings.Reader) *http.Reques
 
 func seedAdminApprovalRequest(t *testing.T, manager *approval.Manager, sessionID, workspaceID, command string) approval.Request {
 	t.Helper()
-	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{SessionID: sessionID, SessionHash: "hash-" + sessionID, WorkspaceID: workspaceID, Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": workspaceID, "command": command}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "control-plane mutation denied", Title: "Allow controlled command"})
+	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{CallerID: sessionID, SessionHash: "hash-" + sessionID, WorkspaceID: workspaceID, Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": workspaceID, "command": command}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "control-plane mutation denied", Title: "Allow controlled command"})
 	if err != nil {
 		t.Fatal(err)
 	}

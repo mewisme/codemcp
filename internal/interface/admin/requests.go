@@ -16,7 +16,8 @@ import (
 const approvalHeartbeatInterval = 15 * time.Second
 
 type approvalResolutionRequest struct {
-	Reason string `json:"reason,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	AllowSimilar bool   `json:"allow_similar,omitempty"`
 }
 
 func (api API) handleRequests(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +37,12 @@ func (api API) handleRequests(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, api.Approvals.List(approval.Filter{WorkspaceID: strings.TrimSpace(r.URL.Query().Get("workspace_id")), Status: status}))
+	requests, err := approval.NewReviewService(api.Approvals).List(approval.Filter{WorkspaceID: strings.TrimSpace(r.URL.Query().Get("workspace_id")), Status: status})
+	if err != nil {
+		writeApprovalError(w, err)
+		return
+	}
+	writeJSON(w, requests)
 }
 
 func (api API) handleRequest(w http.ResponseWriter, r *http.Request) {
@@ -56,12 +62,17 @@ func (api API) handleRequest(w http.ResponseWriter, r *http.Request) {
 		serveApprovalEvents(w, r, api.Approvals.Events(), approvalHeartbeatInterval)
 		return
 	}
+	if path == "grants" || strings.HasPrefix(path, "grants/") {
+		handleApprovalGrants(w, r, approval.NewReviewService(api.Approvals), path)
+		return
+	}
 	parts := strings.Split(path, "/")
 	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
 		http.NotFound(w, r)
 		return
 	}
-	request, err := api.Approvals.Resolve(parts[0])
+	reviews := approval.NewReviewService(api.Approvals)
+	request, err := reviews.View(parts[0])
 	if err != nil {
 		writeApprovalError(w, err)
 		return
@@ -87,16 +98,47 @@ func (api API) handleRequest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	decision := approval.ReviewDeny
 	if parts[1] == "approve" {
-		request, err = api.Approvals.Approve(request.ID, "admin", input.Reason)
-	} else {
-		request, err = api.Approvals.Deny(request.ID, "admin", input.Reason)
+		decision = approval.ReviewApprove
 	}
+	request, err = reviews.Resolve(approval.ReviewInput{Request: request.ID, Decision: decision, ResolvedBy: "admin", Reason: input.Reason, AllowSimilar: input.AllowSimilar})
 	if err != nil {
 		writeApprovalError(w, err)
 		return
 	}
 	writeJSON(w, request)
+}
+
+func handleApprovalGrants(w http.ResponseWriter, r *http.Request, reviews *approval.ReviewService, path string) {
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 1 && parts[0] == "grants" {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		grants, err := reviews.ListGrants(strings.TrimSpace(r.URL.Query().Get("workspace_id")))
+		if err != nil {
+			writeApprovalError(w, err)
+			return
+		}
+		writeJSON(w, grants)
+		return
+	}
+	if len(parts) == 3 && parts[0] == "grants" && parts[2] == "revoke" {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		request, err := reviews.RevokeGrant(parts[1])
+		if err != nil {
+			writeApprovalError(w, err)
+			return
+		}
+		writeJSON(w, request)
+		return
+	}
+	http.NotFound(w, r)
 }
 
 func (api API) authorizeApprovalRequest(w http.ResponseWriter, r *http.Request) bool {

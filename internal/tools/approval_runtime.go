@@ -10,20 +10,20 @@ import (
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
-func (r *Runtime) prepareApprovalRetry(ctx context.Context, sessionID, workspaceID, source, name string, args map[string]any) (context.Context, approval.Request, *Result, error) {
+func (r *Runtime) prepareApprovalRetry(ctx context.Context, correlation ApprovalCorrelation, workspaceID, source, name string, args map[string]any) (context.Context, approval.Request, *Result, error) {
 	if r == nil || r.Approvals == nil || strings.TrimSpace(workspaceID) == "" || name == ApprovalRequestToolName {
 		return ctx, approval.Request{}, nil, nil
 	}
 	command, _ := args["command"].(string)
 	retry := approval.RetryInput{
-		SessionID: sessionID, WorkspaceID: workspaceID, Source: source, TargetTool: name, Arguments: args, Command: command,
+		CallerID: correlation.CallerID, RequestID: correlation.RequestID, WorkspaceID: workspaceID, Source: source, TargetTool: name, Arguments: args, Command: command,
 	}
 	if granted, matched := r.Approvals.MatchRuntimeGrant(retry); matched {
 		ctx = WithApprovalRequest(ctx, granted.ID)
 		ctx = controlguard.WithGrant(ctx, controlguard.Grant{RequestID: granted.ID, Code: granted.GuardCode})
 		return ctx, approval.Request{}, nil, nil
 	}
-	if strings.TrimSpace(sessionID) == "" {
+	if strings.TrimSpace(correlation.CallerID) == "" || strings.TrimSpace(correlation.RequestID) == "" {
 		return ctx, approval.Request{}, nil, nil
 	}
 	_, matched, err := r.Approvals.MatchApproved(retry)
@@ -69,8 +69,8 @@ func (r *Runtime) prepareApprovalRetry(ctx context.Context, sessionID, workspace
 	return ctx, claimed, nil, nil
 }
 
-func (r *Runtime) approvalResultForGuard(guard *controlguard.Error, sessionID, sessionHash, workspaceID, source, name string, args map[string]any, claimed approval.Request) (Result, bool, error) {
-	if guard == nil || !guard.Approvable || claimed.ID != "" || r == nil || r.Approvals == nil || strings.TrimSpace(sessionID) == "" || strings.TrimSpace(workspaceID) == "" {
+func (r *Runtime) approvalResultForGuard(guard *controlguard.Error, correlation ApprovalCorrelation, sessionHash, workspaceID, source, name string, args map[string]any, claimed approval.Request) (Result, bool, error) {
+	if guard == nil || !guard.Approvable || claimed.ID != "" || r == nil || r.Approvals == nil || strings.TrimSpace(correlation.CallerID) == "" || strings.TrimSpace(correlation.RequestID) == "" || strings.TrimSpace(workspaceID) == "" {
 		return Result{}, false, nil
 	}
 	command := ""
@@ -86,7 +86,7 @@ func (r *Runtime) approvalResultForGuard(guard *controlguard.Error, sessionID, s
 		similarPattern, _ = workspace.SimilarCommandPattern(command)
 	}
 	challenge, _, err := r.Approvals.CreateChallenge(approval.ChallengeInput{
-		SessionID: sessionID, SessionHash: sessionHash, WorkspaceID: workspaceID, Source: source, TargetTool: name, Arguments: args,
+		CallerID: correlation.CallerID, RequestCorrelationID: correlation.RequestID, SessionHash: sessionHash, WorkspaceID: workspaceID, Source: source, TargetTool: name, Arguments: args,
 		GuardCode: guard.Code, GuardReason: guard.Error(), Command: command, SimilarCommandPattern: similarPattern,
 	})
 	if err != nil {

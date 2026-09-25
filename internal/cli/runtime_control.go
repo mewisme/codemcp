@@ -145,14 +145,15 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 			writeControlJSON(w, nil, errors.New("control approval manager is unavailable"))
 			return
 		}
-		writeControlJSON(w, options.Approvals.List(approval.Filter{}), nil)
+		requests, err := approval.NewReviewService(options.Approvals).List(approval.Filter{})
+		writeControlJSON(w, requests, err)
 	}))
 	mux.HandleFunc("/requests/view", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
 		if options.Approvals == nil {
 			writeControlJSON(w, nil, errors.New("control approval manager is unavailable"))
 			return
 		}
-		request, err := options.Approvals.Resolve(r.URL.Query().Get("id"))
+		request, err := approval.NewReviewService(options.Approvals).View(r.URL.Query().Get("id"))
 		writeControlJSON(w, request, err)
 	}))
 	mux.HandleFunc("/requests/create-dummy", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +184,7 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 		}
 		sessionID := idgen.Must("dummy", 8)
 		challenge, _, err := options.Approvals.CreateChallenge(approval.ChallengeInput{
-			SessionID: sessionID, SessionHash: "dummy", WorkspaceID: workspaceID, Source: "cli-dummy", TargetTool: "run_command",
+			CallerID: sessionID, SessionHash: "dummy", WorkspaceID: workspaceID, Source: "cli-dummy", TargetTool: "run_command",
 			Arguments: map[string]any{"workspace_id": workspaceID, "command": command, "dummy": true}, GuardCode: controlguard.CodeControlPlaneMutation,
 			GuardReason: "dummy approval request created for UI testing", Title: title, Command: command,
 		})
@@ -209,20 +210,13 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 				writeControlJSON(w, nil, err)
 				return
 			}
-			request, err := options.Approvals.Resolve(input.ID)
-			if err != nil {
-				writeControlJSON(w, nil, err)
-				return
-			}
+			decision := approval.ReviewDeny
 			if status == approval.StatusApproved {
-				if input.AllowSimilar {
-					request, err = options.Approvals.ApproveRuntimeSession(request.ID, "cli", input.Reason)
-				} else {
-					request, err = options.Approvals.Approve(request.ID, "cli", input.Reason)
-				}
-			} else {
-				request, err = options.Approvals.Deny(request.ID, "cli", input.Reason)
+				decision = approval.ReviewApprove
 			}
+			request, err := approval.NewReviewService(options.Approvals).Resolve(approval.ReviewInput{
+				Request: input.ID, Decision: decision, ResolvedBy: "cli", Reason: input.Reason, AllowSimilar: input.AllowSimilar,
+			})
 			writeControlJSON(w, request, err)
 		}
 	}
@@ -242,15 +236,11 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 			return
 		}
 		if workspaceID := strings.TrimSpace(input.WorkspaceID); workspaceID != "" && strings.TrimSpace(input.ID) == "" {
-			writeControlJSON(w, map[string]any{"revoked": options.Approvals.RevokeRuntimeGrants(workspaceID)}, nil)
+			revoked, err := approval.NewReviewService(options.Approvals).RevokeGrants(workspaceID)
+			writeControlJSON(w, map[string]any{"revoked": revoked}, err)
 			return
 		}
-		request, err := options.Approvals.Resolve(input.ID)
-		if err != nil {
-			writeControlJSON(w, nil, err)
-			return
-		}
-		request, err = options.Approvals.RevokeRuntimeGrant(request.ID)
+		request, err := approval.NewReviewService(options.Approvals).RevokeGrant(input.ID)
 		writeControlJSON(w, request, err)
 	}))
 	mux.HandleFunc("/requests/grants", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
@@ -258,7 +248,8 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 			writeControlJSON(w, nil, errors.New("control approval manager is unavailable"))
 			return
 		}
-		writeControlJSON(w, options.Approvals.ListRuntimeGrants(r.URL.Query().Get("workspace_id")), nil)
+		grants, err := approval.NewReviewService(options.Approvals).ListGrants(r.URL.Query().Get("workspace_id"))
+		writeControlJSON(w, grants, err)
 	}))
 	mux.HandleFunc("/requests/consume-cli", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, r *http.Request) {
 		if options.Approvals == nil {

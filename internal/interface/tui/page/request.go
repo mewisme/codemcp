@@ -547,13 +547,6 @@ func (page *RequestsPage) submitResolveForm() tea.Cmd {
 	page.progress = &progress
 	page.overlay = requestOverlayOperation
 	return func() tea.Msg {
-		current, err := application.GetApprovalRequest(ctx, id)
-		if err == nil {
-			err = validateResolvableRequest(current, time.Now())
-		}
-		if err != nil {
-			return requestResolveMsg{request: current, approve: approve, err: err}
-		}
 		request, err := application.ResolveApprovalRequest(ctx, id, approve, reason)
 		return requestResolveMsg{request: request, approve: approve, err: err}
 	}

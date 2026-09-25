@@ -7,16 +7,19 @@ import (
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/version"
 )
 
 type SDKServer struct {
-	Server         *sdkmcp.Server
-	Tools          *tools.Runtime
-	Source         string
-	SessionID      string
-	BoundWorkspace string
+	Server          *sdkmcp.Server
+	Tools           *tools.Runtime
+	Source          string
+	SessionID       string
+	BoundWorkspace  string
+	ApprovalCallers *approval.CallerRegistry
 }
 
 func NewSDKServerWithTools(toolRuntime *tools.Runtime, source string) (*SDKServer, error) {
@@ -28,7 +31,7 @@ func NewSDKServerWithSession(toolRuntime *tools.Runtime, source, sessionID, boun
 		toolRuntime = tools.NewRuntime()
 	}
 	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "codemcp", Version: version.Version}, &sdkmcp.ServerOptions{Capabilities: &sdkmcp.ServerCapabilities{Tools: &sdkmcp.ToolCapabilities{ListChanged: true}}})
-	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace}
+	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: approval.NewCallerRegistry()}
 	for _, schema := range filterHeaderSafeTools(toolRuntime.List()) {
 		if err := adapter.addTool(schema); err != nil {
 			return nil, err
@@ -72,6 +75,9 @@ func (s *SDKServer) addTool(schema tools.Schema) error {
 		}
 		if sessionID != "" {
 			ctx = tools.WithMCPSessionID(ctx, sessionID)
+			if s.ApprovalCallers != nil {
+				ctx = tools.WithApprovalCorrelation(ctx, s.ApprovalCallers.Caller("sdk:"+sessionID), idgen.Must("apr", 8))
+			}
 		}
 		if s.BoundWorkspace != "" {
 			ctx = tools.WithBoundWorkspace(ctx, s.BoundWorkspace)

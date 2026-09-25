@@ -77,11 +77,11 @@ func RegisterApprovalTools(registry *Registry, runtime *Runtime) {
 		if runtime == nil || runtime.Approvals == nil {
 			return Result{}, errors.New("control approval manager is unavailable")
 		}
-		sessionID := MCPSessionID(ctx)
-		if sessionID == "" {
-			return Result{}, errors.New("MCP session id is required for control approval requests")
+		correlation := ApprovalCorrelationFromContext(ctx)
+		if correlation.CallerID == "" || correlation.RequestID == "" {
+			return Result{}, errors.New("approval caller and request correlation are required for control approval requests")
 		}
-		request, _, err := runtime.Approvals.CreateRequestWithTitle(challengeID, sessionID, workspaceID, title)
+		request, _, err := runtime.Approvals.CreateRequestWithCorrelation(challengeID, correlation.CallerID, workspaceID, title)
 		if err != nil {
 			return Result{}, err
 		}

@@ -183,6 +183,7 @@ func requestResolveCommand(approve bool) *cobra.Command {
 	}
 	var asJSON bool
 	var reason string
+	var allowSimilar bool
 	cmd := &cobra.Command{Use: action + " <request_id>", Aliases: aliases, Short: label + " one pending control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("action", action), logger.WithVerbose("request", args[0]))
 		log := commandLogger(cmd)
@@ -194,7 +195,11 @@ func requestResolveCommand(approve bool) *cobra.Command {
 		var request approval.Request
 		var err error
 		if approve {
-			request, err = requestRuntimeApprovalApprove(ctx, args[0], reason)
+			if allowSimilar {
+				request, err = application.ResolveApprovalRequestWithRuntimeGrant(ctx, args[0], true, true, reason)
+			} else {
+				request, err = requestRuntimeApprovalApprove(ctx, args[0], reason)
+			}
 		} else {
 			request, err = requestRuntimeApprovalDeny(ctx, args[0], reason)
 		}
@@ -215,6 +220,9 @@ func requestResolveCommand(approve bool) *cobra.Command {
 		return nil
 	}}
 	cmd.Flags().StringVar(&reason, "reason", "", "record an optional approval resolution reason")
+	if approve {
+		cmd.Flags().BoolVar(&allowSimilar, "allow-similar", false, "approve similar matching commands for the bounded runtime grant window")
+	}
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }

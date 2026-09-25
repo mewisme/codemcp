@@ -11,7 +11,7 @@ import (
 )
 
 type Target struct {
-	SessionID   string
+	CallerID    string
 	WorkspaceID string
 	Source      string
 	TargetTool  string
@@ -21,15 +21,15 @@ type Target struct {
 
 func CanonicalTargetDigest(instanceID string, target Target) (string, json.RawMessage, error) {
 	instanceID = strings.TrimSpace(instanceID)
-	target.SessionID = strings.TrimSpace(target.SessionID)
+	target.CallerID = strings.TrimSpace(target.CallerID)
 	target.WorkspaceID = strings.TrimSpace(target.WorkspaceID)
 	target.Source = strings.TrimSpace(target.Source)
 	target.TargetTool = strings.TrimSpace(target.TargetTool)
 	if instanceID == "" {
 		return "", nil, errors.New("runtime instance id is required")
 	}
-	if target.SessionID == "" {
-		return "", nil, errors.New("MCP session id is required")
+	if target.CallerID == "" {
+		return "", nil, errors.New("approval caller correlation is required")
 	}
 	if target.WorkspaceID == "" {
 		return "", nil, errors.New("workspace id is required")
@@ -46,13 +46,13 @@ func CanonicalTargetDigest(instanceID string, target Target) (string, json.RawMe
 	}
 	envelope := struct {
 		InstanceID  string            `json:"instance_id"`
-		SessionID   string            `json:"session_id"`
+		CallerID    string            `json:"caller_id"`
 		WorkspaceID string            `json:"workspace_id"`
 		Source      string            `json:"source"`
 		TargetTool  string            `json:"target_tool"`
 		Arguments   json.RawMessage   `json:"arguments"`
 		GuardCode   controlguard.Code `json:"guard_code"`
-	}{instanceID, target.SessionID, target.WorkspaceID, target.Source, target.TargetTool, arguments, target.GuardCode}
+	}{instanceID, target.CallerID, target.WorkspaceID, target.Source, target.TargetTool, arguments, target.GuardCode}
 	data, err := json.Marshal(envelope)
 	if err != nil {
 		return "", nil, err

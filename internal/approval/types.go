@@ -47,7 +47,8 @@ var (
 )
 
 type ChallengeInput struct {
-	SessionID             string
+	CallerID              string
+	RequestCorrelationID  string
 	SessionHash           string
 	WorkspaceID           string
 	Source                string
@@ -75,7 +76,8 @@ type Challenge struct {
 	SimilarCommandPattern string            `json:"similar_command_pattern,omitempty"`
 	CreatedAt             time.Time         `json:"created_at"`
 	ExpiresAt             time.Time         `json:"expires_at"`
-	sessionID             string
+	callerID              string
+	requestCorrelationID  string
 	requestID             string
 }
 
@@ -102,12 +104,13 @@ type Request struct {
 	Reason                string            `json:"reason,omitempty"`
 	RetryUntil            time.Time         `json:"retry_until,omitempty"`
 	ConsumedAt            time.Time         `json:"consumed_at,omitempty"`
-	sessionID             string
+	callerID              string
 	challengeID           string
 }
 
 type RetryInput struct {
-	SessionID   string
+	CallerID    string
+	RequestID   string
 	WorkspaceID string
 	Source      string
 	TargetTool  string

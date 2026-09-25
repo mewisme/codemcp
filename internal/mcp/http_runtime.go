@@ -4,22 +4,26 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/runtime/activity"
 	"go.mewis.me/codemcp/internal/tools"
 )
 
 type HTTPRuntime struct {
-	Server        *Runtime
-	Activity      *activity.Stream
-	Subscriptions *subscriptionHub
+	Server          *Runtime
+	Activity        *activity.Stream
+	Subscriptions   *subscriptionHub
+	ApprovalCallers *approval.CallerRegistry
 }
 
 func NewHTTPRuntime() *HTTPRuntime { return NewHTTPRuntimeWithTools(tools.NewRuntime()) }
 
 func NewHTTPRuntimeWithTools(toolRuntime *tools.Runtime) *HTTPRuntime {
-	return &HTTPRuntime{Server: NewRuntimeWithTools(toolRuntime), Activity: activity.NewStream(), Subscriptions: newSubscriptionHub()}
+	return &HTTPRuntime{Server: NewRuntimeWithTools(toolRuntime), Activity: activity.NewStream(), Subscriptions: newSubscriptionHub(), ApprovalCallers: approval.NewCallerRegistry()}
 }
 
 func (h *HTTPRuntime) CloseSubscriptions() {
@@ -99,8 +103,11 @@ func (h HTTPRuntime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	started := time.Now()
 	requestCtx := r.Context()
 	if req.Method == "tools/call" {
-		if sessionID := r.Header.Get(SessionIDHeader); sessionID != "" {
+		if sessionID := strings.TrimSpace(r.Header.Get(SessionIDHeader)); sessionID != "" {
 			requestCtx = tools.WithMCPSessionID(requestCtx, sessionID)
+			if h.ApprovalCallers != nil {
+				requestCtx = tools.WithApprovalCorrelation(requestCtx, h.ApprovalCallers.Caller("http:"+sessionID), idgen.Must("apr", 8))
+			}
 		}
 		requestCtx = tools.WithCallRequest(requestCtx, map[string]any{"jsonrpc": req.JSONRPC, "id": req.ID, "method": req.Method, "params": params})
 	}

@@ -8,7 +8,7 @@ import (
 )
 
 func TestCanonicalTargetDigestIsStableAndExact(t *testing.T) {
-	base := Target{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}, GuardCode: controlguard.CodeControlPlaneMutation}
+	base := Target{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}, GuardCode: controlguard.CodeControlPlaneMutation}
 	first, firstArgs, err := CanonicalTargetDigest("instance-a", base)
 	if err != nil {
 		t.Fatal(err)
@@ -23,13 +23,13 @@ func TestCanonicalTargetDigestIsStableAndExact(t *testing.T) {
 		t.Fatalf("canonical digest changed with map order: %s/%s %s/%s", first, second, firstArgs, secondArgs)
 	}
 	variants := []Target{
-		{SessionID: "session-b", WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: base.TargetTool, Arguments: base.Arguments, GuardCode: base.GuardCode},
-		{SessionID: base.SessionID, WorkspaceID: "ws_y", Source: base.Source, TargetTool: base.TargetTool, Arguments: base.Arguments, GuardCode: base.GuardCode},
-		{SessionID: base.SessionID, WorkspaceID: base.WorkspaceID, Source: "direct", TargetTool: base.TargetTool, Arguments: base.Arguments, GuardCode: base.GuardCode},
-		{SessionID: base.SessionID, WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: "start_process", Arguments: base.Arguments, GuardCode: base.GuardCode},
-		{SessionID: base.SessionID, WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: base.TargetTool, Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update "}, GuardCode: base.GuardCode},
-		{SessionID: base.SessionID, WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: base.TargetTool, Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update", "force": false}, GuardCode: base.GuardCode},
-		{SessionID: base.SessionID, WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: base.TargetTool, Arguments: base.Arguments, GuardCode: controlguard.CodeProtectedState},
+		{CallerID: "session-b", WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: base.TargetTool, Arguments: base.Arguments, GuardCode: base.GuardCode},
+		{CallerID: base.CallerID, WorkspaceID: "ws_y", Source: base.Source, TargetTool: base.TargetTool, Arguments: base.Arguments, GuardCode: base.GuardCode},
+		{CallerID: base.CallerID, WorkspaceID: base.WorkspaceID, Source: "direct", TargetTool: base.TargetTool, Arguments: base.Arguments, GuardCode: base.GuardCode},
+		{CallerID: base.CallerID, WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: "start_process", Arguments: base.Arguments, GuardCode: base.GuardCode},
+		{CallerID: base.CallerID, WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: base.TargetTool, Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update "}, GuardCode: base.GuardCode},
+		{CallerID: base.CallerID, WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: base.TargetTool, Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update", "force": false}, GuardCode: base.GuardCode},
+		{CallerID: base.CallerID, WorkspaceID: base.WorkspaceID, Source: base.Source, TargetTool: base.TargetTool, Arguments: base.Arguments, GuardCode: controlguard.CodeProtectedState},
 	}
 	for index, variant := range variants {
 		digest, _, err := CanonicalTargetDigest("instance-a", variant)
@@ -47,9 +47,9 @@ func TestCanonicalTargetDigestIsStableAndExact(t *testing.T) {
 }
 
 func TestCanonicalTargetDigestValidatesIdentityAndArguments(t *testing.T) {
-	valid := Target{SessionID: "session", WorkspaceID: "ws", TargetTool: "run_command", Arguments: map[string]any{}, GuardCode: controlguard.CodeControlPlaneMutation}
+	valid := Target{CallerID: "session", WorkspaceID: "ws", TargetTool: "run_command", Arguments: map[string]any{}, GuardCode: controlguard.CodeControlPlaneMutation}
 	for name, mutate := range map[string]func(*Target){
-		"session":   func(value *Target) { value.SessionID = "" },
+		"session":   func(value *Target) { value.CallerID = "" },
 		"workspace": func(value *Target) { value.WorkspaceID = "" },
 		"tool":      func(value *Target) { value.TargetTool = "" },
 		"guard":     func(value *Target) { value.GuardCode = "" },

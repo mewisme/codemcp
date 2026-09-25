@@ -185,6 +185,7 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	workspaceID := ""
 	sessionID := MCPSessionID(ctx)
 	sessionHash := MCPSessionFingerprint(sessionID)
+	approvalCorrelation := ApprovalCorrelationFromContext(ctx)
 	sessionAccess := SessionWorkspaceAccessDecision("")
 	sessionWorkspaceCount := 0
 	var preflightErr error
@@ -238,7 +239,7 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	claimedApproval := approval.Request{}
 	var forcedResult *Result
 	if preflightErr == nil {
-		ctx, claimedApproval, forcedResult, preflightErr = r.prepareApprovalRetry(ctx, sessionID, workspaceID, source, name, args)
+		ctx, claimedApproval, forcedResult, preflightErr = r.prepareApprovalRetry(ctx, approvalCorrelation, workspaceID, source, name, args)
 	}
 	loopClass, loopDecision := toolLoopClassMutation, toolLoopDecision{}
 	if preflightErr == nil && forcedResult == nil && strings.TrimSpace(sessionID) != "" && r.Registry != nil {
@@ -276,7 +277,7 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	}
 	if err != nil {
 		if guard, ok := controlguard.As(err); ok {
-			if guardedResult, handled, guardErr := r.approvalResultForGuard(guard, sessionID, sessionHash, workspaceID, source, name, args, claimedApproval); guardErr != nil {
+			if guardedResult, handled, guardErr := r.approvalResultForGuard(guard, approvalCorrelation, sessionHash, workspaceID, source, name, args, claimedApproval); guardErr != nil {
 				err = guardErr
 			} else if handled {
 				result, err = guardedResult, nil

@@ -215,7 +215,7 @@ func TestAdminHandlerSharesApprovalManager(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	challenge, _, err := app.Tools.Approvals.CreateChallenge(approval.ChallengeInput{SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow cm update"})
+	challenge, _, err := app.Tools.Approvals.CreateChallenge(approval.ChallengeInput{CallerID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow cm update"})
 	if err != nil {
 		t.Fatal(err)
 	}

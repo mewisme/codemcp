@@ -49,7 +49,7 @@ func TestRuntimeSessionGrantCrossesMCPSessionUntilTTL(t *testing.T) {
 	manager, now := testManager()
 	manager.runtimeGrantTTL = time.Hour
 	challenge, _, err := manager.CreateChallenge(ChallengeInput{
-		SessionID: "mcp-session-a", WorkspaceID: "ws_a", Source: "tunnel", TargetTool: "run_command",
+		CallerID: "mcp-session-a", WorkspaceID: "ws_a", Source: "tunnel", TargetTool: "run_command",
 		Arguments: map[string]any{"workspace_id": "ws_a", "command": "git push origin main"}, GuardCode: controlguard.CodeExternalMutation,
 		Title: "Push Git commits", Command: "git push origin main", SimilarCommandPattern: "git push **",
 	})
@@ -67,15 +67,15 @@ func TestRuntimeSessionGrantCrossesMCPSessionUntilTTL(t *testing.T) {
 	if !approved.RuntimeSessionGrant || approved.Status != StatusApproved || !approved.RetryUntil.IsZero() || approved.GrantExpiresAt.IsZero() {
 		t.Fatalf("approved runtime grant = %#v", approved)
 	}
-	matched, ok := manager.MatchRuntimeGrant(RetryInput{SessionID: "different-mcp-session", WorkspaceID: "ws_a", TargetTool: "run_command", Command: "git push origin feature"})
+	matched, ok := manager.MatchRuntimeGrant(RetryInput{CallerID: "different-mcp-session", WorkspaceID: "ws_a", TargetTool: "run_command", Command: "git push origin feature"})
 	if !ok || matched.ID != request.ID {
 		t.Fatalf("runtime grant did not cross MCP session: %#v ok=%t", matched, ok)
 	}
 	for _, input := range []RetryInput{
-		{SessionID: "other", WorkspaceID: "ws_b", TargetTool: "run_command", Command: "git push origin feature"},
-		{SessionID: "other", WorkspaceID: "ws_a", TargetTool: "start_process", Command: "git push origin feature"},
-		{SessionID: "other", WorkspaceID: "ws_a", TargetTool: "run_command", Command: "git status"},
-		{SessionID: "other", WorkspaceID: "ws_a", TargetTool: "run_command", Command: "git push && rm -rf build"},
+		{CallerID: "other", WorkspaceID: "ws_b", TargetTool: "run_command", Command: "git push origin feature"},
+		{CallerID: "other", WorkspaceID: "ws_a", TargetTool: "start_process", Command: "git push origin feature"},
+		{CallerID: "other", WorkspaceID: "ws_a", TargetTool: "run_command", Command: "git status"},
+		{CallerID: "other", WorkspaceID: "ws_a", TargetTool: "run_command", Command: "git push && rm -rf build"},
 	} {
 		if _, ok := manager.MatchRuntimeGrant(input); ok {
 			t.Fatalf("runtime grant matched unexpected input %#v", input)
@@ -87,7 +87,7 @@ func TestRuntimeSessionGrantCrossesMCPSessionUntilTTL(t *testing.T) {
 	if !ok || value.Status != StatusExpired {
 		t.Fatalf("runtime grant did not expire after TTL: %#v ok=%t", value, ok)
 	}
-	if _, ok := manager.MatchRuntimeGrant(RetryInput{SessionID: "different-mcp-session", WorkspaceID: "ws_a", TargetTool: "run_command", Command: "git push origin feature"}); ok {
+	if _, ok := manager.MatchRuntimeGrant(RetryInput{CallerID: "different-mcp-session", WorkspaceID: "ws_a", TargetTool: "run_command", Command: "git push origin feature"}); ok {
 		t.Fatal("expired runtime grant still matched")
 	}
 }
@@ -95,7 +95,7 @@ func TestRuntimeSessionGrantCrossesMCPSessionUntilTTL(t *testing.T) {
 func TestRuntimeSessionGrantRevoke(t *testing.T) {
 	manager, _ := testManager()
 	challenge, _, err := manager.CreateChallenge(ChallengeInput{
-		SessionID: "mcp-session-a", WorkspaceID: "ws_a", Source: "tunnel", TargetTool: "run_command",
+		CallerID: "mcp-session-a", WorkspaceID: "ws_a", Source: "tunnel", TargetTool: "run_command",
 		Arguments: map[string]any{"workspace_id": "ws_a", "command": "git push origin main"}, GuardCode: controlguard.CodeExternalMutation,
 		Title: "Push Git commits", Command: "git push origin main", SimilarCommandPattern: "git push **",
 	})
@@ -154,16 +154,16 @@ func TestManagerApprovalExactRetryAndOneShotConsumption(t *testing.T) {
 	if err != nil || approved.Status != StatusApproved || approved.RetryUntil.IsZero() {
 		t.Fatalf("approved = %#v err=%v", approved, err)
 	}
-	unrelated, matched, err := manager.MatchApproved(RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "git_status", Arguments: map[string]any{"workspace_id": "ws_x"}})
+	unrelated, matched, err := manager.MatchApproved(RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "git_status", Arguments: map[string]any{"workspace_id": "ws_x"}})
 	if err != nil || matched || unrelated.ID != "" {
 		t.Fatalf("unrelated match = %#v/%t/%v", unrelated, matched, err)
 	}
-	_, matched, err = manager.MatchApproved(RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update --version v2.0.0"}})
+	_, matched, err = manager.MatchApproved(RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update --version v2.0.0"}})
 	var mismatch *MismatchError
 	if matched || !errors.As(err, &mismatch) || mismatch.RequestID != request.ID {
 		t.Fatalf("mismatch = matched=%t err=%v typed=%#v", matched, err, mismatch)
 	}
-	matchedRequest, matched, err := manager.MatchApproved(RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"command": "cm update", "workspace_id": "ws_x"}})
+	matchedRequest, matched, err := manager.MatchApproved(RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"command": "cm update", "workspace_id": "ws_x"}})
 	if err != nil || !matched || matchedRequest.ID != request.ID {
 		t.Fatalf("exact match = %#v/%t/%v", matchedRequest, matched, err)
 	}
@@ -174,7 +174,7 @@ func TestManagerApprovalExactRetryAndOneShotConsumption(t *testing.T) {
 	if _, err := manager.Consume(request.ID); !errors.Is(err, ErrRequestNotApproved) {
 		t.Fatalf("second consume err=%v", err)
 	}
-	if _, matched, err := manager.MatchApproved(RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}); err != nil || matched {
+	if _, matched, err := manager.MatchApproved(RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}); err != nil || matched {
 		t.Fatalf("consumed grant remained active: matched=%t err=%v", matched, err)
 	}
 }
@@ -186,7 +186,7 @@ func TestManagerClaimApprovedIsAtomic(t *testing.T) {
 	if _, err := manager.Approve(request.ID, "cli", "reviewed"); err != nil {
 		t.Fatal(err)
 	}
-	input := RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}
+	input := RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}
 	start := make(chan struct{})
 	type claimResult struct {
 		request Request
@@ -231,7 +231,7 @@ func TestManagerClaimMismatchDoesNotConsumeApproval(t *testing.T) {
 	if _, err := manager.Approve(request.ID, "cli", "reviewed"); err != nil {
 		t.Fatal(err)
 	}
-	_, matched, err := manager.ClaimApproved(RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update --version v2.0.0"}})
+	_, matched, err := manager.ClaimApproved(RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update --version v2.0.0"}})
 	var mismatch *MismatchError
 	if matched || !errors.As(err, &mismatch) {
 		t.Fatalf("mismatch claim = matched=%t err=%v", matched, err)
@@ -271,7 +271,7 @@ func TestManagerCLICapabilityExactMismatchReplayAndExpiry(t *testing.T) {
 		if _, err := manager.Approve(request.ID, "test", ""); err != nil {
 			t.Fatal(err)
 		}
-		claimed, capability, matched, err := manager.ClaimApprovedCLI(RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}, CLIInvocation{Program: "cm", Args: []string{"update"}})
+		claimed, capability, matched, err := manager.ClaimApprovedCLI(RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}, CLIInvocation{Program: "cm", Args: []string{"update"}})
 		if err != nil || !matched || capability == "" || claimed.Status != StatusConsumed {
 			t.Fatalf("claim = %#v capability=%q matched=%t err=%v", claimed, capability, matched, err)
 		}
@@ -289,7 +289,7 @@ func TestManagerCLICapabilityExactMismatchReplayAndExpiry(t *testing.T) {
 		challenge, _, _ := manager.CreateChallenge(testChallenge("session-a", "ws_x", "cm update"))
 		request, _, _ := manager.CreateRequest(challenge.ID, "session-a", "ws_x")
 		_, _ = manager.Approve(request.ID, "test", "")
-		_, capability, matched, err := manager.ClaimApprovedCLI(RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}, CLIInvocation{Program: "cm", Args: []string{"update"}})
+		_, capability, matched, err := manager.ClaimApprovedCLI(RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}, CLIInvocation{Program: "cm", Args: []string{"update"}})
 		if err != nil || !matched {
 			t.Fatalf("claim matched=%t err=%v", matched, err)
 		}
@@ -308,7 +308,7 @@ func TestManagerCLICapabilityExactMismatchReplayAndExpiry(t *testing.T) {
 		challenge, _, _ := manager.CreateChallenge(testChallenge("session-a", "ws_x", "cm update"))
 		request, _, _ := manager.CreateRequest(challenge.ID, "session-a", "ws_x")
 		_, _ = manager.Approve(request.ID, "test", "")
-		_, capability, _, err := manager.ClaimApprovedCLI(RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}, CLIInvocation{Program: "cm", Args: []string{"update"}})
+		_, capability, _, err := manager.ClaimApprovedCLI(RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}, CLIInvocation{Program: "cm", Args: []string{"update"}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -528,7 +528,7 @@ func TestManagerWaitCancellationDetachesPendingRequest(t *testing.T) {
 	if _, err := manager.Approve(request.ID, "test", "reviewed later"); err != nil {
 		t.Fatal(err)
 	}
-	matched, ok, err := manager.MatchApproved(RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}})
+	matched, ok, err := manager.MatchApproved(RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}})
 	if err != nil || !ok || matched.ID != request.ID {
 		t.Fatalf("approved detached retry = %#v matched=%t err=%v", matched, ok, err)
 	}
@@ -553,7 +553,7 @@ func TestManagerKeepsPrivateBindingIdentity(t *testing.T) {
 	manager, _ := testManager()
 	challenge, _, _ := manager.CreateChallenge(testChallenge("raw-secret-session", "ws_x", "cm update"))
 	request, _, _ := manager.CreateRequest(challenge.ID, "raw-secret-session", "ws_x")
-	if request.sessionID != "raw-secret-session" || request.challengeID != challenge.ID || request.Digest == "" {
+	if request.callerID != "raw-secret-session" || request.challengeID != challenge.ID || request.Digest == "" {
 		t.Fatalf("internal identity missing: %#v", request)
 	}
 }
@@ -579,7 +579,7 @@ func testChallenge(sessionID, workspaceID, command string) ChallengeInput {
 		title = "Install CodeMCP"
 	}
 	return ChallengeInput{
-		SessionID: sessionID, SessionHash: "hash-" + sessionID, WorkspaceID: workspaceID, Source: "tunnel", TargetTool: "run_command",
+		CallerID: sessionID, SessionHash: "hash-" + sessionID, WorkspaceID: workspaceID, Source: "tunnel", TargetTool: "run_command",
 		Arguments: map[string]any{"workspace_id": workspaceID, "command": command}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "control-plane mutation denied", Title: title, Command: command,
 	}
 }

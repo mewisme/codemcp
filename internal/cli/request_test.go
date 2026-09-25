@@ -184,6 +184,42 @@ func TestRuntimeGrantListUsesStructuredSafeFields(t *testing.T) {
 	}
 }
 
+func TestRequestCLIApproveAllowSimilarUsesCanonicalRuntimeGrant(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := t.TempDir()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	manager := approval.NewManager("instance-test")
+	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{
+		CallerID: "session-a", WorkspaceID: "ws_a", Source: "tunnel", TargetTool: "run_command",
+		Arguments: map[string]any{"workspace_id": "ws_a", "command": "git push origin main"},
+		GuardCode: controlguard.CodeExternalMutation, Title: "Push commits", Command: "git push origin main", SimilarCommandPattern: "git push **",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _, err := manager.CreateRequest(challenge.ID, "session-a", "ws_a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+
+	output := executeRequestCommand(t, root, []string{"request", "approve", request.ID, "--allow-similar", "--json"})
+	var approved approval.Request
+	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &approved); err != nil || !approved.RuntimeSessionGrant || approved.GrantExpiresAt.IsZero() {
+		t.Fatalf("approve output=%q request=%#v err=%v", output, approved, err)
+	}
+	grants := manager.ListRuntimeGrants("ws_a")
+	if len(grants) != 1 || grants[0].ID != request.ID {
+		t.Fatalf("runtime grants=%#v", grants)
+	}
+}
+
 func TestRequestCLIPlainAndJSON(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := t.TempDir()
@@ -241,7 +277,7 @@ func TestRequestCLICreateDummy(t *testing.T) {
 	if _, err := manager.Approve(request.ID, "test", ""); err != nil {
 		t.Fatal(err)
 	}
-	if matched, ok, err := manager.MatchApproved(approval.RetryInput{SessionID: "real-session", WorkspaceID: "ws_demo", Source: "cli-dummy", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_demo", "command": "echo hello", "dummy": true}}); err != nil || ok || matched.ID != "" {
+	if matched, ok, err := manager.MatchApproved(approval.RetryInput{CallerID: "real-session", WorkspaceID: "ws_demo", Source: "cli-dummy", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_demo", "command": "echo hello", "dummy": true}}); err != nil || ok || matched.ID != "" {
 		t.Fatalf("dummy grant matched real session: request=%#v matched=%t err=%v", matched, ok, err)
 	}
 
@@ -278,7 +314,7 @@ func TestRequestCLIAmbiguousPrefixAndStoppedRuntimeFailClosed(t *testing.T) {
 func seedApprovalRequest(t *testing.T, manager *approval.Manager, sessionID, workspaceID, command string) approval.Request {
 	t.Helper()
 	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{
-		SessionID: sessionID, SessionHash: "hash-" + sessionID, WorkspaceID: workspaceID, Source: "tunnel", TargetTool: "run_command",
+		CallerID: sessionID, SessionHash: "hash-" + sessionID, WorkspaceID: workspaceID, Source: "tunnel", TargetTool: "run_command",
 		Arguments: map[string]any{"workspace_id": workspaceID, "command": command}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "control-plane mutation denied", Title: "Test command approval", Command: command,
 	})
 	if err != nil {

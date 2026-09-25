@@ -35,6 +35,8 @@ var adminBindings = map[ID][]AdminBinding{
 	RequestView:                      {{Method: "GET", Path: "/api/requests/{request_id}"}},
 	RequestApprove:                   {{Method: "POST", Path: "/api/requests/{request_id}/approve"}},
 	RequestDeny:                      {{Method: "POST", Path: "/api/requests/{request_id}/deny"}},
+	RequestGrantList:                 {{Method: "GET", Path: "/api/requests/grants"}},
+	RequestGrantRevoke:               {{Method: "POST", Path: "/api/requests/grants/{request_id}/revoke"}},
 	UpstreamServerList:               {{Method: "GET", Path: "/api/upstream"}},
 	UpstreamServerAdd:                {{Method: "POST", Path: "/api/upstream"}},
 	UpstreamServerShow:               {{Method: "GET", Path: "/api/upstream/{server_id}"}},

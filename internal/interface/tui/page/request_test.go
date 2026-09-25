@@ -424,30 +424,23 @@ func TestRequestsPageResolveCancellationIgnoresLateResult(t *testing.T) {
 	}
 }
 
-func TestRequestsPageRejectsStaleResolutionBeforeMutation(t *testing.T) {
+func TestRequestsPagePreservesResolveDraftWhenAuthorityRejectsStaleRequest(t *testing.T) {
 	for _, test := range []struct {
-		name    string
-		current func(approval.Request) approval.Request
-		want    string
+		name string
+		want string
 	}{
-		{name: "resolved", current: func(value approval.Request) approval.Request { value.Status = approval.StatusApproved; return value }, want: "approved"},
-		{name: "expired", current: func(value approval.Request) approval.Request {
-			value.ExpiresAt = time.Now().Add(-time.Second)
-			return value
-		}, want: "expired"},
+		{name: "resolved", want: "already resolved"},
+		{name: "expired", want: "expired"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			now := time.Now().UTC()
 			initial := approval.Request{ID: "req_stale", Status: approval.StatusPending, WorkspaceID: "ws_a", TargetTool: "run_command", Title: "Allow update", CreatedAt: now, ExpiresAt: now.Add(time.Minute)}
-			current := test.current(initial)
 			resolveCalls := 0
 			server := newRequestPageServer(t, func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
-				case "/requests/view":
-					_ = json.NewEncoder(w).Encode(current)
 				case "/requests/approve":
 					resolveCalls++
-					_ = json.NewEncoder(w).Encode(current)
+					http.Error(w, "approval request is "+test.want, http.StatusConflict)
 				default:
 					t.Fatalf("unexpected path=%s", r.URL.Path)
 				}
@@ -466,7 +459,7 @@ func TestRequestsPageRejectsStaleResolutionBeforeMutation(t *testing.T) {
 			updated, follow := page.Update(resolve())
 			page = updated.(*RequestsPage)
 			view := ansi.Strip(page.View(42, 18))
-			if follow != nil || resolveCalls != 0 || page.editor == nil || page.resolveForm == nil || page.resolveForm.Reason != "keep this draft" || page.editor.Submitting() || !strings.Contains(view, test.want) {
+			if follow != nil || resolveCalls != 1 || page.editor == nil || page.resolveForm == nil || page.resolveForm.Reason != "keep this draft" || page.editor.Submitting() || !strings.Contains(view, "HTTP") || !strings.Contains(view, "409") {
 				t.Fatalf("follow=%v calls=%d editor=%v draft=%#v submitting=%t view=%q", follow != nil, resolveCalls, page.editor != nil, page.resolveForm, page.editor.Submitting(), view)
 			}
 		})

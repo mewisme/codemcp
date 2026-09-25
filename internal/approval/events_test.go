@@ -19,7 +19,7 @@ func TestApprovalLifecycleEventsAreSequencedDeduplicatedAndSafe(t *testing.T) {
 		reasonSecret  = "approval-reason-secret-marker"
 	)
 	input := ChallengeInput{
-		SessionID: "session-secret", SessionHash: "hash-session", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command",
+		CallerID: "session-secret", SessionHash: "hash-session", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command",
 		Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --token " + commandSecret},
 		GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow " + titleSecret,
 	}
@@ -40,11 +40,11 @@ func TestApprovalLifecycleEventsAreSequencedDeduplicatedAndSafe(t *testing.T) {
 	if _, err := manager.Approve(request.ID, "admin", reasonSecret); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Approve(request.ID, "admin", reasonSecret); err != nil {
-		t.Fatal(err)
+	if _, err := manager.Approve(request.ID, "admin", reasonSecret); !errors.Is(err, ErrRequestResolved) {
+		t.Fatalf("duplicate approval err=%v", err)
 	}
 	_, _, err = manager.MatchApproved(RetryInput{
-		SessionID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command",
+		CallerID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command",
 		Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --changed"},
 	})
 	var mismatch *MismatchError
@@ -52,7 +52,7 @@ func TestApprovalLifecycleEventsAreSequencedDeduplicatedAndSafe(t *testing.T) {
 		t.Fatalf("mismatch err=%v", err)
 	}
 	if _, matched, err := manager.ClaimApproved(RetryInput{
-		SessionID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command",
+		CallerID: "session-secret", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: "run_command",
 		Arguments: map[string]any{"workspace_id": "ws_test", "command": "cm update --token " + commandSecret},
 	}); err != nil || !matched {
 		t.Fatalf("claim matched=%t err=%v", matched, err)
@@ -133,7 +133,7 @@ func TestApprovalLifecyclePublishesDeniedExpiredAndRevoked(t *testing.T) {
 
 	grantManager := NewManager("instance-grant")
 	grantChallenge, _, err := grantManager.CreateChallenge(ChallengeInput{
-		SessionID: "session-grant", WorkspaceID: "ws_grant", Source: "tunnel", TargetTool: "run_command",
+		CallerID: "session-grant", WorkspaceID: "ws_grant", Source: "tunnel", TargetTool: "run_command",
 		Arguments: map[string]any{"workspace_id": "ws_grant", "command": "git push origin main"},
 		GuardCode: controlguard.CodeExternalMutation, GuardReason: "guarded", Title: "Push Git commits",
 		Command: "git push origin main", SimilarCommandPattern: "git push **",

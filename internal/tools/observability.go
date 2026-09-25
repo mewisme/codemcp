@@ -31,6 +31,12 @@ type callSourceKey struct{}
 type callDetailsKey struct{}
 type receivedByInstanceKey struct{}
 type mcpSessionIDKey struct{}
+type approvalCorrelationKey struct{}
+
+type ApprovalCorrelation struct {
+	CallerID  string
+	RequestID string
+}
 
 type callDetails struct {
 	Method  string
@@ -83,6 +89,23 @@ func MCPSessionID(ctx context.Context) string {
 		return ""
 	}
 	value, _ := ctx.Value(mcpSessionIDKey{}).(string)
+	return value
+}
+
+func WithApprovalCorrelation(ctx context.Context, callerID, requestID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, approvalCorrelationKey{}, ApprovalCorrelation{CallerID: strings.TrimSpace(callerID), RequestID: strings.TrimSpace(requestID)})
+}
+
+func ApprovalCorrelationFromContext(ctx context.Context) ApprovalCorrelation {
+	if ctx == nil {
+		return ApprovalCorrelation{}
+	}
+	value, _ := ctx.Value(approvalCorrelationKey{}).(ApprovalCorrelation)
+	value.CallerID = strings.TrimSpace(value.CallerID)
+	value.RequestID = strings.TrimSpace(value.RequestID)
 	return value
 }
 

@@ -115,7 +115,7 @@ func TestRuntimeControlConsumesOneShotCLIApproval(t *testing.T) {
 	}
 	manager := approval.NewManager("instance-test")
 	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{
-		SessionID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command",
+		CallerID: "session-a", SessionHash: "hash-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command",
 		Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}, GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "denied", Title: "Allow cm update",
 	})
 	if err != nil {
@@ -128,7 +128,7 @@ func TestRuntimeControlConsumesOneShotCLIApproval(t *testing.T) {
 	if _, err := manager.Approve(request.ID, "test", ""); err != nil {
 		t.Fatal(err)
 	}
-	_, capability, matched, err := manager.ClaimApprovedCLI(approval.RetryInput{SessionID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}, approval.CLIInvocation{Program: "cm", Args: []string{"update"}})
+	_, capability, matched, err := manager.ClaimApprovedCLI(approval.RetryInput{CallerID: "session-a", WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}}, approval.CLIInvocation{Program: "cm", Args: []string{"update"}})
 	if err != nil || !matched || capability == "" {
 		t.Fatalf("claim capability=%q matched=%t err=%v", capability, matched, err)
 	}
