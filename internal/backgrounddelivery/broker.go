@@ -23,6 +23,23 @@ const (
 
 var ErrUnauthorized = errors.New("background delivery scope is unauthorized")
 
+var (
+	ErrDeliveryNotFound   = errors.New("background delivery was not found")
+	ErrDeliveryClaimed    = errors.New("background delivery is already claimed")
+	ErrDeliverySuppressed = errors.New("background delivery was suppressed")
+	ErrReceiptMismatch    = errors.New("background delivery receipt does not match")
+)
+
+type DeliveryState string
+
+const (
+	DeliveryPending      DeliveryState = "pending"
+	DeliveryClaimed      DeliveryState = "claimed"
+	DeliveryCommitted    DeliveryState = "committed"
+	DeliveryAcknowledged DeliveryState = "acknowledged"
+	DeliverySuppressed   DeliveryState = "suppressed"
+)
+
 type Owner struct {
 	ID         string `json:"id"`
 	Generation string `json:"generation"`
@@ -98,6 +115,26 @@ type Delivery struct {
 	FinishedAt      string                                `json:"finished_at"`
 	CreatedAt       time.Time                             `json:"created_at"`
 	ExpiresAt       time.Time                             `json:"expires_at"`
+	State           DeliveryState                         `json:"state"`
+	Claimant        string                                `json:"claimant,omitempty"`
+	Receipt         string                                `json:"receipt,omitempty"`
+	ClaimedAt       *time.Time                            `json:"claimed_at,omitempty"`
+	CommittedAt     *time.Time                            `json:"committed_at,omitempty"`
+	AcknowledgedAt  *time.Time                            `json:"acknowledged_at,omitempty"`
+	SuppressedAt    *time.Time                            `json:"suppressed_at,omitempty"`
+}
+
+type ClaimResult struct {
+	Delivery         Delivery `json:"delivery"`
+	Receipt          string   `json:"receipt,omitempty"`
+	Acquired         bool     `json:"acquired"`
+	AlreadyDelivered bool     `json:"already_delivered"`
+}
+
+type RecoveryResult struct {
+	Delivery         Delivery `json:"delivery"`
+	Consumed         bool     `json:"consumed"`
+	AlreadyDelivered bool     `json:"already_delivered"`
 }
 
 type terminalRecord struct {
@@ -262,6 +299,7 @@ func (b *Broker) materializeLocked(registration Registration, event shellruntime
 		FinishedAt:      event.FinishedAt,
 		CreatedAt:       now,
 		ExpiresAt:       now.Add(b.retention),
+		State:           DeliveryPending,
 	}
 	b.deliveries[delivery.ID] = delivery
 	b.order = append(b.order, delivery.ID)
@@ -287,6 +325,161 @@ func (b *Broker) List(workspaceID string, owner Owner) ([]Delivery, error) {
 		}
 	}
 	return result, nil
+}
+
+func (b *Broker) Peek(workspaceID string, owner Owner, deliveryID string) (Delivery, error) {
+	if b == nil || !owner.Valid() || strings.TrimSpace(workspaceID) == "" {
+		return Delivery{}, ErrUnauthorized
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.pruneLocked(time.Now().UTC())
+	delivery, err := b.authorizedDeliveryLocked(strings.TrimSpace(workspaceID), owner, strings.TrimSpace(deliveryID))
+	if err != nil {
+		return Delivery{}, err
+	}
+	return cloneDelivery(delivery), nil
+}
+
+func (b *Broker) Claim(workspaceID string, owner Owner, deliveryID, claimant string) (ClaimResult, error) {
+	if b == nil || !owner.Valid() || strings.TrimSpace(workspaceID) == "" {
+		return ClaimResult{}, ErrUnauthorized
+	}
+	claimant = strings.TrimSpace(claimant)
+	if claimant == "" {
+		return ClaimResult{}, ErrUnauthorized
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now().UTC()
+	b.pruneLocked(now)
+	delivery, err := b.authorizedDeliveryLocked(strings.TrimSpace(workspaceID), owner, strings.TrimSpace(deliveryID))
+	if err != nil {
+		return ClaimResult{}, err
+	}
+	switch delivery.State {
+	case "", DeliveryPending:
+		delivery.State = DeliveryClaimed
+		delivery.Claimant = claimant
+		delivery.Receipt = idgen.Must("receipt", 12)
+		delivery.ClaimedAt = timeRef(now)
+		b.deliveries[delivery.ID] = delivery
+		return ClaimResult{Delivery: cloneDelivery(delivery), Receipt: delivery.Receipt, Acquired: true}, nil
+	case DeliveryClaimed:
+		if delivery.Claimant != claimant {
+			return ClaimResult{Delivery: cloneDelivery(delivery)}, ErrDeliveryClaimed
+		}
+		return ClaimResult{Delivery: cloneDelivery(delivery), Receipt: delivery.Receipt, Acquired: true}, nil
+	case DeliveryCommitted, DeliveryAcknowledged:
+		return ClaimResult{Delivery: cloneDelivery(delivery), Receipt: delivery.Receipt, AlreadyDelivered: true}, nil
+	case DeliverySuppressed:
+		return ClaimResult{Delivery: cloneDelivery(delivery)}, ErrDeliverySuppressed
+	default:
+		return ClaimResult{Delivery: cloneDelivery(delivery)}, ErrDeliveryClaimed
+	}
+}
+
+func (b *Broker) Commit(workspaceID string, owner Owner, deliveryID, receipt string) (Delivery, error) {
+	if b == nil || !owner.Valid() || strings.TrimSpace(workspaceID) == "" {
+		return Delivery{}, ErrUnauthorized
+	}
+	receipt = strings.TrimSpace(receipt)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now().UTC()
+	b.pruneLocked(now)
+	delivery, err := b.authorizedDeliveryLocked(strings.TrimSpace(workspaceID), owner, strings.TrimSpace(deliveryID))
+	if err != nil {
+		return Delivery{}, err
+	}
+	if delivery.State == DeliverySuppressed {
+		return cloneDelivery(delivery), ErrDeliverySuppressed
+	}
+	if delivery.Receipt == "" || delivery.Receipt != receipt {
+		return cloneDelivery(delivery), ErrReceiptMismatch
+	}
+	switch delivery.State {
+	case DeliveryClaimed:
+		delivery.State = DeliveryCommitted
+		delivery.CommittedAt = timeRef(now)
+		b.deliveries[delivery.ID] = delivery
+		return cloneDelivery(delivery), nil
+	case DeliveryCommitted, DeliveryAcknowledged:
+		return cloneDelivery(delivery), nil
+	default:
+		return cloneDelivery(delivery), ErrReceiptMismatch
+	}
+}
+
+func (b *Broker) Acknowledge(workspaceID string, owner Owner, deliveryID, receipt string) (Delivery, error) {
+	if b == nil || !owner.Valid() || strings.TrimSpace(workspaceID) == "" {
+		return Delivery{}, ErrUnauthorized
+	}
+	receipt = strings.TrimSpace(receipt)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now().UTC()
+	b.pruneLocked(now)
+	delivery, err := b.authorizedDeliveryLocked(strings.TrimSpace(workspaceID), owner, strings.TrimSpace(deliveryID))
+	if err != nil {
+		return Delivery{}, err
+	}
+	if delivery.Receipt == "" || delivery.Receipt != receipt {
+		return cloneDelivery(delivery), ErrReceiptMismatch
+	}
+	switch delivery.State {
+	case DeliveryCommitted:
+		delivery.State = DeliveryAcknowledged
+		delivery.AcknowledgedAt = timeRef(now)
+		b.deliveries[delivery.ID] = delivery
+		return cloneDelivery(delivery), nil
+	case DeliveryAcknowledged:
+		return cloneDelivery(delivery), nil
+	case DeliverySuppressed:
+		return cloneDelivery(delivery), ErrDeliverySuppressed
+	default:
+		return cloneDelivery(delivery), ErrReceiptMismatch
+	}
+}
+
+// ConsumeRecovery atomically records that a foreground consuming recovery path
+// won the completion race. Process output remains owned by ProcessManager.
+func (b *Broker) ConsumeRecovery(workspaceID string, owner Owner, deliveryID string) (RecoveryResult, error) {
+	if b == nil || !owner.Valid() || strings.TrimSpace(workspaceID) == "" {
+		return RecoveryResult{}, ErrUnauthorized
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	now := time.Now().UTC()
+	b.pruneLocked(now)
+	delivery, err := b.authorizedDeliveryLocked(strings.TrimSpace(workspaceID), owner, strings.TrimSpace(deliveryID))
+	if err != nil {
+		return RecoveryResult{}, err
+	}
+	switch delivery.State {
+	case "", DeliveryPending:
+		delivery.State = DeliverySuppressed
+		delivery.SuppressedAt = timeRef(now)
+		b.deliveries[delivery.ID] = delivery
+		return RecoveryResult{Delivery: cloneDelivery(delivery), Consumed: true}, nil
+	case DeliverySuppressed, DeliveryCommitted, DeliveryAcknowledged:
+		return RecoveryResult{Delivery: cloneDelivery(delivery), AlreadyDelivered: true}, nil
+	case DeliveryClaimed:
+		return RecoveryResult{Delivery: cloneDelivery(delivery)}, ErrDeliveryClaimed
+	default:
+		return RecoveryResult{Delivery: cloneDelivery(delivery)}, ErrDeliveryClaimed
+	}
+}
+
+func (b *Broker) authorizedDeliveryLocked(workspaceID string, owner Owner, deliveryID string) (Delivery, error) {
+	delivery, ok := b.deliveries[deliveryID]
+	if !ok {
+		return Delivery{}, ErrDeliveryNotFound
+	}
+	if delivery.WorkspaceID != workspaceID || delivery.OwnerID != owner.ID || delivery.OwnerGeneration != owner.Generation {
+		return Delivery{}, ErrUnauthorized
+	}
+	return delivery, nil
 }
 
 func (b *Broker) pruneLocked(now time.Time) {
@@ -378,7 +571,24 @@ func cloneTerminal(event shellruntime.BackgroundWorkTerminalEvent) shellruntime.
 func cloneDelivery(value Delivery) Delivery {
 	value.ExitCode = cloneInt(value.ExitCode)
 	value.Signal = cloneString(value.Signal)
+	value.ClaimedAt = cloneTime(value.ClaimedAt)
+	value.CommittedAt = cloneTime(value.CommittedAt)
+	value.AcknowledgedAt = cloneTime(value.AcknowledgedAt)
+	value.SuppressedAt = cloneTime(value.SuppressedAt)
 	return value
+}
+
+func timeRef(value time.Time) *time.Time {
+	copy := value
+	return &copy
+}
+
+func cloneTime(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }
 
 func cloneInt(value *int) *int {
