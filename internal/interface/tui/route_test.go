@@ -38,6 +38,8 @@ func TestParseRoute(t *testing.T) {
 		{[]string{"requests", "history", "req_abc"}, Route{Kind: RouteRequests, Mode: "history", ResourceID: "req_abc"}},
 		{[]string{"requests", "all", "req_abc", "command"}, Route{Kind: RouteRequests, Mode: "all", ResourceID: "req_abc", Section: "command"}},
 		{[]string{"requests", "all", "req_abc", "arguments"}, Route{Kind: RouteRequests, Mode: "all", ResourceID: "req_abc", Section: "arguments"}},
+		{[]string{"completions"}, Route{Kind: RouteCompletions}},
+		{[]string{"completion", "completion_abc"}, Route{Kind: RouteCompletions, ResourceID: "completion_abc"}},
 		{[]string{"config", "runtime.port"}, Route{Kind: RouteConfig, ResourceID: "runtime.port"}},
 		{[]string{"instruction"}, Route{Kind: RouteInstruction}},
 		{[]string{"instructions"}, Route{Kind: RouteInstruction}},
@@ -59,7 +61,7 @@ func TestParseRoute(t *testing.T) {
 			t.Fatalf("ParseRoute(%v) = %#v, %v; want %#v", test.args, got, err, test.want)
 		}
 	}
-	for _, args := range [][]string{{"missing"}, {"mcp"}, {"server"}, {"servers"}, {"tunnel", "extra"}, {"upstream", "a", "missing"}, {"config", "key", "extra"}, {"logs-exec", "settings"}, {"logs-exec", "exec_a", "extra"}, {"logs-tools", "call_a", "extra"}, {"upstream", "a", "health", "extra"}, {"requests", "history", "req", "guard", "extra"}, {"instruction", "missing"}, {"instruction", "rules", "extra"}} {
+	for _, args := range [][]string{{"missing"}, {"mcp"}, {"server"}, {"servers"}, {"tunnel", "extra"}, {"upstream", "a", "missing"}, {"config", "key", "extra"}, {"logs-exec", "settings"}, {"logs-exec", "exec_a", "extra"}, {"logs-tools", "call_a", "extra"}, {"upstream", "a", "health", "extra"}, {"requests", "history", "req", "guard", "extra"}, {"completions", "completion_a", "extra"}, {"instruction", "missing"}, {"instruction", "rules", "extra"}} {
 		if _, err := ParseRoute(args); err == nil {
 			t.Fatalf("ParseRoute(%v) unexpectedly succeeded", args)
 		}

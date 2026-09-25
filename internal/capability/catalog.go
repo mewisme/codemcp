@@ -24,6 +24,9 @@ const (
 	RequestDeny              ID = "request.deny"
 	RequestGrantList         ID = "request.grant.list"
 	RequestGrantRevoke       ID = "request.grant.revoke"
+	CompletionCurrent        ID = "completion.current"
+	CompletionList           ID = "completion.list"
+	CompletionView           ID = "completion.view"
 	NotificationStatus       ID = "notification.status"
 	ConfigPath               ID = "config.path"
 	ConfigExport             ID = "config.export"
@@ -107,6 +110,7 @@ const (
 	ProcessView                      ID = "process.view"
 	ProcessClear                     ID = "process.clear"
 	RequestStream                    ID = "request.stream"
+	CompletionFeed                   ID = "completion.feed"
 	TunnelConfigRead                 ID = "tunnel.config.read"
 	ActivityStream                   ID = "activity.stream"
 	ActivityView                     ID = "activity.view"
@@ -150,6 +154,9 @@ func buildSpecs() []Spec {
 		reviewerMutation(RequestDeny, "request deny"),
 		operatorQuery(RequestGrantList, "request grant list"),
 		reviewerDestructive(RequestGrantRevoke, "request grant revoke"),
+		operatorQuery(CompletionCurrent, "agent completion current"),
+		operatorQuery(CompletionList, "agent completion list"),
+		operatorQuery(CompletionView, "agent completion view"),
 		operatorQuery(ConfigPath, "config path"),
 		operatorMutation(ConfigExport, "config export", RiskState, false),
 		operatorSensitive(ConfigImport, "config import", false),

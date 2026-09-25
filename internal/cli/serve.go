@@ -403,7 +403,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		}
 		runtime.Logger.Diagnostic(logger.Info, "WORKSPACE", "workspace.registry.reloaded", "Workspace registry reloaded", logger.WithDebug("count", len(items)))
 		return workspaceReloadResult{PID: os.Getpid(), Count: len(items)}, nil
-	}, Status: status, StatusWait: statusWait, Approvals: runtime.Tools.Approvals, Executions: runtime.Tools.Executions, Log: runtime.Logger, Shutdown: func() {
+	}, Status: status, StatusWait: statusWait, Approvals: runtime.Tools.Approvals, Completions: runtime.Tools.Completions, Executions: runtime.Tools.Executions, Log: runtime.Logger, Shutdown: func() {
 		runtimeCancel()
 		select {
 		case shutdownRequest <- struct{}{}:

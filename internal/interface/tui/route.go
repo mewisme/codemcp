@@ -15,6 +15,7 @@ const (
 	RouteTunnel      RouteKind = "tunnel"
 	RouteTunnels     RouteKind = "tunnels"
 	RouteRequests    RouteKind = "requests"
+	RouteCompletions RouteKind = "completions"
 	RouteLogs        RouteKind = "logs"
 	RouteLogsExec    RouteKind = "logs-exec"
 	RouteLogsTools   RouteKind = "logs-tools"
@@ -80,6 +81,8 @@ func ParseRoute(args []string) (Route, error) {
 		return parseManagedTunnelRoute(parts)
 	case RouteRequests:
 		return parseRequestsRoute(parts)
+	case RouteCompletions:
+		return parseCompletionRoute(parts)
 	case RouteLogs:
 		return parseLogsRoute(parts)
 	case RouteLogsExec:
@@ -104,6 +107,21 @@ func ParseRoute(args []string) (Route, error) {
 		}
 		return Route{Kind: kind}, nil
 	}
+}
+
+func parseCompletionRoute(parts []string) (Route, error) {
+	route := Route{Kind: RouteCompletions}
+	if len(parts) == 1 {
+		return route, nil
+	}
+	if len(parts) != 2 {
+		return Route{}, fmt.Errorf("completion path is too deep: %s", strings.Join(parts, " "))
+	}
+	route.ResourceID = strings.TrimSpace(parts[1])
+	if route.ResourceID == "" {
+		return Route{}, fmt.Errorf("completion id is required")
+	}
+	return route, nil
 }
 
 func parseWorkspaceRoute(parts []string) (Route, error) {
@@ -459,6 +477,8 @@ func parseRouteKind(value string) (RouteKind, bool) {
 		return RouteTunnels, true
 	case "request", "requests", "req":
 		return RouteRequests, true
+	case "completion", "completions", "done":
+		return RouteCompletions, true
 	case "log", "logs":
 		return RouteLogs, true
 	case "logs-exec", "exec-logs", "command-execution", "command-execution-logs":
@@ -483,7 +503,7 @@ func parseRouteKind(value string) (RouteKind, bool) {
 func (route Route) Title() string {
 	base := map[RouteKind]string{
 		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "Upstreams", RouteTunnel: "Tunnel", RouteTunnels: "Managed Tunnels",
-		RouteRequests: "Requests", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RouteInstruction: "Instruction", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
+		RouteRequests: "Requests", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RouteInstruction: "Instruction", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
 	}[route.Kind]
 	if route.Kind == RouteRequests && route.Mode != "" {
 		base += " · " + routeSectionTitle(route.Mode)
@@ -617,6 +637,8 @@ func breadcrumbRootLabel(kind RouteKind) string {
 		return "Managed Tunnels"
 	case RouteRequests:
 		return "Requests"
+	case RouteCompletions:
+		return "Completions"
 	case RouteLogs:
 		return "Logs"
 	case RouteLogsExec:

@@ -38,6 +38,7 @@ export const adminRoutes: RouteObject[] = [{
     { path: "tunnel", lazy: () => import("@/pages/tunnel").then((module) => ({ Component: module.TunnelPage })), handle: navHandle("tunnel") },
     { path: "activity", lazy: () => import("@/pages/activity").then((module) => ({ Component: module.ActivityPage })), handle: navHandle("activity") },
     { path: "activity/:callID", lazy: () => import("@/pages/activity").then((module) => ({ Component: module.ActivityCallPage })), handle: { title: "Tool Call", description: "Inspect one tool call and its complete runtime metadata." } satisfies AdminRouteHandle },
+    { path: "completions", lazy: () => import("@/pages/completions").then((module) => ({ Component: module.CompletionsPage })), handle: navHandle("completions") },
     { path: "settings", lazy: () => import("@/pages/settings").then((module) => ({ Component: module.SettingsPage })), handle: navHandle("settings") },
     { path: "*", element: <Navigate replace to="/overview" /> },
   ],

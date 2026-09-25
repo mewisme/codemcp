@@ -65,6 +65,7 @@ describe("admin app runtime smoke", () => {
       tunnel: "OpenAI Secure MCP Tunnel",
       activity:
         "Live MCP requests, tool calls, and runtime lifecycle events. Tool calls open as addressable child routes.",
+      completions: "Read-only durable completion history accepted by this runtime.",
       settings: "Runtime",
     }
     for (const item of navItems.slice(1)) {
@@ -455,8 +456,20 @@ async function mockFetch(input: RequestInfo | URL): Promise<Response> {
   if (path === "/api/requests?status=pending") return json([])
   if (path === "/api/requests?status=") return json([])
   if (path === "/api/requests/stream") return approvalStream()
+  if (path === "/api/completions?limit=100") return json([])
+  if (path === "/api/completions/stream?limit=100") return completionStream()
   if (path === "/api/activity/stream?history=100") return activityStream()
   throw new Error(`Unhandled test request: ${path}`)
+}
+
+function completionStream() {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode('event: ready\ndata: {"latest_sequence":0,"records":[]}\n\n'))
+    },
+  })
+  return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } })
 }
 
 function projectContextFixture() {

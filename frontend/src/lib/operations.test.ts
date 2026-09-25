@@ -19,6 +19,10 @@ describe("browser canonical operation adapter", () => {
     expect(browserOperationFor("GET", "/api/workspaces/ws_test/executions/exec_1/stream")).toBe("execution.stream")
     expect(browserOperationFor("DELETE", "/api/upstream/local/auth/logout")).toBe("upstream.server.auth.logout")
     expect(browserOperationFor("PUT", "/api/tunnel/managed/tun_1")).toBe("tunnel.update")
+    expect(browserOperationFor("GET", "/api/completions")).toBe("completion.list")
+    expect(browserOperationFor("GET", "/api/completions/current?workspace_id=ws_test")).toBe("completion.current")
+    expect(browserOperationFor("GET", "/api/completions/stream?limit=100")).toBe("completion.feed")
+    expect(browserOperationFor("GET", "/api/completions/view/completion_1")).toBe("completion.view")
   })
 
   it("ignores query strings while preserving method semantics", () => {

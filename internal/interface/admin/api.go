@@ -109,6 +109,8 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/tools", api.handleTools)
 	mux.HandleFunc("/api/requests", api.handleRequests)
 	mux.HandleFunc("/api/requests/", api.handleRequest)
+	mux.HandleFunc("/api/completions", api.handleCompletions)
+	mux.HandleFunc("/api/completions/", api.handleCompletion)
 	mux.HandleFunc("/api/notifications", api.handleNotifications)
 	mux.HandleFunc("/api/upstream", api.handleUpstreams)
 	mux.HandleFunc("/api/upstream/", api.handleUpstream)

@@ -51,10 +51,13 @@ var commandPresentationTitleOverrides = map[string]string{
 	"auth admin enable":  "Authentication",
 	"auth admin disable": "Authentication",
 
-	"request grant revoke": "Runtime session grant",
-	"request create dummy": "Control approval request",
-	"request approve":      "Control approval request",
-	"request deny":         "Control approval request",
+	"request grant revoke":     "Runtime session grant",
+	"request create dummy":     "Control approval request",
+	"request approve":          "Control approval request",
+	"request deny":             "Control approval request",
+	"agent completion current": "Current agent completion",
+	"agent completion list":    "Agent completion history",
+	"agent completion view":    "Agent completion",
 
 	"tunnel key set":          "OpenAI tunnel runtime key",
 	"tunnel key remove":       "OpenAI tunnel runtime key",

@@ -21,6 +21,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 	representatives := map[string]string{
 		"_service":     "_service run",
 		"admin":        "admin enable",
+		"agent":        "agent completion list",
 		"auth":         "auth status",
 		"completion":   "completion",
 		"config":       "config path",

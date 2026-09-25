@@ -18,6 +18,7 @@ import (
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/controlguard"
+	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/runtime/activity"
@@ -49,6 +50,7 @@ type runtimeControlOptions struct {
 	Shutdown         func()
 	ClearLogs        func() error
 	Approvals        *approval.Manager
+	Completions      *agentcompletion.Service
 	Executions       *shellruntime.ExecutionHub
 	Log              *logger.Logger
 }
@@ -148,6 +150,7 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 		requests, err := approval.NewReviewService(options.Approvals).List(approval.Filter{})
 		writeControlJSON(w, requests, err)
 	}))
+	registerRuntimeCompletionRoutes(mux, controlState.Token, options.Completions)
 	mux.HandleFunc("/requests/stream", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
 		serveRuntimeApprovalFeed(w, r, options.Approvals)
 	}))

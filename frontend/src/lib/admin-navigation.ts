@@ -1,4 +1,4 @@
-import { Activity, Cloud, FileText, FolderGit2, Home, Server, Settings, Wrench, type LucideIcon } from "lucide-react"
+import { Activity, CheckCircle2, Cloud, FileText, FolderGit2, Home, Server, Settings, Wrench, type LucideIcon } from "lucide-react"
 
 export type NavItem = { id: string; path: string; title: string; description: string; icon: LucideIcon; parent?: string }
 export type AdminRouteHandle = Pick<NavItem, "title" | "description">
@@ -15,5 +15,6 @@ export const navItems: NavItem[] = [
   { id: "upstreams", path: "/upstreams", title: "Upstreams", description: "Configure Upstream servers, health, tools, and OAuth.", icon: Server },
   { id: "tunnel", path: "/tunnel", title: "Tunnel", description: "Configure and monitor the OpenAI Secure MCP Tunnel.", icon: Cloud },
   { id: "activity", path: "/activity", title: "Activity", description: "Watch live MCP requests and tool execution events.", icon: Activity },
+  { id: "completions", path: "/completions", title: "Completions", description: "Inspect durable agent completion history and live accepted completion events.", icon: CheckCircle2 },
   { id: "settings", path: "/settings", title: "Settings", description: "Configure listeners, runtime behavior, and authentication.", icon: Settings },
 ]

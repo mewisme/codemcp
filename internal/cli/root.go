@@ -71,6 +71,7 @@ func newRootCommand() *cobra.Command {
 		integrationSettingsCommand(),
 		serveCommand(),
 		statusCommand(),
+		agentCommand(),
 		completionCommand(),
 		internalServiceCommand(),
 		&cobra.Command{Use: "version", Short: "Show the cm version and build information", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, args []string) {

@@ -1246,6 +1246,8 @@ func (model *Model) loadPage(route Route) {
 		value, err = tuipage.NewManagedTunnelsRouteAction(model.ctx, route.ResourceID, route.Section, route.Action)
 	case RouteRequests:
 		value, err = tuipage.NewRequestsRouteAction(model.ctx, route.Mode, route.ResourceID, route.Section, route.Action)
+	case RouteCompletions:
+		value, err = tuipage.NewCompletionsRoute(model.ctx, route.ResourceID)
 	case RouteLogs:
 		value, err = tuipage.NewLogsRouteAction(model.ctx, route.ResourceID, route.Section, route.Action)
 	case RouteLogsExec:
@@ -1838,6 +1840,8 @@ func routeDescription(route Route) string {
 		return "Browse and manage tunnels available through the OpenAI Tunnel Management API."
 	case RouteRequests:
 		return "Review control approval requests."
+	case RouteCompletions:
+		return "Inspect durable agent completion history and live accepted completion events."
 	case RouteLogs:
 		return "Inspect runtime history and live events."
 	case RouteLogsExec:

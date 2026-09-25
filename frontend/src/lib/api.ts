@@ -424,6 +424,31 @@ export type ApprovalEvent = {
   timestamp: string
 }
 
+export type CompletionStatus = "completed" | "partial" | "blocked" | "cancelled" | string
+export type CompletionRecord = {
+  id: string
+  sequence: number
+  agent_id: string
+  workspace_id: string
+  status: CompletionStatus
+  title: string
+  summary: string
+  source?: string
+  supersedes_id?: string
+  created_at: string
+}
+export type CompletionEvent = {
+  id: string
+  sequence: number
+  name: "completion.accepted" | string
+  record: CompletionRecord
+  timestamp: string
+}
+export type CompletionSnapshot = {
+  latest_sequence: number
+  records: CompletionRecord[]
+}
+
 const adminTokenKey = "cm-admin-token"
 try {
   localStorage.removeItem(adminTokenKey)
@@ -651,4 +676,13 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  completions: (workspaceID = "", limit = 50) => {
+    const query = new URLSearchParams({ limit: String(limit) })
+    if (workspaceID) query.set("workspace_id", workspaceID)
+    return api<CompletionRecord[]>(`/api/completions?${query}`)
+  },
+  currentCompletion: (workspaceID: string) =>
+    api<CompletionRecord>(`/api/completions/current?workspace_id=${encodeURIComponent(workspaceID)}`),
+  completion: (id: string) =>
+    api<CompletionRecord>(`/api/completions/view/${encodeURIComponent(id)}`),
 }
