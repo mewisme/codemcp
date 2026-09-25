@@ -71,7 +71,7 @@ func scopedToggleCommand(use, title, success, key string, enabled bool) *cobra.C
 			if err := scopedSettingSet(cmd, key, strconv.FormatBool(enabled)); err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, title, success, presentation.Field{Label: "setting", Value: key})
+			renderMutationSuccess(cmd, success, presentation.Field{Label: "setting", Value: key})
 			return nil
 		},
 	}
@@ -87,7 +87,7 @@ func scopedValueCommand(use, title, success, key string) *cobra.Command {
 			if err := scopedSettingSet(cmd, key, args[0]); err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, title, success, presentation.Field{Label: "setting", Value: key})
+			renderMutationSuccess(cmd, success, presentation.Field{Label: "setting", Value: key})
 			return nil
 		},
 	}
@@ -138,7 +138,7 @@ func scopedListAddRemoveCommand(use, title, success, key string, add bool) *cobr
 			if add {
 				for _, existing := range values {
 					if existing == value {
-						renderMutationSuccess(cmd, title, success, presentation.Field{Label: "setting", Value: key})
+						renderMutationSuccess(cmd, success, presentation.Field{Label: "setting", Value: key})
 						return nil
 					}
 				}
@@ -160,7 +160,7 @@ func scopedListAddRemoveCommand(use, title, success, key string, add bool) *cobr
 					return err
 				}
 			}
-			renderMutationSuccess(cmd, title, success, presentation.Field{Label: "setting", Value: key})
+			renderMutationSuccess(cmd, success, presentation.Field{Label: "setting", Value: key})
 			return nil
 		},
 	}

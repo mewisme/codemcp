@@ -42,13 +42,13 @@ func runPackageManagedUpgrade(cmd *cobra.Command, detection install.Detection, t
 	progress.Complete()
 	switch check.Status {
 	case updatepkg.StatusUpToDate:
-		renderMutationResult(cmd, "Upgrade CodeMCP", presentation.StatusInfo, "Already up to date",
+		renderMutationResult(cmd, presentation.StatusInfo, "Already up to date",
 			presentation.Field{Label: "current", Value: check.Current},
 			presentation.Field{Label: "latest", Value: check.Latest},
 		)
 		return nil
 	case updatepkg.StatusAhead:
-		renderMutationResult(cmd, "Upgrade CodeMCP", presentation.StatusInfo, "Current version is newer than the latest release",
+		renderMutationResult(cmd, presentation.StatusInfo, "Current version is newer than the latest release",
 			presentation.Field{Label: "current", Value: check.Current},
 			presentation.Field{Label: "latest", Value: check.Latest},
 		)
@@ -73,7 +73,7 @@ func runPackageManagedUpgrade(cmd *cobra.Command, detection install.Detection, t
 		_ = os.Remove(handoff.ScriptPath)
 		return fmt.Errorf("launch %s update handoff: %w", plan.Name, err)
 	}
-	renderMutationSuccess(cmd, "Upgrade CodeMCP", plan.Name+" update handed off",
+	renderMutationSuccess(cmd, plan.Name+" update handed off",
 		presentation.Field{Label: "target", Value: check.Latest},
 		presentation.Field{Label: "log", Value: handoff.LogPath},
 		presentation.Field{Label: "state", Value: "update continues after this process exits"},

@@ -142,7 +142,7 @@ func upstreamServerAddCommand() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("upstream server disappeared after save: %s", args[0])
 			}
-			renderEntityMutationSuccess(cmd, "Upstream server", "Upstream server added", normalized.ID, presentation.Field{Label: "transport", Value: normalized.Transport}, presentation.Field{Label: "prefix", Value: normalized.ToolPrefix}, presentation.Field{Label: "expose", Value: normalized.Expose})
+			renderEntityMutationSuccess(cmd, "Upstream server added", normalized.ID, presentation.Field{Label: "transport", Value: normalized.Transport}, presentation.Field{Label: "prefix", Value: normalized.ToolPrefix}, presentation.Field{Label: "expose", Value: normalized.Expose})
 			return nil
 		},
 	}
@@ -175,7 +175,7 @@ func upstreamServerConfigureCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			renderEntityMutationSuccess(cmd, "Upstream server", "Upstream server updated", result.Value.ID)
+			renderEntityMutationSuccess(cmd, "Upstream server updated", result.Value.ID)
 			return nil
 		},
 	}
@@ -245,7 +245,7 @@ func upstreamServerRemoveCommand() *cobra.Command {
 			if err := manager.Remove(args[0]); err != nil {
 				return err
 			}
-			renderEntityMutationSuccess(cmd, "Upstream server", "Upstream server removed", args[0])
+			renderEntityMutationSuccess(cmd, "Upstream server removed", args[0])
 			return nil
 		},
 	}
@@ -274,7 +274,7 @@ func upstreamServerToggleCommand(enabled bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			renderEntityMutationSuccess(cmd, "Upstream server", strings.ToUpper(action[:1])+action[1:]+"d", args[0])
+			renderEntityMutationSuccess(cmd, strings.ToUpper(action[:1])+action[1:]+"d", args[0])
 			return nil
 		},
 	}

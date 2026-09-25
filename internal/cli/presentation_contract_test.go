@@ -49,6 +49,7 @@ func TestCommandPresentationContractMatrix(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var output bytes.Buffer
 			cmd := &cobra.Command{Use: "contract"}
+			setCommandPresentationTitle(cmd, "Contract")
 			var asJSON bool
 			addJSONResultFlag(cmd, &asJSON)
 			cmd.SetOut(presentation.WrapWriter(&output, test.caps))
@@ -65,10 +66,10 @@ func TestCommandPresentationContractMatrix(t *testing.T) {
 				}
 			} else {
 				presenter := commandPresenter(cmd)
-				presenter.Frame("Contract")
 				presenter.Status(presentation.StatusSuccess, "Ready")
 				presenter.Fields(presentation.Field{Label: "state", Value: "ready"})
-				presenter.FrameEnd("Done")
+				commandProgressSession(cmd).SetCompletion("Done")
+				closeCommandProgress(cmd, nil)
 			}
 			text := output.String()
 			for _, want := range test.want {

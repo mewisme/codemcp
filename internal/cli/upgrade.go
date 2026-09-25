@@ -16,7 +16,6 @@ func upgradeCommand() *cobra.Command {
 	var targetVersion string
 	var noRestart bool
 	cmd := &cobra.Command{Use: "upgrade", Aliases: []string{"update", "upg"}, SuggestFor: []string{"upg"}, Short: "Check for and install cm upgrades", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		beginMutationProgress(cmd, "Upgrade CodeMCP")
 		logCommandStep(cmd, "UPDATE", "update.installation.detecting", "Detecting current installation")
 		detection, err := install.DetectCurrent(version.Version)
 		if err != nil {
@@ -58,7 +57,7 @@ func upgradeCommand() *cobra.Command {
 			} else {
 				message = "Current version is newer than the latest release"
 			}
-			renderMutationResult(cmd, "Upgrade CodeMCP", kind, message,
+			renderMutationResult(cmd, kind, message,
 				presentation.Field{Label: "current", Value: plan.Current},
 				presentation.Field{Label: "latest", Value: plan.Target},
 			)
@@ -86,7 +85,7 @@ func upgradeCommand() *cobra.Command {
 		if result.Downgrade {
 			message = "Version change complete"
 		}
-		renderMutationSuccess(cmd, "Upgrade CodeMCP", message,
+		renderMutationSuccess(cmd, message,
 			presentation.Field{Label: "previous", Value: result.Current},
 			presentation.Field{Label: "current", Value: result.Target},
 			presentation.Field{Label: "binary", Value: result.Install.Staged.Binary},
@@ -103,7 +102,6 @@ func upgradeCheckCommand() *cobra.Command {
 	return &cobra.Command{Use: "check", Short: "Check the latest available release", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "UPDATE", "update.release.checking", "Resolving latest release", logger.WithVerbose("current", version.Version))
 		progress := newCommandProgress(cmd, "UPDATE")
-		beginMutationProgress(cmd, "Check for updates")
 		progress.Start("update.checking", "Checking for updates", "Checked for updates")
 		checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}
 		result, err := checker.Check(cmd.Context(), version.Version)
@@ -131,7 +129,7 @@ func upgradeCheckCommand() *cobra.Command {
 		if result.Status == updatepkg.StatusAvailable {
 			fields = append(fields, presentation.Field{Label: "run", Value: cliUseName() + " upgrade"})
 		}
-		renderMutationResult(cmd, "Check for updates", kind, message, fields...)
+		renderMutationResult(cmd, kind, message, fields...)
 		return nil
 	}}
 }

@@ -106,7 +106,6 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 			if key == "" {
 				return application.ErrTunnelAdminAPIKeyRequired
 			}
-			beginMutationProgress(cmd, "Configure OpenAI tunnel admin key")
 			var scope *tunnel.AdminScope
 			if scopeFlags.changed(cmd) {
 				value := scopeFlags.scope()
@@ -126,7 +125,7 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 			if tunnel.ValidateAdminScope(status.Scope) == nil {
 				fields = append([]presentation.Field{{Label: "scope", Value: formatTunnelAdminScope(status.Scope)}}, fields...)
 			}
-			renderMutationSuccess(cmd, "Configure OpenAI tunnel admin key", "Admin key saved", fields...)
+			renderMutationSuccess(cmd, "Admin key saved", fields...)
 			return nil
 		},
 	}
@@ -173,7 +172,6 @@ func runTunnelAdminVerify(cmd *cobra.Command, _ []string) error {
 	logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.verifying", "Preparing stored tunnel admin key verification")
 	ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 	defer cancel()
-	beginMutationProgress(cmd, "Verify OpenAI tunnel admin key")
 	if _, err := settingService().Verify(ctx, "tunnel.admin.key"); err != nil {
 		return err
 	}
@@ -185,7 +183,7 @@ func runTunnelAdminVerify(cmd *cobra.Command, _ []string) error {
 	if tunnel.ValidateAdminScope(status.Scope) == nil {
 		fields = append([]presentation.Field{{Label: "scope", Value: formatTunnelAdminScope(status.Scope)}}, fields...)
 	}
-	renderMutationSuccess(cmd, "Verify OpenAI tunnel admin key", "Admin key verified", fields...)
+	renderMutationSuccess(cmd, "Admin key verified", fields...)
 	return nil
 }
 
@@ -195,7 +193,7 @@ func tunnelAdminKeyRemoveCommand() *cobra.Command {
 		if _, err := settingService().Unset(cmd.Context(), "tunnel.admin.key"); err != nil {
 			return err
 		}
-		renderMutationSuccess(cmd, "OpenAI tunnel admin key", "Admin key removed")
+		renderMutationSuccess(cmd, "Admin key removed")
 		return nil
 	}}
 }
@@ -256,7 +254,7 @@ func tunnelGetCommand() *cobra.Command {
 			return writeResultJSON(cmd, metadata)
 		}
 		if configure {
-			renderEntityMutationSuccess(cmd, "Managed OpenAI tunnel", "Managed tunnel loaded", metadata.ID, append(managedTunnelMutationFields(metadata), presentation.Field{Label: "cm", Value: "configured"})...)
+			renderEntityMutationSuccess(cmd, "Managed tunnel loaded", metadata.ID, append(managedTunnelMutationFields(metadata), presentation.Field{Label: "cm", Value: "configured"})...)
 			return nil
 		}
 		renderManagedTunnel(commandPresenter(cmd), metadata)
@@ -363,12 +361,11 @@ func tunnelUseCommand() *cobra.Command {
 		logCommandStep(cmd, "TUNNEL", "tunnel.use.preparing", "Preparing managed tunnel selection", logger.WithVerbose("tunnel_id", args[0]))
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
-		beginMutationProgress(cmd, "Select managed OpenAI tunnel")
 		result, err := application.UseManagedTunnel(ctx, args[0], application.ManagedTunnelUseOptions{RuntimeAPIKey: runtimeAPIKey, AutoGenerateRuntimeKey: autoRuntimeKey, ProjectID: projectID})
 		if err != nil {
 			return err
 		}
-		renderEntityMutationSuccess(cmd, "Select managed OpenAI tunnel", "Managed tunnel selected", result.Metadata.ID, append(managedTunnelMutationFields(result.Metadata), presentation.Field{Label: "runtime", Value: "configured"}, presentation.Field{Label: "enabled", Value: true})...)
+		renderEntityMutationSuccess(cmd, "Managed tunnel selected", result.Metadata.ID, append(managedTunnelMutationFields(result.Metadata), presentation.Field{Label: "runtime", Value: "configured"}, presentation.Field{Label: "enabled", Value: true})...)
 		return nil
 	}}
 	cmd.Flags().StringVar(&runtimeAPIKey, "runtime-api-key", "", "runtime API key for cm; defaults to the currently configured runtime key")
@@ -391,7 +388,6 @@ func tunnelCreateCommand() *cobra.Command {
 			request := tunnel.CreateRequest{Name: strings.TrimSpace(name), Description: strings.TrimSpace(description), OrganizationIDs: normalizeTunnelIDs(organizationIDs), WorkspaceIDs: normalizeTunnelIDs(workspaceIDs), TenantIDs: normalizeTunnelIDs(tenantIDs)}
 			ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 			defer cancel()
-			beginMutationProgress(cmd, "Create managed OpenAI tunnel")
 			result, err := application.CreateManagedTunnel(ctx, request, application.ManagedTunnelOptions{Configure: configure, RuntimeAPIKey: runtimeAPIKey, Enable: enable})
 			if err != nil {
 				return err
@@ -402,7 +398,7 @@ func tunnelCreateCommand() *cobra.Command {
 				fields = append(fields, presentation.Field{Label: "cm", Value: "configured"})
 			}
 			fields = append(fields, presentation.Field{Label: "ready", Value: "allow 25-30 seconds before expecting the new tunnel to be active"})
-			renderEntityMutationSuccess(cmd, "Create managed OpenAI tunnel", "Tunnel created", metadata.ID, fields...)
+			renderEntityMutationSuccess(cmd, "Tunnel created", metadata.ID, fields...)
 			return nil
 		},
 	}
@@ -446,7 +442,6 @@ func tunnelUpdateCommand() *cobra.Command {
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
-		beginMutationProgress(cmd, "Update managed OpenAI tunnel")
 		result, err := application.UpdateManagedTunnel(ctx, args[0], request, application.ManagedTunnelOptions{Configure: configure, RuntimeAPIKey: runtimeAPIKey, Enable: enable})
 		if err != nil {
 			return err
@@ -456,7 +451,7 @@ func tunnelUpdateCommand() *cobra.Command {
 		if configure {
 			fields = append(fields, presentation.Field{Label: "cm", Value: "configured"})
 		}
-		renderEntityMutationSuccess(cmd, "Update managed OpenAI tunnel", "Tunnel updated", metadata.ID, fields...)
+		renderEntityMutationSuccess(cmd, "Tunnel updated", metadata.ID, fields...)
 		return nil
 	}}
 	cmd.Flags().StringVar(&name, "name", "", "new tunnel name")
@@ -477,7 +472,6 @@ func tunnelDeleteCommand() *cobra.Command {
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
-		beginMutationProgress(cmd, "Delete managed OpenAI tunnel")
 		result, err := application.DeleteManagedTunnel(ctx, args[0], clearConfig)
 		if err != nil {
 			return err
@@ -487,7 +481,7 @@ func tunnelDeleteCommand() *cobra.Command {
 		if cleared {
 			fields = append(fields, presentation.Field{Label: "cm", Value: "configuration cleared"})
 		}
-		renderEntityMutationSuccess(cmd, "Delete managed OpenAI tunnel", "Tunnel deleted", metadata.ID, fields...)
+		renderEntityMutationSuccess(cmd, "Tunnel deleted", metadata.ID, fields...)
 		return nil
 	}}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "confirm permanent tunnel deletion")

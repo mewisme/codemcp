@@ -90,7 +90,7 @@ func configExportCommand() *cobra.Command {
 			if result.SkippedFiles > 0 {
 				fields = append(fields, presentation.Field{Label: "non-portable/runtime files skipped", Value: result.SkippedFiles})
 			}
-			renderMutationSuccess(cmd, "Export configuration", "Configuration exported", fields...)
+			renderMutationSuccess(cmd, "Configuration exported", fields...)
 			return nil
 		},
 	}
@@ -124,7 +124,7 @@ func configImportCommand() *cobra.Command {
 			if result.BackupPath != "" {
 				fields = append(fields, presentation.Field{Label: "previous config backup retained", Value: result.BackupPath})
 			}
-			renderMutationSuccess(cmd, "Import configuration", "Configuration imported", fields...)
+			renderMutationSuccess(cmd, "Configuration imported", fields...)
 			return nil
 		},
 	}
@@ -189,11 +189,10 @@ func configSetCommand() *cobra.Command {
 				return err
 			}
 			logCommandStep(cmd, "CONFIG", "config.setting.updating", "Updating canonical setting", logger.WithVerbose("key", key))
-			beginMutationProgress(cmd, "Update configuration")
 			if _, err := application.NewSettingService().Set(cmd.Context(), key, raw); err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, "Update configuration", "Setting saved", presentation.Field{Label: "key", Value: key})
+			renderMutationSuccess(cmd, "Setting saved", presentation.Field{Label: "key", Value: key})
 			return nil
 		},
 	}
@@ -209,11 +208,10 @@ func configUnsetCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := strings.TrimSpace(args[0])
 			logCommandStep(cmd, "CONFIG", "config.setting.clearing", "Clearing canonical setting", logger.WithVerbose("key", key))
-			beginMutationProgress(cmd, "Clear configuration setting")
 			if _, err := application.NewSettingService().Unset(cmd.Context(), key); err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, "Clear configuration setting", "Setting cleared", presentation.Field{Label: "key", Value: key})
+			renderMutationSuccess(cmd, "Setting cleared", presentation.Field{Label: "key", Value: key})
 			return nil
 		},
 	}
@@ -292,7 +290,7 @@ func configMigrateCommand() *cobra.Command {
 		if err := application.MigrateLegacySecretsContext(cmd.Context()); err != nil {
 			return fmt.Errorf("migrate legacy credentials: %w", err)
 		}
-		renderMutationSuccess(cmd, "Migrate credentials", "Credentials migrated to secret file store")
+		renderMutationSuccess(cmd, "Credentials migrated to secret file store")
 		return nil
 	}}
 	cmd.AddCommand(configMigrateSecretsCommand())
@@ -306,7 +304,7 @@ func configMigrateSecretsCommand() *cobra.Command {
 		if err != nil {
 			return fmt.Errorf("migrate secret envelopes: %w", err)
 		}
-		renderMutationSuccess(cmd, "Migrate secret files", "Legacy secret files migrated to encrypted JSON envelopes", presentation.Field{Label: "migrated", Value: migrated})
+		renderMutationSuccess(cmd, "Legacy secret files migrated to encrypted JSON envelopes", presentation.Field{Label: "migrated", Value: migrated})
 		return nil
 	}}
 }
@@ -321,12 +319,12 @@ func configVerifyCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				key := strings.TrimSpace(args[0])
+				commandProgressSession(cmd).SetTitle("Verify configuration setting")
 				logCommandStep(cmd, "CONFIG", "config.setting.verifying", "Verifying canonical setting", logger.WithVerbose("key", key))
-				beginMutationProgress(cmd, "Verify configuration setting")
 				if _, err := application.NewSettingService().Verify(cmd.Context(), key); err != nil {
 					return err
 				}
-				renderMutationSuccess(cmd, "Verify configuration setting", "Setting verified", presentation.Field{Label: "key", Value: key})
+				renderMutationSuccess(cmd, "Setting verified", presentation.Field{Label: "key", Value: key})
 				return nil
 			}
 			logCommandStep(cmd, "CONFIG", "config.verifying", "Verifying configuration and state")
@@ -341,7 +339,7 @@ func configVerifyCommand() *cobra.Command {
 			if strict && len(result.Warnings) > 0 {
 				return fmt.Errorf("configuration verified with %d warning(s); re-run without --strict to treat warnings as advisory", len(result.Warnings))
 			}
-			renderMutationSuccess(cmd, "Verify configuration", "Configuration verified",
+			renderMutationSuccess(cmd, "Configuration verified",
 				presentation.Field{Label: "format", Value: result.Format},
 				presentation.Field{Label: "files", Value: result.Files},
 				presentation.Field{Label: "warnings", Value: len(result.Warnings)},

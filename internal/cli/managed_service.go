@@ -116,7 +116,6 @@ func runRestart(cmd *cobra.Command, _ []string) error {
 }
 
 func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
-	beginMutationProgress(cmd, "Restart CodeMCP")
 	logCommandStep(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
 	source, err := config.Source()
 	if err != nil {
@@ -144,7 +143,7 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 	}
 	progress.Complete()
 	status := result.Status
-	renderManagedLifecycleResult(cmd, "Restart CodeMCP", "Managed service restarted", spec, manager, status, cfg.Tunnel)
+	renderManagedLifecycleResult(cmd, "Managed service restarted", spec, manager, status, cfg.Tunnel)
 	return nil
 }
 
@@ -245,7 +244,6 @@ func resolveManagedConfigRoot(cmd *cobra.Command, scope managed.Scope, account m
 }
 
 func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
-	beginMutationProgress(cmd, "Start CodeMCP")
 	logCommandStep(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
 	source, err := config.Source()
 	if err != nil {
@@ -291,14 +289,14 @@ func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager
 	progress.Complete()
 	status := result.Status
 	if !result.Changed {
-		renderManagedLifecycleResult(cmd, "Start CodeMCP", "Managed service already running", spec, manager, status, cfg.Tunnel)
+		renderManagedLifecycleResult(cmd, "Managed service already running", spec, manager, status, cfg.Tunnel)
 		return nil
 	}
 	message := "Managed service " + action
 	if spec.Scope == managed.ScopeSystem {
 		message = "System service " + action
 	}
-	renderManagedLifecycleResult(cmd, "Start CodeMCP", message, spec, manager, status, cfg.Tunnel)
+	renderManagedLifecycleResult(cmd, message, spec, manager, status, cfg.Tunnel)
 	return nil
 }
 
@@ -342,7 +340,6 @@ func logManagedStartupFailure(cmd *cobra.Command, spec managed.Spec, manager man
 }
 
 func runManagedDown(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
-	beginMutationProgress(cmd, "Stop CodeMCP")
 	progress := managedLifecycleProgress(cmd)
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
@@ -354,10 +351,10 @@ func runManagedDown(cmd *cobra.Command, spec managed.Spec, manager managed.Manag
 	}
 	progress.Complete()
 	if !result.Changed {
-		renderMutationResult(cmd, "Stop CodeMCP", presentation.StatusInfo, "Managed service is not installed")
+		renderMutationResult(cmd, presentation.StatusInfo, "Managed service is not installed")
 		return nil
 	}
-	renderMutationBlock(cmd, "Stop CodeMCP", func(presenter *presentation.Presenter) {
+	renderMutationBlock(cmd, func(presenter *presentation.Presenter) {
 		presenter.ChildStatus(presentation.StatusSuccess, "Server stopped")
 		presenter.Status(presentation.StatusSuccess, "Managed service removed")
 		presenter.Fields(
@@ -368,8 +365,8 @@ func runManagedDown(cmd *cobra.Command, spec managed.Spec, manager managed.Manag
 	return nil
 }
 
-func renderManagedLifecycleResult(cmd *cobra.Command, title, message string, spec managed.Spec, manager managed.Manager, status runtimeStatusResult, cfg tunnel.Config) {
-	renderMutationBlock(cmd, title, func(presenter *presentation.Presenter) {
+func renderManagedLifecycleResult(cmd *cobra.Command, message string, spec managed.Spec, manager managed.Manager, status runtimeStatusResult, cfg tunnel.Config) {
+	renderMutationBlock(cmd, func(presenter *presentation.Presenter) {
 		presenter.Status(presentation.StatusSuccess, message)
 		presenter.ChildStatus(presentation.StatusSuccess, "Server started")
 		fields := []presentation.Field{

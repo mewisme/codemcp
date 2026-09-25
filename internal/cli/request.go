@@ -79,7 +79,7 @@ func requestGrantRevokeCommand() *cobra.Command {
 			return writeResultJSON(cmd, request)
 		}
 		progress.Complete()
-		renderEntityMutationSuccess(cmd, "Runtime session grant", "Runtime session grant revoked", request.ID, presentation.Field{Label: "status", Value: request.Status})
+		renderEntityMutationSuccess(cmd, "Runtime session grant revoked", request.ID, presentation.Field{Label: "status", Value: request.Status})
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -113,7 +113,7 @@ func requestCreateDummyCommand() *cobra.Command {
 			return writeResultJSON(cmd, request)
 		}
 		progress.Complete()
-		renderEntityMutationSuccess(cmd, "Control approval request", "Dummy approval request created", request.ID,
+		renderEntityMutationSuccess(cmd, "Dummy approval request created", request.ID,
 			presentation.Field{Label: "workspace", Value: request.WorkspaceID},
 			presentation.Field{Label: "expires", Value: request.ExpiresAt.Format(time.RFC3339Nano)},
 		)
@@ -231,7 +231,7 @@ func requestResolveCommand(approve bool) *cobra.Command {
 		if request.Reason != "" {
 			fields = append(fields, presentation.Field{Label: "reason", Value: request.Reason})
 		}
-		renderEntityMutationSuccess(cmd, "Control approval request", "Approval request "+past, request.ID, fields...)
+		renderEntityMutationSuccess(cmd, "Approval request "+past, request.ID, fields...)
 		return nil
 	}}
 	cmd.Flags().StringVar(&reason, "reason", "", "record an optional approval resolution reason")

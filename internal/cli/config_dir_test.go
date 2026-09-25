@@ -86,6 +86,7 @@ func TestInitPresentationUsesCompletedProgressAndSingleBlockGaps(t *testing.T) {
 	writer := presentation.WrapWriter(&output, caps)
 	cmd := initCommand()
 	addLoggingFlags(cmd)
+	setCommandPresentationTitle(cmd, "Initialize CodeMCP")
 	cmd.SetOut(writer)
 	cmd.SetErr(writer)
 	cmd.SetContext(tracepkg.WithObserver(cmd.Context(), commandTraceObserver(cmd)))

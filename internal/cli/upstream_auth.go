@@ -50,7 +50,6 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			logCommandStep(cmd, "OAUTH", "oauth.authorization.preparing", "Preparing upstream OAuth authorization", logger.WithVerbose("server", server.ID))
 			store := oauthStoreForCommand(cmd)
 			log := commandLogger(cmd)
-			beginMutationProgress(cmd, "Authorize Upstream server")
 			progress := newCommandProgress(cmd, "OAUTH")
 			progress.Start("oauth.starting", "Starting OAuth authorization", "OAuth authorization started")
 			credential, err := store.Login(ctx, mcpoauth.LoginConfig{
@@ -96,7 +95,7 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			if !credential.ExpiresAt.IsZero() {
 				fields = append(fields, presentation.Field{Label: "expires", Value: credential.ExpiresAt.Format(time.RFC3339)})
 			}
-			renderEntityMutationSuccess(cmd, "Authorize Upstream server", "Authorization stored", server.ID, fields...)
+			renderEntityMutationSuccess(cmd, "Authorization stored", server.ID, fields...)
 			return nil
 		},
 	}
@@ -188,7 +187,7 @@ func upstreamServerAuthLogoutCommand() *cobra.Command {
 				return err
 			}
 			disconnectSpan.EndMessage("Upstream disconnected after OAuth logout", tracepkg.Bool("credential_invalidated", true))
-			renderEntityMutationSuccess(cmd, "Upstream OAuth authorization", "Authorization removed", args[0])
+			renderEntityMutationSuccess(cmd, "Authorization removed", args[0])
 			return nil
 		},
 	}

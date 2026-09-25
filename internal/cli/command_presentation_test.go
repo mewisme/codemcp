@@ -13,27 +13,53 @@ import (
 
 func TestRunnableCommandsDeclarePresentationBehavior(t *testing.T) {
 	root := newRootCommand()
-	var missing []string
+	var invalid []string
 	var walk func(*cobra.Command)
 	walk = func(cmd *cobra.Command) {
-		if cmd.Runnable() && commandPresentationTitle(cmd) == "" && !commandPresentationExempt(cmd) {
-			missing = append(missing, relativeCommandPath(cmd))
+		if cmd.Runnable() {
+			title := commandPresentationTitle(cmd)
+			exempt := commandPresentationExempt(cmd)
+			if (title == "") == !exempt {
+				invalid = append(invalid, relativeCommandPath(cmd))
+			}
+			if exempt {
+				reason := strings.TrimSpace(cmd.Annotations[presentationExemptAnnotation])
+				switch reason {
+				case "machine-output", "alternate-ui", "internal-runtime":
+				default:
+					t.Errorf("command %q has unsupported presentation exemption %q", relativeCommandPath(cmd), reason)
+				}
+				if reason == "machine-output" && !commandExplicitMachineOutput(cmd) {
+					t.Errorf("command %q claims machine-output exemption without machine output", relativeCommandPath(cmd))
+				}
+			}
+			if commandExplicitMachineOutput(cmd) && strings.TrimSpace(cmd.Annotations[presentationExemptAnnotation]) != "machine-output" {
+				t.Errorf("machine command %q lacks machine-output presentation exemption", relativeCommandPath(cmd))
+			}
 		}
 		for _, child := range cmd.Commands() {
 			walk(child)
 		}
 	}
 	walk(root)
-	if len(missing) != 0 {
-		t.Fatalf("runnable commands missing presentation metadata: %v", missing)
+	if len(invalid) != 0 {
+		t.Fatalf("runnable commands must declare exactly one presentation title or exemption: %v", invalid)
 	}
 
 	for path, want := range map[string]string{
-		"status":         "CodeMCP status",
-		"config set":     "Update configuration",
-		"workspace list": "Registered workspaces",
-		"tunnel list":    "Managed OpenAI tunnels",
-		"tunnel use":     "Select managed OpenAI tunnel",
+		"status":                     "CodeMCP status",
+		"config set":                 "Update configuration",
+		"workspace list":             "Registered workspaces",
+		"tunnel list":                "Managed OpenAI tunnels",
+		"tunnel use":                 "Select managed OpenAI tunnel",
+		"auth mcp create":            "Authentication",
+		"request approve":            "Control approval request",
+		"tunnel admin key verify":    "Verify OpenAI tunnel admin key",
+		"upstream server auth login": "Authorize Upstream server",
+		"workspace container create": "Workspace container",
+		"workspace access add":       "Workspace access",
+		"config export":              "Export configuration",
+		"config migrate secrets":     "Migrate secret files",
 	} {
 		cmd := commandByRelativePath(root, path)
 		if cmd == nil {
@@ -41,6 +67,35 @@ func TestRunnableCommandsDeclarePresentationBehavior(t *testing.T) {
 		}
 		if got := commandPresentationTitle(cmd); got != want {
 			t.Fatalf("command %q title=%q want=%q", path, got, want)
+		}
+	}
+}
+
+func TestAliasesInheritCanonicalPresentationContract(t *testing.T) {
+	root := newRootCommand()
+	for _, test := range []struct {
+		canonical []string
+		alias     []string
+	}{
+		{canonical: []string{"config", "list"}, alias: []string{"cfg", "ls"}},
+		{canonical: []string{"workspace", "list"}, alias: []string{"ws", "ls"}},
+		{canonical: []string{"tunnel", "use"}, alias: []string{"tunnel", "select"}},
+		{canonical: []string{"request", "view"}, alias: []string{"req", "show"}},
+		{canonical: []string{"status"}, alias: []string{"st"}},
+	} {
+		canonical, _, err := root.Find(test.canonical)
+		if err != nil {
+			t.Fatalf("canonical %v: %v", test.canonical, err)
+		}
+		alias, _, err := root.Find(test.alias)
+		if err != nil {
+			t.Fatalf("alias %v: %v", test.alias, err)
+		}
+		if canonical != alias {
+			t.Fatalf("alias %v resolved to distinct command %q instead of %q", test.alias, alias.CommandPath(), canonical.CommandPath())
+		}
+		if commandPresentationTitle(alias) != commandPresentationTitle(canonical) || commandPresentationExempt(alias) != commandPresentationExempt(canonical) {
+			t.Fatalf("alias %v presentation contract drifted from canonical %v", test.alias, test.canonical)
 		}
 	}
 }
@@ -70,7 +125,7 @@ func TestCommandSessionStartsBeforeProgressAndOwnsSingleFrame(t *testing.T) {
 			presenter.Frame("Duplicate frame request")
 			presenter.Section("Result")
 			presenter.Fields(presentation.Field{Label: "state", Value: "ready"})
-			presenter.FrameEnd("Done")
+			commandProgressSession(cmd).SetCompletion("Done")
 			return nil
 		},
 	}

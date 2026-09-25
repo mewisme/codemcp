@@ -14,12 +14,11 @@ func TestMutationProgressAndResultShareOneFrame(t *testing.T) {
 	var output bytes.Buffer
 	caps := presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}
 	cmd := &cobra.Command{}
+	setCommandPresentationTitle(cmd, "Install CodeMCP")
 	cmd.SetOut(presentation.WrapWriter(&output, caps))
 	cmd.SetErr(presentation.WrapWriter(&output, caps))
-
-	beginMutationProgress(cmd, "Install CodeMCP")
 	commandProgressSession(cmd).Success("install.binary", "Installing binary", "Installed binary")
-	renderMutationSuccess(cmd, "Install CodeMCP", "Installation complete", presentation.Field{Label: "version", Value: "v1.2.3"})
+	renderMutationSuccess(cmd, "Installation complete", presentation.Field{Label: "version", Value: "v1.2.3"})
 	closeCommandProgress(cmd, nil)
 
 	text := output.String()
@@ -40,12 +39,11 @@ func TestMutationProgressAndResultShareOneFrame(t *testing.T) {
 func TestMutationProgressAndResultShareOnePlainBlock(t *testing.T) {
 	var output bytes.Buffer
 	cmd := &cobra.Command{}
+	setCommandPresentationTitle(cmd, "Install CodeMCP")
 	cmd.SetOut(&output)
 	cmd.SetErr(&output)
-
-	beginMutationProgress(cmd, "Install CodeMCP")
 	commandProgressSession(cmd).Success("install.binary", "Installing binary", "Installed binary")
-	renderMutationSuccess(cmd, "Install CodeMCP", "Installation complete", presentation.Field{Label: "version", Value: "v1.2.3"})
+	renderMutationSuccess(cmd, "Installation complete", presentation.Field{Label: "version", Value: "v1.2.3"})
 	closeCommandProgress(cmd, nil)
 
 	text := output.String()

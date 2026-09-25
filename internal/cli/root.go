@@ -100,7 +100,6 @@ func initCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "INIT", "init.preparing", "Preparing configuration initialization")
 			logCommandDebug(cmd, "INIT", "init.format.resolved", "Configuration format resolved", logger.WithDebug("format", "json"), logger.WithDebug("force", force))
-			beginMutationProgress(cmd, "Initialize CodeMCP")
 			result, err := application.Initialize(application.InitOptions{Context: cmd.Context(), Force: force})
 			if err != nil {
 				return err
@@ -108,7 +107,7 @@ func initCommand() *cobra.Command {
 			fields := []presentation.Field{{Label: "config", Value: result.ConfigPath}, {Label: "format", Value: result.Format}}
 			fields = append(fields, endpointPresentationFields(result.Config)...)
 			fields = append(fields, presentation.Field{Label: "mcp token", Value: result.MCPToken}, presentation.Field{Label: "admin token", Value: result.AdminToken})
-			renderMutationSuccess(cmd, "Initialize CodeMCP", "CodeMCP initialized", fields...)
+			renderMutationSuccess(cmd, "CodeMCP initialized", fields...)
 			return nil
 		},
 	}
@@ -126,7 +125,7 @@ func uninitCommand() *cobra.Command {
 			if err := application.UninitializeContext(cmd.Context(), root); err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, "Uninitialize CodeMCP", "Local configuration and state removed", presentation.Field{Label: "root", Value: root})
+			renderMutationSuccess(cmd, "Local configuration and state removed", presentation.Field{Label: "root", Value: root})
 			return nil
 		},
 	}
@@ -171,7 +170,7 @@ func authCreateCommand(kind string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, "Authentication", "Token rotated", presentation.Field{Label: "type", Value: kind}, presentation.Field{Label: strings.ToUpper(kind), Value: result.Value})
+			renderMutationSuccess(cmd, "Token rotated", presentation.Field{Label: "type", Value: kind}, presentation.Field{Label: strings.ToUpper(kind), Value: result.Value})
 			return nil
 		},
 	}
@@ -195,7 +194,7 @@ func authToggleCommand(kind string, enabled bool) *cobra.Command {
 			if enabled {
 				state = "enabled"
 			}
-			renderMutationSuccess(cmd, "Authentication", state, presentation.Field{Label: "type", Value: kind})
+			renderMutationSuccess(cmd, state, presentation.Field{Label: "type", Value: kind})
 			return nil
 		},
 	}

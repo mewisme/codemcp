@@ -18,6 +18,10 @@ func TestHelpAlwaysUsesDefaultCobraRenderer(t *testing.T) {
 		{args: []string{"workspace", "--help"}, path: "workspace"},
 		{args: []string{"workspace", "-h"}, path: "workspace"},
 		{args: []string{"help", "workspace"}, path: "workspace"},
+		{args: []string{"config", "set", "--help"}, path: "config set"},
+		{args: []string{"tunnel", "use", "--help"}, path: "tunnel use"},
+		{args: []string{"upstream", "server", "auth", "login", "--help"}, path: "upstream server auth login"},
+		{args: []string{"request", "approve", "--help"}, path: "request approve"},
 	}
 	for _, test := range tests {
 		args := test.args
@@ -34,7 +38,7 @@ func TestHelpAlwaysUsesDefaultCobraRenderer(t *testing.T) {
 		}
 
 		text := output.String()
-		for _, expected := range []string{"Usage:", "Available Commands:", "Flags:"} {
+		for _, expected := range []string{"Usage:", "Flags:"} {
 			if !strings.Contains(text, expected) {
 				t.Fatalf("default Cobra help missing %q for %v:\n%s", expected, args, text)
 			}

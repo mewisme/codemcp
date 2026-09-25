@@ -32,14 +32,14 @@ func tunnelRuntimeKeyCommand() *cobra.Command {
 		if _, err := settingService().Set(cmd.Context(), "tunnel.api_key", args[0]); err != nil {
 			return err
 		}
-		renderMutationSuccess(cmd, "OpenAI tunnel runtime key", "Runtime API key saved")
+		renderMutationSuccess(cmd, "Runtime API key saved")
 		return nil
 	}}
 	remove := &cobra.Command{Use: "remove", Aliases: []string{"rm"}, Short: "Remove the stored OpenAI tunnel runtime API key", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if _, err := settingService().Unset(cmd.Context(), "tunnel.api_key"); err != nil {
 			return err
 		}
-		renderMutationSuccess(cmd, "OpenAI tunnel runtime key", "Runtime API key removed")
+		renderMutationSuccess(cmd, "Runtime API key removed")
 		return nil
 	}}
 	cmd.AddCommand(markScopedSettings(set, "tunnel.api_key"), markScopedSettings(remove, "tunnel.api_key"))
@@ -212,7 +212,6 @@ func fetchTunnelStatus(ctx context.Context, cfg tunnel.Config) tunnel.Status {
 func tunnelSyncCommand() *cobra.Command {
 	return &cobra.Command{Use: "sync", Short: "Fetch and persist metadata for the configured tunnel", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.metadata.preparing", "Preparing tunnel metadata synchronization")
-		beginMutationProgress(cmd, "Sync OpenAI Secure MCP Tunnel")
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
 		metadata, path, err := application.SyncConfiguredTunnel(ctx)
@@ -223,7 +222,7 @@ func tunnelSyncCommand() *cobra.Command {
 		if metadata.Name != "" {
 			fields = append(fields, presentation.Field{Label: "name", Value: metadata.Name})
 		}
-		renderMutationSuccess(cmd, "Sync OpenAI Secure MCP Tunnel", "Tunnel metadata synced", fields...)
+		renderMutationSuccess(cmd, "Tunnel metadata synced", fields...)
 		return nil
 	}}
 }
@@ -249,14 +248,13 @@ func tunnelConfigureCommand() *cobra.Command {
 		if cmd.Flags().Changed("organization-id") {
 			input.OrganizationID = &organizationID
 		}
-		beginMutationProgress(cmd, "Configure OpenAI Secure MCP Tunnel")
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		_, err := application.ConfigureTunnelRuntime(ctx, input)
 		cancel()
 		if err != nil {
 			return err
 		}
-		renderMutationSuccess(cmd, "Configure OpenAI Secure MCP Tunnel", "Configuration saved")
+		renderMutationSuccess(cmd, "Configuration saved")
 		return nil
 	}}
 	cmd.Flags().BoolVar(&enabled, "enabled", false, "enable or disable the OpenAI Secure MCP Tunnel")
@@ -281,7 +279,7 @@ func tunnelToggleCommand(enabled bool) *cobra.Command {
 		if enabled {
 			state = "enabled"
 		}
-		renderMutationSuccess(cmd, "OpenAI Secure MCP Tunnel", "OpenAI Secure MCP Tunnel "+state)
+		renderMutationSuccess(cmd, "OpenAI Secure MCP Tunnel "+state)
 		return nil
 	}}
 }

@@ -6,19 +6,14 @@ import (
 	"go.mewis.me/codemcp/internal/cli/presentation"
 )
 
-func beginMutationProgress(cmd *cobra.Command, title string) {
-	commandProgressSession(cmd).Begin(title)
-}
-
-func renderMutationBlock(cmd *cobra.Command, title string, render func(*presentation.Presenter)) {
+func renderMutationBlock(cmd *cobra.Command, render func(*presentation.Presenter)) {
 	session := commandProgressSession(cmd)
-	session.Begin(title)
 	session.Append(render)
 	session.SetCompletion("Done")
 }
 
-func renderMutationResult(cmd *cobra.Command, title string, kind presentation.StatusKind, message string, fields ...presentation.Field) {
-	renderMutationBlock(cmd, title, func(presenter *presentation.Presenter) {
+func renderMutationResult(cmd *cobra.Command, kind presentation.StatusKind, message string, fields ...presentation.Field) {
+	renderMutationBlock(cmd, func(presenter *presentation.Presenter) {
 		presenter.Status(kind, message)
 		if len(fields) > 0 {
 			presenter.Fields(fields...)
@@ -26,12 +21,12 @@ func renderMutationResult(cmd *cobra.Command, title string, kind presentation.St
 	})
 }
 
-func renderMutationSuccess(cmd *cobra.Command, title, message string, fields ...presentation.Field) {
-	renderMutationResult(cmd, title, presentation.StatusSuccess, message, fields...)
+func renderMutationSuccess(cmd *cobra.Command, message string, fields ...presentation.Field) {
+	renderMutationResult(cmd, presentation.StatusSuccess, message, fields...)
 }
 
-func renderEntityMutationResult(cmd *cobra.Command, title string, kind presentation.StatusKind, message, id string, fields ...presentation.Field) {
-	renderMutationBlock(cmd, title, func(presenter *presentation.Presenter) {
+func renderEntityMutationResult(cmd *cobra.Command, kind presentation.StatusKind, message, id string, fields ...presentation.Field) {
+	renderMutationBlock(cmd, func(presenter *presentation.Presenter) {
 		presenter.Status(kind, message)
 		if id != "" {
 			presenter.Subsection(id)
@@ -44,6 +39,6 @@ func renderEntityMutationResult(cmd *cobra.Command, title string, kind presentat
 	})
 }
 
-func renderEntityMutationSuccess(cmd *cobra.Command, title, message, id string, fields ...presentation.Field) {
-	renderEntityMutationResult(cmd, title, presentation.StatusSuccess, message, id, fields...)
+func renderEntityMutationSuccess(cmd *cobra.Command, message, id string, fields ...presentation.Field) {
+	renderEntityMutationResult(cmd, presentation.StatusSuccess, message, id, fields...)
 }
