@@ -9,7 +9,18 @@ import (
 )
 
 func TestHelpAlwaysUsesDefaultCobraRenderer(t *testing.T) {
-	for _, args := range [][]string{{"--help"}, {"workspace", "--help"}} {
+	tests := []struct {
+		args []string
+		path string
+	}{
+		{args: []string{"--help"}},
+		{args: []string{"-h"}},
+		{args: []string{"workspace", "--help"}, path: "workspace"},
+		{args: []string{"workspace", "-h"}, path: "workspace"},
+		{args: []string{"help", "workspace"}, path: "workspace"},
+	}
+	for _, test := range tests {
+		args := test.args
 		root := newRootCommand()
 		var output bytes.Buffer
 		writer := presentation.WrapWriter(&output, presentation.Capabilities{
@@ -35,6 +46,25 @@ func TestHelpAlwaysUsesDefaultCobraRenderer(t *testing.T) {
 		}
 		if strings.Contains(text, "\x1b[") {
 			t.Fatalf("default Cobra help unexpectedly contains ANSI for %v: %q", args, text)
+		}
+
+		baseline := newRootCommand()
+		var expected bytes.Buffer
+		baseline.SetOut(&expected)
+		baseline.SetErr(&expected)
+		baseline.InitDefaultHelpCmd()
+		baseline.InitDefaultHelpFlag()
+		baseline.InitDefaultVersionFlag()
+		target := commandByRelativePath(baseline, test.path)
+		if target == nil {
+			t.Fatalf("baseline help target %q not found", test.path)
+		}
+		target.InitDefaultHelpFlag()
+		if err := target.Help(); err != nil {
+			t.Fatalf("baseline help for %q: %v", test.path, err)
+		}
+		if output.String() != expected.String() {
+			t.Fatalf("help differs from default Cobra rendering for %v:\nwant=%q\ngot =%q", args, expected.String(), output.String())
 		}
 	}
 }

@@ -83,14 +83,7 @@ func commandResultWriter(cmd *cobra.Command) io.Writer {
 }
 
 func commandPresenter(cmd *cobra.Command) *presentation.Presenter {
-	mode := presentation.ModePlain
-	switch commandResultModeFor(cmd) {
-	case resultModeHuman:
-		mode = presentation.ModeHuman
-	case resultModeJSON:
-		mode = presentation.ModeJSON
-	}
-	return presentation.New(commandResultWriter(cmd), mode, commandTerminalCapabilities(cmd))
+	return commandProgressSession(cmd).Presenter()
 }
 
 func writeResultJSON(cmd *cobra.Command, value any) error {

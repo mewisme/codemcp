@@ -23,8 +23,10 @@ type Presenter struct {
 	capabilities Capabilities
 	theme        Theme
 	glyphs       GlyphSet
+	session      *ProgressSession
 	emitted      bool
 	gap          bool
+	contentGap   bool
 }
 
 type Field struct {
@@ -57,6 +59,20 @@ func New(out io.Writer, mode ResultMode, capabilities Capabilities) *Presenter {
 	}
 }
 
+func newSessionPresenter(session *ProgressSession) *Presenter {
+	if session == nil {
+		return New(io.Discard, ModeJSON, Capabilities{})
+	}
+	return &Presenter{
+		out:          session.out,
+		mode:         session.mode,
+		capabilities: session.capabilities,
+		theme:        session.theme,
+		glyphs:       session.glyphs,
+		session:      session,
+	}
+}
+
 func (p *Presenter) Intro(title string) {
 	p.Frame(title)
 }
@@ -73,6 +89,10 @@ func (p *Presenter) Frame(title string) {
 	if title == "" {
 		return
 	}
+	if p.session != nil {
+		p.session.Begin(title)
+		return
+	}
 	if p.mode == ModeHuman {
 		p.line(p.theme.Render(RoleRail, p.glyphs.FrameStart) + "  " + p.theme.Render(RoleHeading, title))
 		p.Spacer()
@@ -87,6 +107,10 @@ func (p *Presenter) FrameEnd(message string) {
 		return
 	}
 	message = strings.TrimSpace(message)
+	if p.session != nil {
+		p.session.CloseWith(message)
+		return
+	}
 	p.Spacer()
 	if p.mode == ModeHuman {
 		line := p.theme.Render(RoleRail, p.glyphs.FrameEnd)
@@ -111,9 +135,11 @@ func (p *Presenter) Section(title string) {
 	p.beginBlock()
 	if p.mode == ModeHuman {
 		p.line(p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + "  " + p.theme.Render(RoleHeading, strings.TrimSpace(title)))
+		p.contentGap = true
 		return
 	}
 	p.line(p.theme.Render(RoleHeading, strings.TrimSpace(title)))
+	p.contentGap = true
 }
 
 func (p *Presenter) StateSection(kind StatusKind, title string) {
@@ -131,6 +157,7 @@ func (p *Presenter) StateSection(kind StatusKind, title string) {
 	}
 	glyph, role := p.statusStyle(kind)
 	p.line(p.theme.Render(role, glyph) + "  " + p.theme.Render(RoleHeading, title))
+	p.contentGap = true
 }
 
 func (p *Presenter) Subsection(title string) {
@@ -141,6 +168,7 @@ func (p *Presenter) Subsection(title string) {
 	if title == "" {
 		return
 	}
+	p.beginContent()
 	p.beginBlock()
 	if p.mode == ModeHuman {
 		p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + " " + p.theme.Render(RoleHeading, title))
@@ -151,6 +179,10 @@ func (p *Presenter) Subsection(title string) {
 
 func (p *Presenter) Spacer() {
 	if p == nil || p.mode == ModeJSON {
+		return
+	}
+	if p.session != nil {
+		p.session.spacer()
 		return
 	}
 	if p.gap {
@@ -184,9 +216,11 @@ func (p *Presenter) Status(kind StatusKind, message string) {
 	glyph, role := p.statusStyle(kind)
 	if p.mode == ModeHuman {
 		p.line(p.theme.Render(role, glyph) + "  " + message)
+		p.contentGap = true
 		return
 	}
 	p.line(p.theme.Render(role, glyph) + " " + message)
+	p.contentGap = true
 }
 
 func (p *Presenter) ChildStatus(kind StatusKind, message string) {
@@ -201,6 +235,7 @@ func (p *Presenter) ChildStatus(kind StatusKind, message string) {
 		p.Status(kind, message)
 		return
 	}
+	p.beginContent()
 	glyph, role := p.statusStyle(kind)
 	p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(role, glyph) + " " + message)
 }
@@ -214,6 +249,7 @@ func (p *Presenter) ChildState(kind StatusKind, label string, value any) {
 		p.Status(kind, strings.TrimSpace(label+" is "+fmt.Sprint(value)))
 		return
 	}
+	p.beginContent()
 	glyph, role := p.statusStyle(kind)
 	p.richField(p.theme.Render(role, glyph), label, value, false)
 }
@@ -229,6 +265,9 @@ func (p *Presenter) NestedFields(fields ...Field) {
 func (p *Presenter) fields(indent int, fields ...Field) {
 	if p == nil || p.mode == ModeJSON || len(fields) == 0 {
 		return
+	}
+	if indent < 4 {
+		p.beginContent()
 	}
 	if p.mode == ModeHuman {
 		for _, field := range fields {
@@ -266,6 +305,7 @@ func (p *Presenter) List(items ...string) {
 	if p == nil || p.mode == ModeJSON {
 		return
 	}
+	p.beginContent()
 	for _, item := range items {
 		if p.mode == ModeHuman {
 			lines := strings.Split(strings.TrimSpace(item), "\n")
@@ -286,6 +326,7 @@ func (p *Presenter) Rows(headers []string, rows ...Row) {
 	if p == nil || p.mode == ModeJSON || len(rows) == 0 {
 		return
 	}
+	p.beginContent()
 	if p.mode == ModeHuman {
 		for _, row := range rows {
 			if len(row) == 0 {
@@ -351,6 +392,7 @@ func (p *Presenter) Note(title, body string) {
 		return
 	}
 	title = strings.TrimSpace(title)
+	p.beginContent()
 	p.beginBlock()
 	if p.mode == ModeHuman {
 		if title != "" {
@@ -373,6 +415,7 @@ func (p *Presenter) Markdown(source string) error {
 	if p == nil || p.mode == ModeJSON {
 		return nil
 	}
+	p.beginContent()
 	p.beginBlock()
 	width := p.capabilities.Width
 	if p.mode == ModeHuman {
@@ -469,16 +512,40 @@ func (p *Presenter) fieldSeparator() string {
 }
 
 func (p *Presenter) line(value string) {
+	if p.session != nil {
+		p.session.line(value)
+		return
+	}
 	_, _ = fmt.Fprintln(p.out, value)
 	p.emitted = true
 	p.gap = false
 }
 
 func (p *Presenter) beginBlock() {
+	if p == nil {
+		return
+	}
+	if p.contentGap {
+		p.Spacer()
+		p.contentGap = false
+		return
+	}
+	if p.session != nil {
+		p.session.beginBlock()
+		return
+	}
 	if p == nil || !p.emitted || p.gap {
 		return
 	}
 	p.Spacer()
+}
+
+func (p *Presenter) beginContent() {
+	if p == nil || !p.contentGap {
+		return
+	}
+	p.Spacer()
+	p.contentGap = false
 }
 
 func formatRow(values []string, widths []int, heading bool, theme Theme) string {

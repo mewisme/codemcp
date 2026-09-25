@@ -20,8 +20,13 @@ func prepareCommandPresentation(cmd *cobra.Command) {
 	mode := commandResultModeFor(cmd)
 	machine := commandExplicitMachineOutput(cmd) || mode == resultModeJSON
 	capabilities := detectCommandTerminalCapabilities(cmd, mode == resultModeHuman, machine)
-	cmd.SetOut(presentation.WrapWriter(cmd.OutOrStdout(), capabilities))
-	cmd.SetErr(presentation.WrapWriter(cmd.ErrOrStderr(), capabilities))
+	if _, ok := presentation.FromWriter(cmd.OutOrStdout()); !ok {
+		cmd.SetOut(presentation.WrapWriter(cmd.OutOrStdout(), capabilities))
+	}
+	if _, ok := presentation.FromWriter(cmd.ErrOrStderr()); !ok {
+		cmd.SetErr(presentation.WrapWriter(cmd.ErrOrStderr(), capabilities))
+	}
+	commandProgressSession(cmd)
 }
 
 func commandTerminalCapabilities(cmd *cobra.Command) presentation.Capabilities {

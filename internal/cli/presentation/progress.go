@@ -32,6 +32,8 @@ type ProgressSession struct {
 	capabilities Capabilities
 	theme        Theme
 	glyphs       GlyphSet
+	title        string
+	presenter    *Presenter
 	phases       map[string]ProgressPhase
 	activeID     string
 	transient    bool
@@ -45,11 +47,13 @@ func NewProgressSession(out io.Writer, mode ResultMode, capabilities Capabilitie
 	if out == nil {
 		out = io.Discard
 	}
-	return &ProgressSession{
+	session := &ProgressSession{
 		out: out, mode: mode, capabilities: capabilities,
 		theme: NewTheme(capabilities), glyphs: Glyphs(capabilities),
 		phases: map[string]ProgressPhase{},
 	}
+	session.presenter = newSessionPresenter(session)
+	return session
 }
 
 func (session *ProgressSession) Begin(title string) {
@@ -58,17 +62,60 @@ func (session *ProgressSession) Begin(title string) {
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	if session.closed || session.mode == ModeJSON || strings.TrimSpace(title) == "" {
+	if session.closed || session.mode == ModeJSON {
+		return
+	}
+	title = strings.TrimSpace(title)
+	if title != "" && !session.begun {
+		session.title = title
+	}
+	session.beginLocked()
+}
+
+func (session *ProgressSession) SetTitle(title string) {
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed || session.begun {
+		return
+	}
+	session.title = strings.TrimSpace(title)
+}
+
+func (session *ProgressSession) Presenter() *Presenter {
+	if session == nil {
+		return New(io.Discard, ModeJSON, Capabilities{})
+	}
+	return session.presenter
+}
+
+func (session *ProgressSession) EnsureBegun() {
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	session.beginLocked()
+}
+
+func (session *ProgressSession) beginLocked() {
+	if session.closed || session.begun || session.mode == ModeJSON {
+		return
+	}
+	title := strings.TrimSpace(session.title)
+	if title == "" {
 		return
 	}
 	session.begun = true
 	if session.mode == ModePlain {
-		fmt.Fprintln(session.out, strings.TrimSpace(title))
+		fmt.Fprintln(session.out, title)
 		fmt.Fprintln(session.out)
 		session.gap = true
 		return
 	}
-	fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.FrameStart)+"  "+session.theme.Render(RoleHeading, strings.TrimSpace(title)))
+	fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.FrameStart)+"  "+session.theme.Render(RoleHeading, title))
 	fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
 	session.gap = true
 	session.framed = true
@@ -96,6 +143,7 @@ func (session *ProgressSession) Update(phase ProgressPhase) bool {
 	if session.closed {
 		return false
 	}
+	session.beginLocked()
 	if previous, ok := session.phases[phase.ID]; ok && previous == phase {
 		return false
 	}
@@ -165,14 +213,15 @@ func (session *ProgressSession) Append(render func(*Presenter)) {
 		return
 	}
 	session.mu.Lock()
-	defer session.mu.Unlock()
 	if session.closed {
+		session.mu.Unlock()
 		return
 	}
+	session.beginLocked()
 	session.clearTransientLocked()
 	session.gapLocked()
-	render(New(session.out, session.mode, session.capabilities))
-	session.gap = false
+	session.mu.Unlock()
+	render(session.presenter)
 }
 
 func (session *ProgressSession) Begun() bool {
@@ -182,6 +231,15 @@ func (session *ProgressSession) Begun() bool {
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	return session.begun && !session.closed
+}
+
+func (session *ProgressSession) Closed() bool {
+	if session == nil {
+		return true
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	return session.closed
 }
 
 func (session *ProgressSession) Close() {
@@ -212,6 +270,40 @@ func (session *ProgressSession) CloseWith(message string) {
 		}
 	}
 	session.closed = true
+}
+
+func (session *ProgressSession) spacer() {
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	session.beginLocked()
+	session.gapLocked()
+}
+
+func (session *ProgressSession) beginBlock() {
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	session.beginLocked()
+	session.gapLocked()
+}
+
+func (session *ProgressSession) line(value string) {
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return
+	}
+	session.beginLocked()
+	fmt.Fprintln(session.out, value)
+	session.gap = false
 }
 
 func (session *ProgressSession) renderRunningLocked(phase ProgressPhase) {

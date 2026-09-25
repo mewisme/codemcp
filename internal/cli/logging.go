@@ -156,7 +156,11 @@ func commandProgressSession(cmd *cobra.Command) *presentation.ProgressSession {
 		return presentation.NewProgressSession(io.Discard, presentation.ModeJSON, presentation.Capabilities{})
 	}
 	if value, ok := commandProgressSessions.Load(cmd); ok {
-		return value.(*presentation.ProgressSession)
+		session := value.(*presentation.ProgressSession)
+		if !session.Closed() {
+			return session
+		}
+		commandProgressSessions.Delete(cmd)
 	}
 	mode := presentation.ModePlain
 	if commandMachineOutput(cmd) {
@@ -175,6 +179,7 @@ func commandProgressSession(cmd *cobra.Command) *presentation.ProgressSession {
 		capabilities.CursorControl = false
 	}
 	created := presentation.NewProgressSession(commandResultWriter(cmd), mode, capabilities)
+	created.SetTitle(commandPresentationTitle(cmd))
 	value, loaded := commandProgressSessions.LoadOrStore(cmd, created)
 	if loaded {
 		created.Close()
@@ -212,7 +217,9 @@ type commandDiagnosticWriter struct {
 func (writer commandDiagnosticWriter) Write(data []byte) (int, error) {
 	if writer.cmd != nil {
 		if value, ok := commandProgressSessions.Load(writer.cmd); ok {
-			value.(*presentation.ProgressSession).Suspend()
+			session := value.(*presentation.ProgressSession)
+			session.EnsureBegun()
+			session.Suspend()
 		}
 	}
 	return writer.out.Write(data)

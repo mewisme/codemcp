@@ -56,10 +56,12 @@ func TestPresenterRailHierarchyGolden(t *testing.T) {
 	want := "┌  CodeMCP status\n" +
 		"│\n" +
 		"◆  Runtime\n" +
+		"│\n" +
 		"│  ◆ pid — 4242\n" +
 		"│  ◆ session — run_abcd\n" +
 		"│\n" +
 		"◇  Tunnel\n" +
+		"│\n" +
 		"│  ◇ OpenAI Secure MCP Tunnel — disabled\n" +
 		"│\n" +
 		"└  Status complete\n"
@@ -83,6 +85,7 @@ func TestPresenterCollectionRailUsesChildAndContinuationRows(t *testing.T) {
 	want := "┌  Workspaces\n" +
 		"│\n" +
 		"◆  Registered 2 workspaces\n" +
+		"│\n" +
 		"│  ◆ ws_alpha\n" +
 		"│  │  Status — ready\n" +
 		"│  │  Root — /work/a\n" +
@@ -112,11 +115,38 @@ func TestPresenterTopLevelBlocksHaveExactlyOneGap(t *testing.T) {
 		"✓  CodeMCP initialized\n" +
 		"│\n" +
 		"◆  Configuration\n" +
+		"│\n" +
 		"│  ◆ config — /tmp/config.json\n" +
 		"│\n" +
 		"└  Done\n"
 	if got := output.String(); got != want {
 		t.Fatalf("global block spacing mismatch:\nwant=%q\ngot =%q", want, got)
+	}
+}
+
+func TestPresenterEntitySubsectionKeepsNestedFieldsContiguous(t *testing.T) {
+	var output bytes.Buffer
+	p := New(&output, ModeHuman, Capabilities{Width: 100, Unicode: true, Color: false})
+	p.Frame("Managed tunnel")
+	p.Section("Managed tunnel loaded")
+	p.Subsection("tunnel_demo")
+	p.NestedFields(
+		Field{Label: "name", Value: "Demo"},
+		Field{Label: "enabled", Value: true},
+	)
+	p.FrameEnd("Done")
+
+	want := "┌  Managed tunnel\n" +
+		"│\n" +
+		"◆  Managed tunnel loaded\n" +
+		"│\n" +
+		"│  ◆ tunnel_demo\n" +
+		"│  │  name — Demo\n" +
+		"│  │  enabled — true\n" +
+		"│\n" +
+		"└  Done\n"
+	if got := output.String(); got != want {
+		t.Fatalf("entity subsection spacing mismatch:\nwant=%q\ngot =%q", want, got)
 	}
 }
 

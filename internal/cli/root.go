@@ -63,6 +63,7 @@ func newRootCommand() *cobra.Command {
 	)
 	bindCanonicalScopedSettings(cmd)
 	bindCanonicalCommandOperations(cmd)
+	bindCommandPresentation(cmd)
 	return cmd
 }
 
@@ -236,13 +237,14 @@ func executeCommand(command *cobra.Command) error {
 		executed = command
 	}
 	if err != nil {
-		closeCommandProgress(executed, err)
+		ensureCommandPresentationFallback(executed)
 		logCommandFailure(executed, err, started)
+		closeCommandProgress(executed, err)
 		closeCommandLogger(executed)
 		return err
 	}
-	closeCommandProgress(executed, nil)
 	logCommandCompleted(executed, started)
+	closeCommandProgress(executed, nil)
 	closeCommandLogger(executed)
 	return nil
 }

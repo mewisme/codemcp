@@ -11,18 +11,10 @@ func beginMutationProgress(cmd *cobra.Command, title string) {
 }
 
 func renderMutationBlock(cmd *cobra.Command, title string, render func(*presentation.Presenter)) {
-	presenter := commandPresenter(cmd)
-	if session := takeCommandProgress(cmd); session != nil {
-		if session.Begun() {
-			session.Append(render)
-			session.CloseWith("Done")
-			return
-		}
-		session.Close()
-	}
-	presenter.Frame(title)
-	render(presenter)
-	presenter.FrameEnd("Done")
+	session := commandProgressSession(cmd)
+	session.Begin(title)
+	session.Append(render)
+	session.CloseWith("Done")
 }
 
 func renderMutationResult(cmd *cobra.Command, title string, kind presentation.StatusKind, message string, fields ...presentation.Field) {
