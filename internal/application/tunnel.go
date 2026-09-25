@@ -11,6 +11,24 @@ import (
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
+var (
+	ErrTunnelAdminDisabled         = errors.New("tunnel admin management is disabled")
+	ErrTunnelAdminNotConfigured    = errors.New("tunnel admin key is not configured; set it first")
+	ErrTunnelAdminKeyRequired      = errors.New("configured tunnel admin key and scope are required")
+	ErrTunnelAdminReadRequired     = errors.New("tunnel admin key does not have verified Read access")
+	ErrTunnelAdminManageRequired   = errors.New("tunnel admin key does not have verified Manage access")
+	ErrTunnelRuntimeConfigRequired = errors.New("configured tunnel id and runtime API key are required")
+	ErrTunnelAdminAPIKeyRequired   = errors.New("OpenAI admin key is required")
+)
+
+type ManagedTunnelRuntimeKeyRequiredError struct {
+	TunnelID string
+}
+
+func (err *ManagedTunnelRuntimeKeyRequiredError) Error() string {
+	return "runtime API key is required to use this tunnel; provide one or enable automatic generation with a sufficiently privileged admin key"
+}
+
 type TunnelDashboard struct {
 	Config         tunnel.Config
 	Status         tunnel.Status
@@ -115,7 +133,7 @@ func SyncConfiguredTunnel(ctx context.Context) (tunnel.Metadata, string, error) 
 		return tunnel.Metadata{}, "", err
 	}
 	if !tunnel.Configured(cfg.Tunnel) {
-		return tunnel.Metadata{}, "", errors.New("configured tunnel id and runtime API key are required")
+		return tunnel.Metadata{}, "", ErrTunnelRuntimeConfigRequired
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -156,7 +174,7 @@ func SetTunnelAdminKey(ctx context.Context, input TunnelAdminKeyInput) (tunnel.A
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin-key.set", "Storing tunnel admin key", fields...)
 	key := strings.TrimSpace(input.Key)
 	if key == "" {
-		err := errors.New("OpenAI admin key is required")
+		err := ErrTunnelAdminAPIKeyRequired
 		span.FailMessage("Tunnel admin key validation failed", err, tracepkg.String("key_source", keySource))
 		return tunnel.AdminScope{}, err
 	}
@@ -208,7 +226,7 @@ func VerifyTunnelAdminKey(ctx context.Context) (int, tunnel.AdminScope, error) {
 		return 0, tunnel.AdminScope{}, err
 	}
 	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		err := errors.New("tunnel admin key is not configured; set it first")
+		err := ErrTunnelAdminNotConfigured
 		span.FailMessage("Stored tunnel admin access is not configured", err)
 		return 0, tunnel.AdminScope{}, err
 	}
@@ -255,13 +273,13 @@ func ListManagedTunnels(ctx context.Context) ([]tunnel.Metadata, error) {
 		return nil, err
 	}
 	if !tunnel.AdminEnabled(cfg.Tunnel) {
-		return nil, errors.New("tunnel admin management is disabled")
+		return nil, ErrTunnelAdminDisabled
 	}
 	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return nil, errors.New("configured tunnel admin key and scope are required")
+		return nil, ErrTunnelAdminKeyRequired
 	}
 	if !cfg.Tunnel.Admin.ManageAccess {
-		return nil, errors.New("tunnel admin key does not have verified Manage access")
+		return nil, ErrTunnelAdminManageRequired
 	}
 	scope := tunnel.AdminScopeFromConfig(cfg.Tunnel)
 	if ctx == nil {
@@ -292,13 +310,13 @@ func GetManagedTunnel(ctx context.Context, id string, options ManagedTunnelOptio
 		return ManagedTunnelResult{}, err
 	}
 	if !tunnel.AdminEnabled(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("tunnel admin management is disabled")
+		return ManagedTunnelResult{}, ErrTunnelAdminDisabled
 	}
 	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("configured tunnel admin key and scope are required")
+		return ManagedTunnelResult{}, ErrTunnelAdminKeyRequired
 	}
 	if !cfg.Tunnel.Admin.ReadAccess && !cfg.Tunnel.Admin.ManageAccess {
-		return ManagedTunnelResult{}, errors.New("tunnel admin key does not have verified Read access")
+		return ManagedTunnelResult{}, ErrTunnelAdminReadRequired
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -362,7 +380,7 @@ func UseManagedTunnel(ctx context.Context, id string, options ManagedTunnelUseOp
 		keySource = "generated"
 	}
 	if key == "" {
-		err := errors.New("runtime API key is required to use this tunnel; provide one or enable automatic generation with a sufficiently privileged admin key")
+		err := &ManagedTunnelRuntimeKeyRequiredError{TunnelID: id}
 		span.FailMessage("Managed tunnel runtime key unavailable", err, tracepkg.String("runtime_key_source", "none"))
 		return ManagedTunnelResult{}, err
 	}
@@ -387,13 +405,13 @@ func CreateManagedTunnel(ctx context.Context, request tunnel.CreateRequest, opti
 		return ManagedTunnelResult{}, err
 	}
 	if !tunnel.AdminEnabled(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("tunnel admin management is disabled")
+		return ManagedTunnelResult{}, ErrTunnelAdminDisabled
 	}
 	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("configured tunnel admin key and scope are required")
+		return ManagedTunnelResult{}, ErrTunnelAdminKeyRequired
 	}
 	if !cfg.Tunnel.Admin.ManageAccess {
-		return ManagedTunnelResult{}, errors.New("tunnel admin key does not have verified Manage access")
+		return ManagedTunnelResult{}, ErrTunnelAdminManageRequired
 	}
 	request.OrganizationIDs = NormalizeTunnelIDs(request.OrganizationIDs)
 	request.WorkspaceIDs = NormalizeTunnelIDs(request.WorkspaceIDs)
@@ -437,13 +455,13 @@ func UpdateManagedTunnel(ctx context.Context, id string, request tunnel.UpdateRe
 		return ManagedTunnelResult{}, err
 	}
 	if !tunnel.AdminEnabled(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("tunnel admin management is disabled")
+		return ManagedTunnelResult{}, ErrTunnelAdminDisabled
 	}
 	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("configured tunnel admin key and scope are required")
+		return ManagedTunnelResult{}, ErrTunnelAdminKeyRequired
 	}
 	if !cfg.Tunnel.Admin.ManageAccess {
-		return ManagedTunnelResult{}, errors.New("tunnel admin key does not have verified Manage access")
+		return ManagedTunnelResult{}, ErrTunnelAdminManageRequired
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -476,13 +494,13 @@ func DeleteManagedTunnel(ctx context.Context, id string, clearConfig bool) (Mana
 		return ManagedTunnelResult{}, err
 	}
 	if !tunnel.AdminEnabled(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("tunnel admin management is disabled")
+		return ManagedTunnelResult{}, ErrTunnelAdminDisabled
 	}
 	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("configured tunnel admin key and scope are required")
+		return ManagedTunnelResult{}, ErrTunnelAdminKeyRequired
 	}
 	if !cfg.Tunnel.Admin.ManageAccess {
-		return ManagedTunnelResult{}, errors.New("tunnel admin key does not have verified Manage access")
+		return ManagedTunnelResult{}, ErrTunnelAdminManageRequired
 	}
 	id = strings.TrimSpace(id)
 	configuredTunnel := id != "" && id == strings.TrimSpace(cfg.Tunnel.ID)
@@ -547,7 +565,7 @@ func configureManagedTunnel(cfg *config.Config, metadata tunnel.Metadata, runtim
 		key = strings.TrimSpace(cfg.Tunnel.APIKey)
 	}
 	if key == "" {
-		return errors.New("runtime API key is required to configure cm")
+		return &ManagedTunnelRuntimeKeyRequiredError{TunnelID: metadata.ID}
 	}
 	cfg.Tunnel.ID = metadata.ID
 	cfg.Tunnel.APIKey = key

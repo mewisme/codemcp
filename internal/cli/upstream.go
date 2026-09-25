@@ -37,6 +37,18 @@ type upstreamFlags struct {
 	allowPrivateNetwork bool
 }
 
+type upstreamServerNotFoundError struct{ ServerID string }
+
+func (err *upstreamServerNotFoundError) Error() string {
+	return "unknown upstream server: " + strings.TrimSpace(err.ServerID)
+}
+
+type upstreamServerExistsError struct{ ServerID string }
+
+func (err *upstreamServerExistsError) Error() string {
+	return "upstream server already exists: " + strings.TrimSpace(err.ServerID)
+}
+
 func upstreamCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "upstream", Short: "Manage Upstream servers"}
 	cmd.AddCommand(upstreamServerCommand())
@@ -116,7 +128,7 @@ func upstreamServerAddCommand() *cobra.Command {
 				return err
 			}
 			if _, exists := manager.Get(args[0]); exists {
-				return fmt.Errorf("upstream server already exists: %s; use upstream server configure", args[0])
+				return &upstreamServerExistsError{ServerID: args[0]}
 			}
 			server := upstream.Server{ID: args[0], Name: args[0], Enabled: true, Expose: "all"}
 			server, err = applyUpstreamFlags(cmd, server, flags, true)
@@ -202,7 +214,7 @@ func upstreamServerShowCommand() *cobra.Command {
 			}
 			server, ok := manager.Get(args[0])
 			if !ok {
-				return fmt.Errorf("unknown upstream server: %s", args[0])
+				return &upstreamServerNotFoundError{ServerID: args[0]}
 			}
 			server = redactUpstreamServer(server)
 			if asJSON {
@@ -228,7 +240,7 @@ func upstreamServerRemoveCommand() *cobra.Command {
 				return err
 			}
 			if _, ok := manager.Get(args[0]); !ok {
-				return fmt.Errorf("unknown upstream server: %s", args[0])
+				return &upstreamServerNotFoundError{ServerID: args[0]}
 			}
 			if err := manager.Remove(args[0]); err != nil {
 				return err

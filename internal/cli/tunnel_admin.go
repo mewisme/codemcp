@@ -104,7 +104,7 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 				keySource = "environment"
 			}
 			if key == "" {
-				return errors.New("OpenAI admin key is required; pass it positionally, use --admin-key, or set OPENAI_ADMIN_KEY")
+				return application.ErrTunnelAdminAPIKeyRequired
 			}
 			beginMutationProgress(cmd, "Configure OpenAI tunnel admin key")
 			var scope *tunnel.AdminScope
@@ -210,10 +210,10 @@ func tunnelListCommand() *cobra.Command {
 			return err
 		}
 		if !tunnel.AdminEnabled(cfg.Tunnel) {
-			return errors.New("tunnel admin management is disabled")
+			return application.ErrTunnelAdminDisabled
 		}
 		if strings.TrimSpace(cfg.Tunnel.Admin.Key) == "" {
-			return errors.New("tunnel admin key is not configured; run tunnel admin key set first")
+			return application.ErrTunnelAdminNotConfigured
 		}
 		scope, err := resolveTunnelAdminScope(cmd, cfg.Tunnel, scopeFlags)
 		if err != nil {
@@ -471,7 +471,7 @@ func tunnelDeleteCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "delete <tunnel_id>", Short: "Delete a tunnel with the stored verified admin key", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.admin.delete.preparing", "Preparing managed tunnel deletion", logger.WithVerbose("tunnel_id", args[0]))
 		if !confirm {
-			return errors.New("refusing to delete tunnel without --confirm")
+			return &tunnelDeleteConfirmationRequiredError{TunnelID: args[0]}
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()

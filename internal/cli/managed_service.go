@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
@@ -122,7 +123,7 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 		return err
 	}
 	if !source.Exists {
-		return errors.New("cm is not initialized; run cm init first")
+		return application.ErrNotInitialized
 	}
 	if _, err := config.VerifyRuntime(); err != nil {
 		return err
@@ -157,7 +158,7 @@ func saveManagedEnvironmentContext(ctx context.Context, spec managed.Spec) (stri
 		return "", err
 	}
 	if !source.Exists {
-		return "", errors.New("cm is not initialized; run cm init first")
+		return "", application.ErrNotInitialized
 	}
 	cfg, err := config.LoadRuntime()
 	if err != nil {
@@ -251,7 +252,7 @@ func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager
 		return err
 	}
 	if !source.Exists {
-		return errors.New("cm is not initialized; run cm init first")
+		return application.ErrNotInitialized
 	}
 	if _, err := config.VerifyRuntime(); err != nil {
 		return err

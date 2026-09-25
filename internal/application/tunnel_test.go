@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,18 @@ import (
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
+
+func TestConfigureManagedTunnelReturnsTypedRuntimeKeyRequirement(t *testing.T) {
+	cfg := config.Default()
+	err := configureManagedTunnel(&cfg, tunnel.Metadata{ID: "tunnel_test"}, "", true)
+	var required *ManagedTunnelRuntimeKeyRequiredError
+	if !errors.As(err, &required) {
+		t.Fatalf("error type=%T err=%v", err, err)
+	}
+	if required.TunnelID != "tunnel_test" {
+		t.Fatalf("tunnel id=%q", required.TunnelID)
+	}
+}
 
 func TestTunnelRuntimeConfigureSyncAndSecretPersistence(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

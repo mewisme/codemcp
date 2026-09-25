@@ -16,6 +16,8 @@ import (
 	managed "go.mewis.me/codemcp/internal/service"
 )
 
+var ErrNotInitialized = errors.New("cm is not initialized; run cm init first")
+
 const managedReadyTimeout = managed.DefaultLifecycleTimeout
 
 type ExternalCommand struct {
@@ -181,7 +183,7 @@ func prepareManagedSpec(spec managed.Spec) (managed.Spec, error) {
 		return spec, err
 	}
 	if !source.Exists {
-		return spec, errors.New("cm is not initialized; run cm init first")
+		return spec, ErrNotInitialized
 	}
 	if _, err := config.VerifyRuntime(); err != nil {
 		return spec, err

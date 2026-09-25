@@ -18,6 +18,27 @@ import (
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 )
 
+var errLogsClearConfirmationRequired = errors.New("refusing to clear runtime logs without --force")
+
+type runtimeUnavailableError struct {
+	Operation string
+	Cause     error
+}
+
+func (err *runtimeUnavailableError) Error() string {
+	if err == nil || strings.TrimSpace(err.Operation) == "" {
+		return "runtime is not running"
+	}
+	return "runtime is not running; cannot " + strings.TrimSpace(err.Operation)
+}
+
+func (err *runtimeUnavailableError) Unwrap() error {
+	if err == nil {
+		return nil
+	}
+	return err.Cause
+}
+
 type logsOptions struct {
 	tail       int
 	follow     bool
@@ -56,7 +77,7 @@ func logsCommand() *cobra.Command {
 	var forceClear bool
 	clear := &cobra.Command{Use: "clear", Short: "Clear runtime logs", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if !forceClear {
-			return errors.New("refusing to clear runtime logs without --force")
+			return errLogsClearConfirmationRequired
 		}
 		log := commandLogger(cmd)
 		logCommandStep(cmd, "LOGS", "logs.runtime.contacting", "Contacting runtime log endpoint")
@@ -148,7 +169,7 @@ func runLogs(cmd *cobra.Command, options logsOptions) error {
 		return nil
 	}
 	if followErr != nil {
-		return fmt.Errorf("runtime is not running; cannot follow: %w", followErr)
+		return &runtimeUnavailableError{Operation: "follow logs", Cause: followErr}
 	}
 	logCommandStep(cmd, "LOGS", "logs.stream.following", "Following runtime event stream")
 	return followRuntimeEventStream(followCtx, stream, snapshot.Query, visibility, lastByRun, replay)

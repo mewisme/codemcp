@@ -184,7 +184,25 @@ func closeCommandProgress(cmd *cobra.Command, cause error) {
 		return
 	}
 	if cause != nil {
-		session.FailActive(cause.Error())
+		failure := classifyCommandFailure(cmd, cause)
+		if failure.Title == "" {
+			failure.Title = "Command failed"
+		}
+		activeFailed := session.FailActive(failure.Title)
+		session.Append(func(presenter *presentation.Presenter) {
+			if !activeFailed {
+				presenter.StateSection(presentation.StatusError, failure.Title)
+			}
+			if failure.Summary != "" && !strings.EqualFold(failure.Summary, failure.Title) {
+				presenter.Fields(presentation.Field{Label: "reason", Value: failure.Summary})
+			}
+			for _, action := range failure.Actions {
+				presenter.Subsection(action.Title)
+				presenter.NestedFields(presentation.Field{Label: "command", Value: action.Command})
+			}
+		})
+		session.CloseWith("Failed")
+		return
 	}
 	session.Close()
 }
@@ -264,7 +282,8 @@ func logCommandFailure(cmd *cobra.Command, err error, started time.Time) {
 	if cmd == nil {
 		return
 	}
-	commandLogger(cmd).Failure("CLI", "cli.command.failed", "Command failed", err,
+	log := commandLogger(cmd)
+	fields := []logger.Field{
 		logger.WithVerbose("command", cmd.CommandPath()),
 		logger.WithVerbose("duration_ms", time.Since(started).Milliseconds()),
 		logger.WithDebug("pid", os.Getpid()),
@@ -273,7 +292,20 @@ func logCommandFailure(cmd *cobra.Command, err error, started time.Time) {
 		logger.WithDebug("changed_flags", commandChangedFlags(cmd)),
 		logger.WithDebug("error_type", fmt.Sprintf("%T", err)),
 		logger.WithDebug("error_chain", commandErrorChain(err)),
-	)
+	}
+	format, _ := commandLogFormat(cmd)
+	verbose, debug := commandLogMode(cmd)
+	if commandMachineOutput(cmd) || format == logger.FormatJSON {
+		log.Failure("CLI", "cli.command.failed", "Command failed", err, fields...)
+		return
+	}
+	if debug {
+		log.Diagnostic(logger.Error, "CLI", "cli.command.failed", "Command failure diagnostics", fields...)
+		return
+	}
+	if verbose {
+		log.Verbose("CLI", "cli.command.failed", "Failure context", fields...)
+	}
 }
 
 func commandChangedFlags(cmd *cobra.Command) []string {

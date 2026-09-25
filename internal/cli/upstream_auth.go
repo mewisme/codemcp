@@ -37,7 +37,7 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			}
 			server, ok := manager.Get(args[0])
 			if !ok {
-				return fmt.Errorf("unknown upstream server: %s", args[0])
+				return &upstreamServerNotFoundError{ServerID: args[0]}
 			}
 			if server.Transport != "http" {
 				return fmt.Errorf("OAuth login requires an HTTP upstream server")
@@ -125,7 +125,7 @@ func upstreamServerAuthStatusCommand() *cobra.Command {
 				return err
 			}
 			if _, ok := manager.Get(args[0]); !ok {
-				return fmt.Errorf("unknown upstream server: %s", args[0])
+				return &upstreamServerNotFoundError{ServerID: args[0]}
 			}
 			status, err := oauthStoreForCommand(cmd).Status(args[0])
 			if err != nil {
@@ -178,7 +178,7 @@ func upstreamServerAuthLogoutCommand() *cobra.Command {
 				return err
 			}
 			if _, ok := manager.Get(args[0]); !ok {
-				return fmt.Errorf("unknown upstream server: %s", args[0])
+				return &upstreamServerNotFoundError{ServerID: args[0]}
 			}
 			if err := oauthStoreForCommand(cmd).Delete(args[0]); err != nil {
 				return err

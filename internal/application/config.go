@@ -20,6 +20,11 @@ import (
 	"go.mewis.me/codemcp/internal/upstream"
 )
 
+var (
+	ErrConfigurationExists = errors.New("configuration already exists; use --force to rotate tokens")
+	ErrRuntimeImportActive = errors.New("runtime is running; stop it before importing configuration")
+)
+
 type ConfigOverview struct {
 	Config         config.Config
 	Source         configformat.Source
@@ -85,7 +90,7 @@ func Initialize(options InitOptions) (result InitResult, resultErr error) {
 	}
 	sourceSpan.EndMessage("Configuration source resolved", tracepkg.String("path", source.Path), tracepkg.String("format", string(source.Format)), tracepkg.Bool("exists", source.Exists))
 	if source.Exists && !options.Force {
-		return InitResult{}, errors.New("configuration already exists; use --force to rotate tokens")
+		return InitResult{}, ErrConfigurationExists
 	}
 	cfg := config.Default()
 	if source.Exists {
@@ -374,7 +379,7 @@ func ImportConfig(ctx context.Context, source string, force bool) (configbundle.
 		return configbundle.ImportResult{}, err
 	}
 	if running {
-		err := errors.New("runtime is running; stop it before importing configuration")
+		err := ErrRuntimeImportActive
 		span.FailMessage("Configuration envelope import refused", err, tracepkg.Bool("runtime_running", true))
 		return configbundle.ImportResult{}, err
 	}

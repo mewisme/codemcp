@@ -138,6 +138,12 @@ func TestCommandSessionFallbackFramesPreRunErrors(t *testing.T) {
 	if strings.Count(text, "┌  ") != 1 || strings.Count(text, "└") != 1 {
 		t.Fatalf("fallback error did not use one bounded frame: %q", text)
 	}
+	if !strings.Contains(text, "×  invalid input") || !strings.Contains(text, "└  Failed") {
+		t.Fatalf("fallback error did not render canonical failed workflow: %q", text)
+	}
+	if strings.Contains(text, "Command failed") || strings.Contains(text, "Usage:") {
+		t.Fatalf("fallback error escaped workflow or printed usage: %q", text)
+	}
 }
 
 func commandByRelativePath(root *cobra.Command, path string) *cobra.Command {

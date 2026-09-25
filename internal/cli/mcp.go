@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/app"
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
@@ -21,6 +22,8 @@ import (
 	"go.mewis.me/codemcp/internal/mcpauth"
 	"go.mewis.me/codemcp/internal/workspace"
 )
+
+var errMCPAuthCredentialMissing = errors.New("MCP authentication is enabled but no credential is configured")
 
 func mcpCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "mcp", Short: "Serve CodeMCP transports"}
@@ -89,7 +92,7 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 		return err
 	}
 	if cfg.Auth.MCPEnabled && cfg.Auth.MCPTokenHash == "" {
-		return errors.New("MCP authentication is enabled but no credential is configured; run cm auth mcp create")
+		return errMCPAuthCredentialMissing
 	}
 	if !mcpHTTPLoopbackHost(host) {
 		return errors.New("standalone MCP HTTP is currently loopback-only; use 127.0.0.1, ::1, or localhost")
@@ -159,7 +162,7 @@ func runMCPStdio(cmd *cobra.Command, workspace string) (runErr error) {
 		return err
 	}
 	if !source.Exists {
-		return errors.New("cm is not initialized; run cm init")
+		return application.ErrNotInitialized
 	}
 	cfg, err := config.LoadRuntime()
 	if err != nil {

@@ -34,6 +34,38 @@ type Lifecycle struct {
 	Observe  LifecycleObserver
 }
 
+type RuntimeOwnerConflictKind string
+
+const (
+	RuntimeOwnerForeground RuntimeOwnerConflictKind = "foreground"
+	RuntimeOwnerSystem     RuntimeOwnerConflictKind = "system"
+	RuntimeOwnerUser       RuntimeOwnerConflictKind = "user"
+	RuntimeOwnerOther      RuntimeOwnerConflictKind = "other"
+)
+
+type RuntimeOwnerConflictError struct {
+	Kind      RuntimeOwnerConflictKind
+	Action    string
+	ServiceID string
+	PID       int
+}
+
+func (err *RuntimeOwnerConflictError) Error() string {
+	if err == nil {
+		return "runtime ownership conflict"
+	}
+	switch err.Kind {
+	case RuntimeOwnerForeground:
+		return fmt.Sprintf("runtime is already running outside the managed service (pid %d)", err.PID)
+	case RuntimeOwnerSystem:
+		return fmt.Sprintf("runtime is managed by a system service; use cm %s --system", err.Action)
+	case RuntimeOwnerUser:
+		return fmt.Sprintf("runtime is managed by a user service; use cm %s", err.Action)
+	default:
+		return fmt.Sprintf("another managed service is already running for this config (service %s, pid %d)", err.ServiceID, err.PID)
+	}
+}
+
 type LifecycleResult struct {
 	Status  runtimecontrol.RuntimeStatus
 	Changed bool
@@ -448,16 +480,16 @@ func ValidateRuntimeOwner(status runtimecontrol.RuntimeStatus, running bool, spe
 		return nil
 	}
 	if !status.Managed {
-		return fmt.Errorf("runtime is already running outside the managed service (pid %d)", status.PID)
+		return &RuntimeOwnerConflictError{Kind: RuntimeOwnerForeground, Action: action, PID: status.PID}
 	}
 	if status.ServiceID == spec.ID && status.ServiceScope == string(spec.Scope) {
 		return nil
 	}
 	if status.ServiceScope == string(ScopeSystem) && spec.Scope == ScopeUser {
-		return fmt.Errorf("runtime is managed by a system service; use cm %s --system", action)
+		return &RuntimeOwnerConflictError{Kind: RuntimeOwnerSystem, Action: action, ServiceID: status.ServiceID, PID: status.PID}
 	}
 	if status.ServiceScope == string(ScopeUser) && spec.Scope == ScopeSystem {
-		return fmt.Errorf("runtime is managed by a user service; use cm %s", action)
+		return &RuntimeOwnerConflictError{Kind: RuntimeOwnerUser, Action: action, ServiceID: status.ServiceID, PID: status.PID}
 	}
-	return fmt.Errorf("another managed service is already running for this config (service %s, pid %d)", status.ServiceID, status.PID)
+	return &RuntimeOwnerConflictError{Kind: RuntimeOwnerOther, Action: action, ServiceID: status.ServiceID, PID: status.PID}
 }
