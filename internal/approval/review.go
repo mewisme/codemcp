@@ -8,6 +8,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/commandpattern"
 	"go.mewis.me/codemcp/internal/controlguard"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
 type ReviewDecision string
@@ -77,6 +78,9 @@ func (s *ReviewService) Resolve(input ReviewInput) (Request, error) {
 	}
 
 	if input.Decision == ReviewApprove && input.AllowSimilar {
+		if record.value.TargetTool == mcpconfigwire.SetToolName {
+			return Request{}, errors.New("config_set approval requests do not support runtime session grants")
+		}
 		if record.value.GuardCode == controlguard.CodeDestructiveMutation {
 			return Request{}, errors.New("destructive approval requests do not support similar-command runtime grants")
 		}

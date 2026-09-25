@@ -65,7 +65,9 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 		current := configStore.Snapshot()
 		return current.Admin.Enabled, current.Admin.Port
 	})
-	toolRuntime.SetConfigReadProvider(application.NewMCPConfigReadService())
+	configProvider := application.NewMCPConfigReadService()
+	toolRuntime.SetConfigReadProvider(configProvider)
+	toolRuntime.SetConfigSetApprovalProvider(configProvider)
 	toolSpan.EndMessage("Tool runtime bootstrapped", tracepkg.Int("tool_count", len(toolRuntime.List())))
 	if toolRuntime.Upstream != nil {
 		toolRuntime.Upstream.SetTraceObserver(observer)

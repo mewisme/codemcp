@@ -7,6 +7,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/controlguard"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -18,10 +19,12 @@ func (r *Runtime) prepareApprovalRetry(ctx context.Context, correlation Approval
 	retry := approval.RetryInput{
 		CallerID: correlation.CallerID, RequestID: correlation.RequestID, WorkspaceID: workspaceID, Source: source, TargetTool: name, Arguments: args, Command: command,
 	}
-	if granted, matched := r.Approvals.MatchRuntimeGrant(retry); matched {
-		ctx = WithApprovalRequest(ctx, granted.ID)
-		ctx = controlguard.WithGrant(ctx, controlguard.Grant{RequestID: granted.ID, Code: granted.GuardCode})
-		return ctx, approval.Request{}, nil, nil
+	if name != mcpconfigwire.SetToolName {
+		if granted, matched := r.Approvals.MatchRuntimeGrant(retry); matched {
+			ctx = WithApprovalRequest(ctx, granted.ID)
+			ctx = controlguard.WithGrant(ctx, controlguard.Grant{RequestID: granted.ID, Code: granted.GuardCode})
+			return ctx, approval.Request{}, nil, nil
+		}
 	}
 	if strings.TrimSpace(correlation.CallerID) == "" || strings.TrimSpace(correlation.RequestID) == "" {
 		return ctx, approval.Request{}, nil, nil
@@ -82,7 +85,7 @@ func (r *Runtime) approvalResultForGuard(guard *controlguard.Error, correlation 
 		command = strings.TrimSpace(command)
 	}
 	similarPattern := ""
-	if command != "" {
+	if command != "" && name != mcpconfigwire.SetToolName {
 		similarPattern, _ = workspace.SimilarCommandPattern(command)
 	}
 	challenge, _, err := r.Approvals.CreateChallenge(approval.ChallengeInput{

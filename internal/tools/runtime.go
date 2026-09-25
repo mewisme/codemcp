@@ -17,6 +17,7 @@ import (
 	"go.mewis.me/codemcp/internal/integrations/caveman"
 	"go.mewis.me/codemcp/internal/integrations/codegraph"
 	"go.mewis.me/codemcp/internal/integrations/ponytail"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -47,6 +48,8 @@ type Runtime struct {
 	sessionMu           sync.Mutex
 	configReadMu        sync.RWMutex
 	configReads         ConfigReadProvider
+	configApprovalMu    sync.RWMutex
+	configApprovals     ConfigSetApprovalProvider
 	integrationMu       sync.Mutex
 	integrations        integrations.Config
 	ponytailManager     *ponytail.Manager
@@ -264,8 +267,20 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	}
 	claimedApproval := approval.Request{}
 	var forcedResult *Result
-	if preflightErr == nil {
-		ctx, claimedApproval, forcedResult, preflightErr = r.prepareApprovalRetry(ctx, approvalCorrelation, workspaceID, source, name, args)
+	approvalArgs := args
+	if preflightErr == nil && r.Registry != nil && name == mcpconfigwire.SetToolName {
+		if _, registered := r.Registry.Schema(name); registered {
+			bound, code := r.bindConfigSetApproval(ctx, args)
+			if code != "" {
+				blocked := configSetApprovalError(code)
+				forcedResult = &blocked
+			} else {
+				approvalArgs = bound
+			}
+		}
+	}
+	if preflightErr == nil && forcedResult == nil {
+		ctx, claimedApproval, forcedResult, preflightErr = r.prepareApprovalRetry(ctx, approvalCorrelation, workspaceID, source, name, approvalArgs)
 	}
 	loopClass, loopDecision := toolLoopClassMutation, toolLoopDecision{}
 	if preflightErr == nil && forcedResult == nil && strings.TrimSpace(sessionID) != "" && r.Registry != nil {
@@ -304,7 +319,7 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	}
 	if err != nil {
 		if guard, ok := controlguard.As(err); ok {
-			if guardedResult, handled, guardErr := r.approvalResultForGuard(guard, approvalCorrelation, sessionHash, workspaceID, source, name, args, claimedApproval); guardErr != nil {
+			if guardedResult, handled, guardErr := r.approvalResultForGuard(guard, approvalCorrelation, sessionHash, workspaceID, source, name, approvalArgs, claimedApproval); guardErr != nil {
 				err = guardErr
 			} else if handled {
 				result, err = guardedResult, nil

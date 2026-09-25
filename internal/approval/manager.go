@@ -12,6 +12,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/commandpattern"
 	"go.mewis.me/codemcp/internal/idgen"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
 type challengeRecord struct {
@@ -362,6 +363,9 @@ func (m *Manager) MatchRuntimeGrant(input RetryInput) (Request, bool) {
 		return Request{}, false
 	}
 	input.WorkspaceID, input.TargetTool, input.Command = strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.TargetTool), strings.TrimSpace(input.Command)
+	if input.TargetTool == mcpconfigwire.SetToolName {
+		return Request{}, false
+	}
 	if input.WorkspaceID == "" || input.TargetTool == "" || input.Command == "" {
 		return Request{}, false
 	}

@@ -37,7 +37,7 @@ func TestApprovalReviewProjectionRedactsConfigSetValues(t *testing.T) {
 	request := approval.Request{
 		ID: "req_config", Status: approval.StatusPending, WorkspaceID: "ws_scope",
 		TargetTool: mcpconfigwire.SetToolName,
-		Arguments:  json.RawMessage(`{"changes":[{"key":"server.port","value":"4000"},{"key":"permissions.allow_dirs","value":"/private/value"}]}`),
+		Arguments:  json.RawMessage(`{"changes":[{"key":"server.port","value":"4000"},{"key":"permissions.allow_dirs","value":"/private/value"}],"__codemcp_config_binding":{"version":1,"config_root":"/private/config/root","config_fingerprint":"private-fingerprint"}}`),
 		Command:    "must-not-be-public",
 		ExpiresAt:  time.Now().Add(time.Minute),
 	}
@@ -47,7 +47,7 @@ func TestApprovalReviewProjectionRedactsConfigSetValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(data)
-	for _, forbidden := range []string{"4000", "/private/value", "must-not-be-public"} {
+	for _, forbidden := range []string{"4000", "/private/value", "must-not-be-public", "/private/config/root", "private-fingerprint", "__codemcp_config_binding", "config_fingerprint"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("approval review leaked %q: %s", forbidden, text)
 		}

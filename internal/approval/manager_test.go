@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/controlguard"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
 func TestManagerCoalescesChallengeAndRequest(t *testing.T) {
@@ -568,6 +569,46 @@ func testManager() (*Manager, *time.Time) {
 		return fmt.Sprintf("%s_%02d", prefix, sequence), nil
 	}
 	return manager, &now
+}
+
+func TestConfigSetApprovedRetryExpiresBeforeLateClaim(t *testing.T) {
+	manager, now := testManager()
+	arguments := map[string]any{
+		"workspace_id":             "ws_a",
+		"changes":                  []any{map[string]any{"key": "server.port", "value": "41001"}},
+		"__codemcp_config_binding": map[string]any{"version": 1, "config_root": "/private/root", "config_fingerprint": "fingerprint-a"},
+	}
+	challenge, _, err := manager.CreateChallenge(ChallengeInput{
+		CallerID: "caller-a", RequestCorrelationID: "transport-a", WorkspaceID: "ws_a", Source: "tunnel",
+		TargetTool: mcpconfigwire.SetToolName, Arguments: arguments, GuardCode: controlguard.CodeControlPlaneMutation,
+		Title: "Update settings",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _, err := manager.CreateRequestWithCorrelation(challenge.ID, "caller-a", "ws_a", "Update settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	approved, err := manager.Approve(request.ID, "reviewer", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if approved.RetryUntil.IsZero() {
+		t.Fatal("approved config_set request has no retry deadline")
+	}
+	*now = approved.RetryUntil.Add(time.Nanosecond)
+	claimed, matched, err := manager.ClaimApproved(RetryInput{
+		CallerID: "caller-a", RequestID: "transport-b", WorkspaceID: "ws_a", Source: "tunnel",
+		TargetTool: mcpconfigwire.SetToolName, Arguments: arguments,
+	})
+	if err != nil || matched || claimed.ID != "" {
+		t.Fatalf("late retry claimed approval: claimed=%#v matched=%t err=%v", claimed, matched, err)
+	}
+	expired, ok := manager.Get(request.ID)
+	if !ok || expired.Status != StatusExpired {
+		t.Fatalf("late retry status=%#v ok=%t", expired, ok)
+	}
 }
 
 func testChallenge(sessionID, workspaceID, command string) ChallengeInput {

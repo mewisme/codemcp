@@ -12,12 +12,13 @@ const (
 	GetToolName  = "config_get"
 	SetToolName  = "config_set"
 
-	DefaultListLimit = 50
-	MaxListLimit     = 100
-	MaxCursorBytes   = 1024
-	MaxKeyBytes      = 256
-	MaxChanges       = 32
-	MaxValueBytes    = 32 * 1024
+	DefaultListLimit    = 50
+	MaxListLimit        = 100
+	MaxCursorBytes      = 1024
+	MaxKeyBytes         = 256
+	MaxChanges          = 32
+	MaxValueBytes       = 32 * 1024
+	MaxWorkspaceIDBytes = 128
 )
 
 var (
@@ -129,6 +130,101 @@ var (
 type Change struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+type SetApprovalBinding struct {
+	Changes           []Change
+	ConfigRoot        string
+	ConfigFingerprint string
+}
+
+func CanonicalSetArguments(arguments map[string]any) ([]Change, string, error) {
+	for key := range arguments {
+		switch key {
+		case "changes", "workspace_id":
+		default:
+			return nil, "", fmt.Errorf("unsupported config_set argument %q", key)
+		}
+	}
+	workspaceID := ""
+	if raw, exists := arguments["workspace_id"]; exists {
+		value, ok := raw.(string)
+		if !ok {
+			return nil, "", errors.New("workspace_id must be a string")
+		}
+		workspaceID = strings.TrimSpace(value)
+		if len(workspaceID) > MaxWorkspaceIDBytes {
+			return nil, "", fmt.Errorf("workspace_id exceeds %d bytes", MaxWorkspaceIDBytes)
+		}
+	}
+	raw, exists := arguments["changes"]
+	if !exists {
+		return nil, "", errors.New("changes are required")
+	}
+	changes, err := canonicalChanges(raw)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := ValidateChanges(changes); err != nil {
+		return nil, "", err
+	}
+	return changes, workspaceID, nil
+}
+
+func canonicalChanges(raw any) ([]Change, error) {
+	switch values := raw.(type) {
+	case []Change:
+		out := make([]Change, len(values))
+		for index, change := range values {
+			out[index] = Change{Key: strings.TrimSpace(change.Key), Value: change.Value}
+		}
+		return out, nil
+	case []map[string]any:
+		out := make([]Change, len(values))
+		for index, value := range values {
+			change, err := canonicalChange(value, index)
+			if err != nil {
+				return nil, err
+			}
+			out[index] = change
+		}
+		return out, nil
+	case []any:
+		out := make([]Change, len(values))
+		for index, item := range values {
+			value, ok := item.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("change %d must be an object", index)
+			}
+			change, err := canonicalChange(value, index)
+			if err != nil {
+				return nil, err
+			}
+			out[index] = change
+		}
+		return out, nil
+	default:
+		return nil, errors.New("changes must be an array")
+	}
+}
+
+func canonicalChange(value map[string]any, index int) (Change, error) {
+	for key := range value {
+		switch key {
+		case "key", "value":
+		default:
+			return Change{}, fmt.Errorf("change %d contains unsupported field %q", index, key)
+		}
+	}
+	key, ok := value["key"].(string)
+	if !ok {
+		return Change{}, fmt.Errorf("change %d key must be a string", index)
+	}
+	rawValue, ok := value["value"].(string)
+	if !ok {
+		return Change{}, fmt.Errorf("change %d value must be a string", index)
+	}
+	return Change{Key: strings.TrimSpace(key), Value: rawValue}, nil
 }
 
 func ValidateChanges(changes []Change) error {

@@ -11,14 +11,21 @@ import (
 	"strconv"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/controlguard"
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
 const configCursorVersion = 1
+const configSetApprovalBindingVersion = 1
+const configSetApprovalBindingKey = "__codemcp_config_binding"
 
 type ConfigReadProvider interface {
 	List(context.Context, string) ([]mcpconfigwire.Setting, mcpconfigwire.ErrorCode)
 	Get(context.Context, string) (mcpconfigwire.Setting, mcpconfigwire.ErrorCode)
+}
+
+type ConfigSetApprovalProvider interface {
+	BindSetApproval(context.Context, map[string]any) (mcpconfigwire.SetApprovalBinding, mcpconfigwire.ErrorCode)
 }
 
 type configListCursor struct {
@@ -58,6 +65,15 @@ func (r *Runtime) SetConfigReadProvider(provider ConfigReadProvider) {
 	r.configReadMu.Unlock()
 }
 
+func (r *Runtime) SetConfigSetApprovalProvider(provider ConfigSetApprovalProvider) {
+	if r == nil {
+		return
+	}
+	r.configApprovalMu.Lock()
+	r.configApprovals = provider
+	r.configApprovalMu.Unlock()
+}
+
 func (r *Runtime) configReadProvider() ConfigReadProvider {
 	if r == nil {
 		return nil
@@ -65,6 +81,53 @@ func (r *Runtime) configReadProvider() ConfigReadProvider {
 	r.configReadMu.RLock()
 	defer r.configReadMu.RUnlock()
 	return r.configReads
+}
+
+func (r *Runtime) configSetApprovalProvider() ConfigSetApprovalProvider {
+	if r == nil {
+		return nil
+	}
+	r.configApprovalMu.RLock()
+	defer r.configApprovalMu.RUnlock()
+	return r.configApprovals
+}
+
+func (r *Runtime) bindConfigSetApproval(ctx context.Context, arguments map[string]any) (map[string]any, mcpconfigwire.ErrorCode) {
+	provider := r.configSetApprovalProvider()
+	if provider == nil {
+		return nil, mcpconfigwire.ErrorAccessDenied
+	}
+	binding, code := provider.BindSetApproval(ctx, arguments)
+	if code != "" {
+		return nil, code
+	}
+	if strings.TrimSpace(binding.ConfigRoot) == "" || strings.TrimSpace(binding.ConfigFingerprint) == "" {
+		return nil, mcpconfigwire.ErrorInvalidRequest
+	}
+	_, workspaceID, err := mcpconfigwire.CanonicalSetArguments(arguments)
+	if err != nil {
+		return nil, mcpconfigwire.ErrorInvalidRequest
+	}
+	bound := map[string]any{
+		"changes": append([]mcpconfigwire.Change(nil), binding.Changes...),
+		configSetApprovalBindingKey: map[string]any{
+			"version":            configSetApprovalBindingVersion,
+			"config_root":        strings.TrimSpace(binding.ConfigRoot),
+			"config_fingerprint": strings.TrimSpace(binding.ConfigFingerprint),
+		},
+	}
+	if workspaceID != "" {
+		bound["workspace_id"] = workspaceID
+	}
+	return bound, ""
+}
+
+func RequireConfigSetApproval(ctx context.Context) error {
+	grant, ok := controlguard.GrantFromContext(ctx)
+	if ok && grant.Code == controlguard.CodeControlPlaneMutation && strings.TrimSpace(grant.RequestID) != "" {
+		return nil
+	}
+	return controlguard.New(controlguard.CodeControlPlaneMutation, "CodeMCP configuration changes require local approval", true, nil)
 }
 
 func configListHandler(runtime *Runtime) Handler {
@@ -259,6 +322,23 @@ func configPrefixHash(prefix string) string {
 func configReadError(code mcpconfigwire.ErrorCode) Result {
 	switch code {
 	case mcpconfigwire.ErrorAccessDenied, mcpconfigwire.ErrorInvalidRequest, mcpconfigwire.ErrorUnsupportedSetting:
+	default:
+		code = mcpconfigwire.ErrorInvalidRequest
+	}
+	data, _ := json.Marshal(mcpconfigwire.PublicError{Code: code})
+	return Result{
+		Content:    []Content{{Type: "text", Text: string(data)}},
+		IsError:    true,
+		ResultType: "complete",
+	}
+}
+
+func configSetApprovalError(code mcpconfigwire.ErrorCode) Result {
+	switch code {
+	case mcpconfigwire.ErrorAccessDenied,
+		mcpconfigwire.ErrorInvalidRequest,
+		mcpconfigwire.ErrorUnsupportedSetting,
+		mcpconfigwire.ErrorSecretWriteForbidden:
 	default:
 		code = mcpconfigwire.ErrorInvalidRequest
 	}

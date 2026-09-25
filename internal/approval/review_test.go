@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.mewis.me/codemcp/internal/controlguard"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
 func TestReviewServiceCanonicalOperationsAndSimilarGrant(t *testing.T) {
@@ -159,5 +160,43 @@ func TestReviewPayloadCannotWeakenRetryBinding(t *testing.T) {
 	final, err := reviews.View(request.ID)
 	if err != nil || final.Status != StatusApproved {
 		t.Fatalf("mismatch changed approved truth: request=%#v err=%v", final, err)
+	}
+}
+
+func TestConfigSetReviewNeverCreatesRuntimeSessionGrant(t *testing.T) {
+	manager := NewManager("instance-review")
+	reviews := NewReviewService(manager)
+	arguments := map[string]any{
+		"workspace_id":             "ws_a",
+		"changes":                  []any{map[string]any{"key": "server.port", "value": "41001"}},
+		"__codemcp_config_binding": map[string]any{"version": 1, "config_root": "/private/root", "config_fingerprint": "private-fingerprint"},
+	}
+	challenge, _, err := manager.CreateChallenge(ChallengeInput{
+		CallerID: "caller-a", WorkspaceID: "ws_a", Source: "tunnel", TargetTool: mcpconfigwire.SetToolName,
+		Arguments: arguments, GuardCode: controlguard.CodeControlPlaneMutation, Title: "Update CodeMCP settings",
+		SimilarCommandPattern: "cm config set **",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _, err := manager.CreateRequestWithCorrelation(challenge.ID, "caller-a", "ws_a", "Update CodeMCP settings")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reviews.Resolve(ReviewInput{Request: request.ID, Decision: ReviewApprove, ResolvedBy: "reviewer", AllowSimilar: true}); err == nil {
+		t.Fatal("config_set unexpectedly accepted a runtime session grant")
+	}
+	current, err := reviews.View(request.ID)
+	if err != nil || current.Status != StatusPending || current.RuntimeSessionGrant {
+		t.Fatalf("runtime-grant rejection mutated request: %#v err=%v", current, err)
+	}
+	if _, err := reviews.Resolve(ReviewInput{Request: request.ID, Decision: ReviewApprove, ResolvedBy: "reviewer"}); err != nil {
+		t.Fatal(err)
+	}
+	if granted, ok := manager.MatchRuntimeGrant(RetryInput{
+		CallerID: "caller-other", WorkspaceID: "ws_a", Source: "tunnel", TargetTool: mcpconfigwire.SetToolName,
+		Arguments: arguments, Command: "cm config set server.port 41001",
+	}); ok || granted.ID != "" {
+		t.Fatalf("config_set matched runtime grant: %#v", granted)
 	}
 }

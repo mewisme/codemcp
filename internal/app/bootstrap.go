@@ -27,7 +27,9 @@ func (a *App) Bootstrap() error {
 				return current.Admin.Enabled, current.Admin.Port
 			})
 		}
-		a.Tools.SetConfigReadProvider(application.NewMCPConfigReadService())
+		configProvider := application.NewMCPConfigReadService()
+		a.Tools.SetConfigReadProvider(configProvider)
+		a.Tools.SetConfigSetApprovalProvider(configProvider)
 		if a.Activity == nil {
 			a.Activity = activity.NewStream()
 		}

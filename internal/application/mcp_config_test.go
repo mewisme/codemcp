@@ -7,6 +7,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/mcpconfig"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 	"go.mewis.me/codemcp/internal/upstream"
 )
 
@@ -97,5 +98,96 @@ func TestMCPConfigReadServiceRequiresOptInAndSanitizesCanonicalSettings(t *testi
 	port, code := provider.Get(t.Context(), "server.port")
 	if code != "" || port.Value == nil || *port.Value == "" || port.Secret {
 		t.Fatalf("safe non-secret projection=%#v code=%q", port, code)
+	}
+}
+
+func TestMCPConfigSetApprovalBindingIsPrivateCanonicalAndStateBound(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	provider := NewMCPConfigReadService()
+	args := map[string]any{
+		"workspace_id": " ws_scope ",
+		"changes": []any{
+			map[string]any{"key": " server.port ", "value": "41001"},
+			map[string]any{"key": "server.enabled", "value": "true"},
+		},
+	}
+	if _, code := provider.BindSetApproval(t.Context(), args); code != mcpconfig.ErrorAccessDenied {
+		t.Fatalf("write without opt-in code=%q", code)
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Permissions.MCPConfigWrite = true
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	binding, code := provider.BindSetApproval(t.Context(), args)
+	if code != "" {
+		t.Fatalf("binding code=%q", code)
+	}
+	want := []mcpconfigwire.Change{{Key: "server.port", Value: "41001"}, {Key: "server.enabled", Value: "true"}}
+	if len(binding.Changes) != len(want) {
+		t.Fatalf("changes=%#v", binding.Changes)
+	}
+	for index := range want {
+		if binding.Changes[index] != want[index] {
+			t.Fatalf("change %d=%#v want=%#v", index, binding.Changes[index], want[index])
+		}
+	}
+	if binding.ConfigRoot != root || binding.ConfigFingerprint == "" {
+		t.Fatalf("binding root/fingerprint=%#v", binding)
+	}
+	firstFingerprint := binding.ConfigFingerprint
+
+	cfg, err = config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Server.Port++
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	binding, code = provider.BindSetApproval(t.Context(), args)
+	if code != "" || binding.ConfigFingerprint == "" || binding.ConfigFingerprint == firstFingerprint {
+		t.Fatalf("config change did not rotate binding fingerprint: %#v code=%q", binding, code)
+	}
+
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+		want mcpconfig.ErrorCode
+	}{
+		{
+			name: "managed secret",
+			args: map[string]any{"changes": []any{map[string]any{"key": "tunnel.api_key", "value": "must-never-enter-approval"}}},
+			want: mcpconfig.ErrorSecretWriteForbidden,
+		},
+		{
+			name: "credential bearing URL",
+			args: map[string]any{"changes": []any{map[string]any{"key": "tunnel.control_plane_base_url", "value": "https://user:secret@example.invalid"}}},
+			want: mcpconfig.ErrorUnsupportedSetting,
+		},
+		{
+			name: "missing dynamic resource",
+			args: map[string]any{"changes": []any{map[string]any{"key": "upstream.servers[missing].enabled", "value": "true"}}},
+			want: mcpconfig.ErrorUnsupportedSetting,
+		},
+		{
+			name: "duplicate canonical key",
+			args: map[string]any{"changes": []any{
+				map[string]any{"key": "server.port", "value": "41001"},
+				map[string]any{"key": " server.port ", "value": "41002"},
+			}},
+			want: mcpconfig.ErrorInvalidRequest,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, code := provider.BindSetApproval(t.Context(), tc.args); code != tc.want {
+				t.Fatalf("code=%q want=%q", code, tc.want)
+			}
+		})
 	}
 }
