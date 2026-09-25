@@ -10,7 +10,11 @@ import (
 )
 
 func NewSDKHTTPHandler(toolRuntime *tools.Runtime, boundWorkspace string, enableSSE bool) (http.Handler, error) {
-	streamableServer, err := NewSDKServerWithSession(toolRuntime, "http", "", boundWorkspace)
+	return NewSDKHTTPHandlerWithProfile(toolRuntime, boundWorkspace, enableSSE, BaseProfile())
+}
+
+func NewSDKHTTPHandlerWithProfile(toolRuntime *tools.Runtime, boundWorkspace string, enableSSE bool, profile Profile) (http.Handler, error) {
+	streamableServer, err := NewSDKServerWithProfile(toolRuntime, "http", "", boundWorkspace, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +22,7 @@ func NewSDKHTTPHandler(toolRuntime *tools.Runtime, boundWorkspace string, enable
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", streamable)
 	if enableSSE {
-		sseServer, err := NewSDKServerWithSession(toolRuntime, "sse", "", boundWorkspace)
+		sseServer, err := NewSDKServerWithProfile(toolRuntime, "sse", "", boundWorkspace, profile)
 		if err != nil {
 			return nil, err
 		}

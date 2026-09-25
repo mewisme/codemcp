@@ -28,10 +28,10 @@ func NewSDKServerWithTools(toolRuntime *tools.Runtime, source string) (*SDKServe
 }
 
 func NewSDKServerWithSession(toolRuntime *tools.Runtime, source, sessionID, boundWorkspace string) (*SDKServer, error) {
-	return newSDKServerWithProfile(toolRuntime, source, sessionID, boundWorkspace, BaseProfile())
+	return NewSDKServerWithProfile(toolRuntime, source, sessionID, boundWorkspace, BaseProfile())
 }
 
-func newSDKServerWithProfile(toolRuntime *tools.Runtime, source, sessionID, boundWorkspace string, profile Profile) (*SDKServer, error) {
+func NewSDKServerWithProfile(toolRuntime *tools.Runtime, source, sessionID, boundWorkspace string, profile Profile) (*SDKServer, error) {
 	if toolRuntime == nil {
 		toolRuntime = tools.NewRuntime()
 	}
@@ -73,6 +73,9 @@ func (s *SDKServer) addTool(schema tools.Schema) error {
 		}
 		requestContext := RequestContextFromSDK(request)
 		ctx = WithRequestContext(ctx, requestContext)
+		if request != nil && request.Params != nil {
+			ctx = withProfileRequestMetadata(ctx, s.Profile, map[string]any(request.Params.Meta))
+		}
 		if requestContext.Modern() {
 			if s.ModernCallerID != "" {
 				ctx = tools.WithApprovalCorrelation(ctx, s.ModernCallerID, idgen.Must("apr", 8))

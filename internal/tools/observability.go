@@ -36,6 +36,8 @@ type receivedByInstanceKey struct{}
 type mcpSessionIDKey struct{}
 type approvalCorrelationKey struct{}
 type agentCompletionCorrelationKey struct{}
+type clientHintsKey struct{}
+type requestCorrelationHintsKey struct{}
 
 type ApprovalCorrelation struct {
 	CallerID  string
@@ -45,6 +47,31 @@ type ApprovalCorrelation struct {
 type AgentCompletionCorrelation struct {
 	AgentID string
 	Source  string
+}
+
+// ClientHints contains optional presentation and diagnostics hints supplied by
+// an MCP client. These values are never authorization or workspace identity.
+type ClientHints struct {
+	Locale    string
+	UserAgent string
+	Location  ClientLocationHint
+}
+
+type ClientLocationHint struct {
+	City      string
+	Region    string
+	Country   string
+	Timezone  string
+	Longitude *float64
+	Latitude  *float64
+}
+
+// RequestCorrelationHints contains opaque client-provided identifiers for
+// diagnostics only. Approval and workspace correlation use separate context.
+type RequestCorrelationHints struct {
+	SubjectID      string
+	SessionID      string
+	OrganizationID string
 }
 
 type callDetails struct {
@@ -135,6 +162,60 @@ func AgentCompletionCorrelationFromContext(ctx context.Context) AgentCompletionC
 	value, _ := ctx.Value(agentCompletionCorrelationKey{}).(AgentCompletionCorrelation)
 	value.AgentID = strings.TrimSpace(value.AgentID)
 	value.Source = strings.TrimSpace(value.Source)
+	return value
+}
+
+func WithClientHints(ctx context.Context, value ClientHints) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, clientHintsKey{}, cloneClientHints(value))
+}
+
+func ClientHintsFromContext(ctx context.Context) ClientHints {
+	if ctx == nil {
+		return ClientHints{}
+	}
+	value, _ := ctx.Value(clientHintsKey{}).(ClientHints)
+	return cloneClientHints(value)
+}
+
+func WithRequestCorrelationHints(ctx context.Context, value RequestCorrelationHints) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	value.SubjectID = strings.TrimSpace(value.SubjectID)
+	value.SessionID = strings.TrimSpace(value.SessionID)
+	value.OrganizationID = strings.TrimSpace(value.OrganizationID)
+	return context.WithValue(ctx, requestCorrelationHintsKey{}, value)
+}
+
+func RequestCorrelationHintsFromContext(ctx context.Context) RequestCorrelationHints {
+	if ctx == nil {
+		return RequestCorrelationHints{}
+	}
+	value, _ := ctx.Value(requestCorrelationHintsKey{}).(RequestCorrelationHints)
+	value.SubjectID = strings.TrimSpace(value.SubjectID)
+	value.SessionID = strings.TrimSpace(value.SessionID)
+	value.OrganizationID = strings.TrimSpace(value.OrganizationID)
+	return value
+}
+
+func cloneClientHints(value ClientHints) ClientHints {
+	value.Locale = strings.TrimSpace(value.Locale)
+	value.UserAgent = strings.TrimSpace(value.UserAgent)
+	value.Location.City = strings.TrimSpace(value.Location.City)
+	value.Location.Region = strings.TrimSpace(value.Location.Region)
+	value.Location.Country = strings.TrimSpace(value.Location.Country)
+	value.Location.Timezone = strings.TrimSpace(value.Location.Timezone)
+	if value.Location.Longitude != nil {
+		longitude := *value.Location.Longitude
+		value.Location.Longitude = &longitude
+	}
+	if value.Location.Latitude != nil {
+		latitude := *value.Location.Latitude
+		value.Location.Latitude = &latitude
+	}
 	return value
 }
 

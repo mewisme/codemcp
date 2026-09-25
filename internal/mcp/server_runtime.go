@@ -46,6 +46,7 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 		name, _ := params["name"].(string)
 		args, _ := params["arguments"].(map[string]any)
 		meta, _ := params["_meta"].(map[string]any)
+		ctx = withProfileRequestMetadata(ctx, r.Profile, meta)
 		requestContext := RequestContextFromContext(ctx)
 		if requestContext.ProtocolVersion == "" {
 			if parsed, err := requestContextFromParams(params); err == nil {

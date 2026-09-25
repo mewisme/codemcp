@@ -12,8 +12,6 @@ import (
 	"go.mewis.me/codemcp/internal/tools"
 )
 
-type openAIConfigProjectionProbe struct{}
-
 type profileConfigSetProvider struct {
 	applies atomic.Int32
 }
@@ -39,16 +37,6 @@ func (provider *profileConfigSetProvider) ApplySet(context.Context, map[string]a
 	}, nil
 }
 
-func (openAIConfigProjectionProbe) ID() ProfileID { return "openai-config-probe" }
-
-func (openAIConfigProjectionProbe) ToolRepresentation(tool ToolDescriptor) ToolRepresentation {
-	return ToolRepresentation{
-		Title:       "OpenAI " + tool.Title,
-		Description: "OpenAI-compatible presentation for " + tool.Name,
-		Meta:        map[string]any{"profile": "openai"},
-	}
-}
-
 func TestConfigToolsKeepCanonicalSchemasEffectsAndSecurityAcrossProfiles(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	runtime := tools.NewRuntime()
@@ -67,7 +55,7 @@ func TestConfigToolsKeepCanonicalSchemasEffectsAndSecurityAcrossProfiles(t *test
 			if err != nil {
 				t.Fatal(err)
 			}
-			openai, err := ProjectTool(openAIConfigProjectionProbe{}, descriptor, options)
+			openai, err := ProjectTool(OpenAIProfile(), descriptor, options)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -77,8 +65,8 @@ func TestConfigToolsKeepCanonicalSchemasEffectsAndSecurityAcrossProfiles(t *test
 				!reflect.DeepEqual(base.Annotations, openai.Annotations) {
 				t.Fatalf("%s profile changed canonical contract bound=%t\nbase=%#v\nopenai=%#v", name, boundWorkspace, base, openai)
 			}
-			if reflect.DeepEqual(base.Meta, openai.Meta) || base.Title == openai.Title {
-				t.Fatalf("%s probe did not exercise presentation-only profile differences", name)
+			if reflect.DeepEqual(base.Meta, openai.Meta) || base.Title != openai.Title || base.Description != openai.Description {
+				t.Fatalf("%s OpenAI presentation projection drifted", name)
 			}
 		}
 	}
@@ -105,7 +93,7 @@ func TestConfigToolEffectsRemainTruthfulAcrossProfiles(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		openai, err := ProjectTool(openAIConfigProjectionProbe{}, descriptor, ToolProjectionOptions{})
+		openai, err := ProjectTool(OpenAIProfile(), descriptor, ToolProjectionOptions{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -117,8 +105,8 @@ func TestConfigToolEffectsRemainTruthfulAcrossProfiles(t *testing.T) {
 
 func TestConfigSetHostConfirmationCannotBypassCodeMCPApprovalAcrossProfiles(t *testing.T) {
 	for name, profile := range map[string]Profile{
-		"base":                    BaseProfile(),
-		"openai-compatible-probe": openAIConfigProjectionProbe{},
+		"base":   BaseProfile(),
+		"openai": OpenAIProfile(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("CM_CONFIG_DIR", t.TempDir())
@@ -163,8 +151,8 @@ func TestConfigSetHostConfirmationCannotBypassCodeMCPApprovalAcrossProfiles(t *t
 func TestConfigSetApprovedExecutionIsCanonicalAcrossProfiles(t *testing.T) {
 	var canonicalJSON string
 	for name, profile := range map[string]Profile{
-		"base":                    BaseProfile(),
-		"openai-compatible-probe": openAIConfigProjectionProbe{},
+		"base":   BaseProfile(),
+		"openai": OpenAIProfile(),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("CM_CONFIG_DIR", t.TempDir())

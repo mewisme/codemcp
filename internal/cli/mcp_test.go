@@ -72,6 +72,14 @@ func TestMCPCommandDoesNotExposeServerManagement(t *testing.T) {
 	}
 }
 
+func TestMCPHTTPCommandExposesDeterministicProfileSelection(t *testing.T) {
+	command := mcpHTTPCommand()
+	flag := command.Flags().Lookup("profile")
+	if flag == nil || flag.DefValue != "base" {
+		t.Fatalf("profile flag=%#v", flag)
+	}
+}
+
 func TestUpstreamHelpUsesCanonicalTerminology(t *testing.T) {
 	cmd := upstreamCommand()
 	var output bytes.Buffer

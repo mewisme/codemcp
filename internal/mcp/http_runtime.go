@@ -22,7 +22,11 @@ type HTTPRuntime struct {
 func NewHTTPRuntime() *HTTPRuntime { return NewHTTPRuntimeWithTools(tools.NewRuntime()) }
 
 func NewHTTPRuntimeWithTools(toolRuntime *tools.Runtime) *HTTPRuntime {
-	return &HTTPRuntime{Server: NewRuntimeWithTools(toolRuntime), Activity: activity.NewStream(), Subscriptions: newSubscriptionHub(), ApprovalCallers: approval.NewCallerRegistry()}
+	return NewHTTPRuntimeWithProfile(toolRuntime, BaseProfile())
+}
+
+func NewHTTPRuntimeWithProfile(toolRuntime *tools.Runtime, profile Profile) *HTTPRuntime {
+	return &HTTPRuntime{Server: NewRuntimeWithProfile(toolRuntime, profile), Activity: activity.NewStream(), Subscriptions: newSubscriptionHub(), ApprovalCallers: approval.NewCallerRegistry()}
 }
 
 func (h *HTTPRuntime) CloseSubscriptions() {
