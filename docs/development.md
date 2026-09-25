@@ -47,6 +47,8 @@ make check
 make test
 make test-race
 make build
+make init
+make uninit
 make run ARGS="status --json"
 make up
 make status
@@ -56,6 +58,8 @@ make frontend-dev
 ```
 
 `make bootstrap` is the explicit dependency-install step. Ordinary `make prepare`, `run`, `up`, and `restart` reuse the existing frontend installation by default; override `PREPARE_ARGS` only when needed.
+
+`make init` and `make uninit` delegate directly to the canonical `cm` commands. `make init` does not add `--force`; pass it explicitly through `ARGS` only when token rotation is intended.
 
 `make test` and `make test-race` always allocate a fresh `CM_CONFIG_DIR` and remove it after the test command. The Makefile intentionally has no CI, release/publish, or destructive clean target.
 

@@ -9,7 +9,7 @@ PREPARE_ARGS ?= --no-deps
 CM = $(GO) run .
 PREPARE_FRONTEND = $(NODE) scripts/prepare-frontend-embed.mjs
 
-.PHONY: help bootstrap prepare check-embed check test test-race build run up restart down status logs tui frontend-dev
+.PHONY: help bootstrap prepare check-embed check test test-race build init uninit run up restart down status logs tui frontend-dev
 
 help:
 	@printf '%s\n' \
@@ -21,6 +21,8 @@ help:
 		'  test           Run the full Go test suite with isolated config' \
 		'  test-race      Run the full Go race suite with isolated config' \
 		'  build          Build local dist/cm' \
+		'  init           Initialize CodeMCP; pass ARGS="..."' \
+		'  uninit         Remove local CodeMCP state; pass ARGS="..."' \
 		'  run            Run CodeMCP; pass ARGS="..."' \
 		'  up|restart     Prepare assets then manage the runtime' \
 		'  down|status    Manage/query the runtime' \
