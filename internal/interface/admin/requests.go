@@ -59,7 +59,7 @@ func (api API) handleRequest(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		serveApprovalEvents(w, r, api.Approvals.Events(), approvalHeartbeatInterval)
+		serveApprovalEvents(w, r, api.Approvals, approvalHeartbeatInterval)
 		return
 	}
 	if path == "grants" || strings.HasPrefix(path, "grants/") {
@@ -195,11 +195,12 @@ func writeApprovalError(w http.ResponseWriter, err error) {
 	http.Error(w, err.Error(), status)
 }
 
-func serveApprovalEvents(w http.ResponseWriter, r *http.Request, stream *approval.EventStream, heartbeatInterval time.Duration) {
-	if stream == nil {
+func serveApprovalEvents(w http.ResponseWriter, r *http.Request, manager *approval.Manager, heartbeatInterval time.Duration) {
+	if manager == nil || manager.Events() == nil {
 		http.Error(w, "control approval event stream unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	stream := manager.Events()
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -211,7 +212,17 @@ func serveApprovalEvents(w http.ResponseWriter, r *http.Request, stream *approva
 	workspaceID := strings.TrimSpace(r.URL.Query().Get("workspace_id"))
 	sub, snapshot := stream.SubscribeWorkspaceSnapshot(workspaceID, 0)
 	defer stream.Unsubscribe(sub)
-	if _, err := fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d}\n\n", snapshot.LatestSequence); err != nil {
+	requests, err := approval.NewReviewService(manager).List(approval.Filter{WorkspaceID: workspaceID, Status: approval.StatusPending})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	ready, err := json.Marshal(map[string]any{"requests": requests, "latest_sequence": snapshot.LatestSequence})
+	if err != nil {
+		http.Error(w, "encode approval stream snapshot", http.StatusInternalServerError)
+		return
+	}
+	if _, err := fmt.Fprintf(w, "event: ready\ndata: %s\n\n", ready); err != nil {
 		return
 	}
 	flusher.Flush()

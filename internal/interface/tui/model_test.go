@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
@@ -1307,7 +1309,7 @@ func TestModelPendingApprovalOverlaysEveryRoute(t *testing.T) {
 			model := NewModel(route)
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 			model = updated.(Model)
-			model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{request}})
+			model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
 			plain := ansi.Strip(model.View().Content)
 			for _, want := range []string{"Approval request", request.ID, request.WorkspaceID, request.TargetTool, "echo hello"} {
 				if !strings.Contains(plain, want) {
@@ -1343,7 +1345,7 @@ func TestModelPendingApprovalSupersedesEveryInteractiveState(t *testing.T) {
 			if test.setup != nil {
 				page = test.setup(&model)
 			}
-			model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{request}})
+			model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
 			beforeRoute, beforeOverlay, beforePalette := model.router.Current(), model.overlay, model.palette
 			for _, key := range []tea.KeyPressMsg{{Code: 'p', Mod: tea.ModCtrl}, {Code: 'o', Mod: tea.ModCtrl}, {Code: tea.KeyRight, Mod: tea.ModAlt}, {Code: tea.KeyEscape}} {
 				updated, cmd := model.Update(key)
@@ -1368,7 +1370,7 @@ func TestModelPendingApprovalSupersedesEveryInteractiveState(t *testing.T) {
 func TestModelApprovalResolvesDirectlyAndAdvancesQueue(t *testing.T) {
 	first, second := testPendingApproval("req_first"), testPendingApproval("req_second")
 	model := NewModel(Route{Kind: RouteHome})
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{first, second}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{first, second}})
 	type resolution struct {
 		id      string
 		approve bool
@@ -1414,7 +1416,7 @@ func TestModelApprovalAllowsSimilarCommandsForRuntimeSession(t *testing.T) {
 	request.SimilarCommandPattern = "git push **"
 	request.Command = "git push origin main"
 	model := NewModel(Route{Kind: RouteHome})
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{request}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
 	if view := model.approvalDialogView(96); !strings.Contains(view, "Similar pattern") || !strings.Contains(view, "git push **") || !strings.Contains(view, "s allow similar for all MCP sessions") {
 		t.Fatalf("runtime-session approval option missing:\n%s", view)
 	}
@@ -1435,21 +1437,21 @@ func TestModelApprovalAllowsSimilarCommandsForRuntimeSession(t *testing.T) {
 	}
 }
 
-func TestModelApprovalPollFiltersStatusesAndSurvivesErrors(t *testing.T) {
+func TestModelApprovalSnapshotFiltersStatusesAndSurvivesErrors(t *testing.T) {
 	pending, resolved := testPendingApproval("req_pending"), testPendingApproval("req_resolved")
 	resolved.Status = approval.StatusApproved
 	model := NewModel(Route{Kind: RouteHome})
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{resolved, pending}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{resolved, pending}})
 	if len(model.approvals) != 1 || model.activeApprovalID() != pending.ID || !model.approvalActive() {
 		t.Fatalf("pending filter=%#v", model.approvals)
 	}
-	model.applyApprovalPoll(approvalPollMsg{err: errors.New("runtime temporarily unavailable")})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{err: errors.New("runtime temporarily unavailable")})
 	if model.activeApprovalID() != pending.ID || !model.approvalActive() {
-		t.Fatal("transient poll error cleared pending approval")
+		t.Fatal("transient snapshot error cleared pending approval")
 	}
-	model.applyApprovalPoll(approvalPollMsg{requests: nil})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: nil})
 	if model.approvalActive() || len(model.approvals) != 0 {
-		t.Fatalf("empty successful poll did not clear dialog: %#v", model.approvals)
+		t.Fatalf("empty successful snapshot did not clear dialog: %#v", model.approvals)
 	}
 }
 
@@ -1459,7 +1461,7 @@ func TestModelApprovalDialogShowsLiveExpiryCountdown(t *testing.T) {
 	request.ExpiresAt = now.Add(65 * time.Second)
 	model := NewModel(Route{Kind: RouteHome})
 	model.approvalNow = func() time.Time { return now }
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{request}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
 	plain := ansi.Strip(model.approvalDialogView(80))
 	if !strings.Contains(plain, "Expires in") || !strings.Contains(plain, "00:01:05") || !strings.Contains(plain, request.ExpiresAt.Local().Format("15:04:05")) {
 		t.Fatalf("approval countdown view=%q", plain)
@@ -1479,18 +1481,18 @@ func TestModelApprovalTickExpiresRequestAndAdvancesQueue(t *testing.T) {
 	model := NewModel(Route{Kind: RouteHome})
 	model.approvalNow = func() time.Time { return now }
 	model.approvalList = func(context.Context) ([]approval.Request, error) { return []approval.Request{second}, nil }
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{first, second}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{first, second}})
 	if model.activeApprovalID() != first.ID {
 		t.Fatalf("active approval=%q", model.activeApprovalID())
 	}
 	now = now.Add(time.Second)
-	updated, poll := model.Update(approvalPollTickMsg{})
+	updated, next := model.Update(approvalClockTickMsg{})
 	model = updated.(Model)
 	if model.activeApprovalID() != second.ID || model.approvalStage != approvalStageChoice {
 		t.Fatalf("expired approval did not advance: active=%q stage=%d approvals=%#v", model.activeApprovalID(), model.approvalStage, model.approvals)
 	}
-	if poll == nil {
-		t.Fatal("expiry tick did not continue runtime poll")
+	if next == nil {
+		t.Fatal("expiry tick did not continue local approval clock")
 	}
 }
 
@@ -1500,19 +1502,19 @@ func TestModelApprovalCannotResolveAfterExpiry(t *testing.T) {
 	request.ExpiresAt = now.Add(time.Second)
 	model := NewModel(Route{Kind: RouteHome})
 	model.approvalNow = func() time.Time { return now }
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{request}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
 	resolved := false
 	model.approvalResolve = func(context.Context, string, bool, string) (approval.Request, error) {
 		resolved = true
 		return approval.Request{}, nil
 	}
 	now = now.Add(time.Second)
-	updated, poll := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	updated, refresh := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	model = updated.(Model)
 	if resolved || model.approvalActive() || len(model.approvals) != 0 {
 		t.Fatalf("expired approval resolved=%t active=%t approvals=%#v", resolved, model.approvalActive(), model.approvals)
 	}
-	if poll == nil {
+	if refresh == nil {
 		t.Fatal("expired action did not refresh approval state")
 	}
 }
@@ -1529,7 +1531,7 @@ func TestApprovalCountdownRoundsPositiveRemainderUp(t *testing.T) {
 
 func TestModelApprovalOverlayKeepsExactGeometry(t *testing.T) {
 	model := NewModel(Route{Kind: RouteHome})
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{testPendingApproval("req_geometry")}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{testPendingApproval("req_geometry")}})
 	for _, size := range [][2]int{{120, 40}, {20, 8}, {3, 3}, {1, 1}} {
 		updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		model = updated.(Model)
@@ -1545,7 +1547,7 @@ func TestModelApprovalDialogCapsHeightAndScrollsContent(t *testing.T) {
 	request.Title = strings.Repeat("Long approval title ", 8)
 	request.Arguments = json.RawMessage(`{"command":"` + strings.Repeat("echo very-long-argument ", 40) + `"}`)
 	model := NewModel(Route{Kind: RouteHome})
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{request}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 76, Height: 18})
 	model = updated.(Model)
 	view := model.View().Content
@@ -1572,7 +1574,7 @@ func TestModelApprovalDialogCapsHeightAndScrollsContent(t *testing.T) {
 func TestModelApprovalResolutionErrorKeepsRequestVisible(t *testing.T) {
 	request := testPendingApproval("req_error")
 	model := NewModel(Route{Kind: RouteHome})
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{request}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
 	model.approvalResolve = func(context.Context, string, bool, string) (approval.Request, error) {
 		return approval.Request{}, errors.New("resolution failed")
 	}
@@ -1592,35 +1594,98 @@ func testPendingApproval(id string) approval.Request {
 	return approval.Request{ID: id, Status: approval.StatusPending, WorkspaceID: "ws_demo", Source: "tunnel", TargetTool: "run_command", Title: "Allow command", Command: "echo hello", Arguments: json.RawMessage(`{"command":"echo hello","workspace_id":"ws_demo"}`)}
 }
 
-func TestModelInitPollsPendingApprovals(t *testing.T) {
+type fakeApprovalSubscription struct {
+	events []approval.Event
+	index  int
+	closed bool
+}
+
+func (subscription *fakeApprovalSubscription) Next() (approval.Event, error) {
+	if subscription == nil || subscription.index >= len(subscription.events) {
+		return approval.Event{}, io.EOF
+	}
+	event := subscription.events[subscription.index]
+	subscription.index++
+	return event, nil
+}
+
+func (subscription *fakeApprovalSubscription) Close() error {
+	subscription.closed = true
+	return nil
+}
+
+func TestModelInitSubscribesPendingApprovals(t *testing.T) {
 	request := testPendingApproval("req_init")
 	model := NewModel(Route{Kind: RouteHome})
-	model.approvalList = func(context.Context) ([]approval.Request, error) { return []approval.Request{request}, nil }
+	subscription := &fakeApprovalSubscription{}
+	model.approvalSubscribe = func(context.Context) (approvalEventSubscription, application.ApprovalStateSnapshot, error) {
+		return subscription, application.ApprovalStateSnapshot{Requests: []approval.Request{request}, LatestSequence: 7}, nil
+	}
 	cmd := model.Init()
 	if cmd == nil {
-		t.Fatal("model init did not start approval poll")
+		t.Fatal("model init did not start approval subscription")
 	}
-	message, ok := cmd().(approvalPollMsg)
+	message, ok := cmd().(approvalSubscribedMsg)
 	if !ok {
 		t.Fatalf("init message=%T", cmd())
 	}
-	updated, tick := model.Update(message)
+	updated, follow := model.Update(message)
 	model = updated.(Model)
-	if !model.approvalActive() || model.activeApprovalID() != request.ID || tick == nil {
-		t.Fatalf("init approval state active=%t id=%q tick=%v", model.approvalActive(), model.activeApprovalID(), tick)
+	if !model.approvalActive() || model.activeApprovalID() != request.ID || model.approvalSubscription != subscription || follow == nil {
+		t.Fatalf("init approval state active=%t id=%q subscription=%T follow=%v", model.approvalActive(), model.activeApprovalID(), model.approvalSubscription, follow)
 	}
 }
 
-func TestModelApprovalPollKeepsActiveRequestStableAcrossReorder(t *testing.T) {
+func TestModelApprovalLifecycleEventInvalidatesStaleActionImmediately(t *testing.T) {
+	request := testPendingApproval("req_cross_surface")
+	model := NewModel(Route{Kind: RouteHome})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
+	model.approvalSubscription = &fakeApprovalSubscription{}
+
+	updated, follow := model.Update(approvalEventMsg{event: approval.Event{
+		Name: approval.EventApproved, Subject: approval.EventSubjectRequest, RequestID: request.ID, Status: approval.StatusApproved,
+	}})
+	model = updated.(Model)
+	if model.approvalActive() || len(model.approvals) != 0 {
+		t.Fatalf("stale approval remained actionable: %#v", model.approvals)
+	}
+	if follow == nil {
+		t.Fatal("approval lifecycle event did not schedule state reconciliation and next event wait")
+	}
+}
+
+func TestModelApprovalClockDoesNotPollRuntime(t *testing.T) {
+	now := time.Now()
+	request := testPendingApproval("req_clock")
+	request.ExpiresAt = now.Add(time.Minute)
+	model := NewModel(Route{Kind: RouteHome})
+	model.approvalNow = func() time.Time { return now }
+	listCalls := 0
+	model.approvalList = func(context.Context) ([]approval.Request, error) {
+		listCalls++
+		return nil, nil
+	}
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
+	updated, next := model.Update(approvalClockTickMsg{})
+	model = updated.(Model)
+	if listCalls != 0 {
+		t.Fatalf("approval clock polled runtime %d time(s)", listCalls)
+	}
+	if !model.approvalActive() || next == nil {
+		t.Fatalf("approval clock did not preserve active request: active=%t next=%v", model.approvalActive(), next)
+	}
+}
+
+func TestModelApprovalSnapshotKeepsActiveRequestStableAcrossReorder(t *testing.T) {
 	first, second := testPendingApproval("req_first"), testPendingApproval("req_second")
 	model := NewModel(Route{Kind: RouteHome})
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{first, second}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{first, second}})
 	updated, cmd := model.Update(tea.KeyPressMsg{Code: 'a', Text: "a"})
 	model = updated.(Model)
 	if cmd == nil || model.approvalStage != approvalStageResolving {
 		t.Fatalf("approval did not begin resolving: stage=%d cmd=%v", model.approvalStage, cmd)
 	}
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{second, first}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{second, first}})
 	if model.activeApprovalID() != first.ID || model.approvalStage != approvalStageResolving || !model.approvalApprove {
 		t.Fatalf("active approval changed after reorder: active=%q stage=%d approve=%t", model.activeApprovalID(), model.approvalStage, model.approvalApprove)
 	}
@@ -1866,7 +1931,7 @@ func TestApprovalDialogWrapsLongArgumentsWithoutTruncation(t *testing.T) {
 	request.WorkspaceID = "ws_" + token
 	request.Arguments = json.RawMessage(`{"command":"` + token + `","cwd":"/very/long/` + token + `"}`)
 	model := NewModel(Route{Kind: RouteHome})
-	model.applyApprovalPoll(approvalPollMsg{requests: []approval.Request{request}})
+	model.applyApprovalSnapshot(approvalSnapshotMsg{requests: []approval.Request{request}})
 	view := model.approvalDialogView(24)
 	for _, line := range strings.Split(view, "\n") {
 		if got := lipgloss.Width(line); got > 24 {

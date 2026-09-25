@@ -41,6 +41,18 @@ export function RequestApprovalHost() {
     }
   }, [applyRequests])
 
+  const removeRequest = useCallback((id: string) => {
+    setRequests((current) => {
+      const next = current.filter((item) => item.id !== id)
+      setSelected((selectedRequest) => {
+        if (selectedRequest?.id !== id) return selectedRequest
+        return next[0] ?? null
+      })
+      return next
+    })
+    notified.current.delete(id)
+  }, [])
+
   const focusRequest = useCallback(async (id: string) => {
     try {
       const detail = await adminApi.approvalRequest(id)
@@ -53,52 +65,35 @@ export function RequestApprovalHost() {
   }, [refresh])
 
   useEffect(() => {
-    let active = true
-    void adminApi
-      .approvalRequests("pending")
-      .then((next) => {
-        if (active) applyRequests(next)
-      })
-      .catch((value) => {
-        if (active) setError(errorText(value))
-      })
-    return () => {
-      active = false
-    }
-  }, [applyRequests])
-  useEffect(() => {
-    if (!selected?.id) return
-    let active = true
-    void adminApi
-      .approvalRequest(selected.id)
-      .then((detail) => {
-        if (active && detail.status === "pending") setSelected(detail)
-      })
-      .catch(() => {
-        if (active) void refresh()
-      })
-    return () => {
-      active = false
-    }
-  }, [refresh, selected?.id])
-  useEffect(() => {
     const timer = window.setInterval(() => {
       const nextNow = Date.now()
       setNow(nextNow)
-      const expiry = selected
-        ? new Date(selected.expires_at).getTime()
-        : Number.NaN
-      if (Number.isFinite(expiry) && expiry <= nextNow) void refresh()
+      setRequests((current) => {
+        const next = current.filter((item) => {
+          const expiry = new Date(item.expires_at).getTime()
+          return !Number.isFinite(expiry) || expiry > nextNow
+        })
+        if (next.length !== current.length)
+          setSelected((selectedRequest) =>
+            selectedRequest && next.some((item) => item.id === selectedRequest.id)
+              ? selectedRequest
+              : next[0] ?? null
+          )
+        return next
+      })
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [refresh, selected])
+  }, [])
   useEffect(() => {
     const controller = new AbortController()
     let stopped = false
     async function connect() {
       try {
         await streamApprovals(controller.signal, {
-          onReady: () => void refresh(),
+          onReady: (snapshot) => {
+            applyRequests(snapshot.requests)
+            setError("")
+          },
           onEvent: (event) => {
             const requestID = event.request_id
             if (event.name === "approval.pending" && requestID && !notified.current.has(requestID)) {
@@ -108,8 +103,16 @@ export function RequestApprovalHost() {
                 duration: 10000,
                 action: { label: "Review", onClick: () => void focusRequest(requestID) },
               })
+              void focusRequest(requestID)
+              return
             }
-            void refresh()
+            if (
+              requestID &&
+              event.subject === "request" &&
+              ["approval.approved", "approval.denied", "approval.expired", "approval.cancelled", "approval.claimed"].includes(event.name)
+            ) {
+              removeRequest(requestID)
+            }
           },
         })
       } catch (value) {
@@ -127,7 +130,7 @@ export function RequestApprovalHost() {
       controller.abort()
       if (retryTimer.current !== null) window.clearTimeout(retryTimer.current)
     }
-  }, [focusRequest, refresh])
+  }, [applyRequests, focusRequest, removeRequest])
 
   const position = useMemo(
     () =>
@@ -143,7 +146,7 @@ export function RequestApprovalHost() {
     try {
       if (action === "approve") await adminApi.approveRequest(selected.id)
       else await adminApi.denyRequest(selected.id)
-      await refresh()
+      removeRequest(selected.id)
     } catch (value) {
       setError(errorText(value))
       await refresh()

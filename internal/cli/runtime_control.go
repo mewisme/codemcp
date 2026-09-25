@@ -148,6 +148,9 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 		requests, err := approval.NewReviewService(options.Approvals).List(approval.Filter{})
 		writeControlJSON(w, requests, err)
 	}))
+	mux.HandleFunc("/requests/stream", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
+		serveRuntimeApprovalFeed(w, r, options.Approvals)
+	}))
 	mux.HandleFunc("/requests/view", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
 		if options.Approvals == nil {
 			writeControlJSON(w, nil, errors.New("control approval manager is unavailable"))

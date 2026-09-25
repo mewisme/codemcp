@@ -1,8 +1,13 @@
-import { adminRequestHeaders, type ApprovalEvent } from "@/lib/api"
+import { adminRequestHeaders, type ApprovalEvent, type ApprovalRequest } from "@/lib/api"
 
 export type ApprovalStreamHandlers = {
-  onReady?: () => void
+  onReady?: (snapshot: ApprovalStreamSnapshot) => void
   onEvent?: (event: ApprovalEvent) => void
+}
+
+export type ApprovalStreamSnapshot = {
+  requests: ApprovalRequest[]
+  latest_sequence: number
 }
 
 export async function streamApprovals(signal: AbortSignal, handlers: ApprovalStreamHandlers = {}, workspaceID = "") {
@@ -34,8 +39,14 @@ export async function streamApprovals(signal: AbortSignal, handlers: ApprovalStr
         if (line.startsWith("data: ")) data += line.slice(6)
       }
       if (eventType === "overflow") throw new Error("Approval stream overflowed; reconnecting to resync requests.")
-      if (eventType === "ready" || eventType === "heartbeat") handlers.onReady?.()
-      else if (eventType.startsWith("approval.") && data) {
+      if (eventType === "ready" && data) {
+        try {
+          const snapshot = JSON.parse(data) as ApprovalStreamSnapshot
+          handlers.onReady?.({ requests: snapshot.requests ?? [], latest_sequence: snapshot.latest_sequence ?? 0 })
+        } catch (value) {
+          if (!(value instanceof SyntaxError)) throw value
+        }
+      } else if (eventType.startsWith("approval.") && data) {
         try { handlers.onEvent?.(JSON.parse(data) as ApprovalEvent) } catch (value) { if (!(value instanceof SyntaxError)) throw value }
       }
       boundary = buffer.indexOf("\n\n")

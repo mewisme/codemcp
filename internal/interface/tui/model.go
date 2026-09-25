@@ -32,7 +32,8 @@ const (
 )
 
 const navbarMinHeight = 9
-const approvalPollInterval = time.Second
+const approvalClockInterval = time.Second
+const approvalReconnectDelay = time.Second
 const toastDuration = 3 * time.Second
 
 type approvalStage uint8
@@ -43,12 +44,30 @@ const (
 	approvalStageResolving
 )
 
-type approvalPollMsg struct {
+type approvalSnapshotMsg struct {
 	requests []approval.Request
 	err      error
 }
 
-type approvalPollTickMsg struct{}
+type approvalClockTickMsg struct{}
+
+type approvalSubscribedMsg struct {
+	subscription approvalEventSubscription
+	snapshot     application.ApprovalStateSnapshot
+	err          error
+}
+
+type approvalEventMsg struct {
+	event approval.Event
+	err   error
+}
+
+type approvalReconnectMsg struct{}
+
+type approvalEventSubscription interface {
+	Next() (approval.Event, error)
+	Close() error
+}
 
 type approvalResolvedMsg struct {
 	id      string
@@ -110,6 +129,8 @@ type Model struct {
 	approvalErr            error
 	approvalViewport       viewport.Model
 	approvalList           func(context.Context) ([]approval.Request, error)
+	approvalSubscribe      func(context.Context) (approvalEventSubscription, application.ApprovalStateSnapshot, error)
+	approvalSubscription   approvalEventSubscription
 	approvalResolve        func(context.Context, string, bool, string) (approval.Request, error)
 	approvalResolveSimilar func(context.Context, string, bool, bool, string) (approval.Request, error)
 	approvalNow            func() time.Time
@@ -141,14 +162,16 @@ func NewModelWithState(ctx context.Context, initial Route, root string) Model {
 	approvalView := viewport.New(viewport.WithWidth(72), viewport.WithHeight(12))
 	approvalView.SoftWrap = false
 	approvalView.FillHeight = false
-	model := Model{ctx: ctx, router: NewRouter(initial), actions: defaultActionRegistry(), workspaceContexts: map[string]*tuipage.WorkspaceContextSession{}, pageViewStates: map[RouteKind]any{}, lastRoutes: map[RouteKind]Route{}, stateRoot: root, state: state, theme: newTheme(true), approvalViewport: approvalView, approvalList: application.ListApprovalRequests, approvalResolve: application.ResolveApprovalRequest, approvalResolveSimilar: application.ResolveApprovalRequestWithRuntimeGrant, approvalNow: time.Now}
+	model := Model{ctx: ctx, router: NewRouter(initial), actions: defaultActionRegistry(), workspaceContexts: map[string]*tuipage.WorkspaceContextSession{}, pageViewStates: map[RouteKind]any{}, lastRoutes: map[RouteKind]Route{}, stateRoot: root, state: state, theme: newTheme(true), approvalViewport: approvalView, approvalList: application.ListApprovalRequests, approvalSubscribe: func(ctx context.Context) (approvalEventSubscription, application.ApprovalStateSnapshot, error) {
+		return application.SubscribeApprovalRequests(ctx)
+	}, approvalResolve: application.ResolveApprovalRequest, approvalResolveSimilar: application.ResolveApprovalRequestWithRuntimeGrant, approvalNow: time.Now}
 	model.loadPage(initial)
 	model.rememberStableRoute(initial)
 	return model
 }
 
 func (model Model) Init() tea.Cmd {
-	commands := []tea.Cmd{model.pollApprovalsCmd()}
+	commands := []tea.Cmd{model.subscribeApprovalsCmd()}
 	if model.currentPage != nil {
 		commands = append(commands, model.initCurrentPage())
 	}
@@ -177,12 +200,45 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			model.dismissToast()
 		}
 		return model, nil
-	case approvalPollMsg:
-		model.applyApprovalPoll(msg)
-		return model, model.approvalTickCmd()
-	case approvalPollTickMsg:
+	case approvalSnapshotMsg:
+		wasActive := model.approvalActive()
+		model.applyApprovalSnapshot(msg)
+		if !wasActive && model.approvalActive() {
+			return model, model.approvalTickCmd()
+		}
+		return model, nil
+	case approvalClockTickMsg:
 		model.expireElapsedApprovals(model.approvalTime())
-		return model, model.pollApprovalsCmd()
+		if model.approvalActive() {
+			return model, model.approvalTickCmd()
+		}
+		return model, nil
+	case approvalSubscribedMsg:
+		if msg.err != nil {
+			return model, model.approvalReconnectCmd()
+		}
+		if model.approvalSubscription != nil && model.approvalSubscription != msg.subscription {
+			_ = model.approvalSubscription.Close()
+		}
+		model.approvalSubscription = msg.subscription
+		model.applyApprovalSnapshot(approvalSnapshotMsg{requests: msg.snapshot.Requests})
+		commands := []tea.Cmd{model.waitApprovalEventCmd()}
+		if model.approvalActive() {
+			commands = append(commands, model.approvalTickCmd())
+		}
+		return model, tea.Batch(commands...)
+	case approvalEventMsg:
+		if msg.err != nil {
+			if model.approvalSubscription != nil {
+				_ = model.approvalSubscription.Close()
+				model.approvalSubscription = nil
+			}
+			return model, model.approvalReconnectCmd()
+		}
+		model.applyApprovalEvent(msg.event)
+		return model, tea.Batch(model.refreshApprovalsCmd(), model.waitApprovalEventCmd())
+	case approvalReconnectMsg:
+		return model, model.subscribeApprovalsCmd()
 	case approvalResolvedMsg:
 		return model.finishApprovalResolution(msg)
 	case tea.BackgroundColorMsg:
@@ -508,7 +564,7 @@ func (model Model) View() tea.View {
 	return view
 }
 
-func (model Model) pollApprovalsCmd() tea.Cmd {
+func (model Model) refreshApprovalsCmd() tea.Cmd {
 	list := model.approvalList
 	ctx := model.ctx
 	if list == nil {
@@ -516,15 +572,42 @@ func (model Model) pollApprovalsCmd() tea.Cmd {
 	}
 	return func() tea.Msg {
 		requests, err := list(ctx)
-		return approvalPollMsg{requests: requests, err: err}
+		return approvalSnapshotMsg{requests: requests, err: err}
 	}
 }
 
-func (model Model) approvalTickCmd() tea.Cmd {
-	return tea.Tick(approvalPollInterval, func(time.Time) tea.Msg { return approvalPollTickMsg{} })
+func (model Model) subscribeApprovalsCmd() tea.Cmd {
+	subscribe := model.approvalSubscribe
+	ctx := model.ctx
+	if subscribe == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		subscription, snapshot, err := subscribe(ctx)
+		return approvalSubscribedMsg{subscription: subscription, snapshot: snapshot, err: err}
+	}
 }
 
-func (model *Model) applyApprovalPoll(msg approvalPollMsg) {
+func (model Model) waitApprovalEventCmd() tea.Cmd {
+	subscription := model.approvalSubscription
+	if subscription == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		event, err := subscription.Next()
+		return approvalEventMsg{event: event, err: err}
+	}
+}
+
+func (model Model) approvalReconnectCmd() tea.Cmd {
+	return tea.Tick(approvalReconnectDelay, func(time.Time) tea.Msg { return approvalReconnectMsg{} })
+}
+
+func (model Model) approvalTickCmd() tea.Cmd {
+	return tea.Tick(approvalClockInterval, func(time.Time) tea.Msg { return approvalClockTickMsg{} })
+}
+
+func (model *Model) applyApprovalSnapshot(msg approvalSnapshotMsg) {
 	if model == nil || msg.err != nil {
 		return
 	}
@@ -546,6 +629,16 @@ func (model *Model) applyApprovalPoll(msg approvalPollMsg) {
 	}
 	if activeID == "" || pending[0].ID != activeID {
 		model.openApprovalChoice()
+	}
+}
+
+func (model *Model) applyApprovalEvent(event approval.Event) {
+	if model == nil || event.RequestID == "" {
+		return
+	}
+	switch event.Name {
+	case approval.EventApproved, approval.EventDenied, approval.EventExpired, approval.EventCancelled, approval.EventClaimed:
+		model.expireApproval(event.RequestID)
 	}
 }
 
@@ -640,7 +733,7 @@ func (model Model) resolveApprovalSelection(approve, similar bool) (tea.Model, t
 	}
 	if approvalRequestExpired(request, model.approvalTime()) {
 		model.expireApproval(request.ID)
-		return model, model.pollApprovalsCmd()
+		return model, model.refreshApprovalsCmd()
 	}
 	id, resolve, resolveSimilar, ctx := request.ID, model.approvalResolve, model.approvalResolveSimilar, model.ctx
 	model.approvalApprove = approve

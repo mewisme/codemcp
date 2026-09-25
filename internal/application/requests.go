@@ -2,14 +2,56 @@ package application
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 
 	"go.mewis.me/codemcp/internal/approval"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
+
+type ApprovalStateSnapshot struct {
+	Requests       []approval.Request
+	LatestSequence uint64
+}
+
+type ApprovalSubscription struct {
+	stream   *runtimecontrol.ApprovalFeedStream
+	close    sync.Once
+	closeErr error
+}
+
+func SubscribeApprovalRequests(ctx context.Context) (*ApprovalSubscription, ApprovalStateSnapshot, error) {
+	stream, _, err := runtimecontrol.OpenApprovalFeed(ctx)
+	if err != nil {
+		return nil, ApprovalStateSnapshot{}, err
+	}
+	snapshot := stream.Snapshot()
+	return &ApprovalSubscription{stream: stream}, ApprovalStateSnapshot{
+		Requests:       append([]approval.Request(nil), snapshot.Requests...),
+		LatestSequence: snapshot.LatestSequence,
+	}, nil
+}
+
+func (subscription *ApprovalSubscription) Next() (approval.Event, error) {
+	if subscription == nil || subscription.stream == nil {
+		return approval.Event{}, io.EOF
+	}
+	return subscription.stream.Next()
+}
+
+func (subscription *ApprovalSubscription) Close() error {
+	if subscription == nil || subscription.stream == nil {
+		return nil
+	}
+	subscription.close.Do(func() {
+		subscription.closeErr = subscription.stream.Close()
+	})
+	return subscription.closeErr
+}
 
 func ListApprovalRequests(ctx context.Context) ([]approval.Request, error) {
 	span := tracepkg.Start(ctx, "REQUEST", "request.list", "Listing control approval requests")

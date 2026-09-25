@@ -173,6 +173,30 @@ func TestApprovalSSEPublishesLifecycleWithoutArguments(t *testing.T) {
 	}
 }
 
+func TestApprovalSSEReadyHydratesPendingReadModel(t *testing.T) {
+	manager := approval.NewManager("instance-test")
+	created := seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update --version v2")
+	server := httptest.NewServer(New(API{Approvals: manager, Config: config.NewRuntimeStore(config.Default())}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL+"/api/requests/stream", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	scanner := bufio.NewScanner(response.Body)
+	data := scanEventData(t, scanner, "ready")
+	if !strings.Contains(data, created.ID) || !strings.Contains(data, "\"status\":\"pending\"") || !strings.Contains(data, "\"requests\"") {
+		t.Fatalf("approval ready snapshot=%q", data)
+	}
+}
+
 func TestApprovalSSESubscribesBeforeReadyFlush(t *testing.T) {
 	manager := approval.NewManager("instance-test")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -188,7 +212,7 @@ func TestApprovalSSESubscribesBeforeReadyFlush(t *testing.T) {
 	}
 	done := make(chan struct{})
 	go func() {
-		serveApprovalEvents(writer, request, manager.Events(), time.Hour)
+		serveApprovalEvents(writer, request, manager, time.Hour)
 		close(done)
 	}()
 	deadline := time.Now().Add(3 * time.Second)

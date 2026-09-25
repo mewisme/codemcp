@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
@@ -189,6 +190,57 @@ func TestRuntimeControlRequestListViewApproveAndDeny(t *testing.T) {
 	}
 }
 
+func TestRuntimeControlApprovalSubscribersAreIndependent(t *testing.T) {
+	defer configformat.SetRootPath("")
+	if err := configformat.SetRootPath(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	manager := approval.NewManager("instance-test")
+	request := seedApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
+	control, err := startRuntimeControl(runtimeControlOptions{
+		Approvals: manager,
+		Events:    runtimeevent.NewStream(runtimeevent.Metadata{}),
+		Reload:    func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil },
+		Status:    func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} },
+		Shutdown:  func() {},
+		ClearLogs: func() error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	first, firstSnapshot, err := application.SubscribeApprovalRequests(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, secondSnapshot, err := application.SubscribeApprovalRequests(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	for name, snapshot := range map[string]application.ApprovalStateSnapshot{"first": firstSnapshot, "second": secondSnapshot} {
+		if len(snapshot.Requests) != 1 || snapshot.Requests[0].ID != request.ID || snapshot.Requests[0].Status != approval.StatusPending {
+			t.Fatalf("%s snapshot=%#v", name, snapshot)
+		}
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := approval.NewReviewService(manager).Resolve(approval.ReviewInput{Request: request.ID, Decision: approval.ReviewApprove, ResolvedBy: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	event, err := second.Next()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Name != approval.EventApproved || event.RequestID != request.ID || event.Status != approval.StatusApproved {
+		t.Fatalf("second subscriber event=%#v", event)
+	}
+}
+
 func TestRuntimeControlListsApprovalAfterWaiterCancellation(t *testing.T) {
 	defer configformat.SetRootPath("")
 	if err := configformat.SetRootPath(t.TempDir()); err != nil {
@@ -296,6 +348,14 @@ func TestRuntimeControlRejectsUnauthenticatedCLIApprovalConsume(t *testing.T) {
 	defer listResponse.Body.Close()
 	if listResponse.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("request list status = %d", listResponse.StatusCode)
+	}
+	streamResponse, err := (&http.Client{Timeout: time.Second}).Get("http://" + control.state.Address + "/requests/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer streamResponse.Body.Close()
+	if streamResponse.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("request stream status = %d", streamResponse.StatusCode)
 	}
 	executionResponse, err := (&http.Client{Timeout: time.Second}).Get("http://" + control.state.Address + "/executions/stream")
 	if err != nil {

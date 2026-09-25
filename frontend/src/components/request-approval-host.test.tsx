@@ -26,12 +26,7 @@ describe("RequestApprovalHost", () => {
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const path = requestPath(input)
-        if (path === "/api/requests?status=pending") return json(pending)
-        if (path === "/api/requests/stream") return approvalStream()
-        if (path === "/api/requests/req_first")
-          return json(pending.find((item) => item.id === "req_first"))
-        if (path === "/api/requests/req_second")
-          return json(pending.find((item) => item.id === "req_second"))
+        if (path === "/api/requests/stream") return approvalStream(pending)
         if (
           path === "/api/requests/req_first/approve" &&
           init?.method === "POST"
@@ -72,7 +67,7 @@ describe("RequestApprovalHost", () => {
     )
   })
 
-  it("refetches pending requests when the approval SSE reports a new request", async () => {
+  it("loads only the new request detail when the approval SSE reports a pending request", async () => {
     let listCalls = 0
     const pending = request("req_stream", "cm update --version v2")
     vi.stubGlobal(
@@ -81,10 +76,10 @@ describe("RequestApprovalHost", () => {
         const path = requestPath(input)
         if (path === "/api/requests?status=pending") {
           listCalls++
-          return json(listCalls === 1 ? [] : [pending])
+          return json([])
         }
         if (path === "/api/requests/stream")
-          return approvalStream({
+          return approvalStream([], {
             name: "approval.pending",
             request_id: pending.id,
           })
@@ -97,8 +92,28 @@ describe("RequestApprovalHost", () => {
     expect(
       await screen.findByText("Allow cm update --version v2")
     ).toBeInTheDocument()
-    expect(listCalls).toBeGreaterThanOrEqual(2)
+    expect(listCalls).toBe(0)
     expect(toast.warning).toHaveBeenCalledWith("Control approval requested", expect.objectContaining({ description: expect.stringContaining("ws_test"), action: expect.objectContaining({ label: "Review" }) }))
+  })
+
+  it("drops a stale dialog immediately when another surface resolves it", async () => {
+    const pending = request("req_remote", "cm update --remote")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestPath(input)
+        if (path === "/api/requests/stream")
+          return approvalStream([pending], { name: "approval.approved", request_id: pending.id }, 500)
+        throw new Error(`Unhandled test request: ${path}`)
+      })
+    )
+
+    renderHost()
+    expect(await screen.findByText("Allow cm update --remote")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Approve/ })).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByText("Allow cm update --remote")).not.toBeInTheDocument()
+    )
   })
 
   it("drops a stale dialog when resolving it reports a conflict", async () => {
@@ -109,8 +124,7 @@ describe("RequestApprovalHost", () => {
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const path = requestPath(input)
         if (path === "/api/requests?status=pending") return json(pending)
-        if (path === "/api/requests/stream") return approvalStream()
-        if (path === "/api/requests/req_stale") return json(pending[0])
+        if (path === "/api/requests/stream") return approvalStream(pending)
         if (
           path === "/api/requests/req_stale/approve" &&
           init?.method === "POST"
@@ -172,20 +186,30 @@ function json(value: unknown) {
   })
 }
 
-function approvalStream(event?: { name: string; request_id: string }) {
+function approvalStream(
+  snapshot: ApprovalRequest[] = [],
+  event?: { name: string; request_id: string },
+  eventDelayMS = 0
+) {
   const encoder = new TextEncoder()
   const body = new ReadableStream({
     start(controller) {
       controller.enqueue(
-        encoder.encode('event: ready\ndata: {"latest_sequence":0}\n\n')
-      )
-      if (event)
-        controller.enqueue(
-          encoder.encode(
-            `event: ${event.name}\ndata: ${JSON.stringify({ ...event, subject: "request", workspace_id: "ws_test", target_tool: "run_command", status: "pending", created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 60_000).toISOString(), timestamp: new Date().toISOString() })}\n\n`
-          )
+        encoder.encode(
+          "event: ready\ndata: " + JSON.stringify({ latest_sequence: 0, requests: snapshot }) + "\n\n"
         )
-      controller.close()
+      )
+      const publishEvent = () => {
+        if (event)
+          controller.enqueue(
+            encoder.encode(
+              `event: ${event.name}\ndata: ${JSON.stringify({ ...event, subject: "request", workspace_id: "ws_test", target_tool: "run_command", status: "pending", created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 60_000).toISOString(), timestamp: new Date().toISOString() })}\n\n`
+            )
+          )
+        controller.close()
+      }
+      if (event && eventDelayMS > 0) window.setTimeout(publishEvent, eventDelayMS)
+      else publishEvent()
     },
   })
   return new Response(body, {

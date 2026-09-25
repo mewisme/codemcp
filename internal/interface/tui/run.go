@@ -25,6 +25,8 @@ func Run(ctx context.Context, route Route, in io.Reader, out io.Writer) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	_, err := tea.NewProgram(NewModelWithState(ctx, route, config.RootPath()), tea.WithContext(ctx), tea.WithInput(in), tea.WithOutput(out)).Run()
+	sessionCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	_, err := tea.NewProgram(NewModelWithState(sessionCtx, route, config.RootPath()), tea.WithContext(sessionCtx), tea.WithInput(in), tea.WithOutput(out)).Run()
 	return err
 }
