@@ -67,6 +67,8 @@ func (openAIProfile) InstructionPresentation() InstructionPresentation {
 	return InstructionPresentation{Heading: openAIInstructionHeading}
 }
 
+func (openAIProfile) ClientCertificateAuthentication() bool { return true }
+
 func (openAIProfile) ProjectRequestMetadata(meta map[string]any) requestMetadataProjection {
 	locale := openAIHintString(meta[openAILocaleMetaKey])
 	if locale == "" {

@@ -91,18 +91,37 @@ type ErrorDescriptor struct {
 }
 
 const runtimeApprovalAuthority = "codemcp-runtime"
+const bearerAuthScheme = "oauth2"
 
-func DescribeProtocol(schemas []tools.Schema) ProtocolDescriptors {
+func DescribeProtocol(schemas []tools.Schema, authRequirements ...AuthRequirement) ProtocolDescriptors {
 	descriptor := ProtocolDescriptors{
-		Server:       ServerDescriptor{Name: "codemcp", Version: version.Version},
-		Capabilities: DefaultCapabilities(),
-		Results:      ResultDescriptor{SupportsStructuredContent: true, SupportsInputRequired: true},
-		Errors:       ErrorDescriptor{JSONRPC: true, Tool: true},
+		Server:           ServerDescriptor{Name: "codemcp", Version: version.Version},
+		Capabilities:     DefaultCapabilities(),
+		Results:          ResultDescriptor{SupportsStructuredContent: true, SupportsInputRequired: true},
+		Errors:           ErrorDescriptor{JSONRPC: true, Tool: true},
+		AuthRequirements: cloneAuthRequirements(authRequirements),
 	}
 	for _, schema := range schemas {
-		descriptor.Tools = append(descriptor.Tools, DescribeTool(schema))
+		tool := DescribeTool(schema)
+		tool.Security.AuthRequirements = cloneAuthRequirements(authRequirements)
+		descriptor.Tools = append(descriptor.Tools, tool)
 	}
 	return descriptor
+}
+
+func BearerAuthRequirement(scopes ...string) AuthRequirement {
+	return AuthRequirement{Scheme: bearerAuthScheme, Scopes: append([]string(nil), scopes...)}
+}
+
+func cloneAuthRequirements(requirements []AuthRequirement) []AuthRequirement {
+	if len(requirements) == 0 {
+		return nil
+	}
+	out := make([]AuthRequirement, len(requirements))
+	for index, requirement := range requirements {
+		out[index] = AuthRequirement{Scheme: strings.TrimSpace(requirement.Scheme), Scopes: append([]string(nil), requirement.Scopes...)}
+	}
+	return out
 }
 
 func DescribeTool(schema tools.Schema) ToolDescriptor {

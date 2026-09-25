@@ -143,3 +143,36 @@ func TestBaseProfileIgnoresOpenAIRequestMetadata(t *testing.T) {
 		t.Fatalf("base correlation hints=%#v", hints)
 	}
 }
+
+func TestOpenAIProfileProjectsOAuthSecuritySchemesFromCanonicalRequirements(t *testing.T) {
+	descriptor := DescribeTool(tools.Schema{
+		Name:        "auth_probe",
+		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`),
+		Annotations: tools.ToolAnnotations(tools.RiskRead),
+	})
+	descriptor.Security.AuthRequirements = []AuthRequirement{BearerAuthRequirement("mcp:tools")}
+	projected, err := ProjectTool(OpenAIProfile(), descriptor, ToolProjectionOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []map[string]any{{"type": "oauth2", "scopes": []string{"mcp:tools"}}}
+	if !reflect.DeepEqual(projected.SecuritySchemes, want) {
+		t.Fatalf("security schemes=%#v want=%#v", projected.SecuritySchemes, want)
+	}
+}
+
+func TestSDKToolCarriesProjectedSecuritySchemesInMetaForCurrentSDK(t *testing.T) {
+	descriptor := DescribeTool(tools.Schema{
+		Name:        "auth_sdk_probe",
+		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`),
+		Annotations: tools.ToolAnnotations(tools.RiskRead),
+	})
+	descriptor.Security.AuthRequirements = []AuthRequirement{BearerAuthRequirement("mcp:tools")}
+	tool, err := ProjectSDKTool(OpenAIProfile(), descriptor, ToolProjectionOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tool.Meta == nil || tool.Meta["securitySchemes"] == nil {
+		t.Fatalf("SDK tool missing securitySchemes compatibility metadata: %#v", tool.Meta)
+	}
+}

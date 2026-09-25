@@ -9,8 +9,9 @@ import (
 )
 
 type Runtime struct {
-	Tools   *tools.Runtime
-	Profile Profile
+	Tools            *tools.Runtime
+	Profile          Profile
+	AuthRequirements []AuthRequirement
 }
 
 func NewRuntime() *Runtime {
@@ -31,12 +32,19 @@ func NewRuntimeWithProfile(toolRuntime *tools.Runtime, profile Profile) *Runtime
 	return &Runtime{Tools: toolRuntime, Profile: profile}
 }
 
+func (r *Runtime) SetAuthRequirements(requirements ...AuthRequirement) {
+	if r == nil {
+		return
+	}
+	r.AuthRequirements = cloneAuthRequirements(requirements)
+}
+
 func (r *Runtime) Handle(ctx context.Context, method string, params map[string]any) (any, error) {
 	switch method {
 	case "server/discover":
 		return BuildDiscoverResult(r.Profile), nil
 	case "tools/list":
-		descriptors := DescribeProtocol(r.Tools.List()).Tools
+		descriptors := DescribeProtocol(r.Tools.List(), r.AuthRequirements...).Tools
 		projected, err := ProjectTools(r.Profile, descriptors, ToolProjectionOptions{})
 		if err != nil {
 			return nil, err

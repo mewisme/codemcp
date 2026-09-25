@@ -39,6 +39,10 @@ type instructionPresentationProfile interface {
 	InstructionPresentation() InstructionPresentation
 }
 
+type ClientAuthenticationProfile interface {
+	ClientCertificateAuthentication() bool
+}
+
 type baseProfile struct{}
 
 func BaseProfile() Profile { return baseProfile{} }
@@ -53,18 +57,26 @@ func (baseProfile) InstructionPresentation() InstructionPresentation {
 	return InstructionPresentation{}
 }
 
+func (baseProfile) ClientCertificateAuthentication() bool { return false }
+
+func RequiresClientCertificateAuthentication(profile Profile) bool {
+	provider, ok := profile.(ClientAuthenticationProfile)
+	return ok && provider.ClientCertificateAuthentication()
+}
+
 type ToolProjectionOptions struct {
 	BoundWorkspace bool
 }
 
 type ProjectedTool struct {
-	Meta         map[string]any  `json:"_meta,omitempty"`
-	Annotations  map[string]any  `json:"annotations,omitempty"`
-	Description  string          `json:"description,omitempty"`
-	InputSchema  json.RawMessage `json:"inputSchema"`
-	Name         string          `json:"name"`
-	OutputSchema json.RawMessage `json:"outputSchema,omitempty"`
-	Title        string          `json:"title,omitempty"`
+	Meta            map[string]any   `json:"_meta,omitempty"`
+	Annotations     map[string]any   `json:"annotations,omitempty"`
+	Description     string           `json:"description,omitempty"`
+	InputSchema     json.RawMessage  `json:"inputSchema"`
+	Name            string           `json:"name"`
+	OutputSchema    json.RawMessage  `json:"outputSchema,omitempty"`
+	SecuritySchemes []map[string]any `json:"securitySchemes,omitempty"`
+	Title           string           `json:"title,omitempty"`
 }
 
 func ProjectTool(profile Profile, descriptor ToolDescriptor, options ToolProjectionOptions) (ProjectedTool, error) {
@@ -99,14 +111,29 @@ func ProjectTool(profile Profile, descriptor ToolDescriptor, options ToolProject
 		description = title
 	}
 	return ProjectedTool{
-		Meta:         cloneAnyMap(representation.Meta),
-		Annotations:  descriptor.Effects.annotations(),
-		Description:  description,
-		InputSchema:  input,
-		Name:         descriptor.Name,
-		OutputSchema: cloneRawMessage(descriptor.OutputSchema),
-		Title:        title,
+		Meta:            cloneAnyMap(representation.Meta),
+		Annotations:     descriptor.Effects.annotations(),
+		Description:     description,
+		InputSchema:     input,
+		Name:            descriptor.Name,
+		OutputSchema:    cloneRawMessage(descriptor.OutputSchema),
+		SecuritySchemes: projectSecuritySchemes(descriptor.Security.AuthRequirements),
+		Title:           title,
 	}, nil
+}
+
+func projectSecuritySchemes(requirements []AuthRequirement) []map[string]any {
+	if len(requirements) == 0 {
+		return nil
+	}
+	result := make([]map[string]any, 0, len(requirements))
+	for _, requirement := range requirements {
+		switch strings.ToLower(strings.TrimSpace(requirement.Scheme)) {
+		case bearerAuthScheme:
+			result = append(result, map[string]any{"type": "oauth2", "scopes": append([]string(nil), requirement.Scopes...)})
+		}
+	}
+	return result
 }
 
 func ProjectTools(profile Profile, descriptors []ToolDescriptor, options ToolProjectionOptions) ([]ProjectedTool, error) {
@@ -146,8 +173,12 @@ func ProjectSDKTool(profile Profile, descriptor ToolDescriptor, options ToolProj
 	if err := json.Unmarshal(data, annotations); err != nil {
 		return nil, fmt.Errorf("decode annotations: %w", err)
 	}
+	meta := cloneAnyMap(projected.Meta)
+	if len(projected.SecuritySchemes) > 0 {
+		meta["securitySchemes"] = projected.SecuritySchemes
+	}
 	return &sdkmcp.Tool{
-		Meta:         sdkmcp.Meta(cloneAnyMap(projected.Meta)),
+		Meta:         sdkmcp.Meta(meta),
 		Annotations:  annotations,
 		Description:  projected.Description,
 		InputSchema:  input,

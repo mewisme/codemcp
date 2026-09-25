@@ -3,6 +3,7 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 const maxToolResultBytes = 8 * 1024 * 1024
@@ -107,6 +108,20 @@ func ErrorResult(err error) Result {
 		message = err.Error()
 	}
 	return Result{Content: []Content{{Type: "text", Text: message}}, IsError: true, ResultType: "complete"}
+}
+
+func OAuthChallengeResult(err error, challenges ...string) Result {
+	result := ErrorResult(err)
+	filtered := make([]string, 0, len(challenges))
+	for _, challenge := range challenges {
+		if value := strings.TrimSpace(challenge); value != "" {
+			filtered = append(filtered, value)
+		}
+	}
+	if len(filtered) > 0 {
+		result.Meta = map[string]any{"mcp/www_authenticate": filtered}
+	}
+	return result
 }
 
 func resultText(value any) (string, error) {

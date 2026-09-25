@@ -147,6 +147,30 @@ func TestProfileDoesNotAffectToolExecutionContextOrResult(t *testing.T) {
 	}
 }
 
+func TestRuntimeProjectsConfiguredAuthRequirementsWithoutChangingToolTruth(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.MustRegister("auth_runtime_probe", tools.Schema{
+		Name:        "auth_runtime_probe",
+		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`),
+		Annotations: tools.ToolAnnotations(tools.RiskRead),
+	}, func(context.Context, map[string]any) (tools.Result, error) {
+		return tools.JSONResult(map[string]any{"ok": true}), nil
+	})
+	server := NewRuntimeWithProfile(&tools.Runtime{Registry: registry}, OpenAIProfile())
+	server.SetAuthRequirements(BearerAuthRequirement("mcp:tools"))
+	value, err := server.Handle(context.Background(), "tools/list", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"securitySchemes":[{"scopes":["mcp:tools"],"type":"oauth2"}]`) {
+		t.Fatalf("tools/list auth metadata missing: %s", data)
+	}
+}
+
 func TestProfileInstructionPresentationPreservesCanonicalSemantics(t *testing.T) {
 	base := ProjectServerInstructions(BaseProfile())
 	custom := ProjectServerInstructions(presentationOnlyProfile{})

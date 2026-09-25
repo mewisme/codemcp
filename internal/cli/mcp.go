@@ -2,11 +2,13 @@ package cli
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -32,7 +34,7 @@ func mcpCommand() *cobra.Command {
 }
 
 func mcpHTTPCommand() *cobra.Command {
-	var workspace, host, profileName string
+	var workspace, host, profileName, clientCAFile string
 	var port int
 	var noSSE bool
 	cmd := &cobra.Command{
@@ -40,7 +42,7 @@ func mcpHTTPCommand() *cobra.Command {
 		Short: "Serve MCP over Streamable HTTP with legacy SSE fallback",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runMCPHTTP(cmd, workspace, host, port, !noSSE, profileName)
+			return runMCPHTTP(cmd, workspace, host, port, !noSSE, profileName, clientCAFile)
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", "bind MCP sessions to a registered workspace ID or path")
@@ -48,10 +50,11 @@ func mcpHTTPCommand() *cobra.Command {
 	cmd.Flags().IntVar(&port, "port", 0, "listen port; defaults to configured MCP port")
 	cmd.Flags().BoolVar(&noSSE, "no-sse", false, "disable legacy SSE compatibility endpoint")
 	cmd.Flags().StringVar(&profileName, "profile", string(mcp.BaseProfileID), "MCP projection profile: base or openai")
+	cmd.Flags().StringVar(&clientCAFile, "client-ca", "", "PEM CA bundle for optional OpenAI-profile client certificate authentication")
 	return cmd
 }
 
-func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE bool, profileName string) (runErr error) {
+func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE bool, profileName, clientCAFile string) (runErr error) {
 	cfg, err := config.LoadRuntime()
 	if err != nil {
 		return err
@@ -73,6 +76,22 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 	if err != nil {
 		return err
 	}
+	clientCAFile = strings.TrimSpace(clientCAFile)
+	clientCertificatePolicy := mcp.ClientCertificatePolicy{}
+	if clientCAFile != "" {
+		if !mcp.RequiresClientCertificateAuthentication(profile) {
+			return errors.New("--client-ca is only supported with --profile openai")
+		}
+		data, readErr := os.ReadFile(clientCAFile)
+		if readErr != nil {
+			return fmt.Errorf("read MCP client CA bundle: %w", readErr)
+		}
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM(data) {
+			return errors.New("MCP client CA bundle contains no valid certificates")
+		}
+		clientCertificatePolicy.Roots = roots
+	}
 	cfg.Server.Enabled = false
 	cfg.Admin.Enabled = false
 	cfg.Tunnel.Enabled = false
@@ -92,7 +111,11 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 	if err != nil {
 		return err
 	}
-	handler, err := mcp.NewSDKHTTPHandlerWithProfile(runtime.Tools, workspaceID, enableSSE, profile)
+	authRequirements := []mcp.AuthRequirement(nil)
+	if cfg.Auth.MCPEnabled {
+		authRequirements = append(authRequirements, mcp.BearerAuthRequirement(mcpauth.ScopeTools))
+	}
+	handler, err := mcp.NewSDKHTTPHandlerWithProfileAuth(runtime.Tools, workspaceID, enableSSE, profile, authRequirements...)
 	if err != nil {
 		return err
 	}
@@ -119,6 +142,7 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 		return err
 	}
 	handler = authority.Handler(handler)
+	handler = clientCertificatePolicy.Middleware(handler)
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute, MaxHeaderBytes: 1 << 20}
 	go func() {
 		<-cmd.Context().Done()

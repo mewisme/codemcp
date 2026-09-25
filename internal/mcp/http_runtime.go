@@ -29,6 +29,12 @@ func NewHTTPRuntimeWithProfile(toolRuntime *tools.Runtime, profile Profile) *HTT
 	return &HTTPRuntime{Server: NewRuntimeWithProfile(toolRuntime, profile), Activity: activity.NewStream(), Subscriptions: newSubscriptionHub(), ApprovalCallers: approval.NewCallerRegistry()}
 }
 
+func (h *HTTPRuntime) SetAuthRequirements(requirements ...AuthRequirement) {
+	if h != nil && h.Server != nil {
+		h.Server.SetAuthRequirements(requirements...)
+	}
+}
+
 func (h *HTTPRuntime) CloseSubscriptions() {
 	if h != nil && h.Subscriptions != nil {
 		h.Subscriptions.closeAll()

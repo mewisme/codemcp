@@ -14,7 +14,11 @@ func NewSDKHTTPHandler(toolRuntime *tools.Runtime, boundWorkspace string, enable
 }
 
 func NewSDKHTTPHandlerWithProfile(toolRuntime *tools.Runtime, boundWorkspace string, enableSSE bool, profile Profile) (http.Handler, error) {
-	streamableServer, err := NewSDKServerWithProfile(toolRuntime, "http", "", boundWorkspace, profile)
+	return NewSDKHTTPHandlerWithProfileAuth(toolRuntime, boundWorkspace, enableSSE, profile)
+}
+
+func NewSDKHTTPHandlerWithProfileAuth(toolRuntime *tools.Runtime, boundWorkspace string, enableSSE bool, profile Profile, authRequirements ...AuthRequirement) (http.Handler, error) {
+	streamableServer, err := NewSDKServerWithProfileAuth(toolRuntime, "http", "", boundWorkspace, profile, authRequirements...)
 	if err != nil {
 		return nil, err
 	}
@@ -22,7 +26,7 @@ func NewSDKHTTPHandlerWithProfile(toolRuntime *tools.Runtime, boundWorkspace str
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", streamable)
 	if enableSSE {
-		sseServer, err := NewSDKServerWithProfile(toolRuntime, "sse", "", boundWorkspace, profile)
+		sseServer, err := NewSDKServerWithProfileAuth(toolRuntime, "sse", "", boundWorkspace, profile, authRequirements...)
 		if err != nil {
 			return nil, err
 		}

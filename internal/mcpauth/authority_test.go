@@ -179,3 +179,49 @@ func TestOAuthRejectsUnsafeRedirectAndWrongResource(t *testing.T) {
 		}
 	}
 }
+
+func TestOAuthMetadataAdvertisesClientIDMetadataDocuments(t *testing.T) {
+	authority, err := New("https://auth.example.test", "https://mcp.example.test/mcp", func() (Config, error) {
+		return Config{Enabled: true, TokenHash: "generation"}, nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	authority.Handler(http.NotFoundHandler()).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/.well-known/oauth-authorization-server", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"client_id_metadata_document_supported":true`) {
+		t.Fatalf("metadata status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestOAuthChallengePointsAtProtectedResourceMetadata(t *testing.T) {
+	authority, err := New("https://auth.example.test", "https://mcp.example.test/mcp", func() (Config, error) {
+		return Config{Enabled: true, TokenHash: "generation"}, nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `Bearer resource_metadata="https://auth.example.test/.well-known/oauth-protected-resource/mcp"`
+	if got := authority.Challenge(); got != want {
+		t.Fatalf("challenge=%q want=%q", got, want)
+	}
+}
+
+func TestOAuthUnauthorizedResponseAdvertisesProtectedResourceChallenge(t *testing.T) {
+	authority, err := New("https://auth.example.test", "https://mcp.example.test/mcp", func() (Config, error) {
+		return Config{Enabled: true, TokenHash: "generation"}, nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	authority.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("unauthenticated request reached MCP handler")
+	})).ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/mcp", nil))
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if got, want := recorder.Header().Get("WWW-Authenticate"), authority.Challenge(); got != want {
+		t.Fatalf("WWW-Authenticate=%q want=%q", got, want)
+	}
+}

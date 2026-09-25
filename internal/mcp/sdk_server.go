@@ -13,14 +13,15 @@ import (
 )
 
 type SDKServer struct {
-	Server          *sdkmcp.Server
-	Tools           *tools.Runtime
-	Source          string
-	SessionID       string
-	BoundWorkspace  string
-	ApprovalCallers *approval.CallerRegistry
-	ModernCallerID  string
-	Profile         Profile
+	Server           *sdkmcp.Server
+	Tools            *tools.Runtime
+	Source           string
+	SessionID        string
+	BoundWorkspace   string
+	ApprovalCallers  *approval.CallerRegistry
+	ModernCallerID   string
+	Profile          Profile
+	AuthRequirements []AuthRequirement
 }
 
 func NewSDKServerWithTools(toolRuntime *tools.Runtime, source string) (*SDKServer, error) {
@@ -32,17 +33,21 @@ func NewSDKServerWithSession(toolRuntime *tools.Runtime, source, sessionID, boun
 }
 
 func NewSDKServerWithProfile(toolRuntime *tools.Runtime, source, sessionID, boundWorkspace string, profile Profile) (*SDKServer, error) {
+	return NewSDKServerWithProfileAuth(toolRuntime, source, sessionID, boundWorkspace, profile)
+}
+
+func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, boundWorkspace string, profile Profile, authRequirements ...AuthRequirement) (*SDKServer, error) {
 	if toolRuntime == nil {
 		toolRuntime = tools.NewRuntime()
 	}
 	if profile == nil {
 		profile = BaseProfile()
 	}
-	descriptors := DescribeProtocol(nil)
+	descriptors := DescribeProtocol(nil, authRequirements...)
 	implementation, options := ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
 	callers := approval.NewCallerRegistry()
-	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile}
+	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements)}
 	for _, schema := range toolRuntime.List() {
 		if err := adapter.addTool(schema); err != nil {
 			return nil, err
@@ -60,7 +65,9 @@ func (s *SDKServer) addTool(schema tools.Schema) error {
 		}
 		options.BoundWorkspace = workspaceScoped
 	}
-	tool, err := ProjectSDKTool(s.Profile, DescribeTool(schema), options)
+	descriptor := DescribeTool(schema)
+	descriptor.Security.AuthRequirements = cloneAuthRequirements(s.AuthRequirements)
+	tool, err := ProjectSDKTool(s.Profile, descriptor, options)
 	if err != nil {
 		return err
 	}

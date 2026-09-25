@@ -18,6 +18,8 @@ import (
 	"time"
 
 	sdkauth "github.com/modelcontextprotocol/go-sdk/auth"
+
+	"go.mewis.me/codemcp/internal/outboundpolicy"
 )
 
 const ScopeTools = "mcp:tools"
@@ -40,16 +42,23 @@ type ConfigProvider func() (Config, error)
 type LegacyVerifier func(token, encoded string) bool
 
 type Authority struct {
-	mu           sync.Mutex
-	issuer       string
-	resource     string
-	provider     ConfigProvider
-	legacyVerify LegacyVerifier
-	clients      map[string]client
-	consents     map[string]time.Time
-	codes        map[string]authorizationCode
-	access       map[string]tokenGrant
-	refresh      map[string]tokenGrant
+	mu             sync.Mutex
+	issuer         string
+	resource       string
+	provider       ConfigProvider
+	legacyVerify   LegacyVerifier
+	clients        map[string]client
+	consents       map[string]time.Time
+	codes          map[string]authorizationCode
+	access         map[string]tokenGrant
+	refresh        map[string]tokenGrant
+	metadataClient *http.Client
+}
+
+func (a *Authority) SetMetadataHTTPClient(client *http.Client) {
+	if a != nil {
+		a.metadataClient = client
+	}
 }
 
 type client struct {
@@ -103,12 +112,24 @@ func New(issuer, resource string, provider ConfigProvider, legacyVerify LegacyVe
 	if provider == nil {
 		return nil, errors.New("MCP OAuth config provider is required")
 	}
-	return &Authority{issuer: issuer, resource: resource, provider: provider, legacyVerify: legacyVerify, clients: map[string]client{}, consents: map[string]time.Time{}, codes: map[string]authorizationCode{}, access: map[string]tokenGrant{}, refresh: map[string]tokenGrant{}}, nil
+	return &Authority{
+		issuer:         issuer,
+		resource:       resource,
+		provider:       provider,
+		legacyVerify:   legacyVerify,
+		clients:        map[string]client{},
+		consents:       map[string]time.Time{},
+		codes:          map[string]authorizationCode{},
+		access:         map[string]tokenGrant{},
+		refresh:        map[string]tokenGrant{},
+		metadataClient: outboundpolicy.NewHTTPClient(outboundpolicy.Options{}),
+	}, nil
 }
 
 func (a *Authority) Handler(mcpHandler http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	protected := sdkauth.RequireBearerToken(a.verifyToken, &sdkauth.RequireBearerTokenOptions{ResourceMetadataURL: a.issuer + "/.well-known/oauth-protected-resource/mcp", Scopes: []string{ScopeTools}})(mcpHandler)
+	challenge := a.Challenge()
 	mcpAuth := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cfg, err := a.provider()
 		if err != nil {
@@ -119,7 +140,11 @@ func (a *Authority) Handler(mcpHandler http.Handler) http.Handler {
 			mcpHandler.ServeHTTP(w, r)
 			return
 		}
-		protected.ServeHTTP(w, r)
+		capture := &authChallengeResponseWriter{ResponseWriter: w}
+		protected.ServeHTTP(capture, r)
+		if capture.status == http.StatusUnauthorized && challenge != "" {
+			w.Header().Set("WWW-Authenticate", challenge)
+		}
 	})
 	mux.Handle("/mcp", mcpAuth)
 	mux.Handle("/mcp/", mcpAuth)
@@ -132,12 +157,29 @@ func (a *Authority) Handler(mcpHandler http.Handler) http.Handler {
 	return mux
 }
 
+type authChallengeResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *authChallengeResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (a *Authority) Challenge() string {
+	if a == nil {
+		return ""
+	}
+	return fmt.Sprintf(`Bearer resource_metadata="%s/.well-known/oauth-protected-resource/mcp"`, a.issuer)
+}
+
 func (a *Authority) serveProtectedResourceMetadata(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"resource": a.resource, "authorization_servers": []string{a.issuer}, "scopes_supported": []string{ScopeTools}, "bearer_methods_supported": []string{"header"}, "resource_name": "CodeMCP"})
 }
 
 func (a *Authority) serveAuthorizationServerMetadata(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"issuer": a.issuer, "authorization_endpoint": a.issuer + "/oauth/authorize", "token_endpoint": a.issuer + "/oauth/token", "registration_endpoint": a.issuer + "/oauth/register", "scopes_supported": []string{ScopeTools}, "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "token_endpoint_auth_methods_supported": []string{"none"}, "code_challenge_methods_supported": []string{"S256"}, "authorization_response_iss_parameter_supported": true})
+	writeJSON(w, http.StatusOK, map[string]any{"issuer": a.issuer, "authorization_endpoint": a.issuer + "/oauth/authorize", "token_endpoint": a.issuer + "/oauth/token", "registration_endpoint": a.issuer + "/oauth/register", "client_id_metadata_document_supported": true, "scopes_supported": []string{ScopeTools}, "response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "token_endpoint_auth_methods_supported": []string{"none"}, "code_challenge_methods_supported": []string{"S256"}, "authorization_response_iss_parameter_supported": true})
 }
 
 func (a *Authority) serveRegister(w http.ResponseWriter, r *http.Request) {
@@ -295,9 +337,17 @@ func (a *Authority) validateAuthorizationRequest(values url.Values) (url.Values,
 	if scope := normalizeScope(values.Get("scope")); scope != ScopeTools {
 		return nil, client{}, errors.New("unsupported OAuth scope")
 	}
+	clientID := strings.TrimSpace(values.Get("client_id"))
 	a.mu.Lock()
-	registered, ok := a.clients[values.Get("client_id")]
+	registered, ok := a.clients[clientID]
 	a.mu.Unlock()
+	if !ok {
+		resolved, resolveErr := a.resolveClientMetadataDocument(context.Background(), clientID)
+		if resolveErr == nil {
+			registered = resolved
+			ok = true
+		}
+	}
 	if !ok {
 		return nil, client{}, errors.New("unknown OAuth client")
 	}
@@ -310,6 +360,63 @@ func (a *Authority) validateAuthorizationRequest(values url.Values) (url.Values,
 		copyValues[key] = append([]string(nil), items...)
 	}
 	return copyValues, registered, nil
+}
+
+func (a *Authority) resolveClientMetadataDocument(ctx context.Context, clientID string) (client, error) {
+	value, err := url.Parse(clientID)
+	if err != nil || value.Scheme != "https" || value.Host == "" || value.User != nil || value.Fragment != "" {
+		return client{}, errors.New("client metadata document URL must use HTTPS")
+	}
+	if err := outboundpolicy.ValidateURL(ctx, clientID, outboundpolicy.Options{}); err != nil {
+		return client{}, err
+	}
+	httpClient := a.metadataClient
+	if httpClient == nil {
+		httpClient = outboundpolicy.NewHTTPClient(outboundpolicy.Options{})
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, clientID, nil)
+	if err != nil {
+		return client{}, err
+	}
+	request.Header.Set("Accept", "application/json")
+	response, err := httpClient.Do(request)
+	if err != nil {
+		return client{}, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return client{}, fmt.Errorf("client metadata document returned HTTP %d", response.StatusCode)
+	}
+	var metadata struct {
+		ClientID                string   `json:"client_id"`
+		ClientName              string   `json:"client_name"`
+		RedirectURIs            []string `json:"redirect_uris"`
+		TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(nil, response.Body, 64<<10))
+	if err := decoder.Decode(&metadata); err != nil {
+		return client{}, errors.New("invalid client metadata document")
+	}
+	if strings.TrimSpace(metadata.ClientID) != "" && strings.TrimSpace(metadata.ClientID) != clientID {
+		return client{}, errors.New("client metadata document client_id mismatch")
+	}
+	if metadata.TokenEndpointAuthMethod != "" && metadata.TokenEndpointAuthMethod != "none" {
+		return client{}, errors.New("client metadata document must describe a public client")
+	}
+	if len(metadata.RedirectURIs) == 0 || len(metadata.RedirectURIs) > 8 {
+		return client{}, errors.New("client metadata document requires redirect_uris")
+	}
+	redirects := make([]string, 0, len(metadata.RedirectURIs))
+	for _, raw := range metadata.RedirectURIs {
+		redirect, err := validateRedirectURI(raw)
+		if err != nil {
+			return client{}, err
+		}
+		redirects = append(redirects, redirect)
+	}
+	return client{ID: clientID, Name: strings.TrimSpace(metadata.ClientName), RedirectURIs: redirects}, nil
 }
 
 func (a *Authority) serveToken(w http.ResponseWriter, r *http.Request) {
