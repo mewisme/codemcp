@@ -258,6 +258,94 @@ func TestCoordinatorPolicyIsIndependentFromProviderPresence(t *testing.T) {
 	}
 }
 
+func TestCoordinatorStatusExposesSafeProviderHealth(t *testing.T) {
+	provider := &fakeProvider{name: ProviderDesktop, failures: 1, called: make(chan struct{}, 1)}
+	coordinator := NewCoordinator(CoordinatorOptions{Attempts: 1})
+	coordinator.Register(provider)
+	defer coordinator.Stop()
+	message := Message{ID: "approval:req_1", Kind: KindApprovalPending, RequestID: "req_1", WorkspaceID: "ws_a", Timestamp: time.Now().UTC()}
+	if err := coordinator.Dispatch(t.Context(), message, map[string]bool{ProviderDesktop: true, ProviderTelegram: true}); err != nil {
+		t.Fatal(err)
+	}
+	waitForDiagnostics(t, coordinator, 2)
+	status := coordinator.Status(map[string]bool{ProviderDesktop: true, ProviderTelegram: true})
+	if len(status.Providers) != 2 {
+		t.Fatalf("providers=%#v", status.Providers)
+	}
+	values := map[string]ProviderStatus{}
+	for _, providerStatus := range status.Providers {
+		values[providerStatus.Provider] = providerStatus
+	}
+	desktop := values[ProviderDesktop]
+	if desktop.Health != ProviderHealthDegraded || desktop.LastStatus != DiagnosticFailed || desktop.LastError != "notification delivery failed" {
+		t.Fatalf("desktop status=%#v", desktop)
+	}
+	telegram := values[ProviderTelegram]
+	if telegram.Health != ProviderHealthUnavailable || telegram.LastStatus != DiagnosticUnavailable || telegram.LastError != "notification provider unavailable" {
+		t.Fatalf("telegram status=%#v", telegram)
+	}
+	for _, value := range status.Providers {
+		if strings.Contains(value.LastError, "sensitive payload") || len(value.LastError) > 64 {
+			t.Fatalf("unsafe/unbounded last error=%q", value.LastError)
+		}
+	}
+}
+
+func TestEveryEnabledProviderReceivesCanonicalApprovalAttentionEvent(t *testing.T) {
+	manager := approval.NewManager("instance-parity")
+	desktop := &fakeProvider{name: ProviderDesktop, called: make(chan struct{}, 2)}
+	telegram := &fakeProvider{name: ProviderTelegram, called: make(chan struct{}, 2)}
+	coordinator := NewCoordinator(CoordinatorOptions{Attempts: 1})
+	coordinator.Register(desktop)
+	coordinator.Register(telegram)
+	bridge := NewApprovalBridge(manager.Events(), coordinator, ApprovalBridgeOptions{Policy: func() ApprovalPolicy {
+		return ApprovalPolicy{Enabled: true, Pending: true, Providers: map[string]bool{ProviderDesktop: true, ProviderTelegram: true}}
+	}})
+	if err := bridge.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer bridge.Stop()
+	defer coordinator.Stop()
+
+	request := seedApprovalRequest(t, manager, "caller-parity", "ws_parity")
+	for name, provider := range map[string]*fakeProvider{ProviderDesktop: desktop, ProviderTelegram: telegram} {
+		select {
+		case <-provider.called:
+		case <-time.After(time.Second):
+			t.Fatalf("%s did not receive canonical approval attention event", name)
+		}
+		calls, messages := provider.snapshot()
+		if calls != 1 || len(messages) != 1 || messages[0].RequestID != request.ID || messages[0].Kind != KindApprovalPending {
+			t.Fatalf("%s calls=%d messages=%#v", name, calls, messages)
+		}
+	}
+}
+
+func TestApprovalNotificationBridgeStopDetachesFromRuntimeEvents(t *testing.T) {
+	manager := approval.NewManager("instance-stop")
+	provider := &fakeProvider{name: ProviderDesktop, called: make(chan struct{}, 2)}
+	coordinator := NewCoordinator(CoordinatorOptions{Attempts: 1})
+	coordinator.Register(provider)
+	bridge := NewApprovalBridge(manager.Events(), coordinator, ApprovalBridgeOptions{Policy: func() ApprovalPolicy {
+		return ApprovalPolicy{Enabled: true, Pending: true, Providers: map[string]bool{ProviderDesktop: true}}
+	}})
+	if err := bridge.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	bridge.Stop()
+	_ = seedApprovalRequest(t, manager, "caller-stop", "ws_stop")
+	time.Sleep(20 * time.Millisecond)
+	calls, _ := provider.snapshot()
+	if calls != 0 {
+		t.Fatalf("stopped approval notification bridge received %d event(s)", calls)
+	}
+	coordinator.Stop()
+	status := coordinator.Status(map[string]bool{ProviderDesktop: true})
+	if !status.Stopped || len(status.Providers) != 1 || status.Providers[0].Health != ProviderHealthStopped {
+		t.Fatalf("stopped coordinator status=%#v", status)
+	}
+}
+
 func seedApprovalRequest(t *testing.T, manager *approval.Manager, callerID, workspaceID string) approval.Request {
 	t.Helper()
 	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{

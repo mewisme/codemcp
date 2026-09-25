@@ -221,3 +221,29 @@ func TestDiagnosticsSummarizesInventoryWithoutOperationPayloads(t *testing.T) {
 		}
 	}
 }
+
+func TestApprovalReviewAndNotificationCapabilitiesAreDeclared(t *testing.T) {
+	for _, id := range []ID{RequestList, RequestView, RequestApprove, RequestDeny, RequestStream, RequestGrantList, RequestGrantRevoke, NotificationStatus} {
+		spec, ok := Lookup(id)
+		if !ok {
+			t.Fatalf("approval capability %s missing from inventory", id)
+		}
+		if spec.Audience != AudienceOperator && spec.Audience != AudienceReviewer {
+			t.Fatalf("approval capability %s audience=%s", id, spec.Audience)
+		}
+	}
+	for _, id := range []ID{RequestList, RequestView, RequestApprove, RequestDeny} {
+		spec, _ := Lookup(id)
+		for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI} {
+			contract, ok := spec.Surface(surface)
+			if !ok || contract.State != SurfaceRequired {
+				t.Fatalf("approval review %s surface %s contract=%#v", id, surface, contract)
+			}
+		}
+	}
+	status, _ := Lookup(NotificationStatus)
+	admin, ok := status.Surface(SurfaceAdminAPI)
+	if !ok || admin.State != SurfaceRequired {
+		t.Fatalf("notification status Admin API contract=%#v", admin)
+	}
+}

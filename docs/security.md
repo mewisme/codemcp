@@ -112,6 +112,17 @@ Local operators can review and resolve pending requests through the TUI/Admin su
 
 The runtime may also support time-bounded grants for matching command patterns when explicitly approved by the operator. These grants remain runtime-controlled and revocable; they are not an Agent-controlled “allow everything” mode.
 
+### Approval review authorization by interface
+
+All reviewer interfaces call the same approval manager/review operations; authorization differs only at the adapter boundary:
+
+- `cm request ...` and the TUI use the authenticated loopback runtime-control channel owned by the running CodeMCP process. Its credential is protected runtime state, not an Agent capability.
+- Browser Admin uses the Admin API. The Admin listener must be enabled; when Admin authentication is enabled, the configured Admin credential is required before approval routes are reached.
+- Direct Admin API approval access accepts local loopback review under the local Admin listener policy. Non-loopback review requires Admin authentication to be enabled and the request to authenticate successfully; forwarded-address headers do not create loopback trust.
+- MCP/host confirmation UI is not an approval-review surface. An Agent may create a bound CodeMCP approval request, but it cannot approve/deny that request or turn host confirmation into a CodeMCP grant.
+
+These differences change how a reviewer proves authority, not the request state machine, retry binding, similar-command rules, or terminal resolution semantics.
+
 ## Protected config/state subtree
 
 The selected config root contains control-plane material such as runtime-control state, configuration, OAuth/upstream state, and managed secret files.

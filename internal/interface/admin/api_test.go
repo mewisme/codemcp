@@ -15,11 +15,54 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/notification"
 	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
 )
+
+type adminNotificationProvider struct {
+	name      string
+	available bool
+}
+
+func (p adminNotificationProvider) Name() string                                       { return p.name }
+func (p adminNotificationProvider) Available() bool                                    { return p.available }
+func (p adminNotificationProvider) Notify(context.Context, notification.Message) error { return nil }
+
+func TestNotificationStatusEndpointExposesProviderHealth(t *testing.T) {
+	cfg := config.Default()
+	cfg.Notifications.Approval.Enabled = true
+	cfg.Notifications.Approval.DesktopEnabled = true
+	cfg.Notifications.Approval.TelegramEnabled = true
+	coordinator := notification.NewCoordinator(notification.CoordinatorOptions{})
+	coordinator.Register(adminNotificationProvider{name: notification.ProviderDesktop, available: true})
+	defer coordinator.Stop()
+	handler := New(API{Config: config.NewRuntimeStore(cfg), Notifications: coordinator})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/notifications", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	var snapshot notification.StatusSnapshot
+	if err := json.Unmarshal(recorder.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Providers) != 2 {
+		t.Fatalf("providers=%#v", snapshot.Providers)
+	}
+	statuses := map[string]notification.ProviderStatus{}
+	for _, status := range snapshot.Providers {
+		statuses[status.Provider] = status
+	}
+	if desktop := statuses[notification.ProviderDesktop]; !desktop.Enabled || !desktop.Registered || desktop.Health != notification.ProviderHealthHealthy {
+		t.Fatalf("desktop=%#v", desktop)
+	}
+	if telegram := statuses[notification.ProviderTelegram]; !telegram.Enabled || telegram.Registered || telegram.Health != notification.ProviderHealthUnavailable {
+		t.Fatalf("telegram=%#v", telegram)
+	}
+}
 
 type adminUpstreamClient struct {
 	tools    []upstream.Tool

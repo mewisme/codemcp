@@ -10,6 +10,7 @@ import (
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/config"
 	mcpnetwork "go.mewis.me/codemcp/internal/network"
+	"go.mewis.me/codemcp/internal/notification"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/tools"
@@ -21,17 +22,18 @@ import (
 const maxRequestBodyBytes int64 = 1 << 20
 
 type API struct {
-	Approvals    *approval.Manager
-	Executions   *shellruntime.ExecutionHub
-	Upstream     *upstream.Manager
-	Tools        *tools.Runtime
-	Workspaces   *workspace.Manager
-	Tunnel       *tunnel.Client
-	Config       *config.RuntimeStore
-	OAuth        *mcpoauth.Store
-	OAuthFlows   *mcpoauth.FlowManager
-	ReloadConfig func(config.Config) error
-	saveConfig   func(config.Config) error
+	Approvals     *approval.Manager
+	Executions    *shellruntime.ExecutionHub
+	Upstream      *upstream.Manager
+	Tools         *tools.Runtime
+	Workspaces    *workspace.Manager
+	Tunnel        *tunnel.Client
+	Config        *config.RuntimeStore
+	Notifications *notification.Coordinator
+	OAuth         *mcpoauth.Store
+	OAuthFlows    *mcpoauth.FlowManager
+	ReloadConfig  func(config.Config) error
+	saveConfig    func(config.Config) error
 }
 
 type authSettings struct {
@@ -107,6 +109,7 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/tools", api.handleTools)
 	mux.HandleFunc("/api/requests", api.handleRequests)
 	mux.HandleFunc("/api/requests/", api.handleRequest)
+	mux.HandleFunc("/api/notifications", api.handleNotifications)
 	mux.HandleFunc("/api/upstream", api.handleUpstreams)
 	mux.HandleFunc("/api/upstream/", api.handleUpstream)
 	mux.HandleFunc("/api/tunnel/config", api.handleTunnelConfig)
@@ -116,6 +119,29 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/tunnel/managed/", api.handleManagedTunnel)
 	mux.HandleFunc("/api/tunnel", api.handleTunnel)
 	return withCanonicalOperation(mux)
+}
+
+func (api API) handleNotifications(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	enabled := map[string]bool{
+		notification.ProviderDesktop:  false,
+		notification.ProviderTelegram: false,
+	}
+	if api.Config != nil {
+		cfg := api.Config.Snapshot().Notifications.Approval
+		if cfg.Enabled {
+			enabled[notification.ProviderDesktop] = cfg.DesktopEnabled
+			enabled[notification.ProviderTelegram] = cfg.TelegramEnabled
+		}
+	}
+	status := notification.StatusSnapshot{}
+	if api.Notifications != nil {
+		status = api.Notifications.Status(enabled)
+	}
+	writeJSON(w, status)
 }
 
 func (api API) handleNetworkInterfaces(w http.ResponseWriter, r *http.Request) {

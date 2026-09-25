@@ -24,6 +24,7 @@ const (
 	RequestDeny              ID = "request.deny"
 	RequestGrantList         ID = "request.grant.list"
 	RequestGrantRevoke       ID = "request.grant.revoke"
+	NotificationStatus       ID = "notification.status"
 	ConfigPath               ID = "config.path"
 	ConfigExport             ID = "config.export"
 	ConfigImport             ID = "config.import"

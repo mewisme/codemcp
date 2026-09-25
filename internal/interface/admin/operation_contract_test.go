@@ -49,6 +49,7 @@ func TestPublicAdminOperationsHaveCanonicalIDs(t *testing.T) {
 		{Method: "POST", Path: "/api/requests/{request_id}/deny"},
 		{Method: "GET", Path: "/api/requests/grants"},
 		{Method: "POST", Path: "/api/requests/grants/{request_id}/revoke"},
+		{Method: "GET", Path: "/api/notifications"},
 		{Method: "GET", Path: "/api/upstream"},
 		{Method: "POST", Path: "/api/upstream"},
 		{Method: "GET", Path: "/api/upstream/{server_id}"},

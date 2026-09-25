@@ -7,14 +7,29 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/notification"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
 )
+
+type lifecycleNotificationProvider struct {
+	called chan struct{}
+}
+
+func (p *lifecycleNotificationProvider) Name() string { return notification.ProviderDesktop }
+func (p *lifecycleNotificationProvider) Notify(context.Context, notification.Message) error {
+	select {
+	case p.called <- struct{}{}:
+	default:
+	}
+	return nil
+}
 
 func TestNewSharesToolRuntime(t *testing.T) {
 	cfg := config.Default()
@@ -280,6 +295,43 @@ func TestStopShutsDownUpstreamConnections(t *testing.T) {
 	}
 	if len(client.closed) != 1 || client.closed[0] != "one" {
 		t.Fatalf("closed = %#v", client.closed)
+	}
+}
+
+func TestStopDetachesApprovalNotifications(t *testing.T) {
+	manager := approval.NewManager("instance-stop-notifications")
+	provider := &lifecycleNotificationProvider{called: make(chan struct{}, 1)}
+	coordinator := notification.NewCoordinator(notification.CoordinatorOptions{Attempts: 1})
+	coordinator.Register(provider)
+	bridge := notification.NewApprovalBridge(manager.Events(), coordinator, notification.ApprovalBridgeOptions{Policy: func() notification.ApprovalPolicy {
+		return notification.ApprovalPolicy{Enabled: true, Pending: true, Providers: map[string]bool{notification.ProviderDesktop: true}}
+	}})
+	if err := bridge.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	application := &App{Notifications: coordinator, ApprovalNotifications: bridge}
+	if err := application.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{
+		CallerID: "caller-stop", RequestCorrelationID: "stop", SessionHash: "hash-stop", WorkspaceID: "ws_stop",
+		Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"command": "echo stop"},
+		GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow stop test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := manager.CreateRequestWithCorrelation(challenge.ID, "caller-stop", "ws_stop", "Allow stop test"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-provider.called:
+		t.Fatal("runtime shutdown left approval notification subscription active")
+	case <-time.After(50 * time.Millisecond):
+	}
+	status := coordinator.Status(map[string]bool{notification.ProviderDesktop: true})
+	if !status.Stopped {
+		t.Fatalf("notification coordinator remained active after runtime shutdown: %#v", status)
 	}
 }
 
