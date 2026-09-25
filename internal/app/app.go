@@ -12,6 +12,7 @@ import (
 	"go.mewis.me/codemcp/internal/interface/web"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/mcp"
+	"go.mewis.me/codemcp/internal/notification"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	"go.mewis.me/codemcp/internal/runtime/activity"
 	"go.mewis.me/codemcp/internal/tools"
@@ -21,19 +22,21 @@ import (
 )
 
 type App struct {
-	Config     *config.RuntimeStore
-	MCP        *mcp.HTTPRuntime
-	Upstream   *upstream.Manager
-	Tools      *tools.Runtime
-	Activity   *activity.Stream
-	Tunnel     *tunnel.Client
-	Logger     *logger.Logger
-	OAuth      *mcpoauth.Store
-	OAuthFlows *mcpoauth.FlowManager
-	runtimeCtx context.Context
-	trace      tracepkg.Observer
-	running    bool
-	bootstrap  sync.Once
+	Config                *config.RuntimeStore
+	MCP                   *mcp.HTTPRuntime
+	Upstream              *upstream.Manager
+	Tools                 *tools.Runtime
+	Activity              *activity.Stream
+	Tunnel                *tunnel.Client
+	Logger                *logger.Logger
+	OAuth                 *mcpoauth.Store
+	OAuthFlows            *mcpoauth.FlowManager
+	Notifications         *notification.Coordinator
+	ApprovalNotifications *notification.ApprovalBridge
+	runtimeCtx            context.Context
+	trace                 tracepkg.Observer
+	running               bool
+	bootstrap             sync.Once
 }
 
 func New(cfg config.Config) (*App, error) {

@@ -4,6 +4,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/mcp"
+	"go.mewis.me/codemcp/internal/notification"
 	"go.mewis.me/codemcp/internal/runtime/activity"
 	"go.mewis.me/codemcp/internal/telemetry"
 	"go.mewis.me/codemcp/internal/tools"
@@ -33,6 +34,24 @@ func (a *App) Bootstrap() error {
 		}
 		telemetry.AttachTools(a.Tools, a.Activity, a.Logger)
 		telemetry.AttachApprovals(a.Tools.Approvals, a.Activity, a.Logger)
+		if a.Notifications == nil {
+			a.Notifications = notification.NewCoordinator(notification.CoordinatorOptions{})
+			a.Notifications.Register(notification.NewDesktopProvider())
+		}
+		if a.ApprovalNotifications == nil && a.Tools.Approvals != nil {
+			a.ApprovalNotifications = notification.NewApprovalBridge(a.Tools.Approvals.Events(), a.Notifications, notification.ApprovalBridgeOptions{
+				Policy: func() notification.ApprovalPolicy {
+					cfg := a.Config.Snapshot().Notifications.Approval
+					return notification.ApprovalPolicy{
+						Enabled: cfg.Enabled, Pending: cfg.Pending, Resolved: cfg.Resolved,
+						Providers: map[string]bool{
+							notification.ProviderDesktop:  cfg.DesktopEnabled,
+							notification.ProviderTelegram: cfg.TelegramEnabled,
+						},
+					}
+				},
+			})
+		}
 		a.Upstream = a.Tools.Upstream
 		a.syncMCPHTTP(a.Config.Snapshot().Server.Enabled)
 		a.attachTunnelLifecycle()

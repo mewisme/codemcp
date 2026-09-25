@@ -51,6 +51,7 @@ func newRootCommand() *cobra.Command {
 		adminSettingsCommand(),
 		permissionsSettingsCommand(),
 		shellSettingsCommand(),
+		notificationSettingsCommand(),
 		integrationSettingsCommand(),
 		serveCommand(),
 		statusCommand(),

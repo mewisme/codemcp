@@ -103,6 +103,13 @@ func (s *EventStream) Unsubscribe(sub *EventSubscription) {
 	s.stream.Unsubscribe(sub)
 }
 
+func (s *EventStream) AcknowledgeOverflow(sub *EventSubscription) {
+	if s == nil || s.stream == nil {
+		return
+	}
+	s.stream.AcknowledgeOverflow(sub)
+}
+
 func (s *EventStream) Recent(limit int) []Event {
 	if s == nil || s.stream == nil {
 		return nil

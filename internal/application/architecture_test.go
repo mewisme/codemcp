@@ -46,6 +46,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"memory":             "domain",
 	"migration":          "persistence",
 	"network":            "platform",
+	"notification":       "application",
 	"oauth":              "runtime",
 	"oslock":             "platform",
 	"outboundpolicy":     "domain",

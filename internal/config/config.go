@@ -15,13 +15,14 @@ import (
 )
 
 type Config struct {
-	Server       ServerConfig       `json:"server"`
-	Admin        AdminConfig        `json:"admin"`
-	Auth         AuthConfig         `json:"auth"`
-	Permissions  PermissionsConfig  `json:"permissions"`
-	Shell        ShellConfig        `json:"shell"`
-	Integrations IntegrationsConfig `json:"integrations"`
-	Tunnel       tunnel.Config      `json:"tunnel"`
+	Server        ServerConfig        `json:"server"`
+	Admin         AdminConfig         `json:"admin"`
+	Auth          AuthConfig          `json:"auth"`
+	Permissions   PermissionsConfig   `json:"permissions"`
+	Shell         ShellConfig         `json:"shell"`
+	Notifications NotificationsConfig `json:"notifications"`
+	Integrations  IntegrationsConfig  `json:"integrations"`
+	Tunnel        tunnel.Config       `json:"tunnel"`
 }
 
 type PermissionsConfig struct {
@@ -30,6 +31,18 @@ type PermissionsConfig struct {
 
 type ShellConfig struct {
 	Path []string `json:"path"`
+}
+
+type NotificationsConfig struct {
+	Approval ApprovalNotificationConfig `json:"approval"`
+}
+
+type ApprovalNotificationConfig struct {
+	Enabled         bool `json:"enabled"`
+	Pending         bool `json:"pending"`
+	Resolved        bool `json:"resolved"`
+	DesktopEnabled  bool `json:"desktop_enabled"`
+	TelegramEnabled bool `json:"telegram_enabled"`
 }
 
 type ServerConfig struct {
@@ -70,7 +83,18 @@ type AuthConfig struct {
 type IntegrationsConfig = integrations.Config
 
 func Default() Config {
-	return Config{Server: ServerConfig{Enabled: true, Port: 37421, Expose: ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}}, Admin: AdminConfig{Enabled: true, Port: 37422}, Auth: AuthConfig{MCPEnabled: true, MCPLegacyBearer: true, AdminEnabled: true}, Permissions: PermissionsConfig{AllowDirs: []string{}}, Shell: ShellConfig{Path: []string{}}, Integrations: integrations.Default(), Tunnel: tunnel.Config{Enabled: false, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}}}
+	return Config{
+		Server:      ServerConfig{Enabled: true, Port: 37421, Expose: ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}},
+		Admin:       AdminConfig{Enabled: true, Port: 37422},
+		Auth:        AuthConfig{MCPEnabled: true, MCPLegacyBearer: true, AdminEnabled: true},
+		Permissions: PermissionsConfig{AllowDirs: []string{}},
+		Shell:       ShellConfig{Path: []string{}},
+		Notifications: NotificationsConfig{Approval: ApprovalNotificationConfig{
+			Enabled: false, Pending: true, Resolved: true, DesktopEnabled: true, TelegramEnabled: false,
+		}},
+		Integrations: integrations.Default(),
+		Tunnel:       tunnel.Config{Enabled: false, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}},
+	}
 }
 
 func (value *ExposureConfig) UnmarshalJSON(data []byte) error {

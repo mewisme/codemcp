@@ -13,6 +13,8 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 		"integrations.caveman.active", "integrations.caveman.mode", "integrations.codegraph.enabled", "integrations.codegraph.path",
 		"integrations.ponytail.active", "integrations.ponytail.mode", "integrations.rtk.enabled", "integrations.rtk.path",
 		"permissions.allow_dirs",
+		"notifications.approval.desktop_enabled", "notifications.approval.enabled", "notifications.approval.pending",
+		"notifications.approval.resolved", "notifications.approval.telegram_enabled",
 		"server.allow_insecure_http", "server.allow_unauthenticated_loopback", "server.enabled", "server.expose.interfaces", "server.expose.mode", "server.port",
 		"shell.path",
 		"tunnel.admin.enabled", "tunnel.admin.key", "tunnel.admin.manage_access", "tunnel.admin.organization_id", "tunnel.admin.read_access",

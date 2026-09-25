@@ -210,6 +210,21 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ScopedCommands = []string{"permissions allow dir add", "permissions allow dir remove"}
 	case "shell.path":
 		spec.ScopedCommands = []string{"shell path"}
+	case "notifications.approval.enabled":
+		spec.ApplicationOwner = "notifications.approval"
+		spec.ScopedCommands = []string{"notification approval enable", "notification approval disable"}
+	case "notifications.approval.pending":
+		spec.ApplicationOwner = "notifications.approval"
+		spec.ScopedCommands = []string{"notification approval pending enable", "notification approval pending disable"}
+	case "notifications.approval.resolved":
+		spec.ApplicationOwner = "notifications.approval"
+		spec.ScopedCommands = []string{"notification approval resolved enable", "notification approval resolved disable"}
+	case "notifications.approval.desktop_enabled":
+		spec.ApplicationOwner = "notifications.approval"
+		spec.ScopedCommands = []string{"notification desktop enable", "notification desktop disable"}
+	case "notifications.approval.telegram_enabled":
+		spec.ApplicationOwner = "notifications.approval"
+		spec.ScopedCommands = []string{"notification telegram enable", "notification telegram disable"}
 	case "integrations.ponytail.active":
 		spec.ScopedCommands = []string{"integration ponytail enable", "integration ponytail disable"}
 	case "integrations.ponytail.mode":

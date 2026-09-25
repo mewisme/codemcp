@@ -108,6 +108,11 @@ var fieldSpecs = []FieldSpec{
 	{Key: "auth.admin_token_hash", Label: "Admin credential", Section: FieldSectionAccess, Description: "stores the managed credential hash used by admin HTTP authentication", Details: "The raw token is never exposed through config views. This field is managed by the admin authentication workflow and is not directly editable through config set.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage this credential with the admin auth token workflow.", Related: []string{"auth.admin_enabled", "admin.enabled"}},
 	{Key: "permissions.allow_dirs", Label: "Allowed directories", Section: FieldSectionAccess, Description: "adds global filesystem roots that registered workspaces may access", Details: "These roots extend workspace-local access for filesystem and shell operations. Paths must be absolute, are normalized, and apply globally in addition to per-workspace allowed directories.", Kind: FieldList, Editable: true},
 	{Key: "shell.path", Label: "Executable search paths", Section: FieldSectionShell, Description: "prepends additional executable directories to PATH for managed shell commands", Details: "Paths must be absolute. Configured entries are prepended to the inherited process PATH for foreground and background shell execution.", Kind: FieldList, Editable: true},
+	{Key: "notifications.approval.enabled", Label: "Approval notifications", Section: FieldSectionRuntime, Description: "controls whether approval lifecycle notifications are delivered to configured providers", Details: "Review surfaces remain independent of this setting. Enabling notifications does not consume or hide approval events from CLI, TUI, Browser, Admin API, or Telegram review surfaces.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.pending", "notifications.approval.resolved", "notifications.approval.desktop_enabled", "notifications.approval.telegram_enabled"}},
+	{Key: "notifications.approval.pending", Label: "Pending approval notifications", Section: FieldSectionRuntime, Description: "controls notification delivery when a request becomes pending", Details: "This policy only controls outbound notification delivery. Pending requests remain visible through every review surface regardless of notification state.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
+	{Key: "notifications.approval.resolved", Label: "Resolved approval notifications", Section: FieldSectionRuntime, Description: "controls notification delivery for terminal approval outcomes", Details: "Resolved notifications cover approved, denied, expired, cancelled, and revoked outcomes. They do not alter canonical approval state.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
+	{Key: "notifications.approval.desktop_enabled", Label: "Desktop approval notifications", Section: FieldSectionRuntime, Description: "enables native desktop approval notifications when the host supports them", Details: "Linux uses notify-send when available and macOS uses osascript. Unsupported or unavailable native notification facilities are reported as delivery diagnostics and never fail approval state changes.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
+	{Key: "notifications.approval.telegram_enabled", Label: "Telegram approval notifications", Section: FieldSectionRuntime, Description: "enables Telegram approval notifications when a Telegram sender is configured", Details: "The notification coordinator owns delivery policy; the Telegram interface supplies the provider transport once configured. Missing Telegram transport is treated as unavailable delivery, not as an approval failure.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
 	{Key: "integrations.ponytail.active", Label: "Ponytail active", Section: FieldSectionIntegrations, Description: "controls whether Ponytail guidance is active by default", Details: "Ponytail biases coding work toward the smallest correct solution: reuse existing code, prefer standard/platform features, avoid speculative abstractions, and minimize unnecessary implementation.", Kind: FieldBool, Editable: true, Related: []string{"integrations.ponytail.mode"}},
 	{Key: "integrations.ponytail.mode", Label: "Ponytail mode", Section: FieldSectionIntegrations, Description: "sets the default Ponytail intensity", Details: "This persisted value selects the default runtime intensity when Ponytail is active. Session-only modes such as review/off are not valid persisted values.", Kind: FieldEnum, Options: []string{"lite", "full", "ultra"}, Values: []FieldValueSpec{{Value: "lite", Description: "Build the requested solution but point out a simpler alternative when useful."}, {Value: "full", Description: "Enforce the reuse/stdlib/native-first ladder and prefer the shortest correct implementation."}, {Value: "ultra", Description: "Apply aggressive YAGNI pressure, favor deletion or minimal implementation, and challenge unnecessary scope."}}, Editable: true, Related: []string{"integrations.ponytail.active"}},
 	{Key: "integrations.caveman.active", Label: "Caveman active", Section: FieldSectionIntegrations, Description: "controls whether Caveman response style is active by default", Details: "Caveman compresses assistant prose while preserving technical meaning, exact code, commands, numbers, and safety-critical clarity.", Kind: FieldBool, Editable: true, Related: []string{"integrations.caveman.mode"}},
@@ -245,6 +250,36 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Permissions.AllowDirs = splitFieldList(raw)
 	case "shell.path":
 		cfg.Shell.Path = splitFieldList(raw)
+	case "notifications.approval.enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Notifications.Approval.Enabled = value
+	case "notifications.approval.pending":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Notifications.Approval.Pending = value
+	case "notifications.approval.resolved":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Notifications.Approval.Resolved = value
+	case "notifications.approval.desktop_enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Notifications.Approval.DesktopEnabled = value
+	case "notifications.approval.telegram_enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Notifications.Approval.TelegramEnabled = value
 	case "integrations.ponytail.active":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -377,6 +412,16 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strings.Join(cfg.Permissions.AllowDirs, ","), nil
 	case "shell.path":
 		return strings.Join(cfg.Shell.Path, ","), nil
+	case "notifications.approval.enabled":
+		return strconv.FormatBool(cfg.Notifications.Approval.Enabled), nil
+	case "notifications.approval.pending":
+		return strconv.FormatBool(cfg.Notifications.Approval.Pending), nil
+	case "notifications.approval.resolved":
+		return strconv.FormatBool(cfg.Notifications.Approval.Resolved), nil
+	case "notifications.approval.desktop_enabled":
+		return strconv.FormatBool(cfg.Notifications.Approval.DesktopEnabled), nil
+	case "notifications.approval.telegram_enabled":
+		return strconv.FormatBool(cfg.Notifications.Approval.TelegramEnabled), nil
 	case "integrations.ponytail.active":
 		return strconv.FormatBool(cfg.Integrations.Ponytail.Active), nil
 	case "integrations.ponytail.mode":
