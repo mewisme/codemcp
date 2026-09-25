@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.mewis.me/codemcp/internal/idgen"
@@ -23,6 +24,7 @@ const (
 	maxRunningProcesses      = 32
 	maxWorkspaceProcesses    = 8
 	finishedProcessRetention = 24 * time.Hour
+	terminalEventBuffer      = 16
 )
 
 var (
@@ -66,10 +68,54 @@ type StopResult struct {
 	AlreadyExited bool   `json:"already_exited,omitempty"`
 }
 
+type BackgroundTerminalReason string
+
+const (
+	BackgroundTerminalExit     BackgroundTerminalReason = "exit"
+	BackgroundTerminalFailure  BackgroundTerminalReason = "failure"
+	BackgroundTerminalTimeout  BackgroundTerminalReason = "timeout"
+	BackgroundTerminalSignal   BackgroundTerminalReason = "signal"
+	BackgroundTerminalStopped  BackgroundTerminalReason = "stopped"
+	BackgroundTerminalShutdown BackgroundTerminalReason = "shutdown"
+)
+
+type BackgroundWorkTerminalEvent struct {
+	WorkspaceID string                   `json:"workspace_id"`
+	ProcessID   string                   `json:"process_id"`
+	ExecutionID string                   `json:"execution_id,omitempty"`
+	Tool        string                   `json:"tool"`
+	SessionHash string                   `json:"session_hash,omitempty"`
+	CallID      string                   `json:"call_id,omitempty"`
+	Status      string                   `json:"status"`
+	Reason      BackgroundTerminalReason `json:"reason"`
+	ExitCode    *int                     `json:"exit_code,omitempty"`
+	Signal      *string                  `json:"signal,omitempty"`
+	TimedOut    bool                     `json:"timed_out,omitempty"`
+	StartedAt   string                   `json:"started_at"`
+	FinishedAt  string                   `json:"finished_at"`
+}
+
+type BackgroundWorkTerminalSubscription struct {
+	Events   <-chan BackgroundWorkTerminalEvent
+	Overflow <-chan struct{}
+	events   chan BackgroundWorkTerminalEvent
+	overflow chan struct{}
+	dropped  atomic.Uint64
+	closed   bool
+}
+
+func (s *BackgroundWorkTerminalSubscription) Dropped() uint64 {
+	if s == nil {
+		return 0
+	}
+	return s.dropped.Load()
+}
+
 type managedProcess struct {
 	mu         sync.Mutex
 	workspace  string
 	id         string
+	tool       string
 	command    string
 	cwd        string
 	startedAt  string
@@ -80,6 +126,8 @@ type managedProcess struct {
 	signal     *string
 	finishedAt time.Time
 	execution  *ExecutionRun
+	metadata   ExecutionMetadata
+	terminal   BackgroundTerminalReason
 	done       chan struct{}
 }
 
@@ -94,6 +142,8 @@ type ProcessManager struct {
 	maxWorkspaceRunning int
 	retention           time.Duration
 	executions          *ExecutionHub
+	terminalMu          sync.Mutex
+	terminalSubs        map[*BackgroundWorkTerminalSubscription]struct{}
 }
 
 type logBuffer struct {
@@ -103,13 +153,45 @@ type logBuffer struct {
 }
 
 func NewProcessManager(workspaces *workspace.Manager, shell *Manager) *ProcessManager {
-	return &ProcessManager{workspaces: workspaces, shell: shell, processes: map[string]*managedProcess{}, maxFinished: maxFinishedProcesses, maxRunning: maxRunningProcesses, maxWorkspaceRunning: maxWorkspaceProcesses, retention: finishedProcessRetention}
+	return &ProcessManager{workspaces: workspaces, shell: shell, processes: map[string]*managedProcess{}, maxFinished: maxFinishedProcesses, maxRunning: maxRunningProcesses, maxWorkspaceRunning: maxWorkspaceProcesses, retention: finishedProcessRetention, terminalSubs: map[*BackgroundWorkTerminalSubscription]struct{}{}}
 }
 
 func NewProcessManagerWithExecutions(workspaces *workspace.Manager, shell *Manager, executions *ExecutionHub) *ProcessManager {
 	manager := NewProcessManager(workspaces, shell)
 	manager.executions = executions
 	return manager
+}
+
+func (m *ProcessManager) SubscribeTerminal() *BackgroundWorkTerminalSubscription {
+	events := make(chan BackgroundWorkTerminalEvent, terminalEventBuffer)
+	overflow := make(chan struct{}, 1)
+	sub := &BackgroundWorkTerminalSubscription{Events: events, Overflow: overflow, events: events, overflow: overflow}
+	if m == nil {
+		close(events)
+		close(overflow)
+		return sub
+	}
+	m.terminalMu.Lock()
+	if m.terminalSubs == nil {
+		m.terminalSubs = map[*BackgroundWorkTerminalSubscription]struct{}{}
+	}
+	m.terminalSubs[sub] = struct{}{}
+	m.terminalMu.Unlock()
+	return sub
+}
+
+func (m *ProcessManager) UnsubscribeTerminal(sub *BackgroundWorkTerminalSubscription) {
+	if m == nil || sub == nil {
+		return
+	}
+	m.terminalMu.Lock()
+	if _, ok := m.terminalSubs[sub]; ok && !sub.closed {
+		delete(m.terminalSubs, sub)
+		close(sub.events)
+		close(sub.overflow)
+		sub.closed = true
+	}
+	m.terminalMu.Unlock()
 }
 
 func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string) (StartResult, error) {
@@ -151,9 +233,10 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 		closePipes()
 		return StartResult{}, err
 	}
+	metadata := executionMetadata(ctx)
 	process := &managedProcess{
-		workspace: workspaceID, id: id, command: plan.Effective, cwd: cwd,
-		startedAt: time.Now().UTC().Format(time.RFC3339Nano), cmd: cmd, stdout: &logBuffer{}, stderr: &logBuffer{}, done: make(chan struct{}),
+		workspace: workspaceID, id: id, tool: "start_process", command: plan.Effective, cwd: cwd,
+		startedAt: time.Now().UTC().Format(time.RFC3339Nano), cmd: cmd, stdout: &logBuffer{}, stderr: &logBuffer{}, metadata: metadata, done: make(chan struct{}),
 	}
 	m.mu.Lock()
 	m.pruneLocked(time.Now().UTC())
@@ -172,7 +255,6 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 	m.mu.Unlock()
 	var execution *ExecutionRun
 	if m.executions != nil {
-		metadata := executionMetadata(ctx)
 		execution = m.executions.Begin(ExecutionInput{WorkspaceID: workspaceID, Tool: "start_process", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: commandShellLanguage(ctx), Source: metadata.Source, CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID})
 		process.mu.Lock()
 		process.execution = execution
@@ -206,16 +288,13 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 		process.finishedAt = time.Now().UTC()
 		exitCode := cloneInt(process.exitCode)
 		signal := cloneString(process.signal)
+		terminalIntent := process.terminal
 		process.mu.Unlock()
+		status, reason := processTerminalStatus(false, signal, exitCode, terminalIntent)
 		if execution != nil {
-			status := ExecutionStatusSuccess
-			if signal != nil {
-				status = ExecutionStatusCancelled
-			} else if exitCode == nil || *exitCode != 0 {
-				status = ExecutionStatusFailed
-			}
 			execution.Finish(status, exitCode, false)
 		}
+		m.publishTerminal(process, status, reason, exitCode, signal, false)
 		m.mu.Lock()
 		m.pruneLocked(time.Now().UTC())
 		m.mu.Unlock()
@@ -287,7 +366,12 @@ func (m *ProcessManager) Stop(workspaceID, id string, force bool) (StopResult, e
 	if item.cmd.Process == nil {
 		return StopResult{}, errors.New("process handle is unavailable")
 	}
+	previousTerminal := item.terminal
+	if item.terminal == "" {
+		item.terminal = BackgroundTerminalStopped
+	}
 	if err := signalCommandTree(item.cmd, force); err != nil {
+		item.terminal = previousTerminal
 		return StopResult{}, err
 	}
 	return StopResult{ID: id, Force: force}, nil
@@ -316,6 +400,11 @@ func (m *ProcessManager) Shutdown(ctx context.Context) error {
 	}
 	var shutdownErr error
 	for _, item := range items {
+		item.mu.Lock()
+		if item.terminal == "" {
+			item.terminal = BackgroundTerminalShutdown
+		}
+		item.mu.Unlock()
 		if err := signalCommandTree(item.cmd, false); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			shutdownErr = errors.Join(shutdownErr, err)
 		}
@@ -339,6 +428,69 @@ func (m *ProcessManager) Shutdown(ctx context.Context) error {
 		shutdownErr = errors.Join(shutdownErr, errors.New("background processes did not stop"))
 	}
 	return shutdownErr
+}
+
+func processTerminalStatus(timedOut bool, signal *string, exitCode *int, intent BackgroundTerminalReason) (string, BackgroundTerminalReason) {
+	if timedOut {
+		return ExecutionStatusTimedOut, BackgroundTerminalTimeout
+	}
+	if intent == BackgroundTerminalStopped || intent == BackgroundTerminalShutdown {
+		return ExecutionStatusCancelled, intent
+	}
+	if signal != nil {
+		return ExecutionStatusCancelled, BackgroundTerminalSignal
+	}
+	if exitCode == nil || *exitCode != 0 {
+		return ExecutionStatusFailed, BackgroundTerminalFailure
+	}
+	return ExecutionStatusSuccess, BackgroundTerminalExit
+}
+
+func (m *ProcessManager) publishTerminal(process *managedProcess, status string, reason BackgroundTerminalReason, exitCode *int, signal *string, timedOut bool) {
+	if m == nil || process == nil {
+		return
+	}
+	process.mu.Lock()
+	event := BackgroundWorkTerminalEvent{
+		WorkspaceID: process.workspace,
+		ProcessID:   process.id,
+		Tool:        process.tool,
+		SessionHash: process.metadata.SessionHash,
+		CallID:      process.metadata.CallID,
+		Status:      status,
+		Reason:      reason,
+		ExitCode:    cloneInt(exitCode),
+		Signal:      cloneString(signal),
+		TimedOut:    timedOut,
+		StartedAt:   process.startedAt,
+		FinishedAt:  process.finishedAt.UTC().Format(time.RFC3339Nano),
+	}
+	if process.execution != nil {
+		event.ExecutionID = process.execution.ID()
+	}
+	process.mu.Unlock()
+	m.terminalMu.Lock()
+	for sub := range m.terminalSubs {
+		if sub.closed {
+			continue
+		}
+		select {
+		case sub.events <- cloneBackgroundWorkTerminalEvent(event):
+		default:
+			sub.dropped.Add(1)
+			select {
+			case sub.overflow <- struct{}{}:
+			default:
+			}
+		}
+	}
+	m.terminalMu.Unlock()
+}
+
+func cloneBackgroundWorkTerminalEvent(event BackgroundWorkTerminalEvent) BackgroundWorkTerminalEvent {
+	event.ExitCode = cloneInt(event.ExitCode)
+	event.Signal = cloneString(event.Signal)
+	return event
 }
 
 func waitProcesses(ctx context.Context, items []*managedProcess) bool {
