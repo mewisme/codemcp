@@ -11,13 +11,12 @@ import (
 	"strconv"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/controlguard"
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
 const configCursorVersion = 1
-const configSetApprovalBindingVersion = 1
-const configSetApprovalBindingKey = "__codemcp_config_binding"
 
 type ConfigReadProvider interface {
 	List(context.Context, string) ([]mcpconfigwire.Setting, mcpconfigwire.ErrorCode)
@@ -28,13 +27,17 @@ type ConfigSetApprovalProvider interface {
 	BindSetApproval(context.Context, map[string]any) (mcpconfigwire.SetApprovalBinding, mcpconfigwire.ErrorCode)
 }
 
+type ConfigSetApplyProvider interface {
+	ApplySet(context.Context, map[string]any, mcpconfigwire.SetApprovalBinding) (mcpconfigwire.MutationResult, *mcpconfigwire.MutationError)
+}
+
 type configListCursor struct {
 	Version    int    `json:"v"`
 	Offset     int    `json:"o"`
 	PrefixHash string `json:"p"`
 }
 
-func RegisterConfigReadTools(registry *Registry, runtime *Runtime) {
+func RegisterConfigTools(registry *Registry, runtime *Runtime) {
 	if registry == nil {
 		return
 	}
@@ -54,6 +57,14 @@ func RegisterConfigReadTools(registry *Registry, runtime *Runtime) {
 		OutputSchema: mcpconfigwire.GetOutputSchema,
 		Annotations:  ToolAnnotations(RiskRead),
 	}, configGetHandler(runtime))
+	registry.MustRegister(mcpconfigwire.SetToolName, Schema{
+		Name:         mcpconfigwire.SetToolName,
+		Title:        "Set Configuration",
+		Description:  "Apply one bounded batch of agent-eligible global CodeMCP settings. Every batch requires exact one-shot local human approval and managed secret values are forbidden.",
+		InputSchema:  mcpconfigwire.SetInputSchema,
+		OutputSchema: mcpconfigwire.SetOutputSchema,
+		Annotations:  ToolAnnotations(RiskEdit),
+	}, configSetHandler(runtime))
 }
 
 func (r *Runtime) SetConfigReadProvider(provider ConfigReadProvider) {
@@ -74,6 +85,15 @@ func (r *Runtime) SetConfigSetApprovalProvider(provider ConfigSetApprovalProvide
 	r.configApprovalMu.Unlock()
 }
 
+func (r *Runtime) SetConfigSetApplyProvider(provider ConfigSetApplyProvider) {
+	if r == nil {
+		return
+	}
+	r.configApplyMu.Lock()
+	r.configApplies = provider
+	r.configApplyMu.Unlock()
+}
+
 func (r *Runtime) configReadProvider() ConfigReadProvider {
 	if r == nil {
 		return nil
@@ -90,6 +110,15 @@ func (r *Runtime) configSetApprovalProvider() ConfigSetApprovalProvider {
 	r.configApprovalMu.RLock()
 	defer r.configApprovalMu.RUnlock()
 	return r.configApprovals
+}
+
+func (r *Runtime) configSetApplyProvider() ConfigSetApplyProvider {
+	if r == nil {
+		return nil
+	}
+	r.configApplyMu.RLock()
+	defer r.configApplyMu.RUnlock()
+	return r.configApplies
 }
 
 func (r *Runtime) bindConfigSetApproval(ctx context.Context, arguments map[string]any) (map[string]any, mcpconfigwire.ErrorCode) {
@@ -110,8 +139,8 @@ func (r *Runtime) bindConfigSetApproval(ctx context.Context, arguments map[strin
 	}
 	bound := map[string]any{
 		"changes": append([]mcpconfigwire.Change(nil), binding.Changes...),
-		configSetApprovalBindingKey: map[string]any{
-			"version":            configSetApprovalBindingVersion,
+		mcpconfigwire.SetApprovalBindingKey: map[string]any{
+			"version":            mcpconfigwire.SetApprovalBindingVersion,
 			"config_root":        strings.TrimSpace(binding.ConfigRoot),
 			"config_fingerprint": strings.TrimSpace(binding.ConfigFingerprint),
 		},
@@ -128,6 +157,46 @@ func RequireConfigSetApproval(ctx context.Context) error {
 		return nil
 	}
 	return controlguard.New(controlguard.CodeControlPlaneMutation, "CodeMCP configuration changes require local approval", true, nil)
+}
+
+func configSetHandler(runtime *Runtime) Handler {
+	return func(ctx context.Context, args map[string]any) (Result, error) {
+		if err := RequireConfigSetApproval(ctx); err != nil {
+			return Result{}, err
+		}
+		binding, code := runtime.approvedConfigSetBinding(ctx)
+		if code != "" {
+			return configSetApprovalError(code), nil
+		}
+		provider := runtime.configSetApplyProvider()
+		if provider == nil {
+			return configSetApprovalError(mcpconfigwire.ErrorAccessDenied), nil
+		}
+		result, mutationErr := provider.ApplySet(ctx, args, binding)
+		if mutationErr != nil {
+			return configSetMutationError(*mutationErr), nil
+		}
+		return JSONResult(result), nil
+	}
+}
+
+func (r *Runtime) approvedConfigSetBinding(ctx context.Context) (mcpconfigwire.SetApprovalBinding, mcpconfigwire.ErrorCode) {
+	if r == nil || r.Approvals == nil {
+		return mcpconfigwire.SetApprovalBinding{}, mcpconfigwire.ErrorAccessDenied
+	}
+	requestID := strings.TrimSpace(ApprovalRequestID(ctx))
+	if requestID == "" {
+		return mcpconfigwire.SetApprovalBinding{}, mcpconfigwire.ErrorApprovalRequired
+	}
+	request, ok := r.Approvals.Get(requestID)
+	if !ok || request.Status != approval.StatusConsumed || request.TargetTool != mcpconfigwire.SetToolName {
+		return mcpconfigwire.SetApprovalBinding{}, mcpconfigwire.ErrorApprovalRequired
+	}
+	binding, _, err := mcpconfigwire.ParseBoundSetArguments(request.Arguments)
+	if err != nil {
+		return mcpconfigwire.SetApprovalBinding{}, mcpconfigwire.ErrorApprovalRequired
+	}
+	return binding, ""
 }
 
 func configListHandler(runtime *Runtime) Handler {
@@ -347,5 +416,15 @@ func configSetApprovalError(code mcpconfigwire.ErrorCode) Result {
 		Content:    []Content{{Type: "text", Text: string(data)}},
 		IsError:    true,
 		ResultType: "complete",
+	}
+}
+
+func configSetMutationError(value mcpconfigwire.MutationError) Result {
+	data, _ := json.Marshal(value)
+	return Result{
+		Content:           []Content{{Type: "text", Text: string(data)}},
+		StructuredContent: value,
+		IsError:           true,
+		ResultType:        "complete",
 	}
 }

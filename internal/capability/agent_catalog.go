@@ -133,11 +133,10 @@ var mcpToolBindings = map[ID][]string{
 	IntegrationCodeGraphExplore:     {"codegraph_explore"},
 	AgentConfigList:                 {"config_list"},
 	AgentConfigGet:                  {"config_get"},
+	AgentConfigSet:                  {"config_set"},
 }
 
-var plannedMCPToolBindings = map[ID][]string{
-	AgentConfigSet: {"config_set"},
-}
+var plannedMCPToolBindings = map[ID][]string{}
 
 func agentOnlySpecs() []Spec {
 	return []Spec{

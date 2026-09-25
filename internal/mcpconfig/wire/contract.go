@@ -19,6 +19,9 @@ const (
 	MaxChanges          = 32
 	MaxValueBytes       = 32 * 1024
 	MaxWorkspaceIDBytes = 128
+
+	SetApprovalBindingVersion = 1
+	SetApprovalBindingKey     = "__codemcp_config_binding"
 )
 
 var (
@@ -118,11 +121,13 @@ var (
 		"properties":{
 			"state":{"type":"string","enum":["unchanged","persisted","runtime_synced","rolled_back","reconciliation_required"]},
 			"keys":{"type":"array","items":{"type":"string"},"maxItems":32},
+			"outcomes":{"type":"array","items":{"type":"object","properties":{"key":{"type":"string"},"changed":{"type":"boolean"}},"required":["key","changed"],"additionalProperties":false},"maxItems":32},
 			"change_count":{"type":"integer","minimum":0,"maximum":32},
 			"changed":{"type":"boolean"},
-			"runtime_reloaded":{"type":"boolean"}
+			"runtime_reloaded":{"type":"boolean"},
+			"runtime_sync":{"type":"string","enum":["persisted","current","pending"]}
 		},
-		"required":["state","keys","change_count","changed","runtime_reloaded"],
+		"required":["state","keys","outcomes","change_count","changed","runtime_reloaded","runtime_sync"],
 		"additionalProperties":false
 	}`)
 )
@@ -136,6 +141,37 @@ type SetApprovalBinding struct {
 	Changes           []Change
 	ConfigRoot        string
 	ConfigFingerprint string
+}
+
+func ParseBoundSetArguments(raw json.RawMessage) (SetApprovalBinding, string, error) {
+	var envelope struct {
+		WorkspaceID string   `json:"workspace_id"`
+		Changes     []Change `json:"changes"`
+		Binding     struct {
+			Version           int    `json:"version"`
+			ConfigRoot        string `json:"config_root"`
+			ConfigFingerprint string `json:"config_fingerprint"`
+		} `json:"__codemcp_config_binding"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return SetApprovalBinding{}, "", err
+	}
+	if envelope.Binding.Version != SetApprovalBindingVersion {
+		return SetApprovalBinding{}, "", errors.New("unsupported config_set approval binding version")
+	}
+	if err := ValidateChanges(envelope.Changes); err != nil {
+		return SetApprovalBinding{}, "", err
+	}
+	root := strings.TrimSpace(envelope.Binding.ConfigRoot)
+	fingerprint := strings.TrimSpace(envelope.Binding.ConfigFingerprint)
+	if root == "" || fingerprint == "" {
+		return SetApprovalBinding{}, "", errors.New("config_set approval binding is incomplete")
+	}
+	return SetApprovalBinding{
+		Changes:           append([]Change(nil), envelope.Changes...),
+		ConfigRoot:        root,
+		ConfigFingerprint: fingerprint,
+	}, strings.TrimSpace(envelope.WorkspaceID), nil
 }
 
 func CanonicalSetArguments(arguments map[string]any) ([]Change, string, error) {
@@ -348,10 +384,34 @@ const (
 	MutationReconciliationRequired MutationState = "reconciliation_required"
 )
 
+type RuntimeSyncState string
+
+const (
+	RuntimeSyncPersisted RuntimeSyncState = "persisted"
+	RuntimeSyncCurrent   RuntimeSyncState = "current"
+	RuntimeSyncPending   RuntimeSyncState = "pending"
+)
+
+type MutationOutcome struct {
+	Key     string `json:"key"`
+	Changed bool   `json:"changed"`
+}
+
 type MutationResult struct {
-	State           MutationState `json:"state"`
-	Keys            []string      `json:"keys"`
-	ChangeCount     int           `json:"change_count"`
-	Changed         bool          `json:"changed"`
-	RuntimeReloaded bool          `json:"runtime_reloaded"`
+	State           MutationState     `json:"state"`
+	Keys            []string          `json:"keys"`
+	Outcomes        []MutationOutcome `json:"outcomes"`
+	ChangeCount     int               `json:"change_count"`
+	Changed         bool              `json:"changed"`
+	RuntimeReloaded bool              `json:"runtime_reloaded"`
+	RuntimeSync     RuntimeSyncState  `json:"runtime_sync"`
+}
+
+type MutationError struct {
+	Code            ErrorCode        `json:"code"`
+	State           MutationState    `json:"state"`
+	Keys            []string         `json:"keys"`
+	ChangeCount     int              `json:"change_count"`
+	RuntimeReloaded bool             `json:"runtime_reloaded"`
+	RuntimeSync     RuntimeSyncState `json:"runtime_sync"`
 }

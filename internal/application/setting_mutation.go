@@ -41,6 +41,90 @@ var staticSettingMutationHandlers = map[string]settingMutationHandler{
 	"tunnel.admin.key":              mutateTunnelAdminKey,
 }
 
+func (s *SettingService) ValidateApply(ctx context.Context, changes []SettingChange) error {
+	ctx = settingContext(ctx)
+	resolved, err := resolveSettingChanges(changes)
+	if err != nil || len(resolved) == 0 {
+		return err
+	}
+	resource, resourceID, dynamic, err := settingDynamicTransaction(resolved)
+	if err != nil {
+		return err
+	}
+	if dynamic {
+		switch resource {
+		case "upstream.server":
+			service, err := s.upstreamService(ctx)
+			if err != nil {
+				return err
+			}
+			current, err := service.Get(ctx, resourceID)
+			if err != nil {
+				return err
+			}
+			staged := current.Value
+			for _, item := range resolved {
+				raw := item.change.Value
+				if item.change.Unset {
+					raw = ""
+				}
+				if err := applyUpstreamSetting(&staged, dynamicSettingSuffix(item.spec.Key), raw); err != nil {
+					return err
+				}
+			}
+			_, err = upstream.NormalizeServer(staged)
+			return err
+		case "tunnel.managed":
+			if len(resolved) != 1 {
+				return errors.New("managed tunnel settings are remote mutations and cannot be combined in a multi-setting transaction")
+			}
+			item := resolved[0]
+			if _, err := GetManagedTunnel(ctx, item.selector.ResourceID, ManagedTunnelOptions{}); err != nil {
+				return err
+			}
+			raw := item.change.Value
+			if item.change.Unset {
+				raw = ""
+			}
+			_, err := managedTunnelUpdateRequest(dynamicSettingSuffix(item.spec.Key), raw)
+			return err
+		default:
+			return fmt.Errorf("unsupported setting resource: %s", resource)
+		}
+	}
+
+	replaceRuntimeKey, replaceAdminKey := false, false
+	for _, item := range resolved {
+		switch item.spec.Key {
+		case "tunnel.api_key":
+			replaceRuntimeKey = true
+		case "tunnel.admin.key":
+			replaceAdminKey = true
+		}
+	}
+	loader := config.Load
+	if replaceRuntimeKey || replaceAdminKey {
+		loader = func() (config.Config, error) {
+			return config.LoadForTunnelSecretReplacement(replaceRuntimeKey, replaceAdminKey)
+		}
+	}
+	current, err := loader()
+	if err != nil {
+		return err
+	}
+	staged := current
+	for _, item := range resolved {
+		handler := staticSettingMutationHandlers[item.spec.Key]
+		if handler == nil {
+			handler = mutateConfigSetting
+		}
+		if err := handler(&staged, item); err != nil {
+			return err
+		}
+	}
+	return config.Validate(staged)
+}
+
 func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (result SettingApplyResult, resultErr error) {
 	ctx = settingContext(ctx)
 	keys := settingChangeKeys(changes)

@@ -68,6 +68,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	configProvider := application.NewMCPConfigReadService()
 	toolRuntime.SetConfigReadProvider(configProvider)
 	toolRuntime.SetConfigSetApprovalProvider(configProvider)
+	toolRuntime.SetConfigSetApplyProvider(configProvider)
 	toolSpan.EndMessage("Tool runtime bootstrapped", tracepkg.Int("tool_count", len(toolRuntime.List())))
 	if toolRuntime.Upstream != nil {
 		toolRuntime.Upstream.SetTraceObserver(observer)

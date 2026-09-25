@@ -11,7 +11,7 @@ import (
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
-func TestConfigReadToolsAreRegisteredWhileMutationRemainsInactive(t *testing.T) {
+func TestConfigToolsAreRegisteredWithCanonicalContracts(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	runtime := NewRuntime()
 	for _, tc := range []struct {
@@ -33,8 +33,16 @@ func TestConfigReadToolsAreRegisteredWhileMutationRemainsInactive(t *testing.T) 
 			t.Fatalf("%s annotations=%#v", tc.name, schema.Annotations)
 		}
 	}
-	if _, ok := runtime.Registry.Schema(mcpconfigwire.SetToolName); ok {
-		t.Fatal("config_set became registered before guarded mutation support")
+	set, ok := runtime.Registry.Schema(mcpconfigwire.SetToolName)
+	if !ok {
+		t.Fatal("config_set is not registered")
+	}
+	if string(set.OutputSchema) != string(mcpconfigwire.SetOutputSchema) {
+		t.Fatalf("config_set output schema drifted\ngot=%s\nwant=%s", set.OutputSchema, mcpconfigwire.SetOutputSchema)
+	}
+	if set.Annotations["readOnlyHint"] != false || set.Annotations["idempotentHint"] != false ||
+		set.Annotations["destructiveHint"] != false || set.Annotations["openWorldHint"] != false {
+		t.Fatalf("config_set annotations=%#v", set.Annotations)
 	}
 }
 

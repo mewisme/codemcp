@@ -30,6 +30,7 @@ func (a *App) Bootstrap() error {
 		configProvider := application.NewMCPConfigReadService()
 		a.Tools.SetConfigReadProvider(configProvider)
 		a.Tools.SetConfigSetApprovalProvider(configProvider)
+		a.Tools.SetConfigSetApplyProvider(configProvider)
 		if a.Activity == nil {
 			a.Activity = activity.NewStream()
 		}

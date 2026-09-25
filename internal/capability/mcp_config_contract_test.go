@@ -47,14 +47,14 @@ func TestMCPConfigCapabilitiesKeepOperatorAndAgentAuthoritySeparate(t *testing.T
 	if set.Audience != AudienceAgent || set.Authorization != AuthorizationAgent || set.Kind != KindMutation {
 		t.Fatalf("config_set capability metadata=%#v", set)
 	}
-	if len(set.MCPTools) != 0 || len(set.PlannedMCPTools) != 1 || set.PlannedMCPTools[0] != "config_set" {
+	if len(set.MCPTools) != 1 || set.MCPTools[0] != "config_set" || len(set.PlannedMCPTools) != 0 {
 		t.Fatalf("config_set binding=%#v", set)
 	}
-	if _, active := ForMCPTool("config_set"); active {
-		t.Fatal("config_set became active before guarded mutation implementation")
+	if got, active := ForMCPTool("config_set"); !active || got != AgentConfigSet {
+		t.Fatalf("active config_set binding => %q,%t", got, active)
 	}
-	if got, planned := ForPlannedMCPTool("config_set"); !planned || got != AgentConfigSet {
-		t.Fatalf("planned config_set binding => %q,%t", got, planned)
+	if _, planned := ForPlannedMCPTool("config_set"); planned {
+		t.Fatal("active config_set binding remained planned")
 	}
 	if set.Risk != RiskSensitive || set.Confirmation.Mode != ConfirmationRequired || !set.Confirmation.ControlApproval || set.Effects.ReadOnly {
 		t.Fatalf("config_set security contract=%#v", set)

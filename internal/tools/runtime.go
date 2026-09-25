@@ -50,6 +50,8 @@ type Runtime struct {
 	configReads         ConfigReadProvider
 	configApprovalMu    sync.RWMutex
 	configApprovals     ConfigSetApprovalProvider
+	configApplyMu       sync.RWMutex
+	configApplies       ConfigSetApplyProvider
 	integrationMu       sync.Mutex
 	integrations        integrations.Config
 	ponytailManager     *ponytail.Manager
@@ -100,7 +102,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	registerCoreWithManagers(registry, workspaces, checkpoints, environment, shell, processes, codeGraphProjectContextProviders(runtime))
 	RegisterAgentCompletionTool(registry, runtime.Completions)
 	RegisterApprovalTools(registry, runtime)
-	RegisterConfigReadTools(registry, runtime)
+	RegisterConfigTools(registry, runtime)
 	RegisterUpstreamTools(registry, upstreams)
 	if err := runtime.SyncIntegrations(integrationConfig); err != nil {
 		panic(err)

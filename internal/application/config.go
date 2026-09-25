@@ -21,8 +21,10 @@ import (
 )
 
 var (
-	ErrConfigurationExists = errors.New("configuration already exists; use --force to rotate tokens")
-	ErrRuntimeImportActive = errors.New("runtime is running; stop it before importing configuration")
+	ErrConfigurationExists          = errors.New("configuration already exists; use --force to rotate tokens")
+	ErrRuntimeImportActive          = errors.New("runtime is running; stop it before importing configuration")
+	ErrConfigMutationRolledBack     = errors.New("persisted configuration rolled back")
+	ErrConfigReconciliationRequired = errors.New("manual reconciliation required")
 )
 
 type ConfigOverview struct {
@@ -450,7 +452,8 @@ func saveConfigMutation(ctx context.Context, previous, next config.Config) (conf
 		rollbackSpan.FailMessage("Persisted configuration rollback failed", rollbackErr)
 		return configReloadResult{}, false, errors.Join(
 			fmt.Errorf("reload running configuration: %w", err),
-			fmt.Errorf("rollback persisted configuration: %w; manual reconciliation required", rollbackErr),
+			fmt.Errorf("rollback persisted configuration: %w", rollbackErr),
+			ErrConfigReconciliationRequired,
 		)
 	}
 	rollbackFields := []tracepkg.Field{tracepkg.String("path", source.Path)}
@@ -458,7 +461,10 @@ func saveConfigMutation(ctx context.Context, previous, next config.Config) (conf
 		rollbackFields = append(rollbackFields, tracepkg.Int64("bytes", info.Size()))
 	}
 	rollbackSpan.EndMessage("Persisted configuration rolled back", rollbackFields...)
-	return configReloadResult{}, false, fmt.Errorf("reload running configuration: %w; persisted configuration rolled back", err)
+	return configReloadResult{}, false, errors.Join(
+		fmt.Errorf("reload running configuration: %w", err),
+		ErrConfigMutationRolledBack,
+	)
 }
 
 func saveConfigMutationWithoutRollback(ctx context.Context, next config.Config) (configReloadResult, bool, error) {

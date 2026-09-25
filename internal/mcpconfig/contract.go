@@ -175,7 +175,10 @@ type BatchSummary = mcpconfigwire.BatchSummary
 type ErrorCode = mcpconfigwire.ErrorCode
 type PublicError = mcpconfigwire.PublicError
 type MutationState = mcpconfigwire.MutationState
+type RuntimeSyncState = mcpconfigwire.RuntimeSyncState
+type MutationOutcome = mcpconfigwire.MutationOutcome
 type MutationResult = mcpconfigwire.MutationResult
+type MutationError = mcpconfigwire.MutationError
 
 const (
 	ErrorAccessDenied         = mcpconfigwire.ErrorAccessDenied
@@ -191,6 +194,10 @@ const (
 	MutationRuntimeSynced          = mcpconfigwire.MutationRuntimeSynced
 	MutationRolledBack             = mcpconfigwire.MutationRolledBack
 	MutationReconciliationRequired = mcpconfigwire.MutationReconciliationRequired
+
+	RuntimeSyncPersisted = mcpconfigwire.RuntimeSyncPersisted
+	RuntimeSyncCurrent   = mcpconfigwire.RuntimeSyncCurrent
+	RuntimeSyncPending   = mcpconfigwire.RuntimeSyncPending
 )
 
 func ValidateChanges(changes []Change) error {

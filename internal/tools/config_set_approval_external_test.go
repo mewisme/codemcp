@@ -23,6 +23,24 @@ type configApprovalHarness struct {
 	applied     atomic.Int32
 }
 
+type configApprovalApplyFixture struct {
+	applied *atomic.Int32
+}
+
+func (fixture configApprovalApplyFixture) ApplySet(_ context.Context, _ map[string]any, binding mcpconfigwire.SetApprovalBinding) (mcpconfigwire.MutationResult, *mcpconfigwire.MutationError) {
+	fixture.applied.Add(1)
+	keys := make([]string, 0, len(binding.Changes))
+	outcomes := make([]mcpconfigwire.MutationOutcome, 0, len(binding.Changes))
+	for _, change := range binding.Changes {
+		keys = append(keys, change.Key)
+		outcomes = append(outcomes, mcpconfigwire.MutationOutcome{Key: change.Key, Changed: true})
+	}
+	return mcpconfigwire.MutationResult{
+		State: mcpconfigwire.MutationRuntimeSynced, Keys: keys, Outcomes: outcomes,
+		ChangeCount: len(keys), Changed: true, RuntimeReloaded: true, RuntimeSync: mcpconfigwire.RuntimeSyncCurrent,
+	}, nil
+}
+
 func newConfigApprovalHarness(t *testing.T) *configApprovalHarness {
 	t.Helper()
 	root := t.TempDir()
@@ -47,18 +65,7 @@ func newConfigApprovalHarness(t *testing.T) *configApprovalHarness {
 		t.Fatal(err)
 	}
 	harness := &configApprovalHarness{runtime: runtime, workspaceID: workspace.ID, root: root}
-	runtime.Registry.MustRegister(mcpconfigwire.SetToolName, tools.Schema{
-		Name:         mcpconfigwire.SetToolName,
-		InputSchema:  mcpconfigwire.SetInputSchema,
-		OutputSchema: mcpconfigwire.SetOutputSchema,
-		Annotations:  tools.ToolAnnotations(tools.RiskEdit),
-	}, func(ctx context.Context, _ map[string]any) (tools.Result, error) {
-		if err := tools.RequireConfigSetApproval(ctx); err != nil {
-			return tools.Result{}, err
-		}
-		harness.applied.Add(1)
-		return tools.JSONResult(map[string]any{"applied": true}), nil
-	})
+	runtime.SetConfigSetApplyProvider(configApprovalApplyFixture{applied: &harness.applied})
 	return harness
 }
 
@@ -101,10 +108,10 @@ func challengeID(t *testing.T, result tools.Result) string {
 func TestConfigSetApprovalExactRetryIsPrivateAndOneShot(t *testing.T) {
 	harness := newConfigApprovalHarness(t)
 	firstValue := "token-like-private-value"
-	secondValue := "https://user:credential@example.invalid/value"
+	secondValue := t.TempDir()
 	args := configSetArgs(harness.workspaceID,
-		mcpconfigwire.Change{Key: "server.port", Value: firstValue},
-		mcpconfigwire.Change{Key: "server.enabled", Value: secondValue},
+		mcpconfigwire.Change{Key: "tunnel.organization_id", Value: firstValue},
+		mcpconfigwire.Change{Key: "permissions.allow_dirs", Value: secondValue},
 	)
 	observed := make([]tools.CallObservation, 0, 4)
 	harness.runtime.SetCallObserver(func(value tools.CallObservation) {
@@ -270,7 +277,7 @@ func TestConfigSetApprovalRejectsChangedOrderAndStaleConfig(t *testing.T) {
 func TestConfigSetApprovalRejectsSecretsMissingScopeDenialAndUnavailableReviewer(t *testing.T) {
 	t.Run("no-op and host confirmation still challenge", func(t *testing.T) {
 		harness := newConfigApprovalHarness(t)
-		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.enabled", Value: "false"})
+		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "notifications.approval.enabled", Value: "false"})
 		ctx := configApprovalContext("caller-a", "request-a")
 		ctx = tools.WithInputRound(ctx, "host-confirmed", map[string]any{"confirm": map[string]any{"accepted": true}})
 		result, err := harness.runtime.Call(ctx, mcpconfigwire.SetToolName, args)
@@ -418,7 +425,7 @@ func assertConfigApprovalPublicValueFree(t *testing.T, text, root string, values
 			t.Fatalf("public config approval surface leaked %q: %s", forbidden, text)
 		}
 	}
-	for _, required := range []string{"server.port", "server.enabled", "change_count"} {
+	for _, required := range []string{"tunnel.organization_id", "permissions.allow_dirs", "change_count"} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("public config approval surface lost summary %q: %s", required, text)
 		}

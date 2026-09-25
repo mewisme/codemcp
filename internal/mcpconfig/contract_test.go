@@ -158,7 +158,8 @@ func TestBatchSummaryAndMutationResultAreValueFree(t *testing.T) {
 
 	result := mcpconfig.MutationResult{
 		State: mcpconfig.MutationRuntimeSynced, Keys: summary.Keys, ChangeCount: summary.ChangeCount,
-		Changed: true, RuntimeReloaded: true,
+		Outcomes: []mcpconfig.MutationOutcome{{Key: "server.port", Changed: true}, {Key: "permissions.allow_dirs", Changed: true}},
+		Changed:  true, RuntimeReloaded: true, RuntimeSync: mcpconfig.RuntimeSyncCurrent,
 	}
 	data, err = json.Marshal(result)
 	if err != nil {
