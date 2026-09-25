@@ -316,8 +316,8 @@ func TestSDKBridgeAdvertisesCanonicalCodeMCPVersionAndInstructions(t *testing.T)
 	if initialized == nil || initialized.ServerInfo == nil || initialized.ServerInfo.Name != "codemcp" || initialized.ServerInfo.Version != codemcpversion.Version {
 		t.Fatalf("tunnel server info = %#v", initialized)
 	}
-	if initialized.Instructions != localmcp.ProjectServerInstructions(localmcp.BaseProfile()) {
-		t.Fatalf("tunnel instructions drifted from base profile")
+	if initialized.Instructions != localmcp.ProjectServerInstructions(localmcp.OpenAIProfile()) {
+		t.Fatalf("tunnel instructions drifted from OpenAI profile")
 	}
 	if err := session.Close(); err != nil {
 		t.Fatal(err)
@@ -328,6 +328,56 @@ func TestSDKBridgeAdvertisesCanonicalCodeMCPVersionAndInstructions(t *testing.T)
 	case <-time.After(time.Second):
 		t.Fatal("bridge server did not stop")
 	}
+}
+
+func TestSDKBridgeUsesOpenAIProfileToolProjection(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.MustRegister("profile_probe", tools.Schema{
+		Name:        "profile_probe",
+		Title:       "Profile Probe",
+		Description: "Verify tunnel projection.",
+		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`),
+		Annotations: tools.ToolAnnotations(tools.RiskRead),
+	}, func(context.Context, map[string]any) (tools.Result, error) {
+		return tools.TextResult("ok"), nil
+	})
+	bridge, err := newSDKBridge(&tools.Runtime{Registry: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- bridge.Run(ctx, serverTransport) }()
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "bridge-profile-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed.Tools) != 1 {
+		t.Fatalf("tools=%#v", listed.Tools)
+	}
+	want, err := localmcp.ProjectSDKTool(localmcp.OpenAIProfile(), localmcp.DescribeTool(tools.Schema{
+		Name:        "profile_probe",
+		Title:       "Profile Probe",
+		Description: "Verify tunnel projection.",
+		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`),
+		Annotations: tools.ToolAnnotations(tools.RiskRead),
+	}), localmcp.ToolProjectionOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed.Tools[0].Title != want.Title || listed.Tools[0].Description != want.Description || !reflect.DeepEqual(listed.Tools[0].Meta, want.Meta) {
+		t.Fatalf("tunnel projection=%#v want=%#v", listed.Tools[0], want)
+	}
+	_ = session.Close()
+	cancel()
+	<-serverDone
 }
 
 func TestSDKBridgeAcceptsIntegerArgumentsForBuiltInTools(t *testing.T) {

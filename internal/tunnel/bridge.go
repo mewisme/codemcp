@@ -23,6 +23,7 @@ import (
 type sdkBridge struct {
 	runtime          *tools.Runtime
 	server           *sdkmcp.Server
+	profile          localmcp.Profile
 	mu               sync.Mutex
 	fingerprints     map[string]string
 	sessionNamespace uint64
@@ -34,13 +35,20 @@ type sdkBridge struct {
 var sdkBridgeNamespace atomic.Uint64
 
 func newSDKBridge(runtime *tools.Runtime) (*sdkBridge, error) {
+	return newSDKBridgeWithProfile(runtime, localmcp.OpenAIProfile())
+}
+
+func newSDKBridgeWithProfile(runtime *tools.Runtime, profile localmcp.Profile) (*sdkBridge, error) {
 	if runtime == nil || runtime.Registry == nil {
 		return nil, errors.New("MCP tools runtime is required")
 	}
+	if profile == nil {
+		profile = localmcp.OpenAIProfile()
+	}
 	descriptors := localmcp.DescribeProtocol(nil)
-	implementation, options := localmcp.ProjectSDKServer(localmcp.BaseProfile(), descriptors)
+	implementation, options := localmcp.ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
-	bridge := &sdkBridge{runtime: runtime, server: server, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
+	bridge := &sdkBridge{runtime: runtime, server: server, profile: profile, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
 	if err := bridge.syncTools(); err != nil {
 		return nil, err
 	}
@@ -84,7 +92,7 @@ func (b *sdkBridge) syncTools() error {
 	prepared := map[string]preparedTool{}
 	for _, schema := range b.runtime.List() {
 		descriptor := localmcp.DescribeTool(schema)
-		tool, err := localmcp.ProjectSDKTool(localmcp.BaseProfile(), descriptor, localmcp.ToolProjectionOptions{})
+		tool, err := localmcp.ProjectSDKTool(b.profile, descriptor, localmcp.ToolProjectionOptions{})
 		if err != nil {
 			return fmt.Errorf("tool %q: %w", schema.Name, err)
 		}
@@ -150,6 +158,7 @@ func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {
 		}
 		requestContext := localmcp.RequestContextFromSDK(request)
 		ctx = localmcp.WithRequestContext(ctx, requestContext)
+		ctx = localmcp.WithProfileRequestMetadata(ctx, b.profile, map[string]any(request.Params.Meta))
 		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		ctx = tools.WithCallSource(ctx, "tunnel")
 		if requestContext.Modern() {

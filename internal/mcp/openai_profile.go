@@ -108,6 +108,10 @@ func withProfileRequestMetadata(ctx context.Context, profile Profile, meta map[s
 	return tools.WithRequestCorrelationHints(ctx, projection.Correlation)
 }
 
+func WithProfileRequestMetadata(ctx context.Context, profile Profile, meta map[string]any) context.Context {
+	return withProfileRequestMetadata(ctx, profile, meta)
+}
+
 func openAIInvocationStatus(action, title string) string {
 	value := strings.TrimSpace(strings.TrimSpace(action) + " " + strings.TrimSpace(title))
 	runes := []rune(value)
