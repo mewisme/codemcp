@@ -7,8 +7,10 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"go.mewis.me/codemcp/internal/capability"
+	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	"go.mewis.me/codemcp/internal/integrations"
 	"go.mewis.me/codemcp/internal/integrations/codegraph"
 	"go.mewis.me/codemcp/internal/projectcontext"
@@ -197,6 +199,63 @@ func TestCodeGraphProjectContextGuidanceTracksRuntimeReload(t *testing.T) {
 	}
 	if _, ok := toolRuntime.Registry.Schema(codegraph.ToolName); !ok {
 		t.Fatal("stable codegraph_explore tool disappeared after disable")
+	}
+}
+
+func TestCodeGraphIntegrationReloadCatchesUpFailedCompletion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX CodeGraph fixture")
+	}
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	binRoot := t.TempDir()
+	executable := filepath.Join(binRoot, "codegraph")
+	cfg := integrations.Default()
+	cfg.CodeGraph.Enabled = true
+	cfg.CodeGraph.Path = executable
+	toolRuntime := NewRuntimeWithIntegrations(cfg)
+	project := t.TempDir()
+	if err := os.Mkdir(filepath.Join(project, ".codegraph"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	item, err := toolRuntime.Workspaces.Register(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, created, err := toolRuntime.Completions.Accept(
+		agentcompletion.Identity{AgentID: agentcompletion.DeriveAgentID("caller-recovery", "generation-recovery"), Source: "mcp"},
+		agentcompletion.Input{WorkspaceID: item.ID, Status: agentcompletion.StatusCompleted, Title: "Done"},
+	)
+	if err != nil || !created {
+		t.Fatalf("record=%#v created=%t err=%v", record, created, err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		outcome, found, outcomeErr := toolRuntime.CodeGraphCompletion.Outcome(item.ID, record.ID)
+		if outcomeErr == nil && found && outcome.State == codegraph.CompletionSyncFailed {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	outcome, found, err := toolRuntime.CodeGraphCompletion.Outcome(item.ID, record.ID)
+	if err != nil || !found || outcome.State != codegraph.CompletionSyncFailed || outcome.Reason != codegraph.CompletionReasonUnavailable {
+		t.Fatalf("failed outcome=%#v found=%t err=%v", outcome, found, err)
+	}
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\necho sync >> \"$PWD/sync-count\"\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := toolRuntime.SyncIntegrations(cfg); err != nil {
+		t.Fatal(err)
+	}
+	outcome, found, err = toolRuntime.CodeGraphCompletion.Outcome(item.ID, record.ID)
+	if err != nil || !found || outcome.State != codegraph.CompletionSyncSucceeded {
+		t.Fatalf("recovered outcome=%#v found=%t err=%v", outcome, found, err)
+	}
+	data, err := os.ReadFile(filepath.Join(project, "sync-count"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(strings.Fields(string(data))); got != 1 {
+		t.Fatalf("catch-up sync count=%d data=%q", got, data)
 	}
 }
 

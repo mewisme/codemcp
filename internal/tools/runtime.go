@@ -30,25 +30,26 @@ const (
 var errTunnelResponseBudgetExceeded = errors.New("tunnel response budget exhausted")
 
 type Runtime struct {
-	Registry         *Registry
-	Workspaces       *workspace.Manager
-	Checkpoints      *checkpoint.Store
-	Upstream         *upstream.Manager
-	CallObserver     CallObserver
-	SessionAccess    *SessionWorkspaceAccessManager
-	Approvals        *approval.Manager
-	Completions      *agentcompletion.Service
-	CompletionHooks  *agentcompletion.CompletionHookBus
-	Executions       *shellruntime.ExecutionHub
-	Shell            *shellruntime.Manager
-	Processes        *shellruntime.ProcessManager
-	LoopGuard        *ToolLoopGuard
-	sessionMu        sync.Mutex
-	integrationMu    sync.Mutex
-	integrations     integrations.Config
-	ponytailManager  *ponytail.Manager
-	cavemanManager   *caveman.Manager
-	codegraphRuntime *codegraph.Runtime
+	Registry            *Registry
+	Workspaces          *workspace.Manager
+	Checkpoints         *checkpoint.Store
+	Upstream            *upstream.Manager
+	CallObserver        CallObserver
+	SessionAccess       *SessionWorkspaceAccessManager
+	Approvals           *approval.Manager
+	Completions         *agentcompletion.Service
+	CompletionHooks     *agentcompletion.CompletionHookBus
+	CodeGraphCompletion *codegraph.CompletionHook
+	Executions          *shellruntime.ExecutionHub
+	Shell               *shellruntime.Manager
+	Processes           *shellruntime.ProcessManager
+	LoopGuard           *ToolLoopGuard
+	sessionMu           sync.Mutex
+	integrationMu       sync.Mutex
+	integrations        integrations.Config
+	ponytailManager     *ponytail.Manager
+	cavemanManager      *caveman.Manager
+	codegraphRuntime    *codegraph.Runtime
 }
 
 func NewRuntime() *Runtime {
@@ -72,12 +73,18 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	executions := shellruntime.NewExecutionHub()
 	shell := shellruntime.NewManagerWithExecutions(workspaces, shellruntime.DefaultStateRoot(), executions)
 	processes := shellruntime.NewProcessManagerWithExecutions(workspaces, shell, executions)
-	completionHooks := agentcompletion.NewCompletionHookBus(agentcompletion.HookBusOptions{})
+	completionHooks := agentcompletion.NewCompletionHookBus(agentcompletion.HookBusOptions{Timeout: codegraph.SyncTimeout + 5*time.Second})
 	completions, err := agentcompletion.NewWorkspaceService(workspaces, agentcompletion.Options{Hooks: completionHooks})
 	if err != nil {
 		panic(err)
 	}
 	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
+	runtime.CodeGraphCompletion = codegraph.NewCompletionHook(func() *codegraph.Runtime {
+		return runtime.codeGraphRuntimeSnapshot()
+	}, workspaces)
+	if err := completionHooks.Register(runtime.CodeGraphCompletion); err != nil {
+		panic(err)
+	}
 	RegisterWorkspaceTools(registry, workspaces, shell)
 	RegisterWorkspaceListTool(registry, runtime)
 	RegisterWorkspaceContainerTools(registry, workspaces)
@@ -106,12 +113,19 @@ func (r *Runtime) RefreshUpstreams(ctx context.Context, force bool) error {
 	return RefreshUpstreamProxies(ctx, r.Registry, r.Upstream, force)
 }
 
-func (r *Runtime) SyncIntegrations(integrationConfig integrations.Config) error {
+func (r *Runtime) SyncIntegrations(integrationConfig integrations.Config) (syncErr error) {
 	if r == nil || r.Registry == nil || r.Workspaces == nil {
 		return errors.New("tool runtime is unavailable")
 	}
 	r.integrationMu.Lock()
-	defer r.integrationMu.Unlock()
+	defer func() {
+		r.integrationMu.Unlock()
+		if syncErr == nil && r.CodeGraphCompletion != nil && r.Completions != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), codegraph.SyncTimeout+5*time.Second)
+			defer cancel()
+			_ = r.CodeGraphCompletion.CatchUp(ctx, r.Completions)
+		}
+	}()
 	if r.ponytailManager == nil {
 		r.ponytailManager = ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode))
 	}
