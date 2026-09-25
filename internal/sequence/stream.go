@@ -165,6 +165,17 @@ func (s *Stream[T]) LatestSequence() uint64 {
 	return s.nextSequence
 }
 
+func (s *Stream[T]) EnsureSequence(sequence uint64) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if sequence > s.nextSequence {
+		s.nextSequence = sequence
+	}
+	s.mu.Unlock()
+}
+
 func recentFiltered[T any](values []T, filter Predicate[T], limit int) []T {
 	if limit <= 0 || len(values) == 0 {
 		return nil

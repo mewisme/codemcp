@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strings"
+
+	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 )
 
 type CallObservation struct {
@@ -32,10 +34,16 @@ type callDetailsKey struct{}
 type receivedByInstanceKey struct{}
 type mcpSessionIDKey struct{}
 type approvalCorrelationKey struct{}
+type agentCompletionCorrelationKey struct{}
 
 type ApprovalCorrelation struct {
 	CallerID  string
 	RequestID string
+}
+
+type AgentCompletionCorrelation struct {
+	AgentID string
+	Source  string
 }
 
 type callDetails struct {
@@ -106,6 +114,26 @@ func ApprovalCorrelationFromContext(ctx context.Context) ApprovalCorrelation {
 	value, _ := ctx.Value(approvalCorrelationKey{}).(ApprovalCorrelation)
 	value.CallerID = strings.TrimSpace(value.CallerID)
 	value.RequestID = strings.TrimSpace(value.RequestID)
+	return value
+}
+
+func WithAgentCompletionCorrelation(ctx context.Context, callerID, generationID, source string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, agentCompletionCorrelationKey{}, AgentCompletionCorrelation{
+		AgentID: agentcompletion.DeriveAgentID(callerID, generationID),
+		Source:  strings.TrimSpace(source),
+	})
+}
+
+func AgentCompletionCorrelationFromContext(ctx context.Context) AgentCompletionCorrelation {
+	if ctx == nil {
+		return AgentCompletionCorrelation{}
+	}
+	value, _ := ctx.Value(agentCompletionCorrelationKey{}).(AgentCompletionCorrelation)
+	value.AgentID = strings.TrimSpace(value.AgentID)
+	value.Source = strings.TrimSpace(value.Source)
 	return value
 }
 

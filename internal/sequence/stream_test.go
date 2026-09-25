@@ -76,3 +76,16 @@ func TestNilStreamSubscriptionIsClosed(t *testing.T) {
 		t.Fatal("nil stream overflow channel is open")
 	}
 }
+
+func TestStreamEnsureSequenceSeedsDurableContinuation(t *testing.T) {
+	stream := New[testEvent](2, 1, func(value *testEvent, sequence uint64) { value.Sequence = sequence })
+	stream.EnsureSequence(41)
+	published := stream.Publish(testEvent{Value: "next"})
+	if published.Sequence != 42 || stream.LatestSequence() != 42 {
+		t.Fatalf("published=%#v latest=%d", published, stream.LatestSequence())
+	}
+	stream.EnsureSequence(7)
+	if stream.LatestSequence() != 42 {
+		t.Fatalf("sequence regressed to %d", stream.LatestSequence())
+	}
+}
