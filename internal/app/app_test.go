@@ -391,9 +391,23 @@ func TestStopShutsDownUpstreamConnections(t *testing.T) {
 func TestStopShutsDownCompletionHookBus(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	runtime := tools.NewRuntime()
+	workspaceItem, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	subscription, _ := runtime.Completions.SubscribeSnapshot(0)
 	application := &App{Tools: runtime}
 	if err := application.Stop(); err != nil {
 		t.Fatal(err)
+	}
+	if _, ok := <-subscription.Events; ok {
+		t.Fatal("completion subscription remained active after app stop")
+	}
+	if _, created, err := runtime.Completions.Accept(
+		agentcompletion.Identity{AgentID: agentcompletion.DeriveAgentID("stop-caller", "stop-generation"), Source: "mcp"},
+		agentcompletion.Input{WorkspaceID: workspaceItem.ID, Status: agentcompletion.StatusCompleted, Title: "Stopped"},
+	); err == nil || created || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("completion service remained writable after app stop: created=%t err=%v", created, err)
 	}
 	event := agentcompletion.Event{
 		ID: "completion-event:completion_stop", Name: agentcompletion.EventAccepted,

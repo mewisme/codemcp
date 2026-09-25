@@ -94,6 +94,10 @@ func TestCompletionHooksRunOnlyAfterDurableAcceptanceAndCannotRollbackTruth(t *t
 	if statuses["failing"] != HookFailed || statuses["slow"] != HookTimedOut {
 		t.Fatalf("diagnostics=%#v", diagnostics)
 	}
+	health := service.Diagnose(item.ID)
+	if health.Status != HealthDegraded || health.Hooks.Registered != 2 || health.Hooks.Failures != 1 || health.Hooks.Timeouts != 1 {
+		t.Fatalf("completion health=%#v", health)
+	}
 	data, err := json.Marshal(diagnostics)
 	if err != nil {
 		t.Fatal(err)

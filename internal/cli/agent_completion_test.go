@@ -118,6 +118,14 @@ func TestCompletionReadSurfacesShareRuntimeHistory(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimSpace(viewJSON)), &cliView); err != nil || cliView.ID != second.ID {
 		t.Fatalf("CLI view=%q value=%#v err=%v", viewJSON, cliView, err)
 	}
+	doctorJSON := executeRequestCommand(t, root, []string{"agent", "completion", "doctor", "--workspace", workspace.ID, "--json"})
+	var health agentcompletion.Health
+	if err := json.Unmarshal([]byte(strings.TrimSpace(doctorJSON)), &health); err != nil {
+		t.Fatalf("CLI doctor json=%q err=%v", doctorJSON, err)
+	}
+	if health.Status != agentcompletion.HealthHealthy || health.WorkspaceID != workspace.ID || health.HotRecords != 3 || health.LatestSequence != third.Sequence {
+		t.Fatalf("CLI doctor health=%#v", health)
+	}
 
 	direct, found, err := runtime.Completions.CurrentWorkspace(workspace.ID)
 	if err != nil || !found || direct.ID != cliCurrent.ID {
@@ -162,6 +170,12 @@ func TestCompletionCLIHumanOutputUsesSharedPresentation(t *testing.T) {
 	}
 	if strings.Count(output, record.ID) != 1 || strings.Count(output, "Loaded agent completion") != 1 {
 		t.Fatalf("completion human output duplicated lifecycle/entity state: %q", output)
+	}
+	doctorOutput := executeRequestCommand(t, root, []string{"agent", "completion", "doctor", "--workspace", workspace.ID})
+	for _, want := range []string{"Agent completion health", "Healthy", workspace.ID, "hot records", "Completion hooks", "Done"} {
+		if !strings.Contains(doctorOutput, want) {
+			t.Fatalf("completion doctor output missing %q: %q", want, doctorOutput)
+		}
 	}
 }
 

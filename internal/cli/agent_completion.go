@@ -18,7 +18,7 @@ const completionReadTimeout = 5 * time.Second
 func agentCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "agent", Short: "Inspect agent lifecycle state"}
 	completion := &cobra.Command{Use: "completion", Short: "Inspect durable agent completion history"}
-	completion.AddCommand(agentCompletionCurrentCommand(), agentCompletionListCommand(), agentCompletionViewCommand())
+	completion.AddCommand(agentCompletionCurrentCommand(), agentCompletionListCommand(), agentCompletionViewCommand(), agentCompletionDoctorCommand())
 	cmd.AddCommand(completion)
 	return cmd
 }
@@ -84,6 +84,29 @@ func agentCompletionViewCommand() *cobra.Command {
 			})
 		},
 	}
+	addJSONResultFlag(cmd, &asJSON)
+	return cmd
+}
+
+func agentCompletionDoctorCommand() *cobra.Command {
+	var workspaceID string
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "doctor",
+		Short: "Diagnose completion store and hook health for one workspace",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if strings.TrimSpace(workspaceID) == "" {
+				return fmt.Errorf("workspace is required; provide --workspace <id>")
+			}
+			return runCompletionRead(cmd, asJSON, "completion.doctor.loading", "Diagnosing agent completion lifecycle", "Diagnosed agent completion lifecycle", func(ctx context.Context) (any, error) {
+				return application.CompletionHealth(ctx, workspaceID)
+			}, func(value any) {
+				renderCompletionHealth(commandPresenter(cmd), value.(agentcompletion.Health))
+			})
+		},
+	}
+	cmd.Flags().StringVar(&workspaceID, "workspace", "", "workspace ID whose completion lifecycle should be diagnosed")
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
@@ -159,6 +182,63 @@ func renderCompletion(presenter *presentation.Presenter, record agentcompletion.
 		presenter.List(record.Summary)
 	}
 	presenter.Complete("Done")
+}
+
+func renderCompletionHealth(presenter *presentation.Presenter, health agentcompletion.Health) {
+	presenter.Frame("Agent completion health")
+	presenter.StateSection(completionHealthPresentationKind(health.Status), completionHealthStatusLabel(health.Status))
+	presenter.Subsection(health.WorkspaceID)
+	presenter.NestedFields(
+		presentation.Field{Label: "hot records", Value: health.HotRecords},
+		presentation.Field{Label: "archived records", Value: health.ArchivedRecords},
+		presentation.Field{Label: "latest sequence", Value: health.LatestSequence},
+		presentation.Field{Label: "archive tail issue", Value: health.ArchiveTailIssue},
+	)
+	presenter.Spacer()
+	presenter.Section("Completion hooks")
+	presenter.Fields(
+		presentation.Field{Label: "registered", Value: health.Hooks.Registered},
+		presentation.Field{Label: "stopped", Value: health.Hooks.Stopped},
+		presentation.Field{Label: "recent diagnostics", Value: health.Hooks.RecentDiagnostics},
+		presentation.Field{Label: "failures", Value: health.Hooks.Failures},
+		presentation.Field{Label: "timeouts", Value: health.Hooks.Timeouts},
+		presentation.Field{Label: "cancelled", Value: health.Hooks.Cancelled},
+		presentation.Field{Label: "duplicates", Value: health.Hooks.Duplicates},
+	)
+	if strings.TrimSpace(health.Error) != "" {
+		presenter.Spacer()
+		presenter.Section("Diagnostic error")
+		presenter.List(health.Error)
+	}
+	presenter.Complete("Done")
+}
+
+func completionHealthPresentationKind(status agentcompletion.HealthStatus) presentation.StatusKind {
+	switch status {
+	case agentcompletion.HealthHealthy:
+		return presentation.StatusSuccess
+	case agentcompletion.HealthDegraded:
+		return presentation.StatusWarning
+	case agentcompletion.HealthCorrupt, agentcompletion.HealthClosed:
+		return presentation.StatusError
+	default:
+		return presentation.StatusInfo
+	}
+}
+
+func completionHealthStatusLabel(status agentcompletion.HealthStatus) string {
+	switch status {
+	case agentcompletion.HealthHealthy:
+		return "Healthy"
+	case agentcompletion.HealthDegraded:
+		return "Degraded"
+	case agentcompletion.HealthCorrupt:
+		return "Corrupt"
+	case agentcompletion.HealthClosed:
+		return "Closed"
+	default:
+		return string(status)
+	}
 }
 
 func completionPresentationKind(status agentcompletion.Status) presentation.StatusKind {

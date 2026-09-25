@@ -129,7 +129,7 @@ func TestCompletionHookFailureIsAuxiliaryAndCatchUpRetries(t *testing.T) {
 	binary := writeCompletionCodeGraphFixture(t, false)
 	cgRuntime := New(Options{Enabled: true, ConfiguredPath: binary})
 	hook := NewCompletionHook(func() *Runtime { return cgRuntime }, manager)
-	service, err := agentcompletion.NewWorkspaceService(manager, agentcompletion.Options{})
+	service, err := agentcompletion.NewWorkspaceService(manager, agentcompletion.Options{MaxRecords: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,9 +152,33 @@ func TestCompletionHookFailureIsAuxiliaryAndCatchUpRetries(t *testing.T) {
 	if err != nil || !ok || persisted.Status != agentcompletion.StatusPartial {
 		t.Fatalf("completion truth=%#v ok=%t err=%v", persisted, ok, err)
 	}
+	newer, created, err := service.Accept(
+		agentcompletion.Identity{AgentID: agentcompletion.DeriveAgentID("caller", "generation-newer"), Source: "mcp"},
+		agentcompletion.Input{WorkspaceID: item.ID, Status: agentcompletion.StatusCompleted, Title: "Newer"},
+	)
+	if err != nil || !created {
+		t.Fatalf("newer=%#v created=%t err=%v", newer, created, err)
+	}
+	local, err := manager.LocalState(item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := saveCompletionOutcome(local, CompletionSyncOutcome{
+		CompletionID: newer.ID, Sequence: newer.Sequence, WorkspaceID: item.ID,
+		State: CompletionSyncSkipped, Reason: CompletionReasonDisabled, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	restartedService, err := agentcompletion.NewWorkspaceService(workspace.NewManager(workspace.DefaultStorePath()), agentcompletion.Options{MaxRecords: 1})
+	if err != nil {
+		t.Fatalf("restart completion service: %v", err)
+	}
+	if archived, found, err := restartedService.Get(record.ID); err != nil || !found || archived.ID != record.ID {
+		t.Fatalf("archived completion after restart=%#v found=%t err=%v", archived, found, err)
+	}
 
 	rewriteCompletionCodeGraphFixture(t, binary, true)
-	if err := hook.CatchUp(context.Background(), service); err != nil {
+	if err := hook.CatchUp(context.Background(), restartedService); err != nil {
 		t.Fatal(err)
 	}
 	succeeded, found, err := hook.Outcome(item.ID, record.ID)
@@ -170,7 +194,7 @@ func TestCompletionHookFailureIsAuxiliaryAndCatchUpRetries(t *testing.T) {
 	}
 
 	restarted := NewCompletionHook(func() *Runtime { return cgRuntime }, manager)
-	if err := restarted.CatchUp(context.Background(), service); err != nil {
+	if err := restarted.CatchUp(context.Background(), restartedService); err != nil {
 		t.Fatal(err)
 	}
 	data, err = os.ReadFile(filepath.Join(project, "sync-count"))

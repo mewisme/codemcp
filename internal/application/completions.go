@@ -63,6 +63,16 @@ func CurrentCompletion(ctx context.Context, workspaceID string) (agentcompletion
 	return result.Value, err
 }
 
+func CompletionHealth(ctx context.Context, workspaceID string) (agentcompletion.Health, error) {
+	workspaceID = strings.TrimSpace(workspaceID)
+	result, err := runOperation(ctx, "COMPLETION", capability.CompletionDoctor, "Diagnosing agent completion lifecycle", []tracepkg.Field{tracepkg.String("workspace_id", workspaceID)}, func() (agentcompletion.Health, error) {
+		var health agentcompletion.Health
+		_, err := runtimecontrol.Request(ctx, http.MethodGet, "/completions/doctor?workspace_id="+url.QueryEscape(workspaceID), nil, &health)
+		return health, err
+	})
+	return result.Value, err
+}
+
 func ViewCompletion(ctx context.Context, id string) (agentcompletion.Record, error) {
 	id = strings.TrimSpace(id)
 	result, err := runOperation(ctx, "COMPLETION", capability.CompletionView, "Loading agent completion", []tracepkg.Field{tracepkg.String("completion_id", id)}, func() (agentcompletion.Record, error) {

@@ -25,6 +25,7 @@ const (
 	RequestGrantList         ID = "request.grant.list"
 	RequestGrantRevoke       ID = "request.grant.revoke"
 	CompletionCurrent        ID = "completion.current"
+	CompletionDoctor         ID = "completion.doctor"
 	CompletionList           ID = "completion.list"
 	CompletionView           ID = "completion.view"
 	NotificationStatus       ID = "notification.status"
@@ -155,6 +156,7 @@ func buildSpecs() []Spec {
 		operatorQuery(RequestGrantList, "request grant list"),
 		reviewerDestructive(RequestGrantRevoke, "request grant revoke"),
 		operatorQuery(CompletionCurrent, "agent completion current"),
+		operatorQuery(CompletionDoctor, "agent completion doctor"),
 		operatorQuery(CompletionList, "agent completion list"),
 		operatorQuery(CompletionView, "agent completion view"),
 		operatorQuery(ConfigPath, "config path"),

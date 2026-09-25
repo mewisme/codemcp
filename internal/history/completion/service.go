@@ -40,6 +40,9 @@ type Service struct {
 	maxRecords int
 	now        func() time.Time
 	newID      func() (string, error)
+	closed     bool
+	subMu      sync.Mutex
+	subs       map[*EventSubscription]struct{}
 }
 
 func NewWorkspaceService(workspaces *workspace.Manager, options Options) (*Service, error) {
@@ -70,6 +73,10 @@ func NewWorkspaceService(workspaces *workspace.Manager, options Options) (*Servi
 		maxRecords: options.MaxRecords,
 		now:        options.Now,
 		newID:      options.NewID,
+		subs:       map[*EventSubscription]struct{}{},
+	}
+	if err := service.compactHotHistories(); err != nil {
+		return nil, err
 	}
 	latest, err := service.latestPersistedSequence()
 	if err != nil {
@@ -93,6 +100,9 @@ func (s *Service) Accept(identity Identity, input Input) (Record, bool, error) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return Record{}, false, errors.New("agent completion service is closed")
+	}
 	local, canonical, err := s.workspaceStore(normalized.WorkspaceID)
 	if err != nil {
 		return Record{}, false, err
@@ -102,7 +112,11 @@ func (s *Service) Accept(identity Identity, input Input) (Record, bool, error) {
 	if err != nil {
 		return Record{}, false, err
 	}
-	previous, found := currentRecord(history.Records, identity.AgentID)
+	archived, err := loadWorkspaceArchive(local)
+	if err != nil {
+		return Record{}, false, err
+	}
+	previous, found := currentRecord(mergeCompletionRecords(archived, history.Records), identity.AgentID)
 	if found && sameTerminalMeaning(previous, normalized) {
 		return previous, false, nil
 	}
@@ -123,8 +137,9 @@ func (s *Service) Accept(identity Identity, input Input) (Record, bool, error) {
 		record.SupersedesID = previous.ID
 	}
 	history.Records = append(history.Records, record)
-	if overflow := len(history.Records) - s.maxRecords; overflow > 0 {
-		history.Records = append([]Record(nil), history.Records[overflow:]...)
+	history, err = s.boundWorkspaceHistory(local, history, archived)
+	if err != nil {
+		return Record{}, false, err
 	}
 	if err := saveWorkspaceHistory(local, history); err != nil {
 		return Record{}, false, err
@@ -149,11 +164,11 @@ func (s *Service) Current(agentID, workspaceID string) (Record, bool, error) {
 	if err != nil {
 		return Record{}, false, err
 	}
-	history, exists, err := loadWorkspaceHistory(local)
+	records, exists, err := loadWorkspaceRecords(local)
 	if err != nil || !exists {
 		return Record{}, false, err
 	}
-	record, found := currentRecord(history.Records, strings.TrimSpace(agentID))
+	record, found := currentRecord(records, strings.TrimSpace(agentID))
 	return record, found, nil
 }
 
@@ -167,11 +182,11 @@ func (s *Service) CurrentWorkspace(workspaceID string) (Record, bool, error) {
 	if err != nil {
 		return Record{}, false, err
 	}
-	history, exists, err := loadWorkspaceHistory(local)
-	if err != nil || !exists || len(history.Records) == 0 {
+	records, exists, err := loadWorkspaceRecords(local)
+	if err != nil || !exists || len(records) == 0 {
 		return Record{}, false, err
 	}
-	return history.Records[len(history.Records)-1], true, nil
+	return records[len(records)-1], true, nil
 }
 
 func (s *Service) Recent(limit int) ([]Record, error) {
@@ -206,11 +221,10 @@ func (s *Service) RecentWorkspace(workspaceID string, limit int) ([]Record, erro
 	if err != nil {
 		return nil, err
 	}
-	history, exists, err := loadWorkspaceHistory(local)
+	records, exists, err := loadWorkspaceRecords(local)
 	if err != nil || !exists {
 		return []Record{}, err
 	}
-	records := history.Records
 	if len(records) > limit {
 		records = records[len(records)-limit:]
 	}
@@ -239,16 +253,16 @@ func (s *Service) Get(id string) (Record, bool, error) {
 		if err != nil {
 			continue
 		}
-		history, exists, err := loadWorkspaceHistory(local)
+		records, exists, err := loadWorkspaceRecords(local)
 		if err != nil {
 			return Record{}, false, err
 		}
 		if !exists {
 			continue
 		}
-		for index := len(history.Records) - 1; index >= 0; index-- {
-			if history.Records[index].ID == id {
-				return history.Records[index], true, nil
+		for index := len(records) - 1; index >= 0; index-- {
+			if records[index].ID == id {
+				return records[index], true, nil
 			}
 		}
 	}
@@ -294,15 +308,15 @@ func (s *Service) SinceWorkspace(after uint64, workspaceID string, limit int) (S
 	if err != nil {
 		return Snapshot{}, err
 	}
-	history, exists, err := loadWorkspaceHistory(local)
+	records, exists, err := loadWorkspaceRecords(local)
 	if err != nil {
 		return Snapshot{}, err
 	}
 	if !exists {
 		return Snapshot{LatestSequence: s.sequence.Current(), Records: []Record{}}, nil
 	}
-	result := make([]Record, 0, min(limit, len(history.Records)))
-	for _, record := range history.Records {
+	result := make([]Record, 0, min(limit, len(records)))
+	for _, record := range records {
 		if record.Sequence <= after {
 			continue
 		}
@@ -326,11 +340,51 @@ func (s *Service) SubscribeSnapshot(recentLimit int) (*EventSubscription, EventS
 		var stream *sequence.Stream[Event]
 		return stream.Subscribe(nil, recentLimit)
 	}
-	return s.events.Subscribe(nil, recentLimit)
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		events := make(chan Event)
+		overflow := make(chan sequence.Overflow)
+		close(events)
+		close(overflow)
+		return &EventSubscription{Events: events, Overflow: overflow}, EventSnapshot{LatestSequence: s.LatestSequence()}
+	}
+	s.subMu.Lock()
+	sub, snapshot := s.events.Subscribe(nil, recentLimit)
+	s.subs[sub] = struct{}{}
+	s.subMu.Unlock()
+	s.mu.Unlock()
+	return sub, snapshot
 }
 
 func (s *Service) Unsubscribe(sub *EventSubscription) {
 	if s != nil && s.events != nil {
+		s.subMu.Lock()
+		delete(s.subs, sub)
+		s.subMu.Unlock()
+		s.events.Unsubscribe(sub)
+	}
+}
+
+func (s *Service) Close() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	s.subMu.Lock()
+	subs := make([]*EventSubscription, 0, len(s.subs))
+	for sub := range s.subs {
+		subs = append(subs, sub)
+	}
+	s.subs = map[*EventSubscription]struct{}{}
+	s.subMu.Unlock()
+	s.mu.Unlock()
+	for _, sub := range subs {
 		s.events.Unsubscribe(sub)
 	}
 }
@@ -368,12 +422,12 @@ func (s *Service) allRecords() ([]Record, error) {
 		if err != nil {
 			continue
 		}
-		history, exists, err := loadWorkspaceHistory(local)
+		history, exists, err := loadWorkspaceRecords(local)
 		if err != nil {
 			return nil, err
 		}
 		if exists {
-			records = append(records, history.Records...)
+			records = append(records, history...)
 		}
 	}
 	sort.Slice(records, func(i, j int) bool {
@@ -401,6 +455,65 @@ func (s *Service) latestPersistedSequence() (uint64, error) {
 	return latest, nil
 }
 
+func (s *Service) compactHotHistories() error {
+	items, err := s.workspaces.List()
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if !item.Available() {
+			continue
+		}
+		local, err := s.workspaces.LocalState(item.ID)
+		if err != nil {
+			continue
+		}
+		history, exists, err := loadWorkspaceHistory(local)
+		if err != nil {
+			return err
+		}
+		if !exists || len(history.Records) <= s.maxRecords {
+			continue
+		}
+		archived, err := loadWorkspaceArchive(local)
+		if err != nil {
+			return err
+		}
+		history, err = s.boundWorkspaceHistory(local, history, archived)
+		if err != nil {
+			return err
+		}
+		if err := saveWorkspaceHistory(local, history); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) boundWorkspaceHistory(local workspacestate.Store, history workspaceHistory, archived []Record) (workspaceHistory, error) {
+	overflow := len(history.Records) - s.maxRecords
+	if overflow <= 0 {
+		return history, nil
+	}
+	stale := append([]Record(nil), history.Records[:overflow]...)
+	archivedIDs := make(map[string]struct{}, len(archived))
+	for _, archivedRecord := range archived {
+		archivedIDs[archivedRecord.ID] = struct{}{}
+	}
+	toArchive := make([]Record, 0, len(stale))
+	for _, archivedRecord := range stale {
+		if _, exists := archivedIDs[archivedRecord.ID]; exists {
+			continue
+		}
+		toArchive = append(toArchive, archivedRecord)
+	}
+	if err := appendWorkspaceArchive(local, toArchive); err != nil {
+		return workspaceHistory{}, err
+	}
+	history.Records = append([]Record(nil), history.Records[overflow:]...)
+	return history, nil
+}
+
 func currentRecord(records []Record, agentID string) (Record, bool) {
 	agentID = strings.TrimSpace(agentID)
 	var selected Record
@@ -421,4 +534,27 @@ func cloneRecords(records []Record) []Record {
 		return []Record{}
 	}
 	return append([]Record(nil), records...)
+}
+
+func mergeCompletionRecords(groups ...[]Record) []Record {
+	byID := map[string]Record{}
+	for _, records := range groups {
+		for _, record := range records {
+			current, exists := byID[record.ID]
+			if !exists || record.Sequence >= current.Sequence {
+				byID[record.ID] = record
+			}
+		}
+	}
+	result := make([]Record, 0, len(byID))
+	for _, record := range byID {
+		result = append(result, record)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Sequence == result[j].Sequence {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].Sequence < result[j].Sequence
+	})
+	return result
 }

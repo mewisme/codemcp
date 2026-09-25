@@ -56,6 +56,7 @@ var commandPresentationTitleOverrides = map[string]string{
 	"request approve":          "Control approval request",
 	"request deny":             "Control approval request",
 	"agent completion current": "Current agent completion",
+	"agent completion doctor":  "Agent completion health",
 	"agent completion list":    "Agent completion history",
 	"agent completion view":    "Agent completion",
 

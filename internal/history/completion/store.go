@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"go.mewis.me/codemcp/internal/configformat"
@@ -17,8 +18,10 @@ const (
 	workspaceHistoryVersion = 1
 	sequenceStoreVersion    = 1
 	historyFileName         = "agent-completions.json"
+	archiveFileName         = "agent-completions.archive.jsonl"
 	maxHistoryFileBytes     = 2 << 20
 	maxSequenceFileBytes    = 64 << 10
+	maxArchiveRecordBytes   = 16 << 10
 )
 
 type workspaceHistory struct {
@@ -28,6 +31,10 @@ type workspaceHistory struct {
 
 func workspaceHistoryPath(local workspacestate.Store) (string, error) {
 	return local.StatePath(historyFileName)
+}
+
+func workspaceArchivePath(local workspacestate.Store) (string, error) {
+	return local.StatePath(archiveFileName)
 }
 
 func loadWorkspaceHistory(local workspacestate.Store) (workspaceHistory, bool, error) {
@@ -72,6 +79,85 @@ func saveWorkspaceHistory(local workspacestate.Store, value workspaceHistory) er
 		value.Records = []Record{}
 	}
 	return statepkg.WriteJSONAtomic(path, value, 0600)
+}
+
+func loadWorkspaceRecords(local workspacestate.Store) ([]Record, bool, error) {
+	history, hotExists, err := loadWorkspaceHistory(local)
+	if err != nil {
+		return nil, false, err
+	}
+	archive, err := loadWorkspaceArchive(local)
+	if err != nil {
+		return nil, false, err
+	}
+	return mergeCompletionRecords(archive, history.Records), hotExists || len(archive) > 0, nil
+}
+
+func loadWorkspaceArchive(local workspacestate.Store) ([]Record, error) {
+	records, _, err := scanWorkspaceArchive(local)
+	return records, err
+}
+
+func scanWorkspaceArchive(local workspacestate.Store) ([]Record, bool, error) {
+	path, err := workspaceArchivePath(local)
+	if err != nil {
+		return nil, false, err
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return []Record{}, false, nil
+	} else if err != nil {
+		return nil, false, err
+	}
+	records := []Record{}
+	tailIssue, err := statepkg.ReadJSONLRecoverTail(path, maxArchiveRecordBytes, func(line []byte) error {
+		var record Record
+		if err := json.Unmarshal(line, &record); err != nil {
+			return fmt.Errorf("decode completion archive: %w", err)
+		}
+		if strings.TrimSpace(record.ID) == "" || record.Sequence == 0 || strings.TrimSpace(record.WorkspaceID) == "" {
+			return errors.New("completion archive contains invalid record")
+		}
+		records = append(records, record)
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return records, tailIssue, nil
+}
+
+func appendWorkspaceArchive(local workspacestate.Store, records []Record) error {
+	if len(records) == 0 {
+		return nil
+	}
+	path, err := workspaceArchivePath(local)
+	if err != nil {
+		return err
+	}
+	_, tailIssue, err := scanWorkspaceArchive(local)
+	if err != nil {
+		return err
+	}
+	repaired, err := statepkg.RepairJSONLTail(path)
+	if err != nil {
+		return fmt.Errorf("repair completion archive tail: %w", err)
+	}
+	if tailIssue && !repaired {
+		if err := statepkg.DropJSONLTailRecord(path); err != nil {
+			return fmt.Errorf("drop corrupt completion archive tail: %w", err)
+		}
+	}
+	for _, record := range records {
+		if err := statepkg.AppendJSONL(path, record, 0600, maxArchiveRecordBytes); err != nil {
+			return fmt.Errorf("append completion archive: %w", err)
+		}
+	}
+	return nil
+}
+
+func archiveTailIssue(local workspacestate.Store) (bool, error) {
+	_, tailIssue, err := scanWorkspaceArchive(local)
+	return tailIssue, err
 }
 
 type sequenceStore struct {

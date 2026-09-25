@@ -3,6 +3,7 @@ package completion
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,6 +178,204 @@ func TestCompletionRestartPreservesAcceptedHistoryAndSequence(t *testing.T) {
 	second, created, err := restarted.Accept(Identity{AgentID: DeriveAgentID("caller-b", "generation-b"), Source: "mcp"}, Input{WorkspaceID: item.ID, Status: StatusPartial, Title: "More work"})
 	if err != nil || !created || second.Sequence != 2 {
 		t.Fatalf("second=%#v created=%t err=%v", second, created, err)
+	}
+}
+
+func TestCompletionHotHistoryArchivesOverflowWithoutLosingAcceptedRecords(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	manager := workspace.NewManager(workspace.DefaultStorePath())
+	item := registerTestWorkspace(t, manager, t.TempDir())
+	nextID := 0
+	service, err := NewWorkspaceService(manager, Options{MaxRecords: 2, NewID: func() (string, error) {
+		nextID++
+		return fmt.Sprintf("completion_%02d", nextID), nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records := make([]Record, 0, 5)
+	for index := 0; index < 5; index++ {
+		record, created, err := service.Accept(
+			Identity{AgentID: DeriveAgentID("caller", fmt.Sprintf("generation-%d", index)), Source: "mcp"},
+			Input{WorkspaceID: item.ID, Status: StatusPartial, Title: fmt.Sprintf("Step %d", index)},
+		)
+		if err != nil || !created {
+			t.Fatalf("index=%d record=%#v created=%t err=%v", index, record, created, err)
+		}
+		records = append(records, record)
+	}
+	hot := readTestHistory(t, item.Path)
+	if len(hot.Records) != 2 || hot.Records[0].ID != records[3].ID || hot.Records[1].ID != records[4].ID {
+		t.Fatalf("hot=%#v", hot.Records)
+	}
+	local := workspacestate.New(item.Path)
+	archived, err := loadWorkspaceArchive(local)
+	if err != nil || len(archived) != 3 || archived[0].ID != records[0].ID || archived[2].ID != records[2].ID {
+		t.Fatalf("archive=%#v err=%v", archived, err)
+	}
+	all, err := service.RecentWorkspace(item.ID, 10)
+	if err != nil || len(all) != 5 {
+		t.Fatalf("all=%#v err=%v", all, err)
+	}
+	first, found, err := service.Get(records[0].ID)
+	if err != nil || !found || first.ID != records[0].ID {
+		t.Fatalf("first=%#v found=%t err=%v", first, found, err)
+	}
+
+	restartedManager := workspace.NewManager(workspace.DefaultStorePath())
+	restarted, err := NewWorkspaceService(restartedManager, Options{MaxRecords: 2, NewID: func() (string, error) { return "completion_06", nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	restartedAll, err := restarted.RecentWorkspace(item.ID, 10)
+	if err != nil || len(restartedAll) != 5 || restarted.LatestSequence() != 5 {
+		t.Fatalf("restart all=%#v latest=%d err=%v", restartedAll, restarted.LatestSequence(), err)
+	}
+	next, created, err := restarted.Accept(
+		Identity{AgentID: DeriveAgentID("caller", "generation-6"), Source: "mcp"},
+		Input{WorkspaceID: item.ID, Status: StatusCompleted, Title: "Final"},
+	)
+	if err != nil || !created || next.Sequence != 6 {
+		t.Fatalf("next=%#v created=%t err=%v", next, created, err)
+	}
+}
+
+func TestCompletionStartupCompactsOversizedHotHistory(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	manager := workspace.NewManager(workspace.DefaultStorePath())
+	item := registerTestWorkspace(t, manager, t.TempDir())
+	local := workspacestate.New(item.Path)
+	records := make([]Record, 0, 4)
+	for index := 1; index <= 4; index++ {
+		records = append(records, Record{
+			ID:          fmt.Sprintf("completion_startup_%d", index),
+			Sequence:    uint64(index),
+			AgentID:     DeriveAgentID("startup-caller", fmt.Sprintf("generation-%d", index)),
+			WorkspaceID: item.ID,
+			Status:      StatusPartial,
+			Title:       fmt.Sprintf("Step %d", index),
+			Source:      "mcp",
+			CreatedAt:   time.Date(2026, 9, 25, 0, index, 0, 0, time.UTC),
+		})
+	}
+	if err := saveWorkspaceHistory(local, workspaceHistory{Version: workspaceHistoryVersion, Records: records}); err != nil {
+		t.Fatal(err)
+	}
+
+	service, err := NewWorkspaceService(manager, Options{MaxRecords: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hot := readTestHistory(t, item.Path)
+	if len(hot.Records) != 2 || hot.Records[0].Sequence != 3 || hot.Records[1].Sequence != 4 {
+		t.Fatalf("startup hot=%#v", hot.Records)
+	}
+	archived, err := loadWorkspaceArchive(local)
+	if err != nil || len(archived) != 2 || archived[0].Sequence != 1 || archived[1].Sequence != 2 {
+		t.Fatalf("startup archive=%#v err=%v", archived, err)
+	}
+	all, err := service.RecentWorkspace(item.ID, 10)
+	if err != nil || len(all) != 4 || all[0].Sequence != 1 || all[3].Sequence != 4 {
+		t.Fatalf("startup all=%#v err=%v", all, err)
+	}
+	if service.LatestSequence() != 4 {
+		t.Fatalf("startup latest=%d", service.LatestSequence())
+	}
+	health := service.Diagnose(item.ID)
+	if health.Status != HealthHealthy || health.HotRecords != 2 || health.ArchivedRecords != 2 || health.LatestSequence != 4 {
+		t.Fatalf("startup health=%#v", health)
+	}
+}
+
+func TestCompletionArchiveRepairsCorruptTailOnNextAppend(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	manager := workspace.NewManager(workspace.DefaultStorePath())
+	item := registerTestWorkspace(t, manager, t.TempDir())
+	ids := []string{"completion_one", "completion_two", "completion_three"}
+	idIndex := 0
+	service, err := NewWorkspaceService(manager, Options{MaxRecords: 1, NewID: func() (string, error) {
+		value := ids[idIndex]
+		idIndex++
+		return value, nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 2; index++ {
+		if _, created, err := service.Accept(
+			Identity{AgentID: DeriveAgentID("caller", fmt.Sprintf("generation-%d", index)), Source: "mcp"},
+			Input{WorkspaceID: item.ID, Status: StatusPartial, Title: fmt.Sprintf("Step %d", index)},
+		); err != nil || !created {
+			t.Fatalf("index=%d created=%t err=%v", index, created, err)
+		}
+	}
+	local := workspacestate.New(item.Path)
+	archivePath, err := workspaceArchivePath(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(archivePath, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("{broken}\n"); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted, err := NewWorkspaceService(workspace.NewManager(workspace.DefaultStorePath()), Options{MaxRecords: 1, NewID: func() (string, error) { return ids[2], nil }})
+	if err != nil {
+		t.Fatalf("restart rejected corrupt archive tail: %v", err)
+	}
+	health := restarted.Diagnose(item.ID)
+	if health.Status != HealthDegraded || !health.ArchiveTailIssue || health.ArchivedRecords != 1 {
+		t.Fatalf("health before repair=%#v", health)
+	}
+	third, created, err := restarted.Accept(
+		Identity{AgentID: DeriveAgentID("caller", "generation-2"), Source: "mcp"},
+		Input{WorkspaceID: item.ID, Status: StatusCompleted, Title: "Finished"},
+	)
+	if err != nil || !created || third.Sequence != 3 {
+		t.Fatalf("third=%#v created=%t err=%v", third, created, err)
+	}
+	health = restarted.Diagnose(item.ID)
+	if health.Status != HealthHealthy || health.ArchiveTailIssue || health.ArchivedRecords != 2 || health.HotRecords != 1 {
+		t.Fatalf("health after repair=%#v", health)
+	}
+	all, err := restarted.RecentWorkspace(item.ID, 10)
+	if err != nil || len(all) != 3 || all[0].Sequence != 1 || all[2].Sequence != 3 {
+		t.Fatalf("all=%#v err=%v", all, err)
+	}
+}
+
+func TestCompletionCloseDisposesSubscriptionsAndRejectsAccept(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	manager := workspace.NewManager(workspace.DefaultStorePath())
+	item := registerTestWorkspace(t, manager, t.TempDir())
+	service, err := NewWorkspaceService(manager, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub, _ := service.SubscribeSnapshot(0)
+	service.Close()
+	if _, ok := <-sub.Events; ok {
+		t.Fatal("completion events subscription remained open after close")
+	}
+	if _, ok := <-sub.Overflow; ok {
+		t.Fatal("completion overflow subscription remained open after close")
+	}
+	closedSub, _ := service.SubscribeSnapshot(0)
+	if _, ok := <-closedSub.Events; ok {
+		t.Fatal("subscription created after close was not closed")
+	}
+	if _, created, err := service.Accept(
+		Identity{AgentID: DeriveAgentID("caller", "generation"), Source: "mcp"},
+		Input{WorkspaceID: item.ID, Status: StatusCompleted, Title: "Done"},
+	); err == nil || created || !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("accept after close created=%t err=%v", created, err)
 	}
 }
 

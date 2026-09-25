@@ -39,20 +39,30 @@ func (h *CompletionHook) CatchUp(ctx context.Context, service *agentcompletion.S
 	if h == nil || service == nil {
 		return errors.New("CodeGraph completion catch-up is unavailable")
 	}
-	records, err := service.Recent(agentcompletion.DefaultMaxRecords)
-	if err != nil {
-		return err
-	}
-	for _, record := range records {
-		if !eligibleCompletionStatus(record.Status) || h.finalOutcomeExists(record) {
-			continue
+	var after uint64
+	for {
+		snapshot, err := service.Since(after, agentcompletion.DefaultMaxRecords)
+		if err != nil {
+			return err
 		}
-		if ctx != nil && ctx.Err() != nil {
-			return ctx.Err()
+		if len(snapshot.Records) == 0 {
+			return nil
 		}
-		_ = h.process(ctx, record)
+		for _, record := range snapshot.Records {
+			if ctx != nil && ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if eligibleCompletionStatus(record.Status) && !h.finalOutcomeExists(record) {
+				_ = h.process(ctx, record)
+			}
+			if record.Sequence > after {
+				after = record.Sequence
+			}
+		}
+		if after >= snapshot.LatestSequence {
+			return nil
+		}
 	}
-	return nil
 }
 
 func (h *CompletionHook) Outcome(workspaceID, completionID string) (CompletionSyncOutcome, bool, error) {

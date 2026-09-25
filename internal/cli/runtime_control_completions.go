@@ -49,6 +49,18 @@ func registerRuntimeCompletionRoutes(mux *http.ServeMux, token string, service *
 		}
 		writeControlJSON(w, record, err)
 	}))
+	mux.HandleFunc("/completions/doctor", authenticatedControl(token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
+		if service == nil {
+			writeControlJSON(w, nil, errors.New("agent completion service is unavailable"))
+			return
+		}
+		workspaceID := strings.TrimSpace(r.URL.Query().Get("workspace_id"))
+		if workspaceID == "" {
+			writeControlJSON(w, nil, errors.New("completion workspace is required"))
+			return
+		}
+		writeControlJSON(w, service.Diagnose(workspaceID), nil)
+	}))
 	mux.HandleFunc("/completions/view", authenticatedControl(token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
 		if service == nil {
 			writeControlJSON(w, nil, errors.New("agent completion service is unavailable"))

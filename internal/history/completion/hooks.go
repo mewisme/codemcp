@@ -165,6 +165,33 @@ func (b *CompletionHookBus) Diagnostics() []HookDiagnostic {
 	return result
 }
 
+func (b *CompletionHookBus) Health() HookHealth {
+	if b == nil {
+		return HookHealth{}
+	}
+	b.lifecycleMu.RLock()
+	stopped := b.stopped
+	b.lifecycleMu.RUnlock()
+	b.hooksMu.RLock()
+	registered := len(b.hooks)
+	b.hooksMu.RUnlock()
+	diagnostics := b.Diagnostics()
+	health := HookHealth{Stopped: stopped, Registered: registered, RecentDiagnostics: len(diagnostics)}
+	for _, diagnostic := range diagnostics {
+		switch diagnostic.Status {
+		case HookFailed:
+			health.Failures++
+		case HookTimedOut:
+			health.Timeouts++
+		case HookCancelled:
+			health.Cancelled++
+		case HookDuplicate:
+			health.Duplicates++
+		}
+	}
+	return health
+}
+
 func (b *CompletionHookBus) Stop() {
 	if b == nil {
 		return
