@@ -10,6 +10,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/upstream"
 )
 
 type SettingChange struct {
@@ -63,12 +64,21 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 		}
 		return SettingApplyResult{Config: cfg}, nil
 	}
-	for _, item := range resolved {
-		if item.selector != nil {
+	dynamicResource, dynamicID, hasDynamic, err := settingDynamicTransaction(resolved)
+	if err != nil {
+		return SettingApplyResult{}, err
+	}
+	if hasDynamic {
+		switch dynamicResource {
+		case "upstream.server":
+			return s.applyDynamicUpstreamSettingChanges(ctx, dynamicID, resolved)
+		case "tunnel.managed":
 			if len(resolved) != 1 {
-				return SettingApplyResult{}, errors.New("dynamic setting selectors cannot be combined with other setting mutations")
+				return SettingApplyResult{}, errors.New("managed tunnel settings are remote mutations and cannot be combined in a multi-setting transaction")
 			}
-			return s.applyDynamicSettingChange(ctx, item)
+			return s.applyDynamicSettingChange(ctx, resolved[0])
+		default:
+			return SettingApplyResult{}, fmt.Errorf("unsupported setting resource: %s", dynamicResource)
 		}
 	}
 
@@ -157,7 +167,7 @@ func resolveSettingChanges(changes []SettingChange) ([]resolvedSettingChange, er
 		}
 		identity := spec.Key
 		if selector != nil {
-			identity = change.Key
+			identity = dynamicReadKey(*selector)
 		}
 		if _, exists := seen[identity]; exists {
 			return nil, fmt.Errorf("duplicate setting mutation: %s", identity)
@@ -173,6 +183,32 @@ func resolveSettingChanges(changes []SettingChange) ([]resolvedSettingChange, er
 		resolved = append(resolved, resolvedSettingChange{change: change, spec: spec, selector: selector})
 	}
 	return resolved, nil
+}
+
+func settingDynamicTransaction(resolved []resolvedSettingChange) (resource, resourceID string, dynamic bool, err error) {
+	static := false
+	for _, item := range resolved {
+		if item.selector == nil {
+			static = true
+			continue
+		}
+		if item.selector.Spec.Selector == nil {
+			return "", "", false, fmt.Errorf("unsupported setting: %s", item.change.Key)
+		}
+		currentResource := item.selector.Spec.Selector.Resource
+		currentID := item.selector.ResourceID
+		if !dynamic {
+			resource, resourceID, dynamic = currentResource, currentID, true
+			continue
+		}
+		if resource != currentResource || resourceID != currentID {
+			return "", "", false, fmt.Errorf("setting batch spans unsupported transaction owners: %s[%s] and %s[%s]", resource, resourceID, currentResource, currentID)
+		}
+	}
+	if dynamic && static {
+		return "", "", false, fmt.Errorf("setting batch spans unsupported transaction owners: global config and %s[%s]", resource, resourceID)
+	}
+	return resource, resourceID, dynamic, nil
 }
 
 func (s *SettingService) applyDynamicSettingChange(ctx context.Context, item resolvedSettingChange) (SettingApplyResult, error) {
@@ -192,6 +228,58 @@ func (s *SettingService) applyDynamicSettingChange(ctx context.Context, item res
 		return SettingApplyResult{}, err
 	}
 	return SettingApplyResult{Results: []SettingResult{result}, Config: cfg}, nil
+}
+
+func (s *SettingService) applyDynamicUpstreamSettingChanges(ctx context.Context, resourceID string, items []resolvedSettingChange) (SettingApplyResult, error) {
+	service, err := s.upstreamService(ctx)
+	if err != nil {
+		return SettingApplyResult{}, err
+	}
+	current, err := service.Get(ctx, resourceID)
+	if err != nil {
+		return SettingApplyResult{}, err
+	}
+	staged := current.Value
+	for _, item := range items {
+		if item.selector == nil || item.selector.Spec.Selector == nil || item.selector.Spec.Selector.Resource != "upstream.server" || item.selector.ResourceID != resourceID {
+			return SettingApplyResult{}, errors.New("upstream setting transaction contains a mismatched resource owner")
+		}
+		raw := item.change.Value
+		if item.change.Unset {
+			raw = ""
+		}
+		if err := applyUpstreamSetting(&staged, dynamicSettingSuffix(item.spec.Key), raw); err != nil {
+			return SettingApplyResult{}, err
+		}
+	}
+	normalized, err := upstream.NormalizeServer(staged)
+	if err != nil {
+		return SettingApplyResult{}, err
+	}
+
+	updated := current.Value
+	reconciled := false
+	if !reflect.DeepEqual(current.Value, normalized) {
+		updated, reconciled, err = service.applySettingUpdate(ctx, resourceID, normalized)
+		if err != nil {
+			return SettingApplyResult{}, err
+		}
+	}
+
+	results := make([]SettingResult, 0, len(items))
+	for _, item := range items {
+		spec := presentationSpec(item.spec, item.selector)
+		value, configured, err := upstreamSettingValue(updated, dynamicSettingSuffix(item.spec.Key))
+		if err != nil {
+			return SettingApplyResult{}, err
+		}
+		results = append(results, SettingResult{Spec: spec, Value: value, Configured: configured, RuntimeReloaded: reconciled})
+	}
+	cfg, err := LoadConfig(ctx)
+	if err != nil {
+		return SettingApplyResult{}, err
+	}
+	return SettingApplyResult{Results: results, Config: cfg, RuntimeReloaded: reconciled}, nil
 }
 
 func mutateConfigSetting(next *config.Config, item resolvedSettingChange) error {

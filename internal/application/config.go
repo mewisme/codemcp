@@ -448,7 +448,10 @@ func saveConfigMutation(ctx context.Context, previous, next config.Config) (conf
 	rollbackErr := config.Save(previous)
 	if rollbackErr != nil {
 		rollbackSpan.FailMessage("Persisted configuration rollback failed", rollbackErr)
-		return configReloadResult{}, false, errors.Join(fmt.Errorf("reload running configuration: %w", err), fmt.Errorf("rollback persisted configuration: %w", rollbackErr))
+		return configReloadResult{}, false, errors.Join(
+			fmt.Errorf("reload running configuration: %w", err),
+			fmt.Errorf("rollback persisted configuration: %w; manual reconciliation required", rollbackErr),
+		)
 	}
 	rollbackFields := []tracepkg.Field{tracepkg.String("path", source.Path)}
 	if info, statErr := os.Stat(source.Path); statErr == nil {

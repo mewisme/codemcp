@@ -403,6 +403,18 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		}
 		runtime.Logger.Diagnostic(logger.Info, "WORKSPACE", "workspace.registry.reloaded", "Workspace registry reloaded", logger.WithDebug("count", len(items)))
 		return workspaceReloadResult{PID: os.Getpid(), Count: len(items)}, nil
+	}, ReloadUpstreams: func(ctx context.Context) (upstreamReloadResult, error) {
+		previous := runtime.Tools.Upstream.List()
+		if err := runtime.Tools.Upstream.Reload(ctx); err != nil {
+			return upstreamReloadResult{}, err
+		}
+		if err := runtime.Tools.RefreshUpstreams(ctx, true); err != nil {
+			restoreErr := runtime.Tools.Upstream.RestoreRuntimeSnapshot(ctx, previous)
+			return upstreamReloadResult{}, errors.Join(err, restoreErr)
+		}
+		items := runtime.Tools.Upstream.List()
+		runtime.Logger.Diagnostic(logger.Info, "UPSTREAM", "upstream.registry.reloaded", "Upstream registry reloaded", logger.WithDebug("count", len(items)))
+		return upstreamReloadResult{PID: os.Getpid(), Count: len(items)}, nil
 	}, Status: status, StatusWait: statusWait, Approvals: runtime.Tools.Approvals, Completions: runtime.Tools.Completions, Executions: runtime.Tools.Executions, Log: runtime.Logger, Shutdown: func() {
 		runtimeCancel()
 		select {

@@ -39,6 +39,39 @@ func TestManagerRollsBackFailedPersist(t *testing.T) {
 	}
 }
 
+func TestManagerRestoreRuntimeSnapshotDoesNotRewriteStore(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "upstreams.json")
+	manager := NewManager(NewStore(storePath))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(Server{ID: "docs", Name: "Docs", Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	previous := manager.List()
+	changed := previous[0]
+	changed.Command = "bun"
+	if err := manager.Add(changed); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.RestoreRuntimeSnapshot(t.Context(), previous); err != nil {
+		t.Fatal(err)
+	}
+	current, ok := manager.Get("docs")
+	if !ok || current.Command != "node" {
+		t.Fatalf("runtime snapshot=%#v ok=%t", current, ok)
+	}
+
+	reloaded := NewManager(NewStore(storePath))
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	persisted, ok := reloaded.Get("docs")
+	if !ok || persisted.Command != "bun" {
+		t.Fatalf("runtime restore unexpectedly rewrote persisted store: %#v ok=%t", persisted, ok)
+	}
+}
+
 type managerLifecycleClient struct {
 	closes   []string
 	clears   []string

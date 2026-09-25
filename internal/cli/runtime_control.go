@@ -34,6 +34,7 @@ type runtimeControlState = runtimecontrol.State
 type runtimeReloadResult = runtimecontrol.ReloadResult
 type runtimeStatusResult = runtimecontrol.RuntimeStatus
 type workspaceReloadResult = runtimecontrol.WorkspaceReloadResult
+type upstreamReloadResult = runtimecontrol.UpstreamReloadResult
 
 type runtimeControlOptions struct {
 	RunID            string
@@ -45,6 +46,7 @@ type runtimeControlOptions struct {
 	Activity         *activity.Stream
 	Reload           func(context.Context) (runtimeReloadResult, error)
 	ReloadWorkspaces func() (workspaceReloadResult, error)
+	ReloadUpstreams  func(context.Context) (upstreamReloadResult, error)
 	Status           func() runtimeStatusResult
 	StatusWait       func(context.Context, string) runtimeStatusResult
 	Shutdown         func()
@@ -123,6 +125,14 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 			return
 		}
 		result, err := options.ReloadWorkspaces()
+		writeControlJSON(w, result, err)
+	}))
+	mux.HandleFunc("/upstreams/reload", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, r *http.Request) {
+		if options.ReloadUpstreams == nil {
+			writeControlJSON(w, nil, errors.New("upstream reload handler is unavailable"))
+			return
+		}
+		result, err := options.ReloadUpstreams(r.Context())
 		writeControlJSON(w, result, err)
 	}))
 	mux.HandleFunc("/status", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, _ *http.Request) {

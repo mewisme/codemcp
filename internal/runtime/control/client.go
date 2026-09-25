@@ -48,6 +48,11 @@ type WorkspaceReloadResult struct {
 	Count int `json:"count"`
 }
 
+type UpstreamReloadResult struct {
+	PID   int `json:"pid"`
+	Count int `json:"count"`
+}
+
 type RuntimeStatus struct {
 	PID               int                 `json:"pid"`
 	RunID             string              `json:"run_id,omitempty"`

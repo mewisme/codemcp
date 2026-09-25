@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"reflect"
 	"strings"
 
 	"go.mewis.me/codemcp/internal/capability"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/upstream"
 )
@@ -175,6 +178,73 @@ func (service *UpstreamService) Update(ctx context.Context, id string, server up
 		value, _ := service.manager.Get(normalized.ID)
 		return value, nil
 	})
+}
+
+func (service *UpstreamService) applySettingUpdate(ctx context.Context, id string, server upstream.Server) (upstream.Server, bool, error) {
+	if err := service.require(capability.UpstreamServerConfigure); err != nil {
+		return upstream.Server{}, false, err
+	}
+	previous, err := service.get(capability.UpstreamServerConfigure, id)
+	if err != nil {
+		return upstream.Server{}, false, err
+	}
+	serverID := strings.TrimSpace(server.ID)
+	if serverID != "" && serverID != strings.TrimSpace(id) {
+		return upstream.Server{}, false, operationError(capability.UpstreamServerConfigure, ErrorInvalidArgument, errors.New("upstream id cannot be changed"))
+	}
+	server.ID = strings.TrimSpace(id)
+	normalized, err := normalizeApplicationUpstream(capability.UpstreamServerConfigure, server)
+	if err != nil {
+		return upstream.Server{}, false, err
+	}
+	if reflect.DeepEqual(previous, normalized) {
+		return previous, false, nil
+	}
+	if err := service.manager.Add(normalized); err != nil {
+		cause := classifyUpstreamRuntimeError(capability.UpstreamServerConfigure, err)
+		if current, ok := service.manager.Get(previous.ID); ok && !reflect.DeepEqual(current, previous) {
+			return upstream.Server{}, false, service.rollbackSettingUpdate(previous, cause)
+		}
+		return upstream.Server{}, false, cause
+	}
+	reconciled := false
+	if service.reconcile != nil {
+		if err := service.reconcileOnce(ctx, capability.UpstreamServerConfigure); err != nil {
+			return upstream.Server{}, false, service.rollbackSettingUpdate(previous, err)
+		}
+		reconciled = true
+	} else {
+		_, running, err := ReloadUpstreams(ctx)
+		if err != nil {
+			cause := operationError(capability.UpstreamServerConfigure, ErrorUnavailable, fmt.Errorf("upstream configuration saved but runtime proxy reconciliation failed: %w", err))
+			return upstream.Server{}, false, service.rollbackSettingUpdate(previous, cause)
+		}
+		reconciled = running
+	}
+	value, _ := service.manager.Get(normalized.ID)
+	return value, reconciled, nil
+}
+
+func (service *UpstreamService) rollbackSettingUpdate(previous upstream.Server, cause error) error {
+	if rollbackErr := service.manager.Add(previous); rollbackErr != nil {
+		return fmt.Errorf("%w; rollback upstream configuration: %v; manual reconciliation required", cause, rollbackErr)
+	}
+	return fmt.Errorf("%w; upstream configuration rolled back", cause)
+}
+
+func ReloadUpstreams(ctx context.Context) (runtimecontrol.UpstreamReloadResult, bool, error) {
+	var result runtimecontrol.UpstreamReloadResult
+	state, err := runtimecontrol.Request(ctx, http.MethodPost, "/upstreams/reload", nil, &result)
+	if err != nil {
+		if runtimecontrol.IsUnavailable(err) {
+			return runtimecontrol.UpstreamReloadResult{}, false, nil
+		}
+		return runtimecontrol.UpstreamReloadResult{}, true, err
+	}
+	if err := runtimecontrol.ValidatePID(ctx, state.PID, result.PID, "upstreams-reload"); err != nil {
+		return runtimecontrol.UpstreamReloadResult{}, true, err
+	}
+	return result, true, nil
 }
 
 func (service *UpstreamService) Remove(ctx context.Context, id string) (Result[upstream.Server], error) {

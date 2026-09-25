@@ -126,6 +126,31 @@ func (m *Manager) Reload(ctx context.Context) error {
 	return m.Load()
 }
 
+// RestoreRuntimeSnapshot restores the runtime manager state without writing the
+// store. It is used when a runtime-side proxy refresh fails after Reload loaded
+// a newly persisted snapshot; the caller remains responsible for rolling the
+// persisted store back.
+func (m *Manager) RestoreRuntimeSnapshot(ctx context.Context, servers []Server) error {
+	next := make(map[string]Server, len(servers))
+	for _, server := range servers {
+		normalized, err := NormalizeServer(server)
+		if err != nil {
+			return err
+		}
+		if _, exists := next[normalized.ID]; exists {
+			return fmt.Errorf("duplicate upstream server ID: %s", normalized.ID)
+		}
+		next[normalized.ID] = normalized
+	}
+	shutdownErr := m.Shutdown(ctx)
+	m.mu.Lock()
+	m.servers = next
+	m.cache = map[string]toolCache{}
+	m.errors = map[string]string{}
+	m.mu.Unlock()
+	return shutdownErr
+}
+
 func (m *Manager) Add(server Server) error {
 	span := tracepkg.StartObserver(m.trace, "UPSTREAM", "upstream.server.save", "Saving Upstream server", upstreamServerTraceFields(server)...)
 	normalized, err := NormalizeServer(server)

@@ -3,11 +3,13 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -232,6 +234,114 @@ func TestSettingServiceApplyIsAtomicAndReloadsRunningRuntimeOnce(t *testing.T) {
 	}
 	if calls.Load() != 1 {
 		t.Fatalf("failed mutation triggered runtime reload: %d", calls.Load())
+	}
+}
+
+func TestSettingServiceApplyStaticNoOpDoesNotReloadRunningRuntime(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		_ = json.NewEncoder(w).Encode(runtimecontrol.ReloadResult{PID: os.Getpid()})
+	}))
+	defer server.Close()
+	writeRuntimeState(t, root, runtimecontrol.State{
+		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root,
+	})
+
+	defaults := config.Default()
+	applied, err := NewSettingService().Apply(t.Context(), []SettingChange{
+		{Key: "server.port", Value: strconv.Itoa(defaults.Server.Port)},
+		{Key: "admin.port", Value: strconv.Itoa(defaults.Admin.Port)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied.RuntimeReloaded || calls.Load() != 0 {
+		t.Fatalf("no-op applied=%#v reloads=%d", applied, calls.Load())
+	}
+}
+
+func TestSettingServiceApplyStaticStoppedRuntimeReportsNoReload(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	applied, err := NewSettingService().Apply(t.Context(), []SettingChange{
+		{Key: "server.port", Value: "40123"},
+		{Key: "admin.port", Value: "40124"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied.RuntimeReloaded {
+		t.Fatalf("stopped runtime reported reload: %#v", applied)
+	}
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Server.Port != 40123 || loaded.Admin.Port != 40124 {
+		t.Fatalf("stopped-runtime mutation not persisted: %#v", loaded)
+	}
+}
+
+func TestSettingServiceApplyStaticReloadFailureRollsBack(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	before, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		http.Error(w, "reload failed", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	writeRuntimeState(t, root, runtimecontrol.State{
+		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root,
+	})
+
+	_, err = NewSettingService().Apply(t.Context(), []SettingChange{
+		{Key: "server.port", Value: "40123"},
+		{Key: "admin.port", Value: "40124"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "persisted configuration rolled back") {
+		t.Fatalf("err=%v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("reload calls=%d", calls.Load())
+	}
+	after, loadErr := config.Load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("reload failure did not restore persisted config\nbefore=%#v\nafter=%#v", before, after)
+	}
+}
+
+func TestSettingServiceApplyStaticRollbackFailureRequiresManualReconciliation(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if err := os.RemoveAll(root); err != nil {
+			t.Errorf("remove config root: %v", err)
+		}
+		if err := os.WriteFile(root, []byte("block rollback"), 0600); err != nil {
+			t.Errorf("block config root: %v", err)
+		}
+		http.Error(w, "reload failed", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	writeRuntimeState(t, root, runtimecontrol.State{
+		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root,
+	})
+
+	_, err := NewSettingService().Apply(t.Context(), []SettingChange{{Key: "server.port", Value: "40123"}})
+	if err == nil || !strings.Contains(err.Error(), "manual reconciliation required") || !strings.Contains(err.Error(), "rollback persisted configuration") {
+		t.Fatalf("err=%v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("reload calls=%d", calls.Load())
 	}
 }
 
@@ -635,6 +745,480 @@ func TestSettingServiceDynamicUpstreamUsesCanonicalServiceAndReconcilesOnce(t *t
 	why, err := service.Why(t.Context(), "upstream.servers[docs.v2].command")
 	if err != nil || why.Spec.Key != "upstream.servers[docs.v2].command" || why.HasBaseline {
 		t.Fatalf("why=%#v err=%v", why, err)
+	}
+}
+
+func TestSettingServiceApplyStagesAtomicUpstreamMultiFieldBatch(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	storePath := filepath.Join(t.TempDir(), "upstreams.json")
+	manager := upstream.NewManager(upstream.NewStore(storePath))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs.v2", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	var reconciles atomic.Int32
+	service := NewSettingService()
+	service.upstream = NewUpstreamService(manager, func(context.Context) error {
+		reconciles.Add(1)
+		return nil
+	})
+
+	applied, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs%2Ev2].command", Value: "bun"},
+		{Key: "upstream.servers[docs.v2].name", Value: "Docs Next"},
+		{Key: "upstream.servers[docs.v2].args", Value: "--watch,index.ts"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reconciles.Load() != 1 || !applied.RuntimeReloaded || len(applied.Results) != 3 {
+		t.Fatalf("applied=%#v reconciles=%d", applied, reconciles.Load())
+	}
+	current, ok := manager.Get("docs.v2")
+	if !ok || current.Command != "bun" || current.Name != "Docs Next" || strings.Join(current.Args, ",") != "--watch,index.ts" {
+		t.Fatalf("upstream=%#v ok=%t", current, ok)
+	}
+	reloaded := upstream.NewManager(upstream.NewStore(storePath))
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	persisted, ok := reloaded.Get("docs.v2")
+	if !ok || !reflect.DeepEqual(current, persisted) {
+		t.Fatalf("persisted=%#v current=%#v ok=%t", persisted, current, ok)
+	}
+}
+
+func TestSettingServiceApplyDefaultUpstreamReconcilesRunningRuntimeOnce(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	manager := upstream.NewManager(upstream.NewStore(upstream.Path()))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/upstreams/reload" || r.Header.Get("Authorization") != "Bearer token" {
+			t.Fatalf("request=%s %s auth=%q", r.Method, r.URL.Path, r.Header.Get("Authorization"))
+		}
+		calls.Add(1)
+		_ = json.NewEncoder(w).Encode(runtimecontrol.UpstreamReloadResult{PID: os.Getpid(), Count: 1})
+	}))
+	defer server.Close()
+	writeRuntimeState(t, root, runtimecontrol.State{
+		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root,
+	})
+
+	applied, err := NewSettingService().Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs].command", Value: "bun"},
+		{Key: "upstream.servers[docs].name", Value: "Docs Next"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !applied.RuntimeReloaded || calls.Load() != 1 {
+		t.Fatalf("applied=%#v reconciles=%d", applied, calls.Load())
+	}
+	reloaded := upstream.NewManager(upstream.NewStore(upstream.Path()))
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	current, ok := reloaded.Get("docs")
+	if !ok || current.Command != "bun" || current.Name != "Docs Next" {
+		t.Fatalf("persisted upstream=%#v ok=%t", current, ok)
+	}
+}
+
+func TestSettingServiceApplyDefaultUpstreamStoppedRuntimeReportsNoReload(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	manager := upstream.NewManager(upstream.NewStore(upstream.Path()))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+
+	applied, err := NewSettingService().Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs].command", Value: "bun"},
+		{Key: "upstream.servers[docs].name", Value: "Docs Next"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied.RuntimeReloaded {
+		t.Fatalf("stopped runtime reported upstream reload: %#v", applied)
+	}
+	reloaded := upstream.NewManager(upstream.NewStore(upstream.Path()))
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	current, ok := reloaded.Get("docs")
+	if !ok || current.Command != "bun" || current.Name != "Docs Next" {
+		t.Fatalf("persisted upstream=%#v ok=%t", current, ok)
+	}
+}
+
+func TestSettingServiceApplyDefaultUpstreamRuntimeFailureRollsBackStore(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	manager := upstream.NewManager(upstream.NewStore(upstream.Path()))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	initial, _ := manager.Get("docs")
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		http.Error(w, "upstream refresh failed", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	writeRuntimeState(t, root, runtimecontrol.State{
+		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root,
+	})
+
+	_, err := NewSettingService().Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs].command", Value: "bun"},
+		{Key: "upstream.servers[docs].name", Value: "Docs Next"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "upstream configuration rolled back") {
+		t.Fatalf("err=%v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("runtime reconcile calls=%d", calls.Load())
+	}
+	reloaded := upstream.NewManager(upstream.NewStore(upstream.Path()))
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	current, ok := reloaded.Get("docs")
+	if !ok || !reflect.DeepEqual(current, initial) {
+		t.Fatalf("persisted upstream not rolled back: %#v ok=%t", current, ok)
+	}
+}
+
+func TestSettingServiceApplyValidatesEntireUpstreamBatchBeforeMutation(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	storePath := filepath.Join(t.TempDir(), "upstreams.json")
+	manager := upstream.NewManager(upstream.NewStore(storePath))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs.v2", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	initial, _ := manager.Get("docs.v2")
+	var reconciles atomic.Int32
+	service := NewSettingService()
+	service.upstream = NewUpstreamService(manager, func(context.Context) error {
+		reconciles.Add(1)
+		return nil
+	})
+
+	_, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs.v2].command", Value: "bun"},
+		{Key: "upstream.servers[docs.v2].idle_timeout_sec", Value: "not-an-int"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "idle_timeout_sec") {
+		t.Fatalf("err=%v", err)
+	}
+	if reconciles.Load() != 0 {
+		t.Fatalf("invalid batch reconciled runtime %d time(s)", reconciles.Load())
+	}
+	current, _ := manager.Get("docs.v2")
+	if !reflect.DeepEqual(current, initial) {
+		t.Fatalf("invalid later field preserved earlier mutation: %#v", current)
+	}
+	reloaded := upstream.NewManager(upstream.NewStore(storePath))
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	persisted, _ := reloaded.Get("docs.v2")
+	if !reflect.DeepEqual(persisted, initial) {
+		t.Fatalf("invalid batch changed persisted upstream: %#v", persisted)
+	}
+}
+
+func TestSettingServiceApplyRejectsCanonicalDynamicDuplicateBeforeMutation(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	manager := upstream.NewManager(upstream.NewStore(filepath.Join(t.TempDir(), "upstreams.json")))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs.v2", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	initial, _ := manager.Get("docs.v2")
+	service := NewSettingService()
+	service.upstream = NewUpstreamService(manager)
+
+	_, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs%2Ev2].command", Value: "bun"},
+		{Key: "upstream.servers[docs.v2].command", Value: "deno"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "duplicate setting mutation") {
+		t.Fatalf("err=%v", err)
+	}
+	current, _ := manager.Get("docs.v2")
+	if !reflect.DeepEqual(current, initial) {
+		t.Fatalf("duplicate batch mutated upstream: %#v", current)
+	}
+}
+
+func TestSettingServiceApplyRejectsMixedOwnersBeforeMutation(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	manager := upstream.NewManager(upstream.NewStore(filepath.Join(t.TempDir(), "upstreams.json")))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	initial, _ := manager.Get("docs")
+	beforeConfig, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reconciles atomic.Int32
+	service := NewSettingService()
+	service.upstream = NewUpstreamService(manager, func(context.Context) error {
+		reconciles.Add(1)
+		return nil
+	})
+
+	_, err = service.Apply(t.Context(), []SettingChange{
+		{Key: "server.port", Value: "40123"},
+		{Key: "upstream.servers[docs].command", Value: "bun"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported transaction owners") {
+		t.Fatalf("err=%v", err)
+	}
+	afterConfig, loadErr := config.Load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if !reflect.DeepEqual(beforeConfig, afterConfig) {
+		t.Fatalf("mixed-owner rejection changed config: before=%#v after=%#v", beforeConfig, afterConfig)
+	}
+	current, _ := manager.Get("docs")
+	if !reflect.DeepEqual(current, initial) || reconciles.Load() != 0 {
+		t.Fatalf("mixed-owner rejection changed upstream=%#v reconciles=%d", current, reconciles.Load())
+	}
+}
+
+func TestSettingServiceApplyRejectsMultipleDynamicOwnersAndRemoteManagedTunnelBatch(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	manager := upstream.NewManager(upstream.NewStore(filepath.Join(t.TempDir(), "upstreams.json")))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	for _, server := range []upstream.Server{
+		{ID: "docs", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"},
+		{ID: "search", Name: "Search", Enabled: true, Transport: "stdio", Command: "node"},
+	} {
+		if err := manager.Add(server); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := NewSettingService()
+	service.upstream = NewUpstreamService(manager)
+
+	_, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs].command", Value: "bun"},
+		{Key: "upstream.servers[search].command", Value: "deno"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported transaction owners") {
+		t.Fatalf("multi-resource err=%v", err)
+	}
+	if current, _ := manager.Get("docs"); current.Command != "node" {
+		t.Fatalf("docs mutated: %#v", current)
+	}
+	if current, _ := manager.Get("search"); current.Command != "node" {
+		t.Fatalf("search mutated: %#v", current)
+	}
+
+	_, err = service.Apply(t.Context(), []SettingChange{
+		{Key: "tunnel.managed[tun_demo].name", Value: "Demo"},
+		{Key: "tunnel.managed[tun_demo].description", Value: "Description"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "remote mutations") {
+		t.Fatalf("managed tunnel multi-setting err=%v", err)
+	}
+}
+
+func TestSettingServiceApplyUpstreamNoOpDoesNotReconcile(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	manager := upstream.NewManager(upstream.NewStore(filepath.Join(t.TempDir(), "upstreams.json")))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	var reconciles atomic.Int32
+	service := NewSettingService()
+	service.upstream = NewUpstreamService(manager, func(context.Context) error {
+		reconciles.Add(1)
+		return nil
+	})
+
+	applied, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs].command", Value: "node"},
+		{Key: "upstream.servers[docs].name", Value: "Docs"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied.RuntimeReloaded || reconciles.Load() != 0 {
+		t.Fatalf("no-op applied=%#v reconciles=%d", applied, reconciles.Load())
+	}
+}
+
+func TestSettingServiceApplyUpstreamReconcileFailureRollsBack(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	storePath := filepath.Join(t.TempDir(), "upstreams.json")
+	manager := upstream.NewManager(upstream.NewStore(storePath))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	initial, _ := manager.Get("docs")
+	var reconciles atomic.Int32
+	service := NewSettingService()
+	service.upstream = NewUpstreamService(manager, func(context.Context) error {
+		reconciles.Add(1)
+		return errors.New("proxy refresh failed")
+	})
+
+	_, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs].command", Value: "bun"},
+		{Key: "upstream.servers[docs].name", Value: "Docs Next"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "rolled back") {
+		t.Fatalf("err=%v", err)
+	}
+	if reconciles.Load() != 1 {
+		t.Fatalf("reconciles=%d", reconciles.Load())
+	}
+	current, _ := manager.Get("docs")
+	if !reflect.DeepEqual(current, initial) {
+		t.Fatalf("manager state not rolled back: %#v", current)
+	}
+	reloaded := upstream.NewManager(upstream.NewStore(storePath))
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	persisted, _ := reloaded.Get("docs")
+	if !reflect.DeepEqual(persisted, initial) {
+		t.Fatalf("persisted state not rolled back: %#v", persisted)
+	}
+}
+
+func TestSettingServiceApplyUpstreamRollbackFailureRequiresManualReconciliation(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	storeRoot := t.TempDir()
+	storePath := filepath.Join(storeRoot, "upstreams.json")
+	manager := upstream.NewManager(upstream.NewStore(storePath))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{ID: "docs", Name: "Docs", Enabled: true, Transport: "stdio", Command: "node"}); err != nil {
+		t.Fatal(err)
+	}
+	service := NewSettingService()
+	service.upstream = NewUpstreamService(manager, func(context.Context) error {
+		if err := os.RemoveAll(storeRoot); err != nil {
+			return err
+		}
+		if err := os.WriteFile(storeRoot, []byte("block rollback"), 0600); err != nil {
+			return err
+		}
+		return errors.New("proxy refresh failed")
+	})
+
+	_, err := service.Apply(t.Context(), []SettingChange{{Key: "upstream.servers[docs].command", Value: "bun"}})
+	if err == nil || !strings.Contains(err.Error(), "manual reconciliation required") || !strings.Contains(err.Error(), "rollback upstream configuration") {
+		t.Fatalf("err=%v", err)
+	}
+	current, _ := manager.Get("docs")
+	if current.Command != "bun" {
+		t.Fatalf("failed rollback was reported but manager state was not pending reconciliation: %#v", current)
+	}
+}
+
+type settingCleanupFailureClient struct {
+	calls atomic.Int32
+}
+
+func (*settingCleanupFailureClient) Connect(context.Context, upstream.Server) error { return nil }
+func (*settingCleanupFailureClient) Close(context.Context, string) error            { return nil }
+func (*settingCleanupFailureClient) Tools(context.Context, string) ([]upstream.Tool, error) {
+	return nil, nil
+}
+func (*settingCleanupFailureClient) Call(context.Context, string, string, map[string]any) (upstream.CallResult, error) {
+	return upstream.CallResult{}, nil
+}
+func (*settingCleanupFailureClient) PID(string) int { return 0 }
+func (client *settingCleanupFailureClient) ClearOAuthCredential(string) error {
+	if client.calls.Add(1) == 1 {
+		return errors.New("cleanup failed")
+	}
+	return nil
+}
+
+func TestSettingServiceApplyUpstreamPostPersistFailureRollsBackBeforeReconcile(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	storePath := filepath.Join(t.TempDir(), "upstreams.json")
+	client := &settingCleanupFailureClient{}
+	manager := upstream.NewManagerWithClient(upstream.NewStore(storePath), client)
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Add(upstream.Server{
+		ID: "docs", Name: "Docs", Enabled: true, Transport: "http",
+		URL: "https://one.example/mcp", Auth: upstream.AuthConfig{Type: "oauth", Scope: "read"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	initial, _ := manager.Get("docs")
+	var reconciles atomic.Int32
+	service := NewSettingService()
+	service.upstream = NewUpstreamService(manager, func(context.Context) error {
+		reconciles.Add(1)
+		return nil
+	})
+
+	_, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "upstream.servers[docs].url", Value: "https://two.example/mcp"},
+		{Key: "upstream.servers[docs].name", Value: "Docs Next"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "cleanup failed") || !strings.Contains(err.Error(), "upstream configuration rolled back") {
+		t.Fatalf("err=%v", err)
+	}
+	if reconciles.Load() != 0 {
+		t.Fatalf("post-persist failure reached runtime reconcile %d time(s)", reconciles.Load())
+	}
+	if client.calls.Load() != 2 {
+		t.Fatalf("OAuth cleanup calls=%d want=2 (failed commit cleanup + successful rollback cleanup)", client.calls.Load())
+	}
+	current, ok := manager.Get("docs")
+	if !ok || !reflect.DeepEqual(current, initial) {
+		t.Fatalf("manager state not rolled back: %#v ok=%t", current, ok)
+	}
+	reloaded := upstream.NewManager(upstream.NewStore(storePath))
+	if err := reloaded.Load(); err != nil {
+		t.Fatal(err)
+	}
+	persisted, ok := reloaded.Get("docs")
+	if !ok || !reflect.DeepEqual(persisted, initial) {
+		t.Fatalf("persisted state not rolled back: %#v ok=%t", persisted, ok)
 	}
 }
 
