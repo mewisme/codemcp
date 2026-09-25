@@ -123,4 +123,17 @@ func TestCoreToolSchemasMatchHandlerContracts(t *testing.T) {
 	if _, ok := items["properties"].(map[string]any)["execution_id"]; !ok {
 		t.Fatal("process_status output schema missing execution_id")
 	}
+	for _, name := range []string{"start_process", "process_status", "process_output", "stop_process"} {
+		description := schemas[name].Description
+		for _, expected := range []string{"lifecycle-driven", "not as a waiting loop"} {
+			if name == "start_process" || name == "stop_process" {
+				if expected == "not as a waiting loop" {
+					continue
+				}
+			}
+			if !strings.Contains(description, expected) {
+				t.Fatalf("%s description missing %q: %s", name, expected, description)
+			}
+		}
+	}
 }

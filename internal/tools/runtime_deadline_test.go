@@ -76,6 +76,9 @@ func TestTunnelResponseBudgetErrorGuidesLongRunCommand(t *testing.T) {
 			t.Fatalf("error missing %q: %v", want, err)
 		}
 	}
+	if strings.Contains(strings.ToLower(err.Error()), "then poll") || !strings.Contains(err.Error(), "not polling") {
+		t.Fatalf("deadline guidance encourages polling: %v", err)
+	}
 }
 
 func TestToolCallContextUsesTunnelBudgetCause(t *testing.T) {

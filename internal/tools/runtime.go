@@ -423,7 +423,7 @@ func toolCallContext(parent context.Context, source string, now time.Time) (cont
 
 func tunnelResponseBudgetError(name string) error {
 	if name == "run_command" {
-		return errors.New("run_command exceeded the synchronous tunnel response budget; use start_process for long-running commands, then poll with process_status and process_output")
+		return errors.New("run_command exceeded the synchronous tunnel response budget; use start_process for long-running commands and rely on lifecycle-driven completion when available; process_status and process_output are for explicit inspection or recovery, not polling")
 	}
 	return fmt.Errorf("%s exceeded the synchronous tunnel response budget; split the operation into shorter tool calls", name)
 }

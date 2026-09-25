@@ -43,6 +43,29 @@ func TestAgentWorkflowRequiresExplicitTerminalCompletionWhenCapabilityExists(t *
 	}
 }
 
+func TestAgentWorkflowRequiresLifecycleDrivenBackgroundWaiting(t *testing.T) {
+	workflow := AgentWorkflow()
+	server := StaticServerInstructions()
+	for _, expected := range []string{
+		"start_process",
+		"lifecycle-driven",
+		"Never busy-wait",
+		"repeated process_status/process_output",
+		"inspection/recovery",
+		"stop_process intervenes",
+		"proven client capability",
+		"otherwise return control",
+		"Intentional shell sleep is valid",
+	} {
+		if !strings.Contains(workflow, expected) {
+			t.Fatalf("workflow missing background guidance %q: %s", expected, workflow)
+		}
+		if !strings.Contains(server, expected) {
+			t.Fatalf("server instructions missing background guidance %q: %s", expected, server)
+		}
+	}
+}
+
 func TestAgentWorkflowDocumentsWorkspaceContainerOrchestration(t *testing.T) {
 	workflow := AgentWorkflow()
 	server := StaticServerInstructions()
