@@ -221,10 +221,13 @@ func tunnelListCommand() *cobra.Command {
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
+		session := commandProgressSession(cmd)
+		session.Update(presentation.ProgressPhase{ID: "tunnel.admin.list", Label: "Loading managed tunnels", State: presentation.ProgressRunning})
 		items, err := tunnel.ListManaged(ctx, cfg.Tunnel, scope)
 		if err != nil {
 			return err
 		}
+		session.Success("tunnel.admin.list", "Loading managed tunnels", fmt.Sprintf("Loaded managed tunnels · %d", len(items)))
 		if asJSON {
 			return writeResultJSON(cmd, items)
 		}
@@ -253,7 +256,7 @@ func tunnelGetCommand() *cobra.Command {
 			return writeResultJSON(cmd, metadata)
 		}
 		if configure {
-			renderMutationSuccess(cmd, "Managed OpenAI tunnel", "Managed tunnel loaded", append(managedTunnelMutationFields(metadata), presentation.Field{Label: "cm", Value: "configured"})...)
+			renderEntityMutationSuccess(cmd, "Managed OpenAI tunnel", "Managed tunnel loaded", metadata.ID, append(managedTunnelMutationFields(metadata), presentation.Field{Label: "cm", Value: "configured"})...)
 			return nil
 		}
 		renderManagedTunnel(commandPresenter(cmd), metadata)
@@ -289,17 +292,16 @@ func renderTunnelAdminKeyStatus(presenter *presentation.Presenter, status applic
 		presentation.Field{Label: "secret store", Value: "secret file store"},
 	)
 	presenter.Fields(fields...)
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func renderManagedTunnelList(presenter *presentation.Presenter, items []tunnel.Metadata) {
 	presenter.Frame("Managed OpenAI tunnels")
 	if len(items) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No managed tunnels")
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return
 	}
-	presenter.Section(fmt.Sprintf("Managed tunnels loaded · %d", len(items)))
 	for _, item := range items {
 		presenter.Subsection(item.ID)
 		name := item.Name
@@ -318,12 +320,12 @@ func renderManagedTunnelList(presenter *presentation.Presenter, items []tunnel.M
 		}
 		presenter.NestedFields(fields...)
 	}
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func renderManagedTunnel(presenter *presentation.Presenter, metadata tunnel.Metadata) {
 	presenter.Frame("Managed OpenAI tunnel")
-	presenter.Section(metadata.ID)
+	presenter.Subsection(metadata.ID)
 	fields := []presentation.Field{}
 	if metadata.Name != "" {
 		fields = append(fields, presentation.Field{Label: "name", Value: metadata.Name})
@@ -349,8 +351,8 @@ func renderManagedTunnel(presenter *presentation.Presenter, metadata tunnel.Meta
 	if !metadata.FetchedAt.IsZero() {
 		fields = append(fields, presentation.Field{Label: "fetched", Value: metadata.FetchedAt.Local().Format(time.RFC3339)})
 	}
-	presenter.Fields(fields...)
-	presenter.FrameEnd("Done")
+	presenter.NestedFields(fields...)
+	presenter.Complete("Done")
 }
 
 func tunnelUseCommand() *cobra.Command {
@@ -366,7 +368,7 @@ func tunnelUseCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		renderMutationSuccess(cmd, "Select managed OpenAI tunnel", "Managed tunnel selected", append(managedTunnelMutationFields(result.Metadata), presentation.Field{Label: "runtime", Value: "configured"}, presentation.Field{Label: "enabled", Value: true})...)
+		renderEntityMutationSuccess(cmd, "Select managed OpenAI tunnel", "Managed tunnel selected", result.Metadata.ID, append(managedTunnelMutationFields(result.Metadata), presentation.Field{Label: "runtime", Value: "configured"}, presentation.Field{Label: "enabled", Value: true})...)
 		return nil
 	}}
 	cmd.Flags().StringVar(&runtimeAPIKey, "runtime-api-key", "", "runtime API key for cm; defaults to the currently configured runtime key")
@@ -400,7 +402,7 @@ func tunnelCreateCommand() *cobra.Command {
 				fields = append(fields, presentation.Field{Label: "cm", Value: "configured"})
 			}
 			fields = append(fields, presentation.Field{Label: "ready", Value: "allow 25-30 seconds before expecting the new tunnel to be active"})
-			renderMutationSuccess(cmd, "Create managed OpenAI tunnel", "Tunnel created", fields...)
+			renderEntityMutationSuccess(cmd, "Create managed OpenAI tunnel", "Tunnel created", metadata.ID, fields...)
 			return nil
 		},
 	}
@@ -454,7 +456,7 @@ func tunnelUpdateCommand() *cobra.Command {
 		if configure {
 			fields = append(fields, presentation.Field{Label: "cm", Value: "configured"})
 		}
-		renderMutationSuccess(cmd, "Update managed OpenAI tunnel", "Tunnel updated", fields...)
+		renderEntityMutationSuccess(cmd, "Update managed OpenAI tunnel", "Tunnel updated", metadata.ID, fields...)
 		return nil
 	}}
 	cmd.Flags().StringVar(&name, "name", "", "new tunnel name")
@@ -485,7 +487,7 @@ func tunnelDeleteCommand() *cobra.Command {
 		if cleared {
 			fields = append(fields, presentation.Field{Label: "cm", Value: "configuration cleared"})
 		}
-		renderMutationSuccess(cmd, "Delete managed OpenAI tunnel", "Tunnel deleted", fields...)
+		renderEntityMutationSuccess(cmd, "Delete managed OpenAI tunnel", "Tunnel deleted", metadata.ID, fields...)
 		return nil
 	}}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "confirm permanent tunnel deletion")
@@ -522,7 +524,7 @@ func configureManagedTunnel(cfg *config.Config, metadata tunnel.Metadata, runtim
 }
 
 func managedTunnelMutationFields(metadata tunnel.Metadata) []presentation.Field {
-	fields := []presentation.Field{{Label: "id", Value: metadata.ID}}
+	fields := []presentation.Field{}
 	if metadata.Name != "" {
 		fields = append(fields, presentation.Field{Label: "name", Value: metadata.Name})
 	}

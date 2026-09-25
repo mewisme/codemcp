@@ -45,6 +45,7 @@ type ProgressSession struct {
 	begun        bool
 	gap          bool
 	framed       bool
+	completion   string
 	closed       bool
 }
 
@@ -248,8 +249,26 @@ func (session *ProgressSession) Closed() bool {
 	return session.closed
 }
 
+func (session *ProgressSession) SetCompletion(message string) {
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return
+	}
+	session.completion = strings.TrimSpace(message)
+}
+
 func (session *ProgressSession) Close() {
-	session.CloseWith("")
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	message := session.completion
+	session.mu.Unlock()
+	session.CloseWith(message)
 }
 
 func (session *ProgressSession) CloseWith(message string) {

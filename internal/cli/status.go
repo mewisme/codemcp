@@ -171,7 +171,7 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 		snapshot.Tunnel.LastError = snapshot.Runtime.TunnelLastError
 		renderStatusTunnelSection(presenter, statusTunnelState(snapshot.Runtime, true))
 		renderStatusTunnelBody(presenter, snapshot, verbose)
-		presenter.FrameEnd("Status complete")
+		presenter.Complete("Status complete")
 		return nil
 	}
 	renderStatus(presenter, snapshot, verbose)
@@ -182,7 +182,7 @@ func renderStatus(presenter *presentation.Presenter, snapshot statusSnapshot, ve
 	presenter.Frame("CodeMCP status")
 	renderStatusBase(presenter, snapshot, verbose)
 	renderStatusTunnel(presenter, snapshot, verbose)
-	presenter.FrameEnd("Status complete")
+	presenter.Complete("Status complete")
 }
 
 func renderStatusBase(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
@@ -429,7 +429,7 @@ func renderStatusUninitialized(presenter *presentation.Presenter) {
 	presenter.Status(presentation.StatusWarning, "CodeMCP is not initialized")
 	presenter.Spacer()
 	presenter.Note("Run:", cliUseName()+" init")
-	presenter.FrameEnd("Not initialized")
+	presenter.Complete("Not initialized")
 }
 
 func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {

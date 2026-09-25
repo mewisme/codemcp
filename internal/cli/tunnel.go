@@ -155,7 +155,7 @@ func renderTunnelStatusText(presenter *presentation.Presenter, cfg tunnel.Config
 	if verbose && status.LastError != "" {
 		presenter.ChildStatus(presentation.StatusError, status.LastError)
 	}
-	presenter.FrameEnd("Status complete")
+	presenter.Complete("Status complete")
 }
 
 func tunnelCLIState(cfg tunnel.Config, status tunnel.Status, runtimeRunning bool) string {
@@ -318,7 +318,8 @@ func tunnelRunCommand() *cobra.Command {
 		} else if !errors.Is(err, os.ErrNotExist) {
 			logCommandDebug(cmd, "TUNNEL", "tunnel.metadata.load-failed", "Cached tunnel metadata could not be loaded", logger.WithDebug("error", err.Error()))
 		}
-		client.SetLifecycleObserver(func(event tunnel.LifecycleEvent) { logTunnelLifecycle(log, event) })
+		session := commandProgressSession(cmd)
+		client.SetLifecycleObserver(func(event tunnel.LifecycleEvent) { renderTunnelLifecycle(session, log, event) })
 		logCommandStep(cmd, "TUNNEL", "tunnel.runtime.starting", "Starting tunnel runtime", logger.WithVerbose("tunnel_id", tunnelConfig.ID))
 		if err := client.StartContext(runtimeCtx); err != nil {
 			return err
@@ -326,9 +327,10 @@ func tunnelRunCommand() *cobra.Command {
 		defer func() {
 			status := client.Status()
 			if status.Running || status.Restarting {
-				log.Action("TUNNEL", "tunnel.stopping", "Stopping tunnel", logger.WithVerbose("tunnel_id", tunnelConfig.ID))
+				session.Update(presentation.ProgressPhase{ID: "tunnel.stopping", Label: "Stopping tunnel", State: presentation.ProgressRunning})
 				if err := client.Stop(); err != nil {
-					log.Failure("TUNNEL", "tunnel.stop.failed", "Failed to stop tunnel", err)
+					session.Warn("tunnel.stopping", "Stopping tunnel", "Tunnel stop failed")
+					log.Diagnostic(logger.Error, "TUNNEL", "tunnel.stop.failed", "Failed to stop tunnel", logger.WithVerbose("error", err.Error()), logger.WithVerbose("tunnel_id", tunnelConfig.ID))
 					if runErr == nil {
 						runErr = err
 					}
@@ -366,26 +368,38 @@ func tunnelRunCommand() *cobra.Command {
 	}}
 }
 
-func logTunnelLifecycle(log *logger.Logger, event tunnel.LifecycleEvent) {
+func renderTunnelLifecycle(session *presentation.ProgressSession, log *logger.Logger, event tunnel.LifecycleEvent) {
 	fields := []logger.Field{}
 	if event.ID != "" {
 		fields = append(fields, logger.WithVerbose("tunnel_id", event.ID))
 	}
+	if event.Attempt > 0 {
+		fields = append(fields, logger.WithVerbose("attempt", event.Attempt), logger.WithVerbose("retry_in", event.RetryIn.String()))
+	}
+	if event.Message != "" {
+		fields = append(fields, logger.WithVerbose("detail", event.Message))
+	}
+	if log != nil {
+		log.Diagnostic(logger.Debug, "TUNNEL", "tunnel.lifecycle."+string(event.State), "Tunnel lifecycle changed", fields...)
+	}
+	if session == nil {
+		return
+	}
 	switch event.State {
 	case tunnel.LifecycleConnecting:
-		log.Action("TUNNEL", "tunnel.connecting", "Connecting tunnel", fields...)
+		session.Update(presentation.ProgressPhase{ID: "tunnel.connection", Label: "Connecting tunnel", State: presentation.ProgressRunning})
 	case tunnel.LifecycleReconnecting:
-		fields = append(fields, logger.WithVerbose("attempt", event.Attempt), logger.WithVerbose("retry_in", event.RetryIn.String()))
-		log.Action("TUNNEL", "tunnel.reconnecting", "Reconnecting tunnel", fields...)
+		session.Update(presentation.ProgressPhase{ID: "tunnel.connection", Label: "Reconnecting tunnel", State: presentation.ProgressRunning})
 	case tunnel.LifecycleReady:
-		log.Ready("TUNNEL", "tunnel.connected", "Tunnel connected", fields...)
-	case tunnel.LifecycleDegraded:
-		var eventErr error
-		if event.Message != "" {
-			eventErr = errors.New(event.Message)
+		session.Success("tunnel.connection", "Connecting tunnel", "Tunnel connected")
+		if strings.TrimSpace(event.ID) != "" {
+			session.Append(func(presenter *presentation.Presenter) {
+				presenter.Fields(presentation.Field{Label: "tunnel id", Value: event.ID})
+			})
 		}
-		log.Warning("TUNNEL", "tunnel.degraded", "Tunnel degraded", eventErr, fields...)
+	case tunnel.LifecycleDegraded:
+		session.Warn("tunnel.connection", "Connecting tunnel", "Tunnel degraded")
 	case tunnel.LifecycleStopped:
-		log.Ready("TUNNEL", "tunnel.stopped", "Tunnel stopped", fields...)
+		session.Success("tunnel.stopping", "Stopping tunnel", "Tunnel stopped")
 	}
 }

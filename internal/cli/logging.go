@@ -53,7 +53,6 @@ var traceProgress = map[string]traceProgressSpec{
 	"install.versions.cleanup":    {start: "Cleaning old installed versions", done: "Cleaned old installed versions"},
 	"tunnel.admin.verify":         {start: "Verifying tunnel admin access", done: "Verified tunnel admin access"},
 	"tunnel.admin.read-probe":     {start: "Checking tunnel admin read access", done: "Verified tunnel admin read access"},
-	"tunnel.admin.list":           {start: "Loading managed tunnels", done: "Loaded managed tunnels"},
 	"tunnel.admin.get":            {start: "Fetching managed tunnel", done: "Fetched managed tunnel"},
 	"tunnel.admin.create":         {start: "Creating managed tunnel", done: "Created managed tunnel"},
 	"tunnel.admin.update":         {start: "Updating managed tunnel", done: "Updated managed tunnel"},

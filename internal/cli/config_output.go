@@ -107,7 +107,7 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 		}
 		presenter.Section(section)
 		presenter.Rows([]string{"Key", "Value"}, rows...)
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return nil
 	}
 	for _, line := range lines {
@@ -201,7 +201,7 @@ func printSettingSelection(cmd *cobra.Command, service *application.SettingServi
 		}
 		presenter.Section(section)
 		presenter.Rows([]string{"Setting", "Value"}, rows...)
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return nil
 	}
 	for _, settingKey := range keys {
@@ -241,7 +241,7 @@ func printSettingDiff(cmd *cobra.Command, service *application.SettingService, p
 		presenter.Frame("Configuration diff")
 		presenter.Section(fmt.Sprintf("Changed %d settings", len(keys)))
 		presenter.Rows([]string{"Setting", "Current", "Baseline"}, rows...)
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return nil
 	}
 	for _, key := range keys {

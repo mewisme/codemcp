@@ -134,7 +134,7 @@ func TestCoordinateUpdatedRuntimeSkipsRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	if !strings.Contains(text, "Runtime restart skipped") || !strings.Contains(text, "pid: 123") {
+	if !strings.Contains(text, "Runtime restart skipped") || !strings.Contains(text, "pid  123") {
 		t.Fatalf("output = %q", text)
 	}
 }
@@ -148,7 +148,7 @@ func TestCoordinateUpdatedRuntimeLeavesForegroundServerRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	if !strings.Contains(text, "Foreground runtime is still using the previous version") || !strings.Contains(text, "pid: 456") {
+	if !strings.Contains(text, "Foreground runtime is still using the previous version") || !strings.Contains(text, "pid  456") {
 		t.Fatalf("output = %q", text)
 	}
 }

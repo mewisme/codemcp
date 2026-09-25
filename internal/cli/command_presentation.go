@@ -30,7 +30,7 @@ var commandPresentationTitleOverrides = map[string]string{
 	"config why":      "Config why",
 	"config set":      "Update configuration",
 	"config clear":    "Clear configuration setting",
-	"config verify":   "Verify configuration setting",
+	"config verify":   "Verify configuration",
 	"workspace list":  "Registered workspaces",
 	"upstream list":   "Upstream servers",
 	"upstream status": "Upstream status",
@@ -48,6 +48,8 @@ func bindCommandPresentation(root *cobra.Command) {
 		if cmd.Runnable() {
 			if commandExplicitMachineOutput(cmd) {
 				setCommandPresentationExempt(cmd, "machine-output")
+			} else if commandPresentationExempt(cmd) {
+				// Alternate UIs and internal runtime commands own their output contract.
 			} else if commandPresentationTitle(cmd) == "" {
 				setCommandPresentationTitle(cmd, defaultCommandPresentationTitle(cmd))
 			}

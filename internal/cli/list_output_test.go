@@ -43,7 +43,7 @@ func TestWorkspaceListDefaultsToPlainAndSupportsJSON(t *testing.T) {
 		t.Fatalf("listed path %q does not identify registered root %q", items[0].Path, workspaceRoot)
 	}
 	plain := executeRequestCommand(t, root, []string{"workspace", "list"})
-	if !strings.Contains(plain, items[0].Path) || !strings.Contains(plain, "Registered workspaces loaded") {
+	if !strings.Contains(plain, items[0].Path) || !strings.Contains(plain, "Registered workspaces · 1") {
 		t.Fatalf("plain=%q", plain)
 	}
 }
@@ -121,7 +121,7 @@ func TestTunnelListDefaultsToPlainAndSupportsJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := executeRequestCommand(t, root, []string{"tunnel", "list"})
-	if !strings.Contains(plain, "Managed tunnels loaded") || !strings.Contains(plain, "tunnel_one") || strings.HasPrefix(strings.TrimSpace(plain), "[") {
+	if !strings.Contains(plain, "Loaded managed tunnels · 1") || !strings.Contains(plain, "tunnel_one") || strings.HasPrefix(strings.TrimSpace(plain), "[") {
 		t.Fatalf("plain=%q", plain)
 	}
 	jsonOutput := executeRequestCommand(t, root, []string{"tunnel", "list", "--json"})
@@ -151,7 +151,7 @@ func TestWorkspaceShowAndAccessListDefaultToText(t *testing.T) {
 		t.Fatalf("show=%q canonical=%q requested=%q", show, item.Path, workspaceRoot)
 	}
 	access := executeRequestCommand(t, root, []string{"workspace", "access", "list", id})
-	if !strings.Contains(access, "Allowed directories loaded") || !strings.Contains(access, "allow dirs") || !strings.Contains(access, "none") || strings.HasPrefix(strings.TrimSpace(access), "[") {
+	if !strings.Contains(access, "Allowed directories · 0") || !strings.Contains(access, "allow dirs") || !strings.Contains(access, "none") || strings.HasPrefix(strings.TrimSpace(access), "[") {
 		t.Fatalf("access=%q", access)
 	}
 	accessJSON := executeRequestCommand(t, root, []string{"workspace", "access", "list", id, "--json"})
@@ -167,7 +167,7 @@ func TestWorkspaceReadRenderersUseRailHierarchy(t *testing.T) {
 		ID: "wsc_demo", Name: "Demo", WorkspaceIDs: []string{"ws_one", "ws_two"},
 	})
 	text := output.String()
-	for _, expected := range []string{"┌  Workspace container details", "◆  wsc_demo", "│  ◆ name — Demo", "│  ◆ workspaces — ws_one, ws_two", "└  Done"} {
+	for _, expected := range []string{"┌  Workspace container details", "│  ◆ wsc_demo", "│  │  name — Demo", "│  │  workspaces — ws_one, ws_two", "└  Done"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("workspace container detail missing %q: %q", expected, text)
 		}
@@ -176,7 +176,7 @@ func TestWorkspaceReadRenderersUseRailHierarchy(t *testing.T) {
 	output.Reset()
 	renderWorkspaceAccess(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), "ws_demo", []string{"/data/one", "/data/two"})
 	access := output.String()
-	for _, expected := range []string{"┌  Allowed directories loaded · 2", "◆  Workspace", "│  ◆ id — ws_demo", "◆  Allowed directories", "│  ◆ /data/one", "│  ◆ /data/two"} {
+	for _, expected := range []string{"┌  Allowed directories", "◆  Allowed directories · 2", "│  ◆ ws_demo", "│  │  allow dirs — /data/one, /data/two", "└  Done"} {
 		if !strings.Contains(access, expected) {
 			t.Fatalf("workspace access missing %q: %q", expected, access)
 		}

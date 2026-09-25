@@ -142,7 +142,7 @@ func upstreamServerAddCommand() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("upstream server disappeared after save: %s", args[0])
 			}
-			renderMutationSuccess(cmd, "Upstream server", "Upstream server added", presentation.Field{Label: "id", Value: normalized.ID}, presentation.Field{Label: "transport", Value: normalized.Transport}, presentation.Field{Label: "prefix", Value: normalized.ToolPrefix}, presentation.Field{Label: "expose", Value: normalized.Expose})
+			renderEntityMutationSuccess(cmd, "Upstream server", "Upstream server added", normalized.ID, presentation.Field{Label: "transport", Value: normalized.Transport}, presentation.Field{Label: "prefix", Value: normalized.ToolPrefix}, presentation.Field{Label: "expose", Value: normalized.Expose})
 			return nil
 		},
 	}
@@ -175,7 +175,7 @@ func upstreamServerConfigureCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, "Upstream server", "Upstream server updated", presentation.Field{Label: "id", Value: result.Value.ID})
+			renderEntityMutationSuccess(cmd, "Upstream server", "Upstream server updated", result.Value.ID)
 			return nil
 		},
 	}
@@ -245,7 +245,7 @@ func upstreamServerRemoveCommand() *cobra.Command {
 			if err := manager.Remove(args[0]); err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, "Upstream server", "Upstream server removed", presentation.Field{Label: "id", Value: args[0]})
+			renderEntityMutationSuccess(cmd, "Upstream server", "Upstream server removed", args[0])
 			return nil
 		},
 	}
@@ -274,7 +274,7 @@ func upstreamServerToggleCommand(enabled bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			renderMutationSuccess(cmd, "Upstream server", strings.ToUpper(action[:1])+action[1:]+"d", presentation.Field{Label: "id", Value: args[0]})
+			renderEntityMutationSuccess(cmd, "Upstream server", strings.ToUpper(action[:1])+action[1:]+"d", args[0])
 			return nil
 		},
 	}
@@ -321,7 +321,7 @@ func renderUpstreamServer(presenter *presentation.Presenter, server upstream.Ser
 		endpoint = server.Command
 	}
 	presenter.Frame("Upstream server")
-	presenter.Section(server.ID)
+	presenter.Subsection(server.ID)
 	fields := []presentation.Field{
 		{Label: "name", Value: server.Name},
 		{Label: "transport", Value: server.Transport},
@@ -361,15 +361,15 @@ func renderUpstreamServer(presenter *presentation.Presenter, server upstream.Ser
 	if len(server.DisabledTools) > 0 {
 		fields = append(fields, presentation.Field{Label: "disabled tools", Value: strings.Join(server.DisabledTools, ", ")})
 	}
-	presenter.Fields(fields...)
-	presenter.FrameEnd("Done")
+	presenter.NestedFields(fields...)
+	presenter.Complete("Done")
 }
 
 func renderUpstreamStatus(presenter *presentation.Presenter, status upstream.Status) {
 	presenter.Frame("Upstream server status")
 	presenter.StateSection(upstreamHealthPresentationKind(status.Health), upstreamHealthLabel(status.Health))
+	presenter.Subsection(status.ID)
 	fields := []presentation.Field{
-		{Label: "id", Value: status.ID},
 		{Label: "name", Value: status.Name},
 		{Label: "health", Value: status.Health},
 		{Label: "enabled", Value: status.Enabled},
@@ -385,11 +385,11 @@ func renderUpstreamStatus(presenter *presentation.Presenter, status upstream.Sta
 	if status.PID != nil {
 		fields = append(fields, presentation.Field{Label: "pid", Value: *status.PID})
 	}
-	presenter.Fields(fields...)
+	presenter.NestedFields(fields...)
 	if status.LastError != "" {
 		presenter.ChildStatus(presentation.StatusWarning, status.LastError)
 	}
-	presenter.FrameEnd("Status complete")
+	presenter.Complete("Status complete")
 }
 
 func sortedAssignments(values map[string]string) []string {
@@ -441,10 +441,10 @@ func upstreamServerToolsCommand() *cobra.Command {
 			if len(values) == 0 {
 				presenter.StateSection(presentation.StatusInactive, "No tools exposed by upstream server")
 				presenter.Fields(presentation.Field{Label: "server", Value: args[0]})
-				presenter.FrameEnd("Done")
+				presenter.Complete("Done")
 				return nil
 			}
-			presenter.Section(fmt.Sprintf("Upstream tools loaded · %d", len(values)))
+			presenter.Section(fmt.Sprintf("Upstream tools · %d", len(values)))
 			for _, tool := range values {
 				proxy := upstream.ProxyName(server.ToolPrefix, tool.Name)
 				state := "hidden"
@@ -454,7 +454,7 @@ func upstreamServerToolsCommand() *cobra.Command {
 				presenter.Subsection(tool.Name)
 				presenter.NestedFields(presentation.Field{Label: "exposed as", Value: state})
 			}
-			presenter.FrameEnd("Done")
+			presenter.Complete("Done")
 			return nil
 		},
 	}
@@ -466,10 +466,10 @@ func renderUpstreamServerList(presenter *presentation.Presenter, servers []upstr
 	presenter.Frame("Upstream servers")
 	if len(servers) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No Upstream servers configured")
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return
 	}
-	presenter.Section(fmt.Sprintf("Upstream servers loaded · %d", len(servers)))
+	presenter.Section(fmt.Sprintf("Upstream servers · %d", len(servers)))
 	for _, server := range servers {
 		endpoint := server.URL
 		if server.Transport == "stdio" {
@@ -483,17 +483,17 @@ func renderUpstreamServerList(presenter *presentation.Presenter, servers []upstr
 			presentation.Field{Label: "endpoint", Value: endpoint},
 		)
 	}
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func renderUpstreamStatusList(presenter *presentation.Presenter, statuses []upstream.Status) {
 	presenter.Frame("Upstream status")
 	if len(statuses) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No Upstream servers configured")
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return
 	}
-	presenter.Section(fmt.Sprintf("Upstream status loaded · %d", len(statuses)))
+	presenter.Section(fmt.Sprintf("Upstream status · %d", len(statuses)))
 	for _, status := range statuses {
 		presenter.Subsection(status.ID)
 		presenter.NestedFields(
@@ -504,7 +504,7 @@ func renderUpstreamStatusList(presenter *presentation.Presenter, statuses []upst
 			presentation.Field{Label: "expose", Value: status.Expose},
 		)
 	}
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func upstreamHealthPresentationKind(health upstream.Health) presentation.StatusKind {

@@ -102,6 +102,18 @@ func (p *Presenter) Frame(title string) {
 	p.Spacer()
 }
 
+func (p *Presenter) Complete(message string) {
+	if p == nil || p.mode == ModeJSON {
+		return
+	}
+	message = strings.TrimSpace(message)
+	if p.session != nil {
+		p.session.SetCompletion(message)
+		return
+	}
+	p.FrameEnd(message)
+}
+
 func (p *Presenter) FrameEnd(message string) {
 	if p == nil || p.mode == ModeJSON {
 		return

@@ -44,6 +44,7 @@ func internalServiceCommand() *cobra.Command {
 			return runServer(cmd, args)
 		},
 	}
+	setCommandPresentationExempt(run, "internal-runtime")
 	run.Flags().StringVar(&serviceID, "service-id", "", "managed service identity")
 	run.Flags().StringVar(&serviceScope, "service-scope", "user", "managed service scope")
 	run.Flags().StringVar(&environmentHash, "service-environment-hash", "", "managed environment snapshot hash")

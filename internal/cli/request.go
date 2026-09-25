@@ -63,7 +63,6 @@ func requestGrantRevokeCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{Use: "revoke <request_id>", Short: "Revoke one similar-command runtime grant by request ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("request", args[0]))
-		log := commandLogger(cmd)
 		var progress *commandProgress
 		if !asJSON {
 			progress = newCommandProgress(cmd, "REQUEST")
@@ -80,8 +79,7 @@ func requestGrantRevokeCommand() *cobra.Command {
 			return writeResultJSON(cmd, request)
 		}
 		progress.Complete()
-		log.Success("REQUEST", "runtime session grant revoked", "id", request.ID)
-		log.Detail("status", request.Status)
+		renderEntityMutationSuccess(cmd, "Runtime session grant", "Runtime session grant revoked", request.ID, presentation.Field{Label: "status", Value: request.Status})
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -99,7 +97,6 @@ func requestCreateDummyCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{Use: "dummy", Short: "Create a dummy pending approval request for UI testing", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
-		log := commandLogger(cmd)
 		var progress *commandProgress
 		if !asJSON {
 			progress = newCommandProgress(cmd, "REQUEST")
@@ -116,9 +113,10 @@ func requestCreateDummyCommand() *cobra.Command {
 			return writeResultJSON(cmd, request)
 		}
 		progress.Complete()
-		log.Success("REQUEST", "dummy control approval request created", "id", request.ID)
-		log.Detail("workspace", request.WorkspaceID)
-		log.Detail("expires", request.ExpiresAt.Format(time.RFC3339Nano))
+		renderEntityMutationSuccess(cmd, "Control approval request", "Dummy approval request created", request.ID,
+			presentation.Field{Label: "workspace", Value: request.WorkspaceID},
+			presentation.Field{Label: "expires", Value: request.ExpiresAt.Format(time.RFC3339Nano)},
+		)
 		return nil
 	}}
 	cmd.Flags().StringVar(&workspaceID, "workspace", "ws_dummy", "workspace ID shown on the dummy request")
@@ -200,7 +198,6 @@ func requestResolveCommand(approve bool) *cobra.Command {
 	var allowSimilar bool
 	cmd := &cobra.Command{Use: action + " <request_id>", Aliases: aliases, Short: label + " one pending control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("action", action), logger.WithVerbose("request", args[0]))
-		log := commandLogger(cmd)
 		var commandPhase *commandProgress
 		if !asJSON {
 			commandPhase = newCommandProgress(cmd, "REQUEST")
@@ -227,14 +224,14 @@ func requestResolveCommand(approve bool) *cobra.Command {
 			return writeResultJSON(cmd, request)
 		}
 		commandPhase.Complete()
-		log.Success("REQUEST", "control approval request "+past, "id", request.ID)
-		log.Detail("status", request.Status)
+		fields := []presentation.Field{{Label: "status", Value: request.Status}}
 		if !request.RetryUntil.IsZero() {
-			log.Detail("retry_until", request.RetryUntil.Format(time.RFC3339Nano))
+			fields = append(fields, presentation.Field{Label: "retry until", Value: request.RetryUntil.Format(time.RFC3339Nano)})
 		}
 		if request.Reason != "" {
-			log.Detail("reason", request.Reason)
+			fields = append(fields, presentation.Field{Label: "reason", Value: request.Reason})
 		}
+		renderEntityMutationSuccess(cmd, "Control approval request", "Approval request "+past, request.ID, fields...)
 		return nil
 	}}
 	cmd.Flags().StringVar(&reason, "reason", "", "record an optional approval resolution reason")
@@ -249,39 +246,39 @@ func renderApprovalRequests(presenter *presentation.Presenter, requests []approv
 	presenter.Frame("Control approval requests")
 	if len(requests) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No control approval requests")
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return
 	}
 	rows := make([]presentation.Row, 0, len(requests))
 	for _, request := range requests {
 		rows = append(rows, presentation.Row{request.ID, string(request.Status), request.WorkspaceID, request.TargetTool, request.Title})
 	}
-	presenter.Section(fmt.Sprintf("Loaded %d requests", len(requests)))
+	presenter.Section(fmt.Sprintf("Requests · %d", len(requests)))
 	presenter.Rows([]string{"ID", "Status", "Workspace", "Tool", "Title"}, rows...)
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func renderRuntimeGrants(presenter *presentation.Presenter, grants []approval.Request) {
 	presenter.Frame("Runtime session grants")
 	if len(grants) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No active runtime session grants")
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return
 	}
 	rows := make([]presentation.Row, 0, len(grants))
 	for _, grant := range grants {
 		rows = append(rows, presentation.Row{grant.ID, grant.WorkspaceID, grant.SimilarCommandPattern, formatRequestTime(grant.GrantExpiresAt)})
 	}
-	presenter.Section(fmt.Sprintf("Loaded %d active grants", len(grants)))
+	presenter.Section(fmt.Sprintf("Active runtime grants · %d", len(grants)))
 	presenter.Rows([]string{"ID", "Workspace", "Pattern", "Expires"}, rows...)
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func renderApprovalRequest(presenter *presentation.Presenter, request approval.Request) {
 	presenter.Frame("Approval request")
 	presenter.StateSection(approvalPresentationKind(request.Status), approvalStatusLabel(request.Status))
+	presenter.Subsection(request.ID)
 	fields := []presentation.Field{
-		{Label: "id", Value: request.ID},
 		{Label: "title", Value: request.Title},
 		{Label: "workspace", Value: request.WorkspaceID},
 		{Label: "tool", Value: request.TargetTool},
@@ -324,13 +321,13 @@ func renderApprovalRequest(presenter *presentation.Presenter, request approval.R
 	if request.GuardReason != "" {
 		fields = append(fields, presentation.Field{Label: "guard reason", Value: request.GuardReason})
 	}
-	presenter.Fields(fields...)
+	presenter.NestedFields(fields...)
 	if len(request.Arguments) > 0 {
 		presenter.Spacer()
 		presenter.Section("Arguments")
 		presenter.List(formatApprovalArguments(request.Arguments))
 	}
-	presenter.FrameEnd(approvalOutro(request.Status))
+	presenter.Complete(approvalOutro(request.Status))
 }
 
 func formatApprovalArguments(arguments json.RawMessage) string {

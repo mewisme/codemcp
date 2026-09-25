@@ -62,7 +62,7 @@ func configWhyCommand() *cobra.Command {
 				return err
 			}
 			if commandResultModeFor(cmd) == resultModeHuman {
-				presenter.FrameEnd("Done")
+				presenter.Complete("Done")
 			}
 			renderSpan.EndMessage(
 				"Canonical setting metadata rendered",

@@ -52,7 +52,7 @@ func TestRequestCLIListViewApproveDenyAliasesAndOutput(t *testing.T) {
 	}
 	secondPrefix := uniqueRequestPrefix(second.ID, first.ID)
 	denied := executeRequestCommand(t, root, []string{"request", "reject", secondPrefix, "--reason", "not now"})
-	if !strings.Contains(denied, "Control approval request denied") || !strings.Contains(denied, "not now") {
+	if !strings.Contains(denied, "Approval request denied") || !strings.Contains(denied, "not now") {
 		t.Fatalf("plain deny output = %q", denied)
 	}
 	stored, err := manager.Resolve(second.ID)
@@ -113,8 +113,8 @@ func TestRequestRichViewUsesRailHierarchy(t *testing.T) {
 	for _, expected := range []string{
 		"┌  Approval request",
 		"◇  Pending",
-		"│  ◆ id — req_rail",
-		"│  ◆ workspace — ws_rail",
+		"│  ◆ req_rail",
+		"│  │  workspace — ws_rail",
 		"◆  Arguments",
 		"│  ◆ {",
 		"└  Awaiting decision",
@@ -146,7 +146,7 @@ func TestRequestRichPaletteLocalizesPendingAndStructureColor(t *testing.T) {
 		theme.Render(presentation.RoleRail, "┌"),
 		theme.Render(presentation.RoleMuted, "◇") + "  " + theme.Render(presentation.RoleHeading, "Pending"),
 		theme.Render(presentation.RoleStructure, "◆"),
-		theme.Render(presentation.RoleLabel, "id") + " — req_palette",
+		theme.Render(presentation.RoleHeading, "req_palette"),
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("request palette missing %q: %q", expected, text)
@@ -282,7 +282,7 @@ func TestRequestCLICreateDummy(t *testing.T) {
 	}
 
 	plain := executeRequestCommand(t, root, []string{"req", "create", "dummy"})
-	if !strings.Contains(plain, "Dummy control approval request created") {
+	if !strings.Contains(plain, "Dummy approval request created") {
 		t.Fatalf("plain dummy=%q", plain)
 	}
 }

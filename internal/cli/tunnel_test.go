@@ -19,19 +19,26 @@ import (
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
-func TestLogTunnelLifecycleReconnect(t *testing.T) {
+func TestRenderTunnelLifecycleUsesSharedProgress(t *testing.T) {
 	previous := color.NoColor
 	color.NoColor = true
 	defer func() { color.NoColor = previous }()
 
 	var output bytes.Buffer
-	log := logger.NewWithOptions(logger.Options{Level: logger.Info, Mode: logger.ModeVerbose, Writer: &output})
-	logTunnelLifecycle(log, tunnel.LifecycleEvent{State: tunnel.LifecycleReconnecting, ID: "tunnel_test", Attempt: 3, RetryIn: 4 * time.Second})
+	log := logger.NewWithOptions(logger.Options{Level: logger.Debug, Mode: logger.ModeVerbose, Writer: &output})
+	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{Unicode: true})
+	session.Begin("Run OpenAI tunnel")
+	renderTunnelLifecycle(session, log, tunnel.LifecycleEvent{State: tunnel.LifecycleReconnecting, ID: "tunnel_test", Attempt: 3, RetryIn: 4 * time.Second})
+	renderTunnelLifecycle(session, log, tunnel.LifecycleEvent{State: tunnel.LifecycleReady, ID: "tunnel_test"})
+	session.Close()
 	text := output.String()
-	for _, expected := range []string{"⠋ Reconnecting tunnel", "tunnel_id: tunnel_test", "attempt: 3", "retry_in: 4s"} {
+	for _, expected := range []string{"Run OpenAI tunnel", "Tunnel connected", "tunnel id — tunnel_test"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("output %q missing %q", text, expected)
 		}
+	}
+	if strings.Contains(text, "⠋") || strings.Contains(text, "Reconnecting tunnel\n") {
+		t.Fatalf("legacy spinner escaped shared lifecycle: %q", text)
 	}
 }
 
@@ -154,7 +161,7 @@ func TestTunnelReadRenderersUseRailHierarchyAndRedaction(t *testing.T) {
 	var output bytes.Buffer
 	renderManagedTunnelList(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), []tunnel.Metadata{metadata})
 	listText := output.String()
-	for _, expected := range []string{"┌  Managed OpenAI tunnels", "◆  Managed tunnels loaded · 1", "│  ◆ tunnel_one", "│  │  name — One", "│  │  workspaces — ws_admin", "└  Done"} {
+	for _, expected := range []string{"┌  Managed OpenAI tunnels", "│  ◆ tunnel_one", "│  │  name — One", "│  │  workspaces — ws_admin", "└  Done"} {
 		if !strings.Contains(listText, expected) {
 			t.Fatalf("managed tunnel list missing %q: %q", expected, listText)
 		}

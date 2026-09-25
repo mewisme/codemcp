@@ -92,6 +92,7 @@ func TestInitPresentationUsesCompletedProgressAndSingleBlockGaps(t *testing.T) {
 	if err := cmd.RunE(cmd, nil); err != nil {
 		t.Fatal(err)
 	}
+	closeCommandProgress(cmd, nil)
 	text := output.String()
 	for _, expected := range []string{
 		"┌  Initialize CodeMCP",

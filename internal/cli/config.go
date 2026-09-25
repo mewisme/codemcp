@@ -61,7 +61,7 @@ func configPathCommand() *cobra.Command {
 					presentation.Field{Label: "format", Value: source.Format},
 					presentation.Field{Label: "root", Value: config.RootPath()},
 				)
-				presenter.FrameEnd("Done")
+				presenter.Complete("Done")
 				return nil
 			}
 			fmt.Fprintf(commandResultWriter(cmd), "config = %s\nformat = %s\nroot = %s\n", source.Path, source.Format, config.RootPath())
@@ -334,14 +334,18 @@ func configVerifyCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("verify configuration: %w", err)
 			}
-			log := commandLogger(cmd)
+			presenter := commandPresenter(cmd)
 			for _, warning := range result.Warnings {
-				log.Warning("CONFIG", "config.verify.warning", warning, nil)
+				presenter.ChildStatus(presentation.StatusWarning, warning)
 			}
 			if strict && len(result.Warnings) > 0 {
 				return fmt.Errorf("configuration verified with %d warning(s); re-run without --strict to treat warnings as advisory", len(result.Warnings))
 			}
-			log.Success("CONFIG", "configuration verified", "format", result.Format, "files", result.Files, "warnings", len(result.Warnings))
+			renderMutationSuccess(cmd, "Verify configuration", "Configuration verified",
+				presentation.Field{Label: "format", Value: result.Format},
+				presentation.Field{Label: "files", Value: result.Files},
+				presentation.Field{Label: "warnings", Value: len(result.Warnings)},
+			)
 			return nil
 		},
 	}

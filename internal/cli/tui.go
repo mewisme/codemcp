@@ -7,7 +7,7 @@ import (
 )
 
 func tuiCommand() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "tui [path...]",
 		Short: "Open the full-screen CodeMCP command center",
 		Args:  cobra.ArbitraryArgs,
@@ -21,4 +21,6 @@ func tuiCommand() *cobra.Command {
 			return commandtui.Run(cmd.Context(), route, cmd.InOrStdin(), cmd.OutOrStdout())
 		},
 	}
+	setCommandPresentationExempt(cmd, "alternate-ui")
+	return cmd
 }

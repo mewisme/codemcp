@@ -94,7 +94,7 @@ func workspaceRelocateCommand() *cobra.Command {
 				return err
 			}
 			before, after := result.Value.Before, result.Value.After
-			renderMutationSuccess(cmd, "Workspace", "Workspace relocated", presentation.Field{Label: "old id", Value: before.ID}, presentation.Field{Label: "id", Value: after.ID}, presentation.Field{Label: "old root", Value: before.Path}, presentation.Field{Label: "root", Value: after.Path})
+			renderEntityMutationSuccess(cmd, "Workspace", "Workspace relocated", after.ID, presentation.Field{Label: "old id", Value: before.ID}, presentation.Field{Label: "old root", Value: before.Path}, presentation.Field{Label: "root", Value: after.Path})
 			return nil
 		},
 	}
@@ -150,7 +150,7 @@ func workspaceContainerCreateCommand() *cobra.Command {
 			return err
 		}
 		value := result.Value
-		renderMutationSuccess(cmd, "Workspace container", "Workspace container created", presentation.Field{Label: "id", Value: value.ID}, presentation.Field{Label: "name", Value: value.Name})
+		renderEntityMutationSuccess(cmd, "Workspace container", "Workspace container created", value.ID, presentation.Field{Label: "name", Value: value.Name})
 		return nil
 	}}
 }
@@ -180,7 +180,7 @@ func workspaceContainerRenameCommand() *cobra.Command {
 			return err
 		}
 		value := result.Value
-		renderMutationSuccess(cmd, "Workspace container", "Workspace container renamed", presentation.Field{Label: "id", Value: value.ID}, presentation.Field{Label: "name", Value: value.Name})
+		renderEntityMutationSuccess(cmd, "Workspace container", "Workspace container renamed", value.ID, presentation.Field{Label: "name", Value: value.Name})
 		return nil
 	}}
 }
@@ -192,7 +192,7 @@ func workspaceContainerDeleteCommand() *cobra.Command {
 			return err
 		}
 		value := result.Value
-		renderMutationSuccess(cmd, "Workspace container", "Workspace container deleted", presentation.Field{Label: "id", Value: value.ID}, presentation.Field{Label: "name", Value: value.Name}, presentation.Field{Label: "workspaces", Value: "unchanged"})
+		renderEntityMutationSuccess(cmd, "Workspace container", "Workspace container deleted", value.ID, presentation.Field{Label: "name", Value: value.Name}, presentation.Field{Label: "workspaces", Value: "unchanged"})
 		return nil
 	}}
 }
@@ -243,7 +243,7 @@ func workspaceAccessCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			renderMutationSuccess(cmd, "Workspace access", "Allowed directory added", presentation.Field{Label: "id", Value: item.ID}, presentation.Field{Label: "allow_dir", Value: args[1]})
+			renderEntityMutationSuccess(cmd, "Workspace access", "Allowed directory added", item.ID, presentation.Field{Label: "allow dir", Value: args[1]})
 			return nil
 		}},
 		&cobra.Command{Use: "remove <workspace_id> <path>", Short: "Revoke an additional directory from a workspace", Args: cobra.ExactArgs(2), ValidArgsFunction: completeWorkspaceThenDirectory, RunE: func(cmd *cobra.Command, args []string) error {
@@ -252,7 +252,7 @@ func workspaceAccessCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			renderMutationSuccess(cmd, "Workspace access", "Allowed directory removed", presentation.Field{Label: "id", Value: item.ID}, presentation.Field{Label: "allow_dir", Value: args[1]})
+			renderEntityMutationSuccess(cmd, "Workspace access", "Allowed directory removed", item.ID, presentation.Field{Label: "allow dir", Value: args[1]})
 			return nil
 		}},
 		list,
@@ -282,7 +282,7 @@ func workspaceRegisterCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			renderMutationSuccess(cmd, "Workspace", "Workspace registered", presentation.Field{Label: "id", Value: item.ID}, presentation.Field{Label: "root", Value: item.Path})
+			renderEntityMutationSuccess(cmd, "Workspace", "Workspace registered", item.ID, presentation.Field{Label: "root", Value: item.Path})
 			return nil
 		},
 	}
@@ -339,10 +339,10 @@ func renderWorkspaceList(cmd *cobra.Command, presenter *presentation.Presenter, 
 	presenter.Frame("Registered workspaces")
 	if len(items) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No registered workspaces")
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return
 	}
-	presenter.Section(fmt.Sprintf("Registered workspaces loaded · %d", len(items)))
+	presenter.Section(fmt.Sprintf("Registered workspaces · %d", len(items)))
 	for _, item := range items {
 		presenter.Subsection(item.ID)
 		fields := []presentation.Field{
@@ -358,12 +358,12 @@ func renderWorkspaceList(cmd *cobra.Command, presenter *presentation.Presenter, 
 		}
 		presenter.NestedFields(fields...)
 	}
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func renderWorkspace(cmd *cobra.Command, presenter *presentation.Presenter, item application.WorkspaceView) {
 	presenter.Frame("Workspace details")
-	presenter.Section(item.ID)
+	presenter.Subsection(item.ID)
 	fields := []presentation.Field{
 		{Label: "root", Value: item.Path},
 		{Label: "available", Value: item.Available},
@@ -382,8 +382,8 @@ func renderWorkspace(cmd *cobra.Command, presenter *presentation.Presenter, item
 	if len(item.LegacyIDs) > 0 {
 		fields = append(fields, presentation.Field{Label: "legacy ids", Value: strings.Join(item.LegacyIDs, ", ")})
 	}
-	presenter.Fields(fields...)
-	presenter.FrameEnd("Done")
+	presenter.NestedFields(fields...)
+	presenter.Complete("Done")
 }
 
 func workspaceHygieneFields(cmd *cobra.Command, root string) []presentation.Field {
@@ -405,10 +405,10 @@ func renderWorkspaceContainers(presenter *presentation.Presenter, values []appli
 	presenter.Frame("Workspace containers")
 	if len(values) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No workspace containers")
-		presenter.FrameEnd("Done")
+		presenter.Complete("Done")
 		return
 	}
-	presenter.Section(fmt.Sprintf("Workspace containers loaded · %d", len(values)))
+	presenter.Section(fmt.Sprintf("Workspace containers · %d", len(values)))
 	for _, value := range values {
 		presenter.Subsection(value.ID)
 		workspaces := "none"
@@ -420,36 +420,33 @@ func renderWorkspaceContainers(presenter *presentation.Presenter, values []appli
 			presentation.Field{Label: "workspaces", Value: workspaces},
 		)
 	}
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func renderWorkspaceContainer(presenter *presentation.Presenter, value application.WorkspaceContainerView) {
 	presenter.Frame("Workspace container details")
-	presenter.Section(value.ID)
+	presenter.Subsection(value.ID)
 	workspaces := "none"
 	if len(value.WorkspaceIDs) > 0 {
 		workspaces = strings.Join(value.WorkspaceIDs, ", ")
 	}
-	presenter.Fields(
+	presenter.NestedFields(
 		presentation.Field{Label: "name", Value: value.Name},
 		presentation.Field{Label: "workspaces", Value: workspaces},
 	)
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func renderWorkspaceAccess(presenter *presentation.Presenter, workspaceID string, allowDirs []string) {
-	presenter.Frame(fmt.Sprintf("Allowed directories loaded · %d", len(allowDirs)))
-	presenter.Section("Workspace")
-	presenter.Fields(presentation.Field{Label: "id", Value: workspaceID})
-	presenter.Spacer()
+	presenter.Frame("Allowed directories")
+	presenter.Section(fmt.Sprintf("Allowed directories · %d", len(allowDirs)))
+	presenter.Subsection(workspaceID)
 	if len(allowDirs) == 0 {
-		presenter.StateSection(presentation.StatusInactive, "No additional allowed directories")
-		presenter.Fields(presentation.Field{Label: "allow dirs", Value: "none"})
+		presenter.NestedFields(presentation.Field{Label: "allow dirs", Value: "none"})
 	} else {
-		presenter.Section("Allowed directories")
-		presenter.List(allowDirs...)
+		presenter.NestedFields(presentation.Field{Label: "allow dirs", Value: strings.Join(allowDirs, ", ")})
 	}
-	presenter.FrameEnd("Done")
+	presenter.Complete("Done")
 }
 
 func workspaceUnregisterCommand() *cobra.Command {
@@ -464,7 +461,7 @@ func workspaceUnregisterCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			renderMutationSuccess(cmd, "Workspace", "Workspace unregistered", presentation.Field{Label: "id", Value: item.ID}, presentation.Field{Label: "root", Value: item.Path}, presentation.Field{Label: "project files", Value: "unchanged"}, presentation.Field{Label: "local .cm", Value: "unchanged"})
+			renderEntityMutationSuccess(cmd, "Workspace", "Workspace unregistered", item.ID, presentation.Field{Label: "root", Value: item.Path}, presentation.Field{Label: "project files", Value: "unchanged"}, presentation.Field{Label: "local .cm", Value: "unchanged"})
 			return nil
 		},
 	}
@@ -483,12 +480,8 @@ func workspacePurgeCommand() *cobra.Command {
 				return err
 			}
 			item := result.Value
-			fields := []presentation.Field{}
-			if item.ID != "" {
-				fields = append(fields, presentation.Field{Label: "id", Value: item.ID})
-			}
-			fields = append(fields, presentation.Field{Label: "root", Value: item.Path}, presentation.Field{Label: "project files", Value: "unchanged"})
-			renderMutationSuccess(cmd, "Workspace", "Workspace local state deleted", fields...)
+			fields := []presentation.Field{{Label: "root", Value: item.Path}, {Label: "project files", Value: "unchanged"}}
+			renderEntityMutationSuccess(cmd, "Workspace", "Workspace local state deleted", item.ID, fields...)
 			return nil
 		},
 	}

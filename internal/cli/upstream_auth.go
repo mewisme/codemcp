@@ -88,7 +88,6 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			}
 			progress.Complete()
 			fields := []presentation.Field{
-				{Label: "server", Value: server.ID},
 				{Label: "issuer", Value: credential.Issuer},
 				{Label: "registration", Value: credential.Registration},
 				{Label: "scopes", Value: strings.Join(credential.Scopes, " ")},
@@ -97,7 +96,7 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			if !credential.ExpiresAt.IsZero() {
 				fields = append(fields, presentation.Field{Label: "expires", Value: credential.ExpiresAt.Format(time.RFC3339)})
 			}
-			renderMutationSuccess(cmd, "Authorize Upstream server", "Authorization stored", fields...)
+			renderEntityMutationSuccess(cmd, "Authorize Upstream server", "Authorization stored", server.ID, fields...)
 			return nil
 		},
 	}
@@ -146,13 +145,13 @@ func renderUpstreamOAuthStatus(presenter *presentation.Presenter, status mcpoaut
 	presenter.Frame("Upstream OAuth authorization")
 	if !status.Configured {
 		presenter.StateSection(presentation.StatusInactive, "Not authorized")
-		presenter.Fields(presentation.Field{Label: "server", Value: status.ServerID})
-		presenter.FrameEnd("Done")
+		presenter.Subsection(status.ServerID)
+		presenter.Complete("Done")
 		return
 	}
 	presenter.StateSection(presentation.StatusSuccess, "Authorization configured")
+	presenter.Subsection(status.ServerID)
 	fields := []presentation.Field{
-		{Label: "server", Value: status.ServerID},
 		{Label: "issuer", Value: status.Issuer},
 		{Label: "registration", Value: status.Registration},
 		{Label: "scopes", Value: strings.Join(status.Scopes, " ")},
@@ -161,8 +160,8 @@ func renderUpstreamOAuthStatus(presenter *presentation.Presenter, status mcpoaut
 	if status.ExpiresAt != nil {
 		fields = append(fields, presentation.Field{Label: "expires", Value: status.ExpiresAt.Format(time.RFC3339)})
 	}
-	presenter.Fields(fields...)
-	presenter.FrameEnd("Done")
+	presenter.NestedFields(fields...)
+	presenter.Complete("Done")
 }
 
 func upstreamServerAuthLogoutCommand() *cobra.Command {
@@ -189,7 +188,7 @@ func upstreamServerAuthLogoutCommand() *cobra.Command {
 				return err
 			}
 			disconnectSpan.EndMessage("Upstream disconnected after OAuth logout", tracepkg.Bool("credential_invalidated", true))
-			renderMutationSuccess(cmd, "Upstream OAuth authorization", "Authorization removed", presentation.Field{Label: "server", Value: args[0]})
+			renderEntityMutationSuccess(cmd, "Upstream OAuth authorization", "Authorization removed", args[0])
 			return nil
 		},
 	}

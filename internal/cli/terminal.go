@@ -14,7 +14,7 @@ func addTerminalPresentationFlags(cmd *cobra.Command) {
 }
 
 func prepareCommandPresentation(cmd *cobra.Command) {
-	if cmd == nil {
+	if cmd == nil || commandPresentationExempt(cmd) {
 		return
 	}
 	mode := commandResultModeFor(cmd)

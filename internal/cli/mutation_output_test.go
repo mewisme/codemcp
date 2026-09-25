@@ -20,6 +20,7 @@ func TestMutationProgressAndResultShareOneFrame(t *testing.T) {
 	beginMutationProgress(cmd, "Install CodeMCP")
 	commandProgressSession(cmd).Success("install.binary", "Installing binary", "Installed binary")
 	renderMutationSuccess(cmd, "Install CodeMCP", "Installation complete", presentation.Field{Label: "version", Value: "v1.2.3"})
+	closeCommandProgress(cmd, nil)
 
 	text := output.String()
 	if strings.Count(text, "┌  Install CodeMCP") != 1 || strings.Count(text, "└  Done") != 1 {
@@ -45,6 +46,7 @@ func TestMutationProgressAndResultShareOnePlainBlock(t *testing.T) {
 	beginMutationProgress(cmd, "Install CodeMCP")
 	commandProgressSession(cmd).Success("install.binary", "Installing binary", "Installed binary")
 	renderMutationSuccess(cmd, "Install CodeMCP", "Installation complete", presentation.Field{Label: "version", Value: "v1.2.3"})
+	closeCommandProgress(cmd, nil)
 
 	text := output.String()
 	if strings.Count(text, "Install CodeMCP") != 1 {

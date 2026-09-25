@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/logger"
@@ -42,34 +43,35 @@ func coordinateUpdatedRuntimeWith(cmd *cobra.Command, installed install.Result, 
 	if !state.Running {
 		return nil
 	}
-	log := commandLogger(cmd)
+	session := commandProgressSession(cmd)
+	presenter := commandPresenter(cmd)
 	if noRestart {
-		log.Notice("UPDATE", "update.restart-skipped", "Runtime restart skipped")
-		log.Detail("pid", state.Status.PID)
+		session.Skip("update.runtime-restarting", "Restarting managed runtime", "Runtime restart skipped")
+		presenter.Fields(presentation.Field{Label: "pid", Value: state.Status.PID})
 		return nil
 	}
 	if !state.Status.Managed {
-		log.Notice("UPDATE", "update.foreground-running", "Foreground runtime is still using the previous version; restart it manually")
-		log.Detail("pid", state.Status.PID)
+		session.Warn("update.runtime-restarting", "Restarting managed runtime", "Foreground runtime is still using the previous version; restart it manually")
+		presenter.Fields(presentation.Field{Label: "pid", Value: state.Status.PID})
 		return nil
 	}
 	progress := newCommandProgress(cmd, "UPDATE")
 	progress.Start("update.runtime-restarting", "Restarting managed runtime", "Managed runtime restarted")
 	if err := restart(cmd, installed.Layout, state.Status); err != nil {
 		progress.Stop()
-		log.Warning("UPDATE", "update.runtime-restart-failed", "Managed runtime restart failed; rolling back", err)
+		session.Warn("update.runtime-restarting", "Restarting managed runtime", "Managed runtime restart failed; rolling back")
 		if rollbackErr := install.RollbackResult(installed); rollbackErr != nil {
 			return fmt.Errorf("managed runtime restart failed: %w; rollback failed: %v", err, rollbackErr)
 		}
 		previous := installed.Activation.PreviousVersion
-		log.Ready("UPDATE", "update.rollback-complete", "Previous version restored")
+		session.Success("update.rollback-complete", "Restoring previous version", "Previous version restored")
 		if previous != "" {
-			log.Detail("current", previous)
+			presenter.Fields(presentation.Field{Label: "current", Value: previous})
 		}
 		if rollbackRestartErr := restart(cmd, installed.Layout, state.Status); rollbackRestartErr != nil {
 			return fmt.Errorf("managed runtime restart failed: %w; rolled back to %s but previous runtime restart failed: %v", err, previous, rollbackRestartErr)
 		}
-		log.Ready("UPDATE", "update.rollback-runtime-restarted", "Previous managed runtime restarted")
+		session.Success("update.rollback-runtime-restarted", "Restarting previous managed runtime", "Previous managed runtime restarted")
 		return fmt.Errorf("managed runtime restart failed: %w; rolled back to %s", err, previous)
 	}
 	progress.Complete()

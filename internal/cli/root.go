@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,16 @@ import (
 
 var root = newRootCommand()
 
+type executeCommandLifecycleKey struct{}
+
+func commandUsesExecuteLifecycle(cmd *cobra.Command) bool {
+	if cmd == nil || cmd.Context() == nil {
+		return false
+	}
+	value, _ := cmd.Context().Value(executeCommandLifecycleKey{}).(bool)
+	return value
+}
+
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               cliUseName(),
@@ -25,6 +36,11 @@ func newRootCommand() *cobra.Command {
 		SilenceErrors:     true,
 		SilenceUsage:      true,
 		PersistentPreRunE: prepareCommand,
+		PersistentPostRun: func(cmd *cobra.Command, _ []string) {
+			if !commandUsesExecuteLifecycle(cmd) {
+				closeCommandProgress(cmd, nil)
+			}
+		},
 	}
 	addExposeFlag(cmd)
 	addConfigDirFlag(cmd)
@@ -58,7 +74,14 @@ func newRootCommand() *cobra.Command {
 		completionCommand(),
 		internalServiceCommand(),
 		&cobra.Command{Use: "version", Short: "Show the cm version and build information", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, args []string) {
-			commandLogger(cmd).Notice("VERSION", "cli.version", version.String())
+			if format, _ := commandLogFormat(cmd); format == logger.FormatJSON {
+				commandLogger(cmd).Notice("VERSION", "cli.version", version.String())
+				return
+			}
+			logCommandDebug(cmd, "VERSION", "cli.version.resolved", "Version resolved", logger.WithDebug("version", version.String()))
+			presenter := commandPresenter(cmd)
+			presenter.StateSection(presentation.StatusInfo, version.String())
+			presenter.Complete("Done")
 		}},
 	)
 	bindCanonicalScopedSettings(cmd)
@@ -205,7 +228,7 @@ func authStatusCommand() *cobra.Command {
 					presentation.Field{Label: "enabled", Value: status.AdminEnabled},
 					presentation.Field{Label: "configured", Value: status.AdminConfigured},
 				)
-				presenter.FrameEnd("Status complete")
+				presenter.Complete("Status complete")
 				return nil
 			}
 			presenter.Section("Authentication")
@@ -232,7 +255,13 @@ func Execute() error {
 
 func executeCommand(command *cobra.Command) error {
 	started := time.Now()
+	originalContext := command.Context()
+	if originalContext == nil {
+		originalContext = context.Background()
+	}
+	command.SetContext(context.WithValue(originalContext, executeCommandLifecycleKey{}, true))
 	executed, err := command.ExecuteC()
+	command.SetContext(originalContext)
 	if executed == nil {
 		executed = command
 	}

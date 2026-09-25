@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/app"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/logger"
@@ -30,6 +31,11 @@ func serveCommand() *cobra.Command {
 
 func runServer(cmd *cobra.Command, args []string) (runErr error) {
 	ctx := cmd.Context()
+	var commandSession *presentation.ProgressSession
+	if !commandPresentationExempt(cmd) {
+		commandSession = commandProgressSession(cmd)
+		commandSession.Update(presentation.ProgressPhase{ID: "server.starting", Label: "Starting server", State: presentation.ProgressRunning})
+	}
 	logCommandStep(cmd, "SERVER", "server.config.loading", "Loading runtime configuration")
 	configSpan := tracepkg.Start(ctx, "CONFIG", "server.config.load", "Loading server runtime configuration", tracepkg.String("config_root", config.RootPath()))
 	source, err := config.Source()
@@ -143,10 +149,20 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		return err
 	}
 	if bindings.cfg.Server.Port != cfg.Server.Port {
-		log.Warning("NETWORK", "server.mcp.port-fallback", "Configured MCP HTTP port is unavailable; using next available port", nil, logger.With("configured_port", cfg.Server.Port), logger.With("port", bindings.cfg.Server.Port))
+		if commandSession != nil {
+			commandPresenter(cmd).ChildStatus(presentation.StatusWarning, "Configured MCP HTTP port is unavailable; using next available port")
+			commandPresenter(cmd).Fields(presentation.Field{Label: "configured port", Value: cfg.Server.Port}, presentation.Field{Label: "port", Value: bindings.cfg.Server.Port})
+		} else {
+			log.Warning("NETWORK", "server.mcp.port-fallback", "Configured MCP HTTP port is unavailable; using next available port", nil, logger.With("configured_port", cfg.Server.Port), logger.With("port", bindings.cfg.Server.Port))
+		}
 	}
 	if bindings.cfg.Admin.Port != cfg.Admin.Port {
-		log.Warning("NETWORK", "server.admin.port-fallback", "Configured admin port is unavailable; using next available port", nil, logger.With("configured_port", cfg.Admin.Port), logger.With("port", bindings.cfg.Admin.Port))
+		if commandSession != nil {
+			commandPresenter(cmd).ChildStatus(presentation.StatusWarning, "Configured admin port is unavailable; using next available port")
+			commandPresenter(cmd).Fields(presentation.Field{Label: "configured port", Value: cfg.Admin.Port}, presentation.Field{Label: "port", Value: bindings.cfg.Admin.Port})
+		} else {
+			log.Warning("NETWORK", "server.admin.port-fallback", "Configured admin port is unavailable; using next available port", nil, logger.With("configured_port", cfg.Admin.Port), logger.With("port", bindings.cfg.Admin.Port))
+		}
 	}
 	cfg = bindings.cfg
 	runtime, err := app.NewWithLoggerContext(runtimeCtx, cfg, log)
@@ -156,11 +172,15 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 	defer func() {
 		runtime.Logger.Verbose("SERVER", "server.runtime.cleanup", "Cleaning up runtime services")
 		if err := runtime.Stop(); err != nil {
-			runtime.Logger.Failure("SERVER", "server.runtime.cleanup.failed", "Runtime cleanup failed", err)
+			if commandSession != nil {
+				runtime.Logger.Diagnostic(logger.Error, "SERVER", "server.runtime.cleanup.failed", "Runtime cleanup failed", logger.WithVerbose("error", err.Error()))
+			} else {
+				runtime.Logger.Failure("SERVER", "server.runtime.cleanup.failed", "Runtime cleanup failed", err)
+			}
 			if runErr == nil {
 				runErr = err
 			}
-		} else {
+		} else if commandSession == nil {
 			runtime.Logger.Ready("SERVER", "server.stopped", "Server stopped")
 		}
 		if control != nil {
@@ -188,8 +208,18 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		stateMu.RUnlock()
 		next := previousCfg
 		networkRestarted, restorePerformed := false, false
+		if commandSession != nil {
+			commandSession.Update(presentation.ProgressPhase{ID: "server.reloading", Label: "Reloading server listeners", State: presentation.ProgressRunning})
+		}
 		reloadSpan := tracepkg.Start(reloadCtx, "CONFIG", "server.reload", "Reloading server runtime", tracepkg.Int("old_mcp_port", previousCfg.Server.Port), tracepkg.Int("old_admin_port", previousCfg.Admin.Port), tracepkg.String("old_exposure_mode", string(previousCfg.Server.Expose.Mode)))
 		defer func() {
+			if commandSession != nil {
+				if reloadErr != nil {
+					commandSession.Warn("server.reloading", "Reloading server listeners", "Server reload failed")
+				} else {
+					commandSession.Success("server.reloading", "Reloading server listeners", "Server listeners reloaded")
+				}
+			}
 			fields := []tracepkg.Field{tracepkg.Bool("network_restarted", networkRestarted), tracepkg.Bool("restore_performed", restorePerformed), tracepkg.Int("old_mcp_port", previousCfg.Server.Port), tracepkg.Int("old_admin_port", previousCfg.Admin.Port), tracepkg.Int("new_mcp_port", next.Server.Port), tracepkg.Int("new_admin_port", next.Admin.Port), tracepkg.String("new_exposure_mode", string(next.Server.Expose.Mode))}
 			if reloadErr != nil {
 				reloadSpan.FailMessage("Server runtime reload failed", reloadErr, fields...)
@@ -240,7 +270,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 			stateMu.Lock()
 			currentCfg, currentPlan = next, nextPlan
 			stateMu.Unlock()
-			runtime.Logger.Ready("CONFIG", "config.reloaded", "Configuration reloaded")
+			runtime.Logger.Diagnostic(logger.Info, "CONFIG", "config.reloaded", "Configuration reloaded")
 			result = reloadResult(next, false)
 			return result, nil
 		}
@@ -278,18 +308,17 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 			return nil
 		}
 
-		runtime.Logger.Action("SERVER", "server.reloading", "Reloading server listeners")
 		if portDisjoint {
 			candidate, err := openCandidate()
 			if err != nil {
 				reloadErr = err
-				runtime.Logger.Failure("SERVER", "server.reload.failed", "Server reload failed", err)
+				runtime.Logger.Diagnostic(logger.Error, "SERVER", "server.reload.failed", "Server reload failed", logger.WithVerbose("error", err.Error()))
 				return result, reloadErr
 			}
 			next = candidate.cfg
 			if reloadErr = runtime.ReloadConfig(next); reloadErr != nil {
 				candidate.CloseUnstarted()
-				runtime.Logger.Failure("SERVER", "server.reload.failed", "Server reload failed", reloadErr)
+				runtime.Logger.Diagnostic(logger.Error, "SERVER", "server.reload.failed", "Server reload failed", logger.WithVerbose("error", reloadErr.Error()))
 				return result, reloadErr
 			}
 			if err := shutdownPrevious(); err != nil {
@@ -300,7 +329,11 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 			stateMu.Lock()
 			currentCfg, currentPlan = next, nextPlan
 			stateMu.Unlock()
-			logReadyEndpoints(runtime.Logger, next, nextPlan)
+			if commandSession == nil {
+				logReadyEndpoints(runtime.Logger, next, nextPlan)
+			} else {
+				runtime.Logger.Diagnostic(logger.Info, "SERVER", "server.reload.endpoints", "Reloaded server endpoints", logger.WithDebug("mcp_port", next.Server.Port), logger.WithDebug("admin_port", next.Admin.Port))
+			}
 			result = reloadResult(next, true)
 			return result, nil
 		}
@@ -312,7 +345,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		if err != nil {
 			restoreErr := restorePrevious("candidate_open_failed")
 			reloadErr = errors.Join(err, restoreErr)
-			runtime.Logger.Failure("SERVER", "server.reload.failed", "Server reload failed", reloadErr)
+			runtime.Logger.Diagnostic(logger.Error, "SERVER", "server.reload.failed", "Server reload failed", logger.WithVerbose("error", reloadErr.Error()))
 			return result, reloadErr
 		}
 		next = candidate.cfg
@@ -328,7 +361,11 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		stateMu.Lock()
 		currentCfg, currentPlan = next, nextPlan
 		stateMu.Unlock()
-		logReadyEndpoints(runtime.Logger, next, nextPlan)
+		if commandSession == nil {
+			logReadyEndpoints(runtime.Logger, next, nextPlan)
+		} else {
+			runtime.Logger.Diagnostic(logger.Info, "SERVER", "server.reload.endpoints", "Reloaded server endpoints", logger.WithDebug("mcp_port", next.Server.Port), logger.WithDebug("admin_port", next.Admin.Port))
+		}
 		result = reloadResult(next, true)
 		return result, nil
 	}
@@ -364,7 +401,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		if err != nil {
 			return workspaceReloadResult{}, err
 		}
-		runtime.Logger.Ready("WORKSPACE", "workspace.registry.reloaded", "Workspace registry reloaded", logger.With("count", len(items)))
+		runtime.Logger.Diagnostic(logger.Info, "WORKSPACE", "workspace.registry.reloaded", "Workspace registry reloaded", logger.WithDebug("count", len(items)))
 		return workspaceReloadResult{PID: os.Getpid(), Count: len(items)}, nil
 	}, Status: status, StatusWait: statusWait, Approvals: runtime.Tools.Approvals, Executions: runtime.Tools.Executions, Log: runtime.Logger, Shutdown: func() {
 		runtimeCancel()
@@ -389,37 +426,55 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 	setLifecycle("listeners_ready")
 	if cfg.Tunnel.Enabled && tunnel.Configured(cfg.Tunnel) {
 		setLifecycle("tunnel_connecting")
-		runtime.Logger.Action("TUNNEL", "tunnel.readiness.waiting", "Waiting for OpenAI Secure MCP Tunnel readiness")
+		if commandSession != nil {
+			commandSession.Update(presentation.ProgressPhase{ID: "tunnel.readiness", Label: "Waiting for OpenAI Secure MCP Tunnel readiness", State: presentation.ProgressRunning})
+		}
 		if err := runtime.Tunnel.WaitUntilReady(runtimeCtx); err != nil {
 			return errors.Join(err, bindings.Shutdown())
 		}
+		if commandSession != nil {
+			commandSession.Success("tunnel.readiness", "Waiting for OpenAI Secure MCP Tunnel readiness", "OpenAI Secure MCP Tunnel ready")
+		}
 	}
 	setLifecycle("ready")
-	logReadyEndpoints(runtime.Logger, cfg, plan)
+	if commandSession != nil {
+		commandSession.Success("server.starting", "Starting server", "Server ready")
+		commandPresenter(cmd).Fields(endpointPresentationFields(cfg)...)
+	} else {
+		logReadyEndpoints(runtime.Logger, cfg, plan)
+	}
 
 	shutdown := func(reason string) error {
 		operationMu.Lock()
 		defer operationMu.Unlock()
 		setLifecycle("stopping")
 		span := tracepkg.Start(runtimeCtx, "SERVER", "server.shutdown", "Stopping server runtime", tracepkg.String("reason", reason), tracepkg.Int("mcp_port", currentCfg.Server.Port), tracepkg.Int("admin_port", currentCfg.Admin.Port))
-		runtime.Logger.Action("SERVER", "server.stopping", "Stopping server")
+		if commandSession != nil {
+			commandSession.Update(presentation.ProgressPhase{ID: "server.stopping", Label: "Stopping server", State: presentation.ProgressRunning})
+		}
 		listenerSpan := tracepkg.Start(runtimeCtx, "NETWORK", "server.listeners.shutdown", "Shutting down server listeners", tracepkg.String("reason", reason), tracepkg.Int("listener_count", len(bindings.mcpListeners)+len(bindings.adminListeners)))
 		err := bindings.Shutdown()
 		if err != nil {
 			listenerSpan.FailMessage("Server listener shutdown failed", err)
 			span.FailMessage("Server runtime shutdown failed", err)
-			runtime.Logger.Failure("SERVER", "server.shutdown.failed", "Server shutdown failed", err)
+			if commandSession != nil {
+				commandSession.Warn("server.stopping", "Stopping server", "Server shutdown failed")
+			}
+			runtime.Logger.Diagnostic(logger.Error, "SERVER", "server.shutdown.failed", "Server shutdown failed", logger.WithVerbose("error", err.Error()))
 			return err
 		}
 		listenerSpan.EndMessage("Server listeners shut down")
 		span.EndMessage("Server runtime shutdown initiated", tracepkg.String("reason", reason))
+		if commandSession != nil {
+			commandSession.Success("server.stopping", "Stopping server", "Server stopped")
+		}
 		return nil
 	}
 
 	select {
 	case err := <-errCh:
 		if err != nil {
-			runtime.Logger.Failure("SERVER", "server.listener.failed", "HTTP listener failed", err)
+			runtime.Logger.Diagnostic(logger.Error, "SERVER", "server.listener.failed", "HTTP listener failed", logger.WithVerbose("error", err.Error()))
 			return errors.Join(err, shutdown("listener_error"))
 		}
 		return nil
