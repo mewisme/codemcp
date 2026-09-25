@@ -148,7 +148,7 @@ func TestManagedUpAllowsHTTPTransportWhenDisabledTunnelSecretIsMissing(t *testin
 	cfg.Tunnel.Enabled = false
 	cfg.Tunnel.ID = "tunnel_disabled"
 	cfg.Tunnel.APIKey = "stale-runtime-key"
-	cfg.Tunnel.AdminKey = "stale-admin-key"
+	cfg.Tunnel.Admin.Key = "stale-admin-key"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

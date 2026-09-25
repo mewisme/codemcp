@@ -891,7 +891,7 @@ func (page *ConfigPage) domainSummary(domain string) string {
 	case "integrations":
 		return fmt.Sprintf("Ponytail %s · Caveman %s · RTK %s · CodeGraph %s", configOnOff(cfg.Integrations.Ponytail.Active), configOnOff(cfg.Integrations.Caveman.Active), configOnOff(cfg.Integrations.RTK.Enabled), configOnOff(cfg.Integrations.CodeGraph.Enabled))
 	case "tunnel":
-		return fmt.Sprintf("%s · runtime key %s · admin key %s", configOnOff(cfg.Tunnel.Enabled), configuredState(cfg.Tunnel.APIKey), configuredState(cfg.Tunnel.AdminKey))
+		return fmt.Sprintf("%s · runtime key %s · admin key %s", configOnOff(cfg.Tunnel.Enabled), configuredState(cfg.Tunnel.APIKey), configuredState(cfg.Tunnel.Admin.Key))
 	case "storage":
 		return fmt.Sprintf("%s · verify / convert / import / export", page.overview.Source.Format)
 	default:

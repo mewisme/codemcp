@@ -26,9 +26,12 @@ type TunnelRuntimeInput struct {
 }
 
 type TunnelAdminStatus struct {
-	Configured bool
-	Scope      tunnel.AdminScope
-	Access     tunnel.AdminAccess
+	Enabled       bool
+	KeyConfigured bool
+	Configured    bool
+	Verified      bool
+	Scope         tunnel.AdminScope
+	Access        tunnel.AdminAccess
 }
 
 type TunnelAdminKeyInput struct {
@@ -167,13 +170,13 @@ func TunnelAdminKeyStatusContext(ctx context.Context) (TunnelAdminStatus, error)
 		return TunnelAdminStatus{}, err
 	}
 	scope := tunnel.AdminScopeFromConfig(cfg.Tunnel)
-	status := TunnelAdminStatus{Configured: tunnel.AdminConfigured(cfg.Tunnel), Scope: scope, Access: tunnel.AdminAccessFromConfig(cfg.Tunnel)}
-	fields := append(tunnelAdminScopeFields(scope), tracepkg.Bool("configured", status.Configured), tracepkg.Bool("read_access", status.Access.Read), tracepkg.Bool("manage_access", status.Access.Manage))
+	status := TunnelAdminStatus{Enabled: tunnel.AdminEnabled(cfg.Tunnel), KeyConfigured: strings.TrimSpace(cfg.Tunnel.Admin.Key) != "", Configured: tunnel.AdminConfigured(cfg.Tunnel), Verified: tunnel.AdminVerified(cfg.Tunnel), Scope: scope, Access: tunnel.AdminAccessFromConfig(cfg.Tunnel)}
+	fields := append(tunnelAdminScopeFields(scope), tracepkg.Bool("enabled", status.Enabled), tracepkg.Bool("key_configured", status.KeyConfigured), tracepkg.Bool("configured", status.Configured), tracepkg.Bool("verified", status.Verified), tracepkg.Bool("read_access", status.Access.Read), tracepkg.Bool("manage_access", status.Access.Manage))
 	span.EndMessage("Stored tunnel admin key status loaded", fields...)
 	return status, nil
 }
 
-func SetTunnelAdminKey(ctx context.Context, input TunnelAdminKeyInput) (int, tunnel.AdminScope, error) {
+func SetTunnelAdminKey(ctx context.Context, input TunnelAdminKeyInput) (tunnel.AdminScope, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -185,41 +188,65 @@ func SetTunnelAdminKey(ctx context.Context, input TunnelAdminKeyInput) (int, tun
 	if input.Scope != nil {
 		fields = append(fields, tunnelAdminScopeFields(*input.Scope)...)
 	}
-	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin-key.set", "Verifying and storing tunnel admin access", fields...)
+	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin-key.set", "Storing tunnel admin key", fields...)
 	previous, _, err := loadConfigWithTracedLoader(ctx, "tunnel.admin.config.load", "Loading tunnel admin configuration", config.LoadForTunnelAdminKeyReplacement)
 	if err != nil {
 		span.FailMessage("Tunnel admin configuration load failed", err)
-		return 0, tunnel.AdminScope{}, err
+		return tunnel.AdminScope{}, err
 	}
 	cfg := previous
 	key := strings.TrimSpace(input.Key)
 	if key == "" {
 		err := errors.New("OpenAI admin key is required")
 		span.FailMessage("Tunnel admin key validation failed", err, tracepkg.String("key_source", keySource))
-		return 0, tunnel.AdminScope{}, err
+		return tunnel.AdminScope{}, err
 	}
 	candidate := cfg.Tunnel
-	candidate.AdminKey = key
-	scope, derivation, err := resolveTunnelAdminSetScope(ctx, candidate, input.Scope)
-	if err != nil {
-		span.FailMessage("Tunnel admin verification scope resolution failed", err, tracepkg.String("scope_derivation", derivation))
-		return 0, tunnel.AdminScope{}, fmt.Errorf("admin key verification scope: %w", err)
+	candidate.Admin.Key = key
+	if input.Scope != nil {
+		if err := tunnel.SetAdminScope(&candidate, *input.Scope); err != nil {
+			span.FailMessage("Tunnel admin scope validation failed", err)
+			return tunnel.AdminScope{}, err
+		}
+	} else {
+		tunnel.InvalidateAdminVerification(&candidate)
 	}
-	tracepkg.Emit(ctx, "TUNNEL", "tunnel.admin-key.scope-resolved", "Resolved tunnel admin verification scope", append(tunnelAdminScopeFields(scope), tracepkg.String("scope_derivation", derivation))...)
-	tunnel.ApplyAdminScope(&candidate, scope)
-	access, count, err := tunnel.VerifyAdminKey(ctx, candidate)
-	if err != nil {
-		span.FailMessage("Tunnel admin key verification failed", errors.New("tunnel admin verification failed"), append(tunnelAdminScopeFields(scope), tracepkg.String("scope_derivation", derivation))...)
-		return 0, tunnel.AdminScope{}, fmt.Errorf("admin key verification failed: %w", err)
-	}
-	tunnel.ApplyAdminAccess(&candidate, access)
+	scope := tunnel.AdminScopeFromConfig(candidate)
 	cfg.Tunnel = candidate
 	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
-		span.FailMessage("Tunnel admin access persistence failed", err, tracepkg.Bool("read_access", access.Read), tracepkg.Bool("manage_access", access.Manage), tracepkg.Int("tunnel_count", count))
-		return 0, tunnel.AdminScope{}, err
+		span.FailMessage("Tunnel admin key persistence failed", err)
+		return tunnel.AdminScope{}, err
 	}
-	span.EndMessage("Tunnel admin access verified and stored", append(tunnelAdminScopeFields(scope), tracepkg.String("key_source", keySource), tracepkg.String("scope_derivation", derivation), tracepkg.Bool("read_access", access.Read), tracepkg.Bool("manage_access", access.Manage), tracepkg.Int("tunnel_count", count))...)
-	return count, scope, nil
+	span.EndMessage("Tunnel admin key stored", append(tunnelAdminScopeFields(scope), tracepkg.String("key_source", keySource), tracepkg.Bool("verification_invalidated", true))...)
+	return scope, nil
+}
+
+func SetTunnelAdminEnabled(ctx context.Context, enabled bool) (TunnelAdminStatus, error) {
+	previous, _, err := loadConfigTraced(ctx, "tunnel.admin.config.load", "Loading tunnel admin configuration")
+	if err != nil {
+		return TunnelAdminStatus{}, err
+	}
+	cfg := previous
+	tunnel.SetAdminEnabled(&cfg.Tunnel, enabled)
+	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
+		return TunnelAdminStatus{}, err
+	}
+	return TunnelAdminKeyStatusContext(ctx)
+}
+
+func SetTunnelAdminScope(ctx context.Context, scope tunnel.AdminScope) (TunnelAdminStatus, error) {
+	previous, _, err := loadConfigTraced(ctx, "tunnel.admin.config.load", "Loading tunnel admin configuration")
+	if err != nil {
+		return TunnelAdminStatus{}, err
+	}
+	cfg := previous
+	if err := tunnel.SetAdminScope(&cfg.Tunnel, scope); err != nil {
+		return TunnelAdminStatus{}, err
+	}
+	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
+		return TunnelAdminStatus{}, err
+	}
+	return TunnelAdminKeyStatusContext(ctx)
 }
 
 func VerifyTunnelAdminKey(ctx context.Context) (int, tunnel.AdminScope, error) {
@@ -244,7 +271,7 @@ func VerifyTunnelAdminKey(ctx context.Context) (int, tunnel.AdminScope, error) {
 		return 0, scope, err
 	}
 	previous := cfg
-	tunnel.ApplyAdminAccess(&cfg.Tunnel, access)
+	tunnel.MarkAdminVerified(&cfg.Tunnel, access)
 	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
 		span.FailMessage("Stored tunnel admin access persistence failed", err, tracepkg.Bool("read_access", access.Read), tracepkg.Bool("manage_access", access.Manage))
 		return 0, scope, err
@@ -264,9 +291,9 @@ func RemoveTunnelAdminKey(ctx context.Context) error {
 		return err
 	}
 	cfg := previous
-	cfg.Tunnel.AdminKey = ""
+	cfg.Tunnel.Admin.Key = ""
 	tunnel.ApplyAdminScope(&cfg.Tunnel, tunnel.AdminScope{})
-	tunnel.ApplyAdminAccess(&cfg.Tunnel, tunnel.AdminAccess{})
+	tunnel.InvalidateAdminVerification(&cfg.Tunnel)
 	_, reloaded, err := saveConfigMutation(ctx, previous, cfg)
 	if err != nil {
 		span.FailMessage("Tunnel admin key removal failed", err)
@@ -281,10 +308,13 @@ func ListManagedTunnels(ctx context.Context) ([]tunnel.Metadata, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return nil, errors.New("verified tunnel admin key is required")
+	if !tunnel.AdminEnabled(cfg.Tunnel) {
+		return nil, errors.New("tunnel admin management is disabled")
 	}
-	if !cfg.Tunnel.AdminManageAccess {
+	if !tunnel.AdminConfigured(cfg.Tunnel) {
+		return nil, errors.New("configured tunnel admin key and scope are required")
+	}
+	if !cfg.Tunnel.Admin.ManageAccess {
 		return nil, errors.New("tunnel admin key does not have verified Manage access")
 	}
 	scope := tunnel.AdminScopeFromConfig(cfg.Tunnel)
@@ -315,10 +345,13 @@ func GetManagedTunnel(ctx context.Context, id string, options ManagedTunnelOptio
 	if err != nil {
 		return ManagedTunnelResult{}, err
 	}
-	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("verified tunnel admin key is required")
+	if !tunnel.AdminEnabled(cfg.Tunnel) {
+		return ManagedTunnelResult{}, errors.New("tunnel admin management is disabled")
 	}
-	if !cfg.Tunnel.AdminReadAccess && !cfg.Tunnel.AdminManageAccess {
+	if !tunnel.AdminConfigured(cfg.Tunnel) {
+		return ManagedTunnelResult{}, errors.New("configured tunnel admin key and scope are required")
+	}
+	if !cfg.Tunnel.Admin.ReadAccess && !cfg.Tunnel.Admin.ManageAccess {
 		return ManagedTunnelResult{}, errors.New("tunnel admin key does not have verified Read access")
 	}
 	if ctx == nil {
@@ -407,10 +440,13 @@ func CreateManagedTunnel(ctx context.Context, request tunnel.CreateRequest, opti
 	if err != nil {
 		return ManagedTunnelResult{}, err
 	}
-	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("verified tunnel admin key is required")
+	if !tunnel.AdminEnabled(cfg.Tunnel) {
+		return ManagedTunnelResult{}, errors.New("tunnel admin management is disabled")
 	}
-	if !cfg.Tunnel.AdminManageAccess {
+	if !tunnel.AdminConfigured(cfg.Tunnel) {
+		return ManagedTunnelResult{}, errors.New("configured tunnel admin key and scope are required")
+	}
+	if !cfg.Tunnel.Admin.ManageAccess {
 		return ManagedTunnelResult{}, errors.New("tunnel admin key does not have verified Manage access")
 	}
 	request.OrganizationIDs = NormalizeTunnelIDs(request.OrganizationIDs)
@@ -454,10 +490,13 @@ func UpdateManagedTunnel(ctx context.Context, id string, request tunnel.UpdateRe
 	if err != nil {
 		return ManagedTunnelResult{}, err
 	}
-	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("verified tunnel admin key is required")
+	if !tunnel.AdminEnabled(cfg.Tunnel) {
+		return ManagedTunnelResult{}, errors.New("tunnel admin management is disabled")
 	}
-	if !cfg.Tunnel.AdminManageAccess {
+	if !tunnel.AdminConfigured(cfg.Tunnel) {
+		return ManagedTunnelResult{}, errors.New("configured tunnel admin key and scope are required")
+	}
+	if !cfg.Tunnel.Admin.ManageAccess {
 		return ManagedTunnelResult{}, errors.New("tunnel admin key does not have verified Manage access")
 	}
 	if ctx == nil {
@@ -490,10 +529,13 @@ func DeleteManagedTunnel(ctx context.Context, id string, clearConfig bool) (Mana
 	if err != nil {
 		return ManagedTunnelResult{}, err
 	}
-	if !tunnel.AdminConfigured(cfg.Tunnel) {
-		return ManagedTunnelResult{}, errors.New("verified tunnel admin key is required")
+	if !tunnel.AdminEnabled(cfg.Tunnel) {
+		return ManagedTunnelResult{}, errors.New("tunnel admin management is disabled")
 	}
-	if !cfg.Tunnel.AdminManageAccess {
+	if !tunnel.AdminConfigured(cfg.Tunnel) {
+		return ManagedTunnelResult{}, errors.New("configured tunnel admin key and scope are required")
+	}
+	if !cfg.Tunnel.Admin.ManageAccess {
 		return ManagedTunnelResult{}, errors.New("tunnel admin key does not have verified Manage access")
 	}
 	id = strings.TrimSpace(id)
@@ -572,33 +614,6 @@ func configureManagedTunnel(cfg *config.Config, metadata tunnel.Metadata, runtim
 	return config.Validate(*cfg)
 }
 
-func resolveTunnelAdminSetScope(ctx context.Context, cfg tunnel.Config, explicit *tunnel.AdminScope) (tunnel.AdminScope, string, error) {
-	if explicit != nil {
-		scope := tunnel.AdminScope{OrganizationID: strings.TrimSpace(explicit.OrganizationID), WorkspaceID: strings.TrimSpace(explicit.WorkspaceID), TenantID: strings.TrimSpace(explicit.TenantID)}
-		return scope, "explicit", tunnel.ValidateAdminScope(scope)
-	}
-	if scope := tunnel.AdminScopeFromConfig(cfg); tunnel.ValidateAdminScope(scope) == nil {
-		return scope, "stored", nil
-	}
-	if strings.TrimSpace(cfg.ID) == "" {
-		return tunnel.AdminScope{}, "unresolved", errors.New("provide exactly one admin scope or configure a tunnel first")
-	}
-	metadata, err := tunnel.GetManaged(ctx, cfg, cfg.ID)
-	if err != nil {
-		return tunnel.AdminScope{}, "configured_tunnel", fmt.Errorf("derive admin scope from configured tunnel: %w", err)
-	}
-	for _, candidate := range []tunnel.AdminScope{
-		{OrganizationID: singleID(metadata.OrganizationIDs)},
-		{WorkspaceID: singleID(metadata.WorkspaceIDs)},
-		{TenantID: singleID(metadata.TenantIDs)},
-	} {
-		if tunnel.ValidateAdminScope(candidate) == nil {
-			return candidate, "configured_tunnel", nil
-		}
-	}
-	return tunnel.AdminScope{}, "configured_tunnel", errors.New("configured tunnel does not expose one unambiguous admin scope")
-}
-
 func tunnelRuntimeInputFields(input TunnelRuntimeInput) []string {
 	fields := []string{}
 	if input.Enabled != nil {
@@ -630,11 +645,4 @@ func tunnelAdminScopeFields(scope tunnel.AdminScope) []tracepkg.Field {
 		return []tracepkg.Field{tracepkg.String("scope_type", "tenant"), tracepkg.String("scope_id", value)}
 	}
 	return []tracepkg.Field{tracepkg.String("scope_type", "unresolved")}
-}
-
-func singleID(values []string) string {
-	if len(values) == 1 {
-		return strings.TrimSpace(values[0])
-	}
-	return ""
 }

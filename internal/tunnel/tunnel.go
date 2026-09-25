@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -31,17 +32,39 @@ const (
 )
 
 type Config struct {
-	Enabled             bool   `json:"enabled"`
-	ID                  string `json:"id,omitempty"`
-	APIKey              string `json:"api_key,omitempty"`
-	AdminKey            string `json:"admin_key,omitempty"`
-	AdminOrganizationID string `json:"admin_organization_id,omitempty"`
-	AdminWorkspaceID    string `json:"admin_workspace_id,omitempty"`
-	AdminTenantID       string `json:"admin_tenant_id,omitempty"`
-	AdminReadAccess     bool   `json:"-"`
-	AdminManageAccess   bool   `json:"-"`
-	ControlPlaneBaseURL string `json:"control_plane_base_url,omitempty"`
-	OrganizationID      string `json:"organization_id,omitempty"`
+	Enabled             bool        `json:"enabled"`
+	ID                  string      `json:"id,omitempty"`
+	APIKey              string      `json:"api_key,omitempty"`
+	Admin               AdminConfig `json:"admin,omitempty"`
+	ControlPlaneBaseURL string      `json:"control_plane_base_url,omitempty"`
+	OrganizationID      string      `json:"organization_id,omitempty"`
+}
+
+type AdminConfig struct {
+	Enabled        bool   `json:"enabled"`
+	EnabledSet     bool   `json:"-"`
+	Key            string `json:"key,omitempty"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	TenantID       string `json:"tenant_id,omitempty"`
+	Verified       bool   `json:"verified,omitempty"`
+	ReadAccess     bool   `json:"read_access,omitempty"`
+	ManageAccess   bool   `json:"manage_access,omitempty"`
+}
+
+func (cfg *AdminConfig) UnmarshalJSON(data []byte) error {
+	type adminConfigAlias AdminConfig
+	var decoded adminConfigAlias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	*cfg = AdminConfig(decoded)
+	_, cfg.EnabledSet = fields["enabled"]
+	return nil
 }
 
 type AdminAccess struct {
@@ -55,21 +78,40 @@ type AdminScope struct {
 	TenantID       string `json:"tenant_id,omitempty"`
 }
 
+type AdminState struct {
+	Enabled        bool   `json:"enabled"`
+	KeyConfigured  bool   `json:"key_configured"`
+	Configured     bool   `json:"configured"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	TenantID       string `json:"tenant_id,omitempty"`
+	Verified       bool   `json:"verified"`
+	ReadAccess     bool   `json:"read_access"`
+	ManageAccess   bool   `json:"manage_access"`
+}
+
+func (state AdminState) Scope() AdminScope {
+	return AdminScope{
+		OrganizationID: state.OrganizationID,
+		WorkspaceID:    state.WorkspaceID,
+		TenantID:       state.TenantID,
+	}
+}
+
 type Status struct {
-	Provider            string      `json:"provider"`
-	Enabled             bool        `json:"enabled"`
-	Running             bool        `json:"running"`
-	Ready               bool        `json:"ready"`
-	Restarting          bool        `json:"restarting"`
-	ID                  string      `json:"id,omitempty"`
-	ControlPlaneBaseURL string      `json:"control_plane_base_url,omitempty"`
-	OrganizationID      string      `json:"organization_id,omitempty"`
-	StartedAt           time.Time   `json:"started_at,omitempty"`
-	LastError           string      `json:"last_error,omitempty"`
-	Metadata            *Metadata   `json:"metadata,omitempty"`
-	MetadataError       string      `json:"metadata_error,omitempty"`
-	AdminKeyConfigured  bool        `json:"admin_key_configured"`
-	AdminScope          *AdminScope `json:"admin_scope,omitempty"`
+	Provider            string     `json:"provider"`
+	Enabled             bool       `json:"enabled"`
+	Running             bool       `json:"running"`
+	Ready               bool       `json:"ready"`
+	Restarting          bool       `json:"restarting"`
+	ID                  string     `json:"id,omitempty"`
+	ControlPlaneBaseURL string     `json:"control_plane_base_url,omitempty"`
+	OrganizationID      string     `json:"organization_id,omitempty"`
+	StartedAt           time.Time  `json:"started_at,omitempty"`
+	LastError           string     `json:"last_error,omitempty"`
+	Metadata            *Metadata  `json:"metadata,omitempty"`
+	MetadataError       string     `json:"metadata_error,omitempty"`
+	Admin               AdminState `json:"admin"`
 }
 
 type Metadata struct {
@@ -436,12 +478,8 @@ func Configured(cfg Config) bool {
 }
 
 func RuntimeConfigEqual(left, right Config) bool {
-	left.AdminKey, right.AdminKey = "", ""
-	left.AdminOrganizationID, right.AdminOrganizationID = "", ""
-	left.AdminWorkspaceID, right.AdminWorkspaceID = "", ""
-	left.AdminTenantID, right.AdminTenantID = "", ""
-	left.AdminReadAccess, right.AdminReadAccess = false, false
-	left.AdminManageAccess, right.AdminManageAccess = false, false
+	left.Admin = AdminConfig{}
+	right.Admin = AdminConfig{}
 	return left == right
 }
 
@@ -454,12 +492,7 @@ func (c *Client) SyncManagementConfig(cfg Config) error {
 	if !RuntimeConfigEqual(c.config, cfg) {
 		return errors.New("cannot sync management config when runtime tunnel configuration differs")
 	}
-	c.config.AdminKey = cfg.AdminKey
-	c.config.AdminOrganizationID = cfg.AdminOrganizationID
-	c.config.AdminWorkspaceID = cfg.AdminWorkspaceID
-	c.config.AdminTenantID = cfg.AdminTenantID
-	c.config.AdminReadAccess = cfg.AdminReadAccess
-	c.config.AdminManageAccess = cfg.AdminManageAccess
+	c.config.Admin = cfg.Admin
 	return nil
 }
 
@@ -1064,16 +1097,10 @@ func (c *Client) Status() Status {
 		value := cloneMetadata(*c.metadata)
 		metadata = &value
 	}
-	var adminScope *AdminScope
-	scope := AdminScopeFromConfig(c.config)
-	adminConfigured := strings.TrimSpace(c.config.AdminKey) != "" && ValidateAdminScope(scope) == nil
-	if adminConfigured {
-		value := scope
-		adminScope = &value
-	}
+	admin := AdminStateFromConfig(c.config)
 	return Status{
 		Provider: ProviderOpenAI, Enabled: c.config.Enabled, Running: c.running, Ready: c.ready, Restarting: c.restarting, ID: c.config.ID,
 		ControlPlaneBaseURL: c.config.ControlPlaneBaseURL, OrganizationID: c.config.OrganizationID,
-		StartedAt: c.startedAt, LastError: c.lastError, Metadata: metadata, MetadataError: c.metadataError, AdminKeyConfigured: adminConfigured, AdminScope: adminScope,
+		StartedAt: c.startedAt, LastError: c.lastError, Metadata: metadata, MetadataError: c.metadataError, Admin: admin,
 	}
 }

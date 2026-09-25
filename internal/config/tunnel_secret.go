@@ -12,16 +12,21 @@ import (
 )
 
 type tunnelSecret struct {
-	Version              int    `json:"version"`
-	RuntimeKeyConfigured bool   `json:"runtime_key_configured,omitempty"`
-	AdminKeyConfigured   bool   `json:"admin_key_configured,omitempty"`
-	APIKey               string `json:"api_key,omitempty"`
-	AdminKey             string `json:"admin_key,omitempty"`
-	AdminOrganizationID  string `json:"admin_organization_id,omitempty"`
-	AdminWorkspaceID     string `json:"admin_workspace_id,omitempty"`
-	AdminTenantID        string `json:"admin_tenant_id,omitempty"`
-	AdminReadAccess      bool   `json:"admin_read_access,omitempty"`
-	AdminManageAccess    bool   `json:"admin_manage_access,omitempty"`
+	Version              int                `json:"version"`
+	RuntimeKeyConfigured bool               `json:"runtime_key_configured,omitempty"`
+	APIKey               string             `json:"api_key,omitempty"`
+	Admin                *tunnelAdminSecret `json:"admin,omitempty"`
+}
+
+type tunnelAdminSecret struct {
+	KeyConfigured  bool   `json:"key_configured,omitempty"`
+	Enabled        *bool  `json:"enabled,omitempty"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	TenantID       string `json:"tenant_id,omitempty"`
+	Verified       bool   `json:"verified,omitempty"`
+	ReadAccess     bool   `json:"read_access,omitempty"`
+	ManageAccess   bool   `json:"manage_access,omitempty"`
 }
 
 const tunnelSecretVersion = 1
@@ -42,7 +47,7 @@ func TunnelSecretEntries(root string) ([]string, error) {
 	if stored.RuntimeKeyConfigured {
 		entries = append(entries, tunnelRuntimeSecretName)
 	}
-	if stored.AdminKeyConfigured {
+	if stored.Admin != nil && stored.Admin.KeyConfigured {
 		entries = append(entries, tunnelAdminSecretName)
 	}
 	return entries, nil
@@ -80,34 +85,33 @@ func loadTunnelSecretsWithPolicy(path string, cfg *tunnel.Config, legacyRuntime,
 	if stored.APIKey == secretFileMarker {
 		stored.APIKey = ""
 	}
-	if stored.AdminKey == secretFileMarker {
-		stored.AdminKey = ""
+	if stored.Admin != nil {
+		if stored.Admin.Enabled != nil {
+			tunnel.SetAdminEnabled(cfg, *stored.Admin.Enabled)
+		}
+		cfg.Admin.OrganizationID = stored.Admin.OrganizationID
+		cfg.Admin.WorkspaceID = stored.Admin.WorkspaceID
+		cfg.Admin.TenantID = stored.Admin.TenantID
+		cfg.Admin.Verified = stored.Admin.Verified || stored.Admin.ReadAccess || stored.Admin.ManageAccess
+		cfg.Admin.ReadAccess = stored.Admin.ReadAccess
+		cfg.Admin.ManageAccess = stored.Admin.ManageAccess
 	}
-	if stored.AdminOrganizationID != "" || stored.AdminWorkspaceID != "" || stored.AdminTenantID != "" || stored.AdminReadAccess || stored.AdminManageAccess {
-		cfg.AdminOrganizationID = stored.AdminOrganizationID
-		cfg.AdminWorkspaceID = stored.AdminWorkspaceID
-		cfg.AdminTenantID = stored.AdminTenantID
-	}
-	cfg.AdminReadAccess = stored.AdminReadAccess
-	cfg.AdminManageAccess = stored.AdminManageAccess
 	if stored.APIKey != "" {
 		legacyRuntime = stored.APIKey
-	}
-	if stored.AdminKey != "" {
-		legacyAdmin = stored.AdminKey
 	}
 	store := secretstore.New(filepath.Dir(path))
 	runtimeKey, runtimeMigration, err := resolveStoredSecret(store, tunnelRuntimeSecretName, stored.RuntimeKeyConfigured, legacyRuntime, "tunnel runtime key", policy.allowMissingRuntime)
 	if err != nil {
 		return false, err
 	}
-	adminKey, adminMigration, err := resolveStoredSecret(store, tunnelAdminSecretName, stored.AdminKeyConfigured, legacyAdmin, "tunnel admin key", policy.allowMissingAdmin)
+	adminConfigured := stored.Admin != nil && stored.Admin.KeyConfigured
+	adminKey, adminMigration, err := resolveStoredSecret(store, tunnelAdminSecretName, adminConfigured, legacyAdmin, "tunnel admin key", policy.allowMissingAdmin)
 	if err != nil {
 		return false, err
 	}
 	cfg.APIKey = runtimeKey
-	cfg.AdminKey = adminKey
-	return runtimeMigration || adminMigration || stored.APIKey != "" || stored.AdminKey != "", nil
+	cfg.Admin.Key = adminKey
+	return runtimeMigration || adminMigration || stored.APIKey != "", nil
 }
 
 func resolveStoredSecret(store *secretstore.Store, name string, configured bool, legacy, label string, allowMissing bool) (string, bool, error) {
@@ -137,11 +141,27 @@ func saveTunnelSecretAt(path string, cfg tunnel.Config) error {
 	if err != nil {
 		return err
 	}
+	var adminEnabled *bool
+	if !tunnel.AdminEnabled(cfg) || (previous.Admin != nil && previous.Admin.Enabled != nil) {
+		adminEnabled = boolRef(tunnel.AdminEnabled(cfg))
+	}
+	admin := &tunnelAdminSecret{
+		KeyConfigured:  cfg.Admin.Key != "",
+		Enabled:        adminEnabled,
+		OrganizationID: cfg.Admin.OrganizationID,
+		WorkspaceID:    cfg.Admin.WorkspaceID,
+		TenantID:       cfg.Admin.TenantID,
+		Verified:       cfg.Admin.Verified || cfg.Admin.ReadAccess || cfg.Admin.ManageAccess,
+		ReadAccess:     cfg.Admin.ReadAccess,
+		ManageAccess:   cfg.Admin.ManageAccess,
+	}
+	if !admin.KeyConfigured && admin.Enabled == nil && admin.OrganizationID == "" && admin.WorkspaceID == "" && admin.TenantID == "" && !admin.Verified && !admin.ReadAccess && !admin.ManageAccess {
+		admin = nil
+	}
 	stored := tunnelSecret{
 		Version:              tunnelSecretVersion,
-		RuntimeKeyConfigured: cfg.APIKey != "", AdminKeyConfigured: cfg.AdminKey != "",
-		AdminOrganizationID: cfg.AdminOrganizationID, AdminWorkspaceID: cfg.AdminWorkspaceID, AdminTenantID: cfg.AdminTenantID,
-		AdminReadAccess: cfg.AdminReadAccess, AdminManageAccess: cfg.AdminManageAccess,
+		RuntimeKeyConfigured: cfg.APIKey != "",
+		Admin:                admin,
 	}
 	exists := true
 	if _, _, err := readConfigFile(path); err != nil {
@@ -150,7 +170,7 @@ func saveTunnelSecretAt(path string, cfg tunnel.Config) error {
 		}
 		exists = false
 	}
-	if exists || stored.RuntimeKeyConfigured || stored.AdminKeyConfigured || stored.AdminOrganizationID != "" || stored.AdminWorkspaceID != "" || stored.AdminTenantID != "" || stored.AdminReadAccess || stored.AdminManageAccess {
+	if exists || stored.RuntimeKeyConfigured || stored.Admin != nil {
 		data, err := mergeTunnelSecretData(path, stored, cfg)
 		if err != nil {
 			return err
@@ -163,8 +183,10 @@ func saveTunnelSecretAt(path string, cfg tunnel.Config) error {
 	if stored.RuntimeKeyConfigured || previous.RuntimeKeyConfigured || previous.APIKey != "" {
 		changes = append(changes, secretstore.Change{Name: tunnelRuntimeSecretName, Value: cfg.APIKey})
 	}
-	if stored.AdminKeyConfigured || previous.AdminKeyConfigured || previous.AdminKey != "" {
-		changes = append(changes, secretstore.Change{Name: tunnelAdminSecretName, Value: cfg.AdminKey})
+	storedAdminConfigured := stored.Admin != nil && stored.Admin.KeyConfigured
+	previousAdminConfigured := previous.Admin != nil && previous.Admin.KeyConfigured
+	if storedAdminConfigured || previousAdminConfigured {
+		changes = append(changes, secretstore.Change{Name: tunnelAdminSecretName, Value: cfg.Admin.Key})
 	}
 	return secretstore.New(filepath.Dir(path)).Apply(changes)
 }
@@ -185,12 +207,21 @@ func mergeTunnelSecretData(path string, stored tunnelSecret, runtime tunnel.Conf
 	}
 	overlayRoot["runtime_key_configured"] = stored.RuntimeKeyConfigured
 	overlayRoot["version"] = int64(tunnelSecretVersion)
-	overlayRoot["admin_key_configured"] = stored.AdminKeyConfigured
-	overlayRoot["admin_organization_id"] = stored.AdminOrganizationID
-	overlayRoot["admin_workspace_id"] = stored.AdminWorkspaceID
-	overlayRoot["admin_tenant_id"] = stored.AdminTenantID
-	overlayRoot["admin_read_access"] = stored.AdminReadAccess
-	overlayRoot["admin_manage_access"] = stored.AdminManageAccess
+	if stored.Admin != nil {
+		admin := map[string]any{
+			"key_configured":  stored.Admin.KeyConfigured,
+			"organization_id": stored.Admin.OrganizationID,
+			"workspace_id":    stored.Admin.WorkspaceID,
+			"tenant_id":       stored.Admin.TenantID,
+			"verified":        stored.Admin.Verified,
+			"read_access":     stored.Admin.ReadAccess,
+			"manage_access":   stored.Admin.ManageAccess,
+		}
+		if stored.Admin.Enabled != nil {
+			admin["enabled"] = *stored.Admin.Enabled
+		}
+		overlayRoot["admin"] = admin
+	}
 
 	var base any = map[string]any{}
 	existingData, _, readErr := readConfigFile(path)
@@ -210,9 +241,11 @@ func mergeTunnelSecretData(path string, stored tunnelSecret, runtime tunnel.Conf
 		if _, exists := existing["api_key"]; exists {
 			merged["api_key"] = secretMarkerValue(runtime.APIKey)
 		}
-		if _, exists := existing["admin_key"]; exists {
-			merged["admin_key"] = secretMarkerValue(runtime.AdminKey)
-		}
+	}
+	if stored.Admin == nil {
+		delete(merged, "admin")
 	}
 	return configformat.EncodeGeneric(configformat.JSON, merged)
 }
+
+func boolRef(value bool) *bool { return &value }

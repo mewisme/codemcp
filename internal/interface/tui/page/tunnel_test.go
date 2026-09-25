@@ -20,7 +20,7 @@ import (
 )
 
 func TestTunnelRuntimeEditorsRedactSecretsAndBlankRuntimeKeyPreservesSecret(t *testing.T) {
-	setupTunnelPageConfig(t, tunnel.Config{ID: "tunnel_demo", APIKey: "runtime-secret", AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin"})
+	setupTunnelPageConfig(t, tunnel.Config{ID: "tunnel_demo", APIKey: "runtime-secret", Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}})
 	dashboard, err := NewTunnelDashboard(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -80,7 +80,7 @@ func TestManagedTunnelMutationNoticeRendersWithoutDuplicateChildTitle(t *testing
 }
 
 func TestManagedTunnelBrowserUsesSelectedTunnelShortcut(t *testing.T) {
-	setupTunnelPageConfig(t, tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", AdminReadAccess: true, AdminManageAccess: true})
+	setupTunnelPageConfig(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}})
 	item := tunnel.Metadata{ID: "tunnel_one", Name: "One", Description: "primary"}
 	if _, err := config.SaveTunnelMetadata(item); err != nil {
 		t.Fatal(err)
@@ -104,7 +104,7 @@ func TestManagedTunnelBrowserUsesSelectedTunnelShortcut(t *testing.T) {
 }
 
 func TestManagedTunnelResourceUsesRoutedChildDetailPage(t *testing.T) {
-	setupTunnelPageConfig(t, tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", AdminReadAccess: true, AdminManageAccess: true})
+	setupTunnelPageConfig(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}})
 	item := tunnel.Metadata{ID: "tunnel_one", Name: "One", Description: "primary", OrganizationIDs: []string{"org_one"}, WorkspaceIDs: []string{"ws_one"}, TenantIDs: []string{"tenant_one"}}
 	if _, err := config.SaveTunnelMetadata(item); err != nil {
 		t.Fatal(err)
@@ -275,7 +275,7 @@ func TestTunnelRuntimeOperationOverlayBlocksEditorMouse(t *testing.T) {
 }
 
 func TestTunnelRuntimeLayoutUsesHierarchyAndGroupWrapping(t *testing.T) {
-	setupTunnelPageConfig(t, tunnel.Config{Enabled: true, ID: "tunnel_6a9462c95f008191a665c3330bcd8368", APIKey: "runtime-secret", AdminKey: "admin-secret", AdminOrganizationID: "org_demo"})
+	setupTunnelPageConfig(t, tunnel.Config{Enabled: true, ID: "tunnel_6a9462c95f008191a665c3330bcd8368", APIKey: "runtime-secret", Admin: tunnel.AdminConfig{Key: "admin-secret", OrganizationID: "org_demo"}})
 	page, err := NewTunnelDashboard(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -319,7 +319,7 @@ func TestTunnelRuntimeLayoutUsesHierarchyAndGroupWrapping(t *testing.T) {
 }
 
 func TestTunnelRuntimeKeyHintsUseDefaultHelpStyle(t *testing.T) {
-	setupTunnelPageConfig(t, tunnel.Config{Enabled: true, ID: "tunnel_demo", APIKey: "runtime-secret", AdminKey: "admin-secret", AdminOrganizationID: "org_demo"})
+	setupTunnelPageConfig(t, tunnel.Config{Enabled: true, ID: "tunnel_demo", APIKey: "runtime-secret", Admin: tunnel.AdminConfig{Key: "admin-secret", OrganizationID: "org_demo"}})
 	page, err := NewTunnelDashboard(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -357,7 +357,7 @@ func TestManagedTunnelRefreshPersistsCacheAndUpdatePrefetchesRemoteState(t *test
 		}
 	}))
 	defer server.Close()
-	setupTunnelPageConfig(t, tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL})
+	setupTunnelPageConfig(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL})
 	if _, err := config.SaveTunnelMetadata(tunnel.Metadata{ID: "stale", Name: "Stale"}); err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +418,7 @@ func TestManagedTunnelEditPrefetchEscapeReturnsToDetail(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer server.Close()
-	setupTunnelPageConfig(t, tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL})
+	setupTunnelPageConfig(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL})
 	page, err := NewManagedTunnelsRouteAction(t.Context(), "tunnel_one", "", "edit")
 	if err != nil {
 		t.Fatal(err)
@@ -463,7 +463,7 @@ func TestManagedTunnelEditPrefetchFailureShowsExplicitWrappedErrorState(t *testi
 		http.Error(w, "remote tunnel unavailable", http.StatusBadGateway)
 	}))
 	defer server.Close()
-	setupTunnelPageConfig(t, tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL})
+	setupTunnelPageConfig(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL})
 	page, err := NewManagedTunnelsRouteAction(t.Context(), "tunnel_one", "", "edit")
 	if err != nil {
 		t.Fatal(err)
@@ -503,7 +503,7 @@ func TestManagedTunnelRefreshCancellationIgnoresLateResult(t *testing.T) {
 		<-r.Context().Done()
 	}))
 	defer server.Close()
-	setupTunnelPageConfig(t, tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL})
+	setupTunnelPageConfig(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL})
 	page, err := NewManagedTunnels(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
@@ -537,7 +537,7 @@ func TestManagedTunnelRefreshCancellationIgnoresLateResult(t *testing.T) {
 }
 
 func TestManagedTunnelDeleteSelectedRuntimeOffersClearConfigChoice(t *testing.T) {
-	setupTunnelPageConfig(t, tunnel.Config{Enabled: true, ID: "tunnel_selected", APIKey: "runtime-secret", AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin"})
+	setupTunnelPageConfig(t, tunnel.Config{Enabled: true, ID: "tunnel_selected", APIKey: "runtime-secret", Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}})
 	if _, err := config.SaveTunnelMetadata(tunnel.Metadata{ID: "tunnel_selected", Name: "Selected"}); err != nil {
 		t.Fatal(err)
 	}
@@ -559,7 +559,7 @@ func TestManagedTunnelDeleteSelectedRuntimeOffersClearConfigChoice(t *testing.T)
 }
 
 func TestManagedTunnelCreateEditorSectionsWrapAndFailureKeepsDraft(t *testing.T) {
-	setupTunnelPageConfig(t, tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", AdminReadAccess: true, AdminManageAccess: true})
+	setupTunnelPageConfig(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}})
 	page, err := NewManagedTunnelsRouteAction(t.Context(), "", "", "create")
 	if err != nil {
 		t.Fatal(err)
@@ -598,7 +598,7 @@ func TestManagedTunnelUpdateAndConfigureFailuresKeepDraft(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id":"tunnel_one","name":"Remote","description":"fresh","workspace_ids":["ws_admin"]}`))
 	}))
 	defer server.Close()
-	setupTunnelPageConfig(t, tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL})
+	setupTunnelPageConfig(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL})
 	edit, err := NewManagedTunnelsRouteAction(t.Context(), "tunnel_one", "", "edit")
 	if err != nil {
 		t.Fatal(err)
@@ -653,8 +653,8 @@ func setupTunnelPageConfig(t *testing.T, value tunnel.Config) {
 	cfg.Auth.MCPEnabled = false
 	cfg.Auth.AdminEnabled = false
 	cfg.Server.AllowUnauthenticatedLoopback = true
-	if value.AdminKey != "" && !value.AdminReadAccess && !value.AdminManageAccess {
-		value.AdminReadAccess, value.AdminManageAccess = true, true
+	if value.Admin.Key != "" && !value.Admin.ReadAccess && !value.Admin.ManageAccess {
+		value.Admin.ReadAccess, value.Admin.ManageAccess = true, true
 	}
 	cfg.Tunnel = value
 	if err := config.Save(cfg); err != nil {
@@ -663,7 +663,7 @@ func setupTunnelPageConfig(t *testing.T, value tunnel.Config) {
 }
 
 func TestManagedTunnelReadOnlyAccessHidesManagementActions(t *testing.T) {
-	setupTunnelPageConfig(t, tunnel.Config{AdminKey: "admin-read", AdminWorkspaceID: "ws_admin", AdminReadAccess: true})
+	setupTunnelPageConfig(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-read", WorkspaceID: "ws_admin", ReadAccess: true}})
 	item := tunnel.Metadata{ID: "tunnel_one", Name: "One", Description: "read only"}
 	if _, err := config.SaveTunnelMetadata(item); err != nil {
 		t.Fatal(err)

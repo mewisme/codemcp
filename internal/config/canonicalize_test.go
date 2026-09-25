@@ -26,15 +26,15 @@ func TestCanonicalizeStartupPrunesOnlyKnownDeprecatedKeys(t *testing.T) {
 	if err := os.WriteFile(configPath, configData, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(tunnelPath, []byte(`{"api_key":"<secret-file>","admin_key":"<secret-file>","custom":"keep"}`), 0600); err != nil {
+	if err := os.WriteFile(tunnelPath, []byte(`{"api_key":"<secret-file>","custom":"keep"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	removed, err := CanonicalizeStartup()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed != 9 {
-		t.Fatalf("removed=%d, want 9", removed)
+	if removed != 8 {
+		t.Fatalf("removed=%d, want 8", removed)
 	}
 	mainData, err := os.ReadFile(configPath)
 	if err != nil {
@@ -76,9 +76,6 @@ func TestCanonicalizeStartupPrunesOnlyKnownDeprecatedKeys(t *testing.T) {
 	tunnelRoot := tunnelRaw.(map[string]any)
 	if _, exists := tunnelRoot["api_key"]; exists {
 		t.Fatalf("deprecated api_key retained: %#v", tunnelRoot)
-	}
-	if _, exists := tunnelRoot["admin_key"]; exists {
-		t.Fatalf("deprecated admin_key retained: %#v", tunnelRoot)
 	}
 	if tunnelRoot["custom"] != "keep" {
 		t.Fatalf("unknown tunnel key was removed: %#v", tunnelRoot)

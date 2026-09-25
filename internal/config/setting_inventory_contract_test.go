@@ -15,7 +15,8 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 		"permissions.allow_dirs",
 		"server.allow_insecure_http", "server.allow_unauthenticated_loopback", "server.enabled", "server.expose.interfaces", "server.expose.mode", "server.port",
 		"shell.path",
-		"tunnel.admin_key", "tunnel.admin_organization_id", "tunnel.admin_tenant_id", "tunnel.admin_workspace_id", "tunnel.api_key",
+		"tunnel.admin.enabled", "tunnel.admin.key", "tunnel.admin.manage_access", "tunnel.admin.organization_id", "tunnel.admin.read_access",
+		"tunnel.admin.tenant_id", "tunnel.admin.verified", "tunnel.admin.workspace_id", "tunnel.api_key",
 		"tunnel.control_plane_base_url", "tunnel.enabled", "tunnel.id", "tunnel.organization_id",
 	}
 	got := make([]string, 0, len(fieldSpecs))
@@ -41,6 +42,9 @@ func TestUniversalSettingMetadataIsCompleteAndUnique(t *testing.T) {
 		}
 		if spec.Presentation == "" {
 			t.Fatalf("setting %q missing presentation policy", spec.Key)
+		}
+		if spec.ValueRole == "" {
+			t.Fatalf("setting %q missing configured/generated/derived/internal value role", spec.Key)
 		}
 		if !spec.InternalOnly && len(spec.ScopedCommands) == 0 && spec.ScopedExemption == "" {
 			t.Fatalf("setting %q has neither scoped CLI facade nor explicit exemption", spec.Key)
@@ -76,6 +80,54 @@ func TestUniversalSettingMetadataIsCompleteAndUnique(t *testing.T) {
 	}
 }
 
+func TestTunnelAdminSettingRolesSeparateConfiguredInputsFromDerivedState(t *testing.T) {
+	configured := []string{
+		"tunnel.admin.enabled",
+		"tunnel.admin.key",
+		"tunnel.admin.organization_id",
+		"tunnel.admin.workspace_id",
+		"tunnel.admin.tenant_id",
+	}
+	for _, key := range configured {
+		spec, ok := SettingByKey(key)
+		if !ok || spec.ValueRole != SettingValueConfigured || !spec.Writable || spec.Derived {
+			t.Fatalf("configured input %q has invalid metadata: %#v ok=%t", key, spec, ok)
+		}
+	}
+	derived := []string{
+		"tunnel.admin.key_configured",
+		"tunnel.admin.configured",
+		"tunnel.admin.verified",
+		"tunnel.admin.read_access",
+		"tunnel.admin.manage_access",
+	}
+	for _, key := range derived {
+		spec, ok := SettingByKey(key)
+		if !ok || spec.ValueRole != SettingValueDerived || spec.Writable || !spec.Derived {
+			t.Fatalf("derived state %q has invalid metadata: %#v ok=%t", key, spec, ok)
+		}
+	}
+	for _, key := range []string{"auth.mcp_token", "auth.admin_token"} {
+		spec, ok := SettingByKey(key)
+		if !ok || spec.ValueRole != SettingValueGenerated {
+			t.Fatalf("generated setting %q has invalid metadata: %#v ok=%t", key, spec, ok)
+		}
+	}
+}
+
+func TestTunnelAdminRegistryUsesOnlyNestedCurrentNamespace(t *testing.T) {
+	for _, spec := range Settings() {
+		if strings.HasPrefix(spec.Key, "tunnel.admin_") {
+			t.Fatalf("flat tunnel admin key remains in current registry: %q", spec.Key)
+		}
+	}
+	for _, spec := range Fields() {
+		if strings.HasPrefix(spec.Key, "tunnel.admin_") {
+			t.Fatalf("flat tunnel admin field remains in current config schema: %q", spec.Key)
+		}
+	}
+}
+
 func TestUniversalSettingManagedCredentialVocabulary(t *testing.T) {
 	want := map[string]struct {
 		state        string
@@ -88,7 +140,7 @@ func TestUniversalSettingManagedCredentialVocabulary(t *testing.T) {
 		"auth.mcp_token":   {state: "auth.mcp_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
 		"auth.admin_token": {state: "auth.admin_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
 		"tunnel.api_key":   {state: "tunnel.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
-		"tunnel.admin_key": {state: "tunnel.admin_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true, verifiable: true},
+		"tunnel.admin.key": {state: "tunnel.admin.key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true, verifiable: true},
 	}
 	for key, expected := range want {
 		spec, ok := SettingByKey(key)

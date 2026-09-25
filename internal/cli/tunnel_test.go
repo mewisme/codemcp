@@ -40,8 +40,8 @@ func TestConfigureManagedTunnelRequiresSeparateRuntimeKey(t *testing.T) {
 	cfg.Auth.MCPEnabled = false
 	cfg.Auth.AdminEnabled = false
 	cfg.Server.AllowUnauthenticatedLoopback = true
-	cfg.Tunnel.AdminKey = "admin-only"
-	cfg.Tunnel.AdminWorkspaceID = "ws_admin"
+	cfg.Tunnel.Admin.Key = "admin-only"
+	cfg.Tunnel.Admin.WorkspaceID = "ws_admin"
 	metadata := tunnel.Metadata{ID: "tunnel_test", OrganizationIDs: []string{"org_test"}}
 	if err := configureManagedTunnel(&cfg, metadata, "", false); err == nil {
 		t.Fatal("admin key was accepted as a runtime key")
@@ -49,7 +49,7 @@ func TestConfigureManagedTunnelRequiresSeparateRuntimeKey(t *testing.T) {
 	if err := configureManagedTunnel(&cfg, metadata, "runtime-key", true); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Tunnel.APIKey != "runtime-key" || cfg.Tunnel.AdminKey != "admin-only" || cfg.Tunnel.ID != "tunnel_test" || !cfg.Tunnel.Enabled {
+	if cfg.Tunnel.APIKey != "runtime-key" || cfg.Tunnel.Admin.Key != "admin-only" || cfg.Tunnel.ID != "tunnel_test" || !cfg.Tunnel.Enabled {
 		t.Fatalf("tunnel config = %#v", cfg.Tunnel)
 	}
 }
@@ -121,10 +121,11 @@ func TestRenderTunnelStatusTextIsCLIFirst(t *testing.T) {
 	color.NoColor = true
 	defer func() { color.NoColor = previous }()
 
-	cfg := tunnel.Config{Enabled: true, ID: "tunnel_test", APIKey: "runtime-key", AdminKey: "admin-key", AdminWorkspaceID: "ws_admin"}
+	cfg := tunnel.Config{Enabled: true, ID: "tunnel_test", APIKey: "runtime-key", Admin: tunnel.AdminConfig{Key: "admin-key", WorkspaceID: "ws_admin"}}
 	status := tunnel.Status{
-		Provider: tunnel.ProviderOpenAI, Enabled: true, Running: true, Ready: true, ID: "tunnel_test", AdminKeyConfigured: true,
-		AdminScope: &tunnel.AdminScope{WorkspaceID: "ws_admin"}, Metadata: &tunnel.Metadata{ID: "tunnel_test", Name: "MCP WSL", Description: "WSL tunnel"},
+		Provider: tunnel.ProviderOpenAI, Enabled: true, Running: true, Ready: true, ID: "tunnel_test",
+		Admin:    tunnel.AdminState{Enabled: true, KeyConfigured: true, Configured: true, WorkspaceID: "ws_admin"},
+		Metadata: &tunnel.Metadata{ID: "tunnel_test", Name: "MCP WSL", Description: "WSL tunnel"},
 	}
 	var output bytes.Buffer
 	renderTunnelStatusText(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), cfg, status, true, false)

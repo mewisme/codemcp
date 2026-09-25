@@ -63,7 +63,7 @@ func ListAdminProjects(ctx context.Context, cfg Config) ([]AdminProject, error) 
 		ctx = context.Background()
 	}
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin.projects.list", "Listing OpenAI projects for tunnel runtime key generation")
-	if strings.TrimSpace(cfg.AdminKey) == "" {
+	if strings.TrimSpace(cfg.Admin.Key) == "" {
 		err := errors.New("OpenAI admin key is not configured")
 		span.FailMessage("OpenAI project listing failed", err)
 		return nil, err
@@ -209,7 +209,7 @@ func adminPlatformRequest(ctx context.Context, cfg Config, method, path string, 
 		span.FailMessage("OpenAI Admin API request construction failed", err)
 		return err
 	}
-	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(cfg.AdminKey))
+	request.Header.Set("Authorization", "Bearer "+strings.TrimSpace(cfg.Admin.Key))
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}

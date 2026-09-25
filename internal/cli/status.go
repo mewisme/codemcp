@@ -376,8 +376,8 @@ func renderStatusTunnelBody(presenter *presentation.Presenter, snapshot statusSn
 			}
 		}
 	}
-	if verbose && snapshot.Tunnel.AdminKeyConfigured && snapshot.Tunnel.AdminScope != nil {
-		fields = append(fields, presentation.Field{Label: "admin", Value: "configured " + presenter.Separator() + " " + formatTunnelAdminScope(*snapshot.Tunnel.AdminScope)})
+	if verbose && snapshot.Tunnel.Admin.Configured {
+		fields = append(fields, presentation.Field{Label: "admin", Value: "configured " + presenter.Separator() + " " + formatTunnelAdminScope(snapshot.Tunnel.Admin.Scope())})
 	}
 	if verbose && snapshot.Tunnel.MetadataError != "" {
 		fields = append(fields, presentation.Field{Label: "metadata", Value: "unavailable: " + snapshot.Tunnel.MetadataError})

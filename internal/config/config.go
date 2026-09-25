@@ -70,7 +70,7 @@ type AuthConfig struct {
 type IntegrationsConfig = integrations.Config
 
 func Default() Config {
-	return Config{Server: ServerConfig{Enabled: true, Port: 37421, Expose: ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}}, Admin: AdminConfig{Enabled: true, Port: 37422}, Auth: AuthConfig{MCPEnabled: true, MCPLegacyBearer: true, AdminEnabled: true}, Permissions: PermissionsConfig{AllowDirs: []string{}}, Shell: ShellConfig{Path: []string{}}, Integrations: integrations.Default(), Tunnel: tunnel.Config{Enabled: false}}
+	return Config{Server: ServerConfig{Enabled: true, Port: 37421, Expose: ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}}, Admin: AdminConfig{Enabled: true, Port: 37422}, Auth: AuthConfig{MCPEnabled: true, MCPLegacyBearer: true, AdminEnabled: true}, Permissions: PermissionsConfig{AllowDirs: []string{}}, Shell: ShellConfig{Path: []string{}}, Integrations: integrations.Default(), Tunnel: tunnel.Config{Enabled: false, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}}}
 }
 
 func (value *ExposureConfig) UnmarshalJSON(data []byte) error {
@@ -205,7 +205,7 @@ func loadAtWithTunnelSecretPolicy(configPath, secretPath string, policy tunnelSe
 	if err := migrateLegacyServerConfig(configPath, data, &cfg); err != nil {
 		return cfg, err
 	}
-	legacyRuntime, legacyAdmin := cfg.Tunnel.APIKey, cfg.Tunnel.AdminKey
+	legacyRuntime, legacyAdmin := cfg.Tunnel.APIKey, cfg.Tunnel.Admin.Key
 	if legacyRuntime == secretFileMarker {
 		legacyRuntime = ""
 	}
@@ -281,11 +281,13 @@ func saveAtWithSecretSaver(configPath, secretPath string, cfg Config, saveSecret
 	persisted.Permissions.AllowDirs = allowDirs
 	persisted.Shell.Path = shellPath
 	persisted.Server.Expose = NormalizeExposure(persisted.Server.Expose)
+	persisted.Tunnel.Admin.Enabled = tunnel.AdminEnabled(cfg.Tunnel)
+	persisted.Tunnel.Admin.EnabledSet = true
 	persisted.Tunnel.APIKey = ""
-	persisted.Tunnel.AdminKey = ""
-	persisted.Tunnel.AdminOrganizationID = ""
-	persisted.Tunnel.AdminWorkspaceID = ""
-	persisted.Tunnel.AdminTenantID = ""
+	persisted.Tunnel.Admin.Key = ""
+	persisted.Tunnel.Admin.OrganizationID = ""
+	persisted.Tunnel.Admin.WorkspaceID = ""
+	persisted.Tunnel.Admin.TenantID = ""
 	data, err := mergeConfigData(configPath, persisted, cfg)
 	if err != nil {
 		return err
@@ -349,14 +351,6 @@ func mergeConfigData(path string, persisted, runtime Config) ([]byte, error) {
 		mergedTunnel := ensureGenericObject(merged, "tunnel")
 		if _, exists := existingTunnel["api_key"]; exists {
 			mergedTunnel["api_key"] = secretMarkerValue(runtime.Tunnel.APIKey)
-		}
-		if _, exists := existingTunnel["admin_key"]; exists {
-			mergedTunnel["admin_key"] = secretMarkerValue(runtime.Tunnel.AdminKey)
-		}
-		for _, key := range []string{"admin_organization_id", "admin_workspace_id", "admin_tenant_id"} {
-			if _, exists := existingTunnel[key]; exists {
-				mergedTunnel[key] = ""
-			}
 		}
 	}
 	return configformat.EncodeGeneric(configformat.JSON, merged)

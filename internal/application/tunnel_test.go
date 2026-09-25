@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/config"
@@ -59,7 +60,9 @@ func TestTunnelAdminAndManagedLifecycle(t *testing.T) {
 	created := false
 	updated := false
 	deleted := false
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
 		if r.Header.Get("Authorization") != "Bearer admin-secret" {
 			t.Fatalf("authorization=%q", r.Header.Get("Authorization"))
 		}
@@ -95,18 +98,27 @@ func TestTunnelAdminAndManagedLifecycle(t *testing.T) {
 	setupTunnelApplicationRoot(t, tunnel.Config{ControlPlaneBaseURL: server.URL})
 
 	scope := tunnel.AdminScope{WorkspaceID: "ws_admin"}
-	count, storedScope, err := SetTunnelAdminKey(t.Context(), TunnelAdminKeyInput{Key: "admin-secret", Scope: &scope})
+	storedScope, err := SetTunnelAdminKey(t.Context(), TunnelAdminKeyInput{Key: "admin-secret", Scope: &scope})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 || storedScope.WorkspaceID != "ws_admin" {
-		t.Fatalf("count=%d scope=%#v", count, storedScope)
+	if storedScope.WorkspaceID != "ws_admin" || requests.Load() != 0 {
+		t.Fatalf("set must only persist configured inputs: scope=%#v requests=%d", storedScope, requests.Load())
 	}
 	status, err := TunnelAdminKeyStatus()
-	if err != nil || !status.Configured || status.Scope.WorkspaceID != "ws_admin" {
+	if err != nil || !status.Configured || status.Verified || status.Access.Read || status.Access.Manage || status.Scope.WorkspaceID != "ws_admin" {
 		t.Fatalf("status=%#v err=%v", status, err)
 	}
 	assertTunnelSecretNotInManagedFiles(t, "admin-secret")
+
+	count, verifiedScope, err := VerifyTunnelAdminKey(t.Context())
+	if err != nil || count != 1 || verifiedScope.WorkspaceID != "ws_admin" {
+		t.Fatalf("verify count=%d scope=%#v err=%v", count, verifiedScope, err)
+	}
+	status, err = TunnelAdminKeyStatus()
+	if err != nil || !status.Verified || !status.Access.Read || !status.Access.Manage {
+		t.Fatalf("verified status=%#v err=%v", status, err)
+	}
 
 	items, err := ListManagedTunnels(t.Context())
 	if err != nil || len(items) != 1 || items[0].ID != "tunnel_one" {
@@ -183,7 +195,7 @@ func TestUseManagedTunnelAutoGeneratesRuntimeKey(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	setupTunnelApplicationRoot(t, tunnel.Config{AdminKey: "admin-secret", AdminOrganizationID: "org_admin", AdminReadAccess: true, AdminManageAccess: true, ControlPlaneBaseURL: server.URL})
+	setupTunnelApplicationRoot(t, tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", OrganizationID: "org_admin", ReadAccess: true, ManageAccess: true}, ControlPlaneBaseURL: server.URL})
 
 	result, err := UseManagedTunnel(t.Context(), tunnelID, ManagedTunnelUseOptions{AutoGenerateRuntimeKey: true})
 	if err != nil {
@@ -211,7 +223,7 @@ func TestDeleteManagedTunnelCanClearSelectedRuntimeConfig(t *testing.T) {
 		t.Fatalf("unexpected request=%s %s", r.Method, r.URL.Path)
 	}))
 	defer server.Close()
-	setupTunnelApplicationRoot(t, tunnel.Config{Enabled: true, ID: "tunnel_selected", APIKey: "runtime-secret", AdminKey: "admin-secret", AdminOrganizationID: "org_admin", AdminReadAccess: true, AdminManageAccess: true, ControlPlaneBaseURL: server.URL, OrganizationID: "org_admin"})
+	setupTunnelApplicationRoot(t, tunnel.Config{Enabled: true, ID: "tunnel_selected", APIKey: "runtime-secret", Admin: tunnel.AdminConfig{Key: "admin-secret", OrganizationID: "org_admin", ReadAccess: true, ManageAccess: true}, ControlPlaneBaseURL: server.URL, OrganizationID: "org_admin"})
 	if _, err := config.SaveTunnelMetadata(tunnel.Metadata{ID: "tunnel_selected", Name: "Selected"}); err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +235,7 @@ func TestDeleteManagedTunnelCanClearSelectedRuntimeConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Tunnel.Enabled || loaded.Tunnel.ID != "" || loaded.Tunnel.APIKey != "" || loaded.Tunnel.OrganizationID != "" || loaded.Tunnel.AdminKey != "admin-secret" {
+	if loaded.Tunnel.Enabled || loaded.Tunnel.ID != "" || loaded.Tunnel.APIKey != "" || loaded.Tunnel.OrganizationID != "" || loaded.Tunnel.Admin.Key != "admin-secret" {
 		t.Fatalf("runtime config not cleared safely: %#v", loaded.Tunnel)
 	}
 }
@@ -260,7 +272,7 @@ func TestManagedCreateFailureDoesNotChangeRuntimeConfig(t *testing.T) {
 		_, _ = w.Write([]byte(`{"error":"boom"}`))
 	}))
 	defer server.Close()
-	setupTunnelApplicationRoot(t, tunnel.Config{ID: "tunnel_existing", APIKey: "runtime-secret", AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL})
+	setupTunnelApplicationRoot(t, tunnel.Config{ID: "tunnel_existing", APIKey: "runtime-secret", Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL})
 	_, err := CreateManagedTunnel(context.Background(), tunnel.CreateRequest{Name: "Broken", Description: "Broken", WorkspaceIDs: []string{"ws_admin"}}, ManagedTunnelOptions{Configure: true, RuntimeAPIKey: "replacement", Enable: true})
 	if err == nil {
 		t.Fatal("create unexpectedly succeeded")

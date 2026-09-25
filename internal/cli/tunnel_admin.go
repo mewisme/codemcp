@@ -67,8 +67,8 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 	var scopeFlags tunnelAdminScopeFlags
 	cmd := &cobra.Command{
 		Use:   "set",
-		Short: "Verify and store an OpenAI tunnel admin key",
-		Long:  "Verify Tunnels Manage access by listing an organization, workspace, or tenant scope, then store the admin key in the secret file store and verification scope in tunnel.<ext>. If no scope flag is provided, cm first reuses a stored scope or derives one from the currently configured tunnel metadata.",
+		Short: "Store an OpenAI tunnel admin key",
+		Long:  "Store the admin key in the secret store without contacting the control plane. An optional organization, workspace, or tenant flag configures the exclusive admin scope in the same mutation. Run verify explicitly after the key and scope are configured.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.preparing", "Preparing tunnel admin key verification")
@@ -81,31 +81,26 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 			if key == "" {
 				return errors.New("OpenAI admin key is required; use --admin-key or OPENAI_ADMIN_KEY")
 			}
-			ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
-			defer cancel()
 			beginMutationProgress(cmd, "Configure OpenAI tunnel admin key")
 			var scope *tunnel.AdminScope
 			if scopeFlags.changed(cmd) {
 				value := scopeFlags.scope()
 				scope = &value
 			}
-			count, verifiedScope, err := application.SetTunnelAdminKey(ctx, application.TunnelAdminKeyInput{Key: key, KeySource: keySource, Scope: scope})
+			configuredScope, err := application.SetTunnelAdminKey(cmd.Context(), application.TunnelAdminKeyInput{Key: key, KeySource: keySource, Scope: scope})
 			if err != nil {
 				return err
 			}
 			fields := []presentation.Field{
-				{Label: "scope", Value: formatTunnelAdminScope(verifiedScope)},
-				{Label: "tunnels", Value: count},
+				{Label: "scope", Value: formatTunnelAdminScope(configuredScope)},
+				{Label: "verification", Value: "required"},
 				{Label: "secret store", Value: "secret file store"},
 			}
-			if status, statusErr := application.TunnelAdminKeyStatus(); statusErr == nil {
-				fields = append(fields, presentation.Field{Label: "access", Value: formatTunnelAdminAccess(status.Access)})
-			}
-			renderMutationSuccess(cmd, "Configure OpenAI tunnel admin key", "Admin key verified and saved", fields...)
+			renderMutationSuccess(cmd, "Configure OpenAI tunnel admin key", "Admin key saved", fields...)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&adminKey, "admin-key", "", "OpenAI admin API key with Tunnels Manage; defaults to OPENAI_ADMIN_KEY")
+	cmd.Flags().StringVar(&adminKey, "admin-key", "", "OpenAI admin API key; defaults to OPENAI_ADMIN_KEY")
 	scopeFlags.add(cmd)
 	return cmd
 }
@@ -161,7 +156,10 @@ func tunnelListCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if strings.TrimSpace(cfg.Tunnel.AdminKey) == "" {
+		if !tunnel.AdminEnabled(cfg.Tunnel) {
+			return errors.New("tunnel admin management is disabled")
+		}
+		if strings.TrimSpace(cfg.Tunnel.Admin.Key) == "" {
 			return errors.New("tunnel admin key is not configured; run tunnel admin key set first")
 		}
 		scope, err := resolveTunnelAdminScope(cmd, cfg.Tunnel, scopeFlags)
@@ -215,13 +213,19 @@ func tunnelGetCommand() *cobra.Command {
 
 func renderTunnelAdminKeyStatus(presenter *presentation.Presenter, status application.TunnelAdminStatus) {
 	presenter.Frame("OpenAI tunnel admin key")
-	if status.Configured {
+	keyConfigured := status.KeyConfigured || status.Configured
+	if keyConfigured {
 		presenter.StateSection(presentation.StatusSuccess, "Admin key configured")
 	} else {
 		presenter.StateSection(presentation.StatusInactive, "Admin key not configured")
 	}
-	fields := []presentation.Field{{Label: "configured", Value: status.Configured}}
-	if status.Configured {
+	fields := []presentation.Field{
+		{Label: "enabled", Value: status.Enabled},
+		{Label: "key configured", Value: keyConfigured},
+		{Label: "admin configured", Value: status.Configured},
+		{Label: "verified", Value: status.Verified},
+	}
+	if keyConfigured {
 		fields = append(fields, presentation.Field{Label: "key", Value: "<redacted>"})
 	}
 	if tunnel.ValidateAdminScope(status.Scope) == nil {

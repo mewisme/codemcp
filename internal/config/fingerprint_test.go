@@ -12,7 +12,7 @@ func TestRuntimeFingerprintIgnoresSecretsButTracksConfig(t *testing.T) {
 	secret.Auth.MCPTokenHash = "mcp-secret"
 	secret.Auth.AdminTokenHash = "admin-secret"
 	secret.Tunnel.APIKey = "runtime-secret"
-	secret.Tunnel.AdminKey = "tunnel-admin-secret"
+	secret.Tunnel.Admin.Key = "tunnel-admin-secret"
 	withSecrets, err := RuntimeFingerprint(secret)
 	if err != nil {
 		t.Fatal(err)

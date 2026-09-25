@@ -358,7 +358,9 @@ func presentationSafeConfig(data []byte) ([]byte, error) {
 	}
 	if tunnel, ok := root["tunnel"].(map[string]any); ok {
 		delete(tunnel, "api_key")
-		delete(tunnel, "admin_key")
+		if admin, ok := tunnel["admin"].(map[string]any); ok {
+			delete(admin, "key")
+		}
 	}
 	return configformat.EncodeGeneric(configformat.JSON, root)
 }
@@ -848,8 +850,11 @@ func containsSensitiveState(relative string, data []byte) (bool, error) {
 			}
 		}
 		if tunnel, ok := root["tunnel"].(map[string]any); ok {
-			for _, key := range []string{"api_key", "admin_key"} {
-				if value, exists := tunnel[key]; exists && strings.TrimSpace(fmt.Sprint(value)) != "" {
+			if value, exists := tunnel["api_key"]; exists && strings.TrimSpace(fmt.Sprint(value)) != "" {
+				return true, nil
+			}
+			if admin, ok := tunnel["admin"].(map[string]any); ok {
+				if value, exists := admin["key"]; exists && strings.TrimSpace(fmt.Sprint(value)) != "" {
 					return true, nil
 				}
 			}

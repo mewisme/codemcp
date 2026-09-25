@@ -41,7 +41,7 @@ func (*adminUpstreamClient) PID(string) int { return 0 }
 
 func TestTunnelConfigRedactsSecrets(t *testing.T) {
 	cfg := config.Default()
-	cfg.Tunnel = tunnel.Config{Enabled: true, ID: "tunnel_test", APIKey: "runtime-secret", AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin"}
+	cfg.Tunnel = tunnel.Config{Enabled: true, ID: "tunnel_test", APIKey: "runtime-secret", Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}}
 	handler := New(API{Tunnel: tunnel.NewConfigured(cfg.Tunnel, nil), Config: config.NewRuntimeStore(cfg)})
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/tunnel/config", nil))
@@ -51,8 +51,14 @@ func TestTunnelConfigRedactsSecrets(t *testing.T) {
 	if strings.Contains(recorder.Body.String(), "runtime-secret") || strings.Contains(recorder.Body.String(), "admin-secret") {
 		t.Fatalf("tunnel API leaked a secret: %s", recorder.Body.String())
 	}
-	if !strings.Contains(recorder.Body.String(), `"id":"tunnel_test"`) || !strings.Contains(recorder.Body.String(), `"admin_workspace_id":"ws_admin"`) || !strings.Contains(recorder.Body.String(), `"runtime_key_configured":true`) || !strings.Contains(recorder.Body.String(), `"admin_key_configured":true`) {
-		t.Fatalf("tunnel config fields missing: %s", recorder.Body.String())
+	body := recorder.Body.String()
+	if !strings.Contains(body, `"id":"tunnel_test"`) || !strings.Contains(body, `"runtime_key_configured":true`) || !strings.Contains(body, `"admin":{"enabled":true,"key_configured":true,"configured":true,"workspace_id":"ws_admin"`) {
+		t.Fatalf("tunnel config fields missing: %s", body)
+	}
+	for _, legacy := range []string{"admin_key", "admin_workspace_id", "admin_key_configured"} {
+		if strings.Contains(body, legacy) {
+			t.Fatalf("tunnel config exposed flat admin field %q: %s", legacy, body)
+		}
 	}
 }
 
@@ -99,7 +105,7 @@ func TestTunnelConfigurePreservesSecretFromSerializedConfigStore(t *testing.T) {
 	cfg.Auth.MCPEnabled = false
 	cfg.Auth.AdminEnabled = false
 	cfg.Server.AllowUnauthenticatedLoopback = true
-	cfg.Tunnel = tunnel.Config{Enabled: false, ID: "tunnel_store", APIKey: "store-secret", AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL}
+	cfg.Tunnel = tunnel.Config{Enabled: false, ID: "tunnel_store", APIKey: "store-secret", Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL}
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -112,10 +118,10 @@ func TestTunnelConfigurePreservesSecretFromSerializedConfigStore(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
 	}
-	if got := store.Snapshot().Tunnel; got.ID != "tunnel_new" || got.APIKey != "store-secret" || got.AdminKey != "admin-secret" || got.AdminWorkspaceID != "ws_admin" {
+	if got := store.Snapshot().Tunnel; got.ID != "tunnel_new" || got.APIKey != "store-secret" || got.Admin.Key != "admin-secret" || got.Admin.WorkspaceID != "ws_admin" {
 		t.Fatalf("stored tunnel config = %#v", got)
 	}
-	if got := client.Config(); got.ID != "tunnel_new" || got.APIKey != "store-secret" || got.AdminKey != "admin-secret" || got.AdminWorkspaceID != "ws_admin" {
+	if got := client.Config(); got.ID != "tunnel_new" || got.APIKey != "store-secret" || got.Admin.Key != "admin-secret" || got.Admin.WorkspaceID != "ws_admin" {
 		t.Fatalf("runtime tunnel config = %#v", got)
 	}
 }
@@ -828,8 +834,10 @@ func tunnelMetadataServer(t *testing.T, key string) *httptest.Server {
 	}))
 }
 
-func TestTunnelAdminKeyVerifyBeforeSave(t *testing.T) {
+func TestTunnelAdminKeyPutStoresWithoutVerificationAndPostVerifies(t *testing.T) {
+	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/tunnels" || r.URL.Query().Get("workspace_id") != "ws_admin" {
 			t.Fatalf("request = %s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
 		}
@@ -854,18 +862,29 @@ func TestTunnelAdminKeyVerifyBeforeSave(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
 	}
-	if got := store.Snapshot().Tunnel; got.AdminKey != "sk-admin" || got.AdminWorkspaceID != "ws_admin" || !tunnel.AdminConfigured(got) {
+	if calls.Load() != 0 {
+		t.Fatalf("PUT unexpectedly verified remotely: calls=%d", calls.Load())
+	}
+	if got := store.Snapshot().Tunnel; got.Admin.Key != "sk-admin" || got.Admin.WorkspaceID != "ws_admin" || !tunnel.AdminConfigured(got) {
 		t.Fatalf("stored admin tunnel config = %#v", got)
 	}
-	if saved.Tunnel.AdminKey != "sk-admin" || saved.Tunnel.AdminWorkspaceID != "ws_admin" || client.Config().AdminKey != "sk-admin" {
+	if saved.Tunnel.Admin.Key != "sk-admin" || saved.Tunnel.Admin.WorkspaceID != "ws_admin" || client.Config().Admin.Key != "sk-admin" {
 		t.Fatalf("admin key was not persisted/synced: saved=%#v client=%#v", saved.Tunnel, client.Config())
 	}
-	if strings.Contains(recorder.Body.String(), "sk-admin") || !strings.Contains(recorder.Body.String(), `"configured":true`) || !strings.Contains(recorder.Body.String(), `"tunnels":1`) {
+	if strings.Contains(recorder.Body.String(), "sk-admin") || !strings.Contains(recorder.Body.String(), `"configured":true`) || !strings.Contains(recorder.Body.String(), `"verified":false`) {
 		t.Fatalf("unexpected admin key response: %s", recorder.Body.String())
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/tunnel/admin/key", nil))
+	if recorder.Code != http.StatusOK || calls.Load() != 1 {
+		t.Fatalf("verify status=%d calls=%d body=%s", recorder.Code, calls.Load(), recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"verified":true`) || !strings.Contains(recorder.Body.String(), `"tunnels":1`) {
+		t.Fatalf("unexpected verify response: %s", recorder.Body.String())
 	}
 }
 
-func TestTunnelAdminKeyRejectsFailedVerification(t *testing.T) {
+func TestTunnelAdminKeyFailedExplicitVerificationDoesNotDiscardConfiguredInputs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "forbidden", http.StatusForbidden) }))
 	defer server.Close()
 	cfg := config.Default()
@@ -874,11 +893,17 @@ func TestTunnelAdminKeyRejectsFailedVerification(t *testing.T) {
 	cfg.Server.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.ControlPlaneBaseURL = server.URL
 	store := config.NewRuntimeStore(cfg)
-	handler := New(API{Tunnel: tunnel.NewConfigured(cfg.Tunnel, nil), Config: store, saveConfig: func(config.Config) error { t.Fatal("failed admin key must not persist"); return nil }})
+	var saves atomic.Int32
+	handler := New(API{Tunnel: tunnel.NewConfigured(cfg.Tunnel, nil), Config: store, saveConfig: func(config.Config) error { saves.Add(1); return nil }})
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/tunnel/admin/key", strings.NewReader(`{"admin_key":"sk-denied","workspace_id":"ws_admin"}`)))
-	if recorder.Code != http.StatusBadRequest || store.Snapshot().Tunnel.AdminKey != "" {
+	if recorder.Code != http.StatusOK || store.Snapshot().Tunnel.Admin.Key != "sk-denied" || saves.Load() != 1 {
 		t.Fatalf("status=%d config=%#v body=%s", recorder.Code, store.Snapshot().Tunnel, recorder.Body.String())
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/tunnel/admin/key", nil))
+	if recorder.Code != http.StatusBadRequest || store.Snapshot().Tunnel.Admin.Key != "sk-denied" || store.Snapshot().Tunnel.Admin.Verified || saves.Load() != 1 {
+		t.Fatalf("verify status=%d saves=%d config=%#v body=%s", recorder.Code, saves.Load(), store.Snapshot().Tunnel, recorder.Body.String())
 	}
 }
 
@@ -900,7 +925,7 @@ func TestManagedTunnelAPIListsWithStoredAdminKey(t *testing.T) {
 	cfg := config.Default()
 	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
 	cfg.Server.AllowUnauthenticatedLoopback = true
-	cfg.Tunnel = tunnel.Config{AdminKey: "sk-admin", AdminWorkspaceID: "ws_admin", AdminReadAccess: true, AdminManageAccess: true, ControlPlaneBaseURL: server.URL}
+	cfg.Tunnel = tunnel.Config{Admin: tunnel.AdminConfig{Key: "sk-admin", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}, ControlPlaneBaseURL: server.URL}
 	handler := New(API{Tunnel: tunnel.NewConfigured(cfg.Tunnel, nil), Config: config.NewRuntimeStore(cfg)})
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/tunnel/managed", nil))
@@ -935,7 +960,7 @@ func TestManagedTunnelUseReusesRuntimeKeyAndSwitchesConfig(t *testing.T) {
 	cfg := config.Default()
 	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
 	cfg.Server.AllowUnauthenticatedLoopback = true
-	cfg.Tunnel = tunnel.Config{Enabled: false, ID: "tunnel_one", APIKey: "runtime-key", AdminKey: "sk-admin", AdminWorkspaceID: "ws_admin", AdminReadAccess: true, AdminManageAccess: true, ControlPlaneBaseURL: server.URL, OrganizationID: "org_one"}
+	cfg.Tunnel = tunnel.Config{Enabled: false, ID: "tunnel_one", APIKey: "runtime-key", Admin: tunnel.AdminConfig{Key: "sk-admin", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}, ControlPlaneBaseURL: server.URL, OrganizationID: "org_one"}
 	runtime := tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, nil)
 	client := tunnel.NewConfigured(cfg.Tunnel, runtime)
 	defer client.Stop()
@@ -975,7 +1000,7 @@ func TestManagedTunnelAPIReadOnlyAccessLimitsMutations(t *testing.T) {
 	cfg := config.Default()
 	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
 	cfg.Server.AllowUnauthenticatedLoopback = true
-	cfg.Tunnel = tunnel.Config{AdminKey: "sk-read", AdminWorkspaceID: "ws_admin", AdminReadAccess: true, ControlPlaneBaseURL: server.URL}
+	cfg.Tunnel = tunnel.Config{Admin: tunnel.AdminConfig{Key: "sk-read", WorkspaceID: "ws_admin", ReadAccess: true}, ControlPlaneBaseURL: server.URL}
 	handler := New(API{Tunnel: tunnel.NewConfigured(cfg.Tunnel, nil), Config: config.NewRuntimeStore(cfg)})
 	request := func(method, path, body string) *httptest.ResponseRecorder {
 		recorder := httptest.NewRecorder()

@@ -25,9 +25,9 @@ func (api API) handleTunnelConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	value := api.Config.Snapshot().Tunnel
-	view := tunnelConfigView{Config: value, RuntimeKeyConfigured: strings.TrimSpace(value.APIKey) != "", AdminKeyConfigured: tunnel.AdminConfigured(value)}
+	view := tunnelConfigView{Config: value, RuntimeKeyConfigured: strings.TrimSpace(value.APIKey) != "", Admin: tunnel.AdminStateFromConfig(value)}
 	view.Config.APIKey = ""
-	view.Config.AdminKey = ""
+	view.Config.Admin.Key = ""
 	writeJSON(w, view)
 }
 
@@ -88,10 +88,10 @@ func (api API) configureTunnel(w http.ResponseWriter, r *http.Request) {
 	if effective.APIKey == "" {
 		effective.APIKey = current.Tunnel.APIKey
 	}
-	effective.AdminKey = current.Tunnel.AdminKey
-	effective.AdminOrganizationID = current.Tunnel.AdminOrganizationID
-	effective.AdminWorkspaceID = current.Tunnel.AdminWorkspaceID
-	effective.AdminTenantID = current.Tunnel.AdminTenantID
+	effective.Admin.Key = current.Tunnel.Admin.Key
+	effective.Admin.OrganizationID = current.Tunnel.Admin.OrganizationID
+	effective.Admin.WorkspaceID = current.Tunnel.Admin.WorkspaceID
+	effective.Admin.TenantID = current.Tunnel.Admin.TenantID
 	candidate := current
 	candidate.Tunnel = effective
 	if err := config.Validate(candidate); err != nil {
@@ -125,8 +125,8 @@ func (api API) configureTunnel(w http.ResponseWriter, r *http.Request) {
 
 type tunnelConfigView struct {
 	tunnel.Config
-	RuntimeKeyConfigured bool `json:"runtime_key_configured"`
-	AdminKeyConfigured   bool `json:"admin_key_configured"`
+	RuntimeKeyConfigured bool              `json:"runtime_key_configured"`
+	Admin                tunnel.AdminState `json:"admin"`
 }
 
 type tunnelAdminKeyRequest struct {
@@ -137,10 +137,13 @@ type tunnelAdminKeyRequest struct {
 }
 
 type tunnelAdminKeyStatus struct {
-	Configured bool               `json:"configured"`
-	Scope      tunnel.AdminScope  `json:"scope"`
-	Access     tunnel.AdminAccess `json:"access"`
-	Tunnels    int                `json:"tunnels,omitempty"`
+	Enabled       bool               `json:"enabled"`
+	KeyConfigured bool               `json:"key_configured"`
+	Configured    bool               `json:"configured"`
+	Verified      bool               `json:"verified"`
+	Scope         tunnel.AdminScope  `json:"scope"`
+	Access        tunnel.AdminAccess `json:"access"`
+	Tunnels       int                `json:"tunnels,omitempty"`
 }
 
 type managedTunnelCreateRequest struct {
@@ -206,7 +209,7 @@ func (api API) handleTunnelAdminKey(w http.ResponseWriter, r *http.Request) {
 		}
 		_, err = api.Config.Update(func(candidate config.Config) (config.Config, error) {
 			previous := candidate
-			tunnel.ApplyAdminAccess(&candidate.Tunnel, access)
+			tunnel.MarkAdminVerified(&candidate.Tunnel, access)
 			if err := api.persistConfig(candidate); err != nil {
 				return previous, err
 			}
@@ -232,26 +235,25 @@ func (api API) handleTunnelAdminKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api API) saveTunnelAdminKey(parent context.Context, request tunnelAdminKeyRequest) (int, error) {
-	count := 0
+	_ = parent
 	_, err := api.Config.Update(func(candidate config.Config) (config.Config, error) {
 		previous := candidate
 		key := strings.TrimSpace(request.AdminKey)
 		if key == "" {
-			key = strings.TrimSpace(candidate.Tunnel.AdminKey)
+			key = strings.TrimSpace(candidate.Tunnel.Admin.Key)
 		}
-		candidate.Tunnel.AdminKey = key
-		tunnel.ApplyAdminScope(&candidate.Tunnel, tunnel.AdminScope{OrganizationID: request.OrganizationID, WorkspaceID: request.WorkspaceID, TenantID: request.TenantID})
-		if !tunnel.AdminConfigured(candidate.Tunnel) {
-			return previous, errors.New("admin key and exactly one organization, workspace, or tenant scope are required")
+		candidate.Tunnel.Admin.Key = key
+		if key == "" {
+			return previous, errors.New("admin key is required")
 		}
-		ctx, cancel := context.WithTimeout(parent, 30*time.Second)
-		access, verifiedCount, verifyErr := tunnel.VerifyAdminKey(ctx, candidate.Tunnel)
-		count = verifiedCount
-		cancel()
-		if verifyErr != nil {
-			return previous, verifyErr
+		scope := tunnel.AdminScope{OrganizationID: request.OrganizationID, WorkspaceID: request.WorkspaceID, TenantID: request.TenantID}
+		if strings.TrimSpace(scope.OrganizationID) != "" || strings.TrimSpace(scope.WorkspaceID) != "" || strings.TrimSpace(scope.TenantID) != "" {
+			if err := tunnel.SetAdminScope(&candidate.Tunnel, scope); err != nil {
+				return previous, err
+			}
+		} else {
+			tunnel.InvalidateAdminVerification(&candidate.Tunnel)
 		}
-		tunnel.ApplyAdminAccess(&candidate.Tunnel, access)
 		if err := api.persistConfig(candidate); err != nil {
 			return previous, err
 		}
@@ -260,15 +262,15 @@ func (api API) saveTunnelAdminKey(parent context.Context, request tunnelAdminKey
 		}
 		return candidate, nil
 	})
-	return count, err
+	return 0, err
 }
 
 func (api API) removeTunnelAdminKey() error {
 	_, err := api.Config.Update(func(candidate config.Config) (config.Config, error) {
 		previous := candidate
-		candidate.Tunnel.AdminKey = ""
+		candidate.Tunnel.Admin.Key = ""
 		tunnel.ApplyAdminScope(&candidate.Tunnel, tunnel.AdminScope{})
-		tunnel.ApplyAdminAccess(&candidate.Tunnel, tunnel.AdminAccess{})
+		tunnel.InvalidateAdminVerification(&candidate.Tunnel)
 		if err := api.persistConfig(candidate); err != nil {
 			return previous, err
 		}
@@ -281,7 +283,7 @@ func (api API) removeTunnelAdminKey() error {
 }
 
 func tunnelAdminStatus(cfg tunnel.Config, count int) tunnelAdminKeyStatus {
-	return tunnelAdminKeyStatus{Configured: tunnel.AdminConfigured(cfg), Scope: tunnel.AdminScopeFromConfig(cfg), Access: tunnel.AdminAccessFromConfig(cfg), Tunnels: count}
+	return tunnelAdminKeyStatus{Enabled: tunnel.AdminEnabled(cfg), KeyConfigured: strings.TrimSpace(cfg.Admin.Key) != "", Configured: tunnel.AdminConfigured(cfg), Verified: tunnel.AdminVerified(cfg), Scope: tunnel.AdminScopeFromConfig(cfg), Access: tunnel.AdminAccessFromConfig(cfg), Tunnels: count}
 }
 
 func (api API) handleManagedTunnels(w http.ResponseWriter, r *http.Request) {
@@ -290,11 +292,15 @@ func (api API) handleManagedTunnels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := api.Config.Snapshot().Tunnel
-	if !tunnel.AdminConfigured(cfg) {
-		http.Error(w, "verified tunnel admin key is required", http.StatusBadRequest)
+	if !tunnel.AdminEnabled(cfg) {
+		http.Error(w, "tunnel admin management is disabled", http.StatusForbidden)
 		return
 	}
-	if !cfg.AdminManageAccess {
+	if !tunnel.AdminConfigured(cfg) {
+		http.Error(w, "configured tunnel admin key and scope are required", http.StatusBadRequest)
+		return
+	}
+	if !cfg.Admin.ManageAccess {
 		http.Error(w, "tunnel admin key does not have verified Manage access", http.StatusForbidden)
 		return
 	}
@@ -346,15 +352,19 @@ func (api API) handleManagedTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg := api.Config.Snapshot().Tunnel
+	if !tunnel.AdminEnabled(cfg) {
+		http.Error(w, "tunnel admin management is disabled", http.StatusForbidden)
+		return
+	}
 	if !tunnel.AdminConfigured(cfg) {
-		http.Error(w, "verified tunnel admin key is required", http.StatusBadRequest)
+		http.Error(w, "configured tunnel admin key and scope are required", http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	switch r.Method {
 	case http.MethodGet:
-		if !cfg.AdminReadAccess && !cfg.AdminManageAccess {
+		if !cfg.Admin.ReadAccess && !cfg.Admin.ManageAccess {
 			http.Error(w, "tunnel admin key does not have verified Read access", http.StatusForbidden)
 			return
 		}
@@ -369,7 +379,7 @@ func (api API) handleManagedTunnel(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, metadata)
 	case http.MethodPut:
-		if !cfg.AdminManageAccess {
+		if !cfg.Admin.ManageAccess {
 			http.Error(w, "tunnel admin key does not have verified Manage access", http.StatusForbidden)
 			return
 		}
@@ -389,7 +399,7 @@ func (api API) handleManagedTunnel(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, metadata)
 	case http.MethodDelete:
-		if !cfg.AdminManageAccess {
+		if !cfg.Admin.ManageAccess {
 			http.Error(w, "tunnel admin key does not have verified Manage access", http.StatusForbidden)
 			return
 		}
@@ -432,11 +442,15 @@ func (api API) handleManagedTunnelUse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	current := api.Config.Snapshot()
-	if !tunnel.AdminConfigured(current.Tunnel) {
-		http.Error(w, "verified tunnel admin key is required", http.StatusBadRequest)
+	if !tunnel.AdminEnabled(current.Tunnel) {
+		http.Error(w, "tunnel admin management is disabled", http.StatusForbidden)
 		return
 	}
-	if !current.Tunnel.AdminReadAccess && !current.Tunnel.AdminManageAccess {
+	if !tunnel.AdminConfigured(current.Tunnel) {
+		http.Error(w, "configured tunnel admin key and scope are required", http.StatusBadRequest)
+		return
+	}
+	if !current.Tunnel.Admin.ReadAccess && !current.Tunnel.Admin.ManageAccess {
 		http.Error(w, "tunnel admin key does not have verified Read access", http.StatusForbidden)
 		return
 	}

@@ -33,12 +33,14 @@ var virtualSettingSpecs = []FieldSpec{
 		Key: "auth.mcp_token", Label: "MCP token", Section: FieldSectionAccess, Kind: FieldString,
 		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "auth.mcp_token_configured",
 		Presentation: SettingPresentationConfiguredState, ApplicationOwner: "auth.credentials",
+		ValueRole:      SettingValueGenerated,
 		ScopedCommands: []string{"auth mcp create", "auth status"},
 	},
 	{
 		Key: "auth.admin_token", Label: "Admin token", Section: FieldSectionAccess, Kind: FieldString,
 		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "auth.admin_token_configured",
 		Presentation: SettingPresentationConfiguredState, ApplicationOwner: "auth.credentials",
+		ValueRole:      SettingValueGenerated,
 		ScopedCommands: []string{"auth admin create", "auth status"},
 	},
 	{
@@ -57,7 +59,12 @@ var virtualSettingSpecs = []FieldSpec{
 		ScopedCommands: []string{"tunnel status"},
 	},
 	{
-		Key: "tunnel.admin_key_configured", Label: "Tunnel admin key configured", Section: FieldSectionTunnel, Kind: FieldBool,
+		Key: "tunnel.admin.key_configured", Label: "Tunnel admin key configured", Section: FieldSectionTunnel, Kind: FieldBool,
+		Virtual: true, Derived: true, Readable: true, ApplicationOwner: "tunnel.credentials",
+		ScopedCommands: []string{"tunnel admin key status"},
+	},
+	{
+		Key: "tunnel.admin.configured", Label: "Tunnel admin configured", Section: FieldSectionTunnel, Kind: FieldBool,
 		Virtual: true, Derived: true, Readable: true, ApplicationOwner: "tunnel.credentials",
 		ScopedCommands: []string{"tunnel admin key status"},
 	},
@@ -233,20 +240,42 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.Presentation = SettingPresentationMaskedPreview
 		spec.ApplicationOwner = "tunnel.credentials"
 		spec.ScopedCommands = []string{"tunnel configure", "tunnel use"}
-	case "tunnel.admin_key":
+	case "tunnel.admin.key":
 		spec.Kind = FieldString
 		spec.Readable, spec.Writable, spec.Secret, spec.Clearable, spec.Verifiable, spec.DefaultReset = false, true, true, true, true, false
 		spec.ReadKey, spec.WriteKey = "", spec.Key
-		spec.ConfiguredStateKey = "tunnel.admin_key_configured"
+		spec.ConfiguredStateKey = "tunnel.admin.key_configured"
 		spec.Presentation = SettingPresentationMaskedPreview
 		spec.ApplicationOwner = "tunnel.credentials"
 		spec.ScopedCommands = []string{"tunnel admin key set", "tunnel admin key remove", "tunnel admin key verify", "tunnel admin key status"}
-	case "tunnel.admin_organization_id", "tunnel.admin_workspace_id", "tunnel.admin_tenant_id":
+	case "tunnel.admin.enabled":
+		spec.ApplicationOwner = "tunnel.credentials"
+		spec.ScopedExemption = "generic setting mutation is canonical until a dedicated tunnel admin toggle facade is available"
+	case "tunnel.admin.organization_id", "tunnel.admin.workspace_id", "tunnel.admin.tenant_id":
+		spec.Derived = false
+		spec.Kind = FieldString
+		spec.Readable, spec.Writable, spec.DefaultReset = true, true, false
+		spec.ReadKey = spec.Key
+		spec.WriteKey = spec.Key
+		spec.ApplicationOwner = "tunnel.credentials"
+		spec.ScopedCommands = []string{"tunnel admin key set", "tunnel admin key status", "tunnel admin key verify"}
+	case "tunnel.admin.verified", "tunnel.admin.read_access", "tunnel.admin.manage_access":
 		spec.Derived = true
 		spec.Readable, spec.Writable, spec.DefaultReset = true, false, false
-		spec.ReadKey = spec.Key
+		spec.ReadKey, spec.WriteKey = spec.Key, ""
 		spec.ApplicationOwner = "tunnel.credentials"
 		spec.ScopedCommands = []string{"tunnel admin key status", "tunnel admin key verify"}
+	}
+
+	if spec.ValueRole == "" {
+		switch {
+		case spec.InternalOnly:
+			spec.ValueRole = SettingValueInternal
+		case spec.Derived:
+			spec.ValueRole = SettingValueDerived
+		default:
+			spec.ValueRole = SettingValueConfigured
+		}
 	}
 
 	return spec

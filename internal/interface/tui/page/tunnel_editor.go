@@ -87,9 +87,9 @@ func (page *TunnelPage) submitEditor() tea.Cmd {
 			return nil
 		}
 		input := adminInputFromForm(page.adminForm)
-		return page.startOperation(page.command, "", "Verifying tunnel admin key", func(ctx context.Context) tunnelOperationMsg {
-			count, scope, err := application.SetTunnelAdminKey(ctx, input)
-			return tunnelOperationMsg{command: TunnelAdminKeySet, count: count, scope: scope, err: err}
+		return page.startOperation(page.command, "", "Saving tunnel admin key", func(ctx context.Context) tunnelOperationMsg {
+			scope, err := application.SetTunnelAdminKey(ctx, input)
+			return tunnelOperationMsg{command: TunnelAdminKeySet, scope: scope, err: err}
 		})
 	default:
 		page.editor.SetFeedback("", fmt.Errorf("unsupported runtime tunnel editor action: %s", page.command))

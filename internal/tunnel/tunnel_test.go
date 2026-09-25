@@ -562,15 +562,15 @@ func TestSyncManagementConfigDoesNotRestartRunningTunnel(t *testing.T) {
 	}
 	defer client.Stop()
 	next := cfg
-	next.AdminKey = "admin-key"
-	next.AdminWorkspaceID = "ws_admin"
+	next.Admin.Key = "admin-key"
+	next.Admin.WorkspaceID = "ws_admin"
 	if err := client.SyncManagementConfig(next); err != nil {
 		t.Fatal(err)
 	}
 	fake.mu.Lock()
 	stopped := fake.stopped
 	fake.mu.Unlock()
-	if stopped || !client.Status().Running || client.Config().AdminKey != "admin-key" || !client.Status().AdminKeyConfigured {
+	if stopped || !client.Status().Running || client.Config().Admin.Key != "admin-key" || !client.Status().Admin.Configured {
 		t.Fatalf("management sync restarted or failed to update tunnel: stopped=%t status=%+v config=%#v", stopped, client.Status(), client.Config())
 	}
 }

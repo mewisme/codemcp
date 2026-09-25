@@ -79,8 +79,8 @@ func TestFieldReadOnlyAndSensitiveValuesNeverExposeSecrets(t *testing.T) {
 	cfg.Auth.MCPTokenHash = "mcp-secret"
 	cfg.Auth.AdminTokenHash = "admin-secret"
 	cfg.Tunnel.APIKey = "runtime-secret"
-	cfg.Tunnel.AdminKey = "admin-tunnel-secret"
-	for _, key := range []string{"auth.mcp_token_hash", "auth.admin_token_hash", "tunnel.api_key", "tunnel.admin_key"} {
+	cfg.Tunnel.Admin.Key = "admin-tunnel-secret"
+	for _, key := range []string{"auth.mcp_token_hash", "auth.admin_token_hash", "tunnel.api_key", "tunnel.admin.key"} {
 		spec, ok := FieldByKey(key)
 		if !ok || !spec.Sensitive {
 			t.Fatalf("spec=%#v ok=%t", spec, ok)

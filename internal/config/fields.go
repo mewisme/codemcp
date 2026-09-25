@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 const RedactedValue = "<redacted>"
@@ -21,6 +22,15 @@ const (
 	FieldList     FieldKind = "list"
 	FieldEnum     FieldKind = "enum"
 	FieldReadOnly FieldKind = "readonly"
+)
+
+type SettingValueRole string
+
+const (
+	SettingValueConfigured SettingValueRole = "configured"
+	SettingValueGenerated  SettingValueRole = "generated"
+	SettingValueDerived    SettingValueRole = "derived"
+	SettingValueInternal   SettingValueRole = "internal"
 )
 
 type FieldSpec struct {
@@ -56,6 +66,7 @@ type FieldSpec struct {
 	InternalOnly       bool
 	Virtual            bool
 	Selector           *FieldSelectorSpec
+	ValueRole          SettingValueRole
 }
 
 type FieldValueSpec struct {
@@ -108,12 +119,16 @@ var fieldSpecs = []FieldSpec{
 	{Key: "tunnel.enabled", Label: "Tunnel", Section: FieldSectionTunnel, Description: "controls whether the OpenAI Secure MCP Tunnel transport is enabled", Details: "An enabled tunnel requires both tunnel.id and a configured runtime API key. The tunnel can satisfy the requirement that at least one MCP transport remains enabled when the local MCP HTTP server is disabled.", Kind: FieldBool, Editable: true, Related: []string{"tunnel.id", "tunnel.api_key", "server.enabled"}},
 	{Key: "tunnel.id", Label: "Tunnel ID", Section: FieldSectionTunnel, Description: "identifies the OpenAI Secure MCP Tunnel used by this runtime", Details: "The ID is required when the tunnel transport is enabled and is used together with the runtime API key to connect to the configured tunnel.", Kind: FieldString, Editable: true, Related: []string{"tunnel.enabled", "tunnel.api_key"}},
 	{Key: "tunnel.api_key", Label: "Runtime API key", Section: FieldSectionTunnel, Description: "stores the managed runtime credential used to connect to the Secure MCP Tunnel", Details: "The raw runtime key is stored through the secret workflow and is redacted from config views. A configured runtime key is required when the tunnel transport is enabled.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage the runtime key from the Tunnel page.", Related: []string{"tunnel.enabled", "tunnel.id"}},
-	{Key: "tunnel.admin_key", Label: "Admin key", Section: FieldSectionTunnel, Description: "stores the managed admin credential used for tunnel control-plane operations", Details: "The admin key is separate from the runtime tunnel key. It is used for management operations such as listing, creating, updating, or deleting managed tunnels and is redacted from config views.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage and verify the admin key from the Tunnel page.", Related: []string{"tunnel.admin_organization_id", "tunnel.admin_workspace_id", "tunnel.admin_tenant_id"}},
-	{Key: "tunnel.admin_organization_id", Label: "Admin organization scope", Section: FieldSectionTunnel, Description: "records the verified organization scope for the tunnel admin key", Details: "This read-only value is populated from admin-key verification and constrains tunnel management operations to the verified organization scope when present.", Kind: FieldReadOnly, Guidance: "This scope is set only after admin-key verification.", Related: []string{"tunnel.admin_key", "tunnel.admin_workspace_id", "tunnel.admin_tenant_id"}},
-	{Key: "tunnel.admin_workspace_id", Label: "Admin workspace scope", Section: FieldSectionTunnel, Description: "records the verified workspace scope for the tunnel admin key", Details: "This read-only value is populated from admin-key verification and constrains tunnel management operations to the verified workspace scope when present.", Kind: FieldReadOnly, Guidance: "This scope is set only after admin-key verification.", Related: []string{"tunnel.admin_key", "tunnel.admin_organization_id", "tunnel.admin_tenant_id"}},
-	{Key: "tunnel.admin_tenant_id", Label: "Admin tenant scope", Section: FieldSectionTunnel, Description: "records the verified tenant scope for the tunnel admin key", Details: "This read-only value is populated from admin-key verification and constrains tunnel management operations to the verified tenant scope when present.", Kind: FieldReadOnly, Guidance: "This scope is set only after admin-key verification.", Related: []string{"tunnel.admin_key", "tunnel.admin_organization_id", "tunnel.admin_workspace_id"}},
+	{Key: "tunnel.admin.enabled", Label: "Tunnel administration", Section: FieldSectionTunnel, Description: "controls whether configured tunnel admin credentials may be used for management operations", Details: "Disabling tunnel administration preserves the configured admin key and scope while blocking normal managed-tunnel operations. Explicit verification and diagnostics remain available.", Kind: FieldBool, Editable: true, Related: []string{"tunnel.admin.key", "tunnel.admin.verified"}},
+	{Key: "tunnel.admin.key", Label: "Admin key", Section: FieldSectionTunnel, Description: "stores the configured admin credential used for tunnel control-plane operations", Details: "The admin key is separate from the runtime tunnel key. Saving it does not contact the control plane; verification is an explicit operation. The raw key is stored in the secret store and redacted from normal config views.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Configure the key and exactly one admin scope, then verify explicitly.", Related: []string{"tunnel.admin.organization_id", "tunnel.admin.workspace_id", "tunnel.admin.tenant_id", "tunnel.admin.verified"}},
+	{Key: "tunnel.admin.organization_id", Label: "Admin organization scope", Section: FieldSectionTunnel, Description: "configures the organization scope for tunnel administration", Details: "Exactly one organization, workspace, or tenant scope is active at a time. Setting this value clears the configured workspace and tenant scopes and invalidates any previous verification result.", Kind: FieldString, Editable: true, Guidance: "Configure exactly one admin scope before verification.", Related: []string{"tunnel.admin.key", "tunnel.admin.workspace_id", "tunnel.admin.tenant_id", "tunnel.admin.verified"}},
+	{Key: "tunnel.admin.workspace_id", Label: "Admin workspace scope", Section: FieldSectionTunnel, Description: "configures the workspace scope for tunnel administration", Details: "Exactly one organization, workspace, or tenant scope is active at a time. Setting this value clears the configured organization and tenant scopes and invalidates any previous verification result.", Kind: FieldString, Editable: true, Guidance: "Configure exactly one admin scope before verification.", Related: []string{"tunnel.admin.key", "tunnel.admin.organization_id", "tunnel.admin.tenant_id", "tunnel.admin.verified"}},
+	{Key: "tunnel.admin.tenant_id", Label: "Admin tenant scope", Section: FieldSectionTunnel, Description: "configures the tenant scope for tunnel administration", Details: "Exactly one organization, workspace, or tenant scope is active at a time. Setting this value clears the configured organization and workspace scopes and invalidates any previous verification result.", Kind: FieldString, Editable: true, Guidance: "Configure exactly one admin scope before verification.", Related: []string{"tunnel.admin.key", "tunnel.admin.organization_id", "tunnel.admin.workspace_id", "tunnel.admin.verified"}},
+	{Key: "tunnel.admin.verified", Label: "Tunnel admin verified", Section: FieldSectionTunnel, Description: "reports whether the configured admin key and scope were explicitly verified", Details: "This derived state is set only by the explicit verification operation and is invalidated whenever the configured admin key or scope changes.", Kind: FieldBool},
+	{Key: "tunnel.admin.read_access", Label: "Tunnel admin Read access", Section: FieldSectionTunnel, Description: "reports verified tunnel admin read access", Details: "This read-only derived state reflects the last successful explicit verification and is cleared when the configured key or scope changes.", Kind: FieldBool},
+	{Key: "tunnel.admin.manage_access", Label: "Tunnel admin Manage access", Section: FieldSectionTunnel, Description: "reports verified tunnel admin manage access", Details: "This read-only derived state reflects the last successful explicit verification and is cleared when the configured key or scope changes.", Kind: FieldBool},
 	{Key: "tunnel.control_plane_base_url", Label: "Control-plane URL", Section: FieldSectionTunnel, Description: "overrides the OpenAI tunnel control-plane base URL", Details: "When empty, the tunnel client uses its default control-plane endpoint. A custom value must be an absolute HTTP or HTTPS URL with a host.", Kind: FieldString, Editable: true, Guidance: "Leave empty unless a different control-plane endpoint is explicitly required.", Related: []string{"tunnel.enabled", "tunnel.id"}},
-	{Key: "tunnel.organization_id", Label: "Organization ID", Section: FieldSectionTunnel, Description: "sets the OpenAI organization context associated with tunnel runtime operations", Details: "This optional organization identifier is carried in tunnel runtime configuration and is distinct from the verified admin-key organization scope.", Kind: FieldString, Editable: true, Related: []string{"tunnel.admin_organization_id", "tunnel.enabled"}},
+	{Key: "tunnel.organization_id", Label: "Organization ID", Section: FieldSectionTunnel, Description: "sets the OpenAI organization context associated with tunnel runtime operations", Details: "This optional organization identifier is carried in tunnel runtime configuration and is distinct from the verified admin-key organization scope.", Kind: FieldString, Editable: true, Related: []string{"tunnel.admin.organization_id", "tunnel.enabled"}},
 }
 
 func Fields() []FieldSpec {
@@ -172,7 +187,12 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Server.Expose.Mode = mode
 		cfg.Server.Expose = NormalizeExposure(cfg.Server.Expose)
 	case "server.expose.interfaces":
-		cfg.Server.Expose = NormalizeExposure(ExposureConfig{Mode: ExposureInterfaces, Interfaces: splitFieldList(raw)})
+		interfaces := splitFieldList(raw)
+		if len(interfaces) == 0 {
+			cfg.Server.Expose = ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}
+		} else {
+			cfg.Server.Expose = NormalizeExposure(ExposureConfig{Mode: ExposureInterfaces, Interfaces: interfaces})
+		}
 	case "server.port":
 		value, err := parseIntField(raw, key)
 		if err != nil {
@@ -277,8 +297,20 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Tunnel.ID = raw
 	case "tunnel.api_key":
 		cfg.Tunnel.APIKey = raw
-	case "tunnel.admin_key", "tunnel.admin_organization_id", "tunnel.admin_workspace_id", "tunnel.admin_tenant_id":
-		return errors.New("tunnel admin credentials cannot be set through config; use cm tunnel admin key")
+	case "tunnel.admin.enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		tunnel.SetAdminEnabled(&cfg.Tunnel, value)
+	case "tunnel.admin.key":
+		return errors.New("tunnel admin key must be set through the canonical secret setting service")
+	case "tunnel.admin.organization_id":
+		return tunnel.SetAdminScope(&cfg.Tunnel, tunnel.AdminScope{OrganizationID: strings.TrimSpace(raw)})
+	case "tunnel.admin.workspace_id":
+		return tunnel.SetAdminScope(&cfg.Tunnel, tunnel.AdminScope{WorkspaceID: strings.TrimSpace(raw)})
+	case "tunnel.admin.tenant_id":
+		return tunnel.SetAdminScope(&cfg.Tunnel, tunnel.AdminScope{TenantID: strings.TrimSpace(raw)})
 	case "tunnel.control_plane_base_url":
 		cfg.Tunnel.ControlPlaneBaseURL = raw
 	case "tunnel.organization_id":
@@ -367,14 +399,22 @@ func RawValue(cfg Config, key string) (string, error) {
 		return cfg.Tunnel.ID, nil
 	case "tunnel.api_key":
 		return cfg.Tunnel.APIKey, nil
-	case "tunnel.admin_key":
-		return cfg.Tunnel.AdminKey, nil
-	case "tunnel.admin_organization_id":
-		return cfg.Tunnel.AdminOrganizationID, nil
-	case "tunnel.admin_workspace_id":
-		return cfg.Tunnel.AdminWorkspaceID, nil
-	case "tunnel.admin_tenant_id":
-		return cfg.Tunnel.AdminTenantID, nil
+	case "tunnel.admin.enabled":
+		return strconv.FormatBool(tunnel.AdminEnabled(cfg.Tunnel)), nil
+	case "tunnel.admin.key":
+		return cfg.Tunnel.Admin.Key, nil
+	case "tunnel.admin.organization_id":
+		return cfg.Tunnel.Admin.OrganizationID, nil
+	case "tunnel.admin.workspace_id":
+		return cfg.Tunnel.Admin.WorkspaceID, nil
+	case "tunnel.admin.tenant_id":
+		return cfg.Tunnel.Admin.TenantID, nil
+	case "tunnel.admin.verified":
+		return strconv.FormatBool(tunnel.AdminVerified(cfg.Tunnel)), nil
+	case "tunnel.admin.read_access":
+		return strconv.FormatBool(cfg.Tunnel.Admin.ReadAccess), nil
+	case "tunnel.admin.manage_access":
+		return strconv.FormatBool(cfg.Tunnel.Admin.ManageAccess), nil
 	case "tunnel.control_plane_base_url":
 		return cfg.Tunnel.ControlPlaneBaseURL, nil
 	case "tunnel.organization_id":
@@ -455,7 +495,7 @@ func RedactedTree(cfg Config) (map[string]any, error) {
 	setTreeValue(tree, "auth.mcp_token_hash", RedactedValue)
 	setTreeValue(tree, "auth.admin_token_hash", RedactedValue)
 	setTreeValue(tree, "tunnel.api_key", RedactedValue)
-	setTreeValue(tree, "tunnel.admin_key", RedactedValue)
+	setTreeValue(tree, "tunnel.admin.key", RedactedValue)
 	return tree, nil
 }
 

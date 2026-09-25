@@ -19,15 +19,10 @@ var startupDeprecatedConfigPaths = [][]string{
 	{"tunnel", "origin"},
 	{"tunnel", "public_url"},
 	{"tunnel", "api_key"},
-	{"tunnel", "admin_key"},
-	{"tunnel", "admin_organization_id"},
-	{"tunnel", "admin_workspace_id"},
-	{"tunnel", "admin_tenant_id"},
 }
 
 var startupDeprecatedTunnelPaths = [][]string{
 	{"api_key"},
-	{"admin_key"},
 }
 
 // CanonicalizeStartup prunes only explicitly retired configuration keys after

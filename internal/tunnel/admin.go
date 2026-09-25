@@ -23,16 +23,43 @@ type UpdateRequest struct {
 }
 
 func AdminScopeFromConfig(cfg Config) AdminScope {
-	return AdminScope{OrganizationID: strings.TrimSpace(cfg.AdminOrganizationID), WorkspaceID: strings.TrimSpace(cfg.AdminWorkspaceID), TenantID: strings.TrimSpace(cfg.AdminTenantID)}
+	return AdminScope{OrganizationID: strings.TrimSpace(cfg.Admin.OrganizationID), WorkspaceID: strings.TrimSpace(cfg.Admin.WorkspaceID), TenantID: strings.TrimSpace(cfg.Admin.TenantID)}
 }
 
 func ApplyAdminScope(cfg *Config, scope AdminScope) {
 	if cfg == nil {
 		return
 	}
-	cfg.AdminOrganizationID = strings.TrimSpace(scope.OrganizationID)
-	cfg.AdminWorkspaceID = strings.TrimSpace(scope.WorkspaceID)
-	cfg.AdminTenantID = strings.TrimSpace(scope.TenantID)
+	cfg.Admin.OrganizationID = strings.TrimSpace(scope.OrganizationID)
+	cfg.Admin.WorkspaceID = strings.TrimSpace(scope.WorkspaceID)
+	cfg.Admin.TenantID = strings.TrimSpace(scope.TenantID)
+}
+
+func AdminEnabled(cfg Config) bool {
+	if !cfg.Admin.EnabledSet {
+		return true
+	}
+	return cfg.Admin.Enabled
+}
+
+func SetAdminEnabled(cfg *Config, enabled bool) {
+	if cfg == nil {
+		return
+	}
+	cfg.Admin.Enabled = enabled
+	cfg.Admin.EnabledSet = true
+}
+
+func SetAdminScope(cfg *Config, scope AdminScope) error {
+	if cfg == nil {
+		return errors.New("tunnel admin configuration is required")
+	}
+	if err := ValidateAdminScope(scope); err != nil {
+		return err
+	}
+	ApplyAdminScope(cfg, scope)
+	InvalidateAdminVerification(cfg)
+	return nil
 }
 
 func ValidateAdminScope(scope AdminScope) error {
@@ -53,19 +80,55 @@ func ValidateAdminScope(scope AdminScope) error {
 }
 
 func AdminConfigured(cfg Config) bool {
-	return strings.TrimSpace(cfg.AdminKey) != "" && ValidateAdminScope(AdminScopeFromConfig(cfg)) == nil
+	return strings.TrimSpace(cfg.Admin.Key) != "" && ValidateAdminScope(AdminScopeFromConfig(cfg)) == nil
+}
+
+func AdminVerified(cfg Config) bool {
+	return cfg.Admin.Verified || cfg.Admin.ReadAccess || cfg.Admin.ManageAccess
 }
 
 func AdminAccessFromConfig(cfg Config) AdminAccess {
-	return AdminAccess{Read: cfg.AdminReadAccess, Manage: cfg.AdminManageAccess}
+	return AdminAccess{Read: cfg.Admin.ReadAccess, Manage: cfg.Admin.ManageAccess}
+}
+
+func AdminStateFromConfig(cfg Config) AdminState {
+	scope := AdminScopeFromConfig(cfg)
+	return AdminState{
+		Enabled:        AdminEnabled(cfg),
+		KeyConfigured:  strings.TrimSpace(cfg.Admin.Key) != "",
+		Configured:     AdminConfigured(cfg),
+		OrganizationID: scope.OrganizationID,
+		WorkspaceID:    scope.WorkspaceID,
+		TenantID:       scope.TenantID,
+		Verified:       AdminVerified(cfg),
+		ReadAccess:     cfg.Admin.ReadAccess,
+		ManageAccess:   cfg.Admin.ManageAccess,
+	}
 }
 
 func ApplyAdminAccess(cfg *Config, access AdminAccess) {
 	if cfg == nil {
 		return
 	}
-	cfg.AdminReadAccess = access.Read
-	cfg.AdminManageAccess = access.Manage
+	cfg.Admin.ReadAccess = access.Read
+	cfg.Admin.ManageAccess = access.Manage
+}
+
+func MarkAdminVerified(cfg *Config, access AdminAccess) {
+	if cfg == nil {
+		return
+	}
+	cfg.Admin.Verified = true
+	ApplyAdminAccess(cfg, access)
+}
+
+func InvalidateAdminVerification(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	cfg.Admin.Verified = false
+	cfg.Admin.ReadAccess = false
+	cfg.Admin.ManageAccess = false
 }
 
 func VerifyAdminKey(ctx context.Context, cfg Config) (AdminAccess, int, error) {
@@ -85,7 +148,7 @@ func VerifyAdminKey(ctx context.Context, cfg Config) (AdminAccess, int, error) {
 		return AdminAccess{}, 0, err
 	}
 	tracepkg.Emit(ctx, "TUNNEL", "tunnel.admin.verify.manage-denied", "Tunnel admin Manage access denied; probing Read access", append(adminRequestErrorTraceFields(err), tracepkg.Bool("manage_access", false))...)
-	client, clientErr := adminTunnelClient(cfg, cfg.AdminKey)
+	client, clientErr := adminTunnelClient(cfg, cfg.Admin.Key)
 	if clientErr != nil {
 		span.FailMessage("Tunnel admin Read access probe setup failed", clientErr)
 		return AdminAccess{}, 0, clientErr
@@ -114,7 +177,7 @@ func ListManaged(ctx context.Context, cfg Config, scope AdminScope) ([]Metadata,
 		ctx = context.Background()
 	}
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin.list", "Listing managed tunnels", append(adminScopeTraceFields(scope), tracepkg.String("method", http.MethodGet), tracepkg.URL("url", adminAPIURL(cfg, "/v1/tunnels", adminScopeQuery(scope))))...)
-	if strings.TrimSpace(cfg.AdminKey) == "" {
+	if strings.TrimSpace(cfg.Admin.Key) == "" {
 		err := errors.New("OpenAI tunnel admin key is not configured")
 		span.FailMessage("Managed tunnel listing failed", err)
 		return nil, err
@@ -123,7 +186,7 @@ func ListManaged(ctx context.Context, cfg Config, scope AdminScope) ([]Metadata,
 		span.FailMessage("Managed tunnel listing scope invalid", err)
 		return nil, err
 	}
-	client, err := adminTunnelClient(cfg, cfg.AdminKey)
+	client, err := adminTunnelClient(cfg, cfg.Admin.Key)
 	if err != nil {
 		span.FailMessage("Managed tunnel client setup failed", err)
 		return nil, err
@@ -147,12 +210,12 @@ func GetManaged(ctx context.Context, cfg Config, id string) (Metadata, error) {
 	}
 	id = strings.TrimSpace(id)
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin.get", "Fetching managed tunnel", tracepkg.String("tunnel_id", id), tracepkg.String("method", http.MethodGet), tracepkg.URL("url", adminAPIURL(cfg, "/v1/tunnels/"+url.PathEscape(id), nil)))
-	if strings.TrimSpace(cfg.AdminKey) == "" {
+	if strings.TrimSpace(cfg.Admin.Key) == "" {
 		err := errors.New("OpenAI tunnel admin key is not configured")
 		span.FailMessage("Managed tunnel fetch failed", err)
 		return Metadata{}, err
 	}
-	client, err := adminTunnelClient(cfg, cfg.AdminKey)
+	client, err := adminTunnelClient(cfg, cfg.Admin.Key)
 	if err != nil {
 		span.FailMessage("Managed tunnel client setup failed", err)
 		return Metadata{}, err
@@ -172,7 +235,7 @@ func CreateManaged(ctx context.Context, cfg Config, req CreateRequest) (Metadata
 		ctx = context.Background()
 	}
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin.create", "Creating managed tunnel", tracepkg.String("method", http.MethodPost), tracepkg.URL("url", adminAPIURL(cfg, "/v1/tunnels", nil)), tracepkg.Int("organization_count", len(req.OrganizationIDs)), tracepkg.Int("workspace_count", len(req.WorkspaceIDs)), tracepkg.Int("tenant_count", len(req.TenantIDs)))
-	metadata, err := createWithAdminKey(ctx, cfg, cfg.AdminKey, req)
+	metadata, err := createWithAdminKey(ctx, cfg, cfg.Admin.Key, req)
 	if err != nil {
 		span.FailMessage("Managed tunnel creation failed", safeAdminTraceError(err), adminRequestErrorTraceFields(err)...)
 		return Metadata{}, err
@@ -187,7 +250,7 @@ func UpdateManaged(ctx context.Context, cfg Config, id string, req UpdateRequest
 	}
 	id = strings.TrimSpace(id)
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin.update", "Updating managed tunnel", tracepkg.String("tunnel_id", id), tracepkg.String("method", http.MethodPost), tracepkg.URL("url", adminAPIURL(cfg, "/v1/tunnels/"+url.PathEscape(id), nil)), tracepkg.Any("changed_fields", managedTunnelUpdateFields(req)))
-	if strings.TrimSpace(cfg.AdminKey) == "" {
+	if strings.TrimSpace(cfg.Admin.Key) == "" {
 		err := errors.New("OpenAI tunnel admin key is not configured")
 		span.FailMessage("Managed tunnel update failed", err)
 		return Metadata{}, err
@@ -197,7 +260,7 @@ func UpdateManaged(ctx context.Context, cfg Config, id string, req UpdateRequest
 		span.FailMessage("Managed tunnel update validation failed", err)
 		return Metadata{}, err
 	}
-	client, err := adminTunnelClient(cfg, cfg.AdminKey)
+	client, err := adminTunnelClient(cfg, cfg.Admin.Key)
 	if err != nil {
 		span.FailMessage("Managed tunnel client setup failed", err)
 		return Metadata{}, err
@@ -220,12 +283,12 @@ func DeleteManaged(ctx context.Context, cfg Config, id string) (Metadata, error)
 	}
 	id = strings.TrimSpace(id)
 	span := tracepkg.Start(ctx, "TUNNEL", "tunnel.admin.delete", "Deleting managed tunnel", tracepkg.String("tunnel_id", id), tracepkg.String("method", http.MethodDelete), tracepkg.URL("url", adminAPIURL(cfg, "/v1/tunnels/"+url.PathEscape(id), nil)))
-	if strings.TrimSpace(cfg.AdminKey) == "" {
+	if strings.TrimSpace(cfg.Admin.Key) == "" {
 		err := errors.New("OpenAI tunnel admin key is not configured")
 		span.FailMessage("Managed tunnel deletion failed", err)
 		return Metadata{}, err
 	}
-	client, err := adminTunnelClient(cfg, cfg.AdminKey)
+	client, err := adminTunnelClient(cfg, cfg.Admin.Key)
 	if err != nil {
 		span.FailMessage("Managed tunnel client setup failed", err)
 		return Metadata{}, err

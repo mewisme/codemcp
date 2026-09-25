@@ -254,15 +254,42 @@ func (s *SettingService) SetWithOptions(ctx context.Context, key, raw string, op
 			return SettingResult{}, err
 		}
 		return s.Present(ctx, spec.Key)
-	case "tunnel.admin_key":
+	case "tunnel.admin.key":
 		source := strings.TrimSpace(options.SecretSource)
 		if source == "" {
 			source = "setting"
 		}
-		if _, _, err := SetTunnelAdminKey(ctx, TunnelAdminKeyInput{Key: raw, KeySource: source, Scope: options.TunnelAdminScope}); err != nil {
+		if _, err := SetTunnelAdminKey(ctx, TunnelAdminKeyInput{Key: raw, KeySource: source, Scope: options.TunnelAdminScope}); err != nil {
 			return SettingResult{}, err
 		}
 		return s.Present(ctx, spec.Key)
+	case "tunnel.admin.enabled":
+		enabled, err := parseSettingBool(raw, spec.Key)
+		if err != nil {
+			return SettingResult{}, err
+		}
+		if _, err := SetTunnelAdminEnabled(ctx, enabled); err != nil {
+			return SettingResult{}, err
+		}
+		return s.Read(ctx, spec.Key)
+	case "tunnel.admin.organization_id", "tunnel.admin.workspace_id", "tunnel.admin.tenant_id":
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			return SettingResult{}, fmt.Errorf("setting %q requires a non-empty scope id", spec.Key)
+		}
+		scope := tunnel.AdminScope{}
+		switch spec.Key {
+		case "tunnel.admin.organization_id":
+			scope.OrganizationID = value
+		case "tunnel.admin.workspace_id":
+			scope.WorkspaceID = value
+		case "tunnel.admin.tenant_id":
+			scope.TenantID = value
+		}
+		if _, err := SetTunnelAdminScope(ctx, scope); err != nil {
+			return SettingResult{}, err
+		}
+		return s.Read(ctx, spec.Key)
 	}
 
 	mutation, err := SetConfigField(ctx, spec.Key, raw)
@@ -306,7 +333,7 @@ func (s *SettingService) Unset(ctx context.Context, key string) (result SettingR
 				return SettingResult{}, err
 			}
 			return s.Present(ctx, spec.Key)
-		case "tunnel.admin_key":
+		case "tunnel.admin.key":
 			if err := RemoveTunnelAdminKey(ctx); err != nil {
 				return SettingResult{}, err
 			}
@@ -376,11 +403,11 @@ func (s *SettingService) Reveal(ctx context.Context, key string) (result Setting
 			return SettingResult{}, fmt.Errorf("setting %q is not configured", key)
 		}
 		return SettingResult{Spec: spec, Value: cfg.Tunnel.APIKey, Configured: boolPointer(true)}, nil
-	case "tunnel.admin_key":
-		if strings.TrimSpace(cfg.Tunnel.AdminKey) == "" {
+	case "tunnel.admin.key":
+		if strings.TrimSpace(cfg.Tunnel.Admin.Key) == "" {
 			return SettingResult{}, fmt.Errorf("setting %q is not configured", key)
 		}
-		return SettingResult{Spec: spec, Value: cfg.Tunnel.AdminKey, Configured: boolPointer(true)}, nil
+		return SettingResult{Spec: spec, Value: cfg.Tunnel.Admin.Key, Configured: boolPointer(true)}, nil
 	default:
 		return SettingResult{}, fmt.Errorf("setting %q is not revealable", key)
 	}
@@ -395,7 +422,7 @@ func (s *SettingService) Verify(ctx context.Context, key string) (result Setting
 	if err != nil {
 		return SettingResult{}, err
 	}
-	if selector != nil || !spec.Verifiable || spec.Key != "tunnel.admin_key" {
+	if selector != nil || !spec.Verifiable || spec.Key != "tunnel.admin.key" {
 		return SettingResult{}, fmt.Errorf("setting %q is not verifiable", key)
 	}
 	if _, _, err := VerifyTunnelAdminKey(ctx); err != nil {
@@ -431,8 +458,8 @@ func (s *SettingService) presentSecret(ctx context.Context, spec config.FieldSpe
 		switch spec.Key {
 		case "tunnel.api_key":
 			raw = cfg.Tunnel.APIKey
-		case "tunnel.admin_key":
-			raw = cfg.Tunnel.AdminKey
+		case "tunnel.admin.key":
+			raw = cfg.Tunnel.Admin.Key
 		default:
 			return SettingResult{Value: "********", Configured: boolPointer(true)}, nil
 		}
@@ -494,9 +521,21 @@ func readConfiguredSetting(ctx context.Context, key string) (bool, bool, error) 
 			return false, true, err
 		}
 		return strings.TrimSpace(dashboard.Config.APIKey) != "", true, nil
-	case "tunnel.admin_key_configured":
+	case "tunnel.admin.key_configured":
+		cfg, err := LoadConfig(ctx)
+		return strings.TrimSpace(cfg.Tunnel.Admin.Key) != "", true, err
+	case "tunnel.admin.configured":
 		status, err := TunnelAdminKeyStatusContext(ctx)
 		return status.Configured, true, err
+	case "tunnel.admin.verified":
+		status, err := TunnelAdminKeyStatusContext(ctx)
+		return status.Verified, true, err
+	case "tunnel.admin.read_access":
+		status, err := TunnelAdminKeyStatusContext(ctx)
+		return status.Access.Read, true, err
+	case "tunnel.admin.manage_access":
+		status, err := TunnelAdminKeyStatusContext(ctx)
+		return status.Access.Manage, true, err
 	default:
 		return false, false, nil
 	}

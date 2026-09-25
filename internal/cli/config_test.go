@@ -120,12 +120,25 @@ func TestConfigSetSecretValueDoesNotLeakIntoPresentationOrDiagnostics(t *testing
 	}
 }
 
-func TestTunnelAdminCredentialsCannotBypassVerificationThroughConfigSet(t *testing.T) {
+func TestTunnelAdminConfiguredInputsDoNotBypassSecretOwnershipOrRetainVerification(t *testing.T) {
 	cfg := config.Default()
-	for _, key := range []string{"tunnel.admin_key", "tunnel.admin_organization_id", "tunnel.admin_workspace_id", "tunnel.admin_tenant_id"} {
-		if err := setConfigValue(&cfg, key, "value"); err == nil || !strings.Contains(err.Error(), "tunnel admin key") {
-			t.Fatalf("%s error = %v", key, err)
-		}
+	if err := setConfigValue(&cfg, "tunnel.admin.key", "secret"); err == nil || !strings.Contains(err.Error(), "canonical secret setting service") {
+		t.Fatalf("admin key low-level set error = %v", err)
+	}
+	if err := setConfigValue(&cfg, "tunnel.admin.organization_id", "org_one"); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Tunnel.Admin.Verified = true
+	cfg.Tunnel.Admin.ReadAccess = true
+	cfg.Tunnel.Admin.ManageAccess = true
+	if err := setConfigValue(&cfg, "tunnel.admin.workspace_id", "ws_one"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Tunnel.Admin.OrganizationID != "" || cfg.Tunnel.Admin.WorkspaceID != "ws_one" || cfg.Tunnel.Admin.TenantID != "" {
+		t.Fatalf("admin scope is not exclusive: %#v", cfg.Tunnel)
+	}
+	if cfg.Tunnel.Admin.Verified || cfg.Tunnel.Admin.ReadAccess || cfg.Tunnel.Admin.ManageAccess {
+		t.Fatalf("scope mutation retained stale verification: %#v", cfg.Tunnel)
 	}
 }
 
@@ -172,8 +185,8 @@ func TestSensitiveConfigValuesAreRedacted(t *testing.T) {
 	cfg.Auth.MCPTokenHash = "secret"
 	cfg.Auth.AdminTokenHash = "admin-secret"
 	cfg.Tunnel.APIKey = "secret"
-	cfg.Tunnel.AdminKey = "tunnel-admin-secret"
-	for _, key := range []string{"auth.mcp_token_hash", "auth.admin_token_hash", "tunnel.api_key", "tunnel.admin_key"} {
+	cfg.Tunnel.Admin.Key = "tunnel-admin-secret"
+	for _, key := range []string{"auth.mcp_token_hash", "auth.admin_token_hash", "tunnel.api_key", "tunnel.admin.key"} {
 		value, err := getConfigValue(cfg, key)
 		if err != nil {
 			t.Fatal(err)
@@ -636,7 +649,7 @@ func TestUniversalConfigVerifyRetainsGlobalModeAndDelegatesSettingMode(t *testin
 	}
 
 	setting := configVerifyCommand()
-	setting.SetArgs([]string{"tunnel.admin_key"})
+	setting.SetArgs([]string{"tunnel.admin.key"})
 	if err := setting.Execute(); err == nil || !strings.Contains(strings.ToLower(err.Error()), "tunnel admin") {
 		t.Fatalf("setting verify did not reach tunnel credential authority: %v", err)
 	}

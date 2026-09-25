@@ -32,7 +32,7 @@ func TestTunnelAdminKeyReplacementRecoversMissingStoredSecret(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.json")
 	secretPath := filepath.Join(root, "tunnel.json")
-	writeTunnelRecoveryFixture(t, configPath, secretPath, tunnelSecret{AdminKeyConfigured: true})
+	writeTunnelRecoveryFixture(t, configPath, secretPath, tunnelSecret{Admin: &tunnelAdminSecret{KeyConfigured: true}})
 
 	if _, err := loadAt(configPath, secretPath); err == nil || !strings.Contains(err.Error(), "tunnel admin key is configured but missing from secret file store") {
 		t.Fatalf("strict load err=%v", err)
@@ -41,8 +41,8 @@ func TestTunnelAdminKeyReplacementRecoversMissingStoredSecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Tunnel.AdminKey != "" {
-		t.Fatalf("admin key=%q want empty replacement slot", cfg.Tunnel.AdminKey)
+	if cfg.Tunnel.Admin.Key != "" {
+		t.Fatalf("admin key=%q want empty replacement slot", cfg.Tunnel.Admin.Key)
 	}
 }
 
@@ -50,7 +50,7 @@ func TestTunnelReplacementDoesNotRelaxOtherMissingSecret(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.json")
 	secretPath := filepath.Join(root, "tunnel.json")
-	writeTunnelRecoveryFixture(t, configPath, secretPath, tunnelSecret{RuntimeKeyConfigured: true, AdminKeyConfigured: true})
+	writeTunnelRecoveryFixture(t, configPath, secretPath, tunnelSecret{RuntimeKeyConfigured: true, Admin: &tunnelAdminSecret{KeyConfigured: true}})
 
 	_, err := loadAtWithTunnelSecretPolicy(configPath, secretPath, tunnelSecretLoadPolicy{allowMissingRuntime: true})
 	if err == nil || !strings.Contains(err.Error(), "tunnel admin key is configured but missing from secret file store") {
@@ -62,7 +62,7 @@ func TestRuntimeLoadAllowsMissingSecretsWhenTunnelDisabled(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.json")
 	secretPath := filepath.Join(root, "tunnel.json")
-	writeTunnelRecoveryFixture(t, configPath, secretPath, tunnelSecret{RuntimeKeyConfigured: true, AdminKeyConfigured: true})
+	writeTunnelRecoveryFixture(t, configPath, secretPath, tunnelSecret{RuntimeKeyConfigured: true, Admin: &tunnelAdminSecret{KeyConfigured: true}})
 
 	if _, err := loadAt(configPath, secretPath); err == nil {
 		t.Fatal("strict load unexpectedly accepted missing tunnel secrets")
@@ -71,7 +71,7 @@ func TestRuntimeLoadAllowsMissingSecretsWhenTunnelDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Tunnel.Enabled || cfg.Tunnel.APIKey != "" || cfg.Tunnel.AdminKey != "" {
+	if cfg.Tunnel.Enabled || cfg.Tunnel.APIKey != "" || cfg.Tunnel.Admin.Key != "" {
 		t.Fatalf("runtime config = %#v", cfg.Tunnel)
 	}
 	if err := Validate(cfg); err != nil {

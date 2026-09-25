@@ -35,7 +35,7 @@ func TestTunnelAdminTraceDoesNotLeakAuthorizationMaterial(t *testing.T) {
 
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
-	access, count, err := VerifyAdminKey(ctx, Config{AdminKey: adminKey, AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL})
+	access, count, err := VerifyAdminKey(ctx, Config{Admin: AdminConfig{Key: adminKey, WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestGenerateRuntimeKeyTraceIncludesHTTPFactsWithoutGeneratedKey(t *testing.
 
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
-	result, err := GenerateRuntimeKey(ctx, Config{AdminKey: adminKey, ControlPlaneBaseURL: server.URL}, "")
+	result, err := GenerateRuntimeKey(ctx, Config{Admin: AdminConfig{Key: adminKey}, ControlPlaneBaseURL: server.URL}, "")
 	if err != nil {
 		t.Fatal(err)
 	}

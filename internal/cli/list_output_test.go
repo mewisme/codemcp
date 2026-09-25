@@ -114,8 +114,8 @@ func TestTunnelListDefaultsToPlainAndSupportsJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Tunnel.AdminKey = "admin-test"
-	cfg.Tunnel.AdminWorkspaceID = "ws_admin"
+	cfg.Tunnel.Admin.Key = "admin-test"
+	cfg.Tunnel.Admin.WorkspaceID = "ws_admin"
 	cfg.Tunnel.ControlPlaneBaseURL = server.URL
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)

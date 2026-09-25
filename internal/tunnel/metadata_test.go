@@ -59,7 +59,7 @@ func TestCreateWithAdminAPIKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	metadata, err := CreateManaged(context.Background(), Config{AdminKey: "sk-admin", ControlPlaneBaseURL: server.URL}, CreateRequest{Name: "Mew Tunnel", Description: "Created from CodeMCP", WorkspaceIDs: []string{"ws_openai"}, OrganizationIDs: []string{"org_test"}})
+	metadata, err := CreateManaged(context.Background(), Config{Admin: AdminConfig{Key: "sk-admin"}, ControlPlaneBaseURL: server.URL}, CreateRequest{Name: "Mew Tunnel", Description: "Created from CodeMCP", WorkspaceIDs: []string{"ws_openai"}, OrganizationIDs: []string{"org_test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestCreateRequiresAdminKeyAndScope(t *testing.T) {
 	if _, err := CreateManaged(context.Background(), Config{}, CreateRequest{Name: "n", Description: "d", WorkspaceIDs: []string{"ws"}}); err == nil {
 		t.Fatal("expected missing admin key error")
 	}
-	if _, err := CreateManaged(context.Background(), Config{AdminKey: "sk-admin"}, CreateRequest{Name: "n", Description: "d"}); err == nil {
+	if _, err := CreateManaged(context.Background(), Config{Admin: AdminConfig{Key: "sk-admin"}}, CreateRequest{Name: "n", Description: "d"}); err == nil {
 		t.Fatal("expected missing scope error")
 	}
 }
@@ -109,7 +109,7 @@ func TestVerifyAdminKeyUsesManagedListScope(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := Config{AdminKey: "sk-admin", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL}
+	cfg := Config{Admin: AdminConfig{Key: "sk-admin", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL}
 	access, count, err := VerifyAdminKey(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -120,9 +120,9 @@ func TestVerifyAdminKeyUsesManagedListScope(t *testing.T) {
 }
 
 func TestStatusRedactsAdminKeyAndExposesVerifiedScope(t *testing.T) {
-	client := NewConfigured(Config{AdminKey: "sk-admin", AdminWorkspaceID: "ws_admin"}, nil)
+	client := NewConfigured(Config{Admin: AdminConfig{Key: "sk-admin", WorkspaceID: "ws_admin"}}, nil)
 	status := client.Status()
-	if !status.AdminKeyConfigured || status.AdminScope == nil || status.AdminScope.WorkspaceID != "ws_admin" {
+	if !status.Admin.Configured || status.Admin.WorkspaceID != "ws_admin" {
 		t.Fatalf("status = %#v", status)
 	}
 }
@@ -158,7 +158,7 @@ func TestVerifyAdminKeyDetectsReadOnlyAccessWithoutMutation(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	cfg := Config{AdminKey: "sk-read", AdminWorkspaceID: "ws_admin", ControlPlaneBaseURL: server.URL}
+	cfg := Config{Admin: AdminConfig{Key: "sk-read", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL}
 	access, count, err := VerifyAdminKey(context.Background(), cfg)
 	if err != nil || !access.Read || access.Manage || count != 0 {
 		t.Fatalf("access=%#v count=%d err=%v", access, count, err)

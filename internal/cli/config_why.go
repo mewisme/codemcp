@@ -153,6 +153,7 @@ func configWhyJSONEntries(entries []configWhyEntry) []map[string]any {
 			"label":             spec.Label,
 			"description":       spec.Description,
 			"type":              spec.Kind,
+			"value_role":        spec.ValueRole,
 			"domain":            spec.Domain,
 			"application_owner": spec.ApplicationOwner,
 			"readable":          spec.Readable,
@@ -213,6 +214,7 @@ func configWhyMarkdown(entries []configWhyEntry) string {
 			builder.WriteString(spec.Description + "\n\n")
 		}
 		fmt.Fprintf(&builder, "- **Type:** `%s`\n", spec.Kind)
+		fmt.Fprintf(&builder, "- **Value role:** `%s`\n", spec.ValueRole)
 		fmt.Fprintf(&builder, "- **Domain:** `%s`\n", spec.Domain)
 		fmt.Fprintf(&builder, "- **Application owner:** `%s`\n", spec.ApplicationOwner)
 		fmt.Fprintf(&builder, "- **Readable:** `%t`\n", spec.Readable)

@@ -102,7 +102,7 @@ func TestEditorActionsNavigateToEditorRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Tunnel = tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", AdminReadAccess: true, AdminManageAccess: true}
+	cfg.Tunnel = tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}}
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestTunnelActionAvailabilityFollowsRouteContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Tunnel = tunnel.Config{AdminKey: "admin-secret", AdminWorkspaceID: "ws_admin", AdminReadAccess: true, AdminManageAccess: true}
+	cfg.Tunnel = tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}}
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

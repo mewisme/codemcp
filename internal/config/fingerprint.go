@@ -11,7 +11,7 @@ func RuntimeFingerprint(cfg Config) (string, error) {
 	safe.Auth.MCPTokenHash = ""
 	safe.Auth.AdminTokenHash = ""
 	safe.Tunnel.APIKey = ""
-	safe.Tunnel.AdminKey = ""
+	safe.Tunnel.Admin.Key = ""
 	data, err := json.Marshal(safe)
 	if err != nil {
 		return "", err

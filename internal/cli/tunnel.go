@@ -113,8 +113,8 @@ func renderTunnelStatusText(presenter *presentation.Presenter, cfg tunnel.Config
 			}
 		}
 	}
-	if status.AdminKeyConfigured && status.AdminScope != nil {
-		fields = append(fields, presentation.Field{Label: "admin", Value: "configured " + presenter.Separator() + " " + formatTunnelAdminScope(*status.AdminScope)})
+	if status.Admin.Configured {
+		fields = append(fields, presentation.Field{Label: "admin", Value: "configured " + presenter.Separator() + " " + formatTunnelAdminScope(status.Admin.Scope())})
 	} else if verbose {
 		fields = append(fields, presentation.Field{Label: "admin", Value: "not configured"})
 	}

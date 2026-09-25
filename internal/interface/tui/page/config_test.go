@@ -36,7 +36,7 @@ func TestConfigPageLoadsAndNeverRendersSecrets(t *testing.T) {
 	page.overview.Config.Auth.MCPTokenHash = "MCP_HASH_SECRET"
 	page.overview.Config.Auth.AdminTokenHash = "ADMIN_HASH_SECRET"
 	page.overview.Config.Tunnel.APIKey = "TUNNEL_RUNTIME_SECRET"
-	page.overview.Config.Tunnel.AdminKey = "TUNNEL_ADMIN_SECRET"
+	page.overview.Config.Tunnel.Admin.Key = "TUNNEL_ADMIN_SECRET"
 	page.rebuildBrowser("")
 	view := page.View(100, 32)
 	rows := page.configRows()
@@ -338,7 +338,7 @@ func TestConfigGlobalSearchIndexesAllFieldsWithoutSecrets(t *testing.T) {
 	updated, _ := page.Update(page.Init()())
 	page = updated.(*ConfigPage)
 	page.overview.Config.Tunnel.APIKey = "SEARCH_RUNTIME_SECRET"
-	page.overview.Config.Tunnel.AdminKey = "SEARCH_ADMIN_SECRET"
+	page.overview.Config.Tunnel.Admin.Key = "SEARCH_ADMIN_SECRET"
 	rows := page.searchRows()
 	if len(rows) != len(config.Fields()) {
 		t.Fatalf("search rows=%d fields=%d", len(rows), len(config.Fields()))

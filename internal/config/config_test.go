@@ -209,8 +209,8 @@ func TestConfigSaveSeparatesTunnelSecrets(t *testing.T) {
 	cfg := Default()
 	cfg.Tunnel.ID = "tunnel_0123456789abcdef0123456789abcdef"
 	cfg.Tunnel.APIKey = "tunnel-secret"
-	cfg.Tunnel.AdminKey = "admin-secret"
-	cfg.Tunnel.AdminWorkspaceID = "ws-admin"
+	cfg.Tunnel.Admin.Key = "admin-secret"
+	cfg.Tunnel.Admin.WorkspaceID = "ws-admin"
 
 	if err := saveAt(configPath, secretPath, cfg); err != nil {
 		t.Fatal(err)
@@ -226,14 +226,20 @@ func TestConfigSaveSeparatesTunnelSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(secretData), "tunnel-secret") || strings.Contains(string(secretData), "admin-secret") || !strings.Contains(string(secretData), "ws-admin") || !strings.Contains(string(secretData), "runtime_key_configured") || !strings.Contains(string(secretData), "admin_key_configured") {
-		t.Fatalf("tunnel.json did not contain marker-only secret metadata: %s", secretData)
+	secretText := string(secretData)
+	if strings.Contains(secretText, "tunnel-secret") || strings.Contains(secretText, "admin-secret") || !strings.Contains(secretText, "ws-admin") || !strings.Contains(secretText, "runtime_key_configured") || !strings.Contains(secretText, `"admin"`) || !strings.Contains(secretText, `"key_configured": true`) {
+		t.Fatalf("tunnel.json did not contain nested marker-only secret metadata: %s", secretData)
+	}
+	for _, legacy := range []string{"admin_key", "admin_workspace_id", "admin_organization_id", "admin_tenant_id", "admin_verified", "admin_read_access", "admin_manage_access"} {
+		if strings.Contains(secretText, legacy) {
+			t.Fatalf("tunnel.json retained flat admin field %q: %s", legacy, secretData)
+		}
 	}
 	loaded, err := loadAt(configPath, secretPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Tunnel.APIKey != "tunnel-secret" || loaded.Tunnel.AdminKey != "admin-secret" || loaded.Tunnel.AdminWorkspaceID != "ws-admin" || loaded.Tunnel.ID != cfg.Tunnel.ID {
+	if loaded.Tunnel.APIKey != "tunnel-secret" || loaded.Tunnel.Admin.Key != "admin-secret" || loaded.Tunnel.Admin.WorkspaceID != "ws-admin" || loaded.Tunnel.ID != cfg.Tunnel.ID {
 		t.Fatalf("loaded tunnel = %#v", loaded.Tunnel)
 	}
 	if runtime.GOOS != "windows" {
@@ -256,8 +262,8 @@ func TestConfigJSONRoundTrip(t *testing.T) {
 	cfg.Auth.AdminTokenHash = "admin-hash"
 	cfg.Tunnel.ID = "tunnel_0123456789abcdef0123456789abcdef"
 	cfg.Tunnel.APIKey = "tunnel-secret"
-	cfg.Tunnel.AdminKey = "admin-secret"
-	cfg.Tunnel.AdminOrganizationID = "org-admin"
+	cfg.Tunnel.Admin.Key = "admin-secret"
+	cfg.Tunnel.Admin.OrganizationID = "org-admin"
 	cfg.Shell.Path = []string{filepath.Join(root, "bin")}
 	if err := saveAt(configPath, secretPath, cfg); err != nil {
 		t.Fatal(err)
@@ -266,7 +272,7 @@ func TestConfigJSONRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != cfg.Server.Port || loaded.Auth.MCPTokenHash != cfg.Auth.MCPTokenHash || loaded.Tunnel.APIKey != cfg.Tunnel.APIKey || loaded.Tunnel.AdminKey != cfg.Tunnel.AdminKey || loaded.Tunnel.AdminOrganizationID != cfg.Tunnel.AdminOrganizationID || len(loaded.Shell.Path) != 1 || loaded.Shell.Path[0] != cfg.Shell.Path[0] {
+	if loaded.Server.Port != cfg.Server.Port || loaded.Auth.MCPTokenHash != cfg.Auth.MCPTokenHash || loaded.Tunnel.APIKey != cfg.Tunnel.APIKey || loaded.Tunnel.Admin.Key != cfg.Tunnel.Admin.Key || loaded.Tunnel.Admin.OrganizationID != cfg.Tunnel.Admin.OrganizationID || len(loaded.Shell.Path) != 1 || loaded.Shell.Path[0] != cfg.Shell.Path[0] {
 		t.Fatalf("round trip = %#v", loaded)
 	}
 	mainData, err := os.ReadFile(configPath)
@@ -870,8 +876,8 @@ func TestClearingRuntimeKeyPreservesAdminKeySecret(t *testing.T) {
 	secretPath := filepath.Join(root, "tunnel.json")
 	cfg := Default()
 	cfg.Tunnel.APIKey = "runtime-secret"
-	cfg.Tunnel.AdminKey = "admin-secret"
-	cfg.Tunnel.AdminWorkspaceID = "ws_admin"
+	cfg.Tunnel.Admin.Key = "admin-secret"
+	cfg.Tunnel.Admin.WorkspaceID = "ws_admin"
 	if err := saveAt(configPath, secretPath, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -883,7 +889,7 @@ func TestClearingRuntimeKeyPreservesAdminKeySecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Tunnel.APIKey != "" || loaded.Tunnel.AdminKey != "admin-secret" || loaded.Tunnel.AdminWorkspaceID != "ws_admin" {
+	if loaded.Tunnel.APIKey != "" || loaded.Tunnel.Admin.Key != "admin-secret" || loaded.Tunnel.Admin.WorkspaceID != "ws_admin" {
 		t.Fatalf("loaded tunnel = %#v", loaded.Tunnel)
 	}
 }

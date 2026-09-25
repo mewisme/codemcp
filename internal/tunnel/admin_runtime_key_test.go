@@ -48,7 +48,7 @@ func TestGenerateRuntimeKeyCreatesScopedServiceAccountKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := GenerateRuntimeKey(context.Background(), Config{AdminKey: "admin-secret", ControlPlaneBaseURL: server.URL}, "")
+	result, err := GenerateRuntimeKey(context.Background(), Config{Admin: AdminConfig{Key: "admin-secret"}, ControlPlaneBaseURL: server.URL}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestGenerateRuntimeKeyReusesExistingServiceAccount(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := GenerateRuntimeKey(context.Background(), Config{AdminKey: "admin-secret", ControlPlaneBaseURL: server.URL}, "proj_one")
+	result, err := GenerateRuntimeKey(context.Background(), Config{Admin: AdminConfig{Key: "admin-secret"}, ControlPlaneBaseURL: server.URL}, "proj_one")
 	if err != nil {
 		t.Fatal(err)
 	}

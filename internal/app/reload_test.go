@@ -66,15 +66,15 @@ func TestReloadConfigSyncsTunnelAdminKeyWithoutRuntimeReconfigure(t *testing.T) 
 		t.Fatal(err)
 	}
 	next := cfg
-	next.Tunnel.AdminKey = "admin-key"
-	next.Tunnel.AdminWorkspaceID = "ws_admin"
+	next.Tunnel.Admin.Key = "admin-key"
+	next.Tunnel.Admin.WorkspaceID = "ws_admin"
 	if err := app.ReloadConfig(next); err != nil {
 		t.Fatal(err)
 	}
-	if got := app.Tunnel.Config(); got.AdminKey != "admin-key" || got.AdminWorkspaceID != "ws_admin" {
+	if got := app.Tunnel.Config(); got.Admin.Key != "admin-key" || got.Admin.WorkspaceID != "ws_admin" {
 		t.Fatalf("tunnel config = %#v", got)
 	}
-	if !app.Tunnel.Status().AdminKeyConfigured {
+	if !app.Tunnel.Status().Admin.Configured {
 		t.Fatalf("tunnel status = %#v", app.Tunnel.Status())
 	}
 }
