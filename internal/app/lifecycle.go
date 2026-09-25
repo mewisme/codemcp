@@ -146,6 +146,9 @@ func (a *App) Stop() error {
 		}()
 	}
 	wg.Wait()
+	if a.Tools != nil && a.Tools.BackgroundDeliveries != nil {
+		a.Tools.BackgroundDeliveries.Close()
+	}
 	close(errCh)
 	var stopErr error
 	for err := range errCh {

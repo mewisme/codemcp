@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"go.mewis.me/codemcp/internal/backgrounddelivery"
+
 	"go.mewis.me/codemcp/internal/checkpoint"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/version"
@@ -50,6 +52,10 @@ func registerCore(registry *Registry, workspaces *workspace.Manager, checkpoints
 }
 
 func registerCoreWithManagers(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store, environment ProjectContextEnvironment, shell *shellruntime.Manager, processes *shellruntime.ProcessManager, providerSets ...ProjectContextProviders) {
+	registerCoreWithManagersAndBroker(registry, workspaces, checkpoints, environment, shell, processes, nil, providerSets...)
+}
+
+func registerCoreWithManagersAndBroker(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store, environment ProjectContextEnvironment, shell *shellruntime.Manager, processes *shellruntime.ProcessManager, broker *backgrounddelivery.Broker, providerSets ...ProjectContextProviders) {
 	registry.MustRegister("get_version", coreSchema("get_version", "Get the running CodeMCP server version, build metadata, server uptime, and machine uptime.", `{"type":"object","properties":{},"additionalProperties":false}`, `{"type":"object","properties":{"version":{"type":"string"},"commit":{"type":"string"},"build_time":{"type":"string"},"server_started_at":{"type":"string"},"server_uptime":{"type":"string"},"server_uptime_seconds":{"type":"integer","minimum":0},"machine_uptime":{"type":"string"},"machine_uptime_seconds":{"type":"integer","minimum":0}},"required":["version","commit","build_time","server_started_at","server_uptime","server_uptime_seconds","machine_uptime","machine_uptime_seconds"],"additionalProperties":false}`, RiskRead), func(context.Context, map[string]any) (Result, error) {
 		now := time.Now().UTC()
 		serverUptime := now.Sub(processStartedAt)
@@ -66,7 +72,7 @@ func registerCoreWithManagers(registry *Registry, workspaces *workspace.Manager,
 		return JSONResult(VersionResult{Version: version.Version, Commit: version.Commit, BuildTime: version.Date, ServerStartedAt: processStartedAt.Format(time.RFC3339), ServerUptime: serverUptime.Truncate(time.Second).String(), ServerUptimeSeconds: int64(serverUptime / time.Second), MachineUptime: machineUptime.Truncate(time.Second).String(), MachineUptimeSeconds: int64(machineUptime / time.Second)}), nil
 	})
 	RegisterFilesystemTools(registry, workspaces, checkpoints)
-	RegisterShellTools(registry, workspaces, shell, processes)
+	RegisterShellTools(registry, workspaces, shell, processes, broker)
 	RegisterGitTools(registry, workspaces)
 	providers := ProjectContextProviders{}
 	if len(providerSets) > 0 {

@@ -199,6 +199,10 @@ func executionMetadata(ctx context.Context) ExecutionMetadata {
 	return value
 }
 
+func ExecutionMetadataFromContext(ctx context.Context) ExecutionMetadata {
+	return executionMetadata(ctx)
+}
+
 func executionSource(ctx context.Context) string {
 	if ctx == nil {
 		return ""

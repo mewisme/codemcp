@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"go.mewis.me/codemcp/internal/backgrounddelivery"
+
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -92,6 +94,7 @@ type recentTerminal struct {
 
 type TaskRegistry struct {
 	processes   *shellruntime.ProcessManager
+	broker      *backgrounddelivery.Broker
 	sub         *shellruntime.BackgroundWorkTerminalSubscription
 	mu          sync.Mutex
 	tasks       map[string]*taskRecord
@@ -103,9 +106,14 @@ type TaskRegistry struct {
 	closeOnce   sync.Once
 }
 
-func NewTaskRegistry(processes *shellruntime.ProcessManager) *TaskRegistry {
+func NewTaskRegistry(processes *shellruntime.ProcessManager, brokers ...*backgrounddelivery.Broker) *TaskRegistry {
+	var broker *backgrounddelivery.Broker
+	if len(brokers) > 0 {
+		broker = brokers[0]
+	}
 	r := &TaskRegistry{
 		processes: processes,
+		broker:    broker,
 		tasks:     map[string]*taskRecord{},
 		byProcess: map[string]string{},
 		recent:    map[string]recentTerminal{},
@@ -179,6 +187,9 @@ func (r *TaskRegistry) Create(start shellruntime.StartResult, final *sdkmcp.Call
 	}
 	r.tasks[record.task.TaskID] = record
 	r.byProcess[processID] = record.task.TaskID
+	if r.broker != nil {
+		r.broker.AttachTask(processID, record.task.TaskID)
+	}
 	r.order = append(r.order, record.task.TaskID)
 	if recent, ok := r.recent[processID]; ok {
 		r.applyTerminalLocked(record, recent.event, now)

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/backgrounddelivery"
+
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -18,7 +20,11 @@ type ClearProcessesResult struct {
 	Cleared int `json:"cleared"`
 }
 
-func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell *shellruntime.Manager, processes *shellruntime.ProcessManager) {
+func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell *shellruntime.Manager, processes *shellruntime.ProcessManager, brokers ...*backgrounddelivery.Broker) {
+	var broker *backgrounddelivery.Broker
+	if len(brokers) > 0 {
+		broker = brokers[0]
+	}
 	backgroundGuidance := instructioncontext.BackgroundWorkGuidance()
 	describe := func(base string) string { return strings.TrimSpace(base + " " + backgroundGuidance) }
 	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
@@ -89,6 +95,16 @@ func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell
 		value, err := processes.Start(ctx, workspaceID, command)
 		if err != nil {
 			return Result{}, err
+		}
+		if broker != nil {
+			metadata := shellruntime.ExecutionMetadataFromContext(ctx)
+			broker.RegisterStart(backgrounddelivery.Registration{
+				WorkspaceID: workspaceID,
+				ProcessID:   value.ID,
+				ExecutionID: value.ExecutionID,
+				CallID:      metadata.CallID,
+				Owner:       backgrounddelivery.OwnerFromContext(ctx),
+			})
 		}
 		return JSONResult(value), nil
 	})

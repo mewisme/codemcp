@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"go.mewis.me/codemcp/internal/backgrounddelivery"
+
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/controlguard"
@@ -31,32 +33,33 @@ const (
 var errTunnelResponseBudgetExceeded = errors.New("tunnel response budget exhausted")
 
 type Runtime struct {
-	Registry            *Registry
-	Workspaces          *workspace.Manager
-	Checkpoints         *checkpoint.Store
-	Upstream            *upstream.Manager
-	CallObserver        CallObserver
-	SessionAccess       *SessionWorkspaceAccessManager
-	Approvals           *approval.Manager
-	Completions         *agentcompletion.Service
-	CompletionHooks     *agentcompletion.CompletionHookBus
-	CodeGraphCompletion *codegraph.CompletionHook
-	Executions          *shellruntime.ExecutionHub
-	Shell               *shellruntime.Manager
-	Processes           *shellruntime.ProcessManager
-	LoopGuard           *ToolLoopGuard
-	sessionMu           sync.Mutex
-	configReadMu        sync.RWMutex
-	configReads         ConfigReadProvider
-	configApprovalMu    sync.RWMutex
-	configApprovals     ConfigSetApprovalProvider
-	configApplyMu       sync.RWMutex
-	configApplies       ConfigSetApplyProvider
-	integrationMu       sync.Mutex
-	integrations        integrations.Config
-	ponytailManager     *ponytail.Manager
-	cavemanManager      *caveman.Manager
-	codegraphRuntime    *codegraph.Runtime
+	Registry             *Registry
+	Workspaces           *workspace.Manager
+	Checkpoints          *checkpoint.Store
+	Upstream             *upstream.Manager
+	CallObserver         CallObserver
+	SessionAccess        *SessionWorkspaceAccessManager
+	Approvals            *approval.Manager
+	Completions          *agentcompletion.Service
+	CompletionHooks      *agentcompletion.CompletionHookBus
+	CodeGraphCompletion  *codegraph.CompletionHook
+	Executions           *shellruntime.ExecutionHub
+	Shell                *shellruntime.Manager
+	Processes            *shellruntime.ProcessManager
+	BackgroundDeliveries *backgrounddelivery.Broker
+	LoopGuard            *ToolLoopGuard
+	sessionMu            sync.Mutex
+	configReadMu         sync.RWMutex
+	configReads          ConfigReadProvider
+	configApprovalMu     sync.RWMutex
+	configApprovals      ConfigSetApprovalProvider
+	configApplyMu        sync.RWMutex
+	configApplies        ConfigSetApplyProvider
+	integrationMu        sync.Mutex
+	integrations         integrations.Config
+	ponytailManager      *ponytail.Manager
+	cavemanManager       *caveman.Manager
+	codegraphRuntime     *codegraph.Runtime
 }
 
 func NewRuntime() *Runtime {
@@ -80,12 +83,13 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	executions := shellruntime.NewExecutionHub()
 	shell := shellruntime.NewManagerWithExecutions(workspaces, shellruntime.DefaultStateRoot(), executions)
 	processes := shellruntime.NewProcessManagerWithExecutions(workspaces, shell, executions)
+	backgroundDeliveries := backgrounddelivery.New(processes)
 	completionHooks := agentcompletion.NewCompletionHookBus(agentcompletion.HookBusOptions{Timeout: codegraph.SyncTimeout + 5*time.Second})
 	completions, err := agentcompletion.NewWorkspaceService(workspaces, agentcompletion.Options{Hooks: completionHooks})
 	if err != nil {
 		panic(err)
 	}
-	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
+	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, BackgroundDeliveries: backgroundDeliveries, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
 	runtime.CodeGraphCompletion = codegraph.NewCompletionHook(func() *codegraph.Runtime {
 		return runtime.codeGraphRuntimeSnapshot()
 	}, workspaces)
@@ -99,7 +103,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	if len(environments) > 0 {
 		environment = environments[0]
 	}
-	registerCoreWithManagers(registry, workspaces, checkpoints, environment, shell, processes, codeGraphProjectContextProviders(runtime))
+	registerCoreWithManagersAndBroker(registry, workspaces, checkpoints, environment, shell, processes, backgroundDeliveries, codeGraphProjectContextProviders(runtime))
 	RegisterAgentCompletionTool(registry, runtime.Completions)
 	RegisterApprovalTools(registry, runtime)
 	RegisterConfigTools(registry, runtime)

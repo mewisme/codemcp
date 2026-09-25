@@ -20,6 +20,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"application":        "application",
 	"approval":           "domain",
 	"auth":               "domain",
+	"backgrounddelivery": "application",
 	"capability":         "application",
 	"checkpoint":         "history",
 	"cli":                "interface",

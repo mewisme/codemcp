@@ -48,7 +48,7 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 	implementation, options := ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
 	callers := approval.NewCallerRegistry()
-	tasks := NewTaskRegistry(toolRuntime.Processes)
+	tasks := NewTaskRegistry(toolRuntime.Processes, toolRuntime.BackgroundDeliveries)
 	if err := InstallTaskProjection(server, tasks); err != nil {
 		tasks.Close()
 		return nil, err

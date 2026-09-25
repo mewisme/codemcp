@@ -49,7 +49,7 @@ func newSDKBridgeWithProfile(runtime *tools.Runtime, profile localmcp.Profile) (
 	descriptors := localmcp.DescribeProtocol(nil)
 	implementation, options := localmcp.ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
-	tasks := localmcp.NewTaskRegistry(runtime.Processes)
+	tasks := localmcp.NewTaskRegistry(runtime.Processes, runtime.BackgroundDeliveries)
 	if err := localmcp.InstallTaskProjection(server, tasks); err != nil {
 		tasks.Close()
 		return nil, err
