@@ -2,29 +2,40 @@ package version
 
 import (
 	"fmt"
+	"regexp"
 	"runtime/debug"
+	"strings"
 )
 
 const ClientName = "codemcp"
 
+const DevelopmentVersion = "0.0.1-dev"
+
+var releaseVersionPattern = regexp.MustCompile(`^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+
 var (
-	Version = "dev"
-	Commit  = "unknown"
-	Date    = "unknown"
+	// ReleaseTag is populated by tagged release builds. Version is derived from
+	// it rather than linked independently so every surface observes one semantic
+	// version authority.
+	ReleaseTag = ""
+	Version    = DevelopmentVersion
+	Commit     = "unknown"
+	Date       = "unknown"
 )
 
 func init() {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		applyBuildInfo(info)
-	}
+	info, _ := debug.ReadBuildInfo()
+	applyBuildInfo(info)
 }
 
 func applyBuildInfo(info *debug.BuildInfo) {
+	if Version == DevelopmentVersion {
+		if release := normalizeReleaseVersion(ReleaseTag); release != "" {
+			Version = release
+		}
+	}
 	if info == nil {
 		return
-	}
-	if Version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		Version = info.Main.Version
 	}
 	for _, setting := range info.Settings {
 		switch setting.Key {
@@ -38,6 +49,21 @@ func applyBuildInfo(info *debug.BuildInfo) {
 			}
 		}
 	}
+}
+
+func normalizeReleaseVersion(value string) string {
+	value = strings.TrimSpace(value)
+	if !releaseVersionPattern.MatchString(value) {
+		return ""
+	}
+	return strings.TrimPrefix(value, "v")
+}
+
+func UserAgent() string { return ClientName + "/" + Version }
+
+func IsDevelopment(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return value == "" || value == DevelopmentVersion || value == "dev" || value == "(devel)" || strings.HasPrefix(value, "dev-")
 }
 
 func String() string {

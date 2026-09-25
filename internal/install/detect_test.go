@@ -10,9 +10,11 @@ func TestDetectDevelopmentBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detection := detect(filepath.Join(t.TempDir(), layout.BinaryName), "dev", layout, "", "", "", "")
-	if detection.Method != MethodDevelopment {
-		t.Fatalf("method = %q", detection.Method)
+	for _, buildVersion := range []string{"dev", "0.0.1-dev"} {
+		detection := detect(filepath.Join(t.TempDir(), layout.BinaryName), buildVersion, layout, "", "", "", "")
+		if detection.Method != MethodDevelopment {
+			t.Fatalf("version=%q method=%q", buildVersion, detection.Method)
+		}
 	}
 }
 

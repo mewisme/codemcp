@@ -96,7 +96,7 @@ func TestHTTPRuntimeDiscoverIsStateless(t *testing.T) {
 		t.Fatalf("cache hints = %#v/%#v", result["ttlMs"], result["cacheScope"])
 	}
 	instructions, ok := result["instructions"].(string)
-	if !ok || instructions != ServerInstructions {
+	if !ok || instructions != ProjectServerInstructions(BaseProfile()) {
 		t.Fatalf("instructions = %#v", result["instructions"])
 	}
 	for _, expected := range []string{"workspace_register", "workspace_status", "workspace_container_context", "agent_status", "project_context", "list_skills", "load_skill", "load_path_rules", "persisted shell cwd"} {

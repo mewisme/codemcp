@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/tools"
@@ -19,6 +20,10 @@ func (presentationOnlyProfile) ToolRepresentation(tool ToolDescriptor) ToolRepre
 		Description: "profile presentation",
 		Meta:        map[string]any{"profile": "test"},
 	}
+}
+
+func (presentationOnlyProfile) InstructionPresentation() InstructionPresentation {
+	return InstructionPresentation{Heading: "Profile presentation."}
 }
 
 func TestCanonicalDescriptorsSeparateEffectsFromRuntimeSecurityAuthority(t *testing.T) {
@@ -139,5 +144,16 @@ func TestProfileDoesNotAffectToolExecutionContextOrResult(t *testing.T) {
 	customJSON, _ := json.Marshal(customResult)
 	if string(baseJSON) != string(customJSON) {
 		t.Fatalf("profile changed execution result: base=%s custom=%s", baseJSON, customJSON)
+	}
+}
+
+func TestProfileInstructionPresentationPreservesCanonicalSemantics(t *testing.T) {
+	base := ProjectServerInstructions(BaseProfile())
+	custom := ProjectServerInstructions(presentationOnlyProfile{})
+	if custom == base || !strings.HasPrefix(custom, "Profile presentation. ") {
+		t.Fatalf("custom instructions=%q", custom)
+	}
+	if strings.TrimPrefix(custom, "Profile presentation. ") != base {
+		t.Fatalf("profile changed canonical instruction semantics")
 	}
 }

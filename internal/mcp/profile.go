@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"go.mewis.me/codemcp/internal/instructioncontext"
 )
 
 type ProfileID string
@@ -28,6 +30,14 @@ type ToolRepresentation struct {
 	Meta        map[string]any `json:"_meta,omitempty"`
 }
 
+type InstructionPresentation struct {
+	Heading string
+}
+
+type instructionPresentationProfile interface {
+	InstructionPresentation() InstructionPresentation
+}
+
 type baseProfile struct{}
 
 func BaseProfile() Profile { return baseProfile{} }
@@ -36,6 +46,10 @@ func (baseProfile) ID() ProfileID { return BaseProfileID }
 
 func (baseProfile) ToolRepresentation(tool ToolDescriptor) ToolRepresentation {
 	return ToolRepresentation{Title: tool.Title, Description: tool.Description}
+}
+
+func (baseProfile) InstructionPresentation() InstructionPresentation {
+	return InstructionPresentation{}
 }
 
 type ToolProjectionOptions struct {
@@ -123,13 +137,30 @@ func ProjectSDKTool(profile Profile, descriptor ToolDescriptor, options ToolProj
 	}, nil
 }
 
-func ProjectSDKServer(descriptor ProtocolDescriptors) (*sdkmcp.Implementation, *sdkmcp.ServerCapabilities) {
+func ProjectServerInstructions(profile Profile) string {
+	if profile == nil {
+		profile = BaseProfile()
+	}
+	presentation := InstructionPresentation{}
+	if provider, ok := profile.(instructionPresentationProfile); ok {
+		presentation = provider.InstructionPresentation()
+	}
+	return instructioncontext.RenderServerInstructions(
+		instructioncontext.CanonicalServerInstructionModel(),
+		instructioncontext.ServerInstructionRenderOptions{Heading: presentation.Heading},
+	)
+}
+
+func ProjectSDKServer(profile Profile, descriptor ProtocolDescriptors) (*sdkmcp.Implementation, *sdkmcp.ServerOptions) {
 	implementation := &sdkmcp.Implementation{Name: descriptor.Server.Name, Version: descriptor.Server.Version}
 	capabilities := &sdkmcp.ServerCapabilities{}
 	if descriptor.Capabilities.Tools.ListChanged {
 		capabilities.Tools = &sdkmcp.ToolCapabilities{ListChanged: true}
 	}
-	return implementation, capabilities
+	return implementation, &sdkmcp.ServerOptions{
+		Capabilities: capabilities,
+		Instructions: ProjectServerInstructions(profile),
+	}
 }
 
 func projectInputSchema(input json.RawMessage, boundWorkspace bool) (json.RawMessage, error) {

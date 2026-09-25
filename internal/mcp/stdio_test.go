@@ -14,6 +14,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/version"
 )
 
 func TestStdioMessageReaderEnforcesPerMessageLimit(t *testing.T) {
@@ -58,6 +59,13 @@ func TestStdioRuntimeOfficialSDKInterop(t *testing.T) {
 	session, err := client.Connect(ctx, &sdkmcp.IOTransport{Reader: serverToClientReader, Writer: clientToServerWriter}, nil)
 	if err != nil {
 		t.Fatalf("connect: %v", err)
+	}
+	initialized := session.InitializeResult()
+	if initialized == nil || initialized.ServerInfo == nil || initialized.ServerInfo.Name != "codemcp" || initialized.ServerInfo.Version != version.Version {
+		t.Fatalf("stdio server info = %#v", initialized)
+	}
+	if initialized.Instructions != ProjectServerInstructions(BaseProfile()) {
+		t.Fatalf("stdio instructions drifted from base profile")
 	}
 	list, err := session.ListTools(ctx, nil)
 	if err != nil {

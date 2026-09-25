@@ -89,7 +89,7 @@ func detect(executable, buildVersion string, layout Layout, home, goBin, goPath,
 	if root := directRootFromExecutable(executable); root != "" {
 		return Detection{Method: MethodDirect, Executable: executable, Root: root}
 	}
-	if buildVersion == "dev" || strings.TrimSpace(buildVersion) == "" {
+	if isDevelopmentVersion(buildVersion) {
 		return Detection{Method: MethodDevelopment, Executable: executable}
 	}
 	if isGoInstallPath(executable, home, goBin, goPath) {

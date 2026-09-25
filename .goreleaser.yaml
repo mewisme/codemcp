@@ -26,7 +26,9 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
       - -s -w
-      - -X go.mewis.me/codemcp/internal/version.Version={{.Version}}
+      - -X go.mewis.me/codemcp/internal/version.ReleaseTag={{.Tag}}
+      - -X go.mewis.me/codemcp/internal/version.Commit={{.Commit}}
+      - -X go.mewis.me/codemcp/internal/version.Date={{.Date}}
 
 # Keep macOS binaries untouched for Gatekeeper compatibility.
 upx:

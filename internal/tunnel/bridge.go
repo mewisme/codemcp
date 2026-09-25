@@ -38,8 +38,8 @@ func newSDKBridge(runtime *tools.Runtime) (*sdkBridge, error) {
 		return nil, errors.New("MCP tools runtime is required")
 	}
 	descriptors := localmcp.DescribeProtocol(nil)
-	implementation, capabilities := localmcp.ProjectSDKServer(descriptors)
-	server := sdkmcp.NewServer(implementation, &sdkmcp.ServerOptions{Capabilities: capabilities})
+	implementation, options := localmcp.ProjectSDKServer(localmcp.BaseProfile(), descriptors)
+	server := sdkmcp.NewServer(implementation, options)
 	bridge := &sdkBridge{runtime: runtime, server: server, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
 	if err := bridge.syncTools(); err != nil {
 		return nil, err

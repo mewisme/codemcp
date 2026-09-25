@@ -1,5 +1,7 @@
 package instructioncontext
 
+import "strings"
+
 const (
 	agentWorkflowIntroduction = "Use CodeMCP as a multi-workspace coding agent with explicit workspace targeting."
 	serverIntroduction        = "Use CodeMCP for local, workspace-aware coding and project operations."
@@ -32,11 +34,70 @@ const (
 		"10. " + guidanceComplete + "\n" +
 		"11. " + guidanceMissing + "\n" +
 		"12. " + guidanceScope
-
-	defaultServerInstructions = serverIntroduction + " " + serverWorkspaceBootstrap + " " + serverContextBootstrap + " " +
-		guidanceWorkspace + " " + guidanceContainer + " " + guidanceContext + " " + guidanceRead + " " + guidanceSkills + " " + guidanceEdit + " " +
-		guidanceVerify + " " + guidanceRewind + " " + guidanceRemember + " " + guidanceComplete + " " + guidanceMissing + " " + guidanceScope
 )
+
+type ServerInstructionDirective struct {
+	ID   string
+	Text string
+}
+
+type ServerInstructionModel struct {
+	Role      string
+	Bootstrap []ServerInstructionDirective
+	Context   []ServerInstructionDirective
+	Workflow  []ServerInstructionDirective
+	Lifecycle []ServerInstructionDirective
+}
+
+type ServerInstructionRenderOptions struct {
+	Heading string
+}
+
+func CanonicalServerInstructionModel() ServerInstructionModel {
+	return ServerInstructionModel{
+		Role: serverIntroduction,
+		Bootstrap: []ServerInstructionDirective{
+			{ID: "workspace-bootstrap", Text: serverWorkspaceBootstrap},
+			{ID: "context-bootstrap", Text: serverContextBootstrap},
+		},
+		Context: []ServerInstructionDirective{
+			{ID: "workspace-isolation", Text: guidanceWorkspace},
+			{ID: "container-orchestration", Text: guidanceContainer},
+			{ID: "project-context", Text: guidanceContext},
+		},
+		Workflow: []ServerInstructionDirective{
+			{ID: "inspect", Text: guidanceRead},
+			{ID: "skills", Text: guidanceSkills},
+			{ID: "mutate", Text: guidanceEdit},
+			{ID: "verify", Text: guidanceVerify},
+			{ID: "rewind", Text: guidanceRewind},
+		},
+		Lifecycle: []ServerInstructionDirective{
+			{ID: "remember", Text: guidanceRemember},
+			{ID: "complete", Text: guidanceComplete},
+			{ID: "missing-context", Text: guidanceMissing},
+			{ID: "scope", Text: guidanceScope},
+		},
+	}
+}
+
+func RenderServerInstructions(model ServerInstructionModel, options ServerInstructionRenderOptions) string {
+	parts := make([]string, 0, 1+len(model.Bootstrap)+len(model.Context)+len(model.Workflow)+len(model.Lifecycle))
+	if heading := strings.TrimSpace(options.Heading); heading != "" {
+		parts = append(parts, heading)
+	}
+	if role := strings.TrimSpace(model.Role); role != "" {
+		parts = append(parts, role)
+	}
+	for _, group := range [][]ServerInstructionDirective{model.Bootstrap, model.Context, model.Workflow, model.Lifecycle} {
+		for _, directive := range group {
+			if text := strings.TrimSpace(directive.Text); text != "" {
+				parts = append(parts, text)
+			}
+		}
+	}
+	return strings.Join(parts, " ")
+}
 
 var sharedGuidanceSteps = []string{
 	guidanceWorkspace,
@@ -62,5 +123,5 @@ func SharedGuidanceSteps() []string {
 }
 
 func StaticServerInstructions() string {
-	return defaultServerInstructions
+	return RenderServerInstructions(CanonicalServerInstructionModel(), ServerInstructionRenderOptions{})
 }

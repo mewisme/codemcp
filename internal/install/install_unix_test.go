@@ -63,10 +63,10 @@ func TestInstallDoesNotCreateAlias(t *testing.T) {
 
 func TestInstallDevelopmentRequiresForce(t *testing.T) {
 	layout := testLayout(t)
-	source := testBinary(t, "dev")
+	source := testBinary(t, "0.0.1-dev")
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) { events = append(events, event) })
-	if _, err := Install(Options{Context: ctx, Layout: layout, Version: "dev", Source: source}); !errors.Is(err, ErrDevelopmentBuild) {
+	if _, err := Install(Options{Context: ctx, Layout: layout, Version: "0.0.1-dev", Source: source}); !errors.Is(err, ErrDevelopmentBuild) {
 		t.Fatalf("error = %v", err)
 	}
 	if !installTraceFields(events, "install.development-policy", map[string]any{"development_build": true, "force": false, "allowed": false}) {
@@ -75,10 +75,10 @@ func TestInstallDevelopmentRequiresForce(t *testing.T) {
 	if _, err := os.Stat(layout.Versions); !os.IsNotExist(err) {
 		t.Fatalf("development refusal mutated install: %v", err)
 	}
-	if _, err := Install(Options{Layout: layout, Version: "dev", Source: source, Force: true}); err != nil {
+	if _, err := Install(Options{Layout: layout, Version: "0.0.1-dev", Source: source, Force: true}); err != nil {
 		t.Fatalf("forced development install: %v", err)
 	}
-	assertCurrentVersion(t, layout, "dev")
+	assertCurrentVersion(t, layout, "0.0.1-dev")
 }
 
 func TestInstallNormalizesReleaseVersionPrefix(t *testing.T) {

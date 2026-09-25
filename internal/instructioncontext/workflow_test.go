@@ -142,3 +142,29 @@ func TestSharedGuidanceStepsReturnsCopy(t *testing.T) {
 		t.Fatalf("shared guidance leaked mutable state: %#v", second)
 	}
 }
+
+func TestCanonicalServerInstructionModelIsDeterministicAndBounded(t *testing.T) {
+	model := CanonicalServerInstructionModel()
+	first := RenderServerInstructions(model, ServerInstructionRenderOptions{})
+	second := RenderServerInstructions(CanonicalServerInstructionModel(), ServerInstructionRenderOptions{})
+	if first != second || first != StaticServerInstructions() {
+		t.Fatalf("server instruction rendering is not deterministic")
+	}
+	if len(first) == 0 || len(first) > 8192 {
+		t.Fatalf("server instructions length=%d", len(first))
+	}
+	for _, expected := range []string{"workspace_register", "workspace_container_context", "project_context", "load_path_rules", "load_skill", "apply_patch", "run_command", "verify", "agent_complete"} {
+		if !strings.Contains(first, expected) {
+			t.Fatalf("server instructions missing %q", expected)
+		}
+	}
+}
+
+func TestCanonicalServerInstructionModelContainsNoTransientWorkspaceContent(t *testing.T) {
+	value := StaticServerInstructions()
+	for _, forbidden := range []string{"ws_secret_runtime", "/tmp/private-workspace", "user@example.com", "Bearer ", "sk-"} {
+		if strings.Contains(value, forbidden) {
+			t.Fatalf("server instructions contain transient or secret marker %q", forbidden)
+		}
+	}
+}

@@ -2,8 +2,6 @@ package mcp
 
 import "encoding/json"
 
-const serverInfoMetaKey = "io.modelcontextprotocol/serverInfo"
-
 type Request struct {
 	JSONRPC string          `json:"jsonrpc"`
 	ID      any             `json:"id,omitempty"`

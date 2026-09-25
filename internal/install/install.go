@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	tracepkg "go.mewis.me/codemcp/internal/trace"
+	versionpkg "go.mewis.me/codemcp/internal/version"
 )
 
 var ErrDevelopmentBuild = errors.New("development build cannot be installed as a release without --force")
@@ -206,6 +207,5 @@ func metadataMatches(metadata *Metadata, layout Layout, version string) bool {
 }
 
 func isDevelopmentVersion(version string) bool {
-	version = strings.ToLower(strings.TrimSpace(version))
-	return version == "dev" || version == "(devel)" || strings.HasPrefix(version, "dev-")
+	return versionpkg.IsDevelopment(version)
 }

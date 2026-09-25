@@ -3,6 +3,8 @@ package update
 import (
 	"context"
 	"strings"
+
+	versionpkg "go.mewis.me/codemcp/internal/version"
 )
 
 type Status string
@@ -64,6 +66,5 @@ func checkRelease(current string, release Release) (CheckResult, error) {
 }
 
 func isDevelopmentVersion(version string) bool {
-	version = strings.ToLower(strings.TrimSpace(version))
-	return version == "" || version == "dev" || version == "(devel)" || strings.HasPrefix(version, "dev-")
+	return versionpkg.IsDevelopment(version)
 }

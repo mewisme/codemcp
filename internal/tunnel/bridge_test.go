@@ -17,6 +17,7 @@ import (
 	"go.mewis.me/codemcp/internal/controlguard"
 	localmcp "go.mewis.me/codemcp/internal/mcp"
 	"go.mewis.me/codemcp/internal/tools"
+	codemcpversion "go.mewis.me/codemcp/internal/version"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -138,6 +139,44 @@ func TestSDKBridgeCallsSharedToolsRuntime(t *testing.T) {
 		t.Fatalf("dynamic content = %#v", result.Content)
 	}
 
+	cancel()
+	select {
+	case <-serverDone:
+	case <-time.After(time.Second):
+		t.Fatal("bridge server did not stop")
+	}
+}
+
+func TestSDKBridgeAdvertisesCanonicalCodeMCPVersionAndInstructions(t *testing.T) {
+	previous := codemcpversion.Version
+	defer func() { codemcpversion.Version = previous }()
+	codemcpversion.Version = "8.9.10"
+
+	bridge, err := newSDKBridge(&tools.Runtime{Registry: tools.NewRegistry()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- bridge.Run(ctx, serverTransport) }()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "bridge-version-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialized := session.InitializeResult()
+	if initialized == nil || initialized.ServerInfo == nil || initialized.ServerInfo.Name != "codemcp" || initialized.ServerInfo.Version != codemcpversion.Version {
+		t.Fatalf("tunnel server info = %#v", initialized)
+	}
+	if initialized.Instructions != localmcp.ProjectServerInstructions(localmcp.BaseProfile()) {
+		t.Fatalf("tunnel instructions drifted from base profile")
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
 	cancel()
 	select {
 	case <-serverDone:

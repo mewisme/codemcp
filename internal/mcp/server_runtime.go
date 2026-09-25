@@ -34,7 +34,7 @@ func NewRuntimeWithProfile(toolRuntime *tools.Runtime, profile Profile) *Runtime
 func (r *Runtime) Handle(ctx context.Context, method string, params map[string]any) (any, error) {
 	switch method {
 	case "server/discover":
-		return Discover(), nil
+		return BuildDiscoverResult(r.Profile), nil
 	case "tools/list":
 		descriptors := DescribeProtocol(filterHeaderSafeTools(r.Tools.List())).Tools
 		projected, err := ProjectTools(r.Profile, descriptors, ToolProjectionOptions{})
