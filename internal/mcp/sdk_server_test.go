@@ -9,7 +9,10 @@ import (
 
 func TestProjectBoundWorkspaceSchemaRemovesWorkspaceArgument(t *testing.T) {
 	schema := tools.Schema{Name: "probe", InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"path":{"type":"string"}},"required":["workspace_id","path"],"additionalProperties":false}`)}
-	projected := projectBoundWorkspaceSchema(schema)
+	projected, err := ProjectTool(BaseProfile(), DescribeTool(schema), ToolProjectionOptions{BoundWorkspace: true})
+	if err != nil {
+		t.Fatal(err)
+	}
 	var input map[string]any
 	if err := json.Unmarshal(projected.InputSchema, &input); err != nil {
 		t.Fatal(err)

@@ -9,3 +9,10 @@ func NewToolCatalog(registry *tools.Registry) *ToolCatalog { return &ToolCatalog
 func (c *ToolCatalog) List() []tools.Schema {
 	return c.Registry.ListSchemas()
 }
+
+func (c *ToolCatalog) Descriptors() []ToolDescriptor {
+	if c == nil || c.Registry == nil {
+		return nil
+	}
+	return DescribeProtocol(filterHeaderSafeTools(c.Registry.ListSchemas())).Tools
+}

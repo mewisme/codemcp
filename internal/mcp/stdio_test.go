@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -63,6 +65,28 @@ func TestStdioRuntimeOfficialSDKInterop(t *testing.T) {
 	}
 	if len(list.Tools) != 1 || list.Tools[0].Name != "stdio_probe" {
 		t.Fatalf("tools = %#v", list.Tools)
+	}
+	httpRuntime := NewHTTPRuntimeWithTools(toolRuntime)
+	httpRequest := modernRequest("tools/list", `{"jsonrpc":"2.0","id":99,"method":"tools/list","params":{}}`)
+	httpResponse := httptest.NewRecorder()
+	httpRuntime.ServeHTTP(httpResponse, httpRequest)
+	if httpResponse.Code != 200 {
+		t.Fatalf("direct HTTP list status=%d body=%s", httpResponse.Code, httpResponse.Body.String())
+	}
+	directResponse := decodeResponse(t, httpResponse)
+	directResult := directResponse.Result.(map[string]any)
+	directTools := directResult["tools"].([]any)
+	directJSON, _ := json.Marshal(directTools[0])
+	stdioJSON, _ := json.Marshal(list.Tools[0])
+	var directValue, stdioValue map[string]any
+	if err := json.Unmarshal(directJSON, &directValue); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(stdioJSON, &stdioValue); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(directValue, stdioValue) {
+		t.Fatalf("base-profile direct/stdin tool metadata differs:\ndirect=%s\nstdio=%s", directJSON, stdioJSON)
 	}
 	result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{Name: "stdio_probe", Arguments: map[string]any{}})
 	if err != nil {

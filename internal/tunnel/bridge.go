@@ -18,7 +18,6 @@ import (
 	"go.mewis.me/codemcp/internal/idgen"
 	localmcp "go.mewis.me/codemcp/internal/mcp"
 	"go.mewis.me/codemcp/internal/tools"
-	"go.mewis.me/codemcp/internal/version"
 )
 
 type sdkBridge struct {
@@ -38,7 +37,9 @@ func newSDKBridge(runtime *tools.Runtime) (*sdkBridge, error) {
 	if runtime == nil || runtime.Registry == nil {
 		return nil, errors.New("MCP tools runtime is required")
 	}
-	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "codemcp", Version: version.Version}, &sdkmcp.ServerOptions{Capabilities: &sdkmcp.ServerCapabilities{}})
+	descriptors := localmcp.DescribeProtocol(nil)
+	implementation, capabilities := localmcp.ProjectSDKServer(descriptors)
+	server := sdkmcp.NewServer(implementation, &sdkmcp.ServerOptions{Capabilities: capabilities})
 	bridge := &sdkBridge{runtime: runtime, server: server, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
 	if err := bridge.syncTools(); err != nil {
 		return nil, err
@@ -85,11 +86,12 @@ func (b *sdkBridge) syncTools() error {
 		if !localmcp.HeaderSafeTool(schema) {
 			continue
 		}
-		tool, err := sdkToolFromSchema(schema)
+		descriptor := localmcp.DescribeTool(schema)
+		tool, err := localmcp.ProjectSDKTool(localmcp.BaseProfile(), descriptor, localmcp.ToolProjectionOptions{})
 		if err != nil {
 			return fmt.Errorf("tool %q: %w", schema.Name, err)
 		}
-		data, err := json.Marshal(schema)
+		data, err := json.Marshal(descriptor)
 		if err != nil {
 			return fmt.Errorf("fingerprint tool %q: %w", schema.Name, err)
 		}
@@ -138,49 +140,6 @@ func addSDKTool(server *sdkmcp.Server, tool *sdkmcp.Tool, handler sdkmcp.ToolHan
 	}()
 	server.AddTool(tool, handler)
 	return nil
-}
-
-func sdkToolFromSchema(schema tools.Schema) (*sdkmcp.Tool, error) {
-	input := schema.InputSchema
-	if len(input) == 0 {
-		input = json.RawMessage(`{"type":"object"}`)
-	}
-	var inputObject map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(input))
-	decoder.UseNumber()
-	if err := decoder.Decode(&inputObject); err != nil {
-		return nil, fmt.Errorf("decode input schema: %w", err)
-	}
-	if kind, _ := inputObject["type"].(string); kind != "object" {
-		return nil, fmt.Errorf("input schema must have type object")
-	}
-
-	var output any
-	if len(schema.OutputSchema) > 0 {
-		decoder = json.NewDecoder(bytes.NewReader(schema.OutputSchema))
-		decoder.UseNumber()
-		if err := decoder.Decode(&output); err != nil {
-			return nil, fmt.Errorf("decode output schema: %w", err)
-		}
-	}
-
-	var annotations *sdkmcp.ToolAnnotations
-	if len(schema.Annotations) > 0 {
-		data, err := json.Marshal(schema.Annotations)
-		if err != nil {
-			return nil, fmt.Errorf("encode annotations: %w", err)
-		}
-		var value sdkmcp.ToolAnnotations
-		if err := json.Unmarshal(data, &value); err != nil {
-			return nil, fmt.Errorf("decode annotations: %w", err)
-		}
-		annotations = &value
-	}
-
-	return &sdkmcp.Tool{
-		Name: schema.Name, Title: schema.Title, Description: schema.Description,
-		InputSchema: inputObject, OutputSchema: output, Annotations: annotations,
-	}, nil
 }
 
 func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {

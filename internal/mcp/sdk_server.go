@@ -10,7 +10,6 @@ import (
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/tools"
-	"go.mewis.me/codemcp/internal/version"
 )
 
 type SDKServer struct {
@@ -21,6 +20,7 @@ type SDKServer struct {
 	BoundWorkspace  string
 	ApprovalCallers *approval.CallerRegistry
 	ModernCallerID  string
+	Profile         Profile
 }
 
 func NewSDKServerWithTools(toolRuntime *tools.Runtime, source string) (*SDKServer, error) {
@@ -28,12 +28,21 @@ func NewSDKServerWithTools(toolRuntime *tools.Runtime, source string) (*SDKServe
 }
 
 func NewSDKServerWithSession(toolRuntime *tools.Runtime, source, sessionID, boundWorkspace string) (*SDKServer, error) {
+	return newSDKServerWithProfile(toolRuntime, source, sessionID, boundWorkspace, BaseProfile())
+}
+
+func newSDKServerWithProfile(toolRuntime *tools.Runtime, source, sessionID, boundWorkspace string, profile Profile) (*SDKServer, error) {
 	if toolRuntime == nil {
 		toolRuntime = tools.NewRuntime()
 	}
-	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "codemcp", Version: version.Version}, &sdkmcp.ServerOptions{Capabilities: &sdkmcp.ServerCapabilities{Tools: &sdkmcp.ToolCapabilities{ListChanged: true}}})
+	if profile == nil {
+		profile = BaseProfile()
+	}
+	descriptors := DescribeProtocol(nil)
+	implementation, capabilities := ProjectSDKServer(descriptors)
+	server := sdkmcp.NewServer(implementation, &sdkmcp.ServerOptions{Capabilities: capabilities})
 	callers := approval.NewCallerRegistry()
-	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source)}
+	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile}
 	for _, schema := range filterHeaderSafeTools(toolRuntime.List()) {
 		if err := adapter.addTool(schema); err != nil {
 			return nil, err
@@ -43,26 +52,17 @@ func NewSDKServerWithSession(toolRuntime *tools.Runtime, source, sessionID, boun
 }
 
 func (s *SDKServer) addTool(schema tools.Schema) error {
+	options := ToolProjectionOptions{}
 	if s.BoundWorkspace != "" {
 		workspaceScoped, err := s.Tools.Registry.WorkspaceScoped(schema.Name)
 		if err != nil {
 			return err
 		}
-		if workspaceScoped {
-			schema = projectBoundWorkspaceSchema(schema)
-		}
+		options.BoundWorkspace = workspaceScoped
 	}
-	tool := &sdkmcp.Tool{Name: schema.Name, Title: schema.Title, Description: schema.Description, InputSchema: schema.InputSchema, OutputSchema: schema.OutputSchema}
-	if len(schema.Annotations) > 0 {
-		data, err := json.Marshal(schema.Annotations)
-		if err != nil {
-			return err
-		}
-		annotations := &sdkmcp.ToolAnnotations{}
-		if err := json.Unmarshal(data, annotations); err != nil {
-			return err
-		}
-		tool.Annotations = annotations
+	tool, err := ProjectSDKTool(s.Profile, DescribeTool(schema), options)
+	if err != nil {
+		return err
 	}
 	s.Server.AddTool(tool, func(ctx context.Context, request *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		args := map[string]any{}
@@ -104,33 +104,6 @@ func (s *SDKServer) addTool(schema tools.Schema) error {
 		return sdkCallToolResult(result)
 	})
 	return nil
-}
-
-func projectBoundWorkspaceSchema(schema tools.Schema) tools.Schema {
-	var input map[string]any
-	if len(schema.InputSchema) == 0 || json.Unmarshal(schema.InputSchema, &input) != nil {
-		return schema
-	}
-	if properties, ok := input["properties"].(map[string]any); ok {
-		delete(properties, "workspace_id")
-	}
-	if required, ok := input["required"].([]any); ok {
-		filtered := make([]any, 0, len(required))
-		for _, item := range required {
-			if value, ok := item.(string); !ok || value != "workspace_id" {
-				filtered = append(filtered, item)
-			}
-		}
-		if len(filtered) == 0 {
-			delete(input, "required")
-		} else {
-			input["required"] = filtered
-		}
-	}
-	if data, err := json.Marshal(input); err == nil {
-		schema.InputSchema = data
-	}
-	return schema
 }
 
 func sdkCallToolResult(result tools.Result) (*sdkmcp.CallToolResult, error) {

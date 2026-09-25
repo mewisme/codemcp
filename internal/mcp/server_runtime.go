@@ -9,7 +9,8 @@ import (
 )
 
 type Runtime struct {
-	Tools *tools.Runtime
+	Tools   *tools.Runtime
+	Profile Profile
 }
 
 func NewRuntime() *Runtime {
@@ -17,10 +18,17 @@ func NewRuntime() *Runtime {
 }
 
 func NewRuntimeWithTools(toolRuntime *tools.Runtime) *Runtime {
+	return NewRuntimeWithProfile(toolRuntime, BaseProfile())
+}
+
+func NewRuntimeWithProfile(toolRuntime *tools.Runtime, profile Profile) *Runtime {
 	if toolRuntime == nil {
 		toolRuntime = tools.NewRuntime()
 	}
-	return &Runtime{Tools: toolRuntime}
+	if profile == nil {
+		profile = BaseProfile()
+	}
+	return &Runtime{Tools: toolRuntime, Profile: profile}
 }
 
 func (r *Runtime) Handle(ctx context.Context, method string, params map[string]any) (any, error) {
@@ -28,7 +36,12 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 	case "server/discover":
 		return Discover(), nil
 	case "tools/list":
-		return map[string]any{"tools": filterHeaderSafeTools(r.Tools.List()), "ttlMs": defaultCacheTTLMS, "cacheScope": defaultCacheScope, "resultType": "complete"}, nil
+		descriptors := DescribeProtocol(filterHeaderSafeTools(r.Tools.List())).Tools
+		projected, err := ProjectTools(r.Profile, descriptors, ToolProjectionOptions{})
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"tools": projected, "ttlMs": defaultCacheTTLMS, "cacheScope": defaultCacheScope, "resultType": "complete"}, nil
 	case "tools/call":
 		name, _ := params["name"].(string)
 		args, _ := params["arguments"].(map[string]any)

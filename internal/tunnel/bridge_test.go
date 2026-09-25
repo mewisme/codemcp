@@ -15,6 +15,7 @@ import (
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/controlguard"
+	localmcp "go.mewis.me/codemcp/internal/mcp"
 	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -366,7 +367,7 @@ func TestSDKToolConversionPreservesAnnotationsAndHeaderSchema(t *testing.T) {
 		InputSchema: json.RawMessage(`{"type":"object","properties":{"tenant":{"type":"string","x-mcp-header":"Tenant"}}}`),
 		Annotations: map[string]any{"readOnlyHint": readOnly, "openWorldHint": false},
 	}
-	tool, err := sdkToolFromSchema(schema)
+	tool, err := localmcp.ProjectSDKTool(localmcp.BaseProfile(), localmcp.DescribeTool(schema), localmcp.ToolProjectionOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
