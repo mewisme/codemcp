@@ -84,6 +84,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 		environment = environments[0]
 	}
 	registerCoreWithManagers(registry, workspaces, checkpoints, environment, shell, processes, codeGraphProjectContextProviders(runtime))
+	RegisterAgentCompletionTool(registry, runtime.Completions)
 	RegisterApprovalTools(registry, runtime)
 	RegisterUpstreamTools(registry, upstreams)
 	if err := runtime.SyncIntegrations(integrationConfig); err != nil {

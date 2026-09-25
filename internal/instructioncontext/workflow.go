@@ -15,6 +15,7 @@ const (
 	guidanceVerify    = "For non-trivial work, make a short plan, implement incrementally, and verify with the repository's relevant tests, lint, typecheck, build, or other documented checks."
 	guidanceRewind    = "Use rewind to inspect or recover automatic file checkpoints when an edit must be reviewed or reverted."
 	guidanceRemember  = "When the user explicitly asks to remember, save, persist, or retain an eligible workspace-specific note for future sessions, call remember immediately in that same turn before replying; do not merely acknowledge or defer the request. Identify a concise scope and an optional child key: omit key for a scope-level note, and never repeat the scope as its child key. Call memory_get for that target, reconcile the current canonical note with the new information, then call remember with the complete canonical replacement note. A newer explicit user preference supersedes conflicting older memory; rewrite the entry instead of concatenating contradictory statements. Use remember only for durable workspace-specific conclusions that will help future sessions; do not store conversation history, secrets, transient status, or raw MCP session identifiers. If project_context reports memory optimization recommended and the current task permits maintenance, call optimize_memory and reconcile candidates with remember/forget instead of letting memory grow unbounded."
+	guidanceComplete  = "When agent_complete is available in the current tool profile and requested CodeMCP workspace work reaches a terminal state, finish verification first, then call agent_complete for each materially worked workspace as the final CodeMCP tool call immediately before the final user response. Use completed only when the requested work is actually finished; use partial when useful work remains incomplete, blocked when a concrete blocker prevents completion, or cancelled when the work was intentionally stopped. Do not call agent_complete for intermediate steps when more work in the current request is about to continue. MCP disconnect, transport close, or model-process exit alone is never successful completion; agent_complete records terminal work state but does not close the MCP transport or model process."
 	guidanceMissing   = "Do not assume instructions, rules, skill bodies, Git state, or environment details that are absent from the supplied context. Query the appropriate tool instead of guessing."
 	guidanceScope     = "Preserve unrelated user changes and keep mutations scoped to the requested task."
 
@@ -28,12 +29,13 @@ const (
 		"7. " + guidanceVerify + "\n" +
 		"8. " + guidanceRewind + "\n" +
 		"9. " + guidanceRemember + "\n" +
-		"10. " + guidanceMissing + "\n" +
-		"11. " + guidanceScope
+		"10. " + guidanceComplete + "\n" +
+		"11. " + guidanceMissing + "\n" +
+		"12. " + guidanceScope
 
 	defaultServerInstructions = serverIntroduction + " " + serverWorkspaceBootstrap + " " + serverContextBootstrap + " " +
 		guidanceWorkspace + " " + guidanceContainer + " " + guidanceContext + " " + guidanceRead + " " + guidanceSkills + " " + guidanceEdit + " " +
-		guidanceVerify + " " + guidanceRewind + " " + guidanceRemember + " " + guidanceMissing + " " + guidanceScope
+		guidanceVerify + " " + guidanceRewind + " " + guidanceRemember + " " + guidanceComplete + " " + guidanceMissing + " " + guidanceScope
 )
 
 var sharedGuidanceSteps = []string{
@@ -46,6 +48,7 @@ var sharedGuidanceSteps = []string{
 	guidanceVerify,
 	guidanceRewind,
 	guidanceRemember,
+	guidanceComplete,
 	guidanceMissing,
 	guidanceScope,
 }

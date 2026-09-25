@@ -8,10 +8,37 @@ import (
 func TestAgentWorkflowCoversNativeToolFlow(t *testing.T) {
 	workflow := AgentWorkflow()
 	for _, expected := range []string{
-		"MCP session", "project_context", "workspace_container_context", "load_path_rules", "load_skill", "read_files", "read_text_file", "apply_patch", "edit_file", "multi_edit", "run_command", "rewind", "remember", "verify",
+		"MCP session", "project_context", "workspace_container_context", "load_path_rules", "load_skill", "read_files", "read_text_file", "apply_patch", "edit_file", "multi_edit", "run_command", "rewind", "remember", "verify", "agent_complete",
 	} {
 		if !strings.Contains(workflow, expected) {
 			t.Fatalf("workflow missing %q: %s", expected, workflow)
+		}
+	}
+}
+
+func TestAgentWorkflowRequiresExplicitTerminalCompletionWhenCapabilityExists(t *testing.T) {
+	workflow := AgentWorkflow()
+	server := StaticServerInstructions()
+	for _, expected := range []string{
+		"agent_complete is available in the current tool profile",
+		"finish verification first",
+		"final CodeMCP tool call",
+		"completed only when",
+		"partial",
+		"blocked",
+		"cancelled",
+		"intermediate steps",
+		"MCP disconnect",
+		"transport close",
+		"model-process exit",
+		"never successful completion",
+		"does not close the MCP transport",
+	} {
+		if !strings.Contains(workflow, expected) {
+			t.Fatalf("workflow missing completion guidance %q: %s", expected, workflow)
+		}
+		if !strings.Contains(server, expected) {
+			t.Fatalf("server instructions missing completion guidance %q: %s", expected, server)
 		}
 	}
 }
