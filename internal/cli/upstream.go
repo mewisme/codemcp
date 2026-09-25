@@ -72,9 +72,10 @@ func upstreamServerListCommand() *cobra.Command {
 				return err
 			}
 			if refresh {
-				log := commandLogger(cmd)
+				var progress *commandProgress
 				if !asJSON {
-					startCommandSpinner(cmd, log, "UPSTREAM", "upstream.status.refreshing", "Refreshing Upstream status")
+					progress = newCommandProgress(cmd, "UPSTREAM")
+					progress.Start("upstream.status.refreshing", "Refreshing Upstream status", "Refreshed Upstream status")
 				}
 				ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 				statuses := manager.ListStatuses(ctx, true)
@@ -82,6 +83,7 @@ func upstreamServerListCommand() *cobra.Command {
 				if asJSON {
 					return writeResultJSON(cmd, statuses)
 				}
+				progress.Complete()
 				renderUpstreamStatusList(commandPresenter(cmd), statuses)
 				return nil
 			}
@@ -280,9 +282,10 @@ func upstreamServerStatusCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			log := commandLogger(cmd)
+			var progress *commandProgress
 			if !asJSON {
-				startCommandSpinner(cmd, log, "UPSTREAM", "upstream.status.checking", "Checking Upstream status")
+				progress = newCommandProgress(cmd, "UPSTREAM")
+				progress.Start("upstream.status.checking", "Checking Upstream status", "Checked Upstream status")
 			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 			defer cancel()
@@ -290,6 +293,7 @@ func upstreamServerStatusCommand() *cobra.Command {
 			if asJSON {
 				return writeResultJSON(cmd, status)
 			}
+			progress.Complete()
 			renderUpstreamStatus(commandPresenter(cmd), status)
 			return nil
 		},
@@ -401,18 +405,21 @@ func upstreamServerToolsCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			log := commandLogger(cmd)
-			startCommandSpinner(cmd, log, "UPSTREAM", "upstream.tools.loading", "Loading Upstream tools")
+			progress := newCommandProgress(cmd, "UPSTREAM")
+			progress.Start("upstream.tools.loading", "Loading Upstream tools", "Loaded Upstream tools")
 			ctx, cancel := context.WithTimeout(cmd.Context(), 15*time.Second)
 			defer cancel()
 			values, err := manager.Tools(ctx, args[0], refresh)
 			if err != nil {
+				progress.Stop()
 				return err
 			}
 			server, ok := manager.Get(args[0])
 			if !ok {
+				progress.Stop()
 				return fmt.Errorf("upstream server disappeared while loading tools: %s", args[0])
 			}
+			progress.Complete()
 			proxied := map[string]bool{}
 			for _, name := range manager.ProxiedToolNames(server, values) {
 				proxied[name] = true

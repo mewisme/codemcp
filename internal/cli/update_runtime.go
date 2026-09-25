@@ -53,8 +53,10 @@ func coordinateUpdatedRuntimeWith(cmd *cobra.Command, installed install.Result, 
 		log.Detail("pid", state.Status.PID)
 		return nil
 	}
-	log.Action("UPDATE", "update.runtime-restarting", "Restarting managed runtime")
+	progress := newCommandProgress(cmd, "UPDATE")
+	progress.Start("update.runtime-restarting", "Restarting managed runtime", "Managed runtime restarted")
 	if err := restart(cmd, installed.Layout, state.Status); err != nil {
+		progress.Stop()
 		log.Warning("UPDATE", "update.runtime-restart-failed", "Managed runtime restart failed; rolling back", err)
 		if rollbackErr := install.RollbackResult(installed); rollbackErr != nil {
 			return fmt.Errorf("managed runtime restart failed: %w; rollback failed: %v", err, rollbackErr)
@@ -70,7 +72,7 @@ func coordinateUpdatedRuntimeWith(cmd *cobra.Command, installed install.Result, 
 		log.Ready("UPDATE", "update.rollback-runtime-restarted", "Previous managed runtime restarted")
 		return fmt.Errorf("managed runtime restart failed: %w; rolled back to %s", err, previous)
 	}
-	log.Ready("UPDATE", "update.runtime-restarted", "Managed runtime restarted")
+	progress.Complete()
 	return nil
 }
 

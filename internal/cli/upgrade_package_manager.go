@@ -92,16 +92,17 @@ func runPackageManagerPhase(cmd *cobra.Command, log *logger.Logger, plan updatep
 		done = plan.Name + " update command completed"
 		event = "update.package.apply"
 	}
-	startCommandSpinner(cmd, log, "UPDATE", event, message)
+	progress := newCommandProgress(cmd, "UPDATE")
+	progress.Start(event, message, done)
 	output, err := run(cmd.Context(), command)
-	log.StopAnimation()
 	if strings.TrimSpace(output) != "" {
 		logCommandDebug(cmd, "UPDATE", event+".output", plan.Name+" command output", logger.WithDebug("output", strings.TrimSpace(output)))
 	}
 	if err != nil {
+		progress.Stop()
 		return fmt.Errorf("%s: %w", strings.ToLower(message), err)
 	}
-	log.Ready("UPDATE", event+".complete", done)
+	progress.Complete()
 	return nil
 }
 

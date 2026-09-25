@@ -5,7 +5,10 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 )
+
+const defaultProgressAnimationInterval = 120 * time.Millisecond
 
 type ProgressState uint8
 
@@ -37,6 +40,8 @@ type ProgressSession struct {
 	phases       map[string]ProgressPhase
 	activeID     string
 	transient    bool
+	animationSeq uint64
+	animationGap time.Duration
 	begun        bool
 	gap          bool
 	framed       bool
@@ -50,7 +55,8 @@ func NewProgressSession(out io.Writer, mode ResultMode, capabilities Capabilitie
 	session := &ProgressSession{
 		out: out, mode: mode, capabilities: capabilities,
 		theme: NewTheme(capabilities), glyphs: Glyphs(capabilities),
-		phases: map[string]ProgressPhase{},
+		phases:       map[string]ProgressPhase{},
+		animationGap: defaultProgressAnimationInterval,
 	}
 	session.presenter = newSessionPresenter(session)
 	return session
@@ -307,12 +313,19 @@ func (session *ProgressSession) line(value string) {
 }
 
 func (session *ProgressSession) renderRunningLocked(phase ProgressPhase) {
-	if session.mode != ModeHuman || !session.capabilities.Animation {
+	if session.mode != ModeHuman || !session.capabilities.Animation || !session.capabilities.CursorControl {
 		return
 	}
 	session.clearTransientLocked()
-	fmt.Fprint(session.out, "\r\x1b[2K", session.theme.Render(RoleActive, session.glyphs.Active), "  ", phase.Label)
+	session.animationSeq++
+	sequence := session.animationSeq
+	session.renderTransientLocked(session.glyphs.PhaseDone, phase.Label)
 	session.transient = true
+	interval := session.animationGap
+	if interval <= 0 {
+		interval = defaultProgressAnimationInterval
+	}
+	go session.animatePhase(sequence, phase.ID, phase.Label, interval)
 }
 
 func (session *ProgressSession) renderTerminalLocked(phase ProgressPhase) {
@@ -325,14 +338,8 @@ func (session *ProgressSession) renderTerminalLocked(phase ProgressPhase) {
 		return
 	}
 	glyph, role := session.terminalStyle(phase.State)
-	label := phase.Label
-	if phase.State == ProgressSuccess && phase.Message != "" {
-		label = phase.Message
-	}
+	label := terminalProgressLabel(phase)
 	line := session.theme.Render(role, glyph) + "  " + label
-	if phase.State != ProgressSuccess && phase.Message != "" && !strings.EqualFold(phase.Message, phase.Label) {
-		line += " — " + phase.Message
-	}
 	fmt.Fprintln(session.out, line)
 	session.gap = false
 }
@@ -353,10 +360,35 @@ func (session *ProgressSession) clearTransientLocked() {
 	if !session.transient {
 		return
 	}
+	session.animationSeq++
 	if session.capabilities.CursorControl {
 		fmt.Fprint(session.out, "\r\x1b[2K")
 	}
 	session.transient = false
+}
+
+func (session *ProgressSession) animatePhase(sequence uint64, id, label string, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	pending := true
+	for range ticker.C {
+		session.mu.Lock()
+		if session.closed || !session.transient || session.animationSeq != sequence || session.activeID != id {
+			session.mu.Unlock()
+			return
+		}
+		glyph := session.glyphs.PhaseDone
+		if pending {
+			glyph = session.glyphs.PhasePending
+		}
+		pending = !pending
+		session.renderTransientLocked(glyph, label)
+		session.mu.Unlock()
+	}
+}
+
+func (session *ProgressSession) renderTransientLocked(glyph, label string) {
+	fmt.Fprint(session.out, "\r\x1b[2K", session.theme.Render(RoleActive, glyph), "  ", label)
 }
 
 func (session *ProgressSession) terminalStyle(state ProgressState) (string, Role) {
@@ -375,29 +407,12 @@ func (session *ProgressSession) terminalStyle(state ProgressState) (string, Role
 }
 
 func plainProgressLine(phase ProgressPhase) string {
-	label := strings.TrimSpace(phase.Label)
-	switch phase.State {
-	case ProgressSuccess:
-		if phase.Message != "" && !strings.EqualFold(phase.Message, label) {
-			return phase.Message
-		}
-		return label + "... done"
-	case ProgressSkipped:
-		if phase.Message != "" {
-			return phase.Message
-		}
-		return label + "... skipped"
-	case ProgressWarning:
-		if phase.Message != "" {
-			return label + "... warning: " + phase.Message
-		}
-		return label + "... warning"
-	case ProgressFailed:
-		if phase.Message != "" {
-			return label + "... failed: " + phase.Message
-		}
-		return label + "... failed"
-	default:
-		return label
+	return terminalProgressLabel(phase)
+}
+
+func terminalProgressLabel(phase ProgressPhase) string {
+	if message := strings.TrimSpace(phase.Message); message != "" {
+		return message
 	}
+	return strings.TrimSpace(phase.Label)
 }

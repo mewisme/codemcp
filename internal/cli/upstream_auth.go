@@ -51,7 +51,8 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			store := oauthStoreForCommand(cmd)
 			log := commandLogger(cmd)
 			beginMutationProgress(cmd, "Authorize Upstream server")
-			startCommandSpinner(cmd, log, "OAUTH", "oauth.starting", "Starting OAuth authorization")
+			progress := newCommandProgress(cmd, "OAUTH")
+			progress.Start("oauth.starting", "Starting OAuth authorization", "OAuth authorization started")
 			credential, err := store.Login(ctx, mcpoauth.LoginConfig{
 				ServerID: server.ID, ServerURL: server.URL, Scope: server.Auth.Scope, Issuer: issuer,
 				ClientID: clientID, ClientSecretEnvVar: clientSecretEnv, ClientMetadataURL: clientMetadataURL,
@@ -67,13 +68,16 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 				} else {
 					browserSpan.EndMessage("OAuth authorization opened in browser", tracepkg.Bool("skipped", false))
 				}
-				startCommandSpinner(cmd, log, "OAUTH", "oauth.waiting", "Waiting for OAuth authorization")
+				progress.Start("oauth.waiting", "Waiting for OAuth authorization", "OAuth authorization completed")
 				return nil
 			}})
 			if err != nil {
+				progress.Stop()
 				return err
 			}
-			startCommandSpinner(cmd, log, "UPSTREAM", "upstream.health.checking", "Checking Upstream health")
+			progress.Complete()
+			progress = newCommandProgress(cmd, "UPSTREAM")
+			progress.Start("upstream.health.checking", "Checking Upstream health", "Checked Upstream health")
 			healthSpan := tracepkg.Start(ctx, "OAUTH", "oauth.post-login.health", "Checking Upstream health after OAuth login", tracepkg.String("server", server.ID))
 			status := manager.CheckHealth(ctx, server.ID, true)
 			if status.Health != "connected" {
@@ -82,6 +86,7 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			} else {
 				healthSpan.EndMessage("Post-login Upstream health check connected", tracepkg.String("health", string(status.Health)), tracepkg.Int("tool_count", status.ToolCount))
 			}
+			progress.Complete()
 			fields := []presentation.Field{
 				{Label: "server", Value: server.ID},
 				{Label: "issuer", Value: credential.Issuer},

@@ -89,19 +89,6 @@ func TestCommandLoggerIsSharedForCommandLifecycle(t *testing.T) {
 	closeCommandLogger(cmd)
 }
 
-func TestStartCommandSpinnerIsSilentWithoutTerminal(t *testing.T) {
-	var output bytes.Buffer
-	cmd := newRootCommand()
-	cmd.SetOut(&output)
-	cmd.SetErr(&output)
-	log := commandLogger(cmd)
-	startCommandSpinner(cmd, log, "TEST", "test.waiting", "Waiting")
-	log.Close()
-	if output.Len() != 0 {
-		t.Fatalf("spinner wrote to non-terminal output: %q", output.String())
-	}
-}
-
 func TestExecuteCommandVerboseEmitsLifecycle(t *testing.T) {
 	var output bytes.Buffer
 	cmd := newRootCommand()
@@ -474,10 +461,13 @@ func TestCommandTraceProgressFailureIsStableAndErrorChainRemainsAvailable(t *tes
 		t.Fatal("expected progress failure")
 	}
 	text := output.String()
-	for _, want := range []string{"Saving configuration... failed: Configuration persist failed", "save config: disk full", "error_chain="} {
+	for _, want := range []string{"Configuration persist failed", "save config: disk full", "error_chain="} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("failure output missing %q: %s", want, text)
 		}
+	}
+	if strings.Contains(text, "Saving configuration — Configuration persist failed") || strings.Contains(text, "Saving configuration... failed") {
+		t.Fatalf("failure progress repeated running label: %q", text)
 	}
 	if strings.Contains(text, "\r") {
 		t.Fatalf("debug progress left transient carriage return: %q", text)
@@ -503,6 +493,9 @@ func TestCommandTraceProgressVerboseKeepsDiagnosticsWithoutCursorControl(t *test
 		if !strings.Contains(text, want) {
 			t.Fatalf("verbose progress missing %q: %q", want, text)
 		}
+	}
+	if strings.Count(text, "Saved configuration") != 1 {
+		t.Fatalf("verbose progress duplicated terminal phase: %q", text)
 	}
 	if strings.ContainsAny(text, "\r\x1b") {
 		t.Fatalf("verbose progress contains transient control bytes: %q", text)
@@ -532,6 +525,63 @@ func TestCommandTraceProgressJSONDiagnosticsStayJSONL(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &event); err != nil {
 			t.Fatalf("progress diagnostic is not JSONL: %q: %v", line, err)
 		}
+	}
+}
+
+func TestCommandProgressModesDoNotDuplicateTerminalPhase(t *testing.T) {
+	tests := []struct {
+		name     string
+		logArgs  []string
+		jsonLogs bool
+	}{
+		{name: "default"},
+		{name: "verbose", logArgs: []string{"--verbose"}},
+		{name: "debug", logArgs: []string{"--debug"}},
+		{name: "json", logArgs: []string{"--log-format=json"}, jsonLogs: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			cmd := newRootCommand()
+			cmd.SetOut(&output)
+			cmd.SetErr(&output)
+			child := &cobra.Command{Use: "phase-mode", RunE: func(cmd *cobra.Command, _ []string) error {
+				progress := newCommandProgress(cmd, "TEST")
+				progress.Start("test.phase", "Running phase", "Phase completed")
+				progress.Complete()
+				return nil
+			}}
+			cmd.AddCommand(child)
+			args := append([]string{}, test.logArgs...)
+			args = append(args, "phase-mode")
+			cmd.SetArgs(testCommandArgs(t, args...))
+			if err := executeCommand(cmd); err != nil {
+				t.Fatal(err)
+			}
+			text := strings.TrimSpace(output.String())
+			if test.jsonLogs {
+				count := 0
+				for _, line := range strings.Split(text, "\n") {
+					var event map[string]any
+					if err := json.Unmarshal([]byte(line), &event); err != nil {
+						t.Fatalf("JSON progress line is invalid: %q: %v", line, err)
+					}
+					if event["message"] == "Phase completed" {
+						count++
+					}
+				}
+				if count != 1 {
+					t.Fatalf("JSON progress terminal count=%d: %q", count, text)
+				}
+				return
+			}
+			if count := strings.Count(text, "Phase completed"); count != 1 {
+				t.Fatalf("text progress terminal count=%d: %q", count, text)
+			}
+			if test.name != "default" && strings.ContainsAny(text, "\r\x1b") {
+				t.Fatalf("%s progress contains transient control bytes: %q", test.name, text)
+			}
+		})
 	}
 }
 
@@ -571,6 +621,9 @@ func TestCommandTraceProgressPreservesSkippedResult(t *testing.T) {
 	text := output.String()
 	if !strings.Contains(text, "Runtime reload skipped") || strings.Contains(text, "Runtime configuration reloaded") {
 		t.Fatalf("skipped progress result was not preserved: %q", text)
+	}
+	if strings.Contains(text, "Reloading running runtime —") || strings.Contains(text, "Reloading running runtime...") {
+		t.Fatalf("skipped progress repeated running label: %q", text)
 	}
 }
 

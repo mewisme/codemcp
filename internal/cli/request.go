@@ -35,20 +35,22 @@ func requestGrantListCommand() *cobra.Command {
 	var workspaceID string
 	cmd := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List active similar-command runtime grants", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
-		log := commandLogger(cmd)
+		var progress *commandProgress
 		if !asJSON {
-			startCommandSpinner(cmd, log, "REQUEST", "request.loading", "Loading runtime session grants")
+			progress = newCommandProgress(cmd, "REQUEST")
+			progress.Start("request.loading", "Loading runtime session grants", "Loaded runtime session grants")
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
 		defer cancel()
 		grants, err := application.ListRuntimeGrants(ctx, workspaceID)
 		if err != nil {
+			progress.Stop()
 			return err
 		}
 		if asJSON {
 			return writeResultJSON(cmd, grants)
 		}
-		log.StopAnimation()
+		progress.Complete()
 		renderRuntimeGrants(commandPresenter(cmd), grants)
 		return nil
 	}}
@@ -62,18 +64,22 @@ func requestGrantRevokeCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "revoke <request_id>", Short: "Revoke one similar-command runtime grant by request ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("request", args[0]))
 		log := commandLogger(cmd)
+		var progress *commandProgress
 		if !asJSON {
-			startCommandSpinner(cmd, log, "REQUEST", "request.resolving", "Revoking runtime session grant")
+			progress = newCommandProgress(cmd, "REQUEST")
+			progress.Start("request.resolving", "Revoking runtime session grant", "Runtime session grant revoked")
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
 		defer cancel()
 		request, err := application.RevokeRuntimeGrant(ctx, args[0])
 		if err != nil {
+			progress.Stop()
 			return err
 		}
 		if asJSON {
 			return writeResultJSON(cmd, request)
 		}
+		progress.Complete()
 		log.Success("REQUEST", "runtime session grant revoked", "id", request.ID)
 		log.Detail("status", request.Status)
 		return nil
@@ -94,18 +100,22 @@ func requestCreateDummyCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "dummy", Short: "Create a dummy pending approval request for UI testing", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
 		log := commandLogger(cmd)
+		var progress *commandProgress
 		if !asJSON {
-			startCommandSpinner(cmd, log, "REQUEST", "request.creating", "Creating dummy approval request")
+			progress = newCommandProgress(cmd, "REQUEST")
+			progress.Start("request.creating", "Creating dummy approval request", "Dummy approval request created")
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
 		defer cancel()
 		request, err := requestRuntimeApprovalCreateDummy(ctx, workspaceID, title, command)
 		if err != nil {
+			progress.Stop()
 			return err
 		}
 		if asJSON {
 			return writeResultJSON(cmd, request)
 		}
+		progress.Complete()
 		log.Success("REQUEST", "dummy control approval request created", "id", request.ID)
 		log.Detail("workspace", request.WorkspaceID)
 		log.Detail("expires", request.ExpiresAt.Format(time.RFC3339Nano))
@@ -122,20 +132,22 @@ func requestListCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List control approval requests from the running runtime", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
-		log := commandLogger(cmd)
+		var progress *commandProgress
 		if !asJSON {
-			startCommandSpinner(cmd, log, "REQUEST", "request.loading", "Loading approval requests")
+			progress = newCommandProgress(cmd, "REQUEST")
+			progress.Start("request.loading", "Loading approval requests", "Loaded approval requests")
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
 		defer cancel()
 		requests, err := requestRuntimeApprovalList(ctx)
 		if err != nil {
+			progress.Stop()
 			return err
 		}
 		if asJSON {
 			return writeResultJSON(cmd, requests)
 		}
-		log.StopAnimation()
+		progress.Complete()
 		renderApprovalRequests(commandPresenter(cmd), requests)
 		return nil
 	}}
@@ -147,20 +159,22 @@ func requestViewCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{Use: "view <request_id>", Aliases: []string{"show", "info"}, Short: "Show one control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("request", args[0]))
-		log := commandLogger(cmd)
+		var progress *commandProgress
 		if !asJSON {
-			startCommandSpinner(cmd, log, "REQUEST", "request.loading", "Loading approval request")
+			progress = newCommandProgress(cmd, "REQUEST")
+			progress.Start("request.loading", "Loading approval request", "Loaded approval request")
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
 		defer cancel()
 		request, err := requestRuntimeApprovalView(ctx, args[0])
 		if err != nil {
+			progress.Stop()
 			return err
 		}
 		if asJSON {
 			return writeResultJSON(cmd, request)
 		}
-		log.StopAnimation()
+		progress.Complete()
 		renderApprovalRequest(commandPresenter(cmd), request)
 		return nil
 	}}
@@ -187,8 +201,10 @@ func requestResolveCommand(approve bool) *cobra.Command {
 	cmd := &cobra.Command{Use: action + " <request_id>", Aliases: aliases, Short: label + " one pending control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("action", action), logger.WithVerbose("request", args[0]))
 		log := commandLogger(cmd)
+		var commandPhase *commandProgress
 		if !asJSON {
-			startCommandSpinner(cmd, log, "REQUEST", "request.resolving", progress)
+			commandPhase = newCommandProgress(cmd, "REQUEST")
+			commandPhase.Start("request.resolving", progress, "Approval request "+past)
 		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
 		defer cancel()
@@ -204,11 +220,13 @@ func requestResolveCommand(approve bool) *cobra.Command {
 			request, err = requestRuntimeApprovalDeny(ctx, args[0], reason)
 		}
 		if err != nil {
+			commandPhase.Stop()
 			return err
 		}
 		if asJSON {
 			return writeResultJSON(cmd, request)
 		}
+		commandPhase.Complete()
 		log.Success("REQUEST", "control approval request "+past, "id", request.ID)
 		log.Detail("status", request.Status)
 		if !request.RetryUntil.IsZero() {

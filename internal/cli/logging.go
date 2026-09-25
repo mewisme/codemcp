@@ -108,14 +108,6 @@ func closeCommandLogger(cmd *cobra.Command) {
 	}
 }
 
-func startCommandSpinner(cmd *cobra.Command, log *logger.Logger, component, name, message string) {
-	format, err := commandLogFormat(cmd)
-	verbose, debug := commandLogMode(cmd)
-	if err == nil && format == logger.FormatText && !verbose && !debug && commandAnimationEligible(cmd) {
-		log.Action(component, name, message)
-	}
-}
-
 func newCommandProgress(cmd *cobra.Command, component string) *commandProgress {
 	return &commandProgress{cmd: cmd, log: commandLogger(cmd), component: component, session: commandProgressSession(cmd)}
 }
@@ -137,8 +129,6 @@ func (p *commandProgress) Complete() {
 	p.session.Success(p.name, p.label, p.done)
 	if format, _ := commandLogFormat(p.cmd); format == logger.FormatJSON {
 		p.log.Ready(p.component, p.name+".completed", p.done)
-	} else {
-		p.log.Verbose(p.component, p.name+".completed", p.done)
 	}
 	p.name, p.label, p.done = "", "", ""
 }
@@ -369,7 +359,7 @@ func commandTraceObserver(cmd *cobra.Command) tracepkg.Observer {
 				renderTraceProgressDiagnostic(log, event, spec, fields)
 				return
 			}
-			log.Verbose(event.Component, event.Name, phase.Message, fields...)
+			renderTraceProgressTextDiagnostic(log, event, spec, fields)
 			return
 		}
 		if commandMachineOutput(cmd) {
@@ -378,6 +368,17 @@ func commandTraceObserver(cmd *cobra.Command) tracepkg.Observer {
 		}
 		commandLogger(cmd).Verbose(event.Component, event.Name, event.Message, fields...)
 	}
+}
+
+func renderTraceProgressTextDiagnostic(log *logger.Logger, event tracepkg.Event, spec traceProgressSpec, fields []logger.Field) {
+	if log == nil {
+		return
+	}
+	message := "Progress metadata"
+	if event.Phase == tracepkg.PhaseStart {
+		message = spec.start
+	}
+	log.Verbose(event.Component, event.Name, message, fields...)
 }
 
 func tracePresentationPhase(event tracepkg.Event, spec traceProgressSpec) presentation.ProgressPhase {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestProgressSessionInteractiveRailKeepsOnlyActivePhaseTransient(t *testing.T) {
@@ -11,10 +12,12 @@ func TestProgressSessionInteractiveRailKeepsOnlyActivePhaseTransient(t *testing.
 	session := NewProgressSession(&output, ModeHuman, Capabilities{
 		Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true, Animation: true,
 	})
+	session.animationGap = time.Millisecond
 	session.Begin("Upgrade CodeMCP")
 	if !session.Update(ProgressPhase{ID: "detect", Label: "Detect installation", State: ProgressRunning}) {
 		t.Fatal("running phase was ignored")
 	}
+	time.Sleep(10 * time.Millisecond)
 	if !session.Success("detect", "Detect installation", "Installation detected") {
 		t.Fatal("success phase was ignored")
 	}
@@ -23,13 +26,16 @@ func TestProgressSessionInteractiveRailKeepsOnlyActivePhaseTransient(t *testing.
 	session.Close()
 
 	got := output.String()
-	for _, want := range []string{"┌  Upgrade CodeMCP", "⠋  Detect installation", "◆  Installation detected", "◆  Release downloaded", "└"} {
+	for _, want := range []string{"┌  Upgrade CodeMCP", "◆  Detect installation", "◇  Detect installation", "◆  Installation detected", "◆  Release downloaded", "└"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("interactive progress missing %q: %q", want, got)
 		}
 	}
 	if strings.Count(got, "◆  Installation detected") != 1 {
 		t.Fatalf("completed phase was not stable exactly once: %q", got)
+	}
+	if strings.Contains(got, "⠋") {
+		t.Fatalf("legacy spinner glyph leaked into progress animation: %q", got)
 	}
 }
 
@@ -62,8 +68,75 @@ func TestProgressSessionDeduplicatesTerminalEventsAndFailureIsStable(t *testing.
 		t.Fatal("duplicate terminal event was accepted")
 	}
 	session.Close()
-	if got := output.String(); got != "Save configuration... failed: disk full\n" {
+	if got := output.String(); got != "disk full\n" {
 		t.Fatalf("failure output=%q", got)
+	}
+}
+
+func TestProgressSessionTerminalStatesUseOutcomeLabelOnly(t *testing.T) {
+	tests := []struct {
+		name  string
+		state ProgressState
+		want  string
+	}{
+		{name: "success", state: ProgressSuccess, want: "◆  Configuration saved"},
+		{name: "skipped", state: ProgressSkipped, want: "◇  Runtime reload skipped"},
+		{name: "warning", state: ProgressWarning, want: "!  Runtime reload delayed"},
+		{name: "failed", state: ProgressFailed, want: "×  Configuration save failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			session := NewProgressSession(&output, ModeHuman, Capabilities{Unicode: true})
+			session.Update(ProgressPhase{
+				ID: "phase", Label: "Reloading running runtime", State: test.state, Message: test.want[strings.Index(test.want, "  ")+2:],
+			})
+			got := output.String()
+			if !strings.Contains(got, test.want) {
+				t.Fatalf("terminal outcome missing %q: %q", test.want, got)
+			}
+			if strings.Contains(got, "Reloading running runtime —") {
+				t.Fatalf("terminal outcome repeated running label: %q", got)
+			}
+		})
+	}
+}
+
+func TestProgressSessionASCIIAnimationUsesPhaseGlyphPair(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{
+		Width: 80, Unicode: false, Interactive: true, CursorControl: true, Animation: true,
+	})
+	session.animationGap = time.Millisecond
+	session.Update(ProgressPhase{ID: "work", Label: "Doing work", State: ProgressRunning})
+	time.Sleep(10 * time.Millisecond)
+	session.Success("work", "Doing work", "Work completed")
+	got := output.String()
+	for _, want := range []string{"*  Doing work", ".  Doing work", "*  Work completed"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("ASCII animation missing %q: %q", want, got)
+		}
+	}
+	for _, forbidden := range []string{"◆", "◇", "⠋"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("ASCII animation leaked Unicode glyph %q: %q", forbidden, got)
+		}
+	}
+}
+
+func TestProgressSessionHumanWithoutCursorControlIsNonAnimated(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{
+		Width: 80, Unicode: true, Interactive: true, CursorControl: false, Animation: true,
+	})
+	session.Update(ProgressPhase{ID: "work", Label: "Doing work", State: ProgressRunning})
+	session.Success("work", "Doing work", "Work completed")
+	got := output.String()
+	if strings.ContainsAny(got, "\r\x1b") {
+		t.Fatalf("cursor-ineligible progress contains control bytes: %q", got)
+	}
+	if strings.Contains(got, "Doing work") || strings.Count(got, "Work completed") != 1 {
+		t.Fatalf("cursor-ineligible progress is not deterministic: %q", got)
 	}
 }
 

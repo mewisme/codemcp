@@ -60,11 +60,14 @@ func logsCommand() *cobra.Command {
 		}
 		log := commandLogger(cmd)
 		logCommandStep(cmd, "LOGS", "logs.runtime.contacting", "Contacting runtime log endpoint")
-		startCommandSpinner(cmd, log, "LOGS", "logs.clearing", "Clearing runtime logs")
+		progress := newCommandProgress(cmd, "LOGS")
+		progress.Start("logs.clearing", "Clearing runtime logs", "Runtime logs cleared")
 		if err := clearRuntimeLogs(cmd); err != nil {
+			progress.Stop()
 			return err
 		}
-		log.Ready("LOGS", "logs.cleared", "Runtime logs cleared")
+		progress.Complete()
+		log.Verbose("LOGS", "logs.cleared", "Runtime logs cleared")
 		return nil
 	}}
 	clear.Flags().BoolVar(&forceClear, "force", false, "clear current and rotated runtime logs")
