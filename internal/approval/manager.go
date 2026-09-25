@@ -57,7 +57,6 @@ type Manager struct {
 	pendingLimit          int
 	workspacePendingLimit int
 	events                *EventStream
-	observer              EventObserver
 }
 
 func NewManager(instanceID string) *Manager {
@@ -73,15 +72,6 @@ func (m *Manager) Events() *EventStream {
 		return nil
 	}
 	return m.events
-}
-
-func (m *Manager) SetEventObserver(observer EventObserver) {
-	if m == nil {
-		return
-	}
-	m.mu.Lock()
-	m.observer = observer
-	m.mu.Unlock()
 }
 
 func (m *Manager) CreateChallenge(input ChallengeInput) (Challenge, bool, error) {
@@ -125,6 +115,7 @@ func (m *Manager) CreateChallenge(input ChallengeInput) (Challenge, bool, error)
 	}
 	m.challenges[id] = &challengeRecord{value: value}
 	m.challengeByTarget[key] = id
+	m.emitChallengeLocked(EventCreated, value)
 	return cloneChallenge(value), true, nil
 }
 
@@ -200,7 +191,7 @@ func (m *Manager) CreateRequestWithTitle(challengeID, sessionID, workspaceID, ti
 	m.requests[id] = &requestRecord{value: value, resolved: make(chan struct{})}
 	m.activeBySession[sessionID] = id
 	challenge.value.requestID = id
-	m.emitLocked(EventRequested, value)
+	m.emitLocked(EventPending, value)
 	return cloneRequest(value), true, nil
 }
 
@@ -265,7 +256,7 @@ func (m *Manager) RevokeRuntimeGrant(id string) (Request, error) {
 	m.removeRuntimeGrantLocked(id)
 	record.value.Status, record.value.ResolvedAt, record.value.Reason = StatusExpired, now, "runtime session grant revoked"
 	record.value.GrantExpiresAt = now
-	m.emitLocked(EventExpired, record.value)
+	m.emitLockedWithSubject(EventRevoked, EventSubjectGrant, record.value)
 	return cloneRequest(record.value), nil
 }
 
@@ -289,7 +280,7 @@ func (m *Manager) RevokeRuntimeGrants(workspaceID string) int {
 		if record != nil && record.value.RuntimeSessionGrant && record.value.Status == StatusApproved {
 			record.value.Status, record.value.ResolvedAt, record.value.Reason = StatusExpired, now, "runtime session grant revoked"
 			record.value.GrantExpiresAt = now
-			m.emitLocked(EventExpired, record.value)
+			m.emitLockedWithSubject(EventRevoked, EventSubjectGrant, record.value)
 		}
 		changed++
 	}
@@ -506,7 +497,7 @@ func (m *Manager) ClaimApprovedCLI(input RetryInput, cli CLIInvocation) (Request
 	}
 	record.value.Status, record.value.ConsumedAt = StatusConsumed, now
 	m.clearActiveLocked(record.value)
-	m.emitLocked(EventConsumed, record.value)
+	m.emitLocked(EventClaimed, record.value)
 	return cloneRequest(record.value), capability, true, nil
 }
 
@@ -554,7 +545,6 @@ func (m *Manager) matchApprovedLocked(input RetryInput) (Request, bool, error) {
 		return Request{}, false, err
 	}
 	if digest != active.value.Digest {
-		m.emitLocked(EventMismatch, active.value)
 		return Request{}, false, &MismatchError{RequestID: active.value.ID, TargetTool: active.value.TargetTool, Expected: cloneRaw(active.value.Arguments), Actual: actual}
 	}
 	return cloneRequest(active.value), true, nil
@@ -577,7 +567,7 @@ func (m *Manager) Consume(id string) (Request, error) {
 	}
 	record.value.Status, record.value.ConsumedAt = StatusConsumed, now
 	m.clearActiveLocked(record.value)
-	m.emitLocked(EventConsumed, record.value)
+	m.emitLocked(EventClaimed, record.value)
 	return cloneRequest(record.value), nil
 }
 
@@ -681,7 +671,7 @@ func (m *Manager) purgeExpiredLocked(now time.Time) int {
 				}
 				m.removeRuntimeGrantLocked(record.value.ID)
 				record.value.Status, record.value.ResolvedAt, record.value.Reason = StatusExpired, now, "runtime session grant expired"
-				m.emitLocked(EventExpired, record.value)
+				m.emitLockedWithSubject(EventExpired, EventSubjectGrant, record.value)
 				changed++
 				continue
 			}
@@ -707,6 +697,7 @@ func (m *Manager) purgeExpiredLocked(now time.Time) int {
 		if now.Before(record.value.ExpiresAt) {
 			continue
 		}
+		m.emitChallengeLocked(EventExpired, record.value)
 		m.removeChallengeLocked(record.value)
 		changed++
 	}
@@ -731,18 +722,32 @@ func (m *Manager) removeRuntimeGrantLocked(requestID string) {
 }
 
 func (m *Manager) emitLocked(name string, request Request) {
+	m.emitLockedWithSubject(name, EventSubjectRequest, request)
+}
+
+func (m *Manager) emitLockedWithSubject(name string, subject EventSubject, request Request) {
 	if m == nil || name == "" {
 		return
 	}
 	event := Event{
-		Name: name, RequestID: request.ID, WorkspaceID: request.WorkspaceID, SessionHash: request.SessionHash, Source: request.Source,
-		TargetTool: request.TargetTool, Title: request.Title, Status: request.Status, CreatedAt: request.CreatedAt, ExpiresAt: request.ExpiresAt, RetryUntil: request.RetryUntil, Timestamp: m.now().UTC(),
+		Name: name, Subject: subject, ChallengeID: request.challengeID, RequestID: request.ID, WorkspaceID: request.WorkspaceID, SessionHash: request.SessionHash, Source: request.Source,
+		TargetTool: request.TargetTool, Status: request.Status, CreatedAt: request.CreatedAt, ExpiresAt: request.ExpiresAt, RetryUntil: request.RetryUntil, GrantExpiresAt: request.GrantExpiresAt, Timestamp: m.now().UTC(),
 	}
 	if m.events != nil {
 		m.events.Publish(event)
 	}
-	if m.observer != nil {
-		m.observer(event)
+}
+
+func (m *Manager) emitChallengeLocked(name string, challenge Challenge) {
+	if m == nil || name == "" {
+		return
+	}
+	event := Event{
+		Name: name, Subject: EventSubjectChallenge, ChallengeID: challenge.ID, WorkspaceID: challenge.WorkspaceID, SessionHash: challenge.SessionHash, Source: challenge.Source,
+		TargetTool: challenge.TargetTool, CreatedAt: challenge.CreatedAt, ExpiresAt: challenge.ExpiresAt, Timestamp: m.now().UTC(),
+	}
+	if m.events != nil {
+		m.events.Publish(event)
 	}
 }
 

@@ -85,7 +85,7 @@ describe("RequestApprovalHost", () => {
         }
         if (path === "/api/requests/stream")
           return approvalStream({
-            name: "approval.requested",
+            name: "approval.pending",
             request_id: pending.id,
           })
         if (path === "/api/requests/req_stream") return json(pending)
@@ -182,7 +182,7 @@ function approvalStream(event?: { name: string; request_id: string }) {
       if (event)
         controller.enqueue(
           encoder.encode(
-            `event: ${event.name}\ndata: ${JSON.stringify({ ...event, workspace_id: "ws_test", target_tool: "run_command", title: "Approval", status: "pending", created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 60_000).toISOString(), timestamp: new Date().toISOString() })}\n\n`
+            `event: ${event.name}\ndata: ${JSON.stringify({ ...event, subject: "request", workspace_id: "ws_test", target_tool: "run_command", status: "pending", created_at: new Date().toISOString(), expires_at: new Date(Date.now() + 60_000).toISOString(), timestamp: new Date().toISOString() })}\n\n`
           )
         )
       controller.close()

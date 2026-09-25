@@ -131,7 +131,7 @@ func TestApprovalSSEPublishesLifecycleWithoutArguments(t *testing.T) {
 		t.Fatal("approval SSE missing ready event")
 	}
 	created := seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update --version v2")
-	line := scanEventData(t, scanner, approval.EventRequested)
+	line := scanEventData(t, scanner, approval.EventPending)
 	if !strings.Contains(line, created.ID) || strings.Contains(line, "cm update") || strings.Contains(line, "arguments") {
 		t.Fatalf("unsafe approval SSE data=%q", line)
 	}
@@ -157,7 +157,7 @@ func TestApprovalSSESubscribesBeforeReadyFlush(t *testing.T) {
 	}()
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		if strings.Contains(writer.String(), "event: "+approval.EventRequested) {
+		if strings.Contains(writer.String(), "event: "+approval.EventPending) {
 			cancel()
 			<-done
 			return
@@ -189,11 +189,11 @@ func TestApprovalSSEFiltersWorkspaceBeforeSubscriberBuffer(t *testing.T) {
 		t.Fatal("approval SSE missing ready event")
 	}
 	for index := 0; index < 40; index++ {
-		manager.Events().Publish(approval.Event{Name: approval.EventRequested, RequestID: fmt.Sprintf("req_other_%d", index), WorkspaceID: "ws_other", TargetTool: "run_command", Title: "Other", Status: approval.StatusPending})
+		manager.Events().Publish(approval.Event{Name: approval.EventPending, Subject: approval.EventSubjectRequest, RequestID: fmt.Sprintf("req_other_%d", index), WorkspaceID: "ws_other", TargetTool: "run_command", Status: approval.StatusPending})
 	}
 	targetID := "req_target"
-	manager.Events().Publish(approval.Event{Name: approval.EventRequested, RequestID: targetID, WorkspaceID: "ws_target", TargetTool: "run_command", Title: "Target", Status: approval.StatusPending})
-	event := scanEventData(t, scanner, approval.EventRequested)
+	manager.Events().Publish(approval.Event{Name: approval.EventPending, Subject: approval.EventSubjectRequest, RequestID: targetID, WorkspaceID: "ws_target", TargetTool: "run_command", Status: approval.StatusPending})
+	event := scanEventData(t, scanner, approval.EventPending)
 	if !strings.Contains(event, targetID) || strings.Contains(event, "ws_other") {
 		t.Fatalf("filtered event = %q", event)
 	}

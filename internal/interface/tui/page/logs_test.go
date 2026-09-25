@@ -260,7 +260,7 @@ func TestLogsPageDefaultVerboseShowsRuntimeEventsButHidesDebugNoise(t *testing.T
 	root := setupLogsPageRoot(t)
 	base := time.Now().UTC()
 	appendLogEvents(t, root,
-		runtimeevent.Event{Sequence: 1, Time: base, RunID: "run_visibility", Level: "info", Kind: "info", Name: "approval.requested", Component: "APPROVAL", Message: "Control approval requested", Visibility: logger.VisibilityDefault},
+		runtimeevent.Event{Sequence: 1, Time: base, RunID: "run_visibility", Level: "info", Kind: "info", Name: "approval.pending", Component: "APPROVAL", Message: "Control approval requested", Visibility: logger.VisibilityDefault},
 		runtimeevent.Event{Sequence: 2, Time: base.Add(time.Millisecond), RunID: "run_visibility", Level: "info", Kind: "success", Name: "tunnel.connected", Component: "TUNNEL", Message: "Tunnel connected", Visibility: logger.VisibilityDefault},
 		runtimeevent.Event{Sequence: 3, Time: base.Add(2 * time.Millisecond), RunID: "run_visibility", Level: "info", Kind: "success", Name: "tool.call.completed", Component: "TOOL", Message: "Tool call completed", Tool: "run_command", Status: "ok", Visibility: logger.VisibilityVerbose},
 		runtimeevent.Event{Sequence: 4, Time: base.Add(3 * time.Millisecond), RunID: "run_visibility", Level: "info", Kind: "info", Name: "tool.call.started", Component: "TOOL", Message: "Tool call started", Tool: "run_command", Status: "running", Visibility: logger.VisibilityVerbose},
@@ -274,7 +274,7 @@ func TestLogsPageDefaultVerboseShowsRuntimeEventsButHidesDebugNoise(t *testing.T
 	for _, event := range page.events {
 		got = append(got, event.Name)
 	}
-	want := []string{"approval.requested", "tunnel.connected"}
+	want := []string{"approval.pending", "tunnel.connected"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("default verbose events=%#v want %#v", got, want)
 	}

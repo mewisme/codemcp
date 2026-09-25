@@ -100,12 +100,13 @@ export function RequestApprovalHost() {
         await streamApprovals(controller.signal, {
           onReady: () => void refresh(),
           onEvent: (event) => {
-            if (event.name === "approval.requested" && !notified.current.has(event.request_id)) {
-              notified.current.add(event.request_id)
+            const requestID = event.request_id
+            if (event.name === "approval.pending" && requestID && !notified.current.has(requestID)) {
+              notified.current.add(requestID)
               toast.warning("Control approval requested", {
-                description: `${event.title || event.target_tool} · ${event.workspace_id}`,
+                description: `${event.target_tool} · ${event.workspace_id}`,
                 duration: 10000,
-                action: { label: "Review", onClick: () => void focusRequest(event.request_id) },
+                action: { label: "Review", onClick: () => void focusRequest(requestID) },
               })
             }
             void refresh()

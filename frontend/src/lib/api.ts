@@ -409,16 +409,18 @@ export type ApprovalRequest = {
 export type ApprovalEvent = {
   sequence?: number
   name: string
-  request_id: string
+  subject: "challenge" | "request" | "grant"
+  challenge_id?: string
+  request_id?: string
   workspace_id: string
   session_hash?: string
   source?: string
   target_tool: string
-  title: string
-  status: ApprovalStatus
+  status?: ApprovalStatus
   created_at: string
   expires_at: string
   retry_until?: string
+  grant_expires_at?: string
   timestamp: string
 }
 

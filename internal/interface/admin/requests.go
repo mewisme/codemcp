@@ -167,9 +167,9 @@ func serveApprovalEvents(w http.ResponseWriter, r *http.Request, stream *approva
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
 	workspaceID := strings.TrimSpace(r.URL.Query().Get("workspace_id"))
-	sub := stream.SubscribeWorkspace(workspaceID)
+	sub, snapshot := stream.SubscribeWorkspaceSnapshot(workspaceID, 0)
 	defer stream.Unsubscribe(sub)
-	if _, err := fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d}\n\n", stream.LatestSequence()); err != nil {
+	if _, err := fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d}\n\n", snapshot.LatestSequence); err != nil {
 		return
 	}
 	flusher.Flush()
