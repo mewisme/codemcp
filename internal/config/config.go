@@ -34,13 +34,20 @@ type ShellConfig struct {
 }
 
 type NotificationsConfig struct {
-	Approval ApprovalNotificationConfig `json:"approval"`
+	Approval   ApprovalNotificationConfig   `json:"approval"`
+	Completion CompletionNotificationConfig `json:"completion"`
 }
 
 type ApprovalNotificationConfig struct {
 	Enabled         bool `json:"enabled"`
 	Pending         bool `json:"pending"`
 	Resolved        bool `json:"resolved"`
+	DesktopEnabled  bool `json:"desktop_enabled"`
+	TelegramEnabled bool `json:"telegram_enabled"`
+}
+
+type CompletionNotificationConfig struct {
+	Enabled         bool `json:"enabled"`
 	DesktopEnabled  bool `json:"desktop_enabled"`
 	TelegramEnabled bool `json:"telegram_enabled"`
 }
@@ -89,9 +96,12 @@ func Default() Config {
 		Auth:        AuthConfig{MCPEnabled: true, MCPLegacyBearer: true, AdminEnabled: true},
 		Permissions: PermissionsConfig{AllowDirs: []string{}},
 		Shell:       ShellConfig{Path: []string{}},
-		Notifications: NotificationsConfig{Approval: ApprovalNotificationConfig{
-			Enabled: false, Pending: true, Resolved: true, DesktopEnabled: true, TelegramEnabled: false,
-		}},
+		Notifications: NotificationsConfig{
+			Approval: ApprovalNotificationConfig{
+				Enabled: false, Pending: true, Resolved: true, DesktopEnabled: true, TelegramEnabled: false,
+			},
+			Completion: CompletionNotificationConfig{Enabled: false, DesktopEnabled: true, TelegramEnabled: false},
+		},
 		Integrations: integrations.Default(),
 		Tunnel:       tunnel.Config{Enabled: false, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}},
 	}

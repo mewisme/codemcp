@@ -33,6 +33,94 @@ func (p *lifecycleNotificationProvider) Notify(context.Context, notification.Mes
 	return nil
 }
 
+type failingCompletionNotificationProvider struct {
+	called chan notification.Message
+}
+
+func (p *failingCompletionNotificationProvider) Name() string { return notification.ProviderDesktop }
+func (p *failingCompletionNotificationProvider) Notify(_ context.Context, message notification.Message) error {
+	select {
+	case p.called <- message:
+	default:
+	}
+	return errors.New("provider failed with private delivery detail")
+}
+
+func TestAcceptedCompletionNotificationFailureDoesNotChangeCompletionTruth(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	cfg := config.Default()
+	cfg.Notifications.Completion.Enabled = true
+	cfg.Notifications.Completion.DesktopEnabled = true
+	cfg.Notifications.Completion.TelegramEnabled = false
+	app, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		app.Tools.CompletionHooks.Stop()
+		app.Notifications.Stop()
+	}()
+
+	provider := &failingCompletionNotificationProvider{called: make(chan notification.Message, 1)}
+	app.Notifications.Register(provider)
+	item, err := app.Tools.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentID := agentcompletion.DeriveAgentID("completion-notification-caller", "completion-notification-generation")
+	record, created, err := app.Tools.Completions.Accept(
+		agentcompletion.Identity{AgentID: agentID, Source: "mcp"},
+		agentcompletion.Input{
+			WorkspaceID: item.ID,
+			Status:      agentcompletion.StatusCompleted,
+			Title:       "Finished token=title-secret",
+			Summary:     "Verified changes Authorization: Bearer summary-secret",
+		},
+	)
+	if err != nil || !created {
+		t.Fatalf("record=%#v created=%t err=%v", record, created, err)
+	}
+	current, found, err := app.Tools.Completions.Current(agentID, item.ID)
+	if err != nil || !found || current.ID != record.ID || current.Status != agentcompletion.StatusCompleted {
+		t.Fatalf("completion truth changed after notification dispatch: current=%#v found=%t err=%v", current, found, err)
+	}
+
+	var message notification.Message
+	select {
+	case message = <-provider.called:
+	case <-time.After(time.Second):
+		t.Fatal("completion notification provider was not called")
+	}
+	if message.CompletionID != record.ID || message.WorkspaceID != item.ID {
+		t.Fatalf("completion message=%#v", message)
+	}
+	for _, secret := range []string{"title-secret", "summary-secret", "private delivery detail"} {
+		if strings.Contains(message.Body, secret) || strings.Contains(message.Title, secret) {
+			t.Fatalf("completion notification leaked %q: %#v", secret, message)
+		}
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		diagnostics := app.Notifications.Diagnostics()
+		if len(diagnostics) > 0 {
+			last := diagnostics[len(diagnostics)-1]
+			if last.CompletionID == record.ID {
+				if last.Status != notification.DiagnosticFailed {
+					t.Fatalf("completion notification diagnostic=%#v", last)
+				}
+				current, found, err = app.Tools.Completions.Current(agentID, item.ID)
+				if err != nil || !found || current.ID != record.ID {
+					t.Fatalf("completion truth changed after provider failure: current=%#v found=%t err=%v", current, found, err)
+				}
+				return
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("completion notification failure diagnostic was not recorded")
+}
+
 func TestNewSharesToolRuntime(t *testing.T) {
 	cfg := config.Default()
 	app, err := New(cfg)

@@ -22,21 +22,22 @@ import (
 )
 
 type App struct {
-	Config                *config.RuntimeStore
-	MCP                   *mcp.HTTPRuntime
-	Upstream              *upstream.Manager
-	Tools                 *tools.Runtime
-	Activity              *activity.Stream
-	Tunnel                *tunnel.Client
-	Logger                *logger.Logger
-	OAuth                 *mcpoauth.Store
-	OAuthFlows            *mcpoauth.FlowManager
-	Notifications         *notification.Coordinator
-	ApprovalNotifications *notification.ApprovalBridge
-	runtimeCtx            context.Context
-	trace                 tracepkg.Observer
-	running               bool
-	bootstrap             sync.Once
+	Config                  *config.RuntimeStore
+	MCP                     *mcp.HTTPRuntime
+	Upstream                *upstream.Manager
+	Tools                   *tools.Runtime
+	Activity                *activity.Stream
+	Tunnel                  *tunnel.Client
+	Logger                  *logger.Logger
+	OAuth                   *mcpoauth.Store
+	OAuthFlows              *mcpoauth.FlowManager
+	Notifications           *notification.Coordinator
+	ApprovalNotifications   *notification.ApprovalBridge
+	CompletionNotifications *notification.CompletionHook
+	runtimeCtx              context.Context
+	trace                   tracepkg.Observer
+	running                 bool
+	bootstrap               sync.Once
 }
 
 func New(cfg config.Config) (*App, error) {

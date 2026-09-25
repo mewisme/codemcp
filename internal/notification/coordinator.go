@@ -26,15 +26,16 @@ type Action struct {
 }
 
 type Message struct {
-	ID          string    `json:"id"`
-	Kind        Kind      `json:"kind"`
-	Title       string    `json:"title"`
-	Body        string    `json:"body"`
-	RequestID   string    `json:"request_id,omitempty"`
-	WorkspaceID string    `json:"workspace_id,omitempty"`
-	TargetTool  string    `json:"target_tool,omitempty"`
-	Timestamp   time.Time `json:"timestamp"`
-	Actions     []Action  `json:"actions,omitempty"`
+	ID           string    `json:"id"`
+	Kind         Kind      `json:"kind"`
+	Title        string    `json:"title"`
+	Body         string    `json:"body"`
+	RequestID    string    `json:"request_id,omitempty"`
+	CompletionID string    `json:"completion_id,omitempty"`
+	WorkspaceID  string    `json:"workspace_id,omitempty"`
+	TargetTool   string    `json:"target_tool,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
+	Actions      []Action  `json:"actions,omitempty"`
 }
 
 type Provider interface {
@@ -56,14 +57,15 @@ const (
 )
 
 type Diagnostic struct {
-	Provider    string           `json:"provider"`
-	Event       string           `json:"event"`
-	RequestID   string           `json:"request_id,omitempty"`
-	WorkspaceID string           `json:"workspace_id,omitempty"`
-	Status      DiagnosticStatus `json:"status"`
-	Attempts    int              `json:"attempts"`
-	DurationMS  int64            `json:"duration_ms"`
-	Timestamp   time.Time        `json:"timestamp"`
+	Provider     string           `json:"provider"`
+	Event        string           `json:"event"`
+	RequestID    string           `json:"request_id,omitempty"`
+	CompletionID string           `json:"completion_id,omitempty"`
+	WorkspaceID  string           `json:"workspace_id,omitempty"`
+	Status       DiagnosticStatus `json:"status"`
+	Attempts     int              `json:"attempts"`
+	DurationMS   int64            `json:"duration_ms"`
+	Timestamp    time.Time        `json:"timestamp"`
 }
 
 type CoordinatorOptions struct {
@@ -147,11 +149,11 @@ func (c *Coordinator) Dispatch(parent context.Context, message Message, provider
 		}
 		provider := c.provider(name)
 		if provider == nil {
-			c.record(Diagnostic{Provider: name, Event: string(message.Kind), RequestID: message.RequestID, WorkspaceID: message.WorkspaceID, Status: DiagnosticUnavailable, Timestamp: time.Now().UTC()})
+			c.record(Diagnostic{Provider: name, Event: string(message.Kind), RequestID: message.RequestID, CompletionID: message.CompletionID, WorkspaceID: message.WorkspaceID, Status: DiagnosticUnavailable, Timestamp: time.Now().UTC()})
 			continue
 		}
 		if available, ok := provider.(Availability); ok && !available.Available() {
-			c.record(Diagnostic{Provider: name, Event: string(message.Kind), RequestID: message.RequestID, WorkspaceID: message.WorkspaceID, Status: DiagnosticUnavailable, Timestamp: time.Now().UTC()})
+			c.record(Diagnostic{Provider: name, Event: string(message.Kind), RequestID: message.RequestID, CompletionID: message.CompletionID, WorkspaceID: message.WorkspaceID, Status: DiagnosticUnavailable, Timestamp: time.Now().UTC()})
 			continue
 		}
 		c.wg.Add(1)
@@ -225,7 +227,7 @@ func (c *Coordinator) deliver(parent context.Context, provider Provider, message
 
 done:
 	c.record(Diagnostic{
-		Provider: provider.Name(), Event: string(message.Kind), RequestID: message.RequestID, WorkspaceID: message.WorkspaceID,
+		Provider: provider.Name(), Event: string(message.Kind), RequestID: message.RequestID, CompletionID: message.CompletionID, WorkspaceID: message.WorkspaceID,
 		Status: status, Attempts: attempts, DurationMS: time.Since(started).Milliseconds(), Timestamp: time.Now().UTC(),
 	})
 }

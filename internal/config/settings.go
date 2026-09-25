@@ -225,6 +225,15 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 	case "notifications.approval.telegram_enabled":
 		spec.ApplicationOwner = "notifications.approval"
 		spec.ScopedCommands = []string{"notification telegram enable", "notification telegram disable"}
+	case "notifications.completion.enabled":
+		spec.ApplicationOwner = "notifications.completion"
+		spec.ScopedCommands = []string{"notification completion enable", "notification completion disable"}
+	case "notifications.completion.desktop_enabled":
+		spec.ApplicationOwner = "notifications.completion"
+		spec.ScopedCommands = []string{"notification completion desktop enable", "notification completion desktop disable"}
+	case "notifications.completion.telegram_enabled":
+		spec.ApplicationOwner = "notifications.completion"
+		spec.ScopedCommands = []string{"notification completion telegram enable", "notification completion telegram disable"}
 	case "integrations.ponytail.active":
 		spec.ScopedCommands = []string{"integration ponytail enable", "integration ponytail disable"}
 	case "integrations.ponytail.mode":

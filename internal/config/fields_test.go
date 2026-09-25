@@ -11,6 +11,9 @@ import (
 
 func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 	cfg := Default()
+	if cfg.Notifications.Completion.Enabled || !cfg.Notifications.Completion.DesktopEnabled || cfg.Notifications.Completion.TelegramEnabled {
+		t.Fatalf("completion notification defaults are not safe opt-in: %#v", cfg.Notifications.Completion)
+	}
 	cfg.Auth.MCPEnabled = false
 	cfg.Auth.AdminEnabled = false
 	cfg.Server.AllowUnauthenticatedLoopback = true
@@ -20,16 +23,20 @@ func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 		"integrations.rtk.enabled": "false", "integrations.rtk.path": "/opt/rtk/bin/rtk",
 		"integrations.codegraph.enabled": "true", "integrations.codegraph.path": "/opt/codegraph/bin/codegraph",
 		"permissions.allow_dirs": "/tmp\n/var/tmp", "shell.path": "/opt/tools,/usr/local/custom/bin",
+		"notifications.completion.enabled": "true", "notifications.completion.desktop_enabled": "false", "notifications.completion.telegram_enabled": "true",
 	} {
 		if err := SetValue(&cfg, key, value); err != nil {
 			t.Fatalf("%s: %v", key, err)
 		}
 	}
-	if cfg.Server.Port != 4000 || cfg.Server.Expose.Mode != ExposureWildcard || cfg.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "/opt/rtk/bin/rtk" || !cfg.Integrations.CodeGraph.Enabled || cfg.Integrations.CodeGraph.Path != "/opt/codegraph/bin/codegraph" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 {
+	if cfg.Server.Port != 4000 || cfg.Server.Expose.Mode != ExposureWildcard || cfg.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "/opt/rtk/bin/rtk" || !cfg.Integrations.CodeGraph.Enabled || cfg.Integrations.CodeGraph.Path != "/opt/codegraph/bin/codegraph" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 || !cfg.Notifications.Completion.Enabled || cfg.Notifications.Completion.DesktopEnabled || !cfg.Notifications.Completion.TelegramEnabled {
 		t.Fatalf("cfg=%#v", cfg)
 	}
 	if value, err := RawValue(cfg, "shell.path"); err != nil || value != "/opt/tools,/usr/local/custom/bin" {
 		t.Fatalf("shell path value=%q err=%v", value, err)
+	}
+	if value, err := RawValue(cfg, "notifications.completion.enabled"); err != nil || value != "true" {
+		t.Fatalf("completion notification value=%q err=%v", value, err)
 	}
 }
 

@@ -52,6 +52,27 @@ func (a *App) Bootstrap() error {
 				},
 			})
 		}
+		if a.CompletionNotifications == nil && a.Tools.CompletionHooks != nil {
+			hook := notification.NewCompletionHook(a.Notifications, notification.CompletionHookOptions{
+				Policy: func() notification.CompletionPolicy {
+					cfg := a.Config.Snapshot().Notifications.Completion
+					return notification.CompletionPolicy{
+						Enabled: cfg.Enabled,
+						Providers: map[string]bool{
+							notification.ProviderDesktop:  cfg.DesktopEnabled,
+							notification.ProviderTelegram: cfg.TelegramEnabled,
+						},
+					}
+				},
+			})
+			if err := a.Tools.CompletionHooks.Register(hook); err != nil {
+				if a.Logger != nil {
+					a.Logger.Warning("NOTIFICATION", "notification.completion.register.failed", "Completion notification hook could not be registered", err)
+				}
+			} else {
+				a.CompletionNotifications = hook
+			}
+		}
 		a.Upstream = a.Tools.Upstream
 		a.syncMCPHTTP(a.Config.Snapshot().Server.Enabled)
 		a.attachTunnelLifecycle()

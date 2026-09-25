@@ -113,6 +113,9 @@ var fieldSpecs = []FieldSpec{
 	{Key: "notifications.approval.resolved", Label: "Resolved approval notifications", Section: FieldSectionRuntime, Description: "controls notification delivery for terminal approval outcomes", Details: "Resolved notifications cover approved, denied, expired, cancelled, and revoked outcomes. They do not alter canonical approval state.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
 	{Key: "notifications.approval.desktop_enabled", Label: "Desktop approval notifications", Section: FieldSectionRuntime, Description: "enables native desktop approval notifications when the host supports them", Details: "Linux uses notify-send when available and macOS uses osascript. Unsupported or unavailable native notification facilities are reported as delivery diagnostics and never fail approval state changes.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
 	{Key: "notifications.approval.telegram_enabled", Label: "Telegram approval notifications", Section: FieldSectionRuntime, Description: "enables Telegram approval notifications when a Telegram sender is configured", Details: "The notification coordinator owns delivery policy; the Telegram interface supplies the provider transport once configured. Missing Telegram transport is treated as unavailable delivery, not as an approval failure.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
+	{Key: "notifications.completion.enabled", Label: "Completion notifications", Section: FieldSectionRuntime, Description: "controls whether accepted agent completion records are delivered to configured notification providers", Details: "Completion truth is already durable before notification delivery begins. Provider failures are best-effort diagnostics and never change the accepted completion record.", Kind: FieldBool, Editable: true, Related: []string{"notifications.completion.desktop_enabled", "notifications.completion.telegram_enabled"}},
+	{Key: "notifications.completion.desktop_enabled", Label: "Desktop completion notifications", Section: FieldSectionRuntime, Description: "enables native desktop notifications for accepted agent completions", Details: "Notifications include only the bounded completion status, title, and sanitized summary. Unsupported or unavailable desktop facilities are recorded as delivery diagnostics without changing completion truth.", Kind: FieldBool, Editable: true, Related: []string{"notifications.completion.enabled"}},
+	{Key: "notifications.completion.telegram_enabled", Label: "Telegram completion notifications", Section: FieldSectionRuntime, Description: "enables Telegram notifications for accepted agent completions when a Telegram sender is configured", Details: "The shared notification coordinator owns delivery and diagnostics. Missing Telegram transport is treated as unavailable delivery and never changes completion truth.", Kind: FieldBool, Editable: true, Related: []string{"notifications.completion.enabled"}},
 	{Key: "integrations.ponytail.active", Label: "Ponytail active", Section: FieldSectionIntegrations, Description: "controls whether Ponytail guidance is active by default", Details: "Ponytail biases coding work toward the smallest correct solution: reuse existing code, prefer standard/platform features, avoid speculative abstractions, and minimize unnecessary implementation.", Kind: FieldBool, Editable: true, Related: []string{"integrations.ponytail.mode"}},
 	{Key: "integrations.ponytail.mode", Label: "Ponytail mode", Section: FieldSectionIntegrations, Description: "sets the default Ponytail intensity", Details: "This persisted value selects the default runtime intensity when Ponytail is active. Session-only modes such as review/off are not valid persisted values.", Kind: FieldEnum, Options: []string{"lite", "full", "ultra"}, Values: []FieldValueSpec{{Value: "lite", Description: "Build the requested solution but point out a simpler alternative when useful."}, {Value: "full", Description: "Enforce the reuse/stdlib/native-first ladder and prefer the shortest correct implementation."}, {Value: "ultra", Description: "Apply aggressive YAGNI pressure, favor deletion or minimal implementation, and challenge unnecessary scope."}}, Editable: true, Related: []string{"integrations.ponytail.active"}},
 	{Key: "integrations.caveman.active", Label: "Caveman active", Section: FieldSectionIntegrations, Description: "controls whether Caveman response style is active by default", Details: "Caveman compresses assistant prose while preserving technical meaning, exact code, commands, numbers, and safety-critical clarity.", Kind: FieldBool, Editable: true, Related: []string{"integrations.caveman.mode"}},
@@ -280,6 +283,24 @@ func SetValue(cfg *Config, key, raw string) error {
 			return err
 		}
 		cfg.Notifications.Approval.TelegramEnabled = value
+	case "notifications.completion.enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Notifications.Completion.Enabled = value
+	case "notifications.completion.desktop_enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Notifications.Completion.DesktopEnabled = value
+	case "notifications.completion.telegram_enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Notifications.Completion.TelegramEnabled = value
 	case "integrations.ponytail.active":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -422,6 +443,12 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strconv.FormatBool(cfg.Notifications.Approval.DesktopEnabled), nil
 	case "notifications.approval.telegram_enabled":
 		return strconv.FormatBool(cfg.Notifications.Approval.TelegramEnabled), nil
+	case "notifications.completion.enabled":
+		return strconv.FormatBool(cfg.Notifications.Completion.Enabled), nil
+	case "notifications.completion.desktop_enabled":
+		return strconv.FormatBool(cfg.Notifications.Completion.DesktopEnabled), nil
+	case "notifications.completion.telegram_enabled":
+		return strconv.FormatBool(cfg.Notifications.Completion.TelegramEnabled), nil
 	case "integrations.ponytail.active":
 		return strconv.FormatBool(cfg.Integrations.Ponytail.Active), nil
 	case "integrations.ponytail.mode":

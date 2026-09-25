@@ -31,6 +31,39 @@ func (p adminNotificationProvider) Name() string                                
 func (p adminNotificationProvider) Available() bool                                    { return p.available }
 func (p adminNotificationProvider) Notify(context.Context, notification.Message) error { return nil }
 
+func TestCompletionNotificationPolicyEnablesSharedProviderStatus(t *testing.T) {
+	cfg := config.Default()
+	cfg.Notifications.Approval.Enabled = false
+	cfg.Notifications.Completion.Enabled = true
+	cfg.Notifications.Completion.DesktopEnabled = true
+	cfg.Notifications.Completion.TelegramEnabled = false
+
+	coordinator := notification.NewCoordinator(notification.CoordinatorOptions{})
+	coordinator.Register(adminNotificationProvider{name: notification.ProviderDesktop, available: true})
+	defer coordinator.Stop()
+
+	handler := New(API{Config: config.NewRuntimeStore(cfg), Notifications: coordinator})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/notifications", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	var snapshot notification.StatusSnapshot
+	if err := json.Unmarshal(recorder.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	statuses := map[string]notification.ProviderStatus{}
+	for _, status := range snapshot.Providers {
+		statuses[status.Provider] = status
+	}
+	if desktop := statuses[notification.ProviderDesktop]; !desktop.Enabled || !desktop.Registered || desktop.Health != notification.ProviderHealthHealthy {
+		t.Fatalf("desktop=%#v", desktop)
+	}
+	if telegram := statuses[notification.ProviderTelegram]; telegram.Enabled {
+		t.Fatalf("telegram=%#v", telegram)
+	}
+}
+
 func TestNotificationStatusEndpointExposesProviderHealth(t *testing.T) {
 	cfg := config.Default()
 	cfg.Notifications.Approval.Enabled = true

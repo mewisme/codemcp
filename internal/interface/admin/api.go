@@ -131,10 +131,14 @@ func (api API) handleNotifications(w http.ResponseWriter, r *http.Request) {
 		notification.ProviderTelegram: false,
 	}
 	if api.Config != nil {
-		cfg := api.Config.Snapshot().Notifications.Approval
-		if cfg.Enabled {
-			enabled[notification.ProviderDesktop] = cfg.DesktopEnabled
-			enabled[notification.ProviderTelegram] = cfg.TelegramEnabled
+		cfg := api.Config.Snapshot().Notifications
+		if cfg.Approval.Enabled {
+			enabled[notification.ProviderDesktop] = cfg.Approval.DesktopEnabled
+			enabled[notification.ProviderTelegram] = cfg.Approval.TelegramEnabled
+		}
+		if cfg.Completion.Enabled {
+			enabled[notification.ProviderDesktop] = enabled[notification.ProviderDesktop] || cfg.Completion.DesktopEnabled
+			enabled[notification.ProviderTelegram] = enabled[notification.ProviderTelegram] || cfg.Completion.TelegramEnabled
 		}
 	}
 	status := notification.StatusSnapshot{}
