@@ -1,7 +1,8 @@
 package mcp
 
 type Capabilities struct {
-	Tools ToolsCapability `json:"tools"`
+	Tools      ToolsCapability `json:"tools"`
+	Extensions map[string]any  `json:"extensions,omitempty"`
 }
 
 type ToolsCapability struct {
@@ -9,5 +10,8 @@ type ToolsCapability struct {
 }
 
 func DefaultCapabilities() Capabilities {
-	return Capabilities{Tools: ToolsCapability{ListChanged: true}}
+	return Capabilities{
+		Tools:      ToolsCapability{ListChanged: true},
+		Extensions: map[string]any{TasksExtensionID: map[string]any{}},
+	}
 }

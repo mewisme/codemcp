@@ -205,6 +205,7 @@ func ProjectServerInstructions(profile Profile) string {
 func ProjectSDKServer(profile Profile, descriptor ProtocolDescriptors) (*sdkmcp.Implementation, *sdkmcp.ServerOptions) {
 	implementation := &sdkmcp.Implementation{Name: descriptor.Server.Name, Version: descriptor.Server.Version}
 	capabilities := &sdkmcp.ServerCapabilities{}
+	capabilities.Extensions = map[string]any{TasksExtensionID: map[string]any{}}
 	if descriptor.Capabilities.Tools.ListChanged {
 		capabilities.Tools = &sdkmcp.ToolCapabilities{ListChanged: true}
 	}

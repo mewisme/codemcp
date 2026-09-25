@@ -22,6 +22,7 @@ type SDKServer struct {
 	ModernCallerID   string
 	Profile          Profile
 	AuthRequirements []AuthRequirement
+	Tasks            *TaskRegistry
 }
 
 func NewSDKServerWithTools(toolRuntime *tools.Runtime, source string) (*SDKServer, error) {
@@ -47,7 +48,12 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 	implementation, options := ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
 	callers := approval.NewCallerRegistry()
-	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements)}
+	tasks := NewTaskRegistry(toolRuntime.Processes)
+	if err := InstallTaskProjection(server, tasks); err != nil {
+		tasks.Close()
+		return nil, err
+	}
+	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements), Tasks: tasks}
 	for _, schema := range toolRuntime.List() {
 		if err := adapter.addTool(schema); err != nil {
 			return nil, err

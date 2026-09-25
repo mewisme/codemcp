@@ -24,6 +24,7 @@ type sdkBridge struct {
 	runtime          *tools.Runtime
 	server           *sdkmcp.Server
 	profile          localmcp.Profile
+	tasks            *localmcp.TaskRegistry
 	mu               sync.Mutex
 	fingerprints     map[string]string
 	sessionNamespace uint64
@@ -48,7 +49,12 @@ func newSDKBridgeWithProfile(runtime *tools.Runtime, profile localmcp.Profile) (
 	descriptors := localmcp.DescribeProtocol(nil)
 	implementation, options := localmcp.ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
-	bridge := &sdkBridge{runtime: runtime, server: server, profile: profile, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
+	tasks := localmcp.NewTaskRegistry(runtime.Processes)
+	if err := localmcp.InstallTaskProjection(server, tasks); err != nil {
+		tasks.Close()
+		return nil, err
+	}
+	bridge := &sdkBridge{runtime: runtime, server: server, profile: profile, tasks: tasks, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
 	if err := bridge.syncTools(); err != nil {
 		return nil, err
 	}
