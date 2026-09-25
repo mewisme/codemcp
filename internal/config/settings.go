@@ -239,7 +239,7 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ConfiguredStateKey = "tunnel.api_key_configured"
 		spec.Presentation = SettingPresentationMaskedPreview
 		spec.ApplicationOwner = "tunnel.credentials"
-		spec.ScopedCommands = []string{"tunnel configure", "tunnel use"}
+		spec.ScopedCommands = []string{"tunnel key set", "tunnel key remove", "tunnel configure", "tunnel use"}
 	case "tunnel.admin.key":
 		spec.Kind = FieldString
 		spec.Readable, spec.Writable, spec.Secret, spec.Clearable, spec.Verifiable, spec.DefaultReset = false, true, true, true, true, false
@@ -247,10 +247,10 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ConfiguredStateKey = "tunnel.admin.key_configured"
 		spec.Presentation = SettingPresentationMaskedPreview
 		spec.ApplicationOwner = "tunnel.credentials"
-		spec.ScopedCommands = []string{"tunnel admin key set", "tunnel admin key remove", "tunnel admin key verify", "tunnel admin key status"}
+		spec.ScopedCommands = []string{"tunnel admin key set", "tunnel admin key remove", "tunnel admin verify", "tunnel admin key verify", "tunnel admin key status"}
 	case "tunnel.admin.enabled":
 		spec.ApplicationOwner = "tunnel.credentials"
-		spec.ScopedExemption = "generic setting mutation is canonical until a dedicated tunnel admin toggle facade is available"
+		spec.ScopedCommands = []string{"tunnel admin enable", "tunnel admin disable"}
 	case "tunnel.admin.organization_id", "tunnel.admin.workspace_id", "tunnel.admin.tenant_id":
 		spec.Derived = false
 		spec.Kind = FieldString
@@ -258,13 +258,14 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ReadKey = spec.Key
 		spec.WriteKey = spec.Key
 		spec.ApplicationOwner = "tunnel.credentials"
-		spec.ScopedCommands = []string{"tunnel admin key set", "tunnel admin key status", "tunnel admin key verify"}
+		scopeName := strings.TrimSuffix(strings.TrimPrefix(spec.Key, "tunnel.admin."), "_id")
+		spec.ScopedCommands = []string{"tunnel admin " + scopeName + " set", "tunnel admin key set", "tunnel admin key status", "tunnel admin verify", "tunnel admin key verify"}
 	case "tunnel.admin.verified", "tunnel.admin.read_access", "tunnel.admin.manage_access":
 		spec.Derived = true
 		spec.Readable, spec.Writable, spec.DefaultReset = true, false, false
 		spec.ReadKey, spec.WriteKey = spec.Key, ""
 		spec.ApplicationOwner = "tunnel.credentials"
-		spec.ScopedCommands = []string{"tunnel admin key status", "tunnel admin key verify"}
+		spec.ScopedCommands = []string{"tunnel admin key status", "tunnel admin verify", "tunnel admin key verify"}
 	}
 
 	if spec.ValueRole == "" {

@@ -60,6 +60,7 @@ func newRootCommand() *cobra.Command {
 			commandLogger(cmd).Notice("VERSION", "cli.version", version.String())
 		}},
 	)
+	bindCanonicalScopedSettings(cmd)
 	bindCanonicalCommandOperations(cmd)
 	return cmd
 }

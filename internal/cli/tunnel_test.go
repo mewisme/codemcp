@@ -56,7 +56,13 @@ func TestConfigureManagedTunnelRequiresSeparateRuntimeKey(t *testing.T) {
 
 func TestTunnelCommandAdminHierarchy(t *testing.T) {
 	cmd := tunnelCommand()
-	for _, path := range [][]string{{"admin", "key", "set"}, {"admin", "key", "status"}, {"admin", "key", "verify"}, {"admin", "key", "remove"}, {"list"}, {"get"}, {"use"}, {"create"}, {"update"}, {"delete"}, {"sync"}} {
+	for _, path := range [][]string{
+		{"key", "set"}, {"key", "remove"},
+		{"admin", "key", "set"}, {"admin", "key", "status"}, {"admin", "key", "verify"}, {"admin", "key", "remove"},
+		{"admin", "organization", "set"}, {"admin", "workspace", "set"}, {"admin", "tenant", "set"},
+		{"admin", "enable"}, {"admin", "disable"}, {"admin", "verify"},
+		{"list"}, {"get"}, {"use"}, {"create"}, {"update"}, {"delete"}, {"sync"},
+	} {
 		resolved, _, err := cmd.Find(path)
 		if err != nil || resolved.Name() != path[len(path)-1] {
 			t.Fatalf("tunnel path %v resolved to %v: %v", path, resolved, err)

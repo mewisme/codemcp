@@ -52,7 +52,21 @@ func resolveTunnelAdminScope(cmd *cobra.Command, cfg tunnel.Config, flags tunnel
 
 func tunnelAdminCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "admin", Short: "Manage OpenAI tunnel administration"}
-	cmd.AddCommand(tunnelAdminKeyCommand())
+	cmd.AddCommand(
+		tunnelAdminKeyCommand(),
+		tunnelAdminScopeCommand("organization", "tunnel.admin.organization_id"),
+		tunnelAdminScopeCommand("workspace", "tunnel.admin.workspace_id"),
+		tunnelAdminScopeCommand("tenant", "tunnel.admin.tenant_id"),
+		scopedToggleCommand("enable", "Enable OpenAI tunnel administration", "Tunnel administration enabled", "tunnel.admin.enabled", true),
+		scopedToggleCommand("disable", "Disable OpenAI tunnel administration", "Tunnel administration disabled", "tunnel.admin.enabled", false),
+		tunnelAdminVerifyCommand(),
+	)
+	return cmd
+}
+
+func tunnelAdminScopeCommand(name, key string) *cobra.Command {
+	cmd := &cobra.Command{Use: name, Short: "Manage OpenAI tunnel admin " + name + " scope"}
+	cmd.AddCommand(scopedValueCommand("set", "Set OpenAI tunnel admin "+name+" scope", "Tunnel admin scope updated", key))
 	return cmd
 }
 
@@ -66,20 +80,31 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 	var adminKey string
 	var scopeFlags tunnelAdminScopeFlags
 	cmd := &cobra.Command{
-		Use:   "set",
+		Use:   "set [admin-api-key]",
 		Short: "Store an OpenAI tunnel admin key",
-		Long:  "Store the admin key in the secret store without contacting the control plane. An optional organization, workspace, or tenant flag configures the exclusive admin scope in the same mutation. Run verify explicitly after the key and scope are configured.",
-		Args:  cobra.NoArgs,
+		Long:  "Store the admin key in the secret store without contacting the control plane. The key may be passed positionally, with --admin-key, or through OPENAI_ADMIN_KEY. An optional organization, workspace, or tenant flag configures the exclusive admin scope in the same atomic mutation. Run verify explicitly after the key and scope are configured.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.preparing", "Preparing tunnel admin key verification")
-			key := strings.TrimSpace(adminKey)
-			keySource := "flag"
+			logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.preparing", "Preparing tunnel admin key configuration")
+			key := ""
+			keySource := ""
+			if len(args) == 1 {
+				key = strings.TrimSpace(args[0])
+				keySource = "argument"
+			}
+			if key != "" && cmd.Flags().Changed("admin-key") {
+				return errors.New("provide the OpenAI admin key either positionally or with --admin-key, not both")
+			}
+			if key == "" {
+				key = strings.TrimSpace(adminKey)
+				keySource = "flag"
+			}
 			if key == "" {
 				key = strings.TrimSpace(os.Getenv("OPENAI_ADMIN_KEY"))
 				keySource = "environment"
 			}
 			if key == "" {
-				return errors.New("OpenAI admin key is required; use --admin-key or OPENAI_ADMIN_KEY")
+				return errors.New("OpenAI admin key is required; pass it positionally, use --admin-key, or set OPENAI_ADMIN_KEY")
 			}
 			beginMutationProgress(cmd, "Configure OpenAI tunnel admin key")
 			var scope *tunnel.AdminScope
@@ -87,14 +112,19 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 				value := scopeFlags.scope()
 				scope = &value
 			}
-			configuredScope, err := application.SetTunnelAdminKey(cmd.Context(), application.TunnelAdminKeyInput{Key: key, KeySource: keySource, Scope: scope})
+			if _, err := settingService().SetWithOptions(cmd.Context(), "tunnel.admin.key", key, application.SettingSetOptions{TunnelAdminScope: scope, SecretSource: keySource}); err != nil {
+				return err
+			}
+			status, err := application.TunnelAdminKeyStatusContext(cmd.Context())
 			if err != nil {
 				return err
 			}
 			fields := []presentation.Field{
-				{Label: "scope", Value: formatTunnelAdminScope(configuredScope)},
 				{Label: "verification", Value: "required"},
 				{Label: "secret store", Value: "secret file store"},
+			}
+			if tunnel.ValidateAdminScope(status.Scope) == nil {
+				fields = append([]presentation.Field{{Label: "scope", Value: formatTunnelAdminScope(status.Scope)}}, fields...)
 			}
 			renderMutationSuccess(cmd, "Configure OpenAI tunnel admin key", "Admin key saved", fields...)
 			return nil
@@ -102,7 +132,7 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&adminKey, "admin-key", "", "OpenAI admin API key; defaults to OPENAI_ADMIN_KEY")
 	scopeFlags.add(cmd)
-	return cmd
+	return markScopedSettings(cmd, "tunnel.admin.key", "tunnel.admin.organization_id", "tunnel.admin.workspace_id", "tunnel.admin.tenant_id")
 }
 
 func tunnelAdminKeyStatusCommand() *cobra.Command {
@@ -118,28 +148,51 @@ func tunnelAdminKeyStatusCommand() *cobra.Command {
 }
 
 func tunnelAdminKeyVerifyCommand() *cobra.Command {
-	return &cobra.Command{Use: "verify", Short: "Re-verify the stored admin key has Tunnels Manage access", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.verifying", "Preparing stored tunnel admin key verification")
-		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
-		defer cancel()
-		beginMutationProgress(cmd, "Verify OpenAI tunnel admin key")
-		count, scope, err := application.VerifyTunnelAdminKey(ctx)
-		if err != nil {
-			return err
-		}
-		fields := []presentation.Field{{Label: "scope", Value: formatTunnelAdminScope(scope)}, {Label: "tunnels", Value: count}}
-		if status, statusErr := application.TunnelAdminKeyStatus(); statusErr == nil {
-			fields = append(fields, presentation.Field{Label: "access", Value: formatTunnelAdminAccess(status.Access)})
-		}
-		renderMutationSuccess(cmd, "Verify OpenAI tunnel admin key", "Admin key verified", fields...)
-		return nil
-	}}
+	cmd := &cobra.Command{Use: "verify", Short: "Re-verify the stored admin key has Tunnels Manage access", Args: cobra.NoArgs, RunE: runTunnelAdminVerify}
+	return markTunnelAdminVerifySettings(cmd)
+}
+
+func tunnelAdminVerifyCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "verify", Short: "Verify the configured OpenAI tunnel admin key and scope", Args: cobra.NoArgs, RunE: runTunnelAdminVerify}
+	return markTunnelAdminVerifySettings(cmd)
+}
+
+func markTunnelAdminVerifySettings(cmd *cobra.Command) *cobra.Command {
+	return markScopedSettings(cmd,
+		"tunnel.admin.key",
+		"tunnel.admin.organization_id",
+		"tunnel.admin.workspace_id",
+		"tunnel.admin.tenant_id",
+		"tunnel.admin.verified",
+		"tunnel.admin.read_access",
+		"tunnel.admin.manage_access",
+	)
+}
+
+func runTunnelAdminVerify(cmd *cobra.Command, _ []string) error {
+	logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.verifying", "Preparing stored tunnel admin key verification")
+	ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
+	defer cancel()
+	beginMutationProgress(cmd, "Verify OpenAI tunnel admin key")
+	if _, err := settingService().Verify(ctx, "tunnel.admin.key"); err != nil {
+		return err
+	}
+	status, err := application.TunnelAdminKeyStatusContext(ctx)
+	if err != nil {
+		return err
+	}
+	fields := []presentation.Field{{Label: "access", Value: formatTunnelAdminAccess(status.Access)}}
+	if tunnel.ValidateAdminScope(status.Scope) == nil {
+		fields = append([]presentation.Field{{Label: "scope", Value: formatTunnelAdminScope(status.Scope)}}, fields...)
+	}
+	renderMutationSuccess(cmd, "Verify OpenAI tunnel admin key", "Admin key verified", fields...)
+	return nil
 }
 
 func tunnelAdminKeyRemoveCommand() *cobra.Command {
 	return &cobra.Command{Use: "remove", Aliases: []string{"rm"}, Short: "Remove the stored tunnel admin key and verification scope", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.removing", "Removing stored tunnel admin key")
-		if err := application.RemoveTunnelAdminKey(cmd.Context()); err != nil {
+		if _, err := settingService().Unset(cmd.Context(), "tunnel.admin.key"); err != nil {
 			return err
 		}
 		renderMutationSuccess(cmd, "OpenAI tunnel admin key", "Admin key removed")

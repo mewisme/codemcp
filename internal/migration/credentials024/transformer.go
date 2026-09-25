@@ -39,6 +39,22 @@ type AuthHashInventory struct {
 	AdminConfigured bool `json:"admin_configured"`
 }
 
+type TunnelAdminState struct {
+	Enabled        bool   `json:"enabled"`
+	KeyConfigured  bool   `json:"key_configured"`
+	OrganizationID string `json:"organization_id,omitempty"`
+	WorkspaceID    string `json:"workspace_id,omitempty"`
+	TenantID       string `json:"tenant_id,omitempty"`
+	Verified       bool   `json:"verified"`
+	ReadAccess     bool   `json:"read_access"`
+	ManageAccess   bool   `json:"manage_access"`
+}
+
+type TunnelState struct {
+	RuntimeKeyConfigured bool             `json:"runtime_key_configured"`
+	Admin                TunnelAdminState `json:"admin"`
+}
+
 type Inventory struct {
 	AuthHashes        AuthHashInventory `json:"auth_hashes"`
 	Tunnel            int               `json:"tunnel"`
@@ -62,6 +78,7 @@ type Result struct {
 	SourceRelease   string           `json:"source_release"`
 	DestinationRoot string           `json:"destination_root"`
 	Inventory       Inventory        `json:"inventory"`
+	Tunnel          TunnelState      `json:"tunnel"`
 	Migrated        int              `json:"migrated"`
 	AlreadyApplied  bool             `json:"already_applied"`
 	Rollback        RollbackMetadata `json:"rollback"`
@@ -97,6 +114,7 @@ type scanner struct {
 	masterKey  []byte
 	candidates map[string]candidate
 	inventory  Inventory
+	tunnel     TunnelState
 }
 
 func Transform(input Input) (Result, error) {
@@ -112,6 +130,8 @@ func Transform(input Input) (Result, error) {
 	if err := s.scan(); err != nil {
 		return Result{}, err
 	}
+	s.tunnel.RuntimeKeyConfigured = s.hasCandidate(secretstore.AccountName(secretstore.DomainTunnel, "runtime-key"))
+	s.tunnel.Admin.KeyConfigured = s.hasCandidate(secretstore.AccountName(secretstore.DomainTunnel, "admin-key"))
 
 	accounts := make([]string, 0, len(s.candidates))
 	for account := range s.candidates {
@@ -152,6 +172,7 @@ func Transform(input Input) (Result, error) {
 		SourceRelease:   SourceRelease,
 		DestinationRoot: input.DestinationRoot,
 		Inventory:       s.inventory,
+		Tunnel:          s.tunnel,
 		Migrated:        len(changes),
 		AlreadyApplied:  len(changes) == 0,
 		Rollback: RollbackMetadata{
@@ -287,6 +308,9 @@ func (s *scanner) scanTunnel(configRoot map[string]any, configFound bool, tunnel
 	if !tunnelFound {
 		tunnelRoot = map[string]any{}
 	}
+	if err := s.scanTunnelAdminState(mainTunnel, tunnelRoot); err != nil {
+		return err
+	}
 	for _, spec := range []struct {
 		field      string
 		configured string
@@ -336,6 +360,55 @@ func (s *scanner) scanTunnel(configRoot map[string]any, configFound bool, tunnel
 			}
 		}
 	}
+	return nil
+}
+
+func (s *scanner) scanTunnelAdminState(mainTunnel, tunnelRoot map[string]any) error {
+	enabled := true
+	for _, source := range []map[string]any{mainTunnel, tunnelRoot} {
+		value, exists, err := optionalBool(source, "admin_enabled", "released tunnel admin enabled state")
+		if err != nil {
+			return err
+		}
+		if exists {
+			enabled = value
+		}
+	}
+	state := TunnelAdminState{Enabled: enabled}
+	for _, field := range []struct {
+		name  string
+		label string
+		set   func(string)
+	}{
+		{name: "admin_organization_id", label: "released tunnel admin organization scope", set: func(value string) { state.OrganizationID = value }},
+		{name: "admin_workspace_id", label: "released tunnel admin workspace scope", set: func(value string) { state.WorkspaceID = value }},
+		{name: "admin_tenant_id", label: "released tunnel admin tenant scope", set: func(value string) { state.TenantID = value }},
+	} {
+		value, exists, err := optionalString(mainTunnel, field.name, field.label)
+		if err != nil {
+			return err
+		}
+		if side, sideExists, err := optionalString(tunnelRoot, field.name, field.label); err != nil {
+			return err
+		} else if sideExists {
+			value, exists = side, true
+		}
+		if exists {
+			field.set(strings.TrimSpace(value))
+		}
+	}
+	scopes := 0
+	for _, value := range []string{state.OrganizationID, state.WorkspaceID, state.TenantID} {
+		if value != "" {
+			scopes++
+		}
+	}
+	if scopes > 1 {
+		return errors.New("released tunnel admin state contains competing organization, workspace, and tenant scopes")
+	}
+	// Released verification/access flags are intentionally ignored. The staged
+	// canonical state starts unverified and must be verified explicitly after cutover.
+	s.tunnel.Admin = state
 	return nil
 }
 
@@ -505,6 +578,11 @@ func (s *scanner) add(account, value string, group family, source origin) error 
 		s.inventory.LegacyEncrypted++
 	}
 	return nil
+}
+
+func (s *scanner) hasCandidate(account string) bool {
+	_, ok := s.candidates[account]
+	return ok
 }
 
 func (s *scanner) readLegacySecret(account string) (string, origin, bool, error) {

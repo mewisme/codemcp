@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -9,6 +10,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
+	"go.mewis.me/codemcp/internal/config"
 )
 
 const scopedSettingsAnnotation = "cm.scoped_settings"
@@ -20,8 +22,35 @@ func markScopedSettings(cmd *cobra.Command, keys ...string) *cobra.Command {
 	if cmd.Annotations == nil {
 		cmd.Annotations = map[string]string{}
 	}
-	cmd.Annotations[scopedSettingsAnnotation] = strings.Join(keys, ",")
+	current := strings.Split(cmd.Annotations[scopedSettingsAnnotation], ",")
+	seen := map[string]struct{}{}
+	for _, key := range append(current, keys...) {
+		if key = strings.TrimSpace(key); key != "" {
+			seen[key] = struct{}{}
+		}
+	}
+	merged := make([]string, 0, len(seen))
+	for key := range seen {
+		merged = append(merged, key)
+	}
+	sort.Strings(merged)
+	cmd.Annotations[scopedSettingsAnnotation] = strings.Join(merged, ",")
 	return cmd
+}
+
+func bindCanonicalScopedSettings(root *cobra.Command) {
+	if root == nil {
+		return
+	}
+	for _, spec := range config.Settings() {
+		for _, path := range spec.ScopedCommands {
+			command, remaining, err := root.Find(strings.Fields(path))
+			if err != nil || command == nil || len(remaining) != 0 {
+				continue
+			}
+			markScopedSettings(command, spec.Key)
+		}
+	}
 }
 
 func settingService() *application.SettingService {
@@ -62,7 +91,28 @@ func scopedValueCommand(use, title, success, key string) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.ValidArgsFunction = completeScopedSettingValue(key)
 	return markScopedSettings(cmd, key)
+}
+
+func completeScopedSettingValue(key string) cobra.CompletionFunc {
+	return func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) > 0 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		spec, ok := config.SettingByKey(key)
+		if !ok {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		switch spec.Kind {
+		case config.FieldEnum:
+			return filterCompletions(spec.Options, toComplete), cobra.ShellCompDirectiveNoFileComp
+		case config.FieldBool:
+			return filterCompletions([]string{"true", "false"}, toComplete), cobra.ShellCompDirectiveNoFileComp
+		default:
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+	}
 }
 
 func scopedListAddRemoveCommand(use, title, success, key string, add bool) *cobra.Command {
@@ -195,29 +245,22 @@ func shellSettingsCommand() *cobra.Command {
 func integrationSettingsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "integration", Short: "Manage first-party integration settings"}
 	cmd.AddCommand(
-		integrationModeSettingsCommand("ponytail", []string{"lite", "full", "ultra"}),
-		integrationModeSettingsCommand("caveman", []string{"lite", "full", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"}),
+		integrationModeSettingsCommand("ponytail"),
+		integrationModeSettingsCommand("caveman"),
 		integrationBinarySettingsCommand("rtk"),
 		integrationBinarySettingsCommand("codegraph"),
 	)
 	return cmd
 }
 
-func integrationModeSettingsCommand(name string, modes []string) *cobra.Command {
+func integrationModeSettingsCommand(name string) *cobra.Command {
 	prefix := "integrations." + name
 	cmd := &cobra.Command{Use: name, Short: "Manage " + name + " integration settings"}
 	cmd.AddCommand(
 		scopedToggleCommand("enable", "Enable "+name+" integration", name+" integration enabled", prefix+".active", true),
 		scopedToggleCommand("disable", "Disable "+name+" integration", name+" integration disabled", prefix+".active", false),
 	)
-	mode := scopedValueCommand("mode", "Set "+name+" integration mode", name+" integration mode updated", prefix+".mode")
-	mode.ValidArgsFunction = func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if len(args) > 0 {
-			return nil, cobra.ShellCompDirectiveNoFileComp
-		}
-		return filterCompletions(modes, toComplete), cobra.ShellCompDirectiveNoFileComp
-	}
-	cmd.AddCommand(mode)
+	cmd.AddCommand(scopedValueCommand("mode", "Set "+name+" integration mode", name+" integration mode updated", prefix+".mode"))
 	return cmd
 }
 

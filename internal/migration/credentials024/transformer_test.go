@@ -158,6 +158,54 @@ func TestTransformSupportsLegacyPlaintextSecretFiles(t *testing.T) {
 	}
 }
 
+func TestTransformNormalizesFlatTunnelAdminStateToCanonicalNestedOutput(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	source := t.TempDir()
+	destination := filepath.Join(t.TempDir(), "stage")
+	writeFixture(t, filepath.Join(source, "tunnel.json"), []byte(`{
+  "admin_enabled": false,
+  "admin_key": "inline-admin-secret",
+  "admin_workspace_id": "ws_release",
+  "admin_verified": true,
+  "admin_read_access": true,
+  "admin_manage_access": true
+}`))
+
+	result, err := Transform(Input{SourceRoot: source, DestinationRoot: destination})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin := result.Tunnel.Admin
+	if admin.Enabled || !admin.KeyConfigured || admin.WorkspaceID != "ws_release" || admin.OrganizationID != "" || admin.TenantID != "" {
+		t.Fatalf("canonical admin configured state = %#v", admin)
+	}
+	if admin.Verified || admin.ReadAccess || admin.ManageAccess {
+		t.Fatalf("legacy derived verification/access survived normalization: %#v", admin)
+	}
+	if !result.Tunnel.Admin.KeyConfigured || result.Tunnel.RuntimeKeyConfigured {
+		t.Fatalf("canonical tunnel credential state = %#v", result.Tunnel)
+	}
+}
+
+func TestTransformRejectsCompetingFlatTunnelAdminScopesBeforeStaging(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	source := t.TempDir()
+	destination := filepath.Join(t.TempDir(), "stage")
+	writeFixture(t, filepath.Join(source, "tunnel.json"), []byte(`{
+  "admin_key": "inline-admin-secret",
+  "admin_organization_id": "org_release",
+  "admin_workspace_id": "ws_release"
+}`))
+
+	_, err := Transform(Input{SourceRoot: source, DestinationRoot: destination})
+	if err == nil || !strings.Contains(err.Error(), "competing") {
+		t.Fatalf("competing admin scopes err = %v", err)
+	}
+	if _, statErr := os.Stat(destination); !os.IsNotExist(statErr) {
+		t.Fatalf("destination created after invalid admin state: %v", statErr)
+	}
+}
+
 func TestTransformRefusesDestinationConflictBeforeMutation(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	source := t.TempDir()

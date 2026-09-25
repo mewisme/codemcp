@@ -22,7 +22,27 @@ import (
 
 func tunnelCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "tunnel", Short: "Manage the OpenAI Secure MCP Tunnel"}
-	cmd.AddCommand(tunnelAdminCommand(), tunnelListCommand(), tunnelGetCommand(), tunnelUseCommand(), tunnelCreateCommand(), tunnelUpdateCommand(), tunnelDeleteCommand(), tunnelStatusCommand(), tunnelSyncCommand(), tunnelConfigureCommand(), tunnelToggleCommand(true), tunnelToggleCommand(false), tunnelRunCommand())
+	cmd.AddCommand(tunnelAdminCommand(), tunnelRuntimeKeyCommand(), tunnelListCommand(), tunnelGetCommand(), tunnelUseCommand(), tunnelCreateCommand(), tunnelUpdateCommand(), tunnelDeleteCommand(), tunnelStatusCommand(), tunnelSyncCommand(), tunnelConfigureCommand(), tunnelToggleCommand(true), tunnelToggleCommand(false), tunnelRunCommand())
+	return cmd
+}
+
+func tunnelRuntimeKeyCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "key", Short: "Manage the stored OpenAI tunnel runtime API key"}
+	set := &cobra.Command{Use: "set <runtime-api-key>", Short: "Store the OpenAI tunnel runtime API key", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := settingService().Set(cmd.Context(), "tunnel.api_key", args[0]); err != nil {
+			return err
+		}
+		renderMutationSuccess(cmd, "OpenAI tunnel runtime key", "Runtime API key saved")
+		return nil
+	}}
+	remove := &cobra.Command{Use: "remove", Aliases: []string{"rm"}, Short: "Remove the stored OpenAI tunnel runtime API key", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if _, err := settingService().Unset(cmd.Context(), "tunnel.api_key"); err != nil {
+			return err
+		}
+		renderMutationSuccess(cmd, "OpenAI tunnel runtime key", "Runtime API key removed")
+		return nil
+	}}
+	cmd.AddCommand(markScopedSettings(set, "tunnel.api_key"), markScopedSettings(remove, "tunnel.api_key"))
 	return cmd
 }
 
