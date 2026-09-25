@@ -219,6 +219,29 @@ type PublicError struct {
 	Key  string    `json:"key,omitempty"`
 }
 
+type Setting struct {
+	Key        string   `json:"key"`
+	Label      string   `json:"label,omitempty"`
+	Section    string   `json:"section,omitempty"`
+	Kind       string   `json:"kind,omitempty"`
+	Options    []string `json:"options,omitempty"`
+	Readable   bool     `json:"readable"`
+	Writable   bool     `json:"writable"`
+	Derived    bool     `json:"derived,omitempty"`
+	Secret     bool     `json:"secret,omitempty"`
+	Configured *bool    `json:"configured,omitempty"`
+	Value      *string  `json:"value,omitempty"`
+}
+
+type ListResult struct {
+	Settings   []Setting `json:"settings"`
+	NextCursor string    `json:"next_cursor,omitempty"`
+}
+
+type GetResult struct {
+	Setting Setting `json:"setting"`
+}
+
 type MutationState string
 
 const (

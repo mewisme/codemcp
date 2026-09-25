@@ -131,12 +131,12 @@ var mcpToolBindings = map[ID][]string{
 	IntegrationPonytailTurn:         {"ponytail_turn"},
 	IntegrationCavemanTurn:          {"caveman_turn"},
 	IntegrationCodeGraphExplore:     {"codegraph_explore"},
+	AgentConfigList:                 {"config_list"},
+	AgentConfigGet:                  {"config_get"},
 }
 
 var plannedMCPToolBindings = map[ID][]string{
-	AgentConfigList: {"config_list"},
-	AgentConfigGet:  {"config_get"},
-	AgentConfigSet:  {"config_set"},
+	AgentConfigSet: {"config_set"},
 }
 
 func agentOnlySpecs() []Spec {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -16,10 +17,80 @@ import (
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/controlguard"
 	localmcp "go.mewis.me/codemcp/internal/mcp"
+	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 	"go.mewis.me/codemcp/internal/tools"
 	codemcpversion "go.mewis.me/codemcp/internal/version"
 	"go.mewis.me/codemcp/internal/workspace"
 )
+
+type bridgeConfigReadProvider struct {
+	setting mcpconfigwire.Setting
+}
+
+func (provider bridgeConfigReadProvider) List(context.Context, string) ([]mcpconfigwire.Setting, mcpconfigwire.ErrorCode) {
+	return []mcpconfigwire.Setting{provider.setting}, ""
+}
+
+func (provider bridgeConfigReadProvider) Get(context.Context, string) (mcpconfigwire.Setting, mcpconfigwire.ErrorCode) {
+	return provider.setting, ""
+}
+
+func TestSDKBridgeConfigGetUsesSameSanitizedWireResult(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	value := "41001"
+	want := mcpconfigwire.GetResult{Setting: mcpconfigwire.Setting{
+		Key: "server.port", Label: "MCP port", Section: "server", Kind: "int",
+		Readable: true, Writable: true, Value: &value,
+	}}
+	runtime := tools.NewRuntime()
+	runtime.SetConfigReadProvider(bridgeConfigReadProvider{setting: want.Setting})
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- bridge.Run(ctx, serverTransport) }()
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "config-tunnel-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: mcpconfigwire.GetToolName, Arguments: map[string]any{"key": "server.port"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError || len(result.Content) != 1 {
+		t.Fatalf("result=%#v", result)
+	}
+	text, ok := result.Content[0].(*sdkmcp.TextContent)
+	if !ok {
+		t.Fatalf("content=%#v", result.Content)
+	}
+	var got mcpconfigwire.GetResult
+	if err := json.Unmarshal([]byte(text.Text), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("tunnel result=%#v want=%#v", got, want)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case err := <-serverDone:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("bridge run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("bridge did not stop")
+	}
+}
 
 func TestSDKBridgePropagatesTunnelSessionID(t *testing.T) {
 	registry := tools.NewRegistry()

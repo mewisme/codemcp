@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/interface/admin"
@@ -64,6 +65,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 		current := configStore.Snapshot()
 		return current.Admin.Enabled, current.Admin.Port
 	})
+	toolRuntime.SetConfigReadProvider(application.NewMCPConfigReadService())
 	toolSpan.EndMessage("Tool runtime bootstrapped", tracepkg.Int("tool_count", len(toolRuntime.List())))
 	if toolRuntime.Upstream != nil {
 		toolRuntime.Upstream.SetTraceObserver(observer)

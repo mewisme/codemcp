@@ -51,26 +51,14 @@ func Eligible(cfg config.Config, access Access) bool {
 	}
 }
 
-type Setting struct {
-	Key        string              `json:"key"`
-	Label      string              `json:"label,omitempty"`
-	Section    config.FieldSection `json:"section,omitempty"`
-	Kind       config.FieldKind    `json:"kind,omitempty"`
-	Options    []string            `json:"options,omitempty"`
-	Readable   bool                `json:"readable"`
-	Writable   bool                `json:"writable"`
-	Derived    bool                `json:"derived,omitempty"`
-	Secret     bool                `json:"secret,omitempty"`
-	Configured *bool               `json:"configured,omitempty"`
-	Value      *string             `json:"value,omitempty"`
-}
+type Setting = mcpconfigwire.Setting
 
 func ProjectSetting(spec config.FieldSpec, value string, configured *bool) (Setting, bool) {
 	if !AgentReadable(spec) {
 		return Setting{}, false
 	}
 	out := Setting{
-		Key: spec.Key, Label: spec.Label, Section: spec.Section, Kind: spec.Kind,
+		Key: spec.Key, Label: spec.Label, Section: string(spec.Section), Kind: string(spec.Kind),
 		Options:  append([]string(nil), spec.Options...),
 		Readable: true, Writable: AgentWritable(spec), Derived: spec.Derived, Secret: spec.Secret,
 	}
@@ -179,14 +167,8 @@ func unsafeValueBearingKey(key string) bool {
 	return false
 }
 
-type ListResult struct {
-	Settings   []Setting `json:"settings"`
-	NextCursor string    `json:"next_cursor,omitempty"`
-}
-
-type GetResult struct {
-	Setting Setting `json:"setting"`
-}
+type ListResult = mcpconfigwire.ListResult
+type GetResult = mcpconfigwire.GetResult
 
 type Change = mcpconfigwire.Change
 type BatchSummary = mcpconfigwire.BatchSummary
@@ -196,6 +178,14 @@ type MutationState = mcpconfigwire.MutationState
 type MutationResult = mcpconfigwire.MutationResult
 
 const (
+	ErrorAccessDenied         = mcpconfigwire.ErrorAccessDenied
+	ErrorInvalidRequest       = mcpconfigwire.ErrorInvalidRequest
+	ErrorUnsupportedSetting   = mcpconfigwire.ErrorUnsupportedSetting
+	ErrorSecretWriteForbidden = mcpconfigwire.ErrorSecretWriteForbidden
+	ErrorApprovalRequired     = mcpconfigwire.ErrorApprovalRequired
+	ErrorApplyFailed          = mcpconfigwire.ErrorApplyFailed
+	ErrorReconciliationNeeded = mcpconfigwire.ErrorReconciliationNeeded
+
 	MutationUnchanged              = mcpconfigwire.MutationUnchanged
 	MutationPersisted              = mcpconfigwire.MutationPersisted
 	MutationRuntimeSynced          = mcpconfigwire.MutationRuntimeSynced

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/mcp"
@@ -26,6 +27,7 @@ func (a *App) Bootstrap() error {
 				return current.Admin.Enabled, current.Admin.Port
 			})
 		}
+		a.Tools.SetConfigReadProvider(application.NewMCPConfigReadService())
 		if a.Activity == nil {
 			a.Activity = activity.NewStream()
 		}

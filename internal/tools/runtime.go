@@ -45,6 +45,8 @@ type Runtime struct {
 	Processes           *shellruntime.ProcessManager
 	LoopGuard           *ToolLoopGuard
 	sessionMu           sync.Mutex
+	configReadMu        sync.RWMutex
+	configReads         ConfigReadProvider
 	integrationMu       sync.Mutex
 	integrations        integrations.Config
 	ponytailManager     *ponytail.Manager
@@ -95,6 +97,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	registerCoreWithManagers(registry, workspaces, checkpoints, environment, shell, processes, codeGraphProjectContextProviders(runtime))
 	RegisterAgentCompletionTool(registry, runtime.Completions)
 	RegisterApprovalTools(registry, runtime)
+	RegisterConfigReadTools(registry, runtime)
 	RegisterUpstreamTools(registry, upstreams)
 	if err := runtime.SyncIntegrations(integrationConfig); err != nil {
 		panic(err)

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -10,12 +11,134 @@ import (
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 )
 
-func TestPhase1AConfigToolsRemainUnregistered(t *testing.T) {
+func TestConfigReadToolsAreRegisteredWhileMutationRemainsInactive(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	runtime := NewRuntime()
-	for _, name := range []string{mcpconfigwire.ListToolName, mcpconfigwire.GetToolName, mcpconfigwire.SetToolName} {
-		if _, ok := runtime.Registry.Schema(name); ok {
-			t.Fatalf("planned MCP config tool %q was registered before its implementation phase", name)
+	for _, tc := range []struct {
+		name   string
+		output json.RawMessage
+	}{
+		{mcpconfigwire.ListToolName, mcpconfigwire.ListOutputSchema},
+		{mcpconfigwire.GetToolName, mcpconfigwire.GetOutputSchema},
+	} {
+		schema, ok := runtime.Registry.Schema(tc.name)
+		if !ok {
+			t.Fatalf("config read tool %q is not registered", tc.name)
+		}
+		if string(schema.OutputSchema) != string(tc.output) {
+			t.Fatalf("%s output schema drifted\ngot=%s\nwant=%s", tc.name, schema.OutputSchema, tc.output)
+		}
+		if schema.Annotations["readOnlyHint"] != true || schema.Annotations["idempotentHint"] != true ||
+			schema.Annotations["destructiveHint"] != false || schema.Annotations["openWorldHint"] != false {
+			t.Fatalf("%s annotations=%#v", tc.name, schema.Annotations)
+		}
+	}
+	if _, ok := runtime.Registry.Schema(mcpconfigwire.SetToolName); ok {
+		t.Fatal("config_set became registered before guarded mutation support")
+	}
+}
+
+type configReadFixture struct {
+	settings []mcpconfigwire.Setting
+	get      mcpconfigwire.Setting
+	code     mcpconfigwire.ErrorCode
+	reads    *int
+}
+
+func (fixture configReadFixture) List(context.Context, string) ([]mcpconfigwire.Setting, mcpconfigwire.ErrorCode) {
+	if fixture.reads != nil {
+		*fixture.reads++
+	}
+	return append([]mcpconfigwire.Setting(nil), fixture.settings...), fixture.code
+}
+
+func (fixture configReadFixture) Get(context.Context, string) (mcpconfigwire.Setting, mcpconfigwire.ErrorCode) {
+	return fixture.get, fixture.code
+}
+
+func TestConfigListIsBoundedAndCursorIsPrefixBound(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewRuntime()
+	values := []mcpconfigwire.Setting{
+		{Key: "server.enabled", Readable: true, Writable: true},
+		{Key: "server.port", Readable: true, Writable: true},
+		{Key: "server.expose", Readable: true, Writable: true},
+	}
+	runtime.SetConfigReadProvider(configReadFixture{settings: values})
+
+	first, err := runtime.Call(context.Background(), mcpconfigwire.ListToolName, map[string]any{"prefix": "server", "limit": 2})
+	if err != nil || first.IsError {
+		t.Fatalf("first page result=%#v err=%v", first, err)
+	}
+	page, ok := first.StructuredContent.(mcpconfigwire.ListResult)
+	if !ok || len(page.Settings) != 2 || page.NextCursor == "" {
+		t.Fatalf("first page=%#v", first.StructuredContent)
+	}
+	decoded, decodeErr := base64.RawURLEncoding.DecodeString(page.NextCursor)
+	if decodeErr != nil {
+		t.Fatal(decodeErr)
+	}
+	for _, forbidden := range []string{"server.enabled", "server.port", "server.expose"} {
+		if strings.Contains(string(decoded), forbidden) {
+			t.Fatalf("cursor leaked setting key %q: %s", forbidden, decoded)
+		}
+	}
+
+	second, err := runtime.Call(context.Background(), mcpconfigwire.ListToolName, map[string]any{"prefix": "server", "limit": 2, "cursor": page.NextCursor})
+	if err != nil || second.IsError {
+		t.Fatalf("second page result=%#v err=%v", second, err)
+	}
+	page2 := second.StructuredContent.(mcpconfigwire.ListResult)
+	if len(page2.Settings) != 1 || page2.Settings[0].Key != "server.expose" || page2.NextCursor != "" {
+		t.Fatalf("second page=%#v", page2)
+	}
+
+	for _, args := range []map[string]any{
+		{"prefix": "admin", "limit": 2, "cursor": page.NextCursor},
+		{"limit": mcpconfigwire.MaxListLimit + 1},
+		{"limit": 1.5},
+		{"unknown": true},
+	} {
+		result, err := runtime.Call(context.Background(), mcpconfigwire.ListToolName, args)
+		if err != nil || !result.IsError || !strings.Contains(result.Content[0].Text, string(mcpconfigwire.ErrorInvalidRequest)) {
+			t.Fatalf("invalid args=%#v result=%#v err=%v", args, result, err)
+		}
+	}
+
+	reads := 0
+	runtime.SetConfigReadProvider(configReadFixture{settings: values, reads: &reads})
+	result, err := runtime.Call(context.Background(), mcpconfigwire.ListToolName, map[string]any{"cursor": "not-base64!"})
+	if err != nil || !result.IsError || reads != 0 {
+		t.Fatalf("invalid cursor reached provider: result=%#v err=%v reads=%d", result, err, reads)
+	}
+
+	runtime.SetConfigReadProvider(configReadFixture{settings: []mcpconfigwire.Setting{}})
+	empty, err := runtime.Call(context.Background(), mcpconfigwire.ListToolName, map[string]any{})
+	if err != nil || empty.IsError {
+		t.Fatalf("empty result=%#v err=%v", empty, err)
+	}
+	data, err := json.Marshal(empty.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"settings":[]`) {
+		t.Fatalf("empty list serialized as non-array: %s", data)
+	}
+}
+
+func TestConfigReadToolsFailClosedWithoutProvider(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewRuntime()
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+	}{
+		{mcpconfigwire.ListToolName, map[string]any{}},
+		{mcpconfigwire.GetToolName, map[string]any{"key": "server.port"}},
+	} {
+		result, err := runtime.Call(context.Background(), tc.name, tc.args)
+		if err != nil || !result.IsError || !strings.Contains(result.Content[0].Text, string(mcpconfigwire.ErrorAccessDenied)) {
+			t.Fatalf("%s result=%#v err=%v", tc.name, result, err)
 		}
 	}
 }
