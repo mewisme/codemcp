@@ -13,7 +13,9 @@ import (
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/controlguard"
+	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	"go.mewis.me/codemcp/internal/notification"
+	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -295,6 +297,22 @@ func TestStopShutsDownUpstreamConnections(t *testing.T) {
 	}
 	if len(client.closed) != 1 || client.closed[0] != "one" {
 		t.Fatalf("closed = %#v", client.closed)
+	}
+}
+
+func TestStopShutsDownCompletionHookBus(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	application := &App{Tools: runtime}
+	if err := application.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	event := agentcompletion.Event{
+		ID: "completion-event:completion_stop", Name: agentcompletion.EventAccepted,
+		Record: agentcompletion.Record{ID: "completion_stop", WorkspaceID: "ws_stop"},
+	}
+	if err := runtime.CompletionHooks.Dispatch(event); err == nil || !strings.Contains(err.Error(), "stopped") {
+		t.Fatalf("completion hook bus remained active after app stop: %v", err)
 	}
 }
 

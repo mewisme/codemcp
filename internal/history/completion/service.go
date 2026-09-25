@@ -25,6 +25,7 @@ type Options struct {
 	Now          func() time.Time
 	NewID        func() (string, error)
 	SequencePath string
+	Hooks        *CompletionHookBus
 }
 
 type EventSubscription = sequence.Subscription[Event]
@@ -35,6 +36,7 @@ type Service struct {
 	workspaces *workspace.Manager
 	sequence   *SequenceAllocator
 	events     *sequence.Stream[Event]
+	hooks      *CompletionHookBus
 	maxRecords int
 	now        func() time.Time
 	newID      func() (string, error)
@@ -64,6 +66,7 @@ func NewWorkspaceService(workspaces *workspace.Manager, options Options) (*Servi
 			value.Sequence = sequence
 			value.Record.Sequence = sequence
 		}),
+		hooks:      options.Hooks,
 		maxRecords: options.MaxRecords,
 		now:        options.Now,
 		newID:      options.NewID,
@@ -127,8 +130,12 @@ func (s *Service) Accept(identity Identity, input Input) (Record, bool, error) {
 		return Record{}, false, err
 	}
 
+	accepted := eventFor(record)
 	s.events.EnsureSequence(record.Sequence - 1)
-	_ = s.events.Publish(eventFor(record))
+	_ = s.events.Publish(accepted)
+	if s.hooks != nil {
+		_ = s.hooks.Dispatch(accepted)
+	}
 	return record, true, nil
 }
 

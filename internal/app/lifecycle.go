@@ -56,6 +56,9 @@ func (a *App) Start(ctx context.Context) error {
 			if a.ApprovalNotifications != nil {
 				a.ApprovalNotifications.Stop()
 			}
+			if a.Tools != nil && a.Tools.CompletionHooks != nil {
+				a.Tools.CompletionHooks.Stop()
+			}
 			a.runtimeCtx = nil
 			if a.Tools != nil && a.Tools.Workspaces != nil {
 				err = errors.Join(err, a.Tools.Workspaces.Deactivate())
@@ -71,6 +74,9 @@ func (a *App) Start(ctx context.Context) error {
 
 func (a *App) Stop() error {
 	span := tracepkg.StartObserver(a.trace, "APP", "app.runtime.stop", "Stopping application runtime")
+	if a.Tools != nil && a.Tools.CompletionHooks != nil {
+		a.Tools.CompletionHooks.Stop()
+	}
 	if a.ApprovalNotifications != nil {
 		a.ApprovalNotifications.Stop()
 	}

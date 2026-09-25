@@ -38,6 +38,7 @@ type Runtime struct {
 	SessionAccess    *SessionWorkspaceAccessManager
 	Approvals        *approval.Manager
 	Completions      *agentcompletion.Service
+	CompletionHooks  *agentcompletion.CompletionHookBus
 	Executions       *shellruntime.ExecutionHub
 	Shell            *shellruntime.Manager
 	Processes        *shellruntime.ProcessManager
@@ -71,11 +72,12 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	executions := shellruntime.NewExecutionHub()
 	shell := shellruntime.NewManagerWithExecutions(workspaces, shellruntime.DefaultStateRoot(), executions)
 	processes := shellruntime.NewProcessManagerWithExecutions(workspaces, shell, executions)
-	completions, err := agentcompletion.NewWorkspaceService(workspaces, agentcompletion.Options{})
+	completionHooks := agentcompletion.NewCompletionHookBus(agentcompletion.HookBusOptions{})
+	completions, err := agentcompletion.NewWorkspaceService(workspaces, agentcompletion.Options{Hooks: completionHooks})
 	if err != nil {
 		panic(err)
 	}
-	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Completions: completions, Executions: executions, Shell: shell, Processes: processes, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
+	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
 	RegisterWorkspaceTools(registry, workspaces, shell)
 	RegisterWorkspaceListTool(registry, runtime)
 	RegisterWorkspaceContainerTools(registry, workspaces)
