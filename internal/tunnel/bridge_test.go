@@ -182,11 +182,15 @@ func TestSDKBridgeAcceptsIntegerArgumentsForBuiltInTools(t *testing.T) {
 	}
 }
 
-func TestSDKBridgeFallsBackToStableServerSessionID(t *testing.T) {
+func TestSDKBridgeModernRequestsDoNotUseServerSessionAsApplicationIdentity(t *testing.T) {
 	registry := tools.NewRegistry()
-	seen := make(chan string, 2)
+	type observed struct {
+		session     string
+		correlation tools.ApprovalCorrelation
+	}
+	seen := make(chan observed, 2)
 	registry.MustRegister("session_probe", tools.Schema{Name: "session_probe", InputSchema: json.RawMessage(`{"type":"object"}`)}, func(ctx context.Context, _ map[string]any) (tools.Result, error) {
-		seen <- tools.MCPSessionID(ctx)
+		seen <- observed{session: tools.MCPSessionID(ctx), correlation: tools.ApprovalCorrelationFromContext(ctx)}
 		return tools.TextResult("ok"), nil
 	})
 	bridge, err := newSDKBridge(&tools.Runtime{Registry: registry})
@@ -210,8 +214,11 @@ func TestSDKBridgeFallsBackToStableServerSessionID(t *testing.T) {
 		}
 	}
 	first, second := <-seen, <-seen
-	if !strings.HasPrefix(first, "sdk:") || first != second {
-		t.Fatalf("fallback session ids = %q, %q", first, second)
+	if first.session != "" || second.session != "" {
+		t.Fatalf("modern SDK requests inherited server session ids = %q, %q", first.session, second.session)
+	}
+	if first.correlation.CallerID == "" || first.correlation.CallerID != second.correlation.CallerID || first.correlation.RequestID == second.correlation.RequestID {
+		t.Fatalf("modern approval correlations = %#v / %#v", first.correlation, second.correlation)
 	}
 	cancel()
 	select {
@@ -221,7 +228,7 @@ func TestSDKBridgeFallsBackToStableServerSessionID(t *testing.T) {
 	}
 }
 
-func TestSDKBridgeApprovalFlowUsesSessionFallback(t *testing.T) {
+func TestSDKBridgeApprovalFlowUsesStatelessCallerScope(t *testing.T) {
 	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
 	item, err := manager.Register(t.TempDir())
 	if err != nil {

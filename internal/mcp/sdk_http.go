@@ -14,7 +14,7 @@ func NewSDKHTTPHandler(toolRuntime *tools.Runtime, boundWorkspace string, enable
 	if err != nil {
 		return nil, err
 	}
-	streamable := sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server { return streamableServer.Server }, &sdkmcp.StreamableHTTPOptions{SessionTimeout: 30 * time.Minute, PropagateRequestCancellation: true})
+	streamable := sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server { return streamableServer.Server }, &sdkmcp.StreamableHTTPOptions{Stateless: true, SessionTimeout: 30 * time.Minute, PropagateRequestCancellation: true})
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", streamable)
 	if enableSSE {

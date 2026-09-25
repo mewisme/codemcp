@@ -211,32 +211,48 @@ func TestHTTPRuntimeCavemanUsesBuiltInConfiguredMode(t *testing.T) {
 	}
 }
 
-func TestHTTPRuntimePropagatesSessionID(t *testing.T) {
+func TestHTTPRuntimeModernContextIgnoresTransportSessionMetadata(t *testing.T) {
 	registry := tools.NewRegistry()
 	type observed struct {
 		session     string
 		correlation tools.ApprovalCorrelation
+		request     RequestContext
 	}
-	seen := make(chan observed, 1)
+	seen := make(chan observed, 2)
 	registry.MustRegister("session_probe", tools.Schema{Name: "session_probe", InputSchema: json.RawMessage(`{"type":"object"}`)}, func(ctx context.Context, _ map[string]any) (tools.Result, error) {
-		seen <- observed{session: tools.MCPSessionID(ctx), correlation: tools.ApprovalCorrelationFromContext(ctx)}
+		seen <- observed{session: tools.MCPSessionID(ctx), correlation: tools.ApprovalCorrelationFromContext(ctx), request: RequestContextFromContext(ctx)}
 		return tools.TextResult("ok"), nil
 	})
-	runtime := NewHTTPRuntimeWithTools(&tools.Runtime{Registry: registry})
-	req := modernRequest("tools/call", `{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"session_probe","arguments":{}}}`)
-	req.Header.Set(NameHeader, "session_probe")
-	req.Header.Set(SessionIDHeader, "session-http")
-	res := httptest.NewRecorder()
-	runtime.ServeHTTP(res, req)
-	if res.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", res.Code, res.Body.String())
+	toolRuntime := &tools.Runtime{Registry: registry, SessionAccess: tools.NewSessionWorkspaceAccessManager()}
+	runtime := NewHTTPRuntimeWithTools(toolRuntime)
+	body := `{"jsonrpc":"2.0","id":31,"method":"tools/call","params":{"name":"session_probe","arguments":{},"requestState":"opaque","inputResponses":{"confirm":{"action":"accept","content":{}}},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientInfo":{"name":"stateless-test","version":"1.2.3"},"io.modelcontextprotocol/clientCapabilities":{"extensions":{"example/one":{"enabled":true}}},"io.modelcontextprotocol/logLevel":"warning"}}}`
+	for index, sessionID := range []string{"session-http-a", "session-http-b"} {
+		req := modernRequest("tools/call", strings.Replace(body, `"id":31`, fmt.Sprintf(`"id":%d`, 31+index), 1))
+		req.Header.Set(NameHeader, "session_probe")
+		req.Header.Set(SessionIDHeader, sessionID)
+		res := httptest.NewRecorder()
+		runtime.ServeHTTP(res, req)
+		if res.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", res.Code, res.Body.String())
+		}
 	}
-	got := <-seen
-	if got.session != "session-http" {
-		t.Fatalf("session id = %q", got.session)
+	first, second := <-seen, <-seen
+	if first.session != "" || second.session != "" {
+		t.Fatalf("modern request inherited transport session: %q / %q", first.session, second.session)
 	}
-	if got.correlation.CallerID == "" || got.correlation.CallerID == "session-http" || !strings.HasPrefix(got.correlation.CallerID, "apc_") || !strings.HasPrefix(got.correlation.RequestID, "apr_") {
-		t.Fatalf("approval correlation=%#v", got.correlation)
+	if first.correlation.CallerID == "" || first.correlation.CallerID != second.correlation.CallerID || !strings.HasPrefix(first.correlation.CallerID, "apc_") || first.correlation.RequestID == second.correlation.RequestID || !strings.HasPrefix(first.correlation.RequestID, "apr_") || !strings.HasPrefix(second.correlation.RequestID, "apr_") {
+		t.Fatalf("approval correlations=%#v / %#v", first.correlation, second.correlation)
+	}
+	firstJSON, _ := json.Marshal(first.request)
+	secondJSON, _ := json.Marshal(second.request)
+	if string(firstJSON) != string(secondJSON) {
+		t.Fatalf("equivalent modern contexts differ: %s / %s", firstJSON, secondJSON)
+	}
+	if first.request.ProtocolVersion != SupportedProtocolVersion || first.request.ClientInfo == nil || first.request.ClientInfo.Name != "stateless-test" || first.request.LogLevelHint != "warning" || first.request.RequestState != "opaque" || first.request.NegotiatedExtensions["example/one"] == nil || first.request.InputResponses["confirm"] == nil {
+		t.Fatalf("canonical modern context=%#v", first.request)
+	}
+	if toolRuntime.SessionAccess.Count() != 0 {
+		t.Fatalf("spoofed modern session metadata created legacy session state: %d", toolRuntime.SessionAccess.Count())
 	}
 }
 

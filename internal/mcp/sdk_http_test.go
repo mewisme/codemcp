@@ -15,7 +15,7 @@ import (
 func TestSDKHTTPTransportsOfficialClientInterop(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.MustRegister("transport_probe", tools.Schema{Name: "transport_probe", Description: "Return MCP call source.", InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`)}, func(ctx context.Context, _ map[string]any) (tools.Result, error) {
-		return tools.JSONResult(map[string]any{"source": tools.CallSource(ctx)}), nil
+		return tools.JSONResult(map[string]any{"source": tools.CallSource(ctx), "session": tools.MCPSessionID(ctx), "request": RequestContextFromContext(ctx)}), nil
 	})
 	runtime := &tools.Runtime{Registry: registry, LoopGuard: tools.NewToolLoopGuard()}
 	handler, err := NewSDKHTTPHandler(runtime, "", true)
@@ -29,9 +29,10 @@ func TestSDKHTTPTransportsOfficialClientInterop(t *testing.T) {
 		name      string
 		transport sdkmcp.Transport
 		want      string
+		modern    bool
 	}{
-		{name: "streamable", transport: &sdkmcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", DisableStandaloneSSE: true}, want: "http"},
-		{name: "legacy-sse", transport: &sdkmcp.SSEClientTransport{Endpoint: server.URL + "/mcp/sse"}, want: "sse"},
+		{name: "streamable", transport: &sdkmcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", DisableStandaloneSSE: true}, want: "http", modern: true},
+		{name: "legacy-sse", transport: &sdkmcp.SSEClientTransport{Endpoint: server.URL + "/mcp/sse"}, want: "sse", modern: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -67,6 +68,20 @@ func TestSDKHTTPTransportsOfficialClientInterop(t *testing.T) {
 			}
 			if payload["source"] != tc.want {
 				t.Fatalf("source=%#v want=%q", payload["source"], tc.want)
+			}
+			sessionID, _ := payload["session"].(string)
+			request, _ := payload["request"].(map[string]any)
+			if tc.modern {
+				if sessionID != "" {
+					t.Fatalf("modern Streamable HTTP inherited transport session=%q", sessionID)
+				}
+				if request["protocol_version"] != SupportedProtocolVersion {
+					t.Fatalf("modern Streamable HTTP request context=%#v", request)
+				}
+				clientInfo, _ := request["client_info"].(map[string]any)
+				if clientInfo["name"] != "transport-test" || clientInfo["version"] != "1.0.0" {
+					t.Fatalf("modern Streamable HTTP client info=%#v", clientInfo)
+				}
 			}
 		})
 	}

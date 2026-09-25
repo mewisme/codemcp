@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
@@ -82,6 +81,11 @@ func (h HTTPRuntime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeErrorID(w, req.ID, protocolErr.Code, protocolErr.Message)
 		return
 	}
+	canonicalRequest, err := requestContextFromParams(params)
+	if err != nil {
+		writeErrorID(w, req.ID, ErrInvalidParams, err.Error())
+		return
+	}
 	if req.Method == "tools/call" {
 		name, _ := params["name"].(string)
 		args, _ := params["arguments"].(map[string]any)
@@ -101,13 +105,10 @@ func (h HTTPRuntime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	started := time.Now()
-	requestCtx := r.Context()
+	requestCtx := WithRequestContext(r.Context(), canonicalRequest)
 	if req.Method == "tools/call" {
-		if sessionID := strings.TrimSpace(r.Header.Get(SessionIDHeader)); sessionID != "" {
-			requestCtx = tools.WithMCPSessionID(requestCtx, sessionID)
-			if h.ApprovalCallers != nil {
-				requestCtx = tools.WithApprovalCorrelation(requestCtx, h.ApprovalCallers.Caller("http:"+sessionID), idgen.Must("apr", 8))
-			}
+		if h.ApprovalCallers != nil {
+			requestCtx = tools.WithApprovalCorrelation(requestCtx, h.ApprovalCallers.Caller("modern:http"), idgen.Must("apr", 8))
 		}
 		requestCtx = tools.WithCallRequest(requestCtx, map[string]any{"jsonrpc": req.JSONRPC, "id": req.ID, "method": req.Method, "params": params})
 	}

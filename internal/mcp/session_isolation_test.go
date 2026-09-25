@@ -75,7 +75,7 @@ func httptestResponse(runtime *HTTPRuntime, req *http.Request) *httptest.Respons
 	return res
 }
 
-func TestHTTPSessionCanAccessMultipleWorkspacesWithoutPathLeakage(t *testing.T) {
+func TestHTTPModernTransportMetadataCannotChangeWorkspaceIsolation(t *testing.T) {
 	fixture := newIsolationHTTPFixture(t)
 	firstPath := filepath.Join(fixture.first.Path, "session-a.txt")
 	secondPath := filepath.Join(fixture.second.Path, "session-b.txt")
@@ -103,13 +103,12 @@ func TestHTTPSessionCanAccessMultipleWorkspacesWithoutPathLeakage(t *testing.T) 
 	if !result.IsError {
 		t.Fatalf("workspace path escape was allowed: %#v", result)
 	}
-	access, ok := fixture.runtime.Server.Tools.SessionAccess.Lookup("session-a")
-	if !ok || len(access.Workspaces) != 2 {
-		t.Fatalf("session A access = %#v ok=%t", access, ok)
+	if got := fixture.runtime.Server.Tools.SessionAccess.Count(); got != 0 {
+		t.Fatalf("modern session metadata created legacy workspace access state: %d", got)
 	}
 }
 
-func TestHTTPManySessionsCanShareWorkspace(t *testing.T) {
+func TestHTTPModernTransportMetadataDoesNotPartitionWorkspaceAccess(t *testing.T) {
 	fixture := newIsolationHTTPFixture(t)
 	for i, sessionID := range []string{"session-a", "session-b"} {
 		name := fmt.Sprintf("shared-%d.txt", i)
@@ -122,9 +121,12 @@ func TestHTTPManySessionsCanShareWorkspace(t *testing.T) {
 			t.Fatalf("%s content = %q err=%v", sessionID, data, err)
 		}
 	}
+	if got := fixture.runtime.Server.Tools.SessionAccess.Count(); got != 0 {
+		t.Fatalf("modern session metadata created legacy workspace access state: %d", got)
+	}
 }
 
-func TestHTTPSessionProjectContextCanTargetMultipleIsolatedWorkspaces(t *testing.T) {
+func TestHTTPModernProjectContextUsesExplicitWorkspaceNotTransportSession(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	fixture := newIsolationHTTPFixture(t)
 	if err := os.WriteFile(filepath.Join(fixture.first.Path, "AGENTS.md"), []byte("first workspace"), 0644); err != nil {
@@ -141,13 +143,12 @@ func TestHTTPSessionProjectContextCanTargetMultipleIsolatedWorkspaces(t *testing
 	if second.IsError || len(second.Content) == 0 || !strings.Contains(second.Content[0].Text, "second workspace") || strings.Contains(second.Content[0].Text, "first workspace") {
 		t.Fatalf("second project_context was not isolated: %#v", second)
 	}
-	access, ok := fixture.runtime.Server.Tools.SessionAccess.Lookup("project-session")
-	if !ok || len(access.Workspaces) != 2 {
-		t.Fatalf("project_context session access = %#v ok=%t", access, ok)
+	if got := fixture.runtime.Server.Tools.SessionAccess.Count(); got != 0 {
+		t.Fatalf("project_context created legacy session access state: %d", got)
 	}
 }
 
-func TestHTTPSessionContainerContextOrchestratesMembersWithoutGrantingOrMerging(t *testing.T) {
+func TestHTTPModernContainerContextDoesNotCreateTransportSessionAuthority(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	fixture := newIsolationHTTPFixture(t)
 	if err := os.WriteFile(filepath.Join(fixture.first.Path, "AGENTS.md"), []byte("container first sentinel"), 0644); err != nil {
@@ -187,17 +188,15 @@ func TestHTTPSessionContainerContextOrchestratesMembersWithoutGrantingOrMerging(
 	if first.IsError || len(first.Content) == 0 || !strings.Contains(first.Content[0].Text, "container first sentinel") || strings.Contains(first.Content[0].Text, "container second sentinel") {
 		t.Fatalf("first member context was not isolated: %#v", first)
 	}
-	access, ok := fixture.runtime.Server.Tools.SessionAccess.Lookup(sessionID)
-	if !ok || len(access.Workspaces) != 1 {
-		t.Fatalf("first member access = %#v ok=%t", access, ok)
+	if got := fixture.runtime.Server.Tools.SessionAccess.Count(); got != 0 {
+		t.Fatalf("first member created legacy session access state: %d", got)
 	}
 
 	second := callWorkspaceToolHTTP(t, fixture.runtime, sessionID, "project_context", map[string]any{"workspace_id": fixture.second.ID, "include_git": false}, 32)
 	if second.IsError || len(second.Content) == 0 || !strings.Contains(second.Content[0].Text, "container second sentinel") || strings.Contains(second.Content[0].Text, "container first sentinel") {
 		t.Fatalf("second member context was not isolated: %#v", second)
 	}
-	access, ok = fixture.runtime.Server.Tools.SessionAccess.Lookup(sessionID)
-	if !ok || len(access.Workspaces) != 2 {
-		t.Fatalf("member access = %#v ok=%t", access, ok)
+	if got := fixture.runtime.Server.Tools.SessionAccess.Count(); got != 0 {
+		t.Fatalf("member access created legacy session state: %d", got)
 	}
 }

@@ -38,7 +38,7 @@ func TestStdioMessageReaderResetsLimitPerLine(t *testing.T) {
 func TestStdioRuntimeOfficialSDKInterop(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.MustRegister("stdio_probe", tools.Schema{Name: "stdio_probe", Description: "Probe stdio transport context.", InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`)}, func(ctx context.Context, _ map[string]any) (tools.Result, error) {
-		return tools.JSONResult(map[string]any{"source": tools.CallSource(ctx), "session": tools.MCPSessionID(ctx)}), nil
+		return tools.JSONResult(map[string]any{"source": tools.CallSource(ctx), "session": tools.MCPSessionID(ctx), "request": RequestContextFromContext(ctx)}), nil
 	})
 	toolRuntime := &tools.Runtime{Registry: registry, LoopGuard: tools.NewToolLoopGuard()}
 	clientToServerReader, clientToServerWriter := io.Pipe()
@@ -82,8 +82,16 @@ func TestStdioRuntimeOfficialSDKInterop(t *testing.T) {
 	if payload["source"] != "stdio" {
 		t.Fatalf("source = %#v", payload["source"])
 	}
-	if sessionID, _ := payload["session"].(string); sessionID == "" {
-		t.Fatalf("session = %#v", payload["session"])
+	if sessionID, _ := payload["session"].(string); sessionID != "" {
+		t.Fatalf("modern stdio request inherited transport session = %#v", payload["session"])
+	}
+	request, _ := payload["request"].(map[string]any)
+	if request["protocol_version"] != SupportedProtocolVersion {
+		t.Fatalf("request context = %#v", request)
+	}
+	clientInfo, _ := request["client_info"].(map[string]any)
+	if clientInfo["name"] != "stdio-test" || clientInfo["version"] != "1.0.0" {
+		t.Fatalf("request client info = %#v", clientInfo)
 	}
 	if err := session.Close(); err != nil {
 		t.Fatal(err)

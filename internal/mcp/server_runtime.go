@@ -32,10 +32,15 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 	case "tools/call":
 		name, _ := params["name"].(string)
 		args, _ := params["arguments"].(map[string]any)
-		requestState, _ := params["requestState"].(string)
-		inputResponses, _ := params["inputResponses"].(map[string]any)
 		meta, _ := params["_meta"].(map[string]any)
-		ctx = tools.WithInputRound(ctx, requestState, inputResponses)
+		requestContext := RequestContextFromContext(ctx)
+		if requestContext.ProtocolVersion == "" {
+			if parsed, err := requestContextFromParams(params); err == nil {
+				requestContext = parsed
+				ctx = WithRequestContext(ctx, parsed)
+			}
+		}
+		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		ctx = tools.WithCallSource(ctx, "http")
 		ctx = tools.WithCallDetails(ctx, "tools/call", params)
 		ctx = upstream.WithRequestMeta(ctx, meta)

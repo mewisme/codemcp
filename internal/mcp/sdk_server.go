@@ -20,6 +20,7 @@ type SDKServer struct {
 	SessionID       string
 	BoundWorkspace  string
 	ApprovalCallers *approval.CallerRegistry
+	ModernCallerID  string
 }
 
 func NewSDKServerWithTools(toolRuntime *tools.Runtime, source string) (*SDKServer, error) {
@@ -31,7 +32,8 @@ func NewSDKServerWithSession(toolRuntime *tools.Runtime, source, sessionID, boun
 		toolRuntime = tools.NewRuntime()
 	}
 	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "codemcp", Version: version.Version}, &sdkmcp.ServerOptions{Capabilities: &sdkmcp.ServerCapabilities{Tools: &sdkmcp.ToolCapabilities{ListChanged: true}}})
-	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: approval.NewCallerRegistry()}
+	callers := approval.NewCallerRegistry()
+	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source)}
 	for _, schema := range filterHeaderSafeTools(toolRuntime.List()) {
 		if err := adapter.addTool(schema); err != nil {
 			return nil, err
@@ -64,26 +66,34 @@ func (s *SDKServer) addTool(schema tools.Schema) error {
 	}
 	s.Server.AddTool(tool, func(ctx context.Context, request *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
 		args := map[string]any{}
-		if len(request.Params.Arguments) > 0 {
+		if request != nil && request.Params != nil && len(request.Params.Arguments) > 0 {
 			if err := json.Unmarshal(request.Params.Arguments, &args); err != nil {
 				return nil, err
 			}
 		}
-		sessionID := s.SessionID
-		if sessionID == "" && request.Session != nil {
-			sessionID = request.Session.ID()
-		}
-		if sessionID != "" {
-			ctx = tools.WithMCPSessionID(ctx, sessionID)
-			if s.ApprovalCallers != nil {
-				ctx = tools.WithApprovalCorrelation(ctx, s.ApprovalCallers.Caller("sdk:"+sessionID), idgen.Must("apr", 8))
+		requestContext := RequestContextFromSDK(request)
+		ctx = WithRequestContext(ctx, requestContext)
+		if requestContext.Modern() {
+			if s.ModernCallerID != "" {
+				ctx = tools.WithApprovalCorrelation(ctx, s.ModernCallerID, idgen.Must("apr", 8))
+			}
+		} else {
+			sessionID := s.SessionID
+			if sessionID == "" && request != nil && request.Session != nil {
+				sessionID = request.Session.ID()
+			}
+			if sessionID != "" {
+				ctx = tools.WithMCPSessionID(ctx, sessionID)
+				if s.ApprovalCallers != nil {
+					ctx = tools.WithApprovalCorrelation(ctx, s.ApprovalCallers.Caller("legacy:sdk:"+sessionID), idgen.Must("apr", 8))
+				}
 			}
 		}
 		if s.BoundWorkspace != "" {
 			ctx = tools.WithBoundWorkspace(ctx, s.BoundWorkspace)
 		}
 		ctx = tools.WithCallSource(ctx, s.Source)
-		ctx = tools.WithInputRound(ctx, request.Params.RequestState, inputResponses(request.Params.InputResponses))
+		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		result, err := s.Tools.Call(ctx, schema.Name, args)
 		if errors.Is(err, tools.ErrToolNotFound) {
 			return nil, err

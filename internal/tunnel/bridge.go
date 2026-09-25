@@ -192,17 +192,15 @@ func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {
 		if err != nil {
 			return nil, err
 		}
-		if request.Params.RequestState != "" || request.Params.InputResponses != nil {
-			responses, err := decodeInputResponses(request.Params.InputResponses)
-			if err != nil {
-				return nil, err
-			}
-			ctx = tools.WithInputRound(ctx, request.Params.RequestState, responses)
-		}
+		requestContext := localmcp.RequestContextFromSDK(request)
+		ctx = localmcp.WithRequestContext(ctx, requestContext)
+		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		ctx = tools.WithCallSource(ctx, "tunnel")
-		if sessionID := b.sessionID(ctx, request); sessionID != "" {
+		if requestContext.Modern() {
+			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller("modern:tunnel"), idgen.Must("apr", 8))
+		} else if sessionID := b.sessionID(ctx, request); sessionID != "" {
 			ctx = tools.WithMCPSessionID(ctx, sessionID)
-			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller("tunnel:"+sessionID), idgen.Must("apr", 8))
+			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller("legacy:tunnel:"+sessionID), idgen.Must("apr", 8))
 		}
 		if request.Params.Meta != nil {
 			delete(request.Params.Meta, sessionMetaKey)
@@ -266,23 +264,6 @@ func decodeToolArguments(raw json.RawMessage) (map[string]any, error) {
 		args = map[string]any{}
 	}
 	return args, nil
-}
-
-func decodeInputResponses(values sdkmcp.InputResponseMap) (map[string]any, error) {
-	if values == nil {
-		return nil, nil
-	}
-	data, err := json.Marshal(values)
-	if err != nil {
-		return nil, fmt.Errorf("encode inputResponses: %w", err)
-	}
-	var decoded map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	if err := decoder.Decode(&decoded); err != nil {
-		return nil, fmt.Errorf("decode inputResponses: %w", err)
-	}
-	return decoded, nil
 }
 
 func sdkResultFromTools(result tools.Result) (*sdkmcp.CallToolResult, error) {
