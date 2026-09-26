@@ -82,6 +82,19 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 			return nil, ProtocolError(err)
 		}
 		return result, err
+	case CompletionCompleteMethod:
+		if r.Features == nil {
+			return nil, NewError(ErrInternal, "completion runtime is unavailable")
+		}
+		request, err := completionRequestFromParams(params)
+		if err != nil {
+			return nil, err
+		}
+		result, err := r.Features.Complete(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		return completionResultMap(result), nil
 	default:
 		if r.Features != nil && r.Features.SupportsMethod(method) {
 			return r.Features.Invoke(ctx, method, params)

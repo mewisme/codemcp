@@ -106,11 +106,14 @@ func normalizeResourceRegistration(registration *FeatureRegistration) error {
 	if registration.Capabilities.Resources == nil {
 		registration.Capabilities.Resources = &ResourcesCapability{}
 	}
-	// Descriptor policy records whether a resource may participate in change
-	// delivery. Protocol capabilities report only notification/subscription
-	// behavior that the active server actually implements.
-	registration.Capabilities.Resources.ListChanged = false
+	registration.Capabilities.Resources.ListChanged = true
 	registration.Capabilities.Resources.Subscribe = false
+	for _, descriptor := range registration.Resources {
+		registration.Capabilities.Resources.Subscribe = registration.Capabilities.Resources.Subscribe || descriptor.Policy.Subscription.Allowed
+	}
+	for _, descriptor := range registration.ResourceTemplates {
+		registration.Capabilities.Resources.Subscribe = registration.Capabilities.Resources.Subscribe || descriptor.Policy.Subscription.Allowed
+	}
 	return nil
 }
 
@@ -550,8 +553,28 @@ func boundedResourceMethodResult(result map[string]any) (map[string]any, error) 
 }
 
 func InstallResourceProjection(server *sdkmcp.Server, executor *FeatureExecutor) error {
+	return installResourceProjection(server, executor, newSDKResourceProjectionState())
+}
+
+type sdkResourceProjectionState struct {
+	resources           map[string]struct{}
+	templates           map[string]struct{}
+	middlewareInstalled bool
+}
+
+func newSDKResourceProjectionState() *sdkResourceProjectionState {
+	return &sdkResourceProjectionState{
+		resources: map[string]struct{}{},
+		templates: map[string]struct{}{},
+	}
+}
+
+func installResourceProjection(server *sdkmcp.Server, executor *FeatureExecutor, state *sdkResourceProjectionState) error {
 	if server == nil || executor == nil || executor.Registry == nil {
 		return nil
+	}
+	if state == nil {
+		state = newSDKResourceProjectionState()
 	}
 	snapshot := executor.Registry.Snapshot()
 	handler := func(ctx context.Context, request *sdkmcp.ReadResourceRequest) (*sdkmcp.ReadResourceResult, error) {
@@ -584,19 +607,28 @@ func InstallResourceProjection(server *sdkmcp.Server, executor *FeatureExecutor)
 		}, nil
 	}
 	for _, descriptor := range snapshot.Resources {
+		if _, exists := state.resources[descriptor.URI]; exists {
+			continue
+		}
+		state.resources[descriptor.URI] = struct{}{}
 		server.AddResource(&sdkmcp.Resource{
 			URI: descriptor.URI, Name: descriptor.Name, Title: descriptor.Title,
 			Description: descriptor.Description, MIMEType: descriptor.MIMEType, Size: descriptor.Size,
 		}, handler)
 	}
 	for _, descriptor := range snapshot.ResourceTemplates {
+		if _, exists := state.templates[descriptor.URITemplate]; exists {
+			continue
+		}
+		state.templates[descriptor.URITemplate] = struct{}{}
 		server.AddResourceTemplate(&sdkmcp.ResourceTemplate{
 			URITemplate: descriptor.URITemplate, Name: descriptor.Name, Title: descriptor.Title,
 			Description: descriptor.Description, MIMEType: descriptor.MIMEType,
 		}, handler)
 	}
-	if len(snapshot.Resources) > 0 || len(snapshot.ResourceTemplates) > 0 {
+	if !state.middlewareInstalled {
 		server.AddReceivingMiddleware(resourceCachePolicyMiddleware())
+		state.middlewareInstalled = true
 	}
 	return nil
 }

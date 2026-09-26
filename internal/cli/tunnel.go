@@ -303,7 +303,7 @@ func tunnelRunCommand() *cobra.Command {
 		runtime.SetConfigReadProvider(configProvider)
 		runtime.SetConfigSetApprovalProvider(configProvider)
 		runtime.SetConfigSetApplyProvider(configProvider)
-		runtime.SetInstructionAuthoringProvider(application.NewAgentInstructionAuthoringProvider(runtime.Workspaces))
+		runtime.SetInstructionAuthoringProvider(application.NewAgentInstructionAuthoringProvider(runtime.Workspaces, runtime.InstructionChanges))
 		runtime.SetShellPath(cfg.Shell.Path)
 		telemetry.AttachTools(runtime, nil, log)
 		runtimeCtx, runtimeCancel := context.WithCancel(context.WithoutCancel(cmd.Context()))

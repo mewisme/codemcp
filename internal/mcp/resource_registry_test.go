@@ -141,7 +141,7 @@ func TestResourceRegistrationNormalizesTypedPolicyAndProfileProjection(t *testin
 		got.MIMEType != "application/json" {
 		t.Fatalf("normalized template=%#v", got)
 	}
-	if snapshot.Capabilities.Resources == nil || snapshot.Capabilities.Resources.Subscribe ||
+	if snapshot.Capabilities.Resources == nil || !snapshot.Capabilities.Resources.Subscribe || !snapshot.Capabilities.Resources.ListChanged ||
 		!got.Policy.Subscription.Allowed {
 		t.Fatalf("resource capabilities=%#v", snapshot.Capabilities.Resources)
 	}
@@ -341,8 +341,8 @@ func TestResourceAuthorizationPrecedesResolutionAcrossProfiles(t *testing.T) {
 			defer session.Close()
 			if initialized := session.InitializeResult(); initialized == nil || initialized.Capabilities == nil || initialized.Capabilities.Resources == nil {
 				t.Fatal("resource capability was not advertised")
-			} else if initialized.Capabilities.Resources.Subscribe {
-				t.Fatal("resource subscription was advertised before a subscription adapter exists")
+			} else if !initialized.Capabilities.Resources.Subscribe || !initialized.Capabilities.Resources.ListChanged {
+				t.Fatalf("resource subscription capability=%#v", initialized.Capabilities.Resources)
 			}
 
 			templates, err := session.ListResourceTemplates(ctx, nil)

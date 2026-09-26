@@ -61,6 +61,8 @@ func ValidateParams(method string, params map[string]any) error {
 		}
 	case "subscriptions/listen":
 		return validateListenNotifications(params)
+	case CompletionCompleteMethod:
+		return validateCompletionParams(params)
 	}
 	return nil
 }

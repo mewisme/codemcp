@@ -134,7 +134,7 @@ func TestFeatureRegistryIsCanonicalAcrossProfilesAndSDKServers(t *testing.T) {
 		!reflect.DeepEqual(baseOptions.Capabilities.Extensions, openAIOptions.Capabilities.Extensions) {
 		t.Fatalf("profile changed feature advertisement: base=%#v openai=%#v", baseOptions.Capabilities, openAIOptions.Capabilities)
 	}
-	if baseOptions.Capabilities.Resources == nil || baseOptions.Capabilities.Resources.Subscribe ||
+	if baseOptions.Capabilities.Resources == nil || !baseOptions.Capabilities.Resources.Subscribe || !baseOptions.Capabilities.Resources.ListChanged ||
 		baseOptions.Capabilities.Prompts == nil || !baseOptions.Capabilities.Prompts.ListChanged {
 		t.Fatalf("feature capabilities were not projected: %#v", baseOptions.Capabilities)
 	}

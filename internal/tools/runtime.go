@@ -16,6 +16,7 @@ import (
 	"go.mewis.me/codemcp/internal/controlguard"
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	"go.mewis.me/codemcp/internal/idgen"
+	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/integrations"
 	"go.mewis.me/codemcp/internal/integrations/caveman"
 	"go.mewis.me/codemcp/internal/integrations/codegraph"
@@ -49,6 +50,7 @@ type Runtime struct {
 	Processes            *shellruntime.ProcessManager
 	BackgroundDeliveries *backgrounddelivery.Broker
 	LoopGuard            *ToolLoopGuard
+	InstructionChanges   *instructioncontext.ChangeStream
 	protocolFeatures     protocolFeatureSlot
 	sessionMu            sync.Mutex
 	configReadMu         sync.RWMutex
@@ -99,7 +101,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	if err != nil {
 		panic(err)
 	}
-	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, BackgroundDeliveries: backgroundDeliveries, LoopGuard: NewToolLoopGuard(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
+	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, BackgroundDeliveries: backgroundDeliveries, LoopGuard: NewToolLoopGuard(), InstructionChanges: instructioncontext.NewChangeStream(), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
 	runtime.CodeGraphCompletion = codegraph.NewCompletionHook(func() *codegraph.Runtime {
 		return runtime.codeGraphRuntimeSnapshot()
 	}, workspaces)

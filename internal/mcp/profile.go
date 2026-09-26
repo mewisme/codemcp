@@ -241,6 +241,9 @@ func ProjectSDKServer(profile Profile, descriptor ProtocolDescriptors) (*sdkmcp.
 			Subscribe:   projected.Resources.Subscribe,
 		}
 	}
+	if projected.Completions != nil {
+		capabilities.Completions = &sdkmcp.CompletionCapabilities{}
+	}
 	if projected.Prompts != nil {
 		capabilities.Prompts = &sdkmcp.PromptCapabilities{ListChanged: projected.Prompts.ListChanged}
 	}

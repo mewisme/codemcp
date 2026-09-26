@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -12,9 +13,9 @@ type AgentInstructionAuthoringProvider struct {
 	service *InstructionAuthoringService
 }
 
-func NewAgentInstructionAuthoringProvider(workspaces *workspace.Manager) *AgentInstructionAuthoringProvider {
+func NewAgentInstructionAuthoringProvider(workspaces *workspace.Manager, streams ...*instructioncontext.ChangeStream) *AgentInstructionAuthoringProvider {
 	return &AgentInstructionAuthoringProvider{
-		service: NewInstructionAuthoringService(workspaces, nil),
+		service: NewInstructionAuthoringService(workspaces, nil, streams...),
 	}
 }
 

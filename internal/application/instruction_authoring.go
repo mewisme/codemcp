@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/skills"
 	"go.mewis.me/codemcp/internal/workspace"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
@@ -98,6 +99,7 @@ type InstructionAuthoringResult struct {
 type InstructionAuthoringService struct {
 	Workspaces      *workspace.Manager
 	GlobalAuthorize func(context.Context) bool
+	Changes         *instructioncontext.ChangeStream
 
 	mu             sync.Mutex
 	activationHook func(point string) error
@@ -117,8 +119,12 @@ type authoringTarget struct {
 	workspaceRoot string
 }
 
-func NewInstructionAuthoringService(workspaces *workspace.Manager, globalAuthorize func(context.Context) bool) *InstructionAuthoringService {
-	return &InstructionAuthoringService{Workspaces: workspaces, GlobalAuthorize: globalAuthorize}
+func NewInstructionAuthoringService(workspaces *workspace.Manager, globalAuthorize func(context.Context) bool, streams ...*instructioncontext.ChangeStream) *InstructionAuthoringService {
+	var changes *instructioncontext.ChangeStream
+	if len(streams) > 0 {
+		changes = streams[0]
+	}
+	return &InstructionAuthoringService{Workspaces: workspaces, GlobalAuthorize: globalAuthorize, Changes: changes}
 }
 
 func (s *InstructionAuthoringService) WriteRule(ctx context.Context, request RuleAuthoringRequest) (InstructionAuthoringResult, error) {
@@ -162,7 +168,7 @@ func (s *InstructionAuthoringService) WriteRule(ctx context.Context, request Rul
 		return InstructionAuthoringResult{}, fmt.Errorf("%s %q: %w", request.Mode, name, err)
 	}
 	if request.DryRun {
-		return result, nil
+		return s.completeInstructionMutation(result, target), nil
 	}
 
 	root, err := openStableDirectory(target.basePath, request.Scope == InstructionScopeGlobal)
@@ -199,7 +205,7 @@ func (s *InstructionAuthoringService) WriteRule(ctx context.Context, request Rul
 		if err := root.Remove(stageRel); err != nil {
 			return InstructionAuthoringResult{}, fmt.Errorf("remove staged rule %q: %w", name, err)
 		}
-		return result, nil
+		return s.completeInstructionMutation(result, target), nil
 	}
 
 	stageRel, err := stageRootFile(root, target.resourceDir, name, rendered, 0o600)
@@ -219,7 +225,7 @@ func (s *InstructionAuthoringService) WriteRule(ctx context.Context, request Rul
 	if err := s.activateUpdate(root, target, currentID, stageRel, false); err != nil {
 		return InstructionAuthoringResult{}, err
 	}
-	return result, nil
+	return s.completeInstructionMutation(result, target), nil
 }
 
 func (s *InstructionAuthoringService) WriteSkill(ctx context.Context, request SkillAuthoringRequest) (InstructionAuthoringResult, error) {
@@ -265,7 +271,7 @@ func (s *InstructionAuthoringService) WriteSkill(ctx context.Context, request Sk
 		return InstructionAuthoringResult{}, fmt.Errorf("%s %q: %w", request.Mode, name, err)
 	}
 	if request.DryRun {
-		return result, nil
+		return s.completeInstructionMutation(result, target), nil
 	}
 
 	root, err := openStableDirectory(target.basePath, request.Scope == InstructionScopeGlobal)
@@ -300,12 +306,22 @@ func (s *InstructionAuthoringService) WriteSkill(ctx context.Context, request Sk
 		if err := root.Rename(stageRel, target.targetRel); err != nil {
 			return InstructionAuthoringResult{}, fmt.Errorf("activate skill %q: %w", name, err)
 		}
-		return result, nil
+		return s.completeInstructionMutation(result, target), nil
 	}
 	if err := s.activateUpdate(root, target, currentID, stageRel, true); err != nil {
 		return InstructionAuthoringResult{}, err
 	}
-	return result, nil
+	return s.completeInstructionMutation(result, target), nil
+}
+
+func (s *InstructionAuthoringService) completeInstructionMutation(result InstructionAuthoringResult, target authoringTarget) InstructionAuthoringResult {
+	if s != nil && s.Changes != nil && !result.DryRun {
+		s.Changes.Publish(instructioncontext.Change{
+			Kind: string(result.Kind), Scope: string(result.Scope), WorkspaceID: target.workspaceID,
+			Name: result.Name, Operation: string(result.Mode),
+		})
+	}
+	return result
 }
 
 func (s *InstructionAuthoringService) resolveTarget(ctx context.Context, scope InstructionAuthoringScope, workspaceID, resourceDir, targetName string) (authoringTarget, error) {

@@ -1,10 +1,11 @@
 package mcp
 
 type Capabilities struct {
-	Tools      ToolsCapability      `json:"tools"`
-	Resources  *ResourcesCapability `json:"resources,omitempty"`
-	Prompts    *PromptsCapability   `json:"prompts,omitempty"`
-	Extensions map[string]any       `json:"extensions,omitempty"`
+	Tools       ToolsCapability         `json:"tools"`
+	Resources   *ResourcesCapability    `json:"resources,omitempty"`
+	Prompts     *PromptsCapability      `json:"prompts,omitempty"`
+	Completions *CompletionCapabilities `json:"completions,omitempty"`
+	Extensions  map[string]any          `json:"extensions,omitempty"`
 }
 
 type ToolsCapability struct {
@@ -20,9 +21,12 @@ type PromptsCapability struct {
 	ListChanged bool `json:"listChanged,omitempty"`
 }
 
+type CompletionCapabilities struct{}
+
 func DefaultCapabilities() Capabilities {
 	return Capabilities{
-		Tools:      ToolsCapability{ListChanged: true},
-		Extensions: map[string]any{TasksExtensionID: map[string]any{}},
+		Tools:       ToolsCapability{ListChanged: true},
+		Completions: &CompletionCapabilities{},
+		Extensions:  map[string]any{TasksExtensionID: map[string]any{}},
 	}
 }

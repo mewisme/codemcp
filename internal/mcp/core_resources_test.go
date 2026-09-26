@@ -31,28 +31,35 @@ func TestCoreResourcePoliciesArePrivateAndConservative(t *testing.T) {
 	if len(snapshot.Resources) != 4 || len(snapshot.ResourceTemplates) != 4 {
 		t.Fatalf("core resources=%#v templates=%#v", snapshot.Resources, snapshot.ResourceTemplates)
 	}
-	if snapshot.Capabilities.Resources == nil || snapshot.Capabilities.Resources.Subscribe || snapshot.Capabilities.Resources.ListChanged {
+	if snapshot.Capabilities.Resources == nil || !snapshot.Capabilities.Resources.Subscribe || !snapshot.Capabilities.Resources.ListChanged {
 		t.Fatalf("resource capabilities=%#v", snapshot.Capabilities.Resources)
 	}
 
 	for _, descriptor := range snapshot.Resources {
-		if descriptor.Policy.Cache.Scope != ResourceCacheScopePrivate || descriptor.Policy.Subscription.Allowed {
+		if descriptor.Policy.Cache.Scope != ResourceCacheScopePrivate {
 			t.Fatalf("global resource widened cache/subscription policy: %#v", descriptor)
 		}
 		switch descriptor.URI {
 		case "cm://global/status", "cm://global/readiness":
-			if descriptor.Policy.Cache.TTLMs != statusResourceTTLMs {
+			if descriptor.Policy.Cache.TTLMs != statusResourceTTLMs || descriptor.Policy.Subscription.Allowed {
 				t.Fatalf("short-lived resource policy=%#v", descriptor)
 			}
 		default:
-			if descriptor.Policy.Cache.TTLMs != 0 {
-				t.Fatalf("mutable global resource is cacheable without owner invalidation: %#v", descriptor)
+			if descriptor.Policy.Cache.TTLMs != 0 || descriptor.Policy.Subscription.Allowed {
+				t.Fatalf("global resource advertised cache/subscription without a complete event owner: %#v", descriptor)
 			}
 		}
 	}
 	for _, descriptor := range snapshot.ResourceTemplates {
-		if descriptor.Policy.Cache.Scope != ResourceCacheScopePrivate || descriptor.Policy.Cache.TTLMs != 0 || descriptor.Policy.Subscription.Allowed {
+		if descriptor.Policy.Cache.Scope != ResourceCacheScopePrivate || descriptor.Policy.Cache.TTLMs != 0 {
 			t.Fatalf("workspace resource can outlive canonical owner state: %#v", descriptor)
+		}
+		if descriptor.URITemplate == "cm://workspace/{workspace_id}/prompts/catalog" {
+			if descriptor.Policy.Subscription.Allowed {
+				t.Fatalf("prompt catalog advertised changes without a canonical prompt mutation owner: %#v", descriptor)
+			}
+		} else if !descriptor.Policy.Subscription.Allowed {
+			t.Fatalf("event-backed workspace resource omitted subscription support: %#v", descriptor)
 		}
 	}
 

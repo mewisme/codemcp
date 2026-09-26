@@ -47,6 +47,9 @@ func WithRequestBackgroundCapabilities(ctx context.Context, profile Profile, req
 
 func ProjectCapabilities(profile Profile, canonical Capabilities, taskTransport bool) Capabilities {
 	projected := Capabilities{Tools: canonical.Tools}
+	if canonical.Completions != nil {
+		projected.Completions = &CompletionCapabilities{}
+	}
 	if canonical.Resources != nil {
 		value := *canonical.Resources
 		projected.Resources = &value

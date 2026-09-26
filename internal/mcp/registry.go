@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"go.mewis.me/codemcp/internal/sequence"
 	"go.mewis.me/codemcp/internal/tools"
 )
 
@@ -85,18 +86,27 @@ type FeatureSnapshot struct {
 	Methods           []FeatureMethodDescriptor
 }
 
+type ResourceListChange struct {
+	Sequence uint64 `json:"sequence"`
+}
+
+type ResourceListChangeSubscription = sequence.Subscription[ResourceListChange]
+type ResourceListChangeSnapshot = sequence.Snapshot[ResourceListChange]
+
 type FeatureRegistry struct {
-	mu                sync.RWMutex
-	registrations     map[string]FeatureRegistration
-	methods           map[string]FeatureMethod
-	coreResourcesOnce sync.Once
-	coreResourcesErr  error
+	mu                  sync.RWMutex
+	registrations       map[string]FeatureRegistration
+	methods             map[string]FeatureMethod
+	resourceListChanges *sequence.Stream[ResourceListChange]
+	coreResourcesOnce   sync.Once
+	coreResourcesErr    error
 }
 
 func NewFeatureRegistry() *FeatureRegistry {
 	return &FeatureRegistry{
-		registrations: map[string]FeatureRegistration{},
-		methods:       map[string]FeatureMethod{},
+		registrations:       map[string]FeatureRegistration{},
+		methods:             map[string]FeatureMethod{},
+		resourceListChanges: sequence.New[ResourceListChange](64, 32, func(change *ResourceListChange, value uint64) { change.Sequence = value }),
 	}
 }
 
@@ -128,18 +138,42 @@ func (r *FeatureRegistry) Register(registration FeatureRegistration) error {
 	}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if _, exists := r.registrations[prepared.ID]; exists {
+		r.mu.Unlock()
 		return fmt.Errorf("feature %q is already registered", prepared.ID)
 	}
 	if err := validateFeatureCollisions(r.registrations, prepared); err != nil {
+		r.mu.Unlock()
 		return err
 	}
 	r.registrations[prepared.ID] = prepared
 	for _, method := range prepared.Methods {
 		r.methods[method.Name] = method
 	}
+	r.mu.Unlock()
+	if len(prepared.Resources) > 0 || len(prepared.ResourceTemplates) > 0 {
+		r.resourceListChanges.Publish(ResourceListChange{})
+	}
 	return nil
+}
+
+func (r *FeatureRegistry) SubscribeResourceListChanges(recentLimit int) (*ResourceListChangeSubscription, ResourceListChangeSnapshot) {
+	if r == nil || r.resourceListChanges == nil {
+		return nil, ResourceListChangeSnapshot{}
+	}
+	return r.resourceListChanges.Subscribe(nil, recentLimit)
+}
+
+func (r *FeatureRegistry) UnsubscribeResourceListChanges(subscription *ResourceListChangeSubscription) {
+	if r != nil && r.resourceListChanges != nil {
+		r.resourceListChanges.Unsubscribe(subscription)
+	}
+}
+
+func (r *FeatureRegistry) AcknowledgeResourceListOverflow(subscription *ResourceListChangeSubscription) {
+	if r != nil && r.resourceListChanges != nil {
+		r.resourceListChanges.AcknowledgeOverflow(subscription)
+	}
 }
 
 func (r *FeatureRegistry) Snapshot() FeatureSnapshot {

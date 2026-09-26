@@ -31,7 +31,7 @@ func (a *App) Bootstrap() error {
 		a.Tools.SetConfigReadProvider(configProvider)
 		a.Tools.SetConfigSetApprovalProvider(configProvider)
 		a.Tools.SetConfigSetApplyProvider(configProvider)
-		a.Tools.SetInstructionAuthoringProvider(application.NewAgentInstructionAuthoringProvider(a.Tools.Workspaces))
+		a.Tools.SetInstructionAuthoringProvider(application.NewAgentInstructionAuthoringProvider(a.Tools.Workspaces, a.Tools.InstructionChanges))
 		if a.Activity == nil {
 			a.Activity = activity.NewStream()
 		}

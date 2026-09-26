@@ -56,12 +56,14 @@ func coreResourceRegistration(runtime *tools.Runtime) FeatureRegistration {
 			},
 		}
 	}
-	privateLive := func(maxBytes int64) ResourcePolicy {
-		// Mutable owners do not currently expose a canonical change stream. Keep
-		// their resource views uncached instead of inventing cache-local invalidation.
-		return privateCached(maxBytes, 0)
+	privateLive := func(maxBytes int64, subscribable bool) ResourcePolicy {
+		// Mutable resource views remain uncached. Where an authoritative owner
+		// publishes changes, the subscription policy opts into that shared stream.
+		policy := privateCached(maxBytes, 0)
+		policy.Subscription.Allowed = subscribable
+		return policy
 	}
-	template := func(path, name, title, description string, maxBytes int64) ResourceTemplateDescriptor {
+	template := func(path, name, title, description string, maxBytes int64, subscribable bool) ResourceTemplateDescriptor {
 		uri, err := WorkspaceResourceTemplate(path)
 		if err != nil {
 			panic(err)
@@ -72,7 +74,7 @@ func coreResourceRegistration(runtime *tools.Runtime) FeatureRegistration {
 			Title:       title,
 			Description: description,
 			MIMEType:    "application/json",
-			Policy:      privateLive(maxBytes),
+			Policy:      privateLive(maxBytes, subscribable),
 		}
 	}
 	global := func(path, name, title, description string, maxBytes int64, ttlMs int) ResourceDescriptor {
@@ -100,10 +102,10 @@ func coreResourceRegistration(runtime *tools.Runtime) FeatureRegistration {
 			global(resourcePathSkillCatalog, "global-skill-catalog", "Global Skill Catalog", "Global CodeMCP-native and product-owned skill summaries.", catalogResourceMaxBytes, 0),
 		},
 		ResourceTemplates: []ResourceTemplateDescriptor{
-			template(resourcePathProjectContext, "project-context", "Project Context", "Canonical bounded project context for one authorized workspace.", projectContextResourceMaxBytes),
-			template(resourcePathInstructionSources, "workspace-instruction-sources", "Workspace Instruction Sources", "Sanitized instruction-source provenance for one authorized workspace.", sourceResourceMaxBytes),
-			template(resourcePathPromptCatalog, "workspace-prompt-catalog", "Workspace Prompt Catalog", "Discoverable workspace prompt metadata without prompt bodies.", catalogResourceMaxBytes),
-			template(resourcePathSkillCatalog, "workspace-skill-catalog", "Workspace Skill Catalog", "Resolved skill summaries for one authorized workspace.", catalogResourceMaxBytes),
+			template(resourcePathProjectContext, "project-context", "Project Context", "Canonical bounded project context for one authorized workspace.", projectContextResourceMaxBytes, true),
+			template(resourcePathInstructionSources, "workspace-instruction-sources", "Workspace Instruction Sources", "Sanitized instruction-source provenance for one authorized workspace.", sourceResourceMaxBytes, true),
+			template(resourcePathPromptCatalog, "workspace-prompt-catalog", "Workspace Prompt Catalog", "Discoverable workspace prompt metadata without prompt bodies.", catalogResourceMaxBytes, false),
+			template(resourcePathSkillCatalog, "workspace-skill-catalog", "Workspace Skill Catalog", "Resolved skill summaries for one authorized workspace.", catalogResourceMaxBytes, true),
 		},
 		ReadResource: coreResourceReader(runtime),
 	}

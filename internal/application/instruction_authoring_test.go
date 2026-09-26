@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/rules"
 	"go.mewis.me/codemcp/internal/skills"
@@ -26,6 +27,61 @@ func newInstructionAuthoringHarness(t *testing.T) (*InstructionAuthoringService,
 		t.Fatal(err)
 	}
 	return NewInstructionAuthoringService(manager, nil), manager, item
+}
+
+func TestInstructionAuthoringPublishesCanonicalChangesAfterMutation(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := instructioncontext.NewChangeStream()
+	service := NewInstructionAuthoringService(manager, nil, changes)
+	subscription, snapshot := changes.Subscribe(0)
+	defer changes.Unsubscribe(subscription)
+	if snapshot.LatestSequence != 0 {
+		t.Fatalf("initial change snapshot=%#v", snapshot)
+	}
+
+	if _, err := service.WriteRule(t.Context(), RuleAuthoringRequest{
+		Scope: InstructionScopeWorkspace, Mode: InstructionCreate, WorkspaceID: item.ID,
+		Name: "dry-event", AlwaysApply: true, Content: "dry", DryRun: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-subscription.Events:
+		t.Fatalf("dry run emitted change=%#v", event)
+	default:
+	}
+
+	if _, err := service.WriteSkill(t.Context(), SkillAuthoringRequest{
+		Scope: InstructionScopeWorkspace, Mode: InstructionCreate, WorkspaceID: item.ID,
+		Name: "event-skill", Description: "event", Instructions: "body",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	event := <-subscription.Events
+	if event.Sequence != 1 || event.Kind != "skill" || event.Scope != "workspace" ||
+		event.WorkspaceID != item.ID || event.Name != "event-skill" || event.Operation != "create" {
+		t.Fatalf("instruction change=%#v", event)
+	}
+	if _, err := os.Stat(filepath.Join(workspacestate.New(item.Path).SkillsRoot(), "event-skill", "SKILL.md")); err != nil {
+		t.Fatalf("change was published before active state existed: %v", err)
+	}
+
+	if _, err := service.WriteSkill(t.Context(), SkillAuthoringRequest{
+		Scope: InstructionScopeWorkspace, Mode: InstructionCreate, WorkspaceID: item.ID,
+		Name: "event-skill", Description: "duplicate", Instructions: "must fail",
+	}); err == nil {
+		t.Fatal("duplicate create unexpectedly succeeded")
+	}
+	select {
+	case event := <-subscription.Events:
+		t.Fatalf("failed mutation emitted change=%#v", event)
+	default:
+	}
 }
 
 func TestInstructionAuthoringWorkspaceCreateUpdateDryRunAndResolverVisibility(t *testing.T) {

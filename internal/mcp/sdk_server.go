@@ -13,21 +13,29 @@ import (
 )
 
 type SDKServer struct {
-	Server           *sdkmcp.Server
-	Tools            *tools.Runtime
-	Source           string
-	SessionID        string
-	BoundWorkspace   string
-	ApprovalCallers  *approval.CallerRegistry
-	ModernCallerID   string
-	Profile          Profile
-	AuthRequirements []AuthRequirement
-	Tasks            *TaskRegistry
-	FeatureRegistry  *FeatureRegistry
-	Features         *FeatureExecutor
+	Server                *sdkmcp.Server
+	Tools                 *tools.Runtime
+	Source                string
+	SessionID             string
+	BoundWorkspace        string
+	ApprovalCallers       *approval.CallerRegistry
+	ModernCallerID        string
+	Profile               Profile
+	AuthRequirements      []AuthRequirement
+	Tasks                 *TaskRegistry
+	FeatureRegistry       *FeatureRegistry
+	Features              *FeatureExecutor
+	resourceSubscriptions *sdkResourceSubscriptionTracker
+	resourceProjection    *sdkResourceProjectionState
+	resourceListSub       *ResourceListChangeSubscription
+	resourceEventsCancel  context.CancelFunc
+	resourceEventsDone    chan struct{}
 }
 
 func (s *SDKServer) Close() {
+	if s != nil {
+		s.stopResourceEventBridge()
+	}
 	if s != nil && s.Tasks != nil {
 		s.Tasks.Close()
 	}
@@ -53,14 +61,23 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 		profile = BaseProfile()
 	}
 	features := FeatureRegistryForRuntime(toolRuntime)
+	resourceListSub, _ := features.SubscribeResourceListChanges(0)
 	descriptors := DescribeProtocolWithFeatures(nil, features, authRequirements...)
 	implementation, options := ProjectSDKServer(profile, descriptors)
-	server := sdkmcp.NewServer(implementation, options)
 	featureExecutor := NewFeatureExecutor(features, toolRuntime, boundWorkspace, source)
+	resourceSubscriptions := newSDKResourceSubscriptionTracker()
+	options.CompletionHandler = sdkCompletionHandler(featureExecutor)
+	options.SubscribeHandler = sdkSubscribeHandler(featureExecutor, resourceSubscriptions)
+	options.UnsubscribeHandler = sdkUnsubscribeHandler(featureExecutor, resourceSubscriptions)
+	server := sdkmcp.NewServer(implementation, options)
+	server.AddReceivingMiddleware(rejectDeprecatedResourceSubscriptionMiddleware())
 	if err := InstallFeatureMethods(server, featureExecutor); err != nil {
+		features.UnsubscribeResourceListChanges(resourceListSub)
 		return nil, err
 	}
-	if err := InstallResourceProjection(server, featureExecutor); err != nil {
+	resourceProjection := newSDKResourceProjectionState()
+	if err := installResourceProjection(server, featureExecutor, resourceProjection); err != nil {
+		features.UnsubscribeResourceListChanges(resourceListSub)
 		return nil, err
 	}
 	callers := approval.NewCallerRegistry()
@@ -68,16 +85,19 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 	if ProfileBackgroundCapabilities(profile).TaskObservation {
 		tasks = NewTaskRegistry(toolRuntime.Processes, toolRuntime.BackgroundDeliveries)
 		if err := InstallTaskProjection(server, tasks, profile); err != nil {
+			features.UnsubscribeResourceListChanges(resourceListSub)
 			tasks.Close()
 			return nil, err
 		}
 	}
-	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements), Tasks: tasks, FeatureRegistry: features, Features: featureExecutor}
+	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements), Tasks: tasks, FeatureRegistry: features, Features: featureExecutor, resourceSubscriptions: resourceSubscriptions, resourceProjection: resourceProjection, resourceListSub: resourceListSub}
 	for _, schema := range toolRuntime.List() {
 		if err := adapter.addTool(schema); err != nil {
+			features.UnsubscribeResourceListChanges(resourceListSub)
 			return nil, err
 		}
 	}
+	adapter.startResourceEventBridge()
 	return adapter, nil
 }
 

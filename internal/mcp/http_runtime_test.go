@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/integrations"
 	"go.mewis.me/codemcp/internal/tools"
 )
@@ -423,6 +424,117 @@ func TestHTTPRuntimeStreamsToolChangesAndGracefulClose(t *testing.T) {
 	}
 	if _, ok := meta["io.modelcontextprotocol/serverInfo"].(map[string]any); !ok {
 		t.Fatalf("final server info = %#v", meta["io.modelcontextprotocol/serverInfo"])
+	}
+}
+
+func TestHTTPRuntimeResourceSubscriptionsAckBeforeEventDrivenUpdates(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewHTTPRuntime()
+	item, err := runtime.Server.Tools.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	uri, err := WorkspaceResourceURI(item.ID, resourcePathSkillCatalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(runtime.Handler())
+	defer server.Close()
+
+	body := strings.NewReader(modernRequestBody(fmt.Sprintf(
+		`{"jsonrpc":"2.0","id":"resources","method":"subscriptions/listen","params":{"notifications":{"resourcesListChanged":true,"resourceSubscriptions":[%q]}}}`,
+		uri,
+	)))
+	req, err := http.NewRequest(http.MethodPost, server.URL, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(ProtocolVersionHeader, SupportedProtocolVersion)
+	req.Header.Set(MethodHeader, "subscriptions/listen")
+	res, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	reader := bufio.NewReader(res.Body)
+
+	ack := readSSEFrame(t, reader)
+	if ack["method"] != "notifications/subscriptions/acknowledged" {
+		t.Fatalf("first frame is not acknowledgement: %#v", ack)
+	}
+	ackParams, _ := ack["params"].(map[string]any)
+	honored, _ := ackParams["notifications"].(map[string]any)
+	if honored["resourcesListChanged"] != true {
+		t.Fatalf("resource list subscription not honored: %#v", honored)
+	}
+	resourceSubscriptions, _ := honored["resourceSubscriptions"].([]any)
+	if len(resourceSubscriptions) != 1 || resourceSubscriptions[0] != uri {
+		t.Fatalf("resource subscription ack=%#v", honored["resourceSubscriptions"])
+	}
+	assertSubscriptionID(t, ackParams, "resources")
+
+	runtime.Server.Tools.InstructionChanges.Publish(instructioncontext.Change{
+		Kind: "skill", Scope: "workspace", WorkspaceID: item.ID, Name: "changed", Operation: "update",
+	})
+	updated := readSSEFrame(t, reader)
+	if updated["method"] != "notifications/resources/updated" {
+		t.Fatalf("resource update=%#v", updated)
+	}
+	updatedParams, _ := updated["params"].(map[string]any)
+	if updatedParams["uri"] != uri {
+		t.Fatalf("resource update uri=%#v", updatedParams)
+	}
+	assertSubscriptionID(t, updatedParams, "resources")
+
+	testURI, _ := GlobalResourceURI("subscription-added")
+	if err := runtime.Server.Features.Registry.Register(FeatureRegistration{
+		ID: "subscription-added", Family: FeatureResources,
+		Resources: []ResourceDescriptor{{
+			URI: testURI, Name: "subscription-added", MIMEType: "text/plain",
+			Policy: ResourcePolicy{Cache: ResourceCachePolicy{Scope: ResourceCacheScopePrivate}},
+		}},
+		ReadResource: func(context.Context, ResourceReadRequest) (ResourceContent, error) {
+			return TextResourceContent("ok"), nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	listChanged := readSSEFrame(t, reader)
+	if listChanged["method"] != "notifications/resources/list_changed" {
+		t.Fatalf("resource list change=%#v", listChanged)
+	}
+	listParams, _ := listChanged["params"].(map[string]any)
+	assertSubscriptionID(t, listParams, "resources")
+
+	runtime.CloseSubscriptions()
+}
+
+func TestHTTPRuntimeRejectsResourceSubscriptionWithoutCanonicalAuthorization(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewHTTPRuntime()
+	server := httptest.NewServer(runtime.Handler())
+	defer server.Close()
+
+	body := strings.NewReader(modernRequestBody(
+		`{"jsonrpc":"2.0","id":"bad-resource","method":"subscriptions/listen","params":{"notifications":{"resourceSubscriptions":["cm://global/status"]}}}`,
+	))
+	req, err := http.NewRequest(http.MethodPost, server.URL, body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set(ProtocolVersionHeader, SupportedProtocolVersion)
+	req.Header.Set(MethodHeader, "subscriptions/listen")
+	res, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var response Response
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Error == nil || response.Error.Code != ErrInvalidParams {
+		t.Fatalf("unsupported resource subscription response=%#v", response)
 	}
 }
 
