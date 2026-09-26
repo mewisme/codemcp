@@ -48,10 +48,13 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 	implementation, options := ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
 	callers := approval.NewCallerRegistry()
-	tasks := NewTaskRegistry(toolRuntime.Processes, toolRuntime.BackgroundDeliveries)
-	if err := InstallTaskProjection(server, tasks); err != nil {
-		tasks.Close()
-		return nil, err
+	var tasks *TaskRegistry
+	if ProfileBackgroundCapabilities(profile).TaskObservation {
+		tasks = NewTaskRegistry(toolRuntime.Processes, toolRuntime.BackgroundDeliveries)
+		if err := InstallTaskProjection(server, tasks, profile); err != nil {
+			tasks.Close()
+			return nil, err
+		}
 	}
 	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements), Tasks: tasks}
 	for _, schema := range toolRuntime.List() {

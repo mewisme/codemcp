@@ -59,6 +59,13 @@ func (baseProfile) InstructionPresentation() InstructionPresentation {
 
 func (baseProfile) ClientCertificateAuthentication() bool { return false }
 
+func (baseProfile) BackgroundCapabilities() BackgroundCapabilities {
+	return BackgroundCapabilities{
+		Execution:       true,
+		TaskObservation: true,
+	}
+}
+
 func RequiresClientCertificateAuthentication(profile Profile) bool {
 	provider, ok := profile.(ClientAuthenticationProfile)
 	return ok && provider.ClientCertificateAuthentication()
@@ -205,8 +212,11 @@ func ProjectServerInstructions(profile Profile) string {
 func ProjectSDKServer(profile Profile, descriptor ProtocolDescriptors) (*sdkmcp.Implementation, *sdkmcp.ServerOptions) {
 	implementation := &sdkmcp.Implementation{Name: descriptor.Server.Name, Version: descriptor.Server.Version}
 	capabilities := &sdkmcp.ServerCapabilities{}
-	capabilities.Extensions = map[string]any{TasksExtensionID: map[string]any{}}
-	if descriptor.Capabilities.Tools.ListChanged {
+	projected := ProjectCapabilities(profile, descriptor.Capabilities, true)
+	if len(projected.Extensions) > 0 {
+		capabilities.Extensions = projected.Extensions
+	}
+	if projected.Tools.ListChanged {
 		capabilities.Tools = &sdkmcp.ToolCapabilities{ListChanged: true}
 	}
 	return implementation, &sdkmcp.ServerOptions{

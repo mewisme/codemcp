@@ -7,7 +7,15 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
+	"go.mewis.me/codemcp/internal/tools"
 )
+
+type tasksDisabledProfile struct{ baseProfile }
+
+func (tasksDisabledProfile) ID() ProfileID { return "tasks-disabled-test" }
+func (tasksDisabledProfile) BackgroundCapabilities() BackgroundCapabilities {
+	return BackgroundCapabilities{Execution: true}
+}
 
 func TestTasksExtensionIsAdvertisedByCanonicalCapabilities(t *testing.T) {
 	capabilities := DefaultCapabilities()
@@ -24,7 +32,7 @@ func TestTasksExtensionIsAdvertisedByCanonicalCapabilities(t *testing.T) {
 }
 
 func TestTaskExtensionNegotiationIsExplicitPerRequest(t *testing.T) {
-	if taskExtensionNegotiated(nil) {
+	if taskExtensionNegotiated(BaseProfile(), nil) {
 		t.Fatal("missing request capabilities unexpectedly negotiated Tasks")
 	}
 	meta := map[string]any{
@@ -32,14 +40,69 @@ func TestTaskExtensionNegotiationIsExplicitPerRequest(t *testing.T) {
 			"extensions": map[string]any{"example/other": map[string]any{}},
 		},
 	}
-	if taskExtensionNegotiated(meta) {
+	if taskExtensionNegotiated(BaseProfile(), meta) {
 		t.Fatal("unrelated extension unexpectedly negotiated Tasks")
 	}
 	meta[sdkmcp.MetaKeyClientCapabilities] = map[string]any{
 		"extensions": map[string]any{TasksExtensionID: map[string]any{}},
 	}
-	if !taskExtensionNegotiated(meta) {
+	if !taskExtensionNegotiated(BaseProfile(), meta) {
 		t.Fatal("Tasks extension was not negotiated")
+	}
+	if taskExtensionNegotiated(tasksDisabledProfile{}, meta) {
+		t.Fatal("client Tasks support bypassed profile capability")
+	}
+}
+
+func TestBackgroundCapabilitiesKeepTasksAndContinuationIndependent(t *testing.T) {
+	profile := OpenAIProfile()
+	static := ProfileBackgroundCapabilities(profile)
+	if !static.Execution || !static.TaskObservation {
+		t.Fatalf("OpenAI static background capabilities=%#v", static)
+	}
+	if static.ServerNotification || static.ModelContinuation || static.InFlightSteering {
+		t.Fatalf("profile claimed unproven background delivery capabilities=%#v", static)
+	}
+
+	request := RequestContext{NegotiatedExtensions: map[string]any{TasksExtensionID: map[string]any{}}}
+	negotiated := RequestBackgroundCapabilities(profile, request)
+	if !negotiated.TaskObservation {
+		t.Fatalf("Tasks-capable request did not negotiate task observation: %#v", negotiated)
+	}
+	if negotiated.ModelContinuation || negotiated.InFlightSteering {
+		t.Fatalf("Tasks support incorrectly implied continuation: %#v", negotiated)
+	}
+
+	withoutTasks := RequestBackgroundCapabilities(profile, RequestContext{})
+	if withoutTasks.TaskObservation {
+		t.Fatalf("request without Tasks extension negotiated task observation: %#v", withoutTasks)
+	}
+}
+
+func TestProfileProjectionAdvertisesTasksOnlyWhenEligible(t *testing.T) {
+	descriptor := DescribeProtocol(nil)
+	discovery := ProjectCapabilities(BaseProfile(), descriptor.Capabilities, false)
+	if _, ok := discovery.Extensions[TasksExtensionID]; ok {
+		t.Fatalf("non-Task transport advertised Tasks: %#v", discovery.Extensions)
+	}
+	_, baseOptions := ProjectSDKServer(BaseProfile(), descriptor)
+	if _, ok := baseOptions.Capabilities.Extensions[TasksExtensionID]; !ok {
+		t.Fatalf("base profile lost Tasks capability: %#v", baseOptions.Capabilities.Extensions)
+	}
+	_, disabledOptions := ProjectSDKServer(tasksDisabledProfile{}, descriptor)
+	if _, ok := disabledOptions.Capabilities.Extensions[TasksExtensionID]; ok {
+		t.Fatalf("Tasks-disabled profile advertised Tasks: %#v", disabledOptions.Capabilities.Extensions)
+	}
+}
+
+func TestSDKServerDoesNotAllocateTasksForIneligibleProfile(t *testing.T) {
+	runtime := &tools.Runtime{Registry: tools.NewRegistry()}
+	server, err := NewSDKServerWithProfile(runtime, "test", "", "", tasksDisabledProfile{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if server.Tasks != nil {
+		t.Fatal("Tasks-disabled profile allocated a task registry")
 	}
 }
 

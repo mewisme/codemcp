@@ -210,6 +210,56 @@ func TestCoordinatorCloseClosesAdapterOnce(t *testing.T) {
 	}
 }
 
+func TestAuthorizedReconnectReclaimsPendingDeliveryByOwnerGeneration(t *testing.T) {
+	broker := backgrounddelivery.New(nil)
+	t.Cleanup(broker.Close)
+	owner := backgrounddelivery.Owner{ID: "owner", Generation: "generation-a"}
+	delivery := materialize(t, broker, owner, "proc_reconnect")
+
+	wrong := &testAdapter{
+		id:         "wrong-generation",
+		owner:      backgrounddelivery.Owner{ID: owner.ID, Generation: "generation-b"},
+		capability: Capability{IdleContinuation: true},
+		deliver:    DeliverResult{Outcome: OutcomeDelivered},
+		commit:     DeliverResult{Outcome: OutcomeDelivered},
+		delivered:  make(chan Request, 1),
+	}
+	wrongCoordinator := &Coordinator{Broker: broker, Adapter: wrong, CoalesceWindow: -1}
+	wrongCtx, wrongCancel := context.WithCancel(context.Background())
+	wrongDone := make(chan error, 1)
+	go func() { wrongDone <- wrongCoordinator.Run(wrongCtx, "ws_test") }()
+	select {
+	case req := <-wrong.delivered:
+		t.Fatalf("replacement generation stole completion: %#v", req)
+	case <-time.After(25 * time.Millisecond):
+	}
+	wrongCancel()
+	<-wrongDone
+
+	reconnected := &testAdapter{
+		id:         "reconnected",
+		owner:      owner,
+		capability: Capability{IdleContinuation: true},
+		deliver:    DeliverResult{Outcome: OutcomeDelivered},
+		commit:     DeliverResult{Outcome: OutcomeDelivered},
+		delivered:  make(chan Request, 1),
+	}
+	coordinator := &Coordinator{Broker: broker, Adapter: reconnected, CoalesceWindow: -1}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- coordinator.Run(ctx, "ws_test") }()
+	select {
+	case req := <-reconnected.delivered:
+		if len(req.Completions) != 1 || req.Completions[0].DeliveryID != delivery.ID {
+			t.Fatalf("reconnected request=%#v", req)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("authorized reconnect did not reclaim pending completion")
+	}
+	cancel()
+	<-done
+}
+
 func TestCoordinatorCoalescesMultipleCompletionsAtOneBoundary(t *testing.T) {
 	broker := backgrounddelivery.New(nil)
 	t.Cleanup(broker.Close)

@@ -27,7 +27,7 @@ func BuildDiscoverResult(profile Profile) DiscoverResult {
 	return DiscoverResult{
 		ResultType:        "complete",
 		SupportedVersions: []string{SupportedProtocolVersion},
-		Capabilities:      descriptor.Capabilities,
+		Capabilities:      ProjectCapabilities(profile, descriptor.Capabilities, false),
 		Meta:              map[string]any{serverInfoMetaKey: descriptor.Server},
 		Instructions:      ProjectServerInstructions(profile),
 		TTLMS:             defaultCacheTTLMS,

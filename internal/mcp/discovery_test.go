@@ -17,6 +17,9 @@ func TestServerInstructionsUseSharedInstructionGuidance(t *testing.T) {
 
 func TestDiscoverResultMatchesModernProtocolShape(t *testing.T) {
 	result := BuildDiscoverResult(BaseProfile())
+	if len(result.Capabilities.Extensions) != 0 {
+		t.Fatalf("discovery advertised transport extensions it does not implement: %#v", result.Capabilities.Extensions)
+	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		t.Fatal(err)

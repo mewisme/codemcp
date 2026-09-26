@@ -333,7 +333,10 @@ func cloneSDKCallToolResult(value *sdkmcp.CallToolResult) *sdkmcp.CallToolResult
 	return &result
 }
 
-func taskExtensionNegotiated(meta map[string]any) bool {
+func taskExtensionNegotiated(profile Profile, meta map[string]any) bool {
+	if !ProfileBackgroundCapabilities(profile).TaskObservation {
+		return false
+	}
 	raw := meta[sdkmcp.MetaKeyClientCapabilities]
 	if raw == nil {
 		return false
@@ -352,14 +355,21 @@ func taskExtensionNegotiated(meta map[string]any) bool {
 	return ok
 }
 
-func InstallTaskProjection(server *sdkmcp.Server, registry *TaskRegistry) error {
+func InstallTaskProjection(server *sdkmcp.Server, registry *TaskRegistry, profiles ...Profile) error {
 	if server == nil || registry == nil {
+		return nil
+	}
+	profile := Profile(BaseProfile())
+	if len(profiles) > 0 && profiles[0] != nil {
+		profile = profiles[0]
+	}
+	if !ProfileBackgroundCapabilities(profile).TaskObservation {
 		return nil
 	}
 	server.AddReceivingMiddleware(func(next sdkmcp.MethodHandler) sdkmcp.MethodHandler {
 		return func(ctx context.Context, method string, req sdkmcp.Request) (sdkmcp.Result, error) {
 			result, err := next(ctx, method, req)
-			if err != nil || method != "tools/call" || req == nil || !taskExtensionNegotiated(req.GetParams().GetMeta()) {
+			if err != nil || method != "tools/call" || req == nil || !taskExtensionNegotiated(profile, req.GetParams().GetMeta()) {
 				return result, err
 			}
 			params, ok := req.GetParams().(*sdkmcp.CallToolParamsRaw)
@@ -379,7 +389,7 @@ func InstallTaskProjection(server *sdkmcp.Server, registry *TaskRegistry) error 
 		}
 	})
 	if err := sdkmcp.AddReceivingCustomMethod(server, "tasks/get", func(ctx context.Context, session *sdkmcp.ServerSession, params *GetTaskParams) (*GetTaskResult, error) {
-		if params == nil || !taskExtensionNegotiated(params.GetMeta()) {
+		if params == nil || !taskExtensionNegotiated(profile, params.GetMeta()) {
 			return nil, &jsonrpc.Error{Code: -32021, Message: "MCP Tasks capability is required"}
 		}
 		task, ok := registry.Get(params.TaskID)
@@ -391,7 +401,7 @@ func InstallTaskProjection(server *sdkmcp.Server, registry *TaskRegistry) error 
 		return err
 	}
 	if err := sdkmcp.AddReceivingCustomMethod(server, "tasks/update", func(ctx context.Context, session *sdkmcp.ServerSession, params *UpdateTaskParams) (*EmptyTaskResult, error) {
-		if params == nil || !taskExtensionNegotiated(params.GetMeta()) {
+		if params == nil || !taskExtensionNegotiated(profile, params.GetMeta()) {
 			return nil, &jsonrpc.Error{Code: -32021, Message: "MCP Tasks capability is required"}
 		}
 		if _, ok := registry.Get(params.TaskID); !ok {
@@ -402,7 +412,7 @@ func InstallTaskProjection(server *sdkmcp.Server, registry *TaskRegistry) error 
 		return err
 	}
 	if err := sdkmcp.AddReceivingCustomMethod(server, "tasks/cancel", func(ctx context.Context, session *sdkmcp.ServerSession, params *CancelTaskParams) (*EmptyTaskResult, error) {
-		if params == nil || !taskExtensionNegotiated(params.GetMeta()) {
+		if params == nil || !taskExtensionNegotiated(profile, params.GetMeta()) {
 			return nil, &jsonrpc.Error{Code: -32021, Message: "MCP Tasks capability is required"}
 		}
 		if _, ok := registry.Get(params.TaskID); !ok {
