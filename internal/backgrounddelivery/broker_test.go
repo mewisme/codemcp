@@ -311,3 +311,27 @@ func TestAutomaticDeliveryAndForegroundRecoveryRaceHasOneWinner(t *testing.T) {
 		broker.Close()
 	}
 }
+
+func TestBrokerReleaseReturnsClaimToPending(t *testing.T) {
+	broker := New(nil)
+	t.Cleanup(broker.Close)
+	owner := Owner{ID: "owner-a", Generation: "generation-a"}
+	delivery := materializeTestDelivery(t, broker, "proc_release", owner)
+	claim, err := broker.Claim("ws_one", owner, delivery.ID, "adapter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	released, err := broker.Release("ws_one", owner, delivery.ID, claim.Receipt)
+	if err != nil || released.State != DeliveryPending || released.Receipt != "" || released.Claimant != "" || released.ClaimedAt != nil {
+		t.Fatalf("released=%#v err=%v", released, err)
+	}
+}
+
+func TestBrokerSubscribeAfterCloseIsClosed(t *testing.T) {
+	broker := New(nil)
+	broker.Close()
+	sub := broker.Subscribe()
+	if _, ok := <-sub; ok {
+		t.Fatal("subscription created after close remained open")
+	}
+}

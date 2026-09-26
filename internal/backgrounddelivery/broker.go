@@ -157,6 +157,7 @@ type Broker struct {
 	maxPerOwner   int
 	closed        chan struct{}
 	closeOnce     sync.Once
+	subs          map[chan Delivery]struct{}
 }
 
 func New(processes *shellruntime.ProcessManager) *Broker {
@@ -170,6 +171,7 @@ func New(processes *shellruntime.ProcessManager) *Broker {
 		maxDeliveries: defaultMaxDeliveries,
 		maxPerOwner:   defaultMaxPerOwner,
 		closed:        make(chan struct{}),
+		subs:          map[chan Delivery]struct{}{},
 	}
 	if processes != nil {
 		b.sub = processes.SubscribeTerminal()
@@ -184,10 +186,53 @@ func (b *Broker) Close() {
 	}
 	b.closeOnce.Do(func() {
 		close(b.closed)
+		b.mu.Lock()
+		for ch := range b.subs {
+			delete(b.subs, ch)
+			close(ch)
+		}
+		b.mu.Unlock()
 		if b.processes != nil && b.sub != nil {
 			b.processes.UnsubscribeTerminal(b.sub)
 		}
 	})
+}
+
+func (b *Broker) Subscribe() chan Delivery {
+	ch := make(chan Delivery, 64)
+	if b == nil {
+		close(ch)
+		return ch
+	}
+	select {
+	case <-b.closed:
+		close(ch)
+		return ch
+	default:
+	}
+	b.mu.Lock()
+	select {
+	case <-b.closed:
+		b.mu.Unlock()
+		close(ch)
+		return ch
+	default:
+	}
+	b.subs[ch] = struct{}{}
+	b.mu.Unlock()
+	return ch
+}
+
+func (b *Broker) Unsubscribe(ch chan Delivery) {
+	if b == nil || ch == nil {
+		return
+	}
+	b.mu.Lock()
+	if _, ok := b.subs[ch]; ok {
+		delete(b.subs, ch)
+		close(ch)
+	}
+	b.mu.Unlock()
 }
 
 func (b *Broker) consume() {
@@ -305,6 +350,12 @@ func (b *Broker) materializeLocked(registration Registration, event shellruntime
 	b.order = append(b.order, delivery.ID)
 	key := ownerKey(registration.Owner)
 	b.byOwner[key] = append(b.byOwner[key], delivery.ID)
+	for ch := range b.subs {
+		select {
+		case ch <- cloneDelivery(delivery):
+		default:
+		}
+	}
 	b.pruneLocked(now)
 }
 
@@ -440,6 +491,29 @@ func (b *Broker) Acknowledge(workspaceID string, owner Owner, deliveryID, receip
 	default:
 		return cloneDelivery(delivery), ErrReceiptMismatch
 	}
+}
+
+func (b *Broker) Release(workspaceID string, owner Owner, deliveryID, receipt string) (Delivery, error) {
+	if b == nil || !owner.Valid() || strings.TrimSpace(workspaceID) == "" {
+		return Delivery{}, ErrUnauthorized
+	}
+	receipt = strings.TrimSpace(receipt)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.pruneLocked(time.Now().UTC())
+	delivery, err := b.authorizedDeliveryLocked(strings.TrimSpace(workspaceID), owner, strings.TrimSpace(deliveryID))
+	if err != nil {
+		return Delivery{}, err
+	}
+	if delivery.State != DeliveryClaimed || delivery.Receipt == "" || delivery.Receipt != receipt {
+		return cloneDelivery(delivery), ErrReceiptMismatch
+	}
+	delivery.State = DeliveryPending
+	delivery.Claimant = ""
+	delivery.Receipt = ""
+	delivery.ClaimedAt = nil
+	b.deliveries[delivery.ID] = delivery
+	return cloneDelivery(delivery), nil
 }
 
 // ConsumeRecovery atomically records that a foreground consuming recovery path
