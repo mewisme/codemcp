@@ -6,6 +6,7 @@ import (
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -162,7 +163,7 @@ func TestResourceMethodsUseCanonicalWireShapesAndModernErrors(t *testing.T) {
 	if err := registry.Register(FeatureRegistration{
 		ID: "wire-resources", Family: FeatureResources,
 		Resources: []ResourceDescriptor{{
-			URI: "cm://global/status", Name: "status", Title: "Status",
+			URI: "cm://global/wire-status", Name: "wire-status", Title: "Status",
 			Description: "Readiness", MIMEType: "application/json", Size: 2,
 			Policy: ResourcePolicy{
 				MaxBytes: 64,
@@ -170,7 +171,7 @@ func TestResourceMethodsUseCanonicalWireShapesAndModernErrors(t *testing.T) {
 			},
 		}},
 		ResourceTemplates: []ResourceTemplateDescriptor{{
-			URITemplate: "cm://workspace/{workspace_id}/project-context", Name: "project-context",
+			URITemplate: "cm://workspace/{workspace_id}/wire-project-context", Name: "wire-project-context",
 			MIMEType: "application/json",
 			Policy: ResourcePolicy{
 				MaxBytes: 64,
@@ -197,12 +198,19 @@ func TestResourceMethodsUseCanonicalWireShapesAndModernErrors(t *testing.T) {
 	}
 	list := listValue.(map[string]any)
 	resources, ok := list["resources"].([]any)
-	if !ok || len(resources) != 1 {
+	if !ok || len(resources) != 5 {
 		t.Fatalf("resources/list=%T %#v", list["resources"], list["resources"])
 	}
-	resource, ok := resources[0].(map[string]any)
-	if !ok || resource["uri"] != "cm://global/status" || resource["mimeType"] != "application/json" {
-		t.Fatalf("resource wire descriptor=%T %#v", resources[0], resources[0])
+	var resource map[string]any
+	for _, value := range resources {
+		candidate, _ := value.(map[string]any)
+		if candidate["uri"] == "cm://global/wire-status" {
+			resource = candidate
+			break
+		}
+	}
+	if resource == nil || resource["mimeType"] != "application/json" {
+		t.Fatalf("resource wire descriptor=%#v", resources)
 	}
 	if _, leaked := resource["policy"]; leaked {
 		t.Fatalf("internal resource policy leaked into standard descriptor: %#v", resource)
@@ -217,15 +225,22 @@ func TestResourceMethodsUseCanonicalWireShapesAndModernErrors(t *testing.T) {
 	}
 	templateList := templateValue.(map[string]any)
 	templates, ok := templateList["resourceTemplates"].([]any)
-	if !ok || len(templates) != 1 {
+	if !ok || len(templates) != 5 {
 		t.Fatalf("resources/templates/list=%T %#v", templateList["resourceTemplates"], templateList["resourceTemplates"])
 	}
-	template, ok := templates[0].(map[string]any)
-	if !ok || template["uriTemplate"] != "cm://workspace/{workspace_id}/project-context" {
-		t.Fatalf("resource template wire descriptor=%T %#v", templates[0], templates[0])
+	var template map[string]any
+	for _, value := range templates {
+		candidate, _ := value.(map[string]any)
+		if candidate["uriTemplate"] == "cm://workspace/{workspace_id}/wire-project-context" {
+			template = candidate
+			break
+		}
+	}
+	if template == nil {
+		t.Fatalf("resource template wire descriptor=%#v", templates)
 	}
 
-	readValue, err := server.Handle(context.Background(), ResourcesReadMethod, map[string]any{"uri": "cm://global/status"})
+	readValue, err := server.Handle(context.Background(), ResourcesReadMethod, map[string]any{"uri": "cm://global/wire-status"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,8 +290,8 @@ func TestResourceAuthorizationPrecedesResolutionAcrossProfiles(t *testing.T) {
 	if err := registry.Register(FeatureRegistration{
 		ID: "authorized-template", Family: FeatureResources,
 		ResourceTemplates: []ResourceTemplateDescriptor{{
-			URITemplate: "cm://workspace/{workspace_id}/project-context",
-			Name:        "project-context",
+			URITemplate: "cm://workspace/{workspace_id}/authorization-context",
+			Name:        "authorization-context",
 			MIMEType:    "application/json",
 			Policy: ResourcePolicy{
 				MaxBytes: 256,
@@ -293,8 +308,8 @@ func TestResourceAuthorizationPrecedesResolutionAcrossProfiles(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	allowedURI := "cm://workspace/" + first.ID + "/project-context"
-	deniedURI := "cm://workspace/" + second.ID + "/project-context"
+	allowedURI := "cm://workspace/" + first.ID + "/authorization-context"
+	deniedURI := "cm://workspace/" + second.ID + "/authorization-context"
 	fallback := NewFeatureExecutor(registry, runtime, first.ID, "test").ResourceToolFallback("uri")
 	beforeFallback := calls.Load()
 	if _, err := fallback(context.Background(), map[string]any{"uri": deniedURI}); err == nil {
@@ -334,16 +349,24 @@ func TestResourceAuthorizationPrecedesResolutionAcrossProfiles(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(templates.ResourceTemplates) != 1 ||
-				templates.ResourceTemplates[0].URITemplate != "cm://workspace/{workspace_id}/project-context" {
+			foundTemplate := false
+			for _, value := range templates.ResourceTemplates {
+				if value.URITemplate == "cm://workspace/{workspace_id}/authorization-context" {
+					foundTemplate = true
+					break
+				}
+			}
+			if !foundTemplate {
 				t.Fatalf("templates=%#v", templates.ResourceTemplates)
 			}
 			resources, err := session.ListResources(ctx, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(resources.Resources) != 0 {
-				t.Fatalf("workspace identities leaked through resources/list: %#v", resources.Resources)
+			for _, value := range resources.Resources {
+				if strings.Contains(value.URI, first.ID) || strings.Contains(value.URI, second.ID) {
+					t.Fatalf("workspace identities leaked through resources/list: %#v", resources.Resources)
+				}
 			}
 
 			beforeDenied := calls.Load()

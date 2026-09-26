@@ -86,9 +86,11 @@ type FeatureSnapshot struct {
 }
 
 type FeatureRegistry struct {
-	mu            sync.RWMutex
-	registrations map[string]FeatureRegistration
-	methods       map[string]FeatureMethod
+	mu                sync.RWMutex
+	registrations     map[string]FeatureRegistration
+	methods           map[string]FeatureMethod
+	coreResourcesOnce sync.Once
+	coreResourcesErr  error
 }
 
 func NewFeatureRegistry() *FeatureRegistry {
@@ -109,6 +111,9 @@ func FeatureRegistryForRuntime(runtime *tools.Runtime) *FeatureRegistry {
 	registry, ok := provider.(*FeatureRegistry)
 	if !ok {
 		panic(fmt.Sprintf("unexpected protocol feature provider %T", provider))
+	}
+	if err := ensureCoreResources(registry, runtime); err != nil {
+		panic(fmt.Sprintf("register core MCP resources: %v", err))
 	}
 	return registry
 }
