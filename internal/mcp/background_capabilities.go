@@ -1,5 +1,11 @@
 package mcp
 
+import (
+	"context"
+
+	"go.mewis.me/codemcp/internal/tools"
+)
+
 type BackgroundCapabilities struct {
 	Execution          bool `json:"execution"`
 	TaskObservation    bool `json:"task_observation"`
@@ -29,6 +35,14 @@ func RequestBackgroundCapabilities(profile Profile, request RequestContext) Back
 	capabilities.ModelContinuation = false
 	capabilities.InFlightSteering = false
 	return capabilities
+}
+
+func WithRequestBackgroundCapabilities(ctx context.Context, profile Profile, request RequestContext) context.Context {
+	capabilities := RequestBackgroundCapabilities(profile, request)
+	return tools.WithBackgroundCapabilities(ctx, tools.BackgroundCapabilities{
+		TaskObservation: capabilities.TaskObservation, ServerNotification: capabilities.ServerNotification,
+		ModelContinuation: capabilities.ModelContinuation, InFlightSteering: capabilities.InFlightSteering,
+	})
 }
 
 func ProjectCapabilities(profile Profile, canonical Capabilities, taskTransport bool) Capabilities {

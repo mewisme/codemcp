@@ -24,6 +24,7 @@ type BuildOptions struct {
 	Memory                  MemoryLoadOptions
 	Policy                  instructionpolicy.Config
 	ToolProfile             ToolProfile
+	BackgroundWork          BackgroundWorkCapabilities
 	MaxInstructionBytes     int
 	MemoryQuery             string
 	MaxMemoryEntries        int
@@ -132,7 +133,7 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 		IntegrationInstructions: append([]IntegrationInstruction(nil), opts.IntegrationInstructions...),
 		IntegrationDiagnostics:  append([]IntegrationDiagnostic(nil), opts.IntegrationDiagnostics...),
 		Sources:                 sources, ToolProfile: opts.ToolProfile,
-		AgentWorkflow: AgentWorkflow(), LoadedAt: loadedAt,
+		AgentWorkflow: AgentWorkflowForBackground(opts.BackgroundWork), LoadedAt: loadedAt,
 	}
 	if err := ApplyFormattedInstructionsLimit(&value, opts.MaxInstructionBytes); err != nil {
 		return InstructionContext{}, err

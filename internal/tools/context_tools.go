@@ -223,6 +223,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 			Path: pathValue, MaxInstructionBytes: maxInstructionBytes, MaxSectionBytes: maxSectionBytes, MaxLinesPerSection: maxLinesPerSection,
 			MemoryQuery: memoryQuery, MaxMemoryEntries: maxMemoryEntries, MaxMemoryBytes: maxMemoryBytes,
 			IncludeGit: includeGit, IncludeMemory: includeMemory, IncludeSkills: includeSkills,
+			BackgroundWork: projectBackgroundCapabilities(ctx),
 		})
 		if err != nil {
 			return Result{}, err
@@ -424,6 +425,14 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		}
 		return JSONResult(PathRulesResult{Path: target, Rules: values, Count: len(values)}), nil
 	})
+}
+
+func projectBackgroundCapabilities(ctx context.Context) instructioncontext.BackgroundWorkCapabilities {
+	capabilities := BackgroundCapabilitiesFromContext(ctx)
+	return instructioncontext.BackgroundWorkCapabilities{
+		TaskObservation: capabilities.TaskObservation, ServerNotification: capabilities.ServerNotification,
+		ModelContinuation: capabilities.ModelContinuation, InFlightSteering: capabilities.InFlightSteering,
+	}
 }
 
 func withinDirectory(root, path string) bool {

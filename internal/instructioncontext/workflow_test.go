@@ -49,13 +49,12 @@ func TestAgentWorkflowRequiresLifecycleDrivenBackgroundWaiting(t *testing.T) {
 	for _, expected := range []string{
 		"start_process",
 		"lifecycle-driven",
-		"Never busy-wait",
-		"repeated process_status/process_output",
+		"Do not poll process_status/process_output",
 		"inspection/recovery",
-		"stop_process intervenes",
-		"proven client capability",
-		"otherwise return control",
-		"Intentional shell sleep is valid",
+		"stop_process is explicit cancellation/intervention",
+		"No model continuation is proven",
+		"return control after starting background work",
+		"Intentional in-process sleep is valid",
 	} {
 		if !strings.Contains(workflow, expected) {
 			t.Fatalf("workflow missing background guidance %q: %s", expected, workflow)
@@ -63,6 +62,34 @@ func TestAgentWorkflowRequiresLifecycleDrivenBackgroundWaiting(t *testing.T) {
 		if !strings.Contains(server, expected) {
 			t.Fatalf("server instructions missing background guidance %q: %s", expected, server)
 		}
+	}
+}
+
+func TestBackgroundWorkGuidanceCapabilityCombinations(t *testing.T) {
+	tests := []struct {
+		name         string
+		capabilities BackgroundWorkCapabilities
+		continuation string
+	}{
+		{name: "unproven", continuation: "No model continuation is proven, so return control after starting background work."},
+		{name: "tasks-only", capabilities: BackgroundWorkCapabilities{TaskObservation: true}, continuation: "Tasks provide observation only and do not prove model continuation; return control after starting background work."},
+		{name: "notification-only", capabilities: BackgroundWorkCapabilities{ServerNotification: true}, continuation: "Server notifications do not prove model continuation; return control after starting background work."},
+		{name: "continuation", capabilities: BackgroundWorkCapabilities{ModelContinuation: true}, continuation: "The client proves model continuation; rely on that lifecycle path instead of polling."},
+		{name: "continuation-and-steering", capabilities: BackgroundWorkCapabilities{ModelContinuation: true, InFlightSteering: true}, continuation: "The client proves model continuation and in-flight steering; rely on that lifecycle path instead of polling."},
+	}
+	const prefix = "Use start_process for long work; completion is lifecycle-driven. Do not poll process_status/process_output or Tasks to wait. Status/output are inspection/recovery; stop_process is explicit cancellation/intervention. "
+	const suffix = " Intentional in-process sleep is valid."
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			want := prefix + tc.continuation + suffix
+			if got := BackgroundWorkGuidanceFor(tc.capabilities); got != want {
+				t.Fatalf("guidance=%q want=%q", got, want)
+			}
+			workflow := AgentWorkflowForBackground(tc.capabilities)
+			if !strings.Contains(workflow, want) {
+				t.Fatalf("workflow missing capability-specific guidance: %s", workflow)
+			}
+		})
 	}
 }
 

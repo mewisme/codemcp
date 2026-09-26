@@ -187,6 +187,35 @@ func backgroundLifecycleCommand() string {
 	return "printf ready; sleep 0.1"
 }
 
+func TestStartProcessResultUsesCapabilitySpecificNoPollGuidance(t *testing.T) {
+	value := shellruntime.StartResult{ID: "proc_test", PID: 123, Command: "example", CWD: "/tmp", StartedAt: "2026-09-26T00:00:00Z"}
+	tests := []struct {
+		name         string
+		capabilities BackgroundCapabilities
+		want         string
+		forbid       string
+	}{
+		{name: "unproven", want: "No model continuation is proven"},
+		{name: "tasks-only", capabilities: BackgroundCapabilities{TaskObservation: true}, want: "Tasks provide observation only", forbid: "client proves model continuation"},
+		{name: "continuation", capabilities: BackgroundCapabilities{ModelContinuation: true}, want: "client proves model continuation", forbid: "return control after starting background work"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := WithBackgroundCapabilities(context.Background(), tc.capabilities)
+			result := startProcessResult(ctx, value)
+			if got, ok := result.StructuredContent.(shellruntime.StartResult); !ok || got.ID != value.ID {
+				t.Fatalf("structured content=%T %#v", result.StructuredContent, result.StructuredContent)
+			}
+			if len(result.Content) != 1 || !strings.Contains(result.Content[0].Text, tc.want) || !strings.Contains(result.Content[0].Text, "Do not poll process_status/process_output") {
+				t.Fatalf("content=%#v", result.Content)
+			}
+			if tc.forbid != "" && strings.Contains(result.Content[0].Text, tc.forbid) {
+				t.Fatalf("content contains forbidden guidance %q: %s", tc.forbid, result.Content[0].Text)
+			}
+		})
+	}
+}
+
 func TestBackgroundProcessLifecycle(t *testing.T) {
 	if os.PathSeparator != '\\' && os.Getenv("SHELL") == "" {
 		t.Setenv("SHELL", "/bin/sh")

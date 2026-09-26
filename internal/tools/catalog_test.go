@@ -123,16 +123,20 @@ func TestCoreToolSchemasMatchHandlerContracts(t *testing.T) {
 	if _, ok := items["properties"].(map[string]any)["execution_id"]; !ok {
 		t.Fatal("process_status output schema missing execution_id")
 	}
-	for _, name := range []string{"start_process", "process_status", "process_output", "stop_process"} {
+	expectedDescriptions := map[string][]string{
+		"start_process":  {"lifecycle-driven", "do not poll process_status/process_output"},
+		"process_status": {"diagnosis or recovery", "waiting loop"},
+		"process_output": {"diagnosis or recovery", "waiting loop"},
+		"stop_process":   {"cancel or intervene", "completion-wait mechanism"},
+	}
+	for name, expected := range expectedDescriptions {
 		description := schemas[name].Description
-		for _, expected := range []string{"lifecycle-driven", "not as a waiting loop"} {
-			if name == "start_process" || name == "stop_process" {
-				if expected == "not as a waiting loop" {
-					continue
-				}
-			}
-			if !strings.Contains(description, expected) {
-				t.Fatalf("%s description missing %q: %s", name, expected, description)
+		if len(description) > 320 {
+			t.Fatalf("%s description is too verbose (%d bytes): %s", name, len(description), description)
+		}
+		for _, fragment := range expected {
+			if !strings.Contains(description, fragment) {
+				t.Fatalf("%s description missing %q: %s", name, fragment, description)
 			}
 		}
 	}

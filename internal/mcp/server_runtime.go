@@ -62,6 +62,7 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 				ctx = WithRequestContext(ctx, parsed)
 			}
 		}
+		ctx = WithRequestBackgroundCapabilities(ctx, r.Profile, requestContext)
 		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		ctx = tools.WithCallSource(ctx, "http")
 		ctx = tools.WithCallDetails(ctx, "tools/call", params)

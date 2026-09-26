@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -76,6 +77,16 @@ func TestBackgroundCapabilitiesKeepTasksAndContinuationIndependent(t *testing.T)
 	withoutTasks := RequestBackgroundCapabilities(profile, RequestContext{})
 	if withoutTasks.TaskObservation {
 		t.Fatalf("request without Tasks extension negotiated task observation: %#v", withoutTasks)
+	}
+}
+
+func TestRequestBackgroundCapabilitiesPropagateToToolContext(t *testing.T) {
+	ctx := WithRequestBackgroundCapabilities(context.Background(), OpenAIProfile(), RequestContext{
+		NegotiatedExtensions: map[string]any{TasksExtensionID: map[string]any{}},
+	})
+	got := tools.BackgroundCapabilitiesFromContext(ctx)
+	if !got.TaskObservation || got.ModelContinuation || got.InFlightSteering {
+		t.Fatalf("tool background capabilities=%#v", got)
 	}
 }
 

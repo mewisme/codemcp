@@ -14,7 +14,7 @@ const (
 	guidanceRead       = "Inspect relevant files before changing them. Use read_files/read_text_file for source context and load_path_rules for path-scoped rules before modifying matching files."
 	guidanceSkills     = "Review the skill summaries in project_context. When a skill is applicable, call load_skill with its exact name before using that workflow."
 	guidanceEdit       = "Prefer deterministic edits with apply_patch, edit_file, or multi_edit. Use run_command for commands, builds, tests, formatting, and other shell operations within the persisted workspace cwd."
-	guidanceBackground = "Use start_process for long work; completion is lifecycle-driven. Never busy-wait via sleep, ps/pgrep/top, shell loops, repeated process_status/process_output, or Task reads. Status/output are inspection/recovery; stop_process intervenes. Continue only with proven client capability; otherwise return control. Intentional shell sleep is valid."
+	guidanceBackground = "Use start_process for long work; completion is lifecycle-driven. Do not poll process_status/process_output or Tasks to wait. Status/output are inspection/recovery; stop_process is explicit cancellation/intervention. No model continuation is proven, so return control after starting background work. Intentional in-process sleep is valid."
 	guidanceVerify     = "For non-trivial work, make a short plan, implement incrementally, and verify with the repository's relevant tests, lint, typecheck, build, or other documented checks."
 	guidanceRewind     = "Use rewind to inspect or recover automatic file checkpoints when an edit must be reviewed or reverted."
 	guidanceRemember   = "When the user explicitly asks to remember, save, persist, or retain an eligible workspace-specific note for future sessions, call remember immediately in that same turn before replying; do not merely acknowledge or defer the request. Identify a concise scope and an optional child key: omit key for a scope-level note, and never repeat the scope as its child key. Call memory_get for that target, reconcile the current canonical note with the new information, then call remember with the complete canonical replacement note. A newer explicit user preference supersedes conflicting older memory; rewrite the entry instead of concatenating contradictory statements. Use remember only for durable workspace-specific conclusions that will help future sessions; do not store conversation history, secrets, transient status, or raw MCP session identifiers. If project_context reports memory optimization recommended and the current task permits maintenance, call optimize_memory and reconcile candidates with remember/forget instead of letting memory grow unbounded."
@@ -53,6 +53,13 @@ type ServerInstructionModel struct {
 
 type ServerInstructionRenderOptions struct {
 	Heading string
+}
+
+type BackgroundWorkCapabilities struct {
+	TaskObservation    bool
+	ServerNotification bool
+	ModelContinuation  bool
+	InFlightSteering   bool
 }
 
 func CanonicalServerInstructionModel() ServerInstructionModel {
@@ -122,12 +129,31 @@ func AgentWorkflow() string {
 	return DefaultAgentWorkflow
 }
 
+func AgentWorkflowForBackground(capabilities BackgroundWorkCapabilities) string {
+	return strings.Replace(DefaultAgentWorkflow, guidanceBackground, BackgroundWorkGuidanceFor(capabilities), 1)
+}
+
 func SharedGuidanceSteps() []string {
 	return append([]string(nil), sharedGuidanceSteps...)
 }
 
 func BackgroundWorkGuidance() string {
 	return guidanceBackground
+}
+
+func BackgroundWorkGuidanceFor(capabilities BackgroundWorkCapabilities) string {
+	continuation := "No model continuation is proven, so return control after starting background work."
+	switch {
+	case capabilities.ModelContinuation && capabilities.InFlightSteering:
+		continuation = "The client proves model continuation and in-flight steering; rely on that lifecycle path instead of polling."
+	case capabilities.ModelContinuation:
+		continuation = "The client proves model continuation; rely on that lifecycle path instead of polling."
+	case capabilities.ServerNotification:
+		continuation = "Server notifications do not prove model continuation; return control after starting background work."
+	case capabilities.TaskObservation:
+		continuation = "Tasks provide observation only and do not prove model continuation; return control after starting background work."
+	}
+	return "Use start_process for long work; completion is lifecycle-driven. Do not poll process_status/process_output or Tasks to wait. Status/output are inspection/recovery; stop_process is explicit cancellation/intervention. " + continuation + " Intentional in-process sleep is valid."
 }
 
 func StaticServerInstructions() string {

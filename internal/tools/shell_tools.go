@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"strings"
 
 	"go.mewis.me/codemcp/internal/backgrounddelivery"
 
@@ -25,8 +24,6 @@ func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell
 	if len(brokers) > 0 {
 		broker = brokers[0]
 	}
-	backgroundGuidance := instructioncontext.BackgroundWorkGuidance()
-	describe := func(base string) string { return strings.TrimSpace(base + " " + backgroundGuidance) }
 	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
 		registry.MustRegister(name, Schema{
 			Name: name, Title: title, Description: description,
@@ -83,7 +80,7 @@ func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell
 		return JSONResult(value), nil
 	})
 
-	register("start_process", "Start Background Process", describe("Start a long-running command in the workspace persisted cwd. Background commands cannot contain cwd-changing directives."), `{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`, `{"type":"object","properties":{"id":{"type":"string"},"execution_id":{"type":"string"},"pid":{"type":"integer"},"command":{"type":"string"},"cwd":{"type":"string"},"started_at":{"type":"string"}},"required":["id","pid","command","cwd","started_at"],"additionalProperties":false}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
+	register("start_process", "Start Background Process", "Start a long-running command in the workspace persisted cwd. Background commands cannot contain cwd-changing directives. Completion is lifecycle-driven; do not poll process_status/process_output while waiting.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`, `{"type":"object","properties":{"id":{"type":"string"},"execution_id":{"type":"string"},"pid":{"type":"integer"},"command":{"type":"string"},"cwd":{"type":"string"},"started_at":{"type":"string"}},"required":["id","pid","command","cwd","started_at"],"additionalProperties":false}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
 		workspaceID, err := requiredString(args, "workspace_id")
 		if err != nil {
 			return Result{}, err
@@ -106,10 +103,10 @@ func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell
 				Owner:       backgrounddelivery.OwnerFromContext(ctx),
 			})
 		}
-		return JSONResult(value), nil
+		return startProcessResult(ctx, value), nil
 	})
 
-	register("process_status", "Process Status", describe("Inspect status of background process records for a workspace. Use for explicit diagnosis or recovery, not as a waiting loop."), `{"type":"object","properties":{"workspace_id":{"type":"string"},"id":{"type":"string"}},"required":["workspace_id"],"additionalProperties":false}`, `{"type":"object","properties":{"processes":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"execution_id":{"type":"string"},"pid":{"type":"integer"},"command":{"type":"string"},"cwd":{"type":"string"},"started_at":{"type":"string"},"running":{"type":"boolean"},"exit_code":{"type":["integer","null"]},"signal":{"type":["string","null"]}},"required":["id","pid","command","cwd","started_at","running","exit_code","signal"],"additionalProperties":false}}},"required":["processes"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register("process_status", "Process Status", "Inspect background process state for explicit diagnosis or recovery. Do not use this tool as a waiting loop.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"id":{"type":"string"}},"required":["workspace_id"],"additionalProperties":false}`, `{"type":"object","properties":{"processes":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"execution_id":{"type":"string"},"pid":{"type":"integer"},"command":{"type":"string"},"cwd":{"type":"string"},"started_at":{"type":"string"},"running":{"type":"boolean"},"exit_code":{"type":["integer","null"]},"signal":{"type":["string","null"]}},"required":["id","pid","command","cwd","started_at","running","exit_code","signal"],"additionalProperties":false}}},"required":["processes"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 		workspaceID, err := requiredString(args, "workspace_id")
 		if err != nil {
 			return Result{}, err
@@ -125,7 +122,7 @@ func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell
 		return JSONResult(ProcessStatusResult{Processes: values}), nil
 	})
 
-	register("process_output", "Process Output", describe("Inspect stdout/stderr logs for a background process. Use for explicit diagnosis or recovery, not as a waiting loop."), `{"type":"object","properties":{"workspace_id":{"type":"string"},"id":{"type":"string"},"tail_chars":{"type":"integer","minimum":1,"maximum":200000,"default":40000}},"required":["workspace_id","id"],"additionalProperties":false}`, `{"type":"object","properties":{"id":{"type":"string"},"running":{"type":"boolean"},"exit_code":{"type":["integer","null"]},"signal":{"type":["string","null"]},"stdout":{"type":"string"},"stderr":{"type":"string"}},"required":["id","running","exit_code","signal","stdout","stderr"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register("process_output", "Process Output", "Inspect stdout/stderr for explicit diagnosis or recovery. Do not use this tool as a waiting loop.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"id":{"type":"string"},"tail_chars":{"type":"integer","minimum":1,"maximum":200000,"default":40000}},"required":["workspace_id","id"],"additionalProperties":false}`, `{"type":"object","properties":{"id":{"type":"string"},"running":{"type":"boolean"},"exit_code":{"type":["integer","null"]},"signal":{"type":["string","null"]},"stdout":{"type":"string"},"stderr":{"type":"string"}},"required":["id","running","exit_code","signal","stdout","stderr"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 		workspaceID, err := requiredString(args, "workspace_id")
 		if err != nil {
 			return Result{}, err
@@ -145,7 +142,7 @@ func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell
 		return JSONResult(value), nil
 	})
 
-	register("stop_process", "Stop Process", describe("Intervene by stopping a background process by id."), `{"type":"object","properties":{"workspace_id":{"type":"string"},"id":{"type":"string"},"force":{"type":"boolean","default":false}},"required":["workspace_id","id"],"additionalProperties":false}`, `{"type":"object","properties":{"id":{"type":"string"},"force":{"type":"boolean"},"already_exited":{"type":"boolean"}},"required":["id"],"additionalProperties":false}`, RiskEdit, func(_ context.Context, args map[string]any) (Result, error) {
+	register("stop_process", "Stop Process", "Explicitly cancel or intervene in a background process by id. Do not use cancellation as a completion-wait mechanism.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"id":{"type":"string"},"force":{"type":"boolean","default":false}},"required":["workspace_id","id"],"additionalProperties":false}`, `{"type":"object","properties":{"id":{"type":"string"},"force":{"type":"boolean"},"already_exited":{"type":"boolean"}},"required":["id"],"additionalProperties":false}`, RiskEdit, func(_ context.Context, args map[string]any) (Result, error) {
 		workspaceID, err := requiredString(args, "workspace_id")
 		if err != nil {
 			return Result{}, err
@@ -176,4 +173,13 @@ func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell
 		}
 		return JSONResult(ClearProcessesResult{Cleared: cleared}), nil
 	})
+}
+
+func startProcessResult(ctx context.Context, value shellruntime.StartResult) Result {
+	result := JSONResult(value)
+	result.Content = []Content{{
+		Type: "text",
+		Text: "Background process started. " + instructioncontext.BackgroundWorkGuidanceFor(projectBackgroundCapabilities(ctx)),
+	}}
+	return result
 }

@@ -167,6 +167,7 @@ func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {
 		}
 		requestContext := localmcp.RequestContextFromSDK(request)
 		ctx = localmcp.WithRequestContext(ctx, requestContext)
+		ctx = localmcp.WithRequestBackgroundCapabilities(ctx, b.profile, requestContext)
 		ctx = localmcp.WithProfileRequestMetadata(ctx, b.profile, map[string]any(request.Params.Meta))
 		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		ctx = tools.WithCallSource(ctx, "tunnel")

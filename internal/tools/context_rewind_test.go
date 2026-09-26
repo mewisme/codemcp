@@ -34,6 +34,38 @@ func newContextToolRuntime(t *testing.T) (*Runtime, string, string, *checkpoint.
 	return &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints}, item.ID, item.Path, checkpoints
 }
 
+func TestProjectContextProjectsBackgroundContinuationGuidanceFromRequest(t *testing.T) {
+	runtime, workspaceID, _, _ := newContextToolRuntime(t)
+	tests := []struct {
+		name         string
+		capabilities BackgroundCapabilities
+		want         string
+		forbid       string
+	}{
+		{name: "unproven", want: "No model continuation is proven"},
+		{name: "tasks-only", capabilities: BackgroundCapabilities{TaskObservation: true}, want: "Tasks provide observation only", forbid: "client proves model continuation"},
+		{name: "continuation", capabilities: BackgroundCapabilities{ModelContinuation: true}, want: "client proves model continuation", forbid: "No model continuation is proven"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := WithBackgroundCapabilities(context.Background(), tc.capabilities)
+			result, err := runtime.Call(ctx, "project_context", map[string]any{"workspace_id": workspaceID, "include_git": false})
+			if err != nil || result.IsError {
+				t.Fatalf("project_context=%#v err=%v", result, err)
+			}
+			project := result.StructuredContent.(ProjectContextResult)
+			for _, text := range []string{project.InstructionContext.AgentWorkflow, project.InstructionContext.InstructionsText} {
+				if !strings.Contains(text, tc.want) || !strings.Contains(text, "Do not poll process_status/process_output") {
+					t.Fatalf("guidance=%q", text)
+				}
+				if tc.forbid != "" && strings.Contains(text, tc.forbid) {
+					t.Fatalf("guidance contains forbidden phrase %q: %s", tc.forbid, text)
+				}
+			}
+		})
+	}
+}
+
 func TestContextSkillsRulesAndRemember(t *testing.T) {
 	runtime, workspaceID, root, _ := newContextToolRuntime(t)
 	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("instructions"), 0644); err != nil {

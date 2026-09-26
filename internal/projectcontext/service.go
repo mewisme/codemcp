@@ -70,6 +70,7 @@ type Options struct {
 	IncludeSkills       bool
 	AdminEnabled        bool
 	AdminPort           int
+	BackgroundWork      instructioncontext.BackgroundWorkCapabilities
 }
 
 func DefaultOptions() Options {
@@ -241,7 +242,8 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 		Root: root, WorkspaceID: item.ID, WorkspaceRoot: item.Path, CWD: item.Path, WorkspaceRoots: roots, MemoryStore: s.MemoryStore,
 		Memory: instructioncontext.MemoryLoadOptions{ImportMaxDepth: instructioncontext.DefaultImportMaxDepth, MaxBytesPerSection: opts.MaxSectionBytes, MaxLinesPerSection: opts.MaxLinesPerSection},
 		Policy: policy, ToolProfile: profile, MaxInstructionBytes: opts.MaxInstructionBytes,
-		MemoryQuery: opts.MemoryQuery, MaxMemoryEntries: opts.MaxMemoryEntries, MaxMemoryBytes: opts.MaxMemoryBytes,
+		BackgroundWork: opts.BackgroundWork,
+		MemoryQuery:    opts.MemoryQuery, MaxMemoryEntries: opts.MaxMemoryEntries, MaxMemoryBytes: opts.MaxMemoryBytes,
 		SkipGit: !opts.IncludeGit, SkipMemory: !opts.IncludeMemory, SkipSkills: !opts.IncludeSkills,
 		IntegrationInstructions: integrationInstructions,
 		IntegrationDiagnostics:  integrationDiagnostics,

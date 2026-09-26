@@ -89,6 +89,7 @@ func (s *SDKServer) addTool(schema tools.Schema) error {
 		}
 		requestContext := RequestContextFromSDK(request)
 		ctx = WithRequestContext(ctx, requestContext)
+		ctx = WithRequestBackgroundCapabilities(ctx, s.Profile, requestContext)
 		if request != nil && request.Params != nil {
 			ctx = withProfileRequestMetadata(ctx, s.Profile, map[string]any(request.Params.Meta))
 		}
