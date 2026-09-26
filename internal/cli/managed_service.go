@@ -392,11 +392,13 @@ func renderManagedLifecycleResult(cmd *cobra.Command, message string, spec manag
 		if status.AdminEnabled {
 			fields = append(fields, presentation.Field{Label: "admin", Value: fmt.Sprintf("http://127.0.0.1:%d/", status.AdminPort)})
 		}
-		presenter.Fields(fields...)
+		presenter.NestedFields(fields...)
+		presenter.Spacer()
 		state := statusTunnelState(status, true)
 		presenter.ChildState(statusPresentationKind(state), "OpenAI Secure MCP Tunnel", state)
+		tunnelFields := []presentation.Field{}
 		if status.TunnelID != "" {
-			presenter.Fields(presentation.Field{Label: "tunnel id", Value: status.TunnelID})
+			tunnelFields = append(tunnelFields, presentation.Field{Label: "id", Value: status.TunnelID})
 		}
 		if state == "connected" {
 			id := strings.TrimSpace(status.TunnelID)
@@ -404,23 +406,24 @@ func renderManagedLifecycleResult(cmd *cobra.Command, message string, spec manag
 				id = strings.TrimSpace(cfg.ID)
 			}
 			if metadata, err := config.LoadTunnelMetadata(id); err == nil {
-				metadataFields := []presentation.Field{}
 				if metadata.Name != "" {
-					metadataFields = append(metadataFields, presentation.Field{Label: "tunnel name", Value: metadata.Name})
+					tunnelFields = append(tunnelFields, presentation.Field{Label: "name", Value: metadata.Name})
 				}
 				if metadata.Description != "" {
-					metadataFields = append(metadataFields, presentation.Field{Label: "tunnel description", Value: metadata.Description})
+					tunnelFields = append(tunnelFields, presentation.Field{Label: "description", Value: metadata.Description})
 				}
 				if scope := tunnelMetadataScope(metadata); scope != "" {
-					metadataFields = append(metadataFields, presentation.Field{Label: "tunnel scope", Value: scope})
+					tunnelFields = append(tunnelFields, presentation.Field{Label: "scope", Value: scope})
 				}
-				presenter.Fields(metadataFields...)
 			}
 		}
+		presenter.NestedFields(tunnelFields...)
 		if warning := managed.PersistenceWarning(spec); warning != "" {
 			presenter.ChildStatus(presentation.StatusWarning, warning)
 		}
-		presenter.Fields(
+		presenter.Spacer()
+		presenter.Subsection("Actions")
+		presenter.NestedFields(
 			presentation.Field{Label: "View logs", Value: "cm logs -f"},
 			presentation.Field{Label: "Stop service", Value: managedStopCommand(spec)},
 		)

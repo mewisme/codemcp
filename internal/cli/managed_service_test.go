@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/logger"
@@ -96,7 +97,7 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 	var output bytes.Buffer
 	cmd := &cobra.Command{Use: "test"}
 	cmd.SetContext(context.Background())
-	cmd.SetOut(&output)
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
 	if err := runManagedUp(cmd, spec, manager); err != nil {
 		t.Fatal(err)
 	}
@@ -104,9 +105,27 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 		t.Fatalf("manager after up = %#v", manager)
 	}
 	text := output.String()
-	for _, expected := range []string{"Installed managed service definition", "Started managed service backend", "Managed runtime ready", "Managed service installed", "Server started", "OpenAI Secure MCP Tunnel is disabled", "View logs", "cm logs -f", "Stop service", "cm down", "session", "pid"} {
+	for _, expected := range []string{"Installed managed service definition", "Started managed service backend", "Managed runtime ready", "Managed service installed", "Server started", "OpenAI Secure MCP Tunnel", "View logs", "cm logs -f", "Stop service", "cm down", "session", "pid"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("up output missing %q: %s", expected, text)
+		}
+	}
+	for _, expected := range []string{
+		"│  ✓ Server started",
+		"│  │  scope — user",
+		"│  │  config — " + root,
+		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
+		"│  ◆ Actions",
+		"│  │  View logs — cm logs -f",
+		"│  │  Stop service — cm down",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("up output hierarchy missing %q: %s", expected, text)
+		}
+	}
+	for _, unexpected := range []string{"│  ◆ scope —", "│  ◆ config —", "│  ◆ View logs —", "│  ◆ Stop service —"} {
+		if strings.Contains(text, unexpected) {
+			t.Fatalf("up output still renders detail as peer node %q: %s", unexpected, text)
 		}
 	}
 	output.Reset()
@@ -229,6 +248,56 @@ func TestManagedRestartKeepsServiceInstalledAndStartsNewRuntime(t *testing.T) {
 	for _, unexpected := range []string{"Managed service removed", "Managed service installed"} {
 		if strings.Contains(text, unexpected) {
 			t.Fatalf("restart unexpectedly reinstalled service: %s", text)
+		}
+	}
+}
+
+func TestManagedLifecycleResultRendersConnectedTunnelAsNestedList(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := t.TempDir()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	metadata := tunnel.Metadata{
+		ID:              "tunnel_demo",
+		Name:            "MCP_Tunnel_WSL",
+		Description:     "MCP Tunnel WSL",
+		OrganizationIDs: []string{"org_demo"},
+		WorkspaceIDs:    []string{"ws_demo"},
+	}
+	if _, err := config.SaveTunnelMetadata(metadata); err != nil {
+		t.Fatal(err)
+	}
+	spec := managed.Spec{ID: "cm-user-demo", Scope: managed.ScopeUser, ConfigRoot: root}
+	status := runtimeStatusResult{
+		PID:              4242,
+		RunID:            "run_demo",
+		TunnelEnabled:    true,
+		TunnelConfigured: true,
+		TunnelRunning:    true,
+		TunnelReady:      true,
+		TunnelID:         metadata.ID,
+	}
+	var output bytes.Buffer
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
+	renderManagedLifecycleResult(cmd, "Managed service restarted", spec, &fakeServiceManager{}, status, tunnel.Config{ID: metadata.ID})
+
+	text := output.String()
+	for _, expected := range []string{
+		"│  ✓ OpenAI Secure MCP Tunnel — connected",
+		"│  │  id — tunnel_demo",
+		"│  │  name — MCP_Tunnel_WSL",
+		"│  │  description — MCP Tunnel WSL",
+		"│  │  scope — organization:org_demo · workspace:ws_demo",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("connected tunnel hierarchy missing %q: %s", expected, text)
+		}
+	}
+	for _, unexpected := range []string{"│  ◆ tunnel id —", "│  ◆ tunnel name —", "│  ◆ tunnel description —", "│  ◆ tunnel scope —"} {
+		if strings.Contains(text, unexpected) {
+			t.Fatalf("connected tunnel metadata still renders as peer node %q: %s", unexpected, text)
 		}
 	}
 }
