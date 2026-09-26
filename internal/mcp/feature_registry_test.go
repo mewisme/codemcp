@@ -42,10 +42,13 @@ func TestFeatureRegistryIsCanonicalAcrossProfilesAndSDKServers(t *testing.T) {
 		ID:     "resources-test",
 		Family: FeatureResources,
 		Resources: []ResourceDescriptor{{
-			URI: "codemcp://test/resource", Name: "test-resource", Description: "test",
+			URI: "cm://global/test-resource", Name: "test-resource", Description: "test", MIMEType: "text/plain",
 		}},
+		ReadResource: func(context.Context, ResourceReadRequest) (ResourceContent, error) {
+			return TextResourceContent("test"), nil
+		},
 		Capabilities: FeatureCapabilities{
-			Resources: &ResourcesCapability{ListChanged: true, Subscribe: true},
+			Resources: &ResourcesCapability{},
 		},
 		Methods: []FeatureMethod{{
 			Name: featureProbeMethod, Scope: FeatureScopeGlobal, Custom: true,
@@ -131,7 +134,7 @@ func TestFeatureRegistryIsCanonicalAcrossProfilesAndSDKServers(t *testing.T) {
 		!reflect.DeepEqual(baseOptions.Capabilities.Extensions, openAIOptions.Capabilities.Extensions) {
 		t.Fatalf("profile changed feature advertisement: base=%#v openai=%#v", baseOptions.Capabilities, openAIOptions.Capabilities)
 	}
-	if baseOptions.Capabilities.Resources == nil || !baseOptions.Capabilities.Resources.Subscribe ||
+	if baseOptions.Capabilities.Resources == nil || baseOptions.Capabilities.Resources.Subscribe ||
 		baseOptions.Capabilities.Prompts == nil || !baseOptions.Capabilities.Prompts.ListChanged {
 		t.Fatalf("feature capabilities were not projected: %#v", baseOptions.Capabilities)
 	}
@@ -149,8 +152,11 @@ func TestFeatureRegistryRejectsCompetingOwners(t *testing.T) {
 		ID:     "first",
 		Family: FeatureResources,
 		Resources: []ResourceDescriptor{{
-			URI: "codemcp://test/shared", Name: "shared",
+			URI: "cm://global/shared", Name: "shared", MIMEType: "text/plain",
 		}},
+		ReadResource: func(context.Context, ResourceReadRequest) (ResourceContent, error) {
+			return TextResourceContent("shared"), nil
+		},
 		Capabilities: FeatureCapabilities{Extensions: map[string]any{"io.codemcp.test/shared": map[string]any{}}},
 		Methods: []FeatureMethod{{
 			Name: "io.codemcp.test/shared-method", Scope: FeatureScopeGlobal, Custom: true,
@@ -163,7 +169,10 @@ func TestFeatureRegistryRejectsCompetingOwners(t *testing.T) {
 	for name, candidate := range map[string]FeatureRegistration{
 		"resource": {
 			ID: "resource-owner", Family: FeatureResources,
-			Resources: []ResourceDescriptor{{URI: "codemcp://test/shared", Name: "other"}},
+			Resources: []ResourceDescriptor{{URI: "cm://global/shared", Name: "other", MIMEType: "text/plain"}},
+			ReadResource: func(context.Context, ResourceReadRequest) (ResourceContent, error) {
+				return TextResourceContent("other"), nil
+			},
 		},
 		"extension": {
 			ID: "extension-owner", Family: FeatureSkills,

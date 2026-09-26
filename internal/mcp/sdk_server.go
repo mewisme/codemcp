@@ -60,6 +60,9 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 	if err := InstallFeatureMethods(server, featureExecutor); err != nil {
 		return nil, err
 	}
+	if err := InstallResourceProjection(server, featureExecutor); err != nil {
+		return nil, err
+	}
 	callers := approval.NewCallerRegistry()
 	var tasks *TaskRegistry
 	if ProfileBackgroundCapabilities(profile).TaskObservation {

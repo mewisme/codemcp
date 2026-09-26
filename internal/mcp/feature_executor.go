@@ -38,6 +38,30 @@ func (e *FeatureExecutor) Invoke(ctx context.Context, methodName string, params 
 	if e == nil || e.Registry == nil {
 		return nil, NewError(ErrInternal, "feature registry is unavailable")
 	}
+	switch strings.TrimSpace(methodName) {
+	case ResourcesListMethod:
+		cursor, err := resourceCursor(params)
+		if err != nil {
+			return nil, err
+		}
+		return e.ListResources(ctx, cursor)
+	case ResourceTemplatesListMethod:
+		cursor, err := resourceCursor(params)
+		if err != nil {
+			return nil, err
+		}
+		return e.ListResourceTemplates(ctx, cursor)
+	case ResourcesReadMethod:
+		rawURI, ok := params["uri"].(string)
+		if !ok || strings.TrimSpace(rawURI) == "" {
+			return nil, NewError(ErrInvalidParams, "resource uri is required")
+		}
+		result, err := e.ReadResource(ctx, rawURI)
+		if err != nil {
+			return nil, err
+		}
+		return resourceReadResultMap(result), nil
+	}
 	method, ok := e.Registry.method(methodName)
 	if !ok {
 		return nil, NewError(ErrMethodNotFound, "method not found")
@@ -105,6 +129,18 @@ func (e *FeatureExecutor) Invoke(ctx context.Context, methodName string, params 
 		cloned = map[string]any{}
 	}
 	return cloned, nil
+}
+
+func resourceCursor(params map[string]any) (string, error) {
+	value, exists := params["cursor"]
+	if !exists || value == nil {
+		return "", nil
+	}
+	cursor, ok := value.(string)
+	if !ok {
+		return "", NewError(ErrInvalidParams, "cursor must be a string")
+	}
+	return cursor, nil
 }
 
 func (e *FeatureExecutor) ToolFallback(method string) tools.Handler {

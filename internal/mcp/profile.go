@@ -87,16 +87,18 @@ type ProjectedTool struct {
 }
 
 type ProjectedFeatures struct {
-	Resources []ResourceDescriptor `json:"resources,omitempty"`
-	Prompts   []PromptDescriptor   `json:"prompts,omitempty"`
-	Skills    []SkillDescriptor    `json:"skills,omitempty"`
+	Resources         []ResourceDescriptor         `json:"resources,omitempty"`
+	ResourceTemplates []ResourceTemplateDescriptor `json:"resource_templates,omitempty"`
+	Prompts           []PromptDescriptor           `json:"prompts,omitempty"`
+	Skills            []SkillDescriptor            `json:"skills,omitempty"`
 }
 
 func ProjectFeatures(_ Profile, descriptor ProtocolDescriptors) ProjectedFeatures {
 	return ProjectedFeatures{
-		Resources: cloneResourceDescriptors(descriptor.Resources),
-		Prompts:   clonePromptDescriptors(descriptor.Prompts),
-		Skills:    cloneSkillDescriptors(descriptor.Skills),
+		Resources:         cloneResourceDescriptors(descriptor.Resources),
+		ResourceTemplates: cloneResourceTemplateDescriptors(descriptor.ResourceTemplates),
+		Prompts:           clonePromptDescriptors(descriptor.Prompts),
+		Skills:            cloneSkillDescriptors(descriptor.Skills),
 	}
 }
 

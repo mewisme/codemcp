@@ -12,15 +12,16 @@ import (
 // Runtime authorization and approval decisions remain owned by the tools
 // runtime; descriptors only describe protocol-visible operation truth.
 type ProtocolDescriptors struct {
-	Server           ServerDescriptor     `json:"server"`
-	Capabilities     Capabilities         `json:"capabilities"`
-	Tools            []ToolDescriptor     `json:"tools,omitempty"`
-	Resources        []ResourceDescriptor `json:"resources,omitempty"`
-	Prompts          []PromptDescriptor   `json:"prompts,omitempty"`
-	Skills           []SkillDescriptor    `json:"skills,omitempty"`
-	Results          ResultDescriptor     `json:"results"`
-	Errors           ErrorDescriptor      `json:"errors"`
-	AuthRequirements []AuthRequirement    `json:"auth_requirements,omitempty"`
+	Server            ServerDescriptor             `json:"server"`
+	Capabilities      Capabilities                 `json:"capabilities"`
+	Tools             []ToolDescriptor             `json:"tools,omitempty"`
+	Resources         []ResourceDescriptor         `json:"resources,omitempty"`
+	ResourceTemplates []ResourceTemplateDescriptor `json:"resource_templates,omitempty"`
+	Prompts           []PromptDescriptor           `json:"prompts,omitempty"`
+	Skills            []SkillDescriptor            `json:"skills,omitempty"`
+	Results           ResultDescriptor             `json:"results"`
+	Errors            ErrorDescriptor              `json:"errors"`
+	AuthRequirements  []AuthRequirement            `json:"auth_requirements,omitempty"`
 }
 
 type ServerDescriptor struct {
@@ -61,11 +62,22 @@ type AuthRequirement struct {
 }
 
 type ResourceDescriptor struct {
-	URI         string `json:"uri"`
-	Name        string `json:"name"`
-	Title       string `json:"title,omitempty"`
-	Description string `json:"description,omitempty"`
-	MIMEType    string `json:"mime_type,omitempty"`
+	URI         string         `json:"uri"`
+	Name        string         `json:"name"`
+	Title       string         `json:"title,omitempty"`
+	Description string         `json:"description,omitempty"`
+	MIMEType    string         `json:"mime_type,omitempty"`
+	Size        int64          `json:"size,omitempty"`
+	Policy      ResourcePolicy `json:"policy"`
+}
+
+type ResourceTemplateDescriptor struct {
+	URITemplate string         `json:"uri_template"`
+	Name        string         `json:"name"`
+	Title       string         `json:"title,omitempty"`
+	Description string         `json:"description,omitempty"`
+	MIMEType    string         `json:"mime_type,omitempty"`
+	Policy      ResourcePolicy `json:"policy"`
 }
 
 type PromptDescriptor struct {
@@ -116,6 +128,7 @@ func DescribeProtocolWithFeatures(schemas []tools.Schema, features *FeatureRegis
 	}
 	snapshot := features.Snapshot()
 	descriptor.Resources = snapshot.Resources
+	descriptor.ResourceTemplates = snapshot.ResourceTemplates
 	descriptor.Prompts = snapshot.Prompts
 	descriptor.Skills = snapshot.Skills
 	descriptor.Capabilities = mergeCapabilitiesWithFeatures(descriptor.Capabilities, snapshot.Capabilities)

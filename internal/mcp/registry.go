@@ -65,21 +65,24 @@ type FeatureCapabilities struct {
 }
 
 type FeatureRegistration struct {
-	ID           string
-	Family       FeatureFamily
-	Resources    []ResourceDescriptor
-	Prompts      []PromptDescriptor
-	Skills       []SkillDescriptor
-	Capabilities FeatureCapabilities
-	Methods      []FeatureMethod
+	ID                string
+	Family            FeatureFamily
+	Resources         []ResourceDescriptor
+	ResourceTemplates []ResourceTemplateDescriptor
+	ReadResource      ResourceReadHandler
+	Prompts           []PromptDescriptor
+	Skills            []SkillDescriptor
+	Capabilities      FeatureCapabilities
+	Methods           []FeatureMethod
 }
 
 type FeatureSnapshot struct {
-	Resources    []ResourceDescriptor
-	Prompts      []PromptDescriptor
-	Skills       []SkillDescriptor
-	Capabilities FeatureCapabilities
-	Methods      []FeatureMethodDescriptor
+	Resources         []ResourceDescriptor
+	ResourceTemplates []ResourceTemplateDescriptor
+	Prompts           []PromptDescriptor
+	Skills            []SkillDescriptor
+	Capabilities      FeatureCapabilities
+	Methods           []FeatureMethodDescriptor
 }
 
 type FeatureRegistry struct {
@@ -149,6 +152,7 @@ func (r *FeatureRegistry) Snapshot() FeatureSnapshot {
 	snapshot := FeatureSnapshot{Capabilities: FeatureCapabilities{Extensions: map[string]any{}}}
 	for _, registration := range registrations {
 		snapshot.Resources = append(snapshot.Resources, registration.Resources...)
+		snapshot.ResourceTemplates = append(snapshot.ResourceTemplates, registration.ResourceTemplates...)
 		snapshot.Prompts = append(snapshot.Prompts, registration.Prompts...)
 		snapshot.Skills = append(snapshot.Skills, registration.Skills...)
 		snapshot.Capabilities = mergeFeatureCapabilities(snapshot.Capabilities, registration.Capabilities)
@@ -159,6 +163,9 @@ func (r *FeatureRegistry) Snapshot() FeatureSnapshot {
 		}
 	}
 	sort.Slice(snapshot.Resources, func(i, j int) bool { return snapshot.Resources[i].URI < snapshot.Resources[j].URI })
+	sort.Slice(snapshot.ResourceTemplates, func(i, j int) bool {
+		return snapshot.ResourceTemplates[i].URITemplate < snapshot.ResourceTemplates[j].URITemplate
+	})
 	sort.Slice(snapshot.Prompts, func(i, j int) bool { return snapshot.Prompts[i].Name < snapshot.Prompts[j].Name })
 	sort.Slice(snapshot.Skills, func(i, j int) bool { return snapshot.Skills[i].Name < snapshot.Skills[j].Name })
 	sort.Slice(snapshot.Methods, func(i, j int) bool { return snapshot.Methods[i].Name < snapshot.Methods[j].Name })
@@ -179,6 +186,10 @@ func (r *FeatureRegistry) method(name string) (FeatureMethod, bool) {
 }
 
 func (r *FeatureRegistry) SupportsMethod(name string) bool {
+	switch strings.TrimSpace(name) {
+	case ResourcesListMethod, ResourcesReadMethod, ResourceTemplatesListMethod:
+		return r.supportsResourceMethods()
+	}
 	_, ok := r.method(name)
 	return ok
 }
@@ -193,6 +204,9 @@ func normalizeFeatureRegistration(registration FeatureRegistration) (FeatureRegi
 	default:
 		return FeatureRegistration{}, fmt.Errorf("feature %q has unsupported family %q", registration.ID, registration.Family)
 	}
+	if err := normalizeResourceRegistration(&registration); err != nil {
+		return FeatureRegistration{}, fmt.Errorf("feature %q resources: %w", registration.ID, err)
+	}
 	if _, err := json.Marshal(registration.Capabilities.Extensions); err != nil {
 		return FeatureRegistration{}, fmt.Errorf("feature %q capability settings are not JSON serializable: %w", registration.ID, err)
 	}
@@ -202,6 +216,7 @@ func normalizeFeatureRegistration(registration FeatureRegistration) (FeatureRegi
 		}
 	}
 	registration.Resources = cloneResourceDescriptors(registration.Resources)
+	registration.ResourceTemplates = cloneResourceTemplateDescriptors(registration.ResourceTemplates)
 	registration.Prompts = clonePromptDescriptors(registration.Prompts)
 	registration.Skills = cloneSkillDescriptors(registration.Skills)
 	registration.Capabilities = cloneFeatureCapabilities(registration.Capabilities)
@@ -238,6 +253,7 @@ func normalizeFeatureRegistration(registration FeatureRegistration) (FeatureRegi
 
 func validateFeatureCollisions(existing map[string]FeatureRegistration, candidate FeatureRegistration) error {
 	resources := map[string]string{}
+	resourceTemplates := map[string]string{}
 	prompts := map[string]string{}
 	skills := map[string]string{}
 	extensions := map[string]string{}
@@ -252,6 +268,16 @@ func validateFeatureCollisions(existing map[string]FeatureRegistration, candidat
 				return fmt.Errorf("resource %q is owned by both %q and %q", key, owner, registration.ID)
 			}
 			resources[key] = registration.ID
+		}
+		for _, resourceTemplate := range registration.ResourceTemplates {
+			key := strings.TrimSpace(resourceTemplate.URITemplate)
+			if key == "" {
+				return fmt.Errorf("feature %q resource template URI is required", registration.ID)
+			}
+			if owner := resourceTemplates[key]; owner != "" {
+				return fmt.Errorf("resource template %q is owned by both %q and %q", key, owner, registration.ID)
+			}
+			resourceTemplates[key] = registration.ID
 		}
 		for _, prompt := range registration.Prompts {
 			key := strings.TrimSpace(prompt.Name)
@@ -332,6 +358,7 @@ func mergeFeatureCapabilities(left, right FeatureCapabilities) FeatureCapabiliti
 
 func cloneFeatureRegistration(value FeatureRegistration) FeatureRegistration {
 	value.Resources = cloneResourceDescriptors(value.Resources)
+	value.ResourceTemplates = cloneResourceTemplateDescriptors(value.ResourceTemplates)
 	value.Prompts = clonePromptDescriptors(value.Prompts)
 	value.Skills = cloneSkillDescriptors(value.Skills)
 	value.Capabilities = cloneFeatureCapabilities(value.Capabilities)

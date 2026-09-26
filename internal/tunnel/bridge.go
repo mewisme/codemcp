@@ -56,6 +56,9 @@ func newSDKBridgeWithProfile(runtime *tools.Runtime, profile localmcp.Profile) (
 	if err := localmcp.InstallFeatureMethods(server, features); err != nil {
 		return nil, err
 	}
+	if err := localmcp.InstallResourceProjection(server, features); err != nil {
+		return nil, err
+	}
 	var tasks *localmcp.TaskRegistry
 	if localmcp.ProfileBackgroundCapabilities(profile).TaskObservation {
 		tasks = localmcp.NewTaskRegistry(runtime.Processes, runtime.BackgroundDeliveries)
