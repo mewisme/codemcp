@@ -65,7 +65,7 @@ func TestLoadedProjectSourcesIncludesWorkspacePromptMetadataWithoutLoadingBody(t
 		t.Fatal(err)
 	}
 	promptPath := filepath.Join(promptRoot, "review.json")
-	if err := os.WriteFile(promptPath, []byte("{\"name\":\"review\",\"description\":\"Review changes\"}"), 0600); err != nil {
+	if err := os.WriteFile(promptPath, []byte("{\"version\":1,\"name\":\"review\",\"description\":\"Review changes\",\"messages\":[{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"Review changes\"}}]}"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	values := LoadedProjectSources(ProjectMemoryBundle{}, nil, nil, workspaceRoot)

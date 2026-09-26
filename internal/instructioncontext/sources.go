@@ -91,23 +91,7 @@ func LoadedProjectSources(memory ProjectMemoryBundle, loadedRules []rules.Rule, 
 }
 
 func discoverPromptDefinitions(root string) []string {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil
-	}
-	result := make([]string, 0)
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || strings.ToLower(filepath.Ext(entry.Name())) != ".json" {
-			continue
-		}
-		path := filepath.Join(root, entry.Name())
-		info, err := os.Lstat(path)
-		if err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
-			result = append(result, path)
-		}
-	}
-	sort.Strings(result)
-	return result
+	return discoverPromptDefinitionPaths(root)
 }
 
 func discoverRegularFiles(root string, maxDepth int, extensions map[string]bool) []string {

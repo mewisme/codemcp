@@ -41,8 +41,8 @@ func TestWorkspaceMergeReconcilesTypedStateAndDropsTransientState(t *testing.T) 
 	writeWorkspaceMergeFile(t, filepath.Join(destinationLocal.RulesRoot(), "destination.mdc"), "destination rule")
 	writeWorkspaceMergeFile(t, filepath.Join(sourceLocal.SkillsRoot(), "source", "SKILL.md"), "source skill")
 	writeWorkspaceMergeFile(t, filepath.Join(destinationLocal.SkillsRoot(), "destination", "SKILL.md"), "destination skill")
-	writeWorkspaceMergeFile(t, filepath.Join(sourceLocal.PromptRoot(), "source.json"), `{"name":"source","prompt":"left"}`)
-	writeWorkspaceMergeFile(t, filepath.Join(destinationLocal.PromptRoot(), "destination.json"), `{"name":"destination","prompt":"right"}`)
+	writeWorkspaceMergeFile(t, filepath.Join(sourceLocal.PromptRoot(), "source.json"), `{"version":1,"name":"source","messages":[{"role":"user","content":{"type":"text","text":"left"}}]}`)
+	writeWorkspaceMergeFile(t, filepath.Join(destinationLocal.PromptRoot(), "destination.json"), `{"version":1,"name":"destination","messages":[{"role":"user","content":{"type":"text","text":"right"}}]}`)
 
 	if err := os.MkdirAll(filepath.Join(source, "sub"), 0755); err != nil {
 		t.Fatal(err)

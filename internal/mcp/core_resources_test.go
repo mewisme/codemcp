@@ -211,7 +211,7 @@ func TestCoreResourceCatalogsSanitizePathsAndReadFreshOwnerState(t *testing.T) {
 	if err := os.MkdirAll(promptRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(promptRoot, "review.json"), []byte("{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(promptRoot, "review.json"), []byte("{\"version\":1,\"name\":\"review\",\"messages\":[{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"Review changes\"}}]}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
