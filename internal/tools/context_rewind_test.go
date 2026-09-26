@@ -104,7 +104,7 @@ func TestContextSkillsRulesAndRemember(t *testing.T) {
 	if project.Root != root || project.WorkspaceID != workspaceID || project.Summary.MemoryBytes == 0 || project.Summary.InstructionBytes != project.InstructionContext.InstructionBytes {
 		t.Fatalf("project context = %#v", project)
 	}
-	if project.Summary.Rules != 1 || project.Summary.Skills != 1 || len(project.Summary.MemoryFiles) != 1 {
+	if project.Summary.Rules != 1 || project.Summary.Skills != 3 || len(project.Summary.MemoryFiles) != 1 {
 		t.Fatalf("project summary = %#v", project.Summary)
 	}
 	if !strings.Contains(project.InstructionContext.InstructionsText, "instructions") || !strings.Contains(project.InstructionContext.InstructionsText, "Global rule") || !strings.Contains(project.InstructionContext.InstructionsText, "test skill") {
@@ -118,7 +118,7 @@ func TestContextSkillsRulesAndRemember(t *testing.T) {
 	if err != nil || listResult.IsError {
 		t.Fatalf("list_skills failed: %#v %v", listResult, err)
 	}
-	if listResult.StructuredContent.(SkillsListResult).Count != 1 {
+	if listResult.StructuredContent.(SkillsListResult).Count != 3 {
 		t.Fatalf("skills = %#v", listResult.StructuredContent)
 	}
 
@@ -228,7 +228,11 @@ func TestContextToolsApplyManagedGlobalPolicyToUserSources(t *testing.T) {
 			t.Fatalf("disabled source leaked %q: %s", unexpected, project.InstructionContext.InstructionsText)
 		}
 	}
-	if len(project.InstructionContext.Sources) != 0 {
+	if len(project.InstructionContext.Sources) != 1 ||
+		project.InstructionContext.Sources[0].Provider != "codemcp" ||
+		project.InstructionContext.Sources[0].Kind != string(instructionpolicy.ResourceSkills) ||
+		project.InstructionContext.Sources[0].Scope != "builtin" ||
+		project.InstructionContext.Sources[0].Count != 2 {
 		t.Fatalf("sources = %#v", project.InstructionContext.Sources)
 	}
 
@@ -236,7 +240,7 @@ func TestContextToolsApplyManagedGlobalPolicyToUserSources(t *testing.T) {
 	if err != nil || listResult.IsError {
 		t.Fatalf("list_skills failed: %#v %v", listResult, err)
 	}
-	if listResult.StructuredContent.(SkillsListResult).Count != 0 {
+	if listResult.StructuredContent.(SkillsListResult).Count != 2 {
 		t.Fatalf("disabled user skill leaked: %#v", listResult.StructuredContent)
 	}
 	loadResult, err := runtime.Call(context.Background(), "load_skill", map[string]any{"workspace_id": workspaceID, "name": "user-review"})

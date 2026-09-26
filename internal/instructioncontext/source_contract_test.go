@@ -73,10 +73,10 @@ func TestDynamicProviderContractIsSharedAcrossProjectContextRulesAndSkills(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loadedSkills) != 3 {
+	if len(loadedSkills) != 5 {
 		t.Fatalf("skills=%#v", loadedSkills)
 	}
-	wantSkillSources := []string{".agents", ".newagent", ".zedagent"}
+	wantSkillSources := []string{".agents", ".newagent", ".zedagent", "codemcp", "codemcp"}
 	for i, source := range wantSkillSources {
 		if loadedSkills[i].Source != source {
 			t.Fatalf("skill %d=%#v want source=%q", i, loadedSkills[i], source)
@@ -95,7 +95,7 @@ func TestDynamicProviderContractIsSharedAcrossProjectContextRulesAndSkills(t *te
 			t.Fatalf("disabled rule source advertised as loaded: %#v", sources)
 		}
 	}
-	wantProviderOrder := []string{"agents", ".agents", ".newagent", ".zedagent"}
+	wantProviderOrder := []string{"agents", ".agents", ".newagent", ".zedagent", "codemcp"}
 	if len(providerOrder) != len(wantProviderOrder) {
 		t.Fatalf("provider order=%#v sources=%#v", providerOrder, sources)
 	}

@@ -226,7 +226,7 @@ func TestInstructionAuthoringGlobalRequiresOperatorAndPreservesManagedPolicy(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loadedSkills) != 1 || loadedSkills[0].Source != ".cm" || loadedSkills[0].Name != "global-skill" {
+	if len(loadedSkills) != 3 || loadedSkills[0].Source != ".cm" || loadedSkills[0].Name != "global-skill" || !skills.IsBuiltin(loadedSkills[1]) || !skills.IsBuiltin(loadedSkills[2]) {
 		t.Fatalf("global native skill=%#v", loadedSkills)
 	}
 	policyAfter, err := os.ReadFile(instructionpolicy.DefaultPath())

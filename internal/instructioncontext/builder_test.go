@@ -55,7 +55,7 @@ func TestBuildAssemblesInstructionContext(t *testing.T) {
 	if len(value.ProjectMemory.Sections) != 2 || value.ProjectMemory.Sections[0].Source != "agents" || value.ProjectMemory.Sections[1].Source != "claude" {
 		t.Fatalf("memory = %#v", value.ProjectMemory)
 	}
-	if !value.AutoMemory.Loaded || len(value.Rules) != 1 || len(value.Skills) != 1 {
+	if !value.AutoMemory.Loaded || len(value.Rules) != 1 || len(value.Skills) != 3 {
 		t.Fatalf("assembled context = %#v", value)
 	}
 	for _, expected := range []string{"primary agents", "claude fallback", "global rule", "Release workflow", "use pnpm"} {

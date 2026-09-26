@@ -57,6 +57,7 @@ type Runtime struct {
 	configApprovals      ConfigSetApprovalProvider
 	configApplyMu        sync.RWMutex
 	configApplies        ConfigSetApplyProvider
+	instructionAuthoring instructionAuthoringSlot
 	integrationMu        sync.Mutex
 	integrations         integrations.Config
 	ponytailManager      *ponytail.Manager
@@ -113,6 +114,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 		environment = environments[0]
 	}
 	registerCoreWithManagersAndBroker(registry, workspaces, checkpoints, environment, shell, processes, backgroundDeliveries, codeGraphProjectContextProviders(runtime))
+	RegisterInstructionAuthoringTools(registry, runtime)
 	RegisterAgentCompletionTool(registry, runtime.Completions)
 	RegisterApprovalTools(registry, runtime)
 	RegisterConfigTools(registry, runtime)

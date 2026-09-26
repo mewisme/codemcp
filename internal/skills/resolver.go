@@ -31,7 +31,7 @@ func DiscoverForWorkspace(projectRoot, workspaceRoot string) ([]Skill, error) {
 		}
 	}
 	sort.SliceStable(result, func(i, j int) bool { return workspaceSkillLess(result[i], result[j]) })
-	return result, nil
+	return appendReservedBuiltins(result), nil
 }
 
 func DiscoverUser(home string, policy instructionpolicy.Config) ([]Skill, error) {
@@ -46,7 +46,7 @@ func DiscoverUser(home string, policy instructionpolicy.Config) ([]Skill, error)
 		}
 		return result[i].Name < result[j].Name
 	})
-	return result, nil
+	return appendReservedBuiltins(result), nil
 }
 
 func DiscoverWithUser(workspaceRoot, home string, policy instructionpolicy.Config) ([]Skill, error) {
@@ -64,30 +64,30 @@ func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, polic
 	}
 	ordered := make([]Skill, 0, len(project)+len(user))
 	for _, skill := range project {
-		if skill.Source == instructionsource.NativeSource {
+		if skill.Source == instructionsource.NativeSource && !IsBuiltin(skill) {
 			ordered = append(ordered, skill)
 		}
 	}
 	for _, skill := range user {
-		if skill.Source == instructionsource.NativeSource {
+		if skill.Source == instructionsource.NativeSource && !IsBuiltin(skill) {
 			ordered = append(ordered, skill)
 		}
 	}
 	for _, skill := range project {
-		if skill.Source != instructionsource.NativeSource && policy.Enabled(skill.Source, instructionpolicy.ResourceSkills) {
+		if skill.Source != instructionsource.NativeSource && !IsBuiltin(skill) && policy.Enabled(skill.Source, instructionpolicy.ResourceSkills) {
 			ordered = append(ordered, skill)
 		}
 	}
 	seen := map[string]bool{}
 	result := make([]Skill, 0, len(ordered))
 	for _, skill := range ordered {
-		if seen[skill.Name] {
+		if IsReservedName(skill.Name) || seen[skill.Name] {
 			continue
 		}
 		seen[skill.Name] = true
 		result = append(result, skill)
 	}
-	return result, nil
+	return append(result, BuiltinSkills()...), nil
 }
 
 func workspaceSkillLess(left, right Skill) bool {
@@ -124,6 +124,9 @@ func loadFrom(all []Skill, err error, name string, maxBytes int) (Loaded, error)
 	}
 	if maxBytes <= 0 || maxBytes > 500_000 {
 		return Loaded{}, errors.New("max_bytes must be between 1 and 500000")
+	}
+	if builtin, ok := builtinLoaded(name, maxBytes); ok {
+		return builtin, nil
 	}
 	if err != nil {
 		return Loaded{}, err

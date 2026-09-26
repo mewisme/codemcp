@@ -100,6 +100,39 @@ func TestCatalogContractsAreCompleteAndUnique(t *testing.T) {
 	}
 }
 
+func TestInstructionAuthoringOperationsAreAgentMCPOnly(t *testing.T) {
+	tests := []struct {
+		id   ID
+		tool string
+	}{
+		{id: InstructionRuleCreate, tool: "create_rule"},
+		{id: InstructionSkillCreate, tool: "create_skill"},
+	}
+	for _, test := range tests {
+		mapped, ok := ForMCPTool(test.tool)
+		if !ok || mapped != test.id {
+			t.Fatalf("ForMCPTool(%q)=(%q,%t), want %q", test.tool, mapped, ok, test.id)
+		}
+		spec, ok := Lookup(test.id)
+		if !ok {
+			t.Fatalf("missing operation %q", test.id)
+		}
+		if spec.Audience != AudienceAgent || spec.Kind != KindMutation {
+			t.Fatalf("operation %q contract=%#v", test.id, spec)
+		}
+		mcp, ok := spec.Surface(SurfaceMCP)
+		if !ok || mcp.State != SurfaceRequired {
+			t.Fatalf("operation %q MCP surface=%#v", test.id, mcp)
+		}
+		for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
+			contract, ok := spec.Surface(surface)
+			if !ok || contract.State != SurfaceExempt {
+				t.Fatalf("operation %q surface %q=%#v", test.id, surface, contract)
+			}
+		}
+	}
+}
+
 func assertSurfaceContractComplete(t *testing.T, spec Spec) {
 	t.Helper()
 	seen := map[Surface]bool{}

@@ -70,6 +70,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	toolRuntime.SetConfigReadProvider(configProvider)
 	toolRuntime.SetConfigSetApprovalProvider(configProvider)
 	toolRuntime.SetConfigSetApplyProvider(configProvider)
+	toolRuntime.SetInstructionAuthoringProvider(application.NewAgentInstructionAuthoringProvider(toolRuntime.Workspaces))
 	toolSpan.EndMessage("Tool runtime bootstrapped", tracepkg.Int("tool_count", len(toolRuntime.List())))
 	if toolRuntime.Upstream != nil {
 		toolRuntime.Upstream.SetTraceObserver(observer)

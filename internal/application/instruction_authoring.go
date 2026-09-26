@@ -18,6 +18,7 @@ import (
 	"sync"
 
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/skills"
 	"go.mewis.me/codemcp/internal/workspace"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
@@ -228,6 +229,9 @@ func (s *InstructionAuthoringService) WriteSkill(ctx context.Context, request Sk
 	name, err := validateArtifactName(request.Name)
 	if err != nil {
 		return InstructionAuthoringResult{}, err
+	}
+	if skills.IsReservedName(name) {
+		return InstructionAuthoringResult{}, fmt.Errorf("skill name %q is reserved by CodeMCP", name)
 	}
 	if err := validateAuthoringMode(request.Mode); err != nil {
 		return InstructionAuthoringResult{}, err

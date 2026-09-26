@@ -46,6 +46,8 @@ const (
 	NodeREPL                        ID = "node.repl"
 	SkillList                       ID = "skill.list"
 	SkillLoad                       ID = "skill.load"
+	InstructionRuleCreate           ID = "instruction.rule.create"
+	InstructionSkillCreate          ID = "instruction.skill.create"
 	RulesLoadPath                   ID = "rules.path.load"
 	MemoryRemember                  ID = "memory.remember"
 	MemoryGet                       ID = "memory.get"
@@ -118,6 +120,8 @@ var mcpToolBindings = map[ID][]string{
 	NodeREPL:                        {"node_repl"},
 	SkillList:                       {"list_skills"},
 	SkillLoad:                       {"load_skill"},
+	InstructionRuleCreate:           {"create_rule"},
+	InstructionSkillCreate:          {"create_skill"},
 	RulesLoadPath:                   {"load_path_rules"},
 	MemoryRemember:                  {"remember"},
 	MemoryGet:                       {"memory_get"},
@@ -185,6 +189,8 @@ func agentOnlySpecs() []Spec {
 		agentMutationSpec(NodeREPL, RiskSensitive, true),
 		agentQuerySpec(SkillList, false),
 		agentQuerySpec(SkillLoad, false),
+		agentMutationSpec(InstructionRuleCreate, RiskState, false),
+		agentMutationSpec(InstructionSkillCreate, RiskState, false),
 		agentQuerySpec(RulesLoadPath, false),
 		agentMutationSpec(MemoryRemember, RiskState, false),
 		agentQuerySpec(MemoryGet, false),

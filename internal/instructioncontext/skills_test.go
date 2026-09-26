@@ -29,7 +29,7 @@ func TestLoadSkillSummariesPrefersAgentsAndReturnsMetadataOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != 3 {
+	if len(loaded) != 5 {
 		t.Fatalf("skills = %#v", loaded)
 	}
 	if loaded[0].Source != ".agents" || loaded[0].Path != agentsPath || loaded[0].Name != "release" || loaded[0].Description != "Release workflow" {
@@ -40,6 +40,9 @@ func TestLoadSkillSummariesPrefersAgentsAndReturnsMetadataOnly(t *testing.T) {
 	}
 	if loaded[2].Source != ".cursor" || loaded[2].Path != cursorPath || loaded[2].Name != "release" {
 		t.Fatalf("cursor skill = %#v", loaded[2])
+	}
+	if loaded[3].Source != "codemcp" || loaded[3].Name != "create-rule" || loaded[4].Source != "codemcp" || loaded[4].Name != "create-skill" {
+		t.Fatalf("builtin skills = %#v", loaded[3:])
 	}
 	for _, skill := range loaded {
 		if skill.Name == "SECRET BODY MUST NOT APPEAR" || skill.Description == "SECRET BODY MUST NOT APPEAR" {
@@ -58,7 +61,7 @@ func TestLoadSkillSummariesSupportsAllProviders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != len(providers) {
+	if len(loaded) != len(providers)+2 {
 		t.Fatalf("skills = %#v", loaded)
 	}
 	wantOrder := []string{".agents", ".claude", ".claudes", ".codex", ".cursor"}
@@ -66,6 +69,9 @@ func TestLoadSkillSummariesSupportsAllProviders(t *testing.T) {
 		if loaded[i].Source != provider {
 			t.Fatalf("skill %d = %#v", i, loaded[i])
 		}
+	}
+	if loaded[len(providers)].Source != "codemcp" || loaded[len(providers)+1].Source != "codemcp" {
+		t.Fatalf("builtin skills = %#v", loaded[len(providers):])
 	}
 }
 
@@ -84,7 +90,7 @@ func TestLoadSkillSummariesSkipsSymlinkSkills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != 0 {
+	if len(loaded) != 2 || loaded[0].Source != "codemcp" || loaded[1].Source != "codemcp" {
 		t.Fatalf("skills = %#v", loaded)
 	}
 }

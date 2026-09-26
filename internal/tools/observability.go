@@ -278,22 +278,108 @@ func callRaw(ctx context.Context, source, name string, args map[string]any) map[
 }
 
 func observableToolArguments(name string, args map[string]any) map[string]any {
-	if name != mcpconfigwire.SetToolName {
+	switch name {
+	case mcpconfigwire.SetToolName:
+		summary := mcpconfigwire.SummarizeArguments(args)
+		return map[string]any{
+			"change_count": summary.ChangeCount,
+			"keys":         append([]string(nil), summary.Keys...),
+		}
+	case CreateRuleToolName:
+		return observableRuleAuthoringArguments(args)
+	case CreateSkillToolName:
+		return observableSkillAuthoringArguments(args)
+	default:
 		return cloneMap(args)
-	}
-	summary := mcpconfigwire.SummarizeArguments(args)
-	return map[string]any{
-		"change_count": summary.ChangeCount,
-		"keys":         append([]string(nil), summary.Keys...),
 	}
 }
 
 func observableToolEnvelope(name string, value, publicArgs map[string]any) map[string]any {
 	out := cloneMap(value)
-	if name == mcpconfigwire.SetToolName {
+	if name == mcpconfigwire.SetToolName || name == CreateRuleToolName || name == CreateSkillToolName {
 		out["arguments"] = cloneMap(publicArgs)
 	}
 	return out
+}
+
+func observableRuleAuthoringArguments(args map[string]any) map[string]any {
+	result := map[string]any{
+		"workspace_id":  stringArgument(args, "workspace_id"),
+		"mode":          stringArgument(args, "mode"),
+		"name":          stringArgument(args, "name"),
+		"always_apply":  boolArgument(args, "always_apply"),
+		"dry_run":       boolArgument(args, "dry_run"),
+		"content_bytes": len([]byte(stringArgument(args, "content"))),
+	}
+	if globs, ok := sliceArgument(args, "globs"); ok {
+		result["glob_count"] = len(globs)
+	} else {
+		result["glob_count"] = 0
+	}
+	return result
+}
+
+func observableSkillAuthoringArguments(args map[string]any) map[string]any {
+	result := map[string]any{
+		"workspace_id":      stringArgument(args, "workspace_id"),
+		"mode":              stringArgument(args, "mode"),
+		"name":              stringArgument(args, "name"),
+		"dry_run":           boolArgument(args, "dry_run"),
+		"description_bytes": len([]byte(stringArgument(args, "description"))),
+		"instruction_bytes": len([]byte(stringArgument(args, "instructions"))),
+	}
+	files, ok := sliceArgument(args, "supporting_files")
+	if !ok {
+		result["supporting_file_count"] = 0
+		result["supporting_bytes"] = 0
+		return result
+	}
+	bytes := 0
+	for _, item := range files {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		bytes += len([]byte(stringArgument(entry, "content")))
+	}
+	result["supporting_file_count"] = len(files)
+	result["supporting_bytes"] = bytes
+	return result
+}
+
+func stringArgument(args map[string]any, key string) string {
+	value, _ := args[key].(string)
+	return value
+}
+
+func boolArgument(args map[string]any, key string) bool {
+	value, _ := args[key].(bool)
+	return value
+}
+
+func sliceArgument(args map[string]any, key string) ([]any, bool) {
+	value, exists := args[key]
+	if !exists {
+		return nil, false
+	}
+	if values, ok := value.([]any); ok {
+		return values, true
+	}
+	if values, ok := value.([]string); ok {
+		result := make([]any, len(values))
+		for index := range values {
+			result[index] = values[index]
+		}
+		return result, true
+	}
+	if values, ok := value.([]map[string]any); ok {
+		result := make([]any, len(values))
+		for index := range values {
+			result[index] = values[index]
+		}
+		return result, true
+	}
+	return nil, false
 }
 
 func cloneMap(value map[string]any) map[string]any {

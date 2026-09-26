@@ -167,8 +167,10 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		if err != nil {
 			return Result{}, err
 		}
-		if _, err := workspaces.ResolvePath(item.ID, item.Path, value.Skill.Path, true); err != nil && !withinDirectory(home, value.Skill.Path) {
-			return Result{}, fmt.Errorf("skill path: %w", err)
+		if !skills.IsBuiltin(value.Skill) {
+			if _, err := workspaces.ResolvePath(item.ID, item.Path, value.Skill.Path, true); err != nil && !withinDirectory(home, value.Skill.Path) {
+				return Result{}, fmt.Errorf("skill path: %w", err)
+			}
 		}
 		return JSONResult(value), nil
 	})

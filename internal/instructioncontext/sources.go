@@ -49,6 +49,9 @@ func LoadedProjectSources(memory ProjectMemoryBundle, loadedRules []rules.Rule, 
 	groups := map[key][]string{}
 	scopeOf := func(source, path string) string {
 		clean := filepath.Clean(path)
+		if source == skills.BuiltinSource {
+			return "builtin"
+		}
 		if source == instructionsource.NativeSource {
 			if withinSourceRoot(clean, workspacestate.New(workspaceRoot).Root()) {
 				return "workspace-native"
