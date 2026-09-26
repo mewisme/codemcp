@@ -12,6 +12,20 @@ import (
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
+func TestProcessManagerCloseSubscriptionsClosesTerminalSubscribers(t *testing.T) {
+	manager := NewProcessManager(nil, nil)
+	sub := manager.SubscribeTerminal()
+	manager.CloseSubscriptions()
+	select {
+	case _, ok := <-sub.Events:
+		if ok {
+			t.Fatal("terminal subscription remained open after process subscription shutdown")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("process terminal subscription did not close")
+	}
+}
+
 func TestProcessManagerResolvesRelocatedWorkspaceAliases(t *testing.T) {
 	if os.PathSeparator != '\\' && os.Getenv("SHELL") == "" {
 		t.Setenv("SHELL", "/bin/sh")

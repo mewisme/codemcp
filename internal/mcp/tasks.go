@@ -104,6 +104,7 @@ type TaskRegistry struct {
 	recentOrder []string
 	closed      chan struct{}
 	closeOnce   sync.Once
+	wg          sync.WaitGroup
 }
 
 func NewTaskRegistry(processes *shellruntime.ProcessManager, brokers ...*backgrounddelivery.Broker) *TaskRegistry {
@@ -121,7 +122,11 @@ func NewTaskRegistry(processes *shellruntime.ProcessManager, brokers ...*backgro
 	}
 	if processes != nil {
 		r.sub = processes.SubscribeTerminal()
-		go r.consume()
+		r.wg.Add(1)
+		go func() {
+			defer r.wg.Done()
+			r.consume()
+		}()
 	}
 	return r
 }
@@ -135,6 +140,7 @@ func (r *TaskRegistry) Close() {
 		if r.processes != nil && r.sub != nil {
 			r.processes.UnsubscribeTerminal(r.sub)
 		}
+		r.wg.Wait()
 	})
 }
 

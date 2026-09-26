@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -114,6 +115,24 @@ func TestSDKServerDoesNotAllocateTasksForIneligibleProfile(t *testing.T) {
 	}
 	if server.Tasks != nil {
 		t.Fatal("Tasks-disabled profile allocated a task registry")
+	}
+}
+
+func TestTaskRegistryCloseStopsTerminalSubscription(t *testing.T) {
+	processes := shellruntime.NewProcessManager(nil, nil)
+	registry := NewTaskRegistry(processes)
+	if registry.sub == nil {
+		t.Fatal("task registry did not subscribe to process terminal events")
+	}
+	sub := registry.sub
+	registry.Close()
+	select {
+	case _, ok := <-sub.Events:
+		if ok {
+			t.Fatal("task terminal subscription remained open after registry close")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("task registry close did not close terminal subscription")
 	}
 }
 

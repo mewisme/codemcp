@@ -5,16 +5,19 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/auth"
+	"go.mewis.me/codemcp/internal/backgrounddelivery"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/controlguard"
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	"go.mewis.me/codemcp/internal/notification"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -415,6 +418,74 @@ func TestStopShutsDownCompletionHookBus(t *testing.T) {
 	}
 	if err := runtime.CompletionHooks.Dispatch(event); err == nil || !strings.Contains(err.Error(), "stopped") {
 		t.Fatalf("completion hook bus remained active after app stop: %v", err)
+	}
+}
+
+func TestStopCancelsPendingApprovalsBeforeRuntimeTeardown(t *testing.T) {
+	manager := approval.NewManager("instance-shutdown-approval")
+	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{
+		CallerID: "caller-shutdown", RequestCorrelationID: "shutdown", SessionHash: "hash-shutdown", WorkspaceID: "ws_shutdown",
+		Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"command": "cm update"},
+		GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Allow shutdown test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _, err := manager.CreateRequestWithCorrelation(challenge.ID, "caller-shutdown", "ws_shutdown", "Allow shutdown test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &App{Tools: &tools.Runtime{Approvals: manager}}
+	if err := application.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if pending := manager.List(approval.Filter{Status: approval.StatusPending}); len(pending) != 0 {
+		t.Fatalf("pending approvals remained after shutdown: %#v", pending)
+	}
+	resolved, ok := manager.Get(request.ID)
+	if !ok || resolved.Status != approval.StatusCancelled || resolved.Reason != "runtime shutdown" {
+		t.Fatalf("shutdown approval=%#v ok=%t", resolved, ok)
+	}
+}
+
+func TestStopPublishesProcessTerminalTruthBeforeClosingBroker(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	if os.PathSeparator != '\\' && os.Getenv("SHELL") == "" {
+		t.Setenv("SHELL", "/bin/sh")
+	}
+	runtime := tools.NewRuntime()
+	item, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := "sleep 30"
+	if os.PathSeparator == '\\' {
+		command = "Start-Sleep -Seconds 30"
+	}
+	started, err := runtime.Processes.Start(context.Background(), item.ID, command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := backgrounddelivery.Owner{ID: "shutdown-owner", Generation: "shutdown-generation"}
+	if !runtime.BackgroundDeliveries.RegisterStart(backgrounddelivery.Registration{
+		WorkspaceID: item.ID, ProcessID: started.ID, ExecutionID: started.ExecutionID, Owner: owner,
+	}) {
+		t.Fatal("background delivery registration failed")
+	}
+	application := &App{Tools: runtime}
+	if err := application.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	deliveries, err := runtime.BackgroundDeliveries.List(item.ID, owner)
+	if err != nil || len(deliveries) != 1 {
+		t.Fatalf("shutdown deliveries=%#v err=%v", deliveries, err)
+	}
+	if deliveries[0].ProcessID != started.ID || deliveries[0].Reason != shellruntime.BackgroundTerminalShutdown || deliveries[0].Status != shellruntime.ExecutionStatusCancelled {
+		t.Fatalf("shutdown delivery=%#v", deliveries[0])
+	}
+	snapshot, err := runtime.Executions.Get(item.ID, started.ExecutionID)
+	if err != nil || snapshot.Execution.Status != shellruntime.ExecutionStatusCancelled {
+		t.Fatalf("shutdown execution=%#v err=%v", snapshot, err)
 	}
 }
 

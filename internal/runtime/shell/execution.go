@@ -2,31 +2,36 @@ package shell
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
 
 	"go.mewis.me/codemcp/internal/idgen"
+	statepkg "go.mewis.me/codemcp/internal/state"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const (
-	maxExecutionLogBytes      = 400_000
-	MaxExecutionFeedEvents    = 1024
-	maxExecutionEventBytes    = 8 << 10
-	maxRecentExecutions       = 100
-	executionSubscriberBuffer = 64
-	executionFeedBuffer       = 128
-	ExecutionStatusRunning    = "running"
-	ExecutionStatusSuccess    = "success"
-	ExecutionStatusFailed     = "failed"
-	ExecutionStatusCancelled  = "cancelled"
-	ExecutionStatusTimedOut   = "timed_out"
-	ExecutionEventStarted     = "started"
-	ExecutionEventOutput      = "output"
-	ExecutionEventCompleted   = "completed"
+	maxExecutionLogBytes       = 400_000
+	MaxExecutionFeedEvents     = 1024
+	maxExecutionEventBytes     = 8 << 10
+	maxRecentExecutions        = 100
+	executionSubscriberBuffer  = 64
+	executionFeedBuffer        = 128
+	ExecutionStatusRunning     = "running"
+	ExecutionStatusSuccess     = "success"
+	ExecutionStatusFailed      = "failed"
+	ExecutionStatusCancelled   = "cancelled"
+	ExecutionStatusTimedOut    = "timed_out"
+	ExecutionStatusInterrupted = "interrupted"
+	ExecutionEventStarted      = "started"
+	ExecutionEventOutput       = "output"
+	ExecutionEventCompleted    = "completed"
+	executionStoreVersion      = 1
 )
 
 var ErrExecutionNotFound = errors.New("execution not found")
@@ -136,6 +141,13 @@ type ExecutionHub struct {
 	feed         []ExecutionFeedEvent
 	feedSequence uint64
 	feedSubs     map[*ExecutionFeedSubscription]struct{}
+	storePath    string
+	closeOnce    sync.Once
+}
+
+type executionStoreFile struct {
+	Version    int                 `json:"version"`
+	Executions []ExecutionSnapshot `json:"executions"`
 }
 
 type executionRecord struct {
@@ -170,6 +182,15 @@ type ExecutionMetadata struct {
 
 func NewExecutionHub() *ExecutionHub {
 	return &ExecutionHub{executions: map[string]*executionRecord{}, maxRecent: maxRecentExecutions, feedSubs: map[*ExecutionFeedSubscription]struct{}{}}
+}
+
+func NewPersistentExecutionHub(path string) (*ExecutionHub, error) {
+	h := NewExecutionHub()
+	h.storePath = strings.TrimSpace(path)
+	if err := h.load(); err != nil {
+		return nil, err
+	}
+	return h, nil
 }
 
 func WithExecutionSource(ctx context.Context, source string) context.Context {
@@ -233,6 +254,7 @@ func (h *ExecutionHub) Begin(input ExecutionInput) *ExecutionRun {
 	h.order = append(h.order, id)
 	h.pruneLocked()
 	h.mu.Unlock()
+	_ = h.persist()
 	h.publishFeed(ExecutionFeedEvent{Type: ExecutionEventStarted, ExecutionID: id, WorkspaceID: record.info.WorkspaceID, Execution: executionInfoPtr(record.info), Status: ExecutionStatusRunning, Timestamp: record.info.StartedAt})
 	return &ExecutionRun{hub: h, record: record}
 }
@@ -377,6 +399,7 @@ func (r *ExecutionRun) Finish(status string, exitCode *int, timedOut bool) {
 		r.hub.mu.Lock()
 		r.hub.pruneLocked()
 		r.hub.mu.Unlock()
+		_ = r.hub.persist()
 	}
 }
 
@@ -400,7 +423,47 @@ func (w *executionWriter) Write(data []byte) (int, error) {
 		}
 	}
 	record.mu.Unlock()
+	if w.run.hub != nil {
+		_ = w.run.hub.persist()
+	}
 	return len(data), nil
+}
+
+func (h *ExecutionHub) Close() {
+	if h == nil {
+		return
+	}
+	h.closeOnce.Do(func() {
+		h.mu.RLock()
+		records := make([]*executionRecord, 0, len(h.executions))
+		for _, record := range h.executions {
+			records = append(records, record)
+		}
+		h.mu.RUnlock()
+		for _, record := range records {
+			record.mu.Lock()
+			for sub := range record.subs {
+				delete(record.subs, sub)
+				if !sub.closed {
+					close(sub.Events)
+					close(sub.Overflow)
+					sub.closed = true
+				}
+			}
+			record.mu.Unlock()
+		}
+		h.feedMu.Lock()
+		for sub := range h.feedSubs {
+			delete(h.feedSubs, sub)
+			if !sub.closed {
+				close(sub.Events)
+				close(sub.Overflow)
+				sub.closed = true
+			}
+		}
+		h.feedMu.Unlock()
+		_ = h.persist()
+	})
 }
 
 func (h *ExecutionHub) record(workspaceID, id string) (*executionRecord, error) {
@@ -423,6 +486,80 @@ func (h *ExecutionHub) record(workspaceID, id string) (*executionRecord, error) 
 		}
 	}
 	return record, nil
+}
+
+func (h *ExecutionHub) load() error {
+	if h == nil || h.storePath == "" {
+		return nil
+	}
+	data, err := os.ReadFile(h.storePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var stored executionStoreFile
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return err
+	}
+	if stored.Version != executionStoreVersion {
+		return errors.New("unsupported execution store version")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	interrupted := false
+	for _, snapshot := range stored.Executions {
+		info := cloneExecutionInfo(snapshot.Execution)
+		if strings.TrimSpace(info.ID) == "" || strings.TrimSpace(info.WorkspaceID) == "" {
+			continue
+		}
+		if info.Status == ExecutionStatusRunning {
+			info.Status = ExecutionStatusInterrupted
+			info.FinishedAt = now
+			info.ExitCode = nil
+			info.TimedOut = false
+			interrupted = true
+		}
+		record := &executionRecord{
+			info: info, stdout: []byte(snapshot.Stdout), stderr: []byte(snapshot.Stderr),
+			sequence: snapshot.LatestSequence, subs: map[*ExecutionSubscription]struct{}{},
+		}
+		h.executions[info.ID] = record
+		h.order = append(h.order, info.ID)
+	}
+	h.pruneLocked()
+	if interrupted {
+		return h.persist()
+	}
+	return nil
+}
+
+func (h *ExecutionHub) persist() error {
+	if h == nil || h.storePath == "" {
+		return nil
+	}
+	h.mu.RLock()
+	order := append([]string(nil), h.order...)
+	records := make(map[string]*executionRecord, len(h.executions))
+	for id, record := range h.executions {
+		records[id] = record
+	}
+	h.mu.RUnlock()
+	snapshots := make([]ExecutionSnapshot, 0, len(order))
+	for _, id := range order {
+		record := records[id]
+		if record == nil {
+			continue
+		}
+		record.mu.Lock()
+		snapshots = append(snapshots, record.snapshotLocked())
+		record.mu.Unlock()
+	}
+	data, err := json.MarshalIndent(executionStoreFile{Version: executionStoreVersion, Executions: snapshots}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return statepkg.WriteFileAtomic(h.storePath, append(data, '\n'), 0600)
 }
 
 func (h *ExecutionHub) pruneLocked() {

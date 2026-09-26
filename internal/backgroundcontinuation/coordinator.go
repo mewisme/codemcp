@@ -20,6 +20,7 @@ const (
 	maxRetryDelay         = 30 * time.Second
 	defaultOutputTail     = 2048
 	maxContextItems       = 16
+	defaultMaxAttempts    = 5
 )
 
 type Mode string
@@ -111,7 +112,12 @@ type Coordinator struct {
 	Output         OutputTailProvider
 	CoalesceWindow time.Duration
 	OutputTail     int
+	MaxAttempts    int
 	closeOnce      sync.Once
+	lifecycleMu    sync.Mutex
+	cancel         context.CancelFunc
+	runDone        chan struct{}
+	closed         bool
 }
 
 func (c *Coordinator) Run(ctx context.Context, workspaceID string) error {
@@ -121,6 +127,33 @@ func (c *Coordinator) Run(ctx context.Context, workspaceID string) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	c.lifecycleMu.Lock()
+	if c.closed {
+		c.lifecycleMu.Unlock()
+		cancel()
+		return nil
+	}
+	if c.cancel != nil {
+		c.lifecycleMu.Unlock()
+		cancel()
+		return errors.New("background continuation coordinator is already running")
+	}
+	c.cancel = cancel
+	c.runDone = done
+	c.lifecycleMu.Unlock()
+	defer func() {
+		cancel()
+		c.lifecycleMu.Lock()
+		if c.runDone == done {
+			c.cancel = nil
+			c.runDone = nil
+		}
+		close(done)
+		c.lifecycleMu.Unlock()
+	}()
+	ctx = runCtx
 	workspaceID = strings.TrimSpace(workspaceID)
 	if workspaceID == "" {
 		return errors.New("background continuation workspace is required")
@@ -141,7 +174,13 @@ func (c *Coordinator) Run(ctx context.Context, workspaceID string) error {
 	defer c.Broker.Unsubscribe(events)
 	trigger := make(chan struct{}, 1)
 	trigger <- struct{}{}
+	var retryTimer *time.Timer
 	var retry <-chan time.Time
+	defer func() {
+		if retryTimer != nil {
+			retryTimer.Stop()
+		}
+	}()
 
 	for {
 		select {
@@ -172,7 +211,18 @@ func (c *Coordinator) Run(ctx context.Context, workspaceID string) error {
 				return runErr
 			}
 			if delay > 0 {
-				retry = time.After(delay)
+				if retryTimer == nil {
+					retryTimer = time.NewTimer(delay)
+				} else {
+					if !retryTimer.Stop() {
+						select {
+						case <-retryTimer.C:
+						default:
+						}
+					}
+					retryTimer.Reset(delay)
+				}
+				retry = retryTimer.C
 			}
 		case <-retry:
 			retry = nil
@@ -189,7 +239,19 @@ func (c *Coordinator) Close() error {
 		return nil
 	}
 	var err error
-	c.closeOnce.Do(func() { err = c.Adapter.Close() })
+	c.closeOnce.Do(func() {
+		c.lifecycleMu.Lock()
+		c.closed = true
+		cancel, done := c.cancel, c.runDone
+		if cancel != nil {
+			cancel()
+		}
+		c.lifecycleMu.Unlock()
+		if done != nil {
+			<-done
+		}
+		err = c.Adapter.Close()
+	})
 	return err
 }
 
@@ -239,6 +301,24 @@ func (c *Coordinator) flush(ctx context.Context, workspaceID string, owner backg
 		return 0, nil
 	}
 
+	attempted := claimed[:0]
+	for _, claim := range claimed {
+		if claim.Delivery.Attempts >= c.maxAttempts() {
+			_, _ = c.Broker.DeadLetter(workspaceID, owner, claim.Delivery.ID, claim.Receipt)
+			continue
+		}
+		updated, attemptErr := c.Broker.RecordAttempt(workspaceID, owner, claim.Delivery.ID, claim.Receipt)
+		if attemptErr != nil {
+			return 0, attemptErr
+		}
+		claim.Delivery = updated
+		attempted = append(attempted, claim)
+	}
+	claimed = attempted
+	if len(claimed) == 0 {
+		return 0, nil
+	}
+
 	request := c.buildRequest(ctx, workspaceID, owner, mode, claimed)
 	result, deliverErr := c.Adapter.Deliver(ctx, request)
 	if deliverErr != nil {
@@ -251,7 +331,7 @@ func (c *Coordinator) flush(ctx context.Context, workspaceID string, owner backg
 			return c.retryDelay(commitResult.RetryAfter), nil
 		}
 		if commitResult.Outcome != OutcomeDelivered {
-			c.release(workspaceID, owner, claimed)
+			c.deadLetter(workspaceID, owner, claimed)
 			return 0, nil
 		}
 		for _, claim := range claimed {
@@ -263,16 +343,16 @@ func (c *Coordinator) flush(ctx context.Context, workspaceID string, owner backg
 	case OutcomeRetryable:
 		return c.retryDelay(result.RetryAfter), nil
 	case OutcomeUnsupported, OutcomeStale, OutcomeClosed:
-		c.release(workspaceID, owner, claimed)
+		c.deadLetter(workspaceID, owner, claimed)
 		return 0, nil
 	default:
 		return c.retryDelay(0), nil
 	}
 }
 
-func (c *Coordinator) release(workspaceID string, owner backgrounddelivery.Owner, claims []backgrounddelivery.ClaimResult) {
+func (c *Coordinator) deadLetter(workspaceID string, owner backgrounddelivery.Owner, claims []backgrounddelivery.ClaimResult) {
 	for _, claim := range claims {
-		_, _ = c.Broker.Release(workspaceID, owner, claim.Delivery.ID, claim.Receipt)
+		_, _ = c.Broker.DeadLetter(workspaceID, owner, claim.Delivery.ID, claim.Receipt)
 	}
 }
 
@@ -304,6 +384,29 @@ func (c *Coordinator) buildRequest(ctx context.Context, workspaceID string, owne
 		IdempotencyKey: strings.Join(keys, "."),
 		Completions:    contexts,
 	}
+}
+
+func (c *Coordinator) RecoverySummaries(ctx context.Context, workspaceID string, owner backgrounddelivery.Owner) ([]CompletionContext, error) {
+	if c == nil || c.Broker == nil {
+		return nil, errors.New("background continuation coordinator is unavailable")
+	}
+	values, err := c.Broker.Recoverable(workspaceID, owner)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]CompletionContext, 0, len(values))
+	for _, delivery := range values {
+		item := CompletionContext{
+			DeliveryID: delivery.ID, ProcessID: delivery.ProcessID, ExecutionID: delivery.ExecutionID,
+			TaskID: delivery.TaskID, CallID: delivery.CallID, Status: delivery.Status,
+			Reason: string(delivery.Reason), Summary: completionSummary(delivery),
+		}
+		if c.Output != nil && c.outputTail() > 0 {
+			item.OutputTail = boundUTF8(c.Output.Tail(ctx, delivery, c.outputTail()), c.outputTail())
+		}
+		result = append(result, item)
+	}
+	return result, nil
 }
 
 func selectMode(capability Capability) (Mode, bool) {
@@ -353,6 +456,13 @@ func (c *Coordinator) retryDelay(value time.Duration) time.Duration {
 		value = defaultRetryDelay
 	}
 	return min(value, maxRetryDelay)
+}
+
+func (c *Coordinator) maxAttempts() int {
+	if c.MaxAttempts <= 0 {
+		return defaultMaxAttempts
+	}
+	return c.MaxAttempts
 }
 
 func boundUTF8(value string, limit int) string {

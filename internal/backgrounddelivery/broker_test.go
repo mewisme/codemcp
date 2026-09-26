@@ -2,6 +2,7 @@ package backgrounddelivery
 
 import (
 	"errors"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -333,5 +334,90 @@ func TestBrokerSubscribeAfterCloseIsClosed(t *testing.T) {
 	sub := broker.Subscribe()
 	if _, ok := <-sub; ok {
 		t.Fatal("subscription created after close remained open")
+	}
+}
+
+func TestBrokerCloseClosesExistingSubscribers(t *testing.T) {
+	broker := New(nil)
+	sub := broker.Subscribe()
+	broker.Close()
+	if _, ok := <-sub; ok {
+		t.Fatal("existing broker subscription remained open after close")
+	}
+}
+
+func TestPersistentBrokerRestartDoesNotRedeliverCommittedDelivery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "background-deliveries.json")
+	owner := Owner{ID: "owner-a", Generation: "generation-a"}
+	first, err := NewPersistent(nil, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivery := materializeTestDelivery(t, first, "proc_persisted_commit", owner)
+	claim, err := first.Claim("ws_one", owner, delivery.ID, "adapter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.RecordAttempt("ws_one", owner, delivery.ID, claim.Receipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.Commit("ws_one", owner, delivery.ID, claim.Receipt); err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+
+	second, err := NewPersistent(nil, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	replayed, err := second.Claim("ws_one", owner, delivery.ID, "adapter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !replayed.AlreadyDelivered || replayed.Acquired || replayed.Delivery.State != DeliveryCommitted || replayed.Delivery.Attempts != 1 {
+		t.Fatalf("replayed committed delivery=%#v", replayed)
+	}
+}
+
+func TestPersistentDeadLetterRecoveryRemainsOwnerScopedAcrossRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "background-deliveries.json")
+	owner := Owner{ID: "owner-a", Generation: "generation-a"}
+	first, err := NewPersistent(nil, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivery := materializeTestDelivery(t, first, "proc_dead_letter", owner)
+	claim, err := first.Claim("ws_one", owner, delivery.ID, "adapter")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.RecordAttempt("ws_one", owner, delivery.ID, claim.Receipt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.DeadLetter("ws_one", owner, delivery.ID, claim.Receipt); err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+
+	second, err := NewPersistent(nil, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Close()
+	recoverable, err := second.Recoverable("ws_one", owner)
+	if err != nil || len(recoverable) != 1 || recoverable[0].ID != delivery.ID || recoverable[0].State != DeliveryDeadLetter {
+		t.Fatalf("recoverable=%#v err=%v", recoverable, err)
+	}
+	wrongOwner := Owner{ID: owner.ID, Generation: "generation-b"}
+	if values, err := second.Recoverable("ws_one", wrongOwner); err != nil || len(values) != 0 {
+		t.Fatalf("replacement generation recovered stale delivery: %#v err=%v", values, err)
+	}
+	if _, err := second.ConsumeRecovery("ws_one", wrongOwner, delivery.ID); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("wrong generation recovery err=%v", err)
+	}
+	recovery, err := second.ConsumeRecovery("ws_one", owner, delivery.ID)
+	if err != nil || !recovery.Consumed || recovery.Delivery.State != DeliverySuppressed {
+		t.Fatalf("recovery=%#v err=%v", recovery, err)
 	}
 }

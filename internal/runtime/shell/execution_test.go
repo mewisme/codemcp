@@ -108,6 +108,47 @@ func TestExecutionHubFeedRetainsLatestEvents(t *testing.T) {
 	}
 }
 
+func TestPersistentExecutionHubMarksCrashActiveExecutionInterruptedWithoutReconstructingProcess(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "executions.json")
+	first, err := NewPersistentExecutionHub(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := first.Begin(ExecutionInput{WorkspaceID: "ws_test", Tool: "start_process", Command: "long-work", CWD: t.TempDir()})
+	if _, err := run.Writer("stdout").Write([]byte("partial-output")); err != nil {
+		t.Fatal(err)
+	}
+
+	restarted, err := NewPersistentExecutionHub(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	snapshot, err := restarted.Get("ws_test", run.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Execution.Status != ExecutionStatusInterrupted || snapshot.Execution.FinishedAt == "" || snapshot.Execution.ExitCode != nil || snapshot.Execution.TimedOut || snapshot.Stdout != "partial-output" {
+		t.Fatalf("restarted snapshot=%#v", snapshot)
+	}
+
+	root := t.TempDir()
+	workspaces := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := workspaces.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManagerWithExecutions(workspaces, filepath.Join(t.TempDir(), "state"), restarted)
+	processes := NewProcessManagerWithExecutions(workspaces, manager, restarted)
+	status, err := processes.Status(item.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status) != 0 {
+		t.Fatalf("restart reconstructed fake live OS processes: %#v", status)
+	}
+}
+
 func TestExecutionWriterChunksLargeUTF8Output(t *testing.T) {
 	hub := NewExecutionHub()
 	run := hub.Begin(ExecutionInput{WorkspaceID: "ws_chunk", Tool: "run_command"})

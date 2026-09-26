@@ -121,7 +121,7 @@ func TestCoordinatorResumesFromTerminalEventWithoutPolling(t *testing.T) {
 	t.Fatal("delivered continuation was not committed")
 }
 
-func TestCoordinatorUnsupportedRetainsRecoverablePendingDelivery(t *testing.T) {
+func TestCoordinatorUnsupportedRetainsRecoverableDeadLetter(t *testing.T) {
 	broker := backgrounddelivery.New(nil)
 	t.Cleanup(broker.Close)
 	owner := backgrounddelivery.Owner{ID: "owner", Generation: "generation"}
@@ -145,17 +145,21 @@ func TestCoordinatorUnsupportedRetainsRecoverablePendingDelivery(t *testing.T) {
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		current, err := broker.Peek("ws_test", owner, delivery.ID)
-		if err == nil && current.State == backgrounddelivery.DeliveryPending {
+		if err == nil && current.State == backgrounddelivery.DeliveryDeadLetter {
+			summaries, summaryErr := coordinator.RecoverySummaries(context.Background(), "ws_test", owner)
+			if summaryErr != nil || len(summaries) != 1 || summaries[0].DeliveryID != delivery.ID {
+				t.Fatalf("recovery summaries=%#v err=%v", summaries, summaryErr)
+			}
 			cancel()
 			<-done
 			return
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("unsupported delivery was not released back to recoverable pending state")
+	t.Fatal("unsupported delivery was not retained as a recoverable dead letter")
 }
 
-func TestCoordinatorTerminalNonDeliveryOutcomesRemainRecoverable(t *testing.T) {
+func TestCoordinatorTerminalNonDeliveryOutcomesBecomeRecoverableDeadLetters(t *testing.T) {
 	for _, outcome := range []Outcome{OutcomeUnsupported, OutcomeStale, OutcomeClosed} {
 		t.Run(string(outcome), func(t *testing.T) {
 			broker := backgrounddelivery.New(nil)
@@ -181,14 +185,14 @@ func TestCoordinatorTerminalNonDeliveryOutcomesRemainRecoverable(t *testing.T) {
 			deadline := time.Now().Add(time.Second)
 			for time.Now().Before(deadline) {
 				current, err := broker.Peek("ws_test", owner, delivery.ID)
-				if err == nil && current.State == backgrounddelivery.DeliveryPending {
+				if err == nil && current.State == backgrounddelivery.DeliveryDeadLetter {
 					cancel()
 					<-done
 					return
 				}
 				time.Sleep(time.Millisecond)
 			}
-			t.Fatalf("%s outcome left delivery claimed", outcome)
+			t.Fatalf("%s outcome did not become a dead letter", outcome)
 		})
 	}
 }
@@ -353,5 +357,91 @@ func TestRetryableOutcomeRetriesWithStableIdempotencyKey(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
+	}
+}
+
+func TestRetryableOutcomeIsBoundedAndDeadLettered(t *testing.T) {
+	broker := backgrounddelivery.New(nil)
+	t.Cleanup(broker.Close)
+	owner := backgrounddelivery.Owner{ID: "owner", Generation: "generation"}
+	adapter := &testAdapter{
+		id: "bounded-retry", owner: owner,
+		capability: Capability{IdleContinuation: true},
+		deliver:    DeliverResult{Outcome: OutcomeRetryable, RetryAfter: time.Millisecond},
+		commit:     DeliverResult{Outcome: OutcomeDelivered},
+		delivered:  make(chan Request, 8),
+	}
+	delivery := materialize(t, broker, owner, "proc_bounded")
+	coordinator := &Coordinator{Broker: broker, Adapter: adapter, CoalesceWindow: -1, MaxAttempts: 2}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- coordinator.Run(ctx, "ws_test") }()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		current, err := broker.Peek("ws_test", owner, delivery.ID)
+		if err == nil && current.State == backgrounddelivery.DeliveryDeadLetter {
+			if current.Attempts != 2 || current.DeadLetteredAt == nil {
+				t.Fatalf("dead letter=%#v", current)
+			}
+			adapter.mu.Lock()
+			requests := len(adapter.requests)
+			adapter.mu.Unlock()
+			if requests != 2 {
+				t.Fatalf("delivery attempts=%d want=2", requests)
+			}
+			summaries, summaryErr := coordinator.RecoverySummaries(context.Background(), "ws_test", owner)
+			if summaryErr != nil || len(summaries) != 1 || summaries[0].DeliveryID != delivery.ID {
+				t.Fatalf("recovery summaries=%#v err=%v", summaries, summaryErr)
+			}
+			cancel()
+			if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+				t.Fatal(err)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("retryable delivery was not dead-lettered after bounded attempts")
+}
+
+func TestCoordinatorCloseStopsOwnedRetryTimerAndRun(t *testing.T) {
+	broker := backgrounddelivery.New(nil)
+	t.Cleanup(broker.Close)
+	owner := backgrounddelivery.Owner{ID: "owner", Generation: "generation"}
+	adapter := &testAdapter{
+		id: "close-retry", owner: owner,
+		capability: Capability{IdleContinuation: true},
+		deliver:    DeliverResult{Outcome: OutcomeRetryable, RetryAfter: 250 * time.Millisecond},
+		commit:     DeliverResult{Outcome: OutcomeDelivered},
+		delivered:  make(chan Request, 4),
+	}
+	materialize(t, broker, owner, "proc_close_retry")
+	coordinator := &Coordinator{Broker: broker, Adapter: adapter, CoalesceWindow: -1}
+	done := make(chan error, 1)
+	go func() { done <- coordinator.Run(context.Background(), "ws_test") }()
+	select {
+	case <-adapter.delivered:
+	case <-time.After(time.Second):
+		t.Fatal("initial retryable delivery was not attempted")
+	}
+	if err := coordinator.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("run after close=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("coordinator close did not stop active run")
+	}
+	time.Sleep(300 * time.Millisecond)
+	adapter.mu.Lock()
+	requests, closed := len(adapter.requests), adapter.closed
+	adapter.mu.Unlock()
+	if requests != 1 || !closed {
+		t.Fatalf("post-close adapter requests=%d closed=%t", requests, closed)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -80,10 +81,17 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	if err != nil {
 		panic(err)
 	}
-	executions := shellruntime.NewExecutionHub()
+	stateRoot := shellruntime.DefaultStateRoot()
+	executions, err := shellruntime.NewPersistentExecutionHub(filepath.Join(stateRoot, "executions.json"))
+	if err != nil {
+		panic(err)
+	}
 	shell := shellruntime.NewManagerWithExecutions(workspaces, shellruntime.DefaultStateRoot(), executions)
 	processes := shellruntime.NewProcessManagerWithExecutions(workspaces, shell, executions)
-	backgroundDeliveries := backgrounddelivery.New(processes)
+	backgroundDeliveries, err := backgrounddelivery.NewPersistent(processes, filepath.Join(stateRoot, "background-deliveries.json"))
+	if err != nil {
+		panic(err)
+	}
 	completionHooks := agentcompletion.NewCompletionHookBus(agentcompletion.HookBusOptions{Timeout: codegraph.SyncTimeout + 5*time.Second})
 	completions, err := agentcompletion.NewWorkspaceService(workspaces, agentcompletion.Options{Hooks: completionHooks})
 	if err != nil {

@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"go.mewis.me/codemcp/internal/idgen"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
+	statepkg "go.mewis.me/codemcp/internal/state"
 )
 
 const (
@@ -19,6 +22,7 @@ const (
 	defaultMaxPerOwner     = 64
 	defaultRecentTerminals = 256
 	defaultRecentTTL       = 10 * time.Minute
+	storeVersion           = 1
 )
 
 var ErrUnauthorized = errors.New("background delivery scope is unauthorized")
@@ -38,6 +42,7 @@ const (
 	DeliveryCommitted    DeliveryState = "committed"
 	DeliveryAcknowledged DeliveryState = "acknowledged"
 	DeliverySuppressed   DeliveryState = "suppressed"
+	DeliveryDeadLetter   DeliveryState = "dead_letter"
 )
 
 type Owner struct {
@@ -122,6 +127,9 @@ type Delivery struct {
 	CommittedAt     *time.Time                            `json:"committed_at,omitempty"`
 	AcknowledgedAt  *time.Time                            `json:"acknowledged_at,omitempty"`
 	SuppressedAt    *time.Time                            `json:"suppressed_at,omitempty"`
+	Attempts        int                                   `json:"attempts,omitempty"`
+	LastAttemptAt   *time.Time                            `json:"last_attempt_at,omitempty"`
+	DeadLetteredAt  *time.Time                            `json:"dead_lettered_at,omitempty"`
 }
 
 type ClaimResult struct {
@@ -142,6 +150,11 @@ type terminalRecord struct {
 	receivedAt time.Time
 }
 
+type storeFile struct {
+	Version    int        `json:"version"`
+	Deliveries []Delivery `json:"deliveries"`
+}
+
 type Broker struct {
 	processes     *shellruntime.ProcessManager
 	sub           *shellruntime.BackgroundWorkTerminalSubscription
@@ -157,11 +170,28 @@ type Broker struct {
 	maxPerOwner   int
 	closed        chan struct{}
 	closeOnce     sync.Once
+	wg            sync.WaitGroup
 	subs          map[chan Delivery]struct{}
+	storePath     string
 }
 
 func New(processes *shellruntime.ProcessManager) *Broker {
-	b := &Broker{
+	b := newBroker(processes, "")
+	b.start()
+	return b
+}
+
+func NewPersistent(processes *shellruntime.ProcessManager, path string) (*Broker, error) {
+	b := newBroker(processes, strings.TrimSpace(path))
+	if err := b.load(); err != nil {
+		return nil, err
+	}
+	b.start()
+	return b, nil
+}
+
+func newBroker(processes *shellruntime.ProcessManager, storePath string) *Broker {
+	return &Broker{
 		processes:     processes,
 		registrations: map[string]Registration{},
 		deliveries:    map[string]Delivery{},
@@ -172,12 +202,20 @@ func New(processes *shellruntime.ProcessManager) *Broker {
 		maxPerOwner:   defaultMaxPerOwner,
 		closed:        make(chan struct{}),
 		subs:          map[chan Delivery]struct{}{},
+		storePath:     storePath,
 	}
-	if processes != nil {
-		b.sub = processes.SubscribeTerminal()
-		go b.consume()
+}
+
+func (b *Broker) start() {
+	if b == nil || b.processes == nil {
+		return
 	}
-	return b
+	b.sub = b.processes.SubscribeTerminal()
+	b.wg.Add(1)
+	go func() {
+		defer b.wg.Done()
+		b.consume()
+	}()
 }
 
 func (b *Broker) Close() {
@@ -186,15 +224,16 @@ func (b *Broker) Close() {
 	}
 	b.closeOnce.Do(func() {
 		close(b.closed)
+		if b.processes != nil && b.sub != nil {
+			b.processes.UnsubscribeTerminal(b.sub)
+		}
+		b.wg.Wait()
 		b.mu.Lock()
 		for ch := range b.subs {
 			delete(b.subs, ch)
 			close(ch)
 		}
 		b.mu.Unlock()
-		if b.processes != nil && b.sub != nil {
-			b.processes.UnsubscribeTerminal(b.sub)
-		}
 	})
 }
 
@@ -275,6 +314,7 @@ func (b *Broker) RegisterStart(value Registration) bool {
 		delete(b.recent, value.ProcessID)
 		delete(b.registrations, value.ProcessID)
 	}
+	_ = b.persistLocked()
 	b.mu.Unlock()
 	return true
 }
@@ -296,6 +336,7 @@ func (b *Broker) AttachTask(processID, taskID string) bool {
 		if delivery.ProcessID == processID {
 			delivery.TaskID = taskID
 			b.deliveries[id] = delivery
+			_ = b.persistLocked()
 			return true
 		}
 	}
@@ -313,6 +354,7 @@ func (b *Broker) ApplyTerminal(event shellruntime.BackgroundWorkTerminalEvent) {
 	if registration, ok := b.registrations[event.ProcessID]; ok {
 		b.materializeLocked(registration, event, now)
 		delete(b.registrations, event.ProcessID)
+		_ = b.persistLocked()
 		return
 	}
 	b.recent[event.ProcessID] = terminalRecord{event: cloneTerminal(event), receivedAt: now}
@@ -357,6 +399,7 @@ func (b *Broker) materializeLocked(registration Registration, event shellruntime
 		}
 	}
 	b.pruneLocked(now)
+	_ = b.persistLocked()
 }
 
 func (b *Broker) List(workspaceID string, owner Owner) ([]Delivery, error) {
@@ -415,6 +458,7 @@ func (b *Broker) Claim(workspaceID string, owner Owner, deliveryID, claimant str
 		delivery.Receipt = idgen.Must("receipt", 12)
 		delivery.ClaimedAt = timeRef(now)
 		b.deliveries[delivery.ID] = delivery
+		_ = b.persistLocked()
 		return ClaimResult{Delivery: cloneDelivery(delivery), Receipt: delivery.Receipt, Acquired: true}, nil
 	case DeliveryClaimed:
 		if delivery.Claimant != claimant {
@@ -454,6 +498,7 @@ func (b *Broker) Commit(workspaceID string, owner Owner, deliveryID, receipt str
 		delivery.State = DeliveryCommitted
 		delivery.CommittedAt = timeRef(now)
 		b.deliveries[delivery.ID] = delivery
+		_ = b.persistLocked()
 		return cloneDelivery(delivery), nil
 	case DeliveryCommitted, DeliveryAcknowledged:
 		return cloneDelivery(delivery), nil
@@ -483,6 +528,7 @@ func (b *Broker) Acknowledge(workspaceID string, owner Owner, deliveryID, receip
 		delivery.State = DeliveryAcknowledged
 		delivery.AcknowledgedAt = timeRef(now)
 		b.deliveries[delivery.ID] = delivery
+		_ = b.persistLocked()
 		return cloneDelivery(delivery), nil
 	case DeliveryAcknowledged:
 		return cloneDelivery(delivery), nil
@@ -513,7 +559,65 @@ func (b *Broker) Release(workspaceID string, owner Owner, deliveryID, receipt st
 	delivery.Receipt = ""
 	delivery.ClaimedAt = nil
 	b.deliveries[delivery.ID] = delivery
+	_ = b.persistLocked()
 	return cloneDelivery(delivery), nil
+}
+
+func (b *Broker) RecordAttempt(workspaceID string, owner Owner, deliveryID, receipt string) (Delivery, error) {
+	if b == nil || !owner.Valid() || strings.TrimSpace(workspaceID) == "" {
+		return Delivery{}, ErrUnauthorized
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delivery, err := b.authorizedDeliveryLocked(strings.TrimSpace(workspaceID), owner, strings.TrimSpace(deliveryID))
+	if err != nil {
+		return Delivery{}, err
+	}
+	if delivery.State != DeliveryClaimed || delivery.Receipt == "" || delivery.Receipt != strings.TrimSpace(receipt) {
+		return cloneDelivery(delivery), ErrReceiptMismatch
+	}
+	now := time.Now().UTC()
+	delivery.Attempts++
+	delivery.LastAttemptAt = timeRef(now)
+	b.deliveries[delivery.ID] = delivery
+	_ = b.persistLocked()
+	return cloneDelivery(delivery), nil
+}
+
+func (b *Broker) DeadLetter(workspaceID string, owner Owner, deliveryID, receipt string) (Delivery, error) {
+	if b == nil || !owner.Valid() || strings.TrimSpace(workspaceID) == "" {
+		return Delivery{}, ErrUnauthorized
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delivery, err := b.authorizedDeliveryLocked(strings.TrimSpace(workspaceID), owner, strings.TrimSpace(deliveryID))
+	if err != nil {
+		return Delivery{}, err
+	}
+	if delivery.State != DeliveryClaimed || delivery.Receipt == "" || delivery.Receipt != strings.TrimSpace(receipt) {
+		return cloneDelivery(delivery), ErrReceiptMismatch
+	}
+	now := time.Now().UTC()
+	delivery.State = DeliveryDeadLetter
+	delivery.DeadLetteredAt = timeRef(now)
+	b.deliveries[delivery.ID] = delivery
+	_ = b.persistLocked()
+	return cloneDelivery(delivery), nil
+}
+
+func (b *Broker) Recoverable(workspaceID string, owner Owner) ([]Delivery, error) {
+	values, err := b.List(workspaceID, owner)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Delivery, 0, len(values))
+	for _, delivery := range values {
+		switch delivery.State {
+		case "", DeliveryPending, DeliveryClaimed, DeliveryDeadLetter:
+			result = append(result, delivery)
+		}
+	}
+	return result, nil
 }
 
 // ConsumeRecovery atomically records that a foreground consuming recovery path
@@ -531,10 +635,11 @@ func (b *Broker) ConsumeRecovery(workspaceID string, owner Owner, deliveryID str
 		return RecoveryResult{}, err
 	}
 	switch delivery.State {
-	case "", DeliveryPending:
+	case "", DeliveryPending, DeliveryDeadLetter:
 		delivery.State = DeliverySuppressed
 		delivery.SuppressedAt = timeRef(now)
 		b.deliveries[delivery.ID] = delivery
+		_ = b.persistLocked()
 		return RecoveryResult{Delivery: cloneDelivery(delivery), Consumed: true}, nil
 	case DeliverySuppressed, DeliveryCommitted, DeliveryAcknowledged:
 		return RecoveryResult{Delivery: cloneDelivery(delivery), AlreadyDelivered: true}, nil
@@ -554,6 +659,59 @@ func (b *Broker) authorizedDeliveryLocked(workspaceID string, owner Owner, deliv
 		return Delivery{}, ErrUnauthorized
 	}
 	return delivery, nil
+}
+
+func (b *Broker) load() error {
+	if b == nil || b.storePath == "" {
+		return nil
+	}
+	data, err := os.ReadFile(b.storePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	var stored storeFile
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return err
+	}
+	if stored.Version != storeVersion {
+		return errors.New("unsupported background delivery store version")
+	}
+	now := time.Now().UTC()
+	for _, delivery := range stored.Deliveries {
+		if strings.TrimSpace(delivery.ID) == "" || strings.TrimSpace(delivery.WorkspaceID) == "" ||
+			strings.TrimSpace(delivery.OwnerID) == "" || strings.TrimSpace(delivery.OwnerGeneration) == "" {
+			continue
+		}
+		if !delivery.ExpiresAt.IsZero() && !now.Before(delivery.ExpiresAt) {
+			continue
+		}
+		b.deliveries[delivery.ID] = cloneDelivery(delivery)
+		b.order = append(b.order, delivery.ID)
+		key := ownerKey(Owner{ID: delivery.OwnerID, Generation: delivery.OwnerGeneration})
+		b.byOwner[key] = append(b.byOwner[key], delivery.ID)
+	}
+	b.pruneLocked(now)
+	return nil
+}
+
+func (b *Broker) persistLocked() error {
+	if b == nil || b.storePath == "" {
+		return nil
+	}
+	deliveries := make([]Delivery, 0, len(b.order))
+	for _, id := range b.order {
+		if delivery, ok := b.deliveries[id]; ok {
+			deliveries = append(deliveries, cloneDelivery(delivery))
+		}
+	}
+	data, err := json.MarshalIndent(storeFile{Version: storeVersion, Deliveries: deliveries}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return statepkg.WriteFileAtomic(b.storePath, append(data, '\n'), 0600)
 }
 
 func (b *Broker) pruneLocked(now time.Time) {
@@ -649,6 +807,8 @@ func cloneDelivery(value Delivery) Delivery {
 	value.CommittedAt = cloneTime(value.CommittedAt)
 	value.AcknowledgedAt = cloneTime(value.AcknowledgedAt)
 	value.SuppressedAt = cloneTime(value.SuppressedAt)
+	value.LastAttemptAt = cloneTime(value.LastAttemptAt)
+	value.DeadLetteredAt = cloneTime(value.DeadLetteredAt)
 	return value
 }
 

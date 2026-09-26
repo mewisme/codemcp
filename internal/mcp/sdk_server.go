@@ -25,6 +25,12 @@ type SDKServer struct {
 	Tasks            *TaskRegistry
 }
 
+func (s *SDKServer) Close() {
+	if s != nil && s.Tasks != nil {
+		s.Tasks.Close()
+	}
+}
+
 func NewSDKServerWithTools(toolRuntime *tools.Runtime, source string) (*SDKServer, error) {
 	return NewSDKServerWithSession(toolRuntime, source, "", "")
 }

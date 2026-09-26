@@ -70,6 +70,9 @@ func (b *sdkBridge) Run(ctx context.Context, transport sdkmcp.Transport) error {
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if b.tasks != nil {
+		defer b.tasks.Close()
+	}
 	changes := b.runtime.Registry.SubscribeChanges()
 	defer b.runtime.Registry.UnsubscribeChanges(changes)
 	serverDone := make(chan error, 1)

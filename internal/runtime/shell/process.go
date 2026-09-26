@@ -194,6 +194,22 @@ func (m *ProcessManager) UnsubscribeTerminal(sub *BackgroundWorkTerminalSubscrip
 	m.terminalMu.Unlock()
 }
 
+func (m *ProcessManager) CloseSubscriptions() {
+	if m == nil {
+		return
+	}
+	m.terminalMu.Lock()
+	for sub := range m.terminalSubs {
+		delete(m.terminalSubs, sub)
+		if !sub.closed {
+			close(sub.events)
+			close(sub.overflow)
+			sub.closed = true
+		}
+	}
+	m.terminalMu.Unlock()
+}
+
 func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string) (StartResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
