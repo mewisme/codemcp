@@ -26,6 +26,25 @@ func TestProcessManagerCloseSubscriptionsClosesTerminalSubscribers(t *testing.T)
 	}
 }
 
+func TestProcessDiagnosticsExposeRunningAgeAndTerminalOverflow(t *testing.T) {
+	manager := NewProcessManager(nil, nil)
+	process := &managedProcess{id: "proc_diag", startedAt: time.Now().Add(-25 * time.Millisecond).UTC().Format(time.RFC3339Nano)}
+	manager.mu.Lock()
+	manager.processes[process.id] = process
+	manager.order = append(manager.order, process.id)
+	manager.mu.Unlock()
+	sub := manager.SubscribeTerminal()
+	defer manager.UnsubscribeTerminal(sub)
+	for index := 0; index < terminalEventBuffer; index++ {
+		sub.events <- BackgroundWorkTerminalEvent{ProcessID: "buffered"}
+	}
+	manager.publishTerminal(&managedProcess{id: "overflow", workspace: "ws_diag"}, ExecutionStatusSuccess, BackgroundTerminalExit, nil, nil, false)
+	diagnostics := manager.Diagnostics()
+	if diagnostics.Running != 1 || diagnostics.OldestRunningAgeMS < 1 || diagnostics.TerminalSubscribers != 1 || diagnostics.TerminalOverflowDropped != 1 {
+		t.Fatalf("process diagnostics=%#v", diagnostics)
+	}
+}
+
 func TestProcessManagerResolvesRelocatedWorkspaceAliases(t *testing.T) {
 	if os.PathSeparator != '\\' && os.Getenv("SHELL") == "" {
 		t.Setenv("SHELL", "/bin/sh")

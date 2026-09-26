@@ -202,3 +202,22 @@ func TestToolCallSnapshotWatermarkPrecedesBufferedLiveEvents(t *testing.T) {
 		t.Fatal("timed out waiting for buffered live tool call")
 	}
 }
+
+func TestActivitySnapshotBarrierPrecedesBufferedLiveEvent(t *testing.T) {
+	stream := NewStream()
+	stream.Publish(Event{Kind: string(EventBackground), Message: "before"})
+	sub, snapshot := stream.SubscribeSnapshot(10)
+	defer stream.UnsubscribeDetailed(sub)
+	if snapshot.LatestSequence != 1 || len(snapshot.Events) != 1 || snapshot.Events[0].Sequence != 1 {
+		t.Fatalf("snapshot=%#v", snapshot)
+	}
+	stream.Publish(Event{Kind: string(EventBackground), Message: "after"})
+	select {
+	case event := <-sub.Events:
+		if event.Sequence != 2 || event.Sequence <= snapshot.LatestSequence || event.Message != "after" {
+			t.Fatalf("live event=%#v barrier=%d", event, snapshot.LatestSequence)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("activity event after snapshot barrier was missed")
+	}
+}

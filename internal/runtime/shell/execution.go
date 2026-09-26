@@ -100,6 +100,15 @@ type ExecutionOverflow struct {
 	DroppedSequence uint64 `json:"dropped_sequence"`
 }
 
+type ExecutionDiagnostics struct {
+	Running              int   `json:"running"`
+	OldestRunningAgeMS   int64 `json:"oldest_running_age_ms,omitempty"`
+	FeedSubscribers      int   `json:"feed_subscribers"`
+	FeedOverflowed       int   `json:"feed_overflowed"`
+	ExecutionSubscribers int   `json:"execution_subscribers"`
+	ExecutionOverflowed  int   `json:"execution_overflowed"`
+}
+
 type ExecutionSubscription struct {
 	Events   chan ExecutionEvent
 	Overflow chan ExecutionOverflow
@@ -357,6 +366,49 @@ func (h *ExecutionHub) UnsubscribeFeed(sub *ExecutionFeedSubscription) {
 		sub.closed = true
 	}
 	h.feedMu.Unlock()
+}
+
+func (h *ExecutionHub) Diagnostics() ExecutionDiagnostics {
+	if h == nil {
+		return ExecutionDiagnostics{}
+	}
+	now := time.Now().UTC()
+	h.mu.RLock()
+	records := make([]*executionRecord, 0, len(h.executions))
+	for _, record := range h.executions {
+		records = append(records, record)
+	}
+	h.mu.RUnlock()
+	result := ExecutionDiagnostics{}
+	var oldest time.Time
+	for _, record := range records {
+		record.mu.Lock()
+		if record.info.Status == ExecutionStatusRunning {
+			result.Running++
+			if started, err := time.Parse(time.RFC3339Nano, record.info.StartedAt); err == nil && (oldest.IsZero() || started.Before(oldest)) {
+				oldest = started
+			}
+		}
+		result.ExecutionSubscribers += len(record.subs)
+		for sub := range record.subs {
+			if sub.overflow {
+				result.ExecutionOverflowed++
+			}
+		}
+		record.mu.Unlock()
+	}
+	if !oldest.IsZero() {
+		result.OldestRunningAgeMS = max(0, now.Sub(oldest).Milliseconds())
+	}
+	h.feedMu.Lock()
+	result.FeedSubscribers = len(h.feedSubs)
+	for sub := range h.feedSubs {
+		if sub.overflow {
+			result.FeedOverflowed++
+		}
+	}
+	h.feedMu.Unlock()
+	return result
 }
 
 func (r *ExecutionRun) ID() string {

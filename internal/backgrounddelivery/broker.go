@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.mewis.me/codemcp/internal/idgen"
@@ -155,6 +156,31 @@ type storeFile struct {
 	Deliveries []Delivery `json:"deliveries"`
 }
 
+type continuationRegistration struct {
+	WorkspaceID string
+	Owner       Owner
+	AdapterID   string
+	Registered  time.Time
+}
+
+type Diagnostics struct {
+	Pending                 int    `json:"pending"`
+	Claimed                 int    `json:"claimed"`
+	Retrying                int    `json:"retrying"`
+	DeadLetters             int    `json:"dead_letters"`
+	Committed               int    `json:"committed"`
+	Acknowledged            int    `json:"acknowledged"`
+	Suppressed              int    `json:"suppressed"`
+	OldestPendingAgeMS      int64  `json:"oldest_pending_age_ms,omitempty"`
+	OldestRetryAgeMS        int64  `json:"oldest_retry_age_ms,omitempty"`
+	OldestDeadLetterAgeMS   int64  `json:"oldest_dead_letter_age_ms,omitempty"`
+	Subscribers             int    `json:"subscribers"`
+	OverflowDropped         uint64 `json:"overflow_dropped"`
+	ContinuationAdapters    int    `json:"continuation_adapters"`
+	ContinuationOwners      int    `json:"continuation_owners"`
+	OldestContinuationAgeMS int64  `json:"oldest_continuation_age_ms,omitempty"`
+}
+
 type Broker struct {
 	processes     *shellruntime.ProcessManager
 	sub           *shellruntime.BackgroundWorkTerminalSubscription
@@ -173,6 +199,8 @@ type Broker struct {
 	wg            sync.WaitGroup
 	subs          map[chan Delivery]struct{}
 	storePath     string
+	dropped       atomic.Uint64
+	continuations map[string]continuationRegistration
 }
 
 func New(processes *shellruntime.ProcessManager) *Broker {
@@ -203,6 +231,7 @@ func newBroker(processes *shellruntime.ProcessManager, storePath string) *Broker
 		closed:        make(chan struct{}),
 		subs:          map[chan Delivery]struct{}{},
 		storePath:     storePath,
+		continuations: map[string]continuationRegistration{},
 	}
 }
 
@@ -396,10 +425,100 @@ func (b *Broker) materializeLocked(registration Registration, event shellruntime
 		select {
 		case ch <- cloneDelivery(delivery):
 		default:
+			b.dropped.Add(1)
 		}
 	}
 	b.pruneLocked(now)
 	_ = b.persistLocked()
+}
+
+func (b *Broker) SetContinuationAdapter(workspaceID string, owner Owner, adapterID string, supported bool) {
+	if b == nil || !owner.Valid() {
+		return
+	}
+	workspaceID = strings.TrimSpace(workspaceID)
+	adapterID = strings.TrimSpace(adapterID)
+	if workspaceID == "" || adapterID == "" {
+		return
+	}
+	key := continuationKey(workspaceID, owner, adapterID)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !supported {
+		delete(b.continuations, key)
+		return
+	}
+	if _, exists := b.continuations[key]; exists {
+		return
+	}
+	b.continuations[key] = continuationRegistration{
+		WorkspaceID: workspaceID,
+		Owner:       owner,
+		AdapterID:   adapterID,
+		Registered:  time.Now().UTC(),
+	}
+}
+
+func (b *Broker) RemoveContinuationAdapter(workspaceID string, owner Owner, adapterID string) {
+	if b == nil || !owner.Valid() {
+		return
+	}
+	b.mu.Lock()
+	delete(b.continuations, continuationKey(strings.TrimSpace(workspaceID), owner, strings.TrimSpace(adapterID)))
+	b.mu.Unlock()
+}
+
+func (b *Broker) Diagnostics() Diagnostics {
+	if b == nil {
+		return Diagnostics{}
+	}
+	now := time.Now().UTC()
+	b.mu.Lock()
+	b.pruneLocked(now)
+	result := Diagnostics{
+		Subscribers:          len(b.subs),
+		OverflowDropped:      b.dropped.Load(),
+		ContinuationAdapters: len(b.continuations),
+	}
+	owners := map[string]struct{}{}
+	var oldestPending, oldestRetry, oldestDeadLetter, oldestContinuation time.Time
+	for _, delivery := range b.deliveries {
+		switch delivery.State {
+		case "", DeliveryPending:
+			result.Pending++
+			oldestPending = earlierTime(oldestPending, delivery.CreatedAt)
+		case DeliveryClaimed:
+			result.Claimed++
+			if delivery.Attempts > 0 {
+				result.Retrying++
+				if delivery.LastAttemptAt != nil {
+					oldestRetry = earlierTime(oldestRetry, *delivery.LastAttemptAt)
+				}
+			}
+		case DeliveryDeadLetter:
+			result.DeadLetters++
+			if delivery.DeadLetteredAt != nil {
+				oldestDeadLetter = earlierTime(oldestDeadLetter, *delivery.DeadLetteredAt)
+			}
+		case DeliveryCommitted:
+			result.Committed++
+		case DeliveryAcknowledged:
+			result.Acknowledged++
+		case DeliverySuppressed:
+			result.Suppressed++
+		}
+	}
+	for _, registration := range b.continuations {
+		owners[ownerKey(registration.Owner)] = struct{}{}
+		oldestContinuation = earlierTime(oldestContinuation, registration.Registered)
+	}
+	result.ContinuationOwners = len(owners)
+	result.OldestPendingAgeMS = ageMilliseconds(now, oldestPending)
+	result.OldestRetryAgeMS = ageMilliseconds(now, oldestRetry)
+	result.OldestDeadLetterAgeMS = ageMilliseconds(now, oldestDeadLetter)
+	result.OldestContinuationAgeMS = ageMilliseconds(now, oldestContinuation)
+	b.mu.Unlock()
+	return result
 }
 
 func (b *Broker) List(workspaceID string, owner Owner) ([]Delivery, error) {
@@ -784,6 +903,27 @@ func (b *Broker) pruneRecentLocked(now time.Time) {
 }
 
 func ownerKey(owner Owner) string { return owner.ID + "\x00" + owner.Generation }
+
+func continuationKey(workspaceID string, owner Owner, adapterID string) string {
+	return workspaceID + "\x00" + ownerKey(owner) + "\x00" + adapterID
+}
+
+func earlierTime(current, candidate time.Time) time.Time {
+	if candidate.IsZero() {
+		return current
+	}
+	if current.IsZero() || candidate.Before(current) {
+		return candidate
+	}
+	return current
+}
+
+func ageMilliseconds(now, started time.Time) int64 {
+	if started.IsZero() {
+		return 0
+	}
+	return max(0, now.Sub(started).Milliseconds())
+}
 
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {

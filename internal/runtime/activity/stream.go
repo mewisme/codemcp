@@ -16,6 +16,7 @@ const (
 
 type Overflow = sequence.Overflow
 type Subscription = sequence.Subscription[Event]
+type Snapshot = sequence.Snapshot[Event]
 
 type Stream struct {
 	mu        sync.Mutex
@@ -45,16 +46,19 @@ func (s *Stream) SubscribeWithRecent(limit int) (chan Event, []Event) {
 }
 
 func (s *Stream) SubscribeDetailed(limit int) (*Subscription, []Event) {
+	sub, snapshot := s.SubscribeSnapshot(limit)
+	return sub, snapshot.Events
+}
+
+func (s *Stream) SubscribeSnapshot(limit int) (*Subscription, Snapshot) {
 	if s == nil || s.stream == nil {
 		var stream *sequence.Stream[Event]
-		sub, snapshot := stream.Subscribe(nil, limit)
-		return sub, snapshot.Events
+		return stream.Subscribe(nil, limit)
 	}
 	if limit > s.maxRecent {
 		limit = s.maxRecent
 	}
-	sub, snapshot := s.stream.Subscribe(nil, limit)
-	return sub, snapshot.Events
+	return s.stream.Subscribe(nil, limit)
 }
 
 func (s *Stream) SubscribeToolCallsDetailed(limit int) (*Subscription, []Event) {

@@ -445,3 +445,35 @@ func TestCoordinatorCloseStopsOwnedRetryTimerAndRun(t *testing.T) {
 		t.Fatalf("post-close adapter requests=%d closed=%t", requests, closed)
 	}
 }
+
+func TestCoordinatorRegistersContinuationCapabilityForDiagnostics(t *testing.T) {
+	broker := backgrounddelivery.New(nil)
+	t.Cleanup(broker.Close)
+	owner := backgrounddelivery.Owner{ID: "owner-diagnostics", Generation: "generation-diagnostics"}
+	adapter := &testAdapter{
+		id: "capable", owner: owner,
+		capability: Capability{IdleContinuation: true},
+	}
+	coordinator := &Coordinator{Broker: broker, Adapter: adapter, CoalesceWindow: -1}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- coordinator.Run(ctx, "ws_test") }()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		diagnostics := broker.Diagnostics()
+		if diagnostics.ContinuationAdapters == 1 && diagnostics.ContinuationOwners == 1 {
+			cancel()
+			if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+				t.Fatal(err)
+			}
+			if final := broker.Diagnostics(); final.ContinuationAdapters != 0 || final.ContinuationOwners != 0 {
+				t.Fatalf("continuation registration leaked after coordinator exit: %#v", final)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	cancel()
+	<-done
+	t.Fatal("continuation-capable adapter was not reflected in diagnostics")
+}

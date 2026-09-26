@@ -13,9 +13,12 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/backgrounddelivery"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/notification"
+	"go.mewis.me/codemcp/internal/runtime/activity"
+	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -61,6 +64,49 @@ func TestCompletionNotificationPolicyEnablesSharedProviderStatus(t *testing.T) {
 	}
 	if telegram := statuses[notification.ProviderTelegram]; telegram.Enabled {
 		t.Fatalf("telegram=%#v", telegram)
+	}
+}
+
+func TestBackgroundDiagnosticsExposeAggregateStateWithoutDeliveryIdentity(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	defer runtime.BackgroundDeliveries.Close()
+	defer runtime.Executions.Close()
+	defer runtime.Processes.CloseSubscriptions()
+	defer runtime.Completions.Close()
+	defer runtime.CompletionHooks.Stop()
+
+	owner := backgrounddelivery.Owner{ID: "private-owner-marker", Generation: "private-generation-marker"}
+	if !runtime.BackgroundDeliveries.RegisterStart(backgrounddelivery.Registration{
+		WorkspaceID: "ws_diagnostics", ProcessID: "private-process-marker", ExecutionID: "private-exec-marker", Owner: owner,
+	}) {
+		t.Fatal("background delivery registration failed")
+	}
+	runtime.BackgroundDeliveries.ApplyTerminal(shellruntime.BackgroundWorkTerminalEvent{
+		WorkspaceID: "ws_diagnostics", ProcessID: "private-process-marker", ExecutionID: "private-exec-marker",
+		Status: shellruntime.ExecutionStatusSuccess, Reason: shellruntime.BackgroundTerminalExit,
+	})
+	stream := activity.NewStream()
+	stream.Publish(activity.Event{Kind: string(activity.EventBackground), Message: "sanitized"})
+
+	handler := New(API{Tools: runtime, Activity: stream})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/background/diagnostics", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	var response backgroundDiagnosticsResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Deliveries.Pending != 1 || response.ActivityLatestSequence != 1 || response.Processes.TerminalSubscribers == 0 {
+		t.Fatalf("background diagnostics=%#v", response)
+	}
+	body := recorder.Body.String()
+	for _, secret := range []string{"private-owner-marker", "private-generation-marker", "private-process-marker", "private-exec-marker"} {
+		if strings.Contains(body, secret) {
+			t.Fatalf("background diagnostics leaked %q: %s", secret, body)
+		}
 	}
 }
 

@@ -149,6 +149,38 @@ func TestPersistentExecutionHubMarksCrashActiveExecutionInterruptedWithoutRecons
 	}
 }
 
+func TestExecutionDiagnosticsAndFeedSnapshotBarrier(t *testing.T) {
+	hub := NewExecutionHub()
+	run := hub.Begin(ExecutionInput{WorkspaceID: "ws_diag", Tool: "start_process"})
+	sub, snapshot := hub.SubscribeFeed("ws_diag")
+	defer hub.UnsubscribeFeed(sub)
+	if snapshot.LatestSequence != 1 || len(snapshot.Events) != 1 || snapshot.Events[0].Type != ExecutionEventStarted {
+		t.Fatalf("feed snapshot=%#v", snapshot)
+	}
+	executionSub, _, err := hub.Subscribe("ws_diag", run.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hub.Unsubscribe(executionSub)
+	diagnostics := hub.Diagnostics()
+	if diagnostics.Running != 1 || diagnostics.FeedSubscribers != 1 || diagnostics.ExecutionSubscribers != 1 {
+		t.Fatalf("execution diagnostics=%#v", diagnostics)
+	}
+	code := 0
+	run.Finish(ExecutionStatusSuccess, &code, false)
+	select {
+	case event := <-sub.Events:
+		if event.Type != ExecutionEventCompleted || event.Sequence <= snapshot.LatestSequence {
+			t.Fatalf("live event=%#v barrier=%d", event, snapshot.LatestSequence)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("completion after snapshot barrier was missed")
+	}
+	if final := hub.Diagnostics(); final.Running != 0 {
+		t.Fatalf("final diagnostics=%#v", final)
+	}
+}
+
 func TestExecutionWriterChunksLargeUTF8Output(t *testing.T) {
 	hub := NewExecutionHub()
 	run := hub.Begin(ExecutionInput{WorkspaceID: "ws_chunk", Tool: "run_command"})

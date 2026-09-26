@@ -46,16 +46,16 @@ func handlerWithHeartbeat(stream *Stream, heartbeatInterval time.Duration) http.
 			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 			return
 		}
-		sub, recent := stream.SubscribeDetailed(historyLimit(r))
+		sub, snapshot := stream.SubscribeSnapshot(historyLimit(r))
 		defer stream.UnsubscribeDetailed(sub)
 		lastSent := uint64(0)
-		for _, event := range recent {
+		for _, event := range snapshot.Events {
 			if err := writeActivitySSE(w, event); err != nil {
 				return
 			}
 			lastSent = event.Sequence
 		}
-		if _, err := fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d}\n\n", stream.LatestSequence()); err != nil {
+		if _, err := fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d}\n\n", snapshot.LatestSequence); err != nil {
 			return
 		}
 		flusher.Flush()

@@ -35,6 +35,7 @@ type App struct {
 	Notifications           *notification.Coordinator
 	ApprovalNotifications   *notification.ApprovalBridge
 	CompletionNotifications *notification.CompletionHook
+	BackgroundNotifications *notification.BackgroundJobBridge
 	runtimeCtx              context.Context
 	trace                   tracepkg.Observer
 	running                 bool
@@ -146,7 +147,7 @@ func (a *App) AdminHandler() http.Handler {
 	}
 	adminAPI := admin.API{
 		Upstream: a.Upstream, Tools: a.Tools, Tunnel: a.Tunnel, Config: a.Config, OAuth: a.OAuth, OAuthFlows: a.OAuthFlows, ReloadConfig: a.ReloadConfig,
-		Approvals: a.Tools.Approvals, Executions: a.Tools.Executions, Notifications: a.Notifications,
+		Approvals: a.Tools.Approvals, Executions: a.Tools.Executions, Notifications: a.Notifications, Activity: a.Activity,
 	}
 	adminAuth := func() (bool, string) {
 		cfg := a.Config.Snapshot()

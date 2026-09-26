@@ -3,9 +3,10 @@ package activity
 type Type string
 
 const (
-	EventToolCall Type = "tool_call"
-	EventRequest  Type = "mcp_request"
-	EventSession  Type = "session"
-	EventSystem   Type = "system"
-	EventApproval Type = "approval"
+	EventToolCall   Type = "tool_call"
+	EventRequest    Type = "mcp_request"
+	EventSession    Type = "session"
+	EventSystem     Type = "system"
+	EventApproval   Type = "approval"
+	EventBackground Type = "background"
 )

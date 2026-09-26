@@ -39,6 +39,7 @@ func (a *App) Bootstrap() error {
 		}
 		telemetry.AttachTools(a.Tools, a.Activity, a.Logger)
 		telemetry.AttachApprovals(a.Tools.Approvals, a.Activity, a.Logger)
+		telemetry.AttachBackground(a.Tools.Processes, a.Activity, a.Logger)
 		if a.Notifications == nil {
 			a.Notifications = notification.NewCoordinator(notification.CoordinatorOptions{})
 			a.Notifications.Register(notification.NewDesktopProvider())
@@ -77,6 +78,20 @@ func (a *App) Bootstrap() error {
 			} else {
 				a.CompletionNotifications = hook
 			}
+		}
+		if a.BackgroundNotifications == nil && a.Tools.Processes != nil {
+			a.BackgroundNotifications = notification.NewBackgroundJobBridge(a.Tools.Processes, a.Notifications, notification.BackgroundJobBridgeOptions{
+				Policy: func() notification.BackgroundJobPolicy {
+					cfg := a.Config.Snapshot().Notifications.Completion
+					return notification.BackgroundJobPolicy{
+						Enabled: cfg.Enabled,
+						Providers: map[string]bool{
+							notification.ProviderDesktop:  cfg.DesktopEnabled,
+							notification.ProviderTelegram: cfg.TelegramEnabled,
+						},
+					}
+				},
+			})
 		}
 		a.Upstream = a.Tools.Upstream
 		a.syncMCPHTTP(a.Config.Snapshot().Server.Enabled)

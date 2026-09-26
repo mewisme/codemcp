@@ -104,6 +104,13 @@ type BackgroundWorkTerminalSubscription struct {
 	closed   bool
 }
 
+type ProcessDiagnostics struct {
+	Running                 int    `json:"running"`
+	OldestRunningAgeMS      int64  `json:"oldest_running_age_ms,omitempty"`
+	TerminalSubscribers     int    `json:"terminal_subscribers"`
+	TerminalOverflowDropped uint64 `json:"terminal_overflow_dropped"`
+}
+
 func (s *BackgroundWorkTerminalSubscription) Dropped() uint64 {
 	if s == nil {
 		return 0
@@ -208,6 +215,44 @@ func (m *ProcessManager) CloseSubscriptions() {
 		}
 	}
 	m.terminalMu.Unlock()
+}
+
+func (m *ProcessManager) Diagnostics() ProcessDiagnostics {
+	if m == nil {
+		return ProcessDiagnostics{}
+	}
+	now := time.Now().UTC()
+	m.mu.RLock()
+	items := make([]*managedProcess, 0, len(m.processes))
+	for _, item := range m.processes {
+		items = append(items, item)
+	}
+	m.mu.RUnlock()
+	result := ProcessDiagnostics{}
+	var oldest time.Time
+	for _, item := range items {
+		item.mu.Lock()
+		running := item.exitCode == nil
+		startedAt := item.startedAt
+		item.mu.Unlock()
+		if !running {
+			continue
+		}
+		result.Running++
+		if started, err := time.Parse(time.RFC3339Nano, startedAt); err == nil && (oldest.IsZero() || started.Before(oldest)) {
+			oldest = started
+		}
+	}
+	if !oldest.IsZero() {
+		result.OldestRunningAgeMS = max(0, now.Sub(oldest).Milliseconds())
+	}
+	m.terminalMu.Lock()
+	result.TerminalSubscribers = len(m.terminalSubs)
+	for sub := range m.terminalSubs {
+		result.TerminalOverflowDropped += sub.Dropped()
+	}
+	m.terminalMu.Unlock()
+	return result
 }
 
 func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string) (StartResult, error) {

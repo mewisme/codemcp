@@ -169,6 +169,7 @@ func (c *Coordinator) Run(ctx context.Context, workspaceID string) error {
 	if adapterID == "" {
 		return errors.New("background continuation adapter id is required")
 	}
+	defer c.Broker.RemoveContinuationAdapter(workspaceID, owner, adapterID)
 
 	events := c.Broker.Subscribe()
 	defer c.Broker.Unsubscribe(events)
@@ -261,6 +262,7 @@ func (c *Coordinator) flush(ctx context.Context, workspaceID string, owner backg
 		return 0, err
 	}
 	mode, supported := selectMode(capability)
+	c.Broker.SetContinuationAdapter(workspaceID, owner, adapterID, supported)
 	if !supported {
 		return 0, nil
 	}

@@ -2,6 +2,7 @@ package backgrounddelivery
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -419,5 +420,67 @@ func TestPersistentDeadLetterRecoveryRemainsOwnerScopedAcrossRestart(t *testing.
 	recovery, err := second.ConsumeRecovery("ws_one", owner, delivery.ID)
 	if err != nil || !recovery.Consumed || recovery.Delivery.State != DeliverySuppressed {
 		t.Fatalf("recovery=%#v err=%v", recovery, err)
+	}
+}
+
+func TestBrokerDiagnosticsExposeOnlyAggregateLifecycleState(t *testing.T) {
+	broker := New(nil)
+	t.Cleanup(broker.Close)
+	owner := Owner{ID: "sensitive-owner-id", Generation: "sensitive-generation"}
+	delivery := materializeTestDelivery(t, broker, "proc_sensitive", owner)
+	initial := broker.Diagnostics()
+	if initial.Pending != 1 || initial.Claimed != 0 || initial.DeadLetters != 0 || initial.OldestPendingAgeMS < 0 {
+		t.Fatalf("initial diagnostics=%#v", initial)
+	}
+	claim, err := broker.Claim("ws_one", owner, delivery.ID, "adapter-sensitive")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := broker.RecordAttempt("ws_one", owner, delivery.ID, claim.Receipt); err != nil {
+		t.Fatal(err)
+	}
+	retrying := broker.Diagnostics()
+	if retrying.Pending != 0 || retrying.Claimed != 1 || retrying.Retrying != 1 || retrying.OldestRetryAgeMS < 0 {
+		t.Fatalf("retry diagnostics=%#v", retrying)
+	}
+	if _, err := broker.DeadLetter("ws_one", owner, delivery.ID, claim.Receipt); err != nil {
+		t.Fatal(err)
+	}
+	broker.SetContinuationAdapter("ws_one", owner, "adapter-one", true)
+	broker.SetContinuationAdapter("ws_one", owner, "adapter-two", true)
+	secondOwner := Owner{ID: "other-owner", Generation: "other-generation"}
+	broker.SetContinuationAdapter("ws_one", secondOwner, "adapter-three", true)
+	final := broker.Diagnostics()
+	if final.DeadLetters != 1 || final.Retrying != 0 || final.ContinuationAdapters != 3 || final.ContinuationOwners != 2 || final.OldestContinuationAgeMS < 0 {
+		t.Fatalf("final diagnostics=%#v", final)
+	}
+}
+
+func TestBrokerDiagnosticsTrackSubscriberOverflow(t *testing.T) {
+	broker := New(nil)
+	t.Cleanup(broker.Close)
+	sub := broker.Subscribe()
+	defer broker.Unsubscribe(sub)
+	owner := Owner{ID: "owner-overflow", Generation: "generation-overflow"}
+	for index := 0; index < 70; index++ {
+		materializeTestDelivery(t, broker, fmt.Sprintf("proc_overflow_%d", index), owner)
+	}
+	diagnostics := broker.Diagnostics()
+	if diagnostics.Subscribers != 1 || diagnostics.OverflowDropped == 0 {
+		t.Fatalf("overflow diagnostics=%#v", diagnostics)
+	}
+}
+
+func TestUIExecutionFeedAttachDetachCannotConsumeModelDelivery(t *testing.T) {
+	broker := New(nil)
+	t.Cleanup(broker.Close)
+	owner := Owner{ID: "owner-ui", Generation: "generation-ui"}
+	delivery := materializeTestDelivery(t, broker, "proc_ui", owner)
+	hub := shellruntime.NewExecutionHub()
+	sub, _ := hub.SubscribeFeed("ws_one")
+	hub.UnsubscribeFeed(sub)
+	current, err := broker.Peek("ws_one", owner, delivery.ID)
+	if err != nil || current.State != DeliveryPending {
+		t.Fatalf("UI feed changed model delivery state=%#v err=%v", current, err)
 	}
 }

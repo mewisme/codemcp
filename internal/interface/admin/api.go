@@ -8,10 +8,12 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/backgrounddelivery"
 	"go.mewis.me/codemcp/internal/config"
 	mcpnetwork "go.mewis.me/codemcp/internal/network"
 	"go.mewis.me/codemcp/internal/notification"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
+	"go.mewis.me/codemcp/internal/runtime/activity"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/tunnel"
@@ -30,6 +32,7 @@ type API struct {
 	Tunnel        *tunnel.Client
 	Config        *config.RuntimeStore
 	Notifications *notification.Coordinator
+	Activity      *activity.Stream
 	OAuth         *mcpoauth.Store
 	OAuthFlows    *mcpoauth.FlowManager
 	ReloadConfig  func(config.Config) error
@@ -112,6 +115,7 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/completions", api.handleCompletions)
 	mux.HandleFunc("/api/completions/", api.handleCompletion)
 	mux.HandleFunc("/api/notifications", api.handleNotifications)
+	mux.HandleFunc("/api/background/diagnostics", api.handleBackgroundDiagnostics)
 	mux.HandleFunc("/api/upstream", api.handleUpstreams)
 	mux.HandleFunc("/api/upstream/", api.handleUpstream)
 	mux.HandleFunc("/api/tunnel/config", api.handleTunnelConfig)
@@ -121,6 +125,38 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/tunnel/managed/", api.handleManagedTunnel)
 	mux.HandleFunc("/api/tunnel", api.handleTunnel)
 	return withCanonicalOperation(mux)
+}
+
+type backgroundDiagnosticsResponse struct {
+	Processes              shellruntime.ProcessDiagnostics   `json:"processes"`
+	Executions             shellruntime.ExecutionDiagnostics `json:"executions"`
+	Deliveries             backgrounddelivery.Diagnostics    `json:"deliveries"`
+	ActivityLatestSequence uint64                            `json:"activity_latest_sequence"`
+}
+
+func (api API) handleBackgroundDiagnostics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if api.Tools == nil {
+		http.Error(w, "tool runtime unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	response := backgroundDiagnosticsResponse{}
+	if api.Tools.Processes != nil {
+		response.Processes = api.Tools.Processes.Diagnostics()
+	}
+	if api.Tools.Executions != nil {
+		response.Executions = api.Tools.Executions.Diagnostics()
+	}
+	if api.Tools.BackgroundDeliveries != nil {
+		response.Deliveries = api.Tools.BackgroundDeliveries.Diagnostics()
+	}
+	if api.Activity != nil {
+		response.ActivityLatestSequence = api.Activity.LatestSequence()
+	}
+	writeJSON(w, response)
 }
 
 func (api API) handleNotifications(w http.ResponseWriter, r *http.Request) {

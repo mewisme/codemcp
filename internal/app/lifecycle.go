@@ -33,6 +33,11 @@ func (a *App) Start(ctx context.Context) error {
 			a.Logger.Warning("NOTIFICATION", "notification.coordinator.start.failed", "Approval notification coordinator could not start", err)
 		}
 	}
+	if a.BackgroundNotifications != nil {
+		if err := a.BackgroundNotifications.Start(ctx); err != nil && a.Logger != nil {
+			a.Logger.Warning("NOTIFICATION", "notification.background.start.failed", "Background job notification bridge could not start", err)
+		}
+	}
 	if a.Tools != nil {
 		go func() {
 			refreshCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -55,6 +60,9 @@ func (a *App) Start(ctx context.Context) error {
 			span.FailMessage("Application runtime start failed", err)
 			if a.ApprovalNotifications != nil {
 				a.ApprovalNotifications.Stop()
+			}
+			if a.BackgroundNotifications != nil {
+				a.BackgroundNotifications.Stop()
 			}
 			if a.Tools != nil && a.Tools.Completions != nil {
 				a.Tools.Completions.Close()
@@ -94,9 +102,6 @@ func (a *App) Stop() error {
 	if a.ApprovalNotifications != nil {
 		a.ApprovalNotifications.Stop()
 	}
-	if a.Notifications != nil {
-		a.Notifications.Stop()
-	}
 	if a.MCP != nil {
 		subscriptionsSpan := tracepkg.StartObserver(a.trace, "APP", "app.mcp.subscriptions.close", "Closing MCP subscriptions")
 		if a.Logger != nil {
@@ -111,6 +116,12 @@ func (a *App) Stop() error {
 		if err := a.Tools.Processes.Shutdown(ctx); err != nil {
 			stopErr = errors.Join(stopErr, err)
 		}
+	}
+	if a.BackgroundNotifications != nil {
+		a.BackgroundNotifications.Stop()
+	}
+	if a.Notifications != nil {
+		a.Notifications.Stop()
 	}
 	if a.Tunnel != nil {
 		tunnelSpan := tracepkg.StartObserver(a.trace, "APP", "app.tunnel.stop", "Stopping tunnel runtime")
