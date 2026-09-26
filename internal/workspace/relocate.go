@@ -85,7 +85,11 @@ func (m *Manager) Relocate(id, path string) (Workspace, error) {
 	}
 	if !sameRoot {
 		if sourceIdentity, sourceErr := workspacestate.New(oldRoot).LoadIdentity(); sourceErr == nil && sourceIdentity.ID == item.ID {
-			err := fmt.Errorf("workspace identity is present at both source and destination; copied %s state is ambiguous: %s", LocalDirName, item.ID)
+			err := &DuplicateWorkspaceIdentityError{
+				WorkspaceID:     item.ID,
+				RegisteredRoot:  oldRoot,
+				DestinationRoot: root,
+			}
 			span.FailMessage("Workspace relocation failed", err, tracepkg.String("workspace_id", item.ID), tracepkg.String("source_root", oldRoot), tracepkg.String("root", root))
 			return Workspace{}, err
 		}

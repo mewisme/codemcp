@@ -16,7 +16,8 @@ type workspaceRequest struct {
 }
 
 type workspaceRelocateRequest struct {
-	Path string `json:"path"`
+	Path       string                         `json:"path"`
+	Resolution workspace.RelocationResolution `json:"resolution,omitempty"`
 }
 
 type workspacePurgeRequest struct {
@@ -135,8 +136,18 @@ func (api API) handleWorkspaceRelocate(w http.ResponseWriter, r *http.Request, o
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	result, err := operations.Relocate(r.Context(), workspaceID, request.Path)
+	result, err := operations.Relocate(r.Context(), application.WorkspaceRelocateRequest{
+		ID:         workspaceID,
+		Path:       request.Path,
+		Resolution: request.Resolution,
+	})
 	if err != nil {
+		if conflict, ok := application.WorkspaceRelocationConflictOf(err); ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusConflict)
+			writeJSON(w, conflict)
+			return
+		}
 		writeWorkspaceOperationError(w, err, http.StatusBadRequest)
 		return
 	}

@@ -313,7 +313,7 @@ func TestRegisterReconnectConflictsDoNotMutateRegistry(t *testing.T) {
 				if !errors.Is(err, ErrDuplicateWorkspaceIdentity) || !errors.As(err, &typed) {
 					t.Fatalf("duplicate error=%T %v", err, err)
 				}
-				if !strings.Contains(err.Error(), "cm workspace relocate") {
+				if !strings.Contains(err.Error(), "--resolve destination") {
 					t.Fatalf("duplicate guidance missing: %v", err)
 				}
 			} else {

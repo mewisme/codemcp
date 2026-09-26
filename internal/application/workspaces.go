@@ -33,12 +33,25 @@ type WorkspaceRelocation struct {
 	After  WorkspaceView `json:"after"`
 }
 
+type WorkspaceRelocateRequest struct {
+	ID         string                         `json:"workspace_id"`
+	Path       string                         `json:"path"`
+	Resolution workspace.RelocationResolution `json:"resolution,omitempty"`
+}
+
+type WorkspaceRelocationConflict struct {
+	WorkspaceID     string                           `json:"workspace_id"`
+	RegisteredRoot  string                           `json:"registered_root"`
+	DestinationRoot string                           `json:"destination_root"`
+	Resolutions     []workspace.RelocationResolution `json:"resolutions"`
+}
+
 type WorkspaceOperations interface {
 	List(context.Context) (Result[[]WorkspaceView], error)
 	Get(context.Context, string) (Result[WorkspaceView], error)
 	AccessList(context.Context, string) (Result[[]string], error)
 	Register(context.Context, string) (Result[WorkspaceView], error)
-	Relocate(context.Context, string, string) (Result[WorkspaceRelocation], error)
+	Relocate(context.Context, WorkspaceRelocateRequest) (Result[WorkspaceRelocation], error)
 	Unregister(context.Context, string) (Result[WorkspaceView], error)
 	Purge(context.Context, string, bool) (Result[WorkspaceView], error)
 	AddAllowDir(context.Context, string, string) (Result[WorkspaceView], error)
@@ -166,22 +179,31 @@ func (service *WorkspaceService) Register(ctx context.Context, path string) (Res
 	})
 }
 
-func (service *WorkspaceService) Relocate(ctx context.Context, id, path string) (Result[WorkspaceRelocation], error) {
-	return runOperation(ctx, "WORKSPACE", capability.WorkspaceRelocate, "Relocating workspace", []tracepkg.Field{tracepkg.String("workspace_id", strings.TrimSpace(id)), tracepkg.String("input_path", path)}, func() (WorkspaceRelocation, error) {
+func (service *WorkspaceService) Relocate(ctx context.Context, request WorkspaceRelocateRequest) (Result[WorkspaceRelocation], error) {
+	return runOperation(ctx, "WORKSPACE", capability.WorkspaceRelocate, "Relocating workspace", []tracepkg.Field{tracepkg.String("workspace_id", strings.TrimSpace(request.ID)), tracepkg.String("input_path", request.Path), tracepkg.String("resolution", string(request.Resolution))}, func() (WorkspaceRelocation, error) {
 		if err := service.require(capability.WorkspaceRelocate); err != nil {
 			return WorkspaceRelocation{}, err
 		}
-		if err := requireApplicationText(capability.WorkspaceRelocate, "workspace id", id); err != nil {
+		if err := requireApplicationText(capability.WorkspaceRelocate, "workspace id", request.ID); err != nil {
 			return WorkspaceRelocation{}, err
 		}
-		if err := requireApplicationText(capability.WorkspaceRelocate, "path", path); err != nil {
+		if err := requireApplicationText(capability.WorkspaceRelocate, "path", request.Path); err != nil {
 			return WorkspaceRelocation{}, err
 		}
-		before, err := service.manager.Get(id)
+		resolution, err := workspace.ParseRelocationResolution(string(request.Resolution))
 		if err != nil {
 			return WorkspaceRelocation{}, classifyWorkspaceError(capability.WorkspaceRelocate, err)
 		}
-		after, err := service.manager.Relocate(id, path)
+		before, err := service.manager.Get(request.ID)
+		if err != nil {
+			return WorkspaceRelocation{}, classifyWorkspaceError(capability.WorkspaceRelocate, err)
+		}
+		var after workspace.Workspace
+		if resolution == "" {
+			after, err = service.manager.Relocate(request.ID, request.Path)
+		} else {
+			after, err = service.manager.ResolveDuplicateRelocation(request.ID, request.Path, resolution)
+		}
 		if err != nil {
 			return WorkspaceRelocation{}, classifyWorkspaceError(capability.WorkspaceRelocate, err)
 		}
@@ -190,6 +212,19 @@ func (service *WorkspaceService) Relocate(ctx context.Context, id, path string) 
 		}
 		return WorkspaceRelocation{Before: workspaceView(before), After: workspaceView(after)}, nil
 	})
+}
+
+func WorkspaceRelocationConflictOf(err error) (WorkspaceRelocationConflict, bool) {
+	var duplicate *workspace.DuplicateWorkspaceIdentityError
+	if !errors.As(err, &duplicate) || duplicate == nil {
+		return WorkspaceRelocationConflict{}, false
+	}
+	return WorkspaceRelocationConflict{
+		WorkspaceID:     duplicate.WorkspaceID,
+		RegisteredRoot:  duplicate.RegisteredRoot,
+		DestinationRoot: duplicate.DestinationRoot,
+		Resolutions:     duplicate.Resolutions(),
+	}, true
 }
 
 func (service *WorkspaceService) Unregister(ctx context.Context, id string) (Result[WorkspaceView], error) {
@@ -486,8 +521,15 @@ func classifyWorkspaceError(operation capability.ID, err error) error {
 	switch {
 	case errors.Is(err, workspace.ErrNotFound), errors.Is(err, workspace.ErrContainerNotFound):
 		return operationError(operation, ErrorNotFound, err)
-	case errors.Is(err, workspace.ErrAlreadyActive), errors.Is(err, workspace.ErrStateLost), errors.Is(err, workspace.ErrRegistryBusy):
+	case errors.Is(err, workspace.ErrAlreadyActive),
+		errors.Is(err, workspace.ErrStateLost),
+		errors.Is(err, workspace.ErrRegistryBusy),
+		errors.Is(err, workspace.ErrDuplicateWorkspaceIdentity),
+		errors.Is(err, workspace.ErrWorkspaceReconnectConflict),
+		errors.Is(err, workspace.ErrRelocationMergeUnavailable):
 		return operationError(operation, ErrorConflict, err)
+	case errors.Is(err, workspace.ErrInvalidRelocationResolution):
+		return operationError(operation, ErrorInvalidArgument, err)
 	case errors.Is(err, workspace.ErrUnavailable):
 		return operationError(operation, ErrorUnavailable, err)
 	case errors.Is(err, workspace.ErrPurgeNotConfirmed):
@@ -527,11 +569,6 @@ func workspaceContainerViews(values []workspace.WorkspaceContainer) []WorkspaceC
 
 type WorkspaceIDInput struct {
 	ID string
-}
-
-type WorkspacePathInput struct {
-	ID   string
-	Path string
 }
 
 type WorkspaceRegisterInput struct {
@@ -588,8 +625,8 @@ func BindWorkspaceOperations(dispatcher *Dispatcher, service *WorkspaceService) 
 			result, err := service.Register(ctx, input.Path)
 			return result.Value, err
 		})},
-		{capability.WorkspaceRelocate, typedOperation[WorkspacePathInput](capability.WorkspaceRelocate, func(ctx context.Context, input WorkspacePathInput) (any, error) {
-			result, err := service.Relocate(ctx, input.ID, input.Path)
+		{capability.WorkspaceRelocate, typedOperation[WorkspaceRelocateRequest](capability.WorkspaceRelocate, func(ctx context.Context, input WorkspaceRelocateRequest) (any, error) {
+			result, err := service.Relocate(ctx, input)
 			return result.Value, err
 		})},
 		{capability.WorkspaceUnregister, typedOperation[WorkspaceIDInput](capability.WorkspaceUnregister, func(ctx context.Context, input WorkspaceIDInput) (any, error) {

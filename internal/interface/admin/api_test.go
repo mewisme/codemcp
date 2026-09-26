@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/backgrounddelivery"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
@@ -23,6 +24,7 @@ import (
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
+	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
 type adminNotificationProvider struct {
@@ -807,6 +809,46 @@ func TestWorkspaceAPIRelocate(t *testing.T) {
 	resolved, err := manager.Get(item.ID)
 	if err != nil || resolved.ID != item.ID || resolved.Path != relocated.Path {
 		t.Fatalf("stable lookup=%#v err=%v", resolved, err)
+	}
+}
+
+func TestWorkspaceAPIRelocateDuplicateConflictAndResolution(t *testing.T) {
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	source := t.TempDir()
+	item, err := manager.Register(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination := t.TempDir()
+	if _, _, err := workspacestate.New(destination).EnsureIdentity(item.ID); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(API{Workspaces: manager})
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/workspaces/"+item.ID+"/relocate", strings.NewReader(`{"path":`+jsonString(destination)+`}`)))
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("conflict status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var conflict application.WorkspaceRelocationConflict
+	if err := json.Unmarshal(recorder.Body.Bytes(), &conflict); err != nil {
+		t.Fatal(err)
+	}
+	if conflict.WorkspaceID != item.ID || len(conflict.Resolutions) != 3 {
+		t.Fatalf("conflict=%#v", conflict)
+	}
+
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/workspaces/"+item.ID+"/relocate", strings.NewReader(`{"path":`+jsonString(destination)+`,"resolution":"destination"}`)))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("resolved status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var relocated workspace.Workspace
+	if err := json.Unmarshal(recorder.Body.Bytes(), &relocated); err != nil {
+		t.Fatal(err)
+	}
+	if relocated.ID != item.ID || relocated.Path != filepath.Clean(destination) {
+		t.Fatalf("relocated=%#v", relocated)
 	}
 }
 

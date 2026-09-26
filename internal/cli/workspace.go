@@ -1,11 +1,15 @@
 package cli
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
@@ -82,14 +86,34 @@ func workspaceDoctorCommand() *cobra.Command {
 }
 
 func workspaceRelocateCommand() *cobra.Command {
-	return &cobra.Command{
+	var resolve string
+	cmd := &cobra.Command{
 		Use:               "relocate <workspace_id> <path>",
 		Aliases:           []string{"move"},
 		Short:             "Rebind a registered workspace after its project directory moved",
 		Args:              cobra.ExactArgs(2),
 		ValidArgsFunction: completeWorkspaceThenDirectory,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := workspaceServiceForCommand(cmd).Relocate(cmd.Context(), args[0], args[1])
+			service := workspaceServiceForCommand(cmd)
+			request := application.WorkspaceRelocateRequest{
+				ID:         args[0],
+				Path:       args[1],
+				Resolution: workspace.RelocationResolution(resolve),
+			}
+			result, err := service.Relocate(cmd.Context(), request)
+			if err != nil && strings.TrimSpace(resolve) == "" && workspaceRelocateInteractive(cmd) {
+				if conflict, ok := application.WorkspaceRelocationConflictOf(err); ok {
+					resolution, cancelled, promptErr := promptWorkspaceRelocationResolution(cmd.InOrStdin(), cmd.OutOrStdout(), conflict)
+					if promptErr != nil {
+						return promptErr
+					}
+					if cancelled {
+						return nil
+					}
+					request.Resolution = resolution
+					result, err = service.Relocate(cmd.Context(), request)
+				}
+			}
 			if err != nil {
 				return err
 			}
@@ -98,6 +122,50 @@ func workspaceRelocateCommand() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&resolve, "resolve", "", "resolve duplicate workspace state using destination, registered, or merge")
+	return cmd
+}
+
+func workspaceRelocateInteractive(cmd *cobra.Command) bool {
+	if cmd == nil || commandResultModeFor(cmd) != resultModeHuman || !commandTerminalCapabilities(cmd).Interactive {
+		return false
+	}
+	input, ok := cmd.InOrStdin().(*os.File)
+	return ok && term.IsTerminal(int(input.Fd()))
+}
+
+func promptWorkspaceRelocationResolution(reader io.Reader, writer io.Writer, conflict application.WorkspaceRelocationConflict) (workspace.RelocationResolution, bool, error) {
+	if reader == nil || writer == nil {
+		return "", false, errors.New("interactive workspace relocation requires terminal input and output")
+	}
+	fmt.Fprintf(writer, "Duplicate workspace identity %s exists at both roots.\n", conflict.WorkspaceID)
+	fmt.Fprintln(writer, "  1) destination  Keep destination .cm state")
+	fmt.Fprintln(writer, "  2) registered   Keep registered .cm state")
+	fmt.Fprintln(writer, "  3) merge        Merge through typed workspace state rules")
+	fmt.Fprintln(writer, "  4) cancel       Make no changes")
+	scanner := bufio.NewScanner(reader)
+	for attempts := 0; attempts < 3; attempts++ {
+		fmt.Fprint(writer, "Select resolution [1-4]: ")
+		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				return "", false, err
+			}
+			return "", false, io.EOF
+		}
+		switch strings.ToLower(strings.TrimSpace(scanner.Text())) {
+		case "1", "destination":
+			return workspace.RelocationResolutionDestination, false, nil
+		case "2", "registered":
+			return workspace.RelocationResolutionRegistered, false, nil
+		case "3", "merge":
+			return workspace.RelocationResolutionMerge, false, nil
+		case "4", "cancel", "c":
+			return "", true, nil
+		default:
+			fmt.Fprintln(writer, "Invalid selection.")
+		}
+	}
+	return "", false, errors.New("invalid workspace relocation resolution selection")
 }
 
 func workspaceManagerForCommand(cmd *cobra.Command) *workspace.Manager {

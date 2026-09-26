@@ -42,12 +42,10 @@ func (e *DuplicateWorkspaceIdentityError) Error() string {
 		return ErrDuplicateWorkspaceIdentity.Error()
 	}
 	return fmt.Sprintf(
-		"%s: %s is present at both registered root %s and destination %s; use `cm workspace relocate %s %s` for explicit relocation",
+		"%s: %s is present at both registered root %s and destination %s; rerun relocation with --resolve destination, --resolve registered, or --resolve merge",
 		ErrDuplicateWorkspaceIdentity,
 		e.WorkspaceID,
 		boundedWorkspaceDiagnostic(e.RegisteredRoot),
-		boundedWorkspaceDiagnostic(e.DestinationRoot),
-		e.WorkspaceID,
 		boundedWorkspaceDiagnostic(e.DestinationRoot),
 	)
 }

@@ -152,7 +152,7 @@ func (page *WorkspacePage) applyWorkspaceEditor() error {
 		_, err = operations.Register(page.ctx, page.value)
 	case WorkspaceRelocate:
 		var relocated application.Result[application.WorkspaceRelocation]
-		relocated, err = operations.Relocate(page.ctx, page.targetID, page.value)
+		relocated, err = operations.Relocate(page.ctx, application.WorkspaceRelocateRequest{ID: page.targetID, Path: page.value})
 		if err == nil {
 			page.targetID = relocated.Value.After.ID
 		}
