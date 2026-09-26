@@ -29,6 +29,8 @@ var (
 	ErrUnavailable = errors.New("workspace unavailable")
 )
 
+var registerRegistrySave = func(manager *Manager) error { return manager.saveLocked() }
+
 type Workspace struct {
 	ID        string   `json:"id"`
 	Path      string   `json:"path"`
@@ -299,21 +301,51 @@ func (m *Manager) Register(path string) (Workspace, error) {
 		return Workspace{}, err
 	}
 	item := Workspace{ID: identity.ID, Path: root, AllowDirs: []string{}}
-	hygiene := EnsureLocalStateGitHygiene(root)
-	if err := hygiene.Error(); err != nil {
-		span.FailMessage("Workspace Git hygiene failed", err, tracepkg.String("workspace_id", item.ID), tracepkg.String("canonical_path", root))
-		return Workspace{}, err
-	}
-	_ = concealLocalState(workspacestate.New(root).Root())
 
 	m.mu.RLock()
 	existing, existed := m.items[item.ID]
 	active := m.runtime != nil && m.runtime.active
+	var ownedLock *oslock.Lock
+	if active && existed {
+		ownedLock = m.runtime.locks[item.ID]
+	}
 	m.mu.RUnlock()
 
+	reconnect := false
+	if existed && !sameCanonicalRoot(existing.Path, root) {
+		classification := m.classifyRegisteredRoot(existing)
+		if conflict := reconnectClassificationError(classification, root); conflict != nil {
+			span.FailMessage("Workspace registration failed", conflict, tracepkg.String("workspace_id", item.ID), tracepkg.String("registered_root", existing.Path), tracepkg.String("canonical_path", root), tracepkg.String("registered_root_state", string(classification.State)))
+			return Workspace{}, conflict
+		}
+		reconnect = true
+	}
+
 	var acquired *oslock.Lock
+	reusedRuntimeLock := false
 	if active {
-		if existed {
+		if existed && reconnect {
+			if ownedLock != nil {
+				same, sameErr := ownedLock.SameFile(workspacestate.New(root).RuntimeLockPath())
+				if sameErr != nil {
+					err := fmt.Errorf("%w: %s: verify reconnected runtime lock: %v", ErrStateLost, item.ID, sameErr)
+					span.FailMessage("Workspace registration failed", err)
+					return Workspace{}, err
+				}
+				if !same {
+					err := fmt.Errorf("%w: %s: active runtime state does not match reconnect destination", ErrStateLost, item.ID)
+					span.FailMessage("Workspace registration failed", err)
+					return Workspace{}, err
+				}
+				reusedRuntimeLock = true
+			} else {
+				acquired, err = m.acquireRuntimeLock(item)
+				if err != nil {
+					span.FailMessage("Workspace registration failed", err)
+					return Workspace{}, err
+				}
+			}
+		} else if existed {
 			if err := m.validateRuntimeOwnership(item.ID); err != nil {
 				span.FailMessage("Workspace registration failed", err)
 				return Workspace{}, err
@@ -324,21 +356,30 @@ func (m *Manager) Register(path string) (Workspace, error) {
 				span.FailMessage("Workspace registration failed", err)
 				return Workspace{}, err
 			}
-			defer func() {
-				if acquired != nil {
-					_ = acquired.Release()
-				}
-			}()
 		}
 	} else if err := probeWorkspaceRuntimeLock(item); err != nil {
 		span.FailMessage("Workspace registration failed", err)
 		return Workspace{}, err
 	}
+	if acquired != nil {
+		defer func() {
+			if acquired != nil {
+				_ = acquired.Release()
+			}
+		}()
+	}
+
+	hygiene := EnsureLocalStateGitHygiene(root)
+	if err := hygiene.Error(); err != nil {
+		span.FailMessage("Workspace Git hygiene failed", err, tracepkg.String("workspace_id", item.ID), tracepkg.String("canonical_path", root))
+		return Workspace{}, err
+	}
+	_ = concealLocalState(workspacestate.New(root).Root())
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	existing, existed = m.items[item.ID]
-	if existed && !sameCanonicalRoot(existing.Path, root) {
+	if existed && !sameCanonicalRoot(existing.Path, root) && !reconnect {
 		err := fmt.Errorf("workspace identity %s is already registered at %s", item.ID, existing.Path)
 		span.FailMessage("Workspace registration failed", err, tracepkg.String("workspace_id", item.ID), tracepkg.String("canonical_path", root))
 		return Workspace{}, err
@@ -351,11 +392,25 @@ func (m *Manager) Register(path string) (Workspace, error) {
 		}
 	}
 	if existed {
-		item.AllowDirs = append([]string(nil), existing.AllowDirs...)
-		item.LegacyIDs = append([]string(nil), existing.LegacyIDs...)
+		if reconnect {
+			oldRoot := existing.Path
+			item = existing
+			item.Path = root
+			item.Error = ""
+			item.AllowDirs = append([]string(nil), existing.AllowDirs...)
+			for index, allowDir := range item.AllowDirs {
+				if relocated, ok := relocateAbsolutePath(allowDir, oldRoot, root); ok {
+					item.AllowDirs[index] = relocated
+				}
+			}
+			item.AllowDirs = normalizeRoots(item.AllowDirs)
+		} else {
+			item.AllowDirs = append([]string(nil), existing.AllowDirs...)
+			item.LegacyIDs = append([]string(nil), existing.LegacyIDs...)
+		}
 	}
 	m.items[item.ID] = item
-	if err := m.saveLocked(); err != nil {
+	if err := registerRegistrySave(m); err != nil {
 		if existed {
 			m.items[item.ID] = existing
 		} else {
@@ -370,9 +425,12 @@ func (m *Manager) Register(path string) (Workspace, error) {
 		m.runtime.hygiene[item.ID] = hygiene
 		acquired = nil
 	} else if m.runtime != nil && m.runtime.active {
+		if reconnect && reusedRuntimeLock {
+			m.runtime.roots[item.ID] = item.Path
+		}
 		m.runtime.hygiene[item.ID] = hygiene
 	}
-	span.EndMessage("Workspace registered", tracepkg.String("workspace_id", item.ID), tracepkg.String("canonical_path", root), tracepkg.Bool("existing", existed), tracepkg.Bool("protected", false), tracepkg.Int("allow_dirs", len(item.AllowDirs)))
+	span.EndMessage("Workspace registered", tracepkg.String("workspace_id", item.ID), tracepkg.String("canonical_path", root), tracepkg.Bool("existing", existed), tracepkg.Bool("reconnected", reconnect), tracepkg.Bool("protected", false), tracepkg.Int("allow_dirs", len(item.AllowDirs)))
 	return item, nil
 }
 
