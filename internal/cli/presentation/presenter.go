@@ -287,7 +287,7 @@ func (p *Presenter) fields(indent int, fields ...Field) {
 				p.richField("", field.Label, field.Value, true)
 				continue
 			}
-			p.richField(p.theme.Render(RoleStructure, p.glyphs.PhaseDone), field.Label, field.Value, false)
+			p.richField("", field.Label, field.Value, false)
 		}
 		return
 	}
@@ -486,7 +486,7 @@ func (p *Presenter) richField(glyph, label string, value any, continuation bool)
 	prefix := p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
 	if continuation {
 		prefix += p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
-	} else {
+	} else if glyph != "" {
 		prefix += glyph + " "
 	}
 	line := prefix

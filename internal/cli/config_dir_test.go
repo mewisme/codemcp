@@ -98,7 +98,7 @@ func TestInitPresentationUsesCompletedProgressAndSingleBlockGaps(t *testing.T) {
 	for _, expected := range []string{
 		"┌  Initialize CodeMCP",
 		"◆  Saved configuration\n│\n✓  CodeMCP initialized",
-		"│  ◆ config — " + filepath.Join(root, "config.json"),
+		"│  config — " + filepath.Join(root, "config.json"),
 		"└  Done",
 	} {
 		if !strings.Contains(text, expected) {

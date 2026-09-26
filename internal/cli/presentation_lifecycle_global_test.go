@@ -93,7 +93,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"◆  Result\n│\n│  ◆ state — ready"},
+			want:       []string{"◆  Result\n│\n│  state — ready"},
 		},
 		{
 			name:  "list",
@@ -155,7 +155,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"◆  Runtime ready", "│  ◆ pid — 42"},
+			want:       []string{"◆  Runtime ready", "│  pid — 42"},
 		},
 	}
 
@@ -188,7 +188,7 @@ func TestRuntimeFailureUsesCanonicalFailedWorkflow(t *testing.T) {
 	}
 	text := output.String()
 	assertSingleHumanWorkflow(t, text, "Read runtime logs", "Failed")
-	for _, want := range []string{"×  CodeMCP runtime is not running", "│  ◆ Start the managed runtime", "│  │  command — cm up"} {
+	for _, want := range []string{"×  CodeMCP runtime is not running", "│  ◆ Actions", "│  │  Start the managed runtime — cm up"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("runtime failure missing %q: %q", want, text)
 		}

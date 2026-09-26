@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"unicode"
 
@@ -23,9 +24,10 @@ type commandFailureAction struct {
 }
 
 type commandFailure struct {
-	Title   string
-	Summary string
-	Actions []commandFailureAction
+	Title       string
+	Summary     string
+	Suggestions []string
+	Actions     []commandFailureAction
 }
 
 type tunnelDeleteConfirmationRequiredError struct {
@@ -39,6 +41,13 @@ func (err *tunnelDeleteConfirmationRequiredError) Error() string {
 func classifyCommandFailure(cmd *cobra.Command, err error) commandFailure {
 	message := sanitizedCommandError(err)
 	path := relativeCommandPath(cmd)
+
+	if token, ok := cobraUnknownCommand(err); ok {
+		return commandFailure{
+			Title:       fmt.Sprintf("Unknown command %q", safeCommandToken(token, "<command>")),
+			Suggestions: commandSuggestions(cmd, token),
+		}
+	}
 
 	var runtimeKeyErr *application.ManagedTunnelRuntimeKeyRequiredError
 	if errors.As(err, &runtimeKeyErr) {
@@ -201,6 +210,43 @@ func classifyCommandFailure(cmd *cobra.Command, err error) commandFailure {
 	}
 
 	return commandFailure{Title: message}
+}
+
+func cobraUnknownCommand(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	var token, parent string
+	if matched, _ := fmt.Sscanf(err.Error(), "unknown command %q for %q", &token, &parent); matched == 2 {
+		return token, true
+	}
+	return "", false
+}
+
+func commandSuggestions(cmd *cobra.Command, token string) []string {
+	if cmd == nil {
+		return nil
+	}
+	base := strings.TrimSpace(cmd.CommandPath())
+	values := cmd.SuggestionsFor(token)
+	if len(values) > 3 {
+		values = values[:3]
+	}
+	result := make([]string, 0, len(values))
+	seen := map[string]struct{}{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		full := strings.TrimSpace(base + " " + value)
+		if _, exists := seen[full]; exists {
+			continue
+		}
+		seen[full] = struct{}{}
+		result = append(result, full)
+	}
+	return result
 }
 
 func operationFailureTitle(code application.ErrorCode) string {

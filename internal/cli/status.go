@@ -385,7 +385,7 @@ func renderStatusTunnelBody(presenter *presentation.Presenter, snapshot statusSn
 	if verbose && status.TunnelLastError != "" {
 		fields = append(fields, presentation.Field{Label: "error", Value: status.TunnelLastError})
 	}
-	presenter.Fields(fields...)
+	presenter.NestedFields(fields...)
 }
 
 func renderStatusConfig(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {

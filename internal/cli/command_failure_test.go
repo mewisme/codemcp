@@ -65,12 +65,10 @@ func TestActionableFailureStaysInsideCommandWorkflow(t *testing.T) {
 		"┌  Select managed OpenAI tunnel",
 		"◆  Fetched managed tunnel",
 		"×  Runtime API key required",
-		"│  ◆ Generate automatically",
-		"│  │  command — cm tunnel use " + tunnelID + " --auto-runtime-key",
-		"│  ◆ Use an existing runtime key",
-		"│  │  command — cm tunnel use " + tunnelID + " --runtime-api-key <key>",
-		"│  ◆ More options",
-		"│  │  command — cm tunnel use --help",
+		"│  ◆ Actions",
+		"│  │  Generate automatically — cm tunnel use " + tunnelID + " --auto-runtime-key",
+		"│  │  Use an existing runtime key — cm tunnel use " + tunnelID + " --runtime-api-key <key>",
+		"│  │  More options — cm tunnel use --help",
 		"└  Failed",
 	} {
 		if !strings.Contains(text, want) {
@@ -89,6 +87,38 @@ func TestActionableFailureStaysInsideCommandWorkflow(t *testing.T) {
 	failed := strings.Index(text, "└  Failed")
 	if failed < 0 || strings.TrimSpace(text[failed+len("└  Failed"):]) != "" {
 		t.Fatalf("primary failure rendered after frame close: %q", text)
+	}
+}
+
+func TestUnknownCommandSuggestionUsesCanonicalFailureGrammar(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	var output bytes.Buffer
+	caps := presentation.Capabilities{
+		StdoutTTY: true, StderrTTY: true, Width: 100, Unicode: true, RawUnicode: true, Interactive: true,
+	}
+	writer := presentation.WrapWriter(&output, caps)
+	root := newRootCommand()
+	root.SetOut(writer)
+	root.SetErr(writer)
+	root.SetArgs([]string{"sttus"})
+	if err := executeCommand(root); err == nil {
+		t.Fatal("expected unknown command failure")
+	}
+	text := output.String()
+	for _, want := range []string{
+		"×  Unknown command \"sttus\"",
+		"│  ◆ Suggestions",
+		"│  │  cm status",
+		"└  Failed",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("unknown command output missing %q: %q", want, text)
+		}
+	}
+	for _, forbidden := range []string{"Did you mean this?", "\tstatus", "Usage:"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("unknown command leaked raw Cobra suggestion %q: %q", forbidden, text)
+		}
 	}
 }
 

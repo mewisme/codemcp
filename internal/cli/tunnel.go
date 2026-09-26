@@ -103,7 +103,6 @@ func renderTunnelStatusText(presenter *presentation.Presenter, cfg tunnel.Config
 	presenter.Frame("OpenAI Secure MCP Tunnel")
 	presenter.StateSection(statusPresentationKind(state), "OpenAI Secure MCP Tunnel is "+state)
 	fields := []presentation.Field{
-		{Label: "status", Value: state},
 		{Label: "enabled", Value: status.Enabled},
 		{Label: "configured", Value: tunnel.Configured(cfg)},
 	}

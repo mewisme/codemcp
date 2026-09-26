@@ -153,7 +153,7 @@ func TestCommandSessionStartsBeforeProgressAndOwnsSingleFrame(t *testing.T) {
 	if frame < 0 || progress <= frame {
 		t.Fatalf("progress appeared before frame: %q", text)
 	}
-	if !strings.Contains(text, "◆  Result\n│\n│  ◆ state — ready") {
+	if !strings.Contains(text, "◆  Result\n│\n│  state — ready") {
 		t.Fatalf("section/content spacing contract missing: %q", text)
 	}
 }

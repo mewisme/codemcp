@@ -26,7 +26,7 @@ func TestPresenterRepresentativeHumanUnicode(t *testing.T) {
 	p.Outro("Done")
 
 	got := output.String()
-	for _, want := range []string{"┌  CodeMCP status", "◆  Runtime", "│  ◆ status — running", "✓  Ready", "│  ◆ Loopback", "│  │  mcp http — http://127.0.0.1:37421/mcp", "│  ◆ alpha", "│  ◆ one — ready", "·  Hint", "└  Done"} {
+	for _, want := range []string{"┌  CodeMCP status", "◆  Runtime", "│  status — running", "✓  Ready", "│  ◆ Loopback", "│  │  mcp http — http://127.0.0.1:37421/mcp", "│  ◆ alpha", "│  ◆ one — ready", "·  Hint", "└  Done"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("output missing %q:\n%s", want, got)
 		}
@@ -57,8 +57,8 @@ func TestPresenterRailHierarchyGolden(t *testing.T) {
 		"│\n" +
 		"◆  Runtime\n" +
 		"│\n" +
-		"│  ◆ pid — 4242\n" +
-		"│  ◆ session — run_abcd\n" +
+		"│  pid — 4242\n" +
+		"│  session — run_abcd\n" +
 		"│\n" +
 		"◇  Tunnel\n" +
 		"│\n" +
@@ -116,7 +116,7 @@ func TestPresenterTopLevelBlocksHaveExactlyOneGap(t *testing.T) {
 		"│\n" +
 		"◆  Configuration\n" +
 		"│\n" +
-		"│  ◆ config — /tmp/config.json\n" +
+		"│  config — /tmp/config.json\n" +
 		"│\n" +
 		"└  Done\n"
 	if got := output.String(); got != want {
@@ -170,7 +170,7 @@ func TestPresenterRichPaletteLocalizesColorToStructureAndStateTokens(t *testing.
 		theme.Render(RoleRail, "┌") + "  " + theme.Render(RoleHeading, "CodeMCP status"),
 		theme.Render(RoleSuccess, "✓") + "  CodeMCP is running",
 		theme.Render(RoleStructure, "◆") + "  " + theme.Render(RoleHeading, "Runtime"),
-		theme.Render(RoleRail, "│") + "  " + theme.Render(RoleStructure, "◆") + " " + theme.Render(RoleLabel, "pid") + " — 4242",
+		theme.Render(RoleRail, "│") + "  " + theme.Render(RoleLabel, "pid") + " — 4242",
 		theme.Render(RoleMuted, "◇") + "  " + theme.Render(RoleHeading, "Tunnel"),
 		theme.Render(RoleRail, "└") + "  Status complete",
 	} {

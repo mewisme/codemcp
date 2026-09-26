@@ -143,7 +143,7 @@ func TestRenderTunnelStatusTextIsCLIFirst(t *testing.T) {
 	var output bytes.Buffer
 	renderTunnelStatusText(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), cfg, status, true, false)
 	text := output.String()
-	for _, expected := range []string{"┌  OpenAI Secure MCP Tunnel", "✓  OpenAI Secure MCP Tunnel is connected", "│  ◆ status — connected", "│  ◆ enabled — true", "│  ◆ configured — true", "│  ◆ id — tunnel_test", "│  ◆ name — MCP WSL", "│  ◆ admin — configured · workspace:ws_admin", "└  Status complete"} {
+	for _, expected := range []string{"┌  OpenAI Secure MCP Tunnel", "✓  OpenAI Secure MCP Tunnel is connected", "│  enabled — true", "│  configured — true", "│  id — tunnel_test", "│  name — MCP WSL", "│  admin — configured · workspace:ws_admin", "└  Status complete"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("output %q missing %q", text, expected)
 		}
@@ -177,7 +177,7 @@ func TestTunnelReadRenderersUseRailHierarchyAndRedaction(t *testing.T) {
 		Access:     tunnel.AdminAccess{Read: true, Manage: true},
 	})
 	adminText := output.String()
-	for _, expected := range []string{"┌  OpenAI tunnel admin key", "✓  Admin key configured", "│  ◆ key — <redacted>", "│  ◆ scope — workspace:ws_admin", "│  ◆ access — full management"} {
+	for _, expected := range []string{"┌  OpenAI tunnel admin key", "✓  Admin key configured", "│  key — <redacted>", "│  scope — workspace:ws_admin", "│  access — full management"} {
 		if !strings.Contains(adminText, expected) {
 			t.Fatalf("admin status missing %q: %q", expected, adminText)
 		}

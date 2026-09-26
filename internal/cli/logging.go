@@ -195,9 +195,21 @@ func closeCommandProgress(cmd *cobra.Command, cause error) {
 			if failure.Summary != "" && !strings.EqualFold(failure.Summary, failure.Title) {
 				presenter.Fields(presentation.Field{Label: "reason", Value: failure.Summary})
 			}
-			for _, action := range failure.Actions {
-				presenter.Subsection(action.Title)
-				presenter.NestedFields(presentation.Field{Label: "command", Value: action.Command})
+			if len(failure.Suggestions) > 0 {
+				presenter.Subsection("Suggestions")
+				fields := make([]presentation.Field, 0, len(failure.Suggestions))
+				for _, suggestion := range failure.Suggestions {
+					fields = append(fields, presentation.Field{Value: suggestion})
+				}
+				presenter.NestedFields(fields...)
+			}
+			if len(failure.Actions) > 0 {
+				presenter.Subsection("Actions")
+				fields := make([]presentation.Field, 0, len(failure.Actions))
+				for _, action := range failure.Actions {
+					fields = append(fields, presentation.Field{Label: action.Title, Value: action.Command})
+				}
+				presenter.NestedFields(fields...)
 			}
 		})
 		session.CloseWith("Failed")

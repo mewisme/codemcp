@@ -221,7 +221,7 @@ func TestRenderStatusUsesCanonicalPresenterCapabilities(t *testing.T) {
 	var unicodeOutput bytes.Buffer
 	renderStatus(presentation.New(&unicodeOutput, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), snapshot, false)
 	unicodeText := unicodeOutput.String()
-	for _, expected := range []string{"┌  CodeMCP status", "✓  CodeMCP is running", "◆  Runtime", "│  ◆ pid — 4242", "◆  Endpoints", "◆  Config", "◆  Tunnel", "│  ✓ OpenAI Secure MCP Tunnel — connected", "└  Status complete"} {
+	for _, expected := range []string{"┌  CodeMCP status", "✓  CodeMCP is running", "◆  Runtime", "│  pid — 4242", "◆  Endpoints", "◆  Config", "◆  Tunnel", "│  ✓ OpenAI Secure MCP Tunnel — connected", "└  Status complete"} {
 		if !strings.Contains(unicodeText, expected) {
 			t.Fatalf("unicode status missing %q: %s", expected, unicodeText)
 		}
@@ -306,11 +306,11 @@ func TestRenderStatusDisabledTunnelGoldenRailHierarchy(t *testing.T) {
 		"┌  CodeMCP status",
 		"✓  CodeMCP is running",
 		"◆  Runtime",
-		"│  ◆ pid — 4242",
+		"│  pid — 4242",
 		"◆  Endpoints",
-		"│  ◆ mcp http —",
+		"│  mcp http —",
 		"◆  Config",
-		"│  ◆ transports —",
+		"│  transports —",
 		"◇  Tunnel",
 		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
 		"└  Status complete",
