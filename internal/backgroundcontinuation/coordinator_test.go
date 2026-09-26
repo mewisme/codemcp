@@ -20,6 +20,7 @@ type testAdapter struct {
 	deliver    DeliverResult
 	commit     DeliverResult
 	delivered  chan Request
+	committed  chan Request
 	mu         sync.Mutex
 	requests   []Request
 	closed     bool
@@ -44,7 +45,13 @@ func (a *testAdapter) Deliver(_ context.Context, req Request) (DeliverResult, er
 	}
 	return a.deliver, nil
 }
-func (a *testAdapter) Commit(context.Context, Request) (DeliverResult, error) {
+func (a *testAdapter) Commit(_ context.Context, req Request) (DeliverResult, error) {
+	if a.committed != nil {
+		select {
+		case a.committed <- req:
+		default:
+		}
+	}
 	return a.commit, nil
 }
 func (a *testAdapter) Close() error {

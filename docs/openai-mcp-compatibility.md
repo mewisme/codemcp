@@ -80,6 +80,38 @@ targets Streamable HTTP for remote MCP servers, so OpenAI-specific features are
 validated against Streamable HTTP and Secure MCP Tunnel rather than using SSE
 as a feature authority.
 
+## Background lifecycle evidence
+
+Evidence date: 2026-09-26
+
+The background lifecycle distinguishes process completion from model
+continuation. A completed process can always be inspected or recovered through
+the normal CodeMCP process/execution surfaces, but CodeMCP only tells a model to
+expect automatic continuation when a concrete client adapter has demonstrated
+that capability.
+
+| Client / integration | Profile | Transport | Background lifecycle evidence | Model continuation |
+| --- | --- | --- | --- | --- |
+| MCP Go SDK v1.7.0 | base | stdio | Official-client initialization/tool calls and fallback guidance are covered by interop tests; explicit recovery is covered by the lifecycle behavior suite. | Not proven |
+| MCP Go SDK v1.7.0 | base | Streamable HTTP | Official-client initialization/tool calls and fallback guidance are covered by interop tests; explicit recovery is covered by the lifecycle behavior suite. | Not proven |
+| MCP Go SDK v1.7.0 | base | legacy SSE | Compatibility-client initialization/tool calls and fallback guidance are covered by automated tests; explicit recovery remains transport-independent. | Not proven |
+| MCP Go SDK v1.7.0 | OpenAI | Streamable HTTP | OpenAI presentation projection plus canonical fallback guidance are covered by official-client interop tests; explicit recovery is covered by the lifecycle behavior suite. | Not proven |
+| OpenAI Secure MCP Tunnel | OpenAI | Secure MCP Tunnel | The tunnel/profile bridge and canonical tool/runtime behavior are covered by CodeMCP transport tests; OpenAI documents the tunnel as a normal MCP request path. | Not proven by the CodeMCP test harness |
+
+The provider-neutral continuation coordinator also has a reference capable test
+harness that proves event-driven automatic delivery, reconnect fencing,
+recovery races and exactly-once model-visible delivery. That harness is not a
+claim about a real MCP client. Consequently, MCP request capability projection
+keeps model continuation and in-flight steering disabled for the combinations
+above, and their instructions tell the model to return control after starting
+background work rather than polling.
+
+Evidence:
+
+- https://developers.openai.com/api/docs/guides/tools-connectors-mcp
+- https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
+- https://developers.openai.com/plugins/concepts/mcp-server
+
 ## UI boundary
 
 OpenAI documents MCP Apps/UI as optional. CodeMCP does not implement MCP Apps
