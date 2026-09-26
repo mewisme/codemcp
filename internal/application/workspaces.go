@@ -11,6 +11,7 @@ import (
 	"go.mewis.me/codemcp/internal/capability"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/workspace"
+	workspacereconcile "go.mewis.me/codemcp/internal/workspace/reconcile"
 )
 
 type WorkspaceView struct {
@@ -201,6 +202,8 @@ func (service *WorkspaceService) Relocate(ctx context.Context, request Workspace
 		var after workspace.Workspace
 		if resolution == "" {
 			after, err = service.manager.Relocate(request.ID, request.Path)
+		} else if resolution == workspace.RelocationResolutionMerge {
+			after, err = service.manager.ResolveDuplicateRelocationWithMerge(request.ID, request.Path, resolution, workspacereconcile.MergeDuplicateState)
 		} else {
 			after, err = service.manager.ResolveDuplicateRelocation(request.ID, request.Path, resolution)
 		}
@@ -530,6 +533,9 @@ func classifyWorkspaceError(operation capability.ID, err error) error {
 		return operationError(operation, ErrorConflict, err)
 	case errors.Is(err, workspace.ErrInvalidRelocationResolution):
 		return operationError(operation, ErrorInvalidArgument, err)
+	case errors.Is(err, workspacereconcile.ErrDurableStateConflict),
+		errors.Is(err, workspacereconcile.ErrUnsupportedWorkspaceState):
+		return operationError(operation, ErrorConflict, err)
 	case errors.Is(err, workspace.ErrUnavailable):
 		return operationError(operation, ErrorUnavailable, err)
 	case errors.Is(err, workspace.ErrPurgeNotConfirmed):

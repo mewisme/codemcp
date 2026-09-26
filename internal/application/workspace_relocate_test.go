@@ -71,11 +71,14 @@ func TestWorkspaceRelocateResolutionValidation(t *testing.T) {
 		t.Fatalf("invalid resolution err=%v code=%s", err, ErrorCodeOf(err))
 	}
 
-	_, err = service.Relocate(t.Context(), WorkspaceRelocateRequest{
+	merged, err := service.Relocate(t.Context(), WorkspaceRelocateRequest{
 		ID: registered.Value.ID, Path: destination, Resolution: workspace.RelocationResolutionMerge,
 	})
-	if ErrorCodeOf(err) != ErrorConflict || !errors.Is(err, workspace.ErrRelocationMergeUnavailable) {
-		t.Fatalf("merge err=%v code=%s", err, ErrorCodeOf(err))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if merged.Value.After.ID != registered.Value.ID || merged.Value.After.Path != filepath.Clean(destination) {
+		t.Fatalf("merged relocation=%#v", merged.Value)
 	}
 }
 

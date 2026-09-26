@@ -36,12 +36,41 @@ func workspaceCommand() *cobra.Command {
 
 func workspaceDoctorCommand() *cobra.Command {
 	var asJSON bool
+	var destination string
 	cmd := &cobra.Command{
 		Use:               "doctor <workspace_id>",
 		Short:             "Diagnose workspace-local state without modifying it",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWorkspaceID,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if strings.TrimSpace(destination) != "" {
+				diagnostic, err := workspaceManagerForCommand(cmd).DiagnoseRelocation(cmd.Context(), args[0], destination)
+				if err != nil {
+					return err
+				}
+				if asJSON {
+					return writeResultJSON(cmd, diagnostic)
+				}
+				log := commandLogger(cmd)
+				log.Info("WORKSPACE", "workspace relocation diagnostics")
+				log.Detail("id", diagnostic.WorkspaceID)
+				log.Detail("kind", diagnostic.Kind)
+				log.Detail("registered root", diagnostic.RegisteredRoot)
+				log.Detail("registered state", diagnostic.RegisteredState)
+				log.Detail("destination root", diagnostic.DestinationRoot)
+				log.Detail("destination state", diagnostic.DestinationState)
+				if len(diagnostic.Resolutions) > 0 {
+					values := make([]string, 0, len(diagnostic.Resolutions))
+					for _, resolution := range diagnostic.Resolutions {
+						values = append(values, string(resolution))
+					}
+					log.Detail("resolutions", strings.Join(values, ", "))
+				}
+				if diagnostic.Error != "" {
+					log.Detail("error", diagnostic.Error)
+				}
+				return nil
+			}
 			diagnostic, err := workspaceManagerForCommand(cmd).Diagnose(cmd.Context(), args[0])
 			if err != nil {
 				return err
@@ -81,6 +110,7 @@ func workspaceDoctorCommand() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&destination, "destination", "", "diagnose relocation or duplicate identity state at a destination path")
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }

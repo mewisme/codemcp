@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/oslock"
 	"go.mewis.me/codemcp/internal/state"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
@@ -28,6 +29,18 @@ var (
 	ErrInvalidRelocationResolution = errors.New("invalid workspace relocation resolution")
 	ErrRelocationMergeUnavailable  = errors.New("workspace relocation merge requires typed domain reconciliation")
 )
+
+type DuplicateMergeRequest struct {
+	WorkspaceID          string
+	RegisteredRoot       string
+	DestinationRoot      string
+	RegisteredStateRoot  string
+	DestinationStateRoot string
+	OutputStateRoot      string
+	AllowedRoots         []string
+}
+
+type DuplicateMergeResolver func(DuplicateMergeRequest) error
 
 func ParseRelocationResolution(value string) (RelocationResolution, error) {
 	resolution := RelocationResolution(strings.ToLower(strings.TrimSpace(value)))
@@ -76,6 +89,10 @@ const (
 var duplicateRelocationFailureHook = func(string) error { return nil }
 
 func (m *Manager) ResolveDuplicateRelocation(id, path string, resolution RelocationResolution) (Workspace, error) {
+	return m.ResolveDuplicateRelocationWithMerge(id, path, resolution, nil)
+}
+
+func (m *Manager) ResolveDuplicateRelocationWithMerge(id, path string, resolution RelocationResolution, merge DuplicateMergeResolver) (Workspace, error) {
 	if m == nil {
 		return Workspace{}, errors.New("workspace manager is unavailable")
 	}
@@ -86,7 +103,7 @@ func (m *Manager) ResolveDuplicateRelocation(id, path string, resolution Relocat
 	if parsed == "" {
 		return m.Relocate(id, path)
 	}
-	if parsed == RelocationResolutionMerge {
+	if parsed == RelocationResolutionMerge && merge == nil {
 		return Workspace{}, ErrRelocationMergeUnavailable
 	}
 
@@ -158,6 +175,14 @@ func (m *Manager) ResolveDuplicateRelocation(id, path string, resolution Relocat
 		span.FailMessage("Workspace relocation resolution failed", err)
 		return Workspace{}, err
 	}
+	if parsed == RelocationResolutionMerge {
+		for _, root := range []string{registeredRoot, destinationRoot} {
+			if err := probeMergeTransientLocks(root, item.ID); err != nil {
+				span.FailMessage("Workspace relocation resolution failed", err)
+				return Workspace{}, err
+			}
+		}
+	}
 
 	registeredLocal := workspacestate.New(registeredRoot).Root()
 	destinationLocal := workspacestate.New(destinationRoot).Root()
@@ -205,8 +230,8 @@ func (m *Manager) ResolveDuplicateRelocation(id, path string, resolution Relocat
 		return Workspace{}, err
 	}
 
-	registeredBackup := filepath.Join(transactionDir, "registered")
-	destinationBackup := filepath.Join(transactionDir, "destination")
+	registeredBackup := filepath.Join(transactionDir, "registered-workspace", workspacestate.DirectoryName)
+	destinationBackup := filepath.Join(transactionDir, "destination-workspace", workspacestate.DirectoryName)
 	if err := copyRelocationState(registeredLocal, registeredBackup); err != nil {
 		span.FailMessage("Workspace relocation resolution failed", err)
 		return Workspace{}, err
@@ -232,6 +257,50 @@ func (m *Manager) ResolveDuplicateRelocation(id, path string, resolution Relocat
 	if err := verifyRelocationFingerprint(destinationLocal, destinationFingerprint); err != nil {
 		span.FailMessage("Workspace relocation resolution failed", err)
 		return Workspace{}, err
+	}
+
+	mergedStateRoot := ""
+	if parsed == RelocationResolutionMerge {
+		mergedWorkspaceRoot := filepath.Join(transactionDir, "merged-workspace")
+		mergedStateRoot = filepath.Join(mergedWorkspaceRoot, workspacestate.DirectoryName)
+		if err := os.MkdirAll(mergedWorkspaceRoot, 0700); err != nil {
+			span.FailMessage("Workspace relocation resolution failed", err)
+			return Workspace{}, err
+		}
+		if err := merge(DuplicateMergeRequest{
+			WorkspaceID:          item.ID,
+			RegisteredRoot:       registeredRoot,
+			DestinationRoot:      destinationRoot,
+			RegisteredStateRoot:  registeredBackup,
+			DestinationStateRoot: destinationBackup,
+			OutputStateRoot:      mergedStateRoot,
+			AllowedRoots:         relocatedWorkspaceMetadata(item, registeredRoot, destinationRoot).AllowDirs,
+		}); err != nil {
+			span.FailMessage("Workspace relocation resolution failed", err)
+			return Workspace{}, err
+		}
+		identity, err := workspacestate.New(mergedWorkspaceRoot).LoadIdentity()
+		if err != nil || identity.ID != item.ID {
+			if err == nil {
+				err = fmt.Errorf("merged workspace identity changed to %s", identity.ID)
+			}
+			err = fmt.Errorf("validate merged workspace state: %w", err)
+			span.FailMessage("Workspace relocation resolution failed", err)
+			return Workspace{}, err
+		}
+		for _, transient := range []string{"runtime", "cache"} {
+			if _, err := os.Lstat(filepath.Join(mergedStateRoot, transient)); !errors.Is(err, os.ErrNotExist) {
+				if err == nil {
+					err = fmt.Errorf("merged workspace state contains transient %s state", transient)
+				}
+				span.FailMessage("Workspace relocation resolution failed", err)
+				return Workspace{}, err
+			}
+		}
+		if _, err := fingerprintRelocationState(mergedStateRoot); err != nil {
+			span.FailMessage("Workspace relocation resolution failed", err)
+			return Workspace{}, err
+		}
 	}
 
 	previous := item
@@ -281,6 +350,19 @@ func (m *Manager) ResolveDuplicateRelocation(id, path string, resolution Relocat
 				verifyErr = fmt.Errorf("staged registered state identity changed to %s", identity.ID)
 			}
 			err = rollback(fmt.Errorf("verify staged registered workspace state: %w", verifyErr))
+			span.FailMessage("Workspace relocation resolution failed", err)
+			return Workspace{}, err
+		}
+		if err := duplicateRelocationFailureHook("after_destination_write"); err != nil {
+			err = rollback(err)
+			span.FailMessage("Workspace relocation resolution failed", err)
+			return Workspace{}, err
+		}
+	}
+	if parsed == RelocationResolutionMerge {
+		destinationChanged = true
+		if err := activateMergedRelocationState(mergedStateRoot, destinationRoot); err != nil {
+			err = rollback(err)
 			span.FailMessage("Workspace relocation resolution failed", err)
 			return Workspace{}, err
 		}
@@ -348,6 +430,70 @@ func (m *Manager) ResolveDuplicateRelocation(id, path string, resolution Relocat
 	}
 	span.EndMessage("Duplicate workspace identity resolved", tracepkg.String("workspace_id", item.ID), tracepkg.String("registered_root", registeredRoot), tracepkg.String("destination_root", destinationRoot), tracepkg.String("resolution", string(parsed)))
 	return next, nil
+}
+
+func probeMergeTransientLocks(workspaceRoot, workspaceID string) error {
+	local := workspacestate.New(workspaceRoot)
+	path, err := local.Join("runtime", "codegraph.lock")
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	lock, ok, err := oslock.TryAcquireExisting(path, oslock.Exclusive)
+	if err != nil {
+		return fmt.Errorf("%w: %s: probe derived-state mutation lock: %v", ErrStateLost, workspaceID, err)
+	}
+	if !ok {
+		return fmt.Errorf("%w: %s: derived workspace state is owned by another runtime", ErrAlreadyActive, workspaceID)
+	}
+	return lock.Release()
+}
+
+func activateMergedRelocationState(source, destinationRoot string) error {
+	destination := workspacestate.New(destinationRoot).Root()
+	stage, err := os.MkdirTemp(destinationRoot, ".cm-merge-stage-")
+	if err != nil {
+		return err
+	}
+	stageActive := true
+	defer func() {
+		if stageActive {
+			_ = os.RemoveAll(stage)
+		}
+	}()
+	if err := copyRelocationState(source, stage); err != nil {
+		return err
+	}
+	expected, err := fingerprintRelocationState(source)
+	if err != nil {
+		return err
+	}
+	if err := verifyRelocationFingerprint(stage, expected); err != nil {
+		return err
+	}
+	old, err := os.MkdirTemp(destinationRoot, ".cm-merge-old-")
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(old); err != nil {
+		return err
+	}
+	if err := os.Rename(destination, old); err != nil {
+		return fmt.Errorf("stage existing destination workspace state: %w", err)
+	}
+	if err := os.Rename(stage, destination); err != nil {
+		_ = os.Rename(old, destination)
+		return fmt.Errorf("activate merged workspace state: %w", err)
+	}
+	stageActive = false
+	if err := os.RemoveAll(old); err != nil {
+		return fmt.Errorf("retire previous destination workspace state: %w", err)
+	}
+	return nil
 }
 
 func relocatedWorkspaceMetadata(item Workspace, oldRoot, newRoot string) Workspace {

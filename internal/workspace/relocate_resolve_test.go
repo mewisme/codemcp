@@ -140,6 +140,9 @@ func TestResolveDuplicateRelocationRollbackRestoresAllState(t *testing.T) {
 		{name: "registered_after_destination", resolution: RelocationResolutionRegistered, stage: "after_destination_write"},
 		{name: "registered_after_registry", resolution: RelocationResolutionRegistered, stage: "after_registry_write"},
 		{name: "registered_after_source_retire", resolution: RelocationResolutionRegistered, stage: "after_source_retire"},
+		{name: "merge_after_destination", resolution: RelocationResolutionMerge, stage: "after_destination_write"},
+		{name: "merge_after_registry", resolution: RelocationResolutionMerge, stage: "after_registry_write"},
+		{name: "merge_after_source_retire", resolution: RelocationResolutionMerge, stage: "after_source_retire"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -156,7 +159,15 @@ func TestResolveDuplicateRelocationRollbackRestoresAllState(t *testing.T) {
 			}
 			t.Cleanup(func() { duplicateRelocationFailureHook = previous })
 
-			if _, err := manager.ResolveDuplicateRelocation(item.ID, destination, test.resolution); err == nil || !strings.Contains(err.Error(), "injected relocation failure") {
+			var err error
+			if test.resolution == RelocationResolutionMerge {
+				_, err = manager.ResolveDuplicateRelocationWithMerge(item.ID, destination, test.resolution, func(request DuplicateMergeRequest) error {
+					return copyRelocationState(request.RegisteredStateRoot, request.OutputStateRoot)
+				})
+			} else {
+				_, err = manager.ResolveDuplicateRelocation(item.ID, destination, test.resolution)
+			}
+			if err == nil || !strings.Contains(err.Error(), "injected relocation failure") {
 				t.Fatalf("resolution error=%v", err)
 			}
 			if data, err := os.ReadFile(sourceState); err != nil || string(data) != "source-state" {

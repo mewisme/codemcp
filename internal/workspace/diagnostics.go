@@ -42,6 +42,29 @@ type LocalStateDiagnostic struct {
 	Error          string               `json:"error,omitempty"`
 }
 
+type ReconciliationKind string
+
+const (
+	ReconciliationReady            ReconciliationKind = "ready"
+	ReconciliationReconnectable    ReconciliationKind = "reconnectable_stale_path"
+	ReconciliationDuplicate        ReconciliationKind = "duplicate_identity"
+	ReconciliationRegisteredIssue  ReconciliationKind = "registered_conflict"
+	ReconciliationDestinationIssue ReconciliationKind = "destination_conflict"
+)
+
+type RelocationDiagnostic struct {
+	WorkspaceID        string                 `json:"workspace_id"`
+	RegisteredRoot     string                 `json:"registered_root"`
+	DestinationRoot    string                 `json:"destination_root"`
+	Kind               ReconciliationKind     `json:"kind"`
+	RegisteredState    RegisteredRootState    `json:"registered_state"`
+	DestinationState   RegisteredRootState    `json:"destination_state"`
+	RegisteredLocalID  string                 `json:"registered_local_id,omitempty"`
+	DestinationLocalID string                 `json:"destination_local_id,omitempty"`
+	Resolutions        []RelocationResolution `json:"resolutions,omitempty"`
+	Error              string                 `json:"error,omitempty"`
+}
+
 func (m *Manager) Diagnose(ctx context.Context, id string) (LocalStateDiagnostic, error) {
 	if m == nil {
 		return LocalStateDiagnostic{}, errors.New("workspace manager is unavailable")
@@ -66,6 +89,51 @@ func (m *Manager) Diagnose(ctx context.Context, id string) (LocalStateDiagnostic
 		return LocalStateDiagnostic{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	return diagnoseWorkspaceLocalState(ctx, item, owned), nil
+}
+
+func (m *Manager) DiagnoseRelocation(_ context.Context, id, destination string) (RelocationDiagnostic, error) {
+	if m == nil {
+		return RelocationDiagnostic{}, errors.New("workspace manager is unavailable")
+	}
+	item, err := m.Get(id)
+	if err != nil {
+		return RelocationDiagnostic{}, err
+	}
+	destination = strings.TrimSpace(destination)
+	if destination == "" {
+		return RelocationDiagnostic{}, errors.New("workspace relocation destination is required")
+	}
+	registered := m.classifyRegisteredRoot(item)
+	target := m.classifyRegisteredRoot(Workspace{ID: item.ID, Path: destination})
+	result := RelocationDiagnostic{
+		WorkspaceID:        item.ID,
+		RegisteredRoot:     registered.Root,
+		DestinationRoot:    target.Root,
+		RegisteredState:    registered.State,
+		DestinationState:   target.State,
+		RegisteredLocalID:  registered.LocalID,
+		DestinationLocalID: target.LocalID,
+	}
+	switch {
+	case registered.State == RegisteredLocalValidSameID && target.State == RegisteredLocalValidSameID:
+		result.Kind = ReconciliationDuplicate
+		result.Resolutions = (&DuplicateWorkspaceIdentityError{}).Resolutions()
+	case (registered.State == RegisteredRootMissing || registered.State == RegisteredLocalRootAbsent) && target.State == RegisteredLocalValidSameID:
+		result.Kind = ReconciliationReconnectable
+	case registered.State != RegisteredLocalValidSameID && registered.State != RegisteredRootMissing && registered.State != RegisteredLocalRootAbsent:
+		result.Kind = ReconciliationRegisteredIssue
+		if registered.Cause != nil {
+			result.Error = registered.Cause.Error()
+		}
+	case target.State != RegisteredLocalValidSameID:
+		result.Kind = ReconciliationDestinationIssue
+		if target.Cause != nil {
+			result.Error = target.Cause.Error()
+		}
+	default:
+		result.Kind = ReconciliationReady
+	}
+	return result, nil
 }
 
 func (m *Manager) diagnosticRegistryWorkspace(requested string) (Workspace, error) {
