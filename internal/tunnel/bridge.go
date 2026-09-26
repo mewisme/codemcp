@@ -25,6 +25,8 @@ type sdkBridge struct {
 	server           *sdkmcp.Server
 	profile          localmcp.Profile
 	tasks            *localmcp.TaskRegistry
+	features         *localmcp.FeatureExecutor
+	featureRegistry  *localmcp.FeatureRegistry
 	mu               sync.Mutex
 	fingerprints     map[string]string
 	sessionNamespace uint64
@@ -46,9 +48,14 @@ func newSDKBridgeWithProfile(runtime *tools.Runtime, profile localmcp.Profile) (
 	if profile == nil {
 		profile = localmcp.OpenAIProfile()
 	}
-	descriptors := localmcp.DescribeProtocol(nil)
+	featureRegistry := localmcp.FeatureRegistryForRuntime(runtime)
+	descriptors := localmcp.DescribeProtocolWithFeatures(nil, featureRegistry)
 	implementation, options := localmcp.ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
+	features := localmcp.NewFeatureExecutor(featureRegistry, runtime, "", "tunnel")
+	if err := localmcp.InstallFeatureMethods(server, features); err != nil {
+		return nil, err
+	}
 	var tasks *localmcp.TaskRegistry
 	if localmcp.ProfileBackgroundCapabilities(profile).TaskObservation {
 		tasks = localmcp.NewTaskRegistry(runtime.Processes, runtime.BackgroundDeliveries)
@@ -57,7 +64,7 @@ func newSDKBridgeWithProfile(runtime *tools.Runtime, profile localmcp.Profile) (
 			return nil, err
 		}
 	}
-	bridge := &sdkBridge{runtime: runtime, server: server, profile: profile, tasks: tasks, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
+	bridge := &sdkBridge{runtime: runtime, server: server, profile: profile, tasks: tasks, features: features, featureRegistry: featureRegistry, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
 	if err := bridge.syncTools(); err != nil {
 		return nil, err
 	}

@@ -23,7 +23,11 @@ func serverInfo() ServerDescriptor {
 }
 
 func BuildDiscoverResult(profile Profile) DiscoverResult {
-	descriptor := DescribeProtocol(nil)
+	return BuildDiscoverResultWithFeatures(profile, nil)
+}
+
+func BuildDiscoverResultWithFeatures(profile Profile, features *FeatureRegistry) DiscoverResult {
+	descriptor := DescribeProtocolWithFeatures(nil, features)
 	return DiscoverResult{
 		ResultType:        "complete",
 		SupportedVersions: []string{SupportedProtocolVersion},

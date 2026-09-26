@@ -23,6 +23,8 @@ type SDKServer struct {
 	Profile          Profile
 	AuthRequirements []AuthRequirement
 	Tasks            *TaskRegistry
+	FeatureRegistry  *FeatureRegistry
+	Features         *FeatureExecutor
 }
 
 func (s *SDKServer) Close() {
@@ -50,9 +52,14 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 	if profile == nil {
 		profile = BaseProfile()
 	}
-	descriptors := DescribeProtocol(nil, authRequirements...)
+	features := FeatureRegistryForRuntime(toolRuntime)
+	descriptors := DescribeProtocolWithFeatures(nil, features, authRequirements...)
 	implementation, options := ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
+	featureExecutor := NewFeatureExecutor(features, toolRuntime, boundWorkspace, source)
+	if err := InstallFeatureMethods(server, featureExecutor); err != nil {
+		return nil, err
+	}
 	callers := approval.NewCallerRegistry()
 	var tasks *TaskRegistry
 	if ProfileBackgroundCapabilities(profile).TaskObservation {
@@ -62,7 +69,7 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 			return nil, err
 		}
 	}
-	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements), Tasks: tasks}
+	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements), Tasks: tasks, FeatureRegistry: features, Features: featureExecutor}
 	for _, schema := range toolRuntime.List() {
 		if err := adapter.addTool(schema); err != nil {
 			return nil, err

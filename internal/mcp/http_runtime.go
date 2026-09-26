@@ -71,7 +71,7 @@ func (h HTTPRuntime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeErrorID(w, req.ID, protocolErr.Code, protocolErr.Message)
 		return
 	}
-	if !IsSupportedMethod(req.Method) {
+	if h.Server == nil || !h.Server.SupportsMethod(req.Method) {
 		writeErrorStatusID(w, http.StatusNotFound, req.ID, ErrMethodNotFound, "method not found")
 		return
 	}

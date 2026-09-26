@@ -616,3 +616,82 @@ func TestSDKToolConversionPreservesAnnotationsAndHeaderSchema(t *testing.T) {
 		t.Fatalf("input schema lost x-mcp-header: %s", data)
 	}
 }
+
+type bridgeFeatureParams struct {
+	sdkmcp.ParamsBase
+	Value string `json:"value,omitempty"`
+}
+
+type bridgeFeatureResult struct {
+	sdkmcp.ResultBase
+	Value string `json:"value,omitempty"`
+}
+
+func TestSDKBridgeUsesCanonicalFeatureRegistry(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := &tools.Runtime{Registry: tools.NewRegistry()}
+	registry := localmcp.FeatureRegistryForRuntime(runtime)
+	const method = "io.codemcp.test/tunnel-feature"
+	if err := registry.Register(localmcp.FeatureRegistration{
+		ID: "tunnel-feature", Family: localmcp.FeatureSkills,
+		Capabilities: localmcp.FeatureCapabilities{
+			Extensions: map[string]any{"io.codemcp.test/tunnel-feature": map[string]any{"version": "1"}},
+		},
+		Methods: []localmcp.FeatureMethod{{
+			Name: method, Scope: localmcp.FeatureScopeGlobal, Custom: true,
+			Handler: func(_ context.Context, request localmcp.FeatureRequest) (map[string]any, error) {
+				value, _ := request.Params["value"].(string)
+				return map[string]any{"value": value}, nil
+			},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bridge.featureRegistry != registry {
+		t.Fatal("tunnel bridge created a profile-specific feature registry")
+	}
+
+	serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- bridge.Run(ctx, serverTransport) }()
+
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "feature-tunnel-test", Version: "1.0.0"}, nil)
+	if err := sdkmcp.AddSendingCustomMethod[*bridgeFeatureParams, *bridgeFeatureResult](client, method); err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialized := session.InitializeResult()
+	if initialized == nil || initialized.Capabilities == nil {
+		t.Fatal("tunnel initialize capabilities unavailable")
+	}
+	if _, ok := initialized.Capabilities.Extensions["io.codemcp.test/tunnel-feature"]; !ok {
+		t.Fatalf("tunnel feature extension missing: %#v", initialized.Capabilities.Extensions)
+	}
+	result, err := sdkmcp.CallCustomMethod[*bridgeFeatureParams, *bridgeFeatureResult](
+		ctx, session, method, &bridgeFeatureParams{Value: "shared-registry"},
+	)
+	if err != nil || result.Value != "shared-registry" {
+		t.Fatalf("tunnel feature result=%#v err=%v", result, err)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case err := <-serverDone:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("bridge run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("bridge did not stop")
+	}
+}

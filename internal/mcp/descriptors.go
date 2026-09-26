@@ -109,6 +109,19 @@ func DescribeProtocol(schemas []tools.Schema, authRequirements ...AuthRequiremen
 	return descriptor
 }
 
+func DescribeProtocolWithFeatures(schemas []tools.Schema, features *FeatureRegistry, authRequirements ...AuthRequirement) ProtocolDescriptors {
+	descriptor := DescribeProtocol(schemas, authRequirements...)
+	if features == nil {
+		return descriptor
+	}
+	snapshot := features.Snapshot()
+	descriptor.Resources = snapshot.Resources
+	descriptor.Prompts = snapshot.Prompts
+	descriptor.Skills = snapshot.Skills
+	descriptor.Capabilities = mergeCapabilitiesWithFeatures(descriptor.Capabilities, snapshot.Capabilities)
+	return descriptor
+}
+
 func BearerAuthRequirement(scopes ...string) AuthRequirement {
 	return AuthRequirement{Scheme: bearerAuthScheme, Scopes: append([]string(nil), scopes...)}
 }

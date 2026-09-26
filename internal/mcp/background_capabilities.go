@@ -47,13 +47,47 @@ func WithRequestBackgroundCapabilities(ctx context.Context, profile Profile, req
 
 func ProjectCapabilities(profile Profile, canonical Capabilities, taskTransport bool) Capabilities {
 	projected := Capabilities{Tools: canonical.Tools}
+	if canonical.Resources != nil {
+		value := *canonical.Resources
+		projected.Resources = &value
+	}
+	if canonical.Prompts != nil {
+		value := *canonical.Prompts
+		projected.Prompts = &value
+	}
 	background := ProfileBackgroundCapabilities(profile)
-	if taskTransport && background.TaskObservation {
-		if value, ok := canonical.Extensions[TasksExtensionID]; ok {
-			projected.Extensions = map[string]any{TasksExtensionID: value}
+	for extensionID, value := range canonical.Extensions {
+		if extensionID == TasksExtensionID && (!taskTransport || !background.TaskObservation) {
+			continue
 		}
+		if projected.Extensions == nil {
+			projected.Extensions = map[string]any{}
+		}
+		projected.Extensions[extensionID] = cloneAnyValue(value)
 	}
 	return projected
+}
+
+func mergeCapabilitiesWithFeatures(canonical Capabilities, features FeatureCapabilities) Capabilities {
+	out := canonical
+	if features.Resources != nil {
+		value := *features.Resources
+		out.Resources = &value
+	}
+	if features.Prompts != nil {
+		value := *features.Prompts
+		out.Prompts = &value
+	}
+	if len(features.Extensions) > 0 {
+		out.Extensions = cloneAnyMap(canonical.Extensions)
+		if out.Extensions == nil {
+			out.Extensions = map[string]any{}
+		}
+		for extensionID, value := range features.Extensions {
+			out.Extensions[extensionID] = cloneAnyValue(value)
+		}
+	}
+	return out
 }
 
 func requestExtensionNegotiated(extensions map[string]any, extensionID string) bool {

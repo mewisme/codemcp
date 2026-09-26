@@ -49,6 +49,7 @@ type Runtime struct {
 	Processes            *shellruntime.ProcessManager
 	BackgroundDeliveries *backgrounddelivery.Broker
 	LoopGuard            *ToolLoopGuard
+	protocolFeatures     protocolFeatureSlot
 	sessionMu            sync.Mutex
 	configReadMu         sync.RWMutex
 	configReads          ConfigReadProvider
@@ -245,34 +246,17 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 			workspaceID, preflightErr = requiredString(args, "workspace_id")
 			if preflightErr == nil && name == ApprovalRequestToolName {
 				// Approval requests may target the synthetic local-control scope used by global control-plane tools.
-			} else if preflightErr == nil && r.Workspaces == nil {
-				preflightErr = errors.New("workspace manager is unavailable")
 			} else if preflightErr == nil {
-				canonical, err := r.Workspaces.CanonicalID(workspaceID)
-				if err != nil {
-					preflightErr = workspaceScopePreflightError(r.Workspaces, workspaceID, err)
-				} else {
-					if boundWorkspaceID != "" {
-						boundCanonical, boundErr := r.Workspaces.CanonicalID(boundWorkspaceID)
-						if boundErr != nil {
-							preflightErr = boundErr
-						} else if canonical != boundCanonical {
-							preflightErr = fmt.Errorf("tool call is bound to workspace %s and cannot access workspace %s", boundCanonical, canonical)
-						}
-					}
-					if preflightErr == nil && canonical != workspaceID {
+				var resolution WorkspaceAccessResolution
+				resolution, preflightErr = r.ResolveWorkspaceAccess(ctx, workspaceID)
+				if preflightErr == nil {
+					if resolution.WorkspaceID != workspaceID {
 						args = cloneMap(args)
-						args["workspace_id"] = canonical
+						args["workspace_id"] = resolution.WorkspaceID
 					}
-					if preflightErr == nil {
-						workspaceID = canonical
-					}
-					if preflightErr == nil && sessionID != "" {
-						_, decision, count, err := r.sessionAccessManager().CheckOrGrant(sessionID, workspaceID)
-						sessionAccess = decision
-						sessionWorkspaceCount = count
-						preflightErr = err
-					}
+					workspaceID = resolution.WorkspaceID
+					sessionAccess = resolution.SessionAccess
+					sessionWorkspaceCount = resolution.SessionWorkspaceCount
 				}
 			}
 		} else if name == "workspace_register" {

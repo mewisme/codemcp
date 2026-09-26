@@ -86,6 +86,20 @@ type ProjectedTool struct {
 	Title           string           `json:"title,omitempty"`
 }
 
+type ProjectedFeatures struct {
+	Resources []ResourceDescriptor `json:"resources,omitempty"`
+	Prompts   []PromptDescriptor   `json:"prompts,omitempty"`
+	Skills    []SkillDescriptor    `json:"skills,omitempty"`
+}
+
+func ProjectFeatures(_ Profile, descriptor ProtocolDescriptors) ProjectedFeatures {
+	return ProjectedFeatures{
+		Resources: cloneResourceDescriptors(descriptor.Resources),
+		Prompts:   clonePromptDescriptors(descriptor.Prompts),
+		Skills:    cloneSkillDescriptors(descriptor.Skills),
+	}
+}
+
 func ProjectTool(profile Profile, descriptor ToolDescriptor, options ToolProjectionOptions) (ProjectedTool, error) {
 	if profile == nil {
 		profile = BaseProfile()
@@ -218,6 +232,15 @@ func ProjectSDKServer(profile Profile, descriptor ProtocolDescriptors) (*sdkmcp.
 	}
 	if projected.Tools.ListChanged {
 		capabilities.Tools = &sdkmcp.ToolCapabilities{ListChanged: true}
+	}
+	if projected.Resources != nil {
+		capabilities.Resources = &sdkmcp.ResourceCapabilities{
+			ListChanged: projected.Resources.ListChanged,
+			Subscribe:   projected.Resources.Subscribe,
+		}
+	}
+	if projected.Prompts != nil {
+		capabilities.Prompts = &sdkmcp.PromptCapabilities{ListChanged: projected.Prompts.ListChanged}
 	}
 	return implementation, &sdkmcp.ServerOptions{
 		Capabilities: capabilities,

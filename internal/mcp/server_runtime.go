@@ -10,6 +10,7 @@ import (
 
 type Runtime struct {
 	Tools            *tools.Runtime
+	Features         *FeatureExecutor
 	Profile          Profile
 	AuthRequirements []AuthRequirement
 }
@@ -29,7 +30,12 @@ func NewRuntimeWithProfile(toolRuntime *tools.Runtime, profile Profile) *Runtime
 	if profile == nil {
 		profile = BaseProfile()
 	}
-	return &Runtime{Tools: toolRuntime, Profile: profile}
+	features := FeatureRegistryForRuntime(toolRuntime)
+	return &Runtime{
+		Tools:    toolRuntime,
+		Features: NewFeatureExecutor(features, toolRuntime, "", "http"),
+		Profile:  profile,
+	}
 }
 
 func (r *Runtime) SetAuthRequirements(requirements ...AuthRequirement) {
@@ -42,7 +48,11 @@ func (r *Runtime) SetAuthRequirements(requirements ...AuthRequirement) {
 func (r *Runtime) Handle(ctx context.Context, method string, params map[string]any) (any, error) {
 	switch method {
 	case "server/discover":
-		return BuildDiscoverResult(r.Profile), nil
+		var features *FeatureRegistry
+		if r.Features != nil {
+			features = r.Features.Registry
+		}
+		return BuildDiscoverResultWithFeatures(r.Profile, features), nil
 	case "tools/list":
 		descriptors := DescribeProtocol(r.Tools.List(), r.AuthRequirements...).Tools
 		projected, err := ProjectTools(r.Profile, descriptors, ToolProjectionOptions{})
@@ -73,6 +83,16 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 		}
 		return result, err
 	default:
+		if r.Features != nil && r.Features.SupportsMethod(method) {
+			return r.Features.Invoke(ctx, method, params)
+		}
 		return nil, NewError(ErrMethodNotFound, "method not found")
 	}
+}
+
+func (r *Runtime) SupportsMethod(method string) bool {
+	if IsSupportedMethod(method) {
+		return true
+	}
+	return r != nil && r.Features != nil && r.Features.SupportsMethod(method)
 }
