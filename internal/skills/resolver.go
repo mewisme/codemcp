@@ -74,7 +74,7 @@ func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, polic
 		}
 	}
 	for _, skill := range project {
-		if skill.Source != instructionsource.NativeSource {
+		if skill.Source != instructionsource.NativeSource && policy.Enabled(skill.Source, instructionpolicy.ResourceSkills) {
 			ordered = append(ordered, skill)
 		}
 	}

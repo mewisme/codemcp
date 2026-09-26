@@ -3,7 +3,10 @@ package rules
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"go.mewis.me/codemcp/internal/instructionpolicy"
 )
 
 func TestLoadRulesAcrossProviders(t *testing.T) {
@@ -100,5 +103,75 @@ func TestDiscoverForWorkspaceUsesSelectedProjectProvidersAndWorkspaceNativeFirst
 		if value.Content == "parent provider" {
 			t.Fatalf("provider discovery walked above selected project: %#v", values)
 		}
+	}
+}
+
+func TestDiscoverWithUserForWorkspaceAppliesProviderPolicyAndSourcePrecedence(t *testing.T) {
+	configRoot := t.TempDir()
+	t.Setenv("CM_CONFIG_DIR", configRoot)
+	workspaceRoot := t.TempDir()
+	home := t.TempDir()
+
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(workspaceRoot, ".cm", "rules", "workspace.md"), "workspace native")
+	write(filepath.Join(configRoot, "rules", "global.md"), "global native")
+	write(filepath.Join(workspaceRoot, ".agents", "rules", "agents.md"), "agents provider")
+	write(filepath.Join(workspaceRoot, ".newagent", "rules", "future.md"), "future provider")
+	write(filepath.Join(home, ".agents", "rules", "home.md"), "home provider")
+
+	disabled := false
+	policy := instructionpolicy.DefaultConfig()
+	policy.Sources["newagent"] = instructionpolicy.SourcePolicy{Rules: &disabled}
+	values, err := DiscoverWithUserForWorkspace(workspaceRoot, workspaceRoot, home, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 3 {
+		t.Fatalf("rules=%#v", values)
+	}
+	want := []string{".cm", ".cm", ".agents"}
+	for i, source := range want {
+		if values[i].Source != source {
+			t.Fatalf("rule %d=%#v want source=%q", i, values[i], source)
+		}
+	}
+	for _, value := range values {
+		if value.Content == "future provider" || value.Content == "home provider" {
+			t.Fatalf("disabled or home provider loaded: %#v", values)
+		}
+	}
+}
+
+func TestRuleTraversalAndContentBoundsRemainBounded(t *testing.T) {
+	root := t.TempDir()
+	atLimit := filepath.Join(root, ".newagent", "rules", "one", "two", "three", "limit.md")
+	beyond := filepath.Join(root, ".newagent", "rules", "one", "two", "three", "four", "beyond.md")
+	if err := os.MkdirAll(filepath.Dir(atLimit), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(atLimit, []byte(strings.Repeat("a", 5000)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(beyond), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(beyond, []byte("must not load"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	values, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 || values[0].Path != atLimit || len(values[0].Content) != 4000 {
+		t.Fatalf("bounded rules=%#v", values)
 	}
 }

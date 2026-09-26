@@ -24,6 +24,8 @@ Provider and child-resource policy can be enabled/disabled from the tree when th
 
 Source changes are persisted through the instruction settings service and the tree is rebuilt from the resulting settings.
 
+Provider-native hidden directories such as `.agents`, `.claude`, `.cursor`, `.codex`, and compatible future providers are read-only interoperability inputs. CodeMCP does not own or rewrite those trees. Project loading inspects only immediate hidden directories beneath the selected project root, accepts supported direct context files plus bounded `rules/` and `skills/` resources, and rejects symlink-backed provider/resource paths. User-home providers may appear in Sources for policy visibility, but they are not implicitly loaded into a project context.
+
 ## Relationship to Project Context
 
 Global Context, Global Rules, source policy, detected instruction files, auto memory, and skills are inputs to the workspace Project Context builder. Use Workspaces → Project Context Preview → Sources when you need to inspect exactly which sources were included in a particular build.

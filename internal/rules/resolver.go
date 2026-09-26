@@ -68,7 +68,7 @@ func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, polic
 		}
 	}
 	for _, rule := range project {
-		if rule.Source != instructionsource.NativeSource {
+		if rule.Source != instructionsource.NativeSource && policy.Enabled(rule.Source, instructionpolicy.ResourceRules) {
 			result = append(result, rule)
 		}
 	}

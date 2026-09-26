@@ -396,7 +396,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(OptimizeMemoryResult{Groups: analysis.Groups, BeforeBytes: analysis.BeforeBytes, CandidateSavingsBytes: analysis.CandidateSavingsBytes, LegacyFormat: analysis.LegacyFormat, OptimizationRecommended: analysis.OptimizationRecommended, DryRun: true}), nil
 	})
 
-	register("load_path_rules", "Load Path Rules", "Load path-scoped rules from .claude/.claudes/.agents/.cursor/.codex rule directories.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"path":{"type":"string"}},"required":["workspace_id","path"],"additionalProperties":false}`, `{"type":"object","properties":{"path":{"type":"string"},"rules":{"type":"array","items":{"type":"object","additionalProperties":true}},"count":{"type":"integer"}},"required":["path","rules","count"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register("load_path_rules", "Load Path Rules", "Load path-scoped rules from CodeMCP-native and compatible dynamic provider rule sources.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"path":{"type":"string"}},"required":["workspace_id","path"],"additionalProperties":false}`, `{"type":"object","properties":{"path":{"type":"string"},"rules":{"type":"array","items":{"type":"object","additionalProperties":true}},"count":{"type":"integer"}},"required":["path","rules","count"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 		item, cwd, err := workspaceLocation(workspaces, args)
 		if err != nil {
 			return Result{}, err

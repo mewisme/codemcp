@@ -71,14 +71,14 @@ func TestContextSkillsRulesAndRemember(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("instructions"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	skillDir := filepath.Join(root, ".agents", "skills", "test")
+	skillDir := filepath.Join(root, ".newagent", "skills", "test")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: test\ndescription: test skill\n---\nbody"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	ruleDir := filepath.Join(root, ".cursor", "rules")
+	ruleDir := filepath.Join(root, ".newagent", "rules")
 	if err := os.MkdirAll(ruleDir, 0755); err != nil {
 		t.Fatal(err)
 	}
