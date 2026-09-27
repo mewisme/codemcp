@@ -1,6 +1,6 @@
 # Admin UI (`frontend/`)
 
-Embedded React admin dashboard for CodeMCP. Built with React, TypeScript, Vite, Tailwind CSS, and shadcn/ui; packaged into the Go binary via `scripts/prepare-frontend-embed.mjs`.
+Embedded React admin dashboard for CodeMCP. Built with React, TypeScript, Vite, Tailwind CSS, and shadcn/ui; packaged into the Go binary with `go:embed`.
 
 ## Requirements
 
@@ -25,13 +25,13 @@ pnpm --dir frontend dev
 
 ## Embedding into the Go binary
 
-From the repository root:
+The Vite build writes directly to `internal/interface/web/dist`, which is the directory embedded by the Go package:
 
 ```bash
-node scripts/prepare-frontend-embed.mjs
+pnpm --dir frontend build
 ```
 
-This installs frontend dependencies (frozen lockfile), builds the UI, and copies `frontend/dist` into `internal/interface/web/dist` for `go:embed`. Use `--no-deps` to skip install, or `--from-dist` to copy an already-built `frontend/dist`.
+Install dependencies separately with `pnpm --dir frontend install --frozen-lockfile` when needed. There is no intermediate frontend distribution directory or copy/sync step.
 
 Full backend/frontend workflow, CI gates, and release notes: [docs/development.md](../docs/development.md).
 

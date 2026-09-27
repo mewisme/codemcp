@@ -15,7 +15,8 @@ export default defineConfig({
     },
   },
   build: {
-    emptyOutDir: false,
+    emptyOutDir: true,
     rollupOptions: { input: path.resolve(import.meta.dirname, "index.html") },
+    outDir: path.resolve(import.meta.dirname, "../internal/interface/web/dist"),
   },
 })

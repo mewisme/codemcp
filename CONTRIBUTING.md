@@ -22,7 +22,7 @@ Quick path:
 
 ```bash
 pnpm --dir frontend install
-node scripts/prepare-frontend-embed.mjs
+pnpm --dir frontend build
 CM_CONFIG_DIR="$(mktemp -d)" go test ./...
 go build -trimpath ./
 ```

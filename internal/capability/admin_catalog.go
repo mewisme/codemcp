@@ -112,7 +112,15 @@ var adminBindings = map[ID][]AdminBinding{
 }
 
 var browserRequiredIDs = idSet(
-	HealthRead, NetworkInterfacesList, ConfigSnapshotRead, ConfigPatch,
+	HealthRead, StatusOverview, DoctorRead, VersionAbout,
+	RuntimeUp, RuntimeDown, RuntimeRestart,
+	LogsRead, LogsPath, LogsClear,
+	InstallRun, UpdateCheck, UpdateApply,
+	TelemetryStatus, TelemetryShow, TelemetryEnable, TelemetryDisable,
+	NetworkInterfacesList, ConfigSnapshotRead, ConfigPatch, ConfigPath, ConfigVerify,
+	IntegrationRTKStatus, IntegrationRTKEnable, IntegrationRTKDisable, IntegrationRTKProbe, IntegrationRTKInstall,
+	IntegrationCodeGraphStatus, IntegrationCodeGraphProbe, IntegrationCodeGraphInstall,
+	IntegrationTypeSafeStatus, IntegrationTypeSafeDoctor, IntegrationTypeSafeProbe, IntegrationTypeSafeEnable, IntegrationTypeSafeDisable,
 	InstructionSettingsRead, InstructionSettingsWrite,
 	PromptList, PromptGet, PromptCreate, PromptUpdate, PromptDelete,
 	WorkspaceList, WorkspaceRegister, WorkspaceShow, WorkspaceUnregister, WorkspacePurge, ProjectContextRead,
@@ -127,24 +135,15 @@ var browserRequiredIDs = idSet(
 	TunnelAdminKeyStatus, TunnelAdminKeySet, TunnelAdminKeyVerify, TunnelAdminKeyRemove,
 	TunnelList, TunnelCreate, TunnelUse, TunnelGet, TunnelUpdate, TunnelDelete,
 	ExecutionList, ExecutionFeed, ExecutionView, ExecutionStream,
+	ProcessList, ProcessView, ProcessClear,
+	IntegrationCodeGraphWorkspaceStatus, IntegrationCodeGraphWorkspaceInit, IntegrationCodeGraphWorkspaceSync,
 	ActivityStream, ActivityView,
 )
 
 var adminSupplementRequiredIDs = idSet(
-	StatusOverview, DoctorRead, VersionAbout,
-	RuntimeUp, RuntimeDown, RuntimeRestart,
-	LogsRead, LogsPath, LogsClear,
-	InstallRun, UpdateCheck, UpdateApply,
-	TelemetryStatus, TelemetryShow, TelemetryEnable, TelemetryDisable,
-	ConfigPath, ConfigVerify,
 	WorkspaceRelocate,
-	ProcessList, ProcessView, ProcessClear,
 	RequestGrantList, RequestGrantRevoke,
 	NotificationStatus,
-	IntegrationRTKStatus, IntegrationRTKEnable, IntegrationRTKDisable, IntegrationRTKProbe, IntegrationRTKInstall,
-	IntegrationCodeGraphStatus, IntegrationCodeGraphProbe, IntegrationCodeGraphInstall,
-	IntegrationCodeGraphWorkspaceStatus, IntegrationCodeGraphWorkspaceInit, IntegrationCodeGraphWorkspaceSync,
-	IntegrationTypeSafeStatus, IntegrationTypeSafeDoctor, IntegrationTypeSafeProbe, IntegrationTypeSafeEnable, IntegrationTypeSafeDisable,
 	OAuthCallbackComplete,
 )
 

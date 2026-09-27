@@ -225,8 +225,8 @@ func TestMakefileFacadeMatchesPublicTopLevelCommands(t *testing.T) {
 	}
 	source := string(data)
 	commands := makefileWords(t, source, "CM_COMMANDS")
-	prepare := makefileWords(t, source, "CM_PREPARE_COMMANDS")
-	got := append(append([]string(nil), commands...), prepare...)
+	frontend := makefileWords(t, source, "CM_FRONTEND_COMMANDS")
+	got := append(append([]string(nil), commands...), frontend...)
 	sort.Strings(got)
 
 	want := make([]string, 0)
@@ -240,10 +240,10 @@ func TestMakefileFacadeMatchesPublicTopLevelCommands(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("thin Makefile facade drifted from public top-level Cobra commands\nmakefile:\n%s\ncobra:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	wantPrepare := []string{"restart", "serve", "up"}
-	sort.Strings(prepare)
-	if strings.Join(prepare, "\n") != strings.Join(wantPrepare, "\n") {
-		t.Fatalf("commands requiring frontend prepare drifted: got=%v want=%v", prepare, wantPrepare)
+	wantFrontend := []string{"restart", "serve", "up"}
+	sort.Strings(frontend)
+	if strings.Join(frontend, "\n") != strings.Join(wantFrontend, "\n") {
+		t.Fatalf("commands requiring a frontend build drifted: got=%v want=%v", frontend, wantFrontend)
 	}
 	for _, name := range commands {
 		if strings.ContainsAny(name, " /") {

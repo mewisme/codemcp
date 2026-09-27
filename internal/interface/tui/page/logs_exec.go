@@ -746,11 +746,7 @@ func formatExecutionSegment(start, end shellruntime.ExecutionFeedEvent, body str
 	headerFields := executionHeaderFields(start, first)
 	content := []string{}
 	if first && start.Execution != nil && strings.TrimSpace(start.Execution.Command) != "" {
-		language := strings.TrimSpace(start.Execution.Shell)
-		if language == "" {
-			language = "shell"
-		}
-		content = append(content, component.RenderCodeBlock(sanitizeExecutionInline(start.Execution.Command), language, max(1, width-4)))
+		content = append(content, executionCommandLines(start.Execution.Command, max(1, width-4))...)
 	}
 	if clean := strings.TrimSuffix(sanitizeExecutionOutput(body), "\n"); clean != "" {
 		content = append(content, strings.Split(clean, "\n")...)
@@ -767,6 +763,14 @@ func formatExecutionSegment(start, end shellruntime.ExecutionFeedEvent, body str
 		footerKind = "PAUSE"
 	}
 	return executionSegmentFrame(headerKind, footerKind, start, end, headerFields, content, footerFields, width)
+}
+
+func executionCommandLines(command string, width int) []string {
+	prompt := "$ " + sanitizeExecutionInline(command)
+	if strings.TrimSpace(prompt) == "$" {
+		return nil
+	}
+	return strings.Split(component.WrapContent(prompt, max(1, width)), "\n")
 }
 
 func sanitizeExecutionOutput(value string) string {

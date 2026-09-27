@@ -294,7 +294,7 @@ func TestCodeGraphSystemSymlinkDrivesExploreAndCompletionHook(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	t.Setenv("PATH", binRoot)
+	t.Setenv("PATH", binRoot+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	cfg := integrations.Default()
 	cfg.CodeGraph.Enabled = true

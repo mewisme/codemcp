@@ -2388,6 +2388,33 @@ func TestLogsFormattingHelpersCoverBoundaries(t *testing.T) {
 	}
 }
 
+func TestExecutionCommandPromptIsFlushAndOutputKeepsAlignment(t *testing.T) {
+	started := time.Now().UTC()
+	info := shellruntime.ExecutionInfo{ID: "exec_prompt", WorkspaceID: "ws_a", Command: "printf demo", Shell: "bash", StartedAt: started.Format(time.RFC3339Nano)}
+	view := ansi.Strip(formatExecutionFeed([]shellruntime.ExecutionFeedEvent{
+		{Sequence: 1, Type: shellruntime.ExecutionEventStarted, ExecutionID: info.ID, Execution: &info, Timestamp: info.StartedAt},
+		{Sequence: 2, Type: shellruntime.ExecutionEventOutput, ExecutionID: info.ID, Execution: &info, Data: "out\n", Timestamp: started.Add(time.Second).Format(time.RFC3339Nano)},
+	}, 48))
+	commandLine, outputLine := "", ""
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, "$ printf demo") {
+			commandLine = line
+		}
+		if strings.Contains(line, "out") {
+			outputLine = line
+		}
+	}
+	if !strings.HasPrefix(commandLine, "│ $ printf demo") {
+		t.Fatalf("command indentation=%q", commandLine)
+	}
+	if !strings.HasPrefix(outputLine, "│ out") {
+		t.Fatalf("output alignment=%q", outputLine)
+	}
+	if !strings.Contains(view, "Shell  bash") {
+		t.Fatalf("shell metadata missing: %q", view)
+	}
+}
+
 func setupLogsPageRoot(t *testing.T) string {
 	t.Helper()
 	previous := configformat.RootPath()

@@ -41,8 +41,7 @@ Common workflows:
 
 ```bash
 make bootstrap
-make prepare
-make check-embed
+make frontend-build
 make check
 make test
 make test-race
@@ -57,7 +56,7 @@ make tui
 make frontend-dev
 ```
 
-`make bootstrap` is the explicit dependency-install step. Ordinary `make prepare`, `run`, `up`, and `restart` reuse the existing frontend installation by default; override `PREPARE_ARGS` only when needed.
+`make bootstrap` is the explicit dependency-install step. `make frontend-build`, `run`, `up`, `restart`, and `serve` build the frontend using the existing installation.
 
 `make init` and `make uninit` delegate directly to the canonical `cm` commands. `make init` does not add `--force`; pass it explicitly through `ARGS` only when token rotation is intended.
 
@@ -80,15 +79,15 @@ pnpm --dir frontend typecheck
 pnpm --dir frontend build
 ```
 
-## Prepare the embedded frontend
+## Build the embedded frontend
 
-The Go binary embeds the built admin dashboard. The prepare script installs frontend dependencies with the frozen lockfile, builds the Admin UI, then copies `frontend/dist` into `internal/interface/web/dist`:
+The Go binary embeds the built admin dashboard from `internal/interface/web/dist`. Vite writes directly to that directory:
 
 ```bash
-node scripts/prepare-frontend-embed.mjs
+pnpm --dir frontend build
 ```
 
-Use `--no-deps` to reuse the current frontend installation, or `--from-dist` to copy an already-built `frontend/dist` without running install/build. Use `--check` for a read-only verification that `frontend/dist` and `internal/interface/web/dist` are identical.
+There is no intermediate copy/sync step. Install dependencies separately with `pnpm --dir frontend install --frozen-lockfile` when needed.
 
 ## Backend checks
 
@@ -156,14 +155,16 @@ This rule applies especially to commands such as:
 node scripts/install-local.mjs
 ```
 
-The script prepares the frontend embed and runs the local Go installation flow.
+The script builds the frontend directly into the embedded asset directory and runs the local Go installation flow.
 
 Variants:
 
 ```bash
 node scripts/install-local.mjs --no-deps
-node scripts/install-local.mjs --from-dist
+node scripts/install-local.mjs --skip-frontend
 ```
+
+`--skip-frontend` requires an existing `internal/interface/web/dist/index.html` and is useful when those embedded assets were already built.
 
 Managed installs expose only the `cm` executable.
 
@@ -172,7 +173,7 @@ Managed installs expose only the `cm` executable.
 Build a native binary:
 
 ```bash
-node scripts/prepare-frontend-embed.mjs
+pnpm --dir frontend build
 go build -trimpath -o cm ./
 ```
 

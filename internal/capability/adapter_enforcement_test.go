@@ -20,7 +20,7 @@ func TestBrowserRequiredOperationsHaveFrontendAdapters(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	matches := regexp.MustCompile(`\{\s*method:\s*"([^"]+)",\s*pattern:\s*"([^"]+)",\s*operation:\s*"([^"]+)"\s*\}`).FindAllStringSubmatch(string(body), -1)
+	matches := regexp.MustCompile(`\{\s*method:\s*"([^"]+)",\s*pattern:\s*"([^"]+)",\s*operation:\s*"([^"]+)"\s*,?\s*\}`).FindAllStringSubmatch(string(body), -1)
 	actual := map[ID]bool{}
 	for _, match := range matches {
 		method, path, id := match[1], match[2], ID(match[3])
