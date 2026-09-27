@@ -15,7 +15,7 @@ import (
 	"testing"
 )
 
-const applicationExportFingerprint = "08e4bafff8a8790007623f31d93809356cd1eaa5d5f141646f5e056938be5331"
+const applicationExportFingerprint = "b8bccf54de8df71aa7d2ea71c79eab7212c7828670327e13ae61908db8cf6c57"
 
 func TestUniversalOperationAndSurfaceGate(t *testing.T) {
 	operations := All()

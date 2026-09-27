@@ -68,6 +68,10 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
+		if err := application.BindSettingOperations(a.Operations, application.NewSettingService()); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		telemetry.AttachTools(a.Tools, a.Activity, a.Logger)
 		telemetry.AttachApprovals(a.Tools.Approvals, a.Activity, a.Logger)
 		telemetry.AttachBackground(a.Tools.Processes, a.Activity, a.Logger)

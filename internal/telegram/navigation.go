@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"go.mewis.me/codemcp/internal/application"
@@ -14,23 +15,27 @@ import (
 type Route string
 
 const (
-	RouteHome       Route = "home"
-	RouteStatus     Route = "status"
-	RouteCommands   Route = "commands"
-	RouteSettings   Route = "settings"
-	RouteAuth       Route = "auth"
-	RouteWorkspaces Route = "workspaces"
-	RouteWorkspace  Route = "workspace"
-	RouteAccess     Route = "workspace.access"
-	RouteContainers Route = "containers"
-	RouteContainer  Route = "container"
-	RouteRequests   Route = "requests"
-	RouteRequest    Route = "request"
-	RouteOperation  Route = "operation"
-	RouteNetwork    Route = "network"
-	RouteTunnel     Route = "tunnel"
-	RouteUpstreams  Route = "upstreams"
-	RouteUpstream   Route = "upstream"
+	RouteHome            Route = "home"
+	RouteStatus          Route = "status"
+	RouteCommands        Route = "commands"
+	RouteSettings        Route = "settings"
+	RouteAuth            Route = "auth"
+	RouteWorkspaces      Route = "workspaces"
+	RouteWorkspace       Route = "workspace"
+	RouteAccess          Route = "workspace.access"
+	RouteContainers      Route = "containers"
+	RouteContainer       Route = "container"
+	RouteRequests        Route = "requests"
+	RouteRequest         Route = "request"
+	RouteOperation       Route = "operation"
+	RouteNetwork         Route = "network"
+	RouteTunnel          Route = "tunnel"
+	RouteUpstreams       Route = "upstreams"
+	RouteUpstream        Route = "upstream"
+	RouteIntegrations    Route = "integrations"
+	RouteIntegration     Route = "integration"
+	RouteSetting         Route = "setting"
+	RouteAuthorizedUsers Route = "authorized-users"
 )
 
 type ActionState struct {
@@ -43,6 +48,8 @@ type ActionState struct {
 	Page            int
 	Detail          bool
 	Confirmed       bool
+	ForceConfirm    bool
+	SecretInput     bool
 	InputKind       string
 }
 
@@ -56,13 +63,15 @@ type InterfaceOptions struct {
 }
 
 type Interface struct {
-	runtime    *Runtime
-	dispatcher application.OperationDispatcher
-	versions   VersionResolver
-	states     *ViewStateStore
-	inputs     *InputStore
-	callbacks  *CallbackCodec
-	router     *Router
+	runtime         *Runtime
+	dispatcher      application.OperationDispatcher
+	versions        VersionResolver
+	states          *ViewStateStore
+	inputs          *InputStore
+	userSelections  *UserSelectionStore
+	nextUserRequest atomic.Int32
+	callbacks       *CallbackCodec
+	router          *Router
 }
 
 func NewInterface(options InterfaceOptions) (*Interface, error) {
@@ -79,11 +88,13 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 	}
 	ui := &Interface{
 		runtime: options.Runtime, dispatcher: options.Dispatcher, versions: options.VersionResolver,
-		states: NewViewStateStore(stateTTL, defaultViewStateMax), inputs: NewInputStore(stateTTL), callbacks: codec, router: NewRouter(),
+		states: NewViewStateStore(stateTTL, defaultViewStateMax), inputs: NewInputStore(stateTTL), userSelections: NewUserSelectionStore(stateTTL), callbacks: codec, router: NewRouter(),
 	}
+	ui.nextUserRequest.Store(1000)
 	handlers := map[Route]RouteHandler{
 		RouteHome: ui.handleHome, RouteStatus: ui.handleStatus, RouteCommands: ui.handleCommands,
 		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests, RouteNetwork: ui.handleNetwork,
+		RouteSettings: ui.handleSettings, RouteIntegrations: ui.handleIntegrations,
 	}
 	for _, command := range Commands() {
 		if handler := handlers[command.Route]; handler != nil {
@@ -100,6 +111,10 @@ func (ui *Interface) Handle(ctx context.Context, update Update) {
 		return
 	}
 	if update.Message != nil && messageCommand(update.Message.Text) == "" {
+		if update.Message.UsersShared != nil {
+			ui.handleUsersShared(ctx, update)
+			return
+		}
 		if ui.handleActionInput(ctx, update) {
 			return
 		}
@@ -200,6 +215,30 @@ func (ui *Interface) handleCommands(ctx context.Context, update Update) {
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 
+func (ui *Interface) handleSettings(ctx context.Context, update Update) {
+	owner, ok := ownerFromUpdate(ui.runtime, update)
+	if !ok {
+		return
+	}
+	screen, err := ui.settingsScreen(ctx, owner, ActionState{Route: RouteSettings, Back: RouteHome})
+	if err != nil {
+		screen = ErrorScreen(err)
+	}
+	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
+}
+
+func (ui *Interface) handleIntegrations(ctx context.Context, update Update) {
+	owner, ok := ownerFromUpdate(ui.runtime, update)
+	if !ok {
+		return
+	}
+	screen, err := ui.integrationsScreen(ctx, owner)
+	if err != nil {
+		screen = ErrorScreen(err)
+	}
+	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
+}
+
 func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 	if update.CallbackQuery == nil || update.CallbackQuery.Message == nil {
 		return
@@ -244,6 +283,12 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 	}
 	if state.InputKind != "" && state.Input == nil {
 		ui.answerCallback(ctx, update.CallbackQuery.ID, "", false)
+		if state.InputKind == inputTelegramUserPicker {
+			if err := ui.beginUserPicker(ctx, owner, state); err != nil {
+				_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, ErrorScreen(err))
+			}
+			return
+		}
 		if err := ui.beginActionInput(ctx, owner, state); err != nil {
 			_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, ErrorScreen(err))
 		}
@@ -324,9 +369,9 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 	case RouteCommands:
 		return ui.commandsScreen(owner)
 	case RouteSettings:
-		return ui.settingsScreen(owner)
+		return ui.settingsScreen(ctx, owner, state)
 	case RouteAuth:
-		return ui.authScreen(owner)
+		return ui.authScreen(ctx, owner)
 	case RouteStatus:
 		return ui.operationScreen(ctx, owner, state)
 	case RouteWorkspaces:
@@ -351,6 +396,14 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.upstreamListScreen(ctx, owner, state)
 	case RouteUpstream:
 		return ui.upstreamDetailScreen(ctx, owner, state)
+	case RouteIntegrations:
+		return ui.integrationsScreen(ctx, owner)
+	case RouteIntegration:
+		return ui.integrationScreen(ctx, owner, state)
+	case RouteSetting:
+		return ui.settingDetailScreen(ctx, owner, state)
+	case RouteAuthorizedUsers:
+		return ui.authorizedUsersScreen(ctx, owner)
 	default:
 		if state.Operation == "" {
 			return Screen{}, errors.New("telegram navigation route is unavailable")
@@ -396,6 +449,10 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
+	integrations, err := ui.stateButton(owner, "Integrations", CallbackOpen, ActionState{Route: RouteIntegrations, Back: RouteHome})
+	if err != nil {
+		return Screen{}, err
+	}
 	unavailable := func(label string) Button {
 		return Button{Text: CompactActionLabel(label), Disabled: true, Role: ButtonRoleNeutral}
 	}
@@ -410,7 +467,7 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 		{status, unavailable("System")},
 		{requests, unavailable("Completions")},
 		{workspaces, network},
-		{upstreams, unavailable("Integrations")},
+		{upstreams, integrations},
 		{unavailable("Instructions")},
 		{settings, auth},
 		{unavailable("Logs")},
@@ -452,67 +509,6 @@ func (ui *Interface) commandsScreen(owner ViewOwner) (Screen, error) {
 	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{back, home, refresh}}}, nil
 }
 
-func (ui *Interface) settingsScreen(owner ViewOwner) (Screen, error) {
-	back, err := ui.backButton(owner, RouteHome)
-	if err != nil {
-		return Screen{}, err
-	}
-	home, err := ui.homeButton(owner)
-	if err != nil {
-		return Screen{}, err
-	}
-	refresh, err := ui.refreshButton(owner, ActionState{Route: RouteSettings, Back: RouteHome})
-	if err != nil {
-		return Screen{}, err
-	}
-	health := ui.runtime.Health()
-	presentation := Present(
-		ProductHeader("CodeMCP", "Telegram / Settings"),
-		TitleBlock("Settings", "Navigation over current canonical configuration domains"),
-		MetadataBlock(
-			MetadataItem{Label: "Telegram", Value: boolState(health.Enabled)},
-			MetadataItem{Label: "Notifications", Value: "canonical adapter pending"},
-			MetadataItem{Label: "Admin Web UI", Value: "canonical adapter pending"},
-			MetadataItem{Label: "Configuration", Value: "canonical adapter pending"},
-		),
-		StatusRow(ToneWarning, "Unavailable", "Unavailable settings are visible but inert until their owning Telegram adapter is activated."),
-	)
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{
-		{{Text: "Telegram", Disabled: true, Role: ButtonRoleConfigure}, {Text: "Notifications", Disabled: true, Role: ButtonRoleConfigure}},
-		{{Text: "Admin Web UI", Disabled: true, Role: ButtonRoleConfigure}, {Text: "Configuration", Disabled: true, Role: ButtonRoleConfigure}},
-		{back, home, refresh},
-	}}, nil
-}
-
-func (ui *Interface) authScreen(owner ViewOwner) (Screen, error) {
-	back, err := ui.backButton(owner, RouteHome)
-	if err != nil {
-		return Screen{}, err
-	}
-	home, err := ui.homeButton(owner)
-	if err != nil {
-		return Screen{}, err
-	}
-	refresh, err := ui.refreshButton(owner, ActionState{Route: RouteAuth, Back: RouteHome})
-	if err != nil {
-		return Screen{}, err
-	}
-	health := ui.runtime.Health()
-	presentation := Present(
-		ProductHeader("CodeMCP", "Telegram / Auth"),
-		TitleBlock("Authentication", "Current Telegram authorization boundary"),
-		MetadataBlock(
-			MetadataItem{Label: "Authorization", Value: boolState(health.AuthorizationConfigured)},
-			MetadataItem{Label: "Bot token", Value: boolState(health.TokenConfigured)},
-		),
-		StatusRow(ToneWarning, "Unavailable", "Credential mutation and broader authentication controls remain inert until their canonical Telegram adapters are activated."),
-	)
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{
-		{{Text: "Authentication", Disabled: true, Role: ButtonRoleConfigure}, {Text: "Credentials", Disabled: true, Role: ButtonRoleConfigure}},
-		{back, home, refresh},
-	}}, nil
-}
-
 func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
 	if state.Operation == "" {
 		return Screen{}, errors.New("canonical operation is required")
@@ -533,7 +529,7 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 			return StaleScreen(), nil
 		}
 	}
-	if requiresExplicitConfirmation(spec) && !state.Confirmed {
+	if (requiresExplicitConfirmation(spec) || state.ForceConfirm) && !state.Confirmed {
 		confirm := state
 		confirm.Confirmed = true
 		button, err := ui.stateButton(owner, "Confirm", CallbackConfirm, confirm)
@@ -563,6 +559,9 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 		return screen, err
 	}
 	if screen, handled, err := ui.networkOperationResultScreen(owner, state, spec, result.Value); handled {
+		return screen, err
+	}
+	if screen, handled, err := ui.settingsOperationResultScreen(ctx, owner, state, spec, result.Value); handled {
 		return screen, err
 	}
 	parts := []PresentationPart{
@@ -905,6 +904,14 @@ func routeLabel(route Route) string {
 		return "Upstreams"
 	case RouteUpstream:
 		return "Upstream"
+	case RouteIntegrations:
+		return "Integrations"
+	case RouteIntegration:
+		return "Integration"
+	case RouteSetting:
+		return "Setting"
+	case RouteAuthorizedUsers:
+		return "Authorized users"
 	case RouteOperation:
 		return "Operation"
 	default:
