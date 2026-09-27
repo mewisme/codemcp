@@ -294,14 +294,14 @@ func renderTunnelAdminKeyStatus(presenter *presentation.Presenter, status applic
 }
 
 func renderManagedTunnelList(presenter *presentation.Presenter, items []tunnel.Metadata) {
-	presenter.Frame("Managed OpenAI tunnels")
 	if len(items) == 0 {
+		presenter.Frame("Managed OpenAI tunnels")
 		presenter.StateSection(presentation.StatusInactive, "No managed tunnels")
 		presenter.Complete("Done")
 		return
 	}
+	entities := make([]presentation.Entity, 0, len(items))
 	for _, item := range items {
-		presenter.Subsection(item.ID)
 		name := item.Name
 		if name == "" {
 			name = "unnamed"
@@ -316,9 +316,13 @@ func renderManagedTunnelList(presenter *presentation.Presenter, items []tunnel.M
 		if len(item.TenantIDs) > 0 {
 			fields = append(fields, presentation.Field{Label: "tenants", Value: strings.Join(item.TenantIDs, ", ")})
 		}
-		presenter.NestedFields(fields...)
+		entities = append(entities, presentation.Entity{Title: item.ID, Fields: fields})
 	}
-	presenter.Complete("Done")
+	presenter.Render(presentation.Design{
+		Title:      "Managed OpenAI tunnels",
+		Completion: "Done",
+		Blocks:     []presentation.DesignBlock{presentation.EntityList{Items: entities}},
+	})
 }
 
 func renderManagedTunnel(presenter *presentation.Presenter, metadata tunnel.Metadata) {

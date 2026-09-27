@@ -189,19 +189,27 @@ func printSettingSelection(cmd *cobra.Command, service *application.SettingServi
 	}
 	sort.Strings(keys)
 	if commandResultModeFor(cmd) == resultModeHuman {
-		rows := make([]presentation.Row, 0, len(keys))
+		scopes := make([]presentation.Entity, 0)
 		for _, settingKey := range keys {
-			rows = append(rows, presentation.Row{settingKey, settingDisplayValue(values[settingKey])})
+			scope, _, found := strings.Cut(settingKey, ".")
+			if !found {
+				scope = settingKey
+			}
+			if len(scopes) == 0 || scopes[len(scopes)-1].Title != scope {
+				scopes = append(scopes, presentation.Entity{Title: scope})
+			}
+			scopes[len(scopes)-1].Fields = append(scopes[len(scopes)-1].Fields, presentation.Field{
+				Label: settingKey,
+				Value: settingDisplayValue(values[settingKey]),
+			})
 		}
-		presenter := commandPresenter(cmd)
-		presenter.Frame("Configuration")
-		section := key
-		if section == "" {
-			section = "Settings"
-		}
-		presenter.Section(section)
-		presenter.Rows([]string{"Setting", "Value"}, rows...)
-		presenter.Complete("Done")
+		commandPresenter(cmd).Render(presentation.Design{
+			Title:      "Configuration",
+			Completion: "Done",
+			Blocks: []presentation.DesignBlock{
+				presentation.EntityList{Title: fmt.Sprintf("Settings · %d", len(scopes)), Items: scopes},
+			},
+		})
 		return nil
 	}
 	for _, settingKey := range keys {

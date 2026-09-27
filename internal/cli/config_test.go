@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
@@ -334,6 +335,43 @@ func TestConfigHumanListUsesPresenterRowsWhilePlainRemainsCompatible(t *testing.
 		if !strings.Contains(plainOutput.String(), expected) {
 			t.Fatalf("plain config output missing %q: %q", expected, plainOutput.String())
 		}
+	}
+}
+
+func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
+	isolateUniversalConfigCLI(t)
+
+	var output bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	if err := printSettingSelection(cmd, application.NewSettingService(), "", true, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	closeCommandProgress(cmd, nil)
+
+	text := output.String()
+	for _, expected := range []string{
+		"┌  Configuration",
+		"◆  Settings ·",
+		"│  ◆ admin",
+		"│  │  admin.enabled —",
+		"│  │  admin.port —",
+		"│  ◆ approval",
+		"│  │  approval.semantic.enabled —",
+		"│  ◆ integrations",
+		"│  │  integrations.codegraph.enabled —",
+		"│  ◆ tunnel",
+		"│  │  tunnel.admin.enabled —",
+		"└  Done",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("grouped config list missing %q: %q", expected, text)
+		}
+	}
+	if !(strings.Index(text, "│  ◆ admin") < strings.Index(text, "│  ◆ approval") &&
+		strings.Index(text, "│  ◆ approval") < strings.Index(text, "│  ◆ integrations") &&
+		strings.Index(text, "│  ◆ integrations") < strings.Index(text, "│  ◆ tunnel")) {
+		t.Fatalf("config scopes are not sorted: %q", text)
 	}
 }
 
