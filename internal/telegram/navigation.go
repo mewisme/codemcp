@@ -87,6 +87,7 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 		}
 	}
 	ui.router.RegisterCallback(ui.handleCallback)
+	options.Runtime.SetNotificationRenderer(ui.RenderNotification)
 	return ui, nil
 }
 
@@ -583,6 +584,11 @@ func workingScreen(state ActionState) Screen {
 }
 
 func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, operationErr error) (Screen, error) {
+	if state.Operation == capability.RequestApprove || state.Operation == capability.RequestDeny {
+		if screen, err := ui.requestDetailScreen(context.Background(), owner, ActionState{Route: RouteRequest, Back: RouteRequests, ResourceID: state.ResourceID, Operation: capability.RequestView}); err == nil {
+			return screen, nil
+		}
+	}
 	if state.Operation == capability.WorkspaceRelocate {
 		if screen, ok := ui.workspaceRelocationConflictScreen(owner, state, operationErr); ok {
 			return screen, nil

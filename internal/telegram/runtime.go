@@ -63,19 +63,22 @@ type Runtime struct {
 	reconnectDelay func(int) time.Duration
 	stopTimeout    time.Duration
 
-	mu           sync.RWMutex
-	config       config.TelegramConfig
-	health       Health
-	fingerprint  string
-	api          API
-	cancel       context.CancelFunc
-	done         chan struct{}
-	handler      Handler
-	setupHandler SetupHandler
-	setupMode    bool
-	generation   uint64
-	topics       *topicStore
+	mu                   sync.RWMutex
+	config               config.TelegramConfig
+	health               Health
+	fingerprint          string
+	api                  API
+	cancel               context.CancelFunc
+	done                 chan struct{}
+	handler              Handler
+	notificationRenderer NotificationRenderer
+	setupHandler         SetupHandler
+	setupMode            bool
+	generation           uint64
+	topics               *topicStore
 }
+
+type NotificationRenderer func(context.Context, int64, notification.Message) (Screen, bool, error)
 
 func NewRuntime(options Options) *Runtime {
 	pollTimeout := options.PollTimeout
@@ -116,6 +119,15 @@ func (runtime *Runtime) SetHandler(handler Handler) {
 	}
 	runtime.mu.Lock()
 	runtime.handler = handler
+	runtime.mu.Unlock()
+}
+
+func (runtime *Runtime) SetNotificationRenderer(renderer NotificationRenderer) {
+	if runtime == nil {
+		return
+	}
+	runtime.mu.Lock()
+	runtime.notificationRenderer = renderer
 	runtime.mu.Unlock()
 }
 
@@ -659,6 +671,7 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 	available := runtime.health.Running && runtime.health.Enabled && runtime.health.AuthorizationConfigured && !runtime.health.SetupMode
 	topicsEffective := runtime.health.TopicsEffective
 	topics := runtime.topics
+	renderer := runtime.notificationRenderer
 	runtime.mu.RUnlock()
 	if !available || api == nil {
 		return notification.ErrProviderUnavailable
@@ -676,6 +689,19 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 	var result error
 	role := topicRoleForNotification(message.Kind)
 	for _, userID := range users {
+		if renderer != nil {
+			screen, handled, renderErr := renderer(ctx, userID, message)
+			if renderErr != nil {
+				result = errors.Join(result, renderErr)
+				continue
+			}
+			if handled {
+				if _, sendErr := runtime.SendRichMessageToTopic(ctx, userID, role, screen, RichMessageOptions{}); sendErr != nil {
+					result = errors.Join(result, sendErr)
+				}
+				continue
+			}
+		}
 		if topicsEffective && topics != nil {
 			threadID := topics.get(userID, role)
 			if threadID > 0 {

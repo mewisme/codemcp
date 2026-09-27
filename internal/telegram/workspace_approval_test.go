@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/notification"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -103,6 +105,115 @@ func TestApprovalCardUsesSafeCanonicalProjectionAndActionHierarchy(t *testing.T)
 	for _, want := range []string{"Approve once", "Deny", "Allow similar"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("approval actions missing %q: %v", want, labels)
+		}
+	}
+}
+
+func TestApprovalPendingNotificationRendersFreshInteractiveCard(t *testing.T) {
+	request := approval.Request{
+		ID: "req_notify", Status: approval.StatusPending, WorkspaceID: "ws_1", TargetTool: "run_command",
+		Title: "Run guarded command", GuardCode: controlguard.CodeSemanticRisk,
+		GuardReason: "semantic risk high", Command: "git push origin main", SimilarCommandPattern: "git push origin *",
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.RequestView: request}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+
+	screen, handled, err := ui.RenderNotification(t.Context(), owner.ChatID, notification.Message{
+		Kind: notification.KindApprovalPending, RequestID: request.ID, Title: "Approval requested",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !handled {
+		t.Fatal("approval pending notification was not rendered interactively")
+	}
+	if len(dispatcher.calls) != 1 || dispatcher.calls[0].Operation != capability.RequestView {
+		t.Fatalf("notification canonical dispatch=%#v", dispatcher.calls)
+	}
+	input, ok := dispatcher.calls[0].Input.(application.RequestIDInput)
+	if !ok || input.ID != request.ID {
+		t.Fatalf("notification request input=%#v", dispatcher.calls[0].Input)
+	}
+
+	labels := []string{}
+	for _, row := range screen.Keyboard {
+		for _, button := range row {
+			labels = append(labels, button.Text)
+			if button.CallbackData != "" {
+				if strings.Contains(button.CallbackData, request.ID) {
+					t.Fatalf("callback leaked request id: %q", button.CallbackData)
+				}
+				ref, decodeErr := ui.callbacks.Decode(button.CallbackData)
+				if decodeErr != nil {
+					t.Fatalf("decode callback %q: %v", button.Text, decodeErr)
+				}
+				if _, stateErr := ui.states.Get(ref.Token, owner); stateErr != nil {
+					t.Fatalf("callback state not owner-bound for %q: %v", button.Text, stateErr)
+				}
+			}
+		}
+	}
+	joined := strings.Join(labels, "|")
+	for _, want := range []string{"Review", "Approve once", "Deny", "Allow similar"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("interactive notification missing %q: %v", want, labels)
+		}
+	}
+}
+
+func TestExpiredPendingApprovalNotificationHasNoMutationActions(t *testing.T) {
+	request := approval.Request{
+		ID: "req_expired", Status: approval.StatusPending, WorkspaceID: "ws_1", TargetTool: "run_command",
+		Title: "Expired request", ExpiresAt: time.Now().Add(-time.Minute),
+	}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.RequestView: request}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+	screen, handled, err := ui.RenderNotification(t.Context(), owner.ChatID, notification.Message{Kind: notification.KindApprovalPending, RequestID: request.ID})
+	if err != nil || !handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	for _, row := range screen.Keyboard {
+		for _, button := range row {
+			switch button.Text {
+			case "Approve once", "Deny", "Allow similar":
+				t.Fatalf("expired notification retained mutation action: %#v", button)
+			}
+		}
+	}
+}
+
+func TestStaleApprovalActionReloadsCanonicalRequestState(t *testing.T) {
+	resolved := approval.Request{
+		ID: "req_stale", Status: approval.StatusDenied, WorkspaceID: "ws_1", TargetTool: "run_command",
+		Title: "Resolved elsewhere",
+	}
+	dispatcher := &domainTestDispatcher{
+		values: map[capability.ID]any{capability.RequestView: resolved},
+		errors: map[capability.ID]error{capability.RequestApprove: errors.New("approval request is no longer pending")},
+	}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+	state := ActionState{
+		Route: RouteOperation, Back: RouteRequests, Operation: capability.RequestApprove,
+		ResourceID: resolved.ID, Input: application.RequestResolutionInput{ID: resolved.ID},
+	}
+	screen, err := ui.operationErrorScreen(owner, state, errors.New("approval request is no longer pending"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dispatcher.calls) != 1 || dispatcher.calls[0].Operation != capability.RequestView {
+		t.Fatalf("stale action did not reload canonical request: %#v", dispatcher.calls)
+	}
+	fallback := RichFallback(screen.Rich).Text
+	if !strings.Contains(fallback, string(approval.StatusDenied)) {
+		t.Fatalf("stale action did not render current status: %q", fallback)
+	}
+	for _, row := range screen.Keyboard {
+		for _, button := range row {
+			switch button.Text {
+			case "Approve once", "Deny", "Allow similar":
+				t.Fatalf("stale resolved card retained mutation action: %#v", button)
+			}
 		}
 	}
 }

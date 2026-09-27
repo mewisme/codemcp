@@ -14,11 +14,13 @@ import (
 type topicTestAPI struct {
 	mu sync.Mutex
 
-	nextThreadID int
-	created      []string
-	threadSends  []string
-	generalSends []string
-	threadErr    error
+	nextThreadID      int
+	created           []string
+	threadSends       []string
+	richThreadScreens []Screen
+	richThreadIDs     []int
+	generalSends      []string
+	threadErr         error
 }
 
 func (api *topicTestAPI) GetMe(context.Context) (User, error) {
@@ -50,7 +52,11 @@ func (api *topicTestAPI) SendMessageThread(_ context.Context, chatID int64, thre
 	return nil
 }
 
-func (*topicTestAPI) SendRichMessageThread(context.Context, int64, int, Screen, RichMessageOptions) (int64, error) {
+func (api *topicTestAPI) SendRichMessageThread(_ context.Context, _ int64, threadID int, screen Screen, _ RichMessageOptions) (int64, error) {
+	api.mu.Lock()
+	api.richThreadIDs = append(api.richThreadIDs, threadID)
+	api.richThreadScreens = append(api.richThreadScreens, screen)
+	api.mu.Unlock()
 	return 1, nil
 }
 
@@ -156,6 +162,42 @@ func TestNotificationRoutingUsesManagedTopicWithoutChangingDeliveryCount(t *test
 		if got := api.threadSends[index]; len(got) < len(wantThread) || got[:len(wantThread)] != wantThread {
 			t.Fatalf("delivery[%d]=%q want prefix %q", index, got, wantThread)
 		}
+	}
+}
+
+func TestInteractiveApprovalNotificationUsesRichRequestsTopicDelivery(t *testing.T) {
+	api := &topicTestAPI{}
+	store := newTopicStore(t.TempDir())
+	if err := store.put(42, TopicRequests, 120); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &Runtime{
+		api: api, topics: store,
+		config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true},
+		health: Health{Running: true, Enabled: true, AuthorizationConfigured: true, TopicsEffective: true},
+		notificationRenderer: func(_ context.Context, chatID int64, message notification.Message) (Screen, bool, error) {
+			if chatID != 42 || message.Kind != notification.KindApprovalPending || message.RequestID != "req_1" {
+				t.Fatalf("renderer chat=%d message=%#v", chatID, message)
+			}
+			return Screen{
+				Rich:     BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Approval requested", Text: message.RequestID}),
+				Keyboard: [][]Button{{{Text: "Approve once", CallbackData: "opaque", Role: ButtonRolePositive}}},
+			}, true, nil
+		},
+	}
+	if err := runtime.SendNotification(t.Context(), notification.Message{
+		Kind: notification.KindApprovalPending, RequestID: "req_1", Title: "Approval requested",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.richThreadScreens) != 1 || len(api.richThreadIDs) != 1 || api.richThreadIDs[0] != 120 {
+		t.Fatalf("rich topic deliveries ids=%v screens=%d", api.richThreadIDs, len(api.richThreadScreens))
+	}
+	if len(api.threadSends) != 0 || len(api.generalSends) != 0 {
+		t.Fatalf("interactive notification duplicated as text thread=%v general=%v", api.threadSends, api.generalSends)
+	}
+	if len(api.richThreadScreens[0].Keyboard) == 0 || api.richThreadScreens[0].Keyboard[0][0].Text != "Approve once" {
+		t.Fatalf("interactive notification keyboard=%#v", api.richThreadScreens[0].Keyboard)
 	}
 }
 

@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/notification"
 )
 
 const domainPageSize = 3
@@ -401,6 +403,16 @@ func (ui *Interface) requestDetailScreen(ctx context.Context, owner ViewOwner, s
 }
 
 func (ui *Interface) requestCard(owner ViewOwner, request approval.Request) (Screen, error) {
+	return ui.requestCardWithOptions(owner, request, false)
+}
+
+func (ui *Interface) requestNotificationCard(owner ViewOwner, request approval.Request) (Screen, error) {
+	return ui.requestCardWithOptions(owner, request, true)
+}
+
+func (ui *Interface) requestCardWithOptions(owner ViewOwner, request approval.Request, includeReview bool) (Screen, error) {
+	projection := application.ProjectApprovalReview(request, time.Now())
+	request = projection.Request
 	title := strings.TrimSpace(request.Title)
 	if title == "" {
 		title = request.TargetTool
@@ -416,7 +428,7 @@ func (ui *Interface) requestCard(owner ViewOwner, request approval.Request) (Scr
 		blocks = append(blocks, RichBlock{Kind: RichCode, Title: "Command", Text: request.Command})
 	}
 	primary, secondary, destructive := []Button{}, []Button{}, []Button{}
-	if request.Status == approval.StatusPending {
+	if projection.Actionable() {
 		approve, err := ui.stateButton(owner, "Approve once", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteRequests, Operation: capability.RequestApprove, ResourceID: request.ID, Input: application.RequestResolutionInput{ID: request.ID}})
 		if err != nil {
 			return Screen{}, err
@@ -438,6 +450,14 @@ func (ui *Interface) requestCard(owner ViewOwner, request approval.Request) (Scr
 			secondary = append(secondary, allow)
 		}
 	}
+	if includeReview {
+		review, err := ui.stateButton(owner, "Review", CallbackOpen, ActionState{Route: RouteRequest, Back: RouteRequests, Operation: capability.RequestView, ResourceID: request.ID, Input: application.RequestIDInput{ID: request.ID}})
+		if err != nil {
+			return Screen{}, err
+		}
+		review.Role = ButtonRoleView
+		secondary = append([]Button{review}, secondary...)
+	}
 	if copyID, ok := CopyValueButton("Copy ID", request.ID); ok {
 		secondary = append(secondary, copyID)
 	}
@@ -450,6 +470,23 @@ func (ui *Interface) requestCard(owner ViewOwner, request approval.Request) (Scr
 		return Screen{}, err
 	}
 	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Primary: primary, Secondary: secondary, Destructive: destructive, Navigation: []Button{back, home}})}, nil
+}
+
+func (ui *Interface) RenderNotification(ctx context.Context, chatID int64, message notification.Message) (Screen, bool, error) {
+	if ui == nil || ui.runtime == nil || message.Kind != notification.KindApprovalPending || strings.TrimSpace(message.RequestID) == "" {
+		return Screen{}, false, nil
+	}
+	owner := ViewOwner{ChatID: chatID, UserID: chatID, Generation: ui.runtime.Generation()}
+	value, err := ui.dispatch(ctx, capability.RequestView, application.RequestIDInput{ID: message.RequestID})
+	if err != nil {
+		return Screen{}, false, nil
+	}
+	request, ok := value.(approval.Request)
+	if !ok {
+		return Screen{}, false, nil
+	}
+	screen, err := ui.requestNotificationCard(owner, request)
+	return screen, true, err
 }
 
 func (ui *Interface) domainOperationResultScreen(owner ViewOwner, state ActionState, spec capability.Spec, value any) (Screen, bool, error) {
