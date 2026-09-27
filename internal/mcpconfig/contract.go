@@ -78,6 +78,9 @@ func ProjectSetting(spec config.FieldSpec, value string, configured *bool) (Sett
 }
 
 func AgentReadable(spec config.FieldSpec) bool {
+	if spec.Key == "telemetry.enabled" {
+		return false
+	}
 	if spec.InternalOnly || spec.ValueRole == config.SettingValueInternal {
 		return false
 	}
@@ -91,6 +94,9 @@ func AgentReadable(spec config.FieldSpec) bool {
 }
 
 func AgentWritable(spec config.FieldSpec) bool {
+	if spec.Key == "telemetry.enabled" {
+		return false
+	}
 	if !AgentReadable(spec) || spec.Secret || spec.Derived || spec.InternalOnly || !spec.Writable {
 		return false
 	}

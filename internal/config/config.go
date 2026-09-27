@@ -22,8 +22,13 @@ type Config struct {
 	Shell         ShellConfig         `json:"shell"`
 	Notifications NotificationsConfig `json:"notifications"`
 	Approval      ApprovalConfig      `json:"approval"`
+	Telemetry     TelemetryConfig     `json:"telemetry"`
 	Integrations  IntegrationsConfig  `json:"integrations"`
 	Tunnel        tunnel.Config       `json:"tunnel"`
+}
+
+type TelemetryConfig struct {
+	Enabled bool `json:"enabled"`
 }
 
 type ApprovalConfig struct {
@@ -126,6 +131,7 @@ func Default() Config {
 			FailMode: "require_approval", LowAction: "allow", MediumAction: "require_approval",
 			HighAction: "require_approval", CriticalAction: "deny",
 		}},
+		Telemetry:    TelemetryConfig{Enabled: true},
 		Integrations: integrations.Default(),
 		Tunnel:       tunnel.Config{Enabled: false, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}},
 	}

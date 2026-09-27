@@ -110,6 +110,7 @@ var fieldSpecs = []FieldSpec{
 	{Key: "permissions.mcp_config_read", Label: "MCP agent config reads", Section: FieldSectionAccess, Description: "allows agent-facing MCP configuration read tools to access the global CodeMCP setting projection", Details: "Disabled by default. MCP transport authentication and workspace access do not grant global configuration access without this explicit operator opt-in.", Kind: FieldBool, Editable: true},
 	{Key: "permissions.mcp_config_write", Label: "MCP agent config writes", Section: FieldSectionAccess, Description: "allows the guarded agent-facing MCP configuration mutation workflow to target eligible global settings", Details: "Disabled by default. Enabling this eligibility does not bypass mandatory local approval for config_set and does not permit managed-secret writes.", Kind: FieldBool, Editable: true, Related: []string{"permissions.mcp_config_read"}},
 	{Key: "shell.path", Label: "Executable search paths", Section: FieldSectionShell, Description: "prepends additional executable directories to PATH for managed shell commands", Details: "Paths must be absolute. Configured entries are prepended to the inherited process PATH for foreground and background shell execution.", Kind: FieldList, Editable: true},
+	{Key: "telemetry.enabled", Label: "Anonymous product telemetry", Section: FieldSectionRuntime, Description: "controls privacy-bounded anonymous product usage telemetry", Details: "Enabled by default. CM_TELEMETRY overrides this persisted preference at runtime. This operator privacy preference is never exposed through agent-facing MCP config tools.", Kind: FieldBool, Editable: true},
 	{Key: "approval.semantic.enabled", Label: "Semantic approval classification", Section: FieldSectionAccess, Description: "controls optional semantic risk classification for eligible mutations", Details: "Disabled by default. Semantic classification may only preserve or tighten native policy and never grants approval.", Kind: FieldBool, Editable: true},
 	{Key: "approval.semantic.provider", Label: "Semantic approval provider", Section: FieldSectionAccess, Description: "selects the provider-neutral risk classifier", Details: "The configured provider must expose the semantic RiskClassifier capability at runtime. Missing capability follows fail_mode.", Kind: FieldString, Editable: true},
 	{Key: "approval.semantic.timeout_ms", Label: "Semantic approval timeout", Section: FieldSectionAccess, Description: "sets the bounded classification deadline in milliseconds", Details: "Classification is advisory and locally bounded. Timeout follows fail_mode and never permits execution by itself.", Kind: FieldInt, Editable: true},
@@ -287,6 +288,12 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Permissions.MCPConfigWrite = value
 	case "shell.path":
 		cfg.Shell.Path = splitFieldList(raw)
+	case "telemetry.enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Telemetry.Enabled = value
 	case "approval.semantic.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -534,6 +541,8 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strconv.FormatBool(cfg.Permissions.MCPConfigWrite), nil
 	case "shell.path":
 		return strings.Join(cfg.Shell.Path, ","), nil
+	case "telemetry.enabled":
+		return strconv.FormatBool(cfg.Telemetry.Enabled), nil
 	case "approval.semantic.enabled":
 		return strconv.FormatBool(cfg.Approval.Semantic.Enabled), nil
 	case "approval.semantic.provider":

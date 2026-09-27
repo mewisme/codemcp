@@ -85,6 +85,7 @@ func TestMCPConfigReadServiceRequiresOptInAndSanitizesCanonicalSettings(t *testi
 	}
 	for _, key := range []string{
 		"auth.mcp_token_hash",
+		"telemetry.enabled",
 		"tunnel.control_plane_base_url",
 		"upstream.servers[remote].url",
 		"upstream.servers[remote].command",
@@ -94,6 +95,9 @@ func TestMCPConfigReadServiceRequiresOptInAndSanitizesCanonicalSettings(t *testi
 		if _, code := provider.Get(t.Context(), key); code != mcpconfig.ErrorUnsupportedSetting {
 			t.Fatalf("unsafe/unavailable key %q code=%q", key, code)
 		}
+	}
+	if listed, code := provider.List(t.Context(), "telemetry"); code != "" || len(listed) != 0 {
+		t.Fatalf("telemetry preference list projection=%#v code=%q", listed, code)
 	}
 
 	port, code := provider.Get(t.Context(), "server.port")
@@ -161,6 +165,11 @@ func TestMCPConfigSetApprovalBindingIsPrivateCanonicalAndStateBound(t *testing.T
 		args map[string]any
 		want mcpconfig.ErrorCode
 	}{
+		{
+			name: "operator telemetry privacy preference",
+			args: map[string]any{"changes": []any{map[string]any{"key": "telemetry.enabled", "value": "false"}}},
+			want: mcpconfig.ErrorUnsupportedSetting,
+		},
 		{
 			name: "managed secret",
 			args: map[string]any{"changes": []any{map[string]any{"key": "tunnel.api_key", "value": "must-never-enter-approval"}}},
