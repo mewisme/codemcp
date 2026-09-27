@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ type fakeBackend struct {
 	started   bool
 	stopped   bool
 	startErr  error
+	stopErr   error
 	autoReady bool
 	ready     chan struct{}
 	done      chan os.Signal
@@ -48,8 +50,9 @@ func (b *fakeBackend) Start(context.Context) error {
 func (b *fakeBackend) Stop(context.Context) error {
 	b.mu.Lock()
 	b.stopped = true
+	err := b.stopErr
 	b.mu.Unlock()
-	return nil
+	return err
 }
 
 func (b *fakeBackend) WaitUntilReady(ctx context.Context) error {
@@ -62,6 +65,11 @@ func (b *fakeBackend) WaitUntilReady(ctx context.Context) error {
 }
 
 func (b *fakeBackend) Done() <-chan os.Signal { return b.done }
+
+type fakeSignal string
+
+func (fakeSignal) Signal()              {}
+func (value fakeSignal) String() string { return string(value) }
 
 func TestValidateConfigRequiresHTTPSControlPlane(t *testing.T) {
 	base := Config{Enabled: true, ID: "tunnel_test", APIKey: "secret"}
@@ -224,6 +232,106 @@ func TestTunnelBackendShutdownReconnects(t *testing.T) {
 	waitLifecycleState(t, events, LifecycleStopped)
 }
 
+func TestRuntimeConnectivityErrorsRedactConfiguredSecrets(t *testing.T) {
+	const runtimeSecret = "runtime-secret-value"
+	const adminSecret = "admin-secret-value"
+	cfg := Config{
+		Enabled: true,
+		ID:      "tunnel_test",
+		APIKey:  runtimeSecret,
+		Admin:   AdminConfig{Key: adminSecret},
+	}
+	runtime := &tools.Runtime{Registry: tools.NewRegistry()}
+	assertSafe := func(t *testing.T, value string) {
+		t.Helper()
+		for _, secret := range []string{runtimeSecret, adminSecret} {
+			if strings.Contains(value, secret) {
+				t.Fatalf("runtime connectivity state leaked %q: %q", secret, value)
+			}
+		}
+	}
+
+	t.Run("factory", func(t *testing.T) {
+		events := make(chan LifecycleEvent, 4)
+		client := newConfigured(cfg, runtime, func(Config, sdkmcp.Transport) (backend, error) {
+			return nil, errors.New("factory rejected " + runtimeSecret + " " + adminSecret)
+		})
+		client.SetLifecycleObserver(func(event LifecycleEvent) { events <- event })
+		err := client.Start()
+		if err == nil {
+			t.Fatal("factory failure unexpectedly succeeded")
+		}
+		assertSafe(t, err.Error())
+		assertSafe(t, client.Status().LastError)
+		assertSafe(t, waitLifecycleState(t, events, LifecycleDegraded).Message)
+	})
+
+	t.Run("backend-start", func(t *testing.T) {
+		events := make(chan LifecycleEvent, 4)
+		client := newConfigured(cfg, runtime, func(Config, sdkmcp.Transport) (backend, error) {
+			fake := newFakeBackend()
+			fake.startErr = errors.New("start rejected " + runtimeSecret + " " + adminSecret)
+			return fake, nil
+		})
+		client.SetLifecycleObserver(func(event LifecycleEvent) { events <- event })
+		err := client.Start()
+		if err == nil {
+			t.Fatal("backend start failure unexpectedly succeeded")
+		}
+		assertSafe(t, err.Error())
+		assertSafe(t, client.Status().LastError)
+		assertSafe(t, waitLifecycleState(t, events, LifecycleDegraded).Message)
+	})
+
+	t.Run("runtime-recovery", func(t *testing.T) {
+		created := make(chan *fakeBackend, 2)
+		events := make(chan LifecycleEvent, 8)
+		client := newConfigured(cfg, runtime, func(Config, sdkmcp.Transport) (backend, error) {
+			fake := newFakeBackend()
+			created <- fake
+			return fake, nil
+		})
+		client.restartDelay = func(int) time.Duration { return time.Hour }
+		client.SetLifecycleObserver(func(event LifecycleEvent) { events <- event })
+		if err := client.Start(); err != nil {
+			t.Fatal(err)
+		}
+		first := waitBackendCreated(t, created)
+		waitLifecycleState(t, events, LifecycleReady)
+		first.done <- fakeSignal("provider failure " + runtimeSecret + " " + adminSecret)
+		degraded := waitLifecycleState(t, events, LifecycleDegraded)
+		assertSafe(t, degraded.Message)
+		assertSafe(t, client.Status().LastError)
+		waitLifecycleState(t, events, LifecycleReconnecting)
+		if err := client.Stop(); err != nil {
+			t.Fatal(err)
+		}
+		waitLifecycleState(t, events, LifecycleStopped)
+	})
+
+	t.Run("backend-stop", func(t *testing.T) {
+		fake := newFakeBackend()
+		fake.stopErr = errors.New("stop rejected " + runtimeSecret + " " + adminSecret)
+		client := newConfigured(cfg, runtime, func(Config, sdkmcp.Transport) (backend, error) { return fake, nil })
+		if err := client.Start(); err != nil {
+			t.Fatal(err)
+		}
+		readyCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := client.WaitUntilReady(readyCtx); err != nil {
+			t.Fatal(err)
+		}
+		err := client.Stop()
+		if err == nil {
+			t.Fatal("backend stop failure unexpectedly succeeded")
+		}
+		assertSafe(t, err.Error())
+		if status := client.Status(); status.Running || status.Ready || status.Restarting {
+			t.Fatalf("stop failure retained active runtime state: %+v", status)
+		}
+	})
+}
+
 func TestTunnelStopDuringReconnectPreventsRestart(t *testing.T) {
 	runtime := &tools.Runtime{Registry: tools.NewRegistry()}
 	created := make(chan *fakeBackend, 4)
@@ -340,6 +448,22 @@ func TestTunnelIdleReconnectRepeats(t *testing.T) {
 	waitLifecycleState(t, events, LifecycleReady)
 	if err := client.Stop(); err != nil {
 		t.Fatal(err)
+	}
+	for index, backend := range []*fakeBackend{first, second, third} {
+		backend.mu.Lock()
+		stopped := backend.stopped
+		backend.mu.Unlock()
+		if !stopped {
+			t.Fatalf("backend generation %d was not stopped", index+1)
+		}
+	}
+	select {
+	case extra := <-created:
+		t.Fatalf("tunnel created a backend after shutdown: %#v", extra)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if status := client.Status(); status.Running || status.Ready || status.Restarting {
+		t.Fatalf("tunnel remained active after repeated reconnect shutdown: %+v", status)
 	}
 }
 

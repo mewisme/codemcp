@@ -773,6 +773,7 @@ func (c *Client) startGeneration(session uint64, parent context.Context, initial
 	serverTransport, tunnelTransport := newCancellationSafeInMemoryTransports()
 	tunnelBackend, err := c.factory(c.config, withSessionTransportActivity(tunnelTransport, func() { c.markMCPActivity(session) }))
 	if err != nil {
+		err = redactConfigSecrets(err, c.config)
 		c.lastError = err.Error()
 		c.mu.Unlock()
 		c.emitLifecycle(LifecycleDegraded, id, err.Error())
@@ -787,6 +788,7 @@ func (c *Client) startGeneration(session uint64, parent context.Context, initial
 	}()
 
 	if err := tunnelBackend.Start(runCtx); err != nil {
+		err = redactConfigSecrets(err, c.config)
 		cancel()
 		c.lastError = err.Error()
 		c.mu.Unlock()
@@ -975,7 +977,26 @@ func (c *Client) watchBackend(session, generation uint64, tunnelBackend backend,
 }
 
 func (c *Client) recoverGeneration(session, generation uint64, parent context.Context, message string) {
-	c.restartGeneration(session, generation, parent, message, true)
+	c.mu.RLock()
+	cfg := c.config
+	c.mu.RUnlock()
+	c.restartGeneration(session, generation, parent, redactSecretText(message, cfg), true)
+}
+
+func redactConfigSecrets(err error, cfg Config) error {
+	if err == nil {
+		return nil
+	}
+	return errors.New(redactSecretText(err.Error(), cfg))
+}
+
+func redactSecretText(value string, cfg Config) string {
+	for _, secret := range []string{strings.TrimSpace(cfg.APIKey), strings.TrimSpace(cfg.Admin.Key)} {
+		if secret != "" {
+			value = strings.ReplaceAll(value, secret, "[redacted]")
+		}
+	}
+	return value
 }
 
 func (c *Client) restartGeneration(session, generation uint64, parent context.Context, message string, degraded bool) {
@@ -1161,6 +1182,7 @@ func (c *Client) stopGeneration(ctx context.Context, generation uint64) error {
 	cancel := c.cancel
 	run := c.serverRun
 	doneCh := c.doneCh
+	cfg := c.config
 	c.mu.Unlock()
 
 	if cancel != nil {
@@ -1189,7 +1211,7 @@ func (c *Client) stopGeneration(ctx context.Context, generation uint64) error {
 		close(doneCh)
 	}
 	c.mu.Unlock()
-	return errors.Join(backendErr, serverErr)
+	return redactConfigSecrets(errors.Join(backendErr, serverErr), cfg)
 }
 
 func waitRun(ctx context.Context, run *serverRun, fallback time.Duration) error {

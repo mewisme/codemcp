@@ -92,6 +92,31 @@ func TestSDKBridgeConfigGetUsesSameSanitizedWireResult(t *testing.T) {
 	}
 }
 
+func TestSDKBridgeUsesCanonicalOpenAIFeatureRegistry(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	canonical := localmcp.FeatureRegistryForRuntime(runtime)
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bridge.tasks != nil {
+		t.Cleanup(bridge.tasks.Close)
+	}
+	if bridge.featureRegistry != canonical {
+		t.Fatal("Secure MCP bridge created a competing feature registry")
+	}
+	if bridge.profile == nil || bridge.profile.ID() != localmcp.OpenAIProfileID {
+		t.Fatalf("Secure MCP bridge profile=%v, want OpenAI", bridge.profile)
+	}
+	if bridge.features == nil || bridge.features.Profile == nil || bridge.features.Profile.ID() != localmcp.OpenAIProfileID {
+		t.Fatalf("Secure MCP feature executor did not preserve OpenAI projection: %#v", bridge.features)
+	}
+	if bridge.tasks == nil {
+		t.Fatal("OpenAI background task projection was not installed")
+	}
+}
+
 func TestSDKBridgeConfigToolsKeepCanonicalSchemasAndEffects(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	runtime := tools.NewRuntime()
