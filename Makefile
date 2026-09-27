@@ -11,7 +11,7 @@ LOCAL_LDFLAGS = -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint=$(LOC
 CM = $(GO) run -ldflags "$(LOCAL_LDFLAGS)" .
 PREPARE_FRONTEND = $(NODE) scripts/prepare-frontend-embed.mjs
 
-CM_COMMANDS = install upgrade init uninit down logs request tui config auth workspace prompt upstream mcp tunnel server admin permissions shell notification telemetry telegram integration status agent completion version
+CM_COMMANDS = install upgrade init uninit down logs request tui config auth instructions tools execution process workspace prompt upstream mcp tunnel server admin permissions shell notification telemetry telegram integration status doctor agent completion version
 CM_PREPARE_COMMANDS = up restart serve
 CM_PASSTHROUGH_TARGETS = run $(CM_COMMANDS) $(CM_PREPARE_COMMANDS)
 CM_DEVELOPER_TARGETS = help bootstrap prepare check-embed check test test-race build frontend-dev
@@ -44,10 +44,10 @@ help:
 		'  <cm-command>   Run any other public cm command' \
 		'                  positional subcommands/args are forwarded directly' \
 		'                  use ARGS="..." for flags or complex shell quoting' \
-		'                  install upgrade init uninit down logs request tui' \
-		'                  config auth workspace prompt upstream mcp tunnel' \
-		'                  server admin permissions shell notification telemetry' \
-		'                  telegram integration status agent completion version' \
+		'                  install upgrade init uninit down logs request tui config auth' \
+		'                  instructions tools execution process workspace prompt upstream mcp tunnel' \
+		'                  server admin permissions shell notification telemetry telegram integration' \
+		'                  status doctor agent completion version' \
 		'  frontend-dev   Run the Vite development server'
 
 bootstrap:
