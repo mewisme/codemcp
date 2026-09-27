@@ -80,6 +80,40 @@ targets Streamable HTTP for remote MCP servers, so OpenAI-specific features are
 validated against Streamable HTTP and Secure MCP Tunnel rather than using SSE
 as a feature authority.
 
+## Skills extension and ChatGPT import
+
+Evidence date: 2026-09-27
+
+OpenAI documents the MCP Skills proposal as an extension rather than a stable
+core MCP feature. Compatible servers advertise
+`capabilities.extensions["io.modelcontextprotocol/skills"]`, implement
+paginated `skills/list` plus `skills/get`, and expose every manifest resource
+through `resources/read`. Skill catalog entries use `skill://` URIs, preserve
+the complete parsed `SKILL.md` frontmatter, enumerate `SKILL.md` plus every
+supporting file, and include a lowercase SHA-256 digest for every resource.
+
+The OpenAI profile applies the documented importer bounds without changing the
+canonical CodeMCP Skill store: at most five skills are projected for one scan,
+each skill has at most 100 files, `SKILL.md` is at most 256 KiB, each support
+file is at most 1 MiB, each skill is at most 5 MiB in total, and the aggregate
+raw resource payload is bounded to 8 MiB. For OpenAI import, the directory
+containing `SKILL.md` must match the Skill name. The base profile does not
+inherit these OpenAI-specific importer limits.
+
+OpenAI imports a snapshot at scan/submission time rather than reading the
+server live for every invocation. CodeMCP therefore remains the live Skill
+authority; after Skill changes, a client may need to rescan/reconnect before
+its imported snapshot changes. Clients that do not negotiate or use the
+extension retain the canonical `list_skills` and `load_skill` Tool fallback.
+The repository compatibility harness verifies the documented wire contract and
+limits, but it does not treat extension negotiation or advertisement alone as
+proof that a particular ChatGPT/Codex client successfully imported a Skill.
+
+Evidence:
+
+- https://developers.openai.com/plugins/concepts/mcp-server
+- https://developers.openai.com/plugins/submit
+
 ## Background lifecycle evidence
 
 Evidence date: 2026-09-26

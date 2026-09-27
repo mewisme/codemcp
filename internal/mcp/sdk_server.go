@@ -65,6 +65,7 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 	descriptors := DescribeProtocolWithFeatures(nil, features, authRequirements...)
 	implementation, options := ProjectSDKServer(profile, descriptors)
 	featureExecutor := NewFeatureExecutor(features, toolRuntime, boundWorkspace, source)
+	featureExecutor.Profile = profile
 	resourceSubscriptions := newSDKResourceSubscriptionTracker()
 	options.CompletionHandler = sdkCompletionHandler(featureExecutor)
 	options.SubscribeHandler = sdkSubscribeHandler(featureExecutor, resourceSubscriptions)
@@ -78,6 +79,10 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 	installPromptProjection(server, featureExecutor)
 	resourceProjection := newSDKResourceProjectionState()
 	if err := installResourceProjection(server, featureExecutor, resourceProjection); err != nil {
+		features.UnsubscribeResourceListChanges(resourceListSub)
+		return nil, err
+	}
+	if err := InstallSkillProjection(server, featureExecutor); err != nil {
 		features.UnsubscribeResourceListChanges(resourceListSub)
 		return nil, err
 	}

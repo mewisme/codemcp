@@ -19,6 +19,7 @@ type FeatureExecutor struct {
 	Tools          *tools.Runtime
 	BoundWorkspace string
 	Source         string
+	Profile        Profile
 }
 
 func NewFeatureExecutor(registry *FeatureRegistry, runtime *tools.Runtime, boundWorkspace, source string) *FeatureExecutor {
@@ -27,6 +28,7 @@ func NewFeatureExecutor(registry *FeatureRegistry, runtime *tools.Runtime, bound
 		Tools:          runtime,
 		BoundWorkspace: strings.TrimSpace(boundWorkspace),
 		Source:         strings.TrimSpace(source),
+		Profile:        BaseProfile(),
 	}
 }
 
@@ -39,6 +41,10 @@ func (e *FeatureExecutor) Invoke(ctx context.Context, methodName string, params 
 		return nil, NewError(ErrInternal, "feature registry is unavailable")
 	}
 	switch strings.TrimSpace(methodName) {
+	case SkillsListMethod:
+		return e.ListSkills(ctx, params)
+	case SkillsGetMethod:
+		return e.GetSkill(ctx, params)
 	case ResourcesListMethod:
 		cursor, err := resourceCursor(params)
 		if err != nil {

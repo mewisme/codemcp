@@ -53,10 +53,14 @@ func newSDKBridgeWithProfile(runtime *tools.Runtime, profile localmcp.Profile) (
 	implementation, options := localmcp.ProjectSDKServer(profile, descriptors)
 	server := sdkmcp.NewServer(implementation, options)
 	features := localmcp.NewFeatureExecutor(featureRegistry, runtime, "", "tunnel")
+	features.Profile = profile
 	if err := localmcp.InstallFeatureMethods(server, features); err != nil {
 		return nil, err
 	}
 	if err := localmcp.InstallResourceProjection(server, features); err != nil {
+		return nil, err
+	}
+	if err := localmcp.InstallSkillProjection(server, features); err != nil {
 		return nil, err
 	}
 	var tasks *localmcp.TaskRegistry

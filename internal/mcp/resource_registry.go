@@ -417,6 +417,9 @@ func (e *FeatureExecutor) ReadResource(ctx context.Context, rawURI string) (Reso
 	if e == nil || e.Registry == nil {
 		return ResourceReadResult{}, NewError(ErrInternal, "feature registry is unavailable")
 	}
+	if strings.HasPrefix(rawURI, skillScheme+"://") {
+		return e.readSkillResource(ctx, rawURI)
+	}
 	parsed, err := ParseResourceURI(rawURI)
 	if err != nil {
 		return ResourceReadResult{}, NewErrorData(ErrInvalidParams, "Invalid resource URI", map[string]any{"uri": strings.TrimSpace(rawURI)})

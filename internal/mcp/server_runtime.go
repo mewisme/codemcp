@@ -31,9 +31,11 @@ func NewRuntimeWithProfile(toolRuntime *tools.Runtime, profile Profile) *Runtime
 		profile = BaseProfile()
 	}
 	features := FeatureRegistryForRuntime(toolRuntime)
+	executor := NewFeatureExecutor(features, toolRuntime, "", "http")
+	executor.Profile = profile
 	return &Runtime{
 		Tools:    toolRuntime,
-		Features: NewFeatureExecutor(features, toolRuntime, "", "http"),
+		Features: executor,
 		Profile:  profile,
 	}
 }
