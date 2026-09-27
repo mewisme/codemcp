@@ -124,9 +124,15 @@ export type PromptDefinition = {
   name: string
   description?: string
   arguments?: { name: string; description?: string; required?: boolean }[]
-  messages: { role: "user" | "assistant"; content: { type: "text"; text: string } }[]
+  messages: {
+    role: "user" | "assistant"
+    content: { type: "text"; text: string }
+  }[]
 }
-export type ScopedPrompt = { scope: "global" | "workspace"; definition: PromptDefinition }
+export type ScopedPrompt = {
+  scope: "global" | "workspace"
+  definition: PromptDefinition
+}
 export type InstructionRule = {
   path: string
   source: string
@@ -308,6 +314,7 @@ export type PublicConfig = {
     }
     rtk: { enabled: boolean; path: string }
     codegraph: { enabled: boolean; path: string }
+    typesafe: { enabled: boolean; model: string; timeout_ms: number }
   }
 }
 export type NetworkAddress = {
@@ -357,8 +364,20 @@ export type TunnelMetadata = {
   request_id?: string
   fetched_at: string
 }
-export type ManagedTunnelCreateRequest = { name: string; description: string; tenant_ids?: string[]; workspace_ids?: string[]; organization_ids?: string[] }
-export type ManagedTunnelUpdateRequest = { name?: string; description?: string; tenant_ids?: string[]; workspace_ids?: string[]; organization_ids?: string[] }
+export type ManagedTunnelCreateRequest = {
+  name: string
+  description: string
+  tenant_ids?: string[]
+  workspace_ids?: string[]
+  organization_ids?: string[]
+}
+export type ManagedTunnelUpdateRequest = {
+  name?: string
+  description?: string
+  tenant_ids?: string[]
+  workspace_ids?: string[]
+  organization_ids?: string[]
+}
 export type ManagedTunnelUseRequest = {
   id: string
   runtime_api_key?: string
@@ -432,7 +451,8 @@ export type ApprovalEvent = {
   timestamp: string
 }
 
-export type CompletionStatus = "completed" | "partial" | "blocked" | "cancelled" | string
+export type CompletionStatus =
+  "completed" | "partial" | "blocked" | "cancelled" | string
 export type CompletionRecord = {
   id: string
   sequence: number
@@ -457,6 +477,79 @@ export type CompletionSnapshot = {
   records: CompletionRecord[]
 }
 
+export type StatusOverview = {
+  runtime_running: boolean
+  mcp_http_enabled: boolean
+  admin_enabled: boolean
+  tunnel_enabled: boolean
+  telegram_enabled: boolean
+  telegram_running: boolean
+  telegram_healthy: boolean
+}
+export type TelemetryStatus = {
+  persisted_enabled: boolean
+  effective_enabled: boolean
+  source: string
+  environment_override: boolean
+  endpoint_available: boolean
+  endpoint_host?: string
+  product?: string
+  identity_present: boolean
+}
+export type LogEvent = {
+  sequence?: number
+  run_id?: string
+  timestamp?: string
+  level?: string
+  component?: string
+  name?: string
+  message?: string
+  workspace_id?: string
+  tool?: string
+  status?: string
+  source?: string
+  fields?: { key: string; value: unknown }[]
+  [key: string]: unknown
+}
+export type LogsSnapshot = {
+  Events?: LogEvent[]
+  events?: LogEvent[]
+  Session?: string
+  session?: string
+  Total?: number
+  total?: number
+  Truncated?: boolean
+  truncated?: boolean
+}
+export type LogsInfo = {
+  Path?: string
+  path?: string
+  Files?: number
+  files?: number
+  Bytes?: number
+  bytes?: number
+}
+export type ProcessInfo = {
+  id: string
+  execution_id?: string
+  pid: number
+  command: string
+  cwd: string
+  started_at: string
+  running: boolean
+  exit_code?: number | null
+  signal?: string | null
+}
+export type TypeSafeStatus = {
+  enabled: boolean
+  api_key_configured: boolean
+  state: string
+  model: string
+  timeout_ms: number
+}
+export type IntegrationStatus = Record<string, unknown>
+export type CodeGraphWorkspaceStatus = Record<string, unknown>
+
 const adminTokenKey = "cm-admin-token"
 try {
   localStorage.removeItem(adminTokenKey)
@@ -480,7 +573,7 @@ export class ApiError extends Error {
 export function adminRequestHeaders(
   path: string,
   method = "GET",
-  initial?: HeadersInit,
+  initial?: HeadersInit
 ) {
   const headers = browserOperationHeaders(path, method, initial)
   const token = adminToken.get()
@@ -489,7 +582,11 @@ export function adminRequestHeaders(
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = adminRequestHeaders(path, init?.method ?? "GET", init?.headers)
+  const headers = adminRequestHeaders(
+    path,
+    init?.method ?? "GET",
+    init?.headers
+  )
   if (init?.body !== undefined && init.body !== null)
     headers.set("Content-Type", "application/json")
   const response = await fetch(path, { ...init, headers })
@@ -506,6 +603,62 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const adminApi = {
   health: () => api<{ ok: boolean; auth_enabled: boolean }>("/api/health"),
+  status: () => api<StatusOverview>("/api/status"),
+  doctor: () => api<Record<string, unknown>>("/api/doctor"),
+  about: () => api<Record<string, unknown>>("/api/about"),
+  runtimeAction: (
+    action: "up" | "down" | "restart",
+    scope: "user" | "system" = "user"
+  ) =>
+    api<Record<string, unknown>>(`/api/runtime/${action}`, {
+      method: "POST",
+      body: JSON.stringify({ scope }),
+    }),
+  logs: (
+    options: {
+      tail?: number
+      all?: boolean
+      level?: string
+      component?: string
+      workspace?: string
+      grep?: string
+    } = {}
+  ) => {
+    const query = new URLSearchParams()
+    if (options.tail !== undefined) query.set("tail", String(options.tail))
+    if (options.all !== undefined) query.set("all", String(options.all))
+    if (options.level) query.set("level", options.level)
+    if (options.component) query.set("components", options.component)
+    if (options.workspace) query.set("workspace", options.workspace)
+    if (options.grep) query.set("grep", options.grep)
+    const suffix = query.size ? `?${query}` : ""
+    return api<LogsSnapshot>(`/api/logs${suffix}`)
+  },
+  logsInfo: () => api<LogsInfo>("/api/logs/info"),
+  clearLogs: () => api<{ cleared: boolean }>("/api/logs", { method: "DELETE" }),
+  telemetry: () => api<TelemetryStatus>("/api/telemetry"),
+  setTelemetry: (enabled: boolean) =>
+    api<TelemetryStatus>(`/api/telemetry/${enabled ? "enable" : "disable"}`, {
+      method: "POST",
+    }),
+  configPath: () => api<Record<string, unknown>>("/api/config/path"),
+  verifyConfig: () => api<Record<string, unknown>>("/api/config/verify"),
+  rtkStatus: () => api<IntegrationStatus>("/api/integrations/rtk"),
+  rtkAction: (action: "enable" | "disable" | "probe" | "install") =>
+    api<IntegrationStatus>(`/api/integrations/rtk/${action}`, {
+      method: "POST",
+    }),
+  codeGraphStatus: () => api<IntegrationStatus>("/api/integrations/codegraph"),
+  codeGraphAction: (action: "probe" | "install") =>
+    api<IntegrationStatus>(`/api/integrations/codegraph/${action}`, {
+      method: "POST",
+    }),
+  typeSafeStatus: () => api<TypeSafeStatus>("/api/integrations/typesafe"),
+  typeSafeAction: (action: "enable" | "disable" | "probe") =>
+    api<TypeSafeStatus | Record<string, unknown>>(
+      `/api/integrations/typesafe/${action}`,
+      { method: "POST" }
+    ),
   activityCall: (callID: string) =>
     api<ActivityEvent>(`/api/activity/${encodeURIComponent(callID)}`),
   networkInterfaces: () => api<NetworkInterface[]>("/api/network/interfaces"),
@@ -570,11 +723,37 @@ export const adminApi = {
       }
     ),
   globalInstructions: () => api<GlobalInstructions>("/api/instructions/global"),
-  prompts: (workspaceID = "") => api<ScopedPrompt[]>(`/api/prompts?workspace_id=${encodeURIComponent(workspaceID)}`),
-  prompt: (name: string, workspaceID = "") => api<ScopedPrompt>(`/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`),
-  createPrompt: (scope: "global" | "workspace", workspaceID: string, definition: PromptDefinition) => api<ScopedPrompt>("/api/prompts", { method: "POST", body: JSON.stringify({ scope, workspace_id: workspaceID, definition }) }),
-  updatePrompt: (name: string, workspaceID: string, definition: PromptDefinition) => api<ScopedPrompt>(`/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`, { method: "PUT", body: JSON.stringify(definition) }),
-  deletePrompt: (name: string, workspaceID: string) => api<{ deleted: boolean }>(`/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`, { method: "DELETE" }),
+  prompts: (workspaceID = "") =>
+    api<ScopedPrompt[]>(
+      `/api/prompts?workspace_id=${encodeURIComponent(workspaceID)}`
+    ),
+  prompt: (name: string, workspaceID = "") =>
+    api<ScopedPrompt>(
+      `/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`
+    ),
+  createPrompt: (
+    scope: "global" | "workspace",
+    workspaceID: string,
+    definition: PromptDefinition
+  ) =>
+    api<ScopedPrompt>("/api/prompts", {
+      method: "POST",
+      body: JSON.stringify({ scope, workspace_id: workspaceID, definition }),
+    }),
+  updatePrompt: (
+    name: string,
+    workspaceID: string,
+    definition: PromptDefinition
+  ) =>
+    api<ScopedPrompt>(
+      `/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`,
+      { method: "PUT", body: JSON.stringify(definition) }
+    ),
+  deletePrompt: (name: string, workspaceID: string) =>
+    api<{ deleted: boolean }>(
+      `/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`,
+      { method: "DELETE" }
+    ),
   saveGlobalInstructions: (
     patch: Partial<
       Pick<GlobalInstructions, "context" | "rules" | "source_policy">
@@ -605,6 +784,26 @@ export const adminApi = {
   workspaceExecution: (id: string, executionID: string) =>
     api<ExecutionSnapshot>(
       `/api/workspaces/${encodeURIComponent(id)}/executions/${encodeURIComponent(executionID)}`
+    ),
+  workspaceProcesses: (id: string) =>
+    api<ProcessInfo[]>(`/api/workspaces/${encodeURIComponent(id)}/processes`),
+  workspaceProcess: (id: string, processID: string) =>
+    api<ProcessInfo>(
+      `/api/workspaces/${encodeURIComponent(id)}/processes/${encodeURIComponent(processID)}`
+    ),
+  clearWorkspaceProcess: (id: string, processID: string) =>
+    api<{ deleted: boolean }>(
+      `/api/workspaces/${encodeURIComponent(id)}/processes/${encodeURIComponent(processID)}`,
+      { method: "DELETE" }
+    ),
+  codeGraphWorkspace: (id: string, path = "") =>
+    api<CodeGraphWorkspaceStatus>(
+      `/api/workspaces/${encodeURIComponent(id)}/integrations/codegraph${path ? `?path=${encodeURIComponent(path)}` : ""}`
+    ),
+  codeGraphWorkspaceAction: (id: string, action: "init" | "sync", path = "") =>
+    api<CodeGraphWorkspaceStatus>(
+      `/api/workspaces/${encodeURIComponent(id)}/integrations/codegraph/${action}${path ? `?path=${encodeURIComponent(path)}` : ""}`,
+      { method: "POST" }
     ),
   tools: () => api<Tool[]>("/api/tools"),
   upstream: () => api<UpstreamServer[]>("/api/upstream"),
@@ -661,10 +860,22 @@ export const adminApi = {
   removeTunnelAdminKey: () =>
     api<TunnelAdminKeyStatus>("/api/tunnel/admin/key", { method: "DELETE" }),
   managedTunnels: () => api<TunnelMetadata[]>("/api/tunnel/managed"),
-  managedTunnel: (id: string) => api<TunnelMetadata>(`/api/tunnel/managed/${encodeURIComponent(id)}`),
-  createManagedTunnel: (request: ManagedTunnelCreateRequest) => api<TunnelMetadata>("/api/tunnel/managed", { method: "POST", body: JSON.stringify(request) }),
-  updateManagedTunnel: (id: string, request: ManagedTunnelUpdateRequest) => api<TunnelMetadata>(`/api/tunnel/managed/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(request) }),
-  deleteManagedTunnel: (id: string) => api<TunnelMetadata>(`/api/tunnel/managed/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  managedTunnel: (id: string) =>
+    api<TunnelMetadata>(`/api/tunnel/managed/${encodeURIComponent(id)}`),
+  createManagedTunnel: (request: ManagedTunnelCreateRequest) =>
+    api<TunnelMetadata>("/api/tunnel/managed", {
+      method: "POST",
+      body: JSON.stringify(request),
+    }),
+  updateManagedTunnel: (id: string, request: ManagedTunnelUpdateRequest) =>
+    api<TunnelMetadata>(`/api/tunnel/managed/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(request),
+    }),
+  deleteManagedTunnel: (id: string) =>
+    api<TunnelMetadata>(`/api/tunnel/managed/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   useManagedTunnel: (request: ManagedTunnelUseRequest) =>
     api<ManagedTunnelUseResult>("/api/tunnel/managed/use", {
       method: "POST",
@@ -695,7 +906,9 @@ export const adminApi = {
     return api<CompletionRecord[]>(`/api/completions?${query}`)
   },
   currentCompletion: (workspaceID: string) =>
-    api<CompletionRecord>(`/api/completions/current?workspace_id=${encodeURIComponent(workspaceID)}`),
+    api<CompletionRecord>(
+      `/api/completions/current?workspace_id=${encodeURIComponent(workspaceID)}`
+    ),
   completion: (id: string) =>
     api<CompletionRecord>(`/api/completions/view/${encodeURIComponent(id)}`),
 }

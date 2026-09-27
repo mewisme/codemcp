@@ -22,7 +22,13 @@ const config = {
   },
   permissions: { allow_dirs: [] },
   shell: { path: [] },
-  integrations: { ponytail: { active: true, mode: "full" }, caveman: { active: true, mode: "full" }, rtk: { enabled: true, path: "" }, codegraph: { enabled: false, path: "" } },
+  integrations: {
+    ponytail: { active: true, mode: "full" },
+    caveman: { active: true, mode: "full" },
+    rtk: { enabled: true, path: "" },
+    codegraph: { enabled: false, path: "" },
+    typesafe: { enabled: false, model: "test-model", timeout_ms: 5000 },
+  },
 }
 const tunnel = {
   provider: "openai",
@@ -56,17 +62,22 @@ describe("admin app runtime smoke", () => {
     ).toBeInTheDocument()
 
     const pageSmokeText: Record<string, string> = {
+      system: "Managed runtime",
+      logs: "Journal",
+      integrations: "TypeSafe",
       workspaces: "Register workspace",
       instructions:
         "Manage global context, rules, and detected user-level instruction sources.",
-      prompts: "Global definitions are available to all workspaces; workspace definitions override names locally.",
+      prompts:
+        "Global definitions are available to all workspaces; workspace definitions override names locally.",
       tools:
         "Inspect every tool exposed by the local runtime and enabled upstream servers, including schemas and behavioral hints.",
       upstreams: "Add Upstream",
       tunnel: "OpenAI Secure MCP Tunnel",
       activity:
         "Live MCP requests, tool calls, and runtime lifecycle events. Tool calls open as addressable child routes.",
-      completions: "Read-only durable completion history accepted by this runtime.",
+      completions:
+        "Read-only durable completion history accepted by this runtime.",
       settings: "Runtime",
     }
     for (const item of navItems.slice(1)) {
@@ -431,6 +442,42 @@ function renderAdminApp() {
 async function mockFetch(input: RequestInfo | URL): Promise<Response> {
   const path = requestPath(input)
   if (path === "/api/health") return json({ ok: true, auth_enabled: true })
+  if (path === "/api/status")
+    return json({
+      runtime_running: true,
+      mcp_http_enabled: true,
+      admin_enabled: true,
+      tunnel_enabled: false,
+      telegram_enabled: false,
+      telegram_running: false,
+      telegram_healthy: false,
+    })
+  if (path === "/api/telemetry")
+    return json({
+      persisted_enabled: true,
+      effective_enabled: true,
+      source: "config",
+      environment_override: false,
+      endpoint_available: true,
+      identity_present: true,
+    })
+  if (path === "/api/doctor") return json({ components: [] })
+  if (path === "/api/about") return json({ version: "test" })
+  if (path === "/api/logs?tail=200") return json({ Events: [], Total: 0 })
+  if (path === "/api/logs/info")
+    return json({ Path: "/tmp/logs", Files: 0, Bytes: 0 })
+  if (path === "/api/integrations/rtk")
+    return json({ enabled: true, state: "ready" })
+  if (path === "/api/integrations/codegraph")
+    return json({ enabled: false, state: "disabled" })
+  if (path === "/api/integrations/typesafe")
+    return json({
+      enabled: false,
+      api_key_configured: true,
+      state: "disabled",
+      model: "test-model",
+      timeout_ms: 5000,
+    })
   if (path === "/api/workspaces") return json([])
   if (path === "/api/prompts?workspace_id=") return json([])
   if (path === "/api/workspace-containers") return json([])
@@ -468,10 +515,17 @@ function completionStream() {
   const encoder = new TextEncoder()
   const body = new ReadableStream({
     start(controller) {
-      controller.enqueue(encoder.encode('event: ready\ndata: {"latest_sequence":0,"records":[]}\n\n'))
+      controller.enqueue(
+        encoder.encode(
+          'event: ready\ndata: {"latest_sequence":0,"records":[]}\n\n'
+        )
+      )
     },
   })
-  return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } })
+  return new Response(body, {
+    status: 200,
+    headers: { "Content-Type": "text/event-stream" },
+  })
 }
 
 function projectContextFixture() {

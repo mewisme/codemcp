@@ -96,22 +96,12 @@ export function SettingsPage() {
   function setExposureMode(mode: PublicConfig["server"]["expose"]["mode"]) {
     if (!config) return
     const current = config.server.expose.interfaces
-    const exposed = mode !== "none"
     setConfig({
       ...config,
       server: {
         ...config.server,
         expose: { mode, interfaces: mode === "interfaces" ? current : [] },
       },
-      auth: exposed
-        ? {
-            ...config.auth,
-            mcp_enabled: config.server.enabled ? true : config.auth.mcp_enabled,
-            admin_enabled: config.admin.enabled
-              ? true
-              : config.auth.admin_enabled,
-          }
-        : config.auth,
     })
   }
 

@@ -13,21 +13,71 @@ describe("browser canonical operation adapter", () => {
   })
 
   it("maps concrete resource routes to canonical operations", () => {
-    expect(browserOperationFor("GET", "/api/workspaces/ws_test")).toBe("workspace.show")
-    expect(browserOperationFor("POST", "/api/workspaces/ws_test/purge")).toBe("workspace.purge")
-    expect(browserOperationFor("POST", "/api/workspaces/ws_test/containers")).toBe("workspace.container.add")
-    expect(browserOperationFor("GET", "/api/workspaces/ws_test/executions/exec_1/stream")).toBe("execution.stream")
-    expect(browserOperationFor("DELETE", "/api/upstream/local/auth/logout")).toBe("upstream.server.auth.logout")
-    expect(browserOperationFor("PUT", "/api/tunnel/managed/tun_1")).toBe("tunnel.update")
-    expect(browserOperationFor("GET", "/api/completions")).toBe("completion.list")
-    expect(browserOperationFor("GET", "/api/completions/current?workspace_id=ws_test")).toBe("completion.current")
-    expect(browserOperationFor("GET", "/api/completions/stream?limit=100")).toBe("completion.feed")
-    expect(browserOperationFor("GET", "/api/completions/view/completion_1")).toBe("completion.view")
+    expect(browserOperationFor("GET", "/api/status")).toBe("status.overview")
+    expect(browserOperationFor("POST", "/api/runtime/restart")).toBe(
+      "runtime.restart"
+    )
+    expect(browserOperationFor("GET", "/api/logs?tail=100")).toBe("logs.read")
+    expect(
+      browserOperationFor("POST", "/api/integrations/typesafe/enable")
+    ).toBe("integration.typesafe.enable")
+    expect(browserOperationFor("GET", "/api/workspaces/ws_test")).toBe(
+      "workspace.show"
+    )
+    expect(browserOperationFor("POST", "/api/workspaces/ws_test/purge")).toBe(
+      "workspace.purge"
+    )
+    expect(
+      browserOperationFor("POST", "/api/workspaces/ws_test/containers")
+    ).toBe("workspace.container.add")
+    expect(
+      browserOperationFor(
+        "GET",
+        "/api/workspaces/ws_test/executions/exec_1/stream"
+      )
+    ).toBe("execution.stream")
+    expect(
+      browserOperationFor("DELETE", "/api/upstream/local/auth/logout")
+    ).toBe("upstream.server.auth.logout")
+    expect(browserOperationFor("PUT", "/api/tunnel/managed/tun_1")).toBe(
+      "tunnel.update"
+    )
+    expect(browserOperationFor("GET", "/api/completions")).toBe(
+      "completion.list"
+    )
+    expect(
+      browserOperationFor(
+        "GET",
+        "/api/completions/current?workspace_id=ws_test"
+      )
+    ).toBe("completion.current")
+    expect(
+      browserOperationFor("GET", "/api/completions/stream?limit=100")
+    ).toBe("completion.feed")
+    expect(
+      browserOperationFor("GET", "/api/completions/view/completion_1")
+    ).toBe("completion.view")
+    expect(
+      browserOperationFor("GET", "/api/workspaces/ws_test/processes")
+    ).toBe("process.list")
+    expect(
+      browserOperationFor("DELETE", "/api/workspaces/ws_test/processes/proc_1")
+    ).toBe("process.clear")
+    expect(
+      browserOperationFor(
+        "POST",
+        "/api/workspaces/ws_test/integrations/codegraph/sync"
+      )
+    ).toBe("integration.codegraph.workspace.sync")
   })
 
   it("ignores query strings while preserving method semantics", () => {
-    expect(browserOperationFor("GET", "/api/requests?status=pending")).toBe("request.list")
-    expect(browserOperationFor("POST", "/api/requests?status=pending")).toBeUndefined()
+    expect(browserOperationFor("GET", "/api/requests?status=pending")).toBe(
+      "request.list"
+    )
+    expect(
+      browserOperationFor("POST", "/api/requests?status=pending")
+    ).toBeUndefined()
   })
 
   it("adds only canonical operation metadata to mapped requests", () => {
@@ -46,7 +96,7 @@ describe("browser canonical operation adapter", () => {
       new Response(JSON.stringify({ id: "ws_test", path: "/tmp/project" }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
-      }),
+      })
     )
     vi.stubGlobal("fetch", fetch)
 
@@ -54,7 +104,7 @@ describe("browser canonical operation adapter", () => {
     expect(fetch).toHaveBeenCalledOnce()
     const [, init] = fetch.mock.calls[0] as [string, RequestInit]
     expect(new Headers(init.headers).get(canonicalOperationHeader)).toBe(
-      "workspace.show",
+      "workspace.show"
     )
   })
 })

@@ -1,4 +1,8 @@
-import { createBrowserRouter, Navigate, type RouteObject } from "react-router-dom"
+import {
+  createBrowserRouter,
+  Navigate,
+  type RouteObject,
+} from "react-router-dom"
 import { App } from "@/App"
 import { PageLoading } from "@/components/page-state"
 import { navItems, type AdminRouteHandle } from "@/lib/admin-navigation"
@@ -9,40 +13,237 @@ function navHandle(id: string): AdminRouteHandle {
   return { title: item.title, description: item.description }
 }
 
-export const adminRoutes: RouteObject[] = [{
-  path: "/",
-  element: <App />,
-  hydrateFallbackElement: <div className="p-6"><PageLoading rows={6} /></div>,
-  children: [
-    { index: true, element: <Navigate replace to="/overview" /> },
-    { path: "index.html", element: <Navigate replace to="/overview" /> },
-    { path: "overview", lazy: () => import("@/pages/overview").then((module) => ({ Component: module.OverviewPage })), handle: navHandle("overview") },
-    { path: "workspaces", lazy: () => import("@/pages/workspaces").then((module) => ({ Component: module.WorkspacesPage })), handle: navHandle("workspaces") },
-    { path: "instructions", lazy: () => import("@/pages/global-instructions").then((module) => ({ Component: module.GlobalInstructionsPage })), handle: navHandle("instructions") },
-    { path: "prompts", lazy: () => import("@/pages/prompts").then((module) => ({ Component: module.PromptsPage })), handle: navHandle("prompts") },
-    { path: "workspaces/global", element: <Navigate replace to="/instructions" /> },
-    {
-      path: "workspaces/:workspaceID",
-      lazy: () => import("@/pages/workspace").then((module) => ({ Component: module.WorkspaceLayout })),
-      handle: { title: "Workspace", description: "Inspect this registered workspace and its workspace-scoped tools." } satisfies AdminRouteHandle,
-      children: [
-        { index: true, lazy: () => import("@/pages/workspace").then((module) => ({ Component: module.WorkspaceOverviewPage })) },
-        { path: "context", lazy: () => import("@/pages/workspace").then((module) => ({ Component: module.WorkspaceContextPage })), handle: { title: "Project Context", description: "Preview the effective instruction context for this workspace." } satisfies AdminRouteHandle },
-        { path: "requests", lazy: () => import("@/pages/workspace").then((module) => ({ Component: module.WorkspaceRequestsPage })), handle: { title: "Workspace Requests", description: "Review control approval requests scoped to this workspace." } satisfies AdminRouteHandle },
-        { path: "activity", lazy: () => import("@/pages/workspace").then((module) => ({ Component: module.WorkspaceActivityPage })), handle: { title: "Workspace Activity", description: "Inspect activity and command executions scoped to this workspace." } satisfies AdminRouteHandle },
-        { path: "activity/:executionID", lazy: () => import("@/pages/workspace").then((module) => ({ Component: module.WorkspaceExecutionPage })), handle: { title: "Command Execution", description: "Inspect one run_command execution and its live output." } satisfies AdminRouteHandle },
-      ],
-    },
-    { path: "tools", lazy: () => import("@/pages/tools").then((module) => ({ Component: module.ToolsPage })), handle: navHandle("tools") },
-    { path: "upstreams", lazy: () => import("@/pages/servers").then((module) => ({ Component: module.UpstreamsPage })), handle: navHandle("upstreams") },
-    { path: "servers", element: <Navigate replace to="/upstreams" /> },
-    { path: "tunnel", lazy: () => import("@/pages/tunnel").then((module) => ({ Component: module.TunnelPage })), handle: navHandle("tunnel") },
-    { path: "activity", lazy: () => import("@/pages/activity").then((module) => ({ Component: module.ActivityPage })), handle: navHandle("activity") },
-    { path: "activity/:callID", lazy: () => import("@/pages/activity").then((module) => ({ Component: module.ActivityCallPage })), handle: { title: "Tool Call", description: "Inspect one tool call and its complete runtime metadata." } satisfies AdminRouteHandle },
-    { path: "completions", lazy: () => import("@/pages/completions").then((module) => ({ Component: module.CompletionsPage })), handle: navHandle("completions") },
-    { path: "settings", lazy: () => import("@/pages/settings").then((module) => ({ Component: module.SettingsPage })), handle: navHandle("settings") },
-    { path: "*", element: <Navigate replace to="/overview" /> },
-  ],
-}]
+export const adminRoutes: RouteObject[] = [
+  {
+    path: "/",
+    element: <App />,
+    hydrateFallbackElement: (
+      <div className="p-6">
+        <PageLoading rows={6} />
+      </div>
+    ),
+    children: [
+      { index: true, element: <Navigate replace to="/overview" /> },
+      { path: "index.html", element: <Navigate replace to="/overview" /> },
+      {
+        path: "overview",
+        lazy: () =>
+          import("@/pages/overview").then((module) => ({
+            Component: module.OverviewPage,
+          })),
+        handle: navHandle("overview"),
+      },
+      {
+        path: "system",
+        lazy: () =>
+          import("@/pages/system").then((module) => ({
+            Component: module.SystemPage,
+          })),
+        handle: navHandle("system"),
+      },
+      {
+        path: "logs",
+        lazy: () =>
+          import("@/pages/logs").then((module) => ({
+            Component: module.LogsPage,
+          })),
+        handle: navHandle("logs"),
+      },
+      {
+        path: "integrations",
+        lazy: () =>
+          import("@/pages/integrations").then((module) => ({
+            Component: module.IntegrationsPage,
+          })),
+        handle: navHandle("integrations"),
+      },
+      {
+        path: "workspaces",
+        lazy: () =>
+          import("@/pages/workspaces").then((module) => ({
+            Component: module.WorkspacesPage,
+          })),
+        handle: navHandle("workspaces"),
+      },
+      {
+        path: "instructions",
+        lazy: () =>
+          import("@/pages/global-instructions").then((module) => ({
+            Component: module.GlobalInstructionsPage,
+          })),
+        handle: navHandle("instructions"),
+      },
+      {
+        path: "prompts",
+        lazy: () =>
+          import("@/pages/prompts").then((module) => ({
+            Component: module.PromptsPage,
+          })),
+        handle: navHandle("prompts"),
+      },
+      {
+        path: "workspaces/global",
+        element: <Navigate replace to="/instructions" />,
+      },
+      {
+        path: "workspaces/:workspaceID",
+        lazy: () =>
+          import("@/pages/workspace").then((module) => ({
+            Component: module.WorkspaceLayout,
+          })),
+        handle: {
+          title: "Workspace",
+          description:
+            "Inspect this registered workspace and its workspace-scoped tools.",
+        } satisfies AdminRouteHandle,
+        children: [
+          {
+            index: true,
+            lazy: () =>
+              import("@/pages/workspace").then((module) => ({
+                Component: module.WorkspaceOverviewPage,
+              })),
+          },
+          {
+            path: "context",
+            lazy: () =>
+              import("@/pages/workspace").then((module) => ({
+                Component: module.WorkspaceContextPage,
+              })),
+            handle: {
+              title: "Project Context",
+              description:
+                "Preview the effective instruction context for this workspace.",
+            } satisfies AdminRouteHandle,
+          },
+          {
+            path: "requests",
+            lazy: () =>
+              import("@/pages/workspace").then((module) => ({
+                Component: module.WorkspaceRequestsPage,
+              })),
+            handle: {
+              title: "Workspace Requests",
+              description:
+                "Review control approval requests scoped to this workspace.",
+            } satisfies AdminRouteHandle,
+          },
+          {
+            path: "activity",
+            lazy: () =>
+              import("@/pages/workspace").then((module) => ({
+                Component: module.WorkspaceActivityPage,
+              })),
+            handle: {
+              title: "Workspace Activity",
+              description:
+                "Inspect activity and command executions scoped to this workspace.",
+            } satisfies AdminRouteHandle,
+          },
+          {
+            path: "activity/:executionID",
+            lazy: () =>
+              import("@/pages/workspace").then((module) => ({
+                Component: module.WorkspaceExecutionPage,
+              })),
+            handle: {
+              title: "Command Execution",
+              description:
+                "Inspect one run_command execution and its live output.",
+            } satisfies AdminRouteHandle,
+          },
+          {
+            path: "processes",
+            lazy: () =>
+              import("@/pages/workspace").then((module) => ({
+                Component: module.WorkspaceProcessesPage,
+              })),
+            handle: {
+              title: "Background Processes",
+              description:
+                "Inspect and clear finished background processes for this workspace.",
+            } satisfies AdminRouteHandle,
+          },
+          {
+            path: "codegraph",
+            lazy: () =>
+              import("@/pages/workspace").then((module) => ({
+                Component: module.WorkspaceCodeGraphPage,
+              })),
+            handle: {
+              title: "CodeGraph",
+              description:
+                "Inspect, initialize, and synchronize this workspace CodeGraph index.",
+            } satisfies AdminRouteHandle,
+          },
+        ],
+      },
+      {
+        path: "tools",
+        lazy: () =>
+          import("@/pages/tools").then((module) => ({
+            Component: module.ToolsPage,
+          })),
+        handle: navHandle("tools"),
+      },
+      {
+        path: "upstreams",
+        lazy: () =>
+          import("@/pages/servers").then((module) => ({
+            Component: module.UpstreamsPage,
+          })),
+        handle: navHandle("upstreams"),
+      },
+      { path: "servers", element: <Navigate replace to="/upstreams" /> },
+      {
+        path: "tunnel",
+        lazy: () =>
+          import("@/pages/tunnel").then((module) => ({
+            Component: module.TunnelPage,
+          })),
+        handle: navHandle("tunnel"),
+      },
+      {
+        path: "activity",
+        lazy: () =>
+          import("@/pages/activity").then((module) => ({
+            Component: module.ActivityPage,
+          })),
+        handle: navHandle("activity"),
+      },
+      {
+        path: "activity/:callID",
+        lazy: () =>
+          import("@/pages/activity").then((module) => ({
+            Component: module.ActivityCallPage,
+          })),
+        handle: {
+          title: "Tool Call",
+          description:
+            "Inspect one tool call and its complete runtime metadata.",
+        } satisfies AdminRouteHandle,
+      },
+      {
+        path: "completions",
+        lazy: () =>
+          import("@/pages/completions").then((module) => ({
+            Component: module.CompletionsPage,
+          })),
+        handle: navHandle("completions"),
+      },
+      {
+        path: "settings",
+        lazy: () =>
+          import("@/pages/settings").then((module) => ({
+            Component: module.SettingsPage,
+          })),
+        handle: navHandle("settings"),
+      },
+      { path: "*", element: <Navigate replace to="/overview" /> },
+    ],
+  },
+]
 
-export function createAdminRouter() { return createBrowserRouter(adminRoutes) }
+export function createAdminRouter() {
+  return createBrowserRouter(adminRoutes)
+}
