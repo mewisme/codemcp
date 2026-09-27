@@ -62,6 +62,7 @@ type logsExecutionFeed struct {
 	err                error
 	restoreYOffset     int
 	restoreYOffsetSet  bool
+	detailRequest      uint64
 }
 
 type executionFeedRender struct {
@@ -177,7 +178,11 @@ func (page *LogsPage) finishExecutionFeedOpen(msg logsExecutionOpenMsg) tea.Cmd 
 		page.refreshExecutionViewport()
 		page.restoreExecutionViewportOffset()
 	}
-	return page.nextExecutionEventCmd(msg.generation)
+	next := page.nextExecutionEventCmd(msg.generation)
+	if page.resourceID != "" {
+		return tea.Batch(next, page.loadExecutionDetailCmd())
+	}
+	return next
 }
 
 func (page *LogsPage) syncSelectedProcessRunningFromEvents() {
@@ -235,6 +240,10 @@ func (page *LogsPage) finishExecutionFeedEvent(msg logsExecutionEventMsg) tea.Cm
 		page.exec.processRunning = false
 	}
 	page.exec.notice, page.exec.err = "", nil
+	var detail tea.Cmd
+	if page.resourceID != "" && msg.event.ExecutionID == page.resourceID {
+		detail = page.loadExecutionDetailCmd()
+	}
 	if !page.exec.paused {
 		if page.view == logsViewBrowser {
 			page.rebuildExecutionBrowser()
@@ -242,7 +251,7 @@ func (page *LogsPage) finishExecutionFeedEvent(msg logsExecutionEventMsg) tea.Cm
 			page.refreshExecutionViewport()
 		}
 	}
-	return page.nextExecutionEventCmd(msg.generation)
+	return tea.Batch(page.nextExecutionEventCmd(msg.generation), detail)
 }
 
 func (page *LogsPage) executionReconnectCmd(generation uint64) tea.Cmd {

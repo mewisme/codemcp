@@ -92,6 +92,7 @@ type LogsPage struct {
 	runtimeScope      logsScopeState
 	exec              logsExecutionFeed
 	tools             logsToolCallFeed
+	detailReady       bool
 	modeDialog        *logsModeDialog
 	cancel            context.CancelFunc
 	browser           component.Browser
@@ -171,6 +172,10 @@ func NewLogsRouteAction(ctx context.Context, resourceID, section, action string)
 	page := &LogsPage{ctx: pageCtx, cancel: cancel, resourceID: strings.TrimSpace(resourceID), section: strings.TrimSpace(section), action: strings.TrimSpace(action), view: logsViewBrowser, timeline: newLogsTimelineState(), runtimeClear: map[string]uint64{}, runtimeScope: newLogsScopeState(), options: application.LogsQueryOptions{Tail: logsDefaultTail}, visibility: logger.VisibilityVerbose, exec: newLogsExecutionFeed(), tools: newLogsToolCallFeed()}
 	page.browser = component.NewBrowser(pageCtx, "Logs", nil, nil).WithTitleVisible(false).WithExternalHelp(true)
 	page.syncBrowserHelp()
+	if page.resourceID != "" {
+		page.detail = component.NewDetailPage("Log event · "+page.resourceID, "loading", component.Muted("Loading log event...")).WithTitleVisible(false)
+		page.detail.SetBindings(component.DetailPageBinding{Key: "r", Desc: "refresh", Message: LogsCommandMsg{Command: LogsRefresh}})
+	}
 	if page.action == "filter" {
 		page.initFilterEditor()
 	}
@@ -227,6 +232,12 @@ func (page *LogsPage) Close() {
 	if page == nil {
 		return
 	}
+	// Fence messages already queued by subscriptions and detail requests before
+	// cancelling their contexts. A closed page must never accept late results.
+	page.generation++
+	page.exec.generation++
+	page.exec.detailRequest++
+	page.tools.generation++
 	page.stopStream()
 	page.stopExecutionFeed()
 	page.stopToolCallFeed()
@@ -1072,7 +1083,9 @@ func (page *LogsPage) appendEvent(event runtimeevent.Event) tea.Cmd {
 
 func (page *LogsPage) rebuildBrowser(selected string) tea.Cmd {
 	if page.resourceID != "" {
-		page.syncDetail()
+		if !page.detailReady {
+			page.syncDetail()
+		}
 		return nil
 	}
 	visible := page.visibleRuntimeBrowserRecords()
@@ -1135,6 +1148,9 @@ func (page *LogsPage) logRow(event runtimeevent.Event) component.Row {
 }
 
 func (page *LogsPage) syncDetail() {
+	if page == nil || page.resourceID == "" || page.detailReady {
+		return
+	}
 	var event runtimeevent.Event
 	found := false
 	for _, current := range page.events {
@@ -1144,8 +1160,9 @@ func (page *LogsPage) syncDetail() {
 		}
 	}
 	if !found {
-		page.detail = component.NewDetailPage("Log event · "+page.resourceID, "unavailable", component.Muted("Log event not found in the current journal view.")).WithTitleVisible(false)
-		page.detail.SetBindings(component.DetailPageBinding{Key: "r", Desc: "refresh", Message: LogsCommandMsg{Command: LogsRefresh}})
+		page.detail.SetTitle("Log event · " + page.resourceID)
+		page.detail.SetMeta("unavailable")
+		page.detail.SetContentPreserveScroll(component.Muted("Log event not found in the current journal view."))
 		if page.loaded {
 			page.err = fmt.Errorf("log event not found: %s", page.resourceID)
 		}
@@ -1159,8 +1176,11 @@ func (page *LogsPage) syncDetail() {
 	page.err = nil
 	content := component.RenderCodeBlock(string(data), "json", max(20, page.width))
 	meta := compactParts(event.Level, event.Component, event.RunID, fmt.Sprintf("seq %d", event.Sequence))
-	page.detail = component.NewDetailPage("Log event · "+event.Name, meta, content).WithTitleVisible(false)
-	page.detail.SetBindings(component.DetailPageBinding{Key: "r", Desc: "refresh", Message: LogsCommandMsg{Command: LogsRefresh}})
+	page.detail.SetTitle("Log event · " + event.Name)
+	page.detail.SetMeta(meta)
+	page.detail.SetContentPreserveScroll(content)
+	page.detail.SetFeedback("", nil)
+	page.detailReady = true
 	if page.width > 0 && page.height > 0 {
 		page.detail.Resize(page.width, page.height)
 	}

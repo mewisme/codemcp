@@ -14,6 +14,7 @@ import (
 
 type logsExecutionDetailMsg struct {
 	id       string
+	request  uint64
 	snapshot shellruntime.ExecutionSnapshot
 	err      error
 }
@@ -58,19 +59,21 @@ func (page *LogsPage) loadExecutionDetailCmd() tea.Cmd {
 	if id == "" {
 		return nil
 	}
+	page.exec.detailRequest++
+	request := page.exec.detailRequest
 	return func() tea.Msg {
 		snapshot, err := runtimecontrol.GetExecution(page.ctx, id)
-		return logsExecutionDetailMsg{id: id, snapshot: snapshot, err: err}
+		return logsExecutionDetailMsg{id: id, request: request, snapshot: snapshot, err: err}
 	}
 }
 
 func (page *LogsPage) finishExecutionDetail(msg logsExecutionDetailMsg) {
-	if page.resourceID == "" || msg.id != page.resourceID {
+	if page.resourceID == "" || msg.id != page.resourceID || msg.request != page.exec.detailRequest {
 		return
 	}
 	if msg.err != nil {
 		page.err = msg.err
-		page.detail = component.NewDetailPage("Execution · "+msg.id, "unavailable", component.Muted("Execution detail unavailable.")).WithTitleVisible(false)
+		page.detail.SetFeedback("", msg.err)
 		return
 	}
 	data, err := json.MarshalIndent(msg.snapshot, "", "  ")
@@ -80,8 +83,16 @@ func (page *LogsPage) finishExecutionDetail(msg logsExecutionDetailMsg) {
 	}
 	content := component.RenderCodeBlock(string(data), "json", max(20, page.width))
 	info := msg.snapshot.Execution
+	id := strings.TrimSpace(info.ID)
+	if id == "" {
+		id = msg.id
+	}
 	meta := compactParts(info.Tool, info.Status, info.WorkspaceID, info.Shell)
-	page.detail = component.NewDetailPage("Execution · "+info.ID, meta, content).WithTitleVisible(false)
+	page.detail.SetTitle("Execution · " + id)
+	page.detail.SetMeta(meta)
+	page.detail.SetContentPreserveScroll(content)
+	page.detail.SetFeedback("", nil)
+	page.detailReady = true
 	if page.width > 0 && page.height > 0 {
 		page.detail.Resize(page.width, page.height)
 	}

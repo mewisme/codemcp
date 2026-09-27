@@ -479,6 +479,9 @@ func marshalJSONValue(value any) string {
 }
 
 func (page *LogsPage) syncToolCallDetail() {
+	if page == nil || page.resourceID == "" {
+		return
+	}
 	for _, record := range page.visibleToolCallRecords() {
 		if record.CallID != page.resourceID {
 			continue
@@ -486,13 +489,22 @@ func (page *LogsPage) syncToolCallDetail() {
 		data, _ := json.MarshalIndent(record.Latest, "", "  ")
 		content := component.RenderCodeBlock(string(data), "json", max(20, page.width))
 		meta := compactParts(record.Latest.Tool, record.Latest.Status, record.Latest.WorkspaceID)
-		page.detail = component.NewDetailPage("Tool Call · "+record.CallID, meta, content).WithTitleVisible(false)
+		page.detail.SetTitle("Tool Call · " + record.CallID)
+		page.detail.SetMeta(meta)
+		page.detail.SetContentPreserveScroll(content)
+		page.detail.SetFeedback("", nil)
+		page.detailReady = true
 		if page.width > 0 && page.height > 0 {
 			page.detail.Resize(page.width, page.height)
 		}
 		return
 	}
-	page.detail = component.NewDetailPage("Tool Call · "+page.resourceID, "unavailable", component.Muted("Tool call not found in retained history.")).WithTitleVisible(false)
+	if page.detailReady {
+		return
+	}
+	page.detail.SetTitle("Tool Call · " + page.resourceID)
+	page.detail.SetMeta("unavailable")
+	page.detail.SetContentPreserveScroll(component.Muted("Tool call not found in retained history."))
 }
 
 func (page *LogsPage) toolCallStatusView(width int) string {

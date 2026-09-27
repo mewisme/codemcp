@@ -752,6 +752,367 @@ func TestLogsDetailMouseWheelRoutesThroughPageUpdate(t *testing.T) {
 	}
 }
 
+func TestRuntimeDetailStaysPinnedAcrossUnrelatedLiveReplayAndClear(t *testing.T) {
+	base := time.Now().UTC()
+	target := runtimeevent.Event{Sequence: 1, RunID: "run_pin", Time: base, Level: "warn", Component: "TARGET_COMPONENT", Name: "target.event", Message: strings.Repeat("target detail payload ", 120)}
+	page, err := NewLogsRoute(t.Context(), logEventID(target), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	page.width, page.height = 52, 10
+	page.events = []runtimeevent.Event{target}
+	page.loaded = true
+	page.query.RunID = target.RunID
+	page.syncDetail()
+	if !page.detailReady {
+		t.Fatal("runtime detail did not become ready")
+	}
+	offset := scrollLogsDetail(t, page)
+
+	page.generation = 4
+	page.streamRunID, page.streamSeq = target.RunID, target.Sequence
+	unrelated := runtimeevent.Event{Sequence: 2, RunID: target.RunID, Time: base.Add(time.Second), Level: "info", Component: "OTHER_COMPONENT", Name: "other.event", Message: "unrelated live event"}
+	page.finishStreamEvent(logsStreamEventMsg{generation: 4, event: unrelated})
+	if got := page.detail.YOffset(); got != offset {
+		t.Fatalf("unrelated runtime event moved detail offset=%d want=%d", got, offset)
+	}
+	plain := ansi.Strip(page.detail.View())
+	if !strings.Contains(plain, "TARGET_COMPONENT") || strings.Contains(plain, "OTHER_COMPONENT") {
+		t.Fatalf("runtime detail changed resource after unrelated live event: %q", plain)
+	}
+
+	page.runtimeClear[target.RunID] = unrelated.Sequence
+	page.mergeEvents([]runtimeevent.Event{target, unrelated, {Sequence: 3, RunID: target.RunID, Time: base.Add(2 * time.Second), Level: "error", Component: "REPLAY_COMPONENT", Name: "replay.event"}})
+	if got := page.detail.YOffset(); got != offset {
+		t.Fatalf("runtime replay/clear moved detail offset=%d want=%d", got, offset)
+	}
+	plain = ansi.Strip(page.detail.View())
+	if !strings.Contains(plain, "TARGET_COMPONENT") || strings.Contains(plain, "REPLAY_COMPONENT") {
+		t.Fatalf("runtime replay replaced pinned detail: %q", plain)
+	}
+}
+
+func TestToolCallDetailRefreshesSameCallInPlaceOnly(t *testing.T) {
+	page, err := NewToolCallLogsRoute(t.Context(), "call_target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	page.width, page.height = 52, 10
+	page.tools.generation = 7
+	start := activity.Event{Sequence: 1, CallID: "call_target", Kind: string(activity.EventToolCall), Phase: "start", Tool: "read_file", WorkspaceID: "ws_target", Status: "running", Raw: map[string]any{"arguments": strings.Repeat("target argument ", 120)}, Timestamp: time.Now().UTC()}
+	page.tools.events = []activity.Event{start}
+	page.tools.records = []activity.ToolCallRecord{{CallID: start.CallID, First: start, Latest: start}}
+	page.tools.latestSeq = start.Sequence
+	page.syncToolCallDetail()
+	if !page.detailReady {
+		t.Fatal("tool call detail did not become ready")
+	}
+	offset := scrollLogsDetail(t, page)
+
+	unrelated := activity.Event{Sequence: 2, CallID: "call_other", Kind: string(activity.EventToolCall), Phase: "finish", Tool: "write_file", WorkspaceID: "ws_other", Status: "failed", Timestamp: start.Timestamp.Add(time.Second)}
+	page.finishToolCallEvent(logsToolCallEventMsg{generation: 7, event: unrelated})
+	if got := page.detail.YOffset(); got != offset {
+		t.Fatalf("unrelated tool call moved detail offset=%d want=%d", got, offset)
+	}
+	plain := ansi.Strip(page.detail.View())
+	if !strings.Contains(plain, "read_file") || strings.Contains(plain, "write_file") {
+		t.Fatalf("unrelated tool call replaced detail: %q", plain)
+	}
+
+	finish := activity.Event{Sequence: 3, CallID: start.CallID, Kind: string(activity.EventToolCall), Phase: "finish", Tool: start.Tool, WorkspaceID: start.WorkspaceID, Status: "success", Raw: map[string]any{"result": strings.Repeat("updated result ", 120)}, Timestamp: start.Timestamp.Add(2 * time.Second)}
+	page.finishToolCallEvent(logsToolCallEventMsg{generation: 7, event: finish})
+	if got := page.detail.YOffset(); got != offset {
+		t.Fatalf("same-call refresh moved detail offset=%d want=%d", got, offset)
+	}
+	plain = ansi.Strip(page.detail.View())
+	if !strings.Contains(plain, "success") {
+		t.Fatalf("same-call finish did not refresh detail: %q", plain)
+	}
+
+	page.toolCallClear = finish.Sequence
+	page.tools.records = nil
+	page.tools.events = nil
+	page.syncToolCallDetail()
+	if got := page.detail.YOffset(); got != offset {
+		t.Fatalf("tool replay/clear moved pinned detail offset=%d want=%d", got, offset)
+	}
+	if plain = ansi.Strip(page.detail.View()); !strings.Contains(plain, "success") || strings.Contains(plain, "unavailable") {
+		t.Fatalf("tool replay/clear replaced pinned detail: %q", plain)
+	}
+}
+
+func TestToolCallReconnectSnapshotUpdatesPinnedDetailInPlace(t *testing.T) {
+	root := setupLogsPageRoot(t)
+	base := time.Now().UTC()
+	start := activity.Event{Sequence: 1, CallID: "call_reconnect", Kind: string(activity.EventToolCall), Phase: "start", Tool: "read_file", WorkspaceID: "ws_reconnect", Status: "running", Raw: map[string]any{"arguments": strings.Repeat("before reconnect ", 120)}, Timestamp: base}
+	finish := activity.Event{Sequence: 4, CallID: start.CallID, Kind: string(activity.EventToolCall), Phase: "finish", Tool: start.Tool, WorkspaceID: start.WorkspaceID, Status: "success", Raw: map[string]any{"result": strings.Repeat("after reconnect ", 120)}, Timestamp: base.Add(time.Second)}
+	ready, _ := json.Marshal(map[string]any{"latest_sequence": finish.Sequence, "replay_count": 0, "records": []activity.ToolCallRecord{{CallID: start.CallID, First: start, Latest: finish}}})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/tool-calls/stream" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprintf(w, "event: ready\ndata: %s\n\n", ready)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	writeLogsRuntimeState(t, root, server.URL, "run_tool_reconnect")
+
+	page, err := NewToolCallLogsRoute(t.Context(), start.CallID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	page.width, page.height = 52, 10
+	page.tools.events = []activity.Event{start}
+	page.tools.records = []activity.ToolCallRecord{{CallID: start.CallID, First: start, Latest: start}}
+	page.tools.latestSeq = start.Sequence
+	page.syncToolCallDetail()
+	offset := scrollLogsDetail(t, page)
+
+	open := page.startToolCallFeed()
+	if open == nil {
+		t.Fatal("tool reconnect command missing")
+	}
+	msg, ok := open().(logsToolCallOpenMsg)
+	if !ok || msg.err != nil || msg.stream == nil {
+		t.Fatalf("tool reconnect open=%T err=%v stream=%v", msg, msg.err, msg.stream != nil)
+	}
+	page.finishToolCallFeedOpen(msg)
+	if got := page.detail.YOffset(); got != offset {
+		t.Fatalf("tool reconnect snapshot moved detail offset=%d want=%d", got, offset)
+	}
+	plain := ansi.Strip(page.detail.View())
+	if !strings.Contains(plain, "success") || page.resourceID != start.CallID {
+		t.Fatalf("tool reconnect snapshot lost pinned resource=%q view=%q", page.resourceID, plain)
+	}
+}
+
+func TestExecutionReconnectSnapshotSchedulesCanonicalPinnedRefresh(t *testing.T) {
+	root := setupLogsPageRoot(t)
+	ready, _ := json.Marshal(shellruntime.ExecutionFeedSnapshot{Executions: []shellruntime.ExecutionInfo{{ID: "exec_reconnect", Tool: "run_command", WorkspaceID: "ws_reconnect", Status: shellruntime.ExecutionStatusSuccess}}, LatestSequence: 4})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/executions/stream" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprintf(w, "event: ready\ndata: %s\n\n", ready)
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	writeLogsRuntimeState(t, root, server.URL, "run_exec_reconnect")
+
+	page, err := NewCommandExecutionLogsRoute(t.Context(), "exec_reconnect")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	page.width, page.height = 52, 10
+	page.exec.detailRequest = 1
+	page.finishExecutionDetail(logsExecutionDetailMsg{id: "exec_reconnect", request: 1, snapshot: shellruntime.ExecutionSnapshot{Execution: shellruntime.ExecutionInfo{ID: "exec_reconnect", Tool: "run_command", WorkspaceID: "ws_reconnect", Status: shellruntime.ExecutionStatusRunning}, Stdout: strings.Repeat("before reconnect\n", 120)}})
+	offset := scrollLogsDetail(t, page)
+	request := page.exec.detailRequest
+
+	open := page.startExecutionFeed()
+	if open == nil {
+		t.Fatal("execution reconnect command missing")
+	}
+	msg, ok := open().(logsExecutionOpenMsg)
+	if !ok || msg.err != nil || msg.stream == nil {
+		t.Fatalf("execution reconnect open=%T err=%v stream=%v", msg, msg.err, msg.stream != nil)
+	}
+	cmd := page.finishExecutionFeedOpen(msg)
+	if cmd == nil || page.exec.detailRequest != request+1 {
+		t.Fatalf("execution reconnect did not schedule canonical detail refresh request=%d want=%d cmd=%v", page.exec.detailRequest, request+1, cmd)
+	}
+	if got := page.detail.YOffset(); got != offset || page.resourceID != "exec_reconnect" {
+		t.Fatalf("execution reconnect reset pinned detail offset=%d want=%d resource=%q", got, offset, page.resourceID)
+	}
+}
+
+func TestExecutionDetailFencesStaleRequestsAndPreservesScroll(t *testing.T) {
+	page, err := NewCommandExecutionLogsRoute(t.Context(), "exec_target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	page.width, page.height = 52, 10
+	page.exec.detailRequest = 1
+	initial := shellruntime.ExecutionSnapshot{Execution: shellruntime.ExecutionInfo{ID: "exec_target", Tool: "run_command", WorkspaceID: "ws_exec", Status: shellruntime.ExecutionStatusRunning}, Stdout: strings.Repeat("initial output line\n", 120), LatestSequence: 1}
+	page.finishExecutionDetail(logsExecutionDetailMsg{id: "exec_target", request: 1, snapshot: initial})
+	if !page.detailReady {
+		t.Fatal("execution detail did not become ready")
+	}
+	offset := scrollLogsDetail(t, page)
+
+	page.exec.detailRequest = 2
+	newer := shellruntime.ExecutionSnapshot{Execution: shellruntime.ExecutionInfo{ID: "exec_target", Tool: "run_command", WorkspaceID: "ws_exec", Status: shellruntime.ExecutionStatusSuccess}, Stdout: strings.Repeat("newer output line\n", 120), LatestSequence: 2}
+	page.finishExecutionDetail(logsExecutionDetailMsg{id: "exec_target", request: 2, snapshot: newer})
+	if got := page.detail.YOffset(); got != offset {
+		t.Fatalf("new execution detail moved offset=%d want=%d", got, offset)
+	}
+	plain := ansi.Strip(page.detail.View())
+	if !strings.Contains(plain, shellruntime.ExecutionStatusSuccess) {
+		t.Fatalf("new execution detail was not applied: %q", plain)
+	}
+
+	stale := shellruntime.ExecutionSnapshot{Execution: shellruntime.ExecutionInfo{ID: "exec_target", Tool: "run_command", WorkspaceID: "ws_exec", Status: shellruntime.ExecutionStatusFailed}, Stderr: "STALE", LatestSequence: 1}
+	page.finishExecutionDetail(logsExecutionDetailMsg{id: "exec_target", request: 1, snapshot: stale})
+	page.finishExecutionDetail(logsExecutionDetailMsg{id: "exec_other", request: 2, snapshot: stale})
+	plain = ansi.Strip(page.detail.View())
+	if got := page.detail.YOffset(); got != offset || !strings.Contains(plain, shellruntime.ExecutionStatusSuccess) || strings.Contains(plain, shellruntime.ExecutionStatusFailed) {
+		t.Fatalf("stale execution detail overwrote current view offset=%d want=%d view=%q", got, offset, plain)
+	}
+
+	page.exec.generation = 9
+	page.exec.latestSeq = 2
+	before := page.exec.detailRequest
+	page.finishExecutionFeedEvent(logsExecutionEventMsg{generation: 9, event: shellruntime.ExecutionFeedEvent{Sequence: 3, ExecutionID: "exec_other", Type: shellruntime.ExecutionEventOutput, Data: "other"}})
+	if page.exec.detailRequest != before {
+		t.Fatalf("unrelated execution scheduled detail refresh request=%d want=%d", page.exec.detailRequest, before)
+	}
+	cmd := page.finishExecutionFeedEvent(logsExecutionEventMsg{generation: 9, event: shellruntime.ExecutionFeedEvent{Sequence: 4, ExecutionID: "exec_target", Type: shellruntime.ExecutionEventOutput, Data: "target"}})
+	if cmd == nil || page.exec.detailRequest != before+1 {
+		t.Fatalf("same execution did not schedule canonical detail refresh request=%d want=%d cmd=%v", page.exec.detailRequest, before+1, cmd)
+	}
+}
+
+func TestLogsBrowserMouseTargetAndSelectionSurviveLiveRebuild(t *testing.T) {
+	page, err := NewLogs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	base := time.Now().UTC()
+	first := runtimeevent.Event{Sequence: 1, RunID: "run_browser", Time: base, Level: "info", Name: "first", Message: "first"}
+	second := runtimeevent.Event{Sequence: 2, RunID: "run_browser", Time: base.Add(time.Second), Level: "info", Name: "second", Message: "second"}
+	page.events = []runtimeevent.Event{first, second}
+	page.query.RunID = first.RunID
+	page.rebuildBrowser("")
+	page.width, page.height = 100, 30
+	_ = page.View(page.width, page.height)
+	rows := browserRowTargets(page.MouseTargets(0, 0, 10))
+	if len(rows) != 2 {
+		t.Fatalf("runtime browser row targets=%d", len(rows))
+	}
+	firstTarget := rows[0]
+	page = dispatchLogsMouse(t, page, firstTarget, tea.MouseLeft)
+	selected, ok := page.browser.Selected()
+	if !ok || selected.ID != logEventID(first) || !page.paused {
+		t.Fatalf("selected=%#v paused=%t", selected, page.paused)
+	}
+	page.browser.SetHelpExpanded(true)
+	third := runtimeevent.Event{Sequence: 3, RunID: first.RunID, Time: base.Add(2 * time.Second), Level: "warn", Name: "third", Message: "third"}
+	page.appendEvent(third)
+	selected, ok = page.browser.Selected()
+	if !ok || selected.ID != logEventID(first) || !page.browser.HelpExpanded() {
+		t.Fatalf("live rebuild lost browser state selected=%#v help=%t", selected, page.browser.HelpExpanded())
+	}
+	_, navigation := dispatchLogsMouseOpen(t, page, firstTarget)
+	if strings.Join(navigation.Path, "/") != "logs/"+logEventID(first) {
+		t.Fatalf("stale mouse target opened wrong resource: %#v", navigation)
+	}
+}
+
+func TestExecutionAndToolBrowsersPreserveRetainedSelectionOnReorder(t *testing.T) {
+	t.Run("execution", func(t *testing.T) {
+		page, err := NewCommandExecutionLogs(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer page.Close()
+		page.view, page.exec.paused = logsViewBrowser, true
+		page.exec.executions = []shellruntime.ExecutionInfo{
+			{ID: "exec_a", Tool: "run_command", Status: shellruntime.ExecutionStatusRunning},
+			{ID: "exec_b", Tool: "run_command", Status: shellruntime.ExecutionStatusSuccess},
+		}
+		page.rebuildExecutionBrowser()
+		page.browser.SelectLast()
+		page.browser.SetHelpExpanded(true)
+		page.exec.executions = []shellruntime.ExecutionInfo{
+			{ID: "exec_new", Tool: "run_command", Status: shellruntime.ExecutionStatusRunning},
+			{ID: "exec_b", Tool: "run_command", Status: shellruntime.ExecutionStatusSuccess},
+			{ID: "exec_a", Tool: "run_command", Status: shellruntime.ExecutionStatusRunning},
+		}
+		page.rebuildExecutionBrowser()
+		selected, ok := page.browser.Selected()
+		if !ok || selected.ID != "exec_b" || !page.browser.HelpExpanded() {
+			t.Fatalf("execution rebuild state selected=%#v help=%t", selected, page.browser.HelpExpanded())
+		}
+	})
+
+	t.Run("tool call", func(t *testing.T) {
+		page, err := NewToolCallLogsRoute(t.Context(), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer page.Close()
+		page.view, page.tools.paused = logsViewBrowser, true
+		base := time.Now().UTC()
+		a := activity.Event{Sequence: 1, CallID: "call_a", Kind: string(activity.EventToolCall), Tool: "read_file", Status: "running", Timestamp: base}
+		b := activity.Event{Sequence: 2, CallID: "call_b", Kind: string(activity.EventToolCall), Tool: "write_file", Status: "success", Timestamp: base.Add(time.Second)}
+		page.tools.records = []activity.ToolCallRecord{{CallID: a.CallID, First: a, Latest: a}, {CallID: b.CallID, First: b, Latest: b}}
+		page.rebuildToolCallBrowser()
+		page.browser.SelectLast()
+		page.browser.SetHelpExpanded(true)
+		newEvent := activity.Event{Sequence: 3, CallID: "call_new", Kind: string(activity.EventToolCall), Tool: "run_command", Status: "running", Timestamp: base.Add(2 * time.Second)}
+		page.tools.records = []activity.ToolCallRecord{{CallID: newEvent.CallID, First: newEvent, Latest: newEvent}, {CallID: b.CallID, First: b, Latest: b}, {CallID: a.CallID, First: a, Latest: a}}
+		page.rebuildToolCallBrowser()
+		selected, ok := page.browser.Selected()
+		if !ok || selected.ID != "call_b" || !page.browser.HelpExpanded() {
+			t.Fatalf("tool rebuild state selected=%#v help=%t", selected, page.browser.HelpExpanded())
+		}
+	})
+}
+
+func TestLogsCloseFencesQueuedFeedAndDetailMessages(t *testing.T) {
+	page, err := NewCommandExecutionLogsRoute(t.Context(), "exec_target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page.generation = 3
+	page.exec.generation = 4
+	page.exec.detailRequest = 5
+	page.tools.generation = 6
+	page.Close()
+
+	page.finishStreamEvent(logsStreamEventMsg{generation: 3, event: runtimeevent.Event{Sequence: 1, RunID: "run_late", Time: time.Now().UTC(), Level: "info", Name: "late.runtime"}})
+	page.finishExecutionFeedEvent(logsExecutionEventMsg{generation: 4, event: shellruntime.ExecutionFeedEvent{Sequence: 1, ExecutionID: "exec_target", Type: shellruntime.ExecutionEventOutput, Data: "late exec"}})
+	page.finishToolCallEvent(logsToolCallEventMsg{generation: 6, event: activity.Event{Sequence: 1, CallID: "call_late", Kind: string(activity.EventToolCall), Timestamp: time.Now().UTC()}})
+	page.finishExecutionDetail(logsExecutionDetailMsg{id: "exec_target", request: 5, snapshot: shellruntime.ExecutionSnapshot{Execution: shellruntime.ExecutionInfo{ID: "exec_target", Status: shellruntime.ExecutionStatusSuccess}}})
+	if len(page.events) != 0 || len(page.exec.events) != 0 || len(page.tools.events) != 0 || page.detailReady {
+		t.Fatalf("closed page accepted queued messages runtime=%d exec=%d tools=%d detail_ready=%t", len(page.events), len(page.exec.events), len(page.tools.events), page.detailReady)
+	}
+}
+
+func scrollLogsDetail(t *testing.T, page *LogsPage) int {
+	t.Helper()
+	_ = page.View(page.width, page.height)
+	for range 5 {
+		target := mouseTargetByID(t, page.MouseTargets(0, 0, 10), "detail.scroll")
+		cmd := component.DispatchMouse([]component.MouseTarget{target}, tea.MouseClickMsg(tea.Mouse{X: target.Rect.X, Y: target.Rect.Y, Button: tea.MouseWheelDown}))
+		if cmd == nil {
+			t.Fatal("detail wheel produced no command")
+		}
+		updated, _ := page.Update(cmd())
+		page = updated.(*LogsPage)
+	}
+	if page.detail.YOffset() == 0 {
+		t.Fatal("detail content was not scrollable")
+	}
+	return page.detail.YOffset()
+}
+
 func browserRowTargets(targets []component.MouseTarget) []component.MouseTarget {
 	rows := make([]component.MouseTarget, 0)
 	for _, target := range targets {
