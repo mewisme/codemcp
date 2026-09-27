@@ -111,7 +111,7 @@ func runTelegramSetup(cmd *cobra.Command, _ []string) error {
 	session := commandProgressSession(cmd)
 	presenter := session.Presenter()
 	presenter.Frame("Telegram setup")
-	presenter.StateSection(presentation.StatusInfo, "Pairing ready")
+	presenter.Section("Pairing ready")
 	fields := []presentation.Field{
 		{Label: "code", Value: challenge.Code},
 		{Label: "expires", Value: challenge.ExpiresAt.Local().Format(time.RFC3339)},
