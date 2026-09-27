@@ -223,6 +223,29 @@ func EnsureLocalDirExcluded(workspaceRoot string) error {
 	return nil
 }
 
+func EnsureGitInfoExcludePath(workspaceRoot, relativePath string) error {
+	relativePath = strings.TrimSpace(filepath.ToSlash(relativePath))
+	if relativePath == "" || strings.ContainsAny(relativePath, "\x00\r\n") || strings.HasPrefix(relativePath, "/") || relativePath == ".." || strings.HasPrefix(relativePath, "../") {
+		return errors.New("git exclude path must be a repository-relative path")
+	}
+	rule := "/" + relativePath
+	path, exists, err := gitExcludePath(workspaceRoot)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	result := ensureRuleFile(path, rule, func(line string) bool {
+		line = strings.TrimSpace(line)
+		return line == rule || line == relativePath
+	}, 0644)
+	if result.State == GitHygieneFailed {
+		return errors.New(result.Error)
+	}
+	return nil
+}
+
 func ensureNestedGitIgnore(workspaceRoot string) GitHygieneLayer {
 	path := filepath.Join(workspaceRoot, LocalDirName, localGitIgnoreFileName)
 	unlock := lockGitHygienePath(path)

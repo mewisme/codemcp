@@ -103,6 +103,9 @@ func (s *CodeGraphService) InitWorkspace(ctx context.Context, input CodeGraphWor
 	if before.IndexState == codegraph.IndexIndexed {
 		return CodeGraphWorkspaceActionResult{Status: before, Skipped: true, Reason: "workspace project is already indexed"}, nil
 	}
+	if _, err := codegraph.ReconcileProjectConfig(ctx, store, item.ID, projectRoot, relative); err != nil {
+		return CodeGraphWorkspaceActionResult{Status: before}, fmt.Errorf("prepare codegraph project configuration: %w", err)
+	}
 	result, err := runtime.ExecuteInDir(ctx, projectRoot, codegraph.InitArgs(projectRoot), codegraph.InitTimeout, codegraph.MaxOutputBytes)
 	if err != nil {
 		return CodeGraphWorkspaceActionResult{Status: before}, fmt.Errorf("codegraph init failed: %w", err)
@@ -139,7 +142,11 @@ func (s *CodeGraphService) SyncWorkspace(ctx context.Context, input CodeGraphWor
 	if before.IndexState != codegraph.IndexIndexed {
 		return CodeGraphWorkspaceActionResult{Status: before}, errors.New("codegraph workspace project is not indexed; initialize it first")
 	}
-	if before.Freshness == codegraph.FreshnessFresh {
+	if _, err := codegraph.ReconcileProjectConfig(ctx, store, item.ID, projectRoot, relative); err != nil {
+		return CodeGraphWorkspaceActionResult{Status: before}, fmt.Errorf("prepare codegraph project configuration: %w", err)
+	}
+	before = codegraph.InspectWorkspace(status, store, item.ID, projectRoot, relative)
+	if before.Freshness == codegraph.FreshnessFresh && !codegraph.ProjectConfigRequiresConservativeSync(projectRoot) {
 		return CodeGraphWorkspaceActionResult{Status: before, Skipped: true, Reason: "workspace project index is already fresh"}, nil
 	}
 	result, err := runtime.ExecuteInDir(ctx, projectRoot, codegraph.SyncArgs(projectRoot), codegraph.SyncTimeout, codegraph.MaxOutputBytes)

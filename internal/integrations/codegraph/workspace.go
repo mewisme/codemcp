@@ -1,12 +1,14 @@
 package codegraph
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -57,11 +59,13 @@ type workspaceMetadata struct {
 }
 
 type projectMetadata struct {
-	RelativePath      string `json:"relative_path"`
-	Fingerprint       string `json:"fingerprint"`
-	LastInitializedAt string `json:"last_initialized_at,omitempty"`
-	LastSyncedAt      string `json:"last_synced_at,omitempty"`
-	UpdatedAt         string `json:"updated_at"`
+	RelativePath      string   `json:"relative_path"`
+	Fingerprint       string   `json:"fingerprint"`
+	LastInitializedAt string   `json:"last_initialized_at,omitempty"`
+	LastSyncedAt      string   `json:"last_synced_at,omitempty"`
+	UpdatedAt         string   `json:"updated_at"`
+	ManagedExclude    []string `json:"managed_exclude,omitempty"`
+	ManagedConfigHash string   `json:"managed_config_hash,omitempty"`
 }
 
 func WorkspaceStatePath(store workspacestate.Store) (string, error) {
@@ -225,6 +229,12 @@ func saveWorkspaceMetadata(store workspacestate.Store, metadata workspaceMetadat
 
 func projectFingerprint(root string) (string, error) {
 	root = filepath.Clean(root)
+	if files, ok, err := gitVisibleFiles(root); err != nil {
+		return "", err
+	} else if ok {
+		return fingerprintFiles(root, files)
+	}
+
 	hash := sha256.New()
 	entries := 0
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
@@ -240,7 +250,7 @@ func projectFingerprint(root string) (string, error) {
 		}
 		relative = filepath.ToSlash(relative)
 		base := entry.Name()
-		if entry.IsDir() && (base == ".git" || base == ".cm" || base == ".codegraph") {
+		if entry.IsDir() && codeGraphDefaultSkippedDirectory(base) {
 			return filepath.SkipDir
 		}
 		entries++
@@ -262,6 +272,89 @@ func projectFingerprint(root string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func gitVisibleFiles(root string) ([]string, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	probe := exec.CommandContext(ctx, "git", "rev-parse", "--is-inside-work-tree")
+	probe.Dir = root
+	probe.Env = append(os.Environ(), "PAGER=cat", "GIT_PAGER=cat", "NO_COLOR=1")
+	output, err := probe.Output()
+	if err != nil || strings.TrimSpace(string(output)) != "true" {
+		if ctx.Err() != nil {
+			return nil, false, ctx.Err()
+		}
+		return nil, false, nil
+	}
+	command := exec.CommandContext(ctx, "git", "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	command.Dir = root
+	command.Env = append(os.Environ(), "PAGER=cat", "GIT_PAGER=cat", "NO_COLOR=1")
+	output, err = command.Output()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, true, ctx.Err()
+		}
+		return nil, true, fmt.Errorf("enumerate Git-visible files for CodeGraph fingerprint: %w", err)
+	}
+	parts := strings.Split(string(output), "\x00")
+	files := make([]string, 0, len(parts))
+	for _, value := range parts {
+		if value == "" {
+			continue
+		}
+		value = filepath.Clean(value)
+		if value == "" || value == "." || value == ".." || filepath.IsAbs(value) || strings.HasPrefix(value, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if codeGraphInternalPath(value) {
+			continue
+		}
+		files = append(files, value)
+	}
+	return files, true, nil
+}
+
+func fingerprintFiles(root string, files []string) (string, error) {
+	hash := sha256.New()
+	if len(files) > maxFingerprintEntries {
+		return "", fmt.Errorf("CodeGraph source fingerprint exceeds %d entries", maxFingerprintEntries)
+	}
+	for _, relative := range files {
+		path := filepath.Join(root, relative)
+		info, err := os.Lstat(path)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		target := ""
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, _ = os.Readlink(path)
+		}
+		_, _ = fmt.Fprintf(hash, "%s\x00%d\x00%d\x00%d\x00%s\n", filepath.ToSlash(relative), info.Mode(), info.Size(), info.ModTime().UnixNano(), target)
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func codeGraphDefaultSkippedDirectory(base string) bool {
+	switch base {
+	case ".git", ".cm", ".codegraph", "node_modules", "vendor", "dist", "build", "target", ".venv", "Pods", ".next":
+		return true
+	default:
+		return false
+	}
+}
+
+func codeGraphInternalPath(relative string) bool {
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	for _, part := range parts[:max(0, len(parts)-1)] {
+		if part == ".cm" || part == ".codegraph" || part == ".git" {
+			return true
+		}
+	}
+	return false
 }
 
 func boundedDiagnostic(value string) string {

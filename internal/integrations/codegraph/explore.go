@@ -156,6 +156,11 @@ func Explore(ctx context.Context, runtime *Runtime, workspaces *workspace.Manage
 	if err != nil {
 		return ToolState{}, err
 	}
+	if InspectIndex(projectRoot) {
+		if _, err := ReconcileProjectConfig(ctx, store, item.ID, projectRoot, relative); err != nil {
+			return ToolState{}, fmt.Errorf("prepare CodeGraph project configuration: %w", err)
+		}
+	}
 	workspaceStatus := InspectWorkspace(runtimeStatus, store, item.ID, projectRoot, relative)
 	state.State = Effective(runtimeStatus.Resolution.Source, workspaceStatus.IndexState)
 	if state.State == StateUnindexed {
@@ -181,7 +186,7 @@ func Explore(ctx context.Context, runtime *Runtime, workspaces *workspace.Manage
 			state.Guidance = "This workspace project is not indexed. Initialize CodeGraph for this registered workspace project before exploring."
 			return state, nil
 		}
-		if workspaceStatus.Freshness != FreshnessFresh {
+		if workspaceStatus.Freshness != FreshnessFresh || ProjectConfigRequiresConservativeSync(projectRoot) {
 			if _, err := runtime.ExecuteInDir(ctx, projectRoot, SyncArgs(projectRoot), SyncTimeout, MaxOutputBytes); err != nil {
 				return ToolState{}, errors.New("CodeGraph could not refresh the workspace index before exploration")
 			}

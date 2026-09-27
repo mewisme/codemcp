@@ -124,6 +124,9 @@ func (h *CompletionHook) process(ctx context.Context, record agentcompletion.Rec
 	if workspaceStatus.IndexState != IndexIndexed {
 		return saveCompletionOutcome(local, h.outcome(record, item.ID, CompletionSyncSkipped, CompletionReasonUnindexed))
 	}
+	if _, err := ReconcileProjectConfig(ctx, local, item.ID, projectRoot, "."); err != nil {
+		return h.recordFailureWithStoreLocked(local, record, CompletionReasonSyncFailed, err)
+	}
 	if _, err := runtime.ExecuteInDir(ctx, projectRoot, SyncArgs(projectRoot), SyncTimeout, MaxOutputBytes); err != nil {
 		reason := CompletionReasonSyncFailed
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
