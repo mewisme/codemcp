@@ -15,6 +15,10 @@ type EndpointMetadata struct {
 	Product   string
 }
 
+func BuildEndpointMetadata() (EndpointMetadata, error) {
+	return ParseEndpoint(Endpoint)
+}
+
 func ParseEndpoint(raw string) (EndpointMetadata, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

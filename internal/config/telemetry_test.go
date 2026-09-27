@@ -74,4 +74,7 @@ func TestTelemetrySettingMetadataAndReset(t *testing.T) {
 	if !cfg.Telemetry.Enabled {
 		t.Fatal("telemetry reset did not restore default true")
 	}
+	if _, ok := SettingByKey("telemetry.endpoint"); ok {
+		t.Fatal("telemetry endpoint must not be user-configurable")
+	}
 }

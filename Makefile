@@ -5,8 +5,10 @@ NODE ?= node
 PNPM ?= pnpm
 ARGS ?=
 PREPARE_ARGS ?= --no-deps
+LOCAL_TELEMETRY_ENDPOINT ?= https://telemetry.mewis.me/v1/products/codemcp/events
+LOCAL_LDFLAGS = -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint=$(LOCAL_TELEMETRY_ENDPOINT)
 
-CM = $(GO) run .
+CM = $(GO) run -ldflags "$(LOCAL_LDFLAGS)" .
 PREPARE_FRONTEND = $(NODE) scripts/prepare-frontend-embed.mjs
 
 .PHONY: help bootstrap prepare check-embed check test test-race build init uninit run up restart down status logs tui frontend-dev
@@ -53,7 +55,7 @@ test-race:
 
 build: prepare
 	mkdir -p dist
-	$(GO) build -trimpath -o dist/cm .
+	$(GO) build -trimpath -ldflags "$(LOCAL_LDFLAGS)" -o dist/cm .
 
 init:
 	$(CM) init $(ARGS)

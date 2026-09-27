@@ -65,11 +65,10 @@ func (service *TelemetryService) Status(ctx context.Context) (TelemetryStatus, e
 		return TelemetryStatus{}, err
 	}
 	effective := config.ResolveTelemetryEnabled(cfg, source.Exists)
-	endpoint := producttelemetry.Endpoint
+	endpointMeta, err := producttelemetry.BuildEndpointMetadata()
 	if service.Endpoint != nil {
-		endpoint = service.Endpoint()
+		endpointMeta, err = producttelemetry.ParseEndpoint(service.Endpoint())
 	}
-	endpointMeta, err := producttelemetry.ParseEndpoint(endpoint)
 	if err != nil {
 		return TelemetryStatus{}, err
 	}

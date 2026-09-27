@@ -29,6 +29,7 @@ builds:
       - -X go.mewis.me/codemcp/internal/version.ReleaseTag={{.Tag}}
       - -X go.mewis.me/codemcp/internal/version.Commit={{.Commit}}
       - -X go.mewis.me/codemcp/internal/version.Date={{.Date}}
+      - -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint={{ index .Env "TELEMETRY_ENDPOINT" }}
 
 # Keep macOS binaries untouched for Gatekeeper compatibility.
 upx:

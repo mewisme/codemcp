@@ -13,7 +13,7 @@ import (
 	producttelemetry "go.mewis.me/codemcp/internal/telemetry/product"
 )
 
-const telemetryTestEndpoint = "https://telemetry.mewis.me/v1/products/codemcp/events"
+const telemetryTestEndpoint = "https://telemetry.example/v1/products/codemcp/events"
 
 type telemetryReconcilerRecorder struct {
 	values []bool
@@ -53,7 +53,7 @@ func TestTelemetryStatusAndShowAreSideEffectFreeAndSanitized(t *testing.T) {
 	if !status.PersistedEnabled || !status.EffectiveEnabled || status.Source != config.TelemetrySourceConfig {
 		t.Fatalf("status=%#v", status)
 	}
-	if !status.EndpointAvailable || status.EndpointHost != "telemetry.mewis.me" || status.Product != "codemcp" || status.IdentityPresent {
+	if !status.EndpointAvailable || status.EndpointHost != "telemetry.example" || status.Product != "codemcp" || status.IdentityPresent {
 		t.Fatalf("endpoint/identity status=%#v", status)
 	}
 	if _, err := os.Stat(identityPath); !os.IsNotExist(err) {

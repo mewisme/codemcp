@@ -8,7 +8,7 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 )
 
-const testEndpoint = "https://telemetry.mewis.me/v1/products/codemcp/events"
+const testEndpoint = "https://telemetry.example/v1/products/codemcp/events"
 
 func TestIdentityStoreCreatesOnlyForEligibleTelemetry(t *testing.T) {
 	root := t.TempDir()
@@ -81,14 +81,14 @@ func TestEndpointMetadataIsSanitizedAndSourceDefaultIsEmpty(t *testing.T) {
 		t.Fatalf("source endpoint must be empty, got %q", Endpoint)
 	}
 	meta, err := ParseEndpoint(testEndpoint)
-	if err != nil || !meta.Available || meta.Host != "telemetry.mewis.me" || meta.Product != "codemcp" {
+	if err != nil || !meta.Available || meta.Host != "telemetry.example" || meta.Product != "codemcp" {
 		t.Fatalf("endpoint metadata=%#v err=%v", meta, err)
 	}
 	for _, invalid := range []string{
-		"http://telemetry.mewis.me/v1/products/codemcp/events",
-		"https://user:pass@telemetry.mewis.me/v1/products/codemcp/events",
-		"https://telemetry.mewis.me/v1/products/other/events",
-		"https://telemetry.mewis.me/v1/products/codemcp/events?secret=x",
+		"http://telemetry.example/v1/products/codemcp/events",
+		"https://user:pass@telemetry.example/v1/products/codemcp/events",
+		"https://telemetry.example/v1/products/other/events",
+		"https://telemetry.example/v1/products/codemcp/events?secret=x",
 	} {
 		if _, err := ParseEndpoint(invalid); err == nil {
 			t.Fatalf("unsafe endpoint accepted: %s", invalid)

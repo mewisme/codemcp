@@ -52,6 +52,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Verify product telemetry release metadata
+        env:
+          TELEMETRY_ENDPOINT: ${{ vars.TELEMETRY_ENDPOINT }}
+        run: go run ./scripts/verify-release-telemetry.go
+
       - name: Setup pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
@@ -88,6 +93,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEMETRY_ENDPOINT: ${{ vars.TELEMETRY_ENDPOINT }}
 
       - name: Attach package manifests
         env:

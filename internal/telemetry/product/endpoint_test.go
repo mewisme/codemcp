@@ -1,0 +1,94 @@
+package product
+
+import (
+	"os"
+	"os/exec"
+	"strings"
+	"testing"
+)
+
+const injectedEndpointFixture = "https://telemetry.example/v1/products/codemcp/events"
+
+func TestBuildEndpointMetadataSourceBuildIsUnavailable(t *testing.T) {
+	t.Setenv("TELEMETRY_ENDPOINT", injectedEndpointFixture)
+	if Endpoint != "" {
+		t.Fatalf("source build endpoint = %q, want empty", Endpoint)
+	}
+	metadata, err := BuildEndpointMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Available || metadata.Host != "" || metadata.Product != "" {
+		t.Fatalf("source build metadata = %#v, want unavailable", metadata)
+	}
+}
+
+func TestBuildEndpointMetadataInjectedBuildIsAvailable(t *testing.T) {
+	if os.Getenv("CM_TEST_INJECTED_TELEMETRY_ENDPOINT") == "1" {
+		metadata, err := BuildEndpointMetadata()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !metadata.Available || metadata.Host != "telemetry.example" || metadata.Product != "codemcp" {
+			t.Fatalf("injected build metadata = %#v", metadata)
+		}
+		return
+	}
+
+	cmd := exec.Command(
+		"go", "test", ".",
+		"-run", "^TestBuildEndpointMetadataInjectedBuildIsAvailable$",
+		"-count=1",
+		"-ldflags=-X go.mewis.me/codemcp/internal/telemetry/product.Endpoint="+injectedEndpointFixture,
+	)
+	cmd.Env = append(os.Environ(), "CM_TEST_INJECTED_TELEMETRY_ENDPOINT=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("injected build test failed: %v\n%s", err, output)
+	}
+}
+
+func TestParseEndpointRequiresExactReleaseRoute(t *testing.T) {
+	tests := []string{
+		"",
+		injectedEndpointFixture,
+	}
+	for _, raw := range tests {
+		metadata, err := ParseEndpoint(raw)
+		if err != nil {
+			t.Fatalf("ParseEndpoint(%q): %v", raw, err)
+		}
+		if raw == "" && metadata.Available {
+			t.Fatalf("empty endpoint metadata = %#v", metadata)
+		}
+		if raw != "" && (!metadata.Available || metadata.Product != "codemcp") {
+			t.Fatalf("endpoint metadata = %#v", metadata)
+		}
+	}
+
+	for _, raw := range []string{
+		"http://telemetry.example/v1/products/codemcp/events",
+		"https://telemetry.example/v1/products/other/events",
+		"https://telemetry.example/extra/v1/products/codemcp/events",
+		"https://user@telemetry.example/v1/products/codemcp/events",
+		"https://telemetry.example/v1/products/codemcp/events?debug=1",
+		"https://telemetry.example/v1/products/codemcp/events#fragment",
+		"telemetry.example/v1/products/codemcp/events",
+	} {
+		if metadata, err := ParseEndpoint(raw); err == nil || metadata.Available {
+			t.Fatalf("ParseEndpoint(%q) = %#v, %v; want invalid", raw, metadata, err)
+		}
+	}
+}
+
+func TestReleasePreflightDoesNotEchoEndpoint(t *testing.T) {
+	cmd := exec.Command("go", "run", "../../../scripts/verify-release-telemetry.go")
+	cmd.Env = append(os.Environ(), "TELEMETRY_ENDPOINT=https://secret-host.example/wrong")
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatal("invalid release endpoint unexpectedly passed preflight")
+	}
+	if strings.Contains(string(output), "secret-host.example") {
+		t.Fatalf("preflight leaked endpoint: %s", output)
+	}
+}
