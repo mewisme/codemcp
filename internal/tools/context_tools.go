@@ -58,8 +58,19 @@ type MemorySearchMatch struct {
 }
 
 type MemorySearchResult struct {
-	Matches []MemorySearchMatch `json:"matches"`
-	Count   int                 `json:"count"`
+	Matches  []MemorySearchMatch   `json:"matches"`
+	Count    int                   `json:"count"`
+	Semantic *MemorySearchSemantic `json:"semantic,omitempty"`
+}
+
+type MemorySearchSemantic struct {
+	Used         bool   `json:"used"`
+	Fallback     bool   `json:"fallback,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	Model        string `json:"model,omitempty"`
+	Candidates   int    `json:"candidates,omitempty"`
+	InputTokens  int    `json:"input_tokens,omitempty"`
+	OutputTokens int    `json:"output_tokens,omitempty"`
 }
 
 type OptimizeMemoryResult struct {
@@ -351,7 +362,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(ForgetResult{Removed: removed, Scope: strings.TrimSpace(scope), Key: resultKey}), nil
 	})
 
-	register("memory_search", "Memory Search", "Search canonical cross-session memory by relevance with optional scope filtering. Child-key matches rank above scope and note matches; scope-level entries have no key.", workspaceOnlySchema(`"query":{"type":"string"},"scope":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50,"default":5},`), `{"type":"object","properties":{"matches":{"type":"array","items":{"type":"object","properties":{"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"},"score":{"type":"number"}},"required":["scope","note","score"],"additionalProperties":false}},"count":{"type":"integer"}},"required":["matches","count"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register("memory_search", "Memory Search", "Search canonical cross-session memory by relevance with optional scope filtering. Child-key matches rank above scope and note matches; scope-level entries have no key.", workspaceOnlySchema(`"query":{"type":"string"},"scope":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50,"default":5},`), `{"type":"object","properties":{"matches":{"type":"array","items":{"type":"object","properties":{"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"},"score":{"type":"number"}},"required":["scope","note","score"],"additionalProperties":false}},"count":{"type":"integer"},"semantic":{"type":"object","additionalProperties":true}},"required":["matches","count"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
 			return Result{}, err
@@ -371,15 +382,40 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		if err := memoryLifecycle.Ensure(item.ID); err != nil {
 			return Result{}, err
 		}
-		found, err := memoryIndex.Search(item.ID, memory.Query{Text: query, Scope: scope, Limit: limit})
+		searchLimit := limit
+		if providers.Semantic != nil {
+			searchLimit = min(limit*semantic.NativeOversample, semantic.MaxRerankCandidates)
+		}
+		found, err := memoryIndex.Search(item.ID, memory.Query{Text: query, Scope: scope, Limit: searchLimit})
 		if err != nil {
 			return Result{}, err
 		}
-		matches := make([]MemorySearchMatch, 0, len(found))
-		for _, match := range found {
+		order := make([]int, len(found))
+		for index := range order {
+			order[index] = index
+		}
+		var semanticSummary *MemorySearchSemantic
+		if providers.Semantic != nil && len(found) > 0 {
+			candidates := make([]semantic.MemoryCandidate, len(found))
+			for index, match := range found {
+				candidates[index] = semantic.MemoryCandidate{Scope: match.Entry.Scope, Key: match.Entry.Key, Note: match.Entry.Note}
+			}
+			semanticOrder, metadata := semantic.RerankMemory(ctx, providers.Semantic, "memory_search", query, candidates)
+			order = semanticOrder
+			semanticSummary = &MemorySearchSemantic{
+				Used: metadata.Used, Fallback: metadata.Fallback, Provider: metadata.Provider, Model: metadata.Model,
+				Candidates: metadata.Candidates, InputTokens: metadata.InputTokens, OutputTokens: metadata.OutputTokens,
+			}
+		}
+		if len(order) > limit {
+			order = order[:limit]
+		}
+		matches := make([]MemorySearchMatch, 0, len(order))
+		for _, index := range order {
+			match := found[index]
 			matches = append(matches, MemorySearchMatch{Scope: match.Entry.Scope, Key: match.Entry.Key, Note: match.Entry.Note, Score: match.Score})
 		}
-		return JSONResult(MemorySearchResult{Matches: matches, Count: len(matches)}), nil
+		return JSONResult(MemorySearchResult{Matches: matches, Count: len(matches), Semantic: semanticSummary}), nil
 	})
 
 	register("optimize_memory", "Optimize Memory", "Analyze canonical memory for legacy format, oversized notes, fragmented keys, and high-overlap candidates. This phase is analysis-only and never rewrites semantic memory; reconcile candidates with remember/forget.", workspaceOnlySchema(`"scope":{"type":"string"},"dry_run":{"type":"boolean","default":true},`), `{"type":"object","properties":{"groups":{"type":"array","items":{"type":"object","additionalProperties":true}},"before_bytes":{"type":"integer"},"candidate_savings_bytes":{"type":"integer"},"legacy_format":{"type":"boolean"},"optimization_recommended":{"type":"boolean"},"dry_run":{"type":"boolean"}},"required":["groups","before_bytes","candidate_savings_bytes","legacy_format","optimization_recommended","dry_run"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {

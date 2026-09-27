@@ -10,6 +10,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/integrations/semantic"
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -421,6 +422,104 @@ func TestMemorySearchRanksRelevantEntries(t *testing.T) {
 	got := result.StructuredContent.(MemorySearchResult)
 	if got.Count == 0 || got.Matches[0].Scope != "tui" || got.Matches[0].Key != "theme" {
 		t.Fatalf("memory_search = %#v", got)
+	}
+}
+
+func TestMemorySearchSemanticReranksOnlyNativeScopedCandidates(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	root := t.TempDir()
+	workspaces := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := workspaces.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoints := checkpoint.NewStore(filepath.Join(t.TempDir(), "state"))
+	registry := NewRegistry()
+	var captured semantic.Request
+	provider := semantic.ProviderFunc(func(_ context.Context, request semantic.Request) (semantic.Result, error) {
+		captured = request
+		answers := make(map[string]semantic.Answer, len(request.Questions))
+		for id := range request.Questions {
+			answers[id] = semantic.Answer{Type: semantic.PrimitiveNoul, Noul: &semantic.NoulAnswer{ProbabilityYes: 0.1}}
+		}
+		if _, ok := answers["relevance_1"]; ok {
+			answers["relevance_1"] = semantic.Answer{Type: semantic.PrimitiveNoul, Noul: &semantic.NoulAnswer{ProbabilityYes: 0.9}}
+		}
+		return semantic.Result{Answers: answers, ProviderMetadata: semantic.ProviderMetadata{Provider: "fake"}}, nil
+	})
+	registerContextTools(registry, workspaces, checkpoints, ProjectContextProviders{Semantic: provider})
+	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints}
+	for _, args := range []map[string]any{
+		{"workspace_id": item.ID, "scope": "allowed", "key": "first", "note": "alpha topic"},
+		{"workspace_id": item.ID, "scope": "allowed", "key": "second", "note": "beta topic"},
+		{"workspace_id": item.ID, "scope": "forbidden", "key": "secret", "note": "private topic"},
+	} {
+		result, err := runtime.Call(context.Background(), "remember", args)
+		if err != nil || result.IsError {
+			t.Fatalf("remember failed: %#v %v", result, err)
+		}
+	}
+	result, err := runtime.Call(context.Background(), "memory_search", map[string]any{
+		"workspace_id": item.ID, "query": "topic", "scope": "allowed", "limit": 2,
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("memory_search failed: %#v %v", result, err)
+	}
+	got := result.StructuredContent.(MemorySearchResult)
+	if got.Count != 2 || got.Semantic == nil || !got.Semantic.Used {
+		t.Fatalf("result=%#v", got)
+	}
+	for _, match := range got.Matches {
+		if match.Scope != "allowed" {
+			t.Fatalf("unauthorized scope escaped native filter: %#v", got)
+		}
+	}
+	state := captured.State.(map[string]any)
+	candidates := state["candidates"].([]map[string]any)
+	for _, candidate := range candidates {
+		if candidate["scope"] != "allowed" || strings.Contains(candidate["note"].(string), "private topic") {
+			t.Fatalf("semantic provider saw out-of-scope candidate: %#v", candidates)
+		}
+	}
+}
+
+func TestMemorySearchSemanticFailureReturnsNativeTopN(t *testing.T) {
+	nativeRuntime, workspaceID, _, _ := newContextToolRuntime(t)
+	for _, args := range []map[string]any{
+		{"workspace_id": workspaceID, "scope": "general", "key": "one", "note": "alpha topic"},
+		{"workspace_id": workspaceID, "scope": "general", "key": "two", "note": "beta topic"},
+		{"workspace_id": workspaceID, "scope": "general", "key": "three", "note": "gamma topic"},
+	} {
+		if result, err := nativeRuntime.Call(context.Background(), "remember", args); err != nil || result.IsError {
+			t.Fatalf("remember failed: %#v %v", result, err)
+		}
+	}
+	nativeResult, err := nativeRuntime.Call(context.Background(), "memory_search", map[string]any{"workspace_id": workspaceID, "query": "topic", "limit": 2})
+	if err != nil || nativeResult.IsError {
+		t.Fatalf("native search failed: %#v %v", nativeResult, err)
+	}
+	native := nativeResult.StructuredContent.(MemorySearchResult)
+
+	root := nativeRuntime.Workspaces
+	checkpoints := nativeRuntime.Checkpoints
+	registry := NewRegistry()
+	failing := semantic.ProviderFunc(func(context.Context, semantic.Request) (semantic.Result, error) {
+		return semantic.Result{}, semantic.NewError(semantic.ErrorUnavailable, "")
+	})
+	registerContextTools(registry, root, checkpoints, ProjectContextProviders{Semantic: failing})
+	failedRuntime := &Runtime{Registry: registry, Workspaces: root, Checkpoints: checkpoints}
+	failedResult, err := failedRuntime.Call(context.Background(), "memory_search", map[string]any{"workspace_id": workspaceID, "query": "topic", "limit": 2})
+	if err != nil || failedResult.IsError {
+		t.Fatalf("failed-provider search failed: %#v %v", failedResult, err)
+	}
+	failed := failedResult.StructuredContent.(MemorySearchResult)
+	if failed.Semantic == nil || !failed.Semantic.Fallback || failed.Semantic.Used || failed.Count != native.Count {
+		t.Fatalf("failed=%#v native=%#v", failed, native)
+	}
+	for index := range native.Matches {
+		if failed.Matches[index] != native.Matches[index] {
+			t.Fatalf("fallback changed native top-N: failed=%#v native=%#v", failed.Matches, native.Matches)
+		}
 	}
 }
 
