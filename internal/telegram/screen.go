@@ -42,6 +42,7 @@ type Screen struct {
 	Text     string
 	HTML     SafeHTML
 	Keyboard [][]Button
+	Rich     *RichPresentation
 }
 
 type Button struct {
@@ -63,6 +64,13 @@ type ActionGroups struct {
 }
 
 func screenText(screen Screen) string {
+	if screen.Rich != nil {
+		fallback := RichFallback(screen.Rich)
+		if fallback.HTML != "" {
+			return string(fallback.HTML)
+		}
+		return EscapeText(fallback.Text)
+	}
 	if screen.HTML != "" {
 		return string(screen.HTML)
 	}

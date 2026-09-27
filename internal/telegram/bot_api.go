@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -184,6 +185,99 @@ func (client *apiClient) SendScreen(ctx context.Context, chatID int64, screen Sc
 		ChatID: chatID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ReplyMarkup: screenKeyboard(screen.Keyboard),
 	})
 	return classifyTransportError(err)
+}
+
+func (client *apiClient) SendRichMessage(ctx context.Context, chatID int64, screen Screen, options RichMessageOptions) (int64, error) {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return 0, errors.New("telegram bot transport is unavailable")
+	}
+	if err := validateKeyboard(screen.Keyboard); err != nil {
+		return 0, err
+	}
+	params := &telegrambot.SendMessageParams{
+		ChatID: chatID, Text: screenText(screen), ParseMode: models.ParseModeHTML,
+		ProtectContent: options.ProtectContent,
+	}
+	if len(screen.Keyboard) > 0 {
+		params.ReplyMarkup = screenKeyboard(screen.Keyboard)
+	} else if placeholder := forceReplyPlaceholder(options.ForceReplyPlaceholder); placeholder != "" {
+		params.ReplyMarkup = &models.ForceReply{ForceReply: true, InputFieldPlaceholder: placeholder, Selective: true}
+	}
+	message, err := client.bot.SendMessage(nonNilContext(ctx), params)
+	if err != nil {
+		return 0, classifyTransportError(err)
+	}
+	if message == nil {
+		return 0, errors.New("telegram rich message response is empty")
+	}
+	return int64(message.ID), nil
+}
+
+func (client *apiClient) SendChatAction(ctx context.Context, chatID int64, action string) error {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return errors.New("telegram bot transport is unavailable")
+	}
+	ok, err := client.bot.SendChatAction(nonNilContext(ctx), &telegrambot.SendChatActionParams{ChatID: chatID, Action: models.ChatAction(strings.TrimSpace(action))})
+	if err != nil {
+		return classifyTransportError(err)
+	}
+	if !ok {
+		return errors.New("telegram chat action was not accepted")
+	}
+	return nil
+}
+
+func (client *apiClient) SendDocument(ctx context.Context, chatID int64, upload DocumentUpload) error {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return errors.New("telegram bot transport is unavailable")
+	}
+	if err := ValidateDocumentUpload(upload); err != nil {
+		return err
+	}
+	_, err := client.bot.SendDocument(nonNilContext(ctx), &telegrambot.SendDocumentParams{
+		ChatID:         chatID,
+		Document:       &models.InputFileUpload{Filename: upload.FileName, Data: bytes.NewReader(upload.Data)},
+		Caption:        strings.TrimSpace(upload.Caption),
+		ProtectContent: upload.ProtectContent,
+	})
+	return classifyTransportError(err)
+}
+
+func (client *apiClient) DownloadDocument(ctx context.Context, document Document) ([]byte, error) {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return nil, errors.New("telegram bot transport is unavailable")
+	}
+	if err := ValidateDocument(document); err != nil {
+		return nil, err
+	}
+	file, err := client.bot.GetFile(nonNilContext(ctx), &telegrambot.GetFileParams{FileID: document.FileID})
+	if err != nil {
+		return nil, classifyTransportError(err)
+	}
+	if file == nil || strings.TrimSpace(file.FilePath) == "" {
+		return nil, errors.New("telegram document file path is unavailable")
+	}
+	request, err := http.NewRequestWithContext(nonNilContext(ctx), http.MethodGet, client.bot.FileDownloadLink(file), nil)
+	if err != nil {
+		return nil, err
+	}
+	response, err := client.httpClient.Do(request)
+	if err != nil {
+		return nil, classifyTransportError(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, &transportError{Class: transportErrorTransport}
+	}
+	reader := io.LimitReader(response.Body, MaxFileTransferBytes+1)
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > MaxFileTransferBytes {
+		return nil, errors.New("telegram document exceeds the allowed size")
+	}
+	return data, nil
 }
 
 func (client *apiClient) EditScreen(ctx context.Context, chatID, messageID int64, screen Screen) error {
@@ -428,6 +522,12 @@ func messageFromModel(message *models.Message) *Message {
 		user := userFromModel(*message.From)
 		result.From = &user
 	}
+	if message.ReplyToMessage != nil {
+		result.ReplyToMessage = messageFromModel(message.ReplyToMessage)
+	}
+	if message.Document != nil {
+		result.Document = &Document{FileID: message.Document.FileID, FileName: message.Document.FileName, MimeType: message.Document.MimeType, FileSize: message.Document.FileSize}
+	}
 	return result
 }
 
@@ -439,6 +539,12 @@ func messageToModel(message *Message) *models.Message {
 	if message.From != nil {
 		user := userToModel(*message.From)
 		result.From = &user
+	}
+	if message.ReplyToMessage != nil {
+		result.ReplyToMessage = messageToModel(message.ReplyToMessage)
+	}
+	if message.Document != nil {
+		result.Document = &models.Document{FileID: message.Document.FileID, FileName: message.Document.FileName, MimeType: message.Document.MimeType, FileSize: message.Document.FileSize}
 	}
 	return result
 }

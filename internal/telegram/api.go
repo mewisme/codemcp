@@ -18,10 +18,19 @@ type Chat struct {
 }
 
 type Message struct {
-	MessageID int64  `json:"message_id"`
-	From      *User  `json:"from,omitempty"`
-	Chat      Chat   `json:"chat"`
-	Text      string `json:"text,omitempty"`
+	MessageID      int64     `json:"message_id"`
+	From           *User     `json:"from,omitempty"`
+	Chat           Chat      `json:"chat"`
+	Text           string    `json:"text,omitempty"`
+	ReplyToMessage *Message  `json:"reply_to_message,omitempty"`
+	Document       *Document `json:"document,omitempty"`
+}
+
+type Document struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name,omitempty"`
+	MimeType string `json:"mime_type,omitempty"`
+	FileSize int64  `json:"file_size,omitempty"`
 }
 
 type CallbackQuery struct {
@@ -76,4 +85,32 @@ type NavigationAPI interface {
 
 type MessageDismissAPI interface {
 	DeleteMessage(context.Context, int64, int64) error
+}
+
+type RichMessageOptions struct {
+	ForceReplyPlaceholder string
+	ProtectContent        bool
+}
+
+type RichMessageAPI interface {
+	SendRichMessage(context.Context, int64, Screen, RichMessageOptions) (int64, error)
+	SendChatAction(context.Context, int64, string) error
+}
+
+type DocumentUpload struct {
+	FileName       string
+	ContentType    string
+	Data           []byte
+	Caption        string
+	ProtectContent bool
+}
+
+type DocumentAPI interface {
+	SendDocument(context.Context, int64, DocumentUpload) error
+	DownloadDocument(context.Context, Document) ([]byte, error)
+}
+
+type PendingInputValue struct {
+	Text     string
+	Document *Document
 }

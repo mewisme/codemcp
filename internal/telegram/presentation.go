@@ -3,6 +3,7 @@ package telegram
 import (
 	"fmt"
 	"html"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 )
@@ -10,7 +11,136 @@ import (
 const (
 	presentationMaxBytes = 3900
 	presentationMaxValue = 512
+	richMaxBlocks        = 24
+	richMaxRows          = 12
+	richMaxColumns       = 6
 )
+
+type RichBlockKind string
+
+const (
+	RichHeading  RichBlockKind = "heading"
+	RichSection  RichBlockKind = "section"
+	RichList     RichBlockKind = "list"
+	RichTable    RichBlockKind = "table"
+	RichDetails  RichBlockKind = "details"
+	RichQuote    RichBlockKind = "quote"
+	RichCode     RichBlockKind = "code"
+	RichLink     RichBlockKind = "link"
+	RichDocument RichBlockKind = "document"
+	RichButtons  RichBlockKind = "buttons"
+)
+
+type RichBlock struct {
+	Kind         RichBlockKind
+	Title        string
+	Text         string
+	Items        []string
+	Rows         [][]string
+	LinkURL      string
+	Buttons      [][]Button
+	DocumentName string
+}
+
+type RichPresentation struct {
+	Blocks []RichBlock
+}
+
+func BuildRichPresentation(blocks ...RichBlock) *RichPresentation {
+	out := make([]RichBlock, 0, min(len(blocks), richMaxBlocks))
+	for _, block := range blocks {
+		if len(out) >= richMaxBlocks {
+			break
+		}
+		block.Title = compactPresentationValue(block.Title)
+		block.Text = compactPresentationValue(block.Text)
+		if len(block.Items) > richMaxRows {
+			block.Items = block.Items[:richMaxRows]
+		}
+		if len(block.Rows) > richMaxRows {
+			block.Rows = block.Rows[:richMaxRows]
+		}
+		for i := range block.Rows {
+			if len(block.Rows[i]) > richMaxColumns {
+				block.Rows[i] = block.Rows[i][:richMaxColumns]
+			}
+		}
+		if len(block.Buttons) > maxActionGroupRows {
+			block.Buttons = block.Buttons[:maxActionGroupRows]
+		}
+		for i := range block.Buttons {
+			if len(block.Buttons[i]) > maxActionButtonsPerRow {
+				block.Buttons[i] = block.Buttons[i][:maxActionButtonsPerRow]
+			}
+		}
+		if block.Kind == RichLink && block.LinkURL != "" {
+			parsed, err := url.Parse(block.LinkURL)
+			if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+				block.LinkURL = ""
+			}
+		}
+		out = append(out, block)
+	}
+	return &RichPresentation{Blocks: out}
+}
+
+func RichFallback(rich *RichPresentation) Presentation {
+	if rich == nil {
+		return Presentation{}
+	}
+	parts := make([]PresentationPart, 0, len(rich.Blocks))
+	for _, block := range rich.Blocks {
+		switch block.Kind {
+		case RichHeading, RichSection:
+			parts = append(parts, TitleBlock(block.Title, block.Text))
+		case RichList:
+			items := make([]ListItem, 0, len(block.Items))
+			for _, item := range block.Items {
+				items = append(items, ListItem{Label: item})
+			}
+			parts = append(parts, CompactList(items...))
+		case RichTable:
+			items := make([]MetadataItem, 0, len(block.Rows))
+			for _, row := range block.Rows {
+				if len(row) == 0 {
+					continue
+				}
+				label, value := row[0], ""
+				if len(row) > 1 {
+					value = strings.Join(row[1:], " · ")
+				}
+				items = append(items, MetadataItem{Label: label, Value: value})
+			}
+			parts = append(parts, MetadataBlock(items...))
+		case RichQuote:
+			text := "> " + strings.ReplaceAll(block.Text, "\n", "\n> ")
+			parts = append(parts, PresentationPart{Text: text, HTML: SafeHTML("<blockquote>" + EscapeText(block.Text) + "</blockquote>")})
+		case RichCode:
+			parts = append(parts, PresentationPart{Text: block.Text, HTML: SafeHTML("<pre>" + EscapeText(block.Text) + "</pre>")})
+		case RichLink:
+			label := block.Title
+			if label == "" {
+				label = block.LinkURL
+			}
+			parts = append(parts, PresentationPart{Text: label + ": " + block.LinkURL, HTML: SafeHTML("<a href=\"" + EscapeText(block.LinkURL) + "\">" + EscapeText(label) + "</a>")})
+		case RichDetails:
+			parts = append(parts, DetailBlock(block.Title, block.Text))
+		case RichDocument:
+			parts = append(parts, MetadataBlock(MetadataItem{Label: "Document", Value: block.DocumentName}, MetadataItem{Label: "Detail", Value: block.Text}))
+		case RichButtons:
+			labels := make([]ListItem, 0)
+			for _, row := range block.Buttons {
+				for _, button := range row {
+					if strings.TrimSpace(button.Text) != "" {
+						labels = append(labels, ListItem{Label: button.Text})
+					}
+				}
+			}
+			parts = append(parts, CompactList(labels...))
+		}
+	}
+	return Present(parts...)
+}
 
 type PresentationTone string
 

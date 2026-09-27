@@ -284,6 +284,87 @@ func (runtime *Runtime) SendScreen(ctx context.Context, chatID int64, screen Scr
 	return rich.SendScreen(ctx, chatID, screen)
 }
 
+func (runtime *Runtime) SendRichMessage(ctx context.Context, chatID int64, screen Screen, options RichMessageOptions) (int64, error) {
+	if runtime == nil || chatID <= 0 {
+		return 0, errors.New("telegram runtime is unavailable")
+	}
+	if err := validateKeyboard(screen.Keyboard); err != nil {
+		return 0, err
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	available := runtime.health.Running && !runtime.health.SetupMode
+	runtime.mu.RUnlock()
+	if !available || api == nil {
+		return 0, errors.New("telegram runtime is unavailable")
+	}
+	rich, ok := api.(RichMessageAPI)
+	if !ok {
+		return 0, errors.New("telegram rich message API is unavailable")
+	}
+	return rich.SendRichMessage(ctx, chatID, screen, options)
+}
+
+func (runtime *Runtime) SendChatAction(ctx context.Context, chatID int64, action string) error {
+	if runtime == nil || chatID <= 0 || strings.TrimSpace(action) == "" {
+		return errors.New("telegram runtime is unavailable")
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	available := runtime.health.Running && !runtime.health.SetupMode
+	runtime.mu.RUnlock()
+	if !available || api == nil {
+		return errors.New("telegram runtime is unavailable")
+	}
+	rich, ok := api.(RichMessageAPI)
+	if !ok {
+		return errors.New("telegram chat action API is unavailable")
+	}
+	return rich.SendChatAction(ctx, chatID, action)
+}
+
+func (runtime *Runtime) SendDocument(ctx context.Context, chatID int64, upload DocumentUpload) error {
+	if runtime == nil || chatID <= 0 {
+		return errors.New("telegram runtime is unavailable")
+	}
+	if err := ValidateDocumentUpload(upload); err != nil {
+		return err
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	available := runtime.health.Running && !runtime.health.SetupMode
+	runtime.mu.RUnlock()
+	if !available || api == nil {
+		return errors.New("telegram runtime is unavailable")
+	}
+	documents, ok := api.(DocumentAPI)
+	if !ok {
+		return errors.New("telegram document API is unavailable")
+	}
+	return documents.SendDocument(ctx, chatID, upload)
+}
+
+func (runtime *Runtime) DownloadDocument(ctx context.Context, document Document) ([]byte, error) {
+	if runtime == nil {
+		return nil, errors.New("telegram runtime is unavailable")
+	}
+	if err := ValidateDocument(document); err != nil {
+		return nil, err
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	available := runtime.health.Running && !runtime.health.SetupMode
+	runtime.mu.RUnlock()
+	if !available || api == nil {
+		return nil, errors.New("telegram runtime is unavailable")
+	}
+	documents, ok := api.(DocumentAPI)
+	if !ok {
+		return nil, errors.New("telegram document API is unavailable")
+	}
+	return documents.DownloadDocument(ctx, document)
+}
+
 func (runtime *Runtime) EditScreen(ctx context.Context, chatID, messageID int64, screen Screen) error {
 	if runtime == nil || chatID <= 0 || messageID <= 0 {
 		return errors.New("telegram runtime is unavailable")

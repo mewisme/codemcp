@@ -47,6 +47,7 @@ type Interface struct {
 	dispatcher application.OperationDispatcher
 	versions   VersionResolver
 	states     *ViewStateStore
+	inputs     *InputStore
 	callbacks  *CallbackCodec
 	router     *Router
 }
@@ -65,7 +66,7 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 	}
 	ui := &Interface{
 		runtime: options.Runtime, dispatcher: options.Dispatcher, versions: options.VersionResolver,
-		states: NewViewStateStore(stateTTL, defaultViewStateMax), callbacks: codec, router: NewRouter(),
+		states: NewViewStateStore(stateTTL, defaultViewStateMax), inputs: NewInputStore(stateTTL), callbacks: codec, router: NewRouter(),
 	}
 	handlers := map[Route]RouteHandler{
 		RouteHome: ui.handleHome, RouteStatus: ui.handleStatus, RouteCommands: ui.handleCommands,
@@ -83,7 +84,66 @@ func (ui *Interface) Handle(ctx context.Context, update Update) {
 	if ui == nil || ui.runtime == nil || !ui.runtime.Authorizes(update) {
 		return
 	}
+	if update.Message != nil && messageCommand(update.Message.Text) == "" {
+		ui.acceptPendingInput(update)
+		return
+	}
 	ui.router.Dispatch(ctx, update)
+}
+
+func (ui *Interface) PromptInput(ctx context.Context, owner ViewOwner, screen Screen, placeholder string, secret bool) (int64, error) {
+	if ui == nil || ui.runtime == nil || ui.inputs == nil || owner.Generation != ui.runtime.Generation() {
+		return 0, errors.New("telegram input workflow is unavailable")
+	}
+	promptID, err := ui.runtime.SendRichMessage(ctx, owner.ChatID, screen, RichMessageOptions{
+		ForceReplyPlaceholder: forceReplyPlaceholder(placeholder),
+		ProtectContent:        secret,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if err := ui.inputs.Put(owner, promptID, secret); err != nil {
+		_ = ui.runtime.DeleteMessage(ctx, owner.ChatID, promptID)
+		return 0, err
+	}
+	return promptID, nil
+}
+
+func (ui *Interface) acceptPendingInput(update Update) (PendingInput, bool) {
+	if ui == nil || ui.runtime == nil || ui.inputs == nil || update.Message == nil {
+		return PendingInput{}, false
+	}
+	owner, ok := ownerFromUpdate(ui.runtime, update)
+	if !ok {
+		return PendingInput{}, false
+	}
+	return ui.inputs.Match(owner, *update.Message)
+}
+
+func (ui *Interface) AcceptInput(update Update) (PendingInput, PendingInputValue, bool) {
+	if ui == nil || ui.runtime == nil || ui.inputs == nil || update.Message == nil {
+		return PendingInput{}, PendingInputValue{}, false
+	}
+	value, err := InputValue(*update.Message)
+	if err != nil {
+		return PendingInput{}, PendingInputValue{}, false
+	}
+	owner, ok := ownerFromUpdate(ui.runtime, update)
+	if !ok {
+		return PendingInput{}, PendingInputValue{}, false
+	}
+	state, ok := ui.inputs.Match(owner, *update.Message)
+	if !ok {
+		return PendingInput{}, PendingInputValue{}, false
+	}
+	return state, value, true
+}
+
+func (ui *Interface) CancelInput(promptMessageID int64) {
+	if ui == nil || ui.inputs == nil || promptMessageID <= 0 {
+		return
+	}
+	ui.inputs.Delete(promptMessageID)
 }
 
 func (ui *Interface) handleHome(ctx context.Context, update Update) {
@@ -561,6 +621,9 @@ func (ui *Interface) completeInput(ctx context.Context, owner ViewOwner, promptM
 	}
 	if secretInput && inputMessageID > 0 {
 		_ = ui.runtime.DeleteMessage(ctx, owner.ChatID, inputMessageID)
+	}
+	if ui.inputs != nil {
+		ui.inputs.Delete(promptMessageID)
 	}
 	return ui.runtime.EditScreen(ctx, owner.ChatID, promptMessageID, result)
 }

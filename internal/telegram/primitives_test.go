@@ -1,0 +1,194 @@
+package telegram
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"go.mewis.me/codemcp/internal/config"
+)
+
+func TestRichPresentationFallbackPreservesRepresentativeSemantics(t *testing.T) {
+	tests := []struct {
+		name   string
+		blocks []RichBlock
+		want   []string
+	}{
+		{"status", []RichBlock{{Kind: RichHeading, Title: "Status", Text: "Runtime overview"}, {Kind: RichTable, Rows: [][]string{{"runtime", "enabled"}, {"Telegram", "healthy"}}}}, []string{"Status", "Runtime overview", "runtime", "enabled", "Telegram", "healthy"}},
+		{"doctor", []RichBlock{{Kind: RichSection, Title: "Doctor", Text: "Diagnostics"}, {Kind: RichList, Items: []string{"config valid", "runtime reachable"}}}, []string{"Doctor", "Diagnostics", "config valid", "runtime reachable"}},
+		{"approval", []RichBlock{{Kind: RichQuote, Text: "Approve guarded request"}, {Kind: RichCode, Text: "cm status"}}, []string{"Approve guarded request", "cm status"}},
+		{"resource", []RichBlock{{Kind: RichDetails, Title: "Workspace", Text: "ws_123"}, {Kind: RichLink, Title: "Docs", LinkURL: "https://example.com/docs"}}, []string{"Workspace", "ws_123", "Docs", "https://example.com/docs"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rich := BuildRichPresentation(test.blocks...)
+			fallback := RichFallback(rich)
+			for _, value := range test.want {
+				if !strings.Contains(fallback.Text, value) && !strings.Contains(string(fallback.HTML), value) {
+					t.Fatalf("fallback missing %q: text=%q html=%q", value, fallback.Text, fallback.HTML)
+				}
+			}
+			if got := screenText(Screen{Rich: rich}); got != string(fallback.HTML) {
+				t.Fatalf("rich screen fallback=%q want=%q", got, fallback.HTML)
+			}
+		})
+	}
+}
+
+func TestRichPresentationBoundsAndRejectsUnsafeLinks(t *testing.T) {
+	blocks := make([]RichBlock, richMaxBlocks+5)
+	for i := range blocks {
+		blocks[i] = RichBlock{Kind: RichList, Items: make([]string, richMaxRows+5)}
+	}
+	rich := BuildRichPresentation(blocks...)
+	if len(rich.Blocks) != richMaxBlocks || len(rich.Blocks[0].Items) != richMaxRows {
+		t.Fatalf("rich bounds blocks=%d items=%d", len(rich.Blocks), len(rich.Blocks[0].Items))
+	}
+	unsafe := BuildRichPresentation(RichBlock{Kind: RichLink, Title: "unsafe", LinkURL: "javascript:alert(1)"})
+	if unsafe.Blocks[0].LinkURL != "" {
+		t.Fatalf("unsafe link retained: %#v", unsafe.Blocks[0])
+	}
+}
+
+func TestPendingInputRequiresExactReplyOwnerAndGeneration(t *testing.T) {
+	store := NewInputStore(time.Minute)
+	owner := ViewOwner{ChatID: 42, UserID: 7, Generation: 3}
+	message := func(chat, user, prompt int64) Message {
+		return Message{MessageID: 99, Chat: Chat{ID: chat, Type: "private"}, From: &User{ID: user}, Text: "value", ReplyToMessage: &Message{MessageID: prompt}}
+	}
+	for _, test := range []struct {
+		name       string
+		matchOwner ViewOwner
+		message    Message
+		want       bool
+	}{
+		{"unrelated", owner, Message{Chat: Chat{ID: 42}, From: &User{ID: 7}, Text: "value"}, false},
+		{"wrong-user", owner, message(42, 8, 10), false},
+		{"wrong-chat", owner, message(43, 7, 10), false},
+		{"stale-generation", ViewOwner{ChatID: 42, UserID: 7, Generation: 4}, message(42, 7, 10), false},
+		{"exact", owner, message(42, 7, 10), true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store = NewInputStore(time.Minute)
+			if err := store.Put(owner, 10, true); err != nil {
+				t.Fatal(err)
+			}
+			_, got := store.Match(test.matchOwner, test.message)
+			if got != test.want {
+				t.Fatalf("match=%v want=%v", got, test.want)
+			}
+		})
+	}
+	store = NewInputStore(time.Nanosecond)
+	if err := store.Put(owner, 11, false); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	if _, ok := store.Match(owner, message(42, 7, 11)); ok {
+		t.Fatal("expired input state matched")
+	}
+}
+
+func TestDocumentValidationRejectsTraversalAndOversizeBeforeTransport(t *testing.T) {
+	if err := ValidateDocument(Document{FileID: "file", FileName: "../secret", FileSize: 1}); err == nil {
+		t.Fatal("path traversal filename accepted")
+	}
+	if err := ValidateDocument(Document{FileID: "file", FileName: "safe.json", FileSize: MaxFileTransferBytes + 1}); err == nil {
+		t.Fatal("oversized document accepted")
+	}
+	if err := ValidateDocumentUpload(DocumentUpload{FileName: "../secret", Data: []byte("x")}); err == nil {
+		t.Fatal("unsafe upload filename accepted")
+	}
+	if err := ValidateDocumentUpload(DocumentUpload{FileName: "safe.json", Data: make([]byte, MaxFileTransferBytes+1)}); err == nil {
+		t.Fatal("oversized upload accepted")
+	}
+}
+
+func TestBotAPIRichMessageUsesForceReplyAndProtectContent(t *testing.T) {
+	type captured struct {
+		Protect     bool
+		Force       bool
+		Placeholder string
+		Selective   bool
+	}
+	requests := make(chan captured, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(strings.ToLower(r.URL.Path), "/sendmessage") {
+			http.NotFound(w, r)
+			return
+		}
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		var markup struct {
+			ForceReply            bool   `json:"force_reply"`
+			InputFieldPlaceholder string `json:"input_field_placeholder"`
+			Selective             bool   `json:"selective"`
+		}
+		if err := json.Unmarshal([]byte(r.FormValue("reply_markup")), &markup); err != nil {
+			t.Fatalf("decode reply markup: %v", err)
+		}
+		requests <- captured{Protect: r.FormValue("protect_content") == "true", Force: markup.ForceReply, Placeholder: markup.InputFieldPlaceholder, Selective: markup.Selective}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": map[string]any{"message_id": 17, "chat": map[string]any{"id": 42, "type": "private"}, "date": 1}})
+	}))
+	defer server.Close()
+	client := newAPIClientWithOptions("123456:test-token", time.Second, server.URL, server.Client())
+	id, err := client.SendRichMessage(t.Context(), 42, Screen{Text: "secret input"}, RichMessageOptions{ForceReplyPlaceholder: strings.Repeat("x", maxForceReplyPlaceholderRunes+20), ProtectContent: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != 17 {
+		t.Fatalf("message id=%d", id)
+	}
+	got := <-requests
+	if !got.Protect || !got.Force || !got.Selective || len([]rune(got.Placeholder)) != maxForceReplyPlaceholderRunes {
+		t.Fatalf("rich request=%#v", got)
+	}
+}
+
+type primitiveAPI struct {
+	interactiveTestAPI
+	nextID  int64
+	options RichMessageOptions
+}
+
+func (api *primitiveAPI) SendRichMessage(_ context.Context, _ int64, _ Screen, options RichMessageOptions) (int64, error) {
+	api.options = options
+	return api.nextID, nil
+}
+
+func (*primitiveAPI) SendChatAction(context.Context, int64, string) error { return nil }
+
+func TestPromptInputBindsRuntimeGenerationAndSecretPolicy(t *testing.T) {
+	api := &primitiveAPI{nextID: 55}
+	runtime := &Runtime{
+		api: api, generation: 9,
+		config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}},
+		health: Health{Running: true, Enabled: true, AuthorizationConfigured: true},
+	}
+	ui, err := NewInterface(InterfaceOptions{Runtime: runtime})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 9}
+	id, err := ui.PromptInput(t.Context(), owner, Screen{Text: "token"}, "Enter token", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != 55 || !api.options.ProtectContent {
+		t.Fatalf("prompt id=%d options=%#v", id, api.options)
+	}
+	input := Message{MessageID: 56, Chat: Chat{ID: 42, Type: "private"}, From: &User{ID: 42}, Text: "value", ReplyToMessage: &Message{MessageID: 55}}
+	state, ok := ui.acceptPendingInput(Update{Message: &input})
+	if !ok || state.Owner != owner || !state.Secret {
+		t.Fatalf("accepted state=%#v ok=%v", state, ok)
+	}
+	if _, ok := ui.acceptPendingInput(Update{Message: &input}); ok {
+		t.Fatal("pending input was reusable")
+	}
+}
