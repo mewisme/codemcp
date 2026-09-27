@@ -16,11 +16,17 @@ import (
 func TestTypeSafeScopedSettingsUseCanonicalSettingService(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(configformat.EnvConfigDir, root)
+	previousRoot := configformat.RootPath()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = configformat.SetRootPath(previousRoot) })
 	restore := secretstore.UseMemoryForTesting()
 	defer restore()
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-configured-hash"
-	cfg.Auth.AdminTokenHash = "admin-configured-hash"
+	cfg.Auth.MCPEnabled = false
+	cfg.Auth.AdminEnabled = false
+	cfg.Server.AllowUnauthenticatedLoopback = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
