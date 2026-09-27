@@ -448,7 +448,7 @@ func TestConfigAPIIntegrationPatchUpdatesRuntimeActiveState(t *testing.T) {
 	if err != nil || result.IsError || len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, `"active":false`) {
 		t.Fatalf("caveman runtime result = %#v err=%v", result, err)
 	}
-	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":false,"path":""}}`) {
+	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":false,"path":""},"typesafe":{"enabled":false,"model":"jev-latest","timeout_ms":3000}}`) {
 		t.Fatalf("integration config missing from response: %s", recorder.Body.String())
 	}
 }

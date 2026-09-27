@@ -257,6 +257,12 @@ func TestFirstPartyIntegrationsHaveCanonicalCapabilities(t *testing.T) {
 			IntegrationCodeGraphWorkspaceSync,
 			IntegrationCodeGraphExplore,
 		},
+		"typesafe": {
+			IntegrationTypeSafeStatus,
+			IntegrationTypeSafeEnable,
+			IntegrationTypeSafeDisable,
+			IntegrationTypeSafeProbe,
+		},
 	}
 	for integration, ids := range groups {
 		if len(ids) == 0 {

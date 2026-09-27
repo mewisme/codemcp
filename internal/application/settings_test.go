@@ -145,6 +145,8 @@ func TestEveryWritableStaticSettingMutatesFromFreshConfig(t *testing.T) {
 				raw = "sk-runtime-fresh-setting"
 			case "tunnel.admin.key":
 				raw = "sk-admin-fresh-setting"
+			case "integrations.typesafe.api_key":
+				raw = "ts-fresh-setting"
 			case "tunnel.admin.organization_id":
 				raw = "org_fresh"
 			case "tunnel.admin.workspace_id":

@@ -126,6 +126,9 @@ var fieldSpecs = []FieldSpec{
 	{Key: "integrations.rtk.path", Label: "RTK executable", Section: FieldSectionIntegrations, Description: "sets an explicit RTK executable path", Details: "Leave empty to resolve RTK from PATH and then the verified managed asset. A configured value must be an absolute path; runtime resolution validates that it is a non-empty executable file before use.", Kind: FieldString, Editable: true, Related: []string{"integrations.rtk.enabled"}},
 	{Key: "integrations.codegraph.enabled", Label: "CodeGraph enabled", Section: FieldSectionIntegrations, Description: "controls whether CodeGraph runtime resolution is active", Details: "Disabled by default. When enabled, CodeMCP resolves an explicitly configured executable, then the system PATH, then a checksum-verified managed CodeGraph asset.", Kind: FieldBool, Editable: true, Related: []string{"integrations.codegraph.path"}},
 	{Key: "integrations.codegraph.path", Label: "CodeGraph executable", Section: FieldSectionIntegrations, Description: "sets an explicit CodeGraph executable path", Details: "Leave empty to use system/managed resolution. A configured value must be absolute; execution remains bounded and requires an explicit workspace directory.", Kind: FieldString, Editable: true, Related: []string{"integrations.codegraph.enabled"}},
+	{Key: "integrations.typesafe.enabled", Label: "TypeSafe enabled", Section: FieldSectionIntegrations, Description: "controls whether the optional TypeSafe semantic provider may be used", Details: "Disabled by default. Enabling does not contact TypeSafe; remote requests occur only when a semantic consumer or explicit probe uses the configured provider.", Kind: FieldBool, Editable: true, Related: []string{"integrations.typesafe.model", "integrations.typesafe.timeout_ms", "integrations.typesafe.api_key"}},
+	{Key: "integrations.typesafe.model", Label: "TypeSafe model", Section: FieldSectionIntegrations, Description: "sets the TypeSafe System One model or alias", Details: "The provider currently documents jev-latest as the stable alias. Versioned model IDs may be used when a consumer needs a pinned calibration target.", Kind: FieldString, Editable: true, Related: []string{"integrations.typesafe.enabled"}},
+	{Key: "integrations.typesafe.timeout_ms", Label: "TypeSafe timeout", Section: FieldSectionIntegrations, Description: "sets the local deadline budget in milliseconds for TypeSafe provider operations", Details: "The timeout is locally enforced and remains bounded even if the provider SDK supports a larger/default timeout.", Kind: FieldInt, Editable: true, Related: []string{"integrations.typesafe.enabled"}},
 	{Key: "tunnel.enabled", Label: "Tunnel", Section: FieldSectionTunnel, Description: "controls whether the OpenAI Secure MCP Tunnel transport is enabled", Details: "An enabled tunnel requires both tunnel.id and a configured runtime API key. The tunnel can satisfy the requirement that at least one MCP transport remains enabled when the local MCP HTTP server is disabled.", Kind: FieldBool, Editable: true, Related: []string{"tunnel.id", "tunnel.api_key", "server.enabled"}},
 	{Key: "tunnel.id", Label: "Tunnel ID", Section: FieldSectionTunnel, Description: "identifies the OpenAI Secure MCP Tunnel used by this runtime", Details: "The ID is required when the tunnel transport is enabled and is used together with the runtime API key to connect to the configured tunnel.", Kind: FieldString, Editable: true, Related: []string{"tunnel.enabled", "tunnel.api_key"}},
 	{Key: "tunnel.api_key", Label: "Runtime API key", Section: FieldSectionTunnel, Description: "stores the managed runtime credential used to connect to the Secure MCP Tunnel", Details: "The raw runtime key is stored through the secret workflow and is redacted from config views. A configured runtime key is required when the tunnel transport is enabled.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage the runtime key from the Tunnel page.", Related: []string{"tunnel.enabled", "tunnel.id"}},
@@ -357,6 +360,24 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Integrations.CodeGraph.Enabled = value
 	case "integrations.codegraph.path":
 		cfg.Integrations.CodeGraph.Path = strings.TrimSpace(raw)
+	case "integrations.typesafe.enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Integrations.TypeSafe.Enabled = value
+	case "integrations.typesafe.model":
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			return errors.New("integrations.typesafe.model must not be empty")
+		}
+		cfg.Integrations.TypeSafe.Model = value
+	case "integrations.typesafe.timeout_ms":
+		value, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || value < 100 || value > 30000 {
+			return errors.New("integrations.typesafe.timeout_ms must be between 100 and 30000")
+		}
+		cfg.Integrations.TypeSafe.TimeoutMS = value
 	case "tunnel.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -483,6 +504,12 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strconv.FormatBool(cfg.Integrations.CodeGraph.Enabled), nil
 	case "integrations.codegraph.path":
 		return cfg.Integrations.CodeGraph.Path, nil
+	case "integrations.typesafe.enabled":
+		return strconv.FormatBool(cfg.Integrations.TypeSafe.Enabled), nil
+	case "integrations.typesafe.model":
+		return cfg.Integrations.TypeSafe.Model, nil
+	case "integrations.typesafe.timeout_ms":
+		return strconv.Itoa(cfg.Integrations.TypeSafe.TimeoutMS), nil
 	case "tunnel.enabled":
 		return strconv.FormatBool(cfg.Tunnel.Enabled), nil
 	case "tunnel.id":

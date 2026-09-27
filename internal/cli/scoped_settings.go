@@ -62,6 +62,11 @@ func scopedSettingSet(cmd *cobra.Command, key, value string) error {
 	return err
 }
 
+func scopedSettingUnset(cmd *cobra.Command, key string) error {
+	_, err := settingService().Unset(cmd.Context(), key)
+	return err
+}
+
 func scopedToggleCommand(use, title, success, key string, enabled bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   use,
@@ -249,8 +254,106 @@ func integrationSettingsCommand() *cobra.Command {
 		integrationModeSettingsCommand("caveman"),
 		integrationBinarySettingsCommand("rtk"),
 		integrationBinarySettingsCommand("codegraph"),
+		integrationTypeSafeSettingsCommand(),
 	)
 	return cmd
+}
+
+func integrationTypeSafeSettingsCommand() *cobra.Command {
+	prefix := "integrations.typesafe"
+	cmd := &cobra.Command{Use: "typesafe", Short: "Manage TypeSafe integration settings"}
+	cmd.AddCommand(
+		scopedToggleCommand("enable", "Enable TypeSafe integration", "TypeSafe integration enabled", prefix+".enabled", true),
+		scopedToggleCommand("disable", "Disable TypeSafe integration", "TypeSafe integration disabled", prefix+".enabled", false),
+		scopedValueCommand("model", "Set TypeSafe model", "TypeSafe model updated", prefix+".model"),
+		scopedValueCommand("timeout", "Set TypeSafe timeout in milliseconds", "TypeSafe timeout updated", prefix+".timeout_ms"),
+		typeSafeStatusCommand(),
+		typeSafeProbeCommand(),
+	)
+	key := &cobra.Command{Use: "key", Short: "Manage the TypeSafe API key"}
+	set := &cobra.Command{
+		Use: "set <api-key>", Short: "Set the TypeSafe API key", Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := scopedSettingSet(cmd, prefix+".api_key", args[0]); err != nil {
+				return err
+			}
+			renderMutationSuccess(cmd, "TypeSafe API key configured", presentation.Field{Label: "setting", Value: prefix + ".api_key"})
+			return nil
+		},
+	}
+	remove := &cobra.Command{
+		Use: "remove", Short: "Remove the TypeSafe API key", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := scopedSettingUnset(cmd, prefix+".api_key"); err != nil {
+				return err
+			}
+			renderMutationSuccess(cmd, "TypeSafe API key removed", presentation.Field{Label: "setting", Value: prefix + ".api_key"})
+			return nil
+		},
+	}
+	key.AddCommand(markScopedSettings(set, prefix+".api_key"), markScopedSettings(remove, prefix+".api_key"))
+	cmd.AddCommand(key)
+	return cmd
+}
+
+func typeSafeStatusCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "status", Short: "Show TypeSafe integration status", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			status, err := application.NewTypeSafeService().Status(cmd.Context())
+			if err != nil {
+				return err
+			}
+			renderTypeSafeStatus(commandPresenter(cmd), status)
+			return nil
+		},
+	}
+}
+
+func typeSafeProbeCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "probe", Short: "Probe TypeSafe model availability", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result, err := application.NewTypeSafeService().Probe(cmd.Context())
+			if err != nil {
+				return err
+			}
+			presenter := commandPresenter(cmd)
+			presenter.Frame("TypeSafe probe")
+			presenter.StateSection(presentation.StatusSuccess, "TypeSafe model is available")
+			presenter.NestedFields(
+				presentation.Field{Label: "model", Value: result.Status.Model},
+				presentation.Field{Label: "http", Value: result.Provider.HTTPStatus},
+			)
+			presenter.Complete("Probe complete")
+			return nil
+		},
+	}
+}
+
+func renderTypeSafeStatus(presenter *presentation.Presenter, status application.TypeSafeStatus) {
+	presenter.Frame("TypeSafe integration")
+	kind := presentation.StatusInfo
+	if status.State == application.TypeSafeReady {
+		kind = presentation.StatusSuccess
+	} else if status.State == application.TypeSafeMisconfigured || status.State == application.TypeSafeDegraded {
+		kind = presentation.StatusWarning
+	}
+	presenter.StateSection(kind, "TypeSafe is "+string(status.State))
+	presenter.NestedFields(
+		presentation.Field{Label: "enabled", Value: status.Enabled},
+		presentation.Field{Label: "api key", Value: configuredLabel(status.APIKeyConfigured)},
+		presentation.Field{Label: "model", Value: status.Model},
+		presentation.Field{Label: "timeout ms", Value: status.TimeoutMS},
+	)
+	presenter.Complete("Status complete")
+}
+
+func configuredLabel(configured bool) string {
+	if configured {
+		return "configured"
+	}
+	return "not configured"
 }
 
 func integrationModeSettingsCommand(name string) *cobra.Command {

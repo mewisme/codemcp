@@ -129,6 +129,10 @@ const (
 	IntegrationCodeGraphStatus       ID = "integration.codegraph.status"
 	IntegrationCodeGraphProbe        ID = "integration.codegraph.probe"
 	IntegrationCodeGraphInstall      ID = "integration.codegraph.install"
+	IntegrationTypeSafeStatus        ID = "integration.typesafe.status"
+	IntegrationTypeSafeEnable        ID = "integration.typesafe.enable"
+	IntegrationTypeSafeDisable       ID = "integration.typesafe.disable"
+	IntegrationTypeSafeProbe         ID = "integration.typesafe.probe"
 )
 
 const (
@@ -189,6 +193,8 @@ func buildSpecs() []Spec {
 			"integration caveman enable", "integration caveman disable", "integration caveman mode",
 			"integration rtk enable", "integration rtk disable", "integration rtk path",
 			"integration codegraph enable", "integration codegraph disable", "integration codegraph path",
+			"integration typesafe enable", "integration typesafe disable", "integration typesafe model", "integration typesafe timeout",
+			"integration typesafe key set", "integration typesafe key remove",
 			"tunnel admin organization set", "tunnel admin workspace set", "tunnel admin tenant set",
 			"tunnel admin enable", "tunnel admin disable",
 		),

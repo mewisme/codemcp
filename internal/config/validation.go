@@ -55,6 +55,12 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("integrations.codegraph.path must be absolute: %q", path)
 		}
 	}
+	if strings.TrimSpace(cfg.Integrations.TypeSafe.Model) == "" {
+		return errors.New("integrations.typesafe.model must not be empty")
+	}
+	if cfg.Integrations.TypeSafe.TimeoutMS < 100 || cfg.Integrations.TypeSafe.TimeoutMS > 30000 {
+		return fmt.Errorf("integrations.typesafe.timeout_ms must be between 100 and 30000: %d", cfg.Integrations.TypeSafe.TimeoutMS)
+	}
 	exposure := NormalizeExposure(cfg.Server.Expose)
 	switch exposure.Mode {
 	case ExposureNone, ExposureAll, ExposureWildcard:

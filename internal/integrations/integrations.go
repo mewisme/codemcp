@@ -13,6 +13,7 @@ const (
 	CavemanID   ID = "caveman"
 	RTKID       ID = "rtk"
 	CodeGraphID ID = "codegraph"
+	TypeSafeID  ID = "typesafe"
 )
 
 type Identity struct {
@@ -46,11 +47,18 @@ type CodeGraph struct {
 	Path    string `json:"path"`
 }
 
+type TypeSafe struct {
+	Enabled   bool   `json:"enabled"`
+	Model     string `json:"model"`
+	TimeoutMS int    `json:"timeout_ms"`
+}
+
 type Config struct {
 	Ponytail  Ponytail  `json:"ponytail"`
 	Caveman   Caveman   `json:"caveman"`
 	RTK       RTK       `json:"rtk"`
 	CodeGraph CodeGraph `json:"codegraph"`
+	TypeSafe  TypeSafe  `json:"typesafe"`
 }
 
 func Default() Config {
@@ -59,6 +67,7 @@ func Default() Config {
 		Caveman:   Caveman{Active: true, Mode: "full"},
 		RTK:       RTK{Enabled: true},
 		CodeGraph: CodeGraph{Enabled: false},
+		TypeSafe:  TypeSafe{Enabled: false, Model: "jev-latest", TimeoutMS: 3000},
 	}
 }
 
@@ -72,6 +81,8 @@ func IdentityFor(id ID) (Identity, bool) {
 		return Identity{ID: RTKID, Name: "RTK"}, true
 	case CodeGraphID:
 		return Identity{ID: CodeGraphID, Name: "CodeGraph"}, true
+	case TypeSafeID:
+		return Identity{ID: TypeSafeID, Name: "TypeSafe"}, true
 	default:
 		return Identity{}, false
 	}

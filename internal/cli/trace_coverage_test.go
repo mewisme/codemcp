@@ -72,10 +72,12 @@ func commandTraceContracts() map[string]commandTraceContract {
 		"integration caveman enable", "integration caveman disable", "integration caveman mode",
 		"integration rtk enable", "integration rtk disable", "integration rtk path",
 		"integration codegraph enable", "integration codegraph disable", "integration codegraph path",
+		"integration typesafe enable", "integration typesafe disable", "integration typesafe model", "integration typesafe timeout", "integration typesafe key set",
 		"tunnel admin organization set", "tunnel admin workspace set", "tunnel admin tenant set",
 		"tunnel admin enable", "tunnel admin disable", "tunnel key set",
 	)
-	add(commandTraceInstrumented, []string{"setting.unset.completed"}, "config unset", "tunnel key remove", "tunnel admin key remove")
+	add(commandTraceInstrumented, []string{"setting.unset.completed"}, "config unset", "tunnel key remove", "tunnel admin key remove", "integration typesafe key remove")
+	add(commandTraceTrivial, nil, "integration typesafe status", "integration typesafe probe")
 	add(commandTraceInstrumented, []string{"setting.rotate.completed"}, "config rotate")
 	add(commandTraceInstrumented, []string{"setting.reveal.completed"}, "config reveal")
 	add(commandTraceInstrumented, []string{"config.secrets.migrate.completed"}, "config migrate")

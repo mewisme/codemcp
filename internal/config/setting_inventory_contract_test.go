@@ -12,6 +12,7 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 		"auth.admin_enabled", "auth.admin_token_hash", "auth.mcp_enabled", "auth.mcp_legacy_bearer", "auth.mcp_token_hash",
 		"integrations.caveman.active", "integrations.caveman.mode", "integrations.codegraph.enabled", "integrations.codegraph.path",
 		"integrations.ponytail.active", "integrations.ponytail.mode", "integrations.rtk.enabled", "integrations.rtk.path",
+		"integrations.typesafe.enabled", "integrations.typesafe.model", "integrations.typesafe.timeout_ms",
 		"permissions.allow_dirs", "permissions.mcp_config_read", "permissions.mcp_config_write",
 		"notifications.approval.desktop_enabled", "notifications.approval.enabled", "notifications.approval.pending",
 		"notifications.approval.resolved", "notifications.approval.telegram_enabled",
@@ -140,10 +141,11 @@ func TestUniversalSettingManagedCredentialVocabulary(t *testing.T) {
 		clearable    bool
 		verifiable   bool
 	}{
-		"auth.mcp_token":   {state: "auth.mcp_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
-		"auth.admin_token": {state: "auth.admin_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
-		"tunnel.api_key":   {state: "tunnel.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
-		"tunnel.admin.key": {state: "tunnel.admin.key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true, verifiable: true},
+		"auth.mcp_token":                {state: "auth.mcp_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
+		"auth.admin_token":              {state: "auth.admin_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
+		"integrations.typesafe.api_key": {state: "integrations.typesafe.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
+		"tunnel.api_key":                {state: "tunnel.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
+		"tunnel.admin.key":              {state: "tunnel.admin.key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true, verifiable: true},
 	}
 	for key, expected := range want {
 		spec, ok := SettingByKey(key)

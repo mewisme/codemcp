@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/config"
+	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -92,6 +93,15 @@ func (s *SettingService) ValidateApply(ctx context.Context, changes []SettingCha
 			return fmt.Errorf("unsupported setting resource: %s", resource)
 		}
 	}
+	if item, ok, err := typeSafeSecretSettingChange(resolved); ok || err != nil {
+		if err != nil {
+			return err
+		}
+		if !item.change.Unset && strings.TrimSpace(item.change.Value) == "" {
+			return errors.New("integrations.typesafe.api_key must not be empty; unset it to clear the credential")
+		}
+		return nil
+	}
 
 	replaceRuntimeKey, replaceAdminKey := false, false
 	for _, item := range resolved {
@@ -165,6 +175,29 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 			return SettingApplyResult{}, fmt.Errorf("unsupported setting resource: %s", dynamicResource)
 		}
 	}
+	if item, ok, err := typeSafeSecretSettingChange(resolved); ok || err != nil {
+		if err != nil {
+			return SettingApplyResult{}, err
+		}
+		value := item.change.Value
+		if item.change.Unset {
+			value = ""
+		} else if strings.TrimSpace(value) == "" {
+			return SettingApplyResult{}, errors.New("integrations.typesafe.api_key must not be empty; unset it to clear the credential")
+		}
+		if err := typesafeintegration.UpdateAPIKey(config.RootPath(), value); err != nil {
+			return SettingApplyResult{}, err
+		}
+		presented, err := s.Present(ctx, item.spec.Key)
+		if err != nil {
+			return SettingApplyResult{}, err
+		}
+		cfg, err := LoadConfig(ctx)
+		if err != nil {
+			return SettingApplyResult{}, err
+		}
+		return SettingApplyResult{Results: []SettingResult{presented}, Config: cfg}, nil
+	}
 
 	replaceRuntimeKey, replaceAdminKey := false, false
 	for _, item := range resolved {
@@ -228,6 +261,19 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 	}
 	tracepkg.Emit(ctx, "CONFIG", "setting.apply.persisted", "Canonical setting mutation persisted", tracepkg.String("config", source.Path), tracepkg.Int("changes", len(resolved)), tracepkg.Any("keys", keys), tracepkg.Bool("runtime_reloaded", reloaded))
 	return SettingApplyResult{Results: results, Config: next, RuntimeReloaded: reloaded}, nil
+}
+
+func typeSafeSecretSettingChange(resolved []resolvedSettingChange) (resolvedSettingChange, bool, error) {
+	for _, item := range resolved {
+		if item.spec.Key != "integrations.typesafe.api_key" {
+			continue
+		}
+		if len(resolved) != 1 {
+			return resolvedSettingChange{}, false, errors.New("TypeSafe API key mutation cannot be combined with config fields in one transaction")
+		}
+		return item, true, nil
+	}
+	return resolvedSettingChange{}, false, nil
 }
 
 func resolveSettingChanges(changes []SettingChange) ([]resolvedSettingChange, error) {

@@ -13,6 +13,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configbundle"
 	"go.mewis.me/codemcp/internal/configformat"
+	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	"go.mewis.me/codemcp/internal/secretstore"
@@ -171,6 +172,7 @@ func PurgeStoredSecretsContext(ctx context.Context, root string) error {
 		return err
 	}
 	entries = append(entries, secretstore.AccountName(secretstore.DomainCluster, "relay-token"))
+	entries = append(entries, typesafeintegration.APIKeySecretName)
 	entries = append(entries, oauthEntries...)
 	entries = append(entries, upstreamEntries...)
 	changes := make([]secretstore.Change, 0, len(entries))

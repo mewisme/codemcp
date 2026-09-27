@@ -30,6 +30,21 @@ type FieldSelectorMatch struct {
 
 var virtualSettingSpecs = []FieldSpec{
 	{
+		Key: "integrations.typesafe.api_key", Label: "TypeSafe API key", Section: FieldSectionIntegrations, Kind: FieldString,
+		Description: "stores the managed TypeSafe API credential",
+		Details:     "The raw API key is stored only in the canonical secret store. Saving or removing it never probes TypeSafe.",
+		Guidance:    "Manage this credential with the TypeSafe integration key commands.",
+		Virtual:     true, Writable: true, Secret: true, Clearable: true, ConfiguredStateKey: "integrations.typesafe.api_key_configured",
+		Presentation: SettingPresentationMaskedPreview, ApplicationOwner: "integration:typesafe",
+		ValueRole:      SettingValueConfigured,
+		ScopedCommands: []string{"integration typesafe key set", "integration typesafe key remove"},
+	},
+	{
+		Key: "integrations.typesafe.api_key_configured", Label: "TypeSafe API key configured", Section: FieldSectionIntegrations, Kind: FieldBool,
+		Virtual: true, Derived: true, Readable: true, ApplicationOwner: "integration:typesafe",
+		ScopedCommands: []string{"integration typesafe status"},
+	},
+	{
 		Key: "auth.mcp_token", Label: "MCP token", Section: FieldSectionAccess, Kind: FieldString,
 		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "auth.mcp_token_configured",
 		Presentation: SettingPresentationConfiguredState, ApplicationOwner: "auth.credentials",
@@ -253,6 +268,15 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ScopedCommands = []string{"integration codegraph enable", "integration codegraph disable"}
 	case "integrations.codegraph.path":
 		spec.ScopedCommands = []string{"integration codegraph path"}
+	case "integrations.typesafe.enabled":
+		spec.ApplicationOwner = "integration:typesafe"
+		spec.ScopedCommands = []string{"integration typesafe enable", "integration typesafe disable"}
+	case "integrations.typesafe.model":
+		spec.ApplicationOwner = "integration:typesafe"
+		spec.ScopedCommands = []string{"integration typesafe model"}
+	case "integrations.typesafe.timeout_ms":
+		spec.ApplicationOwner = "integration:typesafe"
+		spec.ScopedCommands = []string{"integration typesafe timeout"}
 	case "tunnel.enabled":
 		spec.ApplicationOwner = "tunnel.runtime"
 		spec.ScopedCommands = []string{"tunnel configure", "tunnel enable", "tunnel disable"}

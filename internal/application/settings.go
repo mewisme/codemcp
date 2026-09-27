@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/config"
+	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -419,6 +420,9 @@ func readConfiguredSetting(ctx context.Context, key string) (bool, bool, error) 
 	case "tunnel.admin.manage_access":
 		status, err := TunnelAdminKeyStatusContext(ctx)
 		return status.Access.Manage, true, err
+	case "integrations.typesafe.api_key_configured":
+		status, err := typesafeintegration.Credential(config.RootPath())
+		return status.Configured, true, err
 	default:
 		return false, false, nil
 	}

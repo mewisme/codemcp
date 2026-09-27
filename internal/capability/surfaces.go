@@ -20,6 +20,11 @@ var knownSurfaceReasons = map[string]struct{}{
 	reasonTelegramExcluded: {}, reasonNotApplicable: {},
 }
 
+var tuiExemptIDs = map[ID]bool{
+	IntegrationTypeSafeStatus: true,
+	IntegrationTypeSafeProbe:  true,
+}
+
 func surfaceContracts(spec Spec) []SurfaceContract {
 	contracts := make([]SurfaceContract, 0, len(AllSurfaces))
 	for _, surface := range AllSurfaces {
@@ -33,7 +38,7 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 				contract.Reason = exemptionReason(spec, surface)
 			}
 		case SurfaceTUI:
-			if spec.HasCLI() && spec.Audience != AudienceAgent && spec.Audience != AudienceProtocol {
+			if spec.HasCLI() && spec.Audience != AudienceAgent && spec.Audience != AudienceProtocol && !tuiExemptIDs[spec.ID] {
 				contract.State = SurfaceRequired
 			} else {
 				contract.State = SurfaceExempt
