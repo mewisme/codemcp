@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -65,7 +66,7 @@ func telegramSettingsCommand() *cobra.Command {
 		markScopedSettings(remove, "telegram.token"),
 		markScopedSettings(status, "telegram.token"),
 	)
-	cmd.AddCommand(token, telegramSetupCommand())
+	cmd.AddCommand(token, telegramSetupCommand(), telegramLogoutCommand())
 	return cmd
 }
 
@@ -75,6 +76,25 @@ func telegramSetupCommand() *cobra.Command {
 		Short: "Pair an authorized Telegram user",
 		Args:  cobra.NoArgs,
 		RunE:  runTelegramSetup,
+	}
+}
+
+func telegramLogoutCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "logout <user-id>",
+		Short: "Remove an authorized Telegram user",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			userID, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil || userID <= 0 {
+				return errors.New("telegram user ID must be a positive integer")
+			}
+			if _, err := application.SetTelegramAuthorizedUser(cmd.Context(), userID, false, application.TelegramAuthorizationOptions{ReloadRuntime: true}); err != nil {
+				return err
+			}
+			renderMutationSuccess(cmd, "Telegram user logged out", presentation.Field{Label: "user", Value: strconv.FormatInt(userID, 10)})
+			return nil
+		},
 	}
 }
 

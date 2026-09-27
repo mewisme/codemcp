@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/secretstore"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -18,6 +20,57 @@ func TestTelegramSetupCommandRegistered(t *testing.T) {
 	}
 	if cmd == nil || cmd.Name() != "setup" {
 		t.Fatalf("telegram setup command=%v", cmd)
+	}
+}
+
+func TestCompletedTelegramCLIEntryPointsAreRegistered(t *testing.T) {
+	for _, item := range capability.TelegramRolloutInventory() {
+		if item.State != capability.TelegramRolloutLive {
+			continue
+		}
+		for _, entry := range item.EntryPoints {
+			if entry.Kind != capability.TelegramEntryCLICommand {
+				continue
+			}
+			parts := strings.Fields(entry.Value)
+			cmd, remaining, err := newRootCommand().Find(parts)
+			if err != nil || cmd == nil || len(remaining) != 0 || cmd.Name() != parts[len(parts)-1] {
+				t.Fatalf("completed Telegram CLI entry point %q is unreachable: command=%v remaining=%v err=%v", entry.Value, cmd, remaining, err)
+			}
+		}
+	}
+}
+
+func TestTelegramLogoutUsesCanonicalAuthorizationMutation(t *testing.T) {
+	root := isolateUniversalConfigCLI(t)
+	t.Setenv(configformat.EnvConfigDir, root)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Telegram.Enabled = true
+	cfg.Telegram.AllowedUserIDs = []int64{42}
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.SetArgs([]string{"telegram", "logout", "42"})
+	if err := cmd.ExecuteContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Telegram.Enabled || len(cfg.Telegram.AllowedUserIDs) != 0 {
+		t.Fatalf("Telegram logout config=%#v", cfg.Telegram)
+	}
+	if !strings.Contains(output.String(), "Telegram user logged out") {
+		t.Fatalf("Telegram logout output=%q", output.String())
 	}
 }
 

@@ -61,6 +61,44 @@ func TestRouterDispatchesOnlyCommandsAndCallbacks(t *testing.T) {
 	}
 }
 
+func TestCompletedTelegramNavigationEntryPointsAreRegistered(t *testing.T) {
+	ui, err := NewInterface(InterfaceOptions{Runtime: &Runtime{generation: 1}, Dispatcher: &recordingDispatcher{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	routerCommands := map[string]bool{}
+	for _, item := range ui.router.snapshot(true) {
+		routerCommands[item.key] = true
+	}
+	routerCallbacks := ui.router.snapshot(false)
+	commandRoutes := map[Route]bool{}
+	for _, command := range Commands() {
+		commandRoutes[command.Route] = true
+	}
+
+	for _, item := range capability.TelegramRolloutInventory() {
+		if item.State != capability.TelegramRolloutLive {
+			continue
+		}
+		for _, entry := range item.EntryPoints {
+			switch entry.Kind {
+			case capability.TelegramEntryCommand:
+				if !routerCommands[entry.Value] {
+					t.Fatalf("completed Telegram command %q is not registered in the production router", entry.Value)
+				}
+			case capability.TelegramEntryRoute:
+				if !commandRoutes[Route(entry.Value)] {
+					t.Fatalf("completed Telegram route %q is not reachable from the production command registry", entry.Value)
+				}
+			case capability.TelegramEntryCallback:
+				if entry.Value != "*" || len(routerCallbacks) == 0 {
+					t.Fatalf("completed Telegram callback route %q is not registered", entry.Value)
+				}
+			}
+		}
+	}
+}
+
 func TestCallbackCodecRejectsTamperingAndBoundsPayload(t *testing.T) {
 	codec, err := NewCallbackCodec([]byte("0123456789abcdef0123456789abcdef"))
 	if err != nil {

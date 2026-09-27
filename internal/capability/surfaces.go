@@ -9,7 +9,7 @@ const (
 	reasonNoAdminAPI       = "no current Admin API route owns this operation"
 	reasonNoMCP            = "operation has no MCP tool binding"
 	reasonMCPPending       = "MCP tool binding is defined but not active yet"
-	reasonTelegramPending  = "Telegram interface is not implemented yet"
+	reasonTelegramPending  = "Telegram administration coverage is staged and not globally active yet"
 	reasonTelegramExcluded = "operation is outside Telegram administration scope"
 	reasonNotApplicable    = "surface is not applicable"
 )

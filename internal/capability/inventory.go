@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const InventoryVersion = 1
+const InventoryVersion = 2
 
 type SurfaceLifecycle struct {
 	Surface Surface `json:"surface"`
@@ -14,9 +14,10 @@ type SurfaceLifecycle struct {
 }
 
 type InventorySnapshot struct {
-	Version    int                  `json:"version"`
-	Surfaces   []SurfaceLifecycle   `json:"surfaces"`
-	Operations []OperationInventory `json:"operations"`
+	Version         int                   `json:"version"`
+	Surfaces        []SurfaceLifecycle    `json:"surfaces"`
+	Operations      []OperationInventory  `json:"operations"`
+	TelegramRollout []TelegramRolloutItem `json:"telegram_rollout"`
 }
 
 type OperationInventory struct {
@@ -82,7 +83,7 @@ func Inventory() InventorySnapshot {
 		})
 	}
 	sort.Slice(operations, func(i, j int) bool { return operations[i].ID < operations[j].ID })
-	return InventorySnapshot{Version: InventoryVersion, Surfaces: SurfaceLifecycles(), Operations: operations}
+	return InventorySnapshot{Version: InventoryVersion, Surfaces: SurfaceLifecycles(), Operations: operations, TelegramRollout: TelegramRolloutInventory()}
 }
 
 func InventoryJSON() ([]byte, error) {

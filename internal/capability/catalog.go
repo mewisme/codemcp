@@ -203,7 +203,7 @@ func buildSpecs() []Spec {
 			"integration codegraph enable", "integration codegraph disable", "integration codegraph path",
 			"integration typesafe model", "integration typesafe timeout",
 			"integration typesafe key set", "integration typesafe key remove",
-			"telegram token set", "telegram token remove",
+			"telegram token set", "telegram token remove", "telegram logout",
 			"tunnel admin organization set", "tunnel admin workspace set", "tunnel admin tenant set",
 			"tunnel admin enable", "tunnel admin disable",
 		),
