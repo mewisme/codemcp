@@ -24,7 +24,9 @@ func defaultActionRegistry() *action.Registry {
 		navigationAction("app.go.workspaces", "Workspaces", Route{Kind: RouteWorkspaces}, []string{"workspace", "workspaces", "ws", "container", "containers"}, capability.WorkspaceList, capability.WorkspaceShow, capability.WorkspaceAccessList, capability.WorkspaceContainerList, capability.WorkspaceContainerShow),
 		navigationAction("app.go.upstreams", "Upstreams", Route{Kind: RouteMCP}, []string{"mcp", "server", "upstream"}, capability.UpstreamServerList, capability.UpstreamServerShow, capability.UpstreamAuthStatus),
 		navigationAction("app.go.tunnel", "Tunnel", Route{Kind: RouteTunnel}, []string{"tunnel", "secure"}, capability.TunnelStatus, capability.TunnelAdminKeyStatus),
-		navigationAction("app.go.tunnels", "Managed Tunnels", Route{Kind: RouteTunnels}, []string{"tunnel", "tunnels", "managed", "openai"}, capability.TunnelList, capability.TunnelGet),
+		navigationAction("app.go.tools", "Tools", Route{Kind: RouteTools}, []string{"tools", "schema", "inventory"}, capability.ToolInventoryRead),
+		navigationAction("app.go.integrations", "Integrations", Route{Kind: RouteIntegrations}, []string{"integration", "rtk", "codegraph", "typesafe"}, capability.IntegrationRTKStatus, capability.IntegrationCodeGraphStatus, capability.IntegrationTypeSafeStatus),
+		navigationAction("app.go.doctor", "Doctor", Route{Kind: RouteDoctor}, []string{"doctor", "diagnostics", "health", "checkpoint", "history"}, capability.DoctorRead),
 		navigationAction("app.go.requests", "Requests", Route{Kind: RouteRequests}, []string{"request", "approval"}, capability.RequestView),
 		navigationAction("app.go.completions", "Agent Completions", Route{Kind: RouteCompletions}, []string{"agent", "completion", "completions", "history", "current", "list", "view", "doctor", "health"}, capability.CompletionCurrent, capability.CompletionDoctor, capability.CompletionList, capability.CompletionView),
 		navigationAction("app.go.logs", "Logs", Route{Kind: RouteLogs}, []string{"logs", "events", "journal"}),
@@ -42,6 +44,7 @@ func defaultActionRegistry() *action.Registry {
 	actions = append(actions, workspaceActions()...)
 	actions = append(actions, mcpActions()...)
 	actions = append(actions, tunnelActions()...)
+	actions = append(actions, readViewActions()...)
 	actions = append(actions, requestActions()...)
 	actions = append(actions, logsActions()...)
 	actions = append(actions, systemActions()...)
@@ -197,21 +200,32 @@ func tunnelActions() []action.Action {
 		editorNavigationAction("tunnel.admin.key.set", "Set admin key", "Tunnel", "Verify and store an OpenAI tunnel admin key", []string{"tunnel", "admin", "key", "set"}, []string{"tunnel", "admin", "key", "set"}, func(ctx action.Context) bool { return ctx.Route == string(RouteTunnel) }, func(action.Context) Route { return Route{Kind: RouteTunnel, Section: "admin-key", Action: "edit"} }),
 		tunnelAction("tunnel.admin.key.verify", "Verify admin key", "Re-verify Tunnels Manage access for the stored admin key", []string{"tunnel", "admin", "key", "verify"}, []string{"tunnel", "admin", "key", "verify"}, tuipage.TunnelAdminKeyVerify, RouteTunnel, false),
 		tunnelAction("tunnel.admin.key.remove", "Remove admin key", "Remove the stored tunnel admin key and verification scope", []string{"tunnel", "admin", "key", "remove"}, []string{"tunnel", "admin", "key", "remove"}, tuipage.TunnelAdminKeyRemove, RouteTunnel, false),
-		tunnelAction("tunnel.managed.refresh", "Refresh managed tunnels", "Refresh managed tunnels from the OpenAI control plane", []string{"tunnel", "managed", "refresh", "list"}, []string{"tunnel", "list"}, tuipage.TunnelManagedRefresh, RouteTunnels, false),
-		editorNavigationAction("tunnel.managed.create", "Create managed tunnel", "Tunnel", "Create a tunnel through the OpenAI Tunnel Management API", []string{"tunnel", "managed", "create"}, []string{"tunnel", "create"}, func(ctx action.Context) bool {
-			return ctx.Route == string(RouteTunnels) && tunnelAdminManageAvailable()
-		}, func(action.Context) Route { return Route{Kind: RouteTunnels, Action: "create"} }),
-		editorNavigationAction("tunnel.managed.update", "Update managed tunnel", "Tunnel", "Update the current managed tunnel", []string{"tunnel", "managed", "update", "edit"}, []string{"tunnel", "update"}, func(ctx action.Context) bool {
-			return ctx.Route == string(RouteTunnels) && ctx.ResourceID != "" && tunnelAdminManageAvailable()
-		}, func(ctx action.Context) Route {
-			return Route{Kind: RouteTunnels, ResourceID: ctx.ResourceID, Action: "edit"}
-		}),
-		editorNavigationAction("tunnel.managed.configure", "Use managed tunnel", "Tunnel", "Configure cm to use the current managed tunnel", []string{"tunnel", "managed", "use", "select", "switch", "runtime"}, []string{"tunnel", "use"}, func(ctx action.Context) bool {
-			return ctx.Route == string(RouteTunnels) && ctx.ResourceID != "" && tunnelAdminReadAvailable()
-		}, func(ctx action.Context) Route {
-			return Route{Kind: RouteTunnels, ResourceID: ctx.ResourceID, Action: "configure"}
-		}),
-		tunnelAction("tunnel.managed.delete", "Delete managed tunnel", "Permanently delete the current managed tunnel", []string{"tunnel", "managed", "delete", "remove"}, []string{"tunnel", "delete"}, tuipage.TunnelManagedDelete, RouteTunnels, true),
+	}
+}
+
+func readViewActions() []action.Action {
+	return []action.Action{
+		{ID: "integration.rtk.probe", Title: "Probe RTK", Category: "Integrations", Description: "Probe RTK executable availability", Keywords: []string{"rtk", "probe", "integration"}, Operation: capability.IntegrationRTKProbe, Capabilities: []capability.ID{capability.IntegrationRTKProbe}, Scope: action.ScopeGlobal, Run: func(context.Context, action.Context) tea.Cmd {
+			return func() tea.Msg {
+				return navigateMsg{route: Route{Kind: RouteIntegrations, ResourceID: "rtk", Action: "probe"}}
+			}
+		}},
+		{ID: "integration.codegraph.probe", Title: "Probe CodeGraph", Category: "Integrations", Description: "Probe CodeGraph executable availability", Keywords: []string{"codegraph", "probe", "integration"}, Operation: capability.IntegrationCodeGraphProbe, Capabilities: []capability.ID{capability.IntegrationCodeGraphProbe}, Scope: action.ScopeGlobal, Run: func(context.Context, action.Context) tea.Cmd {
+			return func() tea.Msg {
+				return navigateMsg{route: Route{Kind: RouteIntegrations, ResourceID: "codegraph", Action: "probe"}}
+			}
+		}},
+		{ID: "workspace.executions", Title: "Workspace command executions", Category: "Workspace", Description: "Inspect command executions for the current workspace", Keywords: []string{"workspace", "execution", "command", "history"}, Capabilities: []capability.ID{capability.ExecutionList, capability.ExecutionView}, Scope: action.ScopeResource, Available: func(ctx action.Context) bool { return ctx.Route == string(RouteWorkspaces) && ctx.ResourceID != "" }, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+			return func() tea.Msg { return navigateMsg{route: Route{Kind: RouteExecutions, Mode: ctx.ResourceID}} }
+		}},
+		{ID: "workspace.processes", Title: "Workspace background processes", Category: "Workspace", Description: "Inspect background processes for the current workspace", Keywords: []string{"workspace", "process", "background"}, Capabilities: []capability.ID{capability.ProcessList, capability.ProcessView}, Scope: action.ScopeResource, Available: func(ctx action.Context) bool { return ctx.Route == string(RouteWorkspaces) && ctx.ResourceID != "" }, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+			return func() tea.Msg { return navigateMsg{route: Route{Kind: RouteProcesses, Mode: ctx.ResourceID}} }
+		}},
+		{ID: "workspace.codegraph.status", Title: "Workspace CodeGraph status", Category: "Workspace", Description: "Inspect CodeGraph index status for the current workspace", Keywords: []string{"workspace", "codegraph", "index", "status"}, Operation: capability.IntegrationCodeGraphWorkspaceStatus, Capabilities: []capability.ID{capability.IntegrationCodeGraphWorkspaceStatus}, Scope: action.ScopeResource, Available: func(ctx action.Context) bool { return ctx.Route == string(RouteWorkspaces) && ctx.ResourceID != "" }, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+			return func() tea.Msg {
+				return navigateMsg{route: Route{Kind: RouteIntegrations, ResourceID: "codegraph", Mode: ctx.ResourceID}}
+			}
+		}},
 	}
 }
 

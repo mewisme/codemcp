@@ -443,7 +443,7 @@ func (page *TunnelPage) MouseTargets(originX, originY, z int) []component.MouseT
 	}
 	view := page.runtimeViewWithFeedback(page.width, feedback)
 	return keyHintMouseTargets(view, map[string]string{
-		"configure": "e", "toggle": "space", "sync": "s", "foreground": "f", "admin key": "a", "verify": "v", "remove admin": "d", "managed tunnels": "m",
+		"configure": "e", "toggle": "space", "sync": "s", "foreground": "f", "admin key": "a", "verify": "v", "remove admin": "d",
 	}, originX, originY, z)
 }
 
@@ -498,8 +498,6 @@ func (page *TunnelPage) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			cmd, err := page.openCommand(TunnelAdminKeyRemove, "")
 			page.err = err
 			return cmd, true
-		case "m":
-			return func() tea.Msg { return NavigateMsg{Path: []string{"tunnels"}} }, true
 		}
 		return nil, false
 	}
@@ -947,7 +945,7 @@ func (page *TunnelPage) runtimeHelpBindings() []key.Binding {
 	if page.adminStatus.Configured {
 		bindings = append(bindings, component.Binding([]string{"v"}, "v", "verify"), component.Binding([]string{"d"}, "d", "remove admin"))
 	}
-	return append(bindings, component.Binding([]string{"m"}, "m", "managed tunnels"))
+	return bindings
 }
 
 func tunnelSection(title string, fields ...[2]string) string {

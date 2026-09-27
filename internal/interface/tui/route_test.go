@@ -16,8 +16,16 @@ func TestParseRoute(t *testing.T) {
 		{[]string{"containers", "wsc_abc"}, Route{Kind: RouteContainers, ResourceID: "wsc_abc"}},
 		{[]string{"upstream", "github"}, Route{Kind: RouteMCP, ResourceID: "github"}},
 		{[]string{"tunnel"}, Route{Kind: RouteTunnel}},
-		{[]string{"tunnels"}, Route{Kind: RouteTunnels}},
-		{[]string{"tunnels", "tunnel_abc"}, Route{Kind: RouteTunnels, ResourceID: "tunnel_abc"}},
+		{[]string{"tools"}, Route{Kind: RouteTools}},
+		{[]string{"integrations"}, Route{Kind: RouteIntegrations}},
+		{[]string{"integrations", "rtk", "probe"}, Route{Kind: RouteIntegrations, ResourceID: "rtk", Action: "probe"}},
+		{[]string{"integrations", "codegraph", "probe"}, Route{Kind: RouteIntegrations, ResourceID: "codegraph", Action: "probe"}},
+		{[]string{"integrations", "codegraph", "workspace", "ws_abc"}, Route{Kind: RouteIntegrations, ResourceID: "codegraph", Mode: "ws_abc"}},
+		{[]string{"doctor"}, Route{Kind: RouteDoctor}},
+		{[]string{"executions", "ws_abc"}, Route{Kind: RouteExecutions, Mode: "ws_abc"}},
+		{[]string{"executions", "ws_abc", "exec_1"}, Route{Kind: RouteExecutions, Mode: "ws_abc", ResourceID: "exec_1"}},
+		{[]string{"processes", "ws_abc"}, Route{Kind: RouteProcesses, Mode: "ws_abc"}},
+		{[]string{"processes", "ws_abc", "proc_1"}, Route{Kind: RouteProcesses, Mode: "ws_abc", ResourceID: "proc_1"}},
 		{[]string{"logs"}, Route{Kind: RouteLogs}},
 		{[]string{"logs-exec"}, Route{Kind: RouteLogsExec}},
 		{[]string{"command-execution"}, Route{Kind: RouteLogsExec}},
@@ -32,7 +40,6 @@ func TestParseRoute(t *testing.T) {
 		{[]string{"ws", "ws_abc", "overview"}, Route{Kind: RouteWorkspaces, ResourceID: "ws_abc"}},
 		{[]string{"containers", "wsc_abc", "workspaces"}, Route{Kind: RouteContainers, ResourceID: "wsc_abc", Section: "workspaces"}},
 		{[]string{"upstream", "github", "health"}, Route{Kind: RouteMCP, ResourceID: "github", Section: "health"}},
-		{[]string{"tunnels", "tunnel_abc", "scope"}, Route{Kind: RouteTunnels, ResourceID: "tunnel_abc", Section: "scope"}},
 		{[]string{"requests", "req_abc", "guard"}, Route{Kind: RouteRequests, Mode: "all", ResourceID: "req_abc", Section: "guard"}},
 		{[]string{"requests", "pending"}, Route{Kind: RouteRequests, Mode: "pending"}},
 		{[]string{"requests", "history", "req_abc"}, Route{Kind: RouteRequests, Mode: "history", ResourceID: "req_abc"}},
@@ -61,7 +68,7 @@ func TestParseRoute(t *testing.T) {
 			t.Fatalf("ParseRoute(%v) = %#v, %v; want %#v", test.args, got, err, test.want)
 		}
 	}
-	for _, args := range [][]string{{"missing"}, {"mcp"}, {"server"}, {"servers"}, {"tunnel", "extra"}, {"upstream", "a", "missing"}, {"config", "key", "extra"}, {"logs-exec", "settings"}, {"logs-exec", "exec_a", "extra"}, {"logs-tools", "call_a", "extra"}, {"upstream", "a", "health", "extra"}, {"requests", "history", "req", "guard", "extra"}, {"completions", "completion_a", "extra"}, {"instruction", "missing"}, {"instruction", "rules", "extra"}} {
+	for _, args := range [][]string{{"missing"}, {"mcp"}, {"server"}, {"servers"}, {"tunnels"}, {"managed-tunnels"}, {"tunnel", "extra"}, {"integrations", "rtk", "install"}, {"integrations", "codegraph", "workspace"}, {"executions"}, {"processes"}, {"upstream", "a", "missing"}, {"config", "key", "extra"}, {"logs-exec", "settings"}, {"logs-exec", "exec_a", "extra"}, {"logs-tools", "call_a", "extra"}, {"upstream", "a", "health", "extra"}, {"requests", "history", "req", "guard", "extra"}, {"completions", "completion_a", "extra"}, {"instruction", "missing"}, {"instruction", "rules", "extra"}} {
 		if _, err := ParseRoute(args); err == nil {
 			t.Fatalf("ParseRoute(%v) unexpectedly succeeded", args)
 		}
@@ -85,9 +92,6 @@ func TestParseEditorRoutes(t *testing.T) {
 		{[]string{"upstream", "github", "oauth", "login"}, Route{Kind: RouteMCP, ResourceID: "github", Section: "oauth", Action: "login"}},
 		{[]string{"tunnel", "edit"}, Route{Kind: RouteTunnel, Action: "edit"}},
 		{[]string{"tunnel", "admin-key", "edit"}, Route{Kind: RouteTunnel, Section: "admin-key", Action: "edit"}},
-		{[]string{"tunnels", "create"}, Route{Kind: RouteTunnels, Action: "create"}},
-		{[]string{"tunnels", "tun_1", "edit"}, Route{Kind: RouteTunnels, ResourceID: "tun_1", Action: "edit"}},
-		{[]string{"tunnels", "tun_1", "configure"}, Route{Kind: RouteTunnels, ResourceID: "tun_1", Action: "configure"}},
 		{[]string{"config", "runtime.port", "edit"}, Route{Kind: RouteConfig, ResourceID: "runtime.port", Action: "edit"}},
 		{[]string{"config", "storage", "convert"}, Route{Kind: RouteConfig, Section: "storage", Action: "convert"}},
 		{[]string{"config", "storage", "export"}, Route{Kind: RouteConfig, Section: "storage", Action: "export"}},
@@ -189,7 +193,11 @@ func TestEditorRouteStacksFollowSemanticAncestry(t *testing.T) {
 func TestRouteStacksTreatTopLevelTabsAsRoots(t *testing.T) {
 	for route, want := range map[Route][]Route{
 		{Kind: RouteContainers}:                    {{Kind: RouteContainers}},
-		{Kind: RouteTunnels}:                       {{Kind: RouteTunnel}, {Kind: RouteTunnels}},
+		{Kind: RouteTools}:                         {{Kind: RouteTools}},
+		{Kind: RouteIntegrations}:                  {{Kind: RouteIntegrations}},
+		{Kind: RouteDoctor}:                        {{Kind: RouteDoctor}},
+		{Kind: RouteExecutions, Mode: "ws_demo"}:   {{Kind: RouteExecutions}, {Kind: RouteExecutions, Mode: "ws_demo"}},
+		{Kind: RouteProcesses, Mode: "ws_demo"}:    {{Kind: RouteProcesses}, {Kind: RouteProcesses, Mode: "ws_demo"}},
 		{Kind: RouteLogsExec}:                      {{Kind: RouteLogsExec}},
 		{Kind: RouteLogsTools}:                     {{Kind: RouteLogsTools}},
 		{Kind: RouteRequests, Mode: "pending"}:     {{Kind: RouteRequests, Mode: "pending"}},
@@ -215,7 +223,8 @@ func TestRouteBreadcrumbLabelsUseNavigableAncestry(t *testing.T) {
 		{Route{Kind: RouteWorkspaces, ResourceID: "ws_demo", Section: "context"}, []string{"Workspaces", "ws_demo", "Project Context"}},
 		{Route{Kind: RouteContainers, ResourceID: "wsc_demo", Section: "workspaces", Action: "edit"}, []string{"Containers", "wsc_demo", "Workspaces", "Edit"}},
 		{Route{Kind: RouteMCP, ResourceID: "github", Section: "oauth", Action: "login"}, []string{"Upstreams", "github", "OAuth", "Login"}},
-		{Route{Kind: RouteTunnels, ResourceID: "tun_demo", Action: "configure"}, []string{"Tunnel", "Managed Tunnels", "tun_demo", "Configure"}},
+		{Route{Kind: RouteIntegrations, ResourceID: "codegraph", Mode: "ws_demo"}, []string{"Integrations", "Ws Demo", "codegraph"}},
+		{Route{Kind: RouteExecutions, Mode: "ws_demo", ResourceID: "exec_demo"}, []string{"Command Executions", "Ws Demo", "exec_demo"}},
 		{Route{Kind: RouteRequests, Mode: "pending", ResourceID: "req_demo", Section: "guard"}, []string{"Pending", "req_demo", "Guard"}},
 		{Route{Kind: RouteLogsExec}, []string{"Command Execution"}},
 		{Route{Kind: RouteLogsExec, ResourceID: "exec_demo"}, []string{"Command Execution", "exec_demo"}},
@@ -252,9 +261,15 @@ func TestRouteBreadcrumbInventoryCoversAllChildFamilies(t *testing.T) {
 		{Kind: RouteMCP, ResourceID: "server_a", Section: "oauth", Action: "login"},
 		{Kind: RouteTunnel, Action: "edit"},
 		{Kind: RouteTunnel, Section: "admin-key", Action: "edit"},
-		{Kind: RouteTunnels},
-		{Kind: RouteTunnels, ResourceID: "tun_a", Section: "scope"},
-		{Kind: RouteTunnels, ResourceID: "tun_a", Action: "configure"},
+		{Kind: RouteTools},
+		{Kind: RouteIntegrations},
+		{Kind: RouteIntegrations, ResourceID: "rtk", Action: "probe"},
+		{Kind: RouteIntegrations, ResourceID: "codegraph", Mode: "ws_a"},
+		{Kind: RouteDoctor},
+		{Kind: RouteExecutions, Mode: "ws_a"},
+		{Kind: RouteExecutions, Mode: "ws_a", ResourceID: "exec_a"},
+		{Kind: RouteProcesses, Mode: "ws_a"},
+		{Kind: RouteProcesses, Mode: "ws_a", ResourceID: "proc_a"},
 		{Kind: RouteRequests, Mode: "pending"},
 		{Kind: RouteRequests, Mode: "pending", ResourceID: "req_a"},
 		{Kind: RouteRequests, Mode: "all", ResourceID: "req_a", Section: "command"},

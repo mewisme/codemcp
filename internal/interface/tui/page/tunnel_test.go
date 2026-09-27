@@ -164,8 +164,9 @@ func TestTunnelRuntimeKeyHintsStayAtBottom(t *testing.T) {
 	for last >= 0 && strings.TrimSpace(lines[last]) == "" {
 		last--
 	}
-	if last != 31 || !strings.Contains(lines[last], "managed tunnels") || strings.Contains(lines[last], "? more") {
-		t.Fatalf("tunnel help line=%d want=31 view=%q", last, strings.Join(lines, "\n"))
+	plain := strings.Join(lines, "\n")
+	if last != 31 || strings.Contains(plain, "managed tunnels") || strings.Contains(lines[last], "? more") {
+		t.Fatalf("tunnel help line=%d want=31 without managed collection navigation view=%q", last, plain)
 	}
 }
 
@@ -290,10 +291,13 @@ func TestTunnelRuntimeLayoutUsesHierarchyAndGroupWrapping(t *testing.T) {
 	updated, _ := page.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
 	page = updated.(*TunnelPage)
 	expanded := ansi.Strip(page.runtimeView(120))
-	for _, want := range []string{"remove admin", "managed tunnels", "less"} {
+	for _, want := range []string{"remove admin", "less"} {
 		if !strings.Contains(expanded, want) {
 			t.Fatalf("expanded tunnel help missing %q: %q", want, expanded)
 		}
+	}
+	if strings.Contains(expanded, "managed tunnels") {
+		t.Fatalf("expanded tunnel help exposed removed managed tunnel collection: %q", expanded)
 	}
 	updated, _ = page.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
 	page = updated.(*TunnelPage)

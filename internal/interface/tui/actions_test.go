@@ -122,8 +122,11 @@ func TestEditorActionsNavigateToEditorRoutes(t *testing.T) {
 		{"upstream.server.auth.login", action.Context{Route: string(RouteMCP), ResourceID: "github"}, Route{Kind: RouteMCP, ResourceID: "github", Section: "oauth", Action: "login"}},
 		{"tunnel.configure", action.Context{Route: string(RouteTunnel)}, Route{Kind: RouteTunnel, Action: "edit"}},
 		{"tunnel.admin.key.set", action.Context{Route: string(RouteTunnel)}, Route{Kind: RouteTunnel, Section: "admin-key", Action: "edit"}},
-		{"tunnel.managed.create", action.Context{Route: string(RouteTunnels)}, Route{Kind: RouteTunnels, Action: "create"}},
-		{"tunnel.managed.update", action.Context{Route: string(RouteTunnels), ResourceID: "tun_demo"}, Route{Kind: RouteTunnels, ResourceID: "tun_demo", Action: "edit"}},
+		{"integration.rtk.probe", action.Context{Route: string(RouteHome)}, Route{Kind: RouteIntegrations, ResourceID: "rtk", Action: "probe"}},
+		{"integration.codegraph.probe", action.Context{Route: string(RouteHome)}, Route{Kind: RouteIntegrations, ResourceID: "codegraph", Action: "probe"}},
+		{"workspace.executions", action.Context{Route: string(RouteWorkspaces), ResourceID: "ws_demo"}, Route{Kind: RouteExecutions, Mode: "ws_demo"}},
+		{"workspace.processes", action.Context{Route: string(RouteWorkspaces), ResourceID: "ws_demo"}, Route{Kind: RouteProcesses, Mode: "ws_demo"}},
+		{"workspace.codegraph.status", action.Context{Route: string(RouteWorkspaces), ResourceID: "ws_demo"}, Route{Kind: RouteIntegrations, ResourceID: "codegraph", Mode: "ws_demo"}},
 		{"config.export", action.Context{Route: string(RouteConfig)}, Route{Kind: RouteConfig, Section: "storage", Action: "export"}},
 		{"config.import", action.Context{Route: string(RouteConfig)}, Route{Kind: RouteConfig, Section: "storage", Action: "import"}},
 		{"logs.filter", action.Context{Route: string(RouteLogs)}, Route{Kind: RouteLogs, Action: "filter"}},
@@ -190,19 +193,14 @@ func TestTunnelActionAvailabilityFollowsRouteContext(t *testing.T) {
 	if !has(action.Context{Route: string(RouteTunnel)}, "tunnel.configure") || !has(action.Context{Route: string(RouteTunnel)}, "tunnel.admin.key.set") {
 		t.Fatal("runtime tunnel actions are unavailable on tunnel route")
 	}
-	if has(action.Context{Route: string(RouteHome)}, "tunnel.configure") || has(action.Context{Route: string(RouteTunnel)}, "tunnel.managed.create") {
+	if has(action.Context{Route: string(RouteHome)}, "tunnel.configure") {
 		t.Fatal("tunnel actions leaked into the wrong route")
 	}
-	if !has(action.Context{Route: string(RouteTunnels)}, "tunnel.managed.create") || !has(action.Context{Route: string(RouteTunnels)}, "tunnel.managed.refresh") {
-		t.Fatal("managed tunnel list actions are unavailable")
-	}
-	if has(action.Context{Route: string(RouteTunnels)}, "tunnel.managed.update") || has(action.Context{Route: string(RouteTunnels)}, "tunnel.managed.delete") {
-		t.Fatal("managed tunnel resource actions available without a resource")
-	}
-	ctx := action.Context{Route: string(RouteTunnels), ResourceID: "tunnel_demo"}
-	for _, id := range []string{"tunnel.managed.update", "tunnel.managed.configure", "tunnel.managed.delete"} {
-		if !has(ctx, id) {
-			t.Fatalf("managed tunnel context action missing: %s", id)
+	for _, ctx := range []action.Context{{Route: string(RouteHome)}, {Route: string(RouteTunnel)}} {
+		for _, id := range []string{"tunnel.managed.refresh", "tunnel.managed.create", "tunnel.managed.update", "tunnel.managed.configure", "tunnel.managed.delete"} {
+			if has(ctx, id) {
+				t.Fatalf("removed managed tunnel action is still reachable: %s", id)
+			}
 		}
 	}
 }

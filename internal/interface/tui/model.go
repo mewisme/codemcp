@@ -1242,8 +1242,16 @@ func (model *Model) loadPage(route Route) {
 		}
 	case RouteTunnel:
 		value, err = tuipage.NewTunnelDashboardRoute(model.ctx, route.Section, route.Action)
-	case RouteTunnels:
-		value, err = tuipage.NewManagedTunnelsRouteAction(model.ctx, route.ResourceID, route.Section, route.Action)
+	case RouteTools:
+		value, err = tuipage.NewToolsReadView(model.ctx)
+	case RouteIntegrations:
+		value, err = tuipage.NewIntegrationsReadView(model.ctx, route.ResourceID, route.Action, route.Mode)
+	case RouteDoctor:
+		value, err = tuipage.NewDoctorReadView(model.ctx)
+	case RouteExecutions:
+		value, err = tuipage.NewExecutionsReadView(model.ctx, route.Mode, route.ResourceID)
+	case RouteProcesses:
+		value, err = tuipage.NewProcessesReadView(model.ctx, route.Mode, route.ResourceID)
 	case RouteRequests:
 		value, err = tuipage.NewRequestsRouteAction(model.ctx, route.Mode, route.ResourceID, route.Section, route.Action)
 	case RouteCompletions:
@@ -1334,13 +1342,8 @@ func (model *Model) ensureMCPPage(resourceID string) error {
 }
 
 func (model *Model) ensureTunnelPage(command tuipage.TunnelCommand, resourceID string) error {
-	managed := command == tuipage.TunnelManagedRefresh || command == tuipage.TunnelManagedCreate || command == tuipage.TunnelManagedUpdate || command == tuipage.TunnelManagedConfigure || command == tuipage.TunnelManagedDelete
-	kind := RouteTunnel
-	if managed {
-		kind = RouteTunnels
-	}
-	if model.router.Current().Kind != kind || (resourceID != "" && model.router.Current().ResourceID != resourceID) {
-		model.navigate(Route{Kind: kind, ResourceID: resourceID})
+	if model.router.Current().Kind != RouteTunnel {
+		model.navigate(Route{Kind: RouteTunnel})
 	}
 	if model.currentPage == nil {
 		return fmt.Errorf("tunnel page is unavailable")
@@ -1838,8 +1841,16 @@ func routeDescription(route Route) string {
 		return "Manage configured Upstream servers."
 	case RouteTunnel:
 		return "Manage runtime and OpenAI Secure MCP Tunnel state."
-	case RouteTunnels:
-		return "Browse and manage tunnels available through the OpenAI Tunnel Management API."
+	case RouteTools:
+		return "Inspect the canonical tool inventory exposed by this runtime."
+	case RouteIntegrations:
+		return "Inspect RTK, CodeGraph, and TypeSafe integration state."
+	case RouteDoctor:
+		return "Inspect canonical health diagnostics, including checkpoint and completion history."
+	case RouteExecutions:
+		return "Inspect command executions for a workspace."
+	case RouteProcesses:
+		return "Inspect background processes for a workspace."
 	case RouteRequests:
 		return "Review control approval requests."
 	case RouteCompletions:

@@ -2,9 +2,7 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
-	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/interface/tui/quickopen"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -38,28 +36,6 @@ func loadQuickOpenResources() ([]quickopen.Resource, error) {
 		}
 		resources = append(resources, quickopen.Resource{ID: item.ID, Title: item.ID, Kind: "Upstream", Description: endpoint, Keywords: []string{item.Name, item.Transport, item.Expose, endpoint}, Path: []string{"upstream", item.ID}})
 	}
-	source, err := config.Source()
-	if err != nil {
-		return nil, err
-	}
-	if source.Exists {
-		_, err := config.Load()
-		if err != nil {
-			return nil, err
-		}
-		metadata, err := config.ListTunnelMetadata()
-		if err != nil {
-			return nil, err
-		}
-		for _, item := range metadata {
-			title := item.ID
-			if strings.TrimSpace(item.Name) != "" {
-				title = item.Name
-			}
-			keywords := append(append(append([]string{item.ID}, item.OrganizationIDs...), item.WorkspaceIDs...), item.TenantIDs...)
-			resources = append(resources, quickopen.Resource{ID: item.ID, Title: title, Kind: "Tunnel", Description: item.Description, Keywords: keywords, Path: []string{"tunnels", item.ID}})
-		}
-	}
 	return resources, nil
 }
 
@@ -70,7 +46,9 @@ func pageQuickOpenResources() []quickopen.Resource {
 		{ID: "containers", Title: "Workspaces · Containers", Kind: "Page", Keywords: []string{"workspace", "container", "containers"}, Path: []string{"containers"}},
 		{ID: "mcp", Title: "Upstreams", Kind: "Page", Path: []string{"upstream"}},
 		{ID: "tunnel", Title: "Tunnel", Kind: "Page", Path: []string{"tunnel"}},
-		{ID: "tunnels", Title: "Managed Tunnels", Kind: "Page", Path: []string{"tunnels"}},
+		{ID: "tools", Title: "Tools", Kind: "Page", Path: []string{"tools"}},
+		{ID: "integrations", Title: "Integrations", Kind: "Page", Keywords: []string{"rtk", "codegraph", "typesafe"}, Path: []string{"integrations"}},
+		{ID: "doctor", Title: "Doctor", Kind: "Page", Keywords: []string{"health", "diagnostics", "checkpoint", "history"}, Path: []string{"doctor"}},
 		{ID: "requests", Title: "Requests", Kind: "Page", Path: []string{"requests"}},
 		{ID: "completions", Title: "Agent Completions", Kind: "Page", Keywords: []string{"agent", "completion", "history", "done"}, Path: []string{"completions"}},
 		{ID: "logs", Title: "Logs", Kind: "Page", Path: []string{"logs"}},

@@ -40,8 +40,11 @@ func TestQuickOpenResourcesIncludeLocalEntities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{registered.ID: false, container.ID: false, "docs": false, "config": false}
+	want := map[string]bool{registered.ID: false, container.ID: false, "docs": false, "config": false, "tools": false, "integrations": false, "doctor": false}
 	for _, resource := range resources {
+		if resource.ID == "tunnels" || resource.Title == "Managed Tunnels" {
+			t.Fatalf("removed managed tunnel collection leaked into Quick Open: %#v", resource)
+		}
 		if _, ok := want[resource.ID]; ok {
 			want[resource.ID] = true
 		}

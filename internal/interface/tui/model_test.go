@@ -21,7 +21,6 @@ import (
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 	tuipage "go.mewis.me/codemcp/internal/interface/tui/page"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
-	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -78,7 +77,8 @@ func TestModelExplicitReplaceDestinationsBypassRememberedRoutes(t *testing.T) {
 		{name: "workspaces", remembered: Route{Kind: RouteWorkspaces, ResourceID: "ws_old"}, path: []string{"workspaces"}, want: Route{Kind: RouteWorkspaces}},
 		{name: "containers", remembered: Route{Kind: RouteContainers, ResourceID: "wsc_old"}, path: []string{"containers"}, want: Route{Kind: RouteContainers}},
 		{name: "upstream", remembered: Route{Kind: RouteMCP, ResourceID: "server_old"}, path: []string{"upstream"}, want: Route{Kind: RouteMCP}},
-		{name: "tunnels", remembered: Route{Kind: RouteTunnels, ResourceID: "tun_old"}, path: []string{"tunnels"}, want: Route{Kind: RouteTunnels}},
+		{name: "tools", remembered: Route{Kind: RouteTools}, path: []string{"tools"}, want: Route{Kind: RouteTools}},
+		{name: "integrations", remembered: Route{Kind: RouteIntegrations, ResourceID: "rtk", Action: "probe"}, path: []string{"integrations"}, want: Route{Kind: RouteIntegrations}},
 		{name: "runtime", remembered: Route{Kind: RouteRuntime, ResourceID: "old"}, path: []string{"runtime"}, want: Route{Kind: RouteRuntime}},
 		{name: "config", remembered: Route{Kind: RouteConfig, ResourceID: "server.port"}, path: []string{"config"}, want: Route{Kind: RouteConfig}},
 	}
@@ -105,7 +105,7 @@ func TestModelStableRouteMemoryCoversHeaderOwners(t *testing.T) {
 		{name: "container detail", stored: Route{Kind: RouteContainers, ResourceID: "wsc_a"}, entry: Route{Kind: RouteWorkspaces}},
 		{name: "mcp detail", stored: Route{Kind: RouteMCP, ResourceID: "server_a"}, entry: Route{Kind: RouteMCP}},
 		{name: "tunnel section", stored: Route{Kind: RouteTunnel, Section: "admin"}, entry: Route{Kind: RouteTunnel}},
-		{name: "managed tunnel detail", stored: Route{Kind: RouteTunnels, ResourceID: "tun_a"}, entry: Route{Kind: RouteTunnel}},
+		{name: "integration detail", stored: Route{Kind: RouteIntegrations, ResourceID: "codegraph", Mode: "ws_a"}, entry: Route{Kind: RouteIntegrations}},
 		{name: "request mode", stored: Route{Kind: RouteRequests, Mode: "pending"}, entry: Route{Kind: RouteRequests}},
 		{name: "logs execution route", stored: Route{Kind: RouteLogsExec}, entry: Route{Kind: RouteLogs}},
 		{name: "config detail", stored: Route{Kind: RouteConfig, ResourceID: "server.port"}, entry: Route{Kind: RouteConfig}},
@@ -208,40 +208,6 @@ func TestModelMCPCreateEditorUsesDirtyNavigationGuard(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(model.View().Content), "Discard changes?") {
 		t.Fatal("dirty MCP create navigation did not render discard guard")
-	}
-}
-
-func TestModelManagedTunnelCreateEditorUsesDirtyNavigationGuard(t *testing.T) {
-	defer configformat.SetRootPath("")
-	if err := configformat.SetRootPath(t.TempDir()); err != nil {
-		t.Fatal(err)
-	}
-	cfg := config.Default()
-	cfg.Tunnel = tunnel.Config{Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}}
-	if err := config.Save(cfg); err != nil {
-		t.Fatal(err)
-	}
-	route := Route{Kind: RouteTunnels, Action: "create"}
-	model := NewModel(route)
-	_ = model.currentPage.Init()
-	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	model = updated.(Model)
-	if model.currentPage.OverlayActive() || !model.currentPage.InputActive() {
-		t.Fatalf("managed create overlay=%t input=%t", model.currentPage.OverlayActive(), model.currentPage.InputActive())
-	}
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'd', Text: "draft"})
-	model = updated.(Model)
-	guard, ok := model.currentPage.(tuipage.NavigationGuardModel)
-	if !ok || !guard.Dirty() {
-		t.Fatalf("managed create guard=%t dirty=%t", ok, ok && guard.Dirty())
-	}
-	updated, cmd := model.Update(navigateMsg{route: Route{Kind: RouteAbout}, sibling: true})
-	model = updated.(Model)
-	if cmd != nil || model.pendingNavigation == nil || model.router.Current() != route {
-		t.Fatalf("dirty managed create escaped: route=%#v pending=%v cmd=%v", model.router.Current(), model.pendingNavigation != nil, cmd != nil)
-	}
-	if !strings.Contains(ansi.Strip(model.View().Content), "Discard changes?") {
-		t.Fatal("dirty managed create navigation did not render discard guard")
 	}
 }
 
@@ -1304,7 +1270,7 @@ func TestModelPendingApprovalOverlaysEveryRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := testPendingApproval("req_global")
-	for _, route := range []Route{{Kind: RouteHome}, {Kind: RouteWorkspaces}, {Kind: RouteContainers}, {Kind: RouteMCP}, {Kind: RouteTunnel}, {Kind: RouteTunnels}, {Kind: RouteRequests}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteInstruction}, {Kind: RouteRuntime}, {Kind: RouteAbout}} {
+	for _, route := range []Route{{Kind: RouteHome}, {Kind: RouteWorkspaces}, {Kind: RouteContainers}, {Kind: RouteMCP}, {Kind: RouteTunnel}, {Kind: RouteTools}, {Kind: RouteIntegrations}, {Kind: RouteDoctor}, {Kind: RouteRequests}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteInstruction}, {Kind: RouteRuntime}, {Kind: RouteAbout}} {
 		t.Run(string(route.Kind), func(t *testing.T) {
 			model := NewModel(route)
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -1696,7 +1662,7 @@ func TestModelToastRendersAsDialogAcrossRoutes(t *testing.T) {
 	if err := configformat.SetRootPath(t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	for _, route := range []Route{{Kind: RouteWorkspaces}, {Kind: RouteContainers}, {Kind: RouteMCP}, {Kind: RouteTunnel}, {Kind: RouteTunnels}, {Kind: RouteRequests}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteInstruction}, {Kind: RouteRuntime}} {
+	for _, route := range []Route{{Kind: RouteWorkspaces}, {Kind: RouteContainers}, {Kind: RouteMCP}, {Kind: RouteTunnel}, {Kind: RouteTools}, {Kind: RouteIntegrations}, {Kind: RouteDoctor}, {Kind: RouteRequests}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteInstruction}, {Kind: RouteRuntime}} {
 		t.Run(string(route.Kind), func(t *testing.T) {
 			model := NewModel(route)
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})

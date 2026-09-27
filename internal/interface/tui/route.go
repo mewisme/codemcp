@@ -8,23 +8,27 @@ import (
 type RouteKind string
 
 const (
-	RouteHome        RouteKind = "home"
-	RouteWorkspaces  RouteKind = "workspaces"
-	RouteContainers  RouteKind = "containers"
-	RouteMCP         RouteKind = "upstream"
-	RouteTunnel      RouteKind = "tunnel"
-	RouteTunnels     RouteKind = "tunnels"
-	RouteRequests    RouteKind = "requests"
-	RouteCompletions RouteKind = "completions"
-	RouteLogs        RouteKind = "logs"
-	RouteLogsExec    RouteKind = "logs-exec"
-	RouteLogsTools   RouteKind = "logs-tools"
-	RouteConfig      RouteKind = "config"
-	RouteInstruction RouteKind = "instruction"
-	RoutePrompts     RouteKind = "prompts"
-	RouteRuntime     RouteKind = "runtime"
-	RouteAbout       RouteKind = "about"
-	RouteGuide       RouteKind = "guide"
+	RouteHome         RouteKind = "home"
+	RouteWorkspaces   RouteKind = "workspaces"
+	RouteContainers   RouteKind = "containers"
+	RouteMCP          RouteKind = "upstream"
+	RouteTunnel       RouteKind = "tunnel"
+	RouteTools        RouteKind = "tools"
+	RouteIntegrations RouteKind = "integrations"
+	RouteDoctor       RouteKind = "doctor"
+	RouteExecutions   RouteKind = "executions"
+	RouteProcesses    RouteKind = "processes"
+	RouteRequests     RouteKind = "requests"
+	RouteCompletions  RouteKind = "completions"
+	RouteLogs         RouteKind = "logs"
+	RouteLogsExec     RouteKind = "logs-exec"
+	RouteLogsTools    RouteKind = "logs-tools"
+	RouteConfig       RouteKind = "config"
+	RouteInstruction  RouteKind = "instruction"
+	RoutePrompts      RouteKind = "prompts"
+	RouteRuntime      RouteKind = "runtime"
+	RouteAbout        RouteKind = "about"
+	RouteGuide        RouteKind = "guide"
 )
 
 type Route struct {
@@ -78,8 +82,10 @@ func ParseRoute(args []string) (Route, error) {
 		return parseMCPRoute(parts)
 	case RouteTunnel:
 		return parseTunnelRoute(parts)
-	case RouteTunnels:
-		return parseManagedTunnelRoute(parts)
+	case RouteIntegrations:
+		return parseIntegrationRoute(parts)
+	case RouteExecutions, RouteProcesses:
+		return parseWorkspaceReadRoute(kind, parts)
 	case RouteRequests:
 		return parseRequestsRoute(parts)
 	case RouteCompletions:
@@ -246,31 +252,34 @@ func parseTunnelRoute(parts []string) (Route, error) {
 	}
 }
 
-func parseManagedTunnelRoute(parts []string) (Route, error) {
-	route := Route{Kind: RouteTunnels}
+func parseIntegrationRoute(parts []string) (Route, error) {
+	route := Route{Kind: RouteIntegrations}
 	if len(parts) == 1 {
 		return route, nil
 	}
-	if len(parts) == 2 && parts[1] == "create" {
-		route.Action = "create"
+	if len(parts) == 3 && (parts[1] == "rtk" || parts[1] == "codegraph") && parts[2] == "probe" {
+		route.ResourceID, route.Action = parts[1], "probe"
 		return route, nil
 	}
-	if len(parts) > 3 {
-		return Route{}, fmt.Errorf("managed tunnel path is too deep: %s", strings.Join(parts, " "))
-	}
-	route.ResourceID = parts[1]
-	if len(parts) == 2 {
+	if len(parts) == 4 && parts[1] == "codegraph" && parts[2] == "workspace" {
+		route.ResourceID, route.Mode = "codegraph", parts[3]
 		return route, nil
 	}
-	if parts[2] == "edit" || parts[2] == "configure" {
-		route.Action = parts[2]
-		return route, nil
+	return Route{}, fmt.Errorf("unsupported integrations path %q", strings.Join(parts, " "))
+}
+
+func parseWorkspaceReadRoute(kind RouteKind, parts []string) (Route, error) {
+	route := Route{Kind: kind}
+	if len(parts) < 2 || len(parts) > 3 {
+		return Route{}, fmt.Errorf("%s path requires workspace id and optional resource id", kind)
 	}
-	section, ok := normalizeRouteSection(RouteTunnels, parts[2])
-	if !ok {
-		return Route{}, fmt.Errorf("unsupported tunnels child section %q", parts[2])
+	route.Mode = strings.TrimSpace(parts[1])
+	if route.Mode == "" {
+		return Route{}, fmt.Errorf("workspace id is required")
 	}
-	route.Section = section
+	if len(parts) == 3 {
+		route.ResourceID = strings.TrimSpace(parts[2])
+	}
 	return route, nil
 }
 
@@ -474,8 +483,16 @@ func parseRouteKind(value string) (RouteKind, bool) {
 		return RouteMCP, true
 	case "tunnel":
 		return RouteTunnel, true
-	case "tunnels", "managed-tunnels":
-		return RouteTunnels, true
+	case "tools":
+		return RouteTools, true
+	case "integration", "integrations":
+		return RouteIntegrations, true
+	case "doctor", "diagnostics":
+		return RouteDoctor, true
+	case "execution", "executions":
+		return RouteExecutions, true
+	case "process", "processes":
+		return RouteProcesses, true
 	case "request", "requests", "req":
 		return RouteRequests, true
 	case "completion", "completions", "done":
@@ -505,7 +522,7 @@ func parseRouteKind(value string) (RouteKind, bool) {
 
 func (route Route) Title() string {
 	base := map[RouteKind]string{
-		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "Upstreams", RouteTunnel: "Tunnel", RouteTunnels: "Managed Tunnels",
+		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "Upstreams", RouteTunnel: "Tunnel", RouteTools: "Tools", RouteIntegrations: "Integrations", RouteDoctor: "Doctor", RouteExecutions: "Command Executions", RouteProcesses: "Background Processes",
 		RouteRequests: "Requests", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RouteInstruction: "Instruction", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
 	}[route.Kind]
 	if route.Kind == RouteRequests && route.Mode != "" {
@@ -542,7 +559,6 @@ func normalizeRouteSection(kind RouteKind, value string) (string, bool) {
 		RouteInstruction: {"context": true, "rules": true, "sources": true},
 		RouteContainers:  {"workspaces": true},
 		RouteMCP:         {"health": true, "tools": true, "oauth": true},
-		RouteTunnels:     {"scope": true},
 		RouteRequests:    {"command": true, "arguments": true, "guard": true},
 		RouteLogs:        {"fields": true},
 	}
@@ -636,8 +652,16 @@ func breadcrumbRootLabel(kind RouteKind) string {
 		return "Upstreams"
 	case RouteTunnel:
 		return "Tunnel"
-	case RouteTunnels:
-		return "Managed Tunnels"
+	case RouteTools:
+		return "Tools"
+	case RouteIntegrations:
+		return "Integrations"
+	case RouteDoctor:
+		return "Doctor"
+	case RouteExecutions:
+		return "Command Executions"
+	case RouteProcesses:
+		return "Background Processes"
 	case RouteRequests:
 		return "Requests"
 	case RouteCompletions:
@@ -782,8 +806,6 @@ func routeStack(route Route) []Route {
 	switch route.Kind {
 	case RouteContainers:
 		return genericRouteStack(route)
-	case RouteTunnels:
-		return append([]Route{{Kind: RouteTunnel}}, genericRouteStack(route)...)
 	case RouteLogsExec:
 		return genericRouteStack(route)
 	case RouteRequests:
@@ -803,6 +825,10 @@ func genericRouteStack(route Route) []Route {
 	root := Route{Kind: route.Kind}
 	stack := []Route{root}
 	parent := root
+	if route.Mode != "" {
+		parent.Mode = route.Mode
+		stack = append(stack, parent)
+	}
 	if route.ResourceID != "" {
 		parent.ResourceID = route.ResourceID
 		stack = append(stack, parent)
@@ -872,8 +898,6 @@ func headerOwner(kind RouteKind) RouteKind {
 	switch kind {
 	case RouteContainers:
 		return RouteWorkspaces
-	case RouteTunnels:
-		return RouteTunnel
 	case RouteLogsExec, RouteLogsTools:
 		return RouteLogs
 	default:
