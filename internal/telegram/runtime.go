@@ -76,6 +76,7 @@ type Runtime struct {
 	setupMode            bool
 	generation           uint64
 	topics               *topicStore
+	approvalMessages     *approvalMessageStore
 }
 
 type NotificationRenderer func(context.Context, int64, notification.Message) (Screen, bool, error)
@@ -696,8 +697,8 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 				continue
 			}
 			if handled {
-				if _, sendErr := runtime.SendRichMessageToTopic(ctx, userID, role, screen, RichMessageOptions{}); sendErr != nil {
-					result = errors.Join(result, sendErr)
+				if err := runtime.handleRenderedNotification(ctx, userID, role, message, screen); err != nil {
+					result = errors.Join(result, err)
 				}
 				continue
 			}
@@ -725,6 +726,43 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 		}
 	}
 	return result
+}
+
+func (runtime *Runtime) handleRenderedNotification(ctx context.Context, chatID int64, role TopicRole, message notification.Message, screen Screen) error {
+	if runtime == nil {
+		return notification.ErrProviderUnavailable
+	}
+	requestID := strings.TrimSpace(message.RequestID)
+	if requestID == "" || (message.Kind != notification.KindApprovalPending && message.Kind != notification.KindApprovalResolved) {
+		_, err := runtime.SendRichMessageToTopic(ctx, chatID, role, screen, RichMessageOptions{})
+		return err
+	}
+	runtime.mu.Lock()
+	if runtime.approvalMessages == nil {
+		runtime.approvalMessages = newApprovalMessageStore(runtime.root)
+	}
+	store := runtime.approvalMessages
+	runtime.mu.Unlock()
+	if message.Kind == notification.KindApprovalResolved {
+		if messageID := store.get(chatID, requestID); messageID > 0 {
+			if err := runtime.EditScreen(ctx, chatID, messageID, screen); err == nil {
+				_ = store.delete(chatID, requestID)
+				return nil
+			} else if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
+				return err
+			}
+			_ = store.delete(chatID, requestID)
+			return nil
+		}
+	}
+	messageID, err := runtime.SendRichMessageToTopic(ctx, chatID, role, screen, RichMessageOptions{})
+	if err != nil {
+		return err
+	}
+	if message.Kind == notification.KindApprovalPending {
+		_ = store.put(chatID, requestID, messageID)
+	}
+	return nil
 }
 
 func (runtime *Runtime) SendSetupMessage(ctx context.Context, chatID int64, text string) error {

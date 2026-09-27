@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -19,8 +20,11 @@ type topicTestAPI struct {
 	threadSends       []string
 	richThreadScreens []Screen
 	richThreadIDs     []int
+	editedMessageIDs  []int64
+	editedScreens     []Screen
 	generalSends      []string
 	threadErr         error
+	editErr           error
 }
 
 func (api *topicTestAPI) GetMe(context.Context) (User, error) {
@@ -65,6 +69,18 @@ func (*topicTestAPI) SendChatActionThread(context.Context, int64, int, string) e
 func (*topicTestAPI) SendDocumentThread(context.Context, int64, int, DocumentUpload) error {
 	return nil
 }
+
+func (*topicTestAPI) SendScreen(context.Context, int64, Screen) error { return nil }
+
+func (api *topicTestAPI) EditScreen(_ context.Context, _ int64, messageID int64, screen Screen) error {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	api.editedMessageIDs = append(api.editedMessageIDs, messageID)
+	api.editedScreens = append(api.editedScreens, screen)
+	return api.editErr
+}
+
+func (*topicTestAPI) AnswerCallback(context.Context, string, string, bool) error { return nil }
 
 func TestTopicRoleForNotification(t *testing.T) {
 	tests := map[notification.Kind]TopicRole{
@@ -198,6 +214,97 @@ func TestInteractiveApprovalNotificationUsesRichRequestsTopicDelivery(t *testing
 	}
 	if len(api.richThreadScreens[0].Keyboard) == 0 || api.richThreadScreens[0].Keyboard[0][0].Text != "Approve once" {
 		t.Fatalf("interactive notification keyboard=%#v", api.richThreadScreens[0].Keyboard)
+	}
+}
+
+func TestApprovalResolvedNotificationEditsOriginalRichCardAfterRuntimeRestart(t *testing.T) {
+	root := t.TempDir()
+	api := &topicTestAPI{}
+	store := newTopicStore(root)
+	if err := store.put(42, TopicRequests, 120); err != nil {
+		t.Fatal(err)
+	}
+	renderer := func(_ context.Context, chatID int64, message notification.Message) (Screen, bool, error) {
+		if chatID != 42 || message.RequestID != "req_1" {
+			t.Fatalf("renderer chat=%d message=%#v", chatID, message)
+		}
+		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: string(message.Kind), Text: message.RequestID})}, true, nil
+	}
+	pendingRuntime := &Runtime{
+		root: root, api: api, topics: store,
+		config:               config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true},
+		health:               Health{Running: true, Enabled: true, AuthorizationConfigured: true, TopicsEffective: true},
+		notificationRenderer: renderer,
+	}
+	if err := pendingRuntime.SendNotification(t.Context(), notification.Message{
+		Kind: notification.KindApprovalPending, RequestID: "req_1", Title: "Approval requested",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.richThreadScreens) != 1 || len(api.generalSends) != 0 || len(api.threadSends) != 0 {
+		t.Fatalf("pending delivery rich=%d general=%v thread=%v", len(api.richThreadScreens), api.generalSends, api.threadSends)
+	}
+	if got := pendingRuntime.approvalMessages.get(42, "req_1"); got != 1 {
+		t.Fatalf("stored approval message id=%d want=1", got)
+	}
+
+	resolvedRuntime := &Runtime{
+		root: root, api: api, topics: newTopicStore(root),
+		config:               config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true},
+		health:               Health{Running: true, Enabled: true, AuthorizationConfigured: true, TopicsEffective: true},
+		notificationRenderer: renderer,
+	}
+	if err := resolvedRuntime.SendNotification(t.Context(), notification.Message{
+		Kind: notification.KindApprovalResolved, RequestID: "req_1", Title: "Approval resolved",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.richThreadScreens) != 1 {
+		t.Fatalf("resolved notification created another rich message: %d", len(api.richThreadScreens))
+	}
+	if len(api.generalSends) != 0 || len(api.threadSends) != 0 {
+		t.Fatalf("resolved notification emitted redundant text general=%v thread=%v", api.generalSends, api.threadSends)
+	}
+	if len(api.editedMessageIDs) != 1 || api.editedMessageIDs[0] != 1 {
+		t.Fatalf("resolved edits=%v want=[1]", api.editedMessageIDs)
+	}
+	if resolvedRuntime.approvalMessages == nil || resolvedRuntime.approvalMessages.get(42, "req_1") != 0 {
+		t.Fatal("resolved approval message reference was not cleared")
+	}
+	fallback := RichFallback(api.editedScreens[0].Rich).Text
+	if !strings.Contains(fallback, string(notification.KindApprovalResolved)) {
+		t.Fatalf("resolved edit screen=%q", fallback)
+	}
+}
+
+func TestApprovalResolvedBadRequestDoesNotAppendDuplicateMessage(t *testing.T) {
+	root := t.TempDir()
+	api := &topicTestAPI{editErr: &transportError{Class: transportErrorBadRequest}}
+	store := newApprovalMessageStore(root)
+	if err := store.put(42, "req_1", 9); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &Runtime{
+		root: root, api: api, approvalMessages: store,
+		config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}},
+		health: Health{Running: true, Enabled: true, AuthorizationConfigured: true},
+		notificationRenderer: func(_ context.Context, _ int64, _ notification.Message) (Screen, bool, error) {
+			return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "approved"})}, true, nil
+		},
+	}
+	if err := runtime.SendNotification(t.Context(), notification.Message{
+		Kind: notification.KindApprovalResolved, RequestID: "req_1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.editedMessageIDs) != 1 || api.editedMessageIDs[0] != 9 {
+		t.Fatalf("resolved edits=%v want=[9]", api.editedMessageIDs)
+	}
+	if len(api.richThreadScreens) != 0 || len(api.generalSends) != 0 || len(api.threadSends) != 0 {
+		t.Fatalf("bad-request edit appended duplicate rich=%d general=%v thread=%v", len(api.richThreadScreens), api.generalSends, api.threadSends)
+	}
+	if store.get(42, "req_1") != 0 {
+		t.Fatal("failed resolved edit retained stale approval message reference")
 	}
 }
 

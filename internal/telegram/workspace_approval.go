@@ -473,20 +473,44 @@ func (ui *Interface) requestCardWithOptions(owner ViewOwner, request approval.Re
 }
 
 func (ui *Interface) RenderNotification(ctx context.Context, chatID int64, message notification.Message) (Screen, bool, error) {
-	if ui == nil || ui.runtime == nil || message.Kind != notification.KindApprovalPending || strings.TrimSpace(message.RequestID) == "" {
+	if ui == nil || ui.runtime == nil || strings.TrimSpace(message.RequestID) == "" {
+		return Screen{}, false, nil
+	}
+	if message.Kind != notification.KindApprovalPending && message.Kind != notification.KindApprovalResolved {
 		return Screen{}, false, nil
 	}
 	owner := ViewOwner{ChatID: chatID, UserID: chatID, Generation: ui.runtime.Generation()}
 	value, err := ui.dispatch(ctx, capability.RequestView, application.RequestIDInput{ID: message.RequestID})
 	if err != nil {
-		return Screen{}, false, nil
+		if message.Kind == notification.KindApprovalResolved {
+			return approvalResolvedFallbackScreen(message), true, nil
+		}
+		return Screen{}, true, err
 	}
 	request, ok := value.(approval.Request)
 	if !ok {
-		return Screen{}, false, nil
+		if message.Kind == notification.KindApprovalResolved {
+			return approvalResolvedFallbackScreen(message), true, nil
+		}
+		return Screen{}, true, errors.New("approval request view returned an unexpected result")
 	}
 	screen, err := ui.requestNotificationCard(owner, request)
 	return screen, true, err
+}
+
+func approvalResolvedFallbackScreen(message notification.Message) Screen {
+	title := strings.TrimSpace(message.Title)
+	if title == "" {
+		title = "Approval resolved"
+	}
+	body := strings.TrimSpace(message.Body)
+	if body == "" {
+		body = "The approval request is no longer pending."
+	}
+	return Screen{Rich: BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: title, Text: "Approval request · resolved"},
+		RichBlock{Kind: RichDetails, Title: "Result", Text: body},
+	)}
 }
 
 func (ui *Interface) domainOperationResultScreen(owner ViewOwner, state ActionState, spec capability.Spec, value any) (Screen, bool, error) {

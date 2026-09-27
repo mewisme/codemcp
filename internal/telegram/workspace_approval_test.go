@@ -183,6 +183,36 @@ func TestExpiredPendingApprovalNotificationHasNoMutationActions(t *testing.T) {
 	}
 }
 
+func TestResolvedApprovalNotificationRendersFreshResolvedCard(t *testing.T) {
+	request := approval.Request{
+		ID: "req_resolved", Status: approval.StatusApproved, WorkspaceID: "ws_1", TargetTool: "run_command",
+		Title: "Resolved request", ExpiresAt: time.Now().Add(time.Minute),
+	}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.RequestView: request}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+	screen, handled, err := ui.RenderNotification(t.Context(), owner.ChatID, notification.Message{
+		Kind: notification.KindApprovalResolved, RequestID: request.ID,
+	})
+	if err != nil || !handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	if len(dispatcher.calls) != 1 || dispatcher.calls[0].Operation != capability.RequestView {
+		t.Fatalf("resolved notification canonical dispatch=%#v", dispatcher.calls)
+	}
+	fallback := RichFallback(screen.Rich).Text
+	if !strings.Contains(fallback, string(approval.StatusApproved)) {
+		t.Fatalf("resolved notification screen=%q", fallback)
+	}
+	for _, row := range screen.Keyboard {
+		for _, button := range row {
+			switch button.Text {
+			case "Approve once", "Deny", "Allow similar":
+				t.Fatalf("resolved notification retained mutation action: %#v", button)
+			}
+		}
+	}
+}
+
 func TestStaleApprovalActionReloadsCanonicalRequestState(t *testing.T) {
 	resolved := approval.Request{
 		ID: "req_stale", Status: approval.StatusDenied, WorkspaceID: "ws_1", TargetTool: "run_command",
