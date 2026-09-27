@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"golang.org/x/term"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 )
 
@@ -25,6 +26,7 @@ func Run(ctx context.Context, route Route, in io.Reader, out io.Writer) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	ctx = application.WithOperationInterface(ctx, application.OperationInterfaceTUI)
 	sessionCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	_, err := tea.NewProgram(NewModelWithState(sessionCtx, route, config.RootPath()), tea.WithContext(sessionCtx), tea.WithInput(in), tea.WithOutput(out)).Run()

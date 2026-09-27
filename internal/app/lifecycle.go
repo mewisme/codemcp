@@ -6,10 +6,12 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
+	producttelemetry "go.mewis.me/codemcp/internal/telemetry/product"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func (a *App) Start(ctx context.Context) error {
+	started := time.Now()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -18,11 +20,13 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	span := tracepkg.Start(ctx, "APP", "app.runtime.start", "Starting application runtime")
 	if err := a.Bootstrap(); err != nil {
+		a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, err)
 		span.FailMessage("Application runtime bootstrap failed", err)
 		return err
 	}
 	if a.Tools != nil && a.Tools.Workspaces != nil {
 		if err := a.Tools.Workspaces.Activate(); err != nil {
+			a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, err)
 			span.FailMessage("Workspace runtime ownership activation failed", err)
 			return err
 		}
@@ -74,16 +78,19 @@ func (a *App) Start(ctx context.Context) error {
 			if a.Tools != nil && a.Tools.Workspaces != nil {
 				err = errors.Join(err, a.Tools.Workspaces.Deactivate())
 			}
+			a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, err)
 			return err
 		}
 		tunnelSpan.EndMessage("Tunnel runtime started", tracepkg.Bool("enabled", a.Tunnel.Status().Enabled), tracepkg.Bool("running", a.Tunnel.Status().Running))
 	}
 	a.running = true
+	a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, nil)
 	span.EndMessage("Application runtime started", tracepkg.Bool("running", true))
 	return nil
 }
 
 func (a *App) Stop() error {
+	started := time.Now()
 	span := tracepkg.StartObserver(a.trace, "APP", "app.runtime.stop", "Stopping application runtime")
 	var stopErr error
 	if a.Tools != nil && a.Tools.Approvals != nil {
@@ -164,10 +171,39 @@ func (a *App) Stop() error {
 	}
 	a.runtimeCtx = nil
 	a.running = false
+	a.recordRuntimeUsage(context.Background(), producttelemetry.EventRuntimeStopped, started, stopErr)
+	if a.ProductTelemetry != nil {
+		flushCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		a.ProductTelemetry.Close(flushCtx)
+		cancel()
+	}
 	if stopErr != nil {
 		span.FailMessage("Application runtime stop failed", stopErr)
 	} else {
 		span.EndMessage("Application runtime stopped", tracepkg.Bool("running", false))
 	}
 	return stopErr
+}
+
+func (a *App) recordRuntimeUsage(ctx context.Context, name producttelemetry.EventName, started time.Time, err error) {
+	if a == nil || a.ProductTelemetry == nil {
+		return
+	}
+	success := err == nil
+	errorCode := producttelemetry.ErrorCode("")
+	if err != nil {
+		errorCode = producttelemetry.ErrorInternal
+		if errors.Is(err, context.Canceled) {
+			errorCode = producttelemetry.ErrorCancelled
+		} else if errors.Is(err, context.DeadlineExceeded) {
+			errorCode = producttelemetry.ErrorTimeout
+		}
+	}
+	a.ProductTelemetry.Record(ctx, name, producttelemetry.Usage{
+		Interface: producttelemetry.InterfaceRuntime,
+		Feature:   "runtime",
+		ErrorCode: errorCode,
+		Duration:  time.Since(started),
+		Success:   success,
+	})
 }

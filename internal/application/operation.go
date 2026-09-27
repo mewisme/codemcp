@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"go.mewis.me/codemcp/internal/capability"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -74,10 +75,20 @@ type OperationDispatcher interface {
 type Dispatcher struct {
 	mu       sync.RWMutex
 	handlers map[capability.ID]OperationHandler
+	observer OperationObserver
 }
 
 func NewDispatcher() *Dispatcher {
 	return &Dispatcher{handlers: map[capability.ID]OperationHandler{}}
+}
+
+func (dispatcher *Dispatcher) SetObserver(observer OperationObserver) {
+	if dispatcher == nil {
+		return
+	}
+	dispatcher.mu.Lock()
+	dispatcher.observer = observer
+	dispatcher.mu.Unlock()
 }
 
 func (dispatcher *Dispatcher) Register(id capability.ID, handler OperationHandler) error {
@@ -112,14 +123,36 @@ func (dispatcher *Dispatcher) Dispatch(ctx context.Context, request DispatchRequ
 	}
 	dispatcher.mu.RLock()
 	handler := dispatcher.handlers[request.Operation]
+	observer := dispatcher.observer
 	dispatcher.mu.RUnlock()
 	if handler == nil {
 		return DispatchResult{}, &OperationError{Operation: request.Operation, Code: ErrorUnsupported, Err: fmt.Errorf("canonical operation is not bound to an application handler: %s", request.Operation)}
 	}
 
+	started := time.Now()
 	value, err := handler(ctx, request.Input)
 	if err != nil {
-		return DispatchResult{}, normalizeOperationError(request.Operation, err)
+		normalized := normalizeOperationError(request.Operation, err)
+		if observer != nil {
+			observer(ctx, OperationObservation{
+				Operation: request.Operation,
+				Interface: OperationInterfaceFromContext(ctx),
+				Duration:  time.Since(started),
+				Success:   false,
+				ErrorCode: ProductErrorCode(normalized),
+			})
+			markOperationObserved(ctx)
+		}
+		return DispatchResult{}, normalized
+	}
+	if observer != nil {
+		observer(ctx, OperationObservation{
+			Operation: request.Operation,
+			Interface: OperationInterfaceFromContext(ctx),
+			Duration:  time.Since(started),
+			Success:   true,
+		})
+		markOperationObserved(ctx)
 	}
 	return DispatchResult{Operation: request.Operation, Metadata: spec, Value: value}, nil
 }

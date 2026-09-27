@@ -261,12 +261,14 @@ func executeCommand(command *cobra.Command) error {
 	if originalContext == nil {
 		originalContext = context.Background()
 	}
-	command.SetContext(context.WithValue(originalContext, executeCommandLifecycleKey{}, true))
+	executionContext := application.WithOperationInterface(context.WithValue(originalContext, executeCommandLifecycleKey{}, true), application.OperationInterfaceCLI)
+	command.SetContext(executionContext)
 	executed, err := command.ExecuteC()
-	command.SetContext(originalContext)
 	if executed == nil {
 		executed = command
 	}
+	recordCLIProductUsage(executionContext, executed, err, started)
+	command.SetContext(originalContext)
 	if err != nil {
 		ensureCommandPresentationFallback(executed)
 		logCommandFailure(executed, err, started)

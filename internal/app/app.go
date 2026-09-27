@@ -16,6 +16,7 @@ import (
 	"go.mewis.me/codemcp/internal/notification"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	"go.mewis.me/codemcp/internal/runtime/activity"
+	producttelemetry "go.mewis.me/codemcp/internal/telemetry/product"
 	"go.mewis.me/codemcp/internal/tools"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
@@ -36,10 +37,17 @@ type App struct {
 	ApprovalNotifications   *notification.ApprovalBridge
 	CompletionNotifications *notification.CompletionHook
 	BackgroundNotifications *notification.BackgroundJobBridge
+	ProductTelemetry        productTelemetryRuntime
 	runtimeCtx              context.Context
 	trace                   tracepkg.Observer
 	running                 bool
 	bootstrap               sync.Once
+}
+
+type productTelemetryRuntime interface {
+	Record(context.Context, producttelemetry.EventName, producttelemetry.Usage) bool
+	SetEnabled(bool)
+	Close(context.Context)
 }
 
 func New(cfg config.Config) (*App, error) {
@@ -61,6 +69,14 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	span := tracepkg.Start(ctx, "APP", "app.construct", "Constructing server runtime application", tracepkg.Bool("mcp_http_enabled", cfg.Server.Enabled), tracepkg.Bool("admin_enabled", cfg.Admin.Enabled), tracepkg.Bool("tunnel_enabled", cfg.Tunnel.Enabled))
 	stream := activity.NewStream()
 	configStore := config.NewRuntimeStore(cfg)
+	effectiveTelemetry := config.ResolveTelemetryEnabled(cfg, true)
+	productRecorder, err := producttelemetry.NewRecorder(producttelemetry.RecorderOptions{
+		Enabled:  effectiveTelemetry.Enabled,
+		Endpoint: producttelemetry.Endpoint,
+	})
+	if err != nil {
+		productRecorder = nil
+	}
 	toolSpan := tracepkg.Start(ctx, "APP", "app.tools.bootstrap", "Bootstrapping tool runtime")
 	toolRuntime := tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) {
 		current := configStore.Snapshot()
@@ -72,6 +88,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	toolRuntime.SetConfigSetApplyProvider(configProvider)
 	toolRuntime.SetInstructionAuthoringProvider(application.NewAgentInstructionAuthoringProvider(toolRuntime.Workspaces, toolRuntime.InstructionChanges))
 	toolRuntime.SetPromptProvider(application.NewAgentPromptProvider(toolRuntime.Workspaces))
+	toolRuntime.SetCallObserver(productToolObserver(productRecorder))
 	toolSpan.EndMessage("Tool runtime bootstrapped", tracepkg.Int("tool_count", len(toolRuntime.List())))
 	if toolRuntime.Upstream != nil {
 		toolRuntime.Upstream.SetTraceObserver(observer)
@@ -113,7 +130,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	app := &App{
 		Config: configStore, MCP: mcpRuntime, Upstream: toolRuntime.Upstream, Tools: toolRuntime, Activity: stream,
 		Tunnel: tunnelClient, Logger: appLogger,
-		OAuth: oauthStore, OAuthFlows: mcpoauth.NewFlowManager(oauthStore), trace: observer,
+		OAuth: oauthStore, OAuthFlows: mcpoauth.NewFlowManager(oauthStore), ProductTelemetry: productRecorder, trace: observer,
 	}
 	bootstrapStarted := time.Now()
 	if err := app.Bootstrap(); err != nil {

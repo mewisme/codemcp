@@ -27,6 +27,7 @@ func (a *App) ReloadConfig(next config.Config) error {
 	permissionsChanged := !slices.Equal(previous.Permissions.AllowDirs, next.Permissions.AllowDirs)
 	shellPathChanged := !slices.Equal(previous.Shell.Path, next.Shell.Path)
 	semanticApprovalChanged := previous.Approval.Semantic != next.Approval.Semantic
+	telemetryChanged := previous.Telemetry != next.Telemetry
 	tunnelChanged := previous.Tunnel != next.Tunnel
 	tunnelRuntimeChanged := tunnelChanged && !tunnel.RuntimeConfigEqual(previous.Tunnel, next.Tunnel)
 
@@ -36,14 +37,14 @@ func (a *App) ReloadConfig(next config.Config) error {
 	if reloadTestAfterCommit != nil {
 		reloadTestAfterCommit()
 	}
-	if err := a.applyRuntimeConfig(next, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
+	if err := a.applyRuntimeConfig(next, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
 		_, restoreErr := a.Config.Update(func(config.Config) (config.Config, error) { return previous, nil })
-		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, tunnelChanged, tunnelRuntimeChanged))
+		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, tunnelChanged, tunnelRuntimeChanged))
 	}
 	return nil
 }
 
-func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
+func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
 	if integrationsChanged {
 		if err := a.Tools.SyncIntegrations(next.Integrations); err != nil {
 			return err
@@ -57,6 +58,9 @@ func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsCh
 	}
 	if semanticApprovalChanged {
 		a.Tools.SetSemanticApprovalPolicy(semanticApprovalPolicy(next.Approval.Semantic))
+	}
+	if telemetryChanged && a.ProductTelemetry != nil {
+		a.ProductTelemetry.SetEnabled(config.ResolveTelemetryEnabled(next, true).Enabled)
 	}
 	if httpChanged {
 		a.syncMCPHTTP(next.Server.Enabled)
@@ -84,7 +88,7 @@ func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsCh
 	return nil
 }
 
-func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
+func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
 	var rollbackErr error
 	if tunnelChanged && a.Tunnel != nil {
 		if tunnelRuntimeChanged {
@@ -108,6 +112,9 @@ func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integra
 	}
 	if semanticApprovalChanged {
 		a.Tools.SetSemanticApprovalPolicy(semanticApprovalPolicy(previous.Approval.Semantic))
+	}
+	if telemetryChanged && a.ProductTelemetry != nil {
+		a.ProductTelemetry.SetEnabled(config.ResolveTelemetryEnabled(previous, true).Enabled)
 	}
 	if httpChanged {
 		a.syncMCPHTTP(previous.Server.Enabled)

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
 )
 
@@ -28,6 +29,7 @@ func withCanonicalOperation(next http.Handler) http.Handler {
 		}
 		w.Header().Set(CanonicalOperationHeader, string(operation))
 		ctx := context.WithValue(r.Context(), operationContextKey{}, operation)
+		ctx = application.WithOperationInterface(ctx, application.OperationInterfaceAdmin)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
