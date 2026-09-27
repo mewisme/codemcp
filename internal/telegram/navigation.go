@@ -36,6 +36,11 @@ const (
 	RouteIntegration     Route = "integration"
 	RouteSetting         Route = "setting"
 	RouteAuthorizedUsers Route = "authorized-users"
+	RouteSystem          Route = "system"
+	RouteDoctor          Route = "doctor"
+	RouteInstructions    Route = "instructions"
+	RoutePrompts         Route = "prompts"
+	RoutePrompt          Route = "prompt"
 )
 
 type ActionState struct {
@@ -95,6 +100,7 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 		RouteHome: ui.handleHome, RouteStatus: ui.handleStatus, RouteCommands: ui.handleCommands,
 		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests, RouteNetwork: ui.handleNetwork,
 		RouteSettings: ui.handleSettings, RouteIntegrations: ui.handleIntegrations,
+		RouteSystem: ui.handleSystem, RouteInstructions: ui.handleInstructions,
 	}
 	for _, command := range Commands() {
 		if handler := handlers[command.Route]; handler != nil {
@@ -404,6 +410,16 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.settingDetailScreen(ctx, owner, state)
 	case RouteAuthorizedUsers:
 		return ui.authorizedUsersScreen(ctx, owner)
+	case RouteSystem:
+		return ui.systemScreen(ctx, owner)
+	case RouteDoctor:
+		return ui.doctorScreen(ctx, owner, state)
+	case RouteInstructions:
+		return ui.instructionsScreen(ctx, owner)
+	case RoutePrompts:
+		return ui.promptsScreen(ctx, owner, state)
+	case RoutePrompt:
+		return ui.promptScreen(ctx, owner, state)
 	default:
 		if state.Operation == "" {
 			return Screen{}, errors.New("telegram navigation route is unavailable")
@@ -453,6 +469,14 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
+	system, err := ui.stateButton(owner, "System", CallbackOpen, ActionState{Route: RouteSystem, Back: RouteHome})
+	if err != nil {
+		return Screen{}, err
+	}
+	instructions, err := ui.stateButton(owner, "Instructions", CallbackOpen, ActionState{Route: RouteInstructions, Back: RouteHome})
+	if err != nil {
+		return Screen{}, err
+	}
 	unavailable := func(label string) Button {
 		return Button{Text: CompactActionLabel(label), Disabled: true, Role: ButtonRoleNeutral}
 	}
@@ -464,11 +488,11 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 		StatusRow(ToneWarning, "Unavailable", "Remaining administration sections stay disabled until their canonical Telegram adapters are activated."),
 	)
 	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{
-		{status, unavailable("System")},
+		{status, system},
 		{requests, unavailable("Completions")},
 		{workspaces, network},
 		{upstreams, integrations},
-		{unavailable("Instructions")},
+		{instructions},
 		{settings, auth},
 		{unavailable("Logs")},
 		{help, refresh},
@@ -564,6 +588,9 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 	if screen, handled, err := ui.settingsOperationResultScreen(ctx, owner, state, spec, result.Value); handled {
 		return screen, err
 	}
+	if screen, handled, err := ui.systemOperationResultScreen(ctx, owner, state, result.Value); handled {
+		return screen, err
+	}
 	parts := []PresentationPart{
 		ProductHeader("CodeMCP", "Telegram / "+routeLabel(state.Route)),
 		TitleBlock(string(result.Operation), "Canonical operation"),
@@ -577,7 +604,7 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 			MetadataItem{Label: "tunnel", Value: boolState(status.TunnelEnabled)},
 			MetadataItem{Label: "Telegram", Value: boolState(status.TelegramEnabled)},
 			MetadataItem{Label: "Telegram polling", Value: boolState(status.TelegramHealthy)},
-		), StatusRow(ToneWarning, "Unavailable", "System and Logs drill-downs remain inert until their canonical Telegram adapters are activated."))
+		), StatusRow(ToneWarning, "Unavailable", "Logs drill-down remains inert until its canonical Telegram adapter is activated."))
 	} else {
 		parts = append(parts, MetadataBlock(
 			MetadataItem{Label: "operation", Value: string(result.Operation), Code: true},
@@ -718,10 +745,11 @@ func (ui *Interface) terminalOperationKeyboard(owner ViewOwner, state ActionStat
 	}
 	secondary := []Button{}
 	if _, ok := value.(application.StatusOverview); ok {
-		secondary = append(secondary,
-			Button{Text: "System", Disabled: true, Role: ButtonRoleView},
-			Button{Text: "Logs", Disabled: true, Role: ButtonRoleView},
-		)
+		system, systemErr := ui.stateButton(owner, "System", CallbackOpen, ActionState{Route: RouteSystem, Back: RouteStatus})
+		if systemErr != nil {
+			return nil, systemErr
+		}
+		secondary = append(secondary, system, Button{Text: "Logs", Disabled: true, Role: ButtonRoleView})
 	}
 	navigation := []Button{back, home}
 	if spec.Kind == capability.KindQuery || spec.Kind == capability.KindStream {
@@ -912,6 +940,16 @@ func routeLabel(route Route) string {
 		return "Setting"
 	case RouteAuthorizedUsers:
 		return "Authorized users"
+	case RouteSystem:
+		return "System"
+	case RouteDoctor:
+		return "Doctor"
+	case RouteInstructions:
+		return "Instructions"
+	case RoutePrompts:
+		return "Prompts"
+	case RoutePrompt:
+		return "Prompt"
 	case RouteOperation:
 		return "Operation"
 	default:

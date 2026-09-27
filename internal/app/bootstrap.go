@@ -72,6 +72,18 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
+		if err := application.BindSystemOperations(a.Operations, application.SystemOperationServices{
+			Instructions:   application.NewInstructionSettingsService(nil),
+			ProjectContext: application.NewApplicationProjectContextService(a.Tools.Workspaces),
+			Tools:          application.NewToolInventoryServiceWithRuntime(a.Tools),
+			Prompts: &application.PromptService{
+				Workspaces:          a.Tools.Workspaces,
+				AllowGlobalMutation: func(context.Context) bool { return true },
+			},
+		}); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		telemetry.AttachTools(a.Tools, a.Activity, a.Logger)
 		telemetry.AttachApprovals(a.Tools.Approvals, a.Activity, a.Logger)
 		telemetry.AttachBackground(a.Tools.Processes, a.Activity, a.Logger)

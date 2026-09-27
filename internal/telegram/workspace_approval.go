@@ -645,6 +645,9 @@ func inputPrompt(kind string) (title, prompt, placeholder string) {
 	if title, prompt, placeholder := settingsInputPrompt(ActionState{InputKind: kind}); title != "" {
 		return title, prompt, placeholder
 	}
+	if title, prompt, placeholder := systemInputPrompt(ActionState{InputKind: kind}); title != "" {
+		return title, prompt, placeholder
+	}
 	switch kind {
 	case inputWorkspaceRegister:
 		return "Register workspace", "Reply with the absolute workspace directory.", "/path/to/workspace"
@@ -670,6 +673,9 @@ func actionInput(state ActionState, text string) (any, error) {
 		return value, err
 	}
 	if value, handled, err := settingsActionInput(state, text); handled {
+		return value, err
+	}
+	if value, handled, err := systemActionInput(state, text); handled {
 		return value, err
 	}
 	switch state.InputKind {
