@@ -122,7 +122,7 @@ func (page *LogsPage) visibleExecutionEvents() []shellruntime.ExecutionFeedEvent
 	}
 	result := make([]shellruntime.ExecutionFeedEvent, 0, len(page.exec.events))
 	for _, event := range page.exec.events {
-		if page.executionEventVisible(event) {
+		if event.Sequence > page.executionClear && page.executionEventVisible(event) {
 			result = append(result, event)
 		}
 	}
@@ -138,7 +138,7 @@ func (page *LogsPage) visibleExecutions() []shellruntime.ExecutionInfo {
 	}
 	result := make([]shellruntime.ExecutionInfo, 0, len(page.exec.executions))
 	for _, info := range page.exec.executions {
-		if page.executionInfoVisible(info) {
+		if page.executionInfoVisible(info) && page.executionRetainedAfterClear(info.ID) {
 			result = append(result, info)
 		}
 	}
@@ -146,6 +146,19 @@ func (page *LogsPage) visibleExecutions() []shellruntime.ExecutionInfo {
 		result = append([]shellruntime.ExecutionInfo(nil), result[len(result)-shellruntime.MaxRecentExecutions:]...)
 	}
 	return result
+}
+
+func (page *LogsPage) executionRetainedAfterClear(executionID string) bool {
+	if page == nil || page.executionClear == 0 {
+		return true
+	}
+	for index := len(page.exec.events) - 1; index >= 0; index-- {
+		event := page.exec.events[index]
+		if event.ExecutionID == executionID && event.Sequence > page.executionClear {
+			return true
+		}
+	}
+	return false
 }
 
 func executionInfosFromEvents(events []shellruntime.ExecutionFeedEvent) []shellruntime.ExecutionInfo {

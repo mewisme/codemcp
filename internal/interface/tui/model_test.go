@@ -148,7 +148,7 @@ func TestModelRestoresLogsViewStateAcrossTopLevelNavigationAndResumesFollow(t *t
 		t.Fatalf("logs page does not expose session state: %T", model.currentPage)
 	}
 	page.RestoreSessionViewState(tuipage.LogsSessionViewState{
-		Tab: "command-execution", RuntimePaused: true, RuntimeSelectedID: "run:4", ExecutionScope: "workspace", ExecutionWorkspaceID: "ws_a", ExecutionPaused: true, ExecutionYOffset: 6, ToolCallPaused: true, ToolCallYOffset: 5,
+		Tab: "command-execution", RuntimePaused: true, RuntimeSelectedID: "run:4", RuntimeClearSequences: map[string]uint64{"run_session": 11}, ExecutionScope: "workspace", ExecutionWorkspaceID: "ws_a", ExecutionPaused: true, ExecutionYOffset: 6, ExecutionClearSequence: 12, ToolCallPaused: true, ToolCallYOffset: 5, ToolCallClearSequence: 13,
 	})
 	model.switchPage(Route{Kind: RouteTunnel})
 	updated, _ := model.requestNavigation(navigationIntent{route: Route{Kind: RouteLogs}, replace: true, restoreRemembered: true})
@@ -164,7 +164,7 @@ func TestModelRestoresLogsViewStateAcrossTopLevelNavigationAndResumesFollow(t *t
 	if !ok {
 		t.Fatalf("restored logs state type=%T", restoredPage.SessionViewState())
 	}
-	if state.Tab != "command-execution" || state.ExecutionScope != "workspace" || state.ExecutionWorkspaceID != "ws_a" || state.RuntimePaused || state.RuntimeSelectedID != "" || state.ExecutionPaused || state.ExecutionYOffset != 0 || state.ToolCallPaused || state.ToolCallYOffset != 0 {
+	if state.Tab != "command-execution" || state.ExecutionScope != "workspace" || state.ExecutionWorkspaceID != "ws_a" || state.RuntimePaused || state.RuntimeSelectedID != "" || state.ExecutionPaused || state.ExecutionYOffset != 0 || state.ToolCallPaused || state.ToolCallYOffset != 0 || state.RuntimeClearSequences["run_session"] != 11 || state.ExecutionClearSequence != 12 || state.ToolCallClearSequence != 13 {
 		t.Fatalf("restored logs state=%#v", state)
 	}
 }

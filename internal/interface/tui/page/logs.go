@@ -86,6 +86,9 @@ type LogsPage struct {
 	tab               logsTab
 	view              logsDisplayView
 	timeline          logsTimelineState
+	runtimeClear      map[string]uint64
+	executionClear    uint64
+	toolCallClear     uint64
 	runtimeScope      logsScopeState
 	exec              logsExecutionFeed
 	tools             logsToolCallFeed
@@ -133,6 +136,7 @@ type LogsSessionViewState struct {
 	Visibility                  logger.Visibility
 	RuntimePaused               bool
 	RuntimeSelectedID           string
+	RuntimeClearSequences       map[string]uint64
 	ExecutionScope              string
 	ExecutionWorkspaceID        string
 	ExecutionContainerID        string
@@ -142,11 +146,13 @@ type LogsSessionViewState struct {
 	ExecutionProcessRunning     bool
 	ExecutionPaused             bool
 	ExecutionYOffset            int
+	ExecutionClearSequence      uint64
 	ToolCallScope               string
 	ToolCallWorkspaceID         string
 	ToolCallContainerID         string
 	ToolCallPaused              bool
 	ToolCallYOffset             int
+	ToolCallClearSequence       uint64
 }
 
 func NewLogs(ctx context.Context) (*LogsPage, error) {
@@ -162,7 +168,7 @@ func NewLogsRouteAction(ctx context.Context, resourceID, section, action string)
 		ctx = context.Background()
 	}
 	pageCtx, cancel := context.WithCancel(ctx)
-	page := &LogsPage{ctx: pageCtx, cancel: cancel, resourceID: strings.TrimSpace(resourceID), section: strings.TrimSpace(section), action: strings.TrimSpace(action), view: logsViewBrowser, timeline: newLogsTimelineState(), runtimeScope: newLogsScopeState(), options: application.LogsQueryOptions{Tail: logsDefaultTail}, visibility: logger.VisibilityVerbose, exec: newLogsExecutionFeed(), tools: newLogsToolCallFeed()}
+	page := &LogsPage{ctx: pageCtx, cancel: cancel, resourceID: strings.TrimSpace(resourceID), section: strings.TrimSpace(section), action: strings.TrimSpace(action), view: logsViewBrowser, timeline: newLogsTimelineState(), runtimeClear: map[string]uint64{}, runtimeScope: newLogsScopeState(), options: application.LogsQueryOptions{Tail: logsDefaultTail}, visibility: logger.VisibilityVerbose, exec: newLogsExecutionFeed(), tools: newLogsToolCallFeed()}
 	page.browser = component.NewBrowser(pageCtx, "Logs", nil, nil).WithTitleVisible(false).WithExternalHelp(true)
 	page.syncBrowserHelp()
 	if page.action == "filter" {
@@ -265,12 +271,12 @@ func (page *LogsPage) SessionViewState() any {
 	}
 	return LogsSessionViewState{
 		Tab: tab, View: string(page.view), Options: page.options, Visibility: page.visibility, RuntimePaused: page.paused, RuntimeSelectedID: page.selectedID(),
-		RuntimeScope: string(page.runtimeScope.mode), RuntimeWorkspaceID: page.runtimeScope.workspaceID, RuntimeContainerID: page.runtimeScope.containerID,
+		RuntimeScope: string(page.runtimeScope.mode), RuntimeWorkspaceID: page.runtimeScope.workspaceID, RuntimeContainerID: page.runtimeScope.containerID, RuntimeClearSequences: cloneSequenceWatermarks(page.runtimeClear),
 		ExecutionScope: string(page.exec.scopeMode), ExecutionWorkspaceID: page.exec.workspaceID, ExecutionContainerID: page.exec.containerID,
 		ExecutionWorkspaceView: string(workspaceView), ExecutionProcessID: processID, ExecutionProcessExecutionID: processExecutionID, ExecutionProcessRunning: processRunning,
-		ExecutionPaused: page.exec.paused, ExecutionYOffset: executionYOffset,
+		ExecutionPaused: page.exec.paused, ExecutionYOffset: executionYOffset, ExecutionClearSequence: page.executionClear,
 		ToolCallScope: string(page.tools.scope.mode), ToolCallWorkspaceID: page.tools.scope.workspaceID, ToolCallContainerID: page.tools.scope.containerID,
-		ToolCallPaused: page.tools.paused, ToolCallYOffset: page.tools.viewport.YOffset(),
+		ToolCallPaused: page.tools.paused, ToolCallYOffset: page.tools.viewport.YOffset(), ToolCallClearSequence: page.toolCallClear,
 	}
 }
 
@@ -294,6 +300,10 @@ func (page *LogsPage) RestoreSessionViewState(value any) {
 	page.options, page.visibility, page.paused = state.Options, state.Visibility, state.RuntimePaused
 	page.runtimeScope.mode = normalizeExecutionScopeMode(executionScopeMode(state.RuntimeScope))
 	page.runtimeScope.workspaceID, page.runtimeScope.containerID = strings.TrimSpace(state.RuntimeWorkspaceID), strings.TrimSpace(state.RuntimeContainerID)
+	page.runtimeClear = cloneSequenceWatermarks(state.RuntimeClearSequences)
+	if page.runtimeClear == nil {
+		page.runtimeClear = map[string]uint64{}
+	}
 	page.refreshRuntimeScope()
 	page.restoreSelectedID = strings.TrimSpace(state.RuntimeSelectedID)
 	switch executionScopeMode(state.ExecutionScope) {
@@ -311,12 +321,12 @@ func (page *LogsPage) RestoreSessionViewState(value any) {
 	if page.exec.scopeMode != executionScopeWorkspace || page.exec.workspaceView != executionWorkspaceProcess || page.exec.processID == "" || page.exec.processExecutionID == "" {
 		page.exec.workspaceView, page.exec.processID, page.exec.processExecutionID, page.exec.processRunning = executionWorkspaceCommands, "", "", false
 	}
-	page.exec.paused = state.ExecutionPaused
+	page.exec.paused, page.executionClear = state.ExecutionPaused, state.ExecutionClearSequence
 	page.exec.restoreYOffset, page.exec.restoreYOffsetSet = max(0, state.ExecutionYOffset), true
 	page.tools.scope.mode = normalizeExecutionScopeMode(executionScopeMode(state.ToolCallScope))
 	page.tools.scope.workspaceID, page.tools.scope.containerID = strings.TrimSpace(state.ToolCallWorkspaceID), strings.TrimSpace(state.ToolCallContainerID)
 	page.refreshToolCallScope()
-	page.tools.paused = state.ToolCallPaused
+	page.tools.paused, page.toolCallClear = state.ToolCallPaused, state.ToolCallClearSequence
 	page.tools.restoreYOffset = max(0, state.ToolCallYOffset)
 	page.syncBrowserHelp()
 }
@@ -690,6 +700,9 @@ func (page *LogsPage) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return page.openCommand(LogsRefresh), true
 	case "i":
 		return page.openCommand(LogsInfo), true
+	case "c":
+		page.clearActiveLogsView()
+		return nil, true
 	case "d":
 		return page.openCommand(LogsClear), true
 	}
@@ -699,6 +712,7 @@ func (page *LogsPage) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if !page.timeline.viewport.AtBottom() {
 			page.paused = true
 		}
+		page.maybeExpandRuntimeTimeline()
 		return cmd, true
 	}
 	return nil, false
@@ -749,6 +763,7 @@ func (page *LogsPage) submitFilterEditor() tea.Cmd {
 	page.err = nil
 	page.events = nil
 	page.paused = false
+	page.timeline.window.invalidate()
 	return tea.Batch(page.startBootstrap(), func() tea.Msg { return NavigateMsg{Path: []string{"logs"}, Replace: true, PreservePage: true} })
 }
 
@@ -777,6 +792,7 @@ func (page *LogsPage) togglePause() tea.Cmd {
 	page.notice, page.toastNotice = "", false
 	if !page.paused {
 		if page.view == logsViewTimeline {
+			page.timeline.window.invalidate()
 			page.refreshRuntimeTimeline()
 		} else {
 			page.browser.SelectLast()
@@ -786,9 +802,51 @@ func (page *LogsPage) togglePause() tea.Cmd {
 	return nil
 }
 
+func (page *LogsPage) clearActiveLogsView() {
+	if page == nil {
+		return
+	}
+	switch page.tab {
+	case logsTabCommandExec:
+		page.executionClear = max(page.executionClear, page.exec.latestSeq)
+		for _, event := range page.exec.events {
+			page.executionClear = max(page.executionClear, event.Sequence)
+		}
+		page.exec.window.invalidate()
+		page.exec.paused = false
+		page.exec.notice = "Command stream view cleared"
+	case logsTabToolCalls:
+		page.toolCallClear = max(page.toolCallClear, page.tools.latestSeq)
+		for _, event := range page.tools.events {
+			page.toolCallClear = max(page.toolCallClear, event.Sequence)
+		}
+		page.tools.window.invalidate()
+		page.tools.paused = false
+		page.tools.notice = "Tool call stream view cleared"
+	default:
+		if page.runtimeClear == nil {
+			page.runtimeClear = map[string]uint64{}
+		}
+		for _, event := range page.events {
+			if event.Sequence > page.runtimeClear[event.RunID] {
+				page.runtimeClear[event.RunID] = event.Sequence
+			}
+		}
+		if page.streamRunID != "" && page.streamSeq > page.runtimeClear[page.streamRunID] {
+			page.runtimeClear[page.streamRunID] = page.streamSeq
+		}
+		page.timeline.window.invalidate()
+		page.paused = false
+		page.notice, page.toastNotice = "Runtime view cleared", true
+	}
+	page.refreshActiveLogsView()
+	page.syncBrowserHelp()
+}
+
 func (page *LogsPage) startBootstrap() tea.Cmd {
 	page.stopStream()
 	page.refreshRuntimeScope()
+	page.timeline.window.invalidate()
 	page.generation++
 	generation := page.generation
 	ctx, cancel := context.WithCancel(page.ctx)
@@ -823,6 +881,9 @@ func (page *LogsPage) finishBootstrap(msg logsBootstrapMsg) tea.Cmd {
 			page.streamSeq = msg.snapshot.LatestSequence[msg.state.RunID]
 		}
 		browserCmd = page.mergeEvents(msg.snapshot.Events)
+		if page.view == logsViewTimeline && page.paused {
+			page.refreshRuntimeTimeline()
+		}
 		if page.restoreSelectedID != "" {
 			browserCmd = tea.Batch(browserCmd, page.rebuildBrowser(page.restoreSelectedID))
 			page.restoreSelectedID = ""
@@ -913,6 +974,7 @@ func (page *LogsPage) finishStreamEvent(msg logsStreamEventMsg) tea.Cmd {
 		page.query.RunID = msg.event.RunID
 		page.events = nil
 		page.paused = false
+		page.timeline.window.invalidate()
 	}
 	if page.query.Match(msg.event) && msg.event.Visibility <= page.visibility {
 		return tea.Batch(page.appendEvent(msg.event), page.nextEventCmd(msg.generation))
@@ -970,7 +1032,9 @@ func (page *LogsPage) mergeEvents(events []runtimeevent.Event) tea.Cmd {
 		selected = page.tailID()
 	}
 	if page.view == logsViewTimeline {
-		page.refreshRuntimeTimeline()
+		if !page.paused {
+			page.refreshRuntimeTimeline()
+		}
 		return nil
 	}
 	return page.rebuildBrowser(selected)
@@ -998,7 +1062,9 @@ func (page *LogsPage) appendEvent(event runtimeevent.Event) tea.Cmd {
 		selected = page.tailID()
 	}
 	if page.view == logsViewTimeline {
-		page.refreshRuntimeTimeline()
+		if !page.paused {
+			page.refreshRuntimeTimeline()
+		}
 		return nil
 	}
 	return page.rebuildBrowser(selected)
@@ -1137,7 +1203,7 @@ func (page *LogsPage) statusView(width int) string {
 func (page *LogsPage) runtimeHelpView(width int) string {
 	bindings := []key.Binding{
 		component.Binding([]string{"h", "l", "left", "right"}, "←/→", "tabs"), component.Binding([]string{"v"}, "v", "view"), component.Binding([]string{"m"}, "m", "mode"),
-		component.Binding([]string{"f"}, "f", "filters"), component.Binding([]string{"r"}, "r", "refresh"), component.Binding([]string{"i"}, "i", "info"), component.Binding([]string{"d"}, "d", "clear"),
+		component.Binding([]string{"f"}, "f", "filters"), component.Binding([]string{"r"}, "r", "refresh"), component.Binding([]string{"i"}, "i", "info"), component.Binding([]string{"c"}, "c", "clear view"), component.Binding([]string{"d"}, "d", "delete journal"),
 	}
 	bindings = append(bindings, component.Binding([]string{"space"}, "space", executionFollowLabel(page.paused)))
 	return component.NewHelpFooter(bindings...).View(width)
@@ -1149,9 +1215,9 @@ func (page *LogsPage) syncBrowserHelp() {
 	case logsTabCommandExec:
 		bindings = append(bindings, component.Binding([]string{"r"}, "r", "reconnect"), component.Binding([]string{"c"}, "c", "clear view"))
 	case logsTabToolCalls:
-		bindings = append(bindings, component.Binding([]string{"r"}, "r", "reconnect"))
+		bindings = append(bindings, component.Binding([]string{"r"}, "r", "reconnect"), component.Binding([]string{"c"}, "c", "clear view"))
 	default:
-		bindings = append(bindings, component.Binding([]string{"f"}, "f", "filters"), component.Binding([]string{"r"}, "r", "refresh"), component.Binding([]string{"i"}, "i", "info"), component.Binding([]string{"d"}, "d", "clear"))
+		bindings = append(bindings, component.Binding([]string{"f"}, "f", "filters"), component.Binding([]string{"r"}, "r", "refresh"), component.Binding([]string{"i"}, "i", "info"), component.Binding([]string{"c"}, "c", "clear view"), component.Binding([]string{"d"}, "d", "delete journal"))
 	}
 	bindings = append(bindings, component.Binding([]string{"space"}, "space", executionFollowLabel(page.activeLogsPaused())))
 	page.browser.SetHelpBindings(bindings...)

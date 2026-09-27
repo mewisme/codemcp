@@ -209,8 +209,11 @@ func TestLogsBrowserAndTimelineRetentionSemanticsAreIndependent(t *testing.T) {
 	if got := len(page.visibleRuntimeBrowserRecords()); got != logsBrowserRecordCap {
 		t.Fatalf("runtime Browser records=%d want=%d", got, logsBrowserRecordCap)
 	}
-	if got := len(page.visibleRuntimeTimelineEvents()); got != logsTimelineEventCap {
-		t.Fatalf("runtime Timeline events=%d want=%d", got, logsTimelineEventCap)
+	if got := len(page.eligibleRuntimeTimelineEvents()); got != logsTimelineEventCap {
+		t.Fatalf("runtime eligible Timeline events=%d want=%d", got, logsTimelineEventCap)
+	}
+	if got := len(page.visibleRuntimeTimelineEvents()); got != logsTimelinePageSize {
+		t.Fatalf("runtime initial Timeline events=%d want=%d", got, logsTimelinePageSize)
 	}
 	page.view = logsViewBrowser
 	if status := ansi.Strip(page.statusView(160)); !strings.Contains(status, "Records") || strings.Contains(status, "Events") {
@@ -271,8 +274,11 @@ func TestLogsBrowserAndTimelineRetentionSemanticsAreIndependent(t *testing.T) {
 	if len(calls) != activity.MaxRecentToolCalls || calls[0].CallID != "call_0300" || calls[len(calls)-1].CallID != fmt.Sprintf("call_%04d", activity.MaxRecentToolCalls+299) {
 		t.Fatalf("filtered logical calls len=%d first=%q last=%q", len(calls), calls[0].CallID, calls[len(calls)-1].CallID)
 	}
-	if len(page.visibleToolCallTimelineEvents()) != activity.MaxRecentEvents {
-		t.Fatalf("tool Timeline raw events=%d want=%d", len(page.visibleToolCallTimelineEvents()), activity.MaxRecentEvents)
+	if len(page.eligibleToolCallTimelineEvents()) != activity.MaxRecentEvents {
+		t.Fatalf("tool eligible Timeline raw events=%d want=%d", len(page.eligibleToolCallTimelineEvents()), activity.MaxRecentEvents)
+	}
+	if len(page.visibleToolCallTimelineEvents()) != logsTimelinePageSize {
+		t.Fatalf("tool initial Timeline raw events=%d want=%d", len(page.visibleToolCallTimelineEvents()), logsTimelinePageSize)
 	}
 	if status := ansi.Strip(page.toolCallStatusView(180)); !strings.Contains(status, "Calls") || strings.Contains(status, "Events") {
 		t.Fatalf("tool Browser status=%q", status)
@@ -280,6 +286,339 @@ func TestLogsBrowserAndTimelineRetentionSemanticsAreIndependent(t *testing.T) {
 	page.view = logsViewTimeline
 	if status := ansi.Strip(page.toolCallStatusView(180)); !strings.Contains(status, "Events") || strings.Contains(status, "Calls") {
 		t.Fatalf("tool Timeline status=%q", status)
+	}
+}
+
+func TestLogsTimelineWindowsStartNewestExpandAndKeepLogicalRecordsWhole(t *testing.T) {
+	page, err := NewLogs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	base := time.Now().UTC()
+
+	page.view = logsViewTimeline
+	page.events = make([]runtimeevent.Event, 100)
+	for index := range page.events {
+		workspaceID := "ws_other"
+		if index >= 50 {
+			workspaceID = "ws_selected"
+		}
+		page.events[index] = runtimeevent.Event{Sequence: uint64(index + 1), Time: base.Add(time.Duration(index) * time.Millisecond), RunID: "run_window", WorkspaceID: workspaceID, Level: "info", Name: "runtime.event", Message: fmt.Sprintf("event %d", index)}
+	}
+	page.timeline.viewport.SetWidth(80)
+	page.timeline.viewport.SetHeight(8)
+	page.refreshRuntimeTimeline()
+	runtimeWindow := page.visibleRuntimeTimelineEvents()
+	if len(runtimeWindow) != logsTimelinePageSize || runtimeWindow[0].Sequence != 61 || runtimeWindow[len(runtimeWindow)-1].Sequence != 100 {
+		t.Fatalf("runtime initial window len=%d range=%d..%d", len(runtimeWindow), runtimeWindow[0].Sequence, runtimeWindow[len(runtimeWindow)-1].Sequence)
+	}
+	if len(page.visibleRuntimeBrowserRecords()) != 100 {
+		t.Fatalf("runtime Browser was windowed: %d", len(page.visibleRuntimeBrowserRecords()))
+	}
+	page.paused = true
+	page.timeline.viewport.SetYOffset(0)
+	oldLines := page.timeline.viewport.TotalLineCount()
+	page.handleTimelineMouse(logsTimelineMouseMsg{Tab: logsTabRuntime, Wheel: -1})
+	runtimeWindow = page.visibleRuntimeTimelineEvents()
+	delta := page.timeline.viewport.TotalLineCount() - oldLines
+	if len(runtimeWindow) != 80 || runtimeWindow[0].Sequence != 21 || delta <= 0 || page.timeline.viewport.YOffset() != delta {
+		t.Fatalf("runtime expanded len=%d first=%d offset=%d delta=%d", len(runtimeWindow), runtimeWindow[0].Sequence, page.timeline.viewport.YOffset(), delta)
+	}
+	for index := 1; index < len(runtimeWindow); index++ {
+		if runtimeWindow[index-1].Sequence >= runtimeWindow[index].Sequence {
+			t.Fatalf("runtime chronology broke at %d: %d >= %d", index, runtimeWindow[index-1].Sequence, runtimeWindow[index].Sequence)
+		}
+	}
+	page.togglePause()
+	runtimeWindow = page.visibleRuntimeTimelineEvents()
+	if page.paused || len(runtimeWindow) != logsTimelinePageSize || runtimeWindow[0].Sequence != 61 || !page.timeline.viewport.AtBottom() {
+		t.Fatalf("runtime follow reset paused=%t len=%d first=%d bottom=%t", page.paused, len(runtimeWindow), runtimeWindow[0].Sequence, page.timeline.viewport.AtBottom())
+	}
+	page.paused = true
+	page.timeline.viewport.SetYOffset(2)
+	pausedOffset := page.timeline.viewport.YOffset()
+	_ = page.appendEvent(runtimeevent.Event{Sequence: 101, Time: base.Add(101 * time.Millisecond), RunID: "run_window", WorkspaceID: "ws_selected", Level: "info", Name: "runtime.event", Message: "live"})
+	runtimeWindow = page.visibleRuntimeTimelineEvents()
+	if page.timeline.viewport.YOffset() != pausedOffset || runtimeWindow[len(runtimeWindow)-1].Sequence != 100 {
+		t.Fatalf("paused runtime moved offset=%d want=%d last=%d", page.timeline.viewport.YOffset(), pausedOffset, runtimeWindow[len(runtimeWindow)-1].Sequence)
+	}
+	page.togglePause()
+	runtimeWindow = page.visibleRuntimeTimelineEvents()
+	if runtimeWindow[len(runtimeWindow)-1].Sequence != 101 {
+		t.Fatalf("runtime resume did not reach newest event: %d", runtimeWindow[len(runtimeWindow)-1].Sequence)
+	}
+
+	page.runtimeScope.mode, page.runtimeScope.workspaceID = executionScopeWorkspace, "ws_selected"
+	page.timeline.window.invalidate()
+	filteredRuntime := page.visibleRuntimeTimelineEvents()
+	if len(page.visibleRuntimeBrowserRecords()) != 51 || len(filteredRuntime) != logsTimelinePageSize {
+		t.Fatalf("runtime scope before window browser=%d timeline=%d", len(page.visibleRuntimeBrowserRecords()), len(filteredRuntime))
+	}
+	for _, event := range filteredRuntime {
+		if event.WorkspaceID != "ws_selected" {
+			t.Fatalf("runtime window contains out-of-scope event: %#v", event)
+		}
+	}
+
+	page.tab, page.view = logsTabCommandExec, logsViewTimeline
+	page.exec = newLogsExecutionFeed()
+	sequence := uint64(0)
+	for index := 0; index < 100; index++ {
+		id := fmt.Sprintf("exec_%03d", index)
+		info := shellruntime.ExecutionInfo{ID: id, WorkspaceID: "ws_exec", Tool: "run_command", Command: fmt.Sprintf("echo %d", index), Status: shellruntime.ExecutionStatusSuccess}
+		page.exec.executions = append(page.exec.executions, info)
+		sequence++
+		page.exec.events = append(page.exec.events, shellruntime.ExecutionFeedEvent{Sequence: sequence, ExecutionID: id, WorkspaceID: "ws_exec", Type: shellruntime.ExecutionEventStarted, Execution: &info})
+		sequence++
+		page.exec.events = append(page.exec.events, shellruntime.ExecutionFeedEvent{Sequence: sequence, ExecutionID: id, WorkspaceID: "ws_exec", Type: shellruntime.ExecutionEventOutput, Stream: "stdout", Data: "output\n"})
+		sequence++
+		page.exec.events = append(page.exec.events, shellruntime.ExecutionFeedEvent{Sequence: sequence, ExecutionID: id, WorkspaceID: "ws_exec", Type: shellruntime.ExecutionEventCompleted, Execution: &info, Status: shellruntime.ExecutionStatusSuccess})
+	}
+	page.exec.viewport.SetWidth(80)
+	page.exec.viewport.SetHeight(8)
+	page.refreshExecutionViewport()
+	executionWindow := page.visibleExecutionTimelineEvents()
+	ids := executionTimelineRecordIDs(executionWindow)
+	if len(ids) != logsTimelinePageSize || ids[0] != "exec_060" || ids[len(ids)-1] != "exec_099" || len(executionWindow) != logsTimelinePageSize*3 {
+		t.Fatalf("execution window ids=%d first=%q last=%q events=%d", len(ids), ids[0], ids[len(ids)-1], len(executionWindow))
+	}
+	counts := map[string]int{}
+	for _, event := range executionWindow {
+		counts[event.ExecutionID]++
+	}
+	for _, id := range ids {
+		if counts[id] != 3 {
+			t.Fatalf("execution %s split across window: %d events", id, counts[id])
+		}
+	}
+	if len(page.visibleExecutions()) != 100 {
+		t.Fatalf("execution Browser was windowed: %d", len(page.visibleExecutions()))
+	}
+	page.exec.paused = true
+	page.exec.viewport.SetYOffset(0)
+	oldLines = page.exec.viewport.TotalLineCount()
+	page.handleExecutionMouse(logsExecutionMouseMsg{Wheel: -1})
+	ids = executionTimelineRecordIDs(page.visibleExecutionTimelineEvents())
+	delta = page.exec.viewport.TotalLineCount() - oldLines
+	if len(ids) != 80 || ids[0] != "exec_020" || delta <= 0 || page.exec.viewport.YOffset() != delta {
+		t.Fatalf("execution expanded ids=%d first=%q offset=%d delta=%d", len(ids), ids[0], page.exec.viewport.YOffset(), delta)
+	}
+
+	page.tab, page.view = logsTabToolCalls, logsViewTimeline
+	page.tools = newLogsToolCallFeed()
+	sequence = 0
+	for index := 0; index < 100; index++ {
+		callID := fmt.Sprintf("call_%03d", index)
+		sequence++
+		start := activity.Event{Sequence: sequence, CallID: callID, Kind: string(activity.EventToolCall), Phase: "start", Tool: "read_file", WorkspaceID: "ws_tools", Status: "running", Timestamp: base.Add(time.Duration(sequence) * time.Millisecond)}
+		sequence++
+		progress := activity.Event{Sequence: sequence, CallID: callID, Kind: string(activity.EventToolCall), Phase: "progress", Tool: "read_file", WorkspaceID: "ws_tools", Status: "running", Timestamp: base.Add(time.Duration(sequence) * time.Millisecond)}
+		sequence++
+		finish := activity.Event{Sequence: sequence, CallID: callID, Kind: string(activity.EventToolCall), Phase: "finish", Tool: "read_file", WorkspaceID: "ws_tools", Status: "ok", Timestamp: base.Add(time.Duration(sequence) * time.Millisecond)}
+		page.tools.events = append(page.tools.events, start, progress, finish)
+		page.tools.records = append(page.tools.records, activity.ToolCallRecord{CallID: callID, First: start, Latest: finish})
+	}
+	page.tools.viewport.SetWidth(80)
+	page.tools.viewport.SetHeight(8)
+	page.refreshToolCallView()
+	toolWindow := page.visibleToolCallTimelineRecords()
+	if len(toolWindow) != logsTimelinePageSize || toolWindow[0].CallID != "call_060" || toolWindow[len(toolWindow)-1].CallID != "call_099" || len(page.visibleToolCallTimelineEvents()) != logsTimelinePageSize*3 {
+		t.Fatalf("tool window calls=%d first=%q last=%q events=%d", len(toolWindow), toolWindow[0].CallID, toolWindow[len(toolWindow)-1].CallID, len(page.visibleToolCallTimelineEvents()))
+	}
+	toolCounts := map[string]int{}
+	for _, event := range page.visibleToolCallTimelineEvents() {
+		toolCounts[event.CallID]++
+	}
+	for _, record := range toolWindow {
+		if toolCounts[record.CallID] != 3 {
+			t.Fatalf("tool call %s split across window: %d events", record.CallID, toolCounts[record.CallID])
+		}
+	}
+	if len(page.visibleToolCallRecords()) != 100 {
+		t.Fatalf("tool Browser was windowed: %d", len(page.visibleToolCallRecords()))
+	}
+	page.tools.paused = true
+	page.tools.viewport.SetYOffset(0)
+	oldLines = page.tools.viewport.TotalLineCount()
+	page.handleTimelineMouse(logsTimelineMouseMsg{Tab: logsTabToolCalls, Wheel: -1})
+	toolWindow = page.visibleToolCallTimelineRecords()
+	delta = page.tools.viewport.TotalLineCount() - oldLines
+	if len(toolWindow) != 80 || toolWindow[0].CallID != "call_020" || delta <= 0 || page.tools.viewport.YOffset() != delta {
+		t.Fatalf("tool expanded calls=%d first=%q offset=%d delta=%d", len(toolWindow), toolWindow[0].CallID, page.tools.viewport.YOffset(), delta)
+	}
+}
+
+func TestLogsTimelineKeyboardNearOldestExpandsWindow(t *testing.T) {
+	page, err := NewLogs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	page.view = logsViewTimeline
+	base := time.Now().UTC()
+	page.events = make([]runtimeevent.Event, 100)
+	for index := range page.events {
+		page.events[index] = runtimeevent.Event{Sequence: uint64(index + 1), Time: base.Add(time.Duration(index) * time.Millisecond), RunID: "run_keyboard", Level: "info", Name: "runtime.event", Message: fmt.Sprintf("event %d", index)}
+	}
+	page.timeline.viewport.SetWidth(80)
+	page.timeline.viewport.SetHeight(8)
+	page.refreshRuntimeTimeline()
+	page.paused = true
+	page.timeline.viewport.SetYOffset(1)
+	if got := len(page.visibleRuntimeTimelineEvents()); got != logsTimelinePageSize {
+		t.Fatalf("initial keyboard window=%d", got)
+	}
+	if _, handled := page.handleKey(tea.KeyPressMsg{Code: tea.KeyUp}); !handled {
+		t.Fatal("runtime timeline keyboard scroll was not handled")
+	}
+	if got := len(page.visibleRuntimeTimelineEvents()); got != logsTimelinePageSize*2 {
+		t.Fatalf("keyboard expansion window=%d want=%d", got, logsTimelinePageSize*2)
+	}
+}
+
+func TestPausedExecutionAndToolTimelinesIgnoreLiveViewportMovement(t *testing.T) {
+	page, err := NewLogs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+
+	page.tab, page.view = logsTabCommandExec, logsViewTimeline
+	page.exec = newLogsExecutionFeed()
+	for index := 0; index < logsTimelinePageSize; index++ {
+		id := fmt.Sprintf("exec_%03d", index)
+		info := shellruntime.ExecutionInfo{ID: id, Tool: "run_command", Status: shellruntime.ExecutionStatusRunning}
+		page.exec.events = append(page.exec.events, shellruntime.ExecutionFeedEvent{Sequence: uint64(index + 1), ExecutionID: id, Type: shellruntime.ExecutionEventStarted, Execution: &info})
+		page.exec.executions = append(page.exec.executions, info)
+	}
+	page.exec.latestSeq = logsTimelinePageSize
+	page.exec.viewport.SetWidth(80)
+	page.exec.viewport.SetHeight(8)
+	page.refreshExecutionViewport()
+	page.exec.paused = true
+	page.exec.viewport.SetYOffset(2)
+	execOffset := page.exec.viewport.YOffset()
+	execWindow := executionTimelineRecordIDs(page.visibleExecutionTimelineEvents())
+	newExec := shellruntime.ExecutionInfo{ID: "exec_live", Tool: "run_command", Status: shellruntime.ExecutionStatusRunning}
+	page.finishExecutionFeedEvent(logsExecutionEventMsg{generation: page.exec.generation, event: shellruntime.ExecutionFeedEvent{Sequence: logsTimelinePageSize + 1, ExecutionID: newExec.ID, Type: shellruntime.ExecutionEventStarted, Execution: &newExec}})
+	if page.exec.viewport.YOffset() != execOffset || !reflect.DeepEqual(executionTimelineRecordIDs(page.visibleExecutionTimelineEvents()), execWindow) {
+		t.Fatalf("paused execution viewport moved offset=%d want=%d before=%#v after=%#v", page.exec.viewport.YOffset(), execOffset, execWindow, executionTimelineRecordIDs(page.visibleExecutionTimelineEvents()))
+	}
+
+	page.tab, page.view = logsTabToolCalls, logsViewTimeline
+	page.tools = newLogsToolCallFeed()
+	base := time.Now().UTC()
+	for index := 0; index < logsTimelinePageSize; index++ {
+		callID := fmt.Sprintf("call_%03d", index)
+		event := activity.Event{Sequence: uint64(index + 1), CallID: callID, Kind: string(activity.EventToolCall), Phase: "start", Tool: "read_file", Status: "running", Timestamp: base.Add(time.Duration(index) * time.Millisecond)}
+		page.tools.events = append(page.tools.events, event)
+		page.tools.records = append(page.tools.records, activity.ToolCallRecord{CallID: callID, First: event, Latest: event})
+	}
+	page.tools.latestSeq = logsTimelinePageSize
+	page.tools.viewport.SetWidth(80)
+	page.tools.viewport.SetHeight(8)
+	page.refreshToolCallView()
+	page.tools.paused = true
+	page.tools.viewport.SetYOffset(2)
+	toolOffset := page.tools.viewport.YOffset()
+	toolWindow := page.visibleToolCallTimelineRecords()
+	beforeCalls := make([]string, 0, len(toolWindow))
+	for _, record := range toolWindow {
+		beforeCalls = append(beforeCalls, record.CallID)
+	}
+	newTool := activity.Event{Sequence: logsTimelinePageSize + 1, CallID: "call_live", Kind: string(activity.EventToolCall), Phase: "start", Tool: "read_file", Status: "running", Timestamp: base.Add(time.Second)}
+	page.finishToolCallEvent(logsToolCallEventMsg{generation: page.tools.generation, event: newTool})
+	afterRecords := page.visibleToolCallTimelineRecords()
+	afterCalls := make([]string, 0, len(afterRecords))
+	for _, record := range afterRecords {
+		afterCalls = append(afterCalls, record.CallID)
+	}
+	if page.tools.viewport.YOffset() != toolOffset || !reflect.DeepEqual(afterCalls, beforeCalls) {
+		t.Fatalf("paused tool viewport moved offset=%d want=%d before=%#v after=%#v", page.tools.viewport.YOffset(), toolOffset, beforeCalls, afterCalls)
+	}
+}
+
+func TestLogsClearViewUsesSessionWatermarksWithoutDestroyingRetainedHistory(t *testing.T) {
+	page, err := NewLogs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	base := time.Now().UTC()
+	runtimeOld := []runtimeevent.Event{
+		{Sequence: 1, RunID: "run_clear", Time: base, Level: "info", Name: "one"},
+		{Sequence: 2, RunID: "run_clear", Time: base.Add(time.Millisecond), Level: "info", Name: "two"},
+	}
+	page.events = append([]runtimeevent.Event(nil), runtimeOld...)
+	page.streamRunID, page.streamSeq = "run_clear", 2
+	page.tab = logsTabRuntime
+	if _, handled := page.handleKey(tea.KeyPressMsg{Code: 'c', Text: "c"}); !handled {
+		t.Fatal("runtime clear-view key was not handled")
+	}
+	if len(page.events) != 2 || len(page.visibleRuntimeEvents()) != 0 || page.runtimeClear["run_clear"] != 2 || page.OverlayActive() {
+		t.Fatalf("runtime clear retained=%d visible=%d watermark=%d overlay=%t", len(page.events), len(page.visibleRuntimeEvents()), page.runtimeClear["run_clear"], page.OverlayActive())
+	}
+
+	page.tab = logsTabCommandExec
+	execInfo := shellruntime.ExecutionInfo{ID: "exec_old", WorkspaceID: "ws", Tool: "run_command", Status: shellruntime.ExecutionStatusSuccess}
+	page.exec.events = []shellruntime.ExecutionFeedEvent{
+		{Sequence: 1, ExecutionID: execInfo.ID, WorkspaceID: "ws", Type: shellruntime.ExecutionEventStarted, Execution: &execInfo},
+		{Sequence: 2, ExecutionID: execInfo.ID, WorkspaceID: "ws", Type: shellruntime.ExecutionEventCompleted, Execution: &execInfo, Status: shellruntime.ExecutionStatusSuccess},
+	}
+	page.exec.executions = []shellruntime.ExecutionInfo{execInfo}
+	page.exec.latestSeq = 2
+	page.handleExecutionKey(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if len(page.exec.events) != 2 || len(page.visibleExecutionEvents()) != 0 || len(page.visibleExecutions()) != 0 || page.executionClear != 2 {
+		t.Fatalf("execution clear retained=%d visible_events=%d visible_execs=%d watermark=%d", len(page.exec.events), len(page.visibleExecutionEvents()), len(page.visibleExecutions()), page.executionClear)
+	}
+
+	page.tab = logsTabToolCalls
+	toolStart := activity.Event{Sequence: 1, CallID: "call_old", Kind: string(activity.EventToolCall), Phase: "start", Tool: "read_file", Status: "running", Timestamp: base}
+	toolFinish := activity.Event{Sequence: 2, CallID: "call_old", Kind: string(activity.EventToolCall), Phase: "finish", Tool: "read_file", Status: "ok", Timestamp: base.Add(time.Millisecond)}
+	page.tools.events = []activity.Event{toolStart, toolFinish}
+	page.tools.records = []activity.ToolCallRecord{{CallID: "call_old", First: toolStart, Latest: toolFinish}}
+	page.tools.latestSeq = 2
+	page.handleToolCallKey(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	if len(page.tools.events) != 2 || len(page.eligibleToolCallTimelineEvents()) != 0 || len(page.visibleToolCallRecords()) != 0 || page.toolCallClear != 2 {
+		t.Fatalf("tool clear retained=%d visible_events=%d visible_calls=%d watermark=%d", len(page.tools.events), len(page.eligibleToolCallTimelineEvents()), len(page.visibleToolCallRecords()), page.toolCallClear)
+	}
+
+	state := page.SessionViewState().(LogsSessionViewState)
+	if state.RuntimeClearSequences["run_clear"] != 2 || state.ExecutionClearSequence != 2 || state.ToolCallClearSequence != 2 {
+		t.Fatalf("clear watermarks not captured: %#v", state)
+	}
+	restored, _ := NewLogs(t.Context())
+	defer restored.Close()
+	restored.RestoreSessionViewState(state)
+	restored.events = append([]runtimeevent.Event(nil), runtimeOld...)
+	restored.exec.events = append([]shellruntime.ExecutionFeedEvent(nil), page.exec.events...)
+	restored.exec.executions = append([]shellruntime.ExecutionInfo(nil), page.exec.executions...)
+	restored.tools.events = append([]activity.Event(nil), page.tools.events...)
+	restored.tools.records = append([]activity.ToolCallRecord(nil), page.tools.records...)
+	if len(restored.visibleRuntimeEvents()) != 0 || len(restored.visibleExecutionEvents()) != 0 || len(restored.visibleExecutions()) != 0 || len(restored.eligibleToolCallTimelineEvents()) != 0 || len(restored.visibleToolCallRecords()) != 0 {
+		t.Fatal("replayed retained history resurrected after session clear")
+	}
+	restored.events = append(restored.events, runtimeevent.Event{Sequence: 3, RunID: "run_clear", Time: base.Add(2 * time.Millisecond), Level: "info", Name: "three"})
+	newExec := shellruntime.ExecutionInfo{ID: "exec_new", WorkspaceID: "ws", Tool: "run_command", Status: shellruntime.ExecutionStatusRunning}
+	restored.exec.events = append(restored.exec.events, shellruntime.ExecutionFeedEvent{Sequence: 3, ExecutionID: newExec.ID, WorkspaceID: "ws", Type: shellruntime.ExecutionEventStarted, Execution: &newExec})
+	restored.exec.executions = append(restored.exec.executions, newExec)
+	newTool := activity.Event{Sequence: 3, CallID: "call_new", Kind: string(activity.EventToolCall), Phase: "start", Tool: "read_file", Status: "running", Timestamp: base.Add(2 * time.Millisecond)}
+	restored.tools.events = append(restored.tools.events, newTool)
+	restored.tools.records = append(restored.tools.records, activity.ToolCallRecord{CallID: newTool.CallID, First: newTool, Latest: newTool})
+	if len(restored.visibleRuntimeEvents()) != 1 || len(restored.visibleExecutionEvents()) != 1 || len(restored.visibleExecutions()) != 1 || len(restored.eligibleToolCallTimelineEvents()) != 1 || len(restored.visibleToolCallRecords()) != 1 {
+		t.Fatalf("post-clear live records missing runtime=%d exec_events=%d execs=%d tool_events=%d calls=%d", len(restored.visibleRuntimeEvents()), len(restored.visibleExecutionEvents()), len(restored.visibleExecutions()), len(restored.eligibleToolCallTimelineEvents()), len(restored.visibleToolCallRecords()))
+	}
+
+	fresh, _ := NewLogs(t.Context())
+	defer fresh.Close()
+	fresh.events = append([]runtimeevent.Event(nil), runtimeOld...)
+	fresh.exec.events = append([]shellruntime.ExecutionFeedEvent(nil), page.exec.events...)
+	fresh.exec.executions = append([]shellruntime.ExecutionInfo(nil), page.exec.executions...)
+	fresh.tools.events = append([]activity.Event(nil), page.tools.events...)
+	fresh.tools.records = append([]activity.ToolCallRecord(nil), page.tools.records...)
+	if len(fresh.visibleRuntimeEvents()) != 2 || len(fresh.visibleExecutionEvents()) != 2 || len(fresh.visibleExecutions()) != 1 || len(fresh.eligibleToolCallTimelineEvents()) != 2 || len(fresh.visibleToolCallRecords()) != 1 {
+		t.Fatal("fresh TUI process inherited session clear watermarks")
 	}
 }
 
@@ -291,7 +630,7 @@ func TestLogsPageMouseActionsUseKeyboardMessages(t *testing.T) {
 	page.browser = updated.(component.Browser)
 	_ = page.View(page.width, page.height)
 	targets := page.MouseTargets(0, 0, 1)
-	want := map[string]bool{"v": false, "m": false, "f": false, "r": false, "i": false, "d": false}
+	want := map[string]bool{"v": false, "m": false, "f": false, "r": false, "i": false, "c": false, "d": false}
 	for _, target := range targets {
 		if target.ID != "browser.help" {
 			continue
@@ -1939,6 +2278,9 @@ func TestLogsSessionViewStateRestoresStablePreferencesOnly(t *testing.T) {
 	page.exec.events = []shellruntime.ExecutionFeedEvent{{Sequence: 1, ExecutionID: "exec_state", WorkspaceID: "ws_exec", Type: shellruntime.ExecutionEventOutput, Data: strings.Repeat("line\n", 40)}}
 	page.resizeExecutionViewport(60, 8)
 	page.exec.viewport.SetYOffset(7)
+	page.runtimeClear = map[string]uint64{"run_state": 7}
+	page.executionClear = 8
+	page.toolCallClear = 9
 	page.exec.stream = &runtimecontrol.ExecutionFeedStream{}
 
 	state, ok := page.SessionViewState().(LogsSessionViewState)
@@ -1952,8 +2294,12 @@ func TestLogsSessionViewStateRestoresStablePreferencesOnly(t *testing.T) {
 	defer fresh.Close()
 	fresh.RestoreSessionViewState(state)
 	restored := fresh.SessionViewState().(LogsSessionViewState)
-	if restored.Tab != "command-execution" || restored.Options != state.Options || restored.Visibility != logger.VisibilityDebug || !restored.RuntimePaused || restored.ExecutionScope != string(executionScopeWorkspace) || restored.ExecutionWorkspaceID != "ws_exec" || !restored.ExecutionPaused {
+	if restored.Tab != "command-execution" || restored.Options != state.Options || restored.Visibility != logger.VisibilityDebug || !restored.RuntimePaused || restored.ExecutionScope != string(executionScopeWorkspace) || restored.ExecutionWorkspaceID != "ws_exec" || !restored.ExecutionPaused || restored.RuntimeClearSequences["run_state"] != 7 || restored.ExecutionClearSequence != 8 || restored.ToolCallClearSequence != 9 {
 		t.Fatalf("restored state=%#v want=%#v", restored, state)
+	}
+	state.RuntimeClearSequences["run_state"] = 99
+	if fresh.runtimeClear["run_state"] != 7 {
+		t.Fatalf("runtime clear watermarks were not deep-cloned: %#v", fresh.runtimeClear)
 	}
 	if fresh.exec.stream != nil || len(fresh.exec.events) != 0 || fresh.loaded || fresh.exec.loaded {
 		t.Fatalf("transient state restored: stream=%v events=%d runtime_loaded=%t exec_loaded=%t", fresh.exec.stream != nil, len(fresh.exec.events), fresh.loaded, fresh.exec.loaded)

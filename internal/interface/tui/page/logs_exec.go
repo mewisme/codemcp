@@ -33,6 +33,7 @@ var logsTabLabels = []string{"Runtime", "Command Execution", "Tool Calls"}
 type logsExecutionFeed struct {
 	viewport           viewport.Model
 	render             executionFeedRender
+	window             logsTimelineWindow
 	events             []shellruntime.ExecutionFeedEvent
 	executions         []shellruntime.ExecutionInfo
 	scopeMode          executionScopeMode
@@ -126,6 +127,7 @@ func (page *LogsPage) moveLogsTab(delta int) tea.Cmd {
 func (page *LogsPage) startExecutionFeed() tea.Cmd {
 	page.stopExecutionFeed()
 	page.refreshExecutionScope()
+	page.exec.window.invalidate()
 	page.exec.generation++
 	generation := page.exec.generation
 	ctx, cancel := context.WithCancel(page.ctx)
@@ -261,6 +263,7 @@ func (page *LogsPage) handleExecutionKey(msg tea.KeyPressMsg) tea.Cmd {
 			if page.view == logsViewBrowser {
 				page.browser.SelectLast()
 			} else {
+				page.exec.window.invalidate()
 				page.refreshExecutionViewport()
 			}
 		}
@@ -269,9 +272,7 @@ func (page *LogsPage) handleExecutionKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "r":
 		return page.startExecutionFeed()
 	case "c":
-		page.exec.events = nil
-		page.exec.notice = "Command stream view cleared"
-		page.refreshActiveLogsView()
+		page.clearActiveLogsView()
 		return nil
 	}
 	if page.view == logsViewBrowser {
@@ -282,6 +283,7 @@ func (page *LogsPage) handleExecutionKey(msg tea.KeyPressMsg) tea.Cmd {
 	if !page.exec.viewport.AtBottom() {
 		page.exec.paused = true
 	}
+	page.maybeExpandExecutionTimeline()
 	return cmd
 }
 
@@ -334,7 +336,7 @@ func (page *LogsPage) resizeExecutionViewport(width, height int) {
 	offset := page.exec.viewport.YOffset()
 	if page.exec.viewport.Width() != width {
 		page.exec.viewport.SetWidth(width)
-		page.exec.render = renderExecutionFeed(page.visibleExecutionEvents(), width)
+		page.exec.render = renderExecutionFeed(page.visibleExecutionTimelineEvents(), width)
 		page.exec.viewport.SetContent(page.exec.render.Content)
 	}
 	page.exec.viewport.SetHeight(height)
@@ -348,7 +350,7 @@ func (page *LogsPage) resizeExecutionViewport(width, height int) {
 
 func (page *LogsPage) refreshExecutionViewport() {
 	offset := page.exec.viewport.YOffset()
-	page.exec.render = renderExecutionFeed(page.visibleExecutionEvents(), max(1, page.exec.viewport.Width()))
+	page.exec.render = renderExecutionFeed(page.visibleExecutionTimelineEvents(), max(1, page.exec.viewport.Width()))
 	page.exec.viewport.SetContent(page.exec.render.Content)
 	if !page.exec.paused {
 		page.exec.viewport.GotoBottom()
@@ -356,6 +358,61 @@ func (page *LogsPage) refreshExecutionViewport() {
 	}
 	maxOffset := max(0, page.exec.viewport.TotalLineCount()-page.exec.viewport.Height())
 	page.exec.viewport.SetYOffset(min(offset, maxOffset))
+}
+
+func (page *LogsPage) eligibleExecutionTimelineEvents() []shellruntime.ExecutionFeedEvent {
+	return page.visibleExecutionEvents()
+}
+
+func executionTimelineRecordIDs(events []shellruntime.ExecutionFeedEvent) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0)
+	for _, event := range events {
+		if event.ExecutionID == "" {
+			continue
+		}
+		if _, ok := seen[event.ExecutionID]; ok {
+			continue
+		}
+		seen[event.ExecutionID] = struct{}{}
+		result = append(result, event.ExecutionID)
+	}
+	return result
+}
+
+func (page *LogsPage) visibleExecutionTimelineEvents() []shellruntime.ExecutionFeedEvent {
+	events := page.eligibleExecutionTimelineEvents()
+	ids := executionTimelineRecordIDs(events)
+	start, end := page.exec.window.rangeFor(len(ids), !page.exec.paused)
+	if start == 0 && end == len(ids) {
+		return events
+	}
+	selected := make(map[string]struct{}, end-start)
+	for _, id := range ids[start:end] {
+		selected[id] = struct{}{}
+	}
+	result := make([]shellruntime.ExecutionFeedEvent, 0, len(events))
+	for _, event := range events {
+		if _, ok := selected[event.ExecutionID]; ok {
+			result = append(result, event)
+		}
+	}
+	return result
+}
+
+func (page *LogsPage) maybeExpandExecutionTimeline() {
+	if page == nil || !page.exec.paused || page.exec.viewport.YOffset() > logsTimelineNearOldestLines {
+		return
+	}
+	oldLines := page.exec.viewport.TotalLineCount()
+	oldOffset := page.exec.viewport.YOffset()
+	if !page.exec.window.expand(len(executionTimelineRecordIDs(page.eligibleExecutionTimelineEvents()))) {
+		return
+	}
+	page.exec.render = renderExecutionFeed(page.visibleExecutionTimelineEvents(), max(1, page.exec.viewport.Width()))
+	page.exec.viewport.SetContent(page.exec.render.Content)
+	delta := max(0, page.exec.viewport.TotalLineCount()-oldLines)
+	page.exec.viewport.SetYOffset(min(oldOffset+delta, max(0, page.exec.viewport.TotalLineCount()-page.exec.viewport.Height())))
 }
 
 func (page *LogsPage) restoreExecutionViewportOffset() {
@@ -397,7 +454,7 @@ func (page *LogsPage) executionStatusView(width int) string {
 	if page.view == logsViewBrowser {
 		left += component.KeyValue("View", view) + "   " + component.KeyValue("Executions", fmt.Sprintf("%d / %d", len(page.visibleExecutions()), shellruntime.MaxRecentExecutions))
 	} else {
-		left += component.KeyValue("View", view) + "   " + component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.visibleExecutionEvents()), shellruntime.MaxExecutionFeedEvents))
+		left += component.KeyValue("View", view) + "   " + component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.visibleExecutionTimelineEvents()), shellruntime.MaxExecutionFeedEvents))
 	}
 	return component.TwoColumn(left, component.KeyValue("Mode", page.executionScopeLabel()), width)
 }
@@ -435,7 +492,7 @@ func (page *LogsPage) executionBodyView(width, height int) string {
 		sticky = page.executionStickyHeader(width)
 	}
 	body := page.exec.viewport.View()
-	if len(page.visibleExecutionEvents()) == 0 {
+	if len(page.visibleExecutionTimelineEvents()) == 0 {
 		empty := page.exec.viewport
 		empty.SetContent(component.Muted("Waiting for command output"))
 		body = empty.View()
@@ -522,6 +579,7 @@ func (page *LogsPage) handleExecutionMouse(msg logsExecutionMouseMsg) {
 		page.exec.viewport.ScrollDown(3)
 	}
 	page.exec.paused = !page.exec.viewport.AtBottom()
+	page.maybeExpandExecutionTimeline()
 }
 
 func (page *LogsPage) stopExecutionFeed() {

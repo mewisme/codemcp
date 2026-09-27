@@ -188,6 +188,7 @@ func (page *LogsPage) applyLogsScope(mode executionScopeMode, workspaceID, conta
 		page.runtimeScope.mode, page.runtimeScope.workspaceID, page.runtimeScope.containerID = mode, strings.TrimSpace(workspaceID), strings.TrimSpace(containerID)
 		page.refreshRuntimeScope()
 	}
+	page.invalidateActiveTimelineWindow()
 	page.refreshActiveLogsView()
 }
 
@@ -204,6 +205,7 @@ func (page *LogsPage) applyExecutionProcess(workspaceID, processID string) {
 		page.exec.scopeMode, page.exec.workspaceID, page.exec.workspaceView = executionScopeWorkspace, workspaceID, executionWorkspaceProcess
 		page.exec.processID, page.exec.processExecutionID, page.exec.processRunning = item.ID, item.ExecutionID, item.Running
 		page.refreshExecutionScope()
+		page.exec.window.invalidate()
 		page.refreshActiveLogsView()
 		return
 	}

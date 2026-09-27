@@ -23,6 +23,7 @@ import (
 type logsToolCallFeed struct {
 	viewport       viewport.Model
 	render         executionFeedRender
+	window         logsTimelineWindow
 	events         []activity.Event
 	records        []activity.ToolCallRecord
 	scope          logsScopeState
@@ -81,6 +82,7 @@ func NewToolCallLogsRoute(ctx context.Context, resourceID string) (*LogsPage, er
 func (page *LogsPage) startToolCallFeed() tea.Cmd {
 	page.stopToolCallFeed()
 	page.refreshToolCallScope()
+	page.tools.window.invalidate()
 	page.tools.generation++
 	generation := page.tools.generation
 	ctx, cancel := context.WithCancel(page.ctx)
@@ -201,11 +203,11 @@ func (page *LogsPage) visibleToolCallRecords() []toolCallRecord {
 		return nil
 	}
 	if len(page.tools.records) == 0 {
-		return page.visibleToolCallTimelineRecords()
+		return aggregateToolCallRecords(page.eligibleToolCallTimelineEvents())
 	}
 	result := make([]toolCallRecord, 0, len(page.tools.records))
 	for _, record := range page.tools.records {
-		if record.CallID == "" || !matchScope(page.tools.scope, record.Latest.WorkspaceID) {
+		if record.CallID == "" || record.Latest.Sequence <= page.toolCallClear || !matchScope(page.tools.scope, record.Latest.WorkspaceID) {
 			continue
 		}
 		result = append(result, record)
@@ -221,12 +223,32 @@ func (page *LogsPage) visibleToolCallTimelineRecords() []toolCallRecord {
 }
 
 func (page *LogsPage) visibleToolCallTimelineEvents() []activity.Event {
+	events := page.eligibleToolCallTimelineEvents()
+	records := aggregateToolCallRecords(events)
+	start, end := page.tools.window.rangeFor(len(records), !page.tools.paused)
+	if start == 0 && end == len(records) {
+		return events
+	}
+	selected := make(map[string]struct{}, end-start)
+	for _, record := range records[start:end] {
+		selected[record.CallID] = struct{}{}
+	}
+	result := make([]activity.Event, 0, len(events))
+	for _, event := range events {
+		if _, ok := selected[event.CallID]; ok {
+			result = append(result, event)
+		}
+	}
+	return result
+}
+
+func (page *LogsPage) eligibleToolCallTimelineEvents() []activity.Event {
 	if page == nil || len(page.tools.events) == 0 {
 		return nil
 	}
 	visible := make([]activity.Event, 0, len(page.tools.events))
 	for _, event := range page.tools.events {
-		if event.CallID != "" && matchScope(page.tools.scope, event.WorkspaceID) {
+		if event.CallID != "" && event.Sequence > page.toolCallClear && matchScope(page.tools.scope, event.WorkspaceID) {
 			visible = append(visible, event)
 		}
 	}
@@ -323,6 +345,21 @@ func (page *LogsPage) refreshToolCallView() {
 	} else {
 		page.tools.viewport.SetYOffset(min(offset, max(0, page.tools.viewport.TotalLineCount()-page.tools.viewport.Height())))
 	}
+}
+
+func (page *LogsPage) maybeExpandToolCallTimeline() {
+	if page == nil || !page.tools.paused || page.tools.viewport.YOffset() > logsTimelineNearOldestLines {
+		return
+	}
+	oldLines := page.tools.viewport.TotalLineCount()
+	oldOffset := page.tools.viewport.YOffset()
+	if !page.tools.window.expand(len(aggregateToolCallRecords(page.eligibleToolCallTimelineEvents()))) {
+		return
+	}
+	page.tools.render = renderToolCallTimeline(page.visibleToolCallTimelineRecords(), max(1, page.tools.viewport.Width()))
+	page.tools.viewport.SetContent(page.tools.render.Content)
+	delta := max(0, page.tools.viewport.TotalLineCount()-oldLines)
+	page.tools.viewport.SetYOffset(min(oldOffset+delta, max(0, page.tools.viewport.TotalLineCount()-page.tools.viewport.Height())))
 }
 
 func (page *LogsPage) resizeToolCallViewport(width, height int) {
@@ -486,7 +523,7 @@ func (page *LogsPage) toolCallStatusView(width int) string {
 }
 
 func (page *LogsPage) toolCallHelpView(width int) string {
-	bindings := []key.Binding{component.Binding([]string{"h", "l", "left", "right"}, "←/→", "tabs"), component.Binding([]string{"v"}, "v", "view"), component.Binding([]string{"m"}, "m", "mode"), component.Binding([]string{"r"}, "r", "reconnect")}
+	bindings := []key.Binding{component.Binding([]string{"h", "l", "left", "right"}, "←/→", "tabs"), component.Binding([]string{"v"}, "v", "view"), component.Binding([]string{"m"}, "m", "mode"), component.Binding([]string{"r"}, "r", "reconnect"), component.Binding([]string{"c"}, "c", "clear view")}
 	bindings = append(bindings, component.Binding([]string{"space"}, "space", executionFollowLabel(page.tools.paused)))
 	return component.NewHelpFooter(bindings...).View(width)
 }
@@ -505,6 +542,7 @@ func (page *LogsPage) handleToolCallKey(msg tea.KeyPressMsg) tea.Cmd {
 			if page.view == logsViewBrowser {
 				page.browser.SelectLast()
 			} else {
+				page.tools.window.invalidate()
 				page.refreshToolCallView()
 			}
 		}
@@ -512,6 +550,9 @@ func (page *LogsPage) handleToolCallKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	case "r":
 		return page.startToolCallFeed()
+	case "c":
+		page.clearActiveLogsView()
+		return nil
 	}
 	if page.view == logsViewBrowser {
 		return page.updateToolCallBrowser(msg)
@@ -521,6 +562,7 @@ func (page *LogsPage) handleToolCallKey(msg tea.KeyPressMsg) tea.Cmd {
 	if !page.tools.viewport.AtBottom() {
 		page.tools.paused = true
 	}
+	page.maybeExpandToolCallTimeline()
 	return cmd
 }
 

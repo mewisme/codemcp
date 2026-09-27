@@ -23,6 +23,7 @@ const (
 type logsTimelineState struct {
 	viewport viewport.Model
 	render   executionFeedRender
+	window   logsTimelineWindow
 }
 
 func newLogsTimelineState() logsTimelineState {
@@ -128,6 +129,9 @@ func (page *LogsPage) visibleRuntimeEvents() []runtimeevent.Event {
 		if isToolCallRuntimeEvent(event) || !page.matchLogsScope(event.WorkspaceID) {
 			continue
 		}
+		if event.Sequence > 0 && event.Sequence <= page.runtimeClear[event.RunID] {
+			continue
+		}
 		result = append(result, event)
 	}
 	return result
@@ -138,6 +142,12 @@ func (page *LogsPage) visibleRuntimeBrowserRecords() []runtimeevent.Event {
 }
 
 func (page *LogsPage) visibleRuntimeTimelineEvents() []runtimeevent.Event {
+	events := page.eligibleRuntimeTimelineEvents()
+	start, end := page.timeline.window.rangeFor(len(events), !page.paused)
+	return events[start:end]
+}
+
+func (page *LogsPage) eligibleRuntimeTimelineEvents() []runtimeevent.Event {
 	return capNewestRuntimeEvents(page.visibleRuntimeEvents(), logsTimelineEventCap)
 }
 
@@ -235,6 +245,7 @@ func (page *LogsPage) handleTimelineMouse(msg logsTimelineMouseMsg) {
 			page.timeline.viewport.ScrollDown(3)
 		}
 		page.paused = !page.timeline.viewport.AtBottom()
+		page.maybeExpandRuntimeTimeline()
 	case logsTabToolCalls:
 		if msg.Wheel < 0 {
 			page.tools.viewport.ScrollUp(3)
@@ -242,7 +253,23 @@ func (page *LogsPage) handleTimelineMouse(msg logsTimelineMouseMsg) {
 			page.tools.viewport.ScrollDown(3)
 		}
 		page.tools.paused = !page.tools.viewport.AtBottom()
+		page.maybeExpandToolCallTimeline()
 	}
+}
+
+func (page *LogsPage) maybeExpandRuntimeTimeline() {
+	if page == nil || !page.paused || page.timeline.viewport.YOffset() > logsTimelineNearOldestLines {
+		return
+	}
+	oldLines := page.timeline.viewport.TotalLineCount()
+	oldOffset := page.timeline.viewport.YOffset()
+	if !page.timeline.window.expand(len(page.eligibleRuntimeTimelineEvents())) {
+		return
+	}
+	page.timeline.render = renderRuntimeTimeline(page.visibleRuntimeTimelineEvents(), max(1, page.timeline.viewport.Width()), page.visibility)
+	page.timeline.viewport.SetContent(page.timeline.render.Content)
+	delta := max(0, page.timeline.viewport.TotalLineCount()-oldLines)
+	page.timeline.viewport.SetYOffset(min(oldOffset+delta, max(0, page.timeline.viewport.TotalLineCount()-page.timeline.viewport.Height())))
 }
 
 func timelineMouseTarget(tab logsTab, originX, originY, z, width, height int) component.MouseTarget {
