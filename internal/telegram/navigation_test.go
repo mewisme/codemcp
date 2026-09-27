@@ -9,6 +9,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/config"
 )
 
 type recordingDispatcher struct {
@@ -20,15 +21,23 @@ type recordingDispatcher struct {
 
 type interactiveTestAPI struct {
 	answers []string
+	sent    []Screen
+	edited  []Screen
 }
 
 func (*interactiveTestAPI) GetMe(context.Context) (User, error) { return User{ID: 1}, nil }
 func (*interactiveTestAPI) GetUpdates(context.Context, int64, int, time.Duration) ([]Update, error) {
 	return nil, nil
 }
-func (*interactiveTestAPI) SendMessage(context.Context, int64, string) error       { return nil }
-func (*interactiveTestAPI) SendScreen(context.Context, int64, Screen) error        { return nil }
-func (*interactiveTestAPI) EditScreen(context.Context, int64, int64, Screen) error { return nil }
+func (*interactiveTestAPI) SendMessage(context.Context, int64, string) error { return nil }
+func (api *interactiveTestAPI) SendScreen(_ context.Context, _ int64, screen Screen) error {
+	api.sent = append(api.sent, screen)
+	return nil
+}
+func (api *interactiveTestAPI) EditScreen(_ context.Context, _ int64, _ int64, screen Screen) error {
+	api.edited = append(api.edited, screen)
+	return nil
+}
 func (api *interactiveTestAPI) AnswerCallback(_ context.Context, _ string, text string, _ bool) error {
 	api.answers = append(api.answers, text)
 	return nil
@@ -96,6 +105,77 @@ func TestCompletedTelegramNavigationEntryPointsAreRegistered(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestProductionHandleAuthorizesBeforeRouterDispatch(t *testing.T) {
+	dispatcher := &recordingDispatcher{result: map[string]any{"ok": true}}
+	api := &interactiveTestAPI{}
+	runtime := &Runtime{
+		api: api, generation: 1,
+		config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}},
+		health: Health{Running: true, Enabled: true, AuthorizationConfigured: true},
+	}
+	ui, err := NewInterface(InterfaceOptions{Runtime: runtime, Dispatcher: dispatcher})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ui.Handle(t.Context(), Update{Message: &Message{From: &User{ID: 99}, Chat: Chat{ID: 99, Type: "private"}, Text: "/status"}})
+	ui.Handle(t.Context(), Update{Message: &Message{From: &User{ID: 42}, Chat: Chat{ID: -100, Type: "group"}, Text: "/status"}})
+	if len(dispatcher.calls) != 0 || len(api.sent) != 0 {
+		t.Fatalf("unauthorized production updates reached router: calls=%d screens=%d", len(dispatcher.calls), len(api.sent))
+	}
+
+	ui.Handle(t.Context(), Update{Message: &Message{From: &User{ID: 42}, Chat: Chat{ID: 42, Type: "private"}, Text: "/status"}})
+	if len(dispatcher.calls) != 1 || dispatcher.calls[0].Operation != capability.StatusOverview {
+		t.Fatalf("authorized status dispatch=%#v", dispatcher.calls)
+	}
+	if dispatcher.ifaces[0] != application.OperationInterfaceTelegram || len(api.sent) != 1 {
+		t.Fatalf("authorized production route iface=%q screens=%d", dispatcher.ifaces[0], len(api.sent))
+	}
+}
+
+func TestProductionCallbackRejectsUnauthorizedAndStaleBeforeOperation(t *testing.T) {
+	dispatcher := &recordingDispatcher{result: "ok"}
+	api := &interactiveTestAPI{}
+	runtime := &Runtime{
+		api: api, generation: 4,
+		config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}},
+		health: Health{Running: true, Enabled: true, AuthorizationConfigured: true},
+	}
+	ui, err := NewInterface(InterfaceOptions{Runtime: runtime, Dispatcher: dispatcher})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 4}
+	button, err := ui.stateButton(owner, "Status", CallbackOpen, ActionState{Route: RouteStatus, Back: RouteHome, Operation: capability.StatusOverview})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	unauthorized := Update{CallbackQuery: &CallbackQuery{ID: "bad", From: User{ID: 99}, Data: button.CallbackData, Message: &Message{MessageID: 7, Chat: Chat{ID: 99, Type: "private"}}}}
+	ui.Handle(t.Context(), unauthorized)
+	if len(dispatcher.calls) != 0 || len(api.edited) != 0 {
+		t.Fatalf("unauthorized callback reached operation: calls=%d edits=%d", len(dispatcher.calls), len(api.edited))
+	}
+
+	valid := Update{CallbackQuery: &CallbackQuery{ID: "ok", From: User{ID: 42}, Data: button.CallbackData, Message: &Message{MessageID: 7, Chat: Chat{ID: 42, Type: "private"}}}}
+	ui.Handle(t.Context(), valid)
+	if len(dispatcher.calls) != 1 || len(api.edited) != 1 {
+		t.Fatalf("authorized callback calls=%d edits=%d", len(dispatcher.calls), len(api.edited))
+	}
+	ref, err := ui.callbacks.Decode(button.CallbackData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ui.states.Delete(ref.Token)
+	ui.Handle(t.Context(), valid)
+	if len(dispatcher.calls) != 1 {
+		t.Fatalf("stale callback re-dispatched operation: calls=%d", len(dispatcher.calls))
+	}
+	if len(api.answers) < 2 || !strings.Contains(api.answers[len(api.answers)-1], "stale") {
+		t.Fatalf("stale callback answer=%#v", api.answers)
 	}
 }
 

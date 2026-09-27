@@ -75,7 +75,7 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 }
 
 func (ui *Interface) Handle(ctx context.Context, update Update) {
-	if ui == nil {
+	if ui == nil || ui.runtime == nil || !ui.runtime.Authorizes(update) {
 		return
 	}
 	ui.router.Dispatch(ctx, update)

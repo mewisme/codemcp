@@ -2,14 +2,21 @@ package cli
 
 import (
 	"bytes"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/secretstore"
+	"go.mewis.me/codemcp/internal/telegram"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
@@ -71,6 +78,98 @@ func TestTelegramLogoutUsesCanonicalAuthorizationMutation(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "Telegram user logged out") {
 		t.Fatalf("Telegram logout output=%q", output.String())
+	}
+}
+
+func TestTelegramPairingProgressReplacesLoaderWithTerminalState(t *testing.T) {
+	tests := []struct {
+		name      string
+		status    telegram.PairingStatus
+		want      string
+		wantError bool
+	}{
+		{name: "paired", status: telegram.PairingStatusPaired, want: "Telegram paired"},
+		{name: "expired", status: telegram.PairingStatusExpired, want: "Telegram pairing expired", wantError: true},
+		{name: "cancelled", status: telegram.PairingStatusCancelled, want: "Telegram pairing cancelled", wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{
+				Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true,
+			})
+			if !startTelegramPairingProgress(session) {
+				t.Fatal("pairing loader was not activated")
+			}
+			done, err := finishTelegramPairingProgress(session, test.status)
+			if !done || (err != nil) != test.wantError {
+				t.Fatalf("done=%t err=%v", done, err)
+			}
+			text := output.String()
+			if strings.Contains(text, "Waiting for Telegram pairing") || !strings.Contains(text, test.want) {
+				t.Fatalf("pairing progress output=%q", text)
+			}
+		})
+	}
+}
+
+func TestTelegramPairingProgressPendingDoesNotTerminate(t *testing.T) {
+	var output bytes.Buffer
+	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{
+		Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true,
+	})
+	if !startTelegramPairingProgress(session) {
+		t.Fatal("pairing loader was not activated")
+	}
+	done, err := finishTelegramPairingProgress(session, telegram.PairingStatusPending)
+	if done || err != nil {
+		t.Fatalf("pending pairing done=%t err=%v", done, err)
+	}
+	if strings.Contains(output.String(), "Telegram paired") || strings.Contains(output.String(), "expired") || strings.Contains(output.String(), "cancelled") {
+		t.Fatalf("pending pairing emitted terminal state: %q", output.String())
+	}
+}
+
+func TestTelegramSetupProductionFlowOwnsPairingTransitions(t *testing.T) {
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot resolve Telegram CLI test source")
+	}
+	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(filepath.Dir(currentFile), "telegram.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{
+		"PrepareTelegramPairing":        false,
+		"startTelegramPairingProgress":  false,
+		"finishTelegramPairingProgress": false,
+	}
+	for _, declaration := range file.Decls {
+		fn, ok := declaration.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "runTelegramSetup" || fn.Body == nil {
+			continue
+		}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			switch call := node.(type) {
+			case *ast.CallExpr:
+				switch target := call.Fun.(type) {
+				case *ast.Ident:
+					if _, exists := want[target.Name]; exists {
+						want[target.Name] = true
+					}
+				case *ast.SelectorExpr:
+					if _, exists := want[target.Sel.Name]; exists {
+						want[target.Sel.Name] = true
+					}
+				}
+			}
+			return true
+		})
+	}
+	for name, found := range want {
+		if !found {
+			t.Fatalf("runTelegramSetup no longer reaches production pairing function %s", name)
+		}
 	}
 }
 

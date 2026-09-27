@@ -245,6 +245,17 @@ func (runtime *Runtime) Generation() uint64 {
 	return runtime.generation
 }
 
+func (runtime *Runtime) Authorizes(update Update) bool {
+	if runtime == nil {
+		return false
+	}
+	runtime.mu.RLock()
+	cfg := runtime.config
+	setupMode := runtime.setupMode
+	runtime.mu.RUnlock()
+	return !setupMode && authorizedUpdate(cfg, update)
+}
+
 func (runtime *Runtime) SendScreen(ctx context.Context, chatID int64, screen Screen) error {
 	if runtime == nil || chatID <= 0 {
 		return errors.New("telegram runtime is unavailable")
