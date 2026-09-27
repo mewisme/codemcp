@@ -474,7 +474,22 @@ func (b *Broker) Diagnostics() Diagnostics {
 	}
 	now := time.Now().UTC()
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.pruneLocked(now)
+	return b.diagnosticsLocked(now)
+}
+
+func (b *Broker) InspectDiagnostics() Diagnostics {
+	if b == nil {
+		return Diagnostics{}
+	}
+	now := time.Now().UTC()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.diagnosticsLocked(now)
+}
+
+func (b *Broker) diagnosticsLocked(now time.Time) Diagnostics {
 	result := Diagnostics{
 		Subscribers:          len(b.subs),
 		OverflowDropped:      b.dropped.Load(),
@@ -517,7 +532,6 @@ func (b *Broker) Diagnostics() Diagnostics {
 	result.OldestRetryAgeMS = ageMilliseconds(now, oldestRetry)
 	result.OldestDeadLetterAgeMS = ageMilliseconds(now, oldestDeadLetter)
 	result.OldestContinuationAgeMS = ageMilliseconds(now, oldestContinuation)
-	b.mu.Unlock()
 	return result
 }
 

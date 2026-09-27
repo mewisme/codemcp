@@ -36,6 +36,15 @@ type Provider struct {
 	Path       []string       `json:"path,omitempty"`
 }
 
+type ProviderDiagnostic struct {
+	Available       bool           `json:"available"`
+	Source          ProviderSource `json:"source,omitempty"`
+	Kind            ProviderKind   `json:"kind,omitempty"`
+	Language        string         `json:"language,omitempty"`
+	ConfiguredPaths int            `json:"configured_paths"`
+	ErrorCode       string         `json:"error_code,omitempty"`
+}
+
 type ShellUnavailableError struct {
 	GOOS string
 }
@@ -65,6 +74,24 @@ func NewProviderResolver() *ProviderResolver {
 		stat:     os.Stat,
 		getenv:   os.Getenv,
 	}
+}
+
+func (r *ProviderResolver) Diagnose(configuredPaths []string) ProviderDiagnostic {
+	result := ProviderDiagnostic{ConfiguredPaths: len(configuredPaths)}
+	provider, err := r.Resolve(configuredPaths)
+	if err == nil {
+		result.Available = true
+		result.Source = provider.Source
+		result.Kind = provider.Kind
+		result.Language = provider.Language
+		return result
+	}
+	if errors.Is(err, ErrShellUnavailable) || errors.Is(err, exec.ErrNotFound) {
+		result.ErrorCode = "unavailable"
+		return result
+	}
+	result.ErrorCode = "invalid_configuration"
+	return result
 }
 
 func (r *ProviderResolver) Resolve(configuredPaths []string) (Provider, error) {

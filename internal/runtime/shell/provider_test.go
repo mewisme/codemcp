@@ -3,6 +3,7 @@ package shell
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -272,6 +273,47 @@ func TestProviderRejectsRelativeConfiguredSearchPath(t *testing.T) {
 	if _, err := resolver.Resolve([]string{"relative/bin"}); err == nil || !strings.Contains(err.Error(), "absolute") {
 		t.Fatalf("err=%v", err)
 	}
+}
+
+func TestProviderDiagnosticIsBoundedAndOmitsExecutablePath(t *testing.T) {
+	bin := t.TempDir()
+	executable := writeProviderFixtureAt(t, filepath.Join(bin, "bash"), 0755, "#!/bin/sh\n")
+	resolver := NewProviderResolver()
+	resolver.goos = "linux"
+	resolver.getenv = func(string) string { return "" }
+	resolver.lookPath = func(string) (string, error) { return executable, nil }
+
+	diagnostic := resolver.Diagnose([]string{bin})
+	if !diagnostic.Available || diagnostic.Source != ProviderSourceConfigured || diagnostic.Kind != ProviderPOSIX ||
+		diagnostic.Language != "bash" || diagnostic.ConfiguredPaths != 1 || diagnostic.ErrorCode != "" {
+		t.Fatalf("diagnostic=%#v", diagnostic)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", diagnostic), executable) {
+		t.Fatalf("diagnostic leaked executable path: %#v", diagnostic)
+	}
+}
+
+func TestProviderDiagnosticClassifiesUnavailableAndInvalidConfiguration(t *testing.T) {
+	t.Run("unavailable", func(t *testing.T) {
+		resolver := NewProviderResolver()
+		resolver.goos = "windows"
+		resolver.getenv = func(string) string { return "" }
+		resolver.lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+		diagnostic := resolver.Diagnose(nil)
+		if diagnostic.Available || diagnostic.ErrorCode != "unavailable" {
+			t.Fatalf("diagnostic=%#v", diagnostic)
+		}
+	})
+
+	t.Run("invalid configuration", func(t *testing.T) {
+		resolver := NewProviderResolver()
+		resolver.goos = "linux"
+		resolver.getenv = func(string) string { return "" }
+		diagnostic := resolver.Diagnose([]string{"relative/bin"})
+		if diagnostic.Available || diagnostic.ErrorCode != "invalid_configuration" || diagnostic.ConfiguredPaths != 1 {
+			t.Fatalf("diagnostic=%#v", diagnostic)
+		}
+	})
 }
 
 func TestSessionExecUsesConfiguredShellResolver(t *testing.T) {

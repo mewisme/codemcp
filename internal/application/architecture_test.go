@@ -31,6 +31,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"configformat":           "persistence",
 	"controlguard":           "domain",
 	"controlplane":           "runtime",
+	"doctor":                 "application",
 	"git":                    "platform",
 	"history":                "history",
 	"idgen":                  "domain",
