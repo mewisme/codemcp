@@ -64,7 +64,9 @@ func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsCh
 		a.ProductTelemetry.SetEnabled(config.ResolveTelemetryEnabled(next, true).Enabled)
 	}
 	if telegramChanged && a.running && a.Telegram != nil {
-		a.Telegram.Reconcile(a.runtimeCtx, next.Telegram)
+		if err := a.Telegram.Reconcile(a.runtimeCtx, next.Telegram); err != nil {
+			return err
+		}
 	}
 	if httpChanged {
 		a.syncMCPHTTP(next.Server.Enabled)
@@ -121,7 +123,7 @@ func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integra
 		a.ProductTelemetry.SetEnabled(config.ResolveTelemetryEnabled(previous, true).Enabled)
 	}
 	if telegramChanged && a.running && a.Telegram != nil {
-		a.Telegram.Reconcile(a.runtimeCtx, previous.Telegram)
+		rollbackErr = errors.Join(rollbackErr, a.Telegram.Reconcile(a.runtimeCtx, previous.Telegram))
 	}
 	if httpChanged {
 		a.syncMCPHTTP(previous.Server.Enabled)

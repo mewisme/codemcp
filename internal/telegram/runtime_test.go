@@ -17,12 +17,28 @@ type fakePollResult struct {
 }
 
 type fakeAPI struct {
-	mu        sync.Mutex
-	results   []fakePollResult
-	offsets   []int64
-	limits    []int
-	sent      []int64
-	successes chan struct{}
+	mu         sync.Mutex
+	me         User
+	getMeErr   error
+	getMeCalls int
+	results    []fakePollResult
+	offsets    []int64
+	limits     []int
+	sent       []int64
+	successes  chan struct{}
+}
+
+func (api *fakeAPI) GetMe(context.Context) (User, error) {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	api.getMeCalls++
+	if api.getMeErr != nil {
+		return User{}, api.getMeErr
+	}
+	if api.me.ID > 0 {
+		return api.me, nil
+	}
+	return User{ID: 1000, Username: "codemcp_test_bot", FirstName: "CodeMCP"}, nil
 }
 
 func (api *fakeAPI) GetUpdates(ctx context.Context, offset int64, limit int, _ time.Duration) ([]Update, error) {
@@ -250,5 +266,40 @@ func TestTokenIsSecretStoreStateNotRuntimeConfig(t *testing.T) {
 	}
 	if configured, err := TokenConfigured(root); err != nil || configured {
 		t.Fatalf("configured after clear=%t err=%v", configured, err)
+	}
+}
+
+func TestRuntimeValidatesTokenBeforePolling(t *testing.T) {
+	api := &fakeAPI{getMeErr: errors.New("unauthorized")}
+	root := t.TempDir()
+	if err := SetToken(root, "invalid-token"); err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{Root: root, Factory: func(string) API { return api }})
+	err := runtime.Reconcile(t.Context(), config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}})
+	if err == nil {
+		t.Fatal("expected token validation failure")
+	}
+	health := runtime.Health()
+	if health.Running || health.PollingHealthy || health.LastError != "telegram bot token validation failed" {
+		t.Fatalf("health=%#v", health)
+	}
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if api.getMeCalls != 1 || len(api.offsets) != 0 {
+		t.Fatalf("getMe calls=%d poll offsets=%v", api.getMeCalls, api.offsets)
+	}
+}
+
+func TestSetValidatedTokenRejectsBeforePersisting(t *testing.T) {
+	root := t.TempDir()
+	api := &fakeAPI{getMeErr: errors.New("unauthorized")}
+	runtime := NewRuntime(Options{Root: root, Factory: func(string) API { return api }})
+	if _, err := runtime.SetValidatedToken(t.Context(), "bad-token"); err == nil {
+		t.Fatal("expected token validation failure")
+	}
+	configured, err := TokenConfigured(root)
+	if err != nil || configured {
+		t.Fatalf("configured=%t err=%v", configured, err)
 	}
 }

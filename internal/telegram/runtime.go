@@ -26,6 +26,7 @@ const (
 )
 
 type Handler func(context.Context, Update)
+type SetupHandler func(context.Context, Update) bool
 
 type Health struct {
 	Enabled                 bool      `json:"enabled"`
@@ -38,6 +39,7 @@ type Health struct {
 	NextOffset              int64     `json:"next_offset"`
 	LastSuccess             time.Time `json:"last_success,omitempty"`
 	LastError               string    `json:"last_error,omitempty"`
+	SetupMode               bool      `json:"setup_mode"`
 }
 
 type Options struct {
@@ -55,14 +57,16 @@ type Runtime struct {
 	reconnectDelay func(int) time.Duration
 	stopTimeout    time.Duration
 
-	mu          sync.RWMutex
-	config      config.TelegramConfig
-	health      Health
-	fingerprint string
-	api         API
-	cancel      context.CancelFunc
-	done        chan struct{}
-	handler     Handler
+	mu           sync.RWMutex
+	config       config.TelegramConfig
+	health       Health
+	fingerprint  string
+	api          API
+	cancel       context.CancelFunc
+	done         chan struct{}
+	handler      Handler
+	setupHandler SetupHandler
+	setupMode    bool
 }
 
 func NewRuntime(options Options) *Runtime {
@@ -107,33 +111,109 @@ func (runtime *Runtime) SetHandler(handler Handler) {
 	runtime.mu.Unlock()
 }
 
-func (runtime *Runtime) Reconcile(ctx context.Context, cfg config.TelegramConfig) {
+func (runtime *Runtime) SetSetupHandler(handler SetupHandler) {
 	if runtime == nil {
 		return
+	}
+	runtime.mu.Lock()
+	runtime.setupHandler = handler
+	runtime.mu.Unlock()
+}
+
+func (runtime *Runtime) Reconcile(ctx context.Context, cfg config.TelegramConfig) error {
+	return runtime.reconcile(ctx, cfg, false)
+}
+
+func (runtime *Runtime) StartSetup(ctx context.Context, cfg config.TelegramConfig) error {
+	if runtime == nil {
+		return errors.New("telegram runtime is unavailable")
+	}
+	runtime.mu.RLock()
+	hasSetupHandler := runtime.setupHandler != nil
+	runtime.mu.RUnlock()
+	if !hasSetupHandler {
+		return errors.New("telegram setup handler is unavailable")
+	}
+	return runtime.reconcile(ctx, cfg, true)
+}
+
+func (runtime *Runtime) PromoteSetup(cfg config.TelegramConfig) error {
+	if runtime == nil {
+		return errors.New("telegram runtime is unavailable")
+	}
+	cfg = normalizeConfig(cfg)
+	if !cfg.Enabled || !validAuthorization(cfg.AllowedUserIDs) {
+		return errors.New("telegram authorization is incomplete")
+	}
+	token, err := loadToken(runtime.root)
+	if err != nil {
+		return err
+	}
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.cancel == nil || !runtime.setupMode {
+		return errors.New("telegram setup runtime is not active")
+	}
+	runtime.config = cfg
+	runtime.setupMode = false
+	runtime.fingerprint = runtimeFingerprint(token, cfg, false)
+	runtime.health.Enabled = true
+	runtime.health.AuthorizationConfigured = true
+	runtime.health.SetupMode = false
+	return nil
+}
+
+func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig, setupMode bool) error {
+	if runtime == nil {
+		return errors.New("telegram runtime is unavailable")
 	}
 	cfg = normalizeConfig(cfg)
 	token, tokenErr := loadToken(runtime.root)
 	tokenConfigured := tokenErr == nil && strings.TrimSpace(token) != ""
 	authorizationConfigured := validAuthorization(cfg.AllowedUserIDs)
 
-	if !cfg.Enabled || !tokenConfigured || !authorizationConfigured {
+	if tokenErr != nil && !errors.Is(tokenErr, secretstore.ErrNotFound) {
 		runtime.Stop()
 		runtime.mu.Lock()
 		runtime.config = cfg
-		runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: tokenConfigured, AuthorizationConfigured: authorizationConfigured}
-		if tokenErr != nil && !errors.Is(tokenErr, secretstore.ErrNotFound) {
-			runtime.health.LastError = "telegram token is unavailable"
-		}
+		runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: false, AuthorizationConfigured: authorizationConfigured, SetupMode: setupMode, LastError: "telegram token is unavailable"}
 		runtime.mu.Unlock()
-		return
+		return tokenErr
+	}
+	if !tokenConfigured || (!setupMode && (!cfg.Enabled || !authorizationConfigured)) {
+		runtime.Stop()
+		runtime.mu.Lock()
+		runtime.config = cfg
+		runtime.setupMode = false
+		runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: tokenConfigured, AuthorizationConfigured: authorizationConfigured}
+		runtime.mu.Unlock()
+		return nil
 	}
 
-	fingerprint := runtimeFingerprint(token, cfg)
+	api := runtime.factory(token)
+	validateCtx := ctx
+	if validateCtx == nil {
+		validateCtx = context.Background()
+	}
+	validateCtx, cancelValidate := context.WithTimeout(validateCtx, 10*time.Second)
+	_, validateErr := api.GetMe(validateCtx)
+	cancelValidate()
+	if validateErr != nil {
+		runtime.Stop()
+		runtime.mu.Lock()
+		runtime.config = cfg
+		runtime.setupMode = false
+		runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: true, AuthorizationConfigured: authorizationConfigured, LastError: "telegram bot token validation failed"}
+		runtime.mu.Unlock()
+		return errors.New("telegram bot token validation failed")
+	}
+
+	fingerprint := runtimeFingerprint(token, cfg, setupMode)
 	runtime.mu.RLock()
 	same := runtime.cancel != nil && runtime.fingerprint == fingerprint
 	runtime.mu.RUnlock()
 	if same {
-		return
+		return nil
 	}
 	runtime.Stop()
 	if ctx == nil {
@@ -141,16 +221,17 @@ func (runtime *Runtime) Reconcile(ctx context.Context, cfg config.TelegramConfig
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
-	api := runtime.factory(token)
 	runtime.mu.Lock()
 	runtime.config = cfg
+	runtime.setupMode = setupMode
 	runtime.api = api
 	runtime.cancel = cancel
 	runtime.done = done
 	runtime.fingerprint = fingerprint
-	runtime.health = Health{Enabled: true, TokenConfigured: true, AuthorizationConfigured: true, Running: true}
+	runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: true, AuthorizationConfigured: authorizationConfigured, Running: true, SetupMode: setupMode}
 	runtime.mu.Unlock()
 	go runtime.supervise(runCtx, done, api)
+	return nil
 }
 
 func (runtime *Runtime) Stop() {
@@ -167,6 +248,8 @@ func (runtime *Runtime) Stop() {
 	runtime.health.Running = false
 	runtime.health.PollingHealthy = false
 	runtime.health.Reconnecting = false
+	runtime.health.SetupMode = false
+	runtime.setupMode = false
 	runtime.mu.Unlock()
 	if cancel == nil {
 		return
@@ -207,7 +290,7 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 	runtime.mu.RLock()
 	api := runtime.api
 	users := append([]int64(nil), runtime.config.AllowedUserIDs...)
-	available := runtime.health.Running && runtime.health.AuthorizationConfigured
+	available := runtime.health.Running && runtime.health.Enabled && runtime.health.AuthorizationConfigured && !runtime.health.SetupMode
 	runtime.mu.RUnlock()
 	if !available || api == nil {
 		return notification.ErrProviderUnavailable
@@ -229,6 +312,20 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 		}
 	}
 	return result
+}
+
+func (runtime *Runtime) SendSetupMessage(ctx context.Context, chatID int64, text string) error {
+	if runtime == nil || chatID <= 0 {
+		return errors.New("telegram setup transport is unavailable")
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	setupMode := runtime.setupMode && runtime.health.Running
+	runtime.mu.RUnlock()
+	if !setupMode || api == nil {
+		return errors.New("telegram setup transport is unavailable")
+	}
+	return api.SendMessage(ctx, chatID, strings.TrimSpace(text))
 }
 
 func (runtime *Runtime) supervise(ctx context.Context, done chan struct{}, api API) {
@@ -280,7 +377,12 @@ func (runtime *Runtime) dispatchBatch(ctx context.Context, updates []Update) {
 		runtime.health.NextOffset = update.UpdateID + 1
 		cfg := runtime.config
 		handler := runtime.handler
+		setupHandler := runtime.setupHandler
+		setupMode := runtime.setupMode
 		runtime.mu.Unlock()
+		if setupMode && setupHandler != nil && setupHandler(ctx, update) {
+			continue
+		}
 		if handler == nil || !authorizedUpdate(cfg, update) {
 			continue
 		}
@@ -344,7 +446,7 @@ func validAuthorization(ids []int64) bool {
 	return true
 }
 
-func runtimeFingerprint(token string, cfg config.TelegramConfig) string {
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s|%t|%v", token, cfg.Enabled, cfg.AllowedUserIDs)))
+func runtimeFingerprint(token string, cfg config.TelegramConfig, setupMode bool) string {
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%s|%t|%v|%t", token, cfg.Enabled, cfg.AllowedUserIDs, setupMode)))
 	return hex.EncodeToString(hash[:])
 }

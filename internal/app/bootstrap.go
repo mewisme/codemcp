@@ -7,6 +7,7 @@ import (
 	"go.mewis.me/codemcp/internal/mcp"
 	"go.mewis.me/codemcp/internal/notification"
 	"go.mewis.me/codemcp/internal/runtime/activity"
+	"go.mewis.me/codemcp/internal/telegram"
 	"go.mewis.me/codemcp/internal/telemetry"
 	"go.mewis.me/codemcp/internal/tools"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -48,6 +49,10 @@ func (a *App) Bootstrap() error {
 		}
 		if a.Telegram != nil {
 			a.Notifications.Register(notification.NewTelegramProvider(a.Telegram))
+			if a.TelegramPairing == nil {
+				a.TelegramPairing = telegram.NewPairingStore(config.RootPath())
+			}
+			a.Telegram.SetSetupHandler(a.handleTelegramPairingUpdate)
 		}
 		if a.ApprovalNotifications == nil && a.Tools.Approvals != nil {
 			a.ApprovalNotifications = notification.NewApprovalBridge(a.Tools.Approvals.Events(), a.Notifications, notification.ApprovalBridgeOptions{

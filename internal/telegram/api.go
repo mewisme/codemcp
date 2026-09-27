@@ -17,7 +17,10 @@ import (
 const defaultAPIBase = "https://api.telegram.org"
 
 type User struct {
-	ID int64 `json:"id"`
+	ID        int64  `json:"id"`
+	Username  string `json:"username,omitempty"`
+	FirstName string `json:"first_name,omitempty"`
+	LastName  string `json:"last_name,omitempty"`
 }
 
 type Chat struct {
@@ -46,6 +49,7 @@ type Update struct {
 }
 
 type API interface {
+	GetMe(context.Context) (User, error)
 	GetUpdates(context.Context, int64, int, time.Duration) ([]Update, error)
 	SendMessage(context.Context, int64, string) error
 }
@@ -58,6 +62,23 @@ type apiClient struct {
 
 func newAPIClient(token string) API {
 	return &apiClient{token: strings.TrimSpace(token), baseURL: defaultAPIBase, client: &http.Client{}}
+}
+
+func (client *apiClient) GetMe(ctx context.Context) (User, error) {
+	if client == nil || client.token == "" {
+		return User{}, errors.New("telegram bot token is unavailable")
+	}
+	var response struct {
+		OK     bool `json:"ok"`
+		Result User `json:"result"`
+	}
+	if err := client.call(ctx, http.MethodGet, "getMe", nil, &response); err != nil {
+		return User{}, err
+	}
+	if !response.OK || response.Result.ID <= 0 {
+		return User{}, errors.New("telegram bot token validation failed")
+	}
+	return response.Result, nil
 }
 
 func (client *apiClient) GetUpdates(ctx context.Context, offset int64, limit int, timeout time.Duration) ([]Update, error) {
