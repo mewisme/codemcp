@@ -71,13 +71,13 @@ type Runtime struct {
 }
 
 func NewRuntime(options Options) *Runtime {
-	factory := options.Factory
-	if factory == nil {
-		factory = newAPIClient
-	}
 	pollTimeout := options.PollTimeout
 	if pollTimeout <= 0 {
 		pollTimeout = defaultPollTimeout
+	}
+	factory := options.Factory
+	if factory == nil {
+		factory = func(token string) API { return newAPIClientWithPollTimeout(token, pollTimeout) }
 	}
 	reconnectDelay := options.ReconnectDelay
 	if reconnectDelay == nil {
@@ -408,14 +408,23 @@ func (runtime *Runtime) SendSetupMessage(ctx context.Context, chatID int64, text
 
 func (runtime *Runtime) supervise(ctx context.Context, done chan struct{}, api API) {
 	defer close(done)
+	if stream, ok := api.(streamingAPI); ok {
+		runtime.superviseStream(ctx, stream)
+		return
+	}
+	poller, ok := api.(pollingAPI)
+	if !ok {
+		runtime.markPollFailure(errors.New("telegram transport does not support long polling"))
+		return
+	}
 	attempt := 0
 	for {
-		updates, err := api.GetUpdates(ctx, runtime.offset(), maxUpdatesPerPoll, runtime.pollTimeout)
+		updates, err := poller.GetUpdates(ctx, runtime.offset(), maxUpdatesPerPoll, runtime.pollTimeout)
 		if ctx.Err() != nil {
 			return
 		}
 		if err != nil {
-			runtime.markPollFailure()
+			runtime.markPollFailure(err)
 			delay := runtime.reconnectDelay(attempt)
 			attempt++
 			timer := time.NewTimer(delay)
@@ -430,6 +439,42 @@ func (runtime *Runtime) supervise(ctx context.Context, done chan struct{}, api A
 		attempt = 0
 		runtime.markPollSuccess()
 		runtime.dispatchBatch(ctx, updates)
+	}
+}
+
+func (runtime *Runtime) superviseStream(ctx context.Context, stream streamingAPI) {
+	attempt := 0
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		err := stream.StartUpdates(ctx, runtime.offset(), func(handlerCtx context.Context, update Update) {
+			runtime.dispatchBatch(handlerCtx, []Update{update})
+		}, func(event pollEvent) {
+			if event.Success {
+				runtime.markPollSuccess()
+				return
+			}
+			if event.Err != nil {
+				runtime.markPollFailure(event.Err)
+			}
+		})
+		if ctx.Err() != nil {
+			return
+		}
+		if err == nil {
+			err = errors.New("telegram long polling stopped")
+		}
+		runtime.markPollFailure(err)
+		delay := runtime.reconnectDelay(attempt)
+		attempt++
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
 	}
 }
 
@@ -477,12 +522,25 @@ func (runtime *Runtime) offset() int64 {
 	return runtime.health.NextOffset
 }
 
-func (runtime *Runtime) markPollFailure() {
+func (runtime *Runtime) markPollFailure(err error) {
 	runtime.mu.Lock()
 	runtime.health.PollingHealthy = false
 	runtime.health.Reconnecting = true
 	runtime.health.ReconnectCount++
-	runtime.health.LastError = "telegram polling failed"
+	switch transportErrorKind(err) {
+	case transportErrorRateLimited:
+		runtime.health.LastError = "telegram polling rate limited"
+	case transportErrorForbidden:
+		runtime.health.LastError = "telegram polling forbidden"
+	case transportErrorBadRequest:
+		runtime.health.LastError = "telegram polling bad request"
+	case transportErrorUnauthorized:
+		runtime.health.LastError = "telegram polling unauthorized"
+	case transportErrorConflict:
+		runtime.health.LastError = "telegram polling conflict"
+	default:
+		runtime.health.LastError = "telegram polling failed"
+	}
 	runtime.mu.Unlock()
 }
 

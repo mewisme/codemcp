@@ -25,6 +25,7 @@ type fakeAPI struct {
 	offsets    []int64
 	limits     []int
 	sent       []int64
+	sendErr    error
 	successes  chan struct{}
 }
 
@@ -64,9 +65,9 @@ func (api *fakeAPI) GetUpdates(ctx context.Context, offset int64, limit int, _ t
 
 func (api *fakeAPI) SendMessage(_ context.Context, chatID int64, _ string) error {
 	api.mu.Lock()
+	defer api.mu.Unlock()
 	api.sent = append(api.sent, chatID)
-	api.mu.Unlock()
-	return nil
+	return api.sendErr
 }
 
 func (api *fakeAPI) snapshot() ([]int64, []int, []int64) {
@@ -286,6 +287,25 @@ func TestRuntimeNotificationAvailabilityAndAuthorizedRecipients(t *testing.T) {
 	_, _, recipients := api.snapshot()
 	if len(recipients) != 2 || recipients[0] != 7 || recipients[1] != 8 {
 		t.Fatalf("recipients=%v", recipients)
+	}
+}
+
+func TestRuntimeBlockedRecipientDoesNotCrashPolling(t *testing.T) {
+	api := &fakeAPI{results: []fakePollResult{{updates: nil}}, sendErr: &transportError{Class: transportErrorForbidden}}
+	runtime := testRuntime(t, api, config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{7}})
+	deadline := time.Now().Add(time.Second)
+	for !runtime.Available() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if !runtime.Available() {
+		t.Fatalf("runtime health=%#v", runtime.Health())
+	}
+	if err := runtime.SendNotification(t.Context(), notification.Message{Title: "Done"}); transportErrorKind(err) != transportErrorForbidden {
+		t.Fatalf("notification err=%v", err)
+	}
+	health := runtime.Health()
+	if !health.Running || !health.PollingHealthy || health.Reconnecting {
+		t.Fatalf("blocked delivery changed polling health=%#v", health)
 	}
 }
 

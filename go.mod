@@ -12,6 +12,7 @@ require (
 	github.com/briandowns/spinner v1.23.2
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/fatih/color v1.19.0
+	github.com/go-telegram/bot v1.27.0
 	github.com/google/jsonschema-go v0.4.3
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/openai/tunnel-client v0.0.14
