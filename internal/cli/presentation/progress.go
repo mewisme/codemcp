@@ -215,6 +215,40 @@ func (session *ProgressSession) Suspend() {
 	session.clearTransientLocked()
 }
 
+func (session *ProgressSession) Resume() {
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed || session.activeID == "" {
+		return
+	}
+	phase, ok := session.phases[session.activeID]
+	if !ok || phase.State != ProgressRunning {
+		return
+	}
+	session.renderRunningLocked(phase)
+}
+
+func (session *ProgressSession) WithInput(render func(*Presenter), read func() error) error {
+	if session == nil {
+		if read != nil {
+			return read()
+		}
+		return nil
+	}
+	session.Suspend()
+	defer session.Resume()
+	if render != nil {
+		render(session.Presenter())
+	}
+	if read != nil {
+		return read()
+	}
+	return nil
+}
+
 func (session *ProgressSession) Append(render func(*Presenter)) {
 	if session == nil || render == nil {
 		return

@@ -75,13 +75,19 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 	}
 	if !listMode && strings.TrimSpace(key) != "" {
 		if _, ok := value.(map[string]any); !ok {
-			if text, ok := value.(string); ok {
-				fmt.Fprintln(commandResultWriter(cmd), text)
-				return nil
-			}
 			text, err := compactConfigValue(value)
 			if err != nil {
 				return err
+			}
+			if stringValue, ok := value.(string); ok {
+				text = stringValue
+			}
+			if commandResultModeFor(cmd) == resultModeHuman {
+				presenter := commandPresenter(cmd)
+				presenter.Frame("Configuration")
+				presenter.Fields(presentation.Field{Label: strings.TrimSpace(key), Value: text})
+				presenter.Complete("Done")
+				return nil
 			}
 			fmt.Fprintln(commandResultWriter(cmd), text)
 			return nil
@@ -156,6 +162,13 @@ func printSettingSelection(cmd *cobra.Command, service *application.SettingServi
 		if err == nil {
 			if options.json {
 				return writeResultJSON(cmd, map[string]any{result.Spec.Key: settingOutputValue(result)})
+			}
+			if commandResultModeFor(cmd) == resultModeHuman {
+				presenter := commandPresenter(cmd)
+				presenter.Frame("Configuration")
+				presenter.Fields(presentation.Field{Label: result.Spec.Key, Value: result.Value})
+				presenter.Complete("Done")
+				return nil
 			}
 			fmt.Fprintln(commandResultWriter(cmd), result.Value)
 			return nil

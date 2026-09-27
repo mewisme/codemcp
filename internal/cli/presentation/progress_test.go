@@ -151,3 +151,58 @@ func TestProgressSessionSuspendAndCloseClearTransientState(t *testing.T) {
 		t.Fatalf("transient line was not cleared: %q", got)
 	}
 }
+
+func TestProgressSessionWithInputSuspendsAndResumesActivePhase(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{
+		Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true, Animation: true,
+	})
+	session.animationGap = time.Hour
+	session.Begin("Workspace relocation")
+	session.Update(ProgressPhase{ID: "relocate", Label: "Relocating workspace", State: ProgressRunning})
+	if err := session.WithInput(func(presenter *Presenter) {
+		presenter.Prompt("Select resolution [1-4], then press Enter")
+	}, func() error {
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	session.Success("relocate", "Relocating workspace", "Workspace relocated")
+	session.CloseWith("Done")
+
+	got := output.String()
+	if strings.Count(got, "\r\x1b[2K") < 2 {
+		t.Fatalf("input lifecycle did not clear active progress before prompt and completion: %q", got)
+	}
+	prompt := strings.Index(got, "Select resolution [1-4], then press Enter")
+	complete := strings.Index(got, "Workspace relocated")
+	if prompt < 0 || complete <= prompt {
+		t.Fatalf("prompt/completion order is invalid: %q", got)
+	}
+	if strings.Count(got, "┌  Workspace relocation") != 1 || strings.Count(got, "└  Done") != 1 {
+		t.Fatalf("input lifecycle broke frame ownership: %q", got)
+	}
+}
+
+func TestProgressSessionWithInputPlainModeIsCursorFree(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModePlain, Capabilities{Width: 80})
+	session.SetTitle("Workspace relocation")
+	session.Update(ProgressPhase{ID: "relocate", Label: "Relocating workspace", State: ProgressRunning})
+	if err := session.WithInput(func(presenter *Presenter) {
+		presenter.Prompt("Select resolution [1-4], then press Enter")
+	}, func() error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	session.Success("relocate", "Relocating workspace", "Workspace relocated")
+	session.CloseWith("Done")
+	got := output.String()
+	if strings.ContainsAny(got, "\r\x1b") {
+		t.Fatalf("plain input lifecycle contains terminal control bytes: %q", got)
+	}
+	for _, want := range []string{"Workspace relocation", "Select resolution [1-4], then press Enter", "Workspace relocated", "Done"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("plain input lifecycle missing %q: %q", want, got)
+		}
+	}
+}

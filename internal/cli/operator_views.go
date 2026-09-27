@@ -185,7 +185,14 @@ func workspaceContextCommand() *cobra.Command {
 		if asJSON {
 			return writeResultJSON(cmd, result.Value)
 		}
-		cmd.Println(result.Value.InstructionContext.InstructionsText)
+		if commandResultModeFor(cmd) == resultModeHuman {
+			p := commandPresenter(cmd)
+			p.Frame("Project context")
+			p.Note("", result.Value.InstructionContext.InstructionsText)
+			p.Complete("Done")
+			return nil
+		}
+		fmt.Fprintln(commandResultWriter(cmd), result.Value.InstructionContext.InstructionsText)
 		return nil
 	}}
 	cmd.Flags().StringVar(&options.Path, "path", "", "project-relative or absolute path inside the workspace")

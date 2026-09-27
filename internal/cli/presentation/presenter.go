@@ -423,6 +423,23 @@ func (p *Presenter) Note(title, body string) {
 	}
 }
 
+func (p *Presenter) Prompt(message string) {
+	if p == nil || p.mode == ModeJSON {
+		return
+	}
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	p.beginContent()
+	p.beginBlock()
+	if p.mode == ModeHuman {
+		p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleActive, p.glyphs.PhasePending) + " " + message)
+		return
+	}
+	p.line(message)
+}
+
 func (p *Presenter) Markdown(source string) error {
 	if p == nil || p.mode == ModeJSON {
 		return nil

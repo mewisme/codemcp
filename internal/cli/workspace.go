@@ -134,11 +134,14 @@ func workspaceRelocateCommand() *cobra.Command {
 			result, err := service.Relocate(cmd.Context(), request)
 			if err != nil && strings.TrimSpace(resolve) == "" && workspaceRelocateInteractive(cmd) {
 				if conflict, ok := application.WorkspaceRelocationConflictOf(err); ok {
-					resolution, cancelled, promptErr := promptWorkspaceRelocationResolution(cmd.InOrStdin(), cmd.OutOrStdout(), conflict)
+					resolution, cancelled, promptErr := promptWorkspaceRelocationResolution(cmd, conflict)
 					if promptErr != nil {
 						return promptErr
 					}
 					if cancelled {
+						presenter := commandPresenter(cmd)
+						presenter.StateSection(presentation.StatusInactive, "Workspace relocation cancelled")
+						presenter.Complete("Cancelled")
 						return nil
 					}
 					request.Resolution = resolution
@@ -165,25 +168,40 @@ func workspaceRelocateInteractive(cmd *cobra.Command) bool {
 	return ok && term.IsTerminal(int(input.Fd()))
 }
 
-func promptWorkspaceRelocationResolution(reader io.Reader, writer io.Writer, conflict application.WorkspaceRelocationConflict) (workspace.RelocationResolution, bool, error) {
-	if reader == nil || writer == nil {
+func promptWorkspaceRelocationResolution(cmd *cobra.Command, conflict application.WorkspaceRelocationConflict) (workspace.RelocationResolution, bool, error) {
+	if cmd == nil || cmd.InOrStdin() == nil {
 		return "", false, errors.New("interactive workspace relocation requires terminal input and output")
 	}
-	fmt.Fprintf(writer, "Duplicate workspace identity %s exists at both roots.\n", conflict.WorkspaceID)
-	fmt.Fprintln(writer, "  1) destination  Keep destination .cm state")
-	fmt.Fprintln(writer, "  2) registered   Keep registered .cm state")
-	fmt.Fprintln(writer, "  3) merge        Merge through typed workspace state rules")
-	fmt.Fprintln(writer, "  4) cancel       Make no changes")
-	scanner := bufio.NewScanner(reader)
+	session := commandProgressSession(cmd)
+	scanner := bufio.NewScanner(cmd.InOrStdin())
 	for attempts := 0; attempts < 3; attempts++ {
-		fmt.Fprint(writer, "Select resolution [1-4]: ")
-		if !scanner.Scan() {
-			if err := scanner.Err(); err != nil {
-				return "", false, err
+		var input string
+		err := session.WithInput(func(presenter *presentation.Presenter) {
+			if attempts == 0 {
+				presenter.StateSection(presentation.StatusWarning, fmt.Sprintf("Duplicate workspace identity %s exists at both roots", conflict.WorkspaceID))
+				presenter.Subsection("Resolution")
+				presenter.NestedFields(
+					presentation.Field{Label: "1 destination", Value: "Keep destination .cm state"},
+					presentation.Field{Label: "2 registered", Value: "Keep registered .cm state"},
+					presentation.Field{Label: "3 merge", Value: "Merge through typed workspace state rules"},
+					presentation.Field{Label: "4 cancel", Value: "Make no changes"},
+				)
 			}
-			return "", false, io.EOF
+			presenter.Prompt("Select resolution [1-4], then press Enter")
+		}, func() error {
+			if !scanner.Scan() {
+				if err := scanner.Err(); err != nil {
+					return err
+				}
+				return io.EOF
+			}
+			input = scanner.Text()
+			return nil
+		})
+		if err != nil {
+			return "", false, err
 		}
-		switch strings.ToLower(strings.TrimSpace(scanner.Text())) {
+		switch strings.ToLower(strings.TrimSpace(input)) {
 		case "1", "destination":
 			return workspace.RelocationResolutionDestination, false, nil
 		case "2", "registered":
@@ -193,7 +211,9 @@ func promptWorkspaceRelocationResolution(reader io.Reader, writer io.Writer, con
 		case "4", "cancel", "c":
 			return "", true, nil
 		default:
-			fmt.Fprintln(writer, "Invalid selection.")
+			_ = session.WithInput(func(presenter *presentation.Presenter) {
+				presenter.ChildStatus(presentation.StatusWarning, "Invalid selection")
+			}, nil)
 		}
 	}
 	return "", false, errors.New("invalid workspace relocation resolution selection")

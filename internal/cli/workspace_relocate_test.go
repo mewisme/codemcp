@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -35,12 +36,37 @@ func TestPromptWorkspaceRelocationResolutionSelections(t *testing.T) {
 	}
 	for _, test := range tests {
 		var output bytes.Buffer
-		got, cancelled, err := promptWorkspaceRelocationResolution(strings.NewReader(test.input), &output, conflict)
+		cmd := workspaceRelocateCommand()
+		cmd.SetIn(strings.NewReader(test.input))
+		cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, RawUnicode: true, Interactive: true}))
+		setCommandPresentationTitle(cmd, "Workspace relocation")
+		got, cancelled, err := promptWorkspaceRelocationResolution(cmd, conflict)
 		if err != nil {
 			t.Fatalf("input %q error=%v output=%q", test.input, err, output.String())
 		}
 		if got != test.want || cancelled != test.cancelled {
 			t.Fatalf("input %q got=%q cancelled=%v want=%q cancelled=%v", test.input, got, cancelled, test.want, test.cancelled)
+		}
+		commandProgressSession(cmd).SetCompletion("Done")
+		closeCommandProgress(cmd, nil)
+		text := output.String()
+		for _, want := range []string{
+			"┌  Workspace relocation",
+			"Duplicate workspace identity ws_test exists at both roots",
+			"│  ◆ Resolution",
+			"1 destination — Keep destination .cm state",
+			"Select resolution [1-4], then press Enter",
+			"└  Done",
+		} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("input %q prompt missing %q: %q", test.input, want, text)
+			}
+		}
+		if strings.Count(text, "┌  Workspace relocation") != 1 || strings.Count(text, "└  Done") != 1 {
+			t.Fatalf("input %q prompt frame duplicated: %q", test.input, text)
+		}
+		if strings.Contains(test.input, "bad") && !strings.Contains(text, "Invalid selection") {
+			t.Fatalf("input %q missing invalid-selection feedback: %q", test.input, text)
 		}
 	}
 }

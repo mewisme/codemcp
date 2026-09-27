@@ -407,16 +407,71 @@ func TestConfigRichPaletteSeparatesStructureLabelsAndValues(t *testing.T) {
 	}
 }
 
-func TestConfigScalarGetKeepsRawValueContract(t *testing.T) {
+func TestConfigScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) {
 	cfg := config.Default()
-	var output bytes.Buffer
-	cmd := &cobra.Command{}
-	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
-	if err := printConfigSelection(cmd, cfg, "server.port", false, configOutputOptions{}); err != nil {
+	var humanOutput bytes.Buffer
+	human := &cobra.Command{}
+	human.SetOut(presentation.WrapWriter(&humanOutput, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	if err := printConfigSelection(human, cfg, "server.port", false, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if output.String() != "37421\n" {
-		t.Fatalf("scalar config get = %q", output.String())
+	closeCommandProgress(human, nil)
+	for _, want := range []string{"┌  Configuration", "server.port — 37421", "└  Done"} {
+		if !strings.Contains(humanOutput.String(), want) {
+			t.Fatalf("human scalar config get missing %q: %q", want, humanOutput.String())
+		}
+	}
+
+	var plainOutput bytes.Buffer
+	plain := &cobra.Command{}
+	plain.SetOut(&plainOutput)
+	if err := printConfigSelection(plain, cfg, "server.port", false, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if plainOutput.String() != "37421\n" {
+		t.Fatalf("plain scalar config get = %q", plainOutput.String())
+	}
+}
+
+func TestSettingScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) {
+	isolateUniversalConfigCLI(t)
+	service := application.NewSettingService()
+
+	var humanOutput bytes.Buffer
+	human := &cobra.Command{}
+	human.SetOut(presentation.WrapWriter(&humanOutput, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	if err := printSettingSelection(human, service, "server.port", false, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	closeCommandProgress(human, nil)
+	for _, want := range []string{"┌  Configuration", "server.port — 37421", "└  Done"} {
+		if !strings.Contains(humanOutput.String(), want) {
+			t.Fatalf("human setting get missing %q: %q", want, humanOutput.String())
+		}
+	}
+
+	var plainOutput bytes.Buffer
+	plain := &cobra.Command{}
+	plain.SetOut(&plainOutput)
+	if err := printSettingSelection(plain, service, "server.port", false, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if plainOutput.String() != "37421\n" {
+		t.Fatalf("plain setting get = %q", plainOutput.String())
+	}
+}
+
+func TestConfigGetScalarInteractiveLifecycleIsFrameFirst(t *testing.T) {
+	rootPath := isolateUniversalConfigCLI(t)
+	text, err := executeInteractiveLifecycleCommand(rootPath, "config", "get", "server.port")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSingleHumanWorkflow(t, text, "Configuration", "Done")
+	frame := strings.Index(text, "┌  Configuration")
+	value := strings.Index(text, "server.port — 37421")
+	if frame < 0 || value <= frame {
+		t.Fatalf("interactive scalar result escaped before frame: %q", text)
 	}
 }
 
