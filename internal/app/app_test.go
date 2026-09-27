@@ -49,6 +49,27 @@ func (p *failingCompletionNotificationProvider) Notify(_ context.Context, messag
 	return errors.New("provider failed with private delivery detail")
 }
 
+func TestBootstrapRegistersTelegramNotificationProvider(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	cfg := config.Default()
+	app, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Notifications.Stop()
+	status := app.Notifications.Status(map[string]bool{notification.ProviderTelegram: true})
+	for _, provider := range status.Providers {
+		if provider.Provider != notification.ProviderTelegram {
+			continue
+		}
+		if !provider.Registered || provider.Available || provider.Health != notification.ProviderHealthUnavailable {
+			t.Fatalf("telegram provider status=%#v", provider)
+		}
+		return
+	}
+	t.Fatal("telegram provider is missing from notification status")
+}
+
 func TestAcceptedCompletionNotificationFailureDoesNotChangeCompletionTruth(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	cfg := config.Default()

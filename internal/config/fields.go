@@ -111,6 +111,8 @@ var fieldSpecs = []FieldSpec{
 	{Key: "permissions.mcp_config_write", Label: "MCP agent config writes", Section: FieldSectionAccess, Description: "allows the guarded agent-facing MCP configuration mutation workflow to target eligible global settings", Details: "Disabled by default. Enabling this eligibility does not bypass mandatory local approval for config_set and does not permit managed-secret writes.", Kind: FieldBool, Editable: true, Related: []string{"permissions.mcp_config_read"}},
 	{Key: "shell.path", Label: "Executable search paths", Section: FieldSectionShell, Description: "prepends additional executable directories to PATH for managed shell commands", Details: "Paths must be absolute. Configured entries are prepended to the inherited process PATH for foreground and background shell execution.", Kind: FieldList, Editable: true},
 	{Key: "telemetry.enabled", Label: "Anonymous product telemetry", Section: FieldSectionRuntime, Description: "controls privacy-bounded anonymous product usage telemetry", Details: "Enabled by default. CM_TELEMETRY overrides this persisted preference at runtime. This operator privacy preference is never exposed through agent-facing MCP config tools.", Kind: FieldBool, Editable: true},
+	{Key: "telegram.enabled", Label: "Telegram interface", Section: FieldSectionRuntime, Description: "controls the Telegram bot runtime", Details: "The bot token is stored separately in the secret store. The runtime starts only when Telegram is enabled, a token exists, and at least one authorized private user is configured.", Kind: FieldBool, Editable: true, Related: []string{"telegram.allowed_user_ids"}},
+	{Key: "telegram.allowed_user_ids", Label: "Telegram authorized users", Section: FieldSectionAccess, Description: "lists Telegram user IDs allowed to invoke the private administration interface", Details: "Only positive numeric user IDs are accepted. Group and channel traffic is rejected regardless of this allowlist.", Kind: FieldList, Editable: true, Related: []string{"telegram.enabled"}},
 	{Key: "approval.semantic.enabled", Label: "Semantic approval classification", Section: FieldSectionAccess, Description: "controls optional semantic risk classification for eligible mutations", Details: "Disabled by default. Semantic classification may only preserve or tighten native policy and never grants approval.", Kind: FieldBool, Editable: true},
 	{Key: "approval.semantic.provider", Label: "Semantic approval provider", Section: FieldSectionAccess, Description: "selects the provider-neutral risk classifier", Details: "The configured provider must expose the semantic RiskClassifier capability at runtime. Missing capability follows fail_mode.", Kind: FieldString, Editable: true},
 	{Key: "approval.semantic.timeout_ms", Label: "Semantic approval timeout", Section: FieldSectionAccess, Description: "sets the bounded classification deadline in milliseconds", Details: "Classification is advisory and locally bounded. Timeout follows fail_mode and never permits execution by itself.", Kind: FieldInt, Editable: true},
@@ -294,6 +296,29 @@ func SetValue(cfg *Config, key, raw string) error {
 			return err
 		}
 		cfg.Telemetry.Enabled = value
+	case "telegram.enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Telegram.Enabled = value
+	case "telegram.allowed_user_ids":
+		items := splitFieldList(raw)
+		ids := make([]int64, 0, len(items))
+		seen := map[int64]struct{}{}
+		for _, item := range items {
+			id, err := strconv.ParseInt(strings.TrimSpace(item), 10, 64)
+			if err != nil || id <= 0 {
+				return errors.New("telegram.allowed_user_ids must contain positive numeric IDs")
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+		slices.Sort(ids)
+		cfg.Telegram.AllowedUserIDs = ids
 	case "approval.semantic.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -543,6 +568,14 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strings.Join(cfg.Shell.Path, ","), nil
 	case "telemetry.enabled":
 		return strconv.FormatBool(cfg.Telemetry.Enabled), nil
+	case "telegram.enabled":
+		return strconv.FormatBool(cfg.Telegram.Enabled), nil
+	case "telegram.allowed_user_ids":
+		values := make([]string, len(cfg.Telegram.AllowedUserIDs))
+		for index, id := range cfg.Telegram.AllowedUserIDs {
+			values[index] = strconv.FormatInt(id, 10)
+		}
+		return strings.Join(values, "\n"), nil
 	case "approval.semantic.enabled":
 		return strconv.FormatBool(cfg.Approval.Semantic.Enabled), nil
 	case "approval.semantic.provider":

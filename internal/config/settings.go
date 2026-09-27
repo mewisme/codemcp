@@ -231,6 +231,9 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 	case "telemetry.enabled":
 		spec.ApplicationOwner = "telemetry"
 		spec.ScopedCommands = []string{"telemetry enable", "telemetry disable"}
+	case "telegram.enabled", "telegram.allowed_user_ids":
+		spec.ApplicationOwner = "telegram.runtime"
+		spec.ScopedExemption = "Telegram setup and administration facades are introduced by the Telegram interface"
 	case "approval.semantic.enabled", "approval.semantic.provider", "approval.semantic.timeout_ms", "approval.semantic.minimum_confidence", "approval.semantic.fail_mode", "approval.semantic.low_action", "approval.semantic.medium_action", "approval.semantic.high_action", "approval.semantic.critical_action":
 		spec.ApplicationOwner = "approval.semantic"
 		spec.ScopedExemption = "generic config set is the canonical operator facade for semantic approval policy"

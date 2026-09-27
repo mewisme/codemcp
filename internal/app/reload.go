@@ -28,6 +28,7 @@ func (a *App) ReloadConfig(next config.Config) error {
 	shellPathChanged := !slices.Equal(previous.Shell.Path, next.Shell.Path)
 	semanticApprovalChanged := previous.Approval.Semantic != next.Approval.Semantic
 	telemetryChanged := previous.Telemetry != next.Telemetry
+	telegramChanged := previous.Telegram.Enabled != next.Telegram.Enabled || !slices.Equal(previous.Telegram.AllowedUserIDs, next.Telegram.AllowedUserIDs)
 	tunnelChanged := previous.Tunnel != next.Tunnel
 	tunnelRuntimeChanged := tunnelChanged && !tunnel.RuntimeConfigEqual(previous.Tunnel, next.Tunnel)
 
@@ -37,14 +38,14 @@ func (a *App) ReloadConfig(next config.Config) error {
 	if reloadTestAfterCommit != nil {
 		reloadTestAfterCommit()
 	}
-	if err := a.applyRuntimeConfig(next, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
+	if err := a.applyRuntimeConfig(next, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
 		_, restoreErr := a.Config.Update(func(config.Config) (config.Config, error) { return previous, nil })
-		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, tunnelChanged, tunnelRuntimeChanged))
+		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged))
 	}
 	return nil
 }
 
-func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
+func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
 	if integrationsChanged {
 		if err := a.Tools.SyncIntegrations(next.Integrations); err != nil {
 			return err
@@ -61,6 +62,9 @@ func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsCh
 	}
 	if telemetryChanged && a.ProductTelemetry != nil {
 		a.ProductTelemetry.SetEnabled(config.ResolveTelemetryEnabled(next, true).Enabled)
+	}
+	if telegramChanged && a.running && a.Telegram != nil {
+		a.Telegram.Reconcile(a.runtimeCtx, next.Telegram)
 	}
 	if httpChanged {
 		a.syncMCPHTTP(next.Server.Enabled)
@@ -88,7 +92,7 @@ func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsCh
 	return nil
 }
 
-func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
+func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
 	var rollbackErr error
 	if tunnelChanged && a.Tunnel != nil {
 		if tunnelRuntimeChanged {
@@ -115,6 +119,9 @@ func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integra
 	}
 	if telemetryChanged && a.ProductTelemetry != nil {
 		a.ProductTelemetry.SetEnabled(config.ResolveTelemetryEnabled(previous, true).Enabled)
+	}
+	if telegramChanged && a.running && a.Telegram != nil {
+		a.Telegram.Reconcile(a.runtimeCtx, previous.Telegram)
 	}
 	if httpChanged {
 		a.syncMCPHTTP(previous.Server.Enabled)

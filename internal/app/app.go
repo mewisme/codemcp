@@ -16,6 +16,7 @@ import (
 	"go.mewis.me/codemcp/internal/notification"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	"go.mewis.me/codemcp/internal/runtime/activity"
+	"go.mewis.me/codemcp/internal/telegram"
 	producttelemetry "go.mewis.me/codemcp/internal/telemetry/product"
 	"go.mewis.me/codemcp/internal/tools"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -39,6 +40,7 @@ type App struct {
 	BackgroundNotifications   *notification.BackgroundJobBridge
 	ProductTelemetry          productTelemetryRuntime
 	ProductLifecycleTelemetry *productLifecycleTelemetry
+	Telegram                  *telegram.Runtime
 	runtimeCtx                context.Context
 	trace                     tracepkg.Observer
 	running                   bool
@@ -132,6 +134,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 		Config: configStore, MCP: mcpRuntime, Upstream: toolRuntime.Upstream, Tools: toolRuntime, Activity: stream,
 		Tunnel: tunnelClient, Logger: appLogger,
 		OAuth: oauthStore, OAuthFlows: mcpoauth.NewFlowManager(oauthStore), ProductTelemetry: productRecorder, trace: observer,
+		Telegram: telegram.NewRuntime(telegram.Options{Root: config.RootPath()}),
 	}
 	app.ProductLifecycleTelemetry = newProductLifecycleTelemetry(productRecorder, toolRuntime.Approvals, toolRuntime.Processes)
 	bootstrapStarted := time.Now()

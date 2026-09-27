@@ -21,3 +21,21 @@ func TestTelemetryPreferenceIsExcludedFromAgentConfigProjection(t *testing.T) {
 		t.Fatal("telemetry preference resolved for MCP write")
 	}
 }
+
+func TestTelegramAuthorizationSettingsAreExcludedFromAgentConfigProjection(t *testing.T) {
+	for _, key := range []string{"telegram.enabled", "telegram.allowed_user_ids"} {
+		spec, ok := config.SettingByKey(key)
+		if !ok {
+			t.Fatalf("telegram setting %q missing", key)
+		}
+		if AgentReadable(spec) || AgentWritable(spec) {
+			t.Fatalf("telegram authorization setting became agent-visible: %#v", spec)
+		}
+		if _, ok := ResolveSetting(key, AccessRead); ok {
+			t.Fatalf("%q resolved for MCP read", key)
+		}
+		if _, ok := ResolveSetting(key, AccessWrite); ok {
+			t.Fatalf("%q resolved for MCP write", key)
+		}
+	}
+}

@@ -17,7 +17,13 @@ func NewTelegramProvider(sender TelegramSender) *TelegramProvider {
 func (p *TelegramProvider) Name() string { return ProviderTelegram }
 
 func (p *TelegramProvider) Available() bool {
-	return p != nil && p.Sender != nil
+	if p == nil || p.Sender == nil {
+		return false
+	}
+	if available, ok := p.Sender.(interface{ Available() bool }); ok {
+		return available.Available()
+	}
+	return true
 }
 
 func (p *TelegramProvider) Notify(ctx context.Context, message Message) error {

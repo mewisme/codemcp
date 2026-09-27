@@ -18,6 +18,11 @@ func Validate(cfg Config) error {
 	if err := ValidateMCPTransports(cfg); err != nil {
 		return err
 	}
+	for _, id := range cfg.Telegram.AllowedUserIDs {
+		if id <= 0 {
+			return fmt.Errorf("telegram allowed user IDs must be positive: %d", id)
+		}
+	}
 	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
 		return fmt.Errorf("server port must be between 1 and 65535: %d", cfg.Server.Port)
 	}

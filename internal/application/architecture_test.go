@@ -63,6 +63,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"skills":                 "domain",
 	"state":                  "persistence",
 	"systeminfo":             "platform",
+	"telegram":               "integration",
 	"telemetry":              "runtime",
 	"testutil":               "test",
 	"tools":                  "application",

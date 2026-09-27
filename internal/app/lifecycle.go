@@ -32,6 +32,9 @@ func (a *App) Start(ctx context.Context) error {
 		}
 	}
 	a.runtimeCtx = ctx
+	if a.Telegram != nil {
+		a.Telegram.Reconcile(ctx, a.Config.Snapshot().Telegram)
+	}
 	if a.ApprovalNotifications != nil {
 		if err := a.ApprovalNotifications.Start(ctx); err != nil && a.Logger != nil {
 			a.Logger.Warning("NOTIFICATION", "notification.coordinator.start.failed", "Approval notification coordinator could not start", err)
@@ -129,6 +132,9 @@ func (a *App) Stop() error {
 	}
 	if a.BackgroundNotifications != nil {
 		a.BackgroundNotifications.Stop()
+	}
+	if a.Telegram != nil {
+		a.Telegram.Stop()
 	}
 	if a.Notifications != nil {
 		a.Notifications.Stop()

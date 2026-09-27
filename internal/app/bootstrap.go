@@ -46,6 +46,9 @@ func (a *App) Bootstrap() error {
 			a.Notifications = notification.NewCoordinator(notification.CoordinatorOptions{})
 			a.Notifications.Register(notification.NewDesktopProvider())
 		}
+		if a.Telegram != nil {
+			a.Notifications.Register(notification.NewTelegramProvider(a.Telegram))
+		}
 		if a.ApprovalNotifications == nil && a.Tools.Approvals != nil {
 			a.ApprovalNotifications = notification.NewApprovalBridge(a.Tools.Approvals.Events(), a.Notifications, notification.ApprovalBridgeOptions{
 				Policy: func() notification.ApprovalPolicy {

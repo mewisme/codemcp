@@ -23,12 +23,18 @@ type Config struct {
 	Notifications NotificationsConfig `json:"notifications"`
 	Approval      ApprovalConfig      `json:"approval"`
 	Telemetry     TelemetryConfig     `json:"telemetry"`
+	Telegram      TelegramConfig      `json:"telegram"`
 	Integrations  IntegrationsConfig  `json:"integrations"`
 	Tunnel        tunnel.Config       `json:"tunnel"`
 }
 
 type TelemetryConfig struct {
 	Enabled bool `json:"enabled"`
+}
+
+type TelegramConfig struct {
+	Enabled        bool    `json:"enabled"`
+	AllowedUserIDs []int64 `json:"allowed_user_ids"`
 }
 
 type ApprovalConfig struct {
@@ -132,6 +138,7 @@ func Default() Config {
 			HighAction: "require_approval", CriticalAction: "deny",
 		}},
 		Telemetry:    TelemetryConfig{Enabled: true},
+		Telegram:     TelegramConfig{Enabled: false, AllowedUserIDs: []int64{}},
 		Integrations: integrations.Default(),
 		Tunnel:       tunnel.Config{Enabled: false, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}},
 	}
