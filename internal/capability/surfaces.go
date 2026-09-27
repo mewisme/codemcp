@@ -30,14 +30,6 @@ var tuiExplicitExemptIDs = idSet(
 	TunnelCreate,
 	TunnelUpdate,
 	TunnelDelete,
-	IntegrationRTKEnable,
-	IntegrationRTKDisable,
-	IntegrationRTKInstall,
-	IntegrationCodeGraphInstall,
-	IntegrationCodeGraphWorkspaceInit,
-	IntegrationCodeGraphWorkspaceSync,
-	IntegrationTypeSafeEnable,
-	IntegrationTypeSafeDisable,
 )
 
 func surfaceContracts(spec Spec) []SurfaceContract {

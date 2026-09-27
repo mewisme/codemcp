@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/interface/tui/action"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
@@ -95,5 +96,15 @@ func TestPaletteListOwnsPaginationAndSelection(t *testing.T) {
 	plain := ansi.Strip(model.View(72))
 	if !strings.Contains(plain, "Action 10") || strings.Contains(plain, "Action 00") {
 		t.Fatalf("paged view=%q", plain)
+	}
+}
+
+func TestPaletteShowsCanonicalConfirmationHint(t *testing.T) {
+	model := New([]action.Action{{
+		ID: "logs.clear", Title: "Clear logs", Category: "Logs", Operation: capability.LogsClear,
+	}}, action.Context{})
+	plain := ansi.Strip(model.View(72))
+	if !strings.Contains(plain, "Clear logs") || !strings.Contains(plain, "confirm") {
+		t.Fatalf("canonical confirmation metadata was not rendered: %q", plain)
 	}
 }

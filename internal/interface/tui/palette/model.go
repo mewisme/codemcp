@@ -11,6 +11,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/interface/tui/action"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
@@ -55,6 +56,8 @@ func (delegate paletteDelegate) Render(w io.Writer, model list.Model, index int,
 	shortcut := ""
 	if help := item.Action.Shortcut.Help(); help.Key != "" {
 		shortcut = help.Key
+	} else if mode := item.Action.ConfirmationMode(); mode == capability.ConfirmationRequired || mode == capability.ConfirmationRecommended {
+		shortcut = "confirm"
 	}
 	left, right := titleStyle.Render(title), shortcutStyle.Render(shortcut)
 	gap := max(2, model.Width()-lipgloss.Width(left)-lipgloss.Width(right))

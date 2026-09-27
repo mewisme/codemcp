@@ -45,6 +45,7 @@ func defaultActionRegistry() *action.Registry {
 	actions = append(actions, mcpActions()...)
 	actions = append(actions, tunnelActions()...)
 	actions = append(actions, readViewActions()...)
+	actions = append(actions, integrationActions()...)
 	actions = append(actions, requestActions()...)
 	actions = append(actions, logsActions()...)
 	actions = append(actions, systemActions()...)
@@ -226,6 +227,40 @@ func readViewActions() []action.Action {
 				return navigateMsg{route: Route{Kind: RouteIntegrations, ResourceID: "codegraph", Mode: ctx.ResourceID}}
 			}
 		}},
+	}
+}
+
+func integrationActions() []action.Action {
+	global := func(id, title, description string, operation capability.ID, command tuipage.IntegrationCommand) action.Action {
+		return action.Action{
+			ID: id, Title: title, Category: "Integrations", Description: description,
+			Keywords:  []string{"integration", "rtk", "codegraph", "typesafe", "enable", "disable", "install"},
+			Operation: operation, Capabilities: []capability.ID{operation}, Scope: action.ScopeGlobal,
+			Run: func(context.Context, action.Context) tea.Cmd {
+				return func() tea.Msg { return tuipage.IntegrationCommandMsg{Command: command} }
+			},
+		}
+	}
+	workspaceAction := func(id, title, description string, operation capability.ID, command tuipage.IntegrationCommand) action.Action {
+		return action.Action{
+			ID: id, Title: title, Category: "Workspace", Description: description,
+			Keywords:  []string{"workspace", "codegraph", "index", "init", "sync"},
+			Operation: operation, Capabilities: []capability.ID{operation}, Scope: action.ScopeResource,
+			Available: func(ctx action.Context) bool { return ctx.Route == string(RouteWorkspaces) && ctx.ResourceID != "" },
+			Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+				return func() tea.Msg { return tuipage.IntegrationCommandMsg{Command: command, WorkspaceID: ctx.ResourceID} }
+			},
+		}
+	}
+	return []action.Action{
+		global("integration.rtk.enable", "Enable RTK", "Enable RTK command rewriting through the canonical integration setting", capability.IntegrationRTKEnable, tuipage.IntegrationRTKEnable),
+		global("integration.rtk.disable", "Disable RTK", "Disable RTK command rewriting through the canonical integration setting", capability.IntegrationRTKDisable, tuipage.IntegrationRTKDisable),
+		global("integration.rtk.install", "Install RTK", "Install the managed RTK executable", capability.IntegrationRTKInstall, tuipage.IntegrationRTKInstall),
+		global("integration.codegraph.install", "Install CodeGraph", "Install the managed CodeGraph executable", capability.IntegrationCodeGraphInstall, tuipage.IntegrationCodeGraphInstall),
+		global("integration.typesafe.enable", "Enable TypeSafe", "Enable the TypeSafe provider through the canonical integration setting", capability.IntegrationTypeSafeEnable, tuipage.IntegrationTypeSafeEnable),
+		global("integration.typesafe.disable", "Disable TypeSafe", "Disable the TypeSafe provider through the canonical integration setting", capability.IntegrationTypeSafeDisable, tuipage.IntegrationTypeSafeDisable),
+		workspaceAction("workspace.codegraph.init", "Initialize CodeGraph index", "Initialize the CodeGraph index for the current workspace", capability.IntegrationCodeGraphWorkspaceInit, tuipage.IntegrationCodeGraphInit),
+		workspaceAction("workspace.codegraph.sync", "Sync CodeGraph index", "Synchronize the CodeGraph index for the current workspace", capability.IntegrationCodeGraphWorkspaceSync, tuipage.IntegrationCodeGraphSync),
 	}
 }
 

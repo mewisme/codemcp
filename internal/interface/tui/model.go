@@ -356,6 +356,11 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return model, model.showToast("Tunnel", err.Error(), component.ToneDanger)
 		}
 		return model.updatePage(msg)
+	case tuipage.IntegrationCommandMsg:
+		if err := model.ensureIntegrationPage(msg.WorkspaceID); err != nil {
+			return model, model.showToast("Integrations", err.Error(), component.ToneDanger)
+		}
+		return model.updatePage(msg)
 	case tuipage.RequestCommandMsg:
 		if err := model.ensureRequestPage(msg.ResourceID); err != nil {
 			return model, model.showToast("Requests", err.Error(), component.ToneDanger)
@@ -1347,6 +1352,18 @@ func (model *Model) ensureTunnelPage(command tuipage.TunnelCommand, resourceID s
 	}
 	if model.currentPage == nil {
 		return fmt.Errorf("tunnel page is unavailable")
+	}
+	return nil
+}
+
+func (model *Model) ensureIntegrationPage(workspaceID string) error {
+	workspaceID = strings.TrimSpace(workspaceID)
+	current := model.router.Current()
+	if current.Kind != RouteIntegrations || workspaceID != "" && current.Mode != workspaceID {
+		model.navigate(Route{Kind: RouteIntegrations, Mode: workspaceID})
+	}
+	if model.currentPage == nil {
+		return fmt.Errorf("integrations page is unavailable")
 	}
 	return nil
 }

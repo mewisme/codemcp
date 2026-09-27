@@ -1847,6 +1847,27 @@ type noticeTestMsg string
 
 type noticeTestPage struct{ notice string }
 
+type closableTestPage struct{ closed bool }
+
+func (*closableTestPage) Init() tea.Cmd { return nil }
+func (page *closableTestPage) Update(tea.Msg) (tuipage.Model, tea.Cmd) {
+	return page, nil
+}
+func (*closableTestPage) View(int, int) string { return "" }
+func (*closableTestPage) OverlayActive() bool  { return false }
+func (*closableTestPage) InputActive() bool    { return false }
+func (page *closableTestPage) Close()          { page.closed = true }
+
+func TestModelLoadPageClosesPreviousPage(t *testing.T) {
+	previous := &closableTestPage{}
+	model := NewModel(Route{Kind: RouteHome})
+	model.currentPage = previous
+	model.loadPage(Route{Kind: RouteAbout})
+	if !previous.closed {
+		t.Fatal("route replacement did not dispose the previous page")
+	}
+}
+
 func (*noticeTestPage) Init() tea.Cmd { return nil }
 func (page *noticeTestPage) Update(message tea.Msg) (tuipage.Model, tea.Cmd) {
 	if value, ok := message.(noticeTestMsg); ok {

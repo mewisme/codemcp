@@ -6,9 +6,11 @@ import (
 	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/interface/tui/action"
+	tuipage "go.mewis.me/codemcp/internal/interface/tui/page"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
@@ -201,6 +203,64 @@ func TestTunnelActionAvailabilityFollowsRouteContext(t *testing.T) {
 			if has(ctx, id) {
 				t.Fatalf("removed managed tunnel action is still reachable: %s", id)
 			}
+		}
+	}
+}
+
+func TestIntegrationMutationActionsMapToCanonicalOperations(t *testing.T) {
+	registry := defaultActionRegistry()
+	tests := []struct {
+		id        string
+		operation capability.ID
+		command   tuipage.IntegrationCommand
+		ctx       action.Context
+		workspace string
+	}{
+		{"integration.rtk.enable", capability.IntegrationRTKEnable, tuipage.IntegrationRTKEnable, action.Context{Route: string(RouteHome)}, ""},
+		{"integration.rtk.disable", capability.IntegrationRTKDisable, tuipage.IntegrationRTKDisable, action.Context{Route: string(RouteHome)}, ""},
+		{"integration.rtk.install", capability.IntegrationRTKInstall, tuipage.IntegrationRTKInstall, action.Context{Route: string(RouteHome)}, ""},
+		{"integration.codegraph.install", capability.IntegrationCodeGraphInstall, tuipage.IntegrationCodeGraphInstall, action.Context{Route: string(RouteHome)}, ""},
+		{"integration.typesafe.enable", capability.IntegrationTypeSafeEnable, tuipage.IntegrationTypeSafeEnable, action.Context{Route: string(RouteHome)}, ""},
+		{"integration.typesafe.disable", capability.IntegrationTypeSafeDisable, tuipage.IntegrationTypeSafeDisable, action.Context{Route: string(RouteHome)}, ""},
+		{"workspace.codegraph.init", capability.IntegrationCodeGraphWorkspaceInit, tuipage.IntegrationCodeGraphInit, action.Context{Route: string(RouteWorkspaces), ResourceID: "ws_demo"}, "ws_demo"},
+		{"workspace.codegraph.sync", capability.IntegrationCodeGraphWorkspaceSync, tuipage.IntegrationCodeGraphSync, action.Context{Route: string(RouteWorkspaces), ResourceID: "ws_demo"}, "ws_demo"},
+	}
+	for _, test := range tests {
+		item, ok := registry.Get(test.id)
+		if !ok || item.Operation != test.operation {
+			t.Fatalf("%s operation=%q want=%q", test.id, item.Operation, test.operation)
+		}
+		cmd, err := registry.Execute(context.Background(), test.id, test.ctx)
+		if err != nil || cmd == nil {
+			t.Fatalf("%s execute cmd=%v err=%v", test.id, cmd != nil, err)
+		}
+		message, ok := cmd().(tuipage.IntegrationCommandMsg)
+		if !ok || message.Command != test.command || message.WorkspaceID != test.workspace {
+			t.Fatalf("%s message=%#v", test.id, message)
+		}
+	}
+	if _, err := registry.Execute(context.Background(), "workspace.codegraph.init", action.Context{Route: string(RouteWorkspaces)}); err == nil {
+		t.Fatal("workspace CodeGraph mutation was available without a workspace resource")
+	}
+}
+
+func TestActionSecurityMetadataComesFromCanonicalCapability(t *testing.T) {
+	registry := defaultActionRegistry()
+	for _, test := range []struct {
+		id   string
+		mode capability.ConfirmationMode
+	}{
+		{"workspace.purge", capability.ConfirmationRequired},
+		{"workspace.container.delete", capability.ConfirmationRecommended},
+		{"upstream.server.remove", capability.ConfirmationRecommended},
+		{"logs.clear", capability.ConfirmationRecommended},
+	} {
+		item, ok := registry.Get(test.id)
+		if !ok {
+			t.Fatalf("action missing: %s", test.id)
+		}
+		if !item.Destructive() || item.ConfirmationMode() != test.mode {
+			t.Fatalf("%s security metadata destructive=%t confirmation=%s", test.id, item.Destructive(), item.ConfirmationMode())
 		}
 	}
 }
