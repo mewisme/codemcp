@@ -1,0 +1,55 @@
+{
+  "ownership": {
+    "remote_owner": "internal/telemetry/product",
+    "local_observability_owner": "internal/telemetry",
+    "primary_operation_boundary": "application.dispatch",
+    "raw_local_observability_reuse": false,
+    "interface_adapter_imports_allowed": false,
+    "raw_logger_event_input_allowed": false,
+    "raw_activity_event_input_allowed": false,
+    "business_truth_owner": false
+  },
+  "events": {
+    "catalog": {
+      "operation.completed": ["interface", "command", "feature", "error_code", "duration_ms", "success"],
+      "runtime.started": ["interface", "feature"],
+      "runtime.stopped": ["interface", "feature", "error_code", "duration_ms", "success"],
+      "approval.requested": ["interface", "feature"],
+      "approval.resolved": ["interface", "feature", "error_code", "duration_ms", "success"],
+      "background.completed": ["interface", "feature", "error_code", "duration_ms", "success"],
+      "install.completed": ["interface", "command", "feature", "error_code", "duration_ms", "success"],
+      "integration.bootstrap.completed": ["interface", "command", "feature", "error_code", "duration_ms", "success"]
+    },
+    "client_fields": ["anonymous_id", "version", "os", "arch"],
+    "representative_operations": [
+      {"operation": "status.overview", "event": "operation.completed", "source": "application.dispatch", "emission_count": 1},
+      {"operation": "integration.typesafe.status", "event": "operation.completed", "source": "application.dispatch", "emission_count": 1},
+      {"operation": "workspace.list", "event": "operation.completed", "source": "application.dispatch", "emission_count": 1}
+    ],
+    "arguments_passed": false,
+    "results_passed": false
+  },
+  "lifecycle": {
+    "queue_bounded": true,
+    "queue_overflow": "drop",
+    "persistent_spool": false,
+    "periodic_flush": true,
+    "final_flush_bounded": true,
+    "shutdown_wait_unbounded": false,
+    "disable_clears_pending": true,
+    "endpointless_worker": false,
+    "delivery_failure_changes_parent_result": false
+  },
+  "administration": {
+    "commands": ["telemetry status", "telemetry enable", "telemetry disable", "telemetry show"],
+    "self_observe": false,
+    "status_network": false,
+    "show_network": false
+  },
+  "install_handoff": {
+    "telemetry_owns_binary_install": false,
+    "telemetry_owns_integration_install": false,
+    "bootstrap_is_supplemental": true,
+    "supplemental_failure_changes_binary_install_result": false
+  }
+}

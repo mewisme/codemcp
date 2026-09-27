@@ -145,6 +145,22 @@ func TestInterfaceAdaptersDoNotImportSiblingAdapters(t *testing.T) {
 	}
 }
 
+func TestProductTelemetryOwnerCannotDependOnRichLocalObservabilityOrInterfaces(t *testing.T) {
+	root := architectureRepositoryRoot(t)
+	productRoot := filepath.Join(root, "internal", "telemetry", "product")
+	if info, err := os.Stat(productRoot); err != nil || !info.IsDir() {
+		t.Fatalf("product telemetry owner is missing: path=%s info=%v err=%v", productRoot, info, err)
+	}
+	for _, forbidden := range []string{
+		internalImportPrefix + "interface/",
+		internalImportPrefix + "logger",
+		internalImportPrefix + "runtime/activity",
+		internalImportPrefix + "telemetry",
+	} {
+		assertNoImportsWithPrefix(t, productRoot, forbidden)
+	}
+}
+
 func TestRepresentativeWorkspaceAdaptersCannotBypassApplicationMutationOwner(t *testing.T) {
 	root := architectureRepositoryRoot(t)
 	files := []string{
