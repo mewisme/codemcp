@@ -13,6 +13,7 @@ import (
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/integrations/semantic"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -64,10 +65,28 @@ func newApprovalShellRuntime(t *testing.T) (*Runtime, string) {
 	registry := NewRegistry()
 	shell := shellruntime.NewManager(manager, filepath.Join(t.TempDir(), "shell-state"))
 	processes := shellruntime.NewProcessManager(manager, shell)
-	runtime := &Runtime{Registry: registry, Workspaces: manager, Checkpoints: checkpoint.NewStore(filepath.Join(t.TempDir(), "checkpoints")), SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID)}
+	runtime := &Runtime{Registry: registry, Workspaces: manager, Checkpoints: checkpoint.NewStore(filepath.Join(t.TempDir(), "checkpoints")), SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Shell: shell, Processes: processes, Semantic: semantic.NewManager(semantic.ManagerOptions{})}
+	runtime.SetSemanticApprovalPolicy(DefaultSemanticApprovalPolicy())
 	RegisterShellTools(registry, manager, shell, processes)
 	RegisterApprovalTools(registry, runtime)
 	return runtime, item.ID
+}
+
+func configureSemanticApprovalClassifier(t *testing.T, runtime *Runtime, classifier semantic.RiskClassifier) {
+	t.Helper()
+	if runtime.Semantic == nil {
+		runtime.Semantic = semantic.NewManager(semantic.ManagerOptions{})
+	}
+	if err := runtime.Semantic.RegisterProvider("fake", semantic.ProviderRegistration{RiskClassifier: classifier, Model: "fixture"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Semantic.SelectProvider("fake"); err != nil {
+		t.Fatal(err)
+	}
+	policy := DefaultSemanticApprovalPolicy()
+	policy.Enabled = true
+	policy.Provider = "fake"
+	runtime.SetSemanticApprovalPolicy(policy)
 }
 
 func newApprovalDispatchRuntime(t *testing.T) (*Runtime, string) {

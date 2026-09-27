@@ -53,6 +53,7 @@ type Runtime struct {
 	LoopGuard            *ToolLoopGuard
 	InstructionChanges   *instructioncontext.ChangeStream
 	Semantic             *semantic.Manager
+	semanticApproval     semanticApprovalSlot
 	protocolFeatures     protocolFeatureSlot
 	sessionMu            sync.Mutex
 	configReadMu         sync.RWMutex
@@ -105,6 +106,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 		panic(err)
 	}
 	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, BackgroundDeliveries: backgroundDeliveries, LoopGuard: NewToolLoopGuard(), InstructionChanges: instructioncontext.NewChangeStream(), Semantic: semantic.NewManager(semantic.ManagerOptions{}), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
+	runtime.SetSemanticApprovalPolicy(DefaultSemanticApprovalPolicy())
 	runtime.CodeGraphCompletion = codegraph.NewCompletionHook(func() *codegraph.Runtime {
 		return runtime.codeGraphRuntimeSnapshot()
 	}, workspaces)
@@ -287,6 +289,9 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	}
 	if preflightErr == nil && forcedResult == nil {
 		ctx, claimedApproval, forcedResult, preflightErr = r.prepareApprovalRetry(ctx, approvalCorrelation, workspaceID, source, name, approvalArgs)
+	}
+	if preflightErr == nil && forcedResult == nil {
+		preflightErr = r.semanticApprovalPreflight(ctx, approvalCorrelation, workspaceID, name, approvalArgs, claimedApproval.ID != "")
 	}
 	loopClass, loopDecision := toolLoopClassMutation, toolLoopDecision{}
 	if preflightErr == nil && forcedResult == nil && strings.TrimSpace(sessionID) != "" && r.Registry != nil {

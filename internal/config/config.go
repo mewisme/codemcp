@@ -21,8 +21,25 @@ type Config struct {
 	Permissions   PermissionsConfig   `json:"permissions"`
 	Shell         ShellConfig         `json:"shell"`
 	Notifications NotificationsConfig `json:"notifications"`
+	Approval      ApprovalConfig      `json:"approval"`
 	Integrations  IntegrationsConfig  `json:"integrations"`
 	Tunnel        tunnel.Config       `json:"tunnel"`
+}
+
+type ApprovalConfig struct {
+	Semantic SemanticApprovalConfig `json:"semantic"`
+}
+
+type SemanticApprovalConfig struct {
+	Enabled           bool    `json:"enabled"`
+	Provider          string  `json:"provider"`
+	TimeoutMS         int     `json:"timeout_ms"`
+	MinimumConfidence float64 `json:"minimum_confidence"`
+	FailMode          string  `json:"fail_mode"`
+	LowAction         string  `json:"low_action"`
+	MediumAction      string  `json:"medium_action"`
+	HighAction        string  `json:"high_action"`
+	CriticalAction    string  `json:"critical_action"`
 }
 
 type PermissionsConfig struct {
@@ -104,6 +121,11 @@ func Default() Config {
 			},
 			Completion: CompletionNotificationConfig{Enabled: false, DesktopEnabled: true, TelegramEnabled: false},
 		},
+		Approval: ApprovalConfig{Semantic: SemanticApprovalConfig{
+			Enabled: false, Provider: "typesafe", TimeoutMS: 1500, MinimumConfidence: 0.8,
+			FailMode: "require_approval", LowAction: "allow", MediumAction: "require_approval",
+			HighAction: "require_approval", CriticalAction: "deny",
+		}},
 		Integrations: integrations.Default(),
 		Tunnel:       tunnel.Config{Enabled: false, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}},
 	}

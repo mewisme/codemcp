@@ -228,6 +228,9 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ScopedExemption = "generic config set is the operator facade for MCP config eligibility"
 	case "shell.path":
 		spec.ScopedCommands = []string{"shell path"}
+	case "approval.semantic.enabled", "approval.semantic.provider", "approval.semantic.timeout_ms", "approval.semantic.minimum_confidence", "approval.semantic.fail_mode", "approval.semantic.low_action", "approval.semantic.medium_action", "approval.semantic.high_action", "approval.semantic.critical_action":
+		spec.ApplicationOwner = "approval.semantic"
+		spec.ScopedExemption = "generic config set is the canonical operator facade for semantic approval policy"
 	case "notifications.approval.enabled":
 		spec.ApplicationOwner = "notifications.approval"
 		spec.ScopedCommands = []string{"notification approval enable", "notification approval disable"}

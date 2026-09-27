@@ -16,6 +16,13 @@ type commandPlan struct {
 	RTKPath   string
 }
 
+type CommandPreview struct {
+	Requested string
+	Effective string
+	Security  string
+	CWD       string
+}
+
 func (m *Manager) ConfigureRTK(enabled bool, configuredPath string) {
 	if m == nil {
 		return

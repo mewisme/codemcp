@@ -208,6 +208,46 @@ func (m *Manager) ValidateBackgroundCommand(ctx context.Context, workspaceID, co
 	return cwd, err
 }
 
+func (m *Manager) PreviewCommand(ctx context.Context, workspaceID, command string, background bool) (CommandPreview, error) {
+	if background {
+		cwd, plan, err := m.prepareBackgroundCommand(ctx, workspaceID, command)
+		if err != nil {
+			return CommandPreview{}, err
+		}
+		return CommandPreview{Requested: plan.Requested, Effective: plan.Effective, Security: plan.Security, CWD: cwd}, nil
+	}
+	item, err := m.workspaces.Get(workspaceID)
+	if err != nil {
+		return CommandPreview{}, err
+	}
+	workspaceID = item.ID
+	current, err := m.session(workspaceID, item.Path)
+	if err != nil {
+		return CommandPreview{}, err
+	}
+	current.mu.Lock()
+	defer current.mu.Unlock()
+	baseCWD, err := m.resolveDirectory(workspaceID, item.Path, current.state.CWD)
+	if err != nil {
+		return CommandPreview{}, err
+	}
+	cwd, effective, err := m.applyCWDDirectives(workspaceID, baseCWD, command)
+	if err != nil {
+		return CommandPreview{}, err
+	}
+	if strings.TrimSpace(effective) == "" {
+		effective = pwdCommand()
+	}
+	plan, err := m.prepareCommand(ctx, effective)
+	if err != nil {
+		return CommandPreview{}, err
+	}
+	if err := m.workspaces.ValidateShellCommandContext(ctx, workspaceID, cwd, plan.Security); err != nil {
+		return CommandPreview{}, err
+	}
+	return CommandPreview{Requested: plan.Requested, Effective: plan.Effective, Security: plan.Security, CWD: cwd}, nil
+}
+
 func (m *Manager) prepareBackgroundCommand(ctx context.Context, workspaceID, command string) (string, commandPlan, error) {
 	item, err := m.workspaces.Get(workspaceID)
 	if err != nil {

@@ -16,6 +16,7 @@ const (
 	CodeShellExecution       Code = "shell_execution"
 	CodeProtectedState       Code = "protected_state_access"
 	CodeContextTamper        Code = "tool_context_tamper"
+	CodeSemanticRisk         Code = "semantic_risk"
 )
 
 type Invocation struct {

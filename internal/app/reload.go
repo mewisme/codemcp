@@ -3,8 +3,11 @@ package app
 import (
 	"errors"
 	"slices"
+	"time"
 
 	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/integrations/semantic"
+	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
@@ -23,6 +26,7 @@ func (a *App) ReloadConfig(next config.Config) error {
 	integrationsChanged := previous.Integrations != next.Integrations
 	permissionsChanged := !slices.Equal(previous.Permissions.AllowDirs, next.Permissions.AllowDirs)
 	shellPathChanged := !slices.Equal(previous.Shell.Path, next.Shell.Path)
+	semanticApprovalChanged := previous.Approval.Semantic != next.Approval.Semantic
 	tunnelChanged := previous.Tunnel != next.Tunnel
 	tunnelRuntimeChanged := tunnelChanged && !tunnel.RuntimeConfigEqual(previous.Tunnel, next.Tunnel)
 
@@ -32,14 +36,14 @@ func (a *App) ReloadConfig(next config.Config) error {
 	if reloadTestAfterCommit != nil {
 		reloadTestAfterCommit()
 	}
-	if err := a.applyRuntimeConfig(next, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
+	if err := a.applyRuntimeConfig(next, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
 		_, restoreErr := a.Config.Update(func(config.Config) (config.Config, error) { return previous, nil })
-		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged))
+		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, tunnelChanged, tunnelRuntimeChanged))
 	}
 	return nil
 }
 
-func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
+func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
 	if integrationsChanged {
 		if err := a.Tools.SyncIntegrations(next.Integrations); err != nil {
 			return err
@@ -50,6 +54,9 @@ func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsCh
 	}
 	if shellPathChanged {
 		a.Tools.SetShellPath(next.Shell.Path)
+	}
+	if semanticApprovalChanged {
+		a.Tools.SetSemanticApprovalPolicy(semanticApprovalPolicy(next.Approval.Semantic))
 	}
 	if httpChanged {
 		a.syncMCPHTTP(next.Server.Enabled)
@@ -77,7 +84,7 @@ func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsCh
 	return nil
 }
 
-func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
+func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
 	var rollbackErr error
 	if tunnelChanged && a.Tunnel != nil {
 		if tunnelRuntimeChanged {
@@ -99,8 +106,27 @@ func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integra
 	if shellPathChanged {
 		a.Tools.SetShellPath(previous.Shell.Path)
 	}
+	if semanticApprovalChanged {
+		a.Tools.SetSemanticApprovalPolicy(semanticApprovalPolicy(previous.Approval.Semantic))
+	}
 	if httpChanged {
 		a.syncMCPHTTP(previous.Server.Enabled)
 	}
 	return rollbackErr
+}
+
+func semanticApprovalPolicy(value config.SemanticApprovalConfig) tools.SemanticApprovalPolicy {
+	return tools.SemanticApprovalPolicy{
+		Enabled:           value.Enabled,
+		Provider:          value.Provider,
+		Timeout:           time.Duration(value.TimeoutMS) * time.Millisecond,
+		MinimumConfidence: value.MinimumConfidence,
+		FailMode:          tools.SemanticApprovalAction(value.FailMode),
+		Actions: map[semantic.RiskClass]tools.SemanticApprovalAction{
+			semantic.RiskLow:      tools.SemanticApprovalAction(value.LowAction),
+			semantic.RiskMedium:   tools.SemanticApprovalAction(value.MediumAction),
+			semantic.RiskHigh:     tools.SemanticApprovalAction(value.HighAction),
+			semantic.RiskCritical: tools.SemanticApprovalAction(value.CriticalAction),
+		},
+	}
 }

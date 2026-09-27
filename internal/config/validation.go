@@ -61,6 +61,27 @@ func Validate(cfg Config) error {
 	if cfg.Integrations.TypeSafe.TimeoutMS < 100 || cfg.Integrations.TypeSafe.TimeoutMS > 30000 {
 		return fmt.Errorf("integrations.typesafe.timeout_ms must be between 100 and 30000: %d", cfg.Integrations.TypeSafe.TimeoutMS)
 	}
+	semanticApproval := cfg.Approval.Semantic
+	if strings.TrimSpace(semanticApproval.Provider) == "" {
+		return errors.New("approval.semantic.provider must not be empty")
+	}
+	if semanticApproval.TimeoutMS < 100 || semanticApproval.TimeoutMS > 10000 {
+		return fmt.Errorf("approval.semantic.timeout_ms must be between 100 and 10000: %d", semanticApproval.TimeoutMS)
+	}
+	if semanticApproval.MinimumConfidence < 0 || semanticApproval.MinimumConfidence > 1 {
+		return fmt.Errorf("approval.semantic.minimum_confidence must be between 0 and 1: %v", semanticApproval.MinimumConfidence)
+	}
+	if semanticApproval.FailMode != "require_approval" && semanticApproval.FailMode != "deny" {
+		return errors.New("approval.semantic.fail_mode must be require_approval or deny")
+	}
+	for name, action := range map[string]string{
+		"low_action": semanticApproval.LowAction, "medium_action": semanticApproval.MediumAction,
+		"high_action": semanticApproval.HighAction, "critical_action": semanticApproval.CriticalAction,
+	} {
+		if action != "allow" && action != "require_approval" && action != "deny" {
+			return fmt.Errorf("approval.semantic.%s must be allow, require_approval, or deny", name)
+		}
+	}
 	exposure := NormalizeExposure(cfg.Server.Expose)
 	switch exposure.Mode {
 	case ExposureNone, ExposureAll, ExposureWildcard:

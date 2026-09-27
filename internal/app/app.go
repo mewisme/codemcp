@@ -89,6 +89,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	}
 	upstreamSpan.EndMessage("Upstream manager bootstrapped", tracepkg.Int("server_count", upstreamCount))
 	toolRuntime.SetShellPath(cfg.Shell.Path)
+	toolRuntime.SetSemanticApprovalPolicy(semanticApprovalPolicy(cfg.Approval.Semantic))
 	var mcpRuntime *mcp.HTTPRuntime
 	if cfg.Server.Enabled {
 		mcpRuntime = mcp.NewHTTPRuntimeWithTools(toolRuntime)

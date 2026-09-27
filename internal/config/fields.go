@@ -110,6 +110,15 @@ var fieldSpecs = []FieldSpec{
 	{Key: "permissions.mcp_config_read", Label: "MCP agent config reads", Section: FieldSectionAccess, Description: "allows agent-facing MCP configuration read tools to access the global CodeMCP setting projection", Details: "Disabled by default. MCP transport authentication and workspace access do not grant global configuration access without this explicit operator opt-in.", Kind: FieldBool, Editable: true},
 	{Key: "permissions.mcp_config_write", Label: "MCP agent config writes", Section: FieldSectionAccess, Description: "allows the guarded agent-facing MCP configuration mutation workflow to target eligible global settings", Details: "Disabled by default. Enabling this eligibility does not bypass mandatory local approval for config_set and does not permit managed-secret writes.", Kind: FieldBool, Editable: true, Related: []string{"permissions.mcp_config_read"}},
 	{Key: "shell.path", Label: "Executable search paths", Section: FieldSectionShell, Description: "prepends additional executable directories to PATH for managed shell commands", Details: "Paths must be absolute. Configured entries are prepended to the inherited process PATH for foreground and background shell execution.", Kind: FieldList, Editable: true},
+	{Key: "approval.semantic.enabled", Label: "Semantic approval classification", Section: FieldSectionAccess, Description: "controls optional semantic risk classification for eligible mutations", Details: "Disabled by default. Semantic classification may only preserve or tighten native policy and never grants approval.", Kind: FieldBool, Editable: true},
+	{Key: "approval.semantic.provider", Label: "Semantic approval provider", Section: FieldSectionAccess, Description: "selects the provider-neutral risk classifier", Details: "The configured provider must expose the semantic RiskClassifier capability at runtime. Missing capability follows fail_mode.", Kind: FieldString, Editable: true},
+	{Key: "approval.semantic.timeout_ms", Label: "Semantic approval timeout", Section: FieldSectionAccess, Description: "sets the bounded classification deadline in milliseconds", Details: "Classification is advisory and locally bounded. Timeout follows fail_mode and never permits execution by itself.", Kind: FieldInt, Editable: true},
+	{Key: "approval.semantic.minimum_confidence", Label: "Semantic approval minimum confidence", Section: FieldSectionAccess, Description: "sets the minimum accepted classifier confidence from 0 to 1", Details: "Responses below this threshold are treated as classification failure and follow fail_mode.", Kind: FieldString, Editable: true},
+	{Key: "approval.semantic.fail_mode", Label: "Semantic approval failure mode", Section: FieldSectionAccess, Description: "controls how enabled classification failures are handled", Details: "Allowed values are require_approval or deny. An allow failure mode is intentionally unsupported.", Kind: FieldEnum, Options: []string{"require_approval", "deny"}, Values: []FieldValueSpec{{Value: "require_approval", Description: "Escalate classification failure to the canonical human approval workflow."}, {Value: "deny", Description: "Deny the eligible mutation when classification cannot complete safely."}}, Editable: true},
+	{Key: "approval.semantic.low_action", Label: "Low-risk semantic action", Section: FieldSectionAccess, Description: "maps low semantic risk to a canonical policy action", Details: "Allow only preserves an existing native allow; it never grants approval or bypasses a deterministic guard.", Kind: FieldEnum, Options: []string{"allow", "require_approval", "deny"}, Values: semanticApprovalActionValues(), Editable: true},
+	{Key: "approval.semantic.medium_action", Label: "Medium-risk semantic action", Section: FieldSectionAccess, Description: "maps medium semantic risk to a canonical policy action", Details: "The default escalates medium risk to canonical human approval. Mapping may only preserve or tighten native allow behavior.", Kind: FieldEnum, Options: []string{"allow", "require_approval", "deny"}, Values: semanticApprovalActionValues(), Editable: true},
+	{Key: "approval.semantic.high_action", Label: "High-risk semantic action", Section: FieldSectionAccess, Description: "maps high semantic risk to a canonical policy action", Details: "The default escalates high risk to canonical human approval. Mapping may only preserve or tighten native allow behavior.", Kind: FieldEnum, Options: []string{"allow", "require_approval", "deny"}, Values: semanticApprovalActionValues(), Editable: true},
+	{Key: "approval.semantic.critical_action", Label: "Critical-risk semantic action", Section: FieldSectionAccess, Description: "maps critical semantic risk to a canonical policy action", Details: "The default denies critical risk. Semantic output never executes a side effect or creates an approval capability directly.", Kind: FieldEnum, Options: []string{"allow", "require_approval", "deny"}, Values: semanticApprovalActionValues(), Editable: true},
 	{Key: "notifications.approval.enabled", Label: "Approval notifications", Section: FieldSectionRuntime, Description: "controls whether approval lifecycle notifications are delivered to configured providers", Details: "Review surfaces remain independent of this setting. Enabling notifications does not consume or hide approval events from CLI, TUI, Browser, Admin API, or Telegram review surfaces.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.pending", "notifications.approval.resolved", "notifications.approval.desktop_enabled", "notifications.approval.telegram_enabled"}},
 	{Key: "notifications.approval.pending", Label: "Pending approval notifications", Section: FieldSectionRuntime, Description: "controls notification delivery when a request becomes pending", Details: "This policy only controls outbound notification delivery. Pending requests remain visible through every review surface regardless of notification state.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
 	{Key: "notifications.approval.resolved", Label: "Resolved approval notifications", Section: FieldSectionRuntime, Description: "controls notification delivery for terminal approval outcomes", Details: "Resolved notifications cover approved, denied, expired, cancelled, and revoked outcomes. They do not alter canonical approval state.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
@@ -142,6 +151,14 @@ var fieldSpecs = []FieldSpec{
 	{Key: "tunnel.admin.manage_access", Label: "Tunnel admin Manage access", Section: FieldSectionTunnel, Description: "reports verified tunnel admin manage access", Details: "This read-only derived state reflects the last successful explicit verification and is cleared when the configured key or scope changes.", Kind: FieldBool},
 	{Key: "tunnel.control_plane_base_url", Label: "Control-plane URL", Section: FieldSectionTunnel, Description: "overrides the OpenAI tunnel control-plane base URL", Details: "When empty, the tunnel client uses its default control-plane endpoint. A custom value must be an absolute HTTP or HTTPS URL with a host.", Kind: FieldString, Editable: true, Guidance: "Leave empty unless a different control-plane endpoint is explicitly required.", Related: []string{"tunnel.enabled", "tunnel.id"}},
 	{Key: "tunnel.organization_id", Label: "Organization ID", Section: FieldSectionTunnel, Description: "sets the OpenAI organization context associated with tunnel runtime operations", Details: "This optional organization identifier is carried in tunnel runtime configuration and is distinct from the verified admin-key organization scope.", Kind: FieldString, Editable: true, Related: []string{"tunnel.admin.organization_id", "tunnel.enabled"}},
+}
+
+func semanticApprovalActionValues() []FieldValueSpec {
+	return []FieldValueSpec{
+		{Value: "allow", Description: "Preserve an otherwise allowed native decision; this never grants an approval."},
+		{Value: "require_approval", Description: "Escalate the eligible mutation to the canonical human approval workflow."},
+		{Value: "deny", Description: "Deny the eligible mutation."},
+	}
 }
 
 func Fields() []FieldSpec {
@@ -270,6 +287,51 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Permissions.MCPConfigWrite = value
 	case "shell.path":
 		cfg.Shell.Path = splitFieldList(raw)
+	case "approval.semantic.enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Approval.Semantic.Enabled = value
+	case "approval.semantic.provider":
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			return errors.New("approval.semantic.provider must not be empty")
+		}
+		cfg.Approval.Semantic.Provider = value
+	case "approval.semantic.timeout_ms":
+		value, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil || value < 100 || value > 10000 {
+			return errors.New("approval.semantic.timeout_ms must be between 100 and 10000")
+		}
+		cfg.Approval.Semantic.TimeoutMS = value
+	case "approval.semantic.minimum_confidence":
+		value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+		if err != nil || value < 0 || value > 1 {
+			return errors.New("approval.semantic.minimum_confidence must be between 0 and 1")
+		}
+		cfg.Approval.Semantic.MinimumConfidence = value
+	case "approval.semantic.fail_mode":
+		value := strings.ToLower(strings.TrimSpace(raw))
+		if value != "require_approval" && value != "deny" {
+			return errors.New("approval.semantic.fail_mode must be require_approval or deny")
+		}
+		cfg.Approval.Semantic.FailMode = value
+	case "approval.semantic.low_action", "approval.semantic.medium_action", "approval.semantic.high_action", "approval.semantic.critical_action":
+		value := strings.ToLower(strings.TrimSpace(raw))
+		if value != "allow" && value != "require_approval" && value != "deny" {
+			return fmt.Errorf("%s must be allow, require_approval, or deny", key)
+		}
+		switch key {
+		case "approval.semantic.low_action":
+			cfg.Approval.Semantic.LowAction = value
+		case "approval.semantic.medium_action":
+			cfg.Approval.Semantic.MediumAction = value
+		case "approval.semantic.high_action":
+			cfg.Approval.Semantic.HighAction = value
+		case "approval.semantic.critical_action":
+			cfg.Approval.Semantic.CriticalAction = value
+		}
 	case "notifications.approval.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -472,6 +534,24 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strconv.FormatBool(cfg.Permissions.MCPConfigWrite), nil
 	case "shell.path":
 		return strings.Join(cfg.Shell.Path, ","), nil
+	case "approval.semantic.enabled":
+		return strconv.FormatBool(cfg.Approval.Semantic.Enabled), nil
+	case "approval.semantic.provider":
+		return cfg.Approval.Semantic.Provider, nil
+	case "approval.semantic.timeout_ms":
+		return strconv.Itoa(cfg.Approval.Semantic.TimeoutMS), nil
+	case "approval.semantic.minimum_confidence":
+		return strconv.FormatFloat(cfg.Approval.Semantic.MinimumConfidence, 'f', -1, 64), nil
+	case "approval.semantic.fail_mode":
+		return cfg.Approval.Semantic.FailMode, nil
+	case "approval.semantic.low_action":
+		return cfg.Approval.Semantic.LowAction, nil
+	case "approval.semantic.medium_action":
+		return cfg.Approval.Semantic.MediumAction, nil
+	case "approval.semantic.high_action":
+		return cfg.Approval.Semantic.HighAction, nil
+	case "approval.semantic.critical_action":
+		return cfg.Approval.Semantic.CriticalAction, nil
 	case "notifications.approval.enabled":
 		return strconv.FormatBool(cfg.Notifications.Approval.Enabled), nil
 	case "notifications.approval.pending":
