@@ -438,24 +438,28 @@ func (page *LogsPage) handleToolCallKey(msg tea.KeyPressMsg) tea.Cmd {
 		return page.startToolCallFeed()
 	}
 	if page.view == logsViewBrowser {
-		before := ""
-		if row, ok := page.browser.Selected(); ok {
-			before = row.ID
-		}
-		updated, cmd := page.browser.Update(msg)
-		page.browser = updated.(component.Browser)
-		if !page.tools.paused && before != "" {
-			if row, ok := page.browser.Selected(); ok && row.ID != before {
-				page.tools.paused = true
-				page.syncBrowserHelp()
-			}
-		}
-		return cmd
+		return page.updateToolCallBrowser(msg)
 	}
 	view, cmd := page.tools.viewport.Update(msg)
 	page.tools.viewport = view
 	if !page.tools.viewport.AtBottom() {
 		page.tools.paused = true
+	}
+	return cmd
+}
+
+func (page *LogsPage) updateToolCallBrowser(message tea.Msg) tea.Cmd {
+	before := ""
+	if row, ok := page.browser.Selected(); ok {
+		before = row.ID
+	}
+	updated, cmd := page.browser.Update(message)
+	page.browser = updated.(component.Browser)
+	if !page.tools.paused && before != "" {
+		if row, ok := page.browser.Selected(); ok && row.ID != before {
+			page.tools.paused = true
+			page.syncBrowserHelp()
+		}
 	}
 	return cmd
 }

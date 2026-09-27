@@ -174,7 +174,7 @@ func (page *GuidePage) MouseTargets(originX, originY, z int) []component.MouseTa
 		bodyHeight := max(1, page.height-lipgloss.Height(tabs))
 		help := page.browser.HelpView()
 		layout := component.NewSectionLayout("", guideTopicCountLabel(len(page.children)), "", page.width, bodyHeight, lipgloss.Height(help))
-		targets := page.browser.MouseTargets(originX, originY+lipgloss.Height(tabs)+1+layout.BodyY, z)
+		targets := page.browser.MouseTargets(originX, originY+lipgloss.Height(tabs)+layout.BodyY, z)
 		helpY := originY + page.height - lipgloss.Height(help)
 		return append(targets, page.browser.HelpMouseTargets(originX, helpY, z+2)...)
 	}

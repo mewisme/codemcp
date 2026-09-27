@@ -503,24 +503,33 @@ func (page *LogsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		page.editor = &updated
 		return page, cmd
 	}
-	if page.tab == logsTabCommandExec || page.tab == logsTabToolCalls {
-		return page, nil
-	}
 	if page.resourceID != "" {
 		updated, cmd := page.detail.Update(message)
 		page.detail = updated
 		return page, cmd
 	}
+	if page.view == logsViewBrowser {
+		switch page.tab {
+		case logsTabCommandExec:
+			return page, page.updateExecutionBrowser(message)
+		case logsTabToolCalls:
+			return page, page.updateToolCallBrowser(message)
+		}
+		before := page.selectedID()
+		updated, cmd := page.browser.Update(message)
+		page.browser = updated.(component.Browser)
+		if !page.paused && before != "" && page.selectedID() != page.tailID() {
+			page.paused = true
+		}
+		return page, cmd
+	}
+	if page.tab == logsTabCommandExec || page.tab == logsTabToolCalls {
+		return page, nil
+	}
 	if page.view == logsViewTimeline {
 		return page, nil
 	}
-	before := page.selectedID()
-	updated, cmd := page.browser.Update(message)
-	page.browser = updated.(component.Browser)
-	if !page.paused && before != "" && page.selectedID() != page.tailID() {
-		page.paused = true
-	}
-	return page, cmd
+	return page, nil
 }
 
 func (page *LogsPage) View(width, height int) string {
@@ -539,31 +548,18 @@ func (page *LogsPage) View(width, height int) string {
 	default:
 		tabs := component.PageTabsNotice(logsTabLabels, int(page.tab), page.notice, width)
 		bodyHeight := max(1, height-lipgloss.Height(tabs))
-		var header, body, help string
+		header, help := page.logsChromeView(width)
+		var body string
 		switch page.tab {
 		case logsTabCommandExec:
-			header = page.executionHeaderView(width)
-			help = page.executionHelpView(width)
 			layout := component.NewSectionLayout("", "", header, width, bodyHeight, lipgloss.Height(help))
 			body = page.executionBodyView(width, layout.BodyHeight)
 			content = tabs + "\n" + component.BottomHelp(layout.View(body), help, width, bodyHeight)
 		case logsTabToolCalls:
-			header = page.toolCallStatusView(width)
-			if page.tools.err != nil {
-				header += "\n" + component.BannerWidth(page.tools.err.Error(), component.ToneDanger, width)
-			} else if page.tools.notice != "" {
-				header += "\n" + component.WrapContent(component.Muted(page.tools.notice), width)
-			}
-			help = page.toolCallHelpView(width)
 			layout := component.NewSectionLayout("", "", header, width, bodyHeight, lipgloss.Height(help))
 			body = page.toolCallBodyView(width, layout.BodyHeight)
 			content = tabs + "\n" + component.BottomHelp(layout.View(body), help, width, bodyHeight)
 		default:
-			header = page.statusView(width)
-			if page.err != nil {
-				header += "\n" + component.BannerWidth(page.err.Error(), component.ToneDanger, width)
-			}
-			help = page.runtimeHelpView(width)
 			layout := component.NewSectionLayout("", "", header, width, bodyHeight, lipgloss.Height(help))
 			if page.view == logsViewTimeline {
 				body = page.runtimeTimelineBody(width, layout.BodyHeight)
@@ -624,17 +620,9 @@ func (page *LogsPage) MouseTargets(originX, originY, z int) []component.MouseTar
 	tabTargets := page.logsTabMouseTargets(originX, originY, z+2)
 	tabsHeight := lipgloss.Height(tabs)
 	bodyHeight := max(1, page.height-tabsHeight)
-	var header, help string
-	switch page.tab {
-	case logsTabCommandExec:
-		header, help = page.executionHeaderView(page.width), page.executionHelpView(page.width)
-	case logsTabToolCalls:
-		header, help = page.toolCallStatusView(page.width), page.toolCallHelpView(page.width)
-	default:
-		header, help = page.statusView(page.width), page.runtimeHelpView(page.width)
-	}
+	header, help := page.logsChromeView(page.width)
 	layout := component.NewSectionLayout("", "", header, page.width, bodyHeight, lipgloss.Height(help))
-	bodyY := originY + tabsHeight + 1 + layout.BodyY
+	bodyY := originY + tabsHeight + layout.BodyY
 	if page.view == logsViewTimeline {
 		if page.tab == logsTabCommandExec {
 			return append(tabTargets, page.executionMouseTargets(originX, bodyY, z, page.width, layout.BodyHeight)...)
@@ -642,8 +630,29 @@ func (page *LogsPage) MouseTargets(originX, originY, z int) []component.MouseTar
 		return append(tabTargets, timelineMouseTarget(page.tab, originX, bodyY, z, page.width, layout.BodyHeight))
 	}
 	tabTargets = append(tabTargets, page.browser.MouseTargets(originX, bodyY, z)...)
-	helpY := originY + tabsHeight + 1 + bodyHeight - lipgloss.Height(help)
+	helpY := originY + tabsHeight + bodyHeight - lipgloss.Height(help)
 	return append(tabTargets, page.browser.HelpMouseTargets(originX, helpY, z+2)...)
+}
+
+func (page *LogsPage) logsChromeView(width int) (string, string) {
+	switch page.tab {
+	case logsTabCommandExec:
+		return page.executionHeaderView(width), page.executionHelpView(width)
+	case logsTabToolCalls:
+		header := page.toolCallStatusView(width)
+		if page.tools.err != nil {
+			header += "\n" + component.BannerWidth(page.tools.err.Error(), component.ToneDanger, width)
+		} else if page.tools.notice != "" {
+			header += "\n" + component.WrapContent(component.Muted(page.tools.notice), width)
+		}
+		return header, page.toolCallHelpView(width)
+	default:
+		header := page.statusView(width)
+		if page.err != nil {
+			header += "\n" + component.BannerWidth(page.err.Error(), component.ToneDanger, width)
+		}
+		return header, page.runtimeHelpView(width)
+	}
 }
 
 func (page *LogsPage) handleTabKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {

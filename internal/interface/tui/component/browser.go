@@ -57,21 +57,21 @@ func (i browserItem) FilterValue() string {
 }
 
 type Browser struct {
-	ctx                context.Context
-	title              string
-	titleNotice        string
-	titleVisible       bool
-	externalHelp       bool
-	list               list.Model
-	refresh            RefreshFunc
-	actions            []RowAction
-	helpBindings       []key.Binding
-	loading            bool
-	width              int
-	height             int
-	err                error
-	notice             string
-	pendingSelectionID string
+	ctx              context.Context
+	title            string
+	titleNotice      string
+	titleVisible     bool
+	externalHelp     bool
+	list             list.Model
+	refresh          RefreshFunc
+	actions          []RowAction
+	helpBindings     []key.Binding
+	loading          bool
+	width            int
+	height           int
+	err              error
+	notice           string
+	pendingViewState *browserViewState
 }
 
 type BrowserOpenMsg struct{ Row Row }
@@ -82,9 +82,16 @@ type browserRefreshMsg struct {
 }
 
 type browserMouseMsg struct {
-	Index int
+	RowID string
 	Wheel int
-	Open  bool
+}
+
+type browserViewState struct {
+	SelectedID   string
+	FilterState  list.FilterState
+	FilterValue  string
+	Page         int
+	HelpExpanded bool
 }
 
 const browserShortCustomHelpLimit = 5
@@ -161,9 +168,9 @@ func (m Browser) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case list.FilterMatchesMsg:
 		var cmd tea.Cmd
 		m.list, cmd = m.list.Update(msg)
-		if m.pendingSelectionID != "" {
-			m.restoreSelection(m.pendingSelectionID)
-			m.pendingSelectionID = ""
+		if m.pendingViewState != nil {
+			m.restoreViewState(*m.pendingViewState)
+			m.pendingViewState = nil
 		}
 		return m, cmd
 	case browserMouseMsg:
@@ -295,12 +302,13 @@ func (m *Browser) ReplaceRows(rows []Row, selectedID string) tea.Cmd {
 	if m == nil {
 		return nil
 	}
+	state := m.captureViewState(selectedID)
 	m.list.SetShowStatusBar(len(rows) > 0)
 	cmd := m.list.SetItems(browserListItems(rows))
 	if cmd != nil {
-		m.pendingSelectionID = selectedID
-	} else if selectedID != "" {
-		m.restoreSelection(selectedID)
+		m.pendingViewState = &state
+	} else {
+		m.restoreViewState(state)
 	}
 	return cmd
 }
@@ -379,20 +387,29 @@ func (m Browser) MouseTargets(originX, originY, z int) []MouseTarget {
 	visible := m.list.VisibleItems()
 	start, end := m.list.Paginator.GetSliceBounds(len(visible))
 	for index := start; index < end; index++ {
-		rowIndex := index
+		item, ok := visible[index].(browserItem)
+		if !ok || strings.TrimSpace(item.ID) == "" {
+			continue
+		}
+		rowID := item.ID
 		y := originY + startY + (index-start)*3
 		if y >= originY+m.height {
 			break
 		}
-		open := index == m.list.GlobalIndex()
 		rowHeight := min(2, originY+m.height-y)
 		targets = append(targets, MouseTarget{
 			ID: "browser.row", Rect: Rect{X: originX, Y: y, Width: m.width, Height: rowHeight}, Z: z + 1,
 			Handle: func(event MouseEvent) tea.Msg {
-				if event.Button != tea.MouseLeft {
+				switch event.Button {
+				case tea.MouseLeft:
+					return browserMouseMsg{RowID: rowID}
+				case tea.MouseWheelUp:
+					return browserMouseMsg{Wheel: -1}
+				case tea.MouseWheelDown:
+					return browserMouseMsg{Wheel: 1}
+				default:
 					return nil
 				}
-				return browserMouseMsg{Index: rowIndex, Open: open}
 			},
 		})
 	}
@@ -435,16 +452,60 @@ func (m Browser) handleMouse(msg browserMouseMsg) (tea.Model, tea.Cmd) {
 		m.list.CursorDown()
 		return m, nil
 	}
-	if msg.Index < 0 || msg.Index >= len(m.list.VisibleItems()) {
+	rowID := strings.TrimSpace(msg.RowID)
+	if rowID == "" {
 		return m, nil
 	}
-	m.list.Select(msg.Index)
-	if msg.Open {
-		if selected, ok := m.selected(); ok {
-			return m, browserOpenCmd(selected)
+	selectedID := ""
+	if selected, ok := m.selected(); ok {
+		selectedID = selected.ID
+	}
+	index := -1
+	var row Row
+	for current, item := range m.list.VisibleItems() {
+		value, ok := item.(browserItem)
+		if ok && value.ID == rowID {
+			index, row = current, value.Row
+			break
 		}
 	}
+	if index < 0 {
+		return m, nil
+	}
+	m.list.Select(index)
+	if selectedID == rowID {
+		return m, browserOpenCmd(row)
+	}
 	return m, nil
+}
+
+func (m Browser) captureViewState(selectedID string) browserViewState {
+	if strings.TrimSpace(selectedID) == "" {
+		if selected, ok := m.selected(); ok {
+			selectedID = selected.ID
+		}
+	}
+	return browserViewState{
+		SelectedID: selectedID, FilterState: m.list.FilterState(), FilterValue: m.list.FilterInput.Value(),
+		Page: m.list.Paginator.Page, HelpExpanded: m.list.Help.ShowAll,
+	}
+}
+
+func (m *Browser) restoreViewState(state browserViewState) {
+	if m == nil {
+		return
+	}
+	m.list.FilterInput.SetValue(state.FilterValue)
+	m.list.SetFilterState(state.FilterState)
+	m.list.Help.ShowAll = state.HelpExpanded
+	if pages := m.list.Paginator.TotalPages; pages > 0 {
+		m.list.Paginator.Page = min(max(0, state.Page), pages-1)
+	} else {
+		m.list.Paginator.Page = 0
+	}
+	if state.SelectedID != "" {
+		m.restoreSelection(state.SelectedID)
+	}
 }
 
 func (m Browser) selected() (Row, bool) {
@@ -478,12 +539,13 @@ func (m Browser) finishRefresh(msg browserRefreshMsg) (tea.Model, tea.Cmd) {
 	if selected, ok := m.selected(); ok {
 		selectedID = selected.ID
 	}
+	state := m.captureViewState(selectedID)
 	m.list.SetShowStatusBar(len(msg.rows) > 0)
 	cmd := m.list.SetItems(browserListItems(msg.rows))
 	if cmd != nil {
-		m.pendingSelectionID = selectedID
+		m.pendingViewState = &state
 	} else {
-		m.restoreSelection(selectedID)
+		m.restoreViewState(state)
 	}
 	return m, cmd
 }

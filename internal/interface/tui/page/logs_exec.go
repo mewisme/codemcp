@@ -272,24 +272,28 @@ func (page *LogsPage) handleExecutionKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	if page.view == logsViewBrowser {
-		before := ""
-		if row, ok := page.browser.Selected(); ok {
-			before = row.ID
-		}
-		updated, cmd := page.browser.Update(msg)
-		page.browser = updated.(component.Browser)
-		if !page.exec.paused && before != "" {
-			if row, ok := page.browser.Selected(); ok && row.ID != before {
-				page.exec.paused = true
-				page.syncBrowserHelp()
-			}
-		}
-		return cmd
+		return page.updateExecutionBrowser(msg)
 	}
 	view, cmd := page.exec.viewport.Update(msg)
 	page.exec.viewport = view
 	if !page.exec.viewport.AtBottom() {
 		page.exec.paused = true
+	}
+	return cmd
+}
+
+func (page *LogsPage) updateExecutionBrowser(message tea.Msg) tea.Cmd {
+	before := ""
+	if row, ok := page.browser.Selected(); ok {
+		before = row.ID
+	}
+	updated, cmd := page.browser.Update(message)
+	page.browser = updated.(component.Browser)
+	if !page.exec.paused && before != "" {
+		if row, ok := page.browser.Selected(); ok && row.ID != before {
+			page.exec.paused = true
+			page.syncBrowserHelp()
+		}
 	}
 	return cmd
 }

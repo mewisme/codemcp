@@ -443,9 +443,9 @@ func (page *RequestsPage) MouseTargets(originX, originY, z int) []component.Mous
 		bodyHeight := max(1, page.height-lipgloss.Height(header))
 		help := page.browser.HelpView()
 		layout := component.NewSectionLayout("", fmt.Sprintf("%d requests", len(page.requestRows())), feedback, page.width, bodyHeight, lipgloss.Height(help))
-		offsetY := lipgloss.Height(header) + 1 + layout.BodyY
+		offsetY := lipgloss.Height(header) + layout.BodyY
 		targets = append(targets, page.browser.MouseTargets(originX, originY+offsetY, z)...)
-		helpY := originY + lipgloss.Height(header) + 1 + bodyHeight - lipgloss.Height(help)
+		helpY := originY + lipgloss.Height(header) + bodyHeight - lipgloss.Height(help)
 		return append(targets, page.browser.HelpMouseTargets(originX, helpY, z+2)...)
 	}
 }

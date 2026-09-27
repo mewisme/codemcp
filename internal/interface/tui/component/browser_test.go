@@ -3,9 +3,11 @@ package component
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
+	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -91,6 +93,99 @@ func TestBrowserMouseSelectThenOpenSelectedRow(t *testing.T) {
 	opened, ok := cmd().(BrowserOpenMsg)
 	if !ok || opened.Row.ID != "two" {
 		t.Fatalf("mouse open=%#v", opened)
+	}
+}
+
+func TestBrowserMouseTargetKeepsStableRowIdentityAcrossRebuild(t *testing.T) {
+	model := NewBrowser(t.Context(), "Items", []Row{{ID: "a", Title: "A"}, {ID: "b", Title: "B"}}, nil)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	model = updated.(Browser)
+	var target MouseTarget
+	for _, candidate := range model.MouseTargets(0, 0, 1) {
+		if candidate.ID != "browser.row" {
+			continue
+		}
+		msg, ok := candidate.Handle(MouseEvent{Button: tea.MouseLeft}).(browserMouseMsg)
+		if ok && msg.RowID == "b" {
+			target = candidate
+			break
+		}
+	}
+	if target.Handle == nil {
+		t.Fatal("row B mouse target missing")
+	}
+	_ = model.ReplaceRows([]Row{{ID: "b", Title: "B updated"}, {ID: "a", Title: "A"}}, "a")
+	updated, cmd := model.Update(target.Handle(MouseEvent{Button: tea.MouseLeft}))
+	model = updated.(Browser)
+	if cmd != nil {
+		t.Fatal("first stale-layout click unexpectedly opened B")
+	}
+	selected, ok := model.Selected()
+	if !ok || selected.ID != "b" || selected.Title != "B updated" {
+		t.Fatalf("stable click selected=%#v ok=%t", selected, ok)
+	}
+	updated, cmd = model.Update(target.Handle(MouseEvent{Button: tea.MouseLeft}))
+	model = updated.(Browser)
+	if cmd == nil {
+		t.Fatal("second stable click did not open B")
+	}
+	opened := cmd().(BrowserOpenMsg)
+	if opened.Row.ID != "b" || opened.Row.Title != "B updated" {
+		t.Fatalf("opened=%#v", opened.Row)
+	}
+}
+
+func TestBrowserMouseTargetForRemovedRowIsNoOp(t *testing.T) {
+	model := NewBrowser(t.Context(), "Items", []Row{{ID: "a"}, {ID: "b"}}, nil)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	model = updated.(Browser)
+	var message tea.Msg
+	for _, target := range model.MouseTargets(0, 0, 1) {
+		candidate := target.Handle(MouseEvent{Button: tea.MouseLeft})
+		if mouse, ok := candidate.(browserMouseMsg); ok && mouse.RowID == "b" {
+			message = candidate
+			break
+		}
+	}
+	if message == nil {
+		t.Fatal("row B mouse message missing")
+	}
+	_ = model.ReplaceRows([]Row{{ID: "a"}}, "a")
+	updated, cmd := model.Update(message)
+	model = updated.(Browser)
+	if cmd != nil {
+		t.Fatal("removed row click emitted command")
+	}
+	if selected, _ := model.Selected(); selected.ID != "a" {
+		t.Fatalf("removed row click changed selection to %q", selected.ID)
+	}
+}
+
+func TestBrowserRowTargetForwardsWheelAtHighestZ(t *testing.T) {
+	model := NewBrowser(t.Context(), "Items", []Row{{ID: "a", Title: "A"}, {ID: "b", Title: "B"}, {ID: "c", Title: "C"}}, nil)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	model = updated.(Browser)
+	if selected, _ := model.Selected(); selected.ID != "a" {
+		t.Fatalf("initial selection=%q", selected.ID)
+	}
+	var rowTarget MouseTarget
+	for _, target := range model.MouseTargets(0, 0, 1) {
+		if target.ID == "browser.row" {
+			rowTarget = target
+			break
+		}
+	}
+	if rowTarget.Handle == nil {
+		t.Fatal("browser row target missing")
+	}
+	cmd := DispatchMouse(model.MouseTargets(0, 0, 1), tea.MouseClickMsg(tea.Mouse{X: rowTarget.Rect.X, Y: rowTarget.Rect.Y, Button: tea.MouseWheelDown}))
+	if cmd == nil {
+		t.Fatal("wheel over highest-Z row target was swallowed")
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Browser)
+	if selected, _ := model.Selected(); selected.ID != "b" {
+		t.Fatalf("wheel selection=%q want=b", selected.ID)
 	}
 }
 
@@ -212,6 +307,60 @@ func TestBrowserSelectionHelpersAndReplaceRows(t *testing.T) {
 	}
 	if model.SelectID("missing") {
 		t.Fatal("SelectID accepted missing row")
+	}
+}
+
+func TestBrowserReplaceRowsPreservesSelectionPageAndHelpState(t *testing.T) {
+	rows := make([]Row, 24)
+	for i := range rows {
+		rows[i] = Row{ID: fmt.Sprintf("row-%02d", i), Title: fmt.Sprintf("Row %02d", i)}
+	}
+	model := NewBrowser(t.Context(), "Items", rows, nil).WithExternalHelp(true)
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 60, Height: 8})
+	model = updated.(Browser)
+	if !model.SelectID("row-12") {
+		t.Fatal("could not select stable row")
+	}
+	model.list.Help.ShowAll = true
+	page := model.list.Paginator.Page
+	updatedRows := append([]Row(nil), rows...)
+	updatedRows[12].Title = "Row 12 updated"
+	cmd := model.ReplaceRows(updatedRows, "row-12")
+	if cmd != nil {
+		updated, _ = model.Update(cmd())
+		model = updated.(Browser)
+	}
+	if selected, _ := model.Selected(); selected.ID != "row-12" || selected.Title != "Row 12 updated" {
+		t.Fatalf("selection=%#v", selected)
+	}
+	if !model.list.Help.ShowAll || model.list.Paginator.Page != page {
+		t.Fatalf("view state help=%t page=%d wantPage=%d", model.list.Help.ShowAll, model.list.Paginator.Page, page)
+	}
+}
+
+func TestBrowserReplaceRowsPreservesAppliedFilter(t *testing.T) {
+	model := NewBrowser(t.Context(), "Items", []Row{{ID: "alpha", Title: "Alpha"}, {ID: "beta", Title: "Beta"}}, nil)
+	updated, _ := model.Update(tea.KeyPressMsg{Code: '/', Text: "/"})
+	model = updated.(Browser)
+	for _, value := range "Al" {
+		updated, cmd := model.Update(tea.KeyPressMsg{Code: value, Text: string(value)})
+		model = updated.(Browser)
+		if cmd != nil {
+			updated, _ = model.Update(cmd())
+			model = updated.(Browser)
+		}
+	}
+	if model.list.FilterInput.Value() != "Al" || model.list.FilterState() != list.Filtering {
+		t.Fatalf("filter before replace value=%q state=%v", model.list.FilterInput.Value(), model.list.FilterState())
+	}
+	cmd := model.ReplaceRows([]Row{{ID: "alpha", Title: "Alpha updated"}, {ID: "beta", Title: "Beta updated"}}, "")
+	if cmd == nil {
+		t.Fatal("filtered ReplaceRows did not schedule filter recomputation")
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Browser)
+	if model.list.FilterInput.Value() != "Al" || model.list.FilterState() != list.Filtering {
+		t.Fatalf("filter after replace value=%q state=%v", model.list.FilterInput.Value(), model.list.FilterState())
 	}
 }
 

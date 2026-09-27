@@ -220,6 +220,163 @@ func TestLogsPageMouseActionsUseKeyboardMessages(t *testing.T) {
 	}
 }
 
+func TestLogsBrowserMouseRoutesThroughExecutionAndToolCallPages(t *testing.T) {
+	t.Run("execution", func(t *testing.T) {
+		page, err := NewCommandExecutionLogs(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer page.Close()
+		page.view = logsViewBrowser
+		page.exec.events = []shellruntime.ExecutionFeedEvent{
+			{Sequence: 1, ExecutionID: "exec_1", Type: shellruntime.ExecutionEventStarted, Execution: &shellruntime.ExecutionInfo{ID: "exec_1", Tool: "run_command", Command: "echo one"}},
+			{Sequence: 2, ExecutionID: "exec_2", Type: shellruntime.ExecutionEventStarted, Execution: &shellruntime.ExecutionInfo{ID: "exec_2", Tool: "run_command", Command: "echo two"}},
+		}
+		page.rebuildExecutionBrowser()
+		_ = page.View(100, 30)
+		rows := browserRowTargets(page.MouseTargets(0, 0, 10))
+		if len(rows) != 2 {
+			t.Fatalf("execution row targets=%d", len(rows))
+		}
+		page = dispatchLogsMouse(t, page, rows[0], tea.MouseLeft)
+		selected, ok := page.browser.Selected()
+		if !ok || selected.ID != "exec_1" || !page.exec.paused {
+			t.Fatalf("execution first click selected=%#v paused=%t", selected, page.exec.paused)
+		}
+		page.exec.paused = false
+		page = dispatchLogsMouse(t, page, rows[0], tea.MouseWheelDown)
+		selected, ok = page.browser.Selected()
+		if !ok || selected.ID != "exec_2" || !page.exec.paused {
+			t.Fatalf("execution wheel selected=%#v paused=%t", selected, page.exec.paused)
+		}
+		page = dispatchLogsMouse(t, page, rows[0], tea.MouseLeft)
+		_, navigation := dispatchLogsMouseOpen(t, page, rows[0])
+		if strings.Join(navigation.Path, "/") != "logs-exec/exec_1" {
+			t.Fatalf("execution mouse open=%#v", navigation)
+		}
+	})
+
+	t.Run("tool calls", func(t *testing.T) {
+		page, err := NewToolCallLogsRoute(t.Context(), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer page.Close()
+		page.view = logsViewBrowser
+		page.tools.events = []activity.Event{
+			{Sequence: 1, CallID: "call_1", Tool: "read_file", Status: "ok", Timestamp: time.Now()},
+			{Sequence: 2, CallID: "call_2", Tool: "read_file", Status: "ok", Timestamp: time.Now().Add(time.Millisecond)},
+		}
+		page.rebuildToolCallBrowser()
+		_ = page.View(100, 30)
+		rows := browserRowTargets(page.MouseTargets(0, 0, 10))
+		if len(rows) != 2 {
+			t.Fatalf("tool row targets=%d", len(rows))
+		}
+		page = dispatchLogsMouse(t, page, rows[0], tea.MouseLeft)
+		selected, ok := page.browser.Selected()
+		if !ok || selected.ID != "call_1" || !page.tools.paused {
+			t.Fatalf("tool first click selected=%#v paused=%t", selected, page.tools.paused)
+		}
+		page.tools.paused = false
+		page = dispatchLogsMouse(t, page, rows[0], tea.MouseWheelDown)
+		selected, ok = page.browser.Selected()
+		if !ok || selected.ID != "call_2" || !page.tools.paused {
+			t.Fatalf("tool wheel selected=%#v paused=%t", selected, page.tools.paused)
+		}
+		page = dispatchLogsMouse(t, page, rows[0], tea.MouseLeft)
+		_, navigation := dispatchLogsMouseOpen(t, page, rows[0])
+		if strings.Join(navigation.Path, "/") != "logs-tools/call_1" {
+			t.Fatalf("tool mouse open=%#v", navigation)
+		}
+	})
+}
+
+func TestLogsDetailMouseWheelRoutesThroughPageUpdate(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		new  func() (*LogsPage, error)
+	}{
+		{name: "runtime", new: func() (*LogsPage, error) { return NewLogsRoute(t.Context(), "runtime_detail", "") }},
+		{name: "execution", new: func() (*LogsPage, error) { return NewCommandExecutionLogsRoute(t.Context(), "exec_detail") }},
+		{name: "tool call", new: func() (*LogsPage, error) { return NewToolCallLogsRoute(t.Context(), "call_detail") }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			page, err := test.new()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer page.Close()
+			page.detail = component.NewDetailPage("Detail", "mouse", strings.Repeat("line\n", 120)).WithTitleVisible(false)
+			_ = page.View(60, 10)
+			target := mouseTargetByID(t, page.MouseTargets(0, 0, 10), "detail.scroll")
+			cmd := component.DispatchMouse([]component.MouseTarget{target}, tea.MouseClickMsg(tea.Mouse{X: target.Rect.X, Y: target.Rect.Y, Button: tea.MouseWheelDown}))
+			if cmd == nil {
+				t.Fatal("detail wheel produced no command")
+			}
+			updated, _ := page.Update(cmd())
+			page = updated.(*LogsPage)
+			if page.detail.YOffset() == 0 {
+				t.Fatal("detail wheel did not scroll viewport through LogsPage.Update")
+			}
+		})
+	}
+}
+
+func browserRowTargets(targets []component.MouseTarget) []component.MouseTarget {
+	rows := make([]component.MouseTarget, 0)
+	for _, target := range targets {
+		if target.ID == "browser.row" {
+			rows = append(rows, target)
+		}
+	}
+	return rows
+}
+
+func mouseTargetByID(t *testing.T, targets []component.MouseTarget, id string) component.MouseTarget {
+	t.Helper()
+	for _, target := range targets {
+		if target.ID == id {
+			return target
+		}
+	}
+	t.Fatalf("mouse target %q not found", id)
+	return component.MouseTarget{}
+}
+
+func dispatchLogsMouse(t *testing.T, page *LogsPage, target component.MouseTarget, button tea.MouseButton) *LogsPage {
+	t.Helper()
+	cmd := component.DispatchMouse([]component.MouseTarget{target}, tea.MouseClickMsg(tea.Mouse{X: target.Rect.X, Y: target.Rect.Y, Button: button}))
+	if cmd == nil {
+		t.Fatalf("mouse %v produced no command for %s", button, target.ID)
+	}
+	updated, _ := page.Update(cmd())
+	return updated.(*LogsPage)
+}
+
+func dispatchLogsMouseOpen(t *testing.T, page *LogsPage, target component.MouseTarget) (*LogsPage, NavigateMsg) {
+	t.Helper()
+	cmd := component.DispatchMouse([]component.MouseTarget{target}, tea.MouseClickMsg(tea.Mouse{X: target.Rect.X, Y: target.Rect.Y, Button: tea.MouseLeft}))
+	if cmd == nil {
+		t.Fatal("mouse open produced no browser command")
+	}
+	updated, open := page.Update(cmd())
+	page = updated.(*LogsPage)
+	if open == nil {
+		t.Fatal("selected row second click produced no open command")
+	}
+	updated, navigate := page.Update(open())
+	page = updated.(*LogsPage)
+	if navigate == nil {
+		t.Fatal("browser open produced no navigation command")
+	}
+	message, ok := navigate().(NavigateMsg)
+	if !ok {
+		t.Fatalf("browser open message=%T", navigate())
+	}
+	return page, message
+}
+
 func TestShortValuePreservesUTF8AndDisplayWidth(t *testing.T) {
 	for _, tc := range []struct {
 		value string
