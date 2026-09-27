@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -82,5 +83,53 @@ func TestCanonicalInventoryDoesNotReintroduceRemovedTunnelModels(t *testing.T) {
 		if strings.Contains(normalized, forbidden) {
 			t.Fatalf("removed tunnel model %q reappeared in inventory:\n%s", forbidden, normalized)
 		}
+	}
+}
+
+func TestInventoryCoverageRequiresEveryNonDeferredProvider(t *testing.T) {
+	providers := make([]Provider, 0, len(Inventory()))
+	for _, definition := range Inventory() {
+		if definition.Source == SourceDeferred {
+			continue
+		}
+		definition := definition
+		providers = append(providers, ProviderFunc{
+			Definition: definition.ProviderSpec(),
+			Run: func(context.Context) (Component, error) {
+				return Component{State: StateHealthy, Severity: SeverityInfo, Summary: "healthy"}, nil
+			},
+		})
+	}
+	if err := ValidateInventoryCoverage(providers); err != nil {
+		t.Fatalf("complete inventory rejected: %v", err)
+	}
+
+	filtered := make([]Provider, 0, len(providers)-1)
+	for _, provider := range providers {
+		if provider.Spec().ID != ComponentRuntimeControl {
+			filtered = append(filtered, provider)
+		}
+	}
+	err := ValidateInventoryCoverage(filtered)
+	if err == nil || !strings.Contains(err.Error(), string(ComponentRuntimeControl)) {
+		t.Fatalf("missing required provider was not rejected: %v", err)
+	}
+}
+
+func TestInventoryCoverageTreatsDeferredDefinitionsAsExplicitExemptions(t *testing.T) {
+	providers := make([]Provider, 0, len(Inventory()))
+	for _, definition := range Inventory() {
+		if definition.Source == SourceDeferred {
+			continue
+		}
+		providers = append(providers, ProviderFunc{
+			Definition: definition.ProviderSpec(),
+			Run: func(context.Context) (Component, error) {
+				return Component{State: StateHealthy, Severity: SeverityInfo, Summary: "healthy"}, nil
+			},
+		})
+	}
+	if err := ValidateInventoryCoverage(providers); err != nil {
+		t.Fatalf("deferred inventory exemption rejected: %v", err)
 	}
 }

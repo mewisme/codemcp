@@ -1,6 +1,11 @@
 package doctor
 
-import "time"
+import (
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+)
 
 type SourceKind string
 
@@ -103,4 +108,41 @@ func (definition Definition) ProviderSpec() ProviderSpec {
 		ID: definition.ID, Domain: definition.Domain, Owner: definition.Owner,
 		Probe: definition.Probe, Timeout: timeout,
 	}
+}
+
+func ValidateInventoryCoverage(providers []Provider) error {
+	registered := map[ComponentID]ProviderSpec{}
+	for _, provider := range providers {
+		if provider == nil {
+			return fmt.Errorf("diagnostic provider is nil")
+		}
+		spec := normalizedSpec(provider.Spec())
+		definition, ok := DefinitionFor(spec.ID)
+		if !ok {
+			return fmt.Errorf("diagnostic provider %q is not declared in canonical inventory", spec.ID)
+		}
+		if _, exists := registered[spec.ID]; exists {
+			return fmt.Errorf("duplicate diagnostic provider %q", spec.ID)
+		}
+		expected := definition.ProviderSpec()
+		if spec.Domain != expected.Domain || spec.Owner != expected.Owner || spec.Probe != expected.Probe {
+			return fmt.Errorf("diagnostic provider %q does not match canonical inventory", spec.ID)
+		}
+		registered[spec.ID] = spec
+	}
+
+	missing := []string{}
+	for _, definition := range canonicalInventory {
+		if definition.Source == SourceDeferred {
+			continue
+		}
+		if _, ok := registered[definition.ID]; !ok {
+			missing = append(missing, string(definition.ID))
+		}
+	}
+	if len(missing) != 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("missing required diagnostic providers: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }

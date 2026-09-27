@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"strings"
 	"sync"
 
 	"go.mewis.me/codemcp/internal/approval"
@@ -18,7 +17,6 @@ import (
 	"go.mewis.me/codemcp/internal/doctor"
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	codegraph "go.mewis.me/codemcp/internal/integrations/codegraph"
-	rtk "go.mewis.me/codemcp/internal/integrations/rtk"
 	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
 	"go.mewis.me/codemcp/internal/mcp"
 	"go.mewis.me/codemcp/internal/network"
@@ -81,6 +79,9 @@ func NewDoctorService(deps DoctorDependencies, additional ...doctor.Provider) (*
 	}
 	providers := defaultDoctorProviders(deps)
 	providers = append(providers, additional...)
+	if err := doctor.ValidateInventoryCoverage(providers); err != nil {
+		return nil, err
+	}
 	return NewDoctorServiceWithProviders(providers...)
 }
 
@@ -202,22 +203,17 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			if err != nil {
 				return doctor.Component{}, err
 			}
-			degraded := int64(0)
+			diagnostics := make([]workspace.LocalStateDiagnostic, 0, len(registry.Workspaces))
+			failures := 0
 			for _, item := range registry.Workspaces {
 				diagnostic, diagnoseErr := deps.Workspaces.Diagnose(ctx, item.ID)
-				if diagnoseErr != nil || diagnostic.Error != "" || diagnostic.Locked || diagnostic.Health != workspace.LocalStateHealthy {
-					degraded++
+				if diagnoseErr != nil {
+					failures++
+					continue
 				}
+				diagnostics = append(diagnostics, diagnostic)
 			}
-			component := doctor.Component{
-				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "workspace local state is readable",
-				Metrics: []doctor.Metric{{ID: "workspaces", Value: int64(len(registry.Workspaces))}, {ID: "attention", Value: degraded}},
-			}
-			if degraded > 0 {
-				component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "one or more workspaces require attention"
-				component.Remediations = []doctor.Remediation{{ID: "workspace_review", Summary: "Inspect affected workspace state", Operation: string(capability.WorkspaceShow)}}
-			}
-			return component, nil
+			return workspaceLocalStateDoctorComponent(diagnostics, failures), nil
 		}),
 		doctorProvider(doctor.ComponentSecretInventory, func(context.Context) (doctor.Component, error) {
 			inspection, err := snapshot.inspectConfig()
@@ -247,13 +243,7 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			if err != nil {
 				return doctor.Component{}, err
 			}
-			if !running {
-				return disabled("managed runtime is not running"), nil
-			}
-			return doctor.Component{
-				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "runtime control endpoint is reachable",
-				Flags: []doctor.Flag{{ID: "managed", Value: status.Managed}},
-			}, nil
+			return runtimeControlDoctorComponent(status, running), nil
 		}),
 		doctorProvider(doctor.ComponentRuntimeListeners, func(context.Context) (doctor.Component, error) {
 			inspection, err := snapshot.inspectConfig()
@@ -275,18 +265,7 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 				return doctor.Component{}, err
 			}
 			status := shellruntime.NewProviderResolver().Diagnose(inspection.Config.Shell.Path)
-			if !status.Available {
-				return doctor.Component{
-					State: doctor.StateDegraded, Severity: doctor.SeverityWarning, Summary: "no usable shell provider is available",
-					Metrics:      []doctor.Metric{{ID: "configured_paths", Value: int64(status.ConfiguredPaths)}},
-					Remediations: []doctor.Remediation{{ID: "shell_path", Summary: "Configure a supported shell search path", Operation: string(capability.ConfigSet)}},
-				}, nil
-			}
-			return doctor.Component{
-				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "shell provider is available",
-				Metrics: []doctor.Metric{{ID: "configured_paths", Value: int64(status.ConfiguredPaths)}},
-				Flags:   []doctor.Flag{{ID: "configured_source", Value: status.Source == shellruntime.ProviderSourceConfigured}},
-			}, nil
+			return shellDoctorComponent(status), nil
 		}),
 		doctorProvider(doctor.ComponentIntegrationRTK, func(context.Context) (doctor.Component, error) {
 			inspection, err := snapshot.inspectConfig()
@@ -297,13 +276,7 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			if err != nil {
 				return doctor.Component{}, err
 			}
-			if !status.Enabled {
-				return disabled("RTK integration is disabled"), nil
-			}
-			if status.Source == rtk.SourceUnavailable {
-				return degraded("RTK integration is enabled but unavailable", doctor.Remediation{ID: "rtk_configure", Summary: "Configure or install RTK", Operation: string(capability.ConfigSet)}), nil
-			}
-			return healthy("RTK integration is available"), nil
+			return rtkDoctorComponent(status), nil
 		}),
 		doctorProvider(doctor.ComponentIntegrationCodeGraph, func(context.Context) (doctor.Component, error) {
 			inspection, err := snapshot.inspectConfig()
@@ -315,13 +288,7 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			if err != nil {
 				return doctor.Component{}, err
 			}
-			if !status.Enabled {
-				return disabled("CodeGraph integration is disabled"), nil
-			}
-			if status.Resolution.Source == codegraph.ExecutableUnavailable {
-				return degraded("CodeGraph integration is enabled but unavailable", doctor.Remediation{ID: "codegraph_configure", Summary: "Configure or install CodeGraph", Operation: string(capability.ConfigSet)}), nil
-			}
-			return healthy("CodeGraph integration is available"), nil
+			return codeGraphDoctorComponent(status), nil
 		}),
 		doctorProvider(doctor.ComponentIntegrationTypeSafe, func(context.Context) (doctor.Component, error) {
 			inspection, err := snapshot.inspectConfig()
@@ -329,17 +296,11 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 				return doctor.Component{}, err
 			}
 			cfg := inspection.Config.Integrations.TypeSafe
-			if !cfg.Enabled {
-				return disabled("TypeSafe integration is disabled"), nil
-			}
 			credential, err := typesafeintegration.Credential(configformat.RootPath())
 			if err != nil {
 				return doctor.Component{}, err
 			}
-			if !credential.Configured {
-				return degraded("TypeSafe integration is enabled without a configured credential", doctor.Remediation{ID: "typesafe_key", Summary: "Configure the TypeSafe API key", Operation: string(capability.ConfigSet)}), nil
-			}
-			return healthy("TypeSafe integration is configured"), nil
+			return typeSafeDoctorComponent(cfg.Enabled, credential.Configured), nil
 		}),
 		doctorProvider(doctor.ComponentUpstreamHealth, func(context.Context) (doctor.Component, error) {
 			statuses, err := deps.Upstream.InspectStatuses()
@@ -444,27 +405,11 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			if err != nil {
 				return doctor.Component{}, err
 			}
-			if !inspection.Config.Tunnel.Enabled {
-				return disabled("OpenAI Secure MCP Tunnel is disabled"), nil
-			}
-			if strings.TrimSpace(inspection.Config.Tunnel.ID) == "" || !inspection.TunnelRuntimeKeyConfigured {
-				return degraded("OpenAI Secure MCP Tunnel configuration is incomplete", doctor.Remediation{ID: "tunnel_configure", Summary: "Configure the Secure MCP Tunnel", Operation: string(capability.TunnelConfigure)}), nil
-			}
 			if deps.Tunnel == nil {
-				return doctor.Component{
-					State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "OpenAI Secure MCP Tunnel is configured",
-					Flags: []doctor.Flag{{ID: "runtime_attached", Value: false}},
-				}, nil
+				return tunnelDoctorComponent(inspection, nil), nil
 			}
 			status := deps.Tunnel.Status()
-			component := doctor.Component{
-				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "OpenAI Secure MCP Tunnel runtime is healthy",
-				Flags: []doctor.Flag{{ID: "running", Value: status.Running}, {ID: "ready", Value: status.Ready}, {ID: "restarting", Value: status.Restarting}},
-			}
-			if status.Running && !status.Ready || status.Restarting {
-				component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "OpenAI Secure MCP Tunnel runtime is reconnecting or not ready"
-			}
-			return component, nil
+			return tunnelDoctorComponent(inspection, &status), nil
 		}),
 		doctorProvider(doctor.ComponentCheckpointHistory, func(context.Context) (doctor.Component, error) {
 			if deps.Checkpoints == nil {
@@ -474,25 +419,11 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			if err != nil {
 				return doctor.Component{}, err
 			}
-			degraded, corrupt := int64(0), int64(0)
+			healths := make([]checkpoint.StorageHealth, 0, len(registry.Workspaces))
 			for _, item := range registry.Workspaces {
-				health := deps.Checkpoints.Diagnose(item.ID)
-				switch health.Status {
-				case checkpoint.HealthDegraded:
-					degraded++
-				case checkpoint.HealthCorrupt:
-					corrupt++
-				}
+				healths = append(healths, deps.Checkpoints.Diagnose(item.ID))
 			}
-			component := doctor.Component{
-				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "checkpoint history is readable",
-				Metrics: []doctor.Metric{{ID: "workspaces", Value: int64(len(registry.Workspaces))}, {ID: "degraded", Value: degraded}, {ID: "corrupt", Value: corrupt}},
-			}
-			if degraded+corrupt > 0 {
-				component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "checkpoint history requires attention"
-				component.Remediations = []doctor.Remediation{{ID: "checkpoint_review", Summary: "Review checkpoint history diagnostics", Operation: string(capability.HealthRead)}}
-			}
-			return component, nil
+			return checkpointHistoryDoctorComponent(healths), nil
 		}),
 		doctorProvider(doctor.ComponentCompletionHistory, func(context.Context) (doctor.Component, error) {
 			if deps.Completions == nil {
@@ -538,14 +469,7 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 				return disabled("background delivery diagnostics are not attached"), nil
 			}
 			status := deps.BackgroundDeliveries.InspectDiagnostics()
-			component := doctor.Component{
-				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "background delivery lifecycle is readable",
-				Metrics: []doctor.Metric{{ID: "pending", Value: int64(status.Pending)}, {ID: "retrying", Value: int64(status.Retrying)}, {ID: "dead_letters", Value: int64(status.DeadLetters)}, {ID: "overflow_dropped", Value: int64(status.OverflowDropped)}},
-			}
-			if status.DeadLetters > 0 || status.OverflowDropped > 0 {
-				component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "background delivery requires attention"
-			}
-			return component, nil
+			return backgroundDeliveryDoctorComponent(status), nil
 		}),
 		doctorProvider(doctor.ComponentNotificationsHealth, func(context.Context) (doctor.Component, error) {
 			inspection, err := snapshot.inspectConfig()
@@ -627,17 +551,7 @@ func serviceDoctorProvider(id doctor.ComponentID, scope managed.Scope) doctor.Pr
 			return disabled("system service scope is not supported on Windows"), nil
 		}
 		status := loadServiceOverview(scope)
-		if !status.Supported {
-			return disabled("managed service scope is unsupported"), nil
-		}
-		component := doctor.Component{
-			State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "managed service state is readable",
-			Flags: []doctor.Flag{{ID: "installed", Value: status.Installed}, {ID: "running", Value: status.Running}},
-		}
-		if status.Err != "" || status.Warning != "" {
-			component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "managed service requires attention"
-		}
-		return component, nil
+		return serviceDoctorComponent(status), nil
 	})
 }
 
