@@ -62,6 +62,7 @@ type Manager struct {
 	mu         sync.Mutex
 	sessions   map[string]*session
 	rtk        *rtk.Manager
+	resolver   *ProviderResolver
 	timeout    time.Duration
 }
 
@@ -88,7 +89,7 @@ func NewManagerWithExecutions(workspaces *workspace.Manager, _ string, execution
 	if executions == nil {
 		executions = NewExecutionHub()
 	}
-	return &Manager{workspaces: workspaces, executions: executions, sessions: map[string]*session{}, timeout: defaultCommandTimeout}
+	return &Manager{workspaces: workspaces, executions: executions, sessions: map[string]*session{}, resolver: NewProviderResolver(), timeout: defaultCommandTimeout}
 }
 
 func (m *Manager) Executions() *ExecutionHub {
@@ -169,8 +170,13 @@ func (m *Manager) Exec(ctx context.Context, workspaceID, command string) (ExecRe
 	if err != nil {
 		return ExecResult{}, err
 	}
+	provider := Provider{}
 	if strings.TrimSpace(effective) == "" {
-		effective = pwdCommand()
+		provider, err = m.resolveSessionProvider(ctx)
+		if err != nil {
+			return ExecResult{}, err
+		}
+		effective = pwdCommandForProvider(provider)
 	}
 	requestedEffective := effective
 	plan, err := m.prepareCommand(ctx, requestedEffective)
@@ -179,6 +185,12 @@ func (m *Manager) Exec(ctx context.Context, workspaceID, command string) (ExecRe
 	}
 	if err := m.workspaces.ValidateShellCommandContext(ctx, workspaceID, cwd, plan.Security); err != nil {
 		return ExecResult{}, err
+	}
+	if strings.TrimSpace(provider.Executable) == "" {
+		provider, err = m.resolveSessionProvider(ctx)
+		if err != nil {
+			return ExecResult{}, err
+		}
 	}
 	current.state.CWD = cwd
 	current.state.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
@@ -193,10 +205,10 @@ func (m *Manager) Exec(ctx context.Context, workspaceID, command string) (ExecRe
 		source = executionSource(ctx)
 	}
 	run := m.executions.Begin(ExecutionInput{
-		WorkspaceID: workspaceID, Tool: "run_command", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: commandShellLanguage(ctx), Source: source,
+		WorkspaceID: workspaceID, Tool: "run_command", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: providerLanguage(ctx, provider), Source: source,
 		CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID,
 	})
-	result, err := runOnce(ctx, plan.Effective, cwd, m.timeout, run, commandSearchPath(plan, m.workspaces.ShellPath()))
+	result, err := runOnce(ctx, plan.Effective, cwd, m.timeout, run, provider, mergeExecutablePath(provider.Path, commandSearchPath(plan, m.workspaces.ShellPath())))
 	if saveErr := m.save(current.state); saveErr != nil && err == nil {
 		return ExecResult{}, saveErr
 	}
@@ -424,10 +436,10 @@ func statusFromState(state SessionState) Status {
 	return Status{Active: true, CWD: state.CWD, StartedAt: state.StartedAt, RecentCommands: recent}
 }
 
-func runOnce(ctx context.Context, command, cwd string, timeout time.Duration, execution *ExecutionRun, shellPath []string) (ExecResult, error) {
+func runOnce(ctx context.Context, command, cwd string, timeout time.Duration, execution *ExecutionRun, provider Provider, shellPath []string) (ExecResult, error) {
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd, err := commandForPlatform(runCtx, command)
+	cmd, err := commandForProvider(runCtx, command, provider)
 	if err != nil {
 		execution.Finish(ExecutionStatusFailed, nil, false)
 		return ExecResult{}, err
@@ -464,6 +476,49 @@ func runOnce(ctx context.Context, command, cwd string, timeout time.Duration, ex
 	stdoutText, stdoutTruncated := stdout.snapshot()
 	stderrText, stderrTruncated := stderr.snapshot()
 	return ExecResult{Command: tracepkg.SanitizeCommand(command), CWD: cwd, Stdout: strings.TrimSpace(stdoutText), Stderr: strings.TrimSpace(stderrText), StdoutTruncated: stdoutTruncated, StderrTruncated: stderrTruncated, ExitCode: exitCode, TimedOut: false}, nil
+}
+
+func commandForProvider(ctx context.Context, command string, provider Provider) (*exec.Cmd, error) {
+	if granted, ok := controlguard.ApprovalFromContext(ctx); ok {
+		if strings.TrimSpace(command) != strings.TrimSpace(granted.Invocation.Command) {
+			return nil, errors.New("approved control-plane command does not match shell invocation")
+		}
+		executable, err := os.Executable()
+		if err != nil {
+			return nil, fmt.Errorf("resolve approved control-plane executable: %w", err)
+		}
+		return exec.CommandContext(ctx, executable, granted.Invocation.Args...), nil
+	}
+	if strings.TrimSpace(provider.Executable) == "" {
+		return nil, &ShellUnavailableError{GOOS: runtime.GOOS}
+	}
+	switch provider.Kind {
+	case ProviderGitBash:
+		return exec.CommandContext(ctx, provider.Executable, "--noprofile", "--norc", "-c", command), nil
+	case ProviderPowerShell7:
+		return exec.CommandContext(ctx, provider.Executable, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command), nil
+	case ProviderWindowsPowerShell:
+		return exec.CommandContext(ctx, provider.Executable, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", transpileCompoundOperators(command)), nil
+	default:
+		return exec.CommandContext(ctx, provider.Executable, "-c", command), nil
+	}
+}
+
+func providerLanguage(ctx context.Context, provider Provider) string {
+	if _, ok := controlguard.ApprovalFromContext(ctx); ok {
+		return ""
+	}
+	return provider.Language
+}
+
+func (m *Manager) resolveSessionProvider(ctx context.Context) (Provider, error) {
+	if _, ok := controlguard.ApprovalFromContext(ctx); ok {
+		return Provider{}, nil
+	}
+	if m == nil || m.resolver == nil {
+		return Provider{}, errors.New("shell provider resolver is unavailable")
+	}
+	return m.resolver.Resolve(m.workspaces.ShellPath())
 }
 
 func commandForPlatform(ctx context.Context, command string) (*exec.Cmd, error) {
@@ -622,6 +677,13 @@ func transpileCompoundOperators(command string) string {
 
 func stripQuotes(value string) string {
 	return strings.Trim(strings.TrimSpace(value), `"'`)
+}
+
+func pwdCommandForProvider(provider Provider) string {
+	if provider.Language == "powershell" {
+		return "(Get-Location).Path"
+	}
+	return "pwd"
 }
 
 func pwdCommand() string {
