@@ -40,6 +40,14 @@ func (a *App) Bootstrap() error {
 		if a.Logger == nil {
 			a.Logger = logger.New(logger.Info)
 		}
+		if a.Operations == nil {
+			a.Operations = application.NewDispatcher()
+		}
+		a.Operations.SetObserver(application.ProductOperationObserver(a.ProductTelemetry))
+		if err := application.BindStatusOperations(a.Operations, a.telegramStatusOverview); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		telemetry.AttachTools(a.Tools, a.Activity, a.Logger)
 		telemetry.AttachApprovals(a.Tools.Approvals, a.Activity, a.Logger)
 		telemetry.AttachBackground(a.Tools.Processes, a.Activity, a.Logger)
@@ -53,6 +61,13 @@ func (a *App) Bootstrap() error {
 				a.TelegramPairing = telegram.NewPairingStore(config.RootPath())
 			}
 			a.Telegram.SetSetupHandler(a.handleTelegramPairingUpdate)
+			telegramUI, err := telegram.NewInterface(telegram.InterfaceOptions{Runtime: a.Telegram, Dispatcher: a.Operations})
+			if err != nil {
+				a.bootstrapErr = err
+				return
+			}
+			a.TelegramUI = telegramUI
+			a.Telegram.SetHandler(telegramUI.Handle)
 		}
 		if a.ApprovalNotifications == nil && a.Tools.Approvals != nil {
 			a.ApprovalNotifications = notification.NewApprovalBridge(a.Tools.Approvals.Events(), a.Notifications, notification.ApprovalBridgeOptions{
@@ -107,6 +122,10 @@ func (a *App) Bootstrap() error {
 		a.syncMCPHTTP(a.Config.Snapshot().Server.Enabled)
 		a.attachTunnelLifecycle()
 	})
+	if a.bootstrapErr != nil {
+		span.FailMessage("Application runtime bootstrap failed", a.bootstrapErr)
+		return a.bootstrapErr
+	}
 	span.EndMessage("Application runtime bootstrapped", tracepkg.Bool("performed", didBootstrap), tracepkg.Bool("mcp_http_enabled", a.MCP != nil), tracepkg.Bool("tunnel_configured", a.Tunnel != nil), tracepkg.Int("tool_count", len(a.Tools.List())))
 	return nil
 }

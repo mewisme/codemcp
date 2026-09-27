@@ -40,12 +40,15 @@ type App struct {
 	BackgroundNotifications   *notification.BackgroundJobBridge
 	ProductTelemetry          productTelemetryRuntime
 	ProductLifecycleTelemetry *productLifecycleTelemetry
+	Operations                *application.Dispatcher
 	Telegram                  *telegram.Runtime
 	TelegramPairing           *telegram.PairingStore
+	TelegramUI                *telegram.Interface
 	runtimeCtx                context.Context
 	trace                     tracepkg.Observer
 	running                   bool
 	bootstrap                 sync.Once
+	bootstrapErr              error
 }
 
 type productTelemetryRuntime interface {
@@ -135,7 +138,8 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 		Config: configStore, MCP: mcpRuntime, Upstream: toolRuntime.Upstream, Tools: toolRuntime, Activity: stream,
 		Tunnel: tunnelClient, Logger: appLogger,
 		OAuth: oauthStore, OAuthFlows: mcpoauth.NewFlowManager(oauthStore), ProductTelemetry: productRecorder, trace: observer,
-		Telegram: telegram.NewRuntime(telegram.Options{Root: config.RootPath()}), TelegramPairing: telegram.NewPairingStore(config.RootPath()),
+		Operations: application.NewDispatcher(),
+		Telegram:   telegram.NewRuntime(telegram.Options{Root: config.RootPath()}), TelegramPairing: telegram.NewPairingStore(config.RootPath()),
 	}
 	app.ProductLifecycleTelemetry = newProductLifecycleTelemetry(productRecorder, toolRuntime.Approvals, toolRuntime.Processes)
 	bootstrapStarted := time.Now()

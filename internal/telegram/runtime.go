@@ -67,6 +67,7 @@ type Runtime struct {
 	handler      Handler
 	setupHandler SetupHandler
 	setupMode    bool
+	generation   uint64
 }
 
 func NewRuntime(options Options) *Runtime {
@@ -224,6 +225,7 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 	runtime.mu.Lock()
 	runtime.config = cfg
 	runtime.setupMode = setupMode
+	runtime.generation++
 	runtime.api = api
 	runtime.cancel = cancel
 	runtime.done = done
@@ -232,6 +234,71 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 	runtime.mu.Unlock()
 	go runtime.supervise(runCtx, done, api)
 	return nil
+}
+
+func (runtime *Runtime) Generation() uint64 {
+	if runtime == nil {
+		return 0
+	}
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
+	return runtime.generation
+}
+
+func (runtime *Runtime) SendScreen(ctx context.Context, chatID int64, screen Screen) error {
+	if runtime == nil || chatID <= 0 {
+		return errors.New("telegram runtime is unavailable")
+	}
+	if err := validateKeyboard(screen.Keyboard); err != nil {
+		return err
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	available := runtime.health.Running && !runtime.health.SetupMode
+	runtime.mu.RUnlock()
+	if !available || api == nil {
+		return errors.New("telegram runtime is unavailable")
+	}
+	rich, ok := api.(ScreenAPI)
+	if !ok {
+		return errors.New("telegram rich screen API is unavailable")
+	}
+	return rich.SendScreen(ctx, chatID, screen)
+}
+
+func (runtime *Runtime) EditScreen(ctx context.Context, chatID, messageID int64, screen Screen) error {
+	if runtime == nil || chatID <= 0 || messageID <= 0 {
+		return errors.New("telegram runtime is unavailable")
+	}
+	if err := validateKeyboard(screen.Keyboard); err != nil {
+		return err
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	available := runtime.health.Running && !runtime.health.SetupMode
+	runtime.mu.RUnlock()
+	if !available || api == nil {
+		return errors.New("telegram runtime is unavailable")
+	}
+	rich, ok := api.(ScreenAPI)
+	if !ok {
+		return errors.New("telegram rich screen API is unavailable")
+	}
+	return rich.EditScreen(ctx, chatID, messageID, screen)
+}
+
+func (runtime *Runtime) AnswerCallback(ctx context.Context, callbackID, text string, alert bool) error {
+	if runtime == nil || strings.TrimSpace(callbackID) == "" {
+		return nil
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	runtime.mu.RUnlock()
+	rich, ok := api.(ScreenAPI)
+	if !ok {
+		return errors.New("telegram rich screen API is unavailable")
+	}
+	return rich.AnswerCallback(ctx, callbackID, text, alert)
 }
 
 func (runtime *Runtime) Stop() {
@@ -380,7 +447,10 @@ func (runtime *Runtime) dispatchBatch(ctx context.Context, updates []Update) {
 		setupHandler := runtime.setupHandler
 		setupMode := runtime.setupMode
 		runtime.mu.Unlock()
-		if setupMode && setupHandler != nil && setupHandler(ctx, update) {
+		if setupMode {
+			if setupHandler != nil {
+				setupHandler(ctx, update)
+			}
 			continue
 		}
 		if handler == nil || !authorizedUpdate(cfg, update) {

@@ -144,6 +144,45 @@ func TestRuntimeAuthorizesEveryMessageAndCallbackBeforeDispatch(t *testing.T) {
 	}
 }
 
+func TestSetupModeNeverFallsThroughToNormalHandler(t *testing.T) {
+	const allowed = int64(42)
+	api := &fakeAPI{results: []fakePollResult{{updates: []Update{
+		{UpdateID: 1, Message: &Message{From: &User{ID: allowed}, Chat: Chat{ID: allowed, Type: "private"}, Text: "/status"}},
+	}}}}
+	root := t.TempDir()
+	if err := SetToken(root, "123456:test-token"); err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{
+		Root: root, Factory: func(string) API { return api },
+		PollTimeout: time.Millisecond, ReconnectDelay: func(int) time.Duration { return time.Millisecond },
+	})
+	setup := make(chan Update, 1)
+	normal := make(chan Update, 1)
+	runtime.SetSetupHandler(func(_ context.Context, update Update) bool {
+		setup <- update
+		return false
+	})
+	runtime.SetHandler(func(_ context.Context, update Update) { normal <- update })
+	if err := runtime.StartSetup(t.Context(), config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{allowed}}); err != nil {
+		t.Fatal(err)
+	}
+	defer runtime.Stop()
+	select {
+	case update := <-setup:
+		if update.UpdateID != 1 {
+			t.Fatalf("setup update=%d", update.UpdateID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("setup handler did not receive update")
+	}
+	select {
+	case update := <-normal:
+		t.Fatalf("normal handler received setup-mode update %d", update.UpdateID)
+	case <-time.After(20 * time.Millisecond):
+	}
+}
+
 func TestRuntimePollingFailureSelfHealsWithoutRestart(t *testing.T) {
 	api := &fakeAPI{
 		results: []fakePollResult{

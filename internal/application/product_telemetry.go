@@ -13,10 +13,11 @@ import (
 type OperationInterface string
 
 const (
-	OperationInterfaceCLI   OperationInterface = "cli"
-	OperationInterfaceTUI   OperationInterface = "tui"
-	OperationInterfaceAdmin OperationInterface = "admin"
-	OperationInterfaceMCP   OperationInterface = "mcp"
+	OperationInterfaceCLI      OperationInterface = "cli"
+	OperationInterfaceTUI      OperationInterface = "tui"
+	OperationInterfaceTelegram OperationInterface = "telegram"
+	OperationInterfaceAdmin    OperationInterface = "admin"
+	OperationInterfaceMCP      OperationInterface = "mcp"
 )
 
 type operationInterfaceKey struct{}

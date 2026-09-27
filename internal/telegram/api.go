@@ -54,6 +54,22 @@ type API interface {
 	SendMessage(context.Context, int64, string) error
 }
 
+type ScreenAPI interface {
+	SendScreen(context.Context, int64, Screen) error
+	EditScreen(context.Context, int64, int64, Screen) error
+	AnswerCallback(context.Context, string, string, bool) error
+}
+
+type inlineKeyboardMarkup struct {
+	InlineKeyboard [][]inlineKeyboardButton `json:"inline_keyboard"`
+}
+
+type inlineKeyboardButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data,omitempty"`
+	URL          string `json:"url,omitempty"`
+}
+
 type apiClient struct {
 	token   string
 	baseURL string
@@ -124,6 +140,68 @@ func (client *apiClient) SendMessage(ctx context.Context, chatID int64, text str
 		return errors.New("telegram sendMessage rejected")
 	}
 	return nil
+}
+
+func (client *apiClient) SendScreen(ctx context.Context, chatID int64, screen Screen) error {
+	markup := screenKeyboard(screen.Keyboard)
+	body, err := json.Marshal(map[string]any{
+		"chat_id": chatID, "text": screenText(screen), "parse_mode": "HTML", "reply_markup": markup,
+	})
+	if err != nil {
+		return err
+	}
+	return client.callOK(ctx, "sendMessage", body, "telegram sendMessage rejected")
+}
+
+func (client *apiClient) EditScreen(ctx context.Context, chatID, messageID int64, screen Screen) error {
+	markup := screenKeyboard(screen.Keyboard)
+	body, err := json.Marshal(map[string]any{
+		"chat_id": chatID, "message_id": messageID, "text": screenText(screen), "parse_mode": "HTML", "reply_markup": markup,
+	})
+	if err != nil {
+		return err
+	}
+	return client.callOK(ctx, "editMessageText", body, "telegram editMessageText rejected")
+}
+
+func (client *apiClient) AnswerCallback(ctx context.Context, callbackID, text string, alert bool) error {
+	body, err := json.Marshal(map[string]any{
+		"callback_query_id": strings.TrimSpace(callbackID), "text": strings.TrimSpace(text), "show_alert": alert,
+	})
+	if err != nil {
+		return err
+	}
+	return client.callOK(ctx, "answerCallbackQuery", body, "telegram answerCallbackQuery rejected")
+}
+
+func (client *apiClient) callOK(ctx context.Context, endpoint string, body []byte, message string) error {
+	var response struct {
+		OK bool `json:"ok"`
+	}
+	if err := client.call(ctx, http.MethodPost, endpoint, body, &response); err != nil {
+		return err
+	}
+	if !response.OK {
+		return errors.New(message)
+	}
+	return nil
+}
+
+func screenKeyboard(rows [][]Button) inlineKeyboardMarkup {
+	keyboard := make([][]inlineKeyboardButton, 0, len(rows))
+	for _, row := range rows {
+		buttons := make([]inlineKeyboardButton, 0, len(row))
+		for _, button := range row {
+			if button.Disabled || strings.TrimSpace(button.Text) == "" || button.CallbackData == "" && button.URL == "" {
+				continue
+			}
+			buttons = append(buttons, inlineKeyboardButton{Text: button.Text, CallbackData: button.CallbackData, URL: button.URL})
+		}
+		if len(buttons) > 0 {
+			keyboard = append(keyboard, buttons)
+		}
+	}
+	return inlineKeyboardMarkup{InlineKeyboard: keyboard}
 }
 
 func (client *apiClient) call(ctx context.Context, method, endpoint string, body []byte, output any) error {
