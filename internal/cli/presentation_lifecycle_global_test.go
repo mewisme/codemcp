@@ -40,6 +40,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"server":       "server enable",
 		"shell":        "shell path",
 		"status":       "status",
+		"telemetry":    "telemetry status",
 		"tui":          "tui",
 		"tunnel":       "tunnel status",
 		"uninit":       "uninit",

@@ -20,16 +20,20 @@ const configOperationTimeout = 60 * time.Second
 type ConfigCommand string
 
 const (
-	ConfigRefresh        ConfigCommand = "config.refresh"
-	ConfigTypeSafeStatus ConfigCommand = "integration.typesafe.status"
-	ConfigTypeSafeDoctor ConfigCommand = "integration.typesafe.doctor"
-	ConfigTypeSafeProbe  ConfigCommand = "integration.typesafe.probe"
-	ConfigEdit           ConfigCommand = "config.edit"
-	ConfigVerify         ConfigCommand = "config.verify"
-	ConfigMigrate        ConfigCommand = "config.migrate"
-	ConfigMigrateSecrets ConfigCommand = "config.migrate.secrets"
-	ConfigExport         ConfigCommand = "config.export"
-	ConfigImport         ConfigCommand = "config.import"
+	ConfigRefresh          ConfigCommand = "config.refresh"
+	ConfigTypeSafeStatus   ConfigCommand = "integration.typesafe.status"
+	ConfigTypeSafeDoctor   ConfigCommand = "integration.typesafe.doctor"
+	ConfigTypeSafeProbe    ConfigCommand = "integration.typesafe.probe"
+	ConfigTelemetryStatus  ConfigCommand = "telemetry.status"
+	ConfigTelemetryEnable  ConfigCommand = "telemetry.enable"
+	ConfigTelemetryDisable ConfigCommand = "telemetry.disable"
+	ConfigTelemetryShow    ConfigCommand = "telemetry.show"
+	ConfigEdit             ConfigCommand = "config.edit"
+	ConfigVerify           ConfigCommand = "config.verify"
+	ConfigMigrate          ConfigCommand = "config.migrate"
+	ConfigMigrateSecrets   ConfigCommand = "config.migrate.secrets"
+	ConfigExport           ConfigCommand = "config.export"
+	ConfigImport           ConfigCommand = "config.import"
 )
 
 type ConfigCommandMsg struct {
@@ -51,17 +55,18 @@ type configLoadMsg struct {
 }
 
 type configOperationMsg struct {
-	operationID    uint64
-	command        ConfigCommand
-	mutation       application.ConfigMutationResult
-	verify         config.VerifyResult
-	typeSafeStatus application.TypeSafeStatus
-	typeSafeDoctor application.TypeSafeDoctorResult
-	typeSafeProbe  application.TypeSafeProbeResult
-	files          int
-	migrated       int
-	path           string
-	err            error
+	operationID     uint64
+	command         ConfigCommand
+	mutation        application.ConfigMutationResult
+	verify          config.VerifyResult
+	typeSafeStatus  application.TypeSafeStatus
+	typeSafeDoctor  application.TypeSafeDoctorResult
+	typeSafeProbe   application.TypeSafeProbeResult
+	telemetryStatus application.TelemetryStatus
+	files           int
+	migrated        int
+	path            string
+	err             error
 }
 
 type ConfigPage struct {
@@ -425,6 +430,26 @@ func (page *ConfigPage) openCommand(command ConfigCommand, resourceID string) (t
 			result, err := application.NewTypeSafeService().Probe(ctx)
 			return configOperationMsg{command: command, typeSafeProbe: result, err: err}
 		}), nil
+	case ConfigTelemetryStatus:
+		return page.startOperation(command, "Checking product telemetry", func(ctx context.Context) configOperationMsg {
+			status, err := application.NewTelemetryService().Status(ctx)
+			return configOperationMsg{command: command, telemetryStatus: status, err: err}
+		}), nil
+	case ConfigTelemetryEnable:
+		return page.startOperation(command, "Enabling product telemetry", func(ctx context.Context) configOperationMsg {
+			status, err := application.NewTelemetryService().Enable(ctx)
+			return configOperationMsg{command: command, telemetryStatus: status, err: err}
+		}), nil
+	case ConfigTelemetryDisable:
+		return page.startOperation(command, "Disabling product telemetry", func(ctx context.Context) configOperationMsg {
+			status, err := application.NewTelemetryService().Disable(ctx)
+			return configOperationMsg{command: command, telemetryStatus: status, err: err}
+		}), nil
+	case ConfigTelemetryShow:
+		return page.startOperation(command, "Showing product telemetry", func(ctx context.Context) configOperationMsg {
+			status, err := application.NewTelemetryService().Show(ctx)
+			return configOperationMsg{command: command, telemetryStatus: status, err: err}
+		}), nil
 	case ConfigEdit:
 		if !page.loaded {
 			return nil, fmt.Errorf("configuration is still loading")
@@ -534,6 +559,10 @@ func (page *ConfigPage) finishOperation(msg configOperationMsg) tea.Cmd {
 		page.notice = fmt.Sprintf("TypeSafe doctor · %d/%d local checks passed", passed, len(msg.typeSafeDoctor.Checks))
 	case ConfigTypeSafeProbe:
 		page.notice = fmt.Sprintf("TypeSafe probe · model %s · HTTP %d", msg.typeSafeProbe.Status.Model, msg.typeSafeProbe.Provider.HTTPStatus)
+	case ConfigTelemetryStatus, ConfigTelemetryEnable, ConfigTelemetryDisable:
+		page.notice = fmt.Sprintf("Product telemetry · persisted %s · effective %s · source %s", telemetryEnabledLabel(msg.telemetryStatus.PersistedEnabled), telemetryEnabledLabel(msg.telemetryStatus.EffectiveEnabled), msg.telemetryStatus.Source)
+	case ConfigTelemetryShow:
+		page.notice = fmt.Sprintf("Product telemetry · effective %s · source %s · endpoint %s · anonymous ID %s", telemetryEnabledLabel(msg.telemetryStatus.EffectiveEnabled), msg.telemetryStatus.Source, telemetryPresenceLabel(msg.telemetryStatus.EndpointAvailable), telemetryPresenceLabel(msg.telemetryStatus.IdentityPresent))
 	case ConfigVerify:
 		page.notice = fmt.Sprintf("Configuration verified · %s · %d structured files", msg.verify.Format, msg.verify.Files)
 	case ConfigMigrate:
@@ -562,6 +591,20 @@ func typeSafeConfiguredLabel(configured bool) string {
 		return "configured"
 	}
 	return "not configured"
+}
+
+func telemetryEnabledLabel(enabled bool) string {
+	if enabled {
+		return "enabled"
+	}
+	return "disabled"
+}
+
+func telemetryPresenceLabel(present bool) string {
+	if present {
+		return "present"
+	}
+	return "not present"
 }
 
 func (page *ConfigPage) cancelOperation() {

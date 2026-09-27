@@ -98,6 +98,10 @@ const (
 	TunnelDelete             ID = "tunnel.delete"
 	StatusOverview           ID = "status.overview"
 	VersionAbout             ID = "version.about"
+	TelemetryStatus          ID = "telemetry.status"
+	TelemetryEnable          ID = "telemetry.enable"
+	TelemetryDisable         ID = "telemetry.disable"
+	TelemetryShow            ID = "telemetry.show"
 
 	HealthRead                       ID = "health.read"
 	NetworkInterfacesList            ID = "network.interfaces.list"
@@ -262,6 +266,10 @@ func buildSpecs() []Spec {
 		operatorDeleteRequired(TunnelDelete, "tunnel delete", true),
 		operatorQuery(StatusOverview, "status"),
 		operatorQuery(VersionAbout, "version"),
+		operatorQuery(TelemetryStatus, "telemetry status"),
+		operatorMutation(TelemetryEnable, "telemetry enable", RiskState, false),
+		operatorMutation(TelemetryDisable, "telemetry disable", RiskState, false),
+		operatorQuery(TelemetryShow, "telemetry show"),
 	}
 	values = append(values, integrationSpecs()...)
 	values = append(values, adminOnlySpecs()...)

@@ -78,6 +78,8 @@ func commandTraceContracts() map[string]commandTraceContract {
 	)
 	add(commandTraceInstrumented, []string{"setting.unset.completed"}, "config unset", "tunnel key remove", "tunnel admin key remove", "integration typesafe key remove")
 	add(commandTraceTrivial, nil, "integration typesafe status", "integration typesafe doctor", "integration typesafe probe")
+	add(commandTraceTrivial, nil, "telemetry status", "telemetry show")
+	add(commandTraceInstrumented, []string{"setting.set.completed"}, "telemetry enable", "telemetry disable")
 	add(commandTraceInstrumented, []string{"setting.rotate.completed"}, "config rotate")
 	add(commandTraceInstrumented, []string{"setting.reveal.completed"}, "config reveal")
 	add(commandTraceInstrumented, []string{"config.secrets.migrate.completed"}, "config migrate")

@@ -230,7 +230,7 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ScopedCommands = []string{"shell path"}
 	case "telemetry.enabled":
 		spec.ApplicationOwner = "telemetry"
-		spec.ScopedExemption = "canonical telemetry operator facade is introduced with telemetry administration"
+		spec.ScopedCommands = []string{"telemetry enable", "telemetry disable"}
 	case "approval.semantic.enabled", "approval.semantic.provider", "approval.semantic.timeout_ms", "approval.semantic.minimum_confidence", "approval.semantic.fail_mode", "approval.semantic.low_action", "approval.semantic.medium_action", "approval.semantic.high_action", "approval.semantic.critical_action":
 		spec.ApplicationOwner = "approval.semantic"
 		spec.ScopedExemption = "generic config set is the canonical operator facade for semantic approval policy"

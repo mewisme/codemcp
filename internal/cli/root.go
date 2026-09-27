@@ -69,6 +69,7 @@ func newRootCommand() *cobra.Command {
 		permissionsSettingsCommand(),
 		shellSettingsCommand(),
 		notificationSettingsCommand(),
+		telemetryCommand(),
 		integrationSettingsCommand(),
 		serveCommand(),
 		statusCommand(),
