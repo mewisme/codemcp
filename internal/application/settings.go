@@ -423,6 +423,9 @@ func readConfiguredSetting(ctx context.Context, key string) (bool, bool, error) 
 	case "integrations.typesafe.api_key_configured":
 		status, err := typesafeintegration.Credential(config.RootPath())
 		return status.Configured, true, err
+	case "telegram.token_configured":
+		configured, err := telegramTokenConfigured()
+		return configured, true, err
 	default:
 		return false, false, nil
 	}

@@ -145,6 +145,7 @@ func TestUniversalSettingManagedCredentialVocabulary(t *testing.T) {
 		clearable    bool
 		verifiable   bool
 	}{
+		"telegram.token":                {state: "telegram.token_configured", presentation: SettingPresentationConfiguredState, writable: true, clearable: true},
 		"auth.mcp_token":                {state: "auth.mcp_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
 		"auth.admin_token":              {state: "auth.admin_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
 		"integrations.typesafe.api_key": {state: "integrations.typesafe.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},

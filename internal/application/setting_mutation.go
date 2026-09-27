@@ -102,6 +102,9 @@ func (s *SettingService) ValidateApply(ctx context.Context, changes []SettingCha
 		}
 		return nil
 	}
+	if _, ok, err := telegramSecretSettingChange(resolved); ok || err != nil {
+		return err
+	}
 
 	replaceRuntimeKey, replaceAdminKey := false, false
 	for _, item := range resolved {
@@ -198,6 +201,12 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 		}
 		return SettingApplyResult{Results: []SettingResult{presented}, Config: cfg}, nil
 	}
+	if item, ok, err := telegramSecretSettingChange(resolved); ok || err != nil {
+		if err != nil {
+			return SettingApplyResult{}, err
+		}
+		return s.applyTelegramSecretSettingChange(ctx, item)
+	}
 
 	replaceRuntimeKey, replaceAdminKey := false, false
 	for _, item := range resolved {
@@ -274,6 +283,41 @@ func typeSafeSecretSettingChange(resolved []resolvedSettingChange) (resolvedSett
 		return item, true, nil
 	}
 	return resolvedSettingChange{}, false, nil
+}
+
+func telegramSecretSettingChange(resolved []resolvedSettingChange) (resolvedSettingChange, bool, error) {
+	for _, item := range resolved {
+		if item.spec.Key != "telegram.token" {
+			continue
+		}
+		if len(resolved) != 1 {
+			return resolvedSettingChange{}, false, errors.New("telegram bot token mutation cannot be combined with config fields in one transaction")
+		}
+		if !item.change.Unset && strings.TrimSpace(item.change.Value) == "" {
+			return resolvedSettingChange{}, false, errors.New("telegram.token must not be empty; unset it to clear the credential")
+		}
+		return item, true, nil
+	}
+	return resolvedSettingChange{}, false, nil
+}
+
+func (s *SettingService) applyTelegramSecretSettingChange(ctx context.Context, item resolvedSettingChange) (SettingApplyResult, error) {
+	value := strings.TrimSpace(item.change.Value)
+	if item.change.Unset {
+		value = ""
+	}
+	if err := writeTelegramToken(value); err != nil {
+		return SettingApplyResult{}, err
+	}
+	presented, err := s.Present(ctx, item.spec.Key)
+	if err != nil {
+		return SettingApplyResult{}, err
+	}
+	cfg, err := LoadConfig(ctx)
+	if err != nil {
+		return SettingApplyResult{}, err
+	}
+	return SettingApplyResult{Results: []SettingResult{presented}, Config: cfg}, nil
 }
 
 func resolveSettingChanges(changes []SettingChange) ([]resolvedSettingChange, error) {

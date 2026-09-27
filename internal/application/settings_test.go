@@ -17,6 +17,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
+	"go.mewis.me/codemcp/internal/secretstore"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -141,6 +142,8 @@ func TestEveryWritableStaticSettingMutatesFromFreshConfig(t *testing.T) {
 				t.Fatalf("baseline value for %q: %v", spec.Key, err)
 			}
 			switch spec.Key {
+			case "telegram.token":
+				raw = "123456:telegram-fresh-setting"
 			case "tunnel.api_key":
 				raw = "sk-runtime-fresh-setting"
 			case "tunnel.admin.key":
@@ -158,6 +161,63 @@ func TestEveryWritableStaticSettingMutatesFromFreshConfig(t *testing.T) {
 				t.Fatalf("fresh mutation for %q failed: %v", spec.Key, err)
 			}
 		})
+	}
+}
+
+func TestTelegramTokenManagedSecretSetting(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	restore := secretstore.UseMemoryForTesting()
+	defer restore()
+	service := NewSettingService()
+
+	initial, err := service.Present(t.Context(), "telegram.token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.Value != "not configured" || initial.Configured == nil || *initial.Configured {
+		t.Fatalf("initial token presentation=%#v", initial)
+	}
+	if _, err := service.Read(t.Context(), "telegram.token"); err == nil {
+		t.Fatal("raw Telegram token became readable")
+	}
+
+	const secret = "123456:telegram-secret-sentinel"
+	result, err := service.Set(t.Context(), "telegram.token", secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Value != "configured" || result.Configured == nil || !*result.Configured || strings.Contains(result.Value, secret) {
+		t.Fatalf("configured token presentation=%#v", result)
+	}
+	state, err := service.Read(t.Context(), "telegram.token_configured")
+	if err != nil || state.Value != "true" {
+		t.Fatalf("configured state=%#v err=%v", state, err)
+	}
+	stored, err := secretstore.New(root).Get(telegramBotTokenSecretName)
+	if err != nil || stored != secret {
+		t.Fatalf("stored token=%q err=%v", stored, err)
+	}
+	data, err := os.ReadFile(config.DefaultPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), secret) {
+		t.Fatal("Telegram bot token leaked into config.json")
+	}
+
+	if _, err := service.Apply(t.Context(), []SettingChange{
+		{Key: "telegram.token", Value: secret},
+		{Key: "server.port", Value: "40123"},
+	}); err == nil {
+		t.Fatal("Telegram token mutation was combined with normal config mutation")
+	}
+
+	cleared, err := service.Unset(t.Context(), "telegram.token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.Value != "not configured" || cleared.Configured == nil || *cleared.Configured {
+		t.Fatalf("cleared token presentation=%#v", cleared)
 	}
 }
 

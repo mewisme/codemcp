@@ -30,6 +30,21 @@ type FieldSelectorMatch struct {
 
 var virtualSettingSpecs = []FieldSpec{
 	{
+		Key: "telegram.token", Label: "Telegram bot token", Section: FieldSectionAccess, Kind: FieldString,
+		Description: "stores the managed Telegram bot credential",
+		Details:     "The raw bot token is stored only in the canonical secret store. Saving or removing it does not contact Telegram; runtime activation validates the token before polling.",
+		Guidance:    "Manage this credential with cm telegram token set/remove or the equivalent config set/unset commands.",
+		Virtual:     true, Writable: true, Secret: true, Clearable: true, ConfiguredStateKey: "telegram.token_configured",
+		Presentation: SettingPresentationConfiguredState, ApplicationOwner: "telegram.credentials",
+		ValueRole:      SettingValueConfigured,
+		ScopedCommands: []string{"telegram token set", "telegram token remove", "telegram token status"},
+	},
+	{
+		Key: "telegram.token_configured", Label: "Telegram bot token configured", Section: FieldSectionAccess, Kind: FieldBool,
+		Virtual: true, Derived: true, Readable: true, ApplicationOwner: "telegram.credentials",
+		ScopedCommands: []string{"telegram token status"},
+	},
+	{
 		Key: "integrations.typesafe.api_key", Label: "TypeSafe API key", Section: FieldSectionIntegrations, Kind: FieldString,
 		Description: "stores the managed TypeSafe API credential",
 		Details:     "The raw API key is stored only in the canonical secret store. Saving or removing it never probes TypeSafe.",
