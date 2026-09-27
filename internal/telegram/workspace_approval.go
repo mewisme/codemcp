@@ -434,20 +434,21 @@ func (ui *Interface) requestCardWithOptions(owner ViewOwner, request approval.Re
 	if strings.TrimSpace(request.Command) != "" {
 		blocks = append(blocks, RichBlock{Kind: RichCode, Title: "Command", Text: request.Command})
 	}
-	primary, secondary, destructive := []Button{}, []Button{}, []Button{}
+	var approveButton, denyButton Button
+	secondary := []Button{}
 	if projection.Actionable() {
 		approve, err := ui.stateButton(owner, "Approve once", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteRequests, Operation: capability.RequestApprove, ResourceID: request.ID, Input: application.RequestResolutionInput{ID: request.ID}})
 		if err != nil {
 			return Screen{}, err
 		}
 		approve.Role = ButtonRolePositive
-		primary = append(primary, approve)
+		approveButton = approve
 		deny, err := ui.stateButton(owner, "Deny", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteRequests, Operation: capability.RequestDeny, ResourceID: request.ID, Input: application.RequestResolutionInput{ID: request.ID}})
 		if err != nil {
 			return Screen{}, err
 		}
 		deny.Role = ButtonRoleDestructive
-		destructive = append(destructive, deny)
+		denyButton = deny
 		if strings.TrimSpace(request.SimilarCommandPattern) != "" {
 			allow, err := ui.stateButton(owner, "Allow similar", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteRequests, Operation: capability.RequestApprove, ResourceID: request.ID, Input: application.RequestResolutionInput{ID: request.ID, AllowSimilar: true}})
 			if err != nil {
@@ -473,7 +474,15 @@ func (ui *Interface) requestCardWithOptions(owner ViewOwner, request approval.Re
 	if err != nil {
 		return Screen{}, err
 	}
-	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Primary: primary, Secondary: secondary, Destructive: destructive, Navigation: []Button{back, home}})}, nil
+	rows := make([][]Button, 0, 3)
+	if approveButton.Text != "" && denyButton.Text != "" {
+		rows = append(rows, []Button{approveButton, denyButton})
+	}
+	if len(secondary) > 0 {
+		rows = append(rows, secondary)
+	}
+	rows = append(rows, []Button{back, home})
+	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: rows}, nil
 }
 
 func (ui *Interface) RenderNotification(ctx context.Context, chatID int64, message notification.Message) (Screen, bool, error) {

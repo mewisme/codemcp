@@ -119,6 +119,9 @@ func TestApprovalCardUsesSafeCanonicalProjectionAndActionHierarchy(t *testing.T)
 	if !foundCopy {
 		t.Fatalf("approval card missing inline copy ID: %#v", screen.Rich.Blocks)
 	}
+	if len(screen.Keyboard) < 1 || len(screen.Keyboard[0]) != 2 || screen.Keyboard[0][0].Text != "Approve once" || screen.Keyboard[0][1].Text != "Deny" {
+		t.Fatalf("approval decision row=%#v", screen.Keyboard)
+	}
 }
 
 func TestApprovalPendingNotificationRendersFreshInteractiveCard(t *testing.T) {
@@ -171,6 +174,12 @@ func TestApprovalPendingNotificationRendersFreshInteractiveCard(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("interactive notification missing %q: %v", want, labels)
 		}
+	}
+	if len(screen.Keyboard) < 2 || len(screen.Keyboard[0]) != 2 || screen.Keyboard[0][0].Text != "Approve once" || screen.Keyboard[0][1].Text != "Deny" {
+		t.Fatalf("notification decision row=%#v", screen.Keyboard)
+	}
+	if len(screen.Keyboard[1]) != 2 || screen.Keyboard[1][0].Text != "Review" || screen.Keyboard[1][1].Text != "Allow similar" {
+		t.Fatalf("notification secondary row=%#v", screen.Keyboard[1])
 	}
 }
 
