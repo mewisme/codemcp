@@ -20,6 +20,7 @@ Start with a task guide, then use the reference docs only when you need exact co
 | Generic MCP clients, stdio/HTTP transports, upstream servers, OAuth | [MCP and upstreams](mcp.md) |
 | Authentication, exposure, storage, config roots, import/export | [Configuration](configuration.md) |
 | Trust boundaries, approvals, credentials, and network policy | [Security](security.md) |
+| Anonymous product telemetry, privacy fields, controls, and identity lifecycle | [Product telemetry](telemetry.md) |
 
 ## Reference
 

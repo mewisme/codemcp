@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,6 +18,85 @@ const telemetryTestEndpoint = "https://telemetry.example/v1/products/codemcp/eve
 
 type telemetryReconcilerRecorder struct {
 	values []bool
+}
+
+func TestTelemetryBootstrapEligibilityAndIdentityRecoveryMatrix(t *testing.T) {
+	tests := []struct {
+		name          string
+		enabled       bool
+		env           string
+		endpoint      string
+		seed          string
+		wantPresent   bool
+		wantCreated   bool
+		wantUnchanged bool
+	}{
+		{name: "disabled", enabled: false, endpoint: telemetryTestEndpoint},
+		{name: "env-disabled", enabled: true, env: "0", endpoint: telemetryTestEndpoint},
+		{name: "endpoint-less", enabled: true, endpoint: ""},
+		{name: "fresh", enabled: true, endpoint: telemetryTestEndpoint, wantPresent: true, wantCreated: true},
+		{name: "existing", enabled: true, endpoint: telemetryTestEndpoint, seed: `{"schema":1,"anonymous_id":"123e4567-e89b-42d3-a456-426614174099"}`, wantPresent: true, wantUnchanged: true},
+		{name: "corrupt-recovery", enabled: true, endpoint: telemetryTestEndpoint, seed: `{broken`, wantPresent: true, wantCreated: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.Telemetry.Enabled = test.enabled
+			service := telemetryTestService(t, cfg)
+			service.Endpoint = func() string { return test.endpoint }
+			service.Identity.NewID = func() (string, error) { return "123e4567-e89b-42d3-a456-426614174100", nil }
+			if test.env != "" {
+				t.Setenv(config.TelemetryEnv, test.env)
+			}
+			if test.seed != "" {
+				if err := os.MkdirAll(filepath.Dir(service.Identity.Path()), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(service.Identity.Path(), []byte(test.seed), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, _ := os.ReadFile(service.Identity.Path())
+			result, err := service.Bootstrap(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.IdentityPresent != test.wantPresent || result.IdentityCreated != test.wantCreated {
+				t.Fatalf("result=%#v", result)
+			}
+			after, readErr := os.ReadFile(service.Identity.Path())
+			if !test.wantPresent && !os.IsNotExist(readErr) {
+				t.Fatalf("ineligible bootstrap created identity: %v", readErr)
+			}
+			if test.wantUnchanged && string(before) != string(after) {
+				t.Fatalf("existing identity changed: before=%s after=%s", before, after)
+			}
+		})
+	}
+}
+
+func TestTelemetryBootstrapDoesNotInstallIntegrationsOrPerformNetwork(t *testing.T) {
+	service := telemetryTestService(t, config.Default())
+	result, err := service.Bootstrap(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IdentityPresent {
+		t.Fatalf("bootstrap result=%#v", result)
+	}
+}
+
+func TestTelemetryBootstrapOwnerHasNoInstallOrIntegrationDependency(t *testing.T) {
+	data, err := os.ReadFile("telemetry.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, forbidden := range []string{"internal/install", "internal/integrations", "EnsureAvailable", "InstallCurrent"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("telemetry bootstrap owns forbidden install/integration concern %q", forbidden)
+		}
+	}
 }
 
 func (recorder *telemetryReconcilerRecorder) SetEnabled(value bool) {

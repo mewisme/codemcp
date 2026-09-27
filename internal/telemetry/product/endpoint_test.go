@@ -3,6 +3,7 @@ package product
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -90,5 +91,29 @@ func TestReleasePreflightDoesNotEchoEndpoint(t *testing.T) {
 	}
 	if strings.Contains(string(output), "secret-host.example") {
 		t.Fatalf("preflight leaked endpoint: %s", output)
+	}
+}
+
+func TestGoTestsDoNotReferenceProductionTelemetryHost(t *testing.T) {
+	root := filepath.Clean(filepath.Join("..", "..", ".."))
+	productionHost := "telemetry." + "mewis.me"
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(data), productionHost) {
+			t.Fatalf("test source %s references the production telemetry host", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

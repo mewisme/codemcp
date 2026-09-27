@@ -21,6 +21,13 @@ type TelemetryStatus struct {
 	IdentityPresent     bool                          `json:"identity_present"`
 }
 
+type TelemetryBootstrapResult struct {
+	Enabled           bool `json:"enabled"`
+	EndpointAvailable bool `json:"endpoint_available"`
+	IdentityPresent   bool `json:"identity_present"`
+	IdentityCreated   bool `json:"identity_created"`
+}
+
 type telemetryEnableReconciler interface {
 	SetEnabled(bool)
 }
@@ -99,6 +106,36 @@ func (service *TelemetryService) Enable(ctx context.Context) (TelemetryStatus, e
 
 func (service *TelemetryService) Disable(ctx context.Context) (TelemetryStatus, error) {
 	return service.setEnabled(ctx, false)
+}
+
+func (service *TelemetryService) Bootstrap(ctx context.Context) (TelemetryBootstrapResult, error) {
+	status, err := service.Status(ctx)
+	if err != nil {
+		return TelemetryBootstrapResult{}, err
+	}
+	result := TelemetryBootstrapResult{
+		Enabled:           status.EffectiveEnabled,
+		EndpointAvailable: status.EndpointAvailable,
+		IdentityPresent:   status.IdentityPresent,
+	}
+	if !status.EffectiveEnabled || !status.EndpointAvailable {
+		return result, nil
+	}
+	endpoint := producttelemetry.Endpoint
+	if service.Endpoint != nil {
+		endpoint = service.Endpoint()
+	}
+	store := service.Identity
+	if store == nil {
+		store = producttelemetry.NewIdentityStore()
+	}
+	_, created, err := store.Ensure(true, endpoint)
+	if err != nil {
+		return TelemetryBootstrapResult{}, err
+	}
+	result.IdentityPresent = true
+	result.IdentityCreated = created
+	return result, nil
 }
 
 func (service *TelemetryService) setEnabled(ctx context.Context, enabled bool) (TelemetryStatus, error) {
