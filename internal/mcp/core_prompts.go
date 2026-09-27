@@ -171,6 +171,12 @@ func installPromptProjection(server *sdkmcp.Server, executor *FeatureExecutor) *
 	return projection
 }
 
+// InstallPromptProjection projects the canonical Prompt store onto an SDK server.
+// It exists for transports that assemble the shared feature runtime outside this package.
+func InstallPromptProjection(server *sdkmcp.Server, executor *FeatureExecutor) {
+	installPromptProjection(server, executor)
+}
+
 func (p *sdkPromptProjection) refresh(ctx context.Context) error {
 	if p == nil || p.executor == nil || p.executor.Tools == nil {
 		return errors.New("prompt projection is unavailable")
