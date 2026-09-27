@@ -24,6 +24,7 @@ func workspaceCommand() *cobra.Command {
 		workspaceRegisterCommand(),
 		workspaceListCommand(),
 		workspaceShowCommand(),
+		workspaceContextCommand(),
 		workspaceDoctorCommand(),
 		workspaceRelocateCommand(),
 		workspaceUnregisterCommand(),

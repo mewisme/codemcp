@@ -110,6 +110,47 @@ func TestLegacyFeatureAndBuiltinsCommandGroupsAreAbsent(t *testing.T) {
 	}
 }
 
+func TestRestoredCanonicalCLIReachabilityMatrix(t *testing.T) {
+	expected := map[capability.ID]string{
+		capability.InstructionSettingsRead:             "instructions get",
+		capability.InstructionSettingsWrite:            "instructions set",
+		capability.ProjectContextRead:                  "workspace context",
+		capability.ToolInventoryRead:                   "tools list",
+		capability.ExecutionList:                       "execution list",
+		capability.ExecutionView:                       "execution view",
+		capability.ProcessList:                         "process list",
+		capability.ProcessView:                         "process view",
+		capability.IntegrationRTKEnable:                "integration rtk enable",
+		capability.IntegrationRTKDisable:               "integration rtk disable",
+		capability.IntegrationCodeGraphWorkspaceStatus: "integration codegraph workspace status",
+		capability.IntegrationCodeGraphWorkspaceInit:   "integration codegraph init",
+		capability.IntegrationCodeGraphWorkspaceSync:   "integration codegraph sync",
+		capability.IntegrationTypeSafeEnable:           "integration typesafe enable",
+		capability.IntegrationTypeSafeDisable:          "integration typesafe disable",
+		capability.DoctorRead:                          "doctor",
+	}
+	root := newRootCommand()
+	for id, path := range expected {
+		spec, ok := capability.Lookup(id)
+		if !ok {
+			t.Fatalf("canonical operation %q is missing", id)
+		}
+		if got := capability.NormalizePath(spec.CLI.CanonicalPath); got != path {
+			t.Errorf("%s CLI path=%q want=%q", id, got, path)
+			continue
+		}
+		command := commandByRelativePath(root, path)
+		if command == nil || !command.Runnable() {
+			t.Errorf("%s command path %q is not recursively reachable", id, path)
+			continue
+		}
+		got, annotated := canonicalCommandOperation(command)
+		if !annotated || got != id {
+			t.Errorf("%s command annotation=%q,%t", path, got, annotated)
+		}
+	}
+}
+
 func collectRunnablePublicPaths(root *cobra.Command) []string {
 	paths := []string{}
 	var walk func(*cobra.Command, []string, bool)

@@ -25,6 +25,31 @@ func rtkStatusCommand() *cobra.Command {
 	}
 }
 
+func rtkToggleCommand(enabled bool) *cobra.Command {
+	action, message := "disable", "RTK integration disabled"
+	if enabled {
+		action, message = "enable", "RTK integration enabled"
+	}
+	return &cobra.Command{
+		Use: action, Short: strings.ToUpper(action[:1]) + action[1:] + " RTK integration", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			service := application.NewRTKService()
+			var status rtk.Status
+			var err error
+			if enabled {
+				status, err = service.Enable(cmd.Context())
+			} else {
+				status, err = service.Disable(cmd.Context())
+			}
+			if err != nil {
+				return err
+			}
+			renderMutationSuccess(cmd, message, presentation.Field{Label: "enabled", Value: status.Enabled})
+			return nil
+		},
+	}
+}
+
 func rtkProbeCommand() *cobra.Command {
 	return &cobra.Command{
 		Use: "probe", Short: "Probe the effective RTK executable", Args: cobra.NoArgs,
@@ -216,4 +241,28 @@ func codeGraphWorkspaceCommand(action string) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func codeGraphWorkspaceGroupCommand() *cobra.Command {
+	group := &cobra.Command{Use: "workspace", Short: "Inspect CodeGraph workspace state"}
+	group.AddCommand(&cobra.Command{
+		Use: "status <workspace_id>", Short: "Show CodeGraph state for a registered workspace", Args: cobra.ExactArgs(1), ValidArgsFunction: completeWorkspaceID,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			status, err := application.NewCodeGraphService(workspaceManagerForCommand(cmd)).WorkspaceStatus(cmd.Context(), application.CodeGraphWorkspaceInput{WorkspaceID: strings.TrimSpace(args[0])})
+			if err != nil {
+				return err
+			}
+			presenter := commandPresenter(cmd)
+			presenter.Frame("CodeGraph workspace")
+			presenter.Fields(
+				presentation.Field{Label: "workspace", Value: status.WorkspaceID},
+				presentation.Field{Label: "project", Value: status.ProjectPath},
+				presentation.Field{Label: "index", Value: status.IndexState},
+				presentation.Field{Label: "freshness", Value: status.Freshness},
+			)
+			presenter.Complete("Status complete")
+			return nil
+		},
+	})
+	return group
 }

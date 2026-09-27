@@ -22,14 +22,27 @@ var knownSurfaceReasons = map[string]struct{}{
 
 var tuiExplicitExemptIDs = idSet(
 	DoctorRead,
+	InstructionSettingsRead,
+	InstructionSettingsWrite,
+	ProjectContextRead,
+	ToolInventoryRead,
+	ExecutionList,
+	ExecutionView,
+	ProcessList,
+	ProcessView,
+	IntegrationRTKEnable,
+	IntegrationRTKDisable,
 	IntegrationRTKStatus,
 	IntegrationRTKProbe,
 	IntegrationRTKInstall,
 	IntegrationCodeGraphStatus,
 	IntegrationCodeGraphProbe,
 	IntegrationCodeGraphInstall,
+	IntegrationCodeGraphWorkspaceStatus,
 	IntegrationCodeGraphWorkspaceInit,
 	IntegrationCodeGraphWorkspaceSync,
+	IntegrationTypeSafeEnable,
+	IntegrationTypeSafeDisable,
 )
 
 func surfaceContracts(spec Spec) []SurfaceContract {

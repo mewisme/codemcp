@@ -57,7 +57,7 @@ func inventoryEntryPoints(operation OperationInventory, surface Surface) []strin
 		}
 		return append([]string{operation.CLI.CanonicalPath}, operation.CLI.Aliases...)
 	case SurfaceTUI:
-		if operation.CLI.CanonicalPath == "" || operation.Audience == AudienceAgent || operation.Audience == AudienceProtocol {
+		if tuiExplicitExemptIDs[operation.ID] || operation.CLI.CanonicalPath == "" || operation.Audience == AudienceAgent || operation.Audience == AudienceProtocol {
 			return nil
 		}
 		return []string{operation.CLI.CanonicalPath}

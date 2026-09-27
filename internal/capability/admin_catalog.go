@@ -108,17 +108,17 @@ func adminOnlySpecs() []Spec {
 		adminQuerySpec(NetworkInterfacesList, false),
 		adminQuerySpec(ConfigSnapshotRead, false),
 		adminMutationSpec(ConfigPatch, RiskSensitive, false),
-		adminQuerySpec(InstructionSettingsRead, false),
-		adminMutationSpec(InstructionSettingsWrite, RiskState, false),
+		adminCLIQuerySpec(InstructionSettingsRead, false, "instructions get"),
+		adminCLIMutationSpec(InstructionSettingsWrite, RiskState, false, "instructions set"),
 		adminQuerySpec(WorkspaceContainerMembershipList, false),
-		adminQuerySpec(ProjectContextRead, false),
-		adminQuerySpec(ToolInventoryRead, false),
-		adminQuerySpec(ExecutionList, false),
-		adminQuerySpec(ExecutionView, false),
+		adminCLIQuerySpec(ProjectContextRead, false, "workspace context"),
+		adminCLIQuerySpec(ToolInventoryRead, false, "tools list"),
+		adminCLIQuerySpec(ExecutionList, false, "execution list"),
+		adminCLIQuerySpec(ExecutionView, false, "execution view"),
 		adminStreamSpec(ExecutionFeed),
 		adminStreamSpec(ExecutionStream),
-		adminQuerySpec(ProcessList, false),
-		adminQuerySpec(ProcessView, false),
+		adminCLIQuerySpec(ProcessList, false, "process list"),
+		adminCLIQuerySpec(ProcessView, false, "process view"),
 		adminDestructiveSpec(ProcessClear, false),
 		requestStream,
 		adminStreamSpec(CompletionFeed),
@@ -138,6 +138,12 @@ func adminQuerySpec(id ID, openWorld bool) Spec {
 	}
 }
 
+func adminCLIQuerySpec(id ID, openWorld bool, path string) Spec {
+	spec := adminQuerySpec(id, openWorld)
+	spec.CLI = CLIBinding{CanonicalPath: path}
+	return spec
+}
+
 func adminStreamSpec(id ID) Spec {
 	spec := adminQuerySpec(id, false)
 	spec.Kind = KindStream
@@ -150,6 +156,12 @@ func adminMutationSpec(id ID, risk MutationRisk, openWorld bool) Spec {
 		Confirmation: ConfirmationPolicy{Mode: ConfirmationNone},
 		Effects:      SemanticEffects{Key: string(id), Destructive: risk == RiskDestructive, OpenWorld: openWorld},
 	}
+}
+
+func adminCLIMutationSpec(id ID, risk MutationRisk, openWorld bool, path string) Spec {
+	spec := adminMutationSpec(id, risk, openWorld)
+	spec.CLI = CLIBinding{CanonicalPath: path}
+	return spec
 }
 
 func adminDestructiveSpec(id ID, openWorld bool) Spec {

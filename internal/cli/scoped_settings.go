@@ -263,8 +263,8 @@ func integrationTypeSafeSettingsCommand() *cobra.Command {
 	prefix := "integrations.typesafe"
 	cmd := &cobra.Command{Use: "typesafe", Short: "Manage TypeSafe integration settings"}
 	cmd.AddCommand(
-		scopedToggleCommand("enable", "Enable TypeSafe integration", "TypeSafe integration enabled", prefix+".enabled", true),
-		scopedToggleCommand("disable", "Disable TypeSafe integration", "TypeSafe integration disabled", prefix+".enabled", false),
+		typeSafeToggleCommand(true),
+		typeSafeToggleCommand(false),
 		scopedValueCommand("model", "Set TypeSafe model", "TypeSafe model updated", prefix+".model"),
 		scopedValueCommand("timeout", "Set TypeSafe timeout in milliseconds", "TypeSafe timeout updated", prefix+".timeout_ms"),
 		typeSafeStatusCommand(),
@@ -337,6 +337,31 @@ func typeSafeStatusCommand() *cobra.Command {
 	}
 }
 
+func typeSafeToggleCommand(enabled bool) *cobra.Command {
+	action, message := "disable", "TypeSafe integration disabled"
+	if enabled {
+		action, message = "enable", "TypeSafe integration enabled"
+	}
+	return &cobra.Command{
+		Use: action, Short: strings.ToUpper(action[:1]) + action[1:] + " TypeSafe integration", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			service := application.NewTypeSafeService()
+			var status application.TypeSafeStatus
+			var err error
+			if enabled {
+				status, err = service.Enable(cmd.Context())
+			} else {
+				status, err = service.Disable(cmd.Context())
+			}
+			if err != nil {
+				return err
+			}
+			renderMutationSuccess(cmd, message, presentation.Field{Label: "state", Value: status.State})
+			return nil
+		},
+	}
+}
+
 func typeSafeProbeCommand() *cobra.Command {
 	return &cobra.Command{
 		Use: "probe", Short: "Probe TypeSafe model availability", Args: cobra.NoArgs,
@@ -397,11 +422,15 @@ func integrationModeSettingsCommand(name string) *cobra.Command {
 func integrationBinarySettingsCommand(name string) *cobra.Command {
 	prefix := "integrations." + name
 	cmd := &cobra.Command{Use: name, Short: "Manage " + name + " integration settings"}
-	cmd.AddCommand(
-		scopedToggleCommand("enable", "Enable "+name+" integration", name+" integration enabled", prefix+".enabled", true),
-		scopedToggleCommand("disable", "Disable "+name+" integration", name+" integration disabled", prefix+".enabled", false),
-		scopedValueCommand("path", "Set "+name+" executable path", name+" executable path updated", prefix+".path"),
-	)
+	if name == "rtk" {
+		cmd.AddCommand(rtkToggleCommand(true), rtkToggleCommand(false))
+	} else {
+		cmd.AddCommand(
+			scopedToggleCommand("enable", "Enable "+name+" integration", name+" integration enabled", prefix+".enabled", true),
+			scopedToggleCommand("disable", "Disable "+name+" integration", name+" integration disabled", prefix+".enabled", false),
+		)
+	}
+	cmd.AddCommand(scopedValueCommand("path", "Set "+name+" executable path", name+" executable path updated", prefix+".path"))
 	switch name {
 	case "rtk":
 		cmd.AddCommand(rtkStatusCommand(), rtkProbeCommand(), rtkInstallCommand())
@@ -410,6 +439,7 @@ func integrationBinarySettingsCommand(name string) *cobra.Command {
 			codeGraphStatusCommand(),
 			codeGraphProbeCommand(),
 			codeGraphInstallCommand(),
+			codeGraphWorkspaceGroupCommand(),
 			codeGraphWorkspaceCommand("init"),
 			codeGraphWorkspaceCommand("sync"),
 		)

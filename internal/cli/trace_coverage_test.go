@@ -32,6 +32,10 @@ func commandTraceContracts() map[string]commandTraceContract {
 		}
 	}
 	add(commandTraceTrivial, nil, "config", "doctor", "logs path", "version")
+	add(commandTraceTrivial, nil,
+		"instructions get", "instructions set", "tools list",
+		"execution list", "execution view", "process list", "process view", "workspace context",
+	)
 	add(commandTraceTrivial, nil, "prompt list", "prompt get", "prompt create", "prompt update", "prompt delete")
 	add(commandTraceStreaming, []string{"logs.snapshot.load.completed"}, "logs")
 	add(commandTraceStreaming, []string{"runtime.events.connect.completed", "logs.snapshot.load.completed"}, "logs follow")
@@ -83,7 +87,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceTrivial, nil,
 		"integration rtk status", "integration rtk probe", "integration rtk install",
 		"integration codegraph status", "integration codegraph probe", "integration codegraph install",
-		"integration codegraph init", "integration codegraph sync",
+		"integration codegraph init", "integration codegraph sync", "integration codegraph workspace status",
 	)
 	add(commandTraceTrivial, nil, "telemetry status", "telemetry show")
 	add(commandTraceInstrumented, []string{"setting.set.completed"}, "telemetry enable", "telemetry disable")
