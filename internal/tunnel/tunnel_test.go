@@ -574,3 +574,164 @@ func TestSyncManagementConfigDoesNotRestartRunningTunnel(t *testing.T) {
 		t.Fatalf("management sync restarted or failed to update tunnel: stopped=%t status=%+v config=%#v", stopped, client.Status(), client.Config())
 	}
 }
+
+func TestReconcileConvergesOneSingleTunnelClient(t *testing.T) {
+	runtime := &tools.Runtime{Registry: tools.NewRegistry()}
+	base := Config{ID: "tunnel_one", APIKey: "runtime-one", Admin: AdminConfig{Key: "admin-one", WorkspaceID: "ws_admin", Verified: true, ReadAccess: true}}
+	created := map[string][]*fakeBackend{}
+	client := newConfigured(base, runtime, func(cfg Config, _ sdkmcp.Transport) (backend, error) {
+		fake := newFakeBackend()
+		created[cfg.ID] = append(created[cfg.ID], fake)
+		return fake, nil
+	})
+
+	enabled := base
+	enabled.Enabled = true
+	firstMetadata := Metadata{ID: enabled.ID, Name: "One"}
+	if err := client.Reconcile(enabled, &firstMetadata, true); err != nil {
+		t.Fatal(err)
+	}
+	readyCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := client.WaitUntilReady(readyCtx); err != nil {
+		t.Fatal(err)
+	}
+	if len(created["tunnel_one"]) != 1 {
+		t.Fatalf("initial backend count=%d", len(created["tunnel_one"]))
+	}
+
+	managementOnly := enabled
+	managementOnly.Admin.WorkspaceID = "ws_other"
+	managementOnly.Admin.Verified = false
+	managementOnly.Admin.ReadAccess = false
+	if err := client.Reconcile(managementOnly, &firstMetadata, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(created["tunnel_one"]) != 1 {
+		t.Fatalf("management-only reconcile restarted tunnel: %d", len(created["tunnel_one"]))
+	}
+	snapshot := client.Snapshot()
+	if !snapshot.Configured || !snapshot.Status.Running || snapshot.Status.Admin.WorkspaceID != "ws_other" || snapshot.Status.Admin.Verified {
+		t.Fatalf("snapshot=%#v", snapshot)
+	}
+
+	next := managementOnly
+	next.ID = "tunnel_two"
+	next.APIKey = "runtime-two"
+	secondMetadata := Metadata{ID: next.ID, Name: "Two"}
+	if err := client.Reconcile(next, &secondMetadata, true); err != nil {
+		t.Fatal(err)
+	}
+	readyCtx2, cancel2 := context.WithTimeout(context.Background(), time.Second)
+	defer cancel2()
+	if err := client.WaitUntilReady(readyCtx2); err != nil {
+		t.Fatal(err)
+	}
+	if len(created["tunnel_one"]) != 1 || len(created["tunnel_two"]) != 1 {
+		t.Fatalf("backend generations one=%d two=%d", len(created["tunnel_one"]), len(created["tunnel_two"]))
+	}
+	created["tunnel_one"][0].mu.Lock()
+	firstStopped := created["tunnel_one"][0].stopped
+	created["tunnel_one"][0].mu.Unlock()
+	status := client.Status()
+	if !firstStopped || !status.Running || status.ID != "tunnel_two" || status.Metadata == nil || status.Metadata.Name != "Two" {
+		t.Fatalf("reconciled status=%#v firstStopped=%t", status, firstStopped)
+	}
+
+	disabled := next
+	disabled.Enabled = false
+	if err := client.Reconcile(disabled, &secondMetadata, true); err != nil {
+		t.Fatal(err)
+	}
+	if status = client.Status(); status.Running || status.Restarting || status.Enabled {
+		t.Fatalf("disabled reconcile=%#v", status)
+	}
+	if len(created["tunnel_two"]) != 1 {
+		t.Fatalf("disable created extra backend: %d", len(created["tunnel_two"]))
+	}
+}
+
+func TestReconcileRejectsMismatchedMetadataBeforeMutatingRuntime(t *testing.T) {
+	runtime := &tools.Runtime{Registry: tools.NewRegistry()}
+	cfg := Config{Enabled: true, ID: "tunnel_one", APIKey: "runtime-one"}
+	fake := newFakeBackend()
+	client := newConfigured(cfg, runtime, func(Config, sdkmcp.Transport) (backend, error) { return fake, nil })
+	if err := client.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Stop()
+	bad := Metadata{ID: "tunnel_other"}
+	if err := client.Reconcile(cfg, &bad, true); err == nil {
+		t.Fatal("mismatched metadata unexpectedly accepted")
+	}
+	fake.mu.Lock()
+	stopped := fake.stopped
+	fake.mu.Unlock()
+	if stopped || !client.Status().Running || client.Config() != cfg {
+		t.Fatalf("runtime mutated after rejected metadata: stopped=%t status=%#v config=%#v", stopped, client.Status(), client.Config())
+	}
+}
+
+func TestReconcileRollbackRestoresPreviousRuntimeAndMetadata(t *testing.T) {
+	runtime := &tools.Runtime{Registry: tools.NewRegistry()}
+	current := Config{Enabled: true, ID: "tunnel_old", APIKey: "old-secret"}
+	next := Config{Enabled: true, ID: "tunnel_new", APIKey: "new-secret"}
+	oldMetadata := Metadata{ID: current.ID, Name: "Old"}
+	created := map[string][]*fakeBackend{}
+	client := newConfigured(current, runtime, func(cfg Config, _ sdkmcp.Transport) (backend, error) {
+		fake := newFakeBackend()
+		if cfg.ID == next.ID {
+			fake.startErr = errors.New("candidate failed")
+		}
+		created[cfg.ID] = append(created[cfg.ID], fake)
+		return fake, nil
+	})
+	if err := client.SeedMetadata(oldMetadata); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Start(); err != nil {
+		t.Fatal(err)
+	}
+	newMetadata := Metadata{ID: next.ID, Name: "New"}
+	if err := client.Reconcile(next, &newMetadata, true); err == nil {
+		t.Fatal("candidate failure unexpectedly succeeded")
+	}
+	status := client.Status()
+	if client.Config() != current || !status.Running || status.ID != current.ID || status.Metadata == nil || status.Metadata.Name != oldMetadata.Name {
+		t.Fatalf("rollback state config=%#v status=%#v", client.Config(), status)
+	}
+	if len(created[current.ID]) != 2 || len(created[next.ID]) != 1 {
+		t.Fatalf("backend generations old=%d new=%d", len(created[current.ID]), len(created[next.ID]))
+	}
+	defer client.Stop()
+}
+
+func TestStatusProjectionSeparatesConfiguredAndDerivedState(t *testing.T) {
+	cfg := Config{
+		Enabled: true, ID: "tunnel_one", APIKey: "runtime-secret",
+		Admin: AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin", Verified: true, ReadAccess: true, ManageAccess: true},
+	}
+	metadata := Metadata{ID: cfg.ID, Name: "Persisted"}
+	status := StatusFromConfig(cfg, &metadata)
+	metadata.Name = "mutated"
+	if status.Provider != ProviderOpenAI || status.Running || status.Ready || status.Restarting {
+		t.Fatalf("configured projection invented runtime state: %#v", status)
+	}
+	if !status.Enabled || status.ID != cfg.ID || !status.Admin.Configured || !status.Admin.Verified || status.Metadata == nil || status.Metadata.Name != "Persisted" {
+		t.Fatalf("configured projection=%#v", status)
+	}
+}
+
+func TestClearRuntimeConfigPreservesManagementAuthority(t *testing.T) {
+	cfg := Config{
+		Enabled: true, ID: "tunnel_one", APIKey: "runtime-secret", OrganizationID: "org_runtime", ControlPlaneBaseURL: "https://api.openai.com",
+		Admin: AdminConfig{Enabled: true, EnabledSet: true, Key: "admin-secret", OrganizationID: "org_admin", Verified: true, ReadAccess: true, ManageAccess: true},
+	}
+	cleared := ClearRuntimeConfig(cfg)
+	if cleared.Enabled || cleared.ID != "" || cleared.APIKey != "" || cleared.OrganizationID != "" {
+		t.Fatalf("runtime config not cleared: %#v", cleared)
+	}
+	if cleared.Admin != cfg.Admin || cleared.ControlPlaneBaseURL != cfg.ControlPlaneBaseURL {
+		t.Fatalf("management authority changed during runtime clear: before=%#v after=%#v", cfg, cleared)
+	}
+}

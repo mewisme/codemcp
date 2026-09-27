@@ -19,6 +19,7 @@ import (
 	"go.mewis.me/codemcp/internal/notification"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/tools"
+	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -215,6 +216,57 @@ func TestReloadConfigSwitchesMCPHTTPRuntime(t *testing.T) {
 	}
 	if app.MCP == nil || app.MCP.Server == nil || app.MCP.Server.Tools != app.Tools {
 		t.Fatal("MCP HTTP runtime was not restored with shared tools")
+	}
+}
+
+func TestReloadConfigReconcilesExistingSingleTunnelClient(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	cfg := config.Default()
+	cfg.Auth.MCPEnabled = false
+	cfg.Auth.AdminEnabled = false
+	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.Tunnel.Enabled = false
+	cfg.Tunnel.ID = "tunnel_old"
+	cfg.Tunnel.APIKey = "runtime-old"
+	app, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := app.Tunnel
+	if original == nil {
+		t.Fatal("single tunnel client was not initialized")
+	}
+
+	next := cfg
+	next.Tunnel.ID = "tunnel_new"
+	next.Tunnel.APIKey = "runtime-new"
+	next.Tunnel.Admin = tunnel.AdminConfig{
+		Key: "admin-secret", WorkspaceID: "ws_admin",
+		Verified: true, ReadAccess: true, ManageAccess: true,
+	}
+	metadata := tunnel.Metadata{ID: next.Tunnel.ID, Name: "Selected"}
+	if _, err := config.SaveTunnelMetadata(metadata); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := app.ReloadConfig(next); err != nil {
+		t.Fatal(err)
+	}
+	if app.Tunnel != original {
+		t.Fatal("reload replaced the canonical tunnel client")
+	}
+	if got := app.Tunnel.Config(); got != next.Tunnel {
+		t.Fatalf("reconciled config=%#v want=%#v", got, next.Tunnel)
+	}
+	snapshot := app.Tunnel.Snapshot()
+	if !snapshot.Configured || snapshot.Status.Running || snapshot.Status.ID != next.Tunnel.ID {
+		t.Fatalf("reconciled snapshot=%#v", snapshot)
+	}
+	if snapshot.Status.Metadata == nil || snapshot.Status.Metadata.ID != next.Tunnel.ID || snapshot.Status.Metadata.Name != metadata.Name {
+		t.Fatalf("cached metadata was not reconciled: %#v", snapshot.Status.Metadata)
+	}
+	if !snapshot.Status.Admin.Verified || !snapshot.Status.Admin.ReadAccess || !snapshot.Status.Admin.ManageAccess {
+		t.Fatalf("derived admin state was not projected from canonical config: %#v", snapshot.Status.Admin)
 	}
 }
 

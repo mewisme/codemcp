@@ -114,6 +114,11 @@ type Status struct {
 	Admin               AdminState `json:"admin"`
 }
 
+type RuntimeSnapshot struct {
+	Configured bool   `json:"configured"`
+	Status     Status `json:"status"`
+}
+
 type Metadata struct {
 	ID              string    `json:"id"`
 	Name            string    `json:"name"`
@@ -477,6 +482,31 @@ func Configured(cfg Config) bool {
 	return strings.TrimSpace(cfg.ID) != "" && strings.TrimSpace(cfg.APIKey) != ""
 }
 
+func ClearRuntimeConfig(cfg Config) Config {
+	cfg.Enabled = false
+	cfg.ID = ""
+	cfg.APIKey = ""
+	cfg.OrganizationID = ""
+	return cfg
+}
+
+func StatusFromConfig(cfg Config, metadata *Metadata) Status {
+	var copied *Metadata
+	if metadata != nil {
+		value := cloneMetadata(*metadata)
+		copied = &value
+	}
+	return Status{
+		Provider:            ProviderOpenAI,
+		Enabled:             cfg.Enabled,
+		ID:                  cfg.ID,
+		ControlPlaneBaseURL: cfg.ControlPlaneBaseURL,
+		OrganizationID:      cfg.OrganizationID,
+		Metadata:            copied,
+		Admin:               AdminStateFromConfig(cfg),
+	}
+}
+
 func RuntimeConfigEqual(left, right Config) bool {
 	left.Admin = AdminConfig{}
 	right.Admin = AdminConfig{}
@@ -493,6 +523,96 @@ func (c *Client) SyncManagementConfig(cfg Config) error {
 		return errors.New("cannot sync management config when runtime tunnel configuration differs")
 	}
 	c.config.Admin = cfg.Admin
+	return nil
+}
+
+func (c *Client) Reconcile(cfg Config, metadata *Metadata, runtimeActive bool) error {
+	if c == nil {
+		return errors.New("tunnel client is unavailable")
+	}
+	if err := ValidateConfig(cfg); err != nil {
+		return err
+	}
+	if metadata != nil {
+		if strings.TrimSpace(metadata.ID) == "" || strings.TrimSpace(metadata.ID) != strings.TrimSpace(cfg.ID) {
+			return errors.New("tunnel metadata does not match configured tunnel id")
+		}
+	}
+
+	c.reconfigureMu.Lock()
+	defer c.reconfigureMu.Unlock()
+
+	current := c.Config()
+	status := c.Status()
+	if !RuntimeConfigEqual(current, cfg) {
+		if runtimeActive {
+			return c.reconcileRunningConfig(cfg, metadata)
+		}
+		if status.Running || status.Restarting {
+			if err := c.Stop(); err != nil {
+				return err
+			}
+		}
+		if err := c.Configure(cfg); err != nil {
+			return err
+		}
+		if metadata != nil {
+			return c.SeedMetadata(*metadata)
+		}
+		return nil
+	}
+
+	if err := c.SyncManagementConfig(cfg); err != nil {
+		return err
+	}
+	if metadata != nil {
+		if err := c.SeedMetadata(*metadata); err != nil {
+			return err
+		}
+	}
+	status = c.Status()
+	shouldRun := runtimeActive && cfg.Enabled
+	switch {
+	case shouldRun && !status.Running && !status.Restarting:
+		return c.Start()
+	case !shouldRun && (status.Running || status.Restarting):
+		return c.Stop()
+	default:
+		return nil
+	}
+}
+
+func (c *Client) reconcileRunningConfig(cfg Config, metadata *Metadata) error {
+	current := c.Config()
+	status := c.Status()
+	wasRunning := status.Running || status.Restarting
+	previousMetadata := status.Metadata
+	if err := c.Stop(); err != nil {
+		return err
+	}
+	rollback := func(cause error) error {
+		rollbackErr := c.Configure(current)
+		if previousMetadata != nil {
+			rollbackErr = errors.Join(rollbackErr, c.SeedMetadata(*previousMetadata))
+		}
+		if wasRunning {
+			rollbackErr = errors.Join(rollbackErr, c.Start())
+		}
+		return errors.Join(cause, rollbackErr)
+	}
+	if err := c.Configure(cfg); err != nil {
+		return rollback(err)
+	}
+	if metadata != nil {
+		if err := c.SeedMetadata(*metadata); err != nil {
+			return rollback(err)
+		}
+	}
+	if cfg.Enabled {
+		if err := c.Start(); err != nil {
+			return rollback(err)
+		}
+	}
 	return nil
 }
 
@@ -1092,6 +1212,19 @@ func waitRun(ctx context.Context, run *serverRun, fallback time.Duration) error 
 func (c *Client) Status() Status {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return c.statusLocked()
+}
+
+func (c *Client) Snapshot() RuntimeSnapshot {
+	if c == nil {
+		return RuntimeSnapshot{Status: Status{Provider: ProviderOpenAI}}
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return RuntimeSnapshot{Configured: Configured(c.config), Status: c.statusLocked()}
+}
+
+func (c *Client) statusLocked() Status {
 	var metadata *Metadata
 	if c.metadata != nil {
 		value := cloneMetadata(*c.metadata)

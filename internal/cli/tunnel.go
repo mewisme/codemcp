@@ -183,27 +183,23 @@ func tunnelCLIState(cfg tunnel.Config, status tunnel.Status, runtimeRunning bool
 
 func fetchTunnelStatus(ctx context.Context, cfg tunnel.Config) tunnel.Status {
 	span := tracepkg.Start(ctx, "STATUS", "status.tunnel.fetch", "Fetching tunnel status and cached metadata", tracepkg.String("tunnel_id", strings.TrimSpace(cfg.ID)), tracepkg.Bool("enabled", cfg.Enabled), tracepkg.Bool("configured", tunnel.Configured(cfg)))
-	client := tunnel.NewConfigured(cfg, nil)
 	if strings.TrimSpace(cfg.ID) == "" {
-		status := client.Status()
+		status := tunnel.StatusFromConfig(cfg, nil)
 		span.EndMessage("Tunnel status fetched", tracepkg.Bool("metadata_loaded", false), tracepkg.Bool("running", status.Running), tracepkg.Bool("ready", status.Ready))
 		return status
 	}
 	metadata, err := config.LoadTunnelMetadata(cfg.ID)
 	if err == nil {
-		if seedErr := client.SeedMetadata(metadata); seedErr != nil {
-			status := client.Status()
-			status.MetadataError = seedErr.Error()
-			span.FailMessage("Tunnel cached metadata seed failed", seedErr, tracepkg.Bool("metadata_loaded", true))
-			return status
-		}
+		status := tunnel.StatusFromConfig(cfg, &metadata)
+		span.EndMessage("Tunnel status fetched", tracepkg.Bool("metadata_loaded", true), tracepkg.Bool("metadata_missing", false), tracepkg.Bool("running", status.Running), tracepkg.Bool("ready", status.Ready))
+		return status
 	} else if !errors.Is(err, os.ErrNotExist) {
-		status := client.Status()
+		status := tunnel.StatusFromConfig(cfg, nil)
 		status.MetadataError = err.Error()
 		span.FailMessage("Tunnel cached metadata load failed", err, tracepkg.Bool("metadata_loaded", false))
 		return status
 	}
-	status := client.Status()
+	status := tunnel.StatusFromConfig(cfg, nil)
 	span.EndMessage("Tunnel status fetched", tracepkg.Bool("metadata_loaded", err == nil), tracepkg.Bool("metadata_missing", errors.Is(err, os.ErrNotExist)), tracepkg.Bool("running", status.Running), tracepkg.Bool("ready", status.Ready))
 	return status
 }

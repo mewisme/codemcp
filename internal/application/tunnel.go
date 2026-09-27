@@ -81,11 +81,11 @@ func TunnelStatus() (TunnelDashboard, error) {
 	if err != nil {
 		return TunnelDashboard{}, err
 	}
-	client := tunnel.NewConfigured(cfg.Tunnel, nil)
-	if metadata, err := config.LoadTunnelMetadata(cfg.Tunnel.ID); err == nil {
-		_ = client.SeedMetadata(metadata)
+	var metadata *tunnel.Metadata
+	if cached, err := config.LoadTunnelMetadata(cfg.Tunnel.ID); err == nil {
+		metadata = &cached
 	}
-	return TunnelDashboard{Config: cfg.Tunnel, Status: client.Status(), MCPHTTPEnabled: cfg.Server.Enabled}, nil
+	return TunnelDashboard{Config: cfg.Tunnel, Status: tunnel.StatusFromConfig(cfg.Tunnel, metadata), MCPHTTPEnabled: cfg.Server.Enabled}, nil
 }
 
 func ConfigureTunnelRuntime(ctx context.Context, input TunnelRuntimeInput) (TunnelDashboard, error) {
@@ -511,10 +511,7 @@ func DeleteManagedTunnel(ctx context.Context, id string, clearConfig bool) (Mana
 	var clearedConfig config.Config
 	if clearConfigured {
 		clearedConfig = cfg
-		clearedConfig.Tunnel.Enabled = false
-		clearedConfig.Tunnel.ID = ""
-		clearedConfig.Tunnel.APIKey = ""
-		clearedConfig.Tunnel.OrganizationID = ""
+		clearedConfig.Tunnel = tunnel.ClearRuntimeConfig(clearedConfig.Tunnel)
 		if err := config.Validate(clearedConfig); err != nil {
 			return ManagedTunnelResult{}, err
 		}
