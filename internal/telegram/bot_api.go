@@ -209,6 +209,76 @@ func (client *apiClient) AnswerCallback(ctx context.Context, callbackID, text st
 	return classifyTransportError(err)
 }
 
+func (client *apiClient) SetCommands(ctx context.Context, commands []Command) error {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return errors.New("telegram bot transport is unavailable")
+	}
+	values := make([]models.BotCommand, 0, len(commands))
+	for _, command := range commands {
+		name, description := strings.TrimSpace(command.Name), strings.TrimSpace(command.Description)
+		if name == "" || description == "" {
+			continue
+		}
+		values = append(values, models.BotCommand{Command: name, Description: description})
+	}
+	if len(values) == 0 {
+		return errors.New("telegram command registry is empty")
+	}
+	_, err := client.bot.SetMyCommands(nonNilContext(ctx), &telegrambot.SetMyCommandsParams{Commands: values})
+	return classifyTransportError(err)
+}
+
+func (client *apiClient) SetChatMenuButton(ctx context.Context, chatID int64, button MenuButton) error {
+	if client == nil || client.initErr != nil || client.bot == nil || chatID <= 0 {
+		return errors.New("telegram bot transport is unavailable")
+	}
+	var value models.InputMenuButton
+	switch button.Type {
+	case MenuButtonCommands:
+		value = models.MenuButtonCommands{Type: models.MenuButtonTypeCommands}
+	case MenuButtonDefault:
+		value = models.MenuButtonDefault{Type: models.MenuButtonTypeDefault}
+	default:
+		return errors.New("unsupported telegram chat menu button")
+	}
+	_, err := client.bot.SetChatMenuButton(nonNilContext(ctx), &telegrambot.SetChatMenuButtonParams{ChatID: chatID, MenuButton: value})
+	return classifyTransportError(err)
+}
+
+func (client *apiClient) GetChatMenuButton(ctx context.Context, chatID int64) (MenuButton, error) {
+	if client == nil || client.initErr != nil || client.bot == nil || chatID <= 0 {
+		return MenuButton{}, errors.New("telegram bot transport is unavailable")
+	}
+	value, err := client.bot.GetChatMenuButton(nonNilContext(ctx), &telegrambot.GetChatMenuButtonParams{ChatID: chatID})
+	if err != nil {
+		return MenuButton{}, classifyTransportError(err)
+	}
+	switch value.Type {
+	case models.MenuButtonTypeCommands:
+		return MenuButton{Type: MenuButtonCommands}, nil
+	case models.MenuButtonTypeDefault:
+		return MenuButton{Type: MenuButtonDefault}, nil
+	case models.MenuButtonTypeWebApp:
+		return MenuButton{}, errors.New("telegram chat menu unexpectedly uses WebApp mode")
+	default:
+		return MenuButton{}, errors.New("telegram chat menu type is unsupported")
+	}
+}
+
+func (client *apiClient) DeleteMessage(ctx context.Context, chatID, messageID int64) error {
+	if client == nil || client.initErr != nil || client.bot == nil || chatID <= 0 || messageID <= 0 || messageID > int64(^uint(0)>>1) {
+		return errors.New("telegram bot transport is unavailable")
+	}
+	deleted, err := client.bot.DeleteMessage(nonNilContext(ctx), &telegrambot.DeleteMessageParams{ChatID: chatID, MessageID: int(messageID)})
+	if err != nil {
+		return classifyTransportError(err)
+	}
+	if !deleted {
+		return errors.New("telegram message was not deleted")
+	}
+	return nil
+}
+
 func (client *apiClient) StartUpdates(ctx context.Context, initialOffset int64, handler Handler, onPoll func(pollEvent)) error {
 	if client == nil || client.initErr != nil {
 		return errors.New("telegram bot transport is unavailable")
@@ -260,15 +330,50 @@ func validateTelegramFileSize(size int64) error {
 	return nil
 }
 
+type keyboardCapabilities struct {
+	Styles   bool
+	Disabled bool
+	CopyText bool
+	WebApp   bool
+}
+
+var nativeKeyboardCapabilities = keyboardCapabilities{Styles: true, Disabled: true, CopyText: true, WebApp: true}
+
 func screenKeyboard(rows [][]Button) models.InlineKeyboardMarkup {
+	return screenKeyboardWithCapabilities(rows, nativeKeyboardCapabilities)
+}
+
+func screenKeyboardWithCapabilities(rows [][]Button, capabilities keyboardCapabilities) models.InlineKeyboardMarkup {
 	keyboard := make([][]models.InlineKeyboardButton, 0, len(rows))
 	for _, row := range rows {
 		buttons := make([]models.InlineKeyboardButton, 0, len(row))
 		for _, button := range row {
-			if button.Disabled || strings.TrimSpace(button.Text) == "" || button.CallbackData == "" && button.URL == "" {
+			if strings.TrimSpace(button.Text) == "" {
 				continue
 			}
-			buttons = append(buttons, models.InlineKeyboardButton{Text: button.Text, CallbackData: button.CallbackData, URL: button.URL})
+			if button.Disabled && !capabilities.Disabled {
+				continue
+			}
+			if button.CopyText != "" && !capabilities.CopyText {
+				continue
+			}
+			if button.WebAppURL != "" && !capabilities.WebApp {
+				continue
+			}
+			item := models.InlineKeyboardButton{Text: button.Text, CallbackData: button.CallbackData, URL: button.URL}
+			if capabilities.Styles {
+				item.Style = string(semanticButtonStyle(button))
+			}
+			if button.CopyText != "" {
+				item.CopyText = &models.CopyTextButton{Text: button.CopyText}
+			}
+			if button.WebAppURL != "" {
+				item.WebApp = &models.WebAppInfo{URL: button.WebAppURL}
+			}
+			if button.Disabled {
+				item.Disabled = &models.DisabledButton{}
+			}
+			buttons = append(buttons, item)
 		}
 		if len(buttons) > 0 {
 			keyboard = append(keyboard, buttons)

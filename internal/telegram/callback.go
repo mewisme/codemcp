@@ -22,6 +22,11 @@ const (
 	CallbackOpen    CallbackAction = "o"
 	CallbackBack    CallbackAction = "b"
 	CallbackConfirm CallbackAction = "c"
+	CallbackHome    CallbackAction = "h"
+	CallbackRefresh CallbackAction = "r"
+	CallbackRetry   CallbackAction = "y"
+	CallbackCancel  CallbackAction = "x"
+	CallbackClose   CallbackAction = "q"
 )
 
 type CallbackRef struct {
@@ -72,7 +77,7 @@ func (codec *CallbackCodec) Decode(value string) (CallbackRef, error) {
 	}
 	action := CallbackAction(parts[1])
 	switch action {
-	case CallbackOpen, CallbackBack, CallbackConfirm:
+	case CallbackOpen, CallbackBack, CallbackConfirm, CallbackHome, CallbackRefresh, CallbackRetry, CallbackCancel, CallbackClose:
 	default:
 		return CallbackRef{}, errors.New("unsupported telegram callback action")
 	}

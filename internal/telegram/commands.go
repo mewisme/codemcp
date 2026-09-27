@@ -6,6 +6,17 @@ type Command struct {
 	Route       Route
 }
 
+type MenuButtonType string
+
+const (
+	MenuButtonCommands MenuButtonType = "commands"
+	MenuButtonDefault  MenuButtonType = "default"
+)
+
+type MenuButton struct {
+	Type MenuButtonType
+}
+
 var commandRegistry = []Command{
 	{Name: "start", Description: "Open CodeMCP home", Route: RouteHome},
 	{Name: "home", Description: "Open CodeMCP home", Route: RouteHome},

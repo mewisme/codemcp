@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -27,6 +28,33 @@ type fakeAPI struct {
 	sent       []int64
 	sendErr    error
 	successes  chan struct{}
+}
+
+type navigationFakeAPI struct {
+	*fakeAPI
+	commands []Command
+	menus    map[int64]MenuButton
+}
+
+func (api *navigationFakeAPI) SetCommands(_ context.Context, commands []Command) error {
+	api.commands = append([]Command(nil), commands...)
+	return nil
+}
+
+func (api *navigationFakeAPI) SetChatMenuButton(_ context.Context, chatID int64, button MenuButton) error {
+	if api.menus == nil {
+		api.menus = map[int64]MenuButton{}
+	}
+	api.menus[chatID] = button
+	return nil
+}
+
+func (api *navigationFakeAPI) GetChatMenuButton(_ context.Context, chatID int64) (MenuButton, error) {
+	button, ok := api.menus[chatID]
+	if !ok {
+		return MenuButton{}, errors.New("missing menu button")
+	}
+	return button, nil
 }
 
 func (api *fakeAPI) GetMe(context.Context) (User, error) {
@@ -306,6 +334,40 @@ func TestRuntimeBlockedRecipientDoesNotCrashPolling(t *testing.T) {
 	health := runtime.Health()
 	if !health.Running || !health.PollingHealthy || health.Reconnecting {
 		t.Fatalf("blocked delivery changed polling health=%#v", health)
+	}
+}
+
+func TestRuntimeReconcilesCommandRegistryAndPrivateMenuButtons(t *testing.T) {
+	root := t.TempDir()
+	if err := SetToken(root, "123456:test-token"); err != nil {
+		t.Fatal(err)
+	}
+	api := &navigationFakeAPI{fakeAPI: &fakeAPI{results: []fakePollResult{{updates: nil}}}, menus: map[int64]MenuButton{}}
+	runtime := NewRuntime(Options{
+		Root: root, Factory: func(string) API { return api }, PollTimeout: time.Millisecond,
+		ReconnectDelay: func(int) time.Duration { return time.Millisecond }, StopTimeout: 100 * time.Millisecond,
+	})
+	defer runtime.Stop()
+	if err := runtime.Reconcile(t.Context(), config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42, 43}}); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(api.commands, Commands()) {
+		t.Fatalf("published commands=%#v want=%#v", api.commands, Commands())
+	}
+	for _, userID := range []int64{42, 43} {
+		if button := api.menus[userID]; button.Type != MenuButtonCommands {
+			t.Fatalf("menu for %d=%#v", userID, button)
+		}
+	}
+	if err := runtime.SetChatMenuButton(t.Context(), 99, MenuButton{Type: MenuButtonDefault}); err == nil {
+		t.Fatal("unauthorized user changed Telegram chat menu")
+	}
+	if err := runtime.SetChatMenuButton(t.Context(), 42, MenuButton{Type: MenuButtonDefault}); err != nil {
+		t.Fatal(err)
+	}
+	button, err := runtime.GetChatMenuButton(t.Context(), 42)
+	if err != nil || button.Type != MenuButtonDefault {
+		t.Fatalf("authorized menu=%#v err=%v", button, err)
 	}
 }
 

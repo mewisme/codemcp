@@ -67,3 +67,13 @@ type ScreenAPI interface {
 	EditScreen(context.Context, int64, int64, Screen) error
 	AnswerCallback(context.Context, string, string, bool) error
 }
+
+type NavigationAPI interface {
+	SetCommands(context.Context, []Command) error
+	SetChatMenuButton(context.Context, int64, MenuButton) error
+	GetChatMenuButton(context.Context, int64) (MenuButton, error)
+}
+
+type MessageDismissAPI interface {
+	DeleteMessage(context.Context, int64, int64) error
+}

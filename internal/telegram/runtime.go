@@ -17,12 +17,13 @@ import (
 )
 
 const (
-	defaultPollTimeout     = 30 * time.Second
-	defaultReconnectMin    = 500 * time.Millisecond
-	defaultReconnectMax    = 30 * time.Second
-	defaultReconnectJitter = 250 * time.Millisecond
-	defaultStopTimeout     = time.Second
-	maxUpdatesPerPoll      = 100
+	defaultPollTimeout       = 30 * time.Second
+	defaultReconnectMin      = 500 * time.Millisecond
+	defaultReconnectMax      = 30 * time.Second
+	defaultReconnectJitter   = 250 * time.Millisecond
+	defaultStopTimeout       = time.Second
+	defaultNavigationTimeout = 5 * time.Second
+	maxUpdatesPerPoll        = 100
 )
 
 type Handler func(context.Context, Update)
@@ -151,16 +152,19 @@ func (runtime *Runtime) PromoteSetup(cfg config.TelegramConfig) error {
 		return err
 	}
 	runtime.mu.Lock()
-	defer runtime.mu.Unlock()
 	if runtime.cancel == nil || !runtime.setupMode {
+		runtime.mu.Unlock()
 		return errors.New("telegram setup runtime is not active")
 	}
+	api := runtime.api
 	runtime.config = cfg
 	runtime.setupMode = false
 	runtime.fingerprint = runtimeFingerprint(token, cfg, false)
 	runtime.health.Enabled = true
 	runtime.health.AuthorizationConfigured = true
 	runtime.health.SetupMode = false
+	runtime.mu.Unlock()
+	runtime.reconcileNavigationBounded(context.Background(), api, cfg)
 	return nil
 }
 
@@ -232,6 +236,9 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 	runtime.fingerprint = fingerprint
 	runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: true, AuthorizationConfigured: authorizationConfigured, Running: true, SetupMode: setupMode}
 	runtime.mu.Unlock()
+	if !setupMode {
+		runtime.reconcileNavigationBounded(runCtx, api, cfg)
+	}
 	go runtime.supervise(runCtx, done, api)
 	return nil
 }
@@ -310,6 +317,108 @@ func (runtime *Runtime) AnswerCallback(ctx context.Context, callbackID, text str
 		return errors.New("telegram rich screen API is unavailable")
 	}
 	return rich.AnswerCallback(ctx, callbackID, text, alert)
+}
+
+func (runtime *Runtime) DeleteMessage(ctx context.Context, chatID, messageID int64) error {
+	if runtime == nil || chatID <= 0 || messageID <= 0 {
+		return errors.New("telegram runtime is unavailable")
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	available := runtime.health.Running && !runtime.health.SetupMode
+	runtime.mu.RUnlock()
+	if !available || api == nil {
+		return errors.New("telegram runtime is unavailable")
+	}
+	dismiss, ok := api.(MessageDismissAPI)
+	if !ok {
+		return errors.New("telegram message dismissal is unavailable")
+	}
+	return dismiss.DeleteMessage(ctx, chatID, messageID)
+}
+
+func (runtime *Runtime) SetChatMenuButton(ctx context.Context, userID int64, button MenuButton) error {
+	navigation, err := runtime.authorizedNavigationAPI(userID)
+	if err != nil {
+		return err
+	}
+	if button.Type != MenuButtonCommands && button.Type != MenuButtonDefault {
+		return errors.New("unsupported telegram chat menu button")
+	}
+	return navigation.SetChatMenuButton(ctx, userID, button)
+}
+
+func (runtime *Runtime) GetChatMenuButton(ctx context.Context, userID int64) (MenuButton, error) {
+	navigation, err := runtime.authorizedNavigationAPI(userID)
+	if err != nil {
+		return MenuButton{}, err
+	}
+	return navigation.GetChatMenuButton(ctx, userID)
+}
+
+func (runtime *Runtime) authorizedNavigationAPI(userID int64) (NavigationAPI, error) {
+	if runtime == nil || userID <= 0 {
+		return nil, errors.New("telegram authorized private user is required")
+	}
+	runtime.mu.RLock()
+	api := runtime.api
+	cfg := runtime.config
+	available := runtime.health.Running && runtime.health.AuthorizationConfigured && !runtime.health.SetupMode
+	runtime.mu.RUnlock()
+	if !available || api == nil || !containsUserID(cfg.AllowedUserIDs, userID) {
+		return nil, errors.New("telegram authorized private user is required")
+	}
+	navigation, ok := api.(NavigationAPI)
+	if !ok {
+		return nil, errors.New("telegram bot menu API is unavailable")
+	}
+	return navigation, nil
+}
+
+func (runtime *Runtime) reconcileNavigationBounded(ctx context.Context, api API, cfg config.TelegramConfig) {
+	if api == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, defaultNavigationTimeout)
+	defer cancel()
+	if err := reconcileNavigation(ctx, api, cfg); err != nil {
+		runtime.mu.Lock()
+		if runtime.health.Running && !runtime.health.SetupMode {
+			runtime.health.LastError = "telegram command menu reconciliation failed"
+		}
+		runtime.mu.Unlock()
+	}
+}
+
+func reconcileNavigation(ctx context.Context, api API, cfg config.TelegramConfig) error {
+	navigation, ok := api.(NavigationAPI)
+	if !ok {
+		return nil
+	}
+	if err := navigation.SetCommands(ctx, Commands()); err != nil {
+		return err
+	}
+	for _, userID := range cfg.AllowedUserIDs {
+		if userID <= 0 {
+			continue
+		}
+		if err := navigation.SetChatMenuButton(ctx, userID, MenuButton{Type: MenuButtonCommands}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func containsUserID(values []int64, userID int64) bool {
+	for _, value := range values {
+		if value == userID {
+			return true
+		}
+	}
+	return false
 }
 
 func (runtime *Runtime) Stop() {

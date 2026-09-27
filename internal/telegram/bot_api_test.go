@@ -373,6 +373,72 @@ func TestBotAPIAdapterUsesTypedMessageEditAndCallbackMethods(t *testing.T) {
 	}
 }
 
+func TestBotAPIAdapterUsesTypedCommandMenuAndDeleteMethods(t *testing.T) {
+	type call struct {
+		method string
+		form   map[string]string
+	}
+	calls := make(chan call, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method := strings.ToLower(r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:])
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Errorf("parse %s form: %v", method, err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		form := map[string]string{}
+		for _, key := range []string{"commands", "chat_id", "menu_button", "message_id"} {
+			if value := r.FormValue(key); value != "" {
+				form[key] = value
+			}
+		}
+		calls <- call{method: method, form: form}
+		w.Header().Set("Content-Type", "application/json")
+		switch method {
+		case "getchatmenubutton":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": map[string]any{"type": "commands"}})
+		case "setmycommands", "setchatmenubutton", "deletemessage":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := newAPIClientWithOptions("123456:test-token", time.Second, server.URL, server.Client())
+	if err := client.SetCommands(t.Context(), Commands()); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SetChatMenuButton(t.Context(), 42, MenuButton{Type: MenuButtonCommands}); err != nil {
+		t.Fatal(err)
+	}
+	button, err := client.GetChatMenuButton(t.Context(), 42)
+	if err != nil || button.Type != MenuButtonCommands {
+		t.Fatalf("menu button=%#v err=%v", button, err)
+	}
+	if err := client.DeleteMessage(t.Context(), 42, 9); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := map[string]map[string]string{}
+	for range 4 {
+		item := <-calls
+		seen[item.method] = item.form
+	}
+	if !strings.Contains(seen["setmycommands"]["commands"], `"command":"status"`) || !strings.Contains(seen["setmycommands"]["commands"], `"command":"help"`) {
+		t.Fatalf("setMyCommands form=%#v", seen["setmycommands"])
+	}
+	if seen["setchatmenubutton"]["chat_id"] != "42" || !strings.Contains(seen["setchatmenubutton"]["menu_button"], `"type":"commands"`) || strings.Contains(seen["setchatmenubutton"]["menu_button"], "web_app") {
+		t.Fatalf("setChatMenuButton form=%#v", seen["setchatmenubutton"])
+	}
+	if seen["getchatmenubutton"]["chat_id"] != "42" {
+		t.Fatalf("getChatMenuButton form=%#v", seen["getchatmenubutton"])
+	}
+	if seen["deletemessage"]["chat_id"] != "42" || seen["deletemessage"]["message_id"] != "9" {
+		t.Fatalf("deleteMessage form=%#v", seen["deletemessage"])
+	}
+}
+
 func TestTelegramFileTransferBoundaryIsEnforcedBeforeTransport(t *testing.T) {
 	for _, size := range []int64{0, 1, MaxFileTransferBytes} {
 		if err := validateTelegramFileSize(size); err != nil {
