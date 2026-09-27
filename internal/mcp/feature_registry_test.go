@@ -87,7 +87,7 @@ func TestFeatureRegistryIsCanonicalAcrossProfilesAndSDKServers(t *testing.T) {
 	if !reflect.DeepEqual(base, openai) {
 		t.Fatalf("profile changed canonical feature descriptors: base=%#v openai=%#v", base, openai)
 	}
-	if len(base.Resources) != 5 || len(base.ResourceTemplates) != 4 || len(base.Prompts) != 1 || len(base.Skills) != 1 {
+	if len(base.Resources) != 5 || len(base.ResourceTemplates) != 4 || len(base.Prompts) != 1 || len(base.Skills) != 3 {
 		t.Fatalf("canonical feature descriptors=%#v", base)
 	}
 	direct := NewRuntimeWithProfile(runtime, BaseProfile())

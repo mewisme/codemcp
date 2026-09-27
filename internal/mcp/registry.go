@@ -102,6 +102,8 @@ type FeatureRegistry struct {
 	coreResourcesErr    error
 	corePromptsOnce     sync.Once
 	corePromptsErr      error
+	coreSkillsOnce      sync.Once
+	coreSkillsErr       error
 }
 
 func NewFeatureRegistry() *FeatureRegistry {
@@ -129,6 +131,9 @@ func FeatureRegistryForRuntime(runtime *tools.Runtime) *FeatureRegistry {
 	}
 	if err := ensureCorePrompts(registry, runtime); err != nil {
 		panic(fmt.Sprintf("register core MCP prompts: %v", err))
+	}
+	if err := ensureCoreSkills(registry, runtime); err != nil {
+		panic(fmt.Sprintf("register core MCP skills: %v", err))
 	}
 	return registry
 }
