@@ -33,6 +33,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"mcp":          "mcp stdio",
 		"notification": "notification desktop disable",
 		"permissions":  "permissions allow dir add",
+		"prompt":       "prompt list",
 		"request":      "request list",
 		"restart":      "restart",
 		"serve":        "serve",

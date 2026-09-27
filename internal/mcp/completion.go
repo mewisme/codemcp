@@ -41,6 +41,50 @@ func (e *FeatureExecutor) Complete(ctx context.Context, request CompletionReques
 	if e == nil || e.Registry == nil || e.Tools == nil {
 		return CompletionResult{}, NewError(ErrInternal, "completion runtime is unavailable")
 	}
+	if strings.TrimSpace(request.Ref.Type) == "ref/prompt" {
+		if request.Argument.Name == "workspace_id" {
+			values, err := e.visibleCompletionWorkspaceIDs(ctx)
+			if err != nil {
+				return CompletionResult{}, err
+			}
+			values = filterCompletionPrefix(values, request.Argument.Value)
+			if len(values) > maxCompletionValues {
+				return CompletionResult{Values: values[:maxCompletionValues], Total: len(values), HasMore: true}, nil
+			}
+			return CompletionResult{Values: values, Total: len(values)}, nil
+		}
+		params := map[string]any{}
+		if workspaceID, ok := request.Arguments["workspace_id"]; ok {
+			params["workspace_id"] = workspaceID
+		}
+		workspaceID, err := authorizedPromptWorkspace(ctx, e.Tools, e.BoundWorkspace, params)
+		if err != nil {
+			return CompletionResult{}, err
+		}
+		store, err := promptStoreFor(e.Tools, workspaceID)
+		if err != nil {
+			return CompletionResult{}, err
+		}
+		var values []string
+		switch request.Argument.Name {
+		case "name":
+			prompts, listErr := store.List()
+			if listErr != nil {
+				return CompletionResult{}, listErr
+			}
+			for _, prompt := range prompts {
+				values = append(values, prompt.Definition.Name)
+			}
+		default:
+			// Prompt argument content is free text; avoid guessing or leaking values.
+		}
+		values = filterCompletionPrefix(values, request.Argument.Value)
+		total := len(values)
+		if total > maxCompletionValues {
+			return CompletionResult{Values: values[:maxCompletionValues], Total: total, HasMore: true}, nil
+		}
+		return CompletionResult{Values: values, Total: total}, nil
+	}
 	if strings.TrimSpace(request.Ref.Type) != "ref/resource" {
 		return CompletionResult{Values: []string{}}, nil
 	}

@@ -32,6 +32,7 @@ func (a *App) Bootstrap() error {
 		a.Tools.SetConfigSetApprovalProvider(configProvider)
 		a.Tools.SetConfigSetApplyProvider(configProvider)
 		a.Tools.SetInstructionAuthoringProvider(application.NewAgentInstructionAuthoringProvider(a.Tools.Workspaces, a.Tools.InstructionChanges))
+		a.Tools.SetPromptProvider(application.NewAgentPromptProvider(a.Tools.Workspaces))
 		if a.Activity == nil {
 			a.Activity = activity.NewStream()
 		}

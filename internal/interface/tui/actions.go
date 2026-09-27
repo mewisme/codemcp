@@ -32,6 +32,7 @@ func defaultActionRegistry() *action.Registry {
 		navigationAction("app.go.logs-tools", "Tool Calls", Route{Kind: RouteLogsTools}, []string{"logs", "tools", "calls", "tool calls"}),
 		navigationAction("app.go.config", "Config", Route{Kind: RouteConfig}, []string{"config", "settings", "cfg"}, capability.ConfigPath, capability.ConfigGet),
 		navigationAction("app.go.instruction", "Instruction", Route{Kind: RouteInstruction}, []string{"instruction", "instructions", "global", "context", "rules", "sources"}),
+		navigationAction("app.go.prompts", "Prompts", Route{Kind: RoutePrompts}, []string{"prompt", "prompts", "template"}, capability.PromptList, capability.PromptGet, capability.PromptCreate, capability.PromptUpdate, capability.PromptDelete),
 		navigationAction("app.go.runtime", "Runtime", Route{Kind: RouteRuntime}, []string{"runtime", "status", "service"}, capability.AuthStatus),
 		navigationAction("app.go.about", "About", Route{Kind: RouteAbout}, []string{"about", "version", "build", "uptime"}, capability.VersionAbout),
 		navigationAction("app.go.guide", "Guide", Route{Kind: RouteGuide}, []string{"guide", "help", "docs", "documentation"}),

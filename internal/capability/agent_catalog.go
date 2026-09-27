@@ -48,6 +48,11 @@ const (
 	SkillLoad                       ID = "skill.load"
 	InstructionRuleCreate           ID = "instruction.rule.create"
 	InstructionSkillCreate          ID = "instruction.skill.create"
+	AgentPromptList                 ID = "agent.prompt.list"
+	AgentPromptGet                  ID = "agent.prompt.get"
+	AgentPromptCreate               ID = "agent.prompt.create"
+	AgentPromptUpdate               ID = "agent.prompt.update"
+	AgentPromptDelete               ID = "agent.prompt.delete"
 	RulesLoadPath                   ID = "rules.path.load"
 	MemoryRemember                  ID = "memory.remember"
 	MemoryGet                       ID = "memory.get"
@@ -122,6 +127,11 @@ var mcpToolBindings = map[ID][]string{
 	SkillLoad:                       {"load_skill"},
 	InstructionRuleCreate:           {"create_rule"},
 	InstructionSkillCreate:          {"create_skill"},
+	AgentPromptList:                 {"list_prompts"},
+	AgentPromptGet:                  {"get_prompt"},
+	AgentPromptCreate:               {"create_prompt"},
+	AgentPromptUpdate:               {"update_prompt"},
+	AgentPromptDelete:               {"delete_prompt"},
 	RulesLoadPath:                   {"load_path_rules"},
 	MemoryRemember:                  {"remember"},
 	MemoryGet:                       {"memory_get"},
@@ -191,6 +201,11 @@ func agentOnlySpecs() []Spec {
 		agentQuerySpec(SkillLoad, false),
 		agentMutationSpec(InstructionRuleCreate, RiskState, false),
 		agentMutationSpec(InstructionSkillCreate, RiskState, false),
+		agentQuerySpec(AgentPromptList, false),
+		agentQuerySpec(AgentPromptGet, false),
+		agentMutationSpec(AgentPromptCreate, RiskState, false),
+		agentMutationSpec(AgentPromptUpdate, RiskState, false),
+		agentMutationSpec(AgentPromptDelete, RiskDestructive, false),
 		agentQuerySpec(RulesLoadPath, false),
 		agentMutationSpec(MemoryRemember, RiskState, false),
 		agentQuerySpec(MemoryGet, false),

@@ -75,6 +75,7 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 		features.UnsubscribeResourceListChanges(resourceListSub)
 		return nil, err
 	}
+	installPromptProjection(server, featureExecutor)
 	resourceProjection := newSDKResourceProjectionState()
 	if err := installResourceProjection(server, featureExecutor, resourceProjection); err != nil {
 		features.UnsubscribeResourceListChanges(resourceListSub)

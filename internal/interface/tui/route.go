@@ -21,6 +21,7 @@ const (
 	RouteLogsTools   RouteKind = "logs-tools"
 	RouteConfig      RouteKind = "config"
 	RouteInstruction RouteKind = "instruction"
+	RoutePrompts     RouteKind = "prompts"
 	RouteRuntime     RouteKind = "runtime"
 	RouteAbout       RouteKind = "about"
 	RouteGuide       RouteKind = "guide"
@@ -489,6 +490,8 @@ func parseRouteKind(value string) (RouteKind, bool) {
 		return RouteConfig, true
 	case "instruction", "instructions", "instr":
 		return RouteInstruction, true
+	case "prompt", "prompts":
+		return RoutePrompts, true
 	case "runtime", "status":
 		return RouteRuntime, true
 	case "about", "version":
@@ -503,7 +506,7 @@ func parseRouteKind(value string) (RouteKind, bool) {
 func (route Route) Title() string {
 	base := map[RouteKind]string{
 		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "Upstreams", RouteTunnel: "Tunnel", RouteTunnels: "Managed Tunnels",
-		RouteRequests: "Requests", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RouteInstruction: "Instruction", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
+		RouteRequests: "Requests", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RouteInstruction: "Instruction", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
 	}[route.Kind]
 	if route.Kind == RouteRequests && route.Mode != "" {
 		base += " · " + routeSectionTitle(route.Mode)
@@ -649,6 +652,8 @@ func breadcrumbRootLabel(kind RouteKind) string {
 		return "Config"
 	case RouteInstruction:
 		return "Instruction"
+	case RoutePrompts:
+		return "Prompts"
 	case RouteRuntime:
 		return "Runtime"
 	case RouteAbout:

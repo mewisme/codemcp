@@ -100,6 +100,8 @@ type FeatureRegistry struct {
 	resourceListChanges *sequence.Stream[ResourceListChange]
 	coreResourcesOnce   sync.Once
 	coreResourcesErr    error
+	corePromptsOnce     sync.Once
+	corePromptsErr      error
 }
 
 func NewFeatureRegistry() *FeatureRegistry {
@@ -124,6 +126,9 @@ func FeatureRegistryForRuntime(runtime *tools.Runtime) *FeatureRegistry {
 	}
 	if err := ensureCoreResources(registry, runtime); err != nil {
 		panic(fmt.Sprintf("register core MCP resources: %v", err))
+	}
+	if err := ensureCorePrompts(registry, runtime); err != nil {
+		panic(fmt.Sprintf("register core MCP prompts: %v", err))
 	}
 	return registry
 }

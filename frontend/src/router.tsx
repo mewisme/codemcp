@@ -19,6 +19,7 @@ export const adminRoutes: RouteObject[] = [{
     { path: "overview", lazy: () => import("@/pages/overview").then((module) => ({ Component: module.OverviewPage })), handle: navHandle("overview") },
     { path: "workspaces", lazy: () => import("@/pages/workspaces").then((module) => ({ Component: module.WorkspacesPage })), handle: navHandle("workspaces") },
     { path: "instructions", lazy: () => import("@/pages/global-instructions").then((module) => ({ Component: module.GlobalInstructionsPage })), handle: navHandle("instructions") },
+    { path: "prompts", lazy: () => import("@/pages/prompts").then((module) => ({ Component: module.PromptsPage })), handle: navHandle("prompts") },
     { path: "workspaces/global", element: <Navigate replace to="/instructions" /> },
     {
       path: "workspaces/:workspaceID",

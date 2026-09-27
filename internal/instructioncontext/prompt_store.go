@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"go.mewis.me/codemcp/internal/configformat"
 	statepkg "go.mewis.me/codemcp/internal/state"
@@ -73,6 +74,8 @@ type PromptStore struct {
 	workspaceRoot string
 	workspacePath string
 }
+
+var promptStoreWriteMu sync.Mutex
 
 func NewPromptStore(workspaceRoot string) *PromptStore {
 	store := &PromptStore{globalRoot: filepath.Join(configformat.RootPath(), "prompts")}
@@ -216,6 +219,95 @@ func (s *PromptStore) Get(name string) (ScopedPrompt, error) {
 		return ScopedPrompt{}, fmt.Errorf("prompt %q not found", name)
 	}
 	return prompt, nil
+}
+
+// GetInScope reads one definition without applying workspace shadowing.
+func (s *PromptStore) GetInScope(scope PromptScope, name string) (ScopedPrompt, error) {
+	rootPath, err := s.scopeRoot(scope)
+	if err != nil {
+		return ScopedPrompt{}, err
+	}
+	if err := validatePromptIdentifier(name, maxPromptNameBytes, "prompt name"); err != nil {
+		return ScopedPrompt{}, err
+	}
+	prompt, found, err := loadPromptFile(rootPath, scope, name)
+	if err != nil {
+		return ScopedPrompt{}, err
+	}
+	if !found {
+		return ScopedPrompt{}, fmt.Errorf("prompt %q not found in %s scope: %w", name, scope, os.ErrNotExist)
+	}
+	return prompt, nil
+}
+
+func (s *PromptStore) scopeRoot(scope PromptScope) (string, error) {
+	if s == nil {
+		return "", errors.New("prompt store is unavailable")
+	}
+	switch scope {
+	case PromptScopeGlobal:
+		return s.globalRoot, nil
+	case PromptScopeWorkspace:
+		if s.workspaceRoot == "" {
+			return "", errors.New("workspace prompt scope requires a workspace root")
+		}
+		if err := validatePromptWorkspaceIdentity(s.workspacePath); err != nil {
+			return "", err
+		}
+		return s.workspaceRoot, nil
+	default:
+		return "", fmt.Errorf("unsupported prompt scope %q", scope)
+	}
+}
+
+// Put enforces create and update semantics at the same rooted file authority as Save.
+func (s *PromptStore) Put(scope PromptScope, mode string, value PromptDefinition) (ScopedPrompt, error) {
+	if mode != "create" && mode != "update" {
+		return ScopedPrompt{}, errors.New("prompt mode must be create or update")
+	}
+	promptStoreWriteMu.Lock()
+	defer promptStoreWriteMu.Unlock()
+	_, err := s.GetInScope(scope, value.Name)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return ScopedPrompt{}, err
+	}
+	if mode == "create" && err == nil {
+		return ScopedPrompt{}, fmt.Errorf("prompt %q already exists in %s scope", value.Name, scope)
+	}
+	if mode == "update" && errors.Is(err, os.ErrNotExist) {
+		return ScopedPrompt{}, err
+	}
+	return s.Save(scope, value)
+}
+
+// Delete removes an exact scoped definition, never a shadowed definition in another scope.
+func (s *PromptStore) Delete(scope PromptScope, name string) error {
+	promptStoreWriteMu.Lock()
+	defer promptStoreWriteMu.Unlock()
+	rootPath, err := s.scopeRoot(scope)
+	if err != nil {
+		return err
+	}
+	if err := validatePromptIdentifier(name, maxPromptNameBytes, "prompt name"); err != nil {
+		return err
+	}
+	root, exists, err := openStablePromptRoot(rootPath, false)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return os.ErrNotExist
+	}
+	defer root.Close()
+	filename := promptFilename(name)
+	info, err := root.Lstat(filename)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("prompt target is not a regular non-symlink file: %s", filename)
+	}
+	return root.Remove(filename)
 }
 
 func (s *PromptStore) Save(scope PromptScope, value PromptDefinition) (ScopedPrompt, error) {

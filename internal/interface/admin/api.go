@@ -105,6 +105,8 @@ func New(api API) http.Handler {
 
 	mux.HandleFunc("/api/config", api.handleConfig)
 	mux.HandleFunc("/api/instructions/global", api.handleGlobalInstructions)
+	mux.HandleFunc("/api/prompts", api.handlePrompts)
+	mux.HandleFunc("/api/prompts/{name}", api.handlePrompt)
 	mux.HandleFunc("/api/workspaces", api.handleWorkspaces)
 	mux.HandleFunc("/api/workspaces/", api.handleWorkspace)
 	mux.HandleFunc("/api/workspace-containers", api.handleWorkspaceContainers)

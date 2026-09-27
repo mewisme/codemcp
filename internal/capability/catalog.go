@@ -38,6 +38,11 @@ const (
 	ConfigMigrate            ID = "config.migrate"
 	ConfigMigrateSecrets     ID = "config.migrate.secrets"
 	ConfigVerify             ID = "config.verify"
+	PromptList               ID = "prompt.list"
+	PromptGet                ID = "prompt.get"
+	PromptCreate             ID = "prompt.create"
+	PromptUpdate             ID = "prompt.update"
+	PromptDelete             ID = "prompt.delete"
 	AuthMCPRotate            ID = "auth.mcp.rotate"
 	AuthMCPEnable            ID = "auth.mcp.enable"
 	AuthMCPDisable           ID = "auth.mcp.disable"
@@ -190,6 +195,11 @@ func buildSpecs() []Spec {
 		operatorSensitive(ConfigMigrate, "config migrate", false),
 		operatorSensitive(ConfigMigrateSecrets, "config migrate secrets", false),
 		operatorQuery(ConfigVerify, "config verify", "config validate"),
+		operatorQuery(PromptList, "prompt list"),
+		operatorQuery(PromptGet, "prompt get"),
+		operatorMutation(PromptCreate, "prompt create", RiskState, false),
+		operatorMutation(PromptUpdate, "prompt update", RiskState, false),
+		operatorDestructive(PromptDelete, "prompt delete", false),
 		operatorSensitive(AuthMCPRotate, "auth mcp create", false),
 		operatorSensitive(AuthMCPEnable, "auth mcp enable", false),
 		operatorSensitive(AuthMCPDisable, "auth mcp disable", false),

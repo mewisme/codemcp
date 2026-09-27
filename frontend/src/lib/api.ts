@@ -119,6 +119,14 @@ export type GlobalInstructions = {
   source_policy: Record<string, InstructionSourcePolicy>
   detected_sources: InstructionSource[]
 }
+export type PromptDefinition = {
+  version: number
+  name: string
+  description?: string
+  arguments?: { name: string; description?: string; required?: boolean }[]
+  messages: { role: "user" | "assistant"; content: { type: "text"; text: string } }[]
+}
+export type ScopedPrompt = { scope: "global" | "workspace"; definition: PromptDefinition }
 export type InstructionRule = {
   path: string
   source: string
@@ -562,6 +570,11 @@ export const adminApi = {
       }
     ),
   globalInstructions: () => api<GlobalInstructions>("/api/instructions/global"),
+  prompts: (workspaceID = "") => api<ScopedPrompt[]>(`/api/prompts?workspace_id=${encodeURIComponent(workspaceID)}`),
+  prompt: (name: string, workspaceID = "") => api<ScopedPrompt>(`/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`),
+  createPrompt: (scope: "global" | "workspace", workspaceID: string, definition: PromptDefinition) => api<ScopedPrompt>("/api/prompts", { method: "POST", body: JSON.stringify({ scope, workspace_id: workspaceID, definition }) }),
+  updatePrompt: (name: string, workspaceID: string, definition: PromptDefinition) => api<ScopedPrompt>(`/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`, { method: "PUT", body: JSON.stringify(definition) }),
+  deletePrompt: (name: string, workspaceID: string) => api<{ deleted: boolean }>(`/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`, { method: "DELETE" }),
   saveGlobalInstructions: (
     patch: Partial<
       Pick<GlobalInstructions, "context" | "rules" | "source_policy">

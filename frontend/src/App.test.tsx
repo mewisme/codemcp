@@ -59,6 +59,7 @@ describe("admin app runtime smoke", () => {
       workspaces: "Register workspace",
       instructions:
         "Manage global context, rules, and detected user-level instruction sources.",
+      prompts: "Global definitions are available to all workspaces; workspace definitions override names locally.",
       tools:
         "Inspect every tool exposed by the local runtime and enabled upstream servers, including schemas and behavioral hints.",
       upstreams: "Add Upstream",
@@ -431,6 +432,7 @@ async function mockFetch(input: RequestInfo | URL): Promise<Response> {
   const path = requestPath(input)
   if (path === "/api/health") return json({ ok: true, auth_enabled: true })
   if (path === "/api/workspaces") return json([])
+  if (path === "/api/prompts?workspace_id=") return json([])
   if (path === "/api/workspace-containers") return json([])
   if (path === "/api/instructions/global")
     return json({

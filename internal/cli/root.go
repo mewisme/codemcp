@@ -60,6 +60,7 @@ func newRootCommand() *cobra.Command {
 		configCommand(),
 		authCommand(),
 		workspaceCommand(),
+		promptCommand(),
 		upstreamCommand(),
 		mcpCommand(),
 		tunnelCommand(),

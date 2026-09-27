@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 
 	"go.mewis.me/codemcp/internal/instructioncontext"
@@ -183,11 +181,21 @@ func readWorkspaceCoreResource(ctx context.Context, runtime *tools.Runtime, work
 		sources := sanitizeInstructionSources(project.InstructionContext.Sources)
 		return jsonResourceContent(map[string]any{"sources": sources, "count": len(sources)})
 	case resourcePathPromptCatalog:
-		project, err := readProjectContextModel(ctx, runtime, workspaceID, false)
+		store, err := promptStoreFor(runtime, workspaceID)
 		if err != nil {
 			return ResourceContent{}, err
 		}
-		prompts := promptCatalogFromSources(project.InstructionContext.Sources)
+		values, err := store.List()
+		if err != nil {
+			return ResourceContent{}, err
+		}
+		prompts := make([]map[string]any, 0, len(values))
+		for _, prompt := range values {
+			prompts = append(prompts, map[string]any{
+				"name": prompt.Definition.Name, "description": prompt.Definition.Description,
+				"source": ".cm", "scope": string(prompt.Scope) + "-native", "read_only": false,
+			})
+		}
 		return jsonResourceContent(map[string]any{"prompts": prompts, "count": len(prompts)})
 	case resourcePathSkillCatalog:
 		value, err := readToolModel(ctx, runtime, "list_skills", map[string]any{"workspace_id": workspaceID})
@@ -381,49 +389,5 @@ func sanitizeSkillCatalog(values []skills.Skill) []map[string]any {
 			"builtin":     builtin,
 		})
 	}
-	return result
-}
-
-func promptCatalogFromSources(values []instructioncontext.SourceSnapshot) []map[string]any {
-	seen := map[string]bool{}
-	result := make([]map[string]any, 0)
-	for _, source := range values {
-		if source.Kind != "prompts" {
-			continue
-		}
-		for _, path := range source.Paths {
-			name := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
-			name = strings.TrimSpace(name)
-			if name == "" {
-				continue
-			}
-			key := source.Provider + "\x00" + source.Scope + "\x00" + name
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			result = append(result, map[string]any{
-				"name":      name,
-				"source":    source.Provider,
-				"scope":     source.Scope,
-				"read_only": instructionSourceReadOnly(source.Scope),
-			})
-		}
-	}
-	sort.Slice(result, func(i, j int) bool {
-		leftSource, _ := result[i]["source"].(string)
-		rightSource, _ := result[j]["source"].(string)
-		if leftSource != rightSource {
-			return leftSource < rightSource
-		}
-		leftScope, _ := result[i]["scope"].(string)
-		rightScope, _ := result[j]["scope"].(string)
-		if leftScope != rightScope {
-			return leftScope < rightScope
-		}
-		leftName, _ := result[i]["name"].(string)
-		rightName, _ := result[j]["name"].(string)
-		return leftName < rightName
-	})
 	return result
 }
