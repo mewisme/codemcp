@@ -30,6 +30,32 @@ func TestConfigureManagedTunnelReturnsTypedRuntimeKeyRequirement(t *testing.T) {
 	}
 }
 
+func TestSafeTunnelViewNeverContainsRuntimeOrAdminKeys(t *testing.T) {
+	dashboard := TunnelDashboard{
+		Config: tunnel.Config{
+			Enabled: true, ID: "tunnel_safe", APIKey: "runtime-secret",
+			Admin: tunnel.AdminConfig{Enabled: true, Key: "admin-secret", WorkspaceID: "ws_safe", Verified: true, ReadAccess: true},
+		},
+		Status: tunnel.Status{
+			Enabled: true, ID: "tunnel_safe",
+			Admin: tunnel.AdminState{Enabled: true, KeyConfigured: true, Configured: true, WorkspaceID: "ws_safe", Verified: true, ReadAccess: true},
+		},
+	}
+	view := safeTunnelView(dashboard)
+	if !view.RuntimeKeyConfigured || !view.Admin.KeyConfigured || !view.Admin.Verified || view.RuntimeKeyPreview == "configured" || view.Admin.KeyPreview == "configured" {
+		t.Fatalf("safe tunnel view lost credential state: %#v", view)
+	}
+	data, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{"runtime-secret", "admin-secret"} {
+		if strings.Contains(string(data), secret) {
+			t.Fatalf("safe tunnel view leaked %q: %s", secret, data)
+		}
+	}
+}
+
 func TestTunnelRuntimeConfigureSyncAndSecretPersistence(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/tunnels/tunnel_runtime" {

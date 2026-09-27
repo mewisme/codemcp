@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
@@ -36,16 +37,17 @@ type TunnelDashboard struct {
 }
 
 type TunnelRuntimeInput struct {
-	Enabled             *bool
-	ID                  *string
-	APIKey              *string
-	ControlPlaneBaseURL *string
-	OrganizationID      *string
+	Enabled             *bool   `json:"enabled,omitempty"`
+	ID                  *string `json:"id,omitempty"`
+	APIKey              *string `json:"api_key,omitempty"`
+	ControlPlaneBaseURL *string `json:"control_plane_base_url,omitempty"`
+	OrganizationID      *string `json:"organization_id,omitempty"`
 }
 
 type TunnelAdminStatus struct {
 	Enabled       bool
 	KeyConfigured bool
+	KeyPreview    string
 	Configured    bool
 	Verified      bool
 	Scope         tunnel.AdminScope
@@ -56,6 +58,135 @@ type TunnelAdminKeyInput struct {
 	Key       string
 	KeySource string
 	Scope     *tunnel.AdminScope
+}
+
+type TunnelView struct {
+	Enabled              bool
+	Configured           bool
+	ID                   string
+	ControlPlaneBaseURL  string
+	OrganizationID       string
+	Status               tunnel.Status
+	MCPHTTPEnabled       bool
+	RuntimeKeyConfigured bool
+	RuntimeKeyPreview    string
+	Admin                TunnelAdminStatus
+}
+
+type TunnelConfigureInput struct {
+	Runtime      *TunnelRuntimeInput
+	AdminEnabled *bool
+	AdminScope   *tunnel.AdminScope
+}
+
+type TunnelVerifyResult struct {
+	Count  int
+	Scope  tunnel.AdminScope
+	Status TunnelAdminStatus
+}
+
+func safeTunnelView(dashboard TunnelDashboard) TunnelView {
+	admin := TunnelAdminStatus{
+		Enabled:       dashboard.Status.Admin.Enabled,
+		KeyConfigured: dashboard.Status.Admin.KeyConfigured,
+		KeyPreview:    managedSecretPreview(dashboard.Config.Admin.Key),
+		Configured:    dashboard.Status.Admin.Configured,
+		Verified:      dashboard.Status.Admin.Verified,
+		Scope:         dashboard.Status.Admin.Scope(),
+		Access:        tunnel.AdminAccess{Read: dashboard.Status.Admin.ReadAccess, Manage: dashboard.Status.Admin.ManageAccess},
+	}
+	return TunnelView{
+		Enabled:              dashboard.Config.Enabled,
+		Configured:           tunnel.Configured(dashboard.Config),
+		ID:                   dashboard.Config.ID,
+		ControlPlaneBaseURL:  dashboard.Config.ControlPlaneBaseURL,
+		OrganizationID:       dashboard.Config.OrganizationID,
+		Status:               dashboard.Status,
+		MCPHTTPEnabled:       dashboard.MCPHTTPEnabled,
+		RuntimeKeyConfigured: strings.TrimSpace(dashboard.Config.APIKey) != "",
+		RuntimeKeyPreview:    managedSecretPreview(dashboard.Config.APIKey),
+		Admin:                admin,
+	}
+}
+
+func managedSecretPreview(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return "not configured"
+	}
+	return tracepkg.MaskSecret(raw, true)
+}
+
+func BindTunnelOperations(dispatcher *Dispatcher) error {
+	if dispatcher == nil {
+		return errors.New("operation dispatcher is nil")
+	}
+	bindings := []struct {
+		id      capability.ID
+		handler OperationHandler
+	}{
+		{capability.TunnelStatus, func(context.Context, any) (any, error) {
+			dashboard, err := TunnelStatus()
+			return safeTunnelView(dashboard), err
+		}},
+		{capability.TunnelSync, func(ctx context.Context, _ any) (any, error) {
+			metadata, _, err := SyncConfiguredTunnel(ctx)
+			return metadata, err
+		}},
+		{capability.TunnelEnable, func(ctx context.Context, _ any) (any, error) {
+			dashboard, err := SetTunnelEnabled(ctx, true)
+			return safeTunnelView(dashboard), err
+		}},
+		{capability.TunnelDisable, func(ctx context.Context, _ any) (any, error) {
+			dashboard, err := SetTunnelEnabled(ctx, false)
+			return safeTunnelView(dashboard), err
+		}},
+		{capability.TunnelConfigure, typedOperation[TunnelConfigureInput](capability.TunnelConfigure, func(ctx context.Context, input TunnelConfigureInput) (any, error) {
+			if input.Runtime != nil {
+				if _, err := ConfigureTunnelRuntime(ctx, *input.Runtime); err != nil {
+					return nil, err
+				}
+			}
+			if input.AdminEnabled != nil {
+				if _, err := SetTunnelAdminEnabled(ctx, *input.AdminEnabled); err != nil {
+					return nil, err
+				}
+			}
+			if input.AdminScope != nil {
+				if _, err := SetTunnelAdminScope(ctx, *input.AdminScope); err != nil {
+					return nil, err
+				}
+			}
+			dashboard, err := TunnelStatus()
+			return safeTunnelView(dashboard), err
+		})},
+		{capability.TunnelAdminKeyStatus, func(ctx context.Context, _ any) (any, error) { return TunnelAdminKeyStatusContext(ctx) }},
+		{capability.TunnelAdminKeySet, typedOperation[TunnelAdminKeyInput](capability.TunnelAdminKeySet, func(ctx context.Context, input TunnelAdminKeyInput) (any, error) {
+			if _, err := SetTunnelAdminKey(ctx, input); err != nil {
+				return nil, err
+			}
+			return TunnelAdminKeyStatusContext(ctx)
+		})},
+		{capability.TunnelAdminKeyVerify, func(ctx context.Context, _ any) (any, error) {
+			count, scope, err := VerifyTunnelAdminKey(ctx)
+			if err != nil {
+				return nil, err
+			}
+			status, err := TunnelAdminKeyStatusContext(ctx)
+			return TunnelVerifyResult{Count: count, Scope: scope, Status: status}, err
+		}},
+		{capability.TunnelAdminKeyRemove, func(ctx context.Context, _ any) (any, error) {
+			if err := RemoveTunnelAdminKey(ctx); err != nil {
+				return nil, err
+			}
+			return TunnelAdminKeyStatusContext(ctx)
+		}},
+	}
+	for _, binding := range bindings {
+		if err := dispatcher.Register(binding.id, binding.handler); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type ManagedTunnelOptions struct {
@@ -153,7 +284,7 @@ func TunnelAdminKeyStatusContext(ctx context.Context) (TunnelAdminStatus, error)
 		return TunnelAdminStatus{}, err
 	}
 	scope := tunnel.AdminScopeFromConfig(cfg.Tunnel)
-	status := TunnelAdminStatus{Enabled: tunnel.AdminEnabled(cfg.Tunnel), KeyConfigured: strings.TrimSpace(cfg.Tunnel.Admin.Key) != "", Configured: tunnel.AdminConfigured(cfg.Tunnel), Verified: tunnel.AdminVerified(cfg.Tunnel), Scope: scope, Access: tunnel.AdminAccessFromConfig(cfg.Tunnel)}
+	status := TunnelAdminStatus{Enabled: tunnel.AdminEnabled(cfg.Tunnel), KeyConfigured: strings.TrimSpace(cfg.Tunnel.Admin.Key) != "", KeyPreview: managedSecretPreview(cfg.Tunnel.Admin.Key), Configured: tunnel.AdminConfigured(cfg.Tunnel), Verified: tunnel.AdminVerified(cfg.Tunnel), Scope: scope, Access: tunnel.AdminAccessFromConfig(cfg.Tunnel)}
 	fields := append(tunnelAdminScopeFields(scope), tracepkg.Bool("enabled", status.Enabled), tracepkg.Bool("key_configured", status.KeyConfigured), tracepkg.Bool("configured", status.Configured), tracepkg.Bool("verified", status.Verified), tracepkg.Bool("read_access", status.Access.Read), tracepkg.Bool("manage_access", status.Access.Manage))
 	span.EndMessage("Stored tunnel admin key status loaded", fields...)
 	return status, nil

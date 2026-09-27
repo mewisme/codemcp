@@ -1,0 +1,134 @@
+package telegram
+
+import (
+	"strings"
+	"testing"
+
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/tunnel"
+	"go.mewis.me/codemcp/internal/upstream"
+)
+
+func TestTunnelScreenUsesSingleSafeProfileAndKeepsAllKeyControlsReachable(t *testing.T) {
+	view := application.TunnelView{
+		Enabled: true, Configured: true, ID: "tunnel_one", RuntimeKeyConfigured: true, RuntimeKeyPreview: "run********cret",
+		Status: tunnel.Status{Enabled: true, Running: true, Ready: true, ID: "tunnel_one"},
+		Admin: application.TunnelAdminStatus{
+			Enabled: true, KeyConfigured: true, KeyPreview: "adm********cret", Configured: true, Verified: true,
+			Scope:  tunnel.AdminScope{WorkspaceID: "ws_one"},
+			Access: tunnel.AdminAccess{Read: true, Manage: true},
+		},
+	}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.TunnelStatus: view}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+	screen, err := ui.tunnelScreen(t.Context(), owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallback := RichFallback(screen.Rich).Text
+	for _, want := range []string{"OpenAI Secure MCP Tunnel", "tunnel_one", "workspace:ws_one"} {
+		if !strings.Contains(fallback, want) {
+			t.Fatalf("tunnel screen missing %q: %q", want, fallback)
+		}
+	}
+	if len(screen.Keyboard) != 4 {
+		t.Fatalf("tunnel keyboard rows=%#v", screen.Keyboard)
+	}
+	labels := keyboardLabels(screen.Keyboard)
+	for _, want := range []string{"Disable", "Sync metadata", "Runtime config", "Set admin scope", "Disable admin", "Set admin key", "Verify admin", "Remove admin key", "Back", "Home"} {
+		if !strings.Contains(labels, want) {
+			t.Fatalf("tunnel keyboard missing %q: %s", want, labels)
+		}
+	}
+}
+
+func TestUpstreamDetailIsRedactedProgressiveAndMutationStateIsVersionBound(t *testing.T) {
+	server := upstream.Server{
+		ID: "prod", Name: "Prod", Enabled: true, Transport: "http",
+		URL:     "https://example.com/mcp?token=url-secret",
+		Headers: map[string]string{"Authorization": "Bearer header-secret", "X-Region": "us"},
+		Env:     map[string]string{"API_KEY": "env-secret", "MODE": "prod"},
+		Auth:    upstream.AuthConfig{Type: "auto"}, Expose: "all", ToolPrefix: "prod",
+	}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.UpstreamServerShow: server}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+
+	compact, err := ui.upstreamDetailScreen(t.Context(), owner, ActionState{Route: RouteUpstream, ResourceID: server.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	compactText := RichFallback(compact.Rich).Text
+	if strings.Contains(compactText, "Configuration") || strings.Contains(compactText, "header-secret") || strings.Contains(compactText, "env-secret") {
+		t.Fatalf("compact upstream screen leaked detail: %q", compactText)
+	}
+
+	detail, err := ui.upstreamDetailScreen(t.Context(), owner, ActionState{Route: RouteUpstream, ResourceID: server.ID, Detail: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	detailText := RichFallback(detail.Rich).Text
+	for _, secret := range []string{"header-secret", "env-secret", "url-secret"} {
+		if strings.Contains(detailText, secret) {
+			t.Fatalf("upstream detail leaked %q: %q", secret, detailText)
+		}
+	}
+	for _, want := range []string{"Authorization", "API_KEY", "Configuration"} {
+		if !strings.Contains(detailText, want) {
+			t.Fatalf("upstream detail missing safe metadata %q: %q", want, detailText)
+		}
+	}
+	if len(detail.Keyboard) != 4 || detail.Keyboard[3][0].Text != "Back" || detail.Keyboard[3][1].Text != "Home" {
+		t.Fatalf("upstream keyboard navigation=%#v", detail.Keyboard)
+	}
+	expected := application.UpstreamFingerprint(server)
+	foundBoundMutation := false
+	for _, row := range detail.Keyboard {
+		for _, button := range row {
+			if button.Text != "Remove" {
+				continue
+			}
+			ref, decodeErr := ui.callbacks.Decode(button.CallbackData)
+			if decodeErr != nil {
+				t.Fatal(decodeErr)
+			}
+			value, stateErr := ui.states.Get(ref.Token, owner)
+			if stateErr != nil {
+				t.Fatal(stateErr)
+			}
+			state := value.(ActionState)
+			input := state.Input.(application.UpstreamIDInput)
+			foundBoundMutation = input.ExpectedFingerprint == expected
+		}
+	}
+	if !foundBoundMutation {
+		t.Fatal("upstream mutation callback was not bound to the rendered resource version")
+	}
+}
+
+func TestNetworkInputsProtectCredentialsAndParseTunnelRuntimeSnakeCase(t *testing.T) {
+	for _, kind := range []string{inputUpstreamAdd, inputUpstreamConfigure, inputTunnelConfigure, inputTunnelAdminKey} {
+		_, _, _, secret := networkInputPrompt(kind)
+		if !secret {
+			t.Fatalf("network input %q is not protected", kind)
+		}
+	}
+	value, handled, err := networkActionInput(ActionState{InputKind: inputTunnelConfigure}, `{"enabled":true,"id":"tunnel_x","api_key":"runtime-key","organization_id":"org_x"}`)
+	if err != nil || !handled {
+		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	input := value.(application.TunnelConfigureInput)
+	if input.Runtime == nil || input.Runtime.APIKey == nil || *input.Runtime.APIKey != "runtime-key" || input.Runtime.OrganizationID == nil || *input.Runtime.OrganizationID != "org_x" {
+		t.Fatalf("tunnel runtime input=%#v", input.Runtime)
+	}
+}
+
+func keyboardLabels(rows [][]Button) string {
+	labels := []string{}
+	for _, row := range rows {
+		for _, button := range row {
+			labels = append(labels, button.Text)
+		}
+	}
+	return strings.Join(labels, "|")
+}

@@ -428,7 +428,7 @@ func TestReferenceButtonHierarchyRemainsRepresentableWithoutRejectedArchitecture
 		t.Fatal(err)
 	}
 	want := [][]string{
-		{"Status", "System"}, {"Requests", "Completions"}, {"Workspaces", "Secure MCP Tunnel"},
+		{"Status", "System"}, {"Requests", "Completions"}, {"Workspaces", "Network"},
 		{"Upstreams", "Integrations"}, {"Instructions"}, {"Settings", "Auth"}, {"Logs"}, {"Help", "Refresh"},
 	}
 	got := make([][]string, 0, len(home.Keyboard))

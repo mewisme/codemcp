@@ -130,3 +130,40 @@ func TestUpstreamServiceDispatcherAndLookupErrors(t *testing.T) {
 		t.Fatalf("invalid upstream error=%v code=%s", err, ErrorCodeOf(err))
 	}
 }
+
+func TestUpstreamMutationRejectsStaleFingerprint(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	manager := upstream.NewManager(upstream.NewStore(filepath.Join(t.TempDir(), "upstreams.json")))
+	if err := manager.Load(); err != nil {
+		t.Fatal(err)
+	}
+	service := NewUpstreamService(manager)
+	created, err := service.Create(t.Context(), upstream.Server{
+		ID: "stale", Name: "Before", Enabled: true, Transport: "stdio", Command: "node",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := UpstreamFingerprint(created.Value)
+	changed := created.Value
+	changed.Name = "Changed elsewhere"
+	if err := manager.Add(changed); err != nil {
+		t.Fatal(err)
+	}
+
+	dispatcher := NewDispatcher()
+	if err := BindUpstreamOperations(dispatcher, service); err != nil {
+		t.Fatal(err)
+	}
+	_, err = dispatcher.Dispatch(t.Context(), DispatchRequest{
+		Operation: capability.UpstreamServerRemove,
+		Input:     UpstreamIDInput{ID: created.Value.ID, ExpectedFingerprint: expected},
+	})
+	if ErrorCodeOf(err) != ErrorConflict {
+		t.Fatalf("stale remove error=%v code=%s", err, ErrorCodeOf(err))
+	}
+	current, ok := manager.Get(created.Value.ID)
+	if !ok || current.Name != changed.Name {
+		t.Fatalf("stale callback mutated current resource: %#v exists=%v", current, ok)
+	}
+}

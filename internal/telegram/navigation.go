@@ -27,6 +27,10 @@ const (
 	RouteRequests   Route = "requests"
 	RouteRequest    Route = "request"
 	RouteOperation  Route = "operation"
+	RouteNetwork    Route = "network"
+	RouteTunnel     Route = "tunnel"
+	RouteUpstreams  Route = "upstreams"
+	RouteUpstream   Route = "upstream"
 )
 
 type ActionState struct {
@@ -79,7 +83,7 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 	}
 	handlers := map[Route]RouteHandler{
 		RouteHome: ui.handleHome, RouteStatus: ui.handleStatus, RouteCommands: ui.handleCommands,
-		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests,
+		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests, RouteNetwork: ui.handleNetwork,
 	}
 	for _, command := range Commands() {
 		if handler := handlers[command.Route]; handler != nil {
@@ -339,6 +343,14 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.requestListScreen(ctx, owner, state)
 	case RouteRequest:
 		return ui.requestDetailScreen(ctx, owner, state)
+	case RouteNetwork:
+		return ui.networkScreen(owner)
+	case RouteTunnel:
+		return ui.tunnelScreen(ctx, owner)
+	case RouteUpstreams:
+		return ui.upstreamListScreen(ctx, owner, state)
+	case RouteUpstream:
+		return ui.upstreamDetailScreen(ctx, owner, state)
 	default:
 		if state.Operation == "" {
 			return Screen{}, errors.New("telegram navigation route is unavailable")
@@ -376,6 +388,14 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
+	network, err := ui.stateButton(owner, "Network", CallbackOpen, ActionState{Route: RouteNetwork, Back: RouteHome})
+	if err != nil {
+		return Screen{}, err
+	}
+	upstreams, err := ui.stateButton(owner, "Upstreams", CallbackOpen, ActionState{Route: RouteUpstreams, Back: RouteHome, Operation: capability.UpstreamServerList})
+	if err != nil {
+		return Screen{}, err
+	}
 	unavailable := func(label string) Button {
 		return Button{Text: CompactActionLabel(label), Disabled: true, Role: ButtonRoleNeutral}
 	}
@@ -389,8 +409,8 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{
 		{status, unavailable("System")},
 		{requests, unavailable("Completions")},
-		{workspaces, unavailable("Secure MCP Tunnel")},
-		{unavailable("Upstreams"), unavailable("Integrations")},
+		{workspaces, network},
+		{upstreams, unavailable("Integrations")},
 		{unavailable("Instructions")},
 		{settings, auth},
 		{unavailable("Logs")},
@@ -540,6 +560,9 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 		return Screen{}, err
 	}
 	if screen, handled, err := ui.domainOperationResultScreen(owner, state, spec, result.Value); handled {
+		return screen, err
+	}
+	if screen, handled, err := ui.networkOperationResultScreen(owner, state, spec, result.Value); handled {
 		return screen, err
 	}
 	parts := []PresentationPart{
@@ -874,6 +897,14 @@ func routeLabel(route Route) string {
 		return "Requests"
 	case RouteRequest:
 		return "Request"
+	case RouteNetwork:
+		return "Network"
+	case RouteTunnel:
+		return "Secure MCP Tunnel"
+	case RouteUpstreams:
+		return "Upstreams"
+	case RouteUpstream:
+		return "Upstream"
 	case RouteOperation:
 		return "Operation"
 	default:

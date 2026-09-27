@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
@@ -53,6 +55,16 @@ func (a *App) Bootstrap() error {
 			return
 		}
 		if err := application.BindRequestOperations(a.Operations); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		if err := application.BindUpstreamOperations(a.Operations, application.NewUpstreamService(a.Tools.Upstream, func(ctx context.Context) error {
+			return a.Tools.RefreshUpstreams(ctx, false)
+		})); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		if err := application.BindTunnelOperations(a.Operations); err != nil {
 			a.bootstrapErr = err
 			return
 		}

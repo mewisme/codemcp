@@ -581,11 +581,12 @@ func (ui *Interface) beginActionInput(ctx context.Context, owner ViewOwner, stat
 	if err != nil {
 		return err
 	}
-	promptID, err := ui.runtime.SendRichMessage(ctx, owner.ChatID, screen, RichMessageOptions{ForceReplyPlaceholder: placeholder})
+	_, _, _, secret := networkInputPrompt(state.InputKind)
+	promptID, err := ui.runtime.SendRichMessage(ctx, owner.ChatID, screen, RichMessageOptions{ForceReplyPlaceholder: placeholder, ProtectContent: secret})
 	if err != nil {
 		return err
 	}
-	if err := ui.inputs.PutAction(owner, promptID, false, state); err != nil {
+	if err := ui.inputs.PutAction(owner, promptID, secret, state); err != nil {
 		_ = ui.runtime.DeleteMessage(ctx, owner.ChatID, promptID)
 		return err
 	}
@@ -609,6 +610,9 @@ func (ui *Interface) handleActionInput(ctx context.Context, update Update) bool 
 	}
 	value, err := InputValue(*update.Message)
 	if err != nil || value.Document != nil {
+		if pending.Secret && update.Message.MessageID > 0 {
+			_ = ui.runtime.DeleteMessage(ctx, owner.ChatID, update.Message.MessageID)
+		}
 		if err == nil {
 			err = errors.New("this operation requires text input")
 		}
@@ -618,6 +622,9 @@ func (ui *Interface) handleActionInput(ctx context.Context, update Update) bool 
 	state := *pending.Action
 	state.Input, err = actionInput(state, value.Text)
 	if err != nil {
+		if pending.Secret && update.Message.MessageID > 0 {
+			_ = ui.runtime.DeleteMessage(ctx, owner.ChatID, update.Message.MessageID)
+		}
 		_ = ui.editInputFailure(ctx, owner, pending.PromptMessageID, state, err)
 		return true
 	}
@@ -626,11 +633,14 @@ func (ui *Interface) handleActionInput(ctx context.Context, update Update) bool 
 	if err != nil {
 		screen, _ = ui.operationErrorScreen(owner, state, err)
 	}
-	_ = ui.completeInput(ctx, owner, pending.PromptMessageID, update.Message.MessageID, false, screen)
+	_ = ui.completeInput(ctx, owner, pending.PromptMessageID, update.Message.MessageID, pending.Secret, screen)
 	return true
 }
 
 func inputPrompt(kind string) (title, prompt, placeholder string) {
+	if title, prompt, placeholder, _ := networkInputPrompt(kind); title != "" {
+		return title, prompt, placeholder
+	}
 	switch kind {
 	case inputWorkspaceRegister:
 		return "Register workspace", "Reply with the absolute workspace directory.", "/path/to/workspace"
@@ -651,6 +661,9 @@ func actionInput(state ActionState, text string) (any, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("input must not be empty")
+	}
+	if value, handled, err := networkActionInput(state, text); handled {
+		return value, err
 	}
 	switch state.InputKind {
 	case inputWorkspaceRegister:

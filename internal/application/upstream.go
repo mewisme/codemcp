@@ -2,6 +2,9 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -26,7 +29,8 @@ type UpstreamToolsView struct {
 }
 
 type UpstreamIDInput struct {
-	ID string
+	ID                  string
+	ExpectedFingerprint string
 }
 
 type UpstreamStatusInput struct {
@@ -39,8 +43,34 @@ type UpstreamServerInput struct {
 }
 
 type UpstreamUpdateInput struct {
-	ID     string
-	Server upstream.Server
+	ID                  string
+	Server              upstream.Server
+	ExpectedFingerprint string
+}
+
+func UpstreamFingerprint(server upstream.Server) string {
+	data, _ := json.Marshal(server)
+	hash := sha256.Sum256(data)
+	return hex.EncodeToString(hash[:])
+}
+
+func RedactUpstreamServer(server upstream.Server) upstream.Server {
+	return upstream.RedactServer(server)
+}
+
+func (service *UpstreamService) validateExpected(operation capability.ID, id, expected string) error {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return nil
+	}
+	current, err := service.get(operation, id)
+	if err != nil {
+		return err
+	}
+	if UpstreamFingerprint(current) != expected {
+		return operationError(operation, ErrorConflict, errors.New("upstream server changed since this view was rendered"))
+	}
+	return nil
 }
 
 func NewUpstreamService(manager *upstream.Manager, reconcile ...func(context.Context) error) *UpstreamService {
@@ -424,18 +454,30 @@ func BindUpstreamOperations(dispatcher *Dispatcher, service *UpstreamService) er
 			return result.Value, err
 		})},
 		{capability.UpstreamServerConfigure, typedOperation[UpstreamUpdateInput](capability.UpstreamServerConfigure, func(ctx context.Context, input UpstreamUpdateInput) (any, error) {
+			if err := service.validateExpected(capability.UpstreamServerConfigure, input.ID, input.ExpectedFingerprint); err != nil {
+				return nil, err
+			}
 			result, err := service.Update(ctx, input.ID, input.Server)
 			return result.Value, err
 		})},
 		{capability.UpstreamServerRemove, typedOperation[UpstreamIDInput](capability.UpstreamServerRemove, func(ctx context.Context, input UpstreamIDInput) (any, error) {
+			if err := service.validateExpected(capability.UpstreamServerRemove, input.ID, input.ExpectedFingerprint); err != nil {
+				return nil, err
+			}
 			result, err := service.Remove(ctx, input.ID)
 			return result.Value, err
 		})},
 		{capability.UpstreamServerEnable, typedOperation[UpstreamIDInput](capability.UpstreamServerEnable, func(ctx context.Context, input UpstreamIDInput) (any, error) {
+			if err := service.validateExpected(capability.UpstreamServerEnable, input.ID, input.ExpectedFingerprint); err != nil {
+				return nil, err
+			}
 			result, err := service.Enable(ctx, input.ID)
 			return result.Value, err
 		})},
 		{capability.UpstreamServerDisable, typedOperation[UpstreamIDInput](capability.UpstreamServerDisable, func(ctx context.Context, input UpstreamIDInput) (any, error) {
+			if err := service.validateExpected(capability.UpstreamServerDisable, input.ID, input.ExpectedFingerprint); err != nil {
+				return nil, err
+			}
 			result, err := service.Disable(ctx, input.ID)
 			return result.Value, err
 		})},
