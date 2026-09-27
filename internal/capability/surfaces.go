@@ -21,6 +21,7 @@ var knownSurfaceReasons = map[string]struct{}{
 }
 
 var tuiExplicitExemptIDs = idSet(
+	DoctorRead,
 	IntegrationRTKStatus,
 	IntegrationRTKProbe,
 	IntegrationRTKInstall,

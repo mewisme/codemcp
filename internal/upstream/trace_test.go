@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -56,6 +57,26 @@ func TestManagerToolsTraceReportsCacheLifecycle(t *testing.T) {
 	}
 	if !traceEventHasField(events, "upstream.tools.list.completed", "tool_count", 1) {
 		t.Fatalf("missing tool count trace: %#v", events)
+	}
+}
+
+func TestInspectStatusesDoesNotConnectOrDiscoverTools(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upstreams.json")
+	store := NewStore(path)
+	if err := store.Save([]Server{{ID: "alpha", Name: "Alpha", Enabled: true, Transport: "http", URL: "https://example.test/mcp"}}); err != nil {
+		t.Fatal(err)
+	}
+	client := &traceTestClient{}
+	manager := NewManagerWithClient(store, client)
+	statuses, err := manager.InspectStatuses()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(statuses) != 1 || statuses[0].ID != "alpha" || statuses[0].Health != HealthUnknown {
+		t.Fatalf("statuses=%#v", statuses)
+	}
+	if client.connects != 0 || client.tools != 0 {
+		t.Fatalf("inspection performed upstream I/O: connects=%d tools=%d", client.connects, client.tools)
 	}
 }
 

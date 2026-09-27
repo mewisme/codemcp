@@ -470,6 +470,42 @@ func (m *Manager) ListStatuses(ctx context.Context, refresh bool) []Status {
 	return result
 }
 
+func (m *Manager) InspectStatuses() ([]Status, error) {
+	if m == nil {
+		return []Status{}, nil
+	}
+	servers := m.List()
+	if m.store != nil {
+		var err error
+		servers, err = m.store.Inspect()
+		if err != nil {
+			return nil, err
+		}
+	}
+	now := time.Now()
+	result := make([]Status, 0, len(servers))
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, server := range servers {
+		health := HealthUnknown
+		connected := false
+		var tools []Tool
+		lastError := strings.TrimSpace(m.errors[server.ID])
+		switch {
+		case !server.Enabled:
+			health = HealthDisabled
+		case lastError != "":
+			health = HealthUnreachable
+		case !m.cache[server.ID].expiresAt.IsZero() && now.Before(m.cache[server.ID].expiresAt):
+			health = HealthConnected
+			connected = true
+			tools = append([]Tool(nil), m.cache[server.ID].tools...)
+		}
+		result = append(result, m.buildStatus(server, health, connected, tools, lastError))
+	}
+	return result, nil
+}
+
 func (m *Manager) ProxiedToolNames(server Server, tools []Tool) []string {
 	result := make([]string, 0)
 	for _, tool := range tools {

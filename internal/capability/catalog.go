@@ -97,6 +97,7 @@ const (
 	TunnelUpdate             ID = "tunnel.update"
 	TunnelDelete             ID = "tunnel.delete"
 	StatusOverview           ID = "status.overview"
+	DoctorRead               ID = "doctor.read"
 	VersionAbout             ID = "version.about"
 	TelemetryStatus          ID = "telemetry.status"
 	TelemetryEnable          ID = "telemetry.enable"
@@ -174,6 +175,7 @@ func buildSpecs() []Spec {
 		operatorQuery(CompletionDoctor, "agent completion doctor"),
 		operatorQuery(CompletionList, "agent completion list"),
 		operatorQuery(CompletionView, "agent completion view"),
+		operatorQuery(DoctorRead, "doctor"),
 		operatorQuery(ConfigPath, "config path"),
 		operatorMutation(ConfigExport, "config export", RiskState, false),
 		operatorSensitive(ConfigImport, "config import", false),

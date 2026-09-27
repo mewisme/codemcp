@@ -74,6 +74,7 @@ func newRootCommand() *cobra.Command {
 		integrationSettingsCommand(),
 		serveCommand(),
 		statusCommand(),
+		doctorCommand(),
 		agentCommand(),
 		completionCommand(),
 		internalServiceCommand(),

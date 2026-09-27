@@ -26,6 +26,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"completion":   "completion",
 		"config":       "config path",
 		"down":         "down",
+		"doctor":       "doctor",
 		"init":         "init",
 		"install":      "install",
 		"integration":  "integration rtk disable",

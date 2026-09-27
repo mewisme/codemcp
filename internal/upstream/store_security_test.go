@@ -59,6 +59,40 @@ func TestUpstreamSecretsMigrateToSecretFiles(t *testing.T) {
 	}
 }
 
+func TestStoreInspectDoesNotMigrateLegacySecrets(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "upstreams.json")
+	stored := diskStore{Upstreams: []Server{{
+		ID: "alpha", Name: "Alpha", Enabled: true, Transport: "http", URL: "https://example.test/mcp",
+		Headers: map[string]string{"Authorization": "Bearer legacy-header-value"},
+	}}}
+	data, err := json.MarshalIndent(stored, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inspected, err := NewStore(path).Inspect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inspected) != 1 || inspected[0].ID != "alpha" {
+		t.Fatalf("inspected=%#v", inspected)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Fatalf("inspection migrated upstream store\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
 func TestStoreRejectsSymlinkConfigFile(t *testing.T) {
 	if os.PathSeparator == '\\' {
 		t.Skip("symlink creation may require Windows Developer Mode or elevation")

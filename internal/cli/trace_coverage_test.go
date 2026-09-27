@@ -31,7 +31,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 			contracts[path] = commandTraceContract{Class: class, Expected: append([]string(nil), expected...)}
 		}
 	}
-	add(commandTraceTrivial, nil, "config", "logs path", "version")
+	add(commandTraceTrivial, nil, "config", "doctor", "logs path", "version")
 	add(commandTraceTrivial, nil, "prompt list", "prompt get", "prompt create", "prompt update", "prompt delete")
 	add(commandTraceStreaming, []string{"logs.snapshot.load.completed"}, "logs")
 	add(commandTraceStreaming, []string{"runtime.events.connect.completed", "logs.snapshot.load.completed"}, "logs follow")

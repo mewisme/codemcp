@@ -22,6 +22,7 @@ var commandPresentationTitleOverrides = map[string]string{
 	"down":            "Stop CodeMCP",
 	"restart":         "Restart CodeMCP",
 	"status":          "CodeMCP status",
+	"doctor":          "CodeMCP doctor",
 	"auth status":     "Authentication",
 	"config path":     "Configuration path",
 	"config get":      "Configuration",

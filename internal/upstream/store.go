@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"go.mewis.me/codemcp/internal/secretstore"
 	"go.mewis.me/codemcp/internal/state"
@@ -103,6 +104,26 @@ func (s *Store) Load() ([]Server, error) {
 		}
 	}
 	return servers, nil
+}
+
+func (s *Store) Inspect() ([]Server, error) {
+	if s == nil {
+		return []Server{}, nil
+	}
+	servers, err := s.readDisk()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Server, 0, len(servers))
+	for _, server := range servers {
+		normalized, err := NormalizeServer(server)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, normalized)
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	return result, nil
 }
 
 func (s *Store) Save(servers []Server) error {

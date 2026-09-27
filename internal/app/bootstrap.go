@@ -119,6 +119,37 @@ func (a *App) Bootstrap() error {
 			})
 		}
 		a.Upstream = a.Tools.Upstream
+		doctorDeps := application.DoctorDependencies{
+			Workspaces:           a.Tools.Workspaces,
+			Checkpoints:          a.Tools.Checkpoints,
+			Completions:          a.Tools.Completions,
+			Approvals:            a.Tools.Approvals,
+			BackgroundDeliveries: a.Tools.BackgroundDeliveries,
+			Notifications:        a.Notifications,
+			Upstream:             a.Upstream,
+			OAuth:                a.OAuth,
+			Tunnel:               a.Tunnel,
+		}
+		if a.Telegram != nil {
+			doctorDeps.TelegramHealth = func() application.TelegramHealthSnapshot {
+				health := a.Telegram.Health()
+				return application.TelegramHealthSnapshot{
+					Enabled: health.Enabled, TokenConfigured: health.TokenConfigured,
+					AuthorizationConfigured: health.AuthorizationConfigured, Running: health.Running,
+					PollingHealthy: health.PollingHealthy, Reconnecting: health.Reconnecting,
+					ReconnectCount: health.ReconnectCount,
+				}
+			}
+		}
+		doctorService, err := application.NewDoctorService(doctorDeps)
+		if err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		if err := application.BindDoctorOperations(a.Operations, doctorService); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		a.syncMCPHTTP(a.Config.Snapshot().Server.Enabled)
 		a.attachTunnelLifecycle()
 	})
