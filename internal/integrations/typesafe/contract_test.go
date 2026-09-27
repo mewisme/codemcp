@@ -25,8 +25,8 @@ func TestVerifiedContractConstants(t *testing.T) {
 	if SDKDefaultTimeout != 10*time.Second {
 		t.Fatalf("SDK timeout contract=%s", SDKDefaultTimeout)
 	}
-	if RiskClassifierAvailable {
-		t.Fatal("generic Jev primitives must not be promoted to a dedicated risk classifier")
+	if !RiskClassifierAvailable {
+		t.Fatal("tested System One risk Choice adapter must remain available")
 	}
 }
 

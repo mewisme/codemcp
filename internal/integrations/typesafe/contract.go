@@ -63,8 +63,6 @@ type ModelsResponse struct {
 	Models []ModelCard `json:"models"`
 }
 
-// RiskClassifierAvailable remains false until TypeSafe documents and exposes a
-// dedicated, tested command/tool risk-classification contract. Generic Jev
-// primitives are sufficient to build application-owned policies, but are not
-// themselves a provider-defined risk-classification capability.
-const RiskClassifierAvailable = false
+// RiskClassifierAvailable reports that CodeMCP has a tested System One Choice
+// adapter for the provider-neutral command/process risk contract.
+const RiskClassifierAvailable = true
