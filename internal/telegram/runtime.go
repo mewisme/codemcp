@@ -33,6 +33,11 @@ type Health struct {
 	Enabled                 bool      `json:"enabled"`
 	TokenConfigured         bool      `json:"token_configured"`
 	AuthorizationConfigured bool      `json:"authorization_configured"`
+	TopicsConfigured        bool      `json:"topics_configured"`
+	TopicsSupported         bool      `json:"topics_supported"`
+	TopicsEffective         bool      `json:"topics_effective"`
+	TopicCount              int       `json:"topic_count"`
+	TopicLastError          string    `json:"topic_last_error,omitempty"`
 	Running                 bool      `json:"running"`
 	PollingHealthy          bool      `json:"polling_healthy"`
 	Reconnecting            bool      `json:"reconnecting"`
@@ -69,6 +74,7 @@ type Runtime struct {
 	setupHandler SetupHandler
 	setupMode    bool
 	generation   uint64
+	topics       *topicStore
 }
 
 func NewRuntime(options Options) *Runtime {
@@ -157,6 +163,7 @@ func (runtime *Runtime) PromoteSetup(cfg config.TelegramConfig) error {
 		return errors.New("telegram setup runtime is not active")
 	}
 	api := runtime.api
+	topicsSupported := runtime.health.TopicsSupported
 	runtime.config = cfg
 	runtime.setupMode = false
 	runtime.fingerprint = runtimeFingerprint(token, cfg, false)
@@ -165,6 +172,7 @@ func (runtime *Runtime) PromoteSetup(cfg config.TelegramConfig) error {
 	runtime.health.SetupMode = false
 	runtime.mu.Unlock()
 	runtime.reconcileNavigationBounded(context.Background(), api, cfg)
+	runtime.reconcileTopicsBounded(context.Background(), api, cfg, topicsSupported)
 	return nil
 }
 
@@ -201,7 +209,7 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 		validateCtx = context.Background()
 	}
 	validateCtx, cancelValidate := context.WithTimeout(validateCtx, 10*time.Second)
-	_, validateErr := api.GetMe(validateCtx)
+	botUser, validateErr := api.GetMe(validateCtx)
 	cancelValidate()
 	if validateErr != nil {
 		runtime.Stop()
@@ -234,10 +242,16 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 	runtime.cancel = cancel
 	runtime.done = done
 	runtime.fingerprint = fingerprint
-	runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: true, AuthorizationConfigured: authorizationConfigured, Running: true, SetupMode: setupMode}
+	runtime.health = Health{
+		Enabled: cfg.Enabled, TokenConfigured: true, AuthorizationConfigured: authorizationConfigured,
+		TopicsConfigured: cfg.TopicsEnabled, TopicsSupported: botUser.HasTopicsEnabled,
+		TopicsEffective: cfg.TopicsEnabled && botUser.HasTopicsEnabled,
+		Running:         true, SetupMode: setupMode,
+	}
 	runtime.mu.Unlock()
 	if !setupMode {
 		runtime.reconcileNavigationBounded(runCtx, api, cfg)
+		runtime.reconcileTopicsBounded(runCtx, api, cfg, botUser.HasTopicsEnabled)
 	}
 	go runtime.supervise(runCtx, done, api)
 	return nil
@@ -323,6 +337,32 @@ func (runtime *Runtime) SendChatAction(ctx context.Context, chatID int64, action
 	return rich.SendChatAction(ctx, chatID, action)
 }
 
+func (runtime *Runtime) SendChatActionToTopic(ctx context.Context, chatID int64, role TopicRole, action string) error {
+	if runtime == nil || chatID <= 0 || strings.TrimSpace(action) == "" {
+		return errors.New("telegram runtime is unavailable")
+	}
+	runtime.mu.RLock()
+	api, topics := runtime.api, runtime.topics
+	effective := runtime.health.TopicsEffective
+	runtime.mu.RUnlock()
+	if effective && topics != nil {
+		if threadID := topics.get(chatID, role); threadID > 0 {
+			if topicAPI, ok := api.(TopicAPI); ok {
+				err := topicAPI.SendChatActionThread(ctx, chatID, threadID, action)
+				if err == nil {
+					return nil
+				}
+				if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
+					return err
+				}
+				topics.delete(chatID, role)
+				runtime.setTopicError("telegram managed topic is missing; using General chat")
+			}
+		}
+	}
+	return runtime.SendChatAction(ctx, chatID, action)
+}
+
 func (runtime *Runtime) SendDocument(ctx context.Context, chatID int64, upload DocumentUpload) error {
 	if runtime == nil || chatID <= 0 {
 		return errors.New("telegram runtime is unavailable")
@@ -342,6 +382,64 @@ func (runtime *Runtime) SendDocument(ctx context.Context, chatID int64, upload D
 		return errors.New("telegram document API is unavailable")
 	}
 	return documents.SendDocument(ctx, chatID, upload)
+}
+
+func (runtime *Runtime) SendDocumentToTopic(ctx context.Context, chatID int64, role TopicRole, upload DocumentUpload) error {
+	if runtime == nil || chatID <= 0 {
+		return errors.New("telegram runtime is unavailable")
+	}
+	if err := ValidateDocumentUpload(upload); err != nil {
+		return err
+	}
+	runtime.mu.RLock()
+	api, topics := runtime.api, runtime.topics
+	effective := runtime.health.TopicsEffective
+	runtime.mu.RUnlock()
+	if effective && topics != nil {
+		if threadID := topics.get(chatID, role); threadID > 0 {
+			if topicAPI, ok := api.(TopicAPI); ok {
+				err := topicAPI.SendDocumentThread(ctx, chatID, threadID, upload)
+				if err == nil {
+					return nil
+				}
+				if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
+					return err
+				}
+				topics.delete(chatID, role)
+				runtime.setTopicError("telegram managed topic is missing; using General chat")
+			}
+		}
+	}
+	return runtime.SendDocument(ctx, chatID, upload)
+}
+
+func (runtime *Runtime) SendRichMessageToTopic(ctx context.Context, chatID int64, role TopicRole, screen Screen, options RichMessageOptions) (int64, error) {
+	if runtime == nil || chatID <= 0 {
+		return 0, errors.New("telegram runtime is unavailable")
+	}
+	if err := validateKeyboard(screen.Keyboard); err != nil {
+		return 0, err
+	}
+	runtime.mu.RLock()
+	api, topics := runtime.api, runtime.topics
+	effective := runtime.health.TopicsEffective
+	runtime.mu.RUnlock()
+	if effective && topics != nil {
+		if threadID := topics.get(chatID, role); threadID > 0 {
+			if topicAPI, ok := api.(TopicAPI); ok {
+				messageID, err := topicAPI.SendRichMessageThread(ctx, chatID, threadID, screen, options)
+				if err == nil {
+					return messageID, nil
+				}
+				if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
+					return 0, err
+				}
+				topics.delete(chatID, role)
+				runtime.setTopicError("telegram managed topic is missing; using General chat")
+			}
+		}
+	}
+	return runtime.SendRichMessage(ctx, chatID, screen, options)
 }
 
 func (runtime *Runtime) DownloadDocument(ctx context.Context, document Document) ([]byte, error) {
@@ -559,6 +657,8 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 	api := runtime.api
 	users := append([]int64(nil), runtime.config.AllowedUserIDs...)
 	available := runtime.health.Running && runtime.health.Enabled && runtime.health.AuthorizationConfigured && !runtime.health.SetupMode
+	topicsEffective := runtime.health.TopicsEffective
+	topics := runtime.topics
 	runtime.mu.RUnlock()
 	if !available || api == nil {
 		return notification.ErrProviderUnavailable
@@ -574,7 +674,26 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 		text = string(message.Kind)
 	}
 	var result error
+	role := topicRoleForNotification(message.Kind)
 	for _, userID := range users {
+		if topicsEffective && topics != nil {
+			threadID := topics.get(userID, role)
+			if threadID > 0 {
+				if topicAPI, ok := api.(TopicAPI); ok {
+					err := topicAPI.SendMessageThread(ctx, userID, threadID, text)
+					if err == nil {
+						continue
+					}
+					if kind := transportErrorKind(err); kind == transportErrorBadRequest || kind == transportErrorNotFound {
+						topics.delete(userID, role)
+						runtime.setTopicError("telegram managed topic is missing; using General chat")
+					} else {
+						result = errors.Join(result, err)
+						continue
+					}
+				}
+			}
+		}
 		if err := api.SendMessage(ctx, userID, text); err != nil {
 			result = errors.Join(result, err)
 		}
@@ -776,6 +895,6 @@ func validAuthorization(ids []int64) bool {
 }
 
 func runtimeFingerprint(token string, cfg config.TelegramConfig, setupMode bool) string {
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s|%t|%v|%t", token, cfg.Enabled, cfg.AllowedUserIDs, setupMode)))
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%s|%t|%v|%t|%t", token, cfg.Enabled, cfg.AllowedUserIDs, cfg.TopicsEnabled, setupMode)))
 	return hex.EncodeToString(hash[:])
 }

@@ -177,6 +177,32 @@ func (client *apiClient) SendMessage(ctx context.Context, chatID int64, text str
 	return classifyTransportError(err)
 }
 
+func (client *apiClient) SendMessageThread(ctx context.Context, chatID int64, threadID int, text string) error {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return errors.New("telegram bot transport is unavailable")
+	}
+	_, err := client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{ChatID: chatID, MessageThreadID: threadID, Text: text})
+	return classifyTransportError(err)
+}
+
+func (client *apiClient) CreateTopic(ctx context.Context, chatID int64, name string) (int, error) {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return 0, errors.New("telegram bot transport is unavailable")
+	}
+	name = strings.TrimSpace(name)
+	if chatID <= 0 || name == "" {
+		return 0, errors.New("telegram topic metadata is invalid")
+	}
+	topic, err := client.bot.CreateForumTopic(nonNilContext(ctx), &telegrambot.CreateForumTopicParams{ChatID: chatID, Name: name})
+	if err != nil {
+		return 0, classifyTransportError(err)
+	}
+	if topic == nil || topic.MessageThreadID <= 0 {
+		return 0, errors.New("telegram topic response is invalid")
+	}
+	return topic.MessageThreadID, nil
+}
+
 func (client *apiClient) SendScreen(ctx context.Context, chatID int64, screen Screen) error {
 	if client == nil || client.initErr != nil || client.bot == nil {
 		return errors.New("telegram bot transport is unavailable")
@@ -213,11 +239,48 @@ func (client *apiClient) SendRichMessage(ctx context.Context, chatID int64, scre
 	return int64(message.ID), nil
 }
 
+func (client *apiClient) SendRichMessageThread(ctx context.Context, chatID int64, threadID int, screen Screen, options RichMessageOptions) (int64, error) {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return 0, errors.New("telegram bot transport is unavailable")
+	}
+	if err := validateKeyboard(screen.Keyboard); err != nil {
+		return 0, err
+	}
+	params := &telegrambot.SendMessageParams{ChatID: chatID, MessageThreadID: threadID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ProtectContent: options.ProtectContent}
+	if len(screen.Keyboard) > 0 {
+		params.ReplyMarkup = screenKeyboard(screen.Keyboard)
+	} else if placeholder := forceReplyPlaceholder(options.ForceReplyPlaceholder); placeholder != "" {
+		params.ReplyMarkup = &models.ForceReply{ForceReply: true, InputFieldPlaceholder: placeholder, Selective: true}
+	}
+	message, err := client.bot.SendMessage(nonNilContext(ctx), params)
+	if err != nil {
+		return 0, classifyTransportError(err)
+	}
+	if message == nil {
+		return 0, errors.New("telegram rich message response is empty")
+	}
+	return int64(message.ID), nil
+}
+
 func (client *apiClient) SendChatAction(ctx context.Context, chatID int64, action string) error {
 	if client == nil || client.initErr != nil || client.bot == nil {
 		return errors.New("telegram bot transport is unavailable")
 	}
 	ok, err := client.bot.SendChatAction(nonNilContext(ctx), &telegrambot.SendChatActionParams{ChatID: chatID, Action: models.ChatAction(strings.TrimSpace(action))})
+	if err != nil {
+		return classifyTransportError(err)
+	}
+	if !ok {
+		return errors.New("telegram chat action was not accepted")
+	}
+	return nil
+}
+
+func (client *apiClient) SendChatActionThread(ctx context.Context, chatID int64, threadID int, action string) error {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return errors.New("telegram bot transport is unavailable")
+	}
+	ok, err := client.bot.SendChatAction(nonNilContext(ctx), &telegrambot.SendChatActionParams{ChatID: chatID, MessageThreadID: threadID, Action: models.ChatAction(strings.TrimSpace(action))})
 	if err != nil {
 		return classifyTransportError(err)
 	}
@@ -240,6 +303,17 @@ func (client *apiClient) SendDocument(ctx context.Context, chatID int64, upload 
 		Caption:        strings.TrimSpace(upload.Caption),
 		ProtectContent: upload.ProtectContent,
 	})
+	return classifyTransportError(err)
+}
+
+func (client *apiClient) SendDocumentThread(ctx context.Context, chatID int64, threadID int, upload DocumentUpload) error {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return errors.New("telegram bot transport is unavailable")
+	}
+	if err := ValidateDocumentUpload(upload); err != nil {
+		return err
+	}
+	_, err := client.bot.SendDocument(nonNilContext(ctx), &telegrambot.SendDocumentParams{ChatID: chatID, MessageThreadID: threadID, Document: &models.InputFileUpload{Filename: upload.FileName, Data: bytes.NewReader(upload.Data)}, Caption: strings.TrimSpace(upload.Caption), ProtectContent: upload.ProtectContent})
 	return classifyTransportError(err)
 }
 
@@ -550,11 +624,11 @@ func messageToModel(message *Message) *models.Message {
 }
 
 func userFromModel(user models.User) User {
-	return User{ID: user.ID, Username: user.Username, FirstName: user.FirstName, LastName: user.LastName}
+	return User{ID: user.ID, Username: user.Username, FirstName: user.FirstName, LastName: user.LastName, HasTopicsEnabled: user.HasTopicsEnabled, AllowsUsersToCreateTopics: user.AllowsUsersToCreateTopics}
 }
 
 func userToModel(user User) models.User {
-	return models.User{ID: user.ID, Username: user.Username, FirstName: user.FirstName, LastName: user.LastName}
+	return models.User{ID: user.ID, Username: user.Username, FirstName: user.FirstName, LastName: user.LastName, HasTopicsEnabled: user.HasTopicsEnabled, AllowsUsersToCreateTopics: user.AllowsUsersToCreateTopics}
 }
 
 func chatFromModel(chat models.Chat) Chat { return Chat{ID: chat.ID, Type: string(chat.Type)} }

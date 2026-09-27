@@ -22,7 +22,7 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 		"server.allow_insecure_http", "server.allow_unauthenticated_loopback", "server.enabled", "server.expose.interfaces", "server.expose.mode", "server.port",
 		"shell.path",
 		"telemetry.enabled",
-		"telegram.allowed_user_ids", "telegram.enabled",
+		"telegram.allowed_user_ids", "telegram.enabled", "telegram.topics_enabled",
 		"tunnel.admin.enabled", "tunnel.admin.key", "tunnel.admin.manage_access", "tunnel.admin.organization_id", "tunnel.admin.read_access",
 		"tunnel.admin.tenant_id", "tunnel.admin.verified", "tunnel.admin.workspace_id", "tunnel.api_key",
 		"tunnel.control_plane_base_url", "tunnel.enabled", "tunnel.id", "tunnel.organization_id",

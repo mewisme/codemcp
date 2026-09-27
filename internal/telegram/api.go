@@ -6,10 +6,12 @@ import (
 )
 
 type User struct {
-	ID        int64  `json:"id"`
-	Username  string `json:"username,omitempty"`
-	FirstName string `json:"first_name,omitempty"`
-	LastName  string `json:"last_name,omitempty"`
+	ID                        int64  `json:"id"`
+	Username                  string `json:"username,omitempty"`
+	FirstName                 string `json:"first_name,omitempty"`
+	LastName                  string `json:"last_name,omitempty"`
+	HasTopicsEnabled          bool   `json:"has_topics_enabled,omitempty"`
+	AllowsUsersToCreateTopics bool   `json:"allows_users_to_create_topics,omitempty"`
 }
 
 type Chat struct {
@@ -108,6 +110,14 @@ type DocumentUpload struct {
 type DocumentAPI interface {
 	SendDocument(context.Context, int64, DocumentUpload) error
 	DownloadDocument(context.Context, Document) ([]byte, error)
+}
+
+type TopicAPI interface {
+	CreateTopic(context.Context, int64, string) (int, error)
+	SendMessageThread(context.Context, int64, int, string) error
+	SendRichMessageThread(context.Context, int64, int, Screen, RichMessageOptions) (int64, error)
+	SendChatActionThread(context.Context, int64, int, string) error
+	SendDocumentThread(context.Context, int64, int, DocumentUpload) error
 }
 
 type PendingInputValue struct {
