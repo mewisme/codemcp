@@ -63,26 +63,39 @@ func (m *Manager) RegisterProvider(name string, registration ProviderRegistratio
 	if m == nil {
 		return errors.New("semantic manager is nil")
 	}
-	name = strings.TrimSpace(name)
-	if err := validateSafeMetadata("provider", name, MaxProviderIDBytes); err != nil {
+	name, model, managed, err := m.prepareProvider(name, registration)
+	if err != nil {
 		return err
 	}
-	if registration.Provider == nil && registration.RiskClassifier == nil {
-		return errors.New("semantic provider registration has no capabilities")
-	}
-	model := strings.TrimSpace(registration.Model)
-	if model != "" {
-		if err := validateSafeMetadata("model", model, MaxModelIDBytes); err != nil {
-			return err
-		}
-	}
-	managed := newManagedProvider(name, model, registration, m.options)
 	m.mu.Lock()
 	previous := m.providers[name]
 	m.providers[name] = managed
 	if m.selected == name {
 		m.health = Health{Available: true, Provider: name, Model: model}
 	}
+	m.mu.Unlock()
+	if previous != nil {
+		previous.invalidate()
+	}
+	return nil
+}
+
+// ConfigureProvider atomically replaces a provider generation and selects it.
+// The Provider and RiskClassifier in one registration therefore become visible
+// together to all new evaluations/classifications.
+func (m *Manager) ConfigureProvider(name string, registration ProviderRegistration) error {
+	if m == nil {
+		return errors.New("semantic manager is nil")
+	}
+	name, model, managed, err := m.prepareProvider(name, registration)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	previous := m.providers[name]
+	m.providers[name] = managed
+	m.selected = name
+	m.health = Health{Available: true, Provider: name, Model: model}
 	m.mu.Unlock()
 	if previous != nil {
 		previous.invalidate()
@@ -104,6 +117,23 @@ func (m *Manager) SelectProvider(name string) error {
 	m.selected = name
 	m.health = Health{Available: true, Provider: name, Model: provider.model}
 	return nil
+}
+
+func (m *Manager) prepareProvider(name string, registration ProviderRegistration) (string, string, *managedProvider, error) {
+	name = strings.TrimSpace(name)
+	if err := validateSafeMetadata("provider", name, MaxProviderIDBytes); err != nil {
+		return "", "", nil, err
+	}
+	if registration.Provider == nil && registration.RiskClassifier == nil {
+		return "", "", nil, errors.New("semantic provider registration has no capabilities")
+	}
+	model := strings.TrimSpace(registration.Model)
+	if model != "" {
+		if err := validateSafeMetadata("model", model, MaxModelIDBytes); err != nil {
+			return "", "", nil, err
+		}
+	}
+	return name, model, newManagedProvider(name, model, registration, m.options), nil
 }
 
 func (m *Manager) SetUnavailable(category ErrorCategory) {

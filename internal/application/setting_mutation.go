@@ -9,6 +9,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
+	"go.mewis.me/codemcp/internal/secretstore"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -188,7 +189,8 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 		} else if strings.TrimSpace(value) == "" {
 			return SettingApplyResult{}, errors.New("integrations.typesafe.api_key must not be empty; unset it to clear the credential")
 		}
-		if err := typesafeintegration.UpdateAPIKey(config.RootPath(), value); err != nil {
+		reloaded, err := applyTypeSafeSecretSettingChange(ctx, value)
+		if err != nil {
 			return SettingApplyResult{}, err
 		}
 		presented, err := s.Present(ctx, item.spec.Key)
@@ -199,7 +201,8 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 		if err != nil {
 			return SettingApplyResult{}, err
 		}
-		return SettingApplyResult{Results: []SettingResult{presented}, Config: cfg}, nil
+		presented.RuntimeReloaded = reloaded
+		return SettingApplyResult{Results: []SettingResult{presented}, Config: cfg, RuntimeReloaded: reloaded}, nil
 	}
 	if item, ok, err := telegramSecretSettingChange(resolved); ok || err != nil {
 		if err != nil {
@@ -270,6 +273,50 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 	}
 	tracepkg.Emit(ctx, "CONFIG", "setting.apply.persisted", "Canonical setting mutation persisted", tracepkg.String("config", source.Path), tracepkg.Int("changes", len(resolved)), tracepkg.Any("keys", keys), tracepkg.Bool("runtime_reloaded", reloaded))
 	return SettingApplyResult{Results: results, Config: next, RuntimeReloaded: reloaded}, nil
+}
+
+func applyTypeSafeSecretSettingChange(ctx context.Context, value string) (bool, error) {
+	root := config.RootPath()
+	previous, err := typesafeintegration.LoadAPIKey(root)
+	previousExists := err == nil
+	if err != nil && !errors.Is(err, secretstore.ErrNotFound) {
+		return false, err
+	}
+	value = strings.TrimSpace(value)
+	if (previousExists && previous == value) || (!previousExists && value == "") {
+		return false, nil
+	}
+	if err := typesafeintegration.UpdateAPIKey(root, value); err != nil {
+		return false, err
+	}
+	_, reloaded, reloadErr := reloadPersistedConfigIfRunning(ctx)
+	if reloadErr == nil {
+		return reloaded, nil
+	}
+
+	restoreValue := ""
+	if previousExists {
+		restoreValue = previous
+	}
+	if restoreErr := typesafeintegration.UpdateAPIKey(root, restoreValue); restoreErr != nil {
+		return false, errors.Join(
+			fmt.Errorf("reload TypeSafe credential runtime: %w", reloadErr),
+			fmt.Errorf("restore TypeSafe credential: %w", restoreErr),
+			ErrConfigReconciliationRequired,
+		)
+	}
+	_, _, reconcileErr := reloadPersistedConfigIfRunning(ctx)
+	if reconcileErr != nil {
+		return false, errors.Join(
+			fmt.Errorf("reload TypeSafe credential runtime: %w", reloadErr),
+			fmt.Errorf("reconcile restored TypeSafe credential runtime: %w", reconcileErr),
+			ErrConfigReconciliationRequired,
+		)
+	}
+	return false, errors.Join(
+		fmt.Errorf("reload TypeSafe credential runtime: %w", reloadErr),
+		ErrConfigMutationRolledBack,
+	)
 }
 
 func typeSafeSecretSettingChange(resolved []resolvedSettingChange) (resolvedSettingChange, bool, error) {

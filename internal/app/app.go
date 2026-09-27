@@ -44,6 +44,10 @@ type App struct {
 	Telegram                  *telegram.Runtime
 	TelegramPairing           *telegram.PairingStore
 	TelegramUI                *telegram.Interface
+	typeSafeMu                sync.Mutex
+	typeSafeFingerprint       string
+	typeSafeHTTPClient        *http.Client
+	typeSafeBaseURL           string
 	runtimeCtx                context.Context
 	trace                     tracepkg.Observer
 	running                   bool
@@ -100,6 +104,9 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	if toolRuntime.Upstream != nil {
 		toolRuntime.Upstream.SetTraceObserver(observer)
 	}
+	if toolRuntime.Semantic != nil {
+		toolRuntime.Semantic.SetTraceObserver(observer)
+	}
 	workspaceSpan := tracepkg.Start(ctx, "APP", "app.workspaces.load", "Loading workspace registry")
 	if workspaces, err := toolRuntime.Workspaces.List(); err != nil {
 		workspaceSpan.FailMessage("Workspace registry load failed", err)
@@ -140,6 +147,15 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 		OAuth: oauthStore, OAuthFlows: mcpoauth.NewFlowManager(oauthStore), ProductTelemetry: productRecorder, trace: observer,
 		Operations: application.NewDispatcher(),
 		Telegram:   telegram.NewRuntime(telegram.Options{Root: config.RootPath()}), TelegramPairing: telegram.NewPairingStore(config.RootPath()),
+	}
+	typeSafeCandidate, err := app.prepareTypeSafe(cfg)
+	if err != nil {
+		span.FailMessage("TypeSafe semantic runtime preparation failed", err)
+		return nil, err
+	}
+	if err := app.commitTypeSafe(typeSafeCandidate); err != nil {
+		span.FailMessage("TypeSafe semantic runtime configuration failed", err)
+		return nil, err
 	}
 	app.ProductLifecycleTelemetry = newProductLifecycleTelemetry(productRecorder, toolRuntime.Approvals, toolRuntime.Processes)
 	bootstrapStarted := time.Now()

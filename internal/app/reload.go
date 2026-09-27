@@ -22,6 +22,10 @@ func (a *App) ReloadConfig(next config.Config) error {
 		return err
 	}
 	previous := a.Config.Snapshot()
+	typeSafeCandidate, err := a.prepareTypeSafe(next)
+	if err != nil {
+		return err
+	}
 	httpChanged := previous.Server.Enabled != next.Server.Enabled
 	integrationsChanged := previous.Integrations != next.Integrations
 	permissionsChanged := !slices.Equal(previous.Permissions.AllowDirs, next.Permissions.AllowDirs)
@@ -38,14 +42,14 @@ func (a *App) ReloadConfig(next config.Config) error {
 	if reloadTestAfterCommit != nil {
 		reloadTestAfterCommit()
 	}
-	if err := a.applyRuntimeConfig(next, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
+	if err := a.applyRuntimeConfig(next, typeSafeCandidate, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged); err != nil {
 		_, restoreErr := a.Config.Update(func(config.Config) (config.Config, error) { return previous, nil })
 		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged))
 	}
 	return nil
 }
 
-func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
+func (a *App) applyRuntimeConfig(next config.Config, typeSafeCandidate typeSafeRuntimeCandidate, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged bool) error {
 	if integrationsChanged {
 		if err := a.Tools.SyncIntegrations(next.Integrations); err != nil {
 			return err
@@ -91,7 +95,7 @@ func (a *App) applyRuntimeConfig(next config.Config, httpChanged, integrationsCh
 			}
 		}
 	}
-	return nil
+	return a.commitTypeSafe(typeSafeCandidate)
 }
 
 func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged, tunnelRuntimeChanged bool) error {

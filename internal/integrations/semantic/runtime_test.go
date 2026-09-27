@@ -351,6 +351,50 @@ func TestProviderReplacementInvalidatesCacheAndLateHealth(t *testing.T) {
 	}
 }
 
+func TestConfigureProviderAtomicallyReplacesAndSelectsBothCapabilities(t *testing.T) {
+	manager := NewManager(ManagerOptions{MaxAttempts: 1})
+	registration := func(generation string) ProviderRegistration {
+		return ProviderRegistration{
+			Model: generation,
+			Provider: ProviderFunc(func(context.Context, Request) (Result, error) {
+				result := runtimeResult("typesafe", generation, 0.9)
+				result.Model = generation
+				return result, nil
+			}),
+			RiskClassifier: RiskClassifierFunc(func(context.Context, RiskInput) (RiskAssessment, error) {
+				return RiskAssessment{
+					Class: RiskLow, Confidence: 0.95, Category: "generation",
+					Provider: ProviderMetadata{Provider: "typesafe", Model: generation},
+				}, nil
+			}),
+		}
+	}
+	if err := manager.ConfigureProvider("typesafe", registration("generation-one")); err != nil {
+		t.Fatal(err)
+	}
+	if health := manager.Health(); !health.Available || health.Provider != "typesafe" || health.Model != "generation-one" {
+		t.Fatalf("health=%#v", health)
+	}
+	if err := manager.ConfigureProvider("typesafe", registration("generation-two")); err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.Evaluate(t.Context(), runtimeRequest(77))
+	if err != nil || result.Model != "generation-two" {
+		t.Fatalf("evaluation=%#v err=%v", result, err)
+	}
+	input := RiskInput{
+		Consumer: Consumer{ID: "approval.semantic", Purpose: "command_risk"},
+		Invocation: CanonicalInvocation{
+			Operation: "run_command", Tool: "run_command",
+			Arguments: map[string]any{"command": "touch example"},
+		},
+	}
+	assessment, err := manager.ClassifyRisk(t.Context(), input, 0.8)
+	if err != nil || assessment.Provider.Model != "generation-two" {
+		t.Fatalf("risk=%#v err=%v", assessment, err)
+	}
+}
+
 func TestSetUnavailableInvalidatesSelectedProviderCache(t *testing.T) {
 	var calls atomic.Int32
 	manager := NewManager(ManagerOptions{MaxAttempts: 1})
