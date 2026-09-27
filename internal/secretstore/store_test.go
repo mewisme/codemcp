@@ -53,6 +53,7 @@ func TestCanonicalServiceNamespaceAndAccountNames(t *testing.T) {
 		domain Domain
 		parts  []string
 	}{
+		{DomainAuth, []string{"mcp-token"}},
 		{DomainTunnel, []string{"runtime-key"}},
 		{DomainOAuth, []string{"provider-id", "access-token"}},
 		{DomainUpstream, []string{"server-id", "header", "Authorization"}},

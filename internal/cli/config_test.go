@@ -17,6 +17,7 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	"go.mewis.me/codemcp/internal/secretstore"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/upstream"
 )
 
@@ -296,7 +297,7 @@ func TestConfigJSONResultStaysCleanUnderVerboseAndDebug(t *testing.T) {
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 				t.Fatalf("%s stdout is not pure JSON: %q err=%v", flag, stdout.String(), err)
 			}
-			if strings.Contains(stdout.String(), "mcp-secret") || strings.Contains(stdout.String(), "token_hash") || !strings.Contains(stdout.String(), `"auth.mcp_token": "configured"`) {
+			if strings.Contains(stdout.String(), "mcp-secret") || strings.Contains(stdout.String(), "token_hash") || !strings.Contains(stdout.String(), `"auth.mcp_token": "mcp_********legacy"`) {
 				t.Fatalf("%s JSON safe setting projection=%q", flag, stdout.String())
 			}
 			if stderr.Len() == 0 {
@@ -604,7 +605,7 @@ func TestUniversalConfigReadProjectionAndWriteOnlySecrets(t *testing.T) {
 			t.Fatalf("config list leaked %q: %s", forbidden, output)
 		}
 	}
-	for _, want := range []string{"auth.mcp_token", "auth.admin_token", "configured"} {
+	for _, want := range []string{"auth.mcp_token", "auth.admin_token", "mcp_********legacy", "admin_********legacy"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("config list missing %q: %s", want, output)
 		}
@@ -621,6 +622,60 @@ func TestUniversalConfigReadProjectionAndWriteOnlySecrets(t *testing.T) {
 	_, err = executeRequestCommandError(root, []string{"config", "get", "auth.mcp_token"})
 	if err == nil || !strings.Contains(err.Error(), "write-only") {
 		t.Fatalf("write-only secret get err=%v", err)
+	}
+}
+
+func TestConfigListUsesMaskedPreviewForEveryManagedSecret(t *testing.T) {
+	root := isolateUniversalConfigCLI(t)
+	restore := secretstore.UseMemoryForTesting()
+	defer restore()
+
+	mcpToken, _, err := application.RotateAuthToken(t.Context(), "mcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminToken, _, err := application.RotateAuthToken(t.Context(), "admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	service := application.NewSettingService()
+	values := map[string]string{
+		"telegram.token":                "123456:telegram-credential-value",
+		"integrations.typesafe.api_key": "typesafe-credential-value",
+	}
+	for key, value := range values {
+		if _, err := service.Set(t.Context(), key, value); err != nil {
+			t.Fatalf("set %s: %v", key, err)
+		}
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Tunnel.APIKey = "sk-runtime-credential-value"
+	cfg.Tunnel.Admin.Key = "sk-admin-credential-value"
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	values["auth.mcp_token"] = mcpToken
+	values["auth.admin_token"] = adminToken
+	values["tunnel.api_key"] = cfg.Tunnel.APIKey
+	values["tunnel.admin.key"] = cfg.Tunnel.Admin.Key
+
+	output, err := executeRequestCommandError(root, []string{"config", "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range values {
+		masked := tracepkg.MaskSecret(value, true)
+		if !strings.Contains(output, key+" = "+masked) {
+			t.Fatalf("config list missing masked credential %s=%q: %s", key, masked, output)
+		}
+		if strings.Contains(output, key+" = configured") || strings.Contains(output, key+" = ********") || strings.Contains(output, value) {
+			t.Fatalf("config list used inconsistent credential presentation for %s: %s", key, output)
+		}
 	}
 }
 

@@ -116,9 +116,14 @@ func Initialize(options InitOptions) (result InitResult, resultErr error) {
 		return InitResult{}, err
 	}
 	validateSpan.EndMessage("Initial configuration validated")
+	rollbackSecrets, err := replaceAuthSecrets(config.RootPath(), map[string]string{"mcp": mcpToken, "admin": adminToken})
+	if err != nil {
+		return InitResult{}, fmt.Errorf("store initial authentication tokens: %w", err)
+	}
 	path := source.Path
 	persistSpan := tracepkg.Start(ctx, "CONFIG", "config.persist", "Persisting initial configuration", tracepkg.String("path", path), tracepkg.String("format", string(configformat.JSON)), tracepkg.Bool("replace", source.Exists), tracepkg.Bool("atomic", true))
 	if err := config.Save(cfg); err != nil {
+		err = errors.Join(err, rollbackSecrets())
 		persistSpan.FailMessage("Initial configuration persistence failed", err)
 		return InitResult{}, err
 	}
@@ -172,6 +177,8 @@ func PurgeStoredSecretsContext(ctx context.Context, root string) error {
 		return err
 	}
 	entries = append(entries, secretstore.AccountName(secretstore.DomainCluster, "relay-token"))
+	entries = append(entries, auth.SecretEntries()...)
+	entries = append(entries, telegramBotTokenSecretName)
 	entries = append(entries, typesafeintegration.APIKeySecretName)
 	entries = append(entries, oauthEntries...)
 	entries = append(entries, upstreamEntries...)

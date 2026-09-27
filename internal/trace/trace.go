@@ -149,8 +149,11 @@ func MaskSecret(raw string, configured bool) string {
 		return "not configured"
 	}
 	runes := []rune(strings.TrimSpace(raw))
+	if len(runes) < 6 {
+		return "…********…"
+	}
 	if len(runes) < 16 {
-		return "********"
+		return string(runes[:1]) + "********" + string(runes[len(runes)-1:])
 	}
 	if len(runes) < 24 {
 		return string(runes[:2]) + "********" + string(runes[len(runes)-2:])

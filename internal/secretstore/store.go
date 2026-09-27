@@ -15,6 +15,7 @@ const servicePrefix = "codemcp"
 type Domain string
 
 const (
+	DomainAuth     Domain = "auth"
 	DomainTunnel   Domain = "tunnel"
 	DomainOAuth    Domain = "oauth"
 	DomainUpstream Domain = "upstream"

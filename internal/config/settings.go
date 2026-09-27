@@ -8,10 +8,9 @@ import (
 type SettingPresentationPolicy string
 
 const (
-	SettingPresentationValue           SettingPresentationPolicy = "value"
-	SettingPresentationConfiguredState SettingPresentationPolicy = "configured-state"
-	SettingPresentationMaskedPreview   SettingPresentationPolicy = "masked-preview"
-	SettingPresentationInternal        SettingPresentationPolicy = "internal"
+	SettingPresentationValue         SettingPresentationPolicy = "value"
+	SettingPresentationMaskedPreview SettingPresentationPolicy = "masked-preview"
+	SettingPresentationInternal      SettingPresentationPolicy = "internal"
 )
 
 type FieldSelectorSpec struct {
@@ -35,7 +34,7 @@ var virtualSettingSpecs = []FieldSpec{
 		Details:     "The raw bot token is stored only in the canonical secret store. Saving or removing it does not contact Telegram; runtime activation validates the token before polling.",
 		Guidance:    "Manage this credential with cm telegram token set/remove or the equivalent config set/unset commands.",
 		Virtual:     true, Writable: true, Secret: true, Clearable: true, ConfiguredStateKey: "telegram.token_configured",
-		Presentation: SettingPresentationConfiguredState, ApplicationOwner: "telegram.credentials",
+		Presentation: SettingPresentationMaskedPreview, ApplicationOwner: "telegram.credentials",
 		ValueRole:      SettingValueConfigured,
 		ScopedCommands: []string{"telegram token set", "telegram token remove", "telegram token status"},
 	},
@@ -62,14 +61,14 @@ var virtualSettingSpecs = []FieldSpec{
 	{
 		Key: "auth.mcp_token", Label: "MCP token", Section: FieldSectionAccess, Kind: FieldString,
 		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "auth.mcp_token_configured",
-		Presentation: SettingPresentationConfiguredState, ApplicationOwner: "auth.credentials",
+		Presentation: SettingPresentationMaskedPreview, ApplicationOwner: "auth.credentials",
 		ValueRole:      SettingValueGenerated,
 		ScopedCommands: []string{"auth mcp create", "auth status"},
 	},
 	{
 		Key: "auth.admin_token", Label: "Admin token", Section: FieldSectionAccess, Kind: FieldString,
 		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "auth.admin_token_configured",
-		Presentation: SettingPresentationConfiguredState, ApplicationOwner: "auth.credentials",
+		Presentation: SettingPresentationMaskedPreview, ApplicationOwner: "auth.credentials",
 		ValueRole:      SettingValueGenerated,
 		ScopedCommands: []string{"auth admin create", "auth status"},
 	},

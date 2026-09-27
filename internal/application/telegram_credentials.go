@@ -18,6 +18,10 @@ func telegramTokenConfigured() (bool, error) {
 	return err == nil, err
 }
 
+func readTelegramToken() (string, error) {
+	return secretstore.New(config.RootPath()).Get(telegramBotTokenSecretName)
+}
+
 func writeTelegramToken(value string) error {
 	return secretstore.New(config.RootPath()).Set(telegramBotTokenSecretName, strings.TrimSpace(value))
 }

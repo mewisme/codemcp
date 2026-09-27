@@ -330,26 +330,40 @@ func (s *SettingService) presentSecret(ctx context.Context, spec config.FieldSpe
 	if !configured {
 		return SettingResult{Value: "not configured", Configured: boolPointer(false)}, nil
 	}
-	switch spec.Presentation {
-	case config.SettingPresentationConfiguredState:
-		return SettingResult{Value: "configured", Configured: boolPointer(true)}, nil
-	case config.SettingPresentationMaskedPreview:
+	if spec.Presentation != config.SettingPresentationMaskedPreview {
+		return SettingResult{}, fmt.Errorf("managed secret %q must use masked-preview presentation", spec.Key)
+	}
+	switch spec.Key {
+	case "auth.mcp_token":
+		value, err := authSecretPreview(config.RootPath(), "mcp", true)
+		return SettingResult{Value: value, Configured: boolPointer(true)}, err
+	case "auth.admin_token":
+		value, err := authSecretPreview(config.RootPath(), "admin", true)
+		return SettingResult{Value: value, Configured: boolPointer(true)}, err
+	case "telegram.token":
+		raw, err := readTelegramToken()
+		if err != nil {
+			return SettingResult{}, err
+		}
+		return SettingResult{Value: tracepkg.MaskSecret(raw, true), Configured: boolPointer(true)}, nil
+	case "integrations.typesafe.api_key":
+		raw, err := typesafeintegration.LoadAPIKey(config.RootPath())
+		if err != nil {
+			return SettingResult{}, err
+		}
+		return SettingResult{Value: tracepkg.MaskSecret(raw, true), Configured: boolPointer(true)}, nil
+	case "tunnel.api_key", "tunnel.admin.key":
 		cfg, err := LoadConfig(ctx)
 		if err != nil {
 			return SettingResult{}, err
 		}
-		raw := ""
-		switch spec.Key {
-		case "tunnel.api_key":
-			raw = cfg.Tunnel.APIKey
-		case "tunnel.admin.key":
+		raw := cfg.Tunnel.APIKey
+		if spec.Key == "tunnel.admin.key" {
 			raw = cfg.Tunnel.Admin.Key
-		default:
-			return SettingResult{Value: "********", Configured: boolPointer(true)}, nil
 		}
 		return SettingResult{Value: tracepkg.MaskSecret(raw, true), Configured: boolPointer(true)}, nil
 	default:
-		return SettingResult{Value: "********", Configured: boolPointer(true)}, nil
+		return SettingResult{}, fmt.Errorf("managed secret %q has no masked-preview source", spec.Key)
 	}
 }
 

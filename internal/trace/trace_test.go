@@ -89,10 +89,13 @@ func TestURLFieldSanitizesCredentialQuery(t *testing.T) {
 }
 
 func TestMaskSecretDoesNotRevealShortSecrets(t *testing.T) {
-	for _, secret := range []string{"a", "short123", "123456789012345"} {
-		masked := MaskSecret(secret, true)
-		if masked != "********" || strings.Contains(masked, secret) {
-			t.Fatalf("short secret %q masked as %q", secret, masked)
+	for secret, want := range map[string]string{
+		"a":               "…********…",
+		"short123":        "s********3",
+		"123456789012345": "1********5",
+	} {
+		if masked := MaskSecret(secret, true); masked != want || strings.Contains(masked, secret) {
+			t.Fatalf("short secret %q masked as %q want %q", secret, masked, want)
 		}
 	}
 	if got := MaskSecret("", false); got != "not configured" {

@@ -15,6 +15,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/secretstore"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func TestTypeSafeStatusMutationAndProbeAreExplicit(t *testing.T) {
@@ -73,7 +74,7 @@ func TestTypeSafeStatusMutationAndProbeAreExplicit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if keyResult.Value != "********" || keyResult.Configured == nil || !*keyResult.Configured {
+	if keyResult.Value != tracepkg.MaskSecret(secret, true) || keyResult.Configured == nil || !*keyResult.Configured {
 		t.Fatalf("secret presentation leaked value: %#v", keyResult)
 	}
 	if calls.Load() != 0 {

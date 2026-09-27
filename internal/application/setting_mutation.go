@@ -572,6 +572,9 @@ func settingApplyResultForKey(result SettingApplyResult, key string) (SettingRes
 func settingResultFromConfig(cfg config.Config, spec config.FieldSpec) (SettingResult, error) {
 	result := SettingResult{Spec: spec}
 	if spec.Secret {
+		if spec.Presentation != config.SettingPresentationMaskedPreview {
+			return SettingResult{}, fmt.Errorf("managed secret %q must use masked-preview presentation", spec.Key)
+		}
 		raw, err := config.RawValue(cfg, spec.Key)
 		if err != nil {
 			return SettingResult{}, err
@@ -582,14 +585,7 @@ func settingResultFromConfig(cfg config.Config, spec config.FieldSpec) (SettingR
 			result.Value = "not configured"
 			return result, nil
 		}
-		switch spec.Presentation {
-		case config.SettingPresentationConfiguredState:
-			result.Value = "configured"
-		case config.SettingPresentationMaskedPreview:
-			result.Value = tracepkg.MaskSecret(raw, true)
-		default:
-			result.Value = "********"
-		}
+		result.Value = tracepkg.MaskSecret(raw, true)
 		return result, nil
 	}
 	if !spec.Readable {

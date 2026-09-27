@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -76,7 +77,13 @@ func RotateAuthToken(ctx context.Context, kind string) (string, AuthStatus, erro
 		return "", AuthStatus{}, err
 	}
 	validateSpan.EndMessage("Authentication configuration validated", tracepkg.String("kind", kind))
+	rollbackSecret, err := replaceAuthSecrets(config.RootPath(), map[string]string{kind: token})
+	if err != nil {
+		span.FailMessage("Authentication token rotation failed", err)
+		return "", AuthStatus{}, err
+	}
 	if _, _, err := saveConfigMutation(ctx, previous, cfg); err != nil {
+		err = errors.Join(err, rollbackSecret())
 		span.FailMessage("Authentication token rotation failed", err)
 		return "", AuthStatus{}, err
 	}

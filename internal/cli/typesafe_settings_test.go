@@ -10,6 +10,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/secretstore"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func TestTypeSafeScopedSettingsUseCanonicalSettingService(t *testing.T) {
@@ -58,7 +59,7 @@ func TestTypeSafeScopedSettingsUseCanonicalSettingService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if presented.Value != "********" || presented.Configured == nil || !*presented.Configured || strings.Contains(output.String(), "cli-secret-sentinel") {
+	if presented.Value != tracepkg.MaskSecret("cli-secret-sentinel", true) || presented.Configured == nil || !*presented.Configured || strings.Contains(output.String(), "cli-secret-sentinel") {
 		t.Fatalf("secret presentation=%#v output=%q", presented, output.String())
 	}
 	data, err := os.ReadFile(config.DefaultPath())

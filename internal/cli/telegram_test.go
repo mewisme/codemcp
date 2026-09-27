@@ -8,6 +8,7 @@ import (
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/secretstore"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func TestTelegramSetupCommandRegistered(t *testing.T) {
@@ -57,7 +58,7 @@ func TestTelegramTokenScopedAndGenericSettingsConverge(t *testing.T) {
 	if err := cmd.ExecuteContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output.String(), "telegram.token") || !strings.Contains(output.String(), "configured") {
+	if !strings.Contains(output.String(), "telegram.token") || !strings.Contains(output.String(), tracepkg.MaskSecret(genericSecret, true)) {
 		t.Fatalf("config list missing Telegram token state: %q", output.String())
 	}
 	if strings.Contains(output.String(), genericSecret) {

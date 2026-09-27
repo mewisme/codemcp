@@ -66,8 +66,8 @@ func TestUniversalSettingMetadataIsCompleteAndUnique(t *testing.T) {
 			if spec.Readable || spec.ConfiguredStateKey == "" {
 				t.Fatalf("managed secret has unsafe read metadata: %#v", spec)
 			}
-			if spec.Presentation != SettingPresentationConfiguredState && spec.Presentation != SettingPresentationMaskedPreview {
-				t.Fatalf("managed secret %q has unsafe presentation policy %q", spec.Key, spec.Presentation)
+			if spec.Presentation != SettingPresentationMaskedPreview {
+				t.Fatalf("managed secret %q must use masked-preview presentation, got %q", spec.Key, spec.Presentation)
 			}
 			state, ok := SettingByKey(spec.ConfiguredStateKey)
 			if !ok || !state.Readable || !state.Derived || state.Secret || state.InternalOnly {
@@ -145,9 +145,9 @@ func TestUniversalSettingManagedCredentialVocabulary(t *testing.T) {
 		clearable    bool
 		verifiable   bool
 	}{
-		"telegram.token":                {state: "telegram.token_configured", presentation: SettingPresentationConfiguredState, writable: true, clearable: true},
-		"auth.mcp_token":                {state: "auth.mcp_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
-		"auth.admin_token":              {state: "auth.admin_token_configured", presentation: SettingPresentationConfiguredState, rotatable: true},
+		"telegram.token":                {state: "telegram.token_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
+		"auth.mcp_token":                {state: "auth.mcp_token_configured", presentation: SettingPresentationMaskedPreview, rotatable: true},
+		"auth.admin_token":              {state: "auth.admin_token_configured", presentation: SettingPresentationMaskedPreview, rotatable: true},
 		"integrations.typesafe.api_key": {state: "integrations.typesafe.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
 		"tunnel.api_key":                {state: "tunnel.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
 		"tunnel.admin.key":              {state: "tunnel.admin.key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true, verifiable: true},

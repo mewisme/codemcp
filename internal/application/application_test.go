@@ -3,13 +3,16 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/secretstore"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
@@ -42,6 +45,14 @@ func TestInitializeAndAuthLifecycle(t *testing.T) {
 	if !strings.HasPrefix(result.MCPToken, "mcp_") || !strings.HasPrefix(result.AdminToken, "admin_") {
 		t.Fatalf("generated tokens have unexpected format")
 	}
+	storedMCP, err := auth.LoadToken(root, "mcp")
+	if err != nil || storedMCP != result.MCPToken {
+		t.Fatalf("stored MCP token=%q err=%v", storedMCP, err)
+	}
+	storedAdmin, err := auth.LoadToken(root, "admin")
+	if err != nil || storedAdmin != result.AdminToken {
+		t.Fatalf("stored admin token=%q err=%v", storedAdmin, err)
+	}
 	status, err := GetAuthStatus()
 	if err != nil {
 		t.Fatal(err)
@@ -65,6 +76,10 @@ func TestInitializeAndAuthLifecycle(t *testing.T) {
 	}
 	if rotated == result.MCPToken || !status.MCPEnabled || !status.MCPConfigured {
 		t.Fatalf("rotation did not replace and enable MCP auth")
+	}
+	storedMCP, err = auth.LoadToken(root, "mcp")
+	if err != nil || storedMCP != rotated {
+		t.Fatalf("rotated MCP token secretstore value=%q err=%v", storedMCP, err)
 	}
 	if _, _, err := RotateAuthToken(t.Context(), "missing"); err == nil {
 		t.Fatal("invalid auth kind unexpectedly accepted")
@@ -128,6 +143,34 @@ func TestUninitializeRemovesManagedRoot(t *testing.T) {
 	}
 	if err := RemoveConfigRoot(t.TempDir()); err == nil {
 		t.Fatal("unmanaged root unexpectedly removed")
+	}
+}
+
+func TestPurgeStoredSecretsRemovesAuthCredentials(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := filepath.Join(t.TempDir(), "config")
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	restore := secretstore.UseMemoryForTesting()
+	defer restore()
+
+	if err := auth.StoreTokens(root, "mcp_secret_for_purge", "admin_secret_for_purge"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTelegramToken("telegram_secret_for_purge"); err != nil {
+		t.Fatal(err)
+	}
+	if err := PurgeStoredSecrets(root); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []string{"mcp", "admin"} {
+		if _, err := auth.LoadToken(root, kind); !errors.Is(err, secretstore.ErrNotFound) {
+			t.Fatalf("%s auth secret remained after purge: %v", kind, err)
+		}
+	}
+	if _, err := readTelegramToken(); !errors.Is(err, secretstore.ErrNotFound) {
+		t.Fatalf("telegram secret remained after purge: %v", err)
 	}
 }
 

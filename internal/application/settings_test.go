@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
@@ -186,7 +187,7 @@ func TestTelegramTokenManagedSecretSetting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Value != "configured" || result.Configured == nil || !*result.Configured || strings.Contains(result.Value, secret) {
+	if result.Value != tracepkg.MaskSecret(secret, true) || result.Configured == nil || !*result.Configured || strings.Contains(result.Value, secret) {
 		t.Fatalf("configured token presentation=%#v", result)
 	}
 	state, err := service.Read(t.Context(), "telegram.token_configured")
@@ -486,7 +487,7 @@ func TestTunnelAdminBatchRejectsCompetingScopesBeforePersistence(t *testing.T) {
 }
 
 func TestSettingServiceAuthRotateUsesCredentialAuthority(t *testing.T) {
-	isolateSettingServiceConfig(t)
+	root := isolateSettingServiceConfig(t)
 	service := NewSettingService()
 
 	rotated, err := service.Rotate(t.Context(), "auth.mcp_token")
@@ -503,12 +504,16 @@ func TestSettingServiceAuthRotateUsesCredentialAuthority(t *testing.T) {
 	if cfg.Auth.MCPTokenHash == "" || cfg.Auth.MCPTokenHash == rotated.Value {
 		t.Fatalf("credential authority did not persist a one-way hash")
 	}
+	stored, err := auth.LoadToken(root, "mcp")
+	if err != nil || stored != rotated.Value {
+		t.Fatalf("auth token secretstore value=%q err=%v", stored, err)
+	}
 
 	presented, err := service.Present(t.Context(), "auth.mcp_token")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if presented.Value != "configured" || presented.Configured == nil || !*presented.Configured || strings.Contains(presented.Value, rotated.Value) {
+	if presented.Value != tracepkg.MaskSecret(rotated.Value, true) || presented.Configured == nil || !*presented.Configured || strings.Contains(presented.Value, rotated.Value) {
 		t.Fatalf("presented=%#v", presented)
 	}
 	if _, err := service.Read(t.Context(), "auth.mcp_token"); err == nil || !strings.Contains(err.Error(), "write-only") {
@@ -535,7 +540,7 @@ func TestSettingServiceTunnelSecretPresentationAndTraceAreSafe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Configured == nil || !*result.Configured || result.Value == secret || !strings.Contains(result.Value, "********") {
+	if result.Configured == nil || !*result.Configured || result.Value != tracepkg.MaskSecret(secret, true) {
 		t.Fatalf("secret setting result=%#v", result)
 	}
 	if _, err := service.Read(ctx, "tunnel.api_key"); err == nil {
@@ -545,7 +550,7 @@ func TestSettingServiceTunnelSecretPresentationAndTraceAreSafe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if presented.Value == secret || !strings.Contains(presented.Value, "********") {
+	if presented.Value != tracepkg.MaskSecret(secret, true) {
 		t.Fatalf("secret presentation=%#v", presented)
 	}
 	const shortSecret = "tiny-secret"
@@ -553,14 +558,14 @@ func TestSettingServiceTunnelSecretPresentationAndTraceAreSafe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shortResult.Value != "********" {
+	if shortResult.Value != tracepkg.MaskSecret(shortSecret, true) {
 		t.Fatalf("short secret presentation can reveal material: %#v", shortResult)
 	}
 	shortPresented, err := service.Present(ctx, "tunnel.api_key")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if shortPresented.Value != "********" {
+	if shortPresented.Value != tracepkg.MaskSecret(shortSecret, true) {
 		t.Fatalf("short secret masked preview=%#v", shortPresented)
 	}
 	encoded, err := json.Marshal(events)
@@ -584,6 +589,17 @@ func TestSettingServiceTunnelSecretPresentationAndTraceAreSafe(t *testing.T) {
 	}
 	if presented.Value != "not configured" || presented.Configured == nil || *presented.Configured {
 		t.Fatalf("cleared secret presentation=%#v", presented)
+	}
+}
+
+func TestSettingServiceLegacyAuthHashUsesExplicitLegacyMaskedPreview(t *testing.T) {
+	isolateSettingServiceConfig(t)
+	presented, err := NewSettingService().Present(t.Context(), "auth.mcp_token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if presented.Value != "mcp_********legacy" || presented.Configured == nil || !*presented.Configured {
+		t.Fatalf("legacy auth presentation=%#v", presented)
 	}
 }
 
