@@ -1,9 +1,16 @@
 package cli
 
 import (
+	"errors"
+	"time"
+
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/app"
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/telegram"
 )
 
 func telegramSettingsCommand() *cobra.Command {
@@ -58,6 +65,99 @@ func telegramSettingsCommand() *cobra.Command {
 		markScopedSettings(remove, "telegram.token"),
 		markScopedSettings(status, "telegram.token"),
 	)
-	cmd.AddCommand(token)
+	cmd.AddCommand(token, telegramSetupCommand())
 	return cmd
+}
+
+func telegramSetupCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "setup",
+		Short: "Pair an authorized Telegram user",
+		Args:  cobra.NoArgs,
+		RunE:  runTelegramSetup,
+	}
+}
+
+func runTelegramSetup(cmd *cobra.Command, _ []string) error {
+	configured, err := settingService().Present(cmd.Context(), "telegram.token")
+	if err != nil {
+		return err
+	}
+	if configured.Configured == nil || !*configured.Configured {
+		return errors.New("telegram bot token is not configured; run `cm telegram token set <bot-token>` first")
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	cfg.Server.Enabled = false
+	cfg.Admin.Enabled = false
+	cfg.Tunnel.Enabled = false
+	runtime, err := app.NewWithLoggerContext(cmd.Context(), cfg, commandLogger(cmd))
+	if err != nil {
+		return err
+	}
+	defer runtime.Telegram.Stop()
+	if runtime.Notifications != nil {
+		defer runtime.Notifications.Stop()
+	}
+
+	challenge, err := runtime.PrepareTelegramPairing(cmd.Context())
+	if err != nil {
+		return err
+	}
+
+	presenter := commandPresenter(cmd)
+	presenter.Frame("Telegram setup")
+	presenter.StateSection(presentation.StatusInfo, "Pairing ready")
+	fields := []presentation.Field{
+		{Label: "code", Value: challenge.Code},
+		{Label: "expires", Value: challenge.ExpiresAt.Local().Format(time.RFC3339)},
+	}
+	if challenge.Username != "" {
+		fields = append([]presentation.Field{{Label: "bot", Value: "@" + challenge.Username}}, fields...)
+	}
+	if challenge.DeepLink != "" {
+		fields = append(fields, presentation.Field{Label: "link", Value: challenge.DeepLink})
+	}
+	presenter.NestedFields(fields...)
+	presenter.Spacer()
+	presenter.StateSection(presentation.StatusInfo, "Waiting for Telegram pairing")
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-cmd.Context().Done():
+			_ = runtime.TelegramPairingCancel(challenge.Generation)
+			return cmd.Context().Err()
+		case <-ticker.C:
+			state, err := runtime.TelegramPairingStatus()
+			if err != nil {
+				return err
+			}
+			switch state.Status {
+			case telegram.PairingStatusPaired:
+				presenter.StateSection(presentation.StatusSuccess, "Telegram paired")
+				if _, running, statusErr := application.RuntimeStatus(cmd.Context()); statusErr != nil {
+					presenter.StateSection(presentation.StatusWarning, "Running runtime status could not be checked")
+					presenter.NestedFields(presentation.Field{Label: "fix", Value: "cm restart"})
+				} else if running {
+					if _, reloadErr := requestRuntimeReload(cmd.Context()); reloadErr != nil {
+						presenter.StateSection(presentation.StatusWarning, "Running runtime could not reload Telegram configuration")
+						presenter.NestedFields(presentation.Field{Label: "fix", Value: "cm restart"})
+					} else {
+						presenter.StateSection(presentation.StatusSuccess, "Running runtime reloaded")
+					}
+				}
+				presenter.Complete("Setup complete")
+				return nil
+			case telegram.PairingStatusExpired:
+				return errors.New("telegram pairing code expired; run `cm telegram setup` again")
+			case telegram.PairingStatusCancelled:
+				return errors.New("telegram pairing was cancelled")
+			}
+		}
+	}
 }

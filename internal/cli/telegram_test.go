@@ -10,6 +10,33 @@ import (
 	"go.mewis.me/codemcp/internal/secretstore"
 )
 
+func TestTelegramSetupCommandRegistered(t *testing.T) {
+	cmd, _, err := newRootCommand().Find([]string{"telegram", "setup"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd == nil || cmd.Name() != "setup" {
+		t.Fatalf("telegram setup command=%v", cmd)
+	}
+}
+
+func TestTelegramSetupRequiresConfiguredToken(t *testing.T) {
+	root := isolateUniversalConfigCLI(t)
+	t.Setenv(configformat.EnvConfigDir, root)
+	restore := secretstore.UseMemoryForTesting()
+	defer restore()
+
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.SetArgs([]string{"telegram", "setup"})
+	err := cmd.ExecuteContext(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "telegram bot token is not configured") {
+		t.Fatalf("setup error=%v output=%q", err, output.String())
+	}
+}
+
 func TestTelegramTokenScopedAndGenericSettingsConverge(t *testing.T) {
 	root := isolateUniversalConfigCLI(t)
 	t.Setenv(configformat.EnvConfigDir, root)

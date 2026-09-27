@@ -102,6 +102,7 @@ const (
 	TelemetryEnable          ID = "telemetry.enable"
 	TelemetryDisable         ID = "telemetry.disable"
 	TelemetryShow            ID = "telemetry.show"
+	TelegramSetup            ID = "telegram.setup"
 
 	HealthRead                       ID = "health.read"
 	NetworkInterfacesList            ID = "network.interfaces.list"
@@ -271,6 +272,7 @@ func buildSpecs() []Spec {
 		operatorMutation(TelemetryEnable, "telemetry enable", RiskState, false),
 		operatorMutation(TelemetryDisable, "telemetry disable", RiskState, false),
 		operatorQuery(TelemetryShow, "telemetry show"),
+		operatorSensitive(TelegramSetup, "telegram setup", true),
 	}
 	values = append(values, integrationSpecs()...)
 	values = append(values, adminOnlySpecs()...)

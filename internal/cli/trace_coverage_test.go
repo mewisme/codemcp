@@ -78,7 +78,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 		"tunnel admin enable", "tunnel admin disable", "tunnel key set",
 	)
 	add(commandTraceInstrumented, []string{"setting.unset.completed"}, "config unset", "tunnel key remove", "tunnel admin key remove", "integration typesafe key remove", "telegram token remove")
-	add(commandTraceInstrumented, []string{"setting.read.completed"}, "telegram token status")
+	add(commandTraceInstrumented, []string{"setting.read.completed"}, "telegram token status", "telegram setup")
 	add(commandTraceTrivial, nil, "integration typesafe status", "integration typesafe doctor", "integration typesafe probe")
 	add(commandTraceTrivial, nil, "telemetry status", "telemetry show")
 	add(commandTraceInstrumented, []string{"setting.set.completed"}, "telemetry enable", "telemetry disable")
