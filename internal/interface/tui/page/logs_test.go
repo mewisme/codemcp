@@ -183,13 +183,103 @@ func TestLogsPageBufferIsBounded(t *testing.T) {
 	page, _ := NewLogs(t.Context())
 	defer page.Close()
 	base := time.Now().UTC()
-	events := make([]runtimeevent.Event, logsBufferCap+500)
+	events := make([]runtimeevent.Event, logsTimelineEventCap+500)
 	for index := range events {
 		events[index] = runtimeevent.Event{Sequence: uint64(index + 1), Time: base.Add(time.Duration(index) * time.Millisecond), RunID: "run", Level: "info", Name: "event", Message: "value"}
 	}
 	page.mergeEvents(events)
-	if len(page.events) != logsBufferCap || page.events[0].Sequence != 501 || page.events[len(page.events)-1].Sequence != uint64(logsBufferCap+500) {
+	if len(page.events) != logsTimelineEventCap || page.events[0].Sequence != 501 || page.events[len(page.events)-1].Sequence != uint64(logsTimelineEventCap+500) {
 		t.Fatalf("bounded events=%d first=%d last=%d", len(page.events), page.events[0].Sequence, page.events[len(page.events)-1].Sequence)
+	}
+}
+
+func TestLogsBrowserAndTimelineRetentionSemanticsAreIndependent(t *testing.T) {
+	page, err := NewLogs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	base := time.Now().UTC()
+
+	runtimeEvents := make([]runtimeevent.Event, logsTimelineEventCap)
+	for index := range runtimeEvents {
+		runtimeEvents[index] = runtimeevent.Event{Sequence: uint64(index + 1), Time: base.Add(time.Duration(index) * time.Millisecond), RunID: "run_retention", Level: "info", Name: "runtime.event", Message: fmt.Sprintf("runtime %d", index)}
+	}
+	page.events = runtimeEvents
+	if got := len(page.visibleRuntimeBrowserRecords()); got != logsBrowserRecordCap {
+		t.Fatalf("runtime Browser records=%d want=%d", got, logsBrowserRecordCap)
+	}
+	if got := len(page.visibleRuntimeTimelineEvents()); got != logsTimelineEventCap {
+		t.Fatalf("runtime Timeline events=%d want=%d", got, logsTimelineEventCap)
+	}
+	page.view = logsViewBrowser
+	if status := ansi.Strip(page.statusView(160)); !strings.Contains(status, "Records") || strings.Contains(status, "Events") {
+		t.Fatalf("runtime Browser status=%q", status)
+	}
+	page.view = logsViewTimeline
+	if status := ansi.Strip(page.statusView(160)); !strings.Contains(status, "Events") || strings.Contains(status, "Records") {
+		t.Fatalf("runtime Timeline status=%q", status)
+	}
+
+	page.tab, page.view = logsTabCommandExec, logsViewBrowser
+	page.exec.scopeMode, page.exec.workspaceID = executionScopeWorkspace, "ws_selected"
+	page.exec.executions = make([]shellruntime.ExecutionInfo, 0, shellruntime.MaxRecentExecutions+300)
+	for index := 0; index < shellruntime.MaxRecentExecutions+300; index++ {
+		workspaceID := "ws_other"
+		if index >= 100 {
+			workspaceID = "ws_selected"
+		}
+		page.exec.executions = append(page.exec.executions, shellruntime.ExecutionInfo{ID: fmt.Sprintf("exec_%04d", index), WorkspaceID: workspaceID, Tool: "run_command", Command: "echo", Status: shellruntime.ExecutionStatusSuccess})
+	}
+	page.exec.events = make([]shellruntime.ExecutionFeedEvent, shellruntime.MaxExecutionFeedEvents+300)
+	for index := range page.exec.events {
+		page.exec.events[index] = shellruntime.ExecutionFeedEvent{Sequence: uint64(index + 1), ExecutionID: fmt.Sprintf("raw_%04d", index), WorkspaceID: "ws_selected", Type: shellruntime.ExecutionEventOutput, Data: "x"}
+	}
+	page.exec.events = trimExecutionFeed(page.exec.events)
+	executions := page.visibleExecutions()
+	if len(executions) != shellruntime.MaxRecentExecutions || executions[0].ID != "exec_0300" || executions[len(executions)-1].ID != fmt.Sprintf("exec_%04d", shellruntime.MaxRecentExecutions+299) {
+		t.Fatalf("filtered logical executions len=%d first=%q last=%q", len(executions), executions[0].ID, executions[len(executions)-1].ID)
+	}
+	if len(page.visibleExecutionEvents()) != shellruntime.MaxExecutionFeedEvents {
+		t.Fatalf("execution Timeline raw events=%d want=%d", len(page.visibleExecutionEvents()), shellruntime.MaxExecutionFeedEvents)
+	}
+	if status := ansi.Strip(page.executionStatusView(180)); !strings.Contains(status, "Executions") || strings.Contains(status, "Events") {
+		t.Fatalf("execution Browser status=%q", status)
+	}
+	page.view = logsViewTimeline
+	if status := ansi.Strip(page.executionStatusView(180)); !strings.Contains(status, "Events") || strings.Contains(status, "Executions") {
+		t.Fatalf("execution Timeline status=%q", status)
+	}
+
+	page.tab, page.view = logsTabToolCalls, logsViewBrowser
+	page.tools.scope.mode, page.tools.scope.workspaceID = executionScopeWorkspace, "ws_selected"
+	page.tools.records = make([]activity.ToolCallRecord, 0, activity.MaxRecentToolCalls+300)
+	for index := 0; index < activity.MaxRecentToolCalls+300; index++ {
+		workspaceID := "ws_other"
+		if index >= 100 {
+			workspaceID = "ws_selected"
+		}
+		event := activity.Event{Sequence: uint64(index + 1), CallID: fmt.Sprintf("call_%04d", index), Kind: string(activity.EventToolCall), Phase: "finish", Tool: "read_file", WorkspaceID: workspaceID, Status: "ok", Timestamp: base.Add(time.Duration(index) * time.Millisecond)}
+		page.tools.records = append(page.tools.records, activity.ToolCallRecord{CallID: event.CallID, First: event, Latest: event})
+	}
+	page.tools.events = make([]activity.Event, activity.MaxRecentEvents+300)
+	for index := range page.tools.events {
+		page.tools.events[index] = activity.Event{Sequence: uint64(index + 1), CallID: fmt.Sprintf("raw_call_%04d", index), Kind: string(activity.EventToolCall), Phase: "progress", Tool: "read_file", WorkspaceID: "ws_selected", Status: "running", Timestamp: base.Add(time.Duration(index) * time.Millisecond)}
+	}
+	page.tools.events = trimToolCallEvents(page.tools.events)
+	calls := page.visibleToolCallRecords()
+	if len(calls) != activity.MaxRecentToolCalls || calls[0].CallID != "call_0300" || calls[len(calls)-1].CallID != fmt.Sprintf("call_%04d", activity.MaxRecentToolCalls+299) {
+		t.Fatalf("filtered logical calls len=%d first=%q last=%q", len(calls), calls[0].CallID, calls[len(calls)-1].CallID)
+	}
+	if len(page.visibleToolCallTimelineEvents()) != activity.MaxRecentEvents {
+		t.Fatalf("tool Timeline raw events=%d want=%d", len(page.visibleToolCallTimelineEvents()), activity.MaxRecentEvents)
+	}
+	if status := ansi.Strip(page.toolCallStatusView(180)); !strings.Contains(status, "Calls") || strings.Contains(status, "Events") {
+		t.Fatalf("tool Browser status=%q", status)
+	}
+	page.view = logsViewTimeline
+	if status := ansi.Strip(page.toolCallStatusView(180)); !strings.Contains(status, "Events") || strings.Contains(status, "Calls") {
+		t.Fatalf("tool Timeline status=%q", status)
 	}
 }
 
@@ -606,7 +696,7 @@ func TestLogsStatusPlacesSessionBesideFullStreamRow(t *testing.T) {
 	if len(lines) != 1 || !strings.HasSuffix(lines[0], "Session  run_0123456789abcdef") {
 		t.Fatalf("status row = %#v", lines)
 	}
-	for _, want := range []string{"Stream", "View", "Events", "Mode"} {
+	for _, want := range []string{"Stream", "View", "Records", "Mode"} {
 		if !strings.Contains(lines[0], want) {
 			t.Fatalf("status row missing %q: %#v", want, lines)
 		}
@@ -1735,7 +1825,7 @@ func TestRuntimeLogsStatusRendersAboveDividerWithoutLiveJournalLabel(t *testing.
 	lines := strings.Split(plain, "\n")
 	status := -1
 	for index, line := range lines {
-		if strings.Contains(line, "Stream") && strings.Contains(line, "View") && strings.Contains(line, "Events") && strings.Contains(line, "Mode") {
+		if strings.Contains(line, "Stream") && strings.Contains(line, "View") && strings.Contains(line, "Records") && strings.Contains(line, "Mode") {
 			status = index
 			break
 		}

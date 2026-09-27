@@ -294,7 +294,7 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 			http.Error(w, "execution stream unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		writeControlJSON(w, options.Executions.List("", 100), nil)
+		writeControlJSON(w, options.Executions.List("", shellruntime.MaxRecentExecutions), nil)
 	}))
 	mux.HandleFunc("/executions/", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
 		if options.Executions == nil {
@@ -349,7 +349,15 @@ func serveRuntimeExecutionFeed(w http.ResponseWriter, r *http.Request, hub *shel
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	if _, err := fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d,\"replay_count\":%d}\n\n", snapshot.LatestSequence, len(snapshot.Events)); err != nil {
+	ready, err := json.Marshal(struct {
+		LatestSequence uint64                       `json:"latest_sequence"`
+		ReplayCount    int                          `json:"replay_count"`
+		Executions     []shellruntime.ExecutionInfo `json:"executions"`
+	}{LatestSequence: snapshot.LatestSequence, ReplayCount: len(snapshot.Events), Executions: snapshot.Executions})
+	if err != nil {
+		return
+	}
+	if _, err := fmt.Fprintf(w, "event: ready\ndata: %s\n\n", ready); err != nil {
 		return
 	}
 	for _, event := range snapshot.Events {
@@ -408,8 +416,9 @@ func serveRuntimeToolCallFeed(w http.ResponseWriter, r *http.Request, stream *ac
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	sub, recent, latestSequence := stream.SubscribeToolCallsSnapshot(activity.MaxRecentToolCalls)
+	sub, recent, latestSequence := stream.SubscribeToolCallsSnapshot(activity.MaxRecentEvents)
 	defer stream.UnsubscribeDetailed(sub)
+	records := stream.RecentToolCalls(activity.MaxRecentToolCalls)
 	replay := make([]activity.Event, 0, len(recent))
 	for _, event := range recent {
 		if event.Kind == string(activity.EventToolCall) {
@@ -419,7 +428,15 @@ func serveRuntimeToolCallFeed(w http.ResponseWriter, r *http.Request, stream *ac
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	if _, err := fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d,\"replay_count\":%d}\n\n", latestSequence, len(replay)); err != nil {
+	ready, err := json.Marshal(struct {
+		LatestSequence uint64                    `json:"latest_sequence"`
+		ReplayCount    int                       `json:"replay_count"`
+		Records        []activity.ToolCallRecord `json:"records"`
+	}{LatestSequence: latestSequence, ReplayCount: len(replay), Records: records})
+	if err != nil {
+		return
+	}
+	if _, err := fmt.Fprintf(w, "event: ready\ndata: %s\n\n", ready); err != nil {
 		return
 	}
 	for _, event := range replay {

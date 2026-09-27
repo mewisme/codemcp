@@ -21,7 +21,10 @@ import (
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 )
 
-const logsBufferCap = 1024
+const (
+	logsBrowserRecordCap = 1024
+	logsTimelineEventCap = 1024
+)
 const logsDefaultTail = 200
 const logsReconnectDelay = 2 * time.Second
 
@@ -799,7 +802,7 @@ func (page *LogsPage) startBootstrap() tea.Cmd {
 		if historyOptions.Session == "" && !historyOptions.All && state.RunID != "" {
 			historyOptions.Session = state.RunID
 		}
-		snapshot, historyErr := application.LoadLogs(historyOptions, visibility, logsBufferCap, time.Now())
+		snapshot, historyErr := application.LoadLogs(historyOptions, visibility, logsTimelineEventCap, time.Now())
 		info, infoErr := application.LoadLogsInfo()
 		return logsBootstrapMsg{generation: generation, snapshot: snapshot, info: info, state: state, historyErr: historyErr, infoErr: infoErr}
 	}
@@ -959,8 +962,8 @@ func (page *LogsPage) mergeEvents(events []runtimeevent.Event) tea.Cmd {
 		}
 		return merged[i].Time.Before(merged[j].Time)
 	})
-	if len(merged) > logsBufferCap {
-		merged = append([]runtimeevent.Event(nil), merged[len(merged)-logsBufferCap:]...)
+	if len(merged) > logsTimelineEventCap {
+		merged = append([]runtimeevent.Event(nil), merged[len(merged)-logsTimelineEventCap:]...)
 	}
 	page.events = merged
 	if !page.paused {
@@ -988,8 +991,8 @@ func (page *LogsPage) appendEvent(event runtimeevent.Event) tea.Cmd {
 		page.paused = true
 	}
 	page.events = append(page.events, event)
-	if len(page.events) > logsBufferCap {
-		page.events = append([]runtimeevent.Event(nil), page.events[len(page.events)-logsBufferCap:]...)
+	if len(page.events) > logsTimelineEventCap {
+		page.events = append([]runtimeevent.Event(nil), page.events[len(page.events)-logsTimelineEventCap:]...)
 	}
 	if !page.paused {
 		selected = page.tailID()
@@ -1006,7 +1009,7 @@ func (page *LogsPage) rebuildBrowser(selected string) tea.Cmd {
 		page.syncDetail()
 		return nil
 	}
-	visible := page.visibleRuntimeEvents()
+	visible := page.visibleRuntimeBrowserRecords()
 	rows := make([]component.Row, 0, len(visible))
 	for _, event := range visible {
 		rows = append(rows, page.logRow(event))
@@ -1118,7 +1121,12 @@ func (page *LogsPage) statusView(width int) string {
 	if page.view == logsViewTimeline {
 		left += component.KeyValue("Follow", follow) + "   "
 	}
-	left += component.KeyValue("View", view) + "   " + component.KeyValue("Visibility", logsVisibilityValue(page.visibility)) + "   " + component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.visibleRuntimeEvents()), logsBufferCap))
+	left += component.KeyValue("View", view) + "   " + component.KeyValue("Visibility", logsVisibilityValue(page.visibility)) + "   "
+	if page.view == logsViewBrowser {
+		left += component.KeyValue("Records", fmt.Sprintf("%d / %d", len(page.visibleRuntimeBrowserRecords()), logsBrowserRecordCap))
+	} else {
+		left += component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.visibleRuntimeTimelineEvents()), logsTimelineEventCap))
+	}
 	right := component.KeyValue("Mode", logsScopeLabel(page.runtimeScope))
 	if page.query.RunID != "" {
 		right += "   " + component.KeyValue("Session", page.query.RunID)
@@ -1168,7 +1176,7 @@ func (page *LogsPage) selectedID() string {
 	return row.ID
 }
 func (page *LogsPage) tailID() string {
-	visible := page.visibleRuntimeEvents()
+	visible := page.visibleRuntimeBrowserRecords()
 	if len(visible) == 0 {
 		return ""
 	}

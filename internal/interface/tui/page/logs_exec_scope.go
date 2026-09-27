@@ -3,6 +3,7 @@ package page
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -126,6 +127,83 @@ func (page *LogsPage) visibleExecutionEvents() []shellruntime.ExecutionFeedEvent
 		}
 	}
 	return result
+}
+
+func (page *LogsPage) visibleExecutions() []shellruntime.ExecutionInfo {
+	if page == nil || page.exec.scopeStale {
+		return nil
+	}
+	if len(page.exec.executions) == 0 {
+		return executionInfosFromEvents(page.visibleExecutionEvents())
+	}
+	result := make([]shellruntime.ExecutionInfo, 0, len(page.exec.executions))
+	for _, info := range page.exec.executions {
+		if page.executionInfoVisible(info) {
+			result = append(result, info)
+		}
+	}
+	if len(result) > shellruntime.MaxRecentExecutions {
+		result = append([]shellruntime.ExecutionInfo(nil), result[len(result)-shellruntime.MaxRecentExecutions:]...)
+	}
+	return result
+}
+
+func executionInfosFromEvents(events []shellruntime.ExecutionFeedEvent) []shellruntime.ExecutionInfo {
+	if len(events) == 0 {
+		return nil
+	}
+	type retained struct {
+		info  shellruntime.ExecutionInfo
+		first uint64
+	}
+	byID := map[string]retained{}
+	for _, event := range events {
+		if event.ExecutionID == "" || event.Execution == nil {
+			continue
+		}
+		current, ok := byID[event.ExecutionID]
+		if !ok {
+			byID[event.ExecutionID] = retained{info: *event.Execution, first: event.Sequence}
+			continue
+		}
+		current.info = *event.Execution
+		byID[event.ExecutionID] = current
+	}
+	ordered := make([]retained, 0, len(byID))
+	for _, value := range byID {
+		ordered = append(ordered, value)
+	}
+	sort.SliceStable(ordered, func(i, j int) bool { return ordered[i].first < ordered[j].first })
+	if len(ordered) > shellruntime.MaxRecentExecutions {
+		ordered = ordered[len(ordered)-shellruntime.MaxRecentExecutions:]
+	}
+	result := make([]shellruntime.ExecutionInfo, 0, len(ordered))
+	for _, value := range ordered {
+		result = append(result, value.info)
+	}
+	return result
+}
+
+func (page *LogsPage) executionInfoVisible(info shellruntime.ExecutionInfo) bool {
+	if page == nil || page.exec.scopeStale {
+		return false
+	}
+	isProcess := info.Tool == "start_process"
+	switch normalizeExecutionScopeMode(page.exec.scopeMode) {
+	case executionScopeWorkspace:
+		if info.WorkspaceID != page.exec.workspaceID {
+			return false
+		}
+		if normalizeExecutionWorkspaceView(page.exec.workspaceView) == executionWorkspaceProcess {
+			return page.exec.processExecutionID != "" && info.ID == page.exec.processExecutionID
+		}
+		return !isProcess
+	case executionScopeContainer:
+		_, ok := page.exec.containerMembers[info.WorkspaceID]
+		return ok && !isProcess
+	default:
+		return !isProcess
+	}
 }
 
 func (page *LogsPage) executionEventVisible(event shellruntime.ExecutionFeedEvent) bool {

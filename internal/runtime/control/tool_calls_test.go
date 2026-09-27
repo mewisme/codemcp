@@ -14,7 +14,7 @@ func TestToolCallFeedReplaysAndContinues(t *testing.T) {
 			t.Fatalf("request=%s auth=%q", r.URL.Path, r.Header.Get("Authorization"))
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = fmt.Fprint(w, "event: ready\ndata: {\"latest_sequence\":4,\"replay_count\":2}\n\nid: 1\nevent: tool_call\ndata: {\"sequence\":1,\"call_id\":\"call_1\",\"kind\":\"tool_call\",\"phase\":\"start\",\"tool\":\"run_command\",\"status\":\"running\",\"timestamp\":\"2026-09-13T00:00:00Z\"}\n\nid: 3\nevent: tool_call\ndata: {\"sequence\":3,\"call_id\":\"call_1\",\"kind\":\"tool_call\",\"phase\":\"finish\",\"tool\":\"run_command\",\"status\":\"ok\",\"timestamp\":\"2026-09-13T00:00:01Z\"}\n\nevent: heartbeat\ndata: {\"latest_sequence\":4}\n\nid: 5\nevent: tool_call\ndata: {\"sequence\":5,\"call_id\":\"call_2\",\"kind\":\"tool_call\",\"phase\":\"start\",\"tool\":\"read_text_file\",\"status\":\"running\",\"timestamp\":\"2026-09-13T00:00:02Z\"}\n\n")
+		_, _ = fmt.Fprint(w, "event: ready\ndata: {\"latest_sequence\":4,\"replay_count\":2,\"records\":[{\"call_id\":\"call_history\",\"first\":{\"sequence\":1,\"call_id\":\"call_history\",\"kind\":\"tool_call\",\"phase\":\"start\",\"tool\":\"read_file\"},\"latest\":{\"sequence\":4,\"call_id\":\"call_history\",\"kind\":\"tool_call\",\"phase\":\"finish\",\"tool\":\"read_file\",\"status\":\"ok\"}}]}\n\nid: 1\nevent: tool_call\ndata: {\"sequence\":1,\"call_id\":\"call_1\",\"kind\":\"tool_call\",\"phase\":\"start\",\"tool\":\"run_command\",\"status\":\"running\",\"timestamp\":\"2026-09-13T00:00:00Z\"}\n\nid: 3\nevent: tool_call\ndata: {\"sequence\":3,\"call_id\":\"call_1\",\"kind\":\"tool_call\",\"phase\":\"finish\",\"tool\":\"run_command\",\"status\":\"ok\",\"timestamp\":\"2026-09-13T00:00:01Z\"}\n\nevent: heartbeat\ndata: {\"latest_sequence\":4}\n\nid: 5\nevent: tool_call\ndata: {\"sequence\":5,\"call_id\":\"call_2\",\"kind\":\"tool_call\",\"phase\":\"start\",\"tool\":\"read_text_file\",\"status\":\"running\",\"timestamp\":\"2026-09-13T00:00:02Z\"}\n\n")
 	}))
 	defer server.Close()
 	root := setupRuntimeControlRoot(t)
@@ -25,7 +25,7 @@ func TestToolCallFeedReplaysAndContinues(t *testing.T) {
 	}
 	defer stream.Close()
 	snapshot := stream.Snapshot()
-	if state.PID <= 0 || snapshot.LatestSequence != 4 || len(snapshot.Events) != 2 || snapshot.Events[0].Phase != "start" || snapshot.Events[1].Phase != "finish" {
+	if state.PID <= 0 || snapshot.LatestSequence != 4 || len(snapshot.Events) != 2 || snapshot.Events[0].Phase != "start" || snapshot.Events[1].Phase != "finish" || len(snapshot.Records) != 1 || snapshot.Records[0].CallID != "call_history" {
 		t.Fatalf("state=%#v snapshot=%#v", state, snapshot)
 	}
 	event, err := stream.Next()

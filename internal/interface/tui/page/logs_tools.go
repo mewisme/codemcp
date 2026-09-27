@@ -24,6 +24,7 @@ type logsToolCallFeed struct {
 	viewport       viewport.Model
 	render         executionFeedRender
 	events         []activity.Event
+	records        []activity.ToolCallRecord
 	scope          logsScopeState
 	stream         *runtimecontrol.ToolCallFeedStream
 	streamCancel   context.CancelFunc
@@ -54,11 +55,7 @@ type logsToolCallEventMsg struct {
 
 type logsToolCallReconnectMsg uint64
 
-type toolCallRecord struct {
-	CallID string
-	First  activity.Event
-	Latest activity.Event
-}
+type toolCallRecord = activity.ToolCallRecord
 
 func newLogsToolCallFeed() logsToolCallFeed {
 	view := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
@@ -120,6 +117,10 @@ func (page *LogsPage) finishToolCallFeedOpen(msg logsToolCallOpenMsg) tea.Cmd {
 	snapshot := msg.stream.Snapshot()
 	page.tools.latestSeq = snapshot.LatestSequence
 	page.tools.events = trimToolCallEvents(snapshot.Events)
+	page.tools.records = normalizeToolCallRecords(snapshot.Records)
+	if len(page.tools.records) == 0 && len(page.tools.events) > 0 {
+		page.tools.records = aggregateToolCallRecords(page.tools.events)
+	}
 	page.tools.notice, page.tools.err = "", nil
 	page.refreshToolCallView()
 	if page.resourceID != "" {
@@ -157,6 +158,7 @@ func (page *LogsPage) finishToolCallEvent(msg logsToolCallEventMsg) tea.Cmd {
 	}
 	page.tools.latestSeq = msg.event.Sequence
 	page.tools.events = trimToolCallEvents(append(page.tools.events, msg.event))
+	page.upsertToolCallRecord(msg.event)
 	page.tools.notice, page.tools.err = "", nil
 	if !page.tools.paused {
 		page.refreshToolCallView()
@@ -189,15 +191,55 @@ func (page *LogsPage) stopToolCallFeedOnly() {
 
 func trimToolCallEvents(events []activity.Event) []activity.Event {
 	if len(events) <= activity.MaxRecentEvents {
-		return events
+		return append([]activity.Event(nil), events...)
 	}
 	return append([]activity.Event(nil), events[len(events)-activity.MaxRecentEvents:]...)
 }
 
 func (page *LogsPage) visibleToolCallRecords() []toolCallRecord {
-	byID := map[string]*toolCallRecord{}
+	if page == nil {
+		return nil
+	}
+	if len(page.tools.records) == 0 {
+		return page.visibleToolCallTimelineRecords()
+	}
+	result := make([]toolCallRecord, 0, len(page.tools.records))
+	for _, record := range page.tools.records {
+		if record.CallID == "" || !matchScope(page.tools.scope, record.Latest.WorkspaceID) {
+			continue
+		}
+		result = append(result, record)
+	}
+	if len(result) > activity.MaxRecentToolCalls {
+		result = append([]toolCallRecord(nil), result[len(result)-activity.MaxRecentToolCalls:]...)
+	}
+	return result
+}
+
+func (page *LogsPage) visibleToolCallTimelineRecords() []toolCallRecord {
+	return aggregateToolCallRecords(page.visibleToolCallTimelineEvents())
+}
+
+func (page *LogsPage) visibleToolCallTimelineEvents() []activity.Event {
+	if page == nil || len(page.tools.events) == 0 {
+		return nil
+	}
+	visible := make([]activity.Event, 0, len(page.tools.events))
 	for _, event := range page.tools.events {
-		if event.CallID == "" || !matchScope(page.tools.scope, event.WorkspaceID) {
+		if event.CallID != "" && matchScope(page.tools.scope, event.WorkspaceID) {
+			visible = append(visible, event)
+		}
+	}
+	if len(visible) > activity.MaxRecentEvents {
+		visible = append([]activity.Event(nil), visible[len(visible)-activity.MaxRecentEvents:]...)
+	}
+	return visible
+}
+
+func aggregateToolCallRecords(events []activity.Event) []toolCallRecord {
+	byID := map[string]*toolCallRecord{}
+	for _, event := range events {
+		if event.CallID == "" {
 			continue
 		}
 		record := byID[event.CallID]
@@ -214,6 +256,35 @@ func (page *LogsPage) visibleToolCallRecords() []toolCallRecord {
 	}
 	sort.SliceStable(result, func(i, j int) bool { return result[i].First.Sequence < result[j].First.Sequence })
 	return result
+}
+
+func normalizeToolCallRecords(records []activity.ToolCallRecord) []activity.ToolCallRecord {
+	if len(records) == 0 {
+		return nil
+	}
+	if len(records) > activity.MaxRecentToolCalls {
+		records = records[len(records)-activity.MaxRecentToolCalls:]
+	}
+	return append([]activity.ToolCallRecord(nil), records...)
+}
+
+func (page *LogsPage) upsertToolCallRecord(event activity.Event) {
+	if page == nil || event.CallID == "" {
+		return
+	}
+	for index := range page.tools.records {
+		if page.tools.records[index].CallID != event.CallID {
+			continue
+		}
+		if event.Sequence >= page.tools.records[index].Latest.Sequence {
+			page.tools.records[index].Latest = event
+		}
+		return
+	}
+	page.tools.records = append(page.tools.records, activity.ToolCallRecord{CallID: event.CallID, First: event, Latest: event})
+	if len(page.tools.records) > activity.MaxRecentToolCalls {
+		page.tools.records = append([]activity.ToolCallRecord(nil), page.tools.records[len(page.tools.records)-activity.MaxRecentToolCalls:]...)
+	}
 }
 
 func (page *LogsPage) rebuildToolCallBrowser() {
@@ -245,7 +316,7 @@ func (page *LogsPage) refreshToolCallView() {
 		return
 	}
 	offset := page.tools.viewport.YOffset()
-	page.tools.render = renderToolCallTimeline(page.visibleToolCallRecords(), max(1, page.tools.viewport.Width()))
+	page.tools.render = renderToolCallTimeline(page.visibleToolCallTimelineRecords(), max(1, page.tools.viewport.Width()))
 	page.tools.viewport.SetContent(page.tools.render.Content)
 	if !page.tools.paused {
 		page.tools.viewport.GotoBottom()
@@ -279,7 +350,7 @@ func (page *LogsPage) toolCallBodyView(width, height int) string {
 		sticky = stickyLogHeader(page.tools.render, page.tools.viewport.YOffset(), width)
 	}
 	body := page.tools.viewport.View()
-	if len(page.visibleToolCallRecords()) == 0 {
+	if len(page.visibleToolCallTimelineRecords()) == 0 {
 		empty := page.tools.viewport
 		empty.SetContent(component.Muted("Waiting for tool calls"))
 		body = empty.View()
@@ -398,13 +469,18 @@ func (page *LogsPage) toolCallStatusView(width int) string {
 	} else if !page.tools.connected {
 		stream = component.Muted("○ OFFLINE")
 	}
-	left := component.KeyValue("Stream", stream) + "   " + component.KeyValue("View", map[logsDisplayView]string{logsViewBrowser: "Browser", logsViewTimeline: "Timeline"}[page.view]) + "   " + component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.tools.events), activity.MaxRecentEvents))
+	left := component.KeyValue("Stream", stream) + "   " + component.KeyValue("View", map[logsDisplayView]string{logsViewBrowser: "Browser", logsViewTimeline: "Timeline"}[page.view]) + "   "
+	if page.view == logsViewBrowser {
+		left += component.KeyValue("Calls", fmt.Sprintf("%d / %d", len(page.visibleToolCallRecords()), activity.MaxRecentToolCalls))
+	} else {
+		left += component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.visibleToolCallTimelineEvents()), activity.MaxRecentEvents))
+	}
 	if page.view == logsViewTimeline {
 		follow := component.ToneText("● ON", component.ToneSuccess)
 		if page.tools.paused {
 			follow = component.ToneText("○ PAUSED", component.ToneWarning)
 		}
-		left = component.KeyValue("Stream", stream) + "   " + component.KeyValue("Follow", follow) + "   " + component.KeyValue("View", "Timeline") + "   " + component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.tools.events), activity.MaxRecentEvents))
+		left = component.KeyValue("Stream", stream) + "   " + component.KeyValue("Follow", follow) + "   " + component.KeyValue("View", "Timeline") + "   " + component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.visibleToolCallTimelineEvents()), activity.MaxRecentEvents))
 	}
 	return component.TwoColumn(left, component.KeyValue("Mode", logsScopeLabel(page.tools.scope)), width)
 }

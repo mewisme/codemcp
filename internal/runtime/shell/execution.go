@@ -18,8 +18,8 @@ import (
 const (
 	maxExecutionLogBytes       = 400_000
 	MaxExecutionFeedEvents     = 1024
+	MaxRecentExecutions        = 1024
 	maxExecutionEventBytes     = 8 << 10
-	maxRecentExecutions        = 100
 	executionSubscriberBuffer  = 64
 	executionFeedBuffer        = 128
 	ExecutionStatusRunning     = "running"
@@ -93,6 +93,7 @@ type ExecutionFeedEvent struct {
 
 type ExecutionFeedSnapshot struct {
 	Events         []ExecutionFeedEvent `json:"events"`
+	Executions     []ExecutionInfo      `json:"executions,omitempty"`
 	LatestSequence uint64               `json:"latest_sequence"`
 }
 
@@ -190,7 +191,7 @@ type ExecutionMetadata struct {
 }
 
 func NewExecutionHub() *ExecutionHub {
-	return &ExecutionHub{executions: map[string]*executionRecord{}, maxRecent: maxRecentExecutions, feedSubs: map[*ExecutionFeedSubscription]struct{}{}}
+	return &ExecutionHub{executions: map[string]*executionRecord{}, maxRecent: MaxRecentExecutions, feedSubs: map[*ExecutionFeedSubscription]struct{}{}}
 }
 
 func NewPersistentExecutionHub(path string) (*ExecutionHub, error) {
@@ -349,8 +350,9 @@ func (h *ExecutionHub) SubscribeFeed(workspaceID string) (*ExecutionFeedSubscrip
 			events = append(events, cloneExecutionFeedEvent(event))
 		}
 	}
-	snapshot := ExecutionFeedSnapshot{Events: events, LatestSequence: h.feedSequence}
+	latestSequence := h.feedSequence
 	h.feedMu.Unlock()
+	snapshot := ExecutionFeedSnapshot{Events: events, Executions: h.List(workspaceID, MaxRecentExecutions), LatestSequence: latestSequence}
 	return sub, snapshot
 }
 

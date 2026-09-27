@@ -23,8 +23,9 @@ var (
 )
 
 type ToolCallFeedSnapshot struct {
-	Events         []activity.Event `json:"events"`
-	LatestSequence uint64           `json:"latest_sequence"`
+	Events         []activity.Event          `json:"events"`
+	Records        []activity.ToolCallRecord `json:"records,omitempty"`
+	LatestSequence uint64                    `json:"latest_sequence"`
 }
 
 type ToolCallFeedStream struct {
@@ -91,8 +92,9 @@ func readToolCallFeedReady(reader *bufio.Reader) (ToolCallFeedSnapshot, error) {
 			continue
 		}
 		var ready struct {
-			LatestSequence uint64 `json:"latest_sequence"`
-			ReplayCount    int    `json:"replay_count"`
+			LatestSequence uint64                    `json:"latest_sequence"`
+			ReplayCount    int                       `json:"replay_count"`
+			Records        []activity.ToolCallRecord `json:"records,omitempty"`
 		}
 		if err := json.Unmarshal([]byte(data), &ready); err != nil {
 			return ToolCallFeedSnapshot{}, fmt.Errorf("decode tool call feed ready frame: %w", err)
@@ -100,7 +102,7 @@ func readToolCallFeedReady(reader *bufio.Reader) (ToolCallFeedSnapshot, error) {
 		if ready.ReplayCount < 0 {
 			return ToolCallFeedSnapshot{}, fmt.Errorf("invalid tool call feed replay count: %d", ready.ReplayCount)
 		}
-		snapshot := ToolCallFeedSnapshot{Events: make([]activity.Event, 0, ready.ReplayCount), LatestSequence: ready.LatestSequence}
+		snapshot := ToolCallFeedSnapshot{Events: make([]activity.Event, 0, ready.ReplayCount), Records: append([]activity.ToolCallRecord(nil), ready.Records...), LatestSequence: ready.LatestSequence}
 		for range ready.ReplayCount {
 			event, err := readToolCallFeedEvent(reader)
 			if err != nil {

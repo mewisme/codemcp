@@ -75,7 +75,7 @@ func (page *LogsPage) resizeRuntimeTimeline(width, height int) {
 	offset := page.timeline.viewport.YOffset()
 	if page.timeline.viewport.Width() != width {
 		page.timeline.viewport.SetWidth(width)
-		page.timeline.render = renderRuntimeTimeline(page.visibleRuntimeEvents(), width, page.visibility)
+		page.timeline.render = renderRuntimeTimeline(page.visibleRuntimeTimelineEvents(), width, page.visibility)
 		page.timeline.viewport.SetContent(page.timeline.render.Content)
 	}
 	page.timeline.viewport.SetHeight(height)
@@ -91,7 +91,7 @@ func (page *LogsPage) refreshRuntimeTimeline() {
 		return
 	}
 	offset := page.timeline.viewport.YOffset()
-	page.timeline.render = renderRuntimeTimeline(page.visibleRuntimeEvents(), max(1, page.timeline.viewport.Width()), page.visibility)
+	page.timeline.render = renderRuntimeTimeline(page.visibleRuntimeTimelineEvents(), max(1, page.timeline.viewport.Width()), page.visibility)
 	page.timeline.viewport.SetContent(page.timeline.render.Content)
 	if !page.paused {
 		page.timeline.viewport.GotoBottom()
@@ -108,7 +108,7 @@ func (page *LogsPage) runtimeTimelineBody(width, height int) string {
 		sticky = stickyLogHeader(page.timeline.render, page.timeline.viewport.YOffset(), width)
 	}
 	body := page.timeline.viewport.View()
-	if len(page.visibleRuntimeEvents()) == 0 {
+	if len(page.visibleRuntimeTimelineEvents()) == 0 {
 		empty := page.timeline.viewport
 		empty.SetContent(component.Muted("Waiting for runtime events"))
 		body = empty.View()
@@ -131,6 +131,21 @@ func (page *LogsPage) visibleRuntimeEvents() []runtimeevent.Event {
 		result = append(result, event)
 	}
 	return result
+}
+
+func (page *LogsPage) visibleRuntimeBrowserRecords() []runtimeevent.Event {
+	return capNewestRuntimeEvents(page.visibleRuntimeEvents(), logsBrowserRecordCap)
+}
+
+func (page *LogsPage) visibleRuntimeTimelineEvents() []runtimeevent.Event {
+	return capNewestRuntimeEvents(page.visibleRuntimeEvents(), logsTimelineEventCap)
+}
+
+func capNewestRuntimeEvents(events []runtimeevent.Event, limit int) []runtimeevent.Event {
+	if limit <= 0 || len(events) <= limit {
+		return events
+	}
+	return events[len(events)-limit:]
 }
 
 func renderRuntimeTimeline(events []runtimeevent.Event, width int, visibility logger.Visibility) executionFeedRender {

@@ -74,6 +74,7 @@ func OpenExecutionFeed(ctx context.Context) (*ExecutionFeedStream, State, error)
 
 type executionFeedReady struct {
 	Events         []shellruntime.ExecutionFeedEvent `json:"events,omitempty"`
+	Executions     []shellruntime.ExecutionInfo      `json:"executions,omitempty"`
 	LatestSequence uint64                            `json:"latest_sequence"`
 	ReplayCount    int                               `json:"replay_count,omitempty"`
 }
@@ -91,7 +92,11 @@ func readExecutionFeedReady(reader *bufio.Reader) (shellruntime.ExecutionFeedSna
 		if err := json.Unmarshal([]byte(data), &ready); err != nil {
 			return shellruntime.ExecutionFeedSnapshot{}, fmt.Errorf("decode execution feed ready frame: %w", err)
 		}
-		snapshot := shellruntime.ExecutionFeedSnapshot{Events: append([]shellruntime.ExecutionFeedEvent(nil), ready.Events...), LatestSequence: ready.LatestSequence}
+		snapshot := shellruntime.ExecutionFeedSnapshot{
+			Events:         append([]shellruntime.ExecutionFeedEvent(nil), ready.Events...),
+			Executions:     append([]shellruntime.ExecutionInfo(nil), ready.Executions...),
+			LatestSequence: ready.LatestSequence,
+		}
 		if ready.ReplayCount < 0 {
 			return shellruntime.ExecutionFeedSnapshot{}, fmt.Errorf("invalid execution feed replay count: %d", ready.ReplayCount)
 		}

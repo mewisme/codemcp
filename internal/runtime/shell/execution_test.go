@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +56,62 @@ func TestExecutionHubSnapshotsAndStreamsOutput(t *testing.T) {
 	}
 	if _, err := hub.Get("ws_other", run.ID()); !errors.Is(err, ErrExecutionNotFound) {
 		t.Fatalf("cross-workspace get err = %v", err)
+	}
+}
+
+func TestExecutionLogicalHistoryIsIndependentFromRawFeedRetention(t *testing.T) {
+	hub := NewExecutionHub()
+	defer hub.Close()
+	firstID := ""
+	secondID := ""
+	for index := 0; index < MaxRecentExecutions; index++ {
+		run := hub.Begin(ExecutionInput{WorkspaceID: "ws_retention", Tool: "run_command", Command: fmt.Sprintf("echo %d", index), CWD: "/tmp"})
+		if index == 0 {
+			firstID = run.ID()
+		} else if index == 1 {
+			secondID = run.ID()
+		}
+		if _, err := run.Writer("stdout").Write([]byte("output\n")); err != nil {
+			t.Fatal(err)
+		}
+		run.Finish(ExecutionStatusSuccess, nil, false)
+	}
+
+	list := hub.List("ws_retention", MaxRecentExecutions)
+	if len(list) != MaxRecentExecutions {
+		t.Fatalf("logical executions=%d want=%d", len(list), MaxRecentExecutions)
+	}
+	foundFirst := false
+	for _, info := range list {
+		if info.ID == firstID {
+			foundFirst = true
+			break
+		}
+	}
+	if !foundFirst {
+		t.Fatalf("oldest logical execution %q was evicted before logical capacity", firstID)
+	}
+
+	sub, snapshot := hub.SubscribeFeed("ws_retention")
+	defer hub.UnsubscribeFeed(sub)
+	if len(snapshot.Events) != MaxExecutionFeedEvents {
+		t.Fatalf("raw execution feed=%d want=%d", len(snapshot.Events), MaxExecutionFeedEvents)
+	}
+	if len(snapshot.Executions) != MaxRecentExecutions {
+		t.Fatalf("execution snapshot logical history=%d want=%d", len(snapshot.Executions), MaxRecentExecutions)
+	}
+	for _, event := range snapshot.Events {
+		if event.ExecutionID == firstID {
+			t.Fatalf("oldest execution %q unexpectedly survived raw feed; test no longer proves independent retention", firstID)
+		}
+	}
+	extra := hub.Begin(ExecutionInput{WorkspaceID: "ws_retention", Tool: "run_command", Command: "echo evict", CWD: "/tmp"})
+	extra.Finish(ExecutionStatusSuccess, nil, false)
+	if _, err := hub.Get("ws_retention", firstID); !errors.Is(err, ErrExecutionNotFound) {
+		t.Fatalf("oldest logical execution was not evicted after capacity+1: %v", err)
+	}
+	if _, err := hub.Get("ws_retention", secondID); err != nil {
+		t.Fatalf("next stable logical execution %q was evicted too early: %v", secondID, err)
 	}
 }
 

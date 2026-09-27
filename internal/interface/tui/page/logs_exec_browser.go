@@ -3,7 +3,6 @@ package page
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -23,24 +22,9 @@ func (page *LogsPage) rebuildExecutionBrowser() {
 	if page == nil || page.tab != logsTabCommandExec || page.resourceID != "" {
 		return
 	}
-	latest := map[string]shellruntime.ExecutionInfo{}
-	sequence := map[string]uint64{}
-	for _, event := range page.visibleExecutionEvents() {
-		if event.Execution != nil {
-			latest[event.ExecutionID] = *event.Execution
-		}
-		if event.Sequence > sequence[event.ExecutionID] {
-			sequence[event.ExecutionID] = event.Sequence
-		}
-	}
-	ids := make([]string, 0, len(latest))
-	for id := range latest {
-		ids = append(ids, id)
-	}
-	sort.SliceStable(ids, func(i, j int) bool { return sequence[ids[i]] < sequence[ids[j]] })
-	rows := make([]component.Row, 0, len(ids))
-	for _, id := range ids {
-		info := latest[id]
+	executions := page.visibleExecutions()
+	rows := make([]component.Row, 0, len(executions))
+	for _, info := range executions {
 		title := compactParts(info.ID, info.Tool, info.Status)
 		description := strings.TrimSpace(info.Command)
 		meta := compactParts(info.WorkspaceID, info.Shell)
@@ -63,7 +47,7 @@ func (page *LogsPage) rebuildExecutionBrowser() {
 func (page *LogsPage) executionBrowserBody(width, height int) string {
 	updated, _ := page.browser.Update(tea.WindowSizeMsg{Width: max(1, width), Height: max(1, height)})
 	page.browser = updated.(component.Browser)
-	if len(page.visibleExecutionEvents()) == 0 {
+	if len(page.visibleExecutions()) == 0 {
 		return component.Muted("Waiting for command executions")
 	}
 	return page.browser.BodyContent()

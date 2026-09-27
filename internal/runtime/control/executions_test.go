@@ -17,7 +17,7 @@ func TestExecutionFeedStreamReplaysCombinedEventsAndContinues(t *testing.T) {
 			t.Fatalf("request=%s auth=%q", r.URL.Path, r.Header.Get("Authorization"))
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = fmt.Fprint(w, "event: ready\ndata: {\"events\":[{\"sequence\":1,\"type\":\"started\",\"execution_id\":\"exec_1\",\"workspace_id\":\"ws_a\",\"execution\":{\"id\":\"exec_1\",\"workspace_id\":\"ws_a\",\"tool\":\"run_command\",\"command\":\"printf test\",\"cwd\":\"/tmp\",\"started_at\":\"2026-09-06T00:00:00Z\",\"status\":\"running\"},\"timestamp\":\"2026-09-06T00:00:00Z\"}],\"latest_sequence\":1}\n\nevent: heartbeat\ndata: {\"latest_sequence\":1}\n\nid: 2\nevent: output\ndata: {\"sequence\":2,\"type\":\"output\",\"execution_id\":\"exec_1\",\"workspace_id\":\"ws_a\",\"stream\":\"stderr\",\"data\":\"err\\n\",\"timestamp\":\"2026-09-06T00:00:01Z\"}\n\n")
+		_, _ = fmt.Fprint(w, "event: ready\ndata: {\"events\":[{\"sequence\":1,\"type\":\"started\",\"execution_id\":\"exec_1\",\"workspace_id\":\"ws_a\",\"execution\":{\"id\":\"exec_1\",\"workspace_id\":\"ws_a\",\"tool\":\"run_command\",\"command\":\"printf test\",\"cwd\":\"/tmp\",\"started_at\":\"2026-09-06T00:00:00Z\",\"status\":\"running\"},\"timestamp\":\"2026-09-06T00:00:00Z\"}],\"executions\":[{\"id\":\"exec_history\",\"workspace_id\":\"ws_a\",\"tool\":\"run_command\",\"command\":\"echo history\",\"status\":\"success\"}],\"latest_sequence\":1}\n\nevent: heartbeat\ndata: {\"latest_sequence\":1}\n\nid: 2\nevent: output\ndata: {\"sequence\":2,\"type\":\"output\",\"execution_id\":\"exec_1\",\"workspace_id\":\"ws_a\",\"stream\":\"stderr\",\"data\":\"err\\n\",\"timestamp\":\"2026-09-06T00:00:01Z\"}\n\n")
 	}))
 	defer server.Close()
 	root := setupRuntimeControlRoot(t)
@@ -28,7 +28,7 @@ func TestExecutionFeedStreamReplaysCombinedEventsAndContinues(t *testing.T) {
 	}
 	defer stream.Close()
 	snapshot := stream.Snapshot()
-	if state.PID <= 0 || snapshot.LatestSequence != 1 || len(snapshot.Events) != 1 || snapshot.Events[0].ExecutionID != "exec_1" {
+	if state.PID <= 0 || snapshot.LatestSequence != 1 || len(snapshot.Events) != 1 || snapshot.Events[0].ExecutionID != "exec_1" || len(snapshot.Executions) != 1 || snapshot.Executions[0].ID != "exec_history" {
 		t.Fatalf("state=%#v snapshot=%#v", state, snapshot)
 	}
 	event, err := stream.Next()

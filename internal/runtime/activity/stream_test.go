@@ -37,6 +37,57 @@ func TestFindCallAndCallHandler(t *testing.T) {
 	}
 }
 
+func TestLogicalToolCallHistoryIsIndependentFromRawLifecycleRetention(t *testing.T) {
+	stream := NewStream()
+	base := time.Now().UTC()
+	for index := 0; index < MaxRecentToolCalls; index++ {
+		callID := fmt.Sprintf("call_%04d", index)
+		for phaseIndex, phase := range []string{"start", "progress", "finish"} {
+			status := "running"
+			if phase == "finish" {
+				status = "ok"
+			}
+			stream.Publish(Event{
+				CallID: callID, Kind: string(EventToolCall), Phase: phase, Tool: "read_file", WorkspaceID: "ws_retention",
+				Status: status, Timestamp: base.Add(time.Duration(index*3+phaseIndex) * time.Millisecond),
+			})
+		}
+	}
+
+	records := stream.RecentToolCalls(MaxRecentToolCalls)
+	if len(records) != MaxRecentToolCalls {
+		t.Fatalf("logical tool calls=%d want=%d", len(records), MaxRecentToolCalls)
+	}
+	if records[0].CallID != "call_0000" || records[len(records)-1].CallID != fmt.Sprintf("call_%04d", MaxRecentToolCalls-1) {
+		t.Fatalf("logical tool call bounds first=%q last=%q", records[0].CallID, records[len(records)-1].CallID)
+	}
+	if records[0].First.Phase != "start" || records[0].Latest.Phase != "finish" {
+		t.Fatalf("logical lifecycle first=%q latest=%q", records[0].First.Phase, records[0].Latest.Phase)
+	}
+	if latest, ok := stream.FindCall("call_0000"); !ok || latest.Phase != "finish" {
+		t.Fatalf("oldest logical call lookup=%#v ok=%t", latest, ok)
+	}
+
+	sub, raw, _ := stream.SubscribeToolCallsSnapshot(MaxRecentEvents)
+	defer stream.UnsubscribeDetailed(sub)
+	if len(raw) != MaxRecentEvents {
+		t.Fatalf("raw tool call lifecycle events=%d want=%d", len(raw), MaxRecentEvents)
+	}
+	for _, event := range raw {
+		if event.CallID == "call_0000" {
+			t.Fatal("oldest logical call unexpectedly survived raw lifecycle feed; test no longer proves independent retention")
+		}
+	}
+	stream.Publish(Event{CallID: "call_extra", Kind: string(EventToolCall), Phase: "start", Tool: "read_file", Status: "running", Timestamp: base.Add(4 * time.Second)})
+	stream.Publish(Event{CallID: "call_extra", Kind: string(EventToolCall), Phase: "finish", Tool: "read_file", Status: "ok", Timestamp: base.Add(4*time.Second + time.Millisecond)})
+	if _, ok := stream.FindCall("call_0000"); ok {
+		t.Fatal("oldest logical call was not evicted after capacity+1")
+	}
+	if latest, ok := stream.FindCall("call_0001"); !ok || latest.Phase != "finish" {
+		t.Fatalf("next stable logical call was evicted too early: %#v ok=%t", latest, ok)
+	}
+}
+
 func TestStreamRecentIsBoundedAndOrdered(t *testing.T) {
 	stream := NewStream()
 	stream.maxRecent = 3

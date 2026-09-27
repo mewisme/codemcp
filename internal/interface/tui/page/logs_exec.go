@@ -34,6 +34,7 @@ type logsExecutionFeed struct {
 	viewport           viewport.Model
 	render             executionFeedRender
 	events             []shellruntime.ExecutionFeedEvent
+	executions         []shellruntime.ExecutionInfo
 	scopeMode          executionScopeMode
 	workspaceID        string
 	workspaceView      executionWorkspaceView
@@ -164,6 +165,7 @@ func (page *LogsPage) finishExecutionFeedOpen(msg logsExecutionOpenMsg) tea.Cmd 
 	snapshot := msg.stream.Snapshot()
 	page.exec.latestSeq = snapshot.LatestSequence
 	page.exec.events = trimExecutionFeed(snapshot.Events)
+	page.exec.executions = normalizeExecutionHistory(snapshot.Executions)
 	page.syncSelectedProcessRunningFromEvents()
 	page.refreshExecutionScope()
 	page.exec.notice, page.exec.err = "", nil
@@ -226,6 +228,7 @@ func (page *LogsPage) finishExecutionFeedEvent(msg logsExecutionEventMsg) tea.Cm
 	}
 	page.exec.latestSeq = msg.event.Sequence
 	page.appendExecutionFeedEvent(msg.event)
+	page.upsertExecutionHistory(msg.event.Execution)
 	if page.exec.processExecutionID != "" && msg.event.ExecutionID == page.exec.processExecutionID && msg.event.Type == shellruntime.ExecutionEventCompleted {
 		page.exec.processRunning = false
 	}
@@ -298,6 +301,34 @@ func (page *LogsPage) updateExecutionBrowser(message tea.Msg) tea.Cmd {
 	return cmd
 }
 
+func normalizeExecutionHistory(values []shellruntime.ExecutionInfo) []shellruntime.ExecutionInfo {
+	if len(values) == 0 {
+		return nil
+	}
+	limit := min(len(values), shellruntime.MaxRecentExecutions)
+	result := make([]shellruntime.ExecutionInfo, 0, limit)
+	for index := limit - 1; index >= 0; index-- {
+		result = append(result, values[index])
+	}
+	return result
+}
+
+func (page *LogsPage) upsertExecutionHistory(info *shellruntime.ExecutionInfo) {
+	if page == nil || info == nil || strings.TrimSpace(info.ID) == "" {
+		return
+	}
+	for index := range page.exec.executions {
+		if page.exec.executions[index].ID == info.ID {
+			page.exec.executions[index] = *info
+			return
+		}
+	}
+	page.exec.executions = append(page.exec.executions, *info)
+	if len(page.exec.executions) > shellruntime.MaxRecentExecutions {
+		page.exec.executions = append([]shellruntime.ExecutionInfo(nil), page.exec.executions[len(page.exec.executions)-shellruntime.MaxRecentExecutions:]...)
+	}
+}
+
 func (page *LogsPage) resizeExecutionViewport(width, height int) {
 	width, height = max(1, width), max(1, height)
 	offset := page.exec.viewport.YOffset()
@@ -363,7 +394,11 @@ func (page *LogsPage) executionStatusView(width int) string {
 	if page.view == logsViewTimeline {
 		left += component.KeyValue("Follow", follow) + "   "
 	}
-	left += component.KeyValue("View", view) + "   " + component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.visibleExecutionEvents()), shellruntime.MaxExecutionFeedEvents))
+	if page.view == logsViewBrowser {
+		left += component.KeyValue("View", view) + "   " + component.KeyValue("Executions", fmt.Sprintf("%d / %d", len(page.visibleExecutions()), shellruntime.MaxRecentExecutions))
+	} else {
+		left += component.KeyValue("View", view) + "   " + component.KeyValue("Events", fmt.Sprintf("%d / %d", len(page.visibleExecutionEvents()), shellruntime.MaxExecutionFeedEvents))
+	}
 	return component.TwoColumn(left, component.KeyValue("Mode", page.executionScopeLabel()), width)
 }
 
