@@ -8,6 +8,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/integrations/semantic"
 	"go.mewis.me/codemcp/internal/memory"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -42,12 +43,23 @@ type GitSummary struct {
 }
 
 type Summary struct {
-	MemoryFiles      []MemoryFile `json:"memory_files"`
-	MemoryBytes      int          `json:"memory_bytes"`
-	InstructionBytes int          `json:"instruction_bytes"`
-	Git              GitSummary   `json:"git"`
-	Rules            int          `json:"rules"`
-	Skills           int          `json:"skills"`
+	MemoryFiles      []MemoryFile    `json:"memory_files"`
+	MemoryBytes      int             `json:"memory_bytes"`
+	InstructionBytes int             `json:"instruction_bytes"`
+	Git              GitSummary      `json:"git"`
+	Rules            int             `json:"rules"`
+	Skills           int             `json:"skills"`
+	Semantic         SemanticSummary `json:"semantic,omitempty"`
+}
+
+type SemanticSummary struct {
+	Used         bool   `json:"used"`
+	Fallback     bool   `json:"fallback,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	Model        string `json:"model,omitempty"`
+	Candidates   int    `json:"candidates,omitempty"`
+	InputTokens  int    `json:"input_tokens,omitempty"`
+	OutputTokens int    `json:"output_tokens,omitempty"`
 }
 
 type Result struct {
@@ -94,6 +106,7 @@ type Service struct {
 	Environment                    func() (bool, int)
 	IntegrationProviders           []IntegrationInstructionProvider
 	IntegrationProjectionProviders []IntegrationProjectionProvider
+	Semantic                       semantic.Provider
 }
 
 type IntegrationInstructionProvider func(context.Context, string, string) ([]instructioncontext.IntegrationInstruction, error)
@@ -113,6 +126,7 @@ type ServiceOptions struct {
 	Environment                    func() (bool, int)
 	IntegrationProviders           []IntegrationInstructionProvider
 	IntegrationProjectionProviders []IntegrationProjectionProvider
+	Semantic                       semantic.Provider
 }
 
 func NewService(options ServiceOptions) *Service {
@@ -123,6 +137,7 @@ func NewService(options ServiceOptions) *Service {
 		Environment:                    options.Environment,
 		IntegrationProviders:           append([]IntegrationInstructionProvider(nil), options.IntegrationProviders...),
 		IntegrationProjectionProviders: append([]IntegrationProjectionProvider(nil), options.IntegrationProjectionProviders...),
+		Semantic:                       options.Semantic,
 	}
 	if options.MemoryStore != nil {
 		service.MemoryStore = *options.MemoryStore
@@ -252,7 +267,19 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 	if err != nil {
 		return Result{}, err
 	}
-	return FromInstructionContext(value), nil
+	semanticSummary := SemanticSummary{}
+	if s.Semantic != nil && strings.TrimSpace(opts.MemoryQuery) != "" {
+		priority, summary := rankOptionalContext(ctx, s.Semantic, opts.MemoryQuery, value)
+		semanticSummary = summary
+		if len(priority) > 0 {
+			if err := instructioncontext.ApplyFormattedInstructionsLimitWithPriority(&value, opts.MaxInstructionBytes, priority); err != nil {
+				return Result{}, err
+			}
+		}
+	}
+	result := FromInstructionContext(value)
+	result.Summary.Semantic = semanticSummary
+	return result, nil
 }
 
 func FromInstructionContext(value instructioncontext.InstructionContext) Result {

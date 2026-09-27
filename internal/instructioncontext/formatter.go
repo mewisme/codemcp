@@ -110,6 +110,10 @@ func ApplyFormattedInstructions(value *InstructionContext) {
 }
 
 func ApplyFormattedInstructionsLimit(value *InstructionContext, maxBytes int) error {
+	return ApplyFormattedInstructionsLimitWithPriority(value, maxBytes, nil)
+}
+
+func ApplyFormattedInstructionsLimitWithPriority(value *InstructionContext, maxBytes int, optionalPriority []string) error {
 	if value == nil {
 		return nil
 	}
@@ -134,7 +138,8 @@ func ApplyFormattedInstructionsLimit(value *InstructionContext, maxBytes int) er
 	for _, block := range required {
 		selectedTitles[block.title] = true
 	}
-	for _, block := range blocks {
+	selectionBlocks := optionalSelectionOrder(blocks, optionalPriority)
+	for _, block := range selectionBlocks {
 		if block.required {
 			continue
 		}
@@ -170,6 +175,41 @@ func ApplyFormattedInstructionsLimit(value *InstructionContext, maxBytes int) er
 		})
 	}
 	return nil
+}
+
+func optionalSelectionOrder(blocks []instructionBlock, priority []string) []instructionBlock {
+	if len(priority) == 0 {
+		return blocks
+	}
+	byTitle := make(map[string]instructionBlock, len(blocks))
+	for _, block := range blocks {
+		byTitle[block.title] = block
+	}
+	result := make([]instructionBlock, 0, len(blocks))
+	seen := map[string]bool{}
+	appendTitle := func(title string) {
+		block, ok := byTitle[title]
+		if !ok || seen[title] {
+			return
+		}
+		seen[title] = true
+		result = append(result, block)
+	}
+	for _, block := range blocks {
+		if block.required {
+			appendTitle(block.title)
+		}
+	}
+	// Policy/rule blocks remain deterministic and outrank semantic context.
+	appendTitle("Global rules")
+	appendTitle("Always-on rules")
+	for _, title := range priority {
+		appendTitle(strings.TrimSpace(title))
+	}
+	for _, block := range blocks {
+		appendTitle(block.title)
+	}
+	return result
 }
 
 func canonicalInstructionBlockSubset(all []instructionBlock, titles map[string]bool) []instructionBlock {

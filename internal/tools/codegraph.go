@@ -10,11 +10,15 @@ import (
 )
 
 func codeGraphProjectContextProviders(runtime *Runtime) ProjectContextProviders {
-	return ProjectContextProviders{Projections: []projectcontext.IntegrationProjectionProvider{
+	providers := ProjectContextProviders{Projections: []projectcontext.IntegrationProjectionProvider{
 		codegraph.ProjectContextProjectionProvider(func() (*codegraph.Runtime, error) {
 			return runtime.codeGraphRuntimeSnapshot(), nil
 		}, runtime.Workspaces),
 	}}
+	if runtime != nil {
+		providers.Semantic = runtime.Semantic
+	}
+	return providers
 }
 
 func codeGraphToolEntries(runtime *Runtime) map[string]Entry {

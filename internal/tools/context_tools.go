@@ -12,6 +12,7 @@ import (
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
+	"go.mewis.me/codemcp/internal/integrations/semantic"
 	"go.mewis.me/codemcp/internal/memory"
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/rules"
@@ -96,6 +97,7 @@ type ProjectContextEnvironment func() (bool, int)
 
 type ProjectContextProviders struct {
 	Projections []projectcontext.IntegrationProjectionProvider
+	Semantic    semantic.Provider
 }
 
 func RegisterContextTools(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store, environments ...ProjectContextEnvironment) {
@@ -120,6 +122,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		},
 		Environment:                    environment,
 		IntegrationProjectionProviders: append([]projectcontext.IntegrationProjectionProvider(nil), providers.Projections...),
+		Semantic:                       providers.Semantic,
 	})
 	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
 		registry.MustRegister(name, Schema{
