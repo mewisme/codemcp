@@ -47,6 +47,7 @@ type CodeMCPInvocationClassification struct {
 	ReadOnly            bool
 	Mutation            bool
 	ApprovalEligible    bool
+	ApprovalRequired    bool
 	HardDenied          bool
 	Nested              bool
 }
@@ -187,6 +188,7 @@ func classifyCodeMCPProgramInvocation(
 		ReadOnly:            readOnly,
 		Mutation:            mutation,
 		ApprovalEligible:    approvalEligible,
+		ApprovalRequired:    mutation && approvalEligible && effectiveRoot != "" && defaultRoot != "" && sameCanonicalRoot(effectiveRoot, defaultRoot),
 		HardDenied:          mutation && !approvalEligible,
 	}
 }

@@ -8,8 +8,18 @@ import (
 	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
 )
+
+func useProtectedCodeMCPRoot(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(configformat.EnvConfigDir, "")
+	return configformat.DefaultRootPath()
+}
 
 func TestShellPolicyRejectsCommonWriteEscapes(t *testing.T) {
 	root := t.TempDir()
@@ -425,6 +435,7 @@ func TestShellPolicyApprovedDestructiveMutationStillEnforcesWorkspaceScope(t *te
 }
 
 func TestShellPolicyBlocksCMControlPlaneMutations(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
 	root := t.TempDir()
 	manager := newTestManager(t)
 	item, err := manager.Register(root)
@@ -465,6 +476,7 @@ func TestShellPolicyBlocksCMControlPlaneMutations(t *testing.T) {
 }
 
 func TestShellPolicyAllowsOnlyExactApprovedDirectControlPlaneInvocation(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
 	root := t.TempDir()
 	manager := newTestManager(t)
 	item, err := manager.Register(root)
@@ -490,6 +502,7 @@ func TestShellPolicyAllowsOnlyExactApprovedDirectControlPlaneInvocation(t *testi
 }
 
 func TestShellPolicyNeverApprovesRequestOrServiceCommands(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
 	root := t.TempDir()
 	manager := newTestManager(t)
 	item, err := manager.Register(root)
@@ -506,6 +519,168 @@ func TestShellPolicyNeverApprovesRequestOrServiceCommands(t *testing.T) {
 	for _, command := range []string{"cm request list", "cm request view req_test", "cm request grant list", "cm req ls", "cm req info req_test"} {
 		if err := manager.ValidateShellCommand(item.ID, root, command); err != nil {
 			t.Fatalf("read-only request command rejected: %q -> %v", command, err)
+		}
+	}
+}
+
+func TestShellPolicyCodeMCPSourceRunParity(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
+	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
+	manager := newTestManager(t)
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, command := range []string{"cm status", "go run . status"} {
+		if err := manager.ValidateShellCommand(item.ID, root, command); err != nil {
+			t.Fatalf("read-only CodeMCP invocation rejected: %q: %v", command, err)
+		}
+	}
+
+	for _, command := range []string{"cm config set server.port 41001", "go run . config set server.port 41001"} {
+		err := manager.ValidateShellCommand(item.ID, root, command)
+		guard, ok := controlguard.As(err)
+		if err == nil || !ok || guard.Code != controlguard.CodeControlPlaneMutation || !guard.Approvable || guard.Invocation == nil {
+			t.Fatalf("protected mutation did not require approval: %q -> %#v / %v", command, guard, err)
+		}
+		if guard.Invocation.Program != "cm" || strings.Join(guard.Invocation.Args, " ") != "config set server.port 41001" {
+			t.Fatalf("protected mutation did not normalize to canonical cm invocation: %q -> %#v", command, guard.Invocation)
+		}
+	}
+
+	for _, command := range []string{"cm request approve req_test", "go run . request approve req_test"} {
+		err := manager.ValidateShellCommand(item.ID, root, command)
+		guard, ok := controlguard.As(err)
+		if err == nil || !ok || guard.Code != controlguard.CodeControlPlaneMutation || guard.Approvable || guard.Invocation != nil {
+			t.Fatalf("hard-denied control operation changed semantics: %q -> %#v / %v", command, guard, err)
+		}
+	}
+}
+
+func TestShellPolicyAllowsIsolatedCodeMCPMutations(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
+	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
+	manager := newTestManager(t)
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	isolate := filepath.Join(t.TempDir(), "isolated")
+	for _, command := range []string{
+		"CM_CONFIG_DIR=" + isolate + " cm config set server.port 41001",
+		"env CM_CONFIG_DIR=" + isolate + " cm config set server.port 41001",
+		"cm --config-dir=" + isolate + " config set server.port 41001",
+		"CM_CONFIG_DIR=" + isolate + " go run . config set server.port 41001",
+		"env CM_CONFIG_DIR=" + isolate + " go run . config set server.port 41001",
+		"go run . --config-dir=" + isolate + " config set server.port 41001",
+		"bash -lc \"CM_CONFIG_DIR=" + isolate + " go run . config set server.port 41001\"",
+	} {
+		if err := manager.ValidateShellCommand(item.ID, root, command); err != nil {
+			t.Fatalf("isolated CodeMCP mutation rejected: %q: %v", command, err)
+		}
+	}
+}
+
+func TestShellPolicySourceRunApprovalIsExactAndCanonical(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
+	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
+	manager := newTestManager(t)
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := "go run . config set server.port 41001"
+	invocation, ok := DirectControlPlaneInvocationAt(root, command, configformat.RootPath())
+	if !ok || invocation == nil || invocation.Program != "cm" || strings.Join(invocation.Args, " ") != "config set server.port 41001" {
+		t.Fatalf("source-run invocation = %#v ok=%t", invocation, ok)
+	}
+	ctx := controlguard.WithApproval(context.Background(), controlguard.Approval{RequestID: "req_source", Capability: "cap_source", Invocation: *invocation})
+	if err := manager.ValidateShellCommandContext(ctx, item.ID, root, command); err != nil {
+		t.Fatalf("exact approved source-run invocation denied: %v", err)
+	}
+	for _, changed := range []string{
+		"go run . config set server.port 41002",
+		"go run . config set server.port 41001 && echo done",
+		"bash -lc \"go run . config set server.port 41001\"",
+	} {
+		err := manager.ValidateShellCommandContext(ctx, item.ID, root, changed)
+		guard, typed := controlguard.As(err)
+		if err == nil || !typed || guard.Code != controlguard.CodeControlPlaneMutation {
+			t.Fatalf("changed source-run invocation bypassed guard: %q -> %#v / %v", changed, guard, err)
+		}
+	}
+}
+
+func TestControlPlaneEntryPointsReconcileWithUnifiedClassifier(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
+	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
+	for _, command := range []string{
+		"cm config set server.port 41001",
+		"go run . config set server.port 41001",
+	} {
+		classification := ClassifyCodeMCPInvocation(root, command, configformat.RootPath())
+		if !classification.Recognized || !classification.ApprovalRequired {
+			t.Fatalf("classifier did not require approval for %q: %#v", command, classification)
+		}
+		invocation, ok := DirectControlPlaneInvocationAt(root, command, configformat.RootPath())
+		if !ok || invocation == nil {
+			t.Fatalf("control-plane entry point did not consume classifier for %q", command)
+		}
+		if invocation.Program != classification.Program || strings.Join(invocation.Args, "\x00") != strings.Join(classification.Args, "\x00") || invocation.Command != classification.Command {
+			t.Fatalf("control-plane entry point diverged from classifier for %q: invocation=%#v classification=%#v", command, invocation, classification)
+		}
+	}
+	if pattern, ok := SimilarCommandPattern("go run . config set server.port 41001"); ok || pattern != "" {
+		t.Fatalf("source-run control plane produced reusable generic command pattern: %q", pattern)
+	}
+}
+
+func TestShellPolicySourceRunContentAndUnrelatedGoRemainNonControlPlane(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
+	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
+	manager := newTestManager(t)
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{
+		"echo \"go run . config set server.port 41001\"",
+		"python -c 'print(\"go run . config set server.port 41001\")'",
+		"go test ./...",
+	} {
+		if err := manager.ValidateShellCommand(item.ID, root, command); err != nil {
+			t.Fatalf("non-control-plane content/Go command rejected: %q: %v", command, err)
+		}
+	}
+	unrelated := writeCodeMCPModuleFixture(t, "example.com/unrelated")
+	unrelatedManager := newTestManager(t)
+	unrelatedItem, err := unrelatedManager.Register(unrelated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unrelatedManager.ValidateShellCommand(unrelatedItem.ID, unrelated, "go run . status"); err != nil {
+		t.Fatalf("unrelated Go module was treated as CodeMCP: %v", err)
+	}
+}
+
+func TestShellPolicyIsolatedCodeMCPDoesNotBypassOtherShellGuards(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
+	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
+	manager := newTestManager(t)
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	isolate := filepath.Join(t.TempDir(), "isolated")
+	for _, command := range []string{
+		"CM_CONFIG_DIR=" + isolate + " cm config set server.port 41001 && rm file.txt",
+		"CM_CONFIG_DIR=" + isolate + " go run . config set server.port 41001 && rm file.txt",
+	} {
+		err := manager.ValidateShellCommand(item.ID, root, command)
+		guard, ok := controlguard.As(err)
+		if err == nil || !ok || guard.Code != controlguard.CodeDestructiveMutation || !guard.Approvable {
+			t.Fatalf("isolated CodeMCP mutation bypassed destructive guard: %q -> %#v / %v", command, guard, err)
 		}
 	}
 }

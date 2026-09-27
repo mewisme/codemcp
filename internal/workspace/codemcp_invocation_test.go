@@ -47,21 +47,45 @@ func TestClassifyCodeMCPEffectsAndCanonicalInvocation(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	for _, tt := range []struct {
-		command                            string
-		path                               string
-		readOnly, mutation, eligible, hard bool
+		command                                      string
+		path                                         string
+		readOnly, mutation, eligible, required, hard bool
 	}{
-		{"cm status", "status", true, false, false, false},
-		{"cm cfg set server.port 41001", "config set", false, true, true, false},
-		{"cm request approve req_test", "request approve", false, true, false, true},
+		{"cm status", "status", true, false, false, false, false},
+		{"cm cfg set server.port 41001", "config set", false, true, true, true, false},
+		{"cm request approve req_test", "request approve", false, true, false, false, true},
 	} {
 		got := ClassifyCodeMCPInvocation(home, tt.command, "")
-		if !got.Recognized || got.OperationPath != tt.path || got.ReadOnly != tt.readOnly || got.Mutation != tt.mutation || got.ApprovalEligible != tt.eligible || got.HardDenied != tt.hard {
+		if !got.Recognized || got.OperationPath != tt.path || got.ReadOnly != tt.readOnly || got.Mutation != tt.mutation || got.ApprovalEligible != tt.eligible || got.ApprovalRequired != tt.required || got.HardDenied != tt.hard {
 			t.Fatalf("%q => %#v", tt.command, got)
 		}
 		invocation := got.ControlInvocation()
 		if invocation == nil || invocation.Program != "cm" || invocation.Command != tt.command {
 			t.Fatalf("control invocation for %q = %#v", tt.command, invocation)
+		}
+	}
+}
+
+func TestClassifyCodeMCPApprovalRequirementFollowsConfigRootIdentity(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
+	isolate := filepath.Join(t.TempDir(), "isolated")
+	for _, command := range []string{
+		"cm config set server.port 41001",
+		"go run . config set server.port 41001",
+	} {
+		protected := ClassifyCodeMCPInvocation(root, command, "")
+		if !protected.Recognized || !protected.ApprovalRequired || !protected.UsesDefaultRoot {
+			t.Fatalf("protected %q => %#v", command, protected)
+		}
+		isolated := ClassifyCodeMCPInvocation(root, "CM_CONFIG_DIR="+isolate+" "+command, "")
+		if !isolated.Recognized || isolated.ApprovalRequired || isolated.UsesDefaultRoot {
+			t.Fatalf("isolated %q => %#v", command, isolated)
+		}
+		if protected.OperationPath != isolated.OperationPath || protected.ReadOnly != isolated.ReadOnly || protected.Mutation != isolated.Mutation || protected.ApprovalEligible != isolated.ApprovalEligible {
+			t.Fatalf("config root changed canonical effect for %q: protected=%#v isolated=%#v", command, protected, isolated)
 		}
 	}
 }

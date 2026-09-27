@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/commandpattern"
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
-	"go.mewis.me/codemcp/internal/controlplane"
 )
 
 const maxNestedShellDepth = 4
@@ -49,20 +49,26 @@ func (m *Manager) ValidateShellCommandContext(ctx context.Context, id, baseDirec
 	if toolContextMutation.MatchString(command) {
 		return controlguard.New(controlguard.CodeContextTamper, "MCP tool execution context cannot be cleared from shell commands", false, nil)
 	}
+	classification := ClassifyCodeMCPInvocation(cwd, command, configformat.RootPath())
+	if classification.Recognized {
+		switch {
+		case classification.HardDenied:
+			return controlguard.New(controlguard.CodeControlPlaneMutation, "control-plane command denied from MCP shell: this CodeMCP operation cannot run through shell tools", false, nil)
+		case classification.ApprovalRequired:
+			invocation, approvable := DirectControlPlaneInvocationAt(cwd, command, configformat.RootPath())
+			if approvable && invocation != nil {
+				if granted, ok := controlguard.ApprovalFromContext(ctx); ok && controlguard.SameInvocation(granted.Invocation, *invocation) {
+					return nil
+				}
+			}
+			return controlguard.New(controlguard.CodeControlPlaneMutation, "control-plane mutation requires local approval", approvable, invocation)
+		}
+	}
 	if err := m.validateProtectedShellAccess(cwd, command, 0); err != nil {
 		return controlguard.New(controlguard.CodeProtectedState, err.Error(), false, nil)
 	}
 	if reason, denied := unboundedRemoteSessionReason(command); denied {
 		return controlguard.New(controlguard.CodeExternalMutation, "unbounded remote session denied from MCP shell: "+reason, false, nil)
-	}
-	if isControlPlaneMutation(command, 0) {
-		invocation, approvable := DirectControlPlaneInvocation(command)
-		if approvable && invocation != nil {
-			if granted, ok := controlguard.ApprovalFromContext(ctx); ok && controlguard.SameInvocation(granted.Invocation, *invocation) {
-				return nil
-			}
-		}
-		return controlguard.New(controlguard.CodeControlPlaneMutation, "control-plane mutation denied from MCP shell: cm configuration and permissions cannot be changed through shell tools", approvable, invocation)
 	}
 	if !m.IsMutationCommand(command) {
 		return nil
@@ -140,19 +146,34 @@ func unboundedRemoteSessionReasonDepth(command string, depth int) (string, bool)
 }
 
 func DirectControlPlaneInvocation(command string) (*controlguard.Invocation, bool) {
+	return DirectControlPlaneInvocationAt("", command, configformat.DefaultRootPath())
+}
+
+func DirectControlPlaneInvocationAt(cwd, command, inheritedConfigRoot string) (*controlguard.Invocation, bool) {
+	classification := ClassifyCodeMCPInvocation(cwd, command, inheritedConfigRoot)
+	if !classification.Recognized || !classification.ApprovalRequired || !directCodeMCPInvocationOnly(command, classification.Kind) {
+		return nil, false
+	}
+	return classification.ControlInvocation(), true
+}
+
+func directCodeMCPInvocationOnly(command string, kind CodeMCPInvocationKind) bool {
 	segments, err := splitShellSegments(command)
 	if err != nil || len(segments) != 1 || strings.TrimSpace(command) != strings.TrimSpace(segments[0]) {
-		return nil, false
+		return false
 	}
 	tokens, err := shellWords(segments[0])
-	if err != nil || len(tokens) == 0 || !isCMBinary(tokens[0]) {
-		return nil, false
+	if err != nil || len(tokens) == 0 {
+		return false
 	}
-	args := append([]string(nil), tokens[1:]...)
-	if !controlplane.ApprovalEligibleArgs(args) {
-		return nil, false
+	switch kind {
+	case CodeMCPInvocationInstalled:
+		return isCMBinary(tokens[0])
+	case CodeMCPInvocationSourceRun:
+		return isGoCommand(tokens[0])
+	default:
+		return false
 	}
-	return &controlguard.Invocation{Program: filepath.Base(tokens[0]), Args: args, Command: strings.TrimSpace(command)}, true
 }
 
 func SimilarCommandPattern(command string) (string, bool) {
@@ -168,7 +189,7 @@ func SimilarCommandPattern(command string) (string, bool) {
 	if name == "" || len(args) == 0 || strings.HasPrefix(args[0], "-") {
 		return "", false
 	}
-	if isCMBinary(name) {
+	if isCMBinary(name) || isGoCommand(name) && strings.EqualFold(args[0], "run") {
 		return "", false
 	}
 	prefix := []string{name, args[0]}
@@ -294,9 +315,6 @@ func normalizeShellPathText(value string) string {
 }
 
 func (m *Manager) isMutationCommand(command string, depth int) bool {
-	if isControlPlaneMutation(command, depth) {
-		return true
-	}
 	if mutationWord.MatchString(command) {
 		return true
 	}
@@ -399,30 +417,6 @@ func hasSedInPlace(args []string) bool {
 func hasPerlInPlace(args []string) bool {
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.Contains(strings.TrimPrefix(arg, "-"), "i") {
-			return true
-		}
-	}
-	return false
-}
-
-func isControlPlaneMutation(command string, depth int) bool {
-	if depth >= maxNestedShellDepth {
-		return false
-	}
-	segments, err := splitShellSegments(command)
-	if err != nil {
-		return false
-	}
-	for _, segment := range segments {
-		tokens, err := shellWords(segment)
-		if err != nil || len(tokens) == 0 {
-			continue
-		}
-		name, args := commandName(tokens)
-		if isCMBinary(name) && !controlplane.IsReadOnlyArgs(args) {
-			return true
-		}
-		if inner, ok := nestedShellCommand(name, args); ok && isControlPlaneMutation(inner, depth+1) {
 			return true
 		}
 	}

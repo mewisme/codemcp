@@ -12,6 +12,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/integrations/semantic"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
@@ -53,6 +54,10 @@ func newApprovalRuntime(t *testing.T) (*Runtime, string) {
 
 func newApprovalShellRuntime(t *testing.T) (*Runtime, string) {
 	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(configformat.EnvConfigDir, "")
 	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
 	item, err := manager.Register(t.TempDir())
 	if err != nil {
@@ -69,6 +74,33 @@ func newApprovalShellRuntime(t *testing.T) (*Runtime, string) {
 	runtime.SetSemanticApprovalPolicy(DefaultSemanticApprovalPolicy())
 	RegisterShellTools(registry, manager, shell, processes)
 	RegisterApprovalTools(registry, runtime)
+	return runtime, item.ID
+}
+
+func newApprovalCodeMCPSourceRuntime(t *testing.T) (*Runtime, string) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv(configformat.EnvConfigDir, "")
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module go.mewis.me/codemcp\n\ngo 1.27\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\nfunc main() {}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := manager.Instance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	shell := shellruntime.NewManager(manager, filepath.Join(t.TempDir(), "shell-state"))
+	runtime := &Runtime{Workspaces: manager, Approvals: approval.NewManager(identity.ID), Shell: shell}
 	return runtime, item.ID
 }
 
@@ -430,6 +462,18 @@ func TestShellControlGuardProducesChallengeOnlyForDirectLiteralCLI(t *testing.T)
 	backgroundChallenge, ok := background.StructuredContent.(approvalRequiredResponse)
 	if !ok || backgroundChallenge.TargetTool != "start_process" {
 		t.Fatalf("background challenge = %#v", background.StructuredContent)
+	}
+}
+
+func TestApprovalRuntimeResolvesSourceRunThroughUnifiedClassifier(t *testing.T) {
+	runtime, workspaceID := newApprovalCodeMCPSourceRuntime(t)
+	command := "go run . config set server.port 41001"
+	invocation, ok := runtime.directControlPlaneInvocation(workspaceID, command)
+	if !ok || invocation == nil {
+		t.Fatalf("source-run invocation unresolved: %#v ok=%t", invocation, ok)
+	}
+	if invocation.Program != "cm" || strings.Join(invocation.Args, " ") != "config set server.port 41001" || invocation.Command != command {
+		t.Fatalf("source-run invocation was not canonicalized for approval: %#v", invocation)
 	}
 }
 

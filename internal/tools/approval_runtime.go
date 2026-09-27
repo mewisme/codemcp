@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -50,7 +51,7 @@ func (r *Runtime) prepareApprovalRetry(ctx context.Context, correlation Approval
 		ctx = controlguard.WithGrant(ctx, controlguard.Grant{RequestID: claimed.ID, Code: claimed.GuardCode})
 		return ctx, claimed, nil, nil
 	}
-	invocation, ok := workspace.DirectControlPlaneInvocation(command)
+	invocation, ok := r.directControlPlaneInvocation(workspaceID, command)
 	if !ok || invocation == nil {
 		claimed, matched, err := r.Approvals.ClaimApproved(retry)
 		if err != nil || !matched {
@@ -70,6 +71,15 @@ func (r *Runtime) prepareApprovalRetry(ctx context.Context, correlation Approval
 	ctx = WithApprovalRequest(ctx, claimed.ID)
 	ctx = controlguard.WithApproval(ctx, controlguard.Approval{RequestID: claimed.ID, Capability: capability, Invocation: *invocation})
 	return ctx, claimed, nil, nil
+}
+
+func (r *Runtime) directControlPlaneInvocation(workspaceID, command string) (*controlguard.Invocation, bool) {
+	if r != nil && r.Shell != nil && strings.TrimSpace(workspaceID) != "" {
+		if status, err := r.Shell.Status(workspaceID); err == nil && strings.TrimSpace(status.CWD) != "" {
+			return workspace.DirectControlPlaneInvocationAt(status.CWD, command, configformat.RootPath())
+		}
+	}
+	return workspace.DirectControlPlaneInvocation(command)
 }
 
 func (r *Runtime) approvalResultForGuard(guard *controlguard.Error, correlation ApprovalCorrelation, sessionHash, workspaceID, source, name string, args map[string]any, claimed approval.Request) (Result, bool, error) {
