@@ -108,7 +108,8 @@ func runTelegramSetup(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	presenter := commandPresenter(cmd)
+	session := commandProgressSession(cmd)
+	presenter := session.Presenter()
 	presenter.Frame("Telegram setup")
 	presenter.StateSection(presentation.StatusInfo, "Pairing ready")
 	fields := []presentation.Field{
@@ -123,7 +124,12 @@ func runTelegramSetup(cmd *cobra.Command, _ []string) error {
 	}
 	presenter.NestedFields(fields...)
 	presenter.Spacer()
-	presenter.StateSection(presentation.StatusInfo, "Waiting for Telegram pairing")
+	const pairingProgressID = "telegram.setup.pairing"
+	session.Update(presentation.ProgressPhase{
+		ID:    pairingProgressID,
+		Label: "Waiting for Telegram pairing",
+		State: presentation.ProgressRunning,
+	})
 
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
@@ -131,15 +137,17 @@ func runTelegramSetup(cmd *cobra.Command, _ []string) error {
 		select {
 		case <-cmd.Context().Done():
 			_ = runtime.TelegramPairingCancel(challenge.Generation)
+			session.Fail(pairingProgressID, "Waiting for Telegram pairing", "Telegram pairing cancelled")
 			return cmd.Context().Err()
 		case <-ticker.C:
 			state, err := runtime.TelegramPairingStatus()
 			if err != nil {
+				session.Fail(pairingProgressID, "Waiting for Telegram pairing", "Telegram pairing failed")
 				return err
 			}
 			switch state.Status {
 			case telegram.PairingStatusPaired:
-				presenter.StateSection(presentation.StatusSuccess, "Telegram paired")
+				session.Success(pairingProgressID, "Waiting for Telegram pairing", "Telegram paired")
 				if _, running, statusErr := application.RuntimeStatus(cmd.Context()); statusErr != nil {
 					presenter.StateSection(presentation.StatusWarning, "Running runtime status could not be checked")
 					presenter.NestedFields(presentation.Field{Label: "fix", Value: "cm restart"})
@@ -154,8 +162,10 @@ func runTelegramSetup(cmd *cobra.Command, _ []string) error {
 				presenter.Complete("Setup complete")
 				return nil
 			case telegram.PairingStatusExpired:
+				session.Fail(pairingProgressID, "Waiting for Telegram pairing", "Telegram pairing expired")
 				return errors.New("telegram pairing code expired; run `cm telegram setup` again")
 			case telegram.PairingStatusCancelled:
+				session.Fail(pairingProgressID, "Waiting for Telegram pairing", "Telegram pairing cancelled")
 				return errors.New("telegram pairing was cancelled")
 			}
 		}
