@@ -52,6 +52,10 @@ type TelegramHealthSnapshot struct {
 	PollingHealthy          bool
 	Reconnecting            bool
 	ReconnectCount          uint64
+	LogsMiniAppEnabled      bool
+	LogsMiniAppState        string
+	LogsMiniAppDependency   bool
+	LogsMiniAppGeneration   uint64
 }
 
 type DoctorService struct {
@@ -596,11 +600,18 @@ func telegramDoctorComponent(health TelegramHealthSnapshot) doctor.Component {
 	}
 	component := doctor.Component{
 		State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "Telegram interface is healthy",
-		Flags:   []doctor.Flag{{ID: "running", Value: health.Running}, {ID: "polling_healthy", Value: health.PollingHealthy}, {ID: "reconnecting", Value: health.Reconnecting}},
-		Metrics: []doctor.Metric{{ID: "reconnects", Value: int64(health.ReconnectCount)}},
+		Flags: []doctor.Flag{
+			{ID: "running", Value: health.Running}, {ID: "polling_healthy", Value: health.PollingHealthy}, {ID: "reconnecting", Value: health.Reconnecting},
+			{ID: "logs_mini_app_enabled", Value: health.LogsMiniAppEnabled}, {ID: "logs_mini_app_dependency", Value: health.LogsMiniAppDependency},
+		},
+		Metrics: []doctor.Metric{{ID: "reconnects", Value: int64(health.ReconnectCount)}, {ID: "logs_mini_app_generation", Value: int64(health.LogsMiniAppGeneration)}},
 	}
 	if health.Running && (!health.PollingHealthy || health.Reconnecting) {
 		component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "Telegram interface is reconnecting or unhealthy"
+	}
+	if health.LogsMiniAppEnabled && health.LogsMiniAppState == "degraded" {
+		component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "Telegram interface is healthy but the Logs Mini App is degraded"
+		component.Remediations = append(component.Remediations, doctor.Remediation{ID: "telegram_logs_mini_app_dependency", Summary: "Install cf-tunnel on PATH or disable telegram.logs_mini_app.enabled"})
 	}
 	return component
 }

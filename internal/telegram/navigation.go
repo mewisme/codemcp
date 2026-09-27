@@ -41,6 +41,7 @@ const (
 	RouteInstructions    Route = "instructions"
 	RoutePrompts         Route = "prompts"
 	RoutePrompt          Route = "prompt"
+	RouteLogs            Route = "logs"
 )
 
 type ActionState struct {
@@ -100,7 +101,7 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 		RouteHome: ui.handleHome, RouteStatus: ui.handleStatus, RouteCommands: ui.handleCommands,
 		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests, RouteNetwork: ui.handleNetwork,
 		RouteSettings: ui.handleSettings, RouteIntegrations: ui.handleIntegrations,
-		RouteSystem: ui.handleSystem, RouteInstructions: ui.handleInstructions,
+		RouteSystem: ui.handleSystem, RouteInstructions: ui.handleInstructions, RouteLogs: ui.handleLogs,
 	}
 	for _, command := range Commands() {
 		if handler := handlers[command.Route]; handler != nil {
@@ -420,6 +421,8 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.promptsScreen(ctx, owner, state)
 	case RoutePrompt:
 		return ui.promptScreen(ctx, owner, state)
+	case RouteLogs:
+		return ui.logsMiniAppScreen(owner)
 	default:
 		if state.Operation == "" {
 			return Screen{}, errors.New("telegram navigation route is unavailable")
@@ -477,6 +480,10 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
+	logs, err := ui.stateButton(owner, "Logs", CallbackOpen, ActionState{Route: RouteLogs, Back: RouteHome})
+	if err != nil {
+		return Screen{}, err
+	}
 	unavailable := func(label string) Button {
 		return Button{Text: CompactActionLabel(label), Disabled: true, Role: ButtonRoleNeutral}
 	}
@@ -494,7 +501,7 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 		{upstreams, integrations},
 		{instructions},
 		{settings, auth},
-		{unavailable("Logs")},
+		{logs},
 		{help, refresh},
 	}}, nil
 }
@@ -749,7 +756,11 @@ func (ui *Interface) terminalOperationKeyboard(owner ViewOwner, state ActionStat
 		if systemErr != nil {
 			return nil, systemErr
 		}
-		secondary = append(secondary, system, Button{Text: "Logs", Disabled: true, Role: ButtonRoleView})
+		logs, logsErr := ui.stateButton(owner, "Logs", CallbackOpen, ActionState{Route: RouteLogs, Back: RouteStatus})
+		if logsErr != nil {
+			return nil, logsErr
+		}
+		secondary = append(secondary, system, logs)
 	}
 	navigation := []Button{back, home}
 	if spec.Kind == capability.KindQuery || spec.Kind == capability.KindStream {
@@ -950,6 +961,8 @@ func routeLabel(route Route) string {
 		return "Prompts"
 	case RoutePrompt:
 		return "Prompt"
+	case RouteLogs:
+		return "Logs"
 	case RouteOperation:
 		return "Operation"
 	default:

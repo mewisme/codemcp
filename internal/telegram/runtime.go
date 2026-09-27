@@ -30,30 +30,32 @@ type Handler func(context.Context, Update)
 type SetupHandler func(context.Context, Update) bool
 
 type Health struct {
-	Enabled                 bool      `json:"enabled"`
-	TokenConfigured         bool      `json:"token_configured"`
-	AuthorizationConfigured bool      `json:"authorization_configured"`
-	TopicsConfigured        bool      `json:"topics_configured"`
-	TopicsSupported         bool      `json:"topics_supported"`
-	TopicsEffective         bool      `json:"topics_effective"`
-	TopicCount              int       `json:"topic_count"`
-	TopicLastError          string    `json:"topic_last_error,omitempty"`
-	Running                 bool      `json:"running"`
-	PollingHealthy          bool      `json:"polling_healthy"`
-	Reconnecting            bool      `json:"reconnecting"`
-	ReconnectCount          uint64    `json:"reconnect_count"`
-	NextOffset              int64     `json:"next_offset"`
-	LastSuccess             time.Time `json:"last_success,omitempty"`
-	LastError               string    `json:"last_error,omitempty"`
-	SetupMode               bool      `json:"setup_mode"`
+	Enabled                 bool              `json:"enabled"`
+	TokenConfigured         bool              `json:"token_configured"`
+	AuthorizationConfigured bool              `json:"authorization_configured"`
+	TopicsConfigured        bool              `json:"topics_configured"`
+	TopicsSupported         bool              `json:"topics_supported"`
+	TopicsEffective         bool              `json:"topics_effective"`
+	TopicCount              int               `json:"topic_count"`
+	TopicLastError          string            `json:"topic_last_error,omitempty"`
+	Running                 bool              `json:"running"`
+	PollingHealthy          bool              `json:"polling_healthy"`
+	Reconnecting            bool              `json:"reconnecting"`
+	ReconnectCount          uint64            `json:"reconnect_count"`
+	NextOffset              int64             `json:"next_offset"`
+	LastSuccess             time.Time         `json:"last_success,omitempty"`
+	LastError               string            `json:"last_error,omitempty"`
+	SetupMode               bool              `json:"setup_mode"`
+	LogsMiniApp             LogsMiniAppHealth `json:"logs_mini_app"`
 }
 
 type Options struct {
-	Root           string
-	Factory        func(string) API
-	PollTimeout    time.Duration
-	ReconnectDelay func(int) time.Duration
-	StopTimeout    time.Duration
+	Root            string
+	Factory         func(string) API
+	PollTimeout     time.Duration
+	ReconnectDelay  func(int) time.Duration
+	StopTimeout     time.Duration
+	MiniAppLauncher QuickTunnelLauncher
 }
 
 type Runtime struct {
@@ -77,6 +79,7 @@ type Runtime struct {
 	generation           uint64
 	topics               *topicStore
 	approvalMessages     *approvalMessageStore
+	logsMiniApp          *LogsMiniAppRuntime
 }
 
 type NotificationRenderer func(context.Context, int64, notification.Message) (Screen, bool, error)
@@ -111,7 +114,7 @@ func NewRuntime(options Options) *Runtime {
 	if stopTimeout <= 0 {
 		stopTimeout = defaultStopTimeout
 	}
-	return &Runtime{root: options.Root, factory: factory, pollTimeout: pollTimeout, reconnectDelay: reconnectDelay, stopTimeout: stopTimeout}
+	return &Runtime{root: options.Root, factory: factory, pollTimeout: pollTimeout, reconnectDelay: reconnectDelay, stopTimeout: stopTimeout, logsMiniApp: newLogsMiniAppRuntime(options.MiniAppLauncher)}
 }
 
 func (runtime *Runtime) SetHandler(handler Handler) {
@@ -186,6 +189,9 @@ func (runtime *Runtime) PromoteSetup(cfg config.TelegramConfig) error {
 	runtime.mu.Unlock()
 	runtime.reconcileNavigationBounded(context.Background(), api, cfg)
 	runtime.reconcileTopicsBounded(context.Background(), api, cfg, topicsSupported)
+	if runtime.logsMiniApp != nil {
+		_ = runtime.logsMiniApp.Reconcile(context.Background(), cfg, token)
+	}
 	return nil
 }
 
@@ -200,6 +206,9 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 
 	if tokenErr != nil && !errors.Is(tokenErr, secretstore.ErrNotFound) {
 		runtime.Stop()
+		if runtime.logsMiniApp != nil {
+			_ = runtime.logsMiniApp.Reconcile(ctx, cfg, "")
+		}
 		runtime.mu.Lock()
 		runtime.config = cfg
 		runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: false, AuthorizationConfigured: authorizationConfigured, SetupMode: setupMode, LastError: "telegram token is unavailable"}
@@ -208,6 +217,9 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 	}
 	if !tokenConfigured || (!setupMode && (!cfg.Enabled || !authorizationConfigured)) {
 		runtime.Stop()
+		if runtime.logsMiniApp != nil {
+			_ = runtime.logsMiniApp.Reconcile(ctx, cfg, "")
+		}
 		runtime.mu.Lock()
 		runtime.config = cfg
 		runtime.setupMode = false
@@ -239,6 +251,9 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 	same := runtime.cancel != nil && runtime.fingerprint == fingerprint
 	runtime.mu.RUnlock()
 	if same {
+		if runtime.logsMiniApp != nil && !setupMode {
+			_ = runtime.logsMiniApp.Reconcile(ctx, cfg, token)
+		}
 		return nil
 	}
 	runtime.Stop()
@@ -265,6 +280,9 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 	if !setupMode {
 		runtime.reconcileNavigationBounded(runCtx, api, cfg)
 		runtime.reconcileTopicsBounded(runCtx, api, cfg, botUser.HasTopicsEnabled)
+		if runtime.logsMiniApp != nil {
+			_ = runtime.logsMiniApp.Reconcile(runCtx, cfg, token)
+		}
 	}
 	go runtime.supervise(runCtx, done, api)
 	return nil
@@ -635,6 +653,9 @@ func (runtime *Runtime) Stop() {
 	if runtime == nil {
 		return
 	}
+	if runtime.logsMiniApp != nil {
+		runtime.logsMiniApp.Stop()
+	}
 	runtime.mu.Lock()
 	cancel := runtime.cancel
 	done := runtime.done
@@ -667,8 +688,12 @@ func (runtime *Runtime) Health() Health {
 		return Health{}
 	}
 	runtime.mu.RLock()
-	defer runtime.mu.RUnlock()
-	return runtime.health
+	health := runtime.health
+	runtime.mu.RUnlock()
+	if runtime.logsMiniApp != nil {
+		health.LogsMiniApp = runtime.logsMiniApp.Health()
+	}
+	return health
 }
 
 func (runtime *Runtime) Diagnostics() Health {

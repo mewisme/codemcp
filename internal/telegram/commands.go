@@ -28,6 +28,7 @@ var commandRegistry = []Command{
 	{Name: "settings", Description: "Browse and edit canonical settings", Route: RouteSettings},
 	{Name: "system", Description: "Inspect runtime, diagnostics, version and updates", Route: RouteSystem},
 	{Name: "instructions", Description: "Inspect project context, instructions and prompts", Route: RouteInstructions},
+	{Name: "logs", Description: "Open Telegram Logs Mini App", Route: RouteLogs},
 	{Name: "commands", Description: "Show available Telegram commands", Route: RouteCommands},
 	{Name: "help", Description: "Show available Telegram commands", Route: RouteCommands},
 }

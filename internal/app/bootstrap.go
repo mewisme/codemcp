@@ -173,7 +173,9 @@ func (a *App) Bootstrap() error {
 					Enabled: health.Enabled, TokenConfigured: health.TokenConfigured,
 					AuthorizationConfigured: health.AuthorizationConfigured, Running: health.Running,
 					PollingHealthy: health.PollingHealthy, Reconnecting: health.Reconnecting,
-					ReconnectCount: health.ReconnectCount,
+					ReconnectCount:     health.ReconnectCount,
+					LogsMiniAppEnabled: health.LogsMiniApp.Enabled, LogsMiniAppState: string(health.LogsMiniApp.State),
+					LogsMiniAppDependency: health.LogsMiniApp.DependencyAvailable, LogsMiniAppGeneration: health.LogsMiniApp.Generation,
 				}
 			}
 		}

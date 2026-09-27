@@ -33,9 +33,14 @@ type TelemetryConfig struct {
 }
 
 type TelegramConfig struct {
-	Enabled        bool    `json:"enabled"`
-	AllowedUserIDs []int64 `json:"allowed_user_ids"`
-	TopicsEnabled  bool    `json:"topics_enabled"`
+	Enabled        bool                      `json:"enabled"`
+	AllowedUserIDs []int64                   `json:"allowed_user_ids"`
+	TopicsEnabled  bool                      `json:"topics_enabled"`
+	LogsMiniApp    TelegramLogsMiniAppConfig `json:"logs_mini_app"`
+}
+
+type TelegramLogsMiniAppConfig struct {
+	Enabled bool `json:"enabled"`
 }
 
 type ApprovalConfig struct {
@@ -139,7 +144,7 @@ func Default() Config {
 			HighAction: "require_approval", CriticalAction: "deny",
 		}},
 		Telemetry:    TelemetryConfig{Enabled: true},
-		Telegram:     TelegramConfig{Enabled: false, AllowedUserIDs: []int64{}, TopicsEnabled: false},
+		Telegram:     TelegramConfig{Enabled: false, AllowedUserIDs: []int64{}, TopicsEnabled: false, LogsMiniApp: TelegramLogsMiniAppConfig{Enabled: false}},
 		Integrations: integrations.Default(),
 		Tunnel:       tunnel.Config{Enabled: false, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}},
 	}
