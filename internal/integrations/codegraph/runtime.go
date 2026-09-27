@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/configformat"
+	executablepath "go.mewis.me/codemcp/internal/integrations/executable"
 	"go.mewis.me/codemcp/internal/integrations/managedasset"
 )
 
@@ -117,22 +118,15 @@ func (r *Runtime) Resolve() (Resolution, error) {
 		return Resolution{Source: ExecutableDisabled}, nil
 	}
 	if r.configuredPath != "" {
-		path, err := filepath.Abs(r.configuredPath)
+		path, err := executablepath.ResolveExternal(r.configuredPath, r.goos)
 		if err != nil {
-			return Resolution{Source: ExecutableUnavailable}, fmt.Errorf("resolve configured CodeGraph path: %w", err)
-		}
-		path = filepath.Clean(path)
-		if err := validateExecutable(path); err != nil {
 			return Resolution{Source: ExecutableUnavailable}, fmt.Errorf("configured CodeGraph executable: %w", err)
 		}
 		return Resolution{Source: ExecutableConfigured, Path: path, Verified: true}, nil
 	}
 	if path, err := r.lookPath(SystemExecutable()); err == nil && strings.TrimSpace(path) != "" {
-		if absolute, absErr := filepath.Abs(path); absErr == nil {
-			path = filepath.Clean(absolute)
-		}
-		if err := validateExecutable(path); err == nil {
-			return Resolution{Source: ExecutableSystem, Path: path, Verified: true}, nil
+		if resolved, resolveErr := executablepath.ResolveExternal(path, r.goos); resolveErr == nil {
+			return Resolution{Source: ExecutableSystem, Path: resolved, Verified: true}, nil
 		}
 	}
 	spec, asset, ok := r.specFor(r.goos, r.goarch)
@@ -337,20 +331,6 @@ func commandFailure(result commandResult) error {
 		message = "no diagnostic output"
 	}
 	return fmt.Errorf("codegraph exited with code %d: %s", result.ExitCode, message)
-}
-
-func validateExecutable(path string) error {
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() <= 0 {
-		return errors.New("CodeGraph executable must be a non-empty regular non-symlink file")
-	}
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0111 == 0 {
-		return errors.New("CodeGraph executable is not executable")
-	}
-	return nil
 }
 
 func safeEnvironment() []string {

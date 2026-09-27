@@ -80,6 +80,30 @@ func TestResolutionPriorityConfiguredSystemManaged(t *testing.T) {
 	}
 }
 
+func TestExternalResolutionCanonicalizesSymlinksWithoutChangingSource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation is not reliably available on Windows test hosts")
+	}
+	target := testExecutable(t, "rtk-target")
+	link := filepath.Join(t.TempDir(), "rtk")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	manager := New(Options{Enabled: true, ManagedRoot: t.TempDir()})
+	manager.lookPath = func(string) (string, error) { return link, nil }
+	resolution, err := manager.Resolve()
+	if err != nil || resolution.Source != SourceSystem || resolution.Path != target || !resolution.Verified {
+		t.Fatalf("system symlink resolution=%#v err=%v", resolution, err)
+	}
+
+	manager.configuredPath = link
+	resolution, err = manager.Resolve()
+	if err != nil || resolution.Source != SourceConfigured || resolution.Path != target || !resolution.Verified {
+		t.Fatalf("configured symlink resolution=%#v err=%v", resolution, err)
+	}
+}
+
 func TestStatusUsesSameModelForSystemAndManaged(t *testing.T) {
 	manager, managedPath := installTestManagedRTK(t)
 	manager.lookPath = func(string) (string, error) { return "", errors.New("missing") }

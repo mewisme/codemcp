@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/configformat"
+	executablepath "go.mewis.me/codemcp/internal/integrations/executable"
 )
 
 const (
@@ -201,22 +202,15 @@ func (m *Manager) Resolve() (Resolution, error) {
 		return Resolution{Source: SourceUnavailable}, nil
 	}
 	if m.configuredPath != "" {
-		path, err := filepath.Abs(m.configuredPath)
+		path, err := executablepath.ResolveExternal(m.configuredPath, m.goos)
 		if err != nil {
-			return Resolution{Source: SourceUnavailable}, fmt.Errorf("resolve configured RTK path: %w", err)
-		}
-		path = filepath.Clean(path)
-		if err := validateExecutable(path); err != nil {
 			return Resolution{Source: SourceUnavailable}, fmt.Errorf("configured RTK executable: %w", err)
 		}
 		return Resolution{Source: SourceConfigured, Path: path, Verified: true}, nil
 	}
 	if path, err := m.lookPath(platform.Executable); err == nil && strings.TrimSpace(path) != "" {
-		if absolute, absErr := filepath.Abs(path); absErr == nil {
-			path = filepath.Clean(absolute)
-		}
-		if err := validateExecutable(path); err == nil {
-			return Resolution{Source: SourceSystem, Path: path, Verified: true}, nil
+		if resolved, resolveErr := executablepath.ResolveExternal(path, m.goos); resolveErr == nil {
+			return Resolution{Source: SourceSystem, Path: resolved, Verified: true}, nil
 		}
 	}
 	path, err := m.validateManaged(platform)

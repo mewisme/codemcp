@@ -63,7 +63,7 @@ func (m *Manager) validateManaged(platform Platform) (string, error) {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return "", errors.New("managed RTK executable must not be a symlink")
 	}
-	if err := validateExecutable(path); err != nil {
+	if err := validateManagedExecutable(path); err != nil {
 		return "", err
 	}
 	manifestPath := filepath.Join(filepath.Dir(path), "manifest.json")
@@ -149,7 +149,7 @@ func (m *Manager) installManaged(ctx context.Context, platform Platform) (string
 	if err != nil {
 		return "", err
 	}
-	if err := validateExecutable(binary); err != nil {
+	if err := validateManagedExecutable(binary); err != nil {
 		return "", err
 	}
 	binarySHA, err := hashFile(binary)
@@ -232,7 +232,7 @@ func validatePortable(portable Portable) error {
 	return nil
 }
 
-func validateExecutable(path string) error {
+func validateManagedExecutable(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err

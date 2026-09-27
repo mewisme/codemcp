@@ -78,6 +78,38 @@ func TestResolutionPriorityConfiguredSystemManaged(t *testing.T) {
 	}
 }
 
+func TestExternalResolutionCanonicalizesSymlinksWithoutChangingSource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation is not reliably available on Windows test hosts")
+	}
+	target := testExecutable(t, "codegraph-target")
+	link := filepath.Join(t.TempDir(), "codegraph")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	value := New(Options{Enabled: true, ManagedRoot: t.TempDir()})
+	value.lookPath = func(string) (string, error) { return link, nil }
+	resolution, err := value.Resolve()
+	if err != nil || resolution.Source != ExecutableSystem || resolution.Path != target || !resolution.Verified {
+		t.Fatalf("system symlink resolution=%#v err=%v", resolution, err)
+	}
+
+	value.configuredPath = link
+	resolution, err = value.Resolve()
+	if err != nil || resolution.Source != ExecutableConfigured || resolution.Path != target || !resolution.Verified {
+		t.Fatalf("configured symlink resolution=%#v err=%v", resolution, err)
+	}
+}
+
+func TestInvalidExternalCodeGraphTargetFailsClosed(t *testing.T) {
+	value := New(Options{Enabled: true, ConfiguredPath: t.TempDir(), ManagedRoot: t.TempDir()})
+	resolution, err := value.Resolve()
+	if err == nil || resolution.Source != ExecutableUnavailable || resolution.Path != "" || resolution.Verified {
+		t.Fatalf("invalid configured resolution=%#v err=%v", resolution, err)
+	}
+}
+
 func TestDisabledAndUnsupportedCodeGraphDegradeCleanly(t *testing.T) {
 	disabled := New(Options{Enabled: false})
 	status, err := disabled.Status()
