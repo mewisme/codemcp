@@ -2,12 +2,10 @@ package admin
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strings"
-	"time"
 
-	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
@@ -40,25 +38,19 @@ func (api API) handleTunnel(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, api.tunnelStatus(r.Context()))
 	case http.MethodPost:
-		if err := api.Tunnel.Start(); err != nil {
+		dashboard, err := application.SetTunnelEnabled(r.Context(), true)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, api.tunnelStatus(r.Context()))
+		writeJSON(w, dashboard.Status)
 	case http.MethodDelete:
-		if api.Config == nil {
-			http.Error(w, "config unavailable", http.StatusServiceUnavailable)
+		dashboard, err := application.SetTunnelEnabled(r.Context(), false)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if !api.Config.Snapshot().Server.Enabled {
-			http.Error(w, "cannot stop OpenAI Secure MCP Tunnel while MCP HTTP is disabled", http.StatusBadRequest)
-			return
-		}
-		if err := api.Tunnel.Stop(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, api.tunnelStatus(r.Context()))
+		writeJSON(w, dashboard.Status)
 	case http.MethodPut:
 		api.configureTunnel(w, r)
 	default:
@@ -83,44 +75,21 @@ func (api API) configureTunnel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	current := api.Config.Snapshot()
-	effective := next
-	if effective.APIKey == "" {
-		effective.APIKey = current.Tunnel.APIKey
+	input := application.TunnelRuntimeInput{
+		Enabled:             &next.Enabled,
+		ID:                  &next.ID,
+		ControlPlaneBaseURL: &next.ControlPlaneBaseURL,
+		OrganizationID:      &next.OrganizationID,
 	}
-	effective.Admin.Key = current.Tunnel.Admin.Key
-	effective.Admin.OrganizationID = current.Tunnel.Admin.OrganizationID
-	effective.Admin.WorkspaceID = current.Tunnel.Admin.WorkspaceID
-	effective.Admin.TenantID = current.Tunnel.Admin.TenantID
-	candidate := current
-	candidate.Tunnel = effective
-	if err := config.Validate(candidate); err != nil {
+	if strings.TrimSpace(next.APIKey) != "" {
+		input.APIKey = &next.APIKey
+	}
+	dashboard, err := application.ConfigureTunnelRuntime(r.Context(), input)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if tunnel.Configured(effective) && !tunnel.RuntimeConfigEqual(current.Tunnel, effective) {
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		_, _, err := config.SyncTunnelMetadata(ctx, effective)
-		cancel()
-		if err != nil {
-			http.Error(w, "persist tunnel metadata: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-	_, err := api.Config.Update(func(config.Config) (config.Config, error) {
-		if err := api.Tunnel.Reconfigure(effective, func() error { return api.persistConfig(candidate) }); err != nil {
-			return current, err
-		}
-		return candidate, nil
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if metadata, err := config.LoadTunnelMetadata(effective.ID); err == nil {
-		_ = api.Tunnel.SeedMetadata(metadata)
-	}
-	writeJSON(w, api.tunnelStatus(r.Context()))
+	writeJSON(w, dashboard.Status)
 }
 
 type tunnelConfigView struct {
@@ -188,102 +157,56 @@ func (api API) handleTunnelAdminKey(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		count, err := api.saveTunnelAdminKey(r.Context(), request)
+		var scope *tunnel.AdminScope
+		requested := tunnel.AdminScope{OrganizationID: request.OrganizationID, WorkspaceID: request.WorkspaceID, TenantID: request.TenantID}
+		if strings.TrimSpace(requested.OrganizationID) != "" || strings.TrimSpace(requested.WorkspaceID) != "" || strings.TrimSpace(requested.TenantID) != "" {
+			scope = &requested
+		}
+		_, err := application.SetTunnelAdminKey(r.Context(), application.TunnelAdminKeyInput{Key: request.AdminKey, Scope: scope})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, tunnelAdminStatus(api.Config.Snapshot().Tunnel, count))
+		status, err := application.TunnelAdminKeyStatusContext(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, tunnelAdminStatusFromApplication(status, 0))
 	case http.MethodPost:
-		cfg := api.Config.Snapshot().Tunnel
-		if !tunnel.AdminConfigured(cfg) {
-			http.Error(w, "tunnel admin key is not configured", http.StatusBadRequest)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		access, count, err := tunnel.VerifyAdminKey(ctx, cfg)
-		cancel()
+		count, _, err := application.VerifyTunnelAdminKey(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		_, err = api.Config.Update(func(candidate config.Config) (config.Config, error) {
-			previous := candidate
-			tunnel.MarkAdminVerified(&candidate.Tunnel, access)
-			if err := api.persistConfig(candidate); err != nil {
-				return previous, err
-			}
-			if err := api.Tunnel.SyncManagementConfig(candidate.Tunnel); err != nil {
-				return previous, errors.Join(err, api.persistConfig(previous))
-			}
-			return candidate, nil
-		})
+		status, err := application.TunnelAdminKeyStatusContext(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, tunnelAdminStatus(api.Config.Snapshot().Tunnel, count))
+		writeJSON(w, tunnelAdminStatusFromApplication(status, count))
 	case http.MethodDelete:
-		if err := api.removeTunnelAdminKey(); err != nil {
+		if err := application.RemoveTunnelAdminKey(r.Context()); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, tunnelAdminStatus(api.Config.Snapshot().Tunnel, 0))
+		status, err := application.TunnelAdminKeyStatusContext(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, tunnelAdminStatusFromApplication(status, 0))
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
-func (api API) saveTunnelAdminKey(parent context.Context, request tunnelAdminKeyRequest) (int, error) {
-	_ = parent
-	_, err := api.Config.Update(func(candidate config.Config) (config.Config, error) {
-		previous := candidate
-		key := strings.TrimSpace(request.AdminKey)
-		if key == "" {
-			key = strings.TrimSpace(candidate.Tunnel.Admin.Key)
-		}
-		candidate.Tunnel.Admin.Key = key
-		if key == "" {
-			return previous, errors.New("admin key is required")
-		}
-		scope := tunnel.AdminScope{OrganizationID: request.OrganizationID, WorkspaceID: request.WorkspaceID, TenantID: request.TenantID}
-		if strings.TrimSpace(scope.OrganizationID) != "" || strings.TrimSpace(scope.WorkspaceID) != "" || strings.TrimSpace(scope.TenantID) != "" {
-			if err := tunnel.SetAdminScope(&candidate.Tunnel, scope); err != nil {
-				return previous, err
-			}
-		} else {
-			tunnel.InvalidateAdminVerification(&candidate.Tunnel)
-		}
-		if err := api.persistConfig(candidate); err != nil {
-			return previous, err
-		}
-		if err := api.Tunnel.SyncManagementConfig(candidate.Tunnel); err != nil {
-			return previous, errors.Join(err, api.persistConfig(previous))
-		}
-		return candidate, nil
-	})
-	return 0, err
-}
-
-func (api API) removeTunnelAdminKey() error {
-	_, err := api.Config.Update(func(candidate config.Config) (config.Config, error) {
-		previous := candidate
-		candidate.Tunnel.Admin.Key = ""
-		tunnel.ApplyAdminScope(&candidate.Tunnel, tunnel.AdminScope{})
-		tunnel.InvalidateAdminVerification(&candidate.Tunnel)
-		if err := api.persistConfig(candidate); err != nil {
-			return previous, err
-		}
-		if err := api.Tunnel.SyncManagementConfig(candidate.Tunnel); err != nil {
-			return previous, errors.Join(err, api.persistConfig(previous))
-		}
-		return candidate, nil
-	})
-	return err
-}
-
 func tunnelAdminStatus(cfg tunnel.Config, count int) tunnelAdminKeyStatus {
 	return tunnelAdminKeyStatus{Enabled: tunnel.AdminEnabled(cfg), KeyConfigured: strings.TrimSpace(cfg.Admin.Key) != "", Configured: tunnel.AdminConfigured(cfg), Verified: tunnel.AdminVerified(cfg), Scope: tunnel.AdminScopeFromConfig(cfg), Access: tunnel.AdminAccessFromConfig(cfg), Tunnels: count}
+}
+
+func tunnelAdminStatusFromApplication(status application.TunnelAdminStatus, count int) tunnelAdminKeyStatus {
+	return tunnelAdminKeyStatus{Enabled: status.Enabled, KeyConfigured: status.KeyConfigured, Configured: status.Configured, Verified: status.Verified, Scope: status.Scope, Access: status.Access, Tunnels: count}
 }
 
 func (api API) handleManagedTunnels(w http.ResponseWriter, r *http.Request) {
@@ -304,20 +227,12 @@ func (api API) handleManagedTunnels(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "tunnel admin key does not have verified Manage access", http.StatusForbidden)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
 	switch r.Method {
 	case http.MethodGet:
-		items, err := tunnel.ListManaged(ctx, cfg, tunnel.AdminScopeFromConfig(cfg))
+		items, err := application.RefreshManagedTunnels(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
-		}
-		for _, item := range items {
-			if _, err := config.SaveTunnelMetadata(item); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
 		}
 		writeJSON(w, items)
 	case http.MethodPost:
@@ -326,16 +241,12 @@ func (api API) handleManagedTunnels(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		metadata, err := tunnel.CreateManaged(ctx, cfg, tunnel.CreateRequest{Name: request.Name, Description: request.Description, TenantIDs: request.TenantIDs, WorkspaceIDs: request.WorkspaceIDs, OrganizationIDs: request.OrganizationIDs})
+		result, err := application.CreateManagedTunnel(r.Context(), tunnel.CreateRequest{Name: request.Name, Description: request.Description, TenantIDs: request.TenantIDs, WorkspaceIDs: request.WorkspaceIDs, OrganizationIDs: request.OrganizationIDs}, application.ManagedTunnelOptions{})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if _, err := config.SaveTunnelMetadata(metadata); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, metadata)
+		writeJSON(w, result.Metadata)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -360,24 +271,18 @@ func (api API) handleManagedTunnel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "configured tunnel admin key and scope are required", http.StatusBadRequest)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	defer cancel()
 	switch r.Method {
 	case http.MethodGet:
 		if !cfg.Admin.ReadAccess && !cfg.Admin.ManageAccess {
 			http.Error(w, "tunnel admin key does not have verified Read access", http.StatusForbidden)
 			return
 		}
-		metadata, err := tunnel.GetManaged(ctx, cfg, id)
+		result, err := application.GetManagedTunnel(r.Context(), id, application.ManagedTunnelOptions{})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if _, err := config.SaveTunnelMetadata(metadata); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, metadata)
+		writeJSON(w, result.Metadata)
 	case http.MethodPut:
 		if !cfg.Admin.ManageAccess {
 			http.Error(w, "tunnel admin key does not have verified Manage access", http.StatusForbidden)
@@ -388,16 +293,12 @@ func (api API) handleManagedTunnel(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		metadata, err := tunnel.UpdateManaged(ctx, cfg, id, tunnel.UpdateRequest{Name: request.Name, Description: request.Description, TenantIDs: request.TenantIDs, WorkspaceIDs: request.WorkspaceIDs, OrganizationIDs: request.OrganizationIDs})
+		result, err := application.UpdateManagedTunnel(r.Context(), id, tunnel.UpdateRequest{Name: request.Name, Description: request.Description, TenantIDs: request.TenantIDs, WorkspaceIDs: request.WorkspaceIDs, OrganizationIDs: request.OrganizationIDs}, application.ManagedTunnelOptions{})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if _, err := config.SaveTunnelMetadata(metadata); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, metadata)
+		writeJSON(w, result.Metadata)
 	case http.MethodDelete:
 		if !cfg.Admin.ManageAccess {
 			http.Error(w, "tunnel admin key does not have verified Manage access", http.StatusForbidden)
@@ -407,16 +308,12 @@ func (api API) handleManagedTunnel(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "cannot delete the locally selected tunnel; select another tunnel or clear runtime configuration first", http.StatusConflict)
 			return
 		}
-		metadata, err := tunnel.DeleteManaged(ctx, cfg, id)
+		result, err := application.DeleteManagedTunnel(r.Context(), id, false)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := config.RemoveTunnelMetadata(metadata.ID); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, metadata)
+		writeJSON(w, result.Metadata)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -441,69 +338,15 @@ func (api API) handleManagedTunnelUse(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "managed tunnel id is required", http.StatusBadRequest)
 		return
 	}
-	current := api.Config.Snapshot()
-	if !tunnel.AdminEnabled(current.Tunnel) {
-		http.Error(w, "tunnel admin management is disabled", http.StatusForbidden)
-		return
-	}
-	if !tunnel.AdminConfigured(current.Tunnel) {
-		http.Error(w, "configured tunnel admin key and scope are required", http.StatusBadRequest)
-		return
-	}
-	if !current.Tunnel.Admin.ReadAccess && !current.Tunnel.Admin.ManageAccess {
-		http.Error(w, "tunnel admin key does not have verified Read access", http.StatusForbidden)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	metadata, err := tunnel.GetManaged(ctx, current.Tunnel, id)
-	cancel()
+	result, err := application.UseManagedTunnel(r.Context(), id, application.ManagedTunnelUseOptions{RuntimeAPIKey: request.RuntimeAPIKey, AutoGenerateRuntimeKey: request.AutoGenerateRuntimeKey, ProjectID: request.ProjectID})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	key := strings.TrimSpace(request.RuntimeAPIKey)
-	if key == "" {
-		key = strings.TrimSpace(current.Tunnel.APIKey)
-	}
-	if key == "" && request.AutoGenerateRuntimeKey {
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		generated, generateErr := tunnel.GenerateRuntimeKey(ctx, current.Tunnel, request.ProjectID)
-		cancel()
-		if generateErr != nil {
-			http.Error(w, generateErr.Error(), http.StatusBadRequest)
-			return
-		}
-		key = generated.Value
-	}
-	if key == "" {
-		http.Error(w, "runtime API key is required to use this tunnel; provide one or enable automatic generation", http.StatusBadRequest)
-		return
-	}
-	candidate := current
-	candidate.Tunnel.ID = metadata.ID
-	candidate.Tunnel.APIKey = key
-	candidate.Tunnel.Enabled = true
-	if len(metadata.OrganizationIDs) == 1 {
-		candidate.Tunnel.OrganizationID = metadata.OrganizationIDs[0]
-	}
-	if err := config.Validate(candidate); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	if _, err := config.SaveTunnelMetadata(metadata); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	_, err = api.Config.Update(func(config.Config) (config.Config, error) {
-		if err := api.Tunnel.ReconfigureSeeded(candidate.Tunnel, metadata, func() error { return api.persistConfig(candidate) }); err != nil {
-			return current, err
-		}
-		return candidate, nil
-	})
+	dashboard, err := application.TunnelStatus()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	_ = api.Tunnel.SeedMetadata(metadata)
-	writeJSON(w, managedTunnelUseResult{Metadata: metadata, Status: api.tunnelStatus(r.Context())})
+	writeJSON(w, managedTunnelUseResult{Metadata: result.Metadata, Status: dashboard.Status})
 }

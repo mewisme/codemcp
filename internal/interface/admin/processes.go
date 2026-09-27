@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/application"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 )
 
@@ -44,7 +45,7 @@ func (api API) handleWorkspaceProcesses(w http.ResponseWriter, r *http.Request, 
 		}
 		writeJSON(w, values[0])
 	case http.MethodDelete:
-		if err := api.Tools.Processes.ClearFinished(workspaceID, id); err != nil {
+		if err := application.NewProcessService(api.Tools.Processes).ClearFinished(workspaceID, id); err != nil {
 			if errors.Is(err, shellruntime.ErrProcessRunning) {
 				http.Error(w, err.Error(), http.StatusConflict)
 			} else {

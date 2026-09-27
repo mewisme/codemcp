@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"go.mewis.me/codemcp/internal/application"
@@ -37,8 +38,6 @@ type API struct {
 	OAuth         *mcpoauth.Store
 	OAuthFlows    *mcpoauth.FlowManager
 	TypeSafe      *application.TypeSafeService
-	ReloadConfig  func(config.Config) error
-	saveConfig    func(config.Config) error
 }
 
 type authSettings struct {
@@ -227,106 +226,94 @@ func (api API) handleConfig(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		status := http.StatusInternalServerError
-		previous := api.Config.Snapshot()
-		next := previous
-		var err error
+		changes := make([]application.SettingChange, 0, 16)
 		if patch.Server != nil {
 			if patch.Server.Enabled != nil {
-				next.Server.Enabled = *patch.Server.Enabled
+				changes = append(changes, application.SettingChange{Key: "server.enabled", Value: strconv.FormatBool(*patch.Server.Enabled)})
 			}
 			if patch.Server.Port != nil {
-				next.Server.Port = *patch.Server.Port
-			}
-			if patch.Server.Expose != nil {
-				next.Server.Expose = *patch.Server.Expose
+				changes = append(changes, application.SettingChange{Key: "server.port", Value: strconv.Itoa(*patch.Server.Port)})
 			}
 			if patch.Server.AllowInsecureHTTP != nil {
-				next.Server.AllowInsecureHTTP = *patch.Server.AllowInsecureHTTP
+				changes = append(changes, application.SettingChange{Key: "server.allow_insecure_http", Value: strconv.FormatBool(*patch.Server.AllowInsecureHTTP)})
 			}
 			if patch.Server.AllowUnauthenticatedLoopback != nil {
-				next.Server.AllowUnauthenticatedLoopback = *patch.Server.AllowUnauthenticatedLoopback
+				changes = append(changes, application.SettingChange{Key: "server.allow_unauthenticated_loopback", Value: strconv.FormatBool(*patch.Server.AllowUnauthenticatedLoopback)})
+			}
+			if patch.Server.Expose != nil {
+				changes = append(changes, application.SettingChange{Key: "server.expose.mode", Value: string(patch.Server.Expose.Mode)})
+				changes = append(changes, application.SettingChange{Key: "server.expose.interfaces", Value: strings.Join(patch.Server.Expose.Interfaces, ",")})
 			}
 		}
 		if patch.Admin != nil {
-			next.Admin = *patch.Admin
+			changes = append(changes,
+				application.SettingChange{Key: "admin.enabled", Value: strconv.FormatBool(patch.Admin.Enabled)},
+				application.SettingChange{Key: "admin.port", Value: strconv.Itoa(patch.Admin.Port)},
+			)
 		}
 		if patch.Auth != nil {
 			if patch.Auth.MCPEnabled != nil {
-				next.Auth.MCPEnabled = *patch.Auth.MCPEnabled
+				changes = append(changes, application.SettingChange{Key: "auth.mcp_enabled", Value: strconv.FormatBool(*patch.Auth.MCPEnabled)})
 			}
 			if patch.Auth.AdminEnabled != nil {
-				next.Auth.AdminEnabled = *patch.Auth.AdminEnabled
+				changes = append(changes, application.SettingChange{Key: "auth.admin_enabled", Value: strconv.FormatBool(*patch.Auth.AdminEnabled)})
 			}
 		}
-
 		if patch.Permissions != nil {
-			var allowDirs []string
-			allowDirs, err = config.NormalizeAllowDirs(patch.Permissions.AllowDirs)
-			if err == nil {
-				next.Permissions.AllowDirs = allowDirs
-			}
+			changes = append(changes, application.SettingChange{Key: "permissions.allow_dirs", Value: strings.Join(patch.Permissions.AllowDirs, ",")})
 		}
-		if err == nil && patch.Shell != nil {
+		if patch.Shell != nil {
 			if patch.Shell.Path != nil {
-				next.Shell.Path, err = config.NormalizeShellPath(patch.Shell.Path)
+				changes = append(changes, application.SettingChange{Key: "shell.path", Value: strings.Join(patch.Shell.Path, ",")})
 			}
 		}
-		if err == nil && patch.Integrations != nil {
+		if patch.Integrations != nil {
 			if patch.Integrations.Ponytail != nil && patch.Integrations.Ponytail.Active != nil {
-				next.Integrations.Ponytail.Active = *patch.Integrations.Ponytail.Active
+				changes = append(changes, application.SettingChange{Key: "integrations.ponytail.active", Value: strconv.FormatBool(*patch.Integrations.Ponytail.Active)})
 			}
 			if patch.Integrations.Ponytail != nil && patch.Integrations.Ponytail.Mode != nil {
-				next.Integrations.Ponytail.Mode = strings.ToLower(strings.TrimSpace(*patch.Integrations.Ponytail.Mode))
+				changes = append(changes, application.SettingChange{Key: "integrations.ponytail.mode", Value: *patch.Integrations.Ponytail.Mode})
 			}
 			if patch.Integrations.Caveman != nil && patch.Integrations.Caveman.Active != nil {
-				next.Integrations.Caveman.Active = *patch.Integrations.Caveman.Active
+				changes = append(changes, application.SettingChange{Key: "integrations.caveman.active", Value: strconv.FormatBool(*patch.Integrations.Caveman.Active)})
 			}
 			if patch.Integrations.Caveman != nil && patch.Integrations.Caveman.Mode != nil {
-				next.Integrations.Caveman.Mode = strings.ToLower(strings.TrimSpace(*patch.Integrations.Caveman.Mode))
+				changes = append(changes, application.SettingChange{Key: "integrations.caveman.mode", Value: *patch.Integrations.Caveman.Mode})
 			}
 			if patch.Integrations.RTK != nil {
 				if patch.Integrations.RTK.Enabled != nil {
-					next.Integrations.RTK.Enabled = *patch.Integrations.RTK.Enabled
+					changes = append(changes, application.SettingChange{Key: "integrations.rtk.enabled", Value: strconv.FormatBool(*patch.Integrations.RTK.Enabled)})
 				}
 				if patch.Integrations.RTK.Path != nil {
-					next.Integrations.RTK.Path = strings.TrimSpace(*patch.Integrations.RTK.Path)
+					changes = append(changes, application.SettingChange{Key: "integrations.rtk.path", Value: *patch.Integrations.RTK.Path})
 				}
 			}
 			if patch.Integrations.CodeGraph != nil {
 				if patch.Integrations.CodeGraph.Enabled != nil {
-					next.Integrations.CodeGraph.Enabled = *patch.Integrations.CodeGraph.Enabled
+					changes = append(changes, application.SettingChange{Key: "integrations.codegraph.enabled", Value: strconv.FormatBool(*patch.Integrations.CodeGraph.Enabled)})
 				}
 				if patch.Integrations.CodeGraph.Path != nil {
-					next.Integrations.CodeGraph.Path = strings.TrimSpace(*patch.Integrations.CodeGraph.Path)
+					changes = append(changes, application.SettingChange{Key: "integrations.codegraph.path", Value: *patch.Integrations.CodeGraph.Path})
 				}
 			}
 			if patch.Integrations.TypeSafe != nil {
 				if patch.Integrations.TypeSafe.Enabled != nil {
-					next.Integrations.TypeSafe.Enabled = *patch.Integrations.TypeSafe.Enabled
+					changes = append(changes, application.SettingChange{Key: "integrations.typesafe.enabled", Value: strconv.FormatBool(*patch.Integrations.TypeSafe.Enabled)})
 				}
 				if patch.Integrations.TypeSafe.Model != nil {
-					next.Integrations.TypeSafe.Model = strings.TrimSpace(*patch.Integrations.TypeSafe.Model)
+					changes = append(changes, application.SettingChange{Key: "integrations.typesafe.model", Value: *patch.Integrations.TypeSafe.Model})
 				}
 				if patch.Integrations.TypeSafe.TimeoutMS != nil {
-					next.Integrations.TypeSafe.TimeoutMS = *patch.Integrations.TypeSafe.TimeoutMS
+					changes = append(changes, application.SettingChange{Key: "integrations.typesafe.timeout_ms", Value: strconv.Itoa(*patch.Integrations.TypeSafe.TimeoutMS)})
 				}
 			}
 		}
-		if err == nil {
-			err = config.Validate(next)
-		}
+		applied, err := application.NewSettingService().Apply(r.Context(), changes)
 		if err != nil {
-			status = http.StatusBadRequest
-		}
-		if err == nil {
-			err = api.commitConfig(next, previous)
-		}
-		if err != nil {
-			http.Error(w, err.Error(), status)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, publicConfigView(next))
+		writeJSON(w, publicConfigView(applied.Config))
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -421,45 +408,6 @@ func publicConfigView(cfg config.Config) publicConfig {
 			MCPTokenConfigured: cfg.Auth.MCPTokenHash != "", AdminTokenConfigured: cfg.Auth.AdminTokenHash != "",
 		},
 	}
-}
-
-func (api API) commitConfig(next, previous config.Config) error {
-	if api.ReloadConfig == nil {
-		_, err := api.Config.Update(func(config.Config) (config.Config, error) {
-			return next, api.persistConfigWithIntegrations(next, previous)
-		})
-		return err
-	}
-	if err := api.persistConfig(next); err != nil {
-		return err
-	}
-	if err := api.ReloadConfig(next); err != nil {
-		return errors.Join(err, api.persistConfig(previous))
-	}
-	return nil
-}
-
-func (api API) persistConfigWithIntegrations(next, previous config.Config) error {
-	if err := api.persistConfig(next); err != nil {
-		return err
-	}
-	if next.Integrations != previous.Integrations && api.Tools != nil {
-		if err := api.Tools.SyncIntegrations(next.Integrations); err != nil {
-			return errors.Join(err, api.persistConfig(previous))
-		}
-	}
-	if api.Tools != nil {
-		api.Tools.SetGlobalAllowDirs(next.Permissions.AllowDirs)
-		api.Tools.SetShellPath(next.Shell.Path)
-	}
-	return nil
-}
-
-func (api API) persistConfig(value config.Config) error {
-	if api.saveConfig != nil {
-		return api.saveConfig(value)
-	}
-	return config.Save(value)
 }
 
 func method(method string, next http.HandlerFunc) http.HandlerFunc {

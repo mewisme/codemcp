@@ -27,6 +27,14 @@ func TestTypeSafeAdminStatusDoctorProbeAndConfigParity(t *testing.T) {
 	cfg.Auth.MCPTokenHash = "mcp-hash"
 	cfg.Auth.AdminTokenHash = "admin-hash"
 	cfg.Integrations.TypeSafe.Enabled = true
+	previousRoot := configformat.RootPath()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = configformat.SetRootPath(previousRoot) })
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
 	if err := typesafeintegration.UpdateAPIKey(root, "admin-typesafe-secret"); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +55,7 @@ func TestTypeSafeAdminStatusDoctorProbeAndConfigParity(t *testing.T) {
 	service.HTTPClient = provider.Client()
 	service.BaseURL = provider.URL
 	store := config.NewRuntimeStore(cfg)
-	handler := New(API{Config: store, TypeSafe: service, saveConfig: func(config.Config) error { return nil }})
+	handler := New(API{Config: store, TypeSafe: service})
 
 	statusRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(statusRecorder, httptest.NewRequest(http.MethodGet, "/api/integrations/typesafe", nil))
@@ -105,7 +113,10 @@ func TestTypeSafeAdminStatusDoctorProbeAndConfigParity(t *testing.T) {
 	if configRecorder.Code != http.StatusOK {
 		t.Fatalf("config patch code=%d body=%s", configRecorder.Code, configRecorder.Body.String())
 	}
-	next := store.Snapshot()
+	next, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if next.Integrations.TypeSafe.Enabled || next.Integrations.TypeSafe.Model != "jev-custom" || next.Integrations.TypeSafe.TimeoutMS != 1200 {
 		t.Fatalf("patched TypeSafe config=%#v", next.Integrations.TypeSafe)
 	}
