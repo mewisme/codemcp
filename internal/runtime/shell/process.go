@@ -268,13 +268,17 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 	if err != nil {
 		return StartResult{}, err
 	}
+	provider, err := m.shell.resolveSessionProvider(ctx)
+	if err != nil {
+		return StartResult{}, err
+	}
 	processCtx := context.WithoutCancel(ctx)
-	cmd, err := commandForPlatform(processCtx, plan.Effective)
+	cmd, err := commandForProvider(processCtx, plan.Effective, provider)
 	if err != nil {
 		return StartResult{}, err
 	}
 	cmd.Dir = cwd
-	cmd.Env = shellEnvironment(ctx, commandSearchPath(plan, m.workspaces.ShellPath()))
+	cmd.Env = shellEnvironment(ctx, mergeExecutablePath(provider.Path, commandSearchPath(plan, m.workspaces.ShellPath())))
 	configureCommandLifecycle(cmd)
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -316,7 +320,7 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 	m.mu.Unlock()
 	var execution *ExecutionRun
 	if m.executions != nil {
-		execution = m.executions.Begin(ExecutionInput{WorkspaceID: workspaceID, Tool: "start_process", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: commandShellLanguage(ctx), Source: metadata.Source, CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID})
+		execution = m.executions.Begin(ExecutionInput{WorkspaceID: workspaceID, Tool: "start_process", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: providerLanguage(ctx, provider), Source: metadata.Source, CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID})
 		process.mu.Lock()
 		process.execution = execution
 		process.mu.Unlock()

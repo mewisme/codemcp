@@ -84,7 +84,7 @@ func TestShellEnvironmentOutputIsDeterministic(t *testing.T) {
 func TestApprovedControlPlaneCommandUsesCurrentExecutable(t *testing.T) {
 	invocation := controlguard.Invocation{Program: "cm", Args: []string{"config", "set", "server.port", "41001"}, Command: "cm config set server.port 41001"}
 	ctx := controlguard.WithApproval(context.Background(), controlguard.Approval{RequestID: "req_test", Capability: "cap_test", Invocation: invocation})
-	cmd, err := commandForPlatform(ctx, invocation.Command)
+	cmd, err := commandForProvider(ctx, invocation.Command, Provider{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestApprovedControlPlaneCommandUsesCurrentExecutable(t *testing.T) {
 			t.Fatalf("arg %d = %q want %q", index, cmd.Args[index+1], invocation.Args[index])
 		}
 	}
-	if _, err := commandForPlatform(ctx, "cm config set server.port 41002"); err == nil {
+	if _, err := commandForProvider(ctx, "cm config set server.port 41002", Provider{}); err == nil {
 		t.Fatal("changed approved shell command selected current executable")
 	}
 }

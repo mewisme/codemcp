@@ -248,7 +248,11 @@ func (m *Manager) PreviewCommand(ctx context.Context, workspaceID, command strin
 		return CommandPreview{}, err
 	}
 	if strings.TrimSpace(effective) == "" {
-		effective = pwdCommand()
+		provider, providerErr := m.resolveSessionProvider(ctx)
+		if providerErr != nil {
+			return CommandPreview{}, providerErr
+		}
+		effective = pwdCommandForProvider(provider)
 	}
 	plan, err := m.prepareCommand(ctx, effective)
 	if err != nil {
@@ -521,61 +525,6 @@ func (m *Manager) resolveSessionProvider(ctx context.Context) (Provider, error) 
 	return m.resolver.Resolve(m.workspaces.ShellPath())
 }
 
-func commandForPlatform(ctx context.Context, command string) (*exec.Cmd, error) {
-	if granted, ok := controlguard.ApprovalFromContext(ctx); ok {
-		if strings.TrimSpace(command) != strings.TrimSpace(granted.Invocation.Command) {
-			return nil, errors.New("approved control-plane command does not match shell invocation")
-		}
-		executable, err := os.Executable()
-		if err != nil {
-			return nil, fmt.Errorf("resolve approved control-plane executable: %w", err)
-		}
-		return exec.CommandContext(ctx, executable, granted.Invocation.Args...), nil
-	}
-	shell, isPwsh, _, err := resolveCommandShell()
-	if err != nil {
-		return nil, err
-	}
-	if runtime.GOOS == "windows" {
-		effective := command
-		if !isPwsh {
-			effective = transpileCompoundOperators(command)
-		}
-		return exec.CommandContext(ctx, shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", effective), nil
-	}
-	return exec.CommandContext(ctx, shell, "-c", command), nil
-}
-
-func commandShellLanguage(ctx context.Context) string {
-	if _, ok := controlguard.ApprovalFromContext(ctx); ok {
-		return ""
-	}
-	_, _, language, err := resolveCommandShell()
-	if err != nil {
-		return ""
-	}
-	return language
-}
-
-func resolveCommandShell() (string, bool, string, error) {
-	if runtime.GOOS == "windows" {
-		shell, isPwsh, err := windowsShell()
-		if err != nil {
-			return "", false, "", err
-		}
-		return shell, isPwsh, "powershell", nil
-	}
-	shell := strings.TrimSpace(os.Getenv("SHELL"))
-	if shell == "" {
-		if found, err := exec.LookPath("bash"); err == nil {
-			shell = found
-		} else {
-			shell = "/bin/sh"
-		}
-	}
-	return shell, false, shellMarkdownLanguage(shell), nil
-}
-
 func shellMarkdownLanguage(shell string) string {
 	base := strings.ToLower(filepath.Base(strings.TrimSpace(shell)))
 	switch base {
@@ -594,26 +543,6 @@ func shellMarkdownLanguage(shell string) string {
 	default:
 		return "shell"
 	}
-}
-
-func windowsShell() (string, bool, error) {
-	configured := strings.TrimSpace(os.Getenv("SHELL"))
-	if configured != "" {
-		base := strings.ToLower(filepath.Base(configured))
-		if base == "pwsh" || base == "pwsh.exe" {
-			return configured, true, nil
-		}
-		if base == "powershell" || base == "powershell.exe" {
-			return configured, false, nil
-		}
-	}
-	if shell, err := exec.LookPath("pwsh"); err == nil {
-		return shell, true, nil
-	}
-	if shell, err := exec.LookPath("powershell"); err == nil {
-		return shell, false, nil
-	}
-	return "", false, errors.New("no PowerShell runtime found")
 }
 
 func transpileCompoundOperators(command string) string {
@@ -681,13 +610,6 @@ func stripQuotes(value string) string {
 
 func pwdCommandForProvider(provider Provider) string {
 	if provider.Language == "powershell" {
-		return "(Get-Location).Path"
-	}
-	return "pwd"
-}
-
-func pwdCommand() string {
-	if runtime.GOOS == "windows" {
 		return "(Get-Location).Path"
 	}
 	return "pwd"

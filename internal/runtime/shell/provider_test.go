@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -314,6 +315,161 @@ func TestSessionExecUsesConfiguredShellResolver(t *testing.T) {
 	}
 }
 
+func TestForegroundAndBackgroundShareResolvedProvider(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture uses a POSIX script")
+	}
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	bin := t.TempDir()
+	bash := filepath.Join(bin, "bash")
+	if err := os.WriteFile(bash, []byte("#!/bin/sh\nif [ \"$1\" = \"-c\" ]; then printf 'resolved:%s' \"$2\"; else exit 2; fi\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	workspaces := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	workspaces.SetShellPath([]string{bin})
+	item, err := workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(workspaces, t.TempDir())
+	manager.resolver.getenv = func(name string) string {
+		if name == "SHELL" {
+			return "/bin/sh"
+		}
+		return ""
+	}
+	manager.resolver.lookPath = func(name string) (string, error) {
+		if name == "bash" {
+			return "/bin/bash", nil
+		}
+		return "", exec.ErrNotFound
+	}
+
+	foreground, err := manager.Exec(context.Background(), item.ID, "foreground")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if foreground.Stdout != "resolved:foreground" {
+		t.Fatalf("foreground=%#v", foreground)
+	}
+
+	processes := NewProcessManagerWithExecutions(workspaces, manager, manager.Executions())
+	started, err := processes.Start(context.Background(), item.ID, "background")
+	if err != nil {
+		t.Fatal(err)
+	}
+	processes.mu.RLock()
+	process := processes.processes[started.ID]
+	processes.mu.RUnlock()
+	if process == nil {
+		t.Fatal("background process missing")
+	}
+	if filepath.Clean(process.cmd.Path) != filepath.Clean(bash) {
+		t.Fatalf("background executable=%q want %q", process.cmd.Path, bash)
+	}
+	select {
+	case <-process.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("background process did not finish")
+	}
+	output, err := processes.Output(item.ID, started.ID, 4000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(output.Stdout) != "resolved:background" {
+		t.Fatalf("background output=%#v", output)
+	}
+	history := manager.Executions().List(item.ID, 10)
+	if len(history) != 2 {
+		t.Fatalf("execution history=%#v", history)
+	}
+	for _, execution := range history {
+		if execution.Shell != "bash" {
+			t.Fatalf("execution shell mismatch: %#v", history)
+		}
+	}
+}
+
+func TestCommandForProviderPreservesProviderSpecificSemantics(t *testing.T) {
+	command := `printf "quoted && value" && printf tail`
+	tests := []struct {
+		name     string
+		provider Provider
+		wantArgs []string
+		wantTail string
+	}{
+		{
+			name:     "git bash",
+			provider: Provider{Executable: "bash.exe", Language: "bash", Kind: ProviderGitBash},
+			wantArgs: []string{"bash.exe", "--noprofile", "--norc", "-c", command},
+		},
+		{
+			name:     "powershell 7",
+			provider: Provider{Executable: "pwsh.exe", Language: "powershell", Kind: ProviderPowerShell7},
+			wantArgs: []string{"pwsh.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command},
+		},
+		{
+			name:     "windows powershell",
+			provider: Provider{Executable: "powershell.exe", Language: "powershell", Kind: ProviderWindowsPowerShell},
+			wantTail: "if ($__chatgptMcpSuccess)",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd, err := commandForProvider(context.Background(), command, tc.provider)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(tc.wantArgs) > 0 {
+				if len(cmd.Args) != len(tc.wantArgs) {
+					t.Fatalf("args=%#v want=%#v", cmd.Args, tc.wantArgs)
+				}
+				for index := range tc.wantArgs {
+					if cmd.Args[index] != tc.wantArgs[index] {
+						t.Fatalf("args=%#v want=%#v", cmd.Args, tc.wantArgs)
+					}
+				}
+				return
+			}
+			if len(cmd.Args) != 7 || cmd.Args[0] != "powershell.exe" || cmd.Args[5] != "-Command" {
+				t.Fatalf("windows powershell args=%#v", cmd.Args)
+			}
+			effective := cmd.Args[6]
+			if !strings.Contains(effective, tc.wantTail) || !strings.Contains(effective, `"quoted && value"`) {
+				t.Fatalf("transpiled command=%q", effective)
+			}
+		})
+	}
+}
+
+func TestPreviewUsesResolvedProviderForCWDOnlyCommand(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	root := t.TempDir()
+	child := filepath.Join(root, "child")
+	if err := os.Mkdir(child, 0755); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	writeProviderFixtureAt(t, filepath.Join(bin, "bash.exe"), 0644, "fixture")
+	workspaces := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	workspaces.SetShellPath([]string{bin})
+	item, err := workspaces.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(workspaces, t.TempDir())
+	manager.resolver.goos = "windows"
+	manager.resolver.getenv = func(string) string { return "" }
+	manager.resolver.lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	preview, err := manager.PreviewCommand(context.Background(), item.ID, "cd child", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Effective != "pwd" || filepath.Clean(preview.CWD) != filepath.Clean(child) {
+		t.Fatalf("preview=%#v", preview)
+	}
+}
+
 func TestSessionSecurityGuardRunsBeforeAutomaticShellResolution(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses a POSIX command to exercise the deterministic shell guard")
@@ -334,6 +490,30 @@ func TestSessionSecurityGuardRunsBeforeAutomaticShellResolution(t *testing.T) {
 	}
 	if errors.Is(err, ErrShellUnavailable) {
 		t.Fatalf("shell resolution ran before deterministic guard: %v", err)
+	}
+}
+
+func TestBackgroundSecurityGuardRunsBeforeAutomaticShellResolution(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX command to exercise the deterministic shell guard")
+	}
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	workspaces := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(workspaces, t.TempDir())
+	manager.resolver.goos = "windows"
+	manager.resolver.getenv = func(string) string { return "" }
+	manager.resolver.lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	processes := NewProcessManager(workspaces, manager)
+	_, err = processes.Start(context.Background(), item.ID, "unset CM_TOOL_CONTEXT")
+	if err == nil {
+		t.Fatal("deterministically denied background command was accepted")
+	}
+	if errors.Is(err, ErrShellUnavailable) {
+		t.Fatalf("background shell resolution ran before deterministic guard: %v", err)
 	}
 }
 
