@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -23,8 +24,16 @@ type RewindListResult struct {
 }
 
 type RewindClearResult struct {
-	Action  string `json:"action"`
-	Removed int    `json:"removed"`
+	Action   string `json:"action"`
+	Cleared  int    `json:"cleared"`
+	Archived int    `json:"archived"`
+}
+
+type RewindPurgeResult struct {
+	Action         string `json:"action"`
+	Purged         int    `json:"purged"`
+	ActivePurged   int    `json:"active_purged"`
+	ArchivedPurged int    `json:"archived_purged"`
 }
 
 type RewindPreviewResult struct {
@@ -35,28 +44,30 @@ type RewindPreviewResult struct {
 }
 
 type RewindRestoreResult struct {
-	Action     string                     `json:"action"`
-	Checkpoint checkpoint.Summary         `json:"checkpoint"`
-	Restored   []string                   `json:"restored"`
-	Deleted    []string                   `json:"deleted"`
-	Skipped    []checkpoint.RestoreChange `json:"skipped"`
-	Note       string                     `json:"note"`
+	Action        string                     `json:"action"`
+	Checkpoint    checkpoint.Summary         `json:"checkpoint"`
+	Restored      []string                   `json:"restored"`
+	RestoredCount int                        `json:"restored_count"`
+	Deleted       []string                   `json:"deleted"`
+	Skipped       []checkpoint.RestoreChange `json:"skipped"`
+	Archived      int                        `json:"archived"`
+	Note          string                     `json:"note"`
 }
 
 func RegisterRewindTools(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store) {
 	registry.MustRegister("rewind", Schema{
 		Name:         "rewind",
 		Title:        "Rewind",
-		Description:  "List automatic file checkpoints, preview changes, restore files, inspect config, or clear checkpoints. Shell command file changes are not tracked.",
-		InputSchema:  json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"action":{"type":"string","enum":["list","preview","restore","status","clear"],"default":"list"},"checkpoint_id":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":30}},"required":["workspace_id"],"additionalProperties":false}`),
+		Description:  "List automatic file checkpoints, preview or restore changes, inspect config, archive active checkpoints with clear, or permanently delete checkpoint history with purge. Shell command file changes are not tracked.",
+		InputSchema:  json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"action":{"type":"string","enum":["list","preview","restore","status","clear","purge"],"default":"list"},"checkpoint_id":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":30}},"required":["workspace_id"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","additionalProperties":true}`),
 		Annotations:  ToolAnnotations(RiskDestructive),
-	}, func(_ context.Context, args map[string]any) (Result, error) {
+	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
 			return Result{}, err
 		}
-		action, err := optionalEnum(args, "action", "list", "list", "preview", "restore", "status", "clear")
+		action, err := optionalEnum(args, "action", "list", "list", "preview", "restore", "status", "clear", "purge")
 		if err != nil {
 			return Result{}, err
 		}
@@ -78,11 +89,22 @@ func RegisterRewindTools(registry *Registry, workspaces *workspace.Manager, chec
 				Hint: "Call rewind with action=preview or action=restore and checkpoint_id to revert file changes.",
 			}), nil
 		case "clear":
-			removed, err := checkpoints.Clear(item.ID)
+			value, err := checkpoints.Clear(item.ID)
 			if err != nil {
 				return Result{}, err
 			}
-			return JSONResult(RewindClearResult{Action: action, Removed: removed}), nil
+			return JSONResult(RewindClearResult{Action: action, Cleared: value.Cleared, Archived: value.Archived}), nil
+		case "purge":
+			if grant, ok := controlguard.GrantFromContext(ctx); !ok || grant.Code != controlguard.CodeDestructiveMutation {
+				return Result{}, controlguard.New(controlguard.CodeDestructiveMutation, "purging checkpoint history requires local approval", true, nil)
+			}
+			value, err := checkpoints.Purge(item.ID)
+			if err != nil {
+				return Result{}, err
+			}
+			return JSONResult(RewindPurgeResult{
+				Action: action, Purged: value.Purged, ActivePurged: value.ActivePurged, ArchivedPurged: value.ArchivedPurged,
+			}), nil
 		}
 
 		checkpointID, err := requiredString(args, "checkpoint_id")
@@ -125,8 +147,9 @@ func RegisterRewindTools(registry *Registry, workspaces *workspace.Manager, chec
 			return Result{}, err
 		}
 		return JSONResult(RewindRestoreResult{
-			Action: action, Checkpoint: value.Checkpoint, Restored: value.Restored, Deleted: value.Deleted, Skipped: value.Skipped,
-			Note: "Code restored. Conversation history is unchanged. Checkpoints at and after this point were removed.",
+			Action: action, Checkpoint: value.Checkpoint, Restored: value.Restored, RestoredCount: value.RestoredCount,
+			Deleted: value.Deleted, Skipped: value.Skipped, Archived: value.Archived,
+			Note: "Code restored. Conversation history is unchanged. Checkpoints at and after this point were archived.",
 		}), nil
 	})
 }

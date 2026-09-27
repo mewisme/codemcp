@@ -97,15 +97,33 @@ type Preview struct {
 }
 
 type RestoreResult struct {
-	Checkpoint Summary         `json:"checkpoint"`
-	Restored   []string        `json:"restored"`
-	Deleted    []string        `json:"deleted"`
-	Skipped    []RestoreChange `json:"skipped"`
+	Checkpoint    Summary         `json:"checkpoint"`
+	Restored      []string        `json:"restored"`
+	RestoredCount int             `json:"restored_count"`
+	Deleted       []string        `json:"deleted"`
+	Skipped       []RestoreChange `json:"skipped"`
+	Archived      int             `json:"archived"`
+}
+
+type ClearResult struct {
+	Cleared  int `json:"cleared"`
+	Archived int `json:"archived"`
+}
+
+type PurgeResult struct {
+	Purged         int `json:"purged"`
+	ActivePurged   int `json:"active_purged"`
+	ArchivedPurged int `json:"archived_purged"`
 }
 
 type restoreSnapshot struct {
 	CheckpointID string
 	Snapshot     FileSnapshot
+}
+
+type restoreRollback struct {
+	CheckpointID string
+	Snapshots    map[string]FileSnapshot
 }
 
 func DefaultRoot() string {
@@ -143,7 +161,7 @@ func (s *Store) Config(workspaceID string) map[string]any {
 		"retention_days":    int(s.retention().Hours() / 24),
 		"inline_file_bytes": s.maxFileBytes(),
 		"max_file_bytes":    s.maxFileBytes(),
-		"note":              "File-editing MCP tools are tracked. Large files use checkpoint blobs; incomplete snapshots fail before mutation. Shell command file changes are not captured.",
+		"note":              "File-editing MCP tools are tracked. Retention, restore, and clear preserve history in the archive; purge permanently removes active and archived history. Large files use checkpoint blobs; shell command file changes are not captured.",
 	}
 }
 
@@ -334,11 +352,33 @@ func (s *Store) RestoreAllowed(workspaceID, workspaceRoot string, allowedRoots [
 	if err != nil {
 		return RestoreResult{}, err
 	}
+	index, err := s.readIndex(workspaceID)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	targetIndex := summaryIndex(index.Checkpoints, id)
+	if targetIndex < 0 {
+		return RestoreResult{}, fmt.Errorf("checkpoint not found: %s", id)
+	}
+	tail := append([]Summary(nil), index.Checkpoints[targetIndex:]...)
+	if err := s.validateActivePayloadsLocked(workspaceID, tail); err != nil {
+		return RestoreResult{}, err
+	}
 	roots, err := openRestoreRoots(allowedRoots)
 	if err != nil {
 		return RestoreResult{}, err
 	}
 	defer roots.Close()
+	for _, stored := range snapshots {
+		if err := validateSnapshotPathAllowed(roots, stored.Snapshot); err != nil {
+			return RestoreResult{}, err
+		}
+	}
+	rollback, err := s.captureRestoreRollbackLocked(workspaceID, roots, snapshots)
+	if err != nil {
+		return RestoreResult{}, err
+	}
+	defer os.RemoveAll(s.checkpointDir(workspaceID, rollback.CheckpointID))
 	type pair struct {
 		path   string
 		stored restoreSnapshot
@@ -358,56 +398,205 @@ func (s *Store) RestoreAllowed(workspaceID, workspaceRoot string, allowedRoots [
 		}
 		if !snapshot.Existed {
 			if err := roots.RemoveAll(item.path); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return RestoreResult{}, err
+				return RestoreResult{}, errors.Join(err, s.restoreRollbackLocked(workspaceID, roots, rollback))
 			}
 			result.Deleted = append(result.Deleted, item.path)
 			continue
 		}
 		blobRoot := s.checkpointDir(workspaceID, item.stored.CheckpointID)
 		if err := roots.Restore(snapshot, blobRoot); err != nil {
-			return RestoreResult{}, err
+			return RestoreResult{}, errors.Join(err, s.restoreRollbackLocked(workspaceID, roots, rollback))
 		}
 		result.Restored = append(result.Restored, item.path)
 	}
-
-	index, err := s.readIndex(workspaceID)
+	candidates := make([]archiveCandidate, 0, len(tail))
+	for _, summary := range tail {
+		candidates = append(candidates, archiveCandidate{Summary: summary, Reason: ArchiveReasonRestore})
+	}
+	archived, err := s.archiveAndReplaceActiveLocked(workspaceID, index, index.Checkpoints[:targetIndex], candidates)
 	if err != nil {
-		return RestoreResult{}, err
+		return RestoreResult{}, errors.Join(err, s.restoreRollbackLocked(workspaceID, roots, rollback))
 	}
-	targetIndex := summaryIndex(index.Checkpoints, id)
-	if targetIndex < 0 {
-		return RestoreResult{}, fmt.Errorf("checkpoint not found: %s", id)
-	}
-	removed := append([]Summary(nil), index.Checkpoints[targetIndex:]...)
-	index.Checkpoints = append([]Summary(nil), index.Checkpoints[:targetIndex]...)
-	for _, summary := range removed {
-		if err := os.RemoveAll(s.checkpointDir(workspaceID, summary.ID)); err != nil {
-			return RestoreResult{}, err
-		}
-	}
-	if err := s.writeIndex(workspaceID, index); err != nil {
-		return RestoreResult{}, err
-	}
+	result.RestoredCount = len(result.Restored)
+	result.Archived = archived
 	return result, nil
 }
 
-func (s *Store) Clear(workspaceID string) (int, error) {
+func (s *Store) Clear(workspaceID string) (ClearResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	index, err := s.readIndex(workspaceID)
 	if err != nil {
-		return 0, err
+		return ClearResult{}, err
 	}
-	count := len(index.Checkpoints)
+	if len(index.Checkpoints) == 0 {
+		return ClearResult{}, nil
+	}
+	candidates := make([]archiveCandidate, 0, len(index.Checkpoints))
 	for _, summary := range index.Checkpoints {
-		if err := os.RemoveAll(s.checkpointDir(workspaceID, summary.ID)); err != nil {
-			return 0, err
+		candidates = append(candidates, archiveCandidate{Summary: summary, Reason: ArchiveReasonClear})
+	}
+	archived, err := s.archiveAndReplaceActiveLocked(workspaceID, index, nil, candidates)
+	if err != nil {
+		return ClearResult{}, err
+	}
+	return ClearResult{Cleared: len(index.Checkpoints), Archived: archived}, nil
+}
+
+func (s *Store) Purge(workspaceID string) (PurgeResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	active, err := s.readIndex(workspaceID)
+	if err != nil {
+		return PurgeResult{}, err
+	}
+	archived, err := s.readArchiveIndex(workspaceID)
+	if err != nil {
+		return PurgeResult{}, err
+	}
+	result := PurgeResult{
+		Purged:         len(active.Checkpoints) + len(archived.Checkpoints),
+		ActivePurged:   len(active.Checkpoints),
+		ArchivedPurged: len(archived.Checkpoints),
+	}
+	root := s.Path(workspaceID)
+	info, err := os.Lstat(root)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := s.writeIndex(workspaceID, Index{Version: indexVersion, Checkpoints: []Summary{}}); err != nil {
+			return PurgeResult{}, err
 		}
+		return result, nil
+	}
+	if err != nil {
+		return PurgeResult{}, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return PurgeResult{}, fmt.Errorf("checkpoint root is not a stable directory: %s", root)
+	}
+	purgeID, err := idgen.New("purge", 6)
+	if err != nil {
+		return PurgeResult{}, err
+	}
+	staging := filepath.Join(filepath.Dir(root), "."+filepath.Base(root)+"."+purgeID)
+	if err := os.Rename(root, staging); err != nil {
+		return PurgeResult{}, err
+	}
+	rollback := func(operationErr error) error {
+		removeErr := os.RemoveAll(root)
+		renameErr := os.Rename(staging, root)
+		return errors.Join(operationErr, removeErr, renameErr)
 	}
 	if err := s.writeIndex(workspaceID, Index{Version: indexVersion, Checkpoints: []Summary{}}); err != nil {
-		return 0, err
+		return PurgeResult{}, rollback(err)
 	}
-	return count, nil
+	if err := os.RemoveAll(staging); err != nil {
+		return PurgeResult{}, fmt.Errorf("checkpoint history purge committed but staged cleanup failed: %w", err)
+	}
+	return result, nil
+}
+
+func (s *Store) validateActivePayloadsLocked(workspaceID string, summaries []Summary) error {
+	for _, summary := range summaries {
+		if err := validateCheckpointPayloadDir(s.checkpointDir(workspaceID, summary.ID), workspaceID, summary); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) captureRestoreRollbackLocked(workspaceID string, roots restoreRoots, snapshots map[string]restoreSnapshot) (restoreRollback, error) {
+	id, err := checkpointID()
+	if err != nil {
+		return restoreRollback{}, err
+	}
+	dir := s.checkpointDir(workspaceID, id)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return restoreRollback{}, err
+	}
+	rollback := restoreRollback{CheckpointID: id, Snapshots: make(map[string]FileSnapshot, len(snapshots))}
+	for path := range snapshots {
+		snapshot, err := s.snapshot(workspaceID, id, roots, path, 0)
+		if err != nil {
+			_ = os.RemoveAll(dir)
+			return restoreRollback{}, err
+		}
+		rollback.Snapshots[path] = snapshot
+	}
+	return rollback, nil
+}
+
+func (s *Store) restoreRollbackLocked(workspaceID string, roots restoreRoots, rollback restoreRollback) error {
+	paths := make([]string, 0, len(rollback.Snapshots))
+	for path := range rollback.Snapshots {
+		paths = append(paths, path)
+	}
+	sort.Slice(paths, func(i, j int) bool { return len(paths[i]) > len(paths[j]) })
+	var result error
+	for _, path := range paths {
+		snapshot := rollback.Snapshots[path]
+		if !snapshot.Existed {
+			if err := roots.RemoveAll(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+				result = errors.Join(result, err)
+			}
+			continue
+		}
+		if snapshot.IsDirectory {
+			if root, relative, err := roots.target(path); err != nil {
+				result = errors.Join(result, err)
+				continue
+			} else if err := pruneRollbackDirectory(root, relative, snapshot); err != nil {
+				result = errors.Join(result, err)
+				continue
+			}
+		}
+		result = errors.Join(result, roots.Restore(snapshot, s.checkpointDir(workspaceID, rollback.CheckpointID)))
+	}
+	return result
+}
+
+func pruneRollbackDirectory(root *os.Root, relative string, snapshot FileSnapshot) error {
+	info, err := root.Lstat(relative)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil
+	}
+	dir, err := root.Open(relative)
+	if err != nil {
+		return err
+	}
+	entries, readErr := dir.ReadDir(-1)
+	closeErr := dir.Close()
+	if err := errors.Join(readErr, closeErr); err != nil {
+		return err
+	}
+	expected := make(map[string]FileSnapshot, len(snapshot.Children))
+	for _, child := range snapshot.Children {
+		expected[filepath.Base(child.Path)] = child
+	}
+	for _, entry := range entries {
+		childRelative := entry.Name()
+		if relative != "." {
+			childRelative = filepath.Join(relative, entry.Name())
+		}
+		child, ok := expected[entry.Name()]
+		if !ok {
+			if err := root.RemoveAll(childRelative); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			continue
+		}
+		if child.IsDirectory {
+			if err := pruneRollbackDirectory(root, childRelative, child); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func Fingerprint(paths []string) string {

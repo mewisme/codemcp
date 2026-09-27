@@ -276,7 +276,7 @@ func loadMergeArchivedCheckpoints(root, workspaceID, expectedRoot, destinationRo
 			return nil, fmt.Errorf("archived checkpoint %s has invalid archived_at", summary.ID)
 		}
 		switch archived.Reason {
-		case ArchiveReasonRetentionAge, ArchiveReasonRetentionCount:
+		case ArchiveReasonRetentionAge, ArchiveReasonRetentionCount, ArchiveReasonRestore, ArchiveReasonClear:
 		default:
 			return nil, fmt.Errorf("archived checkpoint %s has unsupported reason %q", summary.ID, archived.Reason)
 		}

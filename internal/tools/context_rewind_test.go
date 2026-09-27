@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/integrations/semantic"
 	"go.mewis.me/codemcp/internal/projectcontext"
@@ -624,12 +625,56 @@ func TestRewindPreviewAndRestore(t *testing.T) {
 	if err != nil || restore.IsError {
 		t.Fatalf("restore failed: %#v %v", restore, err)
 	}
+	value := restore.StructuredContent.(RewindRestoreResult)
+	if value.RestoredCount != 1 || value.Archived != 1 || !strings.Contains(value.Note, "were archived") {
+		t.Fatalf("restore result=%#v", value)
+	}
 	data, err := os.ReadFile(file)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(data) != "before" {
 		t.Fatalf("content = %q", data)
+	}
+}
+
+func TestRewindClearArchivesAndPurgeRequiresDestructiveApproval(t *testing.T) {
+	runtime, workspaceID, root, checkpoints := newContextToolRuntime(t)
+	file := filepath.Join(root, "file.txt")
+	if err := os.WriteFile(file, []byte("before"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := checkpoints.Before(workspaceID, root, "edit_file", []string{file}, false); err != nil {
+		t.Fatal(err)
+	}
+
+	clear, err := runtime.Registry.Call(context.Background(), "rewind", map[string]any{"workspace_id": workspaceID, "action": "clear"})
+	if err != nil || clear.IsError {
+		t.Fatalf("clear=%#v err=%v", clear, err)
+	}
+	cleared := clear.StructuredContent.(RewindClearResult)
+	if cleared.Cleared != 1 || cleared.Archived != 1 {
+		t.Fatalf("clear result=%#v", cleared)
+	}
+
+	_, err = runtime.Registry.Call(context.Background(), "rewind", map[string]any{"workspace_id": workspaceID, "action": "purge"})
+	guard, ok := controlguard.As(err)
+	if !ok || guard.Code != controlguard.CodeDestructiveMutation || !guard.Approvable {
+		t.Fatalf("purge guard=%#v err=%v", guard, err)
+	}
+
+	ctx := controlguard.WithGrant(context.Background(), controlguard.Grant{RequestID: "req_checkpoint_purge", Code: controlguard.CodeDestructiveMutation})
+	purge, err := runtime.Registry.Call(ctx, "rewind", map[string]any{"workspace_id": workspaceID, "action": "purge"})
+	if err != nil || purge.IsError {
+		t.Fatalf("approved purge=%#v err=%v", purge, err)
+	}
+	purged := purge.StructuredContent.(RewindPurgeResult)
+	if purged.Purged != 1 || purged.ActivePurged != 0 || purged.ArchivedPurged != 1 {
+		t.Fatalf("purge result=%#v", purged)
+	}
+	archived, err := checkpoints.ListArchived(workspaceID, 10)
+	if err != nil || len(archived) != 0 {
+		t.Fatalf("archive after purge=%#v err=%v", archived, err)
 	}
 }
 

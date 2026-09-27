@@ -30,6 +30,8 @@ type ArchiveReason string
 const (
 	ArchiveReasonRetentionAge   ArchiveReason = "retention_age"
 	ArchiveReasonRetentionCount ArchiveReason = "retention_count"
+	ArchiveReasonRestore        ArchiveReason = "restore"
+	ArchiveReasonClear          ArchiveReason = "clear"
 )
 
 type ArchivedSummary struct {
@@ -46,6 +48,12 @@ type ArchiveIndex struct {
 type archiveCandidate struct {
 	Summary Summary
 	Reason  ArchiveReason
+}
+
+type archiveMutation struct {
+	Previous        ArchiveIndex
+	IndexExisted    bool
+	CreatedPayloads []string
 }
 
 func (s *Store) ListArchived(workspaceID string, limit int) ([]ArchivedSummary, error) {
@@ -84,18 +92,60 @@ func (s *Store) archiveRetentionLocked(workspaceID string, index *Index) ([]Summ
 	if len(candidates) == 0 {
 		return nil, nil
 	}
+	if _, err := s.appendArchiveCandidatesLocked(workspaceID, candidates); err != nil {
+		return nil, err
+	}
+	index.Checkpoints = kept
+	removed := make([]Summary, 0, len(candidates))
+	for _, candidate := range candidates {
+		removed = append(removed, candidate.Summary)
+	}
+	return removed, nil
+}
+
+func (s *Store) archiveAndReplaceActiveLocked(workspaceID string, current Index, kept []Summary, candidates []archiveCandidate) (int, error) {
+	if len(candidates) == 0 {
+		return 0, nil
+	}
+	mutation, err := s.appendArchiveCandidatesLocked(workspaceID, candidates)
+	if err != nil {
+		return 0, err
+	}
+	next := current
+	next.Checkpoints = append([]Summary(nil), kept...)
+	if err := s.writeIndex(workspaceID, next); err != nil {
+		return 0, errors.Join(err, s.rollbackArchiveMutationLocked(workspaceID, mutation))
+	}
+	for _, candidate := range candidates {
+		_ = os.RemoveAll(s.checkpointDir(workspaceID, candidate.Summary.ID))
+	}
+	return len(candidates), nil
+}
+
+func (s *Store) appendArchiveCandidatesLocked(workspaceID string, candidates []archiveCandidate) (archiveMutation, error) {
 	archive, err := s.readArchiveIndex(workspaceID)
 	if err != nil {
-		return nil, err
+		return archiveMutation{}, err
+	}
+	_, statErr := os.Stat(s.archiveIndexPath(workspaceID))
+	mutation := archiveMutation{
+		Previous: ArchiveIndex{
+			Version:     archive.Version,
+			Checkpoints: append([]ArchivedSummary(nil), archive.Checkpoints...),
+		},
+		IndexExisted: statErr == nil,
+	}
+	if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+		return archiveMutation{}, statErr
 	}
 	known := make(map[string]int, len(archive.Checkpoints))
 	for i, item := range archive.Checkpoints {
 		id := strings.TrimSpace(item.Checkpoint.ID)
 		if id == "" {
-			return nil, errors.New("checkpoint archive contains empty id")
+			return archiveMutation{}, errors.New("checkpoint archive contains empty id")
 		}
 		if _, exists := known[id]; exists {
-			return nil, fmt.Errorf("checkpoint archive contains duplicate id: %s", id)
+			return archiveMutation{}, fmt.Errorf("checkpoint archive contains duplicate id: %s", id)
 		}
 		known[id] = i
 	}
@@ -104,15 +154,29 @@ func (s *Store) archiveRetentionLocked(workspaceID string, index *Index) ([]Summ
 		if existingIndex, ok := known[candidate.Summary.ID]; ok {
 			existing := archive.Checkpoints[existingIndex]
 			if !reflect.DeepEqual(existing.Checkpoint, candidate.Summary) {
-				return nil, fmt.Errorf("checkpoint archive metadata mismatch: %s", candidate.Summary.ID)
+				err := fmt.Errorf("checkpoint archive metadata mismatch: %s", candidate.Summary.ID)
+				return archiveMutation{}, errors.Join(err, s.rollbackArchiveMutationLocked(workspaceID, mutation))
 			}
 			if err := s.validateArchivedPayload(workspaceID, candidate.Summary); err != nil {
-				return nil, err
+				return archiveMutation{}, errors.Join(err, s.rollbackArchiveMutationLocked(workspaceID, mutation))
 			}
 			continue
 		}
+		_, payloadErr := os.Lstat(s.archiveCheckpointDir(workspaceID, candidate.Summary.ID))
+		payloadExisted := payloadErr == nil
+		if payloadErr != nil && !errors.Is(payloadErr, os.ErrNotExist) {
+			return archiveMutation{}, errors.Join(payloadErr, s.rollbackArchiveMutationLocked(workspaceID, mutation))
+		}
 		if err := s.ensureArchivedPayload(workspaceID, candidate.Summary); err != nil {
-			return nil, err
+			if !payloadExisted {
+				if _, statErr := os.Lstat(s.archiveCheckpointDir(workspaceID, candidate.Summary.ID)); statErr == nil {
+					mutation.CreatedPayloads = append(mutation.CreatedPayloads, candidate.Summary.ID)
+				}
+			}
+			return archiveMutation{}, errors.Join(err, s.rollbackArchiveMutationLocked(workspaceID, mutation))
+		}
+		if !payloadExisted {
+			mutation.CreatedPayloads = append(mutation.CreatedPayloads, candidate.Summary.ID)
 		}
 		archive.Checkpoints = append(archive.Checkpoints, ArchivedSummary{
 			Checkpoint: candidate.Summary,
@@ -122,17 +186,26 @@ func (s *Store) archiveRetentionLocked(workspaceID string, index *Index) ([]Summ
 		known[candidate.Summary.ID] = len(archive.Checkpoints) - 1
 	}
 	if len(archive.Checkpoints) > maxArchiveEntries {
-		return nil, fmt.Errorf("checkpoint archive exceeds %d entries", maxArchiveEntries)
+		err := fmt.Errorf("checkpoint archive exceeds %d entries", maxArchiveEntries)
+		return archiveMutation{}, errors.Join(err, s.rollbackArchiveMutationLocked(workspaceID, mutation))
 	}
 	if err := s.writeArchiveIndex(workspaceID, archive); err != nil {
-		return nil, err
+		return archiveMutation{}, errors.Join(err, s.rollbackArchiveMutationLocked(workspaceID, mutation))
 	}
-	index.Checkpoints = kept
-	removed := make([]Summary, 0, len(candidates))
-	for _, candidate := range candidates {
-		removed = append(removed, candidate.Summary)
+	return mutation, nil
+}
+
+func (s *Store) rollbackArchiveMutationLocked(workspaceID string, mutation archiveMutation) error {
+	var result error
+	if mutation.IndexExisted {
+		result = errors.Join(result, s.writeArchiveIndex(workspaceID, mutation.Previous))
+	} else if err := os.Remove(s.archiveIndexPath(workspaceID)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		result = errors.Join(result, err)
 	}
-	return removed, nil
+	for _, id := range mutation.CreatedPayloads {
+		result = errors.Join(result, os.RemoveAll(s.archiveCheckpointDir(workspaceID, id)))
+	}
+	return result
 }
 
 func (s *Store) retentionCandidates(values []Summary) ([]archiveCandidate, []Summary) {
@@ -289,7 +362,7 @@ func validateArchivedSnapshot(root string, roots []string, snapshot FileSnapshot
 			return fmt.Errorf("checkpoint blob size mismatch: %s", snapshot.Blob)
 		}
 		if snapshot.BlobSHA256 != "" && !strings.EqualFold(snapshot.BlobSHA256, hex.EncodeToString(hash.Sum(nil))) {
-			return fmt.Errorf("checkpoint blob hash mismatch: %s", snapshot.Blob)
+			return fmt.Errorf("checkpoint blob hash mismatch (checksum mismatch): %s", snapshot.Blob)
 		}
 	}
 	for _, child := range snapshot.Children {
@@ -446,7 +519,7 @@ func (s *Store) readArchiveIndex(workspaceID string) (ArchiveIndex, error) {
 			return ArchiveIndex{}, fmt.Errorf("checkpoint archive has invalid archived_at for %s", item.Checkpoint.ID)
 		}
 		switch item.Reason {
-		case ArchiveReasonRetentionAge, ArchiveReasonRetentionCount:
+		case ArchiveReasonRetentionAge, ArchiveReasonRetentionCount, ArchiveReasonRestore, ArchiveReasonClear:
 		default:
 			return ArchiveIndex{}, fmt.Errorf("checkpoint archive has unsupported reason %q", item.Reason)
 		}
