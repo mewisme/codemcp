@@ -29,6 +29,7 @@ const (
 	RichLink     RichBlockKind = "link"
 	RichDocument RichBlockKind = "document"
 	RichButtons  RichBlockKind = "buttons"
+	RichCopy     RichBlockKind = "copy"
 )
 
 type RichBlock struct {
@@ -40,6 +41,7 @@ type RichBlock struct {
 	LinkURL      string
 	Buttons      [][]Button
 	DocumentName string
+	CopyText     string
 }
 
 type RichPresentation struct {
@@ -54,6 +56,15 @@ func BuildRichPresentation(blocks ...RichBlock) *RichPresentation {
 		}
 		block.Title = compactPresentationValue(block.Title)
 		block.Text = compactPresentationValue(block.Text)
+		block.CopyText = strings.TrimSpace(block.CopyText)
+		if block.Kind == RichCopy {
+			if block.CopyText == "" {
+				block.CopyText = block.Text
+			}
+			if !validCopyText(block.CopyText) {
+				block.CopyText = ""
+			}
+		}
 		if len(block.Items) > richMaxRows {
 			block.Items = block.Items[:richMaxRows]
 		}
@@ -137,9 +148,59 @@ func RichFallback(rich *RichPresentation) Presentation {
 				}
 			}
 			parts = append(parts, CompactList(labels...))
+		case RichCopy:
+			label := strings.TrimSpace(block.Title)
+			if label == "" {
+				label = "Value"
+			}
+			value := strings.TrimSpace(block.Text)
+			if value == "" {
+				value = strings.TrimSpace(block.CopyText)
+			}
+			parts = append(parts, PresentationPart{
+				Text: label + ": " + value,
+				HTML: SafeHTML("<b>" + EscapeText(label) + ":</b> <code>" + EscapeText(value) + "</code>"),
+			})
 		}
 	}
 	return Present(parts...)
+}
+
+func RichMessageHTML(rich *RichPresentation) SafeHTML {
+	if rich == nil {
+		return ""
+	}
+	parts := make([]string, 0, len(rich.Blocks))
+	bytes := 0
+	for _, block := range rich.Blocks {
+		var rendered string
+		if block.Kind == RichCopy && validCopyText(block.CopyText) {
+			label := strings.TrimSpace(block.Title)
+			if label == "" {
+				label = "Value"
+			}
+			value := strings.TrimSpace(block.Text)
+			if value == "" {
+				value = block.CopyText
+			}
+			rendered = "<p><b>" + EscapeText(label) + ":</b> <tg-button type=\"copy_text\" text=\"" + EscapeText(block.CopyText) + "\">" + EscapeText(value) + "</tg-button></p>"
+		} else {
+			rendered = strings.TrimSpace(string(RichFallback(&RichPresentation{Blocks: []RichBlock{block}}).HTML))
+		}
+		if rendered == "" {
+			continue
+		}
+		separator := 0
+		if len(parts) > 0 {
+			separator = 1
+		}
+		if bytes+separator+len(rendered) > presentationMaxBytes {
+			break
+		}
+		parts = append(parts, rendered)
+		bytes += separator + len(rendered)
+	}
+	return SafeHTML(strings.Join(parts, "\n"))
 }
 
 type PresentationTone string

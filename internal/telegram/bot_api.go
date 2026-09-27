@@ -207,6 +207,17 @@ func (client *apiClient) SendScreen(ctx context.Context, chatID int64, screen Sc
 	if client == nil || client.initErr != nil || client.bot == nil {
 		return errors.New("telegram bot transport is unavailable")
 	}
+	if rich, ok := screenRichMessage(screen); ok {
+		_, err := client.bot.SendRichMessage(nonNilContext(ctx), &telegrambot.SendRichMessageParams{
+			ChatID: chatID, RichMessage: rich, ReplyMarkup: screenKeyboard(screen.Keyboard),
+		})
+		if err == nil {
+			return nil
+		}
+		if !richMessageFallbackAllowed(err) {
+			return classifyTransportError(err)
+		}
+	}
 	_, err := client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
 		ChatID: chatID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ReplyMarkup: screenKeyboard(screen.Keyboard),
 	})
@@ -220,16 +231,28 @@ func (client *apiClient) SendRichMessage(ctx context.Context, chatID int64, scre
 	if err := validateKeyboard(screen.Keyboard); err != nil {
 		return 0, err
 	}
-	params := &telegrambot.SendMessageParams{
-		ChatID: chatID, Text: screenText(screen), ParseMode: models.ParseModeHTML,
-		ProtectContent: options.ProtectContent,
-	}
+	var replyMarkup models.ReplyMarkup
 	if len(screen.Keyboard) > 0 {
-		params.ReplyMarkup = screenKeyboard(screen.Keyboard)
+		replyMarkup = screenKeyboard(screen.Keyboard)
 	} else if placeholder := forceReplyPlaceholder(options.ForceReplyPlaceholder); placeholder != "" {
-		params.ReplyMarkup = &models.ForceReply{ForceReply: true, InputFieldPlaceholder: placeholder, Selective: true}
+		replyMarkup = &models.ForceReply{ForceReply: true, InputFieldPlaceholder: placeholder, Selective: true}
 	}
-	message, err := client.bot.SendMessage(nonNilContext(ctx), params)
+	var message *models.Message
+	var err error
+	if rich, ok := screenRichMessage(screen); ok {
+		message, err = client.bot.SendRichMessage(nonNilContext(ctx), &telegrambot.SendRichMessageParams{
+			ChatID: chatID, RichMessage: rich, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
+		})
+		if err != nil && richMessageFallbackAllowed(err) {
+			message, err = client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
+				ChatID: chatID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
+			})
+		}
+	} else {
+		message, err = client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
+			ChatID: chatID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
+		})
+	}
 	if err != nil {
 		return 0, classifyTransportError(err)
 	}
@@ -246,13 +269,28 @@ func (client *apiClient) SendRichMessageThread(ctx context.Context, chatID int64
 	if err := validateKeyboard(screen.Keyboard); err != nil {
 		return 0, err
 	}
-	params := &telegrambot.SendMessageParams{ChatID: chatID, MessageThreadID: threadID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ProtectContent: options.ProtectContent}
+	var replyMarkup models.ReplyMarkup
 	if len(screen.Keyboard) > 0 {
-		params.ReplyMarkup = screenKeyboard(screen.Keyboard)
+		replyMarkup = screenKeyboard(screen.Keyboard)
 	} else if placeholder := forceReplyPlaceholder(options.ForceReplyPlaceholder); placeholder != "" {
-		params.ReplyMarkup = &models.ForceReply{ForceReply: true, InputFieldPlaceholder: placeholder, Selective: true}
+		replyMarkup = &models.ForceReply{ForceReply: true, InputFieldPlaceholder: placeholder, Selective: true}
 	}
-	message, err := client.bot.SendMessage(nonNilContext(ctx), params)
+	var message *models.Message
+	var err error
+	if rich, ok := screenRichMessage(screen); ok {
+		message, err = client.bot.SendRichMessage(nonNilContext(ctx), &telegrambot.SendRichMessageParams{
+			ChatID: chatID, MessageThreadID: threadID, RichMessage: rich, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
+		})
+		if err != nil && richMessageFallbackAllowed(err) {
+			message, err = client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
+				ChatID: chatID, MessageThreadID: threadID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
+			})
+		}
+	} else {
+		message, err = client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
+			ChatID: chatID, MessageThreadID: threadID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
+		})
+	}
 	if err != nil {
 		return 0, classifyTransportError(err)
 	}
@@ -361,10 +399,37 @@ func (client *apiClient) EditScreen(ctx context.Context, chatID, messageID int64
 	if messageID <= 0 || messageID > int64(^uint(0)>>1) {
 		return errors.New("telegram message id is invalid")
 	}
-	_, err := client.bot.EditMessageText(nonNilContext(ctx), &telegrambot.EditMessageTextParams{
-		ChatID: chatID, MessageID: int(messageID), Text: screenText(screen), ParseMode: models.ParseModeHTML, ReplyMarkup: screenKeyboard(screen.Keyboard),
-	})
+	params := &telegrambot.EditMessageTextParams{ChatID: chatID, MessageID: int(messageID), ReplyMarkup: screenKeyboard(screen.Keyboard)}
+	if rich, ok := screenRichMessage(screen); ok {
+		params.RichMessage = &rich
+	} else {
+		params.Text = screenText(screen)
+		params.ParseMode = models.ParseModeHTML
+	}
+	_, err := client.bot.EditMessageText(nonNilContext(ctx), params)
+	if err != nil && params.RichMessage != nil && richMessageFallbackAllowed(err) {
+		params.RichMessage = nil
+		params.Text = screenText(screen)
+		params.ParseMode = models.ParseModeHTML
+		_, err = client.bot.EditMessageText(nonNilContext(ctx), params)
+	}
 	return classifyTransportError(err)
+}
+
+func screenRichMessage(screen Screen) (models.InputRichMessage, bool) {
+	if screen.Rich == nil {
+		return models.InputRichMessage{}, false
+	}
+	html := strings.TrimSpace(string(RichMessageHTML(screen.Rich)))
+	if html == "" {
+		return models.InputRichMessage{}, false
+	}
+	return models.InputRichMessage{HTML: html}, true
+}
+
+func richMessageFallbackAllowed(err error) bool {
+	kind := transportErrorKind(classifyTransportError(err))
+	return kind == transportErrorBadRequest || kind == transportErrorNotFound
 }
 
 func (client *apiClient) AnswerCallback(ctx context.Context, callbackID, text string, alert bool) error {

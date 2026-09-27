@@ -160,11 +160,9 @@ func (ui *Interface) workspaceDetailScreen(ctx context.Context, owner ViewOwner,
 		return Screen{}, err
 	}
 	secondary := []Button{access, containers}
-	if copyID, ok := CopyValueButton("Copy ID", item.ID); ok {
-		secondary = append(secondary, copyID)
-	}
 	rich := BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: item.ID, Text: "Registered workspace"},
+		RichBlock{Kind: RichHeading, Title: "Workspace", Text: "Registered workspace"},
+		RichBlock{Kind: RichCopy, Title: "ID", Text: item.ID, CopyText: item.ID},
 		RichBlock{Kind: RichTable, Rows: [][]string{{"Path", item.Path}, {"Available", fmt.Sprint(item.Available)}, {"Allowed roots", fmt.Sprint(len(item.AllowDirs))}}},
 	)
 	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{relocate}, Secondary: secondary, Destructive: []Button{unregister, purge}, Navigation: []Button{back, home}})}, nil
@@ -205,7 +203,11 @@ func (ui *Interface) workspaceAccessScreen(ctx context.Context, owner ViewOwner,
 	if err != nil {
 		return Screen{}, err
 	}
-	rich := BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Workspace access", Text: id}, RichBlock{Kind: RichList, Items: list})
+	rich := BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Workspace access", Text: "Allowed roots"},
+		RichBlock{Kind: RichCopy, Title: "Workspace ID", Text: id, CopyText: id},
+		RichBlock{Kind: RichList, Items: list},
+	)
 	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{add}, Destructive: removeButtons, Navigation: navigation})}, nil
 }
 
@@ -290,7 +292,11 @@ func (ui *Interface) containerDetailScreen(ctx context.Context, owner ViewOwner,
 	if err != nil {
 		return Screen{}, err
 	}
-	rich := BuildRichPresentation(RichBlock{Kind: RichHeading, Title: item.Name, Text: "Workspace container"}, RichBlock{Kind: RichTable, Rows: [][]string{{"ID", item.ID}, {"Members", fmt.Sprint(len(item.WorkspaceIDs))}}})
+	rich := BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: item.Name, Text: "Workspace container"},
+		RichBlock{Kind: RichCopy, Title: "ID", Text: item.ID, CopyText: item.ID},
+		RichBlock{Kind: RichTable, Rows: [][]string{{"Members", fmt.Sprint(len(item.WorkspaceIDs))}}},
+	)
 	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{rename}, Secondary: []Button{members}, Destructive: []Button{remove}, Navigation: []Button{back, home}})}, nil
 }
 
@@ -419,7 +425,8 @@ func (ui *Interface) requestCardWithOptions(owner ViewOwner, request approval.Re
 	}
 	blocks := []RichBlock{
 		{Kind: RichHeading, Title: title, Text: "Approval request · " + string(request.Status)},
-		{Kind: RichTable, Rows: [][]string{{"ID", request.ID}, {"Workspace", request.WorkspaceID}, {"Tool", request.TargetTool}, {"Guard", string(request.GuardCode)}, {"Expires", request.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}}},
+		{Kind: RichCopy, Title: "ID", Text: request.ID, CopyText: request.ID},
+		{Kind: RichTable, Rows: [][]string{{"Workspace", request.WorkspaceID}, {"Tool", request.TargetTool}, {"Guard", string(request.GuardCode)}, {"Expires", request.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}}},
 	}
 	if strings.TrimSpace(request.GuardReason) != "" {
 		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Policy reason", Text: request.GuardReason})
@@ -457,9 +464,6 @@ func (ui *Interface) requestCardWithOptions(owner ViewOwner, request approval.Re
 		}
 		review.Role = ButtonRoleView
 		secondary = append([]Button{review}, secondary...)
-	}
-	if copyID, ok := CopyValueButton("Copy ID", request.ID); ok {
-		secondary = append(secondary, copyID)
 	}
 	back, err := ui.backButton(owner, RouteRequests)
 	if err != nil {
@@ -524,7 +528,8 @@ func (ui *Interface) domainOperationResultScreen(owner ViewOwner, state ActionSt
 			return Screen{}, true, err
 		}
 		rich := BuildRichPresentation(
-			RichBlock{Kind: RichHeading, Title: result.ID, Text: "Workspace operation completed"},
+			RichBlock{Kind: RichHeading, Title: "Workspace", Text: "Operation completed"},
+			RichBlock{Kind: RichCopy, Title: "ID", Text: result.ID, CopyText: result.ID},
 			RichBlock{Kind: RichTable, Rows: [][]string{{"Path", result.Path}, {"Available", fmt.Sprint(result.Available)}, {"Allowed roots", fmt.Sprint(len(result.AllowDirs))}}},
 		)
 		return Screen{Rich: rich, Keyboard: keyboard}, true, nil
@@ -534,7 +539,8 @@ func (ui *Interface) domainOperationResultScreen(owner ViewOwner, state ActionSt
 			return Screen{}, true, err
 		}
 		rich := BuildRichPresentation(
-			RichBlock{Kind: RichHeading, Title: result.After.ID, Text: "Workspace relocated"},
+			RichBlock{Kind: RichHeading, Title: "Workspace relocated", Text: "Operation completed"},
+			RichBlock{Kind: RichCopy, Title: "ID", Text: result.After.ID, CopyText: result.After.ID},
 			RichBlock{Kind: RichTable, Rows: [][]string{{"Previous root", result.Before.Path}, {"Current root", result.After.Path}, {"Available", fmt.Sprint(result.After.Available)}}},
 		)
 		return Screen{Rich: rich, Keyboard: keyboard}, true, nil
@@ -545,7 +551,8 @@ func (ui *Interface) domainOperationResultScreen(owner ViewOwner, state ActionSt
 		}
 		rich := BuildRichPresentation(
 			RichBlock{Kind: RichHeading, Title: result.Name, Text: "Workspace container operation completed"},
-			RichBlock{Kind: RichTable, Rows: [][]string{{"ID", result.ID}, {"Members", fmt.Sprint(len(result.WorkspaceIDs))}}},
+			RichBlock{Kind: RichCopy, Title: "ID", Text: result.ID, CopyText: result.ID},
+			RichBlock{Kind: RichTable, Rows: [][]string{{"Members", fmt.Sprint(len(result.WorkspaceIDs))}}},
 		)
 		return Screen{Rich: rich, Keyboard: keyboard}, true, nil
 	default:
@@ -699,15 +706,12 @@ func (ui *Interface) workspaceRelocationConflictScreen(owner ViewOwner, state Ac
 	if homeErr != nil {
 		return ErrorScreen(homeErr), true
 	}
-	secondary := []Button{}
-	if copyID, copied := CopyValueButton("Copy ID", conflict.WorkspaceID); copied {
-		secondary = append(secondary, copyID)
-	}
 	rich := BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Duplicate workspace identity", Text: conflict.WorkspaceID},
+		RichBlock{Kind: RichHeading, Title: "Duplicate workspace identity", Text: "Local resolution required"},
+		RichBlock{Kind: RichCopy, Title: "Workspace ID", Text: conflict.WorkspaceID, CopyText: conflict.WorkspaceID},
 		RichBlock{Kind: RichTable, Rows: [][]string{{"Registered root", conflict.RegisteredRoot}, {"Destination root", conflict.DestinationRoot}}},
 		RichBlock{Kind: RichList, Title: "Local resolution choices", Items: resolutions},
 		RichBlock{Kind: RichDetails, Title: "Local action required", Text: "Resolve this conflict locally with cm workspace relocate. Telegram does not choose destination, registered, or merge state on your behalf."},
 	)
-	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Secondary: secondary, Navigation: []Button{back, home}})}, true
+	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true
 }

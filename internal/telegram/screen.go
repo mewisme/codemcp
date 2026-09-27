@@ -9,6 +9,7 @@ import (
 
 const (
 	MaxCopyTextBytes       = 512
+	MaxCopyTextRunes       = 256
 	MaxButtonURLBytes      = 2048
 	MaxSemanticActionRunes = 24
 	MaxResourceButtonRunes = 48
@@ -100,7 +101,7 @@ func validateKeyboard(rows [][]Button) error {
 			if len(button.CallbackData) > MaxCallbackDataBytes {
 				return errors.New("telegram callback data exceeds 64 bytes")
 			}
-			if len(button.CopyText) > MaxCopyTextBytes {
+			if button.CopyText != "" && !validCopyText(button.CopyText) {
 				return errors.New("telegram copy text exceeds the bounded copy budget")
 			}
 			if len(button.URL) > MaxButtonURLBytes || len(button.WebAppURL) > MaxButtonURLBytes {
@@ -201,10 +202,15 @@ func BoundedActionGroups(groups ActionGroups) [][]Button {
 
 func CopyValueButton(label, value string) (Button, bool) {
 	label, value = strings.TrimSpace(label), strings.TrimSpace(value)
-	if label == "" || value == "" || len(value) > MaxCopyTextBytes {
+	if label == "" || !validCopyText(value) {
 		return Button{}, false
 	}
 	return Button{Text: CompactActionLabel(label), CopyText: value, Role: ButtonRoleCopy}, true
+}
+
+func validCopyText(value string) bool {
+	value = strings.TrimSpace(value)
+	return value != "" && len(value) <= MaxCopyTextBytes && utf8.RuneCountInString(value) <= MaxCopyTextRunes
 }
 
 func SetupPrivateChatButton(callbackData string) Button {

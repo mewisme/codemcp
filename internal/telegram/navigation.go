@@ -701,9 +701,6 @@ func (ui *Interface) terminalOperationKeyboard(owner ViewOwner, state ActionStat
 			Button{Text: "Logs", Disabled: true, Role: ButtonRoleView},
 		)
 	}
-	if copyID, ok := CopyValueButton("Copy ID", state.ResourceID); ok {
-		secondary = append(secondary, copyID)
-	}
 	navigation := []Button{back, home}
 	if spec.Kind == capability.KindQuery || spec.Kind == capability.KindStream {
 		refresh, err := ui.refreshButton(owner, state)

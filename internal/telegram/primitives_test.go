@@ -54,6 +54,42 @@ func TestRichPresentationBoundsAndRejectsUnsafeLinks(t *testing.T) {
 	}
 }
 
+func TestRichCopyUsesNativeInlineCopyAndCodeFallback(t *testing.T) {
+	rich := BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Approval", Text: "Pending"},
+		RichBlock{Kind: RichCopy, Title: "ID", Text: "req_123", CopyText: "req_123"},
+	)
+	native := string(RichMessageHTML(rich))
+	for _, want := range []string{"<tg-button type=\"copy_text\"", "text=\"req_123\"", ">req_123</tg-button>"} {
+		if !strings.Contains(native, want) {
+			t.Fatalf("native rich copy missing %q: %q", want, native)
+		}
+	}
+	fallback := RichFallback(rich)
+	if !strings.Contains(string(fallback.HTML), "<code>req_123</code>") || strings.Contains(string(fallback.HTML), "tg-button") {
+		t.Fatalf("fallback copy rendering=%q", fallback.HTML)
+	}
+	input, ok := screenRichMessage(Screen{Rich: rich})
+	if !ok || !strings.Contains(input.HTML, "type=\"copy_text\"") {
+		t.Fatalf("native input rich message=%#v ok=%v", input, ok)
+	}
+}
+
+func TestRichCopyRejectsOversizedCopyAuthorityButKeepsSafeFallback(t *testing.T) {
+	value := strings.Repeat("界", MaxCopyTextRunes+1)
+	rich := BuildRichPresentation(RichBlock{Kind: RichCopy, Title: "ID", Text: value, CopyText: value})
+	if rich.Blocks[0].CopyText != "" {
+		t.Fatalf("oversized rich copy retained action: %#v", rich.Blocks[0])
+	}
+	native := string(RichMessageHTML(rich))
+	if strings.Contains(native, "tg-button") {
+		t.Fatalf("oversized rich copy retained native button: %q", native)
+	}
+	if !strings.Contains(string(RichFallback(rich).HTML), "<code>") {
+		t.Fatalf("oversized copy lost fallback presentation: %q", RichFallback(rich).HTML)
+	}
+}
+
 func TestPendingInputRequiresExactReplyOwnerAndGeneration(t *testing.T) {
 	store := NewInputStore(time.Minute)
 	owner := ViewOwner{ChatID: 42, UserID: 7, Generation: 3}

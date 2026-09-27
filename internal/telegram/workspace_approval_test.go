@@ -107,6 +107,18 @@ func TestApprovalCardUsesSafeCanonicalProjectionAndActionHierarchy(t *testing.T)
 			t.Fatalf("approval actions missing %q: %v", want, labels)
 		}
 	}
+	if strings.Contains(joined, "Copy ID") {
+		t.Fatalf("approval card retained redundant copy keyboard action: %v", labels)
+	}
+	foundCopy := false
+	for _, block := range screen.Rich.Blocks {
+		if block.Kind == RichCopy && block.CopyText == request.ID {
+			foundCopy = true
+		}
+	}
+	if !foundCopy {
+		t.Fatalf("approval card missing inline copy ID: %#v", screen.Rich.Blocks)
+	}
 }
 
 func TestApprovalPendingNotificationRendersFreshInteractiveCard(t *testing.T) {
