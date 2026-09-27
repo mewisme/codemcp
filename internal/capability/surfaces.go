@@ -75,7 +75,7 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 				contract.Reason = exemptionReason(spec, surface)
 			}
 		case SurfaceAdminAPI:
-			if len(spec.Admin) > 0 {
+			if adminRequired(spec.ID) {
 				contract.State = SurfaceRequired
 			} else {
 				contract.State = SurfaceExempt
@@ -120,6 +120,9 @@ func exemptionReason(spec Spec, surface Surface) string {
 	case SurfaceBrowser:
 		return reasonNoBrowser
 	case SurfaceAdminAPI:
+		if reason := adminExemptionReason(spec.ID); reason != "" {
+			return reason
+		}
 		return reasonNoAdminAPI
 	case SurfaceMCP:
 		return reasonNoMCP
@@ -132,5 +135,13 @@ func exemptionReason(spec Spec, surface Surface) string {
 
 func validSurfaceReason(reason string) bool {
 	_, ok := knownSurfaceReasons[reason]
-	return ok
+	if ok {
+		return true
+	}
+	for _, value := range adminExemptionReasons {
+		if reason == value {
+			return true
+		}
+	}
+	return false
 }

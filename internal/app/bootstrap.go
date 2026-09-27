@@ -150,6 +150,22 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
+		if err := application.BindTelemetryOperations(a.Operations, application.NewTelemetryService()); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		if err := application.BindRTKOperations(a.Operations, application.NewRTKService()); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		if err := application.BindCodeGraphOperations(a.Operations, application.NewCodeGraphService(a.Tools.Workspaces)); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		if err := application.BindTypeSafeOperations(a.Operations, application.NewTypeSafeService()); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		a.syncMCPHTTP(a.Config.Snapshot().Server.Enabled)
 		a.attachTunnelLifecycle()
 	})

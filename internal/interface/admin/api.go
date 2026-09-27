@@ -38,6 +38,7 @@ type API struct {
 	OAuth         *mcpoauth.Store
 	OAuthFlows    *mcpoauth.FlowManager
 	TypeSafe      *application.TypeSafeService
+	Operations    *application.Dispatcher
 }
 
 type authSettings struct {
@@ -109,12 +110,32 @@ func New(api API) http.Handler {
 		authEnabled := api.Config != nil && api.Config.Snapshot().Auth.AdminEnabled
 		writeJSON(w, map[string]bool{"ok": true, "auth_enabled": authEnabled})
 	}))
+	mux.HandleFunc("/api/status", method(http.MethodGet, api.handleStatus))
+	mux.HandleFunc("/api/doctor", method(http.MethodGet, api.handleDoctor))
+	mux.HandleFunc("/api/about", method(http.MethodGet, api.handleAbout))
+	mux.HandleFunc("/api/runtime/up", api.handleRuntime)
+	mux.HandleFunc("/api/runtime/down", api.handleRuntime)
+	mux.HandleFunc("/api/runtime/restart", api.handleRuntime)
+	mux.HandleFunc("/api/logs", api.handleLogs)
+	mux.HandleFunc("/api/logs/info", method(http.MethodGet, api.handleLogsInfo))
+	mux.HandleFunc("/api/install", api.handleInstall)
+	mux.HandleFunc("/api/update", api.handleUpdate)
+	mux.HandleFunc("/api/telemetry", api.handleTelemetry)
+	mux.HandleFunc("/api/telemetry/", api.handleTelemetry)
 	mux.HandleFunc("/api/network/interfaces", api.handleNetworkInterfaces)
 
 	mux.HandleFunc("/api/config", api.handleConfig)
+	mux.HandleFunc("/api/config/path", method(http.MethodGet, api.handleConfigPath))
+	mux.HandleFunc("/api/config/verify", method(http.MethodGet, api.handleConfigVerify))
 	mux.HandleFunc("/api/integrations/typesafe", api.handleTypeSafeStatus)
 	mux.HandleFunc("/api/integrations/typesafe/doctor", api.handleTypeSafeDoctor)
 	mux.HandleFunc("/api/integrations/typesafe/probe", api.handleTypeSafeProbe)
+	mux.HandleFunc("/api/integrations/typesafe/enable", api.handleTypeSafeToggle)
+	mux.HandleFunc("/api/integrations/typesafe/disable", api.handleTypeSafeToggle)
+	mux.HandleFunc("/api/integrations/rtk", api.handleRTK)
+	mux.HandleFunc("/api/integrations/rtk/", api.handleRTK)
+	mux.HandleFunc("/api/integrations/codegraph", api.handleCodeGraph)
+	mux.HandleFunc("/api/integrations/codegraph/", api.handleCodeGraph)
 	mux.HandleFunc("/api/instructions/global", api.handleGlobalInstructions)
 	mux.HandleFunc("/api/prompts", api.handlePrompts)
 	mux.HandleFunc("/api/prompts/{name}", api.handlePrompt)

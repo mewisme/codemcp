@@ -2,6 +2,8 @@ package admin
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sort"
 	"testing"
 
@@ -11,9 +13,27 @@ import (
 func TestPublicAdminOperationsHaveCanonicalIDs(t *testing.T) {
 	expected := []capability.AdminBinding{
 		{Method: "GET", Path: "/api/health"},
+		{Method: "GET", Path: "/api/status"},
+		{Method: "GET", Path: "/api/doctor"},
+		{Method: "GET", Path: "/api/about"},
+		{Method: "POST", Path: "/api/runtime/up"},
+		{Method: "POST", Path: "/api/runtime/down"},
+		{Method: "POST", Path: "/api/runtime/restart"},
+		{Method: "GET", Path: "/api/logs"},
+		{Method: "GET", Path: "/api/logs/info"},
+		{Method: "DELETE", Path: "/api/logs"},
+		{Method: "POST", Path: "/api/install"},
+		{Method: "GET", Path: "/api/update"},
+		{Method: "POST", Path: "/api/update"},
+		{Method: "GET", Path: "/api/telemetry"},
+		{Method: "GET", Path: "/api/telemetry/show"},
+		{Method: "POST", Path: "/api/telemetry/enable"},
+		{Method: "POST", Path: "/api/telemetry/disable"},
 		{Method: "GET", Path: "/api/network/interfaces"},
 		{Method: "GET", Path: "/api/config"},
 		{Method: "PUT", Path: "/api/config"},
+		{Method: "GET", Path: "/api/config/path"},
+		{Method: "GET", Path: "/api/config/verify"},
 		{Method: "GET", Path: "/api/instructions/global"},
 		{Method: "PUT", Path: "/api/instructions/global"},
 		{Method: "GET", Path: "/api/prompts"},
@@ -62,6 +82,19 @@ func TestPublicAdminOperationsHaveCanonicalIDs(t *testing.T) {
 		{Method: "GET", Path: "/api/integrations/typesafe"},
 		{Method: "GET", Path: "/api/integrations/typesafe/doctor"},
 		{Method: "POST", Path: "/api/integrations/typesafe/probe"},
+		{Method: "POST", Path: "/api/integrations/typesafe/enable"},
+		{Method: "POST", Path: "/api/integrations/typesafe/disable"},
+		{Method: "GET", Path: "/api/integrations/rtk"},
+		{Method: "POST", Path: "/api/integrations/rtk/enable"},
+		{Method: "POST", Path: "/api/integrations/rtk/disable"},
+		{Method: "POST", Path: "/api/integrations/rtk/probe"},
+		{Method: "POST", Path: "/api/integrations/rtk/install"},
+		{Method: "GET", Path: "/api/integrations/codegraph"},
+		{Method: "POST", Path: "/api/integrations/codegraph/probe"},
+		{Method: "POST", Path: "/api/integrations/codegraph/install"},
+		{Method: "GET", Path: "/api/workspaces/{workspace_id}/integrations/codegraph"},
+		{Method: "POST", Path: "/api/workspaces/{workspace_id}/integrations/codegraph/init"},
+		{Method: "POST", Path: "/api/workspaces/{workspace_id}/integrations/codegraph/sync"},
 		{Method: "GET", Path: "/api/upstream"},
 		{Method: "POST", Path: "/api/upstream"},
 		{Method: "GET", Path: "/api/upstream/{server_id}"},
@@ -129,4 +162,26 @@ func TestPublicAdminOperationsHaveCanonicalIDs(t *testing.T) {
 
 func adminBindingKey(binding capability.AdminBinding) string {
 	return binding.Method + " " + binding.Path
+}
+
+func TestRestoredAdminRoutesAreRegistered(t *testing.T) {
+	handler := New(API{})
+	paths := []string{
+		"/api/status", "/api/doctor", "/api/about",
+		"/api/runtime/up", "/api/runtime/down", "/api/runtime/restart",
+		"/api/logs", "/api/logs/info", "/api/install", "/api/update",
+		"/api/telemetry", "/api/telemetry/show", "/api/telemetry/enable", "/api/telemetry/disable",
+		"/api/config/path", "/api/config/verify",
+		"/api/integrations/rtk", "/api/integrations/rtk/enable", "/api/integrations/rtk/disable", "/api/integrations/rtk/probe", "/api/integrations/rtk/install",
+		"/api/integrations/codegraph", "/api/integrations/codegraph/probe", "/api/integrations/codegraph/install",
+		"/api/integrations/typesafe/enable", "/api/integrations/typesafe/disable",
+		"/api/workspaces/ws_contract/integrations/codegraph", "/api/workspaces/ws_contract/integrations/codegraph/init", "/api/workspaces/ws_contract/integrations/codegraph/sync",
+	}
+	for _, path := range paths {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodHead, path, nil))
+		if recorder.Code == http.StatusNotFound {
+			t.Errorf("restored Admin route is not registered: %s", path)
+		}
+	}
 }

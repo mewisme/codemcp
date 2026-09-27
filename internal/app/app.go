@@ -192,7 +192,7 @@ func (a *App) AdminHandler() http.Handler {
 		return http.NotFoundHandler()
 	}
 	adminAPI := admin.API{
-		Upstream: a.Upstream, Tools: a.Tools, Tunnel: a.Tunnel, Config: a.Config, OAuth: a.OAuth, OAuthFlows: a.OAuthFlows,
+		Upstream: a.Upstream, Tools: a.Tools, Tunnel: a.Tunnel, Config: a.Config, OAuth: a.OAuth, OAuthFlows: a.OAuthFlows, Operations: a.Operations,
 		Approvals: a.Tools.Approvals, Executions: a.Tools.Executions, Notifications: a.Notifications, Activity: a.Activity,
 	}
 	adminAuth := func() (bool, string) {

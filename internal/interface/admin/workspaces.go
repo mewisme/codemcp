@@ -108,6 +108,10 @@ func (api API) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		api.handleWorkspaceProcesses(w, r, value.ID, parts[2:])
 		return
 	}
+	if len(parts) >= 3 && parts[1] == "integrations" && parts[2] == "codegraph" {
+		api.handleCodeGraphWorkspace(w, r, value.ID, parts[1:])
+		return
+	}
 	if len(parts) != 1 {
 		http.NotFound(w, r)
 		return
