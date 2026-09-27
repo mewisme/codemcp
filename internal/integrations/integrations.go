@@ -66,7 +66,7 @@ func Default() Config {
 		Ponytail:  Ponytail{Active: true, Mode: "full"},
 		Caveman:   Caveman{Active: true, Mode: "full"},
 		RTK:       RTK{Enabled: true},
-		CodeGraph: CodeGraph{Enabled: false},
+		CodeGraph: CodeGraph{Enabled: true},
 		TypeSafe:  TypeSafe{Enabled: false, Model: "jev-latest", TimeoutMS: 3000},
 	}
 }

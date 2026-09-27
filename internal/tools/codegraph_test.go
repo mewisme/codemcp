@@ -261,7 +261,9 @@ func TestCodeGraphIntegrationReloadCatchesUpFailedCompletion(t *testing.T) {
 
 func TestCodeGraphExploreBoundWorkspaceCanBeInjected(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
-	runtime := NewRuntimeWithIntegrations(integrations.Default())
+	cfg := integrations.Default()
+	cfg.CodeGraph.Enabled = false
+	runtime := NewRuntimeWithIntegrations(cfg)
 	item, err := runtime.Workspaces.Register(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

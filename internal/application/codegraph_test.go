@@ -19,6 +19,7 @@ import (
 func TestCodeGraphOperationsUseCanonicalDispatcher(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	cfg := config.Default()
+	cfg.Integrations.CodeGraph.Enabled = false
 	service := &CodeGraphService{LoadConfig: func() (config.Config, error) { return cfg, nil }}
 	dispatcher := NewDispatcher()
 	if err := BindCodeGraphOperations(dispatcher, service); err != nil {
