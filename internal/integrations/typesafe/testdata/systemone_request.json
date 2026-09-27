@@ -1,0 +1,29 @@
+{
+  "state": {
+    "message": "Help! My payouts have been failing for 3 days."
+  },
+  "model": "jev-latest",
+  "questions": {
+    "urgent": {
+      "type": "noul",
+      "instructions": "Does this convey urgency?"
+    },
+    "route": {
+      "type": "choice",
+      "instructions": "Which team should handle this?",
+      "criteria": {
+        "billing": "Payments, invoicing, refunds",
+        "technical": "Bugs, outages, integrations"
+      }
+    },
+    "severity": {
+      "type": "score",
+      "instructions": "How severe is the impact?",
+      "criteria": [
+        "Low impact",
+        "Moderate impact",
+        "High impact"
+      ]
+    }
+  }
+}
