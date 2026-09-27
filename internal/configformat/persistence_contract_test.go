@@ -15,6 +15,11 @@ func TestRuntimePersistenceHasNoLegacyFormatReadersOrCGMBundles(t *testing.T) {
 	}
 	internalRoot := filepath.Clean(filepath.Join(filepath.Dir(current), ".."))
 	legacyBundleExt := "." + "cgm"
+	allowedNonPersistenceImports := map[string]map[string]bool{
+		filepath.FromSlash("mcp/core_skills.go"): {
+			`"gopkg.in/yaml.v3"`: true, // SKILL.md frontmatter, not configuration persistence.
+		},
+	}
 	err := filepath.WalkDir(internalRoot, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -33,6 +38,7 @@ func TestRuntimePersistenceHasNoLegacyFormatReadersOrCGMBundles(t *testing.T) {
 			return err
 		}
 		text := string(data)
+		relative, _ := filepath.Rel(internalRoot, path)
 		for _, forbidden := range []string{
 			`"github.com/pelletier/go-toml/v2"`,
 			`"gopkg.in/yaml.v3"`,
@@ -40,7 +46,9 @@ func TestRuntimePersistenceHasNoLegacyFormatReadersOrCGMBundles(t *testing.T) {
 			`"` + legacyBundleExt + `"`,
 		} {
 			if strings.Contains(text, forbidden) {
-				relative, _ := filepath.Rel(internalRoot, path)
+				if allowedNonPersistenceImports[relative][forbidden] {
+					continue
+				}
 				t.Fatalf("current runtime source %s contains legacy persistence dependency %s", relative, forbidden)
 			}
 		}
