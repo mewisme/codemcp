@@ -28,6 +28,8 @@ const (
 	defaultRetention  = 30 * 24 * time.Hour
 	defaultMaxFile    = 5 * 1024 * 1024
 	maxDirectoryDepth = 32
+	maxIndexBytes     = 16 << 20
+	maxIndexEntries   = 100_000
 )
 
 type Store struct {
@@ -789,7 +791,8 @@ func (s *Store) collectRestorePlanLocked(workspaceID, workspaceRoot string, allo
 }
 
 func (s *Store) readIndex(workspaceID string) (Index, error) {
-	data, err := os.ReadFile(s.indexPath(workspaceID))
+	path := s.indexPath(workspaceID)
+	data, err := readBoundedRegularFile(path, maxIndexBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return Index{Version: indexVersion, Checkpoints: []Summary{}}, nil
 	}
@@ -797,14 +800,33 @@ func (s *Store) readIndex(workspaceID string) (Index, error) {
 		return Index{}, err
 	}
 	var index Index
-	if err := json.Unmarshal(data, &index); err != nil {
+	if err := decodeStrictJSON(data, &index); err != nil {
 		return Index{}, err
 	}
 	if index.Version != indexVersion {
 		return Index{}, fmt.Errorf("unsupported checkpoint index version: %d", index.Version)
 	}
+	if len(index.Checkpoints) > maxIndexEntries {
+		return Index{}, fmt.Errorf("checkpoint index exceeds %d entries", maxIndexEntries)
+	}
 	if index.Checkpoints == nil {
 		index.Checkpoints = []Summary{}
+	}
+	seen := make(map[string]struct{}, len(index.Checkpoints))
+	for _, summary := range index.Checkpoints {
+		if strings.TrimSpace(summary.ID) == "" {
+			return Index{}, errors.New("checkpoint index contains empty id")
+		}
+		if _, exists := seen[summary.ID]; exists {
+			return Index{}, fmt.Errorf("checkpoint index contains duplicate id: %s", summary.ID)
+		}
+		seen[summary.ID] = struct{}{}
+		if _, err := time.Parse(time.RFC3339Nano, summary.CreatedAt); err != nil {
+			return Index{}, fmt.Errorf("checkpoint index has invalid created_at for %s", summary.ID)
+		}
+		if summary.FileCount != len(summary.Files) {
+			return Index{}, fmt.Errorf("checkpoint index file count mismatch for %s", summary.ID)
+		}
 	}
 	return index, nil
 }
@@ -818,7 +840,8 @@ func (s *Store) writeIndex(workspaceID string, index Index) error {
 }
 
 func (s *Store) readManifest(workspaceID, id string) (*Manifest, error) {
-	data, err := os.ReadFile(s.manifestPath(workspaceID, id))
+	path := s.manifestPath(workspaceID, id)
+	data, err := readBoundedRegularFile(path, maxArchiveManifestBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -826,11 +849,20 @@ func (s *Store) readManifest(workspaceID, id string) (*Manifest, error) {
 		return nil, err
 	}
 	var manifest Manifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
+	if err := decodeStrictJSON(data, &manifest); err != nil {
 		return nil, err
 	}
 	if manifest.Version != indexVersion {
 		return nil, fmt.Errorf("unsupported checkpoint manifest version: %d", manifest.Version)
+	}
+	if manifest.ID != id || manifest.WorkspaceID != workspaceID {
+		return nil, fmt.Errorf("checkpoint manifest identity mismatch: %s", id)
+	}
+	if strings.TrimSpace(manifest.WorkspaceRoot) == "" || !filepath.IsAbs(manifest.WorkspaceRoot) {
+		return nil, fmt.Errorf("checkpoint manifest has invalid workspace root: %s", id)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, manifest.CreatedAt); err != nil {
+		return nil, fmt.Errorf("checkpoint manifest has invalid created_at: %s", id)
 	}
 	return &manifest, nil
 }
@@ -939,6 +971,19 @@ func within(root, candidate string) bool {
 
 func writeStructuredAtomic(path string, value any, mode os.FileMode) error {
 	return state.WriteJSONAtomic(path, value, mode)
+}
+
+func decodeStrictJSON(data []byte, value any) error {
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		return errors.New("checkpoint JSON contains trailing data")
+	}
+	return nil
 }
 
 func minInt(a, b int) int {
