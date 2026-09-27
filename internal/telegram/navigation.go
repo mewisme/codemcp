@@ -14,11 +14,19 @@ import (
 type Route string
 
 const (
-	RouteHome     Route = "home"
-	RouteStatus   Route = "status"
-	RouteCommands Route = "commands"
-	RouteSettings Route = "settings"
-	RouteAuth     Route = "auth"
+	RouteHome       Route = "home"
+	RouteStatus     Route = "status"
+	RouteCommands   Route = "commands"
+	RouteSettings   Route = "settings"
+	RouteAuth       Route = "auth"
+	RouteWorkspaces Route = "workspaces"
+	RouteWorkspace  Route = "workspace"
+	RouteAccess     Route = "workspace.access"
+	RouteContainers Route = "containers"
+	RouteContainer  Route = "container"
+	RouteRequests   Route = "requests"
+	RouteRequest    Route = "request"
+	RouteOperation  Route = "operation"
 )
 
 type ActionState struct {
@@ -31,6 +39,7 @@ type ActionState struct {
 	Page            int
 	Detail          bool
 	Confirmed       bool
+	InputKind       string
 }
 
 type VersionResolver func(context.Context, capability.ID, string) (string, error)
@@ -70,6 +79,7 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 	}
 	handlers := map[Route]RouteHandler{
 		RouteHome: ui.handleHome, RouteStatus: ui.handleStatus, RouteCommands: ui.handleCommands,
+		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests,
 	}
 	for _, command := range Commands() {
 		if handler := handlers[command.Route]; handler != nil {
@@ -85,6 +95,9 @@ func (ui *Interface) Handle(ctx context.Context, update Update) {
 		return
 	}
 	if update.Message != nil && messageCommand(update.Message.Text) == "" {
+		if ui.handleActionInput(ctx, update) {
+			return
+		}
 		ui.acceptPendingInput(update)
 		return
 	}
@@ -224,6 +237,13 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 	if ref.Action == CallbackConfirm {
 		state.Confirmed = true
 	}
+	if state.InputKind != "" && state.Input == nil {
+		ui.answerCallback(ctx, update.CallbackQuery.ID, "", false)
+		if err := ui.beginActionInput(ctx, owner, state); err != nil {
+			_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, ErrorScreen(err))
+		}
+		return
+	}
 	var spec capability.Spec
 	var hasSpec bool
 	if state.Operation != "" {
@@ -304,6 +324,20 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.authScreen(owner)
 	case RouteStatus:
 		return ui.operationScreen(ctx, owner, state)
+	case RouteWorkspaces:
+		return ui.workspaceListScreen(ctx, owner, state)
+	case RouteWorkspace:
+		return ui.workspaceDetailScreen(ctx, owner, state)
+	case RouteAccess:
+		return ui.workspaceAccessScreen(ctx, owner, state)
+	case RouteContainers:
+		return ui.containerListScreen(ctx, owner, state)
+	case RouteContainer:
+		return ui.containerDetailScreen(ctx, owner, state)
+	case RouteRequests:
+		return ui.requestListScreen(ctx, owner, state)
+	case RouteRequest:
+		return ui.requestDetailScreen(ctx, owner, state)
 	default:
 		if state.Operation == "" {
 			return Screen{}, errors.New("telegram navigation route is unavailable")
@@ -333,6 +367,14 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
+	workspaces, err := ui.stateButton(owner, "Workspaces", CallbackOpen, ActionState{Route: RouteWorkspaces, Back: RouteHome, Operation: capability.WorkspaceList})
+	if err != nil {
+		return Screen{}, err
+	}
+	requests, err := ui.stateButton(owner, "Requests", CallbackOpen, ActionState{Route: RouteRequests, Back: RouteHome, Operation: capability.RequestList})
+	if err != nil {
+		return Screen{}, err
+	}
 	unavailable := func(label string) Button {
 		return Button{Text: CompactActionLabel(label), Disabled: true, Role: ButtonRoleNeutral}
 	}
@@ -340,12 +382,13 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 		ProductHeader("CodeMCP", "Telegram"),
 		TitleBlock("Home", "Private administration interface"),
 		StatusRow(ToneHealthy, "Authorized", "Commands are limited to this private account."),
-		StatusRow(ToneWarning, "Unavailable", "Administration sections remain disabled until their canonical Telegram adapters are activated."),
+		StatusRow(ToneHealthy, "Administration", "Workspace and approval operations use canonical application services."),
+		StatusRow(ToneWarning, "Unavailable", "Remaining administration sections stay disabled until their canonical Telegram adapters are activated."),
 	)
 	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{
 		{status, unavailable("System")},
-		{unavailable("Requests"), unavailable("Completions")},
-		{unavailable("Workspaces"), unavailable("Secure MCP Tunnel")},
+		{requests, unavailable("Completions")},
+		{workspaces, unavailable("Secure MCP Tunnel")},
 		{unavailable("Upstreams"), unavailable("Integrations")},
 		{unavailable("Instructions")},
 		{settings, auth},
@@ -495,6 +538,9 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 	if err != nil {
 		return Screen{}, err
 	}
+	if screen, handled, err := ui.domainOperationResultScreen(owner, state, spec, result.Value); handled {
+		return screen, err
+	}
 	parts := []PresentationPart{
 		ProductHeader("CodeMCP", "Telegram / "+routeLabel(state.Route)),
 		TitleBlock(string(result.Operation), "Canonical operation"),
@@ -537,6 +583,11 @@ func workingScreen(state ActionState) Screen {
 }
 
 func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, operationErr error) (Screen, error) {
+	if state.Operation == capability.WorkspaceRelocate {
+		if screen, ok := ui.workspaceRelocationConflictScreen(owner, state, operationErr); ok {
+			return screen, nil
+		}
+	}
 	retry := state
 	retry.Confirmed = false
 	retryButton, err := ui.retryButton(owner, retry)
@@ -764,7 +815,7 @@ func (ui *Interface) paginationKeyboard(owner ViewOwner, state ActionState, tota
 }
 
 func requiresExplicitConfirmation(spec capability.Spec) bool {
-	return spec.Confirmation.Mode == capability.ConfirmationRequired
+	return spec.Confirmation.Mode == capability.ConfirmationRequired || spec.Effects.Destructive
 }
 
 func ownerFromUpdate(runtime *Runtime, update Update) (ViewOwner, bool) {
@@ -806,6 +857,22 @@ func routeLabel(route Route) string {
 		return "Settings"
 	case RouteAuth:
 		return "Auth"
+	case RouteWorkspaces:
+		return "Workspaces"
+	case RouteWorkspace:
+		return "Workspace"
+	case RouteAccess:
+		return "Workspace access"
+	case RouteContainers:
+		return "Containers"
+	case RouteContainer:
+		return "Container"
+	case RouteRequests:
+		return "Requests"
+	case RouteRequest:
+		return "Request"
+	case RouteOperation:
+		return "Operation"
 	default:
 		value := strings.TrimSpace(string(route))
 		if value == "" {

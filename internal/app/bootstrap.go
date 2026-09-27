@@ -48,6 +48,14 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
+		if err := application.BindWorkspaceOperations(a.Operations, application.NewDefaultWorkspaceService(a.Tools.Workspaces)); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		if err := application.BindRequestOperations(a.Operations); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		telemetry.AttachTools(a.Tools, a.Activity, a.Logger)
 		telemetry.AttachApprovals(a.Tools.Approvals, a.Activity, a.Logger)
 		telemetry.AttachBackground(a.Tools.Processes, a.Activity, a.Logger)

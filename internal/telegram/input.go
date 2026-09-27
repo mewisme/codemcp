@@ -16,6 +16,7 @@ type PendingInput struct {
 	Owner           ViewOwner
 	PromptMessageID int64
 	Secret          bool
+	Action          *ActionState
 	ExpiresAt       time.Time
 }
 
@@ -46,12 +47,20 @@ func NewInputStore(ttl time.Duration) *InputStore {
 }
 
 func (s *InputStore) Put(owner ViewOwner, promptMessageID int64, secret bool) error {
+	return s.put(owner, promptMessageID, secret, nil)
+}
+
+func (s *InputStore) PutAction(owner ViewOwner, promptMessageID int64, secret bool, action ActionState) error {
+	return s.put(owner, promptMessageID, secret, &action)
+}
+
+func (s *InputStore) put(owner ViewOwner, promptMessageID int64, secret bool, action *ActionState) error {
 	if s == nil || owner.ChatID <= 0 || owner.UserID <= 0 || owner.Generation <= 0 || promptMessageID <= 0 {
 		return errors.New("telegram input state is invalid")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.entries[promptMessageID] = PendingInput{Owner: owner, PromptMessageID: promptMessageID, Secret: secret, ExpiresAt: time.Now().Add(s.ttl)}
+	s.entries[promptMessageID] = PendingInput{Owner: owner, PromptMessageID: promptMessageID, Secret: secret, Action: action, ExpiresAt: time.Now().Add(s.ttl)}
 	return nil
 }
 

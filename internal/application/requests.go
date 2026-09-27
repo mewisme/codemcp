@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"sync"
 
 	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/capability"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
@@ -103,6 +105,45 @@ func ResolveApprovalRequestWithRuntimeGrant(ctx context.Context, id string, appr
 	}
 	span.EndMessage("Control approval request resolved", tracepkg.String("request", requested), tracepkg.String("request_id", result.ID), tracepkg.String("action", action), tracepkg.String("status", string(result.Status)), tracepkg.String("resolved_by", result.ResolvedBy), tracepkg.Bool("allow_similar", allowSimilar))
 	return result, nil
+}
+
+type RequestIDInput struct {
+	ID string
+}
+
+type RequestResolutionInput struct {
+	ID           string
+	Reason       string
+	AllowSimilar bool
+}
+
+func BindRequestOperations(dispatcher *Dispatcher) error {
+	if dispatcher == nil {
+		return errors.New("operation dispatcher is nil")
+	}
+	bindings := []struct {
+		id      capability.ID
+		handler OperationHandler
+	}{
+		{capability.RequestList, func(ctx context.Context, _ any) (any, error) {
+			return ListApprovalRequests(ctx)
+		}},
+		{capability.RequestView, typedOperation[RequestIDInput](capability.RequestView, func(ctx context.Context, input RequestIDInput) (any, error) {
+			return GetApprovalRequest(ctx, input.ID)
+		})},
+		{capability.RequestApprove, typedOperation[RequestResolutionInput](capability.RequestApprove, func(ctx context.Context, input RequestResolutionInput) (any, error) {
+			return ResolveApprovalRequestWithRuntimeGrant(ctx, input.ID, true, input.AllowSimilar, input.Reason)
+		})},
+		{capability.RequestDeny, typedOperation[RequestResolutionInput](capability.RequestDeny, func(ctx context.Context, input RequestResolutionInput) (any, error) {
+			return ResolveApprovalRequest(ctx, input.ID, false, input.Reason)
+		})},
+	}
+	for _, binding := range bindings {
+		if err := dispatcher.Register(binding.id, binding.handler); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func CreateDummyApprovalRequest(ctx context.Context, workspaceID, title, command string) (approval.Request, error) {
