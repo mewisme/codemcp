@@ -24,24 +24,25 @@ import (
 )
 
 type App struct {
-	Config                  *config.RuntimeStore
-	MCP                     *mcp.HTTPRuntime
-	Upstream                *upstream.Manager
-	Tools                   *tools.Runtime
-	Activity                *activity.Stream
-	Tunnel                  *tunnel.Client
-	Logger                  *logger.Logger
-	OAuth                   *mcpoauth.Store
-	OAuthFlows              *mcpoauth.FlowManager
-	Notifications           *notification.Coordinator
-	ApprovalNotifications   *notification.ApprovalBridge
-	CompletionNotifications *notification.CompletionHook
-	BackgroundNotifications *notification.BackgroundJobBridge
-	ProductTelemetry        productTelemetryRuntime
-	runtimeCtx              context.Context
-	trace                   tracepkg.Observer
-	running                 bool
-	bootstrap               sync.Once
+	Config                    *config.RuntimeStore
+	MCP                       *mcp.HTTPRuntime
+	Upstream                  *upstream.Manager
+	Tools                     *tools.Runtime
+	Activity                  *activity.Stream
+	Tunnel                    *tunnel.Client
+	Logger                    *logger.Logger
+	OAuth                     *mcpoauth.Store
+	OAuthFlows                *mcpoauth.FlowManager
+	Notifications             *notification.Coordinator
+	ApprovalNotifications     *notification.ApprovalBridge
+	CompletionNotifications   *notification.CompletionHook
+	BackgroundNotifications   *notification.BackgroundJobBridge
+	ProductTelemetry          productTelemetryRuntime
+	ProductLifecycleTelemetry *productLifecycleTelemetry
+	runtimeCtx                context.Context
+	trace                     tracepkg.Observer
+	running                   bool
+	bootstrap                 sync.Once
 }
 
 type productTelemetryRuntime interface {
@@ -132,6 +133,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 		Tunnel: tunnelClient, Logger: appLogger,
 		OAuth: oauthStore, OAuthFlows: mcpoauth.NewFlowManager(oauthStore), ProductTelemetry: productRecorder, trace: observer,
 	}
+	app.ProductLifecycleTelemetry = newProductLifecycleTelemetry(productRecorder, toolRuntime.Approvals, toolRuntime.Processes)
 	bootstrapStarted := time.Now()
 	if err := app.Bootstrap(); err != nil {
 		span.FailMessage("Server runtime application bootstrap failed", err, tracepkg.Int64("bootstrap_ms", time.Since(bootstrapStarted).Milliseconds()))

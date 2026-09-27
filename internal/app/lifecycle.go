@@ -83,6 +83,9 @@ func (a *App) Start(ctx context.Context) error {
 		}
 		tunnelSpan.EndMessage("Tunnel runtime started", tracepkg.Bool("enabled", a.Tunnel.Status().Enabled), tracepkg.Bool("running", a.Tunnel.Status().Running))
 	}
+	if a.ProductLifecycleTelemetry != nil {
+		a.ProductLifecycleTelemetry.Start(ctx)
+	}
 	a.running = true
 	a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, nil)
 	span.EndMessage("Application runtime started", tracepkg.Bool("running", true))
@@ -156,6 +159,9 @@ func (a *App) Stop() error {
 				a.Logger.Verbose("UPSTREAM", "upstream.stopped", "Upstream servers stopped")
 			}
 		}
+	}
+	if a.ProductLifecycleTelemetry != nil {
+		a.ProductLifecycleTelemetry.Stop()
 	}
 	if a.Tools != nil && a.Tools.BackgroundDeliveries != nil {
 		a.Tools.BackgroundDeliveries.Close()

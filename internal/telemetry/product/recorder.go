@@ -11,12 +11,14 @@ import (
 )
 
 type Usage struct {
-	Interface Interface
-	Command   string
-	Feature   string
-	ErrorCode ErrorCode
-	Duration  time.Duration
-	Success   bool
+	Interface    Interface
+	Command      string
+	Feature      string
+	ErrorCode    ErrorCode
+	Duration     time.Duration
+	Success      bool
+	OmitDuration bool
+	OmitSuccess  bool
 }
 
 type Recorder struct {
@@ -105,17 +107,26 @@ func (recorder *Recorder) Record(_ context.Context, name EventName, usage Usage)
 		return false
 	}
 	base.AnonymousID = anonymousID
-	durationMS := usage.Duration.Milliseconds()
-	if durationMS < 0 {
-		durationMS = 0
+	var durationMS *int64
+	if !usage.OmitDuration {
+		value := usage.Duration.Milliseconds()
+		if value < 0 {
+			value = 0
+		}
+		durationMS = &value
+	}
+	var success *bool
+	if !usage.OmitSuccess {
+		value := usage.Success
+		success = &value
 	}
 	event, err := NewEvent(name, base, EventFields{
 		Interface:  usage.Interface,
 		Command:    strings.TrimSpace(usage.Command),
 		Feature:    strings.TrimSpace(usage.Feature),
 		ErrorCode:  usage.ErrorCode,
-		DurationMS: &durationMS,
-		Success:    &usage.Success,
+		DurationMS: durationMS,
+		Success:    success,
 	})
 	if err != nil {
 		return false
