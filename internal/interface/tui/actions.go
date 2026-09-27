@@ -132,6 +132,9 @@ func logsAction(id, title, description string, keywords, commandPath []string, c
 func configActions() []action.Action {
 	return []action.Action{
 		configAction("config.refresh", "Refresh config", "Reload persisted configuration and runtime state", []string{"config", "refresh", "reload", "view"}, []string{"config", "list"}, tuipage.ConfigRefresh),
+		configAction("integration.typesafe.status", "TypeSafe status", "Show local TypeSafe integration state without a network request", []string{"typesafe", "integration", "status", "semantic"}, []string{"integration", "typesafe", "status"}, tuipage.ConfigTypeSafeStatus),
+		configAction("integration.typesafe.doctor", "TypeSafe doctor", "Run local TypeSafe configuration and credential checks", []string{"typesafe", "integration", "doctor", "health"}, []string{"integration", "typesafe", "doctor"}, tuipage.ConfigTypeSafeDoctor),
+		configAction("integration.typesafe.probe", "Probe TypeSafe", "Explicitly probe TypeSafe provider availability over the network", []string{"typesafe", "integration", "probe", "network"}, []string{"integration", "typesafe", "probe"}, tuipage.ConfigTypeSafeProbe),
 		configAction("config.edit", "Edit config field", "Edit the selected typed configuration field", []string{"config", "edit", "set", "field"}, []string{"config", "set"}, tuipage.ConfigEdit),
 		configAction("config.verify", "Verify config", "Verify structured config/state format consistency and configuration validity", []string{"config", "verify", "validate"}, []string{"config", "verify"}, tuipage.ConfigVerify),
 		configAction("config.migrate", "Migrate config secrets", "Migrate legacy plaintext credentials into the secret store", []string{"config", "migrate", "secrets"}, []string{"config", "migrate"}, tuipage.ConfigMigrate),

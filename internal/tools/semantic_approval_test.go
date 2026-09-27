@@ -128,6 +128,11 @@ func TestSemanticApprovalFailureAndLowConfidenceRequireCanonicalReview(t *testin
 				return semantic.RiskAssessment{}, semantic.NewError(semantic.ErrorRateLimited, "provider-private-detail")
 			}))
 		}},
+		{name: "provider timeout", configure: func(t *testing.T, runtime *Runtime) {
+			configureSemanticApprovalClassifier(t, runtime, semantic.RiskClassifierFunc(func(context.Context, semantic.RiskInput) (semantic.RiskAssessment, error) {
+				return semantic.RiskAssessment{}, semantic.NewError(semantic.ErrorTimeout, "provider-private-detail")
+			}))
+		}},
 		{name: "low confidence", configure: func(t *testing.T, runtime *Runtime) {
 			configureSemanticApprovalClassifier(t, runtime, semantic.RiskClassifierFunc(func(context.Context, semantic.RiskInput) (semantic.RiskAssessment, error) {
 				return semanticAssessment(semantic.RiskLow, 0.2), nil
@@ -220,6 +225,26 @@ func TestSemanticApprovalNativeGuardPrecedesClassifier(t *testing.T) {
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("classifier ran before deterministic guard: %d", calls.Load())
+	}
+}
+
+func TestSemanticApprovalPathAndNetworkGuardsPrecedeClassifier(t *testing.T) {
+	for _, command := range []string{"touch /tmp/codemcp-semantic-outside", "ftp example.com"} {
+		t.Run(command, func(t *testing.T) {
+			runtime, workspaceID := newApprovalShellRuntime(t)
+			var calls atomic.Int32
+			configureSemanticApprovalClassifier(t, runtime, semantic.RiskClassifierFunc(func(context.Context, semantic.RiskInput) (semantic.RiskAssessment, error) {
+				calls.Add(1)
+				return semanticAssessment(semantic.RiskLow, 1), nil
+			}))
+			result, err := runtime.Call(semanticApprovalContext("local-guard"), "run_command", map[string]any{"workspace_id": workspaceID, "command": command})
+			if err != nil || !result.IsError {
+				t.Fatalf("guard result=%#v err=%v", result, err)
+			}
+			if calls.Load() != 0 {
+				t.Fatalf("classifier bypassed local guard: %d", calls.Load())
+			}
+		})
 	}
 }
 

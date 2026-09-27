@@ -21,6 +21,9 @@ type ConfigCommand string
 
 const (
 	ConfigRefresh        ConfigCommand = "config.refresh"
+	ConfigTypeSafeStatus ConfigCommand = "integration.typesafe.status"
+	ConfigTypeSafeDoctor ConfigCommand = "integration.typesafe.doctor"
+	ConfigTypeSafeProbe  ConfigCommand = "integration.typesafe.probe"
 	ConfigEdit           ConfigCommand = "config.edit"
 	ConfigVerify         ConfigCommand = "config.verify"
 	ConfigMigrate        ConfigCommand = "config.migrate"
@@ -48,14 +51,17 @@ type configLoadMsg struct {
 }
 
 type configOperationMsg struct {
-	operationID uint64
-	command     ConfigCommand
-	mutation    application.ConfigMutationResult
-	verify      config.VerifyResult
-	files       int
-	migrated    int
-	path        string
-	err         error
+	operationID    uint64
+	command        ConfigCommand
+	mutation       application.ConfigMutationResult
+	verify         config.VerifyResult
+	typeSafeStatus application.TypeSafeStatus
+	typeSafeDoctor application.TypeSafeDoctorResult
+	typeSafeProbe  application.TypeSafeProbeResult
+	files          int
+	migrated       int
+	path           string
+	err            error
 }
 
 type ConfigPage struct {
@@ -95,7 +101,7 @@ var configDomains = []configDomain{
 	{ID: "runtime", Title: "Runtime & Network", Description: "MCP HTTP and admin server configuration"},
 	{ID: "access", Title: "Access & Security", Description: "Authentication and filesystem access"},
 	{ID: "shell", Title: "Shell & Execution", Description: "Approval, sandbox, environment, and network policy"},
-	{ID: "integrations", Title: "Integrations", Description: "Ponytail, Caveman, RTK, and CodeGraph"},
+	{ID: "integrations", Title: "Integrations", Description: "Ponytail, Caveman, RTK, CodeGraph, and TypeSafe"},
 	{ID: "tunnel", Title: "Tunnel", Description: "OpenAI Secure MCP Tunnel configuration"},
 	{ID: "storage", Title: "Storage & Maintenance", Description: "Storage, verification, import, export, and migration"},
 }
@@ -404,6 +410,21 @@ func (page *ConfigPage) openCommand(command ConfigCommand, resourceID string) (t
 	case ConfigRefresh:
 		page.loading = true
 		return page.loadCmd(), nil
+	case ConfigTypeSafeStatus:
+		return page.startOperation(command, "Checking TypeSafe status", func(ctx context.Context) configOperationMsg {
+			status, err := application.NewTypeSafeService().Status(ctx)
+			return configOperationMsg{command: command, typeSafeStatus: status, err: err}
+		}), nil
+	case ConfigTypeSafeDoctor:
+		return page.startOperation(command, "Checking TypeSafe health", func(ctx context.Context) configOperationMsg {
+			result, err := application.NewTypeSafeService().Doctor(ctx, false)
+			return configOperationMsg{command: command, typeSafeDoctor: result, err: err}
+		}), nil
+	case ConfigTypeSafeProbe:
+		return page.startOperation(command, "Probing TypeSafe provider", func(ctx context.Context) configOperationMsg {
+			result, err := application.NewTypeSafeService().Probe(ctx)
+			return configOperationMsg{command: command, typeSafeProbe: result, err: err}
+		}), nil
 	case ConfigEdit:
 		if !page.loaded {
 			return nil, fmt.Errorf("configuration is still loading")
@@ -501,6 +522,18 @@ func (page *ConfigPage) finishOperation(msg configOperationMsg) tea.Cmd {
 			}
 		}
 		page.notice = application.ConfigOperationNotice(msg.mutation.RuntimeReloaded)
+	case ConfigTypeSafeStatus:
+		page.notice = fmt.Sprintf("TypeSafe · %s · model %s · API key %s", msg.typeSafeStatus.State, msg.typeSafeStatus.Model, typeSafeConfiguredLabel(msg.typeSafeStatus.APIKeyConfigured))
+	case ConfigTypeSafeDoctor:
+		passed := 0
+		for _, check := range msg.typeSafeDoctor.Checks {
+			if check.OK {
+				passed++
+			}
+		}
+		page.notice = fmt.Sprintf("TypeSafe doctor · %d/%d local checks passed", passed, len(msg.typeSafeDoctor.Checks))
+	case ConfigTypeSafeProbe:
+		page.notice = fmt.Sprintf("TypeSafe probe · model %s · HTTP %d", msg.typeSafeProbe.Status.Model, msg.typeSafeProbe.Provider.HTTPStatus)
 	case ConfigVerify:
 		page.notice = fmt.Sprintf("Configuration verified · %s · %d structured files", msg.verify.Format, msg.verify.Files)
 	case ConfigMigrate:
@@ -522,6 +555,13 @@ func (page *ConfigPage) finishOperation(msg configOperationMsg) tea.Cmd {
 		overview, err := application.LoadConfigOverview(page.ctx)
 		return configLoadMsg{overview: overview, err: err}
 	}
+}
+
+func typeSafeConfiguredLabel(configured bool) string {
+	if configured {
+		return "configured"
+	}
+	return "not configured"
 }
 
 func (page *ConfigPage) cancelOperation() {
@@ -889,7 +929,7 @@ func (page *ConfigPage) domainSummary(domain string) string {
 		}
 		return fmt.Sprintf("%d extra PATH entries · risk-based mutation approvals", len(cfg.Shell.Path))
 	case "integrations":
-		return fmt.Sprintf("Ponytail %s · Caveman %s · RTK %s · CodeGraph %s", configOnOff(cfg.Integrations.Ponytail.Active), configOnOff(cfg.Integrations.Caveman.Active), configOnOff(cfg.Integrations.RTK.Enabled), configOnOff(cfg.Integrations.CodeGraph.Enabled))
+		return fmt.Sprintf("Ponytail %s · Caveman %s · RTK %s · CodeGraph %s · TypeSafe %s", configOnOff(cfg.Integrations.Ponytail.Active), configOnOff(cfg.Integrations.Caveman.Active), configOnOff(cfg.Integrations.RTK.Enabled), configOnOff(cfg.Integrations.CodeGraph.Enabled), configOnOff(cfg.Integrations.TypeSafe.Enabled))
 	case "tunnel":
 		return fmt.Sprintf("%s · runtime key %s · admin key %s", configOnOff(cfg.Tunnel.Enabled), configuredState(cfg.Tunnel.APIKey), configuredState(cfg.Tunnel.Admin.Key))
 	case "storage":

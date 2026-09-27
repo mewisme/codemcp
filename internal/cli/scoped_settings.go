@@ -268,6 +268,7 @@ func integrationTypeSafeSettingsCommand() *cobra.Command {
 		scopedValueCommand("model", "Set TypeSafe model", "TypeSafe model updated", prefix+".model"),
 		scopedValueCommand("timeout", "Set TypeSafe timeout in milliseconds", "TypeSafe timeout updated", prefix+".timeout_ms"),
 		typeSafeStatusCommand(),
+		typeSafeDoctorCommand(),
 		typeSafeProbeCommand(),
 	)
 	key := &cobra.Command{Use: "key", Short: "Manage the TypeSafe API key"}
@@ -293,6 +294,32 @@ func integrationTypeSafeSettingsCommand() *cobra.Command {
 	}
 	key.AddCommand(markScopedSettings(set, prefix+".api_key"), markScopedSettings(remove, prefix+".api_key"))
 	cmd.AddCommand(key)
+	return cmd
+}
+
+func typeSafeDoctorCommand() *cobra.Command {
+	var probe bool
+	cmd := &cobra.Command{
+		Use: "doctor", Short: "Check TypeSafe integration health", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result, err := application.NewTypeSafeService().Doctor(cmd.Context(), probe)
+			presenter := commandPresenter(cmd)
+			presenter.Frame("TypeSafe doctor")
+			for _, check := range result.Checks {
+				status := presentation.StatusSuccess
+				if !check.OK {
+					status = presentation.StatusWarning
+				}
+				presenter.StateSection(status, check.Message)
+			}
+			if err != nil {
+				return err
+			}
+			presenter.Complete("Doctor complete")
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&probe, "probe", false, "also probe the TypeSafe provider over the network")
 	return cmd
 }
 

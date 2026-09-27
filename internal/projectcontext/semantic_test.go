@@ -127,6 +127,21 @@ func TestSemanticFailureLeavesDeterministicProjectContextSelection(t *testing.T)
 	}
 }
 
+func TestSemanticRateLimitAndTimeoutKeepNativeProjectContext(t *testing.T) {
+	value := instructioncontext.InstructionContext{GlobalContext: "native global context"}
+	for _, category := range []semantic.ErrorCategory{semantic.ErrorRateLimited, semantic.ErrorTimeout} {
+		t.Run(string(category), func(t *testing.T) {
+			provider := semantic.ProviderFunc(func(context.Context, semantic.Request) (semantic.Result, error) {
+				return semantic.Result{}, semantic.NewError(category, "provider-private-detail")
+			})
+			priority, summary := rankOptionalContext(t.Context(), provider, "query", value)
+			if len(priority) != 0 || summary.Used || !summary.Fallback {
+				t.Fatalf("priority=%v summary=%#v", priority, summary)
+			}
+		})
+	}
+}
+
 func TestRankOptionalContextNeverIncludesRulesAsCandidates(t *testing.T) {
 	var captured semantic.Request
 	provider := semantic.ProviderFunc(func(_ context.Context, request semantic.Request) (semantic.Result, error) {

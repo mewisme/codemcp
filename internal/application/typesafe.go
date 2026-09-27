@@ -35,6 +35,22 @@ type TypeSafeProbeResult struct {
 	ErrorCategory typesafeintegration.ProbeErrorCategory `json:"error_category,omitempty"`
 }
 
+type TypeSafeDoctorCheck struct {
+	ID      string `json:"id"`
+	OK      bool   `json:"ok"`
+	Message string `json:"message"`
+}
+
+type TypeSafeDoctorResult struct {
+	Status TypeSafeStatus        `json:"status"`
+	Checks []TypeSafeDoctorCheck `json:"checks"`
+	Probe  *TypeSafeProbeResult  `json:"probe,omitempty"`
+}
+
+type TypeSafeDoctorInput struct {
+	Probe bool `json:"probe"`
+}
+
 type TypeSafeService struct {
 	LoadConfig func() (config.Config, error)
 	SetField   func(context.Context, string, string) (SettingResult, error)
@@ -129,6 +145,25 @@ func (s *TypeSafeService) Probe(ctx context.Context) (TypeSafeProbeResult, error
 	return result, err
 }
 
+func (s *TypeSafeService) Doctor(ctx context.Context, probe bool) (TypeSafeDoctorResult, error) {
+	status, err := s.Status(ctx)
+	if err != nil {
+		return TypeSafeDoctorResult{}, err
+	}
+	result := TypeSafeDoctorResult{Status: status}
+	result.Checks = append(result.Checks,
+		TypeSafeDoctorCheck{ID: "configuration", OK: status.Model != "" && status.TimeoutMS > 0, Message: "TypeSafe model and timeout are configured"},
+		TypeSafeDoctorCheck{ID: "credential", OK: !status.Enabled || status.APIKeyConfigured, Message: "API key is configured when TypeSafe is enabled"},
+	)
+	if !probe {
+		return result, nil
+	}
+	probeResult, probeErr := s.Probe(ctx)
+	result.Probe = &probeResult
+	result.Checks = append(result.Checks, TypeSafeDoctorCheck{ID: "probe", OK: probeErr == nil, Message: "Explicit TypeSafe provider probe"})
+	return result, probeErr
+}
+
 func BindTypeSafeOperations(dispatcher *Dispatcher, service *TypeSafeService) error {
 	if dispatcher == nil {
 		return errors.New("operation dispatcher is nil")
@@ -141,6 +176,10 @@ func BindTypeSafeOperations(dispatcher *Dispatcher, service *TypeSafeService) er
 		handler OperationHandler
 	}{
 		{capability.IntegrationTypeSafeStatus, func(ctx context.Context, _ any) (any, error) { return service.Status(ctx) }},
+		{capability.IntegrationTypeSafeDoctor, func(ctx context.Context, input any) (any, error) {
+			value, _ := input.(TypeSafeDoctorInput)
+			return service.Doctor(ctx, value.Probe)
+		}},
 		{capability.IntegrationTypeSafeEnable, func(ctx context.Context, _ any) (any, error) { return service.Enable(ctx) }},
 		{capability.IntegrationTypeSafeDisable, func(ctx context.Context, _ any) (any, error) { return service.Disable(ctx) }},
 		{capability.IntegrationTypeSafeProbe, func(ctx context.Context, _ any) (any, error) { return service.Probe(ctx) }},

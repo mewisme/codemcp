@@ -40,11 +40,15 @@ func TestRerankMemoryUsesStableBoundedSemanticOrder(t *testing.T) {
 
 func TestRerankMemoryFailsOpenToNativeOrder(t *testing.T) {
 	candidates := []MemoryCandidate{{Scope: "one", Note: "first"}, {Scope: "two", Note: "second"}}
-	provider := ProviderFunc(func(context.Context, Request) (Result, error) {
-		return Result{}, NewError(ErrorUnavailable, "")
-	})
-	order, meta := RerankMemory(t.Context(), provider, "memory_search", "query", candidates)
-	if meta.Used || !meta.Fallback || !reflect.DeepEqual(order, []int{0, 1}) {
-		t.Fatalf("order=%v meta=%#v", order, meta)
+	for _, category := range []ErrorCategory{ErrorUnavailable, ErrorRateLimited, ErrorTimeout} {
+		t.Run(string(category), func(t *testing.T) {
+			provider := ProviderFunc(func(context.Context, Request) (Result, error) {
+				return Result{}, NewError(category, "provider-private-detail")
+			})
+			order, meta := RerankMemory(t.Context(), provider, "memory_search", "query", candidates)
+			if meta.Used || !meta.Fallback || !reflect.DeepEqual(order, []int{0, 1}) {
+				t.Fatalf("order=%v meta=%#v", order, meta)
+			}
+		})
 	}
 }

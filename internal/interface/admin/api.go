@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/backgrounddelivery"
 	"go.mewis.me/codemcp/internal/config"
@@ -35,6 +36,7 @@ type API struct {
 	Activity      *activity.Stream
 	OAuth         *mcpoauth.Store
 	OAuthFlows    *mcpoauth.FlowManager
+	TypeSafe      *application.TypeSafeService
 	ReloadConfig  func(config.Config) error
 	saveConfig    func(config.Config) error
 }
@@ -82,6 +84,7 @@ type integrationPatch struct {
 	Caveman   *integrationStatePatch      `json:"caveman,omitempty"`
 	RTK       *integrationExecutablePatch `json:"rtk,omitempty"`
 	CodeGraph *integrationExecutablePatch `json:"codegraph,omitempty"`
+	TypeSafe  *typeSafePatch              `json:"typesafe,omitempty"`
 }
 
 type integrationStatePatch struct {
@@ -94,6 +97,12 @@ type integrationExecutablePatch struct {
 	Path    *string `json:"path,omitempty"`
 }
 
+type typeSafePatch struct {
+	Enabled   *bool   `json:"enabled,omitempty"`
+	Model     *string `json:"model,omitempty"`
+	TimeoutMS *int    `json:"timeout_ms,omitempty"`
+}
+
 func New(api API) http.Handler {
 	api = api.withOAuth()
 	mux := http.NewServeMux()
@@ -104,6 +113,9 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/network/interfaces", api.handleNetworkInterfaces)
 
 	mux.HandleFunc("/api/config", api.handleConfig)
+	mux.HandleFunc("/api/integrations/typesafe", api.handleTypeSafeStatus)
+	mux.HandleFunc("/api/integrations/typesafe/doctor", api.handleTypeSafeDoctor)
+	mux.HandleFunc("/api/integrations/typesafe/probe", api.handleTypeSafeProbe)
 	mux.HandleFunc("/api/instructions/global", api.handleGlobalInstructions)
 	mux.HandleFunc("/api/prompts", api.handlePrompts)
 	mux.HandleFunc("/api/prompts/{name}", api.handlePrompt)
@@ -289,6 +301,17 @@ func (api API) handleConfig(w http.ResponseWriter, r *http.Request) {
 					next.Integrations.CodeGraph.Path = strings.TrimSpace(*patch.Integrations.CodeGraph.Path)
 				}
 			}
+			if patch.Integrations.TypeSafe != nil {
+				if patch.Integrations.TypeSafe.Enabled != nil {
+					next.Integrations.TypeSafe.Enabled = *patch.Integrations.TypeSafe.Enabled
+				}
+				if patch.Integrations.TypeSafe.Model != nil {
+					next.Integrations.TypeSafe.Model = strings.TrimSpace(*patch.Integrations.TypeSafe.Model)
+				}
+				if patch.Integrations.TypeSafe.TimeoutMS != nil {
+					next.Integrations.TypeSafe.TimeoutMS = *patch.Integrations.TypeSafe.TimeoutMS
+				}
+			}
 		}
 		if err == nil {
 			err = config.Validate(next)
@@ -307,6 +330,58 @@ func (api API) handleConfig(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func (api API) typeSafeService() *application.TypeSafeService {
+	base := api.TypeSafe
+	if base == nil {
+		base = application.NewTypeSafeService()
+	}
+	service := *base
+	if api.Config != nil {
+		service.LoadConfig = func() (config.Config, error) { return api.Config.Snapshot(), nil }
+	}
+	return &service
+}
+
+func (api API) handleTypeSafeStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	status, err := api.typeSafeService().Status(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, status)
+}
+
+func (api API) handleTypeSafeDoctor(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	probe := strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("probe")), "true")
+	result, err := api.typeSafeService().Doctor(r.Context(), probe)
+	if err != nil {
+		writeJSONStatus(w, http.StatusBadGateway, result)
+		return
+	}
+	writeJSON(w, result)
+}
+
+func (api API) handleTypeSafeProbe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	result, err := api.typeSafeService().Probe(r.Context())
+	if err != nil {
+		writeJSONStatus(w, http.StatusBadGateway, result)
+		return
+	}
+	writeJSON(w, result)
 }
 
 func (api API) handleTools(w http.ResponseWriter, r *http.Request) {
@@ -399,6 +474,12 @@ func method(method string, next http.HandlerFunc) http.HandlerFunc {
 
 func writeJSON(w http.ResponseWriter, value any) {
 	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(value)
+}
+
+func writeJSONStatus(w http.ResponseWriter, status int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(value)
 }
 

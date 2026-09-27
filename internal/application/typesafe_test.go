@@ -49,6 +49,10 @@ func TestTypeSafeStatusMutationAndProbeAreExplicit(t *testing.T) {
 	if _, err := service.Probe(t.Context()); err == nil {
 		t.Fatal("disabled TypeSafe probe unexpectedly succeeded")
 	}
+	doctor, err := service.Doctor(t.Context(), false)
+	if err != nil || len(doctor.Checks) != 2 || doctor.Probe != nil || calls.Load() != 0 {
+		t.Fatalf("local doctor=%#v err=%v calls=%d", doctor, err, calls.Load())
+	}
 	if calls.Load() != 0 {
 		t.Fatalf("disabled TypeSafe reached provider: calls=%d", calls.Load())
 	}
@@ -87,6 +91,10 @@ func TestTypeSafeStatusMutationAndProbeAreExplicit(t *testing.T) {
 	if calls.Load() != 1 || !probe.Provider.ModelAvailable {
 		t.Fatalf("probe=%#v calls=%d", probe, calls.Load())
 	}
+	doctor, err = service.Doctor(t.Context(), true)
+	if err != nil || doctor.Probe == nil || !doctor.Probe.Provider.ModelAvailable || calls.Load() != 2 {
+		t.Fatalf("probed doctor=%#v err=%v calls=%d", doctor, err, calls.Load())
+	}
 
 	data, err := os.ReadFile(config.DefaultPath())
 	if err != nil {
@@ -117,6 +125,13 @@ func TestTypeSafeCanonicalOperationsAreBound(t *testing.T) {
 	status, ok := result.Value.(TypeSafeStatus)
 	if !ok || status.State != TypeSafeDisabled {
 		t.Fatalf("status result=%#v", result.Value)
+	}
+	result, err = dispatcher.Dispatch(context.Background(), DispatchRequest{Operation: capability.IntegrationTypeSafeDoctor, Input: TypeSafeDoctorInput{Probe: false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doctor, ok := result.Value.(TypeSafeDoctorResult); !ok || len(doctor.Checks) != 2 || doctor.Probe != nil {
+		t.Fatalf("doctor result=%#v", result.Value)
 	}
 	for _, id := range []capability.ID{capability.IntegrationTypeSafeEnable, capability.IntegrationTypeSafeDisable} {
 		result, err := dispatcher.Dispatch(context.Background(), DispatchRequest{Operation: id})

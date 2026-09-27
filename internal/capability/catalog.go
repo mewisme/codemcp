@@ -130,6 +130,7 @@ const (
 	IntegrationCodeGraphProbe        ID = "integration.codegraph.probe"
 	IntegrationCodeGraphInstall      ID = "integration.codegraph.install"
 	IntegrationTypeSafeStatus        ID = "integration.typesafe.status"
+	IntegrationTypeSafeDoctor        ID = "integration.typesafe.doctor"
 	IntegrationTypeSafeEnable        ID = "integration.typesafe.enable"
 	IntegrationTypeSafeDisable       ID = "integration.typesafe.disable"
 	IntegrationTypeSafeProbe         ID = "integration.typesafe.probe"
