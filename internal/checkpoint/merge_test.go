@@ -3,6 +3,7 @@ package checkpoint
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,5 +65,86 @@ func TestMergeWorkspaceStateRewritesCheckpointPathsAndRestoreRemainsValid(t *tes
 	data, err := os.ReadFile(destinationPath)
 	if err != nil || string(data) != "before" {
 		t.Fatalf("restored data=%q err=%v", data, err)
+	}
+}
+
+func TestMergeWorkspaceStateHandlesArchiveSubtreeThroughCheckpointOwner(t *testing.T) {
+	workspaceID := "ws_archive_merge"
+	sourceRoot := t.TempDir()
+	sourceStore := NewStore(t.TempDir())
+	sourceStore.MaxCount = 1
+	sourceStore.Retention = 365 * 24 * time.Hour
+	file := filepath.Join(sourceRoot, "file.txt")
+	if err := os.WriteFile(file, []byte("zero"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	firstID, err := sourceStore.Before(workspaceID, sourceRoot, "write_file", []string{file}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("one"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	secondID, err := sourceStore.Before(workspaceID, sourceRoot, "write_file", []string{file}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	destinationRoot := t.TempDir()
+	outputBase := t.TempDir()
+	outputRoot := filepath.Join(outputBase, "workspaces", workspaceID, "checkpoints")
+	emptyRoot := filepath.Join(t.TempDir(), "empty")
+	if err := MergeWorkspaceState(sourceStore.Path(workspaceID), emptyRoot, outputRoot, workspaceID, sourceRoot, destinationRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	merged := NewStore(outputBase)
+	active, err := merged.List(workspaceID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(active) != 1 || active[0].ID != secondID || active[0].Files[0] != filepath.Join(destinationRoot, "file.txt") {
+		t.Fatalf("merged active=%#v", active)
+	}
+	archived, err := merged.ListArchived(workspaceID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archived) != 1 || archived[0].Checkpoint.ID != firstID || archived[0].Checkpoint.Files[0] != filepath.Join(destinationRoot, "file.txt") {
+		t.Fatalf("merged archive=%#v", archived)
+	}
+	if err := merged.validateArchivedPayload(workspaceID, archived[0].Checkpoint); err != nil {
+		t.Fatalf("merged archive payload invalid: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputRoot, "archive", "index.json")); err != nil {
+		t.Fatalf("typed archive index missing: %v", err)
+	}
+}
+
+func TestMergeWorkspaceStateRejectsUnclassifiedArchiveEntry(t *testing.T) {
+	workspaceID := "ws_archive_unsupported"
+	sourceRoot := t.TempDir()
+	store := NewStore(t.TempDir())
+	store.MaxCount = 1
+	file := filepath.Join(sourceRoot, "file.txt")
+	if err := os.WriteFile(file, []byte("zero"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Before(workspaceID, sourceRoot, "write_file", []string{file}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("one"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Before(workspaceID, sourceRoot, "write_file", []string{file}, false); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(store.archiveRoot(workspaceID), "foreign.bin")
+	if err := os.WriteFile(foreign, []byte("unowned"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	err := MergeWorkspaceState(store.Path(workspaceID), filepath.Join(t.TempDir(), "empty"), filepath.Join(t.TempDir(), "out"), workspaceID, sourceRoot, t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "unsupported checkpoint archive entry") {
+		t.Fatalf("unclassified archive entry was accepted: %v", err)
 	}
 }

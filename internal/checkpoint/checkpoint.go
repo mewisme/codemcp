@@ -224,13 +224,17 @@ func (s *Store) BeforeAllowed(workspaceID, workspaceRoot string, allowedRoots []
 		return "", err
 	}
 	index.Checkpoints = append(index.Checkpoints, buildSummary(manifest))
-	if err := s.pruneLocked(workspaceID, &index); err != nil {
+	archived, err := s.pruneLocked(workspaceID, &index)
+	if err != nil {
 		return "", err
 	}
 	if err := s.writeIndex(workspaceID, index); err != nil {
 		return "", err
 	}
 	committed = true
+	for _, summary := range archived {
+		_ = os.RemoveAll(s.checkpointDir(workspaceID, summary.ID))
+	}
 	return id, nil
 }
 
@@ -642,29 +646,8 @@ func (s *Store) readManifest(workspaceID, id string) (*Manifest, error) {
 	return &manifest, nil
 }
 
-func (s *Store) pruneLocked(workspaceID string, index *Index) error {
-	cutoff := time.Now().UTC().Add(-s.retention())
-	kept := make([]Summary, 0, len(index.Checkpoints))
-	remove := make([]Summary, 0)
-	for _, summary := range index.Checkpoints {
-		created, err := time.Parse(time.RFC3339Nano, summary.CreatedAt)
-		if err == nil && created.Before(cutoff) {
-			remove = append(remove, summary)
-			continue
-		}
-		kept = append(kept, summary)
-	}
-	for len(kept) > s.maxCount() {
-		remove = append(remove, kept[0])
-		kept = kept[1:]
-	}
-	for _, summary := range remove {
-		if err := os.RemoveAll(s.checkpointDir(workspaceID, summary.ID)); err != nil {
-			return err
-		}
-	}
-	index.Checkpoints = kept
-	return nil
+func (s *Store) pruneLocked(workspaceID string, index *Index) ([]Summary, error) {
+	return s.archiveRetentionLocked(workspaceID, index)
 }
 
 func (s *Store) checkpointDir(workspaceID, id string) string {
