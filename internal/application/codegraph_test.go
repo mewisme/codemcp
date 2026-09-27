@@ -51,6 +51,35 @@ func TestCodeGraphOperationsUseCanonicalDispatcher(t *testing.T) {
 	}
 }
 
+func TestCodeGraphServiceProbesSystemSymlinkThroughCanonicalRuntime(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX symlink fixture")
+	}
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	target := filepath.Join(t.TempDir(), "codegraph-real")
+	if err := os.WriteFile(target, []byte("#!/bin/sh\necho 1.6.0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	binRoot := t.TempDir()
+	link := filepath.Join(binRoot, "codegraph")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	t.Setenv("PATH", binRoot)
+	cfg := config.Default()
+	cfg.Integrations.CodeGraph.Enabled = true
+	cfg.Integrations.CodeGraph.Path = ""
+	service := &CodeGraphService{LoadConfig: func() (config.Config, error) { return cfg, nil }}
+
+	result, err := service.Probe(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status.Resolution.Source != codegraph.ExecutableSystem || result.Path != target || result.Version != "1.6.0" {
+		t.Fatalf("probe=%#v", result)
+	}
+}
+
 func TestCodeGraphWorkspaceLifecyclePersistsSharedReadModel(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell fixture")

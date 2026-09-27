@@ -278,3 +278,77 @@ func TestCodeGraphExploreBoundWorkspaceCanBeInjected(t *testing.T) {
 		t.Fatalf("state=%#v type=%T", result.StructuredContent, result.StructuredContent)
 	}
 }
+
+func TestCodeGraphSystemSymlinkDrivesExploreAndCompletionHook(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX symlink fixture")
+	}
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	binRoot := t.TempDir()
+	target := filepath.Join(t.TempDir(), "codegraph-real")
+	script := "#!/bin/sh\ncase \"$1\" in\n  sync) echo sync >> \"$PWD/runtime-calls\" ;;\n  explore) echo \"explored:$2\"; echo explore >> \"$PWD/runtime-calls\" ;;\n  --version) echo 1.6.0 ;;\n  *) exit 2 ;;\nesac\n"
+	if err := os.WriteFile(target, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(binRoot, "codegraph")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	t.Setenv("PATH", binRoot)
+
+	cfg := integrations.Default()
+	cfg.CodeGraph.Enabled = true
+	cfg.CodeGraph.Path = ""
+	toolRuntime := NewRuntimeWithIntegrations(cfg)
+	project := t.TempDir()
+	if err := os.Mkdir(filepath.Join(project, ".codegraph"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	item, err := toolRuntime.Workspaces.Register(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := toolRuntime.Call(context.Background(), codegraph.ToolName, map[string]any{
+		"workspace_id": item.ID,
+		"query":        "find Foo",
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("explore result=%#v err=%v", result, err)
+	}
+	state, ok := result.StructuredContent.(codegraph.ToolState)
+	if !ok || state.State != codegraph.StateReady || state.Output != "explored:find Foo" {
+		t.Fatalf("explore state=%#v type=%T", result.StructuredContent, result.StructuredContent)
+	}
+	resolved, err := toolRuntime.codeGraphRuntimeSnapshot().Resolve()
+	if err != nil || resolved.Source != codegraph.ExecutableSystem || resolved.Path != target {
+		t.Fatalf("system resolution=%#v err=%v", resolved, err)
+	}
+
+	record, created, err := toolRuntime.Completions.Accept(
+		agentcompletion.Identity{AgentID: agentcompletion.DeriveAgentID("caller-symlink", "generation-symlink"), Source: "mcp"},
+		agentcompletion.Input{WorkspaceID: item.ID, Status: agentcompletion.StatusCompleted, Title: "Done"},
+	)
+	if err != nil || !created {
+		t.Fatalf("completion=%#v created=%t err=%v", record, created, err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		outcome, found, outcomeErr := toolRuntime.CodeGraphCompletion.Outcome(item.ID, record.ID)
+		if outcomeErr == nil && found && outcome.State == codegraph.CompletionSyncSucceeded {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	outcome, found, err := toolRuntime.CodeGraphCompletion.Outcome(item.ID, record.ID)
+	if err != nil || !found || outcome.State != codegraph.CompletionSyncSucceeded {
+		t.Fatalf("completion outcome=%#v found=%t err=%v", outcome, found, err)
+	}
+	calls, err := os.ReadFile(filepath.Join(project, "runtime-calls"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Fields(string(calls)); len(got) != 3 || got[0] != "sync" || got[1] != "explore" || got[2] != "sync" {
+		t.Fatalf("runtime calls=%v", got)
+	}
+}

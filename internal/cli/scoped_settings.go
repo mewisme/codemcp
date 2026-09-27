@@ -402,5 +402,17 @@ func integrationBinarySettingsCommand(name string) *cobra.Command {
 		scopedToggleCommand("disable", "Disable "+name+" integration", name+" integration disabled", prefix+".enabled", false),
 		scopedValueCommand("path", "Set "+name+" executable path", name+" executable path updated", prefix+".path"),
 	)
+	switch name {
+	case "rtk":
+		cmd.AddCommand(rtkStatusCommand(), rtkProbeCommand(), rtkInstallCommand())
+	case "codegraph":
+		cmd.AddCommand(
+			codeGraphStatusCommand(),
+			codeGraphProbeCommand(),
+			codeGraphInstallCommand(),
+			codeGraphWorkspaceCommand("init"),
+			codeGraphWorkspaceCommand("sync"),
+		)
+	}
 	return cmd
 }

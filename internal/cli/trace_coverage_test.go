@@ -80,6 +80,11 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"setting.unset.completed"}, "config unset", "tunnel key remove", "tunnel admin key remove", "integration typesafe key remove", "telegram token remove")
 	add(commandTraceInstrumented, []string{"setting.read.completed"}, "telegram token status", "telegram setup")
 	add(commandTraceTrivial, nil, "integration typesafe status", "integration typesafe doctor", "integration typesafe probe")
+	add(commandTraceTrivial, nil,
+		"integration rtk status", "integration rtk probe", "integration rtk install",
+		"integration codegraph status", "integration codegraph probe", "integration codegraph install",
+		"integration codegraph init", "integration codegraph sync",
+	)
 	add(commandTraceTrivial, nil, "telemetry status", "telemetry show")
 	add(commandTraceInstrumented, []string{"setting.set.completed"}, "telemetry enable", "telemetry disable")
 	add(commandTraceInstrumented, []string{"setting.rotate.completed"}, "config rotate")
