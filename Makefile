@@ -11,7 +11,10 @@ LOCAL_LDFLAGS = -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint=$(LOC
 CM = $(GO) run -ldflags "$(LOCAL_LDFLAGS)" .
 PREPARE_FRONTEND = $(NODE) scripts/prepare-frontend-embed.mjs
 
-.PHONY: help bootstrap prepare check-embed check test test-race build init uninit run up restart down status logs tui frontend-dev
+CM_COMMANDS = install upgrade init uninit down logs request tui config auth workspace prompt upstream mcp tunnel server admin permissions shell notification telemetry telegram integration status agent completion version
+CM_PREPARE_COMMANDS = up restart serve
+
+.PHONY: help bootstrap prepare check-embed check test test-race build run frontend-dev $(CM_COMMANDS) $(CM_PREPARE_COMMANDS)
 
 help:
 	@printf '%s\n' \
@@ -23,12 +26,14 @@ help:
 		'  test           Run the full Go test suite with isolated config' \
 		'  test-race      Run the full Go race suite with isolated config' \
 		'  build          Build local dist/cm' \
-		'  init           Initialize CodeMCP; pass ARGS="..."' \
-		'  uninit         Remove local CodeMCP state; pass ARGS="..."' \
-		'  run            Run CodeMCP; pass ARGS="..."' \
-		'  up|restart     Prepare assets then manage the runtime' \
-		'  down|status    Manage/query the runtime' \
-		'  logs|tui       Open runtime logs or TUI' \
+		'  run            Prepare assets, then run CodeMCP; pass ARGS="..."' \
+		'  up|restart     Prepare assets, then manage the runtime' \
+		'  serve          Prepare assets, then serve CodeMCP in foreground' \
+		'  <cm-command>   Run any other public cm command; pass ARGS="..."' \
+		'                  install upgrade init uninit down logs request tui' \
+		'                  config auth workspace prompt upstream mcp tunnel' \
+		'                  server admin permissions shell notification telemetry' \
+		'                  telegram integration status agent completion version' \
 		'  frontend-dev   Run the Vite development server'
 
 bootstrap:
@@ -57,32 +62,14 @@ build: prepare
 	mkdir -p dist
 	$(GO) build -trimpath -ldflags "$(LOCAL_LDFLAGS)" -o dist/cm .
 
-init:
-	$(CM) init $(ARGS)
-
-uninit:
-	$(CM) uninit $(ARGS)
-
 run: prepare
 	$(CM) $(ARGS)
 
-up: prepare
-	$(CM) up $(ARGS)
+$(CM_PREPARE_COMMANDS): prepare
+	$(CM) $@ $(ARGS)
 
-restart: prepare
-	$(CM) restart $(ARGS)
-
-down:
-	$(CM) down $(ARGS)
-
-status:
-	$(CM) status $(ARGS)
-
-logs:
-	$(CM) logs $(ARGS)
-
-tui:
-	$(CM) tui $(ARGS)
+$(CM_COMMANDS):
+	$(CM) $@ $(ARGS)
 
 frontend-dev:
 	$(PNPM) --dir frontend dev
