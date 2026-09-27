@@ -129,9 +129,15 @@ type ProviderMetadata struct {
 	Usage    *Usage        `json:"usage,omitempty"`
 }
 
+type RuntimeMetadata struct {
+	CacheHit bool `json:"cache_hit,omitempty"`
+	Attempts int  `json:"attempts,omitempty"`
+}
+
 type Result struct {
 	Answers map[string]Answer `json:"answers"`
 	ProviderMetadata
+	Runtime RuntimeMetadata `json:"runtime,omitempty"`
 }
 
 // Provider is the only capability semantic consumers need. Concrete remote,
