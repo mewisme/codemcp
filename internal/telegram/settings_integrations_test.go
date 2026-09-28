@@ -126,6 +126,48 @@ func TestTypeSafeScreenUsesCanonicalMaskedCredentialPreview(t *testing.T) {
 	}
 }
 
+func TestIntegrationsScreenKeepsEveryIntegrationReachable(t *testing.T) {
+	dispatcher := &domainTestDispatcher{errors: map[capability.ID]error{
+		capability.ConfigList:                 context.Canceled,
+		capability.IntegrationRTKStatus:       context.Canceled,
+		capability.IntegrationCodeGraphStatus: context.Canceled,
+		capability.IntegrationCFStatus:        context.Canceled,
+		capability.IntegrationTypeSafeStatus:  context.Canceled,
+		capability.TelemetryStatus:            context.Canceled,
+	}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+	screen, err := ui.integrationsScreen(t.Context(), owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRows := [][]string{
+		{"Ponytail", "Caveman", "RTK"},
+		{"CodeGraph", "Cloudflare Quick Tunnel", "TypeSafe"},
+		{"Telemetry"},
+		{"Back", "Home"},
+	}
+	if len(screen.Keyboard) != len(wantRows) {
+		t.Fatalf("integration keyboard rows=%d want=%d: %#v", len(screen.Keyboard), len(wantRows), screen.Keyboard)
+	}
+	for rowIndex, want := range wantRows {
+		row := screen.Keyboard[rowIndex]
+		if len(row) != len(want) {
+			t.Fatalf("integration keyboard row %d len=%d want=%d: %#v", rowIndex, len(row), len(want), row)
+		}
+		for buttonIndex, label := range want {
+			if row[buttonIndex].Text != label {
+				t.Fatalf("integration keyboard[%d][%d]=%q want=%q", rowIndex, buttonIndex, row[buttonIndex].Text, label)
+			}
+			if rowIndex < len(wantRows)-1 && row[buttonIndex].Role != ButtonRoleResource {
+				t.Fatalf("integration resource button role=%q want=%q", row[buttonIndex].Role, ButtonRoleResource)
+			}
+		}
+	}
+	if err := validateKeyboard(screen.Keyboard); err != nil {
+		t.Fatalf("integration keyboard invalid: %v", err)
+	}
+}
+
 func TestUserSelectionStoreRejectsForeignAndReplay(t *testing.T) {
 	store := NewUserSelectionStore(time.Minute)
 	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 7}

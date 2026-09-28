@@ -256,10 +256,26 @@ func (ui *Interface) integrationsScreen(ctx context.Context, owner ViewOwner) (S
 	if err != nil {
 		return Screen{}, err
 	}
+	maxResourceButtons := (maxActionGroupRows - 1) * maxActionButtonsPerRow
+	if len(buttons) > maxResourceButtons {
+		return Screen{}, fmt.Errorf("integration controls exceed bounded keyboard capacity: %d > %d", len(buttons), maxResourceButtons)
+	}
+	keyboard := make([][]Button, 0, maxActionGroupRows)
+	for start := 0; start < len(buttons); start += maxActionButtonsPerRow {
+		end := min(start+maxActionButtonsPerRow, len(buttons))
+		row := append([]Button(nil), buttons[start:end]...)
+		for index := range row {
+			row[index].Text = CompactResourceLabel(row[index].Text)
+			row[index].Role = ButtonRoleResource
+			row[index].Style = ""
+		}
+		keyboard = append(keyboard, row)
+	}
+	keyboard = append(keyboard, []Button{back, home})
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "Integrations", Text: "Canonical integration status and lifecycle"},
 		RichBlock{Kind: RichList, Items: items},
-	), Keyboard: BoundedActionGroups(ActionGroups{Secondary: buttons, Navigation: []Button{back, home}})}, nil
+	), Keyboard: keyboard}, nil
 }
 
 func (ui *Interface) integrationSummary(ctx context.Context, id string) (string, error) {
