@@ -611,7 +611,7 @@ func telegramDoctorComponent(health TelegramHealthSnapshot) doctor.Component {
 	}
 	if health.LogsMiniAppEnabled && health.LogsMiniAppState == "degraded" {
 		component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "Telegram interface is healthy but the Logs Mini App is degraded"
-		component.Remediations = append(component.Remediations, doctor.Remediation{ID: "telegram_logs_mini_app_dependency", Summary: "Install cf-tunnel on PATH or disable telegram.logs_mini_app.enabled"})
+		component.Remediations = append(component.Remediations, doctor.Remediation{ID: "telegram_logs_mini_app_dependency", Summary: "Install the verified dependency with cm tunnel cf install, provide a valid system cf-tunnel executable, or disable telegram.logs_mini_app.enabled", Operation: string(capability.TunnelCFInstall)})
 	}
 	return component
 }

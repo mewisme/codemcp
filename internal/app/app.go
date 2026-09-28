@@ -41,6 +41,7 @@ type App struct {
 	ProductTelemetry          productTelemetryRuntime
 	ProductLifecycleTelemetry *productLifecycleTelemetry
 	Operations                *application.Dispatcher
+	CFTunnel                  *application.CFTunnelService
 	Telegram                  *telegram.Runtime
 	TelegramPairing           *telegram.PairingStore
 	TelegramUI                *telegram.Interface
@@ -141,12 +142,13 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	} else {
 		seedSpan.EndMessage("Tunnel metadata cache unavailable", tracepkg.Bool("seeded", false), tracepkg.Bool("configured", cfg.Tunnel.ID != ""))
 	}
+	cfTunnel := application.NewCFTunnelService()
 	app := &App{
 		Config: configStore, MCP: mcpRuntime, Upstream: toolRuntime.Upstream, Tools: toolRuntime, Activity: stream,
 		Tunnel: tunnelClient, Logger: appLogger,
 		OAuth: oauthStore, OAuthFlows: mcpoauth.NewFlowManager(oauthStore), ProductTelemetry: productRecorder, trace: observer,
-		Operations: application.NewDispatcher(),
-		Telegram:   telegram.NewRuntime(telegram.Options{Root: config.RootPath()}), TelegramPairing: telegram.NewPairingStore(config.RootPath()),
+		Operations: application.NewDispatcher(), CFTunnel: cfTunnel,
+		Telegram: telegram.NewRuntime(telegram.Options{Root: config.RootPath(), CFTunnelResolver: cfTunnel.ResolvePath}), TelegramPairing: telegram.NewPairingStore(config.RootPath()),
 	}
 	typeSafeCandidate, err := app.prepareTypeSafe(cfg)
 	if err != nil {

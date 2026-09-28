@@ -10,6 +10,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 )
 
 type Route string
@@ -30,6 +31,7 @@ const (
 	RouteOperation       Route = "operation"
 	RouteNetwork         Route = "network"
 	RouteTunnel          Route = "tunnel"
+	RouteTunnelCF        Route = "tunnel.cf"
 	RouteUpstreams       Route = "upstreams"
 	RouteUpstream        Route = "upstream"
 	RouteIntegrations    Route = "integrations"
@@ -60,11 +62,13 @@ type ActionState struct {
 }
 
 type VersionResolver func(context.Context, capability.ID, string) (string, error)
+type RuntimeStatusResolver func(context.Context) (runtimecontrol.RuntimeStatus, bool, error)
 
 type InterfaceOptions struct {
 	Runtime         *Runtime
 	Dispatcher      application.OperationDispatcher
 	VersionResolver VersionResolver
+	RuntimeStatus   RuntimeStatusResolver
 	StateTTLSeconds int
 }
 
@@ -78,6 +82,8 @@ type Interface struct {
 	nextUserRequest atomic.Int32
 	callbacks       *CallbackCodec
 	router          *Router
+	operations      *operationMessageStore
+	runtimeStatus   RuntimeStatusResolver
 }
 
 func NewInterface(options InterfaceOptions) (*Interface, error) {
@@ -95,6 +101,10 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 	ui := &Interface{
 		runtime: options.Runtime, dispatcher: options.Dispatcher, versions: options.VersionResolver,
 		states: NewViewStateStore(stateTTL, defaultViewStateMax), inputs: NewInputStore(stateTTL), userSelections: NewUserSelectionStore(stateTTL), callbacks: codec, router: NewRouter(),
+		operations: newOperationMessageStore(options.Runtime.root), runtimeStatus: options.RuntimeStatus,
+	}
+	if ui.runtimeStatus == nil {
+		ui.runtimeStatus = application.RuntimeStatus
 	}
 	ui.nextUserRequest.Store(1000)
 	handlers := map[Route]RouteHandler{
@@ -310,14 +320,30 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 		}
 	}
 	ui.answerCallback(ctx, update.CallbackQuery.ID, "", false)
+	messageID := update.CallbackQuery.Message.MessageID
 	if hasSpec && shouldShowWorking(spec, state) {
-		_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, workingScreen(state))
+		if err := ui.prepareDurableOperation(ctx, owner, messageID, state); err != nil {
+			screen, _ := ui.operationErrorScreen(owner, state, err)
+			_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, screen)
+			return
+		}
+	}
+	if hasSpec && shouldShowWorking(spec, state) {
+		_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, workingScreen(state))
 	}
 	screen, err := ui.renderState(ctx, owner, state)
 	if err != nil {
+		if preserveDurableOperationOnError(state, err) {
+			return
+		}
+		ui.clearDurableOperation(owner.ChatID, messageID, state)
 		screen, _ = ui.operationErrorScreen(owner, state, err)
+		_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, screen)
+		return
 	}
-	_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, screen)
+	if editErr := ui.runtime.EditScreen(ctx, owner.ChatID, messageID, screen); editErr == nil {
+		ui.clearDurableOperation(owner.ChatID, messageID, state)
+	}
 }
 
 func (ui *Interface) callbackStateIsStale(ctx context.Context, state ActionState) bool {
@@ -399,6 +425,8 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.networkScreen(owner)
 	case RouteTunnel:
 		return ui.tunnelScreen(ctx, owner)
+	case RouteTunnelCF:
+		return ui.cfTunnelScreen(ctx, owner)
 	case RouteUpstreams:
 		return ui.upstreamListScreen(ctx, owner, state)
 	case RouteUpstream:
@@ -939,6 +967,8 @@ func routeLabel(route Route) string {
 		return "Network"
 	case RouteTunnel:
 		return "Secure MCP Tunnel"
+	case RouteTunnelCF:
+		return "Cloudflare Quick Tunnel"
 	case RouteUpstreams:
 		return "Upstreams"
 	case RouteUpstream:

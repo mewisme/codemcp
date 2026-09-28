@@ -95,6 +95,29 @@ func rtkInstallCommand() *cobra.Command {
 	}
 }
 
+func rtkInstallGlobalCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "global", Short: "Install RTK with an available system package manager", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result, err := application.NewRTKService().InstallGlobal(cmd.Context())
+			if err != nil {
+				return err
+			}
+			message := "Global RTK installed"
+			kind := presentation.StatusSuccess
+			if result.AlreadyInstalled {
+				message, kind = "Global RTK already installed", presentation.StatusInfo
+			}
+			renderMutationResult(cmd, kind, message,
+				presentation.Field{Label: "path", Value: result.Path},
+				presentation.Field{Label: "method", Value: result.Method},
+				presentation.Field{Label: "effective source", Value: result.Status.Source},
+			)
+			return nil
+		},
+	}
+}
+
 func renderRTKStatus(presenter *presentation.Presenter, status rtk.Status) {
 	presenter.Frame("RTK integration")
 	kind := presentation.StatusSuccess
@@ -171,6 +194,29 @@ func codeGraphInstallCommand() *cobra.Command {
 			}
 			renderMutationResult(cmd, kind, message,
 				presentation.Field{Label: "path", Value: result.Path},
+				presentation.Field{Label: "effective source", Value: result.Status.Resolution.Source},
+			)
+			return nil
+		},
+	}
+}
+
+func codeGraphInstallGlobalCommand() *cobra.Command {
+	return &cobra.Command{
+		Use: "global", Short: "Install CodeGraph with an available system package manager", Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result, err := application.NewCodeGraphService().InstallGlobal(cmd.Context())
+			if err != nil {
+				return err
+			}
+			message := "Global CodeGraph installed"
+			kind := presentation.StatusSuccess
+			if result.AlreadyInstalled {
+				message, kind = "Global CodeGraph already installed", presentation.StatusInfo
+			}
+			renderMutationResult(cmd, kind, message,
+				presentation.Field{Label: "path", Value: result.Path},
+				presentation.Field{Label: "method", Value: result.Method},
 				presentation.Field{Label: "effective source", Value: result.Status.Resolution.Source},
 			)
 			return nil

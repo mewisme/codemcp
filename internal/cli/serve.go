@@ -143,6 +143,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		_ = recorder.Record(runtimeevent.Event{Time: time.Now().UTC(), Level: "info", Kind: "info", Name: "runtime.lifecycle.changed", Component: "RUNTIME", Message: "Runtime lifecycle changed", Status: next, Fields: []runtimeevent.Field{{Key: "previous", Value: previous}, {Key: "lifecycle", Value: next}}})
 	}
 	shutdownRequest := make(chan struct{}, 1)
+	restartRequest := make(chan struct{}, 1)
 	log.Verbose("NETWORK", "server.listeners.opening", "Opening HTTP listeners")
 	bindings, err = openHTTPBindingsContext(runtimeCtx, cfg, plan)
 	if err != nil {
@@ -421,6 +422,11 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		case shutdownRequest <- struct{}{}:
 		default:
 		}
+	}, Restart: func() {
+		select {
+		case restartRequest <- struct{}{}:
+		default:
+		}
 	}, ClearLogs: journal.Clear})
 	if err != nil {
 		return err
@@ -500,8 +506,16 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 	case <-shutdownRequest:
 		runtime.Logger.Verbose("SERVER", "server.shutdown.requested", "Shutdown requested", logger.With("reason", "runtime control"))
 		return shutdown("runtime_control")
+	case <-restartRequest:
+		runtime.Logger.Verbose("SERVER", "server.restart.requested", "Managed runtime self-restart requested")
+		if err := shutdown("runtime_control_restart"); err != nil {
+			return err
+		}
+		return errManagedRuntimeSelfRestart
 	}
 }
+
+var errManagedRuntimeSelfRestart = errors.New("managed runtime self-restart requested")
 
 func runtimeLifecycleStarting(state string) bool {
 	switch state {

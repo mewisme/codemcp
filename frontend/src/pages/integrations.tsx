@@ -119,6 +119,7 @@ export function IntegrationsPage() {
             >
               Install
             </Button>
+            <Button disabled={Boolean(busy)} size="sm" variant="outline" onClick={() => void act("rtk-install-global", () => adminApi.rtkAction("install/global"))}>Install globally</Button>
             <Button
               disabled={Boolean(busy)}
               size="sm"
@@ -171,6 +172,7 @@ export function IntegrationsPage() {
             >
               Install
             </Button>
+            <Button disabled={Boolean(busy)} size="sm" variant="outline" onClick={() => void act("codegraph-install-global", () => adminApi.codeGraphAction("install/global"))}>Install globally</Button>
           </>
         }
       />

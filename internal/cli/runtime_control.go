@@ -50,6 +50,7 @@ type runtimeControlOptions struct {
 	Status           func() runtimeStatusResult
 	StatusWait       func(context.Context, string) runtimeStatusResult
 	Shutdown         func()
+	Restart          func()
 	ClearLogs        func() error
 	Approvals        *approval.Manager
 	Completions      *agentcompletion.Service
@@ -148,6 +149,14 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 	mux.HandleFunc("/shutdown", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, _ *http.Request) {
 		writeControlJSON(w, map[string]bool{"ok": true}, nil)
 		options.Shutdown()
+	}))
+	mux.HandleFunc("/restart", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, _ *http.Request) {
+		if options.Restart == nil {
+			writeControlJSON(w, nil, errors.New("runtime restart handler is unavailable"))
+			return
+		}
+		writeControlJSON(w, map[string]bool{"ok": true}, nil)
+		options.Restart()
 	}))
 	mux.HandleFunc("/logs/clear", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, _ *http.Request) {
 		writeControlJSON(w, map[string]bool{"ok": true}, options.ClearLogs())

@@ -9,14 +9,16 @@ import (
 
 func TestIntegrationLifecycleCommandsReachCanonicalOperations(t *testing.T) {
 	cases := map[string]capability.ID{
-		"integration rtk status":        capability.IntegrationRTKStatus,
-		"integration rtk probe":         capability.IntegrationRTKProbe,
-		"integration rtk install":       capability.IntegrationRTKInstall,
-		"integration codegraph status":  capability.IntegrationCodeGraphStatus,
-		"integration codegraph probe":   capability.IntegrationCodeGraphProbe,
-		"integration codegraph install": capability.IntegrationCodeGraphInstall,
-		"integration codegraph init":    capability.IntegrationCodeGraphWorkspaceInit,
-		"integration codegraph sync":    capability.IntegrationCodeGraphWorkspaceSync,
+		"integration rtk status":               capability.IntegrationRTKStatus,
+		"integration rtk probe":                capability.IntegrationRTKProbe,
+		"integration rtk install":              capability.IntegrationRTKInstall,
+		"integration rtk install global":       capability.IntegrationRTKInstallGlobal,
+		"integration codegraph status":         capability.IntegrationCodeGraphStatus,
+		"integration codegraph probe":          capability.IntegrationCodeGraphProbe,
+		"integration codegraph install":        capability.IntegrationCodeGraphInstall,
+		"integration codegraph install global": capability.IntegrationCodeGraphInstallGlobal,
+		"integration codegraph init":           capability.IntegrationCodeGraphWorkspaceInit,
+		"integration codegraph sync":           capability.IntegrationCodeGraphWorkspaceSync,
 	}
 	root := newRootCommand()
 	for path, want := range cases {

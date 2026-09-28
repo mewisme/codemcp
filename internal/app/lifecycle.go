@@ -34,6 +34,9 @@ func (a *App) Start(ctx context.Context) error {
 	a.runtimeCtx = ctx
 	if a.Telegram != nil {
 		a.Telegram.Reconcile(ctx, a.Config.Snapshot().Telegram)
+		if a.TelegramUI != nil {
+			go a.TelegramUI.ReconcilePendingRuntimeOperations(ctx)
+		}
 	}
 	if a.ApprovalNotifications != nil {
 		if err := a.ApprovalNotifications.Start(ctx); err != nil && a.Logger != nil {

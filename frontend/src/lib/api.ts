@@ -405,6 +405,26 @@ export type TunnelStatus = {
   admin_scope?: TunnelAdminScope
 }
 
+export type CFTunnelStatus = {
+  version?: string
+  platform: string
+  source: "system" | "managed" | "unavailable" | string
+  path?: string
+  verified: boolean
+  managed_supported: boolean
+  managed_installed: boolean
+  consumer: string
+}
+export type CFTunnelProbeResult = { status: CFTunnelStatus; version?: string }
+export type CFTunnelInstallResult = {
+  status: CFTunnelStatus
+  path?: string
+  version?: string
+  installed: boolean
+  already_installed: boolean
+}
+export type CFTunnelRemoveResult = { status: CFTunnelStatus; removed: boolean }
+
 export type ApprovalStatus =
   | "pending"
   | "approved"
@@ -644,12 +664,12 @@ export const adminApi = {
   configPath: () => api<Record<string, unknown>>("/api/config/path"),
   verifyConfig: () => api<Record<string, unknown>>("/api/config/verify"),
   rtkStatus: () => api<IntegrationStatus>("/api/integrations/rtk"),
-  rtkAction: (action: "enable" | "disable" | "probe" | "install") =>
+  rtkAction: (action: "enable" | "disable" | "probe" | "install" | "install/global") =>
     api<IntegrationStatus>(`/api/integrations/rtk/${action}`, {
       method: "POST",
     }),
   codeGraphStatus: () => api<IntegrationStatus>("/api/integrations/codegraph"),
-  codeGraphAction: (action: "probe" | "install") =>
+  codeGraphAction: (action: "probe" | "install" | "install/global") =>
     api<IntegrationStatus>(`/api/integrations/codegraph/${action}`, {
       method: "POST",
     }),
@@ -843,6 +863,15 @@ export const adminApi = {
       method: "DELETE",
     }),
   tunnel: () => api<TunnelStatus>("/api/tunnel"),
+  cfTunnel: () => api<CFTunnelStatus>("/api/tunnel/cf"),
+  probeCFTunnel: () =>
+    api<CFTunnelProbeResult>("/api/tunnel/cf/probe", { method: "POST" }),
+  installCFTunnel: () =>
+    api<CFTunnelInstallResult>("/api/tunnel/cf/install", { method: "POST" }),
+  updateCFTunnel: () =>
+    api<CFTunnelInstallResult>("/api/tunnel/cf/update", { method: "POST" }),
+  removeCFTunnel: () =>
+    api<CFTunnelRemoveResult>("/api/tunnel/cf", { method: "DELETE" }),
   tunnelConfig: () => api<TunnelConfig>("/api/tunnel/config"),
   configureTunnel: (config: TunnelConfig) =>
     api<TunnelStatus>("/api/tunnel", {

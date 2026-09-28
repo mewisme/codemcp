@@ -49,6 +49,15 @@ type InstallResult struct {
 	AlreadyInstalled bool   `json:"already_installed"`
 }
 
+type GlobalInstallResult struct {
+	Status           Status `json:"status"`
+	Path             string `json:"path,omitempty"`
+	Method           string `json:"method,omitempty"`
+	Command          string `json:"command,omitempty"`
+	Installed        bool   `json:"installed"`
+	AlreadyInstalled bool   `json:"already_installed"`
+}
+
 type CommandResult struct {
 	Resolution Resolution `json:"resolution"`
 	ExitCode   int        `json:"exit_code"`
@@ -220,6 +229,49 @@ func (r *Runtime) Install(ctx context.Context) (InstallResult, error) {
 		return InstallResult{}, err
 	}
 	return InstallResult{Status: status, Path: path, Installed: true}, nil
+}
+
+func (r *Runtime) InstallGlobal(ctx context.Context) (GlobalInstallResult, error) {
+	if r == nil {
+		return GlobalInstallResult{}, errors.New("codegraph runtime is unavailable")
+	}
+	if path, err := r.lookPath(SystemExecutable()); err == nil && strings.TrimSpace(path) != "" {
+		status, statusErr := r.Status()
+		return GlobalInstallResult{Status: status, Path: path, AlreadyInstalled: true}, statusErr
+	}
+	var selected *InstallHint
+	hints := SystemInstallHints(r.goos)
+	for index := range hints {
+		hint := &hints[index]
+		if hint.Executable == "" || len(hint.Args) == 0 {
+			continue
+		}
+		if _, err := r.lookPath(hint.Executable); err == nil {
+			selected = hint
+			break
+		}
+	}
+	if selected == nil {
+		return GlobalInstallResult{}, errors.New("no supported CodeGraph global package manager is available")
+	}
+	runCtx, cancel := context.WithTimeout(nonNilContext(ctx), 5*time.Minute)
+	result, runErr := r.run(runCtx, selected.Executable, selected.Args, ProbeOutputLimit)
+	cancel()
+	if runErr != nil {
+		return GlobalInstallResult{}, runErr
+	}
+	if result.ExitCode != 0 {
+		return GlobalInstallResult{}, commandFailure(result)
+	}
+	path, err := r.lookPath(SystemExecutable())
+	if err != nil || strings.TrimSpace(path) == "" {
+		return GlobalInstallResult{}, errors.New("CodeGraph global install completed but codegraph is not available on PATH")
+	}
+	status, err := r.Status()
+	if err != nil {
+		return GlobalInstallResult{}, err
+	}
+	return GlobalInstallResult{Status: status, Path: path, Method: selected.Label, Command: selected.Command, Installed: true}, nil
 }
 
 func (r *Runtime) ExecuteInDir(ctx context.Context, directory string, args []string, timeout time.Duration, limit int) (CommandResult, error) {

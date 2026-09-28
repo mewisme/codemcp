@@ -14,6 +14,7 @@ const (
 	RTKID       ID = "rtk"
 	CodeGraphID ID = "codegraph"
 	TypeSafeID  ID = "typesafe"
+	CFTunnelID  ID = "cf-tunnel"
 )
 
 type Identity struct {
@@ -83,6 +84,8 @@ func IdentityFor(id ID) (Identity, bool) {
 		return Identity{ID: CodeGraphID, Name: "CodeGraph"}, true
 	case TypeSafeID:
 		return Identity{ID: TypeSafeID, Name: "TypeSafe"}, true
+	case CFTunnelID:
+		return Identity{ID: CFTunnelID, Name: "Cloudflare Quick Tunnel"}, true
 	default:
 		return Identity{}, false
 	}

@@ -68,6 +68,10 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
+		if err := application.BindCFTunnelOperations(a.Operations, a.CFTunnel); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		if err := application.BindSettingOperations(a.Operations, application.NewSettingService()); err != nil {
 			a.bootstrapErr = err
 			return

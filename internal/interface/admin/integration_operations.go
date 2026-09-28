@@ -21,6 +21,8 @@ func (api API) handleRTK(w http.ResponseWriter, r *http.Request) {
 		api.dispatch(w, r, capability.IntegrationRTKProbe, nil)
 	case r.Method == http.MethodPost && path == "install":
 		api.dispatch(w, r, capability.IntegrationRTKInstall, nil)
+	case r.Method == http.MethodPost && path == "install/global":
+		api.dispatch(w, r, capability.IntegrationRTKInstallGlobal, nil)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -35,6 +37,8 @@ func (api API) handleCodeGraph(w http.ResponseWriter, r *http.Request) {
 		api.dispatch(w, r, capability.IntegrationCodeGraphProbe, nil)
 	case r.Method == http.MethodPost && path == "install":
 		api.dispatch(w, r, capability.IntegrationCodeGraphInstall, nil)
+	case r.Method == http.MethodPost && path == "install/global":
+		api.dispatch(w, r, capability.IntegrationCodeGraphInstallGlobal, nil)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}

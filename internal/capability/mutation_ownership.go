@@ -90,12 +90,13 @@ func buildMutationOwners() map[ID]MutationOwner {
 	add(MutationOwnerApplicationTunnel,
 		TunnelSync, TunnelConfigure, TunnelAdminKeySet, TunnelAdminKeyVerify, TunnelAdminKeyRemove,
 		TunnelUse, TunnelCreate, TunnelUpdate, TunnelDelete,
+		TunnelCFInstall, TunnelCFUpdate, TunnelCFRemove,
 	)
 	add(MutationOwnerApplicationTelemetry, TelemetryEnable, TelemetryDisable)
 	add(MutationOwnerApplicationTelegram, TelegramSetup)
 	add(MutationOwnerApplicationIntegrations,
-		IntegrationRTKEnable, IntegrationRTKDisable, IntegrationRTKInstall,
-		IntegrationCodeGraphInstall, IntegrationCodeGraphWorkspaceInit, IntegrationCodeGraphWorkspaceSync,
+		IntegrationRTKEnable, IntegrationRTKDisable, IntegrationRTKInstall, IntegrationRTKInstallGlobal,
+		IntegrationCodeGraphInstall, IntegrationCodeGraphInstallGlobal, IntegrationCodeGraphWorkspaceInit, IntegrationCodeGraphWorkspaceSync,
 		IntegrationTypeSafeEnable, IntegrationTypeSafeDisable,
 	)
 	add(MutationOwnerApplicationInstructions, InstructionSettingsWrite)

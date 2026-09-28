@@ -40,8 +40,10 @@ type Asset struct {
 }
 
 type InstallHint struct {
-	Label   string `json:"label"`
-	Command string `json:"command"`
+	Label      string   `json:"label"`
+	Command    string   `json:"command"`
+	Executable string   `json:"executable,omitempty"`
+	Args       []string `json:"args,omitempty"`
 }
 
 var assets = map[string]Asset{
@@ -83,12 +85,12 @@ func SystemInstallHints(goos string) []InstallHint {
 	if strings.TrimSpace(goos) == "windows" {
 		return []InstallHint{
 			{Label: "PowerShell", Command: "irm https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.ps1 | iex"},
-			{Label: "npm", Command: "npm i -g @colbymchenry/codegraph"},
+			{Label: "npm", Command: "npm i -g @colbymchenry/codegraph", Executable: "npm", Args: []string{"i", "-g", "@colbymchenry/codegraph"}},
 		}
 	}
 	return []InstallHint{
 		{Label: "Shell installer", Command: "curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh | sh"},
-		{Label: "npm", Command: "npm i -g @colbymchenry/codegraph"},
+		{Label: "npm", Command: "npm i -g @colbymchenry/codegraph", Executable: "npm", Args: []string{"i", "-g", "@colbymchenry/codegraph"}},
 	}
 }
 

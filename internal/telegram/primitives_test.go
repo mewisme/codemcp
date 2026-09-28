@@ -39,6 +39,51 @@ func TestRichPresentationFallbackPreservesRepresentativeSemantics(t *testing.T) 
 	}
 }
 
+func TestRichMessageHTMLUsesNativeBlockStructureInsteadOfWhitespaceLayout(t *testing.T) {
+	rich := BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Doctor", Text: "healthy=false · warnings=2"},
+		RichBlock{Kind: RichList, Items: []string{"approval.lifecycle — healthy", "background.delivery — healthy"}},
+		RichBlock{Kind: RichTable, Rows: [][]string{{"Runtime", "ready"}, {"Version", "v1.2.3"}}},
+		RichBlock{Kind: RichDetails, Title: "Detail", Text: "line one\nline two"},
+		RichBlock{Kind: RichQuote, Text: "quoted\ntext"},
+		RichBlock{Kind: RichCode, Text: "cm status"},
+	)
+	html := string(RichMessageHTML(rich))
+	for _, want := range []string{
+		"<h2>Doctor</h2><p>healthy=false · warnings=2</p>",
+		"<ul><li>approval.lifecycle — healthy</li><li>background.delivery — healthy</li></ul>",
+		"<table compact><tr><th>Runtime</th><td>ready</td></tr><tr><th>Version</th><td>v1.2.3</td></tr></table>",
+		"<details open><summary>Detail</summary><p>line one<br>line two</p></details>",
+		"<blockquote>quoted<br>text</blockquote>",
+		"<pre><code>cm status</code></pre>",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("native rich message missing block markup %q: %q", want, html)
+		}
+	}
+	if strings.Contains(html, "<b>approval.lifecycle — healthy</b>\n") {
+		t.Fatalf("native rich list regressed to newline-separated inline HTML: %q", html)
+	}
+}
+
+func TestDoctorLikeRichMessageKeepsEachDiagnosticAsAListItem(t *testing.T) {
+	items := []string{
+		"approval.lifecycle — healthy · approval lifecycle is readable",
+		"background.delivery — healthy · background delivery lifecycle is readable",
+		"checkpoint.history — healthy · checkpoint history is readable",
+	}
+	html := string(RichMessageHTML(BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Doctor", Text: "healthy=false · warnings=2 · errors=0 · provider failures=0"},
+		RichBlock{Kind: RichList, Items: items},
+	)))
+	if got := strings.Count(html, "<li>"); got != len(items) {
+		t.Fatalf("doctor diagnostics list items=%d want=%d: %q", got, len(items), html)
+	}
+	if !strings.HasPrefix(html, "<h2>Doctor</h2><p>") || !strings.Contains(html, "</p>\n<ul>") {
+		t.Fatalf("doctor heading/list are not separate native blocks: %q", html)
+	}
+}
+
 func TestRichPresentationBoundsAndRejectsUnsafeLinks(t *testing.T) {
 	blocks := make([]RichBlock, richMaxBlocks+5)
 	for i := range blocks {

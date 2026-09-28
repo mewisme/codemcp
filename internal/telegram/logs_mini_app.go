@@ -73,7 +73,9 @@ type QuickTunnelLauncher interface {
 	Start(context.Context, string) (QuickTunnelProcess, error)
 }
 
-type externalQuickTunnelLauncher struct{}
+type externalQuickTunnelLauncher struct {
+	resolveExecutable func() (string, error)
+}
 
 type externalQuickTunnelProcess struct {
 	cmd      *exec.Cmd
@@ -83,10 +85,13 @@ type externalQuickTunnelProcess struct {
 	once     sync.Once
 }
 
-func (externalQuickTunnelLauncher) Start(ctx context.Context, origin string) (QuickTunnelProcess, error) {
-	path, err := exec.LookPath("cf-tunnel")
+func (launcher externalQuickTunnelLauncher) Start(ctx context.Context, origin string) (QuickTunnelProcess, error) {
+	if launcher.resolveExecutable == nil {
+		return nil, errors.New("cf-tunnel executable resolver is unavailable")
+	}
+	path, err := launcher.resolveExecutable()
 	if err != nil {
-		return nil, fmt.Errorf("cf-tunnel is not installed or not available on PATH: %w", err)
+		return nil, fmt.Errorf("resolve cf-tunnel executable: %w", err)
 	}
 	cmd := exec.Command(path, "--origin", origin)
 	stdout, err := cmd.StdoutPipe()
@@ -223,7 +228,7 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 			if !health.Enabled {
 				message = "Enable telegram.logs_mini_app.enabled to start the read-only Logs Mini App."
 			} else if !health.DependencyAvailable {
-				message = "Install cf-tunnel and ensure it is available on PATH. Telegram polling and administration remain available without it."
+				message = "Run cm tunnel cf install or provide a valid system cf-tunnel executable. Telegram polling and administration remain available without it."
 			} else {
 				message = "The Logs Mini App is not ready yet."
 			}
@@ -233,9 +238,13 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Primary: primary, Navigation: []Button{back, home, refresh}})}, nil
 }
 
-func newLogsMiniAppRuntime(launcher QuickTunnelLauncher) *LogsMiniAppRuntime {
+func newLogsMiniAppRuntime(launcher QuickTunnelLauncher, resolvers ...func() (string, error)) *LogsMiniAppRuntime {
+	var resolveExecutable func() (string, error)
+	if len(resolvers) > 0 {
+		resolveExecutable = resolvers[0]
+	}
 	if launcher == nil {
-		launcher = externalQuickTunnelLauncher{}
+		launcher = externalQuickTunnelLauncher{resolveExecutable: resolveExecutable}
 	}
 	return &LogsMiniAppRuntime{launcher: launcher, now: time.Now, sessions: map[string]miniAppSession{}, health: LogsMiniAppHealth{State: MiniAppDisabled}}
 }
@@ -322,10 +331,6 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 				health.DependencyAvailable = !errors.Is(err, exec.ErrNotFound)
 				health.LastError = compactMiniAppError(err)
 			})
-			if strings.Contains(strings.ToLower(err.Error()), "not installed") || strings.Contains(strings.ToLower(err.Error()), "not available on path") {
-				<-ctx.Done()
-				return
-			}
 			if !waitMiniAppRetry(ctx) {
 				return
 			}

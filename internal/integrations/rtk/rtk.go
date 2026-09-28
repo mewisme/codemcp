@@ -99,6 +99,15 @@ type InstallResult struct {
 	AlreadyInstalled bool   `json:"already_installed"`
 }
 
+type GlobalInstallResult struct {
+	Status           Status `json:"status"`
+	Path             string `json:"path,omitempty"`
+	Method           string `json:"method,omitempty"`
+	Command          string `json:"command,omitempty"`
+	Installed        bool   `json:"installed"`
+	AlreadyInstalled bool   `json:"already_installed"`
+}
+
 type runResult struct {
 	ExitCode int
 	Stdout   string
@@ -335,6 +344,52 @@ func (m *Manager) Install(ctx context.Context) (InstallResult, error) {
 		return InstallResult{}, err
 	}
 	return InstallResult{Status: status, Path: path, Installed: true}, nil
+}
+
+func (m *Manager) InstallGlobal(ctx context.Context) (GlobalInstallResult, error) {
+	if m == nil {
+		return GlobalInstallResult{}, errors.New("rtk integration manager is unavailable")
+	}
+	platform, ok := PlatformFor(m.goos, m.goarch)
+	if !ok {
+		return GlobalInstallResult{}, fmt.Errorf("rtk global install is unsupported on %s/%s", m.goos, m.goarch)
+	}
+	if path, err := m.lookPath(platform.Executable); err == nil && strings.TrimSpace(path) != "" {
+		status, statusErr := m.Status()
+		return GlobalInstallResult{Status: status, Path: path, AlreadyInstalled: true}, statusErr
+	}
+	var selected *InstallHint
+	for index := range platform.Install {
+		hint := &platform.Install[index]
+		if hint.Executable == "" || len(hint.Args) == 0 {
+			continue
+		}
+		if _, err := m.lookPath(hint.Executable); err == nil {
+			selected = hint
+			break
+		}
+	}
+	if selected == nil {
+		return GlobalInstallResult{}, errors.New("no supported RTK global package manager is available")
+	}
+	runCtx, cancel := context.WithTimeout(nonNilContext(ctx), 5*time.Minute)
+	result, err := m.run(runCtx, selected.Executable, selected.Args...)
+	cancel()
+	if err != nil {
+		return GlobalInstallResult{}, err
+	}
+	if result.ExitCode != 0 {
+		return GlobalInstallResult{}, commandError(result)
+	}
+	path, err := m.lookPath(platform.Executable)
+	if err != nil || strings.TrimSpace(path) == "" {
+		return GlobalInstallResult{}, errors.New("RTK global install completed but rtk is not available on PATH")
+	}
+	status, err := m.Status()
+	if err != nil {
+		return GlobalInstallResult{}, err
+	}
+	return GlobalInstallResult{Status: status, Path: path, Method: selected.Label, Command: selected.Command, Installed: true}, nil
 }
 
 func nonNilContext(ctx context.Context) context.Context {

@@ -257,6 +257,43 @@ func (m Manager) Install(ctx context.Context, spec Spec) (string, error) {
 	return validated, err
 }
 
+func (m Manager) Remove(spec Spec) (bool, error) {
+	path, err := m.Path(spec)
+	if err != nil {
+		return false, err
+	}
+	target := filepath.Dir(path)
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return false, errors.New("managed asset target is not a regular directory")
+	}
+	if err := os.RemoveAll(target); err != nil {
+		return false, err
+	}
+	pruneEmptyManagedParents(filepath.Dir(target), strings.TrimSpace(m.Root))
+	return true, nil
+}
+
+func pruneEmptyManagedParents(path, root string) {
+	root = filepath.Clean(root)
+	for path != "" {
+		clean := filepath.Clean(path)
+		if clean == root || clean == "." || clean == string(filepath.Separator) {
+			return
+		}
+		if err := os.Remove(clean); err != nil {
+			return
+		}
+		path = filepath.Dir(clean)
+	}
+}
+
 func (m Manager) TreePath(spec TreeSpec) (string, error) {
 	if err := spec.Validate(); err != nil {
 		return "", err

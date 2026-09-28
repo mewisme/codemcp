@@ -18,9 +18,46 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/logger"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 )
+
+func TestRuntimeControlRestartRequestsManagedReplacement(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	restarted := make(chan struct{}, 1)
+	control, err := startRuntimeControl(runtimeControlOptions{
+		RunID: "run_test",
+		Reload: func(context.Context) (runtimeReloadResult, error) {
+			return runtimeReloadResult{PID: os.Getpid()}, nil
+		},
+		Status:   func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} },
+		Shutdown: func() {},
+		Restart: func() {
+			select {
+			case restarted <- struct{}{}:
+			default:
+			}
+		},
+		ClearLogs: func() error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	var result map[string]bool
+	if _, err := runtimecontrol.Request(t.Context(), http.MethodPost, "/restart", nil, &result); err != nil {
+		t.Fatal(err)
+	}
+	if !result["ok"] {
+		t.Fatalf("restart response=%#v", result)
+	}
+	select {
+	case <-restarted:
+	case <-time.After(time.Second):
+		t.Fatal("runtime restart handler was not invoked")
+	}
+}
 
 func TestServeRuntimeControlLogsUnexpectedFailure(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

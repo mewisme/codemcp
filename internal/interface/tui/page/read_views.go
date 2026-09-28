@@ -20,14 +20,16 @@ const integrationOperationTimeout = 2 * time.Minute
 type IntegrationCommand string
 
 const (
-	IntegrationRTKEnable        IntegrationCommand = "integration.rtk.enable"
-	IntegrationRTKDisable       IntegrationCommand = "integration.rtk.disable"
-	IntegrationRTKInstall       IntegrationCommand = "integration.rtk.install"
-	IntegrationCodeGraphInstall IntegrationCommand = "integration.codegraph.install"
-	IntegrationCodeGraphInit    IntegrationCommand = "integration.codegraph.workspace.init"
-	IntegrationCodeGraphSync    IntegrationCommand = "integration.codegraph.workspace.sync"
-	IntegrationTypeSafeEnable   IntegrationCommand = "integration.typesafe.enable"
-	IntegrationTypeSafeDisable  IntegrationCommand = "integration.typesafe.disable"
+	IntegrationRTKEnable              IntegrationCommand = "integration.rtk.enable"
+	IntegrationRTKDisable             IntegrationCommand = "integration.rtk.disable"
+	IntegrationRTKInstall             IntegrationCommand = "integration.rtk.install"
+	IntegrationRTKInstallGlobal       IntegrationCommand = "integration.rtk.install.global"
+	IntegrationCodeGraphInstall       IntegrationCommand = "integration.codegraph.install"
+	IntegrationCodeGraphInstallGlobal IntegrationCommand = "integration.codegraph.install.global"
+	IntegrationCodeGraphInit          IntegrationCommand = "integration.codegraph.workspace.init"
+	IntegrationCodeGraphSync          IntegrationCommand = "integration.codegraph.workspace.sync"
+	IntegrationTypeSafeEnable         IntegrationCommand = "integration.typesafe.enable"
+	IntegrationTypeSafeDisable        IntegrationCommand = "integration.typesafe.disable"
 )
 
 type IntegrationCommandMsg struct {
@@ -129,8 +131,12 @@ func NewIntegrationsReadView(ctx context.Context, resourceID, action, workspaceI
 			return rtkService.Disable(ctx)
 		case capability.IntegrationRTKInstall:
 			return rtkService.Install(ctx)
+		case capability.IntegrationRTKInstallGlobal:
+			return rtkService.InstallGlobal(ctx)
 		case capability.IntegrationCodeGraphInstall:
 			return codeGraphService.Install(ctx)
+		case capability.IntegrationCodeGraphInstallGlobal:
+			return codeGraphService.InstallGlobal(ctx)
 		case capability.IntegrationCodeGraphWorkspaceInit:
 			return codeGraphService.InitWorkspace(ctx, application.CodeGraphWorkspaceInput{WorkspaceID: strings.TrimSpace(workspaceID)})
 		case capability.IntegrationCodeGraphWorkspaceSync:
@@ -282,7 +288,9 @@ func integrationCommandOperation(command IntegrationCommand) (capability.ID, err
 	case capability.IntegrationRTKEnable,
 		capability.IntegrationRTKDisable,
 		capability.IntegrationRTKInstall,
+		capability.IntegrationRTKInstallGlobal,
 		capability.IntegrationCodeGraphInstall,
+		capability.IntegrationCodeGraphInstallGlobal,
 		capability.IntegrationCodeGraphWorkspaceInit,
 		capability.IntegrationCodeGraphWorkspaceSync,
 		capability.IntegrationTypeSafeEnable,
@@ -304,8 +312,12 @@ func integrationOperationTitle(operation capability.ID) string {
 		return "Disabling RTK"
 	case capability.IntegrationRTKInstall:
 		return "Installing RTK"
+	case capability.IntegrationRTKInstallGlobal:
+		return "Installing RTK globally"
 	case capability.IntegrationCodeGraphInstall:
 		return "Installing CodeGraph"
+	case capability.IntegrationCodeGraphInstallGlobal:
+		return "Installing CodeGraph globally"
 	case capability.IntegrationCodeGraphWorkspaceInit:
 		return "Initializing CodeGraph workspace"
 	case capability.IntegrationCodeGraphWorkspaceSync:
@@ -327,8 +339,12 @@ func integrationOperationNotice(operation capability.ID) string {
 		return "RTK disabled"
 	case capability.IntegrationRTKInstall:
 		return "RTK installed"
+	case capability.IntegrationRTKInstallGlobal:
+		return "RTK installed globally"
 	case capability.IntegrationCodeGraphInstall:
 		return "CodeGraph installed"
+	case capability.IntegrationCodeGraphInstallGlobal:
+		return "CodeGraph installed globally"
 	case capability.IntegrationCodeGraphWorkspaceInit:
 		return "CodeGraph workspace initialized"
 	case capability.IntegrationCodeGraphWorkspaceSync:

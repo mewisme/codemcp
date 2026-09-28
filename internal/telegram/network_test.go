@@ -6,9 +6,60 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/integrations/cftunnel"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
 )
+
+func TestCFTunnelScreenExposesManagedAssetLifecycleWithoutSecondTunnelAuthority(t *testing.T) {
+	status := cftunnel.Status{
+		Version: "v0.0.1", Platform: "linux/amd64", Source: cftunnel.SourceUnavailable,
+		ManagedSupported: true, Consumer: "Telegram Logs Mini App",
+	}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.TunnelCFStatus: status}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+	screen, err := ui.cfTunnelScreen(t.Context(), owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := RichFallback(screen.Rich).Text
+	for _, want := range []string{"Cloudflare Quick Tunnel", "v0.0.1", "Telegram Logs Mini App", "OpenAI Secure MCP Tunnel remains the persistent tunnel authority"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("cf-tunnel screen missing %q: %q", want, text)
+		}
+	}
+	labels := keyboardLabels(screen.Keyboard)
+	for _, want := range []string{"Probe", "Install", "Back", "Home"} {
+		if !strings.Contains(labels, want) {
+			t.Fatalf("cf-tunnel keyboard missing %q: %s", want, labels)
+		}
+	}
+	if strings.Contains(labels, "Remove managed asset") || strings.Contains(labels, "Update") {
+		t.Fatalf("unavailable cf-tunnel exposed managed-only actions: %s", labels)
+	}
+}
+
+func TestCFTunnelScreenExposesUpdateAndManagedOnlyRemoveWhenInstalled(t *testing.T) {
+	status := cftunnel.Status{
+		Version: "v0.0.1", Platform: "linux/amd64", Source: cftunnel.SourceManaged, Path: "/managed/cf-tunnel",
+		Verified: true, ManagedSupported: true, ManagedInstalled: true, Consumer: "Telegram Logs Mini App",
+	}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.TunnelCFStatus: status}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+	screen, err := ui.cfTunnelScreen(t.Context(), owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	labels := keyboardLabels(screen.Keyboard)
+	for _, want := range []string{"Probe", "Update", "Remove managed asset"} {
+		if !strings.Contains(labels, want) {
+			t.Fatalf("managed cf-tunnel keyboard missing %q: %s", want, labels)
+		}
+	}
+	if strings.Contains(labels, "Install") {
+		t.Fatalf("managed cf-tunnel unexpectedly exposes Install: %s", labels)
+	}
+}
 
 func TestTunnelScreenUsesSingleSafeProfileAndKeepsAllKeyControlsReachable(t *testing.T) {
 	view := application.TunnelView{

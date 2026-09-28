@@ -229,12 +229,52 @@ func managedRestart(ctx context.Context, spec managed.Spec, manager managed.Mana
 	if err != nil {
 		return RuntimeActionResult{}, err
 	}
+	current, running, statusErr := runtimeStatusFast(ctx)
+	if statusErr == nil && running && current.Managed && current.PID == os.Getpid() && current.ServiceID == spec.ID && current.ServiceScope == string(spec.Scope) {
+		return managedSelfRestart(ctx, spec, manager, current, requestRuntimeRestart)
+	}
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: runtimeStatusFast, Shutdown: requestRuntimeShutdown, Timeout: managed.DefaultLifecycleTimeout}
 	result, err := lifecycle.Restart(ctx)
 	if err != nil {
 		return RuntimeActionResult{}, err
 	}
 	return runtimeActionResult("restart", spec, manager, result.Status, result.Changed), nil
+}
+
+func managedSelfRestart(ctx context.Context, spec managed.Spec, manager managed.Manager, current runtimecontrol.RuntimeStatus, restart func(context.Context) error) (RuntimeActionResult, error) {
+	if manager == nil || restart == nil {
+		return RuntimeActionResult{}, errors.New("managed runtime self-restart is unavailable")
+	}
+	backend, err := manager.Status(spec)
+	if err != nil {
+		return RuntimeActionResult{}, err
+	}
+	if !backend.Installed {
+		return RuntimeActionResult{}, errors.New("managed service is not installed")
+	}
+	matches, err := manager.DefinitionMatches(spec)
+	if err != nil {
+		return RuntimeActionResult{}, err
+	}
+	if !matches {
+		command := "cm --config-dir " + strconv.Quote(spec.ConfigRoot) + " restart"
+		if spec.Scope == managed.ScopeSystem {
+			command += " --system"
+		}
+		return RuntimeActionResult{
+			Action: "restart", Scope: spec.Scope, Status: current,
+			Service: runtimeActionResult("restart", spec, manager, current, false).Service,
+			External: &ExternalCommand{
+				Command: command,
+				Reason:  "Managed service definition changed; complete restart from a local command so the definition can be updated before the runtime is replaced.",
+			},
+		}, nil
+	}
+	result := runtimeActionResult("restart", spec, manager, current, true)
+	if err := restart(ctx); err != nil {
+		return RuntimeActionResult{}, err
+	}
+	return result, nil
 }
 
 func runtimeStatusFast(ctx context.Context) (runtimecontrol.RuntimeStatus, bool, error) {
@@ -248,6 +288,20 @@ func requestRuntimeShutdown(ctx context.Context) error {
 	defer cancel()
 	_, err := runtimecontrol.Request(requestCtx, http.MethodPost, "/shutdown", nil, &map[string]bool{})
 	return err
+}
+
+func requestRuntimeRestart(ctx context.Context) error {
+	requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	_, err := runtimecontrol.Request(requestCtx, http.MethodPost, "/restart", nil, &map[string]bool{})
+	cancel()
+	if err != nil {
+		return err
+	}
+	if ctx == nil {
+		return context.Canceled
+	}
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func stopManagedBackend(spec managed.Spec, manager managed.Manager) error {

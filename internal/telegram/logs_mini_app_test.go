@@ -236,6 +236,34 @@ func TestLogsMiniAppAbsentDependencyDoesNotDisableTelegramPolling(t *testing.T) 
 	}
 }
 
+func TestLogsMiniAppRetriesMissingDependencyAndRecoversAfterInstall(t *testing.T) {
+	launcher := &miniAppFakeLauncher{err: fmt.Errorf("cf-tunnel is not installed: %w", exec.ErrNotFound)}
+	runtime := newLogsMiniAppRuntime(launcher)
+	t.Cleanup(runtime.Stop)
+	cfg := config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, LogsMiniApp: config.TelegramLogsMiniAppConfig{Enabled: true}}
+	if err := runtime.Reconcile(t.Context(), cfg, "123456:test-token"); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for runtime.Health().State != MiniAppDegraded && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	process := &miniAppFakeProcess{events: make(chan QuickTunnelEvent, 1), done: make(chan error, 1)}
+	process.events <- QuickTunnelEvent{State: "ready", URL: "https://recovered.trycloudflare.com"}
+	launcher.mu.Lock()
+	launcher.err = nil
+	launcher.processes = append(launcher.processes, process)
+	launcher.mu.Unlock()
+	deadline = time.Now().Add(2 * time.Second)
+	for runtime.Health().State != MiniAppReady && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	health := runtime.Health()
+	if health.State != MiniAppReady || health.PublicURL != "https://recovered.trycloudflare.com/logs" || !health.DependencyAvailable {
+		t.Fatalf("recovered health=%#v", health)
+	}
+}
+
 func TestLogsScreenUsesCurrentReadyWebAppURLOnly(t *testing.T) {
 	runtime := NewRuntime(Options{Root: t.TempDir()})
 	runtime.logsMiniApp.mu.Lock()

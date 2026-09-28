@@ -59,6 +59,14 @@ func (s *RTKService) Install(ctx context.Context) (rtk.InstallResult, error) {
 	return manager.Install(ctx)
 }
 
+func (s *RTKService) InstallGlobal(ctx context.Context) (rtk.GlobalInstallResult, error) {
+	manager, err := s.manager()
+	if err != nil {
+		return rtk.GlobalInstallResult{}, err
+	}
+	return manager.InstallGlobal(ctx)
+}
+
 func (s *RTKService) setEnabled(ctx context.Context, enabled bool) (rtk.Status, error) {
 	if s == nil || s.SetField == nil {
 		return rtk.Status{}, errors.New("RTK config mutator is unavailable")
@@ -109,6 +117,7 @@ func BindRTKOperations(dispatcher *Dispatcher, service *RTKService) error {
 		{capability.IntegrationRTKDisable, func(ctx context.Context, _ any) (any, error) { return service.Disable(ctx) }},
 		{capability.IntegrationRTKProbe, func(ctx context.Context, _ any) (any, error) { return service.Probe(ctx) }},
 		{capability.IntegrationRTKInstall, func(ctx context.Context, _ any) (any, error) { return service.Install(ctx) }},
+		{capability.IntegrationRTKInstallGlobal, func(ctx context.Context, _ any) (any, error) { return service.InstallGlobal(ctx) }},
 	}
 	for _, binding := range bindings {
 		if err := dispatcher.Register(binding.id, binding.handler); err != nil {

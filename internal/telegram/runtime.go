@@ -50,12 +50,13 @@ type Health struct {
 }
 
 type Options struct {
-	Root            string
-	Factory         func(string) API
-	PollTimeout     time.Duration
-	ReconnectDelay  func(int) time.Duration
-	StopTimeout     time.Duration
-	MiniAppLauncher QuickTunnelLauncher
+	Root             string
+	Factory          func(string) API
+	PollTimeout      time.Duration
+	ReconnectDelay   func(int) time.Duration
+	StopTimeout      time.Duration
+	MiniAppLauncher  QuickTunnelLauncher
+	CFTunnelResolver func() (string, error)
 }
 
 type Runtime struct {
@@ -114,7 +115,7 @@ func NewRuntime(options Options) *Runtime {
 	if stopTimeout <= 0 {
 		stopTimeout = defaultStopTimeout
 	}
-	return &Runtime{root: options.Root, factory: factory, pollTimeout: pollTimeout, reconnectDelay: reconnectDelay, stopTimeout: stopTimeout, logsMiniApp: newLogsMiniAppRuntime(options.MiniAppLauncher)}
+	return &Runtime{root: options.Root, factory: factory, pollTimeout: pollTimeout, reconnectDelay: reconnectDelay, stopTimeout: stopTimeout, logsMiniApp: newLogsMiniAppRuntime(options.MiniAppLauncher, options.CFTunnelResolver)}
 }
 
 func (runtime *Runtime) SetHandler(handler Handler) {

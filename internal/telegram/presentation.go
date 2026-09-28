@@ -173,20 +173,7 @@ func RichMessageHTML(rich *RichPresentation) SafeHTML {
 	parts := make([]string, 0, len(rich.Blocks))
 	bytes := 0
 	for _, block := range rich.Blocks {
-		var rendered string
-		if block.Kind == RichCopy && validCopyText(block.CopyText) {
-			label := strings.TrimSpace(block.Title)
-			if label == "" {
-				label = "Value"
-			}
-			value := strings.TrimSpace(block.Text)
-			if value == "" {
-				value = block.CopyText
-			}
-			rendered = "<p><b>" + EscapeText(label) + ":</b> <tg-button type=\"copy_text\" text=\"" + EscapeText(block.CopyText) + "\">" + EscapeText(value) + "</tg-button></p>"
-		} else {
-			rendered = strings.TrimSpace(string(RichFallback(&RichPresentation{Blocks: []RichBlock{block}}).HTML))
-		}
+		rendered := richBlockHTML(block)
 		if rendered == "" {
 			continue
 		}
@@ -201,6 +188,151 @@ func RichMessageHTML(rich *RichPresentation) SafeHTML {
 		bytes += separator + len(rendered)
 	}
 	return SafeHTML(strings.Join(parts, "\n"))
+}
+
+func richBlockHTML(block RichBlock) string {
+	switch block.Kind {
+	case RichHeading:
+		return richHeadingHTML("h2", block.Title, block.Text)
+	case RichSection:
+		return richHeadingHTML("h3", block.Title, block.Text)
+	case RichList:
+		items := make([]string, 0, len(block.Items))
+		for _, item := range block.Items {
+			item = strings.TrimSpace(item)
+			if item != "" {
+				items = append(items, "<li>"+richInlineHTML(item)+"</li>")
+			}
+		}
+		if len(items) == 0 {
+			return ""
+		}
+		return "<ul>" + strings.Join(items, "") + "</ul>"
+	case RichTable:
+		rows := make([]string, 0, len(block.Rows))
+		for _, row := range block.Rows {
+			if len(row) == 0 {
+				continue
+			}
+			cells := make([]string, 0, len(row))
+			for index, cell := range row {
+				tag := "td"
+				if index == 0 {
+					tag = "th"
+				}
+				cells = append(cells, "<"+tag+">"+richInlineHTML(cell)+"</"+tag+">")
+			}
+			rows = append(rows, "<tr>"+strings.Join(cells, "")+"</tr>")
+		}
+		if len(rows) == 0 {
+			return ""
+		}
+		return "<table compact>" + strings.Join(rows, "") + "</table>"
+	case RichDetails:
+		title, text := strings.TrimSpace(block.Title), strings.TrimSpace(block.Text)
+		if title == "" {
+			return richParagraphHTML(text)
+		}
+		body := ""
+		if text != "" {
+			body = richParagraphHTML(text)
+		}
+		return "<details open><summary>" + richInlineHTML(title) + "</summary>" + body + "</details>"
+	case RichQuote:
+		text := strings.TrimSpace(block.Text)
+		if text == "" {
+			return ""
+		}
+		return "<blockquote>" + richInlineHTML(text) + "</blockquote>"
+	case RichCode:
+		text := strings.TrimSpace(block.Text)
+		if text == "" {
+			return ""
+		}
+		return "<pre><code>" + EscapeText(text) + "</code></pre>"
+	case RichLink:
+		link := strings.TrimSpace(block.LinkURL)
+		if link == "" {
+			return ""
+		}
+		label := strings.TrimSpace(block.Title)
+		if label == "" {
+			label = link
+		}
+		return "<p><a href=\"" + EscapeText(link) + "\">" + richInlineHTML(label) + "</a></p>"
+	case RichDocument:
+		name := strings.TrimSpace(block.DocumentName)
+		detail := strings.TrimSpace(block.Text)
+		if name == "" && detail == "" {
+			return ""
+		}
+		content := ""
+		if name != "" {
+			content = "<b>Document:</b> " + richInlineHTML(name)
+		}
+		if detail != "" {
+			if content != "" {
+				content += "<br>"
+			}
+			content += richInlineHTML(detail)
+		}
+		return "<p>" + content + "</p>"
+	case RichButtons:
+		items := make([]string, 0)
+		for _, row := range block.Buttons {
+			for _, button := range row {
+				if label := strings.TrimSpace(button.Text); label != "" {
+					items = append(items, "<li>"+richInlineHTML(label)+"</li>")
+				}
+			}
+		}
+		if len(items) == 0 {
+			return ""
+		}
+		return "<ul>" + strings.Join(items, "") + "</ul>"
+	case RichCopy:
+		label := strings.TrimSpace(block.Title)
+		if label == "" {
+			label = "Value"
+		}
+		value := strings.TrimSpace(block.Text)
+		if value == "" {
+			value = strings.TrimSpace(block.CopyText)
+		}
+		if value == "" {
+			return ""
+		}
+		if validCopyText(block.CopyText) {
+			return "<p><b>" + richInlineHTML(label) + ":</b> <tg-button type=\"copy_text\" text=\"" + EscapeText(block.CopyText) + "\">" + richInlineHTML(value) + "</tg-button></p>"
+		}
+		return "<p><b>" + richInlineHTML(label) + ":</b> <code>" + richInlineHTML(value) + "</code></p>"
+	default:
+		return ""
+	}
+}
+
+func richHeadingHTML(tag, title, subtitle string) string {
+	title, subtitle = strings.TrimSpace(title), strings.TrimSpace(subtitle)
+	parts := make([]string, 0, 2)
+	if title != "" {
+		parts = append(parts, "<"+tag+">"+richInlineHTML(title)+"</"+tag+">")
+	}
+	if subtitle != "" {
+		parts = append(parts, richParagraphHTML(subtitle))
+	}
+	return strings.Join(parts, "")
+}
+
+func richParagraphHTML(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	return "<p>" + richInlineHTML(text) + "</p>"
+}
+
+func richInlineHTML(text string) string {
+	return strings.ReplaceAll(EscapeText(strings.TrimSpace(text)), "\n", "<br>")
 }
 
 type PresentationTone string
@@ -392,7 +524,7 @@ func presentationToneIcon(tone PresentationTone) string {
 	case ToneDestructive:
 		return "▲"
 	default:
-		return "·"
+		return "~"
 	}
 }
 
