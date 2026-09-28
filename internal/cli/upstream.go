@@ -75,9 +75,8 @@ func upstreamServerCommand() *cobra.Command {
 func upstreamServerListCommand() *cobra.Command {
 	var asJSON, refresh bool
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List configured Upstream servers",
+		Use:   "list",
+		Short: "List configured Upstream servers",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			manager, err := loadUpstreamManagerForCommand(cmd)
 			if err != nil {
@@ -154,7 +153,6 @@ func upstreamServerConfigureCommand() *cobra.Command {
 	var flags upstreamFlags
 	cmd := &cobra.Command{
 		Use:               "configure <id>",
-		Aliases:           []string{"set"},
 		Short:             "Update selected fields on an existing Upstream server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,
@@ -285,7 +283,6 @@ func upstreamServerStatusCommand() *cobra.Command {
 	var refresh, asJSON bool
 	cmd := &cobra.Command{
 		Use:               "status <id>",
-		Aliases:           []string{"st"},
 		Short:             "Check one Upstream server",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeUpstreamID,

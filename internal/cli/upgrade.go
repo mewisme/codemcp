@@ -15,7 +15,7 @@ import (
 func upgradeCommand() *cobra.Command {
 	var targetVersion string
 	var noRestart bool
-	cmd := &cobra.Command{Use: "upgrade", Aliases: []string{"update", "upg"}, SuggestFor: []string{"upg"}, Short: "Check for and install cm upgrades", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "upgrade", Short: "Check for and install cm upgrades", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "UPDATE", "update.installation.detecting", "Detecting current installation")
 		detection, err := install.DetectCurrent(version.Version)
 		if err != nil {

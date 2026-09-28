@@ -94,6 +94,7 @@ func newRootCommand() *cobra.Command {
 		}},
 	)
 	bindCanonicalScopedSettings(cmd)
+	bindCommandAliases(cmd)
 	bindCanonicalCommandOperations(cmd)
 	bindCommandPresentation(cmd)
 	return cmd
@@ -212,9 +213,8 @@ func authToggleCommand(kind string, enabled bool) *cobra.Command {
 
 func authStatusCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:     "status",
-		Aliases: []string{"st"},
-		Short:   "Show authentication state without revealing token hashes",
+		Use:   "status",
+		Short: "Show authentication state without revealing token hashes",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "AUTH", "auth.status.loading", "Loading authentication state")
 			status, err := application.GetAuthStatusContext(cmd.Context())

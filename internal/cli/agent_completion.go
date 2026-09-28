@@ -51,10 +51,9 @@ func agentCompletionListCommand() *cobra.Command {
 	var limit int
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List recent accepted agent completions",
-		Args:    cobra.NoArgs,
+		Use:   "list",
+		Short: "List recent accepted agent completions",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runCompletionRead(cmd, asJSON, "completion.list.loading", "Loading agent completion history", "Loaded agent completion history", func(ctx context.Context) (any, error) {
 				return application.ListCompletions(ctx, workspaceID, limit)
@@ -72,10 +71,9 @@ func agentCompletionListCommand() *cobra.Command {
 func agentCompletionViewCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:     "view <completion_id>",
-		Aliases: []string{"show", "info"},
-		Short:   "Show one accepted agent completion",
-		Args:    cobra.ExactArgs(1),
+		Use:   "view <completion_id>",
+		Short: "Show one accepted agent completion",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runCompletionRead(cmd, asJSON, "completion.view.loading", "Loading agent completion", "Loaded agent completion", func(ctx context.Context) (any, error) {
 				return application.ViewCompletion(ctx, args[0])

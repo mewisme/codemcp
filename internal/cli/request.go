@@ -19,7 +19,7 @@ import (
 const requestControlTimeout = 5 * time.Second
 
 func requestCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "request", Aliases: []string{"req"}, Short: "Review and resolve control approval requests"}
+	cmd := &cobra.Command{Use: "request", Short: "Review and resolve control approval requests"}
 	cmd.AddCommand(requestListCommand(), requestViewCommand(), requestResolveCommand(true), requestResolveCommand(false), requestGrantCommand())
 	return cmd
 }
@@ -33,7 +33,7 @@ func requestGrantCommand() *cobra.Command {
 func requestGrantListCommand() *cobra.Command {
 	var asJSON bool
 	var workspaceID string
-	cmd := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List active similar-command runtime grants", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List active similar-command runtime grants", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
 		var progress *commandProgress
 		if !asJSON {
@@ -88,7 +88,7 @@ func requestGrantRevokeCommand() *cobra.Command {
 
 func requestListCommand() *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List control approval requests from the running runtime", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List control approval requests from the running runtime", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
 		var progress *commandProgress
 		if !asJSON {
@@ -115,7 +115,7 @@ func requestListCommand() *cobra.Command {
 
 func requestViewCommand() *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "view <request_id>", Aliases: []string{"show", "info"}, Short: "Show one control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "view <request_id>", Short: "Show one control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("request", args[0]))
 		var progress *commandProgress
 		if !asJSON {
@@ -143,11 +143,9 @@ func requestViewCommand() *cobra.Command {
 func requestResolveCommand(approve bool) *cobra.Command {
 	action, past := "deny", "denied"
 	label := "Deny"
-	aliases := []string{"reject"}
 	if approve {
 		action, past = "approve", "approved"
 		label = "Approve"
-		aliases = []string{"accept", "allow"}
 	}
 	progress := "Denying approval request"
 	if approve {
@@ -156,7 +154,7 @@ func requestResolveCommand(approve bool) *cobra.Command {
 	var asJSON bool
 	var reason string
 	var allowSimilar bool
-	cmd := &cobra.Command{Use: action + " <request_id>", Aliases: aliases, Short: label + " one pending control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: action + " <request_id>", Short: label + " one pending control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("action", action), logger.WithVerbose("request", args[0]))
 		var commandPhase *commandProgress
 		if !asJSON {

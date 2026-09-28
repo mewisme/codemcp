@@ -476,7 +476,11 @@ func TestConfigGetScalarInteractiveLifecycleIsFrameFirst(t *testing.T) {
 }
 
 func TestConfigCommandAliases(t *testing.T) {
-	cmd := configCommand()
+	root := newRootCommand()
+	cmd, _, err := root.Find([]string{"config"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if convert, _, err := cmd.Find([]string{"convert"}); err == nil && convert != cmd {
 		t.Fatalf("convert command still exposed: %v", convert)
 	}
@@ -492,7 +496,6 @@ func TestConfigCommandAliases(t *testing.T) {
 			t.Fatal("config reload command is still registered")
 		}
 	}
-	root := newRootCommand()
 	root.SetArgs([]string{"config", "reload"})
 	root.SilenceUsage = true
 	root.SilenceErrors = true

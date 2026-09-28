@@ -62,7 +62,11 @@ func TestConfigureManagedTunnelRequiresSeparateRuntimeKey(t *testing.T) {
 }
 
 func TestTunnelCommandAdminHierarchy(t *testing.T) {
-	cmd := tunnelCommand()
+	root := newRootCommand()
+	cmd, _, err := root.Find([]string{"tunnel"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, path := range [][]string{
 		{"key", "set"}, {"key", "remove"},
 		{"admin", "key", "set"}, {"admin", "key", "status"}, {"admin", "key", "verify"}, {"admin", "key", "remove"},

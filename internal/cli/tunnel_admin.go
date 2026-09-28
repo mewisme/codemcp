@@ -135,7 +135,7 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 }
 
 func tunnelAdminKeyStatusCommand() *cobra.Command {
-	return &cobra.Command{Use: "status", Aliases: []string{"st"}, Short: "Show stored tunnel admin key state without revealing the key", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "status", Short: "Show stored tunnel admin key state without revealing the key", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.loading", "Loading tunnel admin key state")
 		status, err := application.TunnelAdminKeyStatusContext(cmd.Context())
 		if err != nil {
@@ -188,7 +188,7 @@ func runTunnelAdminVerify(cmd *cobra.Command, _ []string) error {
 }
 
 func tunnelAdminKeyRemoveCommand() *cobra.Command {
-	return &cobra.Command{Use: "remove", Aliases: []string{"rm"}, Short: "Remove the stored tunnel admin key and verification scope", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "remove", Short: "Remove the stored tunnel admin key and verification scope", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.removing", "Removing stored tunnel admin key")
 		if _, err := settingService().Unset(cmd.Context(), "tunnel.admin.key"); err != nil {
 			return err
@@ -201,7 +201,7 @@ func tunnelAdminKeyRemoveCommand() *cobra.Command {
 func tunnelListCommand() *cobra.Command {
 	var scopeFlags tunnelAdminScopeFlags
 	var asJSON bool
-	cmd := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List tunnels manageable by the stored admin key", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List tunnels manageable by the stored admin key", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.admin.config.loading", "Loading tunnel administration configuration")
 		cfg, err := config.Load()
 		if err != nil {
@@ -361,7 +361,7 @@ func tunnelUseCommand() *cobra.Command {
 	var runtimeAPIKey string
 	var autoRuntimeKey bool
 	var projectID string
-	cmd := &cobra.Command{Use: "use <tunnel_id>", Aliases: []string{"select", "switch"}, Short: "Select a managed tunnel for the local runtime", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "use <tunnel_id>", Short: "Select a managed tunnel for the local runtime", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		logCommandStep(cmd, "TUNNEL", "tunnel.use.preparing", "Preparing managed tunnel selection", logger.WithVerbose("tunnel_id", args[0]))
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()

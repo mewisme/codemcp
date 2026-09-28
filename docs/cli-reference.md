@@ -151,6 +151,8 @@ cm
     └── unregister
 ```
 
+Compact root spellings are `cfg` → `config`, `ws` → `workspace`, `tg` → `telegram`, `ups` → `upstream`, and `tel` → `telemetry`. Compatibility spellings such as `req`, `log`, `update`/`upg`, plus parent-scoped forms such as `ls`, `rm`, `st`, and `info`, resolve to the same canonical command and operation as their long form; they do not define separate operations. Alias meaning is scoped by its canonical parent, so the same short token can safely be reused in different command families.
+
 ## Installation and updates
 
 Install the current binary into the managed direct-install layout:

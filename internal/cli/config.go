@@ -18,7 +18,7 @@ import (
 const defaultConfigBundleFile = "codemcp-config.json"
 
 func configCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "config", Aliases: []string{"cfg"}, Short: "Read and update validated runtime configuration", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
+	cmd := &cobra.Command{Use: "config", Short: "Read and update validated runtime configuration", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
 	cmd.AddCommand(
 		configPathCommand(),
 		configGetCommand(),
@@ -161,10 +161,9 @@ func configGetCommand() *cobra.Command {
 func configListCommand() *cobra.Command {
 	options := configOutputOptions{}
 	cmd := &cobra.Command{
-		Use:     "list [key]",
-		Aliases: []string{"ls"},
-		Short:   "List presentation-safe canonical settings with optional subtree",
-		Args:    cobra.MaximumNArgs(1),
+		Use:   "list [key]",
+		Short: "List presentation-safe canonical settings with optional subtree",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := ""
 			if len(args) > 0 {
@@ -312,10 +311,9 @@ func configMigrateSecretsCommand() *cobra.Command {
 func configVerifyCommand() *cobra.Command {
 	var strict bool
 	cmd := &cobra.Command{
-		Use:     "verify [key]",
-		Aliases: []string{"validate"},
-		Short:   "Verify global config/state or one explicitly verifiable setting",
-		Args:    cobra.MaximumNArgs(1),
+		Use:   "verify [key]",
+		Short: "Verify global config/state or one explicitly verifiable setting",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				key := strings.TrimSpace(args[0])

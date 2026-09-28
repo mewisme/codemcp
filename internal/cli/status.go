@@ -41,11 +41,10 @@ const statusTunnelWatchTimeout = 35 * time.Second
 
 func statusCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:     "status",
-		Aliases: []string{"st"},
-		Short:   "Show runtime health and local configuration",
-		Args:    cobra.NoArgs,
-		RunE:    runStatus,
+		Use:   "status",
+		Short: "Show runtime health and local configuration",
+		Args:  cobra.NoArgs,
+		RunE:  runStatus,
 	}
 }
 

@@ -60,7 +60,7 @@ type logsOptions struct {
 
 func logsCommand() *cobra.Command {
 	options := &logsOptions{tail: 100, showTime: true}
-	cmd := &cobra.Command{Use: "logs", Aliases: []string{"log"}, Short: "Read and follow structured runtime logs", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "logs", Short: "Read and follow structured runtime logs", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		return runLogs(cmd, *options)
 	}}
 	addLogsFlags(cmd, options, true)

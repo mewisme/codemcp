@@ -19,7 +19,7 @@ import (
 )
 
 func workspaceCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "workspace", Aliases: []string{"ws"}, Short: "Manage registered workspace roots"}
+	cmd := &cobra.Command{Use: "workspace", Short: "Manage registered workspace roots"}
 	cmd.AddCommand(
 		workspaceRegisterCommand(),
 		workspaceListCommand(),
@@ -120,7 +120,6 @@ func workspaceRelocateCommand() *cobra.Command {
 	var resolve string
 	cmd := &cobra.Command{
 		Use:               "relocate <workspace_id> <path>",
-		Aliases:           []string{"move"},
 		Short:             "Rebind a registered workspace after its project directory moved",
 		Args:              cobra.ExactArgs(2),
 		ValidArgsFunction: completeWorkspaceThenDirectory,
@@ -231,7 +230,7 @@ func workspaceServiceForCommand(cmd *cobra.Command) *application.WorkspaceServic
 }
 
 func workspaceContainerCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "container", Aliases: []string{"ctr"}, Short: "Manage workspace containers"}
+	cmd := &cobra.Command{Use: "container", Short: "Manage workspace containers"}
 	cmd.AddCommand(
 		workspaceContainerListCommand(),
 		workspaceContainerCreateCommand(),
@@ -246,7 +245,7 @@ func workspaceContainerCommand() *cobra.Command {
 
 func workspaceContainerListCommand() *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List workspace containers", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "list", Short: "List workspace containers", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		result, err := workspaceServiceForCommand(cmd).ListContainers(cmd.Context())
 		if err != nil {
 			return err
@@ -305,7 +304,7 @@ func workspaceContainerRenameCommand() *cobra.Command {
 }
 
 func workspaceContainerDeleteCommand() *cobra.Command {
-	return &cobra.Command{Use: "delete <wsc_id>", Aliases: []string{"rm"}, Short: "Delete a workspace container without unregistering workspaces", Args: cobra.ExactArgs(1), ValidArgsFunction: completeWorkspaceContainerID, RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "delete <wsc_id>", Short: "Delete a workspace container without unregistering workspaces", Args: cobra.ExactArgs(1), ValidArgsFunction: completeWorkspaceContainerID, RunE: func(cmd *cobra.Command, args []string) error {
 		result, err := workspaceServiceForCommand(cmd).DeleteContainer(cmd.Context(), args[0])
 		if err != nil {
 			return err
@@ -342,7 +341,7 @@ func workspaceContainerMembershipCommand(add bool) *cobra.Command {
 func workspaceAccessCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "access", Short: "Manage workspace-specific filesystem access"}
 	var listJSON bool
-	list := &cobra.Command{Use: "list <workspace_id>", Aliases: []string{"ls"}, Short: "List workspace-specific additional directories", Args: cobra.ExactArgs(1), ValidArgsFunction: completeWorkspaceID, RunE: func(cmd *cobra.Command, args []string) error {
+	list := &cobra.Command{Use: "list <workspace_id>", Short: "List workspace-specific additional directories", Args: cobra.ExactArgs(1), ValidArgsFunction: completeWorkspaceID, RunE: func(cmd *cobra.Command, args []string) error {
 		result, err := workspaceServiceForCommand(cmd).AccessList(cmd.Context(), args[0])
 		if err != nil {
 			return err
@@ -410,9 +409,8 @@ func workspaceRegisterCommand() *cobra.Command {
 func workspaceListCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List registered workspace roots",
+		Use:   "list",
+		Short: "List registered workspace roots",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := workspaceServiceForCommand(cmd).List(cmd.Context())
 			if err != nil {

@@ -13,10 +13,9 @@ import (
 
 func cfTunnelCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "cf",
-		Aliases: []string{"cf-tunnel"},
-		Short:   "Manage the Cloudflare Quick Tunnel integration",
-		Long:    "Manage the verified cf-tunnel integration used for ephemeral Telegram Logs Mini App ingress. OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority.",
+		Use:   "cf",
+		Short: "Manage the Cloudflare Quick Tunnel integration",
+		Long:  "Manage the verified cf-tunnel integration used for ephemeral Telegram Logs Mini App ingress. OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority.",
 	}
 	cmd.AddCommand(
 		tunnelCFStatusCommand(),
@@ -30,7 +29,7 @@ func cfTunnelCommand() *cobra.Command {
 
 func tunnelCFStatusCommand() *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "status", Aliases: []string{"st"}, Short: "Show Cloudflare Quick Tunnel integration status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "status", Short: "Show Cloudflare Quick Tunnel integration status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		status, err := application.NewCFTunnelService().Status(cmd.Context())
 		if err != nil {
 			return err
@@ -102,7 +101,7 @@ func tunnelCFInstallLikeCommand(use, short string, run func(context.Context, *ap
 
 func tunnelCFRemoveCommand() *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "remove", Aliases: []string{"rm"}, Short: "Remove only the CodeMCP-managed cf-tunnel asset", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "remove", Short: "Remove only the CodeMCP-managed cf-tunnel asset", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		result, err := application.NewCFTunnelService().Remove(cmd.Context())
 		if err != nil {
 			return err

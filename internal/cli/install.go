@@ -13,7 +13,7 @@ import (
 
 func installCommand() *cobra.Command {
 	var force bool
-	cmd := &cobra.Command{Use: "install", Aliases: []string{"ins"}, SuggestFor: []string{"ins"}, Short: "Install this binary into the managed versioned layout", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "install", Short: "Install this binary into the managed versioned layout", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandStep(cmd, "INSTALL", "install.plan", "Preparing installation", logger.WithVerbose("version", version.Version), logger.WithDebug("force", force))
 		result, err := installpkg.Install(installpkg.Options{Context: cmd.Context(), Version: version.Version, Force: force})
 		if err != nil {

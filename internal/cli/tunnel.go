@@ -35,7 +35,7 @@ func tunnelRuntimeKeyCommand() *cobra.Command {
 		renderMutationSuccess(cmd, "Runtime API key saved")
 		return nil
 	}}
-	remove := &cobra.Command{Use: "remove", Aliases: []string{"rm"}, Short: "Remove the stored OpenAI tunnel runtime API key", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	remove := &cobra.Command{Use: "remove", Short: "Remove the stored OpenAI tunnel runtime API key", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if _, err := settingService().Unset(cmd.Context(), "tunnel.api_key"); err != nil {
 			return err
 		}
@@ -52,7 +52,7 @@ func normalizeTunnelIDs(values []string) []string {
 
 func tunnelStatusCommand() *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "status", Aliases: []string{"st"}, Short: "Show tunnel configuration, runtime state, and metadata", Args: cobra.NoArgs, RunE: runTunnelStatus}
+	cmd := &cobra.Command{Use: "status", Short: "Show tunnel configuration, runtime state, and metadata", Args: cobra.NoArgs, RunE: runTunnelStatus}
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }

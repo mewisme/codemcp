@@ -31,7 +31,7 @@ func telegramSettingsCommand() *cobra.Command {
 		},
 	}
 	remove := &cobra.Command{
-		Use: "remove", Aliases: []string{"clear"}, Short: "Remove the Telegram bot token", Args: cobra.NoArgs,
+		Use: "remove", Short: "Remove the Telegram bot token", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := scopedSettingUnset(cmd, "telegram.token"); err != nil {
 				return err
