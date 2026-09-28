@@ -38,6 +38,9 @@ func TestCompletionHookUsesSharedCoordinatorAndDeduplicatesRecord(t *testing.T) 
 	if message.Kind != KindCompletionAccepted || message.CompletionID != "cmp_one" || message.WorkspaceID != "ws_test" {
 		t.Fatalf("completion message=%#v", message)
 	}
+	if message.Status != "completed" || message.Subject != "Finished work" || message.Summary != "All requested changes passed verification" {
+		t.Fatalf("completion structured presentation fields=%#v", message)
+	}
 	if message.RequestID != "" || message.TargetTool != "" || len(message.Actions) != 0 {
 		t.Fatalf("completion notification leaked approval/tool surface fields: %#v", message)
 	}
@@ -72,7 +75,7 @@ func TestCompletionMessageMapsStatusesAndBoundsSafeContent(t *testing.T) {
 		t.Fatal("accepted completion did not produce notification")
 	}
 	for _, forbidden := range []string{secret, querySecret, "title-secret"} {
-		if strings.Contains(message.Body, forbidden) || strings.Contains(message.Title, forbidden) {
+		if strings.Contains(message.Body, forbidden) || strings.Contains(message.Title, forbidden) || strings.Contains(message.Subject, forbidden) || strings.Contains(message.Summary, forbidden) {
 			t.Fatalf("completion notification leaked %q: %#v", forbidden, message)
 		}
 	}

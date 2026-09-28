@@ -23,6 +23,7 @@ var commandRegistry = []Command{
 	{Name: "status", Description: "Show CodeMCP runtime status", Route: RouteStatus},
 	{Name: "workspaces", Description: "Manage registered workspaces", Route: RouteWorkspaces},
 	{Name: "requests", Description: "Review pending approval requests", Route: RouteRequests},
+	{Name: "completions", Description: "Browse recent agent completions", Route: RouteCompletions},
 	{Name: "network", Description: "Manage tunnel and Upstream servers", Route: RouteNetwork},
 	{Name: "integrations", Description: "Manage integrations", Route: RouteIntegrations},
 	{Name: "settings", Description: "Browse and edit canonical settings", Route: RouteSettings},

@@ -84,12 +84,13 @@ func (*topicTestAPI) AnswerCallback(context.Context, string, string, bool) error
 
 func TestTopicRoleForNotification(t *testing.T) {
 	tests := map[notification.Kind]TopicRole{
-		notification.KindApprovalPending:         TopicRequests,
-		notification.KindApprovalResolved:        TopicRequests,
-		notification.Kind("completion.accepted"): TopicCompletions,
-		notification.Kind("log.status"):          TopicLogs,
-		notification.Kind("runtime.update"):      TopicRuntime,
-		notification.Kind("doctor.warning"):      TopicRuntime,
+		notification.KindApprovalPending:       TopicRequests,
+		notification.KindApprovalResolved:      TopicRequests,
+		notification.KindCompletionAccepted:    TopicCompletions,
+		notification.KindBackgroundJobFinished: TopicRuntime,
+		notification.Kind("log.status"):        TopicLogs,
+		notification.Kind("runtime.update"):    TopicRuntime,
+		notification.Kind("doctor.warning"):    TopicRuntime,
 	}
 	for kind, want := range tests {
 		if got := topicRoleForNotification(kind); got != want {
@@ -159,7 +160,7 @@ func TestNotificationRoutingUsesManagedTopicWithoutChangingDeliveryCount(t *test
 	}
 	messages := []notification.Message{
 		{Kind: notification.KindApprovalPending, Title: "approval"},
-		{Kind: notification.Kind("completion.accepted"), Title: "completion"},
+		{Kind: notification.KindCompletionAccepted, Title: "completion"},
 		{Kind: notification.Kind("runtime.update"), Title: "runtime"},
 		{Kind: notification.Kind("log.status"), Title: "logs"},
 	}

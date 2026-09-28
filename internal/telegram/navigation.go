@@ -28,6 +28,8 @@ const (
 	RouteContainer       Route = "container"
 	RouteRequests        Route = "requests"
 	RouteRequest         Route = "request"
+	RouteCompletions     Route = "completions"
+	RouteCompletion      Route = "completion"
 	RouteOperation       Route = "operation"
 	RouteNetwork         Route = "network"
 	RouteTunnel          Route = "tunnel"
@@ -68,6 +70,8 @@ type InterfaceOptions struct {
 	Dispatcher      application.OperationDispatcher
 	VersionResolver VersionResolver
 	RuntimeStatus   RuntimeStatusResolver
+	CompletionList  CompletionListResolver
+	CompletionView  CompletionViewResolver
 	StateTTLSeconds int
 }
 
@@ -83,6 +87,8 @@ type Interface struct {
 	router          *Router
 	operations      *operationMessageStore
 	runtimeStatus   RuntimeStatusResolver
+	completionList  CompletionListResolver
+	completionView  CompletionViewResolver
 }
 
 func NewInterface(options InterfaceOptions) (*Interface, error) {
@@ -101,14 +107,21 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 		runtime: options.Runtime, dispatcher: options.Dispatcher, versions: options.VersionResolver,
 		states: NewViewStateStore(stateTTL, defaultViewStateMax), inputs: NewInputStore(stateTTL), userSelections: NewUserSelectionStore(stateTTL), callbacks: codec, router: NewRouter(),
 		operations: newOperationMessageStore(options.Runtime.root), runtimeStatus: options.RuntimeStatus,
+		completionList: options.CompletionList, completionView: options.CompletionView,
 	}
 	if ui.runtimeStatus == nil {
 		ui.runtimeStatus = application.RuntimeStatus
 	}
+	if ui.completionList == nil {
+		ui.completionList = application.ListCompletions
+	}
+	if ui.completionView == nil {
+		ui.completionView = application.ViewCompletion
+	}
 	ui.nextUserRequest.Store(1000)
 	handlers := map[Route]RouteHandler{
 		RouteHome: ui.handleHome, RouteStatus: ui.handleStatus, RouteCommands: ui.handleCommands,
-		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests, RouteNetwork: ui.handleNetwork,
+		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests, RouteCompletions: ui.handleCompletions, RouteNetwork: ui.handleNetwork,
 		RouteSettings: ui.handleSettings, RouteIntegrations: ui.handleIntegrations,
 		RouteSystem: ui.handleSystem, RouteInstructions: ui.handleInstructions, RouteLogs: ui.handleLogs,
 	}
@@ -420,6 +433,10 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.requestListScreen(ctx, owner, state)
 	case RouteRequest:
 		return ui.requestDetailScreen(ctx, owner, state)
+	case RouteCompletions:
+		return ui.completionListScreen(ctx, owner, state)
+	case RouteCompletion:
+		return ui.completionDetailScreen(ctx, owner, state)
 	case RouteNetwork:
 		return ui.networkScreen(owner)
 	case RouteTunnel:
@@ -485,6 +502,10 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
+	completions, err := ui.stateButton(owner, "Completions", CallbackOpen, ActionState{Route: RouteCompletions, Back: RouteHome})
+	if err != nil {
+		return Screen{}, err
+	}
 	network, err := ui.stateButton(owner, "Network", CallbackOpen, ActionState{Route: RouteNetwork, Back: RouteHome})
 	if err != nil {
 		return Screen{}, err
@@ -509,19 +530,16 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
-	unavailable := func(label string) Button {
-		return Button{Text: CompactActionLabel(label), Disabled: true, Role: ButtonRoleNeutral}
-	}
 	presentation := Present(
 		ProductHeader("CodeMCP", "Telegram"),
 		TitleBlock("Home", "Private administration interface"),
 		StatusRow(ToneHealthy, "Authorized", "Commands are limited to this private account."),
-		StatusRow(ToneHealthy, "Administration", "Workspace and approval operations use canonical application services."),
-		StatusRow(ToneWarning, "Unavailable", "Remaining administration sections stay disabled until their canonical Telegram adapters are activated."),
+		StatusRow(ToneHealthy, "Administration", "Workspace, request, completion, and system views use canonical application services."),
+		StatusRow(ToneHealthy, "Activity", "Completions and runtime activity use dedicated Rich Message and Logs surfaces."),
 	)
 	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{
 		{status, system},
-		{requests, unavailable("Completions")},
+		{requests, completions},
 		{workspaces, network},
 		{upstreams, integrations},
 		{instructions},
@@ -960,6 +978,10 @@ func routeLabel(route Route) string {
 		return "Requests"
 	case RouteRequest:
 		return "Request"
+	case RouteCompletions:
+		return "Completions"
+	case RouteCompletion:
+		return "Completion"
 	case RouteNetwork:
 		return "Network"
 	case RouteTunnel:

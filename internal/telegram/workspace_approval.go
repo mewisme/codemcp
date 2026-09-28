@@ -485,7 +485,7 @@ func (ui *Interface) requestCardWithOptions(owner ViewOwner, request approval.Re
 	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: rows}, nil
 }
 
-func (ui *Interface) RenderNotification(ctx context.Context, chatID int64, message notification.Message) (Screen, bool, error) {
+func (ui *Interface) renderApprovalNotification(ctx context.Context, chatID int64, message notification.Message) (Screen, bool, error) {
 	if ui == nil || ui.runtime == nil || strings.TrimSpace(message.RequestID) == "" {
 		return Screen{}, false, nil
 	}

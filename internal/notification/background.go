@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -115,28 +116,28 @@ func (b *BackgroundJobBridge) consume(ctx context.Context, event shellruntime.Ba
 }
 
 func backgroundJobMessage(event shellruntime.BackgroundWorkTerminalEvent) (Message, bool) {
-	processID := strings.TrimSpace(event.ProcessID)
+	processID := boundedNotificationText(event.ProcessID, 160)
 	if processID == "" {
 		return Message{}, false
 	}
-	title := "Background job finished"
+	title := "Background process finished"
 	switch event.Status {
 	case shellruntime.ExecutionStatusSuccess:
-		title = "Background job completed"
+		title = "Background process completed"
 	case shellruntime.ExecutionStatusFailed:
-		title = "Background job failed"
+		title = "Background process failed"
 	case shellruntime.ExecutionStatusTimedOut:
-		title = "Background job timed out"
+		title = "Background process timed out"
 	case shellruntime.ExecutionStatusCancelled:
-		title = "Background job cancelled"
+		title = "Background process cancelled"
 	case shellruntime.ExecutionStatusInterrupted:
-		title = "Background job interrupted"
+		title = "Background process interrupted"
 	}
-	reason := strings.TrimSpace(string(event.Reason))
+	reason := boundedNotificationText(string(event.Reason), 80)
 	if reason == "" {
 		reason = "terminal"
 	}
-	status := strings.TrimSpace(event.Status)
+	status := boundedNotificationText(event.Status, 80)
 	if status == "" {
 		status = "finished"
 	}
@@ -144,13 +145,59 @@ func backgroundJobMessage(event shellruntime.BackgroundWorkTerminalEvent) (Messa
 	if err != nil {
 		timestamp = time.Now().UTC()
 	}
+	durationMS := backgroundDurationMS(event.StartedAt, event.FinishedAt)
+	tool := boundedNotificationText(event.Tool, 120)
+	workspaceID := boundedNotificationText(event.WorkspaceID, 160)
+	executionID := boundedNotificationText(event.ExecutionID, 160)
+	signal := ""
+	if event.Signal != nil {
+		signal = boundedNotificationText(*event.Signal, 80)
+	}
+	var exitCode *int
+	if event.ExitCode != nil {
+		value := *event.ExitCode
+		exitCode = &value
+	}
+	parts := make([]string, 0, 6)
+	if tool != "" {
+		parts = append(parts, tool)
+	}
+	parts = append(parts, status)
+	if reason != "terminal" {
+		parts = append(parts, reason)
+	}
+	if durationMS > 0 {
+		parts = append(parts, (time.Duration(durationMS) * time.Millisecond).String())
+	}
+	if exitCode != nil {
+		parts = append(parts, "exit "+strconv.Itoa(*exitCode))
+	}
+	if signal != "" {
+		parts = append(parts, "signal "+signal)
+	}
 	return Message{
 		ID:          "background:" + processID,
 		Kind:        KindBackgroundJobFinished,
 		Title:       title,
-		Body:        "Background process finished with status " + status + " (" + reason + ").",
-		WorkspaceID: strings.TrimSpace(event.WorkspaceID),
-		TargetTool:  strings.TrimSpace(event.Tool),
+		Body:        strings.Join(parts, " · "),
+		Status:      status,
+		Reason:      reason,
+		WorkspaceID: workspaceID,
+		ProcessID:   processID,
+		ExecutionID: executionID,
+		TargetTool:  tool,
+		DurationMS:  durationMS,
+		ExitCode:    exitCode,
+		Signal:      signal,
 		Timestamp:   timestamp.UTC(),
 	}, true
+}
+
+func backgroundDurationMS(startedAt, finishedAt string) int64 {
+	started, startErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(startedAt))
+	finished, finishErr := time.Parse(time.RFC3339Nano, strings.TrimSpace(finishedAt))
+	if startErr != nil || finishErr != nil || finished.Before(started) {
+		return 0
+	}
+	return finished.Sub(started).Milliseconds()
 }

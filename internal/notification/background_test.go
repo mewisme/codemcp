@@ -2,6 +2,8 @@ package notification
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,10 +30,12 @@ func TestBackgroundJobNotificationUsesGenericTelegramProviderWithoutConsumingMod
 	if !broker.RegisterStart(backgrounddelivery.Registration{WorkspaceID: "ws_notify", ProcessID: "proc_notify", ExecutionID: "exec_notify", Owner: owner}) {
 		t.Fatal("background delivery registration failed")
 	}
+	finished := time.Now().UTC()
+	exitCode := 0
 	event := shellruntime.BackgroundWorkTerminalEvent{
 		WorkspaceID: "ws_notify", ProcessID: "proc_notify", ExecutionID: "exec_notify", Tool: "start_process",
 		Status: shellruntime.ExecutionStatusSuccess, Reason: shellruntime.BackgroundTerminalExit,
-		FinishedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		ExitCode: &exitCode, StartedAt: finished.Add(-1500 * time.Millisecond).Format(time.RFC3339Nano), FinishedAt: finished.Format(time.RFC3339Nano),
 	}
 	broker.ApplyTerminal(event)
 	values, err := broker.List("ws_notify", owner)
@@ -53,6 +57,9 @@ func TestBackgroundJobNotificationUsesGenericTelegramProviderWithoutConsumingMod
 		if message.Kind != KindBackgroundJobFinished || message.WorkspaceID != "ws_notify" || message.TargetTool != "start_process" {
 			t.Fatalf("telegram background message=%#v", message)
 		}
+		if message.ProcessID != "proc_notify" || message.ExecutionID != "exec_notify" || message.Status != shellruntime.ExecutionStatusSuccess || message.Reason != string(shellruntime.BackgroundTerminalExit) || message.DurationMS != 1500 || message.ExitCode == nil || *message.ExitCode != 0 {
+			t.Fatalf("telegram background structured fields=%#v", message)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("Telegram provider did not receive background terminal notification")
 	}
@@ -63,14 +70,29 @@ func TestBackgroundJobNotificationUsesGenericTelegramProviderWithoutConsumingMod
 }
 
 func TestBackgroundJobMessageContainsNoCommandOrOutputPayload(t *testing.T) {
+	exitCode := 23
+	signal := "SIGTERM"
 	message, ok := backgroundJobMessage(shellruntime.BackgroundWorkTerminalEvent{
-		WorkspaceID: "ws_safe", ProcessID: "proc_safe", Tool: "start_process",
+		WorkspaceID: "ws_safe", ProcessID: "proc_safe", ExecutionID: "exec_safe", Tool: "start_process",
 		Status: shellruntime.ExecutionStatusFailed, Reason: shellruntime.BackgroundTerminalFailure,
+		ExitCode: &exitCode, Signal: &signal, SessionHash: "session-secret", CallID: "call-secret",
 	})
 	if !ok {
 		t.Fatal("background message was not created")
 	}
 	if message.Kind != KindBackgroundJobFinished || message.Body == "" {
 		t.Fatalf("background message=%#v", message)
+	}
+	encoded, err := json.Marshal(message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"session-secret", "call-secret", "session_hash", "call_id"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("background notification leaked %q: %s", forbidden, encoded)
+		}
+	}
+	if message.ProcessID != "proc_safe" || message.ExecutionID != "exec_safe" || message.ExitCode == nil || *message.ExitCode != 23 || message.Signal != "SIGTERM" {
+		t.Fatalf("background message lost safe terminal metadata: %#v", message)
 	}
 }
