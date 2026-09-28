@@ -133,14 +133,14 @@ func TestManagedRuntimeActionStagesTransientGoRunBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	spec := managed.Spec{ConfigRoot: root, Binary: source}
-	prepared, err := prepareManagedActionSpec(spec, "restart")
+	prepared, err := prepareManagedActionSpec(t.Context(), spec, "up")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if prepared.Binary == spec.Binary || !strings.Contains(filepath.ToSlash(prepared.Binary), "/runtime/bin/go-run/") {
 		t.Fatalf("prepared binary = %q", prepared.Binary)
 	}
-	down, err := prepareManagedActionSpec(spec, "down")
+	down, err := prepareManagedActionSpec(t.Context(), spec, "down")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestManagedSelfRestartRequestsRuntimeExitWithoutStoppingBackend(t *testing.
 	result, err := managedSelfRestart(t.Context(), spec, manager, current, func(context.Context) error {
 		restarts++
 		return nil
-	})
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,12 +184,31 @@ func TestManagedSelfRestartRequiresMatchingInstalledDefinition(t *testing.T) {
 	result, err := managedSelfRestart(t.Context(), spec, manager, current, func(context.Context) error {
 		restarts++
 		return nil
-	})
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if restarts != 0 || result.External == nil || !strings.Contains(result.External.Command, "restart") {
 		t.Fatalf("mismatched self restart result=%#v restarts=%d", result, restarts)
+	}
+}
+
+func TestManagedSelfRestartUpdatesDefinitionForGoRunDevelopmentBuild(t *testing.T) {
+	spec := managed.Spec{ID: "cm-user-test", Scope: managed.ScopeUser, ConfigRoot: "/tmp/cm-test", Binary: "/tmp/new-dev-binary"}
+	current := runtimecontrol.RuntimeStatus{
+		PID: os.Getpid(), RunID: "run_old", Managed: true, ServiceID: spec.ID, ServiceScope: string(spec.Scope),
+	}
+	manager := &selfRestartManager{status: managed.Status{Installed: true, Running: true}, matches: false}
+	restarts := 0
+	result, err := managedSelfRestart(t.Context(), spec, manager, current, func(context.Context) error {
+		restarts++
+		return nil
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manager.installs != 1 || restarts != 1 || result.External != nil || !result.Changed {
+		t.Fatalf("development self restart result=%#v installs=%d restarts=%d", result, manager.installs, restarts)
 	}
 }
 

@@ -144,30 +144,59 @@ func prepareManagedBinaryObserver(observer tracepkg.Observer, configRoot, value 
 		span.FailMessage("Managed service binary preparation failed", err, tracepkg.String("source", binary), tracepkg.Bool("transient", true))
 		return "", err
 	}
-	hash, err := fileSHA256(binary)
+	sourceRoot, _ := discoverCodeMCPSourceRoot()
+	destination, reused, err := stageGoRunBinary(configRoot, binary, filepath.Base(binary), sourceRoot)
 	if err != nil {
-		span.FailMessage("Managed service binary hash failed", err, tracepkg.String("source", binary), tracepkg.Bool("transient", true))
+		span.FailMessage("Managed service binary staging failed", err, tracepkg.String("source", binary), tracepkg.Bool("transient", true))
 		return "", err
 	}
-	name := filepath.Base(binary)
-	destination := filepath.Join(configRoot, "runtime", "bin", "go-run", hash[:16], name)
-	if info, statErr := os.Stat(destination); statErr == nil && !info.IsDir() {
-		span.EndMessage("Managed service binary reused", tracepkg.String("source", binary), tracepkg.String("destination", filepath.Clean(destination)), tracepkg.Bool("transient", true), tracepkg.Bool("reused", true), tracepkg.Int64("bytes", info.Size()))
-		return filepath.Clean(destination), nil
-	} else if statErr != nil && !os.IsNotExist(statErr) {
-		span.FailMessage("Managed service binary destination inspection failed", statErr, tracepkg.String("source", binary), tracepkg.String("destination", destination), tracepkg.Bool("transient", true))
-		return "", statErr
+	fields := []tracepkg.Field{
+		tracepkg.String("source", binary),
+		tracepkg.String("destination", destination),
+		tracepkg.Bool("transient", true),
+		tracepkg.Bool("reused", reused),
+		tracepkg.Bool("atomic", !reused),
 	}
-	if err := copyExecutableAtomic(binary, destination); err != nil {
-		span.FailMessage("Managed service binary copy failed", err, tracepkg.String("source", binary), tracepkg.String("destination", destination), tracepkg.Bool("transient", true), tracepkg.Bool("reused", false))
-		return "", err
-	}
-	fields := []tracepkg.Field{tracepkg.String("source", binary), tracepkg.String("destination", filepath.Clean(destination)), tracepkg.Bool("transient", true), tracepkg.Bool("reused", false), tracepkg.Bool("atomic", true)}
 	if info, statErr := os.Stat(destination); statErr == nil {
 		fields = append(fields, tracepkg.Int64("bytes", info.Size()))
 	}
-	span.EndMessage("Managed service binary prepared", fields...)
-	return filepath.Clean(destination), nil
+	if reused {
+		span.EndMessage("Managed service binary reused", fields...)
+	} else {
+		span.EndMessage("Managed service binary prepared", fields...)
+	}
+	return destination, nil
+}
+
+func stageGoRunBinary(configRoot, binary, name, sourceRoot string) (string, bool, error) {
+	hash, err := fileSHA256(binary)
+	if err != nil {
+		return "", false, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = filepath.Base(binary)
+	}
+	destination := filepath.Join(configRoot, "runtime", "bin", "go-run", hash[:16], name)
+	if info, statErr := os.Stat(destination); statErr == nil && !info.IsDir() {
+		if sourceRoot != "" {
+			if err := saveGoRunSourceRoot(configRoot, sourceRoot); err != nil {
+				return "", false, err
+			}
+		}
+		return filepath.Clean(destination), true, nil
+	} else if statErr != nil && !os.IsNotExist(statErr) {
+		return "", false, statErr
+	}
+	if err := copyExecutableAtomic(binary, destination); err != nil {
+		return "", false, err
+	}
+	if sourceRoot != "" {
+		if err := saveGoRunSourceRoot(configRoot, sourceRoot); err != nil {
+			return "", false, err
+		}
+	}
+	return filepath.Clean(destination), false, nil
 }
 
 func transientGoBuildBinary(path string) bool {

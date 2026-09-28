@@ -136,7 +136,7 @@ func ManagedRuntimeAction(ctx context.Context, action string, scope managed.Scop
 	if err != nil {
 		return RuntimeActionResult{}, err
 	}
-	spec, err = prepareManagedActionSpec(spec, action)
+	spec, err = prepareManagedActionSpec(ctx, spec, action)
 	if err != nil {
 		return RuntimeActionResult{}, err
 	}
@@ -150,11 +150,19 @@ func ManagedRuntimeAction(ctx context.Context, action string, scope managed.Scop
 	}
 }
 
-func prepareManagedActionSpec(spec managed.Spec, action string) (managed.Spec, error) {
+func prepareManagedActionSpec(ctx context.Context, spec managed.Spec, action string) (managed.Spec, error) {
 	if action == "down" {
 		return spec, nil
 	}
-	binary, err := managed.PrepareManagedBinary(spec.ConfigRoot, spec.Binary)
+	var (
+		binary string
+		err    error
+	)
+	if action == "restart" {
+		binary, err = managed.PrepareManagedRestartBinaryContext(ctx, spec.ConfigRoot, spec.Binary)
+	} else {
+		binary, err = managed.PrepareManagedBinaryContext(ctx, spec.ConfigRoot, spec.Binary)
+	}
 	if err != nil {
 		return spec, err
 	}
@@ -231,7 +239,7 @@ func managedRestart(ctx context.Context, spec managed.Spec, manager managed.Mana
 	}
 	current, running, statusErr := runtimeStatusFast(ctx)
 	if statusErr == nil && running && current.Managed && current.PID == os.Getpid() && current.ServiceID == spec.ID && current.ServiceScope == string(spec.Scope) {
-		return managedSelfRestart(ctx, spec, manager, current, requestRuntimeRestart)
+		return managedSelfRestart(ctx, spec, manager, current, requestRuntimeRestart, managed.IsGoRunDevelopmentBinary(spec.ConfigRoot, os.Args[0]))
 	}
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: runtimeStatusFast, Shutdown: requestRuntimeShutdown, Timeout: managed.DefaultLifecycleTimeout}
 	result, err := lifecycle.Restart(ctx)
@@ -241,7 +249,7 @@ func managedRestart(ctx context.Context, spec managed.Spec, manager managed.Mana
 	return runtimeActionResult("restart", spec, manager, result.Status, result.Changed), nil
 }
 
-func managedSelfRestart(ctx context.Context, spec managed.Spec, manager managed.Manager, current runtimecontrol.RuntimeStatus, restart func(context.Context) error) (RuntimeActionResult, error) {
+func managedSelfRestart(ctx context.Context, spec managed.Spec, manager managed.Manager, current runtimecontrol.RuntimeStatus, restart func(context.Context) error, allowDefinitionUpdate bool) (RuntimeActionResult, error) {
 	if manager == nil || restart == nil {
 		return RuntimeActionResult{}, errors.New("managed runtime self-restart is unavailable")
 	}
@@ -257,18 +265,24 @@ func managedSelfRestart(ctx context.Context, spec managed.Spec, manager managed.
 		return RuntimeActionResult{}, err
 	}
 	if !matches {
-		command := "cm --config-dir " + strconv.Quote(spec.ConfigRoot) + " restart"
-		if spec.Scope == managed.ScopeSystem {
-			command += " --system"
+		if allowDefinitionUpdate {
+			if err := manager.Install(spec); err != nil {
+				return RuntimeActionResult{}, err
+			}
+		} else {
+			command := "cm --config-dir " + strconv.Quote(spec.ConfigRoot) + " restart"
+			if spec.Scope == managed.ScopeSystem {
+				command += " --system"
+			}
+			return RuntimeActionResult{
+				Action: "restart", Scope: spec.Scope, Status: current,
+				Service: runtimeActionResult("restart", spec, manager, current, false).Service,
+				External: &ExternalCommand{
+					Command: command,
+					Reason:  "Managed service definition changed; complete restart from a local command so the definition can be updated before the runtime is replaced.",
+				},
+			}, nil
 		}
-		return RuntimeActionResult{
-			Action: "restart", Scope: spec.Scope, Status: current,
-			Service: runtimeActionResult("restart", spec, manager, current, false).Service,
-			External: &ExternalCommand{
-				Command: command,
-				Reason:  "Managed service definition changed; complete restart from a local command so the definition can be updated before the runtime is replaced.",
-			},
-		}, nil
 	}
 	result := runtimeActionResult("restart", spec, manager, current, true)
 	if err := restart(ctx); err != nil {

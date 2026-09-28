@@ -100,6 +100,11 @@ func runRestart(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	binary, err := managed.PrepareManagedRestartBinaryContext(cmd.Context(), spec.ConfigRoot, spec.Binary)
+	if err != nil {
+		return err
+	}
+	spec.Binary = binary
 	environmentHash, _ := cmd.Flags().GetString("service-environment-hash")
 	if environmentHash == "" {
 		logCommandStep(cmd, "SERVICE", "service.environment.capturing", "Capturing managed service environment")
