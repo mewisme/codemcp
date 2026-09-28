@@ -8,10 +8,11 @@
     <style>
       html, body, #mini-app-root { min-height: 100%; margin: 0; background: var(--tg-theme-bg-color, Canvas); color: var(--tg-theme-text-color, CanvasText); }
     </style>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
-    <div id="mini-app-root" data-codemcp-mini-app-root></div>
+    <div id="mini-app-root" data-codemcp-mini-app-root>
+      <div style="display:flex;min-height:100dvh;align-items:center;justify-content:center;padding:24px;font:500 14px/1.4 system-ui,sans-serif;box-sizing:border-box">Loading CodeMCP Mini App…</div>
+    </div>
     <script type="module" src="/src/mini-app/main.tsx"></script>
   </body>
 </html>

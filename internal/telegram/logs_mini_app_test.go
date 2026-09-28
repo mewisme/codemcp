@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -131,9 +132,21 @@ func TestLogsMiniAppIngressRequiresAuthorizedSessionAndDoesNotExposeAdminRoutes(
 	if shell.StatusCode != http.StatusOK || !strings.Contains(string(shellBody), "data-codemcp-mini-app-root") || strings.Contains(string(shellBody), "CodeMCP Admin") {
 		t.Fatalf("dedicated logs shell status=%d body=%q", shell.StatusCode, string(shellBody))
 	}
+	assetMatch := regexp.MustCompile(`(?:src|href)="(/assets/[^"]+)"`).FindStringSubmatch(string(shellBody))
+	if len(assetMatch) != 2 {
+		t.Fatalf("dedicated Mini App shell has no external Vite asset: %q", string(shellBody))
+	}
+	assetResponse, err := http.Get(server.URL + assetMatch[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	assetResponse.Body.Close()
+	if assetResponse.StatusCode != http.StatusOK {
+		t.Fatalf("public Mini App asset %s status=%d want=200", assetMatch[1], assetResponse.StatusCode)
+	}
 	policy := shell.Header.Get("Content-Security-Policy")
-	if !strings.Contains(policy, "script-src 'self' https://telegram.org 'sha256-") {
-		t.Fatalf("Mini App shell CSP does not authorize its embedded module script: %q", policy)
+	if !strings.Contains(policy, "script-src 'self' https://telegram.org") {
+		t.Fatalf("Mini App shell CSP does not authorize same-origin Vite assets: %q", policy)
 	}
 
 	for _, path := range []string{"/api/status", "/api/logs", "/admin", "/mcp"} {

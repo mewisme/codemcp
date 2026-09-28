@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -8,6 +8,8 @@ import { MiniApp } from "@/mini-app/app"
 describe("Telegram Logs Mini App", () => {
   afterEach(() => {
     delete window.Telegram
+    document.querySelector("script[data-codemcp-telegram-web-app]")?.remove()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -49,12 +51,16 @@ describe("Telegram Logs Mini App", () => {
   })
 
   it("does not fall back to Admin authentication outside Telegram", async () => {
+    vi.useFakeTimers()
     const fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)
 
     render(<TooltipProvider><MiniApp /></TooltipProvider>)
 
-    expect(await screen.findByText("Logs unavailable")).toBeInTheDocument()
+    expect(document.querySelector<HTMLScriptElement>("script[data-codemcp-telegram-web-app]")?.src).toBe("https://telegram.org/js/telegram-web-app.js")
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+
+    expect(screen.getByText("Logs unavailable")).toBeInTheDocument()
     expect(screen.getByText("Telegram Mini App context is unavailable")).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
   })

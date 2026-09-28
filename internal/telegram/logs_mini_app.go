@@ -494,6 +494,7 @@ func (runtime *LogsMiniAppRuntime) handler() http.Handler {
 	assets := miniAppWebHandler()
 	mux.Handle("GET /mini-app", assets)
 	mux.Handle("GET /mini-app/", assets)
+	mux.Handle("GET /assets/", assets)
 	mux.HandleFunc("POST /mini-app/auth", runtime.handleAuth)
 	mux.HandleFunc("GET /mini-app/api/logs/snapshot", runtime.handleSnapshot)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
