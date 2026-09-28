@@ -1,7 +1,9 @@
 package telegram
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/base64"
 	"io/fs"
 	"mime"
 	"net/http"
@@ -11,6 +13,34 @@ import (
 
 //go:embed mini-app-dist/*
 var miniAppWebAssets embed.FS
+
+var miniAppInlineScriptHash = mustMiniAppInlineScriptHash()
+
+func miniAppContentSecurityPolicy() string {
+	return "default-src 'self'; script-src 'self' https://telegram.org 'sha256-" + miniAppInlineScriptHash + "'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; base-uri 'none'"
+}
+
+func mustMiniAppInlineScriptHash() string {
+	data, err := miniAppWebAssets.ReadFile("mini-app-dist/mini-app.html")
+	if err != nil {
+		panic("read embedded Mini App shell: " + err.Error())
+	}
+	start := strings.Index(string(data), `<script type="module"`)
+	if start < 0 {
+		panic("embedded Mini App shell has no module script")
+	}
+	bodyStart := strings.Index(string(data[start:]), ">")
+	if bodyStart < 0 {
+		panic("embedded Mini App module script is malformed")
+	}
+	bodyStart += start + 1
+	end := strings.Index(string(data[bodyStart:]), "</script>")
+	if end < 0 {
+		panic("embedded Mini App module script has no closing tag")
+	}
+	digest := sha256.Sum256(data[bodyStart : bodyStart+end])
+	return base64.StdEncoding.EncodeToString(digest[:])
+}
 
 func miniAppWebHandler() http.Handler {
 	static, err := fs.Sub(miniAppWebAssets, "mini-app-dist")

@@ -4,7 +4,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -22,18 +21,22 @@ func TestMiniAppWebHandlerServesDedicatedShellAndEmbeddedAssets(t *testing.T) {
 			t.Fatalf("logs shell missing %q", want)
 		}
 	}
-	match := regexp.MustCompile(`(?:src|href)="(/mini-app/assets/[^"]+)"`).FindStringSubmatch(body)
-	if len(match) != 2 {
-		t.Fatalf("logs shell does not reference an embedded Vite asset: %s", body)
+	if !strings.Contains(body, `<script type="module"`) || strings.Contains(body, `/mini-app/assets/`) || strings.Contains(body, `src="/assets/`) || strings.Contains(body, `href="/assets/`) {
+		t.Fatalf("Mini App shell is not self-contained")
 	}
-	asset := httptest.NewRecorder()
-	handler.ServeHTTP(asset, httptest.NewRequest(http.MethodGet, match[1], nil))
-	if asset.Code != http.StatusOK {
-		t.Fatalf("embedded asset %s status=%d", match[1], asset.Code)
-	}
-	content, err := io.ReadAll(asset.Result().Body)
+	content, err := io.ReadAll(recorder.Result().Body)
 	if err != nil || len(content) == 0 {
-		t.Fatalf("embedded asset %s empty: err=%v", match[1], err)
+		t.Fatalf("embedded Mini App shell empty: err=%v", err)
+	}
+}
+
+func TestMiniAppContentSecurityPolicyAllowsOnlyTheEmbeddedModuleScript(t *testing.T) {
+	policy := miniAppContentSecurityPolicy()
+	if !strings.Contains(policy, "script-src 'self' https://telegram.org 'sha256-") {
+		t.Fatalf("Mini App CSP does not authorize the embedded module script: %s", policy)
+	}
+	if strings.Contains(policy, "script-src 'self' https://telegram.org 'unsafe-inline'") {
+		t.Fatalf("Mini App CSP unexpectedly permits arbitrary inline scripts: %s", policy)
 	}
 }
 

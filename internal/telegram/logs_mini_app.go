@@ -500,7 +500,7 @@ func (runtime *LogsMiniAppRuntime) handler() http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://telegram.org; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'")
+		w.Header().Set("Content-Security-Policy", miniAppContentSecurityPolicy())
 		mux.ServeHTTP(w, r)
 	})
 }

@@ -38,7 +38,7 @@ describe("Telegram Logs Mini App", () => {
     expect(await screen.findByText("Logs")).toBeInTheDocument()
     expect(screen.getByText(/CodeMCP Mini App/)).toBeInTheDocument()
     expect(screen.getByText("Telegram runtime ready")).toBeInTheDocument()
-    expect(screen.getByText("Live snapshot")).toBeInTheDocument()
+    expect(screen.getByText("Snapshot")).toBeInTheDocument()
     expect(document.documentElement).toHaveClass("dark")
     expect(ready).toHaveBeenCalledOnce()
     expect(expand).toHaveBeenCalledOnce()

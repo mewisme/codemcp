@@ -131,6 +131,10 @@ func TestLogsMiniAppIngressRequiresAuthorizedSessionAndDoesNotExposeAdminRoutes(
 	if shell.StatusCode != http.StatusOK || !strings.Contains(string(shellBody), "data-codemcp-mini-app-root") || strings.Contains(string(shellBody), "CodeMCP Admin") {
 		t.Fatalf("dedicated logs shell status=%d body=%q", shell.StatusCode, string(shellBody))
 	}
+	policy := shell.Header.Get("Content-Security-Policy")
+	if !strings.Contains(policy, "script-src 'self' https://telegram.org 'sha256-") {
+		t.Fatalf("Mini App shell CSP does not authorize its embedded module script: %q", policy)
+	}
 
 	for _, path := range []string{"/api/status", "/api/logs", "/admin", "/mcp"} {
 		response, err := http.Get(server.URL + path)
