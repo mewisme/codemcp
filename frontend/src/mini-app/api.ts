@@ -37,7 +37,7 @@ async function request(path: string, init?: RequestInit) {
 }
 
 export async function authenticateTelegramSession(initData: string) {
-  await request("/mini-app/auth", {
+  await request("/api/auth", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ init_data: initData }),
@@ -54,7 +54,7 @@ export async function loadLogsSnapshot(options: LogsQuery = {}) {
   if (options.event) query.set("event", options.event)
   if (options.grep) query.set("grep", options.grep)
   const suffix = query.size ? `?${query.toString()}` : ""
-  return (await request(`/mini-app/api/logs/snapshot${suffix}`)) as LogsSnapshot
+  return (await request(`/api/logs/snapshot${suffix}`)) as LogsSnapshot
 }
 
 export function snapshotEvents(snapshot: LogsSnapshot | null) {

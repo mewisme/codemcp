@@ -492,11 +492,9 @@ func (runtime *LogsMiniAppRuntime) Health() LogsMiniAppHealth {
 func (runtime *LogsMiniAppRuntime) handler() http.Handler {
 	mux := http.NewServeMux()
 	assets := miniAppWebHandler()
-	mux.Handle("GET /mini-app", assets)
-	mux.Handle("GET /mini-app/", assets)
-	mux.Handle("GET /assets/", assets)
-	mux.HandleFunc("POST /mini-app/auth", runtime.handleAuth)
-	mux.HandleFunc("GET /mini-app/api/logs/snapshot", runtime.handleSnapshot)
+	mux.HandleFunc("POST /api/auth", runtime.handleAuth)
+	mux.HandleFunc("GET /api/logs/snapshot", runtime.handleSnapshot)
+	mux.Handle("GET /", assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -649,7 +647,7 @@ func miniAppPublicURL(raw string) (string, error) {
 	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || !strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".trycloudflare.com") {
 		return "", errors.New("cf-tunnel returned an invalid Quick Tunnel URL")
 	}
-	parsed.Path = "/mini-app"
+	parsed.Path = "/"
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	return parsed.String(), nil

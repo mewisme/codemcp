@@ -30,7 +30,7 @@ type miniAppWebStaticHandler struct {
 }
 
 func (h miniAppWebStaticHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	clean := strings.TrimPrefix(path.Clean(strings.TrimPrefix(r.URL.Path, "/mini-app")), "/")
+	clean := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 	if clean == "" || clean == "." || clean == "mini-app.html" {
 		h.serveHTML(w)
 		return

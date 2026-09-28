@@ -52,7 +52,7 @@ export function MiniApp() {
     let disposeTelegram: (() => void) | undefined
     void (async () => {
       try {
-        const telegram = await initializeTelegramMiniApp()
+        const telegram = initializeTelegramMiniApp()
         disposeTelegram = telegram.dispose
         await authenticateTelegramSession(telegram.webApp.initData)
         if (!active) return

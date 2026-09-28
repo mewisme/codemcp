@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -8,8 +8,6 @@ import { MiniApp } from "@/mini-app/app"
 describe("Telegram Logs Mini App", () => {
   afterEach(() => {
     delete window.Telegram
-    document.querySelector("script[data-codemcp-telegram-web-app]")?.remove()
-    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -19,12 +17,12 @@ describe("Telegram Logs Mini App", () => {
     window.Telegram = { WebApp: { initData: "signed-init-data", colorScheme: "dark", ready, expand } }
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input), "https://mini.example")
-      if (url.pathname === "/mini-app/auth") {
+      if (url.pathname === "/api/auth") {
         expect(init?.method).toBe("POST")
         expect(String(init?.body)).toContain("signed-init-data")
         return new Response(null, { status: 204 })
       }
-      if (url.pathname === "/mini-app/api/logs/snapshot") {
+      if (url.pathname === "/api/logs/snapshot") {
         return json({
           session: "run_123456789",
           total: 1,
@@ -51,16 +49,12 @@ describe("Telegram Logs Mini App", () => {
   })
 
   it("does not fall back to Admin authentication outside Telegram", async () => {
-    vi.useFakeTimers()
     const fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)
 
     render(<TooltipProvider><MiniApp /></TooltipProvider>)
 
-    expect(document.querySelector<HTMLScriptElement>("script[data-codemcp-telegram-web-app]")?.src).toBe("https://telegram.org/js/telegram-web-app.js")
-    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
-
-    expect(screen.getByText("Logs unavailable")).toBeInTheDocument()
+    expect(await screen.findByText("Logs unavailable")).toBeInTheDocument()
     expect(screen.getByText("Telegram Mini App context is unavailable")).toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalled()
   })

@@ -109,6 +109,16 @@ func TestValidateTelegramInitDataRejectsForgedStaleAndUnsignedPayloads(t *testin
 	}
 }
 
+func TestMiniAppPublicURLUsesQuickTunnelOriginRoot(t *testing.T) {
+	got, err := miniAppPublicURL("https://example.trycloudflare.com/some/path?token=ignored#fragment")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://example.trycloudflare.com/" {
+		t.Fatalf("Mini App public URL=%q want root origin", got)
+	}
+}
+
 func TestLogsMiniAppIngressRequiresAuthorizedSessionAndDoesNotExposeAdminRoutes(t *testing.T) {
 	const token = "123456:test-token"
 	now := time.Date(2026, 9, 28, 5, 0, 0, 0, time.UTC)
@@ -120,7 +130,7 @@ func TestLogsMiniAppIngressRequiresAuthorizedSessionAndDoesNotExposeAdminRoutes(
 
 	server := httptest.NewServer(runtime.handler())
 	defer server.Close()
-	shell, err := http.Get(server.URL + "/mini-app")
+	shell, err := http.Get(server.URL + "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +169,7 @@ func TestLogsMiniAppIngressRequiresAuthorizedSessionAndDoesNotExposeAdminRoutes(
 			t.Fatalf("public Mini App route %s status=%d want=404", path, response.StatusCode)
 		}
 	}
-	response, err := http.Get(server.URL + "/mini-app/api/logs/snapshot")
+	response, err := http.Get(server.URL + "/api/logs/snapshot")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +203,7 @@ func postMiniAppAuth(t *testing.T, baseURL, initData string) *http.Response {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := http.Post(baseURL+"/mini-app/auth", "application/json", strings.NewReader(string(payload)))
+	response, err := http.Post(baseURL+"/api/auth", "application/json", strings.NewReader(string(payload)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +216,7 @@ func TestLogsMiniAppSessionIsRevokedByAllowlistAndGenerationChanges(t *testing.T
 	runtime.config = config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, LogsMiniApp: config.TelegramLogsMiniAppConfig{Enabled: true}}
 	runtime.health = LogsMiniAppHealth{Enabled: true, State: MiniAppReady, Generation: 7}
 	runtime.sessions["session"] = miniAppSession{UserID: 42, Generation: 7, ExpiresAt: time.Now().Add(time.Minute)}
-	request := httptest.NewRequest(http.MethodGet, "/mini-app/api/logs/snapshot", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/logs/snapshot", nil)
 	request.AddCookie(&http.Cookie{Name: miniAppCookieName, Value: "session"})
 	if _, ok := runtime.authorizedSession(request); !ok {
 		t.Fatal("current authorized session was rejected")
@@ -228,11 +238,11 @@ func TestLogsMiniAppSessionIsRevokedByAllowlistAndGenerationChanges(t *testing.T
 
 func TestLogsMiniAppURLRotationAdvancesGenerationAndClearsSessions(t *testing.T) {
 	runtime := newLogsMiniAppRuntime(&miniAppFakeLauncher{})
-	runtime.health = LogsMiniAppHealth{Enabled: true, State: MiniAppReady, PublicURL: "https://first.trycloudflare.com/mini-app", Generation: 4}
+	runtime.health = LogsMiniAppHealth{Enabled: true, State: MiniAppReady, PublicURL: "https://first.trycloudflare.com/", Generation: 4}
 	runtime.sessions["session"] = miniAppSession{UserID: 42, Generation: 4, ExpiresAt: time.Now().Add(time.Minute)}
-	runtime.setReadyPublicURL("https://second.trycloudflare.com/mini-app")
+	runtime.setReadyPublicURL("https://second.trycloudflare.com/")
 	health := runtime.Health()
-	if health.Generation != 5 || health.PublicURL != "https://second.trycloudflare.com/mini-app" {
+	if health.Generation != 5 || health.PublicURL != "https://second.trycloudflare.com/" {
 		t.Fatalf("rotated health=%#v", health)
 	}
 	if len(runtime.sessions) != 0 {
@@ -289,7 +299,7 @@ func TestLogsMiniAppRetriesMissingDependencyAndRecoversAfterInstall(t *testing.T
 		time.Sleep(10 * time.Millisecond)
 	}
 	health := runtime.Health()
-	if health.State != MiniAppReady || health.PublicURL != "https://recovered.trycloudflare.com/mini-app" || !health.DependencyAvailable {
+	if health.State != MiniAppReady || health.PublicURL != "https://recovered.trycloudflare.com/" || !health.DependencyAvailable {
 		t.Fatalf("recovered health=%#v", health)
 	}
 }
@@ -297,7 +307,7 @@ func TestLogsMiniAppRetriesMissingDependencyAndRecoversAfterInstall(t *testing.T
 func TestLogsScreenUsesCurrentReadyWebAppURLOnly(t *testing.T) {
 	runtime := NewRuntime(Options{Root: t.TempDir()})
 	runtime.logsMiniApp.mu.Lock()
-	runtime.logsMiniApp.health = LogsMiniAppHealth{Enabled: true, State: MiniAppReady, DependencyAvailable: true, PublicURL: "https://first.trycloudflare.com/mini-app", Generation: 1}
+	runtime.logsMiniApp.health = LogsMiniAppHealth{Enabled: true, State: MiniAppReady, DependencyAvailable: true, PublicURL: "https://first.trycloudflare.com/", Generation: 1}
 	runtime.logsMiniApp.mu.Unlock()
 	ui, err := NewInterface(InterfaceOptions{Runtime: runtime})
 	if err != nil {
@@ -308,18 +318,18 @@ func TestLogsScreenUsesCurrentReadyWebAppURLOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := webAppURL(first.Keyboard); got != "https://first.trycloudflare.com/mini-app" {
+	if got := webAppURL(first.Keyboard); got != "https://first.trycloudflare.com/" {
 		t.Fatalf("first web_app URL=%q", got)
 	}
 	runtime.logsMiniApp.mu.Lock()
-	runtime.logsMiniApp.health.PublicURL = "https://second.trycloudflare.com/mini-app"
+	runtime.logsMiniApp.health.PublicURL = "https://second.trycloudflare.com/"
 	runtime.logsMiniApp.health.Generation = 2
 	runtime.logsMiniApp.mu.Unlock()
 	second, err := ui.logsMiniAppScreen(owner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := webAppURL(second.Keyboard); got != "https://second.trycloudflare.com/mini-app" {
+	if got := webAppURL(second.Keyboard); got != "https://second.trycloudflare.com/" {
 		t.Fatalf("rotated web_app URL=%q", got)
 	}
 }

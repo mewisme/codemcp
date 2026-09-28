@@ -12,7 +12,7 @@ import (
 func TestMiniAppWebHandlerServesDedicatedShellAndEmbeddedAssets(t *testing.T) {
 	handler := miniAppWebHandler()
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/mini-app", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("logs shell status=%d", recorder.Code)
 	}
@@ -22,8 +22,8 @@ func TestMiniAppWebHandlerServesDedicatedShellAndEmbeddedAssets(t *testing.T) {
 			t.Fatalf("logs shell missing %q", want)
 		}
 	}
-	if strings.Contains(body, "https://telegram.org/js/telegram-web-app.js") {
-		t.Fatal("Mini App shell still parser-blocks on the Telegram SDK")
+	if !strings.Contains(body, "https://telegram.org/js/telegram-web-app.js?56") {
+		t.Fatal("Mini App shell does not load the Telegram SDK before the application bundle")
 	}
 	if !strings.Contains(body, "Loading CodeMCP Mini App") {
 		t.Fatalf("Mini App shell has no pre-React loading fallback")
@@ -55,7 +55,7 @@ func TestMiniAppContentSecurityPolicyKeepsScriptsExternal(t *testing.T) {
 
 func TestMiniAppWebHandlerDoesNotBecomeAnAdminOrAPIFallback(t *testing.T) {
 	handler := miniAppWebHandler()
-	for _, target := range []string{"/mini-app/api/status", "/mini-app/auth", "/api/status", "/admin"} {
+	for _, target := range []string{"/mini-app", "/api/status", "/admin", "/mcp"} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
 		if recorder.Code != http.StatusNotFound {
