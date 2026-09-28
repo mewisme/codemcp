@@ -53,7 +53,7 @@ function renderPage() { return render(<ThemeProvider><TooltipProvider><RequestsP
 
 function request(id: string, status: string, command: string): ApprovalRequest {
   const now = Date.now()
-  return { id, status, workspace_id: "ws_test", session_hash: "hash-session", source: "tunnel", target_tool: "run_command", arguments: { workspace_id: "ws_test", command }, guard_code: "control_plane_mutation", guard_reason: "control-plane mutation denied", title: `Allow ${command}`, created_at: new Date(now).toISOString(), expires_at: new Date(now + 60_000).toISOString() }
+  return { id, status, workspace_id: "ws_test", source: "tunnel", target_tool: "run_command", arguments: { workspace_id: "ws_test", command }, guard_code: "control_plane_mutation", guard_reason: "control-plane mutation denied", title: `Allow ${command}`, created_at: new Date(now).toISOString(), expires_at: new Date(now + 60_000).toISOString() }
 }
 
 function requestPath(input: RequestInfo | URL) { const raw = input instanceof Request ? input.url : String(input); const url = new URL(raw, "http://localhost"); return `${url.pathname}${url.search}` }

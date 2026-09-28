@@ -248,6 +248,7 @@ func serveApprovalEvents(w http.ResponseWriter, r *http.Request, manager *approv
 			if !ok {
 				return
 			}
+			event = approval.PublicEvent(event)
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue

@@ -190,10 +190,10 @@ func TestTunnelConfigRedactsSecrets(t *testing.T) {
 		t.Fatalf("tunnel API leaked a secret: %s", recorder.Body.String())
 	}
 	body := recorder.Body.String()
-	if !strings.Contains(body, `"id":"tunnel_test"`) || !strings.Contains(body, `"runtime_key_configured":true`) || !strings.Contains(body, `"admin":{"enabled":true,"key_configured":true,"configured":true,"workspace_id":"ws_admin"`) {
+	if !strings.Contains(body, `"id":"tunnel_test"`) || !strings.Contains(body, `"runtime_key_configured":true`) || !strings.Contains(body, `"runtime_key_preview":`) || !strings.Contains(body, `"admin_key_preview":`) || !strings.Contains(body, `"admin":{"enabled":true,"key_configured":true,"configured":true,"workspace_id":"ws_admin"`) {
 		t.Fatalf("tunnel config fields missing: %s", body)
 	}
-	for _, legacy := range []string{"admin_key", "admin_workspace_id", "admin_key_configured"} {
+	for _, legacy := range []string{`"admin_key":`, `"admin_workspace_id":`, `"admin_key_configured":`} {
 		if strings.Contains(body, legacy) {
 			t.Fatalf("tunnel config exposed flat admin field %q: %s", legacy, body)
 		}

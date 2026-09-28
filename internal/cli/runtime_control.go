@@ -303,7 +303,7 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 			http.Error(w, "execution stream unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		writeControlJSON(w, options.Executions.List("", shellruntime.MaxRecentExecutions), nil)
+		writeControlJSON(w, shellruntime.PublicExecutionInfos(options.Executions.List("", shellruntime.MaxRecentExecutions)), nil)
 	}))
 	mux.HandleFunc("/executions/", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
 		if options.Executions == nil {
@@ -316,7 +316,7 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 			return
 		}
 		snapshot, err := options.Executions.Get("", id)
-		writeControlJSON(w, snapshot, err)
+		writeControlJSON(w, shellruntime.PublicExecutionSnapshot(snapshot), err)
 	}))
 	mux.HandleFunc("/executions/stream", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
 		serveRuntimeExecutionFeed(w, r, options.Executions)
@@ -362,7 +362,7 @@ func serveRuntimeExecutionFeed(w http.ResponseWriter, r *http.Request, hub *shel
 		LatestSequence uint64                       `json:"latest_sequence"`
 		ReplayCount    int                          `json:"replay_count"`
 		Executions     []shellruntime.ExecutionInfo `json:"executions"`
-	}{LatestSequence: snapshot.LatestSequence, ReplayCount: len(snapshot.Events), Executions: snapshot.Executions})
+	}{LatestSequence: snapshot.LatestSequence, ReplayCount: len(snapshot.Events), Executions: shellruntime.PublicExecutionInfos(snapshot.Executions)})
 	if err != nil {
 		return
 	}
@@ -370,6 +370,7 @@ func serveRuntimeExecutionFeed(w http.ResponseWriter, r *http.Request, hub *shel
 		return
 	}
 	for _, event := range snapshot.Events {
+		event = shellruntime.PublicExecutionFeedEvent(event)
 		data, err := json.Marshal(event)
 		if err != nil {
 			continue
@@ -403,6 +404,7 @@ func serveRuntimeExecutionFeed(w http.ResponseWriter, r *http.Request, hub *shel
 				return
 			}
 			latestSequence = event.Sequence
+			event = shellruntime.PublicExecutionFeedEvent(event)
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue
@@ -427,11 +429,11 @@ func serveRuntimeToolCallFeed(w http.ResponseWriter, r *http.Request, stream *ac
 	}
 	sub, recent, latestSequence := stream.SubscribeToolCallsSnapshot(activity.MaxRecentEvents)
 	defer sub.Close()
-	records := stream.RecentToolCalls(activity.MaxRecentToolCalls)
+	records := activity.PublicToolCallRecords(stream.RecentToolCalls(activity.MaxRecentToolCalls))
 	replay := make([]activity.Event, 0, len(recent))
 	for _, event := range recent {
 		if event.Kind == string(activity.EventToolCall) {
-			replay = append(replay, event)
+			replay = append(replay, activity.PublicEvent(event))
 		}
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -481,6 +483,7 @@ func serveRuntimeToolCallFeed(w http.ResponseWriter, r *http.Request, stream *ac
 			if event.Kind != string(activity.EventToolCall) {
 				continue
 			}
+			event = activity.PublicEvent(event)
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue

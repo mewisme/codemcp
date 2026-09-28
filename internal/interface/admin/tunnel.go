@@ -22,8 +22,12 @@ func (api API) handleTunnelConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "config unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	value := api.Config.Snapshot().Tunnel
-	view := tunnelConfigView{Config: value, RuntimeKeyConfigured: strings.TrimSpace(value.APIKey) != "", Admin: tunnel.AdminStateFromConfig(value)}
+	cfg := api.Config.Snapshot()
+	value := cfg.Tunnel
+	view := tunnelConfigView{
+		Config: value, RuntimeKeyConfigured: strings.TrimSpace(value.APIKey) != "", RuntimeKeyPreview: tunnel.SecretPreview(value.APIKey),
+		AdminKeyPreview: tunnel.SecretPreview(value.Admin.Key), Admin: tunnel.AdminStateFromConfig(value),
+	}
 	view.Config.APIKey = ""
 	view.Config.Admin.Key = ""
 	writeJSON(w, view)
@@ -36,21 +40,21 @@ func (api API) handleTunnel(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, api.tunnelStatus(r.Context()))
+		writeJSON(w, tunnel.PublicStatus(api.tunnelStatus(r.Context())))
 	case http.MethodPost:
 		dashboard, err := application.SetTunnelEnabled(r.Context(), true)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, dashboard.Status)
+		writeJSON(w, tunnel.PublicStatus(dashboard.Status))
 	case http.MethodDelete:
 		dashboard, err := application.SetTunnelEnabled(r.Context(), false)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		writeJSON(w, dashboard.Status)
+		writeJSON(w, tunnel.PublicStatus(dashboard.Status))
 	case http.MethodPut:
 		api.configureTunnel(w, r)
 	default:
@@ -89,12 +93,14 @@ func (api API) configureTunnel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	writeJSON(w, dashboard.Status)
+	writeJSON(w, tunnel.PublicStatus(dashboard.Status))
 }
 
 type tunnelConfigView struct {
 	tunnel.Config
 	RuntimeKeyConfigured bool              `json:"runtime_key_configured"`
+	RuntimeKeyPreview    string            `json:"runtime_key_preview,omitempty"`
+	AdminKeyPreview      string            `json:"admin_key_preview,omitempty"`
 	Admin                tunnel.AdminState `json:"admin"`
 }
 
@@ -108,6 +114,7 @@ type tunnelAdminKeyRequest struct {
 type tunnelAdminKeyStatus struct {
 	Enabled       bool               `json:"enabled"`
 	KeyConfigured bool               `json:"key_configured"`
+	KeyPreview    string             `json:"key_preview,omitempty"`
 	Configured    bool               `json:"configured"`
 	Verified      bool               `json:"verified"`
 	Scope         tunnel.AdminScope  `json:"scope"`
@@ -150,7 +157,12 @@ func (api API) handleTunnelAdminKey(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.Method {
 	case http.MethodGet:
-		writeJSON(w, tunnelAdminStatus(api.Config.Snapshot().Tunnel, 0))
+		status, err := application.TunnelAdminKeyStatusContext(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, tunnelAdminStatusFromApplication(status, 0))
 	case http.MethodPut:
 		var request tunnelAdminKeyRequest
 		if err := decodeJSONBody(w, r, &request); err != nil {
@@ -201,12 +213,8 @@ func (api API) handleTunnelAdminKey(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func tunnelAdminStatus(cfg tunnel.Config, count int) tunnelAdminKeyStatus {
-	return tunnelAdminKeyStatus{Enabled: tunnel.AdminEnabled(cfg), KeyConfigured: strings.TrimSpace(cfg.Admin.Key) != "", Configured: tunnel.AdminConfigured(cfg), Verified: tunnel.AdminVerified(cfg), Scope: tunnel.AdminScopeFromConfig(cfg), Access: tunnel.AdminAccessFromConfig(cfg), Tunnels: count}
-}
-
 func tunnelAdminStatusFromApplication(status application.TunnelAdminStatus, count int) tunnelAdminKeyStatus {
-	return tunnelAdminKeyStatus{Enabled: status.Enabled, KeyConfigured: status.KeyConfigured, Configured: status.Configured, Verified: status.Verified, Scope: status.Scope, Access: status.Access, Tunnels: count}
+	return tunnelAdminKeyStatus{Enabled: status.Enabled, KeyConfigured: status.KeyConfigured, KeyPreview: status.KeyPreview, Configured: status.Configured, Verified: status.Verified, Scope: status.Scope, Access: status.Access, Tunnels: count}
 }
 
 func (api API) handleManagedTunnels(w http.ResponseWriter, r *http.Request) {
@@ -348,5 +356,5 @@ func (api API) handleManagedTunnelUse(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, managedTunnelUseResult{Metadata: result.Metadata, Status: dashboard.Status})
+	writeJSON(w, managedTunnelUseResult{Metadata: result.Metadata, Status: tunnel.PublicStatus(dashboard.Status)})
 }

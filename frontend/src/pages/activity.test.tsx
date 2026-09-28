@@ -13,7 +13,7 @@ describe("activity page", () => {
   it("pauses live events, resumes them, and routes tool calls to their call id", async () => {
     const encoder = new TextEncoder()
     const callID = "019a1111-2222-7333-8444-555555555555"
-    const event = { sequence: 1, call_id: callID, kind: "tool_call", tool: "run_command", workspace_id: "ws_test", received_by_instance_id: "inst_receiver", executed_by_instance_id: "inst_executor", status: "success", duration_ms: 12, message: "Command completed", raw: { call_id: callID, method: "tools/call", source: "tunnel", tool: "run_command", arguments: { workspace_id: "ws_test", command: "go test ./..." }, params: { name: "run_command", arguments: { workspace_id: "ws_test", command: "go test ./..." }, _meta: { request_id: "req_test" } }, request: { jsonrpc: "2.0", id: "call_1", method: "tools/call" }, result_type: "complete", status: "ok" }, timestamp: "2026-08-31T12:00:00Z" }
+    const event = { sequence: 1, call_id: callID, kind: "tool_call", method: "tools/call", source: "tunnel", tool: "run_command", workspace_id: "ws_test", status: "success", duration_ms: 12, message: "Command completed", timestamp: "2026-08-31T12:00:00Z" }
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = requestPath(input)
       if (path === "/api/activity/stream?history=100") return new Response(new ReadableStream<Uint8Array>({ start(value) { controller = value; value.enqueue(encoder.encode('event: ready\ndata: {"latest_sequence":0}\n\n')) } }), { status: 200, headers: { "Content-Type": "text/event-stream" } })
@@ -34,14 +34,11 @@ describe("activity page", () => {
     expect(await screen.findByRole("tab", { name: "Overview" })).toBeInTheDocument()
     await user.click(screen.getByRole("tab", { name: "Metadata" }))
     expect(screen.getByText(callID)).toBeInTheDocument()
-    expect(screen.getByText("inst_receiver")).toBeInTheDocument()
-    expect(screen.getByText("inst_executor")).toBeInTheDocument()
     await user.click(screen.getByRole("tab", { name: "Raw" }))
     expect(screen.queryByRole("button", { name: "Copy JSON" })).not.toBeInTheDocument()
     expect(screen.queryByText("activity.json")).not.toBeInTheDocument()
-    expect(screen.getAllByText(/go test \.\/\.\.\./).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/req_test/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/call_1/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/tools\/call/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/inst_receiver/)).not.toBeInTheDocument()
     await act(async () => { controller?.close() })
     view.unmount()
   })

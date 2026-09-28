@@ -288,10 +288,6 @@ describe("admin app runtime smoke", () => {
       status: "ok",
       duration_ms: 42,
       timestamp: "2026-09-05T00:00:00Z",
-      raw: {
-        call_id: callID,
-        arguments: { workspace_id: "ws_test", command: "go test ./..." },
-      },
     }
     window.history.replaceState({}, "", `/activity/${callID}`)
     vi.stubGlobal(
@@ -313,7 +309,7 @@ describe("admin app runtime smoke", () => {
     expect(
       (raw.closest('[data-slot="scroll-area"]') as HTMLElement | null)?.style
         .maxHeight
-    ).toBe("")
+    ).toBe("24rem")
     expect(window.location.pathname).toBe(`/activity/${callID}`)
   })
 

@@ -280,7 +280,11 @@ func renderTunnelAdminKeyStatus(presenter *presentation.Presenter, status applic
 		{Label: "verified", Value: status.Verified},
 	}
 	if keyConfigured {
-		fields = append(fields, presentation.Field{Label: "key", Value: "<redacted>"})
+		preview := status.KeyPreview
+		if strings.TrimSpace(preview) == "" {
+			preview = "admin_********legacy"
+		}
+		fields = append(fields, presentation.Field{Label: "key", Value: preview})
 	}
 	if tunnel.ValidateAdminScope(status.Scope) == nil {
 		fields = append(fields, presentation.Field{Label: "scope", Value: formatTunnelAdminScope(status.Scope)})

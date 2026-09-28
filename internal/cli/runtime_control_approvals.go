@@ -70,6 +70,7 @@ func serveRuntimeApprovalFeed(w http.ResponseWriter, r *http.Request, manager *a
 			if !ok {
 				return
 			}
+			event = approval.PublicEvent(event)
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue

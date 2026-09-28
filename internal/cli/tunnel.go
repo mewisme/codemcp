@@ -83,6 +83,7 @@ func runTunnelStatus(cmd *cobra.Command, _ []string) error {
 			status.ID = runtimeStatus.TunnelID
 		}
 	}
+	status = tunnel.PublicStatus(status)
 	if commandResultModeFor(cmd) == resultModeJSON {
 		return writeResultJSON(cmd, status)
 	}
@@ -99,12 +100,19 @@ func runTunnelStatus(cmd *cobra.Command, _ []string) error {
 }
 
 func renderTunnelStatusText(presenter *presentation.Presenter, cfg tunnel.Config, status tunnel.Status, runtimeRunning, verbose bool) {
+	status = tunnel.PublicStatus(status)
 	state := tunnelCLIState(cfg, status, runtimeRunning)
 	presenter.Frame("OpenAI Secure MCP Tunnel")
 	presenter.StateSection(statusPresentationKind(state), "OpenAI Secure MCP Tunnel is "+state)
 	fields := []presentation.Field{
 		{Label: "enabled", Value: status.Enabled},
 		{Label: "configured", Value: tunnel.Configured(cfg)},
+	}
+	if strings.TrimSpace(cfg.APIKey) != "" {
+		fields = append(fields, presentation.Field{Label: "runtime key", Value: tunnel.SecretPreview(cfg.APIKey)})
+	}
+	if strings.TrimSpace(cfg.Admin.Key) != "" {
+		fields = append(fields, presentation.Field{Label: "admin key", Value: tunnel.SecretPreview(cfg.Admin.Key)})
 	}
 	if status.ID != "" {
 		fields = append(fields, presentation.Field{Label: "id", Value: status.ID})

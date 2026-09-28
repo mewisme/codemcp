@@ -161,7 +161,6 @@ function request(id: string, command: string): ApprovalRequest {
     id,
     status: "pending",
     workspace_id: "ws_test",
-    session_hash: "hash-session",
     source: "tunnel",
     target_tool: "run_command",
     arguments: { workspace_id: "ws_test", command },

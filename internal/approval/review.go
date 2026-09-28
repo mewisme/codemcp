@@ -38,14 +38,15 @@ func (s *ReviewService) List(filter Filter) ([]Request, error) {
 	if s == nil || s.manager == nil {
 		return nil, errors.New("approval manager is unavailable")
 	}
-	return s.manager.List(filter), nil
+	return PublicRequests(s.manager.List(filter)), nil
 }
 
 func (s *ReviewService) View(reference string) (Request, error) {
 	if s == nil || s.manager == nil {
 		return Request{}, errors.New("approval manager is unavailable")
 	}
-	return s.manager.Resolve(reference)
+	value, err := s.manager.Resolve(reference)
+	return PublicRequest(value), err
 }
 
 func (s *ReviewService) Resolve(input ReviewInput) (Request, error) {
@@ -107,7 +108,7 @@ func (s *ReviewService) Resolve(input ReviewInput) (Request, error) {
 		m.clearActiveLocked(record.value)
 		m.closeResolvedLocked(record)
 		m.emitLocked(EventApproved, record.value)
-		return cloneRequest(record.value), nil
+		return PublicRequest(record.value), nil
 	}
 
 	status := StatusDenied
@@ -126,14 +127,14 @@ func (s *ReviewService) Resolve(input ReviewInput) (Request, error) {
 	} else {
 		m.emitLocked(EventDenied, record.value)
 	}
-	return cloneRequest(record.value), nil
+	return PublicRequest(record.value), nil
 }
 
 func (s *ReviewService) ListGrants(workspaceID string) ([]Request, error) {
 	if s == nil || s.manager == nil {
 		return nil, errors.New("approval manager is unavailable")
 	}
-	return s.manager.ListRuntimeGrants(strings.TrimSpace(workspaceID)), nil
+	return PublicRequests(s.manager.ListRuntimeGrants(strings.TrimSpace(workspaceID))), nil
 }
 
 func (s *ReviewService) RevokeGrant(reference string) (Request, error) {
@@ -156,7 +157,7 @@ func (s *ReviewService) RevokeGrant(reference string) (Request, error) {
 	record.value.Status, record.value.ResolvedAt, record.value.Reason = StatusExpired, now, "runtime session grant revoked"
 	record.value.GrantExpiresAt = now
 	m.emitLockedWithSubject(EventRevoked, EventSubjectGrant, record.value)
-	return cloneRequest(record.value), nil
+	return PublicRequest(record.value), nil
 }
 
 func (s *ReviewService) RevokeGrants(workspaceID string) (int, error) {

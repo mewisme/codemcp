@@ -24,7 +24,7 @@ func (api API) handleWorkspaceExecutions(w http.ResponseWriter, r *http.Request,
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		writeJSON(w, hub.List(workspaceID, queryInt(r, "limit", 50, 1, 100)))
+		writeJSON(w, shellruntime.PublicExecutionInfos(hub.List(workspaceID, queryInt(r, "limit", 50, 1, 100))))
 		return
 	}
 	if len(parts) == 1 && parts[0] == "stream" {
@@ -61,7 +61,7 @@ func (api API) handleWorkspaceExecutions(w http.ResponseWriter, r *http.Request,
 		writeExecutionError(w, err)
 		return
 	}
-	writeJSON(w, snapshot)
+	writeJSON(w, shellruntime.PublicExecutionSnapshot(snapshot))
 }
 
 func serveWorkspaceExecutionFeed(w http.ResponseWriter, r *http.Request, hub *shellruntime.ExecutionHub, workspaceID string, heartbeatInterval time.Duration) {
@@ -83,6 +83,7 @@ func serveWorkspaceExecutionFeed(w http.ResponseWriter, r *http.Request, hub *sh
 		return
 	}
 	for _, event := range snapshot.Events {
+		event = shellruntime.PublicExecutionFeedEvent(event)
 		data, err := json.Marshal(event)
 		if err != nil {
 			continue
@@ -116,6 +117,7 @@ func serveWorkspaceExecutionFeed(w http.ResponseWriter, r *http.Request, hub *sh
 				return
 			}
 			latestSequence = event.Sequence
+			event = shellruntime.PublicExecutionFeedEvent(event)
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue
@@ -153,7 +155,7 @@ func serveExecutionEvents(w http.ResponseWriter, r *http.Request, hub *shellrunt
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	data, err := json.Marshal(snapshot)
+	data, err := json.Marshal(shellruntime.PublicExecutionSnapshot(snapshot))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -189,6 +191,7 @@ func serveExecutionEvents(w http.ResponseWriter, r *http.Request, hub *shellrunt
 				return
 			}
 			latestSequence = event.Sequence
+			event = shellruntime.PublicExecutionEvent(event)
 			data, err := json.Marshal(event)
 			if err != nil {
 				continue

@@ -32,7 +32,7 @@ func CallHandler(stream *Stream) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(event)
+		_ = json.NewEncoder(w).Encode(PublicEvent(event))
 	})
 }
 
@@ -50,7 +50,7 @@ func handlerWithHeartbeat(stream *Stream, heartbeatInterval time.Duration) http.
 		defer sub.Close()
 		lastSent := uint64(0)
 		for _, event := range snapshot.Events {
-			if err := writeActivitySSE(w, event); err != nil {
+			if err := writeActivitySSE(w, PublicEvent(event)); err != nil {
 				return
 			}
 			lastSent = event.Sequence
@@ -90,7 +90,7 @@ func handlerWithHeartbeat(stream *Stream, heartbeatInterval time.Duration) http.
 				if !ok {
 					return
 				}
-				if err := writeActivitySSE(w, event); err != nil {
+				if err := writeActivitySSE(w, PublicEvent(event)); err != nil {
 					return
 				}
 				lastSent = event.Sequence

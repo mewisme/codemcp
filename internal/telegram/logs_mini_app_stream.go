@@ -424,6 +424,7 @@ func projectExecutionSnapshot(snapshot shellruntime.ExecutionFeedSnapshot) map[s
 }
 
 func projectExecutionEvent(event shellruntime.ExecutionFeedEvent) map[string]any {
+	event = shellruntime.PublicExecutionFeedEvent(event)
 	result := map[string]any{
 		"sequence": event.Sequence, "type": event.Type, "execution_id": event.ExecutionID,
 		"workspace_id": event.WorkspaceID, "stream": event.Stream, "data": tracepkg.SanitizeText(event.Data),
@@ -436,20 +437,17 @@ func projectExecutionEvent(event shellruntime.ExecutionFeedEvent) map[string]any
 }
 
 func projectExecutionInfo(execution shellruntime.ExecutionInfo) map[string]any {
+	execution = shellruntime.PublicExecutionInfo(execution)
 	return map[string]any{
 		"id": execution.ID, "workspace_id": execution.WorkspaceID, "tool": execution.Tool,
-		"command":           sanitizeMiniAppCommand(execution.Command),
-		"requested_command": sanitizeMiniAppCommand(execution.RequestedCommand),
-		"effective_command": sanitizeMiniAppCommand(execution.EffectiveCommand),
-		"cwd":               tracepkg.SanitizeText(execution.CWD),
-		"shell":             tracepkg.SanitizeText(execution.Shell), "source": execution.Source,
+		"command":           execution.Command,
+		"requested_command": execution.RequestedCommand,
+		"effective_command": execution.EffectiveCommand,
+		"cwd":               execution.CWD,
+		"shell":             execution.Shell, "source": execution.Source,
 		"started_at": execution.StartedAt, "finished_at": execution.FinishedAt, "status": execution.Status,
 		"exit_code": execution.ExitCode, "timed_out": execution.TimedOut,
 	}
-}
-
-func sanitizeMiniAppCommand(command string) string {
-	return tracepkg.SanitizeText(tracepkg.SanitizeCommand(command))
 }
 
 func projectToolSnapshot(snapshot runtimecontrol.ToolCallFeedSnapshot) map[string]any {
@@ -467,10 +465,11 @@ func projectToolSnapshot(snapshot runtimecontrol.ToolCallFeedSnapshot) map[strin
 }
 
 func projectToolEvent(event runtimeactivity.Event) map[string]any {
+	event = runtimeactivity.PublicEvent(event)
 	return map[string]any{
 		"sequence": event.Sequence, "call_id": event.CallID, "kind": event.Kind, "phase": event.Phase,
 		"method": event.Method, "source": event.Source, "tool": event.Tool, "workspace_id": event.WorkspaceID,
-		"status": event.Status, "duration_ms": event.DurationMS, "message": tracepkg.SanitizeText(event.Message),
-		"timestamp": event.Timestamp, "raw": tracepkg.SanitizeMap(event.Raw),
+		"status": event.Status, "duration_ms": event.DurationMS, "message": event.Message,
+		"timestamp": event.Timestamp,
 	}
 }

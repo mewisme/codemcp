@@ -206,11 +206,6 @@ export function RequestApprovalHost() {
           <DetailRow label="Tool" value={selected.target_tool} mono />
           <DetailRow label="Source" value={selected.source || "-"} mono />
           <DetailRow
-            label="Session"
-            value={selected.session_hash || "-"}
-            mono
-          />
-          <DetailRow
             label="Guard"
             value={
               selected.guard_code ||

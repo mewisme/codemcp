@@ -69,3 +69,43 @@ func TestPublicProjectionPreservesUnrelatedToolArguments(t *testing.T) {
 		t.Fatalf("unrelated tool arguments changed: %s", data)
 	}
 }
+
+func TestPublicRequestDropsSessionAndSanitizesGenericArguments(t *testing.T) {
+	const secret = "approval-secret-marker"
+	raw := Request{
+		ID: "req_1", Status: StatusPending, WorkspaceID: "ws_a", SessionHash: secret,
+		Source: "tunnel", TargetTool: "run_command",
+		Arguments: json.RawMessage(`{"workspace_id":"ws_a","token":"approval-secret-marker","command":"curl -H \"Authorization: Bearer approval-secret-marker\" example.test"}`),
+		Command:   "curl -H \"Authorization: Bearer " + secret + "\" example.test",
+		Title:     "Run command", GuardReason: "Authorization: Bearer " + secret,
+	}
+	public := PublicRequest(raw)
+	data, err := json.Marshal(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := string(data)
+	if strings.Contains(encoded, secret) || strings.Contains(encoded, "session_hash") {
+		t.Fatalf("public approval leaked private data: %s", data)
+	}
+	if !strings.Contains(encoded, "req_1") || !strings.Contains(encoded, "ws_a") || !strings.Contains(encoded, "run_command") {
+		t.Fatalf("public approval lost stable safe fields: %s", data)
+	}
+	if raw.SessionHash == "" || !strings.Contains(string(raw.Arguments), secret) {
+		t.Fatalf("public projection mutated private approval truth: %#v", raw)
+	}
+}
+
+func TestPublicApprovalEventDropsInternalCorrelationIdentity(t *testing.T) {
+	value := PublicEvent(Event{Sequence: 3, Name: EventPending, Subject: EventSubjectRequest, ChallengeID: "challenge_private", RequestID: "req_1", WorkspaceID: "ws_a", SessionHash: "private-session", TargetTool: "run_command"})
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "private-session") || strings.Contains(string(data), "session_hash") || strings.Contains(string(data), "challenge_private") || strings.Contains(string(data), "challenge_id") {
+		t.Fatalf("public approval event leaked internal correlation identity: %s", data)
+	}
+	if !strings.Contains(string(data), "req_1") || !strings.Contains(string(data), "ws_a") {
+		t.Fatalf("public approval event lost stable identity: %s", data)
+	}
+}

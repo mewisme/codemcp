@@ -29,15 +29,9 @@ export type ActivityEvent = {
   source?: string
   tool?: string
   workspace_id?: string
-  session_hash?: string
-  session_access?: string
-  session_workspace_count?: number
-  received_by_instance_id?: string
-  executed_by_instance_id?: string
   status?: string
   duration_ms?: number
   message?: string
-  raw?: Record<string, unknown>
   timestamp: string
 }
 export type ExecutionStatus =
@@ -49,7 +43,6 @@ export type ExecutionInfo = {
   command: string
   requested_command?: string
   effective_command?: string
-  security_command?: string
   cwd: string
   source?: string
   started_at: string
@@ -333,7 +326,9 @@ export type TunnelConfig = {
   id?: string
   api_key?: string
   runtime_key_configured?: boolean
+  runtime_key_preview?: string
   admin_key_configured?: boolean
+  admin_key_preview?: string
   admin_organization_id?: string
   admin_workspace_id?: string
   admin_tenant_id?: string
@@ -348,7 +343,11 @@ export type TunnelAdminKeyRequest = {
 }
 export type TunnelAdminAccess = { read: boolean; manage: boolean }
 export type TunnelAdminKeyStatus = {
+  enabled?: boolean
+  key_configured?: boolean
+  key_preview?: string
   configured: boolean
+  verified?: boolean
   scope: TunnelAdminScope
   access: TunnelAdminAccess
   tunnels?: number
@@ -444,7 +443,6 @@ export type ApprovalRequest = {
   id: string
   status: ApprovalStatus
   workspace_id: string
-  session_hash?: string
   source?: string
   target_tool: string
   arguments?: Record<string, unknown>
@@ -464,10 +462,8 @@ export type ApprovalEvent = {
   sequence?: number
   name: string
   subject: "challenge" | "request" | "grant"
-  challenge_id?: string
   request_id?: string
   workspace_id: string
-  session_hash?: string
   source?: string
   target_tool: string
   status?: ApprovalStatus

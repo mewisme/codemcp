@@ -90,9 +90,8 @@ func TestMiniAppStreamProjectionsAreBoundedAndRedacted(t *testing.T) {
 	if strings.Contains(toolPayload["message"].(string), secret) {
 		t.Fatalf("tool projection leaked secret: %#v", toolPayload)
 	}
-	raw, ok := toolPayload["raw"].(map[string]any)
-	if !ok || raw["token"] != "<redacted>" {
-		t.Fatalf("tool projection did not centrally redact raw detail: %#v", toolPayload)
+	if _, ok := toolPayload["raw"]; ok {
+		t.Fatalf("tool projection exposed provider raw detail: %#v", toolPayload)
 	}
 	for _, key := range []string{"session_hash", "session_access", "received_by_instance_id", "executed_by_instance_id"} {
 		if _, ok := toolPayload[key]; ok {

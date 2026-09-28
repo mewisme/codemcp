@@ -356,7 +356,7 @@ func TestTunnelAdminScopedLifecycleFromFreshConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(statusOutput, "admin-secret") || !strings.Contains(statusOutput, "<redacted>") {
+	if strings.Contains(statusOutput, "admin-secret") || !strings.Contains(statusOutput, "a********t") {
 		t.Fatalf("admin status output is not secret-safe: %q", statusOutput)
 	}
 }

@@ -74,7 +74,7 @@ export function ActivityPage() {
       if (status !== "all" && event.status !== status) return false
       if (source !== "all" && event.source !== source) return false
       if (!needle) return true
-      return [event.kind, event.method, event.source, event.tool, event.workspace_id, event.session_hash, event.session_access, event.session_workspace_count?.toString(), event.received_by_instance_id, event.executed_by_instance_id, event.status, event.message].some((value) => value?.toLowerCase().includes(needle))
+      return [event.kind, event.method, event.source, event.tool, event.workspace_id, event.status, event.message].some((value) => value?.toLowerCase().includes(needle))
     })
   }, [events, kind, query, source, status])
 
@@ -99,7 +99,7 @@ export function ActivityCallPage() {
   }, [callID])
 
   if (loading) return <PageLoading rows={6} />
-  return <div className="space-y-6"><PageHeader title={event ? activityTitle(event) : "Tool Call"} description={event ? `${event.call_id} · ${formatDateTime(event.timestamp)}` : callID} actions={<Button asChild size="sm" variant="outline"><Link to="/activity"><ArrowLeft />Activity</Link></Button>} /><PageError message={error} />{event ? <ActivityDetailContent event={event} unboundedRaw /> : null}</div>
+  return <div className="space-y-6"><PageHeader title={event ? activityTitle(event) : "Tool Call"} description={event ? `${event.call_id} · ${formatDateTime(event.timestamp)}` : callID} actions={<Button asChild size="sm" variant="outline"><Link to="/activity"><ArrowLeft />Activity</Link></Button>} /><PageError message={error} />{event ? <ActivityDetailContent event={event} /> : null}</div>
 }
 
 function ActivityMobileList({ events, onSelect }: { events: ActivityEvent[]; onSelect: (event: ActivityEvent) => void }) {
@@ -110,8 +110,8 @@ function ActivityDetail({ event, open, onOpenChange }: { event: ActivityEvent; o
   return <ResponsiveDialog open={open} onOpenChange={onOpenChange} title={activityTitle(event)} description={`${event.kind} · ${formatDateTime(event.timestamp)}`}><ActivityDetailContent event={event} /></ResponsiveDialog>
 }
 
-function ActivityDetailContent({ event, unboundedRaw = false }: { event: ActivityEvent; unboundedRaw?: boolean }) {
-  return <Tabs defaultValue="overview"><TabsList className="w-full"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="metadata">Metadata</TabsTrigger><TabsTrigger value="raw">Raw</TabsTrigger></TabsList><TabsContent className="mt-4 divide-y" value="overview"><DetailRow label="Status" value={event.status ? <StatusBadge status={event.status} /> : "-"} /><DetailRow label="Tool" value={event.tool || "-"} mono /><DetailRow label="Method" value={event.method || "-"} mono /><DetailRow label="Message" value={event.message || "-"} /><DetailRow label="Duration" value={event.duration_ms === undefined ? "-" : formatDuration(event.duration_ms)} /></TabsContent><TabsContent className="mt-4 divide-y" value="metadata"><DetailRow label="Call ID" value={event.call_id || "-"} mono /><DetailRow label="Sequence" value={event.sequence ?? "-"} mono /><DetailRow label="Timestamp" value={formatDateTime(event.timestamp)} /><DetailRow label="Source" value={event.source || "-"} mono /><DetailRow label="Workspace" value={event.workspace_id || "-"} mono /><DetailRow label="Session" value={event.session_hash || "-"} mono /><DetailRow label="Session access" value={event.session_access || "-"} mono /><DetailRow label="Session workspaces" value={event.session_workspace_count ?? "-"} mono /><DetailRow label="Received by" value={event.received_by_instance_id || "-"} mono /><DetailRow label="Executed by" value={event.executed_by_instance_id || "-"} mono /><DetailRow label="Kind" value={event.kind} mono /></TabsContent><TabsContent className="mt-4" value="raw"><JsonViewer maxHeight={unboundedRaw ? null : undefined} value={event.raw ?? event} /></TabsContent></Tabs>
+function ActivityDetailContent({ event }: { event: ActivityEvent }) {
+  return <Tabs defaultValue="overview"><TabsList className="w-full"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="metadata">Metadata</TabsTrigger><TabsTrigger value="raw">Raw</TabsTrigger></TabsList><TabsContent className="mt-4 divide-y" value="overview"><DetailRow label="Status" value={event.status ? <StatusBadge status={event.status} /> : "-"} /><DetailRow label="Tool" value={event.tool || "-"} mono /><DetailRow label="Method" value={event.method || "-"} mono /><DetailRow label="Message" value={event.message || "-"} /><DetailRow label="Duration" value={event.duration_ms === undefined ? "-" : formatDuration(event.duration_ms)} /></TabsContent><TabsContent className="mt-4 divide-y" value="metadata"><DetailRow label="Call ID" value={event.call_id || "-"} mono /><DetailRow label="Sequence" value={event.sequence ?? "-"} mono /><DetailRow label="Timestamp" value={formatDateTime(event.timestamp)} /><DetailRow label="Source" value={event.source || "-"} mono /><DetailRow label="Workspace" value={event.workspace_id || "-"} mono /><DetailRow label="Kind" value={event.kind} mono /></TabsContent><TabsContent className="mt-4" value="raw"><JsonViewer value={event} /></TabsContent></Tabs>
 }
 
 function FilterSelect({ label, value, values, onValueChange }: { label: string; value: string; values: string[]; onValueChange: (value: string) => void }) {
