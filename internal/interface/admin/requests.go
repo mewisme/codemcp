@@ -211,7 +211,7 @@ func serveApprovalEvents(w http.ResponseWriter, r *http.Request, manager *approv
 	w.Header().Set("X-Accel-Buffering", "no")
 	workspaceID := strings.TrimSpace(r.URL.Query().Get("workspace_id"))
 	sub, snapshot := stream.SubscribeWorkspaceSnapshot(workspaceID, 0)
-	defer stream.Unsubscribe(sub)
+	defer sub.Close()
 	requests, err := approval.NewReviewService(manager).List(approval.Filter{WorkspaceID: workspaceID, Status: approval.StatusPending})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -236,7 +236,7 @@ func serveApprovalEvents(w http.ResponseWriter, r *http.Request, manager *approv
 			if overflow.DroppedSequence == 0 {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d}\n\n", overflow.DroppedSequence)
+			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, overflow.LatestSequence)
 			flusher.Flush()
 			return
 		case <-heartbeat.C:

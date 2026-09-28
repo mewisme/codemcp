@@ -3,6 +3,7 @@ package shell
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,7 @@ func TestProcessDiagnosticsExposeRunningAgeAndTerminalOverflow(t *testing.T) {
 	sub := manager.SubscribeTerminal()
 	defer manager.UnsubscribeTerminal(sub)
 	for index := 0; index < terminalEventBuffer; index++ {
-		sub.events <- BackgroundWorkTerminalEvent{ProcessID: "buffered"}
+		manager.publishTerminal(&managedProcess{id: fmt.Sprintf("buffered-%d", index), workspace: "ws_diag"}, ExecutionStatusSuccess, BackgroundTerminalExit, nil, nil, false)
 	}
 	manager.publishTerminal(&managedProcess{id: "overflow", workspace: "ws_diag"}, ExecutionStatusSuccess, BackgroundTerminalExit, nil, nil, false)
 	diagnostics := manager.Diagnostics()
@@ -342,7 +343,7 @@ func TestProcessManagerTerminalStreamDropsSlowSubscriberWithoutBlockingCompletio
 	sub := processes.SubscribeTerminal()
 	defer processes.UnsubscribeTerminal(sub)
 	for index := 0; index < terminalEventBuffer; index++ {
-		sub.events <- BackgroundWorkTerminalEvent{ProcessID: "blocked"}
+		processes.publishTerminal(&managedProcess{id: fmt.Sprintf("blocked-%d", index), workspace: item.ID}, ExecutionStatusSuccess, BackgroundTerminalExit, nil, nil, false)
 	}
 	command := "printf stream-done"
 	if os.PathSeparator == '\\' {

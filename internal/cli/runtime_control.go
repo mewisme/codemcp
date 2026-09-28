@@ -354,7 +354,7 @@ func serveRuntimeExecutionFeed(w http.ResponseWriter, r *http.Request, hub *shel
 		http.Error(w, "execution stream unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	defer hub.UnsubscribeFeed(sub)
+	defer sub.Close()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -390,7 +390,7 @@ func serveRuntimeExecutionFeed(w http.ResponseWriter, r *http.Request, hub *shel
 			if overflow.DroppedSequence == 0 {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d}\n\n", overflow.DroppedSequence)
+			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, overflow.LatestSequence)
 			flusher.Flush()
 			return
 		case <-heartbeat.C:
@@ -426,7 +426,7 @@ func serveRuntimeToolCallFeed(w http.ResponseWriter, r *http.Request, stream *ac
 		return
 	}
 	sub, recent, latestSequence := stream.SubscribeToolCallsSnapshot(activity.MaxRecentEvents)
-	defer stream.UnsubscribeDetailed(sub)
+	defer sub.Close()
 	records := stream.RecentToolCalls(activity.MaxRecentToolCalls)
 	replay := make([]activity.Event, 0, len(recent))
 	for _, event := range recent {
@@ -468,7 +468,7 @@ func serveRuntimeToolCallFeed(w http.ResponseWriter, r *http.Request, stream *ac
 			if overflow.DroppedSequence == 0 {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d}\n\n", overflow.DroppedSequence)
+			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, overflow.LatestSequence)
 			flusher.Flush()
 			return
 		case <-heartbeat.C:
@@ -540,9 +540,9 @@ func serveRuntimeEvents(w http.ResponseWriter, r *http.Request, stream *runtimee
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	sub := stream.SubscribeDetailed()
-	defer stream.UnsubscribeDetailed(sub)
-	_, _ = fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d}\n\n", stream.LatestSequence())
+	sub, snapshot := stream.SubscribeSnapshot(0)
+	defer sub.Close()
+	_, _ = fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d}\n\n", snapshot.LatestSequence)
 	flusher.Flush()
 	heartbeat := time.NewTicker(15 * time.Second)
 	defer heartbeat.Stop()
@@ -557,9 +557,9 @@ func serveRuntimeEvents(w http.ResponseWriter, r *http.Request, stream *runtimee
 			if !ok {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "event: gap\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, stream.LatestSequence())
+			_, _ = fmt.Fprintf(w, "event: gap\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, overflow.LatestSequence)
 			flusher.Flush()
-			stream.AcknowledgeOverflow(sub)
+			return
 		case event, ok := <-sub.Events:
 			if !ok {
 				return

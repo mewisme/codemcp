@@ -47,7 +47,7 @@ func handlerWithHeartbeat(stream *Stream, heartbeatInterval time.Duration) http.
 			return
 		}
 		sub, snapshot := stream.SubscribeSnapshot(historyLimit(r))
-		defer stream.UnsubscribeDetailed(sub)
+		defer sub.Close()
 		lastSent := uint64(0)
 		for _, event := range snapshot.Events {
 			if err := writeActivitySSE(w, event); err != nil {
@@ -65,7 +65,7 @@ func handlerWithHeartbeat(stream *Stream, heartbeatInterval time.Duration) http.
 			select {
 			case overflow := <-sub.Overflow:
 				if overflow.DroppedSequence != 0 {
-					_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"last_sequence\":%d,\"dropped_sequence\":%d}\n\n", lastSent, overflow.DroppedSequence)
+					_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"last_sequence\":%d,\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", lastSent, overflow.DroppedSequence, overflow.LatestSequence)
 					flusher.Flush()
 					return
 				}
@@ -78,7 +78,7 @@ func handlerWithHeartbeat(stream *Stream, heartbeatInterval time.Duration) http.
 				if overflow.DroppedSequence == 0 {
 					return
 				}
-				_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"last_sequence\":%d,\"dropped_sequence\":%d}\n\n", lastSent, overflow.DroppedSequence)
+				_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"last_sequence\":%d,\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", lastSent, overflow.DroppedSequence, overflow.LatestSequence)
 				flusher.Flush()
 				return
 			case <-heartbeat.C:

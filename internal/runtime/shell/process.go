@@ -10,10 +10,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go.mewis.me/codemcp/internal/idgen"
+	"go.mewis.me/codemcp/internal/sequence"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -80,6 +80,7 @@ const (
 )
 
 type BackgroundWorkTerminalEvent struct {
+	Sequence    uint64                   `json:"sequence,omitempty"`
 	WorkspaceID string                   `json:"workspace_id"`
 	ProcessID   string                   `json:"process_id"`
 	ExecutionID string                   `json:"execution_id,omitempty"`
@@ -95,27 +96,13 @@ type BackgroundWorkTerminalEvent struct {
 	FinishedAt  string                   `json:"finished_at"`
 }
 
-type BackgroundWorkTerminalSubscription struct {
-	Events   <-chan BackgroundWorkTerminalEvent
-	Overflow <-chan struct{}
-	events   chan BackgroundWorkTerminalEvent
-	overflow chan struct{}
-	dropped  atomic.Uint64
-	closed   bool
-}
+type BackgroundWorkTerminalSubscription = sequence.Subscription[BackgroundWorkTerminalEvent]
 
 type ProcessDiagnostics struct {
 	Running                 int    `json:"running"`
 	OldestRunningAgeMS      int64  `json:"oldest_running_age_ms,omitempty"`
 	TerminalSubscribers     int    `json:"terminal_subscribers"`
 	TerminalOverflowDropped uint64 `json:"terminal_overflow_dropped"`
-}
-
-func (s *BackgroundWorkTerminalSubscription) Dropped() uint64 {
-	if s == nil {
-		return 0
-	}
-	return s.dropped.Load()
 }
 
 type managedProcess struct {
@@ -149,8 +136,7 @@ type ProcessManager struct {
 	maxWorkspaceRunning int
 	retention           time.Duration
 	executions          *ExecutionHub
-	terminalMu          sync.Mutex
-	terminalSubs        map[*BackgroundWorkTerminalSubscription]struct{}
+	terminal            *sequence.Stream[BackgroundWorkTerminalEvent]
 }
 
 type logBuffer struct {
@@ -160,7 +146,14 @@ type logBuffer struct {
 }
 
 func NewProcessManager(workspaces *workspace.Manager, shell *Manager) *ProcessManager {
-	return &ProcessManager{workspaces: workspaces, shell: shell, processes: map[string]*managedProcess{}, maxFinished: maxFinishedProcesses, maxRunning: maxRunningProcesses, maxWorkspaceRunning: maxWorkspaceProcesses, retention: finishedProcessRetention, terminalSubs: map[*BackgroundWorkTerminalSubscription]struct{}{}}
+	return &ProcessManager{
+		workspaces: workspaces, shell: shell, processes: map[string]*managedProcess{},
+		maxFinished: maxFinishedProcesses, maxRunning: maxRunningProcesses, maxWorkspaceRunning: maxWorkspaceProcesses,
+		retention: finishedProcessRetention,
+		terminal: sequence.New[BackgroundWorkTerminalEvent](0, terminalEventBuffer, func(event *BackgroundWorkTerminalEvent, value uint64) {
+			event.Sequence = value
+		}),
+	}
 }
 
 func NewProcessManagerWithExecutions(workspaces *workspace.Manager, shell *Manager, executions *ExecutionHub) *ProcessManager {
@@ -170,51 +163,28 @@ func NewProcessManagerWithExecutions(workspaces *workspace.Manager, shell *Manag
 }
 
 func (m *ProcessManager) SubscribeTerminal() *BackgroundWorkTerminalSubscription {
-	events := make(chan BackgroundWorkTerminalEvent, terminalEventBuffer)
-	overflow := make(chan struct{}, 1)
-	sub := &BackgroundWorkTerminalSubscription{Events: events, Overflow: overflow, events: events, overflow: overflow}
-	if m == nil {
-		close(events)
-		close(overflow)
+	if m == nil || m.terminal == nil {
+		var stream *sequence.Stream[BackgroundWorkTerminalEvent]
+		sub, _ := stream.Subscribe(nil, 0)
 		return sub
 	}
-	m.terminalMu.Lock()
-	if m.terminalSubs == nil {
-		m.terminalSubs = map[*BackgroundWorkTerminalSubscription]struct{}{}
-	}
-	m.terminalSubs[sub] = struct{}{}
-	m.terminalMu.Unlock()
+	sub, _ := m.terminal.Subscribe(nil, 0)
 	return sub
 }
 
 func (m *ProcessManager) UnsubscribeTerminal(sub *BackgroundWorkTerminalSubscription) {
-	if m == nil || sub == nil {
-		return
+	if sub != nil {
+		sub.Close()
 	}
-	m.terminalMu.Lock()
-	if _, ok := m.terminalSubs[sub]; ok && !sub.closed {
-		delete(m.terminalSubs, sub)
-		close(sub.events)
-		close(sub.overflow)
-		sub.closed = true
-	}
-	m.terminalMu.Unlock()
 }
 
 func (m *ProcessManager) CloseSubscriptions() {
 	if m == nil {
 		return
 	}
-	m.terminalMu.Lock()
-	for sub := range m.terminalSubs {
-		delete(m.terminalSubs, sub)
-		if !sub.closed {
-			close(sub.events)
-			close(sub.overflow)
-			sub.closed = true
-		}
+	if m.terminal != nil {
+		m.terminal.Close()
 	}
-	m.terminalMu.Unlock()
 }
 
 func (m *ProcessManager) Diagnostics() ProcessDiagnostics {
@@ -246,12 +216,10 @@ func (m *ProcessManager) Diagnostics() ProcessDiagnostics {
 	if !oldest.IsZero() {
 		result.OldestRunningAgeMS = max(0, now.Sub(oldest).Milliseconds())
 	}
-	m.terminalMu.Lock()
-	result.TerminalSubscribers = len(m.terminalSubs)
-	for sub := range m.terminalSubs {
-		result.TerminalOverflowDropped += sub.Dropped()
+	if m.terminal != nil {
+		result.TerminalSubscribers = m.terminal.SubscriberCount()
+		result.TerminalOverflowDropped = m.terminal.DroppedCount()
 	}
-	m.terminalMu.Unlock()
 	return result
 }
 
@@ -534,22 +502,9 @@ func (m *ProcessManager) publishTerminal(process *managedProcess, status string,
 		event.ExecutionID = process.execution.ID()
 	}
 	process.mu.Unlock()
-	m.terminalMu.Lock()
-	for sub := range m.terminalSubs {
-		if sub.closed {
-			continue
-		}
-		select {
-		case sub.events <- cloneBackgroundWorkTerminalEvent(event):
-		default:
-			sub.dropped.Add(1)
-			select {
-			case sub.overflow <- struct{}{}:
-			default:
-			}
-		}
+	if m.terminal != nil {
+		m.terminal.Publish(cloneBackgroundWorkTerminalEvent(event))
 	}
-	m.terminalMu.Unlock()
 }
 
 func cloneBackgroundWorkTerminalEvent(event BackgroundWorkTerminalEvent) BackgroundWorkTerminalEvent {

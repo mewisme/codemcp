@@ -75,7 +75,7 @@ func serveWorkspaceExecutionFeed(w http.ResponseWriter, r *http.Request, hub *sh
 		http.Error(w, "execution stream unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	defer hub.UnsubscribeFeed(sub)
+	defer sub.Close()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -103,7 +103,7 @@ func serveWorkspaceExecutionFeed(w http.ResponseWriter, r *http.Request, hub *sh
 			if overflow.DroppedSequence == 0 {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d}\n\n", overflow.DroppedSequence)
+			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, overflow.LatestSequence)
 			flusher.Flush()
 			return
 		case <-heartbeat.C:
@@ -149,7 +149,7 @@ func serveExecutionEvents(w http.ResponseWriter, r *http.Request, hub *shellrunt
 		writeExecutionError(w, err)
 		return
 	}
-	defer hub.Unsubscribe(sub)
+	defer sub.Close()
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
@@ -176,7 +176,7 @@ func serveExecutionEvents(w http.ResponseWriter, r *http.Request, hub *shellrunt
 			if overflow.DroppedSequence == 0 {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d}\n\n", overflow.DroppedSequence)
+			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, overflow.LatestSequence)
 			flusher.Flush()
 			return
 		case <-heartbeat.C:

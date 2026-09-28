@@ -135,7 +135,7 @@ func readToolCallFeedEvent(reader *bufio.Reader) (activity.Event, error) {
 			return activity.Event{}, err
 		}
 		if eventType == "overflow" {
-			return activity.Event{}, ErrToolCallFeedOverflow
+			return activity.Event{}, decodeFeedOverflow(ErrToolCallFeedOverflow, data)
 		}
 		if eventType != "tool_call" || strings.TrimSpace(data) == "" {
 			continue

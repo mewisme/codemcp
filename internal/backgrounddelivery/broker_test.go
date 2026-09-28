@@ -227,6 +227,33 @@ func TestReadOnlyPeekDoesNotConsumeDelivery(t *testing.T) {
 	}
 }
 
+func TestBrokerRealtimeObservationDoesNotConsumeOrSuppressDelivery(t *testing.T) {
+	broker := New(nil)
+	t.Cleanup(broker.Close)
+	owner := Owner{ID: "owner-observer", Generation: "generation-observer"}
+	sub, snapshot := broker.SubscribeSnapshot(0)
+	defer sub.Close()
+	if snapshot.Cursor() != 0 || len(snapshot.Events) != 0 {
+		t.Fatalf("initial observer snapshot=%#v", snapshot)
+	}
+
+	delivery := materializeTestDelivery(t, broker, "proc_observer", owner)
+	observed := <-sub.Events
+	if observed.ID != delivery.ID || observed.State != DeliveryPending {
+		t.Fatalf("observed delivery=%#v want=%#v", observed, delivery)
+	}
+	peeked, err := broker.Peek("ws_one", owner, delivery.ID)
+	if err != nil || peeked.State != DeliveryPending {
+		t.Fatalf("observation changed delivery truth: delivery=%#v err=%v", peeked, err)
+	}
+
+	sub.Close()
+	claim, err := broker.Claim("ws_one", owner, delivery.ID, "model-delivery")
+	if err != nil || !claim.Acquired || claim.Delivery.State != DeliveryClaimed {
+		t.Fatalf("delivery was suppressed by observation: claim=%#v err=%v", claim, err)
+	}
+}
+
 func TestConcurrentDeliveriesClaimIndependently(t *testing.T) {
 	broker := New(nil)
 	t.Cleanup(broker.Close)

@@ -26,7 +26,7 @@ func serveRuntimeApprovalFeed(w http.ResponseWriter, r *http.Request, manager *a
 		return
 	}
 	sub, snapshot := stream.SubscribeSnapshot(0)
-	defer stream.Unsubscribe(sub)
+	defer sub.Close()
 	requests, err := approval.NewReviewService(manager).List(approval.Filter{Status: approval.StatusPending})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -58,7 +58,7 @@ func serveRuntimeApprovalFeed(w http.ResponseWriter, r *http.Request, manager *a
 			if !ok || overflow.DroppedSequence == 0 {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, stream.LatestSequence())
+			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, overflow.LatestSequence)
 			flusher.Flush()
 			return
 		case <-heartbeat.C:

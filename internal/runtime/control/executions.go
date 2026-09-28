@@ -132,7 +132,7 @@ func readExecutionFeedEvent(reader *bufio.Reader) (shellruntime.ExecutionFeedEve
 			return shellruntime.ExecutionFeedEvent{}, err
 		}
 		if eventType == "overflow" {
-			return shellruntime.ExecutionFeedEvent{}, ErrExecutionFeedOverflow
+			return shellruntime.ExecutionFeedEvent{}, decodeFeedOverflow(ErrExecutionFeedOverflow, data)
 		}
 		if eventType != shellruntime.ExecutionEventStarted && eventType != shellruntime.ExecutionEventOutput && eventType != shellruntime.ExecutionEventCompleted {
 			continue

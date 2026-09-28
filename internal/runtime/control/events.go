@@ -132,14 +132,7 @@ func (stream *EventStream) Next() (runtimeevent.Event, error) {
 		line := stream.scanner.Text()
 		if line == "" {
 			if eventType == "gap" {
-				var gap struct {
-					DroppedSequence uint64 `json:"dropped_sequence"`
-					LatestSequence  uint64 `json:"latest_sequence"`
-				}
-				if err := json.Unmarshal([]byte(data.String()), &gap); err != nil {
-					return runtimeevent.Event{}, fmt.Errorf("decode runtime event stream gap: %w", err)
-				}
-				return runtimeevent.Event{}, fmt.Errorf("%w: dropped sequence %d, latest sequence %d", ErrEventStreamGap, gap.DroppedSequence, gap.LatestSequence)
+				return runtimeevent.Event{}, decodeFeedOverflow(ErrEventStreamGap, data.String())
 			}
 			event, ok, err := flush()
 			if err != nil || ok {

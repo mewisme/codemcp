@@ -183,7 +183,7 @@ func (runtime *LogsMiniAppRuntime) serveRuntimeStream(ctx context.Context, conn 
 			}
 			if result.err != nil {
 				if errors.Is(result.err, runtimecontrol.ErrEventStreamGap) {
-					_ = writeMiniAppFrame(conn, "resync", miniAppFeedRuntime, 0, stream.LatestSequence(), nil, "overflow")
+					_ = writeMiniAppFrame(conn, "resync", miniAppFeedRuntime, 0, feedOverflowLatest(result.err, max(cursor, stream.LatestSequence())), nil, "overflow")
 				}
 				return
 			}
@@ -249,7 +249,7 @@ func (runtime *LogsMiniAppRuntime) serveExecutionStream(ctx context.Context, con
 			}
 			if result.err != nil {
 				if errors.Is(result.err, runtimecontrol.ErrExecutionFeedOverflow) {
-					_ = writeMiniAppFrame(conn, "resync", miniAppFeedExecutions, 0, cursor, nil, "overflow")
+					_ = writeMiniAppFrame(conn, "resync", miniAppFeedExecutions, 0, feedOverflowLatest(result.err, cursor), nil, "overflow")
 				}
 				return
 			}
@@ -315,7 +315,7 @@ func (runtime *LogsMiniAppRuntime) serveToolStream(ctx context.Context, conn *we
 			}
 			if result.err != nil {
 				if errors.Is(result.err, runtimecontrol.ErrToolCallFeedOverflow) {
-					_ = writeMiniAppFrame(conn, "resync", miniAppFeedTools, 0, cursor, nil, "overflow")
+					_ = writeMiniAppFrame(conn, "resync", miniAppFeedTools, 0, feedOverflowLatest(result.err, cursor), nil, "overflow")
 				}
 				return
 			}
@@ -328,6 +328,14 @@ func (runtime *LogsMiniAppRuntime) serveToolStream(ctx context.Context, conn *we
 			}
 		}
 	}
+}
+
+func feedOverflowLatest(err error, fallback uint64) uint64 {
+	overflow, ok := runtimecontrol.FeedOverflowOf(err)
+	if !ok || overflow.LatestSequence == 0 {
+		return fallback
+	}
+	return overflow.LatestSequence
 }
 
 type toolEventResult struct {

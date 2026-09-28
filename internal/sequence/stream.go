@@ -1,9 +1,13 @@
 package sequence
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 type Overflow struct {
 	DroppedSequence uint64 `json:"dropped_sequence"`
+	LatestSequence  uint64 `json:"latest_sequence"`
 }
 
 type Snapshot[T any] struct {
@@ -11,15 +15,40 @@ type Snapshot[T any] struct {
 	LatestSequence uint64
 }
 
+func (s Snapshot[T]) Cursor() uint64 { return s.LatestSequence }
+
+func (o Overflow) RequiresResync() bool { return o.DroppedSequence > 0 }
+
 type Predicate[T any] func(T) bool
 
 type Subscription[T any] struct {
 	Events   chan T
 	Overflow chan Overflow
 
-	filter   Predicate[T]
-	overflow bool
-	closed   bool
+	filter      Predicate[T]
+	overflow    bool
+	closed      bool
+	dispose     func()
+	disposeOnce sync.Once
+	dropped     atomic.Uint64
+}
+
+func (s *Subscription[T]) Close() {
+	if s == nil {
+		return
+	}
+	s.disposeOnce.Do(func() {
+		if s.dispose != nil {
+			s.dispose()
+		}
+	})
+}
+
+func (s *Subscription[T]) Dropped() uint64 {
+	if s == nil {
+		return 0
+	}
+	return s.dropped.Load()
 }
 
 type Stream[T any] struct {
@@ -30,6 +59,8 @@ type Stream[T any] struct {
 	subscriberSize int
 	nextSequence   uint64
 	assignSequence func(*T, uint64)
+	closed         bool
+	dropped        atomic.Uint64
 }
 
 func New[T any](maxRecent, subscriberSize int, assignSequence func(*T, uint64)) *Stream[T] {
@@ -52,6 +83,10 @@ func (s *Stream[T]) Publish(value T) T {
 		return value
 	}
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return value
+	}
 	s.nextSequence++
 	if s.assignSequence != nil {
 		s.assignSequence(&value, s.nextSequence)
@@ -63,14 +98,21 @@ func (s *Stream[T]) Publish(value T) T {
 		}
 	}
 	for _, sub := range s.subs {
-		if sub.closed || sub.overflow || (sub.filter != nil && !sub.filter(value)) {
+		if sub.closed || (sub.filter != nil && !sub.filter(value)) {
+			continue
+		}
+		if sub.overflow {
+			sub.dropped.Add(1)
+			s.dropped.Add(1)
 			continue
 		}
 		select {
 		case sub.Events <- value:
 		default:
 			sub.overflow = true
-			sub.Overflow <- Overflow{DroppedSequence: s.nextSequence}
+			sub.dropped.Add(1)
+			s.dropped.Add(1)
+			sub.Overflow <- Overflow{DroppedSequence: s.nextSequence, LatestSequence: s.nextSequence}
 		}
 	}
 	s.mu.Unlock()
@@ -90,11 +132,19 @@ func (s *Stream[T]) Subscribe(filter Predicate[T], recentLimit int) (*Subscripti
 		filter:   filter,
 	}
 	s.mu.Lock()
-	s.subs[sub.Events] = sub
 	snapshot := Snapshot[T]{
 		Events:         recentFiltered(s.recent, filter, recentLimit),
 		LatestSequence: s.nextSequence,
 	}
+	if s.closed {
+		close(sub.Events)
+		close(sub.Overflow)
+		sub.closed = true
+		s.mu.Unlock()
+		return sub, snapshot
+	}
+	sub.dispose = func() { s.Unsubscribe(sub) }
+	s.subs[sub.Events] = sub
 	s.mu.Unlock()
 	return sub, snapshot
 }
@@ -138,6 +188,58 @@ func (s *Stream[T]) AcknowledgeOverflow(sub *Subscription[T]) {
 	s.mu.Unlock()
 }
 
+func (s *Stream[T]) SubscriberCount() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.subs)
+}
+
+func (s *Stream[T]) OverflowedCount() int {
+	if s == nil {
+		return 0
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	count := 0
+	for _, sub := range s.subs {
+		if sub.overflow {
+			count++
+		}
+	}
+	return count
+}
+
+func (s *Stream[T]) DroppedCount() uint64 {
+	if s == nil {
+		return 0
+	}
+	return s.dropped.Load()
+}
+
+func (s *Stream[T]) Close() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	for events, sub := range s.subs {
+		delete(s.subs, events)
+		if !sub.closed {
+			close(sub.Events)
+			close(sub.Overflow)
+			sub.closed = true
+		}
+	}
+	s.mu.Unlock()
+}
+
 func (s *Stream[T]) Recent(limit int) []T {
 	if s == nil || limit <= 0 {
 		return nil
@@ -170,6 +272,10 @@ func (s *Stream[T]) EnsureSequence(sequence uint64) {
 		return
 	}
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
 	if sequence > s.nextSequence {
 		s.nextSequence = sequence
 	}

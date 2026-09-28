@@ -209,6 +209,28 @@ func TestRequestsPagePreservesExpandedBrowserHelpAcrossRefresh(t *testing.T) {
 	}
 }
 
+func TestRequestsPageRefreshesOnCanonicalApprovalFeedChangeWithoutPolling(t *testing.T) {
+	page, err := NewRequests(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page.loading = false
+	updated, cmd := page.Update(RequestFeedChangedMsg{Event: approval.Event{
+		Sequence: 9, Name: approval.EventCreated, Subject: approval.EventSubjectRequest, RequestID: "req_feed",
+	}})
+	page = updated.(*RequestsPage)
+	if cmd == nil || !page.loading {
+		t.Fatalf("feed change did not invalidate request page: cmd=%v loading=%t", cmd != nil, page.loading)
+	}
+	updated, cmd = page.Update(RequestFeedChangedMsg{Event: approval.Event{
+		Sequence: 10, Name: approval.EventApproved, Subject: approval.EventSubjectRequest, RequestID: "req_feed",
+	}})
+	page = updated.(*RequestsPage)
+	if cmd != nil || !page.loading {
+		t.Fatalf("duplicate feed change scheduled overlapping refresh: cmd=%v loading=%t", cmd != nil, page.loading)
+	}
+}
+
 func TestRequestsPageDetailRefreshPreservesScrollOffset(t *testing.T) {
 	now := time.Now().UTC()
 	request := approval.Request{ID: "req_scroll_refresh", Status: approval.StatusPending, WorkspaceID: "ws_a", TargetTool: "run_command", Title: "Allow update", CreatedAt: now, ExpiresAt: now.Add(time.Minute), Reason: strings.Repeat("long detail content ", 80)}

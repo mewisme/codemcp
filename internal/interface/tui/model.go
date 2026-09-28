@@ -236,7 +236,15 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return model, model.approvalReconnectCmd()
 		}
 		model.applyApprovalEvent(msg.event)
-		return model, tea.Batch(model.refreshApprovalsCmd(), model.waitApprovalEventCmd())
+		commands := []tea.Cmd{model.refreshApprovalsCmd(), model.waitApprovalEventCmd()}
+		if requestsPage, ok := model.currentPage.(*tuipage.RequestsPage); ok {
+			updated, cmd := requestsPage.Update(tuipage.RequestFeedChangedMsg{Event: msg.event})
+			model.currentPage = updated
+			if cmd != nil {
+				commands = append(commands, cmd)
+			}
+		}
+		return model, tea.Batch(commands...)
 	case approvalReconnectMsg:
 		return model, model.subscribeApprovalsCmd()
 	case approvalResolvedMsg:

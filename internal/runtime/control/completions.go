@@ -114,7 +114,7 @@ func (stream *CompletionFeedStream) Next() (agentcompletion.Event, error) {
 			return agentcompletion.Event{}, err
 		}
 		if eventType == "overflow" {
-			return agentcompletion.Event{}, ErrCompletionFeedOverflow
+			return agentcompletion.Event{}, decodeFeedOverflow(ErrCompletionFeedOverflow, data)
 		}
 		if !strings.HasPrefix(eventType, "completion.") || strings.TrimSpace(data) == "" {
 			continue

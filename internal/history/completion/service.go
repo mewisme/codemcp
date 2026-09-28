@@ -41,8 +41,6 @@ type Service struct {
 	now        func() time.Time
 	newID      func() (string, error)
 	closed     bool
-	subMu      sync.Mutex
-	subs       map[*EventSubscription]struct{}
 }
 
 func NewWorkspaceService(workspaces *workspace.Manager, options Options) (*Service, error) {
@@ -73,7 +71,6 @@ func NewWorkspaceService(workspaces *workspace.Manager, options Options) (*Servi
 		maxRecords: options.MaxRecords,
 		now:        options.Now,
 		newID:      options.NewID,
-		subs:       map[*EventSubscription]struct{}{},
 	}
 	if err := service.compactHotHistories(); err != nil {
 		return nil, err
@@ -343,25 +340,15 @@ func (s *Service) SubscribeSnapshot(recentLimit int) (*EventSubscription, EventS
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
-		events := make(chan Event)
-		overflow := make(chan sequence.Overflow)
-		close(events)
-		close(overflow)
-		return &EventSubscription{Events: events, Overflow: overflow}, EventSnapshot{LatestSequence: s.LatestSequence()}
+		return s.events.Subscribe(nil, recentLimit)
 	}
-	s.subMu.Lock()
 	sub, snapshot := s.events.Subscribe(nil, recentLimit)
-	s.subs[sub] = struct{}{}
-	s.subMu.Unlock()
 	s.mu.Unlock()
 	return sub, snapshot
 }
 
 func (s *Service) Unsubscribe(sub *EventSubscription) {
 	if s != nil && s.events != nil {
-		s.subMu.Lock()
-		delete(s.subs, sub)
-		s.subMu.Unlock()
 		s.events.Unsubscribe(sub)
 	}
 }
@@ -376,16 +363,9 @@ func (s *Service) Close() {
 		return
 	}
 	s.closed = true
-	s.subMu.Lock()
-	subs := make([]*EventSubscription, 0, len(s.subs))
-	for sub := range s.subs {
-		subs = append(subs, sub)
-	}
-	s.subs = map[*EventSubscription]struct{}{}
-	s.subMu.Unlock()
 	s.mu.Unlock()
-	for _, sub := range subs {
-		s.events.Unsubscribe(sub)
+	if s.events != nil {
+		s.events.Close()
 	}
 }
 

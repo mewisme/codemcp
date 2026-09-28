@@ -16,7 +16,6 @@ import (
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
 
-const requestRefreshInterval = time.Second
 const requestOperationTimeout = 5 * time.Second
 
 var requestTabLabels = []string{"Pending", "History", "All"}
@@ -55,7 +54,9 @@ const (
 	requestOverlayOperation
 )
 
-type requestTickMsg time.Time
+type RequestFeedChangedMsg struct {
+	Event approval.Event
+}
 
 type requestListMsg struct {
 	requests    []approval.Request
@@ -142,7 +143,7 @@ func (page *RequestsPage) Init() tea.Cmd {
 		return nil
 	}
 	page.loading = true
-	commands := []tea.Cmd{requestTickCmd(), page.refreshCmd()}
+	commands := []tea.Cmd{page.refreshCmd()}
 	if page.editor != nil {
 		commands = append(commands, page.editor.Init())
 	}
@@ -181,13 +182,12 @@ func (page *RequestsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		return page, nil
 	}
 	switch msg := message.(type) {
-	case requestTickMsg:
-		commands := []tea.Cmd{requestTickCmd()}
-		if !page.loading && page.overlay != requestOverlayOperation {
-			page.loading = true
-			commands = append(commands, page.refreshCmd())
+	case RequestFeedChangedMsg:
+		if page.loading {
+			return page, nil
 		}
-		return page, tea.Batch(commands...)
+		page.loading = true
+		return page, page.refreshCmd()
 	case requestListMsg:
 		page.loading = false
 		if msg.err != nil {
@@ -888,10 +888,6 @@ func (page *RequestsPage) upsertRequest(value approval.Request) {
 		}
 	}
 	page.requests = append(page.requests, value)
-}
-
-func requestTickCmd() tea.Cmd {
-	return tea.Tick(requestRefreshInterval, func(now time.Time) tea.Msg { return requestTickMsg(now) })
 }
 
 func requestOverview(request approval.Request, _ int) string {

@@ -75,7 +75,7 @@ func TestApprovalCardUsesSafeCanonicalProjectionAndActionHierarchy(t *testing.T)
 		Title: "Run guarded command", GuardCode: controlguard.CodeSemanticRisk,
 		GuardReason: "semantic risk high (filesystem): require_approval",
 		Command:     "rm -rf build-cache", SimilarCommandPattern: "rm -rf *",
-		ExpiresAt: time.Date(2026, 9, 28, 15, 0, 0, 0, time.UTC),
+		ExpiresAt: time.Now().UTC().Add(time.Hour),
 	}
 	screen, err := ui.requestCard(owner, request)
 	if err != nil {

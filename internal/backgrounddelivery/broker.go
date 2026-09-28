@@ -9,11 +9,11 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"go.mewis.me/codemcp/internal/idgen"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
+	"go.mewis.me/codemcp/internal/sequence"
 	statepkg "go.mewis.me/codemcp/internal/state"
 )
 
@@ -23,6 +23,7 @@ const (
 	defaultMaxPerOwner     = 64
 	defaultRecentTerminals = 256
 	defaultRecentTTL       = 10 * time.Minute
+	defaultObserverBuffer  = 64
 	storeVersion           = 1
 )
 
@@ -133,6 +134,9 @@ type Delivery struct {
 	DeadLetteredAt  *time.Time                            `json:"dead_lettered_at,omitempty"`
 }
 
+type DeliverySubscription = sequence.Subscription[Delivery]
+type DeliverySnapshot = sequence.Snapshot[Delivery]
+
 type ClaimResult struct {
 	Delivery         Delivery `json:"delivery"`
 	Receipt          string   `json:"receipt,omitempty"`
@@ -197,9 +201,8 @@ type Broker struct {
 	closed        chan struct{}
 	closeOnce     sync.Once
 	wg            sync.WaitGroup
-	subs          map[chan Delivery]struct{}
+	events        *sequence.Stream[Delivery]
 	storePath     string
-	dropped       atomic.Uint64
 	continuations map[string]continuationRegistration
 }
 
@@ -229,7 +232,7 @@ func newBroker(processes *shellruntime.ProcessManager, storePath string) *Broker
 		maxDeliveries: defaultMaxDeliveries,
 		maxPerOwner:   defaultMaxPerOwner,
 		closed:        make(chan struct{}),
-		subs:          map[chan Delivery]struct{}{},
+		events:        sequence.New[Delivery](defaultMaxDeliveries, defaultObserverBuffer, nil),
 		storePath:     storePath,
 		continuations: map[string]continuationRegistration{},
 	}
@@ -257,50 +260,40 @@ func (b *Broker) Close() {
 			b.processes.UnsubscribeTerminal(b.sub)
 		}
 		b.wg.Wait()
-		b.mu.Lock()
-		for ch := range b.subs {
-			delete(b.subs, ch)
-			close(ch)
+		if b.events != nil {
+			b.events.Close()
 		}
-		b.mu.Unlock()
 	})
 }
 
 func (b *Broker) Subscribe() chan Delivery {
-	ch := make(chan Delivery, 64)
-	if b == nil {
-		close(ch)
-		return ch
+	return b.SubscribeDetailed().Events
+}
+
+func (b *Broker) SubscribeDetailed() *DeliverySubscription {
+	sub, _ := b.SubscribeSnapshot(0)
+	return sub
+}
+
+func (b *Broker) SubscribeSnapshot(recentLimit int) (*DeliverySubscription, DeliverySnapshot) {
+	if b == nil || b.events == nil {
+		var stream *sequence.Stream[Delivery]
+		return stream.Subscribe(nil, recentLimit)
 	}
-	select {
-	case <-b.closed:
-		close(ch)
-		return ch
-	default:
-	}
-	b.mu.Lock()
-	select {
-	case <-b.closed:
-		b.mu.Unlock()
-		close(ch)
-		return ch
-	default:
-	}
-	b.subs[ch] = struct{}{}
-	b.mu.Unlock()
-	return ch
+	return b.events.Subscribe(nil, recentLimit)
 }
 
 func (b *Broker) Unsubscribe(ch chan Delivery) {
-	if b == nil || ch == nil {
+	if b == nil || b.events == nil || ch == nil {
 		return
 	}
-	b.mu.Lock()
-	if _, ok := b.subs[ch]; ok {
-		delete(b.subs, ch)
-		close(ch)
+	b.events.UnsubscribeEvents(ch)
+}
+
+func (b *Broker) UnsubscribeDetailed(sub *DeliverySubscription) {
+	if b != nil && b.events != nil {
+		b.events.Unsubscribe(sub)
 	}
-	b.mu.Unlock()
 }
 
 func (b *Broker) consume() {
@@ -421,12 +414,8 @@ func (b *Broker) materializeLocked(registration Registration, event shellruntime
 	b.order = append(b.order, delivery.ID)
 	key := ownerKey(registration.Owner)
 	b.byOwner[key] = append(b.byOwner[key], delivery.ID)
-	for ch := range b.subs {
-		select {
-		case ch <- cloneDelivery(delivery):
-		default:
-			b.dropped.Add(1)
-		}
+	if b.events != nil {
+		b.events.Publish(cloneDelivery(delivery))
 	}
 	b.pruneLocked(now)
 	_ = b.persistLocked()
@@ -491,9 +480,11 @@ func (b *Broker) InspectDiagnostics() Diagnostics {
 
 func (b *Broker) diagnosticsLocked(now time.Time) Diagnostics {
 	result := Diagnostics{
-		Subscribers:          len(b.subs),
-		OverflowDropped:      b.dropped.Load(),
 		ContinuationAdapters: len(b.continuations),
+	}
+	if b.events != nil {
+		result.Subscribers = b.events.SubscriberCount()
+		result.OverflowDropped = b.events.DroppedCount()
 	}
 	owners := map[string]struct{}{}
 	var oldestPending, oldestRetry, oldestDeadLetter, oldestContinuation time.Time

@@ -42,8 +42,11 @@ func TestStreamBoundsRecentAndSignalsOverflowOnce(t *testing.T) {
 	stream.Publish(testEvent{Value: "three"})
 
 	overflow := <-sub.Overflow
-	if overflow.DroppedSequence != 2 {
+	if overflow.DroppedSequence != 2 || overflow.LatestSequence != 2 || !overflow.RequiresResync() {
 		t.Fatalf("overflow=%#v", overflow)
+	}
+	if sub.Dropped() != 2 {
+		t.Fatalf("dropped=%d want=2", sub.Dropped())
 	}
 	select {
 	case extra := <-sub.Overflow:
@@ -60,6 +63,95 @@ func TestStreamBoundsRecentAndSignalsOverflowOnce(t *testing.T) {
 	stream.Publish(testEvent{Value: "four"})
 	if event := <-sub.Events; event.Sequence != 4 {
 		t.Fatalf("event=%#v", event)
+	}
+}
+
+func TestSubscriptionCloseDisposesOnlyThatConsumer(t *testing.T) {
+	stream := New[testEvent](2, 1, func(value *testEvent, sequence uint64) { value.Sequence = sequence })
+	first, snapshot := stream.Subscribe(nil, 1)
+	second, _ := stream.Subscribe(nil, 0)
+	if snapshot.Cursor() != 0 || stream.SubscriberCount() != 2 {
+		t.Fatalf("snapshot=%#v subscribers=%d", snapshot, stream.SubscriberCount())
+	}
+	first.Close()
+	first.Close()
+	if stream.SubscriberCount() != 1 {
+		t.Fatalf("subscribers=%d want=1", stream.SubscriberCount())
+	}
+	if _, ok := <-first.Events; ok {
+		t.Fatal("disposed subscription remained open")
+	}
+	stream.Publish(testEvent{Value: "live"})
+	if event := <-second.Events; event.Sequence != 1 || event.Value != "live" {
+		t.Fatalf("second subscriber event=%#v", event)
+	}
+	second.Close()
+}
+
+func TestStreamCloseDisposesSubscribersAndRejectsNewLiveAttachment(t *testing.T) {
+	stream := New[testEvent](2, 1, func(value *testEvent, sequence uint64) { value.Sequence = sequence })
+	stream.Publish(testEvent{Value: "before"})
+	sub, _ := stream.Subscribe(nil, 0)
+	stream.Close()
+	stream.Close()
+	if stream.SubscriberCount() != 0 {
+		t.Fatalf("subscribers=%d", stream.SubscriberCount())
+	}
+	if _, ok := <-sub.Events; ok {
+		t.Fatal("subscriber remained open after stream close")
+	}
+	stream.Publish(testEvent{Value: "after"})
+	if stream.LatestSequence() != 1 {
+		t.Fatalf("closed stream advanced sequence=%d", stream.LatestSequence())
+	}
+	closed, snapshot := stream.Subscribe(nil, 2)
+	if snapshot.LatestSequence != 1 || len(snapshot.Events) != 1 || snapshot.Events[0].Value != "before" {
+		t.Fatalf("closed stream snapshot=%#v", snapshot)
+	}
+	if _, ok := <-closed.Events; ok {
+		t.Fatal("post-close subscription remained open")
+	}
+}
+
+func TestSubscribeSnapshotBarrierHasNoGapOrDuplicateDuringConcurrentPublish(t *testing.T) {
+	stream := New[testEvent](256, 256, func(value *testEvent, sequence uint64) { value.Sequence = sequence })
+	for index := 0; index < 50; index++ {
+		stream.Publish(testEvent{Value: "before"})
+	}
+	start := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		<-start
+		for index := 50; index < 200; index++ {
+			stream.Publish(testEvent{Value: "concurrent"})
+		}
+		close(done)
+	}()
+	close(start)
+	sub, snapshot := stream.Subscribe(nil, 256)
+	defer sub.Close()
+	<-done
+
+	seen := make(map[uint64]int, 200)
+	for _, event := range snapshot.Events {
+		seen[event.Sequence]++
+	}
+	for len(sub.Events) > 0 {
+		event := <-sub.Events
+		seen[event.Sequence]++
+	}
+	select {
+	case overflow := <-sub.Overflow:
+		t.Fatalf("barrier attachment overflowed: %#v", overflow)
+	default:
+	}
+	if len(seen) != 200 {
+		t.Fatalf("observed %d sequences, want 200; snapshot cursor=%d", len(seen), snapshot.Cursor())
+	}
+	for sequence := uint64(1); sequence <= 200; sequence++ {
+		if seen[sequence] != 1 {
+			t.Fatalf("sequence %d observed %d times; snapshot cursor=%d", sequence, seen[sequence], snapshot.Cursor())
+		}
 	}
 }
 

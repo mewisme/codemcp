@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"go.mewis.me/codemcp/internal/idgen"
+	"go.mewis.me/codemcp/internal/sequence"
 	statepkg "go.mewis.me/codemcp/internal/state"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
@@ -97,9 +98,7 @@ type ExecutionFeedSnapshot struct {
 	LatestSequence uint64               `json:"latest_sequence"`
 }
 
-type ExecutionOverflow struct {
-	DroppedSequence uint64 `json:"dropped_sequence"`
-}
+type ExecutionOverflow = sequence.Overflow
 
 type ExecutionDiagnostics struct {
 	Running              int   `json:"running"`
@@ -110,21 +109,8 @@ type ExecutionDiagnostics struct {
 	ExecutionOverflowed  int   `json:"execution_overflowed"`
 }
 
-type ExecutionSubscription struct {
-	Events   chan ExecutionEvent
-	Overflow chan ExecutionOverflow
-	record   *executionRecord
-	overflow bool
-	closed   bool
-}
-
-type ExecutionFeedSubscription struct {
-	Events      chan ExecutionFeedEvent
-	Overflow    chan ExecutionOverflow
-	workspaceID string
-	overflow    bool
-	closed      bool
-}
+type ExecutionSubscription = sequence.Subscription[ExecutionEvent]
+type ExecutionFeedSubscription = sequence.Subscription[ExecutionFeedEvent]
 
 type ExecutionInput struct {
 	WorkspaceID          string
@@ -143,16 +129,13 @@ type ExecutionInput struct {
 }
 
 type ExecutionHub struct {
-	mu           sync.RWMutex
-	executions   map[string]*executionRecord
-	order        []string
-	maxRecent    int
-	feedMu       sync.Mutex
-	feed         []ExecutionFeedEvent
-	feedSequence uint64
-	feedSubs     map[*ExecutionFeedSubscription]struct{}
-	storePath    string
-	closeOnce    sync.Once
+	mu         sync.RWMutex
+	executions map[string]*executionRecord
+	order      []string
+	maxRecent  int
+	feed       *sequence.Stream[ExecutionFeedEvent]
+	storePath  string
+	closeOnce  sync.Once
 }
 
 type executionStoreFile struct {
@@ -161,12 +144,11 @@ type executionStoreFile struct {
 }
 
 type executionRecord struct {
-	mu       sync.Mutex
-	info     ExecutionInfo
-	stdout   []byte
-	stderr   []byte
-	sequence uint64
-	subs     map[*ExecutionSubscription]struct{}
+	mu     sync.Mutex
+	info   ExecutionInfo
+	stdout []byte
+	stderr []byte
+	stream *sequence.Stream[ExecutionEvent]
 }
 
 type ExecutionRun struct {
@@ -191,7 +173,13 @@ type ExecutionMetadata struct {
 }
 
 func NewExecutionHub() *ExecutionHub {
-	return &ExecutionHub{executions: map[string]*executionRecord{}, maxRecent: MaxRecentExecutions, feedSubs: map[*ExecutionFeedSubscription]struct{}{}}
+	return &ExecutionHub{
+		executions: map[string]*executionRecord{},
+		maxRecent:  MaxRecentExecutions,
+		feed: sequence.New[ExecutionFeedEvent](MaxExecutionFeedEvents, executionFeedBuffer, func(event *ExecutionFeedEvent, value uint64) {
+			event.Sequence = value
+		}),
+	}
 }
 
 func NewPersistentExecutionHub(path string) (*ExecutionHub, error) {
@@ -259,7 +247,9 @@ func (h *ExecutionHub) Begin(input ExecutionInput) *ExecutionRun {
 		Source: strings.TrimSpace(input.Source), CallID: strings.TrimSpace(input.CallID), SessionHash: strings.TrimSpace(input.SessionHash),
 		ReceivedByInstanceID: strings.TrimSpace(input.ReceivedByInstanceID), ExecutedByInstanceID: strings.TrimSpace(input.ExecutedByInstanceID),
 		StartedAt: time.Now().UTC().Format(time.RFC3339Nano), Status: ExecutionStatusRunning,
-	}, subs: map[*ExecutionSubscription]struct{}{}}
+	}, stream: sequence.New[ExecutionEvent](0, executionSubscriberBuffer, func(event *ExecutionEvent, value uint64) {
+		event.Sequence = value
+	})}
 	h.executions[id] = record
 	h.order = append(h.order, id)
 	h.pruneLocked()
@@ -311,26 +301,17 @@ func (h *ExecutionHub) Subscribe(workspaceID, id string) (*ExecutionSubscription
 		return nil, ExecutionSnapshot{}, err
 	}
 	record.mu.Lock()
-	sub := &ExecutionSubscription{Events: make(chan ExecutionEvent, executionSubscriberBuffer), Overflow: make(chan ExecutionOverflow, 1), record: record}
-	record.subs[sub] = struct{}{}
+	sub, _ := record.stream.Subscribe(nil, 0)
 	snapshot := record.snapshotLocked()
 	record.mu.Unlock()
 	return sub, snapshot, nil
 }
 
 func (h *ExecutionHub) Unsubscribe(sub *ExecutionSubscription) {
-	if h == nil || sub == nil || sub.record == nil {
+	if h == nil || sub == nil {
 		return
 	}
-	record := sub.record
-	record.mu.Lock()
-	if !sub.closed {
-		delete(record.subs, sub)
-		close(sub.Events)
-		close(sub.Overflow)
-		sub.closed = true
-	}
-	record.mu.Unlock()
+	sub.Close()
 	h.mu.Lock()
 	h.pruneLocked()
 	h.mu.Unlock()
@@ -341,33 +322,23 @@ func (h *ExecutionHub) SubscribeFeed(workspaceID string) (*ExecutionFeedSubscrip
 		return nil, ExecutionFeedSnapshot{Events: []ExecutionFeedEvent{}}
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
-	h.feedMu.Lock()
-	sub := &ExecutionFeedSubscription{Events: make(chan ExecutionFeedEvent, executionFeedBuffer), Overflow: make(chan ExecutionOverflow, 1), workspaceID: workspaceID}
-	h.feedSubs[sub] = struct{}{}
-	events := make([]ExecutionFeedEvent, 0, len(h.feed))
-	for _, event := range h.feed {
-		if workspaceID == "" || event.WorkspaceID == workspaceID {
-			events = append(events, cloneExecutionFeedEvent(event))
-		}
+	var filter sequence.Predicate[ExecutionFeedEvent]
+	if workspaceID != "" {
+		filter = func(event ExecutionFeedEvent) bool { return event.WorkspaceID == workspaceID }
 	}
-	latestSequence := h.feedSequence
-	h.feedMu.Unlock()
-	snapshot := ExecutionFeedSnapshot{Events: events, Executions: h.List(workspaceID, MaxRecentExecutions), LatestSequence: latestSequence}
+	sub, feedSnapshot := h.feed.Subscribe(filter, MaxExecutionFeedEvents)
+	events := make([]ExecutionFeedEvent, len(feedSnapshot.Events))
+	for index := range feedSnapshot.Events {
+		events[index] = cloneExecutionFeedEvent(feedSnapshot.Events[index])
+	}
+	snapshot := ExecutionFeedSnapshot{Events: events, Executions: h.List(workspaceID, MaxRecentExecutions), LatestSequence: feedSnapshot.LatestSequence}
 	return sub, snapshot
 }
 
 func (h *ExecutionHub) UnsubscribeFeed(sub *ExecutionFeedSubscription) {
-	if h == nil || sub == nil {
-		return
+	if sub != nil {
+		sub.Close()
 	}
-	h.feedMu.Lock()
-	if !sub.closed {
-		delete(h.feedSubs, sub)
-		close(sub.Events)
-		close(sub.Overflow)
-		sub.closed = true
-	}
-	h.feedMu.Unlock()
 }
 
 func (h *ExecutionHub) Diagnostics() ExecutionDiagnostics {
@@ -391,25 +362,19 @@ func (h *ExecutionHub) Diagnostics() ExecutionDiagnostics {
 				oldest = started
 			}
 		}
-		result.ExecutionSubscribers += len(record.subs)
-		for sub := range record.subs {
-			if sub.overflow {
-				result.ExecutionOverflowed++
-			}
+		if record.stream != nil {
+			result.ExecutionSubscribers += record.stream.SubscriberCount()
+			result.ExecutionOverflowed += record.stream.OverflowedCount()
 		}
 		record.mu.Unlock()
 	}
 	if !oldest.IsZero() {
 		result.OldestRunningAgeMS = max(0, now.Sub(oldest).Milliseconds())
 	}
-	h.feedMu.Lock()
-	result.FeedSubscribers = len(h.feedSubs)
-	for sub := range h.feedSubs {
-		if sub.overflow {
-			result.FeedOverflowed++
-		}
+	if h.feed != nil {
+		result.FeedSubscribers = h.feed.SubscriberCount()
+		result.FeedOverflowed = h.feed.OverflowedCount()
 	}
-	h.feedMu.Unlock()
 	return result
 }
 
@@ -438,12 +403,10 @@ func (r *ExecutionRun) Finish(status string, exitCode *int, timedOut bool) {
 	record.info.ExitCode = cloneInt(exitCode)
 	record.info.TimedOut = timedOut
 	record.info.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	record.sequence++
-	event := ExecutionEvent{
-		Sequence: record.sequence, Type: ExecutionEventCompleted, ExecutionID: record.info.ID, Status: status,
+	record.stream.Publish(ExecutionEvent{
+		Type: ExecutionEventCompleted, ExecutionID: record.info.ID, Status: status,
 		ExitCode: cloneInt(exitCode), TimedOut: timedOut, Timestamp: record.info.FinishedAt,
-	}
-	record.publishLocked(event)
+	})
 	feedEvent := ExecutionFeedEvent{Type: ExecutionEventCompleted, ExecutionID: record.info.ID, WorkspaceID: record.info.WorkspaceID, Execution: executionInfoPtr(record.info), Status: status, ExitCode: cloneInt(exitCode), TimedOut: timedOut, Timestamp: record.info.FinishedAt}
 	if r.hub != nil {
 		r.hub.publishFeed(feedEvent)
@@ -469,9 +432,7 @@ func (w *executionWriter) Write(data []byte) (int, error) {
 		record.stdout = appendExecutionTail(record.stdout, data)
 	}
 	for _, chunk := range splitExecutionOutput(strings.ToValidUTF8(string(data), "�")) {
-		record.sequence++
-		event := ExecutionEvent{Sequence: record.sequence, Type: ExecutionEventOutput, ExecutionID: record.info.ID, Stream: w.stream, Data: chunk, Timestamp: time.Now().UTC().Format(time.RFC3339Nano)}
-		record.publishLocked(event)
+		event := record.stream.Publish(ExecutionEvent{Type: ExecutionEventOutput, ExecutionID: record.info.ID, Stream: w.stream, Data: chunk, Timestamp: time.Now().UTC().Format(time.RFC3339Nano)})
 		if w.run.hub != nil {
 			w.run.hub.publishFeed(ExecutionFeedEvent{Type: ExecutionEventOutput, ExecutionID: record.info.ID, WorkspaceID: record.info.WorkspaceID, Execution: executionInfoPtr(record.info), Stream: event.Stream, Data: event.Data, Timestamp: event.Timestamp})
 		}
@@ -496,26 +457,14 @@ func (h *ExecutionHub) Close() {
 		h.mu.RUnlock()
 		for _, record := range records {
 			record.mu.Lock()
-			for sub := range record.subs {
-				delete(record.subs, sub)
-				if !sub.closed {
-					close(sub.Events)
-					close(sub.Overflow)
-					sub.closed = true
-				}
+			if record.stream != nil {
+				record.stream.Close()
 			}
 			record.mu.Unlock()
 		}
-		h.feedMu.Lock()
-		for sub := range h.feedSubs {
-			delete(h.feedSubs, sub)
-			if !sub.closed {
-				close(sub.Events)
-				close(sub.Overflow)
-				sub.closed = true
-			}
+		if h.feed != nil {
+			h.feed.Close()
 		}
-		h.feedMu.Unlock()
 		_ = h.persist()
 	})
 }
@@ -576,8 +525,11 @@ func (h *ExecutionHub) load() error {
 		}
 		record := &executionRecord{
 			info: info, stdout: []byte(snapshot.Stdout), stderr: []byte(snapshot.Stderr),
-			sequence: snapshot.LatestSequence, subs: map[*ExecutionSubscription]struct{}{},
+			stream: sequence.New[ExecutionEvent](0, executionSubscriberBuffer, func(event *ExecutionEvent, value uint64) {
+				event.Sequence = value
+			}),
 		}
+		record.stream.EnsureSequence(snapshot.LatestSequence)
 		h.executions[info.ID] = record
 		h.order = append(h.order, info.ID)
 	}
@@ -626,7 +578,7 @@ func (h *ExecutionHub) pruneLocked() {
 		record := h.executions[id]
 		if remove > 0 && record != nil {
 			record.mu.Lock()
-			canRemove := record.info.Status != ExecutionStatusRunning && len(record.subs) == 0
+			canRemove := record.info.Status != ExecutionStatusRunning && (record.stream == nil || record.stream.SubscriberCount() == 0)
 			record.mu.Unlock()
 			if canRemove {
 				delete(h.executions, id)
@@ -640,52 +592,18 @@ func (h *ExecutionHub) pruneLocked() {
 }
 
 func (r *executionRecord) snapshotLocked() ExecutionSnapshot {
-	return ExecutionSnapshot{Execution: cloneExecutionInfo(r.info), Stdout: string(r.stdout), Stderr: string(r.stderr), LatestSequence: r.sequence}
-}
-
-func (r *executionRecord) publishLocked(event ExecutionEvent) {
-	for sub := range r.subs {
-		if sub.closed || sub.overflow {
-			continue
-		}
-		select {
-		case sub.Events <- event:
-		default:
-			sub.overflow = true
-			sub.Overflow <- ExecutionOverflow{DroppedSequence: event.Sequence}
-		}
+	latest := uint64(0)
+	if r.stream != nil {
+		latest = r.stream.LatestSequence()
 	}
+	return ExecutionSnapshot{Execution: cloneExecutionInfo(r.info), Stdout: string(r.stdout), Stderr: string(r.stderr), LatestSequence: latest}
 }
 
 func (h *ExecutionHub) publishFeed(event ExecutionFeedEvent) {
-	if h == nil {
+	if h == nil || h.feed == nil {
 		return
 	}
-	h.feedMu.Lock()
-	h.feedSequence++
-	event.Sequence = h.feedSequence
-	event = cloneExecutionFeedEvent(event)
-	h.feed = append(h.feed, event)
-	h.pruneFeedLocked()
-	for sub := range h.feedSubs {
-		if sub.closed || sub.overflow || (sub.workspaceID != "" && sub.workspaceID != event.WorkspaceID) {
-			continue
-		}
-		select {
-		case sub.Events <- cloneExecutionFeedEvent(event):
-		default:
-			sub.overflow = true
-			sub.Overflow <- ExecutionOverflow{DroppedSequence: event.Sequence}
-		}
-	}
-	h.feedMu.Unlock()
-}
-
-func (h *ExecutionHub) pruneFeedLocked() {
-	if len(h.feed) <= MaxExecutionFeedEvents {
-		return
-	}
-	h.feed = append([]ExecutionFeedEvent(nil), h.feed[len(h.feed)-MaxExecutionFeedEvents:]...)
+	h.feed.Publish(cloneExecutionFeedEvent(event))
 }
 
 func splitExecutionOutput(value string) []string {

@@ -106,7 +106,7 @@ func (stream *ApprovalFeedStream) Next() (approval.Event, error) {
 			return approval.Event{}, err
 		}
 		if eventType == "overflow" {
-			return approval.Event{}, ErrApprovalFeedOverflow
+			return approval.Event{}, decodeFeedOverflow(ErrApprovalFeedOverflow, data)
 		}
 		if !strings.HasPrefix(eventType, "approval.") || strings.TrimSpace(data) == "" {
 			continue

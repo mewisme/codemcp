@@ -5,30 +5,27 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/sequence"
 )
 
 const defaultStreamBuffer = 64
 
-type StreamOverflow struct {
-	DroppedSequence uint64
-}
-
-type Subscription struct {
-	Events   chan Event
-	Overflow chan StreamOverflow
-	overflow bool
-	closed   bool
-}
+type StreamOverflow = sequence.Overflow
+type Subscription = sequence.Subscription[Event]
+type Snapshot = sequence.Snapshot[Event]
 
 type Stream struct {
 	metadata Metadata
-	mu       sync.RWMutex
-	subs     map[chan Event]*Subscription
-	sequence uint64
+	stream   *sequence.Stream[Event]
 }
 
 func NewStream(metadata Metadata) *Stream {
-	return &Stream{metadata: metadata, subs: map[chan Event]*Subscription{}}
+	return &Stream{
+		metadata: metadata,
+		stream: sequence.New[Event](0, defaultStreamBuffer, func(event *Event, value uint64) {
+			event.Sequence = value
+		}),
+	}
 }
 
 func (s *Stream) WriteEvent(event logger.Event) error {
@@ -40,24 +37,10 @@ func (s *Stream) WriteEvent(event logger.Event) error {
 }
 
 func (s *Stream) Publish(event Event) Event {
-	if s == nil {
+	if s == nil || s.stream == nil {
 		return event
 	}
-	s.mu.Lock()
-	s.sequence++
-	event.Sequence = s.sequence
-	for ch, sub := range s.subs {
-		select {
-		case ch <- event:
-		default:
-			if !sub.overflow {
-				sub.overflow = true
-				sub.Overflow <- StreamOverflow{DroppedSequence: event.Sequence}
-			}
-		}
-	}
-	s.mu.Unlock()
-	return event
+	return s.stream.Publish(event)
 }
 
 func (s *Stream) Subscribe() chan Event {
@@ -65,56 +48,42 @@ func (s *Stream) Subscribe() chan Event {
 }
 
 func (s *Stream) SubscribeDetailed() *Subscription {
-	sub := &Subscription{Events: make(chan Event, defaultStreamBuffer), Overflow: make(chan StreamOverflow, 1)}
-	if s == nil {
-		close(sub.Events)
-		close(sub.Overflow)
-		return sub
-	}
-	s.mu.Lock()
-	s.subs[sub.Events] = sub
-	s.mu.Unlock()
+	sub, _ := s.SubscribeSnapshot(0)
 	return sub
 }
 
+func (s *Stream) SubscribeSnapshot(recentLimit int) (*Subscription, Snapshot) {
+	if s == nil || s.stream == nil {
+		var stream *sequence.Stream[Event]
+		return stream.Subscribe(nil, recentLimit)
+	}
+	return s.stream.Subscribe(nil, recentLimit)
+}
+
 func (s *Stream) Unsubscribe(ch chan Event) {
-	if s == nil || ch == nil {
+	if s == nil || s.stream == nil || ch == nil {
 		return
 	}
-	s.mu.Lock()
-	if sub, ok := s.subs[ch]; ok && !sub.closed {
-		delete(s.subs, ch)
-		close(sub.Events)
-		close(sub.Overflow)
-		sub.closed = true
-	}
-	s.mu.Unlock()
+	s.stream.UnsubscribeEvents(ch)
 }
 
 func (s *Stream) UnsubscribeDetailed(sub *Subscription) {
-	if sub != nil {
-		s.Unsubscribe(sub.Events)
+	if s != nil && s.stream != nil {
+		s.stream.Unsubscribe(sub)
 	}
 }
 
 func (s *Stream) AcknowledgeOverflow(sub *Subscription) {
-	if s == nil || sub == nil {
-		return
+	if s != nil && s.stream != nil {
+		s.stream.AcknowledgeOverflow(sub)
 	}
-	s.mu.Lock()
-	if current, ok := s.subs[sub.Events]; ok && current == sub && !sub.closed {
-		sub.overflow = false
-	}
-	s.mu.Unlock()
 }
 
 func (s *Stream) LatestSequence() uint64 {
-	if s == nil {
+	if s == nil || s.stream == nil {
 		return 0
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.sequence
+	return s.stream.LatestSequence()
 }
 
 type Recorder struct {
@@ -171,24 +140,16 @@ func (r *Recorder) Record(value Event) error {
 		value.Fields[index].Value = sanitizeValue(value.Fields[index].Key, value.Fields[index].Value)
 	}
 	r.mu.Lock()
+	if latest := r.Stream.LatestSequence(); latest > r.sequence {
+		r.sequence = latest
+	}
 	r.sequence++
 	value.Sequence = r.sequence
 	err := r.Journal.Append(value)
-	r.Stream.mu.Lock()
-	if r.Stream.sequence < value.Sequence {
-		r.Stream.sequence = value.Sequence
+	if r.Stream != nil && r.Stream.stream != nil {
+		r.Stream.stream.EnsureSequence(value.Sequence - 1)
+		r.Stream.stream.Publish(value)
 	}
-	for ch, sub := range r.Stream.subs {
-		select {
-		case ch <- value:
-		default:
-			if !sub.overflow {
-				sub.overflow = true
-				sub.Overflow <- StreamOverflow{DroppedSequence: value.Sequence}
-			}
-		}
-	}
-	r.Stream.mu.Unlock()
 	r.mu.Unlock()
 	return err
 }

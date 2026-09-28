@@ -117,7 +117,7 @@ func serveRuntimeCompletionFeed(w http.ResponseWriter, r *http.Request, service 
 		http.Error(w, "agent completion stream unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	defer service.Unsubscribe(sub)
+	defer sub.Close()
 
 	var (
 		records []agentcompletion.Record
@@ -157,7 +157,7 @@ func serveRuntimeCompletionFeed(w http.ResponseWriter, r *http.Request, service 
 			if overflow.DroppedSequence == 0 {
 				return
 			}
-			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d}\n\n", overflow.DroppedSequence)
+			_, _ = fmt.Fprintf(w, "event: overflow\ndata: {\"dropped_sequence\":%d,\"latest_sequence\":%d}\n\n", overflow.DroppedSequence, overflow.LatestSequence)
 			flusher.Flush()
 			return
 		case <-heartbeat.C:
