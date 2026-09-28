@@ -880,31 +880,33 @@ func buttonRoleForCallback(action CallbackAction) ButtonRole {
 
 func (ui *Interface) paginationKeyboard(owner ViewOwner, state ActionState, total, size int) ([][]Button, error) {
 	_, _, page, pages := PageBounds(total, state.Page, size)
-	row := make([]Button, 0, 3)
-	if page > 0 {
-		previous := state
-		previous.Page = page - 1
-		button, err := ui.stateButton(owner, "Newer", CallbackOpen, previous)
-		if err != nil {
-			return nil, err
+	rows := make([][]Button, 0, 2)
+	if pages > 1 {
+		row := make([]Button, 0, paginatorMaxPageButtons)
+		for _, target := range PaginatorPages(page, pages) {
+			label := fmt.Sprintf("%d", target+1)
+			if pages > paginatorMaxPageButtons {
+				switch target {
+				case 0:
+					label = "« " + label
+				case pages - 1:
+					label += " »"
+				}
+			}
+			if target == page {
+				row = append(row, Button{Text: "( " + fmt.Sprintf("%d", target+1) + " )", Disabled: true, Role: ButtonRoleNeutral})
+				continue
+			}
+			targetState := state
+			targetState.Page = target
+			button, err := ui.stateButton(owner, label, CallbackOpen, targetState)
+			if err != nil {
+				return nil, err
+			}
+			button.Role = ButtonRoleNavigation
+			row = append(row, button)
 		}
-		button.Role = ButtonRoleNavigation
-		row = append(row, button)
-	} else {
-		row = append(row, Button{Text: "Newer", Disabled: true, Role: ButtonRoleNavigation})
-	}
-	row = append(row, Button{Text: PaginationLabel(page, pages), Disabled: true, Role: ButtonRoleNeutral})
-	if page+1 < pages {
-		next := state
-		next.Page = page + 1
-		button, err := ui.stateButton(owner, "Older", CallbackOpen, next)
-		if err != nil {
-			return nil, err
-		}
-		button.Role = ButtonRoleNavigation
-		row = append(row, button)
-	} else {
-		row = append(row, Button{Text: "Older", Disabled: true, Role: ButtonRoleNavigation})
+		rows = append(rows, row)
 	}
 	back, err := ui.backButton(owner, state.Back)
 	if err != nil {
@@ -918,7 +920,8 @@ func (ui *Interface) paginationKeyboard(owner ViewOwner, state ActionState, tota
 	if err != nil {
 		return nil, err
 	}
-	return [][]Button{row, {back, home, refresh}}, nil
+	rows = append(rows, []Button{back, home, refresh})
+	return rows, nil
 }
 
 func requiresExplicitConfirmation(spec capability.Spec) bool {

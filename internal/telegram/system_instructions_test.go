@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -10,6 +11,7 @@ import (
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/rules"
 	"go.mewis.me/codemcp/internal/skills"
+	"go.mewis.me/codemcp/internal/tools"
 )
 
 func TestSystemScreenActivatesCanonicalAdministration(t *testing.T) {
@@ -25,6 +27,56 @@ func TestSystemScreenActivatesCanonicalAdministration(t *testing.T) {
 	for _, want := range []string{"Doctor", "Tools", "Check update", "Restart", "Stop"} {
 		if !strings.Contains(labels, want) {
 			t.Fatalf("system control %q missing: %s", want, labels)
+		}
+	}
+}
+
+func TestToolInventoryUsesVisiblePaginatorInsteadOfRichListTruncation(t *testing.T) {
+	ui, owner := newDomainTestInterface(t, &domainTestDispatcher{})
+	schemas := make([]tools.Schema, 76)
+	for index := range schemas {
+		schemas[index] = tools.Schema{Name: fmt.Sprintf("tool_%02d", index+1), Title: fmt.Sprintf("Tool %02d", index+1)}
+	}
+	state := ActionState{Route: RouteOperation, Back: RouteSystem, Operation: capability.ToolInventoryRead}
+	screen, handled, err := ui.systemOperationResultScreen(t.Context(), owner, state, schemas)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !handled || screen.Rich == nil {
+		t.Fatalf("tool inventory handled=%t rich=%#v", handled, screen.Rich)
+	}
+	fallback := RichFallback(screen.Rich)
+	if !strings.Contains(fallback.Text, "76 tool(s) · Page 1/7") {
+		t.Fatalf("tool inventory heading=%q", fallback.Text)
+	}
+	for _, expected := range []string{"tool_01", "tool_12"} {
+		if !strings.Contains(fallback.Text, expected) {
+			t.Fatalf("tool inventory first page missing %q: %q", expected, fallback.Text)
+		}
+	}
+	if strings.Contains(fallback.Text, "tool_13") {
+		t.Fatalf("tool inventory leaked next-page item: %q", fallback.Text)
+	}
+	if len(screen.Keyboard) != 2 || len(screen.Keyboard[0]) != 7 {
+		t.Fatalf("tool inventory paginator=%#v", screen.Keyboard)
+	}
+	if screen.Keyboard[0][0].Text != "( 1 )" || !screen.Keyboard[0][0].Disabled || screen.Keyboard[0][6].Text != "7" {
+		t.Fatalf("tool inventory page row=%#v", screen.Keyboard[0])
+	}
+	if got := keyboardLabels([][]Button{screen.Keyboard[1]}); !strings.Contains(got, "Back") || !strings.Contains(got, "Home") || !strings.Contains(got, "Refresh") {
+		t.Fatalf("tool inventory navigation=%s", got)
+	}
+}
+
+func TestPaginatorWindowKeepsFirstLastAndFiveNearbyPages(t *testing.T) {
+	pages := PaginatorPages(6, 13)
+	want := []int{0, 4, 5, 6, 7, 8, 12}
+	if len(pages) != len(want) {
+		t.Fatalf("pages=%v want=%v", pages, want)
+	}
+	for index := range want {
+		if pages[index] != want[index] {
+			t.Fatalf("pages=%v want=%v", pages, want)
 		}
 	}
 }

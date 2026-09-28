@@ -355,7 +355,7 @@ func TestNavigationPrimitivesCentralizeBackPaginationAndDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(keyboard) != 2 || len(keyboard[0]) != 3 || keyboard[0][0].Text != "Newer" || keyboard[0][1].Text != "Page 2/4" || keyboard[0][2].Text != "Older" || keyboard[1][0].Text != "Back" {
+	if len(keyboard) != 2 || len(keyboard[0]) != 4 || keyboard[0][0].Text != "1" || keyboard[0][1].Text != "( 2 )" || !keyboard[0][1].Disabled || keyboard[0][2].Text != "3" || keyboard[0][3].Text != "4" || keyboard[1][0].Text != "Back" {
 		t.Fatalf("pagination keyboard=%#v", keyboard)
 	}
 	part := DetailBlock("Detail <unsafe>", strings.Repeat("value & ", 100))

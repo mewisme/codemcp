@@ -300,7 +300,7 @@ func TestCloseDismissesOnlyEligibleTerminalMessage(t *testing.T) {
 	}
 }
 
-func TestPaginationRetainsDisabledBoundaryIndicators(t *testing.T) {
+func TestPaginationUsesNumberedButtonsAndMarksCurrentPage(t *testing.T) {
 	ui, err := NewInterface(InterfaceOptions{Runtime: &Runtime{generation: 7}})
 	if err != nil {
 		t.Fatal(err)
@@ -314,10 +314,10 @@ func TestPaginationRetainsDisabledBoundaryIndicators(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first[0]) != 3 || first[0][0].Text != "Newer" || !first[0][0].Disabled || first[0][2].Disabled {
+	if len(first[0]) != 4 || first[0][0].Text != "( 1 )" || !first[0][0].Disabled || first[0][1].Text != "2" || first[0][1].Disabled {
 		t.Fatalf("first pagination=%#v", first[0])
 	}
-	if len(last[0]) != 3 || last[0][0].Disabled || last[0][2].Text != "Older" || !last[0][2].Disabled {
+	if len(last[0]) != 4 || last[0][0].Text != "1" || last[0][3].Text != "( 4 )" || !last[0][3].Disabled {
 		t.Fatalf("last pagination=%#v", last[0])
 	}
 }

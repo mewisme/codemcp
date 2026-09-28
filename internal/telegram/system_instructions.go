@@ -368,7 +368,15 @@ func (ui *Interface) systemOperationResultScreen(ctx context.Context, owner View
 			}
 			items = append(items, label)
 		}
-		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Tool inventory", Text: fmt.Sprintf("%d tool(s)", len(result))}, RichBlock{Kind: RichList, Items: items}), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
+		start, end, page, pages := PageBounds(len(items), state.Page, richMaxRows)
+		keyboard, err := ui.paginationKeyboard(owner, state, len(items), richMaxRows)
+		if err != nil {
+			return Screen{}, true, err
+		}
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: "Tool inventory", Text: fmt.Sprintf("%d tool(s) · %s", len(result), PaginationLabel(page, pages))},
+			RichBlock{Kind: RichList, Items: items[start:end]},
+		), Keyboard: keyboard}, true, nil
 	case application.InstructionSettings:
 		screen, err := ui.instructionsScreen(ctx, owner)
 		return screen, true, err
