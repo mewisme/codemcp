@@ -95,6 +95,7 @@ func newRootCommand() *cobra.Command {
 	)
 	bindCanonicalScopedSettings(cmd)
 	bindCommandAliases(cmd)
+	bindAliasHelpCompletion(cmd)
 	bindCanonicalCommandOperations(cmd)
 	bindCommandPresentation(cmd)
 	return cmd
@@ -272,6 +273,10 @@ func executeCommand(command *cobra.Command) error {
 	executed, err := command.ExecuteC()
 	if executed == nil {
 		executed = command
+	}
+	if commandHelpOnly(executed) {
+		command.SetContext(originalContext)
+		return err
 	}
 	recordCLIProductUsage(executionContext, executed, err, started)
 	command.SetContext(originalContext)
