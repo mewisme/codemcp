@@ -636,6 +636,28 @@ func TestControlPlaneEntryPointsReconcileWithUnifiedClassifier(t *testing.T) {
 	}
 }
 
+func TestAliasCannotBypassProtectedConfigRootControlGuard(t *testing.T) {
+	useProtectedCodeMCPRoot(t)
+	root := t.TempDir()
+	manager := newTestManager(t)
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{
+		"cm config set server.port 41001",
+		"cm cfg set server.port 41001",
+		"cm upstream server remove github",
+		"cm ups server rm github",
+	} {
+		err := manager.ValidateShellCommand(item.ID, root, command)
+		guard, typed := controlguard.As(err)
+		if err == nil || !typed || guard.Code != controlguard.CodeControlPlaneMutation || !guard.Approvable {
+			t.Fatalf("protected control-plane alias bypassed guard: %q -> %#v / %v", command, guard, err)
+		}
+	}
+}
+
 func TestShellPolicySourceRunContentAndUnrelatedGoRemainNonControlPlane(t *testing.T) {
 	useProtectedCodeMCPRoot(t)
 	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)

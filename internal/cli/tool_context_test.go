@@ -80,6 +80,32 @@ func TestMCPToolContextAllowsExactOneShotRuntimeApproval(t *testing.T) {
 	}
 }
 
+func TestMCPToolContextAllowsAliasedOneShotRuntimeApproval(t *testing.T) {
+	aliasArgs := []string{"cfg", "set", "server.port", "41001"}
+	manager, capability := mintToolContextCapability(t, aliasArgs)
+	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	t.Setenv(controlplane.ToolContextEnv, "1")
+	t.Setenv(controlplane.ControlApprovalEnv, capability)
+	previous := processCommandArgs
+	processCommandArgs = func() []string { return append([]string(nil), aliasArgs...) }
+	defer func() { processCommandArgs = previous }()
+	root := newRootCommand()
+	cmd, _, err := root.Find([]string{"cfg", "set"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prepareCommand(cmd, []string{"server.port", "41001"}); err != nil {
+		t.Fatalf("approved aliased command denied: %v", err)
+	}
+	if err := prepareCommand(cmd, []string{"server.port", "41001"}); err == nil || !strings.Contains(err.Error(), "approval verification failed") {
+		t.Fatalf("aliased one-shot capability was replayable: %v", err)
+	}
+}
+
 func TestMCPToolContextApprovalMismatchDoesNotBurnCapability(t *testing.T) {
 	manager, capability := mintToolContextCapability(t, []string{"config", "set", "server.port", "41001"})
 	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})

@@ -66,6 +66,61 @@ func TestClassifyCodeMCPEffectsAndCanonicalInvocation(t *testing.T) {
 	}
 }
 
+func TestClassifyCodeMCPAliasesMatchCanonicalSecurityPolicy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	for _, test := range []struct {
+		name      string
+		canonical string
+		alias     string
+	}{
+		{name: "config mutation", canonical: "cm config set server.port 41001", alias: "cm cfg set server.port 41001"},
+		{name: "upstream destructive", canonical: "cm upstream server remove github", alias: "cm ups server rm github"},
+		{name: "workspace destructive", canonical: "cm workspace container delete wsc_test", alias: "cm ws ctr rm wsc_test"},
+		{name: "telegram mutation", canonical: "cm telegram token remove", alias: "cm tg token rm"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			canonical := ClassifyCodeMCPInvocation(home, test.canonical, "")
+			alias := ClassifyCodeMCPInvocation(home, test.alias, "")
+			if !canonical.Recognized || !alias.Recognized {
+				t.Fatalf("classification missing: canonical=%#v alias=%#v", canonical, alias)
+			}
+			if alias.OperationPath != canonical.OperationPath ||
+				alias.ReadOnly != canonical.ReadOnly ||
+				alias.Mutation != canonical.Mutation ||
+				alias.ApprovalEligible != canonical.ApprovalEligible ||
+				alias.ApprovalRequired != canonical.ApprovalRequired ||
+				alias.HardDenied != canonical.HardDenied ||
+				alias.UsesDefaultRoot != canonical.UsesDefaultRoot {
+				t.Fatalf("security policy drifted: canonical=%#v alias=%#v", canonical, alias)
+			}
+		})
+	}
+}
+
+func TestClassifyCodeMCPSourceRunAliasMatchesCanonicalSecurityPolicy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
+
+	canonical := ClassifyCodeMCPInvocation(root, "go run . config set server.port 41001", "")
+	alias := ClassifyCodeMCPInvocation(root, "go run . cfg set server.port 41001", "")
+	if !canonical.Recognized || !alias.Recognized || canonical.Kind != CodeMCPInvocationSourceRun || alias.Kind != CodeMCPInvocationSourceRun {
+		t.Fatalf("source-run classification missing: canonical=%#v alias=%#v", canonical, alias)
+	}
+	if alias.OperationPath != canonical.OperationPath ||
+		alias.ReadOnly != canonical.ReadOnly ||
+		alias.Mutation != canonical.Mutation ||
+		alias.ApprovalEligible != canonical.ApprovalEligible ||
+		alias.ApprovalRequired != canonical.ApprovalRequired ||
+		alias.HardDenied != canonical.HardDenied {
+		t.Fatalf("source-run security policy drifted: canonical=%#v alias=%#v", canonical, alias)
+	}
+}
+
 func TestClassifyCodeMCPApprovalRequirementFollowsConfigRootIdentity(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

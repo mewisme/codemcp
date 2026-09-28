@@ -58,6 +58,74 @@ func TestUpdateAliasCanonicalizesToUpgrade(t *testing.T) {
 	}
 }
 
+func TestAliasSecurityPolicyMatchesCanonicalCommands(t *testing.T) {
+	tests := []struct {
+		name      string
+		canonical []string
+		alias     []string
+	}{
+		{name: "config mutation", canonical: []string{"config", "set", "server.port", "41001"}, alias: []string{"cfg", "set", "server.port", "41001"}},
+		{name: "upstream remove", canonical: []string{"upstream", "server", "remove", "github"}, alias: []string{"ups", "server", "rm", "github"}},
+		{name: "workspace container delete", canonical: []string{"workspace", "container", "delete", "wsc_test"}, alias: []string{"ws", "ctr", "rm", "wsc_test"}},
+		{name: "telegram token remove", canonical: []string{"telegram", "token", "remove"}, alias: []string{"tg", "token", "rm"}},
+		{name: "telemetry status", canonical: []string{"telemetry", "status"}, alias: []string{"tel", "st"}},
+		{name: "review decision", canonical: []string{"request", "approve", "req_test"}, alias: []string{"req", "allow", "req_test"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			canonicalPath := PathFromArgs(test.canonical)
+			aliasPath := PathFromArgs(test.alias)
+			if aliasPath != canonicalPath {
+				t.Fatalf("alias path=%q canonical path=%q", aliasPath, canonicalPath)
+			}
+			if IsReadOnlyArgs(test.alias) != IsReadOnlyArgs(test.canonical) {
+				t.Fatalf("read-only policy drifted: alias=%v canonical=%v", test.alias, test.canonical)
+			}
+			if ApprovalEligibleArgs(test.alias) != ApprovalEligibleArgs(test.canonical) {
+				t.Fatalf("approval policy drifted: alias=%v canonical=%v", test.alias, test.canonical)
+			}
+		})
+	}
+}
+
+func TestAliasAfterSecurityBoundaryFailsClosed(t *testing.T) {
+	args := []string{"ws", "--unknown", "ls"}
+	if got := PathFromArgs(args); got != "workspace --unknown" {
+		t.Fatalf("path=%q want fail-closed workspace --unknown", got)
+	}
+	if IsReadOnlyArgs(args) {
+		t.Fatalf("unresolved alias after flag was treated as read-only: %#v", args)
+	}
+	if ApprovalEligibleArgs(args) {
+		t.Fatalf("unresolved alias after flag became approval eligible: %#v", args)
+	}
+}
+
+func TestDestructiveAliasesKeepCanonicalConfirmationPolicy(t *testing.T) {
+	for _, test := range []struct {
+		canonical []string
+		alias     []string
+	}{
+		{canonical: []string{"upstream", "server", "remove", "github"}, alias: []string{"ups", "server", "rm", "github"}},
+		{canonical: []string{"workspace", "container", "delete", "wsc_test"}, alias: []string{"ws", "ctr", "rm", "wsc_test"}},
+	} {
+		canonicalPath := PathFromArgs(test.canonical)
+		aliasPath := PathFromArgs(test.alias)
+		if aliasPath != canonicalPath {
+			t.Fatalf("alias path=%q canonical path=%q", aliasPath, canonicalPath)
+		}
+		canonicalID, canonicalOK := capability.ForPath(canonicalPath)
+		aliasID, aliasOK := capability.ForPath(aliasPath)
+		if !canonicalOK || !aliasOK || aliasID != canonicalID {
+			t.Fatalf("operation mismatch alias=%q,%t canonical=%q,%t", aliasID, aliasOK, canonicalID, canonicalOK)
+		}
+		spec, ok := capability.Lookup(aliasID)
+		if !ok || spec.Risk != capability.RiskDestructive || !spec.Effects.Destructive || spec.Confirmation.Mode == capability.ConfirmationNone {
+			t.Fatalf("destructive alias lost confirmation metadata: %#v", spec)
+		}
+	}
+}
+
 func TestCLIControlPolicyMatchesCanonicalOperationRegistry(t *testing.T) {
 	for _, spec := range capability.All() {
 		if !spec.HasCLI() {

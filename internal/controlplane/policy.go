@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/commandalias"
 )
 
 const (
@@ -115,43 +116,7 @@ func PathFromArgs(args []string) string {
 }
 
 func canonicalCommandArgs(args []string) []string {
-	result := append([]string(nil), args...)
-	for index, value := range result {
-		if strings.HasPrefix(value, "-") {
-			continue
-		}
-		if index == 0 && value == "update" {
-			result[index] = "upgrade"
-			continue
-		}
-		switch value {
-		case "cfg":
-			result[index] = "config"
-		case "ws":
-			result[index] = "workspace"
-		case "ctr":
-			result[index] = "container"
-		case "ls":
-			result[index] = "list"
-		case "st":
-			result[index] = "status"
-		case "log":
-			result[index] = "logs"
-		case "req":
-			result[index] = "request"
-		}
-	}
-	if len(result) >= 2 && result[0] == "request" {
-		switch result[1] {
-		case "show", "info":
-			result[1] = "view"
-		case "accept", "allow":
-			result[1] = "approve"
-		case "reject":
-			result[1] = "deny"
-		}
-	}
-	return result
+	return commandalias.Canonicalize(args)
 }
 
 func stripGlobalFlags(args []string) []string {

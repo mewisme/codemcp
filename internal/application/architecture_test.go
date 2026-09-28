@@ -25,6 +25,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"capability":             "application",
 	"checkpoint":             "history",
 	"cli":                    "interface",
+	"commandalias":           "domain",
 	"commandpattern":         "domain",
 	"config":                 "domain",
 	"configbundle":           "persistence",

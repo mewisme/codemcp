@@ -38,6 +38,7 @@ func prepareCommand(cmd *cobra.Command, args []string) error {
 	}
 	prepareCommandPresentation(cmd)
 	cmd.SetContext(tracepkg.WithObserver(cmd.Context(), commandTraceObserver(cmd)))
+	traceCommandDispatch(cmd)
 	logCommandStart(cmd, args)
 	if controlplane.ToolContextActive() && !controlplane.IsReadOnlyPath(relativeCommandPath(cmd)) {
 		if err := verifyControlApproval(cmd.Context(), cmd.CommandPath(), processCommandArgs()); err != nil {
@@ -49,6 +50,17 @@ func prepareCommand(cmd *cobra.Command, args []string) error {
 	}
 	commandLogger(cmd).Diagnostic(logger.Info, "CLI", "cli.command.configured", "Command environment configured", logger.WithDebug("config", config.RootPath()))
 	return nil
+}
+
+func traceCommandDispatch(cmd *cobra.Command) {
+	if cmd == nil {
+		return
+	}
+	fields := []tracepkg.Field{tracepkg.String("command_path", relativeCommandPath(cmd))}
+	if operation, ok := canonicalCommandOperation(cmd); ok {
+		fields = append(fields, tracepkg.String("operation_id", string(operation)))
+	}
+	tracepkg.Emit(cmd.Context(), "CLI", "cli.command.dispatch", "Dispatching canonical CLI command", fields...)
 }
 
 func verifyControlApproval(ctx context.Context, commandPath string, actualArgs []string) error {
