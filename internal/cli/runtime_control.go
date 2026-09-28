@@ -649,10 +649,6 @@ func requestRuntimeApprovalView(ctx context.Context, id string) (approval.Reques
 	return application.GetApprovalRequest(ctx, id)
 }
 
-func requestRuntimeApprovalCreateDummy(ctx context.Context, workspaceID, title, command string) (approval.Request, error) {
-	return application.CreateDummyApprovalRequest(ctx, workspaceID, title, command)
-}
-
 func requestRuntimeApprovalResolve(ctx context.Context, action, id, reason string) (approval.Request, error) {
 	switch action {
 	case "approve":

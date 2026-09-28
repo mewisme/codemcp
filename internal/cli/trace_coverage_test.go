@@ -114,7 +114,6 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"request.resolve.completed"}, "request approve", "request deny")
 	add(commandTraceInstrumented, []string{"request.grants.completed"}, "request grant list")
 	add(commandTraceInstrumented, []string{"request.revoke-grant.completed"}, "request grant revoke")
-	add(commandTraceInstrumented, []string{"request.create-dummy.completed"}, "request create dummy")
 	add(commandTraceInstrumented, []string{"completion.current.completed"}, "agent completion current")
 	add(commandTraceInstrumented, []string{"completion.doctor.completed"}, "agent completion doctor")
 	add(commandTraceInstrumented, []string{"completion.list.completed"}, "agent completion list")

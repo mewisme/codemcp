@@ -168,7 +168,7 @@ cm upgrade --version vX.Y.Z
 cm upgrade --no-restart
 ```
 
-`upgrade check` is read-only and always checks the latest release. Built-in mutation is only available for managed direct installs. Homebrew and Scoop installs report the owning package-manager upgrade command; Go/development installs refuse built-in self-update; standalone binaries must run `cm install` first. `update` remains an alias for compatibility.
+`upgrade check` is read-only and always checks the latest release. Built-in mutation is only available for managed direct installs. Homebrew and Scoop installs report the owning package-manager upgrade command; Go/development installs refuse built-in self-update; standalone binaries must run `cm install` first. `upgrade` is the canonical command; `update` and `upg` remain accepted compatibility spellings and do not define separate operations.
 
 Direct updates download the expected platform archive and `codemcp_checksums.txt`, verify SHA-256 before extraction/activation, and switch the stable `current` target transactionally. Exact `--version` allows an intentional downgrade.
 
@@ -185,14 +185,11 @@ cm request list
 cm request view <request_id>
 cm request approve <request_id>
 cm request deny <request_id>
-cm request create dummy
 ```
 
 Aliases include `req`, `ls`, `show`/`info`, `accept`/`allow`, and `reject`. Request IDs may be specified in full or by an unambiguous prefix. `approve` and `deny` accept `--reason`; list/view/resolve commands support `--json` where applicable.
 
 Pending requests expire after 60 seconds. Approval does not grant a general CLI bypass: it authorizes one exact retry of the original MCP tool arguments. A mismatched retry is rejected without consuming the valid grant; a successful retry consumes it. `cm request approve/deny` cannot be run by an MCP shell tool to self-approve its own request.
-
-`cm request create dummy` creates a short-lived pending request through the same runtime approval manager and event stream as production requests. It is intended for testing the request TUI and admin approval UI; its random dummy session cannot match a real MCP retry grant.
 
 ## TUI Command Center
 

@@ -12,10 +12,9 @@ import (
 )
 
 var publicCapabilityExemptions = map[string]string{
-	"tui":                  "TUI entrypoint; it is the surface being checked",
-	"completion":           "local shell integration; it does not access runtime capabilities",
-	"config":               "configuration namespace entrypoint only renders help and rejects positional fallbacks",
-	"request create dummy": "public test-only helper for approval UI development",
+	"tui":        "TUI entrypoint; it is the surface being checked",
+	"completion": "local shell integration; it does not access runtime capabilities",
+	"config":     "configuration namespace entrypoint only renders help and rejects positional fallbacks",
 }
 
 func TestPublicCommandsHaveCanonicalCapabilities(t *testing.T) {

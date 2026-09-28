@@ -53,7 +53,6 @@ var commandPresentationTitleOverrides = map[string]string{
 	"auth admin disable": "Authentication",
 
 	"request grant revoke":     "Runtime session grant",
-	"request create dummy":     "Control approval request",
 	"request approve":          "Control approval request",
 	"request deny":             "Control approval request",
 	"agent completion current": "Current agent completion",

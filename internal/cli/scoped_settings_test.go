@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
@@ -37,6 +38,15 @@ func TestScopedSettingCoverageMatchesCanonicalRegistry(t *testing.T) {
 			}
 			if !scopedCommandDeclares(command, spec.Key) {
 				t.Errorf("setting %q scoped command %q is missing canonical annotation %q", spec.Key, path, scopedSettingsAnnotation)
+			}
+			operation, mapped := capability.ForPath(path)
+			if !mapped {
+				t.Errorf("setting %q scoped command %q has no canonical operation mapping", spec.Key, path)
+				continue
+			}
+			annotated, ok := canonicalCommandOperation(command)
+			if !ok || annotated != operation {
+				t.Errorf("setting %q scoped command %q operation=%q,%t want=%q,true", spec.Key, path, annotated, ok, operation)
 			}
 		}
 	}

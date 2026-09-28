@@ -20,7 +20,7 @@ const requestControlTimeout = 5 * time.Second
 
 func requestCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "request", Aliases: []string{"req"}, Short: "Review and resolve control approval requests"}
-	cmd.AddCommand(requestListCommand(), requestViewCommand(), requestResolveCommand(true), requestResolveCommand(false), requestGrantCommand(), requestCreateCommand())
+	cmd.AddCommand(requestListCommand(), requestViewCommand(), requestResolveCommand(true), requestResolveCommand(false), requestGrantCommand())
 	return cmd
 }
 
@@ -82,46 +82,6 @@ func requestGrantRevokeCommand() *cobra.Command {
 		renderEntityMutationSuccess(cmd, "Runtime session grant revoked", request.ID, presentation.Field{Label: "status", Value: request.Status})
 		return nil
 	}}
-	addJSONResultFlag(cmd, &asJSON)
-	return cmd
-}
-
-func requestCreateCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "create", Short: "Create control approval requests for testing"}
-	cmd.AddCommand(requestCreateDummyCommand())
-	return cmd
-}
-
-func requestCreateDummyCommand() *cobra.Command {
-	var workspaceID, title, command string
-	var asJSON bool
-	cmd := &cobra.Command{Use: "dummy", Short: "Create a dummy pending approval request for UI testing", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
-		var progress *commandProgress
-		if !asJSON {
-			progress = newCommandProgress(cmd, "REQUEST")
-			progress.Start("request.creating", "Creating dummy approval request", "Dummy approval request created")
-		}
-		ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
-		defer cancel()
-		request, err := requestRuntimeApprovalCreateDummy(ctx, workspaceID, title, command)
-		if err != nil {
-			progress.Stop()
-			return err
-		}
-		if asJSON {
-			return writeResultJSON(cmd, request)
-		}
-		progress.Complete()
-		renderEntityMutationSuccess(cmd, "Dummy approval request created", request.ID,
-			presentation.Field{Label: "workspace", Value: request.WorkspaceID},
-			presentation.Field{Label: "expires", Value: request.ExpiresAt.Format(time.RFC3339Nano)},
-		)
-		return nil
-	}}
-	cmd.Flags().StringVar(&workspaceID, "workspace", "ws_dummy", "workspace ID shown on the dummy request")
-	cmd.Flags().StringVar(&title, "title", "Allow dummy command", "request title shown in approval UIs")
-	cmd.Flags().StringVar(&command, "command", "echo dummy approval", "dummy run_command value shown in exact arguments")
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }

@@ -245,45 +245,9 @@ func TestRequestCLIPlainAndJSON(t *testing.T) {
 	}
 }
 
-func TestRequestCLICreateDummy(t *testing.T) {
-	defer configformat.SetRootPath("")
-	root := t.TempDir()
-	if err := configformat.SetRootPath(root); err != nil {
-		t.Fatal(err)
-	}
-	manager := approval.NewManager("instance-test")
-	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer control.Close()
-
-	output := executeRequestCommand(t, root, []string{"request", "create", "dummy", "--workspace", "ws_demo", "--title", "Allow demo", "--command", "echo hello", "--json"})
-	var request approval.Request
-	if err := json.Unmarshal([]byte(strings.TrimSpace(output)), &request); err != nil {
-		t.Fatalf("dummy json=%q err=%v", output, err)
-	}
-	if request.Status != approval.StatusPending || request.WorkspaceID != "ws_demo" || request.Title != "Allow demo" || request.Source != "cli-dummy" || request.TargetTool != "run_command" {
-		t.Fatalf("dummy request=%#v", request)
-	}
-	var arguments map[string]any
-	if err := json.Unmarshal(request.Arguments, &arguments); err != nil || arguments["command"] != "echo hello" || arguments["dummy"] != true || arguments["workspace_id"] != "ws_demo" {
-		t.Fatalf("dummy arguments=%s value=%#v err=%v", request.Arguments, arguments, err)
-	}
-	stored, ok := manager.Get(request.ID)
-	if !ok || stored.ID != request.ID || stored.Status != approval.StatusPending {
-		t.Fatalf("stored dummy=%#v ok=%t", stored, ok)
-	}
-	if _, err := manager.Approve(request.ID, "test", ""); err != nil {
-		t.Fatal(err)
-	}
-	if matched, ok, err := manager.MatchApproved(approval.RetryInput{CallerID: "real-session", WorkspaceID: "ws_demo", Source: "cli-dummy", TargetTool: "run_command", Arguments: map[string]any{"workspace_id": "ws_demo", "command": "echo hello", "dummy": true}}); err != nil || ok || matched.ID != "" {
-		t.Fatalf("dummy grant matched real session: request=%#v matched=%t err=%v", matched, ok, err)
-	}
-
-	plain := executeRequestCommand(t, root, []string{"req", "create", "dummy"})
-	if !strings.Contains(plain, "Dummy approval request created") {
-		t.Fatalf("plain dummy=%q", plain)
+func TestRequestCLITestHelperIsNotPublic(t *testing.T) {
+	if command := commandByRelativePath(newRootCommand(), "request create dummy"); command != nil {
+		t.Fatalf("test-only approval helper is public at %q", command.CommandPath())
 	}
 }
 
