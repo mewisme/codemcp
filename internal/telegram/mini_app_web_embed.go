@@ -13,7 +13,7 @@ import (
 var miniAppWebAssets embed.FS
 
 func miniAppContentSecurityPolicy() string {
-	return "default-src 'self'; script-src 'self' https://telegram.org; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; base-uri 'none'"
+	return "default-src 'self'; script-src 'self' https://telegram.org; connect-src 'self' wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; base-uri 'none'"
 }
 
 func miniAppWebHandler() http.Handler {

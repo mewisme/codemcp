@@ -48,6 +48,9 @@ func TestMiniAppContentSecurityPolicyKeepsScriptsExternal(t *testing.T) {
 	if !strings.Contains(policy, "script-src 'self' https://telegram.org") {
 		t.Fatalf("Mini App CSP does not authorize same-origin and Telegram scripts: %s", policy)
 	}
+	if !strings.Contains(policy, "connect-src 'self' wss:") {
+		t.Fatalf("Mini App CSP does not authorize the realtime WebSocket feed: %s", policy)
+	}
 	if strings.Contains(policy, "script-src 'self' https://telegram.org 'unsafe-inline'") {
 		t.Fatalf("Mini App CSP unexpectedly permits arbitrary inline scripts: %s", policy)
 	}

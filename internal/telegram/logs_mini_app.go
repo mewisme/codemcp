@@ -169,6 +169,7 @@ type miniAppSession struct {
 type LogsMiniAppRuntime struct {
 	launcher QuickTunnelLauncher
 	now      func() time.Time
+	streams  *miniAppStreamRegistry
 
 	mu          sync.RWMutex
 	config      config.TelegramConfig
@@ -246,7 +247,7 @@ func newLogsMiniAppRuntime(launcher QuickTunnelLauncher, resolvers ...func() (st
 	if launcher == nil {
 		launcher = externalQuickTunnelLauncher{resolveExecutable: resolveExecutable}
 	}
-	return &LogsMiniAppRuntime{launcher: launcher, now: time.Now, sessions: map[string]miniAppSession{}, health: LogsMiniAppHealth{State: MiniAppDisabled}}
+	return &LogsMiniAppRuntime{launcher: launcher, now: time.Now, streams: newMiniAppStreamRegistry(), sessions: map[string]miniAppSession{}, health: LogsMiniAppHealth{State: MiniAppDisabled}}
 }
 
 func (runtime *LogsMiniAppRuntime) Reconcile(ctx context.Context, cfg config.TelegramConfig, botToken string) error {
@@ -422,6 +423,7 @@ func (runtime *LogsMiniAppRuntime) rotateGeneration() {
 	runtime.health.Generation++
 	runtime.sessions = map[string]miniAppSession{}
 	runtime.mu.Unlock()
+	runtime.closeStreams()
 }
 
 func (runtime *LogsMiniAppRuntime) updateHealth(update func(*LogsMiniAppHealth)) {
@@ -431,15 +433,20 @@ func (runtime *LogsMiniAppRuntime) updateHealth(update func(*LogsMiniAppHealth))
 }
 
 func (runtime *LogsMiniAppRuntime) setReadyPublicURL(publicURL string) {
+	rotated := false
 	runtime.mu.Lock()
 	if previous := strings.TrimSpace(runtime.health.PublicURL); previous != "" && previous != publicURL {
 		runtime.health.Generation++
 		runtime.sessions = map[string]miniAppSession{}
+		rotated = true
 	}
 	runtime.health.State = MiniAppReady
 	runtime.health.PublicURL = publicURL
 	runtime.health.LastError = ""
 	runtime.mu.Unlock()
+	if rotated {
+		runtime.closeStreams()
+	}
 }
 
 func (runtime *LogsMiniAppRuntime) setDegraded(cfg config.TelegramConfig, fingerprint string, err error) {
@@ -466,6 +473,7 @@ func (runtime *LogsMiniAppRuntime) Stop() {
 	}
 	runtime.health.PublicURL = ""
 	runtime.mu.Unlock()
+	runtime.closeStreams()
 	if cancel == nil {
 		return
 	}
@@ -494,6 +502,7 @@ func (runtime *LogsMiniAppRuntime) handler() http.Handler {
 	assets := miniAppWebHandler()
 	mux.HandleFunc("POST /api/auth", runtime.handleAuth)
 	mux.HandleFunc("GET /api/logs/snapshot", runtime.handleSnapshot)
+	mux.HandleFunc("GET /api/stream", runtime.handleStream)
 	mux.Handle("GET /", assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
