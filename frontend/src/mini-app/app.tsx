@@ -10,12 +10,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { authenticateTelegramSession, loadLogsSnapshot, snapshotEvents, type LogEvent, type LogsSnapshot } from "@/logs/api"
-import { initializeTelegramLogsApp } from "@/logs/telegram"
+import { authenticateTelegramSession, loadLogsSnapshot, snapshotEvents, type LogEvent, type LogsSnapshot } from "@/mini-app/api"
+import { initializeTelegramMiniApp } from "@/mini-app/telegram"
 
 type ConnectionState = "authenticating" | "loading" | "ready" | "error"
 
-export function LogsMiniApp() {
+export function MiniApp() {
   const [snapshot, setSnapshot] = useState<LogsSnapshot | null>(null)
   const [connection, setConnection] = useState<ConnectionState>("authenticating")
   const [level, setLevel] = useState("all")
@@ -50,7 +50,7 @@ export function LogsMiniApp() {
     let disposeTelegram: (() => void) | undefined
     void (async () => {
       try {
-        const telegram = initializeTelegramLogsApp()
+        const telegram = initializeTelegramMiniApp()
         disposeTelegram = telegram.dispose
         await authenticateTelegramSession(telegram.webApp.initData)
         if (!active) return
@@ -91,8 +91,8 @@ export function LogsMiniApp() {
         <div className="mx-auto flex max-w-5xl items-center gap-3">
           <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border bg-card shadow-sm"><TerminalSquare className="size-4" /></div>
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-base font-semibold tracking-tight">CodeMCP Logs</h1>
-            <p className="truncate text-xs text-muted-foreground">Read-only runtime journal</p>
+            <h1 className="truncate text-base font-semibold tracking-tight">Logs</h1>
+            <p className="truncate text-xs text-muted-foreground">CodeMCP Mini App · Read-only runtime journal</p>
           </div>
           <Badge variant={connection === "ready" ? "secondary" : "outline"} className="shrink-0"><Activity className="size-3" />{connection === "ready" ? "Live snapshot" : "Offline"}</Badge>
           <Button aria-label="Refresh logs" disabled={busy} size="icon-sm" variant="outline" onClick={() => void load({ level, component, grep })}><RefreshCw className={busy ? "animate-spin" : ""} /></Button>

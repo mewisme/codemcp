@@ -353,7 +353,7 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 				}
 				switch strings.ToLower(strings.TrimSpace(event.State)) {
 				case "ready":
-					publicURL, validationErr := logsMiniAppPublicURL(event.URL)
+					publicURL, validationErr := miniAppPublicURL(event.URL)
 					if validationErr != nil {
 						process.Stop()
 						runtime.updateHealth(func(health *LogsMiniAppHealth) {
@@ -491,11 +491,11 @@ func (runtime *LogsMiniAppRuntime) Health() LogsMiniAppHealth {
 
 func (runtime *LogsMiniAppRuntime) handler() http.Handler {
 	mux := http.NewServeMux()
-	assets := logsWebHandler()
-	mux.Handle("GET /logs", assets)
-	mux.Handle("GET /logs/", assets)
-	mux.HandleFunc("POST /logs/auth", runtime.handleAuth)
-	mux.HandleFunc("GET /logs/api/snapshot", runtime.handleSnapshot)
+	assets := miniAppWebHandler()
+	mux.Handle("GET /mini-app", assets)
+	mux.Handle("GET /mini-app/", assets)
+	mux.HandleFunc("POST /mini-app/auth", runtime.handleAuth)
+	mux.HandleFunc("GET /mini-app/api/logs/snapshot", runtime.handleSnapshot)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -643,12 +643,12 @@ func randomMiniAppSessionID() (string, error) {
 	return hex.EncodeToString(data), nil
 }
 
-func logsMiniAppPublicURL(raw string) (string, error) {
+func miniAppPublicURL(raw string) (string, error) {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || !strings.HasSuffix(strings.ToLower(parsed.Hostname()), ".trycloudflare.com") {
 		return "", errors.New("cf-tunnel returned an invalid Quick Tunnel URL")
 	}
-	parsed.Path = "/logs"
+	parsed.Path = "/mini-app"
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	return parsed.String(), nil

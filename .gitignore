@@ -1,6 +1,6 @@
 apply-*
 /internal/interface/*/dist/
-/internal/telegram/logs-dist/
+/internal/telegram/mini-app-dist/
 /frontend/coverage/
 .agents/
 .local/

@@ -11,17 +11,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:logs": "vite --config vite.logs.config.ts",
-    "build": "tsc -b && vite build && vite build --config vite.logs.config.ts",
+    "dev:mini-app": "vite --config vite.mini-app.config.ts",
+    "build": "tsc -b && vite build && vite build --config vite.mini-app.config.ts",
     "build:admin": "vite build",
-    "build:logs": "vite build --config vite.logs.config.ts",
+    "build:mini-app": "vite build --config vite.mini-app.config.ts",
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "preview:logs": "vite preview --config vite.logs.config.ts"
+    "preview:mini-app": "vite preview --config vite.mini-app.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

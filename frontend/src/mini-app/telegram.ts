@@ -13,7 +13,7 @@ declare global {
   }
 }
 
-export function initializeTelegramLogsApp() {
+export function initializeTelegramMiniApp() {
   const webApp = window.Telegram?.WebApp
   if (!webApp || !webApp.initData) {
     throw new Error("Telegram Mini App context is unavailable")

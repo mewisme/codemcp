@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { LogsMiniApp } from "@/logs/app"
+import { MiniApp } from "@/mini-app/app"
 
 describe("Telegram Logs Mini App", () => {
   afterEach(() => {
@@ -17,12 +17,12 @@ describe("Telegram Logs Mini App", () => {
     window.Telegram = { WebApp: { initData: "signed-init-data", colorScheme: "dark", ready, expand } }
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input), "https://mini.example")
-      if (url.pathname === "/logs/auth") {
+      if (url.pathname === "/mini-app/auth") {
         expect(init?.method).toBe("POST")
         expect(String(init?.body)).toContain("signed-init-data")
         return new Response(null, { status: 204 })
       }
-      if (url.pathname === "/logs/api/snapshot") {
+      if (url.pathname === "/mini-app/api/logs/snapshot") {
         return json({
           session: "run_123456789",
           total: 1,
@@ -33,9 +33,10 @@ describe("Telegram Logs Mini App", () => {
     })
     vi.stubGlobal("fetch", fetchMock)
 
-    render(<TooltipProvider><LogsMiniApp /></TooltipProvider>)
+    render(<TooltipProvider><MiniApp /></TooltipProvider>)
 
-    expect(await screen.findByText("CodeMCP Logs")).toBeInTheDocument()
+    expect(await screen.findByText("Logs")).toBeInTheDocument()
+    expect(screen.getByText(/CodeMCP Mini App/)).toBeInTheDocument()
     expect(screen.getByText("Telegram runtime ready")).toBeInTheDocument()
     expect(screen.getByText("Live snapshot")).toBeInTheDocument()
     expect(document.documentElement).toHaveClass("dark")
@@ -51,7 +52,7 @@ describe("Telegram Logs Mini App", () => {
     const fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)
 
-    render(<TooltipProvider><LogsMiniApp /></TooltipProvider>)
+    render(<TooltipProvider><MiniApp /></TooltipProvider>)
 
     expect(await screen.findByText("Logs unavailable")).toBeInTheDocument()
     expect(screen.getByText("Telegram Mini App context is unavailable")).toBeInTheDocument()

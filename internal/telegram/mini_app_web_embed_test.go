@@ -9,20 +9,20 @@ import (
 	"testing"
 )
 
-func TestLogsWebHandlerServesDedicatedShellAndEmbeddedAssets(t *testing.T) {
-	handler := logsWebHandler()
+func TestMiniAppWebHandlerServesDedicatedShellAndEmbeddedAssets(t *testing.T) {
+	handler := miniAppWebHandler()
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/logs", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/mini-app", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("logs shell status=%d", recorder.Code)
 	}
 	body := recorder.Body.String()
-	for _, want := range []string{"CodeMCP Logs", "data-codemcp-logs-root", "https://telegram.org/js/telegram-web-app.js"} {
+	for _, want := range []string{"CodeMCP Mini App", "data-codemcp-mini-app-root", "https://telegram.org/js/telegram-web-app.js"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("logs shell missing %q", want)
 		}
 	}
-	match := regexp.MustCompile(`(?:src|href)="(/logs/assets/[^"]+)"`).FindStringSubmatch(body)
+	match := regexp.MustCompile(`(?:src|href)="(/mini-app/assets/[^"]+)"`).FindStringSubmatch(body)
 	if len(match) != 2 {
 		t.Fatalf("logs shell does not reference an embedded Vite asset: %s", body)
 	}
@@ -37,9 +37,9 @@ func TestLogsWebHandlerServesDedicatedShellAndEmbeddedAssets(t *testing.T) {
 	}
 }
 
-func TestLogsWebHandlerDoesNotBecomeAnAdminOrLogsAPIFallback(t *testing.T) {
-	handler := logsWebHandler()
-	for _, target := range []string{"/logs/api/status", "/logs/auth", "/api/status", "/admin"} {
+func TestMiniAppWebHandlerDoesNotBecomeAnAdminOrAPIFallback(t *testing.T) {
+	handler := miniAppWebHandler()
+	for _, target := range []string{"/mini-app/api/status", "/mini-app/auth", "/api/status", "/admin"} {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
 		if recorder.Code != http.StatusNotFound {
