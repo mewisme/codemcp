@@ -239,13 +239,17 @@ export function bindMainButtonState(
   return bindBottomButton(telegramWebApp()?.MainButton, text, visible, callback, options)
 }
 
-export function bindSettingsButton(callback: () => void) {
+export function bindSettingsButton(callback: () => void, visible = true) {
   const button = telegramWebApp()?.SettingsButton
   if (!button) return () => {}
   safeTelegramCall(() => button.offClick?.(callback))
   safeTelegramCall(() => {
-    button.onClick?.(callback)
-    button.show?.()
+    if (visible) {
+      button.onClick?.(callback)
+      button.show?.()
+    } else {
+      button.hide?.()
+    }
   })
   return () => {
     safeTelegramCall(() => button.offClick?.(callback))

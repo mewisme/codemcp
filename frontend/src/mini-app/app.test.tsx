@@ -190,18 +190,22 @@ describe("Telegram Logs Mini App", () => {
     expect(screen.getByText("Reconnecting")).toBeInTheDocument()
   })
 
-  it("releases Telegram bottom-button space while a mobile detail drawer is open", async () => {
+  it("navigates mobile detail into a child page with a both-axis ScrollArea and Telegram BackButton", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 })
     const mainHide = vi.fn()
     const secondaryHide = vi.fn()
+    const settingsHide = vi.fn()
+    const backShow = vi.fn()
+    let backAction: (() => void) | undefined
     window.Telegram = {
       WebApp: {
         initData: "signed-init-data",
         ready: vi.fn(),
         expand: vi.fn(),
-        BackButton: { show: vi.fn(), hide: vi.fn(), onClick: vi.fn(), offClick: vi.fn() },
+        BackButton: { show: backShow, hide: vi.fn(), onClick: vi.fn((callback: () => void) => { backAction = callback; return window.Telegram!.WebApp!.BackButton! }), offClick: vi.fn() },
         MainButton: { setText: vi.fn(), show: vi.fn(), hide: mainHide, enable: vi.fn(), disable: vi.fn(), hideProgress: vi.fn(), onClick: vi.fn(), offClick: vi.fn() },
         SecondaryButton: { setText: vi.fn(), show: vi.fn(), hide: secondaryHide, enable: vi.fn(), disable: vi.fn(), hideProgress: vi.fn(), onClick: vi.fn(), offClick: vi.fn() },
+        SettingsButton: { show: vi.fn(), hide: settingsHide, onClick: vi.fn(), offClick: vi.fn() },
       },
     }
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })))
@@ -224,9 +228,21 @@ describe("Telegram Logs Mini App", () => {
 
     await userEvent.click(await screen.findByText("Server ready"))
 
-    await waitFor(() => expect(document.querySelector("[data-vaul-no-drag]")).not.toBeNull())
+    const detailPage = await waitFor(() => {
+      const page = document.querySelector<HTMLElement>("[data-mini-app-detail-page]")
+      expect(page).not.toBeNull()
+      return page!
+    })
+    expect(document.querySelector('[data-slot="drawer-content"]')).toBeNull()
+    expect(detailPage.querySelector('[data-slot="scroll-area"][data-scrollbars="both"]')).not.toBeNull()
     expect(mainHide).toHaveBeenCalled()
     expect(secondaryHide).toHaveBeenCalled()
+    expect(settingsHide).toHaveBeenCalled()
+    expect(backShow).toHaveBeenCalled()
+
+    act(() => backAction?.())
+    await waitFor(() => expect(document.querySelector("[data-mini-app-detail-page]")).toBeNull())
+    expect(screen.getByText("Server ready")).toBeInTheDocument()
   })
 
   it("does not fall back to Admin authentication outside Telegram", async () => {

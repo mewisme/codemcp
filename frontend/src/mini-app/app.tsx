@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  ArrowLeftIcon,
   CirclePauseIcon,
   CirclePlayIcon,
   Maximize2Icon,
@@ -335,14 +336,14 @@ export function MiniApp() {
   }, [connection, togglePause, reconnect])
 
   const closeOverlay = useCallback(() => {
-    if (selected) setSelected(null)
-    else if (settingsOpen) setSettingsOpen(false)
+    if (settingsOpen) setSettingsOpen(false)
+    else if (selected) setSelected(null)
   }, [selected, settingsOpen])
 
   const nativeListActionsVisible = authenticated && !(isMobile && Boolean(selected || settingsOpen))
 
   useEffect(() => bindBackButton(Boolean(selected || settingsOpen), closeOverlay), [selected, settingsOpen, closeOverlay])
-  useEffect(() => bindSettingsButton(() => setSettingsOpen(true)), [])
+  useEffect(() => bindSettingsButton(() => setSettingsOpen(true), !(isMobile && Boolean(selected))), [isMobile, selected])
   useEffect(() => bindMainButtonState(
     connection === "live"
       ? (paused ? "Back to live" : "Pause live")
@@ -386,6 +387,36 @@ export function MiniApp() {
 
   const count = activeFeed === "runtime" ? filteredRuntime.length : activeFeed === "executions" ? filteredExecutions.length : filteredTools.length
   const selectedDetail = selected ? resolveSelected(selected, runtimeEvents, executions, executionEvents, toolRecords) : null
+
+  if (isMobile && selected) {
+    return (
+      <main
+        data-mini-app-detail-page
+        className="mx-auto flex h-[var(--tg-viewport-height,100dvh)] min-h-0 w-full max-w-6xl flex-col overflow-hidden bg-background text-foreground"
+        style={{
+          paddingTop: "max(8px, var(--tg-content-safe-area-inset-top, 0px))",
+          paddingRight: "max(12px, var(--tg-content-safe-area-inset-right, 0px))",
+          paddingBottom: "max(8px, var(--tg-content-safe-area-inset-bottom, 0px))",
+          paddingLeft: "max(12px, var(--tg-content-safe-area-inset-left, 0px))",
+        }}
+      >
+        <header className="flex shrink-0 min-w-0 items-start gap-2 border-b pb-3">
+          {!nativeControls.backButton ? (
+            <Button size="icon-sm" variant="ghost" aria-label="Back to logs" onClick={() => setSelected(null)}>
+              <ArrowLeftIcon />
+            </Button>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-base font-semibold">{detailTitle(selectedDetail)}</div>
+            {detailDescription(selectedDetail) ? <div className="mt-0.5 truncate text-xs text-muted-foreground">{detailDescription(selectedDetail)}</div> : null}
+          </div>
+        </header>
+        <div className="min-h-0 flex-1 pt-2">
+          <DetailBody key={selected.key} detail={selectedDetail} executionEvents={executionEvents} fill />
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main
@@ -502,17 +533,6 @@ export function MiniApp() {
       </div>
 
       <ResponsiveDialog
-        open={Boolean(selected && isMobile)}
-        onOpenChange={(open) => { if (!open) setSelected(null) }}
-        title={detailTitle(selectedDetail)}
-        description={detailDescription(selectedDetail)}
-        wide
-        scrollbars="vertical"
-      >
-        <DetailBody key={selected?.key || "detail"} detail={selectedDetail} executionEvents={executionEvents} />
-      </ResponsiveDialog>
-
-      <ResponsiveDialog
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         title="View settings"
@@ -584,24 +604,35 @@ function ToolRow({ record, compact, selected, onClick }: { record: ToolRecord; c
   )
 }
 
-function DetailBody({ detail, executionEvents }: { detail: ReturnType<typeof resolveSelected> | null; executionEvents: ExecutionFeedEvent[] }) {
+function DetailBody({ detail, executionEvents, fill = false }: { detail: ReturnType<typeof resolveSelected> | null; executionEvents: ExecutionFeedEvent[]; fill?: boolean }) {
   if (!detail?.value) return <p className="text-sm text-muted-foreground">This event is no longer in the retained view.</p>
   const sections = buildDetailSections(detail, executionEvents)
   return (
-    <Tabs defaultValue="overview" className="gap-3">
-      <ScrollableTabsList className="justify-start" variant="line">
+    <Tabs defaultValue="overview" className={cn("gap-3", fill && "h-full min-h-0")}>
+      <ScrollableTabsList className="shrink-0 justify-start" variant="line">
         <TabsTrigger className="flex-none px-2.5" value="overview">Overview</TabsTrigger>
         <TabsTrigger className="flex-none px-2.5" value="request">Request</TabsTrigger>
         <TabsTrigger className="flex-none px-2.5" value="response">Response</TabsTrigger>
         <TabsTrigger className="flex-none px-2.5" value="metadata">Metadata</TabsTrigger>
         <TabsTrigger className="flex-none px-2.5" value="raw">Raw</TabsTrigger>
       </ScrollableTabsList>
-      <TabsContent value="overview">{sections.overview}</TabsContent>
-      <TabsContent value="request"><DetailSection value={sections.request} empty="No request payload is available for this event." /></TabsContent>
-      <TabsContent value="response"><DetailSection value={sections.response} empty="No response payload is available for this event." /></TabsContent>
-      <TabsContent value="metadata"><DetailSection value={sections.metadata} empty="No additional metadata is available." /></TabsContent>
-      <TabsContent value="raw"><DetailSection value={sections.raw} empty="No safe raw projection is available." /></TabsContent>
+      <DetailTab value="overview" fill={fill}>{sections.overview}</DetailTab>
+      <DetailTab value="request" fill={fill}><DetailSection value={sections.request} empty="No request payload is available for this event." /></DetailTab>
+      <DetailTab value="response" fill={fill}><DetailSection value={sections.response} empty="No response payload is available for this event." /></DetailTab>
+      <DetailTab value="metadata" fill={fill}><DetailSection value={sections.metadata} empty="No additional metadata is available." /></DetailTab>
+      <DetailTab value="raw" fill={fill}><DetailSection value={sections.raw} empty="No safe raw projection is available." /></DetailTab>
     </Tabs>
+  )
+}
+
+function DetailTab({ value, fill, children }: { value: string; fill: boolean; children: React.ReactNode }) {
+  if (!fill) return <TabsContent value={value}>{children}</TabsContent>
+  return (
+    <TabsContent value={value} className="min-h-0 flex-1 overflow-hidden">
+      <ScrollArea className="h-full min-h-0 min-w-0 max-w-full" scrollbars="both">
+        <div className="min-h-full min-w-0 max-w-full pb-3 pr-2">{children}</div>
+      </ScrollArea>
+    </TabsContent>
   )
 }
 
