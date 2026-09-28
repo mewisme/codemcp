@@ -1,7 +1,7 @@
 import type { ActivityEvent, ExecutionFeedEvent, ExecutionInfo, LogEvent } from "@/lib/api"
 
 export type MiniAppFeed = "runtime" | "executions" | "tools"
-export type StreamState = "connecting" | "live" | "reconnecting" | "disconnected"
+export type StreamState = "connecting" | "live" | "reconnecting" | "suspended" | "disconnected"
 
 export type ToolRecord = {
   call_id: string

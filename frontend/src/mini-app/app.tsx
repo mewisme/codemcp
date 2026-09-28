@@ -7,6 +7,7 @@ import {
   SearchIcon,
   Settings2Icon,
   Trash2Icon,
+  XIcon,
 } from "lucide-react"
 
 import { JsonViewer } from "@/components/json-viewer"
@@ -16,8 +17,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
-import { Tabs, ScrollableTabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, ScrollableTabsList, TabsContent, TabsTrigger } from "@/components/ui/tabs"
+import { useIsMobile } from "@/hooks/use-mobile"
 import type { ActivityEvent, ExecutionFeedEvent, ExecutionInfo, LogEvent } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import { authenticateTelegramSession } from "@/mini-app/api"
@@ -36,14 +39,18 @@ import {
 } from "@/mini-app/stream"
 import {
   bindBackButton,
-  bindMainButton,
+  bindMainButtonState,
   bindSecondaryButton,
   bindSettingsButton,
+  bindTelegramActivity,
+  confirmTelegramAction,
   hideTelegramKeyboard,
   initializeTelegramMiniApp,
   loadMiniAppPreferences,
   saveMiniAppPreferences,
+  setTelegramVerticalSwipesEnabled,
   telegramHaptic,
+  telegramNativeControls,
   telegramWebApp,
   toggleTelegramFullscreen,
   type MiniAppPreferences,
@@ -55,11 +62,13 @@ type FilterMode = "all" | "running" | "success" | "warn" | "error" | "cancelled"
 const defaultPreferences: MiniAppPreferences = { density: "comfortable", autoFollow: true, defaultFeed: "runtime" }
 
 export function MiniApp() {
+  const isMobile = useIsMobile()
   const [initData] = useState(() => telegramWebApp()?.initData?.trim() || "")
   const [authenticated, setAuthenticated] = useState(false)
   const [authError, setAuthError] = useState(() => initData ? "" : "Telegram Mini App context is unavailable")
   const [activeFeed, setActiveFeed] = useState<MiniAppFeed>("runtime")
-  const [connection, setConnection] = useState<StreamState>(() => initData ? "connecting" : "disconnected")
+  const [telegramActive, setTelegramActive] = useState(() => telegramWebApp()?.isActive !== false)
+  const [connection, setConnection] = useState<StreamState>(() => initData ? (telegramWebApp()?.isActive === false ? "suspended" : "connecting") : "disconnected")
   const [streamError, setStreamError] = useState("")
   const [reconnectKey, setReconnectKey] = useState(0)
   const [paused, setPaused] = useState(false)
@@ -80,6 +89,7 @@ export function MiniApp() {
   const cursorRef = useRef<Record<MiniAppFeed, number>>({ runtime: 0, executions: 0, tools: 0 })
   const retryRef = useRef(0)
   const listTopRef = useRef<HTMLDivElement | null>(null)
+  const nativeControls = telegramNativeControls()
 
   const applySnapshot = useCallback((feed: MiniAppFeed, payload: unknown) => {
     if (feed === "runtime") {
@@ -116,6 +126,16 @@ export function MiniApp() {
 
   useEffect(() => initializeTelegramMiniApp(), [])
 
+  useEffect(() => bindTelegramActivity((active) => {
+    setTelegramActive(active)
+    if (active) {
+      retryRef.current = 0
+      setConnection("reconnecting")
+    } else {
+      setConnection("suspended")
+    }
+  }), [])
+
   useEffect(() => {
     let cancelled = false
     void loadMiniAppPreferences().then((loaded) => {
@@ -149,7 +169,7 @@ export function MiniApp() {
   }, [initData])
 
   useEffect(() => {
-    if (!authenticated) return
+    if (!authenticated || !telegramActive) return
     if (typeof WebSocket === "undefined") return
     let disposed = false
     let reconnectTimer = 0
@@ -208,7 +228,7 @@ export function MiniApp() {
       if (reconnectTimer) window.clearTimeout(reconnectTimer)
       socket.close()
     }
-  }, [authenticated, activeFeed, reconnectKey, applySnapshot, applyEvent])
+  }, [authenticated, telegramActive, activeFeed, reconnectKey, applySnapshot, applyEvent])
 
   const changeFeed = useCallback((feed: MiniAppFeed) => {
     if (feed === activeFeed) return
@@ -284,6 +304,12 @@ export function MiniApp() {
     telegramHaptic("medium")
   }, [activeFeed])
 
+  const requestClearView = useCallback(() => {
+    void confirmTelegramAction("Clear the current Mini App log view? New events will continue to appear.").then((confirmed) => {
+      if (confirmed) clearView()
+    })
+  }, [clearView])
+
   const togglePause = useCallback(() => {
     if (paused) {
       setPaused(false)
@@ -303,6 +329,7 @@ export function MiniApp() {
   }, [])
 
   const mainAction = useCallback(() => {
+    if (connection === "suspended") return
     if (connection === "live") togglePause()
     else reconnect()
   }, [connection, togglePause, reconnect])
@@ -314,8 +341,27 @@ export function MiniApp() {
 
   useEffect(() => bindBackButton(Boolean(selected || settingsOpen), closeOverlay), [selected, settingsOpen, closeOverlay])
   useEffect(() => bindSettingsButton(() => setSettingsOpen(true)), [])
-  useEffect(() => bindMainButton(connection === "live" ? (paused ? "Back to live" : "Pause live") : "Reconnect", authenticated, mainAction), [connection, paused, authenticated, mainAction])
-  useEffect(() => bindSecondaryButton("Clear view", authenticated, clearView), [authenticated, clearView])
+  useEffect(() => bindMainButtonState(
+    connection === "live"
+      ? (paused ? "Back to live" : "Pause live")
+      : connection === "suspended"
+        ? "Mini App inactive"
+        : "Reconnect",
+    authenticated,
+    mainAction,
+    {
+      active: connection !== "suspended",
+      progress: connection === "connecting" || connection === "reconnecting",
+      shine: connection === "disconnected",
+    }
+  ), [connection, paused, authenticated, mainAction])
+  useEffect(() => bindSecondaryButton("Clear view", authenticated, requestClearView), [authenticated, requestClearView])
+
+  useEffect(() => {
+    const overlayOpen = Boolean((isMobile && selected) || settingsOpen)
+    setTelegramVerticalSwipesEnabled(!overlayOpen)
+    return () => setTelegramVerticalSwipesEnabled(true)
+  }, [isMobile, selected, settingsOpen])
 
   useEffect(() => {
     if (!preferences.autoFollow || paused || connection !== "live") return
@@ -359,11 +405,13 @@ export function MiniApp() {
           <p className="mt-0.5 truncate text-xs text-muted-foreground">CodeMCP Mini App · realtime read-only view</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button size="icon-sm" variant="ghost" aria-label={connection === "live" ? (paused ? "Back to live" : "Pause live") : "Reconnect"} onClick={mainAction}>
-            {connection === "live" ? (paused ? <CirclePlayIcon /> : <CirclePauseIcon />) : <RefreshCwIcon className={cn(connection === "reconnecting" && "animate-spin")} />}
-          </Button>
-          <Button size="icon-sm" variant="ghost" aria-label="Clear view" onClick={clearView}><Trash2Icon /></Button>
-          <Button size="icon-sm" variant="ghost" aria-label="Settings" onClick={() => setSettingsOpen(true)}><Settings2Icon /></Button>
+          {!nativeControls.mainButton ? (
+            <Button size="icon-sm" variant="ghost" aria-label={connection === "live" ? (paused ? "Back to live" : "Pause live") : "Reconnect"} onClick={mainAction} disabled={connection === "suspended"}>
+              {connection === "live" ? (paused ? <CirclePlayIcon /> : <CirclePauseIcon />) : <RefreshCwIcon className={cn(connection === "reconnecting" && "animate-spin")} />}
+            </Button>
+          ) : null}
+          {!nativeControls.secondaryButton ? <Button size="icon-sm" variant="ghost" aria-label="Clear view" onClick={requestClearView}><Trash2Icon /></Button> : null}
+          {!nativeControls.settingsButton ? <Button size="icon-sm" variant="ghost" aria-label="Settings" onClick={() => setSettingsOpen(true)}><Settings2Icon /></Button> : null}
         </div>
       </header>
 
@@ -375,10 +423,10 @@ export function MiniApp() {
       ) : null}
 
       <Tabs value={activeFeed} onValueChange={(value) => changeFeed(value as MiniAppFeed)} className="gap-3">
-        <ScrollableTabsList className="grid min-w-[31rem] grid-cols-3">
-          <TabsTrigger value="runtime">Runtime</TabsTrigger>
-          <TabsTrigger value="executions">Command Execute</TabsTrigger>
-          <TabsTrigger value="tools">Tool Call/MCP</TabsTrigger>
+        <ScrollableTabsList className="justify-start">
+          <TabsTrigger className="flex-none px-3" value="runtime">Runtime</TabsTrigger>
+          <TabsTrigger className="flex-none px-3" value="executions">Command Execute</TabsTrigger>
+          <TabsTrigger className="flex-none px-3" value="tools">Tool Call/MCP</TabsTrigger>
         </ScrollableTabsList>
       </Tabs>
 
@@ -415,34 +463,51 @@ export function MiniApp() {
         </div>
       </form>
 
-      <section className={cn("mt-3 overflow-hidden rounded-xl border bg-card", preferences.density === "compact" && "text-[13px]")}>
-        {connection === "connecting" && count === 0 ? <LoadingRows /> : null}
-        {activeFeed === "runtime" && filteredRuntime.map((event) => (
-          <RuntimeRow key={runtimeKey(event)} event={event} compact={preferences.density === "compact"} onClick={() => openDetail({ feed: "runtime", key: runtimeKey(event) })} />
-        ))}
-        {activeFeed === "executions" && filteredExecutions.map((execution) => (
-          <ExecutionRow key={execution.id} execution={execution} compact={preferences.density === "compact"} onClick={() => openDetail({ feed: "executions", key: execution.id })} />
-        ))}
-        {activeFeed === "tools" && filteredTools.map((record) => (
-          <ToolRow key={record.call_id} record={record} compact={preferences.density === "compact"} onClick={() => openDetail({ feed: "tools", key: record.call_id })} />
-        ))}
-        {connection !== "connecting" && count === 0 ? (
-          <div className="px-4 py-12 text-center">
-            <p className="text-sm font-medium">No events in this view</p>
-            <p className="mt-1 text-xs text-muted-foreground">Filters and Clear view are local to this Mini App session.</p>
-          </div>
+      <div className={cn("mt-3 grid min-w-0 gap-3", selected && !isMobile && "md:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.85fr)]")}>
+        <section className={cn("min-w-0 overflow-hidden rounded-xl border bg-card", preferences.density === "compact" && "text-[13px]")}>
+          {connection === "connecting" && count === 0 ? <LoadingRows /> : null}
+          {activeFeed === "runtime" && filteredRuntime.map((event) => (
+            <RuntimeRow key={runtimeKey(event)} event={event} compact={preferences.density === "compact"} selected={selected?.feed === "runtime" && selected.key === runtimeKey(event)} onClick={() => openDetail({ feed: "runtime", key: runtimeKey(event) })} />
+          ))}
+          {activeFeed === "executions" && filteredExecutions.map((execution) => (
+            <ExecutionRow key={execution.id} execution={execution} compact={preferences.density === "compact"} selected={selected?.feed === "executions" && selected.key === execution.id} onClick={() => openDetail({ feed: "executions", key: execution.id })} />
+          ))}
+          {activeFeed === "tools" && filteredTools.map((record) => (
+            <ToolRow key={record.call_id} record={record} compact={preferences.density === "compact"} selected={selected?.feed === "tools" && selected.key === record.call_id} onClick={() => openDetail({ feed: "tools", key: record.call_id })} />
+          ))}
+          {connection !== "connecting" && count === 0 ? (
+            <div className="px-4 py-12 text-center">
+              <p className="text-sm font-medium">No events in this view</p>
+              <p className="mt-1 text-xs text-muted-foreground">Filters and Clear view are local to this Mini App session.</p>
+            </div>
+          ) : null}
+        </section>
+
+        {selected && !isMobile ? (
+          <aside className="sticky top-3 hidden min-w-0 self-start overflow-hidden rounded-xl border bg-card md:flex md:max-h-[calc(var(--tg-viewport-stable-height,100dvh)-1.5rem)] md:flex-col">
+            <div className="flex min-w-0 items-start gap-3 border-b px-3 py-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-semibold">{detailTitle(selectedDetail)}</div>
+                {detailDescription(selectedDetail) ? <div className="mt-0.5 truncate text-xs text-muted-foreground">{detailDescription(selectedDetail)}</div> : null}
+              </div>
+              <Button size="icon-sm" variant="ghost" aria-label="Close detail" onClick={() => setSelected(null)}><XIcon /></Button>
+            </div>
+            <ScrollArea className="min-h-0 flex-1" scrollbars="vertical">
+              <div className="p-3"><DetailBody key={selected.key} detail={selectedDetail} executionEvents={executionEvents} /></div>
+            </ScrollArea>
+          </aside>
         ) : null}
-      </section>
+      </div>
 
       <ResponsiveDialog
-        open={Boolean(selected)}
+        open={Boolean(selected && isMobile)}
         onOpenChange={(open) => { if (!open) setSelected(null) }}
         title={detailTitle(selectedDetail)}
         description={detailDescription(selectedDetail)}
         wide
         scrollbars="vertical"
       >
-        <DetailBody detail={selectedDetail} executionEvents={executionEvents} />
+        <DetailBody key={selected?.key || "detail"} detail={selectedDetail} executionEvents={executionEvents} />
       </ResponsiveDialog>
 
       <ResponsiveDialog
@@ -477,14 +542,15 @@ export function MiniApp() {
 function ConnectionBadge({ state, paused }: { state: StreamState; paused: boolean }) {
   if (paused && state === "live") return <Badge variant="secondary">Paused</Badge>
   if (state === "live") return <Badge variant="outline">Live</Badge>
+  if (state === "suspended") return <Badge variant="secondary">Inactive</Badge>
   if (state === "reconnecting") return <Badge variant="secondary">Reconnecting</Badge>
   if (state === "disconnected") return <Badge variant="destructive">Offline</Badge>
   return <Badge variant="secondary">Connecting</Badge>
 }
 
-function RuntimeRow({ event, compact, onClick }: { event: LogEvent; compact: boolean; onClick: () => void }) {
+function RuntimeRow({ event, compact, selected, onClick }: { event: LogEvent; compact: boolean; selected: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_6rem_minmax(0,1fr)_9rem] md:items-center md:gap-3", compact ? "py-2" : "py-3")}>
+    <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_6rem_minmax(0,1fr)_9rem] md:items-center md:gap-3", selected && "bg-muted/70", compact ? "py-2" : "py-3")}>
       <div className="flex min-w-0 items-center gap-2 md:block"><StatusDot status={String(event.level || "")} /><span className="text-xs tabular-nums text-muted-foreground">{formatTime(event.timestamp || String(event.time || ""))}</span></div>
       <div className="truncate text-xs font-medium uppercase text-muted-foreground">{String(event.component || "runtime")}</div>
       <div className="min-w-0"><div className="truncate font-medium">{String(event.message || event.event || "Runtime event")}</div><div className="mt-0.5 truncate text-xs text-muted-foreground">{String(event.event || event.name || event.kind || "")}</div></div>
@@ -493,9 +559,9 @@ function RuntimeRow({ event, compact, onClick }: { event: LogEvent; compact: boo
   )
 }
 
-function ExecutionRow({ execution, compact, onClick }: { execution: ExecutionInfo; compact: boolean; onClick: () => void }) {
+function ExecutionRow({ execution, compact, selected, onClick }: { execution: ExecutionInfo; compact: boolean; selected: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_7rem_minmax(0,1fr)_11rem] md:items-center md:gap-3", compact ? "py-2" : "py-3")}>
+    <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_7rem_minmax(0,1fr)_11rem] md:items-center md:gap-3", selected && "bg-muted/70", compact ? "py-2" : "py-3")}>
       <div className="flex items-center gap-2"><StatusDot status={execution.status} /><span className="text-xs tabular-nums text-muted-foreground">{formatTime(execution.started_at)}</span></div>
       <Badge variant={badgeForStatus(execution.status)} className="max-w-full">{execution.status}</Badge>
       <div className="min-w-0"><div className="truncate font-mono text-[13px]">{execution.command}</div><div className="mt-0.5 truncate text-xs text-muted-foreground">{execution.cwd}</div></div>
@@ -504,10 +570,10 @@ function ExecutionRow({ execution, compact, onClick }: { execution: ExecutionInf
   )
 }
 
-function ToolRow({ record, compact, onClick }: { record: ToolRecord; compact: boolean; onClick: () => void }) {
+function ToolRow({ record, compact, selected, onClick }: { record: ToolRecord; compact: boolean; selected: boolean; onClick: () => void }) {
   const event = record.latest
   return (
-    <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_7rem_minmax(0,1fr)_11rem] md:items-center md:gap-3", compact ? "py-2" : "py-3")}>
+    <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_7rem_minmax(0,1fr)_11rem] md:items-center md:gap-3", selected && "bg-muted/70", compact ? "py-2" : "py-3")}>
       <div className="flex items-center gap-2"><StatusDot status={event.status || event.phase || ""} /><span className="text-xs tabular-nums text-muted-foreground">{formatTime(event.timestamp)}</span></div>
       <Badge variant={badgeForStatus(event.status || event.phase || "")}>{event.status || event.phase || "event"}</Badge>
       <div className="min-w-0"><div className="truncate font-medium">{event.tool || event.method || "Tool call"}</div><div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{record.call_id}</div></div>
@@ -517,28 +583,81 @@ function ToolRow({ record, compact, onClick }: { record: ToolRecord; compact: bo
 }
 
 function DetailBody({ detail, executionEvents }: { detail: ReturnType<typeof resolveSelected> | null; executionEvents: ExecutionFeedEvent[] }) {
-  if (!detail) return <p className="text-sm text-muted-foreground">This event is no longer in the retained view.</p>
+  if (!detail?.value) return <p className="text-sm text-muted-foreground">This event is no longer in the retained view.</p>
+  const sections = buildDetailSections(detail, executionEvents)
+  return (
+    <Tabs defaultValue="overview" className="gap-3">
+      <ScrollableTabsList className="justify-start" variant="line">
+        <TabsTrigger className="flex-none px-2.5" value="overview">Overview</TabsTrigger>
+        <TabsTrigger className="flex-none px-2.5" value="request">Request</TabsTrigger>
+        <TabsTrigger className="flex-none px-2.5" value="response">Response</TabsTrigger>
+        <TabsTrigger className="flex-none px-2.5" value="metadata">Metadata</TabsTrigger>
+        <TabsTrigger className="flex-none px-2.5" value="raw">Raw</TabsTrigger>
+      </ScrollableTabsList>
+      <TabsContent value="overview">{sections.overview}</TabsContent>
+      <TabsContent value="request"><DetailSection value={sections.request} empty="No request payload is available for this event." /></TabsContent>
+      <TabsContent value="response"><DetailSection value={sections.response} empty="No response payload is available for this event." /></TabsContent>
+      <TabsContent value="metadata"><DetailSection value={sections.metadata} empty="No additional metadata is available." /></TabsContent>
+      <TabsContent value="raw"><DetailSection value={sections.raw} empty="No safe raw projection is available." /></TabsContent>
+    </Tabs>
+  )
+}
+
+function buildDetailSections(detail: NonNullable<ReturnType<typeof resolveSelected>>, executionEvents: ExecutionFeedEvent[]) {
   if (detail.feed === "runtime") {
     const event = detail.value as LogEvent
-    return <div className="space-y-4"><Overview values={[["Level", String(event.level || "—")], ["Component", String(event.component || "—")], ["Workspace", String(event.workspace_id || "—")], ["Time", formatTime(event.timestamp || String(event.time || ""))]]} /><JsonViewer value={event} maxHeight={null} /></div>
+    return {
+      overview: <Overview values={[["Level", String(event.level || "—")], ["Component", String(event.component || "—")], ["Workspace", String(event.workspace_id || "—")], ["Time", formatTime(event.timestamp || String(event.time || ""))]]} />,
+      request: valueOrNull((event as Record<string, unknown>).fields),
+      response: compactObject({ message: event.message, error: event.error, status: event.status, duration_ms: event.duration_ms }),
+      metadata: compactObject({ sequence: event.sequence, run_id: event.run_id, pid: event.pid, kind: event.kind, event: event.event || event.name, component: event.component, workspace_id: event.workspace_id, tool: event.tool, method: event.method, source: event.source, service_id: event.service_id, service_scope: event.service_scope }),
+      raw: event,
+    }
   }
   if (detail.feed === "tools") {
     const record = detail.value as ToolRecord
-    return <div className="space-y-4"><Overview values={[["Tool", record.latest.tool || "—"], ["Status", record.latest.status || record.latest.phase || "—"], ["Workspace", record.latest.workspace_id || "—"], ["Duration", record.latest.duration_ms ? record.latest.duration_ms + " ms" : "—"]]} /><JsonViewer value={record} maxHeight={null} /></div>
+    const first = record.first as ActivityEvent & { raw?: unknown }
+    const latest = record.latest as ActivityEvent & { raw?: unknown }
+    return {
+      overview: <Overview values={[["Tool", latest.tool || "—"], ["Status", latest.status || latest.phase || "—"], ["Workspace", latest.workspace_id || "—"], ["Duration", latest.duration_ms ? latest.duration_ms + " ms" : "—"]]} />,
+      request: valueOrNull(first.raw) || compactObject({ phase: first.phase, method: first.method, source: first.source, message: first.message }),
+      response: valueOrNull(latest.raw) || compactObject({ phase: latest.phase, status: latest.status, duration_ms: latest.duration_ms, message: latest.message }),
+      metadata: compactObject({ call_id: record.call_id, kind: latest.kind, tool: latest.tool, method: latest.method, source: latest.source, workspace_id: latest.workspace_id, first_timestamp: first.timestamp, latest_timestamp: latest.timestamp }),
+      raw: record,
+    }
   }
-  const execution = detail.value as ExecutionInfo
+  const execution = detail.value as ExecutionInfo & { requested_command?: string; effective_command?: string }
   const related = executionEvents.filter((event) => event.execution_id === execution.id)
-  const stdout = related.filter((event) => event.type === "output" && event.stream !== "stderr").map((event) => event.data || "").join("")
-  const stderr = related.filter((event) => event.type === "output" && event.stream === "stderr").map((event) => event.data || "").join("")
-  return (
-    <div className="space-y-4">
-      <Overview values={[["Status", execution.status], ["Workspace", execution.workspace_id], ["Tool", execution.tool], ["Exit code", execution.exit_code == null ? "—" : String(execution.exit_code)]]} />
-      <section><h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Command</h3><TextViewer value={execution.command} maxHeight={null} /></section>
-      {stdout ? <section><h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Output</h3><TextViewer value={stdout} maxHeight={null} /></section> : null}
-      {stderr ? <section><h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Error output</h3><TextViewer value={stderr} maxHeight={null} /></section> : null}
-      <section><h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Metadata</h3><JsonViewer value={execution} maxHeight={null} /></section>
-    </div>
-  )
+  const output = related.filter((event) => event.type === "output").map((event) => event.data || "").join("")
+  return {
+    overview: <Overview values={[["Status", execution.status], ["Workspace", execution.workspace_id], ["Tool", execution.tool], ["Exit code", execution.exit_code == null ? "—" : String(execution.exit_code)]]} />,
+    request: <div className="space-y-3"><TextViewer value={execution.command} maxHeight={null} /><DetailSection value={compactObject({ requested_command: execution.requested_command, effective_command: execution.effective_command, cwd: execution.cwd, source: execution.source })} empty="" /></div>,
+    response: output ? <div className="space-y-3"><TextViewer value={output} maxHeight={null} /><JsonViewer value={compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at })} maxHeight={null} /></div> : compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at }),
+    metadata: compactObject({ id: execution.id, workspace_id: execution.workspace_id, tool: execution.tool, source: execution.source, started_at: execution.started_at, finished_at: execution.finished_at }),
+    raw: { execution, events: related },
+  }
+}
+
+function DetailSection({ value, empty }: { value: React.ReactNode | unknown; empty: string }) {
+  if (value == null || value === "") return empty ? <p className="py-3 text-sm text-muted-foreground">{empty}</p> : null
+  if (isReactNode(value)) return value
+  return <JsonViewer value={value} maxHeight={null} />
+}
+
+function isReactNode(value: unknown): value is React.ReactNode {
+  return Boolean(value && typeof value === "object" && "$$typeof" in (value as Record<string, unknown>))
+}
+
+function valueOrNull(value: unknown) {
+  if (value == null) return null
+  if (Array.isArray(value) && value.length === 0) return null
+  if (typeof value === "object" && !Array.isArray(value) && Object.keys(value as Record<string, unknown>).length === 0) return null
+  return value
+}
+
+function compactObject(value: Record<string, unknown>) {
+  const entries = Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== "")
+  return entries.length ? Object.fromEntries(entries) : null
 }
 
 function Overview({ values }: { values: [string, string][] }) {

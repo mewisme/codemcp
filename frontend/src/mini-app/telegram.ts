@@ -3,11 +3,24 @@ export type TelegramThemeParams = Record<string, string | undefined>
 
 type TelegramButton = {
   isVisible?: boolean
+  isActive?: boolean
+  isProgressVisible?: boolean
   setText?: (text: string) => TelegramButton
   show?: () => TelegramButton
   hide?: () => TelegramButton
   enable?: () => TelegramButton
   disable?: () => TelegramButton
+  showProgress?: (leaveActive?: boolean) => TelegramButton
+  hideProgress?: () => TelegramButton
+  setParams?: (params: {
+    text?: string
+    color?: string
+    text_color?: string
+    has_shine_effect?: boolean
+    position?: "left" | "right" | "top" | "bottom"
+    is_active?: boolean
+    is_visible?: boolean
+  }) => TelegramButton
   onClick?: (callback: () => void) => TelegramButton
   offClick?: (callback: () => void) => TelegramButton
 }
@@ -28,16 +41,24 @@ export type TelegramWebApp = {
   initData?: string
   colorScheme?: "light" | "dark"
   themeParams?: TelegramThemeParams
+  isActive?: boolean
   viewportHeight?: number
   viewportStableHeight?: number
   safeAreaInset?: TelegramInset
   contentSafeAreaInset?: TelegramInset
   isFullscreen?: boolean
+  isVerticalSwipesEnabled?: boolean
   ready?: () => void
   expand?: () => void
   hideKeyboard?: () => void
+  setHeaderColor?: (color: string) => void
+  setBackgroundColor?: (color: string) => void
+  setBottomBarColor?: (color: string) => void
+  enableVerticalSwipes?: () => void
+  disableVerticalSwipes?: () => void
   requestFullscreen?: () => void
   exitFullscreen?: () => void
+  showConfirm?: (message: string, callback?: (confirmed: boolean) => void) => void
   onEvent?: (event: string, callback: (...args: unknown[]) => void) => void
   offEvent?: (event: string, callback: (...args: unknown[]) => void) => void
   BackButton?: TelegramButton
@@ -124,6 +145,9 @@ function applyTelegramTheme(webApp: TelegramWebApp) {
   for (const [name, value] of Object.entries(sharedTheme)) {
     if (value) root.style.setProperty(name, value)
   }
+  safeTelegramCall(() => webApp.setHeaderColor?.(params.header_bg_color || params.bg_color || "bg_color"))
+  safeTelegramCall(() => webApp.setBackgroundColor?.(params.bg_color || "bg_color"))
+  safeTelegramCall(() => webApp.setBottomBarColor?.(params.bottom_bar_bg_color || params.secondary_bg_color || params.bg_color || "bg_color"))
 }
 
 function applyTelegramViewport(webApp: TelegramWebApp) {
@@ -165,26 +189,54 @@ export function bindMainButton(text: string, visible: boolean, callback: () => v
 }
 
 export function bindSecondaryButton(text: string, visible: boolean, callback: () => void) {
-  return bindBottomButton(telegramWebApp()?.SecondaryButton, text, visible, callback)
+  return bindBottomButton(telegramWebApp()?.SecondaryButton, text, visible, callback, { position: "left" })
 }
 
-function bindBottomButton(button: TelegramButton | undefined, text: string, visible: boolean, callback: () => void) {
+function bindBottomButton(
+  button: TelegramButton | undefined,
+  text: string,
+  visible: boolean,
+  callback: () => void,
+  options: { active?: boolean; progress?: boolean; position?: "left" | "right" | "top" | "bottom"; shine?: boolean } = {}
+) {
   if (!button) return () => {}
+  const active = options.active !== false
   safeTelegramCall(() => button.offClick?.(callback))
   safeTelegramCall(() => {
     if (visible) {
+      button.setParams?.({
+        text,
+        is_active: active,
+        is_visible: true,
+        has_shine_effect: options.shine === true,
+        position: options.position,
+      })
       button.setText?.(text)
-      button.enable?.()
+      if (active) button.enable?.()
+      else button.disable?.()
+      if (options.progress) button.showProgress?.(true)
+      else button.hideProgress?.()
       button.onClick?.(callback)
       button.show?.()
     } else {
+      button.hideProgress?.()
       button.hide?.()
     }
   })
   return () => {
     safeTelegramCall(() => button.offClick?.(callback))
+    safeTelegramCall(() => button.hideProgress?.())
     safeTelegramCall(() => button.hide?.())
   }
+}
+
+export function bindMainButtonState(
+  text: string,
+  visible: boolean,
+  callback: () => void,
+  options: { active?: boolean; progress?: boolean; shine?: boolean } = {}
+) {
+  return bindBottomButton(telegramWebApp()?.MainButton, text, visible, callback, options)
 }
 
 export function bindSettingsButton(callback: () => void) {
@@ -199,6 +251,50 @@ export function bindSettingsButton(callback: () => void) {
     safeTelegramCall(() => button.offClick?.(callback))
     safeTelegramCall(() => button.hide?.())
   }
+}
+
+export function telegramNativeControls() {
+  const webApp = telegramWebApp()
+  return {
+    backButton: Boolean(webApp?.BackButton),
+    mainButton: Boolean(webApp?.MainButton),
+    secondaryButton: Boolean(webApp?.SecondaryButton),
+    settingsButton: Boolean(webApp?.SettingsButton),
+  }
+}
+
+export function bindTelegramActivity(callback: (active: boolean) => void) {
+  const webApp = telegramWebApp()
+  if (!webApp) return () => {}
+  const activated = () => callback(true)
+  const deactivated = () => callback(false)
+  safeTelegramCall(() => webApp.onEvent?.("activated", activated))
+  safeTelegramCall(() => webApp.onEvent?.("deactivated", deactivated))
+  return () => {
+    safeTelegramCall(() => webApp.offEvent?.("activated", activated))
+    safeTelegramCall(() => webApp.offEvent?.("deactivated", deactivated))
+  }
+}
+
+export function setTelegramVerticalSwipesEnabled(enabled: boolean) {
+  const webApp = telegramWebApp()
+  if (!webApp) return
+  safeTelegramCall(() => {
+    if (enabled) webApp.enableVerticalSwipes?.()
+    else webApp.disableVerticalSwipes?.()
+  })
+}
+
+export async function confirmTelegramAction(message: string) {
+  const webApp = telegramWebApp()
+  if (!webApp?.showConfirm) return true
+  return await new Promise<boolean>((resolve) => {
+    try {
+      webApp.showConfirm?.(message, (confirmed) => resolve(Boolean(confirmed)))
+    } catch {
+      resolve(true)
+    }
+  })
 }
 
 export function hideTelegramKeyboard() {

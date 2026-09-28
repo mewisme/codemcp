@@ -97,6 +97,11 @@ describe("Telegram Logs Mini App", () => {
 
     await userEvent.click(screen.getByText("Telegram runtime ready"))
     expect((await screen.findAllByText("runtime.ready")).length).toBeGreaterThan(1)
+    expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Request" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Response" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Metadata" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Raw" })).toBeInTheDocument()
     expect(backShow).toHaveBeenCalled()
   })
 
@@ -125,9 +130,63 @@ describe("Telegram Logs Mini App", () => {
           executions: [{ id: "exec_1", workspace_id: "ws_1", tool: "run_command", command: "go test ./...", cwd: "/workspace", started_at: "2026-09-28T01:31:00Z", status: "running" }],
         },
       })
+      MockWebSocket.instances[1].emit({
+        type: "event",
+        feed: "executions",
+        sequence: 5,
+        latest_sequence: 5,
+        payload: { sequence: 5, type: "output", execution_id: "exec_1", workspace_id: "ws_1", stream: "stdout", data: "stdout-first\n", timestamp: "2026-09-28T01:31:01Z" },
+      })
+      MockWebSocket.instances[1].emit({
+        type: "event",
+        feed: "executions",
+        sequence: 6,
+        latest_sequence: 6,
+        payload: { sequence: 6, type: "output", execution_id: "exec_1", workspace_id: "ws_1", stream: "stderr", data: "stderr-second\n", timestamp: "2026-09-28T01:31:02Z" },
+      })
     })
     expect(await screen.findByText("go test ./...")).toBeInTheDocument()
     expect(screen.getByText("running")).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText("go test ./..."))
+    await userEvent.click(screen.getByRole("tab", { name: "Response" }))
+    expect(screen.getByText(/stdout-first/)).toBeInTheDocument()
+    expect(screen.getByText(/stderr-second/)).toBeInTheDocument()
+  })
+
+  it("suspends the realtime socket while Telegram marks the Mini App inactive and reconnects on activation", async () => {
+    const listeners = new Map<string, (...args: unknown[]) => void>()
+    window.Telegram = {
+      WebApp: {
+        initData: "signed-init-data",
+        isActive: true,
+        ready: vi.fn(),
+        expand: vi.fn(),
+        onEvent: vi.fn((event: string, callback: (...args: unknown[]) => void) => listeners.set(event, callback)),
+        offEvent: vi.fn(),
+      },
+    }
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })))
+
+    render(<TooltipProvider><MiniApp /></TooltipProvider>)
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+    act(() => {
+      MockWebSocket.instances[0].emit({
+        type: "snapshot",
+        feed: "runtime",
+        latest_sequence: 1,
+        payload: { events: [], total: 0, truncated: false, latest_sequence: 1 },
+      })
+    })
+    expect(await screen.findByText("Live")).toBeInTheDocument()
+
+    act(() => listeners.get("deactivated")?.())
+    expect(await screen.findByText("Inactive")).toBeInTheDocument()
+    expect(MockWebSocket.instances[0].closed).toBeGreaterThan(0)
+
+    act(() => listeners.get("activated")?.())
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(2))
+    expect(screen.getByText("Reconnecting")).toBeInTheDocument()
   })
 
   it("does not fall back to Admin authentication outside Telegram", async () => {
