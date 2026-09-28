@@ -158,6 +158,7 @@ type ServiceState struct {
 	PID            int       `json:"pid,omitempty"`
 	Ownership      Ownership `json:"ownership"`
 	Launcher       string    `json:"launcher,omitempty"`
+	Binary         string    `json:"binary,omitempty"`
 	ConfigRoot     string    `json:"config_root,omitempty"`
 	Reason         string    `json:"reason,omitempty"`
 }
@@ -587,7 +588,7 @@ func inventoryRoot(root string, instance InstanceInspection) ([]Artifact, string
 			artifact.Classification = ClassOptionalSkipWithReport
 			artifact.Reason = "released runtime log is invalid and will be skipped with a report"
 		}
-		if artifact.Classification == ClassDurableMigrate && artifact.Kind == "tui-state" && !validJSONFile(path) {
+		if artifact.Classification == ClassDurableMigrate && artifact.Kind == "tui-state" && !validReleasedTUIState(path) {
 			artifact.Classification = ClassOptionalSkipWithReport
 			artifact.Reason = "released TUI state is invalid and will be skipped with a report"
 		}
@@ -642,9 +643,24 @@ func validReleasedLog(path string) bool {
 	return utf8.Valid(data) && !bytes.Contains(data, []byte{0})
 }
 
-func validJSONFile(path string) bool {
+func validReleasedTUIState(path string) bool {
 	data, err := readBoundedRegular(path, maxRegularFileBytes)
-	return err == nil && json.Valid(bytes.TrimSpace(data))
+	if err != nil || !json.Valid(bytes.TrimSpace(data)) {
+		return false
+	}
+	var value struct {
+		Version       int      `json:"version"`
+		RecentActions []string `json:"recent_actions,omitempty"`
+	}
+	if err := json.Unmarshal(data, &value); err != nil || value.Version != 1 {
+		return false
+	}
+	for _, action := range value.RecentActions {
+		if len(action) > 256 {
+			return false
+		}
+	}
+	return true
 }
 
 func classifyArtifact(relative string, size int64) (Classification, string, string) {
@@ -653,6 +669,8 @@ func classifyArtifact(relative string, size int64) (Classification, string, stri
 	switch {
 	case clean == legacyRootMarkerName:
 		return ClassRegenerate, "root-marker", "CodeMCP writes its own root marker"
+	case clean == ".bundle024-source.json":
+		return ClassTransientDrop, "migration-metadata", "migration-owned portable bundle materialization metadata is not activated"
 	case clean == ".runtime-control.json" || clean == "state/update.json":
 		return ClassTransientDrop, "runtime-state", "ephemeral runtime/update state is not migrated"
 	case clean == "runtime/environment.json":

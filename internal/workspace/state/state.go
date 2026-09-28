@@ -176,6 +176,45 @@ func ValidateIdentityID(id string) error {
 	return nil
 }
 
+func NewIdentity(id string, createdAt time.Time) (Identity, error) {
+	identity := Identity{
+		Version:   identityVersion,
+		Kind:      identityKind,
+		ID:        strings.TrimSpace(id),
+		CreatedAt: createdAt.UTC(),
+	}
+	if err := validateIdentity(identity); err != nil {
+		return Identity{}, err
+	}
+	return identity, nil
+}
+
+func WriteIdentitySnapshot(localRoot string, identity Identity) error {
+	if err := validateIdentity(identity); err != nil {
+		return err
+	}
+	localRoot = filepath.Clean(strings.TrimSpace(localRoot))
+	if localRoot == "." || localRoot == "" {
+		return errors.New("workspace local root is required")
+	}
+	if info, err := os.Lstat(localRoot); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("workspace local root must be a real directory")
+		}
+	} else if errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(localRoot, 0700); err != nil {
+			return err
+		}
+	} else {
+		return err
+	}
+	data, err := statepkg.MarshalJSON(identity)
+	if err != nil {
+		return err
+	}
+	return statepkg.WriteFileAtomic(filepath.Join(localRoot, identityFileName), data, 0600)
+}
+
 func openWorkspaceRoot(path string) (*os.Root, error) {
 	absolute, err := filepath.Abs(path)
 	if err != nil {

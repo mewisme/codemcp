@@ -234,6 +234,15 @@ func Load() (Config, error) {
 	return loadAt(source.Path, configformat.StructuredPathFrom(source.Path, "tunnel"))
 }
 
+func LoadAt(root string) (Config, error) {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "." || root == "" {
+		return Config{}, errors.New("config root is required")
+	}
+	path := configformat.StructuredPath(root, "config")
+	return loadAt(path, configformat.StructuredPath(root, "tunnel"))
+}
+
 func LoadRuntime() (Config, error) {
 	source, err := Source()
 	if err != nil {
@@ -333,6 +342,14 @@ func migrateLegacyServerConfig(path string, data []byte, cfg *Config) error {
 func Save(cfg Config) error {
 	path := DefaultPath()
 	return saveAt(path, configformat.StructuredPathFrom(path, "tunnel"), cfg)
+}
+
+func SaveAt(root string, cfg Config) error {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "." || root == "" {
+		return errors.New("config root is required")
+	}
+	return saveAt(configformat.StructuredPath(root, "config"), configformat.StructuredPath(root, "tunnel"), cfg)
 }
 
 func saveAt(configPath, secretPath string, cfg Config) error {

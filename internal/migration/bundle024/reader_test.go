@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -60,6 +62,43 @@ func TestInspectReleasedPortableBundleRejectsUnsafePaths(t *testing.T) {
 		if _, err := Inspect(path); err == nil || !strings.Contains(err.Error(), "unsafe path") {
 			t.Fatalf("unsafe bundle path=%q err=%v", unsafe, err)
 		}
+	}
+}
+
+func TestMaterializeReleasedPortableBundleReconstructsLegacyRootAndSecretFiles(t *testing.T) {
+	secret := "bundle-runtime-secret"
+	value := bundle{
+		Version: Version, CreatedAt: time.Now().UTC(), Source: Platform{OS: "linux", Arch: "amd64"},
+		Files: []file{
+			{Path: "config.json", Mode: 0600, Data: []byte(`{"tunnel":{"api_key":"<secret-file>","api_key_configured":true}}`)},
+		},
+		Secrets: map[string]string{"tunnel/runtime-key": secret},
+	}
+	bundlePath := filepath.Join(t.TempDir(), "released.cgm")
+	if err := os.WriteFile(bundlePath, encodeFixture(t, value), 0600); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(t.TempDir(), "materialized")
+	result, err := Materialize(bundlePath, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.BundleSHA256 == "" || result.DestinationRoot != filepath.Clean(destination) || result.Inspection.SecretCount != 1 {
+		t.Fatalf("materialize result=%#v", result)
+	}
+	marker, err := os.ReadFile(filepath.Join(destination, ".chatgpt-mcp-root"))
+	if err != nil || strings.TrimSpace(string(marker)) != "chatgpt-mcp" {
+		t.Fatalf("root marker=%q err=%v", marker, err)
+	}
+	serviceName := legacyService(destination)
+	digest := sha256.Sum256([]byte(serviceName + "\x00" + "tunnel/runtime-key"))
+	secretPath := filepath.Join(destination, "state", "secrets", fmt.Sprintf("%x.secret", digest[:]))
+	data, err := os.ReadFile(secretPath)
+	if err != nil || string(data) != secret {
+		t.Fatalf("materialized secret=%q err=%v", data, err)
+	}
+	if _, err := Materialize(bundlePath, destination); err == nil {
+		t.Fatal("expected existing materialization root to fail closed")
 	}
 }
 

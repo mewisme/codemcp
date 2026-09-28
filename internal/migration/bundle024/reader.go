@@ -25,6 +25,7 @@ const (
 	maxBundleBytes     = 256 << 20
 	maxStateBytes      = 128 << 20
 	maxBundleFileBytes = 64 << 20
+	maxBundleEntries   = 4096
 	bundleKeyMaterial  = "chatgpt-mcp portable config bundle v1 / mewis.me"
 )
 
@@ -60,38 +61,136 @@ type Inspection struct {
 	Paths         []string  `json:"paths"`
 }
 
+type MaterializeResult struct {
+	DestinationRoot string     `json:"destination_root"`
+	BundleSHA256    string     `json:"bundle_sha256"`
+	Inspection      Inspection `json:"inspection"`
+}
+
 func Inspect(filePath string) (Inspection, error) {
+	_, inspection, err := readBundle(filePath)
+	return inspection, err
+}
+
+func Materialize(filePath, destinationRoot string) (result MaterializeResult, retErr error) {
+	value, inspection, err := readBundle(filePath)
+	if err != nil {
+		return MaterializeResult{}, err
+	}
+	destinationRoot = strings.TrimSpace(destinationRoot)
+	if destinationRoot == "" {
+		return MaterializeResult{}, errors.New("released config bundle materialization root is required")
+	}
+	absolute, err := filepath.Abs(destinationRoot)
+	if err != nil {
+		return MaterializeResult{}, fmt.Errorf("resolve released config bundle materialization root: %w", err)
+	}
+	absolute = filepath.Clean(absolute)
+	if _, err := os.Lstat(absolute); err == nil {
+		return MaterializeResult{}, errors.New("released config bundle materialization root already exists")
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return MaterializeResult{}, err
+	}
+	if err := os.MkdirAll(absolute, 0700); err != nil {
+		return MaterializeResult{}, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.RemoveAll(absolute)
+		}
+	}()
+
+	for _, item := range value.Files {
+		relative, ok := safeRelative(item.Path)
+		if !ok {
+			return MaterializeResult{}, fmt.Errorf("released config bundle contains unsafe path: %q", item.Path)
+		}
+		if relative == ".chatgpt-mcp-root" {
+			if strings.TrimSpace(string(item.Data)) != "chatgpt-mcp" {
+				return MaterializeResult{}, errors.New("released config bundle contains invalid root marker")
+			}
+			continue
+		}
+		destination := filepath.Join(absolute, filepath.FromSlash(relative))
+		if !withinRoot(absolute, destination) {
+			return MaterializeResult{}, fmt.Errorf("released config bundle path escapes materialization root: %s", relative)
+		}
+		if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+			return MaterializeResult{}, err
+		}
+		mode := os.FileMode(item.Mode).Perm()
+		if mode == 0 {
+			mode = 0600
+		}
+		if err := os.WriteFile(destination, item.Data, mode); err != nil {
+			return MaterializeResult{}, err
+		}
+	}
+	if err := os.WriteFile(filepath.Join(absolute, ".chatgpt-mcp-root"), []byte("chatgpt-mcp\n"), 0600); err != nil {
+		return MaterializeResult{}, err
+	}
+	serviceName := legacyService(absolute)
+	secretRoot := filepath.Join(absolute, "state", "secrets")
+	if len(value.Secrets) > 0 {
+		if err := os.MkdirAll(secretRoot, 0700); err != nil {
+			return MaterializeResult{}, err
+		}
+	}
+	for account, secret := range value.Secrets {
+		account = strings.TrimSpace(account)
+		if account == "" {
+			return MaterializeResult{}, errors.New("released config bundle contains empty secret account")
+		}
+		digest := sha256.Sum256([]byte(serviceName + "\x00" + account))
+		path := filepath.Join(secretRoot, fmt.Sprintf("%x.secret", digest[:]))
+		if err := os.WriteFile(path, []byte(secret), 0600); err != nil {
+			return MaterializeResult{}, err
+		}
+	}
+	sha, err := fileSHA256(filePath)
+	if err != nil {
+		return MaterializeResult{}, err
+	}
+	committed = true
+	return MaterializeResult{DestinationRoot: absolute, BundleSHA256: sha, Inspection: inspection}, nil
+}
+
+func readBundle(filePath string) (bundle, Inspection, error) {
 	filePath = strings.TrimSpace(filePath)
 	if filePath == "" {
-		return Inspection{}, errors.New("released config bundle path is required")
+		return bundle{}, Inspection{}, errors.New("released config bundle path is required")
 	}
 	absolute, err := filepath.Abs(filePath)
 	if err != nil {
-		return Inspection{}, fmt.Errorf("resolve released config bundle: %w", err)
+		return bundle{}, Inspection{}, fmt.Errorf("resolve released config bundle: %w", err)
 	}
 	info, err := os.Lstat(absolute)
 	if err != nil {
-		return Inspection{}, err
+		return bundle{}, Inspection{}, err
 	}
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return Inspection{}, errors.New("released config bundle must be a regular non-symlink file")
+		return bundle{}, Inspection{}, errors.New("released config bundle must be a regular non-symlink file")
 	}
 	if info.Size() > maxBundleBytes {
-		return Inspection{}, errors.New("released config bundle exceeds size limit")
+		return bundle{}, Inspection{}, errors.New("released config bundle exceeds size limit")
 	}
 	data, err := os.ReadFile(absolute)
 	if err != nil {
-		return Inspection{}, err
+		return bundle{}, Inspection{}, err
 	}
 	value, err := decode(data)
 	if err != nil {
-		return Inspection{}, err
+		return bundle{}, Inspection{}, err
 	}
 	if value.Version != Version {
-		return Inspection{}, fmt.Errorf("unsupported released config bundle version: %d", value.Version)
+		return bundle{}, Inspection{}, fmt.Errorf("unsupported released config bundle version: %d", value.Version)
 	}
 	if strings.TrimSpace(value.Source.OS) == "" {
-		return Inspection{}, errors.New("released config bundle source platform is missing")
+		return bundle{}, Inspection{}, errors.New("released config bundle source platform is missing")
+	}
+	if len(value.Files) > maxBundleEntries || len(value.Secrets) > maxBundleEntries {
+		return bundle{}, Inspection{}, fmt.Errorf("released config bundle exceeds %d entries", maxBundleEntries)
 	}
 	paths := make([]string, 0, len(value.Files))
 	seen := map[string]struct{}{}
@@ -99,23 +198,23 @@ func Inspect(filePath string) (Inspection, error) {
 	for _, item := range value.Files {
 		clean, ok := safeRelative(item.Path)
 		if !ok {
-			return Inspection{}, fmt.Errorf("released config bundle contains unsafe path: %q", item.Path)
+			return bundle{}, Inspection{}, fmt.Errorf("released config bundle contains unsafe path: %q", item.Path)
 		}
 		if len(item.Data) > maxBundleFileBytes {
-			return Inspection{}, fmt.Errorf("released config bundle file exceeds size limit: %s", clean)
+			return bundle{}, Inspection{}, fmt.Errorf("released config bundle file exceeds size limit: %s", clean)
 		}
 		if _, exists := seen[clean]; exists {
-			return Inspection{}, fmt.Errorf("released config bundle contains duplicate path: %s", clean)
+			return bundle{}, Inspection{}, fmt.Errorf("released config bundle contains duplicate path: %s", clean)
 		}
 		seen[clean] = struct{}{}
 		paths = append(paths, clean)
 		total += int64(len(item.Data))
 		if total > maxStateBytes {
-			return Inspection{}, errors.New("released config bundle state exceeds size limit")
+			return bundle{}, Inspection{}, errors.New("released config bundle state exceeds size limit")
 		}
 	}
 	sort.Strings(paths)
-	return Inspection{
+	inspection := Inspection{
 		SourceRelease: SourceRelease,
 		Version:       value.Version,
 		CreatedAt:     value.CreatedAt.UTC(),
@@ -125,7 +224,31 @@ func Inspect(filePath string) (Inspection, error) {
 		SecretCount:   len(value.Secrets),
 		FilesBytes:    total,
 		Paths:         paths,
-	}, nil
+	}
+	return value, inspection, nil
+}
+
+func legacyService(root string) string {
+	digest := sha256.Sum256([]byte(filepath.Clean(root)))
+	return "chatgpt-mcp/" + fmt.Sprintf("%x", digest[:8])
+}
+
+func fileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, io.LimitReader(file, maxBundleBytes+1)); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", hash.Sum(nil)), nil
+}
+
+func withinRoot(root, candidate string) bool {
+	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(candidate))
+	return err == nil && relative != ".." && !filepath.IsAbs(relative) && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func decode(data []byte) (bundle, error) {

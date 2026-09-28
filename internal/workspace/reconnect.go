@@ -181,6 +181,14 @@ func (m *Manager) classifyRegisteredRoot(item Workspace) RegisteredRootClassific
 	return result
 }
 
+func (m *Manager) ClassifyRegisteredRoot(item Workspace) RegisteredRootClassification {
+	return m.classifyRegisteredRoot(item)
+}
+
+func ReconnectClassificationError(classification RegisteredRootClassification, destination string) error {
+	return reconnectClassificationError(classification, destination)
+}
+
 func reconnectClassificationError(classification RegisteredRootClassification, destination string) error {
 	switch classification.State {
 	case RegisteredRootMissing, RegisteredLocalRootAbsent:

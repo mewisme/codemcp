@@ -33,6 +33,7 @@ func inspectPlatformServices(ctx context.Context, descriptor SourceDescriptor) (
 			definition := string(data)
 			state.Ownership, state.Reason = inspectSystemdOwnership(definition, descriptor)
 			state.Launcher = inspectSystemdLauncher(definition)
+			state.Binary = state.Launcher
 		case errors.Is(err, os.ErrNotExist):
 		default:
 			return nil, err

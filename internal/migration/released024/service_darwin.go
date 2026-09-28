@@ -34,6 +34,7 @@ func inspectPlatformServices(ctx context.Context, descriptor SourceDescriptor) (
 				state.Ownership = OwnershipVerified
 				state.Reason = "historical launchd definition references the released root and executable"
 				state.Launcher = filepath.Clean(args[0])
+				state.Binary = state.Launcher
 			} else {
 				state.Ownership = OwnershipAmbiguous
 				state.Reason = "historical launchd identity exists but definition ownership is not verified"

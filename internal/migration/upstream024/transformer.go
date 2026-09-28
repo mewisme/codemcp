@@ -23,8 +23,10 @@ const (
 )
 
 type Input struct {
-	SourcePath      string
-	DestinationPath string
+	SourcePath       string
+	DestinationPath  string
+	PreserveSource   bool
+	StagedSecretRoot string
 }
 
 type Result struct {
@@ -75,6 +77,11 @@ func Transform(input Input) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	if strings.TrimSpace(input.StagedSecretRoot) != "" {
+		if err := protectStagedSensitiveValues(released.Servers, input.StagedSecretRoot); err != nil {
+			return Result{}, err
+		}
+	}
 	if err := validatePresentationSafe(released.Servers); err != nil {
 		return Result{}, err
 	}
@@ -88,10 +95,12 @@ func Transform(input Input) (Result, error) {
 		if !reflect.DeepEqual(destination, expected) {
 			return Result{}, fmt.Errorf("upstream migration destination conflict: %s already exists with different content", input.DestinationPath)
 		}
-		if err := removeUnchangedSource(input.SourcePath, sourceInfo); err != nil {
-			return Result{}, err
+		if !input.PreserveSource {
+			if err := removeUnchangedSource(input.SourcePath, sourceInfo); err != nil {
+				return Result{}, err
+			}
 		}
-		return Result{DestinationPath: input.DestinationPath, Migrated: true, AlreadyApplied: true, SourceRemoved: true}, nil
+		return Result{DestinationPath: input.DestinationPath, Migrated: true, AlreadyApplied: true, SourceRemoved: !input.PreserveSource}, nil
 	}
 
 	if err := state.WriteFileAtomic(input.DestinationPath, encoded, 0600); err != nil {
@@ -104,10 +113,42 @@ func Transform(input Input) (Result, error) {
 	if !exists || !reflect.DeepEqual(verified, expected) {
 		return Result{}, errors.New("verify migrated upstream store: destination content mismatch")
 	}
-	if err := removeUnchangedSource(input.SourcePath, sourceInfo); err != nil {
-		return Result{}, err
+	if !input.PreserveSource {
+		if err := removeUnchangedSource(input.SourcePath, sourceInfo); err != nil {
+			return Result{}, err
+		}
 	}
-	return Result{DestinationPath: input.DestinationPath, Migrated: true, SourceRemoved: true}, nil
+	return Result{DestinationPath: input.DestinationPath, Migrated: true, SourceRemoved: !input.PreserveSource}, nil
+}
+
+func protectStagedSensitiveValues(servers []upstream.Server, root string) error {
+	store := secretstore.New(root)
+	for index := range servers {
+		server := &servers[index]
+		for _, group := range []struct {
+			kind   string
+			values map[string]string
+		}{
+			{kind: "header", values: server.Headers},
+			{kind: "env", values: server.Env},
+		} {
+			for key, value := range group.values {
+				if !upstream.SensitiveConfigKey(key) || strings.TrimSpace(value) == "" {
+					continue
+				}
+				account := secretstore.AccountName(secretstore.DomainUpstream, server.ID, group.kind, key)
+				staged, err := store.Get(account)
+				if err != nil {
+					return fmt.Errorf("verify staged upstream %s credential for %q: %w", group.kind, server.ID, err)
+				}
+				if !secretstore.IsMarker(value) && staged != value {
+					return fmt.Errorf("staged upstream %s credential for %q does not match released state", group.kind, server.ID)
+				}
+				group.values[key] = secretstore.Marker
+			}
+		}
+	}
+	return nil
 }
 
 func Inspect(sourcePath string) (Inspection, error) {
@@ -125,9 +166,6 @@ func Inspect(sourcePath string) (Inspection, error) {
 	}
 	released, err := decodeReleased(data)
 	if err != nil {
-		return Inspection{}, err
-	}
-	if err := validatePresentationSafe(released.Servers); err != nil {
 		return Inspection{}, err
 	}
 	return Inspection{SourceRelease: SourceRelease, Version: released.Version, Servers: len(released.Servers)}, nil

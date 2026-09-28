@@ -26,6 +26,9 @@ func inspectPlatformServices(ctx context.Context, descriptor SourceDescriptor) (
 		case err == nil:
 			state.Installed = true
 			args := releasedWindowsLauncherArgs(data)
+			if len(args) > 0 {
+				state.Binary = filepath.Clean(args[0])
+			}
 			if releasedServiceArgsOwned(args, descriptor) {
 				state.Ownership = OwnershipVerified
 				state.Reason = "historical task launcher references the released root and executable"
@@ -41,8 +44,14 @@ func inspectPlatformServices(ctx context.Context, descriptor SourceDescriptor) (
 			cmd := exec.CommandContext(ctx, "schtasks.exe", "/Query", "/TN", id, "/FO", "LIST", "/V")
 			output, err := cmd.Output()
 			if err == nil {
-				state.Bootstrapped, state.Installed, state.Enabled = true, true, true
+				state.Bootstrapped, state.Installed = true, true
 				state.Running = strings.Contains(strings.ToLower(string(output)), "status:") && strings.Contains(strings.ToLower(string(output)), "running")
+			}
+			xmlCmd := exec.CommandContext(ctx, "schtasks.exe", "/Query", "/TN", id, "/XML")
+			if xmlOutput, xmlErr := xmlCmd.Output(); xmlErr == nil {
+				text := strings.ToLower(decodeReleasedWindowsLauncher(xmlOutput))
+				state.Enabled = strings.Contains(text, "<enabled>true</enabled>")
+				state.Bootstrapped, state.Installed = true, true
 			}
 		}
 		result = append(result, state)

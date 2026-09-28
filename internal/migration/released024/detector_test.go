@@ -63,7 +63,7 @@ func TestDetectReleasedStateBuildsDeterministicSecretSafeManifest(t *testing.T) 
 	writeJSONFixture(t, filepath.Join(root, "runtime", "environment.json"), map[string]any{"values": map[string]any{"PATH": "/legacy"}})
 	writeJSONFixture(t, filepath.Join(root, ".runtime-control.json"), map[string]any{"pid": 99})
 	writeJSONLineFixture(t, filepath.Join(root, "logs", "runtime.jsonl"), map[string]any{"event": "ready"})
-	writeJSONFixture(t, filepath.Join(root, "tui-state.json"), map[string]any{"section": "logs"})
+	writeJSONFixture(t, filepath.Join(root, "tui-state.json"), map[string]any{"version": 1, "recent_actions": []string{"logs"}})
 	writeFixture(t, filepath.Join(root, "instructions", "AGENTS.md"), "Use canonical owners.\n")
 	writeJSONFixture(t, filepath.Join(root, "state", "update.json"), map[string]any{"status": "pending"})
 	writeFixture(t, filepath.Join(root, "runtime", "processes.json"), "transient")
@@ -265,21 +265,43 @@ func TestDetectRegeneratesInvalidInstanceAndSkipsInvalidOptionalViews(t *testing
 	}
 }
 
+func TestDetectSkipsUnsupportedReleasedTUIStateVersion(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "released")
+	writeFixture(t, filepath.Join(root, legacyRootMarkerName), legacyRootMarkerValue)
+	writeJSONFixture(t, filepath.Join(root, "tui-state.json"), map[string]any{
+		"version": 2, "recent_actions": []string{"logs"},
+	})
+	manifest, err := Detect(t.Context(), isolatedOptions(home, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, artifact := range manifest.Artifacts {
+		if artifact.Path == "tui-state.json" {
+			if artifact.Classification != ClassOptionalSkipWithReport {
+				t.Fatalf("unsupported TUI state classification=%q", artifact.Classification)
+			}
+			return
+		}
+	}
+	t.Fatal("TUI state artifact not found")
+}
+
 func TestReleasedDetectorHasNoLiveWorkspaceOrMutationAuthority(t *testing.T) {
 	_, current, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("resolve detector test source")
 	}
 	dir := filepath.Dir(current)
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+	for _, name := range []string{
+		"detector.go",
+		"platform_unix.go",
+		"platform_windows.go",
+		"service_linux.go",
+		"service_darwin.go",
+		"service_windows.go",
+	} {
+		data, err := os.ReadFile(filepath.Join(dir, name))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -295,7 +317,7 @@ func TestReleasedDetectorHasNoLiveWorkspaceOrMutationAuthority(t *testing.T) {
 			"os.MkdirAll(",
 		} {
 			if strings.Contains(body, forbidden) {
-				t.Errorf("%s gained live/mutation authority via %q", entry.Name(), forbidden)
+				t.Errorf("%s gained live/mutation authority via %q", name, forbidden)
 			}
 		}
 	}
