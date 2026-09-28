@@ -27,6 +27,7 @@ describe("Telegram Logs Mini App", () => {
     MockWebSocket.instances = []
     vi.stubGlobal("WebSocket", MockWebSocket)
     window.localStorage.clear()
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 })
   })
 
   afterEach(() => {
@@ -187,6 +188,45 @@ describe("Telegram Logs Mini App", () => {
     act(() => listeners.get("activated")?.())
     await waitFor(() => expect(MockWebSocket.instances).toHaveLength(2))
     expect(screen.getByText("Reconnecting")).toBeInTheDocument()
+  })
+
+  it("releases Telegram bottom-button space while a mobile detail drawer is open", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 })
+    const mainHide = vi.fn()
+    const secondaryHide = vi.fn()
+    window.Telegram = {
+      WebApp: {
+        initData: "signed-init-data",
+        ready: vi.fn(),
+        expand: vi.fn(),
+        BackButton: { show: vi.fn(), hide: vi.fn(), onClick: vi.fn(), offClick: vi.fn() },
+        MainButton: { setText: vi.fn(), show: vi.fn(), hide: mainHide, enable: vi.fn(), disable: vi.fn(), hideProgress: vi.fn(), onClick: vi.fn(), offClick: vi.fn() },
+        SecondaryButton: { setText: vi.fn(), show: vi.fn(), hide: secondaryHide, enable: vi.fn(), disable: vi.fn(), hideProgress: vi.fn(), onClick: vi.fn(), offClick: vi.fn() },
+      },
+    }
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })))
+
+    render(<TooltipProvider><MiniApp /></TooltipProvider>)
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+    act(() => {
+      MockWebSocket.instances[0].emit({
+        type: "snapshot",
+        feed: "runtime",
+        latest_sequence: 7,
+        payload: {
+          events: [{ sequence: 7, timestamp: "2026-09-28T01:30:00Z", level: "info", component: "server", event: "server.ready", message: "Server ready" }],
+          total: 1,
+          truncated: false,
+          latest_sequence: 7,
+        },
+      })
+    })
+
+    await userEvent.click(await screen.findByText("Server ready"))
+
+    await waitFor(() => expect(document.querySelector("[data-vaul-no-drag]")).not.toBeNull())
+    expect(mainHide).toHaveBeenCalled()
+    expect(secondaryHide).toHaveBeenCalled()
   })
 
   it("does not fall back to Admin authentication outside Telegram", async () => {

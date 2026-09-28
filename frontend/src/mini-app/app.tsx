@@ -339,6 +339,8 @@ export function MiniApp() {
     else if (settingsOpen) setSettingsOpen(false)
   }, [selected, settingsOpen])
 
+  const nativeListActionsVisible = authenticated && !(isMobile && Boolean(selected || settingsOpen))
+
   useEffect(() => bindBackButton(Boolean(selected || settingsOpen), closeOverlay), [selected, settingsOpen, closeOverlay])
   useEffect(() => bindSettingsButton(() => setSettingsOpen(true)), [])
   useEffect(() => bindMainButtonState(
@@ -347,15 +349,15 @@ export function MiniApp() {
       : connection === "suspended"
         ? "Mini App inactive"
         : "Reconnect",
-    authenticated,
+    nativeListActionsVisible,
     mainAction,
     {
       active: connection !== "suspended",
       progress: connection === "connecting" || connection === "reconnecting",
       shine: connection === "disconnected",
     }
-  ), [connection, paused, authenticated, mainAction])
-  useEffect(() => bindSecondaryButton("Clear view", authenticated, requestClearView), [authenticated, requestClearView])
+  ), [connection, paused, nativeListActionsVisible, mainAction])
+  useEffect(() => bindSecondaryButton("Clear view", nativeListActionsVisible, requestClearView), [nativeListActionsVisible, requestClearView])
 
   useEffect(() => {
     const overlayOpen = Boolean((isMobile && selected) || settingsOpen)
@@ -631,8 +633,8 @@ function buildDetailSections(detail: NonNullable<ReturnType<typeof resolveSelect
   const output = related.filter((event) => event.type === "output").map((event) => event.data || "").join("")
   return {
     overview: <Overview values={[["Status", execution.status], ["Workspace", execution.workspace_id], ["Tool", execution.tool], ["Exit code", execution.exit_code == null ? "—" : String(execution.exit_code)]]} />,
-    request: <div className="space-y-3"><TextViewer value={execution.command} maxHeight={null} /><DetailSection value={compactObject({ requested_command: execution.requested_command, effective_command: execution.effective_command, cwd: execution.cwd, source: execution.source })} empty="" /></div>,
-    response: output ? <div className="space-y-3"><TextViewer value={output} maxHeight={null} /><JsonViewer value={compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at })} maxHeight={null} /></div> : compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at }),
+    request: <div className="space-y-3"><TextViewer value={execution.command} maxHeight={null} nativeUnbounded /><DetailSection value={compactObject({ requested_command: execution.requested_command, effective_command: execution.effective_command, cwd: execution.cwd, source: execution.source })} empty="" /></div>,
+    response: output ? <div className="space-y-3"><TextViewer value={output} maxHeight={null} nativeUnbounded /><JsonViewer value={compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at })} maxHeight={null} nativeUnbounded /></div> : compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at }),
     metadata: compactObject({ id: execution.id, workspace_id: execution.workspace_id, tool: execution.tool, source: execution.source, started_at: execution.started_at, finished_at: execution.finished_at }),
     raw: { execution, events: related },
   }
@@ -641,7 +643,7 @@ function buildDetailSections(detail: NonNullable<ReturnType<typeof resolveSelect
 function DetailSection({ value, empty }: { value: React.ReactNode | unknown; empty: string }) {
   if (value == null || value === "") return empty ? <p className="py-3 text-sm text-muted-foreground">{empty}</p> : null
   if (isReactNode(value)) return value
-  return <JsonViewer value={value} maxHeight={null} />
+  return <JsonViewer value={value} maxHeight={null} nativeUnbounded />
 }
 
 function isReactNode(value: unknown): value is React.ReactNode {
