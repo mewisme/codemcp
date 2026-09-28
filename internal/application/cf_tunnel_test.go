@@ -43,7 +43,7 @@ func TestCFTunnelOperationsBindCanonicalOwner(t *testing.T) {
 	if err := BindCFTunnelOperations(dispatcher, NewCFTunnelServiceWithManager(manager)); err != nil {
 		t.Fatal(err)
 	}
-	for _, operation := range []capability.ID{capability.TunnelCFStatus, capability.TunnelCFProbe, capability.TunnelCFInstall, capability.TunnelCFUpdate, capability.TunnelCFRemove} {
+	for _, operation := range []capability.ID{capability.IntegrationCFStatus, capability.IntegrationCFProbe, capability.IntegrationCFInstall, capability.IntegrationCFUpdate, capability.IntegrationCFRemove} {
 		if _, err := dispatcher.Dispatch(t.Context(), DispatchRequest{Operation: operation}); err != nil {
 			t.Fatalf("dispatch %s: %v", operation, err)
 		}

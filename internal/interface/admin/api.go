@@ -136,6 +136,8 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/integrations/rtk/", api.handleRTK)
 	mux.HandleFunc("/api/integrations/codegraph", api.handleCodeGraph)
 	mux.HandleFunc("/api/integrations/codegraph/", api.handleCodeGraph)
+	mux.HandleFunc("/api/integrations/cf", api.handleCFIntegration)
+	mux.HandleFunc("/api/integrations/cf/", api.handleCFIntegration)
 	mux.HandleFunc("/api/instructions/global", api.handleGlobalInstructions)
 	mux.HandleFunc("/api/prompts", api.handlePrompts)
 	mux.HandleFunc("/api/prompts/{name}", api.handlePrompt)
@@ -157,8 +159,6 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/tunnel/managed", api.handleManagedTunnels)
 	mux.HandleFunc("/api/tunnel/managed/use", api.handleManagedTunnelUse)
 	mux.HandleFunc("/api/tunnel/managed/", api.handleManagedTunnel)
-	mux.HandleFunc("/api/tunnel/cf", api.handleCFTunnel)
-	mux.HandleFunc("/api/tunnel/cf/", api.handleCFTunnel)
 	mux.HandleFunc("/api/tunnel", api.handleTunnel)
 	return withCanonicalOperation(mux)
 }

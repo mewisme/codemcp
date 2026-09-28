@@ -96,11 +96,6 @@ const (
 	TunnelCreate             ID = "tunnel.create"
 	TunnelUpdate             ID = "tunnel.update"
 	TunnelDelete             ID = "tunnel.delete"
-	TunnelCFStatus           ID = "tunnel.cf.status"
-	TunnelCFProbe            ID = "tunnel.cf.probe"
-	TunnelCFInstall          ID = "tunnel.cf.install"
-	TunnelCFUpdate           ID = "tunnel.cf.update"
-	TunnelCFRemove           ID = "tunnel.cf.remove"
 	StatusOverview           ID = "status.overview"
 	DoctorRead               ID = "doctor.read"
 	VersionAbout             ID = "version.about"
@@ -142,6 +137,11 @@ const (
 	IntegrationCodeGraphProbe         ID = "integration.codegraph.probe"
 	IntegrationCodeGraphInstall       ID = "integration.codegraph.install"
 	IntegrationCodeGraphInstallGlobal ID = "integration.codegraph.install.global"
+	IntegrationCFStatus               ID = "integration.cf.status"
+	IntegrationCFProbe                ID = "integration.cf.probe"
+	IntegrationCFInstall              ID = "integration.cf.install"
+	IntegrationCFUpdate               ID = "integration.cf.update"
+	IntegrationCFRemove               ID = "integration.cf.remove"
 	IntegrationTypeSafeStatus         ID = "integration.typesafe.status"
 	IntegrationTypeSafeDoctor         ID = "integration.typesafe.doctor"
 	IntegrationTypeSafeEnable         ID = "integration.typesafe.enable"
@@ -275,11 +275,6 @@ func buildSpecs() []Spec {
 		operatorMutation(TunnelCreate, "tunnel create", RiskSensitive, true),
 		operatorMutation(TunnelUpdate, "tunnel update", RiskSensitive, true),
 		operatorDeleteRequired(TunnelDelete, "tunnel delete", true),
-		operatorQuery(TunnelCFStatus, "tunnel cf status"),
-		operatorQuery(TunnelCFProbe, "tunnel cf probe"),
-		operatorSensitive(TunnelCFInstall, "tunnel cf install", true),
-		operatorSensitive(TunnelCFUpdate, "tunnel cf update", true),
-		operatorDeleteRequired(TunnelCFRemove, "tunnel cf remove", false),
 		operatorQuery(StatusOverview, "status"),
 		operatorQuery(VersionAbout, "version"),
 		operatorQuery(TelemetryStatus, "telemetry status"),

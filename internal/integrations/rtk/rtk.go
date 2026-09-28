@@ -34,13 +34,6 @@ const (
 	SourceUnavailable Source = "unavailable"
 )
 
-type InstallHint struct {
-	Label      string   `json:"label"`
-	Command    string   `json:"command"`
-	Executable string   `json:"executable,omitempty"`
-	Args       []string `json:"args,omitempty"`
-}
-
 type Signature struct {
 	Kind     string `json:"kind"`
 	URL      string `json:"url"`
@@ -56,9 +49,8 @@ type Portable struct {
 }
 
 type Platform struct {
-	Executable string        `json:"executable"`
-	Install    []InstallHint `json:"install"`
-	Portable   Portable      `json:"portable"`
+	Executable string   `json:"executable"`
+	Portable   Portable `json:"portable"`
 }
 
 type Resolution struct {
@@ -75,15 +67,14 @@ type RewriteResult struct {
 }
 
 type Status struct {
-	Enabled          bool          `json:"enabled"`
-	Source           Source        `json:"source"`
-	Path             string        `json:"path,omitempty"`
-	Version          string        `json:"version"`
-	Platform         string        `json:"platform"`
-	ManagedSupported bool          `json:"managed_supported"`
-	ManagedInstalled bool          `json:"managed_installed"`
-	Verified         bool          `json:"verified"`
-	InstallHints     []InstallHint `json:"install_hints,omitempty"`
+	Enabled          bool   `json:"enabled"`
+	Source           Source `json:"source"`
+	Path             string `json:"path,omitempty"`
+	Version          string `json:"version"`
+	Platform         string `json:"platform"`
+	ManagedSupported bool   `json:"managed_supported"`
+	ManagedInstalled bool   `json:"managed_installed"`
+	Verified         bool   `json:"verified"`
 }
 
 type ProbeResult struct {
@@ -99,13 +90,11 @@ type InstallResult struct {
 	AlreadyInstalled bool   `json:"already_installed"`
 }
 
-type GlobalInstallResult struct {
-	Status           Status `json:"status"`
-	Path             string `json:"path,omitempty"`
-	Method           string `json:"method,omitempty"`
-	Command          string `json:"command,omitempty"`
-	Installed        bool   `json:"installed"`
-	AlreadyInstalled bool   `json:"already_installed"`
+type GlobalResolutionResult struct {
+	Status             Status `json:"status"`
+	Available          bool   `json:"available"`
+	Path               string `json:"path,omitempty"`
+	ManagedRecommended bool   `json:"managed_recommended"`
 }
 
 type runResult struct {
@@ -141,31 +130,23 @@ type Manager struct {
 var platforms = map[string]Platform{
 	"linux/amd64": {
 		Executable: "rtk",
-		Install:    unixInstallHints(),
 		Portable:   Portable{URL: "https://github.com/rtk-ai/rtk/releases/download/v0.49.0/rtk-x86_64-unknown-linux-musl.tar.gz", SHA256: "7278231dfd7e6a730a4ab7f847b195bcf02289c2d57622b0dab75a6411100c8f", Archive: "tar.gz", Entrypoint: "rtk"},
 	},
 	"linux/arm64": {
 		Executable: "rtk",
-		Install:    unixInstallHints(),
 		Portable:   Portable{URL: "https://github.com/rtk-ai/rtk/releases/download/v0.49.0/rtk-aarch64-unknown-linux-gnu.tar.gz", SHA256: "c8ea4b6560841e73157c134fd4a3293914c6ede42e786ee985cf491fde691ba7", Archive: "tar.gz", Entrypoint: "rtk"},
 	},
 	"darwin/amd64": {
 		Executable: "rtk",
-		Install:    unixInstallHints(),
 		Portable:   Portable{URL: "https://github.com/rtk-ai/rtk/releases/download/v0.49.0/rtk-x86_64-apple-darwin.tar.gz", SHA256: "d297388f4a8a786e79abe5f55b80451725bfe8c5835b4736c05d7cff4d68f627", Archive: "tar.gz", Entrypoint: "rtk"},
 	},
 	"darwin/arm64": {
 		Executable: "rtk",
-		Install:    unixInstallHints(),
 		Portable:   Portable{URL: "https://github.com/rtk-ai/rtk/releases/download/v0.49.0/rtk-aarch64-apple-darwin.tar.gz", SHA256: "bbbfebabb22686993a80da731aa4d5d35116fb8ae24abb00608efa028e13ae01", Archive: "tar.gz", Entrypoint: "rtk"},
 	},
 	"windows/amd64": {
 		Executable: "rtk.exe",
-		Install: []InstallHint{
-			{Label: "winget", Command: "winget install rtk-ai.rtk", Executable: "winget", Args: []string{"install", "rtk-ai.rtk"}},
-			cargoInstallHint(),
-		},
-		Portable: Portable{URL: "https://github.com/rtk-ai/rtk/releases/download/v0.49.0/rtk-x86_64-pc-windows-msvc.zip", SHA256: "cb971046598f0e8bd51f6c27780fcdd2c39a4c459a811bd95b0d77ba8c0d7c9f", Archive: "zip", Entrypoint: "rtk.exe"},
+		Portable:   Portable{URL: "https://github.com/rtk-ai/rtk/releases/download/v0.49.0/rtk-x86_64-pc-windows-msvc.zip", SHA256: "cb971046598f0e8bd51f6c27780fcdd2c39a4c459a811bd95b0d77ba8c0d7c9f", Archive: "zip", Entrypoint: "rtk.exe"},
 	},
 }
 
@@ -190,7 +171,6 @@ func PlatformFor(goos, goarch string) (Platform, bool) {
 	if !ok {
 		return Platform{}, false
 	}
-	value.Install = cloneInstallHints(value.Install)
 	if value.Portable.Signature != nil {
 		signature := *value.Portable.Signature
 		value.Portable.Signature = &signature
@@ -242,7 +222,6 @@ func (m *Manager) Status() (Status, error) {
 	platform, supported := PlatformFor(m.goos, m.goarch)
 	status.ManagedSupported = supported
 	if supported {
-		status.InstallHints = cloneInstallHints(platform.Install)
 		if _, err := m.validateManaged(platform); err == nil {
 			status.ManagedInstalled = true
 		}
@@ -346,50 +325,28 @@ func (m *Manager) Install(ctx context.Context) (InstallResult, error) {
 	return InstallResult{Status: status, Path: path, Installed: true}, nil
 }
 
-func (m *Manager) InstallGlobal(ctx context.Context) (GlobalInstallResult, error) {
+func (m *Manager) ResolveGlobal() (GlobalResolutionResult, error) {
 	if m == nil {
-		return GlobalInstallResult{}, errors.New("rtk integration manager is unavailable")
+		return GlobalResolutionResult{}, errors.New("rtk integration manager is unavailable")
 	}
 	platform, ok := PlatformFor(m.goos, m.goarch)
 	if !ok {
-		return GlobalInstallResult{}, fmt.Errorf("rtk global install is unsupported on %s/%s", m.goos, m.goarch)
+		status, err := m.Status()
+		return GlobalResolutionResult{Status: status}, err
 	}
-	if path, err := m.lookPath(platform.Executable); err == nil && strings.TrimSpace(path) != "" {
-		status, statusErr := m.Status()
-		return GlobalInstallResult{Status: status, Path: path, AlreadyInstalled: true}, statusErr
-	}
-	var selected *InstallHint
-	for index := range platform.Install {
-		hint := &platform.Install[index]
-		if hint.Executable == "" || len(hint.Args) == 0 {
-			continue
-		}
-		if _, err := m.lookPath(hint.Executable); err == nil {
-			selected = hint
-			break
-		}
-	}
-	if selected == nil {
-		return GlobalInstallResult{}, errors.New("no supported RTK global package manager is available")
-	}
-	runCtx, cancel := context.WithTimeout(nonNilContext(ctx), 5*time.Minute)
-	result, err := m.run(runCtx, selected.Executable, selected.Args...)
-	cancel()
-	if err != nil {
-		return GlobalInstallResult{}, err
-	}
-	if result.ExitCode != 0 {
-		return GlobalInstallResult{}, commandError(result)
-	}
+	status, statusErr := m.Status()
 	path, err := m.lookPath(platform.Executable)
 	if err != nil || strings.TrimSpace(path) == "" {
-		return GlobalInstallResult{}, errors.New("RTK global install completed but rtk is not available on PATH")
+		return GlobalResolutionResult{
+			Status:             status,
+			ManagedRecommended: status.ManagedSupported && !status.ManagedInstalled,
+		}, statusErr
 	}
-	status, err := m.Status()
+	resolved, err := executablepath.ResolveExternal(path, m.goos)
 	if err != nil {
-		return GlobalInstallResult{}, err
+		return GlobalResolutionResult{Status: status}, fmt.Errorf("global RTK executable: %w", err)
 	}
-	return GlobalInstallResult{Status: status, Path: path, Method: selected.Label, Command: selected.Command, Installed: true}, nil
+	return GlobalResolutionResult{Status: status, Available: true, Path: resolved}, statusErr
 }
 
 func nonNilContext(ctx context.Context) context.Context {
@@ -470,26 +427,5 @@ func safeEnvironment() []string {
 		}
 	}
 	sort.Strings(result)
-	return result
-}
-
-func unixInstallHints() []InstallHint {
-	return []InstallHint{
-		{Label: "Homebrew", Command: "brew install rtk-ai/tap/rtk", Executable: "brew", Args: []string{"install", "rtk-ai/tap/rtk"}},
-		{Label: "Quick install", Command: "curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh"},
-		cargoInstallHint(),
-	}
-}
-
-func cargoInstallHint() InstallHint {
-	return InstallHint{Label: "Cargo", Command: "cargo install --git https://github.com/rtk-ai/rtk --branch master rtk", Executable: "cargo", Args: []string{"install", "--git", "https://github.com/rtk-ai/rtk", "--branch", "master", "rtk"}}
-}
-
-func cloneInstallHints(values []InstallHint) []InstallHint {
-	result := make([]InstallHint, len(values))
-	for index, value := range values {
-		result[index] = value
-		result[index].Args = append([]string(nil), value.Args...)
-	}
 	return result
 }

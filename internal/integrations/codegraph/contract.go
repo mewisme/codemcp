@@ -39,13 +39,6 @@ type Asset struct {
 	Required   []string
 }
 
-type InstallHint struct {
-	Label      string   `json:"label"`
-	Command    string   `json:"command"`
-	Executable string   `json:"executable,omitempty"`
-	Args       []string `json:"args,omitempty"`
-}
-
 var assets = map[string]Asset{
 	"darwin/amd64":  asset("darwin-x64", "cb86a2b62ee676b62a56bf8423600e7d867e752e57f323cdc98c0f6236efd908", "tar.gz", "bin/codegraph"),
 	"darwin/arm64":  asset("darwin-arm64", "1c73033512d55f67be04717e81532e8beaf7be6fb8531f51a179fa23064ad480", "tar.gz", "bin/codegraph"),
@@ -80,19 +73,6 @@ func VersionProbeArgs() []string { return []string{"--version"} }
 func InitArgs(projectRoot string) []string { return []string{"init", "--yes", projectRoot} }
 
 func SyncArgs(projectRoot string) []string { return []string{"sync", projectRoot} }
-
-func SystemInstallHints(goos string) []InstallHint {
-	if strings.TrimSpace(goos) == "windows" {
-		return []InstallHint{
-			{Label: "PowerShell", Command: "irm https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.ps1 | iex"},
-			{Label: "npm", Command: "npm i -g @colbymchenry/codegraph", Executable: "npm", Args: []string{"i", "-g", "@colbymchenry/codegraph"}},
-		}
-	}
-	return []InstallHint{
-		{Label: "Shell installer", Command: "curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/install.sh | sh"},
-		{Label: "npm", Command: "npm i -g @colbymchenry/codegraph", Executable: "npm", Args: []string{"i", "-g", "@colbymchenry/codegraph"}},
-	}
-}
 
 func asset(target, sha256, archive, launcher string) Asset {
 	prefix := "codegraph-" + target

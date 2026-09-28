@@ -68,12 +68,12 @@ func (s *CodeGraphService) Install(ctx context.Context) (codegraph.InstallResult
 	return runtime.Install(ctx)
 }
 
-func (s *CodeGraphService) InstallGlobal(ctx context.Context) (codegraph.GlobalInstallResult, error) {
+func (s *CodeGraphService) ResolveGlobal(context.Context) (codegraph.GlobalResolutionResult, error) {
 	runtime, err := s.runtime()
 	if err != nil {
-		return codegraph.GlobalInstallResult{}, err
+		return codegraph.GlobalResolutionResult{}, err
 	}
-	return runtime.InstallGlobal(ctx)
+	return runtime.ResolveGlobal()
 }
 
 func (s *CodeGraphService) WorkspaceStatus(ctx context.Context, input CodeGraphWorkspaceInput) (codegraph.WorkspaceStatus, error) {
@@ -256,7 +256,7 @@ func BindCodeGraphOperations(dispatcher *Dispatcher, service *CodeGraphService) 
 		{capability.IntegrationCodeGraphStatus, func(ctx context.Context, _ any) (any, error) { return service.Status(ctx) }},
 		{capability.IntegrationCodeGraphProbe, func(ctx context.Context, _ any) (any, error) { return service.Probe(ctx) }},
 		{capability.IntegrationCodeGraphInstall, func(ctx context.Context, _ any) (any, error) { return service.Install(ctx) }},
-		{capability.IntegrationCodeGraphInstallGlobal, func(ctx context.Context, _ any) (any, error) { return service.InstallGlobal(ctx) }},
+		{capability.IntegrationCodeGraphInstallGlobal, func(ctx context.Context, _ any) (any, error) { return service.ResolveGlobal(ctx) }},
 		{capability.IntegrationCodeGraphWorkspaceStatus, typedOperation[CodeGraphWorkspaceInput](capability.IntegrationCodeGraphWorkspaceStatus, func(ctx context.Context, input CodeGraphWorkspaceInput) (any, error) {
 			return service.WorkspaceStatus(ctx, input)
 		})},

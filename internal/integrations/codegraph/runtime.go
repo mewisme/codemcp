@@ -27,13 +27,12 @@ type Resolution struct {
 }
 
 type Status struct {
-	Enabled          bool          `json:"enabled"`
-	Resolution       Resolution    `json:"resolution"`
-	ManagedSupported bool          `json:"managed_supported"`
-	ManagedInstalled bool          `json:"managed_installed"`
-	Platform         string        `json:"platform"`
-	PinnedVersion    string        `json:"pinned_version"`
-	InstallHints     []InstallHint `json:"install_hints,omitempty"`
+	Enabled          bool       `json:"enabled"`
+	Resolution       Resolution `json:"resolution"`
+	ManagedSupported bool       `json:"managed_supported"`
+	ManagedInstalled bool       `json:"managed_installed"`
+	Platform         string     `json:"platform"`
+	PinnedVersion    string     `json:"pinned_version"`
 }
 
 type ProbeResult struct {
@@ -49,13 +48,11 @@ type InstallResult struct {
 	AlreadyInstalled bool   `json:"already_installed"`
 }
 
-type GlobalInstallResult struct {
-	Status           Status `json:"status"`
-	Path             string `json:"path,omitempty"`
-	Method           string `json:"method,omitempty"`
-	Command          string `json:"command,omitempty"`
-	Installed        bool   `json:"installed"`
-	AlreadyInstalled bool   `json:"already_installed"`
+type GlobalResolutionResult struct {
+	Status             Status `json:"status"`
+	Available          bool   `json:"available"`
+	Path               string `json:"path,omitempty"`
+	ManagedRecommended bool   `json:"managed_recommended"`
 }
 
 type CommandResult struct {
@@ -158,7 +155,6 @@ func (r *Runtime) Status() (Status, error) {
 	status.Platform = r.goos + "/" + r.goarch
 	spec, _, supported := r.specFor(r.goos, r.goarch)
 	status.ManagedSupported = supported
-	status.InstallHints = SystemInstallHints(r.goos)
 	if supported && strings.TrimSpace(r.managedRoot) != "" {
 		if _, err := (managedasset.Manager{Root: r.managedRoot}).ValidateTree(spec); err == nil {
 			status.ManagedInstalled = true
@@ -231,47 +227,23 @@ func (r *Runtime) Install(ctx context.Context) (InstallResult, error) {
 	return InstallResult{Status: status, Path: path, Installed: true}, nil
 }
 
-func (r *Runtime) InstallGlobal(ctx context.Context) (GlobalInstallResult, error) {
+func (r *Runtime) ResolveGlobal() (GlobalResolutionResult, error) {
 	if r == nil {
-		return GlobalInstallResult{}, errors.New("codegraph runtime is unavailable")
+		return GlobalResolutionResult{}, errors.New("codegraph runtime is unavailable")
 	}
-	if path, err := r.lookPath(SystemExecutable()); err == nil && strings.TrimSpace(path) != "" {
-		status, statusErr := r.Status()
-		return GlobalInstallResult{Status: status, Path: path, AlreadyInstalled: true}, statusErr
-	}
-	var selected *InstallHint
-	hints := SystemInstallHints(r.goos)
-	for index := range hints {
-		hint := &hints[index]
-		if hint.Executable == "" || len(hint.Args) == 0 {
-			continue
-		}
-		if _, err := r.lookPath(hint.Executable); err == nil {
-			selected = hint
-			break
-		}
-	}
-	if selected == nil {
-		return GlobalInstallResult{}, errors.New("no supported CodeGraph global package manager is available")
-	}
-	runCtx, cancel := context.WithTimeout(nonNilContext(ctx), 5*time.Minute)
-	result, runErr := r.run(runCtx, selected.Executable, selected.Args, ProbeOutputLimit)
-	cancel()
-	if runErr != nil {
-		return GlobalInstallResult{}, runErr
-	}
-	if result.ExitCode != 0 {
-		return GlobalInstallResult{}, commandFailure(result)
-	}
+	status, statusErr := r.Status()
 	path, err := r.lookPath(SystemExecutable())
 	if err != nil || strings.TrimSpace(path) == "" {
-		return GlobalInstallResult{}, errors.New("CodeGraph global install completed but codegraph is not available on PATH")
+		return GlobalResolutionResult{
+			Status:             status,
+			ManagedRecommended: status.ManagedSupported && !status.ManagedInstalled,
+		}, statusErr
 	}
-	status, err := r.Status()
+	resolved, err := executablepath.ResolveExternal(path, r.goos)
 	if err != nil {
-		return GlobalInstallResult{}, err
+		return GlobalResolutionResult{Status: status}, fmt.Errorf("global CodeGraph executable: %w", err)
 	}
-	return GlobalInstallResult{Status: status, Path: path, Method: selected.Label, Command: selected.Command, Installed: true}, nil
+	return GlobalResolutionResult{Status: status, Available: true, Path: resolved}, statusErr
 }
 
 func (r *Runtime) ExecuteInDir(ctx context.Context, directory string, args []string, timeout time.Duration, limit int) (CommandResult, error) {

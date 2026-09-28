@@ -59,12 +59,12 @@ func (s *RTKService) Install(ctx context.Context) (rtk.InstallResult, error) {
 	return manager.Install(ctx)
 }
 
-func (s *RTKService) InstallGlobal(ctx context.Context) (rtk.GlobalInstallResult, error) {
+func (s *RTKService) ResolveGlobal(context.Context) (rtk.GlobalResolutionResult, error) {
 	manager, err := s.manager()
 	if err != nil {
-		return rtk.GlobalInstallResult{}, err
+		return rtk.GlobalResolutionResult{}, err
 	}
-	return manager.InstallGlobal(ctx)
+	return manager.ResolveGlobal()
 }
 
 func (s *RTKService) setEnabled(ctx context.Context, enabled bool) (rtk.Status, error) {
@@ -117,7 +117,7 @@ func BindRTKOperations(dispatcher *Dispatcher, service *RTKService) error {
 		{capability.IntegrationRTKDisable, func(ctx context.Context, _ any) (any, error) { return service.Disable(ctx) }},
 		{capability.IntegrationRTKProbe, func(ctx context.Context, _ any) (any, error) { return service.Probe(ctx) }},
 		{capability.IntegrationRTKInstall, func(ctx context.Context, _ any) (any, error) { return service.Install(ctx) }},
-		{capability.IntegrationRTKInstallGlobal, func(ctx context.Context, _ any) (any, error) { return service.InstallGlobal(ctx) }},
+		{capability.IntegrationRTKInstallGlobal, func(ctx context.Context, _ any) (any, error) { return service.ResolveGlobal(ctx) }},
 	}
 	for _, binding := range bindings {
 		if err := dispatcher.Register(binding.id, binding.handler); err != nil {

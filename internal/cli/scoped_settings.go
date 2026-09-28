@@ -254,6 +254,7 @@ func integrationSettingsCommand() *cobra.Command {
 		integrationModeSettingsCommand("caveman"),
 		integrationBinarySettingsCommand("rtk"),
 		integrationBinarySettingsCommand("codegraph"),
+		cfTunnelCommand(),
 		integrationTypeSafeSettingsCommand(),
 	)
 	return cmd

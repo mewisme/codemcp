@@ -31,7 +31,6 @@ const (
 	RouteOperation       Route = "operation"
 	RouteNetwork         Route = "network"
 	RouteTunnel          Route = "tunnel"
-	RouteTunnelCF        Route = "tunnel.cf"
 	RouteUpstreams       Route = "upstreams"
 	RouteUpstream        Route = "upstream"
 	RouteIntegrations    Route = "integrations"
@@ -425,8 +424,6 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.networkScreen(owner)
 	case RouteTunnel:
 		return ui.tunnelScreen(ctx, owner)
-	case RouteTunnelCF:
-		return ui.cfTunnelScreen(ctx, owner)
 	case RouteUpstreams:
 		return ui.upstreamListScreen(ctx, owner, state)
 	case RouteUpstream:
@@ -967,8 +964,6 @@ func routeLabel(route Route) string {
 		return "Network"
 	case RouteTunnel:
 		return "Secure MCP Tunnel"
-	case RouteTunnelCF:
-		return "Cloudflare Quick Tunnel"
 	case RouteUpstreams:
 		return "Upstreams"
 	case RouteUpstream:

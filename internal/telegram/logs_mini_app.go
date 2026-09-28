@@ -228,7 +228,7 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 			if !health.Enabled {
 				message = "Enable telegram.logs_mini_app.enabled to start the read-only Logs Mini App."
 			} else if !health.DependencyAvailable {
-				message = "Run cm tunnel cf install or provide a valid system cf-tunnel executable. Telegram polling and administration remain available without it."
+				message = "Run cm integration cf install for the managed asset or install cf-tunnel globally yourself. Telegram polling and administration remain available without it."
 			} else {
 				message = "The Logs Mini App is not ready yet."
 			}

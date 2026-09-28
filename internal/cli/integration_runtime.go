@@ -97,22 +97,26 @@ func rtkInstallCommand() *cobra.Command {
 
 func rtkInstallGlobalCommand() *cobra.Command {
 	return &cobra.Command{
-		Use: "global", Short: "Install RTK with an available system package manager", Args: cobra.NoArgs,
+		Use: "global", Short: "Use an RTK executable already installed globally by the user", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			result, err := application.NewRTKService().InstallGlobal(cmd.Context())
+			result, err := application.NewRTKService().ResolveGlobal(cmd.Context())
 			if err != nil {
 				return err
 			}
-			message := "Global RTK installed"
-			kind := presentation.StatusSuccess
-			if result.AlreadyInstalled {
-				message, kind = "Global RTK already installed", presentation.StatusInfo
+			if result.Available {
+				renderMutationResult(cmd, presentation.StatusSuccess, "Global RTK detected",
+					presentation.Field{Label: "path", Value: result.Path},
+					presentation.Field{Label: "ownership", Value: "user-installed global executable"},
+				)
+				return nil
 			}
-			renderMutationResult(cmd, kind, message,
-				presentation.Field{Label: "path", Value: result.Path},
-				presentation.Field{Label: "method", Value: result.Method},
-				presentation.Field{Label: "effective source", Value: result.Status.Source},
-			)
+			fields := []presentation.Field{{Label: "global", Value: "not installed"}}
+			if result.ManagedRecommended {
+				fields = append(fields, presentation.Field{Label: "recommended", Value: "cm integration rtk install"})
+			} else if result.Status.ManagedInstalled {
+				fields = append(fields, presentation.Field{Label: "managed asset", Value: "already available"})
+			}
+			renderMutationResult(cmd, presentation.StatusWarning, "Global RTK not found", fields...)
 			return nil
 		},
 	}
@@ -203,22 +207,26 @@ func codeGraphInstallCommand() *cobra.Command {
 
 func codeGraphInstallGlobalCommand() *cobra.Command {
 	return &cobra.Command{
-		Use: "global", Short: "Install CodeGraph with an available system package manager", Args: cobra.NoArgs,
+		Use: "global", Short: "Use a CodeGraph executable already installed globally by the user", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			result, err := application.NewCodeGraphService().InstallGlobal(cmd.Context())
+			result, err := application.NewCodeGraphService().ResolveGlobal(cmd.Context())
 			if err != nil {
 				return err
 			}
-			message := "Global CodeGraph installed"
-			kind := presentation.StatusSuccess
-			if result.AlreadyInstalled {
-				message, kind = "Global CodeGraph already installed", presentation.StatusInfo
+			if result.Available {
+				renderMutationResult(cmd, presentation.StatusSuccess, "Global CodeGraph detected",
+					presentation.Field{Label: "path", Value: result.Path},
+					presentation.Field{Label: "ownership", Value: "user-installed global executable"},
+				)
+				return nil
 			}
-			renderMutationResult(cmd, kind, message,
-				presentation.Field{Label: "path", Value: result.Path},
-				presentation.Field{Label: "method", Value: result.Method},
-				presentation.Field{Label: "effective source", Value: result.Status.Resolution.Source},
-			)
+			fields := []presentation.Field{{Label: "global", Value: "not installed"}}
+			if result.ManagedRecommended {
+				fields = append(fields, presentation.Field{Label: "recommended", Value: "cm integration codegraph install"})
+			} else if result.Status.ManagedInstalled {
+				fields = append(fields, presentation.Field{Label: "managed asset", Value: "already available"})
+			}
+			renderMutationResult(cmd, presentation.StatusWarning, "Global CodeGraph not found", fields...)
 			return nil
 		},
 	}

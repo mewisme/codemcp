@@ -12,7 +12,6 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
-	"go.mewis.me/codemcp/internal/integrations/cftunnel"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
@@ -35,11 +34,6 @@ const (
 	TunnelManagedUpdate    TunnelCommand = "tunnel.managed.update"
 	TunnelManagedDelete    TunnelCommand = "tunnel.managed.delete"
 	TunnelManagedConfigure TunnelCommand = "tunnel.managed.configure"
-	TunnelCFStatus         TunnelCommand = "tunnel.cf.status"
-	TunnelCFProbe          TunnelCommand = "tunnel.cf.probe"
-	TunnelCFInstall        TunnelCommand = "tunnel.cf.install"
-	TunnelCFUpdate         TunnelCommand = "tunnel.cf.update"
-	TunnelCFRemove         TunnelCommand = "tunnel.cf.remove"
 )
 
 type TunnelCommandMsg struct {
@@ -72,9 +66,6 @@ type tunnelOperationMsg struct {
 	metadata  tunnel.Metadata
 	items     []tunnel.Metadata
 	result    application.ManagedTunnelResult
-	cfStatus  cftunnel.Status
-	cfVersion string
-	cfRemoved bool
 	count     int
 	scope     tunnel.AdminScope
 	err       error
@@ -88,7 +79,6 @@ type TunnelPage struct {
 	action             string
 	dashboard          application.TunnelDashboard
 	adminStatus        application.TunnelAdminStatus
-	cfStatus           cftunnel.Status
 	items              []tunnel.Metadata
 	browser            component.Browser
 	detail             component.DetailPage
@@ -132,11 +122,7 @@ func NewTunnelDashboardRoute(ctx context.Context, section, action string) (*Tunn
 	if err != nil {
 		return nil, err
 	}
-	cfStatus, cfErr := application.NewCFTunnelService().Status(ctx)
-	if cfErr != nil {
-		return nil, cfErr
-	}
-	page := &TunnelPage{ctx: ctx, kind: tunnelPageRuntime, section: strings.TrimSpace(section), action: strings.TrimSpace(action), dashboard: dashboard, adminStatus: adminStatus, cfStatus: cfStatus}
+	page := &TunnelPage{ctx: ctx, kind: tunnelPageRuntime, section: strings.TrimSpace(section), action: strings.TrimSpace(action), dashboard: dashboard, adminStatus: adminStatus}
 	page.runtimeHelp = component.NewHelpFooter(page.runtimeHelpBindings()...)
 	if page.action != "" {
 		if err := page.initRuntimeEditor(); err != nil {
@@ -584,33 +570,6 @@ func (page *TunnelPage) openCommand(command TunnelCommand, resourceID string) (t
 		page.confirm = component.NewConfirmButtons("Remove", "Cancel", false)
 		page.overlay = tunnelOverlayConfirm
 		return nil, nil
-	case TunnelCFStatus:
-		return page.startOperation(command, "", "Refreshing cf-tunnel status", func(ctx context.Context) tunnelOperationMsg {
-			status, err := application.NewCFTunnelService().Status(ctx)
-			return tunnelOperationMsg{command: command, cfStatus: status, err: err}
-		}), nil
-	case TunnelCFProbe:
-		return page.startOperation(command, "", "Probing cf-tunnel", func(ctx context.Context) tunnelOperationMsg {
-			result, err := application.NewCFTunnelService().Probe(ctx)
-			return tunnelOperationMsg{command: command, cfStatus: result.Status, cfVersion: result.Version, err: err}
-		}), nil
-	case TunnelCFInstall:
-		return page.startOperation(command, "", "Installing cf-tunnel managed asset", func(ctx context.Context) tunnelOperationMsg {
-			result, err := application.NewCFTunnelService().Install(ctx)
-			return tunnelOperationMsg{command: command, cfStatus: result.Status, err: err}
-		}), nil
-	case TunnelCFUpdate:
-		return page.startOperation(command, "", "Updating cf-tunnel managed asset", func(ctx context.Context) tunnelOperationMsg {
-			result, err := application.NewCFTunnelService().Update(ctx)
-			return tunnelOperationMsg{command: command, cfStatus: result.Status, err: err}
-		}), nil
-	case TunnelCFRemove:
-		if !page.cfStatus.ManagedInstalled {
-			return nil, fmt.Errorf("managed cf-tunnel asset is not installed")
-		}
-		page.confirm = component.NewConfirmButtons("Remove", "Cancel", false)
-		page.overlay = tunnelOverlayConfirm
-		return nil, nil
 	case TunnelManagedRefresh:
 		if page.targetID == "" {
 			return page.startOperation(command, "", "Refreshing managed tunnels", func(ctx context.Context) tunnelOperationMsg {
@@ -694,11 +653,6 @@ func (page *TunnelPage) updateConfirm(msg tea.KeyPressMsg) tea.Cmd {
 		return page.startOperation(page.command, id, "Deleting managed tunnel", func(ctx context.Context) tunnelOperationMsg {
 			result, err := application.DeleteManagedTunnel(ctx, id, clearConfig)
 			return tunnelOperationMsg{command: TunnelManagedDelete, targetID: id, result: result, err: err}
-		})
-	case TunnelCFRemove:
-		return page.startOperation(page.command, "", "Removing cf-tunnel managed asset", func(ctx context.Context) tunnelOperationMsg {
-			result, err := application.NewCFTunnelService().Remove(ctx)
-			return tunnelOperationMsg{command: TunnelCFRemove, cfStatus: result.Status, cfRemoved: result.Removed, err: err}
 		})
 	default:
 		page.err = fmt.Errorf("unsupported tunnel confirmation: %s", page.command)
@@ -809,28 +763,6 @@ func (page *TunnelPage) finishOperation(msg tunnelOperationMsg) tea.Cmd {
 		_ = page.reloadManagedBrowser()
 		page.notice = "Managed tunnel deleted"
 		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnels"}, Replace: true} }
-	case TunnelCFStatus:
-		page.cfStatus = msg.cfStatus
-		page.notice = "cf-tunnel status refreshed"
-	case TunnelCFProbe:
-		page.cfStatus = msg.cfStatus
-		page.notice = "cf-tunnel probe succeeded"
-		if strings.TrimSpace(msg.cfVersion) != "" {
-			page.notice += " · " + msg.cfVersion
-		}
-	case TunnelCFInstall:
-		page.cfStatus = msg.cfStatus
-		page.notice = "cf-tunnel managed asset ready"
-	case TunnelCFUpdate:
-		page.cfStatus = msg.cfStatus
-		page.notice = "cf-tunnel managed asset updated"
-	case TunnelCFRemove:
-		page.cfStatus = msg.cfStatus
-		if msg.cfRemoved {
-			page.notice = "cf-tunnel managed asset removed"
-		} else {
-			page.notice = "No managed cf-tunnel asset was installed"
-		}
 	}
 	return nil
 }
@@ -862,11 +794,6 @@ func (page *TunnelPage) reloadDashboard() {
 	}
 	if status, err := application.TunnelAdminKeyStatus(); err == nil {
 		page.adminStatus = status
-	} else if page.err == nil {
-		page.err = err
-	}
-	if status, err := application.NewCFTunnelService().Status(page.ctx); err == nil {
-		page.cfStatus = status
 	} else if page.err == nil {
 		page.err = err
 	}
@@ -991,12 +918,6 @@ func (page *TunnelPage) runtimeViewWithFeedback(width int, feedback string) stri
 		[2]string{"Scope", tunnelScopeLabel(page.adminStatus.Scope)},
 	)
 	metadataSection := tunnelMetadataSection(status.Metadata, status.MetadataError)
-	cfSection := tunnelSection("Cloudflare Quick Tunnel",
-		[2]string{"State", cfTunnelTUIState(page.cfStatus)},
-		[2]string{"Source", string(page.cfStatus.Source)},
-		[2]string{"Version", page.cfStatus.Version},
-		[2]string{"Managed", tunnelYesNo(page.cfStatus.ManagedInstalled)},
-	)
 	page.runtimeHelp.SetBindings(page.runtimeHelpBindings()...)
 	actions := page.runtimeHelp.View(width)
 	lines := []string{
@@ -1004,8 +925,6 @@ func (page *TunnelPage) runtimeViewWithFeedback(width int, feedback string) stri
 		tunnelSectionPair(statusSection, tunnelSectionView, width),
 		"",
 		tunnelSectionPair(adminSection, metadataSection, width),
-		"",
-		cfSection,
 		"",
 		component.Muted("At least one MCP transport must remain enabled. Live process state is handled by Runtime."),
 	}
@@ -1027,16 +946,6 @@ func (page *TunnelPage) runtimeHelpBindings() []key.Binding {
 		bindings = append(bindings, component.Binding([]string{"v"}, "v", "verify"), component.Binding([]string{"d"}, "d", "remove admin"))
 	}
 	return bindings
-}
-
-func cfTunnelTUIState(status cftunnel.Status) string {
-	if status.Source == cftunnel.SourceUnavailable {
-		return component.ToneText("unavailable", component.ToneWarning)
-	}
-	if status.Verified {
-		return component.ToneText("ready", component.ToneSuccess)
-	}
-	return component.ToneText("unverified", component.ToneWarning)
 }
 
 func tunnelSection(title string, fields ...[2]string) string {
@@ -1108,9 +1017,6 @@ func valueOrNone(value string) string {
 }
 
 func (page *TunnelPage) confirmTitle() string {
-	if page.command == TunnelCFRemove {
-		return "Remove managed cf-tunnel asset?"
-	}
 	if page.command == TunnelAdminKeyRemove {
 		return "Remove stored tunnel admin key?"
 	}
@@ -1121,9 +1027,6 @@ func (page *TunnelPage) confirmTitle() string {
 }
 
 func (page *TunnelPage) confirmDescription() string {
-	if page.command == TunnelCFRemove {
-		return "Only the CodeMCP-managed asset is removed. A system cf-tunnel executable is never deleted."
-	}
 	if page.command == TunnelAdminKeyRemove {
 		return "The admin key and verification scope will be removed. Runtime tunnel configuration is unchanged."
 	}

@@ -75,8 +75,8 @@ const bindings: Binding[] = [
     operation: "integration.rtk.install",
   },
   {
-    method: "POST",
-    pattern: "/api/integrations/rtk/install/global",
+    method: "GET",
+    pattern: "/api/integrations/rtk/global",
     operation: "integration.rtk.install.global",
   },
   {
@@ -95,10 +95,15 @@ const bindings: Binding[] = [
     operation: "integration.codegraph.install",
   },
   {
-    method: "POST",
-    pattern: "/api/integrations/codegraph/install/global",
+    method: "GET",
+    pattern: "/api/integrations/codegraph/global",
     operation: "integration.codegraph.install.global",
   },
+  { method: "GET", pattern: "/api/integrations/cf", operation: "integration.cf.status" },
+  { method: "POST", pattern: "/api/integrations/cf/probe", operation: "integration.cf.probe" },
+  { method: "POST", pattern: "/api/integrations/cf/install", operation: "integration.cf.install" },
+  { method: "POST", pattern: "/api/integrations/cf/update", operation: "integration.cf.update" },
+  { method: "DELETE", pattern: "/api/integrations/cf", operation: "integration.cf.remove" },
   {
     method: "GET",
     pattern: "/api/integrations/typesafe",
@@ -371,27 +376,6 @@ const bindings: Binding[] = [
   { method: "POST", pattern: "/api/tunnel", operation: "tunnel.enable" },
   { method: "DELETE", pattern: "/api/tunnel", operation: "tunnel.disable" },
   { method: "PUT", pattern: "/api/tunnel", operation: "tunnel.configure" },
-  { method: "GET", pattern: "/api/tunnel/cf", operation: "tunnel.cf.status" },
-  {
-    method: "POST",
-    pattern: "/api/tunnel/cf/probe",
-    operation: "tunnel.cf.probe",
-  },
-  {
-    method: "POST",
-    pattern: "/api/tunnel/cf/install",
-    operation: "tunnel.cf.install",
-  },
-  {
-    method: "POST",
-    pattern: "/api/tunnel/cf/update",
-    operation: "tunnel.cf.update",
-  },
-  {
-    method: "DELETE",
-    pattern: "/api/tunnel/cf",
-    operation: "tunnel.cf.remove",
-  },
   {
     method: "GET",
     pattern: "/api/tunnel/admin/key",

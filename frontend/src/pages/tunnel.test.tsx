@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { TunnelPage } from "@/pages/tunnel"
-import { adminApi, type CFTunnelStatus, type PublicConfig, type TunnelStatus } from "@/lib/api"
+import { adminApi, type PublicConfig, type TunnelStatus } from "@/lib/api"
 
 const publicConfig = {
   server: {
@@ -65,24 +65,6 @@ const managedTunnels = [
   },
 ]
 
-const cfTunnelUnavailable: CFTunnelStatus = {
-  platform: "linux/amd64",
-  source: "unavailable",
-  verified: false,
-  managed_supported: true,
-  managed_installed: false,
-  consumer: "Telegram Logs Mini App",
-}
-
-const cfTunnelManaged: CFTunnelStatus = {
-  ...cfTunnelUnavailable,
-  source: "managed",
-  path: "/managed/cf-tunnel",
-  version: "v0.0.1",
-  verified: true,
-  managed_installed: true,
-}
-
 describe("TunnelPage", () => {
   beforeEach(() => {
     vi.spyOn(adminApi, "tunnelConfig").mockResolvedValue({
@@ -131,29 +113,6 @@ describe("TunnelPage", () => {
       ...tunnelStatus,
       running: false,
       ready: false,
-    })
-    vi.spyOn(adminApi, "cfTunnel").mockResolvedValue(cfTunnelUnavailable)
-    vi.spyOn(adminApi, "probeCFTunnel").mockResolvedValue({
-      status: cfTunnelManaged,
-      version: "v0.0.1",
-    })
-    vi.spyOn(adminApi, "installCFTunnel").mockResolvedValue({
-      status: cfTunnelManaged,
-      path: "/managed/cf-tunnel",
-      version: "v0.0.1",
-      installed: true,
-      already_installed: false,
-    })
-    vi.spyOn(adminApi, "updateCFTunnel").mockResolvedValue({
-      status: cfTunnelManaged,
-      path: "/managed/cf-tunnel",
-      version: "v0.0.1",
-      installed: false,
-      already_installed: true,
-    })
-    vi.spyOn(adminApi, "removeCFTunnel").mockResolvedValue({
-      status: cfTunnelUnavailable,
-      removed: true,
     })
   })
 
@@ -297,25 +256,4 @@ describe("TunnelPage", () => {
     expect(adminApi.managedTunnel).toHaveBeenCalledWith("tunnel_one")
   })
 
-  it("manages the Telegram Quick Tunnel dependency without changing tunnel authority", async () => {
-    const user = userEvent.setup()
-    render(<TunnelPage />)
-
-    await user.click(await screen.findByRole("tab", { name: "Cloudflare" }))
-    expect(await screen.findByText("Cloudflare Quick Tunnel")).toBeInTheDocument()
-    expect(screen.getAllByText(/Telegram Logs Mini App/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority/)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Probe" })).toBeDisabled()
-
-    await user.click(screen.getByRole("button", { name: "Install managed asset" }))
-    await waitFor(() => expect(adminApi.installCFTunnel).toHaveBeenCalledOnce())
-    expect(await screen.findByText("/managed/cf-tunnel")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Update" })).toBeInTheDocument()
-
-    await user.click(screen.getByRole("button", { name: "Remove managed asset" }))
-    expect(screen.getByText("Remove managed cf-tunnel?")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Remove" }))
-    await waitFor(() => expect(adminApi.removeCFTunnel).toHaveBeenCalledOnce())
-    expect(await screen.findByRole("button", { name: "Install managed asset" })).toBeInTheDocument()
-  })
 })

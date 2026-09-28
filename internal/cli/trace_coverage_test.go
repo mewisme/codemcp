@@ -89,7 +89,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 		"integration rtk status", "integration rtk probe", "integration rtk install", "integration rtk install global",
 		"integration codegraph status", "integration codegraph probe", "integration codegraph install", "integration codegraph install global",
 		"integration codegraph init", "integration codegraph sync", "integration codegraph workspace status",
-		"tunnel cf status", "tunnel cf probe", "tunnel cf install", "tunnel cf update", "tunnel cf remove",
+		"integration cf status", "integration cf probe", "integration cf install", "integration cf update", "integration cf remove",
 	)
 	add(commandTraceTrivial, nil, "telemetry status", "telemetry show")
 	add(commandTraceInstrumented, []string{"setting.set.completed"}, "telemetry enable", "telemetry disable")

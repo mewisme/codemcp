@@ -25,7 +25,7 @@ func defaultActionRegistry() *action.Registry {
 		navigationAction("app.go.upstreams", "Upstreams", Route{Kind: RouteMCP}, []string{"mcp", "server", "upstream"}, capability.UpstreamServerList, capability.UpstreamServerShow, capability.UpstreamAuthStatus),
 		navigationAction("app.go.tunnel", "Tunnel", Route{Kind: RouteTunnel}, []string{"tunnel", "secure"}, capability.TunnelStatus, capability.TunnelAdminKeyStatus),
 		navigationAction("app.go.tools", "Tools", Route{Kind: RouteTools}, []string{"tools", "schema", "inventory"}, capability.ToolInventoryRead),
-		navigationAction("app.go.integrations", "Integrations", Route{Kind: RouteIntegrations}, []string{"integration", "rtk", "codegraph", "typesafe"}, capability.IntegrationRTKStatus, capability.IntegrationCodeGraphStatus, capability.IntegrationTypeSafeStatus),
+		navigationAction("app.go.integrations", "Integrations", Route{Kind: RouteIntegrations}, []string{"integration", "rtk", "codegraph", "cf", "cloudflare", "typesafe"}, capability.IntegrationRTKStatus, capability.IntegrationCodeGraphStatus, capability.IntegrationCFStatus, capability.IntegrationTypeSafeStatus),
 		navigationAction("app.go.doctor", "Doctor", Route{Kind: RouteDoctor}, []string{"doctor", "diagnostics", "health", "checkpoint", "history"}, capability.DoctorRead),
 		navigationAction("app.go.requests", "Requests", Route{Kind: RouteRequests}, []string{"request", "approval"}, capability.RequestView),
 		navigationAction("app.go.completions", "Agent Completions", Route{Kind: RouteCompletions}, []string{"agent", "completion", "completions", "history", "current", "list", "view", "doctor", "health"}, capability.CompletionCurrent, capability.CompletionDoctor, capability.CompletionList, capability.CompletionView),
@@ -193,11 +193,6 @@ func requestAction(id, title, description string, keywords, commandPath []string
 
 func tunnelActions() []action.Action {
 	return []action.Action{
-		tunnelAction("tunnel.cf.status", "Show Cloudflare Quick Tunnel dependency", "Inspect the effective cf-tunnel executable used for ephemeral ingress", []string{"tunnel", "cf", "cloudflare", "status"}, []string{"tunnel", "cf", "status"}, tuipage.TunnelCFStatus, RouteTunnel, false),
-		tunnelAction("tunnel.cf.probe", "Probe Cloudflare Quick Tunnel dependency", "Verify the resolved cf-tunnel executable contract without opening ingress", []string{"tunnel", "cf", "cloudflare", "probe"}, []string{"tunnel", "cf", "probe"}, tuipage.TunnelCFProbe, RouteTunnel, false),
-		tunnelAction("tunnel.cf.install", "Install Cloudflare Quick Tunnel dependency", "Install the pinned verified cf-tunnel managed asset", []string{"tunnel", "cf", "cloudflare", "install"}, []string{"tunnel", "cf", "install"}, tuipage.TunnelCFInstall, RouteTunnel, false),
-		tunnelAction("tunnel.cf.update", "Update Cloudflare Quick Tunnel dependency", "Ensure the pinned compatible cf-tunnel managed asset", []string{"tunnel", "cf", "cloudflare", "update"}, []string{"tunnel", "cf", "update"}, tuipage.TunnelCFUpdate, RouteTunnel, false),
-		tunnelAction("tunnel.cf.remove", "Remove managed Cloudflare Quick Tunnel dependency", "Remove only the CodeMCP-managed cf-tunnel asset", []string{"tunnel", "cf", "cloudflare", "remove"}, []string{"tunnel", "cf", "remove"}, tuipage.TunnelCFRemove, RouteTunnel, false),
 		editorNavigationAction("tunnel.configure", "Configure runtime tunnel", "Tunnel", "Configure the local OpenAI Secure MCP Tunnel", []string{"tunnel", "configure", "runtime"}, []string{"tunnel", "configure"}, func(ctx action.Context) bool { return ctx.Route == string(RouteTunnel) }, func(action.Context) Route { return Route{Kind: RouteTunnel, Action: "edit"} }),
 		tunnelAction("tunnel.enable", "Enable runtime tunnel", "Enable the local OpenAI Secure MCP Tunnel", []string{"tunnel", "enable", "runtime"}, []string{"tunnel", "enable"}, tuipage.TunnelEnable, RouteTunnel, false),
 		tunnelAction("tunnel.disable", "Disable runtime tunnel", "Disable the local OpenAI Secure MCP Tunnel", []string{"tunnel", "disable", "runtime"}, []string{"tunnel", "disable"}, tuipage.TunnelDisable, RouteTunnel, false),
@@ -239,7 +234,7 @@ func integrationActions() []action.Action {
 	global := func(id, title, description string, operation capability.ID, command tuipage.IntegrationCommand) action.Action {
 		return action.Action{
 			ID: id, Title: title, Category: "Integrations", Description: description,
-			Keywords:  []string{"integration", "rtk", "codegraph", "typesafe", "enable", "disable", "install"},
+			Keywords:  []string{"integration", "rtk", "codegraph", "cf", "cloudflare", "typesafe", "enable", "disable", "install", "global"},
 			Operation: operation, Capabilities: []capability.ID{operation}, Scope: action.ScopeGlobal,
 			Run: func(context.Context, action.Context) tea.Cmd {
 				return func() tea.Msg { return tuipage.IntegrationCommandMsg{Command: command} }
@@ -261,9 +256,13 @@ func integrationActions() []action.Action {
 		global("integration.rtk.enable", "Enable RTK", "Enable RTK command rewriting through the canonical integration setting", capability.IntegrationRTKEnable, tuipage.IntegrationRTKEnable),
 		global("integration.rtk.disable", "Disable RTK", "Disable RTK command rewriting through the canonical integration setting", capability.IntegrationRTKDisable, tuipage.IntegrationRTKDisable),
 		global("integration.rtk.install", "Install RTK", "Install the managed RTK executable", capability.IntegrationRTKInstall, tuipage.IntegrationRTKInstall),
-		global("integration.rtk.install.global", "Install RTK globally", "Install RTK through an available system package manager", capability.IntegrationRTKInstallGlobal, tuipage.IntegrationRTKInstallGlobal),
+		global("integration.rtk.install.global", "Check global RTK", "Use an RTK executable already installed globally by the user when present", capability.IntegrationRTKInstallGlobal, tuipage.IntegrationRTKInstallGlobal),
 		global("integration.codegraph.install", "Install CodeGraph", "Install the managed CodeGraph executable", capability.IntegrationCodeGraphInstall, tuipage.IntegrationCodeGraphInstall),
-		global("integration.codegraph.install.global", "Install CodeGraph globally", "Install CodeGraph through an available system package manager", capability.IntegrationCodeGraphInstallGlobal, tuipage.IntegrationCodeGraphInstallGlobal),
+		global("integration.codegraph.install.global", "Check global CodeGraph", "Use a CodeGraph executable already installed globally by the user when present", capability.IntegrationCodeGraphInstallGlobal, tuipage.IntegrationCodeGraphInstallGlobal),
+		global("integration.cf.probe", "Probe Cloudflare Quick Tunnel", "Verify the effective cf-tunnel executable contract", capability.IntegrationCFProbe, tuipage.IntegrationCFProbe),
+		global("integration.cf.install", "Install managed cf-tunnel", "Install the verified CodeMCP-managed cf-tunnel asset", capability.IntegrationCFInstall, tuipage.IntegrationCFInstall),
+		global("integration.cf.update", "Update managed cf-tunnel", "Update the CodeMCP-managed cf-tunnel asset", capability.IntegrationCFUpdate, tuipage.IntegrationCFUpdate),
+		global("integration.cf.remove", "Remove managed cf-tunnel", "Remove only the CodeMCP-managed cf-tunnel asset", capability.IntegrationCFRemove, tuipage.IntegrationCFRemove),
 		global("integration.typesafe.enable", "Enable TypeSafe", "Enable the TypeSafe provider through the canonical integration setting", capability.IntegrationTypeSafeEnable, tuipage.IntegrationTypeSafeEnable),
 		global("integration.typesafe.disable", "Disable TypeSafe", "Disable the TypeSafe provider through the canonical integration setting", capability.IntegrationTypeSafeDisable, tuipage.IntegrationTypeSafeDisable),
 		workspaceAction("workspace.codegraph.init", "Initialize CodeGraph index", "Initialize the CodeGraph index for the current workspace", capability.IntegrationCodeGraphWorkspaceInit, tuipage.IntegrationCodeGraphInit),

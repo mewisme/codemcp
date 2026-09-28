@@ -5,15 +5,19 @@ import { PageError, PageLoading } from "@/components/page-state"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
 import {
   adminApi,
+  type CFTunnelStatus,
+  type GlobalExecutableResolution,
   type IntegrationStatus,
   type TypeSafeStatus,
 } from "@/lib/api"
@@ -21,20 +25,26 @@ import {
 export function IntegrationsPage() {
   const [rtk, setRTK] = useState<IntegrationStatus | null>(null)
   const [codeGraph, setCodeGraph] = useState<IntegrationStatus | null>(null)
+  const [cf, setCF] = useState<CFTunnelStatus | null>(null)
+  const [cfVersion, setCFVersion] = useState("")
+  const [removeCFOpen, setRemoveCFOpen] = useState(false)
   const [typeSafe, setTypeSafe] = useState<TypeSafeStatus | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
+  const [notice, setNotice] = useState("")
 
   async function load() {
     try {
-      const [nextRTK, nextCodeGraph, nextTypeSafe] = await Promise.all([
+      const [nextRTK, nextCodeGraph, nextCF, nextTypeSafe] = await Promise.all([
         adminApi.rtkStatus(),
         adminApi.codeGraphStatus(),
+        adminApi.cfTunnel(),
         adminApi.typeSafeStatus(),
       ])
       setRTK(nextRTK)
       setCodeGraph(nextCodeGraph)
+      setCF(nextCF)
       setTypeSafe(nextTypeSafe)
       setError("")
     } catch (value) {
@@ -48,12 +58,14 @@ export function IntegrationsPage() {
     void Promise.all([
       adminApi.rtkStatus(),
       adminApi.codeGraphStatus(),
+      adminApi.cfTunnel(),
       adminApi.typeSafeStatus(),
     ])
-      .then(([nextRTK, nextCodeGraph, nextTypeSafe]) => {
+      .then(([nextRTK, nextCodeGraph, nextCF, nextTypeSafe]) => {
         if (!active) return
         setRTK(nextRTK)
         setCodeGraph(nextCodeGraph)
+        setCF(nextCF)
         setTypeSafe(nextTypeSafe)
         setError("")
       })
@@ -70,6 +82,7 @@ export function IntegrationsPage() {
 
   async function act(name: string, action: () => Promise<unknown>) {
     setBusy(name)
+    setNotice("")
     try {
       await action()
       await load()
@@ -78,6 +91,38 @@ export function IntegrationsPage() {
     } finally {
       setBusy("")
     }
+  }
+
+  async function checkGlobal(name: string, action: () => Promise<GlobalExecutableResolution>, managedCommand: string) {
+    setBusy(`${name.toLowerCase()}-global`)
+    try {
+      const result = await action()
+      if (name === "RTK") setRTK(result.status)
+      if (name === "CodeGraph") setCodeGraph(result.status)
+      if (result.available) {
+        setNotice(`${name} global executable detected${result.path ? ` at ${result.path}` : ""}.`)
+      } else if (result.managed_recommended) {
+        setNotice(`${name} is not installed globally. Use the verified managed asset instead: ${managedCommand}.`)
+      } else {
+        setNotice(`${name} is not installed globally; a managed asset is already available.`)
+      }
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+    } finally {
+      setBusy("")
+    }
+  }
+
+  async function cfAct(action: "probe" | "install" | "update" | "remove") {
+    setBusy(`cf-${action}`)
+    try {
+      if (action === "probe") { const result = await adminApi.probeCFTunnel(); setCF(result.status); setCFVersion(result.version ?? "") }
+      if (action === "install") { const result = await adminApi.installCFTunnel(); setCF(result.status); setCFVersion(result.version ?? "") }
+      if (action === "update") { const result = await adminApi.updateCFTunnel(); setCF(result.status); setCFVersion(result.version ?? "") }
+      if (action === "remove") { const result = await adminApi.removeCFTunnel(); setCF(result.status); setCFVersion(""); setRemoveCFOpen(false) }
+      setError("")
+    } catch (value) { setError(errorText(value)) } finally { setBusy("") }
   }
 
   if (loading) return <PageLoading rows={6} />
@@ -94,6 +139,7 @@ export function IntegrationsPage() {
         }
       />
       <PageError message={error} />
+      {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
       <IntegrationCard
         title="RTK"
         description="Command rewriting and managed executable resolution."
@@ -117,9 +163,9 @@ export function IntegrationsPage() {
                 void act("rtk-install", () => adminApi.rtkAction("install"))
               }
             >
-              Install
+              Install managed
             </Button>
-            <Button disabled={Boolean(busy)} size="sm" variant="outline" onClick={() => void act("rtk-install-global", () => adminApi.rtkAction("install/global"))}>Install globally</Button>
+            <Button disabled={Boolean(busy)} size="sm" variant="outline" onClick={() => void checkGlobal("RTK", () => adminApi.rtkGlobal(), "cm integration rtk install")}>Check global</Button>
             <Button
               disabled={Boolean(busy)}
               size="sm"
@@ -170,12 +216,13 @@ export function IntegrationsPage() {
                 )
               }
             >
-              Install
+              Install managed
             </Button>
-            <Button disabled={Boolean(busy)} size="sm" variant="outline" onClick={() => void act("codegraph-install-global", () => adminApi.codeGraphAction("install/global"))}>Install globally</Button>
+            <Button disabled={Boolean(busy)} size="sm" variant="outline" onClick={() => void checkGlobal("CodeGraph", () => adminApi.codeGraphGlobal(), "cm integration codegraph install")}>Check global</Button>
           </>
         }
       />
+      <CFTunnelCard status={cf} reportedVersion={cfVersion} busy={busy} removeOpen={removeCFOpen} setRemoveOpen={setRemoveCFOpen} act={cfAct} />
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -243,6 +290,13 @@ export function IntegrationsPage() {
     </div>
   )
 }
+
+function CFTunnelCard({ status, reportedVersion, busy, removeOpen, setRemoveOpen, act }: { status: CFTunnelStatus | null; reportedVersion: string; busy: string; removeOpen: boolean; setRemoveOpen: (open: boolean) => void; act: (action: "probe" | "install" | "update" | "remove") => Promise<void> }) {
+  const available = status?.source !== "unavailable"
+  return <Card><CardHeader><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle>Cloudflare Quick Tunnel</CardTitle><CardDescription className="mt-1">cf-tunnel integration for ephemeral Telegram Logs Mini App ingress. OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority.</CardDescription></div><Badge variant={available ? "secondary" : "outline"}>{available ? status?.source : "Unavailable"}</Badge></div></CardHeader><CardContent className="space-y-3">{status ? <div className="grid gap-3 md:grid-cols-2"><IntegrationField label="Platform" value={status.platform} /><IntegrationField label="Source" value={status.source} /><IntegrationField label="Version" value={reportedVersion || status.version || "-"} /><IntegrationField label="Verified" value={status.verified ? "Yes" : "No"} /><IntegrationField label="Managed asset" value={status.managed_installed ? "Installed" : status.managed_supported ? "Available" : "Unsupported"} /><IntegrationField label="Consumer" value={status.consumer || "Telegram Logs Mini App"} />{status.path ? <div className="md:col-span-2"><IntegrationField label="Executable" value={status.path} /></div> : null}</div> : <PageLoading rows={3} />}</CardContent><CardFooter className="flex flex-wrap justify-end gap-2 border-t"><Button disabled={Boolean(busy) || !available} size="sm" variant="outline" onClick={() => void act("probe")}>{busy === "cf-probe" ? "Probing..." : "Probe"}</Button>{!available && status?.managed_supported ? <Button disabled={Boolean(busy)} size="sm" onClick={() => void act("install")}>{busy === "cf-install" ? "Installing..." : "Install managed"}</Button> : null}{status?.managed_installed ? <><Button disabled={Boolean(busy)} size="sm" variant="outline" onClick={() => void act("update")}>{busy === "cf-update" ? "Updating..." : "Update managed"}</Button><Button disabled={Boolean(busy)} size="sm" variant="destructive" onClick={() => setRemoveOpen(true)}>Remove managed</Button></> : null}</CardFooter><AlertDialog open={removeOpen} onOpenChange={(open) => { if (!busy) setRemoveOpen(open) }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove managed cf-tunnel?</AlertDialogTitle><AlertDialogDescription>This removes only CodeMCP's managed cf-tunnel asset. A user-installed global cf-tunnel is never removed.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={Boolean(busy)}>Cancel</AlertDialogCancel><AlertDialogAction disabled={Boolean(busy)} variant="destructive" onClick={() => void act("remove")}>{busy === "cf-remove" ? "Removing..." : "Remove"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></Card>
+}
+
+function IntegrationField({ label, value }: { label: string; value: string }) { return <div><div className="text-xs text-muted-foreground">{label}</div><div className="mt-1 break-all text-sm font-medium">{value}</div></div> }
 
 function IntegrationCard({
   title,

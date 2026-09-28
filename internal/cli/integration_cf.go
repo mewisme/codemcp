@@ -15,8 +15,8 @@ func cfTunnelCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "cf",
 		Aliases: []string{"cf-tunnel"},
-		Short:   "Manage the Cloudflare Quick Tunnel dependency",
-		Long:    "Manage the verified cf-tunnel executable used for ephemeral Cloudflare Quick Tunnel ingress. This does not create a second persistent tunnel authority.",
+		Short:   "Manage the Cloudflare Quick Tunnel integration",
+		Long:    "Manage the verified cf-tunnel integration used for ephemeral Telegram Logs Mini App ingress. OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority.",
 	}
 	cmd.AddCommand(
 		tunnelCFStatusCommand(),
@@ -30,7 +30,7 @@ func cfTunnelCommand() *cobra.Command {
 
 func tunnelCFStatusCommand() *cobra.Command {
 	var asJSON bool
-	cmd := &cobra.Command{Use: "status", Aliases: []string{"st"}, Short: "Show cf-tunnel executable status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "status", Aliases: []string{"st"}, Short: "Show Cloudflare Quick Tunnel integration status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		status, err := application.NewCFTunnelService().Status(cmd.Context())
 		if err != nil {
 			return err
@@ -122,7 +122,7 @@ func tunnelCFRemoveCommand() *cobra.Command {
 }
 
 func renderCFTunnelStatus(presenter *presentation.Presenter, status cftunnel.Status, version string) {
-	presenter.Frame("Cloudflare Quick Tunnel dependency")
+	presenter.Frame("Cloudflare Quick Tunnel integration")
 	state := "unavailable"
 	kind := presentation.StatusInactive
 	if status.Source != cftunnel.SourceUnavailable {

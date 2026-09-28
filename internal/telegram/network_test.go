@@ -16,25 +16,25 @@ func TestCFTunnelScreenExposesManagedAssetLifecycleWithoutSecondTunnelAuthority(
 		Version: "v0.0.1", Platform: "linux/amd64", Source: cftunnel.SourceUnavailable,
 		ManagedSupported: true, Consumer: "Telegram Logs Mini App",
 	}
-	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.TunnelCFStatus: status}}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.IntegrationCFStatus: status}}
 	ui, owner := newDomainTestInterface(t, dispatcher)
-	screen, err := ui.cfTunnelScreen(t.Context(), owner)
+	screen, err := ui.integrationScreen(t.Context(), owner, ActionState{Route: RouteIntegration, Back: RouteIntegrations, ResourceID: "cf"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := RichFallback(screen.Rich).Text
-	for _, want := range []string{"Cloudflare Quick Tunnel", "v0.0.1", "Telegram Logs Mini App", "OpenAI Secure MCP Tunnel remains the persistent tunnel authority"} {
+	for _, want := range []string{"Cloudflare Quick Tunnel", "v0.0.1", "Telegram Logs Mini App", "OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("cf-tunnel screen missing %q: %q", want, text)
 		}
 	}
 	labels := keyboardLabels(screen.Keyboard)
-	for _, want := range []string{"Probe", "Install", "Back", "Home"} {
+	for _, want := range []string{"Probe", "Install managed", "Back", "Home"} {
 		if !strings.Contains(labels, want) {
 			t.Fatalf("cf-tunnel keyboard missing %q: %s", want, labels)
 		}
 	}
-	if strings.Contains(labels, "Remove managed asset") || strings.Contains(labels, "Update") {
+	if strings.Contains(labels, "Remove managed") || strings.Contains(labels, "Update managed") {
 		t.Fatalf("unavailable cf-tunnel exposed managed-only actions: %s", labels)
 	}
 }
@@ -44,19 +44,19 @@ func TestCFTunnelScreenExposesUpdateAndManagedOnlyRemoveWhenInstalled(t *testing
 		Version: "v0.0.1", Platform: "linux/amd64", Source: cftunnel.SourceManaged, Path: "/managed/cf-tunnel",
 		Verified: true, ManagedSupported: true, ManagedInstalled: true, Consumer: "Telegram Logs Mini App",
 	}
-	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.TunnelCFStatus: status}}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.IntegrationCFStatus: status}}
 	ui, owner := newDomainTestInterface(t, dispatcher)
-	screen, err := ui.cfTunnelScreen(t.Context(), owner)
+	screen, err := ui.integrationScreen(t.Context(), owner, ActionState{Route: RouteIntegration, Back: RouteIntegrations, ResourceID: "cf"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	labels := keyboardLabels(screen.Keyboard)
-	for _, want := range []string{"Probe", "Update", "Remove managed asset"} {
+	for _, want := range []string{"Probe", "Update managed", "Remove managed"} {
 		if !strings.Contains(labels, want) {
 			t.Fatalf("managed cf-tunnel keyboard missing %q: %s", want, labels)
 		}
 	}
-	if strings.Contains(labels, "Install") {
+	if strings.Contains(labels, "Install managed") {
 		t.Fatalf("managed cf-tunnel unexpectedly exposes Install: %s", labels)
 	}
 }

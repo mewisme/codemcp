@@ -43,7 +43,7 @@ func TestPlatformMetadataMatchesPinnedRelease(t *testing.T) {
 		if !ok {
 			t.Fatalf("platform %s unavailable", key)
 		}
-		if platform.Portable.SHA256 != sha || !strings.Contains(platform.Portable.URL, "/v0.49.0/") || platform.Portable.Entrypoint == "" || len(platform.Install) == 0 {
+		if platform.Portable.SHA256 != sha || !strings.Contains(platform.Portable.URL, "/v0.49.0/") || platform.Portable.Entrypoint == "" {
 			t.Fatalf("platform %s=%#v", key, platform)
 		}
 		if err := validatePortable(platform.Portable); err != nil {
@@ -52,6 +52,38 @@ func TestPlatformMetadataMatchesPinnedRelease(t *testing.T) {
 	}
 	if _, ok := PlatformFor("plan9", "amd64"); ok {
 		t.Fatal("unsupported platform accepted")
+	}
+}
+
+func TestResolveGlobalOnlyDiscoversUserInstalledExecutable(t *testing.T) {
+	manager := New(Options{Enabled: true, ManagedRoot: t.TempDir()})
+	manager.goos, manager.goarch = "linux", "amd64"
+	manager.lookPath = func(name string) (string, error) {
+		if name != "rtk" {
+			t.Fatalf("lookPath(%q) want rtk", name)
+		}
+		return "", errors.New("missing")
+	}
+	manager.run = func(context.Context, string, ...string) (runResult, error) {
+		t.Fatal("global discovery must never run an installer or command")
+		return runResult{}, nil
+	}
+	result, err := manager.ResolveGlobal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Available || !result.ManagedRecommended || result.Path != "" {
+		t.Fatalf("missing global result=%#v", result)
+	}
+
+	path := testExecutable(t, "rtk-global")
+	manager.lookPath = func(string) (string, error) { return path, nil }
+	result, err = manager.ResolveGlobal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Available || result.Path != path || result.ManagedRecommended {
+		t.Fatalf("global result=%#v", result)
 	}
 }
 

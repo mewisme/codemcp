@@ -26,6 +26,10 @@ const (
 	IntegrationRTKInstallGlobal       IntegrationCommand = "integration.rtk.install.global"
 	IntegrationCodeGraphInstall       IntegrationCommand = "integration.codegraph.install"
 	IntegrationCodeGraphInstallGlobal IntegrationCommand = "integration.codegraph.install.global"
+	IntegrationCFProbe                IntegrationCommand = "integration.cf.probe"
+	IntegrationCFInstall              IntegrationCommand = "integration.cf.install"
+	IntegrationCFUpdate               IntegrationCommand = "integration.cf.update"
+	IntegrationCFRemove               IntegrationCommand = "integration.cf.remove"
 	IntegrationCodeGraphInit          IntegrationCommand = "integration.codegraph.workspace.init"
 	IntegrationCodeGraphSync          IntegrationCommand = "integration.codegraph.workspace.sync"
 	IntegrationTypeSafeEnable         IntegrationCommand = "integration.typesafe.enable"
@@ -95,6 +99,7 @@ func NewIntegrationsReadView(ctx context.Context, resourceID, action, workspaceI
 	rtkService := application.NewRTKService()
 	manager := workspace.NewManager(workspace.DefaultStorePath())
 	codeGraphService := application.NewCodeGraphService(manager)
+	cfService := application.NewCFTunnelService()
 	typeSafeService := application.NewTypeSafeService()
 	resourceID = strings.ToLower(strings.TrimSpace(resourceID))
 	action = strings.ToLower(strings.TrimSpace(action))
@@ -105,6 +110,9 @@ func NewIntegrationsReadView(ctx context.Context, resourceID, action, workspaceI
 		}
 		if resourceID == "codegraph" && action == "probe" {
 			return codeGraphService.Probe(ctx)
+		}
+		if resourceID == "cf" && action == "probe" {
+			return cfService.Probe(ctx)
 		}
 		if resourceID == "codegraph" && workspaceID != "" {
 			return codeGraphService.WorkspaceStatus(ctx, application.CodeGraphWorkspaceInput{WorkspaceID: workspaceID})
@@ -117,11 +125,15 @@ func NewIntegrationsReadView(ctx context.Context, resourceID, action, workspaceI
 		if err != nil {
 			return nil, err
 		}
+		cfStatus, err := cfService.Status(ctx)
+		if err != nil {
+			return nil, err
+		}
 		typeSafeStatus, err := typeSafeService.Status(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"rtk": rtkStatus, "codegraph": codeGraphStatus, "typesafe": typeSafeStatus}, nil
+		return map[string]any{"rtk": rtkStatus, "codegraph": codeGraphStatus, "cf": cfStatus, "typesafe": typeSafeStatus}, nil
 	})
 	page.integrationRun = func(ctx context.Context, operation capability.ID, workspaceID string) (any, error) {
 		switch operation {
@@ -132,11 +144,19 @@ func NewIntegrationsReadView(ctx context.Context, resourceID, action, workspaceI
 		case capability.IntegrationRTKInstall:
 			return rtkService.Install(ctx)
 		case capability.IntegrationRTKInstallGlobal:
-			return rtkService.InstallGlobal(ctx)
+			return rtkService.ResolveGlobal(ctx)
 		case capability.IntegrationCodeGraphInstall:
 			return codeGraphService.Install(ctx)
 		case capability.IntegrationCodeGraphInstallGlobal:
-			return codeGraphService.InstallGlobal(ctx)
+			return codeGraphService.ResolveGlobal(ctx)
+		case capability.IntegrationCFProbe:
+			return cfService.Probe(ctx)
+		case capability.IntegrationCFInstall:
+			return cfService.Install(ctx)
+		case capability.IntegrationCFUpdate:
+			return cfService.Update(ctx)
+		case capability.IntegrationCFRemove:
+			return cfService.Remove(ctx)
 		case capability.IntegrationCodeGraphWorkspaceInit:
 			return codeGraphService.InitWorkspace(ctx, application.CodeGraphWorkspaceInput{WorkspaceID: strings.TrimSpace(workspaceID)})
 		case capability.IntegrationCodeGraphWorkspaceSync:
@@ -291,6 +311,10 @@ func integrationCommandOperation(command IntegrationCommand) (capability.ID, err
 		capability.IntegrationRTKInstallGlobal,
 		capability.IntegrationCodeGraphInstall,
 		capability.IntegrationCodeGraphInstallGlobal,
+		capability.IntegrationCFProbe,
+		capability.IntegrationCFInstall,
+		capability.IntegrationCFUpdate,
+		capability.IntegrationCFRemove,
 		capability.IntegrationCodeGraphWorkspaceInit,
 		capability.IntegrationCodeGraphWorkspaceSync,
 		capability.IntegrationTypeSafeEnable,
@@ -313,11 +337,19 @@ func integrationOperationTitle(operation capability.ID) string {
 	case capability.IntegrationRTKInstall:
 		return "Installing RTK"
 	case capability.IntegrationRTKInstallGlobal:
-		return "Installing RTK globally"
+		return "Checking global RTK"
 	case capability.IntegrationCodeGraphInstall:
 		return "Installing CodeGraph"
 	case capability.IntegrationCodeGraphInstallGlobal:
-		return "Installing CodeGraph globally"
+		return "Checking global CodeGraph"
+	case capability.IntegrationCFProbe:
+		return "Probing Cloudflare Quick Tunnel"
+	case capability.IntegrationCFInstall:
+		return "Installing managed cf-tunnel"
+	case capability.IntegrationCFUpdate:
+		return "Updating managed cf-tunnel"
+	case capability.IntegrationCFRemove:
+		return "Removing managed cf-tunnel"
 	case capability.IntegrationCodeGraphWorkspaceInit:
 		return "Initializing CodeGraph workspace"
 	case capability.IntegrationCodeGraphWorkspaceSync:
@@ -340,11 +372,19 @@ func integrationOperationNotice(operation capability.ID) string {
 	case capability.IntegrationRTKInstall:
 		return "RTK installed"
 	case capability.IntegrationRTKInstallGlobal:
-		return "RTK installed globally"
+		return "Global RTK checked"
 	case capability.IntegrationCodeGraphInstall:
 		return "CodeGraph installed"
 	case capability.IntegrationCodeGraphInstallGlobal:
-		return "CodeGraph installed globally"
+		return "Global CodeGraph checked"
+	case capability.IntegrationCFProbe:
+		return "cf-tunnel probe completed"
+	case capability.IntegrationCFInstall:
+		return "Managed cf-tunnel installed"
+	case capability.IntegrationCFUpdate:
+		return "Managed cf-tunnel updated"
+	case capability.IntegrationCFRemove:
+		return "Managed cf-tunnel removed"
 	case capability.IntegrationCodeGraphWorkspaceInit:
 		return "CodeGraph workspace initialized"
 	case capability.IntegrationCodeGraphWorkspaceSync:

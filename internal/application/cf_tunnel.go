@@ -82,11 +82,11 @@ func BindCFTunnelOperations(dispatcher *Dispatcher, service *CFTunnelService) er
 		id      capability.ID
 		handler OperationHandler
 	}{
-		{capability.TunnelCFStatus, func(ctx context.Context, _ any) (any, error) { return service.Status(ctx) }},
-		{capability.TunnelCFProbe, func(ctx context.Context, _ any) (any, error) { return service.Probe(ctx) }},
-		{capability.TunnelCFInstall, func(ctx context.Context, _ any) (any, error) { return service.Install(ctx) }},
-		{capability.TunnelCFUpdate, func(ctx context.Context, _ any) (any, error) { return service.Update(ctx) }},
-		{capability.TunnelCFRemove, func(ctx context.Context, _ any) (any, error) { return service.Remove(ctx) }},
+		{capability.IntegrationCFStatus, func(ctx context.Context, _ any) (any, error) { return service.Status(ctx) }},
+		{capability.IntegrationCFProbe, func(ctx context.Context, _ any) (any, error) { return service.Probe(ctx) }},
+		{capability.IntegrationCFInstall, func(ctx context.Context, _ any) (any, error) { return service.Install(ctx) }},
+		{capability.IntegrationCFUpdate, func(ctx context.Context, _ any) (any, error) { return service.Update(ctx) }},
+		{capability.IntegrationCFRemove, func(ctx context.Context, _ any) (any, error) { return service.Remove(ctx) }},
 	}
 	for _, binding := range bindings {
 		if err := dispatcher.Register(binding.id, binding.handler); err != nil {

@@ -10,7 +10,6 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
-	"go.mewis.me/codemcp/internal/integrations/cftunnel"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -53,94 +52,7 @@ func (ui *Interface) networkScreen(owner ViewOwner) (Screen, error) {
 		RichBlock{Kind: RichHeading, Title: "Network", Text: "Canonical connectivity administration"},
 		RichBlock{Kind: RichDetails, Title: "OpenAI connectivity", Text: "Secure MCP Tunnel is a single configured OpenAI-profile connection, not a collection of local tunnel instances."},
 	)
-	cfButton, err := ui.stateButton(owner, "Cloudflare Quick Tunnel", CallbackOpen, ActionState{Route: RouteTunnelCF, Back: RouteNetwork, Operation: capability.TunnelCFStatus})
-	if err != nil {
-		return Screen{}, err
-	}
-	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{tunnelButton, cfButton, upstreamButton}, Navigation: []Button{back}})}, nil
-}
-
-func (ui *Interface) cfTunnelScreen(ctx context.Context, owner ViewOwner) (Screen, error) {
-	value, err := ui.dispatch(ctx, capability.TunnelCFStatus, nil)
-	if err != nil {
-		return Screen{}, err
-	}
-	status, ok := value.(cftunnel.Status)
-	if !ok {
-		return Screen{}, errors.New("cf-tunnel status returned an unexpected result")
-	}
-	probe, err := ui.stateButton(owner, "Probe", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteTunnelCF, Operation: capability.TunnelCFProbe})
-	if err != nil {
-		return Screen{}, err
-	}
-	primary := []Button{probe}
-	if status.Source == cftunnel.SourceUnavailable && status.ManagedSupported {
-		install, installErr := ui.stateButton(owner, "Install", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteTunnelCF, Operation: capability.TunnelCFInstall})
-		if installErr != nil {
-			return Screen{}, installErr
-		}
-		install.Role = ButtonRolePositive
-		primary = append(primary, install)
-	}
-	secondary := []Button{}
-	if status.ManagedInstalled {
-		update, updateErr := ui.stateButton(owner, "Update", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteTunnelCF, Operation: capability.TunnelCFUpdate})
-		if updateErr != nil {
-			return Screen{}, updateErr
-		}
-		secondary = append(secondary, update)
-	}
-	destructive := []Button{}
-	if status.ManagedInstalled {
-		remove, removeErr := ui.stateButton(owner, "Remove managed asset", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteTunnelCF, Operation: capability.TunnelCFRemove})
-		if removeErr != nil {
-			return Screen{}, removeErr
-		}
-		remove.Role = ButtonRoleDestructive
-		destructive = append(destructive, remove)
-	}
-	back, err := ui.backButton(owner, RouteNetwork)
-	if err != nil {
-		return Screen{}, err
-	}
-	home, err := ui.homeButton(owner)
-	if err != nil {
-		return Screen{}, err
-	}
-	return Screen{Rich: BuildRichPresentation(cfTunnelStatusBlocks(status, "")...), Keyboard: BoundedActionGroups(ActionGroups{
-		Primary: primary, Secondary: secondary, Destructive: destructive, Navigation: []Button{back, home},
-	})}, nil
-}
-
-func cfTunnelStatusBlocks(status cftunnel.Status, reportedVersion string) []RichBlock {
-	state := "unavailable"
-	if status.Source != cftunnel.SourceUnavailable {
-		state = "ready"
-	}
-	rows := [][]string{
-		{"State", state},
-		{"Source", string(status.Source)},
-		{"Managed version", status.Version},
-		{"Platform", status.Platform},
-		{"Verified", fmt.Sprint(status.Verified)},
-		{"Managed installed", fmt.Sprint(status.ManagedInstalled)},
-		{"Consumer", status.Consumer},
-	}
-	if strings.TrimSpace(reportedVersion) != "" {
-		rows = append(rows, []string{"Reported version", reportedVersion})
-	}
-	if strings.TrimSpace(status.Path) != "" {
-		rows = append(rows, []string{"Executable", status.Path})
-	}
-	blocks := []RichBlock{
-		{Kind: RichHeading, Title: "Cloudflare Quick Tunnel", Text: state},
-		{Kind: RichTable, Rows: rows},
-		{Kind: RichDetails, Title: "Authority", Text: "cf-tunnel is an ephemeral ingress dependency only. OpenAI Secure MCP Tunnel remains the persistent tunnel authority."},
-	}
-	if status.Source == cftunnel.SourceUnavailable {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Unavailable", Text: "Install the verified managed dependency with cm tunnel cf install, or provide a valid system cf-tunnel executable."})
-	}
-	return blocks
+	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{tunnelButton, upstreamButton}, Navigation: []Button{back}})}, nil
 }
 
 func (ui *Interface) tunnelScreen(ctx context.Context, owner ViewOwner) (Screen, error) {
@@ -483,16 +395,6 @@ func (ui *Interface) networkOperationResultScreen(owner ViewOwner, state ActionS
 		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Tunnel admin verified", Text: fmt.Sprintf("%d visible tunnel(s)", result.Count)}, RichBlock{Kind: RichDetails, Title: "Scope", Text: tunnelScopeText(result.Scope)}), Keyboard: keyboard}, true, nil
 	case tunnel.Metadata:
 		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Tunnel metadata synced", Text: result.Name}, RichBlock{Kind: RichCopy, Title: "Tunnel ID", Text: result.ID, CopyText: result.ID}), Keyboard: keyboard}, true, nil
-	case cftunnel.Status:
-		return Screen{Rich: BuildRichPresentation(cfTunnelStatusBlocks(result, "")...), Keyboard: keyboard}, true, nil
-	case cftunnel.ProbeResult:
-		return Screen{Rich: BuildRichPresentation(cfTunnelStatusBlocks(result.Status, result.Version)...), Keyboard: keyboard}, true, nil
-	case cftunnel.InstallResult:
-		return Screen{Rich: BuildRichPresentation(cfTunnelStatusBlocks(result.Status, "")...), Keyboard: keyboard}, true, nil
-	case cftunnel.RemoveResult:
-		blocks := cfTunnelStatusBlocks(result.Status, "")
-		blocks = append([]RichBlock{{Kind: RichHeading, Title: "Managed cf-tunnel removed", Text: fmt.Sprintf("removed=%t", result.Removed)}}, blocks...)
-		return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: keyboard}, true, nil
 	case upstream.Server:
 		server := application.RedactUpstreamServer(result)
 		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: server.Name, Text: "Upstream operation completed"}, RichBlock{Kind: RichCopy, Title: "ID", Text: server.ID, CopyText: server.ID}, RichBlock{Kind: RichTable, Rows: [][]string{{"Transport", server.Transport}, {"Enabled", fmt.Sprint(server.Enabled)}, {"Auth", server.Auth.Type}}}), Keyboard: keyboard}, true, nil

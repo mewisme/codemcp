@@ -102,6 +102,38 @@ func TestExternalResolutionCanonicalizesSymlinksWithoutChangingSource(t *testing
 	}
 }
 
+func TestResolveGlobalOnlyDiscoversUserInstalledExecutable(t *testing.T) {
+	value := New(Options{Enabled: true, ManagedRoot: t.TempDir()})
+	value.goos, value.goarch = "linux", "amd64"
+	value.lookPath = func(name string) (string, error) {
+		if name != "codegraph" {
+			t.Fatalf("lookPath(%q) want codegraph", name)
+		}
+		return "", errors.New("missing")
+	}
+	value.run = func(context.Context, string, []string, int) (commandResult, error) {
+		t.Fatal("global discovery must never run an installer or command")
+		return commandResult{}, nil
+	}
+	result, err := value.ResolveGlobal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Available || !result.ManagedRecommended || result.Path != "" {
+		t.Fatalf("missing global result=%#v", result)
+	}
+
+	path := testExecutable(t, "codegraph-global")
+	value.lookPath = func(string) (string, error) { return path, nil }
+	result, err = value.ResolveGlobal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Available || result.Path != path || result.ManagedRecommended {
+		t.Fatalf("global result=%#v", result)
+	}
+}
+
 func TestInvalidExternalCodeGraphTargetFailsClosed(t *testing.T) {
 	value := New(Options{Enabled: true, ConfiguredPath: t.TempDir(), ManagedRoot: t.TempDir()})
 	resolution, err := value.Resolve()

@@ -19,6 +19,11 @@ func TestIntegrationLifecycleCommandsReachCanonicalOperations(t *testing.T) {
 		"integration codegraph install global": capability.IntegrationCodeGraphInstallGlobal,
 		"integration codegraph init":           capability.IntegrationCodeGraphWorkspaceInit,
 		"integration codegraph sync":           capability.IntegrationCodeGraphWorkspaceSync,
+		"integration cf status":                capability.IntegrationCFStatus,
+		"integration cf probe":                 capability.IntegrationCFProbe,
+		"integration cf install":               capability.IntegrationCFInstall,
+		"integration cf update":                capability.IntegrationCFUpdate,
+		"integration cf remove":                capability.IntegrationCFRemove,
 	}
 	root := newRootCommand()
 	for path, want := range cases {
@@ -36,6 +41,18 @@ func TestIntegrationLifecycleCommandsReachCanonicalOperations(t *testing.T) {
 		if spec, ok := capability.Lookup(want); !ok || spec.CLI.CanonicalPath != path {
 			t.Fatalf("%s capability binding=%#v ok=%t", path, spec.CLI, ok)
 		}
+	}
+}
+
+func TestCFTunnelLifecycleIsIntegrationOwned(t *testing.T) {
+	root := newRootCommand()
+	command, remaining, err := root.Find(strings.Fields("integration cf status"))
+	if err != nil || command == nil || !command.Runnable() || len(remaining) != 0 {
+		t.Fatalf("integration cf status unavailable: command=%v remaining=%v err=%v", command, remaining, err)
+	}
+	old, remaining, err := root.Find(strings.Fields("tunnel cf status"))
+	if err == nil && old != nil && old.Runnable() && len(remaining) == 0 {
+		t.Fatalf("legacy tunnel cf status remains runnable: %v", old.CommandPath())
 	}
 }
 

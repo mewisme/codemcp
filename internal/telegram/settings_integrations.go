@@ -11,6 +11,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/integrations/cftunnel"
 	"go.mewis.me/codemcp/internal/integrations/codegraph"
 	"go.mewis.me/codemcp/internal/integrations/rtk"
 )
@@ -231,7 +232,7 @@ func (ui *Interface) integrationsScreen(ctx context.Context, owner ViewOwner) (S
 		label string
 	}{
 		{"ponytail", "Ponytail"}, {"caveman", "Caveman"}, {"rtk", "RTK"},
-		{"codegraph", "CodeGraph"}, {"typesafe", "TypeSafe"}, {"telemetry", "Telemetry"},
+		{"codegraph", "CodeGraph"}, {"cf", "Cloudflare Quick Tunnel"}, {"typesafe", "TypeSafe"}, {"telemetry", "Telemetry"},
 	}
 	items := make([]string, 0, len(entries))
 	buttons := make([]Button, 0, len(entries))
@@ -291,6 +292,16 @@ func (ui *Interface) integrationSummary(ctx context.Context, id string) (string,
 		}
 		status := value.(codegraph.Status)
 		return fmt.Sprintf("%s · %s", boolState(status.Enabled), status.Resolution.Source), nil
+	case "cf":
+		value, err := ui.dispatch(ctx, capability.IntegrationCFStatus, nil)
+		if err != nil {
+			return "", err
+		}
+		status, ok := value.(cftunnel.Status)
+		if !ok {
+			return "", errors.New("cf-tunnel status returned an unexpected result")
+		}
+		return fmt.Sprintf("%s · %s", cfTunnelState(status), status.Source), nil
 	case "typesafe":
 		value, err := ui.dispatch(ctx, capability.IntegrationTypeSafeStatus, nil)
 		if err != nil {
@@ -335,6 +346,16 @@ func (ui *Interface) integrationScreen(ctx context.Context, owner ViewOwner, sta
 			return Screen{}, errors.New("CodeGraph status returned an unexpected result")
 		}
 		return ui.codeGraphScreen(owner, status)
+	case "cf":
+		value, err := ui.dispatch(ctx, capability.IntegrationCFStatus, nil)
+		if err != nil {
+			return Screen{}, err
+		}
+		status, ok := value.(cftunnel.Status)
+		if !ok {
+			return Screen{}, errors.New("cf-tunnel status returned an unexpected result")
+		}
+		return ui.cfTunnelIntegrationScreen(owner, status)
 	case "typesafe":
 		value, err := ui.dispatch(ctx, capability.IntegrationTypeSafeStatus, nil)
 		if err != nil {
@@ -431,17 +452,21 @@ func (ui *Interface) rtkScreen(owner ViewOwner, status rtk.Status) (Screen, erro
 	if err != nil {
 		return Screen{}, err
 	}
-	install, err := ui.stateButton(owner, "Install", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationRTKInstall})
+	install, err := ui.stateButton(owner, "Install managed", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationRTKInstall})
 	if err != nil {
 		return Screen{}, err
 	}
 	install.Role = ButtonRolePositive
+	global, err := ui.stateButton(owner, "Check global", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationRTKInstallGlobal})
+	if err != nil {
+		return Screen{}, err
+	}
 	back, _ := ui.backButton(owner, RouteIntegrations)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "RTK", Text: string(status.Source)},
 		RichBlock{Kind: RichTable, Rows: [][]string{{"Enabled", fmt.Sprint(status.Enabled)}, {"Version", status.Version}, {"Platform", status.Platform}, {"Managed installed", fmt.Sprint(status.ManagedInstalled)}, {"Verified", fmt.Sprint(status.Verified)}}},
-	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle, probe}, Secondary: []Button{install}, Navigation: []Button{back, home}})}, nil
+	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle, probe}, Secondary: []Button{install, global}, Navigation: []Button{back, home}})}, nil
 }
 
 func (ui *Interface) codeGraphScreen(owner ViewOwner, status codegraph.Status) (Screen, error) {
@@ -466,17 +491,90 @@ func (ui *Interface) codeGraphScreen(owner ViewOwner, status codegraph.Status) (
 	if err != nil {
 		return Screen{}, err
 	}
-	install, err := ui.stateButton(owner, "Install", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationCodeGraphInstall})
+	install, err := ui.stateButton(owner, "Install managed", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationCodeGraphInstall})
 	if err != nil {
 		return Screen{}, err
 	}
 	install.Role = ButtonRolePositive
+	global, err := ui.stateButton(owner, "Check global", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationCodeGraphInstallGlobal})
+	if err != nil {
+		return Screen{}, err
+	}
 	back, _ := ui.backButton(owner, RouteIntegrations)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "CodeGraph", Text: string(status.Resolution.Source)},
 		RichBlock{Kind: RichTable, Rows: [][]string{{"Enabled", fmt.Sprint(status.Enabled)}, {"Platform", status.Platform}, {"Pinned version", status.PinnedVersion}, {"Managed installed", fmt.Sprint(status.ManagedInstalled)}, {"Verified", fmt.Sprint(status.Resolution.Verified)}}},
-	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle, probe}, Secondary: []Button{install}, Navigation: []Button{back, home}})}, nil
+	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle, probe}, Secondary: []Button{install, global}, Navigation: []Button{back, home}})}, nil
+}
+
+func (ui *Interface) cfTunnelIntegrationScreen(owner ViewOwner, status cftunnel.Status) (Screen, error) {
+	probe, err := ui.stateButton(owner, "Probe", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationCFProbe})
+	if err != nil {
+		return Screen{}, err
+	}
+	primary := []Button{probe}
+	if status.Source == cftunnel.SourceUnavailable && status.ManagedSupported {
+		install, installErr := ui.stateButton(owner, "Install managed", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationCFInstall})
+		if installErr != nil {
+			return Screen{}, installErr
+		}
+		install.Role = ButtonRolePositive
+		primary = append(primary, install)
+	}
+	secondary := []Button{}
+	destructive := []Button{}
+	if status.ManagedInstalled {
+		update, updateErr := ui.stateButton(owner, "Update managed", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationCFUpdate})
+		if updateErr != nil {
+			return Screen{}, updateErr
+		}
+		secondary = append(secondary, update)
+		remove, removeErr := ui.stateButton(owner, "Remove managed", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationCFRemove})
+		if removeErr != nil {
+			return Screen{}, removeErr
+		}
+		remove.Role = ButtonRoleDestructive
+		destructive = append(destructive, remove)
+	}
+	back, _ := ui.backButton(owner, RouteIntegrations)
+	home, _ := ui.homeButton(owner)
+	return Screen{Rich: BuildRichPresentation(cfTunnelStatusBlocks(status, "")...), Keyboard: BoundedActionGroups(ActionGroups{
+		Primary: primary, Secondary: secondary, Destructive: destructive, Navigation: []Button{back, home},
+	})}, nil
+}
+
+func cfTunnelState(status cftunnel.Status) string {
+	if status.Source == cftunnel.SourceUnavailable {
+		return "unavailable"
+	}
+	if status.Verified {
+		return "ready"
+	}
+	return "unverified"
+}
+
+func cfTunnelStatusBlocks(status cftunnel.Status, reportedVersion string) []RichBlock {
+	state := cfTunnelState(status)
+	rows := [][]string{
+		{"State", state}, {"Source", string(status.Source)}, {"Managed version", status.Version},
+		{"Platform", status.Platform}, {"Verified", fmt.Sprint(status.Verified)}, {"Managed installed", fmt.Sprint(status.ManagedInstalled)}, {"Consumer", status.Consumer},
+	}
+	if strings.TrimSpace(reportedVersion) != "" {
+		rows = append(rows, []string{"Reported version", reportedVersion})
+	}
+	if strings.TrimSpace(status.Path) != "" {
+		rows = append(rows, []string{"Executable", status.Path})
+	}
+	blocks := []RichBlock{
+		{Kind: RichHeading, Title: "Cloudflare Quick Tunnel", Text: state},
+		{Kind: RichTable, Rows: rows},
+		{Kind: RichDetails, Title: "Ownership", Text: "cf-tunnel is an integration used only for ephemeral Telegram Logs Mini App ingress. OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority."},
+	}
+	if status.Source == cftunnel.SourceUnavailable {
+		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Unavailable", Text: "Install the verified managed asset with cm integration cf install, or install cf-tunnel globally yourself."})
+	}
+	return blocks
 }
 
 func (ui *Interface) typeSafeScreen(owner ViewOwner, status application.TypeSafeStatus, keyPreview string) (Screen, error) {
@@ -827,12 +925,36 @@ func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner Vi
 	case rtk.InstallResult:
 		screen, err := ui.rtkScreen(owner, result.Status)
 		return screen, true, err
+	case rtk.GlobalResolutionResult:
+		return ui.globalExecutableResultScreen(owner, "RTK", result.Available, result.Path, result.ManagedRecommended, "cm integration rtk install")
 	case codegraph.ProbeResult:
 		screen, err := ui.codeGraphScreen(owner, result.Status)
 		return screen, true, err
 	case codegraph.InstallResult:
 		screen, err := ui.codeGraphScreen(owner, result.Status)
 		return screen, true, err
+	case codegraph.GlobalResolutionResult:
+		return ui.globalExecutableResultScreen(owner, "CodeGraph", result.Available, result.Path, result.ManagedRecommended, "cm integration codegraph install")
+	case cftunnel.Status:
+		screen, err := ui.cfTunnelIntegrationScreen(owner, result)
+		return screen, true, err
+	case cftunnel.ProbeResult:
+		keyboard, navigationErr := ui.integrationResultNavigation(owner)
+		if navigationErr != nil {
+			return Screen{}, true, navigationErr
+		}
+		return Screen{Rich: BuildRichPresentation(cfTunnelStatusBlocks(result.Status, result.Version)...), Keyboard: keyboard}, true, nil
+	case cftunnel.InstallResult:
+		screen, err := ui.cfTunnelIntegrationScreen(owner, result.Status)
+		return screen, true, err
+	case cftunnel.RemoveResult:
+		blocks := cfTunnelStatusBlocks(result.Status, "")
+		blocks = append([]RichBlock{{Kind: RichHeading, Title: "Managed cf-tunnel removed", Text: fmt.Sprintf("removed=%t", result.Removed)}}, blocks...)
+		keyboard, navigationErr := ui.integrationResultNavigation(owner)
+		if navigationErr != nil {
+			return Screen{}, true, navigationErr
+		}
+		return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: keyboard}, true, nil
 	case application.TypeSafeProbeResult:
 		keyValue, getErr := ui.dispatch(ctx, capability.ConfigGet, application.ConfigGetInput{Key: "integrations.typesafe.api_key"})
 		if getErr != nil {
@@ -852,4 +974,38 @@ func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner Vi
 		_ = spec
 		return Screen{}, false, nil
 	}
+}
+
+func (ui *Interface) integrationResultNavigation(owner ViewOwner) ([][]Button, error) {
+	back, err := ui.backButton(owner, RouteIntegrations)
+	if err != nil {
+		return nil, err
+	}
+	home, err := ui.homeButton(owner)
+	if err != nil {
+		return nil, err
+	}
+	return BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}}), nil
+}
+
+func (ui *Interface) globalExecutableResultScreen(owner ViewOwner, name string, available bool, path string, managedRecommended bool, managedCommand string) (Screen, bool, error) {
+	state := "not installed globally"
+	rows := [][]string{{"Available", fmt.Sprint(available)}}
+	if available {
+		state = "global executable detected"
+		rows = append(rows, []string{"Path", path})
+	}
+	blocks := []RichBlock{{Kind: RichHeading, Title: name, Text: state}, {Kind: RichTable, Rows: rows}}
+	if !available && managedRecommended {
+		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Recommended", Text: "Use the verified managed asset instead: " + managedCommand})
+	}
+	back, err := ui.backButton(owner, RouteIntegrations)
+	if err != nil {
+		return Screen{}, true, err
+	}
+	home, err := ui.homeButton(owner)
+	if err != nil {
+		return Screen{}, true, err
+	}
+	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 }

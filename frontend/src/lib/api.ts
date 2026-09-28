@@ -425,6 +425,13 @@ export type CFTunnelInstallResult = {
 }
 export type CFTunnelRemoveResult = { status: CFTunnelStatus; removed: boolean }
 
+export type GlobalExecutableResolution = {
+  status: IntegrationStatus
+  available: boolean
+  path?: string
+  managed_recommended: boolean
+}
+
 export type ApprovalStatus =
   | "pending"
   | "approved"
@@ -664,15 +671,17 @@ export const adminApi = {
   configPath: () => api<Record<string, unknown>>("/api/config/path"),
   verifyConfig: () => api<Record<string, unknown>>("/api/config/verify"),
   rtkStatus: () => api<IntegrationStatus>("/api/integrations/rtk"),
-  rtkAction: (action: "enable" | "disable" | "probe" | "install" | "install/global") =>
+  rtkAction: (action: "enable" | "disable" | "probe" | "install") =>
     api<IntegrationStatus>(`/api/integrations/rtk/${action}`, {
       method: "POST",
     }),
+  rtkGlobal: () => api<GlobalExecutableResolution>("/api/integrations/rtk/global"),
   codeGraphStatus: () => api<IntegrationStatus>("/api/integrations/codegraph"),
-  codeGraphAction: (action: "probe" | "install" | "install/global") =>
+  codeGraphAction: (action: "probe" | "install") =>
     api<IntegrationStatus>(`/api/integrations/codegraph/${action}`, {
       method: "POST",
     }),
+  codeGraphGlobal: () => api<GlobalExecutableResolution>("/api/integrations/codegraph/global"),
   typeSafeStatus: () => api<TypeSafeStatus>("/api/integrations/typesafe"),
   typeSafeAction: (action: "enable" | "disable" | "probe") =>
     api<TypeSafeStatus | Record<string, unknown>>(
@@ -863,15 +872,15 @@ export const adminApi = {
       method: "DELETE",
     }),
   tunnel: () => api<TunnelStatus>("/api/tunnel"),
-  cfTunnel: () => api<CFTunnelStatus>("/api/tunnel/cf"),
+  cfTunnel: () => api<CFTunnelStatus>("/api/integrations/cf"),
   probeCFTunnel: () =>
-    api<CFTunnelProbeResult>("/api/tunnel/cf/probe", { method: "POST" }),
+    api<CFTunnelProbeResult>("/api/integrations/cf/probe", { method: "POST" }),
   installCFTunnel: () =>
-    api<CFTunnelInstallResult>("/api/tunnel/cf/install", { method: "POST" }),
+    api<CFTunnelInstallResult>("/api/integrations/cf/install", { method: "POST" }),
   updateCFTunnel: () =>
-    api<CFTunnelInstallResult>("/api/tunnel/cf/update", { method: "POST" }),
+    api<CFTunnelInstallResult>("/api/integrations/cf/update", { method: "POST" }),
   removeCFTunnel: () =>
-    api<CFTunnelRemoveResult>("/api/tunnel/cf", { method: "DELETE" }),
+    api<CFTunnelRemoveResult>("/api/integrations/cf", { method: "DELETE" }),
   tunnelConfig: () => api<TunnelConfig>("/api/tunnel/config"),
   configureTunnel: (config: TunnelConfig) =>
     api<TunnelStatus>("/api/tunnel", {

@@ -21,7 +21,7 @@ func (api API) handleRTK(w http.ResponseWriter, r *http.Request) {
 		api.dispatch(w, r, capability.IntegrationRTKProbe, nil)
 	case r.Method == http.MethodPost && path == "install":
 		api.dispatch(w, r, capability.IntegrationRTKInstall, nil)
-	case r.Method == http.MethodPost && path == "install/global":
+	case r.Method == http.MethodGet && path == "global":
 		api.dispatch(w, r, capability.IntegrationRTKInstallGlobal, nil)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -37,8 +37,26 @@ func (api API) handleCodeGraph(w http.ResponseWriter, r *http.Request) {
 		api.dispatch(w, r, capability.IntegrationCodeGraphProbe, nil)
 	case r.Method == http.MethodPost && path == "install":
 		api.dispatch(w, r, capability.IntegrationCodeGraphInstall, nil)
-	case r.Method == http.MethodPost && path == "install/global":
+	case r.Method == http.MethodGet && path == "global":
 		api.dispatch(w, r, capability.IntegrationCodeGraphInstallGlobal, nil)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+func (api API) handleCFIntegration(w http.ResponseWriter, r *http.Request) {
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/integrations/cf"), "/")
+	switch {
+	case r.Method == http.MethodGet && path == "":
+		api.dispatch(w, r, capability.IntegrationCFStatus, nil)
+	case r.Method == http.MethodDelete && path == "":
+		api.dispatch(w, r, capability.IntegrationCFRemove, nil)
+	case r.Method == http.MethodPost && path == "probe":
+		api.dispatch(w, r, capability.IntegrationCFProbe, nil)
+	case r.Method == http.MethodPost && path == "install":
+		api.dispatch(w, r, capability.IntegrationCFInstall, nil)
+	case r.Method == http.MethodPost && path == "update":
+		api.dispatch(w, r, capability.IntegrationCFUpdate, nil)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
