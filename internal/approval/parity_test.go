@@ -40,7 +40,7 @@ func TestApprovalReviewerSurfaceCountDoesNotChangeTruth(t *testing.T) {
 func TestTelegramTUIBrowserResolutionRaceHasOneTerminalTruth(t *testing.T) {
 	manager := NewManager("instance-race")
 	request := seedParityRequest(t, manager, "caller-race", "ws_race")
-	surfaces := []string{"telegram", "tui", "browser"}
+	surfaces := []string{"cli", "tui", "telegram", "browser", "admin-api"}
 	subs := make([]*EventSubscription, 0, len(surfaces))
 	for range surfaces {
 		sub := manager.Events().Subscribe()
