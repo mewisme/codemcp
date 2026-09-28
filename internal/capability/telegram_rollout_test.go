@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-func TestTelegramRolloutInventoryStagesCompletedAndFutureCoverage(t *testing.T) {
+func TestTelegramRolloutInventoryLocksFinalCoverage(t *testing.T) {
 	items := TelegramRolloutInventory()
 	if len(items) == 0 {
 		t.Fatal("Telegram rollout inventory is empty")
 	}
-	if SurfaceActive(SurfaceTelegram) {
-		t.Fatal("staged Telegram rollout activated the global surface before final parity")
+	if !SurfaceActive(SurfaceTelegram) {
+		t.Fatal("final Telegram rollout did not activate the global surface")
 	}
 
 	wantSorted := append([]TelegramRolloutItem(nil), items...)
@@ -24,7 +24,7 @@ func TestTelegramRolloutInventoryStagesCompletedAndFutureCoverage(t *testing.T) 
 
 	seenIDs := map[string]bool{}
 	coveredOperations := map[ID]bool{}
-	planned, exempt := 0, 0
+	live, exempt := 0, 0
 	for _, item := range items {
 		if strings.TrimSpace(item.ID) == "" || seenIDs[item.ID] {
 			t.Fatalf("invalid or duplicate Telegram rollout id %q", item.ID)
@@ -41,6 +41,7 @@ func TestTelegramRolloutInventoryStagesCompletedAndFutureCoverage(t *testing.T) 
 		}
 		switch item.State {
 		case TelegramRolloutLive:
+			live++
 			if len(item.EntryPoints) == 0 || item.Reason != "" {
 				t.Fatalf("live Telegram item lacks entry point or has exemption reason: %#v", item)
 			}
@@ -50,10 +51,7 @@ func TestTelegramRolloutInventoryStagesCompletedAndFutureCoverage(t *testing.T) 
 				}
 			}
 		case TelegramRolloutPlanned:
-			planned++
-			if len(item.EntryPoints) != 0 || item.Reason != "" {
-				t.Fatalf("planned Telegram item claims live entry point or exemption: %#v", item)
-			}
+			t.Fatalf("active Telegram surface retained planned item: %#v", item)
 		case TelegramRolloutExempt:
 			exempt++
 			if len(item.EntryPoints) != 0 || strings.TrimSpace(item.Reason) == "" {
@@ -61,8 +59,8 @@ func TestTelegramRolloutInventoryStagesCompletedAndFutureCoverage(t *testing.T) 
 			}
 		}
 	}
-	if planned == 0 || exempt == 0 {
-		t.Fatalf("Telegram rollout must preserve future and exempt work: planned=%d exempt=%d", planned, exempt)
+	if live == 0 || exempt == 0 {
+		t.Fatalf("Telegram rollout must preserve live and explicit exempt work: live=%d exempt=%d", live, exempt)
 	}
 
 	for _, spec := range All() {
@@ -70,7 +68,7 @@ func TestTelegramRolloutInventoryStagesCompletedAndFutureCoverage(t *testing.T) 
 			continue
 		}
 		if !coveredOperations[spec.ID] {
-			t.Fatalf("human operation %s has no staged Telegram rollout attribution", spec.ID)
+			t.Fatalf("human operation %s has no final Telegram rollout attribution", spec.ID)
 		}
 	}
 }
@@ -113,25 +111,50 @@ func TestTelegramRolloutFutureOwnershipIsExplicit(t *testing.T) {
 			byOperation[item.Operation] = append(byOperation[item.Operation], item)
 		}
 	}
-	assertFuture := func(id ID, state TelegramRolloutState, stage TelegramRolloutStage, owner TelegramOwner) {
+	assertFinal := func(id ID, state TelegramRolloutState, stage TelegramRolloutStage, owner TelegramOwner) {
 		t.Helper()
 		for _, item := range byOperation[id] {
 			if item.ID != "operation."+string(id) {
 				continue
 			}
 			if item.State != state || item.Stage != stage || item.Owner != owner {
-				t.Fatalf("future Telegram contract %s=%#v", id, item)
+				t.Fatalf("final Telegram contract %s=%#v", id, item)
 			}
 			return
 		}
-		t.Fatalf("future Telegram operation %s missing", id)
+		t.Fatalf("final Telegram operation %s missing", id)
 	}
-	assertFuture(WorkspaceList, TelegramRolloutPlanned, TelegramStageWorkspaceApproval, TelegramOwnerWorkspace)
-	assertFuture(RequestApprove, TelegramRolloutPlanned, TelegramStageWorkspaceApproval, TelegramOwnerApproval)
-	assertFuture(UpstreamServerList, TelegramRolloutPlanned, TelegramStageNetworkUpstream, TelegramOwnerNetwork)
-	assertFuture(ConfigList, TelegramRolloutPlanned, TelegramStageSettingsIntegration, TelegramOwnerSettings)
-	assertFuture(IntegrationRTKStatus, TelegramRolloutPlanned, TelegramStageSettingsIntegration, TelegramOwnerIntegration)
-	assertFuture(CompletionList, TelegramRolloutPlanned, TelegramStageCompletion, TelegramOwnerCompletion)
-	assertFuture(TunnelList, TelegramRolloutExempt, TelegramStageNetworkUpstream, TelegramOwnerNetwork)
-	assertFuture(ConfigPath, TelegramRolloutExempt, TelegramStageParityResilience, TelegramOwnerLocal)
+	assertFinal(WorkspaceList, TelegramRolloutLive, TelegramStageWorkspaceApproval, TelegramOwnerWorkspace)
+	assertFinal(RequestApprove, TelegramRolloutLive, TelegramStageWorkspaceApproval, TelegramOwnerApproval)
+	assertFinal(UpstreamServerList, TelegramRolloutLive, TelegramStageNetworkUpstream, TelegramOwnerNetwork)
+	assertFinal(ConfigList, TelegramRolloutLive, TelegramStageSettingsIntegration, TelegramOwnerSettings)
+	assertFinal(IntegrationRTKStatus, TelegramRolloutLive, TelegramStageSettingsIntegration, TelegramOwnerIntegration)
+	assertFinal(CompletionList, TelegramRolloutLive, TelegramStageCompletion, TelegramOwnerCompletion)
+	assertFinal(TunnelList, TelegramRolloutExempt, TelegramStageNetworkUpstream, TelegramOwnerNetwork)
+	assertFinal(ConfigPath, TelegramRolloutExempt, TelegramStageParityResilience, TelegramOwnerLocal)
+	assertFinal(AuthStatus, TelegramRolloutExempt, TelegramStageSettingsIntegration, TelegramOwnerSettings)
+}
+
+func TestTelegramRequiredOperationsMatchLiveRolloutOperations(t *testing.T) {
+	live := map[ID]bool{}
+	for _, item := range TelegramRolloutInventory() {
+		if item.State == TelegramRolloutLive && item.Operation != "" {
+			live[item.Operation] = true
+		}
+	}
+	for _, id := range RequiredOperations(SurfaceTelegram) {
+		if !live[id] {
+			t.Fatalf("required Telegram operation %s has no live rollout entry point", id)
+		}
+	}
+	for id := range live {
+		spec, ok := Lookup(id)
+		if !ok {
+			t.Fatalf("live Telegram rollout references unknown operation %s", id)
+		}
+		contract, ok := spec.Surface(SurfaceTelegram)
+		if !ok || contract.State != SurfaceRequired {
+			t.Fatalf("live Telegram operation %s is not required by the active surface: %#v", id, contract)
+		}
+	}
 }

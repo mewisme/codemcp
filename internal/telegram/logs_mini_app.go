@@ -50,6 +50,9 @@ type LogsMiniAppHealth struct {
 	Enabled             bool         `json:"enabled"`
 	State               MiniAppState `json:"state"`
 	DependencyAvailable bool         `json:"dependency_available"`
+	ListenerReady       bool         `json:"listener_ready"`
+	TunnelRunning       bool         `json:"tunnel_running"`
+	PublicIngressReady  bool         `json:"public_ingress_ready"`
 	Listener            string       `json:"listener,omitempty"`
 	PublicURL           string       `json:"public_url,omitempty"`
 	Generation          uint64       `json:"generation"`
@@ -299,7 +302,7 @@ func (runtime *LogsMiniAppRuntime) Reconcile(ctx context.Context, cfg config.Tel
 	runtime.cancel = cancel
 	runtime.done = done
 	runtime.sessions = map[string]miniAppSession{}
-	runtime.health = LogsMiniAppHealth{Enabled: true, State: MiniAppStarting, DependencyAvailable: true, Listener: listener.Addr().String(), Generation: runtime.health.Generation + 1}
+	runtime.health = LogsMiniAppHealth{Enabled: true, State: MiniAppStarting, DependencyAvailable: true, ListenerReady: true, Listener: listener.Addr().String(), Generation: runtime.health.Generation + 1}
 	runtime.mu.Unlock()
 	go func() {
 		_ = server.Serve(listener)
@@ -323,6 +326,8 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 		runtime.updateHealth(func(health *LogsMiniAppHealth) {
 			health.State = MiniAppStarting
 			health.PublicURL = ""
+			health.TunnelRunning = false
+			health.PublicIngressReady = false
 			health.LastError = ""
 		})
 		process, err := runtime.launcher.Start(ctx, origin)
@@ -330,6 +335,8 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 			runtime.updateHealth(func(health *LogsMiniAppHealth) {
 				health.State = MiniAppDegraded
 				health.DependencyAvailable = !errors.Is(err, exec.ErrNotFound)
+				health.TunnelRunning = false
+				health.PublicIngressReady = false
 				health.LastError = compactMiniAppError(err)
 			})
 			if !waitMiniAppRetry(ctx) {
@@ -338,7 +345,10 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 			attempt++
 			continue
 		}
-		runtime.updateHealth(func(health *LogsMiniAppHealth) { health.DependencyAvailable = true })
+		runtime.updateHealth(func(health *LogsMiniAppHealth) {
+			health.DependencyAvailable = true
+			health.TunnelRunning = true
+		})
 		ready := false
 		events := process.Events()
 		done := process.Done()
@@ -361,6 +371,8 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 							health.State = MiniAppDegraded
 							health.LastError = validationErr.Error()
 							health.PublicURL = ""
+							health.TunnelRunning = false
+							health.PublicIngressReady = false
 						})
 						break
 					}
@@ -371,6 +383,8 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 						runtime.updateHealth(func(health *LogsMiniAppHealth) {
 							health.State = MiniAppDegraded
 							health.LastError = "cf-tunnel stopped before publishing a Quick Tunnel URL"
+							health.TunnelRunning = false
+							health.PublicIngressReady = false
 						})
 					}
 				default:
@@ -393,6 +407,8 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 				runtime.updateHealth(func(health *LogsMiniAppHealth) {
 					health.State = MiniAppDegraded
 					health.PublicURL = ""
+					health.TunnelRunning = false
+					health.PublicIngressReady = false
 					health.LastError = message
 				})
 				process.Stop()
@@ -442,6 +458,8 @@ func (runtime *LogsMiniAppRuntime) setReadyPublicURL(publicURL string) {
 	}
 	runtime.health.State = MiniAppReady
 	runtime.health.PublicURL = publicURL
+	runtime.health.TunnelRunning = true
+	runtime.health.PublicIngressReady = true
 	runtime.health.LastError = ""
 	runtime.mu.Unlock()
 	if rotated {
@@ -472,6 +490,9 @@ func (runtime *LogsMiniAppRuntime) Stop() {
 		runtime.health.State = MiniAppStopped
 	}
 	runtime.health.PublicURL = ""
+	runtime.health.ListenerReady = false
+	runtime.health.TunnelRunning = false
+	runtime.health.PublicIngressReady = false
 	runtime.mu.Unlock()
 	runtime.closeStreams()
 	if cancel == nil {

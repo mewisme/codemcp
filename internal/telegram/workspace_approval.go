@@ -28,6 +28,14 @@ func (ui *Interface) dispatch(ctx context.Context, operation capability.ID, inpu
 	if ui == nil || ui.dispatcher == nil {
 		return nil, errors.New("canonical operation dispatcher is unavailable")
 	}
+	spec, ok := capability.Lookup(operation)
+	if !ok {
+		return nil, fmt.Errorf("unknown canonical operation %q", operation)
+	}
+	contract, ok := spec.Surface(capability.SurfaceTelegram)
+	if !ok || contract.State != capability.SurfaceRequired {
+		return nil, fmt.Errorf("operation %s is not exposed through Telegram", operation)
+	}
 	result, err := ui.dispatcher.Dispatch(application.WithOperationInterface(ctx, application.OperationInterfaceTelegram), application.DispatchRequest{Operation: operation, Input: input})
 	if err != nil {
 		return nil, err

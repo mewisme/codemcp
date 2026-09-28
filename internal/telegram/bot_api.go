@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	telegrambot "github.com/go-telegram/bot"
@@ -39,6 +40,7 @@ const (
 	transportErrorUnauthorized transportErrorClass = "unauthorized"
 	transportErrorConflict     transportErrorClass = "conflict"
 	transportErrorNotFound     transportErrorClass = "not_found"
+	transportErrorStaleMessage transportErrorClass = "stale_message"
 	transportErrorTransport    transportErrorClass = "transport"
 )
 
@@ -91,12 +93,21 @@ func transportErrorKind(err error) transportErrorClass {
 }
 
 type apiClient struct {
-	token       string
-	pollTimeout time.Duration
-	serverURL   string
-	httpClient  *http.Client
-	bot         *telegrambot.Bot
-	initErr     error
+	token        string
+	pollTimeout  time.Duration
+	serverURL    string
+	httpClient   *http.Client
+	bot          *telegrambot.Bot
+	initErr      error
+	richFallback atomic.Bool
+}
+
+type transportDiagnostics struct {
+	Library              string
+	AllowedUpdates       []string
+	RichMessageSupported bool
+	RichMessageFallback  bool
+	MaxFileTransferBytes int64
 }
 
 func newAPIClientWithPollTimeout(token string, pollTimeout time.Duration) API {
@@ -217,6 +228,7 @@ func (client *apiClient) SendScreen(ctx context.Context, chatID int64, screen Sc
 		if !richMessageFallbackAllowed(err) {
 			return classifyTransportError(err)
 		}
+		client.richFallback.Store(true)
 	}
 	_, err := client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
 		ChatID: chatID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ReplyMarkup: screenKeyboard(screen.Keyboard),
@@ -244,6 +256,7 @@ func (client *apiClient) SendRichMessage(ctx context.Context, chatID int64, scre
 			ChatID: chatID, RichMessage: rich, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
 		})
 		if err != nil && richMessageFallbackAllowed(err) {
+			client.richFallback.Store(true)
 			message, err = client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
 				ChatID: chatID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
 			})
@@ -311,6 +324,7 @@ func (client *apiClient) SendRichMessageThread(ctx context.Context, chatID int64
 			ChatID: chatID, MessageThreadID: threadID, RichMessage: rich, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
 		})
 		if err != nil && richMessageFallbackAllowed(err) {
+			client.richFallback.Store(true)
 			message, err = client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
 				ChatID: chatID, MessageThreadID: threadID, Text: screenText(screen), ParseMode: models.ParseModeHTML, ProtectContent: options.ProtectContent, ReplyMarkup: replyMarkup,
 			})
@@ -437,10 +451,28 @@ func (client *apiClient) EditScreen(ctx context.Context, chatID, messageID int64
 	}
 	_, err := client.bot.EditMessageText(nonNilContext(ctx), params)
 	if err != nil && params.RichMessage != nil && richMessageFallbackAllowed(err) {
+		client.richFallback.Store(true)
 		params.RichMessage = nil
 		params.Text = screenText(screen)
 		params.ParseMode = models.ParseModeHTML
 		_, err = client.bot.EditMessageText(nonNilContext(ctx), params)
+	}
+	return classifyEditError(err)
+}
+
+func classifyEditError(err error) error {
+	if err == nil {
+		return nil
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	if strings.Contains(message, "message is not modified") || strings.Contains(message, "message not modified") {
+		return nil
+	}
+	if errors.Is(err, telegrambot.ErrorNotFound) ||
+		strings.Contains(message, "message to edit not found") ||
+		strings.Contains(message, "message can't be edited") ||
+		strings.Contains(message, "message cannot be edited") {
+		return &transportError{Class: transportErrorStaleMessage}
 	}
 	return classifyTransportError(err)
 }
@@ -488,6 +520,42 @@ func (client *apiClient) SetCommands(ctx context.Context, commands []Command) er
 	}
 	_, err := client.bot.SetMyCommands(nonNilContext(ctx), &telegrambot.SetMyCommandsParams{Commands: values})
 	return classifyTransportError(err)
+}
+
+func (client *apiClient) GetCommands(ctx context.Context) ([]Command, error) {
+	if client == nil || client.initErr != nil || client.bot == nil {
+		return nil, errors.New("telegram bot transport is unavailable")
+	}
+	values, err := client.bot.GetMyCommands(nonNilContext(ctx), &telegrambot.GetMyCommandsParams{})
+	if err != nil {
+		return nil, classifyTransportError(err)
+	}
+	commands := make([]Command, 0, len(values))
+	for _, value := range values {
+		name, description := strings.TrimSpace(value.Command), strings.TrimSpace(value.Description)
+		if name == "" || description == "" {
+			continue
+		}
+		commands = append(commands, Command{Name: name, Description: description})
+	}
+	return commands, nil
+}
+
+func (client *apiClient) Diagnostics() transportDiagnostics {
+	if client == nil {
+		return transportDiagnostics{}
+	}
+	allowed := make([]string, 0, len(telegramAllowedUpdates))
+	for _, update := range telegramAllowedUpdates {
+		allowed = append(allowed, string(update))
+	}
+	return transportDiagnostics{
+		Library:              "github.com/go-telegram/bot",
+		AllowedUpdates:       allowed,
+		RichMessageSupported: true,
+		RichMessageFallback:  client.richFallback.Load(),
+		MaxFileTransferBytes: MaxFileTransferBytes,
+	}
 }
 
 func (client *apiClient) SetChatMenuButton(ctx context.Context, chatID int64, button MenuButton) error {

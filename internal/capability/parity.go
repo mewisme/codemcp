@@ -70,6 +70,18 @@ func inventoryEntryPoints(operation OperationInventory, surface Surface) []strin
 		return adminEntryPoints(operation.Admin)
 	case SurfaceMCP:
 		return append([]string(nil), operation.MCPTools...)
+	case SurfaceTelegram:
+		for _, item := range TelegramRolloutInventory() {
+			if item.Operation != operation.ID || item.State != TelegramRolloutLive {
+				continue
+			}
+			out := make([]string, 0, len(item.EntryPoints))
+			for _, entry := range item.EntryPoints {
+				out = append(out, string(entry.Kind)+" "+entry.Value)
+			}
+			return out
+		}
+		return nil
 	default:
 		return nil
 	}

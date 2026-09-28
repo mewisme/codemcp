@@ -9,14 +9,13 @@ const (
 	reasonNoAdminAPI       = "no current Admin API route owns this operation"
 	reasonNoMCP            = "operation has no MCP tool binding"
 	reasonMCPPending       = "MCP tool binding is defined but not active yet"
-	reasonTelegramPending  = "Telegram administration coverage is staged and not globally active yet"
 	reasonTelegramExcluded = "operation is outside Telegram administration scope"
 	reasonNotApplicable    = "surface is not applicable"
 )
 
 var knownSurfaceReasons = map[string]struct{}{
 	reasonAgentOnly: {}, reasonProtocolOnly: {}, reasonNoCLI: {}, reasonNoTUI: {},
-	reasonNoBrowser: {}, reasonNoAdminAPI: {}, reasonNoMCP: {}, reasonMCPPending: {}, reasonTelegramPending: {},
+	reasonNoBrowser: {}, reasonNoAdminAPI: {}, reasonNoMCP: {}, reasonMCPPending: {},
 	reasonTelegramExcluded: {}, reasonNotApplicable: {},
 }
 
@@ -76,9 +75,8 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 				contract.Reason = exemptionReason(spec, surface)
 			}
 		case SurfaceTelegram:
-			if spec.Audience == AudienceOperator || spec.Audience == AudienceReviewer {
-				contract.State = SurfacePlanned
-				contract.Reason = reasonTelegramPending
+			if telegramRequiredOperations[spec.ID] {
+				contract.State = SurfaceRequired
 			} else {
 				contract.State = SurfaceExempt
 				contract.Reason = exemptionReason(spec, surface)

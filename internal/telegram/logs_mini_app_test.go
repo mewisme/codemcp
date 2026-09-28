@@ -242,7 +242,7 @@ func TestLogsMiniAppURLRotationAdvancesGenerationAndClearsSessions(t *testing.T)
 	runtime.sessions["session"] = miniAppSession{UserID: 42, Generation: 4, ExpiresAt: time.Now().Add(time.Minute)}
 	runtime.setReadyPublicURL("https://second.trycloudflare.com/")
 	health := runtime.Health()
-	if health.Generation != 5 || health.PublicURL != "https://second.trycloudflare.com/" {
+	if health.Generation != 5 || health.PublicURL != "https://second.trycloudflare.com/" || !health.TunnelRunning || !health.PublicIngressReady {
 		t.Fatalf("rotated health=%#v", health)
 	}
 	if len(runtime.sessions) != 0 {
@@ -268,7 +268,8 @@ func TestLogsMiniAppAbsentDependencyDoesNotDisableTelegramPolling(t *testing.T) 
 		time.Sleep(time.Millisecond)
 	}
 	health := runtime.Health()
-	if !health.Running || health.LogsMiniApp.State != MiniAppDegraded || health.LogsMiniApp.DependencyAvailable {
+	if !health.Running || health.LogsMiniApp.State != MiniAppDegraded || health.LogsMiniApp.DependencyAvailable ||
+		!health.LogsMiniApp.ListenerReady || health.LogsMiniApp.TunnelRunning || health.LogsMiniApp.PublicIngressReady {
 		t.Fatalf("Telegram runtime/mini app health=%#v", health)
 	}
 	if menu := api.menus[42]; menu.Type != MenuButtonCommands {
@@ -299,8 +300,60 @@ func TestLogsMiniAppRetriesMissingDependencyAndRecoversAfterInstall(t *testing.T
 		time.Sleep(10 * time.Millisecond)
 	}
 	health := runtime.Health()
-	if health.State != MiniAppReady || health.PublicURL != "https://recovered.trycloudflare.com/" || !health.DependencyAvailable {
+	if health.State != MiniAppReady || health.PublicURL != "https://recovered.trycloudflare.com/" || !health.DependencyAvailable ||
+		!health.ListenerReady || !health.TunnelRunning || !health.PublicIngressReady {
 		t.Fatalf("recovered health=%#v", health)
+	}
+}
+
+func TestLogsMiniAppLifecycleNeverReplacesNativeCommandMenu(t *testing.T) {
+	process := &miniAppFakeProcess{events: make(chan QuickTunnelEvent, 2), done: make(chan error, 1)}
+	process.events <- QuickTunnelEvent{State: "ready", URL: "https://first.trycloudflare.com"}
+	launcher := &miniAppFakeLauncher{processes: []*miniAppFakeProcess{process}}
+	api := &navigationFakeAPI{fakeAPI: &fakeAPI{}, menus: map[int64]MenuButton{}}
+	root := t.TempDir()
+	if err := SetToken(root, "123456:test-token"); err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntime(Options{
+		Root: root, Factory: func(string) API { return api }, PollTimeout: time.Millisecond,
+		ReconnectDelay: func(int) time.Duration { return time.Millisecond }, StopTimeout: 100 * time.Millisecond,
+		DeliveryInterval: -1, MiniAppLauncher: launcher,
+	})
+	t.Cleanup(runtime.Stop)
+	cfg := config.TelegramConfig{
+		Enabled: true, AllowedUserIDs: []int64{42},
+		LogsMiniApp: config.TelegramLogsMiniAppConfig{Enabled: true},
+	}
+	if err := runtime.Reconcile(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		health := runtime.Health()
+		if health.LogsMiniApp.State == MiniAppReady && health.MenuReconciled {
+			break
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if menu := api.menus[42]; menu.Type != MenuButtonCommands {
+		t.Fatalf("ready Mini App replaced command menu: %#v", menu)
+	}
+
+	runtime.logsMiniApp.setReadyPublicURL("https://second.trycloudflare.com/")
+	if menu := api.menus[42]; menu.Type != MenuButtonCommands {
+		t.Fatalf("URL rotation replaced command menu: %#v", menu)
+	}
+
+	cfg.LogsMiniApp.Enabled = false
+	if err := runtime.logsMiniApp.Reconcile(t.Context(), cfg, "123456:test-token"); err != nil {
+		t.Fatal(err)
+	}
+	if menu := api.menus[42]; menu.Type != MenuButtonCommands {
+		t.Fatalf("Mini App disable replaced command menu: %#v", menu)
 	}
 }
 

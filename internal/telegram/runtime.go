@@ -23,6 +23,8 @@ const (
 	defaultReconnectJitter   = 250 * time.Millisecond
 	defaultStopTimeout       = time.Second
 	defaultNavigationTimeout = 5 * time.Second
+	defaultDeliveryInterval  = 40 * time.Millisecond
+	maxDeliveryRetryAfter    = 30 * time.Second
 	maxUpdatesPerPoll        = 100
 )
 
@@ -45,6 +47,22 @@ type Health struct {
 	NextOffset              int64             `json:"next_offset"`
 	LastSuccess             time.Time         `json:"last_success,omitempty"`
 	LastError               string            `json:"last_error,omitempty"`
+	TransportLibrary        string            `json:"transport_library,omitempty"`
+	AllowedUpdates          []string          `json:"allowed_updates,omitempty"`
+	LastTransportErrorClass string            `json:"last_transport_error_class,omitempty"`
+	DeliveryDegraded        bool              `json:"delivery_degraded"`
+	DeliveryRateLimited     bool              `json:"delivery_rate_limited"`
+	DeliveryRetryAfterMS    int64             `json:"delivery_retry_after_ms,omitempty"`
+	DeliveryFailures        uint64            `json:"delivery_failures"`
+	RichMessageSupported    bool              `json:"rich_message_supported"`
+	RichMessageFallback     bool              `json:"rich_message_fallback"`
+	MaxFileTransferBytes    int64             `json:"max_file_transfer_bytes"`
+	CommandsPublished       bool              `json:"commands_published"`
+	CommandCount            int               `json:"command_count"`
+	CommandDrift            bool              `json:"command_drift"`
+	MenuReconciled          bool              `json:"menu_reconciled"`
+	MenuDriftCount          int               `json:"menu_drift_count"`
+	NavigationLastError     string            `json:"navigation_last_error,omitempty"`
 	SetupMode               bool              `json:"setup_mode"`
 	LogsMiniApp             LogsMiniAppHealth `json:"logs_mini_app"`
 }
@@ -55,16 +73,20 @@ type Options struct {
 	PollTimeout      time.Duration
 	ReconnectDelay   func(int) time.Duration
 	StopTimeout      time.Duration
+	DeliveryInterval time.Duration
 	MiniAppLauncher  QuickTunnelLauncher
 	CFTunnelResolver func() (string, error)
 }
 
 type Runtime struct {
-	root           string
-	factory        func(string) API
-	pollTimeout    time.Duration
-	reconnectDelay func(int) time.Duration
-	stopTimeout    time.Duration
+	root             string
+	factory          func(string) API
+	pollTimeout      time.Duration
+	reconnectDelay   func(int) time.Duration
+	stopTimeout      time.Duration
+	deliveryInterval time.Duration
+	deliveryMu       sync.Mutex
+	deliveryNext     time.Time
 
 	mu                   sync.RWMutex
 	config               config.TelegramConfig
@@ -115,7 +137,13 @@ func NewRuntime(options Options) *Runtime {
 	if stopTimeout <= 0 {
 		stopTimeout = defaultStopTimeout
 	}
-	return &Runtime{root: options.Root, factory: factory, pollTimeout: pollTimeout, reconnectDelay: reconnectDelay, stopTimeout: stopTimeout, logsMiniApp: newLogsMiniAppRuntime(options.MiniAppLauncher, options.CFTunnelResolver)}
+	deliveryInterval := options.DeliveryInterval
+	if deliveryInterval < 0 {
+		deliveryInterval = 0
+	} else if deliveryInterval == 0 {
+		deliveryInterval = defaultDeliveryInterval
+	}
+	return &Runtime{root: options.Root, factory: factory, pollTimeout: pollTimeout, reconnectDelay: reconnectDelay, stopTimeout: stopTimeout, deliveryInterval: deliveryInterval, logsMiniApp: newLogsMiniAppRuntime(options.MiniAppLauncher, options.CFTunnelResolver)}
 }
 
 func (runtime *Runtime) SetHandler(handler Handler) {
@@ -276,6 +304,9 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 		TopicsConfigured: cfg.TopicsEnabled, TopicsSupported: botUser.HasTopicsEnabled,
 		TopicsEffective: cfg.TopicsEnabled && botUser.HasTopicsEnabled,
 		Running:         true, SetupMode: setupMode,
+		AllowedUpdates:       []string{"message", "callback_query"},
+		RichMessageSupported: true,
+		MaxFileTransferBytes: MaxFileTransferBytes,
 	}
 	runtime.mu.Unlock()
 	if !setupMode {
@@ -327,7 +358,7 @@ func (runtime *Runtime) SendScreen(ctx context.Context, chatID int64, screen Scr
 	if !ok {
 		return errors.New("telegram rich screen API is unavailable")
 	}
-	return rich.SendScreen(ctx, chatID, screen)
+	return runtime.deliver(ctx, func() error { return rich.SendScreen(ctx, chatID, screen) })
 }
 
 func (runtime *Runtime) SendRichMessage(ctx context.Context, chatID int64, screen Screen, options RichMessageOptions) (int64, error) {
@@ -348,7 +379,7 @@ func (runtime *Runtime) SendRichMessage(ctx context.Context, chatID int64, scree
 	if !ok {
 		return 0, errors.New("telegram rich message API is unavailable")
 	}
-	return rich.SendRichMessage(ctx, chatID, screen, options)
+	return runtime.deliverValue(ctx, func() (int64, error) { return rich.SendRichMessage(ctx, chatID, screen, options) })
 }
 
 func (runtime *Runtime) SendChatAction(ctx context.Context, chatID int64, action string) error {
@@ -384,7 +415,7 @@ func (runtime *Runtime) SendUserPicker(ctx context.Context, chatID int64, reques
 	if !ok {
 		return 0, errors.New("telegram native user picker is unavailable")
 	}
-	return picker.SendUserPicker(ctx, chatID, requestID, prompt)
+	return runtime.deliverValue(ctx, func() (int64, error) { return picker.SendUserPicker(ctx, chatID, requestID, prompt) })
 }
 
 func (runtime *Runtime) SendChatActionToTopic(ctx context.Context, chatID int64, role TopicRole, action string) error {
@@ -431,7 +462,7 @@ func (runtime *Runtime) SendDocument(ctx context.Context, chatID int64, upload D
 	if !ok {
 		return errors.New("telegram document API is unavailable")
 	}
-	return documents.SendDocument(ctx, chatID, upload)
+	return runtime.deliver(ctx, func() error { return documents.SendDocument(ctx, chatID, upload) })
 }
 
 func (runtime *Runtime) SendDocumentToTopic(ctx context.Context, chatID int64, role TopicRole, upload DocumentUpload) error {
@@ -448,7 +479,7 @@ func (runtime *Runtime) SendDocumentToTopic(ctx context.Context, chatID int64, r
 	if effective && topics != nil {
 		if threadID := topics.get(chatID, role); threadID > 0 {
 			if topicAPI, ok := api.(TopicAPI); ok {
-				err := topicAPI.SendDocumentThread(ctx, chatID, threadID, upload)
+				err := runtime.deliver(ctx, func() error { return topicAPI.SendDocumentThread(ctx, chatID, threadID, upload) })
 				if err == nil {
 					return nil
 				}
@@ -477,7 +508,7 @@ func (runtime *Runtime) SendRichMessageToTopic(ctx context.Context, chatID int64
 	if effective && topics != nil {
 		if threadID := topics.get(chatID, role); threadID > 0 {
 			if topicAPI, ok := api.(TopicAPI); ok {
-				messageID, err := topicAPI.SendRichMessageThread(ctx, chatID, threadID, screen, options)
+				messageID, err := runtime.deliverValue(ctx, func() (int64, error) { return topicAPI.SendRichMessageThread(ctx, chatID, threadID, screen, options) })
 				if err == nil {
 					return messageID, nil
 				}
@@ -531,7 +562,11 @@ func (runtime *Runtime) EditScreen(ctx context.Context, chatID, messageID int64,
 	if !ok {
 		return errors.New("telegram rich screen API is unavailable")
 	}
-	return rich.EditScreen(ctx, chatID, messageID, screen)
+	err := runtime.deliver(ctx, func() error { return rich.EditScreen(ctx, chatID, messageID, screen) })
+	if transportErrorKind(err) == transportErrorStaleMessage {
+		return runtime.SendScreen(ctx, chatID, screen)
+	}
+	return err
 }
 
 func (runtime *Runtime) AnswerCallback(ctx context.Context, callbackID, text string, alert bool) error {
@@ -604,6 +639,14 @@ func (runtime *Runtime) authorizedNavigationAPI(userID int64) (NavigationAPI, er
 	return navigation, nil
 }
 
+type navigationSyncResult struct {
+	CommandsPublished bool
+	CommandCount      int
+	CommandDrift      bool
+	MenuReconciled    bool
+	MenuDriftCount    int
+}
+
 func (runtime *Runtime) reconcileNavigationBounded(ctx context.Context, api API, cfg config.TelegramConfig) {
 	if api == nil {
 		return
@@ -613,32 +656,91 @@ func (runtime *Runtime) reconcileNavigationBounded(ctx context.Context, api API,
 	}
 	ctx, cancel := context.WithTimeout(ctx, defaultNavigationTimeout)
 	defer cancel()
-	if err := reconcileNavigation(ctx, api, cfg); err != nil {
-		runtime.mu.Lock()
-		if runtime.health.Running && !runtime.health.SetupMode {
-			runtime.health.LastError = "telegram command menu reconciliation failed"
+	result, err := reconcileNavigation(ctx, api, cfg)
+	runtime.mu.Lock()
+	if runtime.health.Running && !runtime.health.SetupMode {
+		runtime.health.CommandsPublished = result.CommandsPublished
+		runtime.health.CommandCount = result.CommandCount
+		runtime.health.CommandDrift = result.CommandDrift
+		runtime.health.MenuReconciled = result.MenuReconciled
+		runtime.health.MenuDriftCount = result.MenuDriftCount
+		if err != nil {
+			runtime.health.NavigationLastError = "telegram command menu reconciliation failed"
+		} else {
+			runtime.health.NavigationLastError = ""
 		}
-		runtime.mu.Unlock()
 	}
+	runtime.mu.Unlock()
 }
 
-func reconcileNavigation(ctx context.Context, api API, cfg config.TelegramConfig) error {
+func reconcileNavigation(ctx context.Context, api API, cfg config.TelegramConfig) (navigationSyncResult, error) {
 	navigation, ok := api.(NavigationAPI)
 	if !ok {
-		return nil
+		return navigationSyncResult{}, nil
 	}
-	if err := navigation.SetCommands(ctx, Commands()); err != nil {
-		return err
+	expected := Commands()
+	result := navigationSyncResult{CommandCount: len(expected), MenuReconciled: true}
+	var joined error
+
+	if inspection, ok := api.(NavigationInspectionAPI); ok {
+		if actual, err := inspection.GetCommands(ctx); err != nil {
+			joined = errors.Join(joined, err)
+		} else if !commandsEqual(actual, expected) {
+			result.CommandDrift = true
+		}
 	}
+	if err := navigation.SetCommands(ctx, expected); err != nil {
+		joined = errors.Join(joined, err)
+	} else {
+		result.CommandsPublished = true
+	}
+	if inspection, ok := api.(NavigationInspectionAPI); ok {
+		if actual, err := inspection.GetCommands(ctx); err != nil {
+			joined = errors.Join(joined, err)
+			result.CommandsPublished = false
+		} else {
+			result.CommandDrift = !commandsEqual(actual, expected)
+			result.CommandsPublished = result.CommandsPublished && !result.CommandDrift
+		}
+	}
+
 	for _, userID := range cfg.AllowedUserIDs {
 		if userID <= 0 {
 			continue
 		}
+		if current, err := navigation.GetChatMenuButton(ctx, userID); err == nil && current.Type != MenuButtonCommands {
+			result.MenuDriftCount++
+		}
 		if err := navigation.SetChatMenuButton(ctx, userID, MenuButton{Type: MenuButtonCommands}); err != nil {
-			return err
+			result.MenuReconciled = false
+			joined = errors.Join(joined, err)
+			continue
+		}
+		current, err := navigation.GetChatMenuButton(ctx, userID)
+		if err != nil {
+			result.MenuReconciled = false
+			joined = errors.Join(joined, err)
+			continue
+		}
+		if current.Type != MenuButtonCommands {
+			result.MenuReconciled = false
+			result.MenuDriftCount++
 		}
 	}
-	return nil
+	return result, joined
+}
+
+func commandsEqual(left, right []Command) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if strings.TrimSpace(left[index].Name) != strings.TrimSpace(right[index].Name) ||
+			strings.TrimSpace(left[index].Description) != strings.TrimSpace(right[index].Description) {
+			return false
+		}
+	}
+	return true
 }
 
 func containsUserID(values []int64, userID int64) bool {
@@ -690,7 +792,27 @@ func (runtime *Runtime) Health() Health {
 	}
 	runtime.mu.RLock()
 	health := runtime.health
+	api := runtime.api
 	runtime.mu.RUnlock()
+	if diagnostics, ok := api.(transportDiagnosticsAPI); ok {
+		value := diagnostics.Diagnostics()
+		health.TransportLibrary = value.Library
+		health.AllowedUpdates = append([]string(nil), value.AllowedUpdates...)
+		health.RichMessageSupported = value.RichMessageSupported
+		health.RichMessageFallback = value.RichMessageFallback
+		health.MaxFileTransferBytes = value.MaxFileTransferBytes
+	} else if api != nil {
+		if health.TransportLibrary == "" {
+			health.TransportLibrary = "custom"
+		}
+		if len(health.AllowedUpdates) == 0 {
+			health.AllowedUpdates = []string{"message", "callback_query"}
+		}
+		if health.MaxFileTransferBytes == 0 {
+			health.MaxFileTransferBytes = MaxFileTransferBytes
+		}
+		_, health.RichMessageSupported = api.(RichMessageAPI)
+	}
 	if runtime.logsMiniApp != nil {
 		health.LogsMiniApp = runtime.logsMiniApp.Health()
 	}
@@ -698,7 +820,9 @@ func (runtime *Runtime) Health() Health {
 }
 
 func (runtime *Runtime) Diagnostics() Health {
-	return runtime.Health()
+	health := runtime.Health()
+	health.LogsMiniApp.PublicURL = ""
+	return health
 }
 
 func (runtime *Runtime) Available() bool {
@@ -751,7 +875,7 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 			threadID := topics.get(userID, role)
 			if threadID > 0 {
 				if topicAPI, ok := api.(TopicAPI); ok {
-					err := topicAPI.SendMessageThread(ctx, userID, threadID, text)
+					err := runtime.deliver(ctx, func() error { return topicAPI.SendMessageThread(ctx, userID, threadID, text) })
 					if err == nil {
 						continue
 					}
@@ -765,9 +889,14 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 				}
 			}
 		}
-		if err := api.SendMessage(ctx, userID, text); err != nil {
+		if err := runtime.deliver(ctx, func() error { return api.SendMessage(ctx, userID, text) }); err != nil {
 			result = errors.Join(result, err)
 		}
+	}
+	if result != nil {
+		runtime.mu.Lock()
+		runtime.health.DeliveryDegraded = true
+		runtime.mu.Unlock()
 	}
 	return result
 }
@@ -820,7 +949,7 @@ func (runtime *Runtime) SendSetupMessage(ctx context.Context, chatID int64, text
 	if !setupMode || api == nil {
 		return errors.New("telegram setup transport is unavailable")
 	}
-	return api.SendMessage(ctx, chatID, strings.TrimSpace(text))
+	return runtime.deliver(ctx, func() error { return api.SendMessage(ctx, chatID, strings.TrimSpace(text)) })
 }
 
 func (runtime *Runtime) supervise(ctx context.Context, done chan struct{}, api API) {
@@ -944,7 +1073,9 @@ func (runtime *Runtime) markPollFailure(err error) {
 	runtime.health.PollingHealthy = false
 	runtime.health.Reconnecting = true
 	runtime.health.ReconnectCount++
-	switch transportErrorKind(err) {
+	kind := transportErrorKind(err)
+	runtime.health.LastTransportErrorClass = string(kind)
+	switch kind {
 	case transportErrorRateLimited:
 		runtime.health.LastError = "telegram polling rate limited"
 	case transportErrorForbidden:

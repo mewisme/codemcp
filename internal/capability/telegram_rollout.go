@@ -77,6 +77,35 @@ type TelegramRolloutItem struct {
 const (
 	telegramReasonLocalOnly    = "operation requires local process or filesystem ownership"
 	telegramReasonSingleTunnel = "managed tunnel collections are outside Telegram single-tunnel administration"
+	telegramReasonNotExposed   = "operation has no Telegram administration workflow"
+)
+
+var telegramRequiredOperations = idSet(
+	InstallRun, UpdateApply, UpdateCheck,
+	RuntimeUp, RuntimeDown, RuntimeRestart,
+	LogsRead, LogsFollow,
+	RequestList, RequestView, RequestApprove, RequestDeny,
+	CompletionList, CompletionView,
+	ConfigExport, ConfigGet, ConfigList, ConfigSet,
+	PromptList, PromptGet, PromptCreate, PromptUpdate, PromptDelete,
+	WorkspaceContainerList, WorkspaceContainerCreate, WorkspaceContainerShow, WorkspaceContainerRename, WorkspaceContainerDelete,
+	WorkspaceContainerAdd, WorkspaceContainerRemove, WorkspaceContainerMembershipList,
+	WorkspaceAccessList, WorkspaceAccessAdd, WorkspaceAccessRemove,
+	WorkspaceRegister, WorkspaceList, WorkspaceShow, WorkspaceRelocate, WorkspaceUnregister, WorkspacePurge,
+	UpstreamServerList, UpstreamServerAdd, UpstreamServerConfigure, UpstreamServerShow, UpstreamServerRemove,
+	UpstreamServerEnable, UpstreamServerDisable, UpstreamServerStatus, UpstreamServerTools,
+	TunnelStatus, TunnelSync, TunnelConfigure, TunnelEnable, TunnelDisable,
+	TunnelAdminKeySet, TunnelAdminKeyVerify, TunnelAdminKeyRemove,
+	StatusOverview, DoctorRead, VersionAbout,
+	TelemetryStatus, TelemetryEnable, TelemetryDisable,
+	TelegramSetup,
+	InstructionSettingsRead, InstructionSettingsWrite, ProjectContextRead, ToolInventoryRead,
+	ExecutionList, ExecutionView, ExecutionFeed, ExecutionStream,
+	ActivityStream, ActivityView,
+	IntegrationRTKStatus, IntegrationRTKEnable, IntegrationRTKDisable, IntegrationRTKProbe, IntegrationRTKInstall, IntegrationRTKInstallGlobal,
+	IntegrationCodeGraphStatus, IntegrationCodeGraphProbe, IntegrationCodeGraphInstall, IntegrationCodeGraphInstallGlobal,
+	IntegrationCFStatus, IntegrationCFProbe, IntegrationCFInstall, IntegrationCFUpdate, IntegrationCFRemove,
+	IntegrationTypeSafeStatus, IntegrationTypeSafeEnable, IntegrationTypeSafeDisable, IntegrationTypeSafeProbe,
 )
 
 var telegramCompletedRollout = []TelegramRolloutItem{
@@ -151,7 +180,6 @@ var telegramLocalOnlyOperations = idSet(
 	ConfigInit,
 	ConfigUninit,
 	ConfigPath,
-	ConfigExport,
 	ConfigImport,
 	ConfigMigrate,
 	ConfigMigrateSecrets,
@@ -179,16 +207,20 @@ func TelegramRolloutInventory() []TelegramRolloutItem {
 		if spec.ID == TelegramSetup || spec.ID == StatusOverview {
 			continue
 		}
-		stage, owner, state, reason := telegramFutureContract(spec.ID)
+		stage, owner, state, reason := telegramFinalContract(spec.ID)
+		entryPoints := []TelegramEntryPoint(nil)
+		if state == TelegramRolloutLive {
+			entryPoints = telegramOperationEntryPoints(spec.ID, owner)
+		}
 		items = append(items, TelegramRolloutItem{
-			ID: "operation." + string(spec.ID), State: state, Stage: stage, Owner: owner, Operation: spec.ID, Reason: reason,
+			ID: "operation." + string(spec.ID), State: state, Stage: stage, Owner: owner, Operation: spec.ID, EntryPoints: entryPoints, Reason: reason,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	return items
 }
 
-func telegramFutureContract(id ID) (TelegramRolloutStage, TelegramOwner, TelegramRolloutState, string) {
+func telegramFinalContract(id ID) (TelegramRolloutStage, TelegramOwner, TelegramRolloutState, string) {
 	if telegramLocalOnlyOperations[id] {
 		return TelegramStageParityResilience, TelegramOwnerLocal, TelegramRolloutExempt, telegramReasonLocalOnly
 	}
@@ -196,30 +228,46 @@ func telegramFutureContract(id ID) (TelegramRolloutStage, TelegramOwner, Telegra
 		return TelegramStageNetworkUpstream, TelegramOwnerNetwork, TelegramRolloutExempt, telegramReasonSingleTunnel
 	}
 	value := string(id)
+	stage, owner := TelegramStageParityResilience, TelegramOwnerParity
 	switch {
 	case strings.HasPrefix(value, "workspace."):
-		return TelegramStageWorkspaceApproval, TelegramOwnerWorkspace, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageWorkspaceApproval, TelegramOwnerWorkspace
 	case strings.HasPrefix(value, "request."):
-		return TelegramStageWorkspaceApproval, TelegramOwnerApproval, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageWorkspaceApproval, TelegramOwnerApproval
 	case strings.HasPrefix(value, "upstream."), strings.HasPrefix(value, "tunnel."), strings.HasPrefix(value, "network."):
-		return TelegramStageNetworkUpstream, TelegramOwnerNetwork, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageNetworkUpstream, TelegramOwnerNetwork
 	case strings.HasPrefix(value, "integration."):
-		return TelegramStageSettingsIntegration, TelegramOwnerIntegration, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageSettingsIntegration, TelegramOwnerIntegration
 	case strings.HasPrefix(value, "config."), strings.HasPrefix(value, "telemetry."), strings.HasPrefix(value, "auth."), strings.HasPrefix(value, "notification."):
-		return TelegramStageSettingsIntegration, TelegramOwnerSettings, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageSettingsIntegration, TelegramOwnerSettings
 	case strings.HasPrefix(value, "logs."):
-		return TelegramStageLogsExecution, TelegramOwnerLogs, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageLogsExecution, TelegramOwnerLogs
 	case strings.HasPrefix(value, "execution."), strings.HasPrefix(value, "process."), strings.HasPrefix(value, "activity."):
-		return TelegramStageLogsExecution, TelegramOwnerExecution, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageLogsExecution, TelegramOwnerExecution
 	case strings.HasPrefix(value, "completion."):
-		return TelegramStageCompletion, TelegramOwnerCompletion, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageCompletion, TelegramOwnerCompletion
 	case strings.HasPrefix(value, "instructions."), strings.HasPrefix(value, "project.context."), strings.HasPrefix(value, "prompt."):
-		return TelegramStageSystemInstruction, TelegramOwnerInstruction, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageSystemInstruction, TelegramOwnerInstruction
 	case strings.HasPrefix(value, "runtime."), strings.HasPrefix(value, "update."), strings.HasPrefix(value, "install."),
 		strings.HasPrefix(value, "doctor."), strings.HasPrefix(value, "version."), strings.HasPrefix(value, "health."), strings.HasPrefix(value, "tools."):
-		return TelegramStageSystemInstruction, TelegramOwnerSystem, TelegramRolloutPlanned, ""
+		stage, owner = TelegramStageSystemInstruction, TelegramOwnerSystem
+	}
+	if telegramRequiredOperations[id] {
+		return stage, owner, TelegramRolloutLive, ""
+	}
+	return stage, owner, TelegramRolloutExempt, telegramReasonNotExposed
+}
+
+func telegramOperationEntryPoints(id ID, owner TelegramOwner) []TelegramEntryPoint {
+	switch id {
+	case CompletionList:
+		return []TelegramEntryPoint{{Kind: TelegramEntryRoute, Value: "completions"}, {Kind: TelegramEntryApplication, Value: "application.ListCompletions"}}
+	case CompletionView:
+		return []TelegramEntryPoint{{Kind: TelegramEntryApplication, Value: "application.ViewCompletion"}}
+	case LogsRead, LogsFollow, ExecutionList, ExecutionView, ExecutionFeed, ExecutionStream, ActivityStream, ActivityView:
+		return []TelegramEntryPoint{{Kind: TelegramEntryRuntime, Value: "telegram.LogsMiniAppRuntime"}}
 	default:
-		return TelegramStageParityResilience, TelegramOwnerParity, TelegramRolloutPlanned, ""
+		return []TelegramEntryPoint{{Kind: TelegramEntryApplication, Value: "telegram.Interface.dispatch"}, {Kind: TelegramEntryRuntime, Value: string(owner)}}
 	}
 }
 

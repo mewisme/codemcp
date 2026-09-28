@@ -41,6 +41,10 @@ func (api *navigationFakeAPI) SetCommands(_ context.Context, commands []Command)
 	return nil
 }
 
+func (api *navigationFakeAPI) GetCommands(context.Context) ([]Command, error) {
+	return append([]Command(nil), api.commands...), nil
+}
+
 func (api *navigationFakeAPI) SetChatMenuButton(_ context.Context, chatID int64, button MenuButton) error {
 	if api.menus == nil {
 		api.menus = map[int64]MenuButton{}
@@ -358,6 +362,10 @@ func TestRuntimeReconcilesCommandRegistryAndPrivateMenuButtons(t *testing.T) {
 		if button := api.menus[userID]; button.Type != MenuButtonCommands {
 			t.Fatalf("menu for %d=%#v", userID, button)
 		}
+	}
+	health := runtime.Health()
+	if !health.CommandsPublished || health.CommandDrift || health.CommandCount != len(Commands()) || !health.MenuReconciled || health.MenuDriftCount != 0 {
+		t.Fatalf("navigation health=%#v", health)
 	}
 	if err := runtime.SetChatMenuButton(t.Context(), 99, MenuButton{Type: MenuButtonDefault}); err == nil {
 		t.Fatal("unauthorized user changed Telegram chat menu")

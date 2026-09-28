@@ -198,6 +198,39 @@ func TestDoctorDegradedFixtures(t *testing.T) {
 	}
 }
 
+func TestTelegramDoctorProjectsTransportNavigationAndMiniAppHealth(t *testing.T) {
+	component := telegramDoctorComponent(TelegramHealthSnapshot{
+		Enabled: true, TokenConfigured: true, AuthorizationConfigured: true,
+		Running: true, PollingHealthy: true,
+		DeliveryDegraded: true, DeliveryRateLimited: true, DeliveryFailures: 3, DeliveryRetryAfterMS: 1250,
+		RichMessageSupported: true, RichMessageFallback: true,
+		TopicsSupported: true, TopicsEffective: true,
+		CommandsPublished: true, CommandCount: 14, MenuReconciled: true, MenuDriftCount: 2,
+		AllowedUpdateCount: 2, MaxFileTransferBytes: 20 << 20,
+		LogsMiniAppEnabled: true, LogsMiniAppState: "ready", LogsMiniAppDependency: true,
+		LogsMiniAppListenerReady: true, LogsMiniAppTunnelRunning: true, LogsMiniAppIngressReady: true, LogsMiniAppGeneration: 9,
+	})
+	if component.State != doctor.StateDegraded || component.Severity != doctor.SeverityWarning {
+		t.Fatalf("telegram component=%#v", component)
+	}
+	flags := stringSet(flagIDs(component))
+	for _, id := range []string{
+		"delivery_degraded", "delivery_rate_limited", "rich_message_supported", "rich_message_fallback",
+		"topics_supported", "topics_effective", "commands_published", "menu_reconciled",
+		"logs_mini_app_listener_ready", "logs_mini_app_tunnel_running", "logs_mini_app_ingress_ready",
+	} {
+		if !flags[id] {
+			t.Fatalf("telegram doctor missing flag %q: %#v", id, component.Flags)
+		}
+	}
+	metrics := stringSet(metricIDs(component))
+	for _, id := range []string{"delivery_failures", "delivery_retry_after_ms", "command_count", "menu_drift", "allowed_updates", "max_file_transfer_bytes", "logs_mini_app_generation"} {
+		if !metrics[id] {
+			t.Fatalf("telegram doctor missing metric %q: %#v", id, component.Metrics)
+		}
+	}
+}
+
 func TestShellDoctorCoversPlatformProviderKinds(t *testing.T) {
 	tests := []struct {
 		name string

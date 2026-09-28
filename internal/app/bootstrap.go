@@ -172,14 +172,23 @@ func (a *App) Bootstrap() error {
 		}
 		if a.Telegram != nil {
 			doctorDeps.TelegramHealth = func() application.TelegramHealthSnapshot {
-				health := a.Telegram.Health()
+				health := a.Telegram.Diagnostics()
 				return application.TelegramHealthSnapshot{
 					Enabled: health.Enabled, TokenConfigured: health.TokenConfigured,
 					AuthorizationConfigured: health.AuthorizationConfigured, Running: health.Running,
 					PollingHealthy: health.PollingHealthy, Reconnecting: health.Reconnecting,
-					ReconnectCount:     health.ReconnectCount,
+					ReconnectCount:   health.ReconnectCount,
+					DeliveryDegraded: health.DeliveryDegraded, DeliveryRateLimited: health.DeliveryRateLimited,
+					DeliveryFailures: health.DeliveryFailures, DeliveryRetryAfterMS: health.DeliveryRetryAfterMS,
+					RichMessageSupported: health.RichMessageSupported, RichMessageFallback: health.RichMessageFallback,
+					TopicsSupported: health.TopicsSupported, TopicsEffective: health.TopicsEffective,
+					CommandsPublished: health.CommandsPublished, CommandDrift: health.CommandDrift,
+					CommandCount: health.CommandCount, MenuReconciled: health.MenuReconciled, MenuDriftCount: health.MenuDriftCount,
+					AllowedUpdateCount: len(health.AllowedUpdates), MaxFileTransferBytes: health.MaxFileTransferBytes,
 					LogsMiniAppEnabled: health.LogsMiniApp.Enabled, LogsMiniAppState: string(health.LogsMiniApp.State),
 					LogsMiniAppDependency: health.LogsMiniApp.DependencyAvailable, LogsMiniAppGeneration: health.LogsMiniApp.Generation,
+					LogsMiniAppListenerReady: health.LogsMiniApp.ListenerReady, LogsMiniAppTunnelRunning: health.LogsMiniApp.TunnelRunning,
+					LogsMiniAppIngressReady: health.LogsMiniApp.PublicIngressReady,
 				}
 			}
 		}

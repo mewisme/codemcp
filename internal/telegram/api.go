@@ -98,6 +98,14 @@ type NavigationAPI interface {
 	GetChatMenuButton(context.Context, int64) (MenuButton, error)
 }
 
+type NavigationInspectionAPI interface {
+	GetCommands(context.Context) ([]Command, error)
+}
+
+type transportDiagnosticsAPI interface {
+	Diagnostics() transportDiagnostics
+}
+
 type MessageDismissAPI interface {
 	DeleteMessage(context.Context, int64, int64) error
 }

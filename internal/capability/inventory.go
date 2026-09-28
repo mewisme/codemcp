@@ -54,7 +54,7 @@ var surfaceLifecycles = []SurfaceLifecycle{
 	{Surface: SurfaceBrowser, Active: true},
 	{Surface: SurfaceAdminAPI, Active: true},
 	{Surface: SurfaceMCP, Active: true},
-	{Surface: SurfaceTelegram, Active: false},
+	{Surface: SurfaceTelegram, Active: true},
 }
 
 func SurfaceLifecycles() []SurfaceLifecycle {

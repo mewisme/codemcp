@@ -45,17 +45,35 @@ type DoctorDependencies struct {
 }
 
 type TelegramHealthSnapshot struct {
-	Enabled                 bool
-	TokenConfigured         bool
-	AuthorizationConfigured bool
-	Running                 bool
-	PollingHealthy          bool
-	Reconnecting            bool
-	ReconnectCount          uint64
-	LogsMiniAppEnabled      bool
-	LogsMiniAppState        string
-	LogsMiniAppDependency   bool
-	LogsMiniAppGeneration   uint64
+	Enabled                  bool
+	TokenConfigured          bool
+	AuthorizationConfigured  bool
+	Running                  bool
+	PollingHealthy           bool
+	Reconnecting             bool
+	ReconnectCount           uint64
+	DeliveryDegraded         bool
+	DeliveryRateLimited      bool
+	DeliveryFailures         uint64
+	DeliveryRetryAfterMS     int64
+	RichMessageSupported     bool
+	RichMessageFallback      bool
+	TopicsSupported          bool
+	TopicsEffective          bool
+	CommandsPublished        bool
+	CommandDrift             bool
+	CommandCount             int
+	MenuReconciled           bool
+	MenuDriftCount           int
+	AllowedUpdateCount       int
+	MaxFileTransferBytes     int64
+	LogsMiniAppEnabled       bool
+	LogsMiniAppState         string
+	LogsMiniAppDependency    bool
+	LogsMiniAppListenerReady bool
+	LogsMiniAppTunnelRunning bool
+	LogsMiniAppIngressReady  bool
+	LogsMiniAppGeneration    uint64
 }
 
 type DoctorService struct {
@@ -602,12 +620,29 @@ func telegramDoctorComponent(health TelegramHealthSnapshot) doctor.Component {
 		State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "Telegram interface is healthy",
 		Flags: []doctor.Flag{
 			{ID: "running", Value: health.Running}, {ID: "polling_healthy", Value: health.PollingHealthy}, {ID: "reconnecting", Value: health.Reconnecting},
+			{ID: "delivery_degraded", Value: health.DeliveryDegraded}, {ID: "delivery_rate_limited", Value: health.DeliveryRateLimited},
+			{ID: "rich_message_supported", Value: health.RichMessageSupported}, {ID: "rich_message_fallback", Value: health.RichMessageFallback},
+			{ID: "topics_supported", Value: health.TopicsSupported}, {ID: "topics_effective", Value: health.TopicsEffective},
+			{ID: "commands_published", Value: health.CommandsPublished}, {ID: "command_drift", Value: health.CommandDrift}, {ID: "menu_reconciled", Value: health.MenuReconciled},
 			{ID: "logs_mini_app_enabled", Value: health.LogsMiniAppEnabled}, {ID: "logs_mini_app_dependency", Value: health.LogsMiniAppDependency},
+			{ID: "logs_mini_app_listener_ready", Value: health.LogsMiniAppListenerReady}, {ID: "logs_mini_app_tunnel_running", Value: health.LogsMiniAppTunnelRunning},
+			{ID: "logs_mini_app_ingress_ready", Value: health.LogsMiniAppIngressReady},
 		},
-		Metrics: []doctor.Metric{{ID: "reconnects", Value: int64(health.ReconnectCount)}, {ID: "logs_mini_app_generation", Value: int64(health.LogsMiniAppGeneration)}},
+		Metrics: []doctor.Metric{
+			{ID: "reconnects", Value: int64(health.ReconnectCount)}, {ID: "delivery_failures", Value: int64(health.DeliveryFailures)},
+			{ID: "delivery_retry_after_ms", Value: health.DeliveryRetryAfterMS}, {ID: "command_count", Value: int64(health.CommandCount)},
+			{ID: "menu_drift", Value: int64(health.MenuDriftCount)}, {ID: "allowed_updates", Value: int64(health.AllowedUpdateCount)},
+			{ID: "max_file_transfer_bytes", Value: health.MaxFileTransferBytes}, {ID: "logs_mini_app_generation", Value: int64(health.LogsMiniAppGeneration)},
+		},
 	}
 	if health.Running && (!health.PollingHealthy || health.Reconnecting) {
 		component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "Telegram interface is reconnecting or unhealthy"
+	}
+	if health.DeliveryDegraded {
+		component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "Telegram delivery is degraded"
+	}
+	if health.Running && (!health.CommandsPublished || health.CommandDrift || !health.MenuReconciled) {
+		component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "Telegram command or menu publication requires attention"
 	}
 	if health.LogsMiniAppEnabled && health.LogsMiniAppState == "degraded" {
 		component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "Telegram interface is healthy but the Logs Mini App is degraded"

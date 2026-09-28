@@ -171,6 +171,16 @@ func TestBotAPIAdapterHonorsTelegramRetryAfterWithoutHotRetry(t *testing.T) {
 	}
 }
 
+func TestClassifyEditErrorDistinguishesNoopAndStaleMessages(t *testing.T) {
+	if err := classifyEditError(errors.New("Bad Request: message is not modified")); err != nil {
+		t.Fatalf("no-op edit error=%v", err)
+	}
+	stale := classifyEditError(errors.New("Bad Request: message to edit not found"))
+	if transportErrorKind(stale) != transportErrorStaleMessage {
+		t.Fatalf("stale edit classification=%v kind=%q", stale, transportErrorKind(stale))
+	}
+}
+
 func TestBotAPIInjectedUpdateCannotBypassAuthorizationOrSignedCallbackState(t *testing.T) {
 	dispatcher := &recordingDispatcher{result: "ok"}
 	transport := &interactiveTestAPI{}

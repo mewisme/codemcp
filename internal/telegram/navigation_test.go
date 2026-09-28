@@ -136,6 +136,21 @@ func TestProductionHandleAuthorizesBeforeRouterDispatch(t *testing.T) {
 	}
 }
 
+func TestProductionDispatchRejectsTelegramExemptOperation(t *testing.T) {
+	dispatcher := &recordingDispatcher{result: "unexpected"}
+	ui, err := NewInterface(InterfaceOptions{Runtime: &Runtime{generation: 1}, Dispatcher: dispatcher})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ui.dispatch(t.Context(), capability.AuthStatus, nil)
+	if err == nil || !strings.Contains(err.Error(), "not exposed through Telegram") {
+		t.Fatalf("dispatch error=%v", err)
+	}
+	if len(dispatcher.calls) != 0 {
+		t.Fatalf("Telegram-exempt operation reached canonical dispatcher: %#v", dispatcher.calls)
+	}
+}
+
 func TestProductionCallbackRejectsUnauthorizedAndStaleBeforeOperation(t *testing.T) {
 	dispatcher := &recordingDispatcher{result: "ok"}
 	api := &interactiveTestAPI{}
