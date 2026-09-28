@@ -46,7 +46,8 @@ func TestWorkspaceRelocateConflictReadModelAndExplicitResolution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Value.After.ID != registered.Value.ID || result.Value.After.Path != filepath.Clean(destination) {
+	if result.Value.After.ID != registered.Value.ID || result.Value.After.Path != filepath.Clean(destination) ||
+		result.Value.Resolution != workspace.RelocationResolutionDestination {
 		t.Fatalf("relocation=%#v", result.Value)
 	}
 }
@@ -77,7 +78,8 @@ func TestWorkspaceRelocateResolutionValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if merged.Value.After.ID != registered.Value.ID || merged.Value.After.Path != filepath.Clean(destination) {
+	if merged.Value.After.ID != registered.Value.ID || merged.Value.After.Path != filepath.Clean(destination) ||
+		merged.Value.Resolution != workspace.RelocationResolutionMerge {
 		t.Fatalf("merged relocation=%#v", merged.Value)
 	}
 }
@@ -110,7 +112,12 @@ func TestWorkspaceRelocateDispatcherUsesCanonicalRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	relocated, ok := result.Value.(WorkspaceRelocation)
-	if !ok || relocated.After.Path != filepath.Clean(destination) {
+	if !ok || relocated.After.Path != filepath.Clean(destination) ||
+		relocated.Resolution != workspace.RelocationResolutionDestination {
 		t.Fatalf("dispatch result=%#v", result.Value)
+	}
+	wantSemantics, _ := OperationSemanticsFor(capability.WorkspaceRelocate)
+	if result.Semantics != wantSemantics {
+		t.Fatalf("dispatch semantics=%#v want=%#v", result.Semantics, wantSemantics)
 	}
 }

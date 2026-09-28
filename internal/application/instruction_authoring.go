@@ -35,7 +35,14 @@ const (
 	maxExistingArtifactBytes   = 1_000_000
 )
 
-var instructionArtifactNamePattern = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,63}$")
+var (
+	instructionArtifactNamePattern = regexp.MustCompile("^[a-z0-9][a-z0-9-]{0,63}$")
+	ErrInstructionInvalid          = errors.New("invalid instruction authoring request")
+	ErrInstructionNotFound         = errors.New("instruction artifact or workspace not found")
+	ErrInstructionConflict         = errors.New("instruction authoring conflict")
+	ErrInstructionStale            = errors.New("instruction authoring target is stale")
+	ErrInstructionUnavailable      = errors.New("instruction authoring is unavailable")
+)
 
 type InstructionAuthoringScope string
 
@@ -129,18 +136,18 @@ func NewInstructionAuthoringService(workspaces *workspace.Manager, globalAuthori
 
 func (s *InstructionAuthoringService) WriteRule(ctx context.Context, request RuleAuthoringRequest) (InstructionAuthoringResult, error) {
 	if s == nil {
-		return InstructionAuthoringResult{}, errors.New("instruction authoring service is unavailable")
+		return InstructionAuthoringResult{}, ErrInstructionUnavailable
 	}
 	name, err := validateArtifactName(request.Name)
 	if err != nil {
-		return InstructionAuthoringResult{}, err
+		return InstructionAuthoringResult{}, fmt.Errorf("%w: %v", ErrInstructionInvalid, err)
 	}
 	if err := validateAuthoringMode(request.Mode); err != nil {
-		return InstructionAuthoringResult{}, err
+		return InstructionAuthoringResult{}, fmt.Errorf("%w: %v", ErrInstructionInvalid, err)
 	}
 	content, globs, err := validateRuleRequest(request)
 	if err != nil {
-		return InstructionAuthoringResult{}, err
+		return InstructionAuthoringResult{}, fmt.Errorf("%w: %v", ErrInstructionInvalid, err)
 	}
 	rendered := renderRule(content, request.AlwaysApply, globs)
 	target, err := s.resolveTarget(ctx, request.Scope, request.WorkspaceID, "rules", name+".md")
@@ -195,7 +202,7 @@ func (s *InstructionAuthoringService) WriteRule(ctx context.Context, request Rul
 			return InstructionAuthoringResult{}, err
 		}
 		if _, err := root.Lstat(target.targetRel); err == nil {
-			return InstructionAuthoringResult{}, fmt.Errorf("create %q: target already exists", name)
+			return InstructionAuthoringResult{}, fmt.Errorf("%w: create %q target already exists", ErrInstructionConflict, name)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return InstructionAuthoringResult{}, err
 		}
@@ -230,21 +237,21 @@ func (s *InstructionAuthoringService) WriteRule(ctx context.Context, request Rul
 
 func (s *InstructionAuthoringService) WriteSkill(ctx context.Context, request SkillAuthoringRequest) (InstructionAuthoringResult, error) {
 	if s == nil {
-		return InstructionAuthoringResult{}, errors.New("instruction authoring service is unavailable")
+		return InstructionAuthoringResult{}, ErrInstructionUnavailable
 	}
 	name, err := validateArtifactName(request.Name)
 	if err != nil {
-		return InstructionAuthoringResult{}, err
+		return InstructionAuthoringResult{}, fmt.Errorf("%w: %v", ErrInstructionInvalid, err)
 	}
 	if skills.IsReservedName(name) {
-		return InstructionAuthoringResult{}, fmt.Errorf("skill name %q is reserved by CodeMCP", name)
+		return InstructionAuthoringResult{}, fmt.Errorf("%w: skill name %q is reserved by CodeMCP", ErrInstructionInvalid, name)
 	}
 	if err := validateAuthoringMode(request.Mode); err != nil {
-		return InstructionAuthoringResult{}, err
+		return InstructionAuthoringResult{}, fmt.Errorf("%w: %v", ErrInstructionInvalid, err)
 	}
 	files, desiredID, err := validateAndRenderSkill(request, name)
 	if err != nil {
-		return InstructionAuthoringResult{}, err
+		return InstructionAuthoringResult{}, fmt.Errorf("%w: %v", ErrInstructionInvalid, err)
 	}
 	target, err := s.resolveTarget(ctx, request.Scope, request.WorkspaceID, "skills", name)
 	if err != nil {
@@ -299,7 +306,7 @@ func (s *InstructionAuthoringService) WriteSkill(ctx context.Context, request Sk
 
 	if request.Mode == InstructionCreate {
 		if _, err := root.Lstat(target.targetRel); err == nil {
-			return InstructionAuthoringResult{}, fmt.Errorf("create %q: target already exists", name)
+			return InstructionAuthoringResult{}, fmt.Errorf("%w: create %q target already exists", ErrInstructionConflict, name)
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return InstructionAuthoringResult{}, err
 		}
@@ -328,14 +335,17 @@ func (s *InstructionAuthoringService) resolveTarget(ctx context.Context, scope I
 	switch scope {
 	case InstructionScopeWorkspace:
 		if s.Workspaces == nil {
-			return authoringTarget{}, errors.New("workspace manager is unavailable")
+			return authoringTarget{}, ErrInstructionUnavailable
 		}
 		workspaceID = strings.TrimSpace(workspaceID)
 		if workspaceID == "" {
-			return authoringTarget{}, errors.New("workspace id is required for workspace instruction authoring")
+			return authoringTarget{}, fmt.Errorf("%w: workspace id is required for workspace instruction authoring", ErrInstructionInvalid)
 		}
 		item, err := s.Workspaces.Get(workspaceID)
 		if err != nil {
+			if errors.Is(err, workspace.ErrNotFound) {
+				return authoringTarget{}, fmt.Errorf("%w: %v", ErrInstructionNotFound, err)
+			}
 			return authoringTarget{}, err
 		}
 		store, err := s.Workspaces.LocalState(item.ID)
@@ -364,7 +374,7 @@ func (s *InstructionAuthoringService) resolveTarget(ctx context.Context, scope I
 			basePath: configformat.RootPath(), resourceDir: resourceDir, targetRel: filepath.Join(resourceDir, targetName),
 		}, nil
 	default:
-		return authoringTarget{}, fmt.Errorf("unsupported instruction authoring scope %q", scope)
+		return authoringTarget{}, fmt.Errorf("%w: unsupported instruction authoring scope %q", ErrInstructionInvalid, scope)
 	}
 }
 
@@ -377,7 +387,7 @@ func (s *InstructionAuthoringService) revalidateTarget(target authoringTarget) e
 		return err
 	}
 	if filepath.Clean(item.Path) != filepath.Clean(target.workspaceRoot) {
-		return errors.New("workspace root changed during instruction authoring")
+		return fmt.Errorf("%w: workspace root changed during instruction authoring", ErrInstructionStale)
 	}
 	store := workspacestate.New(item.Path)
 	identity, err := store.LoadIdentity()
@@ -385,7 +395,7 @@ func (s *InstructionAuthoringService) revalidateTarget(target authoringTarget) e
 		return fmt.Errorf("revalidate workspace local state: %w", err)
 	}
 	if identity.ID != target.workspaceID || filepath.Clean(store.Root()) != filepath.Clean(target.basePath) {
-		return errors.New("workspace local state changed during instruction authoring")
+		return fmt.Errorf("%w: workspace local state changed during instruction authoring", ErrInstructionStale)
 	}
 	return nil
 }
@@ -416,7 +426,7 @@ func (s *InstructionAuthoringService) activateUpdate(root *os.Root, target autho
 		return restore(err)
 	}
 	if capturedID != expectedID {
-		return restore(errors.New("instruction artifact changed before update activation"))
+		return restore(fmt.Errorf("%w: instruction artifact changed before update activation", ErrInstructionStale))
 	}
 	if err := s.callActivationHook("after-backup"); err != nil {
 		return restore(err)
@@ -450,9 +460,9 @@ func validateAuthoringMode(mode InstructionAuthoringMode) error {
 func validateModeAgainstExistence(mode InstructionAuthoringMode, exists bool) error {
 	switch {
 	case mode == InstructionCreate && exists:
-		return errors.New("target already exists")
+		return fmt.Errorf("%w: target already exists", ErrInstructionConflict)
 	case mode == InstructionUpdate && !exists:
-		return errors.New("target does not exist")
+		return fmt.Errorf("%w: target does not exist", ErrInstructionNotFound)
 	default:
 		return nil
 	}

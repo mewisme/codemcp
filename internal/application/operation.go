@@ -25,6 +25,8 @@ const (
 type OperationError struct {
 	Operation capability.ID
 	Code      ErrorCode
+	Retryable bool
+	Stale     bool
 	Err       error
 }
 
@@ -50,6 +52,27 @@ func ErrorCodeOf(err error) ErrorCode {
 	return ErrorInternal
 }
 
+type ErrorSemantics struct {
+	Code      ErrorCode `json:"code"`
+	Retryable bool      `json:"retryable,omitempty"`
+	Stale     bool      `json:"stale,omitempty"`
+}
+
+func ErrorSemanticsOf(err error) ErrorSemantics {
+	if err == nil {
+		return ErrorSemantics{}
+	}
+	var operationErr *OperationError
+	if !errors.As(err, &operationErr) || operationErr == nil {
+		return ErrorSemantics{Code: ErrorInternal}
+	}
+	retryable := operationErr.Retryable || operationErr.Code == ErrorUnavailable
+	if errors.Is(operationErr.Err, context.Canceled) {
+		retryable = false
+	}
+	return ErrorSemantics{Code: operationErr.Code, Retryable: retryable, Stale: operationErr.Stale}
+}
+
 type Result[T any] struct {
 	Operation capability.ID
 	Value     T
@@ -63,7 +86,31 @@ type DispatchRequest struct {
 type DispatchResult struct {
 	Operation capability.ID
 	Metadata  capability.Spec
+	Semantics OperationSemantics
 	Value     any
+}
+
+type OperationSemantics struct {
+	Kind          capability.Kind
+	Authorization capability.AuthorizationClass
+	Risk          capability.MutationRisk
+	Confirmation  capability.ConfirmationPolicy
+	Effects       capability.SemanticEffects
+}
+
+func OperationSemanticsFor(id capability.ID) (OperationSemantics, bool) {
+	spec, ok := capability.Lookup(id)
+	if !ok {
+		return OperationSemantics{}, false
+	}
+	return operationSemantics(spec), true
+}
+
+func operationSemantics(spec capability.Spec) OperationSemantics {
+	return OperationSemantics{
+		Kind: spec.Kind, Authorization: spec.Authorization, Risk: spec.Risk,
+		Confirmation: spec.Confirmation, Effects: spec.Effects,
+	}
 }
 
 type OperationHandler func(context.Context, any) (any, error)
@@ -116,17 +163,17 @@ func (dispatcher *Dispatcher) Dispatch(ctx context.Context, request DispatchRequ
 	}
 	spec, ok := capability.Lookup(request.Operation)
 	if !ok {
-		return DispatchResult{}, &OperationError{Operation: request.Operation, Code: ErrorUnsupported, Err: fmt.Errorf("unknown canonical operation: %s", request.Operation)}
+		return DispatchResult{}, operationError(request.Operation, ErrorUnsupported, fmt.Errorf("unknown canonical operation: %s", request.Operation))
 	}
 	if dispatcher == nil {
-		return DispatchResult{}, &OperationError{Operation: request.Operation, Code: ErrorUnavailable, Err: errors.New("operation dispatcher is unavailable")}
+		return DispatchResult{}, operationError(request.Operation, ErrorUnavailable, errors.New("operation dispatcher is unavailable"))
 	}
 	dispatcher.mu.RLock()
 	handler := dispatcher.handlers[request.Operation]
 	observer := dispatcher.observer
 	dispatcher.mu.RUnlock()
 	if handler == nil {
-		return DispatchResult{}, &OperationError{Operation: request.Operation, Code: ErrorUnsupported, Err: fmt.Errorf("canonical operation is not bound to an application handler: %s", request.Operation)}
+		return DispatchResult{}, operationError(request.Operation, ErrorUnsupported, fmt.Errorf("canonical operation is not bound to an application handler: %s", request.Operation))
 	}
 
 	started := time.Now()
@@ -154,7 +201,7 @@ func (dispatcher *Dispatcher) Dispatch(ctx context.Context, request DispatchRequ
 		})
 		markOperationObserved(ctx)
 	}
-	return DispatchResult{Operation: request.Operation, Metadata: spec, Value: value}, nil
+	return DispatchResult{Operation: request.Operation, Metadata: spec, Semantics: operationSemantics(spec), Value: value}, nil
 }
 
 func normalizeOperationError(id capability.ID, err error) error {
@@ -181,6 +228,20 @@ func operationError(id capability.ID, code ErrorCode, err error) error {
 		return nil
 	}
 	return &OperationError{Operation: id, Code: code, Err: err}
+}
+
+func staleOperationError(id capability.ID, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &OperationError{Operation: id, Code: ErrorConflict, Retryable: true, Stale: true, Err: err}
+}
+
+func retryableOperationError(id capability.ID, code ErrorCode, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &OperationError{Operation: id, Code: code, Retryable: true, Err: err}
 }
 
 func runOperation[T any](ctx context.Context, component string, id capability.ID, message string, fields []tracepkg.Field, fn func() (T, error)) (Result[T], error) {

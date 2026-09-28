@@ -237,11 +237,13 @@ func TestWorkspaceServiceExposesRuntimeDiagnosticsAndConflicts(t *testing.T) {
 	if code := ErrorCodeOf(classifyWorkspaceError(capability.WorkspaceRelocate, workspace.ErrAlreadyActive)); code != ErrorConflict {
 		t.Fatalf("active conflict code=%s", code)
 	}
-	if code := ErrorCodeOf(classifyWorkspaceError(capability.WorkspaceShow, workspace.ErrStateLost)); code != ErrorConflict {
-		t.Fatalf("state lost conflict code=%s", code)
+	stateLost := ErrorSemanticsOf(classifyWorkspaceError(capability.WorkspaceShow, workspace.ErrStateLost))
+	if stateLost.Code != ErrorConflict || !stateLost.Stale || !stateLost.Retryable {
+		t.Fatalf("state lost semantics=%#v", stateLost)
 	}
-	if code := ErrorCodeOf(classifyWorkspaceError(capability.WorkspaceRegister, workspace.ErrRegistryBusy)); code != ErrorConflict {
-		t.Fatalf("registry busy conflict code=%s", code)
+	registryBusy := ErrorSemanticsOf(classifyWorkspaceError(capability.WorkspaceRegister, workspace.ErrRegistryBusy))
+	if registryBusy.Code != ErrorUnavailable || registryBusy.Stale || !registryBusy.Retryable {
+		t.Fatalf("registry busy semantics=%#v", registryBusy)
 	}
 }
 

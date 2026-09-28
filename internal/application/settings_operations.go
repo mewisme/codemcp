@@ -101,7 +101,7 @@ func BindSettingOperations(dispatcher *Dispatcher, service *SettingService) erro
 					return nil, err
 				}
 				if current.Value != input.ExpectedValue {
-					return nil, operationError(capability.ConfigSet, ErrorConflict, errors.New("setting changed since this view was rendered"))
+					return nil, staleOperationError(capability.ConfigSet, errors.New("setting changed since this view was rendered"))
 				}
 			}
 			switch strings.ToLower(strings.TrimSpace(input.Action)) {
@@ -116,7 +116,7 @@ func BindSettingOperations(dispatcher *Dispatcher, service *SettingService) erro
 			case "verify":
 				return service.Verify(ctx, input.Key)
 			default:
-				return nil, errors.New("unsupported canonical setting action")
+				return nil, operationError(capability.ConfigSet, ErrorInvalidArgument, errors.New("unsupported canonical setting action"))
 			}
 		})},
 	}

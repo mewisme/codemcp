@@ -37,12 +37,12 @@ func TestSafeTunnelViewNeverContainsRuntimeOrAdminKeys(t *testing.T) {
 			Admin: tunnel.AdminConfig{Enabled: true, Key: "admin-secret", WorkspaceID: "ws_safe", Verified: true, ReadAccess: true},
 		},
 		Status: tunnel.Status{
-			Enabled: true, ID: "tunnel_safe",
+			Enabled: true, ID: "tunnel_safe", Running: true, Ready: true,
 			Admin: tunnel.AdminState{Enabled: true, KeyConfigured: true, Configured: true, WorkspaceID: "ws_safe", Verified: true, ReadAccess: true},
 		},
 	}
 	view := safeTunnelView(dashboard)
-	if !view.RuntimeKeyConfigured || !view.Admin.KeyConfigured || !view.Admin.Verified || view.RuntimeKeyPreview == "configured" || view.Admin.KeyPreview == "configured" {
+	if !view.Configured || !view.Connected || !view.RuntimeKeyConfigured || !view.Admin.KeyConfigured || !view.Admin.Verified || view.RuntimeKeyPreview == "configured" || view.Admin.KeyPreview == "configured" {
 		t.Fatalf("safe tunnel view lost credential state: %#v", view)
 	}
 	data, err := json.Marshal(view)

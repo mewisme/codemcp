@@ -63,6 +63,7 @@ type TunnelAdminKeyInput struct {
 type TunnelView struct {
 	Enabled              bool
 	Configured           bool
+	Connected            bool
 	ID                   string
 	ControlPlaneBaseURL  string
 	OrganizationID       string
@@ -98,6 +99,7 @@ func safeTunnelView(dashboard TunnelDashboard) TunnelView {
 	return TunnelView{
 		Enabled:              dashboard.Config.Enabled,
 		Configured:           tunnel.Configured(dashboard.Config),
+		Connected:            dashboard.Status.Running && dashboard.Status.Ready,
 		ID:                   dashboard.Config.ID,
 		ControlPlaneBaseURL:  dashboard.Config.ControlPlaneBaseURL,
 		OrganizationID:       dashboard.Config.OrganizationID,

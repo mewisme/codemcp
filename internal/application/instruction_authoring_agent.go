@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/workspace"
 )
@@ -20,93 +21,117 @@ func NewAgentInstructionAuthoringProvider(workspaces *workspace.Manager, streams
 }
 
 func (p *AgentInstructionAuthoringProvider) AuthorRule(ctx context.Context, args map[string]any) (any, error) {
+	const operation = capability.InstructionRuleCreate
 	if p == nil || p.service == nil {
-		return nil, errors.New("native instruction authoring is unavailable")
+		return nil, retryableOperationError(operation, ErrorUnavailable, errors.New("native instruction authoring is unavailable"))
 	}
 	scope, err := authoringProviderString(args, "scope")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	if InstructionAuthoringScope(scope) != InstructionScopeWorkspace {
-		return nil, errors.New("agent instruction authoring is workspace-scoped")
+		return nil, operationError(operation, ErrorInvalidArgument, errors.New("agent instruction authoring is workspace-scoped"))
 	}
 	workspaceID, err := authoringProviderString(args, "workspace_id")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	mode, err := authoringProviderString(args, "mode")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	name, err := authoringProviderString(args, "name")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	content, err := authoringProviderString(args, "content")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	alwaysApply, err := authoringProviderBool(args, "always_apply", false)
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	globs, err := authoringProviderStrings(args, "globs")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	dryRun, err := authoringProviderBool(args, "dry_run", false)
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
-	return p.service.WriteRule(ctx, RuleAuthoringRequest{
+	result, err := p.service.WriteRule(ctx, RuleAuthoringRequest{
 		Scope: InstructionScopeWorkspace, Mode: InstructionAuthoringMode(mode), WorkspaceID: workspaceID,
 		Name: name, AlwaysApply: alwaysApply, Globs: globs, Content: content, DryRun: dryRun,
 	})
+	return result, classifyAgentInstructionAuthoringError(operation, err)
 }
 
 func (p *AgentInstructionAuthoringProvider) AuthorSkill(ctx context.Context, args map[string]any) (any, error) {
+	const operation = capability.InstructionSkillCreate
 	if p == nil || p.service == nil {
-		return nil, errors.New("native instruction authoring is unavailable")
+		return nil, retryableOperationError(operation, ErrorUnavailable, errors.New("native instruction authoring is unavailable"))
 	}
 	scope, err := authoringProviderString(args, "scope")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	if InstructionAuthoringScope(scope) != InstructionScopeWorkspace {
-		return nil, errors.New("agent instruction authoring is workspace-scoped")
+		return nil, operationError(operation, ErrorInvalidArgument, errors.New("agent instruction authoring is workspace-scoped"))
 	}
 	workspaceID, err := authoringProviderString(args, "workspace_id")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	mode, err := authoringProviderString(args, "mode")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	name, err := authoringProviderString(args, "name")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	description, err := authoringProviderString(args, "description")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	instructions, err := authoringProviderString(args, "instructions")
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	supportingFiles, err := authoringProviderFiles(args["supporting_files"])
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
 	dryRun, err := authoringProviderBool(args, "dry_run", false)
 	if err != nil {
-		return nil, err
+		return nil, operationError(operation, ErrorInvalidArgument, err)
 	}
-	return p.service.WriteSkill(ctx, SkillAuthoringRequest{
+	result, err := p.service.WriteSkill(ctx, SkillAuthoringRequest{
 		Scope: InstructionScopeWorkspace, Mode: InstructionAuthoringMode(mode), WorkspaceID: workspaceID,
 		Name: name, Description: description, Instructions: instructions, SupportingFiles: supportingFiles, DryRun: dryRun,
 	})
+	return result, classifyAgentInstructionAuthoringError(operation, err)
+}
+
+func classifyAgentInstructionAuthoringError(operation capability.ID, err error) error {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, ErrInstructionInvalid):
+		return operationError(operation, ErrorInvalidArgument, err)
+	case errors.Is(err, ErrInstructionNotFound):
+		return operationError(operation, ErrorNotFound, err)
+	case errors.Is(err, ErrInstructionConflict):
+		return operationError(operation, ErrorConflict, err)
+	case errors.Is(err, ErrInstructionStale):
+		return staleOperationError(operation, err)
+	case errors.Is(err, ErrInstructionUnavailable):
+		return retryableOperationError(operation, ErrorUnavailable, err)
+	default:
+		return normalizeOperationError(operation, err)
+	}
 }
 
 func authoringProviderString(args map[string]any, key string) (string, error) {

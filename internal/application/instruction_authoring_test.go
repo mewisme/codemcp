@@ -84,6 +84,88 @@ func TestInstructionAuthoringPublishesCanonicalChangesAfterMutation(t *testing.T
 	}
 }
 
+func TestAgentInstructionAuthoringUsesCanonicalResultAndErrorSemantics(t *testing.T) {
+	service, manager, item := newInstructionAuthoringHarness(t)
+	provider := NewAgentInstructionAuthoringProvider(manager)
+	provider.service = service
+
+	base := map[string]any{
+		"scope":        "workspace",
+		"workspace_id": item.ID,
+		"mode":         "create",
+		"name":         "provider-dry",
+		"content":      "provider body",
+		"always_apply": true,
+		"dry_run":      true,
+	}
+	value, err := provider.AuthorRule(t.Context(), base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dry, ok := value.(InstructionAuthoringResult)
+	if !ok || !dry.DryRun || dry.Scope != InstructionScopeWorkspace || dry.Mode != InstructionCreate || dry.ContentID == "" {
+		t.Fatalf("dry-run semantic result=%#v", value)
+	}
+	if _, err := os.Stat(dry.Path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("dry-run mutated authored rule path: %v", err)
+	}
+
+	invalid := cloneAuthoringArgs(base)
+	invalid["scope"] = "global"
+	if _, err := provider.AuthorRule(t.Context(), invalid); ErrorSemanticsOf(err) != (ErrorSemantics{Code: ErrorInvalidArgument}) {
+		t.Fatalf("invalid scope semantics=%#v err=%v", ErrorSemanticsOf(err), err)
+	}
+
+	missing := cloneAuthoringArgs(base)
+	missing["mode"] = "update"
+	missing["name"] = "provider-missing"
+	missing["dry_run"] = false
+	if _, err := provider.AuthorRule(t.Context(), missing); ErrorSemanticsOf(err) != (ErrorSemantics{Code: ErrorNotFound}) {
+		t.Fatalf("missing update semantics=%#v err=%v", ErrorSemanticsOf(err), err)
+	}
+
+	create := cloneAuthoringArgs(base)
+	create["name"] = "provider-live"
+	create["dry_run"] = false
+	if _, err := provider.AuthorRule(t.Context(), create); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.AuthorRule(t.Context(), create); ErrorSemanticsOf(err) != (ErrorSemantics{Code: ErrorConflict}) {
+		t.Fatalf("duplicate create semantics=%#v err=%v", ErrorSemanticsOf(err), err)
+	}
+
+	staleCreate := cloneAuthoringArgs(base)
+	staleCreate["name"] = "provider-stale"
+	staleCreate["dry_run"] = false
+	if _, err := provider.AuthorRule(t.Context(), staleCreate); err != nil {
+		t.Fatal(err)
+	}
+	stalePath := filepath.Join(workspacestate.New(item.Path).RulesRoot(), "provider-stale.md")
+	hookCalled := false
+	provider.service.activationHook = func(point string) error {
+		if point != "before-activate" || hookCalled {
+			return nil
+		}
+		hookCalled = true
+		return os.WriteFile(stalePath, []byte("---\nalways_apply: true\n---\nexternal provider change\n"), 0o600)
+	}
+	staleUpdate := cloneAuthoringArgs(staleCreate)
+	staleUpdate["mode"] = "update"
+	staleUpdate["content"] = "replacement"
+	_, err = provider.AuthorRule(t.Context(), staleUpdate)
+	if got := ErrorSemanticsOf(err); got != (ErrorSemantics{Code: ErrorConflict, Retryable: true, Stale: true}) {
+		t.Fatalf("stale update semantics=%#v err=%v", got, err)
+	}
+}
+
+func cloneAuthoringArgs(input map[string]any) map[string]any {
+	result := make(map[string]any, len(input))
+	for key, value := range input {
+		result[key] = value
+	}
+	return result
+}
+
 func TestInstructionAuthoringWorkspaceCreateUpdateDryRunAndResolverVisibility(t *testing.T) {
 	service, _, item := newInstructionAuthoringHarness(t)
 	store := workspacestate.New(item.Path)
@@ -362,8 +444,8 @@ func TestInstructionAuthoringUpdateDetectsSourceChangeAndPreservesConcurrentCont
 	if _, err := service.WriteRule(t.Context(), RuleAuthoringRequest{
 		Scope: InstructionScopeWorkspace, Mode: InstructionUpdate, WorkspaceID: item.ID,
 		Name: "race-rule", AlwaysApply: true, Content: "replacement",
-	}); err == nil || !strings.Contains(err.Error(), "changed before update activation") {
-		t.Fatalf("source change was not rejected: %v", err)
+	}); err == nil || !errors.Is(err, ErrInstructionStale) || !strings.Contains(err.Error(), "changed before update activation") {
+		t.Fatalf("source change was not rejected as stale: %v", err)
 	}
 	data, err := os.ReadFile(created.Path)
 	if err != nil {

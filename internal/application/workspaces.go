@@ -30,8 +30,9 @@ type WorkspaceContainerView struct {
 }
 
 type WorkspaceRelocation struct {
-	Before WorkspaceView `json:"before"`
-	After  WorkspaceView `json:"after"`
+	Before     WorkspaceView                  `json:"before"`
+	After      WorkspaceView                  `json:"after"`
+	Resolution workspace.RelocationResolution `json:"resolution,omitempty"`
 }
 
 type WorkspaceRelocateRequest struct {
@@ -213,7 +214,7 @@ func (service *WorkspaceService) Relocate(ctx context.Context, request Workspace
 		if err := service.reconcileOnce(ctx, capability.WorkspaceRelocate); err != nil {
 			return WorkspaceRelocation{}, err
 		}
-		return WorkspaceRelocation{Before: workspaceView(before), After: workspaceView(after)}, nil
+		return WorkspaceRelocation{Before: workspaceView(before), After: workspaceView(after), Resolution: resolution}, nil
 	})
 }
 
@@ -524,9 +525,11 @@ func classifyWorkspaceError(operation capability.ID, err error) error {
 	switch {
 	case errors.Is(err, workspace.ErrNotFound), errors.Is(err, workspace.ErrContainerNotFound):
 		return operationError(operation, ErrorNotFound, err)
+	case errors.Is(err, workspace.ErrStateLost):
+		return staleOperationError(operation, err)
+	case errors.Is(err, workspace.ErrRegistryBusy):
+		return retryableOperationError(operation, ErrorUnavailable, err)
 	case errors.Is(err, workspace.ErrAlreadyActive),
-		errors.Is(err, workspace.ErrStateLost),
-		errors.Is(err, workspace.ErrRegistryBusy),
 		errors.Is(err, workspace.ErrDuplicateWorkspaceIdentity),
 		errors.Is(err, workspace.ErrWorkspaceReconnectConflict),
 		errors.Is(err, workspace.ErrRelocationMergeUnavailable):
