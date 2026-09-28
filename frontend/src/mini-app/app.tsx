@@ -517,7 +517,7 @@ export function MiniApp() {
         </section>
 
         {selected && !isMobile ? (
-          <aside className="sticky top-3 hidden min-w-0 self-start overflow-hidden rounded-xl border bg-card md:flex md:max-h-[calc(var(--tg-viewport-stable-height,100dvh)-1.5rem)] md:flex-col">
+          <aside className="sticky top-3 hidden h-[calc(var(--tg-viewport-stable-height,100dvh)-1.5rem)] min-h-0 min-w-0 self-start overflow-hidden rounded-xl border bg-card md:flex md:flex-col">
             <div className="flex min-w-0 items-start gap-3 border-b px-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-semibold">{detailTitle(selectedDetail)}</div>
@@ -525,9 +525,7 @@ export function MiniApp() {
               </div>
               <Button size="icon-sm" variant="ghost" aria-label="Close detail" onClick={() => setSelected(null)}><XIcon /></Button>
             </div>
-            <ScrollArea className="min-h-0 flex-1" scrollbars="vertical">
-              <div className="p-3"><DetailBody key={selected.key} detail={selectedDetail} executionEvents={executionEvents} /></div>
-            </ScrollArea>
+            <div className="min-h-0 flex-1 p-3"><DetailBody key={selected.key} detail={selectedDetail} executionEvents={executionEvents} fill /></div>
           </aside>
         ) : null}
       </div>
@@ -594,10 +592,11 @@ function ExecutionRow({ execution, compact, selected, onClick }: { execution: Ex
 
 function ToolRow({ record, compact, selected, onClick }: { record: ToolRecord; compact: boolean; selected: boolean; onClick: () => void }) {
   const event = record.latest
+  const status = event.status || event.phase || "event"
   return (
     <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_7rem_minmax(0,1fr)_11rem] md:items-center md:gap-3", selected && "bg-muted/70", compact ? "py-2" : "py-3")}>
-      <div className="flex items-center gap-2"><StatusDot status={event.status || event.phase || ""} /><span className="text-xs tabular-nums text-muted-foreground">{formatTime(event.timestamp)}</span></div>
-      <Badge variant={badgeForStatus(event.status || event.phase || "")}>{event.status || event.phase || "event"}</Badge>
+      <div className="flex items-center gap-2"><StatusDot status={status} /><span className="text-xs tabular-nums text-muted-foreground">{formatTime(event.timestamp)}</span></div>
+      <Badge variant={badgeForStatus(status)} className={statusBadgeClass(status)}>{status}</Badge>
       <div className="min-w-0"><div className="truncate font-medium">{event.tool || event.method || "Tool call"}</div><div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{record.call_id}</div></div>
       <div className="truncate text-xs text-muted-foreground md:text-right">{event.workspace_id || event.source || ""}</div>
     </button>
@@ -653,8 +652,8 @@ function buildDetailSections(detail: NonNullable<ReturnType<typeof resolveSelect
     const latest = record.latest as ActivityEvent & { raw?: unknown }
     return {
       overview: <Overview values={[["Tool", latest.tool || "—"], ["Status", latest.status || latest.phase || "—"], ["Workspace", latest.workspace_id || "—"], ["Duration", latest.duration_ms ? latest.duration_ms + " ms" : "—"]]} />,
-      request: valueOrNull(first.raw) || compactObject({ phase: first.phase, method: first.method, source: first.source, message: first.message }),
-      response: valueOrNull(latest.raw) || compactObject({ phase: latest.phase, status: latest.status, duration_ms: latest.duration_ms, message: latest.message }),
+      request: toolRequestView(first),
+      response: toolResponseView(latest),
       metadata: compactObject({ call_id: record.call_id, kind: latest.kind, tool: latest.tool, method: latest.method, source: latest.source, workspace_id: latest.workspace_id, first_timestamp: first.timestamp, latest_timestamp: latest.timestamp }),
       raw: record,
     }
@@ -664,8 +663,8 @@ function buildDetailSections(detail: NonNullable<ReturnType<typeof resolveSelect
   const output = related.filter((event) => event.type === "output").map((event) => event.data || "").join("")
   return {
     overview: <Overview values={[["Status", execution.status], ["Workspace", execution.workspace_id], ["Tool", execution.tool], ["Exit code", execution.exit_code == null ? "—" : String(execution.exit_code)]]} />,
-    request: <div className="space-y-3"><TextViewer value={execution.command} maxHeight={null} nativeUnbounded /><DetailSection value={compactObject({ requested_command: execution.requested_command, effective_command: execution.effective_command, cwd: execution.cwd, source: execution.source })} empty="" /></div>,
-    response: output ? <div className="space-y-3"><TextViewer value={output} maxHeight={null} nativeUnbounded /><JsonViewer value={compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at })} maxHeight={null} nativeUnbounded /></div> : compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at }),
+    request: <div className="space-y-3"><TextViewer value={execution.command} maxHeight={null} /><DetailSection value={compactObject({ requested_command: execution.requested_command, effective_command: execution.effective_command, cwd: execution.cwd, source: execution.source })} empty="" /></div>,
+    response: output ? <div className="space-y-3"><TextViewer value={output} maxHeight={null} /><JsonViewer value={compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at })} maxHeight={null} /></div> : compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at }),
     metadata: compactObject({ id: execution.id, workspace_id: execution.workspace_id, tool: execution.tool, source: execution.source, started_at: execution.started_at, finished_at: execution.finished_at }),
     raw: { execution, events: related },
   }
@@ -674,7 +673,7 @@ function buildDetailSections(detail: NonNullable<ReturnType<typeof resolveSelect
 function DetailSection({ value, empty }: { value: React.ReactNode | unknown; empty: string }) {
   if (value == null || value === "") return empty ? <p className="py-3 text-sm text-muted-foreground">{empty}</p> : null
   if (isReactNode(value)) return value
-  return <JsonViewer value={value} maxHeight={null} nativeUnbounded />
+  return <JsonViewer value={value} maxHeight={null} />
 }
 
 function isReactNode(value: unknown): value is React.ReactNode {
@@ -693,8 +692,31 @@ function compactObject(value: Record<string, unknown>) {
   return entries.length ? Object.fromEntries(entries) : null
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function toolRequestView(event: ActivityEvent & { raw?: unknown }) {
+  const raw = asRecord(event.raw)
+  if (!raw) return compactObject({ method: event.method, tool: event.tool, source: event.source, message: event.message })
+  return valueOrNull(raw.request)
+    || (valueOrNull(raw.params) ? compactObject({ method: raw.method ?? event.method, params: raw.params }) : null)
+    || (valueOrNull(raw.arguments) ? compactObject({ tool: raw.tool ?? event.tool, arguments: raw.arguments }) : null)
+    || compactObject({ method: event.method, tool: event.tool, source: event.source, message: event.message })
+}
+
+function toolResponseView(event: ActivityEvent & { raw?: unknown }) {
+  const raw = asRecord(event.raw)
+  return compactObject({
+    status: raw?.status ?? event.status,
+    result_type: raw?.result_type,
+    result: raw?.result,
+    error: raw?.error ?? (event.status && event.status !== "ok" ? event.message : undefined),
+  }) || compactObject({ status: event.status || event.phase, message: event.message, duration_ms: event.duration_ms })
+}
+
 function Overview({ values }: { values: [string, string][] }) {
-  return <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{values.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border bg-muted/20 p-2.5"><div className="text-[11px] text-muted-foreground">{label}</div><div className="mt-1 truncate text-sm font-medium">{value}</div></div>)}</div>
+  return <div className="grid grid-cols-2 gap-2 md:grid-cols-1">{values.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border bg-muted/20 p-2.5 md:flex md:items-center md:justify-between md:gap-3"><div className="text-[11px] text-muted-foreground">{label}</div><div className="mt-1 truncate text-sm font-medium md:mt-0 md:text-right">{value}</div></div>)}</div>
 }
 
 function SettingRow({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
@@ -705,6 +727,8 @@ function StatusDot({ status }: { status: string }) {
   const normalized = status.toLowerCase()
   const className = normalized.includes("error") || normalized.includes("fail")
     ? "bg-destructive"
+    : isSuccessfulStatus(normalized)
+      ? "bg-emerald-500"
     : normalized.includes("running") || normalized.includes("start")
       ? "bg-primary"
       : normalized.includes("warn")
@@ -799,6 +823,16 @@ function badgeForStatus(status: string): "default" | "secondary" | "destructive"
   if (value.includes("error") || value.includes("fail") || value.includes("timed")) return "destructive"
   if (value.includes("running") || value.includes("start") || value.includes("progress")) return "secondary"
   return "outline"
+}
+
+function statusBadgeClass(status: string) {
+  return isSuccessfulStatus(status.toLowerCase())
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+    : undefined
+}
+
+function isSuccessfulStatus(status: string) {
+  return status === "ok" || status === "success" || status === "completed" || status === "finish"
 }
 
 function formatTime(value?: string) {

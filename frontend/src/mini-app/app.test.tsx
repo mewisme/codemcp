@@ -245,6 +245,105 @@ describe("Telegram Logs Mini App", () => {
     expect(screen.getByText("Server ready")).toBeInTheDocument()
   })
 
+  it("renders successful tool calls in green and separates request, response, metadata, and raw detail views", async () => {
+    window.Telegram = { WebApp: { initData: "signed-init-data", ready: vi.fn(), expand: vi.fn() } }
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })))
+
+    render(<TooltipProvider><MiniApp /></TooltipProvider>)
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
+    act(() => {
+      MockWebSocket.instances[0].emit({ type: "snapshot", feed: "runtime", latest_sequence: 1, payload: { events: [], total: 0, truncated: false, latest_sequence: 1 } })
+    })
+
+    await userEvent.click(screen.getByRole("tab", { name: "Tool Call/MCP" }))
+    await waitFor(() => expect(MockWebSocket.instances).toHaveLength(2))
+    act(() => {
+      MockWebSocket.instances[1].emit({
+        type: "snapshot",
+        feed: "tools",
+        latest_sequence: 11,
+        payload: {
+          latest_sequence: 11,
+          events: [],
+          records: [{
+            call_id: "call_test",
+            first: {
+              sequence: 10,
+              call_id: "call_test",
+              kind: "tool_call",
+              phase: "start",
+              method: "tools/call",
+              source: "tunnel",
+              tool: "git_status",
+              workspace_id: "ws_test",
+              status: "running",
+              timestamp: "2026-09-28T08:00:00Z",
+              raw: {
+                method: "tools/call",
+                tool: "git_status",
+                arguments: { workspace_id: "ws_test", include_untracked: true },
+                params: { name: "git_status", arguments: { workspace_id: "ws_test", include_untracked: true } },
+              },
+            },
+            latest: {
+              sequence: 11,
+              call_id: "call_test",
+              kind: "tool_call",
+              phase: "finish",
+              method: "tools/call",
+              source: "tunnel",
+              tool: "git_status",
+              workspace_id: "ws_test",
+              status: "ok",
+              duration_ms: 17,
+              timestamp: "2026-09-28T08:00:00Z",
+              raw: {
+                method: "tools/call",
+                tool: "git_status",
+                arguments: { workspace_id: "ws_test", include_untracked: true },
+                params: { name: "git_status", arguments: { workspace_id: "ws_test", include_untracked: true } },
+                status: "ok",
+                result_type: "complete",
+                result: { branch: "main", clean: true },
+              },
+            },
+          }],
+        },
+      })
+    })
+
+    const okBadge = await screen.findByText("ok")
+    expect(okBadge.className).toContain("bg-emerald-500/10")
+    await userEvent.click(screen.getByText("git_status"))
+
+    const overview = screen.getByText("Tool").parentElement?.parentElement
+    expect(overview?.className).toContain("md:grid-cols-1")
+
+    await userEvent.click(screen.getByRole("tab", { name: "Request" }))
+    let code = screen.getByRole("code")
+    expect(code.textContent).toContain("include_untracked")
+    expect(code.textContent).not.toContain("\"result\"")
+    expect(code.closest('[data-slot="scroll-area"]')).toHaveAttribute("data-scrollbars", "both")
+
+    await userEvent.click(screen.getByRole("tab", { name: "Response" }))
+    code = screen.getByRole("code")
+    expect(code.textContent).toContain("\"result\"")
+    expect(code.textContent).toContain("\"clean\": true")
+    expect(code.textContent).not.toContain("include_untracked")
+    expect(code.closest('[data-slot="scroll-area"]')).toHaveAttribute("data-scrollbars", "both")
+
+    await userEvent.click(screen.getByRole("tab", { name: "Metadata" }))
+    code = screen.getByRole("code")
+    expect(code.textContent).toContain("\"call_id\": \"call_test\"")
+    expect(code.closest('[data-slot="scroll-area"]')).toHaveAttribute("data-scrollbars", "both")
+
+    await userEvent.click(screen.getByRole("tab", { name: "Raw" }))
+    code = screen.getByRole("code")
+    expect(code.textContent).toContain("\"first\"")
+    expect(code.textContent).toContain("\"latest\"")
+    expect(code.closest('[data-slot="scroll-area"]')).toHaveAttribute("data-scrollbars", "both")
+  })
+
   it("does not fall back to Admin authentication outside Telegram", async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal("fetch", fetchMock)
