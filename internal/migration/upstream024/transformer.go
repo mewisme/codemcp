@@ -34,6 +34,12 @@ type Result struct {
 	SourceRemoved   bool   `json:"source_removed"`
 }
 
+type Inspection struct {
+	SourceRelease string `json:"source_release"`
+	Version       int    `json:"version"`
+	Servers       int    `json:"servers"`
+}
+
 type releasedStore struct {
 	Version int               `json:"version"`
 	Servers []upstream.Server `json:"servers"`
@@ -102,6 +108,29 @@ func Transform(input Input) (Result, error) {
 		return Result{}, err
 	}
 	return Result{DestinationPath: input.DestinationPath, Migrated: true, SourceRemoved: true}, nil
+}
+
+func Inspect(sourcePath string) (Inspection, error) {
+	path := filepath.Clean(strings.TrimSpace(sourcePath))
+	if path == "." {
+		return Inspection{}, errors.New("released upstream source path is required")
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return Inspection{}, fmt.Errorf("resolve released upstream source: %w", err)
+	}
+	data, _, err := readRegular(absolute, "released upstream store")
+	if err != nil {
+		return Inspection{}, err
+	}
+	released, err := decodeReleased(data)
+	if err != nil {
+		return Inspection{}, err
+	}
+	if err := validatePresentationSafe(released.Servers); err != nil {
+		return Inspection{}, err
+	}
+	return Inspection{SourceRelease: SourceRelease, Version: released.Version, Servers: len(released.Servers)}, nil
 }
 
 func normalizeInput(input Input) (Input, error) {

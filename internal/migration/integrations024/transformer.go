@@ -33,6 +33,17 @@ type Result struct {
 	AlreadyApplied  bool                   `json:"already_applied"`
 }
 
+type Inspection struct {
+	SourceRelease       string                 `json:"source_release"`
+	SourceFormat        migrationformat.Format `json:"source_format"`
+	LegacyFeatures      bool                   `json:"legacy_features"`
+	CurrentIntegrations bool                   `json:"current_integrations"`
+	PonytailActive      bool                   `json:"ponytail_active"`
+	PonytailMode        string                 `json:"ponytail_mode"`
+	CavemanActive       bool                   `json:"caveman_active"`
+	CavemanMode         string                 `json:"caveman_mode"`
+}
+
 func Transform(input Input) (Result, error) {
 	input, format, err := normalizeInput(input)
 	if err != nil {
@@ -75,6 +86,59 @@ func Transform(input Input) (Result, error) {
 		return Result{}, fmt.Errorf("write migrated config: %w", err)
 	}
 	return Result{DestinationPath: input.DestinationPath, SourceFormat: format, Migrated: migrated}, nil
+}
+
+func Inspect(sourcePath string) (Inspection, error) {
+	sourcePath = strings.TrimSpace(sourcePath)
+	if sourcePath == "" {
+		return Inspection{}, errors.New("released config path is required")
+	}
+	absolute, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return Inspection{}, fmt.Errorf("resolve released config path: %w", err)
+	}
+	absolute = filepath.Clean(absolute)
+	info, err := os.Lstat(absolute)
+	if err != nil {
+		return Inspection{}, fmt.Errorf("inspect released config: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return Inspection{}, errors.New("released config must be a regular non-symlink file")
+	}
+	format, err := migrationformat.Detect(absolute)
+	if err != nil {
+		return Inspection{}, err
+	}
+	data, err := readSource(absolute)
+	if err != nil {
+		return Inspection{}, err
+	}
+	raw, err := migrationformat.DecodeGeneric(format, data)
+	if err != nil {
+		return Inspection{}, fmt.Errorf("decode released %s config: %w", SourceRelease, err)
+	}
+	root, ok := raw.(map[string]any)
+	if !ok {
+		return Inspection{}, errors.New("released config must be an object")
+	}
+	_, legacy := root["features"]
+	_, current := root["integrations"]
+	if _, err := migrateIntegrations(root); err != nil {
+		return Inspection{}, err
+	}
+	value := integrations.Default()
+	if rawIntegrations, exists := root["integrations"]; exists {
+		value, err = decodeIntegrations(rawIntegrations, false, false)
+		if err != nil {
+			return Inspection{}, fmt.Errorf("inspect released integrations: %w", err)
+		}
+	}
+	return Inspection{
+		SourceRelease: SourceRelease, SourceFormat: format,
+		LegacyFeatures: legacy, CurrentIntegrations: current,
+		PonytailActive: value.Ponytail.Active, PonytailMode: value.Ponytail.Mode,
+		CavemanActive: value.Caveman.Active, CavemanMode: value.Caveman.Mode,
+	}, nil
 }
 
 func normalizeInput(input Input) (Input, migrationformat.Format, error) {

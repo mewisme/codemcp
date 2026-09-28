@@ -84,6 +84,12 @@ type Result struct {
 	Rollback        RollbackMetadata `json:"rollback"`
 }
 
+type Inspection struct {
+	SourceRelease string      `json:"source_release"`
+	Inventory     Inventory   `json:"inventory"`
+	Tunnel        TunnelState `json:"tunnel"`
+}
+
 type family string
 
 const (
@@ -181,6 +187,27 @@ func Transform(input Input) (Result, error) {
 			LegacyCredentialFiles: s.inventory.LegacySecretFiles,
 		},
 	}, nil
+}
+
+func Inspect(sourceRoot string) (Inspection, error) {
+	root, err := normalizeRoot(sourceRoot, "released credential source")
+	if err != nil {
+		return Inspection{}, err
+	}
+	if err := requireRealDirectory(root, "released credential source"); err != nil {
+		return Inspection{}, err
+	}
+	s := &scanner{
+		sourceRoot: root,
+		service:    legacyService(root),
+		candidates: map[string]candidate{},
+	}
+	if err := s.scan(); err != nil {
+		return Inspection{}, err
+	}
+	s.tunnel.RuntimeKeyConfigured = s.hasCandidate(secretstore.AccountName(secretstore.DomainTunnel, "runtime-key"))
+	s.tunnel.Admin.KeyConfigured = s.hasCandidate(secretstore.AccountName(secretstore.DomainTunnel, "admin-key"))
+	return Inspection{SourceRelease: SourceRelease, Inventory: s.inventory, Tunnel: s.tunnel}, nil
 }
 
 func normalizeInput(input Input) (Input, error) {

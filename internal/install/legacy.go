@@ -24,6 +24,15 @@ type LegacyInstallation struct {
 	Reason         string
 }
 
+type LegacyAlias struct {
+	Path           string
+	Target         string
+	Verified       bool
+	PackageManaged bool
+	Removable      bool
+	Reason         string
+}
+
 type legacyEnvironment struct {
 	Path   string
 	Home   string
@@ -35,6 +44,48 @@ type legacyEnvironment struct {
 func FindLegacyInstallations(layout Layout, source string) ([]LegacyInstallation, error) {
 	env := currentLegacyEnvironment()
 	return findLegacyInstallations(layout, source, env)
+}
+
+func InspectLegacyInstallation(layout Layout, source, path string) (LegacyInstallation, error) {
+	return inspectLegacyInstallation(layout, source, path, currentLegacyEnvironment())
+}
+
+func InspectLegacyAlias(path string) (LegacyAlias, error) {
+	return inspectLegacyAlias(path, currentLegacyEnvironment())
+}
+
+func FindLegacyAliases() ([]LegacyAlias, error) {
+	env := currentLegacyEnvironment()
+	seen := map[string]struct{}{}
+	items := []LegacyAlias{}
+	for _, dir := range filepath.SplitList(env.Path) {
+		dir = strings.TrimSpace(dir)
+		if dir == "" {
+			continue
+		}
+		path := filepath.Join(dir, historicalAliasName())
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			continue
+		}
+		key := normalizedPath(absolute)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		if _, err := os.Lstat(absolute); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			return nil, err
+		}
+		item, err := inspectLegacyAlias(absolute, env)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 func currentLegacyEnvironment() legacyEnvironment {
@@ -86,8 +137,15 @@ func inspectLegacyInstallation(layout Layout, source, path string, env legacyEnv
 	}
 	item := LegacyInstallation{Path: filepath.Clean(absolute), Target: filepath.Clean(target), Method: MethodStandalone}
 	if withinPath(layout.Root, item.Target) || samePath(item.Target, layout.CurrentBinary) {
+		item.Verified = verifyChatGPTMCPBinary(item.Target)
+		if !item.Verified {
+			item.Method = MethodUnknown
+			item.Reason = "direct-layout candidate is not a verified ChatGPT-MCP executable"
+			return item, nil
+		}
 		item.Method = MethodDirect
-		item.Reason = "managed direct installation"
+		item.Removable = true
+		item.Reason = "verified managed direct installation"
 		return item, nil
 	}
 	if isHomebrewPath(item.Path) || isHomebrewPath(item.Target) {
@@ -130,6 +188,37 @@ func inspectLegacyInstallation(layout Layout, source, path string, env legacyEnv
 		item.Reason = "verified legacy standalone executable"
 	}
 	item.Removable = true
+	return item, nil
+}
+
+func inspectLegacyAlias(path string, env legacyEnvironment) (LegacyAlias, error) {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return LegacyAlias{}, err
+	}
+	item := LegacyAlias{Path: filepath.Clean(absolute)}
+	target, ownedShape, err := legacyAliasTargetPlatform(item.Path, historicalBinaryName())
+	if err != nil {
+		return LegacyAlias{}, err
+	}
+	if !ownedShape {
+		item.Reason = "unable to verify alias ownership"
+		return item, nil
+	}
+	item.Target = filepath.Clean(target)
+	if isHomebrewPath(item.Path) || isHomebrewPath(item.Target) || isScoopCandidate(item.Path, item.Target, env.Scoop) ||
+		platformPackageManagerOwnsPath(item.Path) || platformPackageManagerOwnsPath(item.Target) {
+		item.PackageManaged = true
+		item.Reason = "owned by a package manager"
+		return item, nil
+	}
+	if !verifyChatGPTMCPBinary(item.Target) {
+		item.Reason = "alias target is not a verified ChatGPT-MCP executable"
+		return item, nil
+	}
+	item.Verified = true
+	item.Removable = true
+	item.Reason = "verified legacy command alias"
 	return item, nil
 }
 
