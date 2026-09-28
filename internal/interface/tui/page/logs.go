@@ -88,6 +88,7 @@ type LogsPage struct {
 	timeline          logsTimelineState
 	runtimeClear      map[string]uint64
 	executionClear    uint64
+	executionClearSet bool
 	toolCallClear     uint64
 	runtimeScope      logsScopeState
 	exec              logsExecutionFeed
@@ -96,6 +97,7 @@ type LogsPage struct {
 	modeDialog        *logsModeDialog
 	cancel            context.CancelFunc
 	browser           component.Browser
+	help              component.HelpFooter
 	detail            component.DetailPage
 	events            []runtimeevent.Event
 	options           application.LogsQueryOptions
@@ -148,6 +150,7 @@ type LogsSessionViewState struct {
 	ExecutionPaused             bool
 	ExecutionYOffset            int
 	ExecutionClearSequence      uint64
+	ExecutionClearSet           bool
 	ToolCallScope               string
 	ToolCallWorkspaceID         string
 	ToolCallContainerID         string
@@ -169,7 +172,7 @@ func NewLogsRouteAction(ctx context.Context, resourceID, section, action string)
 		ctx = context.Background()
 	}
 	pageCtx, cancel := context.WithCancel(ctx)
-	page := &LogsPage{ctx: pageCtx, cancel: cancel, resourceID: strings.TrimSpace(resourceID), section: strings.TrimSpace(section), action: strings.TrimSpace(action), view: logsViewBrowser, timeline: newLogsTimelineState(), runtimeClear: map[string]uint64{}, runtimeScope: newLogsScopeState(), options: application.LogsQueryOptions{Tail: logsDefaultTail}, visibility: logger.VisibilityVerbose, exec: newLogsExecutionFeed(), tools: newLogsToolCallFeed()}
+	page := &LogsPage{ctx: pageCtx, cancel: cancel, resourceID: strings.TrimSpace(resourceID), section: strings.TrimSpace(section), action: strings.TrimSpace(action), view: logsViewBrowser, timeline: newLogsTimelineState(), runtimeClear: map[string]uint64{}, runtimeScope: newLogsScopeState(), options: application.LogsQueryOptions{Tail: logsDefaultTail}, visibility: logger.VisibilityVerbose, exec: newLogsExecutionFeed(), tools: newLogsToolCallFeed(), help: component.NewHelpFooter()}
 	page.browser = component.NewBrowser(pageCtx, "Logs", nil, nil).WithTitleVisible(false).WithExternalHelp(true)
 	page.syncBrowserHelp()
 	if page.resourceID != "" {
@@ -194,6 +197,7 @@ func NewCommandExecutionLogsRoute(ctx context.Context, resourceID string) (*Logs
 	page.tab = logsTabCommandExec
 	page.resourceID = strings.TrimSpace(resourceID)
 	page.view = logsViewTimeline
+	page.syncBrowserHelp()
 	if page.resourceID != "" {
 		page.detail = component.NewDetailPage("Execution · "+page.resourceID, "loading", component.Muted("Loading execution...")).WithTitleVisible(false)
 	}
@@ -285,7 +289,7 @@ func (page *LogsPage) SessionViewState() any {
 		RuntimeScope: string(page.runtimeScope.mode), RuntimeWorkspaceID: page.runtimeScope.workspaceID, RuntimeContainerID: page.runtimeScope.containerID, RuntimeClearSequences: cloneSequenceWatermarks(page.runtimeClear),
 		ExecutionScope: string(page.exec.scopeMode), ExecutionWorkspaceID: page.exec.workspaceID, ExecutionContainerID: page.exec.containerID,
 		ExecutionWorkspaceView: string(workspaceView), ExecutionProcessID: processID, ExecutionProcessExecutionID: processExecutionID, ExecutionProcessRunning: processRunning,
-		ExecutionPaused: page.exec.paused, ExecutionYOffset: executionYOffset, ExecutionClearSequence: page.executionClear,
+		ExecutionPaused: page.exec.paused, ExecutionYOffset: executionYOffset, ExecutionClearSequence: page.executionClear, ExecutionClearSet: page.executionClearSet,
 		ToolCallScope: string(page.tools.scope.mode), ToolCallWorkspaceID: page.tools.scope.workspaceID, ToolCallContainerID: page.tools.scope.containerID,
 		ToolCallPaused: page.tools.paused, ToolCallYOffset: page.tools.viewport.YOffset(), ToolCallClearSequence: page.toolCallClear,
 	}
@@ -333,6 +337,7 @@ func (page *LogsPage) RestoreSessionViewState(value any) {
 		page.exec.workspaceView, page.exec.processID, page.exec.processExecutionID, page.exec.processRunning = executionWorkspaceCommands, "", "", false
 	}
 	page.exec.paused, page.executionClear = state.ExecutionPaused, state.ExecutionClearSequence
+	page.executionClearSet = state.ExecutionClearSet || state.ExecutionClearSequence > 0
 	page.exec.restoreYOffset, page.exec.restoreYOffsetSet = max(0, state.ExecutionYOffset), true
 	page.tools.scope.mode = normalizeExecutionScopeMode(executionScopeMode(state.ToolCallScope))
 	page.tools.scope.workspaceID, page.tools.scope.containerID = strings.TrimSpace(state.ToolCallWorkspaceID), strings.TrimSpace(state.ToolCallContainerID)
@@ -508,6 +513,10 @@ func (page *LogsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 			updated, cmd := page.browser.Update(msg)
 			page.browser = updated.(component.Browser)
 			return page, cmd
+		}
+		if page.help.Update(msg) {
+			page.browser.SetHelpExpanded(page.help.Expanded())
+			return page, nil
 		}
 		if cmd, handled := page.handleTabKey(msg); handled {
 			return page, cmd
@@ -823,6 +832,7 @@ func (page *LogsPage) clearActiveLogsView() {
 		for _, event := range page.exec.events {
 			page.executionClear = max(page.executionClear, event.Sequence)
 		}
+		page.executionClearSet = true
 		page.exec.window.invalidate()
 		page.exec.paused = false
 		page.exec.notice = "Command stream view cleared"
@@ -1221,15 +1231,16 @@ func (page *LogsPage) statusView(width int) string {
 }
 
 func (page *LogsPage) runtimeHelpView(width int) string {
-	bindings := []key.Binding{
-		component.Binding([]string{"h", "l", "left", "right"}, "←/→", "tabs"), component.Binding([]string{"v"}, "v", "view"), component.Binding([]string{"m"}, "m", "mode"),
-		component.Binding([]string{"f"}, "f", "filters"), component.Binding([]string{"r"}, "r", "refresh"), component.Binding([]string{"i"}, "i", "info"), component.Binding([]string{"c"}, "c", "clear view"), component.Binding([]string{"d"}, "d", "delete journal"),
-	}
-	bindings = append(bindings, component.Binding([]string{"space"}, "space", executionFollowLabel(page.paused)))
-	return component.NewHelpFooter(bindings...).View(width)
+	return page.logsHelpView(width)
 }
 
 func (page *LogsPage) syncBrowserHelp() {
+	bindings := page.activeHelpBindings()
+	page.help.SetBindings(bindings...)
+	page.browser.SetHelpBindings(bindings...)
+}
+
+func (page *LogsPage) activeHelpBindings() []key.Binding {
 	bindings := []key.Binding{component.Binding([]string{"h", "l", "left", "right"}, "←/→", "tabs"), component.Binding([]string{"v"}, "v", "view"), component.Binding([]string{"m"}, "m", "mode")}
 	switch page.tab {
 	case logsTabCommandExec:
@@ -1240,7 +1251,12 @@ func (page *LogsPage) syncBrowserHelp() {
 		bindings = append(bindings, component.Binding([]string{"f"}, "f", "filters"), component.Binding([]string{"r"}, "r", "refresh"), component.Binding([]string{"i"}, "i", "info"), component.Binding([]string{"c"}, "c", "clear view"), component.Binding([]string{"d"}, "d", "delete journal"))
 	}
 	bindings = append(bindings, component.Binding([]string{"space"}, "space", executionFollowLabel(page.activeLogsPaused())))
-	page.browser.SetHelpBindings(bindings...)
+	return bindings
+}
+
+func (page *LogsPage) logsHelpView(width int) string {
+	page.help.SetBindings(page.activeHelpBindings()...)
+	return page.help.View(width)
 }
 
 func (page *LogsPage) activeLogsPaused() bool {

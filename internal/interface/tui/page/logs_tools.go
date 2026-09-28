@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -73,6 +72,7 @@ func NewToolCallLogsRoute(ctx context.Context, resourceID string) (*LogsPage, er
 	page.tab = logsTabToolCalls
 	page.resourceID = strings.TrimSpace(resourceID)
 	page.view = logsViewBrowser
+	page.syncBrowserHelp()
 	if page.resourceID != "" {
 		page.detail = component.NewDetailPage("Tool Call · "+page.resourceID, "loading", component.Muted("Loading tool call...")).WithTitleVisible(false)
 	}
@@ -535,9 +535,7 @@ func (page *LogsPage) toolCallStatusView(width int) string {
 }
 
 func (page *LogsPage) toolCallHelpView(width int) string {
-	bindings := []key.Binding{component.Binding([]string{"h", "l", "left", "right"}, "←/→", "tabs"), component.Binding([]string{"v"}, "v", "view"), component.Binding([]string{"m"}, "m", "mode"), component.Binding([]string{"r"}, "r", "reconnect"), component.Binding([]string{"c"}, "c", "clear view")}
-	bindings = append(bindings, component.Binding([]string{"space"}, "space", executionFollowLabel(page.tools.paused)))
-	return component.NewHelpFooter(bindings...).View(width)
+	return page.logsHelpView(width)
 }
 
 func (page *LogsPage) handleToolCallKey(msg tea.KeyPressMsg) tea.Cmd {

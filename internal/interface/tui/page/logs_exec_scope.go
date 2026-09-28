@@ -149,7 +149,7 @@ func (page *LogsPage) visibleExecutions() []shellruntime.ExecutionInfo {
 }
 
 func (page *LogsPage) executionRetainedAfterClear(executionID string) bool {
-	if page == nil || page.executionClear == 0 {
+	if page == nil || !page.executionClearSet {
 		return true
 	}
 	for index := len(page.exec.events) - 1; index >= 0; index-- {

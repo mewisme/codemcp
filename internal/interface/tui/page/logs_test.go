@@ -585,7 +585,7 @@ func TestLogsClearViewUsesSessionWatermarksWithoutDestroyingRetainedHistory(t *t
 	}
 
 	state := page.SessionViewState().(LogsSessionViewState)
-	if state.RuntimeClearSequences["run_clear"] != 2 || state.ExecutionClearSequence != 2 || state.ToolCallClearSequence != 2 {
+	if state.RuntimeClearSequences["run_clear"] != 2 || state.ExecutionClearSequence != 2 || !state.ExecutionClearSet || state.ToolCallClearSequence != 2 {
 		t.Fatalf("clear watermarks not captured: %#v", state)
 	}
 	restored, _ := NewLogs(t.Context())
@@ -619,6 +619,67 @@ func TestLogsClearViewUsesSessionWatermarksWithoutDestroyingRetainedHistory(t *t
 	fresh.tools.records = append([]activity.ToolCallRecord(nil), page.tools.records...)
 	if len(fresh.visibleRuntimeEvents()) != 2 || len(fresh.visibleExecutionEvents()) != 2 || len(fresh.visibleExecutions()) != 1 || len(fresh.eligibleToolCallTimelineEvents()) != 2 || len(fresh.visibleToolCallRecords()) != 1 {
 		t.Fatal("fresh TUI process inherited session clear watermarks")
+	}
+}
+
+func TestCommandExecutionClearHidesHistoryWithoutFeedSequence(t *testing.T) {
+	page, err := NewCommandExecutionLogs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	page.exec.executions = []shellruntime.ExecutionInfo{{ID: "exec_history", WorkspaceID: "ws", Tool: "run_command", Command: "echo retained", Status: shellruntime.ExecutionStatusSuccess}}
+	if len(page.visibleExecutions()) != 1 {
+		t.Fatalf("precondition visible executions=%d", len(page.visibleExecutions()))
+	}
+
+	updated, _ := page.Update(tea.KeyPressMsg{Code: 'c', Text: "c"})
+	page = updated.(*LogsPage)
+	if !page.executionClearSet || page.executionClear != 0 || len(page.visibleExecutions()) != 0 {
+		t.Fatalf("clear set=%t sequence=%d visible=%d", page.executionClearSet, page.executionClear, len(page.visibleExecutions()))
+	}
+
+	state := page.SessionViewState().(LogsSessionViewState)
+	restored, err := NewCommandExecutionLogs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	restored.RestoreSessionViewState(state)
+	restored.exec.executions = append([]shellruntime.ExecutionInfo(nil), page.exec.executions...)
+	if !restored.executionClearSet || len(restored.visibleExecutions()) != 0 {
+		t.Fatalf("restored clear set=%t visible=%d", restored.executionClearSet, len(restored.visibleExecutions()))
+	}
+}
+
+func TestLogsHelpFooterExpandsThroughPageUpdate(t *testing.T) {
+	tests := []struct {
+		name string
+		new  func() (*LogsPage, error)
+	}{
+		{name: "runtime", new: func() (*LogsPage, error) { return NewLogs(t.Context()) }},
+		{name: "command execution", new: func() (*LogsPage, error) { return NewCommandExecutionLogs(t.Context()) }},
+		{name: "tool calls", new: func() (*LogsPage, error) { return NewToolCallLogsRoute(t.Context(), "") }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			page, err := test.new()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer page.Close()
+			collapsed := ansi.Strip(page.View(120, 28))
+			if !strings.Contains(collapsed, "? more") {
+				t.Fatalf("collapsed help missing toggle: %q", collapsed)
+			}
+
+			updated, _ := page.Update(tea.KeyPressMsg{Code: '?', Text: "?"})
+			page = updated.(*LogsPage)
+			expanded := ansi.Strip(page.View(120, 28))
+			if !page.help.Expanded() || !strings.Contains(expanded, "less") || !strings.Contains(expanded, "clear view") {
+				t.Fatalf("expanded=%t view=%q", page.help.Expanded(), expanded)
+			}
+		})
 	}
 }
 
