@@ -58,7 +58,16 @@ func TestSurfaceLifecyclePreventsPlannedStateOnActiveInterfaces(t *testing.T) {
 			if contract.State == SurfaceRequired && !SurfaceActive(contract.Surface) {
 				t.Fatalf("operation %s requires inactive surface %s", spec.ID, contract.Surface)
 			}
-			if contract.State != SurfaceRequired && !validSurfaceReason(contract.Reason) {
+			if contract.State == SurfaceRequired {
+				if contract.Exemption != "" || contract.Reason != "" {
+					t.Fatalf("required operation %s surface %s has exemption metadata: %#v", spec.ID, contract.Surface, contract)
+				}
+				continue
+			}
+			if !validSurfaceExemption(contract.Exemption) {
+				t.Fatalf("operation %s surface %s has invalid exemption class %q", spec.ID, contract.Surface, contract.Exemption)
+			}
+			if !validSurfaceReason(contract.Reason) {
 				t.Fatalf("operation %s surface %s has unbounded reason %q", spec.ID, contract.Surface, contract.Reason)
 			}
 		}

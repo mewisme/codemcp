@@ -38,6 +38,21 @@ func TestEveryPublicCapabilityHasTUIRepresentation(t *testing.T) {
 	}
 }
 
+func TestEveryTUIActionCapabilityIsDeclaredRequired(t *testing.T) {
+	for _, item := range defaultActionRegistry().All() {
+		for _, id := range item.Capabilities {
+			spec, ok := capability.Lookup(id)
+			if !ok {
+				t.Fatalf("TUI action %s references unknown operation %s", item.ID, id)
+			}
+			contract, ok := spec.Surface(capability.SurfaceTUI)
+			if !ok || contract.State != capability.SurfaceRequired {
+				t.Fatalf("TUI action %s silently owns non-required operation %s: %#v", item.ID, id, contract)
+			}
+		}
+	}
+}
+
 func TestExecutableTUIActionsCarryCanonicalOperationIDs(t *testing.T) {
 	for _, item := range defaultActionRegistry().All() {
 		if len(item.CommandPath) == 0 {

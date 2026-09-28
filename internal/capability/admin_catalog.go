@@ -155,8 +155,19 @@ var adminSupplementRequiredIDs = idSet(
 	OAuthCallbackComplete,
 )
 
+var browserExemptionReasons = map[ID]string{
+	WorkspaceRelocate:  "Browser Admin does not select server-local relocation paths; the canonical Admin API remains available for explicit operator automation",
+	RequestGrantList:   "Browser approval review is request-scoped and does not expose runtime similarity-grant administration",
+	RequestGrantRevoke: "Browser approval review is request-scoped and does not expose runtime similarity-grant administration",
+	NotificationStatus: "Browser health/status views consume notification outcomes without exposing provider delivery state as a standalone workflow",
+}
+
 func adminRequired(id ID) bool {
 	return browserRequiredIDs[id] || adminSupplementRequiredIDs[id]
+}
+
+func browserExemptionReason(id ID) string {
+	return browserExemptionReasons[id]
 }
 
 var adminExemptionReasons = map[ID]string{

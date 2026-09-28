@@ -61,7 +61,7 @@ func TestUniversalOperationAndSurfaceGate(t *testing.T) {
 			if !ok {
 				t.Fatalf("operation %s parity mapping has no canonical surface contract for %s", row.Operation, mapping.Surface)
 			}
-			if mapping.State != contract.State || mapping.Reason != contract.Reason {
+			if mapping.State != contract.State || mapping.Exemption != contract.Exemption || mapping.Reason != contract.Reason {
 				t.Fatalf("operation %s/%s parity drift: mapping=%#v contract=%#v", row.Operation, mapping.Surface, mapping, contract)
 			}
 
@@ -71,6 +71,9 @@ func TestUniversalOperationAndSurfaceGate(t *testing.T) {
 			}
 			switch mapping.State {
 			case SurfaceRequired:
+				if mapping.Exemption != "" || mapping.Reason != "" {
+					t.Fatalf("required operation %s/%s carries exemption metadata: %#v", row.Operation, mapping.Surface, mapping)
+				}
 				if !lifecycle.Active {
 					t.Fatalf("operation %s requires inactive surface %s", row.Operation, mapping.Surface)
 				}
@@ -83,6 +86,9 @@ func TestUniversalOperationAndSurfaceGate(t *testing.T) {
 					}
 				}
 			case SurfacePlanned:
+				if !validSurfaceExemption(mapping.Exemption) {
+					t.Fatalf("planned operation %s/%s has invalid exemption class %q", row.Operation, mapping.Surface, mapping.Exemption)
+				}
 				if lifecycle.Active {
 					t.Fatalf("operation %s keeps planned state on active surface %s", row.Operation, mapping.Surface)
 				}
@@ -93,6 +99,9 @@ func TestUniversalOperationAndSurfaceGate(t *testing.T) {
 					t.Fatalf("planned operation %s/%s advertises live entry points: %v", row.Operation, mapping.Surface, mapping.EntryPoints)
 				}
 			case SurfaceExempt:
+				if !validSurfaceExemption(mapping.Exemption) {
+					t.Fatalf("exempt operation %s/%s has invalid exemption class %q", row.Operation, mapping.Surface, mapping.Exemption)
+				}
 				if !validSurfaceReason(mapping.Reason) {
 					t.Fatalf("exempt operation %s/%s has unbounded lifecycle reason %q", row.Operation, mapping.Surface, mapping.Reason)
 				}
@@ -185,6 +194,7 @@ func TestUniversalSurfaceAdapterGuardsRemainPresent(t *testing.T) {
 		},
 		"internal/interface/tui/capability_parity_test.go": {
 			"TestEveryPublicCapabilityHasTUIRepresentation",
+			"TestEveryTUIActionCapabilityIsDeclaredRequired",
 			"TestExecutableTUIActionsCarryCanonicalOperationIDs",
 		},
 		"internal/interface/admin/operation_contract_test.go": {

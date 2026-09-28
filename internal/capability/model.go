@@ -84,10 +84,22 @@ const (
 	SurfaceExempt   SurfaceState = "exempt"
 )
 
+type SurfaceExemptionClass string
+
+const (
+	SurfaceExemptionLocalOnly         SurfaceExemptionClass = "local-only"
+	SurfaceExemptionAgentOnly         SurfaceExemptionClass = "agent-only"
+	SurfaceExemptionProtocolOnly      SurfaceExemptionClass = "protocol-only"
+	SurfaceExemptionUnsupportedRemote SurfaceExemptionClass = "unsupported-remote"
+	SurfaceExemptionSurfaceSpecific   SurfaceExemptionClass = "surface-specific"
+	SurfaceExemptionDeferred          SurfaceExemptionClass = "deferred"
+)
+
 type SurfaceContract struct {
-	Surface Surface      `json:"surface"`
-	State   SurfaceState `json:"state"`
-	Reason  string       `json:"reason,omitempty"`
+	Surface   Surface               `json:"surface"`
+	State     SurfaceState          `json:"state"`
+	Exemption SurfaceExemptionClass `json:"exemption,omitempty"`
+	Reason    string                `json:"reason,omitempty"`
 }
 
 type CLIBinding struct {

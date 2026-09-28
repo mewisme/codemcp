@@ -3,10 +3,11 @@ package capability
 import "sort"
 
 type SurfaceMapping struct {
-	Surface     Surface      `json:"surface"`
-	State       SurfaceState `json:"state"`
-	Reason      string       `json:"reason,omitempty"`
-	EntryPoints []string     `json:"entry_points,omitempty"`
+	Surface     Surface               `json:"surface"`
+	State       SurfaceState          `json:"state"`
+	Exemption   SurfaceExemptionClass `json:"exemption,omitempty"`
+	Reason      string                `json:"reason,omitempty"`
+	EntryPoints []string              `json:"entry_points,omitempty"`
 }
 
 type ParityRow struct {
@@ -40,7 +41,7 @@ func ParityMatrix() []ParityRow {
 		}
 		for _, contract := range operation.Surfaces {
 			row.Surfaces = append(row.Surfaces, SurfaceMapping{
-				Surface: contract.Surface, State: contract.State, Reason: contract.Reason,
+				Surface: contract.Surface, State: contract.State, Exemption: contract.Exemption, Reason: contract.Reason,
 				EntryPoints: inventoryEntryPoints(operation, contract.Surface),
 			})
 		}

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const InventoryVersion = 2
+const InventoryVersion = 3
 
 type SurfaceLifecycle struct {
 	Surface Surface `json:"surface"`
