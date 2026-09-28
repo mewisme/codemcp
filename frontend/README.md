@@ -1,6 +1,6 @@
-# Admin UI (`frontend/`)
+# Frontend (`frontend/`)
 
-Embedded React admin dashboard for CodeMCP. Built with React, TypeScript, Vite, Tailwind CSS, and shadcn/ui; packaged into the Go binary with `go:embed`.
+Embedded React interfaces for CodeMCP. The Browser Admin and Telegram Logs Mini App share the same React, TypeScript, Tailwind CSS and shadcn/ui component layer while keeping separate HTML/Vite entrypoints and embedded asset bundles.
 
 ## Requirements
 
@@ -23,9 +23,15 @@ Local Vite dev server:
 pnpm --dir frontend dev
 ```
 
+Telegram Logs Mini App development entrypoint:
+
+```bash
+pnpm --dir frontend dev:logs
+```
+
 ## Embedding into the Go binary
 
-The Vite build writes directly to `internal/interface/web/dist`, which is the directory embedded by the Go package:
+The default Vite config writes Browser Admin directly to `internal/interface/web/dist`. `vite.logs.config.ts` writes the dedicated Telegram Logs bundle to `internal/telegram/logs-dist`. The Browser Admin package and Telegram adapter embed their respective generated assets with `go:embed`:
 
 ```bash
 pnpm --dir frontend build

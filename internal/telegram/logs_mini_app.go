@@ -491,8 +491,9 @@ func (runtime *LogsMiniAppRuntime) Health() LogsMiniAppHealth {
 
 func (runtime *LogsMiniAppRuntime) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /logs", runtime.handleShell)
-	mux.HandleFunc("GET /logs/app.js", runtime.handleClientScript)
+	assets := logsWebHandler()
+	mux.Handle("GET /logs", assets)
+	mux.Handle("GET /logs/", assets)
 	mux.HandleFunc("POST /logs/auth", runtime.handleAuth)
 	mux.HandleFunc("GET /logs/api/snapshot", runtime.handleSnapshot)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -502,16 +503,6 @@ func (runtime *LogsMiniAppRuntime) handler() http.Handler {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://telegram.org; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'none'")
 		mux.ServeHTTP(w, r)
 	})
-}
-
-func (runtime *LogsMiniAppRuntime) handleShell(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = io.WriteString(w, "<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>CodeMCP Logs</title><script src=\"https://telegram.org/js/telegram-web-app.js\"></script><script defer src=\"/logs/app.js\"></script></head><body><main><h1>CodeMCP Logs</h1><p id=\"status\">Authenticating Telegram session…</p></main></body></html>")
-}
-
-func (runtime *LogsMiniAppRuntime) handleClientScript(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
-	_, _ = io.WriteString(w, `(async()=>{const s=document.getElementById("status");try{const t=window.Telegram&&window.Telegram.WebApp;if(!t||!t.initData)throw new Error("Telegram Mini App context is unavailable");t.ready();const r=await fetch("/logs/auth",{method:"POST",headers:{"content-type":"application/json"},credentials:"same-origin",body:JSON.stringify({init_data:t.initData})});if(!r.ok)throw new Error("Telegram authentication failed");s.textContent="Authenticated. Loading logs…";window.dispatchEvent(new CustomEvent("codemcp:logs-authenticated"))}catch(e){s.textContent=e instanceof Error?e.message:"Telegram authentication failed"}})();`)
 }
 
 func (runtime *LogsMiniAppRuntime) handleAuth(w http.ResponseWriter, r *http.Request) {

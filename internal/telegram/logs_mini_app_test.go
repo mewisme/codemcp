@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -118,6 +119,18 @@ func TestLogsMiniAppIngressRequiresAuthorizedSessionAndDoesNotExposeAdminRoutes(
 
 	server := httptest.NewServer(runtime.handler())
 	defer server.Close()
+	shell, err := http.Get(server.URL + "/logs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shellBody, err := io.ReadAll(shell.Body)
+	shell.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if shell.StatusCode != http.StatusOK || !strings.Contains(string(shellBody), "data-codemcp-logs-root") || strings.Contains(string(shellBody), "CodeMCP Admin") {
+		t.Fatalf("dedicated logs shell status=%d body=%q", shell.StatusCode, string(shellBody))
+	}
 
 	for _, path := range []string{"/api/status", "/api/logs", "/admin", "/mcp"} {
 		response, err := http.Get(server.URL + path)
