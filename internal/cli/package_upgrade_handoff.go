@@ -92,6 +92,7 @@ func packageUpgradePowerShell(h packageUpgradeHandoff) string {
 		"    $version = (& cm --version | Out-String)",
 		"    $version *>> $logPath",
 		"    if (-not $version.Contains($target)) { throw \"updated version mismatch: expected $target, got $($version.Trim())\" }",
+		"    Invoke-Step { & cm " + psArgs([]string{"--config-dir", h.ConfigRoot, "_service", "postinstall"}) + " } 'Bootstrapping install supplements'",
 		"} catch {",
 		"    ($_ | Out-String) *>> $logPath",
 		"    $exitCode = 1",
@@ -138,6 +139,7 @@ func packageUpgradeShell(h packageUpgradeHandoff) string {
 		"version=$(cm --version)",
 		"printf '%s\\n' \"$version\"",
 		"case \"$version\" in *\"$target\"*) ;; *) printf 'updated version mismatch: expected %s, got %s\\n' \"$target\" \"$version\" >&2; exit 1 ;; esac",
+		"cm " + shArgs([]string{"--config-dir", h.ConfigRoot, "_service", "postinstall"}),
 	}, "\n") + "\n"
 }
 

@@ -117,7 +117,7 @@ func TestPreparePackageUpgradeHandoffRejectsForegroundRuntime(t *testing.T) {
 func TestPackageUpgradePowerShellWaitsForParentAndUsesScoopAfterRuntimeStops(t *testing.T) {
 	plan, _ := updatepkg.PackageManagerPlanFor("scoop")
 	script := packageUpgradePowerShell(packageUpgradeHandoff{ParentPID: 1234, Plan: plan, Target: "v1.2.3", ConfigRoot: `C:\\Users\\Mew\\.cm`, Runtime: updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true}}, ScriptPath: `C:\Temp\upgrade.ps1`, LogPath: `C:\Temp\upgrade.log`})
-	for _, expected := range []string{"Wait-Process -Id $parentPid", "& cm '--config-dir' 'C:\\\\Users\\\\Mew\\\\.cm' 'down'", "& scoop update", "& scoop update mew/codemcp", "$version = (& cm --version | Out-String)", "$restartRuntime = $true", "& cm '--config-dir' 'C:\\\\Users\\\\Mew\\\\.cm' 'up'"} {
+	for _, expected := range []string{"Wait-Process -Id $parentPid", "& cm '--config-dir' 'C:\\\\Users\\\\Mew\\\\.cm' 'down'", "& scoop update", "& scoop update mew/codemcp", "$version = (& cm --version | Out-String)", "& cm '--config-dir' 'C:\\\\Users\\\\Mew\\\\.cm' '_service' 'postinstall'", "$restartRuntime = $true", "& cm '--config-dir' 'C:\\\\Users\\\\Mew\\\\.cm' 'up'"} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("script missing %q:\n%s", expected, script)
 		}
@@ -127,7 +127,7 @@ func TestPackageUpgradePowerShellWaitsForParentAndUsesScoopAfterRuntimeStops(t *
 func TestPackageUpgradeShellRestoresSystemRuntime(t *testing.T) {
 	plan, _ := updatepkg.PackageManagerPlanFor("homebrew")
 	script := packageUpgradeShell(packageUpgradeHandoff{ParentPID: 1234, Plan: plan, Target: "v1.2.3", ConfigRoot: "/etc/codemcp", Runtime: updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true, ServiceScope: "system"}}, ScriptPath: "/tmp/upgrade.sh", LogPath: "/tmp/upgrade.log"})
-	for _, expected := range []string{"while kill -0 \"$parent_pid\"", "cm '--config-dir' '/etc/codemcp' 'down' '--system'", "brew update", "brew upgrade --cask codemcp", "cm '--config-dir' '/etc/codemcp' 'up' '--system'"} {
+	for _, expected := range []string{"while kill -0 \"$parent_pid\"", "cm '--config-dir' '/etc/codemcp' 'down' '--system'", "brew update", "brew upgrade --cask codemcp", "cm '--config-dir' '/etc/codemcp' '_service' 'postinstall'", "cm '--config-dir' '/etc/codemcp' 'up' '--system'"} {
 		if !strings.Contains(script, expected) {
 			t.Fatalf("script missing %q:\n%s", expected, script)
 		}

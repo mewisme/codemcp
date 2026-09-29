@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/logger"
@@ -16,6 +17,13 @@ func upgradeCommand() *cobra.Command {
 	var targetVersion string
 	var noRestart bool
 	cmd := &cobra.Command{Use: "upgrade", Short: "Check for and install cm upgrades", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		migrated, didMigrate, err := application.MigrateReleasedInstallIfNeeded(cmd.Context(), application.InstallCurrentOptions{Observe: installCutoverObserver(cmd)})
+		if err != nil {
+			return fmt.Errorf("migrate released installation: %w", err)
+		}
+		if didMigrate {
+			renderSupplementalInstallSummary(cmd, migrated.Supplemental)
+		}
 		logCommandStep(cmd, "UPDATE", "update.installation.detecting", "Detecting current installation")
 		detection, err := install.DetectCurrent(version.Version)
 		if err != nil {
@@ -81,6 +89,7 @@ func upgradeCommand() *cobra.Command {
 		if err := install.FinalizeResultContext(cmd.Context(), result.Install); err != nil {
 			log.Warning("UPDATE", "update.cleanup-failed", "Update succeeded but old version cleanup failed", err)
 		}
+		renderSupplementalInstallSummary(cmd, application.RunPostInstallBootstrap(cmd.Context()))
 		message := "Update complete"
 		if result.Downgrade {
 			message = "Version change complete"

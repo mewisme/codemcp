@@ -134,4 +134,17 @@ EOF
 run_fallback_case missing
 run_fallback_case failed
 
+if grep -Fq 'rm -rf "$INSTALL_DIR"' "$installer"; then
+	echo 'Unix installer uninstall still recursively removes the shared CodeMCP root.' >&2
+	exit 1
+fi
+grep -Fq '"$candidate" _service uninstall' "$installer" || {
+	echo 'Unix installer uninstall does not delegate ownership checks to cm uninstall.' >&2
+	exit 1
+}
+grep -Fq 'refusing to remove shared state under $INSTALL_DIR automatically' "$installer" || {
+	echo 'Unix installer uninstall is missing the fail-closed shared-state guard.' >&2
+	exit 1
+}
+
 echo 'Unix installer verification-policy tests passed.'

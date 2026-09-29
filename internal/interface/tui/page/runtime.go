@@ -533,7 +533,7 @@ func (page *RuntimePage) startOperation(command SystemCommand) tea.Cmd {
 		case AuthAdminRotate:
 			msg.token, _, msg.err = application.RotateAuthToken(ctx, "admin")
 		case InstallRun:
-			_, msg.err = application.InstallCurrent(installOptions)
+			_, msg.err = application.InstallCurrentContext(ctx, installOptions)
 		case UpdateCheck:
 			msg.update, msg.err = application.CheckForUpdate(ctx)
 		case UpdateApply:

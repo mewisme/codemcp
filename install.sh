@@ -21,8 +21,17 @@ SIGNATURE_NAME="${CHECKSUM_NAME}.sigstore.json"
 for arg in "$@"; do
 	case "$arg" in
 		--uninstall)
-			rm -f "$BIN_DIR/cm"
-			rm -rf "$INSTALL_DIR"
+			candidate="$BIN_DIR/cm"
+			if [ ! -x "$candidate" ] && [ -x "$INSTALL_DIR/current/cm" ]; then
+				candidate="$INSTALL_DIR/current/cm"
+			fi
+			if [ ! -x "$candidate" ]; then
+				echo "cm: installed CodeMCP executable not found; refusing to remove shared state under $INSTALL_DIR automatically." >&2
+				exit 1
+			fi
+			"$candidate" _service uninstall
+			rmdir "$INSTALL_DIR/state" 2>/dev/null || true
+			rmdir "$INSTALL_DIR" 2>/dev/null || true
 			echo "CodeMCP uninstalled from $INSTALL_DIR"
 			exit 0
 			;;

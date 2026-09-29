@@ -27,6 +27,15 @@ $sigstoreThrows = $ast.FindAll({
 if ($sigstoreThrows.Count -gt 0) {
   throw 'PowerShell installer still has a blocking Sigstore/cosign throw path.'
 }
+if ($source -match 'Remove-Item\s+-Recurse\s+-Force\s+\$installDir') {
+  throw 'PowerShell installer uninstall still recursively removes the shared CodeMCP root.'
+}
+if ($source -notmatch '_service\s+uninstall\s+--external-cleanup') {
+  throw 'PowerShell installer uninstall does not delegate ownership checks to cm uninstall.'
+}
+if ($source -notmatch 'refusing to remove shared state under \$installDir automatically') {
+  throw 'PowerShell installer uninstall is missing the fail-closed shared-state guard.'
+}
 
 $names = @(
   'ConvertTo-CodeMCPArchitecture',

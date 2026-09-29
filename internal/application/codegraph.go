@@ -68,6 +68,41 @@ func (s *CodeGraphService) Install(ctx context.Context) (codegraph.InstallResult
 	return runtime.Install(ctx)
 }
 
+func (s *CodeGraphService) EnsureAvailable(ctx context.Context) (IntegrationEnsureResult, error) {
+	status, err := s.Status(ctx)
+	result := IntegrationEnsureResult{Integration: "codegraph", Source: string(status.Resolution.Source), Retry: "cm integration codegraph install"}
+	if err != nil {
+		result.State, result.Detail = "failed", err.Error()
+		return result, err
+	}
+	if !status.Enabled || status.Resolution.Source == codegraph.ExecutableDisabled {
+		result.State, result.Detail = "skipped", "disabled by configuration"
+		return result, nil
+	}
+	if status.Resolution.Verified && status.Resolution.Path != "" && status.Resolution.Source != codegraph.ExecutableUnavailable {
+		result.State = "available"
+		return result, nil
+	}
+	if !status.ManagedSupported {
+		result.State, result.Detail = "unavailable", "managed CodeGraph is unsupported on this platform"
+		return result, nil
+	}
+	installed, err := s.Install(ctx)
+	if err != nil {
+		result.State, result.Detail = "failed", err.Error()
+		return result, err
+	}
+	result.Source = string(installed.Status.Resolution.Source)
+	if installed.Installed {
+		result.State = "installed"
+	} else if installed.AlreadyInstalled {
+		result.State = "available"
+	} else {
+		result.State = "unavailable"
+	}
+	return result, nil
+}
+
 func (s *CodeGraphService) ResolveGlobal(context.Context) (codegraph.GlobalResolutionResult, error) {
 	runtime, err := s.runtime()
 	if err != nil {

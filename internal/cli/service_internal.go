@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	managed "go.mewis.me/codemcp/internal/service"
@@ -21,6 +22,7 @@ type serviceRuntimeContextKey struct{}
 func internalServiceCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "_service", Short: "Internal managed service commands", Hidden: true}
 	var serviceID, serviceScope, environmentHash string
+	var externalCleanup bool
 	run := &cobra.Command{
 		Use:    "run",
 		Short:  "Run CodeMCP as an internal managed service",
@@ -48,7 +50,32 @@ func internalServiceCommand() *cobra.Command {
 	run.Flags().StringVar(&serviceID, "service-id", "", "managed service identity")
 	run.Flags().StringVar(&serviceScope, "service-scope", "user", "managed service scope")
 	run.Flags().StringVar(&environmentHash, "service-environment-hash", "", "managed environment snapshot hash")
-	cmd.AddCommand(run)
+	uninstallOwned := &cobra.Command{
+		Use: "uninstall", Short: "Remove installer-owned executable state", Hidden: true, Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			_, err := application.UninstallCurrent(cmd.Context(), application.UninstallOptions{ExternalCleanup: externalCleanup})
+			return err
+		},
+	}
+	setCommandPresentationExempt(uninstallOwned, "internal-runtime")
+	uninstallOwned.Flags().BoolVar(&externalCleanup, "external-cleanup", false, "defer active binary tree cleanup to the invoking installer")
+	_ = uninstallOwned.Flags().MarkHidden("external-cleanup")
+	postinstall := &cobra.Command{
+		Use: "postinstall", Short: "Run post-install supplemental bootstrap", Hidden: true, Args: cobra.NoArgs,
+		Run: func(cmd *cobra.Command, _ []string) {
+			result := application.RunPostInstallBootstrap(cmd.Context())
+			for _, outcome := range result.Integrations {
+				if outcome.State == "failed" || outcome.State == "unavailable" {
+					commandLogger(cmd).Warning("INSTALL", "install.bootstrap.integration", outcome.Integration+" bootstrap "+outcome.State, nil)
+				}
+			}
+			for _, warning := range result.Warnings {
+				commandLogger(cmd).Warning("INSTALL", "install.bootstrap.warning", warning, nil)
+			}
+		},
+	}
+	setCommandPresentationExempt(postinstall, "internal-runtime")
+	cmd.AddCommand(run, uninstallOwned, postinstall)
 	return cmd
 }
 

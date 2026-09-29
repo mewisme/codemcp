@@ -63,8 +63,8 @@ func BindSystemOperations(dispatcher *Dispatcher, services SystemOperationServic
 		{capability.UpdateApply, typedOperation[UpdateApplyOptions](capability.UpdateApply, func(ctx context.Context, input UpdateApplyOptions) (any, error) {
 			return ApplyUpdate(ctx, input)
 		})},
-		{capability.InstallRun, typedOperation[InstallCurrentOptions](capability.InstallRun, func(_ context.Context, input InstallCurrentOptions) (any, error) {
-			return InstallCurrent(input)
+		{capability.InstallRun, typedOperation[InstallCurrentOptions](capability.InstallRun, func(ctx context.Context, input InstallCurrentOptions) (any, error) {
+			return InstallCurrentContext(ctx, input)
 		})},
 		{capability.InstructionSettingsRead, func(ctx context.Context, _ any) (any, error) {
 			result, err := services.Instructions.Read(ctx)

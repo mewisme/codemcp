@@ -125,7 +125,7 @@ func (api API) handleInstall(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	value, err := application.InstallCurrent(request)
+	value, err := application.InstallCurrentContext(r.Context(), request)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

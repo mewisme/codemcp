@@ -49,6 +49,8 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"config.initialize.completed", "config.persist.completed"}, "init")
 	add(commandTraceInstrumented, []string{"config.uninitialize.completed", "config.root.remove.completed"}, "uninit")
 	add(commandTraceInstrumented, []string{"install.apply.completed"}, "install")
+	add(commandTraceTrivial, nil, "_service uninstall")
+	add(commandTraceTrivial, nil, "_service postinstall")
 	add(commandTraceInstrumented, []string{"auth.token.rotate.completed"}, "auth admin create", "auth mcp create")
 	add(commandTraceInstrumented, []string{"auth.state.set.completed"}, "auth admin disable", "auth admin enable", "auth mcp disable", "auth mcp enable")
 	add(commandTraceInstrumented, []string{"auth.status.completed"}, "auth status")

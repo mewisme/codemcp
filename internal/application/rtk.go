@@ -59,6 +59,41 @@ func (s *RTKService) Install(ctx context.Context) (rtk.InstallResult, error) {
 	return manager.Install(ctx)
 }
 
+func (s *RTKService) EnsureAvailable(ctx context.Context) (IntegrationEnsureResult, error) {
+	status, err := s.Status(ctx)
+	result := IntegrationEnsureResult{Integration: "rtk", Source: string(status.Source), Retry: "cm integration rtk install"}
+	if err != nil {
+		result.State, result.Detail = "failed", err.Error()
+		return result, err
+	}
+	if !status.Enabled || status.Source == rtk.SourceDisabled {
+		result.State, result.Detail = "skipped", "disabled by configuration"
+		return result, nil
+	}
+	if status.Verified && status.Path != "" && status.Source != rtk.SourceUnavailable {
+		result.State = "available"
+		return result, nil
+	}
+	if !status.ManagedSupported {
+		result.State, result.Detail = "unavailable", "managed RTK is unsupported on this platform"
+		return result, nil
+	}
+	installed, err := s.Install(ctx)
+	if err != nil {
+		result.State, result.Detail = "failed", err.Error()
+		return result, err
+	}
+	result.Source = string(installed.Status.Source)
+	if installed.Installed {
+		result.State = "installed"
+	} else if installed.AlreadyInstalled {
+		result.State = "available"
+	} else {
+		result.State = "unavailable"
+	}
+	return result, nil
+}
+
 func (s *RTKService) ResolveGlobal(context.Context) (rtk.GlobalResolutionResult, error) {
 	manager, err := s.manager()
 	if err != nil {

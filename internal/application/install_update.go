@@ -26,7 +26,8 @@ type InstallationOverview struct {
 }
 
 type InstallCurrentOptions struct {
-	Force bool
+	Force   bool                      `json:"force,omitempty"`
+	Observe func(InstallCutoverEvent) `json:"-"`
 }
 
 type UpdateApplyOptions struct {
@@ -35,9 +36,10 @@ type UpdateApplyOptions struct {
 }
 
 type UpdateApplyResult struct {
-	Result   updatepkg.ApplyResult
-	External *ExternalCommand
-	Notice   string
+	Result       updatepkg.ApplyResult
+	External     *ExternalCommand
+	Notice       string
+	Supplemental SupplementalBootstrapResult
 }
 
 func LoadInstallationOverview() (InstallationOverview, error) {
@@ -61,10 +63,6 @@ func LoadInstallationOverview() (InstallationOverview, error) {
 		overview.CachedUpdate = &cached
 	}
 	return overview, nil
-}
-
-func InstallCurrent(options InstallCurrentOptions) (install.Result, error) {
-	return install.Install(install.Options{Version: version.Version, Force: options.Force})
 }
 
 func CheckForUpdate(ctx context.Context) (updatepkg.CheckResult, error) {
@@ -141,6 +139,7 @@ func ApplyUpdate(ctx context.Context, options UpdateApplyOptions) (UpdateApplyRe
 		}
 		output.Notice += "update succeeded but old version cleanup failed: " + err.Error()
 	}
+	output.Supplemental = RunPostInstallBootstrap(ctx)
 	return output, nil
 }
 

@@ -182,7 +182,30 @@ function Expand-CodeMCPBinaryFromZip {
 }
 
 if ($Uninstall) {
-  if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir }
+  $candidate = Join-Path $current $binaryName
+  if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+    throw "cm: installed CodeMCP executable not found; refusing to remove shared state under $installDir automatically."
+  }
+  & $candidate _service uninstall --external-cleanup
+  if ($LASTEXITCODE -ne 0) { throw "cm: uninstall failed with exit code $LASTEXITCODE" }
+
+  foreach ($ownedPath in @(
+    (Join-Path $installDir 'current'),
+    (Join-Path $installDir 'versions')
+  )) {
+    if (Test-Path -LiteralPath $ownedPath) { Remove-Item -LiteralPath $ownedPath -Recurse -Force }
+  }
+  foreach ($ownedFile in @(
+    (Join-Path $installDir 'install.json'),
+    (Join-Path (Join-Path $installDir 'state') 'update.json')
+  )) {
+    if (Test-Path -LiteralPath $ownedFile -PathType Leaf) { Remove-Item -LiteralPath $ownedFile -Force }
+  }
+  foreach ($emptyDir in @((Join-Path $installDir 'state'), $installDir)) {
+    if (Test-Path -LiteralPath $emptyDir -PathType Container) {
+      try { Remove-Item -LiteralPath $emptyDir -Force -ErrorAction Stop } catch {}
+    }
+  }
   if ($installDir -eq $defaultInstall) {
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     if ($userPath) {
