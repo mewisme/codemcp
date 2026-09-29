@@ -54,7 +54,7 @@ func TestRetireRemovesOwnedIdentitiesAndKeepsRollbackSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.Retired || result.RetainUntil == nil || !result.RetainUntil.Equal(fixed.Add(48*time.Hour)) {
+	if !result.Retired || result.RetainUntil == nil || !result.RetainUntil.Equal(fixed.Add(48*time.Hour)) || result.RetainedSHA256 == "" {
 		t.Fatalf("retirement result=%#v", result)
 	}
 	if len(h.fixture.controller.retired) != 1 || len(h.fixture.controller.restored) != 0 || h.fixture.controller.running {
@@ -72,7 +72,7 @@ func TestRetireRemovesOwnedIdentitiesAndKeepsRollbackSnapshot(t *testing.T) {
 		t.Fatalf("released rollback root was removed: %v", err)
 	}
 	journal, ok := loadStageJournal(h.stage.JournalPath)
-	if !ok || journal.Phase != stagePhaseRetired || journal.RetiredAt == nil || journal.RetainUntil == nil || journal.FailureStage != "" {
+	if !ok || journal.Phase != stagePhaseRetired || journal.RetiredAt == nil || journal.RetainUntil == nil || journal.RetainedSHA256 == "" || journal.FailureStage != "" {
 		t.Fatalf("retired journal=%#v ok=%t", journal, ok)
 	}
 	if journal.Canonical.ServiceID == "" || !sameComparablePath(journal.Canonical.ConfigRoot, h.fixture.targetRoot) || sameComparablePath(journal.Canonical.ConfigRoot, h.fixture.sourceRoot) {

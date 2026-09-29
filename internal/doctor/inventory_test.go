@@ -58,7 +58,7 @@ func TestCanonicalInventoryDeclaresOnlyExplicitBoundedNetworkProbes(t *testing.T
 	}
 }
 
-func TestCanonicalInventoryDeclaresSafeHooksAndDeferredMigration(t *testing.T) {
+func TestCanonicalInventoryDeclaresSafeHooksAndMigrationReadModel(t *testing.T) {
 	for _, id := range []ComponentID{
 		ComponentSecretInventory, ComponentShellProvider, ComponentApprovalLifecycle, ComponentBackgroundDelivery,
 	} {
@@ -68,7 +68,7 @@ func TestCanonicalInventoryDeclaresSafeHooksAndDeferredMigration(t *testing.T) {
 		}
 	}
 	migration, ok := DefinitionFor(ComponentMigrationReadiness)
-	if !ok || migration.Source != SourceDeferred || migration.Probe != ProbeLocalRead {
+	if !ok || migration.Source != SourceDomainReadModel || migration.Probe != ProbeLocalRead {
 		t.Fatalf("migration definition=%#v ok=%t", migration, ok)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/backgrounddelivery"
@@ -18,6 +19,7 @@ import (
 	codegraph "go.mewis.me/codemcp/internal/integrations/codegraph"
 	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
 	"go.mewis.me/codemcp/internal/mcp"
+	released024 "go.mewis.me/codemcp/internal/migration/released024"
 	"go.mewis.me/codemcp/internal/network"
 	"go.mewis.me/codemcp/internal/notification"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
@@ -562,6 +564,41 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 				return disabled("no fresh cached update check is available"), nil
 			}
 			return healthy("cached update state is available"), nil
+		}),
+		doctorProvider(doctor.ComponentMigrationReadiness, func(context.Context) (doctor.Component, error) {
+			status, err := released024.InspectStatus(configformat.RootPath(), time.Now().UTC())
+			if err != nil {
+				return doctor.Component{}, err
+			}
+			if status.Transactions == 0 && status.Invalid == 0 {
+				return disabled("no released-state migration transaction is present"), nil
+			}
+			component := doctor.Component{
+				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "released-state migration history is consistent",
+				Metrics: []doctor.Metric{
+					{ID: "transactions", Value: int64(status.Transactions)},
+					{ID: "pending", Value: int64(status.Pending)},
+					{ID: "interrupted", Value: int64(status.Interrupted)},
+					{ID: "retired", Value: int64(status.Retired)},
+					{ID: "retained_backups", Value: int64(status.RetainedBackups)},
+					{ID: "cleaned", Value: int64(status.Cleaned)},
+					{ID: "invalid", Value: int64(status.Invalid)},
+				},
+				Flags: []doctor.Flag{
+					{ID: "cleanup_due", Value: status.CleanupDue > 0},
+					{ID: "cleanup_running", Value: status.CleanupRunning > 0},
+					{ID: "missing_backup", Value: status.MissingBackups > 0},
+				},
+			}
+			switch {
+			case status.Invalid > 0 || status.Interrupted > 0 || status.CleanupRunning > 0 || status.MissingBackups > 0:
+				component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "released-state migration requires operator recovery"
+			case status.Pending > 0:
+				component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "released-state migration is incomplete"
+			case status.CleanupDue > 0:
+				component.Summary = "released-state rollback backup is eligible for explicit cleanup"
+			}
+			return component, nil
 		}),
 	}
 }

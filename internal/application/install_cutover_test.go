@@ -119,6 +119,19 @@ func TestReleasedInstallMigrationRunsStageActivateRetireBeforeSupplementalBootst
 	if !reflect.DeepEqual(sequence, want) {
 		t.Fatalf("sequence=%v want=%v", sequence, want)
 	}
+
+	sequence = nil
+	deps.Stat = func(string) (os.FileInfo, error) { return nil, nil }
+	second, migrated, err := migrateReleasedInstallIfNeeded(t.Context(), InstallCurrentOptions{}, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migrated || second.Migration != nil {
+		t.Fatalf("successful migration rerun was not a no-op: migrated=%t result=%#v", migrated, second)
+	}
+	if want := []string{"detect"}; !reflect.DeepEqual(sequence, want) {
+		t.Fatalf("rerun sequence=%v want=%v", sequence, want)
+	}
 }
 
 func TestReleasedInstallMigrationFailureDoesNotInstallOrBootstrap(t *testing.T) {

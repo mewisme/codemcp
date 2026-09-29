@@ -39,10 +39,11 @@ type RetireOptions struct {
 }
 
 type RetirementResult struct {
-	TargetRoot  string              `json:"target_root"`
-	Outcomes    []RetirementOutcome `json:"outcomes"`
-	RetainUntil *time.Time          `json:"retain_until,omitempty"`
-	Retired     bool                `json:"retired"`
+	TargetRoot     string              `json:"target_root"`
+	Outcomes       []RetirementOutcome `json:"outcomes"`
+	RetainUntil    *time.Time          `json:"retain_until,omitempty"`
+	RetainedSHA256 string              `json:"retained_sha256,omitempty"`
+	Retired        bool                `json:"retired"`
 }
 
 func Retire(ctx context.Context, options RetireOptions) (RetirementResult, error) {
@@ -208,6 +209,11 @@ func Retire(ctx context.Context, options RetireOptions) (RetirementResult, error
 	}
 	emit("runtime-metadata", "success", "Historical runtime metadata cleanup complete", false)
 
+	retainedSHA256, err := fingerprintExactTree(journal.SourceRoot)
+	if err != nil {
+		return fail("retention", fmt.Errorf("fingerprint retained released backup: %w", err))
+	}
+	journal.RetainedSHA256 = retainedSHA256
 	retention := options.Retention
 	if retention <= 0 {
 		retention = defaultRollbackRetention
@@ -353,9 +359,10 @@ func retirementRuntimeArtifact(artifact Artifact) bool {
 
 func retirementResultFromJournal(journal StageJournal) RetirementResult {
 	return RetirementResult{
-		TargetRoot:  journal.TargetRoot,
-		Outcomes:    append([]RetirementOutcome(nil), journal.Retirement...),
-		RetainUntil: journal.RetainUntil,
-		Retired:     journal.Phase == stagePhaseRetired,
+		TargetRoot:     journal.TargetRoot,
+		Outcomes:       append([]RetirementOutcome(nil), journal.Retirement...),
+		RetainUntil:    journal.RetainUntil,
+		RetainedSHA256: journal.RetainedSHA256,
+		Retired:        journal.Phase == stagePhaseRetired,
 	}
 }

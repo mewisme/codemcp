@@ -51,7 +51,7 @@ func internalServiceCommand() *cobra.Command {
 	run.Flags().StringVar(&serviceScope, "service-scope", "user", "managed service scope")
 	run.Flags().StringVar(&environmentHash, "service-environment-hash", "", "managed environment snapshot hash")
 	uninstallOwned := &cobra.Command{
-		Use: "uninstall", Short: "Remove installer-owned executable state", Hidden: true, Args: cobra.NoArgs,
+		Use: "uninstall", Short: "Remove CodeMCP-owned service, global state, and executable assets", Hidden: true, Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, err := application.UninstallCurrent(cmd.Context(), application.UninstallOptions{ExternalCleanup: externalCleanup})
 			return err

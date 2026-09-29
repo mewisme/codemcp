@@ -81,7 +81,7 @@ var canonicalInventory = []Definition{
 	{ID: ComponentNotificationsHealth, Domain: "notifications", Owner: "notification", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentTelegramHealth, Domain: "telegram", Owner: "telegram", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentUpdateAvailability, Domain: "update", Owner: "update", Probe: ProbeBoundedNetworkRead, Source: SourceDomainReadModel, Timeout: 4 * time.Second},
-	{ID: ComponentMigrationReadiness, Domain: "migration", Owner: "migration", Probe: ProbeLocalRead, Source: SourceDeferred},
+	{ID: ComponentMigrationReadiness, Domain: "migration", Owner: "migration", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 }
 
 func Inventory() []Definition {

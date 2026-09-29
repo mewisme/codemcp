@@ -186,6 +186,48 @@ func TestRepresentativeWorkspaceAdaptersCannotBypassApplicationMutationOwner(t *
 	}
 }
 
+func TestReleasedCompatibilityReadersStayBehindMigrationBoundary(t *testing.T) {
+	root := architectureRepositoryRoot(t)
+	legacyPackages := []string{
+		internalImportPrefix + "migration/bundle024",
+		internalImportPrefix + "migration/configformat",
+		internalImportPrefix + "migration/credentials024",
+		internalImportPrefix + "migration/integrations024",
+		internalImportPrefix + "migration/upstream024",
+		internalImportPrefix + "migration/workspace024",
+	}
+	internalRoot := filepath.Join(root, "internal")
+	err := filepath.WalkDir(internalRoot, func(path string, item os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if item.IsDir() {
+			if path == filepath.Join(internalRoot, "migration") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(item.Name(), ".go") || strings.HasSuffix(item.Name(), "_test.go") {
+			return nil
+		}
+		for _, imported := range goFileImports(t, path) {
+			for _, forbidden := range legacyPackages {
+				if imported == forbidden || strings.HasPrefix(imported, forbidden+"/") {
+					t.Errorf("%s imports released compatibility package %s directly", filepath.ToSlash(path), imported)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, currentRuntimeRoot := range []string{"config", "runtime", "service", "secretstore", "upstream", "workspace"} {
+		assertNoImportsWithPrefix(t, filepath.Join(internalRoot, currentRuntimeRoot), internalImportPrefix+"migration/")
+	}
+}
+
 func assertNoImportsWithPrefix(t *testing.T, root, forbiddenPrefix string) {
 	t.Helper()
 	if info, err := os.Stat(root); err != nil || !info.IsDir() {

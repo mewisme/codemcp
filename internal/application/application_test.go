@@ -216,6 +216,36 @@ func TestUninitializePreservesUnrelatedFilesInManagedRoot(t *testing.T) {
 	}
 }
 
+func TestUninitializePreservesWorkspaceLocalState(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := filepath.Join(t.TempDir(), "config")
+	workspaceRoot := filepath.Join(t.TempDir(), "workspace")
+	workspaceLocal := filepath.Join(workspaceRoot, ".cm")
+	if err := os.MkdirAll(workspaceLocal, 0700); err != nil {
+		t.Fatal(err)
+	}
+	workspaceFile := filepath.Join(workspaceLocal, "state.json")
+	if err := os.WriteFile(workspaceFile, []byte("workspace-local"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Initialize(InitOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "workspaces.json"), []byte(`{"workspaces":[]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := UninitializeContext(t.Context(), root); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(workspaceFile)
+	if err != nil || string(data) != "workspace-local" {
+		t.Fatalf("workspace-local state changed: data=%q err=%v", data, err)
+	}
+}
+
 func TestSetAuthEnabledRequiresConfiguredToken(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := filepath.Join(t.TempDir(), "config")
