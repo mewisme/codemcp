@@ -44,6 +44,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"integrations":           "integration",
 	"interface":              "interface",
 	"jsruntime":              "runtime",
+	"llm":                    "domain",
 	"logger":                 "runtime",
 	"mcp":                    "runtime",
 	"mcpauth":                "runtime",
@@ -162,6 +163,18 @@ func TestProductTelemetryOwnerCannotDependOnRichLocalObservabilityOrInterfaces(t
 		internalImportPrefix + "telemetry",
 	} {
 		assertNoImportsWithPrefix(t, productRoot, forbidden)
+	}
+}
+
+func TestLLMDomainDoesNotDependOnApprovalSemanticPolicyOrInterfaces(t *testing.T) {
+	root := architectureRepositoryRoot(t)
+	llmRoot := filepath.Join(root, "internal", "llm")
+	for _, forbidden := range []string{
+		internalImportPrefix + "approval",
+		internalImportPrefix + "integrations/semantic",
+		internalImportPrefix + "interface/",
+	} {
+		assertNoImportsWithPrefix(t, llmRoot, forbidden)
 	}
 }
 
