@@ -6,9 +6,10 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/secretstore"
+	telegramcredential "go.mewis.me/codemcp/internal/telegram/credential"
 )
 
-var telegramBotTokenSecretName = secretstore.Name("telegram", "bot-token")
+var telegramBotTokenSecretName = telegramcredential.BotTokenSecretName
 
 func telegramTokenConfigured() (bool, error) {
 	_, err := secretstore.New(config.RootPath()).Get(telegramBotTokenSecretName)

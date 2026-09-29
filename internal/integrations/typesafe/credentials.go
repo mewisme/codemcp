@@ -7,7 +7,11 @@ import (
 	"go.mewis.me/codemcp/internal/secretstore"
 )
 
-var APIKeySecretName = secretstore.Name("typesafe", "api-key")
+var APIKeySecretName = secretstore.AccountName(secretstore.DomainTypeSafe, "api-key")
+
+func SecretEntries() []string {
+	return []string{APIKeySecretName}
+}
 
 type CredentialStatus struct {
 	Configured bool `json:"configured"`

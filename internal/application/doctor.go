@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"go.mewis.me/codemcp/internal/approval"
-	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/backgrounddelivery"
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/checkpoint"
@@ -23,8 +22,10 @@ import (
 	"go.mewis.me/codemcp/internal/notification"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
+	"go.mewis.me/codemcp/internal/secretinventory"
 	"go.mewis.me/codemcp/internal/secretstore"
 	managed "go.mewis.me/codemcp/internal/service"
+	telegramcredential "go.mewis.me/codemcp/internal/telegram/credential"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -242,18 +243,24 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			if err != nil {
 				return doctor.Component{}, err
 			}
-			names := append([]string{}, auth.SecretEntries()...)
-			names = append(names, typesafeintegration.APIKeySecretName, secretstore.Name("telegram", "bot-token"))
-			if tunnelNames, tunnelErr := config.TunnelSecretEntries(configformat.RootPath()); tunnelErr == nil {
-				names = append(names, tunnelNames...)
+			inventory, err := secretinventory.Inventory(configformat.RootPath())
+			if err != nil {
+				return doctor.Component{}, err
 			}
+			names := secretinventory.Names(inventory)
 			status := secretstore.New(configformat.RootPath()).Inspect(names)
+			requiredMissing := int64(0)
+			for _, descriptor := range inventory {
+				if descriptor.Configured && descriptor.RuntimeRequired && !descriptor.Present {
+					requiredMissing++
+				}
+			}
 			component := doctor.Component{
 				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "secret inventory is readable",
-				Metrics: []doctor.Metric{{ID: "checked", Value: int64(status.Checked)}, {ID: "configured", Value: int64(status.Configured)}, {ID: "missing", Value: int64(status.Missing)}, {ID: "failed", Value: int64(status.Failed)}},
+				Metrics: []doctor.Metric{{ID: "managed", Value: int64(len(inventory))}, {ID: "checked", Value: int64(status.Checked)}, {ID: "configured", Value: int64(status.Configured)}, {ID: "missing", Value: int64(status.Missing)}, {ID: "required_missing", Value: requiredMissing}, {ID: "failed", Value: int64(status.Failed)}},
 				Flags:   []doctor.Flag{{ID: "available", Value: status.Available}, {ID: "config_initialized", Value: inspection.Exists}},
 			}
-			if !status.Available || status.Failed > 0 {
+			if !status.Available || status.Failed > 0 || requiredMissing > 0 {
 				component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "secret inventory is partially unavailable"
 			}
 			return component, nil
@@ -536,7 +543,7 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			if !inspection.Config.Telegram.Enabled {
 				return disabled("Telegram interface is disabled"), nil
 			}
-			token := secretstore.New(configformat.RootPath()).Inspect([]string{secretstore.Name("telegram", "bot-token")})
+			token := secretstore.New(configformat.RootPath()).Inspect([]string{telegramcredential.BotTokenSecretName})
 			authorized := len(inspection.Config.Telegram.AllowedUserIDs) > 0
 			if token.Configured == 0 || !authorized {
 				return degraded("Telegram interface configuration is incomplete", doctor.Remediation{ID: "telegram_setup", Summary: "Complete Telegram setup", Operation: string(capability.TelegramSetup)}), nil

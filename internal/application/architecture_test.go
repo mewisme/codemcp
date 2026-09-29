@@ -60,6 +60,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"rules":                  "domain",
 	"runtime":                "runtime",
 	"sequence":               "domain",
+	"secretinventory":        "persistence",
 	"secretstore":            "persistence",
 	"service":                "platform",
 	"skills":                 "domain",

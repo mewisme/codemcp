@@ -15,6 +15,7 @@ import (
 
 	currentformat "go.mewis.me/codemcp/internal/configformat"
 	migrationformat "go.mewis.me/codemcp/internal/migration/configformat"
+	"go.mewis.me/codemcp/internal/secretinventory"
 	"go.mewis.me/codemcp/internal/secretstore"
 	"go.mewis.me/codemcp/internal/upstream"
 )
@@ -30,8 +31,9 @@ const (
 )
 
 type Input struct {
-	SourceRoot      string
-	DestinationRoot string
+	SourceRoot        string
+	LogicalSourceRoot string
+	DestinationRoot   string
 }
 
 type AuthHashInventory struct {
@@ -130,7 +132,7 @@ func Transform(input Input) (Result, error) {
 	}
 	s := &scanner{
 		sourceRoot: input.SourceRoot,
-		service:    legacyService(input.SourceRoot),
+		service:    legacyService(input.LogicalSourceRoot),
 		candidates: map[string]candidate{},
 	}
 	if err := s.scan(); err != nil {
@@ -215,6 +217,14 @@ func normalizeInput(input Input) (Input, error) {
 	input.SourceRoot, err = normalizeRoot(input.SourceRoot, "released credential source")
 	if err != nil {
 		return Input{}, err
+	}
+	if strings.TrimSpace(input.LogicalSourceRoot) == "" {
+		input.LogicalSourceRoot = input.SourceRoot
+	} else {
+		input.LogicalSourceRoot, err = normalizeRoot(input.LogicalSourceRoot, "released credential logical root")
+		if err != nil {
+			return Input{}, err
+		}
 	}
 	input.DestinationRoot, err = normalizeRoot(input.DestinationRoot, "credential staging destination")
 	if err != nil {
@@ -575,6 +585,9 @@ func (s *scanner) addStoredOrInline(account, value string, group family, label s
 
 func (s *scanner) add(account, value string, group family, source origin) error {
 	if value == "" {
+		return nil
+	}
+	if !secretinventory.RecognizedAccount(account) {
 		return nil
 	}
 	if previous, exists := s.candidates[account]; exists {

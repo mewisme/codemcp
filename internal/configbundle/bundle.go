@@ -17,7 +17,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
-	"go.mewis.me/codemcp/internal/oauth"
+	"go.mewis.me/codemcp/internal/secretinventory"
 	"go.mewis.me/codemcp/internal/secretstore"
 	"go.mewis.me/codemcp/internal/state"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -918,47 +918,21 @@ func preserveExistingSecrets(existingRoot, stagedRoot string) error {
 	if err := preserveExistingSecretMetadata(existingRoot, stagedRoot); err != nil {
 		return err
 	}
-	names := map[string]bool{}
-	add := func(values []string) {
-		for _, value := range values {
-			if strings.TrimSpace(value) != "" {
-				names[value] = true
-			}
-		}
-	}
-	tunnelNames, err := config.TunnelSecretEntries(existingRoot)
+	inventory, err := secretinventory.Inventory(existingRoot)
 	if err != nil {
 		return err
 	}
-	add(tunnelNames)
-	oauthNames, err := oauth.NewStore(configformat.StructuredPath(existingRoot, "oauth")).SecretEntries()
-	if err != nil {
-		return err
-	}
-	add(oauthNames)
-	upstreamNames, err := upstream.NewStore(configformat.StructuredPath(existingRoot, "upstreams")).SecretEntries()
-	if err != nil {
-		return err
-	}
-	add(upstreamNames)
-	optionalRelay := secretstore.AccountName(secretstore.DomainCluster, "relay-token")
-	names[optionalRelay] = true
-	ordered := make([]string, 0, len(names))
-	for name := range names {
-		ordered = append(ordered, name)
-	}
-	sort.Strings(ordered)
 	source := secretstore.New(existingRoot)
-	changes := make([]secretstore.Change, 0, len(ordered))
-	for _, name := range ordered {
-		value, err := source.Get(name)
-		if errors.Is(err, secretstore.ErrNotFound) && name == optionalRelay {
+	changes := make([]secretstore.Change, 0, len(inventory))
+	for _, descriptor := range inventory {
+		if descriptor.PortablePolicy != secretinventory.PortableExcluded || !descriptor.Present {
 			continue
 		}
+		value, err := source.Get(descriptor.Account)
 		if err != nil {
-			return fmt.Errorf("read existing secret %s: %w", name, err)
+			return fmt.Errorf("read existing secret %s: %w", descriptor.Account, err)
 		}
-		changes = append(changes, secretstore.Change{Name: name, Value: value})
+		changes = append(changes, secretstore.Change{Name: descriptor.Account, Value: value})
 	}
 	if len(changes) == 0 {
 		return nil

@@ -275,7 +275,11 @@ func Stage(ctx context.Context, options StageOptions) (result StageResult, retEr
 		return fail("config", err)
 	}
 
-	credentials, err := credentials024.Transform(credentials024.Input{SourceRoot: manifest.Source.Root, DestinationRoot: stageRoot})
+	legacySecrets, err := OpenLegacySecretAccessor(manifest, manifest.Source.Root)
+	if err != nil {
+		return fail("credentials", err)
+	}
+	credentials, err := legacySecrets.Migrate(stageRoot)
 	if err != nil {
 		return fail("credentials", err)
 	}

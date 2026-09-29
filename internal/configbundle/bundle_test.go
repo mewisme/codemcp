@@ -10,10 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
+	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
 	memorypkg "go.mewis.me/codemcp/internal/memory"
 	"go.mewis.me/codemcp/internal/secretstore"
+	telegramcredential "go.mewis.me/codemcp/internal/telegram/credential"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -439,6 +442,38 @@ func TestImportForceMergesExistingMainConfig(t *testing.T) {
 	custom := result["custom"].(map[string]any)
 	if server["port"] != int64(40200) || server["existing_only"] != true || auth["mcp_token_hash"] != "target-mcp-hash" || auth["admin_token_hash"] != "target-admin-hash" || custom["nested"] != "keep" {
 		t.Fatalf("merged import = %#v", result)
+	}
+}
+
+func TestPreserveExistingSecretsUsesCanonicalInventory(t *testing.T) {
+	restore := secretstore.UseMemoryForTesting()
+	defer restore()
+	existingRoot := t.TempDir()
+	stagedRoot := t.TempDir()
+	if err := auth.StoreTokens(existingRoot, "mcp-preserved", "admin-preserved"); err != nil {
+		t.Fatal(err)
+	}
+	if err := secretstore.New(existingRoot).Apply([]secretstore.Change{
+		{Name: telegramcredential.BotTokenSecretName, Value: "telegram-preserved"},
+		{Name: typesafeintegration.APIKeySecretName, Value: "typesafe-preserved"},
+		{Name: secretstore.AccountName(secretstore.DomainCluster, "relay-token"), Value: "relay-preserved"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := preserveExistingSecrets(existingRoot, stagedRoot); err != nil {
+		t.Fatal(err)
+	}
+	for account, want := range map[string]string{
+		auth.SecretEntries()[0]:                                           "mcp-preserved",
+		auth.SecretEntries()[1]:                                           "admin-preserved",
+		telegramcredential.BotTokenSecretName:                             "telegram-preserved",
+		typesafeintegration.APIKeySecretName:                              "typesafe-preserved",
+		secretstore.AccountName(secretstore.DomainCluster, "relay-token"): "relay-preserved",
+	} {
+		got, err := secretstore.New(stagedRoot).Get(account)
+		if err != nil || got != want {
+			t.Fatalf("preserved secret %s=%q err=%v", account, got, err)
+		}
 	}
 }
 

@@ -1,34 +1,27 @@
 package telegram
 
 import (
-	"errors"
-	"strings"
-
-	"go.mewis.me/codemcp/internal/secretstore"
+	telegramcredential "go.mewis.me/codemcp/internal/telegram/credential"
 )
 
-var botTokenSecretName = secretstore.Name("telegram", "bot-token")
+var BotTokenSecretName = telegramcredential.BotTokenSecretName
+
+func SecretEntries() []string {
+	return telegramcredential.SecretEntries()
+}
 
 func SetToken(root, token string) error {
-	token = strings.TrimSpace(token)
-	if token == "" {
-		return errors.New("telegram bot token is required")
-	}
-	return secretstore.New(root).Set(botTokenSecretName, token)
+	return telegramcredential.Set(root, token)
 }
 
 func ClearToken(root string) error {
-	return secretstore.New(root).Set(botTokenSecretName, "")
+	return telegramcredential.Clear(root)
 }
 
 func TokenConfigured(root string) (bool, error) {
-	_, err := secretstore.New(root).Get(botTokenSecretName)
-	if errors.Is(err, secretstore.ErrNotFound) {
-		return false, nil
-	}
-	return err == nil, err
+	return telegramcredential.Configured(root)
 }
 
 func loadToken(root string) (string, error) {
-	return secretstore.New(root).Get(botTokenSecretName)
+	return telegramcredential.Load(root)
 }

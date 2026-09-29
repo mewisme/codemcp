@@ -13,9 +13,9 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configbundle"
 	"go.mewis.me/codemcp/internal/configformat"
-	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
+	"go.mewis.me/codemcp/internal/secretinventory"
 	"go.mewis.me/codemcp/internal/secretstore"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -161,27 +161,12 @@ func PurgeStoredSecrets(root string) error {
 
 func PurgeStoredSecretsContext(ctx context.Context, root string) error {
 	span := tracepkg.Start(ctx, "CONFIG", "config.secrets.purge", "Purging stored configuration secrets", tracepkg.String("root", root))
-	entries, err := config.TunnelSecretEntries(root)
+	inventory, err := secretinventory.Inventory(root)
 	if err != nil {
-		span.FailMessage("Tunnel secret enumeration failed", err)
+		span.FailMessage("Managed secret inventory failed", err)
 		return err
 	}
-	oauthEntries, err := mcpoauth.NewStore(configformat.StructuredPath(root, "oauth")).SecretEntries()
-	if err != nil {
-		span.FailMessage("OAuth secret enumeration failed", err)
-		return err
-	}
-	upstreamEntries, err := upstream.NewStore(configformat.StructuredPath(root, "upstreams")).SecretEntries()
-	if err != nil {
-		span.FailMessage("Upstream secret enumeration failed", err)
-		return err
-	}
-	entries = append(entries, secretstore.AccountName(secretstore.DomainCluster, "relay-token"))
-	entries = append(entries, auth.SecretEntries()...)
-	entries = append(entries, telegramBotTokenSecretName)
-	entries = append(entries, typesafeintegration.APIKeySecretName)
-	entries = append(entries, oauthEntries...)
-	entries = append(entries, upstreamEntries...)
+	entries := secretinventory.Names(inventory)
 	changes := make([]secretstore.Change, 0, len(entries))
 	for _, entry := range entries {
 		changes = append(changes, secretstore.Change{Name: entry})

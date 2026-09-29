@@ -12,6 +12,7 @@ import (
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
+	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
 	"go.mewis.me/codemcp/internal/secretstore"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
@@ -161,6 +162,13 @@ func TestPurgeStoredSecretsRemovesAuthCredentials(t *testing.T) {
 	if err := writeTelegramToken("telegram_secret_for_purge"); err != nil {
 		t.Fatal(err)
 	}
+	if err := typesafeintegration.UpdateAPIKey(root, "typesafe_secret_for_purge"); err != nil {
+		t.Fatal(err)
+	}
+	relayAccount := secretstore.AccountName(secretstore.DomainCluster, "relay-token")
+	if err := secretstore.New(root).Set(relayAccount, "relay_secret_for_purge"); err != nil {
+		t.Fatal(err)
+	}
 	if err := PurgeStoredSecrets(root); err != nil {
 		t.Fatal(err)
 	}
@@ -171,6 +179,12 @@ func TestPurgeStoredSecretsRemovesAuthCredentials(t *testing.T) {
 	}
 	if _, err := readTelegramToken(); !errors.Is(err, secretstore.ErrNotFound) {
 		t.Fatalf("telegram secret remained after purge: %v", err)
+	}
+	if _, err := typesafeintegration.LoadAPIKey(root); !errors.Is(err, secretstore.ErrNotFound) {
+		t.Fatalf("TypeSafe secret remained after purge: %v", err)
+	}
+	if _, err := secretstore.New(root).Get(relayAccount); !errors.Is(err, secretstore.ErrNotFound) {
+		t.Fatalf("relay secret remained after purge: %v", err)
 	}
 }
 

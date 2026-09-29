@@ -20,6 +20,8 @@ const (
 	DomainOAuth    Domain = "oauth"
 	DomainUpstream Domain = "upstream"
 	DomainCluster  Domain = "cluster"
+	DomainTelegram Domain = "telegram"
+	DomainTypeSafe Domain = "typesafe"
 )
 
 const (
