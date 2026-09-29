@@ -18,7 +18,7 @@ import { Item, ItemContent, ItemDescription, ItemGroup, ItemHeader, ItemTitle } 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { adminApi, adminRequestHeaders, type ActivityEvent } from "@/lib/api"
+import { adminApi, adminRequestHeaders, type ActivityEvent, type ToolCallDetail } from "@/lib/api"
 
 type ActivityStreamHandlers = { onReady: () => void; onEvent: (event: ActivityEvent) => void; onGap: (from: number, to: number) => void }
 
@@ -88,7 +88,7 @@ export function ActivityPage() {
 
 export function ActivityCallPage() {
   const { callID = "" } = useParams<{ callID: string }>()
-  const [event, setEvent] = useState<ActivityEvent | null>(null)
+  const [event, setEvent] = useState<ToolCallDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
@@ -110,8 +110,9 @@ function ActivityDetail({ event, open, onOpenChange }: { event: ActivityEvent; o
   return <ResponsiveDialog open={open} onOpenChange={onOpenChange} title={activityTitle(event)} description={`${event.kind} · ${formatDateTime(event.timestamp)}`}><ActivityDetailContent event={event} /></ResponsiveDialog>
 }
 
-function ActivityDetailContent({ event }: { event: ActivityEvent }) {
-  return <Tabs defaultValue="overview"><TabsList className="w-full"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="metadata">Metadata</TabsTrigger><TabsTrigger value="raw">Raw</TabsTrigger></TabsList><TabsContent className="mt-4 divide-y" value="overview"><DetailRow label="Status" value={event.status ? <StatusBadge status={event.status} /> : "-"} /><DetailRow label="Tool" value={event.tool || "-"} mono /><DetailRow label="Method" value={event.method || "-"} mono /><DetailRow label="Message" value={event.message || "-"} /><DetailRow label="Duration" value={event.duration_ms === undefined ? "-" : formatDuration(event.duration_ms)} /></TabsContent><TabsContent className="mt-4 divide-y" value="metadata"><DetailRow label="Call ID" value={event.call_id || "-"} mono /><DetailRow label="Sequence" value={event.sequence ?? "-"} mono /><DetailRow label="Timestamp" value={formatDateTime(event.timestamp)} /><DetailRow label="Source" value={event.source || "-"} mono /><DetailRow label="Workspace" value={event.workspace_id || "-"} mono /><DetailRow label="Kind" value={event.kind} mono /></TabsContent><TabsContent className="mt-4" value="raw"><JsonViewer value={event} /></TabsContent></Tabs>
+function ActivityDetailContent({ event }: { event: ActivityEvent | ToolCallDetail }) {
+  const detail = event as ToolCallDetail
+  return <Tabs defaultValue="overview"><TabsList className="w-full"><TabsTrigger value="overview">Overview</TabsTrigger><TabsTrigger value="request">Request</TabsTrigger><TabsTrigger value="response">Response</TabsTrigger><TabsTrigger value="metadata">Metadata</TabsTrigger><TabsTrigger value="raw">Raw</TabsTrigger></TabsList><TabsContent className="mt-4 divide-y" value="overview"><DetailRow label="Status" value={event.status ? <StatusBadge status={event.status} /> : "-"} /><DetailRow label="Tool" value={event.tool || "-"} mono /><DetailRow label="Method" value={event.method || "-"} mono /><DetailRow label="Message" value={event.message || "-"} /><DetailRow label="Duration" value={event.duration_ms === undefined ? "-" : formatDuration(event.duration_ms)} /></TabsContent><TabsContent className="mt-4" value="request"><JsonViewer value={detail.request ?? null} /></TabsContent><TabsContent className="mt-4" value="response"><JsonViewer value={detail.error ?? detail.response ?? null} /></TabsContent><TabsContent className="mt-4 divide-y" value="metadata"><DetailRow label="Call ID" value={event.call_id || "-"} mono /><DetailRow label="Sequence" value={event.sequence ?? "-"} mono /><DetailRow label="Timestamp" value={formatDateTime(event.timestamp)} /><DetailRow label="Source" value={event.source || "-"} mono /><DetailRow label="Workspace" value={event.workspace_id || "-"} mono /><DetailRow label="Kind" value={event.kind} mono /><DetailRow label="Diagnostic" value={detail.diagnostic ? <JsonViewer value={detail.diagnostic} /> : "-"} /></TabsContent><TabsContent className="mt-4" value="raw"><JsonViewer value={event} /></TabsContent></Tabs>
 }
 
 function FilterSelect({ label, value, values, onValueChange }: { label: string; value: string; values: string[]; onValueChange: (value: string) => void }) {

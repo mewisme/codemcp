@@ -1,4 +1,4 @@
-import type { LogsSnapshot } from "@/lib/api"
+import type { ExecutionSnapshot, LogsSnapshot, ToolCallDetail } from "@/lib/api"
 
 export type { LogEvent, LogsSnapshot } from "@/lib/api"
 
@@ -55,6 +55,18 @@ export async function loadLogsSnapshot(options: LogsQuery = {}) {
   if (options.grep) query.set("grep", options.grep)
   const suffix = query.size ? `?${query.toString()}` : ""
   return (await request(`/api/logs/snapshot${suffix}`)) as LogsSnapshot
+}
+
+export async function loadToolCallDetail(id: string) {
+  return (await request(
+    `/api/tool-calls/${encodeURIComponent(id)}`
+  )) as ToolCallDetail
+}
+
+export async function loadExecutionDetail(id: string) {
+  return (await request(
+    `/api/executions/${encodeURIComponent(id)}`
+  )) as ExecutionSnapshot
 }
 
 export function snapshotEvents(snapshot: LogsSnapshot | null) {

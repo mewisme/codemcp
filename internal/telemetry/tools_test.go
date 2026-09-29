@@ -60,26 +60,28 @@ func TestAttachToolsPublishesActivityAndKeepsDefaultLogQuiet(t *testing.T) {
 	if event.Kind != "tool_call" || event.CallID == "" || event.Source != "tunnel" || event.Tool != "echo" || event.WorkspaceID != "" || event.Status != "ok" {
 		t.Fatalf("event=%#v", event)
 	}
-	if event.Raw["call_id"] != event.CallID {
-		t.Fatalf("raw call id=%#v event call id=%q", event.Raw["call_id"], event.CallID)
+	if event.Raw != nil || events[0].Raw != nil {
+		t.Fatalf("summary stream retained raw payload: %#v", events)
 	}
-	if event.Raw["status"] != "ok" || event.Raw["result_type"] != "complete" {
-		t.Fatalf("raw outcome=%#v", event.Raw)
+	detail, ok := stream.FindCallDetail(event.CallID)
+	if !ok || detail.Request == nil || detail.Response == nil {
+		t.Fatalf("tool detail=%#v ok=%t", detail, ok)
 	}
-	rawParams, ok := event.Raw["params"].(map[string]any)
-	if !ok || rawParams["requestState"] != "state_test" || rawParams["_meta"].(map[string]any)["request_id"] != "req_test" {
-		t.Fatalf("raw params=%#v", event.Raw)
+	requestDetail, ok := detail.Request.(map[string]any)
+	if !ok || requestDetail["method"] != "tools/call" {
+		t.Fatalf("request detail=%#v", detail.Request)
 	}
-	rawArgs, ok := event.Raw["arguments"].(map[string]any)
-	if !ok || rawArgs["message"] != "hello" {
-		t.Fatalf("raw arguments=%#v", event.Raw)
+	requestParams, ok := requestDetail["params"].(map[string]any)
+	if !ok || requestParams["requestState"] != "state_test" {
+		t.Fatalf("request params=%#v", requestDetail)
 	}
-	if _, ok := event.Raw["result"].(tools.Result); !ok {
-		t.Fatalf("raw result=%#v", event.Raw["result"])
+	requestArgs, ok := requestParams["arguments"].(map[string]any)
+	if !ok || requestArgs["message"] != "hello" {
+		t.Fatalf("request arguments=%#v", requestParams)
 	}
-	rawRequest, ok := event.Raw["request"].(map[string]any)
-	if !ok || rawRequest["id"] != "call_1" || rawRequest["method"] != "tools/call" {
-		t.Fatalf("raw request=%#v", event.Raw)
+	response, ok := detail.Response.(map[string]any)
+	if !ok || response["resultType"] != "complete" {
+		t.Fatalf("response detail=%#v", detail.Response)
 	}
 }
 
@@ -188,12 +190,20 @@ func TestAttachToolsConfigSetActivityAndVerboseLogNeverExposeValues(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	combined := string(eventJSON) + "\n" + output.String()
+	detail, ok := stream.FindCallDetail(events[len(events)-1].CallID)
+	if !ok {
+		t.Fatal("config_set diagnostic detail missing")
+	}
+	detailJSON, err := json.Marshal(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(eventJSON) + "\n" + string(detailJSON) + "\n" + output.String()
 	if strings.Contains(combined, privateValue) {
 		t.Fatalf("config_set telemetry/log leaked user value: %s", combined)
 	}
-	if !strings.Contains(string(eventJSON), "tunnel.organization_id") || !strings.Contains(string(eventJSON), "change_count") {
-		t.Fatalf("config_set activity lost safe summary: %s", eventJSON)
+	if !strings.Contains(string(detailJSON), "tunnel.organization_id") || !strings.Contains(string(detailJSON), "change_count") {
+		t.Fatalf("config_set diagnostic lost safe summary: %s", detailJSON)
 	}
 	if !strings.Contains(output.String(), "Tool call started") || !strings.Contains(output.String(), "Tool call failed") {
 		t.Fatalf("config_set approval lifecycle missing: %q", output.String())

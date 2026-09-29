@@ -26,6 +26,7 @@ import (
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 )
 
 const (
@@ -523,6 +524,8 @@ func (runtime *LogsMiniAppRuntime) handler() http.Handler {
 	assets := miniAppWebHandler()
 	mux.HandleFunc("POST /api/auth", runtime.handleAuth)
 	mux.HandleFunc("GET /api/logs/snapshot", runtime.handleSnapshot)
+	mux.HandleFunc("GET /api/tool-calls/{id}", runtime.handleToolCallDetail)
+	mux.HandleFunc("GET /api/executions/{id}", runtime.handleExecutionDetail)
 	mux.HandleFunc("GET /api/stream", runtime.handleStream)
 	mux.Handle("GET /", assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -600,6 +603,44 @@ func (runtime *LogsMiniAppRuntime) handleSnapshot(w http.ResponseWriter, r *http
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(snapshot)
+}
+
+func (runtime *LogsMiniAppRuntime) handleToolCallDetail(w http.ResponseWriter, r *http.Request) {
+	if _, ok := runtime.authorizedSession(r); !ok {
+		http.Error(w, "Mini App session is not authorized", http.StatusUnauthorized)
+		return
+	}
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	detail, err := runtimecontrol.GetToolCallDetail(r.Context(), id)
+	if err != nil {
+		http.Error(w, "tool call detail unavailable", http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(detail)
+}
+
+func (runtime *LogsMiniAppRuntime) handleExecutionDetail(w http.ResponseWriter, r *http.Request) {
+	if _, ok := runtime.authorizedSession(r); !ok {
+		http.Error(w, "Mini App session is not authorized", http.StatusUnauthorized)
+		return
+	}
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	detail, err := runtimecontrol.GetExecution(r.Context(), id)
+	if err != nil {
+		http.Error(w, "execution detail unavailable", http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(detail)
 }
 
 func (runtime *LogsMiniAppRuntime) authorizedSession(r *http.Request) (miniAppSession, bool) {

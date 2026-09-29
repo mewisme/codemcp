@@ -169,17 +169,19 @@ func TestLogsMiniAppIngressRequiresAuthorizedSessionAndDoesNotExposeAdminRoutes(
 			t.Fatalf("public Mini App route %s status=%d want=404", path, response.StatusCode)
 		}
 	}
-	response, err := http.Get(server.URL + "/api/logs/snapshot")
-	if err != nil {
-		t.Fatal(err)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("unauthenticated logs snapshot status=%d want=401", response.StatusCode)
+	for _, path := range []string{"/api/logs/snapshot", "/api/tool-calls/call_test", "/api/executions/exec_test"} {
+		response, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated Mini App route %s status=%d want=401", path, response.StatusCode)
+		}
 	}
 
 	unauthorized := signedTelegramInitData(t, token, 99, now.Add(-time.Minute))
-	response = postMiniAppAuth(t, server.URL, unauthorized)
+	response := postMiniAppAuth(t, server.URL, unauthorized)
 	response.Body.Close()
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("valid but unauthorized Telegram user status=%d want=403", response.StatusCode)

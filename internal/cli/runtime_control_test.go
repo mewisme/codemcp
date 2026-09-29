@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/logger"
+	"go.mewis.me/codemcp/internal/runtime/activity"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
@@ -337,6 +339,65 @@ func TestRuntimeControlExecutionFeedReplaysAndStreamsCombinedOutput(t *testing.T
 	output := scanRuntimeControlEventData(t, scanner, shellruntime.ExecutionEventOutput)
 	if !strings.Contains(output, `"stream":"stderr"`) || !strings.Contains(output, "after") {
 		t.Fatalf("output=%q", output)
+	}
+}
+
+func TestRuntimeControlToolCallDetailRoundTripsBoundedRedactedPayload(t *testing.T) {
+	defer configformat.SetRootPath("")
+	if err := configformat.SetRootPath(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	stream := activity.NewStream()
+	stream.Publish(activity.Event{
+		CallID: "call_detail", Kind: string(activity.EventToolCall), Phase: "start", Method: "tools/call", Tool: "run_command", Status: "running",
+		Raw: map[string]any{"request": map[string]any{"jsonrpc": "2.0", "method": "tools/call", "params": map[string]any{"name": "run_command", "arguments": map[string]any{"command": "printf ok", "api_key": "private-key"}}}},
+	})
+	stream.Publish(activity.Event{
+		CallID: "call_detail", Kind: string(activity.EventToolCall), Phase: "finish", Method: "tools/call", Tool: "run_command", Status: "ok",
+		Raw: map[string]any{"result": map[string]any{"structured_content": map[string]any{"stdout": "ok", "stderr": "", "exit_code": 0}}},
+	})
+	control, err := startRuntimeControl(runtimeControlOptions{
+		Activity:  stream,
+		Events:    runtimeevent.NewStream(runtimeevent.Metadata{}),
+		Reload:    func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil },
+		Status:    func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} },
+		Shutdown:  func() {},
+		ClearLogs: func() error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+
+	detail, err := runtimecontrol.GetToolCallDetail(t.Context(), "call_detail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := string(data)
+	for _, expected := range []string{"printf ok", "stdout", "exit_code", "redacted"} {
+		if !strings.Contains(encoded, expected) {
+			t.Fatalf("detail missing %q: %s", expected, encoded)
+		}
+	}
+	if strings.Contains(encoded, "private-key") || strings.Contains(encoded, `"raw"`) {
+		t.Fatalf("detail leaked private payload: %s", encoded)
+	}
+
+	request, err := http.NewRequest(http.MethodGet, "http://"+control.state.Address+"/tool-calls/call_detail", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := (&http.Client{Timeout: time.Second}).Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated detail status=%d", response.StatusCode)
 	}
 }
 

@@ -108,7 +108,12 @@ describe("Telegram Logs Mini App", () => {
 
   it("switches feeds by disposing the old socket and consuming execution snapshots", async () => {
     window.Telegram = { WebApp: { initData: "signed-init-data", ready: vi.fn(), expand: vi.fn() } }
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })))
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), "https://mini.example")
+      if (url.pathname === "/api/auth") return new Response(null, { status: 204 })
+      if (url.pathname === "/api/executions/exec_1") return new Response(JSON.stringify({ execution: { id: "exec_1", workspace_id: "ws_1", tool: "run_command", command: "go test ./...", cwd: "/workspace", started_at: "2026-09-28T01:31:00Z", finished_at: "2026-09-28T01:31:03Z", status: "success", exit_code: 0 }, stdout: "canonical stdout\n", stderr: "canonical stderr\n", latest_sequence: 3 }), { status: 200, headers: { "Content-Type": "application/json" } })
+      throw new Error("Unhandled Mini App request: " + url.pathname)
+    }))
 
     render(<TooltipProvider><MiniApp /></TooltipProvider>)
     await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
@@ -131,28 +136,14 @@ describe("Telegram Logs Mini App", () => {
           executions: [{ id: "exec_1", workspace_id: "ws_1", tool: "run_command", command: "go test ./...", cwd: "/workspace", started_at: "2026-09-28T01:31:00Z", status: "running" }],
         },
       })
-      MockWebSocket.instances[1].emit({
-        type: "event",
-        feed: "executions",
-        sequence: 5,
-        latest_sequence: 5,
-        payload: { sequence: 5, type: "output", execution_id: "exec_1", workspace_id: "ws_1", stream: "stdout", data: "stdout-first\n", timestamp: "2026-09-28T01:31:01Z" },
-      })
-      MockWebSocket.instances[1].emit({
-        type: "event",
-        feed: "executions",
-        sequence: 6,
-        latest_sequence: 6,
-        payload: { sequence: 6, type: "output", execution_id: "exec_1", workspace_id: "ws_1", stream: "stderr", data: "stderr-second\n", timestamp: "2026-09-28T01:31:02Z" },
-      })
     })
     expect(await screen.findByText("go test ./...")).toBeInTheDocument()
     expect(screen.getByText("running")).toBeInTheDocument()
 
     await userEvent.click(screen.getByText("go test ./..."))
     await userEvent.click(screen.getByRole("tab", { name: "Response" }))
-    expect(screen.getByText(/stdout-first/)).toBeInTheDocument()
-    expect(screen.getByText(/stderr-second/)).toBeInTheDocument()
+    expect(await screen.findByText(/canonical stdout/)).toBeInTheDocument()
+    expect(screen.getByText(/canonical stderr/)).toBeInTheDocument()
   })
 
   it("suspends the realtime socket while Telegram marks the Mini App inactive and reconnects on activation", async () => {
@@ -247,7 +238,12 @@ describe("Telegram Logs Mini App", () => {
 
   it("renders successful tool calls in green and separates request, response, metadata, and raw detail views", async () => {
     window.Telegram = { WebApp: { initData: "signed-init-data", ready: vi.fn(), expand: vi.fn() } }
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 204 })))
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), "https://mini.example")
+      if (url.pathname === "/api/auth") return new Response(null, { status: 204 })
+      if (url.pathname === "/api/tool-calls/call_test") return new Response(JSON.stringify({ sequence: 11, call_id: "call_test", kind: "tool_call", phase: "finish", method: "tools/call", source: "tunnel", tool: "git_status", workspace_id: "ws_test", status: "ok", duration_ms: 17, timestamp: "2026-09-28T08:00:00Z", request: { tool: "git_status", arguments: { workspace_id: "ws_test", include_untracked: true } }, response: { branch: "main", clean: true }, diagnostic: { redacted: false, truncated: false } }), { status: 200, headers: { "Content-Type": "application/json" } })
+      throw new Error("Unhandled Mini App request: " + url.pathname)
+    }))
 
     render(<TooltipProvider><MiniApp /></TooltipProvider>)
     await waitFor(() => expect(MockWebSocket.instances).toHaveLength(1))
@@ -278,12 +274,6 @@ describe("Telegram Logs Mini App", () => {
               workspace_id: "ws_test",
               status: "running",
               timestamp: "2026-09-28T08:00:00Z",
-              raw: {
-                method: "tools/call",
-                tool: "git_status",
-                arguments: { workspace_id: "ws_test", include_untracked: true },
-                params: { name: "git_status", arguments: { workspace_id: "ws_test", include_untracked: true } },
-              },
             },
             latest: {
               sequence: 11,
@@ -297,15 +287,6 @@ describe("Telegram Logs Mini App", () => {
               status: "ok",
               duration_ms: 17,
               timestamp: "2026-09-28T08:00:00Z",
-              raw: {
-                method: "tools/call",
-                tool: "git_status",
-                arguments: { workspace_id: "ws_test", include_untracked: true },
-                params: { name: "git_status", arguments: { workspace_id: "ws_test", include_untracked: true } },
-                status: "ok",
-                result_type: "complete",
-                result: { branch: "main", clean: true },
-              },
             },
           }],
         },
@@ -326,8 +307,7 @@ describe("Telegram Logs Mini App", () => {
     expect(code.closest('[data-slot="scroll-area"]')).toHaveAttribute("data-scrollbars", "both")
 
     await userEvent.click(screen.getByRole("tab", { name: "Response" }))
-    code = screen.getByRole("code")
-    expect(code.textContent).toContain("\"result\"")
+    code = await screen.findByRole("code")
     expect(code.textContent).toContain("\"clean\": true")
     expect(code.textContent).not.toContain("include_untracked")
     expect(code.closest('[data-slot="scroll-area"]')).toHaveAttribute("data-scrollbars", "both")
@@ -339,8 +319,9 @@ describe("Telegram Logs Mini App", () => {
 
     await userEvent.click(screen.getByRole("tab", { name: "Raw" }))
     code = screen.getByRole("code")
-    expect(code.textContent).toContain("\"first\"")
-    expect(code.textContent).toContain("\"latest\"")
+    expect(code.textContent).toContain("\"request\"")
+    expect(code.textContent).toContain("\"response\"")
+    expect(code.textContent).not.toContain("\"raw\"")
     expect(code.closest('[data-slot="scroll-area"]')).toHaveAttribute("data-scrollbars", "both")
   })
 

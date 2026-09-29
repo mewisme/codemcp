@@ -298,6 +298,23 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 	mux.HandleFunc("/tool-calls/stream", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
 		serveRuntimeToolCallFeed(w, r, options.Activity)
 	}))
+	mux.HandleFunc("/tool-calls/", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
+		if options.Activity == nil {
+			http.Error(w, "tool call activity unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		callID := strings.Trim(strings.TrimPrefix(r.URL.Path, "/tool-calls/"), "/")
+		if callID == "" || callID == "stream" {
+			http.NotFound(w, r)
+			return
+		}
+		detail, ok := options.Activity.FindCallDetail(callID)
+		if !ok {
+			http.Error(w, "tool call not found", http.StatusNotFound)
+			return
+		}
+		writeControlJSON(w, detail, nil)
+	}))
 	mux.HandleFunc("/executions", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, _ *http.Request) {
 		if options.Executions == nil {
 			http.Error(w, "execution stream unavailable", http.StatusServiceUnavailable)

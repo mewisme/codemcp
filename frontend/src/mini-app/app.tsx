@@ -22,9 +22,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, ScrollableTabsList, TabsContent, TabsTrigger } from "@/components/ui/tabs"
 import { useIsMobile } from "@/hooks/use-mobile"
-import type { ActivityEvent, ExecutionFeedEvent, ExecutionInfo, LogEvent } from "@/lib/api"
+import type { ActivityEvent, ExecutionFeedEvent, ExecutionInfo, ExecutionSnapshot as ExecutionDetailSnapshot, LogEvent, ToolCallDetail } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { authenticateTelegramSession } from "@/mini-app/api"
+import { authenticateTelegramSession, loadExecutionDetail, loadToolCallDetail } from "@/mini-app/api"
 import {
   applyExecutionEvent,
   applyToolEvent,
@@ -604,8 +604,20 @@ function ToolRow({ record, compact, selected, onClick }: { record: ToolRecord; c
 }
 
 function DetailBody({ detail, executionEvents, fill = false }: { detail: ReturnType<typeof resolveSelected> | null; executionEvents: ExecutionFeedEvent[]; fill?: boolean }) {
+  const [canonical, setCanonical] = useState<ToolCallDetail | ExecutionDetailSnapshot | null>(null)
+  const [canonicalError, setCanonicalError] = useState("")
+  const detailFeed = detail?.feed
+  const detailID = detail?.value ? detail.feed === "tools" ? (detail.value as ToolRecord).call_id : detail.feed === "executions" ? (detail.value as ExecutionInfo).id : "" : ""
+  const revision = detail?.value ? detail.feed === "tools" ? ((detail.value as ToolRecord).latest.sequence ?? 0) : detail.feed === "executions" ? executionEvents.filter((event) => event.execution_id === (detail.value as ExecutionInfo).id).reduce((latest, event) => Math.max(latest, event.sequence || 0), 0) : 0 : 0
+  useEffect(() => {
+    let active = true
+    if (!detailID || !detailFeed || detailFeed === "runtime") return () => { active = false }
+    const request = detailFeed === "tools" ? loadToolCallDetail(detailID) : loadExecutionDetail(detailID)
+    void request.then((value) => { if (active) { setCanonical(value); setCanonicalError("") } }).catch((value) => { if (active) setCanonicalError(value instanceof Error ? value.message : String(value)) })
+    return () => { active = false }
+  }, [detailFeed, detailID, revision])
   if (!detail?.value) return <p className="text-sm text-muted-foreground">This event is no longer in the retained view.</p>
-  const sections = buildDetailSections(detail, executionEvents)
+  const sections = buildDetailSections(detail, executionEvents, canonical, canonicalError)
   return (
     <Tabs defaultValue="overview" className={cn("gap-3", fill && "h-full min-h-0")}>
       <ScrollableTabsList className="shrink-0 justify-start" variant="line">
@@ -635,7 +647,7 @@ function DetailTab({ value, fill, children }: { value: string; fill: boolean; ch
   )
 }
 
-function buildDetailSections(detail: NonNullable<ReturnType<typeof resolveSelected>>, executionEvents: ExecutionFeedEvent[]) {
+function buildDetailSections(detail: NonNullable<ReturnType<typeof resolveSelected>>, executionEvents: ExecutionFeedEvent[], canonical: ToolCallDetail | ExecutionDetailSnapshot | null = null, canonicalError = "") {
   if (detail.feed === "runtime") {
     const event = detail.value as LogEvent
     return {
@@ -650,23 +662,29 @@ function buildDetailSections(detail: NonNullable<ReturnType<typeof resolveSelect
     const record = detail.value as ToolRecord
     const first = record.first as ActivityEvent & { raw?: unknown }
     const latest = record.latest as ActivityEvent & { raw?: unknown }
+    const resolved = canonical && "kind" in canonical ? canonical as ToolCallDetail : null
     return {
       overview: <Overview values={[["Tool", latest.tool || "—"], ["Status", latest.status || latest.phase || "—"], ["Workspace", latest.workspace_id || "—"], ["Duration", latest.duration_ms ? latest.duration_ms + " ms" : "—"]]} />,
-      request: toolRequestView(first),
-      response: toolResponseView(latest),
-      metadata: compactObject({ call_id: record.call_id, kind: latest.kind, tool: latest.tool, method: latest.method, source: latest.source, workspace_id: latest.workspace_id, first_timestamp: first.timestamp, latest_timestamp: latest.timestamp }),
-      raw: record,
+      request: resolved?.request ?? (canonicalError ? { error: canonicalError } : toolRequestView(first)),
+      response: resolved?.error ?? resolved?.response ?? (canonicalError ? { error: canonicalError } : toolResponseView(latest)),
+      metadata: compactObject({ call_id: record.call_id, kind: latest.kind, tool: latest.tool, method: latest.method, source: latest.source, workspace_id: latest.workspace_id, first_timestamp: first.timestamp, latest_timestamp: latest.timestamp, diagnostic: resolved?.diagnostic }),
+      raw: resolved ?? record,
     }
   }
-  const execution = detail.value as ExecutionInfo & { requested_command?: string; effective_command?: string }
+  const fallbackExecution = detail.value as ExecutionInfo & { requested_command?: string; effective_command?: string }
+  const resolved = canonical && "execution" in canonical ? canonical as ExecutionDetailSnapshot : null
+  const execution = resolved?.execution ?? fallbackExecution
   const related = executionEvents.filter((event) => event.execution_id === execution.id)
   const output = related.filter((event) => event.type === "output").map((event) => event.data || "").join("")
+  const stdout = resolved?.stdout ?? output
+  const stderr = resolved?.stderr ?? ""
+  const response = stdout || stderr ? <div className="space-y-3">{stdout ? <div><div className="mb-1.5 text-xs font-medium text-muted-foreground">stdout</div><TextViewer value={stdout} maxHeight={null} /></div> : null}{stderr ? <div><div className="mb-1.5 text-xs font-medium text-muted-foreground">stderr</div><TextViewer value={stderr} maxHeight={null} /></div> : null}<JsonViewer value={compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at })} maxHeight={null} /></div> : canonicalError ? { error: canonicalError } : compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at })
   return {
     overview: <Overview values={[["Status", execution.status], ["Workspace", execution.workspace_id], ["Tool", execution.tool], ["Exit code", execution.exit_code == null ? "—" : String(execution.exit_code)]]} />,
     request: <div className="space-y-3"><TextViewer value={execution.command} maxHeight={null} /><DetailSection value={compactObject({ requested_command: execution.requested_command, effective_command: execution.effective_command, cwd: execution.cwd, source: execution.source })} empty="" /></div>,
-    response: output ? <div className="space-y-3"><TextViewer value={output} maxHeight={null} /><JsonViewer value={compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at })} maxHeight={null} /></div> : compactObject({ status: execution.status, exit_code: execution.exit_code, timed_out: execution.timed_out, finished_at: execution.finished_at }),
+    response,
     metadata: compactObject({ id: execution.id, workspace_id: execution.workspace_id, tool: execution.tool, source: execution.source, started_at: execution.started_at, finished_at: execution.finished_at }),
-    raw: { execution, events: related },
+    raw: resolved ?? { execution, events: related },
   }
 }
 

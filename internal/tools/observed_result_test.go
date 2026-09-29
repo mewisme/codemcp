@@ -8,19 +8,14 @@ import (
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 )
 
-func TestObservedRunCommandResultRedactsOutput(t *testing.T) {
-	result := JSONResult(shellruntime.ExecResult{Command: "printf secret", CWD: "/workspace", Stdout: "secret-output", Stderr: "secret-error", ExitCode: 7})
+func TestObservedRunCommandResultCarriesCanonicalOutputForDiagnosticProjection(t *testing.T) {
+	result := JSONResult(shellruntime.ExecResult{Command: "printf output", CWD: "/workspace", Stdout: "command-output", Stderr: "command-error", ExitCode: 7})
 	data, err := json.Marshal(observedResult("run_command", result))
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := string(data)
-	for _, forbidden := range []string{"secret-output", "secret-error", `"stdout"`, `"stderr"`} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("run_command observation leaked %q: %s", forbidden, text)
-		}
-	}
-	for _, expected := range []string{"printf secret", "/workspace", `"exit_code":7`} {
+	for _, expected := range []string{"printf output", "/workspace", "command-output", "command-error", `"stdout"`, `"stderr"`, `"exit_code":7`, `"structured_content"`} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("run_command observation missing %q: %s", expected, text)
 		}

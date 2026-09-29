@@ -13,27 +13,67 @@ import (
 
 func TestFindCallAndCallHandler(t *testing.T) {
 	stream := NewStream()
-	stream.Publish(Event{CallID: "019a1111-2222-7333-8444-555555555555", Kind: string(EventToolCall), Tool: "run_command"})
-	event, ok := stream.FindCall("019a1111-2222-7333-8444-555555555555")
+	callID := "019a1111-2222-7333-8444-555555555555"
+	stream.Publish(Event{CallID: callID, Kind: string(EventToolCall), Phase: "start", Tool: "run_command", Status: "running", Raw: map[string]any{"arguments": map[string]any{"command": "echo ok", "token": "secret-value"}}})
+	stream.Publish(Event{CallID: callID, Kind: string(EventToolCall), Phase: "finish", Tool: "run_command", Status: "ok", Raw: map[string]any{"result": map[string]any{"stdout": "ok", "exit_code": 0}}})
+	event, ok := stream.FindCall(callID)
 	if !ok || event.Tool != "run_command" {
 		t.Fatalf("event=%#v ok=%v", event, ok)
 	}
+	if event.Raw != nil {
+		t.Fatalf("summary event retained raw payload: %#v", event.Raw)
+	}
+	detail, ok := stream.FindCallDetail(callID)
+	if !ok || detail.Request == nil || detail.Response == nil || !detail.Diagnostic.Redacted {
+		t.Fatalf("detail=%#v ok=%v", detail, ok)
+	}
 	recorder := httptest.NewRecorder()
-	CallHandler(stream).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/activity/019a1111-2222-7333-8444-555555555555", nil))
+	CallHandler(stream).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/activity/"+callID, nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%q", recorder.Code, recorder.Body.String())
 	}
-	var decoded Event
+	var decoded ToolCallDetail
 	if err := json.Unmarshal(recorder.Body.Bytes(), &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.CallID != event.CallID || decoded.Tool != event.Tool {
+	if decoded.CallID != event.CallID || decoded.Tool != event.Tool || decoded.Request == nil || decoded.Response == nil {
 		t.Fatalf("decoded=%#v", decoded)
+	}
+	encoded := recorder.Body.String()
+	if strings.Contains(encoded, "secret-value") || strings.Contains(encoded, `"raw"`) || !strings.Contains(encoded, "redacted") {
+		t.Fatalf("unsafe or incomplete detail=%s", encoded)
 	}
 	recorder = httptest.NewRecorder()
 	CallHandler(stream).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/activity/missing", nil))
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("missing status=%d", recorder.Code)
+	}
+}
+
+func TestToolCallDiagnosticIsBoundedAndEvictedWithLogicalHistory(t *testing.T) {
+	stream := NewStream()
+	stream.Publish(Event{
+		CallID: "call_bounded", Kind: string(EventToolCall), Phase: "start", Tool: "read_text_file", Status: "running",
+		Raw: map[string]any{"arguments": map[string]any{"path": "/tmp/value", "authorization": "Bearer private", "command": "deploy --token TOP-SECRET", "query": strings.Repeat("x", DiagnosticMaxStringBytes+512)}},
+	})
+	detail, ok := stream.FindCallDetail("call_bounded")
+	if !ok || !detail.Diagnostic.Redacted || !detail.Diagnostic.Truncated {
+		t.Fatalf("bounded detail=%#v ok=%t", detail, ok)
+	}
+	data, err := json.Marshal(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "Bearer private") || strings.Contains(string(data), "TOP-SECRET") || len(data) > DiagnosticMaxTotalBytes+8192 {
+		t.Fatalf("detail bounds/redaction failed bytes=%d data=%s", len(data), data)
+	}
+
+	for index := 0; index < MaxRecentToolCalls; index++ {
+		callID := fmt.Sprintf("call_fill_%04d", index)
+		stream.Publish(Event{CallID: callID, Kind: string(EventToolCall), Phase: "finish", Tool: "noop", Status: "ok"})
+	}
+	if _, ok := stream.FindCallDetail("call_bounded"); ok {
+		t.Fatal("evicted logical call retained diagnostic detail")
 	}
 }
 

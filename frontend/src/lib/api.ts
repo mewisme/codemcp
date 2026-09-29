@@ -34,6 +34,16 @@ export type ActivityEvent = {
   message?: string
   timestamp: string
 }
+export type DiagnosticMeta = {
+  redacted?: boolean
+  truncated?: boolean
+}
+export type ToolCallDetail = ActivityEvent & {
+  request?: unknown
+  response?: unknown
+  error?: unknown
+  diagnostic?: DiagnosticMeta
+}
 export type ExecutionStatus =
   "running" | "success" | "failed" | "cancelled" | "timed_out" | string
 export type ExecutionInfo = {
@@ -685,7 +695,7 @@ export const adminApi = {
       { method: "POST" }
     ),
   activityCall: (callID: string) =>
-    api<ActivityEvent>(`/api/activity/${encodeURIComponent(callID)}`),
+    api<ToolCallDetail>(`/api/activity/${encodeURIComponent(callID)}`),
   networkInterfaces: () => api<NetworkInterface[]>("/api/network/interfaces"),
   config: () => api<PublicConfig>("/api/config"),
   saveConfig: (config: Partial<PublicConfig>) =>

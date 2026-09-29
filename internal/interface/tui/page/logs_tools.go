@@ -39,6 +39,9 @@ type logsToolCallFeed struct {
 	notice         string
 	err            error
 	restoreYOffset int
+	details        map[string]activity.ToolCallDetail
+	detailErrors   map[string]string
+	detailPending  map[string]bool
 }
 
 type logsToolCallOpenMsg struct {
@@ -53,15 +56,27 @@ type logsToolCallEventMsg struct {
 	err        error
 }
 
+type logsToolCallDetailMsg struct {
+	generation uint64
+	id         string
+	detail     activity.ToolCallDetail
+	err        error
+}
+
 type logsToolCallReconnectMsg uint64
 
 type toolCallRecord = activity.ToolCallRecord
+
+const toolCallTimelineDetailConcurrency = 6
 
 func newLogsToolCallFeed() logsToolCallFeed {
 	view := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	view.SoftWrap = false
 	view.FillHeight = false
-	return logsToolCallFeed{viewport: view, scope: newLogsScopeState()}
+	return logsToolCallFeed{
+		viewport: view, scope: newLogsScopeState(),
+		details: map[string]activity.ToolCallDetail{}, detailErrors: map[string]string{}, detailPending: map[string]bool{},
+	}
 }
 
 func NewToolCallLogsRoute(ctx context.Context, resourceID string) (*LogsPage, error) {
@@ -84,6 +99,9 @@ func (page *LogsPage) startToolCallFeed() tea.Cmd {
 	page.refreshToolCallScope()
 	page.tools.window.invalidate()
 	page.tools.generation++
+	page.tools.details = map[string]activity.ToolCallDetail{}
+	page.tools.detailErrors = map[string]string{}
+	page.tools.detailPending = map[string]bool{}
 	generation := page.tools.generation
 	ctx, cancel := context.WithCancel(page.ctx)
 	page.tools.streamCancel = cancel
@@ -125,10 +143,11 @@ func (page *LogsPage) finishToolCallFeedOpen(msg logsToolCallOpenMsg) tea.Cmd {
 	}
 	page.tools.notice, page.tools.err = "", nil
 	page.refreshToolCallView()
+	next := page.nextToolCallEventCmd(msg.generation)
 	if page.resourceID != "" {
-		page.syncToolCallDetail()
+		return tea.Batch(next, page.toolCallDetailCmd(page.resourceID))
 	}
-	return page.nextToolCallEventCmd(msg.generation)
+	return tea.Batch(next, page.toolCallTimelineHydrateCmd())
 }
 
 func (page *LogsPage) nextToolCallEventCmd(generation uint64) tea.Cmd {
@@ -161,14 +180,97 @@ func (page *LogsPage) finishToolCallEvent(msg logsToolCallEventMsg) tea.Cmd {
 	page.tools.latestSeq = msg.event.Sequence
 	page.tools.events = trimToolCallEvents(append(page.tools.events, msg.event))
 	page.upsertToolCallRecord(msg.event)
+	if msg.event.CallID != "" {
+		delete(page.tools.details, msg.event.CallID)
+		delete(page.tools.detailErrors, msg.event.CallID)
+		delete(page.tools.detailPending, msg.event.CallID)
+	}
 	page.tools.notice, page.tools.err = "", nil
 	if !page.tools.paused {
 		page.refreshToolCallView()
 	}
-	if page.resourceID != "" && msg.event.CallID == page.resourceID {
-		page.syncToolCallDetail()
+	var detail tea.Cmd
+	if msg.event.CallID != "" && (page.resourceID == msg.event.CallID || page.view == logsViewTimeline) {
+		detail = page.toolCallDetailCmd(msg.event.CallID)
 	}
-	return page.nextToolCallEventCmd(msg.generation)
+	return tea.Batch(page.nextToolCallEventCmd(msg.generation), detail)
+}
+
+func (page *LogsPage) toolCallDetailCmd(id string) tea.Cmd {
+	id = strings.TrimSpace(id)
+	if page == nil || id == "" {
+		return nil
+	}
+	if page.tools.detailPending[id] {
+		return nil
+	}
+	page.tools.detailPending[id] = true
+	generation := page.tools.generation
+	ctx := page.ctx
+	return func() tea.Msg {
+		detail, err := runtimecontrol.GetToolCallDetail(ctx, id)
+		return logsToolCallDetailMsg{generation: generation, id: id, detail: detail, err: err}
+	}
+}
+
+func (page *LogsPage) toolCallTimelineHydrateCmd() tea.Cmd {
+	if page == nil || page.resourceID != "" || page.view != logsViewTimeline {
+		return nil
+	}
+	records := page.visibleToolCallTimelineRecords()
+	keep := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		keep[record.CallID] = struct{}{}
+	}
+	for id := range page.tools.details {
+		if _, ok := keep[id]; !ok {
+			delete(page.tools.details, id)
+			delete(page.tools.detailErrors, id)
+		}
+	}
+	available := toolCallTimelineDetailConcurrency - len(page.tools.detailPending)
+	if available <= 0 {
+		return nil
+	}
+	commands := make([]tea.Cmd, 0, available)
+	for index := len(records) - 1; index >= 0 && available > 0; index-- {
+		record := records[index]
+		if detail, ok := page.tools.details[record.CallID]; ok && detail.Sequence >= record.Latest.Sequence {
+			continue
+		}
+		if page.tools.detailPending[record.CallID] {
+			continue
+		}
+		if cmd := page.toolCallDetailCmd(record.CallID); cmd != nil {
+			commands = append(commands, cmd)
+			available--
+		}
+	}
+	return tea.Batch(commands...)
+}
+
+func (page *LogsPage) finishToolCallDetail(msg logsToolCallDetailMsg) tea.Cmd {
+	if page == nil || msg.generation != page.tools.generation {
+		return nil
+	}
+	delete(page.tools.detailPending, msg.id)
+	if msg.err != nil {
+		if _, ok := page.tools.details[msg.id]; !ok {
+			page.tools.detailErrors[msg.id] = msg.err.Error()
+		}
+	} else {
+		current, exists := page.tools.details[msg.id]
+		if !exists || msg.detail.Sequence >= current.Sequence {
+			page.tools.details[msg.id] = msg.detail
+			delete(page.tools.detailErrors, msg.id)
+		}
+	}
+	if page.resourceID == msg.id {
+		page.syncToolCallDetail()
+	} else if page.view == logsViewTimeline && !page.tools.paused {
+		page.refreshToolCallView()
+	}
+	return page.toolCallTimelineHydrateCmd()
 }
 
 func (page *LogsPage) toolCallReconnectCmd(generation uint64) tea.Cmd {
@@ -338,7 +440,7 @@ func (page *LogsPage) refreshToolCallView() {
 		return
 	}
 	offset := page.tools.viewport.YOffset()
-	page.tools.render = renderToolCallTimeline(page.visibleToolCallTimelineRecords(), max(1, page.tools.viewport.Width()))
+	page.tools.render = renderToolCallTimelineDetailed(page.visibleToolCallTimelineRecords(), max(1, page.tools.viewport.Width()), page.tools.details, page.tools.detailErrors)
 	page.tools.viewport.SetContent(page.tools.render.Content)
 	if !page.tools.paused {
 		page.tools.viewport.GotoBottom()
@@ -356,7 +458,7 @@ func (page *LogsPage) maybeExpandToolCallTimeline() {
 	if !page.tools.window.expand(len(aggregateToolCallRecords(page.eligibleToolCallTimelineEvents()))) {
 		return
 	}
-	page.tools.render = renderToolCallTimeline(page.visibleToolCallTimelineRecords(), max(1, page.tools.viewport.Width()))
+	page.tools.render = renderToolCallTimelineDetailed(page.visibleToolCallTimelineRecords(), max(1, page.tools.viewport.Width()), page.tools.details, page.tools.detailErrors)
 	page.tools.viewport.SetContent(page.tools.render.Content)
 	delta := max(0, page.tools.viewport.TotalLineCount()-oldLines)
 	page.tools.viewport.SetYOffset(min(oldOffset+delta, max(0, page.tools.viewport.TotalLineCount()-page.tools.viewport.Height())))
@@ -399,6 +501,10 @@ func (page *LogsPage) toolCallBodyView(width, height int) string {
 }
 
 func renderToolCallTimeline(records []toolCallRecord, width int) executionFeedRender {
+	return renderToolCallTimelineDetailed(records, width, nil, nil)
+}
+
+func renderToolCallTimelineDetailed(records []toolCallRecord, width int, details map[string]activity.ToolCallDetail, detailErrors map[string]string) executionFeedRender {
 	rendered := executionFeedRender{}
 	var output strings.Builder
 	line := 0
@@ -421,7 +527,7 @@ func renderToolCallTimeline(records []toolCallRecord, width int) executionFeedRe
 		if event.Source != "" {
 			fields = append(fields, logFrameField{Label: "Source", Values: []string{event.Source}})
 		}
-		content := toolCallTimelineContent(record, max(1, width-4))
+		content := toolCallTimelineContentDetailed(record, details, detailErrors, max(1, width-4))
 		footer := []logFrameField{{Label: "Status", Values: []string{event.Status}}}
 		if event.DurationMS > 0 {
 			footer = append(footer, logFrameField{Label: "Duration", Values: []string{fmt.Sprintf("%dms", event.DurationMS)}})
@@ -444,24 +550,38 @@ func renderToolCallTimeline(records []toolCallRecord, width int) executionFeedRe
 	return rendered
 }
 
-func toolCallTimelineContent(record toolCallRecord, width int) []string {
-	request := any(nil)
-	if record.First.Raw != nil {
-		request = record.First.Raw["arguments"]
-		if request == nil {
-			request = record.First.Raw["params"]
+func toolCallTimelineContentDetailed(record toolCallRecord, details map[string]activity.ToolCallDetail, detailErrors map[string]string, width int) []string {
+	if detail, ok := details[record.CallID]; ok {
+		content := []string{"REQUEST", component.CodeBlockMarkdown(marshalJSONValue(detail.Request), "json")}
+		if detail.Error != nil {
+			content = append(content, "ERROR", component.CodeBlockMarkdown(marshalJSONValue(detail.Error), "json"))
+		} else if detail.Response != nil {
+			content = append(content, "RESPONSE", component.CodeBlockMarkdown(marshalJSONValue(detail.Response), "json"))
+		} else {
+			content = append(content, "RESPONSE", "waiting...")
 		}
+		if detail.Diagnostic.Redacted || detail.Diagnostic.Truncated {
+			content = append(content, "DIAGNOSTIC", component.CodeBlockMarkdown(marshalJSONValue(detail.Diagnostic), "json"))
+		}
+		return []string{component.RenderMarkdownCompact(strings.Join(content, "\n\n"), width)}
+	}
+	if message := strings.TrimSpace(detailErrors[record.CallID]); message != "" {
+		return []string{component.RenderMarkdownCompact("DETAIL ERROR\n\n"+component.CodeBlockMarkdown(message, "text"), width)}
+	}
+	if details != nil {
+		return []string{component.Muted("Loading canonical request/response detail...")}
+	}
+	request := map[string]any{
+		"method": record.First.Method, "tool": record.First.Tool, "source": record.First.Source,
+		"workspace_id": record.First.WorkspaceID,
 	}
 	content := []string{"REQUEST", component.CodeBlockMarkdown(marshalJSONValue(request), "json")}
 	latest := record.Latest
 	if latest.Phase == "finish" || latest.Status != "running" {
-		if latest.Raw != nil && latest.Raw["error"] != nil {
-			content = append(content, "ERROR", component.CodeBlockMarkdown(marshalJSONValue(latest.Raw["error"]), "json"))
+		if latest.Status == "error" || latest.Status == "cancelled" {
+			content = append(content, "ERROR", component.CodeBlockMarkdown(marshalJSONValue(map[string]any{"status": latest.Status, "message": latest.Message}), "json"))
 		} else {
-			var response any
-			if latest.Raw != nil {
-				response = latest.Raw["result"]
-			}
+			response := map[string]any{"status": latest.Status, "duration_ms": latest.DurationMS, "message": latest.Message}
 			content = append(content, "RESPONSE", component.CodeBlockMarkdown(marshalJSONValue(response), "json"))
 		}
 	} else {
@@ -482,16 +602,26 @@ func (page *LogsPage) syncToolCallDetail() {
 	if page == nil || page.resourceID == "" {
 		return
 	}
-	for _, record := range page.visibleToolCallRecords() {
-		if record.CallID != page.resourceID {
-			continue
+	if detail, ok := page.tools.details[page.resourceID]; ok {
+		parts := []string{"REQUEST", component.CodeBlockMarkdown(marshalJSONValue(detail.Request), "json")}
+		if detail.Error != nil {
+			parts = append(parts, "ERROR", component.CodeBlockMarkdown(marshalJSONValue(detail.Error), "json"))
+		} else if detail.Response != nil {
+			parts = append(parts, "RESPONSE", component.CodeBlockMarkdown(marshalJSONValue(detail.Response), "json"))
+		} else {
+			parts = append(parts, "RESPONSE", "waiting...")
 		}
-		data, _ := json.MarshalIndent(record.Latest, "", "  ")
-		content := component.RenderCodeBlock(string(data), "json", max(20, page.width))
-		meta := compactParts(record.Latest.Tool, record.Latest.Status, record.Latest.WorkspaceID)
-		page.detail.SetTitle("Tool Call · " + record.CallID)
-		page.detail.SetMeta(meta)
-		page.detail.SetContentPreserveScroll(content)
+		if detail.Diagnostic.Redacted || detail.Diagnostic.Truncated {
+			parts = append(parts, "DIAGNOSTIC", component.CodeBlockMarkdown(marshalJSONValue(detail.Diagnostic), "json"))
+		}
+		parts = append(parts, "METADATA", component.CodeBlockMarkdown(marshalJSONValue(map[string]any{
+			"call_id": detail.CallID, "tool": detail.Tool, "method": detail.Method, "source": detail.Source,
+			"workspace_id": detail.WorkspaceID, "status": detail.Status, "duration_ms": detail.DurationMS,
+			"sequence": detail.Sequence, "timestamp": detail.Timestamp,
+		}), "json"))
+		page.detail.SetTitle("Tool Call · " + page.resourceID)
+		page.detail.SetMeta(compactParts(detail.Tool, detail.Status, detail.WorkspaceID))
+		page.detail.SetContentPreserveScroll(component.RenderMarkdownCompact(strings.Join(parts, "\n\n"), max(20, page.width)))
 		page.detail.SetFeedback("", nil)
 		page.detailReady = true
 		if page.width > 0 && page.height > 0 {
@@ -499,12 +629,16 @@ func (page *LogsPage) syncToolCallDetail() {
 		}
 		return
 	}
-	if page.detailReady {
+	if message := strings.TrimSpace(page.tools.detailErrors[page.resourceID]); message != "" {
+		page.detail.SetTitle("Tool Call · " + page.resourceID)
+		page.detail.SetMeta("error")
+		page.detail.SetContentPreserveScroll(component.RenderMarkdownCompact("ERROR\n\n"+component.CodeBlockMarkdown(message, "text"), max(20, page.width)))
+		page.detailReady = true
 		return
 	}
 	page.detail.SetTitle("Tool Call · " + page.resourceID)
-	page.detail.SetMeta("unavailable")
-	page.detail.SetContentPreserveScroll(component.Muted("Tool call not found in retained history."))
+	page.detail.SetMeta("loading")
+	page.detail.SetContentPreserveScroll(component.Muted("Loading canonical request/response detail..."))
 }
 
 func (page *LogsPage) toolCallStatusView(width int) string {

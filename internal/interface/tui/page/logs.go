@@ -388,6 +388,8 @@ func (page *LogsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		return page, page.finishToolCallFeedOpen(msg)
 	case logsToolCallEventMsg:
 		return page, page.finishToolCallEvent(msg)
+	case logsToolCallDetailMsg:
+		return page, page.finishToolCallDetail(msg)
 	case logsToolCallReconnectMsg:
 		if uint64(msg) != page.tools.generation || page.tools.connected {
 			return page, nil

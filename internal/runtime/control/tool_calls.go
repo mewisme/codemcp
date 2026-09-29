@@ -46,6 +46,12 @@ func GetExecution(ctx context.Context, id string) (shellruntime.ExecutionSnapsho
 	return result, err
 }
 
+func GetToolCallDetail(ctx context.Context, callID string) (activity.ToolCallDetail, error) {
+	var result activity.ToolCallDetail
+	_, err := Request(ctx, http.MethodGet, "/tool-calls/"+url.PathEscape(strings.TrimSpace(callID)), nil, &result)
+	return result, err
+}
+
 func OpenToolCallFeed(ctx context.Context) (*ToolCallFeedStream, State, error) {
 	if ctx == nil {
 		ctx = context.Background()

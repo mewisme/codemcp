@@ -26,13 +26,13 @@ func CallHandler(stream *Stream) http.Handler {
 			http.NotFound(w, r)
 			return
 		}
-		event, ok := stream.FindCall(callID)
+		detail, ok := stream.FindCallDetail(callID)
 		if !ok {
 			http.Error(w, "tool call not found", http.StatusNotFound)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(PublicEvent(event))
+		_ = json.NewEncoder(w).Encode(detail)
 	})
 }
 

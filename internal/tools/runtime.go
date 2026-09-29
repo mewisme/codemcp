@@ -447,15 +447,12 @@ func observedResult(name string, result Result) any {
 	}
 	value, ok := result.StructuredContent.(shellruntime.ExecResult)
 	if !ok {
-		return map[string]any{"result_type": result.ResultType, "is_error": result.IsError}
+		return result
 	}
 	return map[string]any{
-		"result_type": result.ResultType,
-		"is_error":    result.IsError,
-		"command":     value.Command,
-		"cwd":         value.CWD,
-		"exit_code":   value.ExitCode,
-		"timed_out":   value.TimedOut,
+		"result_type":        result.ResultType,
+		"is_error":           result.IsError,
+		"structured_content": value,
 	}
 }
 

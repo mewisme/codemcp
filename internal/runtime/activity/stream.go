@@ -2,6 +2,7 @@ package activity
 
 import (
 	"encoding/json"
+	"strings"
 	"sync"
 
 	"go.mewis.me/codemcp/internal/sequence"
@@ -29,6 +30,7 @@ type Stream struct {
 	stream          *sequence.Stream[Event]
 	toolCalls       *sequence.Stream[Event]
 	toolCallRecords map[string]ToolCallRecord
+	toolCallDetails map[string]ToolCallDetail
 	toolCallOrder   []string
 	maxRecent       int
 }
@@ -40,6 +42,7 @@ func NewStream() *Stream {
 		}),
 		toolCalls:       sequence.New[Event](MaxRecentEvents, defaultSubscriberBuffer, nil),
 		toolCallRecords: map[string]ToolCallRecord{},
+		toolCallDetails: map[string]ToolCallDetail{},
 		maxRecent:       defaultRecentLimit,
 	}
 }
@@ -125,6 +128,16 @@ func (s *Stream) FindCall(callID string) (Event, bool) {
 	return record.Latest, true
 }
 
+func (s *Stream) FindCallDetail(callID string) (ToolCallDetail, bool) {
+	if s == nil {
+		return ToolCallDetail{}, false
+	}
+	s.mu.Lock()
+	detail, ok := s.toolCallDetails[callID]
+	s.mu.Unlock()
+	return detail, ok
+}
+
 func (s *Stream) RecentToolCalls(limit int) []ToolCallRecord {
 	if s == nil {
 		return nil
@@ -167,12 +180,64 @@ func (s *Stream) Publish(event Event) {
 	}
 	event = normalizeEvent(event)
 	s.mu.Lock()
+	raw := event.Raw
+	if event.Kind == string(EventToolCall) {
+		event.Raw = nil
+	}
 	event = s.stream.Publish(event)
+	if event.Kind == string(EventToolCall) {
+		diagnosticEvent := event
+		diagnosticEvent.Raw = raw
+		s.mergeToolCallDetailLocked(diagnosticEvent)
+	}
 	if event.Kind == string(EventToolCall) && s.toolCalls != nil {
 		s.toolCalls.Publish(event)
 		s.updateToolCallRecordLocked(event)
 	}
 	s.mu.Unlock()
+}
+
+func (s *Stream) mergeToolCallDetailLocked(event Event) {
+	if s == nil || strings.TrimSpace(event.CallID) == "" {
+		return
+	}
+	if s.toolCallDetails == nil {
+		s.toolCallDetails = map[string]ToolCallDetail{}
+	}
+	detail := s.toolCallDetails[event.CallID]
+	detail.Event = PublicEvent(event)
+	if event.Raw != nil {
+		value, meta := SanitizeDiagnostic(event.Raw)
+		detail.Diagnostic = mergeDiagnosticMeta(detail.Diagnostic, meta)
+		root, _ := value.(map[string]any)
+		if event.Phase == "start" {
+			if request, ok := root["request"]; ok {
+				detail.Request = request
+			} else if arguments, ok := root["arguments"]; ok {
+				detail.Request = map[string]any{"tool": event.Tool, "arguments": arguments}
+			} else if params, ok := root["params"]; ok {
+				detail.Request = map[string]any{"method": event.Method, "params": params}
+			} else {
+				detail.Request = root
+			}
+		} else if event.Status == "error" || event.Status == "cancelled" {
+			errorDetail := map[string]any{"classification": event.Status}
+			if rawError, ok := root["error"]; ok {
+				errorDetail["message"] = rawError
+			} else if strings.TrimSpace(event.Message) != "" {
+				errorDetail["message"] = event.Message
+			}
+			if result, ok := root["result"]; ok {
+				errorDetail["result"] = result
+			}
+			detail.Error = errorDetail
+		} else if result, ok := root["result"]; ok {
+			detail.Response = result
+		}
+	} else if event.Status == "error" || event.Status == "cancelled" {
+		detail.Error = map[string]any{"classification": event.Status, "message": event.Message}
+	}
+	s.toolCallDetails[event.CallID] = detail
 }
 
 func (s *Stream) updateToolCallRecordLocked(event Event) {
@@ -193,6 +258,7 @@ func (s *Stream) updateToolCallRecordLocked(event Event) {
 	remove := len(s.toolCallOrder) - MaxRecentToolCalls
 	for _, callID := range s.toolCallOrder[:remove] {
 		delete(s.toolCallRecords, callID)
+		delete(s.toolCallDetails, callID)
 	}
 	s.toolCallOrder = append([]string(nil), s.toolCallOrder[remove:]...)
 }

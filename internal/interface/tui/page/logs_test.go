@@ -866,7 +866,9 @@ func TestToolCallDetailRefreshesSameCallInPlaceOnly(t *testing.T) {
 	page.tools.events = []activity.Event{start}
 	page.tools.records = []activity.ToolCallRecord{{CallID: start.CallID, First: start, Latest: start}}
 	page.tools.latestSeq = start.Sequence
-	page.syncToolCallDetail()
+	page.finishToolCallDetail(logsToolCallDetailMsg{generation: 7, id: start.CallID, detail: activity.ToolCallDetail{
+		Event: start, Request: map[string]any{"tool": start.Tool, "arguments": strings.Repeat("target argument ", 120)},
+	}})
 	if !page.detailReady {
 		t.Fatal("tool call detail did not become ready")
 	}
@@ -884,6 +886,9 @@ func TestToolCallDetailRefreshesSameCallInPlaceOnly(t *testing.T) {
 
 	finish := activity.Event{Sequence: 3, CallID: start.CallID, Kind: string(activity.EventToolCall), Phase: "finish", Tool: start.Tool, WorkspaceID: start.WorkspaceID, Status: "success", Raw: map[string]any{"result": strings.Repeat("updated result ", 120)}, Timestamp: start.Timestamp.Add(2 * time.Second)}
 	page.finishToolCallEvent(logsToolCallEventMsg{generation: 7, event: finish})
+	page.finishToolCallDetail(logsToolCallDetailMsg{generation: 7, id: start.CallID, detail: activity.ToolCallDetail{
+		Event: finish, Request: map[string]any{"tool": start.Tool, "arguments": strings.Repeat("target argument ", 120)}, Response: strings.Repeat("updated result ", 120),
+	}})
 	if got := page.detail.YOffset(); got != offset {
 		t.Fatalf("same-call refresh moved detail offset=%d want=%d", got, offset)
 	}
@@ -934,7 +939,9 @@ func TestToolCallReconnectSnapshotUpdatesPinnedDetailInPlace(t *testing.T) {
 	page.tools.events = []activity.Event{start}
 	page.tools.records = []activity.ToolCallRecord{{CallID: start.CallID, First: start, Latest: start}}
 	page.tools.latestSeq = start.Sequence
-	page.syncToolCallDetail()
+	page.finishToolCallDetail(logsToolCallDetailMsg{generation: page.tools.generation, id: start.CallID, detail: activity.ToolCallDetail{
+		Event: start, Request: map[string]any{"tool": start.Tool, "arguments": strings.Repeat("before reconnect ", 120)},
+	}})
 	offset := scrollLogsDetail(t, page)
 
 	open := page.startToolCallFeed()
@@ -946,6 +953,9 @@ func TestToolCallReconnectSnapshotUpdatesPinnedDetailInPlace(t *testing.T) {
 		t.Fatalf("tool reconnect open=%T err=%v stream=%v", msg, msg.err, msg.stream != nil)
 	}
 	page.finishToolCallFeedOpen(msg)
+	page.finishToolCallDetail(logsToolCallDetailMsg{generation: page.tools.generation, id: start.CallID, detail: activity.ToolCallDetail{
+		Event: finish, Request: map[string]any{"tool": start.Tool, "arguments": strings.Repeat("before reconnect ", 120)}, Response: strings.Repeat("after reconnect ", 120),
+	}})
 	if got := page.detail.YOffset(); got != offset {
 		t.Fatalf("tool reconnect snapshot moved detail offset=%d want=%d", got, offset)
 	}
@@ -2486,14 +2496,21 @@ func TestToolCallsMergeLifecycleAndRenderFullRequestResponse(t *testing.T) {
 	page, _ := NewToolCallLogsRoute(t.Context(), "")
 	defer page.Close()
 	page.tools.events = []activity.Event{
-		{Sequence: 1, Timestamp: time.Now(), Kind: string(activity.EventToolCall), Phase: "start", CallID: "call_1", Tool: "run_command", WorkspaceID: "ws_a", Status: "running", Raw: map[string]any{"arguments": map[string]any{"command": "go test ./..."}}},
-		{Sequence: 2, Timestamp: time.Now(), Kind: string(activity.EventToolCall), Phase: "finish", CallID: "call_1", Tool: "run_command", WorkspaceID: "ws_a", Status: "ok", DurationMS: 12, Raw: map[string]any{"arguments": map[string]any{"command": "go test ./..."}, "result": map[string]any{"exit_code": 0, "stdout": "ok"}}},
+		{Sequence: 1, Timestamp: time.Now(), Kind: string(activity.EventToolCall), Phase: "start", CallID: "call_1", Tool: "run_command", WorkspaceID: "ws_a", Status: "running"},
+		{Sequence: 2, Timestamp: time.Now(), Kind: string(activity.EventToolCall), Phase: "finish", CallID: "call_1", Tool: "run_command", WorkspaceID: "ws_a", Status: "ok", DurationMS: 12},
 	}
 	records := page.visibleToolCallRecords()
 	if len(records) != 1 || records[0].First.Phase != "start" || records[0].Latest.Phase != "finish" {
 		t.Fatalf("tool records=%#v", records)
 	}
-	plain := ansi.Strip(renderToolCallTimeline(records, 100).Content)
+	details := map[string]activity.ToolCallDetail{
+		"call_1": {
+			Event:    records[0].Latest,
+			Request:  map[string]any{"tool": "run_command", "arguments": map[string]any{"command": "go test ./..."}},
+			Response: map[string]any{"exit_code": 0, "stdout": "ok"},
+		},
+	}
+	plain := ansi.Strip(renderToolCallTimelineDetailed(records, 100, details, nil).Content)
 	for _, want := range []string{"REQUEST", "RESPONSE", "go test ./...", "exit_code", "stdout", "12ms"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("tool timeline missing %q: %q", want, plain)
@@ -2501,9 +2518,10 @@ func TestToolCallsMergeLifecycleAndRenderFullRequestResponse(t *testing.T) {
 	}
 	page.resourceID = "call_1"
 	page.width, page.height = 100, 30
+	page.tools.details["call_1"] = details["call_1"]
 	page.syncToolCallDetail()
 	detail := ansi.Strip(page.detail.View())
-	for _, want := range []string{"call_1", "arguments", "result", "go test ./...", "exit_code"} {
+	for _, want := range []string{"call_1", "REQUEST", "RESPONSE", "arguments", "go test ./...", "exit_code"} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("tool detail missing %q: %q", want, detail)
 		}
