@@ -31,6 +31,7 @@ func TestStoreRoundTripPreservesCustomProvidersAndCoreOverrides(t *testing.T) {
 	value := DefaultCatalog()
 	value.Providers[0].BaseURL = "https://router.example/v1"
 	value.Providers[0].Model = "vendor/model"
+	value.Providers[0].Capabilities = &ProviderCapabilities{StructuredOutput: true}
 	value.Providers = append(value.Providers, Provider{
 		ID: "acme", Name: "Acme", Protocol: ProtocolAnthropic, BaseURL: "https://llm.acme.test", Model: "claude-like",
 		AuthMode: AuthAPIKey, Discovery: DiscoveryNone,
@@ -43,7 +44,7 @@ func TestStoreRoundTripPreservesCustomProvidersAndCoreOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.ActiveProvider != "acme" || len(loaded.Providers) != 3 || loaded.Providers[0].BaseURL != "https://router.example/v1" || loaded.Providers[0].Model != "vendor/model" {
+	if loaded.ActiveProvider != "acme" || len(loaded.Providers) != 3 || loaded.Providers[0].BaseURL != "https://router.example/v1" || loaded.Providers[0].Model != "vendor/model" || loaded.Providers[0].Capabilities == nil || !loaded.Providers[0].Capabilities.StructuredOutput {
 		t.Fatalf("round trip = %#v", loaded)
 	}
 	raw, err := os.ReadFile(store.Path())

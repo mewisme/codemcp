@@ -291,5 +291,12 @@ func readStoreFile(root *os.Root, path string) ([]byte, error) {
 
 func cloneCatalog(value Catalog) Catalog {
 	value.Providers = append([]Provider(nil), value.Providers...)
+	for index := range value.Providers {
+		if value.Providers[index].Capabilities == nil {
+			continue
+		}
+		capabilities := *value.Providers[index].Capabilities
+		value.Providers[index].Capabilities = &capabilities
+	}
 	return value
 }

@@ -63,15 +63,20 @@ const (
 	ReadinessDegraded    Readiness = "degraded"
 )
 
+type ProviderCapabilities struct {
+	StructuredOutput bool `json:"structured_output,omitempty"`
+}
+
 type Provider struct {
-	ID        ProviderID    `json:"id"`
-	Name      string        `json:"name"`
-	Protocol  Protocol      `json:"protocol"`
-	BaseURL   string        `json:"base_url"`
-	Model     string        `json:"model,omitempty"`
-	AuthMode  AuthMode      `json:"auth_mode"`
-	Discovery DiscoveryMode `json:"discovery"`
-	CoreKind  CoreKind      `json:"core_kind,omitempty"`
+	ID           ProviderID            `json:"id"`
+	Name         string                `json:"name"`
+	Protocol     Protocol              `json:"protocol"`
+	BaseURL      string                `json:"base_url"`
+	Model        string                `json:"model,omitempty"`
+	AuthMode     AuthMode              `json:"auth_mode"`
+	Discovery    DiscoveryMode         `json:"discovery"`
+	CoreKind     CoreKind              `json:"core_kind,omitempty"`
+	Capabilities *ProviderCapabilities `json:"capabilities,omitempty"`
 }
 
 type Catalog struct {
