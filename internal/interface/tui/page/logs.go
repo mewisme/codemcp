@@ -376,6 +376,8 @@ func (page *LogsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		return page, page.finishExecutionFeedOpen(msg)
 	case logsExecutionEventMsg:
 		return page, page.finishExecutionFeedEvent(msg)
+	case logsExecutionTimelineRenderMsg:
+		return page, page.finishExecutionTimelineRender(msg)
 	case logsExecutionReconnectMsg:
 		if uint64(msg) != page.exec.generation || page.exec.connected {
 			return page, nil
@@ -400,7 +402,7 @@ func (page *LogsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		return page, nil
 	case logsExecutionMouseMsg:
 		if page.tab == logsTabCommandExec && page.resourceID == "" {
-			page.handleExecutionMouse(msg)
+			return page, page.handleExecutionMouse(msg)
 		}
 		return page, nil
 	case logsTimelineMouseMsg:
@@ -474,6 +476,7 @@ func (page *LogsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		case page.tab == logsTabCommandExec:
 			tabs := component.PageTabsNotice(logsTabLabels, int(page.tab), page.notice, msg.Width)
 			page.resizeExecutionViewport(msg.Width, max(1, msg.Height-lipgloss.Height(tabs)-1))
+			browserCmd = page.executionTimelineRenderCmd()
 		case page.tab == logsTabToolCalls:
 			tabs := component.PageTabsNotice(logsTabLabels, int(page.tab), page.notice, msg.Width)
 			page.resizeToolCallViewport(msg.Width, max(1, msg.Height-lipgloss.Height(tabs)-1))

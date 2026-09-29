@@ -1815,16 +1815,20 @@ func TestLogsCommandExecutionRouteStreamsCombinedOutputInEventOrder(t *testing.T
 	if !page.exec.connected || len(page.exec.events) != 2 || next == nil {
 		t.Fatalf("connected=%t events=%#v next=%v", page.exec.connected, page.exec.events, next)
 	}
+	next = executionStreamCmdForTest(t, next)
 	updated, next = page.Update(next())
 	page = updated.(*LogsPage)
 	if len(page.exec.events) != 3 || next == nil {
 		t.Fatalf("live events=%#v next=%v", page.exec.events, next)
 	}
+	next = executionStreamCmdForTest(t, next)
 	updated, next = page.Update(next())
 	page = updated.(*LogsPage)
 	if len(page.exec.events) != 4 || next == nil {
 		t.Fatalf("completed events=%#v next=%v", page.exec.events, next)
 	}
+	page.exec.viewport.SetWidth(120)
+	renderExecutionTimelineFullyForTest(page)
 	plain := ansi.Strip(page.View(120, 32))
 	for _, want := range []string{"Runtime", "Command Execution", "Mode  combined", "START", "exec_test", "printf demo", "Workspace  ws_a", "Source  mcp", "Session  session-test", "Call  call_test", "Route", "• received: instance-a", "• executed: instance-b", "out", "err", "END", "Status  success", "Exit  0", "Duration  2s", "←/→ tabs"} {
 		if !strings.Contains(plain, want) {
@@ -1913,7 +1917,7 @@ func TestCommandExecutionStickyHeaderAppearsAfterSegmentHeaderScrollsAway(t *tes
 	page.exec.paused = true
 	page.exec.viewport.SetWidth(80)
 	page.exec.viewport.SetHeight(8)
-	page.refreshExecutionViewport()
+	renderExecutionTimelineFullyForTest(page)
 	if len(page.exec.render.Segments) != 1 {
 		t.Fatalf("segments=%#v", page.exec.render.Segments)
 	}
@@ -1949,7 +1953,7 @@ func TestCommandExecutionStickyHeaderTracksTopSegment(t *testing.T) {
 	page.exec.paused = true
 	page.exec.viewport.SetWidth(80)
 	page.exec.viewport.SetHeight(6)
-	page.refreshExecutionViewport()
+	renderExecutionTimelineFullyForTest(page)
 	if len(page.exec.render.Segments) != 2 {
 		t.Fatalf("segments=%#v", page.exec.render.Segments)
 	}
@@ -2172,7 +2176,7 @@ func TestPausedExecutionFeedDefersViewportRefreshUntilResume(t *testing.T) {
 	info := shellruntime.ExecutionInfo{ID: "exec_pause", WorkspaceID: "ws_a", Tool: "run_command", Command: "demo"}
 	page.exec.events = []shellruntime.ExecutionFeedEvent{{Sequence: 1, Type: shellruntime.ExecutionEventStarted, ExecutionID: info.ID, WorkspaceID: info.WorkspaceID, Execution: &info}}
 	page.exec.latestSeq, page.exec.generation = 1, 7
-	page.refreshExecutionViewport()
+	renderExecutionTimelineFullyForTest(page)
 	before := page.exec.viewport.GetContent()
 	page.exec.paused = true
 	page.finishExecutionFeedEvent(logsExecutionEventMsg{generation: 7, event: shellruntime.ExecutionFeedEvent{Sequence: 2, Type: shellruntime.ExecutionEventOutput, ExecutionID: info.ID, WorkspaceID: info.WorkspaceID, Execution: &info, Data: "new output\n"}})
@@ -2180,6 +2184,7 @@ func TestPausedExecutionFeedDefersViewportRefreshUntilResume(t *testing.T) {
 		t.Fatal("paused feed rebuilt viewport content")
 	}
 	page.handleExecutionKey(tea.KeyPressMsg{Code: tea.KeySpace})
+	renderExecutionTimelineFullyForTest(page)
 	if got := page.exec.viewport.GetContent(); !strings.Contains(got, "new output") || page.exec.paused {
 		t.Fatalf("resume did not refresh buffered output: paused=%t content=%q", page.exec.paused, got)
 	}
@@ -2492,7 +2497,7 @@ func TestRuntimeTimelineFiltersToolCallsAndRendersVisibleFields(t *testing.T) {
 	}
 }
 
-func TestToolCallsMergeLifecycleAndRenderFullRequestResponse(t *testing.T) {
+func TestToolCallsTimelineShowsArgumentsAndDetailShowsFullRequestResponse(t *testing.T) {
 	page, _ := NewToolCallLogsRoute(t.Context(), "")
 	defer page.Close()
 	page.tools.events = []activity.Event{
@@ -2516,6 +2521,9 @@ func TestToolCallsMergeLifecycleAndRenderFullRequestResponse(t *testing.T) {
 			t.Fatalf("tool timeline missing %q: %q", want, plain)
 		}
 	}
+	if strings.Contains(plain, `"arguments"`) || strings.Contains(plain, `"tool"`) {
+		t.Fatalf("tool timeline rendered request envelope instead of arguments only: %q", plain)
+	}
 	page.resourceID = "call_1"
 	page.width, page.height = 100, 30
 	page.tools.details["call_1"] = details["call_1"]
@@ -2525,6 +2533,62 @@ func TestToolCallsMergeLifecycleAndRenderFullRequestResponse(t *testing.T) {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("tool detail missing %q: %q", want, detail)
 		}
+	}
+}
+
+func TestToolCallDetailKeepsSanitizedRawEnvelopeWhileTimelineProjectsArguments(t *testing.T) {
+	page, _ := NewToolCallLogsRoute(t.Context(), "")
+	defer page.Close()
+	request, meta := activity.SanitizeDiagnostic(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "run_command",
+			"arguments": map[string]any{
+				"command": "printf safe",
+				"token":   "timeline-secret",
+			},
+		},
+	})
+	detail := activity.ToolCallDetail{
+		Event: activity.Event{
+			Sequence: 2, Timestamp: time.Now(), Kind: string(activity.EventToolCall), Phase: "finish",
+			CallID: "call_raw", Tool: "run_command", WorkspaceID: "ws_a", Status: "ok",
+		},
+		Request:    request,
+		Response:   map[string]any{"stdout": "safe", "exit_code": 0},
+		Diagnostic: meta,
+	}
+	record := toolCallRecord{
+		CallID: "call_raw",
+		First:  activity.Event{Sequence: 1, Timestamp: time.Now(), Kind: string(activity.EventToolCall), Phase: "start", CallID: "call_raw", Tool: "run_command", WorkspaceID: "ws_a", Status: "running"},
+		Latest: detail.Event,
+	}
+
+	timeline := ansi.Strip(renderToolCallTimelineDetailed([]toolCallRecord{record}, 100, map[string]activity.ToolCallDetail{"call_raw": detail}, nil).Content)
+	for _, want := range []string{"printf safe", "redacted", "RESPONSE", "stdout"} {
+		if !strings.Contains(timeline, want) {
+			t.Fatalf("tool timeline missing %q: %q", want, timeline)
+		}
+	}
+	for _, forbidden := range []string{"jsonrpc", "tools/call", `"params"`, `"arguments"`, "timeline-secret"} {
+		if strings.Contains(timeline, forbidden) {
+			t.Fatalf("tool timeline retained request envelope/secret %q: %q", forbidden, timeline)
+		}
+	}
+
+	page.resourceID = "call_raw"
+	page.width, page.height = 100, 30
+	page.tools.details["call_raw"] = detail
+	page.syncToolCallDetail()
+	full := ansi.Strip(page.detail.View())
+	for _, want := range []string{"REQUEST", "RESPONSE", "jsonrpc", "tools/call", "params", "arguments", "printf safe", "redacted", "stdout"} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("tool detail missing %q: %q", want, full)
+		}
+	}
+	if strings.Contains(full, "timeline-secret") {
+		t.Fatalf("tool detail exposed secret: %q", full)
 	}
 }
 
@@ -2717,6 +2781,7 @@ func TestLogsSessionViewStateRestoresStablePreferencesOnly(t *testing.T) {
 	page.exec.scopeMode, page.exec.workspaceID, page.exec.paused = executionScopeWorkspace, "ws_exec", true
 	page.exec.events = []shellruntime.ExecutionFeedEvent{{Sequence: 1, ExecutionID: "exec_state", WorkspaceID: "ws_exec", Type: shellruntime.ExecutionEventOutput, Data: strings.Repeat("line\n", 40)}}
 	page.resizeExecutionViewport(60, 8)
+	renderExecutionTimelineFullyForTest(page)
 	page.exec.viewport.SetYOffset(7)
 	page.runtimeClear = map[string]uint64{"run_state": 7}
 	page.executionClear = 8
@@ -2756,7 +2821,7 @@ func TestLogsSessionViewStateRestoresAndClampsExecutionOffset(t *testing.T) {
 	page.exec.events = []shellruntime.ExecutionFeedEvent{{Sequence: 1, ExecutionID: "exec_offset", Type: shellruntime.ExecutionEventOutput, Data: strings.Repeat("line\n", 30)}}
 	page.exec.viewport.SetWidth(40)
 	page.exec.viewport.SetHeight(6)
-	page.refreshExecutionViewport()
+	renderExecutionTimelineFullyForTest(page)
 	page.restoreExecutionViewportOffset()
 	want := max(0, page.exec.viewport.TotalLineCount()-page.exec.viewport.Height())
 	if page.exec.viewport.YOffset() != want || page.exec.restoreYOffsetSet {
@@ -2855,6 +2920,97 @@ func TestExecutionCommandPromptIsFlushAndOutputKeepsAlignment(t *testing.T) {
 	}
 }
 
+func TestCommandExecutionTimelineSchedulesNewestSegmentsFirst(t *testing.T) {
+	page, err := NewCommandExecutionLogs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Close()
+	page.exec.viewport.SetWidth(80)
+	const total = 10
+	for index := 0; index < total; index++ {
+		id := fmt.Sprintf("exec_%02d", index)
+		info := shellruntime.ExecutionInfo{ID: id, WorkspaceID: "ws"}
+		page.exec.events = append(page.exec.events, shellruntime.ExecutionFeedEvent{
+			Sequence: uint64(index + 1), Type: shellruntime.ExecutionEventStarted,
+			ExecutionID: id, WorkspaceID: info.WorkspaceID, Execution: &info,
+		})
+	}
+	if cmd := page.executionTimelineRenderCmd(); cmd == nil {
+		t.Fatal("expected deferred command execution timeline render batch")
+	}
+	if got := len(page.exec.timelinePending); got != executionTimelineRenderConcurrency {
+		t.Fatalf("pending renders=%d want %d", got, executionTimelineRenderConcurrency)
+	}
+	for index := 0; index < total; index++ {
+		id := fmt.Sprintf("exec_%02d", index)
+		pending := false
+		for key := range page.exec.timelinePending {
+			if key.executionID == id {
+				pending = true
+				break
+			}
+		}
+		want := index >= total-executionTimelineRenderConcurrency
+		if pending != want {
+			t.Fatalf("execution %s pending=%t want %t", id, pending, want)
+		}
+	}
+
+	renderExecutionTimelineFullyForTest(page)
+	plain := ansi.Strip(page.exec.viewport.GetContent())
+	previous := -1
+	for index := 0; index < total; index++ {
+		id := fmt.Sprintf("exec_%02d", index)
+		position := strings.Index(plain, id)
+		if position < 0 || position <= previous {
+			t.Fatalf("visual order changed at %s: previous=%d position=%d view=%q", id, previous, position, plain)
+		}
+		previous = position
+	}
+}
+
+func executionStreamCmdForTest(t *testing.T, cmd tea.Cmd) tea.Cmd {
+	t.Helper()
+	if cmd == nil {
+		return nil
+	}
+	message := cmd()
+	if batch, ok := message.(tea.BatchMsg); ok {
+		for _, item := range batch {
+			if item == nil {
+				continue
+			}
+			child := item()
+			if _, ok := child.(logsExecutionEventMsg); ok {
+				return func() tea.Msg { return child }
+			}
+		}
+		t.Fatal("execution command batch contained no stream event")
+	}
+	return func() tea.Msg { return message }
+}
+
+func renderExecutionTimelineFullyForTest(page *LogsPage) {
+	if page == nil {
+		return
+	}
+	if page.exec.timelineBlocks == nil {
+		page.exec.timelineBlocks = map[executionTimelineRenderKey]string{}
+	}
+	width := max(1, page.exec.viewport.Width())
+	segments := buildExecutionFeedSegments(page.visibleExecutionTimelineEvents())
+	for index := len(segments) - 1; index >= 0; index-- {
+		segment := segments[index]
+		key := executionTimelineKey(segment, width)
+		page.exec.timelineBlocks[key] = formatExecutionSegment(
+			segment.start, segment.end, segment.body,
+			segment.first, segment.final, segment.interrupted, width,
+		)
+	}
+	page.refreshExecutionViewport()
+}
+
 func setupLogsPageRoot(t *testing.T) string {
 	t.Helper()
 	previous := configformat.RootPath()
@@ -2939,6 +3095,7 @@ func TestCommandExecutionViewportReflowsLongReadableContent(t *testing.T) {
 	page.exec.paused = true
 	for _, width := range []int{24, 11} {
 		page.resizeExecutionViewport(width, 8)
+		renderExecutionTimelineFullyForTest(page)
 		content := page.exec.viewport.GetContent()
 		for _, line := range strings.Split(content, "\n") {
 			if got := lipgloss.Width(line); got > width {

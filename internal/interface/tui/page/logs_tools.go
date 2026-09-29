@@ -505,14 +505,13 @@ func renderToolCallTimeline(records []toolCallRecord, width int) executionFeedRe
 }
 
 func renderToolCallTimelineDetailed(records []toolCallRecord, width int, details map[string]activity.ToolCallDetail, detailErrors map[string]string) executionFeedRender {
-	rendered := executionFeedRender{}
-	var output strings.Builder
-	line := 0
-	for index, record := range records {
-		if index > 0 {
-			output.WriteByte('\n')
-			line++
-		}
+	type toolCallRenderedBlock struct {
+		block  string
+		sticky string
+	}
+	blocks := make([]toolCallRenderedBlock, len(records))
+	for index := len(records) - 1; index >= 0; index-- {
+		record := records[index]
 		event := record.Latest
 		clock := record.First.Timestamp.Local().Format("15:04:05.000")
 		top := "CALL " + clock
@@ -532,19 +531,30 @@ func renderToolCallTimelineDetailed(records []toolCallRecord, width int, details
 		if event.DurationMS > 0 {
 			footer = append(footer, logFrameField{Label: "Duration", Values: []string{fmt.Sprintf("%dms", event.DurationMS)}})
 		}
-		block := renderLogBlock(top, bottom, "Call", record.CallID, fields, content, footer, width)
+		blocks[index] = toolCallRenderedBlock{
+			block:  renderLogBlock(top, bottom, "Call", record.CallID, fields, content, footer, width),
+			sticky: compactParts("CALL", clock, record.CallID, event.Tool),
+		}
+	}
+	rendered := executionFeedRender{}
+	var output strings.Builder
+	line := 0
+	for index, item := range blocks {
+		if index > 0 {
+			output.WriteByte('\n')
+			line++
+		}
 		start := line
 		bodyStart := start
-		for blockLine, value := range strings.Split(strings.TrimSuffix(block, "\n"), "\n") {
+		for blockLine, value := range strings.Split(strings.TrimSuffix(item.block, "\n"), "\n") {
 			if strings.HasPrefix(value, "├") {
 				bodyStart = start + blockLine + 1
 				break
 			}
 		}
-		line += strings.Count(block, "\n")
-		output.WriteString(block)
-		sticky := compactParts("CALL", clock, record.CallID, event.Tool)
-		rendered.Segments = append(rendered.Segments, executionRenderedSegment{StartLine: start, BodyStartLine: bodyStart, EndLine: line, StickyLabel: sticky})
+		line += strings.Count(item.block, "\n")
+		output.WriteString(item.block)
+		rendered.Segments = append(rendered.Segments, executionRenderedSegment{StartLine: start, BodyStartLine: bodyStart, EndLine: line, StickyLabel: item.sticky})
 	}
 	rendered.Content = output.String()
 	return rendered
@@ -552,7 +562,7 @@ func renderToolCallTimelineDetailed(records []toolCallRecord, width int, details
 
 func toolCallTimelineContentDetailed(record toolCallRecord, details map[string]activity.ToolCallDetail, detailErrors map[string]string, width int) []string {
 	if detail, ok := details[record.CallID]; ok {
-		content := []string{"REQUEST", component.CodeBlockMarkdown(marshalJSONValue(detail.Request), "json")}
+		content := []string{"REQUEST", component.CodeBlockMarkdown(marshalJSONValue(toolCallRequestArguments(detail.Request)), "json")}
 		if detail.Error != nil {
 			content = append(content, "ERROR", component.CodeBlockMarkdown(marshalJSONValue(detail.Error), "json"))
 		} else if detail.Response != nil {
@@ -571,11 +581,7 @@ func toolCallTimelineContentDetailed(record toolCallRecord, details map[string]a
 	if details != nil {
 		return []string{component.Muted("Loading canonical request/response detail...")}
 	}
-	request := map[string]any{
-		"method": record.First.Method, "tool": record.First.Tool, "source": record.First.Source,
-		"workspace_id": record.First.WorkspaceID,
-	}
-	content := []string{"REQUEST", component.CodeBlockMarkdown(marshalJSONValue(request), "json")}
+	content := []string{"REQUEST", component.CodeBlockMarkdown(marshalJSONValue(toolCallRequestArguments(record.First.Raw)), "json")}
 	latest := record.Latest
 	if latest.Phase == "finish" || latest.Status != "running" {
 		if latest.Status == "error" || latest.Status == "cancelled" {
@@ -588,6 +594,25 @@ func toolCallTimelineContentDetailed(record toolCallRecord, details map[string]a
 		content = append(content, "RESPONSE", "waiting...")
 	}
 	return []string{component.RenderMarkdownCompact(strings.Join(content, "\n\n"), width)}
+}
+
+func toolCallRequestArguments(request any) any {
+	root, ok := request.(map[string]any)
+	if !ok {
+		return map[string]any{}
+	}
+	if arguments, ok := root["arguments"]; ok {
+		return arguments
+	}
+	if params, ok := root["params"].(map[string]any); ok {
+		if arguments, ok := params["arguments"]; ok {
+			return arguments
+		}
+	}
+	if nested, ok := root["request"].(map[string]any); ok {
+		return toolCallRequestArguments(nested)
+	}
+	return map[string]any{}
 }
 
 func marshalJSONValue(value any) string {

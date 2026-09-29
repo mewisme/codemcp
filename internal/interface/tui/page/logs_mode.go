@@ -92,6 +92,7 @@ func (page *LogsPage) updateLogsModeDialog(msg tea.KeyPressMsg) tea.Cmd {
 			case string(executionScopeCombined):
 				page.applyLogsScope(executionScopeCombined, "", "")
 				page.modeDialog = nil
+				return page.logsTimelineDeferredWorkCmd()
 			case string(executionScopeWorkspace):
 				return page.loadLogsWorkspaceOptions(logsModeStageWorkspace)
 			case string(executionScopeContainer):
@@ -102,9 +103,11 @@ func (page *LogsPage) updateLogsModeDialog(msg tea.KeyPressMsg) tea.Cmd {
 		case logsModeStageWorkspace:
 			page.applyLogsScope(executionScopeWorkspace, option.value, "")
 			page.modeDialog = nil
+			return page.logsTimelineDeferredWorkCmd()
 		case logsModeStageContainer:
 			page.applyLogsScope(executionScopeContainer, "", option.value)
 			page.modeDialog = nil
+			return page.logsTimelineDeferredWorkCmd()
 		case logsModeStageProcessWorkspace:
 			dialog.workspaceID = option.value
 			return func() tea.Msg {
@@ -114,9 +117,24 @@ func (page *LogsPage) updateLogsModeDialog(msg tea.KeyPressMsg) tea.Cmd {
 		case logsModeStageProcess:
 			page.applyExecutionProcess(dialog.workspaceID, option.value)
 			page.modeDialog = nil
+			return page.logsTimelineDeferredWorkCmd()
 		}
 	}
 	return nil
+}
+
+func (page *LogsPage) logsTimelineDeferredWorkCmd() tea.Cmd {
+	if page == nil || page.view != logsViewTimeline || page.resourceID != "" {
+		return nil
+	}
+	switch page.tab {
+	case logsTabCommandExec:
+		return page.executionTimelineRenderCmd()
+	case logsTabToolCalls:
+		return page.toolCallTimelineHydrateCmd()
+	default:
+		return nil
+	}
 }
 
 func (page *LogsPage) loadLogsWorkspaceOptions(stage logsModeStage) tea.Cmd {

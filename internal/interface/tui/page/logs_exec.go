@@ -33,6 +33,8 @@ type logsExecutionFeed struct {
 	viewport           viewport.Model
 	render             executionFeedRender
 	window             logsTimelineWindow
+	timelineBlocks     map[executionTimelineRenderKey]string
+	timelinePending    map[executionTimelineRenderKey]bool
 	events             []shellruntime.ExecutionFeedEvent
 	executions         []shellruntime.ExecutionInfo
 	scopeMode          executionScopeMode
@@ -88,15 +90,46 @@ type logsExecutionEventMsg struct {
 	err        error
 }
 
+type logsExecutionTimelineRenderMsg struct {
+	generation uint64
+	key        executionTimelineRenderKey
+	block      string
+}
+
 type logsExecutionReconnectMsg uint64
 
 type logsExecutionMouseMsg struct{ Wheel int }
+
+type executionTimelineRenderKey struct {
+	executionID string
+	startSeq    uint64
+	endSeq      uint64
+	width       int
+	first       bool
+	final       bool
+	interrupted bool
+}
+
+type executionFeedSegment struct {
+	start       shellruntime.ExecutionFeedEvent
+	end         shellruntime.ExecutionFeedEvent
+	last        shellruntime.ExecutionFeedEvent
+	body        string
+	first       bool
+	final       bool
+	interrupted bool
+}
+
+const executionTimelineRenderConcurrency = 6
 
 func newLogsExecutionFeed() logsExecutionFeed {
 	view := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	view.SoftWrap = false
 	view.FillHeight = false
-	return logsExecutionFeed{viewport: view, scopeMode: executionScopeCombined, workspaceView: executionWorkspaceCommands, containerMembers: map[string]struct{}{}}
+	return logsExecutionFeed{
+		viewport: view, scopeMode: executionScopeCombined, workspaceView: executionWorkspaceCommands, containerMembers: map[string]struct{}{},
+		timelineBlocks: map[executionTimelineRenderKey]string{}, timelinePending: map[executionTimelineRenderKey]bool{},
+	}
 }
 
 func (page *LogsPage) switchLogsTab(tab logsTab) tea.Cmd {
@@ -129,6 +162,8 @@ func (page *LogsPage) startExecutionFeed() tea.Cmd {
 	page.refreshExecutionScope()
 	page.exec.window.invalidate()
 	page.exec.generation++
+	page.exec.timelineBlocks = map[executionTimelineRenderKey]string{}
+	page.exec.timelinePending = map[executionTimelineRenderKey]bool{}
 	generation := page.exec.generation
 	ctx, cancel := context.WithCancel(page.ctx)
 	page.exec.streamCtx, page.exec.streamCancel = ctx, cancel
@@ -181,7 +216,7 @@ func (page *LogsPage) finishExecutionFeedOpen(msg logsExecutionOpenMsg) tea.Cmd 
 	if page.resourceID != "" {
 		return tea.Batch(next, page.loadExecutionDetailCmd())
 	}
-	return next
+	return tea.Batch(next, page.executionTimelineRenderCmd())
 }
 
 func (page *LogsPage) syncSelectedProcessRunningFromEvents() {
@@ -250,7 +285,7 @@ func (page *LogsPage) finishExecutionFeedEvent(msg logsExecutionEventMsg) tea.Cm
 			page.refreshExecutionViewport()
 		}
 	}
-	return tea.Batch(page.nextExecutionEventCmd(msg.generation), detail)
+	return tea.Batch(page.nextExecutionEventCmd(msg.generation), detail, page.executionTimelineRenderCmd())
 }
 
 func (page *LogsPage) executionReconnectCmd(generation uint64) tea.Cmd {
@@ -262,7 +297,7 @@ func (page *LogsPage) handleExecutionKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "v":
 		page.toggleLogsView()
 		page.syncBrowserHelp()
-		return nil
+		return page.executionTimelineRenderCmd()
 	case "m":
 		return page.openLogsModeDialog()
 	case "space":
@@ -276,7 +311,7 @@ func (page *LogsPage) handleExecutionKey(msg tea.KeyPressMsg) tea.Cmd {
 			}
 		}
 		page.syncBrowserHelp()
-		return nil
+		return page.executionTimelineRenderCmd()
 	case "r":
 		return page.startExecutionFeed()
 	case "c":
@@ -292,7 +327,7 @@ func (page *LogsPage) handleExecutionKey(msg tea.KeyPressMsg) tea.Cmd {
 		page.exec.paused = true
 	}
 	page.maybeExpandExecutionTimeline()
-	return cmd
+	return tea.Batch(cmd, page.executionTimelineRenderCmd())
 }
 
 func (page *LogsPage) updateExecutionBrowser(message tea.Msg) tea.Cmd {
@@ -344,7 +379,7 @@ func (page *LogsPage) resizeExecutionViewport(width, height int) {
 	offset := page.exec.viewport.YOffset()
 	if page.exec.viewport.Width() != width {
 		page.exec.viewport.SetWidth(width)
-		page.exec.render = renderExecutionFeed(page.visibleExecutionTimelineEvents(), width)
+		page.exec.render = renderExecutionFeedDeferred(page.visibleExecutionTimelineEvents(), width, page.exec.timelineBlocks)
 		page.exec.viewport.SetContent(page.exec.render.Content)
 	}
 	page.exec.viewport.SetHeight(height)
@@ -358,7 +393,7 @@ func (page *LogsPage) resizeExecutionViewport(width, height int) {
 
 func (page *LogsPage) refreshExecutionViewport() {
 	offset := page.exec.viewport.YOffset()
-	page.exec.render = renderExecutionFeed(page.visibleExecutionTimelineEvents(), max(1, page.exec.viewport.Width()))
+	page.exec.render = renderExecutionFeedDeferred(page.visibleExecutionTimelineEvents(), max(1, page.exec.viewport.Width()), page.exec.timelineBlocks)
 	page.exec.viewport.SetContent(page.exec.render.Content)
 	if !page.exec.paused {
 		page.exec.viewport.GotoBottom()
@@ -408,6 +443,57 @@ func (page *LogsPage) visibleExecutionTimelineEvents() []shellruntime.ExecutionF
 	return result
 }
 
+func (page *LogsPage) executionTimelineRenderCmd() tea.Cmd {
+	if page == nil || page.tab != logsTabCommandExec || page.view != logsViewTimeline || page.resourceID != "" {
+		return nil
+	}
+	width := max(1, page.exec.viewport.Width())
+	segments := buildExecutionFeedSegments(page.visibleExecutionTimelineEvents())
+	keep := make(map[executionTimelineRenderKey]struct{}, len(segments))
+	for _, segment := range segments {
+		keep[executionTimelineKey(segment, width)] = struct{}{}
+	}
+	for key := range page.exec.timelineBlocks {
+		if _, ok := keep[key]; !ok {
+			delete(page.exec.timelineBlocks, key)
+		}
+	}
+	available := executionTimelineRenderConcurrency - len(page.exec.timelinePending)
+	if available <= 0 {
+		return nil
+	}
+	generation := page.exec.generation
+	commands := make([]tea.Cmd, 0, available)
+	for index := len(segments) - 1; index >= 0 && available > 0; index-- {
+		segment := segments[index]
+		key := executionTimelineKey(segment, width)
+		if _, ok := page.exec.timelineBlocks[key]; ok || page.exec.timelinePending[key] {
+			continue
+		}
+		page.exec.timelinePending[key] = true
+		current := segment
+		currentKey := key
+		commands = append(commands, func() tea.Msg {
+			block := formatExecutionSegment(current.start, current.end, current.body, current.first, current.final, current.interrupted, width)
+			return logsExecutionTimelineRenderMsg{generation: generation, key: currentKey, block: block}
+		})
+		available--
+	}
+	return tea.Batch(commands...)
+}
+
+func (page *LogsPage) finishExecutionTimelineRender(msg logsExecutionTimelineRenderMsg) tea.Cmd {
+	if page == nil || msg.generation != page.exec.generation {
+		return nil
+	}
+	delete(page.exec.timelinePending, msg.key)
+	page.exec.timelineBlocks[msg.key] = msg.block
+	if page.tab == logsTabCommandExec && page.view == logsViewTimeline && page.resourceID == "" && !page.exec.paused {
+		page.refreshExecutionViewport()
+	}
+	return page.executionTimelineRenderCmd()
+}
+
 func (page *LogsPage) maybeExpandExecutionTimeline() {
 	if page == nil || !page.exec.paused || page.exec.viewport.YOffset() > logsTimelineNearOldestLines {
 		return
@@ -417,7 +503,7 @@ func (page *LogsPage) maybeExpandExecutionTimeline() {
 	if !page.exec.window.expand(len(executionTimelineRecordIDs(page.eligibleExecutionTimelineEvents()))) {
 		return
 	}
-	page.exec.render = renderExecutionFeed(page.visibleExecutionTimelineEvents(), max(1, page.exec.viewport.Width()))
+	page.exec.render = renderExecutionFeedDeferred(page.visibleExecutionTimelineEvents(), max(1, page.exec.viewport.Width()), page.exec.timelineBlocks)
 	page.exec.viewport.SetContent(page.exec.render.Content)
 	delta := max(0, page.exec.viewport.TotalLineCount()-oldLines)
 	page.exec.viewport.SetYOffset(min(oldOffset+delta, max(0, page.exec.viewport.TotalLineCount()-page.exec.viewport.Height())))
@@ -575,7 +661,7 @@ func (page *LogsPage) executionMouseTargets(originX, originY, z, width, height i
 	}}
 }
 
-func (page *LogsPage) handleExecutionMouse(msg logsExecutionMouseMsg) {
+func (page *LogsPage) handleExecutionMouse(msg logsExecutionMouseMsg) tea.Cmd {
 	if msg.Wheel < 0 {
 		page.exec.viewport.ScrollUp(3)
 	} else if msg.Wheel > 0 {
@@ -583,6 +669,7 @@ func (page *LogsPage) handleExecutionMouse(msg logsExecutionMouseMsg) {
 	}
 	page.exec.paused = !page.exec.viewport.AtBottom()
 	page.maybeExpandExecutionTimeline()
+	return page.executionTimelineRenderCmd()
 }
 
 func (page *LogsPage) stopExecutionFeed() {
@@ -626,28 +713,37 @@ func renderExecutionFeed(events []shellruntime.ExecutionFeedEvent, widths ...int
 	if len(widths) > 0 && widths[0] > 0 {
 		width = widths[0]
 	}
-	type executionSegment struct {
-		start       shellruntime.ExecutionFeedEvent
-		end         shellruntime.ExecutionFeedEvent
-		last        shellruntime.ExecutionFeedEvent
-		body        strings.Builder
-		first       bool
-		final       bool
-		interrupted bool
+	segments := buildExecutionFeedSegments(events)
+	blocks := make([]string, len(segments))
+	for index := len(segments) - 1; index >= 0; index-- {
+		segment := segments[index]
+		blocks[index] = formatExecutionSegment(segment.start, segment.end, segment.body, segment.first, segment.final, segment.interrupted, width)
+	}
+	return assembleExecutionFeed(segments, blocks)
+}
+
+func buildExecutionFeedSegments(events []shellruntime.ExecutionFeedEvent) []executionFeedSegment {
+	type activeExecutionSegment struct {
+		start shellruntime.ExecutionFeedEvent
+		last  shellruntime.ExecutionFeedEvent
+		body  strings.Builder
+		first bool
 	}
 	seen := map[string]bool{}
-	segments := []executionSegment{}
-	var current *executionSegment
+	segments := []executionFeedSegment{}
+	var current *activeExecutionSegment
 	closeCurrent := func(end shellruntime.ExecutionFeedEvent, final, interrupted bool) {
 		if current == nil {
 			return
 		}
-		current.end, current.final, current.interrupted = end, final, interrupted
-		segments = append(segments, *current)
+		segments = append(segments, executionFeedSegment{
+			start: current.start, end: end, last: current.last, body: current.body.String(),
+			first: current.first, final: final, interrupted: interrupted,
+		})
 		current = nil
 	}
 	openSegment := func(event shellruntime.ExecutionFeedEvent) {
-		current = &executionSegment{start: event, last: event, first: !seen[event.ExecutionID] || event.Type == shellruntime.ExecutionEventStarted}
+		current = &activeExecutionSegment{start: event, last: event, first: !seen[event.ExecutionID] || event.Type == shellruntime.ExecutionEventStarted}
 		seen[event.ExecutionID] = true
 	}
 	for _, event := range events {
@@ -672,6 +768,48 @@ func renderExecutionFeed(events []shellruntime.ExecutionFeedEvent, widths ...int
 	if current != nil {
 		closeCurrent(current.last, false, false)
 	}
+	return segments
+}
+
+func executionTimelineKey(segment executionFeedSegment, width int) executionTimelineRenderKey {
+	return executionTimelineRenderKey{
+		executionID: segment.start.ExecutionID,
+		startSeq:    segment.start.Sequence,
+		endSeq:      segment.last.Sequence,
+		width:       width,
+		first:       segment.first,
+		final:       segment.final,
+		interrupted: segment.interrupted,
+	}
+}
+
+func renderExecutionFeedDeferred(events []shellruntime.ExecutionFeedEvent, width int, blocks map[executionTimelineRenderKey]string) executionFeedRender {
+	segments := buildExecutionFeedSegments(events)
+	renderedBlocks := make([]string, len(segments))
+	for index := range segments {
+		segment := segments[index]
+		if block, ok := blocks[executionTimelineKey(segment, width)]; ok {
+			renderedBlocks[index] = block
+			continue
+		}
+		renderedBlocks[index] = formatExecutionSegmentPlaceholder(segment, width)
+	}
+	return assembleExecutionFeed(segments, renderedBlocks)
+}
+
+func formatExecutionSegmentPlaceholder(segment executionFeedSegment, width int) string {
+	headerKind := "CONTINUE"
+	if segment.first {
+		headerKind = "START"
+	}
+	return executionSegmentFrame(
+		headerKind, "RENDERING", segment.start, segment.end,
+		executionHeaderFields(segment.start, segment.first),
+		[]string{component.Muted("Rendering command output...")}, nil, width,
+	)
+}
+
+func assembleExecutionFeed(segments []executionFeedSegment, blocks []string) executionFeedRender {
 	var output strings.Builder
 	rendered := executionFeedRender{}
 	stickyLabels := map[string]string{}
@@ -681,7 +819,7 @@ func renderExecutionFeed(events []shellruntime.ExecutionFeedEvent, widths ...int
 			output.WriteString("\n")
 			line++
 		}
-		block := formatExecutionSegment(segment.start, segment.end, segment.body.String(), segment.first, segment.final, segment.interrupted, width)
+		block := blocks[index]
 		startLine := line
 		bodyStartLine := startLine
 		for blockLine, value := range strings.Split(strings.TrimSuffix(block, "\n"), "\n") {

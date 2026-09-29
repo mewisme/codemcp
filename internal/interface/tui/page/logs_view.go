@@ -159,14 +159,13 @@ func capNewestRuntimeEvents(events []runtimeevent.Event, limit int) []runtimeeve
 }
 
 func renderRuntimeTimeline(events []runtimeevent.Event, width int, visibility logger.Visibility) executionFeedRender {
-	rendered := executionFeedRender{}
-	var output strings.Builder
-	line := 0
-	for index, event := range events {
-		if index > 0 {
-			output.WriteByte('\n')
-			line++
-		}
+	type runtimeRenderedBlock struct {
+		block  string
+		sticky string
+	}
+	blocks := make([]runtimeRenderedBlock, len(events))
+	for index := len(events) - 1; index >= 0; index-- {
+		event := events[index]
 		clock := event.Time.Local().Format("15:04:05.000")
 		top := strings.TrimSpace("EVENT " + clock)
 		bottom := strings.ToUpper(strings.TrimSpace(event.Level))
@@ -196,20 +195,30 @@ func renderRuntimeTimeline(events []runtimeevent.Event, width int, visibility lo
 		if len(content) == 0 {
 			content = append(content, event.Name)
 		}
-		block := renderLogBlock(top, bottom, "Event", event.Name, fields, content, nil, width)
+		blocks[index] = runtimeRenderedBlock{
+			block:  renderLogBlock(top, bottom, "Event", event.Name, fields, content, nil, width),
+			sticky: strings.Join([]string{"EVENT", clock, event.Name}, " · "),
+		}
+	}
+	rendered := executionFeedRender{}
+	var output strings.Builder
+	line := 0
+	for index, item := range blocks {
+		if index > 0 {
+			output.WriteByte('\n')
+			line++
+		}
 		start := line
 		bodyStart := start
-		for blockLine, value := range strings.Split(strings.TrimSuffix(block, "\n"), "\n") {
+		for blockLine, value := range strings.Split(strings.TrimSuffix(item.block, "\n"), "\n") {
 			if strings.HasPrefix(value, "├") {
 				bodyStart = start + blockLine + 1
 				break
 			}
 		}
-		lines := strings.Count(block, "\n")
-		line += lines
-		output.WriteString(block)
-		sticky := strings.Join([]string{"EVENT", clock, event.Name}, " · ")
-		rendered.Segments = append(rendered.Segments, executionRenderedSegment{StartLine: start, BodyStartLine: bodyStart, EndLine: line, StickyLabel: sticky})
+		line += strings.Count(item.block, "\n")
+		output.WriteString(item.block)
+		rendered.Segments = append(rendered.Segments, executionRenderedSegment{StartLine: start, BodyStartLine: bodyStart, EndLine: line, StickyLabel: item.sticky})
 	}
 	rendered.Content = output.String()
 	return rendered

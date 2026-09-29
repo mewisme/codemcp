@@ -5,6 +5,9 @@ const (
 	logsTimelineNearOldestLines = 3
 )
 
+// Timeline slices and viewport output stay oldest-to-newest. Expensive render
+// and hydration work intentionally walks those slices newest-to-oldest so the
+// most recent records become usable first without changing visual chronology.
 type logsTimelineWindow struct {
 	end         int
 	size        int
