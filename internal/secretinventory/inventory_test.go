@@ -10,6 +10,7 @@ import (
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/configformat"
 	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
+	"go.mewis.me/codemcp/internal/llm"
 	"go.mewis.me/codemcp/internal/oauth"
 	"go.mewis.me/codemcp/internal/secretstore"
 	telegramcredential "go.mewis.me/codemcp/internal/telegram/credential"
@@ -29,6 +30,7 @@ func TestInventoryCoversManagedSecretFamiliesWithoutValues(t *testing.T) {
 		{Name: secretstore.AccountName(secretstore.DomainCluster, "relay-token"), Value: "relay-secret"},
 		{Name: telegramcredential.BotTokenSecretName, Value: "telegram-secret"},
 		{Name: typesafeintegration.APIKeySecretName, Value: "typesafe-secret"},
+		{Name: mustLLMCredentialAccount(t, "openrouter"), Value: "llm-secret"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +58,7 @@ func TestInventoryCoversManagedSecretFamiliesWithoutValues(t *testing.T) {
 			t.Fatalf("unexpected portable policy: %#v", descriptor)
 		}
 	}
-	for _, domain := range []secretstore.Domain{secretstore.DomainAuth, secretstore.DomainTunnel, secretstore.DomainOAuth, secretstore.DomainUpstream, secretstore.DomainCluster, secretstore.DomainTelegram, secretstore.DomainTypeSafe} {
+	for _, domain := range []secretstore.Domain{secretstore.DomainAuth, secretstore.DomainTunnel, secretstore.DomainOAuth, secretstore.DomainUpstream, secretstore.DomainCluster, secretstore.DomainTelegram, secretstore.DomainTypeSafe, secretstore.DomainLLM} {
 		if byDomain[domain] == 0 {
 			t.Errorf("managed secret domain missing from inventory: %s", domain)
 		}
@@ -65,7 +67,7 @@ func TestInventoryCoversManagedSecretFamiliesWithoutValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"mcp-secret-value", "admin-secret-value", "tunnel-runtime-secret", "tunnel-admin-secret", "oauth-client-secret", "oauth-access-secret", "oauth-refresh-secret", "upstream-secret", "relay-secret", "telegram-secret", "typesafe-secret"} {
+	for _, secret := range []string{"mcp-secret-value", "admin-secret-value", "tunnel-runtime-secret", "tunnel-admin-secret", "oauth-client-secret", "oauth-access-secret", "oauth-refresh-secret", "upstream-secret", "relay-secret", "telegram-secret", "typesafe-secret", "llm-secret"} {
 		if strings.Contains(string(encoded), secret) {
 			t.Fatalf("inventory leaked raw secret %q: %s", secret, encoded)
 		}
@@ -81,6 +83,7 @@ func TestRecognizedAccountUsesCanonicalRegistrationBoundaries(t *testing.T) {
 		secretstore.AccountName(secretstore.DomainCluster, "relay-token"),
 		telegramcredential.BotTokenSecretName,
 		typesafeintegration.APIKeySecretName,
+		mustLLMCredentialAccount(t, "openrouter"),
 	}
 	for _, account := range known {
 		if !RecognizedAccount(account) {
@@ -92,4 +95,13 @@ func TestRecognizedAccountUsesCanonicalRegistrationBoundaries(t *testing.T) {
 			t.Errorf("unknown account was recognized: %s", account)
 		}
 	}
+}
+
+func mustLLMCredentialAccount(t *testing.T, id string) string {
+	t.Helper()
+	account, err := llm.CredentialAccount(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return account
 }

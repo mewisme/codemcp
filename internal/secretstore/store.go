@@ -22,6 +22,7 @@ const (
 	DomainCluster  Domain = "cluster"
 	DomainTelegram Domain = "telegram"
 	DomainTypeSafe Domain = "typesafe"
+	DomainLLM      Domain = "llm"
 )
 
 const (

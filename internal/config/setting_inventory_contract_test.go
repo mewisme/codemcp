@@ -151,6 +151,7 @@ func TestUniversalSettingManagedCredentialVocabulary(t *testing.T) {
 		"integrations.typesafe.api_key": {state: "integrations.typesafe.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
 		"tunnel.api_key":                {state: "tunnel.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
 		"tunnel.admin.key":              {state: "tunnel.admin.key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true, verifiable: true},
+		"llm.api_key":                   {state: "llm.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
 	}
 	for key, expected := range want {
 		spec, ok := SettingByKey(key)
@@ -176,6 +177,8 @@ func TestUniversalSettingManagedCredentialVocabulary(t *testing.T) {
 
 func TestUniversalDynamicSettingCatalogIsFrozen(t *testing.T) {
 	want := []string{
+		"llm.providers[<id>].api_key", "llm.providers[<id>].api_key_configured", "llm.providers[<id>].auth_mode", "llm.providers[<id>].base_url",
+		"llm.providers[<id>].core", "llm.providers[<id>].discovery", "llm.providers[<id>].model", "llm.providers[<id>].name", "llm.providers[<id>].protocol",
 		"tunnel.managed[<id>].description", "tunnel.managed[<id>].name", "tunnel.managed[<id>].organization_ids",
 		"tunnel.managed[<id>].tenant_ids", "tunnel.managed[<id>].workspace_ids",
 		"upstream.servers[<id>].allow_private_network", "upstream.servers[<id>].args", "upstream.servers[<id>].auth.scope",
@@ -207,6 +210,8 @@ func TestUniversalDynamicSettingSelectorsAreUnambiguous(t *testing.T) {
 		{key: "upstream.servers[docs.v2].enabled", template: "upstream.servers[<id>].enabled", id: "docs.v2"},
 		{key: "upstream.servers[docs%2Ev2].auth.type", template: "upstream.servers[<id>].auth.type", id: "docs.v2"},
 		{key: "tunnel.managed[tun_demo].description", template: "tunnel.managed[<id>].description", id: "tun_demo"},
+		{key: "llm.providers[openrouter].model", template: "llm.providers[<id>].model", id: "openrouter"},
+		{key: "llm.providers[acme%2Ev2].base_url", template: "llm.providers[<id>].base_url", id: "acme.v2"},
 	}
 	for _, test := range tests {
 		match, ok := MatchSettingSelector(test.key)
@@ -224,6 +229,9 @@ func TestUniversalDynamicSettingSelectorsAreUnambiguous(t *testing.T) {
 		"tunnel.managed[].name",
 		"mcp.profiles[default].enabled",
 		"logs[default].level",
+		"llm.providers[].model",
+		"llm.providers[acme/v2].model",
+		"llm.providers[acme%2Fv2].model",
 	} {
 		if match, ok := MatchSettingSelector(invalid); ok {
 			t.Fatalf("invalid selector %q resolved to %#v", invalid, match)

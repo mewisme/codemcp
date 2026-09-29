@@ -59,6 +59,35 @@ var virtualSettingSpecs = []FieldSpec{
 		ScopedCommands: []string{"integration typesafe status"},
 	},
 	{
+		Key: "llm.provider", Label: "Active LLM provider", Section: FieldSectionIntegrations, Kind: FieldString,
+		Description: "selects the active LLM provider",
+		Virtual:     true, Readable: true, Writable: true, ApplicationOwner: "llm.providers", ValueRole: SettingValueConfigured,
+		ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner",
+	},
+	{
+		Key: "llm.api_key", Label: "Active LLM API key", Section: FieldSectionIntegrations, Kind: FieldString,
+		Description: "stores the managed credential for the active LLM provider",
+		Details:     "The raw API key is stored only in the canonical secret store and this key aliases the currently selected provider.",
+		Virtual:     true, Writable: true, Secret: true, Clearable: true, ConfiguredStateKey: "llm.api_key_configured",
+		Presentation: SettingPresentationMaskedPreview, ApplicationOwner: "llm.providers", ValueRole: SettingValueConfigured,
+		ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner",
+	},
+	{
+		Key: "llm.api_key_configured", Label: "Active LLM API key configured", Section: FieldSectionIntegrations, Kind: FieldBool,
+		Virtual: true, Derived: true, Readable: true, ApplicationOwner: "llm.providers", ValueRole: SettingValueDerived,
+		ScopedExemption: "derived LLM credential state is exposed through the LLM application owner",
+	},
+	{
+		Key: "llm.base_url", Label: "Active LLM base URL", Section: FieldSectionIntegrations, Kind: FieldString,
+		Virtual: true, Readable: true, Writable: true, ApplicationOwner: "llm.providers", ValueRole: SettingValueConfigured,
+		ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner",
+	},
+	{
+		Key: "llm.model", Label: "Active LLM model", Section: FieldSectionIntegrations, Kind: FieldString,
+		Virtual: true, Readable: true, Writable: true, Clearable: true, ApplicationOwner: "llm.providers", ValueRole: SettingValueConfigured,
+		ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner",
+	},
+	{
 		Key: "auth.mcp_token", Label: "MCP token", Section: FieldSectionAccess, Kind: FieldString,
 		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "auth.mcp_token_configured",
 		Presentation: SettingPresentationMaskedPreview, ApplicationOwner: "auth.credentials",
@@ -114,6 +143,16 @@ var virtualSettingSpecs = []FieldSpec{
 	{Key: "upstream.servers[<id>].disabled_tools", Label: "Upstream disabled tools", Section: FieldSectionIntegrations, Kind: FieldList, Virtual: true, Readable: true, Writable: true, Clearable: true, ApplicationOwner: "upstream.servers", ScopedCommands: []string{"upstream server configure"}, Selector: upstreamServerSelector("upstream.servers[<id>].disabled_tools")},
 	{Key: "upstream.servers[<id>].idle_timeout_sec", Label: "Upstream idle timeout", Section: FieldSectionIntegrations, Kind: FieldInt, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "upstream.servers", ScopedCommands: []string{"upstream server configure"}, Selector: upstreamServerSelector("upstream.servers[<id>].idle_timeout_sec")},
 	{Key: "upstream.servers[<id>].allow_private_network", Label: "Upstream private-network access", Section: FieldSectionIntegrations, Kind: FieldBool, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "upstream.servers", ScopedCommands: []string{"upstream server configure"}, Selector: upstreamServerSelector("upstream.servers[<id>].allow_private_network")},
+
+	{Key: "llm.providers[<id>].name", Label: "LLM provider name", Section: FieldSectionIntegrations, Kind: FieldString, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "llm.providers", ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner", Selector: llmProviderSelector("llm.providers[<id>].name")},
+	{Key: "llm.providers[<id>].protocol", Label: "LLM provider protocol", Section: FieldSectionIntegrations, Kind: FieldEnum, Options: []string{"openai", "anthropic"}, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "llm.providers", ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner", Selector: llmProviderSelector("llm.providers[<id>].protocol")},
+	{Key: "llm.providers[<id>].base_url", Label: "LLM provider base URL", Section: FieldSectionIntegrations, Kind: FieldString, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "llm.providers", ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner", Selector: llmProviderSelector("llm.providers[<id>].base_url")},
+	{Key: "llm.providers[<id>].model", Label: "LLM provider model", Section: FieldSectionIntegrations, Kind: FieldString, Virtual: true, Readable: true, Writable: true, Clearable: true, ApplicationOwner: "llm.providers", ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner", Selector: llmProviderSelector("llm.providers[<id>].model")},
+	{Key: "llm.providers[<id>].api_key", Label: "LLM provider API key", Section: FieldSectionIntegrations, Kind: FieldString, Virtual: true, Writable: true, Secret: true, Clearable: true, ConfiguredStateKey: "llm.providers[<id>].api_key_configured", Presentation: SettingPresentationMaskedPreview, ApplicationOwner: "llm.providers", ValueRole: SettingValueConfigured, ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner", Selector: llmProviderSelector("llm.providers[<id>].api_key")},
+	{Key: "llm.providers[<id>].api_key_configured", Label: "LLM provider API key configured", Section: FieldSectionIntegrations, Kind: FieldBool, Virtual: true, Derived: true, Readable: true, ApplicationOwner: "llm.providers", ValueRole: SettingValueDerived, ScopedExemption: "derived LLM credential state is exposed through the LLM application owner", Selector: llmProviderSelector("llm.providers[<id>].api_key_configured")},
+	{Key: "llm.providers[<id>].auth_mode", Label: "LLM provider auth mode", Section: FieldSectionIntegrations, Kind: FieldEnum, Options: []string{"none", "bearer", "x-api-key"}, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "llm.providers", ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner", Selector: llmProviderSelector("llm.providers[<id>].auth_mode")},
+	{Key: "llm.providers[<id>].discovery", Label: "LLM provider discovery", Section: FieldSectionIntegrations, Kind: FieldEnum, Options: []string{"none", "openai-models", "ollama-tags"}, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "llm.providers", ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner", Selector: llmProviderSelector("llm.providers[<id>].discovery")},
+	{Key: "llm.providers[<id>].core", Label: "LLM core provider", Section: FieldSectionIntegrations, Kind: FieldBool, Virtual: true, Derived: true, Readable: true, ApplicationOwner: "llm.providers", ScopedExemption: "derived LLM provider identity is exposed through the LLM application owner", Selector: llmProviderSelector("llm.providers[<id>].core")},
 
 	{Key: "tunnel.managed[<id>].name", Label: "Managed tunnel name", Section: FieldSectionTunnel, Kind: FieldString, Virtual: true, Readable: true, Writable: true, ApplicationOwner: "tunnel.managed", ScopedCommands: []string{"tunnel update"}, Selector: managedTunnelSelector("tunnel.managed[<id>].name")},
 	{Key: "tunnel.managed[<id>].description", Label: "Managed tunnel description", Section: FieldSectionTunnel, Kind: FieldString, Virtual: true, Readable: true, Writable: true, Clearable: true, ApplicationOwner: "tunnel.managed", ScopedCommands: []string{"tunnel update"}, Selector: managedTunnelSelector("tunnel.managed[<id>].description")},
@@ -367,6 +406,14 @@ func upstreamServerSelector(template string) *FieldSelectorSpec {
 	return &FieldSelectorSpec{
 		Template: template, Resource: "upstream.server", InventoryOwner: "upstream server manager",
 		CompletionOwner: "upstream server inventory", IDValidator: "upstream server identity",
+		IDEncoding: "bracket segment with RFC3986 percent-decoding",
+	}
+}
+
+func llmProviderSelector(template string) *FieldSelectorSpec {
+	return &FieldSelectorSpec{
+		Template: template, Resource: "llm.provider", InventoryOwner: "LLM provider registry",
+		CompletionOwner: "LLM provider inventory", IDValidator: "canonical LLM provider identity",
 		IDEncoding: "bracket segment with RFC3986 percent-decoding",
 	}
 }

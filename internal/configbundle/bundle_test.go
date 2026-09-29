@@ -135,6 +135,14 @@ func TestExportAndImportKeepLLMProviderStateSecretFree(t *testing.T) {
 	if err := store.Save(providers); err != nil {
 		t.Fatal(err)
 	}
+	const storedSecret = "sk-portable-llm-secret"
+	credentialChange, err := llm.CredentialChange("openrouter", storedSecret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := secretstore.New(root).Apply([]secretstore.Change{credentialChange}); err != nil {
+		t.Fatal(err)
+	}
 
 	destination := filepath.Join(t.TempDir(), "backup.json")
 	if _, err := Export(root, destination, ExportOptions{}); err != nil {
@@ -146,6 +154,9 @@ func TestExportAndImportKeepLLMProviderStateSecretFree(t *testing.T) {
 	}
 	if bytes.Contains(bytes.ToLower(raw), []byte(`"api_key"`)) {
 		t.Fatal("LLM export contained API key field")
+	}
+	if bytes.Contains(raw, []byte(storedSecret)) {
+		t.Fatal("LLM export contained managed API key value")
 	}
 	bundle, err := decode(raw)
 	if err != nil {

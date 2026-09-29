@@ -52,7 +52,7 @@ func TestAgentConfigEligibilityIsExplicitAndDisabledByDefault(t *testing.T) {
 }
 
 func TestSecretProjectionNeverContainsSecretOrMaskedPreview(t *testing.T) {
-	for _, key := range []string{"auth.mcp_token", "auth.admin_token", "tunnel.api_key", "tunnel.admin.key"} {
+	for _, key := range []string{"auth.mcp_token", "auth.admin_token", "tunnel.api_key", "tunnel.admin.key", "llm.api_key"} {
 		spec, ok := config.SettingByKey(key)
 		if !ok {
 			t.Fatalf("setting %q missing", key)
@@ -73,6 +73,19 @@ func TestSecretProjectionNeverContainsSecretOrMaskedPreview(t *testing.T) {
 		if projected.Value != nil || projected.Configured == nil || !*projected.Configured || projected.Writable {
 			t.Fatalf("secret projection=%#v", projected)
 		}
+	}
+}
+
+func TestLLMProviderCredentialRemainsAgentWriteForbidden(t *testing.T) {
+	match, ok := config.MatchSettingSelector("llm.providers[openrouter].api_key")
+	if !ok {
+		t.Fatal("LLM provider credential selector did not resolve")
+	}
+	if err := mcpconfig.ValidateWriteSpec(match.Spec); err == nil || !strings.Contains(err.Error(), "managed secret") {
+		t.Fatalf("LLM provider credential write restriction=%v", err)
+	}
+	if _, ok := mcpconfig.ResolveSetting("llm.providers[openrouter].api_key", mcpconfig.AccessWrite); ok {
+		t.Fatal("LLM provider credential became MCP-agent writable")
 	}
 }
 

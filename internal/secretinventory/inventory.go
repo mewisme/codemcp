@@ -10,6 +10,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/integrations/typesafe"
+	"go.mewis.me/codemcp/internal/llm"
 	"go.mewis.me/codemcp/internal/oauth"
 	"go.mewis.me/codemcp/internal/secretstore"
 	telegramcredential "go.mewis.me/codemcp/internal/telegram/credential"
@@ -26,6 +27,7 @@ const (
 	CategoryRelayToken     Category = "relay-token"
 	CategoryTelegramToken  Category = "telegram-token"
 	CategoryIntegrationKey Category = "integration-api-key"
+	CategoryLLMKey         Category = "llm-api-key"
 )
 
 type PortablePolicy string
@@ -86,6 +88,30 @@ var registrations = []registration{
 	}),
 	staticRegistration(secretstore.DomainTelegram, CategoryTelegramToken, true, true, telegramcredential.SecretEntries()),
 	staticRegistration(secretstore.DomainTypeSafe, CategoryIntegrationKey, true, true, typesafe.SecretEntries()),
+	{
+		domain: secretstore.DomainLLM, category: CategoryLLMKey, optional: true, runtimeRequired: true,
+		enumerate: func(root string) ([]candidate, error) {
+			accounts, err := llm.CredentialAccounts(root)
+			if err != nil {
+				return nil, err
+			}
+			store := secretstore.New(root)
+			result := make([]candidate, 0, len(accounts))
+			for _, account := range accounts {
+				_, err := store.Get(account)
+				switch {
+				case err == nil:
+					result = append(result, candidate{account: account, configured: true})
+				case errors.Is(err, secretstore.ErrNotFound):
+					result = append(result, candidate{account: account})
+				default:
+					return nil, err
+				}
+			}
+			return result, nil
+		},
+		owns: domainPrefix(secretstore.DomainLLM),
+	},
 }
 
 func Inventory(root string) ([]Descriptor, error) {

@@ -134,13 +134,21 @@ func TestEveryWritableStaticSettingMutatesFromFreshConfig(t *testing.T) {
 		spec := spec
 		t.Run(strings.ReplaceAll(spec.Key, ".", "_"), func(t *testing.T) {
 			isolateSettingServiceConfig(t)
+			service := NewSettingService()
 			cfg, err := config.Load()
 			if err != nil {
 				t.Fatal(err)
 			}
 			raw, err := config.RawValue(cfg, spec.Key)
 			if err != nil && !spec.Secret {
-				t.Fatalf("baseline value for %q: %v", spec.Key, err)
+				if !spec.Virtual {
+					t.Fatalf("baseline value for %q: %v", spec.Key, err)
+				}
+				presented, presentErr := service.Present(t.Context(), spec.Key)
+				if presentErr != nil {
+					t.Fatalf("virtual baseline value for %q: %v", spec.Key, presentErr)
+				}
+				raw = presented.Value
 			}
 			switch spec.Key {
 			case "telegram.token":
@@ -151,6 +159,8 @@ func TestEveryWritableStaticSettingMutatesFromFreshConfig(t *testing.T) {
 				raw = "sk-admin-fresh-setting"
 			case "integrations.typesafe.api_key":
 				raw = "ts-fresh-setting"
+			case "llm.api_key":
+				raw = "sk-llm-fresh-setting"
 			case "tunnel.admin.organization_id":
 				raw = "org_fresh"
 			case "tunnel.admin.workspace_id":
@@ -158,7 +168,7 @@ func TestEveryWritableStaticSettingMutatesFromFreshConfig(t *testing.T) {
 			case "tunnel.admin.tenant_id":
 				raw = "tenant_fresh"
 			}
-			if _, err := NewSettingService().Set(t.Context(), spec.Key, raw); err != nil {
+			if _, err := service.Set(t.Context(), spec.Key, raw); err != nil {
 				t.Fatalf("fresh mutation for %q failed: %v", spec.Key, err)
 			}
 		})

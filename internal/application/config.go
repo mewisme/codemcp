@@ -226,12 +226,12 @@ func RemoveConfigRootContext(ctx context.Context, root string) error {
 }
 
 func removeOwnedConfigRootEntries(root string) error {
-	for _, name := range []string{"state", "logs", "instructions", "workspaces", "tunnels"} {
+	for _, name := range []string{"state", "logs", "instructions", "workspaces", "tunnels", "llm"} {
 		if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
 			return err
 		}
 	}
-	for _, name := range []string{"tui-state.json"} {
+	for _, name := range []string{"tui-state.json", ".llm-providers.lock"} {
 		if err := removeIfExists(filepath.Join(root, name)); err != nil {
 			return err
 		}

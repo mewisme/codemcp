@@ -39,6 +39,7 @@ type SettingSetOptions struct {
 
 type SettingService struct {
 	upstream *UpstreamService
+	llm      *LLMService
 }
 
 func NewSettingService() *SettingService { return &SettingService{} }
@@ -161,6 +162,10 @@ func (s *SettingService) Read(ctx context.Context, key string) (result SettingRe
 	result = SettingResult{Spec: presentationSpec(spec, selector)}
 	if selector != nil {
 		result.Value, result.Configured, resultErr = s.readDynamicSetting(ctx, *selector)
+		return result, resultErr
+	}
+	if spec.ApplicationOwner == "llm.providers" {
+		result.Value, result.Configured, resultErr = s.readLLMStaticSetting(ctx, spec)
 		return result, resultErr
 	}
 	if configured, ok, err := readConfiguredSetting(ctx, spec.Key); ok {
@@ -316,6 +321,9 @@ func (s *SettingService) Verify(ctx context.Context, key string) (result Setting
 }
 
 func (s *SettingService) presentSecret(ctx context.Context, spec config.FieldSpec, selector *config.FieldSelectorMatch) (SettingResult, error) {
+	if spec.ApplicationOwner == "llm.providers" {
+		return s.presentLLMSecret(ctx, spec, selector)
+	}
 	if selector != nil {
 		return SettingResult{}, fmt.Errorf("dynamic secret presentation is not supported for %q", spec.Key)
 	}
@@ -399,6 +407,10 @@ func (s *SettingService) resolveAndCheckDynamic(ctx context.Context, key string,
 		if _, err := GetManagedTunnel(ctx, match.ResourceID, ManagedTunnelOptions{}); err != nil {
 			return config.FieldSpec{}, nil, err
 		}
+	case "llm.provider":
+		if _, err := s.llmService().Provider(ctx, match.ResourceID); err != nil {
+			return config.FieldSpec{}, nil, err
+		}
 	default:
 		return config.FieldSpec{}, nil, fmt.Errorf("unsupported setting resource: %s", match.Spec.Selector.Resource)
 	}
@@ -464,6 +476,8 @@ func (s *SettingService) readDynamicSetting(ctx context.Context, match config.Fi
 			return "", nil, err
 		}
 		return managedTunnelSettingValue(result.Metadata, suffix)
+	case "llm.provider":
+		return s.readLLMDynamicSetting(ctx, match)
 	default:
 		return "", nil, fmt.Errorf("unsupported setting resource: %s", match.Spec.Selector.Resource)
 	}

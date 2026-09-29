@@ -49,6 +49,11 @@ func (s *SettingService) ValidateApply(ctx context.Context, changes []SettingCha
 	if err != nil || len(resolved) == 0 {
 		return err
 	}
+	if owned, err := llmSettingChanges(resolved); err != nil {
+		return err
+	} else if owned {
+		return s.validateLLMSettingChanges(ctx, resolved)
+	}
 	resource, resourceID, dynamic, err := settingDynamicTransaction(resolved)
 	if err != nil {
 		return err
@@ -161,6 +166,11 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 			return SettingApplyResult{}, err
 		}
 		return SettingApplyResult{Config: cfg}, nil
+	}
+	if owned, err := llmSettingChanges(resolved); err != nil {
+		return SettingApplyResult{}, err
+	} else if owned {
+		return s.applyLLMSettingChanges(ctx, resolved)
 	}
 	dynamicResource, dynamicID, hasDynamic, err := settingDynamicTransaction(resolved)
 	if err != nil {
