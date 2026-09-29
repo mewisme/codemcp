@@ -25,6 +25,32 @@ func TestStoreMemoryRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStoreCanBindPhysicalStateToFinalRootIdentity(t *testing.T) {
+	cleanup := UseMemoryForTesting()
+	defer cleanup()
+	storageRoot := t.TempDir()
+	stageIdentity := t.TempDir()
+	finalIdentity := t.TempDir()
+	name := AccountName(DomainTunnel, "runtime-key")
+	stage := NewForIdentity(storageRoot, stageIdentity)
+	final := NewForIdentity(storageRoot, finalIdentity)
+	if err := stage.Set(name, "stage-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := final.Get(name); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("final identity unexpectedly shared staged namespace: %v", err)
+	}
+	if err := final.Set(name, "final-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := NewForIdentity(storageRoot, stageIdentity).Get(name); err != nil || got != "stage-secret" {
+		t.Fatalf("stage identity value=%q err=%v", got, err)
+	}
+	if got, err := NewForIdentity(storageRoot, finalIdentity).Get(name); err != nil || got != "final-secret" {
+		t.Fatalf("final identity value=%q err=%v", got, err)
+	}
+}
+
 func TestStoreApplyRollsBack(t *testing.T) {
 	backend := &failingBackend{memoryBackend: newMemoryBackend(), failAccount: Name("second")}
 	store := &Store{service: "test", backend: backend}

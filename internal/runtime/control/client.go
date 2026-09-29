@@ -92,14 +92,20 @@ type State struct {
 	ConfigRoot   string    `json:"config_root"`
 }
 
-func Path() string { return filepath.Join(config.RootPath(), FileName) }
+func Path() string { return PathAt(config.RootPath()) }
+
+func PathAt(root string) string { return filepath.Join(filepath.Clean(root), FileName) }
 
 func Load() (State, error) { return LoadContext(context.Background()) }
 
 func LoadContext(ctx context.Context) (State, error) {
-	statePath := Path()
+	return LoadContextAt(ctx, config.RootPath())
+}
+
+func LoadContextAt(ctx context.Context, root string) (State, error) {
+	statePath := PathAt(root)
 	readSpan := tracepkg.Start(ctx, "CONTROL", "runtime.control.state.read", "Reading runtime control state", tracepkg.String("state_file", statePath))
-	data, retries, err := readStateFile()
+	data, retries, err := readStateFileAt(statePath)
 	if err != nil {
 		readSpan.FailMessage("Runtime control state read failed", err, tracepkg.Int("retries", retries))
 		if os.IsNotExist(err) {
@@ -136,8 +142,8 @@ func LoadContext(ctx context.Context) (State, error) {
 	return state, nil
 }
 
-func readStateFile() ([]byte, int, error) {
-	data, err := os.ReadFile(Path())
+func readStateFileAt(path string) ([]byte, int, error) {
+	data, err := os.ReadFile(path)
 	if runtime.GOOS != "windows" || err == nil || os.IsNotExist(err) {
 		return data, 0, err
 	}
@@ -145,7 +151,7 @@ func readStateFile() ([]byte, int, error) {
 	for range 5 {
 		retries++
 		time.Sleep(10 * time.Millisecond)
-		data, err = os.ReadFile(Path())
+		data, err = os.ReadFile(path)
 		if err == nil || os.IsNotExist(err) {
 			return data, retries, err
 		}
@@ -154,7 +160,11 @@ func readStateFile() ([]byte, int, error) {
 }
 
 func Request(ctx context.Context, method, path string, input, output any) (State, error) {
-	state, err := LoadContext(ctx)
+	return RequestAt(ctx, config.RootPath(), method, path, input, output)
+}
+
+func RequestAt(ctx context.Context, root, method, path string, input, output any) (State, error) {
+	state, err := LoadContextAt(ctx, root)
 	if err != nil {
 		return State{}, err
 	}
@@ -171,7 +181,7 @@ func Request(ctx context.Context, method, path string, input, output any) (State
 		body = bytes.NewReader(data)
 	}
 	endpoint := "http://" + state.Address + path
-	span := tracepkg.Start(ctx, "CONTROL", "runtime.control.request", "Runtime control request", tracepkg.String("state_file", Path()), tracepkg.Int("pid", state.PID), tracepkg.String("address", state.Address), tracepkg.String("method", method), tracepkg.URL("endpoint", endpoint))
+	span := tracepkg.Start(ctx, "CONTROL", "runtime.control.request", "Runtime control request", tracepkg.String("state_file", PathAt(root)), tracepkg.Int("pid", state.PID), tracepkg.String("address", state.Address), tracepkg.String("method", method), tracepkg.URL("endpoint", endpoint))
 	request, err := http.NewRequestWithContext(ctx, method, endpoint, body)
 	if err != nil {
 		span.FailMessage("Runtime control request construction failed", err)
@@ -224,11 +234,15 @@ func (reader *countingReader) Read(buffer []byte) (int, error) {
 }
 
 func WaitStatusChange(ctx context.Context, lifecycle string) (RuntimeStatus, error) {
+	return WaitStatusChangeAt(ctx, config.RootPath(), lifecycle)
+}
+
+func WaitStatusChangeAt(ctx context.Context, root, lifecycle string) (RuntimeStatus, error) {
 	previous := strings.TrimSpace(lifecycle)
 	span := tracepkg.Start(ctx, "CONTROL", "runtime.control.status-wait", "Waiting for runtime lifecycle change", tracepkg.String("previous_lifecycle", previous))
 	var result RuntimeStatus
 	path := "/status/wait?lifecycle=" + url.QueryEscape(strings.TrimSpace(lifecycle))
-	state, err := Request(ctx, http.MethodGet, path, nil, &result)
+	state, err := RequestAt(ctx, root, http.MethodGet, path, nil, &result)
 	if err != nil {
 		span.FailMessage("Runtime lifecycle wait failed", err, tracepkg.String("previous_lifecycle", previous))
 		return RuntimeStatus{}, err
@@ -239,6 +253,23 @@ func WaitStatusChange(ctx context.Context, lifecycle string) (RuntimeStatus, err
 	}
 	span.EndMessage("Runtime lifecycle changed", tracepkg.String("previous_lifecycle", previous), tracepkg.String("current_lifecycle", result.Lifecycle), tracepkg.Bool("changed", previous != strings.TrimSpace(result.Lifecycle)), tracepkg.Int("pid", result.PID), tracepkg.String("run_id", result.RunID))
 	return result, nil
+}
+
+func RequestStatusAt(ctx context.Context, root string) (RuntimeStatus, error) {
+	var result RuntimeStatus
+	state, err := RequestAt(ctx, root, http.MethodGet, "/status", nil, &result)
+	if err != nil {
+		return RuntimeStatus{}, err
+	}
+	if err := ValidatePID(ctx, state.PID, result.PID, "status"); err != nil {
+		return RuntimeStatus{}, err
+	}
+	return result, nil
+}
+
+func RequestShutdownAt(ctx context.Context, root string) error {
+	_, err := RequestAt(ctx, root, http.MethodPost, "/shutdown", nil, &map[string]bool{})
+	return err
 }
 
 func ValidatePID(ctx context.Context, expected, actual int, operation string) error {

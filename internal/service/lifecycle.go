@@ -17,6 +17,7 @@ const (
 
 type RuntimeProbe func(context.Context) (runtimecontrol.RuntimeStatus, bool, error)
 type RuntimeShutdown func(context.Context) error
+type RuntimeStatusWait func(context.Context, string) (runtimecontrol.RuntimeStatus, error)
 
 type LifecycleEvent struct {
 	Phase   string
@@ -26,12 +27,13 @@ type LifecycleEvent struct {
 type LifecycleObserver func(LifecycleEvent)
 
 type Lifecycle struct {
-	Manager  Manager
-	Spec     Spec
-	Probe    RuntimeProbe
-	Shutdown RuntimeShutdown
-	Timeout  time.Duration
-	Observe  LifecycleObserver
+	Manager          Manager
+	Spec             Spec
+	Probe            RuntimeProbe
+	Shutdown         RuntimeShutdown
+	WaitStatusChange RuntimeStatusWait
+	Timeout          time.Duration
+	Observe          LifecycleObserver
 }
 
 type RuntimeOwnerConflictKind string
@@ -372,10 +374,18 @@ func WaitRuntimeStopped(ctx context.Context, probe RuntimeProbe, timeout time.Du
 }
 
 func (l Lifecycle) waitReady(ctx context.Context, previousRunID string) (runtimecontrol.RuntimeStatus, error) {
-	return WaitRuntimeReady(ctx, l.Spec, l.Probe, previousRunID, l.timeout())
+	wait := l.WaitStatusChange
+	if wait == nil {
+		wait = runtimecontrol.WaitStatusChange
+	}
+	return waitRuntimeReady(ctx, l.Spec, l.Probe, wait, previousRunID, l.timeout())
 }
 
 func WaitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, previousRunID string, timeout time.Duration) (runtimecontrol.RuntimeStatus, error) {
+	return waitRuntimeReady(ctx, spec, probe, runtimecontrol.WaitStatusChange, previousRunID, timeout)
+}
+
+func waitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, waitStatusChange RuntimeStatusWait, previousRunID string, timeout time.Duration) (runtimecontrol.RuntimeStatus, error) {
 	if probe == nil {
 		return runtimecontrol.RuntimeStatus{}, errors.New("managed runtime probe is unavailable")
 	}
@@ -421,9 +431,9 @@ func WaitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, previo
 				lastErr = errors.New("previous managed runtime is still shutting down")
 			} else if status.Starting {
 				lastErr = errors.New("managed runtime is still starting")
-				if status.Lifecycle != "" {
+				if status.Lifecycle != "" && waitStatusChange != nil {
 					waitCtx, cancel := context.WithTimeout(ctx, min(10*time.Second, time.Until(deadline)))
-					_, waitErr := runtimecontrol.WaitStatusChange(waitCtx, status.Lifecycle)
+					_, waitErr := waitStatusChange(waitCtx, status.Lifecycle)
 					cancel()
 					if waitErr == nil {
 						continue

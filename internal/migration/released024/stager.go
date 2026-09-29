@@ -34,12 +34,15 @@ import (
 )
 
 const (
-	StageJournalVersion  = 1
-	stagePhaseQuiescing  = "quiescing"
-	stagePhaseStaging    = "staging"
-	stagePhaseStaged     = "staged"
-	stagePhaseFailed     = "failed"
-	maxStageJournalBytes = 2 << 20
+	StageJournalVersion        = 1
+	stagePhaseQuiescing        = "quiescing"
+	stagePhaseStaging          = "staging"
+	stagePhaseStaged           = "staged"
+	stagePhaseActivating       = "activating"
+	stagePhaseActivationFailed = "activation-failed"
+	stagePhaseCommitted        = "committed"
+	stagePhaseFailed           = "failed"
+	maxStageJournalBytes       = 2 << 20
 )
 
 type StageOptions struct {
@@ -78,6 +81,7 @@ type WorkspaceStageOutcome struct {
 type RollbackReference struct {
 	SourceRoot   string `json:"source_root"`
 	SourceSHA256 string `json:"source_sha256"`
+	OperatorHome string `json:"operator_home,omitempty"`
 	TargetRoot   string `json:"target_root"`
 	TargetExists bool   `json:"target_exists"`
 	BundlePath   string `json:"bundle_path,omitempty"`
@@ -97,8 +101,11 @@ type StageJournal struct {
 	Domains       []DomainOutcome         `json:"domains"`
 	Workspaces    []WorkspaceStageOutcome `json:"workspaces"`
 	StagedSHA256  string                  `json:"staged_sha256,omitempty"`
+	Activation    []ActivationOutcome     `json:"activation,omitempty"`
+	Health        []HealthOutcome         `json:"health,omitempty"`
 	CreatedAt     time.Time               `json:"created_at"`
 	UpdatedAt     time.Time               `json:"updated_at"`
+	CommittedAt   *time.Time              `json:"committed_at,omitempty"`
 	FailureStage  string                  `json:"failure_stage,omitempty"`
 }
 
@@ -159,6 +166,12 @@ func Stage(ctx context.Context, options StageOptions) (result StageResult, retEr
 			}
 			return stageResultFromJournal(previous, true), nil
 		}
+		if previous.Phase == stagePhaseCommitted {
+			return StageResult{}, errors.New("released migration is already committed")
+		}
+		if previous.Phase == stagePhaseActivating || previous.Phase == stagePhaseActivationFailed {
+			return StageResult{}, errors.New("released migration activation requires explicit recovery")
+		}
 		if previous.Phase == stagePhaseFailed {
 			if err := removeOwnedStageRoot(stageRoot, previous); err != nil {
 				return StageResult{}, err
@@ -192,7 +205,7 @@ func Stage(ctx context.Context, options StageOptions) (result StageResult, retEr
 		Version: StageJournalVersion, SourceRelease: SourceRelease, Phase: stagePhaseQuiescing,
 		SourceRoot: manifest.Source.Root, SourceSHA256: manifest.SourceSHA256,
 		TargetRoot: targetRoot, StageRoot: stageRoot,
-		Rollback: RollbackReference{SourceRoot: manifest.Source.Root, SourceSHA256: manifest.SourceSHA256, TargetRoot: targetRoot, TargetExists: pathExists(targetRoot)},
+		Rollback: RollbackReference{SourceRoot: manifest.Source.Root, SourceSHA256: manifest.SourceSHA256, OperatorHome: manifest.Source.OperatorHome, TargetRoot: targetRoot, TargetExists: pathExists(targetRoot)},
 		Services: preServices,
 		Domains:  []DomainOutcome{}, Workspaces: []WorkspaceStageOutcome{},
 		CreatedAt: now().UTC(), UpdatedAt: now().UTC(),
@@ -951,7 +964,7 @@ func readStageJournal(path string) (StageJournal, bool, error) {
 		return StageJournal{}, false, errors.New("migration journal is incomplete")
 	}
 	switch journal.Phase {
-	case stagePhaseQuiescing, stagePhaseStaging, stagePhaseStaged, stagePhaseFailed:
+	case stagePhaseQuiescing, stagePhaseStaging, stagePhaseStaged, stagePhaseActivating, stagePhaseActivationFailed, stagePhaseCommitted, stagePhaseFailed:
 	default:
 		return StageJournal{}, false, fmt.Errorf("unsupported migration journal phase: %q", journal.Phase)
 	}

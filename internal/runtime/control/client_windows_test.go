@@ -28,7 +28,7 @@ func TestReadStateFileRetriesWindowsSharingViolation(t *testing.T) {
 		_ = windows.CloseHandle(handle)
 		close(released)
 	}()
-	data, retries, err := readStateFile()
+	data, retries, err := readStateFileAt(Path())
 	<-released
 	if err != nil {
 		t.Fatal(err)

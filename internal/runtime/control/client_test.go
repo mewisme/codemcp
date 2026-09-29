@@ -47,6 +47,33 @@ func TestRequestUsesAuthenticatedLoopbackState(t *testing.T) {
 	}
 }
 
+func TestRequestStatusAtUsesExplicitRootInsteadOfActiveConfigRoot(t *testing.T) {
+	activeRoot := setupRuntimeControlRoot(t)
+	explicitRoot := t.TempDir()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/status" {
+			t.Fatalf("request path=%s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(RuntimeStatus{PID: os.Getpid(), RunID: "run_explicit", ConfigRoot: explicitRoot})
+	}))
+	defer server.Close()
+	writeRuntimeControlState(t, explicitRoot, server.URL, "explicit-secret")
+
+	status, err := RequestStatusAt(t.Context(), explicitRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.RunID != "run_explicit" || filepath.Clean(status.ConfigRoot) != filepath.Clean(explicitRoot) {
+		t.Fatalf("status=%#v", status)
+	}
+	if PathAt(explicitRoot) != filepath.Join(explicitRoot, FileName) {
+		t.Fatalf("explicit path=%q", PathAt(explicitRoot))
+	}
+	if filepath.Clean(Path()) != filepath.Join(filepath.Clean(activeRoot), FileName) {
+		t.Fatalf("active path unexpectedly changed: %q", Path())
+	}
+}
+
 func TestRequestPropagatesStructuredRuntimeError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusConflict)

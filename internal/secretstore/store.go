@@ -92,20 +92,30 @@ var (
 )
 
 func New(root string) *Store {
-	root = strings.TrimSpace(root)
-	if root == "" {
+	return NewForIdentity(root, root)
+}
+
+func NewForIdentity(storageRoot, identityRoot string) *Store {
+	storageRoot = strings.TrimSpace(storageRoot)
+	identityRoot = strings.TrimSpace(identityRoot)
+	if storageRoot == "" || identityRoot == "" {
 		return &Store{initErr: &Error{Operation: "initialize", Err: errors.Join(ErrUnavailable, errors.New("config root is required"))}}
 	}
-	absolute, err := filepath.Abs(root)
+	storageAbsolute, err := filepath.Abs(storageRoot)
 	if err != nil {
 		return &Store{initErr: &Error{Operation: "initialize", Err: errors.Join(ErrUnavailable, err)}}
 	}
-	absolute = filepath.Clean(absolute)
-	sum := sha256.Sum256([]byte(absolute))
+	identityAbsolute, err := filepath.Abs(identityRoot)
+	if err != nil {
+		return &Store{initErr: &Error{Operation: "initialize", Err: errors.Join(ErrUnavailable, err)}}
+	}
+	storageAbsolute = filepath.Clean(storageAbsolute)
+	identityAbsolute = filepath.Clean(identityAbsolute)
+	sum := sha256.Sum256([]byte(identityAbsolute))
 	backendMu.RLock()
 	factory := defaultBackendFactory
 	backendMu.RUnlock()
-	return &Store{service: servicePrefix + "/" + hex.EncodeToString(sum[:8]), backend: factory(absolute)}
+	return &Store{service: servicePrefix + "/" + hex.EncodeToString(sum[:8]), backend: factory(storageAbsolute)}
 }
 
 func Name(parts ...string) string {
