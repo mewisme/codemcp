@@ -14,6 +14,12 @@ const (
 	MaxProviderNameBytes = 128
 	MaxEndpointBytes     = 2048
 	MaxModelIDBytes      = 256
+	MaxModelNameBytes    = 256
+)
+
+const (
+	OpenRouterBaseURL      = "https://openrouter.ai/api/v1"
+	OpenRouterDefaultModel = "openrouter/free"
 )
 
 type ProviderID string
@@ -129,8 +135,14 @@ type Result struct {
 }
 
 type Model struct {
-	ID   string `json:"id"`
-	Name string `json:"name,omitempty"`
+	ID                       string   `json:"id"`
+	Name                     string   `json:"name,omitempty"`
+	ContextLength            int      `json:"context_length,omitempty"`
+	PromptPrice              string   `json:"prompt_price,omitempty"`
+	CompletionPrice          string   `json:"completion_price,omitempty"`
+	Free                     bool     `json:"free,omitempty"`
+	SupportedParameters      []string `json:"supported_parameters,omitempty"`
+	SupportsStructuredOutput bool     `json:"supports_structured_output,omitempty"`
 }
 
 type InferenceClient interface {
@@ -157,14 +169,15 @@ func IsCoreProvider(id ProviderID) bool {
 
 func DefaultOpenRouter() Provider {
 	return Provider{
-		ID:        OpenRouterID,
-		Name:      "OpenRouter",
-		Protocol:  ProtocolOpenAI,
-		BaseURL:   "https://openrouter.ai/api/v1",
-		Model:     "openrouter/free",
-		AuthMode:  AuthBearer,
-		Discovery: DiscoveryOpenAIModels,
-		CoreKind:  CoreOpenRouter,
+		ID:           OpenRouterID,
+		Name:         "OpenRouter",
+		Protocol:     ProtocolOpenAI,
+		BaseURL:      OpenRouterBaseURL,
+		Model:        OpenRouterDefaultModel,
+		AuthMode:     AuthBearer,
+		Discovery:    DiscoveryOpenAIModels,
+		CoreKind:     CoreOpenRouter,
+		Capabilities: &ProviderCapabilities{StructuredOutput: true},
 	}
 }
 
@@ -323,6 +336,18 @@ func normalizeProvider(value Provider, allowCore bool) (Provider, error) {
 	value.Model = strings.TrimSpace(value.Model)
 	if len(value.Model) > MaxModelIDBytes {
 		return Provider{}, NewError(ErrorInvalidProvider, "model", "model id must be at most 256 bytes")
+	}
+	if value.ID == OpenRouterID {
+		if value.Protocol != ProtocolOpenAI {
+			return Provider{}, NewError(ErrorCoreInvariant, "protocol", "OpenRouter must use the OpenAI-compatible protocol")
+		}
+		if value.AuthMode != AuthBearer {
+			return Provider{}, NewError(ErrorCoreInvariant, "auth_mode", "OpenRouter must use bearer authentication")
+		}
+		if value.Discovery != DiscoveryOpenAIModels {
+			return Provider{}, NewError(ErrorCoreInvariant, "discovery", "OpenRouter must use OpenAI-compatible model discovery")
+		}
+		value.Capabilities = &ProviderCapabilities{StructuredOutput: true}
 	}
 	return value, nil
 }

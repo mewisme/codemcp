@@ -27,6 +27,44 @@ func TestDefaultCatalogLocksCoreIdentityAndSelection(t *testing.T) {
 	}
 }
 
+func TestOpenRouterCoreProfileIsCanonical(t *testing.T) {
+	provider := DefaultOpenRouter()
+	if provider.BaseURL != OpenRouterBaseURL || provider.Model != OpenRouterDefaultModel || provider.Protocol != ProtocolOpenAI || provider.AuthMode != AuthBearer || provider.Discovery != DiscoveryOpenAIModels || provider.CoreKind != CoreOpenRouter {
+		t.Fatalf("OpenRouter defaults=%#v", provider)
+	}
+	if provider.Capabilities == nil || !provider.Capabilities.StructuredOutput {
+		t.Fatalf("OpenRouter capabilities=%#v", provider.Capabilities)
+	}
+	for name, mutate := range map[string]func(*Provider){
+		"protocol":  func(value *Provider) { value.Protocol = ProtocolAnthropic },
+		"auth":      func(value *Provider) { value.AuthMode = AuthNone },
+		"discovery": func(value *Provider) { value.Discovery = DiscoveryNone },
+	} {
+		t.Run(name, func(t *testing.T) {
+			value := DefaultOpenRouter()
+			mutate(&value)
+			catalog := DefaultCatalog()
+			catalog.Providers[0] = value
+			if _, err := NormalizeCatalog(catalog); !IsCategory(err, ErrorCoreInvariant) {
+				t.Fatalf("OpenRouter core mutation err=%v", err)
+			}
+		})
+	}
+
+	value := DefaultOpenRouter()
+	value.BaseURL = "https://router.example/v1"
+	value.Model = "vendor/user-model"
+	catalog := DefaultCatalog()
+	catalog.Providers[0] = value
+	normalized, err := NormalizeCatalog(catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if normalized.Providers[0].BaseURL != value.BaseURL || normalized.Providers[0].Model != value.Model {
+		t.Fatalf("OpenRouter endpoint/model override lost: %#v", normalized.Providers[0])
+	}
+}
+
 func TestProviderIDsNormalizeAndRejectUnsafeValues(t *testing.T) {
 	id, err := NormalizeProviderID("  Acme.Provider_1  ")
 	if err != nil || id != "acme.provider_1" {

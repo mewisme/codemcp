@@ -1,0 +1,107 @@
+package application
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+
+	"go.mewis.me/codemcp/internal/llm"
+	"go.mewis.me/codemcp/internal/secretstore"
+)
+
+const (
+	defaultLLMModelReadLimit = 50
+	maxLLMModelReadLimit     = 200
+	maxLLMModelSearchBytes   = 128
+)
+
+type LLMModelQuery struct {
+	Search   string `json:"search,omitempty"`
+	FreeOnly bool   `json:"free_only,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+type LLMModelPage struct {
+	ProviderID llm.ProviderID `json:"provider_id"`
+	Models     []llm.Model    `json:"models"`
+	Total      int            `json:"total"`
+	Truncated  bool           `json:"truncated"`
+}
+
+func (s *LLMService) OpenRouterModels(ctx context.Context, query LLMModelQuery) (LLMModelPage, error) {
+	provider, err := s.Provider(ctx, string(llm.OpenRouterID))
+	if err != nil {
+		return LLMModelPage{}, err
+	}
+	query, err = normalizeLLMModelQuery(query)
+	if err != nil {
+		return LLMModelPage{}, err
+	}
+	models, err := s.openRouterClient().DiscoverModels(ctx, provider)
+	if err != nil {
+		return LLMModelPage{}, err
+	}
+	filtered := make([]llm.Model, 0, min(len(models), query.Limit))
+	search := strings.ToLower(query.Search)
+	total := 0
+	for _, model := range models {
+		if query.FreeOnly && !model.Free {
+			continue
+		}
+		if search != "" && !strings.Contains(strings.ToLower(model.ID), search) && !strings.Contains(strings.ToLower(model.Name), search) {
+			continue
+		}
+		total++
+		if len(filtered) < query.Limit {
+			filtered = append(filtered, model)
+		}
+	}
+	return LLMModelPage{
+		ProviderID: provider.ID,
+		Models:     filtered,
+		Total:      total,
+		Truncated:  total > len(filtered),
+	}, nil
+}
+
+func (s *LLMService) ProbeOpenRouter(ctx context.Context) error {
+	provider, err := s.Provider(ctx, string(llm.OpenRouterID))
+	if err != nil {
+		return err
+	}
+	_, err = s.openRouterClient().Infer(ctx, provider, llm.Request{
+		Instructions:    "Return a short acknowledgement.",
+		Messages:        []llm.Message{{Role: llm.RoleUser, Content: "Respond with OK."}},
+		MaxOutputTokens: 8,
+	})
+	return err
+}
+
+func (s *LLMService) openRouterClient() *llm.Client {
+	root := ""
+	if s != nil {
+		root = s.root
+	}
+	return llm.NewClient(llm.ClientOptions{Credential: func(context.Context, llm.ProviderID) (string, error) {
+		credential, err := llm.LoadCredential(root, string(llm.OpenRouterID))
+		if errors.Is(err, secretstore.ErrNotFound) {
+			return "", nil
+		}
+		return credential, err
+	}})
+}
+
+func normalizeLLMModelQuery(query LLMModelQuery) (LLMModelQuery, error) {
+	query.Search = strings.TrimSpace(query.Search)
+	if len(query.Search) > maxLLMModelSearchBytes {
+		return LLMModelQuery{}, fmt.Errorf("LLM model search must be at most %d bytes", maxLLMModelSearchBytes)
+	}
+	if query.Limit < 0 || query.Limit > maxLLMModelReadLimit {
+		return LLMModelQuery{}, fmt.Errorf("LLM model limit must be between 0 and %d", maxLLMModelReadLimit)
+	}
+	if query.Limit == 0 {
+		query.Limit = defaultLLMModelReadLimit
+	}
+	return query, nil
+}
