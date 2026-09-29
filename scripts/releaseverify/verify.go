@@ -1,0 +1,719 @@
+package releaseverify
+
+import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
+	"strings"
+	"time"
+
+	"golang.org/x/net/html"
+	"gopkg.in/yaml.v3"
+
+	updatepkg "go.mewis.me/codemcp/internal/update"
+)
+
+const (
+	ExpectedModulePath       = "go.mewis.me/codemcp"
+	ExpectedGitHubRepository = "mewisme/codemcp"
+	ExpectedVanityURL        = "https://go.mewis.me/codemcp?go-get=1"
+	ExpectedGitRemote        = "https://github.com/mewisme/codemcp"
+)
+
+type TelemetryExpectation string
+
+const (
+	TelemetryUnchecked TelemetryExpectation = ""
+	TelemetryAbsent    TelemetryExpectation = "absent"
+	TelemetryPresent   TelemetryExpectation = "present"
+)
+
+func VerifyRepository(root, observedRepository string) error {
+	root = filepath.Clean(strings.TrimSpace(root))
+	if root == "" || root == "." {
+		var err error
+		root, err = os.Getwd()
+		if err != nil {
+			return err
+		}
+	}
+	if observedRepository = strings.TrimSpace(observedRepository); observedRepository != "" && observedRepository != ExpectedGitHubRepository {
+		return fmt.Errorf("release repository = %q, want %q", observedRepository, ExpectedGitHubRepository)
+	}
+	if err := verifyModulePath(root); err != nil {
+		return err
+	}
+	if updatepkg.DefaultOwner+"/"+updatepkg.DefaultRepo != ExpectedGitHubRepository || updatepkg.PackageName != "codemcp" {
+		return errors.New("updater release metadata does not target the canonical CodeMCP repository")
+	}
+	if err := verifyGoReleaser(root); err != nil {
+		return err
+	}
+	if err := verifyReleaseWorkflows(root); err != nil {
+		return err
+	}
+	if err := verifyMigrationNotes(root); err != nil {
+		return err
+	}
+	return verifyNoLegacyRepositoryURLs(root)
+}
+
+func verifyModulePath(root string) error {
+	data, err := os.ReadFile(filepath.Join(root, "go.mod"))
+	if err != nil {
+		return fmt.Errorf("read go.mod: %w", err)
+	}
+	line := strings.SplitN(string(data), "\n", 2)[0]
+	fields := strings.Fields(line)
+	if len(fields) != 2 || fields[0] != "module" || fields[1] != ExpectedModulePath {
+		return fmt.Errorf("module declaration = %q, want module %s", line, ExpectedModulePath)
+	}
+	return nil
+}
+
+func verifyGoReleaser(root string) error {
+	data, err := os.ReadFile(filepath.Join(root, ".goreleaser.yaml"))
+	if err != nil {
+		return fmt.Errorf("read goreleaser config: %w", err)
+	}
+	var cfg map[string]any
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("decode goreleaser config: %w", err)
+	}
+	if stringValue(cfg["project_name"]) != updatepkg.PackageName {
+		return fmt.Errorf("goreleaser project_name = %q, want %q", stringValue(cfg["project_name"]), updatepkg.PackageName)
+	}
+	before := mapValue(cfg["before"])
+	for _, hook := range stringSlice(before["hooks"]) {
+		fields := strings.Fields(hook)
+		if len(fields) < 2 || fields[0] != "node" || !strings.HasPrefix(filepath.ToSlash(fields[1]), "scripts/") {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(fields[1]))); err != nil {
+			return fmt.Errorf("goreleaser before hook references missing script %q", fields[1])
+		}
+	}
+	release := mapValue(cfg["release"])
+	github := mapValue(release["github"])
+	if stringValue(github["owner"])+"/"+stringValue(github["name"]) != ExpectedGitHubRepository {
+		return errors.New("goreleaser release target is not the canonical CodeMCP repository")
+	}
+	checksum := mapValue(cfg["checksum"])
+	if stringValue(checksum["name_template"]) != updatepkg.ChecksumName {
+		return errors.New("goreleaser checksum asset name drifted from the updater contract")
+	}
+	buildFound := false
+	for _, item := range sliceValue(cfg["builds"]) {
+		build := mapValue(item)
+		if stringValue(build["id"]) != updatepkg.PackageName {
+			continue
+		}
+		buildFound = true
+		if stringValue(build["binary"]) != "cm" {
+			return errors.New("release build does not emit the canonical cm binary")
+		}
+		if !sameStrings(stringSlice(build["goos"]), []string{"linux", "windows", "darwin"}) ||
+			!sameStrings(stringSlice(build["goarch"]), []string{"amd64", "arm64"}) {
+			return errors.New("release platform matrix drifted from the canonical updater contract")
+		}
+		wantLDFlag := "-X " + ExpectedModulePath + "/internal/telemetry/product.Endpoint={{ index .Env \"TELEMETRY_ENDPOINT\" }}"
+		if !containsExact(stringSlice(build["ldflags"]), wantLDFlag) {
+			return errors.New("release build does not inject product telemetry through the canonical ldflag")
+		}
+	}
+	if !buildFound {
+		return errors.New("canonical CodeMCP release build is missing")
+	}
+	scoops := sliceValue(cfg["scoops"])
+	if len(scoops) != 1 {
+		return errors.New("expected one canonical Scoop manifest")
+	}
+	scoop := mapValue(scoops[0])
+	if stringValue(scoop["name"]) != updatepkg.PackageName ||
+		stringValue(scoop["homepage"]) != ExpectedGitRemote ||
+		!strings.Contains(stringValue(scoop["url_template"]), ExpectedGitRemote+"/releases/download/") {
+		return errors.New("scoop generation does not target the canonical CodeMCP release")
+	}
+	casks := sliceValue(cfg["homebrew_casks"])
+	if len(casks) != 1 {
+		return errors.New("expected one canonical Homebrew cask")
+	}
+	cask := mapValue(casks[0])
+	if stringValue(cask["name"]) != updatepkg.PackageName ||
+		stringValue(cask["homepage"]) != ExpectedGitRemote ||
+		!sameStrings(stringSlice(cask["binaries"]), []string{"cm"}) {
+		return errors.New("homebrew generation does not install the canonical cm binary")
+	}
+	return nil
+}
+
+func verifyReleaseWorkflows(root string) error {
+	releaseData, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
+	if err != nil {
+		return fmt.Errorf("read release workflow: %w", err)
+	}
+	release := string(releaseData)
+	repositoryExpr := "$" + "{{ github.repository }}"
+	telemetryExpr := "$" + "{{ vars.TELEMETRY_ENDPOINT }}"
+	for _, required := range []string{
+		"RELEASE_REPOSITORY: " + repositoryExpr,
+		"--github-repository",
+		"--vanity-url",
+		ExpectedVanityURL,
+		"TELEMETRY_ENDPOINT: " + telemetryExpr,
+		"args: build --snapshot --clean --single-target",
+		"TELEMETRY_ENDPOINT: ''",
+		"--expect-telemetry absent",
+		"args: release --clean",
+		"--dist dist --expect-telemetry present",
+		"dist/scoop/codemcp.json",
+		"dist/homebrew/Casks/codemcp.rb",
+	} {
+		if !strings.Contains(release, required) {
+			return fmt.Errorf("release workflow is missing required cutover contract %q", required)
+		}
+	}
+	for _, script := range []string{
+		filepath.Join("scripts", "release-cutover", "main.go"),
+		filepath.Join("scripts", "verify-release-telemetry.go"),
+	} {
+		if _, err := os.Stat(filepath.Join(root, script)); err != nil {
+			return fmt.Errorf("release workflow helper %s is unavailable: %w", filepath.ToSlash(script), err)
+		}
+	}
+	ciData, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
+	if err != nil {
+		return fmt.Errorf("read CI workflow: %w", err)
+	}
+	ci := string(ciData)
+	if !strings.Contains(ci, "--expect-telemetry absent") || !strings.Contains(ci, "dist-smoke/") {
+		return errors.New("ci workflow does not verify endpoint-less source build telemetry boundary")
+	}
+	return nil
+}
+
+func verifyMigrationNotes(root string) error {
+	data, err := os.ReadFile(filepath.Join(root, "docs", "migration-from-0.2.24.md"))
+	if err != nil {
+		return fmt.Errorf("read released migration notes: %w", err)
+	}
+	text := string(data)
+	for _, required := range []string{"chatgpt-mcp", "cgm", "executable aliases", "cm upgrade", "update", "upg", "command aliases"} {
+		if !strings.Contains(text, required) {
+			return fmt.Errorf("released migration notes are missing %q", required)
+		}
+	}
+	return nil
+}
+
+func verifyNoLegacyRepositoryURLs(root string) error {
+	forbidden := []string{
+		"github.com/mewisme/" + "chatgpt-mcp",
+		"api.github.com/repos/mewisme/" + "chatgpt-mcp",
+		"go.mewis.me/" + "chatgpt-mcp",
+	}
+	paths := []string{
+		"README.md", "install.sh", "install.ps1", ".goreleaser.yaml",
+		filepath.Join(".github", "workflows"), "docs",
+	}
+	for _, relative := range paths {
+		path := filepath.Join(root, relative)
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			if err := rejectLegacyURLs(path, relative, forbidden); err != nil {
+				return err
+			}
+			continue
+		}
+		err = filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			display := filepath.ToSlash(strings.TrimPrefix(current, root+string(filepath.Separator)))
+			return rejectLegacyURLs(current, display, forbidden)
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rejectLegacyURLs(path, display string, forbidden []string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	for _, value := range forbidden {
+		if strings.Contains(string(data), value) {
+			return fmt.Errorf("%s contains retired repository URL identity %q", display, value)
+		}
+	}
+	return nil
+}
+
+func VerifyVanity(ctx context.Context, client *http.Client, rawURL string) error {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		rawURL = ExpectedVanityURL
+	}
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return err
+	}
+	request.Header.Set("User-Agent", "CodeMCP release verifier")
+	response, err := client.Do(request)
+	if err != nil {
+		return fmt.Errorf("resolve Go vanity metadata: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("go vanity endpoint returned HTTP %d", response.StatusCode)
+	}
+	document, err := html.Parse(io.LimitReader(response.Body, 1<<20))
+	if err != nil {
+		return fmt.Errorf("parse Go vanity metadata: %w", err)
+	}
+	want := ExpectedModulePath + " git " + ExpectedGitRemote
+	found := false
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		if found || node == nil {
+			return
+		}
+		if node.Type == html.ElementNode && node.Data == "meta" {
+			name, content := "", ""
+			for _, attribute := range node.Attr {
+				switch strings.ToLower(attribute.Key) {
+				case "name":
+					name = attribute.Val
+				case "content":
+					content = attribute.Val
+				}
+			}
+			if name == "go-import" && strings.Join(strings.Fields(content), " ") == want {
+				found = true
+				return
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(document)
+	if !found {
+		return fmt.Errorf("go vanity metadata does not resolve %s to %s", ExpectedModulePath, ExpectedGitRemote)
+	}
+	return nil
+}
+
+func VerifyBinaryTelemetry(ctx context.Context, binary string, expectation TelemetryExpectation) error {
+	if expectation != TelemetryAbsent && expectation != TelemetryPresent {
+		return fmt.Errorf("unsupported telemetry expectation %q", expectation)
+	}
+	binary = filepath.Clean(strings.TrimSpace(binary))
+	info, err := os.Stat(binary)
+	if err != nil {
+		return fmt.Errorf("inspect release binary: %w", err)
+	}
+	if info.IsDir() {
+		return errors.New("release binary path is a directory")
+	}
+	root, err := os.MkdirTemp("", "cm-release-telemetry-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(root)
+	command := exec.CommandContext(ctx, binary, "--config-dir", filepath.Join(root, "config"), "telemetry", "show", "--json")
+	command.Env = replaceEnv(os.Environ(), map[string]string{
+		"CM_TELEMETRY":       "0",
+		"TELEMETRY_ENDPOINT": "https://runtime-override.invalid/v1/products/codemcp/events",
+		"HOME":               root,
+		"USERPROFILE":        root,
+	})
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("query release telemetry metadata: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	var status map[string]any
+	if err := json.Unmarshal(output, &status); err != nil {
+		return fmt.Errorf("decode release telemetry metadata: %w", err)
+	}
+	available, _ := status["endpoint_available"].(bool)
+	host := stringValue(status["endpoint_host"])
+	product := stringValue(status["product"])
+	if strings.Contains(string(output), "/v1/products/codemcp/events") || strings.Contains(string(output), "runtime-override.invalid") {
+		return errors.New("release telemetry status exposed a runtime-configurable raw endpoint")
+	}
+	switch expectation {
+	case TelemetryAbsent:
+		if available || host != "" || product != "" {
+			return fmt.Errorf("endpoint-less build reported telemetry metadata: %s", strings.TrimSpace(string(output)))
+		}
+	case TelemetryPresent:
+		if !available || host == "" || product != "codemcp" {
+			return fmt.Errorf("release build telemetry metadata is incomplete: %s", strings.TrimSpace(string(output)))
+		}
+	}
+	return nil
+}
+
+func VerifyDist(ctx context.Context, distRoot string, expectation TelemetryExpectation) error {
+	distRoot = filepath.Clean(strings.TrimSpace(distRoot))
+	if distRoot == "" {
+		return errors.New("release dist root is required")
+	}
+	archives, err := releaseArchives(distRoot)
+	if err != nil {
+		return err
+	}
+	wantPlatforms := updatepkg.PrimaryReleaseLayout().Platforms
+	if len(archives) != len(wantPlatforms) {
+		return fmt.Errorf("release archive count = %d, want %d", len(archives), len(wantPlatforms))
+	}
+	seen := map[string]bool{}
+	var nativeBinary []byte
+	for _, archive := range archives {
+		key := archive.platform.OS + "/" + archive.platform.Arch
+		if seen[key] {
+			return fmt.Errorf("duplicate release archive for %s", key)
+		}
+		seen[key] = true
+		content, err := verifyArchive(archive.path, archive.platform)
+		if err != nil {
+			return err
+		}
+		if archive.platform.OS == runtime.GOOS && archive.platform.Arch == runtime.GOARCH {
+			nativeBinary = content
+		}
+	}
+	for _, platform := range wantPlatforms {
+		if !seen[platform.OS+"/"+platform.Arch] {
+			return fmt.Errorf("release archive missing for %s/%s", platform.OS, platform.Arch)
+		}
+	}
+	if err := verifyPackageManifests(distRoot); err != nil {
+		return err
+	}
+	if expectation != TelemetryUnchecked {
+		if len(nativeBinary) == 0 {
+			return fmt.Errorf("release dist has no verifier-host binary for %s/%s", runtime.GOOS, runtime.GOARCH)
+		}
+		dir, err := os.MkdirTemp("", "cm-release-native-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+		name, err := updatepkg.BinaryName(runtime.GOOS, runtime.GOARCH)
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, nativeBinary, 0755); err != nil {
+			return err
+		}
+		if err := VerifyBinaryTelemetry(ctx, path, expectation); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type releaseArchive struct {
+	path     string
+	platform updatepkg.ReleasePlatform
+}
+
+var archiveNamePattern = regexp.MustCompile(`^codemcp_.+_(linux|darwin|windows)_(amd64|arm64)(\.tar\.gz|\.zip)$`)
+
+func releaseArchives(root string) ([]releaseArchive, error) {
+	result := []releaseArchive{}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		match := archiveNamePattern.FindStringSubmatch(entry.Name())
+		if match == nil {
+			return nil
+		}
+		platform, ok := updatepkg.ReleasePlatformFor(match[1], match[2])
+		if !ok || match[3] != platform.ArchiveExtension {
+			return fmt.Errorf("release archive %s does not match canonical platform contract", entry.Name())
+		}
+		result = append(result, releaseArchive{path: path, platform: platform})
+		return nil
+	})
+	sort.Slice(result, func(i, j int) bool { return result[i].path < result[j].path })
+	return result, err
+}
+
+func verifyArchive(path string, platform updatepkg.ReleasePlatform) ([]byte, error) {
+	if strings.HasSuffix(path, ".zip") {
+		return verifyZipArchive(path, platform)
+	}
+	return verifyTarArchive(path, platform)
+}
+
+func verifyTarArchive(path string, platform updatepkg.ReleasePlatform) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	gz, err := gzip.NewReader(file)
+	if err != nil {
+		return nil, err
+	}
+	defer gz.Close()
+	reader := tar.NewReader(gz)
+	var binary []byte
+	for {
+		header, err := reader.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		if retiredExecutable(filepath.Base(filepath.ToSlash(header.Name))) {
+			return nil, fmt.Errorf("%s contains retired executable alias %q", filepath.Base(path), header.Name)
+		}
+		if filepath.ToSlash(header.Name) != platform.BinaryName {
+			continue
+		}
+		if header.Typeflag != tar.TypeReg && header.Typeflag != 0 {
+			return nil, fmt.Errorf("%s canonical binary is not regular", filepath.Base(path))
+		}
+		if binary != nil {
+			return nil, fmt.Errorf("%s contains duplicate %s", filepath.Base(path), platform.BinaryName)
+		}
+		binary, err = io.ReadAll(io.LimitReader(reader, 512<<20))
+		if err != nil {
+			return nil, err
+		}
+	}
+	if len(binary) == 0 {
+		return nil, fmt.Errorf("%s is missing non-empty %s", filepath.Base(path), platform.BinaryName)
+	}
+	return binary, nil
+}
+
+func verifyZipArchive(path string, platform updatepkg.ReleasePlatform) ([]byte, error) {
+	reader, err := zip.OpenReader(path)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	var binary []byte
+	for _, entry := range reader.File {
+		if retiredExecutable(filepath.Base(filepath.ToSlash(entry.Name))) {
+			return nil, fmt.Errorf("%s contains retired executable alias %q", filepath.Base(path), entry.Name)
+		}
+		if filepath.ToSlash(entry.Name) != platform.BinaryName {
+			continue
+		}
+		if !entry.Mode().IsRegular() {
+			return nil, fmt.Errorf("%s canonical binary is not regular", filepath.Base(path))
+		}
+		if binary != nil {
+			return nil, fmt.Errorf("%s contains duplicate %s", filepath.Base(path), platform.BinaryName)
+		}
+		stream, err := entry.Open()
+		if err != nil {
+			return nil, err
+		}
+		binary, err = io.ReadAll(io.LimitReader(stream, 512<<20))
+		closeErr := stream.Close()
+		if err != nil {
+			return nil, err
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+	}
+	if len(binary) == 0 {
+		return nil, fmt.Errorf("%s is missing non-empty %s", filepath.Base(path), platform.BinaryName)
+	}
+	return binary, nil
+}
+
+func retiredExecutable(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "chatgpt-mcp", "chatgpt-mcp.exe", "cgm", "cgm.exe", "cgm.cmd":
+		return true
+	default:
+		return false
+	}
+}
+
+func verifyPackageManifests(root string) error {
+	scoopData, err := os.ReadFile(filepath.Join(root, "scoop", "codemcp.json"))
+	if err != nil {
+		return fmt.Errorf("read Scoop manifest: %w", err)
+	}
+	var scoop map[string]any
+	if err := json.Unmarshal(scoopData, &scoop); err != nil {
+		return fmt.Errorf("decode Scoop manifest: %w", err)
+	}
+	if !manifestBinContains(scoop, "cm.exe") {
+		return errors.New("scoop manifest does not install cm.exe")
+	}
+	if !strings.Contains(string(scoopData), ExpectedGitRemote+"/releases/download/") {
+		return errors.New("scoop manifest does not use the canonical CodeMCP release repository")
+	}
+	if strings.Contains(string(scoopData), "chatgpt-mcp") || strings.Contains(string(scoopData), "\"cgm\"") {
+		return errors.New("scoop manifest contains a retired executable identity")
+	}
+
+	caskData, err := os.ReadFile(filepath.Join(root, "homebrew", "Casks", "codemcp.rb"))
+	if err != nil {
+		return fmt.Errorf("read Homebrew cask: %w", err)
+	}
+	cask := string(caskData)
+	if !regexp.MustCompile(`(?m)^\s*binary\s+["'](?:#\{staged_path\}/)?cm["']`).MatchString(cask) {
+		return errors.New("homebrew cask does not install cm")
+	}
+	if !strings.Contains(cask, ExpectedGitRemote) {
+		return errors.New("homebrew cask does not use the canonical CodeMCP repository")
+	}
+	if strings.Contains(cask, "chatgpt-mcp") || regexp.MustCompile(`["']cgm["']`).MatchString(cask) {
+		return errors.New("homebrew cask contains a retired executable identity")
+	}
+	return nil
+}
+
+func manifestBinContains(value any, expected string) bool {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, child := range typed {
+			if key == "bin" && containsManifestString(child, expected) {
+				return true
+			}
+			if manifestBinContains(child, expected) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range typed {
+			if manifestBinContains(child, expected) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsManifestString(value any, expected string) bool {
+	switch typed := value.(type) {
+	case string:
+		return filepath.Base(filepath.ToSlash(typed)) == expected
+	case []any:
+		for _, child := range typed {
+			if containsManifestString(child, expected) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func replaceEnv(current []string, replacements map[string]string) []string {
+	normalized := make(map[string]string, len(replacements))
+	for key, value := range replacements {
+		normalized[strings.ToUpper(key)] = value
+	}
+	result := make([]string, 0, len(current)+len(normalized))
+	for _, item := range current {
+		key, _, ok := strings.Cut(item, "=")
+		if ok {
+			if _, replace := normalized[strings.ToUpper(key)]; replace {
+				continue
+			}
+		}
+		result = append(result, item)
+	}
+	for key, value := range normalized {
+		result = append(result, key+"="+value)
+	}
+	return result
+}
+
+func sameStrings(actual, expected []string) bool {
+	left, right := append([]string(nil), actual...), append([]string(nil), expected...)
+	sort.Strings(left)
+	sort.Strings(right)
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func containsExact(values []string, expected string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == expected {
+			return true
+		}
+	}
+	return false
+}
+
+func mapValue(value any) map[string]any {
+	if typed, ok := value.(map[string]any); ok {
+		return typed
+	}
+	return map[string]any{}
+}
+
+func sliceValue(value any) []any {
+	if typed, ok := value.([]any); ok {
+		return typed
+	}
+	return nil
+}
+
+func stringValue(value any) string {
+	if typed, ok := value.(string); ok {
+		return strings.TrimSpace(typed)
+	}
+	return ""
+}
+
+func stringSlice(value any) []string {
+	items := sliceValue(value)
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if value := stringValue(item); value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}

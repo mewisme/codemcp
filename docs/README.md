@@ -7,6 +7,7 @@ Start with a task guide, then use the reference docs only when you need exact co
 | I want to… | Read |
 | --- | --- |
 | Install `CodeMCP` and connect ChatGPT | [Getting started](getting-started.md) |
+| Upgrade a released 0.2.24 installation | [Migration from 0.2.24](migration-from-0.2.24.md) |
 | Configure the OpenAI tunnel and ChatGPT app | [OpenAI + ChatGPT](openai-chatgpt.md) |
 | Understand `ws_*`, workspace scope, and `wsc_*` containers | [Workspaces](workspaces.md) |
 | Operate the runtime, services, logs, and updates | [Runtime and operations](runtime.md) |

@@ -316,6 +316,10 @@ jobs:
         if: needs.changes.outputs.full == 'true'
         run: go build -trimpath -o ./dist-smoke/${{ matrix.binary }} ./
 
+      - name: Verify source build release boundary
+        if: needs.changes.outputs.full == 'true'
+        run: go run ./scripts/release-cutover --binary ./dist-smoke/${{ matrix.binary }} --expect-telemetry absent
+
       - name: Runtime smoke
         if: needs.changes.outputs.full == 'true'
         run: node scripts/smoke-release.mjs ./dist-smoke/${{ matrix.binary }}
