@@ -83,7 +83,8 @@ func NewClient(options ClientOptions) *Client {
 func (c *Client) Capabilities(provider Provider) AdapterCapabilities {
 	return AdapterCapabilities{
 		StructuredOutput: provider.Protocol == ProtocolOpenAI && provider.Capabilities != nil && provider.Capabilities.StructuredOutput,
-		ModelDiscovery:   provider.Protocol == ProtocolOpenAI && provider.Discovery == DiscoveryOpenAIModels,
+		ModelDiscovery: provider.Protocol == ProtocolOpenAI &&
+			(provider.Discovery == DiscoveryOpenAIModels || provider.Discovery == DiscoveryOllamaTags),
 	}
 }
 
@@ -157,7 +158,7 @@ func (c *Client) DiscoverModels(ctx context.Context, provider Provider) (models 
 		return nil, err
 	}
 	if !c.Capabilities(provider).ModelDiscovery {
-		return nil, NewError(ErrorUnsupported, "discovery", "provider does not support OpenAI-compatible model discovery")
+		return nil, NewError(ErrorUnsupported, "discovery", "provider does not support model discovery")
 	}
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
@@ -177,7 +178,14 @@ func (c *Client) DiscoverModels(ctx context.Context, provider Provider) (models 
 		}
 		span.EndMessage("LLM model discovery completed", tracepkg.Int("models", len(models)))
 	}()
-	return c.discoverOpenAIModels(ctx, provider)
+	switch provider.Discovery {
+	case DiscoveryOpenAIModels:
+		return c.discoverOpenAIModels(ctx, provider)
+	case DiscoveryOllamaTags:
+		return c.discoverOllamaModels(ctx, provider)
+	default:
+		return nil, NewError(ErrorUnsupported, "discovery", "provider does not support model discovery")
+	}
 }
 
 func (c *Client) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {

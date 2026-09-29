@@ -186,7 +186,7 @@ func DefaultOllama() Provider {
 		ID:        OllamaID,
 		Name:      "Ollama",
 		Protocol:  ProtocolOpenAI,
-		BaseURL:   "http://localhost:11434/v1",
+		BaseURL:   OllamaLocalBaseURL,
 		AuthMode:  AuthNone,
 		Discovery: DiscoveryOllamaTags,
 		CoreKind:  CoreOllama,
@@ -348,6 +348,32 @@ func normalizeProvider(value Provider, allowCore bool) (Provider, error) {
 			return Provider{}, NewError(ErrorCoreInvariant, "discovery", "OpenRouter must use OpenAI-compatible model discovery")
 		}
 		value.Capabilities = &ProviderCapabilities{StructuredOutput: true}
+	}
+	if value.ID == OllamaID {
+		if value.Protocol != ProtocolOpenAI {
+			return Provider{}, NewError(ErrorCoreInvariant, "protocol", "Ollama must use the OpenAI-compatible protocol")
+		}
+		if value.Discovery != DiscoveryOllamaTags {
+			return Provider{}, NewError(ErrorCoreInvariant, "discovery", "Ollama must use native tag discovery")
+		}
+		if value.AuthMode != AuthNone && value.AuthMode != AuthBearer {
+			return Provider{}, NewError(ErrorCoreInvariant, "auth_mode", "Ollama supports no authentication or bearer authentication")
+		}
+		endpointClass, err := ClassifyOllamaEndpoint(value.BaseURL)
+		if err != nil {
+			return Provider{}, err
+		}
+		switch endpointClass {
+		case OllamaEndpointLocal:
+			if value.AuthMode != AuthNone {
+				return Provider{}, NewError(ErrorCoreInvariant, "auth_mode", "local Ollama must not require a credential")
+			}
+		case OllamaEndpointCloud:
+			if value.AuthMode != AuthBearer {
+				return Provider{}, NewError(ErrorCoreInvariant, "auth_mode", "Ollama Cloud requires bearer authentication")
+			}
+		}
+		value.Capabilities = nil
 	}
 	return value, nil
 }

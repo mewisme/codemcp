@@ -2,12 +2,10 @@ package application
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
 	"go.mewis.me/codemcp/internal/llm"
-	"go.mewis.me/codemcp/internal/secretstore"
 )
 
 const (
@@ -38,7 +36,7 @@ func (s *LLMService) OpenRouterModels(ctx context.Context, query LLMModelQuery) 
 	if err != nil {
 		return LLMModelPage{}, err
 	}
-	models, err := s.openRouterClient().DiscoverModels(ctx, provider)
+	models, err := s.llmClient().DiscoverModels(ctx, provider)
 	if err != nil {
 		return LLMModelPage{}, err
 	}
@@ -70,26 +68,12 @@ func (s *LLMService) ProbeOpenRouter(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.openRouterClient().Infer(ctx, provider, llm.Request{
+	_, err = s.llmClient().Infer(ctx, provider, llm.Request{
 		Instructions:    "Return a short acknowledgement.",
 		Messages:        []llm.Message{{Role: llm.RoleUser, Content: "Respond with OK."}},
 		MaxOutputTokens: 8,
 	})
 	return err
-}
-
-func (s *LLMService) openRouterClient() *llm.Client {
-	root := ""
-	if s != nil {
-		root = s.root
-	}
-	return llm.NewClient(llm.ClientOptions{Credential: func(context.Context, llm.ProviderID) (string, error) {
-		credential, err := llm.LoadCredential(root, string(llm.OpenRouterID))
-		if errors.Is(err, secretstore.ErrNotFound) {
-			return "", nil
-		}
-		return credential, err
-	}})
 }
 
 func normalizeLLMModelQuery(query LLMModelQuery) (LLMModelQuery, error) {
