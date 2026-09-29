@@ -14,6 +14,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
+	"go.mewis.me/codemcp/internal/llm"
 	memorypkg "go.mewis.me/codemcp/internal/memory"
 	"go.mewis.me/codemcp/internal/secretstore"
 	telegramcredential "go.mewis.me/codemcp/internal/telegram/credential"
@@ -113,6 +114,91 @@ func TestExportExcludesManagedSecretsAndRuntimeState(t *testing.T) {
 		if excludedFile(file.Path) {
 			t.Fatalf("excluded file was exported: %s", file.Path)
 		}
+	}
+}
+
+func TestExportAndImportKeepLLMProviderStateSecretFree(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(configformat.EnvConfigDir, root)
+	portableConfig := validConfig()
+	portableConfig.Auth.MCPEnabled = false
+	portableConfig.Auth.AdminEnabled = false
+	portableConfig.Server.AllowUnauthenticatedLoopback = true
+	writeConfigFile(t, root, portableConfig)
+	store := llm.NewStore(root)
+	providers := llm.DefaultCatalog()
+	providers.Providers[0].Model = "vendor/model"
+	providers.Providers = append(providers.Providers, llm.Provider{
+		ID: "acme", Name: "Acme", Protocol: llm.ProtocolOpenAI, BaseURL: "https://llm.acme.test/v1", Model: "acme-model",
+		AuthMode: llm.AuthBearer, Discovery: llm.DiscoveryOpenAIModels,
+	})
+	if err := store.Save(providers); err != nil {
+		t.Fatal(err)
+	}
+
+	destination := filepath.Join(t.TempDir(), "backup.json")
+	if _, err := Export(root, destination, ExportOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(bytes.ToLower(raw), []byte(`"api_key"`)) {
+		t.Fatal("LLM export contained API key field")
+	}
+	bundle, err := decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, file := range bundle.Files {
+		if file.Path == ".llm-providers.lock" {
+			t.Fatal("LLM mutation lock leaked into portable export")
+		}
+		if file.Path != llm.StoreRelativePath {
+			continue
+		}
+		found = true
+		if _, err := llm.NormalizePortableStoreJSON(file.Data); err != nil {
+			t.Fatalf("portable LLM store = %v", err)
+		}
+	}
+	if !found {
+		t.Fatal("LLM provider state missing from portable export")
+	}
+	importedRoot := filepath.Join(t.TempDir(), "imported")
+	if _, err := Import(importedRoot, destination, ImportOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	importedProviders, err := llm.NewStore(importedRoot).Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if importedProviders.Providers[0].Model != "vendor/model" || len(importedProviders.Providers) != 3 {
+		t.Fatalf("imported LLM providers = %#v", importedProviders)
+	}
+
+	configData, err := presentationSafeConfig(mustConfigJSON(t, portableConfig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := "sk-import-secret"
+	credentialStore := []byte(`{"version":1,"active_provider":"openrouter","providers":[{"id":"openrouter","name":"OpenRouter","protocol":"openai","base_url":"https://openrouter.ai/api/v1","model":"openrouter/free","auth_mode":"bearer","discovery":"openai-models","core_kind":"openrouter","api_key":"` + secret + `"}]}`)
+	malicious := Envelope{
+		Version: Version, CreatedAt: time.Now().UTC(), Source: currentPlatform(), SecretPolicy: SecretPolicyExcluded,
+		Files: []File{{Path: "config.json", Mode: 0600, Data: configData}, {Path: llm.StoreRelativePath, Mode: 0600, Data: credentialStore}},
+	}
+	maliciousPath := filepath.Join(t.TempDir(), "malicious.json")
+	writeEnvelopeFile(t, maliciousPath, malicious)
+	target := filepath.Join(t.TempDir(), "target")
+	if _, err := Import(target, maliciousPath, ImportOptions{}); err == nil {
+		t.Fatal("credential-bearing LLM import was accepted")
+	} else if strings.Contains(err.Error(), secret) {
+		t.Fatalf("LLM import error leaked credential: %v", err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("rejected LLM import mutated target: %v", err)
 	}
 }
 
@@ -493,6 +579,15 @@ func validConfig() config.Config {
 	cfg.Auth.MCPTokenHash = "mcp-hash"
 	cfg.Auth.AdminTokenHash = "admin-hash"
 	return cfg
+}
+
+func mustConfigJSON(t *testing.T, cfg config.Config) []byte {
+	t.Helper()
+	data, err := configformat.Marshal(configformat.JSON, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func writeConfigFile(t *testing.T, root string, cfg config.Config) {

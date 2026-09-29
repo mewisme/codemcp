@@ -17,6 +17,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/llm"
 	"go.mewis.me/codemcp/internal/secretinventory"
 	"go.mewis.me/codemcp/internal/secretstore"
 	"go.mewis.me/codemcp/internal/state"
@@ -311,7 +312,7 @@ func collectFiles(root string) ([]File, int, error) {
 
 func excludedFile(relative string) bool {
 	relative = pathpkg.Clean(strings.TrimPrefix(relative, "./"))
-	if relative == ".runtime-control.json" || relative == "tunnel.json" || relative == "state/instance.json" || relative == "state/update.json" {
+	if relative == ".runtime-control.json" || relative == ".llm-providers.lock" || relative == "tunnel.json" || relative == "state/instance.json" || relative == "state/update.json" {
 		return true
 	}
 	for _, prefix := range []string{"logs/", "runtime/", "state/secrets/"} {
@@ -336,6 +337,8 @@ func presentationSafeFile(relative string, data []byte) ([]byte, error) {
 		return presentationSafeOAuth(data)
 	case "upstreams.json":
 		return presentationSafeUpstream(data)
+	case llm.StoreRelativePath:
+		return llm.NormalizePortableStoreJSON(data)
 	case "upstream.json":
 		return nil, errors.New("legacy upstream.json must be migrated to upstreams.json before export")
 	default:
@@ -891,6 +894,10 @@ func containsSensitiveState(relative string, data []byte) (bool, error) {
 					}
 				}
 			}
+		}
+	case llm.StoreRelativePath:
+		if _, err := llm.NormalizePortableStoreJSON(data); err != nil {
+			return false, fmt.Errorf("decode llm provider envelope file: %w", err)
 		}
 	case "upstream.json":
 		decoded, err := configformat.DecodeGeneric(configformat.JSON, data)
