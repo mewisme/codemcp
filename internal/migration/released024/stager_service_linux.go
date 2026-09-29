@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"go.mewis.me/codemcp/internal/service"
 )
@@ -67,40 +66,48 @@ func (platformHistoricalServiceController) Restore(ctx context.Context, source S
 	return manager.Start(spec)
 }
 
-func historicalServiceSpec(ctx context.Context, source SourceDescriptor, state ServiceState) (service.Spec, error) {
-	scope := service.ScopeUser
-	if state.Scope == string(service.ScopeSystem) {
-		scope = service.ScopeSystem
-	}
-	account, err := service.InvokingAccountContext(ctx, scope)
+func (platformHistoricalServiceController) Retire(ctx context.Context, source SourceDescriptor, state ServiceState) error {
+	spec, err := historicalServiceSpec(ctx, source, state)
 	if err != nil {
-		return service.Spec{}, err
+		return err
 	}
-	if source.OperatorHome != "" && scope == service.ScopeUser {
-		account.HomeDir = source.OperatorHome
+	manager := service.NewManager()
+	if _, err := os.Lstat(state.DefinitionPath); err != nil {
+		if os.IsNotExist(err) {
+			status, statusErr := manager.Status(spec)
+			if statusErr != nil {
+				return statusErr
+			}
+			if !status.Installed && !status.Running {
+				return nil
+			}
+		}
+		return err
 	}
-	return service.Spec{ID: state.ID, Scope: scope, ConfigRoot: state.ConfigRoot, Binary: state.Binary, Account: account}, nil
-}
-
-func waitHistoricalStopped(ctx context.Context, manager service.Manager, spec service.Spec) error {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	timer := time.NewTimer(5 * time.Second)
-	defer timer.Stop()
-	for {
-		status, err := manager.Status(spec)
-		if err != nil {
+	if err := verifyHistoricalServiceDefinition(source, state); err != nil {
+		return err
+	}
+	status, err := manager.Status(spec)
+	if err != nil {
+		return err
+	}
+	if status.Running {
+		if err := manager.Stop(spec); err != nil {
 			return err
 		}
-		if !status.Running {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-timer.C:
-			return fmt.Errorf("historical service %s did not stop", spec.ID)
-		case <-ticker.C:
+		if err := waitHistoricalStopped(ctx, manager, spec); err != nil {
+			return err
 		}
 	}
+	if err := manager.Uninstall(spec); err != nil {
+		return err
+	}
+	status, err = manager.Status(spec)
+	if err != nil {
+		return err
+	}
+	if status.Installed || status.Running {
+		return fmt.Errorf("historical service %s remained installed after retirement", state.ID)
+	}
+	return nil
 }

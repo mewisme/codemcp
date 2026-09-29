@@ -598,7 +598,14 @@ func inventoryRoot(root string, instance InstanceInspection) ([]Artifact, string
 			artifacts = append(artifacts, artifact)
 			return nil
 		}
-		if artifact.Classification != ClassTransientDrop && artifact.Classification != ClassRegenerate && info.Size() <= maxRegularFileBytes {
+		if ((artifact.Classification == ClassTransientDrop && artifact.Kind == "runtime-state") ||
+			(artifact.Classification == ClassRegenerate && artifact.Kind == "service-environment")) && info.Size() <= maxRegularFileBytes {
+			fileHash, _, err := hashFile(path, maxRegularFileBytes)
+			if err != nil {
+				return err
+			}
+			artifact.SHA256 = fileHash
+		} else if artifact.Classification != ClassTransientDrop && artifact.Classification != ClassRegenerate && info.Size() <= maxRegularFileBytes {
 			fileHash, bytesRead, err := hashFile(path, maxRegularFileBytes)
 			if err != nil {
 				return err

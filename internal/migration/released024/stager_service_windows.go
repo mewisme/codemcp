@@ -5,11 +5,14 @@ package released024
 import (
 	"context"
 	"fmt"
+	"html"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"go.mewis.me/codemcp/internal/service"
 )
 
 type platformHistoricalServiceController struct{}
@@ -92,6 +95,62 @@ func (platformHistoricalServiceController) Restore(ctx context.Context, _ Source
 			_, err := runHistoricalTask(ctx, "/Change", "/TN", state.ID, "/DISABLE")
 			return err
 		}
+	}
+	return nil
+}
+
+func (platformHistoricalServiceController) Retire(ctx context.Context, source SourceDescriptor, state ServiceState) error {
+	spec, err := historicalServiceSpec(ctx, source, state)
+	if err != nil {
+		return err
+	}
+	launcherExists := true
+	if _, err := os.Lstat(state.DefinitionPath); err != nil {
+		if os.IsNotExist(err) {
+			launcherExists = false
+		} else {
+			return err
+		}
+	}
+	query, queryErr := runHistoricalTask(ctx, "/Query", "/TN", state.ID, "/FO", "LIST", "/V")
+	taskExists := queryErr == nil
+	if !launcherExists && !taskExists {
+		return nil
+	}
+	if !launcherExists && taskExists {
+		return fmt.Errorf("historical service %s task remains but verified launcher is missing", state.ID)
+	}
+	if err := verifyHistoricalServiceDefinitionWindows(state); err != nil {
+		return err
+	}
+	if taskExists {
+		xmlText, xmlErr := runHistoricalTask(ctx, "/Query", "/TN", state.ID, "/XML")
+		if xmlErr != nil {
+			return xmlErr
+		}
+		normalizedXML := strings.ToLower(strings.ReplaceAll(html.UnescapeString(xmlText), `\`, "/"))
+		normalizedLauncher := strings.ToLower(strings.ReplaceAll(filepath.Clean(state.DefinitionPath), `\`, "/"))
+		if !strings.Contains(normalizedXML, normalizedLauncher) {
+			return fmt.Errorf("historical service %s task ownership changed before retirement", state.ID)
+		}
+		if taskOutputRunning(query) {
+			if _, err := runHistoricalTask(ctx, "/End", "/TN", state.ID); err != nil {
+				return err
+			}
+		}
+		if _, err := runHistoricalTask(ctx, "/Delete", "/TN", state.ID, "/F"); err != nil {
+			return err
+		}
+	}
+	if err := os.Remove(state.DefinitionPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	status, err := service.NewManager().Status(spec)
+	if err != nil {
+		return err
+	}
+	if status.Installed {
+		return fmt.Errorf("historical service %s remained installed after retirement", state.ID)
 	}
 	return nil
 }

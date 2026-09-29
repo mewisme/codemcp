@@ -30,8 +30,10 @@ type fakeHistoricalController struct {
 	running    bool
 	quiesced   []string
 	restored   []string
+	retired    []string
 	quiesceErr error
 	restoreErr error
+	retireErr  error
 	onQuiesce  func(ServiceState)
 }
 
@@ -55,6 +57,15 @@ func (f *fakeHistoricalController) Restore(_ context.Context, _ SourceDescriptor
 	if state.Running {
 		f.running = true
 	}
+	return nil
+}
+
+func (f *fakeHistoricalController) Retire(_ context.Context, _ SourceDescriptor, state ServiceState) error {
+	f.retired = append(f.retired, state.ID)
+	if f.retireErr != nil {
+		return f.retireErr
+	}
+	f.running = false
 	return nil
 }
 

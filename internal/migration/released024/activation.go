@@ -434,6 +434,10 @@ func Activate(ctx context.Context, options ActivateOptions) (result ActivationRe
 
 	committedAt := now().UTC()
 	journal.Health = append([]HealthOutcome(nil), health...)
+	journal.Canonical = CanonicalActivationReference{
+		ServiceID: spec.ID, Scope: string(scope), Binary: command.Binary,
+		EnvironmentHash: spec.EnvironmentHash, ConfigRoot: journal.TargetRoot, RunID: runtimeStatus.RunID,
+	}
 	journal.Phase = stagePhaseCommitted
 	journal.FailureStage = ""
 	journal.CommittedAt = &committedAt
@@ -808,6 +812,9 @@ func runtimeShutdownAt(root string) service.RuntimeShutdown {
 func activationResultFromJournal(journal StageJournal) ActivationResult {
 	return ActivationResult{
 		TargetRoot: journal.TargetRoot,
+		ServiceID:  journal.Canonical.ServiceID,
+		Scope:      service.Scope(journal.Canonical.Scope),
+		Binary:     journal.Canonical.Binary,
 		Activation: append([]ActivationOutcome(nil), journal.Activation...),
 		Health:     append([]HealthOutcome(nil), journal.Health...),
 		Committed:  journal.Phase == stagePhaseCommitted,

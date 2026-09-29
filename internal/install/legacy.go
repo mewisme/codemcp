@@ -88,6 +88,61 @@ func FindLegacyAliases() ([]LegacyAlias, error) {
 	return items, nil
 }
 
+func RemoveLegacyInstallation(expected LegacyInstallation) (bool, error) {
+	if expected.PackageManaged || !expected.Verified || !expected.Removable {
+		return false, nil
+	}
+	info, err := os.Lstat(expected.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if info.IsDir() {
+		return false, errors.New("legacy executable path is a directory")
+	}
+	target := expected.Path
+	if resolved, resolveErr := filepath.EvalSymlinks(expected.Path); resolveErr == nil {
+		target = resolved
+	}
+	if !samePath(target, expected.Target) {
+		return false, errors.New("legacy executable target changed before removal")
+	}
+	if platformPackageManagerOwnsPath(expected.Path) || platformPackageManagerOwnsPath(target) {
+		return false, errors.New("legacy executable became package-manager owned before removal")
+	}
+	if !verifyChatGPTMCPBinary(target) {
+		return false, errors.New("legacy executable ownership changed before removal")
+	}
+	if err := os.Remove(expected.Path); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func RemoveLegacyAlias(expected LegacyAlias) (bool, error) {
+	if expected.PackageManaged || !expected.Verified || !expected.Removable {
+		return false, nil
+	}
+	if _, err := os.Lstat(expected.Path); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	current, err := inspectLegacyAlias(expected.Path, currentLegacyEnvironment())
+	if err != nil {
+		return false, err
+	}
+	if current.PackageManaged || !current.Verified || !current.Removable || !samePath(current.Target, expected.Target) {
+		return false, errors.New("legacy alias ownership changed before removal")
+	}
+	if err := os.Remove(expected.Path); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func currentLegacyEnvironment() legacyEnvironment {
 	home, _ := os.UserHomeDir()
 	return legacyEnvironment{Path: os.Getenv("PATH"), Home: home, GoBin: os.Getenv("GOBIN"), GoPath: os.Getenv("GOPATH"), Scoop: os.Getenv("SCOOP")}

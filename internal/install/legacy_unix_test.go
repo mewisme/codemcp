@@ -4,6 +4,7 @@ package install
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -43,6 +44,93 @@ func TestHistoricalAliasVerificationTargetsHistoricalExecutable(t *testing.T) {
 	}
 	if _, ok, err := legacyAliasTargetPlatform(aliasPath, "cm"); err != nil || ok {
 		t.Fatalf("historical alias matched current cm identity: ok=%v err=%v", ok, err)
+	}
+}
+
+func TestRemoveLegacyLaunchersLeavesOnlyCanonicalCommandOnPath(t *testing.T) {
+	layout := testLayout(t)
+	dir := t.TempDir()
+	legacyBinary := filepath.Join(dir, historicalBinaryName())
+	legacyAlias := filepath.Join(dir, historicalAliasName())
+	canonical := filepath.Join(dir, layout.BinaryName)
+	copyTestExecutable(t, legacyBinary)
+	copyTestExecutable(t, canonical)
+	if err := os.Symlink(historicalBinaryName(), legacyAlias); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	installation, err := InspectLegacyInstallation(layout, legacyBinary, legacyBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias, err := InspectLegacyAlias(legacyAlias)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := RemoveLegacyAlias(alias); err != nil || !removed {
+		t.Fatalf("remove alias=%t err=%v alias=%#v", removed, err, alias)
+	}
+	if removed, err := RemoveLegacyInstallation(installation); err != nil || !removed {
+		t.Fatalf("remove installation=%t err=%v item=%#v", removed, err, installation)
+	}
+	if _, err := exec.LookPath(historicalBinaryName()); err == nil {
+		t.Fatal("historical executable still resolves on PATH")
+	}
+	if _, err := exec.LookPath(historicalAliasName()); err == nil {
+		t.Fatal("historical alias still resolves on PATH")
+	}
+	if resolved, err := exec.LookPath(layout.BinaryName); err != nil || !samePath(resolved, canonical) {
+		t.Fatalf("canonical command resolved=%q err=%v", resolved, err)
+	}
+}
+
+func TestRemoveLegacyAliasRefusesOwnershipDrift(t *testing.T) {
+	dir := t.TempDir()
+	legacyBinary := filepath.Join(dir, historicalBinaryName())
+	copyTestExecutable(t, legacyBinary)
+	aliasPath := filepath.Join(dir, historicalAliasName())
+	if err := os.Symlink(historicalBinaryName(), aliasPath); err != nil {
+		t.Fatal(err)
+	}
+	expected, err := InspectLegacyAlias(aliasPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(aliasPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("unrelated", aliasPath); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := RemoveLegacyAlias(expected); err == nil || removed {
+		t.Fatalf("ownership drift removal=%t err=%v", removed, err)
+	}
+	if _, err := os.Lstat(aliasPath); err != nil {
+		t.Fatalf("drifted alias was removed: %v", err)
+	}
+}
+
+func TestRemoveLegacyInstallationPreservesPackageManagedCandidate(t *testing.T) {
+	layout := testLayout(t)
+	dir := filepath.Join(t.TempDir(), "Cellar", "chatgpt-mcp", "1.0.0", "bin")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, historicalBinaryName())
+	copyTestExecutable(t, path)
+	item, err := InspectLegacyInstallation(layout, path, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !item.PackageManaged || item.Removable {
+		t.Fatalf("candidate classification=%#v", item)
+	}
+	if removed, err := RemoveLegacyInstallation(item); err != nil || removed {
+		t.Fatalf("package-managed removal=%t err=%v", removed, err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("package-managed executable changed: %v", err)
 	}
 }
 

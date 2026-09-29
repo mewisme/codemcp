@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"go.mewis.me/codemcp/internal/service"
 )
 
 type platformHistoricalServiceController struct{}
@@ -77,6 +79,52 @@ func (platformHistoricalServiceController) Restore(ctx context.Context, _ Source
 	if state.Running {
 		_, err := runHistoricalCommand(ctx, "launchctl", "kickstart", "-k", target)
 		return err
+	}
+	return nil
+}
+
+func (platformHistoricalServiceController) Retire(ctx context.Context, source SourceDescriptor, state ServiceState) error {
+	spec, err := historicalServiceSpec(ctx, source, state)
+	if err != nil {
+		return err
+	}
+	manager := service.NewManager()
+	if _, err := os.Lstat(state.DefinitionPath); err != nil {
+		if os.IsNotExist(err) {
+			status, statusErr := manager.Status(spec)
+			if statusErr != nil {
+				return statusErr
+			}
+			if !status.Installed && !status.Running {
+				return nil
+			}
+		}
+		return err
+	}
+	if err := verifyHistoricalServiceDefinitionDarwin(state); err != nil {
+		return err
+	}
+	status, err := manager.Status(spec)
+	if err != nil {
+		return err
+	}
+	if status.Running {
+		if err := manager.Stop(spec); err != nil {
+			return err
+		}
+		if err := waitHistoricalStopped(ctx, manager, spec); err != nil {
+			return err
+		}
+	}
+	if err := manager.Uninstall(spec); err != nil {
+		return err
+	}
+	status, err = manager.Status(spec)
+	if err != nil {
+		return err
+	}
+	if status.Installed || status.Running {
+		return fmt.Errorf("historical service %s remained installed after retirement", state.ID)
 	}
 	return nil
 }

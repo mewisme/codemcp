@@ -41,6 +41,9 @@ const (
 	stagePhaseActivating       = "activating"
 	stagePhaseActivationFailed = "activation-failed"
 	stagePhaseCommitted        = "committed"
+	stagePhaseRetiring         = "retiring"
+	stagePhaseRetirementFailed = "retirement-failed"
+	stagePhaseRetired          = "retired"
 	stagePhaseFailed           = "failed"
 	maxStageJournalBytes       = 2 << 20
 )
@@ -88,25 +91,47 @@ type RollbackReference struct {
 	BundleSHA256 string `json:"bundle_sha256,omitempty"`
 }
 
+type CanonicalActivationReference struct {
+	ServiceID       string `json:"service_id"`
+	Scope           string `json:"scope"`
+	Binary          string `json:"binary"`
+	EnvironmentHash string `json:"environment_hash"`
+	ConfigRoot      string `json:"config_root"`
+	RunID           string `json:"run_id,omitempty"`
+}
+
+type RetirementOutcome struct {
+	Kind   string `json:"kind"`
+	Target string `json:"target,omitempty"`
+	State  string `json:"state"`
+	Detail string `json:"detail,omitempty"`
+}
+
 type StageJournal struct {
-	Version       int                     `json:"version"`
-	SourceRelease string                  `json:"source_release"`
-	Phase         string                  `json:"phase"`
-	SourceRoot    string                  `json:"source_root"`
-	SourceSHA256  string                  `json:"source_sha256"`
-	TargetRoot    string                  `json:"target_root"`
-	StageRoot     string                  `json:"stage_root"`
-	Rollback      RollbackReference       `json:"rollback"`
-	Services      []ServiceState          `json:"services"`
-	Domains       []DomainOutcome         `json:"domains"`
-	Workspaces    []WorkspaceStageOutcome `json:"workspaces"`
-	StagedSHA256  string                  `json:"staged_sha256,omitempty"`
-	Activation    []ActivationOutcome     `json:"activation,omitempty"`
-	Health        []HealthOutcome         `json:"health,omitempty"`
-	CreatedAt     time.Time               `json:"created_at"`
-	UpdatedAt     time.Time               `json:"updated_at"`
-	CommittedAt   *time.Time              `json:"committed_at,omitempty"`
-	FailureStage  string                  `json:"failure_stage,omitempty"`
+	Version       int                          `json:"version"`
+	SourceRelease string                       `json:"source_release"`
+	Phase         string                       `json:"phase"`
+	SourceRoot    string                       `json:"source_root"`
+	SourceSHA256  string                       `json:"source_sha256"`
+	TargetRoot    string                       `json:"target_root"`
+	StageRoot     string                       `json:"stage_root"`
+	Rollback      RollbackReference            `json:"rollback"`
+	Services      []ServiceState               `json:"services"`
+	Launchers     []Launcher                   `json:"launchers,omitempty"`
+	Artifacts     []Artifact                   `json:"artifacts,omitempty"`
+	Domains       []DomainOutcome              `json:"domains"`
+	Workspaces    []WorkspaceStageOutcome      `json:"workspaces"`
+	StagedSHA256  string                       `json:"staged_sha256,omitempty"`
+	Activation    []ActivationOutcome          `json:"activation,omitempty"`
+	Health        []HealthOutcome              `json:"health,omitempty"`
+	Canonical     CanonicalActivationReference `json:"canonical,omitempty"`
+	Retirement    []RetirementOutcome          `json:"retirement,omitempty"`
+	CreatedAt     time.Time                    `json:"created_at"`
+	UpdatedAt     time.Time                    `json:"updated_at"`
+	CommittedAt   *time.Time                   `json:"committed_at,omitempty"`
+	RetiredAt     *time.Time                   `json:"retired_at,omitempty"`
+	RetainUntil   *time.Time                   `json:"retain_until,omitempty"`
+	FailureStage  string                       `json:"failure_stage,omitempty"`
 }
 
 type StageResult struct {
@@ -206,8 +231,8 @@ func Stage(ctx context.Context, options StageOptions) (result StageResult, retEr
 		SourceRoot: manifest.Source.Root, SourceSHA256: manifest.SourceSHA256,
 		TargetRoot: targetRoot, StageRoot: stageRoot,
 		Rollback: RollbackReference{SourceRoot: manifest.Source.Root, SourceSHA256: manifest.SourceSHA256, OperatorHome: manifest.Source.OperatorHome, TargetRoot: targetRoot, TargetExists: pathExists(targetRoot)},
-		Services: preServices,
-		Domains:  []DomainOutcome{}, Workspaces: []WorkspaceStageOutcome{},
+		Services: preServices, Launchers: append([]Launcher(nil), manifest.Launchers...), Artifacts: retirementArtifacts(manifest.Artifacts),
+		Domains: []DomainOutcome{}, Workspaces: []WorkspaceStageOutcome{},
 		CreatedAt: now().UTC(), UpdatedAt: now().UTC(),
 	}
 	journal.Rollback.BundlePath = strings.TrimSpace(options.BundleSourcePath)
@@ -258,6 +283,8 @@ func Stage(ctx context.Context, options StageOptions) (result StageResult, retEr
 		return fail("source-recheck", errors.New("released source gained unsupported state after quiescence"))
 	}
 	manifest = fresh
+	journal.Launchers = append([]Launcher(nil), manifest.Launchers...)
+	journal.Artifacts = retirementArtifacts(manifest.Artifacts)
 
 	journal.Phase = stagePhaseStaging
 	journal.UpdatedAt = now().UTC()
@@ -388,6 +415,8 @@ func Stage(ctx context.Context, options StageOptions) (result StageResult, retEr
 	if finalSource.SourceSHA256 != manifest.SourceSHA256 {
 		return fail("source-recheck", errors.New("released source changed while staging"))
 	}
+	journal.Launchers = append([]Launcher(nil), finalSource.Launchers...)
+	journal.Artifacts = retirementArtifacts(finalSource.Artifacts)
 	stagedSHA, err := fingerprintStageTree(stageRoot)
 	if err != nil {
 		return fail("fingerprint", err)
@@ -964,7 +993,7 @@ func readStageJournal(path string) (StageJournal, bool, error) {
 		return StageJournal{}, false, errors.New("migration journal is incomplete")
 	}
 	switch journal.Phase {
-	case stagePhaseQuiescing, stagePhaseStaging, stagePhaseStaged, stagePhaseActivating, stagePhaseActivationFailed, stagePhaseCommitted, stagePhaseFailed:
+	case stagePhaseQuiescing, stagePhaseStaging, stagePhaseStaged, stagePhaseActivating, stagePhaseActivationFailed, stagePhaseCommitted, stagePhaseRetiring, stagePhaseRetirementFailed, stagePhaseRetired, stagePhaseFailed:
 	default:
 		return StageJournal{}, false, fmt.Errorf("unsupported migration journal phase: %q", journal.Phase)
 	}
@@ -990,6 +1019,17 @@ func stageResultFromJournal(journal StageJournal, already bool) StageResult {
 func stageJournalPath(journal StageJournal) string {
 	_, path, _ := stagePaths(journal.TargetRoot, journal.SourceSHA256)
 	return path
+}
+
+func retirementArtifacts(values []Artifact) []Artifact {
+	result := make([]Artifact, 0)
+	for _, artifact := range values {
+		if artifact.Classification == ClassTransientDrop && artifact.Kind == "runtime-state" ||
+			artifact.Classification == ClassRegenerate && artifact.Kind == "service-environment" {
+			result = append(result, artifact)
+		}
+	}
+	return result
 }
 
 func sameComparablePath(left, right string) bool {
