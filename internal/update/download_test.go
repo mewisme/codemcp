@@ -72,21 +72,24 @@ func TestDownloaderDownload(t *testing.T) {
 	}
 }
 
-func TestDownloaderRejectsSignatureBeforeDownloadingArchive(t *testing.T) {
+func TestDownloaderSignatureFailureWarnsAfterMandatoryChecksum(t *testing.T) {
 	assetName, err := CurrentAssetName("v1.2.3")
 	if err != nil {
 		t.Fatal(err)
 	}
-	archiveRequested := false
+	archive := releaseArchive(t, assetName, []byte("release-binary"))
+	archiveHash := sha256.Sum256(archive)
+	checksums := []byte(hex.EncodeToString(archiveHash[:]) + "  " + assetName + "\n")
+	requests := []string{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
 		switch r.URL.Path {
 		case "/" + ChecksumName:
-			fmt.Fprintf(w, "%064d  %s\n", 0, assetName)
+			_, _ = w.Write(checksums)
 		case "/" + ChecksumSignatureName:
 			_, _ = w.Write([]byte("bad-signature"))
 		case "/" + assetName:
-			archiveRequested = true
-			_, _ = w.Write([]byte("untrusted-archive"))
+			_, _ = w.Write(archive)
 		default:
 			http.NotFound(w, r)
 		}
@@ -94,21 +97,50 @@ func TestDownloaderRejectsSignatureBeforeDownloadingArchive(t *testing.T) {
 	defer server.Close()
 	parent := t.TempDir()
 	release := testDownloadRelease("v1.2.3", assetName, server.URL)
-	_, err = (Downloader{HTTPClient: server.Client(), TempDir: parent, SignatureVerifier: func(context.Context, string, string, string) error {
+	artifact, err := (Downloader{HTTPClient: server.Client(), TempDir: parent, SignatureVerifier: func(context.Context, string, string, string) error {
 		return errors.New("invalid signature")
 	}}).Download(context.Background(), release)
-	if err == nil || !strings.Contains(err.Error(), "invalid signature") {
-		t.Fatalf("error = %v", err)
-	}
-	if archiveRequested {
-		t.Fatal("archive was downloaded before checksum signature verification")
-	}
-	entries, err := os.ReadDir(parent)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("failed signature verification left temporary files: %v", entries)
+	defer artifact.Cleanup()
+	if len(artifact.Warnings) != 1 || !strings.Contains(artifact.Warnings[0], "SHA-256 checksum verified") || !strings.Contains(artifact.Warnings[0], "invalid signature") {
+		t.Fatalf("warnings = %#v", artifact.Warnings)
+	}
+	wantOrder := []string{"/" + ChecksumName, "/" + assetName, "/" + ChecksumSignatureName}
+	if strings.Join(requests, "|") != strings.Join(wantOrder, "|") {
+		t.Fatalf("request order = %#v, want %#v", requests, wantOrder)
+	}
+}
+
+func TestDownloaderMissingOptionalSignatureWarnsAfterChecksum(t *testing.T) {
+	assetName, err := CurrentAssetName("v1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := releaseArchive(t, assetName, []byte("release-binary"))
+	archiveHash := sha256.Sum256(archive)
+	checksums := []byte(hex.EncodeToString(archiveHash[:]) + "  " + assetName + "\n")
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/" + ChecksumName:
+			_, _ = w.Write(checksums)
+		case "/" + assetName:
+			_, _ = w.Write(archive)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	release := testDownloadRelease("v1.2.3", assetName, server.URL)
+	release.SignatureURL = ""
+	artifact, err := (Downloader{HTTPClient: server.Client(), TempDir: t.TempDir()}).Download(context.Background(), release)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer artifact.Cleanup()
+	if len(artifact.Warnings) != 1 || !strings.Contains(artifact.Warnings[0], "not published") {
+		t.Fatalf("warnings = %#v", artifact.Warnings)
 	}
 }
 
@@ -118,8 +150,10 @@ func TestDownloaderCleansUpOnChecksumMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	archive := releaseArchive(t, assetName, []byte("release-binary"))
+	signatureRequested := false
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, ChecksumSignatureName) {
+			signatureRequested = true
 			_, _ = w.Write([]byte("test-signature"))
 			return
 		}
@@ -132,8 +166,15 @@ func TestDownloaderCleansUpOnChecksumMismatch(t *testing.T) {
 	defer server.Close()
 	parent := t.TempDir()
 	release := testDownloadRelease("v1.2.3", assetName, server.URL)
-	if _, err := (Downloader{HTTPClient: server.Client(), TempDir: parent, SignatureVerifier: acceptTestSignature}).Download(context.Background(), release); err == nil {
+	verifierCalled := false
+	if _, err := (Downloader{HTTPClient: server.Client(), TempDir: parent, SignatureVerifier: func(context.Context, string, string, string) error {
+		verifierCalled = true
+		return nil
+	}}).Download(context.Background(), release); err == nil {
 		t.Fatal("checksum mismatch was accepted")
+	}
+	if signatureRequested || verifierCalled {
+		t.Fatal("optional signature work ran before mandatory checksum succeeded")
 	}
 	entries, err := os.ReadDir(parent)
 	if err != nil {
@@ -141,6 +182,13 @@ func TestDownloaderCleansUpOnChecksumMismatch(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("failed download left temporary files: %v", entries)
+	}
+}
+
+func TestSignatureTrustWarningIsBounded(t *testing.T) {
+	warning := signatureTrustWarning(errors.New(strings.Repeat("x", 4096)))
+	if len(warning) > 400 || !strings.HasSuffix(warning, "SHA-256 checksum verified") {
+		t.Fatalf("warning length=%d value=%q", len(warning), warning)
 	}
 }
 

@@ -82,6 +82,10 @@ func upgradeCommand() *cobra.Command {
 		if err != nil {
 			return fmt.Errorf("apply update: %w", err)
 		}
+		for _, warning := range result.Warnings {
+			log.Warning("UPDATE", "update.signature-warning", warning, nil)
+			commandProgressSession(cmd).Append(func(p *presentation.Presenter) { p.ChildStatus(presentation.StatusWarning, warning) })
+		}
 		logCommandStep(cmd, "UPDATE", "update.runtime.coordinating", "Coordinating updated managed runtime", logger.WithVerbose("restart", !noRestart))
 		if err := coordinateUpdatedRuntime(cmd, result.Install, runtimeState, noRestart); err != nil {
 			return fmt.Errorf("update to %s failed after activation: %w", result.Target, err)

@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/install"
@@ -179,6 +180,31 @@ func TestUpdaterDoesNotCreateHistoricalAlias(t *testing.T) {
 	}
 }
 
+func TestUpdaterDoesNotOverwriteUnrelatedCanonicalExecutable(t *testing.T) {
+	layout := updateTestLayout(t)
+	installCurrentVersion(t, layout, "v1.0.0", "old")
+	if err := os.Remove(layout.CanonicalBinary); err != nil {
+		t.Fatal(err)
+	}
+	const unrelated = "unrelated-same-name-executable"
+	if err := os.WriteFile(layout.CanonicalBinary, []byte(unrelated), 0755); err != nil {
+		t.Fatal(err)
+	}
+	binary, _ := updateTestBinary(t, "new")
+	calls := 0
+	updater := Updater{Resolver: fakeResolver{latest: Release{Version: "v1.1.0"}}, Downloader: fakeArtifactSource{binary: binary, calls: &calls}}
+	if _, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"}); err == nil {
+		t.Fatal("direct updater accepted unrelated canonical executable")
+	}
+	content, err := os.ReadFile(layout.CanonicalBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != unrelated {
+		t.Fatalf("unrelated canonical executable changed: %q", content)
+	}
+}
+
 func TestUpdaterVerifiedReleaseDownloadActivates(t *testing.T) {
 	layout := updateTestLayout(t)
 	installCurrentVersion(t, layout, "v1.0.0", "old-release")
@@ -211,6 +237,34 @@ func TestUpdaterVerifiedReleaseDownloadActivates(t *testing.T) {
 	}
 }
 
+func TestUpdaterOptionalSignatureFailureStillActivatesAfterChecksum(t *testing.T) {
+	layout := updateTestLayout(t)
+	installCurrentVersion(t, layout, "v1.0.0", "old-release")
+	server, release := updateReleaseFixture(t, "v1.1.0", []byte("new-release"), true)
+	defer server.Close()
+	updater := Updater{
+		Resolver: fakeResolver{latest: release},
+		Downloader: Downloader{
+			HTTPClient: server.Client(), TempDir: t.TempDir(),
+			SignatureVerifier: func(context.Context, string, string, string) error { return errors.New("sigstore unavailable") },
+		},
+	}
+	result, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Changed || len(result.Warnings) != 1 || !strings.Contains(result.Warnings[0], "SHA-256 checksum verified") {
+		t.Fatalf("result = %#v", result)
+	}
+	version, _, err := install.CurrentVersion(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != "v1.1.0" {
+		t.Fatalf("current version = %q", version)
+	}
+}
+
 func TestUpdaterBadChecksumNeverActivates(t *testing.T) {
 	layout := updateTestLayout(t)
 	installCurrentVersion(t, layout, "v1.0.0", "old-release")
@@ -237,6 +291,44 @@ func TestUpdaterBadChecksumNeverActivates(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(layout.Versions, "v1.1.0")); !os.IsNotExist(statErr) {
 		t.Fatalf("failed update staged target version: %v", statErr)
+	}
+}
+
+func TestUpdaterInstallFailurePreservesCurrentInstallation(t *testing.T) {
+	layout := updateTestLayout(t)
+	installCurrentVersion(t, layout, "v1.0.0", "old-release")
+	binary, _ := updateTestBinary(t, "new-release")
+	calls := 0
+	updater := Updater{
+		Resolver:   fakeResolver{latest: Release{Version: "v1.1.0"}},
+		Downloader: fakeArtifactSource{binary: binary, calls: &calls},
+		Install: func(options install.Options) (install.Result, error) {
+			version, _, err := install.CurrentVersion(options.Layout)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if version != "v1.0.0" {
+				t.Fatalf("current version changed before install transaction: %q", version)
+			}
+			return install.Result{}, errors.New("injected install failure")
+		},
+	}
+	if _, err := updater.Apply(context.Background(), ApplyOptions{Layout: layout, CurrentVersion: "v1.0.0"}); err == nil || !strings.Contains(err.Error(), "injected install failure") {
+		t.Fatalf("error = %v", err)
+	}
+	version, _, err := install.CurrentVersion(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != "v1.0.0" {
+		t.Fatalf("current version changed after install failure: %q", version)
+	}
+	content, err := os.ReadFile(layout.CurrentBinary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "old-release" {
+		t.Fatalf("current binary changed after install failure: %q", content)
 	}
 }
 

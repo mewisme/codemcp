@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -31,9 +32,10 @@ type Downloader struct {
 }
 
 type Artifact struct {
-	Dir     string
-	Binary  string
-	Release Release
+	Dir      string
+	Binary   string
+	Release  Release
+	Warnings []string
 }
 
 func (a Artifact) Cleanup() error {
@@ -81,27 +83,15 @@ func (d Downloader) Download(ctx context.Context, release Release) (result Artif
 	if err := d.downloadFile(ctx, release.ChecksumURL, checksumPath, maxChecksumSize); err != nil {
 		return Artifact{}, fmt.Errorf("download release checksums: %w", err)
 	}
-	if err := d.downloadFile(ctx, release.SignatureURL, signaturePath, maxSignatureSize); err != nil {
-		return Artifact{}, fmt.Errorf("download release checksum signature: %w", err)
-	}
-	verifier := d.SignatureVerifier
-	if verifier == nil {
-		verifier = VerifyChecksumSignature
-	}
-	verifySpan := tracepkg.Start(ctx, "UPDATE", "update.signature.verify", "Verifying release signature", tracepkg.String("checksum", checksumPath), tracepkg.String("signature", signaturePath), tracepkg.String("version", release.Version))
-	if err := verifier(ctx, checksumPath, signaturePath, release.Version); err != nil {
-		verifySpan.FailMessage("Release signature verification failed", err)
-		return Artifact{}, fmt.Errorf("verify release checksum signature: %w", err)
-	}
-	verifySpan.EndMessage("Release signature verified")
 	if err := d.downloadFile(ctx, release.ArchiveURL, archivePath, maxArchiveSize); err != nil {
 		return Artifact{}, fmt.Errorf("download release archive: %w", err)
 	}
 	if err := VerifyChecksumContext(ctx, archivePath, checksumPath, release.ArchiveName); err != nil {
 		return Artifact{}, err
 	}
+	artifact.Warnings = d.verifyOptionalSignature(ctx, release, checksumPath, signaturePath)
 	extractDir := filepath.Join(dir, "extract")
-	binary, err := ExtractBinaryContext(ctx, archivePath, extractDir, release.ArchiveName)
+	binary, err := extractReleaseBinaryContext(ctx, archivePath, extractDir, release.ArchiveName, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return Artifact{}, err
 	}
@@ -109,6 +99,44 @@ func (d Downloader) Download(ctx context.Context, release Release) (result Artif
 	ok = true
 	result = artifact
 	return result, nil
+}
+
+func (d Downloader) verifyOptionalSignature(ctx context.Context, release Release, checksumPath, signaturePath string) []string {
+	verifySpan := tracepkg.Start(ctx, "UPDATE", "update.signature.verify", "Verifying optional release signature", tracepkg.String("checksum", checksumPath), tracepkg.String("signature", signaturePath), tracepkg.String("version", release.Version))
+	warn := func(reason error) []string {
+		warning := signatureTrustWarning(reason)
+		verifySpan.FailMessage("Optional release signature verification unavailable", errors.New(warning))
+		return []string{warning}
+	}
+	if strings.TrimSpace(release.SignatureURL) == "" {
+		return warn(errors.New("signature bundle is not published for this release"))
+	}
+	if err := d.downloadFile(ctx, release.SignatureURL, signaturePath, maxSignatureSize); err != nil {
+		return warn(fmt.Errorf("download signature bundle: %w", err))
+	}
+	verifier := d.SignatureVerifier
+	if verifier == nil {
+		verifier = VerifyChecksumSignature
+	}
+	if err := verifier(ctx, checksumPath, signaturePath, release.Version); err != nil {
+		return warn(fmt.Errorf("verify signature bundle: %w", err))
+	}
+	verifySpan.EndMessage("Optional release signature verified")
+	return nil
+}
+
+func signatureTrustWarning(reason error) string {
+	message := "signature verification unavailable"
+	if reason != nil {
+		if value := strings.Join(strings.Fields(reason.Error()), " "); value != "" {
+			message = value
+		}
+	}
+	const maxReasonBytes = 320
+	if len(message) > maxReasonBytes {
+		message = message[:maxReasonBytes] + "..."
+	}
+	return "Sigstore defense-in-depth unavailable: " + message + "; SHA-256 checksum verified"
 }
 
 func (d Downloader) downloadFile(ctx context.Context, rawURL, destination string, limit int64) error {
@@ -235,8 +263,8 @@ func validateReleaseDownload(release Release) error {
 	if release.SignatureName != ChecksumSignatureName {
 		return fmt.Errorf("release checksum signature asset must be %s", ChecksumSignatureName)
 	}
-	if strings.TrimSpace(release.ArchiveURL) == "" || strings.TrimSpace(release.ChecksumURL) == "" || strings.TrimSpace(release.SignatureURL) == "" {
-		return errors.New("release download URLs are required")
+	if strings.TrimSpace(release.ArchiveURL) == "" || strings.TrimSpace(release.ChecksumURL) == "" {
+		return errors.New("release archive and checksum download URLs are required")
 	}
 	return nil
 }

@@ -15,8 +15,12 @@ REPO="mewisme/codemcp"
 INSTALL_DIR="${CM_INSTALL_DIR:-$HOME/.cm}"
 BIN_DIR="${CM_BIN_DIR:-$HOME/.local/bin}"
 OIDC_ISSUER="https://token.actions.githubusercontent.com"
-CHECKSUM_NAME="codemcp_checksums.txt"
+PACKAGE_NAME="codemcp"
+CHECKSUM_NAME="${PACKAGE_NAME}_checksums.txt"
 SIGNATURE_NAME="${CHECKSUM_NAME}.sigstore.json"
+BINARY_NAME="cm"
+MAX_ARCHIVE_ENTRIES=4096
+MAX_BINARY_BYTES=268435456
 
 for arg in "$@"; do
 	case "$arg" in
@@ -65,7 +69,7 @@ fi
 }
 case "$version" in v*) ;; *) version="v$version" ;; esac
 ver="${version#v}"
-asset="codemcp_${ver}_${os}_${arch}.tar.gz"
+asset="${PACKAGE_NAME}_${ver}_${os}_${arch}.tar.gz"
 url="https://github.com/$REPO/releases/download/$version/$asset"
 checksums_url="https://github.com/$REPO/releases/download/$version/$CHECKSUM_NAME"
 signature_url="https://github.com/$REPO/releases/download/$version/$SIGNATURE_NAME"
@@ -129,6 +133,16 @@ fi
 
 listing="$tmp/listing.txt"
 tar -tzf "$archive" >"$listing"
+verbose_listing="$tmp/listing.verbose.txt"
+tar -tvzf "$archive" >"$verbose_listing"
+entry_count="$(wc -l <"$listing" | tr -d '[:space:]')"
+case "$entry_count" in
+	''|*[!0-9]*) echo "cm: invalid archive entry count." >&2; exit 1 ;;
+esac
+[ "$entry_count" -le "$MAX_ARCHIVE_ENTRIES" ] || {
+	echo "cm: release archive exceeds $MAX_ARCHIVE_ENTRIES entry limit" >&2
+	exit 1
+}
 while IFS= read -r member || [ -n "$member" ]; do
 	[ -n "$member" ] || continue
 	normalized="$(printf '%s' "$member" | sed 's/\\/\//g')"
@@ -155,39 +169,60 @@ while IFS= read -r member || [ -n "$member" ]; do
 	done
 done <"$listing"
 
-bin_listing="$(tar -tvzf "$archive" cm 2>/dev/null | head -n1 || true)"
+while IFS= read -r member_info || [ -n "$member_info" ]; do
+	[ -n "$member_info" ] || continue
+	case "$member_info" in
+		-*|d*) ;;
+		*)
+			echo "cm: release archive contains unsupported entry type" >&2
+			exit 1
+			;;
+	esac
+done <"$verbose_listing"
+
+canonical_count="$(awk -v binary="$BINARY_NAME" '$0 == binary { count++ } END { print count+0 }' "$listing")"
+[ "$canonical_count" -eq 1 ] || {
+	if [ "$canonical_count" -eq 0 ]; then
+		echo "cm: archive is missing member $BINARY_NAME" >&2
+	else
+		echo "cm: release archive contains duplicate $BINARY_NAME" >&2
+	fi
+	exit 1
+}
+bin_listing="$(tar -tvzf "$archive" "$BINARY_NAME" 2>/dev/null || true)"
 [ -n "$bin_listing" ] || {
-	echo "cm: archive is missing member cm" >&2
+	echo "cm: archive is missing member $BINARY_NAME" >&2
+	exit 1
+}
+bin_listing_count="$(printf '%s\n' "$bin_listing" | awk 'NF { count++ } END { print count+0 }')"
+[ "$bin_listing_count" -eq 1 ] || {
+	echo "cm: release archive contains duplicate $BINARY_NAME" >&2
 	exit 1
 }
 case "$bin_listing" in
 	l*|L*)
-		echo "cm: refusing to extract symlink member cm" >&2
+		echo "cm: refusing to extract symlink member $BINARY_NAME" >&2
 		exit 1
 		;;
 	-*) ;;
 	*)
-		echo "cm: refusing non-regular archive member cm" >&2
+		echo "cm: refusing non-regular archive member $BINARY_NAME" >&2
 		exit 1
 		;;
 esac
 
 extract="$tmp/extract"
 mkdir -p "$extract"
-tar -xzf "$archive" -C "$extract" cm
-binary="$extract/cm"
-[ -e "$binary" ] || {
-	echo "cm: binary missing from archive." >&2
+binary="$extract/$BINARY_NAME"
+tar -xOzf "$archive" "$BINARY_NAME" | dd bs=1048576 count=257 2>/dev/null >"$binary"
+binary_bytes="$(wc -c <"$binary" | tr -d '[:space:]')"
+case "$binary_bytes" in
+	''|*[!0-9]*) echo "cm: invalid release binary size." >&2; exit 1 ;;
+esac
+if [ "$binary_bytes" -le 0 ] || [ "$binary_bytes" -gt "$MAX_BINARY_BYTES" ]; then
+	echo "cm: release binary has invalid size $binary_bytes" >&2
 	exit 1
-}
-[ ! -L "$binary" ] || {
-	echo "cm: refusing symlink binary path." >&2
-	exit 1
-}
-[ -f "$binary" ] || {
-	echo "cm: binary missing from archive." >&2
-	exit 1
-}
+fi
 chmod +x "$binary"
 
 "$binary" install

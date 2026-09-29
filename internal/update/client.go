@@ -135,9 +135,6 @@ func (c Client) getRelease(ctx context.Context, endpoint string) (result Release
 	if release.ChecksumURL == "" {
 		return Release{}, fmt.Errorf("latest release %s is missing asset %s", version, release.ChecksumName)
 	}
-	if release.SignatureURL == "" {
-		return Release{}, fmt.Errorf("latest release %s is missing asset %s", version, release.SignatureName)
-	}
 	result = release
 	return result, nil
 }

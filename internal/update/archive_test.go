@@ -111,6 +111,114 @@ func TestExtractRequiresRootBinary(t *testing.T) {
 	}
 }
 
+func TestExtractRejectsDuplicateCanonicalBinary(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "release.zip")
+	writeZipArchive(t, archive, []zipEntry{{name: "cm.exe", content: []byte("one")}, {name: "cm.exe", content: []byte("two")}})
+	if _, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "release.zip"); err == nil {
+		t.Fatal("duplicate canonical binary was accepted")
+	}
+}
+
+func TestExtractRejectsEmptyCanonicalBinary(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "release.tar.gz")
+	writeTarArchive(t, archive, []tarEntry{{name: "cm", content: nil}})
+	if _, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "release.tar.gz"); err == nil {
+		t.Fatal("empty canonical binary was accepted")
+	}
+}
+
+func TestExtractRejectsAliasedCanonicalBinary(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "release.tar.gz")
+	writeTarArchive(t, archive, []tarEntry{{name: "./cm", content: []byte("binary")}})
+	if _, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "release.tar.gz"); err == nil {
+		t.Fatal("aliased canonical binary was accepted")
+	}
+}
+
+func TestExtractRejectsTarNonRegularCanonicalBinary(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "release.tar.gz")
+	file, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(file)
+	writer := tar.NewWriter(gz)
+	if err := writer.WriteHeader(&tar.Header{Name: "cm", Mode: 0600, Typeflag: tar.TypeFifo}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "release.tar.gz"); err == nil {
+		t.Fatal("non-regular canonical binary was accepted")
+	}
+}
+
+func TestExtractRejectsNonCanonicalNonRegularEntry(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "release.tar.gz")
+	file, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(file)
+	writer := tar.NewWriter(gz)
+	if err := writer.WriteHeader(&tar.Header{Name: "cm", Mode: 0755, Typeflag: tar.TypeReg, Size: int64(len("binary"))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write([]byte("binary")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteHeader(&tar.Header{Name: "payload.fifo", Mode: 0600, Typeflag: tar.TypeFifo}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "release.tar.gz"); err == nil {
+		t.Fatal("non-canonical non-regular archive entry was accepted")
+	}
+}
+
+func TestExtractRejectsZipReparseCanonicalBinary(t *testing.T) {
+	archive := filepath.Join(t.TempDir(), "release.zip")
+	file, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer := zip.NewWriter(file)
+	header := &zip.FileHeader{Name: "cm.exe", Method: zip.Deflate}
+	header.SetMode(0755)
+	header.ExternalAttrs |= 0x400
+	stream, err := writer.CreateHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Write([]byte("binary")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "release.zip"); err == nil {
+		t.Fatal("reparse canonical binary was accepted")
+	}
+}
+
 type tarEntry struct {
 	name    string
 	content []byte

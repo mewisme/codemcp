@@ -44,6 +44,7 @@ type ApplyResult struct {
 	Downgrade bool
 	Release   Release
 	Install   install.Result
+	Warnings  []string
 }
 
 func (u Updater) Resolve(ctx context.Context, options ApplyOptions) (ApplyResult, error) {
@@ -84,6 +85,7 @@ func (u Updater) Apply(ctx context.Context, options ApplyOptions) (ApplyResult, 
 		return ApplyResult{}, err
 	}
 	downloadSpan.EndMessage("Verified release artifact downloaded", tracepkg.String("directory", artifact.Dir), tracepkg.String("binary", artifact.Binary))
+	result.Warnings = append(result.Warnings, artifact.Warnings...)
 	defer func() {
 		cleanupSpan := tracepkg.Start(ctx, "UPDATE", "update.artifact.cleanup", "Cleaning update artifact", tracepkg.String("path", artifact.Dir))
 		if cleanupErr := artifact.Cleanup(); cleanupErr != nil {

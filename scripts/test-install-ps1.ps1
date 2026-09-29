@@ -36,6 +36,14 @@ if ($source -notmatch '_service\s+uninstall\s+--external-cleanup') {
 if ($source -notmatch 'refusing to remove shared state under \$installDir automatically') {
   throw 'PowerShell installer uninstall is missing the fail-closed shared-state guard.'
 }
+if ($source -notmatch '&\s+\$exe\s+install') {
+  throw 'PowerShell bootstrap no longer delegates installation to the downloaded canonical binary.'
+}
+$checksumGate = $source.IndexOf('if ($actual -ne $expected) { throw "cm: checksum verification failed for $asset" }')
+$signatureDownload = $source.IndexOf('Invoke-WebRequest -Uri $signatureUrl -OutFile $signature')
+if ($checksumGate -lt 0 -or $signatureDownload -lt 0 -or $checksumGate -gt $signatureDownload) {
+  throw 'PowerShell bootstrap does not enforce SHA-256 before optional signature verification.'
+}
 
 $names = @(
   'ConvertTo-CodeMCPArchitecture',
@@ -43,12 +51,102 @@ $names = @(
   'Get-CodeMCPOSArchitecture',
   'Get-CodeMCPProcessorMachineArchitecture',
   'Get-CodeMCPRegistryProcessorIdentifier',
-  'Resolve-CodeMCPArchitecture'
+  'Resolve-CodeMCPArchitecture',
+  'Test-CodeMCPSafeArchivePath',
+  'Expand-CodeMCPBinaryFromZip'
 )
 foreach ($name in $names) {
   $node = $ast.Find({ param($candidate) $candidate -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $candidate.Name -eq $name }, $true)
   if ($null -eq $node) { throw "missing installer function $name" }
   Invoke-Expression $node.Extent.Text
+}
+
+$maxArchiveEntries = 4096
+$maxBinaryBytes = 268435456
+$repoRoot = Split-Path -Parent $installer
+
+function Get-ReleaseContract {
+  param([string]$Architecture)
+  Push-Location $repoRoot
+  try {
+    $lines = & go run ./scripts/release-layout-contract --version v9.9.9 --os windows --arch $Architecture
+    if ($LASTEXITCODE -ne 0) { throw "release-layout contract helper failed for windows/$Architecture" }
+  } finally {
+    Pop-Location
+  }
+  $values = @{}
+  foreach ($line in $lines) {
+    if ($line -match '^([^=]+)=(.*)$') { $values[$Matches[1]] = $Matches[2] }
+  }
+  return $values
+}
+
+foreach ($contractArch in @('amd64', 'arm64')) {
+  $contract = Get-ReleaseContract $contractArch
+  if (-not $contract.package -or -not $contract.checksum -or -not $contract.signature -or -not $contract.asset -or -not $contract.binary) {
+    throw "canonical release contract is incomplete for windows/$contractArch"
+  }
+  if ($source -notmatch [regex]::Escape("$packageName = '$($contract.package)'")) {
+    throw "PowerShell bootstrap package identity drifted from canonical release contract: $($contract.package)"
+  }
+  if ($contract.binary -ne 'cm.exe' -or $source -notmatch [regex]::Escape("$binaryName = 'cm.exe'")) {
+    throw "PowerShell bootstrap binary identity drifted from canonical release contract: $($contract.binary)"
+  }
+  if ($contract.checksum -ne "$($contract.package)_checksums.txt" -or $contract.signature -ne "$($contract.checksum).sigstore.json") {
+    throw "canonical release checksum/signature contract is internally inconsistent"
+  }
+  if ($contract.asset -ne "$($contract.package)_9.9.9_windows_${contractArch}.zip") {
+    throw "canonical release asset tuple is unexpected: $($contract.asset)"
+  }
+}
+if (-not $source.Contains('$asset = "${packageName}_${ver}_windows_${arch}.zip"')) {
+  throw 'PowerShell bootstrap asset naming formula drifted from canonical release contract.'
+}
+if (-not $source.Contains('$checksumName = "$packageName`_checksums.txt"') -or -not $source.Contains('$signatureName = "$checksumName.sigstore.json"')) {
+  throw 'PowerShell bootstrap checksum/signature naming formula drifted from canonical release contract.'
+}
+$installFlowStart = $source.IndexOf('$arch = Resolve-CodeMCPArchitecture')
+$installInvoke = $source.IndexOf('& $exe install', $installFlowStart)
+if ($installFlowStart -lt 0 -or $installInvoke -lt 0) {
+  throw 'PowerShell bootstrap install flow could not be identified.'
+}
+$preInstall = $source.Substring($installFlowStart, $installInvoke - $installFlowStart)
+if ($preInstall -match 'Remove-Item[^\r\n]*\$installDir' -or $preInstall -match '\[System\.IO\.File\].*\$installDir') {
+  throw 'PowerShell bootstrap mutates the working install before the downloaded Go install transaction starts.'
+}
+
+$fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("cm-archive-fixtures-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $fixtureRoot | Out-Null
+try {
+  foreach ($fixtureCase in @('valid', 'traversal', 'absolute', 'drive', 'duplicate', 'missing', 'symlink', 'reparse', 'nonregular', 'empty', 'aliased')) {
+    $zipPath = Join-Path $fixtureRoot "$fixtureCase.zip"
+    Push-Location $repoRoot
+    try {
+      & go run ./scripts/release-archive-fixture --format zip --case $fixtureCase --output $zipPath
+      if ($LASTEXITCODE -ne 0) { throw "failed to generate ZIP fixture $fixtureCase" }
+    } finally {
+      Pop-Location
+    }
+    $destination = Join-Path $fixtureRoot "extract-$fixtureCase"
+    if ($fixtureCase -eq 'valid') {
+      $extracted = Expand-CodeMCPBinaryFromZip -ZipPath $zipPath -DestinationDir $destination -MemberName 'cm.exe'
+      if (-not (Test-Path -LiteralPath $extracted -PathType Leaf) -or (Get-Item -LiteralPath $extracted).Length -le 0) {
+        throw 'PowerShell archive validator failed the valid canonical fixture.'
+      }
+      continue
+    }
+    $failed = $false
+    try {
+      Expand-CodeMCPBinaryFromZip -ZipPath $zipPath -DestinationDir $destination -MemberName 'cm.exe' | Out-Null
+    } catch {
+      $failed = $true
+    }
+    if (-not $failed) {
+      throw "PowerShell archive validator accepted unsafe fixture '$fixtureCase'."
+    }
+  }
+} finally {
+  if (Test-Path -LiteralPath $fixtureRoot) { Remove-Item -LiteralPath $fixtureRoot -Recurse -Force }
 }
 
 function Assert-Architecture {

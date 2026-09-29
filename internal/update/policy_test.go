@@ -74,3 +74,12 @@ func TestPolicyRejectsMismatchedDirectMetadata(t *testing.T) {
 		t.Fatalf("policy = %+v, error = %v", policy, policy.Error())
 	}
 }
+
+func TestPackageManagerOwnershipNeverSelectsDirectSelfUpdate(t *testing.T) {
+	for _, method := range []install.Method{install.MethodHomebrew, install.MethodScoop} {
+		policy := PolicyForInstallation(install.Detection{Method: method})
+		if policy.Action != PolicyDelegate || policy.Action == PolicySelfUpdate {
+			t.Fatalf("%s policy = %#v", method, policy)
+		}
+	}
+}

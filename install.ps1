@@ -17,9 +17,12 @@ $defaultInstall = Join-Path $HOME '.cm'
 $installDir = if ($env:CM_INSTALL_DIR) { $env:CM_INSTALL_DIR } else { $defaultInstall }
 $current = Join-Path $installDir 'current'
 $oidcIssuer = 'https://token.actions.githubusercontent.com'
-$checksumName = 'codemcp_checksums.txt'
+$packageName = 'codemcp'
+$checksumName = "$packageName`_checksums.txt"
 $signatureName = "$checksumName.sigstore.json"
 $binaryName = 'cm.exe'
+$maxArchiveEntries = 4096
+$maxBinaryBytes = 268435456
 
 function ConvertTo-CodeMCPArchitecture {
   param([AllowNull()][object]$Value)
@@ -135,6 +138,9 @@ function Expand-CodeMCPBinaryFromZip {
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
   try {
+    if ($archive.Entries.Count -gt $maxArchiveEntries) {
+      throw "cm: release archive exceeds $maxArchiveEntries entry limit"
+    }
     $matched = $null
     foreach ($entry in $archive.Entries) {
       $name = $entry.FullName
@@ -144,12 +150,26 @@ function Expand-CodeMCPBinaryFromZip {
       $normalized = $name.Trim().Replace('\', '/')
       if ($normalized.EndsWith('/')) { continue }
 
-      $attrs = [int]($entry.ExternalAttributes -shr 16)
-      if (($attrs -band 0xA000) -eq 0xA000) {
+      $externalAttributes = [uint32](([int64]$entry.ExternalAttributes) -band 0xFFFFFFFFL)
+      $unixType = [int](($externalAttributes -shr 16) -band 0xF000)
+      $dosAttributes = [int]($externalAttributes -band 0xFFFF)
+      if (($unixType -band 0xA000) -eq 0xA000) {
         throw "cm: refusing symlink archive member '$name'"
+      }
+      if (($dosAttributes -band 0x400) -ne 0) {
+        throw "cm: refusing reparse archive member '$name'"
+      }
+      if ($unixType -ne 0 -and $unixType -ne 0x8000) {
+        throw "cm: refusing non-regular archive member '$name'"
       }
 
       if ($normalized -ne $MemberName) { continue }
+      if ($name -ne $MemberName) {
+        throw "cm: release archive entrypoint must be exactly $MemberName"
+      }
+      if (($dosAttributes -band 0x10) -ne 0) {
+        throw "cm: refusing non-regular archive member '$name'"
+      }
       if ($null -ne $matched) {
         throw "cm: release archive contains duplicate $MemberName"
       }
@@ -158,22 +178,37 @@ function Expand-CodeMCPBinaryFromZip {
     if ($null -eq $matched) {
       throw "cm: $MemberName missing from archive."
     }
-    if ($matched.Length -le 0) {
+    if ($matched.Length -le 0 -or $matched.Length -gt $maxBinaryBytes) {
       throw "cm: release binary has invalid size $($matched.Length)"
     }
 
     New-Item -ItemType Directory -Force -Path $DestinationDir | Out-Null
     $destination = Join-Path $DestinationDir $MemberName
     $source = $matched.Open()
+    $target = $null
+    $keep = $false
     try {
       $target = [System.IO.File]::Open($destination, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
-      try {
-        $source.CopyTo($target)
-      } finally {
-        $target.Dispose()
+      $buffer = New-Object byte[] 65536
+      [long]$total = 0
+      while (($read = $source.Read($buffer, 0, $buffer.Length)) -gt 0) {
+        $total += $read
+        if ($total -gt $maxBinaryBytes) {
+          throw "cm: release binary exceeds $maxBinaryBytes byte limit"
+        }
+        $target.Write($buffer, 0, $read)
       }
+      if ($total -le 0 -or $total -ne $matched.Length) {
+        throw "cm: release binary size mismatch"
+      }
+      $target.Flush($true)
+      $keep = $true
     } finally {
+      if ($null -ne $target) { $target.Dispose() }
       $source.Dispose()
+      if (-not $keep -and (Test-Path -LiteralPath $destination)) {
+        Remove-Item -LiteralPath $destination -Force -ErrorAction SilentlyContinue
+      }
     }
     return $destination
   } finally {
@@ -226,7 +261,7 @@ if (-not $version) {
 if (-not $version) { throw 'cm: could not resolve latest version; set CM_VERSION.' }
 if ($version -notmatch '^v') { $version = "v$version" }
 $ver = $version.TrimStart('v')
-$asset = "codemcp_${ver}_windows_${arch}.zip"
+$asset = "${packageName}_${ver}_windows_${arch}.zip"
 $url = "https://github.com/$repo/releases/download/$version/$asset"
 $checksumsUrl = "https://github.com/$repo/releases/download/$version/$checksumName"
 $signatureUrl = "https://github.com/$repo/releases/download/$version/$signatureName"

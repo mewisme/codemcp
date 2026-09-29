@@ -47,6 +47,24 @@ func TestClientLatestRequiresExpectedAssets(t *testing.T) {
 	}
 }
 
+func TestClientLatestAllowsMissingOptionalSignatureAsset(t *testing.T) {
+	asset, err := CurrentAssetName("v1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"tag_name":"v1.2.3","assets":[{"name":%q,"browser_download_url":"https://example.test/archive"},{"name":"codemcp_checksums.txt","browser_download_url":"https://example.test/checksums"}]}`, asset)
+	}))
+	defer server.Close()
+	release, err := (Client{BaseURL: server.URL, HTTPClient: server.Client()}).Latest(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if release.SignatureName != ChecksumSignatureName || release.SignatureURL != "" {
+		t.Fatalf("optional signature metadata = %#v", release)
+	}
+}
+
 func TestClientLatestRejectsHTTPFailure(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "rate limited", http.StatusForbidden)

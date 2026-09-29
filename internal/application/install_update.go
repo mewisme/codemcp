@@ -108,11 +108,14 @@ func ApplyUpdate(ctx context.Context, options UpdateApplyOptions) (UpdateApplyRe
 		_ = updatepkg.WriteCache(overview.Layout.UpdateCache, result.Target, time.Now())
 	}
 	output := UpdateApplyResult{Result: result}
+	if len(result.Warnings) > 0 {
+		output.Notice = strings.Join(result.Warnings, "; ")
+	}
 	if !result.Changed {
 		if result.Current == result.Target {
-			output.Notice = "Already up to date"
+			appendUpdateNotice(&output.Notice, "Already up to date")
 		} else {
-			output.Notice = "Current version is newer than the latest release"
+			appendUpdateNotice(&output.Notice, "Current version is newer than the latest release")
 		}
 		return output, nil
 	}
@@ -128,19 +131,26 @@ func ApplyUpdate(ctx context.Context, options UpdateApplyOptions) (UpdateApplyRe
 				return UpdateApplyResult{}, fmt.Errorf("managed runtime restart failed: %w; previous version restored", err)
 			}
 		} else {
-			output.Notice = fmt.Sprintf("Foreground runtime pid %d still uses the previous version; restart it manually", runtimeState.PID)
+			appendUpdateNotice(&output.Notice, fmt.Sprintf("Foreground runtime pid %d still uses the previous version; restart it manually", runtimeState.PID))
 		}
 	} else if running && options.NoRestart {
-		output.Notice = fmt.Sprintf("Runtime restart skipped; pid %d still uses the previous version", runtimeState.PID)
+		appendUpdateNotice(&output.Notice, fmt.Sprintf("Runtime restart skipped; pid %d still uses the previous version", runtimeState.PID))
 	}
 	if err := install.FinalizeResultContext(ctx, result.Install); err != nil {
-		if output.Notice != "" {
-			output.Notice += "; "
-		}
-		output.Notice += "update succeeded but old version cleanup failed: " + err.Error()
+		appendUpdateNotice(&output.Notice, "update succeeded but old version cleanup failed: "+err.Error())
 	}
 	output.Supplemental = RunPostInstallBootstrap(ctx)
 	return output, nil
+}
+
+func appendUpdateNotice(target *string, message string) {
+	if target == nil || strings.TrimSpace(message) == "" {
+		return
+	}
+	if strings.TrimSpace(*target) != "" {
+		*target += "; "
+	}
+	*target += strings.TrimSpace(message)
 }
 
 func restartUpdatedManagedRuntime(ctx context.Context, layout install.Layout, status runtimecontrol.RuntimeStatus) error {
