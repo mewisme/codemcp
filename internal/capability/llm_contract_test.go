@@ -40,7 +40,11 @@ func TestLLMCapabilitiesEncodeCanonicalSecurityAndSurfaceContracts(t *testing.T)
 		if !ok {
 			t.Fatalf("LLM operation %s missing", id)
 		}
-		for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
+		cli, ok := spec.Surface(SurfaceCLI)
+		if !ok || cli.State != SurfaceRequired || cli.Exemption != "" {
+			t.Fatalf("LLM operation %s/cli contract=%#v ok=%t", id, cli, ok)
+		}
+		for _, surface := range []Surface{SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
 			contract, ok := spec.Surface(surface)
 			if !ok || contract.State != SurfaceExempt || contract.Exemption != SurfaceExemptionDeferred {
 				t.Fatalf("LLM operation %s/%s contract=%#v ok=%t", id, surface, contract, ok)

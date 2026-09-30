@@ -32,6 +32,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"install":      "install",
 		"instructions": "instructions get",
 		"integration":  "integration rtk disable",
+		"llm":          "llm status",
 		"logs":         "logs path",
 		"mcp":          "mcp stdio",
 		"notification": "notification desktop disable",

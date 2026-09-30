@@ -19,6 +19,13 @@ type CustomLLMProviderConfig struct {
 	APIKey    *string           `json:"-"`
 }
 
+func NewCustomLLMProviderConfig(name, protocol, baseURL, model, authMode, discovery string) CustomLLMProviderConfig {
+	return CustomLLMProviderConfig{
+		Name: name, Protocol: llm.Protocol(protocol), BaseURL: baseURL, Model: model,
+		AuthMode: llm.AuthMode(authMode), Discovery: llm.DiscoveryMode(discovery),
+	}
+}
+
 func (s *LLMService) AddCustomProvider(ctx context.Context, rawID string, config CustomLLMProviderConfig) (llm.Provider, error) {
 	if s == nil || s.store == nil {
 		return llm.Provider{}, fmt.Errorf("LLM service is unavailable")

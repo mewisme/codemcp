@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/configformat"
@@ -94,6 +95,94 @@ func TestRequestReadPresentationKeepsListSafeAndViewExact(t *testing.T) {
 		if !strings.Contains(viewText, expected) {
 			t.Fatalf("request view missing %q: %q", expected, viewText)
 		}
+	}
+}
+
+func TestRequestExplainDetailModesAreDeterministicAndKeepCanonicalRequestSeparate(t *testing.T) {
+	request := approval.Request{
+		ID:          "req_explain_detail",
+		Status:      approval.StatusPending,
+		WorkspaceID: "ws_explain",
+		TargetTool:  "run_command",
+		Title:       "Agent supplied title",
+		Command:     "git push origin feature",
+		Arguments:   json.RawMessage(`{"command":"git push origin feature"}`),
+		GuardCode:   controlguard.CodeExternalMutation,
+		GuardReason: "external mutation requires approval",
+	}
+	tests := []struct {
+		name   string
+		detail approvalRequestDetailResult
+		want   []string
+	}{
+		{
+			name: "off",
+			detail: approvalRequestDetailResult{
+				Request:       request,
+				ExplainStatus: application.ApprovalExplainStatus{Mode: "off", Available: false, Readiness: "unknown", Reason: "approval explanations are disabled"},
+				Explanation:   application.ApprovalExplanationResult{RequestID: request.ID, State: application.ApprovalExplanationNone},
+			},
+			want: []string{"mode", "off", "state", "none"},
+		},
+		{
+			name: "manual-ready",
+			detail: approvalRequestDetailResult{
+				Request:       request,
+				ExplainStatus: application.ApprovalExplainStatus{Mode: "manual", Available: true, ActiveProvider: "openrouter", Model: "openrouter/free", Configured: true, Readiness: "ready"},
+				Explanation: application.ApprovalExplanationResult{
+					RequestID: request.ID, State: application.ApprovalExplanationReady, Attempt: 1,
+					Explanation: &application.ApprovalExplanation{
+						Summary: "Pushes the local feature branch to origin.", Steps: []string{"Invoke git push."}, Effects: []string{"May update a remote branch."},
+						RiskNotes: []string{"Remote write."}, Unknowns: []string{"Remote policy is unknown."}, ProviderID: "openrouter", Model: "openrouter/free",
+					},
+				},
+			},
+			want: []string{"mode", "manual", "state", "ready", "Explanation provenance", "openrouter", "openrouter/free", "Pushes the local feature branch to origin."},
+		},
+		{
+			name: "auto-pending",
+			detail: approvalRequestDetailResult{
+				Request:       request,
+				ExplainStatus: application.ApprovalExplainStatus{Mode: "auto", Available: true, ActiveProvider: "openrouter", Model: "openrouter/free", Configured: true, Readiness: "ready"},
+				Explanation:   application.ApprovalExplanationResult{RequestID: request.ID, State: application.ApprovalExplanationPending, Attempt: 1},
+			},
+			want: []string{"mode", "auto", "state", "pending"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, mode := range []presentation.ResultMode{presentation.ModePlain, presentation.ModeHuman} {
+				var first, second bytes.Buffer
+				caps := presentation.Capabilities{Width: 120, Unicode: true, Color: false}
+				renderApprovalRequestDetail(presentation.New(&first, mode, caps), test.detail)
+				renderApprovalRequestDetail(presentation.New(&second, mode, caps), test.detail)
+				if first.String() != second.String() {
+					t.Fatalf("mode=%v output is not deterministic\nA=%q\nB=%q", mode, first.String(), second.String())
+				}
+				text := first.String()
+				for _, required := range append([]string{"agent title", request.Title, "command", request.Command, "AI explanation"}, test.want...) {
+					if !strings.Contains(text, required) {
+						t.Fatalf("mode=%v missing %q: %q", mode, required, text)
+					}
+				}
+			}
+
+			firstJSON, err := json.Marshal(test.detail)
+			if err != nil {
+				t.Fatal(err)
+			}
+			secondJSON, err := json.Marshal(test.detail)
+			if err != nil || !bytes.Equal(firstJSON, secondJSON) {
+				t.Fatalf("JSON is not deterministic: err=%v A=%s B=%s", err, firstJSON, secondJSON)
+			}
+			var decoded map[string]any
+			if err := json.Unmarshal(firstJSON, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			if decoded["title"] != request.Title || decoded["command"] != request.Command || decoded["explain_status"] == nil || decoded["explanation"] == nil {
+				t.Fatalf("JSON lost canonical request or Explain separation: %s", firstJSON)
+			}
+		})
 	}
 }
 

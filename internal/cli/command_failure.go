@@ -123,6 +123,44 @@ func classifyCommandFailure(cmd *cobra.Command, err error) commandFailure {
 		}}
 	}
 
+	if category, ok := application.LLMFailureCategory(err); ok {
+		switch category {
+		case "core_invariant", "missing_core":
+			return commandFailure{Title: "Core LLM provider is protected", Actions: []commandFailureAction{
+				{Title: "Inspect configured LLM providers", Command: "cm llm provider list"},
+				{Title: "Inspect LLM status", Command: "cm llm status"},
+			}}
+		case "active_provider_removal", "invalid_active_provider":
+			return commandFailure{Title: "Active LLM provider cannot be removed", Actions: []commandFailureAction{
+				{Title: "Select another active provider", Command: "cm llm use <provider_id>"},
+				{Title: "List configured LLM providers", Command: "cm llm provider list"},
+			}}
+		case "provider_not_found":
+			return commandFailure{Title: "LLM provider not found", Actions: []commandFailureAction{{Title: "List configured LLM providers", Command: "cm llm provider list"}}}
+		case "misconfigured", "invalid_provider", "invalid_protocol", "invalid_auth", "invalid_discovery", "invalid_endpoint", "invalid_id", "reserved_id", "duplicate_id":
+			return commandFailure{Title: "LLM provider configuration is invalid", Actions: []commandFailureAction{
+				{Title: "Inspect LLM status", Command: "cm llm status"},
+				{Title: "Review provider configuration", Command: "cm llm provider show <provider_id>"},
+			}}
+		case "unauthorized":
+			return commandFailure{Title: "LLM provider authentication failed", Actions: []commandFailureAction{
+				{Title: "Set the provider API key", Command: "cm llm provider key set <provider_id>"},
+				{Title: "Inspect LLM status", Command: "cm llm status"},
+			}}
+		case "rate_limited":
+			return commandFailure{Title: "LLM provider is rate limited", Actions: []commandFailureAction{{Title: "Inspect LLM status", Command: "cm llm status"}}}
+		case "timeout", "unavailable", "transport", "provider", "invalid_response":
+			return commandFailure{Title: "LLM provider is unavailable", Actions: []commandFailureAction{
+				{Title: "Probe provider readiness", Command: "cm llm probe <provider_id>"},
+				{Title: "Inspect LLM status", Command: "cm llm status"},
+			}}
+		case "unsupported", "invalid_request":
+			return commandFailure{Title: "LLM operation is not supported", Actions: []commandFailureAction{{Title: "Inspect provider details", Command: "cm llm provider show <provider_id>"}}}
+		case "cancelled":
+			return commandFailure{Title: "LLM operation was cancelled"}
+		}
+	}
+
 	switch {
 	case errors.Is(err, application.ErrTunnelAdminDisabled):
 		return commandFailure{Title: "Tunnel administration is disabled", Actions: []commandFailureAction{{Title: "Enable tunnel administration", Command: "cm tunnel admin enable"}}}

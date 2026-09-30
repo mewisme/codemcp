@@ -116,6 +116,16 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"request.resolve.completed"}, "request approve", "request deny")
 	add(commandTraceInstrumented, []string{"request.grants.completed"}, "request grant list")
 	add(commandTraceInstrumented, []string{"request.revoke-grant.completed"}, "request grant revoke")
+	add(commandTraceInstrumented, []string{"request.explain.completed"}, "request explain", "request explain retry")
+	add(commandTraceInstrumented, []string{"request.explain.status.completed"}, "request explain status")
+	add(commandTraceInstrumented, []string{"setting.set.completed"}, "request explain mode")
+	add(commandTraceTrivial, nil,
+		"llm status", "llm use", "llm models", "llm probe",
+		"llm provider list", "llm provider show", "llm provider add", "llm provider configure", "llm provider remove",
+		"llm provider key set", "llm provider key clear",
+		"llm openrouter status", "llm openrouter use", "llm openrouter models", "llm openrouter model", "llm openrouter key set", "llm openrouter key clear",
+		"llm ollama status", "llm ollama use", "llm ollama models", "llm ollama mode", "llm ollama model", "llm ollama key set", "llm ollama key clear",
+	)
 	add(commandTraceInstrumented, []string{"completion.current.completed"}, "agent completion current")
 	add(commandTraceInstrumented, []string{"completion.doctor.completed"}, "agent completion doctor")
 	add(commandTraceInstrumented, []string{"completion.list.completed"}, "agent completion list")

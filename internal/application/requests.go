@@ -86,6 +86,44 @@ func GetApprovalRequest(ctx context.Context, id string) (approval.Request, error
 	return result, nil
 }
 
+func GetApprovalExplainStatus(ctx context.Context) (ApprovalExplainStatus, error) {
+	span := tracepkg.Start(ctx, "REQUEST", "request.explain.status", "Loading approval explanation status")
+	var result ApprovalExplainStatus
+	_, err := runtimecontrol.Request(ctx, http.MethodGet, "/requests/explain/status", nil, &result)
+	if err != nil {
+		span.FailMessage("Approval explanation status load failed", err)
+		return result, err
+	}
+	span.EndMessage("Approval explanation status loaded", tracepkg.String("mode", string(result.Mode)), tracepkg.Bool("available", result.Available), tracepkg.String("provider_id", string(result.ActiveProvider)), tracepkg.String("readiness", string(result.Readiness)))
+	return result, nil
+}
+
+func GetApprovalExplanation(ctx context.Context, id string) (ApprovalExplanationResult, error) {
+	requested := strings.TrimSpace(id)
+	span := tracepkg.Start(ctx, "REQUEST", "request.explanation.view", "Loading approval explanation", tracepkg.String("request", requested))
+	var result ApprovalExplanationResult
+	_, err := runtimecontrol.Request(ctx, http.MethodGet, "/requests/explanation/view?id="+url.QueryEscape(requested), nil, &result)
+	if err != nil {
+		span.FailMessage("Approval explanation load failed", err, tracepkg.String("request", requested))
+		return result, err
+	}
+	span.EndMessage("Approval explanation loaded", tracepkg.String("request", requested), tracepkg.String("request_id", result.RequestID), tracepkg.String("state", string(result.State)), tracepkg.Uint64("attempt", result.Attempt))
+	return result, nil
+}
+
+func ExplainApprovalRequest(ctx context.Context, id string, retry bool) (ApprovalExplanationResult, error) {
+	requested := strings.TrimSpace(id)
+	span := tracepkg.Start(ctx, "REQUEST", "request.explain", "Starting approval explanation", tracepkg.String("request", requested), tracepkg.Bool("retry", retry))
+	var result ApprovalExplanationResult
+	_, err := runtimecontrol.Request(ctx, http.MethodPost, "/requests/explain", ApprovalExplainInput{ID: requested, Retry: retry}, &result)
+	if err != nil {
+		span.FailMessage("Approval explanation start failed", err, tracepkg.String("request", requested), tracepkg.Bool("retry", retry))
+		return result, err
+	}
+	span.EndMessage("Approval explanation started", tracepkg.String("request", requested), tracepkg.String("request_id", result.RequestID), tracepkg.String("state", string(result.State)), tracepkg.Uint64("attempt", result.Attempt))
+	return result, nil
+}
+
 func ResolveApprovalRequest(ctx context.Context, id string, approve bool, reason string) (approval.Request, error) {
 	return ResolveApprovalRequestWithRuntimeGrant(ctx, id, approve, false, reason)
 }

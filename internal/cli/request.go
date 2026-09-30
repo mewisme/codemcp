@@ -20,8 +20,118 @@ const requestControlTimeout = 5 * time.Second
 
 func requestCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "request", Short: "Review and resolve control approval requests"}
-	cmd.AddCommand(requestListCommand(), requestViewCommand(), requestResolveCommand(true), requestResolveCommand(false), requestGrantCommand())
+	cmd.AddCommand(requestListCommand(), requestViewCommand(), requestResolveCommand(true), requestResolveCommand(false), requestGrantCommand(), requestExplainCommand())
 	return cmd
+}
+
+type approvalRequestDetailResult struct {
+	approval.Request
+	ExplainStatus application.ApprovalExplainStatus     `json:"explain_status"`
+	Explanation   application.ApprovalExplanationResult `json:"explanation"`
+}
+
+func requestExplainCommand() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:               "explain <request_id>",
+		Short:             "Generate an LLM explanation for one pending approval request",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeApprovalRequestIDs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
+			defer cancel()
+			result, err := application.ExplainApprovalRequest(ctx, args[0], false)
+			if err != nil {
+				return err
+			}
+			return renderApprovalExplanationMutation(cmd, result, asJSON, "Approval explanation started")
+		},
+	}
+	addJSONResultFlag(cmd, &asJSON)
+	cmd.AddCommand(requestExplainModeCommand(), requestExplainStatusCommand(), requestExplainRetryCommand())
+	return cmd
+}
+
+func requestExplainModeCommand() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:               "mode <off|manual|auto>",
+		Short:             "Set approval explanation mode",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeStatic("off", "manual", "auto"),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := settingService().Set(cmd.Context(), "approval.explain.mode", args[0])
+			if err != nil {
+				return err
+			}
+			if commandResultModeFor(cmd) == resultModeJSON {
+				return writeResultJSON(cmd, result)
+			}
+			renderMutationSuccess(cmd, "Approval explanation mode updated", presentation.Field{Label: "mode", Value: result.Value})
+			return nil
+		},
+	}
+	addJSONResultFlag(cmd, &asJSON)
+	return markScopedSettings(cmd, "approval.explain.mode")
+}
+
+func requestExplainStatusCommand() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show approval explanation availability",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
+			defer cancel()
+			status, err := application.GetApprovalExplainStatus(ctx)
+			if err != nil {
+				return err
+			}
+			if commandResultModeFor(cmd) == resultModeJSON {
+				return writeResultJSON(cmd, status)
+			}
+			renderApprovalExplainStatus(commandPresenter(cmd), status)
+			return nil
+		},
+	}
+	addJSONResultFlag(cmd, &asJSON)
+	return cmd
+}
+
+func requestExplainRetryCommand() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:               "retry <request_id>",
+		Short:             "Retry a failed approval explanation",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeApprovalRequestIDs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
+			defer cancel()
+			result, err := application.ExplainApprovalRequest(ctx, args[0], true)
+			if err != nil {
+				return err
+			}
+			return renderApprovalExplanationMutation(cmd, result, asJSON, "Approval explanation retry started")
+		},
+	}
+	addJSONResultFlag(cmd, &asJSON)
+	return cmd
+}
+
+func completeApprovalRequestIDs(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	ctx, cancel := context.WithTimeout(cmd.Context(), requestControlTimeout)
+	defer cancel()
+	requests, err := application.ListApprovalRequests(ctx)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	values := make([]string, 0, len(requests))
+	for _, request := range requests {
+		values = append(values, request.ID)
+	}
+	return filterCompletions(values, toComplete), cobra.ShellCompDirectiveNoFileComp
 }
 
 func requestGrantCommand() *cobra.Command {
@@ -129,11 +239,20 @@ func requestViewCommand() *cobra.Command {
 			progress.Stop()
 			return err
 		}
+		explainStatus, err := application.GetApprovalExplainStatus(ctx)
+		if err != nil {
+			explainStatus = application.ApprovalExplainStatus{}
+		}
+		explanation, err := application.GetApprovalExplanation(ctx, request.ID)
+		if err != nil {
+			explanation = application.ApprovalExplanationResult{RequestID: request.ID, State: application.ApprovalExplanationNone}
+		}
+		detail := approvalRequestDetailResult{Request: request, ExplainStatus: explainStatus, Explanation: explanation}
 		if asJSON {
-			return writeResultJSON(cmd, request)
+			return writeResultJSON(cmd, detail)
 		}
 		progress.Complete()
-		renderApprovalRequest(commandPresenter(cmd), request)
+		renderApprovalRequestDetail(commandPresenter(cmd), detail)
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -233,13 +352,21 @@ func renderRuntimeGrants(presenter *presentation.Presenter, grants []approval.Re
 }
 
 func renderApprovalRequest(presenter *presentation.Presenter, request approval.Request) {
+	renderApprovalRequestDetail(presenter, approvalRequestDetailResult{Request: request})
+}
+
+func renderApprovalRequestDetail(presenter *presentation.Presenter, detail approvalRequestDetailResult) {
+	request := detail.Request
 	presenter.Frame("Approval request")
 	presenter.StateSection(approvalPresentationKind(request.Status), approvalStatusLabel(request.Status))
 	presenter.Subsection(request.ID)
 	fields := []presentation.Field{
-		{Label: "title", Value: request.Title},
+		{Label: "agent title", Value: request.Title},
 		{Label: "workspace", Value: request.WorkspaceID},
 		{Label: "tool", Value: request.TargetTool},
+	}
+	if request.Command != "" {
+		fields = append(fields, presentation.Field{Label: "command", Value: request.Command})
 	}
 	if request.Source != "" {
 		fields = append(fields, presentation.Field{Label: "source", Value: request.Source})
@@ -285,7 +412,90 @@ func renderApprovalRequest(presenter *presentation.Presenter, request approval.R
 		presenter.Section("Arguments")
 		presenter.List(formatApprovalArguments(request.Arguments))
 	}
+	if detail.ExplainStatus.Mode != "" || detail.Explanation.State != "" {
+		presenter.Spacer()
+		renderApprovalExplanation(presenter, detail.ExplainStatus, detail.Explanation)
+	}
 	presenter.Complete(approvalOutro(request.Status))
+}
+
+func renderApprovalExplainStatus(presenter *presentation.Presenter, status application.ApprovalExplainStatus) {
+	presenter.Frame("Approval explanation")
+	presenter.NestedFields(approvalExplainStatusFields(status)...)
+	presenter.Complete("Done")
+}
+
+func approvalExplainStatusFields(status application.ApprovalExplainStatus) []presentation.Field {
+	fields := []presentation.Field{
+		{Label: "mode", Value: status.Mode},
+		{Label: "available", Value: status.Available},
+		{Label: "configured", Value: status.Configured},
+		{Label: "readiness", Value: status.Readiness},
+	}
+	if status.ActiveProvider != "" {
+		fields = append(fields, presentation.Field{Label: "provider", Value: status.ActiveProvider})
+	}
+	if status.Model != "" {
+		fields = append(fields, presentation.Field{Label: "model", Value: status.Model})
+	}
+	if status.Reason != "" {
+		fields = append(fields, presentation.Field{Label: "availability reason", Value: status.Reason})
+	}
+	return fields
+}
+
+func renderApprovalExplanation(presenter *presentation.Presenter, status application.ApprovalExplainStatus, result application.ApprovalExplanationResult) {
+	presenter.Section("AI explanation")
+	presenter.NestedFields(approvalExplainStatusFields(status)...)
+	state := result.State
+	if state == "" {
+		state = application.ApprovalExplanationNone
+	}
+	presenter.NestedFields(presentation.Field{Label: "state", Value: state})
+	if result.Attempt > 0 {
+		presenter.NestedFields(presentation.Field{Label: "attempt", Value: result.Attempt})
+	}
+	if result.Failure != "" {
+		presenter.NestedFields(presentation.Field{Label: "failure", Value: result.Failure})
+	}
+	if result.Explanation == nil {
+		return
+	}
+	explanation := result.Explanation
+	presenter.Subsection("Explanation provenance")
+	presenter.NestedFields(
+		presentation.Field{Label: "provider", Value: explanation.ProviderID},
+		presentation.Field{Label: "model", Value: explanation.Model},
+		presentation.Field{Label: "generated", Value: formatRequestTime(explanation.GeneratedAt)},
+	)
+	presenter.Subsection("Summary")
+	presenter.List(explanation.Summary)
+	renderApprovalExplanationItems(presenter, "Steps", explanation.Steps)
+	renderApprovalExplanationItems(presenter, "Effects", explanation.Effects)
+	renderApprovalExplanationItems(presenter, "Risk notes", explanation.RiskNotes)
+	renderApprovalExplanationItems(presenter, "Unknowns", explanation.Unknowns)
+}
+
+func renderApprovalExplanationItems(presenter *presentation.Presenter, title string, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	presenter.Subsection(title)
+	for _, value := range values {
+		presenter.List(value)
+	}
+}
+
+func renderApprovalExplanationMutation(cmd *cobra.Command, result application.ApprovalExplanationResult, asJSON bool, message string) error {
+	if asJSON || commandResultModeFor(cmd) == resultModeJSON {
+		return writeResultJSON(cmd, result)
+	}
+	fields := []presentation.Field{{Label: "state", Value: result.State}}
+	if result.Attempt > 0 {
+		fields = append(fields, presentation.Field{Label: "attempt", Value: result.Attempt})
+	}
+	renderEntityMutationSuccess(cmd, message, result.RequestID, fields...)
+	return nil
 }
 
 func formatApprovalArguments(arguments json.RawMessage) string {

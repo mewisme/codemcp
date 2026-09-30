@@ -114,6 +114,37 @@ integration typesafe status | operation:integration.typesafe.status
 integration typesafe timeout | operation:config.set:accepted-path
 integration typesafe | namespace
 integration | namespace
+llm models | operation:llm.provider.models
+llm ollama key clear | operation:llm.provider.credential.clear:accepted-path
+llm ollama key set | operation:llm.provider.credential.set:accepted-path
+llm ollama key | namespace
+llm ollama mode | operation:llm.provider.configure:accepted-path
+llm ollama model | operation:llm.provider.configure:accepted-path
+llm ollama models | operation:llm.provider.models:accepted-path
+llm ollama status | operation:llm.provider.get:accepted-path
+llm ollama use | operation:llm.provider.select:accepted-path
+llm ollama | namespace
+llm openrouter key clear | operation:llm.provider.credential.clear:accepted-path
+llm openrouter key set | operation:llm.provider.credential.set:accepted-path
+llm openrouter key | namespace
+llm openrouter model | operation:llm.provider.configure:accepted-path
+llm openrouter models | operation:llm.provider.models:accepted-path
+llm openrouter status | operation:llm.provider.get:accepted-path
+llm openrouter use | operation:llm.provider.select:accepted-path
+llm openrouter | namespace
+llm probe | operation:llm.provider.probe
+llm provider add | operation:llm.provider.add
+llm provider configure | operation:llm.provider.configure
+llm provider key clear | operation:llm.provider.credential.clear
+llm provider key set | operation:llm.provider.credential.set
+llm provider key | namespace
+llm provider list | operation:llm.provider.list
+llm provider remove | operation:llm.provider.remove
+llm provider show | operation:llm.provider.get
+llm provider | namespace
+llm status | operation:llm.status
+llm use | operation:llm.provider.select
+llm | namespace
 logs clear | operation:logs.clear
 logs follow | operation:logs.follow
 logs path | operation:logs.path
@@ -162,6 +193,10 @@ prompt update | operation:prompt.update
 prompt | namespace
 request approve | operation:request.approve
 request deny | operation:request.deny
+request explain mode | operation:config.set:accepted-path
+request explain retry | operation:request.explain:accepted-path
+request explain status | operation:request.explain.status
+request explain | operation:request.explain
 request grant list | operation:request.grant.list
 request grant revoke | operation:request.grant.revoke
 request grant | namespace

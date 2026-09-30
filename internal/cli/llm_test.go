@@ -1,0 +1,326 @@
+package cli
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"sync/atomic"
+	"testing"
+
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/secretstore"
+)
+
+func TestLLMCLICommandTreeReachesCanonicalOperations(t *testing.T) {
+	root := newRootCommand()
+	tests := map[string]capability.ID{
+		"llm status":               capability.LLMStatus,
+		"llm use":                  capability.LLMProviderSelect,
+		"llm models":               capability.LLMProviderModels,
+		"llm probe":                capability.LLMProviderProbe,
+		"llm provider list":        capability.LLMProviderList,
+		"llm provider show":        capability.LLMProviderGet,
+		"llm provider add":         capability.LLMProviderAdd,
+		"llm provider configure":   capability.LLMProviderConfigure,
+		"llm provider remove":      capability.LLMProviderRemove,
+		"llm provider key set":     capability.LLMProviderCredentialSet,
+		"llm provider key clear":   capability.LLMProviderCredentialClear,
+		"llm openrouter status":    capability.LLMProviderGet,
+		"llm openrouter use":       capability.LLMProviderSelect,
+		"llm openrouter models":    capability.LLMProviderModels,
+		"llm openrouter model":     capability.LLMProviderConfigure,
+		"llm openrouter key set":   capability.LLMProviderCredentialSet,
+		"llm openrouter key clear": capability.LLMProviderCredentialClear,
+		"llm ollama status":        capability.LLMProviderGet,
+		"llm ollama use":           capability.LLMProviderSelect,
+		"llm ollama models":        capability.LLMProviderModels,
+		"llm ollama mode":          capability.LLMProviderConfigure,
+		"llm ollama model":         capability.LLMProviderConfigure,
+		"llm ollama key set":       capability.LLMProviderCredentialSet,
+		"llm ollama key clear":     capability.LLMProviderCredentialClear,
+		"request explain":          capability.RequestExplain,
+		"request explain retry":    capability.RequestExplain,
+		"request explain status":   capability.RequestExplainStatus,
+		"request explain mode":     capability.ConfigSet,
+	}
+	for path, want := range tests {
+		command := commandByRelativePath(root, path)
+		if command == nil || !command.Runnable() {
+			t.Errorf("command %q missing or not runnable", path)
+			continue
+		}
+		got, ok := canonicalCommandOperation(command)
+		if !ok || got != want {
+			t.Errorf("command %q operation=%q,%t want=%q,true", path, got, ok, want)
+		}
+	}
+}
+
+func TestLLMCLICustomProviderCRUDAndCoreRemovalProtection(t *testing.T) {
+	root := isolateLLMCLI(t)
+
+	stdout, stderr, err := executeLLMCLI(root, nil,
+		"llm", "provider", "add", "fixture-provider",
+		"--protocol", "openai", "--base-url", "http://127.0.0.1:65534/v1", "--model", "fixture-v1", "--json",
+	)
+	if err != nil || stderr != "" {
+		t.Fatalf("add err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	var added application.LLMProviderResult
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &added); err != nil || string(added.ID) != "fixture-provider" || added.Model != "fixture-v1" {
+		t.Fatalf("add output=%q provider=%#v err=%v", stdout, added, err)
+	}
+
+	if _, _, err := executeLLMCLI(root, nil, "llm", "use", "fixture-provider", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, err = executeLLMCLI(root, nil, "llm", "provider", "configure", "fixture-provider", "--model", "fixture-v2", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configured application.LLMProviderResult
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &configured); err != nil || configured.Model != "fixture-v2" || !configured.Selected {
+		t.Fatalf("configure output=%q provider=%#v err=%v", stdout, configured, err)
+	}
+
+	service := application.NewLLMService(root)
+	before, err := service.Catalog(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, removeErr := executeLLMCLI(root, nil, "llm", "provider", "remove", "openrouter")
+	if removeErr == nil || !strings.Contains(strings.ToLower(removeErr.Error()+" "+stderr), "core provider") {
+		t.Fatalf("core remove err=%v stderr=%q", removeErr, stderr)
+	}
+	after, err := service.Catalog(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("core removal mutated catalog: before=%#v after=%#v", before, after)
+	}
+
+	if _, _, err := executeLLMCLI(root, nil, "llm", "use", "openrouter", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, err = executeLLMCLI(root, nil, "llm", "provider", "remove", "fixture-provider", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var removed application.LLMProviderRemoveResult
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &removed); err != nil || !removed.Removed || string(removed.ProviderID) != "fixture-provider" {
+		t.Fatalf("remove output=%q result=%#v err=%v", stdout, removed, err)
+	}
+}
+
+func TestLLMCLIProtectedAPIKeyNeverAppearsInArgumentsOutputOrConfigRoot(t *testing.T) {
+	root := isolateLLMCLI(t)
+	const secret = "sk-or-v1-cli-secret-that-must-never-leak"
+	args := []string{"llm", "provider", "key", "set", "openrouter", "--json"}
+	for _, arg := range args {
+		if strings.Contains(arg, secret) {
+			t.Fatalf("secret entered argv: %q", args)
+		}
+	}
+	stdout, stderr, err := executeLLMCLI(root, strings.NewReader(secret+"\n"), args...)
+	combined := stdout + "\n" + stderr
+	if err != nil {
+		combined += "\n" + err.Error()
+	}
+	if strings.Contains(combined, secret) {
+		t.Fatalf("secret leaked to command output/error: %q", combined)
+	}
+	if err != nil {
+		t.Fatalf("set key err=%v stderr=%q", err, stderr)
+	}
+	var result application.LLMCredentialResult
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &result); err != nil || !result.Configured || result.Preview == "" || strings.Contains(result.Preview, secret) {
+		t.Fatalf("credential output=%q result=%#v err=%v", stdout, result, err)
+	}
+	if leakedFile := findStringInTree(t, root, secret); leakedFile != "" {
+		t.Fatalf("secret leaked into config/log/trace file %s", leakedFile)
+	}
+
+	const envName = "CODEMCP_TEST_LLM_API_KEY"
+	const envSecret = "sk-or-v1-env-secret-that-must-never-leak"
+	t.Setenv(envName, envSecret)
+	stdout, stderr, err = executeLLMCLI(root, nil, "llm", "openrouter", "key", "set", "--from-env", envName, "--json")
+	combined = stdout + "\n" + stderr
+	if err != nil {
+		combined += "\n" + err.Error()
+	}
+	if strings.Contains(combined, envSecret) {
+		t.Fatalf("environment-sourced secret leaked to command output/error: %q", combined)
+	}
+	if err != nil {
+		t.Fatalf("environment key set err=%v stderr=%q", err, stderr)
+	}
+	if leakedFile := findStringInTree(t, root, envSecret); leakedFile != "" {
+		t.Fatalf("environment-sourced secret leaked into config/log/trace file %s", leakedFile)
+	}
+}
+
+func TestLLMCLICoreRemovalFailureHasActionableRemediation(t *testing.T) {
+	root := isolateLLMCLI(t)
+	stdout, stderr, err := executeLLMCLI(root, nil, "llm", "provider", "remove", "openrouter")
+	if err == nil {
+		t.Fatal("core provider removal unexpectedly succeeded")
+	}
+	output := stdout + "\n" + stderr
+	for _, want := range []string{"Core LLM provider is protected", "cm llm provider list", "cm llm status"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("core removal remediation missing %q: stdout=%q stderr=%q err=%v", want, stdout, stderr, err)
+		}
+	}
+}
+
+func TestLLMCLIProviderAndModelCompletionNeverCallRemoteEndpoint(t *testing.T) {
+	root := isolateLLMCLI(t)
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	if _, _, err := executeLLMCLI(root, nil,
+		"llm", "provider", "add", "offline-completion",
+		"--protocol", "openai", "--base-url", server.URL+"/v1", "--model", "cached-model", "--json",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	completionRoot := newRootCommand()
+	completionRoot.SetContext(context.Background())
+	completionRoot.SetArgs([]string{"--config-dir", root})
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	use := commandByRelativePath(completionRoot, "llm use")
+	values, _ := use.ValidArgsFunction(use, nil, "offline")
+	if !containsCompletion(values, "offline-completion") {
+		t.Fatalf("provider completion=%v", values)
+	}
+	configure := commandByRelativePath(completionRoot, "llm provider configure")
+	values, _ = completeConfiguredLLMModel(configure, []string{"offline-completion"}, "cached")
+	if !containsCompletion(values, "cached-model") {
+		t.Fatalf("model completion=%v", values)
+	}
+	model := commandByRelativePath(completionRoot, "llm openrouter model")
+	if model == nil || model.ValidArgsFunction == nil {
+		t.Fatal("openrouter model completion is unavailable")
+	}
+	_, _ = model.ValidArgsFunction(model, nil, "openrouter/")
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("completion performed %d remote request(s)", got)
+	}
+}
+
+func TestLLMCLIStatusHumanPlainAndJSONAreDeterministic(t *testing.T) {
+	root := isolateLLMCLI(t)
+	plainA, _, err := executeLLMCLI(root, nil, "llm", "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plainB, _, err := executeLLMCLI(root, nil, "llm", "status")
+	if err != nil || plainA != plainB {
+		t.Fatalf("plain output changed: err=%v\nA=%q\nB=%q", err, plainA, plainB)
+	}
+	jsonA, _, err := executeLLMCLI(root, nil, "llm", "status", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonB, _, err := executeLLMCLI(root, nil, "llm", "status", "--json")
+	if err != nil || jsonA != jsonB || !json.Valid([]byte(strings.TrimSpace(jsonA))) {
+		t.Fatalf("json output changed/invalid: err=%v\nA=%q\nB=%q", err, jsonA, jsonB)
+	}
+	humanA, err := executeInteractiveLifecycleCommand(root, "llm", "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	humanB, err := executeInteractiveLifecycleCommand(root, "llm", "status")
+	if err != nil || humanA != humanB || !strings.Contains(humanA, "┌  LLM") || !strings.Contains(humanA, "└  Done") {
+		t.Fatalf("human output changed/invalid: err=%v\nA=%q\nB=%q", err, humanA, humanB)
+	}
+}
+
+func TestLLMCLIUsesOnlyIsolatedConfigRoot(t *testing.T) {
+	root := isolateLLMCLI(t)
+	if _, _, err := executeLLMCLI(root, nil, "llm", "provider", "add", "root-proof", "--protocol", "openai", "--base-url", "http://127.0.0.1:65534/v1", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	if got := filepath.Clean(config.RootPath()); got != filepath.Clean(root) {
+		t.Fatalf("config root=%q want isolated %q", got, root)
+	}
+	if _, err := os.Stat(filepath.Join(root, "llm", "providers.json")); err != nil {
+		t.Fatalf("isolated provider store missing: %v", err)
+	}
+}
+
+func isolateLLMCLI(t *testing.T) string {
+	t.Helper()
+	root := isolateUniversalConfigCLI(t)
+	t.Setenv(configformat.EnvConfigDir, root)
+	restore := secretstore.UseMemoryForTesting()
+	t.Cleanup(restore)
+	return root
+}
+
+func executeLLMCLI(root string, input io.Reader, args ...string) (string, string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetContext(context.Background())
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if input != nil {
+		cmd.SetIn(input)
+	}
+	cmd.SetArgs(append([]string{"--config-dir", root}, args...))
+	err := executeCommand(cmd)
+	return stdout.String(), stderr.String(), err
+}
+
+func findStringInTree(t *testing.T, root, needle string) string {
+	t.Helper()
+	var found string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(data, []byte(needle)) {
+			found = path
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return found
+}
+
+func containsCompletion(values []string, want string) bool {
+	for _, value := range values {
+		value, _, _ = strings.Cut(value, "\t")
+		if value == want {
+			return true
+		}
+	}
+	return false
+}

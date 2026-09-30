@@ -16,6 +16,7 @@ import (
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/auth"
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/controlguard"
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
@@ -53,6 +54,7 @@ type runtimeControlOptions struct {
 	Restart          func()
 	ClearLogs        func() error
 	Approvals        *approval.Manager
+	Operations       application.OperationDispatcher
 	Completions      *agentcompletion.Service
 	Executions       *shellruntime.ExecutionHub
 	Log              *logger.Logger
@@ -180,6 +182,23 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 		}
 		request, err := approval.NewReviewService(options.Approvals).View(r.URL.Query().Get("id"))
 		writeControlJSON(w, request, err)
+	}))
+	mux.HandleFunc("/requests/explain/status", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
+		value, err := dispatchRuntimeOperation(r.Context(), options.Operations, capability.RequestExplainStatus, nil)
+		writeControlJSON(w, value, err)
+	}))
+	mux.HandleFunc("/requests/explanation/view", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
+		value, err := dispatchRuntimeOperation(r.Context(), options.Operations, capability.RequestExplanationView, application.ApprovalExplanationReadInput{ID: r.URL.Query().Get("id")})
+		writeControlJSON(w, value, err)
+	}))
+	mux.HandleFunc("/requests/explain", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, r *http.Request) {
+		var input application.ApprovalExplainInput
+		if err := decodeControlJSON(r, &input); err != nil {
+			writeControlJSON(w, nil, err)
+			return
+		}
+		value, err := dispatchRuntimeOperation(r.Context(), options.Operations, capability.RequestExplain, input)
+		writeControlJSON(w, value, err)
 	}))
 	mux.HandleFunc("/requests/create-dummy", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, r *http.Request) {
 		if options.Approvals == nil {
@@ -645,6 +664,17 @@ func runtimeControlRequest(ctx context.Context, method, path string, output any)
 
 func runtimeControlJSONRequest(ctx context.Context, method, path string, input, output any) (runtimeControlState, error) {
 	return runtimecontrol.Request(ctx, method, path, input, output)
+}
+
+func dispatchRuntimeOperation(ctx context.Context, dispatcher application.OperationDispatcher, operation capability.ID, input any) (any, error) {
+	if dispatcher == nil {
+		return nil, errors.New("runtime operation dispatcher is unavailable")
+	}
+	result, err := dispatcher.Dispatch(ctx, application.DispatchRequest{Operation: operation, Input: input})
+	if err != nil {
+		return nil, err
+	}
+	return result.Value, nil
 }
 
 func requestRuntimeCLIApproval(ctx context.Context, capability string, args []string) error {

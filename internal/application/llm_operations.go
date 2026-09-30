@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"go.mewis.me/codemcp/internal/capability"
@@ -72,6 +73,46 @@ type LLMProviderCredentialInput struct {
 type LLMProviderRemoveResult struct {
 	ProviderID llm.ProviderID `json:"provider_id"`
 	Removed    bool           `json:"removed"`
+}
+
+func (s *LLMService) RemoveProviderResult(ctx context.Context, rawID string) (LLMProviderRemoveResult, error) {
+	id, err := llm.NormalizeProviderID(rawID)
+	if err != nil {
+		return LLMProviderRemoveResult{}, err
+	}
+	if err := s.RemoveProvider(ctx, rawID); err != nil {
+		return LLMProviderRemoveResult{}, err
+	}
+	return LLMProviderRemoveResult{ProviderID: id, Removed: true}, nil
+}
+
+func (s *LLMService) SetProviderModel(ctx context.Context, rawID, model string) (LLMProviderResult, error) {
+	provider, err := s.Provider(ctx, rawID)
+	if err != nil {
+		return LLMProviderResult{}, err
+	}
+	key := fmt.Sprintf("llm.providers[%s].model", provider.ID)
+	if _, err := NewSettingService(s).Set(ctx, key, model); err != nil {
+		return LLMProviderResult{}, err
+	}
+	return s.ProviderResult(ctx, string(provider.ID))
+}
+
+func (s *LLMService) SetOllamaModeValue(ctx context.Context, raw string) (LLMProviderResult, error) {
+	mode := llm.OllamaMode(strings.ToLower(strings.TrimSpace(raw)))
+	provider, err := s.SetOllamaMode(ctx, mode)
+	if err != nil {
+		return LLMProviderResult{}, err
+	}
+	return s.ProviderResult(ctx, string(provider.ID))
+}
+
+func LLMFailureCategory(err error) (string, bool) {
+	value, ok := llm.AsError(err)
+	if !ok {
+		return "", false
+	}
+	return string(value.Category), true
 }
 
 func (s *LLMService) Status(ctx context.Context) (LLMStatusResult, error) {
@@ -241,14 +282,7 @@ func BindLLMOperations(dispatcher *Dispatcher, service *LLMService) error {
 			return service.ProviderResult(ctx, string(provider.ID))
 		}))},
 		{capability.LLMProviderRemove, llmOperationHandler(capability.LLMProviderRemove, typedOperation[LLMProviderIDInput](capability.LLMProviderRemove, func(ctx context.Context, input LLMProviderIDInput) (any, error) {
-			id, err := llm.NormalizeProviderID(input.ID)
-			if err != nil {
-				return nil, err
-			}
-			if err := service.RemoveProvider(ctx, input.ID); err != nil {
-				return nil, err
-			}
-			return LLMProviderRemoveResult{ProviderID: id, Removed: true}, nil
+			return service.RemoveProviderResult(ctx, input.ID)
 		}))},
 		{capability.LLMProviderSelect, llmOperationHandler(capability.LLMProviderSelect, typedOperation[LLMProviderIDInput](capability.LLMProviderSelect, func(ctx context.Context, input LLMProviderIDInput) (any, error) {
 			if _, err := service.SelectProvider(ctx, input.ID); err != nil {

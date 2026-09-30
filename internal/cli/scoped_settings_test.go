@@ -74,8 +74,8 @@ func TestScopedSettingGrammarMatchesCanonicalCapabilities(t *testing.T) {
 		if spec.Writable && len(spec.ScopedCommands) == 0 {
 			t.Errorf("writable setting %q has no scoped mutation facade", spec.Key)
 		}
-		if spec.Secret && spec.Clearable && !strings.Contains(commands, " remove") {
-			t.Errorf("clearable managed secret %q has no scoped remove facade: %v", spec.Key, spec.ScopedCommands)
+		if spec.Secret && spec.Clearable && !strings.Contains(commands, " remove") && !strings.Contains(commands, " clear") {
+			t.Errorf("clearable managed secret %q has no scoped remove/clear facade: %v", spec.Key, spec.ScopedCommands)
 		}
 		if spec.Secret && spec.Verifiable && !strings.Contains(commands, " verify") {
 			t.Errorf("verifiable managed secret %q has no scoped verify facade: %v", spec.Key, spec.ScopedCommands)
