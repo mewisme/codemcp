@@ -38,6 +38,8 @@ func (s *LLMService) SetOllamaMode(ctx context.Context, mode llm.OllamaMode) (ll
 	if err != nil {
 		return llm.Provider{}, err
 	}
+	s.invalidateModelCatalog(llm.OllamaID)
+	s.clearReadiness(llm.OllamaID)
 	return updated, nil
 }
 

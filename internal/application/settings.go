@@ -42,7 +42,13 @@ type SettingService struct {
 	llm      *LLMService
 }
 
-func NewSettingService() *SettingService { return &SettingService{} }
+func NewSettingService(llmServices ...*LLMService) *SettingService {
+	service := &SettingService{}
+	if len(llmServices) > 0 {
+		service.llm = llmServices[0]
+	}
+	return service
+}
 
 func (s *SettingService) List(ctx context.Context, prefix string) ([]SettingResult, error) {
 	ctx = settingContext(ctx)

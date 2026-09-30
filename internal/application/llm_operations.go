@@ -153,8 +153,11 @@ func (s *LLMService) Probe(ctx context.Context, rawID string) (LLMProbeResult, e
 		return LLMProbeResult{}, err
 	}
 	if err := s.ProbeProvider(ctx, string(provider.ID)); err != nil {
-		return LLMProbeResult{ProviderID: provider.ID, Model: provider.Model, Readiness: probeFailureReadiness(err)}, err
+		readiness := probeFailureReadiness(err)
+		s.observeReadiness(provider.ID, readiness, llmReadinessReason(err))
+		return LLMProbeResult{ProviderID: provider.ID, Model: provider.Model, Readiness: readiness}, err
 	}
+	s.observeReadiness(provider.ID, llm.ReadinessReady, "")
 	return LLMProbeResult{ProviderID: provider.ID, Model: provider.Model, Readiness: llm.ReadinessReady}, nil
 }
 
@@ -164,6 +167,12 @@ func (s *LLMService) providerResult(ctx context.Context, provider llm.Provider, 
 		return LLMProviderResult{}, err
 	}
 	status := s.providerConfigurationStatus(provider, selected, credential.Configured)
+	if status.Configured {
+		if observation, ok := s.readinessObservation(provider.ID); ok {
+			status.Readiness = observation.Readiness
+			status.Reason = observation.Reason
+		}
+	}
 	return LLMProviderResult{
 		ID: provider.ID, Name: provider.Name, Protocol: provider.Protocol, BaseURL: provider.BaseURL,
 		Model: provider.Model, AuthMode: provider.AuthMode, Discovery: provider.Discovery, CoreKind: provider.CoreKind,

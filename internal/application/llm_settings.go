@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/llm"
@@ -14,10 +15,17 @@ import (
 )
 
 type LLMService struct {
-	root       string
-	store      *llm.Store
-	modelCache *llmModelCatalogCache
-	backend    LLMProviderBackend
+	root        string
+	store       *llm.Store
+	modelCache  *llmModelCatalogCache
+	backend     LLMProviderBackend
+	readinessMu sync.RWMutex
+	readiness   map[llm.ProviderID]llmReadinessObservation
+}
+
+type llmReadinessObservation struct {
+	Readiness llm.Readiness
+	Reason    string
 }
 
 func NewLLMService(root string) *LLMService {
@@ -34,6 +42,7 @@ func NewLLMServiceWithBackend(root string, backend LLMProviderBackend) *LLMServi
 		store:      llm.NewStore(root),
 		modelCache: newLLMModelCatalogCache(),
 		backend:    backend,
+		readiness:  map[llm.ProviderID]llmReadinessObservation{},
 	}
 }
 
@@ -108,6 +117,7 @@ func (s *LLMService) SetCredential(ctx context.Context, rawID, value string) err
 		return err
 	}
 	s.invalidateModelCatalog(provider.ID)
+	s.clearReadiness(provider.ID)
 	return nil
 }
 
@@ -124,6 +134,7 @@ func (s *LLMService) ClearCredential(ctx context.Context, rawID string) error {
 		return err
 	}
 	s.invalidateModelCatalog(provider.ID)
+	s.clearReadiness(provider.ID)
 	return nil
 }
 
@@ -139,7 +150,48 @@ func (s *LLMService) RemoveProvider(ctx context.Context, rawID string) error {
 		return err
 	}
 	s.invalidateModelCatalog(provider.ID)
+	s.clearReadiness(provider.ID)
 	return nil
+}
+
+func (s *LLMService) observeReadiness(id llm.ProviderID, readiness llm.Readiness, reason string) {
+	if s == nil || id == "" {
+		return
+	}
+	s.readinessMu.Lock()
+	if s.readiness == nil {
+		s.readiness = map[llm.ProviderID]llmReadinessObservation{}
+	}
+	s.readiness[id] = llmReadinessObservation{Readiness: readiness, Reason: strings.TrimSpace(reason)}
+	s.readinessMu.Unlock()
+}
+
+func (s *LLMService) readinessObservation(id llm.ProviderID) (llmReadinessObservation, bool) {
+	if s == nil || id == "" {
+		return llmReadinessObservation{}, false
+	}
+	s.readinessMu.RLock()
+	value, ok := s.readiness[id]
+	s.readinessMu.RUnlock()
+	return value, ok
+}
+
+func (s *LLMService) clearReadiness(id llm.ProviderID) {
+	if s == nil || id == "" {
+		return
+	}
+	s.readinessMu.Lock()
+	delete(s.readiness, id)
+	s.readinessMu.Unlock()
+}
+
+func (s *LLMService) clearAllReadiness() {
+	if s == nil {
+		return
+	}
+	s.readinessMu.Lock()
+	s.readiness = map[llm.ProviderID]llmReadinessObservation{}
+	s.readinessMu.Unlock()
 }
 
 func (s *SettingService) llmService() *LLMService {
@@ -274,6 +326,7 @@ func (s *LLMService) applySettingChanges(items []resolvedSettingChange) error {
 		return err
 	}
 	s.invalidateAllModelCatalogs()
+	s.clearAllReadiness()
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package approval
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -9,14 +10,16 @@ import (
 )
 
 const (
-	EventCreated   = "approval.created"
-	EventPending   = "approval.pending"
-	EventApproved  = "approval.approved"
-	EventDenied    = "approval.denied"
-	EventExpired   = "approval.expired"
-	EventClaimed   = "approval.claimed"
-	EventRevoked   = "approval.revoked"
-	EventCancelled = "approval.cancelled"
+	EventCreated           = "approval.created"
+	EventPending           = "approval.pending"
+	EventApproved          = "approval.approved"
+	EventDenied            = "approval.denied"
+	EventExpired           = "approval.expired"
+	EventClaimed           = "approval.claimed"
+	EventRevoked           = "approval.revoked"
+	EventCancelled         = "approval.cancelled"
+	EventExplanationReady  = "approval.explanation.ready"
+	EventExplanationFailed = "approval.explanation.failed"
 )
 
 type EventSubject string
@@ -28,21 +31,22 @@ const (
 )
 
 type Event struct {
-	Sequence       uint64       `json:"sequence,omitempty"`
-	Name           string       `json:"name"`
-	Subject        EventSubject `json:"subject"`
-	ChallengeID    string       `json:"challenge_id,omitempty"`
-	RequestID      string       `json:"request_id,omitempty"`
-	WorkspaceID    string       `json:"workspace_id"`
-	SessionHash    string       `json:"session_hash,omitempty"`
-	Source         string       `json:"source,omitempty"`
-	TargetTool     string       `json:"target_tool"`
-	Status         Status       `json:"status,omitempty"`
-	CreatedAt      time.Time    `json:"created_at"`
-	ExpiresAt      time.Time    `json:"expires_at"`
-	RetryUntil     time.Time    `json:"retry_until,omitempty"`
-	GrantExpiresAt time.Time    `json:"grant_expires_at,omitempty"`
-	Timestamp      time.Time    `json:"timestamp"`
+	Sequence           uint64       `json:"sequence,omitempty"`
+	Name               string       `json:"name"`
+	Subject            EventSubject `json:"subject"`
+	ChallengeID        string       `json:"challenge_id,omitempty"`
+	RequestID          string       `json:"request_id,omitempty"`
+	WorkspaceID        string       `json:"workspace_id"`
+	SessionHash        string       `json:"session_hash,omitempty"`
+	Source             string       `json:"source,omitempty"`
+	TargetTool         string       `json:"target_tool"`
+	Status             Status       `json:"status,omitempty"`
+	CreatedAt          time.Time    `json:"created_at"`
+	ExpiresAt          time.Time    `json:"expires_at"`
+	RetryUntil         time.Time    `json:"retry_until,omitempty"`
+	GrantExpiresAt     time.Time    `json:"grant_expires_at,omitempty"`
+	ExplanationAttempt uint64       `json:"explanation_attempt,omitempty"`
+	Timestamp          time.Time    `json:"timestamp"`
 }
 
 type EventOverflow = sequence.Overflow
@@ -169,5 +173,6 @@ func eventLifecycleKey(event Event) string {
 		event.TargetTool,
 		event.RetryUntil.UTC().Format(time.RFC3339Nano),
 		event.GrantExpiresAt.UTC().Format(time.RFC3339Nano),
+		fmt.Sprintf("%d", event.ExplanationAttempt),
 	}, "\x00")
 }

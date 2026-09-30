@@ -33,7 +33,39 @@ func (facade llmInferenceFacade) Infer(ctx context.Context, request llm.Request)
 	if err != nil {
 		return llm.Result{}, err
 	}
-	return facade.service.llmClient().Infer(ctx, provider, request)
+	result, err := facade.service.llmClient().Infer(ctx, provider, request)
+	if err != nil {
+		readiness := probeFailureReadiness(err)
+		facade.service.observeReadiness(provider.ID, readiness, llmReadinessReason(err))
+		return llm.Result{}, err
+	}
+	facade.service.observeReadiness(provider.ID, llm.ReadinessReady, "")
+	return result, nil
+}
+
+func llmReadinessReason(err error) string {
+	value, ok := llm.AsError(err)
+	if !ok {
+		return "LLM provider request failed"
+	}
+	switch value.Category {
+	case llm.ErrorMisconfigured:
+		return "LLM provider configuration is incomplete"
+	case llm.ErrorUnauthorized:
+		return "LLM provider authentication failed"
+	case llm.ErrorRateLimited:
+		return "LLM provider is rate limited"
+	case llm.ErrorTimeout:
+		return "LLM provider request timed out"
+	case llm.ErrorCancelled:
+		return "LLM provider request was cancelled"
+	case llm.ErrorUnsupported:
+		return "LLM provider does not support the requested operation"
+	case llm.ErrorInvalidRequest, llm.ErrorInvalidResponse:
+		return "LLM provider returned an invalid request or response"
+	default:
+		return "LLM provider is unavailable"
+	}
 }
 
 func (s *LLMService) llmClient() LLMProviderBackend {

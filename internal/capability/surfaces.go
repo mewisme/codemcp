@@ -15,6 +15,8 @@ const (
 	reasonNotApplicable             = "surface is not applicable"
 	reasonLLMSurfaceDeferred        = "LLM administration is deferred to the dedicated interface rollout"
 	reasonLLMOperatorOnly           = "LLM provider administration is operator-only and is not exposed to requesting MCP agents"
+	reasonApprovalExplainDeferred   = "approval explanation review is deferred to the dedicated interface rollout"
+	reasonApprovalExplainReviewer   = "approval explanation is reviewer-only and is not exposed to requesting MCP agents"
 )
 
 var knownSurfaceReasons = map[string]struct{}{
@@ -22,6 +24,7 @@ var knownSurfaceReasons = map[string]struct{}{
 	reasonNoBrowser: {}, reasonNoAdminAPI: {}, reasonNoMCP: {}, reasonMCPPending: {},
 	reasonTelegramExcluded: {}, reasonSurfaceLocalOnly: {}, reasonTelegramManagedCollection: {}, reasonNotApplicable: {},
 	reasonLLMSurfaceDeferred: {}, reasonLLMOperatorOnly: {},
+	reasonApprovalExplainDeferred: {}, reasonApprovalExplainReviewer: {},
 }
 
 var llmOperationIDs = idSet(
@@ -36,6 +39,12 @@ var llmOperationIDs = idSet(
 	LLMProviderProbe,
 	LLMProviderCredentialSet,
 	LLMProviderCredentialClear,
+)
+
+var approvalExplainOperationIDs = idSet(
+	RequestExplain,
+	RequestExplanationView,
+	RequestExplainStatus,
 )
 
 var remoteLocalOnlyExemptIDs = idSet(
@@ -67,14 +76,22 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 	contracts := make([]SurfaceContract, 0, len(AllSurfaces))
 	for _, surface := range AllSurfaces {
 		contract := SurfaceContract{Surface: surface}
-		if llmOperationIDs[spec.ID] {
+		if llmOperationIDs[spec.ID] || approvalExplainOperationIDs[spec.ID] {
 			contract.State = SurfaceExempt
 			if surface == SurfaceMCP {
 				contract.Exemption = SurfaceExemptionSurfaceSpecific
-				contract.Reason = reasonLLMOperatorOnly
+				if approvalExplainOperationIDs[spec.ID] {
+					contract.Reason = reasonApprovalExplainReviewer
+				} else {
+					contract.Reason = reasonLLMOperatorOnly
+				}
 			} else {
 				contract.Exemption = SurfaceExemptionDeferred
-				contract.Reason = reasonLLMSurfaceDeferred
+				if approvalExplainOperationIDs[spec.ID] {
+					contract.Reason = reasonApprovalExplainDeferred
+				} else {
+					contract.Reason = reasonLLMSurfaceDeferred
+				}
 			}
 			contracts = append(contracts, contract)
 			continue

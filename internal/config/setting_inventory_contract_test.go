@@ -10,7 +10,7 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 	want := []string{
 		"admin.enabled", "admin.port",
 		"auth.admin_enabled", "auth.admin_token_hash", "auth.mcp_enabled", "auth.mcp_legacy_bearer", "auth.mcp_token_hash",
-		"approval.semantic.critical_action", "approval.semantic.enabled", "approval.semantic.fail_mode", "approval.semantic.high_action",
+		"approval.explain.mode", "approval.semantic.critical_action", "approval.semantic.enabled", "approval.semantic.fail_mode", "approval.semantic.high_action",
 		"approval.semantic.low_action", "approval.semantic.medium_action", "approval.semantic.minimum_confidence", "approval.semantic.provider", "approval.semantic.timeout_ms",
 		"integrations.caveman.active", "integrations.caveman.mode", "integrations.codegraph.enabled", "integrations.codegraph.path",
 		"integrations.ponytail.active", "integrations.ponytail.mode", "integrations.rtk.enabled", "integrations.rtk.path",

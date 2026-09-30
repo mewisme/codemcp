@@ -32,6 +32,13 @@ func (a *App) Start(ctx context.Context) error {
 		}
 	}
 	a.runtimeCtx = ctx
+	if a.ApprovalExplain != nil {
+		if err := a.ApprovalExplain.Start(ctx); err != nil {
+			a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, err)
+			span.FailMessage("Approval explanation runtime could not start", err)
+			return err
+		}
+	}
 	if a.Telegram != nil {
 		a.Telegram.Reconcile(ctx, a.Config.Snapshot().Telegram)
 		if a.TelegramUI != nil {
@@ -71,6 +78,9 @@ func (a *App) Start(ctx context.Context) error {
 			if a.ApprovalNotifications != nil {
 				a.ApprovalNotifications.Stop()
 			}
+			if a.ApprovalExplain != nil {
+				a.ApprovalExplain.Stop()
+			}
 			if a.BackgroundNotifications != nil {
 				a.BackgroundNotifications.Stop()
 			}
@@ -108,6 +118,9 @@ func (a *App) Stop() error {
 				stopErr = errors.Join(stopErr, err)
 			}
 		}
+	}
+	if a.ApprovalExplain != nil {
+		a.ApprovalExplain.Stop()
 	}
 	if a.Tools != nil && a.Tools.Completions != nil {
 		a.Tools.Completions.Close()

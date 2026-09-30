@@ -124,6 +124,7 @@ var fieldSpecs = []FieldSpec{
 	{Key: "approval.semantic.medium_action", Label: "Medium-risk semantic action", Section: FieldSectionAccess, Description: "maps medium semantic risk to a canonical policy action", Details: "The default escalates medium risk to canonical human approval. Mapping may only preserve or tighten native allow behavior.", Kind: FieldEnum, Options: []string{"allow", "require_approval", "deny"}, Values: semanticApprovalActionValues(), Editable: true},
 	{Key: "approval.semantic.high_action", Label: "High-risk semantic action", Section: FieldSectionAccess, Description: "maps high semantic risk to a canonical policy action", Details: "The default escalates high risk to canonical human approval. Mapping may only preserve or tighten native allow behavior.", Kind: FieldEnum, Options: []string{"allow", "require_approval", "deny"}, Values: semanticApprovalActionValues(), Editable: true},
 	{Key: "approval.semantic.critical_action", Label: "Critical-risk semantic action", Section: FieldSectionAccess, Description: "maps critical semantic risk to a canonical policy action", Details: "The default denies critical risk. Semantic output never executes a side effect or creates an approval capability directly.", Kind: FieldEnum, Options: []string{"allow", "require_approval", "deny"}, Values: semanticApprovalActionValues(), Editable: true},
+	{Key: "approval.explain.mode", Label: "Approval request explanation", Section: FieldSectionAccess, Description: "controls optional LLM explanations for exact approval commands", Details: "Off disables explanations. Manual allows reviewers to request one. Auto starts explanation generation after a request is already pending. Enabling manual or auto requires the active LLM provider to be configured and pass an explicit probe before the setting is persisted.", Kind: FieldEnum, Options: []string{"off", "manual", "auto"}, Values: []FieldValueSpec{{Value: "off", Description: "Do not generate LLM approval explanations."}, {Value: "manual", Description: "Generate explanations only when a reviewer explicitly requests one."}, {Value: "auto", Description: "Generate explanations asynchronously after approval requests become pending."}}, Editable: true},
 	{Key: "notifications.approval.enabled", Label: "Approval notifications", Section: FieldSectionRuntime, Description: "controls whether approval lifecycle notifications are delivered to configured providers", Details: "Review surfaces remain independent of this setting. Enabling notifications does not consume or hide approval events from CLI, TUI, Browser, Admin API, or Telegram review surfaces.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.pending", "notifications.approval.resolved", "notifications.approval.desktop_enabled", "notifications.approval.telegram_enabled"}},
 	{Key: "notifications.approval.pending", Label: "Pending approval notifications", Section: FieldSectionRuntime, Description: "controls notification delivery when a request becomes pending", Details: "This policy only controls outbound notification delivery. Pending requests remain visible through every review surface regardless of notification state.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
 	{Key: "notifications.approval.resolved", Label: "Resolved approval notifications", Section: FieldSectionRuntime, Description: "controls notification delivery for terminal approval outcomes", Details: "Resolved notifications cover approved, denied, expired, cancelled, and revoked outcomes. They do not alter canonical approval state.", Kind: FieldBool, Editable: true, Related: []string{"notifications.approval.enabled"}},
@@ -378,6 +379,14 @@ func SetValue(cfg *Config, key, raw string) error {
 		case "approval.semantic.critical_action":
 			cfg.Approval.Semantic.CriticalAction = value
 		}
+	case "approval.explain.mode":
+		value := ApprovalExplainMode(strings.ToLower(strings.TrimSpace(raw)))
+		switch value {
+		case ApprovalExplainOff, ApprovalExplainManual, ApprovalExplainAuto:
+			cfg.Approval.Explain.Mode = value
+		default:
+			return errors.New("approval.explain.mode must be off, manual, or auto")
+		}
 	case "notifications.approval.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -612,6 +621,8 @@ func RawValue(cfg Config, key string) (string, error) {
 		return cfg.Approval.Semantic.HighAction, nil
 	case "approval.semantic.critical_action":
 		return cfg.Approval.Semantic.CriticalAction, nil
+	case "approval.explain.mode":
+		return string(cfg.Approval.Explain.Mode), nil
 	case "notifications.approval.enabled":
 		return strconv.FormatBool(cfg.Notifications.Approval.Enabled), nil
 	case "notifications.approval.pending":

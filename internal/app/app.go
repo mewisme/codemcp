@@ -36,6 +36,7 @@ type App struct {
 	OAuthFlows                *mcpoauth.FlowManager
 	Notifications             *notification.Coordinator
 	ApprovalNotifications     *notification.ApprovalBridge
+	ApprovalExplain           *application.ApprovalExplainService
 	CompletionNotifications   *notification.CompletionHook
 	BackgroundNotifications   *notification.BackgroundJobBridge
 	ProductTelemetry          productTelemetryRuntime

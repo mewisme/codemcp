@@ -9,7 +9,7 @@ import (
 	"go.mewis.me/codemcp/internal/doctor"
 )
 
-const finalOperationSurfaceFingerprint = "dca61a2c77c4e74f1ce2fbba969cf14a232126767e793b161166a340bdeabab0"
+const finalOperationSurfaceFingerprint = "3b618c406e0b74d0787637f2a4ba747df39438700937432533da99fdf9d96313"
 
 func TestFinalOperationSurfaceMatrixFingerprint(t *testing.T) {
 	lines := make([]string, 0, len(All())*len(AllSurfaces))

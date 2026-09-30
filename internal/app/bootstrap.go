@@ -72,12 +72,19 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
-		if err := application.BindSettingOperations(a.Operations, application.NewSettingService()); err != nil {
+		llmService := application.NewLLMService(config.RootPath())
+		if err := application.BindSettingOperations(a.Operations, application.NewSettingService(llmService)); err != nil {
 			a.bootstrapErr = err
 			return
 		}
-		llmService := application.NewLLMService(config.RootPath())
 		if err := application.BindLLMOperations(a.Operations, llmService); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		a.ApprovalExplain = application.NewApprovalExplainService(a.Tools.Approvals, llmService, func() config.ApprovalExplainMode {
+			return a.Config.Snapshot().Approval.Explain.Mode
+		})
+		if err := application.BindApprovalExplainOperations(a.Operations, a.ApprovalExplain); err != nil {
 			a.bootstrapErr = err
 			return
 		}

@@ -45,6 +45,19 @@ type TelegramLogsMiniAppConfig struct {
 
 type ApprovalConfig struct {
 	Semantic SemanticApprovalConfig `json:"semantic"`
+	Explain  ApprovalExplainConfig  `json:"explain"`
+}
+
+type ApprovalExplainMode string
+
+const (
+	ApprovalExplainOff    ApprovalExplainMode = "off"
+	ApprovalExplainManual ApprovalExplainMode = "manual"
+	ApprovalExplainAuto   ApprovalExplainMode = "auto"
+)
+
+type ApprovalExplainConfig struct {
+	Mode ApprovalExplainMode `json:"mode"`
 }
 
 type SemanticApprovalConfig struct {
@@ -138,11 +151,14 @@ func Default() Config {
 			},
 			Completion: CompletionNotificationConfig{Enabled: false, DesktopEnabled: true, TelegramEnabled: false},
 		},
-		Approval: ApprovalConfig{Semantic: SemanticApprovalConfig{
-			Enabled: false, Provider: "typesafe", TimeoutMS: 1500, MinimumConfidence: 0.8,
-			FailMode: "require_approval", LowAction: "allow", MediumAction: "require_approval",
-			HighAction: "require_approval", CriticalAction: "deny",
-		}},
+		Approval: ApprovalConfig{
+			Semantic: SemanticApprovalConfig{
+				Enabled: false, Provider: "typesafe", TimeoutMS: 1500, MinimumConfidence: 0.8,
+				FailMode: "require_approval", LowAction: "allow", MediumAction: "require_approval",
+				HighAction: "require_approval", CriticalAction: "deny",
+			},
+			Explain: ApprovalExplainConfig{Mode: ApprovalExplainOff},
+		},
 		Telemetry:    TelemetryConfig{Enabled: true},
 		Telegram:     TelegramConfig{Enabled: false, AllowedUserIDs: []int64{}, TopicsEnabled: false, LogsMiniApp: TelegramLogsMiniAppConfig{Enabled: false}},
 		Integrations: integrations.Default(),

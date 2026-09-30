@@ -22,6 +22,9 @@ const (
 	RequestView                ID = "request.view"
 	RequestApprove             ID = "request.approve"
 	RequestDeny                ID = "request.deny"
+	RequestExplain             ID = "request.explain"
+	RequestExplanationView     ID = "request.explanation.view"
+	RequestExplainStatus       ID = "request.explain.status"
 	RequestGrantList           ID = "request.grant.list"
 	RequestGrantRevoke         ID = "request.grant.revoke"
 	CompletionCurrent          ID = "completion.current"
@@ -187,6 +190,9 @@ func buildSpecs() []Spec {
 		operatorQuery(RequestView, "request view"),
 		reviewerMutation(RequestApprove, "request approve"),
 		reviewerMutation(RequestDeny, "request deny"),
+		reviewerRuntime(RequestExplain, "", true),
+		reviewerQuery(RequestExplanationView, "", false),
+		reviewerQuery(RequestExplainStatus, "", false),
 		operatorQuery(RequestGrantList, "request grant list"),
 		reviewerDestructive(RequestGrantRevoke, "request grant revoke"),
 		operatorQuery(CompletionCurrent, "agent completion current"),
@@ -357,6 +363,21 @@ func operatorRuntime(id ID, path string, openWorld bool, aliases ...string) Spec
 
 func reviewerMutation(id ID, path string, aliases ...string) Spec {
 	spec := operatorSpec(id, KindMutation, RiskSensitive, ConfirmationPolicy{Mode: ConfirmationReview}, SemanticEffects{Key: string(id)}, path, aliases...)
+	spec.Audience = AudienceReviewer
+	spec.Authorization = AuthorizationReviewer
+	return spec
+}
+
+func reviewerQuery(id ID, path string, openWorld bool, aliases ...string) Spec {
+	spec := operatorQuery(id, path, aliases...)
+	spec.Audience = AudienceReviewer
+	spec.Authorization = AuthorizationReviewer
+	spec.Effects.OpenWorld = openWorld
+	return spec
+}
+
+func reviewerRuntime(id ID, path string, openWorld bool, aliases ...string) Spec {
+	spec := operatorSpec(id, KindRuntime, RiskSensitive, ConfirmationPolicy{Mode: ConfirmationNone}, SemanticEffects{Key: string(id), OpenWorld: openWorld}, path, aliases...)
 	spec.Audience = AudienceReviewer
 	spec.Authorization = AuthorizationReviewer
 	return spec

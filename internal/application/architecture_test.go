@@ -252,6 +252,33 @@ func TestLLMApplicationDoesNotRegisterApprovalOrSemanticPolicy(t *testing.T) {
 	}
 }
 
+func TestApprovalExplainDoesNotPersistOrTraceModelPayloads(t *testing.T) {
+	root := architectureRepositoryRoot(t)
+	path := filepath.Join(root, "internal", "application", "approval_explain.go")
+	for _, imported := range goFileImports(t, path) {
+		for _, forbidden := range []string{
+			internalImportPrefix + "logger",
+			internalImportPrefix + "telemetry",
+			internalImportPrefix + "state",
+			internalImportPrefix + "history",
+			internalImportPrefix + "integrations/semantic",
+		} {
+			if imported == forbidden || strings.HasPrefix(imported, forbidden+"/") {
+				t.Errorf("approval explanation service imports forbidden payload/policy sink %s", imported)
+			}
+		}
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"tracepkg.Start(", "tracepkg.Emit(", "tracepkg.Any(", "tracepkg.String("} {
+		if strings.Contains(string(body), forbidden) {
+			t.Errorf("approval explanation service can trace model payloads via %q", forbidden)
+		}
+	}
+}
+
 func TestRepresentativeWorkspaceAdaptersCannotBypassApplicationMutationOwner(t *testing.T) {
 	root := architectureRepositoryRoot(t)
 	files := []string{

@@ -257,6 +257,10 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 		validateSpan.FailMessage("Canonical setting mutation validation failed", err, tracepkg.Any("keys", keys))
 		return SettingApplyResult{}, err
 	}
+	if err := s.validateApprovalExplainEnable(ctx, previous, next, resolved); err != nil {
+		validateSpan.FailMessage("Canonical setting mutation validation failed", err, tracepkg.String("key", "approval.explain.mode"))
+		return SettingApplyResult{}, err
+	}
 	validateSpan.EndMessage("Canonical setting mutation validated", tracepkg.Int("changes", len(resolved)), tracepkg.Any("keys", keys))
 
 	if shouldSyncTunnelMetadata(previous.Tunnel, next.Tunnel) {
@@ -283,6 +287,35 @@ func (s *SettingService) Apply(ctx context.Context, changes []SettingChange) (re
 	}
 	tracepkg.Emit(ctx, "CONFIG", "setting.apply.persisted", "Canonical setting mutation persisted", tracepkg.String("config", source.Path), tracepkg.Int("changes", len(resolved)), tracepkg.Any("keys", keys), tracepkg.Bool("runtime_reloaded", reloaded))
 	return SettingApplyResult{Results: results, Config: next, RuntimeReloaded: reloaded}, nil
+}
+
+func (s *SettingService) validateApprovalExplainEnable(ctx context.Context, previous, next config.Config, resolved []resolvedSettingChange) error {
+	changed := false
+	for _, item := range resolved {
+		if item.spec.Key == "approval.explain.mode" {
+			changed = true
+			break
+		}
+	}
+	if !changed || previous.Approval.Explain.Mode == next.Approval.Explain.Mode || next.Approval.Explain.Mode == config.ApprovalExplainOff {
+		return nil
+	}
+	service := s.llmService()
+	status, err := service.Status(ctx)
+	if err != nil {
+		return fmt.Errorf("validate approval Explain LLM provider: %w", err)
+	}
+	if !status.Active.Configured {
+		reason := strings.TrimSpace(status.Active.Reason)
+		if reason == "" {
+			reason = "active LLM provider is not configured"
+		}
+		return fmt.Errorf("approval.explain.mode requires a configured active LLM provider: %s", reason)
+	}
+	if _, err := service.Probe(ctx, string(status.Active.ID)); err != nil {
+		return fmt.Errorf("approval.explain.mode requires a successful active LLM probe: %w", err)
+	}
+	return nil
 }
 
 func applyTypeSafeSecretSettingChange(ctx context.Context, value string) (bool, error) {

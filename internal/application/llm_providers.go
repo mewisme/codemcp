@@ -44,6 +44,7 @@ func (s *LLMService) AddCustomProvider(ctx context.Context, rawID string, config
 		return llm.Provider{}, err
 	}
 	s.invalidateModelCatalog(provider.ID)
+	s.clearReadiness(provider.ID)
 	return providerFromCatalog(updated, provider.ID)
 }
 
@@ -85,6 +86,7 @@ func (s *LLMService) ConfigureCustomProvider(ctx context.Context, rawID string, 
 		return llm.Provider{}, err
 	}
 	s.invalidateModelCatalog(id)
+	s.clearReadiness(id)
 	return providerFromCatalog(updated, id)
 }
 
