@@ -1,12 +1,12 @@
 export const canonicalOperationHeader = "X-CM-Operation-ID"
 
-type Binding = {
+export type BrowserOperationBinding = {
   method: string
   pattern: string
   operation: string
 }
 
-const bindings: Binding[] = [
+const bindings: BrowserOperationBinding[] = [
   { method: "GET", pattern: "/api/health", operation: "health.read" },
   { method: "GET", pattern: "/api/status", operation: "status.overview" },
   { method: "GET", pattern: "/api/doctor", operation: "doctor.read" },
@@ -499,6 +499,10 @@ const bindings: Binding[] = [
     operation: "activity.view",
   },
 ]
+
+export function browserOperationBindings() {
+  return bindings.map((binding) => ({ ...binding }))
+}
 
 export function browserOperationFor(method: string, rawPath: string) {
   const path = rawPath.split("?", 1)[0]

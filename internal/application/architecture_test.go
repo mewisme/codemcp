@@ -58,6 +58,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"outboundpolicy":         "domain",
 	"patch":                  "domain",
 	"projectcontext":         "application",
+	"productadapter":         "application",
 	"rules":                  "domain",
 	"runtime":                "runtime",
 	"sequence":               "domain",
@@ -287,6 +288,7 @@ func TestRepresentativeWorkspaceAdaptersCannotBypassApplicationMutationOwner(t *
 		"internal/interface/admin/workspace_containers.go",
 		"internal/interface/tui/page/workspace.go",
 		"internal/interface/tui/page/workspace_editor.go",
+		"internal/telegram/workspace_approval.go",
 	}
 	directMutation := regexp.MustCompile(`(?:page\.)?manager\.(?:Register|Unregister|Relocate|CreateContainer|RenameContainer|DeleteContainer|AddAllowDir|RemoveAllowDir|AddWorkspacesToContainer|RemoveWorkspacesFromContainer|AddWorkspaceToContainers|RemoveWorkspaceFromContainers)\s*\(`)
 	for _, name := range files {

@@ -23,7 +23,9 @@ export type NavItem = {
   icon: LucideIcon
   parent?: string
 }
-export type AdminRouteHandle = Pick<NavItem, "title" | "description">
+export type AdminRouteHandle = Pick<NavItem, "title" | "description"> & {
+  component?: string
+}
 
 export const adminAppTitle = "CodeMCP"
 

@@ -7,10 +7,10 @@ import { App } from "@/App"
 import { PageLoading } from "@/components/page-state"
 import { navItems, type AdminRouteHandle } from "@/lib/admin-navigation"
 
-function navHandle(id: string): AdminRouteHandle {
+function navHandle(id: string, component: string): AdminRouteHandle {
   const item = navItems.find((value) => value.id === id)
   if (!item) throw new Error(`Unknown admin navigation item: ${id}`)
-  return { title: item.title, description: item.description }
+  return { title: item.title, description: item.description, component }
 }
 
 export const adminRoutes: RouteObject[] = [
@@ -31,7 +31,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/overview").then((module) => ({
             Component: module.OverviewPage,
           })),
-        handle: navHandle("overview"),
+        handle: navHandle("overview", "OverviewPage"),
       },
       {
         path: "system",
@@ -39,7 +39,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/system").then((module) => ({
             Component: module.SystemPage,
           })),
-        handle: navHandle("system"),
+        handle: navHandle("system", "SystemPage"),
       },
       {
         path: "logs",
@@ -47,7 +47,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/logs").then((module) => ({
             Component: module.LogsPage,
           })),
-        handle: navHandle("logs"),
+        handle: navHandle("logs", "LogsPage"),
       },
       {
         path: "integrations",
@@ -55,7 +55,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/integrations").then((module) => ({
             Component: module.IntegrationsPage,
           })),
-        handle: navHandle("integrations"),
+        handle: navHandle("integrations", "IntegrationsPage"),
       },
       {
         path: "llm",
@@ -63,7 +63,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/llm").then((module) => ({
             Component: module.LLMPage,
           })),
-        handle: navHandle("llm"),
+        handle: navHandle("llm", "LLMPage"),
       },
       {
         path: "workspaces",
@@ -71,7 +71,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/workspaces").then((module) => ({
             Component: module.WorkspacesPage,
           })),
-        handle: navHandle("workspaces"),
+        handle: navHandle("workspaces", "WorkspacesPage"),
       },
       {
         path: "instructions",
@@ -79,7 +79,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/global-instructions").then((module) => ({
             Component: module.GlobalInstructionsPage,
           })),
-        handle: navHandle("instructions"),
+        handle: navHandle("instructions", "GlobalInstructionsPage"),
       },
       {
         path: "prompts",
@@ -87,7 +87,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/prompts").then((module) => ({
             Component: module.PromptsPage,
           })),
-        handle: navHandle("prompts"),
+        handle: navHandle("prompts", "PromptsPage"),
       },
       {
         path: "workspaces/global",
@@ -122,6 +122,7 @@ export const adminRoutes: RouteObject[] = [
               title: "Project Context",
               description:
                 "Preview the effective instruction context for this workspace.",
+              component: "WorkspaceContextPage",
             } satisfies AdminRouteHandle,
           },
           {
@@ -134,6 +135,7 @@ export const adminRoutes: RouteObject[] = [
               title: "Workspace Requests",
               description:
                 "Review control approval requests scoped to this workspace.",
+              component: "WorkspaceRequestsPage",
             } satisfies AdminRouteHandle,
           },
           {
@@ -146,6 +148,7 @@ export const adminRoutes: RouteObject[] = [
               title: "Workspace Activity",
               description:
                 "Inspect activity and command executions scoped to this workspace.",
+              component: "WorkspaceActivityPage",
             } satisfies AdminRouteHandle,
           },
           {
@@ -170,6 +173,7 @@ export const adminRoutes: RouteObject[] = [
               title: "Background Processes",
               description:
                 "Inspect and clear finished background processes for this workspace.",
+              component: "WorkspaceProcessesPage",
             } satisfies AdminRouteHandle,
           },
           {
@@ -182,6 +186,7 @@ export const adminRoutes: RouteObject[] = [
               title: "CodeGraph",
               description:
                 "Inspect, initialize, and synchronize this workspace CodeGraph index.",
+              component: "WorkspaceCodeGraphPage",
             } satisfies AdminRouteHandle,
           },
         ],
@@ -192,7 +197,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/tools").then((module) => ({
             Component: module.ToolsPage,
           })),
-        handle: navHandle("tools"),
+        handle: navHandle("tools", "ToolsPage"),
       },
       {
         path: "upstreams",
@@ -200,7 +205,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/servers").then((module) => ({
             Component: module.UpstreamsPage,
           })),
-        handle: navHandle("upstreams"),
+        handle: navHandle("upstreams", "UpstreamsPage"),
       },
       { path: "servers", element: <Navigate replace to="/upstreams" /> },
       {
@@ -209,7 +214,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/tunnel").then((module) => ({
             Component: module.TunnelPage,
           })),
-        handle: navHandle("tunnel"),
+        handle: navHandle("tunnel", "TunnelPage"),
       },
       {
         path: "activity",
@@ -217,7 +222,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/activity").then((module) => ({
             Component: module.ActivityPage,
           })),
-        handle: navHandle("activity"),
+        handle: navHandle("activity", "ActivityPage"),
       },
       {
         path: "activity/:callID",
@@ -237,7 +242,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/completions").then((module) => ({
             Component: module.CompletionsPage,
           })),
-        handle: navHandle("completions"),
+        handle: navHandle("completions", "CompletionsPage"),
       },
       {
         path: "settings",
@@ -245,7 +250,7 @@ export const adminRoutes: RouteObject[] = [
           import("@/pages/settings").then((module) => ({
             Component: module.SettingsPage,
           })),
-        handle: navHandle("settings"),
+        handle: navHandle("settings", "SettingsPage"),
       },
       { path: "*", element: <Navigate replace to="/overview" /> },
     ],

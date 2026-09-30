@@ -189,10 +189,16 @@ func TestUniversalSurfaceAdapterGuardsRemainPresent(t *testing.T) {
 			"TestPublicCommandsHaveCanonicalCapabilities",
 			"TestRunnableCLICommandsCarryCanonicalOperationAnnotations",
 		},
+		"internal/cli/reachability_test.go": {
+			"TestCLIProductReachabilityDescriptorsResolveProductionCommands",
+		},
 		"internal/interface/tui/capability_parity_test.go": {
 			"TestDeclaredTUIAdapterEvidenceHasRepresentation",
 			"TestEveryTUIActionCapabilityIsDeclaredRequired",
 			"TestExecutableTUIActionsCarryCanonicalOperationIDs",
+		},
+		"internal/interface/tui/reachability_test.go": {
+			"TestTUIProductReachabilityDescriptorsResolveLiveActions",
 		},
 		"internal/interface/admin/operation_contract_test.go": {
 			"TestPublicAdminOperationsHaveCanonicalIDs",
@@ -206,12 +212,22 @@ func TestUniversalSurfaceAdapterGuardsRemainPresent(t *testing.T) {
 		"internal/telegram/navigation_test.go": {
 			"TestCompletedTelegramNavigationEntryPointsAreRegistered",
 		},
+		"internal/telegram/reachability_test.go": {
+			"TestTelegramProductReachabilityDescriptorsResolveRegisteredNavigation",
+		},
 		"internal/capability/telegram_rollout_test.go": {
 			"TestTelegramRolloutFutureOwnershipIsExplicit",
 			"TestTelegramLiveAdapterEvidenceTargetsRequiredOrBootstrapOperations",
 		},
 		"internal/application/operation_test.go": {
 			"TestDispatcherReturnsCanonicalMetadataAndTypedErrors",
+		},
+		"internal/productadapter/descriptor_test.go": {
+			"TestValidateRejectsGenericHiddenDispatchAsReachability",
+			"TestValidateRequiresCanonicalOwnerAndConfirmationConsumption",
+		},
+		"frontend/src/lib/product-reachability.test.ts": {
+			"classifies every live canonical API binding under a concrete product route and component",
 		},
 	}
 	paths := make([]string, 0, len(guards))
