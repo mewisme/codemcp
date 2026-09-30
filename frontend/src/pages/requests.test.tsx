@@ -18,6 +18,7 @@ describe("RequestsPage", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = requestPath(input)
       if (path === "/api/requests?status=&workspace_id=ws_test") return json(items)
+      if (path === "/api/requests/grants?workspace_id=ws_test") return json([])
       if (path === "/api/requests/stream?workspace_id=ws_test") return approvalStream()
       if (path === "/api/requests/req_pending") return json(items.find((item) => item.id === pending.id))
       if (path === "/api/requests/req_pending/approve" && init?.method === "POST") {
@@ -46,6 +47,39 @@ describe("RequestsPage", () => {
     await user.click(screen.getByRole("button", { name: /Approve/ }))
     await waitFor(() => expect(screen.getAllByText("approved").length).toBeGreaterThan(0))
     await waitFor(() => expect(screen.getByText("0 pending")).toBeInTheDocument())
+  })
+
+  it("shows active runtime grants and revokes through the canonical grant endpoint", async () => {
+    const user = userEvent.setup()
+    const grant = {
+      ...request("grant_active", "approved", "cm shell"),
+      grant_expires_at: new Date(Date.now() + 120_000).toISOString(),
+    }
+    let grants = [grant]
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = requestPath(input)
+      if (path === "/api/requests?status=&workspace_id=ws_test") return json([])
+      if (path === "/api/requests/grants?workspace_id=ws_test") return json(grants)
+      if (path === "/api/requests/stream?workspace_id=ws_test") return approvalStream()
+      if (path === "/api/requests/grants/grant_active/revoke" && init?.method === "POST") {
+        grants = []
+        return json({ ...grant, status: "consumed" })
+      }
+      throw new Error(`Unhandled test request: ${path}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    renderPage()
+    expect(await screen.findByText("Runtime grants")).toBeInTheDocument()
+    expect(screen.getByText("Allow cm shell")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Revoke" }))
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/requests/grants/grant_active/revoke"),
+        expect.objectContaining({ method: "POST" })
+      )
+    )
+    await waitFor(() => expect(screen.queryByText("Allow cm shell")).not.toBeInTheDocument())
   })
 })
 

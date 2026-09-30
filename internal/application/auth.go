@@ -7,18 +7,64 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/auth"
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type AuthStatus struct {
-	MCPEnabled              bool
-	MCPConfigured           bool
-	MCPLegacyBearer         bool
-	AdminEnabled            bool
-	AdminConfigured         bool
-	UnauthenticatedLoopback bool
-	CleartextHTTP           bool
+	MCPEnabled              bool `json:"mcp_enabled"`
+	MCPConfigured           bool `json:"mcp_configured"`
+	MCPLegacyBearer         bool `json:"mcp_legacy_bearer"`
+	AdminEnabled            bool `json:"admin_enabled"`
+	AdminConfigured         bool `json:"admin_configured"`
+	UnauthenticatedLoopback bool `json:"unauthenticated_loopback"`
+	CleartextHTTP           bool `json:"cleartext_http"`
+}
+
+type AuthRotationResult struct {
+	Token  string     `json:"token"`
+	Status AuthStatus `json:"status"`
+}
+
+func BindAuthOperations(dispatcher *Dispatcher) error {
+	if dispatcher == nil {
+		return errors.New("operation dispatcher is nil")
+	}
+	bindings := []struct {
+		id      capability.ID
+		handler OperationHandler
+	}{
+		{capability.AuthStatus, func(ctx context.Context, _ any) (any, error) {
+			return GetAuthStatusContext(ctx)
+		}},
+		{capability.AuthMCPRotate, func(ctx context.Context, _ any) (any, error) {
+			token, status, err := RotateAuthToken(ctx, "mcp")
+			return AuthRotationResult{Token: token, Status: status}, err
+		}},
+		{capability.AuthAdminRotate, func(ctx context.Context, _ any) (any, error) {
+			token, status, err := RotateAuthToken(ctx, "admin")
+			return AuthRotationResult{Token: token, Status: status}, err
+		}},
+		{capability.AuthMCPEnable, func(ctx context.Context, _ any) (any, error) {
+			return SetAuthEnabled(ctx, "mcp", true)
+		}},
+		{capability.AuthMCPDisable, func(ctx context.Context, _ any) (any, error) {
+			return SetAuthEnabled(ctx, "mcp", false)
+		}},
+		{capability.AuthAdminEnable, func(ctx context.Context, _ any) (any, error) {
+			return SetAuthEnabled(ctx, "admin", true)
+		}},
+		{capability.AuthAdminDisable, func(ctx context.Context, _ any) (any, error) {
+			return SetAuthEnabled(ctx, "admin", false)
+		}},
+	}
+	for _, binding := range bindings {
+		if err := dispatcher.Register(binding.id, binding.handler); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func GetAuthStatus() (AuthStatus, error) {

@@ -41,7 +41,7 @@ export function LogsPage() {
     setBusy(true)
     try {
       const [nextSnapshot, nextInfo] = await Promise.all([
-        adminApi.logs({
+        adminApi.followLogs({
           tail: 200,
           level: level === "all" ? undefined : level,
           grep: grep.trim() || undefined,
@@ -62,7 +62,7 @@ export function LogsPage() {
 
   useEffect(() => {
     let active = true
-    void Promise.all([adminApi.logs({ tail: 200 }), adminApi.logsInfo()])
+    void Promise.all([adminApi.followLogs({ tail: 200 }), adminApi.logsInfo()])
       .then(([nextSnapshot, nextInfo]) => {
         if (!active) return
         setSnapshot(nextSnapshot)

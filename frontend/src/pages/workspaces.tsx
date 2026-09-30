@@ -81,10 +81,15 @@ export function WorkspacesPage() {
     null
   )
   const [membership, setMembership] = useState<MembershipState | null>(null)
+  const [manageWorkspace, setManageWorkspace] = useState<Workspace | null>(null)
+  const [accessDirs, setAccessDirs] = useState<string[]>([])
+  const [accessPath, setAccessPath] = useState("")
+  const [relocationPath, setRelocationPath] = useState("")
   const [selectedContainerIDs, setSelectedContainerIDs] = useState<string[]>([])
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const [loading, setLoading] = useState(true)
   const [registering, setRegistering] = useState(false)
+  const [manageBusy, setManageBusy] = useState(false)
   const [busy, setBusy] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState("")
@@ -167,6 +172,72 @@ export function WorkspacesPage() {
       .map((container) => container.id)
     setSelectedContainerIDs([])
     setMembership({ workspace, mode, current })
+  }
+
+  async function openManageWorkspace(workspace: Workspace) {
+    setManageWorkspace(workspace)
+    setRelocationPath(workspace.path)
+    setAccessPath("")
+    setManageBusy(true)
+    try {
+      setAccessDirs(await adminApi.workspaceAccess(workspace.id))
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+      setAccessDirs(workspace.allow_dirs ?? [])
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  async function addAccess() {
+    if (!manageWorkspace || !accessPath.trim()) return
+    setManageBusy(true)
+    try {
+      await adminApi.addWorkspaceAccess(manageWorkspace.id, accessPath.trim())
+      setAccessDirs(await adminApi.workspaceAccess(manageWorkspace.id))
+      setAccessPath("")
+      await load()
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  async function removeAccess(path: string) {
+    if (!manageWorkspace) return
+    setManageBusy(true)
+    try {
+      await adminApi.removeWorkspaceAccess(manageWorkspace.id, path)
+      setAccessDirs(await adminApi.workspaceAccess(manageWorkspace.id))
+      await load()
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+    } finally {
+      setManageBusy(false)
+    }
+  }
+
+  async function relocateWorkspace() {
+    if (!manageWorkspace || !relocationPath.trim()) return
+    setManageBusy(true)
+    try {
+      const next = await adminApi.relocateWorkspace(
+        manageWorkspace.id,
+        relocationPath.trim()
+      )
+      setManageWorkspace(next)
+      setRelocationPath(next.path)
+      await load()
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+    } finally {
+      setManageBusy(false)
+    }
   }
 
   function requestMembership() {
@@ -292,6 +363,7 @@ export function WorkspacesPage() {
                   }
                   onAdd={() => openMembership(item, "add")}
                   onRemove={() => openMembership(item, "remove")}
+                  onManage={() => void openManageWorkspace(item)}
                   onUnregister={() =>
                     setConfirmAction({ kind: "unregister", workspace: item })
                   }
@@ -501,6 +573,96 @@ export function WorkspacesPage() {
         </form>
       </ResponsiveDialog>
       <ResponsiveDialog
+        open={Boolean(manageWorkspace)}
+        onOpenChange={(open) => {
+          if (!open && !manageBusy) setManageWorkspace(null)
+        }}
+        title="Workspace paths"
+        description={
+          manageWorkspace
+            ? `${manageWorkspace.id} · canonical path and additional allowed directories`
+            : undefined
+        }
+        footer={
+          <Button
+            disabled={manageBusy}
+            variant="outline"
+            onClick={() => setManageWorkspace(null)}
+          >
+            Close
+          </Button>
+        }
+      >
+        <div className="space-y-5">
+          <div className="space-y-2">
+            <Label htmlFor="workspace-relocation-path">Canonical project root</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="workspace-relocation-path"
+                value={relocationPath}
+                onChange={(event) => setRelocationPath(event.target.value)}
+              />
+              <Button
+                disabled={
+                  manageBusy ||
+                  !relocationPath.trim() ||
+                  relocationPath.trim() === manageWorkspace?.path
+                }
+                onClick={() => void relocateWorkspace()}
+              >
+                {manageBusy ? "Applying..." : "Relocate"}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              The server canonicalizes and validates the path before rebinding
+              workspace state.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="workspace-access-path">Additional allowed directory</Label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="workspace-access-path"
+                placeholder="/absolute/path"
+                value={accessPath}
+                onChange={(event) => setAccessPath(event.target.value)}
+              />
+              <Button
+                disabled={manageBusy || !accessPath.trim()}
+                variant="outline"
+                onClick={() => void addAccess()}
+              >
+                Add path
+              </Button>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {accessDirs.length === 0 ? (
+              <div className="rounded-lg border p-3 text-sm text-muted-foreground">
+                No additional allowed directories.
+              </div>
+            ) : (
+              accessDirs.map((directory) => (
+                <div
+                  className="flex items-center gap-2 rounded-lg border p-3"
+                  key={directory}
+                >
+                  <code className="min-w-0 flex-1 truncate text-xs">{directory}</code>
+                  <Button
+                    disabled={manageBusy}
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void removeAccess(directory)}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </ResponsiveDialog>
+      <ResponsiveDialog
         open={Boolean(membership)}
         onOpenChange={(open) => {
           if (!open) {
@@ -633,6 +795,7 @@ function WorkspaceRow({
   onOpen,
   onAdd,
   onRemove,
+  onManage,
   onUnregister,
   onPurge,
 }: {
@@ -641,6 +804,7 @@ function WorkspaceRow({
   onOpen: () => void
   onAdd: () => void
   onRemove: () => void
+  onManage: () => void
   onUnregister: () => void
   onPurge: () => void
 }) {
@@ -706,6 +870,10 @@ function WorkspaceRow({
             <DropdownMenuItem onClick={onRemove}>
               <FolderMinus />
               Remove workspace container
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onManage}>
+              <Pencil />
+              Manage paths
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={onUnregister}>

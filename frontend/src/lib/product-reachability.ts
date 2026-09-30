@@ -17,6 +17,7 @@ export type BrowserAdapterDescriptor = {
   api: { method: string; pattern: string }[]
   confirmation?: BrowserConfirmationEvidence
   secretPolicy?: "protected-input" | "masked-read" | "one-time-output"
+  secretRecovery?: string
   gap?: string
 }
 
@@ -58,6 +59,9 @@ const browserSurfaces: { prefix: string; surface: BrowserSurface }[] = [
   { prefix: "prompt.", surface: { route: "/prompts", component: "PromptsPage" } },
   { prefix: "tools.", surface: { route: "/tools", component: "ToolsPage" } },
   { prefix: "config.", surface: { route: "/settings", component: "SettingsPage" } },
+  { prefix: "auth.", surface: { route: "/settings", component: "SettingsPage" } },
+  { prefix: "notification.", surface: { route: "/settings", component: "SettingsPage" } },
+  { prefix: "telegram.", surface: { route: "/settings", component: "SettingsPage" } },
   { prefix: "telemetry.", surface: { route: "/settings", component: "SettingsPage" } },
   { prefix: "network.", surface: { route: "/system", component: "SystemPage" } },
   { prefix: "runtime.", surface: { route: "/system", component: "SystemPage" } },
@@ -122,13 +126,41 @@ export const browserConfirmationEvidence: Record<
   },
 }
 
-const browserSecretPolicies: Record<
+const browserSecretContracts: Record<
   string,
-  "protected-input" | "masked-read" | "one-time-output"
+  {
+    policy: "protected-input" | "masked-read" | "one-time-output"
+    recovery: string
+  }
 > = {
-  "config.patch": "protected-input",
-  "llm.provider.credential.set": "protected-input",
-  "tunnel.admin.key.set": "protected-input",
+  "config.patch": {
+    policy: "protected-input",
+    recovery: "replace through protected input; ordinary reads remain masked",
+  },
+  "config.set": {
+    policy: "protected-input",
+    recovery: "replace through protected input; ordinary reads remain masked",
+  },
+  "llm.provider.credential.set": {
+    policy: "protected-input",
+    recovery: "replace through protected input; ordinary reads remain masked",
+  },
+  "tunnel.admin.key.set": {
+    policy: "protected-input",
+    recovery: "replace through protected input; ordinary reads remain masked",
+  },
+  "telegram.setup": {
+    policy: "protected-input",
+    recovery: "replace through protected input; ordinary reads remain masked",
+  },
+  "auth.mcp.rotate": {
+    policy: "one-time-output",
+    recovery: "copy the token now; rotate again if the one-time value is lost",
+  },
+  "auth.admin.rotate": {
+    policy: "one-time-output",
+    recovery: "copy the token now; rotate again if the one-time value is lost",
+  },
 }
 
 export function browserProductReachability(): BrowserAdapterDescriptor[] {
@@ -138,6 +170,7 @@ export function browserProductReachability(): BrowserAdapterDescriptor[] {
     if (!surface) continue
     const confirmation = browserConfirmationEvidence[binding.operation]
     const destructive = browserDestructiveOperations.has(binding.operation)
+    const secretContract = browserSecretContracts[binding.operation]
     const current = grouped.get(binding.operation) ?? {
       operation: binding.operation,
       state: destructive && !confirmation ? "gap" : "live",
@@ -146,7 +179,8 @@ export function browserProductReachability(): BrowserAdapterDescriptor[] {
       action: binding.operation,
       api: [],
       confirmation,
-      secretPolicy: browserSecretPolicies[binding.operation],
+      secretPolicy: secretContract?.policy,
+      secretRecovery: secretContract?.recovery,
       gap:
         destructive && !confirmation
           ? "destructive adapter does not consume canonical confirmation"

@@ -24,14 +24,19 @@ export function CompletionsPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [doctor, setDoctor] = useState<Record<string, unknown> | null>(null)
   const [error, setError] = useState("")
   const retryTimer = useRef<number | null>(null)
 
   const load = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true)
     try {
-      const records = await adminApi.completions("", 100)
+      const [records, health] = await Promise.all([
+        adminApi.completions("", 100),
+        adminApi.completionDoctor(),
+      ])
       setItems((current) => mergeCompletions(current, records))
+      setDoctor(health)
       setError("")
     } catch (value) {
       setError(errorText(value))
@@ -67,6 +72,9 @@ export function CompletionsPage() {
         retryTimer.current = window.setTimeout(() => void connect(), reconnectDelay)
       }
     }
+    void adminApi.completionDoctor()
+      .then((health) => setDoctor(health))
+      .catch(() => undefined)
     void connect()
     return () => {
       stopped = true
@@ -104,6 +112,17 @@ export function CompletionsPage() {
       </>}
     />
     <PageError message={error} />
+    {doctor ? (
+      <div className="rounded-xl border p-4">
+        <div className="mb-2 flex items-center gap-2">
+          <div className="font-medium">Completion health</div>
+          <Badge variant="outline">doctor</Badge>
+        </div>
+        <pre className="max-h-48 overflow-auto text-xs text-muted-foreground">
+          {JSON.stringify(doctor, null, 2)}
+        </pre>
+      </div>
+    ) : null}
     <div className="flex flex-col gap-2 lg:flex-row">
       <div className="relative min-w-0 flex-1">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />

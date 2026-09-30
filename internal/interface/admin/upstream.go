@@ -85,6 +85,22 @@ func (api API) handleUpstream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch parts[1] {
+	case "enable", "disable":
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var updated application.Result[upstream.Server]
+		if parts[1] == "enable" {
+			updated, err = service.Enable(r.Context(), id)
+		} else {
+			updated, err = service.Disable(r.Context(), id)
+		}
+		if err != nil {
+			writeUpstreamOperationError(w, err, http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, publicUpstream(updated.Value))
 	case "status":
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)

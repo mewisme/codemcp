@@ -159,19 +159,16 @@ func TestProductParityReportIsDeterministicCompleteAndSorted(t *testing.T) {
 	}
 }
 
-func TestProductParityReportKeepsMissingAdaptersAsRequiredGaps(t *testing.T) {
+func TestProductParityReportClosesBrowserRequiredGapsWhileKeepingOtherSurfaceGapsExplicit(t *testing.T) {
 	report := ProductParityReportSnapshot()
-
-	browser, ok := parityMapping(report, WorkspaceRelocate, SurfaceBrowser)
-	if !ok || browser.State != SurfaceRequired || browser.Reachable || browser.Gap == "" {
-		t.Fatalf("workspace relocate Browser mapping=%#v ok=%t", browser, ok)
-	}
-	spec, _ := Lookup(WorkspaceRelocate)
-	if len(spec.Admin) == 0 {
-		t.Fatal("workspace relocate lost Admin API transport binding")
-	}
-	if browser.Reachable {
-		t.Fatal("Admin API transport binding incorrectly satisfied Browser product reachability")
+	for _, row := range report.Operations {
+		mapping, ok := parityMapping(report, row.Operation, SurfaceBrowser)
+		if !ok || mapping.State != SurfaceRequired {
+			continue
+		}
+		if !mapping.Reachable || mapping.Gap != "" || len(mapping.EntryPoints) == 0 {
+			t.Fatalf("Browser required operation %s is not production reachable: %#v", row.Operation, mapping)
+		}
 	}
 
 	telegram, ok := parityMapping(report, ProcessList, SurfaceTelegram)

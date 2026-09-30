@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
-import { Save, Undo2 } from "lucide-react"
+import { Copy, Download, Save, Search, Undo2 } from "lucide-react"
 import { PageError } from "@/components/page-state"
 import { PageHeader } from "@/components/page-header"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -37,32 +37,67 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { adminApi, type NetworkInterface, type PublicConfig } from "@/lib/api"
+import {
+  adminApi,
+  type AuthStatus,
+  type NetworkInterface,
+  type PublicConfig,
+  type SettingResult,
+} from "@/lib/api"
 
 export function SettingsPage() {
   const [config, setConfig] = useState<PublicConfig | null>(null)
   const [savedConfig, setSavedConfig] = useState<PublicConfig | null>(null)
   const [tunnelEnabled, setTunnelEnabled] = useState(false)
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([])
+  const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null)
+  const [authBusy, setAuthBusy] = useState("")
+  const [revealedCredential, setRevealedCredential] = useState("")
+  const [settings, setSettings] = useState<SettingResult[]>([])
+  const [settingQuery, setSettingQuery] = useState("")
+  const [selectedSetting, setSelectedSetting] = useState<SettingResult | null>(null)
+  const [settingValue, setSettingValue] = useState("")
+  const [notificationStatus, setNotificationStatus] = useState<Record<string, unknown> | null>(null)
+  const [telegramToken, setTelegramToken] = useState("")
+  const [telegramUserID, setTelegramUserID] = useState("")
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
 
   useEffect(() => {
+    let active = true
     void Promise.all([
       adminApi.config(),
       adminApi.networkInterfaces(),
       adminApi.tunnelConfig(),
+      adminApi.authStatus(),
+      adminApi.settings("", ""),
+      adminApi.notificationStatus(),
     ])
-      .then(([nextConfig, nextInterfaces, nextTunnel]) => {
+      .then(([nextConfig, nextInterfaces, nextTunnel, nextAuth, nextSettings, nextNotifications]) => {
+        if (!active) return
         const normalized = normalizeConfig(nextConfig)
         setConfig(normalized)
         setSavedConfig(normalized)
         setInterfaces(nextInterfaces)
         setTunnelEnabled(nextTunnel.enabled)
+        setAuthStatus(nextAuth)
+        setSettings(nextSettings)
+        setNotificationStatus(nextNotifications)
       })
-      .catch((value) => setError(errorText(value)))
+      .catch((value) => {
+        if (active) setError(errorText(value))
+      })
+    return () => {
+      active = false
+    }
   }, [])
+
+  useEffect(() => {
+    if (!revealedCredential) return
+    const timer = window.setTimeout(() => setRevealedCredential(""), 60_000)
+    return () => window.clearTimeout(timer)
+  }, [revealedCredential])
 
   const dirty = useMemo(
     () =>
@@ -88,6 +123,111 @@ export function SettingsPage() {
     } catch (value) {
       setError(errorText(value))
       setMessage("")
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function authAction(
+    scope: "mcp" | "admin",
+    action: "rotate" | "enable" | "disable"
+  ) {
+    const key = `${scope}:${action}`
+    setAuthBusy(key)
+    setError("")
+    try {
+      const result = await adminApi.authAction(scope, action)
+      if ("token" in result) {
+        setRevealedCredential(result.token)
+        setAuthStatus(result.status)
+      } else {
+        setAuthStatus(result)
+      }
+      const normalized = normalizeConfig(await adminApi.config())
+      setConfig(normalized)
+      setSavedConfig(normalized)
+      setMessage(
+        action === "rotate"
+          ? "Credential rotated. Copy the one-time value now; it will be hidden automatically."
+          : `${scope.toUpperCase()} authentication ${action === "enable" ? "enabled" : "disabled"}.`
+      )
+    } catch (value) {
+      setError(errorText(value))
+    } finally {
+      setAuthBusy("")
+    }
+  }
+
+  async function loadSettings(query = settingQuery) {
+    try {
+      setSettings(await adminApi.settings("", query))
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+    }
+  }
+
+  async function openSetting(item: SettingResult) {
+    try {
+      const next = await adminApi.setting(item.Spec.Key)
+      setSelectedSetting(next)
+      setSettingValue(next.Spec.Secret ? "" : next.Value)
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+    }
+  }
+
+  async function updateSelectedSetting(action = "set") {
+    if (!selectedSetting) return
+    setBusy(true)
+    try {
+      await adminApi.setSetting(selectedSetting.Spec.Key, settingValue, action)
+      const next = await adminApi.setting(selectedSetting.Spec.Key)
+      setSelectedSetting(next)
+      setSettingValue(next.Spec.Secret ? "" : next.Value)
+      await loadSettings()
+      setMessage(`${selectedSetting.Spec.Label || selectedSetting.Spec.Key} updated from canonical settings.`)
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function exportCanonicalSettings() {
+    try {
+      const document = await adminApi.exportSettings()
+      const bytes = Uint8Array.from(atob(document.Data), (char) => char.charCodeAt(0))
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/json" }))
+      const anchor = window.document.createElement("a")
+      anchor.href = url
+      anchor.download = document.FileName || "codemcp-config.json"
+      anchor.click()
+      URL.revokeObjectURL(url)
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+    }
+  }
+
+  async function setupTelegram(event: React.FormEvent) {
+    event.preventDefault()
+    const token = telegramToken.trim()
+    const userID = Number(telegramUserID)
+    if (!token || !Number.isSafeInteger(userID) || userID <= 0) return
+    setBusy(true)
+    try {
+      const result = await adminApi.telegramSetup(token, userID)
+      setTelegramToken("")
+      setMessage(
+        `Telegram configured for ${result.authorized_users.length} authorized user(s); token ${result.token.Value || "stored securely"}.`
+      )
+      await loadSettings()
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
     } finally {
       setBusy(false)
     }
@@ -160,6 +300,7 @@ export function SettingsPage() {
           <TabsTrigger value="permissions">Permissions</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="authentication">Authentication</TabsTrigger>
+          <TabsTrigger value="operations">Operations</TabsTrigger>
           <TabsTrigger value="environment">Environment</TabsTrigger>
         </ScrollableTabsList>
         <TabsContent className="mt-6 space-y-6" value="general">
@@ -578,44 +719,198 @@ export function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent className="mt-6" value="authentication">
+        <TabsContent className="mt-6 space-y-6" value="authentication">
           <Card>
             <CardHeader>
               <CardTitle>Authentication</CardTitle>
               <CardDescription>
-                Authentication is mandatory for direct network exposure; Admin
-                authentication is mandatory when its endpoint is exposed.
+                Manage MCP and Admin credentials directly. Rotation returns a
+                one-time credential that is never written to browser storage.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <AuthControl
+                label="MCP authentication"
+                configured={authStatus?.mcp_configured ?? config.auth.mcp_token_configured}
+                enabled={authStatus?.mcp_enabled ?? config.auth.mcp_enabled}
+                busy={authBusy.startsWith("mcp:")}
+                locked={exposed && config.server.enabled}
+                onRotate={() => void authAction("mcp", "rotate")}
+                onToggle={(enabled) =>
+                  void authAction("mcp", enabled ? "enable" : "disable")
+                }
+              />
+              <AuthControl
+                label="Admin authentication"
+                configured={authStatus?.admin_configured ?? config.auth.admin_token_configured}
+                enabled={authStatus?.admin_enabled ?? config.auth.admin_enabled}
+                busy={authBusy.startsWith("admin:")}
+                locked={exposed && config.admin.enabled}
+                onRotate={() => void authAction("admin", "rotate")}
+                onToggle={(enabled) =>
+                  void authAction("admin", enabled ? "enable" : "disable")
+                }
+              />
+            </CardContent>
+          </Card>
+          {revealedCredential ? (
+            <Alert>
+              <AlertDescription className="space-y-3">
+                <div>
+                  <div className="font-medium">One-time credential</div>
+                  <div className="text-xs text-muted-foreground">
+                    Copy it now. It is hidden automatically after one minute and
+                    cannot be recovered without rotating again.
+                  </div>
+                </div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <code className="min-w-0 flex-1 overflow-x-auto rounded bg-muted px-2 py-1 text-xs">
+                    {revealedCredential}
+                  </code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void navigator.clipboard.writeText(revealedCredential)}
+                  >
+                    <Copy />
+                    Copy
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setRevealedCredential("")}>
+                    Hide
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+        </TabsContent>
+        <TabsContent className="mt-6 space-y-6" value="operations">
+          <Card>
+            <CardHeader>
+              <CardTitle>Canonical settings</CardTitle>
+              <CardDescription>
+                Search, inspect, update, clear, or export typed settings through
+                the canonical settings service.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search setting key, label, owner..."
+                    value={settingQuery}
+                    onChange={(event) => setSettingQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void loadSettings()
+                    }}
+                  />
+                </div>
+                <Button variant="outline" onClick={() => void loadSettings()}>
+                  Search
+                </Button>
+                <Button variant="outline" onClick={() => void exportCanonicalSettings()}>
+                  <Download />
+                  Export
+                </Button>
+              </div>
+              <div className="max-h-80 space-y-2 overflow-y-auto">
+                {settings.map((item) => (
+                  <button
+                    className="flex w-full items-start justify-between gap-3 rounded-lg border p-3 text-left hover:bg-muted/40"
+                    key={item.Spec.Key}
+                    type="button"
+                    onClick={() => void openSetting(item)}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{item.Spec.Label || item.Spec.Key}</div>
+                      <div className="truncate font-mono text-xs text-muted-foreground">{item.Spec.Key}</div>
+                    </div>
+                    <Badge variant={item.Configured === false ? "outline" : "secondary"}>
+                      {item.Value || (item.Configured === false ? "not configured" : "empty")}
+                    </Badge>
+                  </button>
+                ))}
+              </div>
+              {selectedSetting ? (
+                <div className="space-y-3 rounded-lg border p-4">
+                  <div>
+                    <div className="font-medium">{selectedSetting.Spec.Label || selectedSetting.Spec.Key}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{selectedSetting.Spec.Key}</div>
+                    {selectedSetting.Spec.Description ? (
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {selectedSetting.Spec.Description}
+                      </div>
+                    ) : null}
+                  </div>
+                  <Input
+                    type={selectedSetting.Spec.Secret ? "password" : "text"}
+                    placeholder={selectedSetting.Spec.Secret ? "Enter replacement secret" : "Value"}
+                    value={settingValue}
+                    onChange={(event) => setSettingValue(event.target.value)}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      disabled={busy || !selectedSetting.Spec.Writable}
+                      onClick={() => void updateSelectedSetting("set")}
+                    >
+                      Save setting
+                    </Button>
+                    {selectedSetting.Spec.Clearable ? (
+                      <Button
+                        disabled={busy}
+                        variant="outline"
+                        onClick={() => void updateSelectedSetting("unset")}
+                      >
+                        Clear
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Notifications</CardTitle>
+              <CardDescription>
+                Current notification readiness. Notification policy settings are
+                editable above through their canonical keys.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <FieldGroup>
-                <AuthToggle
-                  locked={exposed && config.server.enabled}
-                  label="MCP authentication"
-                  configured={config.auth.mcp_token_configured}
-                  checked={config.auth.mcp_enabled}
-                  command="cm auth mcp create"
-                  onCheckedChange={(enabled) =>
-                    setConfig({
-                      ...config,
-                      auth: { ...config.auth, mcp_enabled: enabled },
-                    })
-                  }
+              <pre className="max-h-48 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">
+                {JSON.stringify(notificationStatus ?? {}, null, 2)}
+              </pre>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Telegram setup</CardTitle>
+              <CardDescription>
+                Store the bot token through protected input and authorize the
+                first user through the canonical Telegram owner.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-3 md:grid-cols-[1fr_14rem_auto]" onSubmit={setupTelegram}>
+                <Input
+                  autoComplete="new-password"
+                  placeholder="Bot token"
+                  type="password"
+                  value={telegramToken}
+                  onChange={(event) => setTelegramToken(event.target.value)}
                 />
-                <AuthToggle
-                  locked={exposed && config.admin.enabled}
-                  label="Admin authentication"
-                  configured={config.auth.admin_token_configured}
-                  checked={config.auth.admin_enabled}
-                  command="cm auth admin create"
-                  onCheckedChange={(enabled) =>
-                    setConfig({
-                      ...config,
-                      auth: { ...config.auth, admin_enabled: enabled },
-                    })
-                  }
+                <Input
+                  inputMode="numeric"
+                  placeholder="Authorized user ID"
+                  value={telegramUserID}
+                  onChange={(event) => setTelegramUserID(event.target.value)}
                 />
-              </FieldGroup>
+                <Button disabled={busy || !telegramToken.trim() || !telegramUserID.trim()} type="submit">
+                  Configure
+                </Button>
+              </form>
             </CardContent>
           </Card>
         </TabsContent>
@@ -748,40 +1043,51 @@ function ExposureOption({
     </label>
   )
 }
-function AuthToggle({
+function AuthControl({
   label,
   configured,
-  command,
-  checked,
+  enabled,
+  busy,
   locked = false,
-  onCheckedChange,
+  onRotate,
+  onToggle,
 }: {
   label: string
   configured: boolean
-  command: string
-  checked: boolean
+  enabled: boolean
+  busy: boolean
   locked?: boolean
-  onCheckedChange: (checked: boolean) => void
+  onRotate: () => void
+  onToggle: (enabled: boolean) => void
 }) {
   return (
-    <Field orientation="horizontal">
+    <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>{label}</FieldLabel>
+          <div className="text-sm font-medium">{label}</div>
           <Badge variant={configured ? "secondary" : "outline"}>
-            {configured ? "Token configured" : "Token missing"}
+            {configured ? "Credential configured" : "Credential missing"}
+          </Badge>
+          <Badge variant={enabled ? "secondary" : "outline"}>
+            {enabled ? "Enabled" : "Disabled"}
           </Badge>
         </div>
-        {!configured ? (
-          <FieldDescription className="font-mono">{command}</FieldDescription>
-        ) : null}
+        <div className="mt-1 text-xs text-muted-foreground">
+          Rotation reveals a new credential once. Existing credentials are never
+          returned by ordinary status reads.
+        </div>
       </div>
-      <Switch
-        checked={checked}
-        disabled={locked || (!configured && !checked)}
-        onCheckedChange={onCheckedChange}
-      />
-    </Field>
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={busy} size="sm" variant="outline" onClick={onRotate}>
+          Rotate
+        </Button>
+        <Switch
+          checked={enabled}
+          disabled={busy || locked || (!configured && !enabled)}
+          onCheckedChange={onToggle}
+        />
+      </div>
+    </div>
   )
 }
 function normalizeConfig(value: PublicConfig): PublicConfig {

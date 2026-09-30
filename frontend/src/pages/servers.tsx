@@ -140,7 +140,7 @@ export function UpstreamsPage() {
   async function toggle(item: UpstreamServer, enabled: boolean) {
     setBusyID(item.id)
     try {
-      await adminApi.updateUpstream(item.id, { ...item, enabled })
+      await adminApi.setUpstreamEnabled(item.id, enabled)
       const next = await load()
       const updated = next.find((server) => server.id === item.id)
       if (selected?.id === item.id && updated) setSelected(updated)

@@ -92,6 +92,10 @@ func (api API) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		api.handleWorkspaceRelocate(w, r, operations, value.ID)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "access" {
+		api.handleWorkspaceAccess(w, r, operations, value.ID)
+		return
+	}
 	if len(parts) == 2 && parts[1] == "purge" {
 		api.handleWorkspacePurge(w, r, operations, value.ID)
 		return
@@ -156,6 +160,40 @@ func (api API) handleWorkspaceRelocate(w http.ResponseWriter, r *http.Request, o
 		return
 	}
 	writeJSON(w, result.Value.After)
+}
+
+func (api API) handleWorkspaceAccess(w http.ResponseWriter, r *http.Request, operations *application.WorkspaceService, workspaceID string) {
+	switch r.Method {
+	case http.MethodGet:
+		result, err := operations.AccessList(r.Context(), workspaceID)
+		if err != nil {
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, result.Value)
+	case http.MethodPost, http.MethodDelete:
+		var request workspaceRequest
+		if err := decodeJSONBody(w, r, &request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		var (
+			result application.Result[application.WorkspaceView]
+			err    error
+		)
+		if r.Method == http.MethodPost {
+			result, err = operations.AddAllowDir(r.Context(), workspaceID, request.Path)
+		} else {
+			result, err = operations.RemoveAllowDir(r.Context(), workspaceID, request.Path)
+		}
+		if err != nil {
+			writeWorkspaceOperationError(w, err, http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, result.Value)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
 
 func (api API) handleWorkspacePurge(w http.ResponseWriter, r *http.Request, operations *application.WorkspaceService, workspaceID string) {

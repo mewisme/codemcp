@@ -35,15 +35,40 @@ export function RequestExplanation({ requestID }: { requestID: string }) {
     }
   }, [requestID])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    let active = true
+    void Promise.all([
+      adminApi.approvalExplainStatus(),
+      adminApi.approvalExplanation(requestID),
+    ])
+      .then(([nextStatus, nextResult]) => {
+        if (!active) return
+        setStatus(nextStatus)
+        setResult(nextResult)
+        setError("")
+      })
+      .catch((value) => {
+        if (active) setError(errorText(value))
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [requestID])
 
   useEffect(() => {
     if (!status) return
-    const shouldPoll = result?.state === "pending" || (status.mode === "auto" && (!result || result.state === "none"))
+    const shouldPoll =
+      result?.state === "pending" ||
+      (status.mode === "auto" && (!result || result.state === "none"))
     if (!shouldPoll) return
-    const timer = window.setInterval(() => { void load() }, 1200)
+    const timer = window.setInterval(() => {
+      void load()
+    }, 1200)
     return () => window.clearInterval(timer)
-  }, [load, result?.state, status])
+  }, [load, result, status])
 
   async function trigger(retry: boolean) {
     setBusy(true)

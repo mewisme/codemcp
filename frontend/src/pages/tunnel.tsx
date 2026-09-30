@@ -104,6 +104,20 @@ export function TunnelPage() {
       setConfig(nextConfig); setStatus(nextStatus); setMCPHTTPEnabled(runtimeConfig.server.enabled); syncAdmin(nextAdmin); setError("")
     } catch (value) { setError(errorText(value)) } finally { setRefreshing(false) }
   }
+  async function syncTunnel() {
+    setRefreshing(true)
+    try {
+      setStatus(await adminApi.syncTunnel())
+      setConfig(await adminApi.tunnelConfig())
+      setMessage("Tunnel metadata synchronized.")
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+      setMessage("")
+    } finally {
+      setRefreshing(false)
+    }
+  }
   async function saveRuntime() {
     setBusy(true)
     try {
@@ -151,7 +165,7 @@ export function TunnelPage() {
   const state = status?.restarting ? "Reconnecting" : status?.running ? status.ready ? "Ready" : "Connecting" : "Stopped"
   const variant = status?.ready ? "default" : active ? "secondary" : "outline"
   return <div className="space-y-6">
-    <PageHeader title="Tunnel" description="Operate the OpenAI Secure MCP Tunnel, runtime credential, and management access from one control surface." actions={<Button aria-label="Refresh tunnel status" disabled={refreshing} size="sm" variant="outline" onClick={() => void refresh()}><RefreshCw className={refreshing ? "animate-spin" : ""} />Refresh</Button>} />
+    <PageHeader title="Tunnel" description="Operate the OpenAI Secure MCP Tunnel, runtime credential, and management access from one control surface." actions={<><Button disabled={refreshing} size="sm" variant="outline" onClick={() => void syncTunnel()}><Cloud className={refreshing ? "animate-pulse" : ""} />Sync</Button><Button aria-label="Refresh tunnel status" disabled={refreshing} size="sm" variant="outline" onClick={() => void refresh()}><RefreshCw className={refreshing ? "animate-spin" : ""} />Refresh</Button></>} />
     <PageError message={error} />
     {message ? <Alert><Network /><AlertDescription>{message}</AlertDescription></Alert> : null}
     {!mcpHTTPEnabled ? <Alert><Network /><AlertDescription>MCP HTTP is disabled. Secure MCP Tunnel is the required MCP transport and cannot be disabled, stopped, or deleted.</AlertDescription></Alert> : null}

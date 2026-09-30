@@ -468,6 +468,8 @@ export type ApprovalRequest = {
   reason?: string
   retry_until?: string
   consumed_at?: string
+  runtime_session_grant?: boolean
+  grant_expires_at?: string
 }
 
 export type ApprovalExplainStatus = {
@@ -697,6 +699,52 @@ export type StatusOverview = {
   telegram_running: boolean
   telegram_healthy: boolean
 }
+
+export type AuthStatus = {
+  mcp_enabled: boolean
+  mcp_configured: boolean
+  mcp_legacy_bearer: boolean
+  admin_enabled: boolean
+  admin_configured: boolean
+  unauthenticated_loopback: boolean
+  cleartext_http: boolean
+}
+
+export type AuthRotationResult = {
+  token: string
+  status: AuthStatus
+}
+
+export type SettingFieldSpec = {
+  Key: string
+  Label: string
+  Description: string
+  Kind: string
+  Editable: boolean
+  Sensitive: boolean
+  Writable: boolean
+  Secret: boolean
+  Clearable: boolean
+  Options?: string[]
+}
+
+export type SettingResult = {
+  Spec: SettingFieldSpec
+  Value: string
+  Configured?: boolean
+  RuntimeReloaded: boolean
+}
+
+export type ConfigExportDocument = {
+  FileName: string
+  Data: string
+}
+
+export type TelegramSetupResult = {
+  token: SettingResult
+  enabled: boolean
+  authorized_users: number[]
+}
 export type TelemetryStatus = {
   persisted_enabled: boolean
   effective_enabled: boolean
@@ -845,6 +893,26 @@ export const adminApi = {
     const suffix = query.size ? `?${query}` : ""
     return api<LogsSnapshot>(`/api/logs${suffix}`)
   },
+  followLogs: (
+    options: {
+      tail?: number
+      all?: boolean
+      level?: string
+      component?: string
+      workspace?: string
+      grep?: string
+    } = {}
+  ) => {
+    const query = new URLSearchParams()
+    if (options.tail !== undefined) query.set("tail", String(options.tail))
+    if (options.all !== undefined) query.set("all", String(options.all))
+    if (options.level) query.set("level", options.level)
+    if (options.component) query.set("components", options.component)
+    if (options.workspace) query.set("workspace", options.workspace)
+    if (options.grep) query.set("grep", options.grep)
+    const suffix = query.size ? `?${query}` : ""
+    return api<LogsSnapshot>(`/api/logs/follow${suffix}`)
+  },
   logsInfo: () => api<LogsInfo>("/api/logs/info"),
   clearLogs: () => api<{ cleared: boolean }>("/api/logs", { method: "DELETE" }),
   telemetry: () => api<TelemetryStatus>("/api/telemetry"),
@@ -854,6 +922,39 @@ export const adminApi = {
     }),
   configPath: () => api<Record<string, unknown>>("/api/config/path"),
   verifyConfig: () => api<Record<string, unknown>>("/api/config/verify"),
+  authStatus: () => api<AuthStatus>("/api/auth"),
+  authAction: (
+    scope: "mcp" | "admin",
+    action: "rotate" | "enable" | "disable"
+  ) =>
+    api<AuthStatus | AuthRotationResult>(`/api/auth/${scope}/${action}`, {
+      method: "POST",
+    }),
+  settings: (prefix = "", query = "") => {
+    const values = new URLSearchParams()
+    if (prefix.trim()) values.set("prefix", prefix.trim())
+    if (query.trim()) values.set("query", query.trim())
+    return api<SettingResult[]>(`/api/settings${values.size ? `?${values}` : ""}`)
+  },
+  setting: (key: string) =>
+    api<SettingResult>(`/api/settings/${encodeURIComponent(key)}`),
+  setSetting: (key: string, value: string, action = "set") =>
+    api<SettingResult>(`/api/settings/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        Action: action,
+        Value: value,
+        SecretSource: "browser-protected-input",
+      }),
+    }),
+  exportSettings: () => api<ConfigExportDocument>("/api/settings/export"),
+  notificationStatus: () =>
+    api<Record<string, unknown>>("/api/notifications"),
+  telegramSetup: (token: string, userID: number) =>
+    api<TelegramSetupResult>("/api/telegram/setup", {
+      method: "PUT",
+      body: JSON.stringify({ token, user_id: userID }),
+    }),
   rtkStatus: () => api<IntegrationStatus>("/api/integrations/rtk"),
   rtkAction: (action: "enable" | "disable" | "probe" | "install") =>
     api<IntegrationStatus>(`/api/integrations/rtk/${action}`, {
@@ -897,6 +998,23 @@ export const adminApi = {
     api<Workspace>(`/api/workspaces/${encodeURIComponent(id)}/purge`, {
       method: "POST",
       body: JSON.stringify({ confirm: true }),
+    }),
+  relocateWorkspace: (id: string, path: string, resolution = "") =>
+    api<Workspace>(`/api/workspaces/${encodeURIComponent(id)}/relocate`, {
+      method: "POST",
+      body: JSON.stringify({ path, resolution }),
+    }),
+  workspaceAccess: (id: string) =>
+    api<string[]>(`/api/workspaces/${encodeURIComponent(id)}/access`),
+  addWorkspaceAccess: (id: string, path: string) =>
+    api<Workspace>(`/api/workspaces/${encodeURIComponent(id)}/access`, {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  removeWorkspaceAccess: (id: string, path: string) =>
+    api<Workspace>(`/api/workspaces/${encodeURIComponent(id)}/access`, {
+      method: "DELETE",
+      body: JSON.stringify({ path }),
     }),
   workspaceContainers: () =>
     api<WorkspaceContainer[]>("/api/workspace-containers"),
@@ -1034,6 +1152,11 @@ export const adminApi = {
     }),
   removeUpstream: (id: string) =>
     api<void>(`/api/upstream/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  setUpstreamEnabled: (id: string, enabled: boolean) =>
+    api<UpstreamServer>(
+      `/api/upstream/${encodeURIComponent(id)}/${enabled ? "enable" : "disable"}`,
+      { method: "POST" }
+    ),
   upstreamStatus: (id: string, refresh = true) =>
     api<UpstreamServerStatus>(
       `/api/upstream/${encodeURIComponent(id)}/status?refresh=${refresh}`
@@ -1056,6 +1179,8 @@ export const adminApi = {
       method: "DELETE",
     }),
   tunnel: () => api<TunnelStatus>("/api/tunnel"),
+  syncTunnel: () =>
+    api<TunnelStatus>("/api/tunnel/sync", { method: "POST" }),
   cfTunnel: () => api<CFTunnelStatus>("/api/integrations/cf"),
   probeCFTunnel: () =>
     api<CFTunnelProbeResult>("/api/integrations/cf/probe", { method: "POST" }),
@@ -1134,6 +1259,18 @@ export const adminApi = {
       `/api/requests/${encodeURIComponent(id)}/explain`,
       { method: "POST", body: JSON.stringify({ retry }) }
     ),
+  approvalGrants: (workspaceID = "") => {
+    const query = new URLSearchParams()
+    if (workspaceID) query.set("workspace_id", workspaceID)
+    return api<ApprovalRequest[]>(
+      `/api/requests/grants${query.size ? `?${query}` : ""}`
+    )
+  },
+  revokeApprovalGrant: (id: string) =>
+    api<ApprovalRequest>(
+      `/api/requests/grants/${encodeURIComponent(id)}/revoke`,
+      { method: "POST" }
+    ),
   llmStatus: () => api<LLMStatus>("/api/llm/status"),
   llmProviders: () => api<LLMProvider[]>("/api/llm/providers"),
   llmProvider: (id: string) =>
@@ -1197,4 +1334,8 @@ export const adminApi = {
     ),
   completion: (id: string) =>
     api<CompletionRecord>(`/api/completions/view/${encodeURIComponent(id)}`),
+  completionDoctor: (workspaceID = "") =>
+    api<Record<string, unknown>>(
+      `/api/completions/doctor${workspaceID ? `?workspace_id=${encodeURIComponent(workspaceID)}` : ""}`
+    ),
 }

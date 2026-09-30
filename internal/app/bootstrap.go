@@ -50,6 +50,10 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
+		if err := application.BindAuthOperations(a.Operations); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		if err := application.BindWorkspaceOperations(a.Operations, application.NewDefaultWorkspaceService(a.Tools.Workspaces)); err != nil {
 			a.bootstrapErr = err
 			return
@@ -74,6 +78,10 @@ func (a *App) Bootstrap() error {
 		}
 		llmService := application.NewLLMService(config.RootPath())
 		if err := application.BindSettingOperations(a.Operations, application.NewSettingService(llmService)); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		if err := application.BindTelegramOperations(a.Operations); err != nil {
 			a.bootstrapErr = err
 			return
 		}

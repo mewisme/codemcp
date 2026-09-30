@@ -17,20 +17,19 @@ func TestAdminBindingsRemainTransportMetadataNotProductSurfaceContracts(t *testi
 	}
 }
 
-func TestBrowserProductRequirementCannotBeSatisfiedByAdminBindingAlone(t *testing.T) {
-	spec, ok := Lookup(WorkspaceRelocate)
+func TestAdminBindingDoesNotCreateBrowserProductContract(t *testing.T) {
+	spec, ok := Lookup(OAuthCallbackComplete)
 	if !ok {
-		t.Fatal("workspace relocate operation missing")
+		t.Fatal("OAuth callback operation missing")
 	}
 	if len(spec.Admin) == 0 {
-		t.Fatal("workspace relocate must retain Admin API transport binding")
+		t.Fatal("OAuth callback must retain Admin API transport binding")
 	}
 	contract, ok := spec.Surface(SurfaceBrowser)
-	if !ok || contract.State != SurfaceRequired {
-		t.Fatalf("workspace relocate Browser contract=%#v ok=%t", contract, ok)
+	if !ok || contract.State != SurfaceExempt || contract.Exemption != SurfaceExemptionProtocolOnly {
+		t.Fatalf("OAuth callback Browser contract=%#v ok=%t", contract, ok)
 	}
-	mapping, ok := parityMapping(ProductParityReportSnapshot(), WorkspaceRelocate, SurfaceBrowser)
-	if !ok || mapping.Reachable {
-		t.Fatalf("Admin binding incorrectly counted as Browser reachability: %#v ok=%t", mapping, ok)
+	if browserFrontendOperationIDs[OAuthCallbackComplete] {
+		t.Fatal("Admin transport binding incorrectly created Browser frontend evidence")
 	}
 }
