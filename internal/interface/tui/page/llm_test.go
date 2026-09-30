@@ -98,6 +98,27 @@ func TestLLMModelBrowserRestoresSelectionAfterAsyncLoad(t *testing.T) {
 	}
 }
 
+func TestLLMModelRoutesAreResizeSafeBeforeAsyncCatalogLoad(t *testing.T) {
+	service := application.NewLLMService(t.TempDir())
+	for _, providerID := range []string{"openrouter", "ollama"} {
+		t.Run(providerID, func(t *testing.T) {
+			page, err := newLLMRouteAction(t.Context(), providerID, "models", "", service)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !page.browserReady {
+				t.Fatal("model browser was not initialized with the route")
+			}
+			updated, _ := page.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+			page = updated.(*LLMPage)
+			view := ansi.Strip(page.View(80, 24))
+			if !strings.Contains(view, "Models · "+providerID) {
+				t.Fatalf("model route did not render initialized browser: %q", view)
+			}
+		})
+	}
+}
+
 func TestLLMExactModelEditorSupportsUndiscoveredIDs(t *testing.T) {
 	service := application.NewLLMService(t.TempDir())
 	page, err := newLLMRouteAction(t.Context(), "openrouter", "models", "set", service)

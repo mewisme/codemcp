@@ -347,7 +347,22 @@ func (page *LLMPage) reload() error {
 	if page.section != "models" {
 		return page.syncDetail()
 	}
+	page.ensureModelsBrowser()
 	return nil
+}
+
+func (page *LLMPage) ensureModelsBrowser() {
+	if page == nil || page.browserReady {
+		return
+	}
+	page.browser = component.NewBrowser(page.ctx, "Models · "+page.resourceID, nil, nil).WithHelpBindings(
+		component.Binding([]string{"s"}, "s", "set exact"),
+		component.Binding([]string{"q"}, "q", "query"),
+		component.Binding([]string{"r"}, "r", "refresh"),
+		component.Binding([]string{"b"}, "b", "previous"),
+		component.Binding([]string{"n"}, "n", "next"),
+	)
+	page.browserReady = true
 }
 
 func (page *LLMPage) providerRows() []component.Row {
@@ -729,6 +744,7 @@ func (page *LLMPage) finishModels(msg llmModelsMsg) tea.Cmd {
 	}
 	page.err = nil
 	page.catalog = msg.page
+	page.ensureModelsBrowser()
 	selected := ""
 	help := page.browser.HelpExpanded()
 	if row, ok := page.browser.Selected(); ok {
@@ -766,18 +782,7 @@ func (page *LLMPage) finishModels(msg llmModelsMsg) tea.Cmd {
 		}
 		rows = append(rows, component.Row{ID: model.ID, Title: description, Description: model.ID, Meta: strings.Join(metaParts, " · "), Search: strings.Join(searchParts, " ")})
 	}
-	if !page.browserReady {
-		page.browser = component.NewBrowser(page.ctx, "Models · "+page.resourceID, rows, nil).WithHelpBindings(
-			component.Binding([]string{"s"}, "s", "set exact"),
-			component.Binding([]string{"q"}, "q", "query"),
-			component.Binding([]string{"r"}, "r", "refresh"),
-			component.Binding([]string{"b"}, "b", "previous"),
-			component.Binding([]string{"n"}, "n", "next"),
-		)
-		page.browserReady = true
-	} else {
-		page.browser.ReplaceRows(rows, selected)
-	}
+	page.browser.ReplaceRows(rows, selected)
 	if selected != "" {
 		page.browser.SelectID(selected)
 	}
