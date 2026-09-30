@@ -20,6 +20,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 	root := newRootCommand()
 	representatives := map[string]string{
 		"_service":     "_service run",
+		"activity":     "activity view",
 		"admin":        "admin enable",
 		"agent":        "agent completion list",
 		"auth":         "auth status",
@@ -28,6 +29,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"down":         "down",
 		"doctor":       "doctor",
 		"execution":    "execution list",
+		"health":       "health",
 		"init":         "init",
 		"install":      "install",
 		"instructions": "instructions get",
@@ -35,6 +37,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"llm":          "llm status",
 		"logs":         "logs path",
 		"mcp":          "mcp stdio",
+		"network":      "network interfaces",
 		"notification": "notification desktop disable",
 		"permissions":  "permissions allow dir add",
 		"prompt":       "prompt list",

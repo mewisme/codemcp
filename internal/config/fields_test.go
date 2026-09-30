@@ -191,6 +191,62 @@ func TestExplainSchemaKeysIncludeBranchesAndLeaves(t *testing.T) {
 	}
 }
 
+func TestAcceptedValueHintsComeFromTypedSettingMetadata(t *testing.T) {
+	tests := []struct {
+		key  string
+		want string
+	}{
+		{key: "server.enabled", want: "true | false"},
+		{key: "server.expose.mode", want: "none | all | 0.0.0.0 | interfaces"},
+		{key: "shell.path", want: "<absolute-path>[, <absolute-path>...]"},
+		{key: "server.port", want: "integer 1..65535"},
+		{key: "tunnel.control_plane_base_url", want: "<url>"},
+		{key: "llm.provider", want: "<provider-id>"},
+		{key: "llm.api_key", want: "<secret> · protected input"},
+		{key: "auth.mcp_token", want: "generated · rotate to replace"},
+		{key: "llm.api_key_configured", want: "read-only · derived"},
+		{key: "llm.providers[<id>].base_url", want: "<provider-id> → <url>"},
+	}
+	for _, test := range tests {
+		t.Run(test.key, func(t *testing.T) {
+			spec, ok := SettingByKey(test.key)
+			if !ok {
+				t.Fatalf("missing setting spec %q", test.key)
+			}
+			if got := AcceptedValueHint(spec); got != test.want {
+				t.Fatalf("AcceptedValueHint(%q)=%q want %q", test.key, got, test.want)
+			}
+		})
+	}
+}
+
+func TestTypedIntegerBoundsDriveBothHintsAndSetValidation(t *testing.T) {
+	tests := []struct {
+		key     string
+		invalid string
+		want    string
+	}{
+		{key: "server.port", invalid: "70000", want: "integer 1..65535"},
+		{key: "approval.semantic.timeout_ms", invalid: "99", want: "integer 100..10000"},
+		{key: "integrations.typesafe.timeout_ms", invalid: "30001", want: "integer 100..30000"},
+	}
+	for _, test := range tests {
+		t.Run(test.key, func(t *testing.T) {
+			spec, ok := FieldByKey(test.key)
+			if !ok {
+				t.Fatalf("missing field spec %q", test.key)
+			}
+			if got := AcceptedValueHint(spec); got != test.want {
+				t.Fatalf("hint=%q want %q", got, test.want)
+			}
+			cfg := Default()
+			if err := SetValue(&cfg, test.key, test.invalid); err == nil || !strings.Contains(err.Error(), "between") {
+				t.Fatalf("typed bound did not reject %q=%q: %v", test.key, test.invalid, err)
+			}
+		})
+	}
+}
+
 func TestFieldRegistryCoversConfigSchema(t *testing.T) {
 	leaves := map[string]bool{}
 	collectConfigSchemaLeaves(reflect.TypeOf(Config{}), "", leaves)

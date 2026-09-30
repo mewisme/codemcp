@@ -17,11 +17,17 @@ import (
 const redactedValue = config.RedactedValue
 
 type configOutputOptions struct {
-	json bool
+	json      bool
+	noAccepts bool
 }
 
 func addConfigOutputFlags(cmd *cobra.Command, options *configOutputOptions) {
 	addJSONResultFlag(cmd, &options.json)
+}
+
+func addConfigListOutputFlags(cmd *cobra.Command, options *configOutputOptions) {
+	addConfigOutputFlags(cmd, options)
+	cmd.Flags().BoolVar(&options.noAccepts, "no-accepts", false, "hide accepted-value hints from human list output")
 }
 
 func redactedConfigTree(cfg config.Config) (map[string]any, error) {
@@ -189,8 +195,10 @@ func printSettingSelection(cmd *cobra.Command, service *application.SettingServi
 		return err
 	}
 	values := make(map[string]any, len(results))
+	resultByKey := make(map[string]application.SettingResult, len(results))
 	for _, result := range results {
 		values[result.Spec.Key] = settingOutputValue(result)
+		resultByKey[result.Spec.Key] = result
 	}
 	if options.json {
 		return writeResultJSON(cmd, values)
@@ -202,27 +210,39 @@ func printSettingSelection(cmd *cobra.Command, service *application.SettingServi
 	}
 	sort.Strings(keys)
 	if commandResultModeFor(cmd) == resultModeHuman {
-		scopes := make([]presentation.Entity, 0)
+		presenter := commandPresenter(cmd)
+		presenter.Frame("Configuration")
+		headers := []string{"Key", "Value"}
+		if !options.noAccepts {
+			headers = append(headers, "Accepts")
+		}
+		type scopedRows struct {
+			scope string
+			rows  []presentation.Row
+		}
+		groups := make([]scopedRows, 0)
+		allRows := make([]presentation.Row, 0, len(keys))
 		for _, settingKey := range keys {
 			scope, _, found := strings.Cut(settingKey, ".")
 			if !found {
 				scope = settingKey
 			}
-			if len(scopes) == 0 || scopes[len(scopes)-1].Title != scope {
-				scopes = append(scopes, presentation.Entity{Title: scope})
+			row := presentation.Row{settingKey, settingDisplayValue(values[settingKey])}
+			if !options.noAccepts {
+				row = append(row, config.AcceptedValueHint(resultByKey[settingKey].Spec))
 			}
-			scopes[len(scopes)-1].Fields = append(scopes[len(scopes)-1].Fields, presentation.Field{
-				Label: settingKey,
-				Value: settingDisplayValue(values[settingKey]),
-			})
+			if len(groups) == 0 || groups[len(groups)-1].scope != scope {
+				groups = append(groups, scopedRows{scope: scope})
+			}
+			groups[len(groups)-1].rows = append(groups[len(groups)-1].rows, row)
+			allRows = append(allRows, row)
 		}
-		commandPresenter(cmd).Render(presentation.Design{
-			Title:      "Configuration",
-			Completion: "Done",
-			Blocks: []presentation.DesignBlock{
-				presentation.EntityList{Title: fmt.Sprintf("Settings · %d", len(scopes)), Items: scopes},
-			},
-		})
+		widths := presentation.AlignedRowWidths(headers, allRows...)
+		for _, group := range groups {
+			presenter.Subsection(group.scope)
+			presenter.AlignedNestedRowsWithWidths(headers, widths, group.rows...)
+		}
+		presenter.Complete("Done")
 		return nil
 	}
 	for _, settingKey := range keys {

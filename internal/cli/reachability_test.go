@@ -47,14 +47,16 @@ func TestCLIProductReachabilityDescriptorsResolveProductionCommands(t *testing.T
 	}
 }
 
-func TestCLIMissingCanonicalAdaptersRemainExplicitGaps(t *testing.T) {
+func TestCLIRequiredOperationsHaveNoSemanticGaps(t *testing.T) {
 	descriptors := ProductReachabilityDescriptors()
-	if productadapter.CountGaps(descriptors) == 0 {
-		t.Fatal("expected remaining CLI semantic gaps before interface closure")
-	}
+	var gaps []string
 	for _, descriptor := range descriptors {
-		if descriptor.State == productadapter.StateGap && strings.TrimSpace(descriptor.Gap) == "" {
-			t.Fatalf("unclassified CLI gap: %#v", descriptor)
+		if descriptor.State != productadapter.StateGap {
+			continue
 		}
+		gaps = append(gaps, string(descriptor.Operation)+": "+strings.TrimSpace(descriptor.Gap))
+	}
+	if len(gaps) != 0 {
+		t.Fatalf("CLI semantic gaps remain (%d):\n%s", len(gaps), strings.Join(gaps, "\n"))
 	}
 }

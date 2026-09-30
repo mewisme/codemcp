@@ -23,6 +23,8 @@ func configCommand() *cobra.Command {
 		configPathCommand(),
 		configGetCommand(),
 		configListCommand(),
+		configSnapshotCommand(),
+		configPatchCommand(),
 		configWhyCommand(),
 		configDiffCommand(),
 		configSetCommand(),
@@ -172,7 +174,7 @@ func configListCommand() *cobra.Command {
 			return printSettingSelection(cmd, application.NewSettingService(), key, true, options)
 		},
 	}
-	addConfigOutputFlags(cmd, &options)
+	addConfigListOutputFlags(cmd, &options)
 	cmd.ValidArgsFunction = completeConfigSelection
 	return cmd
 }

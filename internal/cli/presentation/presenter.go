@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"charm.land/glamour/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type ResultMode uint8
@@ -27,6 +28,257 @@ type Presenter struct {
 	emitted      bool
 	gap          bool
 	contentGap   bool
+}
+
+// AlignedRows renders a compact table in human mode when it fits the terminal.
+// When a three-column table does not fit, the final column becomes a clearly
+// indented continuation line. Plain mode remains append-only and deterministic.
+func (p *Presenter) AlignedRows(headers []string, rows ...Row) {
+	p.alignedRows(headers, AlignedRowWidths(headers, rows...), false, rows...)
+}
+
+// AlignedNestedRowsWithWidths renders rows one list level below the current
+// subsection while reusing a width set measured across a larger row set.
+func (p *Presenter) AlignedNestedRowsWithWidths(headers []string, widths []int, rows ...Row) {
+	p.alignedRows(headers, widths, true, rows...)
+}
+
+// AlignedRowWidths returns visible display widths for a table. Callers may
+// measure once across multiple logical groups and reuse the result per group.
+func AlignedRowWidths(headers []string, rows ...Row) []int {
+	widths := make([]int, len(headers))
+	for index, header := range headers {
+		widths[index] = ansi.StringWidth(strings.TrimSpace(header))
+	}
+	for _, row := range rows {
+		for index := 0; index < len(row) && index < len(widths); index++ {
+			if width := ansi.StringWidth(row[index]); width > widths[index] {
+				widths[index] = width
+			}
+		}
+	}
+	return widths
+}
+
+func (p *Presenter) alignedRows(headers []string, widths []int, nested bool, rows ...Row) {
+	if p == nil || p.mode == ModeJSON || len(rows) == 0 {
+		return
+	}
+	p.beginContent()
+	if p.mode != ModeHuman {
+		p.Rows(headers, rows...)
+		return
+	}
+	columns := len(headers)
+	if columns == 0 {
+		return
+	}
+	if len(widths) != columns {
+		widths = AlignedRowWidths(headers, rows...)
+	}
+	prefixWidth := ansi.StringWidth(p.alignedRowPrefix(nested))
+	available := p.capabilities.Width - prefixWidth
+	if available < 20 {
+		available = 20
+	}
+	total := 0
+	for _, width := range widths {
+		total += width
+	}
+	total += max(0, columns-1) * 2
+	if total <= available {
+		p.alignedHumanLine(headers, headers, widths, true, nested)
+		for _, row := range rows {
+			p.alignedHumanLine(headers, []string(row), widths, false, nested)
+		}
+		return
+	}
+	if columns == 3 {
+		const minimumAcceptWidth = 16
+		fixed := widths[0] + 2 + widths[1] + 2
+		if fixed+minimumAcceptWidth <= available {
+			wrappedWidths := append([]int(nil), widths...)
+			wrappedWidths[2] = min(widths[2], available-fixed)
+			p.alignedHumanLine(headers, headers, wrappedWidths, true, nested)
+			for _, row := range rows {
+				p.alignedHumanWrappedRow(headers, row, wrappedWidths, nested)
+			}
+			return
+		}
+	}
+	for _, row := range rows {
+		if len(row) == 0 {
+			continue
+		}
+		key := row[0]
+		value := ""
+		if len(row) > 1 {
+			value = row[1]
+		}
+		rowPrefixWidth := prefixWidth
+		if rowPrefixWidth+ansi.StringWidth(key)+2+ansi.StringWidth(value) <= p.capabilities.Width {
+			p.line(p.alignedRowPrefix(nested) + p.theme.Render(RoleLabel, key) + "  " + value)
+		} else {
+			p.line(p.alignedRowPrefix(nested) + p.theme.Render(RoleLabel, key))
+			if strings.TrimSpace(value) != "" {
+				p.alignedContinuation("value", value, nested, false)
+			}
+		}
+		if len(row) > 2 && strings.TrimSpace(row[2]) != "" {
+			label := "accepts"
+			if len(headers) > 2 && strings.TrimSpace(headers[2]) != "" {
+				label = strings.ToLower(strings.TrimSpace(headers[2]))
+			}
+			p.alignedContinuation(label, row[2], nested, true)
+		}
+	}
+}
+
+func (p *Presenter) alignedHumanWrappedRow(headers []string, row Row, widths []int, nested bool) {
+	if len(widths) != 3 {
+		p.alignedHumanLine(headers, []string(row), widths, false, nested)
+		return
+	}
+	values := []string{"", "", ""}
+	for index := range values {
+		if index < len(row) {
+			values[index] = strings.TrimSpace(row[index])
+		}
+	}
+	acceptParts := wrapDisplayWords(values[2], widths[2])
+	if len(acceptParts) == 0 {
+		acceptParts = []string{""}
+	}
+	values[2] = acceptParts[0]
+	p.alignedHumanLine(headers, values, widths, false, nested)
+	acceptOffset := widths[0] + 2 + widths[1] + 2
+	for _, part := range acceptParts[1:] {
+		p.line(p.alignedRowPrefix(nested) + strings.Repeat(" ", acceptOffset) + p.theme.Render(RoleMuted, part))
+	}
+}
+
+func (p *Presenter) alignedContinuation(label, value string, nested, dimValue bool) {
+	label = strings.TrimSpace(label)
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return
+	}
+	basePrefix := p.alignedRowPrefix(nested)
+	plainPrefix := basePrefix + "  " + label + ": "
+	continuationPrefix := basePrefix + strings.Repeat(" ", max(2, ansi.StringWidth(plainPrefix)-ansi.StringWidth(basePrefix)))
+	contentWidth := p.capabilities.Width - ansi.StringWidth(plainPrefix)
+	if contentWidth < 8 {
+		contentWidth = 8
+	}
+	parts := wrapDisplayWords(value, contentWidth)
+	for index, part := range parts {
+		if dimValue {
+			part = p.theme.Render(RoleMuted, part)
+		}
+		if index == 0 {
+			p.line(basePrefix + "  " + p.theme.Render(RoleMuted, label+":") + " " + part)
+			continue
+		}
+		p.line(continuationPrefix + part)
+	}
+}
+
+func wrapDisplayWords(value string, width int) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if width <= 0 || ansi.StringWidth(value) <= width {
+		return []string{value}
+	}
+	words := strings.Fields(value)
+	lines := make([]string, 0, len(words))
+	current := ""
+	for _, word := range words {
+		if ansi.StringWidth(word) > width {
+			if current != "" {
+				lines = append(lines, current)
+				current = ""
+			}
+			for ansi.StringWidth(word) > width {
+				cut := displayPrefix(word, width)
+				lines = append(lines, cut)
+				word = strings.TrimPrefix(word, cut)
+			}
+			current = word
+			continue
+		}
+		candidate := word
+		if current != "" {
+			candidate = current + " " + word
+		}
+		if ansi.StringWidth(candidate) <= width {
+			current = candidate
+			continue
+		}
+		lines = append(lines, current)
+		current = word
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
+}
+
+func displayPrefix(value string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	var builder strings.Builder
+	used := 0
+	for _, r := range value {
+		piece := string(r)
+		pieceWidth := ansi.StringWidth(piece)
+		if used+pieceWidth > width {
+			break
+		}
+		builder.WriteRune(r)
+		used += pieceWidth
+	}
+	if builder.Len() == 0 {
+		_, size := utf8.DecodeRuneInString(value)
+		return value[:size]
+	}
+	return builder.String()
+}
+
+func (p *Presenter) alignedHumanLine(headers, values []string, widths []int, header, nested bool) {
+	parts := make([]string, len(widths))
+	for index := range widths {
+		value := ""
+		if index < len(values) {
+			value = strings.TrimSpace(values[index])
+		}
+		padding := widths[index] - ansi.StringWidth(value)
+		if index < len(widths)-1 {
+			padding += 2
+		}
+		if padding < 0 {
+			padding = 0
+		}
+		if header {
+			value = p.theme.Render(RoleHeading, value)
+		} else if index == 0 {
+			value = p.theme.Render(RoleLabel, value)
+		} else if index < len(headers) && strings.EqualFold(strings.TrimSpace(headers[index]), "Accepts") {
+			value = p.theme.Render(RoleMuted, value)
+		}
+		parts[index] = value + strings.Repeat(" ", padding)
+	}
+	p.line(p.alignedRowPrefix(nested) + strings.Join(parts, ""))
+}
+
+func (p *Presenter) alignedRowPrefix(nested bool) string {
+	prefix := p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
+	if nested {
+		prefix += p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
+	}
+	return prefix
 }
 
 type Field struct {

@@ -20,7 +20,7 @@ const requestControlTimeout = 5 * time.Second
 
 func requestCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "request", Short: "Review and resolve control approval requests"}
-	cmd.AddCommand(requestListCommand(), requestViewCommand(), requestResolveCommand(true), requestResolveCommand(false), requestGrantCommand(), requestExplainCommand())
+	cmd.AddCommand(requestListCommand(), requestViewCommand(), requestResolveCommand(true), requestResolveCommand(false), requestGrantCommand(), requestExplainCommand(), requestStreamCommand())
 	return cmd
 }
 
@@ -48,7 +48,7 @@ func requestExplainCommand() *cobra.Command {
 		},
 	}
 	addJSONResultFlag(cmd, &asJSON)
-	cmd.AddCommand(requestExplainModeCommand(), requestExplainStatusCommand(), requestExplainRetryCommand())
+	cmd.AddCommand(requestExplainModeCommand(), requestExplainStatusCommand(), requestExplainRetryCommand(), requestExplainViewCommand())
 	return cmd
 }
 

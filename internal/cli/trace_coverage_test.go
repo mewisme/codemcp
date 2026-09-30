@@ -31,15 +31,15 @@ func commandTraceContracts() map[string]commandTraceContract {
 			contracts[path] = commandTraceContract{Class: class, Expected: append([]string(nil), expected...)}
 		}
 	}
-	add(commandTraceTrivial, nil, "config", "doctor", "logs path", "version")
+	add(commandTraceTrivial, nil, "config", "doctor", "health", "network interfaces", "notification status", "tunnel config", "activity view", "logs path", "version")
 	add(commandTraceTrivial, nil,
 		"instructions get", "instructions set", "tools list",
-		"execution list", "execution view", "process list", "process view", "workspace context",
+		"execution list", "execution view", "process list", "process view", "process clear", "workspace context", "workspace container membership list",
 	)
 	add(commandTraceTrivial, nil, "prompt list", "prompt get", "prompt create", "prompt update", "prompt delete")
 	add(commandTraceStreaming, []string{"logs.snapshot.load.completed"}, "logs")
 	add(commandTraceStreaming, []string{"runtime.events.connect.completed", "logs.snapshot.load.completed"}, "logs follow")
-	add(commandTraceStreaming, nil, "tui")
+	add(commandTraceStreaming, nil, "tui", "activity stream", "execution feed", "execution stream", "request stream", "agent completion feed")
 	add(commandTraceStreaming, nil, "mcp stdio")
 	add(commandTraceStreaming, nil, "mcp http")
 	add(commandTraceInstrumented, []string{"server.config.load.completed", "runtime.session.completed"}, "<root>", "serve", "_service run")
@@ -56,7 +56,8 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"auth.status.completed"}, "auth status")
 	add(commandTraceInstrumented, []string{"completion.script.generate.completed", "completion.generate.completed"}, "completion")
 	add(commandTraceInstrumented, []string{"config.source.inspect.completed"}, "config path")
-	add(commandTraceInstrumented, []string{"setting.read.completed"}, "config get", "config list", "config diff")
+	add(commandTraceInstrumented, []string{"setting.read.completed"}, "config get", "config list", "config diff", "config snapshot")
+	add(commandTraceInstrumented, []string{"setting.set.completed"}, "config patch")
 	add(commandTraceInstrumented, []string{"config.why.lookup.completed", "config.why.render.completed"}, "config why")
 	add(commandTraceInstrumented, []string{"setting.set.completed"}, "config set")
 	add(commandTraceInstrumented, []string{"setting.set.completed"},
@@ -118,6 +119,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"request.revoke-grant.completed"}, "request grant revoke")
 	add(commandTraceInstrumented, []string{"request.explain.completed"}, "request explain", "request explain retry")
 	add(commandTraceInstrumented, []string{"request.explain.status.completed"}, "request explain status")
+	add(commandTraceTrivial, nil, "request explain view")
 	add(commandTraceInstrumented, []string{"setting.set.completed"}, "request explain mode")
 	add(commandTraceTrivial, nil,
 		"llm status", "llm use", "llm models", "llm probe",

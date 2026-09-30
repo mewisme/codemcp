@@ -94,7 +94,7 @@ func TestLLMCLICustomProviderCRUDAndCoreRemovalProtection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, stderr, removeErr := executeLLMCLI(root, nil, "llm", "provider", "remove", "ollama")
+	_, stderr, removeErr := executeLLMCLI(root, nil, "llm", "provider", "remove", "ollama", "--yes")
 	if removeErr == nil || !strings.Contains(strings.ToLower(removeErr.Error()+" "+stderr), "core provider") {
 		t.Fatalf("core remove err=%v stderr=%q", removeErr, stderr)
 	}
@@ -109,7 +109,7 @@ func TestLLMCLICustomProviderCRUDAndCoreRemovalProtection(t *testing.T) {
 	if _, _, err := executeLLMCLI(root, nil, "llm", "use", "ollama", "--json"); err != nil {
 		t.Fatal(err)
 	}
-	stdout, _, err = executeLLMCLI(root, nil, "llm", "provider", "remove", "fixture-provider", "--json")
+	stdout, _, err = executeLLMCLI(root, nil, "llm", "provider", "remove", "fixture-provider", "--yes", "--json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestLLMCLIProtectedAPIKeyNeverAppearsInArgumentsOutputOrConfigRoot(t *testi
 
 func TestLLMCLICoreRemovalFailureHasActionableRemediation(t *testing.T) {
 	root := isolateLLMCLI(t)
-	stdout, stderr, err := executeLLMCLI(root, nil, "llm", "provider", "remove", "ollama")
+	stdout, stderr, err := executeLLMCLI(root, nil, "llm", "provider", "remove", "ollama", "--yes")
 	if err == nil {
 		t.Fatal("core provider removal unexpectedly succeeded")
 	}

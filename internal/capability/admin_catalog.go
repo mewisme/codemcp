@@ -193,29 +193,30 @@ func adminOnlySpecs() []Spec {
 	requestStream := adminStreamSpec(RequestStream)
 	requestStream.Audience = AudienceReviewer
 	requestStream.Authorization = AuthorizationReviewer
+	requestStream.CLI = CLIBinding{CanonicalPath: "request stream"}
 	return []Spec{
-		adminQuerySpec(HealthRead, false),
-		adminQuerySpec(NetworkInterfacesList, false),
-		adminQuerySpec(ConfigSnapshotRead, false),
-		adminMutationSpec(ConfigPatch, RiskSensitive, false),
+		adminCLIQuerySpec(HealthRead, false, "health"),
+		adminCLIQuerySpec(NetworkInterfacesList, false, "network interfaces"),
+		adminCLIQuerySpec(ConfigSnapshotRead, false, "config snapshot"),
+		adminCLIMutationSpec(ConfigPatch, RiskSensitive, false, "config patch"),
 		adminCLIQuerySpec(InstructionSettingsRead, false, "instructions get"),
 		adminCLIMutationSpec(InstructionSettingsWrite, RiskState, false, "instructions set"),
-		adminQuerySpec(WorkspaceContainerMembershipList, false),
+		adminCLIQuerySpec(WorkspaceContainerMembershipList, false, "workspace container membership list"),
 		adminCLIQuerySpec(ProjectContextRead, false, "workspace context"),
 		adminCLIQuerySpec(ToolInventoryRead, false, "tools list"),
 		adminCLIQuerySpec(ExecutionList, false, "execution list"),
 		adminCLIQuerySpec(ExecutionView, false, "execution view"),
-		adminStreamSpec(ExecutionFeed),
-		adminStreamSpec(ExecutionStream),
+		adminCLIStreamSpec(ExecutionFeed, "execution feed"),
+		adminCLIStreamSpec(ExecutionStream, "execution stream"),
 		adminCLIQuerySpec(ProcessList, false, "process list"),
 		adminCLIQuerySpec(ProcessView, false, "process view"),
-		adminDestructiveSpec(ProcessClear, false),
+		adminCLIDestructiveSpec(ProcessClear, false, "process clear"),
 		requestStream,
-		adminStreamSpec(CompletionFeed),
-		adminQuerySpec(NotificationStatus, false),
-		adminQuerySpec(TunnelConfigRead, false),
-		adminStreamSpec(ActivityStream),
-		adminQuerySpec(ActivityView, false),
+		adminCLIStreamSpec(CompletionFeed, "agent completion feed"),
+		adminCLIQuerySpec(NotificationStatus, false, "notification status"),
+		adminCLIQuerySpec(TunnelConfigRead, false, "tunnel config"),
+		adminCLIStreamSpec(ActivityStream, "activity stream"),
+		adminCLIQuerySpec(ActivityView, false, "activity view"),
 		protocolMutationSpec(OAuthCallbackComplete, RiskSensitive, true),
 	}
 }
@@ -240,6 +241,12 @@ func adminStreamSpec(id ID) Spec {
 	return spec
 }
 
+func adminCLIStreamSpec(id ID, path string) Spec {
+	spec := adminStreamSpec(id)
+	spec.CLI = CLIBinding{CanonicalPath: path}
+	return spec
+}
+
 func adminMutationSpec(id ID, risk MutationRisk, openWorld bool) Spec {
 	return Spec{
 		ID: id, Kind: KindMutation, Audience: AudienceOperator, Authorization: AuthorizationOperator, Risk: risk,
@@ -257,6 +264,12 @@ func adminCLIMutationSpec(id ID, risk MutationRisk, openWorld bool, path string)
 func adminDestructiveSpec(id ID, openWorld bool) Spec {
 	spec := adminMutationSpec(id, RiskDestructive, openWorld)
 	spec.Confirmation.Mode = ConfirmationRecommended
+	return spec
+}
+
+func adminCLIDestructiveSpec(id ID, openWorld bool, path string) Spec {
+	spec := adminDestructiveSpec(id, openWorld)
+	spec.CLI = CLIBinding{CanonicalPath: path}
 	return spec
 }
 

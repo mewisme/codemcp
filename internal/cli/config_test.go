@@ -353,16 +353,20 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 	text := output.String()
 	for _, expected := range []string{
 		"┌  Configuration",
-		"◆  Settings ·",
 		"│  ◆ admin",
-		"│  │  admin.enabled —",
-		"│  │  admin.port —",
+		"Key",
+		"Value",
+		"Accepts",
+		"admin.enabled",
+		"true | false",
+		"admin.port",
+		"integer 1..65535",
 		"│  ◆ approval",
-		"│  │  approval.semantic.enabled —",
+		"approval.semantic.enabled",
 		"│  ◆ integrations",
-		"│  │  integrations.codegraph.enabled —",
+		"integrations.codegraph.enabled",
 		"│  ◆ tunnel",
-		"│  │  tunnel.admin.enabled —",
+		"tunnel.admin.enabled",
 		"└  Done",
 	} {
 		if !strings.Contains(text, expected) {
@@ -374,6 +378,173 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 		strings.Index(text, "│  ◆ integrations") < strings.Index(text, "│  ◆ tunnel")) {
 		t.Fatalf("config scopes are not sorted: %q", text)
 	}
+	if strings.Contains(text, "\n◆  admin") || strings.Contains(text, "\n◆  approval") {
+		t.Fatalf("config scopes escaped nested list level: %q", text)
+	}
+
+	headerLines := make([]string, 0)
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "Key") && strings.Contains(line, "Value") && strings.Contains(line, "Accepts") {
+			headerLines = append(headerLines, line)
+		}
+	}
+	if len(headerLines) < 2 {
+		t.Fatalf("expected repeated scoped table headers: %q", text)
+	}
+	for _, line := range headerLines[1:] {
+		if line != headerLines[0] {
+			t.Fatalf("scoped table columns do not share global widths:\nfirst=%q\nother=%q", headerLines[0], line)
+		}
+	}
+	adminLine := configListLineContaining(text, "admin.enabled")
+	llmLine := configListLineContaining(text, "llm.provider")
+	if adminLine == "" || llmLine == "" {
+		t.Fatalf("missing cross-scope rows: %q", text)
+	}
+	if strings.Index(adminLine, "admin.enabled") != strings.Index(llmLine, "llm.provider") ||
+		strings.Index(adminLine, "true | false") != strings.Index(llmLine, "<provider-id>") {
+		t.Fatalf("cross-scope Key/Accepts columns are not globally aligned:\nadmin=%q\nllm=%q", adminLine, llmLine)
+	}
+}
+
+func TestUniversalConfigHumanListCanHideAcceptsAndStacksOnNarrowTerminals(t *testing.T) {
+	isolateUniversalConfigCLI(t)
+	service := application.NewSettingService()
+
+	var narrow bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(presentation.WrapWriter(&narrow, presentation.Capabilities{Width: 48, Unicode: true, Interactive: true}))
+	if err := printSettingSelection(cmd, service, "server", true, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	closeCommandProgress(cmd, nil)
+	text := narrow.String()
+	semanticText := strings.NewReplacer("│", " ", "◆", " ", "┌", " ", "└", " ").Replace(text)
+	collapsed := strings.Join(strings.Fields(semanticText), " ")
+	for _, want := range []string{"server.port", "accepts: integer 1..65535", "server.expose.mode", "accepts: none | all | 0.0.0.0 | interfaces"} {
+		if !strings.Contains(collapsed, want) {
+			t.Fatalf("narrow config list missing semantic value %q: %q", want, text)
+		}
+	}
+
+	var hidden bytes.Buffer
+	hide := &cobra.Command{}
+	hide.SetOut(presentation.WrapWriter(&hidden, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	if err := printSettingSelection(hide, service, "server", true, configOutputOptions{noAccepts: true}); err != nil {
+		t.Fatal(err)
+	}
+	closeCommandProgress(hide, nil)
+	if strings.Contains(hidden.String(), "Accepts") || strings.Contains(hidden.String(), "accepts:") || strings.Contains(hidden.String(), "integer 1..65535") {
+		t.Fatalf("--no-accepts presentation still contains accepted-value hints: %q", hidden.String())
+	}
+}
+
+func TestConfigListNoAcceptsUsesCanonicalAliasAuthority(t *testing.T) {
+	rootPath := isolateUniversalConfigCLI(t)
+	root := newRootCommand()
+	canonical, _, err := root.Find([]string{"config", "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alias, remaining, err := root.Find([]string{"config", "ls"})
+	if err != nil || alias != canonical || len(remaining) != 0 {
+		t.Fatalf("config ls did not resolve to canonical list command: canonical=%p alias=%p remaining=%v err=%v", canonical, alias, remaining, err)
+	}
+	if flag := canonical.Flags().Lookup("no-accepts"); flag == nil {
+		t.Fatal("canonical config list command is missing --no-accepts")
+	}
+	help := renderSideEffectFreeHelp(t, []string{"config", "ls", "--help"})
+	if count := strings.Count(help, "--no-accepts"); count != 1 {
+		t.Fatalf("config list/ls help exposes --no-accepts %d times:\n%s", count, help)
+	}
+
+	var output bytes.Buffer
+	root.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 120, Unicode: true, Interactive: true}))
+	root.SetErr(&output)
+	root.SetArgs([]string{"--config-dir", rootPath, "config", "ls", "server", "--no-accepts"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{"│  ◆ server", "server.enabled", "server.port"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("config ls --no-accepts missing %q: %q", want, text)
+		}
+	}
+	for _, forbidden := range []string{"Accepts", "accepts:", "true | false", "integer 1..65535"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("config ls --no-accepts rendered hint %q: %q", forbidden, text)
+		}
+	}
+}
+
+func TestConfigListNoAcceptsDoesNotChangeJSONOrPlainProjection(t *testing.T) {
+	isolateUniversalConfigCLI(t)
+	service := application.NewSettingService()
+
+	renderJSON := func(noAccepts bool) string {
+		t.Helper()
+		var output bytes.Buffer
+		cmd := &cobra.Command{}
+		cmd.SetOut(&output)
+		if err := printSettingSelection(cmd, service, "server", true, configOutputOptions{json: true, noAccepts: noAccepts}); err != nil {
+			t.Fatal(err)
+		}
+		return output.String()
+	}
+	if without, with := renderJSON(false), renderJSON(true); without != with {
+		t.Fatalf("--no-accepts changed JSON projection:\ndefault=%q\nhidden =%q", without, with)
+	} else if strings.Contains(strings.ToLower(with), "accepts") {
+		t.Fatalf("JSON projection contains human accepted-value decoration: %q", with)
+	}
+
+	renderPlain := func(noAccepts bool) string {
+		t.Helper()
+		var output bytes.Buffer
+		cmd := &cobra.Command{}
+		cmd.SetOut(&output)
+		if err := printSettingSelection(cmd, service, "server", true, configOutputOptions{noAccepts: noAccepts}); err != nil {
+			t.Fatal(err)
+		}
+		return output.String()
+	}
+	if without, with := renderPlain(false), renderPlain(true); without != with {
+		t.Fatalf("--no-accepts changed plain projection:\ndefault=%q\nhidden =%q", without, with)
+	} else if strings.Contains(with, "Accepts") || strings.Contains(with, "accepts:") {
+		t.Fatalf("plain projection contains human accepted-value decoration: %q", with)
+	}
+}
+
+func TestUniversalConfigHumanListDimsAcceptsValues(t *testing.T) {
+	isolateUniversalConfigCLI(t)
+
+	var output bytes.Buffer
+	caps := presentation.Capabilities{Width: 180, Unicode: true, Color: true, Interactive: true}
+	cmd := &cobra.Command{}
+	cmd.SetOut(presentation.WrapWriter(&output, caps))
+	if err := printSettingSelection(cmd, application.NewSettingService(), "", true, configOutputOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	closeCommandProgress(cmd, nil)
+
+	theme := presentation.NewTheme(caps)
+	for _, want := range []string{
+		theme.Render(presentation.RoleMuted, "true | false"),
+		theme.Render(presentation.RoleMuted, "<provider-id>"),
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("config accepts value is not dimmed with shared muted role %q: %q", want, output.String())
+		}
+	}
+}
+
+func configListLineContaining(output, value string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, value) {
+			return line
+		}
+	}
+	return ""
 }
 
 func TestConfigRichPaletteSeparatesStructureLabelsAndValues(t *testing.T) {

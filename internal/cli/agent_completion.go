@@ -18,7 +18,7 @@ const completionReadTimeout = 5 * time.Second
 func agentCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "agent", Short: "Inspect agent lifecycle state"}
 	completion := &cobra.Command{Use: "completion", Short: "Inspect durable agent completion history"}
-	completion.AddCommand(agentCompletionCurrentCommand(), agentCompletionListCommand(), agentCompletionViewCommand(), agentCompletionDoctorCommand())
+	completion.AddCommand(agentCompletionCurrentCommand(), agentCompletionListCommand(), agentCompletionViewCommand(), agentCompletionDoctorCommand(), agentCompletionFeedCommand())
 	cmd.AddCommand(completion)
 	return cmd
 }

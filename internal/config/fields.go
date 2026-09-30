@@ -67,6 +67,16 @@ type FieldSpec struct {
 	Virtual            bool
 	Selector           *FieldSelectorSpec
 	ValueRole          SettingValueRole
+	Input              FieldInputSpec
+}
+
+type FieldInputSpec struct {
+	Shape     string `json:"shape,omitempty"`
+	ItemShape string `json:"item_shape,omitempty"`
+	MinInt    int    `json:"min_int,omitempty"`
+	MaxInt    int    `json:"max_int,omitempty"`
+	HasMinInt bool   `json:"has_min_int,omitempty"`
+	HasMaxInt bool   `json:"has_max_int,omitempty"`
 }
 
 type FieldValueSpec struct {
@@ -95,29 +105,29 @@ const (
 var fieldSpecs = []FieldSpec{
 	{Key: "server.enabled", Label: "MCP HTTP server", Section: FieldSectionRuntime, Description: "controls whether the MCP HTTP transport is enabled", Details: "When disabled, clients cannot connect through the local HTTP MCP server. At least one MCP transport must remain enabled, so the Secure MCP Tunnel must be enabled before this can be disabled by itself.", Kind: FieldBool, Editable: true, Related: []string{"server.port", "server.expose.mode", "auth.mcp_enabled", "tunnel.enabled"}},
 	{Key: "server.expose.mode", Label: "Exposure", Section: FieldSectionRuntime, Description: "controls which local network addresses expose the HTTP servers", Details: "Loopback access is always retained. Any non-loopback exposure requires server.allow_insecure_http=true and valid authentication for each enabled HTTP endpoint.", Kind: FieldEnum, Options: []string{"none", "all", "0.0.0.0", "interfaces"}, Values: []FieldValueSpec{{Value: "none", Description: "Bind only to loopback."}, {Value: "all", Description: "Bind loopback plus every eligible address discovered on all interfaces."}, {Value: "0.0.0.0", Description: "Bind one IPv4 wildcard listener and expose eligible IPv4 addresses."}, {Value: "interfaces", Description: "Bind loopback plus addresses from server.expose.interfaces."}}, Editable: true, Related: []string{"server.expose.interfaces", "server.allow_insecure_http", "auth.mcp_enabled", "auth.admin_enabled"}},
-	{Key: "server.expose.interfaces", Label: "Exposure interfaces", Section: FieldSectionRuntime, Description: "lists network interfaces used when exposure mode is interfaces", Details: "Each name must resolve to an available interface with at least one eligible IP address at runtime. Duplicate names are removed and values are normalized before persistence.", Kind: FieldList, Editable: true, Guidance: "Set server.expose.mode=interfaces before relying on this list.", Related: []string{"server.expose.mode", "server.allow_insecure_http"}},
-	{Key: "server.port", Label: "MCP HTTP port", Section: FieldSectionRuntime, Description: "sets the TCP port for the MCP HTTP server", Details: "Valid range is 1-65535. When both MCP and admin HTTP servers are enabled, their ports must differ.", Kind: FieldInt, Editable: true, Related: []string{"server.enabled", "admin.port"}},
+	{Key: "server.expose.interfaces", Label: "Exposure interfaces", Section: FieldSectionRuntime, Description: "lists network interfaces used when exposure mode is interfaces", Details: "Each name must resolve to an available interface with at least one eligible IP address at runtime. Duplicate names are removed and values are normalized before persistence.", Kind: FieldList, Editable: true, Input: FieldInputSpec{ItemShape: "interface"}, Guidance: "Set server.expose.mode=interfaces before relying on this list.", Related: []string{"server.expose.mode", "server.allow_insecure_http"}},
+	{Key: "server.port", Label: "MCP HTTP port", Section: FieldSectionRuntime, Description: "sets the TCP port for the MCP HTTP server", Details: "Valid range is 1-65535. When both MCP and admin HTTP servers are enabled, their ports must differ.", Kind: FieldInt, Editable: true, Input: boundedIntInput(1, 65535), Related: []string{"server.enabled", "admin.port"}},
 	{Key: "server.allow_insecure_http", Label: "Allow insecure HTTP", Section: FieldSectionRuntime, Description: "allows authenticated plain HTTP endpoints beyond loopback", Details: "This opt-in is required for non-loopback exposure. It does not disable authentication requirements; exposed enabled endpoints still require configured credentials. Prefer the Secure MCP Tunnel or a TLS reverse proxy when possible.", Kind: FieldBool, Editable: true, Related: []string{"server.expose.mode", "auth.mcp_enabled", "auth.admin_enabled", "tunnel.enabled"}},
 	{Key: "server.allow_unauthenticated_loopback", Label: "Allow unauthenticated loopback", Section: FieldSectionRuntime, Description: "WARNING: acknowledges intentionally disabling MCP/Admin HTTP authentication on loopback", Details: "Required before auth.mcp_enabled or auth.admin_enabled can be turned off while the corresponding HTTP server remains enabled. Valid only with server.expose.mode=none. Unauthenticated listeners accept any local process as a client; prefer keeping authentication enabled.", Kind: FieldBool, Editable: true, Guidance: "Set this only for trusted local development, then re-enable authentication promptly.", Related: []string{"auth.mcp_enabled", "auth.admin_enabled", "server.expose.mode", "server.enabled", "admin.enabled"}},
 	{Key: "admin.enabled", Label: "Admin server", Section: FieldSectionRuntime, Description: "controls whether the admin HTTP server is enabled", Details: "When enabled, the admin endpoint listens using the configured admin port and the same network exposure policy. If admin authentication is enabled, a configured admin credential is required.", Kind: FieldBool, Editable: true, Related: []string{"admin.port", "auth.admin_enabled", "server.expose.mode"}},
-	{Key: "admin.port", Label: "Admin port", Section: FieldSectionRuntime, Description: "sets the TCP port for the admin HTTP server", Details: "Valid range is 1-65535 while the admin server is enabled. When both HTTP servers are enabled, this port must differ from server.port.", Kind: FieldInt, Editable: true, Related: []string{"admin.enabled", "server.port"}},
+	{Key: "admin.port", Label: "Admin port", Section: FieldSectionRuntime, Description: "sets the TCP port for the admin HTTP server", Details: "Valid range is 1-65535 while the admin server is enabled. When both HTTP servers are enabled, this port must differ from server.port.", Kind: FieldInt, Editable: true, Input: boundedIntInput(1, 65535), Related: []string{"admin.enabled", "server.port"}},
 	{Key: "auth.mcp_enabled", Label: "MCP authentication", Section: FieldSectionAccess, Description: "controls token authentication for the MCP HTTP endpoint", Details: "When the MCP HTTP server is enabled and this setting is true, an MCP credential must be configured. Disabling authentication while the MCP HTTP server remains enabled requires server.allow_unauthenticated_loopback=true and server.expose.mode=none. Non-loopback HTTP exposure always requires MCP authentication with a configured credential.", Kind: FieldBool, Editable: true, Related: []string{"auth.mcp_token_hash", "server.enabled", "server.expose.mode", "server.allow_unauthenticated_loopback"}},
 	{Key: "auth.mcp_legacy_bearer", Label: "Legacy MCP bearer", Section: FieldSectionAccess, Description: "allows the existing static MCP token as a compatibility bearer credential", Details: "OAuth is canonical for protected HTTP/SSE MCP transports. Keep this enabled during migration for clients that still send the managed MCP token directly, then disable it once all clients use OAuth.", Kind: FieldBool, Editable: true, Related: []string{"auth.mcp_enabled", "auth.mcp_token_hash"}},
 	{Key: "auth.admin_enabled", Label: "Admin authentication", Section: FieldSectionAccess, Description: "controls token authentication for the admin HTTP endpoint", Details: "When the admin server is enabled and this setting is true, an admin credential must be configured. Disabling authentication while the admin server remains enabled requires server.allow_unauthenticated_loopback=true and server.expose.mode=none. Non-loopback exposure with the admin endpoint enabled always requires admin authentication.", Kind: FieldBool, Editable: true, Related: []string{"auth.admin_token_hash", "admin.enabled", "server.expose.mode", "server.allow_unauthenticated_loopback"}},
 	{Key: "auth.mcp_token_hash", Label: "MCP credential", Section: FieldSectionAccess, Description: "stores the managed credential hash used by MCP HTTP authentication", Details: "The raw token is never exposed through config views. This field is managed by the MCP authentication workflow and is not directly editable through config set.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage this credential with the MCP auth token workflow.", Related: []string{"auth.mcp_enabled", "server.enabled"}},
 	{Key: "auth.admin_token_hash", Label: "Admin credential", Section: FieldSectionAccess, Description: "stores the managed credential hash used by admin HTTP authentication", Details: "The raw token is never exposed through config views. This field is managed by the admin authentication workflow and is not directly editable through config set.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage this credential with the admin auth token workflow.", Related: []string{"auth.admin_enabled", "admin.enabled"}},
-	{Key: "permissions.allow_dirs", Label: "Allowed directories", Section: FieldSectionAccess, Description: "adds global filesystem roots that registered workspaces may access", Details: "These roots extend workspace-local access for filesystem and shell operations. Paths must be absolute, are normalized, and apply globally in addition to per-workspace allowed directories.", Kind: FieldList, Editable: true},
+	{Key: "permissions.allow_dirs", Label: "Allowed directories", Section: FieldSectionAccess, Description: "adds global filesystem roots that registered workspaces may access", Details: "These roots extend workspace-local access for filesystem and shell operations. Paths must be absolute, are normalized, and apply globally in addition to per-workspace allowed directories.", Kind: FieldList, Editable: true, Input: FieldInputSpec{ItemShape: "absolute-path"}},
 	{Key: "permissions.mcp_config_read", Label: "MCP agent config reads", Section: FieldSectionAccess, Description: "allows agent-facing MCP configuration read tools to access the global CodeMCP setting projection", Details: "Disabled by default. MCP transport authentication and workspace access do not grant global configuration access without this explicit operator opt-in.", Kind: FieldBool, Editable: true},
 	{Key: "permissions.mcp_config_write", Label: "MCP agent config writes", Section: FieldSectionAccess, Description: "allows the guarded agent-facing MCP configuration mutation workflow to target eligible global settings", Details: "Disabled by default. Enabling this eligibility does not bypass mandatory local approval for config_set and does not permit managed-secret writes.", Kind: FieldBool, Editable: true, Related: []string{"permissions.mcp_config_read"}},
-	{Key: "shell.path", Label: "Executable search paths", Section: FieldSectionShell, Description: "prepends additional executable directories to PATH for managed shell commands", Details: "Paths must be absolute. Configured entries are prepended to the inherited process PATH for foreground and background shell execution.", Kind: FieldList, Editable: true},
+	{Key: "shell.path", Label: "Executable search paths", Section: FieldSectionShell, Description: "prepends additional executable directories to PATH for managed shell commands", Details: "Paths must be absolute. Configured entries are prepended to the inherited process PATH for foreground and background shell execution.", Kind: FieldList, Editable: true, Input: FieldInputSpec{ItemShape: "absolute-path"}},
 	{Key: "telemetry.enabled", Label: "Anonymous product telemetry", Section: FieldSectionRuntime, Description: "controls privacy-bounded anonymous product usage telemetry", Details: "Enabled by default. CM_TELEMETRY overrides this persisted preference at runtime. This operator privacy preference is never exposed through agent-facing MCP config tools.", Kind: FieldBool, Editable: true},
 	{Key: "telegram.enabled", Label: "Telegram interface", Section: FieldSectionRuntime, Description: "controls the Telegram bot runtime", Details: "The bot token is stored separately in the secret store. The runtime starts only when Telegram is enabled, a token exists, and at least one authorized private user is configured.", Kind: FieldBool, Editable: true, Related: []string{"telegram.allowed_user_ids", "telegram.topics_enabled", "telegram.logs_mini_app.enabled"}},
-	{Key: "telegram.allowed_user_ids", Label: "Telegram authorized users", Section: FieldSectionAccess, Description: "lists Telegram user IDs allowed to invoke the private administration interface", Details: "Only positive numeric user IDs are accepted. Group and channel traffic is rejected regardless of this allowlist. The same current allowlist is rechecked for Logs Mini App requests.", Kind: FieldList, Editable: true, Related: []string{"telegram.enabled", "telegram.topics_enabled", "telegram.logs_mini_app.enabled"}},
+	{Key: "telegram.allowed_user_ids", Label: "Telegram authorized users", Section: FieldSectionAccess, Description: "lists Telegram user IDs allowed to invoke the private administration interface", Details: "Only positive numeric user IDs are accepted. Group and channel traffic is rejected regardless of this allowlist. The same current allowlist is rechecked for Logs Mini App requests.", Kind: FieldList, Editable: true, Input: FieldInputSpec{ItemShape: "positive-user-id"}, Related: []string{"telegram.enabled", "telegram.topics_enabled", "telegram.logs_mini_app.enabled"}},
 	{Key: "telegram.topics_enabled", Label: "Telegram private topics", Section: FieldSectionRuntime, Description: "routes Telegram administration notifications into managed private-chat topics when the bot supports topic mode", Details: "Disabled by default. Topic mode must also be enabled for the bot in Telegram. Unsupported bots continue using the General private chat without losing administration or notification delivery.", Kind: FieldBool, Editable: true, Related: []string{"telegram.enabled", "telegram.allowed_user_ids"}},
 	{Key: "telegram.logs_mini_app.enabled", Label: "Telegram Logs Mini App", Section: FieldSectionRuntime, Description: "enables the read-only Telegram Logs Mini App ingress", Details: "Requires the external cf-tunnel binary. CodeMCP starts a dedicated loopback logs-only listener and an ephemeral Cloudflare Quick Tunnel; the public URL is runtime-derived and is never persisted.", Kind: FieldBool, Editable: true, Related: []string{"telegram.enabled", "telegram.allowed_user_ids"}},
 	{Key: "approval.semantic.enabled", Label: "Semantic approval classification", Section: FieldSectionAccess, Description: "controls optional semantic risk classification for eligible mutations", Details: "Disabled by default. Semantic classification may only preserve or tighten native policy and never grants approval.", Kind: FieldBool, Editable: true},
 	{Key: "approval.semantic.provider", Label: "Semantic approval provider", Section: FieldSectionAccess, Description: "selects the provider-neutral risk classifier", Details: "The configured provider must expose the semantic RiskClassifier capability at runtime. Missing capability follows fail_mode.", Kind: FieldString, Editable: true},
-	{Key: "approval.semantic.timeout_ms", Label: "Semantic approval timeout", Section: FieldSectionAccess, Description: "sets the bounded classification deadline in milliseconds", Details: "Classification is advisory and locally bounded. Timeout follows fail_mode and never permits execution by itself.", Kind: FieldInt, Editable: true},
+	{Key: "approval.semantic.timeout_ms", Label: "Semantic approval timeout", Section: FieldSectionAccess, Description: "sets the bounded classification deadline in milliseconds", Details: "Classification is advisory and locally bounded. Timeout follows fail_mode and never permits execution by itself.", Kind: FieldInt, Editable: true, Input: boundedIntInput(100, 10000)},
 	{Key: "approval.semantic.minimum_confidence", Label: "Semantic approval minimum confidence", Section: FieldSectionAccess, Description: "sets the minimum accepted classifier confidence from 0 to 1", Details: "Responses below this threshold are treated as classification failure and follow fail_mode.", Kind: FieldString, Editable: true},
 	{Key: "approval.semantic.fail_mode", Label: "Semantic approval failure mode", Section: FieldSectionAccess, Description: "controls how enabled classification failures are handled", Details: "Allowed values are require_approval or deny. An allow failure mode is intentionally unsupported.", Kind: FieldEnum, Options: []string{"require_approval", "deny"}, Values: []FieldValueSpec{{Value: "require_approval", Description: "Escalate classification failure to the canonical human approval workflow."}, {Value: "deny", Description: "Deny the eligible mutation when classification cannot complete safely."}}, Editable: true},
 	{Key: "approval.semantic.low_action", Label: "Low-risk semantic action", Section: FieldSectionAccess, Description: "maps low semantic risk to a canonical policy action", Details: "Allow only preserves an existing native allow; it never grants approval or bypasses a deterministic guard.", Kind: FieldEnum, Options: []string{"allow", "require_approval", "deny"}, Values: semanticApprovalActionValues(), Editable: true},
@@ -143,7 +153,7 @@ var fieldSpecs = []FieldSpec{
 	{Key: "integrations.codegraph.path", Label: "CodeGraph executable", Section: FieldSectionIntegrations, Description: "sets an explicit CodeGraph executable path", Details: "Leave empty to use system/managed resolution. A configured value must be absolute; execution remains bounded and requires an explicit workspace directory.", Kind: FieldString, Editable: true, Related: []string{"integrations.codegraph.enabled"}},
 	{Key: "integrations.typesafe.enabled", Label: "TypeSafe enabled", Section: FieldSectionIntegrations, Description: "controls whether the optional TypeSafe semantic provider may be used", Details: "Disabled by default. Enabling does not contact TypeSafe; remote requests occur only when a semantic consumer or explicit probe uses the configured provider.", Kind: FieldBool, Editable: true, Related: []string{"integrations.typesafe.model", "integrations.typesafe.timeout_ms", "integrations.typesafe.api_key"}},
 	{Key: "integrations.typesafe.model", Label: "TypeSafe model", Section: FieldSectionIntegrations, Description: "sets the TypeSafe System One model or alias", Details: "The provider currently documents jev-latest as the stable alias. Versioned model IDs may be used when a consumer needs a pinned calibration target.", Kind: FieldString, Editable: true, Related: []string{"integrations.typesafe.enabled"}},
-	{Key: "integrations.typesafe.timeout_ms", Label: "TypeSafe timeout", Section: FieldSectionIntegrations, Description: "sets the local deadline budget in milliseconds for TypeSafe provider operations", Details: "The timeout is locally enforced and remains bounded even if the provider SDK supports a larger/default timeout.", Kind: FieldInt, Editable: true, Related: []string{"integrations.typesafe.enabled"}},
+	{Key: "integrations.typesafe.timeout_ms", Label: "TypeSafe timeout", Section: FieldSectionIntegrations, Description: "sets the local deadline budget in milliseconds for TypeSafe provider operations", Details: "The timeout is locally enforced and remains bounded even if the provider SDK supports a larger/default timeout.", Kind: FieldInt, Editable: true, Input: boundedIntInput(100, 30000), Related: []string{"integrations.typesafe.enabled"}},
 	{Key: "tunnel.enabled", Label: "Tunnel", Section: FieldSectionTunnel, Description: "controls whether the OpenAI Secure MCP Tunnel transport is enabled", Details: "An enabled tunnel requires both tunnel.id and a configured runtime API key. The tunnel can satisfy the requirement that at least one MCP transport remains enabled when the local MCP HTTP server is disabled.", Kind: FieldBool, Editable: true, Related: []string{"tunnel.id", "tunnel.api_key", "server.enabled"}},
 	{Key: "tunnel.id", Label: "Tunnel ID", Section: FieldSectionTunnel, Description: "identifies the OpenAI Secure MCP Tunnel used by this runtime", Details: "The ID is required when the tunnel transport is enabled and is used together with the runtime API key to connect to the configured tunnel.", Kind: FieldString, Editable: true, Related: []string{"tunnel.enabled", "tunnel.api_key"}},
 	{Key: "tunnel.api_key", Label: "Runtime API key", Section: FieldSectionTunnel, Description: "stores the managed runtime credential used to connect to the Secure MCP Tunnel", Details: "The raw runtime key is stored through the secret workflow and is redacted from config views. A configured runtime key is required when the tunnel transport is enabled.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage the runtime key from the Tunnel page.", Related: []string{"tunnel.enabled", "tunnel.id"}},
@@ -155,8 +165,74 @@ var fieldSpecs = []FieldSpec{
 	{Key: "tunnel.admin.verified", Label: "Tunnel admin verified", Section: FieldSectionTunnel, Description: "reports whether the configured admin key and scope were explicitly verified", Details: "This derived state is set only by the explicit verification operation and is invalidated whenever the configured admin key or scope changes.", Kind: FieldBool},
 	{Key: "tunnel.admin.read_access", Label: "Tunnel admin Read access", Section: FieldSectionTunnel, Description: "reports verified tunnel admin read access", Details: "This read-only derived state reflects the last successful explicit verification and is cleared when the configured key or scope changes.", Kind: FieldBool},
 	{Key: "tunnel.admin.manage_access", Label: "Tunnel admin Manage access", Section: FieldSectionTunnel, Description: "reports verified tunnel admin manage access", Details: "This read-only derived state reflects the last successful explicit verification and is cleared when the configured key or scope changes.", Kind: FieldBool},
-	{Key: "tunnel.control_plane_base_url", Label: "Control-plane URL", Section: FieldSectionTunnel, Description: "overrides the OpenAI tunnel control-plane base URL", Details: "When empty, the tunnel client uses its default control-plane endpoint. A custom value must be an absolute HTTP or HTTPS URL with a host.", Kind: FieldString, Editable: true, Guidance: "Leave empty unless a different control-plane endpoint is explicitly required.", Related: []string{"tunnel.enabled", "tunnel.id"}},
+	{Key: "tunnel.control_plane_base_url", Label: "Control-plane URL", Section: FieldSectionTunnel, Description: "overrides the OpenAI tunnel control-plane base URL", Details: "When empty, the tunnel client uses its default control-plane endpoint. A custom value must be an absolute HTTP or HTTPS URL with a host.", Kind: FieldString, Editable: true, Input: FieldInputSpec{Shape: "url"}, Guidance: "Leave empty unless a different control-plane endpoint is explicitly required.", Related: []string{"tunnel.enabled", "tunnel.id"}},
 	{Key: "tunnel.organization_id", Label: "Organization ID", Section: FieldSectionTunnel, Description: "sets the OpenAI organization context associated with tunnel runtime operations", Details: "This optional organization identifier is carried in tunnel runtime configuration and is distinct from the verified admin-key organization scope.", Kind: FieldString, Editable: true, Related: []string{"tunnel.admin.organization_id", "tunnel.enabled"}},
+}
+
+func boundedIntInput(minimum, maximum int) FieldInputSpec {
+	return FieldInputSpec{MinInt: minimum, MaxInt: maximum, HasMinInt: true, HasMaxInt: true}
+}
+
+func AcceptedValueHint(spec FieldSpec) string {
+	if !spec.Writable && !spec.Editable {
+		switch {
+		case spec.ValueRole == SettingValueGenerated || spec.Rotatable:
+			return "generated · rotate to replace"
+		case spec.Derived || spec.ValueRole == SettingValueDerived:
+			return "read-only · derived"
+		default:
+			return "read-only"
+		}
+	}
+	if spec.Secret || spec.Sensitive {
+		return "<secret> · protected input"
+	}
+	var hint string
+	switch spec.Kind {
+	case FieldBool:
+		hint = "true | false"
+	case FieldEnum:
+		hint = strings.Join(spec.Options, " | ")
+	case FieldInt:
+		switch {
+		case spec.Input.HasMinInt && spec.Input.HasMaxInt:
+			hint = fmt.Sprintf("integer %d..%d", spec.Input.MinInt, spec.Input.MaxInt)
+		case spec.Input.HasMinInt:
+			hint = fmt.Sprintf("integer >= %d", spec.Input.MinInt)
+		case spec.Input.HasMaxInt:
+			hint = fmt.Sprintf("integer <= %d", spec.Input.MaxInt)
+		default:
+			hint = "<integer>"
+		}
+	case FieldList:
+		item := strings.TrimSpace(spec.Input.ItemShape)
+		if item == "" {
+			item = "item"
+		}
+		hint = "<" + item + ">[, <" + item + ">...]"
+	case FieldString:
+		shape := strings.TrimSpace(spec.Input.Shape)
+		if shape == "" {
+			shape = "text"
+		}
+		hint = "<" + shape + ">"
+	case FieldReadOnly:
+		hint = "read-only"
+	}
+	if spec.Selector != nil {
+		resource := "resource-id"
+		switch {
+		case strings.Contains(spec.Key, "providers[<id>]"):
+			resource = "provider-id"
+		case strings.Contains(spec.Key, "managed[<id>]"):
+			resource = "tunnel-id"
+		}
+		if hint == "" {
+			return "<" + resource + ">"
+		}
+		return "<" + resource + "> → " + hint
+	}
+	return hint
 }
 
 func semanticApprovalActionValues() []FieldValueSpec {
@@ -202,6 +278,11 @@ func SetValue(cfg *Config, key, raw string) error {
 		return errors.New("config is required")
 	}
 	key = canonicalFieldKey(key)
+	if spec, ok := FieldByKey(key); ok {
+		if err := validateFieldInput(spec, raw); err != nil {
+			return err
+		}
+	}
 	switch key {
 	case "server.enabled":
 		value, err := parseBoolField(raw, key)
@@ -347,10 +428,7 @@ func SetValue(cfg *Config, key, raw string) error {
 		}
 		cfg.Approval.Semantic.Provider = value
 	case "approval.semantic.timeout_ms":
-		value, err := strconv.Atoi(strings.TrimSpace(raw))
-		if err != nil || value < 100 || value > 10000 {
-			return errors.New("approval.semantic.timeout_ms must be between 100 and 10000")
-		}
+		value, _ := strconv.Atoi(strings.TrimSpace(raw))
 		cfg.Approval.Semantic.TimeoutMS = value
 	case "approval.semantic.minimum_confidence":
 		value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
@@ -490,10 +568,7 @@ func SetValue(cfg *Config, key, raw string) error {
 		}
 		cfg.Integrations.TypeSafe.Model = value
 	case "integrations.typesafe.timeout_ms":
-		value, err := strconv.Atoi(strings.TrimSpace(raw))
-		if err != nil || value < 100 || value > 30000 {
-			return errors.New("integrations.typesafe.timeout_ms must be between 100 and 30000")
-		}
+		value, _ := strconv.Atoi(strings.TrimSpace(raw))
 		cfg.Integrations.TypeSafe.TimeoutMS = value
 	case "tunnel.enabled":
 		value, err := parseBoolField(raw, key)
@@ -529,6 +604,26 @@ func SetValue(cfg *Config, key, raw string) error {
 		return fmt.Errorf("unsupported config key: %s", key)
 	}
 	return nil
+}
+
+func validateFieldInput(spec FieldSpec, raw string) error {
+	if spec.Kind != FieldInt || (!spec.Input.HasMinInt && !spec.Input.HasMaxInt) {
+		return nil
+	}
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("%s must be an integer", spec.Key)
+	}
+	switch {
+	case spec.Input.HasMinInt && spec.Input.HasMaxInt && (value < spec.Input.MinInt || value > spec.Input.MaxInt):
+		return fmt.Errorf("%s must be between %d and %d", spec.Key, spec.Input.MinInt, spec.Input.MaxInt)
+	case spec.Input.HasMinInt && value < spec.Input.MinInt:
+		return fmt.Errorf("%s must be at least %d", spec.Key, spec.Input.MinInt)
+	case spec.Input.HasMaxInt && value > spec.Input.MaxInt:
+		return fmt.Errorf("%s must be at most %d", spec.Key, spec.Input.MaxInt)
+	default:
+		return nil
+	}
 }
 
 func SetValueValidated(cfg *Config, key, raw string) error {

@@ -124,7 +124,7 @@ func executionCommand() *cobra.Command {
 		return nil
 	}}
 	addJSONResultFlag(view, &viewJSON)
-	cmd.AddCommand(list, view)
+	cmd.AddCommand(list, view, executionFeedCommand(), executionStreamCommand())
 	return cmd
 }
 
@@ -168,7 +168,7 @@ func processCommand() *cobra.Command {
 		return nil
 	}}
 	addJSONResultFlag(view, &viewJSON)
-	cmd.AddCommand(list, view)
+	cmd.AddCommand(list, view, processClearCommand())
 	return cmd
 }
 

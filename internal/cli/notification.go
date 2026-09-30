@@ -5,6 +5,7 @@ import "github.com/spf13/cobra"
 func notificationSettingsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "notification", Short: "Manage notification delivery policy"}
 	cmd.AddCommand(
+		notificationStatusCommand(),
 		notificationApprovalCommand(),
 		notificationCompletionCommand(),
 		notificationProviderCommand("desktop", "notifications.approval.desktop_enabled"),

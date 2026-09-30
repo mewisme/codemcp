@@ -231,6 +231,8 @@ func workspaceServiceForCommand(cmd *cobra.Command) *application.WorkspaceServic
 
 func workspaceContainerCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "container", Short: "Manage workspace containers"}
+	membership := &cobra.Command{Use: "membership", Short: "Inspect workspace-container membership"}
+	membership.AddCommand(workspaceContainerMembershipListCommand())
 	cmd.AddCommand(
 		workspaceContainerListCommand(),
 		workspaceContainerCreateCommand(),
@@ -239,6 +241,7 @@ func workspaceContainerCommand() *cobra.Command {
 		workspaceContainerDeleteCommand(),
 		workspaceContainerMembershipCommand(true),
 		workspaceContainerMembershipCommand(false),
+		membership,
 	)
 	return cmd
 }

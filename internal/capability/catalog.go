@@ -191,7 +191,7 @@ func buildSpecs() []Spec {
 		reviewerMutation(RequestApprove, "request approve"),
 		reviewerMutation(RequestDeny, "request deny"),
 		reviewerRuntime(RequestExplain, "request explain", true, "request explain retry"),
-		reviewerQuery(RequestExplanationView, "", false),
+		reviewerQuery(RequestExplanationView, "request explain view", false),
 		reviewerQuery(RequestExplainStatus, "request explain status", false),
 		operatorQuery(RequestGrantList, "request grant list"),
 		reviewerDestructive(RequestGrantRevoke, "request grant revoke"),

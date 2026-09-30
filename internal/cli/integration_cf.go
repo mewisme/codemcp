@@ -101,7 +101,11 @@ func tunnelCFInstallLikeCommand(use, short string, run func(context.Context, *ap
 
 func tunnelCFRemoveCommand() *cobra.Command {
 	var asJSON bool
+	var confirm bool
 	cmd := &cobra.Command{Use: "remove", Short: "Remove only the CodeMCP-managed cf-tunnel asset", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := requireDestructiveConfirmation(confirm, "cf-tunnel removal"); err != nil {
+			return err
+		}
 		result, err := application.NewCFTunnelService().Remove(cmd.Context())
 		if err != nil {
 			return err
@@ -116,6 +120,7 @@ func tunnelCFRemoveCommand() *cobra.Command {
 		renderMutationSuccess(cmd, "cf-tunnel managed asset removed", fields...)
 		return nil
 	}}
+	cmd.Flags().BoolVar(&confirm, "yes", false, "confirm removal of the managed cf-tunnel asset")
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }

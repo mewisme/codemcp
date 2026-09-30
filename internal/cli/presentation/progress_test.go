@@ -57,6 +57,84 @@ func TestProgressSessionPlainIsDeterministicAndNeverUsesCursorControl(t *testing
 	}
 }
 
+func TestProgressSessionInteractiveFrameKeepsProvisionalTailUntilFinalClosure(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{
+		Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true,
+	})
+	session.Begin("Configure runtime")
+	begin := output.String()
+	if !strings.HasSuffix(begin, "└\n") {
+		t.Fatalf("interactive frame has no provisional tail after begin: %q", begin)
+	}
+
+	session.Success("save", "Save", "Configuration saved")
+	afterStep := output.String()
+	if !strings.Contains(afterStep, "\x1b[1A\r\x1b[2K") || !strings.HasSuffix(afterStep, "└\n") {
+		t.Fatalf("stable content did not replace and restore provisional tail: %q", afterStep)
+	}
+
+	session.Append(func(p *Presenter) { p.Note("Note", "Restart required") })
+	afterAppend := output.String()
+	if !strings.Contains(afterAppend, "Restart required") || !strings.HasSuffix(afterAppend, "└\n") {
+		t.Fatalf("append did not preserve provisional tail: %q", afterAppend)
+	}
+
+	session.CloseWith("Done")
+	got := output.String()
+	if !strings.HasSuffix(got, "└  Done\n") {
+		t.Fatalf("final frame tail is not durable: %q", got)
+	}
+	if !strings.Contains(got, "└\n\x1b[1A\r\x1b[2K") {
+		t.Fatalf("provisional tail was not explicitly erased before replacement: %q", got)
+	}
+}
+
+func TestProgressSessionPromptSuspendsProvisionalTailAndRestoresItAfterInput(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{
+		Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true, Animation: true,
+	})
+	session.animationGap = time.Hour
+	session.Begin("Interactive task")
+	session.Update(ProgressPhase{ID: "work", Label: "Working", State: ProgressRunning})
+	beforeRead := ""
+	if err := session.WithInput(func(p *Presenter) {
+		p.Prompt("Choose [1-2]")
+	}, func() error {
+		beforeRead = output.String()
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasSuffix(beforeRead, "└\n") {
+		t.Fatalf("provisional tail remained below an active input prompt: %q", beforeRead)
+	}
+	if !strings.Contains(beforeRead, "Choose [1-2]") {
+		t.Fatalf("input prompt missing while progress was suspended: %q", beforeRead)
+	}
+	after := output.String()
+	if !strings.HasSuffix(after, "└\n") || !strings.Contains(after, "Working") {
+		t.Fatalf("running phase/provisional tail was not restored after input: %q", after)
+	}
+	session.CloseWith("Done")
+}
+
+func TestProgressSessionCursorIneligibleHumanNeverWritesProvisionalControlSequences(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, Interactive: true, CursorControl: false})
+	session.Begin("Read state")
+	session.Success("read", "Read", "State loaded")
+	session.CloseWith("Done")
+	got := output.String()
+	if strings.ContainsAny(got, "\r\x1b") {
+		t.Fatalf("cursor-ineligible human output contains terminal rewrites: %q", got)
+	}
+	if strings.Count(got, "└") != 1 || !strings.HasSuffix(got, "└  Done\n") {
+		t.Fatalf("cursor-ineligible human output should contain only the final tail: %q", got)
+	}
+}
+
 func TestProgressSessionDeduplicatesTerminalEventsAndFailureIsStable(t *testing.T) {
 	var output bytes.Buffer
 	session := NewProgressSession(&output, ModePlain, Capabilities{Width: 80})
@@ -99,6 +177,85 @@ func TestProgressSessionTerminalStatesUseOutcomeLabelOnly(t *testing.T) {
 				t.Fatalf("terminal outcome repeated running label: %q", got)
 			}
 		})
+	}
+}
+
+func TestProgressSessionTerminalStatesPreserveProvisionalTailUntilClose(t *testing.T) {
+	tests := []struct {
+		name    string
+		state   ProgressState
+		message string
+	}{
+		{name: "success", state: ProgressSuccess, message: "Saved"},
+		{name: "skipped", state: ProgressSkipped, message: "Skipped"},
+		{name: "warning", state: ProgressWarning, message: "Degraded"},
+		{name: "failed", state: ProgressFailed, message: "Failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true})
+			session.Begin("Operation")
+			session.Update(ProgressPhase{ID: "phase", Label: "Phase", State: test.state, Message: test.message})
+			beforeClose := output.String()
+			if !strings.HasSuffix(beforeClose, "└\n") {
+				t.Fatalf("%s terminal state lost provisional tail: %q", test.name, beforeClose)
+			}
+			session.CloseWith("Done")
+			got := output.String()
+			if !strings.HasSuffix(got, "└  Done\n") {
+				t.Fatalf("%s final close missing durable tail: %q", test.name, got)
+			}
+		})
+	}
+}
+
+func TestProgressSessionConsecutiveTerminalPhasesReplaceOneProvisionalTail(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true})
+	session.Begin("Operation")
+	session.Success("one", "One", "First complete")
+	session.Warn("two", "Two", "Second degraded")
+	session.Skip("three", "Three", "Third skipped")
+	beforeClose := output.String()
+	if !strings.HasSuffix(beforeClose, "└\n") {
+		t.Fatalf("consecutive terminal phases lost provisional tail: %q", beforeClose)
+	}
+	if strings.Count(beforeClose, "\x1b[1A\r\x1b[2K") < 3 {
+		t.Fatalf("consecutive terminal phases did not replace the prior provisional tail: %q", beforeClose)
+	}
+	session.CloseWith("Done")
+	if got := output.String(); !strings.HasSuffix(got, "└  Done\n") {
+		t.Fatalf("consecutive terminal phases did not close cleanly: %q", got)
+	}
+}
+
+func TestProgressSessionEmptyAndFailureCloseReplaceProvisionalTail(t *testing.T) {
+	for _, completion := range []string{"Done", "Failed"} {
+		t.Run(completion, func(t *testing.T) {
+			var output bytes.Buffer
+			session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true})
+			session.Begin("Empty operation")
+			if !strings.HasSuffix(output.String(), "└\n") {
+				t.Fatalf("empty operation has no provisional tail: %q", output.String())
+			}
+			session.CloseWith(completion)
+			if got := output.String(); !strings.HasSuffix(got, "└  "+completion+"\n") {
+				t.Fatalf("empty operation close=%q output=%q", completion, got)
+			}
+		})
+	}
+}
+
+func TestProgressSessionJSONNeverEmitsProvisionalFrame(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeJSON, Capabilities{Width: 80, Unicode: true, Interactive: true, CursorControl: true, Animation: true})
+	session.Begin("JSON operation")
+	session.Update(ProgressPhase{ID: "one", Label: "One", State: ProgressRunning})
+	session.Success("one", "One", "Complete")
+	session.CloseWith("Done")
+	if got := output.String(); got != "" {
+		t.Fatalf("JSON progress emitted presentation bytes: %q", got)
 	}
 }
 

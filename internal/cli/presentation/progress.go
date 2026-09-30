@@ -40,6 +40,8 @@ type ProgressSession struct {
 	phases       map[string]ProgressPhase
 	activeID     string
 	transient    bool
+	provisional  bool
+	suspended    bool
 	animationSeq uint64
 	animationGap time.Duration
 	begun        bool
@@ -126,6 +128,7 @@ func (session *ProgressSession) beginLocked() {
 	fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
 	session.gap = true
 	session.framed = true
+	session.renderProvisionalLocked()
 }
 
 func (session *ProgressSession) Update(phase ProgressPhase) bool {
@@ -213,6 +216,8 @@ func (session *ProgressSession) Suspend() {
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	session.clearTransientLocked()
+	session.clearProvisionalLocked()
+	session.suspended = true
 }
 
 func (session *ProgressSession) Resume() {
@@ -221,11 +226,14 @@ func (session *ProgressSession) Resume() {
 	}
 	session.mu.Lock()
 	defer session.mu.Unlock()
+	session.suspended = false
 	if session.closed || session.activeID == "" {
+		session.renderProvisionalLocked()
 		return
 	}
 	phase, ok := session.phases[session.activeID]
 	if !ok || phase.State != ProgressRunning {
+		session.renderProvisionalLocked()
 		return
 	}
 	session.renderRunningLocked(phase)
@@ -315,8 +323,12 @@ func (session *ProgressSession) CloseWith(message string) {
 		return
 	}
 	session.clearTransientLocked()
+	session.clearProvisionalLocked()
 	if session.framed && session.mode == ModeHuman {
-		session.gapLocked()
+		if !session.gap && session.begun {
+			fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
+			session.gap = true
+		}
 		line := session.theme.Render(RoleRail, session.glyphs.FrameEnd)
 		if message = strings.TrimSpace(message); message != "" {
 			line += "  " + message
@@ -361,8 +373,11 @@ func (session *ProgressSession) line(value string) {
 		return
 	}
 	session.beginLocked()
+	session.clearTransientLocked()
+	session.clearProvisionalLocked()
 	fmt.Fprintln(session.out, value)
 	session.gap = false
+	session.renderProvisionalLocked()
 }
 
 func (session *ProgressSession) renderRunningLocked(phase ProgressPhase) {
@@ -370,6 +385,7 @@ func (session *ProgressSession) renderRunningLocked(phase ProgressPhase) {
 		return
 	}
 	session.clearTransientLocked()
+	session.clearProvisionalLocked()
 	session.animationSeq++
 	sequence := session.animationSeq
 	session.renderTransientLocked(session.glyphs.PhaseDone, phase.Label)
@@ -390,11 +406,13 @@ func (session *ProgressSession) renderTerminalLocked(phase ProgressPhase) {
 		session.gap = false
 		return
 	}
+	session.clearProvisionalLocked()
 	glyph, role := session.terminalStyle(phase.State)
 	label := terminalProgressLabel(phase)
 	line := session.theme.Render(role, glyph) + "  " + label
 	fmt.Fprintln(session.out, line)
 	session.gap = false
+	session.renderProvisionalLocked()
 }
 
 func (session *ProgressSession) gapLocked() {
@@ -402,7 +420,9 @@ func (session *ProgressSession) gapLocked() {
 		return
 	}
 	if session.mode == ModeHuman && session.framed {
+		session.clearProvisionalLocked()
 		fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.Rail))
+		session.renderProvisionalLocked()
 	} else if session.mode == ModePlain {
 		fmt.Fprintln(session.out)
 	}
@@ -414,7 +434,10 @@ func (session *ProgressSession) clearTransientLocked() {
 		return
 	}
 	session.animationSeq++
-	if session.capabilities.CursorControl {
+	if session.provisionalEligibleLocked() && session.provisional {
+		session.clearProvisionalLocked()
+		fmt.Fprint(session.out, "\x1b[1A\r\x1b[2K")
+	} else if session.capabilities.CursorControl {
 		fmt.Fprint(session.out, "\r\x1b[2K")
 	}
 	session.transient = false
@@ -441,7 +464,38 @@ func (session *ProgressSession) animatePhase(sequence uint64, id, label string, 
 }
 
 func (session *ProgressSession) renderTransientLocked(glyph, label string) {
-	fmt.Fprint(session.out, "\r\x1b[2K", session.theme.Render(RoleActive, glyph), "  ", label)
+	line := session.theme.Render(RoleActive, glyph) + "  " + label
+	if session.provisionalEligibleLocked() {
+		if session.transient && session.provisional {
+			fmt.Fprint(session.out, "\x1b[2A\r\x1b[2K", line, "\x1b[2B\r")
+			return
+		}
+		session.clearProvisionalLocked()
+		fmt.Fprintln(session.out, line)
+		session.renderProvisionalLocked()
+		return
+	}
+	fmt.Fprint(session.out, "\r\x1b[2K", line)
+}
+
+func (session *ProgressSession) provisionalEligibleLocked() bool {
+	return session.mode == ModeHuman && session.framed && session.capabilities.Interactive && session.capabilities.CursorControl && !session.suspended
+}
+
+func (session *ProgressSession) renderProvisionalLocked() {
+	if !session.provisionalEligibleLocked() || session.closed || session.provisional {
+		return
+	}
+	fmt.Fprintln(session.out, session.theme.Render(RoleRail, session.glyphs.FrameEnd))
+	session.provisional = true
+}
+
+func (session *ProgressSession) clearProvisionalLocked() {
+	if !session.provisional {
+		return
+	}
+	fmt.Fprint(session.out, "\x1b[1A\r\x1b[2K")
+	session.provisional = false
 }
 
 func (session *ProgressSession) terminalStyle(state ProgressState) (string, Role) {

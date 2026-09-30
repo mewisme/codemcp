@@ -17,6 +17,7 @@ type Explanation struct {
 	Values      []FieldValueSpec `json:"values,omitempty"`
 	Editable    bool             `json:"editable,omitempty"`
 	Sensitive   bool             `json:"sensitive,omitempty"`
+	Accepts     string           `json:"accepts,omitempty"`
 	Guidance    string           `json:"guidance,omitempty"`
 	Related     []string         `json:"related,omitempty"`
 	Children    []Explanation    `json:"children,omitempty"`
@@ -62,7 +63,7 @@ func explainField(spec FieldSpec) (Explanation, error) {
 			values = append(values, FieldValueSpec{Value: option})
 		}
 	}
-	return Explanation{Key: spec.Key, Label: spec.Label, Description: spec.Description, Details: spec.Details, Kind: spec.Kind, Default: defaultValue, Values: values, Editable: spec.Editable, Sensitive: spec.Sensitive, Guidance: spec.Guidance, Related: append([]string(nil), spec.Related...)}, nil
+	return Explanation{Key: spec.Key, Label: spec.Label, Description: spec.Description, Details: spec.Details, Kind: spec.Kind, Default: defaultValue, Values: values, Editable: spec.Editable, Sensitive: spec.Sensitive, Accepts: AcceptedValueHint(spec), Guidance: spec.Guidance, Related: append([]string(nil), spec.Related...)}, nil
 }
 
 func explainBranch(key string) (Explanation, error) {

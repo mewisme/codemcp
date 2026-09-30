@@ -164,6 +164,7 @@ func configWhyJSONEntries(entries []configWhyEntry) []map[string]any {
 			"rotatable":         spec.Rotatable,
 			"revealable":        spec.Revealable,
 			"verifiable":        spec.Verifiable,
+			"accepts":           config.AcceptedValueHint(spec),
 		}
 		if entry.HasBaseline {
 			item["baseline"] = entry.Baseline
@@ -219,6 +220,9 @@ func configWhyMarkdown(entries []configWhyEntry) string {
 		fmt.Fprintf(&builder, "- **Application owner:** `%s`\n", spec.ApplicationOwner)
 		fmt.Fprintf(&builder, "- **Readable:** `%t`\n", spec.Readable)
 		fmt.Fprintf(&builder, "- **Writable:** `%t`\n", spec.Writable)
+		if accepts := config.AcceptedValueHint(spec); accepts != "" {
+			fmt.Fprintf(&builder, "- **Accepts:** `%s`\n", accepts)
+		}
 		if spec.Secret {
 			builder.WriteString("- **Secret:** `true` (write-only)\n")
 		}

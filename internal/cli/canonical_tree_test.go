@@ -18,12 +18,16 @@ var canonicalNonOperationCommandRoles = map[string]string{
 }
 
 const frozenCanonicalCommandTree = `<root> | operation:server.foreground:accepted-path
+activity stream | operation:activity.stream
+activity view | operation:activity.view
+activity | namespace
 admin disable | operation:config.set:accepted-path
 admin enable | operation:config.set:accepted-path
 admin port | operation:config.set:accepted-path
 admin | namespace
 agent completion current | operation:completion.current
 agent completion doctor | operation:completion.doctor
+agent completion feed | operation:completion.feed
 agent completion list | operation:completion.list
 agent completion view | operation:completion.view
 agent completion | namespace
@@ -50,19 +54,24 @@ config import | operation:config.import
 config list | operation:config.list
 config migrate secrets | operation:config.migrate.secrets
 config migrate | operation:config.migrate
+config patch | operation:config.patch
 config path | operation:config.path
 config reveal | operation:config.set:accepted-path
 config rotate | operation:config.set:accepted-path
 config set | operation:config.set
+config snapshot | operation:config.snapshot.read
 config unset | operation:config.set:accepted-path
 config verify | operation:config.verify
 config why | operation:config.get:accepted-path
 config | presentation:help
 doctor | operation:doctor.read
 down | operation:runtime.down
+execution feed | operation:execution.feed
 execution list | operation:execution.list
+execution stream | operation:execution.stream
 execution view | operation:execution.view
 execution | namespace
+health | operation:health.read
 init | operation:config.init
 install | operation:install.run
 instructions get | operation:instructions.settings.read
@@ -144,6 +153,8 @@ logs | operation:logs.read
 mcp http | operation:mcp.http
 mcp stdio | operation:mcp.stdio
 mcp | namespace
+network interfaces | operation:network.interfaces.list
+network | namespace
 notification approval disable | operation:config.set:accepted-path
 notification approval enable | operation:config.set:accepted-path
 notification approval pending disable | operation:config.set:accepted-path
@@ -165,6 +176,7 @@ notification completion | namespace
 notification desktop disable | operation:config.set:accepted-path
 notification desktop enable | operation:config.set:accepted-path
 notification desktop | namespace
+notification status | operation:notification.status
 notification telegram disable | operation:config.set:accepted-path
 notification telegram enable | operation:config.set:accepted-path
 notification telegram | namespace
@@ -174,6 +186,7 @@ permissions allow dir remove | operation:config.set:accepted-path
 permissions allow dir | namespace
 permissions allow | namespace
 permissions | namespace
+process clear | operation:process.clear
 process list | operation:process.list
 process view | operation:process.view
 process | namespace
@@ -188,11 +201,13 @@ request deny | operation:request.deny
 request explain mode | operation:config.set:accepted-path
 request explain retry | operation:request.explain:accepted-path
 request explain status | operation:request.explain.status
+request explain view | operation:request.explanation.view
 request explain | operation:request.explain
 request grant list | operation:request.grant.list
 request grant revoke | operation:request.grant.revoke
 request grant | namespace
 request list | operation:request.list
+request stream | operation:request.stream
 request view | operation:request.view
 request | namespace
 restart | operation:runtime.restart
@@ -247,6 +262,7 @@ tunnel admin verify | operation:tunnel.admin.key.verify:accepted-path
 tunnel admin workspace set | operation:config.set:accepted-path
 tunnel admin workspace | namespace
 tunnel admin | namespace
+tunnel config | operation:tunnel.config.read
 tunnel configure | operation:tunnel.configure
 tunnel create | operation:tunnel.create
 tunnel delete | operation:tunnel.delete
@@ -291,6 +307,8 @@ workspace container add | operation:workspace.container.add
 workspace container create | operation:workspace.container.create
 workspace container delete | operation:workspace.container.delete
 workspace container list | operation:workspace.container.list
+workspace container membership list | operation:workspace.container.membership.list
+workspace container membership | namespace
 workspace container remove | operation:workspace.container.remove
 workspace container rename | operation:workspace.container.rename
 workspace container show | operation:workspace.container.show

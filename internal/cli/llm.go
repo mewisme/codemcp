@@ -502,12 +502,16 @@ func addLLMProviderFlags(cmd *cobra.Command, flags *llmProviderFlags, defaults b
 
 func llmProviderRemoveCommand() *cobra.Command {
 	var jsonOutput bool
+	var confirm bool
 	cmd := &cobra.Command{
 		Use:               "remove <provider_id>",
 		Short:             "Remove a custom LLM provider",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeCustomLLMProviderIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireDestructiveConfirmation(confirm, "LLM provider removal"); err != nil {
+				return err
+			}
 			service := llmService()
 			result, err := service.RemoveProviderResult(cmd.Context(), args[0])
 			if err != nil {
@@ -520,6 +524,7 @@ func llmProviderRemoveCommand() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&confirm, "yes", false, "confirm removal of the custom LLM provider")
 	addJSONResultFlag(cmd, &jsonOutput)
 	return cmd
 }
