@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 
 	"go.mewis.me/codemcp/internal/capability"
@@ -88,15 +87,29 @@ func (s *LLMService) RemoveProviderResult(ctx context.Context, rawID string) (LL
 }
 
 func (s *LLMService) SetProviderModel(ctx context.Context, rawID, model string) (LLMProviderResult, error) {
-	provider, err := s.Provider(ctx, rawID)
+	if s == nil || s.store == nil {
+		return LLMProviderResult{}, errors.New("LLM service is unavailable")
+	}
+	id, err := llm.NormalizeProviderID(rawID)
 	if err != nil {
 		return LLMProviderResult{}, err
 	}
-	key := fmt.Sprintf("llm.providers[%s].model", provider.ID)
-	if _, err := NewSettingService(s).Set(ctx, key, model); err != nil {
+	_, err = s.store.Update(func(catalog llm.Catalog) (llm.Catalog, error) {
+		for index := range catalog.Providers {
+			if catalog.Providers[index].ID != id {
+				continue
+			}
+			catalog.Providers[index].Model = strings.TrimSpace(model)
+			return catalog, nil
+		}
+		return llm.Catalog{}, llm.NewError(llm.ErrorProviderNotFound, "id", "LLM provider is not registered")
+	})
+	if err != nil {
 		return LLMProviderResult{}, err
 	}
-	return s.ProviderResult(ctx, string(provider.ID))
+	s.invalidateModelCatalog(id)
+	s.clearReadiness(id)
+	return s.ProviderResult(ctx, string(id))
 }
 
 func (s *LLMService) SetOllamaModeValue(ctx context.Context, raw string) (LLMProviderResult, error) {

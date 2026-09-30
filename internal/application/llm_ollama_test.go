@@ -200,7 +200,7 @@ func TestOllamaCoreWireSettingsCannotBreakProtocolDiscoveryOrKnownModeAuth(t *te
 	}{
 		{key: "llm.providers[ollama].protocol", value: string(llm.ProtocolAnthropic)},
 		{key: "llm.providers[ollama].discovery", value: string(llm.DiscoveryOpenAIModels)},
-		{key: "llm.providers[ollama].auth_mode", value: string(llm.AuthBearer)},
+		{key: "llm.providers[ollama].auth_mode", value: string(llm.AuthNone)},
 	} {
 		if _, err := service.Set(t.Context(), test.key, test.value); !llm.IsCategory(err, llm.ErrorCoreInvariant) {
 			t.Fatalf("%s=%q err=%v", test.key, test.value, err)

@@ -18,12 +18,12 @@ func (fn ollamaRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, 
 
 func TestOllamaCoreProfileModesAndEndpointClassification(t *testing.T) {
 	provider := DefaultOllama()
-	if provider.BaseURL != OllamaLocalBaseURL || provider.Protocol != ProtocolOpenAI || provider.AuthMode != AuthNone || provider.Discovery != DiscoveryOllamaTags || provider.CoreKind != CoreOllama {
+	if provider.BaseURL != OllamaCloudBaseURL || provider.Protocol != ProtocolOpenAI || provider.AuthMode != AuthBearer || provider.Discovery != DiscoveryOllamaTags || provider.CoreKind != CoreOllama {
 		t.Fatalf("Ollama defaults=%#v", provider)
 	}
 	class, err := ClassifyOllamaEndpoint(provider.BaseURL)
-	if err != nil || class != OllamaEndpointLocal {
-		t.Fatalf("local classification=%q err=%v", class, err)
+	if err != nil || class != OllamaEndpointCloud {
+		t.Fatalf("cloud classification=%q err=%v", class, err)
 	}
 
 	provider.Model = "qwen3:8b"
@@ -61,6 +61,7 @@ func TestOllamaCoreProfileRejectsMutableWireIdentityAndKnownEndpointAuthMismatch
 		"protocol":  func(value *Provider) { value.Protocol = ProtocolAnthropic },
 		"discovery": func(value *Provider) { value.Discovery = DiscoveryOpenAIModels },
 		"local_auth": func(value *Provider) {
+			value.BaseURL = OllamaLocalBaseURL
 			value.AuthMode = AuthBearer
 		},
 		"cloud_auth": func(value *Provider) {

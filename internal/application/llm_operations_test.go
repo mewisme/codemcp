@@ -215,6 +215,171 @@ func TestLLMInferenceFacadeUsesInjectedBackendAndActiveProvider(t *testing.T) {
 	}
 }
 
+func TestInactiveProvidersRemainFullyOperableWithoutChangingActiveSelection(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	restore := secretstore.UseMemoryForTesting()
+	defer restore()
+	backend := &llmBackendFixture{
+		result: llm.Result{Model: "fixture", Text: "OK"},
+		models: []llm.Model{{ID: "catalog/model-a", Name: "Model A"}},
+	}
+	service := NewLLMServiceWithBackend(root, backend)
+	assertActive := func(want llm.ProviderID) {
+		t.Helper()
+		status, err := service.Status(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if status.ActiveProvider != want {
+			t.Fatalf("active provider=%q want=%q", status.ActiveProvider, want)
+		}
+	}
+
+	status, err := service.Status(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ollama := providerResultByID(t, status.Providers, llm.OllamaID)
+	if ollama.Selected || ollama.BaseURL != llm.OllamaCloudBaseURL || ollama.AuthMode != llm.AuthBearer {
+		t.Fatalf("fresh inactive Ollama=%#v", ollama)
+	}
+
+	if err := service.SetCredential(t.Context(), string(llm.OllamaID), "ollama-inactive-key"); err != nil {
+		t.Fatal(err)
+	}
+	assertActive(llm.OpenRouterID)
+	if _, err := service.SetProviderModel(t.Context(), string(llm.OllamaID), "qwen3:8b"); err != nil {
+		t.Fatal(err)
+	}
+	assertActive(llm.OpenRouterID)
+	if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), true); err != nil {
+		t.Fatal(err)
+	}
+	if backend.lastProvider != llm.OllamaID {
+		t.Fatalf("inactive Ollama model discovery used provider=%q", backend.lastProvider)
+	}
+	assertActive(llm.OpenRouterID)
+	if _, err := service.Probe(t.Context(), string(llm.OllamaID)); err != nil {
+		t.Fatal(err)
+	}
+	if backend.lastProvider != llm.OllamaID {
+		t.Fatalf("inactive Ollama probe used provider=%q", backend.lastProvider)
+	}
+	assertActive(llm.OpenRouterID)
+
+	local, err := service.SetOllamaMode(t.Context(), llm.OllamaModeLocal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.BaseURL != llm.OllamaLocalBaseURL || local.AuthMode != llm.AuthNone || local.Model != "qwen3:8b" {
+		t.Fatalf("inactive local Ollama=%#v", local)
+	}
+	assertActive(llm.OpenRouterID)
+	cloud, err := service.SetOllamaMode(t.Context(), llm.OllamaModeCloud)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cloud.BaseURL != llm.OllamaCloudBaseURL || cloud.AuthMode != llm.AuthBearer || cloud.Model != "qwen3:8b" {
+		t.Fatalf("inactive cloud Ollama=%#v", cloud)
+	}
+	credential, err := service.CredentialResult(t.Context(), string(llm.OllamaID))
+	if err != nil || !credential.Configured {
+		t.Fatalf("Ollama credential after mode switches=%#v err=%v", credential, err)
+	}
+	if err := service.ClearCredential(t.Context(), string(llm.OllamaID)); err != nil {
+		t.Fatal(err)
+	}
+	assertActive(llm.OpenRouterID)
+	if err := service.SetCredential(t.Context(), string(llm.OllamaID), "ollama-inactive-key-2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Probe(t.Context(), string(llm.OllamaID)); err != nil {
+		t.Fatal(err)
+	}
+	assertActive(llm.OpenRouterID)
+
+	if _, err := service.AddCustomProvider(t.Context(), "inactive-custom", CustomLLMProviderConfig{
+		Name: "Inactive Custom", Protocol: llm.ProtocolOpenAI, BaseURL: "https://custom.example/v1",
+		AuthMode: llm.AuthBearer, Discovery: llm.DiscoveryOpenAIModels,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertActive(llm.OpenRouterID)
+	if err := service.SetCredential(t.Context(), "inactive-custom", "custom-inactive-key"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetProviderModel(t.Context(), "inactive-custom", "custom/model-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ModelCatalog(t.Context(), "inactive-custom", true); err != nil {
+		t.Fatal(err)
+	}
+	if backend.lastProvider != "inactive-custom" {
+		t.Fatalf("inactive custom discovery used provider=%q", backend.lastProvider)
+	}
+	if _, err := service.Probe(t.Context(), "inactive-custom"); err != nil {
+		t.Fatal(err)
+	}
+	if backend.lastProvider != "inactive-custom" {
+		t.Fatalf("inactive custom probe used provider=%q", backend.lastProvider)
+	}
+	if _, err := service.ConfigureCustomProvider(t.Context(), "inactive-custom", CustomLLMProviderConfig{
+		Name: "Inactive Custom", Protocol: llm.ProtocolOpenAI, BaseURL: "https://custom-2.example/v1", Model: "custom/model-b",
+		AuthMode: llm.AuthBearer, Discovery: llm.DiscoveryNone,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertActive(llm.OpenRouterID)
+	if err := service.ClearCredential(t.Context(), "inactive-custom"); err != nil {
+		t.Fatal(err)
+	}
+	assertActive(llm.OpenRouterID)
+	if err := service.SetCredential(t.Context(), "inactive-custom", "custom-inactive-key-2"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Probe(t.Context(), "inactive-custom"); err != nil {
+		t.Fatal(err)
+	}
+
+	status, err = service.Status(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	openrouter := providerResultByID(t, status.Providers, llm.OpenRouterID)
+	ollama = providerResultByID(t, status.Providers, llm.OllamaID)
+	custom := providerResultByID(t, status.Providers, "inactive-custom")
+	if !openrouter.Selected || openrouter.Readiness != llm.ReadinessDegraded {
+		t.Fatalf("active OpenRouter status=%#v", openrouter)
+	}
+	if ollama.Selected || !ollama.Configured || ollama.Readiness != llm.ReadinessReady {
+		t.Fatalf("inactive Ollama readiness=%#v", ollama)
+	}
+	if custom.Selected || !custom.Configured || custom.Readiness != llm.ReadinessReady {
+		t.Fatalf("inactive custom readiness=%#v", custom)
+	}
+
+	if _, err := service.InferenceFacade().Infer(t.Context(), llm.Request{Messages: []llm.Message{{Role: llm.RoleUser, Content: "use active"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if backend.lastProvider != llm.OpenRouterID {
+		t.Fatalf("provider-omitted inference used %q instead of active provider", backend.lastProvider)
+	}
+}
+
+func providerResultByID(t *testing.T, providers []LLMProviderResult, id llm.ProviderID) LLMProviderResult {
+	t.Helper()
+	for _, provider := range providers {
+		if provider.ID == id {
+			return provider
+		}
+	}
+	t.Fatalf("provider %q not found in %#v", id, providers)
+	return LLMProviderResult{}
+}
+
 func errorsAsOperation(err error, target **OperationError) bool {
 	if err == nil {
 		return false

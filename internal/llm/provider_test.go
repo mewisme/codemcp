@@ -22,8 +22,19 @@ func TestDefaultCatalogLocksCoreIdentityAndSelection(t *testing.T) {
 		t.Fatalf("openrouter = %#v", openrouter)
 	}
 	ollama := value.Providers[1]
-	if ollama.ID != OllamaID || ollama.CoreKind != CoreOllama || ollama.BaseURL != "http://localhost:11434/v1" || ollama.Protocol != ProtocolOpenAI || ollama.AuthMode != AuthNone || ollama.Discovery != DiscoveryOllamaTags {
+	if ollama.ID != OllamaID || ollama.CoreKind != CoreOllama || ollama.BaseURL != OllamaCloudBaseURL || ollama.Protocol != ProtocolOpenAI || ollama.AuthMode != AuthBearer || ollama.Discovery != DiscoveryOllamaTags {
 		t.Fatalf("ollama = %#v", ollama)
+	}
+}
+
+func TestOllamaCoreDefaultsToCloudWithoutChangingActiveProvider(t *testing.T) {
+	provider := DefaultOllama()
+	if provider.BaseURL != OllamaCloudBaseURL || provider.AuthMode != AuthBearer || provider.Discovery != DiscoveryOllamaTags || provider.CoreKind != CoreOllama {
+		t.Fatalf("Ollama defaults=%#v", provider)
+	}
+	catalog := DefaultCatalog()
+	if catalog.ActiveProvider != OpenRouterID {
+		t.Fatalf("default active provider=%q", catalog.ActiveProvider)
 	}
 }
 

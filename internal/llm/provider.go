@@ -186,8 +186,8 @@ func DefaultOllama() Provider {
 		ID:        OllamaID,
 		Name:      "Ollama",
 		Protocol:  ProtocolOpenAI,
-		BaseURL:   OllamaLocalBaseURL,
-		AuthMode:  AuthNone,
+		BaseURL:   OllamaCloudBaseURL,
+		AuthMode:  AuthBearer,
 		Discovery: DiscoveryOllamaTags,
 		CoreKind:  CoreOllama,
 	}

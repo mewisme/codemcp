@@ -21,6 +21,10 @@ func TestStoreMissingStateReturnsDefaultsWithoutWriting(t *testing.T) {
 	if value.ActiveProvider != OpenRouterID || len(value.Providers) != 2 {
 		t.Fatalf("defaults = %#v", value)
 	}
+	ollama := providerByID(t, value, OllamaID)
+	if ollama.BaseURL != OllamaCloudBaseURL || ollama.AuthMode != AuthBearer || ollama.Discovery != DiscoveryOllamaTags {
+		t.Fatalf("missing-store Ollama default=%#v", ollama)
+	}
 	if _, err := os.Stat(root); !os.IsNotExist(err) {
 		t.Fatalf("missing-store read wrote config root: %v", err)
 	}
@@ -79,12 +83,56 @@ func TestStoreReconcilesMissingCoreProvidersWithoutRewriting(t *testing.T) {
 	if loaded.ActiveProvider != custom.ID || len(loaded.Providers) != 3 || !catalogHasProvider(loaded, OpenRouterID) || !catalogHasProvider(loaded, OllamaID) {
 		t.Fatalf("reconciled = %#v", loaded)
 	}
+	ollama := providerByID(t, loaded, OllamaID)
+	if ollama.BaseURL != OllamaCloudBaseURL || ollama.AuthMode != AuthBearer || ollama.Discovery != DiscoveryOllamaTags {
+		t.Fatalf("reconciled Ollama default=%#v", ollama)
+	}
 	after, err := os.ReadFile(store.Path())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(before, after) {
 		t.Fatal("load-time core reconciliation rewrote user state")
+	}
+}
+
+func TestStorePreservesPersistedOllamaEndpointChoice(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		baseURL string
+		auth    AuthMode
+		model   string
+	}{
+		{name: "local", baseURL: OllamaLocalBaseURL, auth: AuthNone, model: "qwen3:8b"},
+		{name: "custom", baseURL: "https://ollama.internal.example/proxy/v1", auth: AuthBearer, model: "gemma3:27b"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, _ := newStoreTestRoot(t)
+			catalog := DefaultCatalog()
+			for index := range catalog.Providers {
+				if catalog.Providers[index].ID != OllamaID {
+					continue
+				}
+				catalog.Providers[index].BaseURL = test.baseURL
+				catalog.Providers[index].AuthMode = test.auth
+				catalog.Providers[index].Model = test.model
+			}
+			if err := store.Save(catalog); err != nil {
+				t.Fatal(err)
+			}
+
+			loaded, err := store.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ollama := providerByID(t, loaded, OllamaID)
+			if ollama.BaseURL != test.baseURL || ollama.AuthMode != test.auth || ollama.Model != test.model || ollama.Discovery != DiscoveryOllamaTags {
+				t.Fatalf("persisted Ollama changed after reload: %#v", ollama)
+			}
+			if loaded.ActiveProvider != OpenRouterID {
+				t.Fatalf("persisted Ollama endpoint changed active provider=%q", loaded.ActiveProvider)
+			}
+		})
 	}
 }
 
@@ -213,4 +261,15 @@ func catalogHasProvider(value Catalog, id ProviderID) bool {
 		}
 	}
 	return false
+}
+
+func providerByID(t *testing.T, value Catalog, id ProviderID) Provider {
+	t.Helper()
+	for _, provider := range value.Providers {
+		if provider.ID == id {
+			return provider
+		}
+	}
+	t.Fatalf("provider %q not found in %#v", id, value)
+	return Provider{}
 }
