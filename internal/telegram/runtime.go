@@ -906,7 +906,7 @@ func (runtime *Runtime) handleRenderedNotification(ctx context.Context, chatID i
 		return notification.ErrProviderUnavailable
 	}
 	requestID := strings.TrimSpace(message.RequestID)
-	if requestID == "" || (message.Kind != notification.KindApprovalPending && message.Kind != notification.KindApprovalResolved) {
+	if requestID == "" || (message.Kind != notification.KindApprovalPending && message.Kind != notification.KindApprovalResolved && message.Kind != notification.KindApprovalUpdated) {
 		_, err := runtime.SendRichMessageToTopic(ctx, chatID, role, screen, RichMessageOptions{})
 		return err
 	}
@@ -916,6 +916,17 @@ func (runtime *Runtime) handleRenderedNotification(ctx context.Context, chatID i
 	}
 	store := runtime.approvalMessages
 	runtime.mu.Unlock()
+	if message.Kind == notification.KindApprovalUpdated {
+		if messageID := store.get(chatID, requestID); messageID > 0 {
+			if err := runtime.EditScreen(ctx, chatID, messageID, screen); err == nil {
+				return nil
+			} else if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
+				return err
+			}
+			_ = store.delete(chatID, requestID)
+		}
+		return nil
+	}
 	if message.Kind == notification.KindApprovalResolved {
 		if messageID := store.get(chatID, requestID); messageID > 0 {
 			if err := runtime.EditScreen(ctx, chatID, messageID, screen); err == nil {

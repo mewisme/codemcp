@@ -51,9 +51,10 @@ type LLMProviderIDInput struct {
 }
 
 type LLMProviderWriteInput struct {
-	ID     string                  `json:"id"`
-	Config CustomLLMProviderConfig `json:"config"`
-	Model  *string                 `json:"model,omitempty"`
+	ID         string                  `json:"id"`
+	Config     CustomLLMProviderConfig `json:"config"`
+	Model      *string                 `json:"model,omitempty"`
+	OllamaMode *string                 `json:"ollama_mode,omitempty"`
 }
 
 type LLMProviderModelsInput struct {
@@ -268,6 +269,12 @@ func BindLLMOperations(dispatcher *Dispatcher, service *LLMService) error {
 			return service.ProviderResult(ctx, string(provider.ID))
 		}))},
 		{capability.LLMProviderConfigure, llmOperationHandler(capability.LLMProviderConfigure, typedOperation[LLMProviderWriteInput](capability.LLMProviderConfigure, func(ctx context.Context, input LLMProviderWriteInput) (any, error) {
+			if input.OllamaMode != nil {
+				if strings.TrimSpace(input.ID) != string(llm.OllamaID) {
+					return nil, llm.NewError(llm.ErrorInvalidRequest, "id", "Ollama mode can only configure the Ollama provider")
+				}
+				return service.SetOllamaModeValue(ctx, string(*input.OllamaMode))
+			}
 			if input.Model != nil {
 				return service.SetProviderModel(ctx, input.ID, *input.Model)
 			}

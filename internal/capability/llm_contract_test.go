@@ -55,7 +55,7 @@ func TestLLMCapabilitiesEncodeCanonicalSecurityAndSurfaceContracts(t *testing.T)
 			t.Fatalf("LLM operation %s/tui contract=%#v ok=%t", id, tui, ok)
 		}
 		telegram, ok := spec.Surface(SurfaceTelegram)
-		if !ok || telegram.State != SurfaceExempt || telegram.Exemption != SurfaceExemptionDeferred {
+		if !ok || telegram.State != SurfaceRequired || telegram.Exemption != "" {
 			t.Fatalf("LLM operation %s/telegram contract=%#v ok=%t", id, telegram, ok)
 		}
 		mcp, ok := spec.Surface(SurfaceMCP)

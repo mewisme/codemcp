@@ -413,35 +413,38 @@ func (ui *Interface) requestDetailScreen(ctx context.Context, owner ViewOwner, s
 	if !ok {
 		return Screen{}, errors.New("approval request view returned an unexpected result")
 	}
-	return ui.requestCard(owner, request)
+	return ui.requestCard(ctx, owner, request)
 }
 
-func (ui *Interface) requestCard(owner ViewOwner, request approval.Request) (Screen, error) {
-	return ui.requestCardWithOptions(owner, request, false)
+func (ui *Interface) requestCard(ctx context.Context, owner ViewOwner, request approval.Request) (Screen, error) {
+	return ui.requestCardWithOptions(ctx, owner, request, false)
 }
 
-func (ui *Interface) requestNotificationCard(owner ViewOwner, request approval.Request) (Screen, error) {
-	return ui.requestCardWithOptions(owner, request, true)
+func (ui *Interface) requestNotificationCard(ctx context.Context, owner ViewOwner, request approval.Request) (Screen, error) {
+	return ui.requestCardWithOptions(ctx, owner, request, true)
 }
 
-func (ui *Interface) requestCardWithOptions(owner ViewOwner, request approval.Request, includeReview bool) (Screen, error) {
+func (ui *Interface) requestCardWithOptions(ctx context.Context, owner ViewOwner, request approval.Request, includeReview bool) (Screen, error) {
 	projection := application.ProjectApprovalReview(request, time.Now())
 	request = projection.Request
-	title := strings.TrimSpace(request.Title)
-	if title == "" {
-		title = request.TargetTool
+	explainStatus, explanation, explainErr := ui.approvalExplanationState(ctx, request.ID)
+	agentSummary := strings.TrimSpace(request.Title)
+	if agentSummary == "" {
+		agentSummary = "No agent summary was provided."
 	}
 	blocks := []RichBlock{
-		{Kind: RichHeading, Title: title, Text: "Approval request · " + string(request.Status)},
+		{Kind: RichHeading, Title: "Approval request", Text: string(request.Status)},
 		{Kind: RichCopy, Title: "ID", Text: request.ID, CopyText: request.ID},
 		{Kind: RichTable, Rows: [][]string{{"Workspace", request.WorkspaceID}, {"Tool", request.TargetTool}, {"Guard", string(request.GuardCode)}, {"Expires", request.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}}},
+		{Kind: RichDetails, Title: "Agent summary", Text: agentSummary + "\nSupplied by the requesting agent; not CodeMCP command truth."},
 	}
 	if strings.TrimSpace(request.GuardReason) != "" {
 		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Policy reason", Text: request.GuardReason})
 	}
 	if strings.TrimSpace(request.Command) != "" {
-		blocks = append(blocks, RichBlock{Kind: RichCode, Title: "Command", Text: request.Command})
+		blocks = append(blocks, RichBlock{Kind: RichCode, Title: "CodeMCP command", Text: request.Command})
 	}
+	blocks = append(blocks, approvalExplanationBlocks(explainStatus, explanation, explainErr)...)
 	var approveButton, denyButton Button
 	secondary := []Button{}
 	if projection.Actionable() {
@@ -464,6 +467,21 @@ func (ui *Interface) requestCardWithOptions(owner ViewOwner, request approval.Re
 			}
 			allow.Role = ButtonRolePositive
 			secondary = append(secondary, allow)
+		}
+		if explainErr == nil && explainStatus.Available && explanation.State != application.ApprovalExplanationPending && explanation.State != application.ApprovalExplanationReady {
+			retry := explanation.State == application.ApprovalExplanationFailed
+			label := "Explain"
+			if retry {
+				label = "Retry explain"
+			}
+			explain, err := ui.stateButton(owner, label, CallbackOpen, ActionState{
+				Route: RouteOperation, Back: RouteRequest, Operation: capability.RequestExplain, ResourceID: request.ID,
+				Input: application.ApprovalExplainInput{ID: request.ID, Retry: retry},
+			})
+			if err != nil {
+				return Screen{}, err
+			}
+			secondary = append(secondary, explain)
 		}
 	}
 	if includeReview {
@@ -497,7 +515,7 @@ func (ui *Interface) renderApprovalNotification(ctx context.Context, chatID int6
 	if ui == nil || ui.runtime == nil || strings.TrimSpace(message.RequestID) == "" {
 		return Screen{}, false, nil
 	}
-	if message.Kind != notification.KindApprovalPending && message.Kind != notification.KindApprovalResolved {
+	if message.Kind != notification.KindApprovalPending && message.Kind != notification.KindApprovalResolved && message.Kind != notification.KindApprovalUpdated {
 		return Screen{}, false, nil
 	}
 	owner := ViewOwner{ChatID: chatID, UserID: chatID, Generation: ui.runtime.Generation()}
@@ -515,7 +533,7 @@ func (ui *Interface) renderApprovalNotification(ctx context.Context, chatID int6
 		}
 		return Screen{}, true, errors.New("approval request view returned an unexpected result")
 	}
-	screen, err := ui.requestNotificationCard(owner, request)
+	screen, err := ui.requestNotificationCard(ctx, owner, request)
 	return screen, true, err
 }
 
@@ -534,10 +552,36 @@ func approvalResolvedFallbackScreen(message notification.Message) Screen {
 	)}
 }
 
-func (ui *Interface) domainOperationResultScreen(owner ViewOwner, state ActionState, spec capability.Spec, value any) (Screen, bool, error) {
+func (ui *Interface) domainOperationResultScreen(ctx context.Context, owner ViewOwner, state ActionState, spec capability.Spec, value any) (Screen, bool, error) {
 	switch result := value.(type) {
 	case approval.Request:
-		screen, err := ui.requestCard(owner, result)
+		screen, err := ui.requestCard(ctx, owner, result)
+		return screen, true, err
+	case application.LLMProviderResult:
+		screen, err := ui.llmProviderScreen(ctx, owner, ActionState{Route: RouteLLMProvider, Back: RouteLLM, ResourceID: string(result.ID)})
+		return screen, true, err
+	case application.LLMCredentialResult:
+		screen, err := ui.llmProviderScreen(ctx, owner, ActionState{Route: RouteLLMProvider, Back: RouteLLM, ResourceID: string(result.ProviderID)})
+		return screen, true, err
+	case application.LLMProbeResult:
+		screen, err := ui.llmProviderScreen(ctx, owner, ActionState{Route: RouteLLMProvider, Back: RouteLLM, ResourceID: string(result.ProviderID)})
+		return screen, true, err
+	case application.LLMProviderRemoveResult:
+		screen, err := ui.llmScreen(ctx, owner, ActionState{Route: RouteLLM})
+		return screen, true, err
+	case application.LLMModelPage:
+		screen, err := ui.llmModelPageScreen(owner, state, result)
+		return screen, true, err
+	case application.ApprovalExplanationResult:
+		value, err := ui.dispatch(ctx, capability.RequestView, application.RequestIDInput{ID: result.RequestID})
+		if err != nil {
+			return Screen{}, true, err
+		}
+		request, ok := value.(approval.Request)
+		if !ok {
+			return Screen{}, true, errors.New("approval request view returned an unexpected result")
+		}
+		screen, err := ui.requestCard(ctx, owner, request)
 		return screen, true, err
 	case application.WorkspaceView:
 		keyboard, err := ui.terminalOperationKeyboard(owner, state, spec, value)
@@ -640,13 +684,22 @@ func (ui *Interface) handleActionInput(ctx context.Context, update Update) bool 
 	state.InputKind = ""
 	screen, err := ui.operationScreen(ctx, owner, state)
 	if err != nil {
-		screen, _ = ui.operationErrorScreen(owner, state, err)
+		errorState := state
+		if pending.Secret {
+			errorState.Input = nil
+			errorState.InputKind = pending.Action.InputKind
+			errorState.SecretInput = true
+		}
+		screen, _ = ui.operationErrorScreen(owner, errorState, err)
 	}
 	_ = ui.completeInput(ctx, owner, pending.PromptMessageID, update.Message.MessageID, pending.Secret, screen)
 	return true
 }
 
 func inputPrompt(kind string) (title, prompt, placeholder string) {
+	if title, prompt, placeholder := llmInputPrompt(kind); title != "" {
+		return title, prompt, placeholder
+	}
 	if title, prompt, placeholder, _ := networkInputPrompt(kind); title != "" {
 		return title, prompt, placeholder
 	}
@@ -676,6 +729,9 @@ func actionInput(state ActionState, text string) (any, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("input must not be empty")
+	}
+	if value, handled, err := llmActionInput(state, text); handled {
+		return value, err
 	}
 	if value, handled, err := networkActionInput(state, text); handled {
 		return value, err

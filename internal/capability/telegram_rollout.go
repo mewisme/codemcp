@@ -85,6 +85,9 @@ var telegramRequiredOperations = idSet(
 	RuntimeUp, RuntimeDown, RuntimeRestart,
 	LogsRead, LogsFollow,
 	RequestList, RequestView, RequestApprove, RequestDeny,
+	RequestExplain, RequestExplanationView, RequestExplainStatus,
+	LLMStatus, LLMProviderList, LLMProviderGet, LLMProviderAdd, LLMProviderConfigure, LLMProviderRemove,
+	LLMProviderSelect, LLMProviderModels, LLMProviderProbe, LLMProviderCredentialSet, LLMProviderCredentialClear,
 	CompletionList, CompletionView,
 	ConfigExport, ConfigGet, ConfigList, ConfigSet,
 	PromptList, PromptGet, PromptCreate, PromptUpdate, PromptDelete,
@@ -238,7 +241,7 @@ func telegramFinalContract(id ID) (TelegramRolloutStage, TelegramOwner, Telegram
 		stage, owner = TelegramStageNetworkUpstream, TelegramOwnerNetwork
 	case strings.HasPrefix(value, "integration."):
 		stage, owner = TelegramStageSettingsIntegration, TelegramOwnerIntegration
-	case strings.HasPrefix(value, "config."), strings.HasPrefix(value, "telemetry."), strings.HasPrefix(value, "auth."), strings.HasPrefix(value, "notification."):
+	case strings.HasPrefix(value, "config."), strings.HasPrefix(value, "telemetry."), strings.HasPrefix(value, "auth."), strings.HasPrefix(value, "notification."), strings.HasPrefix(value, "llm."):
 		stage, owner = TelegramStageSettingsIntegration, TelegramOwnerSettings
 	case strings.HasPrefix(value, "logs."):
 		stage, owner = TelegramStageLogsExecution, TelegramOwnerLogs

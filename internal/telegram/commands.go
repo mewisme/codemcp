@@ -26,6 +26,7 @@ var commandRegistry = []Command{
 	{Name: "completions", Description: "Browse recent agent completions", Route: RouteCompletions},
 	{Name: "network", Description: "Manage tunnel and Upstream servers", Route: RouteNetwork},
 	{Name: "integrations", Description: "Manage integrations", Route: RouteIntegrations},
+	{Name: "llm", Description: "Manage LLM providers and models", Route: RouteLLM},
 	{Name: "settings", Description: "Browse and edit canonical settings", Route: RouteSettings},
 	{Name: "system", Description: "Inspect runtime, diagnostics, version and updates", Route: RouteSystem},
 	{Name: "instructions", Description: "Inspect project context, instructions and prompts", Route: RouteInstructions},

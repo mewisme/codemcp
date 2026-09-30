@@ -84,6 +84,9 @@ func TestApprovalPolicyDistinguishesRequestAndGrantLifecycle(t *testing.T) {
 		want  bool
 	}{
 		{name: "pending request", event: approval.Event{Name: approval.EventPending, Subject: approval.EventSubjectRequest, RequestID: "req_1"}, want: true},
+		{name: "explanation ready", event: approval.Event{Name: approval.EventExplanationReady, Subject: approval.EventSubjectRequest, RequestID: "req_1"}, want: true},
+		{name: "explanation failed", event: approval.Event{Name: approval.EventExplanationFailed, Subject: approval.EventSubjectRequest, RequestID: "req_1"}, want: true},
+		{name: "explanation challenge", event: approval.Event{Name: approval.EventExplanationReady, Subject: approval.EventSubjectChallenge, RequestID: "req_1"}, want: false},
 		{name: "expired request", event: approval.Event{Name: approval.EventExpired, Subject: approval.EventSubjectRequest, RequestID: "req_1"}, want: true},
 		{name: "expired challenge", event: approval.Event{Name: approval.EventExpired, Subject: approval.EventSubjectChallenge, RequestID: "req_1"}, want: false},
 		{name: "revoked grant", event: approval.Event{Name: approval.EventRevoked, Subject: approval.EventSubjectGrant, RequestID: "req_1"}, want: true},
@@ -95,6 +98,32 @@ func TestApprovalPolicyDistinguishesRequestAndGrantLifecycle(t *testing.T) {
 				t.Fatalf("Allows(%#v)=%t want=%t", test.event, got, test.want)
 			}
 		})
+	}
+}
+
+func TestApprovalExplanationRefreshTargetsTelegramOnly(t *testing.T) {
+	desktop := &fakeProvider{name: ProviderDesktop, called: make(chan struct{}, 1)}
+	telegram := &fakeProvider{name: ProviderTelegram, called: make(chan struct{}, 1)}
+	coordinator := NewCoordinator(CoordinatorOptions{Attempts: 1})
+	coordinator.Register(desktop)
+	coordinator.Register(telegram)
+	defer coordinator.Stop()
+	bridge := NewApprovalBridge(nil, coordinator, ApprovalBridgeOptions{Policy: func() ApprovalPolicy {
+		return ApprovalPolicy{Enabled: true, Pending: true, Providers: map[string]bool{ProviderDesktop: true, ProviderTelegram: true}}
+	}})
+	bridge.consume(t.Context(), approval.Event{
+		Name: approval.EventExplanationReady, Subject: approval.EventSubjectRequest, RequestID: "req_explain", WorkspaceID: "ws_1", TargetTool: "run_command",
+	})
+	select {
+	case <-telegram.called:
+	case <-time.After(time.Second):
+		t.Fatal("telegram did not receive approval explanation refresh")
+	}
+	if calls, _ := desktop.snapshot(); calls != 0 {
+		t.Fatalf("desktop received presentation-only approval refresh: %d", calls)
+	}
+	if calls, messages := telegram.snapshot(); calls != 1 || len(messages) != 1 || messages[0].Kind != KindApprovalUpdated || messages[0].RequestID != "req_explain" {
+		t.Fatalf("telegram refresh calls=%d messages=%#v", calls, messages)
 	}
 }
 

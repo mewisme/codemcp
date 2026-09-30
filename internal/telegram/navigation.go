@@ -37,6 +37,9 @@ const (
 	RouteUpstream        Route = "upstream"
 	RouteIntegrations    Route = "integrations"
 	RouteIntegration     Route = "integration"
+	RouteLLM             Route = "llm"
+	RouteLLMProvider     Route = "llm-provider"
+	RouteLLMModels       Route = "llm-models"
 	RouteSetting         Route = "setting"
 	RouteAuthorizedUsers Route = "authorized-users"
 	RouteSystem          Route = "system"
@@ -122,7 +125,7 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 	handlers := map[Route]RouteHandler{
 		RouteHome: ui.handleHome, RouteStatus: ui.handleStatus, RouteCommands: ui.handleCommands,
 		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests, RouteCompletions: ui.handleCompletions, RouteNetwork: ui.handleNetwork,
-		RouteSettings: ui.handleSettings, RouteIntegrations: ui.handleIntegrations,
+		RouteSettings: ui.handleSettings, RouteIntegrations: ui.handleIntegrations, RouteLLM: ui.handleLLM,
 		RouteSystem: ui.handleSystem, RouteInstructions: ui.handleInstructions, RouteLogs: ui.handleLogs,
 	}
 	for _, command := range Commands() {
@@ -449,6 +452,12 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.integrationsScreen(ctx, owner)
 	case RouteIntegration:
 		return ui.integrationScreen(ctx, owner, state)
+	case RouteLLM:
+		return ui.llmScreen(ctx, owner, state)
+	case RouteLLMProvider:
+		return ui.llmProviderScreen(ctx, owner, state)
+	case RouteLLMModels:
+		return ui.llmModelsScreen(ctx, owner, state)
 	case RouteSetting:
 		return ui.settingDetailScreen(ctx, owner, state)
 	case RouteAuthorizedUsers:
@@ -518,6 +527,10 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
+	llmButton, err := ui.stateButton(owner, "LLM", CallbackOpen, ActionState{Route: RouteLLM, Back: RouteHome})
+	if err != nil {
+		return Screen{}, err
+	}
 	system, err := ui.stateButton(owner, "System", CallbackOpen, ActionState{Route: RouteSystem, Back: RouteHome})
 	if err != nil {
 		return Screen{}, err
@@ -542,7 +555,7 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 		{requests, completions},
 		{workspaces, network},
 		{upstreams, integrations},
-		{instructions},
+		{llmButton, instructions},
 		{settings, auth},
 		{logs},
 		{help, refresh},
@@ -629,7 +642,7 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 	if err != nil {
 		return Screen{}, err
 	}
-	if screen, handled, err := ui.domainOperationResultScreen(owner, state, spec, result.Value); handled {
+	if screen, handled, err := ui.domainOperationResultScreen(ctx, owner, state, spec, result.Value); handled {
 		return screen, err
 	}
 	if screen, handled, err := ui.networkOperationResultScreen(owner, state, spec, result.Value); handled {
@@ -997,6 +1010,12 @@ func routeLabel(route Route) string {
 		return "Integrations"
 	case RouteIntegration:
 		return "Integration"
+	case RouteLLM:
+		return "LLM"
+	case RouteLLMProvider:
+		return "LLM provider"
+	case RouteLLMModels:
+		return "LLM models"
 	case RouteSetting:
 		return "Setting"
 	case RouteAuthorizedUsers:

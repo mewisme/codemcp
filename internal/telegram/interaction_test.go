@@ -429,7 +429,7 @@ func TestReferenceButtonHierarchyRemainsRepresentableWithoutRejectedArchitecture
 	}
 	want := [][]string{
 		{"Status", "System"}, {"Requests", "Completions"}, {"Workspaces", "Network"},
-		{"Upstreams", "Integrations"}, {"Instructions"}, {"Settings", "Auth"}, {"Logs"}, {"Help", "Refresh"},
+		{"Upstreams", "Integrations"}, {"LLM", "Instructions"}, {"Settings", "Auth"}, {"Logs"}, {"Help", "Refresh"},
 	}
 	got := make([][]string, 0, len(home.Keyboard))
 	for _, row := range home.Keyboard {

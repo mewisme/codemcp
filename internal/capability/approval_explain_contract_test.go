@@ -38,7 +38,7 @@ func TestApprovalExplainCapabilitiesAreReviewerOnlyAndNeverMCPAgentTools(t *test
 			t.Fatalf("%s/tui surface=%#v ok=%t", id, tui, ok)
 		}
 		telegram, ok := spec.Surface(SurfaceTelegram)
-		if !ok || telegram.State != SurfaceExempt || telegram.Exemption != SurfaceExemptionDeferred {
+		if !ok || telegram.State != SurfaceRequired || telegram.Exemption != "" {
 			t.Fatalf("%s/telegram surface=%#v ok=%t", id, telegram, ok)
 		}
 	}

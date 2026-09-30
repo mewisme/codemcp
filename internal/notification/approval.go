@@ -26,6 +26,8 @@ func (p ApprovalPolicy) Allows(event approval.Event) bool {
 		return p.Pending && event.Subject == approval.EventSubjectRequest
 	case approval.EventApproved, approval.EventDenied, approval.EventExpired, approval.EventCancelled:
 		return p.Resolved && event.Subject == approval.EventSubjectRequest
+	case approval.EventExplanationReady, approval.EventExplanationFailed:
+		return p.Pending && event.Subject == approval.EventSubjectRequest
 	case approval.EventRevoked:
 		return p.Resolved && event.Subject == approval.EventSubjectGrant
 	default:
@@ -131,7 +133,11 @@ func (b *ApprovalBridge) consume(ctx context.Context, event approval.Event) {
 	if !ok {
 		return
 	}
-	_ = b.coordinator.Dispatch(ctx, message, policy.Providers)
+	providers := policy.Providers
+	if message.Kind == KindApprovalUpdated {
+		providers = map[string]bool{ProviderTelegram: policy.Providers[ProviderTelegram]}
+	}
+	_ = b.coordinator.Dispatch(ctx, message, providers)
 }
 
 func approvalMessage(event approval.Event) (Message, bool) {
@@ -166,6 +172,10 @@ func approvalMessage(event approval.Event) (Message, bool) {
 		message.Kind, message.Title, message.Body = KindApprovalResolved, "Approval expired", contextText+" expired"
 	case approval.EventCancelled:
 		message.Kind, message.Title, message.Body = KindApprovalResolved, "Approval cancelled", contextText+" was cancelled"
+	case approval.EventExplanationReady:
+		message.Kind, message.Title, message.Body = KindApprovalUpdated, "Approval explanation ready", "The approval review changed"
+	case approval.EventExplanationFailed:
+		message.Kind, message.Title, message.Body = KindApprovalUpdated, "Approval explanation failed", "The approval review changed"
 	case approval.EventRevoked:
 		message.Kind, message.Title, message.Body = KindApprovalResolved, "Approval grant revoked", contextText+" grant was revoked"
 	default:

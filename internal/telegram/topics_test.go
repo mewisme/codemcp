@@ -86,6 +86,7 @@ func TestTopicRoleForNotification(t *testing.T) {
 	tests := map[notification.Kind]TopicRole{
 		notification.KindApprovalPending:       TopicRequests,
 		notification.KindApprovalResolved:      TopicRequests,
+		notification.KindApprovalUpdated:       TopicRequests,
 		notification.KindCompletionAccepted:    TopicCompletions,
 		notification.KindBackgroundJobFinished: TopicRuntime,
 		notification.Kind("log.status"):        TopicLogs,
@@ -249,6 +250,24 @@ func TestApprovalResolvedNotificationEditsOriginalRichCardAfterRuntimeRestart(t 
 		t.Fatalf("stored approval message id=%d want=1", got)
 	}
 
+	updatedRuntime := &Runtime{
+		root: root, api: api, topics: newTopicStore(root),
+		config:               config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true},
+		health:               Health{Running: true, Enabled: true, AuthorizationConfigured: true, TopicsEffective: true},
+		notificationRenderer: renderer,
+	}
+	if err := updatedRuntime.SendNotification(t.Context(), notification.Message{
+		Kind: notification.KindApprovalUpdated, RequestID: "req_1", Title: "Approval explanation ready",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.richThreadScreens) != 1 || len(api.editedMessageIDs) != 1 || api.editedMessageIDs[0] != 1 {
+		t.Fatalf("approval update sends=%d edits=%v", len(api.richThreadScreens), api.editedMessageIDs)
+	}
+	if updatedRuntime.approvalMessages == nil || updatedRuntime.approvalMessages.get(42, "req_1") != 1 {
+		t.Fatal("approval update did not retain pending message reference")
+	}
+
 	resolvedRuntime := &Runtime{
 		root: root, api: api, topics: newTopicStore(root),
 		config:               config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true},
@@ -266,13 +285,13 @@ func TestApprovalResolvedNotificationEditsOriginalRichCardAfterRuntimeRestart(t 
 	if len(api.generalSends) != 0 || len(api.threadSends) != 0 {
 		t.Fatalf("resolved notification emitted redundant text general=%v thread=%v", api.generalSends, api.threadSends)
 	}
-	if len(api.editedMessageIDs) != 1 || api.editedMessageIDs[0] != 1 {
-		t.Fatalf("resolved edits=%v want=[1]", api.editedMessageIDs)
+	if len(api.editedMessageIDs) != 2 || api.editedMessageIDs[1] != 1 {
+		t.Fatalf("resolved edits=%v want update+resolve on message 1", api.editedMessageIDs)
 	}
 	if resolvedRuntime.approvalMessages == nil || resolvedRuntime.approvalMessages.get(42, "req_1") != 0 {
 		t.Fatal("resolved approval message reference was not cleared")
 	}
-	fallback := RichFallback(api.editedScreens[0].Rich).Text
+	fallback := RichFallback(api.editedScreens[1].Rich).Text
 	if !strings.Contains(fallback, string(notification.KindApprovalResolved)) {
 		t.Fatalf("resolved edit screen=%q", fallback)
 	}

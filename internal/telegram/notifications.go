@@ -12,7 +12,7 @@ import (
 
 func (ui *Interface) RenderNotification(ctx context.Context, chatID int64, message notification.Message) (Screen, bool, error) {
 	switch message.Kind {
-	case notification.KindApprovalPending, notification.KindApprovalResolved:
+	case notification.KindApprovalPending, notification.KindApprovalResolved, notification.KindApprovalUpdated:
 		return ui.renderApprovalNotification(ctx, chatID, message)
 	case notification.KindCompletionAccepted:
 		if ui == nil || ui.runtime == nil {

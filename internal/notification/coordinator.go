@@ -18,6 +18,7 @@ type Kind string
 const (
 	KindApprovalPending  Kind = "approval.pending"
 	KindApprovalResolved Kind = "approval.resolved"
+	KindApprovalUpdated  Kind = "approval.updated"
 )
 
 type Action struct {
