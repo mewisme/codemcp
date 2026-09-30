@@ -13,7 +13,7 @@ import (
 
 func TestLLMCoreProviderDetailProtectsIdentity(t *testing.T) {
 	service := application.NewLLMService(t.TempDir())
-	page, err := newLLMRouteAction(t.Context(), "openrouter", "", "", service)
+	page, err := newLLMRouteAction(t.Context(), "ollama", "", "", service)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestLLMCoreProviderDetailProtectsIdentity(t *testing.T) {
 
 func TestLLMCredentialEditorNeverRendersRawSecret(t *testing.T) {
 	service := application.NewLLMService(t.TempDir())
-	provider, err := service.ProviderResult(t.Context(), "openrouter")
+	provider, err := service.ProviderResult(t.Context(), "ollama")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,9 +84,9 @@ func TestLLMModelQueryUsesCanonicalModesAndFilters(t *testing.T) {
 }
 
 func TestLLMModelBrowserRestoresSelectionAfterAsyncLoad(t *testing.T) {
-	page := &LLMPage{ctx: t.Context(), resourceID: "openrouter", section: "models", query: application.LLMModelQuery{Limit: 25}, restoreSelected: "model-b"}
+	page := &LLMPage{ctx: t.Context(), resourceID: "ollama", section: "models", query: application.LLMModelQuery{Limit: 25}, restoreSelected: "model-b"}
 	page.finishModels(llmModelsMsg{page: application.LLMModelPage{
-		ProviderID: "openrouter", Matched: 2, Returned: 2, Limit: 25,
+		ProviderID: "ollama", Matched: 2, Returned: 2, Limit: 25,
 		Models: []llm.Model{{ID: "model-a"}, {ID: "model-b"}},
 	}})
 	row, ok := page.browser.Selected()
@@ -100,7 +100,7 @@ func TestLLMModelBrowserRestoresSelectionAfterAsyncLoad(t *testing.T) {
 
 func TestLLMModelRoutesAreResizeSafeBeforeAsyncCatalogLoad(t *testing.T) {
 	service := application.NewLLMService(t.TempDir())
-	for _, providerID := range []string{"openrouter", "ollama"} {
+	for _, providerID := range []string{"ollama", "ollama"} {
 		t.Run(providerID, func(t *testing.T) {
 			page, err := newLLMRouteAction(t.Context(), providerID, "models", "", service)
 			if err != nil {
@@ -121,7 +121,7 @@ func TestLLMModelRoutesAreResizeSafeBeforeAsyncCatalogLoad(t *testing.T) {
 
 func TestLLMExactModelEditorSupportsUndiscoveredIDs(t *testing.T) {
 	service := application.NewLLMService(t.TempDir())
-	page, err := newLLMRouteAction(t.Context(), "openrouter", "models", "set", service)
+	page, err := newLLMRouteAction(t.Context(), "ollama", "models", "set", service)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestLLMExactModelEditorSupportsUndiscoveredIDs(t *testing.T) {
 	if !ok || msg.err != nil {
 		t.Fatalf("exact model mutation=%#v", msg)
 	}
-	provider, err := service.ProviderResult(t.Context(), "openrouter")
+	provider, err := service.ProviderResult(t.Context(), "ollama")
 	if err != nil {
 		t.Fatal(err)
 	}

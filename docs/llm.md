@@ -8,12 +8,11 @@ LLM inference is an optional consumer capability. It is not an authorization, ap
 
 A catalog always has exactly one active provider. Provider-scoped configuration does not implicitly make that provider active; selection is a separate operation.
 
-Two core providers always exist:
+One core provider always exists and is selected by default:
 
 | Provider | Fresh default | Protocol | Authentication | Discovery |
 | --- | --- | --- | --- | --- |
-| OpenRouter | active provider, model `openrouter/free` | OpenAI-compatible | bearer | OpenAI-compatible model catalog |
-| Ollama | Cloud endpoint `https://ollama.com/v1` | OpenAI-compatible | bearer in Cloud mode | native Ollama `/api/tags` |
+| Ollama | active provider, Cloud endpoint `https://ollama.com/v1` | OpenAI-compatible | bearer in Cloud mode | native Ollama `/api/tags` |
 
 Core providers cannot be removed or renamed into another identity. Custom providers can be added, configured, probed, queried, selected, and removed. Select another provider before removing an active custom provider.
 
@@ -22,7 +21,7 @@ Use these commands to inspect canonical state:
 ```bash
 cm llm status
 cm llm provider list
-cm llm provider show openrouter
+cm llm provider show ollama
 ```
 
 Provider outages, authentication failures, rate limits, and malformed remote responses do not automatically select another provider or rewrite persisted provider configuration.
@@ -52,28 +51,28 @@ cm config get 'llm.providers[ollama].base_url'
 
 When one atomic setting transaction changes `llm.provider` and another active-provider alias, selection is staged first, so the alias targets the newly selected provider. `llm.provider` itself cannot be unset.
 
-## OpenRouter
+## Ollama
 
-A fresh catalog selects OpenRouter and uses `openrouter/free`. That model ID is OpenRouter's free-router entry point rather than a promise that every routed model has the same limits or availability. OpenRouter still requires its normal account/API authentication.
+A fresh catalog selects Ollama in Cloud mode. Model selection remains explicit, so configure a model before inference or features such as Approval Explain can become ready. Cloud mode requires an Ollama API key; local mode does not.
 
 Configure the credential without putting it on the command line:
 
 ```bash
-cm llm openrouter key set
-cm llm openrouter status
-cm llm openrouter probe
-cm llm openrouter models --free --limit 20
+cm llm ollama key set
+cm llm ollama status
+cm llm ollama probe
+cm llm ollama models --limit 20
 ```
 
 Select another explicit model when needed:
 
 ```bash
-cm llm openrouter models --search coding --sort context:desc --limit 20
-cm llm openrouter model vendor/model-id
-cm llm openrouter use
+cm llm ollama models --search qwen --sort modified:desc --limit 20
+cm llm ollama model <model-id>
+cm llm ollama use
 ```
 
-OpenRouter model discovery uses the provider's model catalog. Ranking and recommendation are optional catalog enrichments; they do not change the configured model until the operator explicitly selects one.
+Ollama model discovery uses native `/api/tags`. Query dimensions are capability-checked and unsupported filters or ranking/recommendation requests fail explicitly instead of being guessed.
 
 ## Ollama Cloud and local mode
 
@@ -148,7 +147,7 @@ Custom provider configuration is independent of active selection:
 ```bash
 cm llm provider configure acme-openai --model acme/model-2
 cm llm probe acme-openai
-cm llm use openrouter
+cm llm use ollama
 cm llm provider remove acme-openai
 ```
 
@@ -161,7 +160,7 @@ LLM API keys are managed secrets. Raw values are stored by CodeMCP's canonical s
 For interactive CLI use, omit the secret value:
 
 ```bash
-cm llm openrouter key set
+cm llm ollama key set
 cm llm provider key set acme-openai
 cm config set llm.api_key
 ```
@@ -169,7 +168,7 @@ cm config set llm.api_key
 The terminal uses protected input and masks typed characters. For automation, prefer an environment variable or standard input:
 
 ```bash
-cm llm openrouter key set --from-env OPENROUTER_API_KEY
+cm llm ollama key set --from-env OLLAMA_API_KEY
 printf '%s\n' "$ACME_LLM_API_KEY" | cm llm provider key set acme-openai
 ```
 
@@ -178,7 +177,7 @@ Passing a secret as a positional command argument remains supported for compatib
 Clear a credential explicitly:
 
 ```bash
-cm llm openrouter key clear
+cm llm ollama key clear
 cm llm provider key clear acme-openai
 cm config unset llm.api_key
 ```
@@ -187,7 +186,7 @@ Portable config export/import excludes managed secret-store values. Removing a c
 
 ## Model catalog queries
 
-`cm llm models [provider_id]` queries a provider explicitly; when the ID is omitted it uses the active provider. The core-provider shortcuts `cm llm openrouter models` and `cm llm ollama models` use the same query engine.
+`cm llm models [provider_id]` queries a provider explicitly; when the ID is omitted it uses the active provider. The core-provider shortcut `cm llm ollama models` uses the same query engine.
 
 Common query controls include:
 
@@ -200,22 +199,20 @@ Common query controls include:
 | Ordering | repeatable `--sort field[:asc|desc]` |
 | Result window | `--offset`, `--limit`, 1-based inclusive `--range start:end`, `--all`, `--count` |
 | Refresh | `--refresh` |
-| OpenRouter enrichment | `--rank`, `--window`, `--recommend-for` |
+| Optional provider enrichment | `--rank`, `--window`, `--recommend-for` when the provider exposes it |
 | Ollama metadata | repeatable `--family`, `--format`, `--quantization`, plus `--min-parameters`, `--max-parameters`, `--min-size`, `--max-size` |
 
 Examples:
 
 ```bash
 cm llm models --search qwen --sort context:desc --limit 20
-cm llm openrouter models --free --rank usage --window week --limit 10
-cm llm openrouter models --recommend-for coding --limit 10
 cm llm ollama models --family qwen --sort parameter-size:desc --range 1:10
 cm llm models --count
 ```
 
 Without explicit ranking/recommendation/sort, results have a stable ID ordering. Provider-specific dimensions are capability-checked: requesting an unsupported filter, sort, rank, or recommendation returns an explicit unsupported-query error rather than silently ignoring the request.
 
-OpenRouter ranking also carries source/basis/freshness metadata. In particular, `usage` is an adoption signal and `trending` is adoption-growth activity, not a quality verdict. The `intelligence`, `coding`, and `agentic` ranks use benchmark-derived metrics, while task recommendations expose their own task/source/basis metadata. Treat these signals according to their declared basis rather than as a universal "best model" score.
+Ranking/recommendation is not synthesized for Ollama. If a custom backend does not provide explicit enrichment metadata, rank/recommendation queries return an unsupported-query error.
 
 ## Approval Explain
 

@@ -23,7 +23,6 @@ func llmCommand() *cobra.Command {
 		llmModelsCommand(),
 		llmProbeCommand(),
 		llmProviderCommand(),
-		llmCoreProviderCommand("openrouter", "openrouter"),
 		llmCoreProviderCommand("ollama", "ollama"),
 	)
 	return cmd
@@ -167,9 +166,9 @@ func addLLMModelQueryFlags(cmd *cobra.Command, flags *llmModelQueryFlags) {
 	values.StringVar(&flags.modifiedAfter, "modified-after", "", "Minimum model modification time (RFC3339)")
 	values.StringVar(&flags.modifiedBefore, "modified-before", "", "Maximum model modification time (RFC3339)")
 	values.StringArrayVar(&flags.sorts, "sort", nil, "Sort by field[:asc|desc] (repeatable)")
-	values.StringVar(&flags.rank, "rank", "", "Rank OpenRouter models by usage, trending, intelligence, coding or agentic")
+	values.StringVar(&flags.rank, "rank", "", "Rank models when the selected provider exposes ranking metadata")
 	values.StringVar(&flags.window, "window", "", "Usage rank window: day, week or month")
-	values.StringVar(&flags.recommendFor, "recommend-for", "", "Rank OpenRouter models for an explicit task classification")
+	values.StringVar(&flags.recommendFor, "recommend-for", "", "Rank models for an explicit task classification when supported")
 	values.IntVar(&flags.offset, "offset", 0, "Zero-based result offset")
 	values.IntVar(&flags.limit, "limit", 0, "Maximum models to return")
 	values.StringVar(&flags.rangeValue, "range", "", "1-based inclusive result range start:end")

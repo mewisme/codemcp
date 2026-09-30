@@ -302,15 +302,15 @@ func buildSpecs() []Spec {
 		operatorSensitive(TelegramSetup, "telegram setup", true),
 		operatorQuery(LLMStatus, "llm status"),
 		operatorQuery(LLMProviderList, "llm provider list"),
-		operatorQuery(LLMProviderGet, "llm provider show", "llm openrouter status", "llm ollama status"),
+		operatorQuery(LLMProviderGet, "llm provider show", "llm ollama status"),
 		operatorMutation(LLMProviderAdd, "llm provider add", RiskState, false),
-		operatorMutation(LLMProviderConfigure, "llm provider configure", RiskState, false, "llm openrouter model", "llm ollama model", "llm ollama mode"),
+		operatorMutation(LLMProviderConfigure, "llm provider configure", RiskState, false, "llm ollama model", "llm ollama mode"),
 		operatorDeleteRequired(LLMProviderRemove, "llm provider remove", false),
-		operatorMutation(LLMProviderSelect, "llm use", RiskState, false, "llm openrouter use", "llm ollama use"),
-		operatorQueryOpenWorld(LLMProviderModels, "llm models", "llm openrouter models", "llm ollama models"),
+		operatorMutation(LLMProviderSelect, "llm use", RiskState, false, "llm ollama use"),
+		operatorQueryOpenWorld(LLMProviderModels, "llm models", "llm ollama models"),
 		operatorQueryOpenWorld(LLMProviderProbe, "llm probe"),
-		operatorSensitive(LLMProviderCredentialSet, "llm provider key set", false, "llm openrouter key set", "llm ollama key set"),
-		operatorSensitive(LLMProviderCredentialClear, "llm provider key clear", false, "llm openrouter key clear", "llm ollama key clear"),
+		operatorSensitive(LLMProviderCredentialSet, "llm provider key set", false, "llm ollama key set"),
+		operatorSensitive(LLMProviderCredentialClear, "llm provider key clear", false, "llm ollama key clear"),
 	}
 	values = append(values, integrationSpecs()...)
 	values = append(values, adminOnlySpecs()...)

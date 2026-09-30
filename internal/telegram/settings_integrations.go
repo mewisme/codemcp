@@ -22,7 +22,6 @@ const (
 	inputSettingsApply      = "settings.apply"
 	inputConfigPatch        = "config.patch"
 	inputTelegramUserManual = "telegram.user.manual"
-	inputTelegramUserPicker = "telegram.user.picker"
 	settingsPageSize        = 3
 )
 
@@ -825,13 +824,6 @@ func (ui *Interface) authorizedUsersScreen(ctx context.Context, owner ViewOwner)
 		button.Role = ButtonRoleDestructive
 		removeButtons = append(removeButtons, button)
 	}
-	picker, err := ui.stateButton(owner, "Select user", CallbackOpen, ActionState{
-		Route: RouteOperation, Back: RouteAuthorizedUsers, Operation: capability.ConfigSet,
-		ResourceID: "telegram.allowed_user_ids", ExpectedVersion: result.Value, InputKind: inputTelegramUserPicker,
-	})
-	if err != nil {
-		return Screen{}, err
-	}
 	manual, err := ui.stateButton(owner, "Add by ID", CallbackOpen, ActionState{
 		Route: RouteOperation, Back: RouteAuthorizedUsers, Operation: capability.ConfigSet,
 		ResourceID: "telegram.allowed_user_ids", ExpectedVersion: result.Value, InputKind: inputTelegramUserManual, ForceConfirm: true,
@@ -844,8 +836,8 @@ func (ui *Interface) authorizedUsersScreen(ctx context.Context, owner ViewOwner)
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "Authorized Telegram users", Text: fmt.Sprintf("%d user(s)", len(ids))},
 		RichBlock{Kind: RichList, Items: items},
-		RichBlock{Kind: RichDetails, Title: "Native picker", Text: "A selected user is only proposed. Authorization changes only after explicit confirmation and successful canonical setting mutation."},
-	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{picker, manual}, Destructive: removeButtons, Navigation: []Button{back, home}})}, nil
+		RichBlock{Kind: RichDetails, Title: "Authorization", Text: "Add a numeric Telegram user ID. Authorization changes only after explicit confirmation and successful canonical setting mutation."},
+	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{manual}, Destructive: removeButtons, Navigation: []Button{back, home}})}, nil
 }
 
 func parseSettingList(raw string) []string {
@@ -918,65 +910,6 @@ func settingsActionInput(state ActionState, text string) (any, bool, error) {
 	default:
 		return nil, false, nil
 	}
-}
-
-func (ui *Interface) beginUserPicker(ctx context.Context, owner ViewOwner, state ActionState) error {
-	if ui == nil || ui.runtime == nil || ui.userSelections == nil {
-		return errors.New("telegram user picker is unavailable")
-	}
-	requestID := int(ui.nextUserRequest.Add(1))
-	if err := ui.userSelections.Put(owner, requestID, state.ExpectedVersion); err != nil {
-		return err
-	}
-	_, err := ui.runtime.SendUserPicker(ctx, owner.ChatID, requestID, "Select one Telegram user to propose for authorization.")
-	if err == nil {
-		return nil
-	}
-	ui.userSelections.Delete(requestID)
-	fallback := state
-	fallback.InputKind = inputTelegramUserManual
-	fallback.ForceConfirm = true
-	return ui.beginActionInput(ctx, owner, fallback)
-}
-
-func (ui *Interface) handleUsersShared(ctx context.Context, update Update) {
-	if update.Message == nil || update.Message.UsersShared == nil || ui.userSelections == nil {
-		return
-	}
-	owner, ok := ownerFromUpdate(ui.runtime, update)
-	if !ok {
-		return
-	}
-	pending, ok := ui.userSelections.Match(owner, update.Message.UsersShared.RequestID)
-	if !ok || len(update.Message.UsersShared.Users) != 1 {
-		return
-	}
-	user := update.Message.UsersShared.Users[0]
-	if user.UserID <= 0 {
-		return
-	}
-	input := application.ConfigSetInput{
-		Action: "set", Key: "telegram.allowed_user_ids",
-		Value:         appendSettingList(pending.CurrentRaw, strconv.FormatInt(user.UserID, 10)),
-		ExpectedValue: pending.CurrentRaw, CheckExpected: true,
-	}
-	confirm, err := ui.stateButton(owner, "Confirm authorization", CallbackConfirm, ActionState{
-		Route: RouteOperation, Back: RouteAuthorizedUsers, Operation: capability.ConfigSet,
-		Input: input, ForceConfirm: true, Confirmed: true,
-	})
-	if err != nil {
-		return
-	}
-	back, _ := ui.backButton(owner, RouteAuthorizedUsers)
-	label := strconv.FormatInt(user.UserID, 10)
-	if user.Username != "" {
-		label += " (@" + user.Username + ")"
-	}
-	screen := Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Authorize Telegram user?", Text: "Selection is only a proposal."},
-		RichBlock{Kind: RichCopy, Title: "Selected user", Text: label, CopyText: strconv.FormatInt(user.UserID, 10)},
-	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{confirm}, Navigation: []Button{back}})}
-	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 
 func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner ViewOwner, state ActionState, spec capability.Spec, value any) (Screen, bool, error) {

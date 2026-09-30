@@ -18,7 +18,7 @@ func TestStoreMissingStateReturnsDefaultsWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if value.ActiveProvider != OpenRouterID || len(value.Providers) != 2 {
+	if value.ActiveProvider != OllamaID || len(value.Providers) != 1 {
 		t.Fatalf("defaults = %#v", value)
 	}
 	ollama := providerByID(t, value, OllamaID)
@@ -35,7 +35,6 @@ func TestStoreRoundTripPreservesCustomProvidersAndCoreOverrides(t *testing.T) {
 	value := DefaultCatalog()
 	value.Providers[0].BaseURL = "https://router.example/v1"
 	value.Providers[0].Model = "vendor/model"
-	value.Providers[0].Capabilities = &ProviderCapabilities{StructuredOutput: true}
 	value.Providers = append(value.Providers, Provider{
 		ID: "acme", Name: "Acme", Protocol: ProtocolAnthropic, BaseURL: "https://llm.acme.test", Model: "claude-like",
 		AuthMode: AuthAPIKey, Discovery: DiscoveryNone,
@@ -48,7 +47,7 @@ func TestStoreRoundTripPreservesCustomProvidersAndCoreOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.ActiveProvider != "acme" || len(loaded.Providers) != 3 || loaded.Providers[0].BaseURL != "https://router.example/v1" || loaded.Providers[0].Model != "vendor/model" || loaded.Providers[0].Capabilities == nil || !loaded.Providers[0].Capabilities.StructuredOutput {
+	if loaded.ActiveProvider != "acme" || len(loaded.Providers) != 2 || loaded.Providers[0].BaseURL != "https://router.example/v1" || loaded.Providers[0].Model != "vendor/model" {
 		t.Fatalf("round trip = %#v", loaded)
 	}
 	raw, err := os.ReadFile(store.Path())
@@ -80,7 +79,7 @@ func TestStoreReconcilesMissingCoreProvidersWithoutRewriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.ActiveProvider != custom.ID || len(loaded.Providers) != 3 || !catalogHasProvider(loaded, OpenRouterID) || !catalogHasProvider(loaded, OllamaID) {
+	if loaded.ActiveProvider != custom.ID || len(loaded.Providers) != 2 || !catalogHasProvider(loaded, OllamaID) {
 		t.Fatalf("reconciled = %#v", loaded)
 	}
 	ollama := providerByID(t, loaded, OllamaID)
@@ -129,7 +128,7 @@ func TestStorePreservesPersistedOllamaEndpointChoice(t *testing.T) {
 			if ollama.BaseURL != test.baseURL || ollama.AuthMode != test.auth || ollama.Model != test.model || ollama.Discovery != DiscoveryOllamaTags {
 				t.Fatalf("persisted Ollama changed after reload: %#v", ollama)
 			}
-			if loaded.ActiveProvider != OpenRouterID {
+			if loaded.ActiveProvider != OllamaID {
 				t.Fatalf("persisted Ollama endpoint changed active provider=%q", loaded.ActiveProvider)
 			}
 		})
@@ -139,7 +138,7 @@ func TestStorePreservesPersistedOllamaEndpointChoice(t *testing.T) {
 func TestStoreRejectsCorruptionWrongVersionAndNonRegularPathsWithoutRewrite(t *testing.T) {
 	for name, raw := range map[string][]byte{
 		"corrupt": []byte(`{"version":1,"active_provider":`),
-		"version": []byte(`{"version":2,"active_provider":"openrouter","providers":[]}`),
+		"version": []byte(`{"version":2,"active_provider":"ollama","providers":[]}`),
 	} {
 		t.Run(name, func(t *testing.T) {
 			store, _ := newStoreTestRoot(t)
@@ -220,14 +219,14 @@ func TestStoreUpdateSerializesConcurrentReadModifyWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded.Providers) != 4 || !catalogHasProvider(loaded, "alpha") || !catalogHasProvider(loaded, "beta") {
+	if len(loaded.Providers) != 3 || !catalogHasProvider(loaded, "alpha") || !catalogHasProvider(loaded, "beta") {
 		t.Fatalf("concurrent update lost provider: %#v", loaded)
 	}
 }
 
 func TestPortableStoreJSONRejectsUnknownCredentialFields(t *testing.T) {
 	secret := "sk-do-not-leak"
-	raw := []byte(`{"version":1,"active_provider":"openrouter","providers":[{"id":"openrouter","name":"OpenRouter","protocol":"openai","base_url":"https://openrouter.ai/api/v1","model":"openrouter/free","auth_mode":"bearer","discovery":"openai-models","core_kind":"openrouter","api_key":"` + secret + `"}]}`)
+	raw := []byte(`{"version":1,"active_provider":"ollama","providers":[{"id":"ollama","name":"Ollama","protocol":"openai","base_url":"https://ollama.ai/api/v1","model":"qwen3:8b","auth_mode":"bearer","discovery":"openai-models","core_kind":"ollama","api_key":"` + secret + `"}]}`)
 	_, err := NormalizePortableStoreJSON(raw)
 	if err == nil {
 		t.Fatal("credential-bearing store was accepted")

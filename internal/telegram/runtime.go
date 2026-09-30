@@ -400,24 +400,6 @@ func (runtime *Runtime) SendChatAction(ctx context.Context, chatID int64, action
 	return rich.SendChatAction(ctx, chatID, action)
 }
 
-func (runtime *Runtime) SendUserPicker(ctx context.Context, chatID int64, requestID int, prompt string) (int64, error) {
-	if runtime == nil || chatID <= 0 || requestID <= 0 {
-		return 0, errors.New("telegram runtime is unavailable")
-	}
-	runtime.mu.RLock()
-	api := runtime.api
-	available := runtime.health.Running && !runtime.health.SetupMode
-	runtime.mu.RUnlock()
-	if !available || api == nil {
-		return 0, errors.New("telegram runtime is unavailable")
-	}
-	picker, ok := api.(UserPickerAPI)
-	if !ok {
-		return 0, errors.New("telegram native user picker is unavailable")
-	}
-	return runtime.deliverValue(ctx, func() (int64, error) { return picker.SendUserPicker(ctx, chatID, requestID, prompt) })
-}
-
 func (runtime *Runtime) SendChatActionToTopic(ctx context.Context, chatID int64, role TopicRole, action string) error {
 	if runtime == nil || chatID <= 0 || strings.TrimSpace(action) == "" {
 		return errors.New("telegram runtime is unavailable")

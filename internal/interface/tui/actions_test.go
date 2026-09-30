@@ -316,7 +316,7 @@ func TestLLMActionAvailabilityProtectsCoreIdentity(t *testing.T) {
 	if !has(root, "llm.provider.add") {
 		t.Fatal("LLM add action missing on provider list")
 	}
-	core := action.Context{Route: string(RouteLLM), ResourceID: "openrouter"}
+	core := action.Context{Route: string(RouteLLM), ResourceID: "ollama"}
 	for _, id := range []string{"llm.provider.models", "llm.provider.model.set", "llm.provider.credential.set", "llm.provider.use", "llm.provider.probe", "llm.provider.credential.clear"} {
 		if !has(core, id) {
 			t.Fatalf("core provider action missing: %s", id)

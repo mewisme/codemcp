@@ -135,10 +135,6 @@ func (c *Client) inferOpenAI(ctx context.Context, provider Provider, request Req
 }
 
 func (c *Client) discoverOpenAIModels(ctx context.Context, provider Provider) ([]Model, error) {
-	if provider.CoreKind == CoreOpenRouter {
-		return c.discoverOpenRouterModels(ctx, provider)
-	}
-
 	credential, err := c.credentialFor(ctx, provider, AuthBearer)
 	if err != nil {
 		return nil, err

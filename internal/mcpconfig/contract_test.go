@@ -77,14 +77,14 @@ func TestSecretProjectionNeverContainsSecretOrMaskedPreview(t *testing.T) {
 }
 
 func TestLLMProviderCredentialRemainsAgentWriteForbidden(t *testing.T) {
-	match, ok := config.MatchSettingSelector("llm.providers[openrouter].api_key")
+	match, ok := config.MatchSettingSelector("llm.providers[ollama].api_key")
 	if !ok {
 		t.Fatal("LLM provider credential selector did not resolve")
 	}
 	if err := mcpconfig.ValidateWriteSpec(match.Spec); err == nil || !strings.Contains(err.Error(), "managed secret") {
 		t.Fatalf("LLM provider credential write restriction=%v", err)
 	}
-	if _, ok := mcpconfig.ResolveSetting("llm.providers[openrouter].api_key", mcpconfig.AccessWrite); ok {
+	if _, ok := mcpconfig.ResolveSetting("llm.providers[ollama].api_key", mcpconfig.AccessWrite); ok {
 		t.Fatal("LLM provider credential became MCP-agent writable")
 	}
 }

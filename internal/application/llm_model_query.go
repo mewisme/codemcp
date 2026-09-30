@@ -188,10 +188,6 @@ func (s *LLMService) ModelCatalog(ctx context.Context, rawID string, query LLMMo
 	return page, nil
 }
 
-func (s *LLMService) OpenRouterModels(ctx context.Context, query LLMModelQuery) (LLMModelPage, error) {
-	return s.ModelCatalog(ctx, string(llm.OpenRouterID), query)
-}
-
 func normalizeLLMModelQuery(query LLMModelQuery) (LLMModelQuery, error) {
 	query.Search = strings.TrimSpace(query.Search)
 	if len(query.Search) > maxLLMModelSearchBytes {
@@ -369,13 +365,7 @@ func modelQueryCapabilities(provider llm.Provider, models []llm.Model) LLMModelQ
 	filters := []string{"search", "id"}
 	sorts := []string{"id", "name"}
 	cap := LLMModelQueryCapabilities{}
-	if provider.ID == llm.OpenRouterID || provider.CoreKind == llm.CoreOpenRouter {
-		filters = append(filters, "author", "free", "context", "prompt-price", "completion-price", "capability", "parameter", "input", "output", "created")
-		sorts = append(sorts, "context", "prompt-price", "completion-price", "created")
-		cap.Ranks = []string{"usage", "trending", "intelligence", "coding", "agentic"}
-		cap.RankWindows = []string{"day", "week", "month"}
-		cap.Recommendation = true
-	} else if provider.Discovery == llm.DiscoveryOllamaTags {
+	if provider.Discovery == llm.DiscoveryOllamaTags {
 		filters = append(filters, "family", "format", "quantization", "parameter-size", "size", "modified")
 		sorts = append(sorts, "modified", "size", "parameter-size")
 	} else {

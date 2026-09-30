@@ -44,7 +44,7 @@ func TestOllamaModeSwitchUpdatesDefaultsCoherentlyAndPreservesSelection(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if catalog.ActiveProvider != llm.OpenRouterID {
+	if catalog.ActiveProvider != llm.OllamaID {
 		t.Fatalf("mode switch changed active provider to %q", catalog.ActiveProvider)
 	}
 

@@ -6,19 +6,19 @@ import { adminApi, type LLMProvider } from "@/lib/api"
 import { LLMPage } from "@/pages/llm"
 
 const provider: LLMProvider = {
-  id: "openrouter",
-  name: "OpenRouter",
+  id: "ollama",
+  name: "Ollama",
   protocol: "openai",
-  base_url: "https://openrouter.ai/api/v1",
-  model: "openrouter/free",
+  base_url: "https://ollama.com/v1",
+  model: "qwen3:8b",
   auth_mode: "bearer",
-  discovery: "openai-models",
-  core_kind: "openrouter",
+  discovery: "ollama-tags",
+  core_kind: "ollama",
   core: true,
   selected: true,
   configured: true,
   readiness: "ready",
-  credential: { provider_id: "openrouter", configured: true, preview: "sk-…abcd" },
+  credential: { provider_id: "ollama", configured: true, preview: "sk-…abcd" },
 }
 
 describe("LLMPage", () => {
@@ -33,15 +33,15 @@ describe("LLMPage", () => {
       limit: 25,
       returned: 1,
       has_more: false,
-      models: [{ id: "openrouter/free", name: "Free Router", free: true, free_known: true }],
+      models: [{ id: "qwen3:8b", name: "qwen3:8b", ollama: { family: "qwen3", families: ["qwen3"], format: "gguf", parameter_size: "8B", quantization_level: "Q4_K_M" } }],
       refreshed: false,
       sort: [{ field: "id", direction: "asc" }],
       query_capabilities: {
-        filters: ["search", "id", "author", "free"],
-        sorts: ["id", "name"],
-        ranks: ["usage", "trending"],
-        rank_windows: ["day", "week", "month"],
-        recommendation: true,
+        filters: ["search", "id", "family", "format", "quantization", "parameter-size", "size", "modified"],
+        sorts: ["id", "name", "modified", "size", "parameter-size"],
+        ranks: [],
+        rank_windows: [],
+        recommendation: false,
       },
     })
     vi.spyOn(adminApi, "setLLMCredential").mockResolvedValue({ provider_id: provider.id, configured: true, preview: "sk-…wxyz" })
@@ -60,35 +60,36 @@ describe("LLMPage", () => {
     const secret = "sk-browser-ui-secret-never-persist"
 
     render(<LLMPage />)
-    expect(await screen.findByText("OpenRouter")).toBeInTheDocument()
-    expect(screen.getAllByText("https://openrouter.ai/api/v1").length).toBeGreaterThan(0)
+    expect(await screen.findByText("Ollama")).toBeInTheDocument()
+    expect(screen.getAllByText("https://ollama.com/v1").length).toBeGreaterThan(0)
     expect(screen.getAllByText("sk-…abcd").length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole("button", { name: "Manage provider" }))
-    await waitFor(() => expect(adminApi.llmModels).toHaveBeenCalledWith("openrouter", { limit: 25 }))
-    expect(await screen.findByText("Free Router")).toBeInTheDocument()
+    await waitFor(() => expect(adminApi.llmModels).toHaveBeenCalledWith("ollama", { limit: 25 }))
+    expect((await screen.findAllByText("qwen3:8b")).length).toBeGreaterThan(0)
     expect(screen.getByLabelText("Search")).toBeInTheDocument()
-    expect(screen.getByLabelText("Price")).toBeInTheDocument()
-    expect(screen.getByLabelText("Author")).toBeInTheDocument()
+    expect(screen.getByLabelText("Family")).toBeInTheDocument()
+    expect(screen.getByLabelText("Format")).toBeInTheDocument()
+    expect(screen.getByLabelText("Quantization")).toBeInTheDocument()
     expect(screen.getByLabelText("Sort")).toBeInTheDocument()
-    expect(screen.getByLabelText("Rank")).toBeInTheDocument()
-    expect(screen.getByLabelText("Recommend for")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Rank")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Recommend for")).not.toBeInTheDocument()
     const modelInput = screen.getByLabelText("Model ID") as HTMLInputElement
     expect(modelInput).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Probe" }))
-    await waitFor(() => expect(adminApi.probeLLMProvider).toHaveBeenCalledWith("openrouter"))
+    await waitFor(() => expect(adminApi.probeLLMProvider).toHaveBeenCalledWith("ollama"))
 
     await user.clear(modelInput)
     await user.type(modelInput, "vendor/model-a")
     await user.click(screen.getByRole("button", { name: "Set model" }))
-    await waitFor(() => expect(adminApi.setLLMProviderModel).toHaveBeenCalledWith("openrouter", "vendor/model-a"))
+    await waitFor(() => expect(adminApi.setLLMProviderModel).toHaveBeenCalledWith("ollama", "vendor/model-a"))
 
     await user.type(screen.getByLabelText("Search"), "vendor")
     await user.click(screen.getByRole("button", { name: "Apply model query" }))
-    await waitFor(() => expect(adminApi.llmModels).toHaveBeenLastCalledWith("openrouter", expect.objectContaining({
+    await waitFor(() => expect(adminApi.llmModels).toHaveBeenLastCalledWith("ollama", expect.objectContaining({
       search: "vendor",
       sort: ["id:asc"],
       offset: 0,
@@ -102,7 +103,7 @@ describe("LLMPage", () => {
     await user.type(keyInput, secret)
     await user.click(screen.getByRole("button", { name: "Set key" }))
 
-    await waitFor(() => expect(adminApi.setLLMCredential).toHaveBeenCalledWith("openrouter", secret))
+    await waitFor(() => expect(adminApi.setLLMCredential).toHaveBeenCalledWith("ollama", secret))
     expect(keyInput.value).toBe("")
     expect(vi.mocked(adminApi.llmStatus).mock.calls.length).toBeGreaterThanOrEqual(2)
     expect(vi.mocked(adminApi.llmProviders).mock.calls.length).toBeGreaterThanOrEqual(2)

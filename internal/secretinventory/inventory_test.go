@@ -30,7 +30,7 @@ func TestInventoryCoversManagedSecretFamiliesWithoutValues(t *testing.T) {
 		{Name: secretstore.AccountName(secretstore.DomainCluster, "relay-token"), Value: "relay-secret"},
 		{Name: telegramcredential.BotTokenSecretName, Value: "telegram-secret"},
 		{Name: typesafeintegration.APIKeySecretName, Value: "typesafe-secret"},
-		{Name: mustLLMCredentialAccount(t, "openrouter"), Value: "llm-secret"},
+		{Name: mustLLMCredentialAccount(t, "ollama"), Value: "llm-secret"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestRecognizedAccountUsesCanonicalRegistrationBoundaries(t *testing.T) {
 		secretstore.AccountName(secretstore.DomainCluster, "relay-token"),
 		telegramcredential.BotTokenSecretName,
 		typesafeintegration.APIKeySecretName,
-		mustLLMCredentialAccount(t, "openrouter"),
+		mustLLMCredentialAccount(t, "ollama"),
 	}
 	for _, account := range known {
 		if !RecognizedAccount(account) {

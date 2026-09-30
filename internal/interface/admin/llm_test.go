@@ -58,8 +58,8 @@ func TestLLMAdminRoutesConvergeWithCanonicalStateAndProtectCredentials(t *testin
 		t.Fatalf("Admin/browser state diverged from canonical LLMService:\nadmin=%#v\ncanonical=%#v", updated, canonical)
 	}
 
-	coreModel := adminJSON[application.LLMProviderResult](t, handler, http.MethodPut, "/api/llm/providers/openrouter", `{"model":"openrouter/auto"}`)
-	if coreModel.Model != "openrouter/auto" || !coreModel.Core {
+	coreModel := adminJSON[application.LLMProviderResult](t, handler, http.MethodPut, "/api/llm/providers/ollama", `{"model":"ollama/auto"}`)
+	if coreModel.Model != "ollama/auto" || !coreModel.Core {
 		t.Fatalf("core model update=%#v", coreModel)
 	}
 
@@ -95,7 +95,7 @@ func TestLLMAdminRoutesConvergeWithCanonicalStateAndProtectCredentials(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	failedDelete := adminRequest(t, handler, http.MethodDelete, "/api/llm/providers/openrouter", "")
+	failedDelete := adminRequest(t, handler, http.MethodDelete, "/api/llm/providers/ollama", "")
 	if failedDelete.Code == http.StatusOK {
 		t.Fatalf("core provider deletion unexpectedly succeeded: %s", failedDelete.Body.String())
 	}
@@ -107,7 +107,7 @@ func TestLLMAdminRoutesConvergeWithCanonicalStateAndProtectCredentials(t *testin
 		t.Fatal("failed core removal mutated canonical provider catalog")
 	}
 
-	adminJSON[application.LLMProviderResult](t, handler, http.MethodPost, "/api/llm/providers/openrouter/select", "")
+	adminJSON[application.LLMProviderResult](t, handler, http.MethodPost, "/api/llm/providers/ollama/select", "")
 	removed := adminJSON[application.LLMProviderRemoveResult](t, handler, http.MethodDelete, "/api/llm/providers/browser-fixture", "")
 	if !removed.Removed || string(removed.ProviderID) != "browser-fixture" {
 		t.Fatalf("remove result=%#v", removed)

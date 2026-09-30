@@ -26,34 +26,28 @@ import (
 func TestLLMCLICommandTreeReachesCanonicalOperations(t *testing.T) {
 	root := newRootCommand()
 	tests := map[string]capability.ID{
-		"llm status":               capability.LLMStatus,
-		"llm use":                  capability.LLMProviderSelect,
-		"llm models":               capability.LLMProviderModels,
-		"llm probe":                capability.LLMProviderProbe,
-		"llm provider list":        capability.LLMProviderList,
-		"llm provider show":        capability.LLMProviderGet,
-		"llm provider add":         capability.LLMProviderAdd,
-		"llm provider configure":   capability.LLMProviderConfigure,
-		"llm provider remove":      capability.LLMProviderRemove,
-		"llm provider key set":     capability.LLMProviderCredentialSet,
-		"llm provider key clear":   capability.LLMProviderCredentialClear,
-		"llm openrouter status":    capability.LLMProviderGet,
-		"llm openrouter use":       capability.LLMProviderSelect,
-		"llm openrouter models":    capability.LLMProviderModels,
-		"llm openrouter model":     capability.LLMProviderConfigure,
-		"llm openrouter key set":   capability.LLMProviderCredentialSet,
-		"llm openrouter key clear": capability.LLMProviderCredentialClear,
-		"llm ollama status":        capability.LLMProviderGet,
-		"llm ollama use":           capability.LLMProviderSelect,
-		"llm ollama models":        capability.LLMProviderModels,
-		"llm ollama mode":          capability.LLMProviderConfigure,
-		"llm ollama model":         capability.LLMProviderConfigure,
-		"llm ollama key set":       capability.LLMProviderCredentialSet,
-		"llm ollama key clear":     capability.LLMProviderCredentialClear,
-		"request explain":          capability.RequestExplain,
-		"request explain retry":    capability.RequestExplain,
-		"request explain status":   capability.RequestExplainStatus,
-		"request explain mode":     capability.ConfigSet,
+		"llm status":             capability.LLMStatus,
+		"llm use":                capability.LLMProviderSelect,
+		"llm models":             capability.LLMProviderModels,
+		"llm probe":              capability.LLMProviderProbe,
+		"llm provider list":      capability.LLMProviderList,
+		"llm provider show":      capability.LLMProviderGet,
+		"llm provider add":       capability.LLMProviderAdd,
+		"llm provider configure": capability.LLMProviderConfigure,
+		"llm provider remove":    capability.LLMProviderRemove,
+		"llm provider key set":   capability.LLMProviderCredentialSet,
+		"llm provider key clear": capability.LLMProviderCredentialClear,
+		"llm ollama status":      capability.LLMProviderGet,
+		"llm ollama use":         capability.LLMProviderSelect,
+		"llm ollama models":      capability.LLMProviderModels,
+		"llm ollama mode":        capability.LLMProviderConfigure,
+		"llm ollama model":       capability.LLMProviderConfigure,
+		"llm ollama key set":     capability.LLMProviderCredentialSet,
+		"llm ollama key clear":   capability.LLMProviderCredentialClear,
+		"request explain":        capability.RequestExplain,
+		"request explain retry":  capability.RequestExplain,
+		"request explain status": capability.RequestExplainStatus,
+		"request explain mode":   capability.ConfigSet,
 	}
 	for path, want := range tests {
 		command := commandByRelativePath(root, path)
@@ -100,7 +94,7 @@ func TestLLMCLICustomProviderCRUDAndCoreRemovalProtection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, stderr, removeErr := executeLLMCLI(root, nil, "llm", "provider", "remove", "openrouter")
+	_, stderr, removeErr := executeLLMCLI(root, nil, "llm", "provider", "remove", "ollama")
 	if removeErr == nil || !strings.Contains(strings.ToLower(removeErr.Error()+" "+stderr), "core provider") {
 		t.Fatalf("core remove err=%v stderr=%q", removeErr, stderr)
 	}
@@ -112,7 +106,7 @@ func TestLLMCLICustomProviderCRUDAndCoreRemovalProtection(t *testing.T) {
 		t.Fatalf("core removal mutated catalog: before=%#v after=%#v", before, after)
 	}
 
-	if _, _, err := executeLLMCLI(root, nil, "llm", "use", "openrouter", "--json"); err != nil {
+	if _, _, err := executeLLMCLI(root, nil, "llm", "use", "ollama", "--json"); err != nil {
 		t.Fatal(err)
 	}
 	stdout, _, err = executeLLMCLI(root, nil, "llm", "provider", "remove", "fixture-provider", "--json")
@@ -128,7 +122,7 @@ func TestLLMCLICustomProviderCRUDAndCoreRemovalProtection(t *testing.T) {
 func TestLLMCLIProtectedAPIKeyNeverAppearsInArgumentsOutputOrConfigRoot(t *testing.T) {
 	root := isolateLLMCLI(t)
 	const secret = "sk-or-v1-cli-secret-that-must-never-leak"
-	args := []string{"llm", "provider", "key", "set", "openrouter", "--json"}
+	args := []string{"llm", "provider", "key", "set", "ollama", "--json"}
 	for _, arg := range args {
 		if strings.Contains(arg, secret) {
 			t.Fatalf("secret entered argv: %q", args)
@@ -156,7 +150,7 @@ func TestLLMCLIProtectedAPIKeyNeverAppearsInArgumentsOutputOrConfigRoot(t *testi
 	const envName = "CODEMCP_TEST_LLM_API_KEY"
 	const envSecret = "sk-or-v1-env-secret-that-must-never-leak"
 	t.Setenv(envName, envSecret)
-	stdout, stderr, err = executeLLMCLI(root, nil, "llm", "openrouter", "key", "set", "--from-env", envName, "--json")
+	stdout, stderr, err = executeLLMCLI(root, nil, "llm", "ollama", "key", "set", "--from-env", envName, "--json")
 	combined = stdout + "\n" + stderr
 	if err != nil {
 		combined += "\n" + err.Error()
@@ -174,7 +168,7 @@ func TestLLMCLIProtectedAPIKeyNeverAppearsInArgumentsOutputOrConfigRoot(t *testi
 
 func TestLLMCLICoreRemovalFailureHasActionableRemediation(t *testing.T) {
 	root := isolateLLMCLI(t)
-	stdout, stderr, err := executeLLMCLI(root, nil, "llm", "provider", "remove", "openrouter")
+	stdout, stderr, err := executeLLMCLI(root, nil, "llm", "provider", "remove", "ollama")
 	if err == nil {
 		t.Fatal("core provider removal unexpectedly succeeded")
 	}
@@ -217,11 +211,11 @@ func TestLLMCLIProviderAndModelCompletionNeverCallRemoteEndpoint(t *testing.T) {
 	if !containsCompletion(values, "cached-model") {
 		t.Fatalf("model completion=%v", values)
 	}
-	model := commandByRelativePath(completionRoot, "llm openrouter model")
+	model := commandByRelativePath(completionRoot, "llm ollama model")
 	if model == nil || model.ValidArgsFunction == nil {
-		t.Fatal("openrouter model completion is unavailable")
+		t.Fatal("ollama model completion is unavailable")
 	}
-	_, _ = model.ValidArgsFunction(model, nil, "openrouter/")
+	_, _ = model.ValidArgsFunction(model, nil, "ollama/")
 	if got := requests.Load(); got != 0 {
 		t.Fatalf("completion performed %d remote request(s)", got)
 	}
@@ -229,7 +223,7 @@ func TestLLMCLIProviderAndModelCompletionNeverCallRemoteEndpoint(t *testing.T) {
 
 func TestLLMCLIModelQueryGrammarIsSharedAcrossProviderNamespaces(t *testing.T) {
 	root := newRootCommand()
-	for _, path := range []string{"llm models", "llm openrouter models", "llm ollama models"} {
+	for _, path := range []string{"llm models", "llm ollama models", "llm ollama models"} {
 		command := commandByRelativePath(root, path)
 		if command == nil {
 			t.Fatalf("command %q missing", path)
@@ -268,7 +262,7 @@ func TestLLMCLIModelQueryEnumCompletionsAreLocal(t *testing.T) {
 		if !ok {
 			t.Fatalf("--%s completion missing", flag)
 		}
-		values, directive := completion(models, []string{"openrouter"}, "")
+		values, directive := completion(models, []string{"ollama"}, "")
 		if directive != cobra.ShellCompDirectiveNoFileComp {
 			t.Fatalf("--%s directive=%v", flag, directive)
 		}

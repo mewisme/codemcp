@@ -210,7 +210,7 @@ func TestUniversalDynamicSettingSelectorsAreUnambiguous(t *testing.T) {
 		{key: "upstream.servers[docs.v2].enabled", template: "upstream.servers[<id>].enabled", id: "docs.v2"},
 		{key: "upstream.servers[docs%2Ev2].auth.type", template: "upstream.servers[<id>].auth.type", id: "docs.v2"},
 		{key: "tunnel.managed[tun_demo].description", template: "tunnel.managed[<id>].description", id: "tun_demo"},
-		{key: "llm.providers[openrouter].model", template: "llm.providers[<id>].model", id: "openrouter"},
+		{key: "llm.providers[ollama].model", template: "llm.providers[<id>].model", id: "ollama"},
 		{key: "llm.providers[acme%2Ev2].base_url", template: "llm.providers[<id>].base_url", id: "acme.v2"},
 	}
 	for _, test := range tests {

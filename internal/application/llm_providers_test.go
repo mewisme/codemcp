@@ -68,7 +68,7 @@ func TestCustomProviderCRUDSelectionAndCredentialLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Providers) != 5 || catalog.ActiveProvider != llm.OpenRouterID {
+	if len(catalog.Providers) != 4 || catalog.ActiveProvider != llm.OllamaID {
 		t.Fatalf("catalog=%#v", catalog)
 	}
 
@@ -114,7 +114,7 @@ func TestCustomProviderCRUDSelectionAndCredentialLifecycle(t *testing.T) {
 	if active.ID != "beta" || active.Model != "beta-model" {
 		t.Fatalf("active=%#v", active)
 	}
-	if err := service.RemoveProvider(t.Context(), string(llm.OpenRouterID)); !llm.IsCategory(err, llm.ErrorCoreInvariant) {
+	if err := service.RemoveProvider(t.Context(), string(llm.OllamaID)); !llm.IsCategory(err, llm.ErrorCoreInvariant) {
 		t.Fatalf("core removal err=%v", err)
 	}
 	if _, err := service.AddCustomProvider(t.Context(), string(llm.OllamaID), CustomLLMProviderConfig{
@@ -171,7 +171,7 @@ func TestConfigureCustomProviderIsAtomicAndPreservesSelectionAndCredentialOnFail
 	if _, err := service.SelectProvider(t.Context(), "switchable"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.SelectProvider(t.Context(), string(llm.OpenRouterID)); err != nil {
+	if _, err := service.SelectProvider(t.Context(), string(llm.OllamaID)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.SelectProvider(t.Context(), "switchable"); err != nil {

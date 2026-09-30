@@ -104,7 +104,7 @@ describe("RequestApprovalHost", () => {
         const path = requestPath(input)
         if (path === "/api/requests/stream") return approvalStream([pending])
         if (path === "/api/requests/explain/status")
-          return json({ mode: "auto", available: true, configured: true, readiness: "ready", active_provider: "openrouter", model: "openrouter/free" })
+          return json({ mode: "auto", available: true, configured: true, readiness: "ready", active_provider: "ollama", model: "qwen3:8b" })
         if (path === "/api/requests/req_explain_failure/explanation")
           return new Response("explanation provider unavailable", { status: 503 })
         throw new Error(`Unhandled test request: ${path}`)

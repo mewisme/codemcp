@@ -11,17 +11,13 @@ func TestDefaultCatalogLocksCoreIdentityAndSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if value.ActiveProvider != OpenRouterID {
+	if value.ActiveProvider != OllamaID {
 		t.Fatalf("active provider = %q", value.ActiveProvider)
 	}
-	if len(value.Providers) != 2 {
+	if len(value.Providers) != 1 {
 		t.Fatalf("providers = %#v", value.Providers)
 	}
-	openrouter := value.Providers[0]
-	if openrouter.ID != OpenRouterID || openrouter.CoreKind != CoreOpenRouter || openrouter.Model != "openrouter/free" || openrouter.BaseURL != "https://openrouter.ai/api/v1" || openrouter.Protocol != ProtocolOpenAI || openrouter.AuthMode != AuthBearer {
-		t.Fatalf("openrouter = %#v", openrouter)
-	}
-	ollama := value.Providers[1]
+	ollama := value.Providers[0]
 	if ollama.ID != OllamaID || ollama.CoreKind != CoreOllama || ollama.BaseURL != OllamaCloudBaseURL || ollama.Protocol != ProtocolOpenAI || ollama.AuthMode != AuthBearer || ollama.Discovery != DiscoveryOllamaTags {
 		t.Fatalf("ollama = %#v", ollama)
 	}
@@ -33,36 +29,33 @@ func TestOllamaCoreDefaultsToCloudWithoutChangingActiveProvider(t *testing.T) {
 		t.Fatalf("Ollama defaults=%#v", provider)
 	}
 	catalog := DefaultCatalog()
-	if catalog.ActiveProvider != OpenRouterID {
+	if catalog.ActiveProvider != OllamaID {
 		t.Fatalf("default active provider=%q", catalog.ActiveProvider)
 	}
 }
 
-func TestOpenRouterCoreProfileIsCanonical(t *testing.T) {
-	provider := DefaultOpenRouter()
-	if provider.BaseURL != OpenRouterBaseURL || provider.Model != OpenRouterDefaultModel || provider.Protocol != ProtocolOpenAI || provider.AuthMode != AuthBearer || provider.Discovery != DiscoveryOpenAIModels || provider.CoreKind != CoreOpenRouter {
-		t.Fatalf("OpenRouter defaults=%#v", provider)
-	}
-	if provider.Capabilities == nil || !provider.Capabilities.StructuredOutput {
-		t.Fatalf("OpenRouter capabilities=%#v", provider.Capabilities)
+func TestOllamaCoreIdentityIsCanonical(t *testing.T) {
+	provider := DefaultOllama()
+	if provider.BaseURL != OllamaCloudBaseURL || provider.Protocol != ProtocolOpenAI || provider.AuthMode != AuthBearer || provider.Discovery != DiscoveryOllamaTags || provider.CoreKind != CoreOllama {
+		t.Fatalf("Ollama defaults=%#v", provider)
 	}
 	for name, mutate := range map[string]func(*Provider){
 		"protocol":  func(value *Provider) { value.Protocol = ProtocolAnthropic },
-		"auth":      func(value *Provider) { value.AuthMode = AuthNone },
+		"auth":      func(value *Provider) { value.AuthMode = AuthAPIKey },
 		"discovery": func(value *Provider) { value.Discovery = DiscoveryNone },
 	} {
 		t.Run(name, func(t *testing.T) {
-			value := DefaultOpenRouter()
+			value := DefaultOllama()
 			mutate(&value)
 			catalog := DefaultCatalog()
 			catalog.Providers[0] = value
 			if _, err := NormalizeCatalog(catalog); !IsCategory(err, ErrorCoreInvariant) {
-				t.Fatalf("OpenRouter core mutation err=%v", err)
+				t.Fatalf("Ollama core mutation err=%v", err)
 			}
 		})
 	}
 
-	value := DefaultOpenRouter()
+	value := DefaultOllama()
 	value.BaseURL = "https://router.example/v1"
 	value.Model = "vendor/user-model"
 	catalog := DefaultCatalog()
@@ -72,7 +65,7 @@ func TestOpenRouterCoreProfileIsCanonical(t *testing.T) {
 		t.Fatal(err)
 	}
 	if normalized.Providers[0].BaseURL != value.BaseURL || normalized.Providers[0].Model != value.Model {
-		t.Fatalf("OpenRouter endpoint/model override lost: %#v", normalized.Providers[0])
+		t.Fatalf("Ollama endpoint/model override lost: %#v", normalized.Providers[0])
 	}
 }
 
@@ -101,14 +94,14 @@ func TestCatalogRejectsDuplicateNormalizedIDs(t *testing.T) {
 
 func TestCustomProviderCannotClaimReservedOrCoreIdentity(t *testing.T) {
 	for _, value := range []Provider{
-		DefaultOpenRouter(),
+		DefaultOllama(),
 		{ID: "ollama", Name: "custom", Protocol: ProtocolOpenAI, BaseURL: "https://example.com/v1", AuthMode: AuthNone, Discovery: DiscoveryNone},
 	} {
 		if _, err := NormalizeCustomProvider(value); !IsCategory(err, ErrorReservedID) {
 			t.Fatalf("reserved provider %#v error = %v", value, err)
 		}
 	}
-	custom := Provider{ID: "acme", Name: "Acme", Protocol: ProtocolOpenAI, BaseURL: "https://example.com/v1", AuthMode: AuthBearer, Discovery: DiscoveryOpenAIModels, CoreKind: CoreOpenRouter}
+	custom := Provider{ID: "acme", Name: "Acme", Protocol: ProtocolOpenAI, BaseURL: "https://example.com/v1", AuthMode: AuthBearer, Discovery: DiscoveryOpenAIModels, CoreKind: CoreOllama}
 	if _, err := NormalizeCustomProvider(custom); !IsCategory(err, ErrorCoreInvariant) {
 		t.Fatalf("custom core claim error = %v", err)
 	}
@@ -119,9 +112,8 @@ func TestCoreIdentityCannotBeRenamedReclassifiedOrRemoved(t *testing.T) {
 		mutate   func(*Catalog)
 		category ErrorCategory
 	}{
-		"rename":     {mutate: func(value *Catalog) { value.Providers[0].Name = "Router" }, category: ErrorCoreInvariant},
-		"reclassify": {mutate: func(value *Catalog) { value.Providers[0].CoreKind = CoreOllama }, category: ErrorCoreInvariant},
-		"missing":    {mutate: func(value *Catalog) { value.Providers = value.Providers[1:] }, category: ErrorMissingCore},
+		"rename":  {mutate: func(value *Catalog) { value.Providers[0].Name = "Router" }, category: ErrorCoreInvariant},
+		"missing": {mutate: func(value *Catalog) { value.Providers = nil }, category: ErrorMissingCore},
 	} {
 		t.Run(name, func(t *testing.T) {
 			value := DefaultCatalog()
@@ -132,7 +124,7 @@ func TestCoreIdentityCannotBeRenamedReclassifiedOrRemoved(t *testing.T) {
 			}
 		})
 	}
-	if err := ValidateProviderRemoval(DefaultCatalog(), string(OpenRouterID)); !IsCategory(err, ErrorCoreInvariant) {
+	if err := ValidateProviderRemoval(DefaultCatalog(), string(OllamaID)); !IsCategory(err, ErrorCoreInvariant) {
 		t.Fatalf("core removal error = %v", err)
 	}
 }
@@ -165,7 +157,7 @@ func TestActiveCustomProviderMustBeDeselectedBeforeRemoval(t *testing.T) {
 	if err := ValidateProviderRemoval(value, "acme"); !IsCategory(err, ErrorActiveRemoval) {
 		t.Fatalf("active removal error = %v", err)
 	}
-	value.ActiveProvider = OpenRouterID
+	value.ActiveProvider = OllamaID
 	if err := ValidateProviderRemoval(value, "acme"); err != nil {
 		t.Fatalf("inactive custom removal = %v", err)
 	}
@@ -203,7 +195,7 @@ func TestProviderValidationRejectsMalformedProtocolAuthDiscoveryAndEndpoint(t *t
 }
 
 func TestProviderStatusSeparatesSelectionConfigurationAndReadiness(t *testing.T) {
-	status := ProviderStatus{ProviderID: OpenRouterID, Selected: true, Configured: true, Readiness: ReadinessDegraded}
+	status := ProviderStatus{ProviderID: OllamaID, Selected: true, Configured: true, Readiness: ReadinessDegraded}
 	if !status.Selected || !status.Configured || status.Readiness != ReadinessDegraded {
 		t.Fatalf("status = %#v", status)
 	}

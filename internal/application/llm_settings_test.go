@@ -37,7 +37,7 @@ func TestLLMSettingAliasesAndProviderSelectorsConverge(t *testing.T) {
 	if configured.Value != wantPreview || configured.Configured == nil || !*configured.Configured || strings.Contains(configured.Value, secret) {
 		t.Fatalf("configured credential presentation=%#v", configured)
 	}
-	scoped, err := service.Present(t.Context(), "llm.providers[openrouter].api_key")
+	scoped, err := service.Present(t.Context(), "llm.providers[ollama].api_key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,11 +48,11 @@ func TestLLMSettingAliasesAndProviderSelectorsConverge(t *testing.T) {
 	if _, err := service.Set(t.Context(), "llm.base_url", "https://router.example/v1"); err != nil {
 		t.Fatal(err)
 	}
-	scopedURL, err := service.Read(t.Context(), "llm.providers[openrouter].base_url")
+	scopedURL, err := service.Read(t.Context(), "llm.providers[ollama].base_url")
 	if err != nil || scopedURL.Value != "https://router.example/v1" {
 		t.Fatalf("scoped base URL=%#v err=%v", scopedURL, err)
 	}
-	if _, err := service.Set(t.Context(), "llm.providers[openrouter].model", "vendor/model"); err != nil {
+	if _, err := service.Set(t.Context(), "llm.providers[ollama].model", "vendor/model"); err != nil {
 		t.Fatal(err)
 	}
 	activeModel, err := service.Read(t.Context(), "llm.model")
@@ -89,17 +89,17 @@ func TestLLMSettingSelectorsResolveOnlyRegisteredProviders(t *testing.T) {
 	service := NewSettingService()
 	for _, key := range []string{
 		"llm.providers[missing].model",
-		"llm.providers[../openrouter].model",
-		"llm.providers[openrouter%2Fescape].model",
+		"llm.providers[../ollama].model",
+		"llm.providers[ollama%2Fescape].model",
 	} {
 		if _, err := service.Read(t.Context(), key); err == nil {
 			t.Fatalf("unsafe or unregistered selector resolved: %s", key)
 		}
 	}
-	if result, err := service.Read(t.Context(), "llm.providers[openrouter].core"); err != nil || result.Value != "true" {
+	if result, err := service.Read(t.Context(), "llm.providers[ollama].core"); err != nil || result.Value != "true" {
 		t.Fatalf("registered provider core setting=%#v err=%v", result, err)
 	}
-	if _, err := service.Set(t.Context(), "llm.providers[openrouter].core", "false"); err == nil {
+	if _, err := service.Set(t.Context(), "llm.providers[ollama].core", "false"); err == nil {
 		t.Fatal("derived core identity became writable")
 	}
 }
@@ -116,7 +116,7 @@ func TestLLMSecretPurgeAndUninitializeLeaveNoManagedCredential(t *testing.T) {
 	if err := PurgeStoredSecretsContext(t.Context(), root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := llm.LoadCredential(root, "openrouter"); !errors.Is(err, secretstore.ErrNotFound) {
+	if _, err := llm.LoadCredential(root, "ollama"); !errors.Is(err, secretstore.ErrNotFound) {
 		t.Fatalf("credential survived purge: %v", err)
 	}
 	if _, err := service.Set(t.Context(), "llm.api_key", secret); err != nil {
@@ -125,7 +125,7 @@ func TestLLMSecretPurgeAndUninitializeLeaveNoManagedCredential(t *testing.T) {
 	if err := UninitializeContext(t.Context(), root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := llm.LoadCredential(root, "openrouter"); !errors.Is(err, secretstore.ErrNotFound) {
+	if _, err := llm.LoadCredential(root, "ollama"); !errors.Is(err, secretstore.ErrNotFound) {
 		t.Fatalf("credential survived uninitialize: %v", err)
 	}
 	if _, err := os.Stat(llm.NewStore(root).Path()); !os.IsNotExist(err) {

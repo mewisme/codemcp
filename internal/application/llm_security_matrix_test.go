@@ -71,7 +71,7 @@ func TestLLMConcurrentMutationMatrixPreservesCoreProvidersAndSingleActiveSelecti
 		}
 	}
 
-	selectionTargets := []string{string(llm.OpenRouterID), string(llm.OllamaID), "selected-custom", "configured-custom"}
+	selectionTargets := []string{string(llm.OllamaID), string(llm.OllamaID), "selected-custom", "configured-custom"}
 	for worker := 0; worker < 6; worker++ {
 		service := services[worker]
 		worker := worker
@@ -150,7 +150,7 @@ func TestLLMConcurrentMutationMatrixPreservesCoreProvidersAndSingleActiveSelecti
 			activeExists = true
 		}
 	}
-	if counts[llm.OpenRouterID] != 1 || counts[llm.OllamaID] != 1 {
+	if counts[llm.OllamaID] != 1 {
 		t.Fatalf("core provider permanence violated: counts=%#v catalog=%#v", counts, catalog)
 	}
 	if !activeExists {
@@ -240,7 +240,7 @@ func TestLLMOllamaFreshCloudDefaultAndPersistedLocalOrCustomStateSurviveReopen(t
 	if local.BaseURL != llm.OllamaLocalBaseURL || local.AuthMode != llm.AuthNone || local.Discovery != llm.DiscoveryOllamaTags {
 		t.Fatalf("persisted local Ollama state was not preserved: %#v", local)
 	}
-	if active, err := reopened.ActiveProvider(t.Context()); err != nil || active.ID != llm.OpenRouterID {
+	if active, err := reopened.ActiveProvider(t.Context()); err != nil || active.ID != llm.OllamaID {
 		t.Fatalf("Ollama mode persistence changed active provider: %#v err=%v", active, err)
 	}
 
@@ -286,7 +286,7 @@ func TestLLMCredentialSecurityMatrixKeepsRawSecretOutOfResultsErrorsTraceAndActi
 
 	result, err := dispatcher.Dispatch(ctx, DispatchRequest{
 		Operation: capability.LLMProviderCredentialSet,
-		Input:     LLMProviderCredentialInput{ID: string(llm.OpenRouterID), APIKey: secret},
+		Input:     LLMProviderCredentialInput{ID: string(llm.OllamaID), APIKey: secret},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +295,7 @@ func TestLLMCredentialSecurityMatrixKeepsRawSecretOutOfResultsErrorsTraceAndActi
 	if !ok || !credential.Configured || credential.Preview == "" || strings.Contains(credential.Preview, secret) {
 		t.Fatalf("credential result=%#v", result.Value)
 	}
-	stored, err := llm.LoadCredential(root, string(llm.OpenRouterID))
+	stored, err := llm.LoadCredential(root, string(llm.OllamaID))
 	if err != nil || stored != secret {
 		t.Fatalf("canonical secret store value=%q err=%v", stored, err)
 	}

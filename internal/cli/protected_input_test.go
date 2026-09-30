@@ -226,7 +226,7 @@ func TestWritableManagedSecretInventoryHasProtectedConfigSetPath(t *testing.T) {
 		writableSecrets++
 		key := spec.Key
 		if spec.Selector != nil {
-			key = strings.Replace(spec.Selector.Template, "<id>", "openrouter", 1)
+			key = strings.Replace(spec.Selector.Template, "<id>", "ollama", 1)
 		}
 		stdout, stderr, err := executeProtectedInputCLI(root, strings.NewReader(secret+"\n"), "config", "set", key)
 		if err != nil {
@@ -287,9 +287,9 @@ func TestDedicatedManagedSecretSettersExposeProtectedNoValueAndEnvironmentPaths(
 		{path: "integration typesafe key set"},
 		{path: "tunnel key set"},
 		{path: "tunnel admin key set"},
-		{path: "llm openrouter key set"},
 		{path: "llm ollama key set"},
-		{path: "llm provider key set", args: []string{"openrouter"}},
+		{path: "llm ollama key set"},
+		{path: "llm provider key set", args: []string{"ollama"}},
 	}
 	for _, tc := range tests {
 		command := commandByRelativePath(root, tc.path)

@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
@@ -14,10 +13,8 @@ import (
 
 type settingsTestAPI struct {
 	screens     []Screen
-	pickerCalls []int
 	richOptions []RichMessageOptions
 	deleted     []int64
-	pickerErr   error
 }
 
 func (*settingsTestAPI) GetMe(context.Context) (User, error) {
@@ -30,13 +27,6 @@ func (api *settingsTestAPI) SendScreen(_ context.Context, _ int64, screen Screen
 }
 func (*settingsTestAPI) EditScreen(context.Context, int64, int64, Screen) error     { return nil }
 func (*settingsTestAPI) AnswerCallback(context.Context, string, string, bool) error { return nil }
-func (api *settingsTestAPI) SendUserPicker(_ context.Context, _ int64, requestID int, _ string) (int64, error) {
-	api.pickerCalls = append(api.pickerCalls, requestID)
-	if api.pickerErr != nil {
-		return 0, api.pickerErr
-	}
-	return 99, nil
-}
 func (api *settingsTestAPI) SendRichMessage(_ context.Context, _ int64, _ Screen, options RichMessageOptions) (int64, error) {
 	api.richOptions = append(api.richOptions, options)
 	return 100, nil
@@ -168,107 +158,21 @@ func TestIntegrationsScreenKeepsEveryIntegrationReachable(t *testing.T) {
 	}
 }
 
-func TestUserSelectionStoreRejectsForeignAndReplay(t *testing.T) {
-	store := NewUserSelectionStore(time.Minute)
-	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 7}
-	if err := store.Put(owner, 77, "42"); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := store.Match(ViewOwner{ChatID: 42, UserID: 43, Generation: 7}, 77); ok {
-		t.Fatal("foreign user consumed picker response")
-	}
-	if _, ok := store.Match(ViewOwner{ChatID: 42, UserID: 42, Generation: 8}, 77); ok {
-		t.Fatal("foreign runtime generation consumed picker response")
-	}
-	if state, ok := store.Match(owner, 77); !ok || state.CurrentRaw != "42" {
-		t.Fatalf("valid picker response state=%#v ok=%v", state, ok)
-	}
-	if _, ok := store.Match(owner, 77); ok {
-		t.Fatal("replayed picker response was accepted")
-	}
-}
-
-func TestBeginUserPickerBindsNativeRequestToOwnerAndGeneration(t *testing.T) {
-	api := &settingsTestAPI{}
-	runtime := &Runtime{api: api, generation: 7, health: Health{Running: true, Enabled: true, AuthorizationConfigured: true}}
-	ui, err := NewInterface(InterfaceOptions{Runtime: runtime, Dispatcher: &domainTestDispatcher{}})
+func TestAuthorizedUsersUsesManualIDInputOnly(t *testing.T) {
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{
+		capability.ConfigGet: application.SettingResult{Value: "42"},
+	}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+	screen, err := ui.authorizedUsersScreen(t.Context(), owner)
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 7}
-	if err := ui.beginUserPicker(t.Context(), owner, ActionState{ExpectedVersion: "42"}); err != nil {
-		t.Fatal(err)
+	labels := keyboardLabels(screen.Keyboard)
+	if !strings.Contains(labels, "Add by ID") {
+		t.Fatalf("manual authorization action missing: %s", labels)
 	}
-	if len(api.pickerCalls) != 1 {
-		t.Fatalf("native picker calls=%#v", api.pickerCalls)
-	}
-	requestID := api.pickerCalls[0]
-	if _, ok := ui.userSelections.Match(ViewOwner{ChatID: 42, UserID: 42, Generation: 8}, requestID); ok {
-		t.Fatal("picker response from stale runtime generation was accepted")
-	}
-	if state, ok := ui.userSelections.Match(owner, requestID); !ok || state.CurrentRaw != "42" {
-		t.Fatalf("bound picker state=%#v ok=%v", state, ok)
-	}
-}
-
-func TestUserPickerFallsBackToBoundManualConfirmation(t *testing.T) {
-	api := &settingsTestAPI{pickerErr: context.Canceled}
-	runtime := &Runtime{api: api, generation: 7, health: Health{Running: true, Enabled: true, AuthorizationConfigured: true}}
-	ui, err := NewInterface(InterfaceOptions{Runtime: runtime, Dispatcher: &domainTestDispatcher{}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 7}
-	state := ActionState{
-		Route: RouteOperation, Back: RouteAuthorizedUsers, Operation: capability.ConfigSet,
-		ResourceID: "telegram.allowed_user_ids", ExpectedVersion: "42", InputKind: inputTelegramUserPicker,
-	}
-	if err := ui.beginUserPicker(t.Context(), owner, state); err != nil {
-		t.Fatal(err)
-	}
-	if len(api.pickerCalls) != 1 || len(api.richOptions) != 1 {
-		t.Fatalf("picker calls=%#v rich prompts=%#v", api.pickerCalls, api.richOptions)
-	}
-	pending, ok := ui.inputs.Match(owner, Message{
-		MessageID: 101, Chat: Chat{ID: 42, Type: "private"}, From: &User{ID: 42}, Text: "99",
-		ReplyToMessage: &Message{MessageID: 100},
-	})
-	if !ok || pending.Action == nil || pending.Action.InputKind != inputTelegramUserManual || !pending.Action.ForceConfirm {
-		t.Fatalf("manual fallback pending=%#v ok=%v", pending, ok)
-	}
-}
-
-func TestUsersSharedOnlyCreatesConfirmationProposal(t *testing.T) {
-	api := &settingsTestAPI{}
-	runtime := &Runtime{
-		api: api, generation: 7,
-		health: Health{Running: true, Enabled: true, AuthorizationConfigured: true},
-	}
-	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{}}
-	ui, err := NewInterface(InterfaceOptions{Runtime: runtime, Dispatcher: dispatcher})
-	if err != nil {
-		t.Fatal(err)
-	}
-	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 7}
-	if err := ui.userSelections.Put(owner, 88, "42"); err != nil {
-		t.Fatal(err)
-	}
-	ui.handleUsersShared(t.Context(), Update{Message: &Message{
-		Chat: Chat{ID: 42, Type: "private"}, From: &User{ID: 42}, MessageID: 10,
-		UsersShared: &UsersShared{RequestID: 88, Users: []SharedUser{{UserID: 99, Username: "candidate"}}},
-	}})
-	if len(dispatcher.calls) != 0 {
-		t.Fatalf("user selection mutated settings before confirmation: %#v", dispatcher.calls)
-	}
-	if len(api.screens) != 1 || !strings.Contains(RichFallback(api.screens[0].Rich).Text, "Selection is only a proposal") {
-		t.Fatalf("proposal confirmation screen=%#v", api.screens)
-	}
-	ui.handleUsersShared(t.Context(), Update{Message: &Message{
-		Chat: Chat{ID: 42, Type: "private"}, From: &User{ID: 42}, MessageID: 11,
-		UsersShared: &UsersShared{RequestID: 88, Users: []SharedUser{{UserID: 99}}},
-	}})
-	if len(api.screens) != 1 || len(dispatcher.calls) != 0 {
-		t.Fatal("replayed UsersShared produced a second proposal or mutation")
+	if strings.Contains(strings.ToLower(labels), "select user") {
+		t.Fatalf("native user selection action remains: %s", labels)
 	}
 }
 
@@ -343,7 +247,7 @@ func TestWritableManagedSecretInventoryUsesProtectedTelegramInputState(t *testin
 		count++
 		key := spec.Key
 		if spec.Selector != nil {
-			key = strings.Replace(spec.Selector.Template, "<id>", "openrouter", 1)
+			key = strings.Replace(spec.Selector.Template, "<id>", "ollama", 1)
 			spec.Key = key
 		}
 		configured := true

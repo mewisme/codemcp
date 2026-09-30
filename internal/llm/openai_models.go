@@ -1,54 +1,12 @@
 package llm
 
 import (
-	"context"
-	"net/http"
 	"sort"
 	"strings"
 	"time"
 )
 
-const maxOpenRouterSupportedParameters = 128
-
-func (c *Client) discoverOpenRouterModels(ctx context.Context, provider Provider) ([]Model, error) {
-	credential, err := c.credentialFor(ctx, provider, AuthBearer)
-	if err != nil {
-		return nil, err
-	}
-	headers := make(http.Header)
-	headers.Set("Authorization", "Bearer "+credential)
-	raw, err := c.doJSON(ctx, http.MethodGet, provider.BaseURL+"/models", nil, headers)
-	if err != nil {
-		return nil, err
-	}
-	var response openAIModelListResponse
-	if err := decodeJSONResponse(raw, &response); err != nil {
-		return nil, err
-	}
-	if len(response.Data) > MaxDiscoveredModels {
-		return nil, NewError(ErrorInvalidResponse, "models", "provider returned too many models")
-	}
-	models := make([]Model, 0, len(response.Data))
-	seen := make(map[string]struct{}, len(response.Data))
-	for _, item := range response.Data {
-		id := strings.TrimSpace(item.ID)
-		if id == "" || len(id) > MaxModelIDBytes {
-			return nil, NewError(ErrorInvalidResponse, "models", "provider returned an invalid model id")
-		}
-		if _, exists := seen[id]; exists {
-			continue
-		}
-		seen[id] = struct{}{}
-		model, err := modelFromOpenAICompatibleItem(item)
-		if err != nil {
-			return nil, err
-		}
-		model.CapabilitiesKnown = true
-		model.FreeKnown = model.PricingKnown
-		models = append(models, model)
-	}
-	return models, nil
-}
+const maxSupportedParameters = 128
 
 func modelFromOpenAICompatibleItem(item openAIModelItem) (Model, error) {
 	id := strings.TrimSpace(item.ID)
@@ -75,14 +33,14 @@ func modelFromOpenAICompatibleItem(item openAIModelItem) (Model, error) {
 		model.CompletionPrice = strings.TrimSpace(item.Pricing.Completion)
 		model.PricingKnown = model.PromptPrice != "" || model.CompletionPrice != ""
 		model.FreeKnown = model.PricingKnown
-		model.Free = model.PricingKnown && isOpenRouterZeroPrice(model.PromptPrice) && isOpenRouterZeroPrice(model.CompletionPrice)
+		model.Free = model.PricingKnown && isZeroPrice(model.PromptPrice) && isZeroPrice(model.CompletionPrice)
 	}
-	model.SupportedParameters = normalizeOpenRouterSupportedParameters(item.SupportedParameters)
+	model.SupportedParameters = normalizeSupportedParameters(item.SupportedParameters)
 	if item.SupportedParameters != nil {
 		model.CapabilitiesKnown = true
 	}
-	model.SupportsStructuredOutput = containsOpenRouterParameter(model.SupportedParameters, "structured_outputs")
-	model.Capabilities = capabilitiesFromSupportedParameters(model.SupportedParameters)
+	model.SupportsStructuredOutput = containsParameter(item.SupportedParameters, "structured_outputs")
+	model.Capabilities = capabilitiesFromSupportedParameters(item.SupportedParameters)
 	if item.Architecture != nil {
 		model.ModalitiesKnown = true
 		model.InputModalities = normalizeModelMetadataList(item.Architecture.InputModalities, 32)
@@ -147,11 +105,11 @@ func normalizeModelMetadataList(values []string, limit int) []string {
 	return result
 }
 
-func normalizeOpenRouterSupportedParameters(values []string) []string {
+func normalizeSupportedParameters(values []string) []string {
 	if len(values) == 0 {
 		return nil
 	}
-	result := make([]string, 0, min(len(values), maxOpenRouterSupportedParameters))
+	result := make([]string, 0, min(len(values), maxSupportedParameters))
 	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
@@ -163,14 +121,14 @@ func normalizeOpenRouterSupportedParameters(values []string) []string {
 		}
 		seen[value] = struct{}{}
 		result = append(result, value)
-		if len(result) == maxOpenRouterSupportedParameters {
+		if len(result) == maxSupportedParameters {
 			break
 		}
 	}
 	return result
 }
 
-func containsOpenRouterParameter(values []string, target string) bool {
+func containsParameter(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {
 			return true
@@ -179,7 +137,7 @@ func containsOpenRouterParameter(values []string, target string) bool {
 	return false
 }
 
-func isOpenRouterZeroPrice(value string) bool {
+func isZeroPrice(value string) bool {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return false

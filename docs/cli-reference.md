@@ -97,7 +97,6 @@ cm
 │   ├── models
 │   ├── probe
 │   ├── provider
-│   ├── openrouter
 │   └── ollama
 ├── mcp
 │   ├── http
@@ -210,7 +209,7 @@ Approval Explain is an optional, non-authoritative LLM aid for reviewers. Config
 
 ## LLM providers
 
-The `cm llm` tree manages the canonical provider catalog, active selection, model discovery/querying, readiness probes, and managed credentials. OpenRouter and Ollama are permanent core providers; custom OpenAI- and Anthropic-compatible providers can be added independently. See [LLM providers](llm.md) for complete setup, protected credential input, Ollama local/Cloud behavior, and model-query controls.
+The `cm llm` tree manages the canonical provider catalog, active selection, model discovery/querying, readiness probes, and managed credentials. Ollama is the permanent default core provider; custom OpenAI- and Anthropic-compatible providers can be added independently. See [LLM providers](llm.md) for complete setup, protected credential input, Ollama local/Cloud behavior, and model-query controls.
 
 ## TUI Command Center
 

@@ -11,17 +11,13 @@ import (
 )
 
 func TestTelegramLLMNavigationUsesCanonicalStatusAndProviderList(t *testing.T) {
-	openrouter := application.LLMProviderResult{
-		ID: llm.OpenRouterID, Name: "OpenRouter", Model: "openrouter/free", Selected: true, Core: true,
-		CoreKind: llm.CoreOpenRouter, Readiness: llm.ReadinessReady,
-	}
 	ollama := application.LLMProviderResult{
-		ID: llm.OllamaID, Name: "Ollama", Model: "gpt-oss", Core: true, CoreKind: llm.CoreOllama,
-		Readiness: llm.ReadinessUnavailable, Reason: "provider unavailable",
+		ID: llm.OllamaID, Name: "Ollama", Model: "qwen3:8b", Selected: true, Core: true,
+		CoreKind: llm.CoreOllama, Readiness: llm.ReadinessReady,
 	}
 	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{
-		capability.LLMStatus:       application.LLMStatusResult{ActiveProvider: llm.OpenRouterID, Active: openrouter},
-		capability.LLMProviderList: []application.LLMProviderResult{openrouter, ollama},
+		capability.LLMStatus:       application.LLMStatusResult{ActiveProvider: llm.OllamaID, Active: ollama},
+		capability.LLMProviderList: []application.LLMProviderResult{ollama},
 	}}
 	ui, owner := newDomainTestInterface(t, dispatcher)
 	screen, err := ui.llmScreen(t.Context(), owner, ActionState{Route: RouteLLM})
@@ -32,7 +28,7 @@ func TestTelegramLLMNavigationUsesCanonicalStatusAndProviderList(t *testing.T) {
 		t.Fatalf("LLM canonical reads=%#v", dispatcher.calls)
 	}
 	fallback := RichFallback(screen.Rich).Text
-	for _, want := range []string{"OpenRouter", "openrouter/free", "Ollama", "provider administration"} {
+	for _, want := range []string{"Ollama", "qwen3:8b", "provider administration"} {
 		if !strings.Contains(strings.ToLower(fallback), strings.ToLower(want)) {
 			t.Fatalf("LLM screen missing %q: %q", want, fallback)
 		}
@@ -54,11 +50,11 @@ func TestTelegramLLMNavigationUsesCanonicalStatusAndProviderList(t *testing.T) {
 func TestTelegramLLMProviderActionsProtectCoreIdentityAndSecretState(t *testing.T) {
 	const rawKey = "sk-telegram-secret-value"
 	provider := application.LLMProviderResult{
-		ID: llm.OpenRouterID, Name: "OpenRouter", Protocol: llm.ProtocolOpenAI,
-		BaseURL: "https://openrouter.ai/api/v1", Model: "openrouter/free", AuthMode: llm.AuthBearer,
-		Discovery: llm.DiscoveryOpenAIModels, CoreKind: llm.CoreOpenRouter, Core: true,
+		ID: llm.OllamaID, Name: "Ollama", Protocol: llm.ProtocolOpenAI,
+		BaseURL: "https://ollama.ai/api/v1", Model: "qwen3:8b", AuthMode: llm.AuthBearer,
+		Discovery: llm.DiscoveryOpenAIModels, CoreKind: llm.CoreOllama, Core: true,
 		Readiness: llm.ReadinessReady, Credential: application.LLMCredentialResult{
-			ProviderID: llm.OpenRouterID, Configured: true, Preview: "sk-t********alue",
+			ProviderID: llm.OllamaID, Configured: true, Preview: "sk-t********alue",
 		},
 	}
 	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.LLMProviderGet: provider}}
@@ -123,7 +119,7 @@ func TestTelegramLLMProviderActionsProtectCoreIdentityAndSecretState(t *testing.
 
 func TestTelegramLLMModelsUseBoundedCanonicalQueryWithoutSelectingProvider(t *testing.T) {
 	page := application.LLMModelPage{
-		ProviderID: llm.OpenRouterID, TotalCatalog: 20, Matched: 12, Offset: 6, Limit: telegramLLMPageSize, Returned: 2, HasMore: true,
+		ProviderID: llm.OllamaID, TotalCatalog: 20, Matched: 12, Offset: 6, Limit: telegramLLMPageSize, Returned: 2, HasMore: true,
 		QueryCapabilities: application.LLMModelQueryCapabilities{Filters: []string{"free"}, Sorts: []string{"id", "context"}},
 		Models: []llm.Model{
 			{ID: "model/a", Name: "Model A", ContextLength: 128000, ContextLengthKnown: true, Free: true, FreeKnown: true},
@@ -133,7 +129,7 @@ func TestTelegramLLMModelsUseBoundedCanonicalQueryWithoutSelectingProvider(t *te
 	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{capability.LLMProviderModels: page}}
 	ui, owner := newDomainTestInterface(t, dispatcher)
 	screen, err := ui.llmModelsScreen(t.Context(), owner, ActionState{
-		Route: RouteLLMModels, ResourceID: string(llm.OpenRouterID), Page: 1,
+		Route: RouteLLMModels, ResourceID: string(llm.OllamaID), Page: 1,
 		Input: application.LLMModelQuery{Search: "model"},
 	})
 	if err != nil {
@@ -143,7 +139,7 @@ func TestTelegramLLMModelsUseBoundedCanonicalQueryWithoutSelectingProvider(t *te
 		t.Fatalf("model calls=%#v", dispatcher.calls)
 	}
 	input := dispatcher.calls[0].Input.(application.LLMProviderModelsInput)
-	if input.ID != string(llm.OpenRouterID) || input.Query.Offset != telegramLLMPageSize || input.Query.Limit != telegramLLMPageSize || input.Query.Search != "model" {
+	if input.ID != string(llm.OllamaID) || input.Query.Offset != telegramLLMPageSize || input.Query.Limit != telegramLLMPageSize || input.Query.Search != "model" {
 		t.Fatalf("model query=%#v", input)
 	}
 	if err := validateKeyboard(screen.Keyboard); err != nil {
@@ -169,7 +165,7 @@ func TestTelegramLLMModelsUseBoundedCanonicalQueryWithoutSelectingProvider(t *te
 				t.Fatalf("model selection state=%#v", state)
 			}
 			write := state.Input.(application.LLMProviderWriteInput)
-			if write.Model == nil || *write.Model != "model/a" || write.ID != string(llm.OpenRouterID) {
+			if write.Model == nil || *write.Model != "model/a" || write.ID != string(llm.OllamaID) {
 				t.Fatalf("model selection input=%#v", write)
 			}
 		}

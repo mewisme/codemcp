@@ -75,7 +75,7 @@ func TestOllamaCoreProfileRejectsMutableWireIdentityAndKnownEndpointAuthMismatch
 	} {
 		t.Run(name, func(t *testing.T) {
 			catalog := DefaultCatalog()
-			mutate(&catalog.Providers[1])
+			mutate(&catalog.Providers[0])
 			if _, err := NormalizeCatalog(catalog); !IsCategory(err, ErrorCoreInvariant) {
 				t.Fatalf("Ollama mutation err=%v", err)
 			}
@@ -84,13 +84,13 @@ func TestOllamaCoreProfileRejectsMutableWireIdentityAndKnownEndpointAuthMismatch
 
 	for _, auth := range []AuthMode{AuthNone, AuthBearer} {
 		catalog := DefaultCatalog()
-		catalog.Providers[1].BaseURL = "https://ollama.internal.example/v1"
-		catalog.Providers[1].AuthMode = auth
+		catalog.Providers[0].BaseURL = "https://ollama.internal.example/v1"
+		catalog.Providers[0].AuthMode = auth
 		normalized, err := NormalizeCatalog(catalog)
 		if err != nil {
 			t.Fatalf("custom endpoint auth=%q err=%v", auth, err)
 		}
-		provider := normalized.Providers[1]
+		provider := normalized.Providers[0]
 		if provider.Discovery != DiscoveryOllamaTags || provider.AuthMode != auth {
 			t.Fatalf("custom provider=%#v", provider)
 		}

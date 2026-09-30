@@ -34,7 +34,7 @@ func TestProviderCredentialNeverEntersProviderStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	const secret = "sk-llm-store-sentinel"
-	change, err := CredentialChange("openrouter", secret)
+	change, err := CredentialChange("ollama", secret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestFailedProviderMutationPreservesCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	const secret = "sk-preserve-on-failure"
-	change, err := CredentialChange("openrouter", secret)
+	change, err := CredentialChange("ollama", secret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestFailedProviderMutationPreservesCredential(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(root, "llm"), []byte("block provider store write"), 0600); err != nil {
 			return Catalog{}, nil, err
 		}
-		clear, changeErr := CredentialChange("openrouter", "")
+		clear, changeErr := CredentialChange("ollama", "")
 		if changeErr != nil {
 			return Catalog{}, nil, changeErr
 		}
@@ -119,7 +119,7 @@ func TestFailedProviderMutationPreservesCredential(t *testing.T) {
 	if err == nil {
 		t.Fatal("provider-store write failure unexpectedly succeeded")
 	}
-	stored, err := LoadCredential(root, "openrouter")
+	stored, err := LoadCredential(root, "ollama")
 	if err != nil || stored != secret {
 		t.Fatalf("credential after failed mutation=%q err=%v", stored, err)
 	}

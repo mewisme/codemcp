@@ -123,7 +123,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 		"llm status", "llm use", "llm models", "llm probe",
 		"llm provider list", "llm provider show", "llm provider add", "llm provider configure", "llm provider remove",
 		"llm provider key set", "llm provider key clear",
-		"llm openrouter status", "llm openrouter use", "llm openrouter models", "llm openrouter model", "llm openrouter key set", "llm openrouter key clear",
+		"llm ollama status", "llm ollama use", "llm ollama models", "llm ollama model", "llm ollama key set", "llm ollama key clear",
 		"llm ollama status", "llm ollama use", "llm ollama models", "llm ollama mode", "llm ollama model", "llm ollama key set", "llm ollama key clear",
 	)
 	add(commandTraceInstrumented, []string{"completion.current.completed"}, "agent completion current")

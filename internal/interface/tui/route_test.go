@@ -47,7 +47,7 @@ func TestParseRoute(t *testing.T) {
 		{[]string{"requests", "all", "req_abc", "arguments"}, Route{Kind: RouteRequests, Mode: "all", ResourceID: "req_abc", Section: "arguments"}},
 		{[]string{"llm"}, Route{Kind: RouteLLM}},
 		{[]string{"models"}, Route{Kind: RouteLLM}},
-		{[]string{"llm", "openrouter"}, Route{Kind: RouteLLM, ResourceID: "openrouter"}},
+		{[]string{"llm", "ollama"}, Route{Kind: RouteLLM, ResourceID: "ollama"}},
 		{[]string{"llm", "ollama", "models"}, Route{Kind: RouteLLM, ResourceID: "ollama", Section: "models"}},
 		{[]string{"completions"}, Route{Kind: RouteCompletions}},
 		{[]string{"completion", "completion_abc"}, Route{Kind: RouteCompletions, ResourceID: "completion_abc"}},
@@ -72,7 +72,7 @@ func TestParseRoute(t *testing.T) {
 			t.Fatalf("ParseRoute(%v) = %#v, %v; want %#v", test.args, got, err, test.want)
 		}
 	}
-	for _, args := range [][]string{{"missing"}, {"mcp"}, {"server"}, {"servers"}, {"tunnels"}, {"managed-tunnels"}, {"tunnel", "extra"}, {"integrations", "rtk", "install"}, {"integrations", "codegraph", "workspace"}, {"executions"}, {"processes"}, {"upstream", "a", "missing"}, {"config", "key", "extra"}, {"logs-exec", "settings"}, {"logs-exec", "exec_a", "extra"}, {"logs-tools", "call_a", "extra"}, {"upstream", "a", "health", "extra"}, {"requests", "history", "req", "guard", "extra"}, {"llm", "openrouter", "missing"}, {"llm", "openrouter", "models", "missing"}, {"llm", "openrouter", "models", "query", "extra"}, {"completions", "completion_a", "extra"}, {"instruction", "missing"}, {"instruction", "rules", "extra"}} {
+	for _, args := range [][]string{{"missing"}, {"mcp"}, {"server"}, {"servers"}, {"tunnels"}, {"managed-tunnels"}, {"tunnel", "extra"}, {"integrations", "rtk", "install"}, {"integrations", "codegraph", "workspace"}, {"executions"}, {"processes"}, {"upstream", "a", "missing"}, {"config", "key", "extra"}, {"logs-exec", "settings"}, {"logs-exec", "exec_a", "extra"}, {"logs-tools", "call_a", "extra"}, {"upstream", "a", "health", "extra"}, {"requests", "history", "req", "guard", "extra"}, {"llm", "ollama", "missing"}, {"llm", "ollama", "models", "missing"}, {"llm", "ollama", "models", "query", "extra"}, {"completions", "completion_a", "extra"}, {"instruction", "missing"}, {"instruction", "rules", "extra"}} {
 		if _, err := ParseRoute(args); err == nil {
 			t.Fatalf("ParseRoute(%v) unexpectedly succeeded", args)
 		}
@@ -107,9 +107,9 @@ func TestParseEditorRoutes(t *testing.T) {
 		{[]string{"requests", "all", "req_1", "deny"}, Route{Kind: RouteRequests, Mode: "all", ResourceID: "req_1", Action: "deny"}},
 		{[]string{"llm", "create"}, Route{Kind: RouteLLM, Action: "create"}},
 		{[]string{"llm", "custom", "edit"}, Route{Kind: RouteLLM, ResourceID: "custom", Action: "edit"}},
-		{[]string{"llm", "openrouter", "credential"}, Route{Kind: RouteLLM, ResourceID: "openrouter", Action: "credential"}},
-		{[]string{"llm", "openrouter", "models", "query"}, Route{Kind: RouteLLM, ResourceID: "openrouter", Section: "models", Action: "query"}},
-		{[]string{"llm", "openrouter", "models", "set"}, Route{Kind: RouteLLM, ResourceID: "openrouter", Section: "models", Action: "set"}},
+		{[]string{"llm", "ollama", "credential"}, Route{Kind: RouteLLM, ResourceID: "ollama", Action: "credential"}},
+		{[]string{"llm", "ollama", "models", "query"}, Route{Kind: RouteLLM, ResourceID: "ollama", Section: "models", Action: "query"}},
+		{[]string{"llm", "ollama", "models", "set"}, Route{Kind: RouteLLM, ResourceID: "ollama", Section: "models", Action: "set"}},
 		{[]string{"logs", "filter"}, Route{Kind: RouteLogs, Action: "filter"}},
 		{[]string{"instruction", "context", "edit"}, Route{Kind: RouteInstruction, Section: "context", Action: "edit"}},
 		{[]string{"instruction", "rules", "create"}, Route{Kind: RouteInstruction, Section: "rules", Action: "create"}},

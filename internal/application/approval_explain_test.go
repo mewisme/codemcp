@@ -47,8 +47,8 @@ func (fixture *approvalExplainInferenceFixture) lastRequest() llm.Request {
 
 func validApprovalExplainResult() llm.Result {
 	return llm.Result{
-		ProviderID: llm.OpenRouterID,
-		Model:      "openrouter/free",
+		ProviderID: llm.OllamaID,
+		Model:      "qwen3:8b",
 		Text:       `{"summary":"Runs curl against the supplied URL.","steps":["Invoke curl with an HTTP header."],"effects":["May make an outbound HTTP request."],"risk_notes":["The redacted credential value is unknown."],"unknowns":["Remote server behavior is unknown."]}`,
 	}
 }
@@ -105,7 +105,7 @@ func TestApprovalExplainUsesOnlySanitizedExactCommandAndPreservesRequestAuthorit
 		t.Fatalf("trigger=%#v err=%v", result, err)
 	}
 	ready := waitApprovalExplanationState(t, service, request.ID, ApprovalExplanationReady)
-	if ready.Explanation == nil || ready.Explanation.ProviderID != llm.OpenRouterID || ready.Explanation.Model != "openrouter/free" {
+	if ready.Explanation == nil || ready.Explanation.ProviderID != llm.OllamaID || ready.Explanation.Model != "qwen3:8b" {
 		t.Fatalf("ready=%#v", ready)
 	}
 	modelRequest := fixture.lastRequest()
@@ -213,7 +213,7 @@ func TestApprovalExplainFailureRequiresExplicitRetryAndReviewRemainsUsable(t *te
 	fixture := &approvalExplainInferenceFixture{}
 	fixture.infer = func(context.Context, llm.Request) (llm.Result, error) {
 		if fixture.calls.Load() == 1 {
-			return llm.Result{ProviderID: llm.OpenRouterID, Model: "openrouter/free", Text: `not json`}, nil
+			return llm.Result{ProviderID: llm.OllamaID, Model: "qwen3:8b", Text: `not json`}, nil
 		}
 		return validApprovalExplainResult(), nil
 	}
@@ -404,7 +404,7 @@ func TestApprovalExplainSettingEnableIsAtomicAndRequiresConfiguredSuccessfulProb
 
 	_, err := settings.Apply(t.Context(), []SettingChange{{Key: "approval.explain.mode", Value: "manual"}})
 	if err == nil {
-		t.Fatal("Explain enabled without required OpenRouter credential")
+		t.Fatal("Explain enabled without required Ollama credential")
 	}
 	cfg, err := LoadConfig(t.Context())
 	if err != nil || cfg.Approval.Explain.Mode != config.ApprovalExplainOff {
@@ -414,7 +414,10 @@ func TestApprovalExplainSettingEnableIsAtomicAndRequiresConfiguredSuccessfulProb
 		t.Fatalf("probe ran with incomplete configuration: calls=%d", backend.callCount())
 	}
 
-	if err := llmService.SetCredential(t.Context(), string(llm.OpenRouterID), "sk-or-v1-enable-test"); err != nil {
+	if err := llmService.SetCredential(t.Context(), string(llm.OllamaID), "sk-or-v1-enable-test"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := llmService.SetProviderModel(t.Context(), string(llm.OllamaID), "qwen3:8b"); err != nil {
 		t.Fatal(err)
 	}
 	backend.inferFn = func(context.Context, llm.Provider, llm.Request) (llm.Result, error) {
@@ -441,7 +444,7 @@ func TestApprovalExplainSettingEnableIsAtomicAndRequiresConfiguredSuccessfulProb
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{"Return a short acknowledgement.", "Respond with OK.", "openrouter/free", "ApprovalExplanation", "risk_notes"} {
+	for _, forbidden := range []string{"Return a short acknowledgement.", "Respond with OK.", "qwen3:8b", "ApprovalExplanation", "risk_notes"} {
 		if strings.Contains(string(persisted), forbidden) {
 			t.Fatalf("successful enable persisted probe/prompt/explanation material %q: %s", forbidden, persisted)
 		}
@@ -459,10 +462,13 @@ func TestApprovalExplainStatusBecomesUnavailableAfterProviderSwitchOrFailureWith
 	defer restore()
 	backend := &approvalExplainBackend{}
 	llmService := NewLLMServiceWithBackend(root, backend)
-	if err := llmService.SetCredential(t.Context(), string(llm.OpenRouterID), "sk-or-v1-status-test"); err != nil {
+	if err := llmService.SetCredential(t.Context(), string(llm.OllamaID), "sk-or-v1-status-test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := llmService.Probe(t.Context(), string(llm.OpenRouterID)); err != nil {
+	if _, err := llmService.SetProviderModel(t.Context(), string(llm.OllamaID), "qwen3:8b"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := llmService.Probe(t.Context(), string(llm.OllamaID)); err != nil {
 		t.Fatal(err)
 	}
 	mode := config.ApprovalExplainManual
@@ -486,7 +492,7 @@ func TestApprovalExplainStatusBecomesUnavailableAfterProviderSwitchOrFailureWith
 		t.Fatalf("switched status=%#v err=%v", status, err)
 	}
 
-	if _, err := llmService.SelectProvider(t.Context(), string(llm.OpenRouterID)); err != nil {
+	if _, err := llmService.SelectProvider(t.Context(), string(llm.OllamaID)); err != nil {
 		t.Fatal(err)
 	}
 	backend.inferFn = func(context.Context, llm.Provider, llm.Request) (llm.Result, error) {

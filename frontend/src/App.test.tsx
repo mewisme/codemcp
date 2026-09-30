@@ -477,42 +477,42 @@ async function mockFetch(input: RequestInfo | URL): Promise<Response> {
     })
   if (path === "/api/llm/status")
     return json({
-      active_provider: "openrouter",
+      active_provider: "ollama",
       active: {
-        id: "openrouter",
-        name: "OpenRouter",
+        id: "ollama",
+        name: "Ollama",
         protocol: "openai",
-        base_url: "https://openrouter.ai/api/v1",
-        model: "openrouter/free",
+        base_url: "https://ollama.com/v1",
+        model: "qwen3:8b",
         auth_mode: "bearer",
-        discovery: "openai-models",
-        core_kind: "openrouter",
+        discovery: "ollama-tags",
+        core_kind: "ollama",
         core: true,
         selected: true,
         configured: false,
         readiness: "degraded",
         reason: "API key is not configured",
-        credential: { provider_id: "openrouter", configured: false, preview: "" },
+        credential: { provider_id: "ollama", configured: false, preview: "" },
       },
       providers: [],
     })
   if (path === "/api/llm/providers")
     return json([
       {
-        id: "openrouter",
-        name: "OpenRouter",
+        id: "ollama",
+        name: "Ollama",
         protocol: "openai",
-        base_url: "https://openrouter.ai/api/v1",
-        model: "openrouter/free",
+        base_url: "https://ollama.com/v1",
+        model: "qwen3:8b",
         auth_mode: "bearer",
-        discovery: "openai-models",
-        core_kind: "openrouter",
+        discovery: "ollama-tags",
+        core_kind: "ollama",
         core: true,
         selected: true,
         configured: false,
         readiness: "degraded",
         reason: "API key is not configured",
-        credential: { provider_id: "openrouter", configured: false, preview: "" },
+        credential: { provider_id: "ollama", configured: false, preview: "" },
       },
     ])
   if (path === "/api/workspaces") return json([])

@@ -128,22 +128,22 @@ func TestRequestExplainDetailModesAreDeterministicAndKeepCanonicalRequestSeparat
 			name: "manual-ready",
 			detail: approvalRequestDetailResult{
 				Request:       request,
-				ExplainStatus: application.ApprovalExplainStatus{Mode: "manual", Available: true, ActiveProvider: "openrouter", Model: "openrouter/free", Configured: true, Readiness: "ready"},
+				ExplainStatus: application.ApprovalExplainStatus{Mode: "manual", Available: true, ActiveProvider: "ollama", Model: "qwen3:8b", Configured: true, Readiness: "ready"},
 				Explanation: application.ApprovalExplanationResult{
 					RequestID: request.ID, State: application.ApprovalExplanationReady, Attempt: 1,
 					Explanation: &application.ApprovalExplanation{
 						Summary: "Pushes the local feature branch to origin.", Steps: []string{"Invoke git push."}, Effects: []string{"May update a remote branch."},
-						RiskNotes: []string{"Remote write."}, Unknowns: []string{"Remote policy is unknown."}, ProviderID: "openrouter", Model: "openrouter/free",
+						RiskNotes: []string{"Remote write."}, Unknowns: []string{"Remote policy is unknown."}, ProviderID: "ollama", Model: "qwen3:8b",
 					},
 				},
 			},
-			want: []string{"mode", "manual", "state", "ready", "Explanation provenance", "openrouter", "openrouter/free", "Pushes the local feature branch to origin."},
+			want: []string{"mode", "manual", "state", "ready", "Explanation provenance", "ollama", "qwen3:8b", "Pushes the local feature branch to origin."},
 		},
 		{
 			name: "auto-pending",
 			detail: approvalRequestDetailResult{
 				Request:       request,
-				ExplainStatus: application.ApprovalExplainStatus{Mode: "auto", Available: true, ActiveProvider: "openrouter", Model: "openrouter/free", Configured: true, Readiness: "ready"},
+				ExplainStatus: application.ApprovalExplainStatus{Mode: "auto", Available: true, ActiveProvider: "ollama", Model: "qwen3:8b", Configured: true, Readiness: "ready"},
 				Explanation:   application.ApprovalExplanationResult{RequestID: request.ID, State: application.ApprovalExplanationPending, Attempt: 1},
 			},
 			want: []string{"mode", "auto", "state", "pending"},

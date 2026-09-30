@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"go.mewis.me/codemcp/internal/application"
@@ -87,19 +86,17 @@ type InterfaceOptions struct {
 }
 
 type Interface struct {
-	runtime         *Runtime
-	dispatcher      application.OperationDispatcher
-	versions        VersionResolver
-	states          *ViewStateStore
-	inputs          *InputStore
-	userSelections  *UserSelectionStore
-	nextUserRequest atomic.Int32
-	callbacks       *CallbackCodec
-	router          *Router
-	operations      *operationMessageStore
-	runtimeStatus   RuntimeStatusResolver
-	completionList  CompletionListResolver
-	completionView  CompletionViewResolver
+	runtime        *Runtime
+	dispatcher     application.OperationDispatcher
+	versions       VersionResolver
+	states         *ViewStateStore
+	inputs         *InputStore
+	callbacks      *CallbackCodec
+	router         *Router
+	operations     *operationMessageStore
+	runtimeStatus  RuntimeStatusResolver
+	completionList CompletionListResolver
+	completionView CompletionViewResolver
 }
 
 func NewInterface(options InterfaceOptions) (*Interface, error) {
@@ -116,7 +113,7 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 	}
 	ui := &Interface{
 		runtime: options.Runtime, dispatcher: options.Dispatcher, versions: options.VersionResolver,
-		states: NewViewStateStore(stateTTL, defaultViewStateMax), inputs: NewInputStore(stateTTL), userSelections: NewUserSelectionStore(stateTTL), callbacks: codec, router: NewRouter(),
+		states: NewViewStateStore(stateTTL, defaultViewStateMax), inputs: NewInputStore(stateTTL), callbacks: codec, router: NewRouter(),
 		operations: newOperationMessageStore(options.Runtime.root), runtimeStatus: options.RuntimeStatus,
 		completionList: options.CompletionList, completionView: options.CompletionView,
 	}
@@ -129,7 +126,6 @@ func NewInterface(options InterfaceOptions) (*Interface, error) {
 	if ui.completionView == nil {
 		ui.completionView = application.ViewCompletion
 	}
-	ui.nextUserRequest.Store(1000)
 	handlers := map[Route]RouteHandler{
 		RouteHome: ui.handleHome, RouteStatus: ui.handleStatus, RouteCommands: ui.handleCommands,
 		RouteWorkspaces: ui.handleWorkspaces, RouteRequests: ui.handleRequests, RouteCompletions: ui.handleCompletions, RouteNetwork: ui.handleNetwork,
@@ -151,10 +147,6 @@ func (ui *Interface) Handle(ctx context.Context, update Update) {
 		return
 	}
 	if update.Message != nil && messageCommand(update.Message.Text) == "" {
-		if update.Message.UsersShared != nil {
-			ui.handleUsersShared(ctx, update)
-			return
-		}
 		if ui.handleActionInput(ctx, update) {
 			return
 		}
@@ -323,12 +315,6 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 	}
 	if state.InputKind != "" && state.Input == nil {
 		ui.answerCallback(ctx, update.CallbackQuery.ID, "", false)
-		if state.InputKind == inputTelegramUserPicker {
-			if err := ui.beginUserPicker(ctx, owner, state); err != nil {
-				_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, ErrorScreen(err))
-			}
-			return
-		}
 		if err := ui.beginActionInput(ctx, owner, state); err != nil {
 			_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, ErrorScreen(err))
 		}

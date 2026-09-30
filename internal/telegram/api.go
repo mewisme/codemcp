@@ -20,25 +20,12 @@ type Chat struct {
 }
 
 type Message struct {
-	MessageID      int64        `json:"message_id"`
-	From           *User        `json:"from,omitempty"`
-	Chat           Chat         `json:"chat"`
-	Text           string       `json:"text,omitempty"`
-	ReplyToMessage *Message     `json:"reply_to_message,omitempty"`
-	Document       *Document    `json:"document,omitempty"`
-	UsersShared    *UsersShared `json:"users_shared,omitempty"`
-}
-
-type SharedUser struct {
-	UserID    int64  `json:"user_id"`
-	FirstName string `json:"first_name,omitempty"`
-	LastName  string `json:"last_name,omitempty"`
-	Username  string `json:"username,omitempty"`
-}
-
-type UsersShared struct {
-	RequestID int          `json:"request_id"`
-	Users     []SharedUser `json:"users"`
+	MessageID      int64     `json:"message_id"`
+	From           *User     `json:"from,omitempty"`
+	Chat           Chat      `json:"chat"`
+	Text           string    `json:"text,omitempty"`
+	ReplyToMessage *Message  `json:"reply_to_message,omitempty"`
+	Document       *Document `json:"document,omitempty"`
 }
 
 type Document struct {
@@ -118,10 +105,6 @@ type RichMessageOptions struct {
 type RichMessageAPI interface {
 	SendRichMessage(context.Context, int64, Screen, RichMessageOptions) (int64, error)
 	SendChatAction(context.Context, int64, string) error
-}
-
-type UserPickerAPI interface {
-	SendUserPicker(context.Context, int64, int, string) (int64, error)
 }
 
 type DocumentUpload struct {

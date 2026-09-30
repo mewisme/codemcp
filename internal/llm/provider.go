@@ -18,16 +18,10 @@ const (
 	MaxModelNameBytes    = 256
 )
 
-const (
-	OpenRouterBaseURL      = "https://openrouter.ai/api/v1"
-	OpenRouterDefaultModel = "openrouter/free"
-)
-
 type ProviderID string
 
 const (
-	OpenRouterID ProviderID = "openrouter"
-	OllamaID     ProviderID = "ollama"
+	OllamaID ProviderID = "ollama"
 )
 
 type Protocol string
@@ -56,9 +50,8 @@ const (
 type CoreKind string
 
 const (
-	CoreNone       CoreKind = ""
-	CoreOpenRouter CoreKind = "openrouter"
-	CoreOllama     CoreKind = "ollama"
+	CoreNone   CoreKind = ""
+	CoreOllama CoreKind = "ollama"
 )
 
 type Readiness string
@@ -234,21 +227,7 @@ func NormalizeProviderID(raw string) (ProviderID, error) {
 }
 
 func IsCoreProvider(id ProviderID) bool {
-	return id == OpenRouterID || id == OllamaID
-}
-
-func DefaultOpenRouter() Provider {
-	return Provider{
-		ID:           OpenRouterID,
-		Name:         "OpenRouter",
-		Protocol:     ProtocolOpenAI,
-		BaseURL:      OpenRouterBaseURL,
-		Model:        OpenRouterDefaultModel,
-		AuthMode:     AuthBearer,
-		Discovery:    DiscoveryOpenAIModels,
-		CoreKind:     CoreOpenRouter,
-		Capabilities: &ProviderCapabilities{StructuredOutput: true},
-	}
+	return id == OllamaID
 }
 
 func DefaultOllama() Provider {
@@ -265,8 +244,8 @@ func DefaultOllama() Provider {
 
 func DefaultCatalog() Catalog {
 	return Catalog{
-		ActiveProvider: OpenRouterID,
-		Providers:      []Provider{DefaultOpenRouter(), DefaultOllama()},
+		ActiveProvider: OllamaID,
+		Providers:      []Provider{DefaultOllama()},
 	}
 }
 
@@ -301,7 +280,7 @@ func NormalizeCatalog(value Catalog) (Catalog, error) {
 		seen[provider.ID] = struct{}{}
 		providers = append(providers, provider)
 	}
-	for _, core := range []ProviderID{OpenRouterID, OllamaID} {
+	for _, core := range []ProviderID{OllamaID} {
 		if _, exists := seen[core]; !exists {
 			return Catalog{}, NewError(ErrorMissingCore, "providers", fmt.Sprintf("core provider %q is required", core))
 		}
@@ -407,18 +386,6 @@ func normalizeProvider(value Provider, allowCore bool) (Provider, error) {
 	if len(value.Model) > MaxModelIDBytes {
 		return Provider{}, NewError(ErrorInvalidProvider, "model", "model id must be at most 256 bytes")
 	}
-	if value.ID == OpenRouterID {
-		if value.Protocol != ProtocolOpenAI {
-			return Provider{}, NewError(ErrorCoreInvariant, "protocol", "OpenRouter must use the OpenAI-compatible protocol")
-		}
-		if value.AuthMode != AuthBearer {
-			return Provider{}, NewError(ErrorCoreInvariant, "auth_mode", "OpenRouter must use bearer authentication")
-		}
-		if value.Discovery != DiscoveryOpenAIModels {
-			return Provider{}, NewError(ErrorCoreInvariant, "discovery", "OpenRouter must use OpenAI-compatible model discovery")
-		}
-		value.Capabilities = &ProviderCapabilities{StructuredOutput: true}
-	}
 	if value.ID == OllamaID {
 		if value.Protocol != ProtocolOpenAI {
 			return Provider{}, NewError(ErrorCoreInvariant, "protocol", "Ollama must use the OpenAI-compatible protocol")
@@ -450,8 +417,6 @@ func normalizeProvider(value Provider, allowCore bool) (Provider, error) {
 
 func coreIdentity(id ProviderID) (CoreKind, string) {
 	switch id {
-	case OpenRouterID:
-		return CoreOpenRouter, "OpenRouter"
 	case OllamaID:
 		return CoreOllama, "Ollama"
 	default:

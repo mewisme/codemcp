@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"reflect"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -143,44 +142,17 @@ func TestLLMModelQueryRejectsUnsupportedDimensionsInsteadOfGuessing(t *testing.T
 	}
 }
 
-func TestLLMModelQueryOpenRouterRankAndRecommendationUseSeparateBoundedCache(t *testing.T) {
+func TestLLMModelQueryOllamaRejectsUnsupportedRankAndRecommendation(t *testing.T) {
 	root := isolateSettingServiceConfig(t)
-	backend := &richModelBackend{
-		models: []llm.Model{{ID: "vendor/a", Name: "A"}, {ID: "vendor/b", Name: "B"}, {ID: "vendor/c", Name: "C"}},
-		enrichment: llm.ModelEnrichmentResult{
-			Ranks:      map[string]llm.ModelRankMetadata{"vendor/b": {Position: 1, Kind: "usage", Source: "OpenRouter rankings", Basis: "adoption by tokens", Window: "week", Freshness: "2026-09-29"}, "vendor/a": {Position: 2, Kind: "usage", Source: "OpenRouter rankings", Basis: "adoption by tokens", Window: "week", Freshness: "2026-09-29"}},
-			RankSource: "OpenRouter rankings", RankWindow: "week", RankBasis: "adoption by tokens", RankFreshness: "2026-09-29",
-		},
-	}
+	backend := &richModelBackend{models: []llm.Model{{ID: "vendor/a", Name: "A"}}}
 	service := NewLLMServiceWithBackend(root, backend)
-	if err := service.SetCredential(t.Context(), string(llm.OpenRouterID), "test-openrouter-key"); err != nil {
-		t.Fatal(err)
+	for _, query := range []LLMModelQuery{{Rank: "usage", RankWindow: "week", All: true}, {RecommendFor: "Code Generation", All: true}} {
+		if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), query); !llm.IsCategory(err, llm.ErrorUnsupported) {
+			t.Fatalf("query %#v err=%v", query, err)
+		}
 	}
-	first, err := service.ModelCatalog(t.Context(), string(llm.OpenRouterID), LLMModelQuery{Rank: "usage", RankWindow: "week", All: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, err := service.ModelCatalog(t.Context(), string(llm.OpenRouterID), LLMModelQuery{Rank: "usage", RankWindow: "week", All: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if backend.discover.Load() != 1 || backend.enrich.Load() != 1 {
-		t.Fatalf("cache calls discover=%d enrich=%d", backend.discover.Load(), backend.enrich.Load())
-	}
-	if first.RankBasis != "adoption by tokens" || strings.Contains(strings.ToLower(first.RankBasis), "quality") || first.Models[0].ID != "vendor/b" || second.Models[0].ID != "vendor/b" {
-		t.Fatalf("rank pages first=%#v second=%#v", first, second)
-	}
-
-	backend.enrichment = llm.ModelEnrichmentResult{
-		Recommendations:      map[string]llm.ModelRecommendation{"vendor/a": {Position: 1, Task: "code-generation", Source: "OpenRouter task classifications", Basis: "request share for Code Generation", Freshness: "2026-09-29", Share: 0.42}},
-		RecommendationSource: "OpenRouter task classifications", RecommendationBasis: "request share for Code Generation", RecommendationFreshness: "2026-09-29",
-	}
-	recommended, err := service.ModelCatalog(t.Context(), string(llm.OpenRouterID), LLMModelQuery{RecommendFor: "Code Generation", All: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if backend.enrich.Load() != 2 || recommended.Models[0].Recommendation == nil || recommended.Models[0].Recommendation.Task != "code-generation" || recommended.RecommendationSource == "" || recommended.RecommendationBasis == "" {
-		t.Fatalf("recommendation page=%#v enrich=%d", recommended, backend.enrich.Load())
+	if backend.enrich.Load() != 0 {
+		t.Fatalf("unsupported Ollama enrichment reached backend: %d calls", backend.enrich.Load())
 	}
 }
 

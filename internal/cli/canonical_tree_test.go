@@ -124,14 +124,6 @@ llm ollama models | operation:llm.provider.models:accepted-path
 llm ollama status | operation:llm.provider.get:accepted-path
 llm ollama use | operation:llm.provider.select:accepted-path
 llm ollama | namespace
-llm openrouter key clear | operation:llm.provider.credential.clear:accepted-path
-llm openrouter key set | operation:llm.provider.credential.set:accepted-path
-llm openrouter key | namespace
-llm openrouter model | operation:llm.provider.configure:accepted-path
-llm openrouter models | operation:llm.provider.models:accepted-path
-llm openrouter status | operation:llm.provider.get:accepted-path
-llm openrouter use | operation:llm.provider.select:accepted-path
-llm openrouter | namespace
 llm probe | operation:llm.provider.probe
 llm provider add | operation:llm.provider.add
 llm provider configure | operation:llm.provider.configure

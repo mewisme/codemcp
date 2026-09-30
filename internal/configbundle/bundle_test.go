@@ -136,7 +136,7 @@ func TestExportAndImportKeepLLMProviderStateSecretFree(t *testing.T) {
 		t.Fatal(err)
 	}
 	const storedSecret = "sk-portable-llm-secret"
-	credentialChange, err := llm.CredentialChange("openrouter", storedSecret)
+	credentialChange, err := llm.CredentialChange("ollama", storedSecret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestExportAndImportKeepLLMProviderStateSecretFree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if importedProviders.Providers[0].Model != "vendor/model" || len(importedProviders.Providers) != 3 {
+	if importedProviders.Providers[0].Model != "vendor/model" || len(importedProviders.Providers) != 2 {
 		t.Fatalf("imported LLM providers = %#v", importedProviders)
 	}
 
@@ -195,7 +195,7 @@ func TestExportAndImportKeepLLMProviderStateSecretFree(t *testing.T) {
 		t.Fatal(err)
 	}
 	secret := "sk-import-secret"
-	credentialStore := []byte(`{"version":1,"active_provider":"openrouter","providers":[{"id":"openrouter","name":"OpenRouter","protocol":"openai","base_url":"https://openrouter.ai/api/v1","model":"openrouter/free","auth_mode":"bearer","discovery":"openai-models","core_kind":"openrouter","api_key":"` + secret + `"}]}`)
+	credentialStore := []byte(`{"version":1,"active_provider":"ollama","providers":[{"id":"ollama","name":"Ollama","protocol":"openai","base_url":"https://ollama.ai/api/v1","model":"qwen3:8b","auth_mode":"bearer","discovery":"openai-models","core_kind":"ollama","api_key":"` + secret + `"}]}`)
 	malicious := Envelope{
 		Version: Version, CreatedAt: time.Now().UTC(), Source: currentPlatform(), SecretPolicy: SecretPolicyExcluded,
 		Files: []File{{Path: "config.json", Mode: 0600, Data: configData}, {Path: llm.StoreRelativePath, Mode: 0600, Data: credentialStore}},

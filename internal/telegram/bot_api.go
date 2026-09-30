@@ -275,35 +275,6 @@ func (client *apiClient) SendRichMessage(ctx context.Context, chatID int64, scre
 	return int64(message.ID), nil
 }
 
-func (client *apiClient) SendUserPicker(ctx context.Context, chatID int64, requestID int, prompt string) (int64, error) {
-	if client == nil || client.initErr != nil || client.bot == nil {
-		return 0, errors.New("telegram bot transport is unavailable")
-	}
-	if chatID <= 0 || requestID <= 0 {
-		return 0, errors.New("telegram user-picker metadata is invalid")
-	}
-	message, err := client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
-		ChatID: chatID,
-		Text:   strings.TrimSpace(prompt),
-		ReplyMarkup: &models.ReplyKeyboardMarkup{
-			Keyboard: [][]models.KeyboardButton{{{
-				Text: "Select user",
-				RequestUsers: &models.KeyboardButtonRequestUsers{
-					RequestID: int32(requestID), MaxQuantity: 1, RequestName: true, RequestUsername: true,
-				},
-			}}},
-			ResizeKeyboard: true, OneTimeKeyboard: true, Selective: true,
-		},
-	})
-	if err != nil {
-		return 0, classifyTransportError(err)
-	}
-	if message == nil {
-		return 0, errors.New("telegram user-picker response is empty")
-	}
-	return int64(message.ID), nil
-}
-
 func (client *apiClient) SendRichMessageThread(ctx context.Context, chatID int64, threadID int, screen Screen, options RichMessageOptions) (int64, error) {
 	if client == nil || client.initErr != nil || client.bot == nil {
 		return 0, errors.New("telegram bot transport is unavailable")
@@ -764,13 +735,6 @@ func messageFromModel(message *models.Message) *Message {
 	if message.Document != nil {
 		result.Document = &Document{FileID: message.Document.FileID, FileName: message.Document.FileName, MimeType: message.Document.MimeType, FileSize: message.Document.FileSize}
 	}
-	if message.UsersShared != nil {
-		shared := &UsersShared{RequestID: message.UsersShared.RequestID, Users: make([]SharedUser, 0, len(message.UsersShared.Users))}
-		for _, user := range message.UsersShared.Users {
-			shared.Users = append(shared.Users, SharedUser{UserID: user.UserID, FirstName: user.FirstName, LastName: user.LastName, Username: user.Username})
-		}
-		result.UsersShared = shared
-	}
 	return result
 }
 
@@ -788,13 +752,6 @@ func messageToModel(message *Message) *models.Message {
 	}
 	if message.Document != nil {
 		result.Document = &models.Document{FileID: message.Document.FileID, FileName: message.Document.FileName, MimeType: message.Document.MimeType, FileSize: message.Document.FileSize}
-	}
-	if message.UsersShared != nil {
-		shared := &models.UsersShared{RequestID: message.UsersShared.RequestID, Users: make([]models.SharedUser, 0, len(message.UsersShared.Users))}
-		for _, user := range message.UsersShared.Users {
-			shared.Users = append(shared.Users, models.SharedUser{UserID: user.UserID, FirstName: user.FirstName, LastName: user.LastName, Username: user.Username})
-		}
-		result.UsersShared = shared
 	}
 	return result
 }

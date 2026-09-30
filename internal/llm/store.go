@@ -234,10 +234,21 @@ func encodeDiskStore(value Catalog) ([]byte, error) {
 func reconcileDiskStore(stored diskStore) (Catalog, error) {
 	value := Catalog{
 		ActiveProvider: stored.ActiveProvider,
-		Providers:      append([]Provider(nil), stored.Providers...),
+		Providers:      make([]Provider, 0, len(stored.Providers)+1),
+	}
+	for _, provider := range stored.Providers {
+		// Retired core-provider records are discarded generically so old stores
+		// converge without preserving obsolete provider identities.
+		if provider.CoreKind != CoreNone && provider.CoreKind != CoreOllama {
+			if value.ActiveProvider == provider.ID {
+				value.ActiveProvider = OllamaID
+			}
+			continue
+		}
+		value.Providers = append(value.Providers, provider)
 	}
 	if value.ActiveProvider == "" {
-		value.ActiveProvider = OpenRouterID
+		value.ActiveProvider = OllamaID
 	}
 	seen := make(map[ProviderID]struct{}, len(value.Providers))
 	for _, provider := range value.Providers {
@@ -249,9 +260,6 @@ func reconcileDiskStore(stored diskStore) (Catalog, error) {
 			return Catalog{}, NewError(ErrorDuplicateID, "providers", fmt.Sprintf("duplicate provider id %q", id))
 		}
 		seen[id] = struct{}{}
-	}
-	if _, exists := seen[OpenRouterID]; !exists {
-		value.Providers = append(value.Providers, DefaultOpenRouter())
 	}
 	if _, exists := seen[OllamaID]; !exists {
 		value.Providers = append(value.Providers, DefaultOllama())

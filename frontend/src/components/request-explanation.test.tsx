@@ -10,7 +10,7 @@ describe("RequestExplanation", () => {
 
   it("requires an explicit action in manual mode", async () => {
     const user = userEvent.setup()
-    vi.spyOn(adminApi, "approvalExplainStatus").mockResolvedValue({ mode: "manual", available: true, active_provider: "openrouter", model: "openrouter/free", configured: true, readiness: "ready" })
+    vi.spyOn(adminApi, "approvalExplainStatus").mockResolvedValue({ mode: "manual", available: true, active_provider: "ollama", model: "qwen3:8b", configured: true, readiness: "ready" })
     vi.spyOn(adminApi, "approvalExplanation").mockResolvedValue({ request_id: "req_manual", state: "none" })
     vi.spyOn(adminApi, "explainApproval").mockResolvedValue({ request_id: "req_manual", state: "pending", attempt: 1 })
 
@@ -22,7 +22,7 @@ describe("RequestExplanation", () => {
   })
 
   it("renders auto-mode provenance and generated content separately from request details", async () => {
-    vi.spyOn(adminApi, "approvalExplainStatus").mockResolvedValue({ mode: "auto", available: true, active_provider: "openrouter", model: "openrouter/free", configured: true, readiness: "ready" })
+    vi.spyOn(adminApi, "approvalExplainStatus").mockResolvedValue({ mode: "auto", available: true, active_provider: "ollama", model: "qwen3:8b", configured: true, readiness: "ready" })
     vi.spyOn(adminApi, "approvalExplanation").mockResolvedValue({
       request_id: "req_auto",
       state: "ready",
@@ -33,21 +33,21 @@ describe("RequestExplanation", () => {
         effects: ["May update a remote branch."],
         risk_notes: ["Remote write."],
         unknowns: ["Remote policy is unknown."],
-        provider_id: "openrouter",
-        model: "openrouter/free",
+        provider_id: "ollama",
+        model: "qwen3:8b",
         generated_at: "2026-09-30T00:00:00Z",
       },
     })
 
     render(<RequestExplanation requestID="req_auto" />)
     expect(await screen.findByText("Pushes the feature branch to the configured remote.")).toBeInTheDocument()
-    expect(screen.getByText("openrouter/free")).toBeInTheDocument()
+    expect(screen.getByText("qwen3:8b")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Explain command" })).not.toBeInTheDocument()
   })
 
   it("keeps failure local and exposes an explicit retry", async () => {
     const user = userEvent.setup()
-    vi.spyOn(adminApi, "approvalExplainStatus").mockResolvedValue({ mode: "auto", available: true, active_provider: "openrouter", model: "openrouter/free", configured: true, readiness: "ready" })
+    vi.spyOn(adminApi, "approvalExplainStatus").mockResolvedValue({ mode: "auto", available: true, active_provider: "ollama", model: "qwen3:8b", configured: true, readiness: "ready" })
     vi.spyOn(adminApi, "approvalExplanation").mockResolvedValue({ request_id: "req_failed", state: "failed", attempt: 1, failure: "provider unavailable" })
     vi.spyOn(adminApi, "explainApproval").mockResolvedValue({ request_id: "req_failed", state: "pending", attempt: 2 })
 
