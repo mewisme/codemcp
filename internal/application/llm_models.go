@@ -56,17 +56,27 @@ func (s *LLMService) providerModels(ctx context.Context, rawID string, refresh b
 }
 
 func (s *LLMService) invalidateModelCatalog(id llm.ProviderID) {
-	if s == nil || s.modelCache == nil {
+	if s == nil {
 		return
 	}
-	s.modelCache.delete(id)
+	if s.modelCache != nil {
+		s.modelCache.delete(id)
+	}
+	if s.enrichCache != nil {
+		s.enrichCache.delete(id)
+	}
 }
 
 func (s *LLMService) invalidateAllModelCatalogs() {
-	if s == nil || s.modelCache == nil {
+	if s == nil {
 		return
 	}
-	s.modelCache.clear()
+	if s.modelCache != nil {
+		s.modelCache.clear()
+	}
+	if s.enrichCache != nil {
+		s.enrichCache.clear()
+	}
 }
 
 func (c *llmModelCatalogCache) get(provider llm.Provider) ([]llm.Model, bool) {
@@ -157,6 +167,38 @@ func cloneLLMModels(models []llm.Model) []llm.Model {
 	for index, model := range models {
 		result[index] = model
 		result[index].SupportedParameters = append([]string(nil), model.SupportedParameters...)
+		result[index].InputModalities = append([]string(nil), model.InputModalities...)
+		result[index].OutputModalities = append([]string(nil), model.OutputModalities...)
+		result[index].Capabilities = append([]string(nil), model.Capabilities...)
+		if model.CreatedAt != nil {
+			value := *model.CreatedAt
+			result[index].CreatedAt = &value
+		}
+		if model.ModifiedAt != nil {
+			value := *model.ModifiedAt
+			result[index].ModifiedAt = &value
+		}
+		if model.Ollama != nil {
+			value := *model.Ollama
+			value.Families = append([]string(nil), model.Ollama.Families...)
+			if model.Ollama.SizeBytes != nil {
+				size := *model.Ollama.SizeBytes
+				value.SizeBytes = &size
+			}
+			if model.Ollama.ParameterCount != nil {
+				count := *model.Ollama.ParameterCount
+				value.ParameterCount = &count
+			}
+			result[index].Ollama = &value
+		}
+		if model.Rank != nil {
+			value := *model.Rank
+			result[index].Rank = &value
+		}
+		if model.Recommendation != nil {
+			value := *model.Recommendation
+			result[index].Recommendation = &value
+		}
 	}
 	return result
 }

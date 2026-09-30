@@ -147,6 +147,65 @@ func TestLLMAdminHandlerDoesNotOwnLLMStoreOrSecretMutation(t *testing.T) {
 	}
 }
 
+func TestLLMAdminModelQueryUsesCanonicalFilteringSortingAndPagination(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(configformat.EnvConfigDir, root)
+	previousRoot := configformat.RootPath()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = configformat.SetRootPath(previousRoot) })
+	restore := secretstore.UseMemoryForTesting()
+	t.Cleanup(restore)
+
+	models := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
+			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"data":[
+			{"id":"acme/a","name":"A","context_length":64000,"pricing":{"prompt":"0.000002","completion":"0.000004"}},
+			{"id":"acme/b","name":"B","context_length":128000,"pricing":{"prompt":"0.000001","completion":"0.000003"}},
+			{"id":"other/c","name":"C","context_length":256000,"pricing":{"prompt":"0","completion":"0"}}
+		]}`))
+	}))
+	defer models.Close()
+
+	service := application.NewLLMService(root)
+	if _, err := service.AddCustomProvider(t.Context(), "admin-query", application.NewCustomLLMProviderConfig("Admin Query", "openai", models.URL+"/v1", "acme/b", "none", "openai-models")); err != nil {
+		t.Fatal(err)
+	}
+	dispatcher := application.NewDispatcher()
+	if err := application.BindLLMOperations(dispatcher, service); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(API{Operations: dispatcher})
+
+	page := adminJSON[application.LLMModelPage](t, handler, http.MethodGet,
+		"/api/llm/providers/admin-query/models?author=acme&max_prompt_price=0.000002&sort=context:desc&range=1:1", "")
+	if page.ProviderID != "admin-query" || page.TotalCatalog != 3 || page.Matched != 2 || page.Offset != 0 || page.Limit != 1 || page.Returned != 1 || !page.HasMore || len(page.Models) != 1 || page.Models[0].ID != "acme/b" {
+		t.Fatalf("Admin model page=%#v", page)
+	}
+	count := adminJSON[application.LLMModelPage](t, handler, http.MethodGet, "/api/llm/providers/admin-query/models?author=acme&count=true", "")
+	if count.Matched != 2 || count.Returned != 0 || len(count.Models) != 0 {
+		t.Fatalf("Admin count page=%#v", count)
+	}
+	bad := adminRequest(t, handler, http.MethodGet, "/api/llm/providers/admin-query/models?all=true&limit=1", "")
+	if bad.Code == http.StatusOK {
+		t.Fatalf("invalid Admin pagination was accepted: %s", bad.Body.String())
+	}
+}
+
+func TestLLMAdminModelQueryParserPreservesRepeatedTypedFilters(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/llm/providers/x/models?author=acme&author=other&capability=tools&capability=reasoning&family=llama&sort=context:desc&sort=name:asc&free=true&min_context=64000&max_size=1234&created_after=2026-09-01T00:00:00Z", nil)
+	query, err := parseLLMModelQuery(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(query.Authors, []string{"acme", "other"}) || !reflect.DeepEqual(query.Capabilities, []string{"tools", "reasoning"}) || !reflect.DeepEqual(query.Ollama.Families, []string{"llama"}) || len(query.Sort) != 2 || query.Sort[0].Field != "context" || query.Sort[0].Direction != "desc" || query.Free == nil || !*query.Free || query.MinContext == nil || *query.MinContext != 64000 || query.Ollama.MaxSizeBytes == nil || *query.Ollama.MaxSizeBytes != 1234 || query.CreatedAfter == nil {
+		t.Fatalf("parsed query=%#v", query)
+	}
+}
+
 func adminJSON[T any](t *testing.T, handler http.Handler, method, path, body string) T {
 	t.Helper()
 	recorder := adminRequest(t, handler, method, path, body)

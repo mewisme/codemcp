@@ -1,9 +1,11 @@
 package admin
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
@@ -90,21 +92,147 @@ func (api API) handleLLMProvider(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		refresh := false
-		if raw := strings.TrimSpace(r.URL.Query().Get("refresh")); raw != "" {
-			value, err := strconv.ParseBool(raw)
-			if err != nil {
-				http.Error(w, "invalid refresh value", http.StatusBadRequest)
-				return
-			}
-			refresh = value
+		query, err := parseLLMModelQuery(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
-		api.dispatch(w, r, capability.LLMProviderModels, application.LLMProviderModelsInput{ID: id, Refresh: refresh})
+		api.dispatch(w, r, capability.LLMProviderModels, application.LLMProviderModelsInput{ID: id, Query: query})
 	case "credential":
 		api.handleLLMCredential(w, r, id)
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func parseLLMModelQuery(r *http.Request) (application.LLMModelQuery, error) {
+	values := r.URL.Query()
+	query := application.LLMModelQuery{
+		Search: values.Get("search"), ExactIDs: values["id"], Authors: values["author"],
+		MinPromptPrice: values.Get("min_prompt_price"), MaxPromptPrice: values.Get("max_prompt_price"),
+		MinCompletionPrice: values.Get("min_completion_price"), MaxCompletionPrice: values.Get("max_completion_price"),
+		Capabilities: values["capability"], Parameters: values["parameter"], InputModalities: values["input"], OutputModalities: values["output"],
+		Ollama: application.LLMOllamaModelQuery{Families: values["family"], Formats: values["format"], Quantizations: values["quantization"]},
+		Rank:   values.Get("rank"), RankWindow: values.Get("window"), RecommendFor: values.Get("recommend_for"),
+	}
+	var err error
+	if query.Refresh, err = parseOptionalBool(values.Get("refresh"), false); err != nil {
+		return application.LLMModelQuery{}, fmt.Errorf("invalid refresh value")
+	}
+	if query.All, err = parseOptionalBool(values.Get("all"), false); err != nil {
+		return application.LLMModelQuery{}, fmt.Errorf("invalid all value")
+	}
+	if query.CountOnly, err = parseOptionalBool(values.Get("count"), false); err != nil {
+		return application.LLMModelQuery{}, fmt.Errorf("invalid count value")
+	}
+	free, freeSet, err := parseOptionalBoolPointer(values.Get("free"))
+	if err != nil {
+		return application.LLMModelQuery{}, fmt.Errorf("invalid free value")
+	}
+	paid, paidSet, err := parseOptionalBoolPointer(values.Get("paid"))
+	if err != nil {
+		return application.LLMModelQuery{}, fmt.Errorf("invalid paid value")
+	}
+	if freeSet && paidSet && *free && *paid {
+		return application.LLMModelQuery{}, fmt.Errorf("free and paid filters are mutually exclusive")
+	}
+	if freeSet {
+		query.Free = free
+	}
+	if paidSet && *paid {
+		value := false
+		query.Free = &value
+	}
+	if query.Offset, err = parseOptionalInt(values.Get("offset")); err != nil {
+		return application.LLMModelQuery{}, fmt.Errorf("invalid offset value")
+	}
+	if query.Limit, err = parseOptionalInt(values.Get("limit")); err != nil {
+		return application.LLMModelQuery{}, fmt.Errorf("invalid limit value")
+	}
+	if raw := strings.TrimSpace(values.Get("range")); raw != "" {
+		query.Range, err = application.ParseLLMModelRange(raw)
+		if err != nil {
+			return application.LLMModelQuery{}, err
+		}
+	}
+	for _, target := range []struct {
+		name   string
+		assign func(int)
+	}{
+		{"min_context", func(v int) { query.MinContext = &v }}, {"max_context", func(v int) { query.MaxContext = &v }},
+	} {
+		if raw := strings.TrimSpace(values.Get(target.name)); raw != "" {
+			value, parseErr := strconv.Atoi(raw)
+			if parseErr != nil {
+				return application.LLMModelQuery{}, fmt.Errorf("invalid %s value", target.name)
+			}
+			target.assign(value)
+		}
+	}
+	for _, target := range []struct {
+		name   string
+		assign func(int64)
+	}{
+		{"min_parameters", func(v int64) { query.Ollama.MinParameterCount = &v }}, {"max_parameters", func(v int64) { query.Ollama.MaxParameterCount = &v }},
+		{"min_size", func(v int64) { query.Ollama.MinSizeBytes = &v }}, {"max_size", func(v int64) { query.Ollama.MaxSizeBytes = &v }},
+	} {
+		if raw := strings.TrimSpace(values.Get(target.name)); raw != "" {
+			value, parseErr := strconv.ParseInt(raw, 10, 64)
+			if parseErr != nil {
+				return application.LLMModelQuery{}, fmt.Errorf("invalid %s value", target.name)
+			}
+			target.assign(value)
+		}
+	}
+	for _, raw := range values["sort"] {
+		value, parseErr := application.ParseLLMModelSort(raw)
+		if parseErr != nil {
+			return application.LLMModelQuery{}, parseErr
+		}
+		query.Sort = append(query.Sort, value)
+	}
+	for _, target := range []struct {
+		name   string
+		assign func(*time.Time)
+	}{
+		{"created_after", func(v *time.Time) { query.CreatedAfter = v }}, {"created_before", func(v *time.Time) { query.CreatedBefore = v }},
+		{"modified_after", func(v *time.Time) { query.ModifiedAfter = v }}, {"modified_before", func(v *time.Time) { query.ModifiedBefore = v }},
+	} {
+		if raw := strings.TrimSpace(values.Get(target.name)); raw != "" {
+			value, parseErr := time.Parse(time.RFC3339, raw)
+			if parseErr != nil {
+				return application.LLMModelQuery{}, fmt.Errorf("invalid %s value", target.name)
+			}
+			value = value.UTC()
+			target.assign(&value)
+		}
+	}
+	return query, nil
+}
+
+func parseOptionalBool(raw string, fallback bool) (bool, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback, nil
+	}
+	return strconv.ParseBool(raw)
+}
+
+func parseOptionalBoolPointer(raw string) (*bool, bool, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, false, nil
+	}
+	value, err := strconv.ParseBool(raw)
+	return &value, true, err
+}
+
+func parseOptionalInt(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(raw)
 }
 
 func (api API) handleLLMProviderUpdate(w http.ResponseWriter, r *http.Request, id string) {

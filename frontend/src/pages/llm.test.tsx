@@ -25,7 +25,25 @@ describe("LLMPage", () => {
   beforeEach(() => {
     vi.spyOn(adminApi, "llmStatus").mockResolvedValue({ active_provider: provider.id, active: provider, providers: [provider] })
     vi.spyOn(adminApi, "llmProviders").mockResolvedValue([provider])
-    vi.spyOn(adminApi, "llmModels").mockResolvedValue({ provider_id: provider.id, models: [{ id: "openrouter/free", name: "Free Router" }], refreshed: false })
+    vi.spyOn(adminApi, "llmModels").mockResolvedValue({
+      provider_id: provider.id,
+      total_catalog: 1,
+      matched: 1,
+      offset: 0,
+      limit: 25,
+      returned: 1,
+      has_more: false,
+      models: [{ id: "openrouter/free", name: "Free Router", free: true, free_known: true }],
+      refreshed: false,
+      sort: [{ field: "id", direction: "asc" }],
+      query_capabilities: {
+        filters: ["search", "id", "author", "free"],
+        sorts: ["id", "name"],
+        ranks: ["usage", "trending"],
+        rank_windows: ["day", "week", "month"],
+        recommendation: true,
+      },
+    })
     vi.spyOn(adminApi, "setLLMCredential").mockResolvedValue({ provider_id: provider.id, configured: true, preview: "sk-…wxyz" })
     vi.spyOn(adminApi, "clearLLMCredential").mockResolvedValue({ provider_id: provider.id, configured: false, preview: "" })
     vi.spyOn(adminApi, "selectLLMProvider").mockResolvedValue(provider)
@@ -47,8 +65,25 @@ describe("LLMPage", () => {
     expect(screen.getAllByText("sk-…abcd").length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole("button", { name: "Manage provider" }))
-    await waitFor(() => expect(adminApi.llmModels).toHaveBeenCalledWith("openrouter", false))
+    await waitFor(() => expect(adminApi.llmModels).toHaveBeenCalledWith("openrouter", { limit: 25 }))
     expect(await screen.findByText("Free Router")).toBeInTheDocument()
+    expect(screen.getByLabelText("Search")).toBeInTheDocument()
+    expect(screen.getByLabelText("Price")).toBeInTheDocument()
+    expect(screen.getByLabelText("Author")).toBeInTheDocument()
+    expect(screen.getByLabelText("Sort")).toBeInTheDocument()
+    expect(screen.getByLabelText("Rank")).toBeInTheDocument()
+    expect(screen.getByLabelText("Recommend for")).toBeInTheDocument()
+    expect(screen.getByLabelText("Model ID")).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText("Search"), "vendor")
+    await user.click(screen.getByRole("button", { name: "Apply model query" }))
+    await waitFor(() => expect(adminApi.llmModels).toHaveBeenLastCalledWith("openrouter", expect.objectContaining({
+      search: "vendor",
+      sort: ["id:asc"],
+      offset: 0,
+      limit: 25,
+      refresh: false,
+    })))
 
     const keyInput = screen.getByLabelText("New API key") as HTMLInputElement
     expect(keyInput.type).toBe("password")

@@ -23,7 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import {
   adminApi,
-  type LLMModel,
+  type LLMModelCatalog,
   type LLMProvider,
   type LLMProviderConfig,
   type LLMStatus,
@@ -49,7 +49,6 @@ export function LLMPage() {
   const [removeTarget, setRemoveTarget] = useState<LLMProvider | null>(null)
 
   const load = useCallback(async () => {
-    setError("")
     try {
       const [nextStatus, nextProviders] = await Promise.all([
         adminApi.llmStatus(),
@@ -65,7 +64,19 @@ export function LLMPage() {
     }
   }, [])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([adminApi.llmStatus(), adminApi.llmProviders()])
+      .then(([nextStatus, nextProviders]) => {
+        if (cancelled) return
+        setStatus(nextStatus)
+        setProviders(nextProviders)
+        setSelectedID((current) => current && nextProviders.some((value) => value.id === current) ? current : "")
+      })
+      .catch((value) => { if (!cancelled) setError(errorText(value)) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
 
   const selected = useMemo(
     () => providers.find((provider) => provider.id === selectedID) ?? null,
@@ -121,6 +132,7 @@ export function LLMPage() {
 
       {selected ? (
         <ProviderDetail
+          key={`${selected.id}:${selected.model || ""}`}
           provider={selected}
           busy={busy}
           open
@@ -230,29 +242,102 @@ function ProviderDetail({ provider, busy, open, onOpenChange, onMutate, onEdit, 
   onEdit: () => void
   onRemove: () => void
 }) {
-  const [models, setModels] = useState<LLMModel[]>([])
-  const [modelsBusy, setModelsBusy] = useState(false)
+  const [catalog, setCatalog] = useState<LLMModelCatalog | null>(null)
+  const [modelsBusy, setModelsBusy] = useState(true)
   const [modelsError, setModelsError] = useState("")
   const [model, setModel] = useState(provider.model || "")
   const [apiKey, setAPIKey] = useState("")
+  const [modelSearch, setModelSearch] = useState("")
+  const [modelPrice, setModelPrice] = useState("all")
+  const [modelAuthor, setModelAuthor] = useState("")
+  const [modelMinContext, setModelMinContext] = useState("")
+  const [modelMaxContext, setModelMaxContext] = useState("")
+  const [modelMinPromptPrice, setModelMinPromptPrice] = useState("")
+  const [modelMaxPromptPrice, setModelMaxPromptPrice] = useState("")
+  const [modelMinCompletionPrice, setModelMinCompletionPrice] = useState("")
+  const [modelMaxCompletionPrice, setModelMaxCompletionPrice] = useState("")
+  const [modelCapability, setModelCapability] = useState("")
+  const [modelParameter, setModelParameter] = useState("")
+  const [modelInput, setModelInput] = useState("")
+  const [modelOutput, setModelOutput] = useState("")
+  const [modelFamily, setModelFamily] = useState("")
+  const [modelFormat, setModelFormat] = useState("")
+  const [modelQuantization, setModelQuantization] = useState("")
+  const [modelMinParameters, setModelMinParameters] = useState("")
+  const [modelMaxParameters, setModelMaxParameters] = useState("")
+  const [modelMinSize, setModelMinSize] = useState("")
+  const [modelMaxSize, setModelMaxSize] = useState("")
+  const [modelCreatedAfter, setModelCreatedAfter] = useState("")
+  const [modelCreatedBefore, setModelCreatedBefore] = useState("")
+  const [modelModifiedAfter, setModelModifiedAfter] = useState("")
+  const [modelModifiedBefore, setModelModifiedBefore] = useState("")
+  const [modelSort, setModelSort] = useState("id:asc")
+  const [modelRank, setModelRank] = useState("")
+  const [modelRankWindow, setModelRankWindow] = useState("week")
+  const [modelTask, setModelTask] = useState("")
+  const [modelOffset, setModelOffset] = useState(0)
+  const modelLimit = 25
 
-  useEffect(() => { setModel(provider.model || ""); setAPIKey("") }, [provider.id, provider.model])
-
-  const loadModels = useCallback(async (refresh = false) => {
+  async function loadModels(refresh = false, offset = modelOffset) {
     setModelsBusy(true)
     setModelsError("")
     try {
-      const result = await adminApi.llmModels(provider.id, refresh)
-      setModels(result.models || [])
+      const capabilities = catalog?.query_capabilities
+      const optionalNumber = (value: string) => value.trim() === "" ? undefined : Number(value)
+      const result = await adminApi.llmModels(provider.id, {
+        search: modelSearch.trim() || undefined,
+        free: modelPrice === "free" ? true : undefined,
+        paid: modelPrice === "paid" ? true : undefined,
+        author: capabilities?.filters.includes("author") && modelAuthor.trim() ? [modelAuthor.trim()] : undefined,
+        min_context: capabilities?.filters.includes("context") ? optionalNumber(modelMinContext) : undefined,
+        max_context: capabilities?.filters.includes("context") ? optionalNumber(modelMaxContext) : undefined,
+        min_prompt_price: capabilities?.filters.includes("prompt-price") && modelMinPromptPrice.trim() ? modelMinPromptPrice.trim() : undefined,
+        max_prompt_price: capabilities?.filters.includes("prompt-price") && modelMaxPromptPrice.trim() ? modelMaxPromptPrice.trim() : undefined,
+        min_completion_price: capabilities?.filters.includes("completion-price") && modelMinCompletionPrice.trim() ? modelMinCompletionPrice.trim() : undefined,
+        max_completion_price: capabilities?.filters.includes("completion-price") && modelMaxCompletionPrice.trim() ? modelMaxCompletionPrice.trim() : undefined,
+        capability: capabilities?.filters.includes("capability") && modelCapability.trim() ? [modelCapability.trim()] : undefined,
+        parameter: capabilities?.filters.includes("parameter") && modelParameter.trim() ? [modelParameter.trim()] : undefined,
+        input: capabilities?.filters.includes("input") && modelInput.trim() ? [modelInput.trim()] : undefined,
+        output: capabilities?.filters.includes("output") && modelOutput.trim() ? [modelOutput.trim()] : undefined,
+        family: capabilities?.filters.includes("family") && modelFamily.trim() ? [modelFamily.trim()] : undefined,
+        format: capabilities?.filters.includes("format") && modelFormat.trim() ? [modelFormat.trim()] : undefined,
+        quantization: capabilities?.filters.includes("quantization") && modelQuantization.trim() ? [modelQuantization.trim()] : undefined,
+        min_parameters: capabilities?.filters.includes("parameter-size") ? optionalNumber(modelMinParameters) : undefined,
+        max_parameters: capabilities?.filters.includes("parameter-size") ? optionalNumber(modelMaxParameters) : undefined,
+        min_size: capabilities?.filters.includes("size") ? optionalNumber(modelMinSize) : undefined,
+        max_size: capabilities?.filters.includes("size") ? optionalNumber(modelMaxSize) : undefined,
+        created_after: capabilities?.filters.includes("created") && modelCreatedAfter.trim() ? modelCreatedAfter.trim() : undefined,
+        created_before: capabilities?.filters.includes("created") && modelCreatedBefore.trim() ? modelCreatedBefore.trim() : undefined,
+        modified_after: capabilities?.filters.includes("modified") && modelModifiedAfter.trim() ? modelModifiedAfter.trim() : undefined,
+        modified_before: capabilities?.filters.includes("modified") && modelModifiedBefore.trim() ? modelModifiedBefore.trim() : undefined,
+        sort: !modelRank && !modelTask && modelSort ? [modelSort] : undefined,
+        rank: modelRank || undefined,
+        window: modelRank === "usage" ? modelRankWindow : modelRank === "trending" ? "week" : undefined,
+        recommend_for: !modelRank && modelTask.trim() ? modelTask.trim() : undefined,
+        offset,
+        limit: modelLimit,
+        refresh,
+      })
+      setCatalog(result)
+      setModelOffset(result.offset)
     } catch (value) {
-      setModels([])
+      setCatalog(null)
       setModelsError(errorText(value))
     } finally {
       setModelsBusy(false)
     }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    adminApi.llmModels(provider.id, { limit: modelLimit }).then((result) => {
+      if (!cancelled) { setCatalog(result); setModelOffset(result.offset); setModelsError("") }
+    }).catch((value) => { if (!cancelled) { setCatalog(null); setModelsError(errorText(value)) } }).finally(() => { if (!cancelled) setModelsBusy(false) })
+    return () => { cancelled = true }
   }, [provider.id])
 
-  useEffect(() => { void loadModels(false) }, [loadModels])
+  const models = catalog?.models || []
+  const modelCapabilities = catalog?.query_capabilities
 
   async function setCredential() {
     if (!apiKey) return
@@ -298,6 +383,34 @@ function ProviderDetail({ provider, busy, open, onOpenChange, onMutate, onEdit, 
             <Button size="sm" variant="outline" disabled={modelsBusy} onClick={() => void loadModels(true)}><RefreshCw className={modelsBusy ? "animate-spin" : ""} />Refresh models</Button>
           </div>
           {modelsError ? <PageError title="Model catalog unavailable" message={modelsError} /> : null}
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <FormField label="Search" htmlFor={`llm-model-search-${provider.id}`}><Input id={`llm-model-search-${provider.id}`} value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} placeholder="ID, name, author" /></FormField>
+            {modelCapabilities?.filters.includes("free") ? <FormField label="Price" htmlFor={`llm-model-price-${provider.id}`}><Select value={modelPrice} onValueChange={setModelPrice}><SelectTrigger id={`llm-model-price-${provider.id}`} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All prices</SelectItem><SelectItem value="free">Free</SelectItem><SelectItem value="paid">Paid</SelectItem></SelectContent></Select></FormField> : null}
+            {modelCapabilities?.filters.includes("author") ? <FormField label="Author" htmlFor={`llm-model-author-${provider.id}`}><Input id={`llm-model-author-${provider.id}`} value={modelAuthor} onChange={(event) => setModelAuthor(event.target.value)} /></FormField> : null}
+            {modelCapabilities?.filters.includes("context") ? <><FormField label="Min context" htmlFor={`llm-model-min-context-${provider.id}`}><Input id={`llm-model-min-context-${provider.id}`} type="number" min="0" value={modelMinContext} onChange={(event) => setModelMinContext(event.target.value)} /></FormField><FormField label="Max context" htmlFor={`llm-model-max-context-${provider.id}`}><Input id={`llm-model-max-context-${provider.id}`} type="number" min="0" value={modelMaxContext} onChange={(event) => setModelMaxContext(event.target.value)} /></FormField></> : null}
+            {modelCapabilities?.filters.includes("prompt-price") ? <><FormField label="Min prompt price" htmlFor={`llm-model-min-prompt-price-${provider.id}`}><Input id={`llm-model-min-prompt-price-${provider.id}`} value={modelMinPromptPrice} onChange={(event) => setModelMinPromptPrice(event.target.value)} /></FormField><FormField label="Max prompt price" htmlFor={`llm-model-max-prompt-price-${provider.id}`}><Input id={`llm-model-max-prompt-price-${provider.id}`} value={modelMaxPromptPrice} onChange={(event) => setModelMaxPromptPrice(event.target.value)} /></FormField></> : null}
+            {modelCapabilities?.filters.includes("completion-price") ? <><FormField label="Min completion price" htmlFor={`llm-model-min-completion-price-${provider.id}`}><Input id={`llm-model-min-completion-price-${provider.id}`} value={modelMinCompletionPrice} onChange={(event) => setModelMinCompletionPrice(event.target.value)} /></FormField><FormField label="Max completion price" htmlFor={`llm-model-max-completion-price-${provider.id}`}><Input id={`llm-model-max-completion-price-${provider.id}`} value={modelMaxCompletionPrice} onChange={(event) => setModelMaxCompletionPrice(event.target.value)} /></FormField></> : null}
+            {modelCapabilities?.filters.includes("capability") ? <FormField label="Capability" htmlFor={`llm-model-capability-${provider.id}`}><Input id={`llm-model-capability-${provider.id}`} value={modelCapability} onChange={(event) => setModelCapability(event.target.value)} placeholder="tools" /></FormField> : null}
+            {modelCapabilities?.filters.includes("parameter") ? <FormField label="Parameter" htmlFor={`llm-model-parameter-${provider.id}`}><Input id={`llm-model-parameter-${provider.id}`} value={modelParameter} onChange={(event) => setModelParameter(event.target.value)} placeholder="structured_outputs" /></FormField> : null}
+            {modelCapabilities?.filters.includes("input") ? <FormField label="Input modality" htmlFor={`llm-model-input-${provider.id}`}><Input id={`llm-model-input-${provider.id}`} value={modelInput} onChange={(event) => setModelInput(event.target.value)} placeholder="image" /></FormField> : null}
+            {modelCapabilities?.filters.includes("output") ? <FormField label="Output modality" htmlFor={`llm-model-output-${provider.id}`}><Input id={`llm-model-output-${provider.id}`} value={modelOutput} onChange={(event) => setModelOutput(event.target.value)} placeholder="text" /></FormField> : null}
+            {modelCapabilities?.filters.includes("family") ? <FormField label="Family" htmlFor={`llm-model-family-${provider.id}`}><Input id={`llm-model-family-${provider.id}`} value={modelFamily} onChange={(event) => setModelFamily(event.target.value)} /></FormField> : null}
+            {modelCapabilities?.filters.includes("format") ? <FormField label="Format" htmlFor={`llm-model-format-${provider.id}`}><Input id={`llm-model-format-${provider.id}`} value={modelFormat} onChange={(event) => setModelFormat(event.target.value)} placeholder="gguf" /></FormField> : null}
+            {modelCapabilities?.filters.includes("quantization") ? <FormField label="Quantization" htmlFor={`llm-model-quantization-${provider.id}`}><Input id={`llm-model-quantization-${provider.id}`} value={modelQuantization} onChange={(event) => setModelQuantization(event.target.value)} placeholder="Q4_K_M" /></FormField> : null}
+            {modelCapabilities?.filters.includes("parameter-size") ? <><FormField label="Min parameters" htmlFor={`llm-model-min-parameters-${provider.id}`}><Input id={`llm-model-min-parameters-${provider.id}`} type="number" min="0" value={modelMinParameters} onChange={(event) => setModelMinParameters(event.target.value)} /></FormField><FormField label="Max parameters" htmlFor={`llm-model-max-parameters-${provider.id}`}><Input id={`llm-model-max-parameters-${provider.id}`} type="number" min="0" value={modelMaxParameters} onChange={(event) => setModelMaxParameters(event.target.value)} /></FormField></> : null}
+            {modelCapabilities?.filters.includes("size") ? <><FormField label="Min size (bytes)" htmlFor={`llm-model-min-size-${provider.id}`}><Input id={`llm-model-min-size-${provider.id}`} type="number" min="0" value={modelMinSize} onChange={(event) => setModelMinSize(event.target.value)} /></FormField><FormField label="Max size (bytes)" htmlFor={`llm-model-max-size-${provider.id}`}><Input id={`llm-model-max-size-${provider.id}`} type="number" min="0" value={modelMaxSize} onChange={(event) => setModelMaxSize(event.target.value)} /></FormField></> : null}
+            {modelCapabilities?.filters.includes("created") ? <><FormField label="Created after" htmlFor={`llm-model-created-after-${provider.id}`}><Input id={`llm-model-created-after-${provider.id}`} value={modelCreatedAfter} onChange={(event) => setModelCreatedAfter(event.target.value)} placeholder="2026-09-01T00:00:00Z" /></FormField><FormField label="Created before" htmlFor={`llm-model-created-before-${provider.id}`}><Input id={`llm-model-created-before-${provider.id}`} value={modelCreatedBefore} onChange={(event) => setModelCreatedBefore(event.target.value)} placeholder="2026-10-01T00:00:00Z" /></FormField></> : null}
+            {modelCapabilities?.filters.includes("modified") ? <><FormField label="Modified after" htmlFor={`llm-model-modified-after-${provider.id}`}><Input id={`llm-model-modified-after-${provider.id}`} value={modelModifiedAfter} onChange={(event) => setModelModifiedAfter(event.target.value)} placeholder="2026-09-01T00:00:00Z" /></FormField><FormField label="Modified before" htmlFor={`llm-model-modified-before-${provider.id}`}><Input id={`llm-model-modified-before-${provider.id}`} value={modelModifiedBefore} onChange={(event) => setModelModifiedBefore(event.target.value)} placeholder="2026-10-01T00:00:00Z" /></FormField></> : null}
+            <FormField label="Sort" htmlFor={`llm-model-sort-${provider.id}`}><Select value={modelSort} disabled={Boolean(modelRank || modelTask.trim())} onValueChange={setModelSort}><SelectTrigger id={`llm-model-sort-${provider.id}`} className="w-full"><SelectValue /></SelectTrigger><SelectContent>{(modelCapabilities?.sorts || ["id", "name"]).flatMap((field) => [<SelectItem key={`${field}-asc`} value={`${field}:asc`}>{field} ↑</SelectItem>, <SelectItem key={`${field}-desc`} value={`${field}:desc`}>{field} ↓</SelectItem>])}</SelectContent></Select></FormField>
+            {modelCapabilities?.ranks?.length ? <FormField label="Rank" htmlFor={`llm-model-rank-${provider.id}`}><Select value={modelRank || "none"} onValueChange={(value) => { setModelRank(value === "none" ? "" : value); if (value !== "none") setModelTask("") }}><SelectTrigger id={`llm-model-rank-${provider.id}`} className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">No rank</SelectItem>{modelCapabilities.ranks.map((rank) => <SelectItem key={rank} value={rank}>{rank}</SelectItem>)}</SelectContent></Select></FormField> : null}
+            {modelRank === "usage" && modelCapabilities?.rank_windows?.length ? <FormField label="Rank window" htmlFor={`llm-model-rank-window-${provider.id}`}><Select value={modelRankWindow} onValueChange={setModelRankWindow}><SelectTrigger id={`llm-model-rank-window-${provider.id}`} className="w-full"><SelectValue /></SelectTrigger><SelectContent>{modelCapabilities.rank_windows.map((window) => <SelectItem key={window} value={window}>{window}</SelectItem>)}</SelectContent></Select></FormField> : null}
+            {modelCapabilities?.recommendation ? <FormField label="Recommend for" htmlFor={`llm-model-task-${provider.id}`}><Input id={`llm-model-task-${provider.id}`} value={modelTask} disabled={Boolean(modelRank)} onChange={(event) => setModelTask(event.target.value)} placeholder="Code Generation" /></FormField> : null}
+            <div className="flex items-end"><Button variant="outline" disabled={modelsBusy} onClick={() => { setModelOffset(0); void loadModels(false, 0) }}>Apply model query</Button></div>
+          </div>
+          {catalog ? <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+            <span>{catalog.matched} matched / {catalog.total_catalog} catalog · {catalog.returned ? `${catalog.offset + 1}-${catalog.offset + catalog.returned}` : "0"}</span>
+            <span>{catalog.rank_basis || catalog.recommendation_basis || "Catalog order"}</span>
+          </div> : null}
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <div>
               <Label htmlFor={`llm-model-${provider.id}`}>Model ID</Label>
@@ -306,6 +419,7 @@ function ProviderDetail({ provider, busy, open, onOpenChange, onMutate, onEdit, 
             </div>
             <Button className="self-end" disabled={busy || !model.trim() || model.trim() === (provider.model || "")} onClick={() => void onMutate(() => adminApi.setLLMProviderModel(provider.id, model.trim()))}>Set model</Button>
           </div>
+          {catalog ? <div className="flex justify-end gap-2"><Button size="sm" variant="outline" disabled={modelsBusy || catalog.offset <= 0} onClick={() => void loadModels(false, Math.max(0, catalog.offset - modelLimit))}>Previous</Button><Button size="sm" variant="outline" disabled={modelsBusy || !catalog.has_more} onClick={() => void loadModels(false, catalog.offset + catalog.returned)}>Next</Button></div> : null}
           {!modelsBusy && !modelsError && models.length === 0 ? <p className="text-sm text-muted-foreground">No discovered models. Exact model IDs can still be entered manually.</p> : null}
         </section>
 

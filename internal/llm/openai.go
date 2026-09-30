@@ -46,9 +46,27 @@ type openAIChatResponse struct {
 }
 
 type openAIModelListResponse struct {
-	Data []struct {
-		ID string `json:"id"`
-	} `json:"data"`
+	Data []openAIModelItem `json:"data"`
+}
+
+type openAIModelItem struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	CanonicalSlug string `json:"canonical_slug"`
+	ContextLength *int   `json:"context_length"`
+	Created       *int64 `json:"created"`
+	Pricing       *struct {
+		Prompt     string `json:"prompt"`
+		Completion string `json:"completion"`
+	} `json:"pricing"`
+	Architecture *struct {
+		InputModalities  []string `json:"input_modalities"`
+		OutputModalities []string `json:"output_modalities"`
+	} `json:"architecture"`
+	SupportedParameters []string `json:"supported_parameters"`
+	TopProvider         *struct {
+		MaxCompletionTokens *int `json:"max_completion_tokens"`
+	} `json:"top_provider"`
 }
 
 func (c *Client) inferOpenAI(ctx context.Context, provider Provider, request Request) (Result, error) {
@@ -151,7 +169,11 @@ func (c *Client) discoverOpenAIModels(ctx context.Context, provider Provider) ([
 			continue
 		}
 		seen[id] = struct{}{}
-		models = append(models, Model{ID: id, Name: id})
+		model, err := modelFromOpenAICompatibleItem(item)
+		if err != nil {
+			return nil, err
+		}
+		models = append(models, model)
 	}
 	return models, nil
 }

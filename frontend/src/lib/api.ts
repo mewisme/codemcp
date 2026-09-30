@@ -532,18 +532,104 @@ export type LLMStatus = {
 export type LLMModel = {
   id: string
   name?: string
+  canonical_slug?: string
+  author?: string
   context_length?: number
+  context_length_known?: boolean
   prompt_price?: string
   completion_price?: string
+  pricing_known?: boolean
   free?: boolean
+  free_known?: boolean
   supported_parameters?: string[]
+  input_modalities?: string[]
+  output_modalities?: string[]
+  capabilities?: string[]
   supports_structured_output?: boolean
+  created_at?: string
+  modified_at?: string
+  max_output_tokens?: number
+  ollama?: {
+    size_bytes?: number
+    digest?: string
+    format?: string
+    family?: string
+    families?: string[]
+    parameter_size?: string
+    parameter_count?: number
+    quantization_level?: string
+  }
+  rank?: { position: number; kind: string; source: string; basis: string; window?: string; freshness?: string; value?: string }
+  recommendation?: { position: number; task: string; source: string; basis: string; freshness?: string; share?: number }
+}
+
+export type LLMModelSort = { field: string; direction: string }
+export type LLMModelQueryCapabilities = {
+  filters: string[]
+  sorts: string[]
+  ranks?: string[]
+  rank_windows?: string[]
+  recommendation: boolean
 }
 
 export type LLMModelCatalog = {
   provider_id: string
+  total_catalog: number
+  matched: number
+  offset: number
+  limit: number
+  returned: number
+  has_more: boolean
   models: LLMModel[]
   refreshed: boolean
+  sort: LLMModelSort[]
+  rank_source?: string
+  rank_window?: string
+  rank_basis?: string
+  rank_freshness?: string
+  recommendation_basis?: string
+  recommendation_source?: string
+  recommendation_freshness?: string
+  query_capabilities: LLMModelQueryCapabilities
+}
+
+export type LLMModelQueryParams = {
+  search?: string
+  id?: string[]
+  free?: boolean
+  paid?: boolean
+  author?: string[]
+  min_context?: number
+  max_context?: number
+  min_prompt_price?: string
+  max_prompt_price?: string
+  min_completion_price?: string
+  max_completion_price?: string
+  capability?: string[]
+  parameter?: string[]
+  input?: string[]
+  output?: string[]
+  family?: string[]
+  format?: string[]
+  quantization?: string[]
+  min_parameters?: number
+  max_parameters?: number
+  min_size?: number
+  max_size?: number
+  created_after?: string
+  created_before?: string
+  modified_after?: string
+  modified_before?: string
+  sort?: string[]
+  rank?: string
+  window?: string
+  recommend_for?: string
+  offset?: number
+  limit?: number
+  range?: string
+  count?: boolean
+  all?: boolean
+  refresh?: boolean
 }
 
 export type LLMProviderConfig = {
@@ -1075,10 +1161,16 @@ export const adminApi = {
     api<LLMProvider>(`/api/llm/providers/${encodeURIComponent(id)}/select`, {
       method: "POST",
     }),
-  llmModels: (id: string, refresh = false) =>
-    api<LLMModelCatalog>(
-      `/api/llm/providers/${encodeURIComponent(id)}/models?refresh=${refresh ? "true" : "false"}`
-    ),
+  llmModels: (id: string, query: LLMModelQueryParams = {}) => {
+    const values = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === "" || value === false) continue
+      if (Array.isArray(value)) value.forEach((item) => values.append(key, String(item)))
+      else values.set(key, String(value))
+    }
+    const suffix = values.size ? `?${values.toString()}` : ""
+    return api<LLMModelCatalog>(`/api/llm/providers/${encodeURIComponent(id)}/models${suffix}`)
+  },
   probeLLMProvider: (id: string) =>
     api<LLMProbeResult>(`/api/llm/providers/${encodeURIComponent(id)}/probe`, {
       method: "POST",

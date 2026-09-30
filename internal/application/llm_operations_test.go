@@ -82,7 +82,7 @@ func TestCanonicalLLMOperationsBindStableResultsAndProtectedCredentials(t *testi
 		t.Fatalf("status performed network-like backend work: infer=%d discover=%d", backend.inferCalls.Load(), backend.discoverCalls.Load())
 	}
 
-	modelResult, err := dispatcher.Dispatch(t.Context(), DispatchRequest{Operation: capability.LLMProviderModels, Input: LLMProviderModelsInput{ID: string(llm.OpenRouterID), Refresh: true}})
+	modelResult, err := dispatcher.Dispatch(t.Context(), DispatchRequest{Operation: capability.LLMProviderModels, Input: LLMProviderModelsInput{ID: string(llm.OpenRouterID), Query: LLMModelQuery{Refresh: true}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,10 +252,10 @@ func TestInactiveProvidersRemainFullyOperableWithoutChangingActiveSelection(t *t
 		t.Fatal(err)
 	}
 	assertActive(llm.OpenRouterID)
-	if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), false); err != nil {
+	if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), LLMModelQuery{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), true); err != nil {
+	if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), LLMModelQuery{Refresh: true}); err != nil {
 		t.Fatal(err)
 	}
 	if backend.lastProvider != llm.OllamaID {
@@ -314,7 +314,7 @@ func TestInactiveProvidersRemainFullyOperableWithoutChangingActiveSelection(t *t
 	if _, err := service.SetProviderModel(t.Context(), "inactive-custom", "custom/model-a"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ModelCatalog(t.Context(), "inactive-custom", true); err != nil {
+	if _, err := service.ModelCatalog(t.Context(), "inactive-custom", LLMModelQuery{Refresh: true}); err != nil {
 		t.Fatal(err)
 	}
 	if backend.lastProvider != "inactive-custom" {

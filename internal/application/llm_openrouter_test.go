@@ -20,24 +20,25 @@ func TestOpenRouterModelsNormalizeFilterAndDoNotPersistRemoteCatalog(t *testing.
 	restore := secretstore.UseMemoryForTesting()
 	defer restore()
 
+	const credential = "sk-or-v1-catalog-inference-key"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/models" {
 			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
 		}
-		if got := r.Header.Get("Authorization"); got != "" {
-			t.Fatalf("public OpenRouter catalog received authorization=%q", got)
+		if got := r.Header.Get("Authorization"); got != "Bearer "+credential {
+			t.Fatalf("OpenRouter catalog authorization=%q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{"data":[
-			{"id":"openrouter/free","name":"OpenRouter: Free Models Router","context_length":200000,"pricing":{"prompt":"0","completion":"0.000000"},"supported_parameters":["response_format","structured_outputs","tools"]},
-			{"id":"vendor/model-paid","name":"Vendor Paid","context_length":131072,"pricing":{"prompt":"0.000001","completion":"0.000002"},"supported_parameters":["temperature"]},
+			{"id":"openrouter/free","name":"OpenRouter: Free Models Router","canonical_slug":"openrouter/free-2026","context_length":200000,"created":1788220800,"pricing":{"prompt":"0","completion":"0.000000"},"architecture":{"input_modalities":["text"],"output_modalities":["text"]},"supported_parameters":["response_format","structured_outputs","tools"],"top_provider":{"max_completion_tokens":8192}},
+			{"id":"vendor/model-paid","name":"Vendor Paid","canonical_slug":"vendor/model-paid-2026","context_length":131072,"created":1788307200,"pricing":{"prompt":"0.000001","completion":"0.000002"},"architecture":{"input_modalities":["text","image"],"output_modalities":["text"]},"supported_parameters":["temperature","tools","reasoning"],"top_provider":{"max_completion_tokens":16384}},
 			{"id":"vendor/model-free","name":"Vendor Free","context_length":65536,"pricing":{"prompt":"0.000000","completion":"0"},"supported_parameters":["response_format"]}
 		]}`)
 	}))
 	defer server.Close()
 
 	configureOpenRouterForApplicationTest(t, root, server.URL+"/api/v1", llm.OpenRouterDefaultModel, llm.OpenRouterID)
-	credentialChange, err := llm.CredentialChange(string(llm.OpenRouterID), "sk-or-v1-catalog-inference-key")
+	credentialChange, err := llm.CredentialChange(string(llm.OpenRouterID), credential)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,11 +51,12 @@ func TestOpenRouterModelsNormalizeFilterAndDoNotPersistRemoteCatalog(t *testing.
 		t.Fatal(err)
 	}
 
-	page, err := NewLLMService(root).OpenRouterModels(t.Context(), LLMModelQuery{FreeOnly: true, Limit: 1})
+	free := true
+	page, err := NewLLMService(root).OpenRouterModels(t.Context(), LLMModelQuery{Free: &free, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.ProviderID != llm.OpenRouterID || page.Total != 2 || len(page.Models) != 1 || !page.Truncated {
+	if page.ProviderID != llm.OpenRouterID || page.Matched != 2 || len(page.Models) != 1 || !page.HasMore {
 		t.Fatalf("page=%#v", page)
 	}
 	model := page.Models[0]
@@ -62,15 +64,31 @@ func TestOpenRouterModelsNormalizeFilterAndDoNotPersistRemoteCatalog(t *testing.
 		t.Fatalf("normalized model=%#v", model)
 	}
 
-	searched, err := NewLLMService(root).OpenRouterModels(t.Context(), LLMModelQuery{Search: "VENDOR FREE", FreeOnly: true})
+	searched, err := NewLLMService(root).OpenRouterModels(t.Context(), LLMModelQuery{Search: "VENDOR FREE", Free: &free})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if searched.Total != 1 || len(searched.Models) != 1 || searched.Models[0].ID != "vendor/model-free" {
+	if searched.Matched != 1 || len(searched.Models) != 1 || searched.Models[0].ID != "vendor/model-free" {
 		t.Fatalf("searched=%#v", searched)
 	}
 	if searched.Models[0].SupportsStructuredOutput {
 		t.Fatal("response_format-only model was overclaimed as strict structured-output capable")
+	}
+	paid := false
+	minimumContext := 100000
+	rich, err := NewLLMService(root).OpenRouterModels(t.Context(), LLMModelQuery{
+		Authors: []string{"vendor"}, Free: &paid, MinContext: &minimumContext, MaxPromptPrice: "0.000001",
+		Capabilities: []string{"tools"}, InputModalities: []string{"image"}, All: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rich.Matched != 1 || len(rich.Models) != 1 {
+		t.Fatalf("rich OpenRouter query=%#v", rich)
+	}
+	paidModel := rich.Models[0]
+	if paidModel.ID != "vendor/model-paid" || paidModel.Author != "vendor" || paidModel.CanonicalSlug != "vendor/model-paid-2026" || !paidModel.ContextLengthKnown || !paidModel.PricingKnown || !paidModel.FreeKnown || paidModel.Free || paidModel.CreatedAt == nil || !paidModel.ModalitiesKnown || paidModel.MaxOutputTokens != 16384 || !paidModel.MaxOutputTokensKnown || !containsString(paidModel.Capabilities, "reasoning") {
+		t.Fatalf("rich OpenRouter model=%#v", paidModel)
 	}
 
 	after, err := os.ReadFile(store.Path())
@@ -104,12 +122,24 @@ func TestOpenRouterCoreProfileCannotBeOverriddenThroughGenericSettings(t *testin
 
 func TestOpenRouterModelCatalogFailureLeavesProviderStateUnchanged(t *testing.T) {
 	root := isolateSettingServiceConfig(t)
+	restore := secretstore.UseMemoryForTesting()
+	defer restore()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-or-v1-malformed-catalog" {
+			t.Fatalf("authorization=%q", got)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprint(w, `{malformed`)
 	}))
 	defer server.Close()
 	configureOpenRouterForApplicationTest(t, root, server.URL+"/api/v1", "user/selected-model", llm.OllamaID)
+	change, err := llm.CredentialChange(string(llm.OpenRouterID), "sk-or-v1-malformed-catalog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := secretstore.New(root).Apply([]secretstore.Change{change}); err != nil {
+		t.Fatal(err)
+	}
 
 	store := llm.NewStore(root)
 	before, err := os.ReadFile(store.Path())

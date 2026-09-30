@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -87,7 +89,8 @@ func llmModelsCommand() *cobra.Command {
 }
 
 func llmModelsCommandForProvider(fixed string) *cobra.Command {
-	var refresh, jsonOutput bool
+	var flags llmModelQueryFlags
+	var jsonOutput bool
 	use := "models [provider_id]"
 	args := cobra.MaximumNArgs(1)
 	if fixed != "" {
@@ -107,7 +110,11 @@ func llmModelsCommandForProvider(fixed string) *cobra.Command {
 					return err
 				}
 			}
-			result, err := llmService().ModelCatalog(cmd.Context(), id, refresh)
+			query, err := flags.query(cmd)
+			if err != nil {
+				return err
+			}
+			result, err := llmService().ModelCatalog(cmd.Context(), id, query)
 			if err != nil {
 				return err
 			}
@@ -121,9 +128,155 @@ func llmModelsCommandForProvider(fixed string) *cobra.Command {
 	if fixed == "" {
 		cmd.ValidArgsFunction = completeLLMProviderIDs
 	}
-	cmd.Flags().BoolVar(&refresh, "refresh", false, "Refresh the remote model catalog")
+	addLLMModelQueryFlags(cmd, &flags)
 	addJSONResultFlag(cmd, &jsonOutput)
 	return cmd
+}
+
+type llmModelQueryFlags struct {
+	search, minPromptPrice, maxPromptPrice, minCompletionPrice, maxCompletionPrice string
+	rank, window, recommendFor, rangeValue                                         string
+	ids, authors, capabilities, parameters, inputs, outputs                        []string
+	families, formats, quantizations, sorts                                        []string
+	free, paid, all, count, refresh                                                bool
+	minContext, maxContext, offset, limit                                          int
+	minSize, maxSize, minParameters, maxParameters                                 int64
+	createdAfter, createdBefore, modifiedAfter, modifiedBefore                     string
+}
+
+func addLLMModelQueryFlags(cmd *cobra.Command, flags *llmModelQueryFlags) {
+	values := cmd.Flags()
+	values.StringVar(&flags.search, "search", "", "Search model ID, name or author")
+	values.StringArrayVar(&flags.ids, "id", nil, "Filter by exact model ID (repeatable)")
+	values.StringArrayVar(&flags.authors, "author", nil, "Filter by model author/vendor (repeatable)")
+	values.BoolVar(&flags.free, "free", false, "Show only models known to be free")
+	values.BoolVar(&flags.paid, "paid", false, "Show only models known to be paid")
+	values.IntVar(&flags.minContext, "min-context", 0, "Minimum context length")
+	values.IntVar(&flags.maxContext, "max-context", 0, "Maximum context length")
+	values.StringVar(&flags.minPromptPrice, "min-prompt-price", "", "Minimum prompt token price")
+	values.StringVar(&flags.maxPromptPrice, "max-prompt-price", "", "Maximum prompt token price")
+	values.StringVar(&flags.minCompletionPrice, "min-completion-price", "", "Minimum completion token price")
+	values.StringVar(&flags.maxCompletionPrice, "max-completion-price", "", "Maximum completion token price")
+	values.StringArrayVar(&flags.capabilities, "capability", nil, "Filter by capability (repeatable)")
+	values.StringArrayVar(&flags.parameters, "parameter", nil, "Filter by supported parameter (repeatable)")
+	values.StringArrayVar(&flags.inputs, "input", nil, "Filter by input modality (repeatable)")
+	values.StringArrayVar(&flags.outputs, "output", nil, "Filter by output modality (repeatable)")
+	values.StringArrayVar(&flags.families, "family", nil, "Filter Ollama family/families (repeatable)")
+	values.StringArrayVar(&flags.formats, "format", nil, "Filter Ollama format (repeatable)")
+	values.StringArrayVar(&flags.quantizations, "quantization", nil, "Filter Ollama quantization level (repeatable)")
+	values.Int64Var(&flags.minParameters, "min-parameters", 0, "Minimum parsed Ollama parameter count")
+	values.Int64Var(&flags.maxParameters, "max-parameters", 0, "Maximum parsed Ollama parameter count")
+	values.Int64Var(&flags.minSize, "min-size", 0, "Minimum Ollama model size in bytes")
+	values.Int64Var(&flags.maxSize, "max-size", 0, "Maximum Ollama model size in bytes")
+	values.StringVar(&flags.createdAfter, "created-after", "", "Minimum model creation time (RFC3339)")
+	values.StringVar(&flags.createdBefore, "created-before", "", "Maximum model creation time (RFC3339)")
+	values.StringVar(&flags.modifiedAfter, "modified-after", "", "Minimum model modification time (RFC3339)")
+	values.StringVar(&flags.modifiedBefore, "modified-before", "", "Maximum model modification time (RFC3339)")
+	values.StringArrayVar(&flags.sorts, "sort", nil, "Sort by field[:asc|desc] (repeatable)")
+	values.StringVar(&flags.rank, "rank", "", "Rank OpenRouter models by usage, trending, intelligence, coding or agentic")
+	values.StringVar(&flags.window, "window", "", "Usage rank window: day, week or month")
+	values.StringVar(&flags.recommendFor, "recommend-for", "", "Rank OpenRouter models for an explicit task classification")
+	values.IntVar(&flags.offset, "offset", 0, "Zero-based result offset")
+	values.IntVar(&flags.limit, "limit", 0, "Maximum models to return")
+	values.StringVar(&flags.rangeValue, "range", "", "1-based inclusive result range start:end")
+	values.BoolVar(&flags.count, "count", false, "Return only the matched model count")
+	values.BoolVar(&flags.all, "all", false, "Return all matched models from the bounded provider catalog")
+	values.BoolVar(&flags.refresh, "refresh", false, "Refresh the remote model catalog")
+	_ = cmd.RegisterFlagCompletionFunc("sort", completeStaticFlag(
+		"id:asc", "id:desc", "name:asc", "name:desc", "context:asc", "context:desc",
+		"prompt-price:asc", "prompt-price:desc", "completion-price:asc", "completion-price:desc",
+		"created:asc", "created:desc", "modified:asc", "modified:desc", "size:asc", "size:desc",
+		"parameter-size:asc", "parameter-size:desc",
+	))
+	_ = cmd.RegisterFlagCompletionFunc("rank", completeStaticFlag("usage", "trending", "intelligence", "coding", "agentic"))
+	_ = cmd.RegisterFlagCompletionFunc("window", completeStaticFlag("day", "week", "month"))
+	_ = cmd.RegisterFlagCompletionFunc("capability", completeStaticFlag("structured-output", "tools", "reasoning", "web-search"))
+	_ = cmd.RegisterFlagCompletionFunc("parameter", completeStaticFlag("tools", "tool_choice", "reasoning", "structured_outputs", "response_format", "web_search"))
+	_ = cmd.RegisterFlagCompletionFunc("input", completeStaticFlag("text", "image", "audio", "video", "file"))
+	_ = cmd.RegisterFlagCompletionFunc("output", completeStaticFlag("text", "image", "audio"))
+}
+
+func completeStaticFlag(values ...string) cobra.CompletionFunc {
+	return func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return filterCompletions(values, toComplete), cobra.ShellCompDirectiveNoFileComp
+	}
+}
+
+func (flags llmModelQueryFlags) query(cmd *cobra.Command) (application.LLMModelQuery, error) {
+	if flags.free && flags.paid {
+		return application.LLMModelQuery{}, errors.New("--free and --paid are mutually exclusive")
+	}
+	query := application.LLMModelQuery{
+		Search: flags.search, ExactIDs: flags.ids, Authors: flags.authors,
+		MinPromptPrice: flags.minPromptPrice, MaxPromptPrice: flags.maxPromptPrice,
+		MinCompletionPrice: flags.minCompletionPrice, MaxCompletionPrice: flags.maxCompletionPrice,
+		Capabilities: flags.capabilities, Parameters: flags.parameters, InputModalities: flags.inputs, OutputModalities: flags.outputs,
+		Ollama: application.LLMOllamaModelQuery{Families: flags.families, Formats: flags.formats, Quantizations: flags.quantizations},
+		Rank:   flags.rank, RankWindow: flags.window, RecommendFor: flags.recommendFor,
+		Offset: flags.offset, Limit: flags.limit, All: flags.all, CountOnly: flags.count, Refresh: flags.refresh,
+	}
+	if flags.free || flags.paid {
+		free := flags.free
+		query.Free = &free
+	}
+	if cmd.Flags().Changed("min-context") {
+		value := flags.minContext
+		query.MinContext = &value
+	}
+	if cmd.Flags().Changed("max-context") {
+		value := flags.maxContext
+		query.MaxContext = &value
+	}
+	if cmd.Flags().Changed("min-parameters") {
+		value := flags.minParameters
+		query.Ollama.MinParameterCount = &value
+	}
+	if cmd.Flags().Changed("max-parameters") {
+		value := flags.maxParameters
+		query.Ollama.MaxParameterCount = &value
+	}
+	if cmd.Flags().Changed("min-size") {
+		value := flags.minSize
+		query.Ollama.MinSizeBytes = &value
+	}
+	if cmd.Flags().Changed("max-size") {
+		value := flags.maxSize
+		query.Ollama.MaxSizeBytes = &value
+	}
+	for _, raw := range flags.sorts {
+		value, err := application.ParseLLMModelSort(raw)
+		if err != nil {
+			return application.LLMModelQuery{}, err
+		}
+		query.Sort = append(query.Sort, value)
+	}
+	if strings.TrimSpace(flags.rangeValue) != "" {
+		value, err := application.ParseLLMModelRange(flags.rangeValue)
+		if err != nil {
+			return application.LLMModelQuery{}, err
+		}
+		query.Range = value
+	}
+	for _, target := range []struct {
+		raw string
+		set func(*time.Time)
+	}{
+		{flags.createdAfter, func(value *time.Time) { query.CreatedAfter = value }},
+		{flags.createdBefore, func(value *time.Time) { query.CreatedBefore = value }},
+		{flags.modifiedAfter, func(value *time.Time) { query.ModifiedAfter = value }},
+		{flags.modifiedBefore, func(value *time.Time) { query.ModifiedBefore = value }},
+	} {
+		if strings.TrimSpace(target.raw) == "" {
+			continue
+		}
+		value, err := time.Parse(time.RFC3339, strings.TrimSpace(target.raw))
+		if err != nil {
+			return application.LLMModelQuery{}, fmt.Errorf("invalid RFC3339 model time %q", target.raw)
+		}
+		value = value.UTC()
+		target.set(&value)
+	}
+	return query, nil
 }
 
 func llmProbeCommand() *cobra.Command {
@@ -471,10 +624,9 @@ func llmCoreProviderCommand(name, id string) *cobra.Command {
 		llmProviderModelCommand(id),
 		key,
 	)
-	if id == "openrouter" {
-		cmd.AddCommand(llmOpenRouterModelsCommand())
-	} else {
-		cmd.AddCommand(llmModelsCommandForProvider(id), llmOllamaModeCommand())
+	cmd.AddCommand(llmModelsCommandForProvider(id))
+	if id == "ollama" {
+		cmd.AddCommand(llmOllamaModeCommand())
 	}
 	return cmd
 }
@@ -515,31 +667,6 @@ func llmProviderModelCommand(id string) *cobra.Command {
 			return filterCompletions([]string{provider.Model}, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	addJSONResultFlag(cmd, &jsonOutput)
-	return cmd
-}
-
-func llmOpenRouterModelsCommand() *cobra.Command {
-	var freeOnly, jsonOutput bool
-	var search string
-	cmd := &cobra.Command{
-		Use:   "models",
-		Short: "List OpenRouter models",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			result, err := llmService().OpenRouterModels(cmd.Context(), application.LLMModelQuery{Search: search, FreeOnly: freeOnly, Limit: 200})
-			if err != nil {
-				return err
-			}
-			if commandResultModeFor(cmd) == resultModeJSON {
-				return writeResultJSON(cmd, result)
-			}
-			renderOpenRouterModels(cmd, result)
-			return nil
-		},
-	}
-	cmd.Flags().BoolVar(&freeOnly, "free", false, "Show only free models")
-	cmd.Flags().StringVar(&search, "search", "", "Filter models by ID or name")
 	addJSONResultFlag(cmd, &jsonOutput)
 	return cmd
 }
@@ -771,29 +898,45 @@ func renderLLMCredentialResult(cmd *cobra.Command, result application.LLMCredent
 func renderLLMModels(cmd *cobra.Command, result application.LLMModelCatalogResult) {
 	presenter := commandPresenter(cmd)
 	presenter.Frame("LLM models")
-	presenter.Fields(presentation.Field{Label: "provider", Value: result.ProviderID}, presentation.Field{Label: "refreshed", Value: result.Refreshed})
-	rows := make([]presentation.Row, 0, len(result.Models))
-	for _, model := range result.Models {
-		rows = append(rows, presentation.Row{model.ID, model.Name, fmt.Sprint(model.ContextLength), fmt.Sprint(model.Free), fmt.Sprint(model.SupportsStructuredOutput)})
-	}
-	presenter.Section(fmt.Sprintf("Models · %d", len(rows)))
-	presenter.Rows([]string{"ID", "Name", "Context", "Free", "Structured"}, rows...)
-	presenter.Complete("Done")
-}
-
-func renderOpenRouterModels(cmd *cobra.Command, result application.LLMModelPage) {
-	presenter := commandPresenter(cmd)
-	presenter.Frame("OpenRouter models")
 	presenter.Fields(
 		presentation.Field{Label: "provider", Value: result.ProviderID},
-		presentation.Field{Label: "total", Value: result.Total},
-		presentation.Field{Label: "truncated", Value: result.Truncated},
+		presentation.Field{Label: "catalog", Value: result.TotalCatalog},
+		presentation.Field{Label: "matched", Value: result.Matched},
+		presentation.Field{Label: "returned", Value: result.Returned},
+		presentation.Field{Label: "offset", Value: result.Offset},
+		presentation.Field{Label: "limit", Value: result.Limit},
+		presentation.Field{Label: "has more", Value: result.HasMore},
+		presentation.Field{Label: "refreshed", Value: result.Refreshed},
 	)
+	if result.RankSource != "" {
+		presenter.Fields(presentation.Field{Label: "rank source", Value: result.RankSource}, presentation.Field{Label: "rank window", Value: result.RankWindow}, presentation.Field{Label: "rank basis", Value: result.RankBasis})
+	}
+	if result.RecommendationBasis != "" {
+		presenter.Fields(presentation.Field{Label: "recommendation source", Value: result.RecommendationSource}, presentation.Field{Label: "recommendation basis", Value: result.RecommendationBasis})
+	}
+	if len(result.Models) == 0 {
+		presenter.Complete("Done")
+		return
+	}
 	rows := make([]presentation.Row, 0, len(result.Models))
 	for _, model := range result.Models {
-		rows = append(rows, presentation.Row{model.ID, model.Name, fmt.Sprint(model.ContextLength), fmt.Sprint(model.Free), fmt.Sprint(model.SupportsStructuredOutput)})
+		contextValue, freeValue := "-", "-"
+		if model.ContextLengthKnown {
+			contextValue = strconv.Itoa(model.ContextLength)
+		}
+		if model.FreeKnown {
+			freeValue = strconv.FormatBool(model.Free)
+		}
+		rank := ""
+		if model.Rank != nil {
+			rank = fmt.Sprintf("#%d %s", model.Rank.Position, model.Rank.Kind)
+		}
+		if model.Recommendation != nil {
+			rank = fmt.Sprintf("#%d recommend", model.Recommendation.Position)
+		}
+		rows = append(rows, presentation.Row{model.ID, model.Name, contextValue, freeValue, model.PromptPrice, model.CompletionPrice, rank})
 	}
 	presenter.Section(fmt.Sprintf("Models · %d", len(rows)))
-	presenter.Rows([]string{"ID", "Name", "Context", "Free", "Structured"}, rows...)
+	presenter.Rows([]string{"ID", "Name", "Context", "Free", "Prompt", "Completion", "Rank"}, rows...)
 	presenter.Complete("Done")
 }

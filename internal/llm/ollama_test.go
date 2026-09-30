@@ -118,7 +118,10 @@ func TestOllamaTagsDiscoveryUsesNativeRouteAndPreservesNames(t *testing.T) {
 				if got := r.Header.Get("Authorization"); got != wantAuth {
 					t.Fatalf("authorization=%q want=%q", got, wantAuth)
 				}
-				_, _ = fmt.Fprint(w, `{"models":[{"name":"qwen3:8b-cloud","model":"qwen3:8b-cloud"},{"name":"namespace/model:latest","model":"namespace/model@sha256:abc"}]}`)
+				_, _ = fmt.Fprint(w, `{"models":[
+					{"name":"qwen3:8b-cloud","model":"qwen3:8b-cloud","modified_at":"2026-09-15T01:02:03.123456789Z","size":5120000000,"digest":"sha256:abc","details":{"format":"gguf","family":"qwen3","families":["qwen3"],"parameter_size":"8.2B","quantization_level":"Q4_K_M"}},
+					{"name":"namespace/model:latest","model":"namespace/model@sha256:abc"}
+				]}`)
 			}))
 			defer server.Close()
 
@@ -134,6 +137,10 @@ func TestOllamaTagsDiscoveryUsesNativeRouteAndPreservesNames(t *testing.T) {
 			}
 			if len(models) != 2 || models[0].ID != "qwen3:8b-cloud" || models[0].Name != "qwen3:8b-cloud" || models[1].ID != "namespace/model@sha256:abc" || models[1].Name != "namespace/model:latest" {
 				t.Fatalf("models=%#v", models)
+			}
+			metadata := models[0].Ollama
+			if models[0].ModifiedAt == nil || metadata == nil || metadata.SizeBytes == nil || *metadata.SizeBytes != 5120000000 || metadata.Digest != "sha256:abc" || metadata.Format != "gguf" || metadata.Family != "qwen3" || metadata.ParameterCount == nil || *metadata.ParameterCount != 8200000000 || metadata.QuantizationLevel != "Q4_K_M" {
+				t.Fatalf("native Ollama metadata=%#v model=%#v", metadata, models[0])
 			}
 		})
 	}

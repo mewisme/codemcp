@@ -2,9 +2,12 @@ package llm
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -29,8 +32,18 @@ const (
 
 type ollamaTagsResponse struct {
 	Models []struct {
-		Name  string `json:"name"`
-		Model string `json:"model"`
+		Name       string `json:"name"`
+		Model      string `json:"model"`
+		ModifiedAt string `json:"modified_at"`
+		Size       *int64 `json:"size"`
+		Digest     string `json:"digest"`
+		Details    struct {
+			Format            string   `json:"format"`
+			Family            string   `json:"family"`
+			Families          []string `json:"families"`
+			ParameterSize     string   `json:"parameter_size"`
+			QuantizationLevel string   `json:"quantization_level"`
+		} `json:"details"`
 	} `json:"models"`
 }
 
@@ -114,9 +127,57 @@ func (c *Client) discoverOllamaModels(ctx context.Context, provider Provider) ([
 			continue
 		}
 		seen[id] = struct{}{}
-		models = append(models, Model{ID: id, Name: name})
+		model := Model{ID: id, Name: name}
+		if value := strings.TrimSpace(item.ModifiedAt); value != "" {
+			modified, err := time.Parse(time.RFC3339Nano, value)
+			if err != nil {
+				return nil, NewError(ErrorInvalidResponse, "models", "provider returned an invalid modified_at value")
+			}
+			modified = modified.UTC()
+			model.ModifiedAt = &modified
+		}
+		metadata := &OllamaModelMetadata{
+			Digest: strings.TrimSpace(item.Digest), Format: strings.TrimSpace(item.Details.Format),
+			Family: strings.TrimSpace(item.Details.Family), Families: normalizeModelMetadataList(item.Details.Families, 32),
+			ParameterSize: strings.TrimSpace(item.Details.ParameterSize), QuantizationLevel: strings.TrimSpace(item.Details.QuantizationLevel),
+		}
+		if item.Size != nil {
+			if *item.Size < 0 {
+				return nil, NewError(ErrorInvalidResponse, "models", "provider returned an invalid model byte size")
+			}
+			size := *item.Size
+			metadata.SizeBytes = &size
+		}
+		if count, ok := parseOllamaParameterCount(metadata.ParameterSize); ok {
+			metadata.ParameterCount = &count
+		}
+		model.Ollama = metadata
+		models = append(models, model)
 	}
 	return models, nil
+}
+
+func parseOllamaParameterCount(raw string) (int64, bool) {
+	value := strings.ToUpper(strings.TrimSpace(raw))
+	if value == "" {
+		return 0, false
+	}
+	multiplier := float64(1)
+	switch value[len(value)-1] {
+	case 'K':
+		multiplier, value = 1e3, value[:len(value)-1]
+	case 'M':
+		multiplier, value = 1e6, value[:len(value)-1]
+	case 'B':
+		multiplier, value = 1e9, value[:len(value)-1]
+	case 'T':
+		multiplier, value = 1e12, value[:len(value)-1]
+	}
+	number, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || number < 0 || number > float64(math.MaxInt64)/multiplier {
+		return 0, false
+	}
+	return int64(math.Round(number * multiplier)), true
 }
 
 func ollamaTagsURL(raw string) (string, error) {

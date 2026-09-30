@@ -3,30 +3,25 @@ package llm
 import (
 	"context"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
 )
 
 const maxOpenRouterSupportedParameters = 128
 
-type openRouterModelListResponse struct {
-	Data []struct {
-		ID            string `json:"id"`
-		Name          string `json:"name"`
-		ContextLength int    `json:"context_length"`
-		Pricing       struct {
-			Prompt     string `json:"prompt"`
-			Completion string `json:"completion"`
-		} `json:"pricing"`
-		SupportedParameters []string `json:"supported_parameters"`
-	} `json:"data"`
-}
-
 func (c *Client) discoverOpenRouterModels(ctx context.Context, provider Provider) ([]Model, error) {
-	raw, err := c.doJSON(ctx, http.MethodGet, provider.BaseURL+"/models", nil, nil)
+	credential, err := c.credentialFor(ctx, provider, AuthBearer)
 	if err != nil {
 		return nil, err
 	}
-	var response openRouterModelListResponse
+	headers := make(http.Header)
+	headers.Set("Authorization", "Bearer "+credential)
+	raw, err := c.doJSON(ctx, http.MethodGet, provider.BaseURL+"/models", nil, headers)
+	if err != nil {
+		return nil, err
+	}
+	var response openAIModelListResponse
 	if err := decodeJSONResponse(raw, &response); err != nil {
 		return nil, err
 	}
@@ -40,33 +35,116 @@ func (c *Client) discoverOpenRouterModels(ctx context.Context, provider Provider
 		if id == "" || len(id) > MaxModelIDBytes {
 			return nil, NewError(ErrorInvalidResponse, "models", "provider returned an invalid model id")
 		}
-		name := strings.TrimSpace(item.Name)
-		if len(name) > MaxModelNameBytes {
-			return nil, NewError(ErrorInvalidResponse, "models", "provider returned an invalid model name")
-		}
-		if item.ContextLength < 0 {
-			return nil, NewError(ErrorInvalidResponse, "models", "provider returned an invalid context length")
-		}
 		if _, exists := seen[id]; exists {
 			continue
 		}
 		seen[id] = struct{}{}
-		if name == "" {
-			name = id
+		model, err := modelFromOpenAICompatibleItem(item)
+		if err != nil {
+			return nil, err
 		}
-		parameters := normalizeOpenRouterSupportedParameters(item.SupportedParameters)
-		models = append(models, Model{
-			ID:                       id,
-			Name:                     name,
-			ContextLength:            item.ContextLength,
-			PromptPrice:              strings.TrimSpace(item.Pricing.Prompt),
-			CompletionPrice:          strings.TrimSpace(item.Pricing.Completion),
-			Free:                     isOpenRouterZeroPrice(item.Pricing.Prompt) && isOpenRouterZeroPrice(item.Pricing.Completion),
-			SupportedParameters:      parameters,
-			SupportsStructuredOutput: containsOpenRouterParameter(parameters, "structured_outputs"),
-		})
+		model.CapabilitiesKnown = true
+		model.FreeKnown = model.PricingKnown
+		models = append(models, model)
 	}
 	return models, nil
+}
+
+func modelFromOpenAICompatibleItem(item openAIModelItem) (Model, error) {
+	id := strings.TrimSpace(item.ID)
+	name := strings.TrimSpace(item.Name)
+	if name == "" {
+		name = id
+	}
+	if len(name) > MaxModelNameBytes {
+		return Model{}, NewError(ErrorInvalidResponse, "models", "provider returned an invalid model name")
+	}
+	model := Model{ID: id, Name: name, CanonicalSlug: strings.TrimSpace(item.CanonicalSlug)}
+	if slash := strings.IndexByte(id, '/'); slash > 0 {
+		model.Author = id[:slash]
+	}
+	if item.ContextLength != nil {
+		if *item.ContextLength < 0 {
+			return Model{}, NewError(ErrorInvalidResponse, "models", "provider returned an invalid context length")
+		}
+		model.ContextLength = *item.ContextLength
+		model.ContextLengthKnown = true
+	}
+	if item.Pricing != nil {
+		model.PromptPrice = strings.TrimSpace(item.Pricing.Prompt)
+		model.CompletionPrice = strings.TrimSpace(item.Pricing.Completion)
+		model.PricingKnown = model.PromptPrice != "" || model.CompletionPrice != ""
+		model.FreeKnown = model.PricingKnown
+		model.Free = model.PricingKnown && isOpenRouterZeroPrice(model.PromptPrice) && isOpenRouterZeroPrice(model.CompletionPrice)
+	}
+	model.SupportedParameters = normalizeOpenRouterSupportedParameters(item.SupportedParameters)
+	if item.SupportedParameters != nil {
+		model.CapabilitiesKnown = true
+	}
+	model.SupportsStructuredOutput = containsOpenRouterParameter(model.SupportedParameters, "structured_outputs")
+	model.Capabilities = capabilitiesFromSupportedParameters(model.SupportedParameters)
+	if item.Architecture != nil {
+		model.ModalitiesKnown = true
+		model.InputModalities = normalizeModelMetadataList(item.Architecture.InputModalities, 32)
+		model.OutputModalities = normalizeModelMetadataList(item.Architecture.OutputModalities, 32)
+	}
+	if item.Created != nil && *item.Created >= 0 {
+		created := time.Unix(*item.Created, 0).UTC()
+		model.CreatedAt = &created
+	}
+	if item.TopProvider != nil && item.TopProvider.MaxCompletionTokens != nil {
+		if *item.TopProvider.MaxCompletionTokens < 0 {
+			return Model{}, NewError(ErrorInvalidResponse, "models", "provider returned an invalid max output token count")
+		}
+		model.MaxOutputTokens = *item.TopProvider.MaxCompletionTokens
+		model.MaxOutputTokensKnown = true
+	}
+	return model, nil
+}
+
+func capabilitiesFromSupportedParameters(parameters []string) []string {
+	set := map[string]struct{}{}
+	for _, parameter := range parameters {
+		switch parameter {
+		case "structured_outputs":
+			set["structured-output"] = struct{}{}
+		case "tools":
+			set["tools"] = struct{}{}
+		case "reasoning":
+			set["reasoning"] = struct{}{}
+		case "web_search":
+			set["web-search"] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(set))
+	for value := range set {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func normalizeModelMetadataList(values []string, limit int) []string {
+	if len(values) == 0 || limit <= 0 {
+		return nil
+	}
+	result := make([]string, 0, min(len(values), limit))
+	seen := map[string]struct{}{}
+	for _, raw := range values {
+		value := strings.ToLower(strings.TrimSpace(raw))
+		if value == "" || len(value) > 64 {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+		if len(result) == limit {
+			break
+		}
+	}
+	return result
 }
 
 func normalizeOpenRouterSupportedParameters(values []string) []string {

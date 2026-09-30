@@ -38,11 +38,7 @@ type LLMStatusResult struct {
 	Providers      []LLMProviderResult `json:"providers"`
 }
 
-type LLMModelCatalogResult struct {
-	ProviderID llm.ProviderID `json:"provider_id"`
-	Models     []llm.Model    `json:"models"`
-	Refreshed  bool           `json:"refreshed"`
-}
+type LLMModelCatalogResult = LLMModelPage
 
 type LLMProbeResult struct {
 	ProviderID llm.ProviderID `json:"provider_id"`
@@ -61,8 +57,8 @@ type LLMProviderWriteInput struct {
 }
 
 type LLMProviderModelsInput struct {
-	ID      string `json:"id"`
-	Refresh bool   `json:"refresh,omitempty"`
+	ID    string        `json:"id"`
+	Query LLMModelQuery `json:"query,omitempty"`
 }
 
 type LLMProviderCredentialInput struct {
@@ -185,23 +181,6 @@ func (s *LLMService) CredentialResult(ctx context.Context, rawID string) (LLMCre
 	return LLMCredentialResult{ProviderID: provider.ID, Configured: configured, Preview: preview}, nil
 }
 
-func (s *LLMService) ModelCatalog(ctx context.Context, rawID string, refresh bool) (LLMModelCatalogResult, error) {
-	provider, err := s.Provider(ctx, rawID)
-	if err != nil {
-		return LLMModelCatalogResult{}, err
-	}
-	var models []llm.Model
-	if refresh {
-		models, err = s.RefreshProviderModels(ctx, string(provider.ID))
-	} else {
-		models, err = s.ProviderModels(ctx, string(provider.ID))
-	}
-	if err != nil {
-		return LLMModelCatalogResult{}, err
-	}
-	return LLMModelCatalogResult{ProviderID: provider.ID, Models: models, Refreshed: refresh}, nil
-}
-
 func (s *LLMService) Probe(ctx context.Context, rawID string) (LLMProbeResult, error) {
 	provider, err := s.Provider(ctx, rawID)
 	if err != nil {
@@ -308,7 +287,7 @@ func BindLLMOperations(dispatcher *Dispatcher, service *LLMService) error {
 			return service.ProviderResult(ctx, input.ID)
 		}))},
 		{capability.LLMProviderModels, llmOperationHandler(capability.LLMProviderModels, typedOperation[LLMProviderModelsInput](capability.LLMProviderModels, func(ctx context.Context, input LLMProviderModelsInput) (any, error) {
-			return service.ModelCatalog(ctx, input.ID, input.Refresh)
+			return service.ModelCatalog(ctx, input.ID, input.Query)
 		}))},
 		{capability.LLMProviderProbe, llmOperationHandler(capability.LLMProviderProbe, typedOperation[LLMProviderIDInput](capability.LLMProviderProbe, func(ctx context.Context, input LLMProviderIDInput) (any, error) { return service.Probe(ctx, input.ID) }))},
 		{capability.LLMProviderCredentialSet, llmOperationHandler(capability.LLMProviderCredentialSet, typedOperation[LLMProviderCredentialInput](capability.LLMProviderCredentialSet, func(ctx context.Context, input LLMProviderCredentialInput) (any, error) {

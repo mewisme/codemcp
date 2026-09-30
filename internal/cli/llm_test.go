@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
@@ -222,6 +224,107 @@ func TestLLMCLIProviderAndModelCompletionNeverCallRemoteEndpoint(t *testing.T) {
 	_, _ = model.ValidArgsFunction(model, nil, "openrouter/")
 	if got := requests.Load(); got != 0 {
 		t.Fatalf("completion performed %d remote request(s)", got)
+	}
+}
+
+func TestLLMCLIModelQueryGrammarIsSharedAcrossProviderNamespaces(t *testing.T) {
+	root := newRootCommand()
+	for _, path := range []string{"llm models", "llm openrouter models", "llm ollama models"} {
+		command := commandByRelativePath(root, path)
+		if command == nil {
+			t.Fatalf("command %q missing", path)
+		}
+		for _, flag := range []string{
+			"search", "id", "author", "free", "paid", "min-context", "max-context",
+			"min-prompt-price", "max-prompt-price", "min-completion-price", "max-completion-price",
+			"capability", "parameter", "input", "output", "family", "format", "quantization",
+			"min-parameters", "max-parameters", "min-size", "max-size", "sort", "rank", "window",
+			"recommend-for", "offset", "limit", "range", "count", "all", "refresh",
+		} {
+			if command.Flags().Lookup(flag) == nil {
+				t.Fatalf("command %q missing --%s", path, flag)
+			}
+		}
+	}
+}
+
+func TestLLMCLIModelQueryEnumCompletionsAreLocal(t *testing.T) {
+	root := newRootCommand()
+	models := commandByRelativePath(root, "llm models")
+	if models == nil {
+		t.Fatal("llm models command missing")
+	}
+	tests := map[string][]string{
+		"sort":       {"id:asc", "context:desc", "parameter-size:asc"},
+		"rank":       {"usage", "trending", "coding"},
+		"window":     {"day", "week", "month"},
+		"capability": {"structured-output", "tools"},
+		"parameter":  {"structured_outputs", "tool_choice"},
+		"input":      {"text", "image", "audio"},
+		"output":     {"text", "audio"},
+	}
+	for flag, expected := range tests {
+		completion, ok := models.GetFlagCompletionFunc(flag)
+		if !ok {
+			t.Fatalf("--%s completion missing", flag)
+		}
+		values, directive := completion(models, []string{"openrouter"}, "")
+		if directive != cobra.ShellCompDirectiveNoFileComp {
+			t.Fatalf("--%s directive=%v", flag, directive)
+		}
+		for _, value := range expected {
+			if !containsCompletion(values, value) {
+				t.Fatalf("--%s completion=%v missing %q", flag, values, value)
+			}
+		}
+	}
+}
+
+func TestLLMCLIModelQueryJSONUsesCanonicalFilteringSortingAndRange(t *testing.T) {
+	root := isolateLLMCLI(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
+			t.Fatalf("request=%s %s", r.Method, r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"data":[
+			{"id":"acme/a","name":"A","context_length":64000,"pricing":{"prompt":"0.000002","completion":"0.000004"}},
+			{"id":"acme/b","name":"B","context_length":128000,"pricing":{"prompt":"0.000001","completion":"0.000003"}},
+			{"id":"other/c","name":"C","context_length":256000,"pricing":{"prompt":"0","completion":"0"}}
+		]}`)
+	}))
+	defer server.Close()
+	if _, _, err := executeLLMCLI(root, nil,
+		"llm", "provider", "add", "query-fixture", "--protocol", "openai", "--base-url", server.URL+"/v1",
+		"--model", "acme/b", "--auth", "none", "--discovery", "openai-models", "--json",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, err := executeLLMCLI(root, nil,
+		"llm", "models", "query-fixture", "--author", "acme", "--max-prompt-price", "0.000002",
+		"--sort", "context:desc", "--range", "1:1", "--json",
+	)
+	if err != nil || stderr != "" {
+		t.Fatalf("query err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	var page application.LLMModelPage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &page); err != nil {
+		t.Fatal(err)
+	}
+	if page.ProviderID != "query-fixture" || page.TotalCatalog != 3 || page.Matched != 2 || page.Offset != 0 || page.Limit != 1 || page.Returned != 1 || !page.HasMore || len(page.Models) != 1 || page.Models[0].ID != "acme/b" {
+		t.Fatalf("query page=%#v", page)
+	}
+
+	stdout, stderr, err = executeLLMCLI(root, nil, "llm", "models", "query-fixture", "--author", "acme", "--count", "--json")
+	if err != nil || stderr != "" {
+		t.Fatalf("count err=%v stderr=%q stdout=%q", err, stderr, stdout)
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &page); err != nil || page.Matched != 2 || page.Returned != 0 || len(page.Models) != 0 {
+		t.Fatalf("count page=%#v err=%v", page, err)
+	}
+
+	if _, _, err := executeLLMCLI(root, nil, "llm", "models", "query-fixture", "--all", "--limit", "1", "--json"); err == nil {
+		t.Fatal("mutually exclusive --all and --limit were accepted")
 	}
 }
 

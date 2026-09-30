@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 )
 
 const (
@@ -135,14 +136,79 @@ type Result struct {
 }
 
 type Model struct {
-	ID                       string   `json:"id"`
-	Name                     string   `json:"name,omitempty"`
-	ContextLength            int      `json:"context_length,omitempty"`
-	PromptPrice              string   `json:"prompt_price,omitempty"`
-	CompletionPrice          string   `json:"completion_price,omitempty"`
-	Free                     bool     `json:"free,omitempty"`
-	SupportedParameters      []string `json:"supported_parameters,omitempty"`
-	SupportsStructuredOutput bool     `json:"supports_structured_output,omitempty"`
+	ID                       string               `json:"id"`
+	Name                     string               `json:"name,omitempty"`
+	CanonicalSlug            string               `json:"canonical_slug,omitempty"`
+	Author                   string               `json:"author,omitempty"`
+	ContextLength            int                  `json:"context_length,omitempty"`
+	ContextLengthKnown       bool                 `json:"context_length_known,omitempty"`
+	PromptPrice              string               `json:"prompt_price,omitempty"`
+	CompletionPrice          string               `json:"completion_price,omitempty"`
+	PricingKnown             bool                 `json:"pricing_known,omitempty"`
+	Free                     bool                 `json:"free,omitempty"`
+	FreeKnown                bool                 `json:"free_known,omitempty"`
+	SupportedParameters      []string             `json:"supported_parameters,omitempty"`
+	InputModalities          []string             `json:"input_modalities,omitempty"`
+	OutputModalities         []string             `json:"output_modalities,omitempty"`
+	ModalitiesKnown          bool                 `json:"modalities_known,omitempty"`
+	Capabilities             []string             `json:"capabilities,omitempty"`
+	SupportsStructuredOutput bool                 `json:"supports_structured_output,omitempty"`
+	CapabilitiesKnown        bool                 `json:"capabilities_known,omitempty"`
+	CreatedAt                *time.Time           `json:"created_at,omitempty"`
+	ModifiedAt               *time.Time           `json:"modified_at,omitempty"`
+	MaxOutputTokens          int                  `json:"max_output_tokens,omitempty"`
+	MaxOutputTokensKnown     bool                 `json:"max_output_tokens_known,omitempty"`
+	Ollama                   *OllamaModelMetadata `json:"ollama,omitempty"`
+	Rank                     *ModelRankMetadata   `json:"rank,omitempty"`
+	Recommendation           *ModelRecommendation `json:"recommendation,omitempty"`
+}
+
+type OllamaModelMetadata struct {
+	SizeBytes         *int64   `json:"size_bytes,omitempty"`
+	Digest            string   `json:"digest,omitempty"`
+	Format            string   `json:"format,omitempty"`
+	Family            string   `json:"family,omitempty"`
+	Families          []string `json:"families,omitempty"`
+	ParameterSize     string   `json:"parameter_size,omitempty"`
+	ParameterCount    *int64   `json:"parameter_count,omitempty"`
+	QuantizationLevel string   `json:"quantization_level,omitempty"`
+}
+
+type ModelRankMetadata struct {
+	Position  int    `json:"position"`
+	Kind      string `json:"kind"`
+	Source    string `json:"source"`
+	Basis     string `json:"basis"`
+	Window    string `json:"window,omitempty"`
+	Freshness string `json:"freshness,omitempty"`
+	Value     string `json:"value,omitempty"`
+}
+
+type ModelRecommendation struct {
+	Position  int     `json:"position"`
+	Task      string  `json:"task"`
+	Source    string  `json:"source"`
+	Basis     string  `json:"basis"`
+	Freshness string  `json:"freshness,omitempty"`
+	Share     float64 `json:"share,omitempty"`
+}
+
+type ModelEnrichmentRequest struct {
+	Rank         string
+	RankWindow   string
+	RecommendFor string
+}
+
+type ModelEnrichmentResult struct {
+	Ranks                   map[string]ModelRankMetadata
+	Recommendations         map[string]ModelRecommendation
+	RankSource              string
+	RankWindow              string
+	RankBasis               string
+	RankFreshness           string
+	RecommendationSource    string
+	RecommendationBasis     string
+	RecommendationFreshness string
 }
 
 type InferenceClient interface {
@@ -151,6 +217,10 @@ type InferenceClient interface {
 
 type ModelDiscoverer interface {
 	DiscoverModels(context.Context, Provider) ([]Model, error)
+}
+
+type ModelEnricher interface {
+	EnrichModels(context.Context, Provider, ModelEnrichmentRequest) (ModelEnrichmentResult, error)
 }
 
 var providerIDPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$`)
