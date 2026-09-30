@@ -27,7 +27,8 @@ func defaultActionRegistry() *action.Registry {
 		navigationAction("app.go.tools", "Tools", Route{Kind: RouteTools}, []string{"tools", "schema", "inventory"}, capability.ToolInventoryRead),
 		navigationAction("app.go.integrations", "Integrations", Route{Kind: RouteIntegrations}, []string{"integration", "rtk", "codegraph", "cf", "cloudflare", "typesafe"}, capability.IntegrationRTKStatus, capability.IntegrationCodeGraphStatus, capability.IntegrationCFStatus, capability.IntegrationTypeSafeStatus),
 		navigationAction("app.go.doctor", "Doctor", Route{Kind: RouteDoctor}, []string{"doctor", "diagnostics", "health", "checkpoint", "history"}, capability.DoctorRead),
-		navigationAction("app.go.requests", "Requests", Route{Kind: RouteRequests}, []string{"request", "approval"}, capability.RequestView),
+		navigationAction("app.go.requests", "Requests", Route{Kind: RouteRequests}, []string{"request", "approval"}, capability.RequestView, capability.RequestExplanationView, capability.RequestExplainStatus),
+		navigationAction("app.go.llm", "LLM", Route{Kind: RouteLLM}, []string{"llm", "provider", "model", "openrouter", "ollama"}, capability.LLMStatus, capability.LLMProviderList, capability.LLMProviderGet, capability.LLMProviderModels),
 		navigationAction("app.go.completions", "Agent Completions", Route{Kind: RouteCompletions}, []string{"agent", "completion", "completions", "history", "current", "list", "view", "doctor", "health"}, capability.CompletionCurrent, capability.CompletionDoctor, capability.CompletionList, capability.CompletionView),
 		navigationAction("app.go.logs", "Logs", Route{Kind: RouteLogs}, []string{"logs", "events", "journal"}),
 		navigationAction("app.go.logs-exec", "Command Execution", Route{Kind: RouteLogsExec}, []string{"logs", "command", "execution", "exec", "output"}),
@@ -47,6 +48,7 @@ func defaultActionRegistry() *action.Registry {
 	actions = append(actions, readViewActions()...)
 	actions = append(actions, integrationActions()...)
 	actions = append(actions, requestActions()...)
+	actions = append(actions, llmActions()...)
 	actions = append(actions, logsActions()...)
 	actions = append(actions, systemActions()...)
 	actions = append(actions, configActions()...)
@@ -55,6 +57,58 @@ func defaultActionRegistry() *action.Registry {
 		panic(err)
 	}
 	return registry
+}
+
+func llmActions() []action.Action {
+	resource := func(ctx action.Context) bool {
+		return ctx.Route == string(RouteLLM) && strings.TrimSpace(ctx.ResourceID) != ""
+	}
+	custom := func(ctx action.Context) bool {
+		if !resource(ctx) {
+			return false
+		}
+		id := strings.ToLower(strings.TrimSpace(ctx.ResourceID))
+		return id != "openrouter" && id != "ollama"
+	}
+	command := func(id, title, description string, operation capability.ID, message tuipage.LLMCommand, available func(action.Context) bool) action.Action {
+		return action.Action{
+			ID: id, Title: title, Category: "LLM", Description: description,
+			Keywords:  []string{"llm", "provider", "model", "openrouter", "ollama"},
+			Operation: operation, Capabilities: []capability.ID{operation}, Scope: action.ScopeGlobal, Available: available,
+			Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+				return func() tea.Msg { return tuipage.LLMCommandMsg{Command: message, ResourceID: ctx.ResourceID} }
+			},
+		}
+	}
+	return []action.Action{
+		{ID: "llm.provider.add", Title: "Add LLM provider", Category: "LLM", Description: "Add a custom LLM provider", Keywords: []string{"llm", "provider", "add", "custom"}, Operation: capability.LLMProviderAdd, Capabilities: []capability.ID{capability.LLMProviderAdd}, Scope: action.ScopeGlobal, Available: func(ctx action.Context) bool { return ctx.Route == string(RouteLLM) }, Run: func(context.Context, action.Context) tea.Cmd {
+			return func() tea.Msg { return navigateMsg{route: Route{Kind: RouteLLM, Action: "create"}} }
+		}},
+		{ID: "llm.provider.configure", Title: "Configure LLM provider", Category: "LLM", Description: "Configure the current custom provider", Keywords: []string{"llm", "provider", "configure", "edit"}, Operation: capability.LLMProviderConfigure, Capabilities: []capability.ID{capability.LLMProviderConfigure}, Scope: action.ScopeResource, Available: custom, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+			return func() tea.Msg {
+				return navigateMsg{route: Route{Kind: RouteLLM, ResourceID: ctx.ResourceID, Action: "edit"}}
+			}
+		}},
+		{ID: "llm.provider.models", Title: "Browse LLM models", Category: "LLM", Description: "Discover, filter, rank, and select models for the current provider", Keywords: []string{"llm", "models", "search", "rank", "recommend"}, Operation: capability.LLMProviderModels, Capabilities: []capability.ID{capability.LLMProviderModels}, Scope: action.ScopeResource, Available: resource, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+			return func() tea.Msg {
+				return navigateMsg{route: Route{Kind: RouteLLM, ResourceID: ctx.ResourceID, Section: "models"}}
+			}
+		}},
+		{ID: "llm.provider.model.set", Title: "Set exact LLM model", Category: "LLM", Description: "Set an exact model ID for the current provider", Keywords: []string{"llm", "provider", "model", "set", "exact"}, Operation: capability.LLMProviderConfigure, Capabilities: []capability.ID{capability.LLMProviderConfigure}, Scope: action.ScopeResource, Available: resource, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+			return func() tea.Msg {
+				return navigateMsg{route: Route{Kind: RouteLLM, ResourceID: ctx.ResourceID, Section: "models", Action: "set"}}
+			}
+		}},
+		{ID: "llm.provider.credential.set", Title: "Set LLM API key", Category: "LLM", Description: "Set the managed credential for the current provider", Keywords: []string{"llm", "provider", "key", "credential", "secret"}, Operation: capability.LLMProviderCredentialSet, Capabilities: []capability.ID{capability.LLMProviderCredentialSet}, Scope: action.ScopeResource, Available: resource, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+			return func() tea.Msg {
+				return navigateMsg{route: Route{Kind: RouteLLM, ResourceID: ctx.ResourceID, Action: "credential"}}
+			}
+		}},
+		command("llm.provider.use", "Use LLM provider", "Make the current provider active", capability.LLMProviderSelect, tuipage.LLMUse, resource),
+		command("llm.provider.probe", "Probe LLM provider", "Probe the current provider over the network", capability.LLMProviderProbe, tuipage.LLMProbe, resource),
+		command("llm.provider.credential.clear", "Clear LLM API key", "Clear the managed credential for the current provider", capability.LLMProviderCredentialClear, tuipage.LLMCredentialClear, resource),
+		command("llm.provider.remove", "Remove LLM provider", "Remove the current custom provider", capability.LLMProviderRemove, tuipage.LLMRemove, custom),
+	}
 }
 
 func guideActions() []action.Action {
@@ -171,6 +225,7 @@ func requestActions() []action.Action {
 		requestAction("request.show.all", "Show all requests", "Show pending and historical approval requests", []string{"request", "all", "filter"}, []string{"request", "list"}, tuipage.RequestShowAll, false),
 		requestAction("request.approve", "Approve request", "Approve the selected pending control request", []string{"request", "approve", "allow", "accept"}, []string{"request", "approve"}, tuipage.RequestApprove, false),
 		requestAction("request.deny", "Deny request", "Deny the selected pending control request", []string{"request", "deny", "reject"}, []string{"request", "deny"}, tuipage.RequestDeny, false),
+		requestAction("request.explain", "Explain request", "Generate or retry an informational AI explanation for the selected pending request", []string{"request", "explain", "ai", "retry"}, []string{"request", "explain"}, tuipage.RequestExplain, true),
 		requestAction("request.grant.list", "List runtime grants", "List active similar-command runtime session grants", []string{"request", "grant", "list", "similar"}, []string{"request", "grant", "list"}, tuipage.RequestGrantList, false),
 		requestAction("request.grant.revoke", "Revoke runtime grant", "Revoke the selected similar-command runtime session grant", []string{"request", "grant", "revoke", "similar"}, []string{"request", "grant", "revoke"}, tuipage.RequestGrantRevoke, true),
 	}

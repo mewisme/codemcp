@@ -77,6 +77,11 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 	for _, surface := range AllSurfaces {
 		contract := SurfaceContract{Surface: surface}
 		if llmOperationIDs[spec.ID] || approvalExplainOperationIDs[spec.ID] {
+			if surface == SurfaceTUI {
+				contract.State = SurfaceRequired
+				contracts = append(contracts, contract)
+				continue
+			}
 			if surface == SurfaceCLI && spec.HasCLI() {
 				contract.State = SurfaceRequired
 				contracts = append(contracts, contract)

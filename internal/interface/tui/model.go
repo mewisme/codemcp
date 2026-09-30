@@ -128,6 +128,11 @@ type Model struct {
 	approvalSimilar        bool
 	approvalErr            error
 	approvalViewport       viewport.Model
+	approvalExplainStatus  application.ApprovalExplainStatus
+	approvalExplanation    application.ApprovalExplanationResult
+	approvalExplainErr     error
+	approvalExplainLoading bool
+	approvalExplainID      string
 	approvalList           func(context.Context) ([]approval.Request, error)
 	approvalSubscribe      func(context.Context) (approvalEventSubscription, application.ApprovalStateSnapshot, error)
 	approvalSubscription   approvalEventSubscription
@@ -201,18 +206,28 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return model, nil
 	case approvalSnapshotMsg:
+		beforeID := model.activeApprovalID()
 		wasActive := model.approvalActive()
 		model.applyApprovalSnapshot(msg)
+		commands := make([]tea.Cmd, 0, 2)
 		if !wasActive && model.approvalActive() {
-			return model, model.approvalTickCmd()
+			commands = append(commands, model.approvalTickCmd())
 		}
-		return model, nil
+		if afterID := model.activeApprovalID(); afterID != "" && afterID != beforeID {
+			commands = append(commands, model.loadActiveApprovalExplanationCmd())
+		}
+		return model, tea.Batch(commands...)
 	case approvalClockTickMsg:
+		beforeID := model.activeApprovalID()
 		model.expireElapsedApprovals(model.approvalTime())
+		commands := make([]tea.Cmd, 0, 2)
 		if model.approvalActive() {
-			return model, model.approvalTickCmd()
+			commands = append(commands, model.approvalTickCmd())
 		}
-		return model, nil
+		if afterID := model.activeApprovalID(); afterID != "" && afterID != beforeID {
+			commands = append(commands, model.loadActiveApprovalExplanationCmd())
+		}
+		return model, tea.Batch(commands...)
 	case approvalSubscribedMsg:
 		if msg.err != nil {
 			return model, model.approvalReconnectCmd()
@@ -220,11 +235,15 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if model.approvalSubscription != nil && model.approvalSubscription != msg.subscription {
 			_ = model.approvalSubscription.Close()
 		}
+		beforeID := model.activeApprovalID()
 		model.approvalSubscription = msg.subscription
 		model.applyApprovalSnapshot(approvalSnapshotMsg{requests: msg.snapshot.Requests})
 		commands := []tea.Cmd{model.waitApprovalEventCmd()}
 		if model.approvalActive() {
 			commands = append(commands, model.approvalTickCmd())
+		}
+		if afterID := model.activeApprovalID(); afterID != "" && afterID != beforeID {
+			commands = append(commands, model.loadActiveApprovalExplanationCmd())
 		}
 		return model, tea.Batch(commands...)
 	case approvalEventMsg:
@@ -235,8 +254,12 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return model, model.approvalReconnectCmd()
 		}
+		beforeID := model.activeApprovalID()
 		model.applyApprovalEvent(msg.event)
 		commands := []tea.Cmd{model.refreshApprovalsCmd(), model.waitApprovalEventCmd()}
+		if afterID := model.activeApprovalID(); afterID != "" && afterID != beforeID {
+			commands = append(commands, model.loadActiveApprovalExplanationCmd())
+		}
 		if requestsPage, ok := model.currentPage.(*tuipage.RequestsPage); ok {
 			updated, cmd := requestsPage.Update(tuipage.RequestFeedChangedMsg{Event: msg.event})
 			model.currentPage = updated
@@ -249,6 +272,14 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return model, model.subscribeApprovalsCmd()
 	case approvalResolvedMsg:
 		return model.finishApprovalResolution(msg)
+	case approvalExplanationMsg:
+		return model, model.applyApprovalExplanation(msg)
+	case approvalExplanationPollMsg:
+		if msg.requestID != model.activeApprovalID() {
+			return model, nil
+		}
+		model.approvalExplainLoading = true
+		return model, model.loadActiveApprovalExplanationCmd()
 	case tea.BackgroundColorMsg:
 		model.theme = newTheme(msg.IsDark())
 		component.SetDarkBackground(msg.IsDark())
@@ -683,6 +714,7 @@ func (model *Model) openApprovalChoice() {
 	model.approvalApprove = false
 	model.approvalSimilar = false
 	model.approvalErr = nil
+	model.prepareApprovalExplanation(model.activeApprovalID())
 	model.syncApprovalViewport(true)
 }
 
@@ -695,6 +727,7 @@ func (model *Model) resetApprovalDialog() {
 	model.approvalApprove = false
 	model.approvalSimilar = false
 	model.approvalErr = nil
+	model.resetApprovalExplanation()
 	model.approvalViewport.GotoTop()
 }
 
@@ -710,6 +743,13 @@ func (model Model) updateApprovalKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch model.approvalStage {
 	case approvalStageChoice:
 		switch msg.String() {
+		case "e":
+			if model.canTriggerApprovalExplanation() {
+				model.approvalExplainLoading = true
+				retry := model.approvalExplanation.State == application.ApprovalExplanationFailed
+				return model, model.triggerActiveApprovalExplanationCmd(retry)
+			}
+			return model, nil
 		case "a":
 			return model.resolveApprovalSelection(true, false)
 		case "s":
@@ -786,7 +826,11 @@ func (model Model) finishApprovalResolution(msg approvalResolvedMsg) (tea.Model,
 	} else {
 		model.openApprovalChoice()
 	}
-	return model, model.showToast("Approval request", action+" "+msg.id, component.ToneSuccess)
+	commands := []tea.Cmd{model.showToast("Approval request", action+" "+msg.id, component.ToneSuccess)}
+	if model.approvalActive() {
+		commands = append(commands, model.loadActiveApprovalExplanationCmd())
+	}
+	return model, tea.Batch(commands...)
 }
 
 func (model Model) approvalButtonsView() string {
@@ -816,7 +860,10 @@ func (model Model) approvalDialogContent(width int) string {
 	}
 	lines := []string{
 		component.WrapContent(component.Title("Approval request"), width), "",
-		component.WrapKeyValue("Title", title, width), component.WrapKeyValue("Request", request.ID, width), component.WrapKeyValue("Workspace", request.WorkspaceID, width), component.WrapKeyValue("Tool", request.TargetTool, width),
+		component.Label("Agent summary"),
+		component.WrapContent(title, width),
+		component.WrapContent(component.Muted("Supplied by the requesting agent. Verify the exact command and arguments below."), width), "",
+		component.WrapKeyValue("Request", request.ID, width), component.WrapKeyValue("Workspace", request.WorkspaceID, width), component.WrapKeyValue("Tool", request.TargetTool, width),
 	}
 	if request.Source != "" {
 		lines = append(lines, component.WrapKeyValue("Source", request.Source, width))
@@ -832,6 +879,7 @@ func (model Model) approvalDialogContent(width int) string {
 	if model.approvalErr != nil {
 		lines = append(lines, "", component.BannerWidth(model.approvalErr.Error(), component.ToneDanger, width))
 	}
+	lines = append(lines, "", model.approvalExplanationView(width))
 	if command := strings.TrimSpace(request.Command); command != "" {
 		lines = append(lines, "", component.Label("Command"), component.RenderCodeBlock(command, "bash", width))
 	}
@@ -851,6 +899,9 @@ func (model Model) approvalDialogFooter(width int) string {
 		hint := "j/k scroll · a approve · d deny · ←/→ choose · Enter submit"
 		if request, ok := model.activeApproval(); ok && strings.TrimSpace(request.SimilarCommandPattern) != "" {
 			hint = "j/k scroll · a approve once · s allow similar for all MCP sessions (1h) · d deny · ←/→ choose · Enter submit"
+		}
+		if explainHint := model.approvalExplanationHint(); explainHint != "" {
+			hint += " · " + explainHint
 		}
 		lines = append(lines, model.approvalChoice.View(), component.WrapContent(component.Muted(hint), width))
 	case approvalStageResolving:
@@ -1267,6 +1318,8 @@ func (model *Model) loadPage(route Route) {
 		value, err = tuipage.NewProcessesReadView(model.ctx, route.Mode, route.ResourceID)
 	case RouteRequests:
 		value, err = tuipage.NewRequestsRouteAction(model.ctx, route.Mode, route.ResourceID, route.Section, route.Action)
+	case RouteLLM:
+		value, err = tuipage.NewLLMRouteAction(model.ctx, route.ResourceID, route.Section, route.Action)
 	case RouteCompletions:
 		value, err = tuipage.NewCompletionsRoute(model.ctx, route.ResourceID)
 	case RouteLogs:
@@ -1878,6 +1931,8 @@ func routeDescription(route Route) string {
 		return "Inspect background processes for a workspace."
 	case RouteRequests:
 		return "Review control approval requests."
+	case RouteLLM:
+		return "Manage LLM providers, credentials, models, discovery, and probes."
 	case RouteCompletions:
 		return "Inspect durable agent completion history and live accepted completion events."
 	case RouteLogs:

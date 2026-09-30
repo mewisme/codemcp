@@ -19,6 +19,7 @@ const (
 	RouteExecutions   RouteKind = "executions"
 	RouteProcesses    RouteKind = "processes"
 	RouteRequests     RouteKind = "requests"
+	RouteLLM          RouteKind = "llm"
 	RouteCompletions  RouteKind = "completions"
 	RouteLogs         RouteKind = "logs"
 	RouteLogsExec     RouteKind = "logs-exec"
@@ -50,6 +51,7 @@ var headerPages = []headerPage{
 	{Kind: RouteMCP, Label: "Upstreams", CompactLabel: "Up"},
 	{Kind: RouteTunnel, Label: "Tunnel", CompactLabel: "Tun"},
 	{Kind: RouteRequests, Label: "Requests", CompactLabel: "Req"},
+	{Kind: RouteLLM, Label: "LLM"},
 	{Kind: RouteLogs, Label: "Logs"},
 	{Kind: RouteConfig, Label: "Config", CompactLabel: "Cfg"},
 	{Kind: RouteInstruction, Label: "Instruction", CompactLabel: "Instr"},
@@ -88,6 +90,8 @@ func ParseRoute(args []string) (Route, error) {
 		return parseWorkspaceReadRoute(kind, parts)
 	case RouteRequests:
 		return parseRequestsRoute(parts)
+	case RouteLLM:
+		return parseLLMRoute(parts)
 	case RouteCompletions:
 		return parseCompletionRoute(parts)
 	case RouteLogs:
@@ -128,6 +132,46 @@ func parseCompletionRoute(parts []string) (Route, error) {
 	if route.ResourceID == "" {
 		return Route{}, fmt.Errorf("completion id is required")
 	}
+	return route, nil
+}
+
+func parseLLMRoute(parts []string) (Route, error) {
+	route := Route{Kind: RouteLLM}
+	if len(parts) == 1 {
+		return route, nil
+	}
+	if len(parts) == 2 && parts[1] == "create" {
+		route.Action = "create"
+		return route, nil
+	}
+	if len(parts) > 4 {
+		return Route{}, fmt.Errorf("llm path is too deep: %s", strings.Join(parts, " "))
+	}
+	route.ResourceID = strings.TrimSpace(parts[1])
+	if route.ResourceID == "" {
+		return Route{}, fmt.Errorf("LLM provider id is required")
+	}
+	if len(parts) == 2 {
+		return route, nil
+	}
+	if parts[2] == "edit" || parts[2] == "credential" {
+		if len(parts) != 3 {
+			return Route{}, fmt.Errorf("unsupported LLM provider editor path %q", strings.Join(parts, " "))
+		}
+		route.Action = parts[2]
+		return route, nil
+	}
+	if parts[2] != "models" {
+		return Route{}, fmt.Errorf("unsupported LLM provider child section %q", parts[2])
+	}
+	route.Section = "models"
+	if len(parts) == 3 {
+		return route, nil
+	}
+	if parts[3] != "query" && parts[3] != "set" {
+		return Route{}, fmt.Errorf("unsupported LLM model action %q", parts[3])
+	}
+	route.Action = parts[3]
 	return route, nil
 }
 
@@ -495,6 +539,8 @@ func parseRouteKind(value string) (RouteKind, bool) {
 		return RouteProcesses, true
 	case "request", "requests", "req":
 		return RouteRequests, true
+	case "llm", "model", "models":
+		return RouteLLM, true
 	case "completion", "completions", "done":
 		return RouteCompletions, true
 	case "log", "logs":
@@ -523,7 +569,7 @@ func parseRouteKind(value string) (RouteKind, bool) {
 func (route Route) Title() string {
 	base := map[RouteKind]string{
 		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "Upstreams", RouteTunnel: "Tunnel", RouteTools: "Tools", RouteIntegrations: "Integrations", RouteDoctor: "Doctor", RouteExecutions: "Command Executions", RouteProcesses: "Background Processes",
-		RouteRequests: "Requests", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RouteInstruction: "Instruction", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
+		RouteRequests: "Requests", RouteLLM: "LLM", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RouteInstruction: "Instruction", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
 	}[route.Kind]
 	if route.Kind == RouteRequests && route.Mode != "" {
 		base += " · " + routeSectionTitle(route.Mode)
@@ -560,6 +606,7 @@ func normalizeRouteSection(kind RouteKind, value string) (string, bool) {
 		RouteContainers:  {"workspaces": true},
 		RouteMCP:         {"health": true, "tools": true, "oauth": true},
 		RouteRequests:    {"command": true, "arguments": true, "guard": true},
+		RouteLLM:         {"models": true},
 		RouteLogs:        {"fields": true},
 	}
 	return value, allowed[kind][value]
@@ -664,6 +711,8 @@ func breadcrumbRootLabel(kind RouteKind) string {
 		return "Background Processes"
 	case RouteRequests:
 		return "Requests"
+	case RouteLLM:
+		return "LLM"
 	case RouteCompletions:
 		return "Completions"
 	case RouteLogs:

@@ -33,11 +33,13 @@ func TestApprovalExplainCapabilitiesAreReviewerOnlyAndNeverMCPAgentTools(t *test
 				t.Fatalf("%s/%s surface=%#v ok=%t", id, surface, contract, ok)
 			}
 		}
-		for _, surface := range []Surface{SurfaceTUI, SurfaceTelegram} {
-			contract, ok := spec.Surface(surface)
-			if !ok || contract.State != SurfaceExempt || contract.Exemption != SurfaceExemptionDeferred {
-				t.Fatalf("%s/%s surface=%#v ok=%t", id, surface, contract, ok)
-			}
+		tui, ok := spec.Surface(SurfaceTUI)
+		if !ok || tui.State != SurfaceRequired || tui.Exemption != "" {
+			t.Fatalf("%s/tui surface=%#v ok=%t", id, tui, ok)
+		}
+		telegram, ok := spec.Surface(SurfaceTelegram)
+		if !ok || telegram.State != SurfaceExempt || telegram.Exemption != SurfaceExemptionDeferred {
+			t.Fatalf("%s/telegram surface=%#v ok=%t", id, telegram, ok)
 		}
 	}
 	explain, _ := Lookup(RequestExplain)

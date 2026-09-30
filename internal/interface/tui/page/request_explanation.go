@@ -1,0 +1,159 @@
+package page
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/interface/tui/component"
+)
+
+const requestExplanationPollInterval = 1200 * time.Millisecond
+
+type requestExplanationMsg struct {
+	status     application.ApprovalExplainStatus
+	result     application.ApprovalExplanationResult
+	statusOnly bool
+	err        error
+}
+
+type requestExplanationPollMsg struct {
+	requestID string
+}
+
+func (page *RequestsPage) loadExplanationCmd() tea.Cmd {
+	if page == nil || strings.TrimSpace(page.resourceID) == "" {
+		return nil
+	}
+	id := page.resourceID
+	return func() tea.Msg {
+		status, err := application.GetApprovalExplainStatus(page.ctx)
+		if err != nil {
+			return requestExplanationMsg{err: err}
+		}
+		result, err := application.GetApprovalExplanation(page.ctx, id)
+		return requestExplanationMsg{status: status, result: result, err: err}
+	}
+}
+
+func (page *RequestsPage) triggerExplanationCmd(retry bool) tea.Cmd {
+	if page == nil || strings.TrimSpace(page.resourceID) == "" {
+		return nil
+	}
+	id := page.resourceID
+	return func() tea.Msg {
+		status, err := application.GetApprovalExplainStatus(page.ctx)
+		if err != nil {
+			return requestExplanationMsg{err: err}
+		}
+		result, err := application.ExplainApprovalRequest(page.ctx, id, retry)
+		return requestExplanationMsg{status: status, result: result, err: err}
+	}
+}
+
+func (page *RequestsPage) applyExplanationMsg(msg requestExplanationMsg) tea.Cmd {
+	if page == nil {
+		return nil
+	}
+	page.explainLoading = false
+	if msg.err != nil {
+		page.explainErr = msg.err
+		page.syncDetail()
+		return nil
+	}
+	page.explainErr = nil
+	page.explainStatus = msg.status
+	if !msg.statusOnly {
+		page.explanation = msg.result
+	}
+	page.syncDetail()
+	if page.shouldPollExplanation() {
+		id := page.resourceID
+		return tea.Tick(requestExplanationPollInterval, func(time.Time) tea.Msg {
+			return requestExplanationPollMsg{requestID: id}
+		})
+	}
+	return nil
+}
+
+func (page *RequestsPage) shouldPollExplanation() bool {
+	if page == nil || strings.TrimSpace(page.resourceID) == "" {
+		return false
+	}
+	if page.explanation.State == application.ApprovalExplanationPending {
+		return true
+	}
+	return strings.EqualFold(string(page.explainStatus.Mode), "auto") &&
+		page.explanation.State == application.ApprovalExplanationNone &&
+		page.explainStatus.Available
+}
+
+func (page *RequestsPage) requestExplanationView(width int) string {
+	if page == nil {
+		return ""
+	}
+	title := component.WrapContent(component.Label("Agent summary"), max(1, width))
+	agent := component.Muted("This summary is supplied by the requesting agent; review the exact command and arguments separately.")
+	request, ok := page.findRequest(page.resourceID)
+	if ok && strings.TrimSpace(request.Title) != "" {
+		agent += "\n" + component.WrapContent(request.Title, max(1, width))
+	}
+
+	lines := []string{title, agent, "", component.WrapContent(component.Label("AI explanation · informational"), max(1, width))}
+	switch {
+	case page.explainLoading:
+		lines = append(lines, component.WrapContent(component.Muted("Loading explanation state..."), max(1, width)))
+	case page.explainErr != nil:
+		lines = append(lines, component.BannerWidth(page.explainErr.Error(), component.ToneWarning, max(1, width)))
+	case !page.explainStatus.Available:
+		reason := strings.TrimSpace(page.explainStatus.Reason)
+		if reason == "" {
+			reason = "Explanation is unavailable for the active LLM provider."
+		}
+		lines = append(lines, component.WrapContent(component.Muted(reason), max(1, width)))
+	default:
+		switch page.explanation.State {
+		case application.ApprovalExplanationPending:
+			lines = append(lines, component.WrapContent(component.Muted(fmt.Sprintf("Generating · attempt %d", page.explanation.Attempt)), max(1, width)))
+		case application.ApprovalExplanationFailed:
+			failure := strings.TrimSpace(page.explanation.Failure)
+			if failure == "" {
+				failure = "Explanation generation failed."
+			}
+			lines = append(lines, component.BannerWidth(failure, component.ToneWarning, max(1, width)), component.WrapContent(component.Muted("Press e to retry."), max(1, width)))
+		case application.ApprovalExplanationReady:
+			if explanation := page.explanation.Explanation; explanation != nil {
+				lines = append(lines, component.WrapContent(explanation.Summary, max(1, width)))
+				lines = appendExplanationItems(lines, "Steps", explanation.Steps, width)
+				lines = appendExplanationItems(lines, "Likely effects", explanation.Effects, width)
+				lines = appendExplanationItems(lines, "Risk notes", explanation.RiskNotes, width)
+				lines = appendExplanationItems(lines, "Unknowns", explanation.Unknowns, width)
+				meta := strings.TrimSpace(strings.Join([]string{string(explanation.ProviderID), explanation.Model}, " · "))
+				if meta != "" {
+					lines = append(lines, "", component.WrapContent(component.Muted("Generated by "+meta), max(1, width)))
+				}
+			}
+		default:
+			lines = append(lines, component.WrapContent(component.Muted("No AI explanation has been generated. Press e to explain."), max(1, width)))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func appendExplanationItems(lines []string, label string, values []string, width int) []string {
+	if len(values) == 0 {
+		return lines
+	}
+	lines = append(lines, "", component.Muted(label))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		lines = append(lines, component.WrapContent("• "+value, max(1, width)))
+	}
+	return lines
+}

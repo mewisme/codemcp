@@ -23,15 +23,17 @@ var requestTabLabels = []string{"Pending", "History", "All"}
 type RequestCommand string
 
 const (
-	RequestRefresh     RequestCommand = "request.refresh"
-	RequestCreateTest  RequestCommand = "request.create.test"
-	RequestApprove     RequestCommand = "request.approve"
-	RequestDeny        RequestCommand = "request.deny"
-	RequestGrantList   RequestCommand = "request.grant.list"
-	RequestGrantRevoke RequestCommand = "request.grant.revoke"
-	RequestShowPending RequestCommand = "request.show.pending"
-	RequestShowHistory RequestCommand = "request.show.history"
-	RequestShowAll     RequestCommand = "request.show.all"
+	RequestRefresh      RequestCommand = "request.refresh"
+	RequestCreateTest   RequestCommand = "request.create.test"
+	RequestApprove      RequestCommand = "request.approve"
+	RequestDeny         RequestCommand = "request.deny"
+	RequestGrantList    RequestCommand = "request.grant.list"
+	RequestGrantRevoke  RequestCommand = "request.grant.revoke"
+	RequestShowPending  RequestCommand = "request.show.pending"
+	RequestShowHistory  RequestCommand = "request.show.history"
+	RequestShowAll      RequestCommand = "request.show.all"
+	RequestExplain      RequestCommand = "request.explain"
+	RequestExplainRetry RequestCommand = "request.explain.retry"
 )
 
 type RequestCommandMsg struct {
@@ -101,6 +103,10 @@ type RequestsPage struct {
 	operationCancel    context.CancelFunc
 	operationCancelled bool
 	progress           *component.Progress
+	explainStatus      application.ApprovalExplainStatus
+	explanation        application.ApprovalExplanationResult
+	explainErr         error
+	explainLoading     bool
 	notice             string
 	err                error
 	width              int
@@ -213,7 +219,19 @@ func (page *RequestsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 			selectedID = page.resourceID
 		}
 		page.rebuildBrowser(selectedID)
+		if page.resourceID != "" {
+			page.explainLoading = true
+			return page, page.loadExplanationCmd()
+		}
 		return page, nil
+	case requestExplanationMsg:
+		return page, page.applyExplanationMsg(msg)
+	case requestExplanationPollMsg:
+		if msg.requestID != page.resourceID || page.resourceID == "" {
+			return page, nil
+		}
+		page.explainLoading = true
+		return page, page.loadExplanationCmd()
 	case requestResolveMsg:
 		if page.operationCancel != nil {
 			page.operationCancel()
@@ -463,6 +481,21 @@ func (page *RequestsPage) handleCommand(command RequestCommand, resourceID strin
 		return requestNavigateCmd(requestModeHistory, "", "", true)
 	case RequestShowAll:
 		return requestNavigateCmd(requestModeAll, "", "", true)
+	case RequestExplain, RequestExplainRetry:
+		id := strings.TrimSpace(resourceID)
+		if id == "" {
+			id = page.resourceID
+		}
+		if id == "" {
+			id = page.selectedID()
+		}
+		if id == "" {
+			page.explainErr = errors.New("select an approval request to explain")
+			return nil
+		}
+		page.resourceID = id
+		page.explainLoading = true
+		return page.triggerExplanationCmd(command == RequestExplainRetry)
 	case RequestApprove, RequestDeny:
 		id := strings.TrimSpace(resourceID)
 		if id == "" {
@@ -675,7 +708,7 @@ func (page *RequestsPage) syncDetail() {
 	content := ""
 	switch page.section {
 	case "":
-		content = requestOverview(request, page.width)
+		content = requestOverview(request, page.width) + "\n\n" + page.requestExplanationView(page.width)
 	case "guard":
 		content = requestGuard(request)
 	default:
@@ -706,6 +739,13 @@ func (page *RequestsPage) syncDetail() {
 			component.DetailPageBinding{Key: "a", Desc: "approve", Message: RequestCommandMsg{Command: RequestApprove, ResourceID: request.ID}},
 			component.DetailPageBinding{Key: "d", Desc: "deny", Message: RequestCommandMsg{Command: RequestDeny, ResourceID: request.ID}},
 		)
+		if page.section == "" && page.explainStatus.Available && page.explanation.State != application.ApprovalExplanationPending && page.explanation.State != application.ApprovalExplanationReady {
+			command, desc := RequestExplain, "explain"
+			if page.explanation.State == application.ApprovalExplanationFailed {
+				command, desc = RequestExplainRetry, "retry explain"
+			}
+			bindings = append(bindings, component.DetailPageBinding{Key: "e", Desc: desc, Message: RequestCommandMsg{Command: command, ResourceID: request.ID}})
+		}
 	}
 	bindings = append(bindings, component.DetailPageBinding{Key: "r", Desc: "refresh", Message: RequestCommandMsg{Command: RequestRefresh, ResourceID: request.ID}})
 	page.detail.SetBindings(bindings...)
@@ -892,7 +932,7 @@ func (page *RequestsPage) upsertRequest(value approval.Request) {
 
 func requestOverview(request approval.Request, _ int) string {
 	return detailFields(
-		[2]string{"Status", string(request.Status)}, [2]string{"Title", request.Title}, [2]string{"Workspace", request.WorkspaceID}, [2]string{"Tool", request.TargetTool},
+		[2]string{"Status", string(request.Status)}, [2]string{"Workspace", request.WorkspaceID}, [2]string{"Tool", request.TargetTool},
 		[2]string{"Source", request.Source}, [2]string{"Session", request.SessionHash}, [2]string{"Created", requestTime(request.CreatedAt)}, [2]string{"Expires", requestTime(request.ExpiresAt)},
 		[2]string{"Resolved", requestTime(request.ResolvedAt)}, [2]string{"Resolved by", request.ResolvedBy}, [2]string{"Reason", request.Reason}, [2]string{"Retry until", requestTime(request.RetryUntil)}, [2]string{"Consumed", requestTime(request.ConsumedAt)},
 	)

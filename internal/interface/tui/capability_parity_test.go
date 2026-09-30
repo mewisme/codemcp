@@ -122,6 +122,7 @@ func TestCapabilityActionsHaveReachableContexts(t *testing.T) {
 		{Route: string(RouteTunnel)}, {Route: string(RouteTools)}, {Route: string(RouteIntegrations)}, {Route: string(RouteDoctor)},
 		{Route: string(RouteExecutions), Mode: "resource"}, {Route: string(RouteProcesses), Mode: "resource"},
 		{Route: string(RouteRequests)}, {Route: string(RouteRequests), ResourceID: "resource"},
+		{Route: string(RouteLLM)}, {Route: string(RouteLLM), ResourceID: "resource"},
 		{Route: string(RouteLogs)}, {Route: string(RouteConfig)}, {Route: string(RouteRuntime)}, {Route: string(RouteAbout)},
 	}
 	for _, item := range defaultActionRegistry().All() {

@@ -302,6 +302,42 @@ func TestRequestActionAvailabilityFollowsRouteContext(t *testing.T) {
 	t.Fatal("create test request action missing")
 }
 
+func TestLLMActionAvailabilityProtectsCoreIdentity(t *testing.T) {
+	registry := defaultActionRegistry()
+	has := func(ctx action.Context, id string) bool {
+		for _, item := range registry.Actions(ctx) {
+			if item.ID == id {
+				return true
+			}
+		}
+		return false
+	}
+	root := action.Context{Route: string(RouteLLM)}
+	if !has(root, "llm.provider.add") {
+		t.Fatal("LLM add action missing on provider list")
+	}
+	core := action.Context{Route: string(RouteLLM), ResourceID: "openrouter"}
+	for _, id := range []string{"llm.provider.models", "llm.provider.model.set", "llm.provider.credential.set", "llm.provider.use", "llm.provider.probe", "llm.provider.credential.clear"} {
+		if !has(core, id) {
+			t.Fatalf("core provider action missing: %s", id)
+		}
+	}
+	for _, id := range []string{"llm.provider.configure", "llm.provider.remove"} {
+		if has(core, id) {
+			t.Fatalf("core provider exposed immutable identity action: %s", id)
+		}
+	}
+	custom := action.Context{Route: string(RouteLLM), ResourceID: "custom"}
+	for _, id := range []string{"llm.provider.configure", "llm.provider.remove"} {
+		if !has(custom, id) {
+			t.Fatalf("custom provider action missing: %s", id)
+		}
+	}
+	if has(action.Context{Route: string(RouteHome)}, "llm.provider.add") {
+		t.Fatal("LLM actions leaked outside LLM route")
+	}
+}
+
 func TestConfigActionAvailabilityFollowsRouteContext(t *testing.T) {
 	registry := defaultActionRegistry()
 	has := func(ctx action.Context, id string) bool {

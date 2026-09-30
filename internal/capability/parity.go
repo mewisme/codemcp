@@ -58,6 +58,9 @@ func inventoryEntryPoints(operation OperationInventory, surface Surface) []strin
 		}
 		return append([]string{operation.CLI.CanonicalPath}, operation.CLI.Aliases...)
 	case SurfaceTUI:
+		if entries := tuiInventoryEntryPoints[operation.ID]; len(entries) > 0 {
+			return append([]string(nil), entries...)
+		}
 		if tuiExplicitExemptIDs[operation.ID] || operation.CLI.CanonicalPath == "" || operation.Audience == AudienceAgent || operation.Audience == AudienceProtocol {
 			return nil
 		}
@@ -86,6 +89,10 @@ func inventoryEntryPoints(operation OperationInventory, surface Surface) []strin
 	default:
 		return nil
 	}
+}
+
+var tuiInventoryEntryPoints = map[ID][]string{
+	RequestExplanationView: {"tui requests explanation"},
 }
 
 func adminEntryPoints(bindings []AdminBinding) []string {
