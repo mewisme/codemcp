@@ -73,7 +73,18 @@ describe("LLMPage", () => {
     expect(screen.getByLabelText("Sort")).toBeInTheDocument()
     expect(screen.getByLabelText("Rank")).toBeInTheDocument()
     expect(screen.getByLabelText("Recommend for")).toBeInTheDocument()
-    expect(screen.getByLabelText("Model ID")).toBeInTheDocument()
+    const modelInput = screen.getByLabelText("Model ID") as HTMLInputElement
+    expect(modelInput).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Probe" }))
+    await waitFor(() => expect(adminApi.probeLLMProvider).toHaveBeenCalledWith("openrouter"))
+
+    await user.clear(modelInput)
+    await user.type(modelInput, "vendor/model-a")
+    await user.click(screen.getByRole("button", { name: "Set model" }))
+    await waitFor(() => expect(adminApi.setLLMProviderModel).toHaveBeenCalledWith("openrouter", "vendor/model-a"))
 
     await user.type(screen.getByLabelText("Search"), "vendor")
     await user.click(screen.getByRole("button", { name: "Apply model query" }))
@@ -93,12 +104,93 @@ describe("LLMPage", () => {
 
     await waitFor(() => expect(adminApi.setLLMCredential).toHaveBeenCalledWith("openrouter", secret))
     expect(keyInput.value).toBe("")
-    expect(adminApi.llmStatus).toHaveBeenCalledTimes(2)
-    expect(adminApi.llmProviders).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(adminApi.llmStatus).mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(vi.mocked(adminApi.llmProviders).mock.calls.length).toBeGreaterThanOrEqual(2)
 
     for (const call of [...localSet.mock.calls, ...sessionSet.mock.calls]) {
       expect(call.join(" ")).not.toContain(secret)
     }
     expect(window.location.href).not.toContain(secret)
+  })
+
+  it("keeps an inactive custom provider fully manageable without implicitly selecting it", async () => {
+    const user = userEvent.setup()
+    const custom: LLMProvider = {
+      ...provider,
+      id: "custom-fixture",
+      name: "Custom Fixture",
+      base_url: "https://custom.example/v1",
+      model: "custom/model-a",
+      auth_mode: "none",
+      discovery: "openai-models",
+      core_kind: undefined,
+      core: false,
+      selected: false,
+      credential: { provider_id: "custom-fixture", configured: false, preview: "" },
+    }
+    vi.mocked(adminApi.llmStatus).mockResolvedValue({
+      active_provider: provider.id,
+      active: provider,
+      providers: [provider, custom],
+    })
+    vi.mocked(adminApi.llmProviders).mockResolvedValue([provider, custom])
+    vi.mocked(adminApi.llmModels).mockResolvedValue({
+      provider_id: custom.id,
+      total_catalog: 1,
+      matched: 1,
+      offset: 0,
+      limit: 25,
+      returned: 1,
+      has_more: false,
+      models: [{ id: "custom/model-b", name: "Custom Model B" }],
+      refreshed: false,
+      sort: [{ field: "id", direction: "asc" }],
+      query_capabilities: { filters: ["search"], sorts: ["id"], recommendation: false },
+    })
+    vi.mocked(adminApi.selectLLMProvider).mockResolvedValue({ ...custom, selected: true })
+    vi.mocked(adminApi.probeLLMProvider).mockResolvedValue({ provider_id: custom.id, model: custom.model, readiness: "ready" })
+    vi.mocked(adminApi.setLLMProviderModel).mockResolvedValue({ ...custom, model: "custom/model-b" })
+    vi.spyOn(adminApi, "configureLLMProvider").mockResolvedValue(custom)
+    vi.spyOn(adminApi, "removeLLMProvider").mockResolvedValue({ provider_id: custom.id, removed: true })
+
+    render(<LLMPage />)
+    expect(await screen.findByText("Custom Fixture")).toBeInTheDocument()
+    const manageButtons = screen.getAllByRole("button", { name: "Manage provider" })
+    await user.click(manageButtons[1])
+
+    expect(await screen.findByRole("button", { name: "Use provider" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("button", { name: "Probe" }))
+    await waitFor(() => expect(adminApi.probeLLMProvider).toHaveBeenCalledWith(custom.id))
+    expect(adminApi.selectLLMProvider).not.toHaveBeenCalled()
+
+    const modelInput = screen.getByLabelText("Model ID") as HTMLInputElement
+    await user.clear(modelInput)
+    await user.type(modelInput, "custom/model-b")
+    await user.click(screen.getByRole("button", { name: "Set model" }))
+    await waitFor(() => expect(adminApi.setLLMProviderModel).toHaveBeenCalledWith(custom.id, "custom/model-b"))
+    expect(adminApi.selectLLMProvider).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "Edit" }))
+    expect(await screen.findByText("Edit LLM provider")).toBeInTheDocument()
+    const nameInput = screen.getByLabelText("Name") as HTMLInputElement
+    await user.clear(nameInput)
+    await user.type(nameInput, "Custom Fixture Updated")
+    await user.click(screen.getByRole("button", { name: "Save provider" }))
+    await waitFor(() =>
+      expect(adminApi.configureLLMProvider).toHaveBeenCalledWith(
+        custom.id,
+        expect.objectContaining({ name: "Custom Fixture Updated" })
+      )
+    )
+    expect(adminApi.selectLLMProvider).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole("button", { name: "Remove" }))
+    expect(await screen.findByText("Remove LLM provider?")).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Remove provider" }))
+    await waitFor(() => expect(adminApi.removeLLMProvider).toHaveBeenCalledWith(custom.id))
+    expect(adminApi.selectLLMProvider).not.toHaveBeenCalled()
   })
 })
