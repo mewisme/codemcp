@@ -142,7 +142,7 @@ func TestProductionDispatchRejectsTelegramExemptOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = ui.dispatch(t.Context(), capability.AuthStatus, nil)
+	_, err = ui.dispatch(t.Context(), capability.ConfigInit, nil)
 	if err == nil || !strings.Contains(err.Error(), "not exposed through Telegram") {
 		t.Fatalf("dispatch error=%v", err)
 	}

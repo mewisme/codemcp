@@ -83,13 +83,14 @@ const (
 var telegramLiveAdapterOperations = idSet(
 	InstallRun, UpdateApply, UpdateCheck,
 	RuntimeUp, RuntimeDown, RuntimeRestart,
-	LogsRead, LogsFollow,
-	RequestList, RequestView, RequestApprove, RequestDeny,
+	LogsRead, LogsFollow, LogsClear, LogsPath,
+	RequestList, RequestView, RequestApprove, RequestDeny, RequestGrantList, RequestGrantRevoke, RequestStream,
 	RequestExplain, RequestExplanationView, RequestExplainStatus,
 	LLMStatus, LLMProviderList, LLMProviderGet, LLMProviderAdd, LLMProviderConfigure, LLMProviderRemove,
 	LLMProviderSelect, LLMProviderModels, LLMProviderProbe, LLMProviderCredentialSet, LLMProviderCredentialClear,
-	CompletionList, CompletionView,
-	ConfigExport, ConfigGet, ConfigList, ConfigSet,
+	CompletionList, CompletionView, CompletionCurrent, CompletionDoctor, CompletionFeed,
+	ConfigExport, ConfigGet, ConfigList, ConfigSet, ConfigPatch, ConfigPath, ConfigSnapshotRead, ConfigVerify,
+	AuthStatus, AuthMCPRotate, AuthMCPEnable, AuthMCPDisable, AuthAdminRotate, AuthAdminEnable, AuthAdminDisable,
 	PromptList, PromptGet, PromptCreate, PromptUpdate, PromptDelete,
 	WorkspaceContainerList, WorkspaceContainerCreate, WorkspaceContainerShow, WorkspaceContainerRename, WorkspaceContainerDelete,
 	WorkspaceContainerAdd, WorkspaceContainerRemove, WorkspaceContainerMembershipList,
@@ -97,18 +98,22 @@ var telegramLiveAdapterOperations = idSet(
 	WorkspaceRegister, WorkspaceList, WorkspaceShow, WorkspaceRelocate, WorkspaceUnregister, WorkspacePurge,
 	UpstreamServerList, UpstreamServerAdd, UpstreamServerConfigure, UpstreamServerShow, UpstreamServerRemove,
 	UpstreamServerEnable, UpstreamServerDisable, UpstreamServerStatus, UpstreamServerTools,
-	TunnelStatus, TunnelSync, TunnelConfigure, TunnelEnable, TunnelDisable,
-	TunnelAdminKeySet, TunnelAdminKeyVerify, TunnelAdminKeyRemove,
-	StatusOverview, DoctorRead, VersionAbout,
-	TelemetryStatus, TelemetryEnable, TelemetryDisable,
+	UpstreamAuthLogin, UpstreamAuthStatus, UpstreamAuthLogout,
+	TunnelStatus, TunnelConfigRead, TunnelSync, TunnelConfigure, TunnelEnable, TunnelDisable,
+	TunnelAdminKeyStatus, TunnelAdminKeySet, TunnelAdminKeyVerify, TunnelAdminKeyRemove,
+	TunnelList, TunnelGet, TunnelUse, TunnelCreate, TunnelUpdate, TunnelDelete,
+	StatusOverview, DoctorRead, VersionAbout, HealthRead,
+	TelemetryStatus, TelemetryShow, TelemetryEnable, TelemetryDisable,
+	NetworkInterfacesList, NotificationStatus,
 	TelegramSetup,
 	InstructionSettingsRead, InstructionSettingsWrite, ProjectContextRead, ToolInventoryRead,
-	ExecutionList, ExecutionView, ExecutionFeed, ExecutionStream,
+	ExecutionList, ExecutionView, ExecutionFeed, ExecutionStream, ProcessList, ProcessView, ProcessClear,
 	ActivityStream, ActivityView,
 	IntegrationRTKStatus, IntegrationRTKEnable, IntegrationRTKDisable, IntegrationRTKProbe, IntegrationRTKInstall, IntegrationRTKInstallGlobal,
 	IntegrationCodeGraphStatus, IntegrationCodeGraphProbe, IntegrationCodeGraphInstall, IntegrationCodeGraphInstallGlobal,
+	IntegrationCodeGraphWorkspaceStatus, IntegrationCodeGraphWorkspaceInit, IntegrationCodeGraphWorkspaceSync,
 	IntegrationCFStatus, IntegrationCFProbe, IntegrationCFInstall, IntegrationCFUpdate, IntegrationCFRemove,
-	IntegrationTypeSafeStatus, IntegrationTypeSafeEnable, IntegrationTypeSafeDisable, IntegrationTypeSafeProbe,
+	IntegrationTypeSafeStatus, IntegrationTypeSafeEnable, IntegrationTypeSafeDisable, IntegrationTypeSafeProbe, IntegrationTypeSafeDoctor,
 )
 
 var telegramCompletedRollout = []TelegramRolloutItem{
@@ -182,24 +187,15 @@ var telegramLocalOnlyOperations = idSet(
 	ServerForeground,
 	ConfigInit,
 	ConfigUninit,
-	ConfigPath,
 	ConfigImport,
 	ConfigMigrate,
 	ConfigMigrateSecrets,
 	MCPStdio,
 	MCPHTTP,
-	LogsPath,
 	TunnelForeground,
 )
 
-var telegramManagedTunnelCollectionOperations = idSet(
-	TunnelList,
-	TunnelGet,
-	TunnelUse,
-	TunnelCreate,
-	TunnelUpdate,
-	TunnelDelete,
-)
+var telegramManagedTunnelCollectionOperations = idSet()
 
 func TelegramAdapterOperationLive(id ID) bool {
 	return telegramLiveAdapterOperations[id]

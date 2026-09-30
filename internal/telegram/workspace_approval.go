@@ -149,6 +149,14 @@ func (ui *Interface) workspaceDetailScreen(ctx context.Context, owner ViewOwner,
 	if err != nil {
 		return Screen{}, err
 	}
+	processes, err := ui.stateButton(owner, "Processes", CallbackOpen, ActionState{Route: RouteProcesses, Back: RouteWorkspace, Operation: capability.ProcessList, ResourceID: item.ID})
+	if err != nil {
+		return Screen{}, err
+	}
+	codeGraph, err := ui.stateButton(owner, "CodeGraph", CallbackOpen, ActionState{Route: RouteCodeGraphWS, Back: RouteWorkspace, Operation: capability.IntegrationCodeGraphWorkspaceStatus, ResourceID: item.ID})
+	if err != nil {
+		return Screen{}, err
+	}
 	unregister, err := ui.stateButton(owner, "Unregister", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteWorkspaces, Operation: capability.WorkspaceUnregister, ResourceID: item.ID, Input: application.WorkspaceIDInput{ID: item.ID}})
 	if err != nil {
 		return Screen{}, err
@@ -173,7 +181,7 @@ func (ui *Interface) workspaceDetailScreen(ctx context.Context, owner ViewOwner,
 		RichBlock{Kind: RichCopy, Title: "ID", Text: item.ID, CopyText: item.ID},
 		RichBlock{Kind: RichTable, Rows: [][]string{{"Path", item.Path}, {"Available", fmt.Sprint(item.Available)}, {"Allowed roots", fmt.Sprint(len(item.AllowDirs))}}},
 	)
-	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{relocate}, Secondary: secondary, Destructive: []Button{unregister, purge}, Navigation: []Button{back, home}})}, nil
+	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{relocate, processes, codeGraph}, Secondary: secondary, Destructive: []Button{unregister, purge}, Navigation: []Button{back, home}})}, nil
 }
 
 func (ui *Interface) workspaceAccessScreen(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
@@ -399,8 +407,16 @@ func (ui *Interface) requestListScreen(ctx context.Context, owner ViewOwner, sta
 	if err != nil {
 		return Screen{}, err
 	}
+	grants, err := ui.stateButton(owner, "Runtime grants", CallbackOpen, ActionState{Route: RouteGrants, Back: RouteRequests, Operation: capability.RequestGrantList})
+	if err != nil {
+		return Screen{}, err
+	}
+	stream, err := ui.stateButton(owner, "Live snapshot", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteRequests, Operation: capability.RequestStream})
+	if err != nil {
+		return Screen{}, err
+	}
 	rich := BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Approval requests", Text: fmt.Sprintf("%d pending", len(pending))}, RichBlock{Kind: RichList, Items: list})
-	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Secondary: buttons, Navigation: navigation})}, nil
+	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{grants, stream}, Secondary: buttons, Navigation: navigation})}, nil
 }
 
 func (ui *Interface) requestDetailScreen(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {

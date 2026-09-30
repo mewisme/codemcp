@@ -28,11 +28,18 @@ const (
 	RouteContainer       Route = "container"
 	RouteRequests        Route = "requests"
 	RouteRequest         Route = "request"
+	RouteGrants          Route = "grants"
+	RouteGrant           Route = "grant"
 	RouteCompletions     Route = "completions"
 	RouteCompletion      Route = "completion"
+	RouteProcesses       Route = "processes"
+	RouteProcess         Route = "process"
+	RouteCodeGraphWS     Route = "codegraph-workspace"
 	RouteOperation       Route = "operation"
 	RouteNetwork         Route = "network"
 	RouteTunnel          Route = "tunnel"
+	RouteManagedTunnels  Route = "managed-tunnels"
+	RouteManagedTunnel   Route = "managed-tunnel"
 	RouteUpstreams       Route = "upstreams"
 	RouteUpstream        Route = "upstream"
 	RouteIntegrations    Route = "integrations"
@@ -56,6 +63,7 @@ type ActionState struct {
 	Operation       capability.ID
 	Input           any
 	ResourceID      string
+	ParentID        string
 	ExpectedVersion string
 	Page            int
 	Detail          bool
@@ -436,14 +444,28 @@ func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state Act
 		return ui.requestListScreen(ctx, owner, state)
 	case RouteRequest:
 		return ui.requestDetailScreen(ctx, owner, state)
+	case RouteGrants:
+		return ui.grantListScreen(ctx, owner, state)
+	case RouteGrant:
+		return ui.grantDetailScreen(ctx, owner, state)
 	case RouteCompletions:
 		return ui.completionListScreen(ctx, owner, state)
 	case RouteCompletion:
 		return ui.completionDetailScreen(ctx, owner, state)
+	case RouteProcesses:
+		return ui.processListScreen(ctx, owner, state)
+	case RouteProcess:
+		return ui.processDetailScreen(ctx, owner, state)
+	case RouteCodeGraphWS:
+		return ui.codeGraphWorkspaceScreen(ctx, owner, state)
 	case RouteNetwork:
 		return ui.networkScreen(owner)
 	case RouteTunnel:
 		return ui.tunnelScreen(ctx, owner)
+	case RouteManagedTunnels:
+		return ui.managedTunnelListScreen(ctx, owner, state)
+	case RouteManagedTunnel:
+		return ui.managedTunnelDetailScreen(ctx, owner, state)
 	case RouteUpstreams:
 		return ui.upstreamListScreen(ctx, owner, state)
 	case RouteUpstream:
@@ -798,7 +820,7 @@ func (ui *Interface) completeInput(ctx context.Context, owner ViewOwner, promptM
 }
 
 func (ui *Interface) terminalOperationKeyboard(owner ViewOwner, state ActionState, spec capability.Spec, value any) ([][]Button, error) {
-	back, err := ui.backButton(owner, state.Back)
+	back, err := ui.operationBackButton(owner, state)
 	if err != nil {
 		return nil, err
 	}
@@ -833,6 +855,20 @@ func (ui *Interface) terminalOperationKeyboard(owner ViewOwner, state ActionStat
 		navigation = append(navigation, closeButton)
 	}
 	return BoundedActionGroups(ActionGroups{Secondary: secondary, Navigation: navigation}), nil
+}
+
+func (ui *Interface) operationBackButton(owner ViewOwner, state ActionState) (Button, error) {
+	parentID := strings.TrimSpace(state.ParentID)
+	if parentID != "" {
+		return ui.stateButton(owner, "Back", CallbackBack, ActionState{Route: state.Back, ResourceID: parentID})
+	}
+	switch state.Back {
+	case RouteUpstream, RouteWorkspace, RouteCodeGraphWS, RouteManagedTunnel:
+		if resourceID := strings.TrimSpace(state.ResourceID); resourceID != "" {
+			return ui.stateButton(owner, "Back", CallbackBack, ActionState{Route: state.Back, ResourceID: resourceID})
+		}
+	}
+	return ui.backButton(owner, state.Back)
 }
 
 func (ui *Interface) stateButton(owner ViewOwner, label string, action CallbackAction, state ActionState) (Button, error) {

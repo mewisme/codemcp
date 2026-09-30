@@ -60,7 +60,7 @@ func telegramOperationRoute(operation capability.ID) Route {
 	switch {
 	case operation == capability.StatusOverview:
 		return RouteStatus
-	case strings.HasPrefix(value, "workspace."):
+	case strings.HasPrefix(value, "workspace."), strings.HasPrefix(value, "process."):
 		return RouteWorkspaces
 	case strings.HasPrefix(value, "request."):
 		return RouteRequests
@@ -116,6 +116,14 @@ func telegramOperationInput(operation capability.ID) string {
 		return inputTunnelConfigure
 	case capability.TunnelAdminKeySet:
 		return inputTunnelAdminKey
+	case capability.ConfigPatch:
+		return inputConfigPatch
+	case capability.UpstreamAuthLogin:
+		return inputUpstreamOAuthLogin
+	case capability.TunnelCreate:
+		return inputManagedTunnelCreate
+	case capability.TunnelUpdate:
+		return inputManagedTunnelUpdate
 	default:
 		return ""
 	}

@@ -130,9 +130,9 @@ func TestTelegramRolloutFutureOwnershipIsExplicit(t *testing.T) {
 	assertFinal(ConfigList, TelegramRolloutLive, TelegramStageSettingsIntegration, TelegramOwnerSettings)
 	assertFinal(IntegrationRTKStatus, TelegramRolloutLive, TelegramStageSettingsIntegration, TelegramOwnerIntegration)
 	assertFinal(CompletionList, TelegramRolloutLive, TelegramStageCompletion, TelegramOwnerCompletion)
-	assertFinal(TunnelList, TelegramRolloutExempt, TelegramStageNetworkUpstream, TelegramOwnerNetwork)
-	assertFinal(ConfigPath, TelegramRolloutExempt, TelegramStageParityResilience, TelegramOwnerLocal)
-	assertFinal(AuthStatus, TelegramRolloutExempt, TelegramStageSettingsIntegration, TelegramOwnerSettings)
+	assertFinal(TunnelList, TelegramRolloutLive, TelegramStageNetworkUpstream, TelegramOwnerNetwork)
+	assertFinal(ConfigPath, TelegramRolloutLive, TelegramStageSettingsIntegration, TelegramOwnerSettings)
+	assertFinal(AuthStatus, TelegramRolloutLive, TelegramStageSettingsIntegration, TelegramOwnerSettings)
 }
 
 func TestTelegramLiveAdapterEvidenceTargetsRequiredOrBootstrapOperations(t *testing.T) {

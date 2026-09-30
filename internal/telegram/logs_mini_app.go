@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
@@ -214,6 +215,15 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
+	logPath, err := ui.stateButton(owner, "Log path", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteLogs, Operation: capability.LogsPath})
+	if err != nil {
+		return Screen{}, err
+	}
+	clearPersisted, err := ui.stateButton(owner, "Clear persisted logs", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteLogs, Operation: capability.LogsClear, ForceConfirm: true})
+	if err != nil {
+		return Screen{}, err
+	}
+	clearPersisted.Role = ButtonRoleDestructive
 	statusText := string(health.State)
 	if !health.Enabled {
 		statusText = "disabled"
@@ -221,6 +231,7 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 	blocks := []RichBlock{
 		{Kind: RichHeading, Title: "Logs", Text: "Read-only Telegram Mini App ingress"},
 		{Kind: RichTable, Rows: [][]string{{"State", statusText}, {"cf-tunnel", boolState(health.DependencyAvailable)}, {"Generation", strconv.FormatUint(health.Generation, 10)}}},
+		{Kind: RichDetails, Title: "Clear semantics", Text: "Mini App “Clear view” only resets that browser session/view. “Clear persisted logs” below is the canonical server-side journal mutation."},
 	}
 	primary := []Button{}
 	if health.State == MiniAppReady && strings.TrimSpace(health.PublicURL) != "" {
@@ -240,7 +251,9 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 		}
 		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Unavailable", Text: message})
 	}
-	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Primary: primary, Navigation: []Button{back, home, refresh}})}, nil
+	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{
+		Primary: primary, Secondary: []Button{logPath}, Destructive: []Button{clearPersisted}, Navigation: []Button{back, home, refresh},
+	})}, nil
 }
 
 func newLogsMiniAppRuntime(launcher QuickTunnelLauncher, resolvers ...func() (string, error)) *LogsMiniAppRuntime {

@@ -10,17 +10,21 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
+	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
 )
 
 const (
-	inputUpstreamAdd       = "upstream.add.json"
-	inputUpstreamConfigure = "upstream.configure.json"
-	inputTunnelConfigure   = "tunnel.configure.json"
-	inputTunnelAdminKey    = "tunnel.admin.key"
-	inputTunnelAdminScope  = "tunnel.admin.scope"
+	inputUpstreamAdd         = "upstream.add.json"
+	inputUpstreamConfigure   = "upstream.configure.json"
+	inputTunnelConfigure     = "tunnel.configure.json"
+	inputTunnelAdminKey      = "tunnel.admin.key"
+	inputTunnelAdminScope    = "tunnel.admin.scope"
+	inputUpstreamOAuthLogin  = "upstream.oauth.login"
+	inputManagedTunnelCreate = "tunnel.managed.create"
+	inputManagedTunnelUpdate = "tunnel.managed.update"
 )
 
 func (ui *Interface) handleNetwork(ctx context.Context, update Update) {
@@ -44,6 +48,10 @@ func (ui *Interface) networkScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
+	interfaces, err := ui.stateButton(owner, "Network interfaces", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteNetwork, Operation: capability.NetworkInterfacesList})
+	if err != nil {
+		return Screen{}, err
+	}
 	back, err := ui.backButton(owner, RouteHome)
 	if err != nil {
 		return Screen{}, err
@@ -52,7 +60,7 @@ func (ui *Interface) networkScreen(owner ViewOwner) (Screen, error) {
 		RichBlock{Kind: RichHeading, Title: "Network", Text: "Canonical connectivity administration"},
 		RichBlock{Kind: RichDetails, Title: "OpenAI connectivity", Text: "Secure MCP Tunnel is a single configured OpenAI-profile connection, not a collection of local tunnel instances."},
 	)
-	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{tunnelButton, upstreamButton}, Navigation: []Button{back}})}, nil
+	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{tunnelButton, upstreamButton}, Secondary: []Button{interfaces}, Navigation: []Button{back}})}, nil
 }
 
 func (ui *Interface) tunnelScreen(ctx context.Context, owner ViewOwner) (Screen, error) {
@@ -93,6 +101,10 @@ func (ui *Interface) tunnelScreen(ctx context.Context, owner ViewOwner) (Screen,
 	if err != nil {
 		return Screen{}, err
 	}
+	managed, err := ui.stateButton(owner, "Managed tunnels", CallbackOpen, ActionState{Route: RouteManagedTunnels, Back: RouteTunnel, Operation: capability.TunnelList})
+	if err != nil {
+		return Screen{}, err
+	}
 	adminScope, err := ui.stateButton(owner, "Set admin scope", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteTunnel, Operation: capability.TunnelConfigure, InputKind: inputTunnelAdminScope})
 	if err != nil {
 		return Screen{}, err
@@ -129,7 +141,9 @@ func (ui *Interface) tunnelScreen(ctx context.Context, owner ViewOwner) (Screen,
 		return Screen{}, err
 	}
 	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{
-		Primary: buttons, Secondary: []Button{configure, adminScope, adminToggle}, Destructive: keyControls, Navigation: []Button{back, home},
+		Primary:     append(buttons, managed),
+		Secondary:   []Button{configure, adminScope, adminToggle},
+		Destructive: keyControls, Navigation: []Button{back, home},
 	})}, nil
 }
 
@@ -234,6 +248,19 @@ func (ui *Interface) upstreamDetailScreen(ctx context.Context, owner ViewOwner, 
 	if err != nil {
 		return Screen{}, err
 	}
+	oauthStatus, err := ui.stateButton(owner, "OAuth status", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteUpstream, Operation: capability.UpstreamAuthStatus, ResourceID: id, Input: application.UpstreamOAuthInput{ID: id}})
+	if err != nil {
+		return Screen{}, err
+	}
+	oauthLogin, err := ui.stateButton(owner, "OAuth login", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteUpstream, Operation: capability.UpstreamAuthLogin, ResourceID: id, InputKind: inputUpstreamOAuthLogin})
+	if err != nil {
+		return Screen{}, err
+	}
+	oauthLogout, err := ui.stateButton(owner, "OAuth logout", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteUpstream, Operation: capability.UpstreamAuthLogout, ResourceID: id, Input: application.UpstreamOAuthInput{ID: id}, ForceConfirm: true})
+	if err != nil {
+		return Screen{}, err
+	}
+	oauthLogout.Role = ButtonRoleDestructive
 	config, err := ui.stateButton(owner, "Configure", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteUpstreams, Operation: capability.UpstreamServerConfigure, ResourceID: id, ExpectedVersion: fingerprint, InputKind: inputUpstreamConfigure})
 	if err != nil {
 		return Screen{}, err
@@ -269,7 +296,9 @@ func (ui *Interface) upstreamDetailScreen(ctx context.Context, owner ViewOwner, 
 		return Screen{}, err
 	}
 	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{
-		Primary: []Button{status, tools}, Secondary: []Button{config, detail, toggle}, Destructive: []Button{remove}, Navigation: []Button{back, home},
+		Primary:     []Button{status, tools, oauthStatus},
+		Secondary:   []Button{config, detail, oauthLogin},
+		Destructive: []Button{toggle, oauthLogout, remove}, Navigation: []Button{back, home},
 	})}, nil
 }
 
@@ -325,6 +354,12 @@ func networkInputPrompt(kind string) (title, prompt, placeholder string, secret 
 		return "Set tunnel admin key", "Reply with the OpenAI admin key. The reply is protected and deleted after processing. Verification is a separate explicit action.", "admin key", true
 	case inputTunnelAdminScope:
 		return "Set tunnel admin scope", "Reply with exactly one scope: organization:<id>, workspace:<id>, or tenant:<id>.", "workspace:ws_...", false
+	case inputUpstreamOAuthLogin:
+		return "Start Upstream OAuth", "Reply with the redirect origin used for the OAuth callback. HTTPS is required except for loopback HTTP origins.", "https://admin.example.com", false
+	case inputManagedTunnelCreate:
+		return "Create managed tunnel", "Reply with a JSON create request containing name, description and optional organization/workspace/tenant IDs.", "JSON tunnel create request", false
+	case inputManagedTunnelUpdate:
+		return "Update managed tunnel", "Reply with a JSON update request. Only supplied fields are changed.", "JSON tunnel update request", false
 	default:
 		return "", "", "", false
 	}
@@ -376,12 +411,63 @@ func networkActionInput(state ActionState, text string) (any, bool, error) {
 			return nil, true, errors.New("unsupported tunnel admin scope")
 		}
 		return application.TunnelConfigureInput{AdminScope: &scope}, true, nil
+	case inputUpstreamOAuthLogin:
+		return application.UpstreamOAuthInput{ID: state.ResourceID, RedirectOrigin: text}, true, nil
+	case inputManagedTunnelCreate:
+		var request tunnel.CreateRequest
+		if err := json.Unmarshal([]byte(text), &request); err != nil {
+			return nil, true, fmt.Errorf("invalid managed tunnel create JSON: %w", err)
+		}
+		return application.ManagedTunnelCreateInput{Request: request}, true, nil
+	case inputManagedTunnelUpdate:
+		var request tunnel.UpdateRequest
+		if err := json.Unmarshal([]byte(text), &request); err != nil {
+			return nil, true, fmt.Errorf("invalid managed tunnel update JSON: %w", err)
+		}
+		return application.ManagedTunnelUpdateInput{ID: state.ResourceID, Request: request}, true, nil
 	default:
 		return nil, false, nil
 	}
 }
 
 func (ui *Interface) networkOperationResultScreen(owner ViewOwner, state ActionState, spec capability.Spec, value any) (Screen, bool, error) {
+	switch result := value.(type) {
+	case mcpoauth.FlowSession:
+		back, err := ui.stateButton(owner, "Back to Upstream", CallbackBack, ActionState{Route: RouteUpstream, Back: RouteUpstreams, ResourceID: state.ResourceID})
+		if err != nil {
+			return Screen{}, true, err
+		}
+		home, _ := ui.homeButton(owner)
+		refresh, err := ui.stateButton(owner, "Refresh OAuth status", CallbackOpen, ActionState{
+			Route: RouteOperation, Back: RouteUpstream, Operation: capability.UpstreamAuthStatus,
+			ResourceID: state.ResourceID, Input: application.UpstreamOAuthInput{ID: state.ResourceID},
+		})
+		if err != nil {
+			return Screen{}, true, err
+		}
+		open := Button{Text: "Open authorization", URL: result.AuthorizationURL, Role: ButtonRolePrimary}
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: "OAuth authorization", Text: "Authorization URL is ready"},
+			RichBlock{Kind: RichTable, Rows: [][]string{{"Expires", result.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}}},
+			RichBlock{Kind: RichDetails, Title: "Credential policy", Text: "OAuth tokens are never rendered into Telegram."},
+		), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{open}, Secondary: []Button{refresh}, Navigation: []Button{back, home}})}, true, nil
+	case mcpoauth.Status:
+		keyboard, err := ui.terminalOperationKeyboard(owner, state, spec, value)
+		if err != nil {
+			return Screen{}, true, err
+		}
+		expires := "not set"
+		if result.ExpiresAt != nil {
+			expires = result.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")
+		}
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: "Upstream OAuth", Text: result.ServerID},
+			RichBlock{Kind: RichTable, Rows: [][]string{
+				{"Configured", fmt.Sprint(result.Configured)}, {"Expired", fmt.Sprint(result.Expired)},
+				{"Refresh token", fmt.Sprint(result.HasRefreshToken)}, {"Expires", expires},
+			}},
+		), Keyboard: keyboard}, true, nil
+	}
 	keyboard, err := ui.terminalOperationKeyboard(owner, state, spec, value)
 	if err != nil {
 		return Screen{}, true, err

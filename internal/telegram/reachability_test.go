@@ -76,14 +76,14 @@ func TestTelegramManagedSecretDescriptorUsesProtectedInput(t *testing.T) {
 	t.Fatal("LLM credential descriptor missing")
 }
 
-func TestTelegramRequiredButUndiscoverableAdaptersRemainGaps(t *testing.T) {
+func TestTelegramRequiredAdaptersAreProductionReachable(t *testing.T) {
 	descriptors := ProductReachabilityDescriptors()
-	if productadapter.CountGaps(descriptors) == 0 {
-		t.Fatal("expected remaining Telegram semantic gaps before interface closure")
-	}
-	for _, descriptor := range descriptors {
-		if descriptor.State == productadapter.StateGap && strings.TrimSpace(descriptor.Gap) == "" {
-			t.Fatalf("unclassified Telegram gap: %#v", descriptor)
+	if gaps := productadapter.CountGaps(descriptors); gaps != 0 {
+		for _, descriptor := range descriptors {
+			if descriptor.State == productadapter.StateGap {
+				t.Errorf("Telegram operation %s remains unreachable: %s", descriptor.Operation, strings.TrimSpace(descriptor.Gap))
+			}
 		}
+		t.Fatalf("remaining Telegram semantic gaps=%d", gaps)
 	}
 }

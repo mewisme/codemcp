@@ -115,6 +115,13 @@ func (a *App) Bootstrap() error {
 			a.Notifications = notification.NewCoordinator(notification.CoordinatorOptions{})
 			a.Notifications.Register(notification.NewDesktopProvider())
 		}
+		if err := application.BindRemoteOperatorOperations(a.Operations, application.RemoteOperatorServices{
+			Processes: a.Tools.Processes, Notifications: a.Notifications,
+			OAuth: a.OAuth, OAuthFlows: a.OAuthFlows, Upstream: a.Tools.Upstream,
+		}); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		if a.Telegram != nil {
 			a.Notifications.Register(notification.NewTelegramProvider(a.Telegram))
 			if a.TelegramPairing == nil {

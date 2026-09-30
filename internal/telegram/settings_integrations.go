@@ -20,12 +20,16 @@ const (
 	inputSettingSet         = "setting.set"
 	inputSettingsSearch     = "settings.search"
 	inputSettingsApply      = "settings.apply"
+	inputConfigPatch        = "config.patch"
 	inputTelegramUserManual = "telegram.user.manual"
 	inputTelegramUserPicker = "telegram.user.picker"
-	settingsPageSize        = 8
+	settingsPageSize        = 3
 )
 
 func (ui *Interface) settingsScreen(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
+	if state.Detail {
+		return ui.configToolsScreen(owner, state)
+	}
 	prefix := strings.TrimSpace(state.ResourceID)
 	value, err := ui.dispatch(ctx, capability.ConfigList, application.ConfigListInput{Prefix: prefix})
 	if err != nil {
@@ -69,22 +73,15 @@ func (ui *Interface) settingListScreen(owner ViewOwner, state ActionState, items
 	if err != nil {
 		return Screen{}, err
 	}
-	export, err := ui.stateButton(owner, "Export config", CallbackOpen, ActionState{
-		Route: RouteOperation, Back: RouteSettings, Operation: capability.ConfigExport,
-	})
+	tools, err := ui.stateButton(owner, "Config tools", CallbackOpen, ActionState{Route: RouteSettings, Back: state.Back, Detail: true})
 	if err != nil {
 		return Screen{}, err
 	}
-	importUnavailable := Button{Text: "Import (stop runtime first)", Disabled: true, Role: ButtonRoleNeutral}
 	backRoute := state.Back
 	if backRoute == "" {
 		backRoute = RouteHome
 	}
 	back, err := ui.backButton(owner, backRoute)
-	if err != nil {
-		return Screen{}, err
-	}
-	home, err := ui.homeButton(owner)
 	if err != nil {
 		return Screen{}, err
 	}
@@ -107,7 +104,7 @@ func (ui *Interface) settingListScreen(owner ViewOwner, state ActionState, items
 		}
 		nav = append(nav, button)
 	}
-	nav = append(nav, back, home)
+	nav = append(nav, back)
 	subtitle := fmt.Sprintf("%d canonical setting(s)", len(items))
 	if strings.TrimSpace(query) != "" {
 		subtitle += " · " + query
@@ -118,7 +115,53 @@ func (ui *Interface) settingListScreen(owner ViewOwner, state ActionState, items
 		RichBlock{Kind: RichDetails, Title: "Config import/export", Text: "Portable export remains secret-free. Import is intentionally unavailable while the Telegram-managed runtime is active because the canonical importer requires a stopped runtime."},
 	)
 	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{
-		Primary: []Button{search, batch, export}, Secondary: append(buttons, importUnavailable), Navigation: nav,
+		Primary:    []Button{search, batch, tools},
+		Secondary:  buttons,
+		Navigation: nav,
+	})}, nil
+}
+
+func (ui *Interface) configToolsScreen(owner ViewOwner, state ActionState) (Screen, error) {
+	patch, err := ui.stateButton(owner, "Patch", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteSettings, Operation: capability.ConfigPatch, InputKind: inputConfigPatch, SecretInput: true})
+	if err != nil {
+		return Screen{}, err
+	}
+	export, err := ui.stateButton(owner, "Export config", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteSettings, Operation: capability.ConfigExport})
+	if err != nil {
+		return Screen{}, err
+	}
+	snapshot, err := ui.stateButton(owner, "Snapshot", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteSettings, Operation: capability.ConfigSnapshotRead})
+	if err != nil {
+		return Screen{}, err
+	}
+	verify, err := ui.stateButton(owner, "Verify", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteSettings, Operation: capability.ConfigVerify})
+	if err != nil {
+		return Screen{}, err
+	}
+	path, err := ui.stateButton(owner, "Config path", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteSettings, Operation: capability.ConfigPath})
+	if err != nil {
+		return Screen{}, err
+	}
+	notifications, err := ui.stateButton(owner, "Notifications", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteSettings, Operation: capability.NotificationStatus})
+	if err != nil {
+		return Screen{}, err
+	}
+	backState := ActionState{Route: RouteSettings, Back: state.Back}
+	back, err := ui.stateButton(owner, "Back", CallbackBack, backState)
+	if err != nil {
+		return Screen{}, err
+	}
+	home, err := ui.homeButton(owner)
+	if err != nil {
+		return Screen{}, err
+	}
+	return Screen{Rich: BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Config tools", Text: "Canonical configuration and notification operations"},
+		RichBlock{Kind: RichDetails, Title: "Import", Text: "Import remains unavailable while the Telegram-managed runtime is active; stop the runtime and use the canonical local importer."},
+	), Keyboard: BoundedActionGroups(ActionGroups{
+		Primary:    []Button{patch, export, snapshot},
+		Secondary:  []Button{verify, path, notifications},
+		Navigation: []Button{back, home},
 	})}, nil
 }
 
@@ -611,6 +654,13 @@ func (ui *Interface) typeSafeScreen(owner ViewOwner, status application.TypeSafe
 	if err != nil {
 		return Screen{}, err
 	}
+	doctor, err := ui.stateButton(owner, "Doctor", CallbackOpen, ActionState{
+		Route: RouteOperation, Back: RouteIntegrations, Operation: capability.IntegrationTypeSafeDoctor,
+		Input: application.TypeSafeDoctorInput{Probe: true},
+	})
+	if err != nil {
+		return Screen{}, err
+	}
 	key, err := ui.stateButton(owner, "API key", CallbackOpen, ActionState{Route: RouteSetting, Back: RouteIntegrations, ResourceID: "integrations.typesafe.api_key"})
 	if err != nil {
 		return Screen{}, err
@@ -624,7 +674,7 @@ func (ui *Interface) typeSafeScreen(owner ViewOwner, status application.TypeSafe
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "TypeSafe", Text: string(status.State)},
 		RichBlock{Kind: RichTable, Rows: [][]string{{"Enabled", fmt.Sprint(status.Enabled)}, {"API key", keyPreview}, {"Model", status.Model}, {"Timeout", fmt.Sprintf("%d ms", status.TimeoutMS)}}},
-	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle, probe}, Secondary: []Button{key, configButton}, Navigation: []Button{back, home}})}, nil
+	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle, probe, doctor}, Secondary: []Button{key, configButton}, Navigation: []Button{back, home}})}, nil
 }
 
 func (ui *Interface) telemetryScreen(owner ViewOwner, status application.TelemetryStatus) (Screen, error) {
@@ -641,6 +691,10 @@ func (ui *Interface) telemetryScreen(owner ViewOwner, status application.Telemet
 	} else {
 		toggle.Role = ButtonRolePositive
 	}
+	show, err := ui.stateButton(owner, "Show details", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteIntegrations, Operation: capability.TelemetryShow})
+	if err != nil {
+		return Screen{}, err
+	}
 	back, _ := ui.backButton(owner, RouteIntegrations)
 	home, _ := ui.homeButton(owner)
 	rows := [][]string{
@@ -656,10 +710,18 @@ func (ui *Interface) telemetryScreen(owner ViewOwner, status application.Telemet
 		RichBlock{Kind: RichHeading, Title: "Product telemetry", Text: "Privacy-bounded operator status"},
 		RichBlock{Kind: RichTable, Rows: rows},
 		RichBlock{Kind: RichDetails, Title: "Precedence", Text: "CM_TELEMETRY can override the persisted preference; Telegram changes only the canonical persisted setting."},
-	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle}, Navigation: []Button{back, home}})}, nil
+	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle}, Secondary: []Button{show}, Navigation: []Button{back, home}})}, nil
 }
 
 func (ui *Interface) authScreen(ctx context.Context, owner ViewOwner) (Screen, error) {
+	authValue, err := ui.dispatch(ctx, capability.AuthStatus, nil)
+	if err != nil {
+		return Screen{}, err
+	}
+	authStatus, ok := authValue.(application.AuthStatus)
+	if !ok {
+		return Screen{}, errors.New("authentication status returned an unexpected result")
+	}
 	tokenValue, err := ui.dispatch(ctx, capability.ConfigGet, application.ConfigGetInput{Key: "telegram.token"})
 	if err != nil {
 		return Screen{}, err
@@ -679,12 +741,55 @@ func (ui *Interface) authScreen(ctx context.Context, owner ViewOwner) (Screen, e
 	if err != nil {
 		return Screen{}, err
 	}
+	mcpToggleOp, mcpToggleLabel := capability.AuthMCPEnable, "Enable MCP auth"
+	if authStatus.MCPEnabled {
+		mcpToggleOp, mcpToggleLabel = capability.AuthMCPDisable, "Disable MCP auth"
+	}
+	mcpToggle, err := ui.stateButton(owner, mcpToggleLabel, CallbackOpen, ActionState{Route: RouteOperation, Back: RouteAuth, Operation: mcpToggleOp, ForceConfirm: true})
+	if err != nil {
+		return Screen{}, err
+	}
+	if authStatus.MCPEnabled {
+		mcpToggle.Role = ButtonRoleDestructive
+	} else {
+		mcpToggle.Role = ButtonRolePositive
+	}
+	mcpRotate, err := ui.stateButton(owner, "Rotate MCP credential", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteAuth, Operation: capability.AuthMCPRotate, ForceConfirm: true, SecretInput: true})
+	if err != nil {
+		return Screen{}, err
+	}
+	adminToggleOp, adminToggleLabel := capability.AuthAdminEnable, "Enable admin auth"
+	if authStatus.AdminEnabled {
+		adminToggleOp, adminToggleLabel = capability.AuthAdminDisable, "Disable admin auth"
+	}
+	adminToggle, err := ui.stateButton(owner, adminToggleLabel, CallbackOpen, ActionState{Route: RouteOperation, Back: RouteAuth, Operation: adminToggleOp, ForceConfirm: true})
+	if err != nil {
+		return Screen{}, err
+	}
+	if authStatus.AdminEnabled {
+		adminToggle.Role = ButtonRoleDestructive
+	} else {
+		adminToggle.Role = ButtonRolePositive
+	}
+	adminRotate, err := ui.stateButton(owner, "Rotate admin credential", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteAuth, Operation: capability.AuthAdminRotate, ForceConfirm: true, SecretInput: true})
+	if err != nil {
+		return Screen{}, err
+	}
 	back, _ := ui.backButton(owner, RouteHome)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "Authentication", Text: "Telegram private administration boundary"},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Bot token", token.Value}, {"Authorized users", fmt.Sprint(len(userIDs))}}},
-	), Keyboard: BoundedActionGroups(ActionGroups{Secondary: []Button{usersButton, tokenButton}, Navigation: []Button{back, home}})}, nil
+		RichBlock{Kind: RichTable, Rows: [][]string{
+			{"MCP auth", boolState(authStatus.MCPEnabled)}, {"MCP credential", configuredLabel(authStatus.MCPConfigured)},
+			{"Admin auth", boolState(authStatus.AdminEnabled)}, {"Admin credential", configuredLabel(authStatus.AdminConfigured)},
+			{"Bot token", token.Value}, {"Authorized users", fmt.Sprint(len(userIDs))},
+		}},
+		RichBlock{Kind: RichDetails, Title: "Credential handling", Text: "Generated credentials are sent as protected content and are never rendered into the ordinary administration message."},
+	), Keyboard: BoundedActionGroups(ActionGroups{
+		Primary:    []Button{mcpToggle, adminToggle, usersButton},
+		Secondary:  []Button{mcpRotate, adminRotate, tokenButton},
+		Navigation: []Button{back, home},
+	})}, nil
 }
 
 func (ui *Interface) authorizedUsersScreen(ctx context.Context, owner ViewOwner) (Screen, error) {
@@ -771,6 +876,8 @@ func settingsInputPrompt(state ActionState) (title, prompt, placeholder string) 
 		return "Search settings", "Reply with text to search canonical setting keys, labels, descriptions and owners.", "Search settings"
 	case inputSettingsApply:
 		return "Apply settings atomically", "Reply with a JSON array of changes. Example: [{\"key\":\"server.port\",\"value\":\"4000\"}]. The canonical transaction validates the whole batch before persisting.", "JSON setting changes"
+	case inputConfigPatch:
+		return "Patch configuration", "Reply with a JSON array of setting changes. The canonical patch validates the complete batch before persistence.", "JSON setting changes"
 	case inputTelegramUserManual:
 		return "Add Telegram user", "Reply with the numeric Telegram user ID. The candidate is not authorized until the confirmation succeeds.", "Telegram user ID"
 	default:
@@ -793,6 +900,15 @@ func settingsActionInput(state ActionState, text string) (any, bool, error) {
 			return nil, true, errors.New("at least one setting change is required")
 		}
 		return application.ConfigSetInput{Action: "apply", Changes: changes}, true, nil
+	case inputConfigPatch:
+		var changes []application.SettingChange
+		if err := json.Unmarshal([]byte(text), &changes); err != nil {
+			return nil, true, fmt.Errorf("invalid configuration patch JSON: %w", err)
+		}
+		if len(changes) == 0 {
+			return nil, true, errors.New("at least one configuration change is required")
+		}
+		return application.ConfigPatchInput{Changes: changes}, true, nil
 	case inputTelegramUserManual:
 		return application.ConfigSetInput{
 			Action: "set", Key: "telegram.allowed_user_ids",
@@ -904,6 +1020,23 @@ func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner Vi
 			RichBlock{Kind: RichHeading, Title: "Settings applied", Text: fmt.Sprintf("%d change(s)", len(result.Results))},
 			RichBlock{Kind: RichList, Items: items},
 			RichBlock{Kind: RichDetails, Title: "Runtime", Text: fmt.Sprintf("reloaded=%t", result.RuntimeReloaded)},
+		), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
+	case application.AuthRotationResult:
+		protected := Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: "Generated credential", Text: "Copy this credential now and store it securely."},
+			RichBlock{Kind: RichCopy, Title: "Credential", Text: result.Token, CopyText: result.Token},
+		)}
+		if _, sendErr := ui.runtime.SendRichMessage(ctx, owner.ChatID, protected, RichMessageOptions{ProtectContent: true}); sendErr != nil {
+			return Screen{}, true, sendErr
+		}
+		back, err := ui.backButton(owner, RouteAuth)
+		if err != nil {
+			return Screen{}, true, err
+		}
+		home, _ := ui.homeButton(owner)
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: "Credential rotated", Text: "Sensitive credential sent separately"},
+			RichBlock{Kind: RichDetails, Title: "History policy", Text: "The generated value was sent using Telegram protected-content handling and is omitted from this ordinary administration message."},
 		), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	case application.ConfigExportDocument:
 		if err := ui.runtime.SendDocument(ctx, owner.ChatID, DocumentUpload{

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/capability"
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 )
 
@@ -84,9 +86,30 @@ func (ui *Interface) completionListScreen(ctx context.Context, owner ViewOwner, 
 		return Screen{}, err
 	}
 	navigation = append([]Button{refresh}, navigation...)
+	current, err := ui.stateButton(owner, "Current", CallbackOpen, ActionState{
+		Route: RouteOperation, Back: RouteCompletions, Operation: capability.CompletionCurrent,
+		Input: application.CompletionWorkspaceInput{},
+	})
+	if err != nil {
+		return Screen{}, err
+	}
+	doctor, err := ui.stateButton(owner, "Doctor", CallbackOpen, ActionState{
+		Route: RouteOperation, Back: RouteCompletions, Operation: capability.CompletionDoctor,
+		Input: application.CompletionWorkspaceInput{},
+	})
+	if err != nil {
+		return Screen{}, err
+	}
+	feed, err := ui.stateButton(owner, "Feed snapshot", CallbackOpen, ActionState{
+		Route: RouteOperation, Back: RouteCompletions, Operation: capability.CompletionFeed,
+		Input: application.CompletionWorkspaceInput{Limit: completionHistoryLimit},
+	})
+	if err != nil {
+		return Screen{}, err
+	}
 	return Screen{
 		Rich:     BuildRichPresentation(blocks...),
-		Keyboard: BoundedActionGroups(ActionGroups{Secondary: buttons, Navigation: navigation}),
+		Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{current, doctor, feed}, Secondary: buttons, Navigation: navigation}),
 	}, nil
 }
 

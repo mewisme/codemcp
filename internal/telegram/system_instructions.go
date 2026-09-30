@@ -143,6 +143,10 @@ func (ui *Interface) doctorScreen(ctx context.Context, owner ViewOwner, state Ac
 	if err != nil {
 		return Screen{}, err
 	}
+	health, err := ui.stateButton(owner, "Health", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteDoctor, Operation: capability.HealthRead})
+	if err != nil {
+		return Screen{}, err
+	}
 	refresh, err := ui.refreshButton(owner, ActionState{Route: RouteDoctor, Back: RouteSystem})
 	if err != nil {
 		return Screen{}, err
@@ -153,7 +157,7 @@ func (ui *Interface) doctorScreen(ctx context.Context, owner ViewOwner, state Ac
 	if state.Detail {
 		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Export", Text: "The bounded canonical doctor report was sent as a protected JSON document."})
 	}
-	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Secondary: []Button{export}, Navigation: []Button{back, home, refresh}})}, nil
+	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Secondary: []Button{export, health}, Navigation: []Button{back, home, refresh}})}, nil
 }
 
 func (ui *Interface) instructionsScreen(ctx context.Context, owner ViewOwner) (Screen, error) {
