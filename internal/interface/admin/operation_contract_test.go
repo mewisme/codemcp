@@ -116,6 +116,7 @@ func TestPublicAdminOperationsHaveCanonicalIDs(t *testing.T) {
 		{Method: "POST", Path: "/api/upstream/{server_id}/auth/login"},
 		{Method: "DELETE", Path: "/api/upstream/{server_id}/auth/logout"},
 		{Method: "GET", Path: "/api/tunnel/config"},
+		{Method: "DELETE", Path: "/api/tunnel/runtime/key"},
 		{Method: "GET", Path: "/api/tunnel"},
 		{Method: "POST", Path: "/api/tunnel"},
 		{Method: "DELETE", Path: "/api/tunnel"},

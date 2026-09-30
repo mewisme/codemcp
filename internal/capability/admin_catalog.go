@@ -105,7 +105,7 @@ var adminBindings = map[ID][]AdminBinding{
 	TunnelStatus:                        {{Method: "GET", Path: "/api/tunnel"}},
 	TunnelEnable:                        {{Method: "POST", Path: "/api/tunnel"}},
 	TunnelDisable:                       {{Method: "DELETE", Path: "/api/tunnel"}},
-	TunnelConfigure:                     {{Method: "PUT", Path: "/api/tunnel"}},
+	TunnelConfigure:                     {{Method: "PUT", Path: "/api/tunnel"}, {Method: "DELETE", Path: "/api/tunnel/runtime/key"}},
 	TunnelAdminKeyStatus:                {{Method: "GET", Path: "/api/tunnel/admin/key"}},
 	TunnelAdminKeySet:                   {{Method: "PUT", Path: "/api/tunnel/admin/key"}},
 	TunnelAdminKeyVerify:                {{Method: "POST", Path: "/api/tunnel/admin/key"}},

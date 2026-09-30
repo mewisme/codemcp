@@ -20,6 +20,7 @@ import (
 	"go.mewis.me/codemcp/internal/notification"
 	"go.mewis.me/codemcp/internal/runtime/activity"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
+	"go.mewis.me/codemcp/internal/secretstore"
 	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/tunnel"
 	"go.mewis.me/codemcp/internal/upstream"
@@ -230,6 +231,49 @@ func TestTunnelConfigureUsesCanonicalPersistence(t *testing.T) {
 	}
 	if got := persisted.Tunnel; got.ID != "tunnel_new" || got.APIKey != "new-secret" {
 		t.Fatalf("persisted tunnel config = %#v", got)
+	}
+}
+
+func TestTunnelRuntimeKeyDeleteUsesCanonicalTunnelOperation(t *testing.T) {
+	root := t.TempDir()
+	previousRoot := config.RootPath()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = configformat.SetRootPath(previousRoot) })
+	restore := secretstore.UseMemoryForTesting()
+	t.Cleanup(restore)
+	cfg := config.Default()
+	cfg.Auth.MCPEnabled = false
+	cfg.Auth.AdminEnabled = false
+	cfg.Server.AllowUnauthenticatedLoopback = true
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+	service := application.NewSettingService()
+	const secret = "runtime-delete-secret-never-return"
+	if _, err := service.Set(t.Context(), "tunnel.api_key", secret); err != nil {
+		t.Fatal(err)
+	}
+	dispatcher := application.NewDispatcher()
+	if err := application.BindTunnelOperations(dispatcher); err != nil {
+		t.Fatal(err)
+	}
+	handler := New(API{Operations: dispatcher})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodDelete, "/api/tunnel/runtime/key", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), secret) {
+		t.Fatalf("runtime key delete response leaked raw secret: %s", recorder.Body.String())
+	}
+	result, err := service.Present(t.Context(), "tunnel.api_key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Configured == nil || *result.Configured || result.Value != "not configured" {
+		t.Fatalf("runtime key after delete=%#v", result)
 	}
 }
 

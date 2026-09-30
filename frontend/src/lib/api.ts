@@ -1066,6 +1066,7 @@ export const adminApi = {
   removeCFTunnel: () =>
     api<CFTunnelRemoveResult>("/api/integrations/cf", { method: "DELETE" }),
   tunnelConfig: () => api<TunnelConfig>("/api/tunnel/config"),
+  clearTunnelRuntimeKey: () => api<unknown>("/api/tunnel/runtime/key", { method: "DELETE" }),
   configureTunnel: (config: TunnelConfig) =>
     api<TunnelStatus>("/api/tunnel", {
       method: "PUT",

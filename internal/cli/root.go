@@ -176,6 +176,7 @@ func authCreateCommand(kind string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create or rotate the " + kind + " token",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "AUTH", "auth.token.rotating", "Creating or rotating authentication token", logger.WithVerbose("type", kind))
 			result, err := settingService().Rotate(cmd.Context(), "auth."+kind+"_token")

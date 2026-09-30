@@ -273,16 +273,27 @@ func integrationTypeSafeSettingsCommand() *cobra.Command {
 		typeSafeProbeCommand(),
 	)
 	key := &cobra.Command{Use: "key", Short: "Manage the TypeSafe API key"}
+	var fromEnv string
 	set := &cobra.Command{
-		Use: "set <api-key>", Short: "Set the TypeSafe API key", Args: cobra.ExactArgs(1),
+		Use: "set [api-key]", Short: "Set the TypeSafe API key", Long: "Set the TypeSafe API key.\n\n" + protectedArgumentWarning, Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := scopedSettingSet(cmd, prefix+".api_key", args[0]); err != nil {
+			explicit := ""
+			if len(args) == 1 {
+				explicit = args[0]
+			}
+			secret, err := readProtectedInput(cmd, protectedInputOptions{Label: "API key", Explicit: explicit, ExplicitSet: len(args) == 1, FromEnv: fromEnv})
+			if err != nil {
+				return err
+			}
+			defer zeroProtectedString(&secret)
+			if err := scopedSettingSet(cmd, prefix+".api_key", secret); err != nil {
 				return err
 			}
 			renderMutationSuccess(cmd, "TypeSafe API key configured", presentation.Field{Label: "setting", Value: prefix + ".api_key"})
 			return nil
 		},
 	}
+	set.Flags().StringVar(&fromEnv, "from-env", "", "Read the API key from this environment variable")
 	remove := &cobra.Command{
 		Use: "remove", Short: "Remove the TypeSafe API key", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

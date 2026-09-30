@@ -28,13 +28,24 @@ func tunnelCommand() *cobra.Command {
 
 func tunnelRuntimeKeyCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "key", Short: "Manage the stored OpenAI tunnel runtime API key"}
-	set := &cobra.Command{Use: "set <runtime-api-key>", Short: "Store the OpenAI tunnel runtime API key", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if _, err := settingService().Set(cmd.Context(), "tunnel.api_key", args[0]); err != nil {
+	var fromEnv string
+	set := &cobra.Command{Use: "set [runtime-api-key]", Short: "Store the OpenAI tunnel runtime API key", Long: "Store the OpenAI tunnel runtime API key.\n\n" + protectedArgumentWarning, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		explicit := ""
+		if len(args) == 1 {
+			explicit = args[0]
+		}
+		secret, err := readProtectedInput(cmd, protectedInputOptions{Label: "Runtime API key", Explicit: explicit, ExplicitSet: len(args) == 1, FromEnv: fromEnv})
+		if err != nil {
+			return err
+		}
+		defer zeroProtectedString(&secret)
+		if _, err := settingService().Set(cmd.Context(), "tunnel.api_key", secret); err != nil {
 			return err
 		}
 		renderMutationSuccess(cmd, "Runtime API key saved")
 		return nil
 	}}
+	set.Flags().StringVar(&fromEnv, "from-env", "", "Read the runtime API key from this environment variable")
 	remove := &cobra.Command{Use: "remove", Short: "Remove the stored OpenAI tunnel runtime API key", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if _, err := settingService().Unset(cmd.Context(), "tunnel.api_key"); err != nil {
 			return err

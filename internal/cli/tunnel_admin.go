@@ -78,34 +78,54 @@ func tunnelAdminKeyCommand() *cobra.Command {
 
 func tunnelAdminKeySetCommand() *cobra.Command {
 	var adminKey string
+	var fromEnv string
 	var scopeFlags tunnelAdminScopeFlags
 	cmd := &cobra.Command{
 		Use:   "set [admin-api-key]",
 		Short: "Store an OpenAI tunnel admin key",
-		Long:  "Store the admin key in the secret store without contacting the control plane. The key may be passed positionally, with --admin-key, or through OPENAI_ADMIN_KEY. An optional organization, workspace, or tenant flag configures the exclusive admin scope in the same atomic mutation. Run verify explicitly after the key and scope are configured.",
+		Long:  "Store the admin key in the secret store without contacting the control plane. Omit the key for protected interactive input; OPENAI_ADMIN_KEY remains a compatibility fallback. An optional organization, workspace, or tenant flag configures the exclusive admin scope in the same atomic mutation. Run verify explicitly after the key and scope are configured.\n\n" + protectedArgumentWarning,
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "TUNNEL", "tunnel.admin.key.preparing", "Preparing tunnel admin key configuration")
-			key := ""
+			explicit := ""
+			explicitSet := false
 			keySource := ""
 			if len(args) == 1 {
-				key = strings.TrimSpace(args[0])
+				explicit = args[0]
+				explicitSet = true
 				keySource = "argument"
 			}
-			if key != "" && cmd.Flags().Changed("admin-key") {
+			if explicitSet && cmd.Flags().Changed("admin-key") {
 				return errors.New("provide the OpenAI admin key either positionally or with --admin-key, not both")
 			}
-			if key == "" {
-				key = strings.TrimSpace(adminKey)
+			if cmd.Flags().Changed("admin-key") {
+				explicit = adminKey
+				explicitSet = true
 				keySource = "flag"
 			}
-			if key == "" {
-				key = strings.TrimSpace(os.Getenv("OPENAI_ADMIN_KEY"))
+			if explicitSet && strings.TrimSpace(fromEnv) != "" {
+				return errors.New("provide the OpenAI admin key either directly or with --from-env, not both")
+			}
+			if !explicitSet && strings.TrimSpace(fromEnv) != "" {
 				keySource = "environment"
 			}
-			if key == "" {
-				return application.ErrTunnelAdminAPIKeyRequired
+			if !explicitSet && strings.TrimSpace(fromEnv) == "" {
+				if _, ok := os.LookupEnv("OPENAI_ADMIN_KEY"); ok {
+					keySource = "environment"
+				} else {
+					keySource = "protected-input"
+				}
 			}
+			key, err := readProtectedInput(cmd, protectedInputOptions{
+				Label: "Admin API key", Explicit: explicit, ExplicitSet: explicitSet, FromEnv: fromEnv, FallbackEnv: "OPENAI_ADMIN_KEY",
+			})
+			if err != nil {
+				if errors.Is(err, errProtectedInputCancelled) {
+					return err
+				}
+				return fmt.Errorf("OpenAI admin API key: %w", err)
+			}
+			defer zeroProtectedString(&key)
 			var scope *tunnel.AdminScope
 			if scopeFlags.changed(cmd) {
 				value := scopeFlags.scope()
@@ -129,7 +149,8 @@ func tunnelAdminKeySetCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&adminKey, "admin-key", "", "OpenAI admin API key; defaults to OPENAI_ADMIN_KEY")
+	cmd.Flags().StringVar(&adminKey, "admin-key", "", "OpenAI admin API key (compatibility; may be retained by process listings)")
+	cmd.Flags().StringVar(&fromEnv, "from-env", "", "Read the admin API key from this environment variable")
 	scopeFlags.add(cmd)
 	return markScopedSettings(cmd, "tunnel.admin.key", "tunnel.admin.organization_id", "tunnel.admin.workspace_id", "tunnel.admin.tenant_id")
 }

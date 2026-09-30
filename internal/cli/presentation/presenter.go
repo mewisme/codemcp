@@ -440,6 +440,33 @@ func (p *Presenter) Prompt(message string) {
 	p.line(message)
 }
 
+// ProtectedInput redraws one interactive secret-input line using only mask
+// glyphs. Callers own terminal input and pass only the current secret length.
+func (p *Presenter) ProtectedInput(label string, maskCount int, final bool) {
+	if p == nil || p.mode == ModeJSON {
+		return
+	}
+	label = strings.TrimSpace(label)
+	if label == "" {
+		label = "Secret"
+	}
+	if maskCount < 0 {
+		maskCount = 0
+	}
+	line := label + ": " + strings.Repeat("*", maskCount)
+	if p.mode == ModeHuman {
+		line = p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleActive, p.glyphs.PhasePending) + " " + line
+	}
+	if p.capabilities.CursorControl {
+		_, _ = fmt.Fprint(p.out, "\r\x1b[2K", line)
+	} else if maskCount == 0 {
+		_, _ = fmt.Fprint(p.out, line)
+	}
+	if final {
+		_, _ = fmt.Fprintln(p.out)
+	}
+}
+
 func (p *Presenter) Markdown(source string) error {
 	if p == nil || p.mode == ModeJSON {
 		return nil

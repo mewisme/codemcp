@@ -71,7 +71,9 @@ describe("TunnelPage", () => {
       enabled: true,
       id: "tunnel_one",
       runtime_key_configured: true,
+      runtime_key_preview: "runtime_********abcd",
       admin_key_configured: true,
+      admin_key_preview: "admin_********wxyz",
     })
     vi.spyOn(adminApi, "tunnel").mockResolvedValue(tunnelStatus)
     vi.spyOn(adminApi, "tunnelAdminKey").mockResolvedValue({
@@ -107,6 +109,14 @@ describe("TunnelPage", () => {
       configured: false,
       scope: {},
       access: { read: false, manage: false },
+    })
+    vi.spyOn(adminApi, "configureTunnel").mockResolvedValue(tunnelStatus)
+    vi.spyOn(adminApi, "clearTunnelRuntimeKey").mockResolvedValue({})
+    vi.spyOn(adminApi, "configureTunnelAdminKey").mockResolvedValue({
+      configured: true,
+      scope: { workspace_id: "ws_admin" },
+      access: { read: true, manage: true },
+      tunnels: 2,
     })
     vi.spyOn(adminApi, "startTunnel").mockResolvedValue(tunnelStatus)
     vi.spyOn(adminApi, "stopTunnel").mockResolvedValue({
@@ -144,6 +154,43 @@ describe("TunnelPage", () => {
     expect(screen.getByText("Tunnel scope")).toBeInTheDocument()
     expect(screen.getByText("tenant_one")).toBeInTheDocument()
     expect(screen.getByText("req_meta")).toBeInTheDocument()
+  })
+
+  it("keeps runtime and admin secrets in password inputs without browser persistence", async () => {
+    const user = userEvent.setup()
+    const localSet = vi.spyOn(Storage.prototype, "setItem")
+    const sessionSet = vi.spyOn(sessionStorage, "setItem")
+    const runtimeSecret = "runtime-browser-secret-never-persist"
+    const adminSecret = "admin-browser-secret-never-persist"
+
+    render(<TunnelPage />)
+    expect(await screen.findByText("Runtime connectivity")).toBeInTheDocument()
+    expect(screen.getByText("runtime_********abcd")).toBeInTheDocument()
+    const runtimeKey = screen.getByPlaceholderText("Leave blank to keep current key") as HTMLInputElement
+    expect(runtimeKey.type).toBe("password")
+    await user.type(runtimeKey, runtimeSecret)
+    await user.click(screen.getByRole("button", { name: "Save runtime configuration" }))
+    await waitFor(() => expect(adminApi.configureTunnel).toHaveBeenCalledWith(expect.objectContaining({ api_key: runtimeSecret })))
+    await waitFor(() => expect(runtimeKey.value).toBe(""))
+    await user.click(screen.getByRole("button", { name: "Clear runtime key" }))
+    await waitFor(() => expect(adminApi.clearTunnelRuntimeKey).toHaveBeenCalledOnce())
+
+    await user.click(screen.getByRole("tab", { name: "Administration" }))
+    expect(screen.getByText("admin_********wxyz")).toBeInTheDocument()
+    const adminKey = screen.getByPlaceholderText("Leave blank to keep current key") as HTMLInputElement
+    expect(adminKey.type).toBe("password")
+    await user.type(adminKey, adminSecret)
+    await user.click(screen.getByRole("button", { name: "Save & verify" }))
+    await waitFor(() => expect(adminApi.configureTunnelAdminKey).toHaveBeenCalledWith(expect.objectContaining({ admin_key: adminSecret, workspace_id: "ws_admin" })))
+    await waitFor(() => expect(adminKey.value).toBe(""))
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument()
+
+    for (const call of [...localSet.mock.calls, ...sessionSet.mock.calls]) {
+      expect(call.join(" ")).not.toContain(runtimeSecret)
+      expect(call.join(" ")).not.toContain(adminSecret)
+    }
+    expect(window.location.href).not.toContain(runtimeSecret)
+    expect(window.location.href).not.toContain(adminSecret)
   })
 
   it("locks the tunnel when MCP HTTP is disabled", async () => {
@@ -195,6 +242,9 @@ describe("TunnelPage", () => {
       admin_key_configured: true,
     })
     const user = userEvent.setup()
+    const localSet = vi.spyOn(Storage.prototype, "setItem")
+    const sessionSet = vi.spyOn(sessionStorage, "setItem")
+    const secret = "sk-runtime-manual-never-persist"
     render(<TunnelPage />)
 
     await user.click(await screen.findByRole("tab", { name: "Administration" }))
@@ -225,14 +275,19 @@ describe("TunnelPage", () => {
       .parentElement?.querySelector("input")
     expect(runtimeKey).not.toBeNull()
     if (!runtimeKey) return
-    await user.type(runtimeKey, "sk-runtime-manual")
+    expect(runtimeKey.type).toBe("password")
+    await user.type(runtimeKey, secret)
     await user.click(screen.getByRole("button", { name: "Use tunnel" }))
     await waitFor(() =>
       expect(adminApi.useManagedTunnel).toHaveBeenCalledWith({
         id: "tunnel_two",
-        runtime_api_key: "sk-runtime-manual",
+        runtime_api_key: secret,
       })
     )
+    for (const call of [...localSet.mock.calls, ...sessionSet.mock.calls]) {
+      expect(call.join(" ")).not.toContain(secret)
+    }
+    expect(window.location.href).not.toContain(secret)
   })
 
   it("limits a read-only admin key to lookup and use actions", async () => {

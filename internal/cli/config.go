@@ -178,14 +178,43 @@ func configListCommand() *cobra.Command {
 }
 
 func configSetCommand() *cobra.Command {
+	var fromEnv string
 	cmd := &cobra.Command{
-		Use:   "set <key> <value>",
+		Use:   "set <key> [value]",
 		Short: "Set one typed configuration value; key=value is also accepted",
+		Long:  "Set one typed configuration value; key=value is also accepted. Writable managed secrets may omit the value to use protected input.\n\n" + protectedArgumentWarning,
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			key, raw, err := parseConfigSetArgs(args)
-			if err != nil {
-				return err
+			key := ""
+			raw := ""
+			explicitSet := len(args) == 2 || strings.Contains(args[0], "=")
+			if explicitSet {
+				var err error
+				key, raw, err = parseConfigSetArgs(args)
+				if err != nil {
+					return err
+				}
+			} else {
+				key = strings.TrimSpace(args[0])
+			}
+			spec, ok := config.SettingByKey(key)
+			if !ok {
+				if matched, matchedOK := config.MatchSettingSelector(key); matchedOK {
+					spec, ok = matched.Spec, true
+				}
+			}
+			if !explicitSet || strings.TrimSpace(fromEnv) != "" {
+				if !ok || !spec.Secret || !spec.Writable {
+					return errors.New("use config set <key> <value> or config set key=value; value may be omitted only for a writable managed secret")
+				}
+				secret, err := readProtectedInput(cmd, protectedInputOptions{Label: spec.Label, Explicit: raw, ExplicitSet: explicitSet, FromEnv: fromEnv})
+				if err != nil {
+					return err
+				}
+				raw = secret
+				defer zeroProtectedString(&raw)
+			} else if ok && spec.Secret {
+				defer zeroProtectedString(&raw)
 			}
 			logCommandStep(cmd, "CONFIG", "config.setting.updating", "Updating canonical setting", logger.WithVerbose("key", key))
 			if _, err := application.NewSettingService().Set(cmd.Context(), key, raw); err != nil {
@@ -195,6 +224,7 @@ func configSetCommand() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&fromEnv, "from-env", "", "Read a writable managed-secret value from this environment variable")
 	cmd.ValidArgsFunction = completeConfigSet
 	return cmd
 }

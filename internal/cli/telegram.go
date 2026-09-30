@@ -19,17 +19,28 @@ const pairingProgressID = "telegram.setup.pairing"
 func telegramSettingsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "telegram", Short: "Manage the Telegram interface"}
 	token := &cobra.Command{Use: "token", Short: "Manage the Telegram bot token"}
+	var fromEnv string
 
 	set := &cobra.Command{
-		Use: "set <bot-token>", Short: "Set the Telegram bot token", Args: cobra.ExactArgs(1),
+		Use: "set [bot-token]", Short: "Set the Telegram bot token", Long: "Set the Telegram bot token.\n\n" + protectedArgumentWarning, Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := scopedSettingSet(cmd, "telegram.token", args[0]); err != nil {
+			explicit := ""
+			if len(args) == 1 {
+				explicit = args[0]
+			}
+			secret, err := readProtectedInput(cmd, protectedInputOptions{Label: "Bot token", Explicit: explicit, ExplicitSet: len(args) == 1, FromEnv: fromEnv})
+			if err != nil {
+				return err
+			}
+			defer zeroProtectedString(&secret)
+			if err := scopedSettingSet(cmd, "telegram.token", secret); err != nil {
 				return err
 			}
 			renderMutationSuccess(cmd, "Telegram bot token configured", presentation.Field{Label: "setting", Value: "telegram.token"})
 			return nil
 		},
 	}
+	set.Flags().StringVar(&fromEnv, "from-env", "", "Read the bot token from this environment variable")
 	remove := &cobra.Command{
 		Use: "remove", Short: "Remove the Telegram bot token", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

@@ -1,25 +1,19 @@
 package cli
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 )
-
-const maxProtectedLLMInputBytes = 16 * 1024
 
 func llmCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "llm", Short: "Manage LLM providers and models"}
@@ -540,26 +534,33 @@ func llmProviderKeyCommand() *cobra.Command {
 func llmCredentialSetCommand(fixed string) *cobra.Command {
 	var jsonOutput bool
 	var fromEnv string
-	use := "set <provider_id>"
-	args := cobra.ExactArgs(1)
+	use := "set <provider_id> [api-key]"
+	args := cobra.RangeArgs(1, 2)
 	if fixed != "" {
-		use = "set"
-		args = cobra.NoArgs
+		use = "set [api-key]"
+		args = cobra.MaximumNArgs(1)
 	}
 	cmd := &cobra.Command{
-		Use:   use,
-		Short: "Set an LLM provider API key from protected input",
-		Args:  args,
+		Use: use, Short: "Set an LLM provider API key",
+		Long: "Set an LLM provider API key.\n\n" + protectedArgumentWarning,
+		Args: args,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := fixed
+			secretIndex := 0
 			if id == "" {
 				id = args[0]
+				secretIndex = 1
 			}
-			secret, err := readProtectedLLMInput(cmd, "API key", fromEnv)
+			explicitSet := len(args) > secretIndex
+			explicit := ""
+			if explicitSet {
+				explicit = args[secretIndex]
+			}
+			secret, err := readProtectedInput(cmd, protectedInputOptions{Label: "API key", Explicit: explicit, ExplicitSet: explicitSet, FromEnv: fromEnv})
 			if err != nil {
 				return err
 			}
-			defer zeroString(&secret)
+			defer zeroProtectedString(&secret)
 			service := llmService()
 			if err := service.SetCredential(cmd.Context(), id, secret); err != nil {
 				return err
@@ -747,68 +748,6 @@ func completeConfiguredLLMModel(cmd *cobra.Command, args []string, toComplete st
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 	return filterCompletions([]string{provider.Model}, toComplete), cobra.ShellCompDirectiveNoFileComp
-}
-
-func readProtectedLLMInput(cmd *cobra.Command, label, fromEnv string) (string, error) {
-	fromEnv = strings.TrimSpace(fromEnv)
-	if fromEnv != "" {
-		value, ok := os.LookupEnv(fromEnv)
-		if !ok {
-			return "", fmt.Errorf("environment variable %q is not set", fromEnv)
-		}
-		if len(value) > maxProtectedLLMInputBytes {
-			return "", fmt.Errorf("environment variable %q exceeds size limit", fromEnv)
-		}
-		secret := strings.TrimSpace(value)
-		if secret == "" {
-			return "", fmt.Errorf("environment variable %q is empty", fromEnv)
-		}
-		return secret, nil
-	}
-	input := cmd.InOrStdin()
-	if file, ok := input.(*os.File); ok && term.IsTerminal(int(file.Fd())) {
-		var value []byte
-		err := commandProgressSession(cmd).WithInput(func(presenter *presentation.Presenter) {
-			presenter.Prompt(label)
-		}, func() error {
-			var readErr error
-			value, readErr = term.ReadPassword(int(file.Fd()))
-			return readErr
-		})
-		if err != nil {
-			return "", errors.New("read protected input")
-		}
-		if len(value) > maxProtectedLLMInputBytes {
-			return "", errors.New("protected input exceeds size limit")
-		}
-		secret := strings.TrimSpace(string(value))
-		for i := range value {
-			value[i] = 0
-		}
-		if secret == "" {
-			return "", errors.New("API key is required")
-		}
-		return secret, nil
-	}
-	reader := bufio.NewReader(io.LimitReader(input, maxProtectedLLMInputBytes+2))
-	value, err := reader.ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", errors.New("read protected input")
-	}
-	if len(value) > maxProtectedLLMInputBytes {
-		return "", errors.New("protected input exceeds size limit")
-	}
-	secret := strings.TrimSpace(value)
-	if secret == "" {
-		return "", errors.New("API key is required")
-	}
-	return secret, nil
-}
-
-func zeroString(value *string) {
-	if value != nil {
-		*value = ""
-	}
 }
 
 func renderLLMStatus(cmd *cobra.Command, result application.LLMStatusResult) {

@@ -75,9 +75,10 @@ type TunnelView struct {
 }
 
 type TunnelConfigureInput struct {
-	Runtime      *TunnelRuntimeInput
-	AdminEnabled *bool
-	AdminScope   *tunnel.AdminScope
+	Runtime         *TunnelRuntimeInput
+	ClearRuntimeKey bool
+	AdminEnabled    *bool
+	AdminScope      *tunnel.AdminScope
 }
 
 type TunnelVerifyResult struct {
@@ -139,6 +140,11 @@ func BindTunnelOperations(dispatcher *Dispatcher) error {
 		{capability.TunnelConfigure, typedOperation[TunnelConfigureInput](capability.TunnelConfigure, func(ctx context.Context, input TunnelConfigureInput) (any, error) {
 			if input.Runtime != nil {
 				if _, err := ConfigureTunnelRuntime(ctx, *input.Runtime); err != nil {
+					return nil, err
+				}
+			}
+			if input.ClearRuntimeKey {
+				if _, err := NewSettingService().Unset(ctx, "tunnel.api_key"); err != nil {
 					return nil, err
 				}
 			}

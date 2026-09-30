@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
@@ -31,6 +32,14 @@ func (api API) handleTunnelConfig(w http.ResponseWriter, r *http.Request) {
 	view.Config.APIKey = ""
 	view.Config.Admin.Key = ""
 	writeJSON(w, view)
+}
+
+func (api API) handleTunnelRuntimeKey(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	api.dispatch(w, r, capability.TunnelConfigure, application.TunnelConfigureInput{ClearRuntimeKey: true})
 }
 
 func (api API) handleTunnel(w http.ResponseWriter, r *http.Request) {

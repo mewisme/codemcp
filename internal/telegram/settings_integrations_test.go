@@ -326,6 +326,68 @@ func TestSecretSettingInputIsProtectedAndReplyIsDeleted(t *testing.T) {
 	}
 }
 
+func TestWritableManagedSecretInventoryUsesProtectedTelegramInputState(t *testing.T) {
+	api := &settingsTestAPI{}
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{}}
+	runtime := &Runtime{api: api, generation: 7, health: Health{Running: true, Enabled: true, AuthorizationConfigured: true}}
+	ui, err := NewInterface(InterfaceOptions{Runtime: runtime, Dispatcher: dispatcher})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 7}
+	count := 0
+	for _, spec := range config.Settings() {
+		if !spec.Secret || !spec.Writable {
+			continue
+		}
+		count++
+		key := spec.Key
+		if spec.Selector != nil {
+			key = strings.Replace(spec.Selector.Template, "<id>", "openrouter", 1)
+			spec.Key = key
+		}
+		configured := true
+		dispatcher.values[capability.ConfigGet] = application.SettingResult{Spec: spec, Value: "prefix********suffix", Configured: &configured}
+		screen, err := ui.settingDetailScreen(t.Context(), owner, ActionState{Route: RouteSettings, Back: RouteSettings, ResourceID: key})
+		if err != nil {
+			t.Fatalf("setting detail %s: %v", key, err)
+		}
+		var set Button
+		for _, row := range screen.Keyboard {
+			for _, button := range row {
+				if button.Text == "Set" {
+					set = button
+				}
+			}
+		}
+		if set.CallbackData == "" {
+			t.Fatalf("managed secret %s has no set action", key)
+		}
+		ref, err := ui.callbacks.Decode(set.CallbackData)
+		if err != nil {
+			t.Fatalf("decode %s set action: %v", key, err)
+		}
+		stored, err := ui.states.Get(ref.Token, owner)
+		if err != nil {
+			t.Fatalf("load %s set state: %v", key, err)
+		}
+		state, ok := stored.(ActionState)
+		if !ok || !state.SecretInput || state.InputKind != inputSettingSet || state.ResourceID != key {
+			t.Fatalf("managed secret %s state=%#v", key, stored)
+		}
+	}
+	if count == 0 {
+		t.Fatal("writable managed-secret inventory unexpectedly empty")
+	}
+
+	for _, key := range []string{"auth.mcp_token", "auth.admin_token"} {
+		spec, ok := config.SettingByKey(key)
+		if !ok || spec.Writable || !spec.Rotatable || spec.ValueRole != config.SettingValueGenerated {
+			t.Fatalf("generated credential metadata drift for %s: %#v", key, spec)
+		}
+	}
+}
+
 func TestRemovingLastAuthorizedUserAtomicallyDisablesTelegram(t *testing.T) {
 	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{
 		capability.ConfigGet: application.SettingResult{
