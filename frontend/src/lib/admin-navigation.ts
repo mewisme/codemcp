@@ -1,5 +1,6 @@
 import {
   Activity,
+  BrainCircuit,
   CheckCircle2,
   Cloud,
   FileText,
@@ -60,6 +61,13 @@ export const navItems: NavItem[] = [
     description:
       "Manage first-party RTK, CodeGraph, and TypeSafe integrations.",
     icon: Plug,
+  },
+  {
+    id: "llm",
+    path: "/llm",
+    title: "LLM",
+    description: "Manage inference providers, models, credentials, and readiness.",
+    icon: BrainCircuit,
   },
   {
     id: "workspaces",

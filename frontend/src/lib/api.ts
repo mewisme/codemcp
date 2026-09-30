@@ -460,6 +460,7 @@ export type ApprovalRequest = {
   guard_code?: string
   guard_reason?: string
   title: string
+  command?: string
   created_at: string
   expires_at: string
   resolved_at?: string
@@ -467,6 +468,97 @@ export type ApprovalRequest = {
   reason?: string
   retry_until?: string
   consumed_at?: string
+}
+
+export type ApprovalExplainStatus = {
+  mode: "off" | "manual" | "auto" | string
+  available: boolean
+  active_provider?: string
+  model?: string
+  configured: boolean
+  readiness: string
+  reason?: string
+}
+
+export type ApprovalExplanation = {
+  summary: string
+  steps?: string[]
+  effects?: string[]
+  risk_notes?: string[]
+  unknowns?: string[]
+  provider_id: string
+  model: string
+  generated_at: string
+}
+
+export type ApprovalExplanationResult = {
+  request_id: string
+  state: "none" | "pending" | "ready" | "failed" | string
+  attempt?: number
+  explanation?: ApprovalExplanation
+  failure?: string
+  updated_at?: string
+}
+
+export type LLMCredentialState = {
+  provider_id: string
+  configured: boolean
+  preview: string
+}
+
+export type LLMProvider = {
+  id: string
+  name: string
+  protocol: string
+  base_url: string
+  model?: string
+  auth_mode: string
+  discovery: string
+  core_kind?: string
+  core: boolean
+  selected: boolean
+  configured: boolean
+  readiness: string
+  reason?: string
+  credential: LLMCredentialState
+}
+
+export type LLMStatus = {
+  active_provider: string
+  active: LLMProvider
+  providers: LLMProvider[]
+}
+
+export type LLMModel = {
+  id: string
+  name?: string
+  context_length?: number
+  prompt_price?: string
+  completion_price?: string
+  free?: boolean
+  supported_parameters?: string[]
+  supports_structured_output?: boolean
+}
+
+export type LLMModelCatalog = {
+  provider_id: string
+  models: LLMModel[]
+  refreshed: boolean
+}
+
+export type LLMProviderConfig = {
+  name: string
+  protocol: "openai" | "anthropic" | string
+  base_url: string
+  model: string
+  auth_mode: "none" | "bearer" | "x-api-key" | string
+  discovery: "none" | "openai-models" | "ollama-tags" | string
+}
+
+export type LLMProbeResult = {
+  provider_id: string
+  model?: string
+  readiness: string
 }
 export type ApprovalEvent = {
   sequence?: number
@@ -944,6 +1036,63 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  approvalExplainStatus: () =>
+    api<ApprovalExplainStatus>("/api/requests/explain/status"),
+  approvalExplanation: (id: string) =>
+    api<ApprovalExplanationResult>(
+      `/api/requests/${encodeURIComponent(id)}/explanation`
+    ),
+  explainApproval: (id: string, retry = false) =>
+    api<ApprovalExplanationResult>(
+      `/api/requests/${encodeURIComponent(id)}/explain`,
+      { method: "POST", body: JSON.stringify({ retry }) }
+    ),
+  llmStatus: () => api<LLMStatus>("/api/llm/status"),
+  llmProviders: () => api<LLMProvider[]>("/api/llm/providers"),
+  llmProvider: (id: string) =>
+    api<LLMProvider>(`/api/llm/providers/${encodeURIComponent(id)}`),
+  addLLMProvider: (id: string, config: LLMProviderConfig) =>
+    api<LLMProvider>("/api/llm/providers", {
+      method: "POST",
+      body: JSON.stringify({ id, config }),
+    }),
+  configureLLMProvider: (id: string, config: LLMProviderConfig) =>
+    api<LLMProvider>(`/api/llm/providers/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ config }),
+    }),
+  setLLMProviderModel: (id: string, model: string) =>
+    api<LLMProvider>(`/api/llm/providers/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ model }),
+    }),
+  removeLLMProvider: (id: string) =>
+    api<{ provider_id: string; removed: boolean }>(
+      `/api/llm/providers/${encodeURIComponent(id)}`,
+      { method: "DELETE" }
+    ),
+  selectLLMProvider: (id: string) =>
+    api<LLMProvider>(`/api/llm/providers/${encodeURIComponent(id)}/select`, {
+      method: "POST",
+    }),
+  llmModels: (id: string, refresh = false) =>
+    api<LLMModelCatalog>(
+      `/api/llm/providers/${encodeURIComponent(id)}/models?refresh=${refresh ? "true" : "false"}`
+    ),
+  probeLLMProvider: (id: string) =>
+    api<LLMProbeResult>(`/api/llm/providers/${encodeURIComponent(id)}/probe`, {
+      method: "POST",
+    }),
+  setLLMCredential: (id: string, apiKey: string) =>
+    api<LLMCredentialState>(
+      `/api/llm/providers/${encodeURIComponent(id)}/credential`,
+      { method: "PUT", body: JSON.stringify({ api_key: apiKey }) }
+    ),
+  clearLLMCredential: (id: string) =>
+    api<LLMCredentialState>(
+      `/api/llm/providers/${encodeURIComponent(id)}/credential`,
+      { method: "DELETE" }
+    ),
   completions: (workspaceID = "", limit = 50) => {
     const query = new URLSearchParams({ limit: String(limit) })
     if (workspaceID) query.set("workspace_id", workspaceID)

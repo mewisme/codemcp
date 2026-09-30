@@ -82,6 +82,16 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 				contracts = append(contracts, contract)
 				continue
 			}
+			if surface == SurfaceBrowser && browserRequiredIDs[spec.ID] {
+				contract.State = SurfaceRequired
+				contracts = append(contracts, contract)
+				continue
+			}
+			if surface == SurfaceAdminAPI && adminRequired(spec.ID) {
+				contract.State = SurfaceRequired
+				contracts = append(contracts, contract)
+				continue
+			}
 			contract.State = SurfaceExempt
 			if surface == SurfaceMCP {
 				contract.Exemption = SurfaceExemptionSurfaceSpecific

@@ -58,6 +58,7 @@ type LLMProviderIDInput struct {
 type LLMProviderWriteInput struct {
 	ID     string                  `json:"id"`
 	Config CustomLLMProviderConfig `json:"config"`
+	Model  *string                 `json:"model,omitempty"`
 }
 
 type LLMProviderModelsInput struct {
@@ -275,6 +276,9 @@ func BindLLMOperations(dispatcher *Dispatcher, service *LLMService) error {
 			return service.ProviderResult(ctx, string(provider.ID))
 		}))},
 		{capability.LLMProviderConfigure, llmOperationHandler(capability.LLMProviderConfigure, typedOperation[LLMProviderWriteInput](capability.LLMProviderConfigure, func(ctx context.Context, input LLMProviderWriteInput) (any, error) {
+			if input.Model != nil {
+				return service.SetProviderModel(ctx, input.ID, *input.Model)
+			}
 			provider, err := service.ConfigureCustomProvider(ctx, input.ID, input.Config)
 			if err != nil {
 				return nil, err

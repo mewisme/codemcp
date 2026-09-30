@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ResponsiveDialog } from "@/components/responsive-dialog"
 import { DetailRow } from "@/components/detail-row"
 import { JsonViewer } from "@/components/json-viewer"
+import { RequestExplanation } from "@/components/request-explanation"
 import { adminApi, type ApprovalRequest } from "@/lib/api"
 import { streamApprovals } from "@/lib/approval-stream"
 
@@ -163,7 +164,7 @@ export function RequestApprovalHost() {
         if (!open && !busy)
           setSelected(requests.length > 1 ? requests[1] : null)
       }}
-      title={selected.title || `Allow ${selected.target_tool}?`}
+      title="Approval request"
       description={`Control approval request · ${position} of ${requests.length}`}
       footer={
         <>
@@ -195,6 +196,10 @@ export function RequestApprovalHost() {
           {error}
         </div>
       ) : null}
+      <div className="mb-4 divide-y rounded-lg border">
+        <DetailRow label="Agent title" value={selected.title || "-"} />
+        {selected.command ? <DetailRow label="Command" value={selected.command} mono /> : null}
+      </div>
       <Tabs defaultValue="overview">
         <TabsList className="w-full">
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -236,6 +241,9 @@ export function RequestApprovalHost() {
           ) : null}
         </TabsContent>
       </Tabs>
+      <div className="mt-4">
+        <RequestExplanation requestID={selected.id} />
+      </div>
     </ResponsiveDialog>
   )
 }

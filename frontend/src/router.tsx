@@ -58,6 +58,14 @@ export const adminRoutes: RouteObject[] = [
         handle: navHandle("integrations"),
       },
       {
+        path: "llm",
+        lazy: () =>
+          import("@/pages/llm").then((module) => ({
+            Component: module.LLMPage,
+          })),
+        handle: navHandle("llm"),
+      },
+      {
         path: "workspaces",
         lazy: () =>
           import("@/pages/workspaces").then((module) => ({

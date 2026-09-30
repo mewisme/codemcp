@@ -58,6 +58,9 @@ var adminBindings = map[ID][]AdminBinding{
 	RequestView:                         {{Method: "GET", Path: "/api/requests/{request_id}"}},
 	RequestApprove:                      {{Method: "POST", Path: "/api/requests/{request_id}/approve"}},
 	RequestDeny:                         {{Method: "POST", Path: "/api/requests/{request_id}/deny"}},
+	RequestExplainStatus:                {{Method: "GET", Path: "/api/requests/explain/status"}},
+	RequestExplanationView:              {{Method: "GET", Path: "/api/requests/{request_id}/explanation"}},
+	RequestExplain:                      {{Method: "POST", Path: "/api/requests/{request_id}/explain"}},
 	RequestGrantList:                    {{Method: "GET", Path: "/api/requests/grants"}},
 	RequestGrantRevoke:                  {{Method: "POST", Path: "/api/requests/grants/{request_id}/revoke"}},
 	CompletionList:                      {{Method: "GET", Path: "/api/completions"}},
@@ -115,6 +118,17 @@ var adminBindings = map[ID][]AdminBinding{
 	TunnelDelete:                        {{Method: "DELETE", Path: "/api/tunnel/managed/{tunnel_id}"}},
 	ActivityStream:                      {{Method: "GET", Path: "/api/activity/stream"}},
 	ActivityView:                        {{Method: "GET", Path: "/api/activity/{call_id}"}},
+	LLMStatus:                           {{Method: "GET", Path: "/api/llm/status"}},
+	LLMProviderList:                     {{Method: "GET", Path: "/api/llm/providers"}},
+	LLMProviderAdd:                      {{Method: "POST", Path: "/api/llm/providers"}},
+	LLMProviderGet:                      {{Method: "GET", Path: "/api/llm/providers/{provider_id}"}},
+	LLMProviderConfigure:                {{Method: "PUT", Path: "/api/llm/providers/{provider_id}"}},
+	LLMProviderRemove:                   {{Method: "DELETE", Path: "/api/llm/providers/{provider_id}"}},
+	LLMProviderSelect:                   {{Method: "POST", Path: "/api/llm/providers/{provider_id}/select"}},
+	LLMProviderModels:                   {{Method: "GET", Path: "/api/llm/providers/{provider_id}/models"}},
+	LLMProviderProbe:                    {{Method: "POST", Path: "/api/llm/providers/{provider_id}/probe"}},
+	LLMProviderCredentialSet:            {{Method: "PUT", Path: "/api/llm/providers/{provider_id}/credential"}},
+	LLMProviderCredentialClear:          {{Method: "DELETE", Path: "/api/llm/providers/{provider_id}/credential"}},
 	OAuthCallbackComplete:               {{Method: "GET", Path: "/oauth/callback/{server_id}"}},
 }
 
@@ -146,6 +160,9 @@ var browserRequiredIDs = idSet(
 	ProcessList, ProcessView, ProcessClear,
 	IntegrationCodeGraphWorkspaceStatus, IntegrationCodeGraphWorkspaceInit, IntegrationCodeGraphWorkspaceSync,
 	ActivityStream, ActivityView,
+	LLMStatus, LLMProviderList, LLMProviderGet, LLMProviderAdd, LLMProviderConfigure, LLMProviderRemove,
+	LLMProviderSelect, LLMProviderModels, LLMProviderProbe, LLMProviderCredentialSet, LLMProviderCredentialClear,
+	RequestExplain, RequestExplanationView, RequestExplainStatus,
 )
 
 var adminSupplementRequiredIDs = idSet(

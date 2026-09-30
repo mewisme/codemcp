@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/auth"
+	"go.mewis.me/codemcp/internal/capability"
 )
 
 const approvalHeartbeatInterval = 15 * time.Second
@@ -49,11 +51,43 @@ func (api API) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if !api.authorizeApprovalRequest(w, r) {
 		return
 	}
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/requests/"), "/")
+	if path == "explain/status" {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		api.dispatch(w, r, capability.RequestExplainStatus, nil)
+		return
+	}
+	parts := strings.Split(path, "/")
+	if len(parts) == 2 && parts[0] != "" && parts[1] == "explanation" {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		api.dispatch(w, r, capability.RequestExplanationView, application.ApprovalExplanationReadInput{ID: parts[0]})
+		return
+	}
+	if len(parts) == 2 && parts[0] != "" && parts[1] == "explain" {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		var input struct {
+			Retry bool `json:"retry,omitempty"`
+		}
+		if err := decodeJSONBody(w, r, &input); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		api.dispatch(w, r, capability.RequestExplain, application.ApprovalExplainInput{ID: parts[0], Retry: input.Retry})
+		return
+	}
 	if api.Approvals == nil {
 		http.Error(w, "control approval manager unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/api/requests/"), "/")
 	if path == "stream" {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -66,7 +100,6 @@ func (api API) handleRequest(w http.ResponseWriter, r *http.Request) {
 		handleApprovalGrants(w, r, approval.NewReviewService(api.Approvals), path)
 		return
 	}
-	parts := strings.Split(path, "/")
 	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
 		http.NotFound(w, r)
 		return

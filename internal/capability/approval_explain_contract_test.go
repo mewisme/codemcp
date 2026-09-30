@@ -27,7 +27,13 @@ func TestApprovalExplainCapabilitiesAreReviewerOnlyAndNeverMCPAgentTools(t *test
 		} else if !ok || cli.State != SurfaceExempt || cli.Exemption != SurfaceExemptionDeferred {
 			t.Fatalf("%s/cli surface=%#v ok=%t", id, cli, ok)
 		}
-		for _, surface := range []Surface{SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
+		for _, surface := range []Surface{SurfaceBrowser, SurfaceAdminAPI} {
+			contract, ok := spec.Surface(surface)
+			if !ok || contract.State != SurfaceRequired || contract.Exemption != "" {
+				t.Fatalf("%s/%s surface=%#v ok=%t", id, surface, contract, ok)
+			}
+		}
+		for _, surface := range []Surface{SurfaceTUI, SurfaceTelegram} {
 			contract, ok := spec.Surface(surface)
 			if !ok || contract.State != SurfaceExempt || contract.Exemption != SurfaceExemptionDeferred {
 				t.Fatalf("%s/%s surface=%#v ok=%t", id, surface, contract, ok)

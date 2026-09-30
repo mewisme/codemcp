@@ -301,6 +301,72 @@ const bindings: Binding[] = [
     pattern: "/api/requests/{request_id}/deny",
     operation: "request.deny",
   },
+  {
+    method: "GET",
+    pattern: "/api/requests/explain/status",
+    operation: "request.explain.status",
+  },
+  {
+    method: "GET",
+    pattern: "/api/requests/{request_id}/explanation",
+    operation: "request.explanation.view",
+  },
+  {
+    method: "POST",
+    pattern: "/api/requests/{request_id}/explain",
+    operation: "request.explain",
+  },
+  { method: "GET", pattern: "/api/llm/status", operation: "llm.status" },
+  {
+    method: "GET",
+    pattern: "/api/llm/providers",
+    operation: "llm.provider.list",
+  },
+  {
+    method: "POST",
+    pattern: "/api/llm/providers",
+    operation: "llm.provider.add",
+  },
+  {
+    method: "GET",
+    pattern: "/api/llm/providers/{provider_id}",
+    operation: "llm.provider.get",
+  },
+  {
+    method: "PUT",
+    pattern: "/api/llm/providers/{provider_id}",
+    operation: "llm.provider.configure",
+  },
+  {
+    method: "DELETE",
+    pattern: "/api/llm/providers/{provider_id}",
+    operation: "llm.provider.remove",
+  },
+  {
+    method: "POST",
+    pattern: "/api/llm/providers/{provider_id}/select",
+    operation: "llm.provider.select",
+  },
+  {
+    method: "GET",
+    pattern: "/api/llm/providers/{provider_id}/models",
+    operation: "llm.provider.models",
+  },
+  {
+    method: "POST",
+    pattern: "/api/llm/providers/{provider_id}/probe",
+    operation: "llm.provider.probe",
+  },
+  {
+    method: "PUT",
+    pattern: "/api/llm/providers/{provider_id}/credential",
+    operation: "llm.provider.credential.set",
+  },
+  {
+    method: "DELETE",
+    pattern: "/api/llm/providers/{provider_id}/credential",
+    operation: "llm.provider.credential.clear",
+  },
   { method: "GET", pattern: "/api/completions", operation: "completion.list" },
   {
     method: "GET",

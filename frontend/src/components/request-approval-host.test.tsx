@@ -96,6 +96,28 @@ describe("RequestApprovalHost", () => {
     expect(toast.warning).toHaveBeenCalledWith("Control approval requested", expect.objectContaining({ description: expect.stringContaining("ws_test"), action: expect.objectContaining({ label: "Review" }) }))
   })
 
+  it("keeps Approve and Deny available when AI explanation fails", async () => {
+    const pending = request("req_explain_failure", "cm update --safe")
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const path = requestPath(input)
+        if (path === "/api/requests/stream") return approvalStream([pending])
+        if (path === "/api/requests/explain/status")
+          return json({ mode: "auto", available: true, configured: true, readiness: "ready", active_provider: "openrouter", model: "openrouter/free" })
+        if (path === "/api/requests/req_explain_failure/explanation")
+          return new Response("explanation provider unavailable", { status: 503 })
+        throw new Error(`Unhandled test request: ${path}`)
+      })
+    )
+
+    renderHost()
+    expect(await screen.findByText("Allow cm update --safe")).toBeInTheDocument()
+    expect(await screen.findByText(/explanation provider unavailable/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Approve/ })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Deny" })).toBeEnabled()
+  })
+
   it("drops a stale dialog immediately when another surface resolves it", async () => {
     const pending = request("req_remote", "cm update --remote")
     vi.stubGlobal(
@@ -167,6 +189,7 @@ function request(id: string, command: string): ApprovalRequest {
     guard_code: "control_plane_mutation",
     guard_reason: "control-plane mutation denied",
     title: `Allow ${command}`,
+    command,
     created_at: new Date(now).toISOString(),
     expires_at: new Date(now + 60_000).toISOString(),
   }

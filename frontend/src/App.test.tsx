@@ -65,6 +65,7 @@ describe("admin app runtime smoke", () => {
       system: "Managed runtime",
       logs: "Journal",
       integrations: "TypeSafe",
+      llm: "LLM providers",
       workspaces: "Register workspace",
       instructions:
         "Manage global context, rules, and detected user-level instruction sources.",
@@ -474,6 +475,46 @@ async function mockFetch(input: RequestInfo | URL): Promise<Response> {
       model: "test-model",
       timeout_ms: 5000,
     })
+  if (path === "/api/llm/status")
+    return json({
+      active_provider: "openrouter",
+      active: {
+        id: "openrouter",
+        name: "OpenRouter",
+        protocol: "openai",
+        base_url: "https://openrouter.ai/api/v1",
+        model: "openrouter/free",
+        auth_mode: "bearer",
+        discovery: "openai-models",
+        core_kind: "openrouter",
+        core: true,
+        selected: true,
+        configured: false,
+        readiness: "degraded",
+        reason: "API key is not configured",
+        credential: { provider_id: "openrouter", configured: false, preview: "" },
+      },
+      providers: [],
+    })
+  if (path === "/api/llm/providers")
+    return json([
+      {
+        id: "openrouter",
+        name: "OpenRouter",
+        protocol: "openai",
+        base_url: "https://openrouter.ai/api/v1",
+        model: "openrouter/free",
+        auth_mode: "bearer",
+        discovery: "openai-models",
+        core_kind: "openrouter",
+        core: true,
+        selected: true,
+        configured: false,
+        readiness: "degraded",
+        reason: "API key is not configured",
+        credential: { provider_id: "openrouter", configured: false, preview: "" },
+      },
+    ])
   if (path === "/api/workspaces") return json([])
   if (path === "/api/prompts?workspace_id=") return json([])
   if (path === "/api/workspace-containers") return json([])
