@@ -36,7 +36,7 @@ func (s *LLMService) OpenRouterModels(ctx context.Context, query LLMModelQuery) 
 	if err != nil {
 		return LLMModelPage{}, err
 	}
-	models, err := s.llmClient().DiscoverModels(ctx, provider)
+	models, err := s.ProviderModels(ctx, string(provider.ID))
 	if err != nil {
 		return LLMModelPage{}, err
 	}
@@ -64,16 +64,7 @@ func (s *LLMService) OpenRouterModels(ctx context.Context, query LLMModelQuery) 
 }
 
 func (s *LLMService) ProbeOpenRouter(ctx context.Context) error {
-	provider, err := s.Provider(ctx, string(llm.OpenRouterID))
-	if err != nil {
-		return err
-	}
-	_, err = s.llmClient().Infer(ctx, provider, llm.Request{
-		Instructions:    "Return a short acknowledgement.",
-		Messages:        []llm.Message{{Role: llm.RoleUser, Content: "Respond with OK."}},
-		MaxOutputTokens: 8,
-	})
-	return err
+	return s.ProbeProvider(ctx, string(llm.OpenRouterID))
 }
 
 func normalizeLLMModelQuery(query LLMModelQuery) (LLMModelQuery, error) {

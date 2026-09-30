@@ -42,23 +42,11 @@ func (s *LLMService) SetOllamaMode(ctx context.Context, mode llm.OllamaMode) (ll
 }
 
 func (s *LLMService) OllamaModels(ctx context.Context) ([]llm.Model, error) {
-	provider, err := s.Provider(ctx, string(llm.OllamaID))
-	if err != nil {
-		return nil, err
-	}
-	return s.llmClient().DiscoverModels(ctx, provider)
+	return s.ProviderModels(ctx, string(llm.OllamaID))
 }
 
 func (s *LLMService) ProbeOllama(ctx context.Context) error {
-	provider, err := s.Provider(ctx, string(llm.OllamaID))
-	if err != nil {
-		return err
-	}
-	_, err = s.llmClient().Infer(ctx, provider, llm.Request{
-		Instructions:    "Return a short acknowledgement.",
-		Messages:        []llm.Message{{Role: llm.RoleUser, Content: "Respond with OK."}},
-		MaxOutputTokens: 8,
-	})
+	err := s.ProbeProvider(ctx, string(llm.OllamaID))
 	if err == nil {
 		return nil
 	}

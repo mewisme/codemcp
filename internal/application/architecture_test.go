@@ -178,6 +178,21 @@ func TestLLMDomainDoesNotDependOnApprovalSemanticPolicyOrInterfaces(t *testing.T
 	}
 }
 
+func TestLLMProviderManagementDoesNotDependOnIntegrationOrUpstreamRegistration(t *testing.T) {
+	root := architectureRepositoryRoot(t)
+	for _, name := range []string{
+		"internal/application/llm_settings.go",
+		"internal/application/llm_providers.go",
+		"internal/application/llm_models.go",
+	} {
+		for _, imported := range goFileImports(t, filepath.Join(root, filepath.FromSlash(name))) {
+			if imported == internalImportPrefix+"upstream" || strings.HasPrefix(imported, internalImportPrefix+"integrations/") {
+				t.Errorf("%s must not register LLM providers through %s", name, imported)
+			}
+		}
+	}
+}
+
 func TestRepresentativeWorkspaceAdaptersCannotBypassApplicationMutationOwner(t *testing.T) {
 	root := architectureRepositoryRoot(t)
 	files := []string{

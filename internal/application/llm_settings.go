@@ -14,12 +14,17 @@ import (
 )
 
 type LLMService struct {
-	root  string
-	store *llm.Store
+	root       string
+	store      *llm.Store
+	modelCache *llmModelCatalogCache
 }
 
 func NewLLMService(root string) *LLMService {
-	return &LLMService{root: strings.TrimSpace(root), store: llm.NewStore(root)}
+	return &LLMService{
+		root:       strings.TrimSpace(root),
+		store:      llm.NewStore(root),
+		modelCache: newLLMModelCatalogCache(),
+	}
 }
 
 func (s *LLMService) Catalog(context.Context) (llm.Catalog, error) {
@@ -89,7 +94,11 @@ func (s *LLMService) SetCredential(ctx context.Context, rawID, value string) err
 	if err != nil {
 		return err
 	}
-	return secretstore.New(s.root).Apply([]secretstore.Change{change})
+	if err := secretstore.New(s.root).Apply([]secretstore.Change{change}); err != nil {
+		return err
+	}
+	s.invalidateModelCatalog(provider.ID)
+	return nil
 }
 
 func (s *LLMService) ClearCredential(ctx context.Context, rawID string) error {
@@ -101,17 +110,26 @@ func (s *LLMService) ClearCredential(ctx context.Context, rawID string) error {
 	if err != nil {
 		return err
 	}
-	return secretstore.New(s.root).Apply([]secretstore.Change{change})
+	if err := secretstore.New(s.root).Apply([]secretstore.Change{change}); err != nil {
+		return err
+	}
+	s.invalidateModelCatalog(provider.ID)
+	return nil
 }
 
 func (s *LLMService) RemoveProvider(ctx context.Context, rawID string) error {
 	if s == nil {
 		return errors.New("LLM service is unavailable")
 	}
-	if _, err := s.Provider(ctx, rawID); err != nil {
+	provider, err := s.Provider(ctx, rawID)
+	if err != nil {
 		return err
 	}
-	return llm.RemoveProvider(s.root, rawID)
+	if err := llm.RemoveProvider(s.root, rawID); err != nil {
+		return err
+	}
+	s.invalidateModelCatalog(provider.ID)
+	return nil
 }
 
 func (s *SettingService) llmService() *LLMService {
@@ -216,6 +234,7 @@ func (s *SettingService) applyLLMSettingChanges(ctx context.Context, items []res
 	if err != nil {
 		return SettingApplyResult{}, err
 	}
+	service.invalidateAllModelCatalogs()
 	results := make([]SettingResult, 0, len(items))
 	for _, item := range items {
 		key := item.change.Key
