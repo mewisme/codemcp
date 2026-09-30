@@ -118,7 +118,7 @@ Migrate legacy secret-store files to encrypted JSON envelopes:
 cm config migrate secrets
 ```
 
-See [Security](security.md) for the storage and trust model.
+See [Security](security.md) for the storage and trust model. LLM provider credentials use the same managed-secret authority; see [LLM providers](llm.md) for active-provider aliases and provider-scoped settings.
 
 ## Authentication
 

@@ -91,6 +91,14 @@ cm
 │   ├── follow
 │   ├── path
 │   └── clear
+├── llm
+│   ├── status
+│   ├── use
+│   ├── models
+│   ├── probe
+│   ├── provider
+│   ├── openrouter
+│   └── ollama
 ├── mcp
 │   ├── http
 │   ├── stdio
@@ -100,6 +108,11 @@ cm
 │   ├── create
 │   │   └── dummy
 │   ├── deny
+│   ├── explain
+│   │   ├── mode
+│   │   ├── retry
+│   │   └── status
+│   ├── grant
 │   ├── list
 │   └── view
 ├── restart
@@ -192,6 +205,12 @@ cm request deny <request_id>
 Aliases include `req`, `ls`, `show`/`info`, `accept`/`allow`, and `reject`. Request IDs may be specified in full or by an unambiguous prefix. `approve` and `deny` accept `--reason`; list/view/resolve commands support `--json` where applicable.
 
 Pending requests expire after 60 seconds. Approval does not grant a general CLI bypass: it authorizes one exact retry of the original MCP tool arguments. A mismatched retry is rejected without consuming the valid grant; a successful retry consumes it. `cm request approve/deny` cannot be run by an MCP shell tool to self-approve its own request.
+
+Approval Explain is an optional, non-authoritative LLM aid for reviewers. Configure it with `cm request explain mode off|manual|auto`, inspect availability with `cm request explain status`, and request/retry explanation with `cm request explain <request_id>` / `cm request explain retry <request_id>`. See [LLM providers](llm.md#approval-explain) for provider readiness, provenance, and security semantics.
+
+## LLM providers
+
+The `cm llm` tree manages the canonical provider catalog, active selection, model discovery/querying, readiness probes, and managed credentials. OpenRouter and Ollama are permanent core providers; custom OpenAI- and Anthropic-compatible providers can be added independently. See [LLM providers](llm.md) for complete setup, protected credential input, Ollama local/Cloud behavior, and model-query controls.
 
 ## TUI Command Center
 

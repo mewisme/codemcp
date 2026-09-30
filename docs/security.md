@@ -110,6 +110,8 @@ Some guards are intentionally non-approvable, including attempts to escape works
 
 Local operators can review and resolve pending requests through the TUI/Admin surfaces or the `cm request ...` CLI.
 
+Approval Explain may use the configured LLM to generate a fallible explanation for the reviewer. It receives the canonical exact command/action only after secret redaction; the Agent-authored title remains separate display provenance. Explain cannot approve/deny, change deterministic or semantic risk, alter retry binding, create a grant, or extend request lifetime, and the requesting MCP Agent cannot invoke the reviewer-only Explain capability. See [LLM providers](llm.md#approval-explain).
+
 The runtime may also support time-bounded grants for matching command patterns when explicitly approved by the operator. These grants remain runtime-controlled and revocable; they are not an Agent-controlled “allow everything” mode.
 
 ### Approval review authorization by interface
@@ -133,7 +135,7 @@ This prevents an Agent from simply reading an internal runtime-control credentia
 
 ## Secret storage
 
-Long-lived reversible credentials such as OpenAI tunnel keys, upstream OAuth tokens/client secrets, and sensitive upstream environment/header values are stored through a per-config-root secret store rather than as plaintext structured configuration.
+Long-lived reversible credentials such as OpenAI tunnel keys, LLM provider API keys, upstream OAuth tokens/client secrets, and sensitive upstream environment/header values are stored through a per-config-root secret store rather than as plaintext structured configuration.
 
 Secret values are encrypted at rest with AES-256-GCM and persisted as versioned JSON envelopes containing a key identifier, nonce, ciphertext, and algorithm metadata. The per-root master key remains separate from those envelopes with restrictive filesystem permissions; the secret-store subtree is excluded from portable configuration exports and normal logs. Structured config keeps only non-secret metadata/configured-state markers.
 
