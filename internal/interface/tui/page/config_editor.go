@@ -3,6 +3,7 @@ package page
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -37,6 +38,12 @@ func (page *ConfigPage) initConfigEditor() error {
 	case page.section == "storage" && page.action == "import":
 		editor, data := newConfigBundleEditor(false)
 		page.command, page.editor, page.bundleForm = ConfigImport, &editor, data
+	case page.action == "patch" && page.resourceID == "":
+		editor, data := newConfigPatchEditor()
+		page.command, page.editor, page.patchForm = ConfigPatch, &editor, data
+	case page.action == "telegram-setup" && page.resourceID == "":
+		editor, data := newTelegramSetupEditor()
+		page.command, page.editor, page.telegramForm = ConfigTelegramSetup, &editor, data
 	default:
 		return fmt.Errorf("unsupported config editor route")
 	}
@@ -74,6 +81,35 @@ func (page *ConfigPage) submitConfigEditor() tea.Cmd {
 		page.confirm = component.NewConfirmButtons("Import", "Cancel", false)
 		page.overlay = configOverlayConfirm
 		return nil
+	case ConfigPatch:
+		if page.patchForm == nil {
+			return nil
+		}
+		changes, err := parseConfigPatchChanges(page.patchForm.Changes)
+		if err != nil {
+			page.editor.SetFeedback("", err)
+			return nil
+		}
+		page.editor.SetSubmitting(true)
+		return page.startOperation(ConfigPatch, "Applying configuration patch", func(ctx context.Context) configOperationMsg {
+			result, err := application.NewSettingService().Apply(ctx, changes)
+			return configOperationMsg{command: ConfigPatch, apply: result, err: err}
+		})
+	case ConfigTelegramSetup:
+		if page.telegramForm == nil {
+			return nil
+		}
+		userID, err := strconv.ParseInt(strings.TrimSpace(page.telegramForm.UserID), 10, 64)
+		if err != nil || userID <= 0 {
+			page.editor.SetFeedback("", fmt.Errorf("authorized user ID must be a positive integer"))
+			return nil
+		}
+		input := application.TelegramSetupInput{Token: page.telegramForm.Token, UserID: userID}
+		page.editor.SetSubmitting(true)
+		return page.startOperation(ConfigTelegramSetup, "Configuring Telegram", func(ctx context.Context) configOperationMsg {
+			result, err := application.SetupTelegram(ctx, input)
+			return configOperationMsg{command: ConfigTelegramSetup, telegram: result, err: err}
+		})
 	default:
 		page.editor.SetFeedback("", fmt.Errorf("unsupported config editor action: %s", page.command))
 		return nil

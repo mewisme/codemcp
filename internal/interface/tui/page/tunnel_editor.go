@@ -51,9 +51,9 @@ func (page *TunnelPage) editorParentNavigation() tea.Cmd {
 	if page != nil && page.kind == tunnelPageManaged {
 		if page.resourceID != "" {
 			id := page.resourceID
-			return func() tea.Msg { return NavigateMsg{Path: []string{"tunnels", id}} }
+			return func() tea.Msg { return NavigateMsg{Path: []string{"tunnel", "managed", id}} }
 		}
-		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnels"}} }
+		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnel", "managed"}} }
 	}
 	return func() tea.Msg { return NavigateMsg{Path: []string{"tunnel"}} }
 }
@@ -206,7 +206,7 @@ func (page *TunnelPage) submitManagedEditor() tea.Cmd {
 
 func (page *TunnelPage) managedEditorSuccess(message, id string) tea.Cmd {
 	return tea.Batch(
-		func() tea.Msg { return NavigateMsg{Path: []string{"tunnels", id}} },
+		func() tea.Msg { return NavigateMsg{Path: []string{"tunnel", "managed", id}} },
 		func() tea.Msg {
 			return ToastMsg{Title: "Managed Tunnel", Message: message, Tone: component.ToneSuccess}
 		},

@@ -160,3 +160,16 @@ func (s *RuntimeInspectionService) ViewProcess(ctx context.Context, workspaceID,
 		return shellruntime.ProcessInfo{}, fmt.Errorf("process not found in workspace %s: %s", workspaceID, processID)
 	})
 }
+
+func (s *RuntimeInspectionService) ClearProcess(ctx context.Context, workspaceID, processID string) (Result[ProcessClearResult], error) {
+	return runOperation(ctx, "PROCESS", capability.ProcessClear, "Clearing finished workspace process", nil, func() (ProcessClearResult, error) {
+		workspaceID, processID = strings.TrimSpace(workspaceID), strings.TrimSpace(processID)
+		if workspaceID == "" || processID == "" {
+			return ProcessClearResult{}, errors.New("workspace_id and process_id are required")
+		}
+		if err := runtimecontrol.DeleteFinishedProcess(ctx, workspaceID, processID); err != nil {
+			return ProcessClearResult{}, err
+		}
+		return ProcessClearResult{Deleted: true}, nil
+	})
+}

@@ -12,6 +12,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	managed "go.mewis.me/codemcp/internal/service"
@@ -345,7 +346,11 @@ func (page *RuntimePage) View(width, height int) string {
 		content = component.CenterOverlay(content, component.Modal(body, overlayWidth(width, 64)), width, height)
 	case systemOverlaySecret:
 		modalWidth := overlayWidth(width, 88)
-		body := component.Title(strings.ToUpper(page.secretKind)+" token") + "\n\n" + page.secret + "\n\n" + component.Muted("Shown once · c copy · Esc close")
+		title := strings.ToUpper(page.secretKind) + " token"
+		if page.secretKind == "initial credentials" {
+			title = "INITIAL CREDENTIALS"
+		}
+		body := component.Title(title) + "\n\n" + page.secret + "\n\n" + component.Muted("Shown once · c copy · Esc close")
 		content = component.CenterOverlay(content, component.Modal(component.WrapModalBody(body, modalWidth), modalWidth), width, height)
 	case systemOverlayExternal:
 		modalWidth := overlayWidth(width, 88)
@@ -431,12 +436,11 @@ func (page *RuntimePage) openCommand(command SystemCommand) (tea.Cmd, error) {
 		page.overlay = systemOverlayExternal
 		return nil, nil
 	case ConfigInitialize:
-		page.external = &application.ExternalCommand{Command: "cm init", Reason: "Initialization creates new plaintext MCP/admin tokens. Run it outside the TUI so the CLI can present the one-time credentials directly."}
-		page.overlay = systemOverlayExternal
-		return nil, nil
+		return page.startOperation(command), nil
 	case ConfigUninitialize:
-		page.external = &application.ExternalCommand{Command: "cm uninit", Reason: "Uninitialize permanently removes local CodeMCP configuration and state. Run this destructive command explicitly outside the TUI."}
-		page.overlay = systemOverlayExternal
+		page.pending = command
+		page.confirm = component.NewConfirmButtons("Uninitialize", "Cancel", false)
+		page.overlay = systemOverlayConfirm
 		return nil, nil
 	case AuthMCPRotate, AuthAdminRotate, RuntimeDownUser, RuntimeDownSystem, RuntimeRestartUser, RuntimeRestartSystem:
 		page.pending = command
@@ -532,6 +536,15 @@ func (page *RuntimePage) startOperation(command SystemCommand) tea.Cmd {
 			msg.token, _, msg.err = application.RotateAuthToken(ctx, "mcp")
 		case AuthAdminRotate:
 			msg.token, _, msg.err = application.RotateAuthToken(ctx, "admin")
+		case ConfigInitialize:
+			result, err := application.Initialize(application.InitOptions{Context: ctx})
+			msg.err = err
+			if err == nil {
+				msg.token = "MCP token: " + result.MCPToken + "\nAdmin token: " + result.AdminToken
+				msg.notice = "Configuration initialized"
+			}
+		case ConfigUninitialize:
+			msg.err = application.UninitializeContext(ctx, configformat.RootPath())
 		case InstallRun:
 			_, msg.err = application.InstallCurrentContext(ctx, installOptions)
 		case UpdateCheck:
@@ -567,6 +580,8 @@ func (page *RuntimePage) finishOperation(msg systemOperationMsg) tea.Cmd {
 		page.secretKind = "admin"
 		if msg.command == AuthMCPRotate {
 			page.secretKind = "mcp"
+		} else if msg.command == ConfigInitialize {
+			page.secretKind = "initial credentials"
 		}
 		page.overlay = systemOverlaySecret
 	} else if msg.external != nil {
@@ -992,6 +1007,8 @@ func (page *RuntimePage) confirmActionLabel() string {
 		return "Stop & remove"
 	case RuntimeRestartUser, RuntimeRestartSystem:
 		return "Restart"
+	case ConfigUninitialize:
+		return "Uninitialize"
 	default:
 		return "Confirm"
 	}
@@ -1007,6 +1024,8 @@ func (page *RuntimePage) confirmTitle() string {
 		return "Stop and remove managed service?"
 	case RuntimeRestartUser, RuntimeRestartSystem:
 		return "Restart managed service?"
+	case ConfigUninitialize:
+		return "Uninitialize CodeMCP?"
 	default:
 		return "Confirm action?"
 	}
@@ -1020,6 +1039,8 @@ func (page *RuntimePage) confirmDescription() string {
 		return "The managed service is stopped and uninstalled. Configuration and runtime logs are preserved."
 	case RuntimeRestartUser, RuntimeRestartSystem:
 		return "The managed runtime is stopped and started again with the current configuration."
+	case ConfigUninitialize:
+		return "This permanently removes local CodeMCP configuration, managed secrets, and local state from the configured root."
 	default:
 		return "Review the action before continuing."
 	}
@@ -1041,6 +1062,10 @@ func operationNotice(msg systemOperationMsg) string {
 		return "Authentication enabled"
 	case AuthMCPDisable, AuthAdminDisable:
 		return "Authentication disabled"
+	case ConfigInitialize:
+		return "Configuration initialized"
+	case ConfigUninitialize:
+		return "Configuration and local state removed"
 	default:
 		return "Runtime/system action completed"
 	}
@@ -1058,6 +1083,10 @@ func systemOperationTitle(command SystemCommand) string {
 		return "Updating MCP HTTP server"
 	case AuthMCPRotate, AuthAdminRotate:
 		return "Rotating authentication token"
+	case ConfigInitialize:
+		return "Initializing configuration"
+	case ConfigUninitialize:
+		return "Removing local configuration and state"
 	default:
 		return "Applying system action"
 	}

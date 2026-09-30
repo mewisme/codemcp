@@ -291,6 +291,21 @@ func parseTunnelRoute(parts []string) (Route, error) {
 	case len(parts) == 3 && parts[1] == "admin-key" && parts[2] == "edit":
 		route.Section, route.Action = "admin-key", "edit"
 		return route, nil
+	case len(parts) == 2 && parts[1] == "managed":
+		route.Mode = "managed"
+		return route, nil
+	case len(parts) == 3 && parts[1] == "managed" && parts[2] == "create":
+		route.Mode, route.Action = "managed", "create"
+		return route, nil
+	case len(parts) == 3 && parts[1] == "managed":
+		route.Mode, route.ResourceID = "managed", parts[2]
+		return route, nil
+	case len(parts) == 4 && parts[1] == "managed" && parts[3] == "scope":
+		route.Mode, route.ResourceID, route.Section = "managed", parts[2], "scope"
+		return route, nil
+	case len(parts) == 4 && parts[1] == "managed" && (parts[3] == "edit" || parts[3] == "configure"):
+		route.Mode, route.ResourceID, route.Action = "managed", parts[2], parts[3]
+		return route, nil
 	default:
 		return Route{}, fmt.Errorf("unsupported tunnel path %q", strings.Join(parts, " "))
 	}
@@ -382,6 +397,10 @@ func parseConfigRoute(parts []string) (Route, error) {
 	}
 	if len(parts) > 3 {
 		return Route{}, fmt.Errorf("config path is too deep: %s", strings.Join(parts, " "))
+	}
+	if len(parts) == 2 && (parts[1] == "patch" || parts[1] == "telegram-setup") {
+		route.Action = parts[1]
+		return route, nil
 	}
 	if len(parts) == 3 && parts[1] == "storage" {
 		switch parts[2] {

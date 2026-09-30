@@ -515,6 +515,70 @@ func TestConfigEditorsUseExplicitActionsPickerAndImportConfirmation(t *testing.T
 	testutil.AssertLinesFit(t, page.View(40, 16), 40)
 }
 
+func TestConfigPatchAndTelegramSetupUseNativeProtectedEditors(t *testing.T) {
+	prepareConfigPageRoot(t)
+	patchPage, err := NewConfigRouteAction(t.Context(), "", "", "patch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, _ := patchPage.Update(patchPage.Init()())
+	patchPage = updated.(*ConfigPage)
+	if patchPage.editor == nil || patchPage.patchForm == nil {
+		t.Fatalf("patch editor=%v form=%v", patchPage.editor != nil, patchPage.patchForm != nil)
+	}
+	patchPage.patchForm.Changes = `[{"Key":"server.enabled","Value":"false"}]`
+	cmd := patchPage.submitConfigEditor()
+	if cmd == nil || patchPage.overlay != configOverlayOperation || !patchPage.editor.Submitting() {
+		t.Fatalf("patch command=%v overlay=%d submitting=%t", cmd != nil, patchPage.overlay, patchPage.editor.Submitting())
+	}
+	msg, ok := cmd().(configOperationMsg)
+	if !ok || msg.err != nil || msg.command != ConfigPatch || len(msg.apply.Results) != 1 {
+		t.Fatalf("patch result=%#v", msg)
+	}
+
+	telegramPage, err := NewConfigRouteAction(t.Context(), "", "", "telegram-setup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, editorInit := telegramPage.Update(telegramPage.Init()())
+	telegramPage = updated.(*ConfigPage)
+	if telegramPage.editor == nil || telegramPage.telegramForm == nil {
+		t.Fatalf("telegram editor=%v form=%v", telegramPage.editor != nil, telegramPage.telegramForm != nil)
+	}
+	if editorInit != nil {
+		updated, _ = telegramPage.Update(editorInit())
+		telegramPage = updated.(*ConfigPage)
+	}
+	const token = "123456:raw-telegram-secret"
+	for _, char := range token {
+		updated, _ = telegramPage.Update(tea.KeyPressMsg{Code: char, Text: string(char)})
+		telegramPage = updated.(*ConfigPage)
+	}
+	updated, _ = telegramPage.Update(component.FormMouseMsg{Group: 0, Field: 1, Click: true})
+	telegramPage = updated.(*ConfigPage)
+	for _, char := range "42" {
+		updated, _ = telegramPage.Update(tea.KeyPressMsg{Code: char, Text: string(char)})
+		telegramPage = updated.(*ConfigPage)
+	}
+	if telegramPage.telegramForm.Token != token || telegramPage.telegramForm.UserID != "42" {
+		t.Fatalf("telegram form values token=%q user=%q", telegramPage.telegramForm.Token, telegramPage.telegramForm.UserID)
+	}
+	if rendered := ansi.Strip(telegramPage.View(72, 24)); strings.Contains(rendered, token) {
+		t.Fatalf("telegram token leaked from protected editor: %q", rendered)
+	}
+	cmd = telegramPage.submitConfigEditor()
+	if cmd == nil || telegramPage.overlay != configOverlayOperation || !telegramPage.editor.Submitting() {
+		t.Fatalf("telegram command=%v overlay=%d submitting=%t", cmd != nil, telegramPage.overlay, telegramPage.editor.Submitting())
+	}
+	msg, ok = cmd().(configOperationMsg)
+	if !ok || msg.err != nil || msg.command != ConfigTelegramSetup || len(msg.telegram.AuthorizedUsers) != 1 || msg.telegram.AuthorizedUsers[0] != 42 {
+		t.Fatalf("telegram result=%#v", msg)
+	}
+	if encoded := fmt.Sprintf("%#v", msg); strings.Contains(encoded, token) {
+		t.Fatalf("telegram setup result leaked raw token: %s", encoded)
+	}
+}
+
 func prepareConfigPageRoot(t *testing.T) string {
 	t.Helper()
 	previous := configformat.RootPath()

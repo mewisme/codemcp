@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -274,6 +275,30 @@ func TestRuntimeTokenRotationRequiresConfirmAndSecretIsTransient(t *testing.T) {
 	}
 	if strings.Contains(page.notice, token) || strings.Contains(page.View(100, 30), token) {
 		t.Fatal("token leaked outside one-time overlay")
+	}
+}
+
+func TestRuntimeConfigLifecycleUsesNativeTUIFlows(t *testing.T) {
+	previous := configformat.RootPath()
+	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
+	if err := configformat.SetRootPath(filepath.Join(t.TempDir(), "config")); err != nil {
+		t.Fatal(err)
+	}
+	page, err := NewRuntime(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd, err := page.openCommand(ConfigInitialize)
+	if err != nil || cmd == nil || page.overlay != systemOverlayOperation || page.external != nil {
+		t.Fatalf("initialize flow cmd=%v overlay=%v external=%#v err=%v", cmd != nil, page.overlay, page.external, err)
+	}
+	page.cancelOperation()
+	cmd, err = page.openCommand(ConfigUninitialize)
+	if err != nil || cmd != nil || page.overlay != systemOverlayConfirm || page.external != nil {
+		t.Fatalf("uninitialize flow cmd=%v overlay=%v external=%#v err=%v", cmd != nil, page.overlay, page.external, err)
+	}
+	if page.confirm.AffirmativeSelected() {
+		t.Fatal("uninitialize confirmation defaulted affirmative")
 	}
 }
 

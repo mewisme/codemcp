@@ -34,6 +34,8 @@ const (
 	ConfigMigrateSecrets   ConfigCommand = "config.migrate.secrets"
 	ConfigExport           ConfigCommand = "config.export"
 	ConfigImport           ConfigCommand = "config.import"
+	ConfigPatch            ConfigCommand = "config.patch"
+	ConfigTelegramSetup    ConfigCommand = "telegram.setup"
 )
 
 type ConfigCommandMsg struct {
@@ -63,6 +65,8 @@ type configOperationMsg struct {
 	typeSafeDoctor  application.TypeSafeDoctorResult
 	typeSafeProbe   application.TypeSafeProbeResult
 	telemetryStatus application.TelemetryStatus
+	apply           application.SettingApplyResult
+	telegram        application.TelegramSetupResult
 	files           int
 	migrated        int
 	path            string
@@ -86,6 +90,8 @@ type ConfigPage struct {
 	targetKey       string
 	fieldForm       *configFieldFormData
 	bundleForm      *configBundleFormData
+	patchForm       *configPatchFormData
+	telegramForm    *telegramSetupFormData
 	operationCancel context.CancelFunc
 	operationID     uint64
 	progress        *component.Progress
@@ -573,6 +579,11 @@ func (page *ConfigPage) finishOperation(msg configOperationMsg) tea.Cmd {
 		page.notice = fmt.Sprintf("Configuration exported · %d files · secrets excluded · %s", msg.files, msg.path)
 	case ConfigImport:
 		page.notice = fmt.Sprintf("Configuration imported · %d files · target secrets preserved", msg.files)
+	case ConfigPatch:
+		page.overview.Config = msg.apply.Config
+		page.notice = fmt.Sprintf("Configuration patch applied · %d setting(s)", len(msg.apply.Results))
+	case ConfigTelegramSetup:
+		page.notice = fmt.Sprintf("Telegram configured · %d authorized user(s)", len(msg.telegram.AuthorizedUsers))
 	}
 	if page.editor != nil {
 		page.editor.SetSubmitting(false)

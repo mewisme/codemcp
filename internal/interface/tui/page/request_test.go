@@ -323,6 +323,25 @@ func TestRequestsPageResolutionUsesRoutedEditorWithoutConfirmField(t *testing.T)
 	}
 }
 
+func TestRequestGrantRevokeRequiresExplicitConfirmation(t *testing.T) {
+	page, err := NewRequests(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := page.handleCommand(RequestGrantRevoke, "req_grant")
+	if cmd != nil || page.overlay != requestOverlayConfirm || page.pendingGrantID != "req_grant" {
+		t.Fatalf("revoke staging cmd=%v overlay=%d pending=%q", cmd != nil, page.overlay, page.pendingGrantID)
+	}
+	if page.confirm.AffirmativeSelected() {
+		t.Fatal("grant revoke confirmation defaulted affirmative")
+	}
+	updated, follow := page.Update(component.ConfirmChoiceMsg{Affirmative: false})
+	page = updated.(*RequestsPage)
+	if follow != nil || page.overlay != requestOverlayNone || page.pendingGrantID != "" {
+		t.Fatalf("cancelled revoke follow=%v overlay=%d pending=%q", follow != nil, page.overlay, page.pendingGrantID)
+	}
+}
+
 func TestRequestsPageCreatesSyntheticTestRequest(t *testing.T) {
 	now := time.Now().UTC()
 	created := approval.Request{ID: "req_test_created", Status: approval.StatusPending, WorkspaceID: "ws_demo", Source: "cli-dummy", TargetTool: "run_command", Title: "Allow test command", Arguments: []byte(`{"workspace_id":"ws_demo","command":"echo hello","dummy":true}`), CreatedAt: now, ExpiresAt: now.Add(time.Minute)}

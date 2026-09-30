@@ -6,9 +6,12 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
 
 func TestIntegrationsReadViewMutationUsesCanonicalSettingEffect(t *testing.T) {
@@ -53,7 +56,7 @@ func TestIntegrationsReadViewMutationUsesCanonicalSettingEffect(t *testing.T) {
 func TestIntegrationsReadViewCloseCancelsRunningOperation(t *testing.T) {
 	page := newReadViewPage(t.Context(), "Integrations", func(context.Context) (any, error) { return nil, nil })
 	started := make(chan struct{}, 1)
-	page.integrationRun = func(ctx context.Context, operation capability.ID, workspaceID string) (any, error) {
+	page.operationRun = func(ctx context.Context, operation capability.ID, workspaceID, resourceID string) (any, error) {
 		started <- struct{}{}
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -82,5 +85,42 @@ func TestIntegrationsReadViewCloseCancelsRunningOperation(t *testing.T) {
 	}
 	if page.operationCancel != nil {
 		t.Fatal("page retained operation cancel function after disposal")
+	}
+}
+
+func TestReadViewDestructiveOperationsRequireConfirmation(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		message tea.Msg
+		want    capability.ID
+	}{
+		{name: "process clear", message: ReadViewCommandMsg{Operation: capability.ProcessClear, WorkspaceID: "ws_1", ResourceID: "proc_1"}, want: capability.ProcessClear},
+		{name: "cf remove", message: IntegrationCommandMsg{Command: IntegrationCFRemove}, want: capability.IntegrationCFRemove},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			page := newReadViewPage(t.Context(), "Test", func(context.Context) (any, error) { return nil, nil })
+			calls := 0
+			page.operationRun = func(context.Context, capability.ID, string, string) (any, error) {
+				calls++
+				return map[string]any{"ok": true}, nil
+			}
+			updated, cmd := page.Update(test.message)
+			page = updated.(*ReadViewPage)
+			if cmd != nil || !page.OverlayActive() || calls != 0 || page.pending.Operation != test.want {
+				t.Fatalf("staged cmd=%v overlay=%t calls=%d pending=%s", cmd != nil, page.OverlayActive(), calls, page.pending.Operation)
+			}
+			updated, cmd = page.Update(component.ConfirmChoiceMsg{Affirmative: true})
+			page = updated.(*ReadViewPage)
+			if cmd == nil || page.OverlayActive() || calls != 0 {
+				t.Fatalf("confirmed cmd=%v overlay=%t calls=%d", cmd != nil, page.OverlayActive(), calls)
+			}
+			result := cmd()
+			if calls != 1 {
+				t.Fatalf("operation calls=%d", calls)
+			}
+			if _, ok := result.(integrationOperationMsg); !ok {
+				t.Fatalf("operation result type=%T", result)
+			}
+		})
 	}
 }

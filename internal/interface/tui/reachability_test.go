@@ -57,14 +57,14 @@ func TestTUIProductReachabilityDescriptorsResolveLiveActions(t *testing.T) {
 	}
 }
 
-func TestTUIRequiredButUnimplementedAdaptersRemainGaps(t *testing.T) {
+func TestTUIRequiredAdaptersAreProductionReachable(t *testing.T) {
 	descriptors := ProductReachabilityDescriptors()
-	if productadapter.CountGaps(descriptors) == 0 {
-		t.Fatal("expected remaining TUI semantic gaps before interface closure")
-	}
-	for _, descriptor := range descriptors {
-		if descriptor.State == productadapter.StateGap && strings.TrimSpace(descriptor.Gap) == "" {
-			t.Fatalf("unclassified TUI gap: %#v", descriptor)
+	if gaps := productadapter.CountGaps(descriptors); gaps != 0 {
+		for _, descriptor := range descriptors {
+			if descriptor.State == productadapter.StateGap {
+				t.Errorf("TUI operation %s remains unreachable: %s", descriptor.Operation, strings.TrimSpace(descriptor.Gap))
+			}
 		}
+		t.Fatalf("remaining TUI semantic gaps=%d", gaps)
 	}
 }

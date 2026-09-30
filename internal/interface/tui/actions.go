@@ -21,20 +21,20 @@ type navigateMsg struct {
 
 func defaultActionRegistry() *action.Registry {
 	actions := []action.Action{
-		navigationAction("app.go.workspaces", "Workspaces", Route{Kind: RouteWorkspaces}, []string{"workspace", "workspaces", "ws", "container", "containers"}, capability.WorkspaceList, capability.WorkspaceShow, capability.WorkspaceAccessList, capability.WorkspaceContainerList, capability.WorkspaceContainerShow),
+		navigationAction("app.go.workspaces", "Workspaces", Route{Kind: RouteWorkspaces}, []string{"workspace", "workspaces", "ws", "container", "containers"}, capability.WorkspaceList, capability.WorkspaceShow, capability.WorkspaceAccessList, capability.WorkspaceContainerList, capability.WorkspaceContainerShow, capability.WorkspaceContainerMembershipList),
 		navigationAction("app.go.upstreams", "Upstreams", Route{Kind: RouteMCP}, []string{"mcp", "server", "upstream"}, capability.UpstreamServerList, capability.UpstreamServerShow, capability.UpstreamAuthStatus),
-		navigationAction("app.go.tunnel", "Tunnel", Route{Kind: RouteTunnel}, []string{"tunnel", "secure"}, capability.TunnelStatus, capability.TunnelAdminKeyStatus),
+		navigationAction("app.go.tunnel", "Tunnel", Route{Kind: RouteTunnel}, []string{"tunnel", "secure"}, capability.TunnelStatus, capability.TunnelConfigRead, capability.TunnelAdminKeyStatus),
 		navigationAction("app.go.tools", "Tools", Route{Kind: RouteTools}, []string{"tools", "schema", "inventory"}, capability.ToolInventoryRead),
 		navigationAction("app.go.integrations", "Integrations", Route{Kind: RouteIntegrations}, []string{"integration", "rtk", "codegraph", "cf", "cloudflare", "typesafe"}, capability.IntegrationRTKStatus, capability.IntegrationCodeGraphStatus, capability.IntegrationCFStatus, capability.IntegrationTypeSafeStatus),
-		navigationAction("app.go.doctor", "Doctor", Route{Kind: RouteDoctor}, []string{"doctor", "diagnostics", "health", "checkpoint", "history"}, capability.DoctorRead),
-		navigationAction("app.go.requests", "Requests", Route{Kind: RouteRequests}, []string{"request", "approval"}, capability.RequestView, capability.RequestExplanationView, capability.RequestExplainStatus),
+		navigationAction("app.go.doctor", "Doctor", Route{Kind: RouteDoctor}, []string{"doctor", "diagnostics", "health", "checkpoint", "history"}, capability.DoctorRead, capability.HealthRead, capability.NetworkInterfacesList, capability.NotificationStatus),
+		navigationAction("app.go.requests", "Requests", Route{Kind: RouteRequests}, []string{"request", "approval"}, capability.RequestView, capability.RequestStream, capability.RequestExplanationView, capability.RequestExplainStatus),
 		navigationAction("app.go.llm", "LLM", Route{Kind: RouteLLM}, []string{"llm", "provider", "model", "openrouter", "ollama"}, capability.LLMStatus, capability.LLMProviderList, capability.LLMProviderGet, capability.LLMProviderModels),
-		navigationAction("app.go.completions", "Agent Completions", Route{Kind: RouteCompletions}, []string{"agent", "completion", "completions", "history", "current", "list", "view", "doctor", "health"}, capability.CompletionCurrent, capability.CompletionDoctor, capability.CompletionList, capability.CompletionView),
-		navigationAction("app.go.logs", "Logs", Route{Kind: RouteLogs}, []string{"logs", "events", "journal"}),
-		navigationAction("app.go.logs-exec", "Command Execution", Route{Kind: RouteLogsExec}, []string{"logs", "command", "execution", "exec", "output"}),
+		navigationAction("app.go.completions", "Agent Completions", Route{Kind: RouteCompletions}, []string{"agent", "completion", "completions", "history", "current", "list", "view", "doctor", "health"}, capability.CompletionCurrent, capability.CompletionDoctor, capability.CompletionList, capability.CompletionView, capability.CompletionFeed),
+		navigationAction("app.go.logs", "Logs", Route{Kind: RouteLogs}, []string{"logs", "events", "journal"}, capability.ActivityStream, capability.ActivityView),
+		navigationAction("app.go.logs-exec", "Command Execution", Route{Kind: RouteLogsExec}, []string{"logs", "command", "execution", "exec", "output"}, capability.ExecutionFeed, capability.ExecutionStream),
 		navigationAction("app.go.logs-tools", "Tool Calls", Route{Kind: RouteLogsTools}, []string{"logs", "tools", "calls", "tool calls"}),
-		navigationAction("app.go.config", "Config", Route{Kind: RouteConfig}, []string{"config", "settings", "cfg", "telegram"}, capability.ConfigPath, capability.ConfigGet, capability.TelegramSetup),
-		navigationAction("app.go.instruction", "Instruction", Route{Kind: RouteInstruction}, []string{"instruction", "instructions", "global", "context", "rules", "sources"}),
+		navigationAction("app.go.config", "Config", Route{Kind: RouteConfig}, []string{"config", "settings", "cfg", "telegram"}, capability.ConfigPath, capability.ConfigGet, capability.ConfigSnapshotRead, capability.TelegramSetup),
+		navigationAction("app.go.instruction", "Instruction", Route{Kind: RouteInstruction}, []string{"instruction", "instructions", "global", "context", "rules", "sources"}, capability.InstructionSettingsRead),
 		navigationAction("app.go.prompts", "Prompts", Route{Kind: RoutePrompts}, []string{"prompt", "prompts", "template"}, capability.PromptList, capability.PromptGet, capability.PromptCreate, capability.PromptUpdate, capability.PromptDelete),
 		navigationAction("app.go.runtime", "Runtime", Route{Kind: RouteRuntime}, []string{"runtime", "status", "service"}, capability.AuthStatus),
 		navigationAction("app.go.about", "About", Route{Kind: RouteAbout}, []string{"about", "version", "build", "uptime"}, capability.VersionAbout),
@@ -42,6 +42,7 @@ func defaultActionRegistry() *action.Registry {
 	}
 	actions = append(actions, guideActions()...)
 	actions = append(actions, instructionNavigationActions()...)
+	actions = append(actions, promptActions()...)
 	actions = append(actions, workspaceActions()...)
 	actions = append(actions, mcpActions()...)
 	actions = append(actions, tunnelActions()...)
@@ -57,6 +58,24 @@ func defaultActionRegistry() *action.Registry {
 		panic(err)
 	}
 	return registry
+}
+
+func promptActions() []action.Action {
+	command := func(id, title, description string, operation capability.ID, message tuipage.PromptCommand) action.Action {
+		return action.Action{
+			ID: id, Title: title, Category: "Prompts", Description: description,
+			Keywords: []string{"prompt", "template", "create", "edit", "delete"}, Operation: operation, Capabilities: []capability.ID{operation}, Scope: action.ScopeGlobal,
+			Available: func(ctx action.Context) bool { return ctx.Route == string(RoutePrompts) },
+			Run: func(context.Context, action.Context) tea.Cmd {
+				return func() tea.Msg { return tuipage.PromptCommandMsg{Command: message} }
+			},
+		}
+	}
+	return []action.Action{
+		command("prompt.create", "Create Prompt", "Create a prompt in the active Prompt scope", capability.PromptCreate, tuipage.PromptCreate),
+		command("prompt.update", "Update Prompt", "Edit the selected Prompt", capability.PromptUpdate, tuipage.PromptUpdate),
+		command("prompt.delete", "Delete Prompt", "Stage deletion of the selected Prompt and require explicit confirmation", capability.PromptDelete, tuipage.PromptDelete),
+	}
 }
 
 func llmActions() []action.Action {
@@ -141,8 +160,8 @@ func systemActions() []action.Action {
 		systemAction("mcp.http.foreground", "Run standalone MCP HTTP server", "Show the Streamable HTTP/SSE command to run after leaving the TUI", []string{"mcp", "http", "sse", "oauth", "transport", "terminal"}, []string{"mcp", "http"}, tuipage.MCPHTTPForeground, false),
 		systemAction("transport.mcp-http.enable", "Enable MCP HTTP server", "Enable the local MCP HTTP transport and reload the running runtime", []string{"mcp", "http", "server", "transport", "enable", "listener"}, []string{"config", "set"}, tuipage.MCPHTTPEnable, false),
 		systemAction("transport.mcp-http.disable", "Disable MCP HTTP server", "Disable the local MCP HTTP transport and close its listener; the Secure MCP Tunnel must remain enabled", []string{"mcp", "http", "server", "transport", "disable", "listener", "port"}, []string{"config", "set"}, tuipage.MCPHTTPDisable, false),
-		systemAction("config.initialize.external", "Initialize configuration", "Show the initialization command that creates configuration and one-time authentication tokens", []string{"config", "init", "initialize", "token"}, []string{"init"}, tuipage.ConfigInitialize, false),
-		systemAction("config.uninitialize.external", "Uninitialize configuration", "Show the destructive command that removes local configuration and state", []string{"config", "uninit", "uninitialize", "remove", "state"}, []string{"uninit"}, tuipage.ConfigUninitialize, false),
+		systemAction("config.initialize", "Initialize configuration", "Create configuration and reveal the generated MCP/admin credentials once", []string{"config", "init", "initialize", "token"}, []string{"init"}, tuipage.ConfigInitialize, false),
+		systemAction("config.uninitialize", "Uninitialize configuration", "Remove local configuration, managed secrets, and local state after confirmation", []string{"config", "uninit", "uninitialize", "remove", "state"}, []string{"uninit"}, tuipage.ConfigUninitialize, false),
 		systemAction("auth.mcp.enable", "Enable MCP authentication", "Enable MCP token authentication", []string{"auth", "mcp", "enable"}, []string{"auth", "mcp", "enable"}, tuipage.AuthMCPEnable, false),
 		systemAction("auth.mcp.disable", "Disable MCP authentication", "Disable MCP token authentication", []string{"auth", "mcp", "disable"}, []string{"auth", "mcp", "disable"}, tuipage.AuthMCPDisable, false),
 		systemAction("auth.mcp.rotate", "Rotate MCP token", "Rotate the MCP token and reveal the replacement once", []string{"auth", "mcp", "token", "rotate", "create"}, []string{"auth", "mcp", "create"}, tuipage.AuthMCPRotate, false),
@@ -201,6 +220,10 @@ func configActions() []action.Action {
 		configAction("config.verify", "Verify config", "Verify structured config/state format consistency and configuration validity", []string{"config", "verify", "validate"}, []string{"config", "verify"}, tuipage.ConfigVerify),
 		configAction("config.migrate", "Migrate config secrets", "Migrate legacy plaintext credentials into the secret store", []string{"config", "migrate", "secrets"}, []string{"config", "migrate"}, tuipage.ConfigMigrate),
 		configAction("config.migrate.secrets", "Migrate secret files", "Migrate legacy secret files to encrypted JSON envelopes", []string{"config", "migrate", "secrets", "envelope"}, []string{"config", "migrate", "secrets"}, tuipage.ConfigMigrateSecrets),
+		{ID: "config.patch", Title: "Patch configuration", Category: "Config", Description: "Apply an atomic batch of canonical setting changes", Keywords: []string{"config", "patch", "batch", "settings"}, Operation: capability.ConfigPatch, Capabilities: []capability.ID{capability.ConfigPatch}, Scope: action.ScopeGlobal, Available: func(ctx action.Context) bool { return ctx.Route == string(RouteConfig) }, Run: func(context.Context, action.Context) tea.Cmd {
+			return func() tea.Msg { return navigateMsg{route: Route{Kind: RouteConfig, Action: "patch"}} }
+		}},
+		editorNavigationAction("telegram.setup", "Setup Telegram", "Config", "Configure the Telegram bot token and initial authorized user using protected input", []string{"telegram", "setup", "bot", "token", "user"}, []string{"telegram", "setup"}, func(ctx action.Context) bool { return ctx.Route == string(RouteConfig) }, func(action.Context) Route { return Route{Kind: RouteConfig, Action: "telegram-setup"} }),
 		editorNavigationAction("config.export", "Export config envelope", "Config", "Export portable non-secret configuration and state as JSON", []string{"config", "export", "envelope", "backup"}, []string{"config", "export"}, func(ctx action.Context) bool { return ctx.Route == string(RouteConfig) }, func(action.Context) Route { return Route{Kind: RouteConfig, Section: "storage", Action: "export"} }),
 		editorNavigationAction("config.import", "Import config envelope", "Config", "Import a portable JSON configuration envelope while preserving target secrets", []string{"config", "import", "envelope", "restore"}, []string{"config", "import"}, func(ctx action.Context) bool { return ctx.Route == string(RouteConfig) }, func(action.Context) Route { return Route{Kind: RouteConfig, Section: "storage", Action: "import"} }),
 	}
@@ -248,6 +271,9 @@ func requestAction(id, title, description string, keywords, commandPath []string
 
 func tunnelActions() []action.Action {
 	return []action.Action{
+		{ID: "tunnel.managed.open", Title: "Managed tunnels", Category: "Tunnel", Description: "Browse managed OpenAI tunnel resources without changing the local runtime selection", Keywords: []string{"tunnel", "managed", "list", "cloud"}, Capabilities: []capability.ID{capability.TunnelList, capability.TunnelGet}, Scope: action.ScopeGlobal, Available: func(ctx action.Context) bool { return ctx.Route == string(RouteTunnel) && ctx.Mode != "managed" }, Run: func(context.Context, action.Context) tea.Cmd {
+			return func() tea.Msg { return navigateMsg{route: Route{Kind: RouteTunnel, Mode: "managed"}} }
+		}},
 		editorNavigationAction("tunnel.configure", "Configure runtime tunnel", "Tunnel", "Configure the local OpenAI Secure MCP Tunnel", []string{"tunnel", "configure", "runtime"}, []string{"tunnel", "configure"}, func(ctx action.Context) bool { return ctx.Route == string(RouteTunnel) }, func(action.Context) Route { return Route{Kind: RouteTunnel, Action: "edit"} }),
 		tunnelAction("tunnel.enable", "Enable runtime tunnel", "Enable the local OpenAI Secure MCP Tunnel", []string{"tunnel", "enable", "runtime"}, []string{"tunnel", "enable"}, tuipage.TunnelEnable, RouteTunnel, false),
 		tunnelAction("tunnel.disable", "Disable runtime tunnel", "Disable the local OpenAI Secure MCP Tunnel", []string{"tunnel", "disable", "runtime"}, []string{"tunnel", "disable"}, tuipage.TunnelDisable, RouteTunnel, false),
@@ -256,6 +282,10 @@ func tunnelActions() []action.Action {
 		editorNavigationAction("tunnel.admin.key.set", "Set admin key", "Tunnel", "Verify and store an OpenAI tunnel admin key", []string{"tunnel", "admin", "key", "set"}, []string{"tunnel", "admin", "key", "set"}, func(ctx action.Context) bool { return ctx.Route == string(RouteTunnel) }, func(action.Context) Route { return Route{Kind: RouteTunnel, Section: "admin-key", Action: "edit"} }),
 		tunnelAction("tunnel.admin.key.verify", "Verify admin key", "Re-verify Tunnels Manage access for the stored admin key", []string{"tunnel", "admin", "key", "verify"}, []string{"tunnel", "admin", "key", "verify"}, tuipage.TunnelAdminKeyVerify, RouteTunnel, false),
 		tunnelAction("tunnel.admin.key.remove", "Remove admin key", "Remove the stored tunnel admin key and verification scope", []string{"tunnel", "admin", "key", "remove"}, []string{"tunnel", "admin", "key", "remove"}, tuipage.TunnelAdminKeyRemove, RouteTunnel, false),
+		tunnelAction("tunnel.managed.create", "Create managed tunnel", "Create an OpenAI managed tunnel", []string{"tunnel", "managed", "create"}, []string{"tunnel", "create"}, tuipage.TunnelManagedCreate, RouteTunnel, false),
+		tunnelAction("tunnel.managed.update", "Update managed tunnel", "Update the selected managed tunnel", []string{"tunnel", "managed", "update", "edit"}, []string{"tunnel", "update"}, tuipage.TunnelManagedUpdate, RouteTunnel, true),
+		tunnelAction("tunnel.managed.use", "Use managed tunnel", "Configure the selected managed tunnel as the local runtime tunnel", []string{"tunnel", "managed", "use", "runtime"}, []string{"tunnel", "use"}, tuipage.TunnelManagedConfigure, RouteTunnel, true),
+		tunnelAction("tunnel.managed.delete", "Delete managed tunnel", "Delete the selected managed tunnel after confirmation", []string{"tunnel", "managed", "delete", "remove"}, []string{"tunnel", "delete"}, tuipage.TunnelManagedDelete, RouteTunnel, true),
 	}
 }
 
@@ -276,6 +306,13 @@ func readViewActions() []action.Action {
 		}},
 		{ID: "workspace.processes", Title: "Workspace background processes", Category: "Workspace", Description: "Inspect background processes for the current workspace", Keywords: []string{"workspace", "process", "background"}, Capabilities: []capability.ID{capability.ProcessList, capability.ProcessView}, Scope: action.ScopeResource, Available: func(ctx action.Context) bool { return ctx.Route == string(RouteWorkspaces) && ctx.ResourceID != "" }, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
 			return func() tea.Msg { return navigateMsg{route: Route{Kind: RouteProcesses, Mode: ctx.ResourceID}} }
+		}},
+		{ID: "process.clear", Title: "Clear finished process", Category: "Workspace", Description: "Remove the selected finished process from runtime history after confirmation", Keywords: []string{"process", "clear", "finished", "delete"}, Operation: capability.ProcessClear, Capabilities: []capability.ID{capability.ProcessClear}, Scope: action.ScopeResource, Available: func(ctx action.Context) bool {
+			return ctx.Route == string(RouteProcesses) && ctx.Mode != "" && ctx.ResourceID != ""
+		}, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+			return func() tea.Msg {
+				return tuipage.ReadViewCommandMsg{Operation: capability.ProcessClear, WorkspaceID: ctx.Mode, ResourceID: ctx.ResourceID}
+			}
 		}},
 		{ID: "workspace.codegraph.status", Title: "Workspace CodeGraph status", Category: "Workspace", Description: "Inspect CodeGraph index status for the current workspace", Keywords: []string{"workspace", "codegraph", "index", "status"}, Operation: capability.IntegrationCodeGraphWorkspaceStatus, Capabilities: []capability.ID{capability.IntegrationCodeGraphWorkspaceStatus}, Scope: action.ScopeResource, Available: func(ctx action.Context) bool { return ctx.Route == string(RouteWorkspaces) && ctx.ResourceID != "" }, Run: func(_ context.Context, ctx action.Context) tea.Cmd {
 			return func() tea.Msg {
@@ -334,11 +371,11 @@ func tunnelAction(id, title, description string, keywords, commandPath []string,
 			}
 			switch command {
 			case tuipage.TunnelManagedRefresh, tuipage.TunnelManagedCreate, tuipage.TunnelManagedUpdate, tuipage.TunnelManagedDelete:
-				return tunnelAdminManageAvailable()
+				return ctx.Mode == "managed" && tunnelAdminManageAvailable()
 			case tuipage.TunnelManagedConfigure:
-				return tunnelAdminReadAvailable()
+				return ctx.Mode == "managed" && tunnelAdminReadAvailable()
 			}
-			return true
+			return ctx.Mode != "managed"
 		},
 		Run: func(_ context.Context, ctx action.Context) tea.Cmd {
 			return func() tea.Msg { return tuipage.TunnelCommandMsg{Command: command, ResourceID: ctx.ResourceID} }
@@ -414,6 +451,9 @@ func workspaceActions() []action.Action {
 func instructionNavigationActions() []action.Action {
 	return []action.Action{
 		instructionNavigationAction("instruction.open.context", "Open Global Context", "Open managed global instruction context", "context", []string{"instruction", "global", "context"}),
+		editorNavigationAction("instruction.context.edit", "Edit Global Context", "Instruction", "Edit the canonical global instruction context", []string{"instruction", "global", "context", "edit"}, []string{"instructions", "set"}, func(ctx action.Context) bool {
+			return ctx.Route == string(RouteInstruction) && (ctx.Section == "" || ctx.Section == "context")
+		}, func(action.Context) Route { return Route{Kind: RouteInstruction, Section: "context", Action: "edit"} }),
 		instructionNavigationAction("instruction.open.rules", "Open Global Rules", "Open managed global instruction rules", "rules", []string{"instruction", "global", "rules"}),
 		instructionNavigationAction("instruction.open.sources", "Open Instruction Sources", "Open detected user-level instruction sources and source policy", "sources", []string{"instruction", "sources", "policy", "agents", "claude"}),
 	}
@@ -431,8 +471,12 @@ func instructionNavigationAction(id, title, description, section string, keyword
 }
 
 func workspaceContextNavigationAction(id, title, description, section string) action.Action {
+	capabilities := []capability.ID{}
+	if section == "context-preview" {
+		capabilities = append(capabilities, capability.ProjectContextRead)
+	}
 	return action.Action{
-		ID: id, Title: title, Category: "Workspace", Description: description, Keywords: []string{"workspace", "project", "context", section}, Scope: action.ScopeGlobal,
+		ID: id, Title: title, Category: "Workspace", Description: description, Keywords: []string{"workspace", "project", "context", section}, Capabilities: capabilities, Scope: action.ScopeGlobal,
 		Available: func(ctx action.Context) bool { return ctx.Route == string(RouteWorkspaces) && ctx.ResourceID != "" },
 		Run: func(_ context.Context, ctx action.Context) tea.Cmd {
 			return func() tea.Msg {

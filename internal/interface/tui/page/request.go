@@ -53,6 +53,7 @@ type requestOverlay uint8
 
 const (
 	requestOverlayNone requestOverlay = iota
+	requestOverlayConfirm
 	requestOverlayOperation
 )
 
@@ -79,6 +80,11 @@ type requestCreateMsg struct {
 	err     error
 }
 
+type requestGrantRevokeMsg struct {
+	request approval.Request
+	err     error
+}
+
 type RequestsPage struct {
 	ctx                context.Context
 	requests           []approval.Request
@@ -95,6 +101,8 @@ type RequestsPage struct {
 	codeHelp           component.HelpFooter
 	loading            bool
 	overlay            requestOverlay
+	confirm            component.ConfirmButtons
+	pendingGrantID     string
 	editor             *component.Editor
 	createForm         *requestCreateFormData
 	resolveForm        *requestResolveFormData
@@ -254,6 +262,22 @@ func (page *RequestsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		notice := requestResolveNotice(msg.approve, msg.request)
 		page.editor, page.resolveForm, page.resolveID, page.action = nil, nil, "", ""
 		return page, tea.Batch(requestNavigateCmd(page.mode, msg.request.ID, "", true), func() tea.Msg { return ToastMsg{Title: "Requests", Message: notice, Tone: component.ToneSuccess} })
+	case requestGrantRevokeMsg:
+		if page.operationCancel != nil {
+			page.operationCancel()
+		}
+		page.operationCancel = nil
+		page.overlay, page.progress = requestOverlayNone, nil
+		if msg.err != nil {
+			page.err = msg.err
+			return page, nil
+		}
+		page.err = nil
+		page.upsertRequest(msg.request)
+		page.pendingGrantID = ""
+		return page, tea.Batch(page.refreshCmd(), func() tea.Msg {
+			return ToastMsg{Title: "Requests", Message: "Revoked runtime grant " + msg.request.ID, Tone: component.ToneSuccess}
+		})
 	case requestCreateMsg:
 		if page.operationCancel != nil {
 			page.operationCancel()
@@ -300,6 +324,12 @@ func (page *RequestsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		return page, page.submitResolveForm()
 	case component.EditorCancelMsg:
 		return page, page.closeRequestEditor()
+	case component.ConfirmChoiceMsg:
+		if page.overlay == requestOverlayConfirm {
+			page.confirm.Select(msg.Affirmative)
+			return page, page.updateGrantRevokeConfirm(tea.KeyPressMsg{Code: tea.KeyEnter})
+		}
+		return page, nil
 	case RequestCommandMsg:
 		return page, page.handleCommand(msg.Command, msg.ResourceID)
 	case component.BrowserOpenMsg:
@@ -308,6 +338,9 @@ func (page *RequestsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		}
 		return page, nil
 	case tea.KeyPressMsg:
+		if page.overlay == requestOverlayConfirm {
+			return page, page.updateGrantRevokeConfirm(msg)
+		}
 		if page.overlay == requestOverlayOperation {
 			if msg.String() == "esc" {
 				page.cancelOperation()
@@ -411,7 +444,12 @@ func (page *RequestsPage) View(width, height int) string {
 		page.browser = updated.(component.Browser)
 		content = tabs + "\n" + component.BottomHelp(layout.View(page.browser.BodyContent()), help, width, bodyHeight)
 	}
-	if page.overlay == requestOverlayOperation {
+	if page.overlay == requestOverlayConfirm {
+		modalWidth := overlayWidth(width, 72)
+		description := "Revoking a runtime session grant immediately removes its similar-command authorization."
+		body := confirmOverlayBody(page.confirm, "Revoke runtime grant?", description, modalWidth)
+		content = component.CenterOverlay(content, component.Modal(body, modalWidth), width, height)
+	} else if page.overlay == requestOverlayOperation {
 		body := ""
 		if page.progress != nil {
 			body = page.progress.View()
@@ -427,6 +465,8 @@ func (page *RequestsPage) MouseTargets(originX, originY, z int) []component.Mous
 		return nil
 	}
 	switch page.overlay {
+	case requestOverlayConfirm:
+		return confirmOverlayMouseTargets(page.confirm, "Revoke runtime grant?", "Revoking a runtime session grant immediately removes its similar-command authorization.", overlayWidth(page.width, 72), page.width, page.height, originX, originY, z+20)
 	case requestOverlayOperation:
 		return []component.MouseTarget{mouseBlocker(originX, originY, page.width, page.height, z+20)}
 	default:
@@ -531,19 +571,42 @@ func (page *RequestsPage) handleCommand(command RequestCommand, resourceID strin
 			page.err = errors.New("select a runtime grant request to revoke")
 			return nil
 		}
-		page.loading = true
-		return func() tea.Msg {
-			ctx, cancel := context.WithTimeout(page.ctx, requestOperationTimeout)
-			defer cancel()
-			request, err := application.RevokeRuntimeGrant(ctx, id)
-			if err != nil {
-				return requestResolveMsg{request: request, err: err}
-			}
-			return requestResolveMsg{request: request, approve: false, err: nil}
-		}
+		page.pendingGrantID = id
+		page.confirm = component.NewConfirmButtons("Revoke", "Cancel", false)
+		page.overlay = requestOverlayConfirm
+		return nil
 	default:
 		page.err = fmt.Errorf("unsupported request action: %s", command)
 		return nil
+	}
+}
+
+func (page *RequestsPage) updateGrantRevokeConfirm(msg tea.KeyPressMsg) tea.Cmd {
+	if page == nil || page.overlay != requestOverlayConfirm || page.pendingGrantID == "" {
+		return nil
+	}
+	switch msg.String() {
+	case "esc":
+		page.overlay, page.confirm, page.pendingGrantID = requestOverlayNone, component.ConfirmButtons{}, ""
+		return nil
+	case "enter":
+		if !page.confirm.AffirmativeSelected() {
+			page.overlay, page.confirm, page.pendingGrantID = requestOverlayNone, component.ConfirmButtons{}, ""
+			return nil
+		}
+		id := page.pendingGrantID
+		page.confirm = component.ConfirmButtons{}
+		page.overlay = requestOverlayOperation
+		progress := component.NewProgress("Revoking runtime grant")
+		page.progress = &progress
+		ctx, cancel := context.WithTimeout(page.ctx, requestOperationTimeout)
+		page.operationCancel = cancel
+		return func() tea.Msg {
+			request, err := application.RevokeRuntimeGrant(ctx, id)
+			return requestGrantRevokeMsg{request: request, err: err}
+		}
+	default:
+		return page.confirm.Update(msg)
 	}
 }
 

@@ -1305,7 +1305,11 @@ func (model *Model) loadPage(route Route) {
 			value, err = tuipage.NewMCPRoute(model.ctx, route.ResourceID, route.Section)
 		}
 	case RouteTunnel:
-		value, err = tuipage.NewTunnelDashboardRoute(model.ctx, route.Section, route.Action)
+		if route.Mode == "managed" {
+			value, err = tuipage.NewManagedTunnelsRouteAction(model.ctx, route.ResourceID, route.Section, route.Action)
+		} else {
+			value, err = tuipage.NewTunnelDashboardRoute(model.ctx, route.Section, route.Action)
+		}
 	case RouteTools:
 		value, err = tuipage.NewToolsReadView(model.ctx)
 	case RouteIntegrations:

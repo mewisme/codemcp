@@ -1,12 +1,15 @@
 package page
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"charm.land/huh/v2"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
@@ -22,6 +25,15 @@ type configFieldFormData struct {
 type configBundleFormData struct {
 	Path  string
 	Force bool
+}
+
+type configPatchFormData struct {
+	Changes string
+}
+
+type telegramSetupFormData struct {
+	Token  string
+	UserID string
 }
 
 func newConfigFieldEditor(cfg config.Config, spec config.FieldSpec) (component.Editor, *configFieldFormData, error) {
@@ -107,4 +119,44 @@ func validateConfigBundlePath(value string) error {
 		return fmt.Errorf("envelope file must name a file")
 	}
 	return nil
+}
+
+func newConfigPatchEditor() (component.Editor, *configPatchFormData) {
+	data := &configPatchFormData{Changes: "[\n  {\"Key\": \"server.enabled\", \"Value\": \"true\"}\n]"}
+	field := component.Text("Setting changes JSON", &data.Changes).Description("Array of canonical setting changes. Use Unset=true to clear a setting.").Validate(func(value string) error {
+		_, err := parseConfigPatchChanges(value)
+		return err
+	})
+	editor := component.NewEditor("apply", component.EditorSection{ID: "patch", Title: "Configuration patch", Description: "Validate the whole batch before any setting is persisted.", Form: component.NewEditorForm(component.Group(field))})
+	return editor, data
+}
+
+func parseConfigPatchChanges(value string) ([]application.SettingChange, error) {
+	var changes []application.SettingChange
+	if err := json.Unmarshal([]byte(strings.TrimSpace(value)), &changes); err != nil {
+		return nil, fmt.Errorf("invalid setting changes JSON: %w", err)
+	}
+	if len(changes) == 0 {
+		return nil, fmt.Errorf("at least one setting change is required")
+	}
+	return changes, nil
+}
+
+func newTelegramSetupEditor() (component.Editor, *telegramSetupFormData) {
+	data := &telegramSetupFormData{}
+	token := component.PasswordInput("Bot token", &data.Token).Placeholder("Telegram bot token").Validate(func(value string) error {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("bot token is required")
+		}
+		return nil
+	})
+	userID := component.Input("Authorized user ID", &data.UserID).Placeholder("Numeric Telegram user ID").Validate(func(value string) error {
+		parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		if err != nil || parsed <= 0 {
+			return fmt.Errorf("authorized user ID must be a positive integer")
+		}
+		return nil
+	})
+	editor := component.NewEditor("setup", component.EditorSection{ID: "telegram", Title: "Telegram bot", Description: "The bot token stays masked in the TUI and is persisted through the canonical managed-secret setting authority.", Form: component.NewEditorForm(component.Group(token, userID))})
+	return editor, data
 }

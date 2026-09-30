@@ -296,7 +296,7 @@ func (page *TunnelPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		return page, cmd
 	case component.BrowserOpenMsg:
 		if page.kind == tunnelPageManaged && page.resourceID == "" && msg.Row.ID != "" {
-			return page, func() tea.Msg { return NavigateMsg{Path: []string{"tunnels", msg.Row.ID}} }
+			return page, func() tea.Msg { return NavigateMsg{Path: []string{"tunnel", "managed", msg.Row.ID}} }
 		}
 		return page, nil
 	case tea.KeyPressMsg:
@@ -582,17 +582,17 @@ func (page *TunnelPage) openCommand(command TunnelCommand, resourceID string) (t
 			return tunnelOperationMsg{command: command, targetID: page.targetID, result: result, err: err}
 		}), nil
 	case TunnelManagedCreate:
-		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnels", "create"}} }, nil
+		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnel", "managed", "create"}} }, nil
 	case TunnelManagedUpdate:
 		if page.targetID == "" {
 			return nil, fmt.Errorf("managed tunnel id is required")
 		}
-		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnels", page.targetID, "edit"}} }, nil
+		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnel", "managed", page.targetID, "edit"}} }, nil
 	case TunnelManagedConfigure:
 		if page.targetID == "" {
 			return nil, fmt.Errorf("managed tunnel id is required")
 		}
-		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnels", page.targetID, "configure"}} }, nil
+		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnel", "managed", page.targetID, "configure"}} }, nil
 	case TunnelManagedDelete:
 		if page.targetID == "" {
 			return nil, fmt.Errorf("managed tunnel id is required")
@@ -748,7 +748,7 @@ func (page *TunnelPage) finishOperation(msg tunnelOperationMsg) tea.Cmd {
 			page.acceptManagedEditorSuccess(msg.result.Metadata)
 			return page.managedEditorSuccess(page.notice, msg.result.Metadata.ID)
 		}
-		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnels", msg.result.Metadata.ID}} }
+		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnel", "managed", msg.result.Metadata.ID}} }
 	case TunnelManagedConfigure:
 		page.upsertMetadata(msg.result.Metadata)
 		_ = page.reloadManagedBrowser()
@@ -762,7 +762,7 @@ func (page *TunnelPage) finishOperation(msg tunnelOperationMsg) tea.Cmd {
 		page.resourceID = ""
 		_ = page.reloadManagedBrowser()
 		page.notice = "Managed tunnel deleted"
-		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnels"}, Replace: true} }
+		return func() tea.Msg { return NavigateMsg{Path: []string{"tunnel", "managed"}, Replace: true} }
 	}
 	return nil
 }
@@ -879,7 +879,7 @@ func (page *TunnelPage) syncManagedDetail() error {
 	page.detail = component.NewDetailPage(detailTitle, meta, content).WithTitleVisible(false)
 	bindings := make([]component.DetailPageBinding, 0, 5)
 	if page.section == "" {
-		bindings = append(bindings, component.DetailPageBinding{Key: "s", Desc: "scope", Message: NavigateMsg{Path: []string{"tunnels", item.ID, "scope"}}})
+		bindings = append(bindings, component.DetailPageBinding{Key: "s", Desc: "scope", Message: NavigateMsg{Path: []string{"tunnel", "managed", item.ID, "scope"}}})
 	}
 	if page.adminStatus.Access.Read || page.adminStatus.Access.Manage {
 		bindings = append(bindings, component.DetailPageBinding{Key: "r", Desc: "refresh", Message: TunnelCommandMsg{Command: TunnelManagedRefresh, ResourceID: item.ID}}, component.DetailPageBinding{Key: "u", Desc: "use", Message: TunnelCommandMsg{Command: TunnelManagedConfigure, ResourceID: item.ID}})

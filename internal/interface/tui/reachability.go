@@ -170,6 +170,12 @@ func tuiReachabilityContexts() []action.Context {
 func tuiConsumesConfirmation(operation capability.ID) bool {
 	switch operation {
 	case capability.LogsClear,
+		capability.ProcessClear,
+		capability.PromptDelete,
+		capability.IntegrationCFRemove,
+		capability.TunnelDelete,
+		capability.ConfigUninit,
+		capability.RequestGrantRevoke,
 		capability.WorkspacePurge,
 		capability.WorkspaceContainerDelete,
 		capability.UpstreamServerRemove,

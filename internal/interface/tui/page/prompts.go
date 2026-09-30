@@ -46,6 +46,16 @@ type Prompts struct {
 	height        int
 }
 
+type PromptCommand string
+
+const (
+	PromptCreate PromptCommand = "prompt.create"
+	PromptUpdate PromptCommand = "prompt.update"
+	PromptDelete PromptCommand = "prompt.delete"
+)
+
+type PromptCommandMsg struct{ Command PromptCommand }
+
 func NewPrompts(ctx context.Context) *Prompts {
 	if ctx == nil {
 		ctx = context.Background()
@@ -151,6 +161,13 @@ func (p *Prompts) Update(message tea.Msg) (Model, tea.Cmd) {
 	}
 	if p.submitting {
 		return p, nil
+	}
+	if command, ok := message.(PromptCommandMsg); ok {
+		key := map[PromptCommand]string{PromptCreate: "n", PromptUpdate: "e", PromptDelete: "d"}[command.Command]
+		if key == "" {
+			return p, nil
+		}
+		return p.Update(tea.KeyPressMsg{Code: rune(key[0]), Text: key})
 	}
 	msg, ok := message.(tea.KeyPressMsg)
 	if !ok {

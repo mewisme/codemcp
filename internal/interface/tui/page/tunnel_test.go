@@ -98,7 +98,7 @@ func TestManagedTunnelBrowserUsesSelectedTunnelShortcut(t *testing.T) {
 		t.Fatal("managed browser use shortcut returned no command")
 	}
 	navigate, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(navigate.Path, "/") != "tunnels/tunnel_one/configure" {
+	if !ok || strings.Join(navigate.Path, "/") != "tunnel/managed/tunnel_one/configure" {
 		t.Fatalf("managed browser use navigation=%#v", navigate)
 	}
 }
@@ -138,7 +138,7 @@ func TestManagedTunnelResourceUsesRoutedChildDetailPage(t *testing.T) {
 		t.Fatal("scope child navigation returned no command")
 	}
 	navigate, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(navigate.Path, "/") != "tunnels/tunnel_one/scope" {
+	if !ok || strings.Join(navigate.Path, "/") != "tunnel/managed/tunnel_one/scope" {
 		t.Fatalf("scope navigation=%#v", navigate)
 	}
 	scope, err := NewManagedTunnelsRoute(t.Context(), item.ID, "scope")
@@ -388,7 +388,7 @@ func TestManagedTunnelRefreshPersistsCacheAndUpdatePrefetchesRemoteState(t *test
 		t.Fatalf("update route cmd=%v err=%v", cmd, err)
 	}
 	navigate, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(navigate.Path, "/") != "tunnels/tunnel_one/edit" {
+	if !ok || strings.Join(navigate.Path, "/") != "tunnel/managed/tunnel_one/edit" {
 		t.Fatalf("update route=%#v", navigate)
 	}
 	edit, err := NewManagedTunnelsRouteAction(t.Context(), "tunnel_one", "", "edit")
@@ -444,7 +444,7 @@ func TestManagedTunnelEditPrefetchEscapeReturnsToDetail(t *testing.T) {
 		t.Fatalf("escape cmd=%v overlay=%d fetch=%t", cmd != nil, page.overlay, page.managedUpdateFetch)
 	}
 	navigate, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(navigate.Path, "/") != "tunnels/tunnel_one" {
+	if !ok || strings.Join(navigate.Path, "/") != "tunnel/managed/tunnel_one" {
 		t.Fatalf("escape navigation=%#v", navigate)
 	}
 	select {

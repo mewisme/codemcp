@@ -41,6 +41,12 @@ type IntegrationCommandMsg struct {
 	WorkspaceID string
 }
 
+type ReadViewCommandMsg struct {
+	Operation   capability.ID
+	WorkspaceID string
+	ResourceID  string
+}
+
 type readViewLoadMsg struct {
 	value any
 	err   error
@@ -63,10 +69,14 @@ type ReadViewPage struct {
 	err     error
 	notice  string
 
-	integrationRun  func(context.Context, capability.ID, string) (any, error)
+	operationRun    func(context.Context, capability.ID, string, string) (any, error)
 	operationID     uint64
 	operationCancel context.CancelFunc
 	progress        *component.Progress
+	confirm         component.ConfirmButtons
+	pending         ReadViewCommandMsg
+	width           int
+	height          int
 }
 
 func newReadViewPage(ctx context.Context, title string, load func(context.Context) (any, error)) *ReadViewPage {
@@ -135,7 +145,7 @@ func NewIntegrationsReadView(ctx context.Context, resourceID, action, workspaceI
 		}
 		return map[string]any{"rtk": rtkStatus, "codegraph": codeGraphStatus, "cf": cfStatus, "typesafe": typeSafeStatus}, nil
 	})
-	page.integrationRun = func(ctx context.Context, operation capability.ID, workspaceID string) (any, error) {
+	page.operationRun = func(ctx context.Context, operation capability.ID, workspaceID, _ string) (any, error) {
 		switch operation {
 		case capability.IntegrationRTKEnable:
 			return rtkService.Enable(ctx)
@@ -188,14 +198,22 @@ func NewExecutionsReadView(ctx context.Context, workspaceID, executionID string)
 func NewProcessesReadView(ctx context.Context, workspaceID, processID string) (*ReadViewPage, error) {
 	service := application.NewRuntimeInspectionService()
 	workspaceID, processID = strings.TrimSpace(workspaceID), strings.TrimSpace(processID)
-	return newReadViewPage(ctx, "Background Processes", func(ctx context.Context) (any, error) {
+	page := newReadViewPage(ctx, "Background Processes", func(ctx context.Context) (any, error) {
 		if processID != "" {
 			result, err := service.ViewProcess(ctx, workspaceID, processID)
 			return result.Value, err
 		}
 		result, err := service.ListProcesses(ctx, workspaceID)
 		return result.Value, err
-	}), nil
+	})
+	page.operationRun = func(ctx context.Context, operation capability.ID, workspaceID, processID string) (any, error) {
+		if operation != capability.ProcessClear {
+			return nil, fmt.Errorf("unsupported process operation: %s", operation)
+		}
+		result, err := service.ClearProcess(ctx, workspaceID, processID)
+		return result.Value, err
+	}
+	return page, nil
 }
 
 func (page *ReadViewPage) Init() tea.Cmd {
@@ -206,7 +224,7 @@ func (page *ReadViewPage) Init() tea.Cmd {
 	return page.loadCmd()
 }
 
-func (page *ReadViewPage) OverlayActive() bool { return false }
+func (page *ReadViewPage) OverlayActive() bool { return page != nil && page.pending.Operation != "" }
 func (page *ReadViewPage) InputActive() bool   { return false }
 
 func (page *ReadViewPage) Close() {
@@ -222,6 +240,9 @@ func (page *ReadViewPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		return page, nil
 	}
 	switch msg := message.(type) {
+	case tea.WindowSizeMsg:
+		page.width, page.height = msg.Width, msg.Height
+		return page, nil
 	case readViewLoadMsg:
 		page.loading = false
 		page.loaded = msg.err == nil
@@ -233,7 +254,24 @@ func (page *ReadViewPage) Update(message tea.Msg) (Model, tea.Cmd) {
 			page.err = err
 			return page, nil
 		}
-		return page, page.startIntegrationOperation(operation, msg.WorkspaceID)
+		command := ReadViewCommandMsg{Operation: operation, WorkspaceID: msg.WorkspaceID}
+		if operation == capability.IntegrationCFRemove {
+			page.stageConfirmation(command, "Remove")
+			return page, nil
+		}
+		return page, page.startReadViewOperation(command)
+	case ReadViewCommandMsg:
+		if msg.Operation == capability.ProcessClear {
+			page.stageConfirmation(msg, "Clear")
+			return page, nil
+		}
+		return page, page.startReadViewOperation(msg)
+	case component.ConfirmChoiceMsg:
+		if page.pending.Operation == "" {
+			return page, nil
+		}
+		page.confirm.Select(msg.Affirmative)
+		return page, page.updateReadViewConfirm(tea.KeyPressMsg{Code: tea.KeyEnter})
 	case integrationOperationMsg:
 		if msg.id != page.operationID {
 			return page, nil
@@ -251,6 +289,9 @@ func (page *ReadViewPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		page.notice = integrationOperationNotice(msg.operation)
 		return page, nil
 	case tea.KeyPressMsg:
+		if page.pending.Operation != "" {
+			return page, page.updateReadViewConfirm(msg)
+		}
 		if msg.String() == "r" {
 			page.loading = true
 			return page, page.loadCmd()
@@ -278,11 +319,39 @@ func (page *ReadViewPage) View(width, height int) string {
 		return component.BottomHelp(component.PageTitle(page.title, width)+"\n"+component.BannerWidth(err.Error(), component.ToneDanger, width), help, width, height)
 	}
 	body := component.PageTitleNotice(page.title, page.notice, width) + "\n" + component.RenderCodeBlock(string(data), "json", width)
+	if page.pending.Operation != "" {
+		title := "Confirm operation"
+		description := "This mutation follows the canonical confirmation policy: " + string(page.pending.Operation)
+		body = component.CenterOverlay(body, component.Modal(confirmOverlayBody(page.confirm, title, description, overlayWidth(width, 72)), overlayWidth(width, 72)), width, height)
+	}
 	return component.BottomHelp(body, help, width, height)
 }
 
-func (page *ReadViewPage) startIntegrationOperation(operation capability.ID, workspaceID string) tea.Cmd {
-	if page == nil || page.integrationRun == nil {
+func (page *ReadViewPage) stageConfirmation(command ReadViewCommandMsg, label string) {
+	page.pending = command
+	page.confirm = component.NewConfirmButtons(label, "Cancel", false)
+}
+
+func (page *ReadViewPage) updateReadViewConfirm(msg tea.KeyPressMsg) tea.Cmd {
+	if msg.String() == "esc" {
+		page.pending, page.confirm = ReadViewCommandMsg{}, component.ConfirmButtons{}
+		return nil
+	}
+	cmd := page.confirm.Update(msg)
+	if msg.String() != "enter" {
+		return cmd
+	}
+	if !page.confirm.AffirmativeSelected() {
+		page.pending, page.confirm = ReadViewCommandMsg{}, component.ConfirmButtons{}
+		return nil
+	}
+	pending := page.pending
+	page.pending, page.confirm = ReadViewCommandMsg{}, component.ConfirmButtons{}
+	return page.startReadViewOperation(pending)
+}
+
+func (page *ReadViewPage) startReadViewOperation(command ReadViewCommandMsg) tea.Cmd {
+	if page == nil || page.operationRun == nil {
 		return func() tea.Msg { return integrationOperationMsg{err: fmt.Errorf("integration mutation is unavailable")} }
 	}
 	if page.operationCancel != nil {
@@ -293,12 +362,12 @@ func (page *ReadViewPage) startIntegrationOperation(operation capability.ID, wor
 	page.operationID++
 	id := page.operationID
 	page.loading, page.err, page.notice = true, nil, ""
-	progress := component.NewProgress(integrationOperationTitle(operation))
+	progress := component.NewProgress(integrationOperationTitle(command.Operation))
 	page.progress = &progress
-	run := page.integrationRun
+	run := page.operationRun
 	return func() tea.Msg {
-		value, err := run(ctx, operation, workspaceID)
-		return integrationOperationMsg{id: id, operation: operation, value: value, err: err}
+		value, err := run(ctx, command.Operation, command.WorkspaceID, command.ResourceID)
+		return integrationOperationMsg{id: id, operation: command.Operation, value: value, err: err}
 	}
 }
 
