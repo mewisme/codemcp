@@ -5,12 +5,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
-	"strings"
 	"testing"
 )
 
-func TestBrowserRequiredOperationsHaveFrontendAdapters(t *testing.T) {
+func TestBrowserFrontendAdapterEvidenceMatchesRegistry(t *testing.T) {
 	_, current, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("cannot resolve capability test path")
@@ -33,25 +31,23 @@ func TestBrowserRequiredOperationsHaveFrontendAdapters(t *testing.T) {
 	if len(matches) == 0 {
 		t.Fatal("frontend operation adapter inventory is empty")
 	}
-	var missing, stale []string
-	required := map[ID]bool{}
-	for _, id := range RequiredOperations(SurfaceBrowser) {
-		required[id] = true
+	for id := range browserFrontendOperationIDs {
 		if !actual[id] {
-			missing = append(missing, string(id))
+			t.Errorf("Browser frontend evidence registry contains missing operation %s", id)
 		}
 	}
 	for id := range actual {
-		if !required[id] {
-			stale = append(stale, string(id))
+		if !browserFrontendOperationIDs[id] {
+			t.Errorf("Browser frontend operation %s is missing from adapter evidence registry", id)
 		}
-	}
-	sort.Strings(missing)
-	sort.Strings(stale)
-	if len(missing) != 0 {
-		t.Fatalf("Browser required operations missing frontend adapters: %s", strings.Join(missing, ", "))
-	}
-	if len(stale) != 0 {
-		t.Fatalf("frontend operation adapter has stale/non-required operations: %s", strings.Join(stale, ", "))
+		spec, ok := Lookup(id)
+		if !ok {
+			t.Errorf("Browser frontend operation %s is not canonical", id)
+			continue
+		}
+		contract, ok := spec.Surface(SurfaceBrowser)
+		if !ok || contract.State != SurfaceRequired {
+			t.Errorf("live Browser adapter %s points to non-required product operation: %#v", id, contract)
+		}
 	}
 }

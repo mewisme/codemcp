@@ -80,7 +80,7 @@ const (
 	telegramReasonNotExposed   = "operation has no Telegram administration workflow"
 )
 
-var telegramRequiredOperations = idSet(
+var telegramLiveAdapterOperations = idSet(
 	InstallRun, UpdateApply, UpdateCheck,
 	RuntimeUp, RuntimeDown, RuntimeRestart,
 	LogsRead, LogsFollow,
@@ -201,6 +201,10 @@ var telegramManagedTunnelCollectionOperations = idSet(
 	TunnelDelete,
 )
 
+func TelegramAdapterOperationLive(id ID) bool {
+	return telegramLiveAdapterOperations[id]
+}
+
 func TelegramRolloutInventory() []TelegramRolloutItem {
 	items := cloneTelegramRolloutItems(telegramCompletedRollout)
 	for _, spec := range All() {
@@ -255,7 +259,7 @@ func telegramFinalContract(id ID) (TelegramRolloutStage, TelegramOwner, Telegram
 		strings.HasPrefix(value, "doctor."), strings.HasPrefix(value, "version."), strings.HasPrefix(value, "health."), strings.HasPrefix(value, "tools."):
 		stage, owner = TelegramStageSystemInstruction, TelegramOwnerSystem
 	}
-	if telegramRequiredOperations[id] {
+	if telegramLiveAdapterOperations[id] {
 		return stage, owner, TelegramRolloutLive, ""
 	}
 	return stage, owner, TelegramRolloutExempt, telegramReasonNotExposed

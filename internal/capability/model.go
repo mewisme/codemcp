@@ -74,7 +74,15 @@ const (
 	SurfaceTelegram Surface = "telegram"
 )
 
-var AllSurfaces = []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceMCP, SurfaceTelegram}
+// ProductSurfaces is the strict operator/reviewer parity boundary. Admin API is
+// Browser transport and MCP is an agent/protocol projection, not a fifth or
+// sixth product interface.
+var ProductSurfaces = []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceTelegram}
+
+// AllSurfaces is kept as the canonical product-surface iteration set.
+var AllSurfaces = ProductSurfaces
+
+var TransportSurfaces = []Surface{SurfaceAdminAPI, SurfaceMCP}
 
 type SurfaceState string
 
@@ -87,19 +95,29 @@ const (
 type SurfaceExemptionClass string
 
 const (
-	SurfaceExemptionLocalOnly         SurfaceExemptionClass = "local-only"
-	SurfaceExemptionAgentOnly         SurfaceExemptionClass = "agent-only"
-	SurfaceExemptionProtocolOnly      SurfaceExemptionClass = "protocol-only"
-	SurfaceExemptionUnsupportedRemote SurfaceExemptionClass = "unsupported-remote"
-	SurfaceExemptionSurfaceSpecific   SurfaceExemptionClass = "surface-specific"
-	SurfaceExemptionDeferred          SurfaceExemptionClass = "deferred"
+	SurfaceExemptionProtocolOnly        SurfaceExemptionClass = "protocol-only"
+	SurfaceExemptionSurfaceBootstrap    SurfaceExemptionClass = "surface-bootstrap"
+	SurfaceExemptionHostLocalPrimitive  SurfaceExemptionClass = "host-local-primitive"
+	SurfaceExemptionRemovedArchitecture SurfaceExemptionClass = "removed-architecture"
+)
+
+type SurfaceExemptionGuard string
+
+const (
+	SurfaceGuardProtocolAudience    SurfaceExemptionGuard = "protocol-audience"
+	SurfaceGuardBootstrapOperation  SurfaceExemptionGuard = "bootstrap-operation"
+	SurfaceGuardHostLocalOperation  SurfaceExemptionGuard = "host-local-operation"
+	SurfaceGuardRemovedArchitecture SurfaceExemptionGuard = "removed-architecture"
 )
 
 type SurfaceContract struct {
-	Surface   Surface               `json:"surface"`
-	State     SurfaceState          `json:"state"`
-	Exemption SurfaceExemptionClass `json:"exemption,omitempty"`
-	Reason    string                `json:"reason,omitempty"`
+	Surface         Surface               `json:"surface"`
+	State           SurfaceState          `json:"state"`
+	Exemption       SurfaceExemptionClass `json:"exemption,omitempty"`
+	Reason          string                `json:"reason,omitempty"`
+	ExemptionOwner  string                `json:"exemption_owner,omitempty"`
+	Guard           SurfaceExemptionGuard `json:"guard,omitempty"`
+	SafeAlternative string                `json:"safe_alternative,omitempty"`
 }
 
 type CLIBinding struct {

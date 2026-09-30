@@ -33,7 +33,7 @@ func (ui *Interface) dispatch(ctx context.Context, operation capability.ID, inpu
 		return nil, fmt.Errorf("unknown canonical operation %q", operation)
 	}
 	contract, ok := spec.Surface(capability.SurfaceTelegram)
-	if !ok || contract.State != capability.SurfaceRequired {
+	if !ok || contract.State != capability.SurfaceRequired || !capability.TelegramAdapterOperationLive(operation) {
 		return nil, fmt.Errorf("operation %s is not exposed through Telegram", operation)
 	}
 	result, err := ui.dispatcher.Dispatch(application.WithOperationInterface(ctx, application.OperationInterfaceTelegram), application.DispatchRequest{Operation: operation, Input: input})

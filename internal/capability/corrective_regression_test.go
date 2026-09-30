@@ -175,13 +175,13 @@ func TestCorrectiveRegressionEvidenceMatrix(t *testing.T) {
 		{
 			domain: "Browser Admin adapter parity",
 			file:   "internal/capability/adapter_enforcement_test.go",
-			tests:  []string{"TestBrowserRequiredOperationsHaveFrontendAdapters"},
+			tests:  []string{"TestBrowserFrontendAdapterEvidenceMatchesRegistry"},
 		},
 		{
 			domain: "TUI capability parity",
 			file:   "internal/interface/tui/capability_parity_test.go",
 			tests: []string{
-				"TestEveryPublicCapabilityHasTUIRepresentation",
+				"TestDeclaredTUIAdapterEvidenceHasRepresentation",
 				"TestExecutableTUIActionsCarryCanonicalOperationIDs",
 				"TestCapabilityActionsHaveReachableContexts",
 			},

@@ -74,19 +74,23 @@ func TestSurfaceLifecyclePreventsPlannedStateOnActiveInterfaces(t *testing.T) {
 	}
 }
 
-func TestRequiredDeclaredMappingsHaveEntryPoints(t *testing.T) {
+func TestRequiredMappingsExposeReachabilityOrExplicitAdapterGap(t *testing.T) {
 	for _, row := range ParityMatrix() {
 		for _, mapping := range row.Surfaces {
 			if mapping.State != SurfaceRequired {
 				continue
 			}
-			if len(mapping.EntryPoints) == 0 {
-				t.Fatalf("required operation %s lacks declared adapter entry point for %s", row.Operation, mapping.Surface)
-			}
-			for _, entry := range mapping.EntryPoints {
-				if strings.TrimSpace(entry) == "" {
-					t.Fatalf("operation %s surface %s has empty entry point", row.Operation, mapping.Surface)
+			if mapping.Reachable {
+				if len(mapping.EntryPoints) == 0 || mapping.Gap != "" {
+					t.Fatalf("reachable operation %s/%s evidence=%v gap=%q", row.Operation, mapping.Surface, mapping.EntryPoints, mapping.Gap)
 				}
+				for _, entry := range mapping.EntryPoints {
+					if strings.TrimSpace(entry) == "" {
+						t.Fatalf("operation %s surface %s has empty entry point", row.Operation, mapping.Surface)
+					}
+				}
+			} else if strings.TrimSpace(mapping.Gap) == "" {
+				t.Fatalf("required operation %s/%s is unreachable without an explicit adapter gap", row.Operation, mapping.Surface)
 			}
 		}
 	}
@@ -208,8 +212,8 @@ func TestParityMatrixCannotOverrideCanonicalSecurityPolicy(t *testing.T) {
 			t.Fatalf("parity row %s overrides canonical security policy: row=%#v policy=%#v", row.Operation, row, policy)
 		}
 		for _, mapping := range row.Surfaces {
-			if mapping.State == SurfaceRequired && len(mapping.EntryPoints) == 0 {
-				t.Fatalf("required mapping %s/%s is missing while policy is canonical", row.Operation, mapping.Surface)
+			if mapping.State == SurfaceRequired && !mapping.Reachable && strings.TrimSpace(mapping.Gap) == "" {
+				t.Fatalf("required mapping %s/%s lost explicit adapter-gap classification", row.Operation, mapping.Surface)
 			}
 		}
 	}
@@ -243,7 +247,7 @@ func TestApprovalReviewAndNotificationCapabilitiesAreDeclared(t *testing.T) {
 	}
 	for _, id := range []ID{RequestList, RequestView, RequestApprove, RequestDeny} {
 		spec, _ := Lookup(id)
-		for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI} {
+		for _, surface := range ProductSurfaces {
 			contract, ok := spec.Surface(surface)
 			if !ok || contract.State != SurfaceRequired {
 				t.Fatalf("approval review %s surface %s contract=%#v", id, surface, contract)
@@ -251,8 +255,10 @@ func TestApprovalReviewAndNotificationCapabilitiesAreDeclared(t *testing.T) {
 		}
 	}
 	status, _ := Lookup(NotificationStatus)
-	admin, ok := status.Surface(SurfaceAdminAPI)
-	if !ok || admin.State != SurfaceRequired {
-		t.Fatalf("notification status Admin API contract=%#v", admin)
+	for _, surface := range ProductSurfaces {
+		contract, ok := status.Surface(surface)
+		if !ok || contract.State != SurfaceRequired {
+			t.Fatalf("notification status %s contract=%#v", surface, contract)
+		}
 	}
 }

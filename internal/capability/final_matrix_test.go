@@ -1,159 +1,254 @@
 package capability
 
 import (
-	"crypto/sha256"
-	"fmt"
+	"encoding/json"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/doctor"
 )
 
-const finalOperationSurfaceFingerprint = "e498d59aafeb2e9dd9c23c519d492f44604d3e9154039eb70e9d7a09c40aa9bd"
-
-func TestFinalOperationSurfaceMatrixFingerprint(t *testing.T) {
-	lines := make([]string, 0, len(All())*len(AllSurfaces))
-	for _, row := range ParityMatrix() {
-		for _, mapping := range row.Surfaces {
-			lines = append(lines, fmt.Sprintf("%s|%s|%s|%s", row.Operation, mapping.Surface, mapping.State, mapping.Exemption))
+func TestStrictProductContractDefaultsHumanOperationsRequired(t *testing.T) {
+	for _, spec := range All() {
+		if len(spec.Surfaces) != len(ProductSurfaces) {
+			t.Fatalf("operation %s product contracts=%d want=%d", spec.ID, len(spec.Surfaces), len(ProductSurfaces))
 		}
-	}
-	fingerprint := fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(lines, "\n"))))
-	if fingerprint != finalOperationSurfaceFingerprint {
-		t.Fatalf("final operation/surface matrix changed: fingerprint=%s rows=%d; reconcile every required adapter/exemption before updating finalOperationSurfaceFingerprint", fingerprint, len(lines))
-	}
-}
-
-func TestFinalMatrixUsesExplicitExemptionClasses(t *testing.T) {
-	seen := map[SurfaceExemptionClass]bool{}
-	for _, row := range ParityMatrix() {
-		for _, mapping := range row.Surfaces {
-			if mapping.State != SurfaceRequired {
-				seen[mapping.Exemption] = true
+		seen := map[Surface]bool{}
+		for _, contract := range spec.Surfaces {
+			if seen[contract.Surface] {
+				t.Fatalf("operation %s duplicates product surface %s", spec.ID, contract.Surface)
+			}
+			seen[contract.Surface] = true
+			if spec.Audience != AudienceOperator && spec.Audience != AudienceReviewer {
+				if contract.State != SurfaceExempt || contract.Exemption != SurfaceExemptionProtocolOnly {
+					t.Fatalf("non-human operation %s/%s contract=%#v", spec.ID, contract.Surface, contract)
+				}
+				continue
+			}
+			switch contract.State {
+			case SurfaceRequired:
+				if contract.Exemption != "" || contract.Reason != "" || contract.ExemptionOwner != "" || contract.Guard != "" || contract.SafeAlternative != "" {
+					t.Fatalf("required operation %s/%s carries exemption metadata: %#v", spec.ID, contract.Surface, contract)
+				}
+			case SurfaceExempt:
+				assertValidExemption(t, spec, contract)
+			default:
+				t.Fatalf("human operation %s/%s has non-final state %q", spec.ID, contract.Surface, contract.State)
+			}
+		}
+		for _, surface := range ProductSurfaces {
+			if !seen[surface] {
+				t.Fatalf("operation %s omitted product surface %s", spec.ID, surface)
 			}
 		}
 	}
-	for _, class := range []SurfaceExemptionClass{
-		SurfaceExemptionLocalOnly,
-		SurfaceExemptionAgentOnly,
-		SurfaceExemptionProtocolOnly,
-		SurfaceExemptionUnsupportedRemote,
-		SurfaceExemptionSurfaceSpecific,
-	} {
-		if !seen[class] {
-			t.Fatalf("final matrix does not exercise exemption class %q", class)
+}
+
+func TestNewHumanOperationDefaultsToAllProductSurfacesRequired(t *testing.T) {
+	spec := Spec{
+		ID: "test.synthetic.operator", Kind: KindQuery, Audience: AudienceOperator, Authorization: AuthorizationOperator,
+		Risk: RiskNone, Confirmation: ConfirmationPolicy{Mode: ConfirmationNone},
+		Effects: SemanticEffects{Key: "test.synthetic.operator", ReadOnly: true, Idempotent: true},
+	}
+	contracts := surfaceContracts(spec)
+	if len(contracts) != len(ProductSurfaces) {
+		t.Fatalf("contracts=%d want=%d", len(contracts), len(ProductSurfaces))
+	}
+	for _, contract := range contracts {
+		if contract.State != SurfaceRequired || contract.Exemption != "" || contract.Reason != "" {
+			t.Fatalf("new operator operation did not default required on %s: %#v", contract.Surface, contract)
 		}
 	}
 }
 
-func TestFinalAdministrativeSurfaceContractsAreExplicit(t *testing.T) {
+func TestStrictExemptionsUseOnlyBoundedExecutableClasses(t *testing.T) {
+	for _, spec := range All() {
+		for _, contract := range spec.Surfaces {
+			if contract.State != SurfaceExempt {
+				continue
+			}
+			assertValidExemption(t, spec, contract)
+		}
+	}
+}
+
+func TestFreeFormOrImplementationAbsenceCannotBecomeProductExemption(t *testing.T) {
+	spec := Spec{
+		ID: "test.synthetic.operator", Kind: KindQuery, Audience: AudienceOperator, Authorization: AuthorizationOperator,
+		Risk: RiskNone, Confirmation: ConfirmationPolicy{Mode: ConfirmationNone},
+		Effects: SemanticEffects{Key: "test.synthetic.operator", ReadOnly: true, Idempotent: true},
+	}
+	contract := SurfaceContract{
+		Surface:        SurfaceBrowser,
+		State:          SurfaceExempt,
+		Exemption:      SurfaceExemptionClass("surface-specific"),
+		Reason:         "not exposed by design",
+		ExemptionOwner: productSurfacePolicyOwner,
+	}
+	if validSurfaceExemption(contract.Exemption) || validSurfaceReason(contract.Reason) || exemptionGuardMatches(spec, contract) {
+		t.Fatalf("free-form implementation exemption unexpectedly passed strict validation: %#v", contract)
+	}
+}
+
+func TestHumanExemptionsHaveSafeAlternatives(t *testing.T) {
 	for _, spec := range All() {
 		if spec.Audience != AudienceOperator && spec.Audience != AudienceReviewer {
 			continue
 		}
-		for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
-			contract, ok := spec.Surface(surface)
-			if !ok {
-				t.Fatalf("operation %s has no %s contract", spec.ID, surface)
+		for _, contract := range spec.Surfaces {
+			if contract.State != SurfaceExempt {
+				continue
 			}
-			switch contract.State {
-			case SurfaceRequired:
-				if contract.Exemption != "" || contract.Reason != "" {
-					t.Fatalf("required operation %s/%s carries exemption metadata: %#v", spec.ID, surface, contract)
-				}
-			case SurfaceExempt:
-				if !validSurfaceExemption(contract.Exemption) || !validSurfaceReason(contract.Reason) {
-					t.Fatalf("operation %s/%s has unbounded exemption: %#v", spec.ID, surface, contract)
-				}
-			default:
-				t.Fatalf("active administrative surface %s keeps non-final state for %s: %#v", surface, spec.ID, contract)
+			if strings.TrimSpace(contract.SafeAlternative) == "" {
+				t.Fatalf("human exemption %s/%s lacks safe alternative: %#v", spec.ID, contract.Surface, contract)
 			}
 		}
 	}
 }
 
-func TestFinalTelemetryProjectionUsesProductOperationsOnly(t *testing.T) {
-	for _, id := range []ID{TelemetryStatus, TelemetryEnable, TelemetryDisable} {
-		for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
-			assertFinalSurface(t, id, surface, SurfaceRequired, "")
-		}
-		assertFinalSurface(t, id, SurfaceMCP, SurfaceExempt, SurfaceExemptionSurfaceSpecific)
+func TestProductParityReportIsDeterministicCompleteAndSorted(t *testing.T) {
+	report := ProductParityReportSnapshot()
+	if report.Version != ProductParityReportVersion {
+		t.Fatalf("version=%d", report.Version)
 	}
-	for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI} {
-		assertFinalSurface(t, TelemetryShow, surface, SurfaceRequired, "")
+	if !reflect.DeepEqual(report.Surfaces, ProductSurfaces) {
+		t.Fatalf("surfaces=%v want=%v", report.Surfaces, ProductSurfaces)
 	}
-	assertFinalSurface(t, TelemetryShow, SurfaceTelegram, SurfaceExempt, SurfaceExemptionSurfaceSpecific)
-
+	if reportHasUnclassifiedSurface(report) {
+		t.Fatal("product parity report contains unclassified operation/surface state")
+	}
+	wantCount := 0
 	for _, spec := range All() {
-		value := string(spec.ID)
-		if strings.HasPrefix(value, "telemetry.") {
-			switch spec.ID {
-			case TelemetryStatus, TelemetryEnable, TelemetryDisable, TelemetryShow:
-			default:
-				t.Fatalf("telemetry transport/internal identity leaked into public operation inventory: %s", spec.ID)
-			}
+		if spec.Audience == AudienceOperator || spec.Audience == AudienceReviewer {
+			wantCount++
+		}
+	}
+	if len(report.Operations) != wantCount {
+		t.Fatalf("report operations=%d want human inventory=%d", len(report.Operations), wantCount)
+	}
+	for index, row := range report.Operations {
+		if row.Audience != AudienceOperator && row.Audience != AudienceReviewer {
+			t.Fatalf("non-human operation leaked into report: %s/%s", row.Operation, row.Audience)
+		}
+		if strings.TrimSpace(row.CanonicalOwner) == "" {
+			t.Fatalf("operation %s lacks canonical owner", row.Operation)
+		}
+		if index > 0 && report.Operations[index-1].Operation > row.Operation {
+			t.Fatalf("report is not sorted at %s", row.Operation)
+		}
+	}
+	raw1, err := ProductParityReportJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw2, err := ProductParityReportJSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw1) != string(raw2) {
+		t.Fatal("product parity report JSON is not deterministic")
+	}
+	var decoded ProductParityReport
+	if err := json.Unmarshal(raw1, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(decoded, report) {
+		t.Fatal("product parity report JSON round-trip drifted")
+	}
+}
+
+func TestProductParityReportKeepsMissingAdaptersAsRequiredGaps(t *testing.T) {
+	report := ProductParityReportSnapshot()
+
+	browser, ok := parityMapping(report, WorkspaceRelocate, SurfaceBrowser)
+	if !ok || browser.State != SurfaceRequired || browser.Reachable || browser.Gap == "" {
+		t.Fatalf("workspace relocate Browser mapping=%#v ok=%t", browser, ok)
+	}
+	spec, _ := Lookup(WorkspaceRelocate)
+	if len(spec.Admin) == 0 {
+		t.Fatal("workspace relocate lost Admin API transport binding")
+	}
+	if browser.Reachable {
+		t.Fatal("Admin API transport binding incorrectly satisfied Browser product reachability")
+	}
+
+	telegram, ok := parityMapping(report, ProcessList, SurfaceTelegram)
+	if !ok || telegram.State != SurfaceRequired || telegram.Reachable || telegram.Gap == "" {
+		t.Fatalf("process list Telegram mapping=%#v ok=%t", telegram, ok)
+	}
+}
+
+func TestProductContractsDoNotTreatAdminAPIOrMCPAsProductSurfaces(t *testing.T) {
+	for _, spec := range All() {
+		if _, ok := spec.Surface(SurfaceAdminAPI); ok {
+			t.Fatalf("operation %s has Admin API product-surface contract", spec.ID)
+		}
+		if _, ok := spec.Surface(SurfaceMCP); ok {
+			t.Fatalf("operation %s has MCP product-surface contract", spec.ID)
 		}
 	}
 }
 
-func TestFinalWorkspaceRelocationIsOneCanonicalOperation(t *testing.T) {
-	for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceAdminAPI, SurfaceTelegram} {
-		assertFinalSurface(t, WorkspaceRelocate, surface, SurfaceRequired, "")
-	}
-	assertFinalSurface(t, WorkspaceRelocate, SurfaceBrowser, SurfaceExempt, SurfaceExemptionUnsupportedRemote)
-	assertFinalSurface(t, WorkspaceRelocate, SurfaceMCP, SurfaceExempt, SurfaceExemptionSurfaceSpecific)
-
-	for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceMCP, SurfaceTelegram} {
-		if surface == SurfaceMCP {
-			assertFinalSurface(t, WorkspaceRegister, surface, SurfaceRequired, "")
+func TestCanonicalOwnerMetadataMatchesMutationAuthority(t *testing.T) {
+	for _, spec := range All() {
+		if spec.Audience != AudienceOperator && spec.Audience != AudienceReviewer {
 			continue
 		}
-		assertFinalSurface(t, WorkspaceRegister, surface, SurfaceRequired, "")
-	}
-	for _, spec := range All() {
-		value := strings.ToLower(string(spec.ID))
-		if strings.Contains(value, "workspace.rebind") || strings.Contains(value, "workspace.duplicate") || strings.Contains(value, "workspace.conflict.resolve") {
-			t.Fatalf("workspace relocation outcome escaped into a second canonical operation: %s", spec.ID)
+		owner, ok := CanonicalOwnerFor(spec.ID)
+		if !ok || strings.TrimSpace(owner) == "" {
+			t.Fatalf("human operation %s lacks canonical owner", spec.ID)
+		}
+		if ownership, mutation := MutationOwnershipFor(spec.ID); mutation && owner != string(ownership.ValidationOwner) {
+			t.Fatalf("operation %s report owner=%q mutation authority=%q", spec.ID, owner, ownership.ValidationOwner)
 		}
 	}
 }
 
-func TestFinalNativeRuleAndSkillAuthoringStayAgentOwned(t *testing.T) {
-	for _, id := range []ID{InstructionRuleCreate, InstructionSkillCreate} {
-		spec, ok := Lookup(id)
-		if !ok {
-			t.Fatalf("authoring operation %s missing", id)
-		}
-		if spec.Audience != AudienceAgent || spec.Authorization != AuthorizationAgent {
-			t.Fatalf("authoring operation %s ownership=%s/%s", id, spec.Audience, spec.Authorization)
-		}
-		assertFinalSurface(t, id, SurfaceMCP, SurfaceRequired, "")
-		for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
-			assertFinalSurface(t, id, surface, SurfaceExempt, SurfaceExemptionAgentOnly)
-		}
+func TestLLMAndApprovalExplainRemainFourSurfaceRequiredBaseline(t *testing.T) {
+	ids := []ID{
+		LLMStatus, LLMProviderList, LLMProviderGet, LLMProviderAdd, LLMProviderConfigure,
+		LLMProviderRemove, LLMProviderSelect, LLMProviderModels, LLMProviderProbe,
+		LLMProviderCredentialSet, LLMProviderCredentialClear,
+		RequestExplain, RequestExplanationView, RequestExplainStatus,
 	}
-
-	for _, id := range []ID{SkillList, SkillLoad, RulesLoadPath} {
+	for _, id := range ids {
 		spec, ok := Lookup(id)
 		if !ok {
-			t.Fatalf("provider-native instruction source operation %s missing", id)
+			t.Fatalf("operation %s missing", id)
 		}
-		if !spec.Effects.ReadOnly || spec.Audience != AudienceAgent {
-			t.Fatalf("provider-native instruction source %s is not read-only agent-owned: %#v", id, spec)
-		}
-		assertFinalSurface(t, id, SurfaceMCP, SurfaceRequired, "")
-		for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
-			assertFinalSurface(t, id, surface, SurfaceExempt, SurfaceExemptionAgentOnly)
+		for _, surface := range ProductSurfaces {
+			contract, ok := spec.Surface(surface)
+			if !ok || contract.State != SurfaceRequired {
+				t.Fatalf("operation %s/%s contract=%#v ok=%t", id, surface, contract, ok)
+			}
 		}
 	}
 }
 
-func TestFinalDoctorOwnsCheckpointAndArchiveHealth(t *testing.T) {
-	for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
-		assertFinalSurface(t, DoctorRead, surface, SurfaceRequired, "")
+func TestAgentInstructionOperationsRemainProtocolOnlyOnProductSurfaces(t *testing.T) {
+	for _, id := range []ID{InstructionRuleCreate, InstructionSkillCreate, SkillList, SkillLoad, RulesLoadPath} {
+		spec, ok := Lookup(id)
+		if !ok {
+			t.Fatalf("operation %s missing", id)
+		}
+		if spec.Audience != AudienceAgent {
+			t.Fatalf("operation %s audience=%s", id, spec.Audience)
+		}
+		if len(spec.MCPTools) == 0 {
+			t.Fatalf("operation %s lost MCP tool binding", id)
+		}
+		for _, surface := range ProductSurfaces {
+			contract, ok := spec.Surface(surface)
+			if !ok || contract.State != SurfaceExempt || contract.Exemption != SurfaceExemptionProtocolOnly {
+				t.Fatalf("operation %s/%s contract=%#v", id, surface, contract)
+			}
+		}
 	}
-	assertFinalSurface(t, DoctorRead, SurfaceMCP, SurfaceExempt, SurfaceExemptionSurfaceSpecific)
+}
 
+func TestDoctorOwnsCheckpointAndArchiveHealth(t *testing.T) {
 	if _, ok := doctor.DefinitionFor(doctor.ComponentCheckpointHistory); !ok {
 		t.Fatal("aggregate doctor inventory lost checkpoint/history health")
 	}
@@ -165,38 +260,7 @@ func TestFinalDoctorOwnsCheckpointAndArchiveHealth(t *testing.T) {
 	}
 }
 
-func TestFinalTunnelMatrixKeepsSingleRuntimeLifecycle(t *testing.T) {
-	for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
-		assertFinalSurface(t, TunnelStatus, surface, SurfaceRequired, "")
-	}
-	assertFinalSurface(t, TunnelStatus, SurfaceMCP, SurfaceExempt, SurfaceExemptionSurfaceSpecific)
-
-	for _, id := range []ID{TunnelList, TunnelGet, TunnelUse, TunnelCreate, TunnelUpdate, TunnelDelete} {
-		assertFinalSurface(t, id, SurfaceCLI, SurfaceRequired, "")
-		assertFinalSurface(t, id, SurfaceBrowser, SurfaceRequired, "")
-		assertFinalSurface(t, id, SurfaceAdminAPI, SurfaceRequired, "")
-		assertFinalSurface(t, id, SurfaceTUI, SurfaceExempt, SurfaceExemptionSurfaceSpecific)
-		assertFinalSurface(t, id, SurfaceTelegram, SurfaceExempt, SurfaceExemptionUnsupportedRemote)
-	}
-}
-
-func TestFinalBrowserAdminOnlyDifferencesAreBounded(t *testing.T) {
-	for _, id := range []ID{WorkspaceRelocate, RequestGrantList, RequestGrantRevoke, NotificationStatus} {
-		spec, ok := Lookup(id)
-		if !ok {
-			t.Fatalf("operation %s missing", id)
-		}
-		admin, _ := spec.Surface(SurfaceAdminAPI)
-		browser, _ := spec.Surface(SurfaceBrowser)
-		if admin.State != SurfaceRequired || browser.State != SurfaceExempt || browserExemptionReason(id) == "" || browser.Reason != browserExemptionReason(id) {
-			t.Fatalf("Browser/Admin difference for %s is not explicitly bounded: admin=%#v browser=%#v", id, admin, browser)
-		}
-	}
-	assertFinalSurface(t, OAuthCallbackComplete, SurfaceAdminAPI, SurfaceRequired, "")
-	assertFinalSurface(t, OAuthCallbackComplete, SurfaceBrowser, SurfaceExempt, SurfaceExemptionProtocolOnly)
-}
-
-func TestFinalProtocolProfilesDoNotCreateOperations(t *testing.T) {
+func TestProtocolProfilesDoNotCreateOperations(t *testing.T) {
 	for _, spec := range All() {
 		value := strings.ToLower(string(spec.ID))
 		for _, forbidden := range []string{"mcp.base", "mcp.openai", ".profile.", "tunnel.instance", "tunnel.admin.profile", "admin.profile"} {
@@ -222,23 +286,26 @@ func TestFinalProtocolProfilesDoNotCreateOperations(t *testing.T) {
 	}
 }
 
-func assertFinalSurface(t *testing.T, id ID, surface Surface, state SurfaceState, exemption SurfaceExemptionClass) {
+func assertValidExemption(t *testing.T, spec Spec, contract SurfaceContract) {
 	t.Helper()
-	spec, ok := Lookup(id)
-	if !ok {
-		t.Fatalf("operation %s missing", id)
+	if !validSurfaceExemption(contract.Exemption) || !validSurfaceReason(contract.Reason) {
+		t.Fatalf("operation %s/%s has invalid exemption: %#v", spec.ID, contract.Surface, contract)
 	}
-	contract, ok := spec.Surface(surface)
-	if !ok {
-		t.Fatalf("operation %s has no %s contract", id, surface)
+	if strings.TrimSpace(contract.ExemptionOwner) == "" || !validSurfaceExemptionGuard(contract.Guard) {
+		t.Fatalf("operation %s/%s lacks typed exemption ownership/evidence: %#v", spec.ID, contract.Surface, contract)
 	}
-	if contract.State != state || contract.Exemption != exemption {
-		t.Fatalf("operation %s/%s contract=%#v want state=%s exemption=%s", id, surface, contract, state, exemption)
+	if !exemptionGuardMatches(spec, contract) {
+		t.Fatalf("operation %s/%s exemption guard does not prove exemption: %#v", spec.ID, contract.Surface, contract)
 	}
-	if state == SurfaceRequired && contract.Reason != "" {
-		t.Fatalf("required operation %s/%s carries reason %q", id, surface, contract.Reason)
-	}
-	if state != SurfaceRequired && !validSurfaceReason(contract.Reason) {
-		t.Fatalf("operation %s/%s has unbounded reason %q", id, surface, contract.Reason)
+}
+
+func TestRequiredOperationsAreDerivedAndSorted(t *testing.T) {
+	for _, surface := range ProductSurfaces {
+		got := RequiredOperations(surface)
+		want := append([]ID(nil), got...)
+		sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("required operations for %s are not sorted", surface)
+		}
 	}
 }

@@ -1,23 +1,42 @@
 package capability
 
-import "sort"
+import (
+	"encoding/json"
+	"sort"
+	"strings"
+)
+
+const ProductParityReportVersion = 1
 
 type SurfaceMapping struct {
-	Surface     Surface               `json:"surface"`
-	State       SurfaceState          `json:"state"`
-	Exemption   SurfaceExemptionClass `json:"exemption,omitempty"`
-	Reason      string                `json:"reason,omitempty"`
-	EntryPoints []string              `json:"entry_points,omitempty"`
+	Surface         Surface               `json:"surface"`
+	State           SurfaceState          `json:"state"`
+	Exemption       SurfaceExemptionClass `json:"exemption,omitempty"`
+	Reason          string                `json:"reason,omitempty"`
+	ExemptionOwner  string                `json:"exemption_owner,omitempty"`
+	Guard           SurfaceExemptionGuard `json:"guard,omitempty"`
+	SafeAlternative string                `json:"safe_alternative,omitempty"`
+	EntryPoints     []string              `json:"entry_points,omitempty"`
+	Reachable       bool                  `json:"reachable"`
+	Gap             string                `json:"gap,omitempty"`
 }
 
 type ParityRow struct {
-	Operation     ID                 `json:"operation"`
-	Kind          Kind               `json:"kind"`
-	Authorization AuthorizationClass `json:"authorization"`
-	Risk          MutationRisk       `json:"risk"`
-	Confirmation  ConfirmationPolicy `json:"confirmation"`
-	Effects       SemanticEffects    `json:"effects"`
-	Surfaces      []SurfaceMapping   `json:"surfaces"`
+	Operation      ID                 `json:"operation"`
+	Kind           Kind               `json:"kind"`
+	Audience       Audience           `json:"audience"`
+	CanonicalOwner string             `json:"canonical_owner"`
+	Authorization  AuthorizationClass `json:"authorization"`
+	Risk           MutationRisk       `json:"risk"`
+	Confirmation   ConfirmationPolicy `json:"confirmation"`
+	Effects        SemanticEffects    `json:"effects"`
+	Surfaces       []SurfaceMapping   `json:"surfaces"`
+}
+
+type ProductParityReport struct {
+	Version    int         `json:"version"`
+	Surfaces   []Surface   `json:"surfaces"`
+	Operations []ParityRow `json:"operations"`
 }
 
 func RequiredOperations(surface Surface) []ID {
@@ -31,63 +50,82 @@ func RequiredOperations(surface Surface) []ID {
 	return ids
 }
 
+// ParityMatrix returns canonical product-surface mappings for every operation.
+// ProductParityReportSnapshot filters this inventory to operator/reviewer
+// operations, which are the strict product parity contract.
 func ParityMatrix() []ParityRow {
 	snapshot := Inventory()
 	rows := make([]ParityRow, 0, len(snapshot.Operations))
 	for _, operation := range snapshot.Operations {
+		owner, _ := CanonicalOwnerFor(operation.ID)
 		row := ParityRow{
-			Operation: operation.ID, Kind: operation.Kind, Authorization: operation.Authorization,
-			Risk: operation.Risk, Confirmation: operation.Confirmation, Effects: operation.Effects,
+			Operation: operation.ID, Kind: operation.Kind, Audience: operation.Audience, CanonicalOwner: owner,
+			Authorization: operation.Authorization, Risk: operation.Risk,
+			Confirmation: operation.Confirmation, Effects: operation.Effects,
 		}
 		for _, contract := range operation.Surfaces {
-			row.Surfaces = append(row.Surfaces, SurfaceMapping{
+			entries, reachable := productAdapterEvidence(operation, contract.Surface)
+			mapping := SurfaceMapping{
 				Surface: contract.Surface, State: contract.State, Exemption: contract.Exemption, Reason: contract.Reason,
-				EntryPoints: inventoryEntryPoints(operation, contract.Surface),
-			})
+				ExemptionOwner: contract.ExemptionOwner, Guard: contract.Guard, SafeAlternative: contract.SafeAlternative,
+				EntryPoints: entries, Reachable: reachable,
+			}
+			if contract.State == SurfaceRequired && !reachable {
+				mapping.Gap = "required product adapter is not yet production-reachable"
+			}
+			row.Surfaces = append(row.Surfaces, mapping)
 		}
 		rows = append(rows, row)
 	}
 	return rows
 }
 
-func inventoryEntryPoints(operation OperationInventory, surface Surface) []string {
+func ProductParityReportSnapshot() ProductParityReport {
+	rows := ParityMatrix()
+	operations := make([]ParityRow, 0, len(rows))
+	for _, row := range rows {
+		if row.Audience != AudienceOperator && row.Audience != AudienceReviewer {
+			continue
+		}
+		operations = append(operations, row)
+	}
+	return ProductParityReport{
+		Version:    ProductParityReportVersion,
+		Surfaces:   append([]Surface(nil), ProductSurfaces...),
+		Operations: operations,
+	}
+}
+
+func ProductParityReportJSON() ([]byte, error) {
+	return json.Marshal(ProductParityReportSnapshot())
+}
+
+func productAdapterEvidence(operation OperationInventory, surface Surface) ([]string, bool) {
 	switch surface {
 	case SurfaceCLI:
 		if operation.CLI.CanonicalPath == "" {
-			return nil
+			return nil, false
 		}
-		return append([]string{operation.CLI.CanonicalPath}, operation.CLI.Aliases...)
+		entries := append([]string{operation.CLI.CanonicalPath}, operation.CLI.Aliases...)
+		return entries, true
 	case SurfaceTUI:
 		if entries := tuiInventoryEntryPoints[operation.ID]; len(entries) > 0 {
-			return append([]string(nil), entries...)
+			return append([]string(nil), entries...), true
 		}
-		if tuiExplicitExemptIDs[operation.ID] || operation.CLI.CanonicalPath == "" || operation.Audience == AudienceAgent || operation.Audience == AudienceProtocol {
-			return nil
+		if tuiKnownAdapterGaps[operation.ID] || operation.CLI.CanonicalPath == "" ||
+			operation.Audience == AudienceAgent || operation.Audience == AudienceProtocol {
+			return nil, false
 		}
-		return []string{operation.CLI.CanonicalPath}
+		return []string{"command-backed action " + operation.CLI.CanonicalPath}, true
 	case SurfaceBrowser:
-		if !browserRequiredIDs[operation.ID] {
-			return nil
+		if !browserFrontendOperationIDs[operation.ID] {
+			return nil, false
 		}
-		return adminEntryPoints(operation.Admin)
-	case SurfaceAdminAPI:
-		return adminEntryPoints(operation.Admin)
-	case SurfaceMCP:
-		return append([]string(nil), operation.MCPTools...)
+		return []string{"frontend operation " + string(operation.ID)}, true
 	case SurfaceTelegram:
-		for _, item := range TelegramRolloutInventory() {
-			if item.Operation != operation.ID || item.State != TelegramRolloutLive {
-				continue
-			}
-			out := make([]string, 0, len(item.EntryPoints))
-			for _, entry := range item.EntryPoints {
-				out = append(out, string(entry.Kind)+" "+entry.Value)
-			}
-			return out
-		}
-		return nil
+		return telegramProductAdapterEvidence(operation.ID)
 	default:
-		return nil
+		return nil, false
 	}
 }
 
@@ -95,11 +133,71 @@ var tuiInventoryEntryPoints = map[ID][]string{
 	RequestExplanationView: {"tui requests explanation"},
 }
 
-func adminEntryPoints(bindings []AdminBinding) []string {
-	out := make([]string, 0, len(bindings))
-	for _, binding := range bindings {
-		binding = normalizeAdminBinding(binding)
-		out = append(out, binding.Method+" "+binding.Path)
+var tuiKnownAdapterGaps = idSet(
+	InstructionSettingsRead,
+	InstructionSettingsWrite,
+	ProjectContextRead,
+	TunnelList,
+	TunnelGet,
+	TunnelUse,
+	TunnelCreate,
+	TunnelUpdate,
+	TunnelDelete,
+)
+
+func telegramProductAdapterEvidence(id ID) ([]string, bool) {
+	for _, item := range TelegramRolloutInventory() {
+		if item.Operation != id || item.State != TelegramRolloutLive {
+			continue
+		}
+		out := make([]string, 0, len(item.EntryPoints))
+		discoverable := false
+		for _, entry := range item.EntryPoints {
+			out = append(out, string(entry.Kind)+" "+entry.Value)
+			switch entry.Kind {
+			case TelegramEntryCommand, TelegramEntryRoute, TelegramEntryCallback:
+				discoverable = true
+			}
+		}
+		return out, discoverable
 	}
-	return out
+	return nil, false
+}
+
+func parityMapping(report ProductParityReport, id ID, surface Surface) (SurfaceMapping, bool) {
+	for _, row := range report.Operations {
+		if row.Operation != id {
+			continue
+		}
+		for _, mapping := range row.Surfaces {
+			if mapping.Surface == surface {
+				return mapping, true
+			}
+		}
+	}
+	return SurfaceMapping{}, false
+}
+
+func reportHasUnclassifiedSurface(report ProductParityReport) bool {
+	for _, row := range report.Operations {
+		if strings.TrimSpace(row.CanonicalOwner) == "" || len(row.Surfaces) != len(ProductSurfaces) {
+			return true
+		}
+		for _, mapping := range row.Surfaces {
+			switch mapping.State {
+			case SurfaceRequired:
+				if mapping.Exemption != "" || mapping.Reason != "" || mapping.ExemptionOwner != "" || mapping.Guard != "" {
+					return true
+				}
+			case SurfaceExempt:
+				if !validSurfaceExemption(mapping.Exemption) || !validSurfaceReason(mapping.Reason) ||
+					strings.TrimSpace(mapping.ExemptionOwner) == "" || !validSurfaceExemptionGuard(mapping.Guard) {
+					return true
+				}
+			default:
+				return true
+			}
+		}
+	}
+	return false
 }

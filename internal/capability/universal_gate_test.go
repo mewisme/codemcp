@@ -71,39 +71,36 @@ func TestUniversalOperationAndSurfaceGate(t *testing.T) {
 			}
 			switch mapping.State {
 			case SurfaceRequired:
-				if mapping.Exemption != "" || mapping.Reason != "" {
+				if mapping.Exemption != "" || mapping.Reason != "" || mapping.ExemptionOwner != "" || mapping.Guard != "" {
 					t.Fatalf("required operation %s/%s carries exemption metadata: %#v", row.Operation, mapping.Surface, mapping)
 				}
 				if !lifecycle.Active {
 					t.Fatalf("operation %s requires inactive surface %s", row.Operation, mapping.Surface)
 				}
-				if len(mapping.EntryPoints) == 0 {
-					t.Fatalf("required operation %s lacks production adapter entry point for %s", row.Operation, mapping.Surface)
-				}
-				for _, entry := range mapping.EntryPoints {
-					if strings.TrimSpace(entry) == "" {
-						t.Fatalf("required operation %s/%s has empty production entry point", row.Operation, mapping.Surface)
+				if mapping.Reachable {
+					if len(mapping.EntryPoints) == 0 || mapping.Gap != "" {
+						t.Fatalf("reachable operation %s/%s has invalid adapter evidence: %#v", row.Operation, mapping.Surface, mapping)
 					}
+					for _, entry := range mapping.EntryPoints {
+						if strings.TrimSpace(entry) == "" {
+							t.Fatalf("required operation %s/%s has empty adapter evidence", row.Operation, mapping.Surface)
+						}
+					}
+				} else if strings.TrimSpace(mapping.Gap) == "" {
+					t.Fatalf("required operation %s/%s lacks explicit adapter-gap classification", row.Operation, mapping.Surface)
 				}
 			case SurfacePlanned:
-				if !validSurfaceExemption(mapping.Exemption) {
-					t.Fatalf("planned operation %s/%s has invalid exemption class %q", row.Operation, mapping.Surface, mapping.Exemption)
-				}
-				if lifecycle.Active {
-					t.Fatalf("operation %s keeps planned state on active surface %s", row.Operation, mapping.Surface)
-				}
-				if !validSurfaceReason(mapping.Reason) {
-					t.Fatalf("planned operation %s/%s has unbounded lifecycle reason %q", row.Operation, mapping.Surface, mapping.Reason)
-				}
-				if len(mapping.EntryPoints) != 0 {
-					t.Fatalf("planned operation %s/%s advertises live entry points: %v", row.Operation, mapping.Surface, mapping.EntryPoints)
-				}
+				t.Fatalf("operation %s keeps planned state on active product surface %s", row.Operation, mapping.Surface)
 			case SurfaceExempt:
-				if !validSurfaceExemption(mapping.Exemption) {
-					t.Fatalf("exempt operation %s/%s has invalid exemption class %q", row.Operation, mapping.Surface, mapping.Exemption)
+				if !validSurfaceExemption(mapping.Exemption) || !validSurfaceReason(mapping.Reason) ||
+					strings.TrimSpace(mapping.ExemptionOwner) == "" || !validSurfaceExemptionGuard(mapping.Guard) {
+					t.Fatalf("exempt operation %s/%s has invalid typed metadata: %#v", row.Operation, mapping.Surface, mapping)
 				}
-				if !validSurfaceReason(mapping.Reason) {
-					t.Fatalf("exempt operation %s/%s has unbounded lifecycle reason %q", row.Operation, mapping.Surface, mapping.Reason)
+				if !exemptionGuardMatches(spec, SurfaceContract{
+					Surface: mapping.Surface, State: mapping.State, Exemption: mapping.Exemption, Reason: mapping.Reason,
+					ExemptionOwner: mapping.ExemptionOwner, Guard: mapping.Guard, SafeAlternative: mapping.SafeAlternative,
+				}) {
+					t.Fatalf("exempt operation %s/%s does not satisfy its executable guard: %#v", row.Operation, mapping.Surface, mapping)
 				}
 			default:
 				t.Fatalf("operation %s/%s has unknown lifecycle state %q", row.Operation, mapping.Surface, mapping.State)
@@ -193,7 +190,7 @@ func TestUniversalSurfaceAdapterGuardsRemainPresent(t *testing.T) {
 			"TestRunnableCLICommandsCarryCanonicalOperationAnnotations",
 		},
 		"internal/interface/tui/capability_parity_test.go": {
-			"TestEveryPublicCapabilityHasTUIRepresentation",
+			"TestDeclaredTUIAdapterEvidenceHasRepresentation",
 			"TestEveryTUIActionCapabilityIsDeclaredRequired",
 			"TestExecutableTUIActionsCarryCanonicalOperationIDs",
 		},
@@ -201,7 +198,7 @@ func TestUniversalSurfaceAdapterGuardsRemainPresent(t *testing.T) {
 			"TestPublicAdminOperationsHaveCanonicalIDs",
 		},
 		"internal/capability/adapter_enforcement_test.go": {
-			"TestBrowserRequiredOperationsHaveFrontendAdapters",
+			"TestBrowserFrontendAdapterEvidenceMatchesRegistry",
 		},
 		"internal/tools/capability_contract_test.go": {
 			"TestBuiltInToolsHaveCanonicalOperationIDs",
@@ -211,6 +208,7 @@ func TestUniversalSurfaceAdapterGuardsRemainPresent(t *testing.T) {
 		},
 		"internal/capability/telegram_rollout_test.go": {
 			"TestTelegramRolloutFutureOwnershipIsExplicit",
+			"TestTelegramLiveAdapterEvidenceTargetsRequiredOrBootstrapOperations",
 		},
 		"internal/application/operation_test.go": {
 			"TestDispatcherReturnsCanonicalMetadataAndTypedErrors",

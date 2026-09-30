@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-const InventoryVersion = 3
+const InventoryVersion = 4
 
 type SurfaceLifecycle struct {
 	Surface Surface `json:"surface"`
@@ -52,8 +52,6 @@ var surfaceLifecycles = []SurfaceLifecycle{
 	{Surface: SurfaceCLI, Active: true},
 	{Surface: SurfaceTUI, Active: true},
 	{Surface: SurfaceBrowser, Active: true},
-	{Surface: SurfaceAdminAPI, Active: true},
-	{Surface: SurfaceMCP, Active: true},
 	{Surface: SurfaceTelegram, Active: true},
 }
 

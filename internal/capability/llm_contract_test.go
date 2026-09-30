@@ -40,27 +40,14 @@ func TestLLMCapabilitiesEncodeCanonicalSecurityAndSurfaceContracts(t *testing.T)
 		if !ok {
 			t.Fatalf("LLM operation %s missing", id)
 		}
-		cli, ok := spec.Surface(SurfaceCLI)
-		if !ok || cli.State != SurfaceRequired || cli.Exemption != "" {
-			t.Fatalf("LLM operation %s/cli contract=%#v ok=%t", id, cli, ok)
-		}
-		for _, surface := range []Surface{SurfaceBrowser, SurfaceAdminAPI} {
+		for _, surface := range ProductSurfaces {
 			contract, ok := spec.Surface(surface)
 			if !ok || contract.State != SurfaceRequired || contract.Exemption != "" {
 				t.Fatalf("LLM operation %s/%s contract=%#v ok=%t", id, surface, contract, ok)
 			}
 		}
-		tui, ok := spec.Surface(SurfaceTUI)
-		if !ok || tui.State != SurfaceRequired || tui.Exemption != "" {
-			t.Fatalf("LLM operation %s/tui contract=%#v ok=%t", id, tui, ok)
-		}
-		telegram, ok := spec.Surface(SurfaceTelegram)
-		if !ok || telegram.State != SurfaceRequired || telegram.Exemption != "" {
-			t.Fatalf("LLM operation %s/telegram contract=%#v ok=%t", id, telegram, ok)
-		}
-		mcp, ok := spec.Surface(SurfaceMCP)
-		if !ok || mcp.State != SurfaceExempt || mcp.Exemption != SurfaceExemptionSurfaceSpecific {
-			t.Fatalf("LLM operation %s MCP contract=%#v ok=%t", id, mcp, ok)
+		if len(spec.MCPTools) != 0 || len(spec.PlannedMCPTools) != 0 {
+			t.Fatalf("LLM operator operation %s unexpectedly exposed as MCP agent tool: %#v", id, spec.MCPTools)
 		}
 	}
 }

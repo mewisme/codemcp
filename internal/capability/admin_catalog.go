@@ -132,7 +132,7 @@ var adminBindings = map[ID][]AdminBinding{
 	OAuthCallbackComplete:               {{Method: "GET", Path: "/oauth/callback/{server_id}"}},
 }
 
-var browserRequiredIDs = idSet(
+var browserFrontendOperationIDs = idSet(
 	HealthRead, StatusOverview, DoctorRead, VersionAbout,
 	RuntimeUp, RuntimeDown, RuntimeRestart,
 	LogsRead, LogsPath, LogsClear,
@@ -164,47 +164,6 @@ var browserRequiredIDs = idSet(
 	LLMProviderSelect, LLMProviderModels, LLMProviderProbe, LLMProviderCredentialSet, LLMProviderCredentialClear,
 	RequestExplain, RequestExplanationView, RequestExplainStatus,
 )
-
-var adminSupplementRequiredIDs = idSet(
-	WorkspaceRelocate,
-	RequestGrantList, RequestGrantRevoke,
-	NotificationStatus,
-	OAuthCallbackComplete,
-)
-
-var browserExemptionReasons = map[ID]string{
-	WorkspaceRelocate:  "Browser Admin does not select server-local relocation paths; the canonical Admin API remains available for explicit operator automation",
-	RequestGrantList:   "Browser approval review is request-scoped and does not expose runtime similarity-grant administration",
-	RequestGrantRevoke: "Browser approval review is request-scoped and does not expose runtime similarity-grant administration",
-	NotificationStatus: "Browser health/status views consume notification outcomes without exposing provider delivery state as a standalone workflow",
-}
-
-func adminRequired(id ID) bool {
-	return browserRequiredIDs[id] || adminSupplementRequiredIDs[id]
-}
-
-func browserExemptionReason(id ID) string {
-	return browserExemptionReasons[id]
-}
-
-var adminExemptionReasons = map[ID]string{
-	ServerForeground:     "foreground server ownership remains outside the managed Admin API lifecycle",
-	ConfigInit:           "configuration initialization precedes Admin API availability",
-	ConfigUninit:         "configuration removal cannot be owned by the running server that depends on that configuration",
-	ConfigExport:         "portable bundle export targets an operator-selected filesystem path and remains an out-of-process workflow",
-	ConfigImport:         "portable bundle import requires the runtime to be stopped and remains an out-of-process workflow",
-	ConfigGet:            "Admin uses the canonical config snapshot and setting registry instead of the CLI single-key facade",
-	ConfigList:           "Admin uses the canonical config snapshot and setting registry instead of the CLI listing facade",
-	ConfigSet:            "Admin mutations use the canonical config patch and SettingService transaction",
-	ConfigMigrate:        "format migration is offline maintenance rather than a live Admin API mutation",
-	ConfigMigrateSecrets: "secret migration is offline maintenance rather than a live Admin API mutation",
-	LogsFollow:           "Admin exposes bounded journal reads; terminal-style continuous follow remains a CLI stream",
-	TelegramSetup:        "Telegram pairing is an interactive setup workflow without a non-interactive Admin application operation",
-}
-
-func adminExemptionReason(id ID) string {
-	return adminExemptionReasons[id]
-}
 
 func adminOnlySpecs() []Spec {
 	requestStream := adminStreamSpec(RequestStream)

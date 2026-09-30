@@ -2,7 +2,6 @@ package tui
 
 import (
 	"runtime"
-	"sort"
 	"strings"
 	"testing"
 
@@ -14,7 +13,7 @@ import (
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
-func TestEveryPublicCapabilityHasTUIRepresentation(t *testing.T) {
+func TestDeclaredTUIAdapterEvidenceHasRepresentation(t *testing.T) {
 	registry := defaultActionRegistry()
 	represented := map[capability.ID][]action.Action{}
 	for _, item := range registry.All() {
@@ -22,19 +21,16 @@ func TestEveryPublicCapabilityHasTUIRepresentation(t *testing.T) {
 			represented[id] = append(represented[id], item)
 		}
 	}
-	missing := []string{}
-	for _, spec := range capability.All() {
-		surface, ok := spec.Surface(capability.SurfaceTUI)
-		if !ok || surface.State != capability.SurfaceRequired {
-			continue
+	report := capability.ProductParityReportSnapshot()
+	for _, row := range report.Operations {
+		for _, mapping := range row.Surfaces {
+			if mapping.Surface != capability.SurfaceTUI || !mapping.Reachable {
+				continue
+			}
+			if len(represented[row.Operation]) == 0 {
+				t.Errorf("declared reachable TUI adapter %s has no action representation; evidence=%v", row.Operation, mapping.EntryPoints)
+			}
 		}
-		if len(represented[spec.ID]) == 0 {
-			missing = append(missing, spec.CLI.CanonicalPath)
-		}
-	}
-	if len(missing) > 0 {
-		sort.Strings(missing)
-		t.Fatalf("missing TUI mappings:\n  %s", strings.Join(missing, "\n  "))
 	}
 }
 

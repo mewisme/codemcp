@@ -120,13 +120,12 @@ func TestInstructionAuthoringOperationsAreAgentMCPOnly(t *testing.T) {
 		if spec.Audience != AudienceAgent || spec.Kind != KindMutation {
 			t.Fatalf("operation %q contract=%#v", test.id, spec)
 		}
-		mcp, ok := spec.Surface(SurfaceMCP)
-		if !ok || mcp.State != SurfaceRequired {
-			t.Fatalf("operation %q MCP surface=%#v", test.id, mcp)
+		if len(spec.MCPTools) == 0 || spec.MCPTools[0] != test.tool {
+			t.Fatalf("operation %q MCP tools=%v", test.id, spec.MCPTools)
 		}
-		for _, surface := range []Surface{SurfaceCLI, SurfaceTUI, SurfaceBrowser, SurfaceAdminAPI, SurfaceTelegram} {
+		for _, surface := range ProductSurfaces {
 			contract, ok := spec.Surface(surface)
-			if !ok || contract.State != SurfaceExempt {
+			if !ok || contract.State != SurfaceExempt || contract.Exemption != SurfaceExemptionProtocolOnly {
 				t.Fatalf("operation %q surface %q=%#v", test.id, surface, contract)
 			}
 		}
@@ -150,15 +149,11 @@ func assertSurfaceContractComplete(t *testing.T, spec Spec) {
 				t.Fatalf("operation %s required surface %s has exemption reason %q", spec.ID, contract.Surface, contract.Reason)
 			}
 		case SurfacePlanned:
-			if SurfaceActive(contract.Surface) {
-				t.Fatalf("operation %s keeps planned state on active surface %s", spec.ID, contract.Surface)
-			}
-			if !validSurfaceReason(contract.Reason) {
-				t.Fatalf("operation %s planned surface %s has unbounded reason %q", spec.ID, contract.Surface, contract.Reason)
-			}
+			t.Fatalf("operation %s keeps planned product-surface state for %s", spec.ID, contract.Surface)
 		case SurfaceExempt:
-			if !validSurfaceReason(contract.Reason) {
-				t.Fatalf("operation %s exempt surface %s has unbounded reason %q", spec.ID, contract.Surface, contract.Reason)
+			if !validSurfaceExemption(contract.Exemption) || !validSurfaceReason(contract.Reason) ||
+				!validSurfaceExemptionGuard(contract.Guard) || !exemptionGuardMatches(spec, contract) {
+				t.Fatalf("operation %s exempt surface %s has invalid typed metadata: %#v", spec.ID, contract.Surface, contract)
 			}
 		default:
 			t.Fatalf("operation %s has invalid surface state %q for %s", spec.ID, contract.State, contract.Surface)

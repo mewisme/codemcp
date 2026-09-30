@@ -1,251 +1,181 @@
 package capability
 
+import "strings"
+
 const (
-	reasonAgentOnly                 = "agent-only operation is exposed through MCP tools"
-	reasonProtocolOnly              = "protocol-only operation is not a human interface action"
-	reasonNoCLI                     = "no current CLI command owns this operation"
-	reasonNoTUI                     = "no current TUI action owns this operation"
-	reasonNoBrowser                 = "no current Browser workflow owns this operation"
-	reasonNoAdminAPI                = "no current Admin API route owns this operation"
-	reasonNoMCP                     = "operation has no MCP tool binding"
-	reasonMCPPending                = "MCP tool binding is defined but not active yet"
-	reasonTelegramExcluded          = "operation is outside Telegram administration scope"
-	reasonSurfaceLocalOnly          = "operation requires local process or filesystem ownership on this surface"
-	reasonTelegramManagedCollection = "Telegram exposes the active single-tunnel lifecycle and does not expose managed tunnel collection operations"
-	reasonNotApplicable             = "surface is not applicable"
-	reasonLLMSurfaceDeferred        = "LLM administration is deferred to the dedicated interface rollout"
-	reasonLLMOperatorOnly           = "LLM provider administration is operator-only and is not exposed to requesting MCP agents"
-	reasonApprovalExplainDeferred   = "approval explanation review is deferred to the dedicated interface rollout"
-	reasonApprovalExplainReviewer   = "approval explanation is reviewer-only and is not exposed to requesting MCP agents"
+	productSurfacePolicyOwner = "capability.product-surface-policy"
+
+	reasonProtocolOnly        = "operation belongs to the agent or protocol projection rather than an operator/reviewer product workflow"
+	reasonBootstrapOnly       = "operation changes bootstrap state that the remote product surface depends on"
+	reasonHostLocalOnly       = "operation owns an interactive host process or transport primitive that cannot be safely server-driven"
+	reasonRemovedArchitecture = "operation belongs to architecture that is no longer part of the current product"
 )
 
-var knownSurfaceReasons = map[string]struct{}{
-	reasonAgentOnly: {}, reasonProtocolOnly: {}, reasonNoCLI: {}, reasonNoTUI: {},
-	reasonNoBrowser: {}, reasonNoAdminAPI: {}, reasonNoMCP: {}, reasonMCPPending: {},
-	reasonTelegramExcluded: {}, reasonSurfaceLocalOnly: {}, reasonTelegramManagedCollection: {}, reasonNotApplicable: {},
-	reasonLLMSurfaceDeferred: {}, reasonLLMOperatorOnly: {},
-	reasonApprovalExplainDeferred: {}, reasonApprovalExplainReviewer: {},
-}
-
-var llmOperationIDs = idSet(
-	LLMStatus,
-	LLMProviderList,
-	LLMProviderGet,
-	LLMProviderAdd,
-	LLMProviderConfigure,
-	LLMProviderRemove,
-	LLMProviderSelect,
-	LLMProviderModels,
-	LLMProviderProbe,
-	LLMProviderCredentialSet,
-	LLMProviderCredentialClear,
-)
-
-var approvalExplainOperationIDs = idSet(
-	RequestExplain,
-	RequestExplanationView,
-	RequestExplainStatus,
-)
-
-var remoteLocalOnlyExemptIDs = idSet(
-	ServerForeground,
+var remoteBootstrapOperationIDs = idSet(
 	ConfigInit,
 	ConfigUninit,
-	ConfigExport,
 	ConfigImport,
 	ConfigMigrate,
 	ConfigMigrateSecrets,
+)
+
+var remoteHostLocalOperationIDs = idSet(
+	ServerForeground,
 	MCPStdio,
 	MCPHTTP,
 	TunnelForeground,
 )
 
-var tuiExplicitExemptIDs = idSet(
-	InstructionSettingsRead,
-	InstructionSettingsWrite,
-	ProjectContextRead,
-	TunnelList,
-	TunnelGet,
-	TunnelUse,
-	TunnelCreate,
-	TunnelUpdate,
-	TunnelDelete,
+var telegramBootstrapOperationIDs = idSet(
+	TelegramSetup,
 )
 
+// removedArchitectureOperationIDs is intentionally empty for the live catalog.
+// Historical/compatibility identifiers must not be reintroduced merely to
+// classify them as exempt.
+var removedArchitectureOperationIDs = idSet()
+
 func surfaceContracts(spec Spec) []SurfaceContract {
-	contracts := make([]SurfaceContract, 0, len(AllSurfaces))
-	for _, surface := range AllSurfaces {
-		contract := SurfaceContract{Surface: surface}
-		if llmOperationIDs[spec.ID] || approvalExplainOperationIDs[spec.ID] {
-			if surface == SurfaceTUI || surface == SurfaceTelegram {
-				contract.State = SurfaceRequired
-				contracts = append(contracts, contract)
-				continue
-			}
-			if surface == SurfaceCLI && spec.HasCLI() {
-				contract.State = SurfaceRequired
-				contracts = append(contracts, contract)
-				continue
-			}
-			if surface == SurfaceBrowser && browserRequiredIDs[spec.ID] {
-				contract.State = SurfaceRequired
-				contracts = append(contracts, contract)
-				continue
-			}
-			if surface == SurfaceAdminAPI && adminRequired(spec.ID) {
-				contract.State = SurfaceRequired
-				contracts = append(contracts, contract)
-				continue
-			}
-			contract.State = SurfaceExempt
-			if surface == SurfaceMCP {
-				contract.Exemption = SurfaceExemptionSurfaceSpecific
-				if approvalExplainOperationIDs[spec.ID] {
-					contract.Reason = reasonApprovalExplainReviewer
-				} else {
-					contract.Reason = reasonLLMOperatorOnly
-				}
-			} else {
-				contract.Exemption = SurfaceExemptionDeferred
-				if approvalExplainOperationIDs[spec.ID] {
-					contract.Reason = reasonApprovalExplainDeferred
-				} else {
-					contract.Reason = reasonLLMSurfaceDeferred
-				}
-			}
-			contracts = append(contracts, contract)
+	contracts := make([]SurfaceContract, 0, len(ProductSurfaces))
+	for _, surface := range ProductSurfaces {
+		if exemption, ok := productSurfaceExemption(spec, surface); ok {
+			contracts = append(contracts, exemption)
 			continue
 		}
-		switch surface {
-		case SurfaceCLI:
-			if spec.HasCLI() {
-				contract.State = SurfaceRequired
-			} else {
-				contract.State = SurfaceExempt
-				contract.Exemption, contract.Reason = surfaceExemption(spec, surface)
-			}
-		case SurfaceTUI:
-			if tuiExplicitExemptIDs[spec.ID] {
-				contract.State = SurfaceExempt
-				contract.Exemption, contract.Reason = surfaceExemption(spec, surface)
-			} else if spec.HasCLI() && spec.Audience != AudienceAgent && spec.Audience != AudienceProtocol {
-				contract.State = SurfaceRequired
-			} else {
-				contract.State = SurfaceExempt
-				contract.Exemption, contract.Reason = surfaceExemption(spec, surface)
-			}
-		case SurfaceBrowser:
-			if browserRequiredIDs[spec.ID] {
-				contract.State = SurfaceRequired
-			} else {
-				contract.State = SurfaceExempt
-				contract.Exemption, contract.Reason = surfaceExemption(spec, surface)
-			}
-		case SurfaceAdminAPI:
-			if adminRequired(spec.ID) {
-				contract.State = SurfaceRequired
-			} else {
-				contract.State = SurfaceExempt
-				contract.Exemption, contract.Reason = surfaceExemption(spec, surface)
-			}
-		case SurfaceMCP:
-			if len(spec.MCPTools) > 0 {
-				contract.State = SurfaceRequired
-			} else {
-				contract.State = SurfaceExempt
-				contract.Exemption, contract.Reason = surfaceExemption(spec, surface)
-			}
-		case SurfaceTelegram:
-			if telegramRequiredOperations[spec.ID] {
-				contract.State = SurfaceRequired
-			} else {
-				contract.State = SurfaceExempt
-				contract.Exemption, contract.Reason = surfaceExemption(spec, surface)
-			}
-		}
-		contracts = append(contracts, contract)
+		contracts = append(contracts, SurfaceContract{
+			Surface: surface,
+			State:   SurfaceRequired,
+		})
 	}
 	return contracts
 }
 
-func surfaceExemption(spec Spec, surface Surface) (SurfaceExemptionClass, string) {
-	if surface == SurfaceMCP && len(spec.PlannedMCPTools) > 0 {
-		return SurfaceExemptionDeferred, reasonMCPPending
-	}
+func productSurfaceExemption(spec Spec, surface Surface) (SurfaceContract, bool) {
 	switch spec.Audience {
-	case AudienceAgent:
-		return SurfaceExemptionAgentOnly, reasonAgentOnly
-	case AudienceProtocol:
-		return SurfaceExemptionProtocolOnly, reasonProtocolOnly
+	case AudienceAgent, AudienceProtocol:
+		return SurfaceContract{
+			Surface:         surface,
+			State:           SurfaceExempt,
+			Exemption:       SurfaceExemptionProtocolOnly,
+			Reason:          reasonProtocolOnly,
+			ExemptionOwner:  productSurfacePolicyOwner,
+			Guard:           SurfaceGuardProtocolAudience,
+			SafeAlternative: protocolSafeAlternative(spec),
+		}, true
 	}
-	switch surface {
-	case SurfaceCLI:
-		return SurfaceExemptionSurfaceSpecific, reasonNoCLI
-	case SurfaceTUI:
-		return SurfaceExemptionSurfaceSpecific, reasonNoTUI
-	case SurfaceBrowser:
-		if reason := browserExemptionReason(spec.ID); reason != "" {
-			if spec.ID == WorkspaceRelocate {
-				return SurfaceExemptionUnsupportedRemote, reason
-			}
-			return SurfaceExemptionSurfaceSpecific, reason
-		}
-		if remoteLocalOnlyExemptIDs[spec.ID] {
-			return SurfaceExemptionLocalOnly, reasonSurfaceLocalOnly
-		}
-		return SurfaceExemptionSurfaceSpecific, reasonNoBrowser
-	case SurfaceAdminAPI:
-		if reason := adminExemptionReason(spec.ID); reason != "" {
-			if remoteLocalOnlyExemptIDs[spec.ID] {
-				return SurfaceExemptionLocalOnly, reason
-			}
-			return SurfaceExemptionSurfaceSpecific, reason
-		}
-		if remoteLocalOnlyExemptIDs[spec.ID] {
-			return SurfaceExemptionLocalOnly, reasonSurfaceLocalOnly
-		}
-		return SurfaceExemptionSurfaceSpecific, reasonNoAdminAPI
-	case SurfaceMCP:
-		return SurfaceExemptionSurfaceSpecific, reasonNoMCP
-	case SurfaceTelegram:
-		if telegramLocalOnlyOperations[spec.ID] {
-			return SurfaceExemptionLocalOnly, reasonSurfaceLocalOnly
-		}
-		if telegramManagedTunnelCollectionOperations[spec.ID] {
-			return SurfaceExemptionUnsupportedRemote, reasonTelegramManagedCollection
-		}
-		return SurfaceExemptionSurfaceSpecific, reasonTelegramExcluded
-	default:
-		return SurfaceExemptionSurfaceSpecific, reasonNotApplicable
+	if ((surface == SurfaceBrowser || surface == SurfaceTelegram) && remoteBootstrapOperationIDs[spec.ID]) ||
+		(surface == SurfaceTelegram && telegramBootstrapOperationIDs[spec.ID]) {
+		return SurfaceContract{
+			Surface:         surface,
+			State:           SurfaceExempt,
+			Exemption:       SurfaceExemptionSurfaceBootstrap,
+			Reason:          reasonBootstrapOnly,
+			ExemptionOwner:  productSurfacePolicyOwner,
+			Guard:           SurfaceGuardBootstrapOperation,
+			SafeAlternative: cliSafeAlternative(spec),
+		}, true
 	}
+	if (surface == SurfaceBrowser || surface == SurfaceTelegram) && remoteHostLocalOperationIDs[spec.ID] {
+		return SurfaceContract{
+			Surface:         surface,
+			State:           SurfaceExempt,
+			Exemption:       SurfaceExemptionHostLocalPrimitive,
+			Reason:          reasonHostLocalOnly,
+			ExemptionOwner:  productSurfacePolicyOwner,
+			Guard:           SurfaceGuardHostLocalOperation,
+			SafeAlternative: cliSafeAlternative(spec),
+		}, true
+	}
+	if removedArchitectureOperationIDs[spec.ID] {
+		return SurfaceContract{
+			Surface:        surface,
+			State:          SurfaceExempt,
+			Exemption:      SurfaceExemptionRemovedArchitecture,
+			Reason:         reasonRemovedArchitecture,
+			ExemptionOwner: productSurfacePolicyOwner,
+			Guard:          SurfaceGuardRemovedArchitecture,
+		}, true
+	}
+	return SurfaceContract{}, false
+}
+
+func protocolSafeAlternative(spec Spec) string {
+	if len(spec.MCPTools) > 0 {
+		return "MCP tool " + spec.MCPTools[0]
+	}
+	if len(spec.PlannedMCPTools) > 0 {
+		return "MCP protocol operation " + spec.PlannedMCPTools[0]
+	}
+	return ""
+}
+
+func cliSafeAlternative(spec Spec) string {
+	path := NormalizePath(spec.CLI.CanonicalPath)
+	if path == "" {
+		return ""
+	}
+	if path == RootPath {
+		return "cm"
+	}
+	return "cm " + path
 }
 
 func validSurfaceReason(reason string) bool {
-	if _, ok := knownSurfaceReasons[reason]; ok {
-		return true
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return false
 	}
-	for _, value := range adminExemptionReasons {
-		if reason == value {
-			return true
+	lower := strings.ToLower(reason)
+	for _, forbidden := range []string{
+		"not yet implemented",
+		"not exposed",
+		"no current",
+		"not useful",
+		"cli only",
+		"telegram only",
+	} {
+		if strings.Contains(lower, forbidden) {
+			return false
 		}
 	}
-	for _, value := range browserExemptionReasons {
-		if reason == value {
-			return true
-		}
-	}
-	return false
+	return true
 }
 
 func validSurfaceExemption(value SurfaceExemptionClass) bool {
 	switch value {
-	case SurfaceExemptionLocalOnly,
-		SurfaceExemptionAgentOnly,
-		SurfaceExemptionProtocolOnly,
-		SurfaceExemptionUnsupportedRemote,
-		SurfaceExemptionSurfaceSpecific,
-		SurfaceExemptionDeferred:
+	case SurfaceExemptionProtocolOnly,
+		SurfaceExemptionSurfaceBootstrap,
+		SurfaceExemptionHostLocalPrimitive,
+		SurfaceExemptionRemovedArchitecture:
 		return true
+	default:
+		return false
+	}
+}
+
+func validSurfaceExemptionGuard(value SurfaceExemptionGuard) bool {
+	switch value {
+	case SurfaceGuardProtocolAudience,
+		SurfaceGuardBootstrapOperation,
+		SurfaceGuardHostLocalOperation,
+		SurfaceGuardRemovedArchitecture:
+		return true
+	default:
+		return false
+	}
+}
+
+func exemptionGuardMatches(spec Spec, contract SurfaceContract) bool {
+	switch contract.Guard {
+	case SurfaceGuardProtocolAudience:
+		return spec.Audience == AudienceAgent || spec.Audience == AudienceProtocol
+	case SurfaceGuardBootstrapOperation:
+		return ((contract.Surface == SurfaceBrowser || contract.Surface == SurfaceTelegram) && remoteBootstrapOperationIDs[spec.ID]) ||
+			(contract.Surface == SurfaceTelegram && telegramBootstrapOperationIDs[spec.ID])
+	case SurfaceGuardHostLocalOperation:
+		return (contract.Surface == SurfaceBrowser || contract.Surface == SurfaceTelegram) && remoteHostLocalOperationIDs[spec.ID]
+	case SurfaceGuardRemovedArchitecture:
+		return removedArchitectureOperationIDs[spec.ID]
 	default:
 		return false
 	}

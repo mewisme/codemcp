@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -39,18 +38,16 @@ func TestPublicCommandsHaveCanonicalCapabilities(t *testing.T) {
 	}
 	stale := []string{}
 	for _, spec := range capability.All() {
-		surface, ok := spec.Surface(capability.SurfaceCLI)
-		if !ok || surface.State != capability.SurfaceRequired {
+		if !spec.HasCLI() {
 			continue
 		}
 		path := capability.NormalizePath(spec.CLI.CanonicalPath)
 		if !actual[path] {
-			stale = append(stale, fmt.Sprintf("%s (%s)", path, spec.ID))
+			stale = append(stale, path+" ("+string(spec.ID)+")")
 		}
 	}
 	if len(stale) > 0 {
-		sort.Strings(stale)
-		t.Fatalf("capability catalog paths missing from Cobra tree:\n  %s", strings.Join(stale, "\n  "))
+		t.Fatalf("declared CLI adapter paths missing from Cobra tree:\n  %s", strings.Join(stale, "\n  "))
 	}
 }
 

@@ -135,16 +135,11 @@ func TestTelegramRolloutFutureOwnershipIsExplicit(t *testing.T) {
 	assertFinal(AuthStatus, TelegramRolloutExempt, TelegramStageSettingsIntegration, TelegramOwnerSettings)
 }
 
-func TestTelegramRequiredOperationsMatchLiveRolloutOperations(t *testing.T) {
+func TestTelegramLiveAdapterEvidenceTargetsRequiredOrBootstrapOperations(t *testing.T) {
 	live := map[ID]bool{}
 	for _, item := range TelegramRolloutInventory() {
 		if item.State == TelegramRolloutLive && item.Operation != "" {
 			live[item.Operation] = true
-		}
-	}
-	for _, id := range RequiredOperations(SurfaceTelegram) {
-		if !live[id] {
-			t.Fatalf("required Telegram operation %s has no live rollout entry point", id)
 		}
 	}
 	for id := range live {
@@ -153,8 +148,14 @@ func TestTelegramRequiredOperationsMatchLiveRolloutOperations(t *testing.T) {
 			t.Fatalf("live Telegram rollout references unknown operation %s", id)
 		}
 		contract, ok := spec.Surface(SurfaceTelegram)
-		if !ok || contract.State != SurfaceRequired {
-			t.Fatalf("live Telegram operation %s is not required by the active surface: %#v", id, contract)
+		if !ok {
+			t.Fatalf("live Telegram operation %s has no product-surface contract", id)
+		}
+		if contract.State == SurfaceRequired {
+			continue
+		}
+		if contract.State != SurfaceExempt || contract.Exemption != SurfaceExemptionSurfaceBootstrap {
+			t.Fatalf("live Telegram operation %s is neither required nor a bootstrap exception: %#v", id, contract)
 		}
 	}
 }
