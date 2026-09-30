@@ -17,13 +17,23 @@ type LLMService struct {
 	root       string
 	store      *llm.Store
 	modelCache *llmModelCatalogCache
+	backend    LLMProviderBackend
 }
 
 func NewLLMService(root string) *LLMService {
+	return NewLLMServiceWithBackend(root, nil)
+}
+
+func NewLLMServiceWithBackend(root string, backend LLMProviderBackend) *LLMService {
+	root = strings.TrimSpace(root)
+	if backend == nil {
+		backend = newDefaultLLMBackend(root)
+	}
 	return &LLMService{
-		root:       strings.TrimSpace(root),
+		root:       root,
 		store:      llm.NewStore(root),
 		modelCache: newLLMModelCatalogCache(),
+		backend:    backend,
 	}
 }
 
@@ -228,17 +238,14 @@ func (s *SettingService) validateLLMSettingChanges(ctx context.Context, items []
 
 func (s *SettingService) applyLLMSettingChanges(ctx context.Context, items []resolvedSettingChange) (SettingApplyResult, error) {
 	service := s.llmService()
-	_, err := service.store.UpdateWithSecrets(func(current llm.Catalog) (llm.Catalog, []secretstore.Change, error) {
-		return stageLLMSettingChanges(current, items)
-	})
-	if err != nil {
+	if err := service.applySettingChanges(items); err != nil {
 		return SettingApplyResult{}, err
 	}
-	service.invalidateAllModelCatalogs()
 	results := make([]SettingResult, 0, len(items))
 	for _, item := range items {
 		key := item.change.Key
 		var result SettingResult
+		var err error
 		if item.spec.Secret {
 			result, err = s.Present(ctx, key)
 		} else {
@@ -254,6 +261,20 @@ func (s *SettingService) applyLLMSettingChanges(ctx context.Context, items []res
 		return SettingApplyResult{}, err
 	}
 	return SettingApplyResult{Results: results, Config: cfg}, nil
+}
+
+func (s *LLMService) applySettingChanges(items []resolvedSettingChange) error {
+	if s == nil || s.store == nil {
+		return errors.New("LLM service is unavailable")
+	}
+	_, err := s.store.UpdateWithSecrets(func(current llm.Catalog) (llm.Catalog, []secretstore.Change, error) {
+		return stageLLMSettingChanges(current, items)
+	})
+	if err != nil {
+		return err
+	}
+	s.invalidateAllModelCatalogs()
+	return nil
 }
 
 func stageLLMSettingChanges(current llm.Catalog, items []resolvedSettingChange) (llm.Catalog, []secretstore.Change, error) {

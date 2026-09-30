@@ -65,6 +65,12 @@ func TestSettingLikeMutationsDeclareCanonicalApplicationOwners(t *testing.T) {
 		IntegrationRTKDisable:      MutationOwnerApplicationIntegrations,
 		IntegrationTypeSafeEnable:  MutationOwnerApplicationIntegrations,
 		IntegrationTypeSafeDisable: MutationOwnerApplicationIntegrations,
+		LLMProviderAdd:             MutationOwnerApplicationLLM,
+		LLMProviderConfigure:       MutationOwnerApplicationLLM,
+		LLMProviderRemove:          MutationOwnerApplicationLLM,
+		LLMProviderSelect:          MutationOwnerApplicationLLM,
+		LLMProviderCredentialSet:   MutationOwnerApplicationLLM,
+		LLMProviderCredentialClear: MutationOwnerApplicationLLM,
 	}
 	for id, want := range expected {
 		ownership, ok := MutationOwnershipFor(id)

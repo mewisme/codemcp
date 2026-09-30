@@ -31,7 +31,7 @@ func TestCanonicalInventoryIsUniqueBoundedAndDomainOwned(t *testing.T) {
 	}
 	for _, domain := range []string{
 		"install", "config", "workspace", "storage", "runtime", "shell", "integrations",
-		"upstream", "oauth", "network", "mcp", "tunnel", "history", "approval",
+		"upstream", "oauth", "network", "mcp", "tunnel", "history", "approval", "llm",
 		"background", "notifications", "telegram", "update", "migration",
 	} {
 		if !domains[domain] {
@@ -70,6 +70,10 @@ func TestCanonicalInventoryDeclaresSafeHooksAndMigrationReadModel(t *testing.T) 
 	migration, ok := DefinitionFor(ComponentMigrationReadiness)
 	if !ok || migration.Source != SourceDomainReadModel || migration.Probe != ProbeLocalRead {
 		t.Fatalf("migration definition=%#v ok=%t", migration, ok)
+	}
+	llmProvider, ok := DefinitionFor(ComponentLLMProvider)
+	if !ok || llmProvider.Source != SourceDomainReadModel || llmProvider.Probe != ProbeLocalRead {
+		t.Fatalf("LLM definition=%#v ok=%t", llmProvider, ok)
 	}
 }
 

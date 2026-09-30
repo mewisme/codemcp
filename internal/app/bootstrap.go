@@ -76,6 +76,11 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
+		llmService := application.NewLLMService(config.RootPath())
+		if err := application.BindLLMOperations(a.Operations, llmService); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		if err := application.BindSystemOperations(a.Operations, application.SystemOperationServices{
 			Instructions:   application.NewInstructionSettingsService(nil),
 			ProjectContext: application.NewApplicationProjectContextService(a.Tools.Workspaces),
@@ -169,6 +174,7 @@ func (a *App) Bootstrap() error {
 			Upstream:             a.Upstream,
 			OAuth:                a.OAuth,
 			Tunnel:               a.Tunnel,
+			LLM:                  llmService,
 		}
 		if a.Telegram != nil {
 			doctorDeps.TelegramHealth = func() application.TelegramHealthSnapshot {

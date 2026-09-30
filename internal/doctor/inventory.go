@@ -38,6 +38,7 @@ const (
 	ComponentIntegrationRTK       ComponentID = "integration.rtk"
 	ComponentIntegrationCodeGraph ComponentID = "integration.codegraph"
 	ComponentIntegrationTypeSafe  ComponentID = "integration.typesafe"
+	ComponentLLMProvider          ComponentID = "llm.provider"
 	ComponentUpstreamHealth       ComponentID = "upstream.health"
 	ComponentOAuthStatus          ComponentID = "oauth.status"
 	ComponentNetworkExposure      ComponentID = "network.exposure"
@@ -68,6 +69,7 @@ var canonicalInventory = []Definition{
 	{ID: ComponentIntegrationRTK, Domain: "integrations", Owner: "integrations.rtk", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentIntegrationCodeGraph, Domain: "integrations", Owner: "integrations.codegraph", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentIntegrationTypeSafe, Domain: "integrations", Owner: "application.typesafe", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
+	{ID: ComponentLLMProvider, Domain: "llm", Owner: "application.llm-service", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentUpstreamHealth, Domain: "upstream", Owner: "upstream", Probe: ProbeBoundedNetworkRead, Source: SourceDomainReadModel, Timeout: 8 * time.Second},
 	{ID: ComponentOAuthStatus, Domain: "oauth", Owner: "oauth", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentNetworkExposure, Domain: "network", Owner: "network", Probe: ProbeLocalRead, Source: SourceDomainReadModel},

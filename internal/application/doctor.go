@@ -18,6 +18,7 @@ import (
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	codegraph "go.mewis.me/codemcp/internal/integrations/codegraph"
 	typesafeintegration "go.mewis.me/codemcp/internal/integrations/typesafe"
+	"go.mewis.me/codemcp/internal/llm"
 	"go.mewis.me/codemcp/internal/mcp"
 	released024 "go.mewis.me/codemcp/internal/migration/released024"
 	"go.mewis.me/codemcp/internal/network"
@@ -45,6 +46,7 @@ type DoctorDependencies struct {
 	Upstream             *upstream.Manager
 	OAuth                *mcpoauth.Store
 	Tunnel               *tunnel.Client
+	LLM                  *LLMService
 }
 
 type TelegramHealthSnapshot struct {
@@ -91,6 +93,7 @@ func NewDefaultDoctorService(additional ...doctor.Provider) (*DoctorService, err
 		Checkpoints:   checkpoint.NewWorkspaceStore(configformat.RootPath(), workspaces),
 		Upstream:      upstream.NewManager(upstream.NewStore(upstream.Path())),
 		OAuth:         mcpoauth.NewStore(mcpoauth.Path()),
+		LLM:           NewLLMService(configformat.RootPath()),
 	}
 	return NewDoctorService(deps, additional...)
 }
@@ -101,6 +104,9 @@ func NewDoctorService(deps DoctorDependencies, additional ...doctor.Provider) (*
 	}
 	if deps.Workspaces == nil {
 		deps.Workspaces = workspace.NewManager(workspace.DefaultStorePath())
+	}
+	if deps.LLM == nil {
+		deps.LLM = NewLLMService(configformat.RootPath())
 	}
 	providers := defaultDoctorProviders(deps)
 	providers = append(providers, additional...)
@@ -332,6 +338,43 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 				return doctor.Component{}, err
 			}
 			return typeSafeDoctorComponent(cfg.Enabled, credential.Configured), nil
+		}),
+		doctorProvider(doctor.ComponentLLMProvider, func(ctx context.Context) (doctor.Component, error) {
+			status, err := deps.LLM.Status(ctx)
+			if err != nil {
+				return doctor.Component{}, err
+			}
+			configured := int64(0)
+			for _, provider := range status.Providers {
+				if provider.Configured {
+					configured++
+				}
+			}
+			component := doctor.Component{
+				State:    doctor.StateHealthy,
+				Severity: doctor.SeverityInfo,
+				Summary:  "active LLM provider configuration is readable; network readiness requires explicit probe",
+				Metrics: []doctor.Metric{
+					{ID: "providers", Value: int64(len(status.Providers))},
+					{ID: "configured", Value: configured},
+				},
+				Flags: []doctor.Flag{
+					{ID: "active_selected", Value: status.Active.Selected},
+					{ID: "active_configured", Value: status.Active.Configured},
+					{ID: "readiness_known", Value: status.Active.Readiness != llm.ReadinessUnknown},
+				},
+			}
+			if !status.Active.Configured {
+				component.State = doctor.StateDegraded
+				component.Severity = doctor.SeverityWarning
+				component.Summary = "active LLM provider configuration is incomplete"
+				component.Remediations = []doctor.Remediation{{
+					ID:        "llm_provider_configure",
+					Summary:   "Configure the selected LLM provider",
+					Operation: string(capability.LLMProviderConfigure),
+				}}
+			}
+			return component, nil
 		}),
 		doctorProvider(doctor.ComponentUpstreamHealth, func(context.Context) (doctor.Component, error) {
 			statuses, err := deps.Upstream.InspectStatuses()

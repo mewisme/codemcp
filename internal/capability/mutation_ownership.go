@@ -18,6 +18,7 @@ const (
 	MutationOwnerApplicationInstructions MutationOwner = "application.instructions"
 	MutationOwnerApplicationProcesses    MutationOwner = "application.process-service"
 	MutationOwnerApplicationLogs         MutationOwner = "application.logs"
+	MutationOwnerApplicationLLM          MutationOwner = "application.llm-service"
 	MutationOwnerApproval                MutationOwner = "approval"
 	MutationOwnerAgentCompletion         MutationOwner = "agent-completion"
 	MutationOwnerFilesystem              MutationOwner = "tools.filesystem"
@@ -102,6 +103,10 @@ func buildMutationOwners() map[ID]MutationOwner {
 	add(MutationOwnerApplicationInstructions, InstructionSettingsWrite)
 	add(MutationOwnerApplicationProcesses, ProcessClear)
 	add(MutationOwnerApplicationLogs, LogsClear)
+	add(MutationOwnerApplicationLLM,
+		LLMProviderAdd, LLMProviderConfigure, LLMProviderRemove, LLMProviderSelect,
+		LLMProviderCredentialSet, LLMProviderCredentialClear,
+	)
 	add(MutationOwnerApproval, RequestApprove, RequestDeny, RequestGrantRevoke, RequestControlApproval)
 	add(MutationOwnerAgentCompletion, AgentComplete)
 	add(MutationOwnerFilesystem,

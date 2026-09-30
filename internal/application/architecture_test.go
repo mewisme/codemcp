@@ -193,6 +193,65 @@ func TestLLMProviderManagementDoesNotDependOnIntegrationOrUpstreamRegistration(t
 	}
 }
 
+func TestHumanInterfacesCannotBypassLLMApplicationPersistenceOwner(t *testing.T) {
+	root := architectureRepositoryRoot(t)
+	for _, relativeRoot := range []string{"internal/cli", "internal/interface/admin", "internal/interface/tui", "internal/telegram"} {
+		err := filepath.WalkDir(filepath.Join(root, filepath.FromSlash(relativeRoot)), func(path string, item os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if item.IsDir() || !strings.HasSuffix(item.Name(), ".go") || strings.HasSuffix(item.Name(), "_test.go") {
+				return nil
+			}
+			for _, imported := range goFileImports(t, path) {
+				if imported == internalImportPrefix+"llm" {
+					t.Errorf("%s imports the LLM persistence/domain package directly; interfaces must use application.LLMService", filepath.ToSlash(path))
+				}
+			}
+			body, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			for _, forbidden := range []string{"secretstore.DomainLLM", "llm/providers.json", "llm.NewStore(", "llm.RemoveProvider(", "llm.CredentialChange("} {
+				if strings.Contains(string(body), forbidden) {
+					t.Errorf("%s bypasses the LLM application persistence owner via %q", filepath.ToSlash(path), forbidden)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestLLMApplicationDoesNotRegisterApprovalOrSemanticPolicy(t *testing.T) {
+	root := architectureRepositoryRoot(t)
+	applicationRoot := filepath.Join(root, "internal", "application")
+	entries, err := os.ReadDir(applicationRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "llm_") || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		path := filepath.Join(applicationRoot, entry.Name())
+		for _, imported := range goFileImports(t, path) {
+			if imported == internalImportPrefix+"approval" || strings.HasPrefix(imported, internalImportPrefix+"integrations/semantic") {
+				t.Errorf("%s couples LLM orchestration to policy package %s", filepath.ToSlash(path), imported)
+			}
+		}
+	}
+	for _, relativeRoot := range []string{"internal/approval", "internal/integrations/semantic"} {
+		path := filepath.Join(root, filepath.FromSlash(relativeRoot))
+		if info, err := os.Stat(path); err != nil || !info.IsDir() {
+			continue
+		}
+		assertNoImportsWithPrefix(t, path, internalImportPrefix+"llm")
+	}
+}
+
 func TestRepresentativeWorkspaceAdaptersCannotBypassApplicationMutationOwner(t *testing.T) {
 	root := architectureRepositoryRoot(t)
 	files := []string{

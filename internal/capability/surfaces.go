@@ -13,13 +13,30 @@ const (
 	reasonSurfaceLocalOnly          = "operation requires local process or filesystem ownership on this surface"
 	reasonTelegramManagedCollection = "Telegram exposes the active single-tunnel lifecycle and does not expose managed tunnel collection operations"
 	reasonNotApplicable             = "surface is not applicable"
+	reasonLLMSurfaceDeferred        = "LLM administration is deferred to the dedicated interface rollout"
+	reasonLLMOperatorOnly           = "LLM provider administration is operator-only and is not exposed to requesting MCP agents"
 )
 
 var knownSurfaceReasons = map[string]struct{}{
 	reasonAgentOnly: {}, reasonProtocolOnly: {}, reasonNoCLI: {}, reasonNoTUI: {},
 	reasonNoBrowser: {}, reasonNoAdminAPI: {}, reasonNoMCP: {}, reasonMCPPending: {},
 	reasonTelegramExcluded: {}, reasonSurfaceLocalOnly: {}, reasonTelegramManagedCollection: {}, reasonNotApplicable: {},
+	reasonLLMSurfaceDeferred: {}, reasonLLMOperatorOnly: {},
 }
+
+var llmOperationIDs = idSet(
+	LLMStatus,
+	LLMProviderList,
+	LLMProviderGet,
+	LLMProviderAdd,
+	LLMProviderConfigure,
+	LLMProviderRemove,
+	LLMProviderSelect,
+	LLMProviderModels,
+	LLMProviderProbe,
+	LLMProviderCredentialSet,
+	LLMProviderCredentialClear,
+)
 
 var remoteLocalOnlyExemptIDs = idSet(
 	ServerForeground,
@@ -50,6 +67,18 @@ func surfaceContracts(spec Spec) []SurfaceContract {
 	contracts := make([]SurfaceContract, 0, len(AllSurfaces))
 	for _, surface := range AllSurfaces {
 		contract := SurfaceContract{Surface: surface}
+		if llmOperationIDs[spec.ID] {
+			contract.State = SurfaceExempt
+			if surface == SurfaceMCP {
+				contract.Exemption = SurfaceExemptionSurfaceSpecific
+				contract.Reason = reasonLLMOperatorOnly
+			} else {
+				contract.Exemption = SurfaceExemptionDeferred
+				contract.Reason = reasonLLMSurfaceDeferred
+			}
+			contracts = append(contracts, contract)
+			continue
+		}
 		switch surface {
 		case SurfaceCLI:
 			if spec.HasCLI() {
