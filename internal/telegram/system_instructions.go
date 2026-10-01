@@ -13,6 +13,7 @@ import (
 	"go.mewis.me/codemcp/internal/doctor"
 	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/instructioncontext"
+	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/tools"
 	updatepkg "go.mewis.me/codemcp/internal/update"
@@ -299,29 +300,188 @@ func (ui *Interface) promptScreen(ctx context.Context, owner ViewOwner, state Ac
 
 func systemInputPrompt(state ActionState) (title, prompt, placeholder string) {
 	switch state.InputKind {
-	case inputInstructionPatch:
-		return "Edit instruction settings", "Reply with an InstructionSettingsPatch JSON object. Provider-native trees remain read-only.", "Instruction settings JSON"
 	case inputProjectContext:
 		return "Project context", "Reply with the registered workspace ID to inspect its project context.", "ws_..."
 	case inputPromptWorkspace:
 		return "Workspace prompts", "Reply with the registered workspace ID whose prompt inventory you want to inspect.", "ws_..."
-	case inputPromptCreate:
-		return "Create prompt", "Reply with a PromptWriteRequest JSON object. Global changes remain subject to application ownership rules.", "Prompt request JSON"
-	case inputPromptUpdate:
-		return "Update prompt", "Reply with a PromptDefinition JSON object. The selected scope and name stay bound to this prompt.", "Prompt definition JSON"
 	default:
 		return "", "", ""
 	}
 }
 
-func systemActionInput(state ActionState, text string) (any, bool, error) {
+func (ui *Interface) systemInputFlow(ctx context.Context, state ActionState) (inputFlowDescriptor, bool, error) {
 	switch state.InputKind {
 	case inputInstructionPatch:
-		var patch application.InstructionSettingsPatch
-		if err := json.Unmarshal([]byte(text), &patch); err != nil {
-			return nil, true, fmt.Errorf("invalid instruction settings JSON: %w", err)
+		value, err := ui.dispatch(ctx, capability.InstructionSettingsRead, nil)
+		if err != nil {
+			return inputFlowDescriptor{}, true, err
 		}
-		return patch, true, nil
+		settings, ok := value.(application.InstructionSettings)
+		if !ok {
+			return inputFlowDescriptor{}, true, errors.New("instruction settings returned an unexpected result")
+		}
+		rulesJSON, _ := json.MarshalIndent(settings.Rules, "", "  ")
+		policyJSON, _ := json.MarshalIndent(settings.SourcePolicy, "", "  ")
+		fields := []inputFlowField{
+			{
+				Key: "context", Label: "Global context", Description: "Global instruction context included with project-specific instructions.",
+				Kind: inputFlowMultiline, HasDefault: true, Default: settings.Context, CanClear: true,
+			},
+			{
+				Key: "rules", Label: "Global rules", Description: "JSON array of global rule objects. Each rule contains id, optional name, enabled, and content.",
+				Kind: inputFlowJSON, HasDefault: true, Default: string(rulesJSON), CanClear: true,
+				Example:  `[{"id":"safe","enabled":true,"content":"Keep changes scoped."}]`,
+				Validate: inputFlowJSONValidator(func() any { return &[]instructionpolicy.GlobalRule{} }),
+			},
+			{
+				Key: "source_policy", Label: "Source policy", Description: "JSON object keyed by provider/source name. Each entry may control enabled, context, rules, and skills.",
+				Kind: inputFlowJSON, HasDefault: true, Default: string(policyJSON), CanClear: true,
+				Example:  `{"claude":{"enabled":true,"rules":true}}`,
+				Validate: inputFlowJSONValidator(func() any { return &map[string]instructionpolicy.SourcePolicy{} }),
+			},
+		}
+		return inputFlowDescriptor{
+			Title: "Edit instruction settings", Description: "Update global instruction context, rules, and source policy.", SubmitLabel: "Save instructions",
+			Fields: fields,
+			Build: func(data inputFlowData) (any, error) {
+				patch := application.InstructionSettingsPatch{}
+				changed := false
+				if raw, explicit := data.Explicit("context"); explicit {
+					value := raw
+					patch.Context, changed = &value, true
+				}
+				if raw, explicit := data.Explicit("rules"); explicit {
+					var rules []instructionpolicy.GlobalRule
+					if strings.TrimSpace(raw) != "" {
+						if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+							return nil, fmt.Errorf("invalid rules JSON: %w", err)
+						}
+					}
+					patch.Rules, changed = &rules, true
+				}
+				if raw, explicit := data.Explicit("source_policy"); explicit {
+					policy := map[string]instructionpolicy.SourcePolicy{}
+					if strings.TrimSpace(raw) != "" {
+						if err := json.Unmarshal([]byte(raw), &policy); err != nil {
+							return nil, fmt.Errorf("invalid source policy JSON: %w", err)
+						}
+					}
+					patch.SourcePolicy, changed = policy, true
+				}
+				if !changed {
+					return nil, errors.New("no instruction changes selected")
+				}
+				return patch, nil
+			},
+		}, true, nil
+	case inputPromptCreate:
+		return promptCreateInputFlow(), true, nil
+	case inputPromptUpdate:
+		value, err := ui.dispatch(ctx, capability.PromptGet, application.PromptGetInput{WorkspaceID: state.ExpectedVersion, Name: state.ResourceID})
+		if err != nil {
+			return inputFlowDescriptor{}, true, err
+		}
+		prompt, ok := value.(instructioncontext.ScopedPrompt)
+		if !ok {
+			return inputFlowDescriptor{}, true, errors.New("prompt view returned an unexpected result")
+		}
+		return promptUpdateInputFlow(state, prompt), true, nil
+	default:
+		return inputFlowDescriptor{}, false, nil
+	}
+}
+
+func promptCreateInputFlow() inputFlowDescriptor {
+	scope := inputFlowField{
+		Key: "scope", Label: "Scope", Description: "Choose where this prompt is stored.", Kind: inputFlowEnum, Required: true,
+		HasDefault: true, Default: string(instructioncontext.PromptScopeGlobal),
+		Options: []inputFlowOption{{Label: "Global", Value: string(instructioncontext.PromptScopeGlobal)}, {Label: "Workspace", Value: string(instructioncontext.PromptScopeWorkspace)}},
+	}
+	workspace := inputFlowField{
+		Key: "workspace_id", Label: "Workspace ID", Description: "Registered workspace that owns this prompt.", Kind: inputFlowText, Required: true,
+		Placeholder: "ws_...", Example: "ws_...", When: func(data inputFlowData) bool {
+			return data.Value("scope") == string(instructioncontext.PromptScopeWorkspace)
+		},
+	}
+	name := inputFlowField{Key: "name", Label: "Prompt name", Description: "Stable prompt name used when invoking the prompt.", Kind: inputFlowText, Required: true, Placeholder: "review-code", Example: "review-code"}
+	description := inputFlowField{Key: "description", Label: "Description", Description: "Optional human-readable description.", Kind: inputFlowText, Placeholder: "Review code changes"}
+	arguments := inputFlowField{
+		Key: "arguments", Label: "Arguments", Description: "Optional JSON array of prompt arguments. Each argument accepts name, optional description, and required.",
+		Kind: inputFlowJSON, CanClear: true, Example: `[{"name":"path","description":"Path to review","required":true}]`,
+		Validate: inputFlowJSONValidator(func() any { return &[]instructioncontext.PromptArgument{} }),
+	}
+	messages := inputFlowField{
+		Key: "messages", Label: "Messages", Description: "JSON array of prompt messages. Each message has role and text content.", Kind: inputFlowJSON, Required: true,
+		Example:  `[{"role":"user","content":{"type":"text","text":"Review {{path}}"}}]`,
+		Validate: inputFlowJSONValidator(func() any { return &[]instructioncontext.PromptMessage{} }),
+	}
+	return inputFlowDescriptor{
+		Title: "Create prompt", Description: "Create a reusable prompt definition.", SubmitLabel: "Create prompt",
+		Fields: []inputFlowField{scope, workspace, name, description, arguments, messages},
+		Build: func(data inputFlowData) (any, error) {
+			var argumentsValue []instructioncontext.PromptArgument
+			if raw := strings.TrimSpace(data.Value("arguments")); raw != "" {
+				if err := json.Unmarshal([]byte(raw), &argumentsValue); err != nil {
+					return nil, err
+				}
+			}
+			var messagesValue []instructioncontext.PromptMessage
+			if err := json.Unmarshal([]byte(data.Value("messages")), &messagesValue); err != nil {
+				return nil, err
+			}
+			definition := instructioncontext.PromptDefinition{
+				Version: instructioncontext.PromptDefinitionVersion, Name: data.Value("name"), Description: data.Value("description"),
+				Arguments: argumentsValue, Messages: messagesValue,
+			}
+			if err := instructioncontext.ValidatePromptDefinition(definition); err != nil {
+				return nil, err
+			}
+			scopeValue := instructioncontext.PromptScope(data.Value("scope"))
+			return application.PromptWriteRequest{Scope: scopeValue, WorkspaceID: data.Value("workspace_id"), Mode: "create", Definition: definition}, nil
+		},
+	}
+}
+
+func promptUpdateInputFlow(state ActionState, prompt instructioncontext.ScopedPrompt) inputFlowDescriptor {
+	argumentsJSON, _ := json.MarshalIndent(prompt.Definition.Arguments, "", "  ")
+	messagesJSON, _ := json.MarshalIndent(prompt.Definition.Messages, "", "  ")
+	description := inputFlowField{Key: "description", Label: "Description", Description: "Human-readable prompt description.", Kind: inputFlowText, HasDefault: true, Default: prompt.Definition.Description, CanClear: true}
+	arguments := inputFlowField{
+		Key: "arguments", Label: "Arguments", Description: "JSON array of prompt arguments. Each argument accepts name, optional description, and required.",
+		Kind: inputFlowJSON, HasDefault: true, Default: string(argumentsJSON), CanClear: true,
+		Validate: inputFlowJSONValidator(func() any { return &[]instructioncontext.PromptArgument{} }),
+	}
+	messages := inputFlowField{
+		Key: "messages", Label: "Messages", Description: "JSON array of prompt messages. Each message has role and text content.", Kind: inputFlowJSON, Required: true,
+		HasDefault: true, Default: string(messagesJSON),
+		Validate: inputFlowJSONValidator(func() any { return &[]instructioncontext.PromptMessage{} }),
+	}
+	return inputFlowDescriptor{
+		Title: "Update prompt", Description: prompt.Definition.Name + " · " + string(prompt.Scope), SubmitLabel: "Save prompt",
+		Fields: []inputFlowField{description, arguments, messages},
+		Build: func(data inputFlowData) (any, error) {
+			var argumentsValue []instructioncontext.PromptArgument
+			if raw := strings.TrimSpace(data.Value("arguments")); raw != "" {
+				if err := json.Unmarshal([]byte(raw), &argumentsValue); err != nil {
+					return nil, err
+				}
+			}
+			var messagesValue []instructioncontext.PromptMessage
+			if err := json.Unmarshal([]byte(data.Value("messages")), &messagesValue); err != nil {
+				return nil, err
+			}
+			definition := prompt.Definition
+			definition.Description, definition.Arguments, definition.Messages = data.Value("description"), argumentsValue, messagesValue
+			if err := instructioncontext.ValidatePromptDefinition(definition); err != nil {
+				return nil, err
+			}
+			return application.PromptWriteRequest{Scope: prompt.Scope, WorkspaceID: state.ExpectedVersion, Mode: "update", Definition: definition}, nil
+		},
+	}
+}
+
+func systemActionInput(state ActionState, text string) (any, bool, error) {
+	switch state.InputKind {
 	case inputProjectContext:
 		options := projectcontext.DefaultOptions()
 		options.IncludeGit = true
@@ -329,26 +489,6 @@ func systemActionInput(state ActionState, text string) (any, bool, error) {
 		return application.ProjectContextInput{WorkspaceID: strings.TrimSpace(text), Options: options}, true, nil
 	case inputPromptWorkspace:
 		return application.PromptListInput{WorkspaceID: strings.TrimSpace(text)}, true, nil
-	case inputPromptCreate:
-		var request application.PromptWriteRequest
-		if err := json.Unmarshal([]byte(text), &request); err != nil {
-			return nil, true, fmt.Errorf("invalid prompt request JSON: %w", err)
-		}
-		request.Mode = "create"
-		return request, true, nil
-	case inputPromptUpdate:
-		var definition instructioncontext.PromptDefinition
-		if err := json.Unmarshal([]byte(text), &definition); err != nil {
-			return nil, true, fmt.Errorf("invalid prompt definition JSON: %w", err)
-		}
-		if strings.TrimSpace(definition.Name) != strings.TrimSpace(state.ResourceID) {
-			return nil, true, errors.New("prompt name cannot change during update")
-		}
-		scope := instructioncontext.PromptScopeGlobal
-		if strings.TrimSpace(state.ExpectedVersion) != "" {
-			scope = instructioncontext.PromptScopeWorkspace
-		}
-		return application.PromptWriteRequest{Scope: scope, WorkspaceID: state.ExpectedVersion, Mode: "update", Definition: definition}, true, nil
 	default:
 		return nil, false, nil
 	}

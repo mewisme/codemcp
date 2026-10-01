@@ -108,9 +108,16 @@ func TestTelegramLLMProviderActionsProtectCoreIdentityAndSecretState(t *testing.
 	if _, err := ui.states.Get(ref.Token, ViewOwner{ChatID: owner.ChatID, UserID: owner.UserID, Generation: owner.Generation + 1}); err == nil {
 		t.Fatal("stale generation can read LLM callback state")
 	}
-	input, handled, err := llmActionInput(state, rawKey)
+	descriptor, handled, err := ui.llmInputFlow(t.Context(), state)
 	if err != nil || !handled {
-		t.Fatalf("protected LLM input handled=%t err=%v", handled, err)
+		t.Fatalf("protected LLM flow handled=%t err=%v", handled, err)
+	}
+	if len(descriptor.Fields) != 1 || !descriptor.Fields[0].Secret || descriptor.Fields[0].Kind != inputFlowSecret {
+		t.Fatalf("credential flow fields=%#v", descriptor.Fields)
+	}
+	input, err := descriptor.Build(inputFlowData{values: map[string]string{"api_key": rawKey}, set: map[string]bool{"api_key": true}})
+	if err != nil {
+		t.Fatal(err)
 	}
 	credential := input.(application.LLMProviderCredentialInput)
 	if credential.ID != string(provider.ID) || credential.APIKey != rawKey {

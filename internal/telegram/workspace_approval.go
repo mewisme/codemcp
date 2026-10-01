@@ -651,8 +651,10 @@ func (ui *Interface) beginActionInput(ctx context.Context, owner ViewOwner, stat
 	if err != nil {
 		return err
 	}
-	_, _, _, networkSecret := networkInputPrompt(state.InputKind)
-	secret := state.SecretInput || networkSecret
+	// ForceReply and an inline keyboard cannot coexist in the Bot API reply markup.
+	// Legacy direct inputs are read-only query filters now, so keep this prompt reply-only.
+	screen.Keyboard = nil
+	secret := state.SecretInput
 	promptID, err := ui.runtime.SendRichMessage(ctx, owner.ChatID, screen, RichMessageOptions{ForceReplyPlaceholder: placeholder, ProtectContent: secret})
 	if err != nil {
 		return err
@@ -687,10 +689,18 @@ func (ui *Interface) handleActionInput(ctx context.Context, update Update) bool 
 		if err == nil {
 			err = errors.New("this operation requires text input")
 		}
+		if pending.Action != nil && pending.Action.InputFlow != nil {
+			_ = ui.failInputFlowReply(ctx, owner, pending, err)
+			return true
+		}
 		_ = ui.editInputFailure(ctx, owner, pending.PromptMessageID, *pending.Action, err)
 		return true
 	}
 	state := *pending.Action
+	if state.InputFlow != nil {
+		_ = ui.handleInputFlowReply(ctx, owner, pending, *update.Message, value)
+		return true
+	}
 	state.Input, err = actionInput(state, value.Text)
 	if err != nil {
 		if pending.Secret && update.Message.MessageID > 0 {
@@ -718,28 +728,65 @@ func inputPrompt(kind string) (title, prompt, placeholder string) {
 	if title, prompt, placeholder := llmInputPrompt(kind); title != "" {
 		return title, prompt, placeholder
 	}
-	if title, prompt, placeholder, _ := networkInputPrompt(kind); title != "" {
-		return title, prompt, placeholder
-	}
 	if title, prompt, placeholder := settingsInputPrompt(ActionState{InputKind: kind}); title != "" {
 		return title, prompt, placeholder
 	}
 	if title, prompt, placeholder := systemInputPrompt(ActionState{InputKind: kind}); title != "" {
 		return title, prompt, placeholder
 	}
-	switch kind {
+	return "", "", ""
+}
+
+func workspaceInputFlow(state ActionState) (inputFlowDescriptor, bool) {
+	textField := func(label, description, placeholder, example string) inputFlowField {
+		return inputFlowField{
+			Key: "value", Label: label, Description: description, Kind: inputFlowText,
+			Required: true, Placeholder: placeholder, Example: example,
+		}
+	}
+	switch state.InputKind {
 	case inputWorkspaceRegister:
-		return "Register workspace", "Reply with the absolute workspace directory.", "/path/to/workspace"
+		return inputFlowDescriptor{
+			Title: "Register workspace", Description: "Register an existing local workspace directory.", SubmitLabel: "Register workspace",
+			Fields: []inputFlowField{textField("Workspace directory", "Absolute path to the workspace root.", "/path/to/workspace", "/home/me/projects/app")},
+			Build: func(data inputFlowData) (any, error) {
+				return application.WorkspaceRegisterInput{Path: data.Value("value")}, nil
+			},
+		}, true
 	case inputWorkspaceRelocate:
-		return "Relocate workspace", "Reply with the new absolute workspace directory.", "/new/path"
+		return inputFlowDescriptor{
+			Title: "Relocate workspace", Description: "Update the registered root for this workspace.", SubmitLabel: "Relocate workspace",
+			Fields: []inputFlowField{textField("New workspace directory", "Absolute path to the workspace at its new location.", "/new/path", "/home/me/projects/app")},
+			Build: func(data inputFlowData) (any, error) {
+				return application.WorkspaceRelocateRequest{ID: state.ResourceID, Path: data.Value("value")}, nil
+			},
+		}, true
 	case inputWorkspaceAccessAdd:
-		return "Add workspace root", "Reply with the absolute directory to allow.", "/allowed/path"
+		return inputFlowDescriptor{
+			Title: "Add workspace root", Description: "Allow an additional directory for this workspace.", SubmitLabel: "Add root",
+			Fields: []inputFlowField{textField("Allowed directory", "Absolute directory path to add to this workspace's allowed roots.", "/allowed/path", "/home/me/shared")},
+			Build: func(data inputFlowData) (any, error) {
+				return application.WorkspaceAccessInput{ID: state.ResourceID, Path: data.Value("value")}, nil
+			},
+		}, true
 	case inputWorkspaceContainerCreate:
-		return "Create container", "Reply with the new container name.", "Container name"
+		return inputFlowDescriptor{
+			Title: "Create container", Description: "Create a workspace container.", SubmitLabel: "Create container",
+			Fields: []inputFlowField{textField("Container name", "Human-readable name for the new workspace container.", "Container name", "Backend")},
+			Build: func(data inputFlowData) (any, error) {
+				return application.WorkspaceContainerInput{Name: data.Value("value")}, nil
+			},
+		}, true
 	case inputWorkspaceContainerRename:
-		return "Rename container", "Reply with the new container name.", "Container name"
+		return inputFlowDescriptor{
+			Title: "Rename container", Description: "Change this workspace container's display name.", SubmitLabel: "Rename container",
+			Fields: []inputFlowField{textField("Container name", "New human-readable name for this workspace container.", "Container name", "Backend")},
+			Build: func(data inputFlowData) (any, error) {
+				return application.WorkspaceContainerInput{ID: state.ResourceID, Name: data.Value("value")}, nil
+			},
+		}, true
 	default:
-		return "", "", ""
+		return inputFlowDescriptor{}, false
 	}
 }
 
@@ -751,29 +798,13 @@ func actionInput(state ActionState, text string) (any, error) {
 	if value, handled, err := llmActionInput(state, text); handled {
 		return value, err
 	}
-	if value, handled, err := networkActionInput(state, text); handled {
-		return value, err
-	}
 	if value, handled, err := settingsActionInput(state, text); handled {
 		return value, err
 	}
 	if value, handled, err := systemActionInput(state, text); handled {
 		return value, err
 	}
-	switch state.InputKind {
-	case inputWorkspaceRegister:
-		return application.WorkspaceRegisterInput{Path: text}, nil
-	case inputWorkspaceRelocate:
-		return application.WorkspaceRelocateRequest{ID: state.ResourceID, Path: text}, nil
-	case inputWorkspaceAccessAdd:
-		return application.WorkspaceAccessInput{ID: state.ResourceID, Path: text}, nil
-	case inputWorkspaceContainerCreate:
-		return application.WorkspaceContainerInput{Name: text}, nil
-	case inputWorkspaceContainerRename:
-		return application.WorkspaceContainerInput{ID: state.ResourceID, Name: text}, nil
-	default:
-		return nil, errors.New("unsupported action input")
-	}
+	return nil, errors.New("unsupported action input")
 }
 
 func (ui *Interface) domainPaginationButtons(owner ViewOwner, state ActionState, page, pages int) ([]Button, error) {

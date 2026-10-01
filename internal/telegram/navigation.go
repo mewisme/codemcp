@@ -62,6 +62,7 @@ type ActionState struct {
 	Back            Route
 	Operation       capability.ID
 	Input           any
+	InputFlow       *inputFlowState
 	ResourceID      string
 	ParentID        string
 	ExpectedVersion string
@@ -299,8 +300,31 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 	if ref.Action == CallbackConfirm {
 		state.Confirmed = true
 	}
-	if state.InputKind != "" && state.Input == nil {
+	if state.InputFlow != nil {
 		ui.answerCallback(ctx, update.CallbackQuery.ID, "", false)
+		messageID := update.CallbackQuery.Message.MessageID
+		if state.InputFlow.Awaiting {
+			if err := ui.beginInputFlowReply(ctx, owner, messageID, state); err != nil {
+				_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, withRouteBreadcrumb(ErrorScreen(err), state))
+			}
+			return
+		}
+		screen, screenErr := ui.renderState(ctx, owner, state)
+		if screenErr != nil {
+			screen = withRouteBreadcrumb(ErrorScreen(screenErr), state)
+		}
+		_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, screen)
+		return
+	}
+	if state.InputKind != "" {
+		ui.answerCallback(ctx, update.CallbackQuery.ID, "", false)
+		messageID := update.CallbackQuery.Message.MessageID
+		if started, startErr := ui.beginInputFlow(ctx, owner, messageID, state); startErr != nil {
+			_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, withRouteBreadcrumb(ErrorScreen(startErr), state))
+			return
+		} else if started {
+			return
+		}
 		if err := ui.beginActionInput(ctx, owner, state); err != nil {
 			_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, withRouteBreadcrumb(ErrorScreen(err), state))
 		}
@@ -602,6 +626,9 @@ func (ui *Interface) commandsScreen(owner ViewOwner) (Screen, error) {
 }
 
 func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
+	if state.InputFlow != nil {
+		return ui.inputFlowScreen(ctx, owner, state)
+	}
 	if state.Operation == "" {
 		return Screen{}, errors.New("operation is required")
 	}

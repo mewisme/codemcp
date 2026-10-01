@@ -2,10 +2,11 @@ package telegram
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"go.mewis.me/codemcp/internal/application"
@@ -17,9 +18,9 @@ import (
 )
 
 const (
-	inputUpstreamAdd         = "upstream.add.json"
-	inputUpstreamConfigure   = "upstream.configure.json"
-	inputTunnelConfigure     = "tunnel.configure.json"
+	inputUpstreamAdd         = "upstream.add"
+	inputUpstreamConfigure   = "upstream.configure"
+	inputTunnelConfigure     = "tunnel.configure"
 	inputTunnelAdminKey      = "tunnel.admin.key"
 	inputTunnelAdminScope    = "tunnel.admin.scope"
 	inputUpstreamOAuthLogin  = "upstream.oauth.login"
@@ -347,92 +348,316 @@ func tunnelScopeText(scope tunnel.AdminScope) string {
 	return ""
 }
 
-func networkInputPrompt(kind string) (title, prompt, placeholder string, secret bool) {
-	switch kind {
-	case inputUpstreamAdd:
-		return "Add Upstream server", "Reply with a JSON Upstream server object. The reply is deleted after processing because configuration may contain credentials.", "JSON Upstream server", true
-	case inputUpstreamConfigure:
-		return "Configure Upstream server", "Reply with the complete JSON Upstream server object. The server ID cannot change. The reply is deleted after processing.", "JSON Upstream server", true
-	case inputTunnelConfigure:
-		return "Configure tunnel runtime", "Reply with JSON containing any of: enabled, id, api_key, control_plane_base_url, organization_id. This does not verify admin access.", "JSON tunnel runtime config", true
+func (ui *Interface) networkInputFlow(ctx context.Context, state ActionState) (inputFlowDescriptor, bool, error) {
+	text := func(key, label, description, placeholder, example string, required bool) inputFlowField {
+		return inputFlowField{Key: key, Label: label, Description: description, Kind: inputFlowText, Required: required, Placeholder: placeholder, Example: example}
+	}
+	boolField := func(key, label, description string, value bool) inputFlowField {
+		return inputFlowField{Key: key, Label: label, Description: description, Kind: inputFlowBool, Required: true, HasDefault: true, Default: strconv.FormatBool(value), Options: inputFlowBoolOptions()}
+	}
+	validateOrigin := func(value string) error {
+		parsed, err := url.Parse(value)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Path != "" && parsed.Path != "/" || parsed.RawQuery != "" || parsed.Fragment != "" {
+			return errors.New("redirect origin must be an absolute origin such as https://admin.example.com")
+		}
+		if parsed.Scheme != "https" && !(parsed.Scheme == "http" && (parsed.Hostname() == "localhost" || parsed.Hostname() == "127.0.0.1" || parsed.Hostname() == "::1")) {
+			return errors.New("redirect origin must use HTTPS except for loopback HTTP")
+		}
+		return nil
+	}
+
+	switch state.InputKind {
 	case inputTunnelAdminKey:
-		return "Set tunnel admin key", "Reply with the OpenAI admin key. The reply is protected and deleted after processing. Verification is a separate explicit action.", "admin key", true
+		return inputFlowDescriptor{
+			Title: "Set tunnel admin key", Description: "Configure the OpenAI admin credential used for managed tunnel administration.", SubmitLabel: "Save admin key",
+			Fields: []inputFlowField{{Key: "key", Label: "Admin key", Description: "OpenAI admin key. The reply is protected and deleted after capture.", Kind: inputFlowSecret, Required: true, Secret: true, Placeholder: "admin key"}},
+			Build: func(data inputFlowData) (any, error) {
+				return application.TunnelAdminKeyInput{Key: data.Value("key"), KeySource: "telegram"}, nil
+			},
+		}, true, nil
 	case inputTunnelAdminScope:
-		return "Set tunnel admin scope", "Reply with exactly one scope: organization:<id>, workspace:<id>, or tenant:<id>.", "workspace:ws_...", false
+		return inputFlowDescriptor{
+			Title: "Set tunnel admin scope", Description: "Select exactly one scope used for managed tunnel administration.", SubmitLabel: "Set scope",
+			Fields: []inputFlowField{
+				{Key: "kind", Label: "Scope type", Description: "Choose which OpenAI resource boundary this admin key manages.", Kind: inputFlowEnum, Required: true, Options: []inputFlowOption{
+					{Label: "Organization", Value: "organization"}, {Label: "Workspace", Value: "workspace"}, {Label: "Tenant", Value: "tenant"},
+				}},
+				text("id", "Scope ID", "Exact ID for the selected scope.", "scope ID", "ws_...", true),
+			},
+			Build: func(data inputFlowData) (any, error) {
+				scope := tunnel.AdminScope{}
+				switch data.Value("kind") {
+				case "organization":
+					scope.OrganizationID = data.Value("id")
+				case "workspace":
+					scope.WorkspaceID = data.Value("id")
+				case "tenant":
+					scope.TenantID = data.Value("id")
+				default:
+					return nil, errors.New("scope type is required")
+				}
+				if err := tunnel.ValidateAdminScope(scope); err != nil {
+					return nil, err
+				}
+				return application.TunnelConfigureInput{AdminScope: &scope}, nil
+			},
+		}, true, nil
 	case inputUpstreamOAuthLogin:
-		return "Start Upstream OAuth", "Reply with the redirect origin used for the OAuth callback. HTTPS is required except for loopback HTTP origins.", "https://admin.example.com", false
+		field := text("origin", "Redirect origin", "Origin used for the OAuth callback. HTTPS is required except for loopback HTTP.", "https://admin.example.com", "https://admin.example.com", true)
+		field.Validate = validateOrigin
+		return inputFlowDescriptor{
+			Title: "Start Upstream OAuth", Description: "Start OAuth authorization for this upstream server.", SubmitLabel: "Start OAuth",
+			Fields: []inputFlowField{field},
+			Build: func(data inputFlowData) (any, error) {
+				return application.UpstreamOAuthInput{ID: state.ResourceID, RedirectOrigin: data.Value("origin")}, nil
+			},
+		}, true, nil
+	case inputTunnelConfigure:
+		value, err := ui.dispatch(ctx, capability.TunnelStatus, nil)
+		if err != nil {
+			return inputFlowDescriptor{}, true, err
+		}
+		view, ok := value.(application.TunnelView)
+		if !ok {
+			return inputFlowDescriptor{}, true, errors.New("tunnel status returned an unexpected result")
+		}
+		id := text("id", "Tunnel ID", "OpenAI Secure MCP Tunnel ID used by the runtime.", "tunnel_...", "tunnel_...", false)
+		id.HasDefault, id.Default, id.CanClear = true, view.ID, true
+		control := text("control_plane_base_url", "Control plane URL", "Optional OpenAI tunnel control-plane base URL.", "https://...", "https://api.openai.com", false)
+		control.HasDefault, control.Default, control.CanClear = true, view.ControlPlaneBaseURL, true
+		org := text("organization_id", "Organization ID", "Optional OpenAI organization binding for the runtime tunnel.", "org_...", "org_...", false)
+		org.HasDefault, org.Default, org.CanClear = true, view.OrganizationID, true
+		key := inputFlowField{Key: "api_key", Label: "Runtime API key", Description: "Runtime tunnel credential. Leave unchanged to keep the existing credential.", Kind: inputFlowSecret, Secret: true, Placeholder: "runtime API key"}
+		if view.RuntimeKeyConfigured {
+			key.HasDefault, key.Default = true, "configured"
+		}
+		return inputFlowDescriptor{
+			Title: "Configure tunnel runtime", Description: "Update the Secure MCP Tunnel runtime connection.", SubmitLabel: "Save runtime config",
+			Fields: []inputFlowField{
+				boolField("enabled", "Runtime tunnel", "Enable or disable the Secure MCP Tunnel runtime.", view.Enabled),
+				id, key, control, org,
+			},
+			Build: func(data inputFlowData) (any, error) {
+				runtime := application.TunnelRuntimeInput{}
+				if raw, explicit := data.Explicit("enabled"); explicit {
+					enabled, err := inputFlowBoolValue(raw)
+					if err != nil {
+						return nil, err
+					}
+					runtime.Enabled = &enabled
+				}
+				if raw, explicit := data.Explicit("id"); explicit {
+					value := raw
+					runtime.ID = &value
+				}
+				if apiKey, explicit := data.Explicit("api_key"); explicit {
+					runtime.APIKey = &apiKey
+				}
+				if raw, explicit := data.Explicit("control_plane_base_url"); explicit {
+					value := raw
+					runtime.ControlPlaneBaseURL = &value
+				}
+				if raw, explicit := data.Explicit("organization_id"); explicit {
+					value := raw
+					runtime.OrganizationID = &value
+				}
+				if runtime.Enabled == nil && runtime.ID == nil && runtime.APIKey == nil && runtime.ControlPlaneBaseURL == nil && runtime.OrganizationID == nil {
+					return nil, errors.New("no tunnel runtime changes selected")
+				}
+				return application.TunnelConfigureInput{Runtime: &runtime}, nil
+			},
+		}, true, nil
 	case inputManagedTunnelCreate:
-		return "Create managed tunnel", "Reply with a JSON create request containing name, description and optional organization/workspace/tenant IDs.", "JSON tunnel create request", false
+		return managedTunnelInputFlow(state, tunnel.Metadata{}, false), true, nil
 	case inputManagedTunnelUpdate:
-		return "Update managed tunnel", "Reply with a JSON update request. Only supplied fields are changed.", "JSON tunnel update request", false
+		value, err := ui.dispatch(ctx, capability.TunnelGet, application.ManagedTunnelGetInput{ID: state.ResourceID})
+		if err != nil {
+			return inputFlowDescriptor{}, true, err
+		}
+		metadata, ok := value.(tunnel.Metadata)
+		if !ok {
+			return inputFlowDescriptor{}, true, errors.New("managed tunnel view returned an unexpected result")
+		}
+		return managedTunnelInputFlow(state, metadata, true), true, nil
+	case inputUpstreamAdd:
+		return ui.upstreamInputFlow(ctx, state, upstream.Server{}, false)
+	case inputUpstreamConfigure:
+		value, err := ui.dispatch(ctx, capability.UpstreamServerShow, application.UpstreamIDInput{ID: state.ResourceID})
+		if err != nil {
+			return inputFlowDescriptor{}, true, err
+		}
+		server, ok := value.(upstream.Server)
+		if !ok {
+			return inputFlowDescriptor{}, true, errors.New("upstream view returned an unexpected result")
+		}
+		return ui.upstreamInputFlow(ctx, state, server, true)
 	default:
-		return "", "", "", false
+		return inputFlowDescriptor{}, false, nil
 	}
 }
 
-func networkActionInput(state ActionState, text string) (any, bool, error) {
-	text = strings.TrimSpace(text)
-	switch state.InputKind {
-	case inputUpstreamAdd:
-		var server upstream.Server
-		if err := json.Unmarshal([]byte(text), &server); err != nil {
-			return nil, true, fmt.Errorf("invalid upstream JSON: %w", err)
-		}
-		return application.UpstreamServerInput{Server: server}, true, nil
-	case inputUpstreamConfigure:
-		var server upstream.Server
-		if err := json.Unmarshal([]byte(text), &server); err != nil {
-			return nil, true, fmt.Errorf("invalid upstream JSON: %w", err)
-		}
-		return application.UpstreamUpdateInput{ID: state.ResourceID, Server: server, ExpectedFingerprint: state.ExpectedVersion}, true, nil
-	case inputTunnelConfigure:
-		var input application.TunnelRuntimeInput
-		if err := json.Unmarshal([]byte(text), &input); err != nil {
-			return nil, true, fmt.Errorf("invalid tunnel runtime JSON: %w", err)
-		}
-		if input.Enabled == nil && input.ID == nil && input.APIKey == nil && input.ControlPlaneBaseURL == nil && input.OrganizationID == nil {
-			return nil, true, errors.New("tunnel runtime JSON did not contain a supported field")
-		}
-		return application.TunnelConfigureInput{Runtime: &input}, true, nil
-	case inputTunnelAdminKey:
-		if text == "" {
-			return nil, true, errors.New("admin key must not be empty")
-		}
-		return application.TunnelAdminKeyInput{Key: text, KeySource: "telegram"}, true, nil
-	case inputTunnelAdminScope:
-		kind, value, ok := strings.Cut(text, ":")
-		if !ok || strings.TrimSpace(value) == "" {
-			return nil, true, errors.New("scope must be organization:<id>, workspace:<id>, or tenant:<id>")
-		}
-		scope := tunnel.AdminScope{}
-		switch strings.ToLower(strings.TrimSpace(kind)) {
-		case "organization":
-			scope.OrganizationID = strings.TrimSpace(value)
-		case "workspace":
-			scope.WorkspaceID = strings.TrimSpace(value)
-		case "tenant":
-			scope.TenantID = strings.TrimSpace(value)
-		default:
-			return nil, true, errors.New("unsupported tunnel admin scope")
-		}
-		return application.TunnelConfigureInput{AdminScope: &scope}, true, nil
-	case inputUpstreamOAuthLogin:
-		return application.UpstreamOAuthInput{ID: state.ResourceID, RedirectOrigin: text}, true, nil
-	case inputManagedTunnelCreate:
-		var request tunnel.CreateRequest
-		if err := json.Unmarshal([]byte(text), &request); err != nil {
-			return nil, true, fmt.Errorf("invalid managed tunnel create JSON: %w", err)
-		}
-		return application.ManagedTunnelCreateInput{Request: request}, true, nil
-	case inputManagedTunnelUpdate:
-		var request tunnel.UpdateRequest
-		if err := json.Unmarshal([]byte(text), &request); err != nil {
-			return nil, true, fmt.Errorf("invalid managed tunnel update JSON: %w", err)
-		}
-		return application.ManagedTunnelUpdateInput{ID: state.ResourceID, Request: request}, true, nil
-	default:
-		return nil, false, nil
+func managedTunnelInputFlow(state ActionState, current tunnel.Metadata, update bool) inputFlowDescriptor {
+	name := inputFlowField{Key: "name", Label: "Name", Description: "Human-readable managed tunnel name.", Kind: inputFlowText, Required: !update, Placeholder: "MCP Tunnel", Example: "MCP Tunnel"}
+	description := inputFlowField{Key: "description", Label: "Description", Description: "Optional description shown with the managed tunnel.", Kind: inputFlowText, Placeholder: "Tunnel description", CanClear: update}
+	organizations := inputFlowField{Key: "organizations", Label: "Organization IDs", Description: "Optional organization IDs. Enter one per line or separate with commas.", Kind: inputFlowMultiline, Example: "org_..."}
+	workspaces := inputFlowField{Key: "workspaces", Label: "Workspace IDs", Description: "Optional workspace IDs. Enter one per line or separate with commas.", Kind: inputFlowMultiline, Example: "ws_..."}
+	tenants := inputFlowField{Key: "tenants", Label: "Tenant IDs", Description: "Optional tenant IDs. Enter one per line or separate with commas.", Kind: inputFlowMultiline, Example: "tenant_..."}
+	if update {
+		name.HasDefault, name.Default = true, current.Name
+		description.HasDefault, description.Default = true, current.Description
+		organizations.HasDefault, organizations.Default, organizations.CanClear = true, inputFlowListText(current.OrganizationIDs), true
+		workspaces.HasDefault, workspaces.Default, workspaces.CanClear = true, inputFlowListText(current.WorkspaceIDs), true
+		tenants.HasDefault, tenants.Default, tenants.CanClear = true, inputFlowListText(current.TenantIDs), true
 	}
+	descriptor := inputFlowDescriptor{
+		Title: "Create managed tunnel", Description: "Create an OpenAI managed tunnel.", SubmitLabel: "Create tunnel",
+		Fields: []inputFlowField{name, description, organizations, workspaces, tenants},
+	}
+	if update {
+		descriptor.Title, descriptor.Description, descriptor.SubmitLabel = "Update managed tunnel", current.Name+" · managed tunnel", "Save changes"
+	}
+	descriptor.Build = func(data inputFlowData) (any, error) {
+		if update {
+			request := tunnel.UpdateRequest{}
+			changed := false
+			if raw, explicit := data.Explicit("name"); explicit {
+				value := raw
+				request.Name, changed = &value, true
+			}
+			if raw, explicit := data.Explicit("description"); explicit {
+				value := raw
+				request.Description, changed = &value, true
+			}
+			if raw, explicit := data.Explicit("organizations"); explicit {
+				value := inputFlowList(raw)
+				request.OrganizationIDs, changed = &value, true
+			}
+			if raw, explicit := data.Explicit("workspaces"); explicit {
+				value := inputFlowList(raw)
+				request.WorkspaceIDs, changed = &value, true
+			}
+			if raw, explicit := data.Explicit("tenants"); explicit {
+				value := inputFlowList(raw)
+				request.TenantIDs, changed = &value, true
+			}
+			if !changed {
+				return nil, errors.New("no managed tunnel changes selected")
+			}
+			return application.ManagedTunnelUpdateInput{ID: state.ResourceID, Request: request}, nil
+		}
+		return application.ManagedTunnelCreateInput{Request: tunnel.CreateRequest{
+			Name: data.Value("name"), Description: data.Value("description"),
+			OrganizationIDs: inputFlowList(data.Value("organizations")), WorkspaceIDs: inputFlowList(data.Value("workspaces")), TenantIDs: inputFlowList(data.Value("tenants")),
+		}}, nil
+	}
+	return descriptor
+}
+
+func (ui *Interface) upstreamInputFlow(_ context.Context, state ActionState, current upstream.Server, update bool) (inputFlowDescriptor, bool, error) {
+	if !update {
+		current.Enabled, current.Transport, current.Expose, current.IdleTimeoutSec = true, "http", "all", 600
+		current.Auth.Type = "auto"
+	}
+	field := func(key, label, description, value string) inputFlowField {
+		return inputFlowField{Key: key, Label: label, Description: description, Kind: inputFlowText, HasDefault: update, Default: value, CanClear: update}
+	}
+	id := inputFlowField{Key: "id", Label: "Server ID", Description: "Stable identifier for this upstream server.", Kind: inputFlowText, Required: true, Placeholder: "server-id", Example: "github"}
+	name := field("name", "Name", "Display name. Empty uses the server ID.", current.Name)
+	name.Required = false
+	transport := inputFlowField{Key: "transport", Label: "Transport", Description: "How CodeMCP connects to this upstream server.", Kind: inputFlowEnum, Required: true, HasDefault: true, Default: current.Transport, Options: []inputFlowOption{{Label: "HTTP", Value: "http", Description: "Remote Streamable HTTP server."}, {Label: "stdio", Value: "stdio", Description: "Local command launched as a subprocess."}}}
+	enabled := inputFlowField{Key: "enabled", Label: "Server state", Description: "Whether this upstream is enabled.", Kind: inputFlowBool, Required: true, HasDefault: true, Default: strconv.FormatBool(current.Enabled), Options: inputFlowBoolOptions()}
+	stdio := func(data inputFlowData) bool { return data.Value("transport") == "stdio" }
+	httpTransport := func(data inputFlowData) bool { return data.Value("transport") == "http" }
+	command := field("command", "Command", "Executable used to start a stdio upstream.", current.Command)
+	command.Required, command.When = true, stdio
+	args := inputFlowField{Key: "args", Label: "Arguments", Description: "Command arguments. Enter one argument per line.", Kind: inputFlowMultiline, HasDefault: update, Default: inputFlowListText(current.Args), CanClear: true, When: stdio, Example: "--flag\nvalue"}
+	cwd := field("cwd", "Working directory", "Optional working directory for the stdio process.", current.CWD)
+	cwd.When = stdio
+	urlField := field("url", "URL", "HTTPS upstream URL. Loopback HTTP is allowed when private network access is enabled.", current.URL)
+	urlField.Required, urlField.When, urlField.Placeholder, urlField.Example = true, httpTransport, "https://mcp.example.com", "https://mcp.example.com"
+	private := inputFlowField{Key: "private", Label: "Private network", Description: "Allow private or loopback network destinations.", Kind: inputFlowBool, Required: true, HasDefault: true, Default: strconv.FormatBool(current.AllowPrivateNetwork), Options: inputFlowBoolOptions(), When: httpTransport}
+	auth := inputFlowField{Key: "auth", Label: "Authentication", Description: "Authentication strategy for HTTP upstreams.", Kind: inputFlowEnum, Required: true, HasDefault: true, Default: current.Auth.Type, When: httpTransport, Options: []inputFlowOption{{Label: "Auto", Value: "auto"}, {Label: "OAuth", Value: "oauth"}, {Label: "None", Value: "none"}}}
+	authScope := field("auth_scope", "OAuth scope", "Optional OAuth scope requested from the upstream.", current.Auth.Scope)
+	authScope.When = httpTransport
+	bearerEnv := field("bearer_env", "Bearer token env var", "Optional environment variable containing a bearer token.", current.BearerTokenEnvVar)
+	bearerEnv.When = httpTransport
+	envField := inputFlowField{Key: "env", Label: "Environment", Description: "Environment variables as KEY=VALUE, one per line. Existing values remain unchanged unless you edit this field.", Kind: inputFlowMultiline, Secret: true, HasDefault: update && len(current.Env) > 0, Default: stateLabel(len(current.Env) > 0, "configured", ""), CanClear: update, When: stdio, Example: "TOKEN=secret\nMODE=production"}
+	headerField := inputFlowField{Key: "headers", Label: "Headers", Description: "HTTP headers as NAME=VALUE, one per line. Existing values remain unchanged unless you edit this field.", Kind: inputFlowMultiline, Secret: true, HasDefault: update && len(current.Headers) > 0, Default: stateLabel(len(current.Headers) > 0, "configured", ""), CanClear: update, When: httpTransport, Example: "Authorization=Bearer ...\nX-Team=platform"}
+	prefix := field("prefix", "Tool prefix", "Prefix applied to proxied tool names. Empty defaults from the server ID.", current.ToolPrefix)
+	expose := inputFlowField{Key: "expose", Label: "Tool exposure", Description: "Which upstream tools become available through CodeMCP.", Kind: inputFlowEnum, Required: true, HasDefault: true, Default: current.Expose, Options: []inputFlowOption{{Label: "All", Value: "all"}, {Label: "None", Value: "none"}, {Label: "Metadata only", Value: "meta_only"}, {Label: "Allowlist", Value: "allowlist"}}}
+	allowlist := inputFlowField{Key: "tools", Label: "Allowed tools", Description: "Tool names to expose. Enter one per line.", Kind: inputFlowMultiline, HasDefault: update, Default: inputFlowListText(current.Tools), CanClear: true, When: func(data inputFlowData) bool { return data.Value("expose") == "allowlist" }}
+	disabled := inputFlowField{Key: "disabled_tools", Label: "Disabled tools", Description: "Tool names to suppress even when otherwise exposed. Enter one per line.", Kind: inputFlowMultiline, HasDefault: update, Default: inputFlowListText(current.DisabledTools), CanClear: true}
+	timeout := field("timeout", "Idle timeout", "Idle connection timeout in seconds.", strconv.Itoa(current.IdleTimeoutSec))
+	timeout.Required, timeout.Accepted, timeout.HasDefault, timeout.Default = true, "Positive integer seconds.", true, strconv.Itoa(current.IdleTimeoutSec)
+	timeout.Validate = func(value string) error { _, err := inputFlowIntValue(value, 1, 0); return err }
+	fields := []inputFlowField{}
+	if !update {
+		fields = append(fields, id)
+	}
+	fields = append(fields, name, transport, enabled, command, args, cwd, urlField, private, auth, authScope, bearerEnv, envField, headerField, prefix, expose, allowlist, disabled, timeout)
+	descriptor := inputFlowDescriptor{Title: "Add Upstream server", Description: "Configure an MCP upstream server without pasting a complete JSON object.", SubmitLabel: "Add server", Fields: fields}
+	if update {
+		descriptor.Title, descriptor.Description, descriptor.SubmitLabel = "Configure Upstream server", current.Name+" · "+current.Transport+" upstream", "Save changes"
+	}
+	descriptor.Build = func(data inputFlowData) (any, error) {
+		server := current
+		if !update {
+			server.ID = data.Value("id")
+		}
+		server.Name, server.Transport = data.Value("name"), data.Value("transport")
+		enabledValue, err := inputFlowBoolValue(data.Value("enabled"))
+		if err != nil {
+			return nil, err
+		}
+		server.Enabled = enabledValue
+		server.ToolPrefix, server.Expose = data.Value("prefix"), data.Value("expose")
+		server.Tools, server.DisabledTools = inputFlowList(data.Value("tools")), inputFlowList(data.Value("disabled_tools"))
+		server.IdleTimeoutSec, err = inputFlowIntValue(data.Value("timeout"), 1, 0)
+		if err != nil {
+			return nil, err
+		}
+		if server.Transport == "stdio" {
+			server.Command, server.Args, server.CWD = data.Value("command"), inputFlowLines(data.Value("args")), data.Value("cwd")
+			server.URL, server.Headers, server.BearerTokenEnvVar = "", map[string]string{}, ""
+			server.Auth = upstream.AuthConfig{Type: "none"}
+			if raw, explicit := data.Explicit("env"); explicit {
+				assignments, parseErr := upstream.ParseAssignments(inputFlowLines(raw), "environment")
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				server.Env = assignments
+			} else if !update {
+				server.Env = map[string]string{}
+			}
+		} else {
+			server.Command, server.Args, server.CWD, server.Env = "", []string{}, "", map[string]string{}
+			server.URL = data.Value("url")
+			server.AllowPrivateNetwork, err = inputFlowBoolValue(data.Value("private"))
+			if err != nil {
+				return nil, err
+			}
+			server.Auth = upstream.AuthConfig{Type: data.Value("auth"), Scope: data.Value("auth_scope")}
+			server.BearerTokenEnvVar = data.Value("bearer_env")
+			if raw, explicit := data.Explicit("headers"); explicit {
+				assignments, parseErr := upstream.ParseAssignments(inputFlowLines(raw), "headers")
+				if parseErr != nil {
+					return nil, parseErr
+				}
+				server.Headers = assignments
+			} else if !update {
+				server.Headers = map[string]string{}
+			}
+		}
+		normalized, err := upstream.NormalizeServer(server)
+		if err != nil {
+			return nil, err
+		}
+		if update {
+			return application.UpstreamUpdateInput{ID: state.ResourceID, Server: normalized, ExpectedFingerprint: state.ExpectedVersion}, nil
+		}
+		return application.UpstreamServerInput{Server: normalized}, nil
+	}
+	return descriptor, true, nil
 }
 
 func (ui *Interface) networkOperationResultScreen(owner ViewOwner, state ActionState, spec capability.Spec, value any) (Screen, bool, error) {

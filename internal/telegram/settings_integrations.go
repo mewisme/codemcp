@@ -2,7 +2,6 @@ package telegram
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,6 +10,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/integrations/cftunnel"
 	"go.mewis.me/codemcp/internal/integrations/codegraph"
 	"go.mewis.me/codemcp/internal/integrations/rtk"
@@ -889,51 +889,213 @@ func appendSettingList(raw, value string) string {
 
 func settingsInputPrompt(state ActionState) (title, prompt, placeholder string) {
 	switch state.InputKind {
-	case inputSettingSet:
-		return "Set setting", "Reply with the new value. Setting metadata and validation determine whether the change is allowed.", "New value"
 	case inputSettingsSearch:
 		return "Search settings", "Reply with text to search setting keys, labels, descriptions, and owners.", "Search settings"
-	case inputSettingsApply:
-		return "Apply settings atomically", "Reply with a JSON array of changes. Example: [{\"key\":\"http.mcp.port\",\"value\":\"4000\"}]. The whole batch is validated before anything is saved.", "JSON setting changes"
-	case inputConfigPatch:
-		return "Patch configuration", "Reply with a JSON array of setting changes. The complete batch is validated before persistence.", "JSON setting changes"
-	case inputTelegramUserManual:
-		return "Add Telegram user", "Reply with the numeric Telegram user ID. The candidate is not authorized until the confirmation succeeds.", "Telegram user ID"
 	default:
 		return "", "", ""
 	}
 }
 
-func settingsActionInput(state ActionState, text string) (any, bool, error) {
+func (ui *Interface) settingsInputFlow(ctx context.Context, state ActionState) (inputFlowDescriptor, bool, error) {
 	switch state.InputKind {
 	case inputSettingSet:
-		return application.ConfigSetInput{Action: "set", Key: state.ResourceID, Value: text, SecretSource: "telegram"}, true, nil
+		value, err := ui.dispatch(ctx, capability.ConfigGet, application.ConfigGetInput{Key: state.ResourceID})
+		if err != nil {
+			return inputFlowDescriptor{}, true, err
+		}
+		result, ok := value.(application.SettingResult)
+		if !ok {
+			return inputFlowDescriptor{}, true, errors.New("setting view returned an unexpected result")
+		}
+		field, err := settingInputFlowField(result)
+		if err != nil {
+			return inputFlowDescriptor{}, true, err
+		}
+		return inputFlowDescriptor{
+			Title: result.Spec.Label, Description: result.Spec.Description, SubmitLabel: "Save setting",
+			Fields: []inputFlowField{field},
+			Build: func(data inputFlowData) (any, error) {
+				return application.ConfigSetInput{Action: "set", Key: state.ResourceID, Value: data.Value("value"), SecretSource: "telegram"}, nil
+			},
+		}, true, nil
+	case inputTelegramUserManual:
+		field := inputFlowField{
+			Key: "user_id", Label: "Telegram user ID", Description: "Numeric Telegram user ID to authorize. Access is granted only after the operation succeeds.",
+			Kind: inputFlowText, Required: true, Placeholder: "123456789", Example: "123456789", Accepted: "Positive integer Telegram user ID.",
+			Validate: func(value string) error {
+				parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+				if err != nil || parsed <= 0 {
+					return errors.New("telegram user ID must be a positive integer")
+				}
+				return nil
+			},
+		}
+		return inputFlowDescriptor{
+			Title: "Add Telegram user", Description: "Authorize another Telegram account for this private bot.", SubmitLabel: "Authorize user",
+			Fields: []inputFlowField{field},
+			Build: func(data inputFlowData) (any, error) {
+				return application.ConfigSetInput{
+					Action: "set", Key: "telegram.allowed_user_ids",
+					Value:         appendSettingList(state.ExpectedVersion, data.Value("user_id")),
+					ExpectedValue: state.ExpectedVersion, CheckExpected: true,
+				}, nil
+			},
+		}, true, nil
+	case inputSettingsApply, inputConfigPatch:
+		title, description, submit := "Apply settings", "Apply multiple settings as one validated batch.", "Apply settings"
+		if state.InputKind == inputConfigPatch {
+			title, description, submit = "Patch configuration", "Apply multiple configuration changes as one validated batch.", "Apply patch"
+		}
+		field := inputFlowField{
+			Key: "changes", Label: "Setting changes",
+			Description: "Enter one change per line as key=value. Prefix a key with ! to unset it. The reply is protected because a batch may contain secret values.",
+			Kind:        inputFlowMultiline, Required: true, Secret: true, Placeholder: "key=value",
+			Example: "http.mcp.port=4000\nintegrations.ponytail.mode=full\n!optional.key",
+			Validate: func(value string) error {
+				_, err := parseSettingFlowChanges(value)
+				return err
+			},
+		}
+		return inputFlowDescriptor{
+			Title: title, Description: description, SubmitLabel: submit, Fields: []inputFlowField{field},
+			Build: func(data inputFlowData) (any, error) {
+				changes, err := parseSettingFlowChanges(data.Value("changes"))
+				if err != nil {
+					return nil, err
+				}
+				if state.InputKind == inputConfigPatch {
+					return application.ConfigPatchInput{Changes: changes}, nil
+				}
+				return application.ConfigSetInput{Action: "apply", Changes: changes}, nil
+			},
+		}, true, nil
+	default:
+		return inputFlowDescriptor{}, false, nil
+	}
+}
+
+func settingInputFlowField(result application.SettingResult) (inputFlowField, error) {
+	spec := result.Spec
+	description := strings.TrimSpace(spec.Description)
+	if guidance := strings.TrimSpace(spec.Guidance); guidance != "" {
+		if description != "" {
+			description += " "
+		}
+		description += guidance
+	}
+	field := inputFlowField{
+		Key: "value", Label: spec.Label, Description: description, Required: true,
+		CanClear: spec.Clearable, Secret: spec.Secret || spec.Sensitive,
+	}
+	if !field.Secret {
+		field.HasDefault, field.Default = true, result.Value
+	}
+	switch spec.Kind {
+	case config.FieldBool:
+		field.Kind = inputFlowBool
+		field.Options = inputFlowBoolOptions()
+		field.Validate = func(value string) error { _, err := inputFlowBoolValue(value); return err }
+	case config.FieldEnum:
+		field.Kind = inputFlowEnum
+		for _, item := range spec.Values {
+			field.Options = append(field.Options, inputFlowOption{Label: displayState(item.Value), Value: item.Value, Description: item.Description})
+		}
+		if len(field.Options) == 0 {
+			for _, option := range spec.Options {
+				field.Options = append(field.Options, inputFlowOption{Label: displayState(option), Value: option})
+			}
+		}
+		allowed := map[string]struct{}{}
+		for _, option := range field.Options {
+			allowed[option.Value] = struct{}{}
+		}
+		field.Validate = func(value string) error {
+			if _, ok := allowed[value]; !ok {
+				return fmt.Errorf("unsupported value %q", value)
+			}
+			return nil
+		}
+	case config.FieldInt:
+		field.Kind = inputFlowText
+		field.Accepted = "Integer"
+		if spec.Input.HasMinInt || spec.Input.HasMaxInt {
+			parts := []string{}
+			if spec.Input.HasMinInt {
+				parts = append(parts, fmt.Sprintf("minimum %d", spec.Input.MinInt))
+			}
+			if spec.Input.HasMaxInt {
+				parts = append(parts, fmt.Sprintf("maximum %d", spec.Input.MaxInt))
+			}
+			field.Accepted += " · " + strings.Join(parts, " · ")
+		}
+		field.Validate = func(value string) error {
+			parsed, err := strconv.Atoi(strings.TrimSpace(value))
+			if err != nil {
+				return errors.New("value must be an integer")
+			}
+			if spec.Input.HasMinInt && parsed < spec.Input.MinInt {
+				return fmt.Errorf("value must be at least %d", spec.Input.MinInt)
+			}
+			if spec.Input.HasMaxInt && parsed > spec.Input.MaxInt {
+				return fmt.Errorf("value must be at most %d", spec.Input.MaxInt)
+			}
+			return nil
+		}
+	case config.FieldList:
+		field.Kind = inputFlowMultiline
+		field.Description = strings.TrimSpace(field.Description + " Enter one item per line.")
+		if field.HasDefault {
+			field.Default = strings.ReplaceAll(field.Default, ",", "\n")
+		}
+	case config.FieldString:
+		if field.Secret {
+			field.Kind = inputFlowSecret
+		} else {
+			field.Kind = inputFlowText
+		}
+	default:
+		return inputFlowField{}, fmt.Errorf("setting %s does not support interactive editing", spec.Key)
+	}
+	if field.Description == "" {
+		field.Description = "Enter the new value for " + spec.Key + "."
+	}
+	field.Placeholder = spec.Label
+	return field, nil
+}
+
+func parseSettingFlowChanges(value string) ([]application.SettingChange, error) {
+	lines := strings.Split(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
+	changes := make([]application.SettingChange, 0, len(lines))
+	for index, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "!") {
+			key := strings.TrimSpace(strings.TrimPrefix(line, "!"))
+			if key == "" {
+				return nil, fmt.Errorf("line %d: unset key is required", index+1)
+			}
+			changes = append(changes, application.SettingChange{Key: key, Unset: true})
+			continue
+		}
+		key, raw, ok := strings.Cut(line, "=")
+		key = strings.TrimSpace(key)
+		if !ok || key == "" {
+			return nil, fmt.Errorf("line %d: expected key=value or !key", index+1)
+		}
+		changes = append(changes, application.SettingChange{Key: key, Value: strings.TrimSpace(raw)})
+	}
+	if len(changes) == 0 {
+		return nil, errors.New("at least one setting change is required")
+	}
+	return changes, nil
+}
+
+func settingsActionInput(state ActionState, text string) (any, bool, error) {
+	switch state.InputKind {
 	case inputSettingsSearch:
 		return application.ConfigListInput{Query: text}, true, nil
-	case inputSettingsApply:
-		var changes []application.SettingChange
-		if err := json.Unmarshal([]byte(text), &changes); err != nil {
-			return nil, true, fmt.Errorf("invalid setting-change JSON: %w", err)
-		}
-		if len(changes) == 0 {
-			return nil, true, errors.New("at least one setting change is required")
-		}
-		return application.ConfigSetInput{Action: "apply", Changes: changes}, true, nil
-	case inputConfigPatch:
-		var changes []application.SettingChange
-		if err := json.Unmarshal([]byte(text), &changes); err != nil {
-			return nil, true, fmt.Errorf("invalid configuration patch JSON: %w", err)
-		}
-		if len(changes) == 0 {
-			return nil, true, errors.New("at least one configuration change is required")
-		}
-		return application.ConfigPatchInput{Changes: changes}, true, nil
-	case inputTelegramUserManual:
-		return application.ConfigSetInput{
-			Action: "set", Key: "telegram.allowed_user_ids",
-			Value:         appendSettingList(state.ExpectedVersion, strings.TrimSpace(text)),
-			ExpectedValue: state.ExpectedVersion, CheckExpected: true,
-		}, true, nil
 	default:
 		return nil, false, nil
 	}

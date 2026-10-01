@@ -199,6 +199,13 @@ func TestSecretSettingInputIsProtectedAndReplyIsDeleted(t *testing.T) {
 	api := &settingsTestAPI{}
 	runtime := &Runtime{api: api, generation: 7, health: Health{Running: true, Enabled: true, AuthorizationConfigured: true}}
 	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{
+		capability.ConfigGet: application.SettingResult{
+			Spec: config.FieldSpec{
+				Key: "telegram.token", Label: "Telegram bot token", Description: "Token used to authenticate the Telegram bot.",
+				Kind: config.FieldString, Editable: true, Writable: true, Secret: true,
+			},
+			Value: "123********xyz",
+		},
 		capability.ConfigSet: application.SettingResult{
 			Spec:  config.FieldSpec{Key: "telegram.token", Label: "Telegram bot token", Secret: true},
 			Value: "123********xyz",
@@ -213,7 +220,12 @@ func TestSecretSettingInputIsProtectedAndReplyIsDeleted(t *testing.T) {
 		Route: RouteOperation, Back: RouteAuth, Operation: capability.ConfigSet,
 		ResourceID: "telegram.token", InputKind: inputSettingSet, SecretInput: true,
 	}
-	if err := ui.beginActionInput(t.Context(), owner, state); err != nil {
+	descriptor, handled, err := ui.settingsInputFlow(t.Context(), state)
+	if err != nil || !handled {
+		t.Fatalf("secret setting flow handled=%v err=%v", handled, err)
+	}
+	state.InputFlow = newInputFlowState(descriptor)
+	if err := ui.beginInputFlowReply(t.Context(), owner, 99, state); err != nil {
 		t.Fatal(err)
 	}
 	if len(api.richOptions) != 1 || !api.richOptions[0].ProtectContent {

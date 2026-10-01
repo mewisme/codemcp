@@ -157,16 +157,34 @@ func TestUpstreamDetailIsRedactedProgressiveAndMutationStateIsVersionBound(t *te
 	}
 }
 
-func TestNetworkInputsProtectCredentialsAndParseTunnelRuntimeSnakeCase(t *testing.T) {
-	for _, kind := range []string{inputUpstreamAdd, inputUpstreamConfigure, inputTunnelConfigure, inputTunnelAdminKey} {
-		_, _, _, secret := networkInputPrompt(kind)
-		if !secret {
-			t.Fatalf("network input %q is not protected", kind)
-		}
-	}
-	value, handled, err := networkActionInput(ActionState{InputKind: inputTunnelConfigure}, `{"enabled":true,"id":"tunnel_x","api_key":"runtime-key","organization_id":"org_x"}`)
+func TestTunnelRuntimeInputFlowProtectsCredentialAndBuildsTypedInput(t *testing.T) {
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{
+		capability.TunnelStatus: application.TunnelView{
+			Enabled: true, ID: "tunnel_old", OrganizationID: "org_old", RuntimeKeyConfigured: true,
+		},
+	}}
+	ui, _ := newDomainTestInterface(t, dispatcher)
+	descriptor, handled, err := ui.networkInputFlow(t.Context(), ActionState{InputKind: inputTunnelConfigure})
 	if err != nil || !handled {
 		t.Fatalf("handled=%v err=%v", handled, err)
+	}
+	var keyField *inputFlowField
+	for index := range descriptor.Fields {
+		if descriptor.Fields[index].Key == "api_key" {
+			keyField = &descriptor.Fields[index]
+			break
+		}
+	}
+	if keyField == nil || !keyField.Secret || keyField.Kind != inputFlowSecret {
+		t.Fatalf("runtime key field=%#v", keyField)
+	}
+	flow := newInputFlowState(descriptor)
+	flow.Values["id"] = "tunnel_x"
+	flow.Values["organization_id"] = "org_x"
+	flow.Values["api_key"] = "runtime-key"
+	value, err := descriptor.Build(inputFlowDataFor(descriptor, flow))
+	if err != nil {
+		t.Fatal(err)
 	}
 	input := value.(application.TunnelConfigureInput)
 	if input.Runtime == nil || input.Runtime.APIKey == nil || *input.Runtime.APIKey != "runtime-key" || input.Runtime.OrganizationID == nil || *input.Runtime.OrganizationID != "org_x" {

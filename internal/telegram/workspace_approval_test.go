@@ -440,7 +440,11 @@ func TestWorkspaceActionInputsRemainTypedCanonicalInputs(t *testing.T) {
 		}},
 	}
 	for _, test := range tests {
-		value, err := actionInput(test.state, test.text)
+		descriptor, ok := workspaceInputFlow(test.state)
+		if !ok {
+			t.Fatalf("workspace flow missing for %#v", test.state)
+		}
+		value, err := descriptor.Build(inputFlowData{values: map[string]string{"value": test.text}, set: map[string]bool{"value": true}})
 		if err != nil {
 			t.Fatal(err)
 		}

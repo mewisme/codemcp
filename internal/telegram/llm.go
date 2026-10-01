@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 
 	"go.mewis.me/codemcp/internal/application"
@@ -19,6 +21,8 @@ const (
 	inputLLMModelSet          = "llm.model.set"
 	inputLLMCredentialSet     = "llm.credential.set"
 )
+
+var telegramLLMProviderIDPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$`)
 
 func (ui *Interface) handleLLM(ctx context.Context, update Update) {
 	owner, ok := ownerFromUpdate(ui.runtime, update)
@@ -387,42 +391,146 @@ func (ui *Interface) llmModelPageScreen(owner ViewOwner, state ActionState, page
 
 func llmInputPrompt(kind string) (title, prompt, placeholder string) {
 	switch kind {
-	case inputLLMProviderAdd:
-		return "Add LLM provider", "Reply with: id | name | protocol | base URL | model | auth mode | discovery", "acme | Acme | openai | https://... | model | bearer | openai-models"
-	case inputLLMProviderConfigure:
-		return "Configure LLM provider", "Reply with: name | protocol | base URL | model | auth mode | discovery", "Acme | openai | https://... | model | bearer | openai-models"
 	case inputLLMModelSearch:
 		return "Search LLM models", "Reply with a model search term.", "model name or ID"
-	case inputLLMModelSet:
-		return "Set LLM model", "Reply with the exact model ID. This does not change active provider.", "provider/model"
-	case inputLLMCredentialSet:
-		return "Set LLM API key", "Reply with the API key. The secret-bearing message is deleted after capture.", "API key"
 	default:
 		return "", "", ""
 	}
 }
 
+func (ui *Interface) llmInputFlow(ctx context.Context, state ActionState) (inputFlowDescriptor, bool, error) {
+	providerFields := func(current *application.LLMProviderResult, includeID bool) []inputFlowField {
+		fields := []inputFlowField{}
+		if includeID {
+			fields = append(fields, inputFlowField{
+				Key: "id", Label: "Provider ID", Description: "Stable identifier used by CodeMCP configuration and commands.",
+				Kind: inputFlowText, Required: true, Placeholder: "acme", Example: "acme",
+				Accepted: "1–64 lowercase letters, digits, '.', '_' or '-'; must start and end with a letter or digit.",
+				Validate: validateTelegramLLMProviderID,
+			})
+		}
+		name := ""
+		protocol := "openai"
+		baseURL := ""
+		model := ""
+		authMode := "none"
+		discovery := "none"
+		if current != nil {
+			name, protocol, baseURL, model = current.Name, string(current.Protocol), current.BaseURL, current.Model
+			authMode, discovery = string(current.AuthMode), string(current.Discovery)
+		}
+		fields = append(fields,
+			inputFlowField{Key: "name", Label: "Name", Description: "Display name shown in CodeMCP.", Kind: inputFlowText, Placeholder: "Acme", Example: "Acme", Accepted: "Up to 128 bytes.", HasDefault: current != nil, Default: name, CanClear: current != nil, Validate: func(value string) error {
+				if len(value) > 128 {
+					return errors.New("provider name must be at most 128 bytes")
+				}
+				return nil
+			}},
+			inputFlowField{Key: "protocol", Label: "Protocol", Description: "Request format used when CodeMCP calls this provider.", Kind: inputFlowEnum, Required: true, HasDefault: true, Default: protocol, Options: []inputFlowOption{
+				{Label: "OpenAI compatible", Value: "openai", Description: "OpenAI-compatible chat/completions APIs."},
+				{Label: "Anthropic compatible", Value: "anthropic", Description: "Anthropic-compatible Messages API."},
+			}},
+			inputFlowField{Key: "base_url", Label: "Base URL", Description: "Provider API endpoint. Do not include credentials, query parameters, or fragments.", Kind: inputFlowText, Required: true, Placeholder: "https://api.example.com/v1", Example: "https://api.example.com/v1", HasDefault: current != nil, Default: baseURL, Validate: validateTelegramLLMEndpoint},
+			inputFlowField{Key: "model", Label: "Model", Description: "Default model ID. Optional when the provider can operate without a fixed model.", Kind: inputFlowText, Placeholder: "provider/model", Example: "gpt-5", Accepted: "Up to 256 bytes.", HasDefault: current != nil, Default: model, CanClear: true, Validate: func(value string) error {
+				if len(value) > 256 {
+					return errors.New("model ID must be at most 256 bytes")
+				}
+				return nil
+			}},
+			inputFlowField{Key: "auth_mode", Label: "Authentication", Description: "How CodeMCP attaches the provider credential.", Kind: inputFlowEnum, Required: true, HasDefault: true, Default: authMode, Options: []inputFlowOption{
+				{Label: "None", Value: "none", Description: "No credential header."},
+				{Label: "Bearer token", Value: "bearer", Description: "Authorization: Bearer <token>."},
+				{Label: "x-api-key", Value: "x-api-key", Description: "x-api-key request header."},
+			}},
+			inputFlowField{Key: "discovery", Label: "Model discovery", Description: "Endpoint used to discover model IDs.", Kind: inputFlowEnum, Required: true, HasDefault: true, Default: discovery, Options: []inputFlowOption{
+				{Label: "None", Value: "none", Description: "Do not discover models automatically."},
+				{Label: "OpenAI /models", Value: "openai-models", Description: "Use an OpenAI-compatible /models endpoint."},
+				{Label: "Ollama /api/tags", Value: "ollama-tags", Description: "Use Ollama native model tags."},
+			}},
+		)
+		return fields
+	}
+	buildProvider := func(id string, data inputFlowData) (any, error) {
+		config := application.NewCustomLLMProviderConfig(
+			data.Value("name"), data.Value("protocol"), data.Value("base_url"), data.Value("model"), data.Value("auth_mode"), data.Value("discovery"),
+		)
+		return application.LLMProviderWriteInput{ID: id, Config: config}, nil
+	}
+
+	switch state.InputKind {
+	case inputLLMProviderAdd:
+		descriptor := inputFlowDescriptor{
+			Title: "Add LLM provider", Description: "Configure a custom OpenAI-compatible or Anthropic-compatible provider.", SubmitLabel: "Create provider",
+			Fields: providerFields(nil, true),
+		}
+		descriptor.Build = func(data inputFlowData) (any, error) { return buildProvider(data.Value("id"), data) }
+		return descriptor, true, nil
+	case inputLLMProviderConfigure:
+		value, err := ui.dispatch(ctx, capability.LLMProviderGet, application.LLMProviderIDInput{ID: state.ResourceID})
+		if err != nil {
+			return inputFlowDescriptor{}, true, err
+		}
+		provider, ok := value.(application.LLMProviderResult)
+		if !ok {
+			return inputFlowDescriptor{}, true, errors.New("LLM provider view returned an unexpected result")
+		}
+		descriptor := inputFlowDescriptor{
+			Title: "Configure LLM provider", Description: provider.Name + " · custom provider configuration", SubmitLabel: "Save changes",
+			Fields: providerFields(&provider, false),
+		}
+		descriptor.Build = func(data inputFlowData) (any, error) { return buildProvider(state.ResourceID, data) }
+		return descriptor, true, nil
+	case inputLLMModelSet:
+		return inputFlowDescriptor{
+			Title: "Set LLM model", Description: "Choose the exact default model ID for this provider.", SubmitLabel: "Set model",
+			Fields: []inputFlowField{{Key: "model", Label: "Model ID", Description: "Exact provider model ID. This does not change the active provider.", Kind: inputFlowText, Required: true, Placeholder: "provider/model", Example: "qwen3:8b"}},
+			Build: func(data inputFlowData) (any, error) {
+				model := data.Value("model")
+				return application.LLMProviderWriteInput{ID: state.ResourceID, Model: &model}, nil
+			},
+		}, true, nil
+	case inputLLMCredentialSet:
+		return inputFlowDescriptor{
+			Title: "Set LLM API key", Description: "The reply is protected and deleted after capture.", SubmitLabel: "Save API key",
+			Fields: []inputFlowField{{Key: "api_key", Label: "API key", Description: "Credential sent using the provider's configured authentication mode.", Kind: inputFlowSecret, Required: true, Secret: true, Placeholder: "API key"}},
+			Build: func(data inputFlowData) (any, error) {
+				return application.LLMProviderCredentialInput{ID: state.ResourceID, APIKey: data.Value("api_key")}, nil
+			},
+		}, true, nil
+	default:
+		return inputFlowDescriptor{}, false, nil
+	}
+}
+
+func validateTelegramLLMProviderID(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 64 || !telegramLLMProviderIDPattern.MatchString(value) {
+		return errors.New("provider ID must use 1-64 lowercase letters, digits, '.', '_' or '-' and start/end with a letter or digit")
+	}
+	if value == "ollama" {
+		return errors.New("provider ID \"ollama\" is reserved")
+	}
+	return nil
+}
+
+func validateTelegramLLMEndpoint(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 2048 {
+		return errors.New("base URL is required and must be at most 2048 bytes")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return errors.New("base URL must be an absolute HTTP(S) URL")
+	}
+	if parsed.User != nil || parsed.Fragment != "" || parsed.RawQuery != "" {
+		return errors.New("base URL must not contain credentials, query parameters, or fragments")
+	}
+	return nil
+}
+
 func llmActionInput(state ActionState, text string) (any, bool, error) {
 	text = strings.TrimSpace(text)
 	switch state.InputKind {
-	case inputLLMProviderAdd:
-		parts, err := llmInputParts(text, 7)
-		if err != nil {
-			return nil, true, err
-		}
-		return application.LLMProviderWriteInput{
-			ID:     parts[0],
-			Config: application.NewCustomLLMProviderConfig(parts[1], parts[2], parts[3], parts[4], parts[5], parts[6]),
-		}, true, nil
-	case inputLLMProviderConfigure:
-		parts, err := llmInputParts(text, 6)
-		if err != nil {
-			return nil, true, err
-		}
-		return application.LLMProviderWriteInput{
-			ID:     state.ResourceID,
-			Config: application.NewCustomLLMProviderConfig(parts[0], parts[1], parts[2], parts[3], parts[4], parts[5]),
-		}, true, nil
 	case inputLLMModelSearch:
 		input, _ := state.Input.(application.LLMProviderModelsInput)
 		input.ID = state.ResourceID
@@ -430,33 +538,9 @@ func llmActionInput(state ActionState, text string) (any, bool, error) {
 		input.Query.Offset = 0
 		input.Query.Limit = telegramLLMPageSize
 		return input, true, nil
-	case inputLLMModelSet:
-		if text == "" {
-			return nil, true, errors.New("LLM model ID is required")
-		}
-		return application.LLMProviderWriteInput{ID: state.ResourceID, Model: &text}, true, nil
-	case inputLLMCredentialSet:
-		if text == "" {
-			return nil, true, errors.New("LLM API key is required")
-		}
-		return application.LLMProviderCredentialInput{ID: state.ResourceID, APIKey: text}, true, nil
 	default:
 		return nil, false, nil
 	}
-}
-
-func llmInputParts(text string, want int) ([]string, error) {
-	parts := strings.Split(text, "|")
-	if len(parts) != want {
-		return nil, fmt.Errorf("expected %d pipe-separated fields", want)
-	}
-	for index := range parts {
-		parts[index] = strings.TrimSpace(parts[index])
-		if parts[index] == "" {
-			return nil, fmt.Errorf("field %d must not be empty", index+1)
-		}
-	}
-	return parts, nil
 }
 
 func llmQueryFromState(state ActionState) application.LLMModelQuery {

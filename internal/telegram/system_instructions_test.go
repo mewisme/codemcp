@@ -130,10 +130,26 @@ func TestProjectContextPresentationDoesNotRenderRuleContent(t *testing.T) {
 	}
 }
 
-func TestPromptUpdateInputCannotRetargetName(t *testing.T) {
+func TestPromptUpdateInputFlowKeepsBoundNameAndScope(t *testing.T) {
 	state := ActionState{InputKind: inputPromptUpdate, ResourceID: "selected", ExpectedVersion: "ws_test"}
-	_, handled, err := systemActionInput(state, `{"version":1,"name":"other","messages":[{"role":"user","content":{"type":"text","text":"hello"}}]}`)
-	if !handled || err == nil || !strings.Contains(err.Error(), "cannot change") {
-		t.Fatalf("handled=%v err=%v", handled, err)
+	prompt := instructioncontext.ScopedPrompt{
+		Scope: instructioncontext.PromptScopeWorkspace,
+		Definition: instructioncontext.PromptDefinition{
+			Version: instructioncontext.PromptDefinitionVersion,
+			Name:    "selected",
+			Messages: []instructioncontext.PromptMessage{{
+				Role: "user", Content: instructioncontext.PromptTextContent{Type: "text", Text: "hello"},
+			}},
+		},
+	}
+	descriptor := promptUpdateInputFlow(state, prompt)
+	flow := newInputFlowState(descriptor)
+	value, err := descriptor.Build(inputFlowDataFor(descriptor, flow))
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := value.(application.PromptWriteRequest)
+	if request.Definition.Name != "selected" || request.Scope != instructioncontext.PromptScopeWorkspace || request.WorkspaceID != "ws_test" {
+		t.Fatalf("prompt update retargeted immutable identity: %#v", request)
 	}
 }
