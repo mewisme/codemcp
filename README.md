@@ -35,33 +35,37 @@ The main path is intentionally small: ChatGPT reaches the local runtime through 
 
 ## Install
 
+For most developer machines, use the managed direct installer. It keeps CodeMCP under your user account and gives `cm upgrade` a transactional, rollback-capable install layout.
+
 ### Linux / macOS
 
 ```bash
 curl -fsSL get.mewis.me/codemcp.sh | sh
 ```
 
-### Windows PowerShell
+### Windows
 
 ```powershell
 irm https://get.mewis.me/codemcp.ps1 | iex
 ```
 
-### Homebrew
+Prefer a normal setup executable? Download the latest [Windows amd64 setup](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_amd64_setup.exe) or [Windows arm64 setup](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_arm64_setup.exe). Both bootstrap the same managed direct layout as the PowerShell installer.
+
+### Package managers
 
 ```bash
 brew tap mewisme/mew
 brew install --cask codemcp
 ```
 
-### Scoop
-
 ```powershell
 scoop bucket add mew https://github.com/mewisme/scoop-mew
 scoop install mew/codemcp
 ```
 
-The installed executable is `cm`.
+Debian and RPM release packages are also available for Linux amd64/arm64. Package-manager installs remain package-manager-owned; see [Getting started](docs/getting-started.md#native-linux-packages) for download names and ownership details.
+
+The installed executable is always `cm`.
 
 ## 5-minute setup
 

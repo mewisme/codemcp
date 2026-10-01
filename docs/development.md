@@ -10,6 +10,8 @@ For how to propose changes, open issues/PRs, and community norms, start with [CO
 - Node.js 24+
 - pnpm 11+
 
+Tagged release jobs additionally use GoReleaser OSS `v2.18.0`, Cosign, nFPM through GoReleaser, and the OSS NSIS/7-Zip toolchain used to build and inspect Windows setup executables. The pinned Linux release runner installs NSIS `3.09-4ubuntu1` and 7-Zip `23.01+dfsg-11`; the release path uses OSS-only GoReleaser features.
+
 ## Editor and local quality checks
 
 `.editorconfig` sets **indent size 2** for all files. Go uses tabs at width 2 (required by `gofmt`); everything else uses 2-space indentation.
@@ -335,9 +337,24 @@ Normal commands only read a fresh cache; explicit update checks bypass it and qu
 
 ## Release workflow
 
-Releases are produced by GoReleaser after release-native checks pass.
+Releases are produced by GoReleaser OSS after release-native checks pass. Release tags carry the version; published executable/package/setup filenames are intentionally versionless.
 
-The release archive contains the standalone binary with the embedded admin dashboard plus release metadata/files configured by GoReleaser.
+The canonical release matrix is:
+
+| Kind | amd64 | arm64 |
+| --- | --- | --- |
+| Linux archive | `codemcp_linux_amd64.tar.gz` | `codemcp_linux_arm64.tar.gz` |
+| macOS archive | `codemcp_darwin_amd64.tar.gz` | `codemcp_darwin_arm64.tar.gz` |
+| Windows archive | `codemcp_windows_amd64.zip` | `codemcp_windows_arm64.zip` |
+| Debian package | `codemcp_linux_amd64.deb` | `codemcp_linux_arm64.deb` |
+| RPM package | `codemcp_linux_amd64.rpm` | `codemcp_linux_arm64.rpm` |
+| Windows setup | `codemcp_windows_amd64_setup.exe` | `codemcp_windows_arm64_setup.exe` |
+
+Archives contain the standalone binary with the embedded admin dashboard plus the release files configured by GoReleaser. Debian/RPM packaging is produced by GoReleaser's OSS nFPM integration. The two NSIS setup executables are built externally from the corresponding GoReleaser Windows `cm.exe`, then attached back to the same checksum/release contract as extra files.
+
+`codemcp_checksums.txt` must contain exactly one SHA-256 entry for every archive, Debian/RPM package, and Windows setup artifact above. GoReleaser signs that final checksum manifest once with Cosign, producing `codemcp_checksums.txt.sigstore.json`.
+
+The tagged workflow publishes through a GitHub **draft** first. It verifies the exact artifact matrix, checksums, checksum signature, package manifests, tagged telemetry boundary, and byte identity between each NSIS-embedded `cm.exe` and its GoReleaser source binary before converting the draft into the public release. This prevents an unverified native artifact from becoming the published release.
 
 GoReleaser also produces package-manager manifests used by:
 
@@ -345,6 +362,8 @@ GoReleaser also produces package-manager manifests used by:
 - `mewisme/homebrew-mew`
 
 The release workflow can dispatch package synchronization using the repository `PACKAGE_SYNC_TOKEN`. If the secret is not configured, release publishing can still succeed while package synchronization is skipped/warned according to workflow behavior.
+
+Homebrew and Scoop manifests use exact tag URLs with the stable artifact filenames. Do not replace those manifest URLs with `releases/latest/download/...`; package-manager manifests must stay reproducible for the version they describe.
 
 ## Tagging a release
 

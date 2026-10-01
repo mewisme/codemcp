@@ -1,6 +1,10 @@
 # Migrating from 0.2.24
 
-CodeMCP can migrate a released 0.2.24 installation during `cm install` or `cm upgrade`. The migration detects the released state first, stages and validates the transformed state outside the active CodeMCP root, activates the canonical state transactionally, and only then retires verified historical runtime identities.
+The released 0.2.24 binary predates the current stable, versionless release-artifact contract. CodeMCP does **not** publish a compatibility bridge artifact for that old binary's updater.
+
+If you are starting directly from a released 0.2.24 installation, first reacquire a current `cm` using the installation owner you intend to keep: the shell/PowerShell bootstrap or Windows setup for managed direct installs, Homebrew/Scoop for those package-manager installs, a native Linux package, or a tagged release asset. Do not rely on the 0.2.24 executable to discover the new artifact names.
+
+Once a current `cm` is running, the existing state migration handles the released 0.2.24 installation during `cm install` or `cm upgrade`. The migration detects the released state first, stages and validates the transformed state outside the active CodeMCP root, activates the canonical state transactionally, and only then retires verified historical runtime identities.
 
 The current global state root is `~/.cm`. Registered workspace project files remain user-owned; migration only publishes CodeMCP-owned workspace-local state after ownership and conflict checks pass. Unavailable registered workspaces remain registered and reportable without writing into inaccessible project roots.
 
@@ -32,4 +36,4 @@ cm config verify
 cm upgrade check
 ```
 
-If the installation is Homebrew- or Scoop-owned, continue upgrading it through that package manager.
+If the installation is Homebrew-, Scoop-, Debian-, or RPM-owned, keep using that package-manager ownership path for later upgrades.

@@ -195,7 +195,19 @@ cm upgrade --no-restart
 
 Direct managed updates stage the target version, verify release checksums, switch the stable installation target, restart a matching managed runtime when requested, and roll back if the new runtime cannot become ready. A foreground `serve` process is never killed by the updater; restart it manually to load the new binary.
 
-Homebrew and Scoop installations remain owned by their package managers. Development/`go install` binaries do not silently adopt the managed direct-update flow.
+Update behavior follows the detected installation owner:
+
+- **Managed direct** — `cm upgrade` uses the transactional CodeMCP-managed layout under the install root. `--version` can select an exact tagged release.
+- **Homebrew** — `cm upgrade` refreshes Homebrew metadata and hands replacement back to the `codemcp` cask. Homebrew remains the file owner; exact `--version` selection is intentionally unavailable through this path.
+- **Scoop** — `cm upgrade` refreshes Scoop metadata and hands replacement back to the `codemcp` package. Scoop remains the file owner; exact `--version` selection is intentionally unavailable through this path.
+- **Debian/RPM** — `cm upgrade` resolves the latest GitHub Release package, downloads the stable `.deb`/`.rpm` asset plus the release checksum material, verifies it before mutation, then invokes a supported local package tool for the replacement. CodeMCP requests elevation only for that package replacement step, then reconciles/restarts the managed runtime in the invoking user's context. Automatic `--version` selection is intentionally unavailable for these package-owned installs.
+- **Development / `go install` / standalone binaries** — these do not silently adopt the managed direct-update flow.
+
+For Debian packages, replacement uses an available `apt-get install <local-package>`, `apt install <local-package>`, or `dpkg -i <local-package>` path. RPM replacement similarly uses `dnf install <local-package>`, `yum localinstall <local-package>`, or `rpm -U <local-package>`. There is no CodeMCP APT/YUM repository; the verified package itself is downloaded from the GitHub Release.
+
+For an exact Debian/RPM version, download the stable package filename from that exact release tag, verify it against the tag's `codemcp_checksums.txt`, then install the local package with the system package manager. See [Getting started](getting-started.md#manual-release-downloads) for the tag URL shape.
+
+Debian/RPM packages own the system `cm` binary, not your per-user CodeMCP state. Removing the package does not delete the selected config root or registered workspace state.
 
 ## Multiple config roots
 
