@@ -11,9 +11,6 @@ const (
 	MaxCopyTextBytes       = 512
 	MaxCopyTextRunes       = 256
 	MaxButtonURLBytes      = 2048
-	MaxSemanticActionRunes = 24
-	MaxResourceButtonRunes = 48
-	maxActionGroupRows     = 4
 	maxActionButtonsPerRow = 3
 )
 
@@ -173,21 +170,19 @@ func semanticButtonStyle(button Button) ButtonStyle {
 }
 
 func BoundedActionGroups(groups ActionGroups) [][]Button {
-	rows := make([][]Button, 0, maxActionGroupRows)
+	rows := make([][]Button, 0)
 	appendGroup := func(buttons []Button) {
-		if len(rows) >= maxActionGroupRows || len(buttons) == 0 {
-			return
-		}
-		row := make([]Button, 0, min(len(buttons), maxActionButtonsPerRow))
+		row := make([]Button, 0, maxActionButtonsPerRow)
 		for _, button := range buttons {
-			if len(row) >= maxActionButtonsPerRow {
-				break
-			}
 			if strings.TrimSpace(button.Text) == "" {
 				continue
 			}
 			button.Text = CompactActionLabel(button.Text)
 			row = append(row, button)
+			if len(row) == maxActionButtonsPerRow {
+				rows = append(rows, row)
+				row = make([]Button, 0, maxActionButtonsPerRow)
+			}
 		}
 		if len(row) > 0 {
 			rows = append(rows, row)
@@ -249,22 +244,11 @@ func ResourceRows(buttons ...Button) [][]Button {
 }
 
 func CompactActionLabel(value string) string {
-	return truncateRunes(strings.TrimSpace(value), MaxSemanticActionRunes)
+	return strings.TrimSpace(value)
 }
 
 func CompactResourceLabel(value string) string {
-	return truncateRunes(strings.TrimSpace(value), MaxResourceButtonRunes)
-}
-
-func truncateRunes(value string, limit int) string {
-	if limit <= 0 || utf8.RuneCountInString(value) <= limit {
-		return value
-	}
-	if limit == 1 {
-		return "…"
-	}
-	runes := []rune(value)
-	return string(runes[:limit-1]) + "…"
+	return strings.TrimSpace(value)
 }
 
 func validButtonURL(value string, webApp bool) bool {

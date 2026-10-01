@@ -116,7 +116,7 @@ func (b *BackgroundJobBridge) consume(ctx context.Context, event shellruntime.Ba
 }
 
 func backgroundJobMessage(event shellruntime.BackgroundWorkTerminalEvent) (Message, bool) {
-	processID := boundedNotificationText(event.ProcessID, 160)
+	processID := notificationText(event.ProcessID)
 	if processID == "" {
 		return Message{}, false
 	}
@@ -133,11 +133,11 @@ func backgroundJobMessage(event shellruntime.BackgroundWorkTerminalEvent) (Messa
 	case shellruntime.ExecutionStatusInterrupted:
 		title = "Background process interrupted"
 	}
-	reason := boundedNotificationText(string(event.Reason), 80)
+	reason := notificationText(string(event.Reason))
 	if reason == "" {
 		reason = "terminal"
 	}
-	status := boundedNotificationText(event.Status, 80)
+	status := notificationText(event.Status)
 	if status == "" {
 		status = "finished"
 	}
@@ -146,12 +146,12 @@ func backgroundJobMessage(event shellruntime.BackgroundWorkTerminalEvent) (Messa
 		timestamp = time.Now().UTC()
 	}
 	durationMS := backgroundDurationMS(event.StartedAt, event.FinishedAt)
-	tool := boundedNotificationText(event.Tool, 120)
-	workspaceID := boundedNotificationText(event.WorkspaceID, 160)
-	executionID := boundedNotificationText(event.ExecutionID, 160)
+	tool := notificationText(event.Tool)
+	workspaceID := notificationText(event.WorkspaceID)
+	executionID := notificationText(event.ExecutionID)
 	signal := ""
 	if event.Signal != nil {
-		signal = boundedNotificationText(*event.Signal, 80)
+		signal = notificationText(*event.Signal)
 	}
 	var exitCode *int
 	if event.ExitCode != nil {

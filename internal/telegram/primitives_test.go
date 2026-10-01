@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -84,14 +85,23 @@ func TestDoctorLikeRichMessageKeepsEachDiagnosticAsAListItem(t *testing.T) {
 	}
 }
 
-func TestRichPresentationBoundsAndRejectsUnsafeLinks(t *testing.T) {
-	blocks := make([]RichBlock, richMaxBlocks+5)
+func TestRichPresentationPreservesContentAndRejectsUnsafeLinks(t *testing.T) {
+	blocks := make([]RichBlock, 29)
 	for i := range blocks {
-		blocks[i] = RichBlock{Kind: RichList, Items: make([]string, richMaxRows+5)}
+		items := make([]string, 17)
+		for index := range items {
+			items[index] = fmt.Sprintf("block-%d-item-%d", i, index)
+		}
+		blocks[i] = RichBlock{Kind: RichList, Items: items}
 	}
 	rich := BuildRichPresentation(blocks...)
-	if len(rich.Blocks) != richMaxBlocks || len(rich.Blocks[0].Items) != richMaxRows {
-		t.Fatalf("rich bounds blocks=%d items=%d", len(rich.Blocks), len(rich.Blocks[0].Items))
+	if len(rich.Blocks) != len(blocks) || len(rich.Blocks[0].Items) != 17 {
+		t.Fatalf("rich content was dropped blocks=%d items=%d", len(rich.Blocks), len(rich.Blocks[0].Items))
+	}
+	long := strings.Repeat("long detail ", 100)
+	preserved := BuildRichPresentation(RichBlock{Kind: RichDetails, Title: "Detail", Text: long})
+	if preserved.Blocks[0].Text != strings.TrimSpace(long) || !strings.Contains(string(RichMessageHTML(preserved)), strings.TrimSpace(long)) {
+		t.Fatalf("rich detail was truncated")
 	}
 	unsafe := BuildRichPresentation(RichBlock{Kind: RichLink, Title: "unsafe", LinkURL: "javascript:alert(1)"})
 	if unsafe.Blocks[0].LinkURL != "" {

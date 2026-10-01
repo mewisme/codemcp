@@ -407,8 +407,8 @@ export function MiniApp() {
             </Button>
           ) : null}
           <div className="min-w-0 flex-1">
-            <div className="truncate text-base font-semibold">{detailTitle(selectedDetail)}</div>
-            {detailDescription(selectedDetail) ? <div className="mt-0.5 truncate text-xs text-muted-foreground">{detailDescription(selectedDetail)}</div> : null}
+            <div className="break-words text-base font-semibold">{detailTitle(selectedDetail)}</div>
+            {detailDescription(selectedDetail) ? <div className="mt-0.5 break-words text-xs text-muted-foreground">{detailDescription(selectedDetail)}</div> : null}
           </div>
         </header>
         <div className="min-h-0 flex-1 pt-2">
@@ -435,7 +435,7 @@ export function MiniApp() {
             <h1 className="text-lg font-semibold tracking-tight">Logs</h1>
             <ConnectionBadge state={connection} paused={paused} />
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">CodeMCP Mini App · realtime read-only view</p>
+          <p className="mt-0.5 break-words text-xs text-muted-foreground">CodeMCP Mini App · realtime read-only view</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {!nativeControls.mainButton ? (
@@ -520,8 +520,8 @@ export function MiniApp() {
           <aside className="sticky top-3 hidden h-[calc(var(--tg-viewport-stable-height,100dvh)-1.5rem)] min-h-0 min-w-0 self-start overflow-hidden rounded-xl border bg-card md:flex md:flex-col">
             <div className="flex min-w-0 items-start gap-3 border-b px-3 py-2.5">
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold">{detailTitle(selectedDetail)}</div>
-                {detailDescription(selectedDetail) ? <div className="mt-0.5 truncate text-xs text-muted-foreground">{detailDescription(selectedDetail)}</div> : null}
+                <div className="break-words text-sm font-semibold">{detailTitle(selectedDetail)}</div>
+                {detailDescription(selectedDetail) ? <div className="mt-0.5 break-words text-xs text-muted-foreground">{detailDescription(selectedDetail)}</div> : null}
               </div>
               <Button size="icon-sm" variant="ghost" aria-label="Close detail" onClick={() => setSelected(null)}><XIcon /></Button>
             </div>
@@ -572,9 +572,9 @@ function RuntimeRow({ event, compact, selected, onClick }: { event: LogEvent; co
   return (
     <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_6rem_minmax(0,1fr)_9rem] md:items-center md:gap-3", selected && "bg-muted/70", compact ? "py-2" : "py-3")}>
       <div className="flex min-w-0 items-center gap-2 md:block"><StatusDot status={String(event.level || "")} /><span className="text-xs tabular-nums text-muted-foreground">{formatTime(event.timestamp || String(event.time || ""))}</span></div>
-      <div className="truncate text-xs font-medium uppercase text-muted-foreground">{String(event.component || "runtime")}</div>
-      <div className="min-w-0"><div className="truncate font-medium">{String(event.message || event.event || "Runtime event")}</div><div className="mt-0.5 truncate text-xs text-muted-foreground">{String(event.event || event.name || event.kind || "")}</div></div>
-      <div className="truncate text-xs text-muted-foreground md:text-right">{String(event.workspace_id || event.status || "")}</div>
+      <div className="break-words text-xs font-medium uppercase text-muted-foreground">{String(event.component || "runtime")}</div>
+      <div className="min-w-0"><div className="break-words font-medium">{String(event.message || event.event || "Runtime event")}</div><div className="mt-0.5 break-words text-xs text-muted-foreground">{String(event.event || event.name || event.kind || "")}</div></div>
+      <div className="break-all text-xs text-muted-foreground md:text-right">{String(event.workspace_id || event.status || "")}</div>
     </button>
   )
 }
@@ -584,8 +584,8 @@ function ExecutionRow({ execution, compact, selected, onClick }: { execution: Ex
     <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_7rem_minmax(0,1fr)_11rem] md:items-center md:gap-3", selected && "bg-muted/70", compact ? "py-2" : "py-3")}>
       <div className="flex items-center gap-2"><StatusDot status={execution.status} /><span className="text-xs tabular-nums text-muted-foreground">{formatTime(execution.started_at)}</span></div>
       <Badge variant={badgeForStatus(execution.status)} className="max-w-full">{execution.status}</Badge>
-      <div className="min-w-0"><div className="truncate font-mono text-[13px]">{execution.command}</div><div className="mt-0.5 truncate text-xs text-muted-foreground">{execution.cwd}</div></div>
-      <div className="truncate text-xs text-muted-foreground md:text-right">{execution.workspace_id}</div>
+      <div className="min-w-0"><div className="break-all whitespace-normal font-mono text-[13px]">{execution.command}</div><div className="mt-0.5 break-all text-xs text-muted-foreground">{execution.cwd}</div></div>
+      <div className="break-all text-xs text-muted-foreground md:text-right">{execution.workspace_id}</div>
     </button>
   )
 }
@@ -597,8 +597,8 @@ function ToolRow({ record, compact, selected, onClick }: { record: ToolRecord; c
     <button type="button" onClick={onClick} className={cn("grid w-full min-w-0 gap-1 border-b px-3 text-left last:border-b-0 hover:bg-muted/50 md:grid-cols-[7rem_7rem_minmax(0,1fr)_11rem] md:items-center md:gap-3", selected && "bg-muted/70", compact ? "py-2" : "py-3")}>
       <div className="flex items-center gap-2"><StatusDot status={status} /><span className="text-xs tabular-nums text-muted-foreground">{formatTime(event.timestamp)}</span></div>
       <Badge variant={badgeForStatus(status)} className={statusBadgeClass(status)}>{status}</Badge>
-      <div className="min-w-0"><div className="truncate font-medium">{event.tool || event.method || "Tool call"}</div><div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{record.call_id}</div></div>
-      <div className="truncate text-xs text-muted-foreground md:text-right">{event.workspace_id || event.source || ""}</div>
+      <div className="min-w-0"><div className="break-words font-medium">{event.tool || event.method || "Tool call"}</div><div className="mt-0.5 break-all font-mono text-xs text-muted-foreground">{record.call_id}</div></div>
+      <div className="break-all text-xs text-muted-foreground md:text-right">{event.workspace_id || event.source || ""}</div>
     </button>
   )
 }
@@ -734,7 +734,7 @@ function toolResponseView(event: ActivityEvent & { raw?: unknown }) {
 }
 
 function Overview({ values }: { values: [string, string][] }) {
-  return <div className="grid grid-cols-2 gap-2 md:grid-cols-1">{values.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border bg-muted/20 p-2.5 md:flex md:items-center md:justify-between md:gap-3"><div className="text-[11px] text-muted-foreground">{label}</div><div className="mt-1 truncate text-sm font-medium md:mt-0 md:text-right">{value}</div></div>)}</div>
+  return <div className="grid grid-cols-2 gap-2 md:grid-cols-1">{values.map(([label, value]) => <div key={label} className="min-w-0 rounded-lg border bg-muted/20 p-2.5 md:flex md:items-center md:justify-between md:gap-3"><div className="text-[11px] text-muted-foreground">{label}</div><div className="mt-1 break-all text-sm font-medium md:mt-0 md:text-right">{value}</div></div>)}</div>
 }
 
 function SettingRow({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {

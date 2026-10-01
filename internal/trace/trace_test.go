@@ -88,6 +88,19 @@ func TestURLFieldSanitizesCredentialQuery(t *testing.T) {
 	}
 }
 
+func TestSanitizeTextRedactsCompoundCredentialAssignments(t *testing.T) {
+	const secret = "compound-secret-marker"
+	value := SanitizeText("access_token=" + secret + " client_secret=" + secret + " runtime_api_key=" + secret + " safe=value")
+	if strings.Contains(value, secret) {
+		t.Fatalf("compound credential assignment leaked: %q", value)
+	}
+	for _, key := range []string{"access_token=<redacted>", "client_secret=<redacted>", "runtime_api_key=<redacted>", "safe=value"} {
+		if !strings.Contains(value, key) {
+			t.Fatalf("sanitized text missing %q: %q", key, value)
+		}
+	}
+}
+
 func TestMaskSecretDoesNotRevealShortSecrets(t *testing.T) {
 	for secret, want := range map[string]string{
 		"a":               "…********…",

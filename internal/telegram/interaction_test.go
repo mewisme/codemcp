@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
@@ -154,16 +153,18 @@ func TestBoundedActionGroupsAndLabels(t *testing.T) {
 		Navigation:  []Button{{Text: "Back", CallbackData: "b", Role: ButtonRoleNavigation}},
 	}
 	rows := BoundedActionGroups(groups)
-	if len(rows) != maxActionGroupRows || len(rows[0]) != maxActionButtonsPerRow {
-		t.Fatalf("bounded rows=%#v", rows)
+	if len(rows) != 5 || len(rows[0]) != maxActionButtonsPerRow || len(rows[1]) != 1 {
+		t.Fatalf("action rows=%#v", rows)
 	}
-	if rows[0][0].Text != "One" || rows[1][0].Text != "Details" || rows[2][0].Text != "Delete" || rows[3][0].Text != "Back" {
+	if rows[0][0].Text != "One" || rows[1][0].Text != "Four" || rows[2][0].Text != "Details" || rows[3][0].Text != "Delete" || rows[4][0].Text != "Back" {
 		t.Fatalf("action group order=%#v", rows)
 	}
-	action := CompactActionLabel(strings.Repeat("界", MaxSemanticActionRunes+10))
-	resource := CompactResourceLabel(strings.Repeat("界", MaxResourceButtonRunes+10))
-	if utf8.RuneCountInString(action) > MaxSemanticActionRunes || utf8.RuneCountInString(resource) > MaxResourceButtonRunes {
-		t.Fatalf("label bounds action=%q resource=%q", action, resource)
+	longLabel := strings.Repeat("界", 80)
+	if action := CompactActionLabel(longLabel); action != longLabel {
+		t.Fatalf("action label was truncated: %q", action)
+	}
+	if resource := CompactResourceLabel(longLabel); resource != longLabel {
+		t.Fatalf("resource label was truncated: %q", resource)
 	}
 	if button, ok := CopyValueButton("Copy ID", strings.Repeat("x", MaxCopyTextBytes+1)); ok || button.CopyText != "" {
 		t.Fatalf("oversized copy value was exposed: %#v", button)
@@ -180,9 +181,12 @@ func TestBoundedActionGroupsAndLabels(t *testing.T) {
 	}
 	for _, row := range resourceRows {
 		button := row[0]
-		if button.Role != ButtonRoleResource || button.Style != "" || button.URL != "" || utf8.RuneCountInString(button.Text) > MaxResourceButtonRunes {
-			t.Fatalf("resource row is not compact neutral navigation: %#v", button)
+		if button.Role != ButtonRoleResource || button.Style != "" || button.URL != "" {
+			t.Fatalf("resource row is not neutral navigation: %#v", button)
 		}
+	}
+	if resourceRows[0][0].Text != strings.TrimSpace(strings.Repeat("Resource ", 12)) {
+		t.Fatalf("resource row label was truncated: %#v", resourceRows[0][0])
 	}
 }
 

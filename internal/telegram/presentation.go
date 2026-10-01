@@ -5,16 +5,9 @@ import (
 	"html"
 	"net/url"
 	"strings"
-	"unicode/utf8"
 )
 
-const (
-	presentationMaxBytes = 3900
-	presentationMaxValue = 512
-	richMaxBlocks        = 24
-	richMaxRows          = 12
-	richMaxColumns       = 6
-)
+const richPageSize = 12
 
 type RichBlockKind string
 
@@ -49,11 +42,8 @@ type RichPresentation struct {
 }
 
 func BuildRichPresentation(blocks ...RichBlock) *RichPresentation {
-	out := make([]RichBlock, 0, min(len(blocks), richMaxBlocks))
+	out := make([]RichBlock, 0, len(blocks))
 	for _, block := range blocks {
-		if len(out) >= richMaxBlocks {
-			break
-		}
 		block.Title = compactPresentationValue(block.Title)
 		block.Text = compactPresentationValue(block.Text)
 		block.CopyText = strings.TrimSpace(block.CopyText)
@@ -63,25 +53,6 @@ func BuildRichPresentation(blocks ...RichBlock) *RichPresentation {
 			}
 			if !validCopyText(block.CopyText) {
 				block.CopyText = ""
-			}
-		}
-		if len(block.Items) > richMaxRows {
-			block.Items = block.Items[:richMaxRows]
-		}
-		if len(block.Rows) > richMaxRows {
-			block.Rows = block.Rows[:richMaxRows]
-		}
-		for i := range block.Rows {
-			if len(block.Rows[i]) > richMaxColumns {
-				block.Rows[i] = block.Rows[i][:richMaxColumns]
-			}
-		}
-		if len(block.Buttons) > maxActionGroupRows {
-			block.Buttons = block.Buttons[:maxActionGroupRows]
-		}
-		for i := range block.Buttons {
-			if len(block.Buttons[i]) > maxActionButtonsPerRow {
-				block.Buttons[i] = block.Buttons[i][:maxActionButtonsPerRow]
 			}
 		}
 		if block.Kind == RichLink && block.LinkURL != "" {
@@ -171,21 +142,12 @@ func RichMessageHTML(rich *RichPresentation) SafeHTML {
 		return ""
 	}
 	parts := make([]string, 0, len(rich.Blocks))
-	bytes := 0
 	for _, block := range rich.Blocks {
 		rendered := richBlockHTML(block)
 		if rendered == "" {
 			continue
 		}
-		separator := 0
-		if len(parts) > 0 {
-			separator = 1
-		}
-		if bytes+separator+len(rendered) > presentationMaxBytes {
-			break
-		}
 		parts = append(parts, rendered)
-		bytes += separator + len(rendered)
 	}
 	return SafeHTML(strings.Join(parts, "\n"))
 }
@@ -374,7 +336,6 @@ type ListItem struct {
 
 func Present(parts ...PresentationPart) Presentation {
 	plain, rich := make([]string, 0, len(parts)), make([]string, 0, len(parts))
-	bytes := 0
 	for _, part := range parts {
 		text, richText := strings.TrimSpace(part.Text), strings.TrimSpace(string(part.HTML))
 		if text == "" && richText == "" {
@@ -383,17 +344,7 @@ func Present(parts ...PresentationPart) Presentation {
 		if richText == "" {
 			richText = EscapeText(text)
 		}
-		separator := 0
-		if len(rich) > 0 {
-			separator = 2
-		}
-		if bytes+separator+len(richText) > presentationMaxBytes {
-			plain = append(plain, "Additional details omitted.")
-			rich = append(rich, "<i>Additional details omitted.</i>")
-			break
-		}
 		plain, rich = append(plain, text), append(rich, richText)
-		bytes += separator + len(richText)
 	}
 	return Presentation{Text: strings.Join(plain, "\n\n"), HTML: SafeHTML(strings.Join(rich, "\n\n"))}
 }
@@ -432,9 +383,6 @@ func StatusRow(tone PresentationTone, label, detail string) PresentationPart {
 }
 
 func MetadataBlock(items ...MetadataItem) PresentationPart {
-	if len(items) > 12 {
-		items = items[:12]
-	}
 	plain, rich := []string{}, []string{}
 	for _, item := range items {
 		label, value := compactPresentationValue(item.Label), compactPresentationValue(item.Value)
@@ -452,9 +400,6 @@ func MetadataBlock(items ...MetadataItem) PresentationPart {
 }
 
 func CompactList(items ...ListItem) PresentationPart {
-	if len(items) > 20 {
-		items = items[:20]
-	}
 	plain, rich := []string{}, []string{}
 	for _, item := range items {
 		label, detail := compactPresentationValue(item.Label), compactPresentationValue(item.Detail)
@@ -529,10 +474,5 @@ func presentationToneIcon(tone PresentationTone) string {
 }
 
 func compactPresentationValue(value string) string {
-	value = strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n"))
-	if utf8.RuneCountInString(value) <= presentationMaxValue {
-		return value
-	}
-	runes := []rune(value)
-	return string(runes[:presentationMaxValue-3]) + "..."
+	return strings.TrimSpace(strings.ReplaceAll(strings.ReplaceAll(value, "\r\n", "\n"), "\r", "\n"))
 }

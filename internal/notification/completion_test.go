@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 )
@@ -50,7 +49,7 @@ func TestCompletionHookUsesSharedCoordinatorAndDeduplicatesRecord(t *testing.T) 
 	}
 }
 
-func TestCompletionMessageMapsStatusesAndBoundsSafeContent(t *testing.T) {
+func TestCompletionMessageMapsStatusesAndPreservesSafeContent(t *testing.T) {
 	for status, wantTitle := range map[agentcompletion.Status]string{
 		agentcompletion.StatusCompleted: "Agent completed",
 		agentcompletion.StatusPartial:   "Agent partially completed",
@@ -68,7 +67,7 @@ func TestCompletionMessageMapsStatusesAndBoundsSafeContent(t *testing.T) {
 
 	secret := "secret-marker"
 	querySecret := "query-secret"
-	longSummary := strings.Repeat("bounded ", 200) + " Authorization: Bearer " + secret + " access_token=" + querySecret
+	longSummary := strings.Repeat("preserved ", 200) + " Authorization: Bearer " + secret + " access_token=" + querySecret + " trailing-marker"
 	event := completionNotificationEvent("cmp_safe", agentcompletion.StatusCompleted, "Done token=title-secret", longSummary)
 	message, ok := completionMessage(event)
 	if !ok {
@@ -79,8 +78,8 @@ func TestCompletionMessageMapsStatusesAndBoundsSafeContent(t *testing.T) {
 			t.Fatalf("completion notification leaked %q: %#v", forbidden, message)
 		}
 	}
-	if utf8.RuneCountInString(message.Body) > agentcompletion.MaxTitleRunes+3+maxCompletionNotificationSummaryRunes {
-		t.Fatalf("completion notification body is unbounded: runes=%d", utf8.RuneCountInString(message.Body))
+	if message.Summary != notificationText(longSummary) || !strings.Contains(message.Body, "trailing-marker") {
+		t.Fatalf("completion notification summary was truncated: %#v", message)
 	}
 	if !strings.Contains(message.Body, "<redacted>") {
 		t.Fatalf("completion notification did not retain safe redaction marker: %q", message.Body)

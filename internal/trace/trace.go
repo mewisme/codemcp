@@ -141,7 +141,7 @@ const redactedValue = "<redacted>"
 var (
 	secretTokenPattern      = regexp.MustCompile(`(?i)\b(?:mcp|admin|runtime)_[A-Za-z0-9_-]{20,}\b`)
 	bearerPattern           = regexp.MustCompile(`(?i)(bearer\s+)[^\s,;]+`)
-	secretAssignmentPattern = regexp.MustCompile(`(?i)(\b(?:authorization|api[-_.]?key|token|password|passwd|secret|credential)\b\s*(?:=|:)\s*)([^\s,;]+)`)
+	secretAssignmentPattern = regexp.MustCompile(`(?i)(\b(?:authorization|(?:[a-z0-9]+[-_.]?)*(?:api[-_.]?key|token|password|passwd|secret|credential))\b\s*(?:=|:)\s*)([^\s,;]+)`)
 )
 
 func MaskSecret(raw string, configured bool) string {

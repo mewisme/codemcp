@@ -351,7 +351,7 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 				health.DependencyAvailable = !errors.Is(err, exec.ErrNotFound)
 				health.TunnelRunning = false
 				health.PublicIngressReady = false
-				health.LastError = compactMiniAppError(err)
+				health.LastError = miniAppErrorText(err)
 			})
 			if !waitMiniAppRetry(ctx) {
 				return
@@ -403,7 +403,7 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 					}
 				default:
 					if strings.TrimSpace(event.Error) != "" {
-						runtime.updateHealth(func(health *LogsMiniAppHealth) { health.LastError = compactMiniAppError(errors.New(event.Error)) })
+						runtime.updateHealth(func(health *LogsMiniAppHealth) { health.LastError = miniAppErrorText(errors.New(event.Error)) })
 					}
 				}
 			case waitErr, ok := <-done:
@@ -416,7 +416,7 @@ func (runtime *LogsMiniAppRuntime) supervise(ctx context.Context, done chan stru
 				}
 				message := "cf-tunnel exited before shutdown"
 				if ok && waitErr != nil {
-					message = compactMiniAppError(waitErr)
+					message = miniAppErrorText(waitErr)
 				}
 				runtime.updateHealth(func(health *LogsMiniAppHealth) {
 					health.State = MiniAppDegraded
@@ -485,7 +485,7 @@ func (runtime *LogsMiniAppRuntime) setDegraded(cfg config.TelegramConfig, finger
 	runtime.mu.Lock()
 	runtime.config = cfg
 	runtime.fingerprint = fingerprint
-	runtime.health = LogsMiniAppHealth{Enabled: cfg.LogsMiniApp.Enabled, State: MiniAppDegraded, LastError: compactMiniAppError(err)}
+	runtime.health = LogsMiniAppHealth{Enabled: cfg.LogsMiniApp.Enabled, State: MiniAppDegraded, LastError: miniAppErrorText(err)}
 	runtime.mu.Unlock()
 }
 
@@ -742,13 +742,9 @@ func miniAppFingerprint(cfg config.TelegramConfig, token string) string {
 	return hex.EncodeToString(digest[:])
 }
 
-func compactMiniAppError(err error) string {
+func miniAppErrorText(err error) string {
 	if err == nil {
 		return ""
 	}
-	value := strings.TrimSpace(err.Error())
-	if len(value) > 240 {
-		value = value[:240]
-	}
-	return value
+	return strings.TrimSpace(err.Error())
 }

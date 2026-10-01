@@ -372,8 +372,8 @@ func (ui *Interface) systemOperationResultScreen(ctx context.Context, owner View
 			}
 			items = append(items, label)
 		}
-		start, end, page, pages := PageBounds(len(items), state.Page, richMaxRows)
-		keyboard, err := ui.paginationKeyboard(owner, state, len(items), richMaxRows)
+		start, end, page, pages := PageBounds(len(items), state.Page, richPageSize)
+		keyboard, err := ui.paginationKeyboard(owner, state, len(items), richPageSize)
 		if err != nil {
 			return Screen{}, true, err
 		}

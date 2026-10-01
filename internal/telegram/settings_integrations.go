@@ -298,11 +298,7 @@ func (ui *Interface) integrationsScreen(ctx context.Context, owner ViewOwner) (S
 	if err != nil {
 		return Screen{}, err
 	}
-	maxResourceButtons := (maxActionGroupRows - 1) * maxActionButtonsPerRow
-	if len(buttons) > maxResourceButtons {
-		return Screen{}, fmt.Errorf("integration controls exceed bounded keyboard capacity: %d > %d", len(buttons), maxResourceButtons)
-	}
-	keyboard := make([][]Button, 0, maxActionGroupRows)
+	keyboard := make([][]Button, 0, (len(buttons)+maxActionButtonsPerRow-1)/maxActionButtonsPerRow+1)
 	for start := 0; start < len(buttons); start += maxActionButtonsPerRow {
 		end := min(start+maxActionButtonsPerRow, len(buttons))
 		row := append([]Button(nil), buttons[start:end]...)

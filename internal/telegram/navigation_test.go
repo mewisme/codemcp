@@ -383,17 +383,18 @@ func TestNavigationPrimitivesCentralizeBackPaginationAndDetail(t *testing.T) {
 	}
 }
 
-func TestPresentationStatesAreEscapedAndBounded(t *testing.T) {
+func TestPresentationStatesAreEscapedWithoutDroppingDetails(t *testing.T) {
+	detail := strings.Repeat("<secret>&", 200)
 	presentation := Present(
 		ProductHeader("CodeMCP", "Telegram"),
 		LoadingState("<working>"),
 		SuccessState("<success>"),
 		ErrorState("<error>"),
 		DestructiveConfirmation("Delete", "<target>", "required"),
-		DetailBlock("Detail", strings.Repeat("<secret>&", 200)),
+		DetailBlock("Detail", detail),
 	)
-	if len(presentation.HTML) > presentationMaxBytes {
-		t.Fatalf("presentation bytes=%d", len(presentation.HTML))
+	if !strings.Contains(presentation.Text, detail) || strings.Contains(presentation.Text, "Additional details omitted.") {
+		t.Fatalf("presentation dropped details: %q", presentation.Text)
 	}
 	for _, hostile := range []string{"<working>", "<success>", "<error>", "<target>", "<secret>"} {
 		if strings.Contains(string(presentation.HTML), hostile) {

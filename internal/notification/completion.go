@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -15,8 +14,7 @@ import (
 const (
 	KindCompletionAccepted Kind = "completion.accepted"
 
-	defaultCompletionNotificationMaxSeen  = 512
-	maxCompletionNotificationSummaryRunes = 512
+	defaultCompletionNotificationMaxSeen = 512
 )
 
 type CompletionPolicy struct {
@@ -122,8 +120,8 @@ func completionMessage(event agentcompletion.Event) (Message, bool) {
 		return Message{}, false
 	}
 
-	title := boundedNotificationText(record.Title, agentcompletion.MaxTitleRunes)
-	summary := boundedNotificationText(record.Summary, maxCompletionNotificationSummaryRunes)
+	title := notificationText(record.Title)
+	summary := notificationText(record.Summary)
 	body := title
 	if summary != "" {
 		if body != "" {
@@ -155,15 +153,7 @@ func completionMessage(event agentcompletion.Event) (Message, bool) {
 	}, true
 }
 
-func boundedNotificationText(value string, maxRunes int) string {
+func notificationText(value string) string {
 	value = tracepkg.SanitizeText(value)
-	value = strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
-	if maxRunes <= 0 || utf8.RuneCountInString(value) <= maxRunes {
-		return value
-	}
-	runes := []rune(value)
-	if maxRunes == 1 {
-		return "…"
-	}
-	return string(runes[:maxRunes-1]) + "…"
+	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
 }

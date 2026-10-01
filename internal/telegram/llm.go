@@ -499,8 +499,8 @@ func containsTelegramString(values []string, want string) bool {
 func boolPointerTelegram(value bool) *bool { return &value }
 
 func boundedLLMActionRows(buttons ...Button) [][]Button {
-	rows := make([][]Button, 0, maxActionGroupRows-1)
-	for len(buttons) > 0 && len(rows) < maxActionGroupRows-1 {
+	rows := make([][]Button, 0, (len(buttons)+maxActionButtonsPerRow-1)/maxActionButtonsPerRow)
+	for len(buttons) > 0 {
 		count := min(maxActionButtonsPerRow, len(buttons))
 		row := append([]Button(nil), buttons[:count]...)
 		for index := range row {

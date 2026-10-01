@@ -389,6 +389,13 @@ func TestLogsScreenUsesCurrentReadyWebAppURLOnly(t *testing.T) {
 	}
 }
 
+func TestMiniAppErrorTextPreservesFullError(t *testing.T) {
+	message := strings.Repeat("mini-app-error ", 40) + "tail-marker"
+	if got := miniAppErrorText(errors.New(message)); got != message {
+		t.Fatalf("Mini App error was truncated: %q", got)
+	}
+}
+
 func webAppURL(rows [][]Button) string {
 	for _, row := range rows {
 		for _, button := range row {
