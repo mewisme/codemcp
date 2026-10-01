@@ -114,7 +114,7 @@ func (c Client) getRelease(ctx context.Context, endpoint string) (result Release
 	if err != nil {
 		return Release{}, fmt.Errorf("latest release tag: %w", err)
 	}
-	archiveName, err := CurrentAssetName(version)
+	archiveName, err := CurrentArchiveName()
 	if err != nil {
 		return Release{}, err
 	}

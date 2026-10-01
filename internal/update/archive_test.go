@@ -12,7 +12,7 @@ import (
 func TestExtractTarBinary(t *testing.T) {
 	archive := filepath.Join(t.TempDir(), "release.tar.gz")
 	writeTarArchive(t, archive, []tarEntry{{name: "LICENSE", content: []byte("license")}, {name: "cm", content: []byte("binary")}})
-	binary, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "codemcp_1.0.0_linux_amd64.tar.gz")
+	binary, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "codemcp_linux_amd64.tar.gz")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestExtractTarBinary(t *testing.T) {
 func TestExtractZipBinary(t *testing.T) {
 	archive := filepath.Join(t.TempDir(), "release.zip")
 	writeZipArchive(t, archive, []zipEntry{{name: "README.md", content: []byte("readme")}, {name: "cm.exe", content: []byte("binary")}})
-	binary, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "codemcp_1.0.0_windows_amd64.zip")
+	binary, err := ExtractBinary(archive, filepath.Join(t.TempDir(), "extract"), "codemcp_windows_amd64.zip")
 	if err != nil {
 		t.Fatal(err)
 	}

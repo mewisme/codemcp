@@ -50,7 +50,7 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: codemcp_checksums.txt
@@ -109,6 +109,8 @@ homebrew_casks:
       - cm
     homepage: "https://github.com/mewisme/codemcp"
     description: "Self-hosted MCP 2026-07-28 runtime with local tools, Upstream aggregation, and OpenAI tunnel support"
+    url:
+      template: "https://github.com/mewisme/codemcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     directory: Casks
     skip_upload: true
     hooks:

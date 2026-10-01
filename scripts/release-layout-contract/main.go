@@ -9,7 +9,6 @@ import (
 )
 
 func main() {
-	version := flag.String("version", "v9.9.9", "release version")
 	goos := flag.String("os", "", "target operating system")
 	goarch := flag.String("arch", "", "target architecture")
 	flag.Parse()
@@ -24,7 +23,7 @@ func main() {
 	if *goos == "" && *goarch == "" {
 		return
 	}
-	asset, err := updatepkg.AssetName(*version, *goos, *goarch)
+	asset, err := updatepkg.ArchiveName(*goos, *goarch)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

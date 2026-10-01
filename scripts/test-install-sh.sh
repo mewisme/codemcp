@@ -34,7 +34,7 @@ case "$(uname -m)" in
 esac
 
 version=v9.9.9
-contract="$(cd "$root" && go run ./scripts/release-layout-contract --version "$version" --os "$os" --arch "$arch")"
+contract="$(cd "$root" && go run ./scripts/release-layout-contract --os "$os" --arch "$arch")"
 contract_value() {
 	printf '%s\n' "$contract" | awk -F= -v key="$1" '$1 == key { sub(/^[^=]*=/, ""); print; exit }'
 }
@@ -101,7 +101,16 @@ while [ "$#" -gt 0 ]; do
 	esac
 	shift
 done
-[ -n "$out" ] && [ -n "$url" ] || exit 2
+[ -n "$url" ] || exit 2
+[ -z "${TEST_REQUEST_LOG:-}" ] || printf '%s\n' "$url" >>"$TEST_REQUEST_LOG"
+case "$url" in
+	*/releases/latest)
+		[ -n "${TEST_LATEST_VERSION:-}" ] || exit 22
+		printf 'https://github.com/mewisme/codemcp/releases/tag/%s' "$TEST_LATEST_VERSION"
+		exit 0
+		;;
+esac
+[ -n "$out" ] || exit 2
 case "$url" in
 	*/"$TEST_FIXTURE_ASSET") cp "$TEST_FIXTURE_ARCHIVE" "$out" ;;
 	*/"$TEST_CHECKSUM_NAME") cp "$TEST_FIXTURE_CHECKSUMS" "$out" ;;
@@ -156,6 +165,43 @@ EOF
 
 run_fallback_case missing
 run_fallback_case failed
+
+latest_fakebin="$tmp/bin-latest"
+make_fake_path "$latest_fakebin"
+latest_marker="$tmp/installed-latest"
+latest_log="$tmp/install-latest.log"
+latest_requests="$tmp/requests-latest.log"
+if ! PATH="$latest_fakebin" \
+	HOME="$tmp/home-latest" \
+	CM_INSTALL_DIR="$tmp/home-latest/.cm" \
+	CM_BIN_DIR="$tmp/home-latest/bin" \
+	TEST_LATEST_VERSION="$version" \
+	TEST_REQUEST_LOG="$latest_requests" \
+	TEST_FIXTURE_ARCHIVE="$archive" \
+	TEST_FIXTURE_CHECKSUMS="$checksums" \
+	TEST_FIXTURE_SIGNATURE="$signature" \
+	TEST_FIXTURE_ASSET="$asset" \
+	TEST_CHECKSUM_NAME="$checksum_name" \
+	TEST_SIGNATURE_NAME="$signature_name" \
+	TEST_INSTALL_MARKER="$latest_marker" \
+	/bin/sh "$installer" >"$latest_log" 2>&1; then
+	echo 'Unix installer failed while resolving latest release.' >&2
+	cat "$latest_log" >&2
+	exit 1
+fi
+[ -f "$latest_marker" ] || {
+	echo 'Unix installer did not complete after resolving latest release.' >&2
+	exit 1
+}
+grep -Fxq "https://github.com/mewisme/codemcp/releases/download/$version/$asset" "$latest_requests" || {
+	echo 'Unix installer did not pin resolved latest tag for archive download.' >&2
+	cat "$latest_requests" >&2
+	exit 1
+}
+if grep -q '/releases/latest/download/' "$latest_requests"; then
+	echo 'Unix installer used a moving latest artifact URL after tag resolution.' >&2
+	exit 1
+fi
 
 bad_checksums="$tmp/bad-$checksum_name"
 printf '%064d  %s\n' 0 "$asset" >"$bad_checksums"
@@ -237,6 +283,21 @@ for fixture_case in traversal absolute drive duplicate missing symlink nonregula
 	run_unsafe_archive_case "$fixture_case"
 done
 
+# Assertions intentionally match literal shell source.
+# shellcheck disable=SC2016
+grep -Fq 'asset="${PACKAGE_NAME}_${os}_${arch}.tar.gz"' "$installer" || {
+	echo 'Unix installer asset naming formula drifted from the stable release contract.' >&2
+	exit 1
+}
+# shellcheck disable=SC2016
+grep -Fq 'url="https://github.com/$REPO/releases/download/$version/$asset"' "$installer" || {
+	echo 'Unix installer no longer pins archive downloads to the resolved release tag.' >&2
+	exit 1
+}
+if grep -Fq '/releases/latest/download/' "$installer"; then
+	echo 'Unix installer must resolve latest to a tag before downloading an artifact.' >&2
+	exit 1
+fi
 # Assertions intentionally match literal shell source.
 # shellcheck disable=SC2016
 if grep -Fq 'rm -rf "$INSTALL_DIR"' "$installer"; then

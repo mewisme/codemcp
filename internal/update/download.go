@@ -243,14 +243,13 @@ func secureHTTPClient(base *http.Client) *http.Client {
 }
 
 func validateReleaseDownload(release Release) error {
-	version, err := NormalizeVersion(release.Version)
-	if err != nil {
+	if _, err := NormalizeVersion(release.Version); err != nil {
 		return fmt.Errorf("release version: %w", err)
 	}
 	if strings.TrimSpace(release.ArchiveName) == "" || filepath.Base(release.ArchiveName) != release.ArchiveName {
 		return errors.New("release archive name must be a base filename")
 	}
-	expectedArchive, err := CurrentAssetName(version)
+	expectedArchive, err := CurrentArchiveName()
 	if err != nil {
 		return err
 	}

@@ -100,11 +100,36 @@ func TestVerifyDistRejectsRetiredExecutableAlias(t *testing.T) {
 	}
 }
 
+func TestVerifyDistRejectsVersionedPublishedArchive(t *testing.T) {
+	root := buildDistFixture(t, false)
+	if err := os.WriteFile(filepath.Join(root, "codemcp_9.9.9_linux_amd64.tar.gz"), []byte("stray"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err := VerifyDist(context.Background(), root, TelemetryUnchecked)
+	if err == nil || !strings.Contains(err.Error(), "unexpected published release archive") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestVerifyDistIgnoresInternalBuildArchiveNames(t *testing.T) {
+	root := buildDistFixture(t, false)
+	internal := filepath.Join(root, "codemcp_linux_amd64_v1")
+	if err := os.MkdirAll(internal, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(internal, "codemcp_9.9.9_linux_amd64.tar.gz"), []byte("internal"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifyDist(context.Background(), root, TelemetryUnchecked); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func buildDistFixture(t *testing.T, includeRetired bool) string {
 	t.Helper()
 	root := t.TempDir()
 	for _, platform := range updatepkg.PrimaryReleaseLayout().Platforms {
-		asset, err := updatepkg.AssetName("v9.9.9", platform.OS, platform.Arch)
+		asset, err := updatepkg.ArchiveName(platform.OS, platform.Arch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -119,14 +144,14 @@ func buildDistFixture(t *testing.T, includeRetired bool) string {
 	if err := os.MkdirAll(filepath.Join(root, "scoop"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	scoop := "{\"version\":\"9.9.9\",\"bin\":\"cm.exe\",\"url\":\"https://github.com/mewisme/codemcp/releases/download/v9.9.9/codemcp_9.9.9_windows_amd64.zip\"}"
+	scoop := "{\"version\":\"9.9.9\",\"bin\":\"cm.exe\",\"url\":\"https://github.com/mewisme/codemcp/releases/download/v9.9.9/codemcp_windows_amd64.zip\"}"
 	if err := os.WriteFile(filepath.Join(root, "scoop", "codemcp.json"), []byte(scoop), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(root, "homebrew", "Casks"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	cask := "cask \"codemcp\" do\n  homepage \"https://github.com/mewisme/codemcp\"\n  binary \"cm\"\nend\n"
+	cask := "cask \"codemcp\" do\n  version \"9.9.9\"\n  url \"https://github.com/mewisme/codemcp/releases/download/v9.9.9/codemcp_darwin_amd64.tar.gz\"\n  homepage \"https://github.com/mewisme/codemcp\"\n  binary \"cm\"\nend\n"
 	if err := os.WriteFile(filepath.Join(root, "homebrew", "Casks", "codemcp.rb"), []byte(cask), 0644); err != nil {
 		t.Fatal(err)
 	}

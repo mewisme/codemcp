@@ -68,8 +68,7 @@ fi
 	exit 1
 }
 case "$version" in v*) ;; *) version="v$version" ;; esac
-ver="${version#v}"
-asset="${PACKAGE_NAME}_${ver}_${os}_${arch}.tar.gz"
+asset="${PACKAGE_NAME}_${os}_${arch}.tar.gz"
 url="https://github.com/$REPO/releases/download/$version/$asset"
 checksums_url="https://github.com/$REPO/releases/download/$version/$CHECKSUM_NAME"
 signature_url="https://github.com/$REPO/releases/download/$version/$SIGNATURE_NAME"

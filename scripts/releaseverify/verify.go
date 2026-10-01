@@ -114,6 +114,10 @@ func verifyGoReleaser(root string) error {
 	if stringValue(checksum["name_template"]) != updatepkg.ChecksumName {
 		return errors.New("goreleaser checksum asset name drifted from the updater contract")
 	}
+	archives := sliceValue(cfg["archives"])
+	if len(archives) != 1 || stringValue(mapValue(archives[0])["name_template"]) != "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}" {
+		return errors.New("goreleaser archive naming drifted from the stable release artifact contract")
+	}
 	buildFound := false
 	for _, item := range sliceValue(cfg["builds"]) {
 		build := mapValue(item)
@@ -143,7 +147,7 @@ func verifyGoReleaser(root string) error {
 	scoop := mapValue(scoops[0])
 	if stringValue(scoop["name"]) != updatepkg.PackageName ||
 		stringValue(scoop["homepage"]) != ExpectedGitRemote ||
-		!strings.Contains(stringValue(scoop["url_template"]), ExpectedGitRemote+"/releases/download/") {
+		stringValue(scoop["url_template"]) != ExpectedGitRemote+"/releases/download/{{ .Tag }}/{{ .ArtifactName }}" {
 		return errors.New("scoop generation does not target the canonical CodeMCP release")
 	}
 	casks := sliceValue(cfg["homebrew_casks"])
@@ -155,6 +159,10 @@ func verifyGoReleaser(root string) error {
 		stringValue(cask["homepage"]) != ExpectedGitRemote ||
 		!sameStrings(stringSlice(cask["binaries"]), []string{"cm"}) {
 		return errors.New("homebrew generation does not install the canonical cm binary")
+	}
+	caskURL := mapValue(cask["url"])
+	if stringValue(caskURL["template"]) != ExpectedGitRemote+"/releases/download/{{ .Tag }}/{{ .ArtifactName }}" {
+		return errors.New("homebrew generation does not use tag-pinned stable artifact URLs")
 	}
 	return nil
 }
@@ -445,30 +453,39 @@ type releaseArchive struct {
 	platform updatepkg.ReleasePlatform
 }
 
-var archiveNamePattern = regexp.MustCompile(`^codemcp_.+_(linux|darwin|windows)_(amd64|arm64)(\.tar\.gz|\.zip)$`)
-
 func releaseArchives(root string) ([]releaseArchive, error) {
-	result := []releaseArchive{}
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, err
+	}
+	canonical := make(map[string]updatepkg.ReleasePlatform, len(updatepkg.PrimaryReleaseLayout().Platforms))
+	for _, platform := range updatepkg.PrimaryReleaseLayout().Platforms {
+		name, err := updatepkg.ArchiveName(platform.OS, platform.Arch)
+		if err != nil {
+			return nil, err
 		}
+		canonical[name] = platform
+	}
+	result := make([]releaseArchive, 0, len(canonical))
+	for _, entry := range entries {
 		if entry.IsDir() {
-			return nil
+			continue
 		}
-		match := archiveNamePattern.FindStringSubmatch(entry.Name())
-		if match == nil {
-			return nil
+		if platform, ok := canonical[entry.Name()]; ok {
+			result = append(result, releaseArchive{path: filepath.Join(root, entry.Name()), platform: platform})
+			continue
 		}
-		platform, ok := updatepkg.ReleasePlatformFor(match[1], match[2])
-		if !ok || match[3] != platform.ArchiveExtension {
-			return fmt.Errorf("release archive %s does not match canonical platform contract", entry.Name())
+		if publishedArchiveLike(entry.Name()) {
+			return nil, fmt.Errorf("unexpected published release archive %q; expected stable canonical filename", entry.Name())
 		}
-		result = append(result, releaseArchive{path: path, platform: platform})
-		return nil
-	})
+	}
 	sort.Slice(result, func(i, j int) bool { return result[i].path < result[j].path })
 	return result, err
+}
+
+func publishedArchiveLike(name string) bool {
+	return strings.HasPrefix(name, updatepkg.PackageName+"_") &&
+		(strings.HasSuffix(name, ".tar.gz") || strings.HasSuffix(name, ".zip"))
 }
 
 func verifyArchive(path string, platform updatepkg.ReleasePlatform) ([]byte, error) {
@@ -585,6 +602,12 @@ func verifyPackageManifests(root string) error {
 	if !strings.Contains(string(scoopData), ExpectedGitRemote+"/releases/download/") {
 		return errors.New("scoop manifest does not use the canonical CodeMCP release repository")
 	}
+	if strings.Contains(string(scoopData), "/releases/latest/download/") {
+		return errors.New("scoop manifest must remain pinned to an exact release tag")
+	}
+	if regexp.MustCompile(`codemcp_[0-9]`).Match(scoopData) {
+		return errors.New("scoop manifest contains a version-coupled artifact filename")
+	}
 	if strings.Contains(string(scoopData), "chatgpt-mcp") || strings.Contains(string(scoopData), "\"cgm\"") {
 		return errors.New("scoop manifest contains a retired executable identity")
 	}
@@ -599,6 +622,12 @@ func verifyPackageManifests(root string) error {
 	}
 	if !strings.Contains(cask, ExpectedGitRemote) {
 		return errors.New("homebrew cask does not use the canonical CodeMCP repository")
+	}
+	if strings.Contains(cask, "/releases/latest/download/") {
+		return errors.New("homebrew cask must remain pinned to an exact release tag")
+	}
+	if regexp.MustCompile(`codemcp_[0-9]`).MatchString(cask) {
+		return errors.New("homebrew cask contains a version-coupled artifact filename")
 	}
 	if strings.Contains(cask, "chatgpt-mcp") || regexp.MustCompile(`["']cgm["']`).MatchString(cask) {
 		return errors.New("homebrew cask contains a retired executable identity")

@@ -18,7 +18,7 @@ import (
 )
 
 func TestDownloaderDownload(t *testing.T) {
-	assetName, err := CurrentAssetName("v1.2.3")
+	assetName, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestDownloaderDownload(t *testing.T) {
 }
 
 func TestDownloaderSignatureFailureWarnsAfterMandatoryChecksum(t *testing.T) {
-	assetName, err := CurrentAssetName("v1.2.3")
+	assetName, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func TestDownloaderSignatureFailureWarnsAfterMandatoryChecksum(t *testing.T) {
 }
 
 func TestDownloaderMissingOptionalSignatureWarnsAfterChecksum(t *testing.T) {
-	assetName, err := CurrentAssetName("v1.2.3")
+	assetName, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestDownloaderMissingOptionalSignatureWarnsAfterChecksum(t *testing.T) {
 }
 
 func TestDownloaderCleansUpOnChecksumMismatch(t *testing.T) {
-	assetName, err := CurrentAssetName("v1.2.3")
+	assetName, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestSignatureTrustWarningIsBounded(t *testing.T) {
 }
 
 func TestDownloaderRejectsHTTP(t *testing.T) {
-	assetName, err := CurrentAssetName("v1.2.3")
+	assetName, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestDownloaderEnforcesBodyLimitWithoutContentLength(t *testing.T) {
 }
 
 func TestDownloaderEmitsFileChecksumAndExtractionTrace(t *testing.T) {
-	assetName, err := CurrentAssetName("v1.2.3")
+	assetName, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -361,7 +361,7 @@ func containsTraceEvent(events []tracepkg.Event, name string) bool {
 
 func updateReleaseFixture(t *testing.T, version string, binary []byte, validChecksum bool) (*httptest.Server, Release) {
 	t.Helper()
-	assetName, err := CurrentAssetName(version)
+	assetName, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}

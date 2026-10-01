@@ -260,8 +260,7 @@ if (-not $version) {
 }
 if (-not $version) { throw 'cm: could not resolve latest version; set CM_VERSION.' }
 if ($version -notmatch '^v') { $version = "v$version" }
-$ver = $version.TrimStart('v')
-$asset = "${packageName}_${ver}_windows_${arch}.zip"
+$asset = "${packageName}_windows_${arch}.zip"
 $url = "https://github.com/$repo/releases/download/$version/$asset"
 $checksumsUrl = "https://github.com/$repo/releases/download/$version/$checksumName"
 $signatureUrl = "https://github.com/$repo/releases/download/$version/$signatureName"

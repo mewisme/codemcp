@@ -9,7 +9,7 @@ import (
 )
 
 func TestClientLatest(t *testing.T) {
-	asset, err := CurrentAssetName("v1.2.3")
+	asset, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestClientLatestRequiresExpectedAssets(t *testing.T) {
 }
 
 func TestClientLatestAllowsMissingOptionalSignatureAsset(t *testing.T) {
-	asset, err := CurrentAssetName("v1.2.3")
+	asset, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestClientLatestRejectsHTTPFailure(t *testing.T) {
 }
 
 func TestClientVersion(t *testing.T) {
-	asset, err := CurrentAssetName("v1.2.3")
+	asset, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestClientVersion(t *testing.T) {
 }
 
 func TestClientVersionRejectsTagMismatch(t *testing.T) {
-	asset, err := CurrentAssetName("v1.2.4")
+	asset, err := CurrentArchiveName()
 	if err != nil {
 		t.Fatal(err)
 	}

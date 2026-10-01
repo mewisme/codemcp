@@ -126,24 +126,6 @@ func CurrentArchiveName() (string, error) {
 	return ArchiveName(runtime.GOOS, runtime.GOARCH)
 }
 
-// AssetName is the compatibility helper for release consumers that still use
-// version-bearing archive names. New release-layout code should use ArchiveName.
-func AssetName(version, goos, goarch string) (string, error) {
-	version, err := NormalizeVersion(version)
-	if err != nil {
-		return "", err
-	}
-	platform, ok := ReleasePlatformFor(goos, goarch)
-	if !ok {
-		return "", fmt.Errorf("unsupported update platform %q", strings.TrimSpace(goos)+"/"+strings.TrimSpace(goarch))
-	}
-	return fmt.Sprintf("%s_%s_%s_%s%s", PackageName, strings.TrimPrefix(version, "v"), platform.OS, platform.Arch, platform.ArchiveExtension), nil
-}
-
-func CurrentAssetName(version string) (string, error) {
-	return AssetName(version, runtime.GOOS, runtime.GOARCH)
-}
-
 func BinaryName(goos, goarch string) (string, error) {
 	platform, ok := ReleasePlatformFor(goos, goarch)
 	if !ok {

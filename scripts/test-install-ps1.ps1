@@ -69,7 +69,7 @@ function Get-ReleaseContract {
   param([string]$Architecture)
   Push-Location $repoRoot
   try {
-    $lines = & go run ./scripts/release-layout-contract --version v9.9.9 --os windows --arch $Architecture
+    $lines = & go run ./scripts/release-layout-contract --os windows --arch $Architecture
     if ($LASTEXITCODE -ne 0) { throw "release-layout contract helper failed for windows/$Architecture" }
   } finally {
     Pop-Location
@@ -95,12 +95,23 @@ foreach ($contractArch in @('amd64', 'arm64')) {
   if ($contract.checksum -ne "$($contract.package)_checksums.txt" -or $contract.signature -ne "$($contract.checksum).sigstore.json") {
     throw "canonical release checksum/signature contract is internally inconsistent"
   }
-  if ($contract.asset -ne "$($contract.package)_9.9.9_windows_${contractArch}.zip") {
+  if ($contract.asset -ne "$($contract.package)_windows_${contractArch}.zip") {
     throw "canonical release asset tuple is unexpected: $($contract.asset)"
   }
 }
-if (-not $source.Contains('$asset = "${packageName}_${ver}_windows_${arch}.zip"')) {
+if (-not $source.Contains('$asset = "${packageName}_windows_${arch}.zip"')) {
   throw 'PowerShell bootstrap asset naming formula drifted from canonical release contract.'
+}
+if (-not $source.Contains('$url = "https://github.com/$repo/releases/download/$version/$asset"')) {
+  throw 'PowerShell bootstrap no longer pins archive downloads to the resolved release tag.'
+}
+if ($source.Contains('/releases/latest/download/')) {
+  throw 'PowerShell bootstrap must resolve latest to a tag before downloading an artifact.'
+}
+$latestResolve = $source.IndexOf('(Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest").tag_name')
+$exactDownload = $source.IndexOf('$url = "https://github.com/$repo/releases/download/$version/$asset"')
+if ($latestResolve -lt 0 -or $exactDownload -lt 0 -or $latestResolve -gt $exactDownload) {
+  throw 'PowerShell bootstrap does not resolve a release tag before constructing the exact artifact URL.'
 }
 if (-not $source.Contains('$checksumName = "$packageName`_checksums.txt"') -or -not $source.Contains('$signatureName = "$checksumName.sigstore.json"')) {
   throw 'PowerShell bootstrap checksum/signature naming formula drifted from canonical release contract.'
