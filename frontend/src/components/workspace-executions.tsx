@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { ArrowLeft, CircleDot, RefreshCw, TerminalSquare } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import { PageEmpty, PageError, PageLoading } from "@/components/page-state"
@@ -11,7 +11,6 @@ import { ScrollableTabsList, Tabs, TabsContent, TabsTrigger } from "@/components
 import { streamExecution, streamWorkspaceExecutions } from "@/lib/execution-stream"
 import { adminApi, type ExecutionEvent, type ExecutionFeedEvent, type ExecutionInfo, type ExecutionSnapshot } from "@/lib/api"
 
-const refreshInterval = 1500
 const reconnectDelay = 750
 const maxCombinedFeedEvents = 4000
 
@@ -24,23 +23,46 @@ function WorkspaceExecutionList({ workspaceID }: { workspaceID: string }) {
   const [items, setItems] = useState<ExecutionInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [connected, setConnected] = useState(false)
   const [error, setError] = useState("")
-
-  const load = useCallback(async (refresh = false) => {
-    if (refresh) setRefreshing(true)
-    try { setItems(await adminApi.workspaceExecutions(workspaceID)); setError("") } catch (value) { setError(errorText(value)) } finally { setLoading(false); setRefreshing(false) }
-  }, [workspaceID])
+  const [streamVersion, setStreamVersion] = useState(0)
+  const retryTimer = useRef<number | null>(null)
 
   useEffect(() => {
-    let active = true
-    void adminApi.workspaceExecutions(workspaceID).then((value) => { if (active) { setItems(value); setError("") } }).catch((value) => { if (active) setError(errorText(value)) }).finally(() => { if (active) setLoading(false) })
-    const timer = window.setInterval(() => void load(), refreshInterval)
-    return () => { active = false; window.clearInterval(timer) }
-  }, [load, workspaceID])
+    const controller = new AbortController()
+    let stopped = false
+    async function connect() {
+      try {
+        await streamWorkspaceExecutions(workspaceID, controller.signal, {
+          onSnapshot: (snapshot) => {
+            setItems(snapshot.executions)
+            setConnected(true)
+            setLoading(false)
+            setRefreshing(false)
+            setError("")
+          },
+          onEvent: (event) => {
+            setConnected(true)
+            setError("")
+            setItems((current) => applyExecutionFeedToList(current, event))
+          },
+        })
+      } catch (value) {
+        if (controller.signal.aborted || stopped) return
+        setConnected(false)
+        setLoading(false)
+        setRefreshing(false)
+        setError(errorText(value))
+        retryTimer.current = window.setTimeout(() => void connect(), reconnectDelay)
+      }
+    }
+    void connect()
+    return () => { stopped = true; controller.abort(); if (retryTimer.current !== null) window.clearTimeout(retryTimer.current) }
+  }, [streamVersion, workspaceID])
 
   function openExecution(item: ExecutionInfo) { navigate(`/workspaces/${encodeURIComponent(workspaceID)}/activity/${encodeURIComponent(item.id)}`) }
 
-  return <div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="text-sm font-medium">Command executions</div><div className="text-xs text-muted-foreground">Live run_command output is kept in a bounded in-memory buffer and scoped to this workspace.</div></div><Button disabled={refreshing} size="sm" variant="outline" onClick={() => void load(true)}><RefreshCw className={refreshing ? "animate-spin" : ""} />Refresh</Button></div><PageError message={error} />{loading ? <PageLoading rows={5} /> : items.length === 0 ? <PageEmpty icon={TerminalSquare} title="No command executions" description="run_command executions for this workspace will appear here." /> : <ItemGroup>{items.map((item) => <Item className="cursor-pointer" key={item.id} role="button" tabIndex={0} variant="outline" onClick={() => openExecution(item)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openExecution(item) }}><ItemContent className="min-w-0"><ItemHeader><ItemTitle className="min-w-0"><TruncatedText lines={1}>{item.command}</TruncatedText></ItemTitle><ExecutionStatusBadge status={item.status} /></ItemHeader><ItemDescription>{item.tool} · {item.cwd}{item.source ? ` · ${item.source}` : ""}</ItemDescription><div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span className="font-mono">{item.id}</span><span>{formatDateTime(item.started_at)}</span>{item.exit_code !== undefined ? <span>exit {item.exit_code}</span> : null}</div></ItemContent></Item>)}</ItemGroup>}</div>
+  return <div className="space-y-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><div className="text-sm font-medium">Command executions</div><div className="text-xs text-muted-foreground">Live run_command output is kept in a bounded in-memory buffer and scoped to this workspace.</div></div><div className="flex items-center gap-2"><Badge variant={connected ? "secondary" : "outline"}><CircleDot className="size-3" />{connected ? "Live" : "Reconnecting"}</Badge><Button disabled={refreshing} size="sm" variant="outline" onClick={() => { setRefreshing(true); setConnected(false); setError(""); setStreamVersion((value) => value + 1) }}><RefreshCw className={refreshing ? "animate-spin" : ""} />Refresh</Button></div></div><PageError message={error} />{loading ? <PageLoading rows={5} /> : items.length === 0 ? <PageEmpty icon={TerminalSquare} title="No command executions" description="run_command executions for this workspace will appear here." /> : <ItemGroup>{items.map((item) => <Item className="cursor-pointer" key={item.id} role="button" tabIndex={0} variant="outline" onClick={() => openExecution(item)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openExecution(item) }}><ItemContent className="min-w-0"><ItemHeader><ItemTitle className="min-w-0"><TruncatedText lines={1}>{item.command}</TruncatedText></ItemTitle><ExecutionStatusBadge status={item.status} /></ItemHeader><ItemDescription>{item.tool} · {item.cwd}{item.source ? ` · ${item.source}` : ""}</ItemDescription><div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span className="font-mono">{item.id}</span><span>{formatDateTime(item.started_at)}</span>{item.exit_code !== undefined ? <span>exit {item.exit_code}</span> : null}</div></ItemContent></Item>)}</ItemGroup>}</div>
 }
 
 function WorkspaceExecutionFeed({ workspaceID }: { workspaceID: string }) {
@@ -147,6 +169,12 @@ function appendFeedEvent(events: ExecutionFeedEvent[], event: ExecutionFeedEvent
   if ((events.at(-1)?.sequence ?? 0) >= event.sequence) return events
   const next = [...events, event]
   return next.length > maxCombinedFeedEvents ? next.slice(-maxCombinedFeedEvents) : next
+}
+
+function applyExecutionFeedToList(items: ExecutionInfo[], event: ExecutionFeedEvent) {
+  if (event.type === "started" && event.execution) return [event.execution, ...items.filter((item) => item.id !== event.execution_id)].slice(0, 50)
+  if (event.type === "completed") return items.map((item) => item.id === event.execution_id ? { ...item, status: event.status ?? item.status, exit_code: event.exit_code, timed_out: event.timed_out } : item)
+  return items
 }
 
 function formatExecutionFeed(events: ExecutionFeedEvent[]) {

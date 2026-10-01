@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Activity, Cloud, KeyRound, Network, Power, RefreshCw, ShieldCheck } from "lucide-react"
 import { CopyButton } from "@/components/copy-button"
 import { DetailRow } from "@/components/detail-row"
@@ -16,9 +16,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { ScrollableTabsList, Tabs, TabsContent, TabsTrigger } from "@/components/ui/tabs"
+import { streamActivity } from "@/lib/activity-stream"
 import { adminApi, type ManagedTunnelCreateRequest, type ManagedTunnelUpdateRequest, type ManagedTunnelUseRequest, type TunnelAdminAccess, type TunnelAdminKeyRequest, type TunnelAdminKeyStatus, type TunnelAdminScope, type TunnelConfig, type TunnelMetadata, type TunnelStatus } from "@/lib/api"
 
 const emptyConfig: TunnelConfig = { enabled: false }
+const reconnectDelay = 1000
 type AdminScopeKind = "organization" | "workspace" | "tenant"
 
 export function TunnelPage() {
@@ -42,6 +44,7 @@ export function TunnelPage() {
   const [removeAdminOpen, setRemoveAdminOpen] = useState(false)
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
+  const retryTimer = useRef<number | null>(null)
 
   function syncAdmin(value: TunnelAdminKeyStatus) {
     setAdminConfigured(value.configured); setAdminTunnels(value.tunnels); setAdminAccess(value.access ?? { read: false, manage: false }); setAdminCurrentScope(value.scope)
@@ -93,8 +96,22 @@ export function TunnelPage() {
       setConfig(nextConfig); setStatus(nextStatus); setMCPHTTPEnabled(runtimeConfig.http.mcp.enabled); syncAdmin(nextAdmin); setError(""); setLoading(false)
       if (nextAdmin.configured && (nextAdmin.access?.read || nextAdmin.access?.manage)) { setManagedLoading(true); const request = nextAdmin.access.manage ? adminApi.managedTunnels() : nextConfig.id ? adminApi.managedTunnel(nextConfig.id).then((item) => [item]) : Promise.resolve([]); void request.then((items) => { if (active) setManagedTunnels(items) }).catch((value) => { if (active) setError(errorText(value)) }).finally(() => { if (active) setManagedLoading(false) }) }
     }).catch((value) => { if (active) { setError(errorText(value)); setLoading(false) } })
-    const timer = window.setInterval(() => { void adminApi.tunnel().then((next) => { if (active) setStatus(next) }).catch(() => undefined) }, 3000)
-    return () => { active = false; window.clearInterval(timer) }
+    return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let stopped = false
+    async function connect() {
+      try {
+        await streamActivity(controller.signal, { onEvent: (event) => { if (!event.kind.startsWith("tunnel.")) return; void Promise.all([adminApi.tunnelConfig(), adminApi.tunnel()]).then(([nextConfig, nextStatus]) => { if (!stopped) { setConfig(nextConfig); setStatus(nextStatus); setError("") } }).catch((value) => { if (!stopped) setError(errorText(value)) }) } }, 20)
+      } catch {
+        if (controller.signal.aborted || stopped) return
+        retryTimer.current = window.setTimeout(() => void connect(), reconnectDelay)
+      }
+    }
+    void connect()
+    return () => { stopped = true; controller.abort(); if (retryTimer.current !== null) window.clearTimeout(retryTimer.current) }
   }, [])
 
   async function refresh() {

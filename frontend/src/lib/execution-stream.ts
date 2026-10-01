@@ -1,4 +1,4 @@
-import { adminRequestHeaders, type ExecutionEvent, type ExecutionFeedEvent, type ExecutionFeedSnapshot, type ExecutionSnapshot } from "@/lib/api"
+import { adminRequestHeaders, type ExecutionEvent, type ExecutionFeedEvent, type ExecutionFeedSnapshot, type ExecutionInfo, type ExecutionSnapshot } from "@/lib/api"
 
 export type ExecutionStreamHandlers = {
   onSnapshot?: (snapshot: ExecutionSnapshot) => void
@@ -63,7 +63,7 @@ export async function streamWorkspaceExecutions(workspaceID: string, signal: Abo
   }
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
-  let buffer = "", replayRemaining = 0, replayEvents: ExecutionFeedEvent[] = [], replayLatestSequence = 0
+  let buffer = "", replayRemaining = 0, replayEvents: ExecutionFeedEvent[] = [], replayExecutions: ExecutionInfo[] = [], replayLatestSequence = 0
   while (true) {
     const { value, done } = await reader.read()
     if (done) {
@@ -84,15 +84,16 @@ export async function streamWorkspaceExecutions(workspaceID: string, signal: Abo
       if (eventType === "ready" && data) {
         const ready = JSON.parse(data) as ExecutionFeedSnapshot & { replay_count?: number }
         replayEvents = [...(ready.events ?? [])]
+        replayExecutions = [...(ready.executions ?? [])]
         replayLatestSequence = ready.latest_sequence
         replayRemaining = Math.max(0, ready.replay_count ?? 0)
-        if (replayRemaining === 0) handlers.onSnapshot?.({ events: replayEvents, latest_sequence: replayLatestSequence })
+        if (replayRemaining === 0) handlers.onSnapshot?.({ events: replayEvents, executions: replayExecutions, latest_sequence: replayLatestSequence })
       } else if ((eventType === "started" || eventType === "output" || eventType === "completed") && data) {
         const event = JSON.parse(data) as ExecutionFeedEvent
         if (replayRemaining > 0) {
           replayEvents.push(event)
           replayRemaining--
-          if (replayRemaining === 0) handlers.onSnapshot?.({ events: replayEvents, latest_sequence: replayLatestSequence })
+          if (replayRemaining === 0) handlers.onSnapshot?.({ events: replayEvents, executions: replayExecutions, latest_sequence: replayLatestSequence })
         } else handlers.onEvent?.(event)
       }
       boundary = buffer.indexOf("\n\n")

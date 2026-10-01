@@ -234,12 +234,6 @@ func (page *RequestsPage) Update(message tea.Msg) (Model, tea.Cmd) {
 		return page, nil
 	case requestExplanationMsg:
 		return page, page.applyExplanationMsg(msg)
-	case requestExplanationPollMsg:
-		if msg.requestID != page.resourceID || page.resourceID == "" {
-			return page, nil
-		}
-		page.explainLoading = true
-		return page, page.loadExplanationCmd()
 	case requestResolveMsg:
 		if page.operationCancel != nil {
 			page.operationCancel()

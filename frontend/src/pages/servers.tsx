@@ -47,6 +47,7 @@ export function UpstreamsPage() {
   const [oauthDraft, setOAuthDraft] = useState<OAuthDraft>(emptyOAuthDraft)
   const [oauthPending, setOAuthPending] = useState("")
   const [oauthURL, setOAuthURL] = useState("")
+  const [oauthDeadline, setOAuthDeadline] = useState(0)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -88,13 +89,18 @@ export function UpstreamsPage() {
   useEffect(() => {
     if (!oauthPending) return
     const timer = window.setInterval(() => {
+      if (oauthDeadline > 0 && Date.now() >= oauthDeadline) {
+        setOAuthPending(""); setOAuthURL(""); setOAuthDeadline(0)
+        setError("OAuth authorization session expired. Start authorization again.")
+        return
+      }
       void adminApi.upstreamOAuthStatus(oauthPending).then((next) => {
         setOAuthStatus((current) => ({ ...current, [oauthPending]: next }))
-        if (next.configured) { setOAuthPending(""); setOAuthURL(""); setError("") }
+        if (next.configured) { setOAuthPending(""); setOAuthURL(""); setOAuthDeadline(0); setError("") }
       }).catch((value) => setError(errorText(value)))
     }, 1500)
     return () => window.clearInterval(timer)
-  }, [oauthPending])
+  }, [oauthDeadline, oauthPending])
 
   async function openDetail(item: UpstreamServer) {
     setSelected(item)
@@ -161,7 +167,8 @@ export function UpstreamsPage() {
     setBusy(true)
     try {
       const session = await adminApi.beginUpstreamOAuth(selected.id, { redirect_origin: window.location.origin, issuer: oauthDraft.issuer || undefined, client_id: oauthDraft.clientID || undefined, client_secret_env_var: oauthDraft.clientSecretEnv || undefined, client_metadata_url: oauthDraft.clientMetadataURL || undefined, scope: oauthDraft.scope || undefined })
-      setOAuthPending(selected.id); setOAuthURL(session.authorization_url)
+      const expiresAt = new Date(session.expires_at).getTime()
+      setOAuthPending(selected.id); setOAuthURL(session.authorization_url); setOAuthDeadline(Number.isFinite(expiresAt) ? expiresAt : Date.now() + 5 * 60_000)
       const popup = window.open(session.authorization_url, "_blank", "noopener,noreferrer")
       if (!popup) setError("Popup blocked. Use the authorization link shown below."); else setError("")
     } catch (value) { setError(errorText(value)) } finally { setBusy(false) }
@@ -170,11 +177,11 @@ export function UpstreamsPage() {
   async function logoutOAuth() {
     if (!selected) return
     setBusy(true)
-    try { await adminApi.logoutUpstreamOAuth(selected.id); const next = await adminApi.upstreamOAuthStatus(selected.id); setOAuthStatus((current) => ({ ...current, [selected.id]: next })); setOAuthPending(""); setOAuthURL(""); setError("") } catch (value) { setError(errorText(value)) } finally { setBusy(false) }
+    try { await adminApi.logoutUpstreamOAuth(selected.id); const next = await adminApi.upstreamOAuthStatus(selected.id); setOAuthStatus((current) => ({ ...current, [selected.id]: next })); setOAuthPending(""); setOAuthURL(""); setOAuthDeadline(0); setError("") } catch (value) { setError(errorText(value)) } finally { setBusy(false) }
   }
 
   const columns = serverColumns(status, oauthStatus, busyID, openDetail, editServer, setRemoveTarget, toggle)
-  return <div className="space-y-6"><PageHeader title="Upstreams" description="Configure HTTP and stdio upstreams, inspect health and tools, and manage OAuth without leaving the server detail view." actions={<><Button disabled={refreshing} size="sm" variant="outline" onClick={() => void load(true)}><RefreshCw className={refreshing ? "animate-spin" : ""} />Refresh</Button><Button size="sm" onClick={addServer}><Plus />Add Upstream</Button></>} /><PageError message={error} />{loading ? <PageLoading rows={5} /> : servers.length === 0 ? <PageEmpty icon={ServerIcon} title="No Upstreams configured" description="Add an HTTP or stdio upstream to expose its tools through this runtime." action={<Button onClick={addServer}><Plus />Add Upstream</Button>} /> : mobile ? <ServerMobileList servers={servers} status={status} oauth={oauthStatus} busyID={busyID} onOpen={openDetail} onEdit={editServer} onRemove={setRemoveTarget} onToggle={toggle} /> : <DataTable columns={columns} data={servers} onRowClick={(item) => void openDetail(item)} pageSize={20} />}{formOpen ? <ServerForm key={editingID || "new"} open onOpenChange={setFormOpen} draft={draft} setDraft={setDraft} editingID={editingID} existingIDs={servers.map((item) => item.id)} busy={busy} onSubmit={save} onSaveJSON={(values) => void persistServers(values)} /> : null}{selected ? <ServerDetail server={selected} state={status[selected.id]} tools={tools[selected.id]} oauth={oauthStatus[selected.id]} oauthDraft={oauthDraft} setOAuthDraft={setOAuthDraft} pending={oauthPending === selected.id} authorizationURL={oauthURL} loading={detailLoading} busy={busy} onOpenChange={(open) => { if (!open) { setSelected(null); setOAuthPending(""); setOAuthURL("") } }} onRefresh={() => void refreshDetail()} onEdit={() => editServer(selected)} onAuthorize={() => void authorizeOAuth()} onLogout={() => void logoutOAuth()} onRemove={() => setRemoveTarget(selected)} /> : null}<AlertDialog open={Boolean(removeTarget)} onOpenChange={(open) => { if (!open && !busyID) setRemoveTarget(null) }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove Upstream?</AlertDialogTitle><AlertDialogDescription>{removeTarget?.name} ({removeTarget?.id}) will be removed from the runtime configuration.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={Boolean(busyID)}>Cancel</AlertDialogCancel><AlertDialogAction disabled={Boolean(busyID)} variant="destructive" onClick={() => void remove()}>{busyID ? "Removing..." : "Remove"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div>
+  return <div className="space-y-6"><PageHeader title="Upstreams" description="Configure HTTP and stdio upstreams, inspect health and tools, and manage OAuth without leaving the server detail view." actions={<><Button disabled={refreshing} size="sm" variant="outline" onClick={() => void load(true)}><RefreshCw className={refreshing ? "animate-spin" : ""} />Refresh</Button><Button size="sm" onClick={addServer}><Plus />Add Upstream</Button></>} /><PageError message={error} />{loading ? <PageLoading rows={5} /> : servers.length === 0 ? <PageEmpty icon={ServerIcon} title="No Upstreams configured" description="Add an HTTP or stdio upstream to expose its tools through this runtime." action={<Button onClick={addServer}><Plus />Add Upstream</Button>} /> : mobile ? <ServerMobileList servers={servers} status={status} oauth={oauthStatus} busyID={busyID} onOpen={openDetail} onEdit={editServer} onRemove={setRemoveTarget} onToggle={toggle} /> : <DataTable columns={columns} data={servers} onRowClick={(item) => void openDetail(item)} pageSize={20} />}{formOpen ? <ServerForm key={editingID || "new"} open onOpenChange={setFormOpen} draft={draft} setDraft={setDraft} editingID={editingID} existingIDs={servers.map((item) => item.id)} busy={busy} onSubmit={save} onSaveJSON={(values) => void persistServers(values)} /> : null}{selected ? <ServerDetail server={selected} state={status[selected.id]} tools={tools[selected.id]} oauth={oauthStatus[selected.id]} oauthDraft={oauthDraft} setOAuthDraft={setOAuthDraft} pending={oauthPending === selected.id} authorizationURL={oauthURL} loading={detailLoading} busy={busy} onOpenChange={(open) => { if (!open) { setSelected(null); setOAuthPending(""); setOAuthURL(""); setOAuthDeadline(0) } }} onRefresh={() => void refreshDetail()} onEdit={() => editServer(selected)} onAuthorize={() => void authorizeOAuth()} onLogout={() => void logoutOAuth()} onRemove={() => setRemoveTarget(selected)} /> : null}<AlertDialog open={Boolean(removeTarget)} onOpenChange={(open) => { if (!open && !busyID) setRemoveTarget(null) }}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Remove Upstream?</AlertDialogTitle><AlertDialogDescription>{removeTarget?.name} ({removeTarget?.id}) will be removed from the runtime configuration.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={Boolean(busyID)}>Cancel</AlertDialogCancel><AlertDialogAction disabled={Boolean(busyID)} variant="destructive" onClick={() => void remove()}>{busyID ? "Removing..." : "Remove"}</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog></div>
 }
 
 function serverColumns(status: Record<string, UpstreamServerStatus>, oauth: Record<string, UpstreamOAuthStatus>, busyID: string, onOpen: (item: UpstreamServer) => Promise<void>, onEdit: (item: UpstreamServer) => void, onRemove: (item: UpstreamServer) => void, onToggle: (item: UpstreamServer, enabled: boolean) => Promise<void>) {

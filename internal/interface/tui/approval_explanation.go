@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -11,17 +10,11 @@ import (
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
 
-const approvalExplanationPollInterval = 1200 * time.Millisecond
-
 type approvalExplanationMsg struct {
 	requestID string
 	status    application.ApprovalExplainStatus
 	result    application.ApprovalExplanationResult
 	err       error
-}
-
-type approvalExplanationPollMsg struct {
-	requestID string
 }
 
 func (model *Model) prepareApprovalExplanation(requestID string) {
@@ -96,25 +89,7 @@ func (model *Model) applyApprovalExplanation(msg approvalExplanationMsg) tea.Cmd
 	model.approvalExplainStatus = msg.status
 	model.approvalExplanation = msg.result
 	model.syncApprovalViewport(false)
-	if !model.shouldPollApprovalExplanation() {
-		return nil
-	}
-	requestID := msg.requestID
-	return tea.Tick(approvalExplanationPollInterval, func(time.Time) tea.Msg {
-		return approvalExplanationPollMsg{requestID: requestID}
-	})
-}
-
-func (model Model) shouldPollApprovalExplanation() bool {
-	if model.activeApprovalID() == "" || model.approvalExplainID != model.activeApprovalID() {
-		return false
-	}
-	if model.approvalExplanation.State == application.ApprovalExplanationPending {
-		return true
-	}
-	return strings.EqualFold(string(model.approvalExplainStatus.Mode), "auto") &&
-		model.approvalExplainStatus.Available &&
-		model.approvalExplanation.State == application.ApprovalExplanationNone
+	return nil
 }
 
 func (model Model) canTriggerApprovalExplanation() bool {

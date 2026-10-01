@@ -93,6 +93,7 @@ export type ExecutionFeedEvent = {
 }
 export type ExecutionFeedSnapshot = {
   events: ExecutionFeedEvent[]
+  executions: ExecutionInfo[]
   latest_sequence: number
 }
 export type InstructionSourcePolicy = {

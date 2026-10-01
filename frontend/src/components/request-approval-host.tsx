@@ -18,6 +18,7 @@ export function RequestApprovalHost() {
   const [selected, setSelected] = useState<ApprovalRequest | null>(null)
   const [busy, setBusy] = useState<"approve" | "deny" | "">("")
   const [error, setError] = useState("")
+  const [explanationRevision, setExplanationRevision] = useState(0)
   const [now, setNow] = useState(() => Date.now())
   const retryTimer = useRef<number | null>(null)
   const notified = useRef(new Set<string>())
@@ -97,6 +98,7 @@ export function RequestApprovalHost() {
           },
           onEvent: (event) => {
             const requestID = event.request_id
+            if (event.name === "approval.explanation.ready" || event.name === "approval.explanation.failed") setExplanationRevision((value) => value + 1)
             if (event.name === "approval.pending" && requestID && !notified.current.has(requestID)) {
               notified.current.add(requestID)
               toast.warning("Control approval requested", {
@@ -242,7 +244,7 @@ export function RequestApprovalHost() {
         </TabsContent>
       </Tabs>
       <div className="mt-4">
-        <RequestExplanation requestID={selected.id} />
+        <RequestExplanation requestID={selected.id} revision={explanationRevision} />
       </div>
     </ResponsiveDialog>
   )

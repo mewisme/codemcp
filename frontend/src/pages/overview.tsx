@@ -59,10 +59,10 @@ export function OverviewPage() {
           if (active) setError(errorText(value))
         })
     update()
-    const timer = window.setInterval(update, 5000)
+    window.addEventListener("focus", update)
     return () => {
       active = false
-      window.clearInterval(timer)
+      window.removeEventListener("focus", update)
     }
   }, [])
   async function refresh() {

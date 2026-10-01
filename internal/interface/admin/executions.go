@@ -79,7 +79,20 @@ func serveWorkspaceExecutionFeed(w http.ResponseWriter, r *http.Request, hub *sh
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("X-Accel-Buffering", "no")
-	if _, err := fmt.Fprintf(w, "event: ready\ndata: {\"latest_sequence\":%d,\"replay_count\":%d}\n\n", snapshot.LatestSequence, len(snapshot.Events)); err != nil {
+	ready, err := json.Marshal(struct {
+		Executions     []shellruntime.ExecutionInfo `json:"executions"`
+		LatestSequence uint64                       `json:"latest_sequence"`
+		ReplayCount    int                          `json:"replay_count"`
+	}{
+		Executions:     shellruntime.PublicExecutionInfos(snapshot.Executions),
+		LatestSequence: snapshot.LatestSequence,
+		ReplayCount:    len(snapshot.Events),
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := fmt.Fprintf(w, "event: ready\ndata: %s\n\n", ready); err != nil {
 		return
 	}
 	for _, event := range snapshot.Events {

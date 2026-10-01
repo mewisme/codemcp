@@ -3,7 +3,6 @@ package page
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -11,17 +10,11 @@ import (
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 )
 
-const requestExplanationPollInterval = 1200 * time.Millisecond
-
 type requestExplanationMsg struct {
 	status     application.ApprovalExplainStatus
 	result     application.ApprovalExplanationResult
 	statusOnly bool
 	err        error
-}
-
-type requestExplanationPollMsg struct {
-	requestID string
 }
 
 func (page *RequestsPage) loadExplanationCmd() tea.Cmd {
@@ -70,25 +63,7 @@ func (page *RequestsPage) applyExplanationMsg(msg requestExplanationMsg) tea.Cmd
 		page.explanation = msg.result
 	}
 	page.syncDetail()
-	if page.shouldPollExplanation() {
-		id := page.resourceID
-		return tea.Tick(requestExplanationPollInterval, func(time.Time) tea.Msg {
-			return requestExplanationPollMsg{requestID: id}
-		})
-	}
 	return nil
-}
-
-func (page *RequestsPage) shouldPollExplanation() bool {
-	if page == nil || strings.TrimSpace(page.resourceID) == "" {
-		return false
-	}
-	if page.explanation.State == application.ApprovalExplanationPending {
-		return true
-	}
-	return strings.EqualFold(string(page.explainStatus.Mode), "auto") &&
-		page.explanation.State == application.ApprovalExplanationNone &&
-		page.explainStatus.Available
 }
 
 func (page *RequestsPage) requestExplanationView(width int) string {

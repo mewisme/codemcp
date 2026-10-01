@@ -35,7 +35,8 @@ export function CompletionsPage() {
         adminApi.completions("", 100),
         adminApi.completionDoctor(),
       ])
-      setItems((current) => mergeCompletions(current, records))
+      setItems(records)
+      setSelected((current) => current ? records.find((record) => record.id === current.id) ?? current : current)
       setDoctor(health)
       setError("")
     } catch (value) {
@@ -53,7 +54,8 @@ export function CompletionsPage() {
       try {
         await streamCompletions(controller.signal, {
           onReady: (snapshot) => {
-            setItems((current) => mergeCompletions(current, snapshot.records))
+            setItems(snapshot.records)
+            setSelected((current) => current ? snapshot.records.find((record) => record.id === current.id) ?? current : current)
             setConnected(true)
             setLoading(false)
             setError("")
@@ -184,15 +186,6 @@ function upsertCompletion(records: CompletionRecord[], record: CompletionRecord)
   const next = [...records.filter((item) => item.id !== record.id), record]
   next.sort((left, right) => left.sequence - right.sequence)
   return next.slice(-100)
-}
-
-function mergeCompletions(current: CompletionRecord[], incoming: CompletionRecord[]) {
-  const byID = new Map(current.map((record) => [record.id, record]))
-  for (const record of incoming) {
-    const existing = byID.get(record.id)
-    if (!existing || record.sequence >= existing.sequence) byID.set(record.id, record)
-  }
-  return [...byID.values()].sort((left, right) => left.sequence - right.sequence).slice(-100)
 }
 
 function formatDateTime(value: string) {

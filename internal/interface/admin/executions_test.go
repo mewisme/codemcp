@@ -134,10 +134,11 @@ func TestWorkspaceExecutionFeedSSEReplaysAndContinuesAcrossCommands(t *testing.T
 	scanner := bufio.NewScanner(response.Body)
 	ready := scanEventData(t, scanner, "ready")
 	var metadata struct {
-		LatestSequence uint64 `json:"latest_sequence"`
-		ReplayCount    int    `json:"replay_count"`
+		Executions     []shellruntime.ExecutionInfo `json:"executions"`
+		LatestSequence uint64                       `json:"latest_sequence"`
+		ReplayCount    int                          `json:"replay_count"`
 	}
-	if err := json.Unmarshal([]byte(ready), &metadata); err != nil || metadata.LatestSequence != 3 || metadata.ReplayCount != 3 {
+	if err := json.Unmarshal([]byte(ready), &metadata); err != nil || metadata.LatestSequence != 3 || metadata.ReplayCount != 3 || len(metadata.Executions) != 1 || metadata.Executions[0].ID != first.ID() {
 		t.Fatalf("feed metadata=%#v err=%v", metadata, err)
 	}
 	replayStarted := scanEventData(t, scanner, shellruntime.ExecutionEventStarted)

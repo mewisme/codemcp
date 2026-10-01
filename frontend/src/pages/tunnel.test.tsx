@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { TunnelPage } from "@/pages/tunnel"
@@ -55,6 +55,8 @@ const tunnelStatus: TunnelStatus = {
   },
 }
 
+let activityController: ReadableStreamDefaultController<Uint8Array> | undefined
+
 const managedTunnels = [
   tunnelStatus.metadata!,
   {
@@ -68,6 +70,15 @@ const managedTunnels = [
 
 describe("TunnelPage", () => {
   beforeEach(() => {
+    const encoder = new TextEncoder()
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const raw = input instanceof Request ? input.url : String(input)
+      const url = new URL(raw, "http://localhost")
+      if (`${url.pathname}${url.search}` === "/api/activity/stream?history=20") {
+        return new Response(new ReadableStream<Uint8Array>({ start(controller) { activityController = controller; controller.enqueue(encoder.encode('event: ready\ndata: {"latest_sequence":0}\n\n')) } }), { status: 200, headers: { "Content-Type": "text/event-stream" } })
+      }
+      throw new Error(`Unhandled test request: ${url.pathname}${url.search}`)
+    }))
     vi.spyOn(adminApi, "tunnelConfig").mockResolvedValue({
       enabled: true,
       id: "tunnel_one",
@@ -127,7 +138,18 @@ describe("TunnelPage", () => {
     })
   })
 
-  afterEach(() => vi.restoreAllMocks())
+  afterEach(() => { activityController = undefined; vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
+  it("refreshes tunnel state from the canonical lifecycle feed", async () => {
+    render(<TunnelPage />)
+    expect(await screen.findByRole("button", { name: "Stop tunnel" })).toBeInTheDocument()
+
+    vi.mocked(adminApi.tunnel).mockResolvedValue({ ...tunnelStatus, running: false, ready: false })
+    const event = { sequence: 1, kind: "tunnel.stopped", status: "stopped", timestamp: "2026-10-01T00:00:00Z" }
+    await act(async () => { activityController?.enqueue(new TextEncoder().encode(`event: activity\ndata: ${JSON.stringify(event)}\n\n`)) })
+
+    expect(await screen.findByRole("button", { name: "Start tunnel" })).toBeInTheDocument()
+  })
 
   it("separates runtime, administration, and metadata and confirms admin-key removal", async () => {
     const user = userEvent.setup()

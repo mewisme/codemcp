@@ -18,10 +18,10 @@ import { Item, ItemContent, ItemDescription, ItemGroup, ItemHeader, ItemTitle } 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { adminApi, adminRequestHeaders, type ActivityEvent, type ToolCallDetail } from "@/lib/api"
+import { streamActivity } from "@/lib/activity-stream"
+import { adminApi, type ActivityEvent, type ToolCallDetail } from "@/lib/api"
 
-type ActivityStreamHandlers = { onReady: () => void; onEvent: (event: ActivityEvent) => void; onGap: (from: number, to: number) => void }
-
+const reconnectDelay = 1000
 const columnHelper = createColumnHelper<DataTableFeatures, ActivityEvent>()
 const columns = columnHelper.columns([
   columnHelper.accessor("timestamp", { header: ({ column }) => <DataTableColumnHeader column={column} title="Time" />, cell: ({ getValue }) => <span className="whitespace-nowrap text-xs text-muted-foreground">{formatTime(getValue())}</span> }),
@@ -48,20 +48,29 @@ export function ActivityPage() {
   const [connecting, setConnecting] = useState(true)
   const [streamVersion, setStreamVersion] = useState(0)
   const [error, setError] = useState("")
+  const retryTimer = useRef<number | null>(null)
 
   useEffect(() => { pausedRef.current = paused }, [paused])
   useEffect(() => {
     const controller = new AbortController()
-    void streamActivity(controller.signal, {
-      onReady: () => { setConnected(true); setConnecting(false) },
-      onEvent: (event) => { setConnected(true); setConnecting(false); if (pausedRef.current) setPending((items) => prependActivity(items, event)); else setEvents((items) => prependActivity(items, event)) },
-      onGap: (from, to) => setError(`Activity stream skipped ${to - from - 1} event(s) between sequence ${from} and ${to}.`),
-    }).then(() => {
-      if (!controller.signal.aborted) { setConnected(false); setConnecting(false); setError("Activity stream closed; use Refresh to reconnect.") }
-    }).catch((value) => {
-      if (!controller.signal.aborted) { setConnected(false); setConnecting(false); setError(errorText(value)) }
-    })
-    return () => controller.abort()
+    let stopped = false
+    async function connect() {
+      try {
+        await streamActivity(controller.signal, {
+          onReady: () => { setConnected(true); setConnecting(false); setError("") },
+          onEvent: (event) => { setConnected(true); setConnecting(false); if (pausedRef.current) setPending((items) => prependActivity(items, event)); else setEvents((items) => prependActivity(items, event)) },
+          onGap: (from, to) => setError(`Activity stream skipped ${to - from - 1} event(s) between sequence ${from} and ${to}.`),
+        })
+      } catch (value) {
+        if (controller.signal.aborted || stopped) return
+        setConnected(false)
+        setConnecting(true)
+        setError(errorText(value))
+        retryTimer.current = window.setTimeout(() => void connect(), reconnectDelay)
+      }
+    }
+    void connect()
+    return () => { stopped = true; controller.abort(); if (retryTimer.current !== null) window.clearTimeout(retryTimer.current) }
   }, [streamVersion])
 
   const kinds = useMemo(() => unique(events, pending, (event) => event.kind), [events, pending])
@@ -133,38 +142,3 @@ function formatDuration(value: number) { return value < 1000 ? `${value} ms` : `
 function formatTime(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString() }
 function formatDateTime(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString() }
 function errorText(value: unknown) { return value instanceof Error ? value.message : String(value) }
-
-async function streamActivity(signal: AbortSignal, handlers: ActivityStreamHandlers) {
-  const path = "/api/activity/stream?history=100"
-  const response = await fetch(path, { headers: adminRequestHeaders(path), signal })
-  if (!response.ok || !response.body) { const message = await response.text().catch(() => ""); throw new Error(message.trim() || `Activity stream ${response.status}`) }
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ""
-  let lastSequence = 0
-  while (true) {
-    const { value, done } = await reader.read()
-    if (done) return
-    buffer += decoder.decode(value, { stream: true })
-    let boundary = buffer.indexOf("\n\n")
-    while (boundary >= 0) {
-      const packet = buffer.slice(0, boundary)
-      buffer = buffer.slice(boundary + 2)
-      let eventType = "message"
-      let data = ""
-      for (const line of packet.split("\n")) { if (line.startsWith("event: ")) eventType = line.slice(7).trim(); if (line.startsWith("data: ")) data += line.slice(6) }
-      if (eventType === "ready" || eventType === "heartbeat") handlers.onReady()
-      else if (eventType === "overflow") throw new Error("Activity stream subscriber overflowed; reconnect to resync recent events.")
-      else if (eventType === "activity" && data) {
-        try {
-          const event = JSON.parse(data) as ActivityEvent
-          const sequence = event.sequence ?? 0
-          if (lastSequence > 0 && sequence > lastSequence + 1) handlers.onGap(lastSequence, sequence)
-          if (sequence > 0) lastSequence = sequence
-          handlers.onEvent(event)
-        } catch (value) { if (value instanceof SyntaxError) continue; throw value }
-      }
-      boundary = buffer.indexOf("\n\n")
-    }
-  }
-}

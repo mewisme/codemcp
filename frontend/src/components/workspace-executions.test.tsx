@@ -17,7 +17,7 @@ describe("WorkspaceExecutions", () => {
     adminToken.set("test-admin-token")
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = requestPath(input)
-      if (path === "/api/workspaces/ws_test/executions?limit=50") return json([execution])
+      if (path === "/api/workspaces/ws_test/executions/stream") return executionListStream([execution])
       if (path === "/api/workspaces/ws_test/executions/exec_1") return json(snapshot)
       if (path === "/api/workspaces/ws_test/executions/exec_1/stream") return executionStream(snapshot)
       throw new Error(`Unhandled test request: ${path}`)
@@ -41,7 +41,6 @@ describe("WorkspaceExecutions", () => {
     adminToken.set("test-admin-token")
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const path = requestPath(input)
-      if (path === "/api/workspaces/ws_test/executions?limit=50") return json([])
       if (path === "/api/workspaces/ws_test/executions/stream") return executionFeedStream()
       throw new Error(`Unhandled test request: ${path}`)
     }))
@@ -79,18 +78,24 @@ function executionFeedStream() {
   const encoder = new TextEncoder()
   const first = { id: "exec_1", workspace_id: "ws_test", tool: "run_command", command: "first", cwd: "/projects/test", source: "mcp", started_at: new Date().toISOString(), status: "success", exit_code: 0 }
   const second = { id: "exec_2", workspace_id: "ws_test", tool: "run_command", command: "second", cwd: "/projects/test", source: "mcp", started_at: new Date().toISOString(), status: "running" }
-  const snapshot = { events: [
+  const snapshot = { executions: [first], events: [
     { sequence: 1, type: "started", execution_id: "exec_1", workspace_id: "ws_test", execution: { ...first, status: "running", exit_code: undefined }, status: "running", timestamp: first.started_at },
     { sequence: 2, type: "output", execution_id: "exec_1", workspace_id: "ws_test", execution: { ...first, status: "running", exit_code: undefined }, stream: "stdout", data: "one\n", timestamp: first.started_at },
     { sequence: 3, type: "completed", execution_id: "exec_1", workspace_id: "ws_test", execution: first, status: "success", exit_code: 0, timestamp: first.started_at },
   ], latest_sequence: 3 }
   const packets = [
-    `event: ready\ndata: ${JSON.stringify({ latest_sequence: snapshot.latest_sequence, replay_count: snapshot.events.length })}\n\n`,
+    `event: ready\ndata: ${JSON.stringify({ executions: snapshot.executions, latest_sequence: snapshot.latest_sequence, replay_count: snapshot.events.length })}\n\n`,
     ...snapshot.events.map((event) => `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`),
     `id: 4\nevent: started\ndata: ${JSON.stringify({ sequence: 4, type: "started", execution_id: "exec_2", workspace_id: "ws_test", execution: second, status: "running", timestamp: second.started_at })}\n\n`,
     `id: 5\nevent: output\ndata: ${JSON.stringify({ sequence: 5, type: "output", execution_id: "exec_2", workspace_id: "ws_test", execution: second, stream: "stderr", data: "two\n", timestamp: second.started_at })}\n\n`,
   ]
   const body = new ReadableStream({ start(controller) { for (const packet of packets) controller.enqueue(encoder.encode(packet)) } })
+  return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } })
+}
+
+function executionListStream(executions: ExecutionInfo[]) {
+  const encoder = new TextEncoder()
+  const body = new ReadableStream({ start(controller) { controller.enqueue(encoder.encode(`event: ready\ndata: ${JSON.stringify({ executions, latest_sequence: 0, replay_count: 0 })}\n\n`)) } })
   return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } })
 }
 

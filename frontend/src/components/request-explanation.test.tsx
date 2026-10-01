@@ -45,6 +45,35 @@ describe("RequestExplanation", () => {
     expect(screen.queryByRole("button", { name: "Explain command" })).not.toBeInTheDocument()
   })
 
+  it("refreshes pending auto explanations only when the owner feed advances", async () => {
+    vi.spyOn(adminApi, "approvalExplainStatus").mockResolvedValue({ mode: "auto", available: true, active_provider: "ollama", model: "qwen3:8b", configured: true, readiness: "ready" })
+    vi.spyOn(adminApi, "approvalExplanation")
+      .mockResolvedValueOnce({ request_id: "req_event", state: "pending", attempt: 1 })
+      .mockResolvedValueOnce({
+        request_id: "req_event",
+        state: "ready",
+        attempt: 1,
+        explanation: {
+          summary: "Canonical event refresh completed.",
+          steps: [],
+          effects: [],
+          risk_notes: [],
+          unknowns: [],
+          provider_id: "ollama",
+          model: "qwen3:8b",
+          generated_at: "2026-10-01T00:00:00Z",
+        },
+      })
+
+    const view = render(<RequestExplanation requestID="req_event" revision={0} />)
+    expect(await screen.findByText("Generating explanation…")).toBeInTheDocument()
+    expect(adminApi.approvalExplanation).toHaveBeenCalledTimes(1)
+
+    view.rerender(<RequestExplanation requestID="req_event" revision={1} />)
+    expect(await screen.findByText("Canonical event refresh completed.")).toBeInTheDocument()
+    expect(adminApi.approvalExplanation).toHaveBeenCalledTimes(2)
+  })
+
   it("keeps failure local and exposes an explicit retry", async () => {
     const user = userEvent.setup()
     vi.spyOn(adminApi, "approvalExplainStatus").mockResolvedValue({ mode: "auto", available: true, active_provider: "ollama", model: "qwen3:8b", configured: true, readiness: "ready" })

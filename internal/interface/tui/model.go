@@ -260,6 +260,9 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if afterID := model.activeApprovalID(); afterID != "" && afterID != beforeID {
 			commands = append(commands, model.loadActiveApprovalExplanationCmd())
 		}
+		if msg.event.RequestID == model.activeApprovalID() && (msg.event.Name == approval.EventExplanationReady || msg.event.Name == approval.EventExplanationFailed) {
+			commands = append(commands, model.loadActiveApprovalExplanationCmd())
+		}
 		if requestsPage, ok := model.currentPage.(*tuipage.RequestsPage); ok {
 			updated, cmd := requestsPage.Update(tuipage.RequestFeedChangedMsg{Event: msg.event})
 			model.currentPage = updated
@@ -274,12 +277,6 @@ func (model Model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return model.finishApprovalResolution(msg)
 	case approvalExplanationMsg:
 		return model, model.applyApprovalExplanation(msg)
-	case approvalExplanationPollMsg:
-		if msg.requestID != model.activeApprovalID() {
-			return model, nil
-		}
-		model.approvalExplainLoading = true
-		return model, model.loadActiveApprovalExplanationCmd()
 	case tea.BackgroundColorMsg:
 		model.theme = newTheme(msg.IsDark())
 		component.SetDarkBackground(msg.IsDark())

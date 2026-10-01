@@ -10,7 +10,7 @@ import {
   type ApprovalExplanationResult,
 } from "@/lib/api"
 
-export function RequestExplanation({ requestID }: { requestID: string }) {
+export function RequestExplanation({ requestID, revision = 0 }: { requestID: string; revision?: number }) {
   const [status, setStatus] = useState<ApprovalExplainStatus | null>(null)
   const [result, setResult] = useState<ApprovalExplanationResult | null>(null)
   const [loading, setLoading] = useState(true)
@@ -56,19 +56,7 @@ export function RequestExplanation({ requestID }: { requestID: string }) {
     return () => {
       active = false
     }
-  }, [requestID])
-
-  useEffect(() => {
-    if (!status) return
-    const shouldPoll =
-      result?.state === "pending" ||
-      (status.mode === "auto" && (!result || result.state === "none"))
-    if (!shouldPoll) return
-    const timer = window.setInterval(() => {
-      void load()
-    }, 1200)
-    return () => window.clearInterval(timer)
-  }, [load, result, status])
+  }, [requestID, revision])
 
   async function trigger(retry: boolean) {
     setBusy(true)
