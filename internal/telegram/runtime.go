@@ -102,6 +102,7 @@ type Runtime struct {
 	generation           uint64
 	topics               *topicStore
 	approvalMessages     *approvalMessageStore
+	notificationMessages map[int64]map[string]int64
 	logsMiniApp          *LogsMiniAppRuntime
 }
 
@@ -893,7 +894,47 @@ func (runtime *Runtime) handleRenderedNotification(ctx context.Context, chatID i
 		return notification.ErrProviderUnavailable
 	}
 	requestID := strings.TrimSpace(message.RequestID)
-	if requestID == "" || (message.Kind != notification.KindApprovalPending && message.Kind != notification.KindApprovalResolved && message.Kind != notification.KindApprovalUpdated) {
+	isApproval := requestID != "" && (message.Kind == notification.KindApprovalPending || message.Kind == notification.KindApprovalResolved || message.Kind == notification.KindApprovalUpdated)
+	messageKey := strings.TrimSpace(message.ID)
+	if !isApproval && message.Kind == notification.KindBackgroundJobFinished && messageKey != "" {
+		runtime.mu.Lock()
+		if runtime.notificationMessages == nil {
+			runtime.notificationMessages = map[int64]map[string]int64{}
+		}
+		refs := runtime.notificationMessages[chatID]
+		if refs == nil {
+			refs = map[string]int64{}
+			runtime.notificationMessages[chatID] = refs
+		}
+		messageID := refs[messageKey]
+		runtime.mu.Unlock()
+		if message.Update {
+			if messageID <= 0 {
+				return nil
+			}
+			if err := runtime.EditScreen(ctx, chatID, messageID, screen); err == nil {
+				runtime.mu.Lock()
+				delete(refs, messageKey)
+				runtime.mu.Unlock()
+				return nil
+			} else if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
+				return err
+			}
+			runtime.mu.Lock()
+			delete(refs, messageKey)
+			runtime.mu.Unlock()
+			return nil
+		}
+		messageID, err := runtime.SendRichMessageToTopic(ctx, chatID, role, screen, RichMessageOptions{})
+		if err != nil {
+			return err
+		}
+		runtime.mu.Lock()
+		refs[messageKey] = messageID
+		runtime.mu.Unlock()
+		return nil
+	}
+	if !isApproval {
 		_, err := runtime.SendRichMessageToTopic(ctx, chatID, role, screen, RichMessageOptions{})
 		return err
 	}

@@ -214,11 +214,12 @@ Without explicit ranking/recommendation/sort, results have a stable ID ordering.
 
 Ranking/recommendation is not synthesized for Ollama. If a custom backend does not provide explicit enrichment metadata, rank/recommendation queries return an unsupported-query error.
 
-## Approval Explain
+## Explain
 
-Approval Explain is an informational LLM consumer attached to human approval review. Its mode is `off`, `manual`, or `auto`:
+Explain is a shared, informational LLM capability for supported CodeMCP operations. Its canonical setting is `explain.mode = off|manual|auto`; it is not owned by approval policy. The existing request commands are reviewer-facing facades over that shared setting:
 
 ```bash
+cm config set explain.mode manual
 cm request explain mode off
 cm request explain mode manual
 cm request explain mode auto
@@ -227,7 +228,9 @@ cm request explain status
 
 Enabling `manual` or `auto` requires the active LLM provider to be configured and to pass an explicit readiness probe before the mode is persisted.
 
-In `manual` mode, a reviewer requests an explanation explicitly. In `auto` mode, generation starts only after the approval request already exists and is pending. A failed explanation stays failed until an explicit retry:
+### Approval review
+
+Approval review is one Explain consumer. In `manual` mode, a reviewer requests an explanation explicitly. In `auto` mode, generation starts only after the approval request already exists and is pending. A failed approval explanation stays failed until an explicit retry:
 
 ```bash
 cm request explain <request-id>
@@ -237,6 +240,12 @@ cm request explain retry <request-id>
 The explanation is generated from the canonical exact command/action after secret redaction. The agent-authored request title/summary remains separate provenance and is not the source of truth for the generated explanation.
 
 Generated text is fallible and non-authoritative. Explain cannot approve or deny a request, change deterministic or semantic risk classification, alter retry binding, create a runtime grant, or extend approval lifetime. Approve/Deny remains usable when the LLM is unavailable or the explanation fails. The requesting MCP agent does not receive an Explain capability that could shape the human-facing result.
+
+### Background process notifications
+
+Background-process completion is another Explain consumer. When `explain.mode=auto` and Telegram completion notifications are enabled, CodeMCP sends the terminal notification immediately, generates an explanation asynchronously from the retained sanitized command, then edits that same Telegram message to add the explanation when generation succeeds. LLM failure never delays or removes the original terminal notification.
+
+The shared explainer owns command sanitization, bounded structured output, provider/model provenance, and inference. Approval and background-process code only supply domain-specific lifecycle context. Raw process output is not added to the explanation input or notification payload.
 
 ## Security and semantic boundaries
 

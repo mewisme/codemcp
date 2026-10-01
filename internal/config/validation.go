@@ -87,10 +87,10 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("approval.semantic.%s must be allow, require_approval, or deny", name)
 		}
 	}
-	switch cfg.Approval.Explain.Mode {
-	case ApprovalExplainOff, ApprovalExplainManual, ApprovalExplainAuto:
+	switch cfg.Explain.Mode {
+	case ExplainOff, ExplainManual, ExplainAuto:
 	default:
-		return fmt.Errorf("approval.explain.mode must be off, manual, or auto: %q", cfg.Approval.Explain.Mode)
+		return fmt.Errorf("explain.mode must be off, manual, or auto: %q", cfg.Explain.Mode)
 	}
 	exposure := NormalizeExposure(cfg.HTTP.Exposure)
 	switch exposure.Mode {

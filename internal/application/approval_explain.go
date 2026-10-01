@@ -1,51 +1,27 @@
 package application
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/explain"
 	"go.mewis.me/codemcp/internal/llm"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const (
-	maxApprovalExplainCommandBytes = 16 * 1024
-	maxApprovalExplainSummaryRunes = 600
-	maxApprovalExplainListItems    = 8
-	maxApprovalExplainItemRunes    = 400
-	approvalExplainOutputTokens    = 1000
+	maxApprovalExplainCommandBytes = explain.MaxCommandBytes
+	maxApprovalExplainSummaryRunes = explain.MaxSummaryRunes
+	maxApprovalExplainListItems    = explain.MaxListItems
+	maxApprovalExplainItemRunes    = explain.MaxItemRunes
 )
-
-const approvalExplainInstructions = `You are CodeMCP's command explainer for a human approval reviewer.
-Explain only the syntax and likely effects of the exact redacted command supplied by CodeMCP.
-State uncertainty explicitly. Do not recommend approving, denying, executing, or trusting the command.
-Do not infer hidden intent, missing context, credentials, or values represented by <redacted>.
-Return only one JSON object with exactly these keys:
-{"summary":"...","steps":["..."],"effects":["..."],"risk_notes":["..."],"unknowns":["..."]}`
-
-var approvalExplainResponseSchema = json.RawMessage(`{
-  "type":"object",
-  "additionalProperties":false,
-  "properties":{
-    "summary":{"type":"string","minLength":1,"maxLength":600},
-    "steps":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":400}},
-    "effects":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":400}},
-    "risk_notes":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":400}},
-    "unknowns":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":400}}
-  },
-  "required":["summary","steps","effects","risk_notes","unknowns"]
-}`)
 
 type ApprovalExplanationState string
 
@@ -56,16 +32,7 @@ const (
 	ApprovalExplanationFailed  ApprovalExplanationState = "failed"
 )
 
-type ApprovalExplanation struct {
-	Summary     string         `json:"summary"`
-	Steps       []string       `json:"steps,omitempty"`
-	Effects     []string       `json:"effects,omitempty"`
-	RiskNotes   []string       `json:"risk_notes,omitempty"`
-	Unknowns    []string       `json:"unknowns,omitempty"`
-	ProviderID  llm.ProviderID `json:"provider_id"`
-	Model       string         `json:"model"`
-	GeneratedAt time.Time      `json:"generated_at"`
-}
+type ApprovalExplanation = explain.Explanation
 
 type ApprovalExplanationResult struct {
 	RequestID   string                   `json:"request_id"`
@@ -77,13 +44,13 @@ type ApprovalExplanationResult struct {
 }
 
 type ApprovalExplainStatus struct {
-	Mode           config.ApprovalExplainMode `json:"mode"`
-	Available      bool                       `json:"available"`
-	ActiveProvider llm.ProviderID             `json:"active_provider,omitempty"`
-	Model          string                     `json:"model,omitempty"`
-	Configured     bool                       `json:"configured"`
-	Readiness      llm.Readiness              `json:"readiness"`
-	Reason         string                     `json:"reason,omitempty"`
+	Mode           config.ExplainMode `json:"mode"`
+	Available      bool               `json:"available"`
+	ActiveProvider llm.ProviderID     `json:"active_provider,omitempty"`
+	Model          string             `json:"model,omitempty"`
+	Configured     bool               `json:"configured"`
+	Readiness      llm.Readiness      `json:"readiness"`
+	Reason         string             `json:"reason,omitempty"`
 }
 
 type ApprovalExplainInput struct {
@@ -98,8 +65,8 @@ type ApprovalExplanationReadInput struct {
 type ApprovalExplainService struct {
 	manager   *approval.Manager
 	llm       *LLMService
-	inference LLMInferenceFacade
-	mode      func() config.ApprovalExplainMode
+	explainer *explain.Service
+	mode      func() config.ExplainMode
 	now       func() time.Time
 
 	mu       sync.Mutex
@@ -115,22 +82,28 @@ type ApprovalExplainService struct {
 	wg          sync.WaitGroup
 }
 
-func NewApprovalExplainService(manager *approval.Manager, llmService *LLMService, mode func() config.ApprovalExplainMode) *ApprovalExplainService {
+func NewApprovalExplainService(manager *approval.Manager, llmService *LLMService, mode func() config.ExplainMode, explainer ...*explain.Service) *ApprovalExplainService {
 	var inference LLMInferenceFacade
 	if llmService != nil {
 		inference = llmService.InferenceFacade()
 	}
-	return newApprovalExplainService(manager, llmService, inference, mode)
+	service := newApprovalExplainService(manager, llmService, inference, mode)
+	if len(explainer) > 0 && explainer[0] != nil {
+		service.explainer = explainer[0]
+	}
+	return service
 }
 
-func newApprovalExplainService(manager *approval.Manager, llmService *LLMService, inference LLMInferenceFacade, mode func() config.ApprovalExplainMode) *ApprovalExplainService {
+func newApprovalExplainService(manager *approval.Manager, llmService *LLMService, inference LLMInferenceFacade, mode func() config.ExplainMode) *ApprovalExplainService {
 	if mode == nil {
-		mode = func() config.ApprovalExplainMode { return config.ApprovalExplainOff }
+		mode = func() config.ExplainMode { return config.ExplainOff }
 	}
-	return &ApprovalExplainService{
-		manager: manager, llm: llmService, inference: inference, mode: mode, now: func() time.Time { return time.Now().UTC() },
+	service := &ApprovalExplainService{
+		manager: manager, llm: llmService, mode: mode, now: func() time.Time { return time.Now().UTC() },
 		records: map[string]ApprovalExplanationResult{}, inflight: map[string]context.CancelFunc{}, attempts: map[string]uint64{},
 	}
+	service.explainer = explain.NewService(explain.Options{Inference: inference, StructuredOutput: service.shouldUseStructuredExplanation})
+	return service
 }
 
 func (s *ApprovalExplainService) Start(parent context.Context) error {
@@ -152,7 +125,7 @@ func (s *ApprovalExplainService) Start(parent context.Context) error {
 	s.lifecycleMu.Unlock()
 
 	go s.run(ctx, sub)
-	if s.mode() == config.ApprovalExplainAuto {
+	if s.mode() == config.ExplainAuto {
 		for _, request := range s.manager.List(approval.Filter{Status: approval.StatusPending}) {
 			_, _ = s.Trigger(ctx, ApprovalExplainInput{ID: request.ID})
 		}
@@ -184,13 +157,13 @@ func (s *ApprovalExplainService) Stop() {
 }
 
 func (s *ApprovalExplainService) Status(ctx context.Context) (ApprovalExplainStatus, error) {
-	mode := config.ApprovalExplainOff
+	mode := config.ExplainOff
 	if s != nil && s.mode != nil {
 		mode = s.mode()
 	}
 	result := ApprovalExplainStatus{Mode: mode, Readiness: llm.ReadinessUnknown}
-	if mode == config.ApprovalExplainOff {
-		result.Reason = "approval explanations are disabled"
+	if mode == config.ExplainOff {
+		result.Reason = "explanations are disabled"
 		return result, nil
 	}
 	if s == nil || s.llm == nil {
@@ -237,12 +210,12 @@ func (s *ApprovalExplainService) Read(ctx context.Context, reference string) (Ap
 }
 
 func (s *ApprovalExplainService) Trigger(ctx context.Context, input ApprovalExplainInput) (ApprovalExplanationResult, error) {
-	if s == nil || s.manager == nil || s.inference == nil {
+	if s == nil || s.manager == nil || s.explainer == nil {
 		return ApprovalExplanationResult{}, errors.New("approval Explain service is unavailable")
 	}
 	mode := s.mode()
-	if mode == config.ApprovalExplainOff {
-		return ApprovalExplanationResult{}, errors.New("approval explanations are disabled")
+	if mode == config.ExplainOff {
+		return ApprovalExplanationResult{}, errors.New("explanations are disabled")
 	}
 	source, err := s.manager.ExplanationSource(input.ID)
 	if err != nil {
@@ -324,7 +297,7 @@ func (s *ApprovalExplainService) consumeEvent(ctx context.Context, event approva
 	}
 	switch event.Name {
 	case approval.EventPending:
-		if s.mode() == config.ApprovalExplainAuto {
+		if s.mode() == config.ExplainAuto {
 			_, _ = s.Trigger(ctx, ApprovalExplainInput{ID: event.RequestID})
 		}
 	case approval.EventApproved, approval.EventDenied, approval.EventExpired, approval.EventCancelled:
@@ -351,28 +324,13 @@ func (s *ApprovalExplainService) generate(ctx context.Context, source approval.E
 		s.completeFailure(source, key, attempt, "command cannot be safely explained")
 		return
 	}
-	zero := 0.0
-	request := llm.Request{
-		Instructions:    approvalExplainInstructions,
-		Messages:        []llm.Message{{Role: llm.RoleUser, Content: "Explain this exact redacted command:\n" + safeCommand}},
-		MaxOutputTokens: approvalExplainOutputTokens,
-		Temperature:     &zero,
-	}
-	if s.shouldUseStructuredExplanation(ctx) {
-		request.ResponseSchema = append(json.RawMessage(nil), approvalExplainResponseSchema...)
-	}
-	modelResult, err := s.inference.Infer(ctx, request)
+	explanation, err := s.explainer.Generate(ctx, explain.CommandInput{Command: safeCommand, TargetTool: source.TargetTool})
 	if err != nil {
 		if ctx.Err() != nil {
 			s.clearInflight(key, attempt)
 			return
 		}
 		s.completeFailure(source, key, attempt, llmReadinessReason(err))
-		return
-	}
-	explanation, err := parseApprovalExplanation(modelResult, s.nowUTC())
-	if err != nil {
-		s.completeFailure(source, key, attempt, "LLM provider returned an invalid explanation: "+err.Error())
 		return
 	}
 	current, err := s.manager.ExplanationSource(source.RequestID)
@@ -443,114 +401,11 @@ func approvalExplainCommand(source approval.ExplanationSource) (string, error) {
 	if source.TargetTool != "run_command" && source.TargetTool != "start_process" {
 		return "", errors.New("unsupported approval target")
 	}
-	command := strings.TrimSpace(source.Command)
-	if command == "" || len(command) > maxApprovalExplainCommandBytes {
-		return "", errors.New("command cannot be safely explained")
-	}
-	safe := strings.TrimSpace(tracepkg.SanitizeText(tracepkg.SanitizeCommand(command)))
-	if safe == "" || !approvalExplainCommandMeaningful(safe) {
-		return "", errors.New("command cannot be safely explained")
-	}
-	return safe, nil
-}
-
-func approvalExplainCommandMeaningful(command string) bool {
-	remaining := strings.ReplaceAll(strings.ToLower(command), "<redacted>", "")
-	remaining = strings.ReplaceAll(remaining, "[redacted]", "")
-	for _, r := range remaining {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return true
-		}
-	}
-	return false
-}
-
-type approvalExplanationWire struct {
-	Summary   string   `json:"summary"`
-	Steps     []string `json:"steps"`
-	Effects   []string `json:"effects"`
-	RiskNotes []string `json:"risk_notes"`
-	Unknowns  []string `json:"unknowns"`
+	return explain.SanitizeCommand(source.Command)
 }
 
 func parseApprovalExplanation(result llm.Result, generatedAt time.Time) (ApprovalExplanation, error) {
-	payload := approvalExplanationPayload(result)
-	if len(payload) == 0 || len(payload) > 32*1024 {
-		return ApprovalExplanation{}, errors.New("invalid explanation payload")
-	}
-	decoder := json.NewDecoder(bytes.NewReader(payload))
-	decoder.DisallowUnknownFields()
-	var wire approvalExplanationWire
-	if err := decoder.Decode(&wire); err != nil {
-		return ApprovalExplanation{}, errors.New("invalid explanation payload")
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
-		return ApprovalExplanation{}, errors.New("invalid explanation payload")
-	}
-	wire.Summary = strings.TrimSpace(wire.Summary)
-	if wire.Summary == "" || utf8.RuneCountInString(wire.Summary) > maxApprovalExplainSummaryRunes {
-		return ApprovalExplanation{}, errors.New("invalid explanation summary")
-	}
-	var err error
-	wire.Steps, err = normalizeApprovalExplanationList(wire.Steps)
-	if err != nil {
-		return ApprovalExplanation{}, err
-	}
-	wire.Effects, err = normalizeApprovalExplanationList(wire.Effects)
-	if err != nil {
-		return ApprovalExplanation{}, err
-	}
-	wire.RiskNotes, err = normalizeApprovalExplanationList(wire.RiskNotes)
-	if err != nil {
-		return ApprovalExplanation{}, err
-	}
-	wire.Unknowns, err = normalizeApprovalExplanationList(wire.Unknowns)
-	if err != nil {
-		return ApprovalExplanation{}, err
-	}
-	if result.ProviderID == "" || strings.TrimSpace(result.Model) == "" {
-		return ApprovalExplanation{}, errors.New("explanation provenance is missing")
-	}
-	return ApprovalExplanation{
-		Summary: wire.Summary, Steps: cloneStrings(wire.Steps), Effects: cloneStrings(wire.Effects), RiskNotes: cloneStrings(wire.RiskNotes), Unknowns: cloneStrings(wire.Unknowns),
-		ProviderID: result.ProviderID, Model: strings.TrimSpace(result.Model), GeneratedAt: generatedAt,
-	}, nil
-}
-
-func approvalExplanationPayload(result llm.Result) []byte {
-	if payload := bytes.TrimSpace(result.Structured); len(payload) > 0 {
-		return payload
-	}
-	payload := bytes.TrimSpace([]byte(result.Text))
-	if len(payload) == 0 || json.Valid(payload) {
-		return payload
-	}
-	start := bytes.IndexByte(payload, '{')
-	if start < 0 {
-		return payload
-	}
-	decoder := json.NewDecoder(bytes.NewReader(payload[start:]))
-	var extracted json.RawMessage
-	if err := decoder.Decode(&extracted); err != nil {
-		return payload
-	}
-	return bytes.TrimSpace(extracted)
-}
-
-func normalizeApprovalExplanationList(list []string) ([]string, error) {
-	if len(list) > maxApprovalExplainListItems {
-		return nil, errors.New("explanation list exceeds limit")
-	}
-	result := make([]string, len(list))
-	for index, item := range list {
-		item = strings.TrimSpace(item)
-		if item == "" || utf8.RuneCountInString(item) > maxApprovalExplainItemRunes {
-			return nil, errors.New("invalid explanation list item")
-		}
-		result[index] = item
-	}
-	return result, nil
+	return explain.ParseResult(result, generatedAt)
 }
 
 func approvalExplanationGenerationKey(source approval.ExplanationSource) string {

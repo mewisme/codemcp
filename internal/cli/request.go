@@ -56,23 +56,23 @@ func requestExplainModeCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:               "mode <off|manual|auto>",
-		Short:             "Set approval explanation mode",
+		Short:             "Set explanation mode",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeStatic("off", "manual", "auto"),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := settingService().Set(cmd.Context(), "approval.explain.mode", args[0])
+			result, err := settingService().Set(cmd.Context(), "explain.mode", args[0])
 			if err != nil {
 				return err
 			}
 			if commandResultModeFor(cmd) == resultModeJSON {
 				return writeResultJSON(cmd, result)
 			}
-			renderMutationSuccess(cmd, "Approval explanation mode updated", presentation.Field{Label: "mode", Value: result.Value})
+			renderMutationSuccess(cmd, "Explanation mode updated", presentation.Field{Label: "mode", Value: result.Value})
 			return nil
 		},
 	}
 	addJSONResultFlag(cmd, &asJSON)
-	return markScopedSettings(cmd, "approval.explain.mode")
+	return markScopedSettings(cmd, "explain.mode")
 }
 
 func requestExplainStatusCommand() *cobra.Command {

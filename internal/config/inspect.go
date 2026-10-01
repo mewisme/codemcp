@@ -33,6 +33,9 @@ func Inspect() (Inspection, error) {
 	if _, err := migrateLegacyHTTPConfig(data, &result.Config); err != nil {
 		return Inspection{}, err
 	}
+	if _, err := migrateLegacyExplainConfig(data, &result.Config); err != nil {
+		return Inspection{}, err
+	}
 	result.Config.HTTP.Exposure = NormalizeExposure(result.Config.HTTP.Exposure)
 
 	runtimeLegacy := result.Config.Tunnel.APIKey != "" && result.Config.Tunnel.APIKey != secretFileMarker

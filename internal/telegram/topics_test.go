@@ -100,6 +100,33 @@ func TestTopicRoleForNotification(t *testing.T) {
 	}
 }
 
+func TestBackgroundExplanationNotificationEditsOriginalRichCard(t *testing.T) {
+	api := &topicTestAPI{}
+	store := newTopicStore(t.TempDir())
+	if err := store.put(42, TopicRuntime, 120); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &Runtime{
+		api: api, topics: store,
+		health: Health{Running: true, Enabled: true, AuthorizationConfigured: true, TopicsEffective: true},
+	}
+	base := notification.Message{ID: "background:proc_1", Kind: notification.KindBackgroundJobFinished, ProcessID: "proc_1"}
+	if err := runtime.handleRenderedNotification(t.Context(), 42, TopicRuntime, base, Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "base"})}); err != nil {
+		t.Fatal(err)
+	}
+	update := base
+	update.Update = true
+	if err := runtime.handleRenderedNotification(t.Context(), 42, TopicRuntime, update, Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "explained"})}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.richThreadScreens) != 1 {
+		t.Fatalf("background update created another rich message: %d", len(api.richThreadScreens))
+	}
+	if len(api.editedMessageIDs) != 1 || api.editedMessageIDs[0] != 1 {
+		t.Fatalf("background update edits=%v want=[1]", api.editedMessageIDs)
+	}
+}
+
 func TestTopicReconcileCreatesStableManagedTopicsOnce(t *testing.T) {
 	api := &topicTestAPI{nextThreadID: 100}
 	runtime := &Runtime{

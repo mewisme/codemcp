@@ -20,6 +20,7 @@ type Config struct {
 	Shell         ShellConfig         `json:"shell"`
 	Notifications NotificationsConfig `json:"notifications"`
 	Approval      ApprovalConfig      `json:"approval"`
+	Explain       ExplainConfig       `json:"explain"`
 	Telemetry     TelemetryConfig     `json:"telemetry"`
 	Telegram      TelegramConfig      `json:"telegram"`
 	Integrations  IntegrationsConfig  `json:"integrations"`
@@ -43,20 +44,28 @@ type TelegramLogsMiniAppConfig struct {
 
 type ApprovalConfig struct {
 	Semantic SemanticApprovalConfig `json:"semantic"`
-	Explain  ApprovalExplainConfig  `json:"explain"`
 }
 
-type ApprovalExplainMode string
+type ExplainMode string
 
 const (
-	ApprovalExplainOff    ApprovalExplainMode = "off"
-	ApprovalExplainManual ApprovalExplainMode = "manual"
-	ApprovalExplainAuto   ApprovalExplainMode = "auto"
+	ExplainOff    ExplainMode = "off"
+	ExplainManual ExplainMode = "manual"
+	ExplainAuto   ExplainMode = "auto"
 )
 
-type ApprovalExplainConfig struct {
-	Mode ApprovalExplainMode `json:"mode"`
+type ExplainConfig struct {
+	Mode ExplainMode `json:"mode"`
 }
+
+type ApprovalExplainMode = ExplainMode
+type ApprovalExplainConfig = ExplainConfig
+
+const (
+	ApprovalExplainOff    = ExplainOff
+	ApprovalExplainManual = ExplainManual
+	ApprovalExplainAuto   = ExplainAuto
+)
 
 type SemanticApprovalConfig struct {
 	Enabled           bool    `json:"enabled"`
@@ -195,8 +204,8 @@ func Default() Config {
 				FailMode: "require_approval", LowAction: "allow", MediumAction: "require_approval",
 				HighAction: "require_approval", CriticalAction: "deny",
 			},
-			Explain: ApprovalExplainConfig{Mode: ApprovalExplainOff},
 		},
+		Explain:      ExplainConfig{Mode: ExplainOff},
 		Telemetry:    TelemetryConfig{Enabled: true},
 		Telegram:     TelegramConfig{Enabled: false, AllowedUserIDs: []int64{}, TopicsEnabled: false, LogsMiniApp: TelegramLogsMiniAppConfig{Enabled: false}},
 		Integrations: integrations.Default(),
@@ -349,6 +358,10 @@ func loadAtWithTunnelSecretPolicy(configPath, secretPath string, policy tunnelSe
 	if err != nil {
 		return cfg, err
 	}
+	legacyExplain, err := migrateLegacyExplainConfig(data, &cfg)
+	if err != nil {
+		return cfg, err
+	}
 	cfg.HTTP.Exposure = NormalizeExposure(cfg.HTTP.Exposure)
 	legacyRuntime, legacyAdmin := cfg.Tunnel.APIKey, cfg.Tunnel.Admin.Key
 	if legacyRuntime == secretFileMarker {
@@ -361,12 +374,63 @@ func loadAtWithTunnelSecretPolicy(configPath, secretPath string, policy tunnelSe
 	if err != nil {
 		return cfg, err
 	}
-	if legacyHTTP || migrateSecrets || legacyRuntime != "" || legacyAdmin != "" {
+	if legacyHTTP || legacyExplain || migrateSecrets || legacyRuntime != "" || legacyAdmin != "" {
 		if err := saveAt(configPath, secretPath, cfg); err != nil {
 			return cfg, fmt.Errorf("migrate configuration: %w", err)
 		}
 	}
 	return cfg, nil
+}
+
+func migrateLegacyExplainConfig(data []byte, cfg *Config) (bool, error) {
+	if cfg == nil {
+		return false, errors.New("config is required")
+	}
+	rootAny, err := configformat.DecodeGeneric(configformat.JSON, data)
+	if err != nil {
+		return false, err
+	}
+	root, ok := rootAny.(map[string]any)
+	if !ok {
+		return false, errors.New("configuration must be an object")
+	}
+	approvalObject, _ := root["approval"].(map[string]any)
+	rawExplain, exists := approvalObject["explain"]
+	_, hasCanonical := root["explain"]
+	if hasCanonical && exists {
+		return false, errors.New("configuration contains both canonical explain and legacy approval.explain roots; remove one representation before loading")
+	}
+	if hasCanonical {
+		return false, nil
+	}
+	if !exists {
+		return false, nil
+	}
+	explainObject, ok := rawExplain.(map[string]any)
+	if !ok {
+		return false, errors.New("legacy approval.explain configuration must be an object")
+	}
+	for key := range explainObject {
+		if key != "mode" {
+			return false, fmt.Errorf("legacy approval.explain configuration contains unsupported key %q", key)
+		}
+	}
+	rawMode, exists := explainObject["mode"]
+	if !exists {
+		return true, nil
+	}
+	modeText, ok := rawMode.(string)
+	if !ok {
+		return false, errors.New("legacy approval.explain.mode must be a string")
+	}
+	mode := ExplainMode(strings.ToLower(strings.TrimSpace(modeText)))
+	switch mode {
+	case ExplainOff, ExplainManual, ExplainAuto:
+		cfg.Explain.Mode = mode
+	default:
+		return false, fmt.Errorf("legacy approval.explain.mode must be off, manual, or auto: %q", modeText)
+	}
+	return true, nil
 }
 
 func migrateLegacyHTTPConfig(data []byte, cfg *Config) (bool, error) {
@@ -608,6 +672,9 @@ func mergeConfigData(path string, persisted, runtime Config) ([]byte, error) {
 	delete(merged, "server")
 	delete(merged, "admin")
 	delete(merged, "auth")
+	if approvalObject, ok := merged["approval"].(map[string]any); ok {
+		delete(approvalObject, "explain")
+	}
 	return configformat.EncodeGeneric(configformat.JSON, merged)
 }
 

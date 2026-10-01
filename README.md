@@ -159,7 +159,7 @@ Read [Security](docs/security.md) before widening network exposure or filesystem
 | Run, stop, inspect, update, and read logs | [Runtime and operations](docs/runtime.md) |
 | Use the full-screen terminal UI | [TUI Command Center](docs/tui.md) |
 | Configure auth, exposure, storage, and runtime settings | [Configuration](docs/configuration.md) |
-| Configure LLM providers, models, credentials, and Approval Explain | [LLM providers](docs/llm.md) |
+| Configure LLM providers, models, credentials, and shared Explain | [LLM providers](docs/llm.md) |
 | Connect generic MCP clients or configure Upstreams | [MCP clients and Upstreams](docs/mcp.md) |
 | Look up commands and flags | [CLI reference](docs/cli-reference.md) |
 | Understand trust boundaries | [Security](docs/security.md) |

@@ -110,7 +110,7 @@ Some guards are intentionally non-approvable, including attempts to escape works
 
 Local operators can review and resolve pending requests through the TUI/Admin surfaces or the `cm request ...` CLI.
 
-Approval Explain may use the configured LLM to generate a fallible explanation for the reviewer. It receives the canonical exact command/action only after secret redaction; the Agent-authored title remains separate display provenance. Explain cannot approve/deny, change deterministic or semantic risk, alter retry binding, create a grant, or extend request lifetime, and the requesting MCP Agent cannot invoke the reviewer-only Explain capability. See [LLM providers](llm.md#approval-explain).
+The shared Explain capability may use the configured LLM to generate fallible informational text for supported operator surfaces. Approval review is one consumer: it receives the canonical exact command/action only after secret redaction, while the Agent-authored title remains separate display provenance. Explain cannot approve/deny, change deterministic or semantic risk, alter retry binding, create a grant, or extend request lifetime, and the requesting MCP Agent cannot invoke the reviewer-only approval Explain facade. Background-process notification enrichment likewise uses only the retained sanitized command and does not add raw process output to the LLM input. See [LLM providers](llm.md#explain).
 
 The runtime may also support time-bounded grants for matching command patterns when explicitly approved by the operator. These grants remain runtime-controlled and revocable; they are not an Agent-controlled “allow everything” mode.
 

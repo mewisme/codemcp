@@ -430,13 +430,13 @@ func TestApprovalExplainSettingEnableIsAtomicAndRequiresConfiguredSuccessfulProb
 	llmService := NewLLMServiceWithBackend(root, backend)
 	settings := NewSettingService(llmService)
 
-	_, err := settings.Apply(t.Context(), []SettingChange{{Key: "approval.explain.mode", Value: "manual"}})
+	_, err := settings.Apply(t.Context(), []SettingChange{{Key: "explain.mode", Value: "manual"}})
 	if err == nil {
 		t.Fatal("Explain enabled without required Ollama credential")
 	}
 	cfg, err := LoadConfig(t.Context())
-	if err != nil || cfg.Approval.Explain.Mode != config.ApprovalExplainOff {
-		t.Fatalf("mode persisted after failed configuration gate: mode=%q err=%v", cfg.Approval.Explain.Mode, err)
+	if err != nil || cfg.Explain.Mode != config.ExplainOff {
+		t.Fatalf("mode persisted after failed configuration gate: mode=%q err=%v", cfg.Explain.Mode, err)
 	}
 	if backend.callCount() != 0 {
 		t.Fatalf("probe ran with incomplete configuration: calls=%d", backend.callCount())
@@ -451,22 +451,22 @@ func TestApprovalExplainSettingEnableIsAtomicAndRequiresConfiguredSuccessfulProb
 	backend.inferFn = func(context.Context, llm.Provider, llm.Request) (llm.Result, error) {
 		return llm.Result{}, llm.NewError(llm.ErrorUnauthorized, "", "secret response details")
 	}
-	_, err = settings.Apply(t.Context(), []SettingChange{{Key: "approval.explain.mode", Value: "manual"}})
+	_, err = settings.Apply(t.Context(), []SettingChange{{Key: "explain.mode", Value: "manual"}})
 	if err == nil {
 		t.Fatal("Explain enabled despite failed explicit probe")
 	}
 	cfg, err = LoadConfig(t.Context())
-	if err != nil || cfg.Approval.Explain.Mode != config.ApprovalExplainOff {
-		t.Fatalf("mode persisted after failed probe: mode=%q err=%v", cfg.Approval.Explain.Mode, err)
+	if err != nil || cfg.Explain.Mode != config.ExplainOff {
+		t.Fatalf("mode persisted after failed probe: mode=%q err=%v", cfg.Explain.Mode, err)
 	}
 
 	backend.inferFn = nil
-	result, err := settings.Apply(t.Context(), []SettingChange{{Key: "approval.explain.mode", Value: "manual"}})
+	result, err := settings.Apply(t.Context(), []SettingChange{{Key: "explain.mode", Value: "manual"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Config.Approval.Explain.Mode != config.ApprovalExplainManual {
-		t.Fatalf("mode=%q", result.Config.Approval.Explain.Mode)
+	if result.Config.Explain.Mode != config.ExplainManual {
+		t.Fatalf("mode=%q", result.Config.Explain.Mode)
 	}
 	persisted, err := json.Marshal(result.Config)
 	if err != nil {
@@ -477,7 +477,7 @@ func TestApprovalExplainSettingEnableIsAtomicAndRequiresConfiguredSuccessfulProb
 			t.Fatalf("successful enable persisted probe/prompt/explanation material %q: %s", forbidden, persisted)
 		}
 	}
-	status := NewApprovalExplainService(approval.NewManager("instance-status"), llmService, func() config.ApprovalExplainMode { return result.Config.Approval.Explain.Mode })
+	status := NewApprovalExplainService(approval.NewManager("instance-status"), llmService, func() config.ExplainMode { return result.Config.Explain.Mode })
 	availability, err := status.Status(t.Context())
 	if err != nil || !availability.Available || availability.Readiness != llm.ReadinessReady {
 		t.Fatalf("availability=%#v err=%v", availability, err)

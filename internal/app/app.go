@@ -9,6 +9,7 @@ import (
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/explain"
 	"go.mewis.me/codemcp/internal/interface/admin"
 	"go.mewis.me/codemcp/internal/interface/web"
 	"go.mewis.me/codemcp/internal/logger"
@@ -36,6 +37,7 @@ type App struct {
 	OAuthFlows                *mcpoauth.FlowManager
 	Notifications             *notification.Coordinator
 	ApprovalNotifications     *notification.ApprovalBridge
+	Explain                   *explain.Service
 	ApprovalExplain           *application.ApprovalExplainService
 	CompletionNotifications   *notification.CompletionHook
 	BackgroundNotifications   *notification.BackgroundJobBridge

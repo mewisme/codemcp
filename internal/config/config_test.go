@@ -470,6 +470,58 @@ func TestHTTPMigrationRejectsUnknownLegacyKeysInsteadOfDroppingThem(t *testing.T
 	}
 }
 
+func TestLegacyApprovalExplainMigratesToCanonicalExplainRoot(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.json")
+	secretPath := filepath.Join(root, "tunnel.json")
+	if err := os.WriteFile(configPath, []byte(`{"approval":{"explain":{"mode":"auto"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadAt(configPath, secretPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Explain.Mode != ExplainAuto {
+		t.Fatalf("explain mode=%q want=%q", cfg.Explain.Mode, ExplainAuto)
+	}
+	saved, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(saved, &document); err != nil {
+		t.Fatal(err)
+	}
+	explainRoot, ok := document["explain"].(map[string]any)
+	if !ok || explainRoot["mode"] != "auto" {
+		t.Fatalf("canonical explain root=%#v", document["explain"])
+	}
+	approvalRoot, _ := document["approval"].(map[string]any)
+	if _, exists := approvalRoot["explain"]; exists {
+		t.Fatalf("legacy approval.explain survived migration: %#v", approvalRoot)
+	}
+}
+
+func TestExplainMigrationRejectsCanonicalAndLegacyConflict(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.json")
+	secretPath := filepath.Join(root, "tunnel.json")
+	data := []byte(`{"explain":{"mode":"manual"},"approval":{"explain":{"mode":"auto"}}}`)
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadAt(configPath, secretPath); err == nil || !strings.Contains(err.Error(), "both canonical explain and legacy approval.explain roots") {
+		t.Fatalf("conflict error=%v", err)
+	}
+	saved, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(saved) != string(data) {
+		t.Fatalf("conflicting config was rewritten:\n%s", saved)
+	}
+}
+
 func TestDefaultServerUsesExposurePolicy(t *testing.T) {
 	cfg := Default()
 	if !cfg.HTTP.MCP.Enabled || cfg.HTTP.MCP.Port != 37421 || cfg.HTTP.Exposure.Mode != ExposureNone || len(cfg.HTTP.Exposure.Interfaces) != 0 {

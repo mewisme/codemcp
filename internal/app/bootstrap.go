@@ -5,6 +5,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/explain"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/mcp"
 	"go.mewis.me/codemcp/internal/notification"
@@ -89,9 +90,18 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
-		a.ApprovalExplain = application.NewApprovalExplainService(a.Tools.Approvals, llmService, func() config.ApprovalExplainMode {
-			return a.Config.Snapshot().Approval.Explain.Mode
-		})
+		if a.Explain == nil {
+			a.Explain = explain.NewService(explain.Options{
+				Inference: llmService.InferenceFacade(),
+				StructuredOutput: func(ctx context.Context) bool {
+					provider, err := llmService.ActiveProvider(ctx)
+					return err == nil && provider.Capabilities != nil && provider.Capabilities.StructuredOutput
+				},
+			})
+		}
+		a.ApprovalExplain = application.NewApprovalExplainService(a.Tools.Approvals, llmService, func() config.ExplainMode {
+			return a.Config.Snapshot().Explain.Mode
+		}, a.Explain)
 		if err := application.BindApprovalExplainOperations(a.Operations, a.ApprovalExplain); err != nil {
 			a.bootstrapErr = err
 			return
@@ -173,10 +183,12 @@ func (a *App) Bootstrap() error {
 		}
 		if a.BackgroundNotifications == nil && a.Tools.Processes != nil {
 			a.BackgroundNotifications = notification.NewBackgroundJobBridge(a.Tools.Processes, a.Notifications, notification.BackgroundJobBridgeOptions{
+				Explainer: a.Explain,
 				Policy: func() notification.BackgroundJobPolicy {
-					cfg := a.Config.Snapshot().Notifications.Completion
+					snapshot := a.Config.Snapshot()
+					cfg := snapshot.Notifications.Completion
 					return notification.BackgroundJobPolicy{
-						Enabled: cfg.Enabled,
+						Enabled: cfg.Enabled, Explain: snapshot.Explain.Mode == config.ExplainAuto,
 						Providers: map[string]bool{
 							notification.ProviderDesktop:  cfg.DesktopEnabled,
 							notification.ProviderTelegram: cfg.TelegramEnabled,

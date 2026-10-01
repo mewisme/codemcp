@@ -33,6 +33,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"controlguard":           "domain",
 	"controlplane":           "runtime",
 	"doctor":                 "application",
+	"explain":                "domain",
 	"git":                    "platform",
 	"history":                "history",
 	"idgen":                  "domain",

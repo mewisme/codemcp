@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"go.mewis.me/codemcp/internal/explain"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 )
 
@@ -15,17 +16,24 @@ const KindBackgroundJobFinished Kind = "background.job.finished"
 
 type BackgroundJobPolicy struct {
 	Enabled   bool
+	Explain   bool
 	Providers map[string]bool
 }
 
 type BackgroundJobBridgeOptions struct {
-	Policy func() BackgroundJobPolicy
+	Policy    func() BackgroundJobPolicy
+	Explainer CommandExplainer
+}
+
+type CommandExplainer interface {
+	Generate(context.Context, explain.CommandInput) (explain.Explanation, error)
 }
 
 type BackgroundJobBridge struct {
 	processes   *shellruntime.ProcessManager
 	coordinator *Coordinator
 	policy      func() BackgroundJobPolicy
+	explainer   CommandExplainer
 
 	lifecycleMu sync.Mutex
 	cancel      context.CancelFunc
@@ -38,7 +46,7 @@ func NewBackgroundJobBridge(processes *shellruntime.ProcessManager, coordinator 
 	if policy == nil {
 		policy = func() BackgroundJobPolicy { return BackgroundJobPolicy{} }
 	}
-	return &BackgroundJobBridge{processes: processes, coordinator: coordinator, policy: policy}
+	return &BackgroundJobBridge{processes: processes, coordinator: coordinator, policy: policy, explainer: options.Explainer}
 }
 
 func (b *BackgroundJobBridge) Start(parent context.Context) error {
@@ -112,7 +120,50 @@ func (b *BackgroundJobBridge) consume(ctx context.Context, event shellruntime.Ba
 	if !ok {
 		return
 	}
-	_ = b.coordinator.Dispatch(context.WithoutCancel(ctx), message, policy.Providers)
+	deliveryCtx := context.WithoutCancel(ctx)
+	_ = b.coordinator.Dispatch(deliveryCtx, message, policy.Providers)
+	if !policy.Explain || b.explainer == nil {
+		return
+	}
+	command := b.processCommand(event.WorkspaceID, event.ProcessID)
+	if command == "" {
+		return
+	}
+	explainProviders := map[string]bool{
+		ProviderTelegram: policy.Providers[ProviderTelegram],
+	}
+	b.wg.Add(1)
+	go b.enrich(ctx, message, command, explainProviders)
+}
+
+func (b *BackgroundJobBridge) processCommand(workspaceID, processID string) string {
+	if b == nil || b.processes == nil {
+		return ""
+	}
+	items, err := b.processes.Status(workspaceID, processID)
+	if err != nil {
+		return ""
+	}
+	for _, item := range items {
+		if strings.TrimSpace(item.ID) == strings.TrimSpace(processID) {
+			return strings.TrimSpace(item.Command)
+		}
+	}
+	return ""
+}
+
+func (b *BackgroundJobBridge) enrich(ctx context.Context, message Message, command string, providers map[string]bool) {
+	defer b.wg.Done()
+	if b == nil || b.explainer == nil || b.coordinator == nil {
+		return
+	}
+	explanation, err := b.explainer.Generate(ctx, explain.CommandInput{Command: command, TargetTool: message.TargetTool})
+	if err != nil || ctx.Err() != nil {
+		return
+	}
+	message.Explanation = &explanation
+	message.Update = true
+	_ = b.coordinator.Dispatch(context.WithoutCancel(ctx), message, providers)
 }
 
 func backgroundJobMessage(event shellruntime.BackgroundWorkTerminalEvent) (Message, bool) {

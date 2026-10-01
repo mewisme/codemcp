@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go.mewis.me/codemcp/internal/explain"
 )
 
 const (
@@ -27,25 +29,27 @@ type Action struct {
 }
 
 type Message struct {
-	ID           string    `json:"id"`
-	Kind         Kind      `json:"kind"`
-	Title        string    `json:"title"`
-	Subject      string    `json:"subject,omitempty"`
-	Body         string    `json:"body"`
-	Summary      string    `json:"summary,omitempty"`
-	Status       string    `json:"status,omitempty"`
-	Reason       string    `json:"reason,omitempty"`
-	RequestID    string    `json:"request_id,omitempty"`
-	CompletionID string    `json:"completion_id,omitempty"`
-	WorkspaceID  string    `json:"workspace_id,omitempty"`
-	ProcessID    string    `json:"process_id,omitempty"`
-	ExecutionID  string    `json:"execution_id,omitempty"`
-	TargetTool   string    `json:"target_tool,omitempty"`
-	DurationMS   int64     `json:"duration_ms,omitempty"`
-	ExitCode     *int      `json:"exit_code,omitempty"`
-	Signal       string    `json:"signal,omitempty"`
-	Timestamp    time.Time `json:"timestamp"`
-	Actions      []Action  `json:"actions,omitempty"`
+	ID           string               `json:"id"`
+	Kind         Kind                 `json:"kind"`
+	Title        string               `json:"title"`
+	Subject      string               `json:"subject,omitempty"`
+	Body         string               `json:"body"`
+	Summary      string               `json:"summary,omitempty"`
+	Status       string               `json:"status,omitempty"`
+	Reason       string               `json:"reason,omitempty"`
+	RequestID    string               `json:"request_id,omitempty"`
+	CompletionID string               `json:"completion_id,omitempty"`
+	WorkspaceID  string               `json:"workspace_id,omitempty"`
+	ProcessID    string               `json:"process_id,omitempty"`
+	ExecutionID  string               `json:"execution_id,omitempty"`
+	TargetTool   string               `json:"target_tool,omitempty"`
+	DurationMS   int64                `json:"duration_ms,omitempty"`
+	ExitCode     *int                 `json:"exit_code,omitempty"`
+	Signal       string               `json:"signal,omitempty"`
+	Explanation  *explain.Explanation `json:"explanation,omitempty"`
+	Update       bool                 `json:"update,omitempty"`
+	Timestamp    time.Time            `json:"timestamp"`
+	Actions      []Action             `json:"actions,omitempty"`
 }
 
 type Provider interface {

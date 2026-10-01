@@ -8,11 +8,21 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/backgrounddelivery"
+	"go.mewis.me/codemcp/internal/explain"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 )
 
 type backgroundTelegramSender struct {
 	messages chan Message
+}
+
+type backgroundTestExplainer struct {
+	input explain.CommandInput
+}
+
+func (e *backgroundTestExplainer) Generate(_ context.Context, input explain.CommandInput) (explain.Explanation, error) {
+	e.input = input
+	return explain.Explanation{Summary: "Runs the retained command", Steps: []string{"Execute command"}, ProviderID: "ollama", Model: "qwen3"}, nil
 }
 
 func (s *backgroundTelegramSender) SendNotification(_ context.Context, message Message) error {
@@ -94,5 +104,36 @@ func TestBackgroundJobMessageContainsNoCommandOrOutputPayload(t *testing.T) {
 	}
 	if message.ProcessID != "proc_safe" || message.ExecutionID != "exec_safe" || message.ExitCode == nil || *message.ExitCode != 23 || message.Signal != "SIGTERM" {
 		t.Fatalf("background message lost safe terminal metadata: %#v", message)
+	}
+}
+
+func TestBackgroundJobExplanationEnrichesExistingNotificationWithoutLeakingCommand(t *testing.T) {
+	sender := &backgroundTelegramSender{messages: make(chan Message, 1)}
+	coordinator := NewCoordinator(CoordinatorOptions{Attempts: 1})
+	coordinator.Register(NewTelegramProvider(sender))
+	defer coordinator.Stop()
+	explainer := &backgroundTestExplainer{}
+	bridge := NewBackgroundJobBridge(nil, coordinator, BackgroundJobBridgeOptions{Explainer: explainer})
+	message := Message{ID: "background:proc_explain", Kind: KindBackgroundJobFinished, Title: "Background process completed", WorkspaceID: "ws_explain", ProcessID: "proc_explain", TargetTool: "start_process"}
+	bridge.wg.Add(1)
+	bridge.enrich(context.Background(), message, "echo token=secret-value", map[string]bool{ProviderTelegram: true})
+
+	select {
+	case enriched := <-sender.messages:
+		if !enriched.Update || enriched.ID != message.ID || enriched.Explanation == nil || enriched.Explanation.Summary == "" {
+			t.Fatalf("enriched message=%#v", enriched)
+		}
+		encoded, err := json.Marshal(enriched)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(encoded), "echo token=secret-value") {
+			t.Fatalf("notification leaked command: %s", encoded)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("background explanation update was not delivered")
+	}
+	if explainer.input.Command != "echo token=secret-value" || explainer.input.TargetTool != "start_process" {
+		t.Fatalf("explainer input=%#v", explainer.input)
 	}
 }
