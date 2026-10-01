@@ -168,9 +168,22 @@ func verifyGoReleaser(root string) error {
 		if !containsExact(stringSlice(build["ldflags"]), wantLDFlag) {
 			return errors.New("release build does not inject product telemetry through the canonical ldflag")
 		}
+		hooks := mapValue(build["hooks"])
+		post := sliceValue(hooks["post"])
+		if len(post) != 1 {
+			return errors.New("release build must define exactly one canonical post-build setup hook")
+		}
+		setupHook := mapValue(post[0])
+		output, _ := setupHook["output"].(bool)
+		if stringValue(setupHook["cmd"]) != "sh scripts/build-windows-setup.sh \"{{ .Path }}\" \"{{ .Target }}\" dist" || !output {
+			return errors.New("release build Windows setup hook drifted from the canonical OSS wrapper")
+		}
 	}
 	if !buildFound {
 		return errors.New("canonical CodeMCP release build is missing")
+	}
+	if err := verifyWindowsSetupBootstrap(root); err != nil {
+		return err
 	}
 	scoops := sliceValue(cfg["scoops"])
 	if len(scoops) != 1 {
@@ -195,6 +208,63 @@ func verifyGoReleaser(root string) error {
 	caskURL := mapValue(cask["url"])
 	if stringValue(caskURL["template"]) != ExpectedGitRemote+"/releases/download/{{ .Tag }}/{{ .ArtifactName }}" {
 		return errors.New("homebrew generation does not use tag-pinned stable artifact URLs")
+	}
+	return nil
+}
+
+func verifyWindowsSetupBootstrap(root string) error {
+	wrapperPath := filepath.Join(root, "scripts", "build-windows-setup.sh")
+	wrapperData, err := os.ReadFile(wrapperPath)
+	if err != nil {
+		return fmt.Errorf("read Windows setup wrapper: %w", err)
+	}
+	wrapper := string(wrapperData)
+	for _, required := range []string{
+		"windows_amd64|windows_amd64_*",
+		"windows_arm64|windows_arm64_*",
+		"codemcp_windows_${arch}_setup.exe",
+		"if [ \"$(basename \"$binary\")\" != \"cm.exe\" ]",
+		"if [ ! -f \"$binary\" ] || [ -L \"$binary\" ]",
+		"makensis=${MAKENSIS:-makensis}",
+	} {
+		if !strings.Contains(wrapper, required) {
+			return fmt.Errorf("windows setup wrapper is missing required contract %q", required)
+		}
+	}
+	for _, forbidden := range []string{"Program Files", "WriteUninstaller", "cgm", "chatgpt-mcp"} {
+		if strings.Contains(wrapper, forbidden) {
+			return fmt.Errorf("windows setup wrapper contains forbidden installer ownership %q", forbidden)
+		}
+	}
+
+	templatePath := filepath.Join(root, "installer", "windows", "codemcp.nsi")
+	templateData, err := os.ReadFile(templatePath)
+	if err != nil {
+		return fmt.Errorf("read Windows setup template: %w", err)
+	}
+	template := string(templateData)
+	for _, required := range []string{
+		"RequestExecutionLevel user",
+		"SetOutPath \"$PLUGINSDIR\"",
+		"File /oname=cm.exe \"${BINARY_PATH}\"",
+		"ExecWait '\"$PLUGINSDIR\\cm.exe\" install'",
+		"ReadEnvStr $InstallRoot \"CM_INSTALL_DIR\"",
+		"StrCpy $InstallRoot \"$PROFILE\\.cm\"",
+		"ReadRegStr $0 HKCU \"Environment\" \"Path\"",
+		"WriteRegExpandStr HKCU \"Environment\" \"Path\"",
+		"WM_SETTINGCHANGE",
+	} {
+		if !strings.Contains(template, required) {
+			return fmt.Errorf("windows setup template is missing required contract %q", required)
+		}
+	}
+	for _, forbidden := range []string{"WriteUninstaller", "$PROGRAMFILES", "$PROGRAMFILES64", "cgm", "chatgpt-mcp"} {
+		if strings.Contains(template, forbidden) {
+			return fmt.Errorf("windows setup template contains forbidden installer ownership %q", forbidden)
+		}
+	}
+	if strings.Count(template, "File /oname=cm.exe \"${BINARY_PATH}\"") != 1 {
+		return errors.New("windows setup template must embed exactly one canonical cm.exe payload")
 	}
 	return nil
 }
@@ -243,6 +313,15 @@ func verifyReleaseWorkflows(root string) error {
 	ci := string(ciData)
 	if !strings.Contains(ci, "--expect-telemetry absent") || !strings.Contains(ci, "dist-smoke/") {
 		return errors.New("ci workflow does not verify endpoint-less source build telemetry boundary")
+	}
+	for _, required := range []string{
+		"scripts/test-windows-setup.sh",
+		"choco install nsis -y --no-progress",
+		"scripts/test-windows-setup.ps1",
+	} {
+		if !strings.Contains(ci, required) {
+			return fmt.Errorf("ci workflow is missing Windows setup smoke contract %q", required)
+		}
 	}
 	return nil
 }

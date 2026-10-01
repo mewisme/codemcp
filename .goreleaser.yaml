@@ -29,6 +29,10 @@ builds:
       - -X go.mewis.me/codemcp/internal/version.Commit={{.Commit}}
       - -X go.mewis.me/codemcp/internal/version.Date={{.Date}}
       - -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint={{ index .Env "TELEMETRY_ENDPOINT" }}
+    hooks:
+      post:
+        - cmd: 'sh scripts/build-windows-setup.sh "{{ .Path }}" "{{ .Target }}" dist'
+          output: true
 
 # Keep macOS binaries untouched for Gatekeeper compatibility.
 upx:

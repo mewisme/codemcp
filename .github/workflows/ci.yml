@@ -208,7 +208,7 @@ jobs:
 
       - name: Installer lint
         if: needs.changes.outputs.full == 'true'
-        run: shellcheck install.sh scripts/test-install-sh.sh
+        run: shellcheck install.sh scripts/test-install-sh.sh scripts/build-windows-setup.sh scripts/test-windows-setup.sh
 
   race:
     name: Race test
@@ -296,6 +296,10 @@ jobs:
         if: needs.changes.outputs.full == 'true' && runner.os != 'Windows'
         run: sh scripts/test-install-sh.sh
 
+      - name: Validate Windows setup wrapper
+        if: needs.changes.outputs.full == 'true' && runner.os == 'Linux'
+        run: sh scripts/test-windows-setup.sh
+
       - name: Validate PowerShell installer
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
         shell: pwsh
@@ -305,6 +309,16 @@ jobs:
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
         shell: powershell
         run: ./scripts/test-install-ps1.ps1
+
+      - name: Install NSIS for Windows setup smoke
+        if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
+        shell: pwsh
+        run: choco install nsis -y --no-progress
+
+      - name: Validate Windows NSIS setup
+        if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/test-windows-setup.ps1
 
       - name: Local install smoke
         if: needs.changes.outputs.full == 'true'
