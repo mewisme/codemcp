@@ -46,10 +46,10 @@ signature_name="$(contract_value signature)"
 	echo "canonical release contract returned unexpected Unix binary '$binary_name'." >&2
 	exit 1
 }
-[ -n "$asset" ] && [ -n "$checksum_name" ] && [ -n "$signature_name" ] || {
+if [ -z "$asset" ] || [ -z "$checksum_name" ] || [ -z "$signature_name" ]; then
 	echo 'canonical release contract is incomplete.' >&2
 	exit 1
-}
+fi
 archive="$tmp/$asset"
 (
 	cd "$root"
@@ -237,14 +237,20 @@ for fixture_case in traversal absolute drive duplicate missing symlink nonregula
 	run_unsafe_archive_case "$fixture_case"
 done
 
+# Assertions intentionally match literal shell source.
+# shellcheck disable=SC2016
 if grep -Fq 'rm -rf "$INSTALL_DIR"' "$installer"; then
 	echo 'Unix installer uninstall still recursively removes the shared CodeMCP root.' >&2
 	exit 1
 fi
+# Assertions intentionally match literal shell source.
+# shellcheck disable=SC2016
 grep -Fq '"$candidate" _service uninstall' "$installer" || {
 	echo 'Unix installer uninstall does not delegate ownership checks to cm uninstall.' >&2
 	exit 1
 }
+# Assertions intentionally match literal shell source.
+# shellcheck disable=SC2016
 grep -Fq 'refusing to remove shared state under $INSTALL_DIR automatically' "$installer" || {
 	echo 'Unix installer uninstall is missing the fail-closed shared-state guard.' >&2
 	exit 1
