@@ -40,10 +40,21 @@ Workspace-owned durable state follows one local layout:
 │   └── shell.json
 ├── rules/
 ├── skills/
-└── prompts/
+├── prompts/
+└── plans/
 ```
 
-Memory, rewind/checkpoint history, shell session history, and native CodeMCP rules/skills are resolved through this workspace-local state service. `.cm/prompts/` is the canonical workspace Prompt root for Prompt storage. Runtime-only execution feeds that are currently in memory are not duplicated into global workspace state. The global registry remains an ID/root lookup and does not become the primary store for these workspace-owned domains.
+Memory, rewind/checkpoint history, shell session history, native CodeMCP rules/skills, prompts, and persisted agent plans are resolved through this workspace-local state service. `.cm/prompts/` is the canonical workspace Prompt root; `.cm/plans/` is the canonical durable plan root. Runtime-only execution feeds that are currently in memory are not duplicated into global workspace state. The global registry remains an ID/root lookup and does not become the primary store for these workspace-owned domains.
+
+### Persisted agent plans
+
+Each plan is a regular Markdown file at `.cm/plans/<name>.md`. The name is its stable cross-session identity; the content ID identifies a particular revision. Plan status and next-phase metadata are derived from the file itself rather than from a separate active-plan pointer or progress database.
+
+CodeMCP owns mutations inside `.cm/plans/`: `create_plan` creates and updates canonical plan documents, while generic Agent filesystem mutation tools are blocked from writing, editing, moving, or deleting that managed subtree. Normal reads remain available so an Agent can inspect a selected plan before implementing it.
+
+Plan files move with the workspace-local `.cm/` tree during a project move/relocation and are removed by workspace purge. Duplicate-workspace reconciliation unions distinct plan names and accepts equivalent same-name content, but divergent same-name documents are treated as a durable-state conflict instead of choosing a winner.
+
+Files outside `.cm/plans/` are not CodeMCP plan state: ad-hoc planning notes elsewhere in a repository are not discovered, migrated, or required for product behavior.
 
 ### Git hygiene and local concealment
 

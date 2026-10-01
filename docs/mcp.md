@@ -81,6 +81,61 @@ Workspace containers (`wsc_*`) remain orchestration groups and are never substit
 
 See [Workspaces](workspaces.md) for the canonical workspace model.
 
+## Agent Plan Mode
+
+Compatible agents can enter CodeMCP Plan Mode when the user request contains the exact standalone token `/plan`. The token must be whitespace-delimited; text such as `/planner`, `/plan/foo`, or a URL/path fragment is not Plan Mode. Ordinary requests that an agent internally breaks into a few steps are not Plan Mode unless that directive is present.
+
+Plan Mode is intentionally planning-only:
+
+1. Resolve the target workspace and load `project_context`.
+2. Inspect applicable rules/skills plus the relevant source and any existing persisted plan state.
+3. Create or update the plan through `create_plan`.
+4. Stop before implementation, even if the same request also asks to implement the work.
+
+`create_plan` is the only plan mutation Tool. It writes one canonical Markdown artifact under the workspace-owned `.cm/plans/` tree. Agents may read the selected plan with normal filesystem tools, and later implementation continues through the normal filesystem, Git, shell, and runtime Tools; there is no separate `implement_plan` Tool.
+
+Each persisted plan contains two synchronized parts in one file:
+
+```markdown
+# Plan title
+
+## Goal
+...
+
+## Architecture contract
+...
+
+## Phase <ID> - <title>
+- [ ] ...
+
+## Acceptance
+...
+
+---
+
+# Implementation order
+
+## Execution rules
+...
+
+## Why this order
+...
+
+## Ordered phases
+- [ ] Phase <ID> - <title>
+
+## Terminal acceptance
+- [ ] ...
+```
+
+Progress stays inside that document: phase task checklists and the matching `Ordered phases` row must agree, and terminal acceptance determines whether an otherwise-finished plan is fully completed.
+
+Create uses a stable semantic `name` made from lowercase letters, digits, and hyphens. Update keeps that name and must include the latest `expected_content_id`; if another session changed the plan first, the stale update fails instead of overwriting newer progress. `dry_run: true` performs the same target/format/conflict checks without mutating state.
+
+`project_context` exposes bounded plan metadata such as name, relative path, content ID, status, phase counts, and next incomplete phase. Pass `plan_name` for deterministic exact selection. Without an exact name, an agent may infer a target only when discovery is complete and exactly one valid non-completed plan exists.
+
+The `/plan` directive is communicated through canonical server instructions. Generic MCP transports do not necessarily receive the original user prompt, so the MCP server itself does not claim to parse or hard-block arbitrary Tool calls based on `/plan`; prompt interpretation belongs to the compatible host agent.
+
 ## Upstream aggregation
 
 `CodeMCP` can connect to remote MCP endpoints as Upstreams and expose selected tools through its own catalog.

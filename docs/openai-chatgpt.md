@@ -158,6 +158,8 @@ cm tunnel status
 
 Then try a read-only action in ChatGPT, such as listing registered workspaces or reading runtime/version information.
 
+For implementation planning, a compatible CodeMCP-enabled agent can use the standalone `/plan` directive. Plan Mode audits the selected workspace, persists the result through `create_plan`, and stops before implementation. See [MCP clients and Upstreams](mcp.md#agent-plan-mode) for the workflow and concurrency rules.
+
 For live diagnostics while testing:
 
 ```bash
