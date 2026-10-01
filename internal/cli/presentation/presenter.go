@@ -526,6 +526,26 @@ func (p *Presenter) NestedFields(fields ...Field) {
 	p.fields(4, fields...)
 }
 
+func (p *Presenter) NestedFieldGroup(label string, fields ...Field) {
+	if p == nil || p.mode == ModeJSON || len(fields) == 0 {
+		return
+	}
+	label = strings.TrimSpace(label)
+	if label == "" {
+		p.NestedFields(fields...)
+		return
+	}
+	if p.mode == ModeHuman {
+		p.richFieldDepth("", label, "", 2)
+		for _, field := range fields {
+			p.richFieldDepth("", field.Label, field.Value, 3)
+		}
+		return
+	}
+	p.line(strings.Repeat(" ", 4) + p.theme.Render(RoleLabel, label))
+	p.fields(6, fields...)
+}
+
 func (p *Presenter) fields(indent int, fields ...Field) {
 	if p == nil || p.mode == ModeJSON || len(fields) == 0 {
 		return
@@ -774,15 +794,24 @@ func (p *Presenter) statusStyle(kind StatusKind) (string, Role) {
 }
 
 func (p *Presenter) richField(glyph, label string, value any, continuation bool) {
+	depth := 1
+	if continuation {
+		depth = 2
+	}
+	p.richFieldDepth(glyph, label, value, depth)
+}
+
+func (p *Presenter) richFieldDepth(glyph, label string, value any, depth int) {
 	label = strings.TrimSpace(label)
 	lines := strings.Split(fmt.Sprint(value), "\n")
 	if len(lines) == 0 {
 		lines = []string{""}
 	}
-	prefix := p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
-	if continuation {
-		prefix += p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
-	} else if glyph != "" {
+	if depth < 1 {
+		depth = 1
+	}
+	prefix := strings.Repeat(p.theme.Render(RoleRail, p.glyphs.Rail)+"  ", depth)
+	if glyph != "" {
 		prefix += glyph + " "
 	}
 	line := prefix
@@ -795,7 +824,7 @@ func (p *Presenter) richField(glyph, label string, value any, continuation bool)
 		line += lines[0]
 	}
 	p.line(line)
-	continuationPrefix := p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
+	continuationPrefix := strings.Repeat(p.theme.Render(RoleRail, p.glyphs.Rail)+"  ", depth)
 	for _, continuationLine := range lines[1:] {
 		p.line(continuationPrefix + continuationLine)
 	}

@@ -150,6 +150,31 @@ func TestPresenterEntitySubsectionKeepsNestedFieldsContiguous(t *testing.T) {
 	}
 }
 
+func TestPresenterNestedFieldGroupAddsOneHierarchyLevel(t *testing.T) {
+	var output bytes.Buffer
+	p := New(&output, ModeHuman, Capabilities{Width: 100, Unicode: true, Color: false})
+	p.Frame("Tunnel")
+	p.ChildState(StatusSuccess, "OpenAI Secure MCP Tunnel", "connected")
+	p.NestedFields(Field{Label: "id", Value: "tunnel_demo"})
+	p.NestedFieldGroup("scope",
+		Field{Label: "organization", Value: "org_demo"},
+		Field{Label: "workspace", Value: "ws_demo"},
+	)
+	p.FrameEnd("Done")
+
+	for _, want := range []string{
+		"│  ✓ OpenAI Secure MCP Tunnel — connected",
+		"│  │  id — tunnel_demo",
+		"│  │  scope",
+		"│  │  │  organization — org_demo",
+		"│  │  │  workspace — ws_demo",
+	} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("nested field group missing %q:\n%s", want, output.String())
+		}
+	}
+}
+
 func TestPresenterRichPaletteLocalizesColorToStructureAndStateTokens(t *testing.T) {
 	var output bytes.Buffer
 	caps := Capabilities{Width: 100, Unicode: true, Color: true}

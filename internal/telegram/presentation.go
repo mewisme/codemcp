@@ -351,7 +351,7 @@ func Present(parts ...PresentationPart) Presentation {
 
 func EscapeText(value string) string { return html.EscapeString(value) }
 
-func breadcrumbHTML(items []string) SafeHTML {
+func breadcrumbRichHTML(items []string) SafeHTML {
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
 		if item = strings.TrimSpace(item); item != "" {
@@ -361,7 +361,20 @@ func breadcrumbHTML(items []string) SafeHTML {
 	if len(parts) == 0 {
 		return ""
 	}
-	return SafeHTML("<i>" + strings.Join(parts, " › ") + "</i>")
+	return SafeHTML("<footer>" + strings.Join(parts, " / ") + "</footer>")
+}
+
+func breadcrumbFallbackHTML(items []string) SafeHTML {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			parts = append(parts, EscapeText(item))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return SafeHTML("<i>" + strings.Join(parts, " / ") + "</i>")
 }
 
 func ProductHeader(product, context string) PresentationPart {

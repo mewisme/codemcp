@@ -72,16 +72,44 @@ func TestRichMessageHTMLUsesNativeBlockStructureInsteadOfWhitespaceLayout(t *tes
 
 func TestScreenRenderingUsesBreadcrumbInRichAndHTMLFallback(t *testing.T) {
 	screen := Screen{
-		Rich:       BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Workspace"}),
+		Rich:       BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Workspace", Text: "Workspace detail"}),
 		Breadcrumb: []string{"CodeMCP", "Workspaces", "Workspace", "ws_123"},
 	}
-	for name, rendered := range map[string]string{
-		"rich":     string(screenRichHTML(screen)),
-		"fallback": screenText(screen),
+	rich := string(screenRichHTML(screen))
+	if want := "<h2>Workspace</h2>\n<footer>CodeMCP / Workspaces / Workspace / ws_123</footer>\n<p>Workspace detail</p>"; !strings.HasPrefix(rich, want) {
+		t.Fatalf("rich breadcrumb/title order=%q", rich)
+	}
+	fallback := screenText(screen)
+	if want := "<b>Workspace</b>\n<i>CodeMCP / Workspaces / Workspace / ws_123</i>\nWorkspace detail"; !strings.HasPrefix(fallback, want) {
+		t.Fatalf("fallback breadcrumb/title order=%q", fallback)
+	}
+}
+
+func TestLegacyPresentationBecomesMultilineRichBlocks(t *testing.T) {
+	presentation := Present(
+		TitleBlock("Home", "Private administration interface"),
+		StatusRow(ToneHealthy, "Authorized", "Commands are limited to this private account."),
+		StatusRow(ToneHealthy, "Administration", "Workspace views use canonical application services."),
+	)
+	screen := Screen{
+		Text:       presentation.Text,
+		HTML:       presentation.HTML,
+		Breadcrumb: []string{"CodeMCP", "Home"},
+	}
+	rich := string(screenRichHTML(screen))
+	for _, want := range []string{
+		"<h2>Home</h2>",
+		"<footer>CodeMCP / Home</footer>",
+		"<p>Private administration interface</p>",
+		"<p>● <b>Authorized</b> - Commands are limited to this private account.</p>",
+		"<p>● <b>Administration</b> - Workspace views use canonical application services.</p>",
 	} {
-		if !strings.Contains(rendered, "<i>CodeMCP › Workspaces › Workspace › ws_123</i>") {
-			t.Fatalf("%s breadcrumb missing: %q", name, rendered)
+		if !strings.Contains(rich, want) {
+			t.Fatalf("legacy rich presentation missing %q: %q", want, rich)
 		}
+	}
+	if strings.Contains(rich, "CodeMCP › Home") {
+		t.Fatalf("legacy breadcrumb kept old separator: %q", rich)
 	}
 }
 

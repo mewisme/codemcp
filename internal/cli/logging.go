@@ -132,6 +132,14 @@ func (p *commandProgress) Complete() {
 	p.name, p.label, p.done = "", "", ""
 }
 
+func (p *commandProgress) Break() {
+	if p == nil {
+		return
+	}
+	p.Complete()
+	p.session.Presenter().Spacer()
+}
+
 func (p *commandProgress) Stop() {
 	if p == nil {
 		return

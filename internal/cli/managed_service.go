@@ -137,7 +137,15 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 		return err
 	}
 	progress := managedLifecycleProgress(cmd)
+	lastGroup := ""
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
+		group := managedRestartLifecycleGroup(event.Phase)
+		if lastGroup != "" && group != "" && group != lastGroup {
+			progress.Break()
+		}
+		if group != "" {
+			lastGroup = group
+		}
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
 	}}
 	result, err := lifecycle.Restart(cmd.Context())
@@ -402,6 +410,7 @@ func renderManagedLifecycleResult(cmd *cobra.Command, message string, spec manag
 		state := statusTunnelState(status, true)
 		presenter.ChildState(statusPresentationKind(state), "OpenAI Secure MCP Tunnel", state)
 		tunnelFields := []presentation.Field{}
+		tunnelScopeFields := []presentation.Field{}
 		if status.TunnelID != "" {
 			tunnelFields = append(tunnelFields, presentation.Field{Label: "id", Value: status.TunnelID})
 		}
@@ -417,12 +426,11 @@ func renderManagedLifecycleResult(cmd *cobra.Command, message string, spec manag
 				if metadata.Description != "" {
 					tunnelFields = append(tunnelFields, presentation.Field{Label: "description", Value: metadata.Description})
 				}
-				if scope := tunnelMetadataScope(metadata); scope != "" {
-					tunnelFields = append(tunnelFields, presentation.Field{Label: "scope", Value: scope})
-				}
+				tunnelScopeFields = tunnelMetadataScopeFields(metadata)
 			}
 		}
 		presenter.NestedFields(tunnelFields...)
+		presenter.NestedFieldGroup("scope", tunnelScopeFields...)
 		if warning := managed.PersistenceWarning(spec); warning != "" {
 			presenter.ChildStatus(presentation.StatusWarning, warning)
 		}
@@ -466,6 +474,19 @@ func managedLifecycleDoneMessage(event managed.LifecycleEvent) string {
 		return "Managed runtime ready"
 	default:
 		return event.Message + " complete"
+	}
+}
+
+func managedRestartLifecycleGroup(phase string) string {
+	switch phase {
+	case "runtime.stopping", "backend.stopping":
+		return "stop"
+	case "definition.installing":
+		return "definition"
+	case "backend.starting", "runtime.waiting":
+		return "start"
+	default:
+		return ""
 	}
 }
 
@@ -533,6 +554,20 @@ func tunnelMetadataScope(metadata tunnel.Metadata) string {
 		parts = append(parts, "tenant:"+strings.Join(metadata.TenantIDs, ","))
 	}
 	return strings.Join(parts, " · ")
+}
+
+func tunnelMetadataScopeFields(metadata tunnel.Metadata) []presentation.Field {
+	fields := make([]presentation.Field, 0, 3)
+	if len(metadata.OrganizationIDs) > 0 {
+		fields = append(fields, presentation.Field{Label: "organization", Value: strings.Join(metadata.OrganizationIDs, ",")})
+	}
+	if len(metadata.WorkspaceIDs) > 0 {
+		fields = append(fields, presentation.Field{Label: "workspace", Value: strings.Join(metadata.WorkspaceIDs, ",")})
+	}
+	if len(metadata.TenantIDs) > 0 {
+		fields = append(fields, presentation.Field{Label: "tenant", Value: strings.Join(metadata.TenantIDs, ",")})
+	}
+	return fields
 }
 
 func runtimeTunnelSummary(status runtimeStatusResult) string {

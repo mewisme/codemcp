@@ -69,22 +69,73 @@ func screenText(screen Screen) string {
 }
 
 func screenRichHTML(screen Screen) SafeHTML {
-	body := ""
 	if screen.Rich != nil {
-		body = strings.TrimSpace(string(RichMessageHTML(screen.Rich)))
-	} else if screen.HTML != "" {
-		body = strings.TrimSpace(string(screen.HTML))
-	} else if strings.TrimSpace(screen.Text) != "" {
+		return richPresentationScreenHTML(screen.Rich, screen.Breadcrumb)
+	}
+	return legacyPresentationRichHTML(screen, screen.Breadcrumb)
+}
+
+func richPresentationScreenHTML(rich *RichPresentation, breadcrumb []string) SafeHTML {
+	if rich == nil {
+		return breadcrumbRichHTML(breadcrumb)
+	}
+	parts := make([]string, 0, len(rich.Blocks)+2)
+	start := 0
+	if len(rich.Blocks) > 0 && rich.Blocks[0].Kind == RichHeading {
+		heading := rich.Blocks[0]
+		if title := strings.TrimSpace(heading.Title); title != "" {
+			parts = append(parts, "<h2>"+richInlineHTML(title)+"</h2>")
+		}
+		if crumb := breadcrumbRichHTML(breadcrumb); crumb != "" {
+			parts = append(parts, string(crumb))
+		}
+		if subtitle := strings.TrimSpace(heading.Text); subtitle != "" {
+			parts = append(parts, richParagraphHTML(subtitle))
+		}
+		start = 1
+	} else if crumb := breadcrumbRichHTML(breadcrumb); crumb != "" {
+		parts = append(parts, string(crumb))
+	}
+	for _, block := range rich.Blocks[start:] {
+		if rendered := richBlockHTML(block); rendered != "" {
+			parts = append(parts, rendered)
+		}
+	}
+	return SafeHTML(strings.Join(parts, "\n"))
+}
+
+func legacyPresentationRichHTML(screen Screen, breadcrumb []string) SafeHTML {
+	body := strings.TrimSpace(string(screen.HTML))
+	if body == "" {
 		body = EscapeText(strings.TrimSpace(screen.Text))
 	}
-	breadcrumb := breadcrumbHTML(screen.Breadcrumb)
-	if breadcrumb == "" {
-		return SafeHTML(body)
-	}
 	if body == "" {
-		return breadcrumb
+		return breadcrumbRichHTML(breadcrumb)
 	}
-	return SafeHTML(string(breadcrumb) + "\n" + body)
+	groups := strings.Split(body, "\n\n")
+	parts := make([]string, 0, len(groups)+2)
+	firstLines := strings.Split(strings.TrimSpace(groups[0]), "\n")
+	if len(firstLines) > 0 && strings.HasPrefix(firstLines[0], "<b>") && strings.HasSuffix(firstLines[0], "</b>") {
+		title := strings.TrimSuffix(strings.TrimPrefix(firstLines[0], "<b>"), "</b>")
+		parts = append(parts, "<h2>"+title+"</h2>")
+		if crumb := breadcrumbRichHTML(breadcrumb); crumb != "" {
+			parts = append(parts, string(crumb))
+		}
+		if len(firstLines) > 1 {
+			parts = append(parts, "<p>"+strings.Join(firstLines[1:], "<br>")+"</p>")
+		}
+		groups = groups[1:]
+	} else if crumb := breadcrumbRichHTML(breadcrumb); crumb != "" {
+		parts = append(parts, string(crumb))
+	}
+	for _, group := range groups {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		parts = append(parts, "<p>"+strings.ReplaceAll(group, "\n", "<br>")+"</p>")
+	}
+	return SafeHTML(strings.Join(parts, "\n"))
 }
 
 func screenFallbackHTML(screen Screen) SafeHTML {
@@ -101,14 +152,17 @@ func screenFallbackHTML(screen Screen) SafeHTML {
 	} else if strings.TrimSpace(screen.Text) != "" {
 		body = EscapeText(strings.TrimSpace(screen.Text))
 	}
-	breadcrumb := breadcrumbHTML(screen.Breadcrumb)
+	breadcrumb := breadcrumbFallbackHTML(screen.Breadcrumb)
 	if breadcrumb == "" {
 		return SafeHTML(body)
 	}
 	if body == "" {
 		return breadcrumb
 	}
-	return SafeHTML(string(breadcrumb) + "\n" + body)
+	if index := strings.IndexByte(body, '\n'); index >= 0 {
+		return SafeHTML(body[:index] + "\n" + string(breadcrumb) + body[index:])
+	}
+	return SafeHTML(body + "\n" + string(breadcrumb))
 }
 
 func ErrorScreen(err error) Screen {

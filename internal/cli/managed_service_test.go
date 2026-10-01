@@ -289,11 +289,16 @@ func TestManagedLifecycleResultRendersConnectedTunnelAsNestedList(t *testing.T) 
 		"│  │  id — tunnel_demo",
 		"│  │  name — MCP_Tunnel_WSL",
 		"│  │  description — MCP Tunnel WSL",
-		"│  │  scope — organization:org_demo · workspace:ws_demo",
+		"│  │  scope",
+		"│  │  │  organization — org_demo",
+		"│  │  │  workspace — ws_demo",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("connected tunnel hierarchy missing %q: %s", expected, text)
 		}
+	}
+	if strings.Contains(text, "scope — organization:") {
+		t.Fatalf("connected tunnel scope still renders as one long field: %s", text)
 	}
 	for _, unexpected := range []string{"│  ◆ tunnel id —", "│  ◆ tunnel name —", "│  ◆ tunnel description —", "│  ◆ tunnel scope —"} {
 		if strings.Contains(text, unexpected) {
@@ -373,19 +378,33 @@ func TestManagedRestartUpdatesChangedDefinitionWithoutUninstall(t *testing.T) {
 	}
 	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
 	manager := &fakeServiceManager{}
-	cmd := &cobra.Command{Use: "test"}
-	cmd.SetContext(context.Background())
-	cmd.SetOut(&bytes.Buffer{})
-	if err := runManagedUp(cmd, spec, manager); err != nil {
+	setupCmd := &cobra.Command{Use: "test"}
+	setupCmd.SetContext(context.Background())
+	setupCmd.SetOut(&bytes.Buffer{})
+	if err := runManagedUp(setupCmd, spec, manager); err != nil {
 		t.Fatal(err)
 	}
 	manager.matches = false
+	var output bytes.Buffer
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetContext(context.Background())
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
+	commandProgressSession(cmd).SetTitle("Restart CodeMCP")
 	starts, installs, removes := manager.starts, manager.installs, manager.removes
 	if err := runManagedRestart(cmd, spec, manager); err != nil {
 		t.Fatal(err)
 	}
 	if manager.starts != starts+1 || manager.installs != installs+1 || manager.removes != removes || !manager.matches {
 		t.Fatalf("manager after definition update = %#v", manager)
+	}
+	text := output.String()
+	for _, grouped := range []string{
+		"Stopped managed service backend\n│\n◆  Updated managed service definition",
+		"Updated managed service definition\n│\n◆  Started managed service backend",
+	} {
+		if !strings.Contains(text, grouped) {
+			t.Fatalf("restart lifecycle groups are cramped; missing %q: %s", grouped, text)
+		}
 	}
 }
 
