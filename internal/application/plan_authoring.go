@@ -23,6 +23,8 @@ var (
 	ErrPlanConflict    = errors.New("plan authoring conflict")
 	ErrPlanStale       = errors.New("plan authoring target is stale")
 	ErrPlanUnavailable = errors.New("plan authoring is unavailable")
+
+	planAuthoringMutationMu sync.Mutex
 )
 
 type PlanAuthoringMode string
@@ -62,7 +64,6 @@ type PlanAuthoringService struct {
 	Workspaces *workspace.Manager
 	Changes    *instructioncontext.ChangeStream
 
-	mu             sync.Mutex
 	activationHook func(point string) error
 }
 
@@ -108,8 +109,8 @@ func (s *PlanAuthoringService) Write(ctx context.Context, request PlanAuthoringR
 	}
 	result := planAuthoringResult(target, request.Name, document, request.DryRun)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	planAuthoringMutationMu.Lock()
+	defer planAuthoringMutationMu.Unlock()
 
 	if err := s.revalidateTarget(target); err != nil {
 		return PlanAuthoringResult{}, err
@@ -179,6 +180,9 @@ func (s *PlanAuthoringService) Write(ctx context.Context, request PlanAuthoringR
 			return PlanAuthoringResult{}, err
 		}
 		if err := root.Link(stageRel, target.targetRel); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				return PlanAuthoringResult{}, fmt.Errorf("%w: create %q target already exists", ErrPlanConflict, request.Name)
+			}
 			return PlanAuthoringResult{}, fmt.Errorf("create plan %q: %w", request.Name, err)
 		}
 		if err := root.Remove(stageRel); err != nil {
@@ -228,6 +232,9 @@ func (s *PlanAuthoringService) resolveTarget(workspaceID, name string) (planAuth
 func (s *PlanAuthoringService) revalidateTarget(target planAuthoringTarget) error {
 	item, err := s.Workspaces.Get(target.workspaceID)
 	if err != nil {
+		if errors.Is(err, workspace.ErrNotFound) {
+			return fmt.Errorf("%w: workspace disappeared during plan authoring", ErrPlanStale)
+		}
 		return err
 	}
 	if filepath.Clean(item.Path) != filepath.Clean(target.workspaceRoot) {
@@ -236,7 +243,7 @@ func (s *PlanAuthoringService) revalidateTarget(target planAuthoringTarget) erro
 	store := workspacestate.New(item.Path)
 	identity, err := store.LoadIdentity()
 	if err != nil {
-		return fmt.Errorf("revalidate workspace local state: %w", err)
+		return fmt.Errorf("%w: revalidate workspace local state: %v", ErrPlanStale, err)
 	}
 	if identity.ID != target.workspaceID || filepath.Clean(store.Root()) != filepath.Clean(target.basePath) {
 		return fmt.Errorf("%w: workspace local state changed during plan authoring", ErrPlanStale)
@@ -250,6 +257,9 @@ func (s *PlanAuthoringService) activateUpdate(root *os.Root, target planAuthorin
 		return err
 	}
 	if err := root.Rename(target.targetRel, backupRel); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("%w: plan artifact changed before update activation", ErrPlanStale)
+		}
 		return fmt.Errorf("capture current plan artifact: %w", err)
 	}
 	restore := func(cause error) error {

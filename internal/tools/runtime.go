@@ -356,10 +356,11 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 				message = result.Content[0].Text
 			}
 		}
+		observedMessage := observableToolMessage(name, status, message)
 		finishRaw["status"] = status
 		finishRaw["result_type"] = result.ResultType
 		finishRaw["result"] = observedResult(name, result)
-		r.observeCall(CallObservation{CallID: callID, Phase: "finish", Source: source, Tool: name, WorkspaceID: workspaceID, Status: status, DurationMS: time.Since(started).Milliseconds(), Message: message, ResultType: result.ResultType, Raw: finishRaw, SessionHash: sessionHash, SessionAccess: sessionAccess, SessionWorkspaceCount: sessionWorkspaceCount, ReceivedByInstanceID: receivedBy, ExecutedByInstanceID: executedBy})
+		r.observeCall(CallObservation{CallID: callID, Phase: "finish", Source: source, Tool: name, WorkspaceID: workspaceID, Status: status, DurationMS: time.Since(started).Milliseconds(), Message: observedMessage, ResultType: result.ResultType, Raw: finishRaw, SessionHash: sessionHash, SessionAccess: sessionAccess, SessionWorkspaceCount: sessionWorkspaceCount, ReceivedByInstanceID: receivedBy, ExecutedByInstanceID: executedBy})
 		return result, nil
 	}
 

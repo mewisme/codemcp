@@ -362,6 +362,13 @@ func observablePlanAuthoringArguments(args map[string]any) map[string]any {
 	return result
 }
 
+func observableToolMessage(name, status, message string) string {
+	if name == CreatePlanToolName && status != "ok" && strings.TrimSpace(message) != "" {
+		return "plan authoring failed"
+	}
+	return message
+}
+
 func stringArgument(args map[string]any, key string) string {
 	value, _ := args[key].(string)
 	return value

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -17,6 +18,17 @@ import (
 )
 
 type telemetryConfigSetProvider struct{}
+
+type telemetryPlanProvider struct {
+	err error
+}
+
+func (provider telemetryPlanProvider) AuthorPlan(context.Context, map[string]any) (any, error) {
+	if provider.err != nil {
+		return nil, provider.err
+	}
+	return map[string]any{"name": "telemetry-plan", "status": "pending"}, nil
+}
 
 func (telemetryConfigSetProvider) BindSetApproval(_ context.Context, arguments map[string]any) (mcpconfigwire.SetApprovalBinding, mcpconfigwire.ErrorCode) {
 	changes, _, err := mcpconfigwire.CanonicalSetArguments(arguments)
@@ -207,5 +219,80 @@ func TestAttachToolsConfigSetActivityAndVerboseLogNeverExposeValues(t *testing.T
 	}
 	if !strings.Contains(output.String(), "Tool call started") || !strings.Contains(output.String(), "Tool call failed") {
 		t.Fatalf("config_set approval lifecycle missing: %q", output.String())
+	}
+}
+
+func TestAttachToolsPlanAuthoringKeepsBodiesOutOfAmbientObservability(t *testing.T) {
+	previous := color.NoColor
+	color.NoColor = true
+	defer func() { color.NoColor = previous }()
+
+	const planSecret = "PLAN_AMBIENT_SECRET_41d9"
+	const orderSecret = "ORDER_AMBIENT_SECRET_a02f"
+	const errorSecret = "PLAN_ERROR_SECRET_f0aa"
+	runtime := tools.NewRuntime()
+	runtime.SetPlanAuthoringProvider(telemetryPlanProvider{err: errors.New(errorSecret)})
+	workspace, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := activity.NewStream()
+	var output bytes.Buffer
+	log := logger.NewWithOptions(logger.Options{Level: logger.Info, Mode: logger.ModeVerbose, Writer: &output})
+	AttachTools(runtime, stream, log)
+
+	args := map[string]any{
+		"workspace_id":         workspace.ID,
+		"mode":                 "create",
+		"name":                 "telemetry-plan",
+		"plan_content":         "# Plan\n\n" + planSecret,
+		"implementation_order": "## Ordered phases\n\n" + orderSecret,
+	}
+	params := map[string]any{"name": tools.CreatePlanToolName, "arguments": args}
+	request := map[string]any{"jsonrpc": "2.0", "id": "plan-call", "method": "tools/call", "params": params}
+	ctx := tools.WithCallSource(context.Background(), "tunnel")
+	ctx = tools.WithCallDetails(ctx, "tools/call", params)
+	ctx = tools.WithCallRequest(ctx, request)
+	result, err := runtime.Call(ctx, tools.CreatePlanToolName, args)
+	if err != nil || !result.IsError {
+		t.Fatalf("create_plan result=%#v err=%v", result, err)
+	}
+
+	events := stream.Recent(10)
+	if len(events) != 2 || events[1].Message != "plan authoring failed" || events[0].Raw != nil || events[1].Raw != nil {
+		t.Fatalf("plan ambient events=%#v", events)
+	}
+	ambientJSON, err := json.Marshal(activity.PublicEvents(events))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ambient := string(ambientJSON) + "\n" + output.String()
+	for _, secret := range []string{planSecret, orderSecret, errorSecret} {
+		if strings.Contains(ambient, secret) {
+			t.Fatalf("plan ambient observability leaked %q: %s", secret, ambient)
+		}
+	}
+	if !strings.Contains(output.String(), "Tool call failed") || !strings.Contains(output.String(), "plan authoring failed") {
+		t.Fatalf("plan failure lifecycle missing from verbose log: %q", output.String())
+	}
+
+	detail, ok := stream.FindCallDetail(events[1].CallID)
+	if !ok || detail.Request == nil {
+		t.Fatalf("plan call detail=%#v ok=%t", detail, ok)
+	}
+	requestJSON, err := json.Marshal(detail.Request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestText := string(requestJSON)
+	for _, secret := range []string{planSecret, orderSecret} {
+		if strings.Contains(requestText, secret) {
+			t.Fatalf("plan body leaked into explicit request detail: %s", requestText)
+		}
+	}
+	for _, marker := range []string{"plan_content_bytes", "implementation_order_bytes", "telemetry-plan"} {
+		if !strings.Contains(requestText, marker) {
+			t.Fatalf("plan request detail lost safe metadata %q: %s", marker, requestText)
+		}
 	}
 }

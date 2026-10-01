@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +63,48 @@ func TestProductToolObserverUsesOnlyCanonicalSafeMetadata(t *testing.T) {
 		got.usage.Feature != string(capability.WorkspaceList) ||
 		!got.usage.Success || got.usage.Duration != 17*time.Millisecond {
 		t.Fatalf("usage=%#v", got)
+	}
+}
+
+func TestProductToolObserverPlanAuthoringIgnoresBodiesAndDiagnosticText(t *testing.T) {
+	fake := &fakeRuntimeProductTelemetry{}
+	observer := productToolObserver(fake)
+	if observer == nil {
+		t.Fatal("missing product tool observer")
+	}
+	observer(tools.CallObservation{
+		Phase: "finish", Source: "tunnel", Tool: tools.CreatePlanToolName, Status: "error", DurationMS: 23,
+		Message: "PLAN_PRODUCT_ERROR_SECRET",
+		Raw: map[string]any{
+			"arguments": map[string]any{
+				"plan_content":         "PLAN_PRODUCT_BODY_SECRET",
+				"implementation_order": "PLAN_PRODUCT_ORDER_SECRET",
+			},
+			"result": "PLAN_PRODUCT_RESULT_SECRET",
+		},
+	})
+	if len(fake.values) != 1 {
+		t.Fatalf("events=%d", len(fake.values))
+	}
+	got := fake.values[0]
+	if got.name != producttelemetry.EventOperationCompleted ||
+		got.usage.Interface != producttelemetry.InterfaceMCP ||
+		got.usage.Command != string(capability.PlanCreate) ||
+		got.usage.Feature != string(capability.PlanCreate) ||
+		got.usage.Success || got.usage.Duration != 23*time.Millisecond {
+		t.Fatalf("plan usage=%#v", got)
+	}
+	encoded, err := json.Marshal(got.usage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, secret := range []string{
+		"PLAN_PRODUCT_ERROR_SECRET", "PLAN_PRODUCT_BODY_SECRET",
+		"PLAN_PRODUCT_ORDER_SECRET", "PLAN_PRODUCT_RESULT_SECRET",
+	} {
+		if strings.Contains(string(encoded), secret) {
+			t.Fatalf("product telemetry leaked plan text %q: %s", secret, encoded)
+		}
 	}
 }
 

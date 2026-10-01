@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -30,22 +31,32 @@ func TestCreatePlanProfileAndBoundWorkspaceProjectionStayCanonical(t *testing.T)
 	}
 	assertSDKToolCanonicalContract(t, base, openai)
 
-	bound, err := ProjectSDKTool(BaseProfile(), descriptor, ToolProjectionOptions{BoundWorkspace: true})
+	baseBound, err := ProjectSDKTool(BaseProfile(), descriptor, ToolProjectionOptions{BoundWorkspace: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	boundInput, ok := bound.InputSchema.(map[string]any)
-	if !ok {
-		t.Fatalf("bound create_plan schema type=%T", bound.InputSchema)
+	openAIBound, err := ProjectSDKTool(OpenAIProfile(), descriptor, ToolProjectionOptions{BoundWorkspace: true})
+	if err != nil {
+		t.Fatal(err)
 	}
-	properties, _ := boundInput["properties"].(map[string]any)
-	if _, exists := properties["workspace_id"]; exists {
-		t.Fatalf("bound create_plan still exposes workspace_id: %#v", boundInput)
+	assertSDKToolCanonicalContract(t, baseBound, openAIBound)
+	if base.Annotations == nil || baseBound.Annotations == nil || !reflect.DeepEqual(base.Annotations, baseBound.Annotations) {
+		t.Fatalf("create_plan security annotations changed when workspace was bound: unbound=%#v bound=%#v", base.Annotations, baseBound.Annotations)
 	}
-	if required, ok := boundInput["required"].([]any); ok {
-		for _, item := range required {
-			if item == "workspace_id" {
-				t.Fatalf("bound create_plan still requires workspace_id: %#v", boundInput)
+	for label, bound := range map[string]*sdkmcp.Tool{"base": baseBound, "openai": openAIBound} {
+		boundInput, ok := bound.InputSchema.(map[string]any)
+		if !ok {
+			t.Fatalf("%s bound create_plan schema type=%T", label, bound.InputSchema)
+		}
+		properties, _ := boundInput["properties"].(map[string]any)
+		if _, exists := properties["workspace_id"]; exists {
+			t.Fatalf("%s bound create_plan still exposes workspace_id: %#v", label, boundInput)
+		}
+		if required, ok := boundInput["required"].([]any); ok {
+			for _, item := range required {
+				if item == "workspace_id" {
+					t.Fatalf("%s bound create_plan still requires workspace_id: %#v", label, boundInput)
+				}
 			}
 		}
 	}
