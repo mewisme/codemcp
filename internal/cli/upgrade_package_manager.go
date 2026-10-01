@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -24,6 +25,9 @@ type packageBinaryLookupFunc func(string) (string, error)
 type packageBinaryVersionFunc func(context.Context, string) (string, error)
 
 func runPackageManagedUpgrade(cmd *cobra.Command, detection install.Detection, targetVersion string, noRestart bool) error {
+	if detection.Method == install.MethodDebian || detection.Method == install.MethodRPM {
+		return runLinuxPackageManagedUpgrade(cmd, detection, targetVersion, noRestart)
+	}
 	plan, ok := updatepkg.PackageManagerPlanFor(detection.Method)
 	if !ok {
 		return fmt.Errorf("package manager update plan unavailable for %s", detection.Method)
@@ -187,18 +191,17 @@ func verifyPackageManagedVersion(ctx context.Context, target string, lookup pack
 	if err != nil {
 		return "", "", err
 	}
-	var binary, commandName string
+	var binary string
 	for _, name := range []string{"cm"} {
 		binary, err = lookup(name)
 		if err == nil {
-			commandName = name
 			break
 		}
 	}
 	if err != nil {
 		return "", "", errors.New("updated cm command was not found on PATH")
 	}
-	output, err := readVersion(ctx, commandName)
+	output, err := readVersion(ctx, binary)
 	if err != nil {
 		return binary, "", err
 	}
@@ -216,14 +219,11 @@ func verifyPackageManagedVersion(ctx context.Context, target string, lookup pack
 	return binary, installed, nil
 }
 
-func runPackageBinaryVersion(ctx context.Context, commandName string) (string, error) {
-	var process *exec.Cmd
-	switch commandName {
-	case "cm":
-		process = exec.CommandContext(ctx, "cm", "--version")
-	default:
-		return "", fmt.Errorf("unsupported package binary: %s", commandName)
+func runPackageBinaryVersion(ctx context.Context, binary string) (string, error) {
+	if strings.TrimSpace(binary) == "" || filepath.Base(binary) != "cm" {
+		return "", fmt.Errorf("unsupported package binary: %s", binary)
 	}
+	process := exec.CommandContext(ctx, binary, "--version")
 	return packageCommandOutput(process)
 }
 

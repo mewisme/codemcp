@@ -100,6 +100,17 @@ type Release struct {
 	SignatureURL  string
 }
 
+type PackageRelease struct {
+	Version       string
+	Kind          ArtifactKind
+	PackageName   string
+	PackageURL    string
+	ChecksumName  string
+	ChecksumURL   string
+	SignatureName string
+	SignatureURL  string
+}
+
 func ArtifactFor(kind ArtifactKind, goos, goarch string) (ReleaseArtifact, bool) {
 	kind, goos, goarch = ArtifactKind(strings.TrimSpace(string(kind))), strings.TrimSpace(goos), strings.TrimSpace(goarch)
 	for _, artifact := range primaryReleaseArtifacts {

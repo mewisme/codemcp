@@ -3,6 +3,7 @@
 package install
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,12 +24,13 @@ func platformPackageManagerOwnsPath(path string) bool {
 	if runtime.GOOS != "linux" {
 		return false
 	}
+	if ownership := linuxPackageOwnership(path); ownership.Package != "" {
+		return true
+	}
 	checks := []struct {
 		command string
 		args    []string
 	}{
-		{command: "dpkg-query", args: []string{"--search", path}},
-		{command: "rpm", args: []string{"-qf", path}},
 		{command: "pacman", args: []string{"-Qo", path}},
 		{command: "apk", args: []string{"info", "--who-owns", path}},
 	}
@@ -37,10 +39,10 @@ func platformPackageManagerOwnsPath(path string) bool {
 		if err != nil {
 			continue
 		}
-		cmd := exec.Command(command, check.args...)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		if cmd.Run() == nil {
+		ctx, cancel := context.WithTimeout(context.Background(), packageOwnerProbeTimeout)
+		_, err = runPackageOwnerProbe(ctx, command, check.args...)
+		cancel()
+		if err == nil {
 			return true
 		}
 	}

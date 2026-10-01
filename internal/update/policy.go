@@ -64,6 +64,14 @@ func PolicyForInstallation(detection install.Detection) InstallPolicy {
 		policy.Action = PolicyDelegate
 		policy.Message = "Managed by Scoop"
 		policy.Command = "cm upgrade"
+	case install.MethodDebian:
+		policy.Action = PolicyDelegate
+		policy.Message = "Managed by the Debian package codemcp"
+		policy.Command = "cm upgrade"
+	case install.MethodRPM:
+		policy.Action = PolicyDelegate
+		policy.Message = "Managed by the RPM package codemcp"
+		policy.Command = "cm upgrade"
 	case install.MethodGo:
 		policy.Action = PolicyUnsupported
 		policy.Message = "Self-update is unavailable for Go installations"

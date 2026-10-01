@@ -58,6 +58,7 @@ func DetectCurrent(buildVersion string) (Detection, error) {
 	}
 	home, _ := os.UserHomeDir()
 	detection := detect(executable, buildVersion, layout, home, os.Getenv("GOBIN"), os.Getenv("GOPATH"), os.Getenv("SCOOP"))
+	detection = applyCurrentPackageOwnership(detection, executable, currentLinuxPackageMethod)
 	if detection.Method != MethodDirect || detection.Root == "" {
 		return detection, nil
 	}
@@ -70,6 +71,16 @@ func DetectCurrent(buildVersion string) (Detection, error) {
 		return detection, nil
 	}
 	return Detection{}, err
+}
+
+func applyCurrentPackageOwnership(detection Detection, executable string, probe func(string) Method) Detection {
+	if detection.Method != MethodStandalone || probe == nil {
+		return detection
+	}
+	if method := probe(executable); method == MethodDebian || method == MethodRPM {
+		detection.Method = method
+	}
+	return detection
 }
 
 func detect(executable, buildVersion string, layout Layout, home, goBin, goPath, scoopRoot string) Detection {

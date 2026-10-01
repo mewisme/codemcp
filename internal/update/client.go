@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
@@ -48,6 +49,108 @@ func (c Client) Version(ctx context.Context, version string) (Release, error) {
 	}
 	if release.Version != version {
 		return Release{}, fmt.Errorf("release tag mismatch: got %s, want %s", release.Version, version)
+	}
+	return release, nil
+}
+
+func (c Client) LatestPackage(ctx context.Context, kind ArtifactKind) (PackageRelease, error) {
+	return c.getPackageRelease(ctx, "releases/latest", "", kind)
+}
+
+func (c Client) PackageVersion(ctx context.Context, version string, kind ArtifactKind) (PackageRelease, error) {
+	version, err := NormalizeVersion(version)
+	if err != nil {
+		return PackageRelease{}, err
+	}
+	return c.getPackageRelease(ctx, "releases/tags/"+url.PathEscape(version), version, kind)
+}
+
+func (c Client) getPackageRelease(ctx context.Context, endpoint, expectedVersion string, kind ArtifactKind) (PackageRelease, error) {
+	if kind != ArtifactDebian && kind != ArtifactRPM {
+		return PackageRelease{}, fmt.Errorf("unsupported package artifact kind %q", kind)
+	}
+	if runtime.GOOS != "linux" {
+		return PackageRelease{}, fmt.Errorf("native Linux package resolution is unavailable on %s", runtime.GOOS)
+	}
+	packageName, err := ArtifactName(kind, runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return PackageRelease{}, err
+	}
+	owner := strings.TrimSpace(c.Owner)
+	if owner == "" {
+		owner = DefaultOwner
+	}
+	repo := strings.TrimSpace(c.Repo)
+	if repo == "" {
+		repo = DefaultRepo
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
+	if baseURL == "" {
+		baseURL = "https://api.github.com"
+	}
+	releaseURL := fmt.Sprintf("%s/repos/%s/%s/%s", baseURL, owner, repo, endpoint)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseURL, nil)
+	if err != nil {
+		return PackageRelease{}, err
+	}
+	request.Header.Set("Accept", "application/vnd.github+json")
+	request.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	userAgent := strings.TrimSpace(c.UserAgent)
+	if userAgent == "" {
+		userAgent = DefaultRepo + "/update-check"
+	}
+	request.Header.Set("User-Agent", userAgent)
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: 10 * time.Second}
+	}
+	response, err := tracepkg.DoHTTP(client, request)
+	if err != nil {
+		return PackageRelease{}, fmt.Errorf("resolve release package: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		message := strings.TrimSpace(string(body))
+		if message != "" {
+			return PackageRelease{}, fmt.Errorf("resolve release package: GitHub returned %s: %s", response.Status, message)
+		}
+		return PackageRelease{}, fmt.Errorf("resolve release package: GitHub returned %s", response.Status)
+	}
+	decoder := json.NewDecoder(io.LimitReader(response.Body, maxReleaseResponseSize))
+	var payload githubRelease
+	if err := decoder.Decode(&payload); err != nil {
+		return PackageRelease{}, fmt.Errorf("decode release package response: %w", err)
+	}
+	if payload.Draft {
+		return PackageRelease{}, errors.New("GitHub release is unexpectedly marked as draft")
+	}
+	version, err := NormalizeVersion(payload.TagName)
+	if err != nil {
+		return PackageRelease{}, fmt.Errorf("release package tag: %w", err)
+	}
+	if expectedVersion != "" && version != expectedVersion {
+		return PackageRelease{}, fmt.Errorf("release tag mismatch: got %s, want %s", version, expectedVersion)
+	}
+	release := PackageRelease{
+		Version: version, Kind: kind, PackageName: packageName,
+		ChecksumName: ChecksumName, SignatureName: ChecksumSignatureName,
+	}
+	for _, asset := range payload.Assets {
+		switch asset.Name {
+		case packageName:
+			release.PackageURL = strings.TrimSpace(asset.BrowserDownloadURL)
+		case release.ChecksumName:
+			release.ChecksumURL = strings.TrimSpace(asset.BrowserDownloadURL)
+		case release.SignatureName:
+			release.SignatureURL = strings.TrimSpace(asset.BrowserDownloadURL)
+		}
+	}
+	if release.PackageURL == "" {
+		return PackageRelease{}, fmt.Errorf("release %s is missing asset %s", version, packageName)
+	}
+	if release.ChecksumURL == "" {
+		return PackageRelease{}, fmt.Errorf("release %s is missing asset %s", version, release.ChecksumName)
 	}
 	return release, nil
 }

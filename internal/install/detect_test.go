@@ -46,6 +46,35 @@ func TestDetectPackageManagersBeforeDirectShape(t *testing.T) {
 	}
 }
 
+func TestApplyCurrentPackageOwnershipOnlyPromotesCanonicalLinuxPackageMethods(t *testing.T) {
+	standalone := Detection{Method: MethodStandalone, Executable: "/usr/bin/cm"}
+	for _, method := range []Method{MethodDebian, MethodRPM} {
+		got := applyCurrentPackageOwnership(standalone, standalone.Executable, func(path string) Method {
+			if path != standalone.Executable {
+				t.Fatalf("probe path = %q", path)
+			}
+			return method
+		})
+		if got.Method != method {
+			t.Fatalf("method = %q, want %q", got.Method, method)
+		}
+	}
+	for _, method := range []Method{MethodUnknown, MethodGo, MethodStandalone} {
+		got := applyCurrentPackageOwnership(standalone, standalone.Executable, func(string) Method { return method })
+		if got.Method != MethodStandalone {
+			t.Fatalf("untrusted probe method %q promoted to %q", method, got.Method)
+		}
+	}
+	for _, existing := range []Method{MethodHomebrew, MethodScoop, MethodDirect, MethodDevelopment, MethodGo} {
+		got := applyCurrentPackageOwnership(Detection{Method: existing, Executable: "/path/cm"}, "/path/cm", func(string) Method {
+			return MethodDebian
+		})
+		if got.Method != existing {
+			t.Fatalf("existing precedence %q changed to %q", existing, got.Method)
+		}
+	}
+}
+
 func TestLegacyScoopPackagePathIsMigrationOnly(t *testing.T) {
 	root := filepath.Join(string(filepath.Separator), "Users", "Mew", "scoop")
 	legacy := filepath.Join(root, "apps", "chatgpt-mcp", "current", "chatgpt-mcp.exe")

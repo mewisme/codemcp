@@ -38,6 +38,20 @@ type Artifact struct {
 	Warnings []string
 }
 
+type PackageArtifact struct {
+	Dir      string
+	Path     string
+	Release  PackageRelease
+	Warnings []string
+}
+
+func (a PackageArtifact) Cleanup() error {
+	if strings.TrimSpace(a.Dir) == "" {
+		return nil
+	}
+	return os.RemoveAll(a.Dir)
+}
+
 func (a Artifact) Cleanup() error {
 	if strings.TrimSpace(a.Dir) == "" {
 		return nil
@@ -96,6 +110,44 @@ func (d Downloader) Download(ctx context.Context, release Release) (result Artif
 		return Artifact{}, err
 	}
 	artifact.Binary = binary
+	ok = true
+	result = artifact
+	return result, nil
+}
+
+func (d Downloader) DownloadPackage(ctx context.Context, release PackageRelease) (result PackageArtifact, resultErr error) {
+	if err := validatePackageReleaseDownload(release); err != nil {
+		return PackageArtifact{}, err
+	}
+	dir, err := os.MkdirTemp(strings.TrimSpace(d.TempDir), "cm-package-update-")
+	if err != nil {
+		return PackageArtifact{}, err
+	}
+	artifact := PackageArtifact{Dir: dir, Release: release}
+	ok := false
+	defer func() {
+		if !ok {
+			_ = artifact.Cleanup()
+		}
+	}()
+	packagePath := filepath.Join(dir, release.PackageName)
+	checksumPath := filepath.Join(dir, release.ChecksumName)
+	signaturePath := filepath.Join(dir, release.SignatureName)
+	if err := d.downloadFile(ctx, release.ChecksumURL, checksumPath, maxChecksumSize); err != nil {
+		return PackageArtifact{}, fmt.Errorf("download release checksums: %w", err)
+	}
+	if err := d.downloadFile(ctx, release.PackageURL, packagePath, maxArchiveSize); err != nil {
+		return PackageArtifact{}, fmt.Errorf("download release package: %w", err)
+	}
+	if err := VerifyChecksumContext(ctx, packagePath, checksumPath, release.PackageName); err != nil {
+		return PackageArtifact{}, err
+	}
+	trust := Release{
+		Version: release.Version, ChecksumName: release.ChecksumName, ChecksumURL: release.ChecksumURL,
+		SignatureName: release.SignatureName, SignatureURL: release.SignatureURL,
+	}
+	artifact.Warnings = d.verifyOptionalSignature(ctx, trust, checksumPath, signaturePath)
+	artifact.Path = packagePath
 	ok = true
 	result = artifact
 	return result, nil
@@ -264,6 +316,32 @@ func validateReleaseDownload(release Release) error {
 	}
 	if strings.TrimSpace(release.ArchiveURL) == "" || strings.TrimSpace(release.ChecksumURL) == "" {
 		return errors.New("release archive and checksum download URLs are required")
+	}
+	return nil
+}
+
+func validatePackageReleaseDownload(release PackageRelease) error {
+	if _, err := NormalizeVersion(release.Version); err != nil {
+		return fmt.Errorf("release version: %w", err)
+	}
+	if release.Kind != ArtifactDebian && release.Kind != ArtifactRPM {
+		return fmt.Errorf("unsupported release package kind %q", release.Kind)
+	}
+	expected, err := ArtifactName(release.Kind, runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	if release.PackageName != expected || filepath.Base(release.PackageName) != release.PackageName {
+		return fmt.Errorf("release package name %q does not match expected asset %q", release.PackageName, expected)
+	}
+	if release.ChecksumName != ChecksumName {
+		return fmt.Errorf("release checksum asset must be %s", ChecksumName)
+	}
+	if release.SignatureName != ChecksumSignatureName {
+		return fmt.Errorf("release checksum signature asset must be %s", ChecksumSignatureName)
+	}
+	if strings.TrimSpace(release.PackageURL) == "" || strings.TrimSpace(release.ChecksumURL) == "" {
+		return errors.New("release package and checksum download URLs are required")
 	}
 	return nil
 }

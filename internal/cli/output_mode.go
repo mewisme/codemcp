@@ -82,6 +82,13 @@ func commandResultWriter(cmd *cobra.Command) io.Writer {
 	return cmd.OutOrStdout()
 }
 
+func commandProcessIO(cmd *cobra.Command) (io.Reader, io.Writer, io.Writer) {
+	if cmd == nil {
+		return nil, io.Discard, io.Discard
+	}
+	return cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
+}
+
 func commandPresenter(cmd *cobra.Command) *presentation.Presenter {
 	return commandProgressSession(cmd).Presenter()
 }

@@ -20,6 +20,8 @@ func TestPolicyForInstallation(t *testing.T) {
 		{"legacy-direct", install.Detection{Method: install.MethodDirect}, PolicyInstallFirst, "cm install"},
 		{"homebrew", install.Detection{Method: install.MethodHomebrew}, PolicyDelegate, "cm upgrade"},
 		{"scoop", install.Detection{Method: install.MethodScoop}, PolicyDelegate, "cm upgrade"},
+		{"debian", install.Detection{Method: install.MethodDebian}, PolicyDelegate, "cm upgrade"},
+		{"rpm", install.Detection{Method: install.MethodRPM}, PolicyDelegate, "cm upgrade"},
 		{"go", install.Detection{Method: install.MethodGo}, PolicyUnsupported, ""},
 		{"development", install.Detection{Method: install.MethodDevelopment}, PolicyUnsupported, ""},
 		{"standalone", install.Detection{Method: install.MethodStandalone}, PolicyInstallFirst, "cm install"},
@@ -76,7 +78,7 @@ func TestPolicyRejectsMismatchedDirectMetadata(t *testing.T) {
 }
 
 func TestPackageManagerOwnershipNeverSelectsDirectSelfUpdate(t *testing.T) {
-	for _, method := range []install.Method{install.MethodHomebrew, install.MethodScoop} {
+	for _, method := range []install.Method{install.MethodHomebrew, install.MethodScoop, install.MethodDebian, install.MethodRPM} {
 		policy := PolicyForInstallation(install.Detection{Method: method})
 		if policy.Action != PolicyDelegate || policy.Action == PolicySelfUpdate {
 			t.Fatalf("%s policy = %#v", method, policy)

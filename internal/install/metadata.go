@@ -20,6 +20,8 @@ const (
 	MethodDirect      Method = "direct"
 	MethodHomebrew    Method = "homebrew"
 	MethodScoop       Method = "scoop"
+	MethodDebian      Method = "debian"
+	MethodRPM         Method = "rpm"
 	MethodGo          Method = "go"
 	MethodStandalone  Method = "standalone"
 	MethodDevelopment Method = "development"
@@ -52,7 +54,7 @@ func (m Metadata) Validate() error {
 
 func (m Method) Valid() bool {
 	switch m {
-	case MethodDirect, MethodHomebrew, MethodScoop, MethodGo, MethodStandalone, MethodDevelopment, MethodUnknown:
+	case MethodDirect, MethodHomebrew, MethodScoop, MethodDebian, MethodRPM, MethodGo, MethodStandalone, MethodDevelopment, MethodUnknown:
 		return true
 	default:
 		return false

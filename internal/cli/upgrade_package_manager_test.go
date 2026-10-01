@@ -60,7 +60,7 @@ func TestVerifyPackageManagedVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if binary != "/bin/cm" || installed != "v1.2.3" || readName != "cm" {
+	if binary != "/bin/cm" || installed != "v1.2.3" || readName != "/bin/cm" {
 		t.Fatalf("binary = %q installed = %q read = %q", binary, installed, readName)
 	}
 }
@@ -73,7 +73,7 @@ func TestRunPackageManagerCommandRejectsUnknownInvocation(t *testing.T) {
 }
 
 func TestRunPackageBinaryVersionRejectsUnknownBinary(t *testing.T) {
-	_, err := runPackageBinaryVersion(t.Context(), "/tmp/cm")
+	_, err := runPackageBinaryVersion(t.Context(), "/tmp/not-cm")
 	if err == nil || !strings.Contains(err.Error(), "unsupported package binary") {
 		t.Fatalf("error = %v", err)
 	}
