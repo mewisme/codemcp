@@ -10,23 +10,23 @@ import (
 
 func TestReloadConfigUpdatesLiveRuntime(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	next := cfg
-	next.Auth.MCPEnabled = true
-	next.Auth.MCPTokenHash = "hash"
+	next.HTTP.MCP.Auth.Enabled = true
+	next.HTTP.MCP.Auth.TokenHash = "hash"
 	next.Integrations.Ponytail.Active = false
 	next.Permissions.AllowDirs = []string{t.TempDir()}
 	if err := app.ReloadConfig(next); err != nil {
 		t.Fatal(err)
 	}
 	got := app.Config.Snapshot()
-	if !got.Auth.MCPEnabled || got.Integrations.Ponytail.Active || len(got.Permissions.AllowDirs) != 1 {
+	if !got.HTTP.MCP.Auth.Enabled || got.Integrations.Ponytail.Active || len(got.Permissions.AllowDirs) != 1 {
 		t.Fatalf("runtime config = %#v", got)
 	}
 	if _, ok := app.Tools.Registry.Schema("ponytail_turn"); !ok {
@@ -36,9 +36,9 @@ func TestReloadConfigUpdatesLiveRuntime(t *testing.T) {
 
 func TestReloadConfigUpdatesShellPath(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -58,9 +58,9 @@ func TestReloadConfigUpdatesShellPath(t *testing.T) {
 
 func TestReloadConfigSyncsTunnelAdminKeyWithoutRuntimeReconfigure(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -81,9 +81,9 @@ func TestReloadConfigSyncsTunnelAdminKeyWithoutRuntimeReconfigure(t *testing.T) 
 
 func TestReloadConfigFailedApplyRestoresCommittedConfig(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -98,8 +98,8 @@ func TestReloadConfigFailedApplyRestoresCommittedConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	next := previous
-	next.Auth.MCPEnabled = true
-	next.Auth.MCPTokenHash = "hash"
+	next.HTTP.MCP.Auth.Enabled = true
+	next.HTTP.MCP.Auth.TokenHash = "hash"
 	next.Integrations.Ponytail.Active = !previous.Integrations.Ponytail.Active
 	next.Permissions.AllowDirs = []string{t.TempDir()}
 	next.Shell.Path = []string{t.TempDir()}
@@ -107,8 +107,8 @@ func TestReloadConfigFailedApplyRestoresCommittedConfig(t *testing.T) {
 		t.Fatal("expected apply failure")
 	}
 	got := app.Config.Snapshot()
-	if got.Auth.MCPEnabled != previous.Auth.MCPEnabled || got.Auth.MCPTokenHash != previous.Auth.MCPTokenHash {
-		t.Fatalf("committed auth not restored: %#v", got.Auth)
+	if got.HTTP.MCP.Auth.Enabled != previous.HTTP.MCP.Auth.Enabled || got.HTTP.MCP.Auth.TokenHash != previous.HTTP.MCP.Auth.TokenHash {
+		t.Fatalf("committed auth not restored: %#v", got.HTTP.MCP.Auth)
 	}
 	if got.Integrations.Ponytail.Active != previous.Integrations.Ponytail.Active {
 		t.Fatalf("committed integrations not restored: %#v", got.Integrations)
@@ -129,9 +129,9 @@ func TestReloadConfigFailedApplyRestoresCommittedConfig(t *testing.T) {
 
 func TestReloadConfigCommitsBeforeRuntimeApply(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)

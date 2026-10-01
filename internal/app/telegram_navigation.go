@@ -14,8 +14,8 @@ func (a *App) telegramStatusOverview(context.Context) (application.StatusOvervie
 	health := a.Telegram.Health()
 	return application.StatusOverview{
 		RuntimeRunning:  a.running,
-		MCPHTTPEnabled:  cfg.Server.Enabled,
-		AdminEnabled:    cfg.Admin.Enabled,
+		MCPHTTPEnabled:  cfg.HTTP.MCP.Enabled,
+		AdminEnabled:    cfg.HTTP.Admin.Enabled,
 		TunnelEnabled:   cfg.Tunnel.Enabled,
 		TelegramEnabled: cfg.Telegram.Enabled,
 		TelegramRunning: health.Running,

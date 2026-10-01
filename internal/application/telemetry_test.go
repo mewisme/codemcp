@@ -105,9 +105,9 @@ func (recorder *telemetryReconcilerRecorder) SetEnabled(value bool) {
 
 func telemetryTestService(t *testing.T, cfg config.Config) *TelemetryService {
 	t.Helper()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	root := t.TempDir()
 	t.Setenv(configformat.EnvConfigDir, root)
 	if err := config.Save(cfg); err != nil {

@@ -7,18 +7,20 @@ import (
 )
 
 type testConfig struct {
-	Server struct {
-		Port int `json:"port"`
-	} `json:"server"`
-	Auth struct {
-		MCPTokenHash string `json:"mcp_token_hash"`
-	} `json:"auth"`
+	HTTP struct {
+		MCP struct {
+			Port int `json:"port"`
+			Auth struct {
+				TokenHash string `json:"token_hash"`
+			} `json:"auth"`
+		} `json:"mcp"`
+	} `json:"http"`
 }
 
 func TestJSONRoundTripHonorsJSONTags(t *testing.T) {
 	value := testConfig{}
-	value.Server.Port = 37421
-	value.Auth.MCPTokenHash = "secret"
+	value.HTTP.MCP.Port = 37421
+	value.HTTP.MCP.Auth.TokenHash = "secret"
 	data, err := Marshal(JSON, value)
 	if err != nil {
 		t.Fatal(err)

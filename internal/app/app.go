@@ -79,7 +79,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 		ctx = context.Background()
 	}
 	observer := tracepkg.ObserverFromContext(ctx)
-	span := tracepkg.Start(ctx, "APP", "app.construct", "Constructing server runtime application", tracepkg.Bool("mcp_http_enabled", cfg.Server.Enabled), tracepkg.Bool("admin_enabled", cfg.Admin.Enabled), tracepkg.Bool("tunnel_enabled", cfg.Tunnel.Enabled))
+	span := tracepkg.Start(ctx, "APP", "app.construct", "Constructing server runtime application", tracepkg.Bool("mcp_http_enabled", cfg.HTTP.MCP.Enabled), tracepkg.Bool("admin_enabled", cfg.HTTP.Admin.Enabled), tracepkg.Bool("tunnel_enabled", cfg.Tunnel.Enabled))
 	stream := activity.NewStream()
 	configStore := config.NewRuntimeStore(cfg)
 	effectiveTelemetry := config.ResolveTelemetryEnabled(cfg, true)
@@ -93,7 +93,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	toolSpan := tracepkg.Start(ctx, "APP", "app.tools.bootstrap", "Bootstrapping tool runtime")
 	toolRuntime := tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) {
 		current := configStore.Snapshot()
-		return current.Admin.Enabled, current.Admin.Port
+		return current.HTTP.Admin.Enabled, current.HTTP.Admin.Port
 	})
 	configProvider := application.NewMCPConfigReadService()
 	toolRuntime.SetConfigReadProvider(configProvider)
@@ -124,7 +124,7 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 	toolRuntime.SetShellPath(cfg.Shell.Path)
 	toolRuntime.SetSemanticApprovalPolicy(semanticApprovalPolicy(cfg.Approval.Semantic))
 	var mcpRuntime *mcp.HTTPRuntime
-	if cfg.Server.Enabled {
+	if cfg.HTTP.MCP.Enabled {
 		mcpRuntime = mcp.NewHTTPRuntimeWithTools(toolRuntime)
 		mcpRuntime.Activity = stream
 	}
@@ -177,7 +177,7 @@ func (a *App) MCPHandler() http.Handler {
 	mux := http.NewServeMux()
 	mcpHandler := auth.DynamicHashedMiddleware(func() (bool, string) {
 		cfg := a.Config.Snapshot()
-		return cfg.Auth.MCPEnabled, cfg.Auth.MCPTokenHash
+		return cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.MCP.Auth.TokenHash
 	}, a.MCP.Handler())
 	mux.Handle("/mcp", mcpHandler)
 	mux.Handle("/mcp/", mcpHandler)
@@ -191,7 +191,7 @@ func (a *App) MCPHandler() http.Handler {
 func (a *App) AdminHandler() http.Handler {
 	mux := http.NewServeMux()
 	cfg := a.Config.Snapshot()
-	if !cfg.Admin.Enabled {
+	if !cfg.HTTP.Admin.Enabled {
 		return http.NotFoundHandler()
 	}
 	adminAPI := admin.API{
@@ -200,7 +200,7 @@ func (a *App) AdminHandler() http.Handler {
 	}
 	adminAuth := func() (bool, string) {
 		cfg := a.Config.Snapshot()
-		return cfg.Auth.AdminEnabled, cfg.Auth.AdminTokenHash
+		return cfg.HTTP.Admin.Auth.Enabled, cfg.HTTP.Admin.Auth.TokenHash
 	}
 	adminHandler := auth.DynamicHashedMiddleware(adminAuth, admin.New(adminAPI))
 	mux.Handle("/oauth/callback/", adminAPI.OAuthCallbackHandler())

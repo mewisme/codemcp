@@ -68,7 +68,7 @@ func TestAttachApprovalsNeverPublishesPrivateConfigSetBinding(t *testing.T) {
 		CallerID: "caller-a", SessionHash: "hash-session", WorkspaceID: "ws_test", Source: "tunnel", TargetTool: mcpconfigwire.SetToolName,
 		Arguments: map[string]any{
 			"workspace_id":             "ws_test",
-			"changes":                  []any{map[string]any{"key": "server.port", "value": secretLike}},
+			"changes":                  []any{map[string]any{"key": "http.mcp.port", "value": secretLike}},
 			"__codemcp_config_binding": map[string]any{"version": 1, "config_root": privateRoot, "config_fingerprint": "private-fingerprint"},
 		},
 		GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "CodeMCP configuration changes require local approval.",

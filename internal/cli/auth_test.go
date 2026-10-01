@@ -69,10 +69,10 @@ func TestAuthStatusUsesStructuredPresenterWithoutHashes(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = true
-	cfg.Auth.AdminEnabled = false
-	cfg.Auth.MCPTokenHash = "mcp-sensitive-hash"
-	cfg.Auth.AdminTokenHash = "admin-sensitive-hash"
+	cfg.HTTP.MCP.Auth.Enabled = true
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-sensitive-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-sensitive-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

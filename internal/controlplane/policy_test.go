@@ -13,7 +13,7 @@ func TestReadOnlyCommandPolicy(t *testing.T) {
 		{"workspace", "access", "list", "ws_test"}, {"upstream", "server", "show", "server"}, {"tunnel", "status"}, {"upgrade", "check"}, {"update", "check"},
 		{"request", "list"}, {"request", "view", "req_test"}, {"req", "ls"}, {"req", "show", "req_test"}, {"req", "info", "req_test"},
 		{"st"}, {"cfg", "ls"}, {"ws", "access", "ls", "ws_test"}, {"upstream", "server", "st", "server"}, {"tunnel", "st"}, {"completion", "bash"},
-		{"--config-dir", "/tmp/config", "config", "get", "server.expose"}, {"--verbose", "status"}, {"--help"},
+		{"--config-dir", "/tmp/config", "config", "get", "http.exposure"}, {"--verbose", "status"}, {"--help"},
 	} {
 		if !IsReadOnlyArgs(args) {
 			t.Fatalf("read-only command denied: %#v -> %q", args, PathFromArgs(args))
@@ -34,7 +34,7 @@ func TestReadOnlyCommandPolicy(t *testing.T) {
 
 func TestApprovalEligibleCommandPolicy(t *testing.T) {
 	for _, args := range [][]string{
-		{"upgrade"}, {"update"}, {"install"}, {"config", "set", "server.port", "41001"}, {"workspace", "access", "add", "ws_test", "/tmp"},
+		{"upgrade"}, {"update"}, {"install"}, {"config", "set", "http.mcp.port", "41001"}, {"workspace", "access", "add", "ws_test", "/tmp"},
 	} {
 		if !ApprovalEligibleArgs(args) {
 			t.Fatalf("approval-eligible command denied: %#v -> %q", args, PathFromArgs(args))
@@ -64,7 +64,7 @@ func TestAliasSecurityPolicyMatchesCanonicalCommands(t *testing.T) {
 		canonical []string
 		alias     []string
 	}{
-		{name: "config mutation", canonical: []string{"config", "set", "server.port", "41001"}, alias: []string{"cfg", "set", "server.port", "41001"}},
+		{name: "config mutation", canonical: []string{"config", "set", "http.mcp.port", "41001"}, alias: []string{"cfg", "set", "http.mcp.port", "41001"}},
 		{name: "upstream remove", canonical: []string{"upstream", "server", "remove", "github"}, alias: []string{"ups", "server", "rm", "github"}},
 		{name: "workspace container delete", canonical: []string{"workspace", "container", "delete", "wsc_test"}, alias: []string{"ws", "ctr", "rm", "wsc_test"}},
 		{name: "telegram token remove", canonical: []string{"telegram", "token", "remove"}, alias: []string{"tg", "token", "rm"}},

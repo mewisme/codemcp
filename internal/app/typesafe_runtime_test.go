@@ -120,10 +120,10 @@ func isolateTypeSafeApp(t *testing.T) config.Config {
 	cleanup := secretstore.UseMemoryForTesting()
 	t.Cleanup(cleanup)
 	cfg := config.Default()
-	cfg.Admin.Enabled = false
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.Admin.Enabled = false
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Integrations.RTK.Enabled = false
 	cfg.Integrations.CodeGraph.Enabled = false
 	return cfg

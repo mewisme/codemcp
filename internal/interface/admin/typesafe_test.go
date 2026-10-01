@@ -24,8 +24,8 @@ func TestTypeSafeAdminStatusDoctorProbeAndConfigParity(t *testing.T) {
 	defer restore()
 
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	cfg.Integrations.TypeSafe.Enabled = true
 	previousRoot := configformat.RootPath()
 	if err := configformat.SetRootPath(root); err != nil {

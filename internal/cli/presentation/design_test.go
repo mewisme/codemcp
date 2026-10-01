@@ -15,8 +15,8 @@ func TestTypedDesignEntityListMatchesRailHierarchy(t *testing.T) {
 			EntityList{
 				Title: "Settings · 2",
 				Items: []Entity{
-					{Title: "admin", Fields: []Field{{Label: "admin.enabled", Value: true}, {Label: "admin.port", Value: 37422}}},
-					{Title: "server", Fields: []Field{{Label: "server.enabled", Value: false}}},
+					{Title: "admin", Fields: []Field{{Label: "http.admin.enabled", Value: true}, {Label: "http.admin.port", Value: 37422}}},
+					{Title: "server", Fields: []Field{{Label: "http.mcp.enabled", Value: false}}},
 				},
 			},
 		},
@@ -27,11 +27,11 @@ func TestTypedDesignEntityListMatchesRailHierarchy(t *testing.T) {
 		"◆  Settings · 2\n" +
 		"│\n" +
 		"│  ◆ admin\n" +
-		"│  │  admin.enabled — true\n" +
-		"│  │  admin.port — 37422\n" +
+		"│  │  http.admin.enabled — true\n" +
+		"│  │  http.admin.port — 37422\n" +
 		"│\n" +
 		"│  ◆ server\n" +
-		"│  │  server.enabled — false\n" +
+		"│  │  http.mcp.enabled — false\n" +
 		"│\n" +
 		"└  Done\n"
 	if got := output.String(); got != want {

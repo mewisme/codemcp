@@ -186,45 +186,48 @@ func splitScopedSettingList(raw string) []string {
 	return values
 }
 
-func serverSettingsCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "server", Short: "Manage MCP HTTP server settings"}
-	cmd.AddCommand(
-		scopedToggleCommand("enable", "Enable MCP HTTP server", "MCP HTTP server enabled", "server.enabled", true),
-		scopedToggleCommand("disable", "Disable MCP HTTP server", "MCP HTTP server disabled", "server.enabled", false),
-		scopedValueCommand("port", "Set MCP HTTP port", "MCP HTTP port updated", "server.port"),
+func httpSettingsCommand() *cobra.Command {
+	cmd := &cobra.Command{Use: "http", Short: "Manage local HTTP endpoints and exposure"}
+
+	mcp := &cobra.Command{Use: "mcp", Short: "Manage the MCP HTTP endpoint"}
+	mcp.AddCommand(
+		scopedToggleCommand("enable", "Enable MCP HTTP server", "MCP HTTP server enabled", "http.mcp.enabled", true),
+		scopedToggleCommand("disable", "Disable MCP HTTP server", "MCP HTTP server disabled", "http.mcp.enabled", false),
+		scopedValueCommand("port", "Set MCP HTTP port", "MCP HTTP port updated", "http.mcp.port"),
 	)
-	expose := &cobra.Command{Use: "expose", Short: "Manage MCP HTTP exposure"}
-	expose.AddCommand(scopedValueCommand("mode", "Set MCP HTTP exposure mode", "Exposure mode updated", "server.expose.mode"))
+
+	admin := &cobra.Command{Use: "admin", Short: "Manage the Admin HTTP endpoint"}
+	admin.AddCommand(
+		scopedToggleCommand("enable", "Enable Admin HTTP server", "Admin HTTP server enabled", "http.admin.enabled", true),
+		scopedToggleCommand("disable", "Disable Admin HTTP server", "Admin HTTP server disabled", "http.admin.enabled", false),
+		scopedValueCommand("port", "Set Admin HTTP port", "Admin HTTP port updated", "http.admin.port"),
+	)
+
+	exposure := &cobra.Command{Use: "exposure", Short: "Manage shared HTTP network exposure"}
+	exposure.AddCommand(scopedValueCommand("mode", "Set HTTP exposure mode", "Exposure mode updated", "http.exposure.mode"))
 	interfaces := &cobra.Command{Use: "interface", Short: "Manage exposed network interfaces"}
 	interfaces.AddCommand(
-		scopedListAddRemoveCommand("interface", "Add exposed network interface", "Network interface added", "server.expose.interfaces", true),
-		scopedListAddRemoveCommand("interface", "Remove exposed network interface", "Network interface removed", "server.expose.interfaces", false),
+		scopedListAddRemoveCommand("interface", "Add exposed network interface", "Network interface added", "http.exposure.interfaces", true),
+		scopedListAddRemoveCommand("interface", "Remove exposed network interface", "Network interface removed", "http.exposure.interfaces", false),
 	)
-	insecure := &cobra.Command{Use: "insecure", Short: "Manage insecure transport policy"}
-	http := &cobra.Command{Use: "http", Short: "Manage insecure HTTP policy"}
-	http.AddCommand(
-		scopedToggleCommand("allow", "Allow authenticated insecure HTTP", "Insecure HTTP allowed", "server.allow_insecure_http", true),
-		scopedToggleCommand("deny", "Disallow insecure HTTP", "Insecure HTTP disallowed", "server.allow_insecure_http", false),
+	exposure.AddCommand(interfaces)
+
+	security := &cobra.Command{Use: "security", Short: "Manage shared HTTP security policy"}
+	insecure := &cobra.Command{Use: "insecure", Short: "Manage insecure HTTP policy"}
+	insecure.AddCommand(
+		scopedToggleCommand("allow", "Allow authenticated insecure HTTP", "Insecure HTTP allowed", "http.security.allow_insecure", true),
+		scopedToggleCommand("deny", "Disallow insecure HTTP", "Insecure HTTP disallowed", "http.security.allow_insecure", false),
 	)
-	insecure.AddCommand(http)
 	loopback := &cobra.Command{Use: "loopback", Short: "Manage loopback authentication policy"}
 	auth := &cobra.Command{Use: "auth", Short: "Manage loopback authentication requirement"}
 	auth.AddCommand(
-		scopedToggleCommand("allow", "Allow unauthenticated loopback", "Unauthenticated loopback allowed", "server.allow_unauthenticated_loopback", true),
-		scopedToggleCommand("require", "Require loopback authentication", "Loopback authentication required", "server.allow_unauthenticated_loopback", false),
+		scopedToggleCommand("allow", "Allow unauthenticated loopback", "Unauthenticated loopback allowed", "http.security.allow_unauthenticated_loopback", true),
+		scopedToggleCommand("require", "Require loopback authentication", "Loopback authentication required", "http.security.allow_unauthenticated_loopback", false),
 	)
 	loopback.AddCommand(auth)
-	cmd.AddCommand(expose, interfaces, insecure, loopback)
-	return cmd
-}
+	security.AddCommand(insecure, loopback)
 
-func adminSettingsCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "admin", Short: "Manage Admin HTTP server settings"}
-	cmd.AddCommand(
-		scopedToggleCommand("enable", "Enable Admin HTTP server", "Admin HTTP server enabled", "admin.enabled", true),
-		scopedToggleCommand("disable", "Disable Admin HTTP server", "Admin HTTP server disabled", "admin.enabled", false),
-		scopedValueCommand("port", "Set Admin HTTP port", "Admin HTTP port updated", "admin.port"),
-	)
+	cmd.AddCommand(mcp, admin, exposure, security)
 	return cmd
 }
 

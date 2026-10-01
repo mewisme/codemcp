@@ -262,9 +262,9 @@ func (s *SettingService) Rotate(ctx context.Context, key string) (result Setting
 	}
 	kind := ""
 	switch spec.Key {
-	case "auth.mcp_token":
+	case "http.mcp.auth.token":
 		kind = "mcp"
-	case "auth.admin_token":
+	case "http.admin.auth.token":
 		kind = "admin"
 	default:
 		return SettingResult{}, fmt.Errorf("setting %q is not rotatable", key)
@@ -348,10 +348,10 @@ func (s *SettingService) presentSecret(ctx context.Context, spec config.FieldSpe
 		return SettingResult{}, fmt.Errorf("managed secret %q must use masked-preview presentation", spec.Key)
 	}
 	switch spec.Key {
-	case "auth.mcp_token":
+	case "http.mcp.auth.token":
 		value, err := authSecretPreview(config.RootPath(), "mcp", true)
 		return SettingResult{Value: value, Configured: boolPointer(true)}, err
-	case "auth.admin_token":
+	case "http.admin.auth.token":
 		value, err := authSecretPreview(config.RootPath(), "admin", true)
 		return SettingResult{Value: value, Configured: boolPointer(true)}, err
 	case "telegram.token":
@@ -425,9 +425,9 @@ func (s *SettingService) resolveAndCheckDynamic(ctx context.Context, key string,
 
 func readConfiguredSetting(ctx context.Context, key string) (bool, bool, error) {
 	switch key {
-	case "auth.mcp_token_configured", "auth.admin_token_configured":
+	case "http.mcp.auth.token_configured", "http.admin.auth.token_configured":
 		status, err := GetAuthStatusContext(ctx)
-		if key == "auth.mcp_token_configured" {
+		if key == "http.mcp.auth.token_configured" {
 			return status.MCPConfigured, true, err
 		}
 		return status.AdminConfigured, true, err

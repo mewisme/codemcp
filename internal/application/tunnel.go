@@ -218,7 +218,7 @@ func TunnelStatus() (TunnelDashboard, error) {
 	if cached, err := config.LoadTunnelMetadata(cfg.Tunnel.ID); err == nil {
 		metadata = &cached
 	}
-	return TunnelDashboard{Config: cfg.Tunnel, Status: tunnel.StatusFromConfig(cfg.Tunnel, metadata), MCPHTTPEnabled: cfg.Server.Enabled}, nil
+	return TunnelDashboard{Config: cfg.Tunnel, Status: tunnel.StatusFromConfig(cfg.Tunnel, metadata), MCPHTTPEnabled: cfg.HTTP.MCP.Enabled}, nil
 }
 
 func ConfigureTunnelRuntime(ctx context.Context, input TunnelRuntimeInput) (TunnelDashboard, error) {
@@ -637,7 +637,7 @@ func DeleteManagedTunnel(ctx context.Context, id string, clearConfig bool) (Mana
 	}
 	id = strings.TrimSpace(id)
 	configuredTunnel := id != "" && id == strings.TrimSpace(cfg.Tunnel.ID)
-	if configuredTunnel && !cfg.Server.Enabled {
+	if configuredTunnel && !cfg.HTTP.MCP.Enabled {
 		return ManagedTunnelResult{}, errors.New("cannot delete the configured OpenAI tunnel while MCP HTTP is disabled")
 	}
 	clearConfigured := clearConfig && configuredTunnel

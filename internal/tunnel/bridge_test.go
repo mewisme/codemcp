@@ -39,7 +39,7 @@ func TestSDKBridgeConfigGetUsesSameSanitizedWireResult(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	value := "41001"
 	want := mcpconfigwire.GetResult{Setting: mcpconfigwire.Setting{
-		Key: "server.port", Label: "MCP port", Section: "server", Kind: "int",
+		Key: "http.mcp.port", Label: "MCP port", Section: "server", Kind: "int",
 		Readable: true, Writable: true, Value: &value,
 	}}
 	runtime := tools.NewRuntime()
@@ -59,7 +59,7 @@ func TestSDKBridgeConfigGetUsesSameSanitizedWireResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
-		Name: mcpconfigwire.GetToolName, Arguments: map[string]any{"key": "server.port"},
+		Name: mcpconfigwire.GetToolName, Arguments: map[string]any{"key": "http.mcp.port"},
 	})
 	if err != nil {
 		t.Fatal(err)

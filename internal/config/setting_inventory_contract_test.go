@@ -8,8 +8,8 @@ import (
 
 func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 	want := []string{
-		"admin.enabled", "admin.port",
-		"auth.admin_enabled", "auth.admin_token_hash", "auth.mcp_enabled", "auth.mcp_legacy_bearer", "auth.mcp_token_hash",
+		"http.admin.enabled", "http.admin.port",
+		"http.admin.auth.enabled", "http.admin.auth.token_hash", "http.mcp.auth.enabled", "http.mcp.auth.legacy_bearer", "http.mcp.auth.token_hash",
 		"approval.explain.mode", "approval.semantic.critical_action", "approval.semantic.enabled", "approval.semantic.fail_mode", "approval.semantic.high_action",
 		"approval.semantic.low_action", "approval.semantic.medium_action", "approval.semantic.minimum_confidence", "approval.semantic.provider", "approval.semantic.timeout_ms",
 		"integrations.caveman.active", "integrations.caveman.mode", "integrations.codegraph.enabled", "integrations.codegraph.path",
@@ -19,7 +19,7 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 		"notifications.approval.desktop_enabled", "notifications.approval.enabled", "notifications.approval.pending",
 		"notifications.approval.resolved", "notifications.approval.telegram_enabled",
 		"notifications.completion.desktop_enabled", "notifications.completion.enabled", "notifications.completion.telegram_enabled",
-		"server.allow_insecure_http", "server.allow_unauthenticated_loopback", "server.enabled", "server.expose.interfaces", "server.expose.mode", "server.port",
+		"http.security.allow_insecure", "http.security.allow_unauthenticated_loopback", "http.mcp.enabled", "http.exposure.interfaces", "http.exposure.mode", "http.mcp.port",
 		"shell.path",
 		"telemetry.enabled",
 		"telegram.allowed_user_ids", "telegram.enabled", "telegram.topics_enabled", "telegram.logs_mini_app.enabled",
@@ -115,7 +115,7 @@ func TestTunnelAdminSettingRolesSeparateConfiguredInputsFromDerivedState(t *test
 			t.Fatalf("derived state %q has invalid metadata: %#v ok=%t", key, spec, ok)
 		}
 	}
-	for _, key := range []string{"auth.mcp_token", "auth.admin_token"} {
+	for _, key := range []string{"http.mcp.auth.token", "http.admin.auth.token"} {
 		spec, ok := SettingByKey(key)
 		if !ok || spec.ValueRole != SettingValueGenerated {
 			t.Fatalf("generated setting %q has invalid metadata: %#v ok=%t", key, spec, ok)
@@ -146,8 +146,8 @@ func TestUniversalSettingManagedCredentialVocabulary(t *testing.T) {
 		verifiable   bool
 	}{
 		"telegram.token":                {state: "telegram.token_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
-		"auth.mcp_token":                {state: "auth.mcp_token_configured", presentation: SettingPresentationMaskedPreview, rotatable: true},
-		"auth.admin_token":              {state: "auth.admin_token_configured", presentation: SettingPresentationMaskedPreview, rotatable: true},
+		"http.mcp.auth.token":           {state: "http.mcp.auth.token_configured", presentation: SettingPresentationMaskedPreview, rotatable: true},
+		"http.admin.auth.token":         {state: "http.admin.auth.token_configured", presentation: SettingPresentationMaskedPreview, rotatable: true},
 		"integrations.typesafe.api_key": {state: "integrations.typesafe.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
 		"tunnel.api_key":                {state: "tunnel.api_key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true},
 		"tunnel.admin.key":              {state: "tunnel.admin.key_configured", presentation: SettingPresentationMaskedPreview, writable: true, clearable: true, verifiable: true},
@@ -162,14 +162,14 @@ func TestUniversalSettingManagedCredentialVocabulary(t *testing.T) {
 			t.Fatalf("managed credential metadata mismatch for %q: %#v", key, spec)
 		}
 	}
-	for _, hash := range []string{"auth.mcp_token_hash", "auth.admin_token_hash"} {
+	for _, hash := range []string{"http.mcp.auth.token_hash", "http.admin.auth.token_hash"} {
 		spec, ok := SettingByKey(hash)
 		if !ok || !spec.InternalOnly || spec.Secret {
 			t.Fatalf("storage hash %q became a user-managed secret: %#v ok=%t", hash, spec, ok)
 		}
 	}
 	for _, spec := range SettingsByPrefix("auth") {
-		if strings.HasSuffix(spec.Key, "_token_hash") || spec.Key == "auth.mcp_token" || spec.Key == "auth.admin_token" {
+		if strings.HasSuffix(spec.Key, "_token_hash") || spec.Key == "http.mcp.auth.token" || spec.Key == "http.admin.auth.token" {
 			t.Fatalf("internal/write-only credential leaked into readable settings: %#v", spec)
 		}
 	}

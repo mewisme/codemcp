@@ -8,13 +8,13 @@ import (
 
 func TestRuntimeStoreSnapshotIsIsolated(t *testing.T) {
 	cfg := Default()
-	cfg.Server.Expose = ExposureConfig{Mode: ExposureInterfaces, Interfaces: []string{"Ethernet"}}
+	cfg.HTTP.Exposure = ExposureConfig{Mode: ExposureInterfaces, Interfaces: []string{"Ethernet"}}
 	cfg.Shell.Path = []string{"/trusted/bin"}
 	store := NewRuntimeStore(cfg)
 	snapshot := store.Snapshot()
-	snapshot.Server.Expose.Interfaces[0] = "mutated"
+	snapshot.HTTP.Exposure.Interfaces[0] = "mutated"
 	snapshot.Shell.Path[0] = "/mutated/bin"
-	if got := store.Snapshot().Server.Expose.Interfaces[0]; got != "Ethernet" {
+	if got := store.Snapshot().HTTP.Exposure.Interfaces[0]; got != "Ethernet" {
 		t.Fatalf("stored config mutated through snapshot: %q", got)
 	}
 	if got := store.Snapshot().Shell.Path[0]; got != "/trusted/bin" {
@@ -26,12 +26,12 @@ func TestRuntimeStoreFailedUpdateDoesNotCommit(t *testing.T) {
 	store := NewRuntimeStore(Default())
 	expected := errors.New("persist failed")
 	if _, err := store.Update(func(next Config) (Config, error) {
-		next.Server.Port++
+		next.HTTP.MCP.Port++
 		return next, expected
 	}); !errors.Is(err, expected) {
 		t.Fatalf("update error = %v", err)
 	}
-	if got := store.Snapshot().Server.Port; got != Default().Server.Port {
+	if got := store.Snapshot().HTTP.MCP.Port; got != Default().HTTP.MCP.Port {
 		t.Fatalf("failed update committed port %d", got)
 	}
 }
@@ -45,7 +45,7 @@ func TestRuntimeStoreSerializesConcurrentUpdates(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			if _, err := store.Update(func(next Config) (Config, error) {
-				next.Server.Port++
+				next.HTTP.MCP.Port++
 				return next, nil
 			}); err != nil {
 				t.Error(err)
@@ -53,7 +53,7 @@ func TestRuntimeStoreSerializesConcurrentUpdates(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if got, want := store.Snapshot().Server.Port, Default().Server.Port+updates; got != want {
+	if got, want := store.Snapshot().HTTP.MCP.Port, Default().HTTP.MCP.Port+updates; got != want {
 		t.Fatalf("port = %d, want %d", got, want)
 	}
 }

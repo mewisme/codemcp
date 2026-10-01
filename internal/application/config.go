@@ -107,8 +107,8 @@ func Initialize(options InitOptions) (result InitResult, resultErr error) {
 	adminToken := auth.GenerateToken("admin")
 	tokenSpan.EndMessage("Initial authentication tokens generated", tracepkg.Bool("mcp_generated", true), tracepkg.Bool("admin_generated", true))
 	hashSpan := tracepkg.Start(ctx, "AUTH", "auth.tokens.hash", "Hashing initial authentication tokens", tracepkg.Int("count", 2))
-	cfg.Auth.MCPTokenHash = auth.HashToken(mcpToken)
-	cfg.Auth.AdminTokenHash = auth.HashToken(adminToken)
+	cfg.HTTP.MCP.Auth.TokenHash = auth.HashToken(mcpToken)
+	cfg.HTTP.Admin.Auth.TokenHash = auth.HashToken(adminToken)
 	hashSpan.EndMessage("Initial authentication tokens hashed", tracepkg.Int("count", 2))
 	validateSpan := tracepkg.Start(ctx, "CONFIG", "config.validate", "Validating initial configuration")
 	if err := config.Validate(cfg); err != nil {

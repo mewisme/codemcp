@@ -23,14 +23,14 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("telegram allowed user IDs must be positive: %d", id)
 		}
 	}
-	if cfg.Server.Port < 1 || cfg.Server.Port > 65535 {
-		return fmt.Errorf("server port must be between 1 and 65535: %d", cfg.Server.Port)
+	if cfg.HTTP.MCP.Port < 1 || cfg.HTTP.MCP.Port > 65535 {
+		return fmt.Errorf("http.mcp.port must be between 1 and 65535: %d", cfg.HTTP.MCP.Port)
 	}
-	if cfg.Admin.Enabled && (cfg.Admin.Port < 1 || cfg.Admin.Port > 65535) {
-		return fmt.Errorf("admin port must be between 1 and 65535: %d", cfg.Admin.Port)
+	if cfg.HTTP.Admin.Enabled && (cfg.HTTP.Admin.Port < 1 || cfg.HTTP.Admin.Port > 65535) {
+		return fmt.Errorf("http.admin.port must be between 1 and 65535: %d", cfg.HTTP.Admin.Port)
 	}
-	if cfg.Server.Enabled && cfg.Admin.Enabled && cfg.Admin.Port == cfg.Server.Port {
-		return errors.New("admin port must differ from server port")
+	if cfg.HTTP.MCP.Enabled && cfg.HTTP.Admin.Enabled && cfg.HTTP.Admin.Port == cfg.HTTP.MCP.Port {
+		return errors.New("http.admin.port must differ from http.mcp.port")
 	}
 	if _, err := NormalizeAllowDirs(cfg.Permissions.AllowDirs); err != nil {
 		return err
@@ -92,44 +92,44 @@ func Validate(cfg Config) error {
 	default:
 		return fmt.Errorf("approval.explain.mode must be off, manual, or auto: %q", cfg.Approval.Explain.Mode)
 	}
-	exposure := NormalizeExposure(cfg.Server.Expose)
+	exposure := NormalizeExposure(cfg.HTTP.Exposure)
 	switch exposure.Mode {
 	case ExposureNone, ExposureAll, ExposureWildcard:
-		if len(cfg.Server.Expose.Interfaces) != 0 {
-			return errors.New("server expose interfaces must be empty unless mode is interfaces")
+		if len(cfg.HTTP.Exposure.Interfaces) != 0 {
+			return errors.New("http.exposure.interfaces must be empty unless mode is interfaces")
 		}
 	case ExposureInterfaces:
 		if len(exposure.Interfaces) == 0 {
-			return errors.New("server expose interfaces mode requires at least one interface")
+			return errors.New("http.exposure.mode=interfaces requires at least one interface")
 		}
 	default:
-		return fmt.Errorf("server expose mode must be none, all, 0.0.0.0, or interfaces: %q", cfg.Server.Expose.Mode)
+		return fmt.Errorf("http.exposure.mode must be none, all, 0.0.0.0, or interfaces: %q", cfg.HTTP.Exposure.Mode)
 	}
-	mcpUnauthenticated := cfg.Server.Enabled && !cfg.Auth.MCPEnabled
-	adminUnauthenticated := cfg.Admin.Enabled && !cfg.Auth.AdminEnabled
+	mcpUnauthenticated := cfg.HTTP.MCP.Enabled && !cfg.HTTP.MCP.Auth.Enabled
+	adminUnauthenticated := cfg.HTTP.Admin.Enabled && !cfg.HTTP.Admin.Auth.Enabled
 	if mcpUnauthenticated || adminUnauthenticated {
-		if !cfg.Server.AllowUnauthenticatedLoopback {
-			return errors.New("disabling authentication on an enabled HTTP endpoint requires server.allow_unauthenticated_loopback=true; this acknowledgement is only valid with server.expose.mode=none")
+		if !cfg.HTTP.Security.AllowUnauthenticatedLoopback {
+			return errors.New("disabling authentication on an enabled HTTP endpoint requires http.security.allow_unauthenticated_loopback=true; this acknowledgement is only valid with http.exposure.mode=none")
 		}
 		if exposure.Mode != ExposureNone {
-			return errors.New("unauthenticated HTTP endpoints require server.expose.mode=none (loopback only); network exposure cannot be combined with disabled authentication")
+			return errors.New("unauthenticated HTTP endpoints require http.exposure.mode=none (loopback only); network exposure cannot be combined with disabled authentication")
 		}
 	}
-	if exposure.Mode != ExposureNone && (cfg.Server.Enabled || cfg.Admin.Enabled) {
-		if !cfg.Server.AllowInsecureHTTP {
-			return errors.New("non-loopback HTTP exposure requires server.allow_insecure_http=true; prefer Secure MCP Tunnel or a TLS reverse proxy")
+	if exposure.Mode != ExposureNone && (cfg.HTTP.MCP.Enabled || cfg.HTTP.Admin.Enabled) {
+		if !cfg.HTTP.Security.AllowInsecure {
+			return errors.New("non-loopback HTTP exposure requires http.security.allow_insecure=true; prefer Secure MCP Tunnel or a TLS reverse proxy")
 		}
-		if cfg.Server.Enabled && (!cfg.Auth.MCPEnabled || cfg.Auth.MCPTokenHash == "") {
+		if cfg.HTTP.MCP.Enabled && (!cfg.HTTP.MCP.Auth.Enabled || cfg.HTTP.MCP.Auth.TokenHash == "") {
 			return errors.New("network exposure requires MCP authentication with a configured token; run cm auth mcp create")
 		}
-		if cfg.Admin.Enabled && (!cfg.Auth.AdminEnabled || cfg.Auth.AdminTokenHash == "") {
+		if cfg.HTTP.Admin.Enabled && (!cfg.HTTP.Admin.Auth.Enabled || cfg.HTTP.Admin.Auth.TokenHash == "") {
 			return errors.New("network exposure with the admin endpoint enabled requires admin authentication with a configured token; run cm auth admin create")
 		}
 	}
-	if cfg.Server.Enabled && cfg.Auth.MCPEnabled && cfg.Auth.MCPTokenHash == "" {
+	if cfg.HTTP.MCP.Enabled && cfg.HTTP.MCP.Auth.Enabled && cfg.HTTP.MCP.Auth.TokenHash == "" {
 		return errors.New("MCP auth is enabled but no token is configured; run cm auth mcp create")
 	}
-	if cfg.Admin.Enabled && cfg.Auth.AdminEnabled && cfg.Auth.AdminTokenHash == "" {
+	if cfg.HTTP.Admin.Enabled && cfg.HTTP.Admin.Auth.Enabled && cfg.HTTP.Admin.Auth.TokenHash == "" {
 		return errors.New("admin auth is enabled but no token is configured; run cm auth admin create")
 	}
 	if err := tunnel.ValidateConfig(cfg.Tunnel); err != nil {
@@ -139,10 +139,10 @@ func Validate(cfg Config) error {
 }
 
 func UnauthenticatedLoopbackActive(cfg Config) bool {
-	if !cfg.Server.AllowUnauthenticatedLoopback {
+	if !cfg.HTTP.Security.AllowUnauthenticatedLoopback {
 		return false
 	}
-	return (cfg.Server.Enabled && !cfg.Auth.MCPEnabled) || (cfg.Admin.Enabled && !cfg.Auth.AdminEnabled)
+	return (cfg.HTTP.MCP.Enabled && !cfg.HTTP.MCP.Auth.Enabled) || (cfg.HTTP.Admin.Enabled && !cfg.HTTP.Admin.Auth.Enabled)
 }
 
 func UnauthenticatedLoopbackWarning() string {
@@ -150,11 +150,11 @@ func UnauthenticatedLoopbackWarning() string {
 }
 
 func CleartextHTTPActive(cfg Config) bool {
-	return NormalizeExposure(cfg.Server.Expose).Mode != ExposureNone
+	return NormalizeExposure(cfg.HTTP.Exposure).Mode != ExposureNone
 }
 
 func CleartextHTTPWarning() string {
-	return "WARNING: server.expose is not none — bearer tokens and request contents travel on cleartext HTTP; CodeMCP has no built-in TLS (prefer Secure MCP Tunnel, a TLS reverse proxy, or a trusted/encrypted network)"
+	return "WARNING: http.exposure is not none — bearer tokens and request contents travel on cleartext HTTP; CodeMCP has no built-in TLS (prefer Secure MCP Tunnel, a TLS reverse proxy, or a trusted/encrypted network)"
 }
 
 func SecurityWarnings(cfg Config) []string {
@@ -169,8 +169,8 @@ func SecurityWarnings(cfg Config) []string {
 }
 
 func ValidateMCPTransports(cfg Config) error {
-	if !cfg.Server.Enabled && !cfg.Tunnel.Enabled {
-		return errors.New("at least one MCP transport must be enabled: MCP HTTP (server.enabled) or OpenAI Secure MCP Tunnel (tunnel.enabled)")
+	if !cfg.HTTP.MCP.Enabled && !cfg.Tunnel.Enabled {
+		return errors.New("at least one MCP transport must be enabled: MCP HTTP (http.mcp.enabled) or OpenAI Secure MCP Tunnel (tunnel.enabled)")
 	}
 	return nil
 }

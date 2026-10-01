@@ -144,7 +144,7 @@ Supported configuration mutations are applied to the running runtime through its
 If the runtime is stopped, persisted changes take effect on the next start.
 
 ```bash
-cm config set server.port 41021
+cm config set http.mcp.port 41021
 cm config verify
 ```
 

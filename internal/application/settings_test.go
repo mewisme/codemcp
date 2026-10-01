@@ -28,7 +28,7 @@ func TestSettingServiceReadListDiffWhyAndDefaultReset(t *testing.T) {
 	isolateSettingServiceConfig(t)
 	service := NewSettingService()
 
-	result, err := service.Set(t.Context(), "server.port", "40123")
+	result, err := service.Set(t.Context(), "http.mcp.port", "40123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,61 +39,61 @@ func TestSettingServiceReadListDiffWhyAndDefaultReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != 40123 {
-		t.Fatalf("persisted port=%d", loaded.Server.Port)
+	if loaded.HTTP.MCP.Port != 40123 {
+		t.Fatalf("persisted port=%d", loaded.HTTP.MCP.Port)
 	}
 
-	listed, err := service.List(t.Context(), "server")
+	listed, err := service.List(t.Context(), "http")
 	if err != nil {
 		t.Fatal(err)
 	}
 	foundPort := false
 	for _, item := range listed {
-		if item.Spec.InternalOnly || item.Spec.Key == "auth.mcp_token_hash" || item.Spec.Key == "auth.admin_token_hash" {
+		if item.Spec.InternalOnly || item.Spec.Key == "http.mcp.auth.token_hash" || item.Spec.Key == "http.admin.auth.token_hash" {
 			t.Fatalf("internal setting leaked into list: %#v", item)
 		}
-		if item.Spec.Key == "server.port" {
+		if item.Spec.Key == "http.mcp.port" {
 			foundPort = item.Value == "40123"
 		}
 	}
 	if !foundPort {
-		t.Fatalf("server.port missing from list: %#v", listed)
+		t.Fatalf("http.mcp.port missing from list: %#v", listed)
 	}
 
-	diff, err := service.Diff(t.Context(), "server")
+	diff, err := service.Diff(t.Context(), "http")
 	if err != nil {
 		t.Fatal(err)
 	}
 	foundDiff := false
 	for _, item := range diff {
-		if item.Spec.Key == "server.port" {
+		if item.Spec.Key == "http.mcp.port" {
 			foundDiff = item.Value == "40123" && item.Baseline == "37421"
 		}
 	}
 	if !foundDiff {
-		t.Fatalf("server.port missing from diff: %#v", diff)
+		t.Fatalf("http.mcp.port missing from diff: %#v", diff)
 	}
 
-	why, err := service.Why(t.Context(), "server.port")
+	why, err := service.Why(t.Context(), "http.mcp.port")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if why.Spec.Key != "server.port" || !why.HasBaseline || why.Baseline != "37421" {
+	if why.Spec.Key != "http.mcp.port" || !why.HasBaseline || why.Baseline != "37421" {
 		t.Fatalf("why=%#v", why)
 	}
-	if _, err := service.Why(t.Context(), "auth.mcp_token_hash"); err == nil {
+	if _, err := service.Why(t.Context(), "http.mcp.auth.token_hash"); err == nil {
 		t.Fatal("internal auth hash was accepted as a user setting")
 	}
 
-	if _, err := service.Unset(t.Context(), "server.port"); err != nil {
+	if _, err := service.Unset(t.Context(), "http.mcp.port"); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err = config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != config.Default().Server.Port {
-		t.Fatalf("unset port=%d want=%d", loaded.Server.Port, config.Default().Server.Port)
+	if loaded.HTTP.MCP.Port != config.Default().HTTP.MCP.Port {
+		t.Fatalf("unset port=%d want=%d", loaded.HTTP.MCP.Port, config.Default().HTTP.MCP.Port)
 	}
 }
 
@@ -103,7 +103,7 @@ func TestSettingServiceStaticMutationMatchesCanonicalConfigAuthority(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewSettingService().Set(t.Context(), "server.port", "40123"); err != nil {
+	if _, err := NewSettingService().Set(t.Context(), "http.mcp.port", "40123"); err != nil {
 		t.Fatal(err)
 	}
 	generic, err := config.Load()
@@ -114,7 +114,7 @@ func TestSettingServiceStaticMutationMatchesCanonicalConfigAuthority(t *testing.
 	if err := config.Save(initial); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SetConfigField(t.Context(), "server.port", "40123"); err != nil {
+	if _, err := SetConfigField(t.Context(), "http.mcp.port", "40123"); err != nil {
 		t.Fatal(err)
 	}
 	scoped, err := config.Load()
@@ -218,7 +218,7 @@ func TestTelegramTokenManagedSecretSetting(t *testing.T) {
 
 	if _, err := service.Apply(t.Context(), []SettingChange{
 		{Key: "telegram.token", Value: secret},
-		{Key: "server.port", Value: "40123"},
+		{Key: "http.mcp.port", Value: "40123"},
 	}); err == nil {
 		t.Fatal("Telegram token mutation was combined with normal config mutation")
 	}
@@ -247,7 +247,7 @@ func TestSettingServiceNormalMutationReloadsRunningRuntimeExactlyOnce(t *testing
 		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root,
 	})
 
-	result, err := NewSettingService().Set(t.Context(), "server.port", "40123")
+	result, err := NewSettingService().Set(t.Context(), "http.mcp.port", "40123")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,8 +273,8 @@ func TestSettingServiceApplyIsAtomicAndReloadsRunningRuntimeOnce(t *testing.T) {
 
 	service := NewSettingService()
 	applied, err := service.Apply(t.Context(), []SettingChange{
-		{Key: "server.port", Value: "40123"},
-		{Key: "admin.port", Value: "40124"},
+		{Key: "http.mcp.port", Value: "40123"},
+		{Key: "http.admin.port", Value: "40124"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -286,14 +286,14 @@ func TestSettingServiceApplyIsAtomicAndReloadsRunningRuntimeOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != 40123 || loaded.Admin.Port != 40124 {
+	if loaded.HTTP.MCP.Port != 40123 || loaded.HTTP.Admin.Port != 40124 {
 		t.Fatalf("multi-setting mutation was not persisted atomically: %#v", loaded)
 	}
 
 	before := loaded
 	_, err = service.Apply(t.Context(), []SettingChange{
-		{Key: "server.port", Value: "40223"},
-		{Key: "admin.port", Value: "70000"},
+		{Key: "http.mcp.port", Value: "40223"},
+		{Key: "http.admin.port", Value: "70000"},
 	})
 	if err == nil {
 		t.Fatal("invalid multi-setting mutation unexpectedly succeeded")
@@ -324,8 +324,8 @@ func TestSettingServiceApplyStaticNoOpDoesNotReloadRunningRuntime(t *testing.T) 
 
 	defaults := config.Default()
 	applied, err := NewSettingService().Apply(t.Context(), []SettingChange{
-		{Key: "server.port", Value: strconv.Itoa(defaults.Server.Port)},
-		{Key: "admin.port", Value: strconv.Itoa(defaults.Admin.Port)},
+		{Key: "http.mcp.port", Value: strconv.Itoa(defaults.HTTP.MCP.Port)},
+		{Key: "http.admin.port", Value: strconv.Itoa(defaults.HTTP.Admin.Port)},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -338,8 +338,8 @@ func TestSettingServiceApplyStaticNoOpDoesNotReloadRunningRuntime(t *testing.T) 
 func TestSettingServiceApplyStaticStoppedRuntimeReportsNoReload(t *testing.T) {
 	isolateSettingServiceConfig(t)
 	applied, err := NewSettingService().Apply(t.Context(), []SettingChange{
-		{Key: "server.port", Value: "40123"},
-		{Key: "admin.port", Value: "40124"},
+		{Key: "http.mcp.port", Value: "40123"},
+		{Key: "http.admin.port", Value: "40124"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -351,7 +351,7 @@ func TestSettingServiceApplyStaticStoppedRuntimeReportsNoReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != 40123 || loaded.Admin.Port != 40124 {
+	if loaded.HTTP.MCP.Port != 40123 || loaded.HTTP.Admin.Port != 40124 {
 		t.Fatalf("stopped-runtime mutation not persisted: %#v", loaded)
 	}
 }
@@ -373,8 +373,8 @@ func TestSettingServiceApplyStaticReloadFailureRollsBack(t *testing.T) {
 	})
 
 	_, err = NewSettingService().Apply(t.Context(), []SettingChange{
-		{Key: "server.port", Value: "40123"},
-		{Key: "admin.port", Value: "40124"},
+		{Key: "http.mcp.port", Value: "40123"},
+		{Key: "http.admin.port", Value: "40124"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "persisted configuration rolled back") {
 		t.Fatalf("err=%v", err)
@@ -409,7 +409,7 @@ func TestSettingServiceApplyStaticRollbackFailureRequiresManualReconciliation(t 
 		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root,
 	})
 
-	_, err := NewSettingService().Apply(t.Context(), []SettingChange{{Key: "server.port", Value: "40123"}})
+	_, err := NewSettingService().Apply(t.Context(), []SettingChange{{Key: "http.mcp.port", Value: "40123"}})
 	if err == nil || !strings.Contains(err.Error(), "manual reconciliation required") || !strings.Contains(err.Error(), "rollback persisted configuration") {
 		t.Fatalf("err=%v", err)
 	}
@@ -432,8 +432,8 @@ func TestTunnelAdminGenericBatchAndDomainFacadeConverge(t *testing.T) {
 	batchAdmin := batch.Config.Tunnel.Admin
 
 	base := config.Default()
-	base.Auth.MCPTokenHash = "mcp-configured-hash"
-	base.Auth.AdminTokenHash = "admin-configured-hash"
+	base.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
+	base.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	if err := config.Save(base); err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +500,7 @@ func TestSettingServiceAuthRotateUsesCredentialAuthority(t *testing.T) {
 	root := isolateSettingServiceConfig(t)
 	service := NewSettingService()
 
-	rotated, err := service.Rotate(t.Context(), "auth.mcp_token")
+	rotated, err := service.Rotate(t.Context(), "http.mcp.auth.token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +511,7 @@ func TestSettingServiceAuthRotateUsesCredentialAuthority(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Auth.MCPTokenHash == "" || cfg.Auth.MCPTokenHash == rotated.Value {
+	if cfg.HTTP.MCP.Auth.TokenHash == "" || cfg.HTTP.MCP.Auth.TokenHash == rotated.Value {
 		t.Fatalf("credential authority did not persist a one-way hash")
 	}
 	stored, err := auth.LoadToken(root, "mcp")
@@ -519,20 +519,20 @@ func TestSettingServiceAuthRotateUsesCredentialAuthority(t *testing.T) {
 		t.Fatalf("auth token secretstore value=%q err=%v", stored, err)
 	}
 
-	presented, err := service.Present(t.Context(), "auth.mcp_token")
+	presented, err := service.Present(t.Context(), "http.mcp.auth.token")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if presented.Value != tracepkg.MaskSecret(rotated.Value, true) || presented.Configured == nil || !*presented.Configured || strings.Contains(presented.Value, rotated.Value) {
 		t.Fatalf("presented=%#v", presented)
 	}
-	if _, err := service.Read(t.Context(), "auth.mcp_token"); err == nil || !strings.Contains(err.Error(), "write-only") {
+	if _, err := service.Read(t.Context(), "http.mcp.auth.token"); err == nil || !strings.Contains(err.Error(), "write-only") {
 		t.Fatalf("raw secret read err=%v", err)
 	}
-	if _, err := service.Set(t.Context(), "auth.mcp_token", "caller-selected-secret"); err == nil {
+	if _, err := service.Set(t.Context(), "http.mcp.auth.token", "caller-selected-secret"); err == nil {
 		t.Fatal("generated auth token accepted arbitrary set")
 	}
-	if _, err := service.Reveal(t.Context(), "auth.mcp_token"); err == nil {
+	if _, err := service.Reveal(t.Context(), "http.mcp.auth.token"); err == nil {
 		t.Fatal("non-revealable auth token was revealed")
 	}
 }
@@ -604,7 +604,7 @@ func TestSettingServiceTunnelSecretPresentationAndTraceAreSafe(t *testing.T) {
 
 func TestSettingServiceLegacyAuthHashUsesExplicitLegacyMaskedPreview(t *testing.T) {
 	isolateSettingServiceConfig(t)
-	presented, err := NewSettingService().Present(t.Context(), "auth.mcp_token")
+	presented, err := NewSettingService().Present(t.Context(), "http.mcp.auth.token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1080,7 +1080,7 @@ func TestSettingServiceApplyRejectsMixedOwnersBeforeMutation(t *testing.T) {
 	})
 
 	_, err = service.Apply(t.Context(), []SettingChange{
-		{Key: "server.port", Value: "40123"},
+		{Key: "http.mcp.port", Value: "40123"},
 		{Key: "upstream.servers[docs].command", Value: "bun"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "unsupported transaction owners") {
@@ -1370,8 +1370,8 @@ func isolateSettingServiceConfig(t *testing.T) string {
 		_ = configformat.SetRootPath(previous)
 	})
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-configured-hash"
-	cfg.Auth.AdminTokenHash = "admin-configured-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

@@ -14,11 +14,11 @@ func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 	if cfg.Notifications.Completion.Enabled || !cfg.Notifications.Completion.DesktopEnabled || cfg.Notifications.Completion.TelegramEnabled {
 		t.Fatalf("completion notification defaults are not safe opt-in: %#v", cfg.Notifications.Completion)
 	}
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	for key, value := range map[string]string{
-		"server.port": "4000", "server.expose": "true", "admin.enabled": "false",
+		"http.mcp.port": "4000", "http.exposure": "true", "http.admin.enabled": "false",
 		"integrations.ponytail.active": "false", "integrations.ponytail.mode": "ULTRA", "integrations.caveman.active": "false", "integrations.caveman.mode": "WENYAN-ULTRA",
 		"integrations.rtk.enabled": "false", "integrations.rtk.path": "/opt/rtk/bin/rtk",
 		"integrations.codegraph.enabled": "true", "integrations.codegraph.path": "/opt/codegraph/bin/codegraph",
@@ -29,7 +29,7 @@ func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 			t.Fatalf("%s: %v", key, err)
 		}
 	}
-	if cfg.Server.Port != 4000 || cfg.Server.Expose.Mode != ExposureWildcard || cfg.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "/opt/rtk/bin/rtk" || !cfg.Integrations.CodeGraph.Enabled || cfg.Integrations.CodeGraph.Path != "/opt/codegraph/bin/codegraph" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 || !cfg.Notifications.Completion.Enabled || cfg.Notifications.Completion.DesktopEnabled || !cfg.Notifications.Completion.TelegramEnabled {
+	if cfg.HTTP.MCP.Port != 4000 || cfg.HTTP.Exposure.Mode != ExposureWildcard || cfg.HTTP.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "/opt/rtk/bin/rtk" || !cfg.Integrations.CodeGraph.Enabled || cfg.Integrations.CodeGraph.Path != "/opt/codegraph/bin/codegraph" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 || !cfg.Notifications.Completion.Enabled || cfg.Notifications.Completion.DesktopEnabled || !cfg.Notifications.Completion.TelegramEnabled {
 		t.Fatalf("cfg=%#v", cfg)
 	}
 	if value, err := RawValue(cfg, "shell.path"); err != nil || value != "/opt/tools,/usr/local/custom/bin" {
@@ -52,19 +52,19 @@ func TestInteractiveFieldIsRemoved(t *testing.T) {
 
 func TestFieldSetValueValidationIsTransactional(t *testing.T) {
 	cfg := Default()
-	cfg.Auth.MCPTokenHash = "mcp"
-	cfg.Auth.AdminTokenHash = "admin"
-	original := cfg.Server.Port
-	if err := SetValueValidated(&cfg, "server.port", "70000"); err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin"
+	original := cfg.HTTP.MCP.Port
+	if err := SetValueValidated(&cfg, "http.mcp.port", "70000"); err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
 		t.Fatalf("err=%v", err)
 	}
-	if cfg.Server.Port != original {
-		t.Fatalf("invalid value mutated config: %d", cfg.Server.Port)
+	if cfg.HTTP.MCP.Port != original {
+		t.Fatalf("invalid value mutated config: %d", cfg.HTTP.MCP.Port)
 	}
-	if err := SetValueValidated(&cfg, "server.enabled", "false"); err == nil || !strings.Contains(err.Error(), "at least one MCP transport") {
+	if err := SetValueValidated(&cfg, "http.mcp.enabled", "false"); err == nil || !strings.Contains(err.Error(), "at least one MCP transport") {
 		t.Fatalf("last MCP transport disable err=%v", err)
 	}
-	if !cfg.Server.Enabled {
+	if !cfg.HTTP.MCP.Enabled {
 		t.Fatal("invalid transport update mutated config")
 	}
 	if err := SetValue(&cfg, "integrations.ponytail.mode", "review"); err == nil || err.Error() != "integrations.ponytail.mode must be lite, full, or ultra" {
@@ -83,11 +83,11 @@ func TestFieldSetValueValidationIsTransactional(t *testing.T) {
 
 func TestFieldReadOnlyAndSensitiveValuesNeverExposeSecrets(t *testing.T) {
 	cfg := Default()
-	cfg.Auth.MCPTokenHash = "mcp-secret"
-	cfg.Auth.AdminTokenHash = "admin-secret"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-secret"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-secret"
 	cfg.Tunnel.APIKey = "runtime-secret"
 	cfg.Tunnel.Admin.Key = "admin-tunnel-secret"
-	for _, key := range []string{"auth.mcp_token_hash", "auth.admin_token_hash", "tunnel.api_key", "tunnel.admin.key"} {
+	for _, key := range []string{"http.mcp.auth.token_hash", "http.admin.auth.token_hash", "tunnel.api_key", "tunnel.admin.key"} {
 		spec, ok := FieldByKey(key)
 		if !ok || !spec.Sensitive {
 			t.Fatalf("spec=%#v ok=%t", spec, ok)
@@ -107,7 +107,7 @@ func TestFieldReadOnlyAndSensitiveValuesNeverExposeSecrets(t *testing.T) {
 			t.Fatalf("secret leaked: %s", secret)
 		}
 	}
-	if value, err := RedactedValueAt(cfg, "auth.mcp_token_hash"); err != nil || value != RedactedValue {
+	if value, err := RedactedValueAt(cfg, "http.mcp.auth.token_hash"); err != nil || value != RedactedValue {
 		t.Fatalf("redacted value=%#v err=%v", value, err)
 	}
 }
@@ -171,7 +171,7 @@ func TestExplainResolvesLeafBranchAndRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !root.Branch || !hasExplanationChild(root, "shell") || !hasExplanationChild(root, "server") {
+	if !root.Branch || !hasExplanationChild(root, "shell") || !hasExplanationChild(root, "http") {
 		t.Fatalf("root=%#v", root)
 	}
 	if _, err := Explain("integrations.ponytail.enabled"); err == nil || !strings.Contains(err.Error(), "unsupported config key") {
@@ -184,9 +184,37 @@ func TestExplainResolvesLeafBranchAndRoot(t *testing.T) {
 
 func TestExplainSchemaKeysIncludeBranchesAndLeaves(t *testing.T) {
 	keys := SchemaKeys()
-	for _, want := range []string{"server", "server.expose", "server.expose.mode", "shell", "shell.path"} {
+	for _, want := range []string{"http", "http.exposure", "http.exposure.mode", "http.mcp", "http.mcp.port", "shell", "shell.path"} {
 		if !slices.Contains(keys, want) {
 			t.Fatalf("schema keys missing %q: %#v", want, keys)
+		}
+	}
+}
+
+func TestLegacyHTTPSettingKeysCanonicalizeWithoutEnteringInventory(t *testing.T) {
+	tests := map[string]string{
+		"server.enabled":         "http.mcp.enabled",
+		"server.port":            "http.mcp.port",
+		"server.expose.mode":     "http.exposure.mode",
+		"admin.enabled":          "http.admin.enabled",
+		"admin.port":             "http.admin.port",
+		"auth.mcp_enabled":       "http.mcp.auth.enabled",
+		"auth.mcp_legacy_bearer": "http.mcp.auth.legacy_bearer",
+		"auth.admin_enabled":     "http.admin.auth.enabled",
+		"auth.mcp_token":         "http.mcp.auth.token",
+		"auth.admin_token":       "http.admin.auth.token",
+	}
+	for legacy, canonical := range tests {
+		if got := canonicalFieldKey(legacy); got != canonical {
+			t.Fatalf("canonicalFieldKey(%q)=%q want %q", legacy, got, canonical)
+		}
+		if spec, ok := SettingByKey(legacy); !ok || spec.Key != canonical {
+			t.Fatalf("SettingByKey(%q)=%#v,%t want %q", legacy, spec, ok, canonical)
+		}
+	}
+	for _, spec := range Settings() {
+		if strings.HasPrefix(spec.Key, "server.") || strings.HasPrefix(spec.Key, "admin.") || strings.HasPrefix(spec.Key, "auth.") {
+			t.Fatalf("legacy root leaked into canonical setting inventory: %q", spec.Key)
 		}
 	}
 }
@@ -196,14 +224,14 @@ func TestAcceptedValueHintsComeFromTypedSettingMetadata(t *testing.T) {
 		key  string
 		want string
 	}{
-		{key: "server.enabled", want: "true | false"},
-		{key: "server.expose.mode", want: "none | all | 0.0.0.0 | interfaces"},
+		{key: "http.mcp.enabled", want: "true | false"},
+		{key: "http.exposure.mode", want: "none | all | 0.0.0.0 | interfaces"},
 		{key: "shell.path", want: "<absolute-path>[, <absolute-path>...]"},
-		{key: "server.port", want: "integer 1..65535"},
+		{key: "http.mcp.port", want: "integer 1..65535"},
 		{key: "tunnel.control_plane_base_url", want: "<url>"},
 		{key: "llm.provider", want: "<provider-id>"},
 		{key: "llm.api_key", want: "<secret> · protected input"},
-		{key: "auth.mcp_token", want: "generated · rotate to replace"},
+		{key: "http.mcp.auth.token", want: "generated · rotate to replace"},
 		{key: "llm.api_key_configured", want: "read-only · derived"},
 		{key: "llm.providers[<id>].base_url", want: "<provider-id> → <url>"},
 	}
@@ -226,7 +254,7 @@ func TestTypedIntegerBoundsDriveBothHintsAndSetValidation(t *testing.T) {
 		invalid string
 		want    string
 	}{
-		{key: "server.port", invalid: "70000", want: "integer 1..65535"},
+		{key: "http.mcp.port", invalid: "70000", want: "integer 1..65535"},
 		{key: "approval.semantic.timeout_ms", invalid: "99", want: "integer 100..10000"},
 		{key: "integrations.typesafe.timeout_ms", invalid: "30001", want: "integer 100..30000"},
 	}
@@ -339,17 +367,17 @@ func TestFieldPresentationMetadataCoversRegistry(t *testing.T) {
 
 func TestFieldStateUsesDefaultsManagedAndNormalizedLists(t *testing.T) {
 	cfg := Default()
-	port, _ := FieldByKey("server.port")
+	port, _ := FieldByKey("http.mcp.port")
 	state, err := State(cfg, port)
 	if err != nil || state != FieldStateDefault {
 		t.Fatalf("default port state=%q err=%v", state, err)
 	}
-	cfg.Server.Port++
+	cfg.HTTP.MCP.Port++
 	state, err = State(cfg, port)
 	if err != nil || state != FieldStateCustom {
 		t.Fatalf("custom port state=%q err=%v", state, err)
 	}
-	managed, _ := FieldByKey("auth.mcp_token_hash")
+	managed, _ := FieldByKey("http.mcp.auth.token_hash")
 	state, err = State(cfg, managed)
 	if err != nil || state != FieldStateManaged {
 		t.Fatalf("managed state=%q err=%v", state, err)

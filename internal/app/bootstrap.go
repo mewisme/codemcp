@@ -27,7 +27,7 @@ func (a *App) Bootstrap() error {
 			cfg := a.Config.Snapshot()
 			a.Tools = tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) {
 				current := a.Config.Snapshot()
-				return current.Admin.Enabled, current.Admin.Port
+				return current.HTTP.Admin.Enabled, current.HTTP.Admin.Port
 			})
 		}
 		configProvider := application.NewMCPConfigReadService()
@@ -245,7 +245,7 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
-		a.syncMCPHTTP(a.Config.Snapshot().Server.Enabled)
+		a.syncMCPHTTP(a.Config.Snapshot().HTTP.MCP.Enabled)
 		a.attachTunnelLifecycle()
 	})
 	if a.bootstrapErr != nil {

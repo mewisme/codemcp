@@ -293,7 +293,7 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			cfg := inspection.Config
 			return doctor.Component{
 				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "listener configuration is readable",
-				Flags: []doctor.Flag{{ID: "mcp_http", Value: cfg.Server.Enabled}, {ID: "admin", Value: cfg.Admin.Enabled}, {ID: "secure_tunnel", Value: cfg.Tunnel.Enabled}},
+				Flags: []doctor.Flag{{ID: "mcp_http", Value: cfg.HTTP.MCP.Enabled}, {ID: "admin", Value: cfg.HTTP.Admin.Enabled}, {ID: "secure_tunnel", Value: cfg.Tunnel.Enabled}},
 			}, nil
 		}),
 		doctorProvider(doctor.ComponentShellProvider, func(context.Context) (doctor.Component, error) {
@@ -438,17 +438,17 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 			if err != nil {
 				return doctor.Component{}, err
 			}
-			if !inspection.Config.Server.Enabled {
+			if !inspection.Config.HTTP.MCP.Enabled {
 				return disabled("MCP HTTP listener is disabled"), nil
 			}
-			hosts, addresses, err := network.ResolveCurrent(inspection.Config.Server.Expose)
+			hosts, addresses, err := network.ResolveCurrent(inspection.Config.HTTP.Exposure)
 			if err != nil {
 				return doctor.Component{}, err
 			}
 			return doctor.Component{
 				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "network exposure is resolvable",
 				Metrics: []doctor.Metric{{ID: "hosts", Value: int64(len(hosts))}, {ID: "addresses", Value: int64(len(addresses))}},
-				Flags:   []doctor.Flag{{ID: "loopback_only", Value: inspection.Config.Server.Expose.Mode == config.ExposureNone}},
+				Flags:   []doctor.Flag{{ID: "loopback_only", Value: inspection.Config.HTTP.Exposure.Mode == config.ExposureNone}},
 			}, nil
 		}),
 		doctorProvider(doctor.ComponentMCPRegistry, func(context.Context) (doctor.Component, error) {
@@ -460,12 +460,12 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 				return disabled("MCP transport configuration is not initialized"), nil
 			}
 			cfg := inspection.Config
-			if !cfg.Server.Enabled && !cfg.Tunnel.Enabled {
+			if !cfg.HTTP.MCP.Enabled && !cfg.Tunnel.Enabled {
 				return degraded("no MCP transport is enabled", doctor.Remediation{ID: "mcp_transport", Summary: "Enable an MCP transport", Operation: string(capability.ConfigSet)}), nil
 			}
 			return doctor.Component{
 				State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: "MCP transport configuration is available",
-				Flags: []doctor.Flag{{ID: "http", Value: cfg.Server.Enabled}, {ID: "secure_tunnel", Value: cfg.Tunnel.Enabled}, {ID: "auth", Value: cfg.Auth.MCPEnabled}},
+				Flags: []doctor.Flag{{ID: "http", Value: cfg.HTTP.MCP.Enabled}, {ID: "secure_tunnel", Value: cfg.Tunnel.Enabled}, {ID: "auth", Value: cfg.HTTP.MCP.Auth.Enabled}},
 			}, nil
 		}),
 		doctorProvider(doctor.ComponentMCPOpenAIProfile, func(context.Context) (doctor.Component, error) {

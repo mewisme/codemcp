@@ -4,8 +4,8 @@ import "testing"
 
 func TestSemanticApprovalDefaultsAndFieldMutation(t *testing.T) {
 	cfg := Default()
-	cfg.Auth.MCPTokenHash = "test-mcp-hash"
-	cfg.Auth.AdminTokenHash = "test-admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "test-mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "test-admin-hash"
 	got := cfg.Approval.Semantic
 	if got.Enabled || got.Provider != "typesafe" || got.TimeoutMS != 1500 || got.MinimumConfidence != 0.8 ||
 		got.FailMode != "require_approval" || got.LowAction != "allow" || got.MediumAction != "require_approval" ||
@@ -51,8 +51,8 @@ func TestSemanticApprovalRejectsUnsafeFailureAndMalformedPolicy(t *testing.T) {
 		t.Fatal("semantic approval accepted unbounded-small timeout")
 	}
 	cfg = Default()
-	cfg.Auth.MCPTokenHash = "test-mcp-hash"
-	cfg.Auth.AdminTokenHash = "test-admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "test-mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "test-admin-hash"
 	cfg.Approval.Semantic.LowAction = "execute"
 	if err := Validate(cfg); err == nil {
 		t.Fatal("semantic approval accepted unknown risk action")

@@ -71,7 +71,7 @@ type runtimeControl struct {
 func runtimeControlPath() string { return runtimecontrol.Path() }
 
 func reloadResult(cfg config.Config, networkRestarted bool) runtimeReloadResult {
-	return runtimeReloadResult{PID: os.Getpid(), NetworkRestarted: networkRestarted, ServerEnabled: cfg.Server.Enabled, ServerPort: cfg.Server.Port, AdminEnabled: cfg.Admin.Enabled, AdminPort: cfg.Admin.Port, Exposure: cfg.Server.Expose.Mode}
+	return runtimeReloadResult{PID: os.Getpid(), NetworkRestarted: networkRestarted, ServerEnabled: cfg.HTTP.MCP.Enabled, ServerPort: cfg.HTTP.MCP.Port, AdminEnabled: cfg.HTTP.Admin.Enabled, AdminPort: cfg.HTTP.Admin.Port, Exposure: cfg.HTTP.Exposure.Mode}
 }
 
 func startRuntimeControl(options runtimeControlOptions) (*runtimeControl, error) {

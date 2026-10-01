@@ -137,7 +137,7 @@ func branchDescription(key string) string {
 		return "CodeMCP configuration schema."
 	case "server":
 		return "MCP HTTP server configuration."
-	case "server.expose":
+	case "http.exposure":
 		return "Controls how the MCP HTTP server is exposed."
 	case "admin":
 		return "Admin HTTP server configuration."

@@ -56,7 +56,7 @@ func TestMCPToolContextAllowsOnlyReadOnlyCLICommands(t *testing.T) {
 }
 
 func TestMCPToolContextAllowsExactOneShotRuntimeApproval(t *testing.T) {
-	manager, capability := mintToolContextCapability(t, []string{"config", "set", "server.port", "41001"})
+	manager, capability := mintToolContextCapability(t, []string{"config", "set", "http.mcp.port", "41001"})
 	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -65,23 +65,23 @@ func TestMCPToolContextAllowsExactOneShotRuntimeApproval(t *testing.T) {
 	t.Setenv(controlplane.ToolContextEnv, "1")
 	t.Setenv(controlplane.ControlApprovalEnv, capability)
 	previous := processCommandArgs
-	processCommandArgs = func() []string { return []string{"config", "set", "server.port", "41001"} }
+	processCommandArgs = func() []string { return []string{"config", "set", "http.mcp.port", "41001"} }
 	defer func() { processCommandArgs = previous }()
 	root := newRootCommand()
 	cmd, _, err := root.Find([]string{"config", "set"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareCommand(cmd, []string{"server.port", "41001"}); err != nil {
+	if err := prepareCommand(cmd, []string{"http.mcp.port", "41001"}); err != nil {
 		t.Fatalf("exact approved command denied: %v", err)
 	}
-	if err := prepareCommand(cmd, []string{"server.port", "41001"}); err == nil || !strings.Contains(err.Error(), "approval verification failed") {
+	if err := prepareCommand(cmd, []string{"http.mcp.port", "41001"}); err == nil || !strings.Contains(err.Error(), "approval verification failed") {
 		t.Fatalf("replayed capability was accepted: %v", err)
 	}
 }
 
 func TestMCPToolContextAllowsAliasedOneShotRuntimeApproval(t *testing.T) {
-	aliasArgs := []string{"cfg", "set", "server.port", "41001"}
+	aliasArgs := []string{"cfg", "set", "http.mcp.port", "41001"}
 	manager, capability := mintToolContextCapability(t, aliasArgs)
 	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
@@ -98,16 +98,16 @@ func TestMCPToolContextAllowsAliasedOneShotRuntimeApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareCommand(cmd, []string{"server.port", "41001"}); err != nil {
+	if err := prepareCommand(cmd, []string{"http.mcp.port", "41001"}); err != nil {
 		t.Fatalf("approved aliased command denied: %v", err)
 	}
-	if err := prepareCommand(cmd, []string{"server.port", "41001"}); err == nil || !strings.Contains(err.Error(), "approval verification failed") {
+	if err := prepareCommand(cmd, []string{"http.mcp.port", "41001"}); err == nil || !strings.Contains(err.Error(), "approval verification failed") {
 		t.Fatalf("aliased one-shot capability was replayable: %v", err)
 	}
 }
 
 func TestMCPToolContextApprovalMismatchDoesNotBurnCapability(t *testing.T) {
-	manager, capability := mintToolContextCapability(t, []string{"config", "set", "server.port", "41001"})
+	manager, capability := mintToolContextCapability(t, []string{"config", "set", "http.mcp.port", "41001"})
 	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestMCPToolContextApprovalMismatchDoesNotBurnCapability(t *testing.T) {
 	defer control.Close()
 	t.Setenv(controlplane.ToolContextEnv, "1")
 	t.Setenv(controlplane.ControlApprovalEnv, capability)
-	actual := []string{"config", "set", "server.port", "41002"}
+	actual := []string{"config", "set", "http.mcp.port", "41002"}
 	previous := processCommandArgs
 	processCommandArgs = func() []string { return append([]string(nil), actual...) }
 	defer func() { processCommandArgs = previous }()
@@ -124,11 +124,11 @@ func TestMCPToolContextApprovalMismatchDoesNotBurnCapability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := prepareCommand(cmd, []string{"server.port", "41002"}); err == nil || !strings.Contains(err.Error(), "approval verification failed") {
+	if err := prepareCommand(cmd, []string{"http.mcp.port", "41002"}); err == nil || !strings.Contains(err.Error(), "approval verification failed") {
 		t.Fatalf("mismatch was accepted: %v", err)
 	}
-	actual = []string{"config", "set", "server.port", "41001"}
-	if err := prepareCommand(cmd, []string{"server.port", "41001"}); err != nil {
+	actual = []string{"config", "set", "http.mcp.port", "41001"}
+	if err := prepareCommand(cmd, []string{"http.mcp.port", "41001"}); err != nil {
 		t.Fatalf("exact retry after mismatch denied: %v", err)
 	}
 }

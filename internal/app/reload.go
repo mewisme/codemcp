@@ -26,7 +26,7 @@ func (a *App) ReloadConfig(next config.Config) error {
 	if err != nil {
 		return err
 	}
-	httpChanged := previous.Server.Enabled != next.Server.Enabled
+	httpChanged := previous.HTTP.MCP.Enabled != next.HTTP.MCP.Enabled
 	integrationsChanged := previous.Integrations != next.Integrations
 	permissionsChanged := !slices.Equal(previous.Permissions.AllowDirs, next.Permissions.AllowDirs)
 	shellPathChanged := !slices.Equal(previous.Shell.Path, next.Shell.Path)
@@ -72,7 +72,7 @@ func (a *App) applyRuntimeConfig(next config.Config, typeSafeCandidate typeSafeR
 		}
 	}
 	if httpChanged {
-		a.syncMCPHTTP(next.Server.Enabled)
+		a.syncMCPHTTP(next.HTTP.MCP.Enabled)
 	}
 	if tunnelChanged && a.Tunnel != nil {
 		if err := a.Tunnel.Reconcile(next.Tunnel, cachedTunnelMetadata(next.Tunnel), a.running); err != nil {
@@ -106,7 +106,7 @@ func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integra
 		rollbackErr = errors.Join(rollbackErr, a.Telegram.Reconcile(a.runtimeCtx, previous.Telegram))
 	}
 	if httpChanged {
-		a.syncMCPHTTP(previous.Server.Enabled)
+		a.syncMCPHTTP(previous.HTTP.MCP.Enabled)
 	}
 	return rollbackErr
 }

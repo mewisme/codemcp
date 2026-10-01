@@ -285,21 +285,32 @@ export type UpstreamOAuthSession = {
   expires_at: string
 }
 export type PublicConfig = {
-  server: {
-    enabled: boolean
-    port: number
-    expose: {
+  http: {
+    exposure: {
       mode: "none" | "all" | "0.0.0.0" | "interfaces"
       interfaces: string[]
     }
-    allow_insecure_http: boolean
-  }
-  admin: { enabled: boolean; port: number }
-  auth: {
-    mcp_enabled: boolean
-    admin_enabled: boolean
-    mcp_token_configured: boolean
-    admin_token_configured: boolean
+    security: {
+      allow_insecure: boolean
+      allow_unauthenticated_loopback: boolean
+    }
+    mcp: {
+      enabled: boolean
+      port: number
+      auth: {
+        enabled: boolean
+        legacy_bearer: boolean
+        token_configured: boolean
+      }
+    }
+    admin: {
+      enabled: boolean
+      port: number
+      auth: {
+        enabled: boolean
+        token_configured: boolean
+      }
+    }
   }
   permissions: { allow_dirs: string[] }
   shell: { path: string[] }

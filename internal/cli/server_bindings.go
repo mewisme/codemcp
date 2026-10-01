@@ -38,14 +38,14 @@ func openHTTPBindingsModeContext(ctx context.Context, cfg config.Config, plan li
 		listen = listenOnHostsExactContext
 	}
 	var err error
-	if cfg.Server.Enabled {
-		bindings.mcpListeners, bindings.cfg.Server.Port, err = listen(ctx, "mcp", plan.Hosts, cfg.Server.Port)
+	if cfg.HTTP.MCP.Enabled {
+		bindings.mcpListeners, bindings.cfg.HTTP.MCP.Port, err = listen(ctx, "mcp", plan.Hosts, cfg.HTTP.MCP.Port)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if cfg.Admin.Enabled {
-		bindings.adminListeners, bindings.cfg.Admin.Port, err = listen(ctx, "admin", plan.Hosts, cfg.Admin.Port)
+	if cfg.HTTP.Admin.Enabled {
+		bindings.adminListeners, bindings.cfg.HTTP.Admin.Port, err = listen(ctx, "admin", plan.Hosts, cfg.HTTP.Admin.Port)
 		if err != nil {
 			closeListeners(bindings.mcpListeners)
 			return nil, err
@@ -95,26 +95,26 @@ func (b *httpBindings) CloseUnstarted() {
 }
 
 func networkConfigEqual(left, right config.Config) bool {
-	return left.Server.Enabled == right.Server.Enabled && left.Server.Port == right.Server.Port && config.ExposureEqual(left.Server.Expose, right.Server.Expose) && left.Admin == right.Admin
+	return left.HTTP.MCP.Enabled == right.HTTP.MCP.Enabled && left.HTTP.MCP.Port == right.HTTP.MCP.Port && config.ExposureEqual(left.HTTP.Exposure, right.HTTP.Exposure) && left.HTTP.Admin == right.HTTP.Admin
 }
 
 func listenerPlanEqual(left, right listenerPlan) bool { return slices.Equal(left.Hosts, right.Hosts) }
 
 func listenerPortsDisjoint(left config.Config, right config.Config) bool {
 	leftPorts := map[int]struct{}{}
-	if left.Server.Enabled {
-		leftPorts[left.Server.Port] = struct{}{}
+	if left.HTTP.MCP.Enabled {
+		leftPorts[left.HTTP.MCP.Port] = struct{}{}
 	}
-	if left.Admin.Enabled {
-		leftPorts[left.Admin.Port] = struct{}{}
+	if left.HTTP.Admin.Enabled {
+		leftPorts[left.HTTP.Admin.Port] = struct{}{}
 	}
-	if right.Server.Enabled {
-		if _, exists := leftPorts[right.Server.Port]; exists {
+	if right.HTTP.MCP.Enabled {
+		if _, exists := leftPorts[right.HTTP.MCP.Port]; exists {
 			return false
 		}
 	}
-	if right.Admin.Enabled {
-		if _, exists := leftPorts[right.Admin.Port]; exists {
+	if right.HTTP.Admin.Enabled {
+		if _, exists := leftPorts[right.HTTP.Admin.Port]; exists {
 			return false
 		}
 	}

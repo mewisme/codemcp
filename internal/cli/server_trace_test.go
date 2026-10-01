@@ -49,22 +49,22 @@ func TestListenerFallbackTraceIncludesConflictAndSelectedPort(t *testing.T) {
 	collector := &serverTraceCollector{}
 	ctx := tracepkg.WithObserver(context.Background(), collector.Observe)
 	cfg := config.Default()
-	cfg.Server.Enabled = false
-	cfg.Admin.Enabled = true
-	cfg.Admin.Port = configuredPort
+	cfg.HTTP.MCP.Enabled = false
+	cfg.HTTP.Admin.Enabled = true
+	cfg.HTTP.Admin.Port = configuredPort
 	bindings, err := openHTTPBindingsContext(ctx, cfg, listenerPlan{Hosts: []string{"127.0.0.1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer bindings.CloseUnstarted()
-	if bindings.cfg.Admin.Port == configuredPort {
+	if bindings.cfg.HTTP.Admin.Port == configuredPort {
 		t.Fatalf("admin port did not fall back from %d", configuredPort)
 	}
 	events := collector.Snapshot()
 	if !serverTraceHasFields(events, "server.listener.bind.failed", map[string]any{"component": "admin", "configured_port": configuredPort, "attempted_port": configuredPort, "fallback_attempt": 0, "address_in_use": true}) {
 		t.Fatalf("missing bind conflict trace: %#v", events)
 	}
-	if !serverTraceHasFields(events, "server.listener.port-selected", map[string]any{"component": "admin", "configured_port": configuredPort, "selected_port": bindings.cfg.Admin.Port}) {
+	if !serverTraceHasFields(events, "server.listener.port-selected", map[string]any{"component": "admin", "configured_port": configuredPort, "selected_port": bindings.cfg.HTTP.Admin.Port}) {
 		t.Fatalf("missing selected port trace: %#v", events)
 	}
 }
@@ -82,8 +82,8 @@ func TestHTTPReadinessTraceAggregatesRetries(t *testing.T) {
 	collector := &serverTraceCollector{}
 	ctx := tracepkg.WithObserver(context.Background(), collector.Observe)
 	cfg := config.Default()
-	cfg.Server.Port = testServerPort(t, server.Listener.Addr())
-	cfg.Admin.Enabled = false
+	cfg.HTTP.MCP.Port = testServerPort(t, server.Listener.Addr())
+	cfg.HTTP.Admin.Enabled = false
 	if err := waitRuntimeHTTPReady(ctx, cfg, time.Second); err != nil {
 		t.Fatal(err)
 	}
@@ -150,11 +150,11 @@ func TestServerReloadTraceIncludesDecisionPortsAndShutdown(t *testing.T) {
 	initialMCP := freeServerTracePort(t)
 	initialAdmin := freeServerTracePort(t)
 	cfg := config.Default()
-	cfg.Server.Port = initialMCP
-	cfg.Admin.Port = initialAdmin
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Port = initialMCP
+	cfg.HTTP.Admin.Port = initialAdmin
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.Enabled = false
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -172,8 +172,8 @@ func TestServerReloadTraceIncludesDecisionPortsAndShutdown(t *testing.T) {
 
 	nextMCP := freeServerTracePort(t)
 	nextAdmin := freeServerTracePort(t)
-	cfg.Server.Port = nextMCP
-	cfg.Admin.Port = nextAdmin
+	cfg.HTTP.MCP.Port = nextMCP
+	cfg.HTTP.Admin.Port = nextAdmin
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

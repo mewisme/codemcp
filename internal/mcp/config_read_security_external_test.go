@@ -29,8 +29,8 @@ func TestConfigReadHTTPNeverReturnsManagedSecretsOrUnsafeURLValues(t *testing.T)
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "configured-mcp-hash"
-	cfg.Auth.AdminTokenHash = "configured-admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "configured-mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "configured-admin-hash"
 	cfg.Permissions.MCPConfigRead = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -107,8 +107,8 @@ func TestOrdinaryMCPSessionCannotWriteGlobalConfigWithoutOperatorOptIn(t *testin
 	}
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "configured-mcp-hash"
-	cfg.Auth.AdminTokenHash = "configured-admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "configured-mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "configured-admin-hash"
 	if cfg.Permissions.MCPConfigWrite {
 		t.Fatal("default config unexpectedly enables MCP config writes")
 	}
@@ -142,7 +142,7 @@ func TestOrdinaryMCPSessionCannotWriteGlobalConfigWithoutOperatorOptIn(t *testin
 	result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
 		Name: mcpconfigwire.SetToolName,
 		Arguments: map[string]any{"workspace_id": workspace.ID, "changes": []any{
-			map[string]any{"key": "server.port", "value": "41001"},
+			map[string]any{"key": "http.mcp.port", "value": "41001"},
 		}},
 	})
 	if err != nil || !result.IsError {
@@ -162,7 +162,7 @@ func TestOrdinaryMCPSessionCannotWriteGlobalConfigWithoutOperatorOptIn(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != cfg.Server.Port {
-		t.Fatalf("denied ordinary MCP write mutated config: before=%d after=%d", cfg.Server.Port, loaded.Server.Port)
+	if loaded.HTTP.MCP.Port != cfg.HTTP.MCP.Port {
+		t.Fatalf("denied ordinary MCP write mutated config: before=%d after=%d", cfg.HTTP.MCP.Port, loaded.HTTP.MCP.Port)
 	}
 }

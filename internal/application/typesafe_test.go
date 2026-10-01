@@ -167,7 +167,7 @@ func TestTypeSafeSettingServiceRejectsMixedSecretTransaction(t *testing.T) {
 
 func typeSafeTestConfig() config.Config {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-configured-hash"
-	cfg.Auth.AdminTokenHash = "admin-configured-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	return cfg
 }

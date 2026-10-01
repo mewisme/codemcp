@@ -15,7 +15,7 @@ func TestConfigSetPublicProjectionKeepsExactArgumentsPrivate(t *testing.T) {
 	arguments := map[string]any{
 		"workspace_id": "ws_scope",
 		"changes": []any{
-			map[string]any{"key": "server.port", "value": "4000"},
+			map[string]any{"key": "http.mcp.port", "value": "4000"},
 			map[string]any{"key": "permissions.allow_dirs", "value": secretValue},
 		},
 	}
@@ -48,7 +48,7 @@ func TestConfigSetPublicProjectionKeepsExactArgumentsPrivate(t *testing.T) {
 	if err := json.Unmarshal(public.Arguments, &summary); err != nil {
 		t.Fatal(err)
 	}
-	if summary.ChangeCount != 2 || len(summary.Keys) != 2 || summary.Keys[0] != "server.port" || summary.Keys[1] != "permissions.allow_dirs" {
+	if summary.ChangeCount != 2 || len(summary.Keys) != 2 || summary.Keys[0] != "http.mcp.port" || summary.Keys[1] != "permissions.allow_dirs" {
 		t.Fatalf("public summary=%#v", summary)
 	}
 

@@ -109,12 +109,12 @@ func RotateAuthToken(ctx context.Context, kind string) (string, AuthStatus, erro
 	hash := auth.HashToken(token)
 	hashSpan.EndMessage("Authentication token hashed", tracepkg.String("kind", kind))
 	if kind == "mcp" {
-		cfg.Auth.MCPTokenHash = hash
-		cfg.Auth.MCPEnabled = true
+		cfg.HTTP.MCP.Auth.TokenHash = hash
+		cfg.HTTP.MCP.Auth.Enabled = true
 	} else {
-		cfg.Auth.AdminTokenHash = hash
-		cfg.Auth.AdminEnabled = true
-		cfg.Admin.Enabled = true
+		cfg.HTTP.Admin.Auth.TokenHash = hash
+		cfg.HTTP.Admin.Auth.Enabled = true
+		cfg.HTTP.Admin.Enabled = true
 	}
 	validateSpan := tracepkg.Start(ctx, "AUTH", "auth.config.validate", "Validating authentication configuration", tracepkg.String("kind", kind))
 	if err := config.Validate(cfg); err != nil {
@@ -151,9 +151,9 @@ func SetAuthEnabled(ctx context.Context, kind string, enabled bool) (AuthStatus,
 		return AuthStatus{}, err
 	}
 	normalizeSpan.EndMessage("Authentication kind normalized", tracepkg.String("kind", kind))
-	key := "auth.mcp_enabled"
+	key := "http.mcp.auth.enabled"
 	if kind == "admin" {
-		key = "auth.admin_enabled"
+		key = "http.admin.auth.enabled"
 	}
 	applied, err := NewSettingService().Apply(ctx, []SettingChange{{Key: key, Value: fmt.Sprint(enabled)}})
 	if err != nil {
@@ -175,8 +175,8 @@ func normalizeAuthKind(kind string) (string, error) {
 
 func authStatus(cfg config.Config) AuthStatus {
 	return AuthStatus{
-		MCPEnabled: cfg.Auth.MCPEnabled, MCPConfigured: cfg.Auth.MCPTokenHash != "", MCPLegacyBearer: cfg.Auth.MCPLegacyBearer,
-		AdminEnabled: cfg.Auth.AdminEnabled, AdminConfigured: cfg.Auth.AdminTokenHash != "",
+		MCPEnabled: cfg.HTTP.MCP.Auth.Enabled, MCPConfigured: cfg.HTTP.MCP.Auth.TokenHash != "", MCPLegacyBearer: cfg.HTTP.MCP.Auth.LegacyBearer,
+		AdminEnabled: cfg.HTTP.Admin.Auth.Enabled, AdminConfigured: cfg.HTTP.Admin.Auth.TokenHash != "",
 		UnauthenticatedLoopback: config.UnauthenticatedLoopbackActive(cfg),
 		CleartextHTTP:           config.CleartextHTTPActive(cfg),
 	}

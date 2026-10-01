@@ -31,7 +31,7 @@ func TestCapabilitySmokeWriteThroughActionPageAndApplication(t *testing.T) {
 	if _, err := application.Initialize(application.InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := application.SetConfigField(t.Context(), "server.allow_unauthenticated_loopback", "true"); err != nil {
+	if _, err := application.SetConfigField(t.Context(), "http.security.allow_unauthenticated_loopback", "true"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := application.SetAuthEnabled(t.Context(), "mcp", false); err != nil {
@@ -64,13 +64,13 @@ func TestCapabilitySmokeWriteThroughActionPageAndApplication(t *testing.T) {
 		if follow != nil {
 			queue = append(queue, follow)
 		}
-		if loaded, err := config.Load(); err == nil && loaded.Auth.MCPEnabled {
+		if loaded, err := config.Load(); err == nil && loaded.HTTP.MCP.Auth.Enabled {
 			return
 		}
 	}
 	loaded, err := config.Load()
-	if err != nil || !loaded.Auth.MCPEnabled {
-		t.Fatalf("auth enabled=%t err=%v", loaded.Auth.MCPEnabled, err)
+	if err != nil || !loaded.HTTP.MCP.Auth.Enabled {
+		t.Fatalf("auth enabled=%t err=%v", loaded.HTTP.MCP.Auth.Enabled, err)
 	}
 }
 

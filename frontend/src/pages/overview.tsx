@@ -111,7 +111,7 @@ export function OverviewPage() {
       {data?.cleartextHTTP ? (
         <Alert variant="destructive">
           <AlertDescription>
-            Network exposure is enabled (server.expose is not none). Bearer
+            Network exposure is enabled (http.exposure is not none). Bearer
             tokens and request contents travel on cleartext HTTP —
             CodeMCP has no built-in TLS. Prefer Secure MCP Tunnel, a TLS
             reverse proxy, or a trusted encrypted network.
@@ -236,13 +236,13 @@ async function loadDashboard(): Promise<DashboardData> {
         : "Connecting"
       : "Stopped",
     tunnelName: tunnel.metadata?.name ?? "",
-    mcpEndpoint: `http://${host}:${config.server.port}/mcp`,
-    adminEndpoint: config.admin.enabled
-      ? `http://${host}:${config.admin.port}`
+    mcpEndpoint: `http://${host}:${config.http.mcp.port}/mcp`,
+    adminEndpoint: config.http.admin.enabled
+      ? `http://${host}:${config.http.admin.port}`
       : "Disabled",
-    mcpAuth: config.auth.mcp_enabled,
-    adminAuth: config.auth.admin_enabled,
-    cleartextHTTP: config.server.expose.mode !== "none",
+    mcpAuth: config.http.mcp.auth.enabled,
+    adminAuth: config.http.admin.auth.enabled,
+    cleartextHTTP: config.http.exposure.mode !== "none",
     updatedAt: new Date(),
   }
 }

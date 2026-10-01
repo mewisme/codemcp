@@ -209,9 +209,9 @@ func TestTunnelConfigureUsesCanonicalPersistence(t *testing.T) {
 	server := tunnelMetadataServer(t, "new-secret")
 	defer server.Close()
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel = tunnel.Config{Enabled: false, ID: "tunnel_old", APIKey: "old-secret", ControlPlaneBaseURL: server.URL}
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -244,9 +244,9 @@ func TestTunnelRuntimeKeyDeleteUsesCanonicalTunnelOperation(t *testing.T) {
 	restore := secretstore.UseMemoryForTesting()
 	t.Cleanup(restore)
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -288,9 +288,9 @@ func TestTunnelConfigurePreservesSecretFromSerializedConfigStore(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel = tunnel.Config{Enabled: false, ID: "tunnel_store", APIKey: "store-secret", Admin: tunnel.AdminConfig{Key: "admin-secret", WorkspaceID: "ws_admin"}, ControlPlaneBaseURL: server.URL}
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -315,8 +315,8 @@ func TestTunnelConfigurePreservesSecretFromSerializedConfigStore(t *testing.T) {
 
 func TestConfigAPIHidesTokenHashes(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-secret-hash"
-	cfg.Auth.AdminTokenHash = "admin-secret-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-secret-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-secret-hash"
 	recorder := httptest.NewRecorder()
 	New(API{Config: config.NewRuntimeStore(cfg)}).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/config", nil))
 	body := recorder.Body.String()
@@ -326,11 +326,11 @@ func TestConfigAPIHidesTokenHashes(t *testing.T) {
 	if strings.Contains(body, "secret-hash") || strings.Contains(body, "token_hash") {
 		t.Fatalf("config API leaked token hashes: %s", body)
 	}
-	if !strings.Contains(body, `"mcp_token_configured":true`) || !strings.Contains(body, `"admin_token_configured":true`) {
+	if strings.Count(body, `"token_configured":true`) != 2 {
 		t.Fatalf("configured state missing: %s", body)
 	}
-	if strings.Contains(body, `"host"`) || !strings.Contains(body, `"server":{"enabled":true`) || !strings.Contains(body, `"expose":{"mode":"none","interfaces":[]}`) {
-		t.Fatalf("server exposure view is invalid: %s", body)
+	if strings.Contains(body, `"host"`) || !strings.Contains(body, `"http":{"exposure":{"mode":"none","interfaces":[]}`) || !strings.Contains(body, `"mcp":{"enabled":true,"port":37421`) {
+		t.Fatalf("HTTP configuration view is invalid: %s", body)
 	}
 }
 
@@ -338,15 +338,15 @@ func TestConfigAPIMutationUsesCanonicalSettingTransaction(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("CM_CONFIG_DIR", root)
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	handler := New(API{Config: config.NewRuntimeStore(cfg)})
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"server":{"port":41021}}`)))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"http":{"mcp":{"port":41021}}}`)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -354,35 +354,35 @@ func TestConfigAPIMutationUsesCanonicalSettingTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if persisted.Server.Port != 41021 {
-		t.Fatalf("persisted port=%d", persisted.Server.Port)
+	if persisted.HTTP.MCP.Port != 41021 {
+		t.Fatalf("persisted port=%d", persisted.HTTP.MCP.Port)
 	}
 }
 
 func TestConfigAPIRejectsDisablingLastMCPTransport(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	store := config.NewRuntimeStore(cfg)
 	handler := New(API{Config: store})
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"server":{"enabled":false}}`)))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"http":{"mcp":{"enabled":false}}}`)))
 	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "at least one MCP transport") {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-	if !store.Snapshot().Server.Enabled {
+	if !store.Snapshot().HTTP.MCP.Enabled {
 		t.Fatal("invalid transport config mutated store")
 	}
 }
 
 func TestTunnelAPICannotStopLastMCPTransport(t *testing.T) {
 	cfg := config.Default()
-	cfg.Server.Enabled = false
-	cfg.Admin.Enabled = false
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Enabled = false
+	cfg.HTTP.Admin.Enabled = false
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel = tunnel.Config{Enabled: true, ID: "tunnel_only", APIKey: "runtime-secret"}
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
@@ -396,26 +396,26 @@ func TestTunnelAPICannotStopLastMCPTransport(t *testing.T) {
 
 func TestConfigAPIWildcardExposureRequiresBothAuth(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	handler := New(API{Config: store})
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"server":{"port":37421,"expose":{"mode":"0.0.0.0","interfaces":[]}}}`)))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"http":{"exposure":{"mode":"0.0.0.0","interfaces":[]}}}`)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("wildcard patch status = %d: %s", recorder.Code, recorder.Body.String())
 	}
 
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"server":{"port":37421,"expose":{"mode":"0.0.0.0","interfaces":[]},"allow_insecure_http":true}}`)))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"http":{"exposure":{"mode":"0.0.0.0","interfaces":[]},"security":{"allow_insecure":true}}}`)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("wildcard status = %d: %s", recorder.Code, recorder.Body.String())
 	}
 
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"auth":{"mcp_enabled":false,"admin_enabled":true}}`)))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"http":{"mcp":{"auth":{"enabled":false}},"admin":{"auth":{"enabled":true}}}}`)))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("disable auth status = %d: %s", recorder.Code, recorder.Body.String())
 	}
@@ -423,20 +423,20 @@ func TestConfigAPIWildcardExposureRequiresBothAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Auth.MCPEnabled || !got.Auth.AdminEnabled {
+	if !got.HTTP.MCP.Auth.Enabled || !got.HTTP.Admin.Auth.Enabled {
 		t.Fatalf("invalid wildcard auth state committed: %#v", got)
 	}
 }
 
 func TestConfigAPIPartialAuthPatchPreservesOmittedSetting(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	handler := New(API{Config: store})
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"auth":{"mcp_enabled":true}}`)))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/config", strings.NewReader(`{"http":{"mcp":{"auth":{"enabled":true}}}}`)))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -444,14 +444,14 @@ func TestConfigAPIPartialAuthPatchPreservesOmittedSetting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Auth.MCPEnabled || !got.Auth.AdminEnabled {
-		t.Fatalf("partial auth patch changed omitted setting: %#v", got.Auth)
+	if !got.HTTP.MCP.Auth.Enabled || !got.HTTP.Admin.Auth.Enabled {
+		t.Fatalf("partial auth patch changed omitted setting: %#v", got.HTTP)
 	}
 }
 
 func TestHealthReportsAdminAuthState(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.AdminEnabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
 	recorder := httptest.NewRecorder()
 	New(API{Config: config.NewRuntimeStore(cfg)}).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/health", nil))
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"auth_enabled":false`) {
@@ -461,9 +461,9 @@ func TestHealthReportsAdminAuthState(t *testing.T) {
 
 func TestConfigAPIUsesCurrentIntegrationReadModel(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	store := config.NewRuntimeStore(cfg)
 	handler := New(API{Config: store})
 	recorder := httptest.NewRecorder()
@@ -488,9 +488,9 @@ func TestConfigAPIIntegrationPatchUpdatesRuntimeActiveState(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	runtime := tools.NewRuntimeWithIntegrations(cfg.Integrations)
@@ -521,9 +521,9 @@ func TestConfigAPIPonytailModeUpdatesLiveRuntime(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	runtime := tools.NewRuntimeWithIntegrations(cfg.Integrations)
@@ -549,9 +549,9 @@ func TestConfigAPIPonytailModeUpdatesLiveRuntime(t *testing.T) {
 
 func TestConfigAPIRejectsInvalidPonytailMode(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	store := config.NewRuntimeStore(cfg)
 	handler := New(API{Config: store})
 	recorder := httptest.NewRecorder()
@@ -568,9 +568,9 @@ func TestConfigAPICavemanModeUpdatesLiveRuntime(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	runtime := tools.NewRuntimeWithIntegrations(cfg.Integrations)
@@ -596,9 +596,9 @@ func TestConfigAPICavemanModeUpdatesLiveRuntime(t *testing.T) {
 
 func TestConfigAPIRejectsInvalidCavemanMode(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	store := config.NewRuntimeStore(cfg)
 	handler := New(API{Config: store})
 	recorder := httptest.NewRecorder()
@@ -613,9 +613,9 @@ func TestConfigAPIRejectsInvalidCavemanMode(t *testing.T) {
 
 func TestConfigAPIIntegrationMutationUsesCanonicalPersistence(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	runtime := tools.NewRuntimeWithIntegrations(cfg.Integrations)
@@ -639,9 +639,9 @@ func TestConfigAPIIntegrationActivePatchUsesCanonicalField(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	runtime := tools.NewRuntimeWithIntegrations(cfg.Integrations)
@@ -667,9 +667,9 @@ func TestConfigAPIExecutableIntegrationPatchUpdatesRuntimeState(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	runtime := tools.NewRuntimeWithIntegrations(cfg.Integrations)
@@ -701,9 +701,9 @@ func TestConfigAPIExecutableIntegrationPatchUpdatesRuntimeState(t *testing.T) {
 
 func TestConfigAPIExecutableIntegrationPatchRejectsRelativePaths(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	for _, body := range []string{
 		`{"integrations":{"rtk":{"path":"relative/rtk"}}}`,
 		`{"integrations":{"codegraph":{"path":"relative/codegraph"}}}`,
@@ -725,9 +725,9 @@ func TestConfigAPIPermissionsPatchUpdatesRuntimeAccess(t *testing.T) {
 	root := t.TempDir()
 	allowed := t.TempDir()
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	runtime := tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs)
@@ -764,9 +764,9 @@ func TestConfigAPIPermissionsPatchUpdatesRuntimeAccess(t *testing.T) {
 
 func TestConfigAPIShellPathPatch(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	handler := New(API{Config: store})
@@ -793,9 +793,9 @@ func TestConfigAPIPermissionsMutationUsesCanonicalPersistence(t *testing.T) {
 	root := t.TempDir()
 	allowed := t.TempDir()
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
 	runtime := tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs)
@@ -1098,9 +1098,9 @@ func TestTunnelAdminKeyPutStoresWithoutVerificationAndPostVerifies(t *testing.T)
 	defer server.Close()
 
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.ControlPlaneBaseURL = server.URL
 	persistAdminConfig(t, cfg)
 	client := tunnel.NewConfigured(cfg.Tunnel, nil)
@@ -1138,9 +1138,9 @@ func TestTunnelAdminKeyFailedExplicitVerificationDoesNotDiscardConfiguredInputs(
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "forbidden", http.StatusForbidden) }))
 	defer server.Close()
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.ControlPlaneBaseURL = server.URL
 	persistAdminConfig(t, cfg)
 	store := config.NewRuntimeStore(cfg)
@@ -1187,8 +1187,8 @@ func TestManagedTunnelAPIListsWithStoredAdminKey(t *testing.T) {
 	}))
 	defer server.Close()
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.Admin.Auth.Enabled = false, false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel = tunnel.Config{Admin: tunnel.AdminConfig{Key: "sk-admin", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}, ControlPlaneBaseURL: server.URL}
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -1225,8 +1225,8 @@ func TestManagedTunnelUseReusesRuntimeKeyAndSwitchesConfig(t *testing.T) {
 	}))
 	defer server.Close()
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.Admin.Auth.Enabled = false, false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel = tunnel.Config{Enabled: false, ID: "tunnel_one", APIKey: "runtime-key", Admin: tunnel.AdminConfig{Key: "sk-admin", WorkspaceID: "ws_admin", ReadAccess: true, ManageAccess: true}, ControlPlaneBaseURL: server.URL, OrganizationID: "org_one"}
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -1269,8 +1269,8 @@ func TestManagedTunnelAPIReadOnlyAccessLimitsMutations(t *testing.T) {
 	}))
 	defer server.Close()
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.Admin.Auth.Enabled = false, false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel = tunnel.Config{Admin: tunnel.AdminConfig{Key: "sk-read", WorkspaceID: "ws_admin", ReadAccess: true}, ControlPlaneBaseURL: server.URL}
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)

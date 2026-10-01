@@ -41,42 +41,80 @@ type API struct {
 	Operations    *application.Dispatcher
 }
 
-type authSettings struct {
-	MCPEnabled           bool `json:"mcp_enabled"`
-	AdminEnabled         bool `json:"admin_enabled"`
-	MCPTokenConfigured   bool `json:"mcp_token_configured"`
-	AdminTokenConfigured bool `json:"admin_token_configured"`
+type publicHTTPAuth struct {
+	Enabled         bool `json:"enabled"`
+	TokenConfigured bool `json:"token_configured"`
 }
 
-type authPatch struct {
-	MCPEnabled   *bool `json:"mcp_enabled,omitempty"`
-	AdminEnabled *bool `json:"admin_enabled,omitempty"`
+type publicMCPHTTPAuth struct {
+	publicHTTPAuth
+	LegacyBearer bool `json:"legacy_bearer"`
+}
+
+type publicMCPHTTPConfig struct {
+	Enabled bool              `json:"enabled"`
+	Port    int               `json:"port"`
+	Auth    publicMCPHTTPAuth `json:"auth"`
+}
+
+type publicAdminHTTPConfig struct {
+	Enabled bool           `json:"enabled"`
+	Port    int            `json:"port"`
+	Auth    publicHTTPAuth `json:"auth"`
+}
+
+type publicHTTPConfig struct {
+	Exposure config.ExposureConfig     `json:"exposure"`
+	Security config.HTTPSecurityConfig `json:"security"`
+	MCP      publicMCPHTTPConfig       `json:"mcp"`
+	Admin    publicAdminHTTPConfig     `json:"admin"`
 }
 
 type publicConfig struct {
-	Server       config.ServerConfig       `json:"server"`
-	Admin        config.AdminConfig        `json:"admin"`
-	Auth         authSettings              `json:"auth"`
+	HTTP         publicHTTPConfig          `json:"http"`
 	Permissions  config.PermissionsConfig  `json:"permissions"`
 	Shell        config.ShellConfig        `json:"shell"`
 	Integrations config.IntegrationsConfig `json:"integrations"`
 }
 
 type configPatch struct {
-	Server       *serverPatch              `json:"server,omitempty"`
-	Admin        *config.AdminConfig       `json:"admin,omitempty"`
-	Auth         *authPatch                `json:"auth,omitempty"`
+	HTTP         *httpPatch                `json:"http,omitempty"`
 	Permissions  *config.PermissionsConfig `json:"permissions,omitempty"`
 	Shell        *config.ShellConfig       `json:"shell,omitempty"`
 	Integrations *integrationPatch         `json:"integrations,omitempty"`
 }
 
-type serverPatch struct {
-	Enabled                      *bool                  `json:"enabled,omitempty"`
-	Port                         *int                   `json:"port,omitempty"`
-	Expose                       *config.ExposureConfig `json:"expose,omitempty"`
-	AllowInsecureHTTP            *bool                  `json:"allow_insecure_http,omitempty"`
-	AllowUnauthenticatedLoopback *bool                  `json:"allow_unauthenticated_loopback,omitempty"`
+type httpPatch struct {
+	Exposure *config.ExposureConfig `json:"exposure,omitempty"`
+	Security *httpSecurityPatch     `json:"security,omitempty"`
+	MCP      *httpMCPPatch          `json:"mcp,omitempty"`
+	Admin    *httpAdminPatch        `json:"admin,omitempty"`
+}
+
+type httpSecurityPatch struct {
+	AllowInsecure                *bool `json:"allow_insecure,omitempty"`
+	AllowUnauthenticatedLoopback *bool `json:"allow_unauthenticated_loopback,omitempty"`
+}
+
+type httpMCPPatch struct {
+	Enabled *bool             `json:"enabled,omitempty"`
+	Port    *int              `json:"port,omitempty"`
+	Auth    *httpMCPAuthPatch `json:"auth,omitempty"`
+}
+
+type httpMCPAuthPatch struct {
+	Enabled      *bool `json:"enabled,omitempty"`
+	LegacyBearer *bool `json:"legacy_bearer,omitempty"`
+}
+
+type httpAdminPatch struct {
+	Enabled *bool          `json:"enabled,omitempty"`
+	Port    *int           `json:"port,omitempty"`
+	Auth    *httpAuthPatch `json:"auth,omitempty"`
+}
+
+type httpAuthPatch struct {
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 type integrationPatch struct {
@@ -107,7 +145,7 @@ func New(api API) http.Handler {
 	api = api.withOAuth()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", method(http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
-		authEnabled := api.Config != nil && api.Config.Snapshot().Auth.AdminEnabled
+		authEnabled := api.Config != nil && api.Config.Snapshot().HTTP.Admin.Auth.Enabled
 		writeJSON(w, map[string]bool{"ok": true, "auth_enabled": authEnabled})
 	}))
 	mux.HandleFunc("/api/status", method(http.MethodGet, api.handleStatus))
@@ -262,36 +300,37 @@ func (api API) handleConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		changes := make([]application.SettingChange, 0, 16)
-		if patch.Server != nil {
-			if patch.Server.Enabled != nil {
-				changes = append(changes, application.SettingChange{Key: "server.enabled", Value: strconv.FormatBool(*patch.Server.Enabled)})
+		if patch.HTTP != nil {
+			if patch.HTTP.MCP != nil && patch.HTTP.MCP.Enabled != nil {
+				changes = append(changes, application.SettingChange{Key: "http.mcp.enabled", Value: strconv.FormatBool(*patch.HTTP.MCP.Enabled)})
 			}
-			if patch.Server.Port != nil {
-				changes = append(changes, application.SettingChange{Key: "server.port", Value: strconv.Itoa(*patch.Server.Port)})
+			if patch.HTTP.MCP != nil && patch.HTTP.MCP.Port != nil {
+				changes = append(changes, application.SettingChange{Key: "http.mcp.port", Value: strconv.Itoa(*patch.HTTP.MCP.Port)})
 			}
-			if patch.Server.AllowInsecureHTTP != nil {
-				changes = append(changes, application.SettingChange{Key: "server.allow_insecure_http", Value: strconv.FormatBool(*patch.Server.AllowInsecureHTTP)})
+			if patch.HTTP.MCP != nil && patch.HTTP.MCP.Auth != nil && patch.HTTP.MCP.Auth.Enabled != nil {
+				changes = append(changes, application.SettingChange{Key: "http.mcp.auth.enabled", Value: strconv.FormatBool(*patch.HTTP.MCP.Auth.Enabled)})
 			}
-			if patch.Server.AllowUnauthenticatedLoopback != nil {
-				changes = append(changes, application.SettingChange{Key: "server.allow_unauthenticated_loopback", Value: strconv.FormatBool(*patch.Server.AllowUnauthenticatedLoopback)})
+			if patch.HTTP.MCP != nil && patch.HTTP.MCP.Auth != nil && patch.HTTP.MCP.Auth.LegacyBearer != nil {
+				changes = append(changes, application.SettingChange{Key: "http.mcp.auth.legacy_bearer", Value: strconv.FormatBool(*patch.HTTP.MCP.Auth.LegacyBearer)})
 			}
-			if patch.Server.Expose != nil {
-				changes = append(changes, application.SettingChange{Key: "server.expose.mode", Value: string(patch.Server.Expose.Mode)})
-				changes = append(changes, application.SettingChange{Key: "server.expose.interfaces", Value: strings.Join(patch.Server.Expose.Interfaces, ",")})
+			if patch.HTTP.Exposure != nil {
+				changes = append(changes, application.SettingChange{Key: "http.exposure.mode", Value: string(patch.HTTP.Exposure.Mode)})
+				changes = append(changes, application.SettingChange{Key: "http.exposure.interfaces", Value: strings.Join(patch.HTTP.Exposure.Interfaces, ",")})
 			}
-		}
-		if patch.Admin != nil {
-			changes = append(changes,
-				application.SettingChange{Key: "admin.enabled", Value: strconv.FormatBool(patch.Admin.Enabled)},
-				application.SettingChange{Key: "admin.port", Value: strconv.Itoa(patch.Admin.Port)},
-			)
-		}
-		if patch.Auth != nil {
-			if patch.Auth.MCPEnabled != nil {
-				changes = append(changes, application.SettingChange{Key: "auth.mcp_enabled", Value: strconv.FormatBool(*patch.Auth.MCPEnabled)})
+			if patch.HTTP.Security != nil && patch.HTTP.Security.AllowInsecure != nil {
+				changes = append(changes, application.SettingChange{Key: "http.security.allow_insecure", Value: strconv.FormatBool(*patch.HTTP.Security.AllowInsecure)})
 			}
-			if patch.Auth.AdminEnabled != nil {
-				changes = append(changes, application.SettingChange{Key: "auth.admin_enabled", Value: strconv.FormatBool(*patch.Auth.AdminEnabled)})
+			if patch.HTTP.Security != nil && patch.HTTP.Security.AllowUnauthenticatedLoopback != nil {
+				changes = append(changes, application.SettingChange{Key: "http.security.allow_unauthenticated_loopback", Value: strconv.FormatBool(*patch.HTTP.Security.AllowUnauthenticatedLoopback)})
+			}
+			if patch.HTTP.Admin != nil && patch.HTTP.Admin.Enabled != nil {
+				changes = append(changes, application.SettingChange{Key: "http.admin.enabled", Value: strconv.FormatBool(*patch.HTTP.Admin.Enabled)})
+			}
+			if patch.HTTP.Admin != nil && patch.HTTP.Admin.Port != nil {
+				changes = append(changes, application.SettingChange{Key: "http.admin.port", Value: strconv.Itoa(*patch.HTTP.Admin.Port)})
+			}
+			if patch.HTTP.Admin != nil && patch.HTTP.Admin.Auth != nil && patch.HTTP.Admin.Auth.Enabled != nil {
+				changes = append(changes, application.SettingChange{Key: "http.admin.auth.enabled", Value: strconv.FormatBool(*patch.HTTP.Admin.Auth.Enabled)})
 			}
 		}
 		if patch.Permissions != nil {
@@ -437,11 +476,18 @@ func (api API) upstreamManager() *upstream.Manager {
 
 func publicConfigView(cfg config.Config) publicConfig {
 	return publicConfig{
-		Server: cfg.Server, Admin: cfg.Admin, Permissions: cfg.Permissions, Shell: cfg.Shell, Integrations: cfg.Integrations,
-		Auth: authSettings{
-			MCPEnabled: cfg.Auth.MCPEnabled, AdminEnabled: cfg.Auth.AdminEnabled,
-			MCPTokenConfigured: cfg.Auth.MCPTokenHash != "", AdminTokenConfigured: cfg.Auth.AdminTokenHash != "",
+		HTTP: publicHTTPConfig{
+			Exposure: cfg.HTTP.Exposure,
+			Security: cfg.HTTP.Security,
+			MCP: publicMCPHTTPConfig{Enabled: cfg.HTTP.MCP.Enabled, Port: cfg.HTTP.MCP.Port, Auth: publicMCPHTTPAuth{
+				publicHTTPAuth: publicHTTPAuth{Enabled: cfg.HTTP.MCP.Auth.Enabled, TokenConfigured: cfg.HTTP.MCP.Auth.TokenHash != ""},
+				LegacyBearer:   cfg.HTTP.MCP.Auth.LegacyBearer,
+			}},
+			Admin: publicAdminHTTPConfig{Enabled: cfg.HTTP.Admin.Enabled, Port: cfg.HTTP.Admin.Port, Auth: publicHTTPAuth{
+				Enabled: cfg.HTTP.Admin.Auth.Enabled, TokenConfigured: cfg.HTTP.Admin.Auth.TokenHash != "",
+			}},
 		},
+		Permissions: cfg.Permissions, Shell: cfg.Shell, Integrations: cfg.Integrations,
 	}
 }
 

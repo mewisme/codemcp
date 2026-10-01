@@ -575,7 +575,7 @@ func TestConfigSetApprovedRetryExpiresBeforeLateClaim(t *testing.T) {
 	manager, now := testManager()
 	arguments := map[string]any{
 		"workspace_id":             "ws_a",
-		"changes":                  []any{map[string]any{"key": "server.port", "value": "41001"}},
+		"changes":                  []any{map[string]any{"key": "http.mcp.port", "value": "41001"}},
 		"__codemcp_config_binding": map[string]any{"version": 1, "config_root": "/private/root", "config_fingerprint": "fingerprint-a"},
 	}
 	challenge, _, err := manager.CreateChallenge(ChallengeInput{

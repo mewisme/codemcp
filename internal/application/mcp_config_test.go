@@ -15,7 +15,7 @@ import (
 func TestMCPConfigReadServiceRequiresOptInAndSanitizesCanonicalSettings(t *testing.T) {
 	isolateSettingServiceConfig(t)
 	provider := NewMCPConfigReadService()
-	if _, code := provider.Get(t.Context(), "server.port"); code != mcpconfig.ErrorAccessDenied {
+	if _, code := provider.Get(t.Context(), "http.mcp.port"); code != mcpconfig.ErrorAccessDenied {
 		t.Fatalf("read without opt-in code=%q", code)
 	}
 
@@ -84,7 +84,7 @@ func TestMCPConfigReadServiceRequiresOptInAndSanitizesCanonicalSettings(t *testi
 		t.Fatal(err)
 	}
 	for _, key := range []string{
-		"auth.mcp_token_hash",
+		"http.mcp.auth.token_hash",
 		"telemetry.enabled",
 		"tunnel.control_plane_base_url",
 		"upstream.servers[remote].url",
@@ -100,7 +100,7 @@ func TestMCPConfigReadServiceRequiresOptInAndSanitizesCanonicalSettings(t *testi
 		t.Fatalf("telemetry preference list projection=%#v code=%q", listed, code)
 	}
 
-	port, code := provider.Get(t.Context(), "server.port")
+	port, code := provider.Get(t.Context(), "http.mcp.port")
 	if code != "" || port.Value == nil || *port.Value == "" || port.Secret {
 		t.Fatalf("safe non-secret projection=%#v code=%q", port, code)
 	}
@@ -112,8 +112,8 @@ func TestMCPConfigSetApprovalBindingIsPrivateCanonicalAndStateBound(t *testing.T
 	args := map[string]any{
 		"workspace_id": " ws_scope ",
 		"changes": []any{
-			map[string]any{"key": " server.port ", "value": "41001"},
-			map[string]any{"key": "server.enabled", "value": "true"},
+			map[string]any{"key": " http.mcp.port ", "value": "41001"},
+			map[string]any{"key": "http.mcp.enabled", "value": "true"},
 		},
 	}
 	if _, code := provider.BindSetApproval(t.Context(), args); code != mcpconfig.ErrorAccessDenied {
@@ -133,7 +133,7 @@ func TestMCPConfigSetApprovalBindingIsPrivateCanonicalAndStateBound(t *testing.T
 	if code != "" {
 		t.Fatalf("binding code=%q", code)
 	}
-	want := []mcpconfigwire.Change{{Key: "server.port", Value: "41001"}, {Key: "server.enabled", Value: "true"}}
+	want := []mcpconfigwire.Change{{Key: "http.mcp.port", Value: "41001"}, {Key: "http.mcp.enabled", Value: "true"}}
 	if len(binding.Changes) != len(want) {
 		t.Fatalf("changes=%#v", binding.Changes)
 	}
@@ -151,7 +151,7 @@ func TestMCPConfigSetApprovalBindingIsPrivateCanonicalAndStateBound(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Server.Port++
+	cfg.HTTP.MCP.Port++
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -188,8 +188,8 @@ func TestMCPConfigSetApprovalBindingIsPrivateCanonicalAndStateBound(t *testing.T
 		{
 			name: "duplicate canonical key",
 			args: map[string]any{"changes": []any{
-				map[string]any{"key": "server.port", "value": "41001"},
-				map[string]any{"key": " server.port ", "value": "41002"},
+				map[string]any{"key": "http.mcp.port", "value": "41001"},
+				map[string]any{"key": " http.mcp.port ", "value": "41002"},
 			}},
 			want: mcpconfig.ErrorInvalidRequest,
 		},

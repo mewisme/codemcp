@@ -41,7 +41,7 @@ cm completion fish | source
 cm completion powershell | Out-String | Invoke-Expression
 ```
 
-Each generated script registers `cm` only. Dynamic completion includes config keys and typed values, workspace IDs, Upstream IDs, recent runtime session IDs, and directory arguments where appropriate. For example, `cm cfg set per<Tab>` completes `permissions.allow_dirs`, while `cm cfg set auth.mcp_enabled <Tab>` offers `true` and `false`.
+Each generated script registers `cm` only. Dynamic completion includes config keys and typed values, workspace IDs, Upstream IDs, recent runtime session IDs, and directory arguments where appropriate. For example, `cm cfg set per<Tab>` completes `permissions.allow_dirs`, while `cm cfg set http.mcp.auth.enabled <Tab>` offers `true` and `false`.
 
 For source-tree development with direct `go run .` invocations, Bash and Zsh can opt into the Go wrapper hook:
 
@@ -87,6 +87,28 @@ cm
 ├── down
 ├── init
 ├── install
+├── http
+│   ├── admin
+│   │   ├── disable
+│   │   ├── enable
+│   │   └── port
+│   ├── exposure
+│   │   ├── interface
+│   │   │   ├── add
+│   │   │   └── remove
+│   │   └── mode
+│   ├── mcp
+│   │   ├── disable
+│   │   ├── enable
+│   │   └── port
+│   └── security
+│       ├── insecure
+│       │   ├── allow
+│       │   └── deny
+│       └── loopback
+│           └── auth
+│               ├── allow
+│               └── require
 ├── logs
 │   ├── follow
 │   ├── path
@@ -319,8 +341,8 @@ Inspect persisted values:
 ```bash
 cm config get
 cm config list
-cm config get admin.enabled
-cm config list admin
+cm config get http.admin.enabled
+cm config list http.admin
 ```
 
 Explain schema keys and branches:
@@ -329,7 +351,7 @@ Explain schema keys and branches:
 cm config explain
 cm config explain shell
 cm config explain shell.path
-cm config explain server.expose.mode
+cm config explain http.exposure.mode
 cm config explain shell.path --json
 ```
 
@@ -338,13 +360,27 @@ cm config explain shell.path --json
 Set:
 
 ```bash
-cm config set server.enabled false
-cm config set server.port 41021
-cm config set admin.port 41022
-cm config set server.expose none
+cm config set http.mcp.enabled false
+cm config set http.mcp.port 41021
+cm config set http.admin.port 41022
+cm config set http.exposure.mode none
 ```
 
-At least one MCP transport must remain enabled: `server.enabled` for direct MCP HTTP or `tunnel.enabled` for OpenAI Secure MCP Tunnel.
+At least one MCP transport must remain enabled: `http.mcp.enabled` for direct MCP HTTP or `tunnel.enabled` for OpenAI Secure MCP Tunnel.
+
+The natural scoped facade is `cm http ...` and writes the same canonical settings through the same application setting authority:
+
+```bash
+cm http mcp enable
+cm http mcp port 41021
+cm http admin disable
+cm http exposure mode none
+cm http exposure interface add eth0
+cm http security insecure deny
+cm http security loopback auth require
+```
+
+Legacy setting spellings under `server.*`, root `admin.*`, and root `auth.*` canonicalize only for compatibility. They are omitted from normal setting inventory/help and must not be used as a second configuration namespace.
 
 Successful config mutations automatically apply to a running process. If the runtime is stopped, they take effect on the next start.
 
@@ -399,10 +435,10 @@ cm auth admin enable
 cm auth admin disable
 ```
 
-`cm mcp stdio` does not use OAuth transport authentication. `cm mcp http` uses OAuth as the canonical protected transport and keeps the existing static MCP bearer only as a compatibility path controlled by `auth.mcp_legacy_bearer`.
+`cm mcp stdio` does not use OAuth transport authentication. `cm mcp http` uses OAuth as the canonical protected transport and keeps the existing static MCP bearer only as a compatibility path controlled by `http.mcp.auth.legacy_bearer`.
 
 ```bash
-cm config set auth.mcp_legacy_bearer false
+cm config set http.mcp.auth.legacy_bearer false
 ```
 
 Rotating the MCP credential invalidates OAuth codes/tokens issued under the previous credential generation.

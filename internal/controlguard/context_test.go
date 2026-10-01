@@ -41,13 +41,13 @@ func TestGrantContextRoundTrip(t *testing.T) {
 }
 
 func TestSameInvocationIsExact(t *testing.T) {
-	base := Invocation{Program: "cm", Args: []string{"config", "set", "server.port", "41001"}, Command: "cm config set server.port 41001"}
+	base := Invocation{Program: "cm", Args: []string{"config", "set", "http.mcp.port", "41001"}, Command: "cm config set http.mcp.port 41001"}
 	if !SameInvocation(base, base) {
 		t.Fatal("identical invocation did not match")
 	}
 	for _, changed := range []Invocation{
 		{Program: "chatgpt-mcp", Args: base.Args, Command: base.Command},
-		{Program: base.Program, Args: []string{"config", "set", "server.port", "41002"}, Command: base.Command},
+		{Program: base.Program, Args: []string{"config", "set", "http.mcp.port", "41002"}, Command: base.Command},
 		{Program: base.Program, Args: base.Args, Command: base.Command + " --force"},
 	} {
 		if SameInvocation(base, changed) {

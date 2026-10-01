@@ -121,8 +121,8 @@ func TestStageReleasedStateIsTransactionalAndSemantic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Auth.MCPTokenHash != "mcp-hash" || cfg.Auth.AdminTokenHash != "admin-hash" || !cfg.Auth.MCPLegacyBearer {
-		t.Fatalf("auth semantics not preserved: %#v", cfg.Auth)
+	if cfg.HTTP.MCP.Auth.TokenHash != "mcp-hash" || cfg.HTTP.Admin.Auth.TokenHash != "admin-hash" || !cfg.HTTP.MCP.Auth.LegacyBearer {
+		t.Fatalf("auth semantics not preserved: %#v", cfg.HTTP)
 	}
 	if !tunnel.AdminEnabled(cfg.Tunnel) || cfg.Tunnel.Admin.OrganizationID != "org_stage" || cfg.Tunnel.Admin.Verified || cfg.Tunnel.Admin.ReadAccess || cfg.Tunnel.Admin.ManageAccess {
 		t.Fatalf("tunnel admin not canonicalized: %#v", cfg.Tunnel.Admin)

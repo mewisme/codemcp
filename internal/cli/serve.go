@@ -61,15 +61,15 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		configSpan.FailMessage("Server runtime config validation failed", err, tracepkg.String("path", source.Path), tracepkg.String("format", string(source.Format)))
 		return err
 	}
-	configSpan.EndMessage("Server runtime configuration loaded", tracepkg.String("path", source.Path), tracepkg.String("format", string(source.Format)), tracepkg.Bool("exists", true), tracepkg.Bool("mcp_http_enabled", cfg.Server.Enabled), tracepkg.Bool("admin_enabled", cfg.Admin.Enabled), tracepkg.Bool("tunnel_enabled", cfg.Tunnel.Enabled), tracepkg.String("exposure_mode", string(cfg.Server.Expose.Mode)), tracepkg.Any("interfaces", append([]string(nil), cfg.Server.Expose.Interfaces...)))
-	logCommandDebug(cmd, "SERVER", "server.config.loaded", "Runtime configuration loaded", logger.WithDebug("mcp_http", cfg.Server.Enabled), logger.WithDebug("admin", cfg.Admin.Enabled), logger.WithDebug("tunnel", cfg.Tunnel.Enabled), logger.WithDebug("expose", cfg.Server.Expose.Mode))
+	configSpan.EndMessage("Server runtime configuration loaded", tracepkg.String("path", source.Path), tracepkg.String("format", string(source.Format)), tracepkg.Bool("exists", true), tracepkg.Bool("mcp_http_enabled", cfg.HTTP.MCP.Enabled), tracepkg.Bool("admin_enabled", cfg.HTTP.Admin.Enabled), tracepkg.Bool("tunnel_enabled", cfg.Tunnel.Enabled), tracepkg.String("exposure_mode", string(cfg.HTTP.Exposure.Mode)), tracepkg.Any("interfaces", append([]string(nil), cfg.HTTP.Exposure.Interfaces...)))
+	logCommandDebug(cmd, "SERVER", "server.config.loaded", "Runtime configuration loaded", logger.WithDebug("mcp_http", cfg.HTTP.MCP.Enabled), logger.WithDebug("admin", cfg.HTTP.Admin.Enabled), logger.WithDebug("tunnel", cfg.Tunnel.Enabled), logger.WithDebug("expose", cfg.HTTP.Exposure.Mode))
 
 	runtimeCtx, runtimeCancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer runtimeCancel()
 
 	logCommandStep(cmd, "NETWORK", "server.listeners.resolving", "Resolving listener plan")
-	planSpan := tracepkg.Start(runtimeCtx, "NETWORK", "server.listener-plan.resolve", "Resolving server listener plan", tracepkg.String("exposure_mode", string(cfg.Server.Expose.Mode)), tracepkg.Any("interfaces", append([]string(nil), cfg.Server.Expose.Interfaces...)))
-	plan, err := resolveListenerPlan(cfg.Server.Expose)
+	planSpan := tracepkg.Start(runtimeCtx, "NETWORK", "server.listener-plan.resolve", "Resolving server listener plan", tracepkg.String("exposure_mode", string(cfg.HTTP.Exposure.Mode)), tracepkg.Any("interfaces", append([]string(nil), cfg.HTTP.Exposure.Interfaces...)))
+	plan, err := resolveListenerPlan(cfg.HTTP.Exposure)
 	if err != nil {
 		planSpan.FailMessage("Server listener plan resolution failed", err)
 		return err
@@ -79,10 +79,10 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		addresses = append(addresses, address.Host)
 	}
 	listenerComponents := 0
-	if cfg.Server.Enabled {
+	if cfg.HTTP.MCP.Enabled {
 		listenerComponents++
 	}
-	if cfg.Admin.Enabled {
+	if cfg.HTTP.Admin.Enabled {
 		listenerComponents++
 	}
 	listenerCount := len(plan.Hosts) * listenerComponents
@@ -149,20 +149,20 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 	if err != nil {
 		return err
 	}
-	if bindings.cfg.Server.Port != cfg.Server.Port {
+	if bindings.cfg.HTTP.MCP.Port != cfg.HTTP.MCP.Port {
 		if commandSession != nil {
 			commandPresenter(cmd).ChildStatus(presentation.StatusWarning, "Configured MCP HTTP port is unavailable; using next available port")
-			commandPresenter(cmd).Fields(presentation.Field{Label: "configured port", Value: cfg.Server.Port}, presentation.Field{Label: "port", Value: bindings.cfg.Server.Port})
+			commandPresenter(cmd).Fields(presentation.Field{Label: "configured port", Value: cfg.HTTP.MCP.Port}, presentation.Field{Label: "port", Value: bindings.cfg.HTTP.MCP.Port})
 		} else {
-			log.Warning("NETWORK", "server.mcp.port-fallback", "Configured MCP HTTP port is unavailable; using next available port", nil, logger.With("configured_port", cfg.Server.Port), logger.With("port", bindings.cfg.Server.Port))
+			log.Warning("NETWORK", "server.mcp.port-fallback", "Configured MCP HTTP port is unavailable; using next available port", nil, logger.With("configured_port", cfg.HTTP.MCP.Port), logger.With("port", bindings.cfg.HTTP.MCP.Port))
 		}
 	}
-	if bindings.cfg.Admin.Port != cfg.Admin.Port {
+	if bindings.cfg.HTTP.Admin.Port != cfg.HTTP.Admin.Port {
 		if commandSession != nil {
 			commandPresenter(cmd).ChildStatus(presentation.StatusWarning, "Configured admin port is unavailable; using next available port")
-			commandPresenter(cmd).Fields(presentation.Field{Label: "configured port", Value: cfg.Admin.Port}, presentation.Field{Label: "port", Value: bindings.cfg.Admin.Port})
+			commandPresenter(cmd).Fields(presentation.Field{Label: "configured port", Value: cfg.HTTP.Admin.Port}, presentation.Field{Label: "port", Value: bindings.cfg.HTTP.Admin.Port})
 		} else {
-			log.Warning("NETWORK", "server.admin.port-fallback", "Configured admin port is unavailable; using next available port", nil, logger.With("configured_port", cfg.Admin.Port), logger.With("port", bindings.cfg.Admin.Port))
+			log.Warning("NETWORK", "server.admin.port-fallback", "Configured admin port is unavailable; using next available port", nil, logger.With("configured_port", cfg.HTTP.Admin.Port), logger.With("port", bindings.cfg.HTTP.Admin.Port))
 		}
 	}
 	cfg = bindings.cfg
@@ -212,7 +212,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		if commandSession != nil {
 			commandSession.Update(presentation.ProgressPhase{ID: "server.reloading", Label: "Reloading server listeners", State: presentation.ProgressRunning})
 		}
-		reloadSpan := tracepkg.Start(reloadCtx, "CONFIG", "server.reload", "Reloading server runtime", tracepkg.Int("old_mcp_port", previousCfg.Server.Port), tracepkg.Int("old_admin_port", previousCfg.Admin.Port), tracepkg.String("old_exposure_mode", string(previousCfg.Server.Expose.Mode)))
+		reloadSpan := tracepkg.Start(reloadCtx, "CONFIG", "server.reload", "Reloading server runtime", tracepkg.Int("old_mcp_port", previousCfg.HTTP.MCP.Port), tracepkg.Int("old_admin_port", previousCfg.HTTP.Admin.Port), tracepkg.String("old_exposure_mode", string(previousCfg.HTTP.Exposure.Mode)))
 		defer func() {
 			if commandSession != nil {
 				if reloadErr != nil {
@@ -221,7 +221,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 					commandSession.Success("server.reloading", "Reloading server listeners", "Server listeners reloaded")
 				}
 			}
-			fields := []tracepkg.Field{tracepkg.Bool("network_restarted", networkRestarted), tracepkg.Bool("restore_performed", restorePerformed), tracepkg.Int("old_mcp_port", previousCfg.Server.Port), tracepkg.Int("old_admin_port", previousCfg.Admin.Port), tracepkg.Int("new_mcp_port", next.Server.Port), tracepkg.Int("new_admin_port", next.Admin.Port), tracepkg.String("new_exposure_mode", string(next.Server.Expose.Mode))}
+			fields := []tracepkg.Field{tracepkg.Bool("network_restarted", networkRestarted), tracepkg.Bool("restore_performed", restorePerformed), tracepkg.Int("old_mcp_port", previousCfg.HTTP.MCP.Port), tracepkg.Int("old_admin_port", previousCfg.HTTP.Admin.Port), tracepkg.Int("new_mcp_port", next.HTTP.MCP.Port), tracepkg.Int("new_admin_port", next.HTTP.Admin.Port), tracepkg.String("new_exposure_mode", string(next.HTTP.Exposure.Mode))}
 			if reloadErr != nil {
 				reloadSpan.FailMessage("Server runtime reload failed", reloadErr, fields...)
 			} else {
@@ -247,10 +247,10 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 			configReloadSpan.FailMessage("Reload configuration validation failed", reloadErr)
 			return result, reloadErr
 		}
-		configReloadSpan.EndMessage("Reload configuration loaded and validated", tracepkg.Int("mcp_port", next.Server.Port), tracepkg.Int("admin_port", next.Admin.Port), tracepkg.String("exposure_mode", string(next.Server.Expose.Mode)), tracepkg.Any("interfaces", append([]string(nil), next.Server.Expose.Interfaces...)))
+		configReloadSpan.EndMessage("Reload configuration loaded and validated", tracepkg.Int("mcp_port", next.HTTP.MCP.Port), tracepkg.Int("admin_port", next.HTTP.Admin.Port), tracepkg.String("exposure_mode", string(next.HTTP.Exposure.Mode)), tracepkg.Any("interfaces", append([]string(nil), next.HTTP.Exposure.Interfaces...)))
 
 		planReloadSpan := tracepkg.Start(reloadCtx, "NETWORK", "server.reload.listener-plan", "Resolving reload listener plan", tracepkg.Any("previous_hosts", append([]string(nil), previousPlan.Hosts...)))
-		nextPlan, err := resolveListenerPlan(next.Server.Expose)
+		nextPlan, err := resolveListenerPlan(next.HTTP.Exposure)
 		if err != nil {
 			reloadErr = err
 			planReloadSpan.FailMessage("Reload listener plan resolution failed", err)
@@ -261,7 +261,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		networkRestarted = networkConfigChanged || listenerPlanChanged
 		portDisjoint := listenerPortsDisjoint(previousCfg, next)
 		planReloadSpan.EndMessage("Reload listener plan resolved", tracepkg.Any("hosts", append([]string(nil), nextPlan.Hosts...)), tracepkg.Bool("listener_plan_changed", listenerPlanChanged), tracepkg.Bool("network_config_changed", networkConfigChanged))
-		tracepkg.Emit(reloadCtx, "NETWORK", "server.reload.decision", "Resolved server reload network decision", tracepkg.Bool("network_restarted", networkRestarted), tracepkg.Bool("network_config_changed", networkConfigChanged), tracepkg.Bool("listener_plan_changed", listenerPlanChanged), tracepkg.Bool("ports_disjoint", portDisjoint), tracepkg.Int("old_mcp_port", previousCfg.Server.Port), tracepkg.Int("new_mcp_port", next.Server.Port), tracepkg.Int("old_admin_port", previousCfg.Admin.Port), tracepkg.Int("new_admin_port", next.Admin.Port))
+		tracepkg.Emit(reloadCtx, "NETWORK", "server.reload.decision", "Resolved server reload network decision", tracepkg.Bool("network_restarted", networkRestarted), tracepkg.Bool("network_config_changed", networkConfigChanged), tracepkg.Bool("listener_plan_changed", listenerPlanChanged), tracepkg.Bool("ports_disjoint", portDisjoint), tracepkg.Int("old_mcp_port", previousCfg.HTTP.MCP.Port), tracepkg.Int("new_mcp_port", next.HTTP.MCP.Port), tracepkg.Int("old_admin_port", previousCfg.HTTP.Admin.Port), tracepkg.Int("new_admin_port", next.HTTP.Admin.Port))
 		setLifecycle("reloading")
 		defer setLifecycle("ready")
 		if !networkRestarted {
@@ -277,17 +277,17 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		}
 
 		openCandidate := func() (*httpBindings, error) {
-			span := tracepkg.Start(reloadCtx, "NETWORK", "server.reload.candidate-open", "Opening candidate server listeners", tracepkg.Int("mcp_port", next.Server.Port), tracepkg.Int("admin_port", next.Admin.Port), tracepkg.Any("hosts", append([]string(nil), nextPlan.Hosts...)))
+			span := tracepkg.Start(reloadCtx, "NETWORK", "server.reload.candidate-open", "Opening candidate server listeners", tracepkg.Int("mcp_port", next.HTTP.MCP.Port), tracepkg.Int("admin_port", next.HTTP.Admin.Port), tracepkg.Any("hosts", append([]string(nil), nextPlan.Hosts...)))
 			candidate, err := openHTTPBindingsExactContext(reloadCtx, next, nextPlan)
 			if err != nil {
 				span.FailMessage("Candidate server listener open failed", err)
 				return nil, err
 			}
-			span.EndMessage("Candidate server listeners opened", tracepkg.Int("selected_mcp_port", candidate.cfg.Server.Port), tracepkg.Int("selected_admin_port", candidate.cfg.Admin.Port), tracepkg.Int("listener_count", len(candidate.mcpListeners)+len(candidate.adminListeners)))
+			span.EndMessage("Candidate server listeners opened", tracepkg.Int("selected_mcp_port", candidate.cfg.HTTP.MCP.Port), tracepkg.Int("selected_admin_port", candidate.cfg.HTTP.Admin.Port), tracepkg.Int("listener_count", len(candidate.mcpListeners)+len(candidate.adminListeners)))
 			return candidate, nil
 		}
 		shutdownPrevious := func() error {
-			span := tracepkg.Start(reloadCtx, "NETWORK", "server.reload.previous-listeners-shutdown", "Shutting down previous server listeners", tracepkg.Int("listener_count", len(bindings.mcpListeners)+len(bindings.adminListeners)), tracepkg.Int("mcp_port", previousCfg.Server.Port), tracepkg.Int("admin_port", previousCfg.Admin.Port))
+			span := tracepkg.Start(reloadCtx, "NETWORK", "server.reload.previous-listeners-shutdown", "Shutting down previous server listeners", tracepkg.Int("listener_count", len(bindings.mcpListeners)+len(bindings.adminListeners)), tracepkg.Int("mcp_port", previousCfg.HTTP.MCP.Port), tracepkg.Int("admin_port", previousCfg.HTTP.Admin.Port))
 			err := bindings.Shutdown()
 			if err != nil {
 				span.FailMessage("Previous server listener shutdown failed", err)
@@ -298,7 +298,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		}
 		restorePrevious := func(reason string) error {
 			restorePerformed = true
-			span := tracepkg.Start(reloadCtx, "NETWORK", "server.reload.restore", "Restoring previous server listeners", tracepkg.String("reason", reason), tracepkg.Int("mcp_port", previousCfg.Server.Port), tracepkg.Int("admin_port", previousCfg.Admin.Port))
+			span := tracepkg.Start(reloadCtx, "NETWORK", "server.reload.restore", "Restoring previous server listeners", tracepkg.String("reason", reason), tracepkg.Int("mcp_port", previousCfg.HTTP.MCP.Port), tracepkg.Int("admin_port", previousCfg.HTTP.Admin.Port))
 			restored, err := restoreHTTPBindingsContext(reloadCtx, runtime, previousCfg, previousPlan, errCh)
 			if err != nil {
 				span.FailMessage("Previous server listener restore failed", err)
@@ -333,7 +333,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 			if commandSession == nil {
 				logReadyEndpoints(runtime.Logger, next, nextPlan)
 			} else {
-				runtime.Logger.Diagnostic(logger.Info, "SERVER", "server.reload.endpoints", "Reloaded server endpoints", logger.WithDebug("mcp_port", next.Server.Port), logger.WithDebug("admin_port", next.Admin.Port))
+				runtime.Logger.Diagnostic(logger.Info, "SERVER", "server.reload.endpoints", "Reloaded server endpoints", logger.WithDebug("mcp_port", next.HTTP.MCP.Port), logger.WithDebug("admin_port", next.HTTP.Admin.Port))
 			}
 			result = reloadResult(next, true)
 			return result, nil
@@ -365,7 +365,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		if commandSession == nil {
 			logReadyEndpoints(runtime.Logger, next, nextPlan)
 		} else {
-			runtime.Logger.Diagnostic(logger.Info, "SERVER", "server.reload.endpoints", "Reloaded server endpoints", logger.WithDebug("mcp_port", next.Server.Port), logger.WithDebug("admin_port", next.Admin.Port))
+			runtime.Logger.Diagnostic(logger.Info, "SERVER", "server.reload.endpoints", "Reloaded server endpoints", logger.WithDebug("mcp_port", next.HTTP.MCP.Port), logger.WithDebug("admin_port", next.HTTP.Admin.Port))
 		}
 		result = reloadResult(next, true)
 		return result, nil
@@ -376,7 +376,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		stateMu.RUnlock()
 		tunnelStatus := runtime.Tunnel.Status()
 		fingerprint, _ := config.RuntimeFingerprint(cfgSnapshot)
-		return runtimeStatusResult{PID: os.Getpid(), RunID: metadata.RunID, Lifecycle: lifecycleSnapshot, Starting: runtimeLifecycleStarting(lifecycleSnapshot), Managed: metadata.Managed, ServiceID: metadata.ServiceID, ServiceScope: metadata.ServiceScope, StartedAt: startedAt, ConfigRoot: config.RootPath(), ConfigFingerprint: fingerprint, ServerEnabled: cfgSnapshot.Server.Enabled, ServerPort: cfgSnapshot.Server.Port, AdminEnabled: cfgSnapshot.Admin.Enabled, AdminPort: cfgSnapshot.Admin.Port, Exposure: cfgSnapshot.Server.Expose.Mode, TunnelEnabled: cfgSnapshot.Tunnel.Enabled, TunnelConfigured: tunnel.Configured(cfgSnapshot.Tunnel), TunnelRunning: tunnelStatus.Running, TunnelReady: tunnelStatus.Ready, TunnelRestarting: tunnelStatus.Restarting, TunnelID: strings.TrimSpace(cfgSnapshot.Tunnel.ID), TunnelLastError: tunnelStatus.LastError, ToolProfile: "full", ToolCount: len(runtime.Tools.List())}
+		return runtimeStatusResult{PID: os.Getpid(), RunID: metadata.RunID, Lifecycle: lifecycleSnapshot, Starting: runtimeLifecycleStarting(lifecycleSnapshot), Managed: metadata.Managed, ServiceID: metadata.ServiceID, ServiceScope: metadata.ServiceScope, StartedAt: startedAt, ConfigRoot: config.RootPath(), ConfigFingerprint: fingerprint, ServerEnabled: cfgSnapshot.HTTP.MCP.Enabled, ServerPort: cfgSnapshot.HTTP.MCP.Port, AdminEnabled: cfgSnapshot.HTTP.Admin.Enabled, AdminPort: cfgSnapshot.HTTP.Admin.Port, Exposure: cfgSnapshot.HTTP.Exposure.Mode, TunnelEnabled: cfgSnapshot.Tunnel.Enabled, TunnelConfigured: tunnel.Configured(cfgSnapshot.Tunnel), TunnelRunning: tunnelStatus.Running, TunnelReady: tunnelStatus.Ready, TunnelRestarting: tunnelStatus.Restarting, TunnelID: strings.TrimSpace(cfgSnapshot.Tunnel.ID), TunnelLastError: tunnelStatus.LastError, ToolProfile: "full", ToolCount: len(runtime.Tools.List())}
 	}
 	statusWait := func(ctx context.Context, previous string) runtimeStatusResult {
 		for {
@@ -466,7 +466,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		operationMu.Lock()
 		defer operationMu.Unlock()
 		setLifecycle("stopping")
-		span := tracepkg.Start(runtimeCtx, "SERVER", "server.shutdown", "Stopping server runtime", tracepkg.String("reason", reason), tracepkg.Int("mcp_port", currentCfg.Server.Port), tracepkg.Int("admin_port", currentCfg.Admin.Port))
+		span := tracepkg.Start(runtimeCtx, "SERVER", "server.shutdown", "Stopping server runtime", tracepkg.String("reason", reason), tracepkg.Int("mcp_port", currentCfg.HTTP.MCP.Port), tracepkg.Int("admin_port", currentCfg.HTTP.Admin.Port))
 		if commandSession != nil {
 			commandSession.Update(presentation.ProgressPhase{ID: "server.stopping", Label: "Stopping server", State: presentation.ProgressRunning})
 		}
@@ -545,11 +545,11 @@ func waitRuntimeHTTPReady(parent context.Context, cfg config.Config, timeout tim
 		parent = context.Background()
 	}
 	endpoints := []string{}
-	if cfg.Server.Enabled {
-		endpoints = append(endpoints, endpointURL("127.0.0.1", cfg.Server.Port, "/health"))
+	if cfg.HTTP.MCP.Enabled {
+		endpoints = append(endpoints, endpointURL("127.0.0.1", cfg.HTTP.MCP.Port, "/health"))
 	}
-	if cfg.Admin.Enabled {
-		endpoints = append(endpoints, endpointURL("127.0.0.1", cfg.Admin.Port, "/"))
+	if cfg.HTTP.Admin.Enabled {
+		endpoints = append(endpoints, endpointURL("127.0.0.1", cfg.HTTP.Admin.Port, "/"))
 	}
 	span := tracepkg.Start(parent, "NETWORK", "server.http-readiness", "Waiting for HTTP listener readiness", tracepkg.Any("endpoints", append([]string(nil), endpoints...)), tracepkg.DurationMS("timeout_ms", timeout))
 	if len(endpoints) == 0 {

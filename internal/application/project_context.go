@@ -16,7 +16,7 @@ func ProjectContextEnvironment() (bool, int) {
 	if err != nil {
 		return false, 0
 	}
-	return cfg.Admin.Enabled, cfg.Admin.Port
+	return cfg.HTTP.Admin.Enabled, cfg.HTTP.Admin.Port
 }
 
 func ProjectContextToolProfile(ctx context.Context) instructioncontext.ToolProfile {

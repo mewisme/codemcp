@@ -20,8 +20,8 @@ func TestValidateRequiresAuthTokens(t *testing.T) {
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected missing auth token validation error")
 	}
-	cfg.Auth.MCPTokenHash = "configured"
-	cfg.Auth.AdminTokenHash = "configured"
+	cfg.HTTP.MCP.Auth.TokenHash = "configured"
+	cfg.HTTP.Admin.Auth.TokenHash = "configured"
 	if err := Validate(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -29,10 +29,10 @@ func TestValidateRequiresAuthTokens(t *testing.T) {
 
 func TestValidateRequiresAtLeastOneMCPTransport(t *testing.T) {
 	cfg := Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
-	cfg.Server.Enabled = false
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Enabled = false
 	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "at least one MCP transport") {
 		t.Fatalf("both transports disabled err=%v", err)
 	}
@@ -42,7 +42,7 @@ func TestValidateRequiresAtLeastOneMCPTransport(t *testing.T) {
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("tunnel-only config rejected: %v", err)
 	}
-	cfg.Server.Enabled = true
+	cfg.HTTP.MCP.Enabled = true
 	cfg.Tunnel.Enabled = false
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("HTTP-only config rejected: %v", err)
@@ -52,7 +52,7 @@ func TestValidateRequiresAtLeastOneMCPTransport(t *testing.T) {
 func TestConfigSaveRejectsDisablingAllMCPTransports(t *testing.T) {
 	root := t.TempDir()
 	cfg := Default()
-	cfg.Server.Enabled = false
+	cfg.HTTP.MCP.Enabled = false
 	cfg.Tunnel.Enabled = false
 	err := saveAt(filepath.Join(root, "config.json"), filepath.Join(root, "tunnel.json"), cfg)
 	if err == nil || !strings.Contains(err.Error(), "at least one MCP transport") {
@@ -71,10 +71,10 @@ func TestValidateNetworkExposureRequiresAuth(t *testing.T) {
 	} {
 		t.Run(string(exposure.Mode), func(t *testing.T) {
 			cfg := Default()
-			cfg.Server.Expose = exposure
-			cfg.Server.AllowInsecureHTTP = true
-			cfg.Auth.MCPTokenHash = "mcp"
-			cfg.Auth.AdminTokenHash = "admin"
+			cfg.HTTP.Exposure = exposure
+			cfg.HTTP.Security.AllowInsecure = true
+			cfg.HTTP.MCP.Auth.TokenHash = "mcp"
+			cfg.HTTP.Admin.Auth.TokenHash = "admin"
 			if err := Validate(cfg); err != nil {
 				t.Fatal(err)
 			}
@@ -82,10 +82,10 @@ func TestValidateNetworkExposureRequiresAuth(t *testing.T) {
 				name   string
 				mutate func(*Config)
 			}{
-				{name: "mcp disabled", mutate: func(cfg *Config) { cfg.Auth.MCPEnabled = false }},
-				{name: "admin auth disabled", mutate: func(cfg *Config) { cfg.Auth.AdminEnabled = false }},
-				{name: "mcp token missing", mutate: func(cfg *Config) { cfg.Auth.MCPTokenHash = "" }},
-				{name: "admin token missing", mutate: func(cfg *Config) { cfg.Auth.AdminTokenHash = "" }},
+				{name: "mcp disabled", mutate: func(cfg *Config) { cfg.HTTP.MCP.Auth.Enabled = false }},
+				{name: "admin auth disabled", mutate: func(cfg *Config) { cfg.HTTP.Admin.Auth.Enabled = false }},
+				{name: "mcp token missing", mutate: func(cfg *Config) { cfg.HTTP.MCP.Auth.TokenHash = "" }},
+				{name: "admin token missing", mutate: func(cfg *Config) { cfg.HTTP.Admin.Auth.TokenHash = "" }},
 			} {
 				t.Run(test.name, func(t *testing.T) {
 					candidate := cfg
@@ -95,9 +95,9 @@ func TestValidateNetworkExposureRequiresAuth(t *testing.T) {
 					}
 				})
 			}
-			cfg.Admin.Enabled = false
-			cfg.Auth.AdminEnabled = false
-			cfg.Auth.AdminTokenHash = ""
+			cfg.HTTP.Admin.Enabled = false
+			cfg.HTTP.Admin.Auth.Enabled = false
+			cfg.HTTP.Admin.Auth.TokenHash = ""
 			if err := Validate(cfg); err != nil {
 				t.Fatalf("disabled admin endpoint unnecessarily required admin auth: %v", err)
 			}
@@ -107,13 +107,13 @@ func TestValidateNetworkExposureRequiresAuth(t *testing.T) {
 
 func TestValidateNetworkExposureRequiresExplicitInsecureHTTPOptIn(t *testing.T) {
 	cfg := Default()
-	cfg.Server.Expose = ExposureConfig{Mode: ExposureAll, Interfaces: []string{}}
-	cfg.Auth.MCPTokenHash = "mcp"
-	cfg.Auth.AdminTokenHash = "admin"
-	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "allow_insecure_http") {
+	cfg.HTTP.Exposure = ExposureConfig{Mode: ExposureAll, Interfaces: []string{}}
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin"
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "http.security.allow_insecure") {
 		t.Fatalf("network exposure without insecure HTTP opt-in = %v", err)
 	}
-	cfg.Server.AllowInsecureHTTP = true
+	cfg.HTTP.Security.AllowInsecure = true
 	if err := Validate(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -121,35 +121,35 @@ func TestValidateNetworkExposureRequiresExplicitInsecureHTTPOptIn(t *testing.T) 
 
 func TestValidateUnauthenticatedLoopbackRequiresAcknowledgement(t *testing.T) {
 	cfg := Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
 	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "allow_unauthenticated_loopback") {
 		t.Fatalf("auth-off without acknowledgement = %v", err)
 	}
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("auth-off with acknowledgement and expose none rejected: %v", err)
 	}
-	cfg.Server.Expose = ExposureConfig{Mode: ExposureAll, Interfaces: []string{}}
-	cfg.Server.AllowInsecureHTTP = true
-	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "expose.mode=none") {
+	cfg.HTTP.Exposure = ExposureConfig{Mode: ExposureAll, Interfaces: []string{}}
+	cfg.HTTP.Security.AllowInsecure = true
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "http.exposure.mode=none") {
 		t.Fatalf("auth-off with acknowledgement and expose all = %v", err)
 	}
 }
 
 func TestValidateUnauthenticatedLoopbackAppliesPerEnabledEndpoint(t *testing.T) {
 	cfg := Default()
-	cfg.Auth.MCPTokenHash = "mcp"
-	cfg.Auth.AdminEnabled = false
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp"
+	cfg.HTTP.Admin.Auth.Enabled = false
 	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "allow_unauthenticated_loopback") {
 		t.Fatalf("admin auth-off without acknowledgement = %v", err)
 	}
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := Validate(cfg); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Admin.Enabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = false
+	cfg.HTTP.Admin.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = false
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("disabled admin endpoint unnecessarily required acknowledgement: %v", err)
 	}
@@ -160,8 +160,8 @@ func TestSecurityWarningsIncludeCleartextHTTP(t *testing.T) {
 	if warnings := SecurityWarnings(cfg); len(warnings) != 0 {
 		t.Fatalf("default security warnings = %#v", warnings)
 	}
-	cfg.Server.Expose.Mode = ExposureAll
-	cfg.Server.AllowInsecureHTTP = true
+	cfg.HTTP.Exposure.Mode = ExposureAll
+	cfg.HTTP.Security.AllowInsecure = true
 	warnings := SecurityWarnings(cfg)
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "cleartext HTTP") {
 		t.Fatalf("cleartext warnings = %#v", warnings)
@@ -173,9 +173,9 @@ func TestSecurityWarningsIncludeCleartextHTTP(t *testing.T) {
 
 func TestValidateBuiltinOpenAITunnel(t *testing.T) {
 	cfg := Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.Enabled = true
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected missing tunnel id/api key validation error")
@@ -258,8 +258,8 @@ func TestConfigJSONRoundTrip(t *testing.T) {
 	configPath := filepath.Join(root, "config.json")
 	secretPath := filepath.Join(root, "tunnel.json")
 	cfg := Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	cfg.Tunnel.ID = "tunnel_0123456789abcdef0123456789abcdef"
 	cfg.Tunnel.APIKey = "tunnel-secret"
 	cfg.Tunnel.Admin.Key = "admin-secret"
@@ -272,7 +272,7 @@ func TestConfigJSONRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != cfg.Server.Port || loaded.Auth.MCPTokenHash != cfg.Auth.MCPTokenHash || loaded.Tunnel.APIKey != cfg.Tunnel.APIKey || loaded.Tunnel.Admin.Key != cfg.Tunnel.Admin.Key || loaded.Tunnel.Admin.OrganizationID != cfg.Tunnel.Admin.OrganizationID || len(loaded.Shell.Path) != 1 || loaded.Shell.Path[0] != cfg.Shell.Path[0] {
+	if loaded.HTTP.MCP.Port != cfg.HTTP.MCP.Port || loaded.HTTP.MCP.Auth.TokenHash != cfg.HTTP.MCP.Auth.TokenHash || loaded.Tunnel.APIKey != cfg.Tunnel.APIKey || loaded.Tunnel.Admin.Key != cfg.Tunnel.Admin.Key || loaded.Tunnel.Admin.OrganizationID != cfg.Tunnel.Admin.OrganizationID || len(loaded.Shell.Path) != 1 || loaded.Shell.Path[0] != cfg.Shell.Path[0] {
 		t.Fatalf("round trip = %#v", loaded)
 	}
 	mainData, err := os.ReadFile(configPath)
@@ -369,10 +369,111 @@ func TestLegacyGenericTunnelFieldsArePreservedOnSave(t *testing.T) {
 	}
 }
 
+func TestLegacyHTTPRootsMigrateOnceAndRewriteCanonicalTree(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.json")
+	secretPath := filepath.Join(root, "tunnel.json")
+	legacy := []byte(`{
+		"server":{"enabled":true,"port":41021,"expose":{"mode":"none","interfaces":[]},"allow_insecure_http":false,"allow_unauthenticated_loopback":true},
+		"admin":{"enabled":false,"port":41022},
+		"auth":{"mcp_enabled":false,"mcp_legacy_bearer":false,"admin_enabled":false,"mcp_token_hash":"legacy-mcp-hash"},
+		"tunnel":{"enabled":false}
+	}`)
+	if err := os.WriteFile(configPath, legacy, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := loadAt(configPath, secretPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.HTTP.MCP.Enabled || cfg.HTTP.MCP.Port != 41021 || cfg.HTTP.Admin.Enabled || cfg.HTTP.Admin.Port != 41022 {
+		t.Fatalf("legacy endpoint migration = %#v", cfg.HTTP)
+	}
+	if cfg.HTTP.MCP.Auth.Enabled || cfg.HTTP.MCP.Auth.LegacyBearer || cfg.HTTP.MCP.Auth.TokenHash != "legacy-mcp-hash" || cfg.HTTP.Admin.Auth.Enabled {
+		t.Fatalf("legacy auth migration = %#v", cfg.HTTP)
+	}
+	if !cfg.HTTP.Security.AllowUnauthenticatedLoopback || cfg.HTTP.Security.AllowInsecure || cfg.HTTP.Exposure.Mode != ExposureNone {
+		t.Fatalf("legacy shared HTTP policy migration = %#v", cfg.HTTP)
+	}
+
+	saved, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := configformat.DecodeGeneric(configformat.JSON, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootValue := decoded.(map[string]any)
+	if _, ok := rootValue["http"]; !ok {
+		t.Fatalf("canonical HTTP root missing after migration: %s", saved)
+	}
+	for _, legacyRoot := range []string{"server", "admin", "auth"} {
+		if _, ok := rootValue[legacyRoot]; ok {
+			t.Fatalf("legacy root %q survived migration: %s", legacyRoot, saved)
+		}
+	}
+}
+
+func TestHTTPMigrationRejectsCanonicalAndLegacyRootsTogether(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.json")
+	secretPath := filepath.Join(root, "tunnel.json")
+	data := []byte(`{
+		"http":{"mcp":{"enabled":true,"port":37421,"auth":{"enabled":true,"legacy_bearer":true}},"admin":{"enabled":true,"port":37422,"auth":{"enabled":true}},"exposure":{"mode":"none","interfaces":[]},"security":{}},
+		"server":{"enabled":true,"port":37421}
+	}`)
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadAt(configPath, secretPath); err == nil || !strings.Contains(err.Error(), "both canonical http and legacy server/admin/auth roots") {
+		t.Fatalf("canonical/legacy HTTP conflict error = %v", err)
+	}
+}
+
+func TestHTTPMigrationRejectsUnknownLegacyKeysInsteadOfDroppingThem(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		data string
+		want string
+	}{
+		{
+			name: "legacy root field",
+			data: `{"server":{"enabled":true,"port":37421,"custom":"keep"}}`,
+			want: "legacy server configuration contains unsupported keys",
+		},
+		{
+			name: "legacy exposure field",
+			data: `{"server":{"enabled":true,"port":37421,"expose":{"mode":"none","interfaces":[],"custom":"keep"}}}`,
+			want: "legacy server.expose configuration contains unsupported keys",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			configPath := filepath.Join(root, "config.json")
+			secretPath := filepath.Join(root, "tunnel.json")
+			if err := os.WriteFile(configPath, []byte(test.data), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := loadAt(configPath, secretPath); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("legacy migration error = %v, want %q", err, test.want)
+			}
+			saved, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(saved) != test.data {
+				t.Fatalf("rejected legacy config was rewritten:\n%s", saved)
+			}
+		})
+	}
+}
+
 func TestDefaultServerUsesExposurePolicy(t *testing.T) {
 	cfg := Default()
-	if !cfg.Server.Enabled || cfg.Server.Port != 37421 || cfg.Server.Expose.Mode != ExposureNone || len(cfg.Server.Expose.Interfaces) != 0 {
-		t.Fatalf("server = %#v", cfg.Server)
+	if !cfg.HTTP.MCP.Enabled || cfg.HTTP.MCP.Port != 37421 || cfg.HTTP.Exposure.Mode != ExposureNone || len(cfg.HTTP.Exposure.Interfaces) != 0 {
+		t.Fatalf("http mcp = %#v", cfg.HTTP.MCP)
 	}
 }
 
@@ -385,9 +486,9 @@ func TestDefaultIntegrationsActive(t *testing.T) {
 
 func TestValidatePonytailDefaultMode(t *testing.T) {
 	cfg := Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	for _, mode := range []string{"lite", "full", "ultra"} {
 		cfg.Integrations.Ponytail.Mode = mode
 		if err := Validate(cfg); err != nil {
@@ -404,9 +505,9 @@ func TestValidatePonytailDefaultMode(t *testing.T) {
 
 func TestValidateCavemanDefaultMode(t *testing.T) {
 	cfg := Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	for _, mode := range []string{"lite", "full", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"} {
 		cfg.Integrations.Caveman.Mode = mode
 		if err := Validate(cfg); err != nil {
@@ -492,7 +593,7 @@ func TestLegacyJSONConfigWithoutIntegrationsKeepsEnabledDefaults(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !loaded.Server.Enabled {
+			if !loaded.HTTP.MCP.Enabled {
 				t.Fatal("legacy JSON config disabled MCP HTTP")
 			}
 			if !loaded.Integrations.Ponytail.Active || loaded.Integrations.Ponytail.Mode != "full" || !loaded.Integrations.Caveman.Active || loaded.Integrations.Caveman.Mode != "full" {
@@ -615,8 +716,8 @@ func TestLegacyServerHostMigratesToExpose(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if loaded.Server.Expose.Mode != test.want {
-				t.Fatalf("expose = %#v, want %s", loaded.Server.Expose, test.want)
+			if loaded.HTTP.Exposure.Mode != test.want {
+				t.Fatalf("expose = %#v, want %s", loaded.HTTP.Exposure, test.want)
 			}
 			if err := saveAt(configPath, secretPath, loaded); err != nil {
 				t.Fatal(err)
@@ -625,10 +726,17 @@ func TestLegacyServerHostMigratesToExpose(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(string(saved), `"host"`) {
-				t.Fatalf("legacy host was removed during save: %s", saved)
+			raw, err := configformat.DecodeGeneric(configformat.JSON, saved)
+			if err != nil {
+				t.Fatal(err)
 			}
-			if !strings.Contains(string(saved), `"expose": {`) || !strings.Contains(string(saved), `"mode": "`+string(test.want)+`"`) {
+			rootValue := raw.(map[string]any)
+			for _, legacyRoot := range []string{"server", "admin", "auth"} {
+				if _, exists := rootValue[legacyRoot]; exists {
+					t.Fatalf("legacy HTTP root %q survived canonical rewrite: %s", legacyRoot, saved)
+				}
+			}
+			if !strings.Contains(string(saved), `"http": {`) || !strings.Contains(string(saved), `"exposure": {`) || !strings.Contains(string(saved), `"mode": "`+string(test.want)+`"`) {
 				t.Fatalf("saved exposure missing: %s", saved)
 			}
 		})
@@ -662,8 +770,8 @@ func TestLegacyBooleanExposureMigratesInJSON(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if loaded.Server.Expose.Mode != test.want || len(loaded.Server.Expose.Interfaces) != 0 {
-				t.Fatalf("expose = %#v", loaded.Server.Expose)
+			if loaded.HTTP.Exposure.Mode != test.want || len(loaded.HTTP.Exposure.Interfaces) != 0 {
+				t.Fatalf("expose = %#v", loaded.HTTP.Exposure)
 			}
 		})
 	}
@@ -699,7 +807,10 @@ func TestConfigJSONSaveDeepMergesUnknownKeys(t *testing.T) {
 	configPath := filepath.Join(root, "config.json")
 	secretPath := filepath.Join(root, "tunnel.json")
 	existing := map[string]any{
-		"server": map[string]any{"port": int64(3000), "legacy_flag": true},
+		"http": map[string]any{
+			"mcp":    map[string]any{"port": int64(3000), "legacy_flag": true},
+			"custom": map[string]any{"keep": true},
+		},
 		"custom": map[string]any{"nested": "keep"},
 		"shell":  map[string]any{"path": []any{}, "legacy_mode": "keep"},
 	}
@@ -711,7 +822,7 @@ func TestConfigJSONSaveDeepMergesUnknownKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := Default()
-	cfg.Server.Port = 41001
+	cfg.HTTP.MCP.Port = 41001
 	if err := saveAt(configPath, secretPath, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -724,10 +835,12 @@ func TestConfigJSONSaveDeepMergesUnknownKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	rootValue := raw.(map[string]any)
-	server := rootValue["server"].(map[string]any)
+	httpValue := rootValue["http"].(map[string]any)
+	mcp := httpValue["mcp"].(map[string]any)
+	httpCustom := httpValue["custom"].(map[string]any)
 	shell := rootValue["shell"].(map[string]any)
 	custom := rootValue["custom"].(map[string]any)
-	if fmt.Sprint(server["port"]) != "41001" || server["legacy_flag"] != true || shell["legacy_mode"] != "keep" || custom["nested"] != "keep" {
+	if fmt.Sprint(mcp["port"]) != "41001" || mcp["legacy_flag"] != true || httpCustom["keep"] != true || shell["legacy_mode"] != "keep" || custom["nested"] != "keep" {
 		t.Fatalf("merged JSON config = %#v", rootValue)
 	}
 }
@@ -744,9 +857,9 @@ func TestConfigSaveRollsBackMainConfigWhenTunnelSecretWriteFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.APIKey = "new-secret"
 	called := false
 	if err := saveAtWithSecretSaver(configPath, secretPath, cfg, func(path string, value tunnel.Config) error {
@@ -795,9 +908,9 @@ func TestConfigSaveDoesNotTouchTunnelSecretWhenMainConfigWriteFails(t *testing.T
 		t.Fatal(err)
 	}
 	cfg := Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.APIKey = "new-secret"
 	if err := saveAt(configPath, secretPath, cfg); err == nil {
 		t.Fatal("expected main config write failure")

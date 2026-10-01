@@ -171,7 +171,7 @@ func TestNewSharesToolRuntime(t *testing.T) {
 
 func TestTunnelOnlyRuntimeDoesNotCreateMCPHTTPRuntime(t *testing.T) {
 	cfg := config.Default()
-	cfg.Server.Enabled = false
+	cfg.HTTP.MCP.Enabled = false
 	cfg.Tunnel.Enabled = true
 	cfg.Tunnel.ID = "tunnel_test"
 	cfg.Tunnel.APIKey = "runtime-secret"
@@ -191,15 +191,15 @@ func TestTunnelOnlyRuntimeDoesNotCreateMCPHTTPRuntime(t *testing.T) {
 
 func TestReloadConfigSwitchesMCPHTTPRuntime(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	next := cfg
-	next.Server.Enabled = false
+	next.HTTP.MCP.Enabled = false
 	next.Tunnel.Enabled = true
 	next.Tunnel.ID = "tunnel_test"
 	next.Tunnel.APIKey = "runtime-secret"
@@ -209,7 +209,7 @@ func TestReloadConfigSwitchesMCPHTTPRuntime(t *testing.T) {
 	if app.MCP != nil {
 		t.Fatal("MCP HTTP runtime survived transport disable")
 	}
-	next.Server.Enabled = true
+	next.HTTP.MCP.Enabled = true
 	next.Tunnel.Enabled = false
 	if err := app.ReloadConfig(next); err != nil {
 		t.Fatal(err)
@@ -222,9 +222,9 @@ func TestReloadConfigSwitchesMCPHTTPRuntime(t *testing.T) {
 func TestReloadConfigReconcilesExistingSingleTunnelClient(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.Enabled = false
 	cfg.Tunnel.ID = "tunnel_old"
 	cfg.Tunnel.APIKey = "runtime-old"
@@ -290,9 +290,9 @@ func TestNewKeepsControllerToolsWhenFeatureInactive(t *testing.T) {
 
 func TestHandlersHonorDisabledAuthentication(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -316,8 +316,8 @@ func TestHandlersHonorDisabledAuthentication(t *testing.T) {
 
 func TestHandlersRequireEnabledAuthentication(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = auth.HashToken("mcp-test")
-	cfg.Auth.AdminTokenHash = auth.HashToken("admin-test")
+	cfg.HTTP.MCP.Auth.TokenHash = auth.HashToken("mcp-test")
+	cfg.HTTP.Admin.Auth.TokenHash = auth.HashToken("admin-test")
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -338,8 +338,8 @@ func TestHandlersRequireEnabledAuthentication(t *testing.T) {
 
 func TestHandlersReadAuthenticationFromRuntimeConfigStore(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = auth.HashToken("mcp-test")
-	cfg.Auth.AdminTokenHash = auth.HashToken("admin-test")
+	cfg.HTTP.MCP.Auth.TokenHash = auth.HashToken("mcp-test")
+	cfg.HTTP.Admin.Auth.TokenHash = auth.HashToken("admin-test")
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -348,9 +348,9 @@ func TestHandlersReadAuthenticationFromRuntimeConfigStore(t *testing.T) {
 	adminHandler := app.AdminHandler()
 
 	if _, err := app.Config.Update(func(next config.Config) (config.Config, error) {
-		next.Auth.MCPEnabled = false
-		next.Auth.AdminEnabled = false
-		next.Server.AllowUnauthenticatedLoopback = true
+		next.HTTP.MCP.Auth.Enabled = false
+		next.HTTP.Admin.Auth.Enabled = false
+		next.HTTP.Security.AllowUnauthenticatedLoopback = true
 		return next, nil
 	}); err != nil {
 		t.Fatal(err)
@@ -391,7 +391,7 @@ func TestBootstrapRewiresToolRuntime(t *testing.T) {
 
 func TestAdminHandlerSharesApprovalManager(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.AdminEnabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)

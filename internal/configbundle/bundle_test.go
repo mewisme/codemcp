@@ -121,9 +121,9 @@ func TestExportAndImportKeepLLMProviderStateSecretFree(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(configformat.EnvConfigDir, root)
 	portableConfig := validConfig()
-	portableConfig.Auth.MCPEnabled = false
-	portableConfig.Auth.AdminEnabled = false
-	portableConfig.Server.AllowUnauthenticatedLoopback = true
+	portableConfig.HTTP.MCP.Auth.Enabled = false
+	portableConfig.HTTP.Admin.Auth.Enabled = false
+	portableConfig.HTTP.Security.AllowUnauthenticatedLoopback = true
 	writeConfigFile(t, root, portableConfig)
 	store := llm.NewStore(root)
 	providers := llm.DefaultCatalog()
@@ -409,7 +409,7 @@ func TestImportPreservesExistingSecretsAndRejectsInvalidEnvelopeBeforeMutation(t
 		t.Fatal(err)
 	}
 	cfg := validConfig()
-	cfg.Server.Port = 40200
+	cfg.HTTP.MCP.Port = 40200
 	configData, err := configformat.Marshal(configformat.JSON, cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -454,7 +454,7 @@ func TestImportPreservesExistingSecretsAndRejectsInvalidEnvelopeBeforeMutation(t
 		t.Fatal(err)
 	}
 	badConfig := validConfig()
-	badConfig.Server.Port = 0
+	badConfig.HTTP.MCP.Port = 0
 	badData, err := configformat.Marshal(configformat.JSON, badConfig)
 	if err != nil {
 		t.Fatal(err)
@@ -496,8 +496,15 @@ func TestImportForceMergesExistingMainConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	existing := map[string]any{
-		"server": map[string]any{"port": int64(40100), "existing_only": true},
-		"auth":   map[string]any{"mcp_token_hash": "target-mcp-hash", "admin_token_hash": "target-admin-hash"},
+		"http": map[string]any{
+			"mcp": map[string]any{
+				"port": int64(40100), "existing_only": true,
+				"auth": map[string]any{"token_hash": "target-mcp-hash"},
+			},
+			"admin": map[string]any{
+				"auth": map[string]any{"token_hash": "target-admin-hash"},
+			},
+		},
 		"custom": map[string]any{"nested": "keep"},
 	}
 	existingData, err := configformat.EncodeGeneric(configformat.JSON, existing)
@@ -511,7 +518,7 @@ func TestImportForceMergesExistingMainConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	imported := validConfig()
-	imported.Server.Port = 40200
+	imported.HTTP.MCP.Port = 40200
 	importedData, err := configformat.Marshal(configformat.JSON, imported)
 	if err != nil {
 		t.Fatal(err)
@@ -534,10 +541,13 @@ func TestImportForceMergesExistingMainConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := raw.(map[string]any)
-	server := result["server"].(map[string]any)
-	auth := result["auth"].(map[string]any)
+	httpConfig := result["http"].(map[string]any)
+	mcp := httpConfig["mcp"].(map[string]any)
+	admin := httpConfig["admin"].(map[string]any)
+	mcpAuth := mcp["auth"].(map[string]any)
+	adminAuth := admin["auth"].(map[string]any)
 	custom := result["custom"].(map[string]any)
-	if server["port"] != int64(40200) || server["existing_only"] != true || auth["mcp_token_hash"] != "target-mcp-hash" || auth["admin_token_hash"] != "target-admin-hash" || custom["nested"] != "keep" {
+	if mcp["port"] != int64(40200) || mcp["existing_only"] != true || mcpAuth["token_hash"] != "target-mcp-hash" || adminAuth["token_hash"] != "target-admin-hash" || custom["nested"] != "keep" {
 		t.Fatalf("merged import = %#v", result)
 	}
 }
@@ -587,8 +597,8 @@ func TestValidateEnvelopeRejectsSensitiveState(t *testing.T) {
 
 func validConfig() config.Config {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	return cfg
 }
 

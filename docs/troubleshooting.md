@@ -192,7 +192,7 @@ Listener reload is transactional. A failed new bind restores the previous workin
 Choose a free port and retry the mutation:
 
 ```bash
-cm config set server.port 41021
+cm config set http.mcp.port 41021
 ```
 
 ## Config format mismatch or manual edit failure

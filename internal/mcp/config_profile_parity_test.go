@@ -28,10 +28,10 @@ func (provider *profileConfigSetProvider) ApplySet(context.Context, map[string]a
 	provider.applies.Add(1)
 	return mcpconfigwire.MutationResult{
 		State: mcpconfigwire.MutationRuntimeSynced,
-		Keys:  []string{"server.port", "admin.port"},
+		Keys:  []string{"http.mcp.port", "http.admin.port"},
 		Outcomes: []mcpconfigwire.MutationOutcome{
-			{Key: "server.port", Changed: true},
-			{Key: "admin.port", Changed: true},
+			{Key: "http.mcp.port", Changed: true},
+			{Key: "http.admin.port", Changed: true},
 		},
 		ChangeCount: 2, Changed: true, RuntimeReloaded: true, RuntimeSync: mcpconfigwire.RuntimeSyncCurrent,
 	}, nil
@@ -127,7 +127,7 @@ func TestConfigSetHostConfirmationCannotBypassCodeMCPApprovalAcrossProfiles(t *t
 				"name": mcpconfigwire.SetToolName,
 				"arguments": map[string]any{
 					"workspace_id": workspace.ID,
-					"changes":      []any{map[string]any{"key": "server.port", "value": "41001"}},
+					"changes":      []any{map[string]any{"key": "http.mcp.port", "value": "41001"}},
 				},
 			})
 			if err != nil {
@@ -167,8 +167,8 @@ func TestConfigSetApprovedExecutionIsCanonicalAcrossProfiles(t *testing.T) {
 			args := map[string]any{
 				"workspace_id": workspace.ID,
 				"changes": []any{
-					map[string]any{"key": "server.port", "value": "41001"},
-					map[string]any{"key": "admin.port", "value": "41002"},
+					map[string]any{"key": "http.mcp.port", "value": "41001"},
+					map[string]any{"key": "http.admin.port", "value": "41002"},
 				},
 			}
 			server := NewRuntimeWithProfile(toolRuntime, profile)

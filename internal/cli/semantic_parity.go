@@ -24,7 +24,7 @@ func healthCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		value := application.HealthStatus{OK: true, AdminAuthEnabled: cfg.Auth.AdminEnabled}
+		value := application.HealthStatus{OK: true, AdminAuthEnabled: cfg.HTTP.Admin.Auth.Enabled}
 		if asJSON {
 			return writeResultJSON(cmd, value)
 		}

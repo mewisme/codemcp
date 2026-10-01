@@ -284,7 +284,7 @@ func TestWritableManagedSecretInventoryUsesProtectedTelegramInputState(t *testin
 		t.Fatal("writable managed-secret inventory unexpectedly empty")
 	}
 
-	for _, key := range []string{"auth.mcp_token", "auth.admin_token"} {
+	for _, key := range []string{"http.mcp.auth.token", "http.admin.auth.token"} {
 		spec, ok := config.SettingByKey(key)
 		if !ok || spec.Writable || !spec.Rotatable || spec.ValueRole != config.SettingValueGenerated {
 			t.Fatalf("generated credential metadata drift for %s: %#v", key, spec)

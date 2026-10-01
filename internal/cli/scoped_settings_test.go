@@ -99,9 +99,9 @@ func TestScopedAndUniversalStaticSettingParity(t *testing.T) {
 		scopedArgs []string
 		want       string
 	}{
-		{name: "server", key: "server.port", value: "43123", scopedArgs: []string{"server", "port", "43123"}, want: "43123"},
-		{name: "admin", key: "admin.port", value: "43124", scopedArgs: []string{"admin", "port", "43124"}, want: "43124"},
-		{name: "auth", key: "auth.mcp_legacy_bearer", value: "false", scopedArgs: []string{"auth", "mcp", "legacy", "bearer", "disable"}, want: "false"},
+		{name: "http-mcp", key: "http.mcp.port", value: "43123", scopedArgs: []string{"http", "mcp", "port", "43123"}, want: "43123"},
+		{name: "http-admin", key: "http.admin.port", value: "43124", scopedArgs: []string{"http", "admin", "port", "43124"}, want: "43124"},
+		{name: "auth", key: "http.mcp.auth.legacy_bearer", value: "false", scopedArgs: []string{"auth", "mcp", "legacy", "bearer", "disable"}, want: "false"},
 		{name: "permissions", key: "permissions.allow_dirs", value: allowDirA + "," + allowDirB, scopedArgs: []string{"permissions", "allow", "dir", "add", allowDirA}, want: allowDirA + "," + allowDirB},
 		{name: "shell", key: "shell.path", value: "/opt/scoped-a,/opt/scoped-b", scopedArgs: []string{"shell", "path", "/opt/scoped-a,/opt/scoped-b"}, want: "/opt/scoped-a,/opt/scoped-b"},
 		{name: "notification-approval", key: "notifications.approval.enabled", value: "true", scopedArgs: []string{"notification", "approval", "enable"}, want: "true"},
@@ -230,7 +230,7 @@ func TestScopedMutationReloadsRunningRuntimeExactlyOnce(t *testing.T) {
 	defer server.Close()
 	writeScopedRuntimeState(t, root, runtimecontrol.State{PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root})
 
-	if _, err := executeRequestCommandError(root, []string{"server", "port", "43123"}); err != nil {
+	if _, err := executeRequestCommandError(root, []string{"http", "mcp", "port", "43123"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := calls.Load(); got != 1 {
@@ -427,8 +427,8 @@ func initializeScopedConfigRoot(t *testing.T, root string) {
 	t.Helper()
 	withScopedConfigRoot(t, root, func() {
 		cfg := config.Default()
-		cfg.Auth.MCPTokenHash = "mcp-configured-hash"
-		cfg.Auth.AdminTokenHash = "admin-configured-hash"
+		cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
+		cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 		if err := config.Save(cfg); err != nil {
 			t.Fatal(err)
 		}

@@ -40,8 +40,8 @@ func TestTelegramPairingPromotesSetupToAuthorizedRuntime(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("CM_CONFIG_DIR", root)
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "test-mcp-hash"
-	cfg.Auth.AdminTokenHash = "test-admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "test-mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "test-admin-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -139,8 +139,8 @@ func TestTelegramPairingRejectsWrongCodeWithoutAuthorization(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("CM_CONFIG_DIR", root)
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "test-mcp-hash"
-	cfg.Auth.AdminTokenHash = "test-admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "test-mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "test-admin-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

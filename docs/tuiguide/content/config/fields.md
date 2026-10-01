@@ -1,59 +1,67 @@
 # Configuration Fields
 
-The Config TUI is schema-driven. Each field below is the same key exposed by the application's configuration field registry. Editable fields use the field type declared by the schema; managed credential/scope fields are read-only.
+The Config TUI is schema-driven. Each field below is the same key exposed by the application's configuration field registry. Editable fields use the field type declared by the schema; managed credentials and derived verification state are read-only unless their field metadata explicitly marks them editable.
 
 ## Runtime & Network
 
-### `server.enabled` — MCP HTTP server
+### `http.mcp.enabled` — MCP HTTP server
 
-Boolean. Controls whether the local MCP HTTP transport is enabled. Disabling it removes local HTTP MCP connectivity. At least one MCP transport must remain enabled, so the Secure MCP Tunnel must be enabled before this can be disabled by itself. Related: `server.port`, `server.expose.mode`, `auth.mcp_enabled`, `tunnel.enabled`.
+Boolean. Controls whether the local MCP HTTP transport is enabled. Disabling it removes local HTTP MCP connectivity. At least one MCP transport must remain enabled, so the Secure MCP Tunnel must be enabled before this can be disabled by itself. Related: `http.mcp.port`, `http.exposure.mode`, `http.mcp.auth.enabled`, `tunnel.enabled`.
 
-### `server.expose.mode` — Exposure
+### `http.exposure.mode` — Exposure
 
 Enum controlling which local network addresses expose HTTP servers.
 
 - `none`: loopback only.
 - `all`: loopback plus every eligible address discovered on all interfaces.
 - `0.0.0.0`: one IPv4 wildcard listener exposing eligible IPv4 addresses.
-- `interfaces`: loopback plus addresses from `server.expose.interfaces`.
+- `interfaces`: loopback plus addresses from `http.exposure.interfaces`.
 
-Non-loopback exposure also requires `server.allow_insecure_http=true` and valid authentication for each enabled HTTP endpoint.
+Non-loopback exposure also requires `http.security.allow_insecure=true` and valid authentication for each enabled HTTP endpoint.
 
-### `server.expose.interfaces` — Exposure interfaces
+### `http.exposure.interfaces` — Exposure interfaces
 
-List of network interface names used when exposure mode is `interfaces`. Enter one value per line in the TUI. Each name must resolve to an available interface with at least one eligible IP address at runtime. Duplicates are normalized away. Set `server.expose.mode=interfaces` before relying on this list.
+List of network interface names used when exposure mode is `interfaces`. Enter one value per line in the TUI. Each name must resolve to an available interface with at least one eligible IP address at runtime. Duplicates are normalized away. Set `http.exposure.mode=interfaces` before relying on this list.
 
-### `server.port` — MCP HTTP port
+### `http.mcp.port` — MCP HTTP port
 
 Integer TCP port for the MCP HTTP server. Valid range is `1-65535`. When both MCP and admin HTTP servers are enabled, their ports must differ.
 
-### `server.allow_insecure_http` — Allow insecure HTTP
+### `http.security.allow_insecure` — Allow insecure HTTP
 
 Boolean opt-in allowing authenticated plain HTTP endpoints beyond loopback. This does not disable authentication requirements. Prefer the Secure MCP Tunnel or a TLS reverse proxy when possible.
 
-### `admin.enabled` — Admin server
+### `http.security.allow_unauthenticated_loopback` — Allow unauthenticated loopback
 
-Boolean controlling the admin HTTP server. When enabled it uses `admin.port` and the same network exposure policy. If admin authentication is enabled, a configured admin credential is required.
+Boolean acknowledgement required before authentication may be disabled on an enabled local HTTP endpoint. It is valid only while `http.exposure.mode=none`; unauthenticated non-loopback HTTP is rejected.
 
-### `admin.port` — Admin port
+### `http.admin.enabled` — Admin server
 
-Integer TCP port for the admin HTTP server. Valid range is `1-65535` while the server is enabled, and it must differ from `server.port` when both HTTP servers are enabled.
+Boolean controlling the admin HTTP server. When enabled it uses `http.admin.port` and the same network exposure policy. If admin authentication is enabled, a configured admin credential is required.
+
+### `http.admin.port` — Admin port
+
+Integer TCP port for the admin HTTP server. Valid range is `1-65535` while the server is enabled, and it must differ from `http.mcp.port` when both HTTP servers are enabled.
 
 ## Access & Security
 
-### `auth.mcp_enabled` — MCP authentication
+### `http.mcp.auth.enabled` — MCP authentication
 
 Boolean token-authentication switch for the MCP HTTP endpoint. Non-loopback HTTP exposure requires MCP authentication with a configured credential.
 
-### `auth.admin_enabled` — Admin authentication
+### `http.mcp.auth.legacy_bearer` — Legacy MCP bearer compatibility
+
+Boolean compatibility switch for the static MCP bearer path. Protected `cm mcp http` uses OAuth as its canonical transport authentication; keep this enabled only when a legacy bearer client still requires it.
+
+### `http.admin.auth.enabled` — Admin authentication
 
 Boolean token-authentication switch for the admin HTTP endpoint. Non-loopback exposure with the admin endpoint enabled requires admin authentication and a configured credential.
 
-### `auth.mcp_token_hash` — MCP credential
+### `http.mcp.auth.token_hash` — MCP credential
 
 Read-only, sensitive managed credential hash. The raw token is never exposed through config views. Manage it through the MCP authentication/token workflow rather than Config field editing.
 
-### `auth.admin_token_hash` — Admin credential
+### `http.admin.auth.token_hash` — Admin credential
 
 Read-only, sensitive managed credential hash for admin HTTP authentication. Manage it through the admin authentication/token workflow.
 
@@ -117,21 +125,33 @@ String identifier for the Secure MCP Tunnel used by this runtime. Required while
 
 Read-only sensitive managed credential. The raw key is redacted from Config. Manage it from the Tunnel page.
 
-### `tunnel.admin_key` — Admin key
+### `tunnel.admin.key` — Admin key
 
 Read-only sensitive credential used for control-plane management such as listing, creating, updating, and deleting managed tunnels. It is separate from the runtime API key and is managed from the Tunnel page.
 
-### `tunnel.admin_organization_id` — Admin organization scope
+### `tunnel.admin.organization_id` — Admin organization scope
 
-Read-only verified organization scope produced by admin-key verification.
+Editable organization scope for tunnel administration. Exactly one of organization, workspace, or tenant scope is configured at a time; changing it invalidates previous verification state.
 
-### `tunnel.admin_workspace_id` — Admin workspace scope
+### `tunnel.admin.workspace_id` — Admin workspace scope
 
-Read-only verified workspace scope produced by admin-key verification.
+Editable workspace scope for tunnel administration. Exactly one of organization, workspace, or tenant scope is configured at a time; changing it invalidates previous verification state.
 
-### `tunnel.admin_tenant_id` — Admin tenant scope
+### `tunnel.admin.tenant_id` — Admin tenant scope
 
-Read-only verified tenant scope produced by admin-key verification.
+Editable tenant scope for tunnel administration. Exactly one of organization, workspace, or tenant scope is configured at a time; changing it invalidates previous verification state.
+
+### `tunnel.admin.verified` — Admin verification state
+
+Read-only derived state indicating whether the current admin key and scope were explicitly verified.
+
+### `tunnel.admin.read_access` — Admin read access
+
+Read-only derived capability from the most recent successful verification. It is cleared when the configured key or scope changes.
+
+### `tunnel.admin.manage_access` — Admin manage access
+
+Read-only derived capability from the most recent successful verification. It is cleared when the configured key or scope changes.
 
 ### `tunnel.control_plane_base_url` — Control-plane URL
 

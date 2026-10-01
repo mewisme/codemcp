@@ -867,7 +867,7 @@ func settingsInputPrompt(state ActionState) (title, prompt, placeholder string) 
 	case inputSettingsSearch:
 		return "Search settings", "Reply with text to search canonical setting keys, labels, descriptions and owners.", "Search settings"
 	case inputSettingsApply:
-		return "Apply settings atomically", "Reply with a JSON array of changes. Example: [{\"key\":\"server.port\",\"value\":\"4000\"}]. The canonical transaction validates the whole batch before persisting.", "JSON setting changes"
+		return "Apply settings atomically", "Reply with a JSON array of changes. Example: [{\"key\":\"http.mcp.port\",\"value\":\"4000\"}]. The canonical transaction validates the whole batch before persisting.", "JSON setting changes"
 	case inputConfigPatch:
 		return "Patch configuration", "Reply with a JSON array of setting changes. The canonical patch validates the complete batch before persistence.", "JSON setting changes"
 	case inputTelegramUserManual:

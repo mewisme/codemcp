@@ -23,14 +23,14 @@ func TestStatusReportsManagedRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.Admin.Auth.Enabled = false, false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	started := time.Now().Add(-time.Minute).UTC()
 	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_status", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult {
-		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_status", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, ConfigRoot: root, ServerPort: cfg.Server.Port, AdminEnabled: cfg.Admin.Enabled, AdminPort: cfg.Admin.Port, Exposure: cfg.Server.Expose.Mode, TunnelEnabled: true, TunnelConfigured: true, TunnelReady: true, TunnelID: "tunnel_status"}
+		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_status", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, ConfigRoot: root, ServerPort: cfg.HTTP.MCP.Port, AdminEnabled: cfg.HTTP.Admin.Enabled, AdminPort: cfg.HTTP.Admin.Port, Exposure: cfg.HTTP.Exposure.Mode, TunnelEnabled: true, TunnelConfigured: true, TunnelReady: true, TunnelID: "tunnel_status"}
 	}, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -68,8 +68,8 @@ func TestStatusReportsStartingRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.Admin.Auth.Enabled = false, false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestStatusVerboseReportsOperationalDetails(t *testing.T) {
 	}
 	started := time.Now().Add(-time.Minute).UTC()
 	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_verbose", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult {
-		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_verbose", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, ConfigRoot: root, ServerPort: cfg.Server.Port, AdminEnabled: cfg.Admin.Enabled, AdminPort: cfg.Admin.Port, Exposure: cfg.Server.Expose.Mode, TunnelConfigured: true, TunnelID: "tunnel_verbose"}
+		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_verbose", Managed: true, ServiceID: "cm-system-test", ServiceScope: "system", StartedAt: started, ConfigRoot: root, ServerPort: cfg.HTTP.MCP.Port, AdminEnabled: cfg.HTTP.Admin.Enabled, AdminPort: cfg.HTTP.Admin.Port, Exposure: cfg.HTTP.Exposure.Mode, TunnelConfigured: true, TunnelID: "tunnel_verbose"}
 	}, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -189,8 +189,8 @@ func TestRenderStatusConfigUsesCachedUpdateWithoutNetwork(t *testing.T) {
 
 func TestRenderStatusConfigSurfacesSecurityWarnings(t *testing.T) {
 	cfg := config.Default()
-	cfg.Server.Expose.Mode = config.ExposureAll
-	cfg.Server.AllowInsecureHTTP = true
+	cfg.HTTP.Exposure.Mode = config.ExposureAll
+	cfg.HTTP.Security.AllowInsecure = true
 	snapshot := statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: cfg}
 	var output bytes.Buffer
 	renderStatusConfig(presentation.New(&output, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), snapshot, false)

@@ -52,7 +52,7 @@ func TestClassifyCodeMCPEffectsAndCanonicalInvocation(t *testing.T) {
 		readOnly, mutation, eligible, required, hard bool
 	}{
 		{"cm status", "status", true, false, false, false, false},
-		{"cm cfg set server.port 41001", "config set", false, true, true, true, false},
+		{"cm cfg set http.mcp.port 41001", "config set", false, true, true, true, false},
 		{"cm request approve req_test", "request approve", false, true, false, false, true},
 	} {
 		got := ClassifyCodeMCPInvocation(home, tt.command, "")
@@ -76,7 +76,7 @@ func TestClassifyCodeMCPAliasesMatchCanonicalSecurityPolicy(t *testing.T) {
 		canonical string
 		alias     string
 	}{
-		{name: "config mutation", canonical: "cm config set server.port 41001", alias: "cm cfg set server.port 41001"},
+		{name: "config mutation", canonical: "cm config set http.mcp.port 41001", alias: "cm cfg set http.mcp.port 41001"},
 		{name: "upstream destructive", canonical: "cm upstream server remove github", alias: "cm ups server rm github"},
 		{name: "workspace destructive", canonical: "cm workspace container delete wsc_test", alias: "cm ws ctr rm wsc_test"},
 		{name: "telegram mutation", canonical: "cm telegram token remove", alias: "cm tg token rm"},
@@ -106,8 +106,8 @@ func TestClassifyCodeMCPSourceRunAliasMatchesCanonicalSecurityPolicy(t *testing.
 	t.Setenv("USERPROFILE", home)
 	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
 
-	canonical := ClassifyCodeMCPInvocation(root, "go run . config set server.port 41001", "")
-	alias := ClassifyCodeMCPInvocation(root, "go run . cfg set server.port 41001", "")
+	canonical := ClassifyCodeMCPInvocation(root, "go run . config set http.mcp.port 41001", "")
+	alias := ClassifyCodeMCPInvocation(root, "go run . cfg set http.mcp.port 41001", "")
 	if !canonical.Recognized || !alias.Recognized || canonical.Kind != CodeMCPInvocationSourceRun || alias.Kind != CodeMCPInvocationSourceRun {
 		t.Fatalf("source-run classification missing: canonical=%#v alias=%#v", canonical, alias)
 	}
@@ -128,8 +128,8 @@ func TestClassifyCodeMCPApprovalRequirementFollowsConfigRootIdentity(t *testing.
 	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
 	isolate := filepath.Join(t.TempDir(), "isolated")
 	for _, command := range []string{
-		"cm config set server.port 41001",
-		"go run . config set server.port 41001",
+		"cm config set http.mcp.port 41001",
+		"go run . config set http.mcp.port 41001",
 	} {
 		protected := ClassifyCodeMCPInvocation(root, command, "")
 		if !protected.Recognized || !protected.ApprovalRequired || !protected.UsesDefaultRoot {
@@ -270,7 +270,7 @@ func TestClassifyCodeMCPSourceRunRejectsUnrelatedModulesNestedDotAndPayloadText(
 		{root, "python -c 'print(\"go run . status\")'"},
 		{root, "node -e 'console.log(\"go run . status\")'"},
 		{root, "go run main.go"},
-		{root, "printf 'cm config set server.port 41001'"},
+		{root, "printf 'cm config set http.mcp.port 41001'"},
 		{root, "grep 'cm config set' README.md"},
 	}
 	for _, fixture := range fixtures {
@@ -315,15 +315,15 @@ func TestClassifyCodeMCPRelativeAndWindowsConfigRoots(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	defaultRelative := ClassifyCodeMCPInvocation(home, "CM_CONFIG_DIR=.cm cm config set server.port 41001", "")
+	defaultRelative := ClassifyCodeMCPInvocation(home, "CM_CONFIG_DIR=.cm cm config set http.mcp.port 41001", "")
 	if !defaultRelative.Recognized || !defaultRelative.UsesDefaultRoot {
 		t.Fatalf("relative default=%#v", defaultRelative)
 	}
-	isolated := ClassifyCodeMCPInvocation(home, "CM_CONFIG_DIR=./tmp/cm cm config set server.port 41001", "")
+	isolated := ClassifyCodeMCPInvocation(home, "CM_CONFIG_DIR=./tmp/cm cm config set http.mcp.port 41001", "")
 	if !isolated.Recognized || isolated.UsesDefaultRoot || isolated.EffectiveConfigRoot != canonicalRoot(filepath.Join(home, "tmp/cm")) {
 		t.Fatalf("relative isolated=%#v", isolated)
 	}
-	windows := ClassifyCodeMCPInvocation(home, "CM_CONFIG_DIR='C:\\\\cm-test' cm config set server.port 41001", "")
+	windows := ClassifyCodeMCPInvocation(home, "CM_CONFIG_DIR='C:\\\\cm-test' cm config set http.mcp.port 41001", "")
 	if !windows.Recognized || windows.UsesDefaultRoot {
 		t.Fatalf("windows root=%#v", windows)
 	}

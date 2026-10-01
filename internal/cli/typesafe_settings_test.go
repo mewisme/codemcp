@@ -24,9 +24,9 @@ func TestTypeSafeScopedSettingsUseCanonicalSettingService(t *testing.T) {
 	restore := secretstore.UseMemoryForTesting()
 	defer restore()
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

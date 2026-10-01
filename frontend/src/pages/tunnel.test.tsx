@@ -5,18 +5,19 @@ import { TunnelPage } from "@/pages/tunnel"
 import { adminApi, type PublicConfig, type TunnelStatus } from "@/lib/api"
 
 const publicConfig = {
-  server: {
-    enabled: true,
-    port: 37421,
-    expose: { mode: "none", interfaces: [] },
-    allow_insecure_http: false,
-  },
-  admin: { enabled: true, port: 37422 },
-  auth: {
-    mcp_enabled: true,
-    admin_enabled: true,
-    mcp_token_configured: true,
-    admin_token_configured: true,
+  http: {
+    exposure: { mode: "none", interfaces: [] },
+    security: { allow_insecure: false, allow_unauthenticated_loopback: false },
+    mcp: {
+      enabled: true,
+      port: 37421,
+      auth: { enabled: true, legacy_bearer: true, token_configured: true },
+    },
+    admin: {
+      enabled: true,
+      port: 37422,
+      auth: { enabled: true, token_configured: true },
+    },
   },
   permissions: { allow_dirs: [] },
   shell: { path: [] },
@@ -196,7 +197,10 @@ describe("TunnelPage", () => {
   it("locks the tunnel when MCP HTTP is disabled", async () => {
     vi.mocked(adminApi.config).mockResolvedValue({
       ...publicConfig,
-      server: { ...publicConfig.server, enabled: false },
+      http: {
+        ...publicConfig.http,
+        mcp: { ...publicConfig.http.mcp, enabled: false },
+      },
     })
     render(<TunnelPage />)
     expect(

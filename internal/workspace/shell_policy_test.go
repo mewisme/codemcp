@@ -456,7 +456,7 @@ func TestShellPolicyBlocksCMControlPlaneMutations(t *testing.T) {
 			t.Fatalf("control-plane mutation was not denied: %s: %v", command, err)
 		}
 	}
-	for _, command := range []string{"exec cm auth admin disable", `bash -lc "cm config set server.port 41001"`, `cm update && echo done`} {
+	for _, command := range []string{"exec cm auth admin disable", `bash -lc "cm config set http.mcp.port 41001"`, `cm update && echo done`} {
 		err := manager.ValidateShellCommand(item.ID, root, command)
 		guard, ok := controlguard.As(err)
 		if err == nil || !ok || guard.Code != controlguard.CodeControlPlaneMutation || guard.Approvable || guard.Invocation != nil {
@@ -483,7 +483,7 @@ func TestShellPolicyAllowsOnlyExactApprovedDirectControlPlaneInvocation(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := "cm config set server.port 41001"
+	command := "cm config set http.mcp.port 41001"
 	invocation, ok := DirectControlPlaneInvocation(command)
 	if !ok || invocation == nil {
 		t.Fatalf("invocation = %#v ok=%t", invocation, ok)
@@ -492,7 +492,7 @@ func TestShellPolicyAllowsOnlyExactApprovedDirectControlPlaneInvocation(t *testi
 	if err := manager.ValidateShellCommandContext(ctx, item.ID, root, command); err != nil {
 		t.Fatalf("exact approved invocation denied: %v", err)
 	}
-	for _, changed := range []string{"cm config set server.port 41002", "cm config set server.port 41001 && echo done", `bash -lc "cm config set server.port 41001"`} {
+	for _, changed := range []string{"cm config set http.mcp.port 41002", "cm config set http.mcp.port 41001 && echo done", `bash -lc "cm config set http.mcp.port 41001"`} {
 		err := manager.ValidateShellCommandContext(ctx, item.ID, root, changed)
 		guard, typed := controlguard.As(err)
 		if err == nil || !typed || guard.Code != controlguard.CodeControlPlaneMutation {
@@ -538,13 +538,13 @@ func TestShellPolicyCodeMCPSourceRunParity(t *testing.T) {
 		}
 	}
 
-	for _, command := range []string{"cm config set server.port 41001", "go run . config set server.port 41001"} {
+	for _, command := range []string{"cm config set http.mcp.port 41001", "go run . config set http.mcp.port 41001"} {
 		err := manager.ValidateShellCommand(item.ID, root, command)
 		guard, ok := controlguard.As(err)
 		if err == nil || !ok || guard.Code != controlguard.CodeControlPlaneMutation || !guard.Approvable || guard.Invocation == nil {
 			t.Fatalf("protected mutation did not require approval: %q -> %#v / %v", command, guard, err)
 		}
-		if guard.Invocation.Program != "cm" || strings.Join(guard.Invocation.Args, " ") != "config set server.port 41001" {
+		if guard.Invocation.Program != "cm" || strings.Join(guard.Invocation.Args, " ") != "config set http.mcp.port 41001" {
 			t.Fatalf("protected mutation did not normalize to canonical cm invocation: %q -> %#v", command, guard.Invocation)
 		}
 	}
@@ -568,13 +568,13 @@ func TestShellPolicyAllowsIsolatedCodeMCPMutations(t *testing.T) {
 	}
 	isolate := filepath.Join(t.TempDir(), "isolated")
 	for _, command := range []string{
-		"CM_CONFIG_DIR=" + isolate + " cm config set server.port 41001",
-		"env CM_CONFIG_DIR=" + isolate + " cm config set server.port 41001",
-		"cm --config-dir=" + isolate + " config set server.port 41001",
-		"CM_CONFIG_DIR=" + isolate + " go run . config set server.port 41001",
-		"env CM_CONFIG_DIR=" + isolate + " go run . config set server.port 41001",
-		"go run . --config-dir=" + isolate + " config set server.port 41001",
-		"bash -lc \"CM_CONFIG_DIR=" + isolate + " go run . config set server.port 41001\"",
+		"CM_CONFIG_DIR=" + isolate + " cm config set http.mcp.port 41001",
+		"env CM_CONFIG_DIR=" + isolate + " cm config set http.mcp.port 41001",
+		"cm --config-dir=" + isolate + " config set http.mcp.port 41001",
+		"CM_CONFIG_DIR=" + isolate + " go run . config set http.mcp.port 41001",
+		"env CM_CONFIG_DIR=" + isolate + " go run . config set http.mcp.port 41001",
+		"go run . --config-dir=" + isolate + " config set http.mcp.port 41001",
+		"bash -lc \"CM_CONFIG_DIR=" + isolate + " go run . config set http.mcp.port 41001\"",
 	} {
 		if err := manager.ValidateShellCommand(item.ID, root, command); err != nil {
 			t.Fatalf("isolated CodeMCP mutation rejected: %q: %v", command, err)
@@ -590,9 +590,9 @@ func TestShellPolicySourceRunApprovalIsExactAndCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := "go run . config set server.port 41001"
+	command := "go run . config set http.mcp.port 41001"
 	invocation, ok := DirectControlPlaneInvocationAt(root, command, configformat.RootPath())
-	if !ok || invocation == nil || invocation.Program != "cm" || strings.Join(invocation.Args, " ") != "config set server.port 41001" {
+	if !ok || invocation == nil || invocation.Program != "cm" || strings.Join(invocation.Args, " ") != "config set http.mcp.port 41001" {
 		t.Fatalf("source-run invocation = %#v ok=%t", invocation, ok)
 	}
 	ctx := controlguard.WithApproval(context.Background(), controlguard.Approval{RequestID: "req_source", Capability: "cap_source", Invocation: *invocation})
@@ -600,9 +600,9 @@ func TestShellPolicySourceRunApprovalIsExactAndCanonical(t *testing.T) {
 		t.Fatalf("exact approved source-run invocation denied: %v", err)
 	}
 	for _, changed := range []string{
-		"go run . config set server.port 41002",
-		"go run . config set server.port 41001 && echo done",
-		"bash -lc \"go run . config set server.port 41001\"",
+		"go run . config set http.mcp.port 41002",
+		"go run . config set http.mcp.port 41001 && echo done",
+		"bash -lc \"go run . config set http.mcp.port 41001\"",
 	} {
 		err := manager.ValidateShellCommandContext(ctx, item.ID, root, changed)
 		guard, typed := controlguard.As(err)
@@ -616,8 +616,8 @@ func TestControlPlaneEntryPointsReconcileWithUnifiedClassifier(t *testing.T) {
 	useProtectedCodeMCPRoot(t)
 	root := writeCodeMCPModuleFixture(t, codeMCPModulePath)
 	for _, command := range []string{
-		"cm config set server.port 41001",
-		"go run . config set server.port 41001",
+		"cm config set http.mcp.port 41001",
+		"go run . config set http.mcp.port 41001",
 	} {
 		classification := ClassifyCodeMCPInvocation(root, command, configformat.RootPath())
 		if !classification.Recognized || !classification.ApprovalRequired {
@@ -631,7 +631,7 @@ func TestControlPlaneEntryPointsReconcileWithUnifiedClassifier(t *testing.T) {
 			t.Fatalf("control-plane entry point diverged from classifier for %q: invocation=%#v classification=%#v", command, invocation, classification)
 		}
 	}
-	if pattern, ok := SimilarCommandPattern("go run . config set server.port 41001"); ok || pattern != "" {
+	if pattern, ok := SimilarCommandPattern("go run . config set http.mcp.port 41001"); ok || pattern != "" {
 		t.Fatalf("source-run control plane produced reusable generic command pattern: %q", pattern)
 	}
 }
@@ -645,8 +645,8 @@ func TestAliasCannotBypassProtectedConfigRootControlGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, command := range []string{
-		"cm config set server.port 41001",
-		"cm cfg set server.port 41001",
+		"cm config set http.mcp.port 41001",
+		"cm cfg set http.mcp.port 41001",
 		"cm upstream server remove github",
 		"cm ups server rm github",
 	} {
@@ -667,8 +667,8 @@ func TestShellPolicySourceRunContentAndUnrelatedGoRemainNonControlPlane(t *testi
 		t.Fatal(err)
 	}
 	for _, command := range []string{
-		"echo \"go run . config set server.port 41001\"",
-		"python -c 'print(\"go run . config set server.port 41001\")'",
+		"echo \"go run . config set http.mcp.port 41001\"",
+		"python -c 'print(\"go run . config set http.mcp.port 41001\")'",
 		"go test ./...",
 	} {
 		if err := manager.ValidateShellCommand(item.ID, root, command); err != nil {
@@ -696,8 +696,8 @@ func TestShellPolicyIsolatedCodeMCPDoesNotBypassOtherShellGuards(t *testing.T) {
 	}
 	isolate := filepath.Join(t.TempDir(), "isolated")
 	for _, command := range []string{
-		"CM_CONFIG_DIR=" + isolate + " cm config set server.port 41001 && rm file.txt",
-		"CM_CONFIG_DIR=" + isolate + " go run . config set server.port 41001 && rm file.txt",
+		"CM_CONFIG_DIR=" + isolate + " cm config set http.mcp.port 41001 && rm file.txt",
+		"CM_CONFIG_DIR=" + isolate + " go run . config set http.mcp.port 41001 && rm file.txt",
 	} {
 		err := manager.ValidateShellCommand(item.ID, root, command)
 		guard, ok := controlguard.As(err)

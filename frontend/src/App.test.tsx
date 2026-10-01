@@ -8,17 +8,19 @@ import { adminToken } from "@/lib/api"
 import { createAdminRouter } from "@/router"
 
 const config = {
-  server: {
-    port: 37421,
-    expose: { mode: "none", interfaces: [] },
-    allow_insecure_http: false,
-  },
-  admin: { enabled: true, port: 37422 },
-  auth: {
-    mcp_enabled: true,
-    admin_enabled: true,
-    mcp_token_configured: true,
-    admin_token_configured: true,
+  http: {
+    exposure: { mode: "none", interfaces: [] },
+    security: { allow_insecure: false, allow_unauthenticated_loopback: false },
+    mcp: {
+      enabled: true,
+      port: 37421,
+      auth: { enabled: true, legacy_bearer: true, token_configured: true },
+    },
+    admin: {
+      enabled: true,
+      port: 37422,
+      auth: { enabled: true, token_configured: true },
+    },
   },
   permissions: { allow_dirs: [] },
   shell: { path: [] },

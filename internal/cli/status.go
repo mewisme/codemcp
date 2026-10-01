@@ -132,8 +132,8 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 		return runtimeErr
 	}
 	runtimeSpan.EndMessage("Runtime control status queried", tracepkg.Bool("running", running), tracepkg.Int("pid", runtimeStatus.PID), tracepkg.String("lifecycle", runtimeStatus.Lifecycle))
-	listenerSpan := tracepkg.Start(ctx, "STATUS", "status.listener-plan.resolve", "Resolving status listener plan", tracepkg.String("exposure_mode", string(cfg.Server.Expose.Mode)), tracepkg.Any("interfaces", append([]string(nil), cfg.Server.Expose.Interfaces...)))
-	plan, listenerErr := resolveListenerPlan(cfg.Server.Expose)
+	listenerSpan := tracepkg.Start(ctx, "STATUS", "status.listener-plan.resolve", "Resolving status listener plan", tracepkg.String("exposure_mode", string(cfg.HTTP.Exposure.Mode)), tracepkg.Any("interfaces", append([]string(nil), cfg.HTTP.Exposure.Interfaces...)))
+	plan, listenerErr := resolveListenerPlan(cfg.HTTP.Exposure)
 	if listenerErr != nil {
 		listenerSpan.FailMessage("Status listener plan resolution failed", listenerErr)
 	} else {
@@ -258,13 +258,13 @@ func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSna
 	presenter.Section("Endpoints")
 	if !verbose {
 		fields := make([]presentation.Field, 0, 3)
-		if cfg.Server.Enabled {
-			fields = append(fields, presentation.Field{Label: "mcp http", Value: endpointURL(mcpnetwork.LoopbackHost, cfg.Server.Port, "/mcp")})
+		if cfg.HTTP.MCP.Enabled {
+			fields = append(fields, presentation.Field{Label: "mcp http", Value: endpointURL(mcpnetwork.LoopbackHost, cfg.HTTP.MCP.Port, "/mcp")})
 		} else {
 			fields = append(fields, presentation.Field{Label: "mcp http", Value: "disabled"})
 		}
-		if cfg.Admin.Enabled {
-			fields = append(fields, presentation.Field{Label: "admin", Value: endpointURL(mcpnetwork.LoopbackHost, cfg.Admin.Port, "/")})
+		if cfg.HTTP.Admin.Enabled {
+			fields = append(fields, presentation.Field{Label: "admin", Value: endpointURL(mcpnetwork.LoopbackHost, cfg.HTTP.Admin.Port, "/")})
 		} else {
 			fields = append(fields, presentation.Field{Label: "admin", Value: "disabled"})
 		}
@@ -272,9 +272,9 @@ func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSna
 		presenter.Fields(fields...)
 		return
 	}
-	fields := []presentation.Field{{Label: "expose", Value: cfg.Server.Expose.Mode}}
-	if len(cfg.Server.Expose.Interfaces) > 0 {
-		fields = append(fields, presentation.Field{Label: "interfaces", Value: strings.Join(cfg.Server.Expose.Interfaces, ", ")})
+	fields := []presentation.Field{{Label: "expose", Value: cfg.HTTP.Exposure.Mode}}
+	if len(cfg.HTTP.Exposure.Interfaces) > 0 {
+		fields = append(fields, presentation.Field{Label: "interfaces", Value: strings.Join(cfg.HTTP.Exposure.Interfaces, ", ")})
 	}
 	if snapshot.ListenerError != nil {
 		fields = append(fields, presentation.Field{Label: "network", Value: snapshot.ListenerError.Error()})
@@ -301,19 +301,19 @@ func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSna
 		presenter.Spacer()
 		presenter.Subsection(name)
 		addressFields := []presentation.Field{}
-		if cfg.Server.Enabled {
-			addressFields = append(addressFields, presentation.Field{Label: "mcp http", Value: endpointURL(address.Host, cfg.Server.Port, "/mcp")})
+		if cfg.HTTP.MCP.Enabled {
+			addressFields = append(addressFields, presentation.Field{Label: "mcp http", Value: endpointURL(address.Host, cfg.HTTP.MCP.Port, "/mcp")})
 		}
-		if cfg.Admin.Enabled {
-			addressFields = append(addressFields, presentation.Field{Label: "admin", Value: endpointURL(address.Host, cfg.Admin.Port, "/")})
+		if cfg.HTTP.Admin.Enabled {
+			addressFields = append(addressFields, presentation.Field{Label: "admin", Value: endpointURL(address.Host, cfg.HTTP.Admin.Port, "/")})
 		}
 		presenter.NestedFields(addressFields...)
 	}
 	trailing := []presentation.Field{}
-	if !cfg.Server.Enabled {
+	if !cfg.HTTP.MCP.Enabled {
 		trailing = append(trailing, presentation.Field{Label: "mcp http", Value: "disabled"})
 	}
-	if !cfg.Admin.Enabled && len(addresses) == 0 {
+	if !cfg.HTTP.Admin.Enabled && len(addresses) == 0 {
 		trailing = append(trailing, presentation.Field{Label: "admin", Value: "disabled"})
 	}
 	presenter.Fields(trailing...)
@@ -403,8 +403,8 @@ func renderStatusConfig(presenter *presentation.Presenter, snapshot statusSnapsh
 	}
 	separator := presenter.Separator()
 	fields = append(fields,
-		presentation.Field{Label: "transports", Value: fmt.Sprintf("http %s %s tunnel %s", onOff(cfg.Server.Enabled), separator, onOff(cfg.Tunnel.Enabled))},
-		presentation.Field{Label: "auth", Value: fmt.Sprintf("mcp %s %s admin %s", onOff(cfg.Auth.MCPEnabled), separator, onOff(cfg.Auth.AdminEnabled))},
+		presentation.Field{Label: "transports", Value: fmt.Sprintf("http %s %s tunnel %s", onOff(cfg.HTTP.MCP.Enabled), separator, onOff(cfg.Tunnel.Enabled))},
+		presentation.Field{Label: "auth", Value: fmt.Sprintf("mcp %s %s admin %s", onOff(cfg.HTTP.MCP.Auth.Enabled), separator, onOff(cfg.HTTP.Admin.Auth.Enabled))},
 	)
 	presenter.Fields(fields...)
 	for _, warning := range config.SecurityWarnings(cfg) {
@@ -438,9 +438,9 @@ func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {
 	log.Detail("initialized", snapshot.Source.Exists)
 	log.Detail("config", snapshot.Source.Path)
 	log.Detail("format", snapshot.Source.Format)
-	log.Detail("transports", fmt.Sprintf("http=%t tunnel=%t", cfg.Server.Enabled, cfg.Tunnel.Enabled))
+	log.Detail("transports", fmt.Sprintf("http=%t tunnel=%t", cfg.HTTP.MCP.Enabled, cfg.Tunnel.Enabled))
 	logEndpointDetails(log, cfg)
-	log.Detail("auth", fmt.Sprintf("mcp=%t admin=%t", cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled))
+	log.Detail("auth", fmt.Sprintf("mcp=%t admin=%t", cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.Admin.Auth.Enabled))
 	for _, warning := range config.SecurityWarnings(cfg) {
 		name := "status.security-warning"
 		switch {
@@ -504,7 +504,7 @@ func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {
 }
 
 func statusExposureSummary(snapshot statusSnapshot, separator string) string {
-	mode := string(snapshot.Config.Server.Expose.Mode)
+	mode := string(snapshot.Config.HTTP.Exposure.Mode)
 	if snapshot.ListenerError != nil {
 		return mode + " " + separator + " network unavailable"
 	}

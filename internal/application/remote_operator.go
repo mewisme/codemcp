@@ -126,7 +126,7 @@ func BindRemoteOperatorOperations(dispatcher *Dispatcher, services RemoteOperato
 			if err != nil {
 				return HealthStatus{}, err
 			}
-			return HealthStatus{OK: true, AdminAuthEnabled: cfg.Auth.AdminEnabled}, nil
+			return HealthStatus{OK: true, AdminAuthEnabled: cfg.HTTP.Admin.Auth.Enabled}, nil
 		}},
 		{capability.LogsClear, func(ctx context.Context, _ any) (any, error) {
 			if err := ClearLogs(ctx); err != nil {

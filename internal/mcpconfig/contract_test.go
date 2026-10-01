@@ -36,7 +36,7 @@ func TestAgentConfigEligibilityIsExplicitAndDisabledByDefault(t *testing.T) {
 	if mcpconfig.Eligible(cfg, mcpconfig.AccessRead) || mcpconfig.Eligible(cfg, mcpconfig.AccessWrite) {
 		t.Fatal("default config unexpectedly grants agent config access")
 	}
-	cfg.Auth.MCPEnabled = true
+	cfg.HTTP.MCP.Auth.Enabled = true
 	cfg.Permissions.AllowDirs = []string{"/tmp"}
 	if mcpconfig.Eligible(cfg, mcpconfig.AccessRead) || mcpconfig.Eligible(cfg, mcpconfig.AccessWrite) {
 		t.Fatal("transport authentication or workspace permissions elevated global config access")
@@ -52,7 +52,7 @@ func TestAgentConfigEligibilityIsExplicitAndDisabledByDefault(t *testing.T) {
 }
 
 func TestSecretProjectionNeverContainsSecretOrMaskedPreview(t *testing.T) {
-	for _, key := range []string{"auth.mcp_token", "auth.admin_token", "tunnel.api_key", "tunnel.admin.key", "llm.api_key"} {
+	for _, key := range []string{"http.mcp.auth.token", "http.admin.auth.token", "tunnel.api_key", "tunnel.admin.key", "llm.api_key"} {
 		spec, ok := config.SettingByKey(key)
 		if !ok {
 			t.Fatalf("setting %q missing", key)
@@ -152,7 +152,7 @@ func TestSupportedSettingScopeExcludesInternalAndUnsafeFields(t *testing.T) {
 
 func TestBatchSummaryAndMutationResultAreValueFree(t *testing.T) {
 	changes := []mcpconfig.Change{
-		{Key: "server.port", Value: "4000"},
+		{Key: "http.mcp.port", Value: "4000"},
 		{Key: "permissions.allow_dirs", Value: "/secret/path"},
 	}
 	if err := mcpconfig.ValidateChanges(changes); err != nil {
@@ -166,13 +166,13 @@ func TestBatchSummaryAndMutationResultAreValueFree(t *testing.T) {
 	if strings.Contains(string(data), "4000") || strings.Contains(string(data), "/secret/path") {
 		t.Fatalf("batch summary leaked values: %s", data)
 	}
-	if summary.ChangeCount != 2 || len(summary.Keys) != 2 || summary.Keys[0] != "server.port" {
+	if summary.ChangeCount != 2 || len(summary.Keys) != 2 || summary.Keys[0] != "http.mcp.port" {
 		t.Fatalf("summary=%#v", summary)
 	}
 
 	result := mcpconfig.MutationResult{
 		State: mcpconfig.MutationRuntimeSynced, Keys: summary.Keys, ChangeCount: summary.ChangeCount,
-		Outcomes: []mcpconfig.MutationOutcome{{Key: "server.port", Changed: true}, {Key: "permissions.allow_dirs", Changed: true}},
+		Outcomes: []mcpconfig.MutationOutcome{{Key: "http.mcp.port", Changed: true}, {Key: "permissions.allow_dirs", Changed: true}},
 		Changed:  true, RuntimeReloaded: true, RuntimeSync: mcpconfig.RuntimeSyncCurrent,
 	}
 	data, err = json.Marshal(result)
@@ -186,8 +186,8 @@ func TestBatchSummaryAndMutationResultAreValueFree(t *testing.T) {
 
 func TestValidateChangesRejectsDuplicateKeys(t *testing.T) {
 	err := mcpconfig.ValidateChanges([]mcpconfig.Change{
-		{Key: "server.port", Value: "4000"},
-		{Key: " server.port ", Value: "5000"},
+		{Key: "http.mcp.port", Value: "4000"},
+		{Key: " http.mcp.port ", Value: "5000"},
 	})
 	if err == nil {
 		t.Fatal("duplicate setting keys unexpectedly accepted")

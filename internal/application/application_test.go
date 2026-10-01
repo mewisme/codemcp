@@ -61,7 +61,7 @@ func TestInitializeAndAuthLifecycle(t *testing.T) {
 	if !status.MCPEnabled || !status.MCPConfigured || !status.AdminEnabled || !status.AdminConfigured {
 		t.Fatalf("status = %#v", status)
 	}
-	if _, err := SetConfigField(t.Context(), "server.allow_unauthenticated_loopback", "true"); err != nil {
+	if _, err := SetConfigField(t.Context(), "http.security.allow_unauthenticated_loopback", "true"); err != nil {
 		t.Fatal(err)
 	}
 	status, err = SetAuthEnabled(t.Context(), "mcp", false)
@@ -103,7 +103,7 @@ func TestInitializeForcePreservesJSONAndExistingConfig(t *testing.T) {
 	if _, err := Initialize(InitOptions{}); err == nil {
 		t.Fatal("existing config unexpectedly overwritten without force")
 	}
-	if _, err := SetConfigField(t.Context(), "server.port", "40123"); err != nil {
+	if _, err := SetConfigField(t.Context(), "http.mcp.port", "40123"); err != nil {
 		t.Fatal(err)
 	}
 	forced, err := Initialize(InitOptions{Force: true})
@@ -117,8 +117,8 @@ func TestInitializeForcePreservesJSONAndExistingConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != 40123 {
-		t.Fatalf("init --force reset existing config: %#v", loaded.Server)
+	if loaded.HTTP.MCP.Port != 40123 {
+		t.Fatalf("init --force reset existing config: %#v", loaded.HTTP)
 	}
 	for _, name := range []string{"config.yaml", "config.yml", "config.toml"} {
 		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
@@ -253,9 +253,9 @@ func TestSetAuthEnabledRequiresConfiguredToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -274,25 +274,25 @@ func TestConfigMutationUsesDomainValidationAndPreservesSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	cfg.Tunnel.APIKey = "runtime-secret"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	want := cfg
-	wantErr := config.SetValueValidated(&want, "server.port", "70000")
+	wantErr := config.SetValueValidated(&want, "http.mcp.port", "70000")
 	if wantErr == nil {
 		t.Fatal("domain validation unexpectedly accepted invalid port")
 	}
-	if _, err := SetConfigField(t.Context(), "server.port", "70000"); err == nil || err.Error() != wantErr.Error() {
+	if _, err := SetConfigField(t.Context(), "http.mcp.port", "70000"); err == nil || err.Error() != wantErr.Error() {
 		t.Fatalf("application validation err=%v want=%v", err, wantErr)
 	}
-	result, err := SetConfigField(t.Context(), "server.port", "40123")
+	result, err := SetConfigField(t.Context(), "http.mcp.port", "40123")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Config.Server.Port != 40123 || result.Config.Auth.MCPTokenHash != "mcp-hash" || result.Config.Auth.AdminTokenHash != "admin-hash" || result.Config.Tunnel.APIKey != "runtime-secret" {
+	if result.Config.HTTP.MCP.Port != 40123 || result.Config.HTTP.MCP.Auth.TokenHash != "mcp-hash" || result.Config.HTTP.Admin.Auth.TokenHash != "admin-hash" || result.Config.Tunnel.APIKey != "runtime-secret" {
 		t.Fatalf("config mutation changed unrelated values: %#v", result.Config)
 	}
 }
@@ -304,20 +304,20 @@ func TestConfigMutationEmitsDeepTraceWithoutSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-secret-hash"
-	cfg.Auth.AdminTokenHash = "admin-secret-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-secret-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-secret-hash"
 	cfg.Tunnel.APIKey = "runtime-secret-key"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	events := []tracepkg.Event{}
 	ctx := tracepkg.WithObserver(t.Context(), func(event tracepkg.Event) { events = append(events, event) })
-	result, err := SetConfigField(ctx, "server.port", "40123")
+	result, err := SetConfigField(ctx, "http.mcp.port", "40123")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Config.Server.Port != 40123 {
-		t.Fatalf("port=%d", result.Config.Server.Port)
+	if result.Config.HTTP.MCP.Port != 40123 {
+		t.Fatalf("port=%d", result.Config.HTTP.MCP.Port)
 	}
 	for _, name := range []string{"config.mutation.load.completed", "config.field.validate.completed", "config.persist.completed", "config.runtime.reload.completed", "config.field.mutate.completed"} {
 		if !applicationTraceContains(events, name) {
@@ -343,8 +343,8 @@ func TestRotateAuthTokenTraceDoesNotLeakCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "old-secret-hash"
-	cfg.Auth.AdminTokenHash = "old-admin-secret-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "old-secret-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "old-admin-secret-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestRotateAuthTokenTraceDoesNotLeakCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(encoded)
-	for _, secret := range []string{token, loaded.Auth.MCPTokenHash, "old-secret-hash", "old-admin-secret-hash"} {
+	for _, secret := range []string{token, loaded.HTTP.MCP.Auth.TokenHash, "old-secret-hash", "old-admin-secret-hash"} {
 		if secret != "" && strings.Contains(text, secret) {
 			t.Fatalf("trace leaked credential: %s", text)
 		}
@@ -392,9 +392,9 @@ func TestConfigExportImportPreservesSafetyAndState(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
-	cfg.Server.Port = 40123
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
+	cfg.HTTP.MCP.Port = 40123
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -405,9 +405,9 @@ func TestConfigExportImportPreservesSafetyAndState(t *testing.T) {
 	if _, err := ExportConfig(bundle, false); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("export overwrite safety err=%v", err)
 	}
-	cfg.Server.Port = 40234
-	cfg.Auth.MCPTokenHash = "target-mcp-hash"
-	cfg.Auth.AdminTokenHash = "target-admin-hash"
+	cfg.HTTP.MCP.Port = 40234
+	cfg.HTTP.MCP.Auth.TokenHash = "target-mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "target-admin-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +421,7 @@ func TestConfigExportImportPreservesSafetyAndState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != 40123 || loaded.Auth.MCPTokenHash != "target-mcp-hash" || loaded.Auth.AdminTokenHash != "target-admin-hash" {
+	if loaded.HTTP.MCP.Port != 40123 || loaded.HTTP.MCP.Auth.TokenHash != "target-mcp-hash" || loaded.HTTP.Admin.Auth.TokenHash != "target-admin-hash" {
 		t.Fatalf("import did not restore original config: %#v", loaded)
 	}
 }

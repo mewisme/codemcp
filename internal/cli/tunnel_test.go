@@ -44,9 +44,9 @@ func TestRenderTunnelLifecycleUsesSharedProgress(t *testing.T) {
 
 func TestConfigureManagedTunnelRequiresSeparateRuntimeKey(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.Admin.Key = "admin-only"
 	cfg.Tunnel.Admin.WorkspaceID = "ws_admin"
 	metadata := tunnel.Metadata{ID: "tunnel_test", OrganizationIDs: []string{"org_test"}}
@@ -119,8 +119,8 @@ func TestFetchTunnelStatusUsesPersistedMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.Admin.Auth.Enabled = false, false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

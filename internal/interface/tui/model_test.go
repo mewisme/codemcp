@@ -80,7 +80,7 @@ func TestModelExplicitReplaceDestinationsBypassRememberedRoutes(t *testing.T) {
 		{name: "tools", remembered: Route{Kind: RouteTools}, path: []string{"tools"}, want: Route{Kind: RouteTools}},
 		{name: "integrations", remembered: Route{Kind: RouteIntegrations, ResourceID: "rtk", Action: "probe"}, path: []string{"integrations"}, want: Route{Kind: RouteIntegrations}},
 		{name: "runtime", remembered: Route{Kind: RouteRuntime, ResourceID: "old"}, path: []string{"runtime"}, want: Route{Kind: RouteRuntime}},
-		{name: "config", remembered: Route{Kind: RouteConfig, ResourceID: "server.port"}, path: []string{"config"}, want: Route{Kind: RouteConfig}},
+		{name: "config", remembered: Route{Kind: RouteConfig, ResourceID: "http.mcp.port"}, path: []string{"config"}, want: Route{Kind: RouteConfig}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -108,7 +108,7 @@ func TestModelStableRouteMemoryCoversHeaderOwners(t *testing.T) {
 		{name: "integration detail", stored: Route{Kind: RouteIntegrations, ResourceID: "codegraph", Mode: "ws_a"}, entry: Route{Kind: RouteIntegrations}},
 		{name: "request mode", stored: Route{Kind: RouteRequests, Mode: "pending"}, entry: Route{Kind: RouteRequests}},
 		{name: "logs execution route", stored: Route{Kind: RouteLogsExec}, entry: Route{Kind: RouteLogs}},
-		{name: "config detail", stored: Route{Kind: RouteConfig, ResourceID: "server.port"}, entry: Route{Kind: RouteConfig}},
+		{name: "config detail", stored: Route{Kind: RouteConfig, ResourceID: "http.mcp.port"}, entry: Route{Kind: RouteConfig}},
 		{name: "instruction section", stored: Route{Kind: RouteInstruction, Section: "rules"}, entry: Route{Kind: RouteInstruction}},
 		{name: "runtime section", stored: Route{Kind: RouteRuntime, Section: "status"}, entry: Route{Kind: RouteRuntime}},
 	}
@@ -312,7 +312,7 @@ func TestConfigEditorRouteLoadsNativePageWithoutCompatibilityShim(t *testing.T) 
 	if err := config.Save(config.Default()); err != nil {
 		t.Fatal(err)
 	}
-	route := Route{Kind: RouteConfig, ResourceID: "server.port", Action: "edit"}
+	route := Route{Kind: RouteConfig, ResourceID: "http.mcp.port", Action: "edit"}
 	model := NewModel(route)
 	init := model.currentPage.Init()
 	if init == nil {
@@ -323,7 +323,7 @@ func TestConfigEditorRouteLoadsNativePageWithoutCompatibilityShim(t *testing.T) 
 	if follow == nil || model.router.Current() != route || !model.currentPage.InputActive() {
 		t.Fatalf("route=%#v follow=%v input=%t", model.router.Current(), follow != nil, model.currentPage.InputActive())
 	}
-	if plain := ansi.Strip(model.View().Content); !strings.Contains(plain, "Config  /  server.port  /  Edit") || !strings.Contains(plain, "enter save") || strings.Contains(plain, "Edit MCP HTTP port") {
+	if plain := ansi.Strip(model.View().Content); !strings.Contains(plain, "Config  /  http.mcp.port  /  Edit") || !strings.Contains(plain, "enter save") || strings.Contains(plain, "Edit MCP HTTP port") {
 		t.Fatalf("config editor view=%q", plain)
 	}
 }

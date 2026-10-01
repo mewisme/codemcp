@@ -9,7 +9,7 @@ LOCAL_LDFLAGS = -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint=$(LOC
 CM = $(GO) run -ldflags "$(LOCAL_LDFLAGS)" .
 FRONTEND_BUILD = $(PNPM) --dir frontend build
 
-CM_COMMANDS = install upgrade init uninit down logs request llm tui config auth instructions tools execution process workspace prompt upstream mcp tunnel server admin permissions shell notification telemetry telegram integration status health network activity doctor agent completion version
+CM_COMMANDS = install upgrade init uninit down logs request llm tui config auth instructions tools execution process workspace prompt upstream mcp tunnel http permissions shell notification telemetry telegram integration status health network activity doctor agent completion version
 CM_FRONTEND_COMMANDS = up restart serve
 CM_PASSTHROUGH_TARGETS = run $(CM_COMMANDS) $(CM_FRONTEND_COMMANDS)
 CM_DEVELOPER_TARGETS = help bootstrap frontend-build check test test-race build frontend-dev
@@ -43,7 +43,7 @@ help:
 		'                  use ARGS="..." for flags or complex shell quoting' \
 		'                  install upgrade init uninit down logs request llm tui config auth' \
 		'                  instructions tools execution process workspace prompt upstream mcp tunnel' \
-		'                  server admin permissions shell notification telemetry telegram integration' \
+		'                  http permissions shell notification telemetry telegram integration' \
 		'                  status health network activity doctor agent completion version' \
 		'  frontend-dev   Run the Vite development server'
 

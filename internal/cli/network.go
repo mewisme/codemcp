@@ -43,7 +43,7 @@ func applyExposeOverride(cmd *cobra.Command, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	cfg.Server.Expose = exposure
+	cfg.HTTP.Exposure = exposure
 	return nil
 }
 
@@ -135,79 +135,79 @@ func logReadyEndpoints(log *logger.Logger, cfg config.Config, plan listenerPlan)
 	mcpEndpoints := make([]string, 0, len(plan.Addresses))
 	adminEndpoints := make([]string, 0, len(plan.Addresses))
 	for _, address := range plan.Addresses {
-		if cfg.Server.Enabled {
-			mcpEndpoints = append(mcpEndpoints, endpointURL(address.Host, cfg.Server.Port, "/mcp"))
+		if cfg.HTTP.MCP.Enabled {
+			mcpEndpoints = append(mcpEndpoints, endpointURL(address.Host, cfg.HTTP.MCP.Port, "/mcp"))
 		}
-		if cfg.Admin.Enabled {
-			adminEndpoints = append(adminEndpoints, endpointURL(address.Host, cfg.Admin.Port, "/"))
+		if cfg.HTTP.Admin.Enabled {
+			adminEndpoints = append(adminEndpoints, endpointURL(address.Host, cfg.HTTP.Admin.Port, "/"))
 		}
 	}
-	fields := []logger.Field{logger.With("mcp_http_enabled", cfg.Server.Enabled)}
-	if cfg.Server.Enabled {
+	fields := []logger.Field{logger.With("mcp_http_enabled", cfg.HTTP.MCP.Enabled)}
+	if cfg.HTTP.MCP.Enabled {
 		fields = append(fields, logger.With("mcp", mcpEndpoints))
 	}
-	if cfg.Admin.Enabled {
+	if cfg.HTTP.Admin.Enabled {
 		fields = append(fields, logger.With("admin", adminEndpoints))
 	}
-	fields = append(fields, logger.WithVerbose("expose", cfg.Server.Expose.Mode))
-	switch cfg.Server.Expose.Mode {
+	fields = append(fields, logger.WithVerbose("expose", cfg.HTTP.Exposure.Mode))
+	switch cfg.HTTP.Exposure.Mode {
 	case config.ExposureAll:
 		fields = append(fields, logger.WithVerbose("network_addresses", max(0, len(plan.Addresses)-1)))
 	case config.ExposureWildcard:
 		fields = append(fields, logger.WithVerbose("bind", mcpnetwork.WildcardHost), logger.WithVerbose("network_addresses", max(0, len(plan.Addresses)-1)))
 	case config.ExposureInterfaces:
-		fields = append(fields, logger.WithVerbose("interfaces", cfg.Server.Expose.Interfaces), logger.WithVerbose("network_addresses", max(0, len(plan.Addresses)-1)))
+		fields = append(fields, logger.WithVerbose("interfaces", cfg.HTTP.Exposure.Interfaces), logger.WithVerbose("network_addresses", max(0, len(plan.Addresses)-1)))
 	}
 	log.Ready("SERVER", "server.ready", "Server ready", fields...)
 }
 
 func logEndpointDetails(log *logger.Logger, cfg config.Config) {
-	log.Detail("expose", cfg.Server.Expose.Mode)
-	if len(cfg.Server.Expose.Interfaces) > 0 {
-		log.Detail("interfaces", cfg.Server.Expose.Interfaces)
+	log.Detail("expose", cfg.HTTP.Exposure.Mode)
+	if len(cfg.HTTP.Exposure.Interfaces) > 0 {
+		log.Detail("interfaces", cfg.HTTP.Exposure.Interfaces)
 	}
-	plan, err := resolveListenerPlan(cfg.Server.Expose)
+	plan, err := resolveListenerPlan(cfg.HTTP.Exposure)
 	if err != nil {
 		log.Detail("network", err.Error())
 		return
 	}
 	for _, address := range plan.Addresses {
-		if cfg.Server.Enabled {
-			log.Detail(endpointDetailLabel("mcp", address), endpointURL(address.Host, cfg.Server.Port, "/mcp"))
+		if cfg.HTTP.MCP.Enabled {
+			log.Detail(endpointDetailLabel("mcp", address), endpointURL(address.Host, cfg.HTTP.MCP.Port, "/mcp"))
 		}
-		if cfg.Admin.Enabled {
-			log.Detail(endpointDetailLabel("admin", address), endpointURL(address.Host, cfg.Admin.Port, "/"))
+		if cfg.HTTP.Admin.Enabled {
+			log.Detail(endpointDetailLabel("admin", address), endpointURL(address.Host, cfg.HTTP.Admin.Port, "/"))
 		}
 	}
-	if !cfg.Server.Enabled {
+	if !cfg.HTTP.MCP.Enabled {
 		log.Detail("mcp http", "disabled")
 	}
-	if !cfg.Admin.Enabled {
+	if !cfg.HTTP.Admin.Enabled {
 		log.Detail("admin", "disabled")
 	}
 }
 
 func endpointPresentationFields(cfg config.Config) []presentation.Field {
-	fields := []presentation.Field{{Label: "expose", Value: cfg.Server.Expose.Mode}}
-	if len(cfg.Server.Expose.Interfaces) > 0 {
-		fields = append(fields, presentation.Field{Label: "interfaces", Value: strings.Join(cfg.Server.Expose.Interfaces, ", ")})
+	fields := []presentation.Field{{Label: "expose", Value: cfg.HTTP.Exposure.Mode}}
+	if len(cfg.HTTP.Exposure.Interfaces) > 0 {
+		fields = append(fields, presentation.Field{Label: "interfaces", Value: strings.Join(cfg.HTTP.Exposure.Interfaces, ", ")})
 	}
-	plan, err := resolveListenerPlan(cfg.Server.Expose)
+	plan, err := resolveListenerPlan(cfg.HTTP.Exposure)
 	if err != nil {
 		return append(fields, presentation.Field{Label: "network", Value: err.Error()})
 	}
 	for _, address := range plan.Addresses {
-		if cfg.Server.Enabled {
-			fields = append(fields, presentation.Field{Label: endpointDetailLabel("mcp", address), Value: endpointURL(address.Host, cfg.Server.Port, "/mcp")})
+		if cfg.HTTP.MCP.Enabled {
+			fields = append(fields, presentation.Field{Label: endpointDetailLabel("mcp", address), Value: endpointURL(address.Host, cfg.HTTP.MCP.Port, "/mcp")})
 		}
-		if cfg.Admin.Enabled {
-			fields = append(fields, presentation.Field{Label: endpointDetailLabel("admin", address), Value: endpointURL(address.Host, cfg.Admin.Port, "/")})
+		if cfg.HTTP.Admin.Enabled {
+			fields = append(fields, presentation.Field{Label: endpointDetailLabel("admin", address), Value: endpointURL(address.Host, cfg.HTTP.Admin.Port, "/")})
 		}
 	}
-	if !cfg.Server.Enabled {
+	if !cfg.HTTP.MCP.Enabled {
 		fields = append(fields, presentation.Field{Label: "mcp http", Value: "disabled"})
 	}
-	if !cfg.Admin.Enabled {
+	if !cfg.HTTP.Admin.Enabled {
 		fields = append(fields, presentation.Field{Label: "admin", Value: "disabled"})
 	}
 	return fields

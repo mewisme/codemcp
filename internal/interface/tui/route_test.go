@@ -293,7 +293,7 @@ func TestRouteBreadcrumbInventoryCoversAllChildFamilies(t *testing.T) {
 		{Kind: RouteLogsTools},
 		{Kind: RouteLogsTools, ResourceID: "call_a"},
 		{Kind: RouteConfig, ResourceID: "shell"},
-		{Kind: RouteConfig, ResourceID: "server.port", Action: "edit"},
+		{Kind: RouteConfig, ResourceID: "http.mcp.port", Action: "edit"},
 		{Kind: RouteConfig, Section: "storage", Action: "export"},
 		{Kind: RouteInstruction, Section: "context"},
 		{Kind: RouteInstruction, Section: "rules"},

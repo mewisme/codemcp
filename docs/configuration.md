@@ -37,8 +37,8 @@ A config root owns that instance's configuration, workspaces, secrets, upstream/
 ```bash
 cm config get
 cm config list
-cm config get server
-cm config get admin.enabled
+cm config get http
+cm config get http.admin.enabled
 ```
 
 Structured display is available where supported:
@@ -55,8 +55,8 @@ Sensitive fields are redacted.
 
 ```bash
 cm config explain
-cm config explain server
-cm config explain server.expose.mode
+cm config explain http
+cm config explain http.exposure.mode
 cm config explain shell.path
 cm config explain shell.path --json
 ```
@@ -65,17 +65,62 @@ A branch explains a subtree; a leaf reports its type, built-in default, editabil
 
 The public docs intentionally do not duplicate every schema field, because that inventory would drift from the binary.
 
+## Canonical local HTTP hierarchy
+
+Local HTTP configuration has one canonical root:
+
+```text
+http
+├── exposure
+│   ├── mode
+│   └── interfaces
+├── security
+│   ├── allow_insecure
+│   └── allow_unauthenticated_loopback
+├── mcp
+│   ├── enabled
+│   ├── port
+│   └── auth
+│       ├── enabled
+│       ├── legacy_bearer
+│       └── token_hash        # internal verifier metadata
+└── admin
+    ├── enabled
+    ├── port
+    └── auth
+        ├── enabled
+        └── token_hash        # internal verifier metadata
+```
+
+Use `http.exposure.*` and `http.security.*` for policy shared by both local HTTP endpoints. Endpoint-local state belongs under `http.mcp.*` or `http.admin.*`.
+
+The scoped CLI facade follows the same hierarchy:
+
+```bash
+cm http mcp enable
+cm http mcp port 41021
+cm http admin disable
+cm http exposure mode none
+cm http exposure interface add eth0
+cm http security insecure deny
+cm http security loopback auth require
+```
+
+`cm auth ...` remains the dedicated credential lifecycle facade. It operates on `http.mcp.auth.*` and `http.admin.auth.*`; it is not a separate configuration authority.
+
+Legacy persisted roots named `server`, `admin`, or `auth` are migration inputs only. Loading a legacy-only document migrates them into `http` and rewrites the document canonically. A document containing both `http` and any legacy HTTP root is rejected as ambiguous instead of merging two authorities. Unknown fields nested under a legacy HTTP root are also rejected rather than being silently dropped during rewrite.
+
 ## Set values
 
 ```bash
-cm config set server.enabled false
-cm config set server.port 41021
-cm config set admin.enabled true
+cm config set http.mcp.enabled false
+cm config set http.mcp.port 41021
+cm config set http.admin.enabled true
 ```
 
 Values are parsed according to the schema and validated before persistence. `key=value` syntax is also accepted by the CLI.
 
-At least one MCP transport must remain enabled: direct MCP HTTP (`server.enabled`) or OpenAI Secure MCP Tunnel (`tunnel.enabled`). The default ChatGPT path is the tunnel; direct HTTP is an optional transport for clients that need it.
+At least one MCP transport must remain enabled: direct MCP HTTP (`http.mcp.enabled`) or OpenAI Secure MCP Tunnel (`tunnel.enabled`). The default ChatGPT path is the tunnel; direct HTTP is an optional transport for clients that need it.
 
 ## Applying changes to a running runtime
 
@@ -104,7 +149,7 @@ Released legacy formats are migration inputs only; they are not current CodeMCP 
 
 Long-lived reversible credentials such as tunnel runtime keys, upstream OAuth credentials, and sensitive upstream header/environment values are stored through the selected config root's managed secret store rather than as plaintext values in ordinary structured config. Current file-backed secrets are versioned JSON envelopes containing only encryption metadata, nonce, and ciphertext; plaintext credentials are not persisted in those envelopes.
 
-MCP/Admin endpoint credentials are represented by one-way hashes where appropriate. Normal config/status output does not reveal managed secrets.
+Current MCP/Admin endpoint plaintext credentials are kept in the managed secret store, while one-way token hashes remain in configuration as runtime verifier metadata. Normal config/status output uses the canonical masked preview when the secret is recoverable; verifier-only legacy credentials use an explicit legacy masked placeholder and are never silently rotated.
 
 Migrate older plaintext credential state:
 
@@ -137,7 +182,7 @@ Direct authenticated HTTP clients use the credential expected by that endpoint/t
 Generic protected `cm mcp http` uses OAuth as its canonical transport auth. Legacy static MCP bearer compatibility is controlled by:
 
 ```bash
-cm config set auth.mcp_legacy_bearer false
+cm config set http.mcp.auth.legacy_bearer false
 ```
 
 ## Network exposure
@@ -145,7 +190,7 @@ cm config set auth.mcp_legacy_bearer false
 The safest direct-listener posture is loopback-only:
 
 ```bash
-cm config set server.expose none
+cm config set http.exposure.mode none
 ```
 
 Other supported exposure modes can bind selected interfaces or broader addresses, but non-loopback direct HTTP changes the trust model and requires the appropriate authentication/insecure-HTTP acknowledgement.

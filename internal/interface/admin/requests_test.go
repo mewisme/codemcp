@@ -94,8 +94,8 @@ func TestApprovalAPIRemoteRequiresEnabledAdminAuthentication(t *testing.T) {
 	manager := approval.NewManager("instance-test")
 	seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
 	cfg := config.Default()
-	cfg.Auth.AdminEnabled = false
-	cfg.Auth.AdminTokenHash = auth.HashToken("admin-test")
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.TokenHash = auth.HashToken("admin-test")
 	store := config.NewRuntimeStore(cfg)
 	handler := New(API{Approvals: manager, Config: store})
 
@@ -108,7 +108,7 @@ func TestApprovalAPIRemoteRequiresEnabledAdminAuthentication(t *testing.T) {
 	}
 
 	if _, err := store.Update(func(next config.Config) (config.Config, error) {
-		next.Auth.AdminEnabled = true
+		next.HTTP.Admin.Auth.Enabled = true
 		return next, nil
 	}); err != nil {
 		t.Fatal(err)
@@ -135,7 +135,7 @@ func TestApprovalAPIIgnoresForwardedLoopbackAddress(t *testing.T) {
 	manager := approval.NewManager("instance-test")
 	seedAdminApprovalRequest(t, manager, "session-a", "ws_a", "cm update")
 	cfg := config.Default()
-	cfg.Auth.AdminEnabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
 	handler := New(API{Approvals: manager, Config: config.NewRuntimeStore(cfg)})
 	request := httptest.NewRequest(http.MethodGet, "/api/requests", nil)
 	request.RemoteAddr = "192.0.2.10:51234"

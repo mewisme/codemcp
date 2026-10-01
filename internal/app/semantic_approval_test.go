@@ -13,8 +13,8 @@ import (
 func TestReloadConfigConvergesSemanticApprovalPolicy(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "test-mcp-hash"
-	cfg.Auth.AdminTokenHash = "test-admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "test-mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "test-admin-hash"
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)

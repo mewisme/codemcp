@@ -355,6 +355,15 @@ func presentationSafeConfig(data []byte) ([]byte, error) {
 	if !ok {
 		return nil, errors.New("config export requires an object root")
 	}
+	if httpConfig, ok := root["http"].(map[string]any); ok {
+		for _, endpoint := range []string{"mcp", "admin"} {
+			if endpointConfig, ok := httpConfig[endpoint].(map[string]any); ok {
+				if auth, ok := endpointConfig["auth"].(map[string]any); ok {
+					delete(auth, "token_hash")
+				}
+			}
+		}
+	}
 	if auth, ok := root["auth"].(map[string]any); ok {
 		delete(auth, "mcp_token_hash")
 		delete(auth, "admin_token_hash")
@@ -522,10 +531,20 @@ func normalizeMainConfig(data []byte, source, target Platform) ([]byte, int, err
 			skipped += count
 		}
 	}
-	if source.OS != target.OS && cfg.Server.Expose.Mode == config.ExposureInterfaces {
+	if source.OS != target.OS {
+		if httpConfig, ok := root["http"].(map[string]any); ok {
+			if exposure, ok := httpConfig["exposure"].(map[string]any); ok && fmt.Sprint(exposure["mode"]) == string(config.ExposureInterfaces) {
+				httpConfig["exposure"] = map[string]any{"mode": string(config.ExposureNone), "interfaces": []any{}}
+			}
+		}
 		if server, ok := root["server"].(map[string]any); ok {
-			if _, exists := server["expose"]; exists {
-				server["expose"] = map[string]any{"mode": string(config.ExposureNone), "interfaces": []any{}}
+			if expose, exists := server["expose"]; exists {
+				switch value := expose.(type) {
+				case map[string]any:
+					if fmt.Sprint(value["mode"]) == string(config.ExposureInterfaces) {
+						server["expose"] = map[string]any{"mode": string(config.ExposureNone), "interfaces": []any{}}
+					}
+				}
 			}
 		}
 	}
@@ -537,6 +556,14 @@ func normalizeMainConfig(data []byte, source, target Platform) ([]byte, int, err
 }
 
 func mergeImportedMainConfig(existingRoot, stagedRoot string) error {
+	// Loading each side first performs the one-way legacy server/admin/auth to
+	// http migration before the generic merge, preventing dual authorities.
+	if _, err := config.LoadAt(existingRoot); err != nil {
+		return fmt.Errorf("canonicalize existing configuration for import merge: %w", err)
+	}
+	if _, err := config.LoadAt(stagedRoot); err != nil {
+		return fmt.Errorf("canonicalize imported configuration for merge: %w", err)
+	}
 	existing, err := config.SourceAt(existingRoot)
 	if err != nil {
 		return fmt.Errorf("discover existing configuration for merge: %w", err)
@@ -844,6 +871,17 @@ func containsSensitiveState(relative string, data []byte) (bool, error) {
 		root, ok := decoded.(map[string]any)
 		if !ok {
 			return false, errors.New("config envelope config.json must contain an object")
+		}
+		if httpConfig, ok := root["http"].(map[string]any); ok {
+			for _, endpoint := range []string{"mcp", "admin"} {
+				if endpointConfig, ok := httpConfig[endpoint].(map[string]any); ok {
+					if auth, ok := endpointConfig["auth"].(map[string]any); ok {
+						if value, exists := auth["token_hash"]; exists && strings.TrimSpace(fmt.Sprint(value)) != "" {
+							return true, nil
+						}
+					}
+				}
+			}
 		}
 		if auth, ok := root["auth"].(map[string]any); ok {
 			for _, key := range []string{"mcp_token_hash", "admin_token_hash"} {

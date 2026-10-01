@@ -51,8 +51,8 @@ func newConfigApprovalHarness(t *testing.T) *configApprovalHarness {
 	}
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-configured-hash"
-	cfg.Auth.AdminTokenHash = "admin-configured-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	cfg.Permissions.MCPConfigWrite = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -174,8 +174,8 @@ func TestConfigSetApprovalRejectsChangedOrderAndStaleConfig(t *testing.T) {
 	t.Run("changed value and order", func(t *testing.T) {
 		harness := newConfigApprovalHarness(t)
 		base := configSetArgs(harness.workspaceID,
-			mcpconfigwire.Change{Key: "server.port", Value: "41001"},
-			mcpconfigwire.Change{Key: "server.enabled", Value: "true"},
+			mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"},
+			mcpconfigwire.Change{Key: "http.mcp.enabled", Value: "true"},
 		)
 		first, _ := harness.runtime.Call(configApprovalContext("caller-a", "request-a"), mcpconfigwire.SetToolName, base)
 		request, _, err := harness.runtime.Approvals.CreateRequestWithTitle(challengeID(t, first), "caller-a", harness.workspaceID, "Update settings")
@@ -187,12 +187,12 @@ func TestConfigSetApprovalRejectsChangedOrderAndStaleConfig(t *testing.T) {
 		}
 		for _, args := range []map[string]any{
 			configSetArgs(harness.workspaceID,
-				mcpconfigwire.Change{Key: "server.port", Value: "41002"},
-				mcpconfigwire.Change{Key: "server.enabled", Value: "true"},
+				mcpconfigwire.Change{Key: "http.mcp.port", Value: "41002"},
+				mcpconfigwire.Change{Key: "http.mcp.enabled", Value: "true"},
 			),
 			configSetArgs(harness.workspaceID,
-				mcpconfigwire.Change{Key: "server.enabled", Value: "true"},
-				mcpconfigwire.Change{Key: "server.port", Value: "41001"},
+				mcpconfigwire.Change{Key: "http.mcp.enabled", Value: "true"},
+				mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"},
 			),
 		} {
 			result, err := harness.runtime.Call(configApprovalContext("caller-a", "request-mismatch"), mcpconfigwire.SetToolName, args)
@@ -218,7 +218,7 @@ func TestConfigSetApprovalRejectsChangedOrderAndStaleConfig(t *testing.T) {
 
 	t.Run("stale fingerprint", func(t *testing.T) {
 		harness := newConfigApprovalHarness(t)
-		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.port", Value: "41001"})
+		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"})
 		first, _ := harness.runtime.Call(configApprovalContext("caller-a", "request-a"), mcpconfigwire.SetToolName, args)
 		request, _, err := harness.runtime.Approvals.CreateRequestWithTitle(challengeID(t, first), "caller-a", harness.workspaceID, "Update port")
 		if err != nil {
@@ -231,7 +231,7 @@ func TestConfigSetApprovalRejectsChangedOrderAndStaleConfig(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		cfg.Server.Port++
+		cfg.HTTP.MCP.Port++
 		if err := config.Save(cfg); err != nil {
 			t.Fatal(err)
 		}
@@ -243,7 +243,7 @@ func TestConfigSetApprovalRejectsChangedOrderAndStaleConfig(t *testing.T) {
 
 	t.Run("stale config root", func(t *testing.T) {
 		harness := newConfigApprovalHarness(t)
-		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.port", Value: "41001"})
+		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"})
 		first, _ := harness.runtime.Call(configApprovalContext("caller-a", "request-a"), mcpconfigwire.SetToolName, args)
 		request, _, err := harness.runtime.Approvals.CreateRequestWithTitle(challengeID(t, first), "caller-a", harness.workspaceID, "Update port")
 		if err != nil {
@@ -257,8 +257,8 @@ func TestConfigSetApprovalRejectsChangedOrderAndStaleConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 		cfg := config.Default()
-		cfg.Auth.MCPTokenHash = "mcp-configured-hash"
-		cfg.Auth.AdminTokenHash = "admin-configured-hash"
+		cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
+		cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 		cfg.Permissions.MCPConfigWrite = true
 		if err := config.Save(cfg); err != nil {
 			t.Fatal(err)
@@ -308,7 +308,7 @@ func TestConfigSetApprovalRejectsSecretsMissingScopeDenialAndUnavailableReviewer
 
 	t.Run("missing caller", func(t *testing.T) {
 		harness := newConfigApprovalHarness(t)
-		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.port", Value: "41001"})
+		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"})
 		result, err := harness.runtime.Call(tools.WithCallSource(context.Background(), "tunnel"), mcpconfigwire.SetToolName, args)
 		if err != nil || !result.IsError || harness.applied.Load() != 0 {
 			t.Fatalf("missing caller=%#v err=%v applied=%d", result, err, harness.applied.Load())
@@ -320,7 +320,7 @@ func TestConfigSetApprovalRejectsSecretsMissingScopeDenialAndUnavailableReviewer
 
 	t.Run("missing request correlation", func(t *testing.T) {
 		harness := newConfigApprovalHarness(t)
-		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.port", Value: "41001"})
+		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"})
 		ctx := tools.WithCallSource(context.Background(), "tunnel")
 		ctx = tools.WithApprovalCorrelation(ctx, "caller-a", "")
 		result, err := harness.runtime.Call(ctx, mcpconfigwire.SetToolName, args)
@@ -334,7 +334,7 @@ func TestConfigSetApprovalRejectsSecretsMissingScopeDenialAndUnavailableReviewer
 
 	t.Run("deny", func(t *testing.T) {
 		harness := newConfigApprovalHarness(t)
-		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.port", Value: "41001"})
+		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"})
 		first, _ := harness.runtime.Call(configApprovalContext("caller-a", "request-a"), mcpconfigwire.SetToolName, args)
 		request, _, err := harness.runtime.Approvals.CreateRequestWithTitle(challengeID(t, first), "caller-a", harness.workspaceID, "Update port")
 		if err != nil {
@@ -351,7 +351,7 @@ func TestConfigSetApprovalRejectsSecretsMissingScopeDenialAndUnavailableReviewer
 
 	t.Run("pending reviewer and disconnected waiter", func(t *testing.T) {
 		harness := newConfigApprovalHarness(t)
-		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.port", Value: "41001"})
+		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"})
 		first, _ := harness.runtime.Call(configApprovalContext("caller-a", "request-a"), mcpconfigwire.SetToolName, args)
 		request, _, err := harness.runtime.Approvals.CreateRequestWithTitle(challengeID(t, first), "caller-a", harness.workspaceID, "Update port")
 		if err != nil {
@@ -375,7 +375,7 @@ func TestConfigSetApprovalRejectsSecretsMissingScopeDenialAndUnavailableReviewer
 
 	t.Run("parallel review does not dispatch", func(t *testing.T) {
 		harness := newConfigApprovalHarness(t)
-		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.port", Value: "41001"})
+		args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"})
 		first, _ := harness.runtime.Call(configApprovalContext("caller-a", "request-a"), mcpconfigwire.SetToolName, args)
 		request, _, err := harness.runtime.Approvals.CreateRequestWithTitle(challengeID(t, first), "caller-a", harness.workspaceID, "Update port")
 		if err != nil {
@@ -411,7 +411,7 @@ func TestConfigSetApprovalRejectsSecretsMissingScopeDenialAndUnavailableReviewer
 		harness := newConfigApprovalHarness(t)
 		harness.runtime.Approvals = nil
 		result, err := harness.runtime.Call(configApprovalContext("caller-a", "request-a"), mcpconfigwire.SetToolName,
-			configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.port", Value: "41001"}))
+			configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.port", Value: "41001"}))
 		if err != nil || !result.IsError || harness.applied.Load() != 0 {
 			t.Fatalf("unavailable reviewer=%#v err=%v applied=%d", result, err, harness.applied.Load())
 		}
@@ -425,7 +425,7 @@ func TestConfigSetMalformedNestedValueNeverLeaksThroughActivityOrRequestEnvelope
 		"workspace_id": harness.workspaceID,
 		"changes": []any{
 			map[string]any{
-				"key": "server.port",
+				"key": "http.mcp.port",
 				"value": map[string]any{
 					"authorization": "Bearer " + secret,
 					"nested":        []any{map[string]any{"password": secret}},
@@ -466,7 +466,7 @@ func TestConfigSetMalformedNestedValueNeverLeaksThroughActivityOrRequestEnvelope
 	if strings.Contains(string(observedJSON), secret) || strings.Contains(string(observedJSON), "Bearer "+secret) {
 		t.Fatalf("nested malformed value leaked through activity/request envelope: %s", observedJSON)
 	}
-	if !strings.Contains(string(observedJSON), "server.port") || !strings.Contains(string(observedJSON), "change_count") {
+	if !strings.Contains(string(observedJSON), "http.mcp.port") || !strings.Contains(string(observedJSON), "change_count") {
 		t.Fatalf("activity lost safe config summary: %s", observedJSON)
 	}
 }

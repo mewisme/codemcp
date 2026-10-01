@@ -30,10 +30,10 @@ func Inspect() (Inspection, error) {
 	if err := configformat.Unmarshal(configformat.JSON, data, &result.Config); err != nil {
 		return Inspection{}, err
 	}
-	result.Config.Server.Expose = NormalizeExposure(result.Config.Server.Expose)
-	if err := migrateLegacyServerConfig(source.Path, data, &result.Config); err != nil {
+	if _, err := migrateLegacyHTTPConfig(data, &result.Config); err != nil {
 		return Inspection{}, err
 	}
+	result.Config.HTTP.Exposure = NormalizeExposure(result.Config.HTTP.Exposure)
 
 	runtimeLegacy := result.Config.Tunnel.APIKey != "" && result.Config.Tunnel.APIKey != secretFileMarker
 	adminLegacy := result.Config.Tunnel.Admin.Key != "" && result.Config.Tunnel.Admin.Key != secretFileMarker

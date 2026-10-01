@@ -63,7 +63,7 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 		return err
 	}
 	if port == 0 {
-		port = cfg.Server.Port
+		port = cfg.HTTP.MCP.Port
 	}
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("invalid MCP HTTP port: %d", port)
@@ -92,8 +92,8 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 		}
 		clientCertificatePolicy.Roots = roots
 	}
-	cfg.Server.Enabled = false
-	cfg.Admin.Enabled = false
+	cfg.HTTP.MCP.Enabled = false
+	cfg.HTTP.Admin.Enabled = false
 	cfg.Tunnel.Enabled = false
 	runtime, err := app.NewWithLoggerContext(cmd.Context(), cfg, commandLogger(cmd))
 	if err != nil {
@@ -112,14 +112,14 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 		return err
 	}
 	authRequirements := []mcp.AuthRequirement(nil)
-	if cfg.Auth.MCPEnabled {
+	if cfg.HTTP.MCP.Auth.Enabled {
 		authRequirements = append(authRequirements, mcp.BearerAuthRequirement(mcpauth.ScopeTools))
 	}
 	handler, err := mcp.NewSDKHTTPHandlerWithProfileAuth(runtime.Tools, workspaceID, enableSSE, profile, authRequirements...)
 	if err != nil {
 		return err
 	}
-	if cfg.Auth.MCPEnabled && cfg.Auth.MCPTokenHash == "" {
+	if cfg.HTTP.MCP.Auth.Enabled && cfg.HTTP.MCP.Auth.TokenHash == "" {
 		return errMCPAuthCredentialMissing
 	}
 	if !mcpHTTPLoopbackHost(host) {
@@ -135,7 +135,7 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 		if loadErr != nil {
 			return mcpauth.Config{}, loadErr
 		}
-		return mcpauth.Config{Enabled: current.Auth.MCPEnabled, LegacyBearer: current.Auth.MCPLegacyBearer, TokenHash: current.Auth.MCPTokenHash}, nil
+		return mcpauth.Config{Enabled: current.HTTP.MCP.Auth.Enabled, LegacyBearer: current.HTTP.MCP.Auth.LegacyBearer, TokenHash: current.HTTP.MCP.Auth.TokenHash}, nil
 	}, auth.VerifyToken)
 	if err != nil {
 		_ = listener.Close()
@@ -200,8 +200,8 @@ func runMCPStdio(cmd *cobra.Command, workspace string) (runErr error) {
 	if err := config.Validate(cfg); err != nil {
 		return err
 	}
-	cfg.Server.Enabled = false
-	cfg.Admin.Enabled = false
+	cfg.HTTP.MCP.Enabled = false
+	cfg.HTTP.Admin.Enabled = false
 	cfg.Tunnel.Enabled = false
 	runtime, err := app.NewWithLoggerContext(cmd.Context(), cfg, commandLogger(cmd))
 	if err != nil {

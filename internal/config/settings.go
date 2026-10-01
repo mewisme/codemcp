@@ -88,26 +88,26 @@ var virtualSettingSpecs = []FieldSpec{
 		ScopedExemption: "dedicated LLM provider administration is exposed through the LLM application owner",
 	},
 	{
-		Key: "auth.mcp_token", Label: "MCP token", Section: FieldSectionAccess, Kind: FieldString,
-		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "auth.mcp_token_configured",
+		Key: "http.mcp.auth.token", Label: "MCP token", Section: FieldSectionAccess, Kind: FieldString,
+		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "http.mcp.auth.token_configured",
 		Presentation: SettingPresentationMaskedPreview, ApplicationOwner: "auth.credentials",
 		ValueRole:      SettingValueGenerated,
 		ScopedCommands: []string{"auth mcp create", "auth status"},
 	},
 	{
-		Key: "auth.admin_token", Label: "Admin token", Section: FieldSectionAccess, Kind: FieldString,
-		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "auth.admin_token_configured",
+		Key: "http.admin.auth.token", Label: "Admin token", Section: FieldSectionAccess, Kind: FieldString,
+		Virtual: true, Secret: true, Rotatable: true, ConfiguredStateKey: "http.admin.auth.token_configured",
 		Presentation: SettingPresentationMaskedPreview, ApplicationOwner: "auth.credentials",
 		ValueRole:      SettingValueGenerated,
 		ScopedCommands: []string{"auth admin create", "auth status"},
 	},
 	{
-		Key: "auth.mcp_token_configured", Label: "MCP token configured", Section: FieldSectionAccess, Kind: FieldBool,
+		Key: "http.mcp.auth.token_configured", Label: "MCP token configured", Section: FieldSectionAccess, Kind: FieldBool,
 		Virtual: true, Derived: true, Readable: true, ApplicationOwner: "auth.credentials",
 		ScopedCommands: []string{"auth status"},
 	},
 	{
-		Key: "auth.admin_token_configured", Label: "Admin token configured", Section: FieldSectionAccess, Kind: FieldBool,
+		Key: "http.admin.auth.token_configured", Label: "Admin token configured", Section: FieldSectionAccess, Kind: FieldBool,
 		Virtual: true, Derived: true, Readable: true, ApplicationOwner: "auth.credentials",
 		ScopedCommands: []string{"auth status"},
 	},
@@ -243,32 +243,32 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 	}
 
 	switch spec.Key {
-	case "server.enabled":
-		spec.ScopedCommands = []string{"server enable", "server disable"}
-	case "server.expose.mode":
-		spec.ScopedCommands = []string{"server expose mode"}
-	case "server.expose.interfaces":
-		spec.ScopedCommands = []string{"server interface add", "server interface remove"}
-	case "server.port":
-		spec.ScopedCommands = []string{"server port"}
-	case "server.allow_insecure_http":
-		spec.ScopedCommands = []string{"server insecure http allow", "server insecure http deny"}
-	case "server.allow_unauthenticated_loopback":
-		spec.ScopedCommands = []string{"server loopback auth allow", "server loopback auth require"}
-	case "admin.enabled":
-		spec.ScopedCommands = []string{"admin enable", "admin disable"}
-	case "admin.port":
-		spec.ScopedCommands = []string{"admin port"}
-	case "auth.mcp_enabled":
+	case "http.mcp.enabled":
+		spec.ScopedCommands = []string{"http mcp enable", "http mcp disable"}
+	case "http.exposure.mode":
+		spec.ScopedCommands = []string{"http exposure mode"}
+	case "http.exposure.interfaces":
+		spec.ScopedCommands = []string{"http exposure interface add", "http exposure interface remove"}
+	case "http.mcp.port":
+		spec.ScopedCommands = []string{"http mcp port"}
+	case "http.security.allow_insecure":
+		spec.ScopedCommands = []string{"http security insecure allow", "http security insecure deny"}
+	case "http.security.allow_unauthenticated_loopback":
+		spec.ScopedCommands = []string{"http security loopback auth allow", "http security loopback auth require"}
+	case "http.admin.enabled":
+		spec.ScopedCommands = []string{"http admin enable", "http admin disable"}
+	case "http.admin.port":
+		spec.ScopedCommands = []string{"http admin port"}
+	case "http.mcp.auth.enabled":
 		spec.ApplicationOwner = "auth"
 		spec.ScopedCommands = []string{"auth mcp enable", "auth mcp disable"}
-	case "auth.admin_enabled":
+	case "http.admin.auth.enabled":
 		spec.ApplicationOwner = "auth"
 		spec.ScopedCommands = []string{"auth admin enable", "auth admin disable"}
-	case "auth.mcp_legacy_bearer":
+	case "http.mcp.auth.legacy_bearer":
 		spec.ApplicationOwner = "auth"
 		spec.ScopedCommands = []string{"auth mcp legacy bearer enable", "auth mcp legacy bearer disable"}
-	case "auth.mcp_token_hash", "auth.admin_token_hash":
+	case "http.mcp.auth.token_hash", "http.admin.auth.token_hash":
 		spec.InternalOnly = true
 		spec.Readable, spec.Writable, spec.DefaultReset = false, false, false
 		spec.ReadKey, spec.WriteKey = "", ""

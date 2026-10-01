@@ -36,8 +36,8 @@ func TestExposeFlagSupportsBareAllAndInterfaceLists(t *testing.T) {
 			if err := cmd.Execute(); err != nil {
 				t.Fatal(err)
 			}
-			if !config.ExposureEqual(cfg.Server.Expose, test.want) {
-				t.Fatalf("exposure = %#v, want %#v", cfg.Server.Expose, test.want)
+			if !config.ExposureEqual(cfg.HTTP.Exposure, test.want) {
+				t.Fatalf("exposure = %#v, want %#v", cfg.HTTP.Exposure, test.want)
 			}
 		})
 	}

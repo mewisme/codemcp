@@ -654,9 +654,9 @@ func setupTunnelPageConfig(t *testing.T, value tunnel.Config) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if value.Admin.Key != "" && !value.Admin.ReadAccess && !value.Admin.ManageAccess {
 		value.Admin.ReadAccess, value.Admin.ManageAccess = true, true
 	}

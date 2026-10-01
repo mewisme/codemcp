@@ -23,7 +23,7 @@ func TestRequestCLIListViewApproveDenyAliasesAndOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager := approval.NewManager("instance-test")
-	first := seedApprovalRequest(t, manager, "session-a", "ws_a", "cm config set server.port 41001")
+	first := seedApprovalRequest(t, manager, "session-a", "ws_a", "cm config set http.mcp.port 41001")
 	second := seedApprovalRequest(t, manager, "session-b", "ws_b", "cm update")
 	control, err := startRuntimeControl(runtimeControlOptions{Approvals: manager, Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {

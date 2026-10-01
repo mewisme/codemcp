@@ -168,7 +168,7 @@ func TestConfigSetReviewNeverCreatesRuntimeSessionGrant(t *testing.T) {
 	reviews := NewReviewService(manager)
 	arguments := map[string]any{
 		"workspace_id":             "ws_a",
-		"changes":                  []any{map[string]any{"key": "server.port", "value": "41001"}},
+		"changes":                  []any{map[string]any{"key": "http.mcp.port", "value": "41001"}},
 		"__codemcp_config_binding": map[string]any{"version": 1, "config_root": "/private/root", "config_fingerprint": "private-fingerprint"},
 	}
 	challenge, _, err := manager.CreateChallenge(ChallengeInput{
@@ -195,7 +195,7 @@ func TestConfigSetReviewNeverCreatesRuntimeSessionGrant(t *testing.T) {
 	}
 	if granted, ok := manager.MatchRuntimeGrant(RetryInput{
 		CallerID: "caller-other", WorkspaceID: "ws_a", Source: "tunnel", TargetTool: mcpconfigwire.SetToolName,
-		Arguments: arguments, Command: "cm config set server.port 41001",
+		Arguments: arguments, Command: "cm config set http.mcp.port 41001",
 	}); ok || granted.ID != "" {
 		t.Fatalf("config_set matched runtime grant: %#v", granted)
 	}

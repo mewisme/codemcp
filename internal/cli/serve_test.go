@@ -31,9 +31,9 @@ func TestWaitRuntimeHTTPReadyRequiresMCPAndAdminListeners(t *testing.T) {
 	admin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 	defer admin.Close()
 	cfg := config.Default()
-	cfg.Server.Port = testServerPort(t, mcp.Listener.Addr())
-	cfg.Admin.Enabled = true
-	cfg.Admin.Port = testServerPort(t, admin.Listener.Addr())
+	cfg.HTTP.MCP.Port = testServerPort(t, mcp.Listener.Addr())
+	cfg.HTTP.Admin.Enabled = true
+	cfg.HTTP.Admin.Port = testServerPort(t, admin.Listener.Addr())
 	if err := waitRuntimeHTTPReady(context.Background(), cfg, time.Second); err != nil {
 		t.Fatal(err)
 	}
@@ -49,9 +49,9 @@ func TestWaitRuntimeHTTPReadyRejectsMissingListener(t *testing.T) {
 	missingPort := testServerPort(t, missing.Addr())
 	_ = missing.Close()
 	cfg := config.Default()
-	cfg.Server.Port = testServerPort(t, mcp.Listener.Addr())
-	cfg.Admin.Enabled = true
-	cfg.Admin.Port = missingPort
+	cfg.HTTP.MCP.Port = testServerPort(t, mcp.Listener.Addr())
+	cfg.HTTP.Admin.Enabled = true
+	cfg.HTTP.Admin.Port = missingPort
 	err = waitRuntimeHTTPReady(context.Background(), cfg, 100*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "server listeners did not become ready") {
 		t.Fatalf("error = %v", err)
@@ -60,8 +60,8 @@ func TestWaitRuntimeHTTPReadyRejectsMissingListener(t *testing.T) {
 
 func TestTunnelOnlyRuntimeRequiresNoHTTPListeners(t *testing.T) {
 	cfg := config.Default()
-	cfg.Server.Enabled = false
-	cfg.Admin.Enabled = false
+	cfg.HTTP.MCP.Enabled = false
+	cfg.HTTP.Admin.Enabled = false
 	bindings, err := openHTTPBindings(cfg, listenerPlan{Hosts: []string{"127.0.0.1"}})
 	if err != nil {
 		t.Fatal(err)
@@ -82,16 +82,16 @@ func TestOpenHTTPBindingsFallsBackWhenAdminPortIsBusy(t *testing.T) {
 	}
 	defer occupied.Close()
 	cfg := config.Default()
-	cfg.Server.Enabled = false
-	cfg.Admin.Enabled = true
-	cfg.Admin.Port = testServerPort(t, occupied.Addr())
+	cfg.HTTP.MCP.Enabled = false
+	cfg.HTTP.Admin.Enabled = true
+	cfg.HTTP.Admin.Port = testServerPort(t, occupied.Addr())
 	bindings, err := openHTTPBindings(cfg, listenerPlan{Hosts: []string{"127.0.0.1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer bindings.CloseUnstarted()
-	if bindings.cfg.Admin.Port == cfg.Admin.Port {
-		t.Fatalf("admin port did not fall back from occupied port %d", cfg.Admin.Port)
+	if bindings.cfg.HTTP.Admin.Port == cfg.HTTP.Admin.Port {
+		t.Fatalf("admin port did not fall back from occupied port %d", cfg.HTTP.Admin.Port)
 	}
 }
 
@@ -102,10 +102,10 @@ func TestTunnelOnlyServePublishesRuntimeControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Server.Enabled = false
-	cfg.Admin.Enabled = false
-	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Enabled = false
+	cfg.HTTP.Admin.Enabled = false
+	cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.Admin.Auth.Enabled = false, false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	controlPlane := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/poll") {
 			http.NotFound(w, r)

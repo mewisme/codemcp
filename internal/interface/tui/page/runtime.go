@@ -511,7 +511,7 @@ func (page *RuntimePage) startOperation(command SystemCommand) tea.Cmd {
 			msg.err, msg.external = err, result.External
 		case MCPHTTPEnable, MCPHTTPDisable:
 			enabled := command == MCPHTTPEnable
-			result, err := application.SetConfigField(ctx, "server.enabled", fmt.Sprint(enabled))
+			result, err := application.SetConfigField(ctx, "http.mcp.enabled", fmt.Sprint(enabled))
 			msg.err = err
 			if msg.err == nil {
 				state := "disabled"

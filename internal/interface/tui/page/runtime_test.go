@@ -186,14 +186,14 @@ func TestRuntimeMCPHTTPStoppedTogglePersistsAndRespectsTransportInvariant(t *tes
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled, cfg.Auth.AdminEnabled = false, false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled, cfg.HTTP.Admin.Auth.Enabled = false, false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.Enabled, cfg.Tunnel.ID, cfg.Tunnel.APIKey = true, "tunnel_test", "tunnel-key"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	page, _ := NewRuntime(t.Context())
-	page.runtime = application.RuntimeOverview{MCPHTTPEnabled: true, MCPHTTPPort: cfg.Server.Port, TunnelEnabled: true}
+	page.runtime = application.RuntimeOverview{MCPHTTPEnabled: true, MCPHTTPPort: cfg.HTTP.MCP.Port, TunnelEnabled: true}
 	cmd, err := page.openCommand(MCPHTTPDisable)
 	if err != nil || cmd == nil {
 		t.Fatalf("disable command err=%v cmd=%v", err, cmd)
@@ -217,11 +217,11 @@ func TestRuntimeMCPHTTPStoppedTogglePersistsAndRespectsTransportInvariant(t *tes
 		t.Fatalf("disable result=%#v err=%v", result, result.err)
 	}
 	loaded, err := config.Load()
-	if err != nil || loaded.Server.Enabled {
-		t.Fatalf("server enabled=%t err=%v", loaded.Server.Enabled, err)
+	if err != nil || loaded.HTTP.MCP.Enabled {
+		t.Fatalf("server enabled=%t err=%v", loaded.HTTP.MCP.Enabled, err)
 	}
 	loaded.Tunnel.Enabled = false
-	loaded.Server.Enabled = true
+	loaded.HTTP.MCP.Enabled = true
 	if err := config.Save(loaded); err != nil {
 		t.Fatal(err)
 	}

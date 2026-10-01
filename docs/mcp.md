@@ -66,7 +66,7 @@ The dedicated generic-client HTTP transport is intentionally separate from the t
 Protected `cm mcp http` uses OAuth as the canonical client authentication flow. Static managed MCP bearer compatibility can be controlled with:
 
 ```bash
-cm config set auth.mcp_legacy_bearer false
+cm config set http.mcp.auth.legacy_bearer false
 ```
 
 The OpenAI Secure MCP Tunnel runtime API key is unrelated to generic MCP client authentication.

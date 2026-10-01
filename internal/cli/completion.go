@@ -93,9 +93,9 @@ func completeConfigSet(cmd *cobra.Command, args []string, toComplete string) ([]
 		return filterCompletions([]string{"true", "false"}, toComplete), cobra.ShellCompDirectiveNoFileComp
 	}
 	switch key {
-	case "server.expose":
+	case "http.exposure":
 		return filterCompletions([]string{"none", "all", "0.0.0.0"}, toComplete), cobra.ShellCompDirectiveNoFileComp
-	case "server.expose.interfaces":
+	case "http.exposure.interfaces":
 		interfaces, err := net.Interfaces()
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveNoFileComp

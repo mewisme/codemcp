@@ -33,8 +33,8 @@ func TestConfigPageLoadsAndNeverRendersSecrets(t *testing.T) {
 	if !page.loaded || page.overview.Root != root || page.overview.Source.Format != configformat.JSON {
 		t.Fatalf("overview=%#v loaded=%t", page.overview, page.loaded)
 	}
-	page.overview.Config.Auth.MCPTokenHash = "MCP_HASH_SECRET"
-	page.overview.Config.Auth.AdminTokenHash = "ADMIN_HASH_SECRET"
+	page.overview.Config.HTTP.MCP.Auth.TokenHash = "MCP_HASH_SECRET"
+	page.overview.Config.HTTP.Admin.Auth.TokenHash = "ADMIN_HASH_SECRET"
 	page.overview.Config.Tunnel.APIKey = "TUNNEL_RUNTIME_SECRET"
 	page.overview.Config.Tunnel.Admin.Key = "TUNNEL_ADMIN_SECRET"
 	page.rebuildBrowser("")
@@ -102,7 +102,7 @@ func TestConfigPageTitleStartsAtWorkspaceTitlePosition(t *testing.T) {
 
 func TestConfigResourceUsesFullChildDetailPage(t *testing.T) {
 	prepareConfigPageRoot(t)
-	page, err := NewConfigRoute(t.Context(), "server.port")
+	page, err := NewConfigRoute(t.Context(), "http.mcp.port")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +112,7 @@ func TestConfigResourceUsesFullChildDetailPage(t *testing.T) {
 		t.Fatal("config detail incorrectly reports overlay active")
 	}
 	view := ansi.Strip(page.View(100, 28))
-	for _, want := range []string{"server.port", "Value", "Default", "State", "default", "sets the TCP port for the MCP HTTP server", "e edit", "r refresh"} {
+	for _, want := range []string{"http.mcp.port", "Value", "Default", "State", "default", "sets the TCP port for the MCP HTTP server", "e edit", "r refresh"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("config detail missing %q: %q", want, view)
 		}
@@ -128,14 +128,14 @@ func TestConfigResourceUsesFullChildDetailPage(t *testing.T) {
 		t.Fatal("config edit detail action returned no command")
 	}
 	message, ok := cmd().(ConfigCommandMsg)
-	if !ok || message.Command != ConfigEdit || message.ResourceID != "server.port" {
+	if !ok || message.Command != ConfigEdit || message.ResourceID != "http.mcp.port" {
 		t.Fatalf("config edit action=%#v", message)
 	}
 }
 
 func TestConfigReadOnlyResourceHidesEditAction(t *testing.T) {
 	prepareConfigPageRoot(t)
-	page, err := NewConfigRoute(t.Context(), "auth.mcp_token_hash")
+	page, err := NewConfigRoute(t.Context(), "http.mcp.auth.token_hash")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,10 +149,10 @@ func TestConfigReadOnlyResourceHidesEditAction(t *testing.T) {
 
 func TestConfigFieldDetailNeverRendersSecretOrHash(t *testing.T) {
 	prepareConfigPageRoot(t)
-	page, _ := NewConfigRoute(t.Context(), "auth.mcp_token_hash")
+	page, _ := NewConfigRoute(t.Context(), "http.mcp.auth.token_hash")
 	updated, _ := page.Update(page.Init()())
 	page = updated.(*ConfigPage)
-	page.overview.Config.Auth.MCPTokenHash = "FIELD_DETAIL_SECRET"
+	page.overview.Config.HTTP.MCP.Auth.TokenHash = "FIELD_DETAIL_SECRET"
 	page.syncDetail()
 	view := ansi.Strip(page.View(100, 30))
 	if strings.Contains(view, "FIELD_DETAIL_SECRET") {
@@ -218,8 +218,8 @@ func TestConfigAccessDomainNeverRendersCredentialSecrets(t *testing.T) {
 	page, _ := NewConfigRoute(t.Context(), "access")
 	updated, _ := page.Update(page.Init()())
 	page = updated.(*ConfigPage)
-	page.overview.Config.Auth.MCPTokenHash = "DOMAIN_MCP_SECRET"
-	page.overview.Config.Auth.AdminTokenHash = "DOMAIN_ADMIN_SECRET"
+	page.overview.Config.HTTP.MCP.Auth.TokenHash = "DOMAIN_MCP_SECRET"
+	page.overview.Config.HTTP.Admin.Auth.TokenHash = "DOMAIN_ADMIN_SECRET"
 	page.rebuildBrowser("")
 	view := ansi.Strip(page.View(100, 30))
 	if strings.Contains(view, "DOMAIN_MCP_SECRET") || strings.Contains(view, "DOMAIN_ADMIN_SECRET") {
@@ -235,12 +235,12 @@ func TestConfigDomainOpenNavigatesToLegacyCompatibleFieldRoute(t *testing.T) {
 	page, _ := NewConfigRoute(t.Context(), "runtime")
 	updated, _ := page.Update(page.Init()())
 	page = updated.(*ConfigPage)
-	_, cmd := page.Update(component.BrowserOpenMsg{Row: component.Row{ID: "server.port"}})
+	_, cmd := page.Update(component.BrowserOpenMsg{Row: component.Row{ID: "http.mcp.port"}})
 	if cmd == nil {
 		t.Fatal("domain field open returned no navigation")
 	}
 	message, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(message.Path, "/") != "config/server.port" {
+	if !ok || strings.Join(message.Path, "/") != "config/http.mcp.port" {
 		t.Fatalf("field navigation=%#v", message)
 	}
 }
@@ -294,7 +294,7 @@ func TestConfigSaveMarksAutoReloadedRuntimeCurrentImmediately(t *testing.T) {
 	page.overview.RuntimeRunning = true
 	page.overview.RuntimeSync.State = application.ConfigRuntimeCurrent
 	mutation := page.overview.Config
-	mutation.Server.Port++
+	mutation.HTTP.MCP.Port++
 	page.finishOperation(configOperationMsg{command: ConfigEdit, mutation: application.ConfigMutationResult{Config: mutation, RuntimeReloaded: true}})
 	if page.overview.RuntimeSync.State != application.ConfigRuntimeCurrent {
 		t.Fatalf("sync state=%q", page.overview.RuntimeSync.State)
@@ -382,7 +382,7 @@ func TestConfigPageReadOnlyGuidance(t *testing.T) {
 	page, _ := NewConfig(t.Context())
 	updated, _ := page.Update(page.Init()())
 	page = updated.(*ConfigPage)
-	if cmd, err := page.openCommand(ConfigEdit, "auth.mcp_token_hash"); err != nil || cmd != nil {
+	if cmd, err := page.openCommand(ConfigEdit, "http.mcp.auth.token_hash"); err != nil || cmd != nil {
 		t.Fatalf("read-only edit cmd=%v err=%v", cmd != nil, err)
 	}
 	if page.overlay != configOverlayNone || !strings.Contains(page.notice, "auth token") {
@@ -395,15 +395,15 @@ func TestConfigPageEditIsRoutedAndOperationFailureKeepsEditor(t *testing.T) {
 	page, _ := NewConfig(t.Context())
 	updated, _ := page.Update(page.Init()())
 	page = updated.(*ConfigPage)
-	cmd, err := page.openCommand(ConfigEdit, "server.port")
+	cmd, err := page.openCommand(ConfigEdit, "http.mcp.port")
 	if err != nil || cmd == nil {
 		t.Fatal(err)
 	}
 	navigate, ok := cmd().(NavigateMsg)
-	if !ok || strings.Join(navigate.Path, "/") != "config/server.port/edit" {
+	if !ok || strings.Join(navigate.Path, "/") != "config/http.mcp.port/edit" {
 		t.Fatalf("edit navigation=%#v", navigate)
 	}
-	edit, err := NewConfigRouteAction(t.Context(), "server.port", "", "edit")
+	edit, err := NewConfigRouteAction(t.Context(), "http.mcp.port", "", "edit")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,7 +526,7 @@ func TestConfigPatchAndTelegramSetupUseNativeProtectedEditors(t *testing.T) {
 	if patchPage.editor == nil || patchPage.patchForm == nil {
 		t.Fatalf("patch editor=%v form=%v", patchPage.editor != nil, patchPage.patchForm != nil)
 	}
-	patchPage.patchForm.Changes = `[{"Key":"server.enabled","Value":"false"}]`
+	patchPage.patchForm.Changes = `[{"Key":"http.mcp.enabled","Value":"false"}]`
 	cmd := patchPage.submitConfigEditor()
 	if cmd == nil || patchPage.overlay != configOverlayOperation || !patchPage.editor.Submitting() {
 		t.Fatalf("patch command=%v overlay=%d submitting=%t", cmd != nil, patchPage.overlay, patchPage.editor.Submitting())
@@ -588,8 +588,8 @@ func prepareConfigPageRoot(t *testing.T) string {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

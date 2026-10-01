@@ -71,8 +71,7 @@ func newRootCommand() *cobra.Command {
 		upstreamCommand(),
 		mcpCommand(),
 		tunnelCommand(),
-		serverSettingsCommand(),
-		adminSettingsCommand(),
+		httpSettingsCommand(),
 		permissionsSettingsCommand(),
 		shellSettingsCommand(),
 		notificationSettingsCommand(),
@@ -166,8 +165,8 @@ func authKindCommand(kind string) *cobra.Command {
 		legacy := &cobra.Command{Use: "legacy", Short: "Manage legacy MCP compatibility"}
 		bearer := &cobra.Command{Use: "bearer", Short: "Manage legacy MCP bearer compatibility"}
 		bearer.AddCommand(
-			scopedToggleCommand("enable", "Enable legacy MCP bearer compatibility", "Legacy MCP bearer compatibility enabled", "auth.mcp_legacy_bearer", true),
-			scopedToggleCommand("disable", "Disable legacy MCP bearer compatibility", "Legacy MCP bearer compatibility disabled", "auth.mcp_legacy_bearer", false),
+			scopedToggleCommand("enable", "Enable legacy MCP bearer compatibility", "Legacy MCP bearer compatibility enabled", "http.mcp.auth.legacy_bearer", true),
+			scopedToggleCommand("disable", "Disable legacy MCP bearer compatibility", "Legacy MCP bearer compatibility disabled", "http.mcp.auth.legacy_bearer", false),
 		)
 		legacy.AddCommand(bearer)
 		cmd.AddCommand(legacy)
@@ -182,7 +181,11 @@ func authCreateCommand(kind string) *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "AUTH", "auth.token.rotating", "Creating or rotating authentication token", logger.WithVerbose("type", kind))
-			result, err := settingService().Rotate(cmd.Context(), "auth."+kind+"_token")
+			key := "http.mcp.auth.token"
+			if kind == "admin" {
+				key = "http.admin.auth.token"
+			}
+			result, err := settingService().Rotate(cmd.Context(), key)
 			if err != nil {
 				return err
 			}
@@ -190,7 +193,11 @@ func authCreateCommand(kind string) *cobra.Command {
 			return nil
 		},
 	}
-	return markScopedSettings(cmd, "auth."+kind+"_token")
+	key := "http.mcp.auth.token"
+	if kind == "admin" {
+		key = "http.admin.auth.token"
+	}
+	return markScopedSettings(cmd, key)
 }
 
 func authToggleCommand(kind string, enabled bool) *cobra.Command {
@@ -203,7 +210,11 @@ func authToggleCommand(kind string, enabled bool) *cobra.Command {
 		Short: action + " " + kind + " authentication",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			logCommandStep(cmd, "AUTH", "auth.state.updating", "Updating authentication state", logger.WithVerbose("type", kind), logger.WithVerbose("enabled", enabled))
-			if err := scopedSettingSet(cmd, "auth."+kind+"_enabled", strconv.FormatBool(enabled)); err != nil {
+			key := "http.mcp.auth.enabled"
+			if kind == "admin" {
+				key = "http.admin.auth.enabled"
+			}
+			if err := scopedSettingSet(cmd, key, strconv.FormatBool(enabled)); err != nil {
 				return err
 			}
 			state := "disabled"
@@ -214,7 +225,11 @@ func authToggleCommand(kind string, enabled bool) *cobra.Command {
 			return nil
 		},
 	}
-	return markScopedSettings(cmd, "auth."+kind+"_enabled")
+	key := "http.mcp.auth.enabled"
+	if kind == "admin" {
+		key = "http.admin.auth.enabled"
+	}
+	return markScopedSettings(cmd, key)
 }
 
 func authStatusCommand() *cobra.Command {

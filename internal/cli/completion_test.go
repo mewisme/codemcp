@@ -18,7 +18,7 @@ func TestConfigCompletionIncludesKeysAndTypedValues(t *testing.T) {
 	if directive != cobra.ShellCompDirectiveNoFileComp || !hasCompletion(keys, "permissions.allow_dirs") {
 		t.Fatalf("key completions = %#v directive=%v", keys, directive)
 	}
-	values, directive := completeConfigSet(nil, []string{"auth.mcp_enabled"}, "")
+	values, directive := completeConfigSet(nil, []string{"http.mcp.auth.enabled"}, "")
 	if directive != cobra.ShellCompDirectiveNoFileComp || !hasCompletion(values, "true") || !hasCompletion(values, "false") {
 		t.Fatalf("bool completions = %#v directive=%v", values, directive)
 	}

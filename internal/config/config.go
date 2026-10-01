@@ -15,9 +15,7 @@ import (
 )
 
 type Config struct {
-	Server        ServerConfig        `json:"server"`
-	Admin         AdminConfig         `json:"admin"`
-	Auth          AuthConfig          `json:"auth"`
+	HTTP          HTTPConfig          `json:"http"`
 	Permissions   PermissionsConfig   `json:"permissions"`
 	Shell         ShellConfig         `json:"shell"`
 	Notifications NotificationsConfig `json:"notifications"`
@@ -101,12 +99,16 @@ type CompletionNotificationConfig struct {
 	TelegramEnabled bool `json:"telegram_enabled"`
 }
 
-type ServerConfig struct {
-	Enabled                      bool           `json:"enabled"`
-	Port                         int            `json:"port"`
-	Expose                       ExposureConfig `json:"expose"`
-	AllowInsecureHTTP            bool           `json:"allow_insecure_http"`
-	AllowUnauthenticatedLoopback bool           `json:"allow_unauthenticated_loopback"`
+type HTTPConfig struct {
+	Exposure ExposureConfig     `json:"exposure"`
+	Security HTTPSecurityConfig `json:"security"`
+	MCP      MCPHTTPConfig      `json:"mcp"`
+	Admin    AdminHTTPConfig    `json:"admin"`
+}
+
+type HTTPSecurityConfig struct {
+	AllowInsecure                bool `json:"allow_insecure"`
+	AllowUnauthenticatedLoopback bool `json:"allow_unauthenticated_loopback"`
 }
 
 type ExposureMode string
@@ -123,12 +125,43 @@ type ExposureConfig struct {
 	Interfaces []string     `json:"interfaces"`
 }
 
-type AdminConfig struct {
+type MCPHTTPConfig struct {
+	Enabled bool              `json:"enabled"`
+	Port    int               `json:"port"`
+	Auth    MCPHTTPAuthConfig `json:"auth"`
+}
+
+type AdminHTTPConfig struct {
+	Enabled bool           `json:"enabled"`
+	Port    int            `json:"port"`
+	Auth    HTTPAuthConfig `json:"auth"`
+}
+
+type HTTPAuthConfig struct {
+	Enabled   bool   `json:"enabled"`
+	TokenHash string `json:"token_hash,omitempty"`
+}
+
+type MCPHTTPAuthConfig struct {
+	Enabled      bool   `json:"enabled"`
+	TokenHash    string `json:"token_hash,omitempty"`
+	LegacyBearer bool   `json:"legacy_bearer"`
+}
+
+type legacyServerConfig struct {
+	Enabled                      bool           `json:"enabled"`
+	Port                         int            `json:"port"`
+	Expose                       ExposureConfig `json:"expose"`
+	AllowInsecureHTTP            bool           `json:"allow_insecure_http"`
+	AllowUnauthenticatedLoopback bool           `json:"allow_unauthenticated_loopback"`
+}
+
+type legacyAdminConfig struct {
 	Enabled bool `json:"enabled"`
 	Port    int  `json:"port"`
 }
 
-type AuthConfig struct {
+type legacyAuthConfig struct {
 	MCPEnabled      bool   `json:"mcp_enabled"`
 	MCPLegacyBearer bool   `json:"mcp_legacy_bearer"`
 	AdminEnabled    bool   `json:"admin_enabled"`
@@ -140,9 +173,14 @@ type IntegrationsConfig = integrations.Config
 
 func Default() Config {
 	return Config{
-		Server:      ServerConfig{Enabled: true, Port: 37421, Expose: ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}},
-		Admin:       AdminConfig{Enabled: true, Port: 37422},
-		Auth:        AuthConfig{MCPEnabled: true, MCPLegacyBearer: true, AdminEnabled: true},
+		HTTP: HTTPConfig{
+			Exposure: ExposureConfig{Mode: ExposureNone, Interfaces: []string{}},
+			Security: HTTPSecurityConfig{},
+			MCP: MCPHTTPConfig{Enabled: true, Port: 37421, Auth: MCPHTTPAuthConfig{
+				Enabled: true, LegacyBearer: true,
+			}},
+			Admin: AdminHTTPConfig{Enabled: true, Port: 37422, Auth: HTTPAuthConfig{Enabled: true}},
+		},
 		Permissions: PermissionsConfig{AllowDirs: []string{}},
 		Shell:       ShellConfig{Path: []string{}},
 		Notifications: NotificationsConfig{
@@ -179,7 +217,7 @@ func (value *ExposureConfig) UnmarshalJSON(data []byte) error {
 	type exposureAlias ExposureConfig
 	var decoded exposureAlias
 	if err := json.Unmarshal(data, &decoded); err != nil {
-		return fmt.Errorf("server.expose must be a boolean or exposure object: %w", err)
+		return fmt.Errorf("http.exposure must be a boolean or exposure object: %w", err)
 	}
 	*value = NormalizeExposure(ExposureConfig(decoded))
 	return nil
@@ -307,10 +345,11 @@ func loadAtWithTunnelSecretPolicy(configPath, secretPath string, policy tunnelSe
 	if err := configformat.Unmarshal(configformat.JSON, data, &cfg); err != nil {
 		return cfg, err
 	}
-	cfg.Server.Expose = NormalizeExposure(cfg.Server.Expose)
-	if err := migrateLegacyServerConfig(configPath, data, &cfg); err != nil {
+	legacyHTTP, err := migrateLegacyHTTPConfig(data, &cfg)
+	if err != nil {
 		return cfg, err
 	}
+	cfg.HTTP.Exposure = NormalizeExposure(cfg.HTTP.Exposure)
 	legacyRuntime, legacyAdmin := cfg.Tunnel.APIKey, cfg.Tunnel.Admin.Key
 	if legacyRuntime == secretFileMarker {
 		legacyRuntime = ""
@@ -322,35 +361,137 @@ func loadAtWithTunnelSecretPolicy(configPath, secretPath string, policy tunnelSe
 	if err != nil {
 		return cfg, err
 	}
-	if migrateSecrets || legacyRuntime != "" || legacyAdmin != "" {
+	if legacyHTTP || migrateSecrets || legacyRuntime != "" || legacyAdmin != "" {
 		if err := saveAt(configPath, secretPath, cfg); err != nil {
-			return cfg, fmt.Errorf("migrate credentials to secret file store: %w", err)
+			return cfg, fmt.Errorf("migrate configuration: %w", err)
 		}
 	}
 	return cfg, nil
 }
 
-func migrateLegacyServerConfig(path string, data []byte, cfg *Config) error {
-	var legacy struct {
-		Server map[string]any `json:"server"`
+func migrateLegacyHTTPConfig(data []byte, cfg *Config) (bool, error) {
+	if cfg == nil {
+		return false, errors.New("config is required")
+	}
+	rootAny, err := configformat.DecodeGeneric(configformat.JSON, data)
+	if err != nil {
+		return false, err
+	}
+	root, ok := rootAny.(map[string]any)
+	if !ok {
+		return false, errors.New("configuration must be an object")
+	}
+	_, hasHTTP := root["http"]
+	hasLegacy := false
+	for _, key := range []string{"server", "admin", "auth"} {
+		if _, exists := root[key]; exists {
+			hasLegacy = true
+		}
+	}
+	if hasHTTP && hasLegacy {
+		return false, errors.New("configuration contains both canonical http and legacy server/admin/auth roots; remove one representation before loading")
+	}
+	if !hasLegacy {
+		return false, nil
+	}
+	if err := validateLegacyHTTPConfig(root); err != nil {
+		return false, err
+	}
+
+	legacy := struct {
+		Server legacyServerConfig `json:"server"`
+		Admin  legacyAdminConfig  `json:"admin"`
+		Auth   legacyAuthConfig   `json:"auth"`
+	}{
+		Server: legacyServerConfig{
+			Enabled: cfg.HTTP.MCP.Enabled, Port: cfg.HTTP.MCP.Port, Expose: cfg.HTTP.Exposure,
+			AllowInsecureHTTP: cfg.HTTP.Security.AllowInsecure, AllowUnauthenticatedLoopback: cfg.HTTP.Security.AllowUnauthenticatedLoopback,
+		},
+		Admin: legacyAdminConfig{Enabled: cfg.HTTP.Admin.Enabled, Port: cfg.HTTP.Admin.Port},
+		Auth: legacyAuthConfig{
+			MCPEnabled: cfg.HTTP.MCP.Auth.Enabled, MCPLegacyBearer: cfg.HTTP.MCP.Auth.LegacyBearer,
+			AdminEnabled: cfg.HTTP.Admin.Auth.Enabled, MCPTokenHash: cfg.HTTP.MCP.Auth.TokenHash, AdminTokenHash: cfg.HTTP.Admin.Auth.TokenHash,
+		},
 	}
 	if err := configformat.Unmarshal(configformat.JSON, data, &legacy); err != nil {
-		return err
+		return false, err
 	}
-	if _, exists := legacy.Server["expose"]; exists {
-		return nil
+	if serverObject, ok := root["server"].(map[string]any); ok {
+		if _, exists := serverObject["expose"]; !exists {
+			if host, _ := serverObject["host"].(string); strings.TrimSpace(host) != "" {
+				host = strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
+				switch host {
+				case "127.0.0.1", "::1", "localhost":
+					legacy.Server.Expose = ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}
+				case "0.0.0.0":
+					legacy.Server.Expose = ExposureConfig{Mode: ExposureWildcard, Interfaces: []string{}}
+				default:
+					legacy.Server.Expose = ExposureConfig{Mode: ExposureAll, Interfaces: []string{}}
+				}
+			}
+		}
 	}
-	host, _ := legacy.Server["host"].(string)
-	host = strings.Trim(strings.ToLower(strings.TrimSpace(host)), "[]")
-	if host == "" {
-		return nil
+	cfg.HTTP = HTTPConfig{
+		Exposure: NormalizeExposure(legacy.Server.Expose),
+		Security: HTTPSecurityConfig{
+			AllowInsecure: legacy.Server.AllowInsecureHTTP, AllowUnauthenticatedLoopback: legacy.Server.AllowUnauthenticatedLoopback,
+		},
+		MCP: MCPHTTPConfig{Enabled: legacy.Server.Enabled, Port: legacy.Server.Port, Auth: MCPHTTPAuthConfig{
+			Enabled: legacy.Auth.MCPEnabled, TokenHash: legacy.Auth.MCPTokenHash, LegacyBearer: legacy.Auth.MCPLegacyBearer,
+		}},
+		Admin: AdminHTTPConfig{Enabled: legacy.Admin.Enabled, Port: legacy.Admin.Port, Auth: HTTPAuthConfig{
+			Enabled: legacy.Auth.AdminEnabled, TokenHash: legacy.Auth.AdminTokenHash,
+		}},
 	}
-	if host == "127.0.0.1" || host == "::1" || host == "localhost" {
-		cfg.Server.Expose = ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}
-	} else if host == "0.0.0.0" {
-		cfg.Server.Expose = ExposureConfig{Mode: ExposureWildcard, Interfaces: []string{}}
-	} else {
-		cfg.Server.Expose = ExposureConfig{Mode: ExposureAll, Interfaces: []string{}}
+	return true, nil
+}
+
+func validateLegacyHTTPConfig(root map[string]any) error {
+	allowed := map[string]map[string]struct{}{
+		"server": {
+			"enabled": {}, "port": {}, "expose": {}, "host": {},
+			"allow_insecure_http": {}, "allow_unauthenticated_loopback": {},
+		},
+		"admin": {"enabled": {}, "port": {}},
+		"auth": {
+			"mcp_enabled": {}, "mcp_legacy_bearer": {}, "admin_enabled": {},
+			"mcp_token_hash": {}, "admin_token_hash": {},
+		},
+	}
+	for _, rootKey := range []string{"server", "admin", "auth"} {
+		raw, exists := root[rootKey]
+		if !exists {
+			continue
+		}
+		object, ok := raw.(map[string]any)
+		if !ok {
+			return fmt.Errorf("legacy %s configuration must be an object", rootKey)
+		}
+		unknown := make([]string, 0)
+		for key := range object {
+			if _, ok := allowed[rootKey][key]; !ok {
+				unknown = append(unknown, key)
+			}
+		}
+		sort.Strings(unknown)
+		if len(unknown) > 0 {
+			return fmt.Errorf("legacy %s configuration contains unsupported keys %q; remove or migrate them before loading", rootKey, unknown)
+		}
+	}
+	serverObject, _ := root["server"].(map[string]any)
+	if rawExposure, exists := serverObject["expose"]; exists {
+		if exposureObject, ok := rawExposure.(map[string]any); ok {
+			unknown := make([]string, 0)
+			for key := range exposureObject {
+				if key != "mode" && key != "interfaces" {
+					unknown = append(unknown, key)
+				}
+			}
+			sort.Strings(unknown)
+			if len(unknown) > 0 {
+				return fmt.Errorf("legacy server.expose configuration contains unsupported keys %q; remove or migrate them before loading", unknown)
+			}
+		}
 	}
 	return nil
 }
@@ -394,7 +535,7 @@ func saveAtWithSecretSaver(configPath, secretPath string, cfg Config, saveSecret
 	}
 	persisted.Permissions.AllowDirs = allowDirs
 	persisted.Shell.Path = shellPath
-	persisted.Server.Expose = NormalizeExposure(persisted.Server.Expose)
+	persisted.HTTP.Exposure = NormalizeExposure(persisted.HTTP.Exposure)
 	persisted.Tunnel.Admin.Enabled = tunnel.AdminEnabled(cfg.Tunnel)
 	persisted.Tunnel.Admin.EnabledSet = true
 	persisted.Tunnel.APIKey = ""
@@ -438,9 +579,6 @@ func mergeConfigData(path string, persisted, runtime Config) ([]byte, error) {
 	if !ok {
 		return nil, errors.New("configuration must encode as an object")
 	}
-	auth := ensureGenericObject(overlayRoot, "auth")
-	auth["mcp_token_hash"] = persisted.Auth.MCPTokenHash
-	auth["admin_token_hash"] = persisted.Auth.AdminTokenHash
 	tunnelOverlay := ensureGenericObject(overlayRoot, "tunnel")
 	tunnelOverlay["id"] = persisted.Tunnel.ID
 	tunnelOverlay["control_plane_base_url"] = persisted.Tunnel.ControlPlaneBaseURL
@@ -467,6 +605,9 @@ func mergeConfigData(path string, persisted, runtime Config) ([]byte, error) {
 			mergedTunnel["api_key"] = secretMarkerValue(runtime.Tunnel.APIKey)
 		}
 	}
+	delete(merged, "server")
+	delete(merged, "admin")
+	delete(merged, "auth")
 	return configformat.EncodeGeneric(configformat.JSON, merged)
 }
 

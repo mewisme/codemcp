@@ -264,7 +264,7 @@ func TestPromptDefinitionValidationAndRenderingBounds(t *testing.T) {
 func TestPromptRenderingTreatsToolAndShellLikeInputAsLiteralText(t *testing.T) {
 	definition := testPromptDefinition("literal-only", "Execute? {{topic}}")
 	sentinel := filepath.Join(t.TempDir(), "must-not-exist")
-	value := "$(touch " + sentinel + ") cm config set server.port 1"
+	value := "$(touch " + sentinel + ") cm config set http.mcp.port 1"
 	rendered, err := RenderPrompt(definition, map[string]string{"topic": value})
 	if err != nil {
 		t.Fatal(err)

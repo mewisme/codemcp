@@ -13,8 +13,8 @@ func TestBootstrapBindsTelegramNavigationToCanonicalStatusOperation(t *testing.T
 	root := t.TempDir()
 	t.Setenv("CM_CONFIG_DIR", root)
 	cfg := config.Default()
-	cfg.Server.Enabled = true
-	cfg.Admin.Enabled = true
+	cfg.HTTP.MCP.Enabled = true
+	cfg.HTTP.Admin.Enabled = true
 	cfg.Tunnel.Enabled = true
 
 	runtime := telegram.NewRuntime(telegram.Options{Root: root})

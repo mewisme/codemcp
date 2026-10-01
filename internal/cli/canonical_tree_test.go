@@ -21,10 +21,6 @@ const frozenCanonicalCommandTree = `<root> | operation:server.foreground:accepte
 activity stream | operation:activity.stream
 activity view | operation:activity.view
 activity | namespace
-admin disable | operation:config.set:accepted-path
-admin enable | operation:config.set:accepted-path
-admin port | operation:config.set:accepted-path
-admin | namespace
 agent completion current | operation:completion.current
 agent completion doctor | operation:completion.doctor
 agent completion feed | operation:completion.feed
@@ -72,6 +68,28 @@ execution stream | operation:execution.stream
 execution view | operation:execution.view
 execution | namespace
 health | operation:health.read
+http admin disable | operation:config.set:accepted-path
+http admin enable | operation:config.set:accepted-path
+http admin port | operation:config.set:accepted-path
+http admin | namespace
+http exposure interface add | operation:config.set:accepted-path
+http exposure interface remove | operation:config.set:accepted-path
+http exposure interface | namespace
+http exposure mode | operation:config.set:accepted-path
+http exposure | namespace
+http mcp disable | operation:config.set:accepted-path
+http mcp enable | operation:config.set:accepted-path
+http mcp port | operation:config.set:accepted-path
+http mcp | namespace
+http security insecure allow | operation:config.set:accepted-path
+http security insecure deny | operation:config.set:accepted-path
+http security insecure | namespace
+http security loopback auth allow | operation:config.set:accepted-path
+http security loopback auth require | operation:config.set:accepted-path
+http security loopback auth | namespace
+http security loopback | namespace
+http security | namespace
+http | namespace
 init | operation:config.init
 install | operation:install.run
 instructions get | operation:instructions.settings.read
@@ -212,23 +230,6 @@ request view | operation:request.view
 request | namespace
 restart | operation:runtime.restart
 serve | operation:server.foreground
-server disable | operation:config.set:accepted-path
-server enable | operation:config.set:accepted-path
-server expose mode | operation:config.set:accepted-path
-server expose | namespace
-server insecure http allow | operation:config.set:accepted-path
-server insecure http deny | operation:config.set:accepted-path
-server insecure http | namespace
-server insecure | namespace
-server interface add | operation:config.set:accepted-path
-server interface remove | operation:config.set:accepted-path
-server interface | namespace
-server loopback auth allow | operation:config.set:accepted-path
-server loopback auth require | operation:config.set:accepted-path
-server loopback auth | namespace
-server loopback | namespace
-server port | operation:config.set:accepted-path
-server | namespace
 shell path | operation:config.set:accepted-path
 shell | namespace
 status | operation:status.overview

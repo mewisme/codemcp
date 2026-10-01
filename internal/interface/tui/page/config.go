@@ -966,13 +966,13 @@ func (page *ConfigPage) domainSummary(domain string) string {
 	cfg := page.overview.Config
 	switch domain {
 	case "runtime":
-		summary := fmt.Sprintf("MCP HTTP %s :%d · Admin %s :%d · exposure %s", configOnOff(cfg.Server.Enabled), cfg.Server.Port, configOnOff(cfg.Admin.Enabled), cfg.Admin.Port, config.NormalizeExposure(cfg.Server.Expose).Mode)
+		summary := fmt.Sprintf("MCP HTTP %s :%d · Admin %s :%d · exposure %s", configOnOff(cfg.HTTP.MCP.Enabled), cfg.HTTP.MCP.Port, configOnOff(cfg.HTTP.Admin.Enabled), cfg.HTTP.Admin.Port, config.NormalizeExposure(cfg.HTTP.Exposure).Mode)
 		if config.CleartextHTTPActive(cfg) {
 			summary += " · CLEARTEXT HTTP"
 		}
 		return summary
 	case "access":
-		summary := fmt.Sprintf("MCP auth %s · Admin auth %s · %d extra filesystem roots", configOnOff(cfg.Auth.MCPEnabled), configOnOff(cfg.Auth.AdminEnabled), len(cfg.Permissions.AllowDirs))
+		summary := fmt.Sprintf("MCP auth %s · Admin auth %s · %d extra filesystem roots", configOnOff(cfg.HTTP.MCP.Auth.Enabled), configOnOff(cfg.HTTP.Admin.Auth.Enabled), len(cfg.Permissions.AllowDirs))
 		if config.UnauthenticatedLoopbackActive(cfg) {
 			summary += " · UNAUTHENTICATED LOOPBACK"
 		}

@@ -33,19 +33,19 @@ func TestSettingOperationsUseCanonicalMetadataSearchAndAtomicApply(t *testing.T)
 	}
 	found := false
 	for _, item := range items {
-		if item.Spec.Key == "server.port" {
+		if item.Spec.Key == "http.mcp.port" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("server.port not found in search: %#v", items)
+		t.Fatalf("http.mcp.port not found in search: %#v", items)
 	}
 
 	applied, err := dispatcher.Dispatch(t.Context(), DispatchRequest{
 		Operation: capability.ConfigSet,
 		Input: ConfigSetInput{Action: "apply", Changes: []SettingChange{
-			{Key: "server.port", Value: "40125"},
-			{Key: "admin.enabled", Value: "false"},
+			{Key: "http.mcp.port", Value: "40125"},
+			{Key: "http.admin.enabled", Value: "false"},
 		}},
 	})
 	if err != nil {
@@ -64,12 +64,12 @@ func TestSettingOperationsUseCanonicalMetadataSearchAndAtomicApply(t *testing.T)
 			t.Fatalf("atomic post-state drift for %s: result=%q current=%q", item.Spec.Key, item.Value, current.Value)
 		}
 	}
-	read, err := dispatcher.Dispatch(t.Context(), DispatchRequest{Operation: capability.ConfigGet, Input: ConfigGetInput{Key: "server.port"}})
+	read, err := dispatcher.Dispatch(t.Context(), DispatchRequest{Operation: capability.ConfigGet, Input: ConfigGetInput{Key: "http.mcp.port"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := read.Value.(SettingResult).Value; got != "40125" {
-		t.Fatalf("server.port=%q want=40125", got)
+		t.Fatalf("http.mcp.port=%q want=40125", got)
 	}
 }
 
@@ -124,7 +124,7 @@ func TestSettingSemanticStateSeparatesConfiguredGeneratedAndDerivedValues(t *tes
 		derived  bool
 	}{
 		{key: "telegram.token", role: config.SettingValueConfigured, writable: true},
-		{key: "auth.mcp_token", role: config.SettingValueGenerated, writable: false},
+		{key: "http.mcp.auth.token", role: config.SettingValueGenerated, writable: false},
 		{key: "tunnel.admin.verified", role: config.SettingValueDerived, writable: false, derived: true},
 	} {
 		spec, ok := config.SettingByKey(check.key)
@@ -142,7 +142,7 @@ func TestConfigSetRejectsUnsupportedActionAsInvalidArgument(t *testing.T) {
 	}
 	_, err := dispatcher.Dispatch(t.Context(), DispatchRequest{
 		Operation: capability.ConfigSet,
-		Input:     ConfigSetInput{Action: "presentation-only-action", Key: "server.port"},
+		Input:     ConfigSetInput{Action: "presentation-only-action", Key: "http.mcp.port"},
 	})
 	if got := ErrorSemanticsOf(err); got.Code != ErrorInvalidArgument || got.Retryable || got.Stale {
 		t.Fatalf("unsupported setting action semantics=%#v err=%v", got, err)

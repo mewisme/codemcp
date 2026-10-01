@@ -68,9 +68,9 @@ func TestConfigListIsBoundedAndCursorIsPrefixBound(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	runtime := NewRuntime()
 	values := []mcpconfigwire.Setting{
-		{Key: "server.enabled", Readable: true, Writable: true},
-		{Key: "server.port", Readable: true, Writable: true},
-		{Key: "server.expose", Readable: true, Writable: true},
+		{Key: "http.mcp.enabled", Readable: true, Writable: true},
+		{Key: "http.mcp.port", Readable: true, Writable: true},
+		{Key: "http.exposure", Readable: true, Writable: true},
 	}
 	runtime.SetConfigReadProvider(configReadFixture{settings: values})
 
@@ -86,7 +86,7 @@ func TestConfigListIsBoundedAndCursorIsPrefixBound(t *testing.T) {
 	if decodeErr != nil {
 		t.Fatal(decodeErr)
 	}
-	for _, forbidden := range []string{"server.enabled", "server.port", "server.expose"} {
+	for _, forbidden := range []string{"http.mcp.enabled", "http.mcp.port", "http.exposure"} {
 		if strings.Contains(string(decoded), forbidden) {
 			t.Fatalf("cursor leaked setting key %q: %s", forbidden, decoded)
 		}
@@ -97,7 +97,7 @@ func TestConfigListIsBoundedAndCursorIsPrefixBound(t *testing.T) {
 		t.Fatalf("second page result=%#v err=%v", second, err)
 	}
 	page2 := second.StructuredContent.(mcpconfigwire.ListResult)
-	if len(page2.Settings) != 1 || page2.Settings[0].Key != "server.expose" || page2.NextCursor != "" {
+	if len(page2.Settings) != 1 || page2.Settings[0].Key != "http.exposure" || page2.NextCursor != "" {
 		t.Fatalf("second page=%#v", page2)
 	}
 
@@ -142,7 +142,7 @@ func TestConfigReadToolsFailClosedWithoutProvider(t *testing.T) {
 		args map[string]any
 	}{
 		{mcpconfigwire.ListToolName, map[string]any{}},
-		{mcpconfigwire.GetToolName, map[string]any{"key": "server.port"}},
+		{mcpconfigwire.GetToolName, map[string]any{"key": "http.mcp.port"}},
 	} {
 		result, err := runtime.Call(context.Background(), tc.name, tc.args)
 		if err != nil || !result.IsError || !strings.Contains(result.Content[0].Text, string(mcpconfigwire.ErrorAccessDenied)) {
@@ -155,7 +155,7 @@ func TestConfigSetCallObservationUsesValueFreeArguments(t *testing.T) {
 	args := map[string]any{
 		"workspace_id": "ws_scope",
 		"changes": []any{
-			map[string]any{"key": "server.port", "value": "4000"},
+			map[string]any{"key": "http.mcp.port", "value": "4000"},
 			map[string]any{"key": "permissions.allow_dirs", "value": "/private/value"},
 		},
 	}
@@ -178,7 +178,7 @@ func TestConfigSetCallObservationUsesValueFreeArguments(t *testing.T) {
 			t.Fatalf("config_set observation leaked value %q: %s", forbidden, text)
 		}
 	}
-	for _, required := range []string{"server.port", "permissions.allow_dirs", "change_count"} {
+	for _, required := range []string{"http.mcp.port", "permissions.allow_dirs", "change_count"} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("config_set observation lost safe summary %q: %s", required, text)
 		}
@@ -186,7 +186,7 @@ func TestConfigSetCallObservationUsesValueFreeArguments(t *testing.T) {
 }
 
 func TestConfigSetApprovalResultsUseValueFreeArguments(t *testing.T) {
-	raw := json.RawMessage(`{"workspace_id":"ws_scope","changes":[{"key":"server.port","value":"4000"},{"key":"permissions.allow_dirs","value":"/private/value"}]}`)
+	raw := json.RawMessage(`{"workspace_id":"ws_scope","changes":[{"key":"http.mcp.port","value":"4000"},{"key":"permissions.allow_dirs","value":"/private/value"}]}`)
 	results := []Result{
 		approvalRequiredResult(approval.Challenge{
 			ID: "chg_1", WorkspaceID: "ws_scope", TargetTool: mcpconfigwire.SetToolName, Arguments: raw,
@@ -197,7 +197,7 @@ func TestConfigSetApprovalResultsUseValueFreeArguments(t *testing.T) {
 		}),
 		approvalMismatchResult(&approval.MismatchError{
 			RequestID: "apr_1", TargetTool: mcpconfigwire.SetToolName, Expected: raw,
-			Actual: json.RawMessage(`{"changes":[{"key":"server.port","value":"5000"}]}`),
+			Actual: json.RawMessage(`{"changes":[{"key":"http.mcp.port","value":"5000"}]}`),
 		}),
 	}
 	for index, result := range results {
@@ -211,7 +211,7 @@ func TestConfigSetApprovalResultsUseValueFreeArguments(t *testing.T) {
 				t.Fatalf("approval result %d leaked value %q: %s", index, forbidden, text)
 			}
 		}
-		if !strings.Contains(text, "server.port") || !strings.Contains(text, "change_count") {
+		if !strings.Contains(text, "http.mcp.port") || !strings.Contains(text, "change_count") {
 			t.Fatalf("approval result %d lost value-free summary: %s", index, text)
 		}
 	}

@@ -90,7 +90,7 @@ export function TunnelPage() {
     let active = true
     void Promise.all([adminApi.tunnelConfig(), adminApi.tunnel(), adminApi.tunnelAdminKey(), adminApi.config()]).then(([nextConfig, nextStatus, nextAdmin, runtimeConfig]) => {
       if (!active) return
-      setConfig(nextConfig); setStatus(nextStatus); setMCPHTTPEnabled(runtimeConfig.server.enabled); syncAdmin(nextAdmin); setError(""); setLoading(false)
+      setConfig(nextConfig); setStatus(nextStatus); setMCPHTTPEnabled(runtimeConfig.http.mcp.enabled); syncAdmin(nextAdmin); setError(""); setLoading(false)
       if (nextAdmin.configured && (nextAdmin.access?.read || nextAdmin.access?.manage)) { setManagedLoading(true); const request = nextAdmin.access.manage ? adminApi.managedTunnels() : nextConfig.id ? adminApi.managedTunnel(nextConfig.id).then((item) => [item]) : Promise.resolve([]); void request.then((items) => { if (active) setManagedTunnels(items) }).catch((value) => { if (active) setError(errorText(value)) }).finally(() => { if (active) setManagedLoading(false) }) }
     }).catch((value) => { if (active) { setError(errorText(value)); setLoading(false) } })
     const timer = window.setInterval(() => { void adminApi.tunnel().then((next) => { if (active) setStatus(next) }).catch(() => undefined) }, 3000)
@@ -101,7 +101,7 @@ export function TunnelPage() {
     setRefreshing(true)
     try {
       const [nextConfig, nextStatus, nextAdmin, runtimeConfig] = await Promise.all([adminApi.tunnelConfig(), adminApi.tunnel(), adminApi.tunnelAdminKey(), adminApi.config()])
-      setConfig(nextConfig); setStatus(nextStatus); setMCPHTTPEnabled(runtimeConfig.server.enabled); syncAdmin(nextAdmin); setError("")
+      setConfig(nextConfig); setStatus(nextStatus); setMCPHTTPEnabled(runtimeConfig.http.mcp.enabled); syncAdmin(nextAdmin); setError("")
     } catch (value) { setError(errorText(value)) } finally { setRefreshing(false) }
   }
   async function syncTunnel() {

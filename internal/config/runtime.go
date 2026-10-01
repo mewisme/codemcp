@@ -44,8 +44,8 @@ func (s *RuntimeStore) Update(update func(Config) (Config, error)) (Config, erro
 }
 
 func cloneConfig(value Config) Config {
-	if value.Server.Expose.Interfaces != nil {
-		value.Server.Expose.Interfaces = append([]string{}, value.Server.Expose.Interfaces...)
+	if value.HTTP.Exposure.Interfaces != nil {
+		value.HTTP.Exposure.Interfaces = append([]string{}, value.HTTP.Exposure.Interfaces...)
 	}
 	if value.Permissions.AllowDirs != nil {
 		value.Permissions.AllowDirs = append([]string{}, value.Permissions.AllowDirs...)

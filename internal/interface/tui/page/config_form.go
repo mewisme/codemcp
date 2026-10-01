@@ -122,7 +122,7 @@ func validateConfigBundlePath(value string) error {
 }
 
 func newConfigPatchEditor() (component.Editor, *configPatchFormData) {
-	data := &configPatchFormData{Changes: "[\n  {\"Key\": \"server.enabled\", \"Value\": \"true\"}\n]"}
+	data := &configPatchFormData{Changes: "[\n  {\"Key\": \"http.mcp.enabled\", \"Value\": \"true\"}\n]"}
 	field := component.Text("Setting changes JSON", &data.Changes).Description("Array of canonical setting changes. Use Unset=true to clear a setting.").Validate(func(value string) error {
 		_, err := parseConfigPatchChanges(value)
 		return err

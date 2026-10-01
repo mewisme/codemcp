@@ -10,9 +10,9 @@ The normal configuration document contains these setting families:
 
 | Domain | Canonical settings | Application owner |
 | --- | --- | --- |
-| Server | `server.enabled`, `server.expose.mode`, `server.expose.interfaces`, `server.port`, `server.allow_insecure_http`, `server.allow_unauthenticated_loopback` | config |
-| Admin | `admin.enabled`, `admin.port` | config |
-| Authentication | `auth.mcp_enabled`, `auth.mcp_legacy_bearer`, `auth.admin_enabled` | auth/config |
+| HTTP shared policy | `http.exposure.mode`, `http.exposure.interfaces`, `http.security.allow_insecure`, `http.security.allow_unauthenticated_loopback` | config |
+| MCP HTTP endpoint | `http.mcp.enabled`, `http.mcp.port`, `http.mcp.auth.enabled`, `http.mcp.auth.legacy_bearer` | config/auth |
+| Admin HTTP endpoint | `http.admin.enabled`, `http.admin.port`, `http.admin.auth.enabled` | config/auth |
 | Permissions | `permissions.allow_dirs` | config |
 | Shell | `shell.path` | config |
 | Ponytail | `integrations.ponytail.active`, `integrations.ponytail.mode` | config |
@@ -23,9 +23,9 @@ The normal configuration document contains these setting families:
 
 Editable normal config values are readable, writable, and resettable to their default through the canonical setting operation layer. Metadata records an existing scoped CLI facade where one exists; otherwise it records an explicit current config-only exemption rather than inventing a second command path.
 
-`auth.mcp_token_hash` and `auth.admin_token_hash` are persisted implementation fields, not user-facing setting identities. They are internal-only metadata owned by authentication credential storage.
+`http.mcp.auth.token_hash` and `http.admin.auth.token_hash` are persisted implementation fields, not user-facing setting identities. They are internal-only metadata owned by authentication credential storage.
 
-The verified tunnel fields `tunnel.admin_organization_id`, `tunnel.admin_workspace_id`, and `tunnel.admin_tenant_id` are readable derived metadata. They are populated by admin-key verification and are not directly writable settings.
+The local HTTP hierarchy has one authority: `http.*`. Legacy persisted roots/setting spellings under `server`, root `admin`, and root `auth` exist only for one-way migration or alias canonicalization and are not part of the canonical inventory.
 
 ## Managed credentials
 
@@ -33,12 +33,12 @@ Raw credentials are never normal readable setting values.
 
 | Canonical identity | Read state | Mutation behavior | Normal presentation |
 | --- | --- | --- | --- |
-| `auth.mcp_token` | `auth.mcp_token_configured` | rotate with `cm auth mcp create` | configured state only |
-| `auth.admin_token` | `auth.admin_token_configured` | rotate with `cm auth admin create` | configured state only |
+| `http.mcp.auth.token` | `http.mcp.auth.token_configured` | rotate with `cm auth mcp create` | bounded masked preview; explicit legacy placeholder when only a verifier survives |
+| `http.admin.auth.token` | `http.admin.auth.token_configured` | rotate with `cm auth admin create` | bounded masked preview; explicit legacy placeholder when only a verifier survives |
 | `tunnel.api_key` | `tunnel.api_key_configured` | set/clear through tunnel runtime configuration | bounded masked preview |
-| `tunnel.admin_key` | `tunnel.admin_key_configured` | set, clear, and verify through `cm tunnel admin key ...` | bounded masked preview |
+| `tunnel.admin.key` | `tunnel.admin.key_configured` | set, clear, and verify through `cm tunnel admin key ...` | bounded masked preview |
 
-Authentication tokens are hash-backed. The generated plaintext is returned only by the explicit create/rotate operation and cannot be reconstructed from persisted state, so generic reads expose only configured state.
+Current authentication tokens are generated credentials whose raw value is stored in the canonical secret store and whose one-way hash remains in config as runtime verifier metadata. Normal reads return a masked preview. A migrated verifier-only credential cannot be reconstructed, so it renders an explicit `mcp_********legacy` / `admin_********legacy` placeholder until the operator rotates it.
 
 Tunnel runtime/admin credentials are recoverable secret-store values, but normal setting presentation is restricted by metadata to a bounded masked preview. Structured or subtree reads must use the public configured-state identity when a raw secret result is not explicitly requested by an authorized secret operation.
 

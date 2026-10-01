@@ -52,8 +52,8 @@ func newRealConfigSetHarness(t *testing.T) realConfigSetHarness {
 	}
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-configured-hash"
-	cfg.Auth.AdminTokenHash = "admin-configured-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	cfg.Permissions.MCPConfigWrite = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
@@ -119,8 +119,8 @@ func TestConfigSetApprovedStaticBatchAppliesOnceAndReloadsOnce(t *testing.T) {
 	})
 
 	args := configSetArgs(harness.workspaceID,
-		mcpconfigwire.Change{Key: "server.port", Value: "40123"},
-		mcpconfigwire.Change{Key: "admin.port", Value: "40124"},
+		mcpconfigwire.Change{Key: "http.mcp.port", Value: "40123"},
+		mcpconfigwire.Change{Key: "http.admin.port", Value: "40124"},
 	)
 	before, err := config.Load()
 	if err != nil {
@@ -134,7 +134,7 @@ func TestConfigSetApprovedStaticBatchAppliesOnceAndReloadsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if unchanged.Server.Port != before.Server.Port || unchanged.Admin.Port != before.Admin.Port || reloads.Load() != 0 || harness.provider.applies.Load() != 0 {
+	if unchanged.HTTP.MCP.Port != before.HTTP.MCP.Port || unchanged.HTTP.Admin.Port != before.HTTP.Admin.Port || reloads.Load() != 0 || harness.provider.applies.Load() != 0 {
 		t.Fatalf("mutation happened before approval: cfg=%#v reloads=%d applies=%d", unchanged, reloads.Load(), harness.provider.applies.Load())
 	}
 	request, created, err := harness.runtime.Approvals.CreateRequestWithTitle(challengeID(t, first), "static-batch", harness.workspaceID, "Update ports")
@@ -156,7 +156,7 @@ func TestConfigSetApprovedStaticBatchAppliesOnceAndReloadsOnce(t *testing.T) {
 		result.RuntimeSync != mcpconfigwire.RuntimeSyncCurrent || !result.RuntimeReloaded || !result.Changed || result.ChangeCount != 2 {
 		t.Fatalf("result=%#v applies=%d reloads=%d", result, harness.provider.applies.Load(), reloads.Load())
 	}
-	if !reflect.DeepEqual(result.Keys, []string{"server.port", "admin.port"}) ||
+	if !reflect.DeepEqual(result.Keys, []string{"http.mcp.port", "http.admin.port"}) ||
 		len(result.Outcomes) != 2 || !result.Outcomes[0].Changed || !result.Outcomes[1].Changed {
 		t.Fatalf("safe outcomes=%#v", result)
 	}
@@ -164,7 +164,7 @@ func TestConfigSetApprovedStaticBatchAppliesOnceAndReloadsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != 40123 || loaded.Admin.Port != 40124 {
+	if loaded.HTTP.MCP.Port != 40123 || loaded.HTTP.Admin.Port != 40124 {
 		t.Fatalf("approved values not persisted: %#v", loaded)
 	}
 	data, _ := json.Marshal(retry)
@@ -202,8 +202,8 @@ func TestConfigSetNoOpStillRequiresApprovalAndDoesNotReload(t *testing.T) {
 func TestConfigSetStoppedRuntimePersistsWithoutReload(t *testing.T) {
 	harness := newRealConfigSetHarness(t)
 	args := configSetArgs(harness.workspaceID,
-		mcpconfigwire.Change{Key: "server.port", Value: "40123"},
-		mcpconfigwire.Change{Key: "admin.port", Value: "40124"},
+		mcpconfigwire.Change{Key: "http.mcp.port", Value: "40123"},
+		mcpconfigwire.Change{Key: "http.admin.port", Value: "40124"},
 	)
 	result := approveAndRetryConfigSet(t, harness, "stopped", args)
 	if result.IsError {
@@ -218,7 +218,7 @@ func TestConfigSetStoppedRuntimePersistsWithoutReload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Port != 40123 || loaded.Admin.Port != 40124 {
+	if loaded.HTTP.MCP.Port != 40123 || loaded.HTTP.Admin.Port != 40124 {
 		t.Fatalf("stopped mutation not persisted: %#v", loaded)
 	}
 }
@@ -230,10 +230,10 @@ func TestConfigSetInvalidBatchIsRejectedBeforeApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range []map[string]any{
-		configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.port", Value: "not-a-port"}),
+		configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.port", Value: "not-a-port"}),
 		configSetArgs(harness.workspaceID,
-			mcpconfigwire.Change{Key: "server.port", Value: "40124"},
-			mcpconfigwire.Change{Key: "admin.port", Value: "40124"},
+			mcpconfigwire.Change{Key: "http.mcp.port", Value: "40124"},
+			mcpconfigwire.Change{Key: "http.admin.port", Value: "40124"},
 		),
 	} {
 		result, err := harness.runtime.Call(configApprovalContext("invalid", "invalid-request"), mcpconfigwire.SetToolName, args)
@@ -252,7 +252,7 @@ func TestConfigSetInvalidBatchIsRejectedBeforeApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Server.Port != before.Server.Port || after.Admin.Port != before.Admin.Port {
+	if after.HTTP.MCP.Port != before.HTTP.MCP.Port || after.HTTP.Admin.Port != before.HTTP.Admin.Port {
 		t.Fatalf("invalid batch changed config: before=%#v after=%#v", before, after)
 	}
 }
@@ -278,7 +278,7 @@ func TestConfigSetClaimedApprovalSurvivesDisablingHTTPListener(t *testing.T) {
 	writeConfigSetRuntimeState(t, harness.root, runtimecontrol.State{
 		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: harness.root,
 	})
-	args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "server.enabled", Value: "false"})
+	args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "http.mcp.enabled", Value: "false"})
 	result := approveAndRetryConfigSet(t, harness, "disable-listener", args)
 	if result.IsError {
 		t.Fatalf("disable listener result=%#v", result)
@@ -292,8 +292,8 @@ func TestConfigSetClaimedApprovalSurvivesDisablingHTTPListener(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Server.Enabled {
-		t.Fatalf("server listener remained enabled: %#v", loaded.Server)
+	if loaded.HTTP.MCP.Enabled {
+		t.Fatalf("server listener remained enabled: %#v", loaded.HTTP.MCP)
 	}
 }
 
@@ -313,8 +313,8 @@ func TestConfigSetReloadFailureRollsBackWithSafeError(t *testing.T) {
 		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: harness.root,
 	})
 	args := configSetArgs(harness.workspaceID,
-		mcpconfigwire.Change{Key: "server.port", Value: "40123"},
-		mcpconfigwire.Change{Key: "admin.port", Value: "40124"},
+		mcpconfigwire.Change{Key: "http.mcp.port", Value: "40123"},
+		mcpconfigwire.Change{Key: "http.admin.port", Value: "40124"},
 	)
 	result := approveAndRetryConfigSet(t, harness, "rollback", args)
 	if !result.IsError {
@@ -330,7 +330,7 @@ func TestConfigSetReloadFailureRollsBackWithSafeError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if after.Server.Port != before.Server.Port || after.Admin.Port != before.Admin.Port {
+	if after.HTTP.MCP.Port != before.HTTP.MCP.Port || after.HTTP.Admin.Port != before.HTTP.Admin.Port {
 		t.Fatalf("rollback did not restore config: before=%#v after=%#v", before, after)
 	}
 	data, _ := json.Marshal(result)

@@ -124,8 +124,8 @@ func runTelegramSetup(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	cfg.Server.Enabled = false
-	cfg.Admin.Enabled = false
+	cfg.HTTP.MCP.Enabled = false
+	cfg.HTTP.Admin.Enabled = false
 	cfg.Tunnel.Enabled = false
 	runtime, err := app.NewWithLoggerContext(cmd.Context(), cfg, commandLogger(cmd))
 	if err != nil {

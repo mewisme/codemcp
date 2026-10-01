@@ -23,16 +23,16 @@ import (
 
 func TestSetConfigValueTyped(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
-	if err := setConfigValue(&cfg, "server.port", "4000"); err != nil {
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
+	if err := setConfigValue(&cfg, "http.mcp.port", "4000"); err != nil {
 		t.Fatal(err)
 	}
-	if err := setConfigValue(&cfg, "server.expose", "true"); err != nil {
+	if err := setConfigValue(&cfg, "http.exposure", "true"); err != nil {
 		t.Fatal(err)
 	}
-	if err := setConfigValue(&cfg, "admin.enabled", "false"); err != nil {
+	if err := setConfigValue(&cfg, "http.admin.enabled", "false"); err != nil {
 		t.Fatal(err)
 	}
 	if err := setConfigValue(&cfg, "tunnel.control_plane_base_url", "https://api.openai.com"); err != nil {
@@ -59,7 +59,7 @@ func TestSetConfigValueTyped(t *testing.T) {
 	if err := setConfigValue(&cfg, "shell.path", "/opt/tools,/usr/local/custom/bin"); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Server.Port != 4000 || cfg.Server.Expose.Mode != config.ExposureWildcard || cfg.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Tunnel.ControlPlaneBaseURL != "https://api.openai.com" || cfg.Tunnel.OrganizationID != "org-test" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 {
+	if cfg.HTTP.MCP.Port != 4000 || cfg.HTTP.Exposure.Mode != config.ExposureWildcard || cfg.HTTP.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Tunnel.ControlPlaneBaseURL != "https://api.openai.com" || cfg.Tunnel.OrganizationID != "org-test" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 {
 		t.Fatalf("cfg = %#v", cfg)
 	}
 	if err := setConfigValue(&cfg, "integrations.ponytail.mode", "review"); err == nil {
@@ -78,17 +78,17 @@ func TestConfigSetValidationMatchesSharedDomain(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 	want := cfg
-	wantErr := config.SetValueValidated(&want, "server.port", "70000")
+	wantErr := config.SetValueValidated(&want, "http.mcp.port", "70000")
 	if wantErr == nil {
 		t.Fatal("shared config validation unexpectedly accepted invalid port")
 	}
-	_, err := executeRequestCommandError(root, []string{"config", "set", "server.port", "70000"})
+	_, err := executeRequestCommandError(root, []string{"config", "set", "http.mcp.port", "70000"})
 	if err == nil || err.Error() != wantErr.Error() {
 		t.Fatalf("CLI err=%v want=%v", err, wantErr)
 	}
@@ -102,8 +102,8 @@ func TestConfigSetSecretValueDoesNotLeakIntoPresentationOrDiagnostics(t *testing
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-hash"
-	cfg.Auth.AdminTokenHash = "admin-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -184,11 +184,11 @@ func TestInteractiveConfigKeyIsRemoved(t *testing.T) {
 
 func TestSensitiveConfigValuesAreRedacted(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "secret"
-	cfg.Auth.AdminTokenHash = "admin-secret"
+	cfg.HTTP.MCP.Auth.TokenHash = "secret"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-secret"
 	cfg.Tunnel.APIKey = "secret"
 	cfg.Tunnel.Admin.Key = "tunnel-admin-secret"
-	for _, key := range []string{"auth.mcp_token_hash", "auth.admin_token_hash", "tunnel.api_key", "tunnel.admin.key"} {
+	for _, key := range []string{"http.mcp.auth.token_hash", "http.admin.auth.token_hash", "tunnel.api_key", "tunnel.admin.key"} {
 		value, err := getConfigValue(cfg, key)
 		if err != nil {
 			t.Fatal(err)
@@ -201,8 +201,8 @@ func TestSensitiveConfigValuesAreRedacted(t *testing.T) {
 
 func TestConfigListDoesNotHTMLEscapeRedactionMarker(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "secret"
-	cfg.Auth.AdminTokenHash = "secret"
+	cfg.HTTP.MCP.Auth.TokenHash = "secret"
+	cfg.HTTP.Admin.Auth.TokenHash = "secret"
 	cfg.Tunnel.APIKey = "secret"
 	cmd := &cobra.Command{}
 	var out bytes.Buffer
@@ -214,18 +214,18 @@ func TestConfigListDoesNotHTMLEscapeRedactionMarker(t *testing.T) {
 	if strings.Contains(text, `\u003c`) || strings.Contains(text, `\u003e`) {
 		t.Fatalf("redaction marker was HTML-escaped: %s", text)
 	}
-	if !strings.Contains(text, `auth.mcp_token_hash = "<redacted>"`) || !strings.Contains(text, `tunnel.api_key = "<redacted>"`) {
+	if !strings.Contains(text, `http.mcp.auth.token_hash = "<redacted>"`) || !strings.Contains(text, `tunnel.api_key = "<redacted>"`) {
 		t.Fatalf("redaction marker missing: %s", text)
 	}
 }
 
 func TestConfigParentTraversalAndFlatOutput(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-secret"
-	cfg.Auth.AdminTokenHash = "admin-secret"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-secret"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-secret"
 	cfg.Tunnel.APIKey = "tunnel-secret"
 
-	parent, err := getConfigValue(cfg, "admin")
+	parent, err := getConfigValue(cfg, "http.admin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,11 +237,11 @@ func TestConfigParentTraversalAndFlatOutput(t *testing.T) {
 	cmd := &cobra.Command{}
 	var out bytes.Buffer
 	cmd.SetOut(&out)
-	if err := printConfigSelection(cmd, cfg, "admin", true, configOutputOptions{}); err != nil {
+	if err := printConfigSelection(cmd, cfg, "http.admin", true, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	text := out.String()
-	for _, want := range []string{"admin.enabled = true", "admin.port = 37422"} {
+	for _, want := range []string{"http.admin.enabled = true", "http.admin.port = 37422"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("flat output missing %q:\n%s", want, text)
 		}
@@ -250,8 +250,8 @@ func TestConfigParentTraversalAndFlatOutput(t *testing.T) {
 
 func TestConfigJSONOutputAndRedaction(t *testing.T) {
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-secret"
-	cfg.Auth.AdminTokenHash = "admin-secret"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-secret"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-secret"
 	cfg.Tunnel.APIKey = "tunnel-secret"
 
 	cmd := &cobra.Command{}
@@ -264,10 +264,13 @@ func TestConfigJSONOutputAndRedaction(t *testing.T) {
 	if strings.Contains(text, "mcp-secret") || strings.Contains(text, "admin-secret") || strings.Contains(text, "tunnel-secret") {
 		t.Fatalf("secret leaked in JSON output: %s", text)
 	}
-	for _, want := range []string{`"auth"`, `"mcp_token_hash": "<redacted>"`, `"admin_token_hash": "<redacted>"`} {
+	for _, want := range []string{`"auth"`, `"token_hash": "<redacted>"`} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("JSON output missing %q:\n%s", want, text)
 		}
+	}
+	if strings.Count(text, `"token_hash": "<redacted>"`) != 2 {
+		t.Fatalf("JSON output should redact both HTTP token hashes: %s", text)
 	}
 }
 
@@ -280,7 +283,7 @@ func TestConfigJSONResultStaysCleanUnderVerboseAndDebug(t *testing.T) {
 				t.Fatal(err)
 			}
 			cfg := config.Default()
-			cfg.Auth.MCPTokenHash = "mcp-secret"
+			cfg.HTTP.MCP.Auth.TokenHash = "mcp-secret"
 			if err := config.Save(cfg); err != nil {
 				t.Fatal(err)
 			}
@@ -297,7 +300,7 @@ func TestConfigJSONResultStaysCleanUnderVerboseAndDebug(t *testing.T) {
 			if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 				t.Fatalf("%s stdout is not pure JSON: %q err=%v", flag, stdout.String(), err)
 			}
-			if strings.Contains(stdout.String(), "mcp-secret") || strings.Contains(stdout.String(), "token_hash") || !strings.Contains(stdout.String(), `"auth.mcp_token": "mcp_********legacy"`) {
+			if strings.Contains(stdout.String(), "mcp-secret") || strings.Contains(stdout.String(), "token_hash") || !strings.Contains(stdout.String(), `"http.mcp.auth.token": "mcp_********legacy"`) {
 				t.Fatalf("%s JSON safe setting projection=%q", flag, stdout.String())
 			}
 			if stderr.Len() == 0 {
@@ -313,11 +316,11 @@ func TestConfigHumanListUsesPresenterRowsWhilePlainRemainsCompatible(t *testing.
 	var humanOutput bytes.Buffer
 	human := &cobra.Command{}
 	human.SetOut(presentation.WrapWriter(&humanOutput, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
-	if err := printConfigSelection(human, cfg, "admin", true, configOutputOptions{}); err != nil {
+	if err := printConfigSelection(human, cfg, "http.admin", true, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	closeCommandProgress(human, nil)
-	for _, expected := range []string{"┌  Configuration", "◆  admin", "│  ◆ admin.enabled — true", "│  ◆ admin.port — 37422", "└  Done"} {
+	for _, expected := range []string{"┌  Configuration", "◆  http.admin", "│  ◆ http.admin.enabled — true", "│  ◆ http.admin.port — 37422", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), expected) {
 			t.Fatalf("human config output missing %q: %q", expected, humanOutput.String())
 		}
@@ -329,10 +332,10 @@ func TestConfigHumanListUsesPresenterRowsWhilePlainRemainsCompatible(t *testing.
 	var plainOutput bytes.Buffer
 	plain := &cobra.Command{}
 	plain.SetOut(&plainOutput)
-	if err := printConfigSelection(plain, cfg, "admin", true, configOutputOptions{}); err != nil {
+	if err := printConfigSelection(plain, cfg, "http.admin", true, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, expected := range []string{"admin.enabled = true", "admin.port = 37422"} {
+	for _, expected := range []string{"http.admin.enabled = true", "http.admin.port = 37422"} {
 		if !strings.Contains(plainOutput.String(), expected) {
 			t.Fatalf("plain config output missing %q: %q", expected, plainOutput.String())
 		}
@@ -353,13 +356,13 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 	text := output.String()
 	for _, expected := range []string{
 		"┌  Configuration",
-		"│  ◆ admin",
+		"│  ◆ http",
 		"Key",
 		"Value",
 		"Accepts",
-		"admin.enabled",
+		"http.admin.enabled",
 		"true | false",
-		"admin.port",
+		"http.admin.port",
 		"integer 1..65535",
 		"│  ◆ approval",
 		"approval.semantic.enabled",
@@ -373,12 +376,12 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 			t.Fatalf("grouped config list missing %q: %q", expected, text)
 		}
 	}
-	if !(strings.Index(text, "│  ◆ admin") < strings.Index(text, "│  ◆ approval") &&
-		strings.Index(text, "│  ◆ approval") < strings.Index(text, "│  ◆ integrations") &&
+	if !(strings.Index(text, "│  ◆ approval") < strings.Index(text, "│  ◆ http") &&
+		strings.Index(text, "│  ◆ http") < strings.Index(text, "│  ◆ integrations") &&
 		strings.Index(text, "│  ◆ integrations") < strings.Index(text, "│  ◆ tunnel")) {
 		t.Fatalf("config scopes are not sorted: %q", text)
 	}
-	if strings.Contains(text, "\n◆  admin") || strings.Contains(text, "\n◆  approval") {
+	if strings.Contains(text, "\n◆  http") || strings.Contains(text, "\n◆  approval") {
 		t.Fatalf("config scopes escaped nested list level: %q", text)
 	}
 
@@ -396,12 +399,12 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 			t.Fatalf("scoped table columns do not share global widths:\nfirst=%q\nother=%q", headerLines[0], line)
 		}
 	}
-	adminLine := configListLineContaining(text, "admin.enabled")
+	adminLine := configListLineContaining(text, "http.admin.enabled")
 	llmLine := configListLineContaining(text, "llm.provider")
 	if adminLine == "" || llmLine == "" {
 		t.Fatalf("missing cross-scope rows: %q", text)
 	}
-	if strings.Index(adminLine, "admin.enabled") != strings.Index(llmLine, "llm.provider") ||
+	if strings.Index(adminLine, "http.admin.enabled") != strings.Index(llmLine, "llm.provider") ||
 		strings.Index(adminLine, "true | false") != strings.Index(llmLine, "<provider-id>") {
 		t.Fatalf("cross-scope Key/Accepts columns are not globally aligned:\nadmin=%q\nllm=%q", adminLine, llmLine)
 	}
@@ -414,14 +417,14 @@ func TestUniversalConfigHumanListCanHideAcceptsAndStacksOnNarrowTerminals(t *tes
 	var narrow bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(presentation.WrapWriter(&narrow, presentation.Capabilities{Width: 48, Unicode: true, Interactive: true}))
-	if err := printSettingSelection(cmd, service, "server", true, configOutputOptions{}); err != nil {
+	if err := printSettingSelection(cmd, service, "http", true, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	closeCommandProgress(cmd, nil)
 	text := narrow.String()
 	semanticText := strings.NewReplacer("│", " ", "◆", " ", "┌", " ", "└", " ").Replace(text)
 	collapsed := strings.Join(strings.Fields(semanticText), " ")
-	for _, want := range []string{"server.port", "accepts: integer 1..65535", "server.expose.mode", "accepts: none | all | 0.0.0.0 | interfaces"} {
+	for _, want := range []string{"http.mcp.port", "accepts: integer 1..65535", "http.exposure.mode", "accepts: none | all | 0.0.0.0 | interfaces"} {
 		if !strings.Contains(collapsed, want) {
 			t.Fatalf("narrow config list missing semantic value %q: %q", want, text)
 		}
@@ -430,7 +433,7 @@ func TestUniversalConfigHumanListCanHideAcceptsAndStacksOnNarrowTerminals(t *tes
 	var hidden bytes.Buffer
 	hide := &cobra.Command{}
 	hide.SetOut(presentation.WrapWriter(&hidden, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
-	if err := printSettingSelection(hide, service, "server", true, configOutputOptions{noAccepts: true}); err != nil {
+	if err := printSettingSelection(hide, service, "http", true, configOutputOptions{noAccepts: true}); err != nil {
 		t.Fatal(err)
 	}
 	closeCommandProgress(hide, nil)
@@ -461,12 +464,12 @@ func TestConfigListNoAcceptsUsesCanonicalAliasAuthority(t *testing.T) {
 	var output bytes.Buffer
 	root.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 120, Unicode: true, Interactive: true}))
 	root.SetErr(&output)
-	root.SetArgs([]string{"--config-dir", rootPath, "config", "ls", "server", "--no-accepts"})
+	root.SetArgs([]string{"--config-dir", rootPath, "config", "ls", "http", "--no-accepts"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, want := range []string{"│  ◆ server", "server.enabled", "server.port"} {
+	for _, want := range []string{"│  ◆ http", "http.mcp.enabled", "http.mcp.port"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("config ls --no-accepts missing %q: %q", want, text)
 		}
@@ -487,7 +490,7 @@ func TestConfigListNoAcceptsDoesNotChangeJSONOrPlainProjection(t *testing.T) {
 		var output bytes.Buffer
 		cmd := &cobra.Command{}
 		cmd.SetOut(&output)
-		if err := printSettingSelection(cmd, service, "server", true, configOutputOptions{json: true, noAccepts: noAccepts}); err != nil {
+		if err := printSettingSelection(cmd, service, "http", true, configOutputOptions{json: true, noAccepts: noAccepts}); err != nil {
 			t.Fatal(err)
 		}
 		return output.String()
@@ -503,7 +506,7 @@ func TestConfigListNoAcceptsDoesNotChangeJSONOrPlainProjection(t *testing.T) {
 		var output bytes.Buffer
 		cmd := &cobra.Command{}
 		cmd.SetOut(&output)
-		if err := printSettingSelection(cmd, service, "server", true, configOutputOptions{noAccepts: noAccepts}); err != nil {
+		if err := printSettingSelection(cmd, service, "http", true, configOutputOptions{noAccepts: noAccepts}); err != nil {
 			t.Fatal(err)
 		}
 		return output.String()
@@ -553,23 +556,23 @@ func TestConfigRichPaletteSeparatesStructureLabelsAndValues(t *testing.T) {
 	caps := presentation.Capabilities{Width: 100, Unicode: true, Color: true, Interactive: true}
 	cmd := &cobra.Command{}
 	cmd.SetOut(presentation.WrapWriter(&output, caps))
-	if err := printConfigSelection(cmd, cfg, "admin", true, configOutputOptions{}); err != nil {
+	if err := printConfigSelection(cmd, cfg, "http.admin", true, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	theme := presentation.NewTheme(caps)
 	text := output.String()
 	for _, expected := range []string{
 		theme.Render(presentation.RoleRail, "┌"),
-		theme.Render(presentation.RoleStructure, "◆") + "  " + theme.Render(presentation.RoleHeading, "admin"),
-		theme.Render(presentation.RoleLabel, "admin.enabled") + " — true",
+		theme.Render(presentation.RoleStructure, "◆") + "  " + theme.Render(presentation.RoleHeading, "http.admin"),
+		theme.Render(presentation.RoleLabel, "http.admin.enabled") + " — true",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("config palette missing %q: %q", expected, text)
 		}
 	}
 	for _, forbidden := range []string{
-		theme.Render(presentation.RoleActive, "admin"),
-		theme.Render(presentation.RoleStructure, "admin"),
+		theme.Render(presentation.RoleActive, "http.admin"),
+		theme.Render(presentation.RoleStructure, "http.admin"),
 		theme.Render(presentation.RoleActive, "true"),
 	} {
 		if strings.Contains(text, forbidden) {
@@ -583,11 +586,11 @@ func TestConfigScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) {
 	var humanOutput bytes.Buffer
 	human := &cobra.Command{}
 	human.SetOut(presentation.WrapWriter(&humanOutput, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
-	if err := printConfigSelection(human, cfg, "server.port", false, configOutputOptions{}); err != nil {
+	if err := printConfigSelection(human, cfg, "http.mcp.port", false, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	closeCommandProgress(human, nil)
-	for _, want := range []string{"┌  Configuration", "server.port — 37421", "└  Done"} {
+	for _, want := range []string{"┌  Configuration", "http.mcp.port — 37421", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), want) {
 			t.Fatalf("human scalar config get missing %q: %q", want, humanOutput.String())
 		}
@@ -596,7 +599,7 @@ func TestConfigScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) {
 	var plainOutput bytes.Buffer
 	plain := &cobra.Command{}
 	plain.SetOut(&plainOutput)
-	if err := printConfigSelection(plain, cfg, "server.port", false, configOutputOptions{}); err != nil {
+	if err := printConfigSelection(plain, cfg, "http.mcp.port", false, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if plainOutput.String() != "37421\n" {
@@ -611,11 +614,11 @@ func TestSettingScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) 
 	var humanOutput bytes.Buffer
 	human := &cobra.Command{}
 	human.SetOut(presentation.WrapWriter(&humanOutput, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
-	if err := printSettingSelection(human, service, "server.port", false, configOutputOptions{}); err != nil {
+	if err := printSettingSelection(human, service, "http.mcp.port", false, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	closeCommandProgress(human, nil)
-	for _, want := range []string{"┌  Configuration", "server.port — 37421", "└  Done"} {
+	for _, want := range []string{"┌  Configuration", "http.mcp.port — 37421", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), want) {
 			t.Fatalf("human setting get missing %q: %q", want, humanOutput.String())
 		}
@@ -624,7 +627,7 @@ func TestSettingScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) 
 	var plainOutput bytes.Buffer
 	plain := &cobra.Command{}
 	plain.SetOut(&plainOutput)
-	if err := printSettingSelection(plain, service, "server.port", false, configOutputOptions{}); err != nil {
+	if err := printSettingSelection(plain, service, "http.mcp.port", false, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if plainOutput.String() != "37421\n" {
@@ -634,13 +637,13 @@ func TestSettingScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) 
 
 func TestConfigGetScalarInteractiveLifecycleIsFrameFirst(t *testing.T) {
 	rootPath := isolateUniversalConfigCLI(t)
-	text, err := executeInteractiveLifecycleCommand(rootPath, "config", "get", "server.port")
+	text, err := executeInteractiveLifecycleCommand(rootPath, "config", "get", "http.mcp.port")
 	if err != nil {
 		t.Fatal(err)
 	}
 	assertSingleHumanWorkflow(t, text, "Configuration", "Done")
 	frame := strings.Index(text, "┌  Configuration")
-	value := strings.Index(text, "server.port — 37421")
+	value := strings.Index(text, "http.mcp.port — 37421")
 	if frame < 0 || value <= frame {
 		t.Fatalf("interactive scalar result escaped before frame: %q", text)
 	}
@@ -806,7 +809,7 @@ func TestConfigExplainIsRemovedWithoutAlias(t *testing.T) {
 		t.Fatalf("config explain is still registered: %v", found)
 	}
 	root := newRootCommand()
-	root.SetArgs([]string{"config", "explain", "server.port"})
+	root.SetArgs([]string{"config", "explain", "http.mcp.port"})
 	root.SilenceUsage = true
 	root.SilenceErrors = true
 	if err := root.Execute(); err == nil {
@@ -820,12 +823,12 @@ func TestUniversalConfigReadProjectionAndWriteOnlySecrets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Server.Port = 40123
+	cfg.HTTP.MCP.Port = 40123
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
 
-	output, err := executeRequestCommandError(root, []string{"config", "list", "auth"})
+	output, err := executeRequestCommandError(root, []string{"config", "list", "http"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -834,13 +837,13 @@ func TestUniversalConfigReadProjectionAndWriteOnlySecrets(t *testing.T) {
 			t.Fatalf("config list leaked %q: %s", forbidden, output)
 		}
 	}
-	for _, want := range []string{"auth.mcp_token", "auth.admin_token", "mcp_********legacy", "admin_********legacy"} {
+	for _, want := range []string{"http.mcp.auth.token", "http.admin.auth.token", "mcp_********legacy", "admin_********legacy"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("config list missing %q: %s", want, output)
 		}
 	}
 
-	output, err = executeRequestCommandError(root, []string{"config", "get", "server.port"})
+	output, err = executeRequestCommandError(root, []string{"config", "get", "http.mcp.port"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -848,7 +851,7 @@ func TestUniversalConfigReadProjectionAndWriteOnlySecrets(t *testing.T) {
 		t.Fatalf("config get scalar=%q", output)
 	}
 
-	_, err = executeRequestCommandError(root, []string{"config", "get", "auth.mcp_token"})
+	_, err = executeRequestCommandError(root, []string{"config", "get", "http.mcp.auth.token"})
 	if err == nil || !strings.Contains(err.Error(), "write-only") {
 		t.Fatalf("write-only secret get err=%v", err)
 	}
@@ -888,8 +891,8 @@ func TestConfigListUsesMaskedPreviewForEveryManagedSecret(t *testing.T) {
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
-	values["auth.mcp_token"] = mcpToken
-	values["auth.admin_token"] = adminToken
+	values["http.mcp.auth.token"] = mcpToken
+	values["http.admin.auth.token"] = adminToken
 	values["tunnel.api_key"] = cfg.Tunnel.APIKey
 	values["tunnel.admin.key"] = cfg.Tunnel.Admin.Key
 
@@ -914,7 +917,7 @@ func TestUniversalConfigDiffExcludesSecretMaterial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Server.Port++
+	cfg.HTTP.MCP.Port++
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -923,7 +926,7 @@ func TestUniversalConfigDiffExcludesSecretMaterial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output, "server.port") {
+	if !strings.Contains(output, "http.mcp.port") {
 		t.Fatalf("config diff missing changed setting: %s", output)
 	}
 	for _, forbidden := range []string{"token_hash", "mcp-configured-hash", "admin-configured-hash"} {
@@ -939,7 +942,7 @@ func TestUniversalConfigCredentialLifecycleIsExplicitAndMetadataGated(t *testing
 	rotate := configRotateCommand()
 	var out bytes.Buffer
 	rotate.SetOut(&out)
-	rotate.SetArgs([]string{"auth.mcp_token"})
+	rotate.SetArgs([]string{"http.mcp.auth.token"})
 	if err := rotate.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -958,7 +961,7 @@ func TestUniversalConfigCredentialLifecycleIsExplicitAndMetadataGated(t *testing
 	if !commandExplicitMachineOutput(reveal) {
 		t.Fatal("config reveal is not marked as direct machine output")
 	}
-	reveal.SetArgs([]string{"auth.mcp_token"})
+	reveal.SetArgs([]string{"http.mcp.auth.token"})
 	if err := reveal.Execute(); err == nil || !strings.Contains(err.Error(), "not revealable") {
 		t.Fatalf("metadata-gated reveal err=%v", err)
 	}
@@ -1032,8 +1035,8 @@ func isolateUniversalConfigCLI(t *testing.T) string {
 	}
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 	cfg := config.Default()
-	cfg.Auth.MCPTokenHash = "mcp-configured-hash"
-	cfg.Auth.AdminTokenHash = "admin-configured-hash"
+	cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

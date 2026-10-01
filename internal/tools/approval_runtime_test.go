@@ -467,12 +467,12 @@ func TestShellControlGuardProducesChallengeOnlyForDirectLiteralCLI(t *testing.T)
 
 func TestApprovalRuntimeResolvesSourceRunThroughUnifiedClassifier(t *testing.T) {
 	runtime, workspaceID := newApprovalCodeMCPSourceRuntime(t)
-	command := "go run . config set server.port 41001"
+	command := "go run . config set http.mcp.port 41001"
 	invocation, ok := runtime.directControlPlaneInvocation(workspaceID, command)
 	if !ok || invocation == nil {
 		t.Fatalf("source-run invocation unresolved: %#v ok=%t", invocation, ok)
 	}
-	if invocation.Program != "cm" || strings.Join(invocation.Args, " ") != "config set server.port 41001" || invocation.Command != command {
+	if invocation.Program != "cm" || strings.Join(invocation.Args, " ") != "config set http.mcp.port 41001" || invocation.Command != command {
 		t.Fatalf("source-run invocation was not canonicalized for approval: %#v", invocation)
 	}
 }

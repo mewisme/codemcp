@@ -233,28 +233,28 @@ export function SettingsPage() {
     }
   }
 
-  function setExposureMode(mode: PublicConfig["server"]["expose"]["mode"]) {
+  function setExposureMode(mode: PublicConfig["http"]["exposure"]["mode"]) {
     if (!config) return
-    const current = config.server.expose.interfaces
+    const current = config.http.exposure.interfaces
     setConfig({
       ...config,
-      server: {
-        ...config.server,
-        expose: { mode, interfaces: mode === "interfaces" ? current : [] },
+      http: {
+        ...config.http,
+        exposure: { mode, interfaces: mode === "interfaces" ? current : [] },
       },
     })
   }
 
   function toggleInterface(name: string, checked: boolean) {
     if (!config) return
-    const selected = new Set(config.server.expose.interfaces)
+    const selected = new Set(config.http.exposure.interfaces)
     if (checked) selected.add(name)
     else selected.delete(name)
     setConfig({
       ...config,
-      server: {
-        ...config.server,
-        expose: { mode: "interfaces", interfaces: [...selected].sort() },
+      http: {
+        ...config.http,
+        exposure: { mode: "interfaces", interfaces: [...selected].sort() },
       },
     })
   }
@@ -265,21 +265,21 @@ export function SettingsPage() {
         {error || "Loading settings..."}
       </div>
     )
-  const selectedInterfaces = new Set(config.server.expose.interfaces)
-  const exposed = config.server.expose.mode !== "none"
+  const selectedInterfaces = new Set(config.http.exposure.interfaces)
+  const exposed = config.http.exposure.mode !== "none"
   const exposureAuthReady =
     !exposed ||
-    ((!config.server.enabled ||
-      (config.auth.mcp_enabled && config.auth.mcp_token_configured)) &&
-      (!config.admin.enabled ||
-        (config.auth.admin_enabled && config.auth.admin_token_configured)))
+    ((!config.http.mcp.enabled ||
+      (config.http.mcp.auth.enabled && config.http.mcp.auth.token_configured)) &&
+      (!config.http.admin.enabled ||
+        (config.http.admin.auth.enabled && config.http.admin.auth.token_configured)))
   const saveDisabled =
     busy ||
-    (!config.server.enabled && !tunnelEnabled) ||
-    (config.server.expose.mode === "interfaces" &&
-      config.server.expose.interfaces.length === 0) ||
+    (!config.http.mcp.enabled && !tunnelEnabled) ||
+    (config.http.exposure.mode === "interfaces" &&
+      config.http.exposure.interfaces.length === 0) ||
     !exposureAuthReady ||
-    (exposed && !config.server.allow_insecure_http)
+    (exposed && !config.http.security.allow_insecure)
 
   return (
     <div className="space-y-6">
@@ -320,20 +320,23 @@ export function SettingsPage() {
                       ? "Serve MCP directly over HTTP. Secure MCP Tunnel remains available if this transport is disabled."
                       : "Serve MCP directly over HTTP. This transport is required while Secure MCP Tunnel is disabled."
                   }
-                  checked={config.server.enabled}
-                  disabled={config.server.enabled && !tunnelEnabled}
+                  checked={config.http.mcp.enabled}
+                  disabled={config.http.mcp.enabled && !tunnelEnabled}
                   onCheckedChange={(enabled) =>
                     setConfig({
                       ...config,
-                      server: { ...config.server, enabled },
+                      http: {
+                        ...config.http,
+                        mcp: { ...config.http.mcp, enabled },
+                      },
                     })
                   }
                 />
                 <div className="flex flex-wrap gap-2">
                   <Badge
-                    variant={config.server.enabled ? "secondary" : "outline"}
+                    variant={config.http.mcp.enabled ? "secondary" : "outline"}
                   >
-                    MCP HTTP {config.server.enabled ? "enabled" : "disabled"}
+                    MCP HTTP {config.http.mcp.enabled ? "enabled" : "disabled"}
                   </Badge>
                   <Badge variant={tunnelEnabled ? "secondary" : "outline"}>
                     Secure MCP Tunnel {tunnelEnabled ? "enabled" : "disabled"}
@@ -345,17 +348,20 @@ export function SettingsPage() {
                     description="Direct MCP HTTP listener port."
                   >
                     <Input
-                      disabled={!config.server.enabled}
+                      disabled={!config.http.mcp.enabled}
                       max={65535}
                       min={1}
                       type="number"
-                      value={config.server.port}
+                      value={config.http.mcp.port}
                       onChange={(event) =>
                         setConfig({
                           ...config,
-                          server: {
-                            ...config.server,
-                            port: Number(event.target.value),
+                          http: {
+                            ...config.http,
+                            mcp: {
+                              ...config.http.mcp,
+                              port: Number(event.target.value),
+                            },
                           },
                         })
                       }
@@ -369,13 +375,16 @@ export function SettingsPage() {
                       max={65535}
                       min={1}
                       type="number"
-                      value={config.admin.port}
+                      value={config.http.admin.port}
                       onChange={(event) =>
                         setConfig({
                           ...config,
-                          admin: {
-                            ...config.admin,
-                            port: Number(event.target.value),
+                          http: {
+                            ...config.http,
+                            admin: {
+                              ...config.http.admin,
+                              port: Number(event.target.value),
+                            },
                           },
                         })
                       }
@@ -385,11 +394,14 @@ export function SettingsPage() {
                 <Toggle
                   label="Admin enabled"
                   description="Serve the local Admin API and dashboard."
-                  checked={config.admin.enabled}
+                  checked={config.http.admin.enabled}
                   onCheckedChange={(enabled) =>
                     setConfig({
                       ...config,
-                      admin: { ...config.admin, enabled },
+                      http: {
+                        ...config.http,
+                        admin: { ...config.http.admin, enabled },
+                      },
                     })
                   }
                 />
@@ -408,10 +420,10 @@ export function SettingsPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <RadioGroup
-                value={config.server.expose.mode}
+                value={config.http.exposure.mode}
                 onValueChange={(value) =>
                   setExposureMode(
-                    value as PublicConfig["server"]["expose"]["mode"]
+                    value as PublicConfig["http"]["exposure"]["mode"]
                   )
                 }
               >
@@ -436,7 +448,7 @@ export function SettingsPage() {
                   description="Bind every IPv4 interface, including interfaces that appear later."
                 />
               </RadioGroup>
-              {config.server.expose.mode === "interfaces" ? (
+              {config.http.exposure.mode === "interfaces" ? (
                 <div className="space-y-2 rounded-lg border p-3">
                   {interfaces.length === 0 ? (
                     <div className="text-sm text-muted-foreground">
@@ -491,15 +503,18 @@ export function SettingsPage() {
                   <Toggle
                     label="Allow authenticated HTTP beyond loopback"
                     description="Acknowledge that direct non-loopback listeners are unencrypted HTTP."
-                    checked={config.server.allow_insecure_http}
-                    onCheckedChange={(allow_insecure_http) =>
+                    checked={config.http.security.allow_insecure}
+                    onCheckedChange={(allow_insecure) =>
                       setConfig({
                         ...config,
-                        server: { ...config.server, allow_insecure_http },
+                        http: {
+                          ...config.http,
+                          security: { ...config.http.security, allow_insecure },
+                        },
                       })
                     }
                   />
-                  {!config.server.allow_insecure_http ? (
+                  {!config.http.security.allow_insecure ? (
                     <Alert variant="destructive">
                       <AlertDescription>
                         Use this only on a trusted or encrypted network, or
@@ -731,10 +746,10 @@ export function SettingsPage() {
             <CardContent className="space-y-5">
               <AuthControl
                 label="MCP authentication"
-                configured={authStatus?.mcp_configured ?? config.auth.mcp_token_configured}
-                enabled={authStatus?.mcp_enabled ?? config.auth.mcp_enabled}
+                configured={authStatus?.mcp_configured ?? config.http.mcp.auth.token_configured}
+                enabled={authStatus?.mcp_enabled ?? config.http.mcp.auth.enabled}
                 busy={authBusy.startsWith("mcp:")}
-                locked={exposed && config.server.enabled}
+                locked={exposed && config.http.mcp.enabled}
                 onRotate={() => void authAction("mcp", "rotate")}
                 onToggle={(enabled) =>
                   void authAction("mcp", enabled ? "enable" : "disable")
@@ -742,10 +757,10 @@ export function SettingsPage() {
               />
               <AuthControl
                 label="Admin authentication"
-                configured={authStatus?.admin_configured ?? config.auth.admin_token_configured}
-                enabled={authStatus?.admin_enabled ?? config.auth.admin_enabled}
+                configured={authStatus?.admin_configured ?? config.http.admin.auth.token_configured}
+                enabled={authStatus?.admin_enabled ?? config.http.admin.auth.enabled}
                 busy={authBusy.startsWith("admin:")}
-                locked={exposed && config.admin.enabled}
+                locked={exposed && config.http.admin.enabled}
                 onRotate={() => void authAction("admin", "rotate")}
                 onToggle={(enabled) =>
                   void authAction("admin", enabled ? "enable" : "disable")
@@ -1093,7 +1108,10 @@ function AuthControl({
 function normalizeConfig(value: PublicConfig): PublicConfig {
   return {
     ...value,
-    server: { ...value.server, enabled: value.server?.enabled ?? true },
+    http: {
+      ...value.http,
+      mcp: { ...value.http.mcp, enabled: value.http.mcp?.enabled ?? true },
+    },
     shell: { path: value.shell?.path ?? [] },
   }
 }

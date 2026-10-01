@@ -179,7 +179,7 @@ Disabling authentication on an enabled HTTP endpoint requires the corresponding 
 Loopback-only is the safe default for direct HTTP listeners:
 
 ```bash
-cm config set server.expose none
+cm config set http.exposure.mode none
 ```
 
 Non-loopback direct exposure requires authentication. Because the built-in direct listener is HTTP rather than built-in TLS, broader exposure also requires an explicit insecure-HTTP acknowledgement and should only be used on an appropriately trusted/encrypted network or behind TLS termination.
@@ -189,7 +189,7 @@ For ChatGPT, prefer OpenAI Secure MCP Tunnel and avoid public MCP ingress entire
 Direct exposure modes such as selected interfaces, `all`, or `0.0.0.0` are advanced configuration and should be reviewed with:
 
 ```bash
-cm config explain server.expose
+cm config explain http.exposure
 cm config verify --strict
 ```
 

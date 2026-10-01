@@ -368,11 +368,11 @@ func TestTunnelOnlyConfigCannotDisableTunnel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg.Server.Enabled = false
-	cfg.Admin.Enabled = false
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Enabled = false
+	cfg.HTTP.Admin.Enabled = false
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -383,8 +383,8 @@ func TestTunnelOnlyConfigCannotDisableTunnel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !loaded.Tunnel.Enabled || loaded.Server.Enabled {
-		t.Fatalf("invalid transport mutation persisted: server=%#v tunnel=%#v", loaded.Server, loaded.Tunnel)
+	if !loaded.Tunnel.Enabled || loaded.HTTP.MCP.Enabled {
+		t.Fatalf("invalid transport mutation persisted: http=%#v tunnel=%#v", loaded.HTTP, loaded.Tunnel)
 	}
 }
 
@@ -417,9 +417,9 @@ func setupTunnelApplicationRoot(t *testing.T, tunnelConfig tunnel.Config) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel = tunnelConfig
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)

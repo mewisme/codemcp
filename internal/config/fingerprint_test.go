@@ -9,8 +9,8 @@ func TestRuntimeFingerprintIgnoresSecretsButTracksConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	secret := cfg
-	secret.Auth.MCPTokenHash = "mcp-secret"
-	secret.Auth.AdminTokenHash = "admin-secret"
+	secret.HTTP.MCP.Auth.TokenHash = "mcp-secret"
+	secret.HTTP.Admin.Auth.TokenHash = "admin-secret"
 	secret.Tunnel.APIKey = "runtime-secret"
 	secret.Tunnel.Admin.Key = "tunnel-admin-secret"
 	withSecrets, err := RuntimeFingerprint(secret)
@@ -21,7 +21,7 @@ func TestRuntimeFingerprintIgnoresSecretsButTracksConfig(t *testing.T) {
 		t.Fatalf("secret-only change altered fingerprint: %q != %q", withSecrets, base)
 	}
 	changed := cfg
-	changed.Server.Port++
+	changed.HTTP.MCP.Port++
 	different, err := RuntimeFingerprint(changed)
 	if err != nil {
 		t.Fatal(err)

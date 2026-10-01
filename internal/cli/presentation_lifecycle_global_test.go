@@ -21,7 +21,6 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 	representatives := map[string]string{
 		"_service":     "_service run",
 		"activity":     "activity view",
-		"admin":        "admin enable",
 		"agent":        "agent completion list",
 		"auth":         "auth status",
 		"completion":   "completion",
@@ -30,6 +29,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"doctor":       "doctor",
 		"execution":    "execution list",
 		"health":       "health",
+		"http":         "http mcp enable",
 		"init":         "init",
 		"install":      "install",
 		"instructions": "instructions get",
@@ -45,7 +45,6 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"request":      "request list",
 		"restart":      "restart",
 		"serve":        "serve",
-		"server":       "server enable",
 		"shell":        "shell path",
 		"status":       "status",
 		"telemetry":    "telemetry status",
@@ -224,9 +223,9 @@ func TestTunnelListExactLifecycleContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.Admin.Key = "admin-test"
 	cfg.Tunnel.Admin.WorkspaceID = "ws_admin"
 	cfg.Tunnel.ControlPlaneBaseURL = server.URL
@@ -272,9 +271,9 @@ func TestTunnelUseExactLifecycleContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.Default()
-	cfg.Auth.MCPEnabled = false
-	cfg.Auth.AdminEnabled = false
-	cfg.Server.AllowUnauthenticatedLoopback = true
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.Admin.Key = "admin-test"
 	cfg.Tunnel.Admin.WorkspaceID = "ws_admin"
 	cfg.Tunnel.Admin.ReadAccess = true

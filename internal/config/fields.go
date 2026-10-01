@@ -103,19 +103,19 @@ const (
 )
 
 var fieldSpecs = []FieldSpec{
-	{Key: "server.enabled", Label: "MCP HTTP server", Section: FieldSectionRuntime, Description: "controls whether the MCP HTTP transport is enabled", Details: "When disabled, clients cannot connect through the local HTTP MCP server. At least one MCP transport must remain enabled, so the Secure MCP Tunnel must be enabled before this can be disabled by itself.", Kind: FieldBool, Editable: true, Related: []string{"server.port", "server.expose.mode", "auth.mcp_enabled", "tunnel.enabled"}},
-	{Key: "server.expose.mode", Label: "Exposure", Section: FieldSectionRuntime, Description: "controls which local network addresses expose the HTTP servers", Details: "Loopback access is always retained. Any non-loopback exposure requires server.allow_insecure_http=true and valid authentication for each enabled HTTP endpoint.", Kind: FieldEnum, Options: []string{"none", "all", "0.0.0.0", "interfaces"}, Values: []FieldValueSpec{{Value: "none", Description: "Bind only to loopback."}, {Value: "all", Description: "Bind loopback plus every eligible address discovered on all interfaces."}, {Value: "0.0.0.0", Description: "Bind one IPv4 wildcard listener and expose eligible IPv4 addresses."}, {Value: "interfaces", Description: "Bind loopback plus addresses from server.expose.interfaces."}}, Editable: true, Related: []string{"server.expose.interfaces", "server.allow_insecure_http", "auth.mcp_enabled", "auth.admin_enabled"}},
-	{Key: "server.expose.interfaces", Label: "Exposure interfaces", Section: FieldSectionRuntime, Description: "lists network interfaces used when exposure mode is interfaces", Details: "Each name must resolve to an available interface with at least one eligible IP address at runtime. Duplicate names are removed and values are normalized before persistence.", Kind: FieldList, Editable: true, Input: FieldInputSpec{ItemShape: "interface"}, Guidance: "Set server.expose.mode=interfaces before relying on this list.", Related: []string{"server.expose.mode", "server.allow_insecure_http"}},
-	{Key: "server.port", Label: "MCP HTTP port", Section: FieldSectionRuntime, Description: "sets the TCP port for the MCP HTTP server", Details: "Valid range is 1-65535. When both MCP and admin HTTP servers are enabled, their ports must differ.", Kind: FieldInt, Editable: true, Input: boundedIntInput(1, 65535), Related: []string{"server.enabled", "admin.port"}},
-	{Key: "server.allow_insecure_http", Label: "Allow insecure HTTP", Section: FieldSectionRuntime, Description: "allows authenticated plain HTTP endpoints beyond loopback", Details: "This opt-in is required for non-loopback exposure. It does not disable authentication requirements; exposed enabled endpoints still require configured credentials. Prefer the Secure MCP Tunnel or a TLS reverse proxy when possible.", Kind: FieldBool, Editable: true, Related: []string{"server.expose.mode", "auth.mcp_enabled", "auth.admin_enabled", "tunnel.enabled"}},
-	{Key: "server.allow_unauthenticated_loopback", Label: "Allow unauthenticated loopback", Section: FieldSectionRuntime, Description: "WARNING: acknowledges intentionally disabling MCP/Admin HTTP authentication on loopback", Details: "Required before auth.mcp_enabled or auth.admin_enabled can be turned off while the corresponding HTTP server remains enabled. Valid only with server.expose.mode=none. Unauthenticated listeners accept any local process as a client; prefer keeping authentication enabled.", Kind: FieldBool, Editable: true, Guidance: "Set this only for trusted local development, then re-enable authentication promptly.", Related: []string{"auth.mcp_enabled", "auth.admin_enabled", "server.expose.mode", "server.enabled", "admin.enabled"}},
-	{Key: "admin.enabled", Label: "Admin server", Section: FieldSectionRuntime, Description: "controls whether the admin HTTP server is enabled", Details: "When enabled, the admin endpoint listens using the configured admin port and the same network exposure policy. If admin authentication is enabled, a configured admin credential is required.", Kind: FieldBool, Editable: true, Related: []string{"admin.port", "auth.admin_enabled", "server.expose.mode"}},
-	{Key: "admin.port", Label: "Admin port", Section: FieldSectionRuntime, Description: "sets the TCP port for the admin HTTP server", Details: "Valid range is 1-65535 while the admin server is enabled. When both HTTP servers are enabled, this port must differ from server.port.", Kind: FieldInt, Editable: true, Input: boundedIntInput(1, 65535), Related: []string{"admin.enabled", "server.port"}},
-	{Key: "auth.mcp_enabled", Label: "MCP authentication", Section: FieldSectionAccess, Description: "controls token authentication for the MCP HTTP endpoint", Details: "When the MCP HTTP server is enabled and this setting is true, an MCP credential must be configured. Disabling authentication while the MCP HTTP server remains enabled requires server.allow_unauthenticated_loopback=true and server.expose.mode=none. Non-loopback HTTP exposure always requires MCP authentication with a configured credential.", Kind: FieldBool, Editable: true, Related: []string{"auth.mcp_token_hash", "server.enabled", "server.expose.mode", "server.allow_unauthenticated_loopback"}},
-	{Key: "auth.mcp_legacy_bearer", Label: "Legacy MCP bearer", Section: FieldSectionAccess, Description: "allows the existing static MCP token as a compatibility bearer credential", Details: "OAuth is canonical for protected HTTP/SSE MCP transports. Keep this enabled during migration for clients that still send the managed MCP token directly, then disable it once all clients use OAuth.", Kind: FieldBool, Editable: true, Related: []string{"auth.mcp_enabled", "auth.mcp_token_hash"}},
-	{Key: "auth.admin_enabled", Label: "Admin authentication", Section: FieldSectionAccess, Description: "controls token authentication for the admin HTTP endpoint", Details: "When the admin server is enabled and this setting is true, an admin credential must be configured. Disabling authentication while the admin server remains enabled requires server.allow_unauthenticated_loopback=true and server.expose.mode=none. Non-loopback exposure with the admin endpoint enabled always requires admin authentication.", Kind: FieldBool, Editable: true, Related: []string{"auth.admin_token_hash", "admin.enabled", "server.expose.mode", "server.allow_unauthenticated_loopback"}},
-	{Key: "auth.mcp_token_hash", Label: "MCP credential", Section: FieldSectionAccess, Description: "stores the managed credential hash used by MCP HTTP authentication", Details: "The raw token is never exposed through config views. This field is managed by the MCP authentication workflow and is not directly editable through config set.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage this credential with the MCP auth token workflow.", Related: []string{"auth.mcp_enabled", "server.enabled"}},
-	{Key: "auth.admin_token_hash", Label: "Admin credential", Section: FieldSectionAccess, Description: "stores the managed credential hash used by admin HTTP authentication", Details: "The raw token is never exposed through config views. This field is managed by the admin authentication workflow and is not directly editable through config set.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage this credential with the admin auth token workflow.", Related: []string{"auth.admin_enabled", "admin.enabled"}},
+	{Key: "http.mcp.enabled", Label: "MCP HTTP server", Section: FieldSectionRuntime, Description: "controls whether the MCP HTTP transport is enabled", Details: "When disabled, clients cannot connect through the local HTTP MCP server. At least one MCP transport must remain enabled, so the Secure MCP Tunnel must be enabled before this can be disabled by itself.", Kind: FieldBool, Editable: true, Related: []string{"http.mcp.port", "http.exposure.mode", "http.mcp.auth.enabled", "tunnel.enabled"}},
+	{Key: "http.exposure.mode", Label: "Exposure", Section: FieldSectionRuntime, Description: "controls which local network addresses expose the HTTP servers", Details: "Loopback access is always retained. Any non-loopback exposure requires http.security.allow_insecure=true and valid authentication for each enabled HTTP endpoint.", Kind: FieldEnum, Options: []string{"none", "all", "0.0.0.0", "interfaces"}, Values: []FieldValueSpec{{Value: "none", Description: "Bind only to loopback."}, {Value: "all", Description: "Bind loopback plus every eligible address discovered on all interfaces."}, {Value: "0.0.0.0", Description: "Bind one IPv4 wildcard listener and expose eligible IPv4 addresses."}, {Value: "interfaces", Description: "Bind loopback plus addresses from http.exposure.interfaces."}}, Editable: true, Related: []string{"http.exposure.interfaces", "http.security.allow_insecure", "http.mcp.auth.enabled", "http.admin.auth.enabled"}},
+	{Key: "http.exposure.interfaces", Label: "Exposure interfaces", Section: FieldSectionRuntime, Description: "lists network interfaces used when exposure mode is interfaces", Details: "Each name must resolve to an available interface with at least one eligible IP address at runtime. Duplicate names are removed and values are normalized before persistence.", Kind: FieldList, Editable: true, Input: FieldInputSpec{ItemShape: "interface"}, Guidance: "Set http.exposure.mode=interfaces before relying on this list.", Related: []string{"http.exposure.mode", "http.security.allow_insecure"}},
+	{Key: "http.mcp.port", Label: "MCP HTTP port", Section: FieldSectionRuntime, Description: "sets the TCP port for the MCP HTTP server", Details: "Valid range is 1-65535. When both MCP and admin HTTP servers are enabled, their ports must differ.", Kind: FieldInt, Editable: true, Input: boundedIntInput(1, 65535), Related: []string{"http.mcp.enabled", "http.admin.port"}},
+	{Key: "http.security.allow_insecure", Label: "Allow insecure HTTP", Section: FieldSectionRuntime, Description: "allows authenticated plain HTTP endpoints beyond loopback", Details: "This opt-in is required for non-loopback exposure. It does not disable authentication requirements; exposed enabled endpoints still require configured credentials. Prefer the Secure MCP Tunnel or a TLS reverse proxy when possible.", Kind: FieldBool, Editable: true, Related: []string{"http.exposure.mode", "http.mcp.auth.enabled", "http.admin.auth.enabled", "tunnel.enabled"}},
+	{Key: "http.security.allow_unauthenticated_loopback", Label: "Allow unauthenticated loopback", Section: FieldSectionRuntime, Description: "WARNING: acknowledges intentionally disabling MCP/Admin HTTP authentication on loopback", Details: "Required before http.mcp.auth.enabled or http.admin.auth.enabled can be turned off while the corresponding HTTP server remains enabled. Valid only with http.exposure.mode=none. Unauthenticated listeners accept any local process as a client; prefer keeping authentication enabled.", Kind: FieldBool, Editable: true, Guidance: "Set this only for trusted local development, then re-enable authentication promptly.", Related: []string{"http.mcp.auth.enabled", "http.admin.auth.enabled", "http.exposure.mode", "http.mcp.enabled", "http.admin.enabled"}},
+	{Key: "http.admin.enabled", Label: "Admin server", Section: FieldSectionRuntime, Description: "controls whether the admin HTTP server is enabled", Details: "When enabled, the admin endpoint listens using the configured admin port and the same network exposure policy. If admin authentication is enabled, a configured admin credential is required.", Kind: FieldBool, Editable: true, Related: []string{"http.admin.port", "http.admin.auth.enabled", "http.exposure.mode"}},
+	{Key: "http.admin.port", Label: "Admin port", Section: FieldSectionRuntime, Description: "sets the TCP port for the admin HTTP server", Details: "Valid range is 1-65535 while the admin server is enabled. When both HTTP servers are enabled, this port must differ from http.mcp.port.", Kind: FieldInt, Editable: true, Input: boundedIntInput(1, 65535), Related: []string{"http.admin.enabled", "http.mcp.port"}},
+	{Key: "http.mcp.auth.enabled", Label: "MCP authentication", Section: FieldSectionAccess, Description: "controls token authentication for the MCP HTTP endpoint", Details: "When the MCP HTTP server is enabled and this setting is true, an MCP credential must be configured. Disabling authentication while the MCP HTTP server remains enabled requires http.security.allow_unauthenticated_loopback=true and http.exposure.mode=none. Non-loopback HTTP exposure always requires MCP authentication with a configured credential.", Kind: FieldBool, Editable: true, Related: []string{"http.mcp.auth.token_hash", "http.mcp.enabled", "http.exposure.mode", "http.security.allow_unauthenticated_loopback"}},
+	{Key: "http.mcp.auth.legacy_bearer", Label: "Legacy MCP bearer", Section: FieldSectionAccess, Description: "allows the existing static MCP token as a compatibility bearer credential", Details: "OAuth is canonical for protected HTTP/SSE MCP transports. Keep this enabled during migration for clients that still send the managed MCP token directly, then disable it once all clients use OAuth.", Kind: FieldBool, Editable: true, Related: []string{"http.mcp.auth.enabled", "http.mcp.auth.token_hash"}},
+	{Key: "http.admin.auth.enabled", Label: "Admin authentication", Section: FieldSectionAccess, Description: "controls token authentication for the admin HTTP endpoint", Details: "When the admin server is enabled and this setting is true, an admin credential must be configured. Disabling authentication while the admin server remains enabled requires http.security.allow_unauthenticated_loopback=true and http.exposure.mode=none. Non-loopback exposure with the admin endpoint enabled always requires admin authentication.", Kind: FieldBool, Editable: true, Related: []string{"http.admin.auth.token_hash", "http.admin.enabled", "http.exposure.mode", "http.security.allow_unauthenticated_loopback"}},
+	{Key: "http.mcp.auth.token_hash", Label: "MCP credential", Section: FieldSectionAccess, Description: "stores the managed credential hash used by MCP HTTP authentication", Details: "The raw token is never exposed through config views. This field is managed by the MCP authentication workflow and is not directly editable through config set.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage this credential with the MCP auth token workflow.", Related: []string{"http.mcp.auth.enabled", "http.mcp.enabled"}},
+	{Key: "http.admin.auth.token_hash", Label: "Admin credential", Section: FieldSectionAccess, Description: "stores the managed credential hash used by admin HTTP authentication", Details: "The raw token is never exposed through config views. This field is managed by the admin authentication workflow and is not directly editable through config set.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage this credential with the admin auth token workflow.", Related: []string{"http.admin.auth.enabled", "http.admin.enabled"}},
 	{Key: "permissions.allow_dirs", Label: "Allowed directories", Section: FieldSectionAccess, Description: "adds global filesystem roots that registered workspaces may access", Details: "These roots extend workspace-local access for filesystem and shell operations. Paths must be absolute, are normalized, and apply globally in addition to per-workspace allowed directories.", Kind: FieldList, Editable: true, Input: FieldInputSpec{ItemShape: "absolute-path"}},
 	{Key: "permissions.mcp_config_read", Label: "MCP agent config reads", Section: FieldSectionAccess, Description: "allows agent-facing MCP configuration read tools to access the global CodeMCP setting projection", Details: "Disabled by default. MCP transport authentication and workspace access do not grant global configuration access without this explicit operator opt-in.", Kind: FieldBool, Editable: true},
 	{Key: "permissions.mcp_config_write", Label: "MCP agent config writes", Section: FieldSectionAccess, Description: "allows the guarded agent-facing MCP configuration mutation workflow to target eligible global settings", Details: "Disabled by default. Enabling this eligibility does not bypass mandatory local approval for config_set and does not permit managed-secret writes.", Kind: FieldBool, Editable: true, Related: []string{"permissions.mcp_config_read"}},
@@ -154,7 +154,7 @@ var fieldSpecs = []FieldSpec{
 	{Key: "integrations.typesafe.enabled", Label: "TypeSafe enabled", Section: FieldSectionIntegrations, Description: "controls whether the optional TypeSafe semantic provider may be used", Details: "Disabled by default. Enabling does not contact TypeSafe; remote requests occur only when a semantic consumer or explicit probe uses the configured provider.", Kind: FieldBool, Editable: true, Related: []string{"integrations.typesafe.model", "integrations.typesafe.timeout_ms", "integrations.typesafe.api_key"}},
 	{Key: "integrations.typesafe.model", Label: "TypeSafe model", Section: FieldSectionIntegrations, Description: "sets the TypeSafe System One model or alias", Details: "The provider currently documents jev-latest as the stable alias. Versioned model IDs may be used when a consumer needs a pinned calibration target.", Kind: FieldString, Editable: true, Related: []string{"integrations.typesafe.enabled"}},
 	{Key: "integrations.typesafe.timeout_ms", Label: "TypeSafe timeout", Section: FieldSectionIntegrations, Description: "sets the local deadline budget in milliseconds for TypeSafe provider operations", Details: "The timeout is locally enforced and remains bounded even if the provider SDK supports a larger/default timeout.", Kind: FieldInt, Editable: true, Input: boundedIntInput(100, 30000), Related: []string{"integrations.typesafe.enabled"}},
-	{Key: "tunnel.enabled", Label: "Tunnel", Section: FieldSectionTunnel, Description: "controls whether the OpenAI Secure MCP Tunnel transport is enabled", Details: "An enabled tunnel requires both tunnel.id and a configured runtime API key. The tunnel can satisfy the requirement that at least one MCP transport remains enabled when the local MCP HTTP server is disabled.", Kind: FieldBool, Editable: true, Related: []string{"tunnel.id", "tunnel.api_key", "server.enabled"}},
+	{Key: "tunnel.enabled", Label: "Tunnel", Section: FieldSectionTunnel, Description: "controls whether the OpenAI Secure MCP Tunnel transport is enabled", Details: "An enabled tunnel requires both tunnel.id and a configured runtime API key. The tunnel can satisfy the requirement that at least one MCP transport remains enabled when the local MCP HTTP server is disabled.", Kind: FieldBool, Editable: true, Related: []string{"tunnel.id", "tunnel.api_key", "http.mcp.enabled"}},
 	{Key: "tunnel.id", Label: "Tunnel ID", Section: FieldSectionTunnel, Description: "identifies the OpenAI Secure MCP Tunnel used by this runtime", Details: "The ID is required when the tunnel transport is enabled and is used together with the runtime API key to connect to the configured tunnel.", Kind: FieldString, Editable: true, Related: []string{"tunnel.enabled", "tunnel.api_key"}},
 	{Key: "tunnel.api_key", Label: "Runtime API key", Section: FieldSectionTunnel, Description: "stores the managed runtime credential used to connect to the Secure MCP Tunnel", Details: "The raw runtime key is stored through the secret workflow and is redacted from config views. A configured runtime key is required when the tunnel transport is enabled.", Kind: FieldReadOnly, Sensitive: true, Guidance: "Manage the runtime key from the Tunnel page.", Related: []string{"tunnel.enabled", "tunnel.id"}},
 	{Key: "tunnel.admin.enabled", Label: "Tunnel administration", Section: FieldSectionTunnel, Description: "controls whether configured tunnel admin credentials may be used for management operations", Details: "Disabling tunnel administration preserves the configured admin key and scope while blocking normal managed-tunnel operations. Explicit verification and diagnostics remain available.", Kind: FieldBool, Editable: true, Related: []string{"tunnel.admin.key", "tunnel.admin.verified"}},
@@ -284,80 +284,80 @@ func SetValue(cfg *Config, key, raw string) error {
 		}
 	}
 	switch key {
-	case "server.enabled":
+	case "http.mcp.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Server.Enabled = value
-	case "server.expose":
+		cfg.HTTP.MCP.Enabled = value
+	case "http.exposure":
 		value, err := ParseExposure(raw)
 		if err != nil {
 			return err
 		}
-		cfg.Server.Expose = value
-	case "server.expose.mode":
+		cfg.HTTP.Exposure = value
+	case "http.exposure.mode":
 		mode := ExposureMode(strings.ToLower(strings.TrimSpace(raw)))
 		if mode != ExposureNone && mode != ExposureAll && mode != ExposureWildcard && mode != ExposureInterfaces {
-			return errors.New("server.expose.mode must be none, all, 0.0.0.0, or interfaces")
+			return errors.New("http.exposure.mode must be none, all, 0.0.0.0, or interfaces")
 		}
-		cfg.Server.Expose.Mode = mode
-		cfg.Server.Expose = NormalizeExposure(cfg.Server.Expose)
-	case "server.expose.interfaces":
+		cfg.HTTP.Exposure.Mode = mode
+		cfg.HTTP.Exposure = NormalizeExposure(cfg.HTTP.Exposure)
+	case "http.exposure.interfaces":
 		interfaces := splitFieldList(raw)
 		if len(interfaces) == 0 {
-			cfg.Server.Expose = ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}
+			cfg.HTTP.Exposure = ExposureConfig{Mode: ExposureNone, Interfaces: []string{}}
 		} else {
-			cfg.Server.Expose = NormalizeExposure(ExposureConfig{Mode: ExposureInterfaces, Interfaces: interfaces})
+			cfg.HTTP.Exposure = NormalizeExposure(ExposureConfig{Mode: ExposureInterfaces, Interfaces: interfaces})
 		}
-	case "server.port":
+	case "http.mcp.port":
 		value, err := parseIntField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Server.Port = value
-	case "server.allow_insecure_http":
+		cfg.HTTP.MCP.Port = value
+	case "http.security.allow_insecure":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Server.AllowInsecureHTTP = value
-	case "server.allow_unauthenticated_loopback":
+		cfg.HTTP.Security.AllowInsecure = value
+	case "http.security.allow_unauthenticated_loopback":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Server.AllowUnauthenticatedLoopback = value
-	case "admin.enabled":
+		cfg.HTTP.Security.AllowUnauthenticatedLoopback = value
+	case "http.admin.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Admin.Enabled = value
-	case "admin.port":
+		cfg.HTTP.Admin.Enabled = value
+	case "http.admin.port":
 		value, err := parseIntField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Admin.Port = value
-	case "auth.mcp_enabled":
+		cfg.HTTP.Admin.Port = value
+	case "http.mcp.auth.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Auth.MCPEnabled = value
-	case "auth.mcp_legacy_bearer":
+		cfg.HTTP.MCP.Auth.Enabled = value
+	case "http.mcp.auth.legacy_bearer":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Auth.MCPLegacyBearer = value
-	case "auth.admin_enabled":
+		cfg.HTTP.MCP.Auth.LegacyBearer = value
+	case "http.admin.auth.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Auth.AdminEnabled = value
+		cfg.HTTP.Admin.Auth.Enabled = value
 	case "permissions.allow_dirs":
 		cfg.Permissions.AllowDirs = splitFieldList(raw)
 	case "permissions.mcp_config_read":
@@ -598,7 +598,7 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Tunnel.ControlPlaneBaseURL = raw
 	case "tunnel.organization_id":
 		cfg.Tunnel.OrganizationID = raw
-	case "auth.mcp_token_hash", "auth.admin_token_hash":
+	case "http.mcp.auth.token_hash", "http.admin.auth.token_hash":
 		return errors.New("token hashes cannot be set through config; use cm auth <mcp|admin> create")
 	default:
 		return fmt.Errorf("unsupported config key: %s", key)
@@ -644,38 +644,38 @@ func SetValueValidated(cfg *Config, key, raw string) error {
 func RawValue(cfg Config, key string) (string, error) {
 	key = canonicalFieldKey(key)
 	switch key {
-	case "server.enabled":
-		return strconv.FormatBool(cfg.Server.Enabled), nil
-	case "server.expose":
-		exposure := NormalizeExposure(cfg.Server.Expose)
+	case "http.mcp.enabled":
+		return strconv.FormatBool(cfg.HTTP.MCP.Enabled), nil
+	case "http.exposure":
+		exposure := NormalizeExposure(cfg.HTTP.Exposure)
 		if exposure.Mode == ExposureInterfaces {
 			return strings.Join(exposure.Interfaces, ","), nil
 		}
 		return string(exposure.Mode), nil
-	case "server.expose.mode":
-		return string(NormalizeExposure(cfg.Server.Expose).Mode), nil
-	case "server.expose.interfaces":
-		return strings.Join(NormalizeExposure(cfg.Server.Expose).Interfaces, ","), nil
-	case "server.port":
-		return strconv.Itoa(cfg.Server.Port), nil
-	case "server.allow_insecure_http":
-		return strconv.FormatBool(cfg.Server.AllowInsecureHTTP), nil
-	case "server.allow_unauthenticated_loopback":
-		return strconv.FormatBool(cfg.Server.AllowUnauthenticatedLoopback), nil
-	case "admin.enabled":
-		return strconv.FormatBool(cfg.Admin.Enabled), nil
-	case "admin.port":
-		return strconv.Itoa(cfg.Admin.Port), nil
-	case "auth.mcp_enabled":
-		return strconv.FormatBool(cfg.Auth.MCPEnabled), nil
-	case "auth.mcp_legacy_bearer":
-		return strconv.FormatBool(cfg.Auth.MCPLegacyBearer), nil
-	case "auth.admin_enabled":
-		return strconv.FormatBool(cfg.Auth.AdminEnabled), nil
-	case "auth.mcp_token_hash":
-		return cfg.Auth.MCPTokenHash, nil
-	case "auth.admin_token_hash":
-		return cfg.Auth.AdminTokenHash, nil
+	case "http.exposure.mode":
+		return string(NormalizeExposure(cfg.HTTP.Exposure).Mode), nil
+	case "http.exposure.interfaces":
+		return strings.Join(NormalizeExposure(cfg.HTTP.Exposure).Interfaces, ","), nil
+	case "http.mcp.port":
+		return strconv.Itoa(cfg.HTTP.MCP.Port), nil
+	case "http.security.allow_insecure":
+		return strconv.FormatBool(cfg.HTTP.Security.AllowInsecure), nil
+	case "http.security.allow_unauthenticated_loopback":
+		return strconv.FormatBool(cfg.HTTP.Security.AllowUnauthenticatedLoopback), nil
+	case "http.admin.enabled":
+		return strconv.FormatBool(cfg.HTTP.Admin.Enabled), nil
+	case "http.admin.port":
+		return strconv.Itoa(cfg.HTTP.Admin.Port), nil
+	case "http.mcp.auth.enabled":
+		return strconv.FormatBool(cfg.HTTP.MCP.Auth.Enabled), nil
+	case "http.mcp.auth.legacy_bearer":
+		return strconv.FormatBool(cfg.HTTP.MCP.Auth.LegacyBearer), nil
+	case "http.admin.auth.enabled":
+		return strconv.FormatBool(cfg.HTTP.Admin.Auth.Enabled), nil
+	case "http.mcp.auth.token_hash":
+		return cfg.HTTP.MCP.Auth.TokenHash, nil
+	case "http.admin.auth.token_hash":
+		return cfg.HTTP.Admin.Auth.TokenHash, nil
 	case "permissions.allow_dirs":
 		return strings.Join(cfg.Permissions.AllowDirs, ","), nil
 	case "permissions.mcp_config_read":
@@ -855,8 +855,8 @@ func RedactedTree(cfg Config) (map[string]any, error) {
 	if !ok {
 		return nil, errors.New("config view is not an object")
 	}
-	setTreeValue(tree, "auth.mcp_token_hash", RedactedValue)
-	setTreeValue(tree, "auth.admin_token_hash", RedactedValue)
+	setTreeValue(tree, "http.mcp.auth.token_hash", RedactedValue)
+	setTreeValue(tree, "http.admin.auth.token_hash", RedactedValue)
 	setTreeValue(tree, "tunnel.api_key", RedactedValue)
 	setTreeValue(tree, "tunnel.admin.key", RedactedValue)
 	return tree, nil
@@ -887,7 +887,31 @@ func RedactedValueAt(cfg Config, key string) (any, error) {
 }
 
 func canonicalFieldKey(key string) string {
-	return strings.TrimSpace(key)
+	key = strings.TrimSpace(key)
+	aliases := map[string]string{
+		"server.enabled":                        "http.mcp.enabled",
+		"server.port":                           "http.mcp.port",
+		"server.expose":                         "http.exposure",
+		"server.expose.mode":                    "http.exposure.mode",
+		"server.expose.interfaces":              "http.exposure.interfaces",
+		"server.allow_insecure_http":            "http.security.allow_insecure",
+		"server.allow_unauthenticated_loopback": "http.security.allow_unauthenticated_loopback",
+		"admin.enabled":                         "http.admin.enabled",
+		"admin.port":                            "http.admin.port",
+		"auth.mcp_enabled":                      "http.mcp.auth.enabled",
+		"auth.mcp_legacy_bearer":                "http.mcp.auth.legacy_bearer",
+		"auth.admin_enabled":                    "http.admin.auth.enabled",
+		"auth.mcp_token_hash":                   "http.mcp.auth.token_hash",
+		"auth.admin_token_hash":                 "http.admin.auth.token_hash",
+		"auth.mcp_token":                        "http.mcp.auth.token",
+		"auth.admin_token":                      "http.admin.auth.token",
+		"auth.mcp_token_configured":             "http.mcp.auth.token_configured",
+		"auth.admin_token_configured":           "http.admin.auth.token_configured",
+	}
+	if canonical, ok := aliases[key]; ok {
+		return canonical
+	}
+	return key
 }
 
 func setTreeValue(tree map[string]any, path string, value any) {

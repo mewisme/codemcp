@@ -32,7 +32,7 @@ func TestRepresentativeReleasedInstallCutover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Auth.MCPLegacyBearer {
+	if !cfg.HTTP.MCP.Auth.LegacyBearer {
 		t.Fatal("released MCP legacy bearer compatibility setting was not preserved")
 	}
 	if _, err := os.Stat(filepath.Join(h.fixture.workspaceRoot, ".cm", "workspace.json")); err != nil {
