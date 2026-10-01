@@ -5,12 +5,15 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -42,6 +45,7 @@ func TestReleaseWorkflowTelemetryContractRejectsDrift(t *testing.T) {
 		filepath.Join(".github", "workflows", "release.yml"),
 		filepath.Join(".github", "workflows", "ci.yml"),
 		filepath.Join("scripts", "verify-release-telemetry.go"),
+		filepath.Join("scripts", "verify-windows-setup-payload.sh"),
 		filepath.Join("scripts", "release-cutover", "main.go"),
 	} {
 		data, err := os.ReadFile(filepath.Join(root, relative))
@@ -106,7 +110,7 @@ func TestVerifyDistRejectsVersionedPublishedArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := VerifyDist(context.Background(), root, TelemetryUnchecked)
-	if err == nil || !strings.Contains(err.Error(), "unexpected published release archive") {
+	if err == nil || !strings.Contains(err.Error(), "unexpected published release artifact") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -142,7 +146,98 @@ func TestVerifyDistRejectsVersionedLinuxPackage(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := VerifyDist(context.Background(), root, TelemetryUnchecked)
-	if err == nil || !strings.Contains(err.Error(), "unexpected published linux package") {
+	if err == nil || !strings.Contains(err.Error(), "unexpected published release artifact") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestVerifyDistRejectsMissingWindowsSetup(t *testing.T) {
+	root := buildDistFixture(t, false)
+	name, err := updatepkg.ArtifactName(updatepkg.ArtifactSetup, "windows", "arm64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, name)); err != nil {
+		t.Fatal(err)
+	}
+	err = VerifyDist(context.Background(), root, TelemetryUnchecked)
+	if err == nil || !strings.Contains(err.Error(), name) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestVerifyDistRejectsVersionedWindowsSetup(t *testing.T) {
+	root := buildDistFixture(t, false)
+	if err := os.WriteFile(filepath.Join(root, "codemcp_9.9.9_windows_amd64_setup.exe"), []byte("MZstray"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err := VerifyDist(context.Background(), root, TelemetryUnchecked)
+	if err == nil || !strings.Contains(err.Error(), "unexpected published release artifact") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestVerifyDistRejectsMissingChecksumEntry(t *testing.T) {
+	root := buildDistFixture(t, false)
+	path := filepath.Join(root, updatepkg.ChecksumName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if err := os.WriteFile(path, []byte(strings.Join(lines[1:], "\n")+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err = VerifyDist(context.Background(), root, TelemetryUnchecked)
+	if err == nil || !strings.Contains(err.Error(), "checksum manifest is missing canonical artifact") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestVerifyDistRejectsDuplicateChecksumEntry(t *testing.T) {
+	root := buildDistFixture(t, false)
+	path := filepath.Join(root, updatepkg.ChecksumName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := strings.SplitN(strings.TrimSpace(string(data)), "\n", 2)[0]
+	if err := os.WriteFile(path, append(data, []byte(first+"\n")...), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err = VerifyDist(context.Background(), root, TelemetryUnchecked)
+	if err == nil || !strings.Contains(err.Error(), "duplicate artifact") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestVerifyDistRejectsChecksumMismatch(t *testing.T) {
+	root := buildDistFixture(t, false)
+	path := filepath.Join(root, updatepkg.ChecksumName)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := regexp.MustCompile(`^[0-9a-f]`).ReplaceAllString(string(data), "f")
+	if mutated == string(data) {
+		mutated = "0" + string(data[1:])
+	}
+	if err := os.WriteFile(path, []byte(mutated), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err = VerifyDist(context.Background(), root, TelemetryUnchecked)
+	if err == nil || !strings.Contains(err.Error(), "digest mismatch") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestVerifyDistRejectsMissingChecksumSignature(t *testing.T) {
+	root := buildDistFixture(t, false)
+	if err := os.Remove(filepath.Join(root, updatepkg.ChecksumSignatureName)); err != nil {
+		t.Fatal(err)
+	}
+	err := VerifyDist(context.Background(), root, TelemetryUnchecked)
+	if err == nil || !strings.Contains(err.Error(), "checksum signature bundle") {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -168,6 +263,14 @@ func buildDistFixture(t *testing.T, includeRetired bool) string {
 	}
 	fixtureBinary := []byte("#!/bin/sh\nprintf 'cm version 9.9.9 (fixture) fixture\\n'\n")
 	for _, arch := range []string{"amd64", "arm64"} {
+		setupName, err := updatepkg.ArtifactName(updatepkg.ArtifactSetup, "windows", arch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, setupName), []byte("MZfixture-setup-"+arch), 0644); err != nil {
+			t.Fatal(err)
+		}
+
 		debName, err := updatepkg.ArtifactName(updatepkg.ArtifactDebian, "linux", arch)
 		if err != nil {
 			t.Fatal(err)
@@ -198,7 +301,31 @@ func buildDistFixture(t *testing.T, includeRetired bool) string {
 	if err := os.WriteFile(filepath.Join(root, "homebrew", "Casks", "codemcp.rb"), []byte(cask), 0644); err != nil {
 		t.Fatal(err)
 	}
+	writeChecksumFixture(t, root)
+	if err := os.WriteFile(filepath.Join(root, updatepkg.ChecksumSignatureName), []byte("{\"fixture\":true}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	return root
+}
+
+func writeChecksumFixture(t *testing.T, root string) {
+	t.Helper()
+	lines := make([]string, 0, len(updatepkg.PrimaryReleaseLayout().Artifacts))
+	for _, artifact := range updatepkg.PrimaryReleaseLayout().Artifacts {
+		name, err := updatepkg.ArtifactName(artifact.Kind, artifact.OS, artifact.Arch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		content, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, fmt.Sprintf("%x  %s", sha256.Sum256(content), name))
+	}
+	sort.Strings(lines)
+	if err := os.WriteFile(filepath.Join(root, updatepkg.ChecksumName), []byte(strings.Join(lines, "\n")+"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func writeTarFixture(t *testing.T, path, binaryName string, includeRetired bool) {

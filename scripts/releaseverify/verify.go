@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -114,6 +115,40 @@ func verifyGoReleaser(root string) error {
 	checksum := mapValue(cfg["checksum"])
 	if stringValue(checksum["name_template"]) != updatepkg.ChecksumName {
 		return errors.New("goreleaser checksum asset name drifted from the updater contract")
+	}
+	if len(stringSlice(checksum["ids"])) != 0 {
+		return errors.New("goreleaser checksum must cover the complete canonical artifact set")
+	}
+	setupExtraFiles := []string{
+		"./dist/codemcp_windows_amd64_setup.exe",
+		"./dist/codemcp_windows_arm64_setup.exe",
+	}
+	if !sameStrings(extraFileGlobs(checksum["extra_files"]), setupExtraFiles) {
+		return errors.New("goreleaser checksum extra files do not cover both canonical Windows setup artifacts")
+	}
+	if !sameStrings(extraFileGlobs(release["extra_files"]), setupExtraFiles) {
+		return errors.New("goreleaser release extra files do not publish both canonical Windows setup artifacts")
+	}
+	replaceDraft, _ := release["replace_existing_draft"].(bool)
+	if !replaceDraft {
+		return errors.New("goreleaser release must replace an existing draft on safe workflow retries")
+	}
+	signs := sliceValue(cfg["signs"])
+	if len(signs) != 1 {
+		return errors.New("expected one canonical checksum signature definition")
+	}
+	sign := mapValue(signs[0])
+	if stringValue(sign["id"]) != "checksums" ||
+		stringValue(sign["cmd"]) != "cosign" ||
+		stringValue(sign["signature"]) != "${artifact}.sigstore.json" ||
+		stringValue(sign["artifacts"]) != "checksum" {
+		return errors.New("goreleaser checksum signature contract drifted")
+	}
+	signArgs := stringSlice(sign["args"])
+	for _, required := range []string{"sign-blob", "--bundle=${signature}", "${artifact}", "--yes"} {
+		if !containsExact(signArgs, required) {
+			return fmt.Errorf("goreleaser checksum signature is missing argument %q", required)
+		}
 	}
 	archives := sliceValue(cfg["archives"])
 	if len(archives) != 1 || stringValue(mapValue(archives[0])["name_template"]) != "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}" {
@@ -282,6 +317,7 @@ func verifyReleaseWorkflows(root string) error {
 	for _, required := range []string{
 		"RELEASE_REPOSITORY: " + repositoryExpr,
 		`PACKAGE_MAINTAINER: "` + repositoryOwnerExpr + " <" + repositoryOwnerIDExpr + "+" + repositoryOwnerExpr + `@users.noreply.github.com>"`,
+		"runs-on: ubuntu-24.04",
 		"--github-repository",
 		"--vanity-url",
 		ExpectedVanityURL,
@@ -289,10 +325,17 @@ func verifyReleaseWorkflows(root string) error {
 		"args: build --snapshot --clean --single-target",
 		"TELEMETRY_ENDPOINT: ''",
 		"--expect-telemetry absent",
-		"args: release --clean",
+		"nsis=3.09-4ubuntu1",
+		"7zip=23.01+dfsg-11",
+		"distribution: goreleaser",
+		"version: 'v2.18.0'",
+		"args: release --clean --draft",
 		"--dist dist --expect-telemetry present",
+		"scripts/verify-windows-setup-payload.sh dist",
+		"cosign verify-blob",
 		"dist/scoop/codemcp.json",
 		"dist/homebrew/Casks/codemcp.rb",
+		`gh release edit "${GITHUB_REF_NAME}" --draft=false --latest`,
 	} {
 		if !strings.Contains(release, required) {
 			return fmt.Errorf("release workflow is missing required cutover contract %q", required)
@@ -301,11 +344,26 @@ func verifyReleaseWorkflows(root string) error {
 	for _, script := range []string{
 		filepath.Join("scripts", "release-cutover", "main.go"),
 		filepath.Join("scripts", "verify-release-telemetry.go"),
+		filepath.Join("scripts", "verify-windows-setup-payload.sh"),
 	} {
 		if _, err := os.Stat(filepath.Join(root, script)); err != nil {
 			return fmt.Errorf("release workflow helper %s is unavailable: %w", filepath.ToSlash(script), err)
 		}
 	}
+	if strings.Contains(release, "goreleaser-pro") {
+		return errors.New("release workflow must use GoReleaser OSS")
+	}
+	draftIndex := strings.Index(release, "args: release --clean --draft")
+	verifyIndex := strings.Index(release, "--dist dist --expect-telemetry present")
+	payloadIndex := strings.Index(release, "scripts/verify-windows-setup-payload.sh dist")
+	signatureIndex := strings.Index(release, "cosign verify-blob")
+	manifestIndex := strings.Index(release, "gh release upload")
+	publishIndex := strings.Index(release, `gh release edit "${GITHUB_REF_NAME}" --draft=false --latest`)
+	if draftIndex < 0 || verifyIndex <= draftIndex || payloadIndex <= verifyIndex ||
+		signatureIndex <= payloadIndex || manifestIndex <= signatureIndex || publishIndex <= manifestIndex {
+		return errors.New("release workflow must verify the signed draft and attach package manifests before publishing it")
+	}
+
 	ciData, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
 	if err != nil {
 		return fmt.Errorf("read CI workflow: %w", err)
@@ -316,6 +374,7 @@ func verifyReleaseWorkflows(root string) error {
 	}
 	for _, required := range []string{
 		"scripts/test-windows-setup.sh",
+		"scripts/verify-windows-setup-payload.sh",
 		"choco install nsis -y --no-progress",
 		"scripts/test-windows-setup.ps1",
 	} {
@@ -506,6 +565,9 @@ func VerifyDist(ctx context.Context, distRoot string, expectation TelemetryExpec
 	if distRoot == "" {
 		return errors.New("release dist root is required")
 	}
+	if err := verifyPublishedArtifactMatrix(distRoot); err != nil {
+		return err
+	}
 	archives, err := releaseArchives(distRoot)
 	if err != nil {
 		return err
@@ -538,6 +600,15 @@ func VerifyDist(ctx context.Context, distRoot string, expectation TelemetryExpec
 	if err := verifyLinuxPackages(ctx, distRoot); err != nil {
 		return err
 	}
+	if err := verifyWindowsSetups(distRoot); err != nil {
+		return err
+	}
+	if err := verifyReleaseChecksums(distRoot); err != nil {
+		return err
+	}
+	if err := verifyChecksumSignature(distRoot); err != nil {
+		return err
+	}
 	if err := verifyPackageManifests(distRoot); err != nil {
 		return err
 	}
@@ -561,6 +632,141 @@ func VerifyDist(ctx context.Context, distRoot string, expectation TelemetryExpec
 		if err := VerifyBinaryTelemetry(ctx, path, expectation); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func verifyPublishedArtifactMatrix(root string) error {
+	expected := map[string]struct{}{}
+	for _, artifact := range updatepkg.PrimaryReleaseLayout().Artifacts {
+		name, err := updatepkg.ArtifactName(artifact.Kind, artifact.OS, artifact.Arch)
+		if err != nil {
+			return err
+		}
+		expected[name] = struct{}{}
+		info, err := os.Lstat(filepath.Join(root, name))
+		if err != nil {
+			return fmt.Errorf("canonical release artifact %s is unavailable: %w", name, err)
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 {
+			return fmt.Errorf("canonical release artifact %s is not a non-empty regular file", name)
+		}
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !publishedArtifactLike(entry.Name()) {
+			continue
+		}
+		if _, ok := expected[entry.Name()]; !ok {
+			return fmt.Errorf("unexpected published release artifact %q", entry.Name())
+		}
+	}
+	return nil
+}
+
+func publishedArtifactLike(name string) bool {
+	if !strings.HasPrefix(name, updatepkg.PackageName+"_") {
+		return false
+	}
+	for _, suffix := range []string{".tar.gz", ".zip", ".deb", ".rpm", "_setup.exe"} {
+		if strings.HasSuffix(name, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func verifyWindowsSetups(root string) error {
+	for _, arch := range []string{"amd64", "arm64"} {
+		name, err := updatepkg.ArtifactName(updatepkg.ArtifactSetup, "windows", arch)
+		if err != nil {
+			return err
+		}
+		path := filepath.Join(root, name)
+		file, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("open windows setup %s: %w", name, err)
+		}
+		header := make([]byte, 2)
+		_, readErr := io.ReadFull(file, header)
+		closeErr := file.Close()
+		if readErr != nil {
+			return fmt.Errorf("read windows setup %s: %w", name, readErr)
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		if string(header) != "MZ" {
+			return fmt.Errorf("windows setup %s is not a PE executable", name)
+		}
+	}
+	return nil
+}
+
+func verifyReleaseChecksums(root string) error {
+	path := filepath.Join(root, updatepkg.ChecksumName)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect release checksum manifest: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 || info.Size() > 1<<20 {
+		return errors.New("release checksum manifest must be a bounded non-empty regular file")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read release checksum manifest: %w", err)
+	}
+	expected := map[string]string{}
+	for _, artifact := range updatepkg.PrimaryReleaseLayout().Artifacts {
+		name, err := updatepkg.ArtifactName(artifact.Kind, artifact.OS, artifact.Arch)
+		if err != nil {
+			return err
+		}
+		content, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			return fmt.Errorf("read checksummed artifact %s: %w", name, err)
+		}
+		expected[name] = fmt.Sprintf("%x", sha256.Sum256(content))
+	}
+	seen := map[string]struct{}{}
+	checksumPattern := regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+	for lineNumber, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) != 2 || !checksumPattern.MatchString(fields[0]) {
+			return fmt.Errorf("checksum manifest line %d is invalid", lineNumber+1)
+		}
+		name := fields[1]
+		want, ok := expected[name]
+		if !ok {
+			return fmt.Errorf("checksum manifest contains unexpected artifact %q", name)
+		}
+		if _, duplicate := seen[name]; duplicate {
+			return fmt.Errorf("checksum manifest contains duplicate artifact %q", name)
+		}
+		if !strings.EqualFold(fields[0], want) {
+			return fmt.Errorf("checksum manifest digest mismatch for %s", name)
+		}
+		seen[name] = struct{}{}
+	}
+	for name := range expected {
+		if _, ok := seen[name]; !ok {
+			return fmt.Errorf("checksum manifest is missing canonical artifact %q", name)
+		}
+	}
+	return nil
+}
+
+func verifyChecksumSignature(root string) error {
+	path := filepath.Join(root, updatepkg.ChecksumSignatureName)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("inspect checksum signature bundle: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 || info.Size() > 4<<20 {
+		return errors.New("checksum signature bundle must be a bounded non-empty regular file")
 	}
 	return nil
 }
@@ -859,6 +1065,17 @@ func stringSlice(value any) []string {
 	for _, item := range items {
 		if value := stringValue(item); value != "" {
 			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func extraFileGlobs(value any) []string {
+	items := sliceValue(value)
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		if glob := stringValue(mapValue(item)["glob"]); glob != "" {
+			result = append(result, glob)
 		}
 	}
 	return result

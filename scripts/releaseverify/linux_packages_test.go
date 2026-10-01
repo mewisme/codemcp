@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -73,6 +74,15 @@ func TestNormalizedPackagePathRejectsTraversal(t *testing.T) {
 		if _, err := normalizedPackagePath(value); err == nil {
 			t.Fatalf("unsafe package path %q was accepted", value)
 		}
+	}
+}
+
+func TestVerifyPackagedBinaryVersionDisablesTelemetryState(t *testing.T) {
+	binary := []byte("#!/bin/sh\n" +
+		"if [ \"${CM_TELEMETRY:-}\" != \"0\" ]; then mkdir -p \"$CM_CONFIG_DIR\"; printf leaked > \"$CM_CONFIG_DIR/state\"; fi\n" +
+		"printf 'cm version 9.9.9 (fixture) fixture\\n'\n")
+	if err := verifyPackagedBinaryVersion(context.Background(), binary, "v9.9.9", "deb"); err != nil {
+		t.Fatal(err)
 	}
 }
 

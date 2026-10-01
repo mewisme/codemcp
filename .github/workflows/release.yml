@@ -16,7 +16,7 @@ concurrency:
 jobs:
   release:
     name: Publish release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       PACKAGE_MAINTAINER: "${{ github.repository_owner }} <${{ github.repository_owner_id }}+${{ github.repository_owner }}@users.noreply.github.com>"
     permissions:
@@ -111,25 +111,45 @@ jobs:
           test -n "${snapshot_binary}"
           go run ./scripts/release-cutover --binary "${snapshot_binary}" --expect-telemetry absent
 
+      - name: Install pinned Windows release tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            nsis=3.09-4ubuntu1 \
+            7zip=23.01+dfsg-11
+          test "$(dpkg-query -W -f='${Version}' nsis)" = "3.09-4ubuntu1"
+          test "$(dpkg-query -W -f='${Version}' 7zip)" = "23.01+dfsg-11"
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: 'v3.1.3'
 
-      - name: Release
+      - name: Build signed draft release
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:
           distribution: goreleaser
           version: 'v2.18.0'
-          args: release --clean
+          args: release --clean --draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEMETRY_ENDPOINT: ${{ vars.TELEMETRY_ENDPOINT }}
 
-      - name: Verify published release artifacts
+      - name: Verify draft release artifacts
         run: go run ./scripts/release-cutover --dist dist --expect-telemetry present
 
-      - name: Attach package manifests
+      - name: Verify Windows setup payloads
+        run: sh scripts/verify-windows-setup-payload.sh dist
+
+      - name: Verify checksum signature
+        run: |
+          cosign verify-blob \
+            --bundle=dist/codemcp_checksums.txt.sigstore.json \
+            --certificate-identity="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${GITHUB_REF_NAME}" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            dist/codemcp_checksums.txt
+
+      - name: Attach package manifests to draft
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -139,6 +159,11 @@ jobs:
             dist/scoop/codemcp.json \
             dist/homebrew/Casks/codemcp.rb \
             --clobber
+
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${GITHUB_REF_NAME}" --draft=false --latest
 
       - name: Trigger package manager sync
         env:

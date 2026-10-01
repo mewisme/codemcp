@@ -60,6 +60,44 @@ grep -Fq "amd64|$tmp/amd64/cm.exe|$template" "$tmp/makensis.log" ||
 grep -Fq "arm64|$tmp/arm64/cm.exe|$template" "$tmp/makensis.log" ||
 	fail "arm64 setup did not embed the exact target cm.exe"
 
+mkdir -p "$dist/codemcp_windows_amd64_v1" "$dist/codemcp_windows_arm64_v8.0"
+cp "$tmp/amd64/cm.exe" "$dist/codemcp_windows_amd64_v1/cm.exe"
+cp "$tmp/arm64/cm.exe" "$dist/codemcp_windows_arm64_v8.0/cm.exe"
+cat >"$fakebin/7zz" <<'EOF'
+#!/bin/sh
+set -eu
+output=
+setup=
+for arg in "$@"; do
+	case "$arg" in
+		-o*) output=${arg#-o} ;;
+		*.exe) setup=$arg ;;
+	esac
+done
+[ -n "$output" ] && [ -n "$setup" ] || exit 40
+case "$(basename "$setup")" in
+	codemcp_windows_amd64_setup.exe) arch=amd64 ;;
+	codemcp_windows_arm64_setup.exe) arch=arm64 ;;
+	*) exit 41 ;;
+esac
+if [ "${TEST_PAYLOAD_WRONG:-0}" = "1" ]; then
+	case "$arch" in
+		amd64) arch=arm64 ;;
+		arm64) arch=amd64 ;;
+	esac
+fi
+set -- "$TEST_DIST/codemcp_windows_${arch}_"*/cm.exe
+[ "$#" -eq 1 ] && [ -f "$1" ] || exit 42
+mkdir -p "$output"
+cp "$1" "$output/cm.exe"
+EOF
+chmod +x "$fakebin/7zz"
+
+PATH="$fakebin:$PATH" TEST_DIST="$dist" SEVENZIP=7zz sh "$repo_root/scripts/verify-windows-setup-payload.sh" "$dist" >/dev/null
+if PATH="$fakebin:$PATH" TEST_DIST="$dist" TEST_PAYLOAD_WRONG=1 SEVENZIP=7zz sh "$repo_root/scripts/verify-windows-setup-payload.sh" "$dist" >/dev/null 2>&1; then
+	fail "payload verifier accepted the wrong architecture cm.exe"
+fi
+
 before=$(wc -l <"$tmp/makensis.log" | tr -d '[:space:]')
 PATH="/usr/bin:/bin" MAKENSIS=missing-makensis \
 	sh "$builder" "$tmp/amd64/cm.exe" linux_amd64_v1 "$tmp/nonwindows" >/dev/null

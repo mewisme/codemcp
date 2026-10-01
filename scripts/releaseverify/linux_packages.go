@@ -187,6 +187,7 @@ func verifyPackagedBinaryVersion(ctx context.Context, binaryData []byte, release
 	command := exec.CommandContext(ctx, path, "--version")
 	command.Env = replaceEnv(os.Environ(), map[string]string{
 		"CM_CONFIG_DIR": configRoot,
+		"CM_TELEMETRY":  "0",
 		"HOME":          home,
 		"USERPROFILE":   home,
 	})

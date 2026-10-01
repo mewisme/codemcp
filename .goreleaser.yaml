@@ -83,6 +83,9 @@ nfpms:
 
 checksum:
   name_template: codemcp_checksums.txt
+  extra_files:
+    - glob: ./dist/codemcp_windows_amd64_setup.exe
+    - glob: ./dist/codemcp_windows_arm64_setup.exe
 
 signs:
   - id: checksums
@@ -102,6 +105,10 @@ release:
   github:
     owner: mewisme
     name: codemcp
+  extra_files:
+    - glob: ./dist/codemcp_windows_amd64_setup.exe
+    - glob: ./dist/codemcp_windows_arm64_setup.exe
+  replace_existing_draft: true
 
 changelog:
   use: git
