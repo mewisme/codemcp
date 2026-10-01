@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config"
 import { viteSingleFile } from "vite-plugin-singlefile"
 
 export default defineConfig({
+  cacheDir: "node_modules/.vite-admin",
   plugins: [react(), tailwindcss(), viteSingleFile()],
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },
   test: {

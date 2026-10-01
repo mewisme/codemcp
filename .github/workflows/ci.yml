@@ -108,6 +108,14 @@ jobs:
         if: needs.changes.outputs.full == 'true'
         run: pnpm test:coverage
 
+      - name: Install browser test runtime
+        if: needs.changes.outputs.full == 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Interaction and responsive browser gate
+        if: needs.changes.outputs.full == 'true'
+        run: pnpm test:e2e
+
       - name: Lint
         if: needs.changes.outputs.full == 'true'
         run: pnpm lint

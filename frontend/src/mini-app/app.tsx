@@ -118,7 +118,9 @@ export function MiniApp() {
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<FilterMode>("all")
   const [scope, setScope] = useState("all")
-  const [selected, setSelected] = useState<SelectedItem | null>(() => launchTarget)
+  const [selected, setSelected] = useState<SelectedItem | null>(
+    () => launchTarget
+  )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [preferences, setPreferences] =
     useState<MiniAppPreferences>(defaultPreferences)
@@ -855,7 +857,7 @@ export function MiniApp() {
         </section>
 
         {selected && !isMobile ? (
-          <aside className="sticky top-3 hidden h-[calc(var(--tg-viewport-stable-height,100dvh)-1.5rem)] min-h-0 min-w-0 self-start overflow-hidden rounded-xl border bg-card md:flex md:flex-col">
+          <aside className="sticky top-3 hidden h-[calc(var(--tg-viewport-stable-height,100dvh)-14rem)] min-h-0 min-w-0 self-start overflow-hidden rounded-xl border bg-card md:flex md:flex-col">
             <div className="flex min-w-0 items-start gap-3 border-b px-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-semibold break-words">
@@ -1401,7 +1403,7 @@ function buildDetailSections(
             <div className="mb-1.5 text-xs font-medium text-muted-foreground">
               stdout
             </div>
-            <TextViewer value={stdout} maxHeight={null} />
+            <TextViewer value={stdout} maxHeight={null} nativeUnbounded />
           </div>
         ) : null}
         {stderr ? (
@@ -1409,7 +1411,7 @@ function buildDetailSections(
             <div className="mb-1.5 text-xs font-medium text-muted-foreground">
               stderr
             </div>
-            <TextViewer value={stderr} maxHeight={null} />
+            <TextViewer value={stderr} maxHeight={null} nativeUnbounded />
           </div>
         ) : null}
         <JsonViewer
@@ -1420,6 +1422,7 @@ function buildDetailSections(
             finished_at: execution.finished_at,
           })}
           maxHeight={null}
+          nativeUnbounded
         />
       </div>
     ) : canonicalError ? (
@@ -1448,7 +1451,11 @@ function buildDetailSections(
     ),
     request: (
       <div className="space-y-3">
-        <TextViewer value={execution.command} maxHeight={null} />
+        <TextViewer
+          value={execution.command}
+          maxHeight={null}
+          nativeUnbounded
+        />
         <DetailSection
           value={compactObject({
             requested_command: execution.requested_command,
@@ -1485,7 +1492,7 @@ function DetailSection({
       <p className="py-3 text-sm text-muted-foreground">{empty}</p>
     ) : null
   if (isReactNode(value)) return value
-  return <JsonViewer value={value} maxHeight={null} />
+  return <JsonViewer value={value} maxHeight={null} nativeUnbounded />
 }
 
 function isReactNode(value: unknown): value is React.ReactNode {

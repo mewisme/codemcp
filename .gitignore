@@ -2,5 +2,7 @@ apply-*
 /internal/interface/*/dist/
 /internal/telegram/mini-app-dist/
 /frontend/coverage/
+/frontend/playwright-report/
+/frontend/test-results/
 .agents/
 .local/
