@@ -93,7 +93,7 @@ func (ui *Interface) systemScreen(ctx context.Context, owner ViewOwner) (Screen,
 	if !about.RuntimeRunning {
 		runtimeAction = up
 	}
-	rows := [][]string{{"Version", about.Version}, {"Commit", compactPresentationValue(about.Commit)}, {"Runtime", boolState(about.RuntimeRunning)}, {"Install method", string(about.InstallMethod)}, {"Server uptime", about.ServerUptime.String()}}
+	rows := [][]string{{"Version", about.Version}, {"Commit", compactPresentationValue(about.Commit)}, {"Install method", string(about.InstallMethod)}, {"Server uptime", about.ServerUptime.String()}}
 	if about.MachineUptimeOK {
 		rows = append(rows, []string{"Machine uptime", about.MachineUptime.String()})
 	}
@@ -102,9 +102,10 @@ func (ui *Interface) systemScreen(ctx context.Context, owner ViewOwner) (Screen,
 		destructive = append(destructive, down)
 	}
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "System", Text: "Canonical runtime and diagnostic administration"},
-		RichBlock{Kind: RichTable, Rows: rows},
-		RichBlock{Kind: RichDetails, Title: "Remote-control boundary", Text: "Operations that require local elevation or another owner return an explicit external command or unavailable state. Telegram does not emulate them with shell execution."},
+		RichBlock{Kind: RichHeading, Title: "System", Text: "Runtime, updates, diagnostics, and tools"},
+		StateBlock(stateTone(about.RuntimeRunning), stateLabel(about.RuntimeRunning, "Runtime running", "Runtime stopped"), ""),
+		RichBlock{Kind: RichFields, Title: "Build and uptime", Rows: rows},
+		RichBlock{Kind: RichDetails, Title: "Local-only actions", Text: "Actions that require local elevation or another owner return a command to run locally instead of executing it through Telegram."},
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{doctorButton, updateCheck, runtimeAction}, Secondary: []Button{toolsButton, updateApply, installCurrent}, Destructive: destructive, Navigation: []Button{back, home}})}, nil
 }
 
@@ -125,13 +126,13 @@ func (ui *Interface) doctorScreen(ctx context.Context, owner ViewOwner, state Ac
 		if len(data) > 512<<10 {
 			return Screen{}, errors.New("doctor report is too large for Telegram document export")
 		}
-		if err := ui.runtime.SendDocumentToTopic(ctx, owner.ChatID, TopicRuntime, DocumentUpload{FileName: "codemcp-doctor.json", ContentType: "application/json", Data: data, Caption: "CodeMCP canonical doctor report", ProtectContent: true}); err != nil {
+		if err := ui.runtime.SendDocumentToTopic(ctx, owner.ChatID, TopicRuntime, DocumentUpload{FileName: "codemcp-doctor.json", ContentType: "application/json", Data: data, Caption: "CodeMCP doctor report", ProtectContent: true}); err != nil {
 			return Screen{}, err
 		}
 	}
 	items := make([]string, 0, len(report.Components))
 	for _, component := range report.Components {
-		items = append(items, fmt.Sprintf("%s — %s · %s", component.ID, component.State, compactPresentationValue(component.Summary)))
+		items = append(items, fmt.Sprintf("%s\n%s · %s", component.ID, displayState(string(component.State)), compactPresentationValue(component.Summary)))
 	}
 	export, err := ui.stateButton(owner, "Export JSON", CallbackOpen, ActionState{Route: RouteDoctor, Back: RouteSystem, Detail: true})
 	if err != nil {
@@ -147,9 +148,23 @@ func (ui *Interface) doctorScreen(ctx context.Context, owner ViewOwner, state Ac
 	}
 	back, _ := ui.backButton(owner, RouteSystem)
 	home, _ := ui.homeButton(owner)
-	blocks := []RichBlock{{Kind: RichHeading, Title: "Doctor", Text: fmt.Sprintf("healthy=%t · warnings=%d · errors=%d · provider failures=%d", report.Healthy, report.Warnings, report.Errors, report.ProviderFailures)}, {Kind: RichList, Items: items}}
+	doctorState := "Needs attention"
+	tone := ToneWarning
+	if report.Healthy {
+		doctorState, tone = "Healthy", ToneHealthy
+	}
+	blocks := []RichBlock{
+		{Kind: RichHeading, Title: "Doctor"},
+		StateBlock(tone, doctorState, ""),
+		FieldsBlock("Summary",
+			[]string{"Warnings", fmt.Sprint(report.Warnings)},
+			[]string{"Errors", fmt.Sprint(report.Errors)},
+			[]string{"Provider failures", fmt.Sprint(report.ProviderFailures)},
+		),
+		{Kind: RichList, Title: "Components", Items: items},
+	}
 	if state.Detail {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Export", Text: "The bounded canonical doctor report was sent as a protected JSON document."})
+		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Export", Text: "The doctor report was sent as a protected JSON document."})
 	}
 	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Secondary: []Button{export, health}, Navigation: []Button{back, home, refresh}})}, nil
 }
@@ -165,7 +180,11 @@ func (ui *Interface) instructionsScreen(ctx context.Context, owner ViewOwner) (S
 	}
 	sources := make([]string, 0, len(settings.DetectedSources))
 	for _, source := range settings.DetectedSources {
-		sources = append(sources, fmt.Sprintf("%s/%s — %s · count=%d · enabled=%t · loaded=%t", source.Provider, source.Kind, source.Scope, source.Count, source.Enabled, source.Loaded))
+		sources = append(sources, fmt.Sprintf("%s/%s\n%s · %d item(s) · %s · %s",
+			source.Provider, source.Kind, displayState(source.Scope), source.Count,
+			stateLabel(source.Enabled, "Enabled", "Disabled"),
+			stateLabel(source.Loaded, "Loaded", "Not loaded"),
+		))
 	}
 	if len(sources) == 0 {
 		sources = append(sources, "No provider-native sources detected")
@@ -185,10 +204,10 @@ func (ui *Interface) instructionsScreen(ctx context.Context, owner ViewOwner) (S
 	back, _ := ui.backButton(owner, RouteHome)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Instructions", Text: "Canonical instruction policy, project context and prompts"},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Version", fmt.Sprint(settings.Version)}, {"Global context bytes", fmt.Sprint(len([]byte(settings.Context)))}, {"Global rules", fmt.Sprint(len(settings.Rules))}, {"Source policies", fmt.Sprint(len(settings.SourcePolicy))}}},
+		RichBlock{Kind: RichHeading, Title: "Instructions", Text: "Instruction settings, project context, and prompts"},
+		FieldsBlock("Overview", []string{"Version", fmt.Sprint(settings.Version)}, []string{"Global context bytes", fmt.Sprint(len([]byte(settings.Context)))}, []string{"Global rules", fmt.Sprint(len(settings.Rules))}, []string{"Source policies", fmt.Sprint(len(settings.SourcePolicy))}),
 		RichBlock{Kind: RichList, Items: sources},
-		RichBlock{Kind: RichDetails, Title: "Native authoring", Text: "Provider-native source trees are read-only provenance here. Rule/skill mutation is not exposed because no operator-owned remote capability currently authorizes Telegram to invoke the native authoring service; Telegram never writes those files directly."},
+		RichBlock{Kind: RichDetails, Title: "Native authoring", Text: "Provider-native sources are read-only here. Telegram does not edit provider rule or skill files."},
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{projectContext, prompts}, Secondary: []Button{edit, {Text: "Author rule (unavailable)", Disabled: true, Role: ButtonRoleNeutral}, {Text: "Author skill (unavailable)", Disabled: true, Role: ButtonRoleNeutral}}, Navigation: []Button{back, home}})}, nil
 }
 
@@ -267,21 +286,29 @@ func (ui *Interface) promptScreen(ctx context.Context, owner ViewOwner, state Ac
 	remove.Role = ButtonRoleDestructive
 	back, _ := ui.backButton(owner, RoutePrompts)
 	home, _ := ui.homeButton(owner)
-	return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: prompt.Definition.Name, Text: prompt.Definition.Description}, RichBlock{Kind: RichTable, Rows: [][]string{{"Scope", string(prompt.Scope)}, {"Version", fmt.Sprint(prompt.Definition.Version)}, {"Arguments", fmt.Sprint(len(prompt.Definition.Arguments))}, {"Messages", fmt.Sprint(len(prompt.Definition.Messages))}}}), Keyboard: BoundedActionGroups(ActionGroups{Secondary: []Button{update}, Destructive: []Button{remove}, Navigation: []Button{back, home}})}, nil
+	return Screen{Rich: BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: prompt.Definition.Name, Text: prompt.Definition.Description},
+		FieldsBlock("Prompt",
+			[]string{"Scope", string(prompt.Scope)},
+			[]string{"Version", fmt.Sprint(prompt.Definition.Version)},
+			[]string{"Arguments", fmt.Sprint(len(prompt.Definition.Arguments))},
+			[]string{"Messages", fmt.Sprint(len(prompt.Definition.Messages))},
+		),
+	), Keyboard: BoundedActionGroups(ActionGroups{Secondary: []Button{update}, Destructive: []Button{remove}, Navigation: []Button{back, home}})}, nil
 }
 
 func systemInputPrompt(state ActionState) (title, prompt, placeholder string) {
 	switch state.InputKind {
 	case inputInstructionPatch:
-		return "Edit instruction settings", "Reply with a canonical InstructionSettingsPatch JSON object. Provider-native trees remain read-only.", "Instruction settings JSON"
+		return "Edit instruction settings", "Reply with an InstructionSettingsPatch JSON object. Provider-native trees remain read-only.", "Instruction settings JSON"
 	case inputProjectContext:
-		return "Project context", "Reply with the registered workspace ID to inspect its canonical project context.", "ws_..."
+		return "Project context", "Reply with the registered workspace ID to inspect its project context.", "ws_..."
 	case inputPromptWorkspace:
 		return "Workspace prompts", "Reply with the registered workspace ID whose prompt inventory you want to inspect.", "ws_..."
 	case inputPromptCreate:
-		return "Create prompt", "Reply with a canonical PromptWriteRequest JSON object. Global mutation remains subject to the application owner.", "Prompt request JSON"
+		return "Create prompt", "Reply with a PromptWriteRequest JSON object. Global changes remain subject to application ownership rules.", "Prompt request JSON"
 	case inputPromptUpdate:
-		return "Update prompt", "Reply with a canonical PromptDefinition JSON object. The selected scope and name stay bound to this prompt.", "Prompt definition JSON"
+		return "Update prompt", "Reply with a PromptDefinition JSON object. The selected scope and name stay bound to this prompt.", "Prompt definition JSON"
 	default:
 		return "", "", ""
 	}
@@ -342,21 +369,42 @@ func (ui *Interface) systemOperationResultScreen(ctx context.Context, owner View
 		screen, err := ui.systemScreen(ctx, owner)
 		return screen, true, err
 	case application.RuntimeActionResult:
-		blocks := []RichBlock{{Kind: RichHeading, Title: "Runtime action", Text: "Canonical runtime lifecycle result"}, {Kind: RichTable, Rows: [][]string{{"Action", result.Action}, {"Scope", string(result.Scope)}, {"Changed", fmt.Sprint(result.Changed)}, {"Service", result.Service.ID}, {"Backend", result.Service.Backend}, {"Running", fmt.Sprint(result.Service.Running)}}}}
+		blocks := []RichBlock{
+			{Kind: RichHeading, Title: displayState(result.Action)},
+			StateBlock(stateTone(result.Service.Running), stateLabel(result.Service.Running, "Runtime running", "Runtime stopped"), ""),
+			FieldsBlock("Service",
+				[]string{"Scope", string(result.Scope)},
+				[]string{"Result", stateLabel(result.Changed, "Changed", "No change")},
+				[]string{"Service", result.Service.ID},
+				[]string{"Backend", result.Service.Backend},
+			),
+		}
 		if result.External != nil {
-			blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "External action required", Text: result.External.Reason}, RichBlock{Kind: RichCode, Title: "Command", Text: result.External.Command})
+			blocks = append(blocks, NoticeBlock(ToneWarning, "Local action required", result.External.Reason), RichBlock{Kind: RichCode, Title: "Command", Text: result.External.Command})
 		}
 		return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	case updatepkg.CheckResult:
-		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Update check", Text: string(result.Status)}, RichBlock{Kind: RichTable, Rows: [][]string{{"Current", result.Current}, {"Latest", result.Latest}}}), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: "Update check"},
+			StateBlock(statusTone(string(result.Status)), displayState(string(result.Status)), ""),
+			FieldsBlock("Versions", []string{"Current", result.Current}, []string{"Latest", result.Latest}),
+		), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	case application.UpdateApplyResult:
-		blocks := []RichBlock{{Kind: RichHeading, Title: "Update", Text: result.Notice}, {Kind: RichTable, Rows: [][]string{{"Changed", fmt.Sprint(result.Result.Changed)}, {"Current", result.Result.Current}, {"Target", result.Result.Target}}}}
+		blocks := []RichBlock{
+			{Kind: RichHeading, Title: "Update", Text: result.Notice},
+			StateBlock(ToneSuccess, stateLabel(result.Result.Changed, "Updated", "Already up to date"), ""),
+			FieldsBlock("Versions", []string{"Current", result.Result.Current}, []string{"Target", result.Result.Target}),
+		}
 		if result.External != nil {
-			blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "External action required", Text: result.External.Reason}, RichBlock{Kind: RichCode, Text: result.External.Command})
+			blocks = append(blocks, NoticeBlock(ToneWarning, "Local action required", result.External.Reason), RichBlock{Kind: RichCode, Text: result.External.Command})
 		}
 		return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	case install.Result:
-		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Install", Text: "Canonical installer completed"}, RichBlock{Kind: RichTable, Rows: [][]string{{"Version", result.Version}, {"Already installed", fmt.Sprint(result.AlreadyInstalled)}}}), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: "Install completed"},
+			StateBlock(ToneSuccess, stateLabel(result.AlreadyInstalled, "Already installed", "Installed"), ""),
+			FieldsBlock("Result", []string{"Version", result.Version}),
+		), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	case []tools.Schema:
 		items := make([]string, 0, len(result))
 		for _, schema := range result {
@@ -391,7 +439,7 @@ func (ui *Interface) systemOperationResultScreen(ctx context.Context, owner View
 		for _, diagnostic := range result.InstructionContext.IntegrationDiagnostics {
 			diagnostics = append(diagnostics, diagnostic.ID+" — "+diagnostic.State+" · "+compactPresentationValue(diagnostic.Message))
 		}
-		blocks := []RichBlock{{Kind: RichHeading, Title: "Project context", Text: result.WorkspaceID}, {Kind: RichTable, Rows: [][]string{{"Root", result.Root}, {"Instruction bytes", fmt.Sprint(result.Summary.InstructionBytes)}, {"Memory bytes", fmt.Sprint(result.Summary.MemoryBytes)}, {"Rules", fmt.Sprint(result.Summary.Rules)}, {"Skills", fmt.Sprint(result.Summary.Skills)}}}}
+		blocks := []RichBlock{{Kind: RichHeading, Title: "Project context", Text: result.WorkspaceID}, FieldsBlock("Overview", []string{"Root", result.Root}, []string{"Instruction bytes", fmt.Sprint(result.Summary.InstructionBytes)}, []string{"Memory bytes", fmt.Sprint(result.Summary.MemoryBytes)}, []string{"Rules", fmt.Sprint(result.Summary.Rules)}, []string{"Skills", fmt.Sprint(result.Summary.Skills)})}
 		if len(rules) > 0 {
 			blocks = append(blocks, RichBlock{Kind: RichList, Title: "Rules", Items: rules})
 		}
@@ -401,7 +449,7 @@ func (ui *Interface) systemOperationResultScreen(ctx context.Context, owner View
 		if len(diagnostics) > 0 {
 			blocks = append(blocks, RichBlock{Kind: RichList, Title: "Integration diagnostics", Items: diagnostics})
 		}
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Source policy", Text: "Provider-native rule and skill sources are provenance only. Telegram exposes no writer for those trees."})
+		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Source policy", Text: "Provider-native rule and skill sources are read-only here. Telegram does not edit those files."})
 		return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	case []instructioncontext.ScopedPrompt:
 		workspaceID := ""
@@ -411,7 +459,11 @@ func (ui *Interface) systemOperationResultScreen(ctx context.Context, owner View
 		screen, err := ui.promptListScreen(owner, result, workspaceID)
 		return screen, true, err
 	case instructioncontext.ScopedPrompt:
-		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: result.Definition.Name, Text: "Prompt mutation completed"}, RichBlock{Kind: RichTable, Rows: [][]string{{"Scope", string(result.Scope)}, {"Messages", fmt.Sprint(len(result.Definition.Messages))}}}), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: result.Definition.Name},
+			StateBlock(ToneSuccess, "Prompt updated", ""),
+			FieldsBlock("Prompt", []string{"Scope", string(result.Scope)}, []string{"Messages", fmt.Sprint(len(result.Definition.Messages))}),
+		), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	default:
 		return Screen{}, false, nil
 	}

@@ -32,7 +32,7 @@ func (ui *Interface) grantListScreen(ctx context.Context, owner ViewOwner, state
 		if label == "" {
 			label = grant.TargetTool
 		}
-		items = append(items, fmt.Sprintf("%s — %s — %s", grant.ID, grant.WorkspaceID, grant.GrantExpiresAt.UTC().Format("2006-01-02 15:04Z")))
+		items = append(items, fmt.Sprintf("%s\n%s · expires %s", grant.ID, grant.WorkspaceID, grant.GrantExpiresAt.UTC().Format("2006-01-02 15:04Z")))
 		button, buttonErr := ui.stateButton(owner, CompactResourceLabel(label), CallbackOpen, ActionState{Route: RouteGrant, Back: RouteGrants, ResourceID: grant.ID})
 		if buttonErr != nil {
 			return Screen{}, buttonErr
@@ -79,10 +79,11 @@ func (ui *Interface) grantDetailScreen(ctx context.Context, owner ViewOwner, sta
 	back, _ := ui.backButton(owner, RouteGrants)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Runtime grant", Text: string(grant.Status)},
+		RichBlock{Kind: RichHeading, Title: "Runtime grant"},
+		StateBlock(statusTone(string(grant.Status)), displayState(string(grant.Status)), ""),
 		RichBlock{Kind: RichCopy, Title: "Request ID", Text: grant.ID, CopyText: grant.ID},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Workspace", grant.WorkspaceID}, {"Tool", grant.TargetTool}, {"Expires", grant.GrantExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}}},
-		RichBlock{Kind: RichDetails, Title: "Scope", Text: "Revocation is handled by the canonical runtime grant authority; Telegram does not maintain a separate grant store."},
+		FieldsBlock("Grant", []string{"Workspace", grant.WorkspaceID}, []string{"Tool", grant.TargetTool}, []string{"Expires", grant.GrantExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}),
+		RichBlock{Kind: RichDetails, Title: "Scope", Text: "Revoking this grant ends the active runtime permission represented by this request."},
 	), Keyboard: BoundedActionGroups(ActionGroups{Destructive: []Button{revoke}, Navigation: []Button{back, home}})}, nil
 }
 
@@ -104,7 +105,7 @@ func (ui *Interface) processListScreen(ctx context.Context, owner ViewOwner, sta
 		if process.Running {
 			status = "running"
 		}
-		items = append(items, fmt.Sprintf("%s — %s — %s", process.ID, status, compactPresentationValue(process.Command)))
+		items = append(items, fmt.Sprintf("%s\n%s · %s", process.ID, displayState(status), compactPresentationValue(process.Command)))
 		button, buttonErr := ui.stateButton(owner, CompactResourceLabel(process.ID), CallbackOpen, ActionState{
 			Route: RouteProcess, Back: RouteProcesses, ResourceID: process.ID, ParentID: workspaceID,
 		})
@@ -151,14 +152,15 @@ func (ui *Interface) processDetailScreen(ctx context.Context, owner ViewOwner, s
 	}
 	back, _ := ui.stateButton(owner, "Back", CallbackBack, ActionState{Route: RouteProcesses, ResourceID: workspaceID})
 	home, _ := ui.homeButton(owner)
-	rows := [][]string{{"PID", fmt.Sprint(process.PID)}, {"Running", fmt.Sprint(process.Running)}, {"Started", process.StartedAt}, {"CWD", process.CWD}}
+	rows := [][]string{{"PID", fmt.Sprint(process.PID)}, {"Started", process.StartedAt}, {"CWD", process.CWD}}
 	if process.ExitCode != nil {
 		rows = append(rows, []string{"Exit code", fmt.Sprint(*process.ExitCode)})
 	}
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "Process", Text: process.ID},
+		StateBlock(stateTone(process.Running), stateLabel(process.Running, "Running", "Finished"), ""),
 		RichBlock{Kind: RichCode, Title: "Command", Text: process.Command},
-		RichBlock{Kind: RichTable, Rows: rows},
+		RichBlock{Kind: RichFields, Title: "Process", Rows: rows},
 	), Keyboard: BoundedActionGroups(ActionGroups{Destructive: destructive, Navigation: []Button{back, home}})}, nil
 }
 
@@ -187,7 +189,7 @@ func (ui *Interface) codeGraphWorkspaceScreen(ctx context.Context, owner ViewOwn
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "CodeGraph workspace", Text: workspaceID},
-		RichBlock{Kind: RichDetails, Title: "Status", Text: compactAny(value)},
+		FieldsBlock("Status", []string{"Workspace state", compactAny(value)}),
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{syncButton}, Secondary: []Button{initButton}, Navigation: []Button{back, home}})}, nil
 }
 
@@ -204,7 +206,7 @@ func (ui *Interface) managedTunnelListScreen(ctx context.Context, owner ViewOwne
 	list := make([]string, 0, end-start)
 	buttons := make([]Button, 0, end-start)
 	for _, item := range items[start:end] {
-		list = append(list, fmt.Sprintf("%s — %s", item.Name, item.ID))
+		list = append(list, item.Name+"\n"+item.ID)
 		button, buttonErr := ui.stateButton(owner, CompactResourceLabel(item.Name), CallbackOpen, ActionState{Route: RouteManagedTunnel, Back: RouteManagedTunnels, ResourceID: item.ID})
 		if buttonErr != nil {
 			return Screen{}, buttonErr
@@ -270,6 +272,6 @@ func (ui *Interface) managedTunnelDetailScreen(ctx context.Context, owner ViewOw
 		RichBlock{Kind: RichHeading, Title: metadata.Name, Text: "Managed OpenAI tunnel"},
 		RichBlock{Kind: RichCopy, Title: "ID", Text: metadata.ID, CopyText: metadata.ID},
 		RichBlock{Kind: RichDetails, Title: "Description", Text: metadata.Description},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Organizations", strings.Join(metadata.OrganizationIDs, ", ")}, {"Workspaces", strings.Join(metadata.WorkspaceIDs, ", ")}, {"Tenants", strings.Join(metadata.TenantIDs, ", ")}}},
+		FieldsBlock("Scope", []string{"Organizations", strings.Join(metadata.OrganizationIDs, ", ")}, []string{"Workspaces", strings.Join(metadata.WorkspaceIDs, ", ")}, []string{"Tenants", strings.Join(metadata.TenantIDs, ", ")}),
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{use}, Secondary: []Button{update}, Destructive: []Button{remove}, Navigation: []Button{back, home}})}, nil
 }

@@ -94,7 +94,7 @@ func TestInstructionsExposeProviderSourcesReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := RichFallback(screen.Rich).Text
-	if !strings.Contains(text, "claude/rules") || !strings.Contains(text, "read-only provenance") {
+	if !strings.Contains(text, "claude/rules") || !strings.Contains(text, "read-only here") {
 		t.Fatalf("instruction provenance missing: %q", text)
 	}
 	labels := keyboardLabels(screen.Keyboard)

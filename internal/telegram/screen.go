@@ -170,13 +170,17 @@ func ErrorScreen(err error) Screen {
 	if err != nil && strings.TrimSpace(err.Error()) != "" {
 		detail = compactPresentationValue(err.Error())
 	}
-	presentation := Present(TitleBlock("Operation failed", ""), ErrorState(detail))
-	return Screen{Text: presentation.Text, HTML: presentation.HTML}
+	return Screen{Rich: BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Operation failed"},
+		NoticeBlock(ToneFailure, "Failed", detail),
+	)}
 }
 
 func StaleScreen() Screen {
-	presentation := Present(TitleBlock("Stale control", "The underlying resource changed."), ErrorState("Open the screen again before mutating state."))
-	return Screen{Text: presentation.Text, HTML: presentation.HTML}
+	return Screen{Rich: BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Stale control", Text: "The underlying resource changed."},
+		NoticeBlock(ToneWarning, "Refresh required", "Open the screen again before mutating state."),
+	)}
 }
 
 func validateKeyboard(rows [][]Button) error {

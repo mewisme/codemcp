@@ -54,7 +54,7 @@ func (ui *Interface) networkScreen(owner ViewOwner) (Screen, error) {
 		return Screen{}, err
 	}
 	rich := BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Network", Text: "Canonical connectivity administration"},
+		RichBlock{Kind: RichHeading, Title: "Network", Text: "Tunnels, upstream servers, and network interfaces"},
 		RichBlock{Kind: RichDetails, Title: "OpenAI connectivity", Text: "Secure MCP Tunnel is a single configured OpenAI-profile connection, not a collection of local tunnel instances."},
 	)
 	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{tunnelButton, upstreamButton}, Secondary: []Button{interfaces}, Navigation: []Button{back}})}, nil
@@ -156,12 +156,19 @@ func tunnelViewBlocks(view application.TunnelView) []RichBlock {
 		state = "enabled"
 	}
 	blocks := []RichBlock{
-		{Kind: RichHeading, Title: "OpenAI Secure MCP Tunnel", Text: state},
-		{Kind: RichTable, Rows: [][]string{
-			{"Enabled", fmt.Sprint(view.Enabled)}, {"Configured", fmt.Sprint(view.Configured)},
-			{"Runtime key", view.RuntimeKeyPreview}, {"Admin key", view.Admin.KeyPreview},
-			{"Admin verified", fmt.Sprint(view.Admin.Verified)}, {"Read / Manage", fmt.Sprintf("%t / %t", view.Admin.Access.Read, view.Admin.Access.Manage)},
-		}},
+		{Kind: RichHeading, Title: "OpenAI Secure MCP Tunnel"},
+		StateBlock(statusTone(state), displayState(state), ""),
+		FieldsBlock("Runtime",
+			[]string{"Enabled", boolState(view.Enabled)},
+			[]string{"Configured", configuredLabel(view.Configured)},
+			[]string{"Runtime key", view.RuntimeKeyPreview},
+		),
+		FieldsBlock("Administration",
+			[]string{"Admin key", view.Admin.KeyPreview},
+			[]string{"Verification", stateLabel(view.Admin.Verified, "Verified", "Not verified")},
+			[]string{"Read access", stateLabel(view.Admin.Access.Read, "Allowed", "Not allowed")},
+			[]string{"Manage access", stateLabel(view.Admin.Access.Manage, "Allowed", "Not allowed")},
+		),
 	}
 	if strings.TrimSpace(view.ID) != "" {
 		blocks = append(blocks, RichBlock{Kind: RichCopy, Title: "Tunnel ID", Text: view.ID, CopyText: view.ID})
@@ -170,7 +177,7 @@ func tunnelViewBlocks(view application.TunnelView) []RichBlock {
 		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Admin scope", Text: text})
 	}
 	if strings.TrimSpace(view.Status.LastError) != "" {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Runtime error", Text: compactPresentationValue(tracepkg.SanitizeText(view.Status.LastError))})
+		blocks = append(blocks, NoticeBlock(ToneWarning, "Runtime error", compactPresentationValue(tracepkg.SanitizeText(view.Status.LastError))))
 	}
 	return blocks
 }
@@ -193,7 +200,7 @@ func (ui *Interface) upstreamListScreen(ctx context.Context, owner ViewOwner, st
 		if redacted.Enabled {
 			status = "enabled"
 		}
-		list = append(list, fmt.Sprintf("%s — %s — %s", redacted.Name, redacted.Transport, status))
+		list = append(list, fmt.Sprintf("%s\n%s · %s", redacted.Name, redacted.Transport, displayState(status)))
 		button, buttonErr := ui.stateButton(owner, CompactResourceLabel(redacted.Name), CallbackOpen, ActionState{
 			Route: RouteUpstream, Back: RouteUpstreams, Operation: capability.UpstreamServerShow,
 			ResourceID: redacted.ID, Input: application.UpstreamIDInput{ID: redacted.ID},
@@ -230,9 +237,10 @@ func (ui *Interface) upstreamDetailScreen(ctx context.Context, owner ViewOwner, 
 	fingerprint := application.UpstreamFingerprint(server)
 	redacted := application.RedactUpstreamServer(server)
 	blocks := []RichBlock{
-		{Kind: RichHeading, Title: redacted.Name, Text: redacted.Transport + " Upstream server"},
+		{Kind: RichHeading, Title: redacted.Name, Text: redacted.Transport + " upstream server"},
+		StateBlock(stateTone(redacted.Enabled), stateLabel(redacted.Enabled, "Enabled", "Disabled"), ""),
 		{Kind: RichCopy, Title: "ID", Text: redacted.ID, CopyText: redacted.ID},
-		{Kind: RichTable, Rows: [][]string{{"Enabled", fmt.Sprint(redacted.Enabled)}, {"Auth", redacted.Auth.Type}, {"Expose", redacted.Expose}, {"Tool prefix", redacted.ToolPrefix}}},
+		FieldsBlock("Connection", []string{"Auth", redacted.Auth.Type}),
 	}
 	if state.Detail {
 		blocks = append(blocks, upstreamDetailBlocks(redacted)...)
@@ -321,9 +329,9 @@ func sortedMapKeys(values map[string]string) []string {
 
 func configuredLabel(value bool) string {
 	if value {
-		return "configured"
+		return "Configured"
 	}
-	return "not configured"
+	return "Not configured"
 }
 
 func tunnelScopeText(scope tunnel.AdminScope) string {
@@ -445,7 +453,8 @@ func (ui *Interface) networkOperationResultScreen(owner ViewOwner, state ActionS
 		open := Button{Text: "Open authorization", URL: result.AuthorizationURL, Role: ButtonRolePrimary}
 		return Screen{Rich: BuildRichPresentation(
 			RichBlock{Kind: RichHeading, Title: "OAuth authorization", Text: "Authorization URL is ready"},
-			RichBlock{Kind: RichTable, Rows: [][]string{{"Expires", result.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}}},
+			StateBlock(TonePending, "Authorization required", "Open the authorization page to continue."),
+			FieldsBlock("Session", []string{"Expires", result.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}),
 			RichBlock{Kind: RichDetails, Title: "Credential policy", Text: "OAuth tokens are never rendered into Telegram."},
 		), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{open}, Secondary: []Button{refresh}, Navigation: []Button{back, home}})}, true, nil
 	case mcpoauth.Status:
@@ -459,10 +468,13 @@ func (ui *Interface) networkOperationResultScreen(owner ViewOwner, state ActionS
 		}
 		return Screen{Rich: BuildRichPresentation(
 			RichBlock{Kind: RichHeading, Title: "Upstream OAuth", Text: result.ServerID},
-			RichBlock{Kind: RichTable, Rows: [][]string{
-				{"Configured", fmt.Sprint(result.Configured)}, {"Expired", fmt.Sprint(result.Expired)},
-				{"Refresh token", fmt.Sprint(result.HasRefreshToken)}, {"Expires", expires},
-			}},
+			StateBlock(stateTone(result.Configured && !result.Expired), stateLabel(result.Configured && !result.Expired, "Ready", "Not ready"), ""),
+			FieldsBlock("OAuth",
+				[]string{"Configured", configuredLabel(result.Configured)},
+				[]string{"Credential", stateLabel(result.Expired, "Expired", "Valid")},
+				[]string{"Refresh token", stateLabel(result.HasRefreshToken, "Available", "Not available")},
+				[]string{"Expires", expires},
+			),
 		), Keyboard: keyboard}, true, nil
 	}
 	keyboard, err := ui.terminalOperationKeyboard(owner, state, spec, value)
@@ -473,18 +485,42 @@ func (ui *Interface) networkOperationResultScreen(owner ViewOwner, state ActionS
 	case application.TunnelView:
 		return Screen{Rich: BuildRichPresentation(tunnelViewBlocks(result)...), Keyboard: keyboard}, true, nil
 	case application.TunnelAdminStatus:
-		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Tunnel admin", Text: configuredLabel(result.Configured)}, RichBlock{Kind: RichTable, Rows: [][]string{{"Enabled", fmt.Sprint(result.Enabled)}, {"Key", result.KeyPreview}, {"Verified", fmt.Sprint(result.Verified)}, {"Read / Manage", fmt.Sprintf("%t / %t", result.Access.Read, result.Access.Manage)}}}), Keyboard: keyboard}, true, nil
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: "Tunnel admin"},
+			StateBlock(stateTone(result.Enabled), stateLabel(result.Enabled, "Enabled", "Disabled"), ""),
+			FieldsBlock("Access",
+				[]string{"Configuration", configuredLabel(result.Configured)},
+				[]string{"Key", result.KeyPreview},
+				[]string{"Verification", stateLabel(result.Verified, "Verified", "Not verified")},
+				[]string{"Read", stateLabel(result.Access.Read, "Allowed", "Not allowed")},
+				[]string{"Manage", stateLabel(result.Access.Manage, "Allowed", "Not allowed")},
+			),
+		), Keyboard: keyboard}, true, nil
 	case application.TunnelVerifyResult:
 		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Tunnel admin verified", Text: fmt.Sprintf("%d visible tunnel(s)", result.Count)}, RichBlock{Kind: RichDetails, Title: "Scope", Text: tunnelScopeText(result.Scope)}), Keyboard: keyboard}, true, nil
 	case tunnel.Metadata:
 		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Tunnel metadata synced", Text: result.Name}, RichBlock{Kind: RichCopy, Title: "Tunnel ID", Text: result.ID, CopyText: result.ID}), Keyboard: keyboard}, true, nil
 	case upstream.Server:
 		server := application.RedactUpstreamServer(result)
-		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: server.Name, Text: "Upstream operation completed"}, RichBlock{Kind: RichCopy, Title: "ID", Text: server.ID, CopyText: server.ID}, RichBlock{Kind: RichTable, Rows: [][]string{{"Transport", server.Transport}, {"Enabled", fmt.Sprint(server.Enabled)}, {"Auth", server.Auth.Type}}}), Keyboard: keyboard}, true, nil
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: server.Name},
+			StateBlock(ToneSuccess, "Upstream updated", ""),
+			RichBlock{Kind: RichCopy, Title: "ID", Text: server.ID, CopyText: server.ID},
+			FieldsBlock("Configuration", []string{"Transport", server.Transport}, []string{"State", boolState(server.Enabled)}, []string{"Auth", server.Auth.Type}),
+		), Keyboard: keyboard}, true, nil
 	case upstream.Status:
-		blocks := []RichBlock{RichBlock{Kind: RichHeading, Title: result.Name, Text: string(result.Health)}, RichBlock{Kind: RichTable, Rows: [][]string{{"Enabled", fmt.Sprint(result.Enabled)}, {"Connected", fmt.Sprint(result.Connected)}, {"Tools", fmt.Sprint(result.ToolCount)}, {"Expose", result.Expose}}}}
+		blocks := []RichBlock{
+			{Kind: RichHeading, Title: result.Name},
+			StateBlock(statusTone(string(result.Health)), displayState(string(result.Health)), ""),
+			FieldsBlock("Connection",
+				[]string{"Enabled", boolState(result.Enabled)},
+				[]string{"Connection", stateLabel(result.Connected, "Connected", "Disconnected")},
+				[]string{"Tools", fmt.Sprint(result.ToolCount)},
+				[]string{"Expose", result.Expose},
+			),
+		}
 		if strings.TrimSpace(result.LastError) != "" {
-			blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Last error", Text: compactPresentationValue(tracepkg.SanitizeText(result.LastError))})
+			blocks = append(blocks, NoticeBlock(ToneWarning, "Last error", compactPresentationValue(tracepkg.SanitizeText(result.LastError))))
 		}
 		return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: keyboard}, true, nil
 	case application.UpstreamToolsView:

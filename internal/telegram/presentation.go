@@ -14,6 +14,9 @@ type RichBlockKind string
 const (
 	RichHeading  RichBlockKind = "heading"
 	RichSection  RichBlockKind = "section"
+	RichState    RichBlockKind = "state"
+	RichFields   RichBlockKind = "fields"
+	RichNotice   RichBlockKind = "notice"
 	RichList     RichBlockKind = "list"
 	RichTable    RichBlockKind = "table"
 	RichDetails  RichBlockKind = "details"
@@ -35,6 +38,7 @@ type RichBlock struct {
 	Buttons      [][]Button
 	DocumentName string
 	CopyText     string
+	Tone         PresentationTone
 }
 
 type RichPresentation struct {
@@ -75,6 +79,20 @@ func RichFallback(rich *RichPresentation) Presentation {
 		switch block.Kind {
 		case RichHeading, RichSection:
 			parts = append(parts, TitleBlock(block.Title, block.Text))
+		case RichState, RichNotice:
+			parts = append(parts, StatusRow(block.Tone, block.Title, block.Text))
+		case RichFields:
+			if strings.TrimSpace(block.Title) != "" {
+				parts = append(parts, TitleBlock(block.Title, ""))
+			}
+			items := make([]MetadataItem, 0, len(block.Rows))
+			for _, row := range block.Rows {
+				if len(row) < 2 {
+					continue
+				}
+				items = append(items, MetadataItem{Label: row[0], Value: strings.Join(row[1:], " · ")})
+			}
+			parts = append(parts, MetadataBlock(items...))
 		case RichList:
 			items := make([]ListItem, 0, len(block.Items))
 			for _, item := range block.Items {
@@ -158,6 +176,12 @@ func richBlockHTML(block RichBlock) string {
 		return richHeadingHTML("h2", block.Title, block.Text)
 	case RichSection:
 		return richHeadingHTML("h3", block.Title, block.Text)
+	case RichState:
+		return richStateHTML(block.Tone, block.Title, block.Text, false)
+	case RichNotice:
+		return richStateHTML(block.Tone, block.Title, block.Text, true)
+	case RichFields:
+		return richFieldsHTML(block.Title, block.Rows)
 	case RichList:
 		items := make([]string, 0, len(block.Items))
 		for _, item := range block.Items {
@@ -268,6 +292,93 @@ func richBlockHTML(block RichBlock) string {
 			return "<p><b>" + richInlineHTML(label) + ":</b> <tg-button type=\"copy_text\" text=\"" + EscapeText(block.CopyText) + "\">" + richInlineHTML(value) + "</tg-button></p>"
 		}
 		return "<p><b>" + richInlineHTML(label) + ":</b> <code>" + richInlineHTML(value) + "</code></p>"
+	default:
+		return ""
+	}
+}
+
+func richStateHTML(tone PresentationTone, title, detail string, notice bool) string {
+	title, detail = strings.TrimSpace(title), strings.TrimSpace(detail)
+	if title == "" && detail == "" {
+		return ""
+	}
+	content := EscapeText(presentationToneIcon(tone))
+	if title != "" {
+		if content != "" {
+			content += " "
+		}
+		content += "<b>" + richInlineHTML(title) + "</b>"
+	}
+	if detail != "" {
+		if content != "" {
+			content += " — "
+		}
+		content += richInlineHTML(detail)
+	}
+	if notice {
+		return "<blockquote>" + content + "</blockquote>"
+	}
+	return "<p>" + content + "</p>"
+}
+
+func richFieldsHTML(title string, rows [][]string) string {
+	table := richBlockHTML(RichBlock{Kind: RichTable, Rows: rows})
+	if table == "" {
+		return ""
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return table
+	}
+	return "<h3>" + richInlineHTML(title) + "</h3>" + table
+}
+
+func StateBlock(tone PresentationTone, label, detail string) RichBlock {
+	return RichBlock{Kind: RichState, Tone: tone, Title: label, Text: detail}
+}
+
+func NoticeBlock(tone PresentationTone, label, detail string) RichBlock {
+	return RichBlock{Kind: RichNotice, Tone: tone, Title: label, Text: detail}
+}
+
+func FieldsBlock(title string, rows ...[]string) RichBlock {
+	return RichBlock{Kind: RichFields, Title: title, Rows: rows}
+}
+
+func stateLabel(value bool, enabled, disabled string) string {
+	if value {
+		return enabled
+	}
+	return disabled
+}
+
+func stateTone(value bool) PresentationTone {
+	if value {
+		return ToneHealthy
+	}
+	return ToneStopped
+}
+
+func displayState(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	return strings.ToUpper(value[:1]) + value[1:]
+}
+
+func statusTone(value string) PresentationTone {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "ready", "healthy", "running", "connected", "active", "approved", "success", "completed", "configured", "verified":
+		return ToneHealthy
+	case "working", "pending", "starting", "connecting", "reconnecting":
+		return TonePending
+	case "stopped", "disabled", "inactive":
+		return ToneStopped
+	case "warning", "degraded", "unavailable", "expired":
+		return ToneWarning
+	case "failed", "failure", "error", "denied", "rejected":
+		return ToneFailure
 	default:
 		return ""
 	}

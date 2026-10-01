@@ -29,7 +29,7 @@ func TestTelegramLLMNavigationUsesCanonicalStatusAndProviderList(t *testing.T) {
 		t.Fatalf("LLM canonical reads=%#v", dispatcher.calls)
 	}
 	fallback := RichFallback(screen.Rich).Text
-	for _, want := range []string{"Ollama", "qwen3:8b", "provider administration"} {
+	for _, want := range []string{"Ollama", "qwen3:8b", "active inference configuration"} {
 		if !strings.Contains(strings.ToLower(fallback), strings.ToLower(want)) {
 			t.Fatalf("LLM screen missing %q: %q", want, fallback)
 		}

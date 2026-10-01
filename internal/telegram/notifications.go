@@ -44,16 +44,16 @@ func (ui *Interface) completionNotificationScreen(message notification.Message) 
 	}
 	switch {
 	case subject != "" && summary != "":
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: subject, Text: summary})
+		blocks = append(blocks, RichBlock{Kind: RichSection, Title: subject, Text: summary})
 	case subject != "":
 		blocks = append(blocks, RichBlock{Kind: RichSection, Title: subject})
 	case summary != "":
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Summary", Text: summary})
+		blocks = append(blocks, RichBlock{Kind: RichSection, Title: "Summary", Text: summary})
 	}
 
 	rows := make([][]string, 0, 4)
 	if status != "" {
-		rows = append(rows, []string{"Status", status})
+		blocks = append(blocks, StateBlock(statusTone(status), displayState(status), ""))
 	}
 	if workspace := strings.TrimSpace(message.WorkspaceID); workspace != "" {
 		rows = append(rows, []string{"Workspace", workspace})
@@ -62,7 +62,7 @@ func (ui *Interface) completionNotificationScreen(message notification.Message) 
 		rows = append(rows, []string{"Completed", formatNotificationTime(message.Timestamp)})
 	}
 	if len(rows) > 0 {
-		blocks = append(blocks, RichBlock{Kind: RichTable, Rows: rows})
+		blocks = append(blocks, RichBlock{Kind: RichFields, Title: "Completion", Rows: rows})
 	}
 	if id := strings.TrimSpace(message.CompletionID); id != "" {
 		blocks = append(blocks, RichBlock{Kind: RichCopy, Title: "Completion ID", Text: id, CopyText: id})
@@ -76,6 +76,10 @@ func (ui *Interface) backgroundProcessNotificationScreen(message notification.Me
 		heading = "Background process finished"
 	}
 	blocks := []RichBlock{{Kind: RichHeading, Title: heading}}
+	status := strings.TrimSpace(message.Status)
+	if status != "" {
+		blocks = append(blocks, StateBlock(statusTone(status), displayState(status), ""))
+	}
 
 	rows := make([][]string, 0, 8)
 	appendRow := func(label, value string) {
@@ -85,7 +89,6 @@ func (ui *Interface) backgroundProcessNotificationScreen(message notification.Me
 		}
 	}
 	appendRow("Tool", message.TargetTool)
-	appendRow("Status", message.Status)
 	appendRow("Reason", message.Reason)
 	appendRow("Workspace", message.WorkspaceID)
 	if message.DurationMS > 0 {
@@ -99,7 +102,7 @@ func (ui *Interface) backgroundProcessNotificationScreen(message notification.Me
 		appendRow("Finished", formatNotificationTime(message.Timestamp))
 	}
 	if len(rows) > 0 {
-		blocks = append(blocks, RichBlock{Kind: RichTable, Rows: rows})
+		blocks = append(blocks, RichBlock{Kind: RichFields, Title: "Process", Rows: rows})
 	}
 	if id := strings.TrimSpace(message.ProcessID); id != "" {
 		blocks = append(blocks, RichBlock{Kind: RichCopy, Title: "Process ID", Text: id, CopyText: id})

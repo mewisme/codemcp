@@ -29,16 +29,16 @@ func TestOperationScreenUsesCanonicalPresentationWithoutOwningConfirmationPolicy
 		t.Fatalf("presentation bypassed canonical confirmation policy: %#v", dispatcher.calls)
 	}
 	for _, want := range []string{"Confirmation required", "Purge Workspace", "Workspace", "destructive"} {
-		if !strings.Contains(screen.Text, want) {
-			t.Fatalf("confirmation screen missing %q: %q", want, screen.Text)
+		if !strings.Contains(screenText(screen), want) {
+			t.Fatalf("confirmation screen missing %q: %q", want, screenText(screen))
 		}
 	}
 }
 
 func TestOperationLifecycleAndNavigationUseCanonicalVocabulary(t *testing.T) {
 	working := workingScreen(ActionState{Route: RouteOperation, Operation: capability.RuntimeRestart})
-	if !strings.Contains(working.Text, "Working") || !strings.Contains(working.Text, "Restart") {
-		t.Fatalf("working screen=%q", working.Text)
+	if !strings.Contains(screenText(working), "Working") || !strings.Contains(screenText(working), "Restart") {
+		t.Fatalf("working screen=%q", screenText(working))
 	}
 
 	ui, err := NewInterface(InterfaceOptions{Runtime: &Runtime{generation: 1}})

@@ -50,11 +50,11 @@ func (ui *Interface) llmScreen(ctx context.Context, owner ViewOwner, state Actio
 	items := make([]string, 0, end-start)
 	buttons := make([]Button, 0, end-start)
 	for _, provider := range providers[start:end] {
-		marker := ""
+		meta := []string{provider.Model, displayState(string(provider.Readiness))}
 		if provider.Selected {
-			marker = " · active"
+			meta = append(meta, "Active")
 		}
-		items = append(items, fmt.Sprintf("%s — %s · %s%s", provider.Name, provider.Model, provider.Readiness, marker))
+		items = append(items, provider.Name+"\n"+strings.Join(meta, " · "))
 		button, buttonErr := ui.stateButton(owner, provider.Name, CallbackOpen, ActionState{
 			Route: RouteLLMProvider, Back: RouteLLM, ResourceID: string(provider.ID),
 		})
@@ -82,12 +82,12 @@ func (ui *Interface) llmScreen(ctx context.Context, owner ViewOwner, state Actio
 	keyboard := ResourceRows(buttons...)
 	keyboard = append(keyboard, BoundedActionGroups(ActionGroups{Secondary: []Button{add, refresh}, Navigation: nav})...)
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "LLM", Text: "Provider administration"},
-		RichBlock{Kind: RichTable, Rows: [][]string{
-			{"Active provider", string(status.ActiveProvider)},
-			{"Model", status.Active.Model},
-			{"Readiness", string(status.Active.Readiness)},
-		}},
+		RichBlock{Kind: RichHeading, Title: "LLM", Text: "Model providers and active inference configuration"},
+		StateBlock(statusTone(string(status.Active.Readiness)), displayState(string(status.Active.Readiness)), ""),
+		FieldsBlock("Active provider",
+			[]string{"Provider", string(status.ActiveProvider)},
+			[]string{"Model", status.Active.Model},
+		),
 		RichBlock{Kind: RichList, Title: PaginationLabel(page, pages), Items: items},
 	), Keyboard: keyboard}, nil
 }
@@ -109,10 +109,9 @@ func (ui *Interface) llmProviderScreen(ctx context.Context, owner ViewOwner, sta
 		{"Base URL", provider.BaseURL},
 		{"Auth", string(provider.AuthMode)},
 		{"Discovery", string(provider.Discovery)},
-		{"Core", fmt.Sprint(provider.Core)},
-		{"Active", fmt.Sprint(provider.Selected)},
-		{"Configured", fmt.Sprint(provider.Configured)},
-		{"Readiness", string(provider.Readiness)},
+		{"Core provider", stateLabel(provider.Core, "Yes", "No")},
+		{"Selection", stateLabel(provider.Selected, "Active", "Inactive")},
+		{"Configuration", configuredLabel(provider.Configured)},
 		{"API key", provider.Credential.Preview},
 	}
 	if provider.Reason != "" {
@@ -218,7 +217,8 @@ func (ui *Interface) llmProviderScreen(ctx context.Context, owner ViewOwner, sta
 	keyboard = append(keyboard, BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})...)
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: provider.Name, Text: "LLM provider"},
-		RichBlock{Kind: RichTable, Rows: rows},
+		StateBlock(statusTone(string(provider.Readiness)), displayState(string(provider.Readiness)), ""),
+		RichBlock{Kind: RichFields, Title: "Configuration", Rows: rows},
 	), Keyboard: keyboard}, nil
 }
 
@@ -251,24 +251,29 @@ func (ui *Interface) llmModelPageScreen(owner ViewOwner, state ActionState, page
 	items := make([]string, 0, len(page.Models))
 	buttons := make([]Button, 0, len(page.Models))
 	for _, model := range page.Models {
-		detail := model.Name
-		if detail == "" {
-			detail = model.ID
+		label := model.Name
+		if label == "" {
+			label = model.ID
 		}
+		meta := make([]string, 0, 4)
 		if model.ContextLengthKnown {
-			detail += fmt.Sprintf(" · ctx %d", model.ContextLength)
+			meta = append(meta, fmt.Sprintf("ctx %d", model.ContextLength))
 		}
 		if model.FreeKnown && model.Free {
-			detail += " · free"
+			meta = append(meta, "Free")
 		}
 		access, accessKnown := page.ModelAccess[model.ID]
 		if accessKnown {
-			detail += " · " + string(access.State)
+			meta = append(meta, displayState(string(access.State)))
 			if access.State == application.LLMModelAccessUnavailable && access.Reason != "" {
-				detail += " (" + compactPresentationValue(access.Reason) + ")"
+				meta = append(meta, compactPresentationValue(access.Reason))
 			}
 		}
-		items = append(items, detail)
+		if len(meta) == 0 {
+			items = append(items, label)
+		} else {
+			items = append(items, label+"\n"+strings.Join(meta, " · "))
+		}
 		if accessKnown && access.State == application.LLMModelAccessUnavailable {
 			continue
 		}
@@ -375,7 +380,7 @@ func (ui *Interface) llmModelPageScreen(owner ViewOwner, state ActionState, page
 	}
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "Models", Text: string(page.ProviderID)},
-		RichBlock{Kind: RichTable, Rows: meta},
+		RichBlock{Kind: RichFields, Title: "Catalog", Rows: meta},
 		RichBlock{Kind: RichList, Title: PaginationLabel(currentPage, pages), Items: items},
 	), Keyboard: keyboard}, nil
 }

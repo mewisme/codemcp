@@ -553,13 +553,12 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
-	presentation := Present(
-		TitleBlock("Home", "Private administration interface"),
-		StatusRow(ToneHealthy, "Authorized", "Commands are limited to this private account."),
-		StatusRow(ToneHealthy, "Administration", "Workspace, request, completion, and system views use canonical application services."),
-		StatusRow(ToneHealthy, "Activity", "Completions and runtime activity use dedicated Rich Message and Logs surfaces."),
+	rich := BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Home", Text: "Private administration interface"},
+		RichBlock{Kind: RichSection, Title: "Administration", Text: "Manage workspaces, requests, connectivity, integrations, settings, and runtime state."},
+		RichBlock{Kind: RichSection, Title: "Activity", Text: "Review agent completions and retained runtime activity from their dedicated views."},
 	)
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{
+	return Screen{Rich: rich, Keyboard: [][]Button{
 		{status, system},
 		{requests, completions},
 		{workspaces, network},
@@ -584,33 +583,31 @@ func (ui *Interface) commandsScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
-	items := make([]ListItem, 0, len(Commands()))
+	items := make([]string, 0, len(Commands()))
 	for _, command := range Commands() {
-		items = append(items, ListItem{Label: "/" + command.Name, Detail: command.Description})
+		items = append(items, "/"+command.Name+" — "+command.Description)
 	}
-	presentation := Present(
-		TitleBlock("Help", "Use slash commands or inline controls. Ordinary text is ignored outside an authenticated input flow."),
-		TitleBlock("Navigation", ""),
-		CompactList(
-			ListItem{Label: "Summary", Detail: "Lists and notifications stay compact so you can choose a resource."},
-			ListItem{Label: "Details", Detail: "Details open the same canonical resource with richer current state."},
-			ListItem{Label: "Back vs Close", Detail: "Back edits this message to the previous screen; Close dismisses only eligible terminal detail or result screens."},
-			ListItem{Label: "Copy", Detail: "Copy controls are only created for explicitly safe bounded values such as stable IDs."},
-			ListItem{Label: "Refresh", Detail: "Refresh re-renders the current route; it never bypasses canonical operation guards."},
-		),
-		TitleBlock("Commands", ""),
-		CompactList(items...),
+	rich := BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Help", Text: "Use slash commands or inline controls. Ordinary text is ignored outside an authenticated input flow."},
+		RichBlock{Kind: RichList, Title: "Navigation", Items: []string{
+			"Summary — Lists and notifications stay compact so you can choose a resource.",
+			"Details — Open the selected resource with its current state.",
+			"Back / Close — Back returns to the previous screen; Close dismisses eligible terminal screens.",
+			"Copy — Available only for safe bounded values such as stable IDs.",
+			"Refresh — Re-renders the current route without bypassing operation guards.",
+		}},
+		RichBlock{Kind: RichList, Title: "Commands", Items: items},
 	)
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{back, home, refresh}}}, nil
+	return Screen{Rich: rich, Keyboard: [][]Button{{back, home, refresh}}}, nil
 }
 
 func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
 	if state.Operation == "" {
-		return Screen{}, errors.New("canonical operation is required")
+		return Screen{}, errors.New("operation is required")
 	}
 	spec, ok := capability.Lookup(state.Operation)
 	if !ok {
-		return Screen{}, fmt.Errorf("unknown canonical operation: %s", state.Operation)
+		return Screen{}, fmt.Errorf("unknown operation: %s", state.Operation)
 	}
 	operationPresentation, _ := productadapter.PresentationFor(state.Operation, "")
 	if state.ExpectedVersion != "" {
@@ -646,14 +643,17 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 		if operationPresentation.Danger == productadapter.DangerDestructive {
 			detail = "This action is destructive and may remove persistent state."
 		}
-		presentation := Present(
-			TitleBlock(lifecycle.Label, "Confirm operation · "+operationPresentation.Title),
-			DestructiveConfirmation(operationPresentation.Title, operationPresentation.Subject, detail),
-		)
-		return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{button}, Navigation: []Button{cancel}})}, nil
+		tone := ToneWarning
+		if spec.Effects.Destructive {
+			tone = ToneDestructive
+		}
+		return Screen{Rich: BuildRichPresentation(
+			RichBlock{Kind: RichHeading, Title: lifecycle.Label, Text: operationPresentation.Title},
+			NoticeBlock(tone, operationPresentation.Title, strings.TrimSpace(operationPresentation.Subject+" "+detail)),
+		), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{button}, Navigation: []Button{cancel}})}, nil
 	}
 	if ui.dispatcher == nil {
-		return Screen{}, errors.New("canonical operation dispatcher is unavailable")
+		return Screen{}, errors.New("operation dispatcher is unavailable")
 	}
 	result, err := ui.dispatcher.Dispatch(application.WithOperationInterface(ctx, application.OperationInterfaceTelegram), application.DispatchRequest{Operation: state.Operation, Input: state.Input})
 	if err != nil {
@@ -671,31 +671,26 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 	if screen, handled, err := ui.systemOperationResultScreen(ctx, owner, state, result.Value); handled {
 		return screen, err
 	}
-	parts := []PresentationPart{
-		TitleBlock(operationPresentation.Title, operationPresentation.Subject),
-		SuccessState(lifecycleLabel(productadapter.LifecycleSuccess)),
-	}
 	if status, ok := result.Value.(application.StatusOverview); ok {
-		parts = append(parts, MetadataBlock(
-			MetadataItem{Label: "runtime", Value: boolState(status.RuntimeRunning)},
-			MetadataItem{Label: "MCP HTTP", Value: boolState(status.MCPHTTPEnabled)},
-			MetadataItem{Label: "admin", Value: boolState(status.AdminEnabled)},
-			MetadataItem{Label: "tunnel", Value: boolState(status.TunnelEnabled)},
-			MetadataItem{Label: "Telegram", Value: boolState(status.TelegramEnabled)},
-			MetadataItem{Label: "Telegram polling", Value: boolState(status.TelegramHealthy)},
-		), StatusRow(ToneWarning, "Unavailable", "Logs drill-down remains inert until its canonical Telegram adapter is activated."))
-	} else {
-		parts = append(parts, MetadataBlock(
-			MetadataItem{Label: "operation", Value: string(result.Operation), Code: true},
-			MetadataItem{Label: "result", Value: compactAny(result.Value)},
-		))
+		keyboard, err := ui.terminalOperationKeyboard(owner, state, spec, result.Value)
+		if err != nil {
+			return Screen{}, err
+		}
+		return Screen{Rich: ui.statusOverviewPresentation(status), Keyboard: keyboard}, nil
 	}
-	presentation := Present(parts...)
 	keyboard, err := ui.terminalOperationKeyboard(owner, state, spec, result.Value)
 	if err != nil {
 		return Screen{}, err
 	}
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: keyboard}, nil
+	blocks := []RichBlock{{Kind: RichHeading, Title: operationPresentation.Title, Text: operationPresentation.Subject}}
+	resultText := compactAny(result.Value)
+	if spec.Kind == capability.KindMutation || spec.Kind == capability.KindRuntime {
+		blocks = append(blocks, StateBlock(ToneSuccess, "Success", ""))
+	}
+	if resultText != "" && resultText != "ok" {
+		blocks = append(blocks, FieldsBlock("", []string{"Result", resultText}))
+	}
+	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: keyboard}, nil
 }
 
 func workingScreen(state ActionState) Screen {
@@ -706,11 +701,10 @@ func workingScreen(state ActionState) Screen {
 			title = metadata.Title
 		}
 	}
-	presentation := Present(
-		TitleBlock(lifecycleLabel(productadapter.LifecycleWorking), title),
-		LoadingState(lifecycleLabel(productadapter.LifecycleWorking)+"…"),
-	)
-	return withRouteBreadcrumb(Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{{Text: lifecycleLabel(productadapter.LifecycleWorking) + "…", Disabled: true, Role: ButtonRoleNeutral}}}}, state)
+	return withRouteBreadcrumb(Screen{Rich: BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: title},
+		StateBlock(TonePending, "Working", "Operation in progress"),
+	), Keyboard: [][]Button{{{Text: lifecycleLabel(productadapter.LifecycleWorking) + "…", Disabled: true, Role: ButtonRoleNeutral}}}}, state)
 }
 
 func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, operationErr error) (Screen, error) {
@@ -746,11 +740,11 @@ func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, op
 	if metadata, ok := productadapter.PresentationFor(state.Operation, ""); ok {
 		title = metadata.Title
 	}
-	presentation := Present(
-		TitleBlock(lifecycleLabel(productadapter.LifecycleRetryableFailure), title+" · retry uses the same guarded operation path."),
-		ErrorState(detail),
-	)
-	return withRouteBreadcrumb(Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{retryButton}, Navigation: []Button{back, home}})}, state), nil
+	return withRouteBreadcrumb(Screen{Rich: BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: title},
+		NoticeBlock(ToneFailure, lifecycleLabel(productadapter.LifecycleRetryableFailure), detail),
+		RichBlock{Kind: RichDetails, Title: "Retry", Text: "Retry uses the same guarded operation path."},
+	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{retryButton}, Navigation: []Button{back, home}})}, state), nil
 }
 
 func (ui *Interface) inputPromptScreen(owner ViewOwner, state ActionState, title, prompt string) (Screen, error) {
@@ -759,11 +753,10 @@ func (ui *Interface) inputPromptScreen(owner ViewOwner, state ActionState, title
 	if err != nil {
 		return Screen{}, err
 	}
-	presentation := Present(
-		TitleBlock(strings.TrimSpace(title), strings.TrimSpace(prompt)),
-		StatusRow(TonePending, "Input required", "Send the requested value or cancel this flow."),
-	)
-	return withRouteBreadcrumb(Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{cancel}}}, state), nil
+	return withRouteBreadcrumb(Screen{Rich: BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: strings.TrimSpace(title), Text: strings.TrimSpace(prompt)},
+		NoticeBlock(TonePending, "Input required", "Send the requested value or cancel this flow."),
+	), Keyboard: [][]Button{{cancel}}}, state), nil
 }
 
 func (ui *Interface) inputFailureScreen(owner ViewOwner, state ActionState, inputErr error) (Screen, error) {
@@ -779,8 +772,10 @@ func (ui *Interface) inputFailureScreen(owner ViewOwner, state ActionState, inpu
 	if inputErr != nil && strings.TrimSpace(inputErr.Error()) != "" {
 		detail = compactPresentationValue(inputErr.Error())
 	}
-	presentation := Present(TitleBlock("Input failed", ""), ErrorState(detail))
-	return withRouteBreadcrumb(Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{retry}, Navigation: []Button{back}})}, state), nil
+	return withRouteBreadcrumb(Screen{Rich: BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Input failed"},
+		NoticeBlock(ToneFailure, "Input rejected", detail),
+	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{retry}, Navigation: []Button{back}})}, state), nil
 }
 
 func (ui *Interface) editInputPrompt(ctx context.Context, owner ViewOwner, messageID int64, state ActionState, title, prompt string) error {
@@ -1051,10 +1046,53 @@ func compactAny(value any) string {
 }
 
 func boolState(value bool) string {
-	if value {
-		return "enabled"
+	return stateLabel(value, "Enabled", "Disabled")
+}
+
+func (ui *Interface) statusOverviewPresentation(status application.StatusOverview) *RichPresentation {
+	runtimeTone, runtimeLabel := ToneStopped, "Stopped"
+	if status.RuntimeRunning {
+		runtimeTone, runtimeLabel = ToneHealthy, "Running"
 	}
-	return "disabled"
+	blocks := []RichBlock{
+		{Kind: RichHeading, Title: "Status", Text: "Runtime and interface overview"},
+		StateBlock(runtimeTone, "Runtime "+runtimeLabel, ""),
+		FieldsBlock("Services",
+			[]string{"MCP HTTP", boolState(status.MCPHTTPEnabled)},
+			[]string{"Admin UI", boolState(status.AdminEnabled)},
+			[]string{"Secure MCP Tunnel", boolState(status.TunnelEnabled)},
+		),
+	}
+	polling := "Disabled"
+	if status.TelegramEnabled {
+		polling = stateLabel(status.TelegramHealthy, "Healthy", "Unavailable")
+	}
+	telegramRows := [][]string{
+		{"Bot", boolState(status.TelegramEnabled)},
+		{"Polling", polling},
+	}
+	var logsNotice *RichBlock
+	if ui != nil && ui.runtime != nil {
+		health := ui.runtime.Health().LogsMiniApp
+		logsState := "Disabled"
+		if health.Enabled {
+			logsState = displayState(string(health.State))
+		}
+		telegramRows = append(telegramRows, []string{"Logs App", logsState})
+		if health.Enabled && health.State != MiniAppReady && health.State != MiniAppStarting {
+			detail := strings.TrimSpace(health.LastError)
+			if detail == "" {
+				detail = "Logs App is not ready."
+			}
+			notice := NoticeBlock(ToneWarning, "Logs App unavailable", detail)
+			logsNotice = &notice
+		}
+	}
+	blocks = append(blocks, FieldsBlock("Telegram", telegramRows...))
+	if logsNotice != nil {
+		blocks = append(blocks, *logsNotice)
+	}
+	return BuildRichPresentation(blocks...)
 }
 
 func withRouteBreadcrumb(screen Screen, state ActionState) Screen {

@@ -296,7 +296,7 @@ func TestResolvedApprovalNotificationRendersFreshResolvedCard(t *testing.T) {
 		t.Fatalf("resolved notification canonical dispatch=%#v", dispatcher.calls)
 	}
 	fallback := RichFallback(screen.Rich).Text
-	if !strings.Contains(fallback, string(approval.StatusApproved)) {
+	if !strings.Contains(fallback, displayState(string(approval.StatusApproved))) {
 		t.Fatalf("resolved notification screen=%q", fallback)
 	}
 	for _, row := range screen.Keyboard {
@@ -331,7 +331,7 @@ func TestStaleApprovalActionReloadsCanonicalRequestState(t *testing.T) {
 		t.Fatalf("stale action did not reload canonical request: %#v", dispatcher.calls)
 	}
 	fallback := RichFallback(screen.Rich).Text
-	if !strings.Contains(fallback, string(approval.StatusDenied)) {
+	if !strings.Contains(fallback, displayState(string(approval.StatusDenied))) {
 		t.Fatalf("stale action did not render current status: %q", fallback)
 	}
 	for _, row := range screen.Keyboard {

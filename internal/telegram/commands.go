@@ -27,7 +27,7 @@ var commandRegistry = []Command{
 	{Name: "network", Description: "Manage tunnel and Upstream servers", Route: RouteNetwork},
 	{Name: "integrations", Description: "Manage integrations", Route: RouteIntegrations},
 	{Name: "llm", Description: "Manage LLM providers and models", Route: RouteLLM},
-	{Name: "settings", Description: "Browse and edit canonical settings", Route: RouteSettings},
+	{Name: "settings", Description: "Browse and edit settings", Route: RouteSettings},
 	{Name: "system", Description: "Inspect runtime, diagnostics, version and updates", Route: RouteSystem},
 	{Name: "instructions", Description: "Inspect project context, instructions and prompts", Route: RouteInstructions},
 	{Name: "logs", Description: "Open Telegram Logs Mini App", Route: RouteLogs},

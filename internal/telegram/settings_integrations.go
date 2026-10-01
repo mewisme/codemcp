@@ -104,14 +104,14 @@ func (ui *Interface) settingListScreen(owner ViewOwner, state ActionState, items
 		nav = append(nav, button)
 	}
 	nav = append(nav, back)
-	subtitle := fmt.Sprintf("%d canonical setting(s)", len(items))
+	subtitle := fmt.Sprintf("%d setting(s)", len(items))
 	if strings.TrimSpace(query) != "" {
 		subtitle += " · " + query
 	}
 	rich := BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: title, Text: subtitle},
 		RichBlock{Kind: RichList, Items: list},
-		RichBlock{Kind: RichDetails, Title: "Config import/export", Text: "Portable export remains secret-free. Import is intentionally unavailable while the Telegram-managed runtime is active because the canonical importer requires a stopped runtime."},
+		RichBlock{Kind: RichDetails, Title: "Config import/export", Text: "Portable exports exclude managed secrets. Import requires the managed runtime to be stopped."},
 	)
 	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{
 		Primary:    []Button{search, batch, tools},
@@ -155,8 +155,8 @@ func (ui *Interface) configToolsScreen(owner ViewOwner, state ActionState) (Scre
 		return Screen{}, err
 	}
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Config tools", Text: "Canonical configuration and notification operations"},
-		RichBlock{Kind: RichDetails, Title: "Import", Text: "Import remains unavailable while the Telegram-managed runtime is active; stop the runtime and use the canonical local importer."},
+		RichBlock{Kind: RichHeading, Title: "Config tools", Text: "Configuration, validation, export, and notification tools"},
+		RichBlock{Kind: RichDetails, Title: "Import", Text: "Import is unavailable while the managed runtime is active. Stop the runtime before importing configuration locally."},
 	), Keyboard: BoundedActionGroups(ActionGroups{
 		Primary:    []Button{patch, export, snapshot},
 		Secondary:  []Button{verify, path, notifications},
@@ -186,12 +186,12 @@ func (ui *Interface) settingDetailScreen(ctx context.Context, owner ViewOwner, s
 		{"Role", string(spec.ValueRole)},
 	}
 	if result.Configured != nil {
-		rows = append(rows, []string{"Configured", fmt.Sprint(*result.Configured)})
+		rows = append(rows, []string{"Configuration", configuredLabel(*result.Configured)})
 	}
 	blocks := []RichBlock{
 		{Kind: RichHeading, Title: spec.Label, Text: spec.Description},
 		{Kind: RichCopy, Title: "Key", Text: spec.Key, CopyText: spec.Key},
-		{Kind: RichTable, Rows: rows},
+		{Kind: RichFields, Title: "Setting", Rows: rows},
 	}
 	if state.Detail && strings.TrimSpace(spec.Details) != "" {
 		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Details", Text: spec.Details})
@@ -283,7 +283,7 @@ func (ui *Interface) integrationsScreen(ctx context.Context, owner ViewOwner) (S
 		if err != nil {
 			summary = "unavailable"
 		}
-		items = append(items, entry.label+" — "+summary)
+		items = append(items, entry.label+"\n"+displayState(summary))
 		button, buttonErr := ui.stateButton(owner, entry.label, CallbackOpen, ActionState{Route: RouteIntegration, Back: RouteIntegrations, ResourceID: entry.id})
 		if buttonErr != nil {
 			return Screen{}, buttonErr
@@ -311,7 +311,7 @@ func (ui *Interface) integrationsScreen(ctx context.Context, owner ViewOwner) (S
 	}
 	keyboard = append(keyboard, []Button{back, home})
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Integrations", Text: "Canonical integration status and lifecycle"},
+		RichBlock{Kind: RichHeading, Title: "Integrations", Text: "Integration status, installation, and configuration"},
 		RichBlock{Kind: RichList, Items: items},
 	), Keyboard: keyboard}, nil
 }
@@ -327,25 +327,30 @@ func (ui *Interface) integrationSummary(ctx context.Context, id string) (string,
 		if !ok {
 			return "", errors.New("integration setting status returned an unexpected result")
 		}
-		parts := []string{}
+		active, mode := "", ""
 		for _, item := range items {
-			parts = append(parts, item.Value)
+			switch {
+			case strings.HasSuffix(item.Spec.Key, ".active"):
+				active = stateLabel(strings.EqualFold(item.Value, "true"), "Enabled", "Disabled")
+			case strings.HasSuffix(item.Spec.Key, ".mode"):
+				mode = displayState(item.Value)
+			}
 		}
-		return strings.Join(parts, " · "), nil
+		return strings.Trim(strings.Join([]string{active, mode}, " · "), " ·"), nil
 	case "rtk":
 		value, err := ui.dispatch(ctx, capability.IntegrationRTKStatus, nil)
 		if err != nil {
 			return "", err
 		}
 		status := value.(rtk.Status)
-		return fmt.Sprintf("%s · %s", boolState(status.Enabled), status.Source), nil
+		return fmt.Sprintf("%s · %s", boolState(status.Enabled), displayState(string(status.Source))), nil
 	case "codegraph":
 		value, err := ui.dispatch(ctx, capability.IntegrationCodeGraphStatus, nil)
 		if err != nil {
 			return "", err
 		}
 		status := value.(codegraph.Status)
-		return fmt.Sprintf("%s · %s", boolState(status.Enabled), status.Resolution.Source), nil
+		return fmt.Sprintf("%s · %s", boolState(status.Enabled), displayState(string(status.Resolution.Source))), nil
 	case "cf":
 		value, err := ui.dispatch(ctx, capability.IntegrationCFStatus, nil)
 		if err != nil {
@@ -355,21 +360,21 @@ func (ui *Interface) integrationSummary(ctx context.Context, id string) (string,
 		if !ok {
 			return "", errors.New("cf-tunnel status returned an unexpected result")
 		}
-		return fmt.Sprintf("%s · %s", cfTunnelState(status), status.Source), nil
+		return fmt.Sprintf("%s · %s", displayState(cfTunnelState(status)), displayState(string(status.Source))), nil
 	case "typesafe":
 		value, err := ui.dispatch(ctx, capability.IntegrationTypeSafeStatus, nil)
 		if err != nil {
 			return "", err
 		}
 		status := value.(application.TypeSafeStatus)
-		return fmt.Sprintf("%s · %s", boolState(status.Enabled), status.State), nil
+		return fmt.Sprintf("%s · %s", boolState(status.Enabled), displayState(string(status.State))), nil
 	case "telemetry":
 		value, err := ui.dispatch(ctx, capability.TelemetryStatus, nil)
 		if err != nil {
 			return "", err
 		}
 		status := value.(application.TelemetryStatus)
-		return fmt.Sprintf("effective=%t · source=%s", status.EffectiveEnabled, status.Source), nil
+		return fmt.Sprintf("%s · %s", stateLabel(status.EffectiveEnabled, "Enabled", "Disabled"), displayState(string(status.Source))), nil
 	default:
 		return "", errors.New("unknown integration")
 	}
@@ -453,10 +458,14 @@ func (ui *Interface) simpleSettingIntegrationScreen(ctx context.Context, owner V
 	rows := [][]string{}
 	active := false
 	for _, item := range items {
-		rows = append(rows, []string{item.Spec.Label, item.Value})
+		display := item.Value
 		if strings.HasSuffix(item.Spec.Key, ".active") {
 			active = strings.EqualFold(item.Value, "true")
+			display = stateLabel(active, "Enabled", "Disabled")
+		} else if strings.HasSuffix(item.Spec.Key, ".mode") {
+			display = displayState(item.Value)
 		}
+		rows = append(rows, []string{item.Spec.Label, display})
 	}
 	toggleValue := "true"
 	toggleLabel := "Enable"
@@ -484,7 +493,7 @@ func (ui *Interface) simpleSettingIntegrationScreen(ctx context.Context, owner V
 	back, _ := ui.backButton(owner, RouteIntegrations)
 	home, _ := ui.homeButton(owner)
 	title := strings.ToUpper(id[:1]) + id[1:]
-	return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: title, Text: "Setting-owned integration"}, RichBlock{Kind: RichTable, Rows: rows}),
+	return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: title}, StateBlock(stateTone(active), stateLabel(active, "Enabled", "Disabled"), ""), RichBlock{Kind: RichFields, Title: "Configuration", Rows: rows}),
 		Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle}, Secondary: []Button{mode}, Navigation: []Button{back, home}})}, nil
 }
 
@@ -518,8 +527,15 @@ func (ui *Interface) rtkScreen(owner ViewOwner, status rtk.Status) (Screen, erro
 	back, _ := ui.backButton(owner, RouteIntegrations)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "RTK", Text: string(status.Source)},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Enabled", fmt.Sprint(status.Enabled)}, {"Version", status.Version}, {"Platform", status.Platform}, {"Managed installed", fmt.Sprint(status.ManagedInstalled)}, {"Verified", fmt.Sprint(status.Verified)}}},
+		RichBlock{Kind: RichHeading, Title: "RTK"},
+		StateBlock(stateTone(status.Enabled), stateLabel(status.Enabled, "Enabled", "Disabled"), ""),
+		FieldsBlock("Installation",
+			[]string{"Source", displayState(string(status.Source))},
+			[]string{"Version", status.Version},
+			[]string{"Platform", status.Platform},
+			[]string{"Managed package", stateLabel(status.ManagedInstalled, "Installed", "Not installed")},
+			[]string{"Verification", stateLabel(status.Verified, "Verified", "Not verified")},
+		),
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle, probe}, Secondary: []Button{install, global}, Navigation: []Button{back, home}})}, nil
 }
 
@@ -557,8 +573,15 @@ func (ui *Interface) codeGraphScreen(owner ViewOwner, status codegraph.Status) (
 	back, _ := ui.backButton(owner, RouteIntegrations)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "CodeGraph", Text: string(status.Resolution.Source)},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Enabled", fmt.Sprint(status.Enabled)}, {"Platform", status.Platform}, {"Pinned version", status.PinnedVersion}, {"Managed installed", fmt.Sprint(status.ManagedInstalled)}, {"Verified", fmt.Sprint(status.Resolution.Verified)}}},
+		RichBlock{Kind: RichHeading, Title: "CodeGraph"},
+		StateBlock(stateTone(status.Enabled), stateLabel(status.Enabled, "Enabled", "Disabled"), ""),
+		FieldsBlock("Installation",
+			[]string{"Source", displayState(string(status.Resolution.Source))},
+			[]string{"Platform", status.Platform},
+			[]string{"Pinned version", status.PinnedVersion},
+			[]string{"Managed package", stateLabel(status.ManagedInstalled, "Installed", "Not installed")},
+			[]string{"Verification", stateLabel(status.Resolution.Verified, "Verified", "Not verified")},
+		),
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle, probe}, Secondary: []Button{install, global}, Navigation: []Button{back, home}})}, nil
 }
 
@@ -611,8 +634,8 @@ func cfTunnelState(status cftunnel.Status) string {
 func cfTunnelStatusBlocks(status cftunnel.Status, reportedVersion string) []RichBlock {
 	state := cfTunnelState(status)
 	rows := [][]string{
-		{"State", state}, {"Source", string(status.Source)}, {"Managed version", status.Version},
-		{"Platform", status.Platform}, {"Verified", fmt.Sprint(status.Verified)}, {"Managed installed", fmt.Sprint(status.ManagedInstalled)}, {"Consumer", status.Consumer},
+		{"Source", displayState(string(status.Source))}, {"Managed version", status.Version},
+		{"Platform", status.Platform}, {"Verification", stateLabel(status.Verified, "Verified", "Not verified")}, {"Managed package", stateLabel(status.ManagedInstalled, "Installed", "Not installed")}, {"Consumer", status.Consumer},
 	}
 	if strings.TrimSpace(reportedVersion) != "" {
 		rows = append(rows, []string{"Reported version", reportedVersion})
@@ -621,12 +644,13 @@ func cfTunnelStatusBlocks(status cftunnel.Status, reportedVersion string) []Rich
 		rows = append(rows, []string{"Executable", status.Path})
 	}
 	blocks := []RichBlock{
-		{Kind: RichHeading, Title: "Cloudflare Quick Tunnel", Text: state},
-		{Kind: RichTable, Rows: rows},
-		{Kind: RichDetails, Title: "Ownership", Text: "cf-tunnel is an integration used only for ephemeral Telegram Logs Mini App ingress. OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority."},
+		{Kind: RichHeading, Title: "Cloudflare Quick Tunnel"},
+		StateBlock(statusTone(state), displayState(state), ""),
+		{Kind: RichFields, Title: "Installation", Rows: rows},
+		{Kind: RichDetails, Title: "Usage", Text: "This integration provides the temporary public URL used by the Telegram Logs App. Secure MCP Tunnel remains separate."},
 	}
 	if status.Source == cftunnel.SourceUnavailable {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Unavailable", Text: "Install the verified managed asset with cm integration cf install, or install cf-tunnel globally yourself."})
+		blocks = append(blocks, NoticeBlock(ToneWarning, "Unavailable", "Install the managed asset with cm integration cf install, or install cf-tunnel globally."))
 	}
 	return blocks
 }
@@ -667,8 +691,14 @@ func (ui *Interface) typeSafeScreen(owner ViewOwner, status application.TypeSafe
 	back, _ := ui.backButton(owner, RouteIntegrations)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "TypeSafe", Text: string(status.State)},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Enabled", fmt.Sprint(status.Enabled)}, {"API key", keyPreview}, {"Model", status.Model}, {"Timeout", fmt.Sprintf("%d ms", status.TimeoutMS)}}},
+		RichBlock{Kind: RichHeading, Title: "TypeSafe"},
+		StateBlock(statusTone(string(status.State)), displayState(string(status.State)), ""),
+		FieldsBlock("Configuration",
+			[]string{"Enabled", boolState(status.Enabled)},
+			[]string{"API key", keyPreview},
+			[]string{"Model", status.Model},
+			[]string{"Timeout", fmt.Sprintf("%d ms", status.TimeoutMS)},
+		),
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle, probe, doctor}, Secondary: []Button{key, configButton}, Navigation: []Button{back, home}})}, nil
 }
 
@@ -693,18 +723,19 @@ func (ui *Interface) telemetryScreen(owner ViewOwner, status application.Telemet
 	back, _ := ui.backButton(owner, RouteIntegrations)
 	home, _ := ui.homeButton(owner)
 	rows := [][]string{
-		{"Configured", fmt.Sprint(status.PersistedEnabled)},
-		{"Effective", fmt.Sprint(status.EffectiveEnabled)},
-		{"Source", string(status.Source)},
-		{"Environment override", fmt.Sprint(status.EnvironmentOverride)},
-		{"Transport available", fmt.Sprint(status.EndpointAvailable)},
+		{"Configured", stateLabel(status.PersistedEnabled, "Enabled", "Disabled")},
+		{"Effective", stateLabel(status.EffectiveEnabled, "Enabled", "Disabled")},
+		{"Source", displayState(string(status.Source))},
+		{"Environment override", stateLabel(status.EnvironmentOverride, "Active", "Inactive")},
+		{"Transport", stateLabel(status.EndpointAvailable, "Available", "Unavailable")},
 		{"Product", status.Product},
-		{"Identity present", fmt.Sprint(status.IdentityPresent)},
+		{"Identity", stateLabel(status.IdentityPresent, "Present", "Not present")},
 	}
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Product telemetry", Text: "Privacy-bounded operator status"},
-		RichBlock{Kind: RichTable, Rows: rows},
-		RichBlock{Kind: RichDetails, Title: "Precedence", Text: "CM_TELEMETRY can override the persisted preference; Telegram changes only the canonical persisted setting."},
+		RichBlock{Kind: RichHeading, Title: "Product telemetry", Text: "Usage telemetry configuration"},
+		StateBlock(stateTone(status.EffectiveEnabled), stateLabel(status.EffectiveEnabled, "Enabled", "Disabled"), ""),
+		RichBlock{Kind: RichFields, Title: "Telemetry", Rows: rows},
+		RichBlock{Kind: RichDetails, Title: "Precedence", Text: "CM_TELEMETRY can override the saved preference. Telegram changes only the saved setting."},
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{toggle}, Secondary: []Button{show}, Navigation: []Button{back, home}})}, nil
 }
 
@@ -773,12 +804,12 @@ func (ui *Interface) authScreen(ctx context.Context, owner ViewOwner) (Screen, e
 	back, _ := ui.backButton(owner, RouteHome)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Authentication", Text: "Telegram private administration boundary"},
-		RichBlock{Kind: RichTable, Rows: [][]string{
-			{"MCP auth", boolState(authStatus.MCPEnabled)}, {"MCP credential", configuredLabel(authStatus.MCPConfigured)},
-			{"Admin auth", boolState(authStatus.AdminEnabled)}, {"Admin credential", configuredLabel(authStatus.AdminConfigured)},
-			{"Bot token", token.Value}, {"Authorized users", fmt.Sprint(len(userIDs))},
-		}},
+		RichBlock{Kind: RichHeading, Title: "Authentication", Text: "Private administration access"},
+		FieldsBlock("Credentials",
+			[]string{"MCP auth", boolState(authStatus.MCPEnabled)}, []string{"MCP credential", configuredLabel(authStatus.MCPConfigured)},
+			[]string{"Admin auth", boolState(authStatus.AdminEnabled)}, []string{"Admin credential", configuredLabel(authStatus.AdminConfigured)},
+			[]string{"Bot token", token.Value}, []string{"Authorized users", fmt.Sprint(len(userIDs))},
+		),
 		RichBlock{Kind: RichDetails, Title: "Credential handling", Text: "Generated credentials are sent as protected content and are never rendered into the ordinary administration message."},
 	), Keyboard: BoundedActionGroups(ActionGroups{
 		Primary:    []Button{mcpToggle, adminToggle, usersButton},
@@ -832,7 +863,7 @@ func (ui *Interface) authorizedUsersScreen(ctx context.Context, owner ViewOwner)
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "Authorized Telegram users", Text: fmt.Sprintf("%d user(s)", len(ids))},
 		RichBlock{Kind: RichList, Items: items},
-		RichBlock{Kind: RichDetails, Title: "Authorization", Text: "Add a numeric Telegram user ID. Authorization changes only after explicit confirmation and successful canonical setting mutation."},
+		RichBlock{Kind: RichDetails, Title: "Authorization", Text: "Add a numeric Telegram user ID. Access changes only after confirmation and a successful settings update."},
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{manual}, Destructive: removeButtons, Navigation: []Button{back, home}})}, nil
 }
 
@@ -859,13 +890,13 @@ func appendSettingList(raw, value string) string {
 func settingsInputPrompt(state ActionState) (title, prompt, placeholder string) {
 	switch state.InputKind {
 	case inputSettingSet:
-		return "Set setting", "Reply with the new value. Canonical SettingService metadata and validation decide whether the mutation is allowed.", "New value"
+		return "Set setting", "Reply with the new value. Setting metadata and validation determine whether the change is allowed.", "New value"
 	case inputSettingsSearch:
-		return "Search settings", "Reply with text to search canonical setting keys, labels, descriptions and owners.", "Search settings"
+		return "Search settings", "Reply with text to search setting keys, labels, descriptions, and owners.", "Search settings"
 	case inputSettingsApply:
-		return "Apply settings atomically", "Reply with a JSON array of changes. Example: [{\"key\":\"http.mcp.port\",\"value\":\"4000\"}]. The canonical transaction validates the whole batch before persisting.", "JSON setting changes"
+		return "Apply settings atomically", "Reply with a JSON array of changes. Example: [{\"key\":\"http.mcp.port\",\"value\":\"4000\"}]. The whole batch is validated before anything is saved.", "JSON setting changes"
 	case inputConfigPatch:
-		return "Patch configuration", "Reply with a JSON array of setting changes. The canonical patch validates the complete batch before persistence.", "JSON setting changes"
+		return "Patch configuration", "Reply with a JSON array of setting changes. The complete batch is validated before persistence.", "JSON setting changes"
 	case inputTelegramUserManual:
 		return "Add Telegram user", "Reply with the numeric Telegram user ID. The candidate is not authorized until the confirmation succeeds.", "Telegram user ID"
 	default:
@@ -920,9 +951,13 @@ func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner Vi
 		}
 		home, _ := ui.homeButton(owner)
 		blocks := []RichBlock{
-			{Kind: RichHeading, Title: result.Spec.Label, Text: "Canonical setting operation completed"},
+			{Kind: RichHeading, Title: result.Spec.Label},
+			StateBlock(ToneSuccess, "Updated", ""),
 			{Kind: RichCopy, Title: "Key", Text: result.Spec.Key, CopyText: result.Spec.Key},
-			{Kind: RichTable, Rows: [][]string{{"Value", result.Value}, {"Runtime reloaded", fmt.Sprint(result.RuntimeReloaded)}}},
+			FieldsBlock("Result",
+				[]string{"Value", result.Value},
+				[]string{"Runtime", stateLabel(result.RuntimeReloaded, "Reloaded", "No reload needed")},
+			),
 		}
 		screen := Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}
 		if state.SecretInput && result.Spec.Secret {
@@ -946,9 +981,10 @@ func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner Vi
 			items = append(items, item.Spec.Key+" — "+item.Value)
 		}
 		return Screen{Rich: BuildRichPresentation(
-			RichBlock{Kind: RichHeading, Title: "Settings applied", Text: fmt.Sprintf("%d change(s)", len(result.Results))},
+			RichBlock{Kind: RichHeading, Title: "Settings applied"},
+			StateBlock(ToneSuccess, fmt.Sprintf("%d change(s) applied", len(result.Results)), ""),
 			RichBlock{Kind: RichList, Items: items},
-			RichBlock{Kind: RichDetails, Title: "Runtime", Text: fmt.Sprintf("reloaded=%t", result.RuntimeReloaded)},
+			FieldsBlock("Runtime", []string{"Configuration", stateLabel(result.RuntimeReloaded, "Reloaded", "No reload needed")}),
 		), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	case application.AuthRotationResult:
 		protected := Screen{Rich: BuildRichPresentation(
@@ -980,8 +1016,9 @@ func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner Vi
 		}
 		home, _ := ui.homeButton(owner)
 		return Screen{Rich: BuildRichPresentation(
-			RichBlock{Kind: RichHeading, Title: "Configuration exported", Text: "The safe portable envelope was sent as a protected document."},
-			RichBlock{Kind: RichDetails, Title: "Secret policy", Text: "Managed secrets and runtime-only state are excluded by the canonical exporter."},
+			RichBlock{Kind: RichHeading, Title: "Configuration exported"},
+			StateBlock(ToneSuccess, "Export sent", "The portable configuration was sent as a protected document."),
+			RichBlock{Kind: RichDetails, Title: "Secret policy", Text: "Managed secrets and runtime-only state are excluded from portable exports."},
 		), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	case application.TelemetryStatus:
 		screen, err := ui.telemetryScreen(owner, result)
@@ -1026,8 +1063,14 @@ func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner Vi
 		screen, err := ui.cfTunnelIntegrationScreen(owner, result.Status)
 		return screen, true, err
 	case cftunnel.RemoveResult:
-		blocks := cfTunnelStatusBlocks(result.Status, "")
-		blocks = append([]RichBlock{{Kind: RichHeading, Title: "Managed cf-tunnel removed", Text: fmt.Sprintf("removed=%t", result.Removed)}}, blocks...)
+		blocks := []RichBlock{
+			{Kind: RichHeading, Title: "Managed cf-tunnel"},
+			StateBlock(ToneSuccess, stateLabel(result.Removed, "Removed", "Already absent"), ""),
+			FieldsBlock("Current state",
+				[]string{"Availability", displayState(cfTunnelState(result.Status))},
+				[]string{"Source", displayState(string(result.Status.Source))},
+			),
+		}
 		keyboard, navigationErr := ui.integrationResultNavigation(owner)
 		if navigationErr != nil {
 			return Screen{}, true, navigationErr
@@ -1067,15 +1110,18 @@ func (ui *Interface) integrationResultNavigation(owner ViewOwner) ([][]Button, e
 }
 
 func (ui *Interface) globalExecutableResultScreen(owner ViewOwner, name string, available bool, path string, managedRecommended bool, managedCommand string) (Screen, bool, error) {
-	state := "not installed globally"
-	rows := [][]string{{"Available", fmt.Sprint(available)}}
+	state := "Not installed globally"
+	rows := [][]string{}
 	if available {
-		state = "global executable detected"
+		state = "Global executable detected"
 		rows = append(rows, []string{"Path", path})
 	}
-	blocks := []RichBlock{{Kind: RichHeading, Title: name, Text: state}, {Kind: RichTable, Rows: rows}}
+	blocks := []RichBlock{{Kind: RichHeading, Title: name}, StateBlock(stateTone(available), state, "")}
+	if len(rows) > 0 {
+		blocks = append(blocks, FieldsBlock("Executable", rows...))
+	}
 	if !available && managedRecommended {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Recommended", Text: "Use the verified managed asset instead: " + managedCommand})
+		blocks = append(blocks, NoticeBlock(ToneWarning, "Managed install available", "Use the verified managed asset instead: "+managedCommand))
 	}
 	back, err := ui.backButton(owner, RouteIntegrations)
 	if err != nil {

@@ -26,11 +26,11 @@ const (
 
 func (ui *Interface) dispatch(ctx context.Context, operation capability.ID, input any) (any, error) {
 	if ui == nil || ui.dispatcher == nil {
-		return nil, errors.New("canonical operation dispatcher is unavailable")
+		return nil, errors.New("operation dispatcher is unavailable")
 	}
 	spec, ok := capability.Lookup(operation)
 	if !ok {
-		return nil, fmt.Errorf("unknown canonical operation %q", operation)
+		return nil, fmt.Errorf("unknown operation %q", operation)
 	}
 	contract, ok := spec.Surface(capability.SurfaceTelegram)
 	if !ok || contract.State != capability.SurfaceRequired || !capability.TelegramAdapterOperationLive(operation) {
@@ -94,7 +94,7 @@ func (ui *Interface) workspaceListScreen(ctx context.Context, owner ViewOwner, s
 		if !item.Available {
 			availability = "unavailable"
 		}
-		list = append(list, fmt.Sprintf("%s — %s — %s", item.ID, item.Path, availability))
+		list = append(list, fmt.Sprintf("%s\n%s · %s", item.ID, item.Path, displayState(availability)))
 	}
 	register, err := ui.stateButton(owner, "Register", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteWorkspaces, Operation: capability.WorkspaceRegister, InputKind: inputWorkspaceRegister})
 	if err != nil {
@@ -171,9 +171,10 @@ func (ui *Interface) workspaceDetailScreen(ctx context.Context, owner ViewOwner,
 	}
 	secondary := []Button{access, containers}
 	rich := BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Workspace", Text: "Registered workspace"},
+		RichBlock{Kind: RichHeading, Title: "Workspace"},
+		StateBlock(stateTone(item.Available), stateLabel(item.Available, "Available", "Unavailable"), ""),
 		RichBlock{Kind: RichCopy, Title: "ID", Text: item.ID, CopyText: item.ID},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Path", item.Path}, {"Available", fmt.Sprint(item.Available)}, {"Allowed roots", fmt.Sprint(len(item.AllowDirs))}}},
+		FieldsBlock("Workspace", []string{"Path", item.Path}, []string{"Allowed roots", fmt.Sprint(len(item.AllowDirs))}),
 	)
 	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{relocate, processes, codeGraph}, Secondary: secondary, Destructive: []Button{unregister, purge}, Navigation: []Button{back, home}})}, nil
 }
@@ -249,7 +250,7 @@ func (ui *Interface) containerListScreen(ctx context.Context, owner ViewOwner, s
 		}
 		button.Role = ButtonRoleResource
 		buttons = append(buttons, button)
-		list = append(list, fmt.Sprintf("%s — %d workspaces", item.Name, len(item.WorkspaceIDs)))
+		list = append(list, fmt.Sprintf("%s\n%d workspace(s)", item.Name, len(item.WorkspaceIDs)))
 	}
 	primary := []Button{}
 	if state.ResourceID == "" {
@@ -305,7 +306,7 @@ func (ui *Interface) containerDetailScreen(ctx context.Context, owner ViewOwner,
 	rich := BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: item.Name, Text: "Workspace container"},
 		RichBlock{Kind: RichCopy, Title: "ID", Text: item.ID, CopyText: item.ID},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Members", fmt.Sprint(len(item.WorkspaceIDs))}}},
+		FieldsBlock("Container", []string{"Members", fmt.Sprint(len(item.WorkspaceIDs))}),
 	)
 	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{rename}, Secondary: []Button{members}, Destructive: []Button{remove}, Navigation: []Button{back, home}})}, nil
 }
@@ -395,7 +396,7 @@ func (ui *Interface) requestListScreen(ctx context.Context, owner ViewOwner, sta
 		}
 		button.Role = ButtonRoleResource
 		buttons = append(buttons, button)
-		list = append(list, fmt.Sprintf("%s — %s — %s", request.ID, request.TargetTool, request.WorkspaceID))
+		list = append(list, fmt.Sprintf("%s\n%s · %s", request.ID, request.TargetTool, request.WorkspaceID))
 	}
 	navigation, err := ui.domainPaginationButtons(owner, state, page, pages)
 	if err != nil {
@@ -444,12 +445,14 @@ func (ui *Interface) requestCardWithOptions(ctx context.Context, owner ViewOwner
 	}
 	blocks := []RichBlock{
 		{Kind: RichHeading, Title: "Approval request"},
+		StateBlock(statusTone(string(request.Status)), displayState(string(request.Status)), ""),
 		{Kind: RichCopy, Title: "ID", Text: request.ID, CopyText: request.ID},
-		{Kind: RichTable, Rows: [][]string{{"Status", string(request.Status)}, {"Workspace", request.WorkspaceID}, {"Tool", request.TargetTool}, {"Guard", string(request.GuardCode)}, {"Expires", request.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}}},
-		{Kind: RichDetails, Title: "Agent summary", Text: agentSummary + "\nSupplied by the requesting agent; not CodeMCP command truth."},
+		FieldsBlock("Request", []string{"Workspace", request.WorkspaceID}, []string{"Tool", request.TargetTool}, []string{"Guard", string(request.GuardCode)}, []string{"Expires", request.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}),
+		{Kind: RichSection, Title: "Agent summary", Text: agentSummary},
+		{Kind: RichDetails, Title: "Summary source", Text: "This summary was supplied by the requesting agent and is not CodeMCP command truth."},
 	}
 	if strings.TrimSpace(request.GuardReason) != "" {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Policy reason", Text: request.GuardReason})
+		blocks = append(blocks, NoticeBlock(ToneWarning, "Policy reason", request.GuardReason))
 	}
 	if strings.TrimSpace(request.Command) != "" {
 		blocks = append(blocks, RichBlock{Kind: RichCode, Title: "CodeMCP command", Text: request.Command})
@@ -558,9 +561,9 @@ func approvalResolvedFallbackScreen(message notification.Message) Screen {
 	}
 	blocks := []RichBlock{{Kind: RichHeading, Title: title}}
 	if status := strings.TrimSpace(message.Status); status != "" {
-		blocks = append(blocks, RichBlock{Kind: RichTable, Rows: [][]string{{"Status", status}}})
+		blocks = append(blocks, StateBlock(statusTone(status), displayState(status), ""))
 	}
-	blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Result", Text: body})
+	blocks = append(blocks, RichBlock{Kind: RichSection, Title: "Result", Text: body})
 	return Screen{Rich: BuildRichPresentation(blocks...)}
 }
 
@@ -601,9 +604,10 @@ func (ui *Interface) domainOperationResultScreen(ctx context.Context, owner View
 			return Screen{}, true, err
 		}
 		rich := BuildRichPresentation(
-			RichBlock{Kind: RichHeading, Title: "Workspace", Text: "Operation completed"},
+			RichBlock{Kind: RichHeading, Title: "Workspace updated"},
+			StateBlock(ToneSuccess, "Updated", ""),
 			RichBlock{Kind: RichCopy, Title: "ID", Text: result.ID, CopyText: result.ID},
-			RichBlock{Kind: RichTable, Rows: [][]string{{"Path", result.Path}, {"Available", fmt.Sprint(result.Available)}, {"Allowed roots", fmt.Sprint(len(result.AllowDirs))}}},
+			FieldsBlock("Workspace", []string{"Path", result.Path}, []string{"Availability", stateLabel(result.Available, "Available", "Unavailable")}, []string{"Allowed roots", fmt.Sprint(len(result.AllowDirs))}),
 		)
 		return Screen{Rich: rich, Keyboard: keyboard}, true, nil
 	case application.WorkspaceRelocation:
@@ -612,9 +616,10 @@ func (ui *Interface) domainOperationResultScreen(ctx context.Context, owner View
 			return Screen{}, true, err
 		}
 		rich := BuildRichPresentation(
-			RichBlock{Kind: RichHeading, Title: "Workspace relocated", Text: "Operation completed"},
+			RichBlock{Kind: RichHeading, Title: "Workspace relocated"},
+			StateBlock(ToneSuccess, "Relocated", ""),
 			RichBlock{Kind: RichCopy, Title: "ID", Text: result.After.ID, CopyText: result.After.ID},
-			RichBlock{Kind: RichTable, Rows: [][]string{{"Previous root", result.Before.Path}, {"Current root", result.After.Path}, {"Available", fmt.Sprint(result.After.Available)}}},
+			FieldsBlock("Location", []string{"Previous root", result.Before.Path}, []string{"Current root", result.After.Path}, []string{"Availability", stateLabel(result.After.Available, "Available", "Unavailable")}),
 		)
 		return Screen{Rich: rich, Keyboard: keyboard}, true, nil
 	case application.WorkspaceContainerView:
@@ -623,9 +628,10 @@ func (ui *Interface) domainOperationResultScreen(ctx context.Context, owner View
 			return Screen{}, true, err
 		}
 		rich := BuildRichPresentation(
-			RichBlock{Kind: RichHeading, Title: result.Name, Text: "Workspace container operation completed"},
+			RichBlock{Kind: RichHeading, Title: result.Name},
+			StateBlock(ToneSuccess, "Container updated", ""),
 			RichBlock{Kind: RichCopy, Title: "ID", Text: result.ID, CopyText: result.ID},
-			RichBlock{Kind: RichTable, Rows: [][]string{{"Members", fmt.Sprint(len(result.WorkspaceIDs))}}},
+			FieldsBlock("Container", []string{"Members", fmt.Sprint(len(result.WorkspaceIDs))}),
 		)
 		return Screen{Rich: rich, Keyboard: keyboard}, true, nil
 	default:
@@ -819,10 +825,11 @@ func (ui *Interface) workspaceRelocationConflictScreen(owner ViewOwner, state Ac
 	}
 	rich := BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "Duplicate workspace identity", Text: "Local resolution required"},
+		NoticeBlock(ToneWarning, "Workspace conflict", "The destination resolves to an already registered workspace identity."),
 		RichBlock{Kind: RichCopy, Title: "Workspace ID", Text: conflict.WorkspaceID, CopyText: conflict.WorkspaceID},
-		RichBlock{Kind: RichTable, Rows: [][]string{{"Registered root", conflict.RegisteredRoot}, {"Destination root", conflict.DestinationRoot}}},
+		FieldsBlock("Locations", []string{"Registered root", conflict.RegisteredRoot}, []string{"Destination root", conflict.DestinationRoot}),
 		RichBlock{Kind: RichList, Title: "Local resolution choices", Items: resolutions},
-		RichBlock{Kind: RichDetails, Title: "Local action required", Text: "Resolve this conflict locally with cm workspace relocate. Telegram does not choose destination, registered, or merge state on your behalf."},
+		RichBlock{Kind: RichDetails, Title: "How to resolve", Text: "Resolve this conflict locally with cm workspace relocate. Telegram does not choose a resolution automatically."},
 	)
 	return Screen{Rich: rich, Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true
 }

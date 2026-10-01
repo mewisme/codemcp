@@ -19,7 +19,7 @@ type orderedInteractiveAPI struct {
 
 func (api *orderedInteractiveAPI) EditScreen(ctx context.Context, chatID, messageID int64, screen Screen) error {
 	if api.events != nil {
-		if strings.Contains(screen.Text, "Working") {
+		if strings.Contains(screenText(screen), "Working") {
 			*api.events = append(*api.events, "working")
 		} else {
 			*api.events = append(*api.events, "terminal")
@@ -259,7 +259,7 @@ func TestInputLifecycleEditsOnePromptAndDeletesSecretInput(t *testing.T) {
 	if err := ui.completeInput(t.Context(), owner, 10, 11, true, result); err != nil {
 		t.Fatal(err)
 	}
-	if len(api.edited) != 3 || !strings.Contains(api.edited[0].Text, "Input required") || !strings.Contains(api.edited[1].Text, "Input failed") || api.edited[2].Text != "Saved" {
+	if len(api.edited) != 3 || !strings.Contains(screenText(api.edited[0]), "Input required") || !strings.Contains(screenText(api.edited[1]), "Input failed") || screenText(api.edited[2]) != "Saved" {
 		t.Fatalf("input lifecycle screens=%#v", api.edited)
 	}
 	if len(api.deleted) != 1 || api.deleted[0] != 11 {
@@ -294,7 +294,7 @@ func TestMutationCallbackAcknowledgesBeforeWorkingDispatchAndTerminalEdit(t *tes
 	if strings.Join(events, "|") != strings.Join(want, "|") {
 		t.Fatalf("callback lifecycle=%v want=%v", events, want)
 	}
-	if len(api.edited) != 2 || !strings.Contains(api.edited[0].Text, "Working") || !strings.Contains(api.edited[1].Text, "Completed") {
+	if len(api.edited) != 2 || !strings.Contains(screenText(api.edited[0]), "Working") || !strings.Contains(screenText(api.edited[1]), "Success") {
 		t.Fatalf("edited screens=%#v", api.edited)
 	}
 }
@@ -433,7 +433,7 @@ func TestStaleVersionCallbackAlertsAndRendersRecoveryNavigation(t *testing.T) {
 	if len(api.answers) != 1 || !strings.Contains(api.answers[0], "stale") {
 		t.Fatalf("stale callback answer=%#v", api.answers)
 	}
-	if len(api.edited) != 1 || !strings.Contains(api.edited[0].Text, "Stale control") || len(api.edited[0].Keyboard) != 1 || len(api.edited[0].Keyboard[0]) != 2 {
+	if len(api.edited) != 1 || !strings.Contains(screenText(api.edited[0]), "Stale control") || len(api.edited[0].Keyboard) != 1 || len(api.edited[0].Keyboard[0]) != 2 {
 		t.Fatalf("stale recovery screen=%#v", api.edited)
 	}
 	if api.edited[0].Keyboard[0][0].Text != "« Back" || api.edited[0].Keyboard[0][1].Text != "⌂ Home" {
@@ -475,9 +475,9 @@ func TestReferenceButtonHierarchyRemainsRepresentableWithoutRejectedArchitecture
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, phrase := range []string{"Summary", "Details", "Back vs Close", "Copy", "Refresh"} {
-		if !strings.Contains(help.Text, phrase) {
-			t.Fatalf("help missing %q: %s", phrase, help.Text)
+	for _, phrase := range []string{"Summary", "Details", "Back / Close", "Copy", "Refresh"} {
+		if !strings.Contains(screenText(help), phrase) {
+			t.Fatalf("help missing %q: %s", phrase, screenText(help))
 		}
 	}
 

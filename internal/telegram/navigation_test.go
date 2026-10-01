@@ -263,8 +263,8 @@ func TestCanonicalRequiredConfirmationBlocksDispatchUntilConfirmed(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dispatcher.calls) != 0 || !strings.Contains(screen.Text, "Confirm operation") {
-		t.Fatalf("calls=%d screen=%q", len(dispatcher.calls), screen.Text)
+	if len(dispatcher.calls) != 0 || !strings.Contains(screenText(screen), "Confirmation required") {
+		t.Fatalf("calls=%d screen=%q", len(dispatcher.calls), screenText(screen))
 	}
 	if len(screen.Keyboard) == 0 || len(screen.Keyboard[0]) == 0 {
 		t.Fatalf("confirmation keyboard=%#v", screen.Keyboard)
@@ -359,8 +359,27 @@ func TestStaleExpectedVersionBlocksCanonicalDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(dispatcher.calls) != 0 || !strings.Contains(screen.Text, "Stale control") {
-		t.Fatalf("calls=%d screen=%q", len(dispatcher.calls), screen.Text)
+	if len(dispatcher.calls) != 0 || !strings.Contains(screenText(screen), "Stale control") {
+		t.Fatalf("calls=%d screen=%q", len(dispatcher.calls), screenText(screen))
+	}
+}
+
+func TestStatusOverviewPresentationAvoidsGenericCompletionAndStaleLogsWarning(t *testing.T) {
+	runtime := &Runtime{health: Health{LogsMiniApp: LogsMiniAppHealth{Enabled: true, State: MiniAppReady}}}
+	ui := &Interface{runtime: runtime}
+	text := RichFallback(ui.statusOverviewPresentation(application.StatusOverview{
+		RuntimeRunning: true, MCPHTTPEnabled: false, AdminEnabled: false,
+		TunnelEnabled: true, TelegramEnabled: true, TelegramHealthy: true,
+	})).Text
+	for _, want := range []string{"Runtime Running", "Services", "Secure MCP Tunnel", "Telegram", "Logs App", "Ready"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("status overview missing %q: %q", want, text)
+		}
+	}
+	for _, unwanted := range []string{"Completed", "Logs drill-down remains inert"} {
+		if strings.Contains(text, unwanted) {
+			t.Fatalf("status overview retained %q: %q", unwanted, text)
+		}
 	}
 }
 

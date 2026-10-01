@@ -226,14 +226,18 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 		statusText = "disabled"
 	}
 	blocks := []RichBlock{
-		{Kind: RichHeading, Title: "Logs", Text: "Read-only Telegram Mini App ingress"},
-		{Kind: RichTable, Rows: [][]string{{"State", statusText}, {"cf-tunnel", boolState(health.DependencyAvailable)}, {"Generation", strconv.FormatUint(health.Generation, 10)}}},
-		{Kind: RichDetails, Title: "Clear semantics", Text: "Mini App “Clear view” only resets that browser session/view. “Clear persisted logs” below is the canonical server-side journal mutation."},
+		{Kind: RichHeading, Title: "Logs", Text: "Retained runtime activity in Telegram"},
+		StateBlock(statusTone(statusText), displayState(statusText), ""),
+		FieldsBlock("Ingress",
+			[]string{"Quick Tunnel", stateLabel(health.DependencyAvailable, "Available", "Unavailable")},
+			[]string{"Generation", strconv.FormatUint(health.Generation, 10)},
+		),
+		{Kind: RichDetails, Title: "Clear behavior", Text: "Clear view resets only the current browser view. Clear persisted logs clears the server-side journal."},
 	}
 	primary := []Button{}
 	if health.State == MiniAppReady && strings.TrimSpace(health.PublicURL) != "" {
 		primary = append(primary, Button{Text: "Open Logs App", WebAppURL: health.PublicURL, Role: ButtonRolePrimary})
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Ephemeral ingress", Text: "The WebApp button is generated from the currently ready Quick Tunnel URL. Refresh this screen after a runtime or tunnel restart."})
+		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Temporary URL", Text: "The Logs App uses the current Quick Tunnel URL. Refresh this screen after a runtime or tunnel restart."})
 	} else {
 		primary = append(primary, Button{Text: "Open Logs App", Disabled: true, Role: ButtonRoleNeutral})
 		message := strings.TrimSpace(health.LastError)
@@ -246,7 +250,7 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 				message = "The Logs Mini App is not ready yet."
 			}
 		}
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Unavailable", Text: message})
+		blocks = append(blocks, NoticeBlock(ToneWarning, "Logs App unavailable", message))
 	}
 	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{
 		Primary: primary, Secondary: []Button{logPath}, Destructive: []Button{clearPersisted}, Navigation: []Button{back, home, refresh},

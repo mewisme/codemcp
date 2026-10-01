@@ -67,7 +67,7 @@ func (ui *Interface) completionListScreen(ctx context.Context, owner ViewOwner, 
 		Text: fmt.Sprintf("%d recent accepted completions · newest first", len(records)),
 	}}
 	if len(records) == 0 {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "No completions", Text: "No accepted agent completion has been recorded yet."})
+		blocks = append(blocks, RichBlock{Kind: RichSection, Title: "No completions", Text: "No accepted agent completion has been recorded yet."})
 	} else {
 		latest := records[0]
 		blocks = append(blocks,
@@ -155,12 +155,12 @@ func completionRecordPresentation(record agentcompletion.Record) *RichPresentati
 	}
 	blocks := []RichBlock{
 		{Kind: RichHeading, Title: title},
+		StateBlock(statusTone(string(record.Status)), displayState(string(record.Status)), ""),
 	}
 	if summary := strings.TrimSpace(record.Summary); summary != "" {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Summary", Text: summary})
+		blocks = append(blocks, RichBlock{Kind: RichSection, Title: "Summary", Text: summary})
 	}
 	rows := [][]string{
-		{"Status", string(record.Status)},
 		{"Workspace", record.WorkspaceID},
 	}
 	if source := strings.TrimSpace(record.Source); source != "" {
@@ -170,7 +170,7 @@ func completionRecordPresentation(record agentcompletion.Record) *RichPresentati
 		rows = append(rows, []string{"Completed", formatNotificationTime(record.CreatedAt)})
 	}
 	blocks = append(blocks,
-		RichBlock{Kind: RichTable, Rows: rows},
+		RichBlock{Kind: RichFields, Title: "Completion", Rows: rows},
 		RichBlock{Kind: RichCopy, Title: "Completion ID", Text: record.ID, CopyText: record.ID},
 	)
 	if supersedes := strings.TrimSpace(record.SupersedesID); supersedes != "" {
@@ -180,12 +180,13 @@ func completionRecordPresentation(record agentcompletion.Record) *RichPresentati
 }
 
 func completionListLabel(record agentcompletion.Record) string {
-	parts := make([]string, 0, 4)
-	if status := strings.TrimSpace(string(record.Status)); status != "" {
-		parts = append(parts, status)
+	title := strings.TrimSpace(record.Title)
+	if title == "" {
+		title = record.ID
 	}
-	if title := strings.TrimSpace(record.Title); title != "" {
-		parts = append(parts, title)
+	parts := make([]string, 0, 3)
+	if status := strings.TrimSpace(string(record.Status)); status != "" {
+		parts = append(parts, displayState(status))
 	}
 	if workspace := strings.TrimSpace(record.WorkspaceID); workspace != "" {
 		parts = append(parts, workspace)
@@ -193,7 +194,10 @@ func completionListLabel(record agentcompletion.Record) string {
 	if !record.CreatedAt.IsZero() {
 		parts = append(parts, record.CreatedAt.UTC().Format("2006-01-02 15:04Z"))
 	}
-	return strings.Join(parts, " · ")
+	if len(parts) == 0 {
+		return title
+	}
+	return title + "\n" + strings.Join(parts, " · ")
 }
 
 func (ui *Interface) currentLogsWebAppButton() (Button, bool) {

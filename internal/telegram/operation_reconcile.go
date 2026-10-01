@@ -135,7 +135,6 @@ func (ui *Interface) runtimeRestartCompletedScreen(owner ViewOwner, status runti
 		return Screen{}, err
 	}
 	rows := [][]string{
-		{"State", "ready"},
 		{"PID", fmt.Sprint(status.PID)},
 	}
 	if strings.TrimSpace(status.RunID) != "" {
@@ -146,8 +145,9 @@ func (ui *Interface) runtimeRestartCompletedScreen(owner ViewOwner, status runti
 	}
 	return Screen{
 		Rich: BuildRichPresentation(
-			RichBlock{Kind: RichHeading, Title: "Restart completed", Text: "The replacement managed runtime is ready."},
-			RichBlock{Kind: RichTable, Rows: rows},
+			RichBlock{Kind: RichHeading, Title: "Restart completed"},
+			StateBlock(ToneSuccess, "Runtime ready", ""),
+			RichBlock{Kind: RichFields, Title: "Runtime", Rows: rows},
 			RichBlock{Kind: RichDetails, Title: "Handoff", Text: "This message was completed by the replacement runtime after the previous process shut down."},
 		),
 		Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{system}, Navigation: []Button{home}}),

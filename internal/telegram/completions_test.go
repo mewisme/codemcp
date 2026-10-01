@@ -65,7 +65,7 @@ func TestCompletionListAndDetailUseCanonicalResolvers(t *testing.T) {
 		t.Fatalf("view calls=%d rich=%#v", viewCalls, detail.Rich)
 	}
 	detailFallback := RichFallback(detail.Rich)
-	for _, expected := range []string{"Latest completion", "Latest summary", "completed", "ws_new", "cmp_new", "tunnel"} {
+	for _, expected := range []string{"Latest completion", "Latest summary", "Completed", "ws_new", "cmp_new", "tunnel"} {
 		if !strings.Contains(detailFallback.Text, expected) {
 			t.Fatalf("completion detail missing %q: %q", expected, detailFallback.Text)
 		}

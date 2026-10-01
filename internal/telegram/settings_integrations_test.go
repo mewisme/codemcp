@@ -88,7 +88,7 @@ func TestTelemetryScreenNeverRendersEndpointOrIdentityValue(t *testing.T) {
 	if strings.Contains(text, "secret.telemetry.example") {
 		t.Fatalf("telemetry endpoint leaked: %q", text)
 	}
-	for _, want := range []string{"Configured", "Effective", "Source", "Transport available", "Identity present"} {
+	for _, want := range []string{"Configured", "Effective", "Source", "Transport", "Identity"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("telemetry status missing %q: %q", want, text)
 		}

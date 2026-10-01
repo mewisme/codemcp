@@ -19,7 +19,12 @@ func TestRichPresentationFallbackPreservesRepresentativeSemantics(t *testing.T) 
 		blocks []RichBlock
 		want   []string
 	}{
-		{"status", []RichBlock{{Kind: RichHeading, Title: "Status", Text: "Runtime overview"}, {Kind: RichTable, Rows: [][]string{{"runtime", "enabled"}, {"Telegram", "healthy"}}}}, []string{"Status", "Runtime overview", "runtime", "enabled", "Telegram", "healthy"}},
+		{"status", []RichBlock{
+			{Kind: RichHeading, Title: "Status", Text: "Runtime overview"},
+			StateBlock(ToneHealthy, "Runtime running", ""),
+			FieldsBlock("Services", []string{"MCP HTTP", "Disabled"}, []string{"Telegram", "Healthy"}),
+			NoticeBlock(ToneWarning, "Logs App unavailable", "Quick Tunnel is not ready."),
+		}, []string{"Status", "Runtime overview", "Runtime running", "Services", "MCP HTTP", "Disabled", "Telegram", "Healthy", "Logs App unavailable"}},
 		{"doctor", []RichBlock{{Kind: RichSection, Title: "Doctor", Text: "Diagnostics"}, {Kind: RichList, Items: []string{"config valid", "runtime reachable"}}}, []string{"Doctor", "Diagnostics", "config valid", "runtime reachable"}},
 		{"approval", []RichBlock{{Kind: RichQuote, Text: "Approve guarded request"}, {Kind: RichCode, Text: "cm status"}}, []string{"Approve guarded request", "cm status"}},
 		{"resource", []RichBlock{{Kind: RichDetails, Title: "Workspace", Text: "ws_123"}, {Kind: RichLink, Title: "Docs", LinkURL: "https://example.com/docs"}}, []string{"Workspace", "ws_123", "Docs", "https://example.com/docs"}},
@@ -43,6 +48,9 @@ func TestRichPresentationFallbackPreservesRepresentativeSemantics(t *testing.T) 
 func TestRichMessageHTMLUsesNativeBlockStructureInsteadOfWhitespaceLayout(t *testing.T) {
 	rich := BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: "Doctor", Text: "healthy=false · warnings=2"},
+		StateBlock(ToneWarning, "Needs attention", "2 warnings"),
+		FieldsBlock("Summary", []string{"Warnings", "2"}, []string{"Errors", "0"}),
+		NoticeBlock(ToneWarning, "Provider unavailable", "Retry later."),
 		RichBlock{Kind: RichList, Items: []string{"approval.lifecycle — healthy", "background.delivery — healthy"}},
 		RichBlock{Kind: RichTable, Rows: [][]string{{"Runtime", "ready"}, {"Version", "v1.2.3"}}},
 		RichBlock{Kind: RichDetails, Title: "Detail", Text: "line one\nline two"},
@@ -52,6 +60,9 @@ func TestRichMessageHTMLUsesNativeBlockStructureInsteadOfWhitespaceLayout(t *tes
 	html := string(RichMessageHTML(rich))
 	for _, want := range []string{
 		"<h2>Doctor</h2><p>healthy=false · warnings=2</p>",
+		"<p>! <b>Needs attention</b> — 2 warnings</p>",
+		"<h3>Summary</h3><table compact><tr><th>Warnings</th><td>2</td></tr><tr><th>Errors</th><td>0</td></tr></table>",
+		"<blockquote>! <b>Provider unavailable</b> — Retry later.</blockquote>",
 		"<ul><li>approval.lifecycle — healthy</li><li>background.delivery — healthy</li></ul>",
 		"<table compact><tr><th>Runtime</th><td>ready</td></tr><tr><th>Version</th><td>v1.2.3</td></tr></table>",
 		"<details><summary>Detail</summary><p>line one<br>line two</p></details>",

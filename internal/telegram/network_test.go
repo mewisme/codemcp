@@ -23,7 +23,7 @@ func TestCFTunnelScreenExposesManagedAssetLifecycleWithoutSecondTunnelAuthority(
 		t.Fatal(err)
 	}
 	text := RichFallback(screen.Rich).Text
-	for _, want := range []string{"Cloudflare Quick Tunnel", "v0.0.1", "Telegram Logs Mini App", "OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority"} {
+	for _, want := range []string{"Cloudflare Quick Tunnel", "v0.0.1", "Telegram Logs Mini App", "Secure MCP Tunnel remains separate"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("cf-tunnel screen missing %q: %q", want, text)
 		}
