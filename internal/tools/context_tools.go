@@ -189,7 +189,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(value), nil
 	})
 
-	register("project_context", "Project Context", "Build the complete workspace instruction context with environment, Git, selected memory, rules, skills, and ready-to-use instructions.", workspaceOnlySchema(projectContextSchemaFields()), `{"type":"object","properties":{"root":{"type":"string"},"workspace_id":{"type":"string"},"instruction_context":{"type":"object","additionalProperties":true},"summary":{"type":"object","additionalProperties":true}},"required":["root","workspace_id","instruction_context","summary"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
+	register("project_context", "Project Context", "Build the complete workspace instruction context with environment, Git, selected memory, rules, skills, bounded workspace plan summaries, and ready-to-use instructions.", workspaceOnlySchema(projectContextSchemaFields()), `{"type":"object","properties":{"root":{"type":"string"},"workspace_id":{"type":"string"},"instruction_context":{"type":"object","additionalProperties":true},"summary":{"type":"object","additionalProperties":true}},"required":["root","workspace_id","instruction_context","summary"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
 		defaults := projectcontext.DefaultOptions()
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
@@ -200,6 +200,10 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 			return Result{}, err
 		}
 		memoryQuery, err := optionalString(args, "memory_query")
+		if err != nil {
+			return Result{}, err
+		}
+		planName, err := optionalString(args, "plan_name")
 		if err != nil {
 			return Result{}, err
 		}
@@ -238,7 +242,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		value, err := contextService.Build(ctx, item.ID, projectcontext.Options{
 			Path: pathValue, MaxInstructionBytes: maxInstructionBytes, MaxSectionBytes: maxSectionBytes, MaxLinesPerSection: maxLinesPerSection,
 			MemoryQuery: memoryQuery, MaxMemoryEntries: maxMemoryEntries, MaxMemoryBytes: maxMemoryBytes,
-			IncludeGit: includeGit, IncludeMemory: includeMemory, IncludeSkills: includeSkills,
+			IncludeGit: includeGit, IncludeMemory: includeMemory, IncludeSkills: includeSkills, PlanName: planName,
 			BackgroundWork: projectBackgroundCapabilities(ctx),
 		})
 		if err != nil {
@@ -495,7 +499,7 @@ func workspaceOnlySchema(extra string) string {
 
 func projectContextSchemaFields() string {
 	defaults := projectcontext.DefaultOptions()
-	return fmt.Sprintf(`"path":{"type":"string"},"memory_query":{"type":"string"},"max_memory_entries":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_memory_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_instruction_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_section_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_lines_per_section":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"include_git":{"type":"boolean","default":%t},"include_memory":{"type":"boolean","default":%t},"include_skills":{"type":"boolean","default":%t},`,
+	return fmt.Sprintf(`"path":{"type":"string"},"memory_query":{"type":"string"},"plan_name":{"type":"string","minLength":1,"maxLength":64,"pattern":"^[a-z0-9][a-z0-9-]{0,63}$"},"max_memory_entries":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_memory_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_instruction_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_section_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_lines_per_section":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"include_git":{"type":"boolean","default":%t},"include_memory":{"type":"boolean","default":%t},"include_skills":{"type":"boolean","default":%t},`,
 		projectcontext.MinMemoryEntries, projectcontext.MaxMemoryEntries, defaults.MaxMemoryEntries,
 		projectcontext.MinMemoryBytes, projectcontext.MaxMemoryBytes, defaults.MaxMemoryBytes,
 		projectcontext.MinInstructionBytes, projectcontext.MaxInstructionBytes, defaults.MaxInstructionBytes,

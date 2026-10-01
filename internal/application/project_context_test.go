@@ -1,6 +1,7 @@
 package application
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,6 +12,30 @@ import (
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/workspace"
 )
+
+func TestApplicationProjectContextMapsExactPlanMissToNotFound(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewApplicationProjectContextService(manager).Read(t.Context(), ProjectContextInput{
+		WorkspaceID: item.ID,
+		Options:     projectcontext.Options{PlanName: "missing-plan"},
+	})
+	if err == nil || !errors.Is(err, projectcontext.ErrPlanNotFound) {
+		t.Fatalf("project context missing plan error=%v", err)
+	}
+	semantics := ErrorSemanticsOf(err)
+	if semantics.Code != ErrorNotFound || semantics.Retryable || semantics.Stale {
+		t.Fatalf("project context missing plan semantics=%#v", semantics)
+	}
+	var operationErr *OperationError
+	if !errors.As(err, &operationErr) || operationErr.Operation != "project.context.read" {
+		t.Fatalf("project context operation error=%#v", operationErr)
+	}
+}
 
 func TestApplicationProjectContextUsesCodeGraphProjection(t *testing.T) {
 	if runtime.GOOS == "windows" {

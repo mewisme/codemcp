@@ -2,6 +2,9 @@ package projectcontext
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +13,9 @@ import (
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/memory"
+	plandoc "go.mewis.me/codemcp/internal/plan"
 	"go.mewis.me/codemcp/internal/workspace"
+	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
 func TestServiceBuildUsesManagedPolicyAndSelectedSubproject(t *testing.T) {
@@ -197,4 +202,201 @@ func TestServiceRejectsDuplicateIntegrationInstructionIDs(t *testing.T) {
 	if _, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true}); err == nil || !strings.Contains(err.Error(), "duplicate project context integration instruction id") {
 		t.Fatalf("duplicate integration error=%v", err)
 	}
+}
+
+func TestServiceBuildSurfacesBoundedPlanSummariesAndInference(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := "FULL_PLAN_BODY_SECRET"
+	writeProjectContextPlan(t, root, "zeta-plan", false, secret)
+	writeProjectContextPlan(t, root, "alpha-plan", true, "completed body")
+
+	service := New(manager, nil)
+	service.MemoryStore = memory.NewStore(t.TempDir())
+	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
+	result, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans := result.Summary.Plans
+	if len(plans.Summaries) != 2 || plans.Summaries[0].Name != "alpha-plan" || plans.Summaries[1].Name != "zeta-plan" {
+		t.Fatalf("plan summaries=%#v", plans.Summaries)
+	}
+	if plans.Inferred == nil || plans.Inferred.Name != "zeta-plan" || plans.NonCompletedCount != 1 || !plans.ScanComplete {
+		t.Fatalf("plan inference=%#v", plans)
+	}
+	if plans.Inferred.NextPhase == nil || plans.Inferred.NextPhase.ID != "1A" {
+		t.Fatalf("inferred next phase=%#v", plans.Inferred)
+	}
+	if plans.Inferred.Path != ".cm/plans/zeta-plan.md" || plans.Inferred.ContentID == "" ||
+		plans.Inferred.PhaseCount != 1 || plans.Inferred.CompletedPhaseCount != 0 {
+		t.Fatalf("inferred summary=%#v", plans.Inferred)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), secret) || strings.Contains(string(encoded), "# Persisted plan") ||
+		strings.Contains(string(encoded), "## Implementation order") {
+		t.Fatalf("project context leaked full plan body: %s", encoded)
+	}
+}
+
+func TestServiceBuildNeverInfersAmongMultipleUnfinishedPlans(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeProjectContextPlan(t, root, "first-plan", false, "first")
+	writeProjectContextPlan(t, root, "second-plan", false, "second")
+	service := New(manager, nil)
+	service.MemoryStore = memory.NewStore(t.TempDir())
+	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
+
+	result, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.Plans.Inferred != nil || result.Summary.Plans.NonCompletedCount != 2 {
+		t.Fatalf("ambiguous plan state was inferred: %#v", result.Summary.Plans)
+	}
+}
+
+func TestServiceBuildExactPlanSelectionSurvivesDefaultBounds(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < MaxPlanScanCount+8; index++ {
+		writeProjectContextPlan(t, root, fmt.Sprintf("a-%03d", index), true, "bounded")
+	}
+	targetDocument := writeProjectContextPlan(t, root, "z-target", false, "selected body secret")
+	service := New(manager, nil)
+	service.MemoryStore = memory.NewStore(t.TempDir())
+	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
+
+	defaultResult, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultPlans := defaultResult.Summary.Plans
+	if defaultPlans.ScanComplete || defaultPlans.Inferred != nil || defaultPlans.TotalEntries != MaxPlanScanCount+9 ||
+		defaultPlans.ScannedEntries != MaxPlanScanCount || len(defaultPlans.Summaries) > MaxPlanSummaryCount ||
+		defaultPlans.SummaryBytes > MaxPlanSummaryBytes {
+		t.Fatalf("default bounded plans=%#v", defaultPlans)
+	}
+	for _, summary := range defaultPlans.Summaries {
+		if summary.Name == "z-target" {
+			t.Fatalf("target unexpectedly fell inside default summary window: %#v", defaultPlans.Summaries)
+		}
+	}
+
+	selectedResult, err := service.Build(context.Background(), item.ID, Options{
+		IncludeMemory: true, IncludeSkills: true, PlanName: "z-target",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := selectedResult.Summary.Plans.Selected
+	if selected == nil || selected.Name != "z-target" || selected.ContentID != targetDocument.ContentID() ||
+		selected.NextPhase == nil || selected.NextPhase.ID != "1A" {
+		t.Fatalf("selected plan=%#v", selected)
+	}
+	found := false
+	for _, summary := range selectedResult.Summary.Plans.Summaries {
+		found = found || summary.Name == "z-target"
+	}
+	if !found || len(selectedResult.Summary.Plans.Summaries) > MaxPlanSummaryCount ||
+		selectedResult.Summary.Plans.SummaryBytes > MaxPlanSummaryBytes {
+		t.Fatalf("selected summary was not bounded/included: %#v", selectedResult.Summary.Plans)
+	}
+}
+
+func TestServiceBuildExactPlanSelectionReturnsTypedNotFound(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := New(manager, nil)
+	service.MemoryStore = memory.NewStore(t.TempDir())
+	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
+
+	_, err = service.Build(context.Background(), item.ID, Options{
+		IncludeMemory: true, IncludeSkills: true, PlanName: "missing-plan",
+	})
+	if !errors.Is(err, ErrPlanNotFound) {
+		t.Fatalf("missing plan error=%v", err)
+	}
+	var notFound *PlanNotFoundError
+	if !errors.As(err, &notFound) || notFound.Name != "missing-plan" {
+		t.Fatalf("typed missing plan error=%#v", notFound)
+	}
+}
+
+func TestServiceBuildSurfacesCorruptPlanDiagnosticsWithoutDroppingValidPlans(t *testing.T) {
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeProjectContextPlan(t, root, "valid-plan", false, "valid")
+	plansRoot := workspacestate.New(root).PlansRoot()
+	const corruptSecret = "CORRUPT_PLAN_BODY_SECRET"
+	if err := os.WriteFile(filepath.Join(plansRoot, "bad-plan.md"), []byte("# malformed "+corruptSecret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := New(manager, nil)
+	service.MemoryStore = memory.NewStore(t.TempDir())
+	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
+
+	result, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans := result.Summary.Plans
+	if plans.DiagnosticCount != 1 || len(plans.Diagnostics) != 1 || plans.Diagnostics[0].Name != "bad-plan" ||
+		len([]rune(plans.Diagnostics[0].Message)) > maxPlanDiagnosticRunes+1 {
+		t.Fatalf("plan diagnostics=%#v", plans)
+	}
+	if strings.Contains(plans.Diagnostics[0].Message, corruptSecret) {
+		t.Fatalf("plan diagnostic leaked authored content: %#v", plans.Diagnostics[0])
+	}
+	if plans.Inferred != nil || len(plans.Summaries) != 1 || plans.Summaries[0].Name != "valid-plan" {
+		t.Fatalf("corrupt state should remain visible without unsafe inference: %#v", plans)
+	}
+}
+
+func writeProjectContextPlan(t *testing.T, root, name string, completed bool, bodyMarker string) plandoc.Document {
+	t.Helper()
+	mark := " "
+	if completed {
+		mark = "x"
+	}
+	planContent := "# Persisted plan\n\n## Goal\n" + bodyMarker +
+		"\n\n## Phase 1A - Persist state\n\n- [" + mark + "] Persist the state.\n\n## Acceptance\nState is durable."
+	orderContent := "## Execution rules\nComplete the phase.\n\n## Why this order\nPersistence comes first.\n\n## Ordered phases\n\n- [" +
+		mark + "] Phase 1A - Persist state\n\n## Terminal acceptance\n\n- [" + mark + "] Durable-state validation passes."
+	document, err := plandoc.ParseParts(planContent, orderContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plansRoot := workspacestate.New(root).PlansRoot()
+	if err := os.MkdirAll(plansRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(plansRoot, name+".md"), document.Render(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return document
 }

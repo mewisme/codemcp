@@ -87,7 +87,11 @@ func (s *ProjectContextService) Read(ctx context.Context, input ProjectContextIn
 		if workspaceID == "" {
 			return projectcontext.Result{}, errors.New("workspace_id is required")
 		}
-		return NewProjectContextService(ctx, s.Workspaces).Build(ctx, workspaceID, input.Options)
+		value, err := NewProjectContextService(ctx, s.Workspaces).Build(ctx, workspaceID, input.Options)
+		if errors.Is(err, projectcontext.ErrPlanNotFound) {
+			return projectcontext.Result{}, operationError(capability.ProjectContextRead, ErrorNotFound, err)
+		}
+		return value, err
 	})
 }
 

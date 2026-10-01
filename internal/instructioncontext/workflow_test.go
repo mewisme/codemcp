@@ -235,6 +235,46 @@ func TestPlanModeGuidanceIsCanonicalAndStopsBeforeImplementation(t *testing.T) {
 	}
 }
 
+func TestPlanContinuationGuidanceUsesDeterministicSelectionAndCanonicalProgressUpdates(t *testing.T) {
+	server := StaticServerInstructions()
+	for _, expected := range []string{
+		"exact plan_name wins",
+		"exactly one non-completed plan exists",
+		"multiple non-completed plans exist",
+		"discovery is truncated",
+		"do not guess from recency or filesystem order",
+		"Completed plans are not inferred",
+		"read the full plan file before implementation",
+		"follow its internal Implementation order",
+		"there is no implement_plan tool",
+		"plan name as cross-session identity",
+		"content_id as revision identity",
+		"create_plan mode=update",
+		"latest expected_content_id",
+		"never update plan progress through generic file edits",
+	} {
+		if !strings.Contains(server, expected) {
+			t.Fatalf("plan continuation guidance missing %q: %s", expected, server)
+		}
+	}
+	model := CanonicalServerInstructionModel()
+	count := 0
+	for _, directive := range model.Workflow {
+		if directive.ID == "plan-continuation" {
+			count++
+			if directive.Text != guidancePlanContinuation {
+				t.Fatalf("plan-continuation directive text drifted: %q", directive.Text)
+			}
+		}
+	}
+	if count != 1 || strings.Count(server, guidancePlanContinuation) != 1 {
+		t.Fatalf("plan-continuation directive count=%d rendered=%d", count, strings.Count(server, guidancePlanContinuation))
+	}
+	if strings.Contains(DefaultAgentWorkflow, guidancePlanContinuation) {
+		t.Fatal("plan continuation guidance was duplicated into project-context workflow budget")
+	}
+}
+
 func TestSharedGuidanceRendersIntoWorkflowAndServerInstructions(t *testing.T) {
 	workflow := AgentWorkflow()
 	server := StaticServerInstructions()

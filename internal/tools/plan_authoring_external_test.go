@@ -240,6 +240,75 @@ func TestCreatePlanToolMapsStaleErrorsAndRedactsBodies(t *testing.T) {
 	}
 }
 
+func TestProjectContextRefreshesPlanSummaryAfterCanonicalAuthoring(t *testing.T) {
+	runtime, workspaceID, _ := newPlanAuthoringRuntime(t)
+	schema, ok := runtime.Registry.Schema("project_context")
+	if !ok {
+		t.Fatal("project_context schema missing")
+	}
+	var input map[string]any
+	if err := json.Unmarshal(schema.InputSchema, &input); err != nil {
+		t.Fatal(err)
+	}
+	properties, _ := input["properties"].(map[string]any)
+	if _, ok := properties["plan_name"]; !ok {
+		t.Fatalf("project_context schema missing plan_name: %#v", input)
+	}
+
+	planBody, orderBody := agentPlanFixture(false)
+	createdResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "context-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || createdResult.IsError {
+		t.Fatalf("create_plan err=%v result=%#v", err, createdResult)
+	}
+	created := createdResult.StructuredContent.(application.PlanAuthoringResult)
+
+	firstResult, err := runtime.Call(context.Background(), "project_context", map[string]any{
+		"workspace_id": workspaceID, "include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || firstResult.IsError {
+		t.Fatalf("initial project_context err=%v result=%#v", err, firstResult)
+	}
+	first := firstResult.StructuredContent.(tools.ProjectContextResult)
+	if first.Summary.Plans.Inferred == nil || first.Summary.Plans.Inferred.Name != "context-plan" ||
+		first.Summary.Plans.Inferred.ContentID != created.ContentID || first.Summary.Plans.Inferred.Status != "pending" {
+		t.Fatalf("initial plan summary=%#v", first.Summary.Plans)
+	}
+
+	completedPlan, completedOrder := agentPlanFixture(true)
+	updatedResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "context-plan",
+		"plan_content": completedPlan, "implementation_order": completedOrder,
+		"expected_content_id": created.ContentID,
+	})
+	if err != nil || updatedResult.IsError {
+		t.Fatalf("update create_plan err=%v result=%#v", err, updatedResult)
+	}
+	updated := updatedResult.StructuredContent.(application.PlanAuthoringResult)
+	if updated.ContentID == created.ContentID {
+		t.Fatal("plan update did not change content identity")
+	}
+
+	refreshedResult, err := runtime.Call(context.Background(), "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "context-plan",
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || refreshedResult.IsError {
+		t.Fatalf("refreshed project_context err=%v result=%#v", err, refreshedResult)
+	}
+	refreshed := refreshedResult.StructuredContent.(tools.ProjectContextResult)
+	selected := refreshed.Summary.Plans.Selected
+	if selected == nil || selected.Name != "context-plan" || selected.ContentID != updated.ContentID ||
+		selected.Status != "completed" || selected.CompletedPhaseCount != 1 || selected.NextPhase != nil {
+		t.Fatalf("refreshed selected plan=%#v", selected)
+	}
+	if refreshed.Summary.Plans.Inferred != nil {
+		t.Fatalf("completed plan was inferred for continuation: %#v", refreshed.Summary.Plans.Inferred)
+	}
+}
+
 func agentPlanFixture(completed bool) (string, string) {
 	mark := " "
 	if completed {

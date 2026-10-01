@@ -49,6 +49,7 @@ type Summary struct {
 	Git              GitSummary      `json:"git"`
 	Rules            int             `json:"rules"`
 	Skills           int             `json:"skills"`
+	Plans            PlanContext     `json:"plans"`
 	Semantic         SemanticSummary `json:"semantic,omitempty"`
 }
 
@@ -80,6 +81,7 @@ type Options struct {
 	IncludeGit          bool
 	IncludeMemory       bool
 	IncludeSkills       bool
+	PlanName            string
 	AdminEnabled        bool
 	AdminPort           int
 	BackgroundWork      instructioncontext.BackgroundWorkCapabilities
@@ -159,6 +161,10 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 		return Result{}, errors.New("workspace manager is unavailable")
 	}
 	item, err := s.Workspaces.Get(workspaceID)
+	if err != nil {
+		return Result{}, err
+	}
+	plans, err := loadWorkspacePlans(item.Path, opts.PlanName)
 	if err != nil {
 		return Result{}, err
 	}
@@ -278,6 +284,7 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 		}
 	}
 	result := FromInstructionContext(value)
+	result.Summary.Plans = plans
 	result.Summary.Semantic = semanticSummary
 	return result, nil
 }
