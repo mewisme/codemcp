@@ -2,6 +2,7 @@ package update
 
 import (
 	"fmt"
+	"net/url"
 	"runtime"
 	"strings"
 )
@@ -23,37 +24,70 @@ type ReleasePlatform struct {
 	BinaryName       string `json:"binary_name"`
 }
 
+type ArtifactKind string
+
+const (
+	ArtifactArchive ArtifactKind = "archive"
+	ArtifactDebian  ArtifactKind = "deb"
+	ArtifactRPM     ArtifactKind = "rpm"
+	ArtifactSetup   ArtifactKind = "setup"
+)
+
+type ReleaseArtifact struct {
+	Kind           ArtifactKind `json:"kind"`
+	OS             string       `json:"os"`
+	Arch           string       `json:"arch"`
+	FilenameSuffix string       `json:"filename_suffix"`
+	BinaryName     string       `json:"binary_name"`
+}
+
 type ReleaseLayout struct {
 	PackageName   string            `json:"package_name"`
 	ChecksumName  string            `json:"checksum_name"`
 	SignatureName string            `json:"signature_name"`
 	Platforms     []ReleasePlatform `json:"platforms"`
+	Artifacts     []ReleaseArtifact `json:"artifacts"`
 }
 
-var primaryReleasePlatforms = []ReleasePlatform{
-	{OS: "linux", Arch: "amd64", ArchiveExtension: ".tar.gz", BinaryName: "cm"},
-	{OS: "linux", Arch: "arm64", ArchiveExtension: ".tar.gz", BinaryName: "cm"},
-	{OS: "darwin", Arch: "amd64", ArchiveExtension: ".tar.gz", BinaryName: "cm"},
-	{OS: "darwin", Arch: "arm64", ArchiveExtension: ".tar.gz", BinaryName: "cm"},
-	{OS: "windows", Arch: "amd64", ArchiveExtension: ".zip", BinaryName: "cm.exe"},
-	{OS: "windows", Arch: "arm64", ArchiveExtension: ".zip", BinaryName: "cm.exe"},
+var primaryReleaseArtifacts = []ReleaseArtifact{
+	{Kind: ArtifactArchive, OS: "linux", Arch: "amd64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
+	{Kind: ArtifactArchive, OS: "linux", Arch: "arm64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
+	{Kind: ArtifactArchive, OS: "darwin", Arch: "amd64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
+	{Kind: ArtifactArchive, OS: "darwin", Arch: "arm64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
+	{Kind: ArtifactArchive, OS: "windows", Arch: "amd64", FilenameSuffix: ".zip", BinaryName: "cm.exe"},
+	{Kind: ArtifactArchive, OS: "windows", Arch: "arm64", FilenameSuffix: ".zip", BinaryName: "cm.exe"},
+	{Kind: ArtifactDebian, OS: "linux", Arch: "amd64", FilenameSuffix: ".deb", BinaryName: "cm"},
+	{Kind: ArtifactDebian, OS: "linux", Arch: "arm64", FilenameSuffix: ".deb", BinaryName: "cm"},
+	{Kind: ArtifactRPM, OS: "linux", Arch: "amd64", FilenameSuffix: ".rpm", BinaryName: "cm"},
+	{Kind: ArtifactRPM, OS: "linux", Arch: "arm64", FilenameSuffix: ".rpm", BinaryName: "cm"},
+	{Kind: ArtifactSetup, OS: "windows", Arch: "amd64", FilenameSuffix: "_setup.exe", BinaryName: "cm.exe"},
+	{Kind: ArtifactSetup, OS: "windows", Arch: "arm64", FilenameSuffix: "_setup.exe", BinaryName: "cm.exe"},
 }
 
 func PrimaryReleaseLayout() ReleaseLayout {
+	platforms := make([]ReleasePlatform, 0, 6)
+	for _, artifact := range primaryReleaseArtifacts {
+		if artifact.Kind != ArtifactArchive {
+			continue
+		}
+		platforms = append(platforms, ReleasePlatform{
+			OS: artifact.OS, Arch: artifact.Arch, ArchiveExtension: artifact.FilenameSuffix, BinaryName: artifact.BinaryName,
+		})
+	}
 	return ReleaseLayout{
 		PackageName: PackageName, ChecksumName: ChecksumName, SignatureName: ChecksumSignatureName,
-		Platforms: append([]ReleasePlatform(nil), primaryReleasePlatforms...),
+		Platforms: platforms, Artifacts: append([]ReleaseArtifact(nil), primaryReleaseArtifacts...),
 	}
 }
 
 func ReleasePlatformFor(goos, goarch string) (ReleasePlatform, bool) {
-	goos, goarch = strings.TrimSpace(goos), strings.TrimSpace(goarch)
-	for _, platform := range primaryReleasePlatforms {
-		if platform.OS == goos && platform.Arch == goarch {
-			return platform, true
-		}
+	artifact, ok := ArtifactFor(ArtifactArchive, goos, goarch)
+	if !ok {
+		return ReleasePlatform{}, false
 	}
-	return ReleasePlatform{}, false
+	return ReleasePlatform{
+		OS: artifact.OS, Arch: artifact.Arch, ArchiveExtension: artifact.FilenameSuffix, BinaryName: artifact.BinaryName,
+	}, true
 }
 
 type Release struct {
@@ -66,6 +100,34 @@ type Release struct {
 	SignatureURL  string
 }
 
+func ArtifactFor(kind ArtifactKind, goos, goarch string) (ReleaseArtifact, bool) {
+	kind, goos, goarch = ArtifactKind(strings.TrimSpace(string(kind))), strings.TrimSpace(goos), strings.TrimSpace(goarch)
+	for _, artifact := range primaryReleaseArtifacts {
+		if artifact.Kind == kind && artifact.OS == goos && artifact.Arch == goarch {
+			return artifact, true
+		}
+	}
+	return ReleaseArtifact{}, false
+}
+
+func ArtifactName(kind ArtifactKind, goos, goarch string) (string, error) {
+	artifact, ok := ArtifactFor(kind, goos, goarch)
+	if !ok {
+		return "", fmt.Errorf("unsupported release artifact %q for %q", strings.TrimSpace(string(kind)), strings.TrimSpace(goos)+"/"+strings.TrimSpace(goarch))
+	}
+	return fmt.Sprintf("%s_%s_%s%s", PackageName, artifact.OS, artifact.Arch, artifact.FilenameSuffix), nil
+}
+
+func ArchiveName(goos, goarch string) (string, error) {
+	return ArtifactName(ArtifactArchive, goos, goarch)
+}
+
+func CurrentArchiveName() (string, error) {
+	return ArchiveName(runtime.GOOS, runtime.GOARCH)
+}
+
+// AssetName is the compatibility helper for release consumers that still use
+// version-bearing archive names. New release-layout code should use ArchiveName.
 func AssetName(version, goos, goarch string) (string, error) {
 	version, err := NormalizeVersion(version)
 	if err != nil {
@@ -88,4 +150,46 @@ func BinaryName(goos, goarch string) (string, error) {
 		return "", fmt.Errorf("unsupported update platform %q", strings.TrimSpace(goos)+"/"+strings.TrimSpace(goarch))
 	}
 	return platform.BinaryName, nil
+}
+
+func ExactReleaseAssetURL(owner, repo, version, assetName string) (string, error) {
+	owner, repo = strings.TrimSpace(owner), strings.TrimSpace(repo)
+	if !validReleasePathComponent(owner) || !validReleasePathComponent(repo) {
+		return "", fmt.Errorf("invalid GitHub repository %q", owner+"/"+repo)
+	}
+	version, err := NormalizeVersion(version)
+	if err != nil {
+		return "", err
+	}
+	assetName, err = validateReleaseAssetName(assetName)
+	if err != nil {
+		return "", err
+	}
+	return "https://github.com/" + url.PathEscape(owner) + "/" + url.PathEscape(repo) +
+		"/releases/download/" + url.PathEscape(version) + "/" + url.PathEscape(assetName), nil
+}
+
+func LatestReleaseAssetURL(owner, repo, assetName string) (string, error) {
+	owner, repo = strings.TrimSpace(owner), strings.TrimSpace(repo)
+	if !validReleasePathComponent(owner) || !validReleasePathComponent(repo) {
+		return "", fmt.Errorf("invalid GitHub repository %q", owner+"/"+repo)
+	}
+	assetName, err := validateReleaseAssetName(assetName)
+	if err != nil {
+		return "", err
+	}
+	return "https://github.com/" + url.PathEscape(owner) + "/" + url.PathEscape(repo) +
+		"/releases/latest/download/" + url.PathEscape(assetName), nil
+}
+
+func validReleasePathComponent(value string) bool {
+	return value != "" && value != "." && value != ".." && !strings.ContainsAny(value, "/\\?#")
+}
+
+func validateReleaseAssetName(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "." || value == ".." || strings.ContainsAny(value, "/\\?#") {
+		return "", fmt.Errorf("invalid release asset name %q", value)
+	}
+	return value, nil
 }
