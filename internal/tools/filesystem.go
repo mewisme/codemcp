@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/workspace"
+	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
 const (
@@ -22,6 +23,29 @@ const (
 	maxTextSelectionLines = 100_000
 	maxTextLineOffset     = 1_000_000_000
 )
+
+func rejectManagedPlanMutation(item workspace.Workspace, paths ...string) error {
+	plansRoot := filepath.Clean(workspacestate.New(item.Path).PlansRoot())
+	for _, candidate := range paths {
+		candidate = filepath.Clean(candidate)
+		if pathsOverlap(candidate, plansRoot) {
+			return fmt.Errorf("path is managed by the canonical plan authoring service: %s", candidate)
+		}
+	}
+	return nil
+}
+
+func pathsOverlap(left, right string) bool {
+	return pathContains(left, right) || pathContains(right, left)
+}
+
+func pathContains(root, candidate string) bool {
+	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(candidate))
+	if err != nil {
+		return false
+	}
+	return relative == "." || (relative != ".." && !filepath.IsAbs(relative) && !strings.HasPrefix(relative, ".."+string(filepath.Separator)))
+}
 
 type ReadTextFileResult struct {
 	Path    string `json:"path"`
