@@ -32,7 +32,7 @@ func CallHandler(stream *Stream) http.Handler {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(detail)
+		_ = json.NewEncoder(w).Encode(PublicToolCallDetail(detail))
 	})
 }
 

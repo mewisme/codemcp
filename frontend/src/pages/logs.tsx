@@ -6,6 +6,16 @@ import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
   Card,
   CardContent,
   CardDescription,
@@ -35,6 +45,8 @@ export function LogsPage() {
   const [workspace, setWorkspace] = useState("")
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [viewCleared, setViewCleared] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [error, setError] = useState("")
 
   async function load() {
@@ -51,6 +63,7 @@ export function LogsPage() {
       ])
       setSnapshot(nextSnapshot)
       setInfo(nextInfo)
+      setViewCleared(false)
       setError("")
     } catch (value) {
       setError(errorText(value))
@@ -84,6 +97,7 @@ export function LogsPage() {
     setBusy(true)
     try {
       await adminApi.clearLogs()
+      setDeleteOpen(false)
       await load()
     } catch (value) {
       setError(errorText(value))
@@ -92,8 +106,8 @@ export function LogsPage() {
   }
 
   const events = useMemo(
-    () => snapshot?.events ?? snapshot?.Events ?? [],
-    [snapshot]
+    () => (viewCleared ? [] : (snapshot?.events ?? snapshot?.Events ?? [])),
+    [snapshot, viewCleared]
   )
   const path = info?.path ?? info?.Path ?? "-"
   const files = info?.files ?? info?.Files ?? 0
@@ -116,13 +130,22 @@ export function LogsPage() {
               Refresh
             </Button>
             <Button
-              disabled={busy}
+              disabled={busy || events.length === 0}
               size="sm"
               variant="outline"
-              onClick={() => void clear()}
+              onClick={() => setViewCleared(true)}
             >
               <Trash2 />
-              Clear
+              Clear view
+            </Button>
+            <Button
+              disabled={busy}
+              size="sm"
+              variant="destructive"
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 />
+              Delete journal
             </Button>
           </>
         }
@@ -174,6 +197,33 @@ export function LogsPage() {
           </Button>
         </CardContent>
       </Card>
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={(open) => {
+          if (!busy) setDeleteOpen(open)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete runtime log journal?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Current and rotated runtime logs will be permanently removed. This
+              cannot be undone. Clearing this browser view does not delete
+              retained logs.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={busy}
+              variant="destructive"
+              onClick={() => void clear()}
+            >
+              {busy ? "Deleting..." : "Delete logs permanently"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {events.length === 0 ? (
         <PageEmpty
           title="No matching log events"

@@ -119,7 +119,9 @@ func executionCommand() *cobra.Command {
 		v := result.Value
 		p := commandPresenter(cmd)
 		p.Frame("Execution details")
-		p.Fields(presentation.Field{Label: "id", Value: v.Execution.ID}, presentation.Field{Label: "status", Value: v.Execution.Status}, presentation.Field{Label: "tool", Value: v.Execution.Tool}, presentation.Field{Label: "command", Value: v.Execution.Command}, presentation.Field{Label: "stdout", Value: v.Stdout}, presentation.Field{Label: "stderr", Value: v.Stderr})
+		p.Fields(presentation.Field{Label: "id", Value: v.Execution.ID}, presentation.Field{Label: "status", Value: v.Execution.Status}, presentation.Field{Label: "tool", Value: v.Execution.Tool}, presentation.Field{Label: "workspace", Value: v.Execution.WorkspaceID}, presentation.Field{Label: "source", Value: v.Execution.Source})
+		renderCLIObservabilitySection(p, "Request", map[string]any{"command": v.Execution.Command, "requested_command": v.Execution.RequestedCommand, "effective_command": v.Execution.EffectiveCommand, "cwd": v.Execution.CWD})
+		renderCLIObservabilitySection(p, "Response", map[string]any{"stdout": v.Stdout, "stderr": v.Stderr, "exit_code": v.Execution.ExitCode, "timed_out": v.Execution.TimedOut, "finished_at": v.Execution.FinishedAt})
 		p.Complete("Done")
 		return nil
 	}}

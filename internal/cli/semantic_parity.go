@@ -436,12 +436,36 @@ func activityViewCommand() *cobra.Command {
 			presentation.Field{Label: "call", Value: value.CallID},
 			presentation.Field{Label: "tool", Value: value.Tool},
 			presentation.Field{Label: "status", Value: value.Status},
+			presentation.Field{Label: "workspace", Value: value.WorkspaceID},
+			presentation.Field{Label: "source", Value: value.Source},
+			presentation.Field{Label: "duration", Value: value.DurationMS},
 		)
+		renderCLIObservabilitySection(p, "Request", value.Request)
+		if value.Error != nil {
+			renderCLIObservabilitySection(p, "Error", value.Error)
+		} else {
+			renderCLIObservabilitySection(p, "Response", value.Response)
+		}
+		if value.Diagnostic.Redacted || value.Diagnostic.Truncated {
+			renderCLIObservabilitySection(p, "Diagnostic", value.Diagnostic)
+		}
 		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
+}
+
+func renderCLIObservabilitySection(p *presentation.Presenter, title string, value any) {
+	if p == nil || value == nil {
+		return
+	}
+	data, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		data = []byte(fmt.Sprint(value))
+	}
+	p.Section(title)
+	p.Note("", string(data))
 }
 
 func writeStreamValue(cmd *cobra.Command, asJSON bool, label string, value any) error {

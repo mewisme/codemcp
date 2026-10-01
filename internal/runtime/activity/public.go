@@ -41,3 +41,27 @@ func PublicToolCallRecords(values []ToolCallRecord) []ToolCallRecord {
 	}
 	return result
 }
+
+// PublicToolCallDetail returns the single canonical operator-facing detail
+// projection. Request, response and error remain semantically distinct while
+// every diagnostic payload is re-sanitized at the projection boundary.
+func PublicToolCallDetail(value ToolCallDetail) ToolCallDetail {
+	value.Event = PublicEvent(value.Event)
+	meta := value.Diagnostic
+	if value.Request != nil {
+		value.Request, meta = sanitizePublicDiagnostic(value.Request, meta)
+	}
+	if value.Response != nil {
+		value.Response, meta = sanitizePublicDiagnostic(value.Response, meta)
+	}
+	if value.Error != nil {
+		value.Error, meta = sanitizePublicDiagnostic(value.Error, meta)
+	}
+	value.Diagnostic = meta
+	return value
+}
+
+func sanitizePublicDiagnostic(value any, meta DiagnosticMeta) (any, DiagnosticMeta) {
+	public, next := SanitizeDiagnostic(value)
+	return public, mergeDiagnosticMeta(meta, next)
+}

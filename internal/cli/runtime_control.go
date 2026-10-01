@@ -332,7 +332,7 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 			http.Error(w, "tool call not found", http.StatusNotFound)
 			return
 		}
-		writeControlJSON(w, detail, nil)
+		writeControlJSON(w, activity.PublicToolCallDetail(detail), nil)
 	}))
 	mux.HandleFunc("/executions", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, _ *http.Request) {
 		if options.Executions == nil {

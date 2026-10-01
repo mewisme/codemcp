@@ -118,7 +118,7 @@ export function MiniApp() {
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<FilterMode>("all")
   const [scope, setScope] = useState("all")
-  const [selected, setSelected] = useState<SelectedItem | null>(null)
+  const [selected, setSelected] = useState<SelectedItem | null>(() => launchTarget)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [preferences, setPreferences] =
     useState<MiniAppPreferences>(defaultPreferences)
@@ -234,10 +234,6 @@ export function MiniApp() {
       cancelled = true
     }
   }, [initData])
-
-  useEffect(() => {
-    if (authenticated && launchTarget) setSelected(launchTarget)
-  }, [authenticated, launchTarget])
 
   useEffect(() => {
     if (!authenticated || !telegramActive) return
@@ -1527,13 +1523,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function toolRequestView(event: ActivityEvent & { raw?: unknown }) {
   const raw = asRecord(event.raw)
-  if (!raw)
-    return compactObject({
-      method: event.method,
-      tool: event.tool,
-      source: event.source,
-      message: event.message,
-    })
+  if (!raw) return null
   return (
     valueOrNull(raw.request) ||
     (valueOrNull(raw.params)
@@ -1548,12 +1538,7 @@ function toolRequestView(event: ActivityEvent & { raw?: unknown }) {
           arguments: raw.arguments,
         })
       : null) ||
-    compactObject({
-      method: event.method,
-      tool: event.tool,
-      source: event.source,
-      message: event.message,
-    })
+    null
   )
 }
 
