@@ -37,6 +37,19 @@ func TestValidateRequiresCanonicalOwnerAndConfirmationConsumption(t *testing.T) 
 	}
 }
 
+func TestValidateRejectsPresentationDriftFromCanonicalCapability(t *testing.T) {
+	descriptor := Live(
+		capability.SurfaceCLI,
+		capability.StatusOverview,
+		[]EntryPoint{{Kind: EntryCommand, Value: "status"}},
+		[]EntryPoint{{Kind: EntryDispatch, Value: "operation=status.overview"}},
+	)
+	descriptor.Presentation.Danger = DangerDestructive
+	if err := ValidateDescriptor(descriptor); err == nil || !strings.Contains(err.Error(), "diverges from canonical semantics") {
+		t.Fatalf("presentation validation error=%v", err)
+	}
+}
+
 func TestValidateRejectsDuplicateSurfaceOperationDescriptors(t *testing.T) {
 	descriptor := Live(
 		capability.SurfaceCLI,

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go.mewis.me/codemcp/internal/productadapter"
 )
 
 const defaultProgressAnimationInterval = 120 * time.Millisecond
@@ -20,6 +22,23 @@ const (
 	ProgressWarning
 	ProgressFailed
 )
+
+func (state ProgressState) CanonicalLifecycle() productadapter.LifecycleState {
+	switch state {
+	case ProgressPending:
+		return productadapter.LifecycleIdle
+	case ProgressRunning:
+		return productadapter.LifecycleWorking
+	case ProgressSuccess:
+		return productadapter.LifecycleSuccess
+	case ProgressSkipped, ProgressWarning:
+		return productadapter.LifecyclePartial
+	case ProgressFailed:
+		return productadapter.LifecycleTerminalFailure
+	default:
+		return productadapter.LifecycleUnavailable
+	}
+}
 
 type ProgressPhase struct {
 	ID      string

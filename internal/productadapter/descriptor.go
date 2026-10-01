@@ -56,6 +56,7 @@ type Descriptor struct {
 	ConfirmationConsumed bool                        `json:"confirmation_consumed,omitempty"`
 	SecretPolicy         SecretPolicy                `json:"secret_policy,omitempty"`
 	SecretRecovery       string                      `json:"secret_recovery,omitempty"`
+	Presentation         OperationPresentation       `json:"presentation"`
 	Gap                  string                      `json:"gap,omitempty"`
 }
 
@@ -63,6 +64,7 @@ func Live(surface capability.Surface, operation capability.ID, discovery, dispat
 	spec, _ := capability.Lookup(operation)
 	owner, _ := capability.CanonicalOwnerFor(operation)
 	secretPolicy, secretRecovery := SecretContractFor(operation)
+	presentation, _ := PresentationFor(operation, "")
 	return Descriptor{
 		Surface:        surface,
 		Operation:      operation,
@@ -73,6 +75,7 @@ func Live(surface capability.Surface, operation capability.ID, discovery, dispat
 		Confirmation:   spec.Confirmation.Mode,
 		SecretPolicy:   secretPolicy,
 		SecretRecovery: secretRecovery,
+		Presentation:   presentation,
 	}
 }
 
@@ -80,6 +83,8 @@ func Gap(surface capability.Surface, operation capability.ID, reason string) Des
 	owner, _ := capability.CanonicalOwnerFor(operation)
 	spec, _ := capability.Lookup(operation)
 	secretPolicy, secretRecovery := SecretContractFor(operation)
+	reason = strings.TrimSpace(reason)
+	presentation, _ := PresentationFor(operation, reason)
 	return Descriptor{
 		Surface:        surface,
 		Operation:      operation,
@@ -88,7 +93,8 @@ func Gap(surface capability.Surface, operation capability.ID, reason string) Des
 		Confirmation:   spec.Confirmation.Mode,
 		SecretPolicy:   secretPolicy,
 		SecretRecovery: secretRecovery,
-		Gap:            strings.TrimSpace(reason),
+		Presentation:   presentation,
+		Gap:            reason,
 	}
 }
 
@@ -154,6 +160,9 @@ func ValidateDescriptor(descriptor Descriptor) error {
 	if descriptor.SecretPolicy != secretPolicy || descriptor.SecretRecovery != secretRecovery {
 		return fmt.Errorf("%s/%s secret contract=%q/%q want=%q/%q", descriptor.Surface, descriptor.Operation, descriptor.SecretPolicy, descriptor.SecretRecovery, secretPolicy, secretRecovery)
 	}
+	if err := ValidatePresentation(descriptor.Presentation); err != nil {
+		return fmt.Errorf("%s/%s: %w", descriptor.Surface, descriptor.Operation, err)
+	}
 	switch descriptor.State {
 	case StateGap:
 		if strings.TrimSpace(descriptor.Gap) == "" {
@@ -162,9 +171,15 @@ func ValidateDescriptor(descriptor Descriptor) error {
 		if len(descriptor.Discovery) != 0 || len(descriptor.Dispatch) != 0 {
 			return fmt.Errorf("%s/%s gap advertises live entry points", descriptor.Surface, descriptor.Operation)
 		}
+		if descriptor.Presentation.UnavailableReason != descriptor.Gap {
+			return fmt.Errorf("%s/%s unavailable reason does not match adapter gap", descriptor.Surface, descriptor.Operation)
+		}
 	case StateLive:
 		if strings.TrimSpace(descriptor.Gap) != "" {
 			return fmt.Errorf("%s/%s live descriptor carries gap reason", descriptor.Surface, descriptor.Operation)
+		}
+		if descriptor.Presentation.UnavailableReason != "" {
+			return fmt.Errorf("%s/%s live descriptor carries unavailable reason", descriptor.Surface, descriptor.Operation)
 		}
 		if len(descriptor.Discovery) == 0 || len(descriptor.Dispatch) == 0 {
 			return fmt.Errorf("%s/%s live descriptor lacks discovery or dispatch evidence", descriptor.Surface, descriptor.Operation)

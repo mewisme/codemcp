@@ -42,6 +42,7 @@ import {
   type AuthStatus,
   type NetworkInterface,
   type PublicConfig,
+  type SettingFieldSpec,
   type SettingResult,
 } from "@/lib/api"
 
@@ -858,11 +859,10 @@ export function SettingsPage() {
                       </div>
                     ) : null}
                   </div>
-                  <Input
-                    type={selectedSetting.Spec.Secret ? "password" : "text"}
-                    placeholder={selectedSetting.Spec.Secret ? "Enter replacement secret" : "Value"}
+                  <CanonicalSettingInput
+                    spec={selectedSetting.Spec}
                     value={settingValue}
-                    onChange={(event) => setSettingValue(event.target.value)}
+                    onChange={setSettingValue}
                   />
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -992,6 +992,62 @@ export function SettingsPage() {
         </div>
       ) : null}
     </div>
+  )
+}
+
+function CanonicalSettingInput({
+  spec,
+  value,
+  onChange,
+}: {
+  spec: SettingFieldSpec
+  value: string
+  onChange: (value: string) => void
+}) {
+  const disabled = !spec.Writable
+  if (spec.Kind === "bool") {
+    const checked = value.trim().toLowerCase() === "true"
+    return (
+      <div className="flex items-center gap-3 rounded-lg border p-3">
+        <Switch checked={checked} disabled={disabled} onCheckedChange={(next) => onChange(String(next))} />
+        <span className="text-sm text-muted-foreground">{checked ? "Enabled" : "Disabled"}</span>
+      </div>
+    )
+  }
+  if (spec.Kind === "enum" && spec.Options?.length) {
+    return (
+      <Select disabled={disabled} value={value} onValueChange={onChange}>
+        <SelectTrigger className="w-full"><SelectValue placeholder="Select a value" /></SelectTrigger>
+        <SelectContent>
+          {spec.Options.map((option) => {
+            const detail = spec.Values?.find((item) => item.value === option)?.description
+            return <SelectItem key={option} value={option}>{detail ? `${option} — ${detail}` : option}</SelectItem>
+          })}
+        </SelectContent>
+      </Select>
+    )
+  }
+  if (spec.Kind === "list") {
+    return (
+      <Textarea
+        disabled={disabled}
+        placeholder={spec.Input?.item_shape ? `Comma-separated ${spec.Input.item_shape} values` : "Comma-separated values"}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    )
+  }
+  return (
+    <Input
+      disabled={disabled}
+      min={spec.Kind === "int" && spec.Input?.has_min_int ? spec.Input.min_int : undefined}
+      max={spec.Kind === "int" && spec.Input?.has_max_int ? spec.Input.max_int : undefined}
+      type={spec.Secret ? "password" : spec.Kind === "int" ? "number" : spec.Input?.shape === "url" ? "url" : "text"}
+      autoComplete={spec.Secret ? "off" : undefined}
+      placeholder={spec.Secret ? "Enter replacement secret" : spec.Input?.shape ? spec.Input.shape : "Value"}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    />
   )
 }
 

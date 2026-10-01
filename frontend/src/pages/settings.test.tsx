@@ -88,6 +88,77 @@ describe("settings authentication", () => {
     await user.click(screen.getByRole("button", { name: "Hide" }))
     expect(screen.queryByText("mcp_test_one_time_secret")).not.toBeInTheDocument()
   })
+
+  it("renders canonical setting choices and numeric bounds from FieldSpec metadata", async () => {
+    const user = userEvent.setup()
+    const exposure = {
+      Spec: {
+        Key: "http.exposure.mode",
+        Label: "Exposure",
+        Description: "controls network exposure",
+        Kind: "enum",
+        Editable: true,
+        Sensitive: false,
+        Writable: true,
+        Secret: false,
+        Clearable: false,
+        Options: ["none", "all"],
+        Values: [
+          { value: "none", description: "Loopback only" },
+          { value: "all", description: "All eligible interfaces" },
+        ],
+      },
+      Value: "none",
+      RuntimeReloaded: false,
+    }
+    const port = {
+      Spec: {
+        Key: "http.mcp.port",
+        Label: "MCP HTTP port",
+        Description: "sets the TCP port",
+        Kind: "int",
+        Editable: true,
+        Sensitive: false,
+        Writable: true,
+        Secret: false,
+        Clearable: false,
+        Input: { min_int: 1, max_int: 65535, has_min_int: true, has_max_int: true },
+      },
+      Value: "37421",
+      RuntimeReloaded: false,
+    }
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), "http://localhost")
+      if (url.pathname === "/api/config") return json(config)
+      if (url.pathname === "/api/network/interfaces") return json([])
+      if (url.pathname === "/api/tunnel/config") return json({ enabled: false })
+      if (url.pathname === "/api/auth") return json(authStatus)
+      if (url.pathname === "/api/settings") return json([exposure, port])
+      if (url.pathname === "/api/settings/http.exposure.mode") return json(exposure)
+      if (url.pathname === "/api/settings/http.mcp.port") return json(port)
+      if (url.pathname === "/api/notifications") return json({})
+      throw new Error(`Unhandled request: ${init?.method ?? "GET"} ${url.pathname}${url.search}`)
+    })
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <SettingsPage />
+        </TooltipProvider>
+      </ThemeProvider>
+    )
+
+    await user.click(await screen.findByRole("tab", { name: "Operations" }))
+    await user.click(await screen.findByRole("button", { name: /Exposure/ }))
+    const select = await screen.findByRole("combobox")
+    expect(select).toHaveTextContent("none")
+
+    await user.click(screen.getByRole("button", { name: /MCP HTTP port/ }))
+    const input = await screen.findByRole("spinbutton")
+    expect(input).toHaveAttribute("min", "1")
+    expect(input).toHaveAttribute("max", "65535")
+  })
 })
 
 function json(value: unknown) {

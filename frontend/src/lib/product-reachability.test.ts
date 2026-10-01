@@ -37,8 +37,10 @@ describe("browser product reachability", () => {
       })
       if (descriptor.state === "gap") {
         expect(descriptor.gap).toBeTruthy()
+        expect(descriptor.presentation.unavailable_reason).toBe(descriptor.gap)
       } else {
         expect(descriptor.gap).toBeUndefined()
+        expect(descriptor.presentation.unavailable_reason).toBeUndefined()
       }
     }
   })
@@ -53,6 +55,8 @@ describe("browser product reachability", () => {
     for (const operation of browserDestructiveOperations) {
       const descriptor = descriptors.get(operation)
       if (!descriptor) continue
+      expect(descriptor.presentation.danger).toBe("destructive")
+      expect(["delete", "review"]).toContain(descriptor.presentation.category)
       const evidence = browserConfirmationEvidence[operation]
       if (!evidence) {
         expect(descriptor.state).toBe("gap")
@@ -82,6 +86,8 @@ describe("browser product reachability", () => {
       const descriptor = byOperation.get(operation)
       if (!descriptor) continue
       expect(descriptor.secretPolicy).toBe("protected-input")
+      expect(descriptor.presentation.input).toBe("protected-secret")
+      expect(descriptor.presentation.secret_policy).toBe("protected-input")
     }
   })
 })

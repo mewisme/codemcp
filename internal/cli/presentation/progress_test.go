@@ -5,7 +5,25 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.mewis.me/codemcp/internal/productadapter"
 )
+
+func TestProgressStatesMapToCanonicalLifecycleVocabulary(t *testing.T) {
+	tests := map[ProgressState]productadapter.LifecycleState{
+		ProgressPending: productadapter.LifecycleIdle,
+		ProgressRunning: productadapter.LifecycleWorking,
+		ProgressSuccess: productadapter.LifecycleSuccess,
+		ProgressSkipped: productadapter.LifecyclePartial,
+		ProgressWarning: productadapter.LifecyclePartial,
+		ProgressFailed:  productadapter.LifecycleTerminalFailure,
+	}
+	for state, want := range tests {
+		if got := state.CanonicalLifecycle(); got != want {
+			t.Fatalf("state=%d lifecycle=%q want=%q", state, got, want)
+		}
+	}
+}
 
 func TestProgressSessionInteractiveRailKeepsOnlyActivePhaseTransient(t *testing.T) {
 	var output bytes.Buffer

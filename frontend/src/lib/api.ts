@@ -750,6 +750,15 @@ export type SettingFieldSpec = {
   Secret: boolean
   Clearable: boolean
   Options?: string[]
+  Values?: { value: string; description?: string }[]
+  Input?: {
+    shape?: string
+    item_shape?: string
+    min_int?: number
+    max_int?: number
+    has_min_int?: boolean
+    has_max_int?: boolean
+  }
 }
 
 export type SettingResult = {

@@ -105,8 +105,8 @@ func (registry *Registry) Execute(ctx context.Context, id string, actionContext 
 	if !ok {
 		return nil, fmt.Errorf("unknown action: %s", id)
 	}
-	if !action.IsAvailable(actionContext) {
-		return nil, fmt.Errorf("action is unavailable: %s", id)
+	if available, reason := action.Availability(actionContext); !available {
+		return nil, fmt.Errorf("action is unavailable: %s: %s", id, reason)
 	}
 	if action.Run == nil {
 		return nil, fmt.Errorf("action has no handler: %s", id)

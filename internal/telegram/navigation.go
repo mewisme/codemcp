@@ -9,6 +9,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/productadapter"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 )
 
@@ -612,6 +613,7 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 	if !ok {
 		return Screen{}, fmt.Errorf("unknown canonical operation: %s", state.Operation)
 	}
+	operationPresentation, _ := productadapter.PresentationFor(state.Operation, "")
 	if state.ExpectedVersion != "" {
 		if ui.versions == nil {
 			return Screen{}, errors.New("telegram resource version validation is unavailable")
@@ -640,7 +642,16 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 		if err != nil {
 			return Screen{}, err
 		}
-		presentation := Present(ProductHeader("CodeMCP", "Telegram / Confirmation"), DestructiveConfirmation("Confirm operation", string(spec.ID), "This action follows the canonical confirmation policy."))
+		lifecycle, _ := productadapter.Lifecycle(productadapter.LifecycleConfirming)
+		detail := "Review this action before continuing."
+		if operationPresentation.Danger == productadapter.DangerDestructive {
+			detail = "This action is destructive and may remove persistent state."
+		}
+		presentation := Present(
+			ProductHeader("CodeMCP", "Telegram / Confirmation"),
+			TitleBlock(lifecycle.Label, "Confirm operation · "+operationPresentation.Title),
+			DestructiveConfirmation(operationPresentation.Title, operationPresentation.Subject, detail),
+		)
 		return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{button}, Navigation: []Button{cancel}})}, nil
 	}
 	if ui.dispatcher == nil {
@@ -664,8 +675,8 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 	}
 	parts := []PresentationPart{
 		ProductHeader("CodeMCP", "Telegram / "+routeLabel(state.Route)),
-		TitleBlock(string(result.Operation), "Canonical operation"),
-		SuccessState("Operation completed."),
+		TitleBlock(operationPresentation.Title, operationPresentation.Subject),
+		SuccessState(lifecycleLabel(productadapter.LifecycleSuccess)),
 	}
 	if status, ok := result.Value.(application.StatusOverview); ok {
 		parts = append(parts, MetadataBlock(
@@ -692,15 +703,18 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 
 func workingScreen(state ActionState) Screen {
 	label := routeLabel(state.Route)
-	if label == "Operation" && state.Operation != "" {
-		label = string(state.Operation)
+	title := label
+	if state.Operation != "" {
+		if metadata, ok := productadapter.PresentationFor(state.Operation, ""); ok {
+			title = metadata.Title
+		}
 	}
 	presentation := Present(
 		ProductHeader("CodeMCP", "Telegram / "+label),
-		TitleBlock("Working", "The canonical operation is running."),
-		LoadingState("Working…"),
+		TitleBlock(lifecycleLabel(productadapter.LifecycleWorking), title),
+		LoadingState(lifecycleLabel(productadapter.LifecycleWorking)+"…"),
 	)
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{{Text: "Working…", Disabled: true, Role: ButtonRoleNeutral}}}}
+	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{{Text: lifecycleLabel(productadapter.LifecycleWorking) + "…", Disabled: true, Role: ButtonRoleNeutral}}}}
 }
 
 func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, operationErr error) (Screen, error) {
@@ -728,13 +742,17 @@ func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, op
 	if err != nil {
 		return ErrorScreen(operationErr), err
 	}
-	detail := "Operation failed"
+	detail := lifecycleLabel(productadapter.LifecycleRetryableFailure)
 	if operationErr != nil && strings.TrimSpace(operationErr.Error()) != "" {
 		detail = compactPresentationValue(operationErr.Error())
 	}
+	title := "Operation"
+	if metadata, ok := productadapter.PresentationFor(state.Operation, ""); ok {
+		title = metadata.Title
+	}
 	presentation := Present(
 		ProductHeader("CodeMCP", "Telegram / Error"),
-		TitleBlock("Operation failed", "Retry uses the same guarded operation path."),
+		TitleBlock(lifecycleLabel(productadapter.LifecycleRetryableFailure), title+" · retry uses the same guarded operation path."),
 		ErrorState(detail),
 	)
 	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{retryButton}, Navigation: []Button{back, home}})}, nil
@@ -742,7 +760,7 @@ func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, op
 
 func (ui *Interface) inputPromptScreen(owner ViewOwner, state ActionState, title, prompt string) (Screen, error) {
 	target := operationBackState(state)
-	cancel, err := ui.stateButton(owner, "Cancel", CallbackCancel, target)
+	cancel, err := ui.stateButton(owner, productadapter.NavigationLabel(productadapter.NavigationCancel), CallbackCancel, target)
 	if err != nil {
 		return Screen{}, err
 	}
@@ -845,7 +863,7 @@ func (ui *Interface) terminalOperationKeyboard(owner ViewOwner, state ActionStat
 }
 
 func (ui *Interface) operationBackButton(owner ViewOwner, state ActionState) (Button, error) {
-	return ui.stateButton(owner, "Back", CallbackBack, operationBackState(state))
+	return ui.stateButton(owner, productadapter.NavigationLabel(productadapter.NavigationBack), CallbackBack, operationBackState(state))
 }
 
 func operationBackState(state ActionState) ActionState {
@@ -882,30 +900,37 @@ func (ui *Interface) backButton(owner ViewOwner, route Route) (Button, error) {
 	if route == "" {
 		route = RouteHome
 	}
-	return ui.stateButton(owner, "Back", CallbackBack, ActionState{Route: route})
+	return ui.stateButton(owner, productadapter.NavigationLabel(productadapter.NavigationBack), CallbackBack, ActionState{Route: route})
 }
 
 func (ui *Interface) homeButton(owner ViewOwner) (Button, error) {
-	return ui.stateButton(owner, "Home", CallbackHome, ActionState{Route: RouteHome})
+	return ui.stateButton(owner, productadapter.NavigationLabel(productadapter.NavigationHome), CallbackHome, ActionState{Route: RouteHome})
 }
 
 func (ui *Interface) refreshButton(owner ViewOwner, state ActionState) (Button, error) {
-	return ui.stateButton(owner, "Refresh", CallbackRefresh, state)
+	return ui.stateButton(owner, productadapter.NavigationLabel(productadapter.NavigationRefresh), CallbackRefresh, state)
 }
 
 func (ui *Interface) retryButton(owner ViewOwner, state ActionState) (Button, error) {
-	return ui.stateButton(owner, "Retry", CallbackRetry, state)
+	return ui.stateButton(owner, productadapter.NavigationLabel(productadapter.NavigationRetry), CallbackRetry, state)
 }
 
 func (ui *Interface) cancelButton(owner ViewOwner, route Route) (Button, error) {
 	if route == "" {
 		route = RouteHome
 	}
-	return ui.stateButton(owner, "Cancel", CallbackCancel, ActionState{Route: route})
+	return ui.stateButton(owner, productadapter.NavigationLabel(productadapter.NavigationCancel), CallbackCancel, ActionState{Route: route})
 }
 
 func (ui *Interface) closeButton(owner ViewOwner, state ActionState) (Button, error) {
-	return ui.stateButton(owner, "Close", CallbackClose, ActionState{Route: state.Route, Back: state.Back})
+	return ui.stateButton(owner, productadapter.NavigationLabel(productadapter.NavigationClose), CallbackClose, ActionState{Route: state.Route, Back: state.Back})
+}
+
+func lifecycleLabel(state productadapter.LifecycleState) string {
+	if value, ok := productadapter.Lifecycle(state); ok {
+		return value.Label
+	}
+	return string(state)
 }
 
 func buttonRoleForCallback(action CallbackAction) ButtonRole {

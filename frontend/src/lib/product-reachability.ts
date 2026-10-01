@@ -1,4 +1,5 @@
 import { browserOperationBindings } from "@/lib/operations"
+import { canonicalPresentationContract } from "@/lib/operation-presentation.generated"
 
 export type BrowserAdapterState = "live" | "gap"
 
@@ -8,6 +9,24 @@ export type BrowserConfirmationEvidence = {
   marker: string
 }
 
+export type CanonicalOperationPresentation = {
+  operation: string
+  title: string
+  subject: string
+  category: "read" | "create" | "change" | "delete" | "run" | "review"
+  danger: "none" | "caution" | "destructive"
+  confirmation: "none" | "recommended" | "required" | "review-decision"
+  input: "none" | "resource" | "form" | "setting" | "protected-secret" | "decision"
+  secret_policy?: "protected-input" | "masked-read" | "one-time-output"
+  secret_recovery?: string
+  unavailable_reason?: string
+}
+
+const canonicalOperationPresentation = canonicalPresentationContract.operations as Record<
+  string,
+  CanonicalOperationPresentation
+>
+
 export type BrowserAdapterDescriptor = {
   operation: string
   state: BrowserAdapterState
@@ -15,6 +34,7 @@ export type BrowserAdapterDescriptor = {
   component: string
   action: string
   api: { method: string; pattern: string }[]
+  presentation: CanonicalOperationPresentation
   confirmation?: BrowserConfirmationEvidence
   secretPolicy?: "protected-input" | "masked-read" | "one-time-output"
   secretRecovery?: string
@@ -73,17 +93,11 @@ const browserSurfaces: { prefix: string; surface: BrowserSurface }[] = [
   { prefix: "version.", surface: { route: "/overview", component: "OverviewPage" } },
 ]
 
-export const browserDestructiveOperations = new Set([
-  "logs.clear",
-  "prompt.delete",
-  "workspace.container.delete",
-  "workspace.purge",
-  "upstream.server.remove",
-  "tunnel.delete",
-  "llm.provider.remove",
-  "integration.cf.remove",
-  "process.clear",
-])
+export const browserDestructiveOperations = new Set(
+  Object.values(canonicalOperationPresentation)
+    .filter((presentation) => presentation.danger === "destructive")
+    .map((presentation) => presentation.operation)
+)
 
 export const browserConfirmationEvidence: Record<
   string,
@@ -126,51 +140,22 @@ export const browserConfirmationEvidence: Record<
   },
 }
 
-const browserSecretContracts: Record<
-  string,
-  {
-    policy: "protected-input" | "masked-read" | "one-time-output"
-    recovery: string
-  }
-> = {
-  "config.patch": {
-    policy: "protected-input",
-    recovery: "replace through protected input; ordinary reads remain masked",
-  },
-  "config.set": {
-    policy: "protected-input",
-    recovery: "replace through protected input; ordinary reads remain masked",
-  },
-  "llm.provider.credential.set": {
-    policy: "protected-input",
-    recovery: "replace through protected input; ordinary reads remain masked",
-  },
-  "tunnel.admin.key.set": {
-    policy: "protected-input",
-    recovery: "replace through protected input; ordinary reads remain masked",
-  },
-  "telegram.setup": {
-    policy: "protected-input",
-    recovery: "replace through protected input; ordinary reads remain masked",
-  },
-  "auth.mcp.rotate": {
-    policy: "one-time-output",
-    recovery: "copy the token now; rotate again if the one-time value is lost",
-  },
-  "auth.admin.rotate": {
-    policy: "one-time-output",
-    recovery: "copy the token now; rotate again if the one-time value is lost",
-  },
-}
-
 export function browserProductReachability(): BrowserAdapterDescriptor[] {
   const grouped = new Map<string, BrowserAdapterDescriptor>()
   for (const binding of browserOperationBindings()) {
     const surface = browserSurface(binding.operation)
     if (!surface) continue
+    const presentation = canonicalOperationPresentation[binding.operation]
+    if (!presentation) continue
     const confirmation = browserConfirmationEvidence[binding.operation]
-    const destructive = browserDestructiveOperations.has(binding.operation)
-    const secretContract = browserSecretContracts[binding.operation]
+    const destructive = presentation.danger === "destructive"
+    const gap =
+      destructive && !confirmation
+        ? "destructive adapter does not consume canonical confirmation"
+        : undefined
+    const adapterPresentation = gap
+      ? { ...presentation, unavailable_reason: gap }
+      : presentation
     const current = grouped.get(binding.operation) ?? {
       operation: binding.operation,
       state: destructive && !confirmation ? "gap" : "live",
@@ -178,13 +163,11 @@ export function browserProductReachability(): BrowserAdapterDescriptor[] {
       component: surface.component,
       action: binding.operation,
       api: [],
+      presentation: adapterPresentation,
       confirmation,
-      secretPolicy: secretContract?.policy,
-      secretRecovery: secretContract?.recovery,
-      gap:
-        destructive && !confirmation
-          ? "destructive adapter does not consume canonical confirmation"
-          : undefined,
+      secretPolicy: presentation.secret_policy,
+      secretRecovery: presentation.secret_recovery,
+      gap,
     }
     current.api.push({ method: binding.method, pattern: binding.pattern })
     grouped.set(binding.operation, current)

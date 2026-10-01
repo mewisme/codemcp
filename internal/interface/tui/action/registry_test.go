@@ -3,12 +3,14 @@ package action
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/productadapter"
 )
 
 func TestRegistryRejectsInvalidAndDuplicateActions(t *testing.T) {
@@ -37,6 +39,33 @@ func TestRegistryOperationIsCanonicalCapability(t *testing.T) {
 	item, ok := registry.Get("about")
 	if !ok || item.Operation != capability.VersionAbout || !reflect.DeepEqual(item.Capabilities, []capability.ID{capability.VersionAbout}) {
 		t.Fatalf("action=%#v ok=%t", item, ok)
+	}
+}
+
+func TestActionUsesCanonicalPresentationAndUnavailableReason(t *testing.T) {
+	action := Action{
+		ID:        "purge",
+		Title:     "Purge",
+		Operation: capability.WorkspacePurge,
+		Available: func(Context) bool { return false },
+		Unavailable: func(Context) string {
+			return "select a workspace first"
+		},
+		Run: func(context.Context, Context) tea.Cmd { return nil },
+	}
+	presentation, ok := action.Presentation()
+	if !ok || presentation.Danger != productadapter.DangerDestructive || presentation.Category != productadapter.ActionCategoryDelete {
+		t.Fatalf("presentation=%#v ok=%t", presentation, ok)
+	}
+	if !action.Destructive() || action.ConfirmationMode() != capability.ConfirmationRequired {
+		t.Fatalf("destructive=%t confirmation=%q", action.Destructive(), action.ConfirmationMode())
+	}
+	registry, err := NewRegistry(action)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.Execute(t.Context(), action.ID, Context{}); err == nil || !strings.Contains(err.Error(), "select a workspace first") {
+		t.Fatalf("unavailable error=%v", err)
 	}
 }
 
