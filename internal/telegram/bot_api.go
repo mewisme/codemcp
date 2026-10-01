@@ -184,15 +184,52 @@ func (client *apiClient) SendMessage(ctx context.Context, chatID int64, text str
 	if client == nil || client.initErr != nil || client.bot == nil {
 		return errors.New("telegram bot transport is unavailable")
 	}
-	_, err := client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{ChatID: chatID, Text: text})
+	html := EscapeText(text)
+	_, err := client.bot.SendRichMessage(nonNilContext(ctx), &telegrambot.SendRichMessageParams{
+		ChatID: chatID, RichMessage: models.InputRichMessage{HTML: html},
+	})
+	if err != nil && richMessageFallbackAllowed(err) {
+		client.richFallback.Store(true)
+		_, err = client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
+			ChatID: chatID, Text: html, ParseMode: models.ParseModeHTML,
+		})
+	}
 	return classifyTransportError(err)
+}
+
+func (client *apiClient) ClearReplyKeyboard(ctx context.Context, chatID int64) error {
+	if client == nil || client.initErr != nil || client.bot == nil || chatID <= 0 {
+		return errors.New("telegram bot transport is unavailable")
+	}
+	message, err := client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
+		ChatID:              chatID,
+		Text:                "\u2063",
+		DisableNotification: true,
+		ReplyMarkup:         models.ReplyKeyboardRemove{RemoveKeyboard: true},
+	})
+	if err != nil {
+		return classifyTransportError(err)
+	}
+	if message != nil && message.ID > 0 {
+		_, _ = client.bot.DeleteMessage(nonNilContext(ctx), &telegrambot.DeleteMessageParams{ChatID: chatID, MessageID: message.ID})
+	}
+	return nil
 }
 
 func (client *apiClient) SendMessageThread(ctx context.Context, chatID int64, threadID int, text string) error {
 	if client == nil || client.initErr != nil || client.bot == nil {
 		return errors.New("telegram bot transport is unavailable")
 	}
-	_, err := client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{ChatID: chatID, MessageThreadID: threadID, Text: text})
+	html := EscapeText(text)
+	_, err := client.bot.SendRichMessage(nonNilContext(ctx), &telegrambot.SendRichMessageParams{
+		ChatID: chatID, MessageThreadID: threadID, RichMessage: models.InputRichMessage{HTML: html},
+	})
+	if err != nil && richMessageFallbackAllowed(err) {
+		client.richFallback.Store(true)
+		_, err = client.bot.SendMessage(nonNilContext(ctx), &telegrambot.SendMessageParams{
+			ChatID: chatID, MessageThreadID: threadID, Text: html, ParseMode: models.ParseModeHTML,
+		})
+	}
 	return classifyTransportError(err)
 }
 
@@ -352,7 +389,8 @@ func (client *apiClient) SendDocument(ctx context.Context, chatID int64, upload 
 	_, err := client.bot.SendDocument(nonNilContext(ctx), &telegrambot.SendDocumentParams{
 		ChatID:         chatID,
 		Document:       &models.InputFileUpload{Filename: upload.FileName, Data: bytes.NewReader(upload.Data)},
-		Caption:        strings.TrimSpace(upload.Caption),
+		Caption:        EscapeText(strings.TrimSpace(upload.Caption)),
+		ParseMode:      models.ParseModeHTML,
 		ProtectContent: upload.ProtectContent,
 	})
 	return classifyTransportError(err)
@@ -365,7 +403,12 @@ func (client *apiClient) SendDocumentThread(ctx context.Context, chatID int64, t
 	if err := ValidateDocumentUpload(upload); err != nil {
 		return err
 	}
-	_, err := client.bot.SendDocument(nonNilContext(ctx), &telegrambot.SendDocumentParams{ChatID: chatID, MessageThreadID: threadID, Document: &models.InputFileUpload{Filename: upload.FileName, Data: bytes.NewReader(upload.Data)}, Caption: strings.TrimSpace(upload.Caption), ProtectContent: upload.ProtectContent})
+	_, err := client.bot.SendDocument(nonNilContext(ctx), &telegrambot.SendDocumentParams{
+		ChatID: chatID, MessageThreadID: threadID,
+		Document: &models.InputFileUpload{Filename: upload.FileName, Data: bytes.NewReader(upload.Data)},
+		Caption:  EscapeText(strings.TrimSpace(upload.Caption)), ParseMode: models.ParseModeHTML,
+		ProtectContent: upload.ProtectContent,
+	})
 	return classifyTransportError(err)
 }
 
@@ -449,10 +492,7 @@ func classifyEditError(err error) error {
 }
 
 func screenRichMessage(screen Screen) (models.InputRichMessage, bool) {
-	if screen.Rich == nil {
-		return models.InputRichMessage{}, false
-	}
-	html := strings.TrimSpace(string(RichMessageHTML(screen.Rich)))
+	html := strings.TrimSpace(string(screenRichHTML(screen)))
 	if html == "" {
 		return models.InputRichMessage{}, false
 	}
@@ -645,6 +685,7 @@ func screenKeyboard(rows [][]Button) models.InlineKeyboardMarkup {
 }
 
 func screenKeyboardWithCapabilities(rows [][]Button, capabilities keyboardCapabilities) models.InlineKeyboardMarkup {
+	rows = responsiveKeyboardRows(rows)
 	keyboard := make([][]models.InlineKeyboardButton, 0, len(rows))
 	for _, row := range rows {
 		buttons := make([]models.InlineKeyboardButton, 0, len(row))

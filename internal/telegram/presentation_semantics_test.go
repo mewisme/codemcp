@@ -47,12 +47,12 @@ func TestOperationLifecycleAndNavigationUseCanonicalVocabulary(t *testing.T) {
 	}
 	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 1}
 	for intent, button := range map[string]func() (Button, error){
-		"Back":    func() (Button, error) { return ui.backButton(owner, RouteHome) },
-		"Home":    func() (Button, error) { return ui.homeButton(owner) },
-		"Refresh": func() (Button, error) { return ui.refreshButton(owner, ActionState{Route: RouteHome}) },
-		"Retry":   func() (Button, error) { return ui.retryButton(owner, ActionState{Route: RouteHome}) },
-		"Cancel":  func() (Button, error) { return ui.cancelButton(owner, RouteHome) },
-		"Close":   func() (Button, error) { return ui.closeButton(owner, ActionState{Route: RouteHome}) },
+		"« Back":    func() (Button, error) { return ui.backButton(owner, RouteHome) },
+		"⌂ Home":    func() (Button, error) { return ui.homeButton(owner) },
+		"↻ Refresh": func() (Button, error) { return ui.refreshButton(owner, ActionState{Route: RouteHome}) },
+		"Retry":     func() (Button, error) { return ui.retryButton(owner, ActionState{Route: RouteHome}) },
+		"Cancel":    func() (Button, error) { return ui.cancelButton(owner, RouteHome) },
+		"Close":     func() (Button, error) { return ui.closeButton(owner, ActionState{Route: RouteHome}) },
 	} {
 		value, err := button()
 		if err != nil {

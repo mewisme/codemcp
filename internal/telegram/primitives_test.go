@@ -54,7 +54,7 @@ func TestRichMessageHTMLUsesNativeBlockStructureInsteadOfWhitespaceLayout(t *tes
 		"<h2>Doctor</h2><p>healthy=false · warnings=2</p>",
 		"<ul><li>approval.lifecycle — healthy</li><li>background.delivery — healthy</li></ul>",
 		"<table compact><tr><th>Runtime</th><td>ready</td></tr><tr><th>Version</th><td>v1.2.3</td></tr></table>",
-		"<details open><summary>Detail</summary><p>line one<br>line two</p></details>",
+		"<details><summary>Detail</summary><p>line one<br>line two</p></details>",
 		"<blockquote>quoted<br>text</blockquote>",
 		"<pre><code>cm status</code></pre>",
 	} {
@@ -64,6 +64,24 @@ func TestRichMessageHTMLUsesNativeBlockStructureInsteadOfWhitespaceLayout(t *tes
 	}
 	if strings.Contains(html, "<b>approval.lifecycle — healthy</b>\n") {
 		t.Fatalf("native rich list regressed to newline-separated inline HTML: %q", html)
+	}
+	if strings.Contains(html, "<details open>") {
+		t.Fatalf("details must be collapsed by default: %q", html)
+	}
+}
+
+func TestScreenRenderingUsesBreadcrumbInRichAndHTMLFallback(t *testing.T) {
+	screen := Screen{
+		Rich:       BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Workspace"}),
+		Breadcrumb: []string{"CodeMCP", "Workspaces", "Workspace", "ws_123"},
+	}
+	for name, rendered := range map[string]string{
+		"rich":     string(screenRichHTML(screen)),
+		"fallback": screenText(screen),
+	} {
+		if !strings.Contains(rendered, "<i>CodeMCP › Workspaces › Workspace › ws_123</i>") {
+			t.Fatalf("%s breadcrumb missing: %q", name, rendered)
+		}
 	}
 }
 
@@ -208,7 +226,7 @@ func TestBotAPIRichMessageUsesForceReplyAndProtectContent(t *testing.T) {
 	}
 	requests := make(chan captured, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(strings.ToLower(r.URL.Path), "/sendmessage") {
+		if !strings.HasSuffix(strings.ToLower(r.URL.Path), "/sendrichmessage") {
 			http.NotFound(w, r)
 			return
 		}

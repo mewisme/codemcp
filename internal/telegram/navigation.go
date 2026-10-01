@@ -217,10 +217,7 @@ func (ui *Interface) handleHome(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.homeScreen(owner)
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteHome})
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 
@@ -229,10 +226,7 @@ func (ui *Interface) handleStatus(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.operationScreen(ctx, owner, ActionState{Route: RouteStatus, Back: RouteHome, Operation: capability.StatusOverview})
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteStatus, Back: RouteHome, Operation: capability.StatusOverview})
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 
@@ -241,10 +235,7 @@ func (ui *Interface) handleCommands(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.commandsScreen(owner)
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteCommands, Back: RouteHome})
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 
@@ -253,10 +244,7 @@ func (ui *Interface) handleSettings(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.settingsScreen(ctx, owner, ActionState{Route: RouteSettings, Back: RouteHome})
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteSettings, Back: RouteHome})
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 
@@ -265,10 +253,7 @@ func (ui *Interface) handleIntegrations(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.integrationsScreen(ctx, owner)
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteIntegrations, Back: RouteHome})
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 
@@ -302,7 +287,7 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 		if screenErr != nil {
 			screen = StaleScreen()
 		}
-		_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, screen)
+		_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, withRouteBreadcrumb(screen, state))
 		return
 	}
 	if ref.Action == CallbackClose {
@@ -317,7 +302,7 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 	if state.InputKind != "" && state.Input == nil {
 		ui.answerCallback(ctx, update.CallbackQuery.ID, "", false)
 		if err := ui.beginActionInput(ctx, owner, state); err != nil {
-			_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, ErrorScreen(err))
+			_ = ui.runtime.EditScreen(ctx, owner.ChatID, update.CallbackQuery.Message.MessageID, withRouteBreadcrumb(ErrorScreen(err), state))
 		}
 		return
 	}
@@ -334,7 +319,7 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 	if hasSpec && shouldShowWorking(spec, state) {
 		if err := ui.prepareDurableOperation(ctx, owner, messageID, state); err != nil {
 			screen, _ := ui.operationErrorScreen(owner, state, err)
-			_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, screen)
+			_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, withRouteBreadcrumb(screen, state))
 			return
 		}
 	}
@@ -348,7 +333,7 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 		}
 		ui.clearDurableOperation(owner.ChatID, messageID, state)
 		screen, _ = ui.operationErrorScreen(owner, state, err)
-		_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, screen)
+		_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, withRouteBreadcrumb(screen, state))
 		return
 	}
 	if editErr := ui.runtime.EditScreen(ctx, owner.ChatID, messageID, screen); editErr == nil {
@@ -383,7 +368,7 @@ func (ui *Interface) staleStateScreen(owner ViewOwner, state ActionState) (Scree
 	}
 	screen := StaleScreen()
 	screen.Keyboard = [][]Button{{back, home}}
-	return screen, nil
+	return withRouteBreadcrumb(screen, state), nil
 }
 
 func (ui *Interface) answerCallback(ctx context.Context, callbackID, text string, alert bool) {
@@ -405,7 +390,23 @@ func shouldShowWorking(spec capability.Spec, state ActionState) bool {
 	return !requiresExplicitConfirmation(spec) || state.Confirmed
 }
 
+func (ui *Interface) routeScreen(ctx context.Context, owner ViewOwner, state ActionState) Screen {
+	screen, err := ui.renderState(ctx, owner, state)
+	if err != nil {
+		return withRouteBreadcrumb(ErrorScreen(err), state)
+	}
+	return screen
+}
+
 func (ui *Interface) renderState(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
+	screen, err := ui.renderStateContent(ctx, owner, state)
+	if err != nil {
+		return Screen{}, err
+	}
+	return withRouteBreadcrumb(screen, state), nil
+}
+
+func (ui *Interface) renderStateContent(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
 	switch state.Route {
 	case RouteHome:
 		return ui.homeScreen(owner)
@@ -553,7 +554,6 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 		return Screen{}, err
 	}
 	presentation := Present(
-		ProductHeader("CodeMCP", "Telegram"),
 		TitleBlock("Home", "Private administration interface"),
 		StatusRow(ToneHealthy, "Authorized", "Commands are limited to this private account."),
 		StatusRow(ToneHealthy, "Administration", "Workspace, request, completion, and system views use canonical application services."),
@@ -589,7 +589,6 @@ func (ui *Interface) commandsScreen(owner ViewOwner) (Screen, error) {
 		items = append(items, ListItem{Label: "/" + command.Name, Detail: command.Description})
 	}
 	presentation := Present(
-		ProductHeader("CodeMCP", "Telegram / Help"),
 		TitleBlock("Help", "Use slash commands or inline controls. Ordinary text is ignored outside an authenticated input flow."),
 		TitleBlock("Navigation", ""),
 		CompactList(
@@ -648,7 +647,6 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 			detail = "This action is destructive and may remove persistent state."
 		}
 		presentation := Present(
-			ProductHeader("CodeMCP", "Telegram / Confirmation"),
 			TitleBlock(lifecycle.Label, "Confirm operation · "+operationPresentation.Title),
 			DestructiveConfirmation(operationPresentation.Title, operationPresentation.Subject, detail),
 		)
@@ -674,7 +672,6 @@ func (ui *Interface) operationScreen(ctx context.Context, owner ViewOwner, state
 		return screen, err
 	}
 	parts := []PresentationPart{
-		ProductHeader("CodeMCP", "Telegram / "+routeLabel(state.Route)),
 		TitleBlock(operationPresentation.Title, operationPresentation.Subject),
 		SuccessState(lifecycleLabel(productadapter.LifecycleSuccess)),
 	}
@@ -710,11 +707,10 @@ func workingScreen(state ActionState) Screen {
 		}
 	}
 	presentation := Present(
-		ProductHeader("CodeMCP", "Telegram / "+label),
 		TitleBlock(lifecycleLabel(productadapter.LifecycleWorking), title),
 		LoadingState(lifecycleLabel(productadapter.LifecycleWorking)+"…"),
 	)
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{{Text: lifecycleLabel(productadapter.LifecycleWorking) + "…", Disabled: true, Role: ButtonRoleNeutral}}}}
+	return withRouteBreadcrumb(Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{{Text: lifecycleLabel(productadapter.LifecycleWorking) + "…", Disabled: true, Role: ButtonRoleNeutral}}}}, state)
 }
 
 func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, operationErr error) (Screen, error) {
@@ -751,11 +747,10 @@ func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, op
 		title = metadata.Title
 	}
 	presentation := Present(
-		ProductHeader("CodeMCP", "Telegram / Error"),
 		TitleBlock(lifecycleLabel(productadapter.LifecycleRetryableFailure), title+" · retry uses the same guarded operation path."),
 		ErrorState(detail),
 	)
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{retryButton}, Navigation: []Button{back, home}})}, nil
+	return withRouteBreadcrumb(Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{retryButton}, Navigation: []Button{back, home}})}, state), nil
 }
 
 func (ui *Interface) inputPromptScreen(owner ViewOwner, state ActionState, title, prompt string) (Screen, error) {
@@ -765,11 +760,10 @@ func (ui *Interface) inputPromptScreen(owner ViewOwner, state ActionState, title
 		return Screen{}, err
 	}
 	presentation := Present(
-		ProductHeader("CodeMCP", "Telegram / Input"),
 		TitleBlock(strings.TrimSpace(title), strings.TrimSpace(prompt)),
 		StatusRow(TonePending, "Input required", "Send the requested value or cancel this flow."),
 	)
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{cancel}}}, nil
+	return withRouteBreadcrumb(Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: [][]Button{{cancel}}}, state), nil
 }
 
 func (ui *Interface) inputFailureScreen(owner ViewOwner, state ActionState, inputErr error) (Screen, error) {
@@ -785,8 +779,8 @@ func (ui *Interface) inputFailureScreen(owner ViewOwner, state ActionState, inpu
 	if inputErr != nil && strings.TrimSpace(inputErr.Error()) != "" {
 		detail = compactPresentationValue(inputErr.Error())
 	}
-	presentation := Present(ProductHeader("CodeMCP", "Telegram / Input"), TitleBlock("Input failed", ""), ErrorState(detail))
-	return Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{retry}, Navigation: []Button{back}})}, nil
+	presentation := Present(TitleBlock("Input failed", ""), ErrorState(detail))
+	return withRouteBreadcrumb(Screen{Text: presentation.Text, HTML: presentation.HTML, Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{retry}, Navigation: []Button{back}})}, state), nil
 }
 
 func (ui *Interface) editInputPrompt(ctx context.Context, owner ViewOwner, messageID int64, state ActionState, title, prompt string) error {
@@ -884,6 +878,14 @@ func operationBackState(state ActionState) ActionState {
 }
 
 func (ui *Interface) stateButton(owner ViewOwner, label string, action CallbackAction, state ActionState) (Button, error) {
+	switch action {
+	case CallbackBack:
+		label = previousNavigationLabel(label)
+	case CallbackHome:
+		label = homeNavigationLabel(label)
+	case CallbackRefresh:
+		label = refreshNavigationLabel(label)
+	}
 	token, err := ui.states.Put(owner, state)
 	if err != nil {
 		return Button{}, err
@@ -894,6 +896,38 @@ func (ui *Interface) stateButton(owner ViewOwner, label string, action CallbackA
 		return Button{}, err
 	}
 	return Button{Text: CompactActionLabel(label), CallbackData: data, Role: buttonRoleForCallback(action)}, nil
+}
+
+func previousNavigationLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" || strings.HasPrefix(label, "«") {
+		return label
+	}
+	return "« " + label
+}
+
+func nextNavigationLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" || strings.HasSuffix(label, "»") {
+		return label
+	}
+	return label + " »"
+}
+
+func homeNavigationLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" || strings.HasPrefix(label, "⌂") {
+		return label
+	}
+	return "⌂ " + label
+}
+
+func refreshNavigationLabel(label string) string {
+	label = strings.TrimSpace(label)
+	if label == "" || strings.HasPrefix(label, "↻") {
+		return label
+	}
+	return "↻ " + label
 }
 
 func (ui *Interface) backButton(owner ViewOwner, route Route) (Button, error) {
@@ -1023,6 +1057,89 @@ func boolState(value bool) string {
 	return "disabled"
 }
 
+func withRouteBreadcrumb(screen Screen, state ActionState) Screen {
+	screen.Breadcrumb = routeBreadcrumb(state)
+	return screen
+}
+
+func routeBreadcrumb(state ActionState) []string {
+	current := state.Route
+	if current == "" {
+		current = RouteOperation
+	}
+	chain := []Route{current}
+	parent := state.Back
+	if parent == "" || parent == current {
+		parent = defaultBreadcrumbParent(current)
+	}
+	seen := map[Route]bool{current: true}
+	for parent != "" && parent != RouteHome && !seen[parent] {
+		seen[parent] = true
+		chain = append([]Route{parent}, chain...)
+		parent = defaultBreadcrumbParent(parent)
+	}
+	items := make([]string, 0, len(chain)+2)
+	items = append(items, "CodeMCP")
+	for _, route := range chain {
+		items = append(items, routeLabel(route))
+	}
+	if id := strings.TrimSpace(state.ResourceID); id != "" {
+		items = append(items, id)
+	}
+	return dedupeBreadcrumb(items)
+}
+
+func defaultBreadcrumbParent(route Route) Route {
+	switch route {
+	case RouteWorkspace:
+		return RouteWorkspaces
+	case RouteAccess, RouteContainers, RouteCodeGraphWS:
+		return RouteWorkspace
+	case RouteContainer:
+		return RouteContainers
+	case RouteRequest, RouteGrants:
+		return RouteRequests
+	case RouteGrant:
+		return RouteGrants
+	case RouteCompletion:
+		return RouteCompletions
+	case RouteProcess:
+		return RouteProcesses
+	case RouteTunnel, RouteManagedTunnels, RouteUpstreams:
+		return RouteNetwork
+	case RouteManagedTunnel:
+		return RouteManagedTunnels
+	case RouteUpstream:
+		return RouteUpstreams
+	case RouteIntegration:
+		return RouteIntegrations
+	case RouteLLMProvider, RouteLLMModels:
+		return RouteLLM
+	case RouteSetting, RouteAuthorizedUsers:
+		return RouteSettings
+	case RouteDoctor:
+		return RouteSystem
+	case RoutePrompts:
+		return RouteInstructions
+	case RoutePrompt:
+		return RoutePrompts
+	default:
+		return RouteHome
+	}
+}
+
+func dedupeBreadcrumb(items []string) []string {
+	result := make([]string, 0, len(items))
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" || (len(result) > 0 && result[len(result)-1] == item) {
+			continue
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
 func routeLabel(route Route) string {
 	switch route {
 	case RouteHome:
@@ -1049,14 +1166,28 @@ func routeLabel(route Route) string {
 		return "Requests"
 	case RouteRequest:
 		return "Request"
+	case RouteGrants:
+		return "Grants"
+	case RouteGrant:
+		return "Grant"
 	case RouteCompletions:
 		return "Completions"
 	case RouteCompletion:
 		return "Completion"
+	case RouteProcesses:
+		return "Processes"
+	case RouteProcess:
+		return "Process"
+	case RouteCodeGraphWS:
+		return "CodeGraph"
 	case RouteNetwork:
 		return "Network"
 	case RouteTunnel:
 		return "Secure MCP Tunnel"
+	case RouteManagedTunnels:
+		return "Managed tunnels"
+	case RouteManagedTunnel:
+		return "Managed tunnel"
 	case RouteUpstreams:
 		return "Upstreams"
 	case RouteUpstream:

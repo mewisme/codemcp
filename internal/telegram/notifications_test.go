@@ -44,14 +44,20 @@ func TestCompletionNotificationUsesRichCompletionsTopicWithoutPlainDuplicate(t *
 		t.Fatalf("completion notification duplicated as plain text thread=%v general=%v", api.threadSends, api.generalSends)
 	}
 	screen := api.richThreadScreens[0]
+	if len(screen.Breadcrumb) != 0 {
+		t.Fatalf("quick completion notification must not have breadcrumb: %#v", screen.Breadcrumb)
+	}
 	fallback := RichFallback(screen.Rich)
 	for _, expected := range []string{"Agent completed", "Finished implementation", "Tests and validation passed.", "completed", "ws_1", "cmp_1"} {
 		if !strings.Contains(fallback.Text, expected) {
 			t.Fatalf("completion rich fallback missing %q: %q", expected, fallback.Text)
 		}
 	}
-	if len(screen.Keyboard) != 1 || len(screen.Keyboard[0]) != 1 || screen.Keyboard[0][0].WebAppURL != "https://logs-one.example" {
-		t.Fatalf("completion inspect keyboard=%#v", screen.Keyboard)
+	if strings.Contains(fallback.Text, "Agent completion · completed") {
+		t.Fatalf("completion notification repeated heading/status context: %q", fallback.Text)
+	}
+	if len(screen.Keyboard) != 0 {
+		t.Fatalf("completion notification must not expose Logs Mini App action: %#v", screen.Keyboard)
 	}
 }
 
@@ -108,7 +114,10 @@ func TestBackgroundProcessNotificationUsesStructuredRichRuntimeCard(t *testing.T
 	runtime := &Runtime{
 		root: t.TempDir(), api: api, topics: store,
 		config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true},
-		health: Health{Running: true, Enabled: true, AuthorizationConfigured: true, TopicsEffective: true},
+		health: Health{
+			Running: true, Enabled: true, AuthorizationConfigured: true, TopicsEffective: true,
+			LogsMiniApp: LogsMiniAppHealth{Enabled: true, State: MiniAppReady, PublicURL: "https://logs.example/?source=telegram"},
+		},
 	}
 	if _, err := NewInterface(InterfaceOptions{Runtime: runtime}); err != nil {
 		t.Fatal(err)
@@ -131,6 +140,9 @@ func TestBackgroundProcessNotificationUsesStructuredRichRuntimeCard(t *testing.T
 		t.Fatalf("background notification duplicated as plain text thread=%v general=%v", api.threadSends, api.generalSends)
 	}
 	screen := api.richThreadScreens[0]
+	if len(screen.Breadcrumb) != 0 {
+		t.Fatalf("quick background notification must not have breadcrumb: %#v", screen.Breadcrumb)
+	}
 	fallback := RichFallback(screen.Rich)
 	for _, expected := range []string{"Background process failed", "start_process", "failed", "process_exit", "2.4s", "17", "ws_2", "proc_1", "exec_1"} {
 		if !strings.Contains(fallback.Text, expected) {
@@ -142,15 +154,22 @@ func TestBackgroundProcessNotificationUsesStructuredRichRuntimeCard(t *testing.T
 			t.Fatalf("background rich fallback leaked %q: %q", forbidden, fallback.Text)
 		}
 	}
+	if len(screen.Keyboard) != 1 || len(screen.Keyboard[0]) != 1 {
+		t.Fatalf("background notification process-log keyboard=%#v", screen.Keyboard)
+	}
+	button := screen.Keyboard[0][0]
+	if button.Text != "Open process log" || !strings.Contains(button.WebAppURL, "execution=exec_1") || !strings.Contains(button.WebAppURL, "feed=executions") || !strings.Contains(button.WebAppURL, "source=telegram") {
+		t.Fatalf("background process-log button=%#v", button)
+	}
 }
 
-func TestNotificationLogsButtonUsesCurrentMiniAppURL(t *testing.T) {
+func TestCompletionNotificationOmitsLogsMiniAppButtonWhenMiniAppIsReady(t *testing.T) {
 	runtime := &Runtime{health: Health{LogsMiniApp: LogsMiniAppHealth{Enabled: true, State: MiniAppReady, PublicURL: "https://old.example"}}}
 	ui := &Interface{runtime: runtime}
 	message := notification.Message{Kind: notification.KindCompletionAccepted, Title: "Agent completed", CompletionID: "cmp_1"}
 
 	first, handled, err := ui.RenderNotification(t.Context(), 42, message)
-	if err != nil || !handled || len(first.Keyboard) == 0 || first.Keyboard[0][0].WebAppURL != "https://old.example" {
+	if err != nil || !handled || len(first.Keyboard) != 0 {
 		t.Fatalf("first notification handled=%t err=%v keyboard=%#v", handled, err, first.Keyboard)
 	}
 	runtime.mu.Lock()
@@ -158,7 +177,7 @@ func TestNotificationLogsButtonUsesCurrentMiniAppURL(t *testing.T) {
 	runtime.mu.Unlock()
 
 	second, handled, err := ui.RenderNotification(t.Context(), 42, message)
-	if err != nil || !handled || len(second.Keyboard) == 0 || second.Keyboard[0][0].WebAppURL != "https://new.example" {
+	if err != nil || !handled || len(second.Keyboard) != 0 {
 		t.Fatalf("second notification handled=%t err=%v keyboard=%#v", handled, err, second.Keyboard)
 	}
 }

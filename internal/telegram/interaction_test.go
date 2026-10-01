@@ -140,8 +140,28 @@ func TestButtonCapabilityFallbackDoesNotRewriteAuthority(t *testing.T) {
 	if button.CallbackData != "signed" || button.Style != "" {
 		t.Fatalf("callback authority changed under fallback: %#v", button)
 	}
-	if native := screenKeyboard(rows); len(native.InlineKeyboard) != 1 || len(native.InlineKeyboard[0]) != 4 {
+	if native := screenKeyboard(rows); len(native.InlineKeyboard) != 2 || len(native.InlineKeyboard[0]) != 3 || len(native.InlineKeyboard[1]) != 1 {
 		t.Fatalf("native supported affordances were dropped: %#v", native.InlineKeyboard)
+	}
+}
+
+func TestKeyboardRowsReduceColumnsForLongLabels(t *testing.T) {
+	rows := [][]Button{{
+		{Text: "A fairly long action", CallbackData: "a"},
+		{Text: "Another long action", CallbackData: "b"},
+		{Text: "Short", CallbackData: "c"},
+	}}
+	responsive := responsiveKeyboardRows(rows)
+	if len(responsive) != 2 || len(responsive[0]) != 1 || len(responsive[1]) != 2 {
+		t.Fatalf("long labels were not given enough horizontal space: %#v", responsive)
+	}
+	compact := responsiveKeyboardRows([][]Button{{
+		{Text: "« Back", CallbackData: "b"},
+		{Text: "⌂ Home", CallbackData: "h"},
+		{Text: "↻ Refresh", CallbackData: "r"},
+	}})
+	if len(compact) != 1 || len(compact[0]) != 3 {
+		t.Fatalf("compact navigation was split unnecessarily: %#v", compact)
 	}
 }
 
@@ -416,7 +436,7 @@ func TestStaleVersionCallbackAlertsAndRendersRecoveryNavigation(t *testing.T) {
 	if len(api.edited) != 1 || !strings.Contains(api.edited[0].Text, "Stale control") || len(api.edited[0].Keyboard) != 1 || len(api.edited[0].Keyboard[0]) != 2 {
 		t.Fatalf("stale recovery screen=%#v", api.edited)
 	}
-	if api.edited[0].Keyboard[0][0].Text != "Back" || api.edited[0].Keyboard[0][1].Text != "Home" {
+	if api.edited[0].Keyboard[0][0].Text != "« Back" || api.edited[0].Keyboard[0][1].Text != "⌂ Home" {
 		t.Fatalf("stale recovery controls=%#v", api.edited[0].Keyboard)
 	}
 }
@@ -433,7 +453,7 @@ func TestReferenceButtonHierarchyRemainsRepresentableWithoutRejectedArchitecture
 	}
 	want := [][]string{
 		{"Status", "System"}, {"Requests", "Completions"}, {"Workspaces", "Network"},
-		{"Upstreams", "Integrations"}, {"LLM", "Instructions"}, {"Settings", "Auth"}, {"Logs"}, {"Help", "Refresh"},
+		{"Upstreams", "Integrations"}, {"LLM", "Instructions"}, {"Settings", "Auth"}, {"Logs"}, {"Help", "↻ Refresh"},
 	}
 	got := make([][]string, 0, len(home.Keyboard))
 	for _, row := range home.Keyboard {

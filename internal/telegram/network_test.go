@@ -129,7 +129,7 @@ func TestUpstreamDetailIsRedactedProgressiveAndMutationStateIsVersionBound(t *te
 			t.Fatalf("upstream detail missing safe metadata %q: %q", want, detailText)
 		}
 	}
-	if len(detail.Keyboard) != 4 || detail.Keyboard[3][0].Text != "Back" || detail.Keyboard[3][1].Text != "Home" {
+	if len(detail.Keyboard) != 4 || detail.Keyboard[3][0].Text != "« Back" || detail.Keyboard[3][1].Text != "⌂ Home" {
 		t.Fatalf("upstream keyboard navigation=%#v", detail.Keyboard)
 	}
 	expected := application.UpstreamFingerprint(server)

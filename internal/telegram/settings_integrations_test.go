@@ -134,7 +134,7 @@ func TestIntegrationsScreenKeepsEveryIntegrationReachable(t *testing.T) {
 		{"Ponytail", "Caveman", "RTK"},
 		{"CodeGraph", "Cloudflare Quick Tunnel", "TypeSafe"},
 		{"Telemetry"},
-		{"Back", "Home"},
+		{"« Back", "⌂ Home"},
 	}
 	if len(screen.Keyboard) != len(wantRows) {
 		t.Fatalf("integration keyboard rows=%d want=%d: %#v", len(screen.Keyboard), len(wantRows), screen.Keyboard)

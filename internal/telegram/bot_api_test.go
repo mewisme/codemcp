@@ -324,7 +324,7 @@ func TestBotAPIAdapterUsesTypedMessageEditAndCallbackMethods(t *testing.T) {
 				w.WriteHeader(http.StatusBadRequest)
 				return
 			}
-			for _, key := range []string{"chat_id", "message_id", "text", "parse_mode", "reply_markup", "callback_query_id", "show_alert"} {
+			for _, key := range []string{"chat_id", "message_id", "text", "parse_mode", "rich_message", "reply_markup", "callback_query_id", "show_alert"} {
 				if value := r.FormValue(key); value != "" {
 					form[key] = value
 				}
@@ -334,7 +334,7 @@ func TestBotAPIAdapterUsesTypedMessageEditAndCallbackMethods(t *testing.T) {
 		switch method {
 		case "getme":
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": map[string]any{"id": 1000, "is_bot": true, "first_name": "CodeMCP", "username": "codemcp_bot"}})
-		case "sendmessage", "editmessagetext":
+		case "sendrichmessage", "editmessagetext":
 			calls <- call{method: method, form: form}
 			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": map[string]any{"message_id": 9, "date": 0, "chat": map[string]any{"id": 42, "type": "private"}}})
 		case "answercallbackquery":
@@ -367,19 +367,73 @@ func TestBotAPIAdapterUsesTypedMessageEditAndCallbackMethods(t *testing.T) {
 		item := <-calls
 		seen[item.method] = item.form
 	}
-	for _, method := range []string{"sendmessage", "editmessagetext", "answercallbackquery"} {
+	for _, method := range []string{"sendrichmessage", "editmessagetext", "answercallbackquery"} {
 		if seen[method] == nil {
 			t.Fatalf("typed method %s was not called: %#v", method, seen)
 		}
 	}
-	if seen["sendmessage"]["chat_id"] != "42" || seen["sendmessage"]["parse_mode"] != "HTML" || !strings.Contains(seen["sendmessage"]["reply_markup"], "signed") {
-		t.Fatalf("sendMessage form=%#v", seen["sendmessage"])
+	if seen["sendrichmessage"]["chat_id"] != "42" || seen["sendrichmessage"]["rich_message"] == "" || !strings.Contains(seen["sendrichmessage"]["reply_markup"], "signed") {
+		t.Fatalf("sendRichMessage form=%#v", seen["sendrichmessage"])
 	}
-	if seen["editmessagetext"]["message_id"] != "9" || seen["editmessagetext"]["parse_mode"] != "HTML" {
+	if seen["editmessagetext"]["message_id"] != "9" || seen["editmessagetext"]["rich_message"] == "" {
 		t.Fatalf("editMessageText form=%#v", seen["editmessagetext"])
 	}
 	if seen["answercallbackquery"]["callback_query_id"] != "callback-1" || seen["answercallbackquery"]["show_alert"] != "true" {
 		t.Fatalf("answerCallbackQuery form=%#v", seen["answercallbackquery"])
+	}
+}
+
+func TestBotAPICanonicalizesLegacyScreenAndPlainTextAsRichHTML(t *testing.T) {
+	type call struct {
+		method string
+		form   map[string]string
+	}
+	calls := make(chan call, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method := strings.ToLower(r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:])
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		form := map[string]string{}
+		for _, key := range []string{"chat_id", "text", "parse_mode", "rich_message"} {
+			if value := r.FormValue(key); value != "" {
+				form[key] = value
+			}
+		}
+		calls <- call{method: method, form: form}
+		w.Header().Set("Content-Type", "application/json")
+		switch method {
+		case "sendrichmessage":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": map[string]any{"message_id": 11, "date": 1, "chat": map[string]any{"id": 42, "type": "private"}}})
+		case "sendmessage":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": map[string]any{"message_id": 12, "date": 1, "chat": map[string]any{"id": 42, "type": "private"}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := newAPIClientWithOptions("123456:test-token", time.Second, server.URL, server.Client())
+	legacy := Present(ProductHeader("CodeMCP", "Telegram"), TitleBlock("Status", "Ready"))
+	if err := client.SendScreen(t.Context(), 42, Screen{Text: legacy.Text, HTML: legacy.HTML}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SendMessage(t.Context(), 42, "<unsafe>&"); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := make([]call, 0, 2)
+	for range 2 {
+		seen = append(seen, <-calls)
+	}
+	if seen[0].method != "sendrichmessage" || seen[0].form["rich_message"] == "" {
+		t.Fatalf("legacy screen did not use canonical rich HTML: %#v", seen[0])
+	}
+	var rich struct {
+		HTML string `json:"html"`
+	}
+	if seen[1].method != "sendrichmessage" || json.Unmarshal([]byte(seen[1].form["rich_message"]), &rich) != nil || rich.HTML != "&lt;unsafe&gt;&amp;" {
+		t.Fatalf("plain text was not normalized to canonical rich HTML: %#v", seen[1])
 	}
 }
 
@@ -446,6 +500,62 @@ func TestBotAPIAdapterUsesTypedCommandMenuAndDeleteMethods(t *testing.T) {
 	}
 	if seen["deletemessage"]["chat_id"] != "42" || seen["deletemessage"]["message_id"] != "9" {
 		t.Fatalf("deleteMessage form=%#v", seen["deletemessage"])
+	}
+}
+
+func TestBotAPIClearReplyKeyboardRemovesStaleNativePicker(t *testing.T) {
+	type call struct {
+		method string
+		form   map[string]string
+	}
+	calls := make(chan call, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		method := strings.ToLower(r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:])
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Errorf("parse %s form: %v", method, err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		form := map[string]string{}
+		for _, key := range []string{"chat_id", "text", "disable_notification", "reply_markup", "message_id"} {
+			if value := r.FormValue(key); value != "" {
+				form[key] = value
+			}
+		}
+		calls <- call{method: method, form: form}
+		w.Header().Set("Content-Type", "application/json")
+		switch method {
+		case "sendmessage":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": map[string]any{
+				"message_id": 77,
+				"date":       1,
+				"chat":       map[string]any{"id": 42, "type": "private"},
+			}})
+		case "deletemessage":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	client := newAPIClientWithOptions("123456:test-token", time.Second, server.URL, server.Client())
+	if err := client.ClearReplyKeyboard(t.Context(), 42); err != nil {
+		t.Fatal(err)
+	}
+
+	seen := map[string]map[string]string{}
+	for range 2 {
+		item := <-calls
+		seen[item.method] = item.form
+	}
+	if seen["sendmessage"]["chat_id"] != "42" ||
+		seen["sendmessage"]["disable_notification"] != "true" ||
+		!strings.Contains(seen["sendmessage"]["reply_markup"], `"remove_keyboard":true`) {
+		t.Fatalf("reply keyboard cleanup form=%#v", seen["sendmessage"])
+	}
+	if seen["deletemessage"]["chat_id"] != "42" || seen["deletemessage"]["message_id"] != "77" {
+		t.Fatalf("reply keyboard cleanup carrier was not deleted: %#v", seen["deletemessage"])
 	}
 }
 

@@ -12,6 +12,8 @@ const (
 	MaxCopyTextRunes       = 256
 	MaxButtonURLBytes      = 2048
 	maxActionButtonsPerRow = 3
+	maxButtonRowRunes      = 28
+	buttonRowPaddingRunes  = 2
 )
 
 type ButtonStyle string
@@ -37,10 +39,11 @@ const (
 )
 
 type Screen struct {
-	Text     string
-	HTML     SafeHTML
-	Keyboard [][]Button
-	Rich     *RichPresentation
+	Text       string
+	HTML       SafeHTML
+	Keyboard   [][]Button
+	Rich       *RichPresentation
+	Breadcrumb []string
 }
 
 type Button struct {
@@ -62,17 +65,50 @@ type ActionGroups struct {
 }
 
 func screenText(screen Screen) string {
+	return string(screenFallbackHTML(screen))
+}
+
+func screenRichHTML(screen Screen) SafeHTML {
+	body := ""
+	if screen.Rich != nil {
+		body = strings.TrimSpace(string(RichMessageHTML(screen.Rich)))
+	} else if screen.HTML != "" {
+		body = strings.TrimSpace(string(screen.HTML))
+	} else if strings.TrimSpace(screen.Text) != "" {
+		body = EscapeText(strings.TrimSpace(screen.Text))
+	}
+	breadcrumb := breadcrumbHTML(screen.Breadcrumb)
+	if breadcrumb == "" {
+		return SafeHTML(body)
+	}
+	if body == "" {
+		return breadcrumb
+	}
+	return SafeHTML(string(breadcrumb) + "\n" + body)
+}
+
+func screenFallbackHTML(screen Screen) SafeHTML {
+	body := ""
 	if screen.Rich != nil {
 		fallback := RichFallback(screen.Rich)
 		if fallback.HTML != "" {
-			return string(fallback.HTML)
+			body = strings.TrimSpace(string(fallback.HTML))
+		} else {
+			body = EscapeText(strings.TrimSpace(fallback.Text))
 		}
-		return EscapeText(fallback.Text)
+	} else if screen.HTML != "" {
+		body = strings.TrimSpace(string(screen.HTML))
+	} else if strings.TrimSpace(screen.Text) != "" {
+		body = EscapeText(strings.TrimSpace(screen.Text))
 	}
-	if screen.HTML != "" {
-		return string(screen.HTML)
+	breadcrumb := breadcrumbHTML(screen.Breadcrumb)
+	if breadcrumb == "" {
+		return SafeHTML(body)
 	}
-	return EscapeText(screen.Text)
+	if body == "" {
+		return breadcrumb
+	}
+	return SafeHTML(string(breadcrumb) + "\n" + body)
 }
 
 func ErrorScreen(err error) Screen {
@@ -80,12 +116,12 @@ func ErrorScreen(err error) Screen {
 	if err != nil && strings.TrimSpace(err.Error()) != "" {
 		detail = compactPresentationValue(err.Error())
 	}
-	presentation := Present(ProductHeader("CodeMCP", "Telegram / Error"), TitleBlock("Operation failed", ""), ErrorState(detail))
+	presentation := Present(TitleBlock("Operation failed", ""), ErrorState(detail))
 	return Screen{Text: presentation.Text, HTML: presentation.HTML}
 }
 
 func StaleScreen() Screen {
-	presentation := Present(ProductHeader("CodeMCP", "Telegram"), TitleBlock("Stale control", "The underlying resource changed."), ErrorState("Open the screen again before mutating state."))
+	presentation := Present(TitleBlock("Stale control", "The underlying resource changed."), ErrorState("Open the screen again before mutating state."))
 	return Screen{Text: presentation.Text, HTML: presentation.HTML}
 }
 
@@ -193,6 +229,36 @@ func BoundedActionGroups(groups ActionGroups) [][]Button {
 	appendGroup(groups.Destructive)
 	appendGroup(groups.Navigation)
 	return rows
+}
+
+func responsiveKeyboardRows(rows [][]Button) [][]Button {
+	out := make([][]Button, 0, len(rows))
+	for _, row := range rows {
+		current := make([]Button, 0, len(row))
+		used := 0
+		flush := func() {
+			if len(current) == 0 {
+				return
+			}
+			out = append(out, current)
+			current = nil
+			used = 0
+		}
+		for _, button := range row {
+			label := strings.TrimSpace(button.Text)
+			if label == "" {
+				continue
+			}
+			width := utf8.RuneCountInString(label) + buttonRowPaddingRunes
+			if len(current) > 0 && (len(current) >= maxActionButtonsPerRow || used+width > maxButtonRowRunes) {
+				flush()
+			}
+			current = append(current, button)
+			used += width
+		}
+		flush()
+	}
+	return out
 }
 
 func CopyValueButton(label, value string) (Button, bool) {

@@ -233,7 +233,7 @@ func TestTelegramLLMOperationErrorBackPreservesProviderResource(t *testing.T) {
 	var back Button
 	for _, row := range screen.Keyboard {
 		for _, button := range row {
-			if button.Text == "Back" {
+			if button.Text == "« Back" {
 				back = button
 			}
 		}

@@ -33,13 +33,9 @@ func (ui *Interface) completionNotificationScreen(message notification.Message) 
 	status := strings.TrimSpace(message.Status)
 	heading := strings.TrimSpace(message.Title)
 	if heading == "" {
-		heading = "Agent completion"
+		heading = "Agent completed"
 	}
-	subtitle := "Agent completion"
-	if status != "" {
-		subtitle += " · " + status
-	}
-	blocks := []RichBlock{{Kind: RichHeading, Title: heading, Text: subtitle}}
+	blocks := []RichBlock{{Kind: RichHeading, Title: heading}}
 
 	subject := strings.TrimSpace(message.Subject)
 	summary := strings.TrimSpace(message.Summary)
@@ -71,7 +67,7 @@ func (ui *Interface) completionNotificationScreen(message notification.Message) 
 	if id := strings.TrimSpace(message.CompletionID); id != "" {
 		blocks = append(blocks, RichBlock{Kind: RichCopy, Title: "Completion ID", Text: id, CopyText: id})
 	}
-	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: ui.notificationInspectKeyboard()}
+	return Screen{Rich: BuildRichPresentation(blocks...)}
 }
 
 func (ui *Interface) backgroundProcessNotificationScreen(message notification.Message) Screen {
@@ -79,11 +75,7 @@ func (ui *Interface) backgroundProcessNotificationScreen(message notification.Me
 	if heading == "" {
 		heading = "Background process finished"
 	}
-	subtitle := strings.TrimSpace(message.TargetTool)
-	if subtitle == "" {
-		subtitle = "Background process"
-	}
-	blocks := []RichBlock{{Kind: RichHeading, Title: heading, Text: subtitle}}
+	blocks := []RichBlock{{Kind: RichHeading, Title: heading}}
 
 	rows := make([][]string, 0, 8)
 	appendRow := func(label, value string) {
@@ -92,6 +84,7 @@ func (ui *Interface) backgroundProcessNotificationScreen(message notification.Me
 			rows = append(rows, []string{label, value})
 		}
 	}
+	appendRow("Tool", message.TargetTool)
 	appendRow("Status", message.Status)
 	appendRow("Reason", message.Reason)
 	appendRow("Workspace", message.WorkspaceID)
@@ -114,12 +107,12 @@ func (ui *Interface) backgroundProcessNotificationScreen(message notification.Me
 	if id := strings.TrimSpace(message.ExecutionID); id != "" {
 		blocks = append(blocks, RichBlock{Kind: RichCopy, Title: "Execution ID", Text: id, CopyText: id})
 	}
-	blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Details", Text: "Command and output are omitted from notifications. Open Logs for retained execution details."})
-	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: ui.notificationInspectKeyboard()}
+	blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Details", Text: "Command and output are omitted from notifications. Open the process log for retained execution details."})
+	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: ui.notificationInspectKeyboard(message.ExecutionID)}
 }
 
-func (ui *Interface) notificationInspectKeyboard() [][]Button {
-	button, ok := ui.currentLogsWebAppButton()
+func (ui *Interface) notificationInspectKeyboard(executionID string) [][]Button {
+	button, ok := ui.currentLogsWebAppExecutionButton(executionID)
 	if !ok {
 		return nil
 	}

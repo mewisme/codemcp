@@ -199,7 +199,7 @@ func richBlockHTML(block RichBlock) string {
 		if text != "" {
 			body = richParagraphHTML(text)
 		}
-		return "<details open><summary>" + richInlineHTML(title) + "</summary>" + body + "</details>"
+		return "<details><summary>" + richInlineHTML(title) + "</summary>" + body + "</details>"
 	case RichQuote:
 		text := strings.TrimSpace(block.Text)
 		if text == "" {
@@ -350,6 +350,19 @@ func Present(parts ...PresentationPart) Presentation {
 }
 
 func EscapeText(value string) string { return html.EscapeString(value) }
+
+func breadcrumbHTML(items []string) SafeHTML {
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		if item = strings.TrimSpace(item); item != "" {
+			parts = append(parts, richInlineHTML(item))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return SafeHTML("<i>" + strings.Join(parts, " › ") + "</i>")
+}
 
 func ProductHeader(product, context string) PresentationPart {
 	product, context = compactPresentationValue(product), compactPresentationValue(context)

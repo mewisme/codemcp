@@ -25,10 +25,7 @@ func (ui *Interface) handleLLM(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.llmScreen(ctx, owner, ActionState{Route: RouteLLM})
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteLLM, Back: RouteHome})
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 
@@ -471,14 +468,14 @@ func llmQueryFromState(state ActionState) application.LLMModelQuery {
 func llmPageButtons(ui *Interface, owner ViewOwner, route Route, resourceID string, input any, page, pages int) []Button {
 	buttons := []Button{}
 	if page > 0 {
-		if button, err := ui.stateButton(owner, "Previous", CallbackOpen, ActionState{
+		if button, err := ui.stateButton(owner, previousNavigationLabel("Previous"), CallbackOpen, ActionState{
 			Route: route, ResourceID: resourceID, Page: page - 1, Input: input,
 		}); err == nil {
 			buttons = append(buttons, button)
 		}
 	}
 	if page+1 < pages {
-		if button, err := ui.stateButton(owner, "Next", CallbackOpen, ActionState{
+		if button, err := ui.stateButton(owner, nextNavigationLabel("Next"), CallbackOpen, ActionState{
 			Route: route, ResourceID: resourceID, Page: page + 1, Input: input,
 		}); err == nil {
 			buttons = append(buttons, button)

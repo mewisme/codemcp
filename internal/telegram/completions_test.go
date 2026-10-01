@@ -70,6 +70,9 @@ func TestCompletionListAndDetailUseCanonicalResolvers(t *testing.T) {
 			t.Fatalf("completion detail missing %q: %q", expected, detailFallback.Text)
 		}
 	}
+	if strings.Contains(detailFallback.Text, "Agent completion · completed") {
+		t.Fatalf("completion detail repeated heading/status context: %q", detailFallback.Text)
+	}
 	foundLogs := false
 	for _, row := range detail.Keyboard {
 		for _, button := range row {

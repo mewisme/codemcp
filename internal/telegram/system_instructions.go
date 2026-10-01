@@ -31,10 +31,7 @@ func (ui *Interface) handleSystem(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.systemScreen(ctx, owner)
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteSystem, Back: RouteHome})
 	_, _ = ui.runtime.SendRichMessageToTopic(ctx, owner.ChatID, TopicRuntime, screen, RichMessageOptions{})
 }
 
@@ -43,10 +40,7 @@ func (ui *Interface) handleInstructions(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.instructionsScreen(ctx, owner)
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteInstructions, Back: RouteHome})
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 

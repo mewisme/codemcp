@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -22,10 +23,7 @@ func (ui *Interface) handleCompletions(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.completionListScreen(ctx, owner, ActionState{Route: RouteCompletions, Back: RouteHome})
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteCompletions, Back: RouteHome})
 	_, _ = ui.runtime.SendRichMessageToTopic(ctx, owner.ChatID, TopicCompletions, screen, RichMessageOptions{})
 }
 
@@ -156,7 +154,7 @@ func completionRecordPresentation(record agentcompletion.Record) *RichPresentati
 		title = "Agent completion"
 	}
 	blocks := []RichBlock{
-		{Kind: RichHeading, Title: title, Text: "Agent completion · " + string(record.Status)},
+		{Kind: RichHeading, Title: title},
 	}
 	if summary := strings.TrimSpace(record.Summary); summary != "" {
 		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Summary", Text: summary})
@@ -207,4 +205,26 @@ func (ui *Interface) currentLogsWebAppButton() (Button, bool) {
 		return Button{}, false
 	}
 	return Button{Text: "Open Logs App", WebAppURL: health.PublicURL, Role: ButtonRolePrimary}, true
+}
+
+func (ui *Interface) currentLogsWebAppExecutionButton(executionID string) (Button, bool) {
+	button, ok := ui.currentLogsWebAppButton()
+	if !ok {
+		return Button{}, false
+	}
+	executionID = strings.TrimSpace(executionID)
+	if executionID == "" {
+		return button, true
+	}
+	parsed, err := url.Parse(button.WebAppURL)
+	if err != nil {
+		return button, true
+	}
+	query := parsed.Query()
+	query.Set("feed", "executions")
+	query.Set("execution", executionID)
+	parsed.RawQuery = query.Encode()
+	button.Text = "Open process log"
+	button.WebAppURL = parsed.String()
+	return button, true
 }

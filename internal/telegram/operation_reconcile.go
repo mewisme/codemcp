@@ -82,6 +82,7 @@ func (ui *Interface) ReconcilePendingRuntimeOperations(ctx context.Context) {
 			if err != nil {
 				continue
 			}
+			screen = withRouteBreadcrumb(screen, ActionState{Route: RouteOperation, Back: RouteSystem, Operation: capability.RuntimeRestart})
 			if err := ui.runtime.EditScreen(ctx, record.ChatID, record.MessageID, screen); err == nil {
 				_ = ui.operations.delete(record.ChatID, record.MessageID)
 			}

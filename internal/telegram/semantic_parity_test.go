@@ -143,7 +143,7 @@ func TestSettingsPaginationKeepsResourcesAndPageControlsVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	labels := telegramButtonLabels(screen)
-	for _, want := range []string{"test.setting.0", "test.setting.1", "test.setting.2", "Older", "Config tools"} {
+	for _, want := range []string{"test.setting.0", "test.setting.1", "test.setting.2", "Older »", "Config tools"} {
 		if !labels[want] {
 			t.Fatalf("required setting navigation button %q missing: %#v", want, labels)
 		}

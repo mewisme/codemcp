@@ -690,6 +690,11 @@ func reconcileNavigation(ctx context.Context, api API, cfg config.TelegramConfig
 		if userID <= 0 {
 			continue
 		}
+		if cleanup, ok := api.(ReplyKeyboardAPI); ok {
+			// The retired native user picker used a persistent reply keyboard.
+			// Remove any stale copy left in an authorized private chat.
+			_ = cleanup.ClearReplyKeyboard(ctx, userID)
+		}
 		if current, err := navigation.GetChatMenuButton(ctx, userID); err == nil && current.Type != MenuButtonCommands {
 			result.MenuDriftCount++
 		}

@@ -215,6 +215,9 @@ func TestApprovalPendingNotificationRendersFreshInteractiveCard(t *testing.T) {
 	if !handled {
 		t.Fatal("approval pending notification was not rendered interactively")
 	}
+	if len(screen.Breadcrumb) != 0 {
+		t.Fatalf("quick approval notification must not have breadcrumb: %#v", screen.Breadcrumb)
+	}
 	if len(dispatcher.calls) < 1 || dispatcher.calls[0].Operation != capability.RequestView {
 		t.Fatalf("notification canonical dispatch=%#v", dispatcher.calls)
 	}

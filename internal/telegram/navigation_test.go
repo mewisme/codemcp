@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -133,6 +134,9 @@ func TestProductionHandleAuthorizesBeforeRouterDispatch(t *testing.T) {
 	}
 	if dispatcher.ifaces[0] != application.OperationInterfaceTelegram || len(api.sent) != 1 {
 		t.Fatalf("authorized production route iface=%q screens=%d", dispatcher.ifaces[0], len(api.sent))
+	}
+	if !reflect.DeepEqual(api.sent[0].Breadcrumb, []string{"CodeMCP", "Status"}) {
+		t.Fatalf("status breadcrumb=%v", api.sent[0].Breadcrumb)
 	}
 }
 
@@ -370,7 +374,7 @@ func TestNavigationPrimitivesCentralizeBackPaginationAndDetail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(keyboard) != 2 || len(keyboard[0]) != 4 || keyboard[0][0].Text != "1" || keyboard[0][1].Text != "( 2 )" || !keyboard[0][1].Disabled || keyboard[0][2].Text != "3" || keyboard[0][3].Text != "4" || keyboard[1][0].Text != "Back" {
+	if len(keyboard) != 2 || len(keyboard[0]) != 4 || keyboard[0][0].Text != "1" || keyboard[0][1].Text != "( 2 )" || !keyboard[0][1].Disabled || keyboard[0][2].Text != "3" || keyboard[0][3].Text != "4" || keyboard[1][0].Text != "« Back" {
 		t.Fatalf("pagination keyboard=%#v", keyboard)
 	}
 	part := DetailBlock("Detail <unsafe>", strings.Repeat("value & ", 100))
@@ -400,5 +404,19 @@ func TestPresentationStatesAreEscapedWithoutDroppingDetails(t *testing.T) {
 		if strings.Contains(string(presentation.HTML), hostile) {
 			t.Fatalf("unescaped value %q in %q", hostile, presentation.HTML)
 		}
+	}
+}
+
+func TestRouteBreadcrumbBuildsFullTelegramNavigationPath(t *testing.T) {
+	got := routeBreadcrumb(ActionState{
+		Route: RouteAccess, Back: RouteWorkspace, ResourceID: "ws_123",
+	})
+	want := []string{"CodeMCP", "Workspaces", "Workspace", "Workspace access", "ws_123"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("breadcrumb=%v want=%v", got, want)
+	}
+	home := routeBreadcrumb(ActionState{Route: RouteHome})
+	if !reflect.DeepEqual(home, []string{"CodeMCP", "Home"}) {
+		t.Fatalf("home breadcrumb=%v", home)
 	}
 }

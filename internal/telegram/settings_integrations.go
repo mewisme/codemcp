@@ -88,7 +88,7 @@ func (ui *Interface) settingListScreen(owner ViewOwner, state ActionState, items
 	if page > 0 {
 		previous := state
 		previous.Page = page - 1
-		button, buttonErr := ui.stateButton(owner, "Newer", CallbackOpen, previous)
+		button, buttonErr := ui.stateButton(owner, previousNavigationLabel("Newer"), CallbackOpen, previous)
 		if buttonErr != nil {
 			return Screen{}, buttonErr
 		}
@@ -97,7 +97,7 @@ func (ui *Interface) settingListScreen(owner ViewOwner, state ActionState, items
 	if page+1 < pages {
 		next := state
 		next.Page = page + 1
-		button, buttonErr := ui.stateButton(owner, "Older", CallbackOpen, next)
+		button, buttonErr := ui.stateButton(owner, nextNavigationLabel("Older"), CallbackOpen, next)
 		if buttonErr != nil {
 			return Screen{}, buttonErr
 		}
@@ -926,7 +926,7 @@ func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner Vi
 		}
 		screen := Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}
 		if state.SecretInput && result.Spec.Secret {
-			if _, sendErr := ui.runtime.SendRichMessage(ctx, owner.ChatID, screen, RichMessageOptions{ProtectContent: true}); sendErr != nil {
+			if _, sendErr := ui.runtime.SendRichMessage(ctx, owner.ChatID, withRouteBreadcrumb(screen, state), RichMessageOptions{ProtectContent: true}); sendErr != nil {
 				return Screen{}, true, sendErr
 			}
 			return Screen{Rich: BuildRichPresentation(
@@ -955,7 +955,7 @@ func (ui *Interface) settingsOperationResultScreen(ctx context.Context, owner Vi
 			RichBlock{Kind: RichHeading, Title: "Generated credential", Text: "Copy this credential now and store it securely."},
 			RichBlock{Kind: RichCopy, Title: "Credential", Text: result.Token, CopyText: result.Token},
 		)}
-		if _, sendErr := ui.runtime.SendRichMessage(ctx, owner.ChatID, protected, RichMessageOptions{ProtectContent: true}); sendErr != nil {
+		if _, sendErr := ui.runtime.SendRichMessage(ctx, owner.ChatID, withRouteBreadcrumb(protected, state), RichMessageOptions{ProtectContent: true}); sendErr != nil {
 			return Screen{}, true, sendErr
 		}
 		back, err := ui.backButton(owner, RouteAuth)

@@ -191,10 +191,7 @@ func (ui *Interface) handleLogs(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.logsMiniAppScreen(owner)
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteLogs, Back: RouteHome})
 	_, _ = ui.runtime.SendRichMessageToTopic(ctx, owner.ChatID, TopicLogs, screen, RichMessageOptions{})
 }
 

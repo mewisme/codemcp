@@ -89,6 +89,10 @@ type NavigationInspectionAPI interface {
 	GetCommands(context.Context) ([]Command, error)
 }
 
+type ReplyKeyboardAPI interface {
+	ClearReplyKeyboard(context.Context, int64) error
+}
+
 type transportDiagnosticsAPI interface {
 	Diagnostics() transportDiagnostics
 }

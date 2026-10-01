@@ -32,10 +32,7 @@ func (ui *Interface) handleNetwork(ctx context.Context, update Update) {
 	if !ok {
 		return
 	}
-	screen, err := ui.networkScreen(owner)
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, ActionState{Route: RouteNetwork, Back: RouteHome})
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 

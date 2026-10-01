@@ -49,10 +49,7 @@ func (ui *Interface) handleWorkspaces(ctx context.Context, update Update) {
 		return
 	}
 	state := ActionState{Route: RouteWorkspaces, Back: RouteHome, Operation: capability.WorkspaceList}
-	screen, err := ui.workspaceListScreen(ctx, owner, state)
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, state)
 	_ = ui.runtime.SendScreen(ctx, owner.ChatID, screen)
 }
 
@@ -62,10 +59,7 @@ func (ui *Interface) handleRequests(ctx context.Context, update Update) {
 		return
 	}
 	state := ActionState{Route: RouteRequests, Back: RouteHome, Operation: capability.RequestList}
-	screen, err := ui.requestListScreen(ctx, owner, state)
-	if err != nil {
-		screen = ErrorScreen(err)
-	}
+	screen := ui.routeScreen(ctx, owner, state)
 	_, _ = ui.runtime.SendRichMessageToTopic(ctx, owner.ChatID, TopicRequests, screen, RichMessageOptions{})
 }
 
@@ -449,9 +443,9 @@ func (ui *Interface) requestCardWithOptions(ctx context.Context, owner ViewOwner
 		agentSummary = "No agent summary was provided."
 	}
 	blocks := []RichBlock{
-		{Kind: RichHeading, Title: "Approval request", Text: string(request.Status)},
+		{Kind: RichHeading, Title: "Approval request"},
 		{Kind: RichCopy, Title: "ID", Text: request.ID, CopyText: request.ID},
-		{Kind: RichTable, Rows: [][]string{{"Workspace", request.WorkspaceID}, {"Tool", request.TargetTool}, {"Guard", string(request.GuardCode)}, {"Expires", request.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}}},
+		{Kind: RichTable, Rows: [][]string{{"Status", string(request.Status)}, {"Workspace", request.WorkspaceID}, {"Tool", request.TargetTool}, {"Guard", string(request.GuardCode)}, {"Expires", request.ExpiresAt.UTC().Format("2006-01-02 15:04:05Z")}}},
 		{Kind: RichDetails, Title: "Agent summary", Text: agentSummary + "\nSupplied by the requesting agent; not CodeMCP command truth."},
 	}
 	if strings.TrimSpace(request.GuardReason) != "" {
@@ -562,10 +556,12 @@ func approvalResolvedFallbackScreen(message notification.Message) Screen {
 	if body == "" {
 		body = "The approval request is no longer pending."
 	}
-	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: title, Text: "Approval request · resolved"},
-		RichBlock{Kind: RichDetails, Title: "Result", Text: body},
-	)}
+	blocks := []RichBlock{{Kind: RichHeading, Title: title}}
+	if status := strings.TrimSpace(message.Status); status != "" {
+		blocks = append(blocks, RichBlock{Kind: RichTable, Rows: [][]string{{"Status", status}}})
+	}
+	blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Result", Text: body})
+	return Screen{Rich: BuildRichPresentation(blocks...)}
 }
 
 func (ui *Interface) domainOperationResultScreen(ctx context.Context, owner ViewOwner, state ActionState, spec capability.Spec, value any) (Screen, bool, error) {
@@ -698,7 +694,7 @@ func (ui *Interface) handleActionInput(ctx context.Context, update Update) bool 
 		return true
 	}
 	state.InputKind = ""
-	screen, err := ui.operationScreen(ctx, owner, state)
+	screen, err := ui.renderState(ctx, owner, state)
 	if err != nil {
 		errorState := state
 		if pending.Secret {
@@ -779,7 +775,7 @@ func (ui *Interface) domainPaginationButtons(owner ViewOwner, state ActionState,
 	if page > 0 {
 		previous := state
 		previous.Page = page - 1
-		button, err := ui.stateButton(owner, "Newer", CallbackOpen, previous)
+		button, err := ui.stateButton(owner, previousNavigationLabel("Newer"), CallbackOpen, previous)
 		if err != nil {
 			return nil, err
 		}
@@ -789,7 +785,7 @@ func (ui *Interface) domainPaginationButtons(owner ViewOwner, state ActionState,
 	if page+1 < pages {
 		next := state
 		next.Page = page + 1
-		button, err := ui.stateButton(owner, "Older", CallbackOpen, next)
+		button, err := ui.stateButton(owner, nextNavigationLabel("Older"), CallbackOpen, next)
 		if err != nil {
 			return nil, err
 		}

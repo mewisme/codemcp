@@ -32,8 +32,9 @@ type fakeAPI struct {
 
 type navigationFakeAPI struct {
 	*fakeAPI
-	commands []Command
-	menus    map[int64]MenuButton
+	commands         []Command
+	menus            map[int64]MenuButton
+	clearedKeyboards []int64
 }
 
 func (api *navigationFakeAPI) SetCommands(_ context.Context, commands []Command) error {
@@ -59,6 +60,11 @@ func (api *navigationFakeAPI) GetChatMenuButton(_ context.Context, chatID int64)
 		return MenuButton{}, errors.New("missing menu button")
 	}
 	return button, nil
+}
+
+func (api *navigationFakeAPI) ClearReplyKeyboard(_ context.Context, chatID int64) error {
+	api.clearedKeyboards = append(api.clearedKeyboards, chatID)
+	return nil
 }
 
 func (api *fakeAPI) GetMe(context.Context) (User, error) {
@@ -362,6 +368,9 @@ func TestRuntimeReconcilesCommandRegistryAndPrivateMenuButtons(t *testing.T) {
 		if button := api.menus[userID]; button.Type != MenuButtonCommands {
 			t.Fatalf("menu for %d=%#v", userID, button)
 		}
+	}
+	if !reflect.DeepEqual(api.clearedKeyboards, []int64{42, 43}) {
+		t.Fatalf("stale reply keyboards were not cleared: %v", api.clearedKeyboards)
 	}
 	health := runtime.Health()
 	if !health.CommandsPublished || health.CommandDrift || health.CommandCount != len(Commands()) || !health.MenuReconciled || health.MenuDriftCount != 0 {
