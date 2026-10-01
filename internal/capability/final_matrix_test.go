@@ -159,21 +159,18 @@ func TestProductParityReportIsDeterministicCompleteAndSorted(t *testing.T) {
 	}
 }
 
-func TestProductParityReportClosesBrowserRequiredGapsWhileKeepingOtherSurfaceGapsExplicit(t *testing.T) {
+func TestProductParityReportClosesRequiredProductSurfaceGaps(t *testing.T) {
 	report := ProductParityReportSnapshot()
 	for _, row := range report.Operations {
-		mapping, ok := parityMapping(report, row.Operation, SurfaceBrowser)
-		if !ok || mapping.State != SurfaceRequired {
-			continue
+		for _, surface := range ProductSurfaces {
+			mapping, ok := parityMapping(report, row.Operation, surface)
+			if !ok || mapping.State != SurfaceRequired {
+				continue
+			}
+			if !mapping.Reachable || mapping.Gap != "" || len(mapping.EntryPoints) == 0 {
+				t.Fatalf("required operation %s/%s is not production reachable: %#v", row.Operation, surface, mapping)
+			}
 		}
-		if !mapping.Reachable || mapping.Gap != "" || len(mapping.EntryPoints) == 0 {
-			t.Fatalf("Browser required operation %s is not production reachable: %#v", row.Operation, mapping)
-		}
-	}
-
-	telegram, ok := parityMapping(report, ProcessList, SurfaceTelegram)
-	if !ok || telegram.State != SurfaceRequired || telegram.Reachable || telegram.Gap == "" {
-		t.Fatalf("process list Telegram mapping=%#v ok=%t", telegram, ok)
 	}
 }
 

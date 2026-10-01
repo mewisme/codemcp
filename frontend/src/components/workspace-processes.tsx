@@ -50,6 +50,7 @@ export function WorkspaceProcesses({ workspaceID }: { workspaceID: string }) {
   }, [workspaceID])
 
   async function clear(id: string) {
+    if (!window.confirm("Clear this finished process record?")) return
     setBusy(id)
     try {
       await adminApi.clearWorkspaceProcess(workspaceID, id)

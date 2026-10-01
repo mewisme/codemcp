@@ -10,7 +10,7 @@ import {
 } from "@/lib/product-reachability"
 import { adminRoutes } from "@/router"
 
-const browserPageSources = import.meta.glob("../pages/*.tsx", {
+const browserPageSources = import.meta.glob(["../pages/*.tsx", "../components/*.tsx"], {
   query: "?raw",
   import: "default",
   eager: true,
@@ -43,6 +43,11 @@ describe("browser product reachability", () => {
         expect(descriptor.presentation.unavailable_reason).toBeUndefined()
       }
     }
+  })
+
+  it("keeps every canonical browser product adapter live", () => {
+    const gaps = browserProductReachability().filter((descriptor) => descriptor.state !== "live" || descriptor.gap)
+    expect(gaps).toEqual([])
   })
 
   it("downgrades destructive flows without production confirmation evidence to gaps", () => {

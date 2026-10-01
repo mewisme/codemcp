@@ -103,6 +103,21 @@ export const browserConfirmationEvidence: Record<
   string,
   BrowserConfirmationEvidence
 > = {
+  "logs.clear": {
+    consumer: "LogsPage confirmation",
+    source: "../pages/logs.tsx",
+    marker: "Delete runtime log journal?",
+  },
+  "process.clear": {
+    consumer: "WorkspaceProcesses confirmation",
+    source: "../components/workspace-processes.tsx",
+    marker: 'window.confirm("Clear this finished process record?")',
+  },
+  "request.grant.revoke": {
+    consumer: "RequestsPage grant confirmation",
+    source: "../pages/requests.tsx",
+    marker: 'window.confirm("Revoke this runtime grant?")',
+  },
   "prompt.delete": {
     consumer: "PromptsPage confirmation",
     source: "../pages/prompts.tsx",

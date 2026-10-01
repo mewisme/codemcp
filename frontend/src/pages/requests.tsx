@@ -117,6 +117,7 @@ export function RequestsPage({ workspaceID = "" }: { workspaceID?: string }) {
 
   async function revokeGrant(id: string) {
     if (grantBusy) return
+    if (!window.confirm("Revoke this runtime grant?")) return
     setGrantBusy(id)
     try {
       await adminApi.revokeApprovalGrant(id)

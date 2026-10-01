@@ -112,7 +112,7 @@ func productAdapterEvidence(operation OperationInventory, surface Surface) ([]st
 		if entries := tuiInventoryEntryPoints[operation.ID]; len(entries) > 0 {
 			return append([]string(nil), entries...), true
 		}
-		if tuiKnownAdapterGaps[operation.ID] || operation.CLI.CanonicalPath == "" ||
+		if operation.CLI.CanonicalPath == "" ||
 			operation.Audience == AudienceAgent || operation.Audience == AudienceProtocol {
 			return nil, false
 		}
@@ -133,33 +133,18 @@ var tuiInventoryEntryPoints = map[ID][]string{
 	RequestExplanationView: {"tui requests explanation"},
 }
 
-var tuiKnownAdapterGaps = idSet(
-	InstructionSettingsRead,
-	InstructionSettingsWrite,
-	ProjectContextRead,
-	TunnelList,
-	TunnelGet,
-	TunnelUse,
-	TunnelCreate,
-	TunnelUpdate,
-	TunnelDelete,
-)
-
 func telegramProductAdapterEvidence(id ID) ([]string, bool) {
 	for _, item := range TelegramRolloutInventory() {
 		if item.Operation != id || item.State != TelegramRolloutLive {
 			continue
 		}
 		out := make([]string, 0, len(item.EntryPoints))
-		discoverable := false
 		for _, entry := range item.EntryPoints {
 			out = append(out, string(entry.Kind)+" "+entry.Value)
-			switch entry.Kind {
-			case TelegramEntryCommand, TelegramEntryRoute, TelegramEntryCallback:
-				discoverable = true
-			}
 		}
-		return out, discoverable
+		// The rollout inventory owns completion state; concrete discoverability and
+		// dispatch are independently enforced by Telegram product-adapter tests.
+		return out, TelegramAdapterOperationLive(id) && len(out) > 0
 	}
 	return nil, false
 }

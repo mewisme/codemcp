@@ -51,6 +51,7 @@ describe("RequestsPage", () => {
 
   it("shows active runtime grants and revokes through the canonical grant endpoint", async () => {
     const user = userEvent.setup()
+    vi.spyOn(window, "confirm").mockReturnValue(true)
     const grant = {
       ...request("grant_active", "approved", "cm shell"),
       grant_expires_at: new Date(Date.now() + 120_000).toISOString(),
