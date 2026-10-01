@@ -125,9 +125,34 @@ func TestVerifyDistIgnoresInternalBuildArchiveNames(t *testing.T) {
 	}
 }
 
+func TestVerifyDistRejectsMissingLinuxPackage(t *testing.T) {
+	root := buildDistFixture(t, false)
+	if err := os.Remove(filepath.Join(root, "codemcp_linux_arm64.rpm")); err != nil {
+		t.Fatal(err)
+	}
+	err := VerifyDist(context.Background(), root, TelemetryUnchecked)
+	if err == nil || !strings.Contains(err.Error(), "codemcp_linux_arm64.rpm") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestVerifyDistRejectsVersionedLinuxPackage(t *testing.T) {
+	root := buildDistFixture(t, false)
+	if err := os.WriteFile(filepath.Join(root, "codemcp_9.9.9_linux_amd64.deb"), buildDebFixture(t, false), 0644); err != nil {
+		t.Fatal(err)
+	}
+	err := VerifyDist(context.Background(), root, TelemetryUnchecked)
+	if err == nil || !strings.Contains(err.Error(), "unexpected published linux package") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func buildDistFixture(t *testing.T, includeRetired bool) string {
 	t.Helper()
 	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "metadata.json"), []byte("{\"project_name\":\"codemcp\",\"tag\":\"v9.9.9\",\"version\":\"1.2.3-next\"}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 	for _, platform := range updatepkg.PrimaryReleaseLayout().Platforms {
 		asset, err := updatepkg.ArchiveName(platform.OS, platform.Arch)
 		if err != nil {
@@ -139,6 +164,24 @@ func buildDistFixture(t *testing.T, includeRetired bool) string {
 			writeZipFixture(t, path, platform.BinaryName, retired)
 		} else {
 			writeTarFixture(t, path, platform.BinaryName, retired)
+		}
+	}
+	fixtureBinary := []byte("#!/bin/sh\nprintf 'cm version 9.9.9 (fixture) fixture\\n'\n")
+	for _, arch := range []string{"amd64", "arm64"} {
+		debName, err := updatepkg.ArtifactName(updatepkg.ArtifactDebian, "linux", arch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, debName), buildDebFixtureForArch(t, arch, false, fixtureBinary), 0644); err != nil {
+			t.Fatal(err)
+		}
+		rpmArch := map[string]string{"amd64": "x86_64", "arm64": "aarch64"}[arch]
+		rpmName, err := updatepkg.ArtifactName(updatepkg.ArtifactRPM, "linux", arch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, rpmName), buildRPMFixtureForArch(t, rpmArch, false, fixtureBinary), 0644); err != nil {
+			t.Fatal(err)
 		}
 	}
 	if err := os.MkdirAll(filepath.Join(root, "scoop"), 0755); err != nil {

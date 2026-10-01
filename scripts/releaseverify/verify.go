@@ -26,10 +26,11 @@ import (
 )
 
 const (
-	ExpectedModulePath       = "go.mewis.me/codemcp"
-	ExpectedGitHubRepository = "mewisme/codemcp"
-	ExpectedVanityURL        = "https://go.mewis.me/codemcp?go-get=1"
-	ExpectedGitRemote        = "https://github.com/mewisme/codemcp"
+	ExpectedModulePath        = "go.mewis.me/codemcp"
+	ExpectedGitHubRepository  = "mewisme/codemcp"
+	ExpectedVanityURL         = "https://go.mewis.me/codemcp?go-get=1"
+	ExpectedGitRemote         = "https://github.com/mewisme/codemcp"
+	packageMaintainerTemplate = `{{ index .Env "PACKAGE_MAINTAINER" }}`
 )
 
 type TelemetryExpectation string
@@ -118,6 +119,37 @@ func verifyGoReleaser(root string) error {
 	if len(archives) != 1 || stringValue(mapValue(archives[0])["name_template"]) != "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}" {
 		return errors.New("goreleaser archive naming drifted from the stable release artifact contract")
 	}
+	nfpms := sliceValue(cfg["nfpms"])
+	if len(nfpms) != 1 {
+		return errors.New("expected one canonical Linux package definition")
+	}
+	nfpm := mapValue(nfpms[0])
+	if stringValue(nfpm["id"]) != updatepkg.PackageName ||
+		stringValue(nfpm["package_name"]) != updatepkg.PackageName ||
+		stringValue(nfpm["file_name_template"]) != "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}.{{ .Format }}" ||
+		!sameStrings(stringSlice(nfpm["ids"]), []string{updatepkg.PackageName}) ||
+		!sameStrings(stringSlice(nfpm["formats"]), []string{"deb", "rpm"}) ||
+		stringValue(nfpm["vendor"]) != linuxPackageVendor ||
+		stringValue(nfpm["homepage"]) != ExpectedGitRemote ||
+		stringValue(nfpm["maintainer"]) != packageMaintainerTemplate ||
+		stringValue(nfpm["description"]) != linuxPackageDescription ||
+		stringValue(nfpm["license"]) != "MIT" ||
+		stringValue(nfpm["bindir"]) != "/usr/bin" ||
+		!sameStrings(stringSlice(nfpm["goamd64"]), []string{"v1"}) {
+		return errors.New("linux package generation drifted from the canonical package contract")
+	}
+	if len(sliceValue(nfpm["contents"])) != 0 || len(mapValue(nfpm["scripts"])) != 0 {
+		return errors.New("linux package definition must not add extra contents or maintainer scripts")
+	}
+	deb := mapValue(nfpm["deb"])
+	rpm := mapValue(nfpm["rpm"])
+	if stringValue(deb["compression"]) != "gzip" ||
+		stringValue(rpm["compression"]) != "gzip" ||
+		stringValue(rpm["summary"]) != linuxPackageDescription ||
+		len(mapValue(deb["scripts"])) != 0 ||
+		len(mapValue(rpm["scripts"])) != 0 {
+		return errors.New("linux package format settings drifted from the canonical package contract")
+	}
 	buildFound := false
 	for _, item := range sliceValue(cfg["builds"]) {
 		build := mapValue(item)
@@ -174,9 +206,12 @@ func verifyReleaseWorkflows(root string) error {
 	}
 	release := string(releaseData)
 	repositoryExpr := "$" + "{{ github.repository }}"
+	repositoryOwnerExpr := "$" + "{{ github.repository_owner }}"
+	repositoryOwnerIDExpr := "$" + "{{ github.repository_owner_id }}"
 	telemetryExpr := "$" + "{{ vars.TELEMETRY_ENDPOINT }}"
 	for _, required := range []string{
 		"RELEASE_REPOSITORY: " + repositoryExpr,
+		`PACKAGE_MAINTAINER: "` + repositoryOwnerExpr + " <" + repositoryOwnerIDExpr + "+" + repositoryOwnerExpr + `@users.noreply.github.com>"`,
 		"--github-repository",
 		"--vanity-url",
 		ExpectedVanityURL,
@@ -420,6 +455,9 @@ func VerifyDist(ctx context.Context, distRoot string, expectation TelemetryExpec
 		if !seen[platform.OS+"/"+platform.Arch] {
 			return fmt.Errorf("release archive missing for %s/%s", platform.OS, platform.Arch)
 		}
+	}
+	if err := verifyLinuxPackages(ctx, distRoot); err != nil {
+		return err
 	}
 	if err := verifyPackageManifests(distRoot); err != nil {
 		return err

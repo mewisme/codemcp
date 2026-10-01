@@ -52,6 +52,31 @@ archives:
         formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
 
+nfpms:
+  - id: codemcp
+    ids:
+      - codemcp
+    formats:
+      - deb
+      - rpm
+    package_name: codemcp
+    file_name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}.{{ .Format }}"
+    vendor: mewisme
+    homepage: "https://github.com/mewisme/codemcp"
+    maintainer: '{{ index .Env "PACKAGE_MAINTAINER" }}'
+    description: "Secure, workspace-bound bridge between AI agents and your machine."
+    license: MIT
+    section: utils
+    priority: optional
+    bindir: /usr/bin
+    goamd64:
+      - v1
+    deb:
+      compression: gzip
+    rpm:
+      summary: "Secure, workspace-bound bridge between AI agents and your machine."
+      compression: gzip
+
 checksum:
   name_template: codemcp_checksums.txt
 
