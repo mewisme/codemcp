@@ -29,7 +29,7 @@ func TestLoadSkillSummariesPrefersAgentsAndReturnsMetadataOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != 5 {
+	if len(loaded) != 6 {
 		t.Fatalf("skills = %#v", loaded)
 	}
 	if loaded[0].Source != ".agents" || loaded[0].Path != agentsPath || loaded[0].Name != "release" || loaded[0].Description != "Release workflow" {
@@ -41,7 +41,9 @@ func TestLoadSkillSummariesPrefersAgentsAndReturnsMetadataOnly(t *testing.T) {
 	if loaded[2].Source != ".cursor" || loaded[2].Path != cursorPath || loaded[2].Name != "release" {
 		t.Fatalf("cursor skill = %#v", loaded[2])
 	}
-	if loaded[3].Source != "codemcp" || loaded[3].Name != "create-rule" || loaded[4].Source != "codemcp" || loaded[4].Name != "create-skill" {
+	if loaded[3].Source != "codemcp" || loaded[3].Name != "create-rule" ||
+		loaded[4].Source != "codemcp" || loaded[4].Name != "create-skill" ||
+		loaded[5].Source != "codemcp" || loaded[5].Name != "create-plan" {
 		t.Fatalf("builtin skills = %#v", loaded[3:])
 	}
 	for _, skill := range loaded {
@@ -61,7 +63,7 @@ func TestLoadSkillSummariesSupportsAllProviders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != len(providers)+2 {
+	if len(loaded) != len(providers)+3 {
 		t.Fatalf("skills = %#v", loaded)
 	}
 	wantOrder := []string{".agents", ".claude", ".claudes", ".codex", ".cursor"}
@@ -70,7 +72,7 @@ func TestLoadSkillSummariesSupportsAllProviders(t *testing.T) {
 			t.Fatalf("skill %d = %#v", i, loaded[i])
 		}
 	}
-	if loaded[len(providers)].Source != "codemcp" || loaded[len(providers)+1].Source != "codemcp" {
+	if loaded[len(providers)].Source != "codemcp" || loaded[len(providers)+1].Source != "codemcp" || loaded[len(providers)+2].Source != "codemcp" {
 		t.Fatalf("builtin skills = %#v", loaded[len(providers):])
 	}
 }
@@ -90,7 +92,7 @@ func TestLoadSkillSummariesSkipsSymlinkSkills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loaded) != 2 || loaded[0].Source != "codemcp" || loaded[1].Source != "codemcp" {
+	if len(loaded) != 3 || loaded[0].Source != "codemcp" || loaded[1].Source != "codemcp" || loaded[2].Source != "codemcp" {
 		t.Fatalf("skills = %#v", loaded)
 	}
 }

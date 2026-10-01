@@ -48,6 +48,7 @@ const (
 	SkillLoad                       ID = "skill.load"
 	InstructionRuleCreate           ID = "instruction.rule.create"
 	InstructionSkillCreate          ID = "instruction.skill.create"
+	PlanCreate                      ID = "plan.create"
 	AgentPromptList                 ID = "agent.prompt.list"
 	AgentPromptGet                  ID = "agent.prompt.get"
 	AgentPromptCreate               ID = "agent.prompt.create"
@@ -127,6 +128,7 @@ var mcpToolBindings = map[ID][]string{
 	SkillLoad:                       {"load_skill"},
 	InstructionRuleCreate:           {"create_rule"},
 	InstructionSkillCreate:          {"create_skill"},
+	PlanCreate:                      {"create_plan"},
 	AgentPromptList:                 {"list_prompts"},
 	AgentPromptGet:                  {"get_prompt"},
 	AgentPromptCreate:               {"create_prompt"},
@@ -201,6 +203,7 @@ func agentOnlySpecs() []Spec {
 		agentQuerySpec(SkillLoad, false),
 		agentMutationSpec(InstructionRuleCreate, RiskState, false),
 		agentMutationSpec(InstructionSkillCreate, RiskState, false),
+		agentMutationSpec(PlanCreate, RiskState, false),
 		agentQuerySpec(AgentPromptList, false),
 		agentQuerySpec(AgentPromptGet, false),
 		agentMutationSpec(AgentPromptCreate, RiskState, false),

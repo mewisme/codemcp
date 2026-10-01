@@ -27,6 +27,7 @@ const (
 	MutationOwnerProcess                 MutationOwner = "runtime.process"
 	MutationOwnerJSRuntime               MutationOwner = "jsruntime"
 	MutationOwnerInstructionAuthoring    MutationOwner = "instruction-authoring"
+	MutationOwnerPlanAuthoring           MutationOwner = "application.plan-authoring"
 	MutationOwnerMemory                  MutationOwner = "memory"
 	MutationOwnerPatch                   MutationOwner = "patch"
 	MutationOwnerHistory                 MutationOwner = "history"
@@ -118,6 +119,7 @@ func buildMutationOwners() map[ID]MutationOwner {
 	add(MutationOwnerProcess, ProcessStart, ProcessStop, ProcessClearFinished)
 	add(MutationOwnerJSRuntime, NodeREPL)
 	add(MutationOwnerInstructionAuthoring, InstructionRuleCreate, InstructionSkillCreate)
+	add(MutationOwnerPlanAuthoring, PlanCreate)
 	add(MutationOwnerMemory, MemoryRemember, MemoryForget, MemoryOptimize)
 	add(MutationOwnerPatch, PatchApply)
 	add(MutationOwnerHistory, HistoryRewind)

@@ -289,6 +289,8 @@ func observableToolArguments(name string, args map[string]any) map[string]any {
 		return observableRuleAuthoringArguments(args)
 	case CreateSkillToolName:
 		return observableSkillAuthoringArguments(args)
+	case CreatePlanToolName:
+		return observablePlanAuthoringArguments(args)
 	default:
 		return cloneMap(args)
 	}
@@ -296,7 +298,7 @@ func observableToolArguments(name string, args map[string]any) map[string]any {
 
 func observableToolEnvelope(name string, value, publicArgs map[string]any) map[string]any {
 	out := cloneMap(value)
-	if name == mcpconfigwire.SetToolName || name == CreateRuleToolName || name == CreateSkillToolName {
+	if name == mcpconfigwire.SetToolName || name == CreateRuleToolName || name == CreateSkillToolName || name == CreatePlanToolName {
 		out["arguments"] = cloneMap(publicArgs)
 	}
 	return out
@@ -344,6 +346,19 @@ func observableSkillAuthoringArguments(args map[string]any) map[string]any {
 	}
 	result["supporting_file_count"] = len(files)
 	result["supporting_bytes"] = bytes
+	return result
+}
+
+func observablePlanAuthoringArguments(args map[string]any) map[string]any {
+	result := map[string]any{
+		"workspace_id":               stringArgument(args, "workspace_id"),
+		"mode":                       stringArgument(args, "mode"),
+		"name":                       stringArgument(args, "name"),
+		"expected_content_id":        stringArgument(args, "expected_content_id"),
+		"dry_run":                    boolArgument(args, "dry_run"),
+		"plan_content_bytes":         len([]byte(stringArgument(args, "plan_content"))),
+		"implementation_order_bytes": len([]byte(stringArgument(args, "implementation_order"))),
+	}
 	return result
 }
 

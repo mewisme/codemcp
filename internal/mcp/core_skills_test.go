@@ -56,7 +56,7 @@ func TestCanonicalSkillProjectionMatchesNativeResolver(t *testing.T) {
 			t.Fatalf("skill[%d]=%#v want %#v", i, got[i], want[i])
 		}
 	}
-	if got[len(got)-2].Name != skills.BuiltinCreateRuleName || got[len(got)-1].Name != skills.BuiltinCreateSkillName {
+	if got[len(got)-3].Name != skills.BuiltinCreateRuleName || got[len(got)-2].Name != skills.BuiltinCreateSkillName || got[len(got)-1].Name != skills.BuiltinCreatePlanName {
 		t.Fatalf("reserved builtins were not preserved at canonical tail: %#v", got)
 	}
 }

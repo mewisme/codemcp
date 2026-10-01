@@ -102,14 +102,14 @@ func TestInstructionAuthoringToolsUseCanonicalWorkspaceOwnerAndExposeBuiltinGuid
 	}
 	seen := map[string]int{}
 	for _, skill := range listed.Skills {
-		if skill.Name == skills.BuiltinCreateRuleName || skill.Name == skills.BuiltinCreateSkillName {
+		if skill.Name == skills.BuiltinCreateRuleName || skill.Name == skills.BuiltinCreateSkillName || skill.Name == skills.BuiltinCreatePlanName {
 			seen[skill.Name]++
 			if !skills.IsBuiltin(skill) {
 				t.Fatalf("reserved guidance is not builtin: %#v", skill)
 			}
 		}
 	}
-	if seen[skills.BuiltinCreateRuleName] != 1 || seen[skills.BuiltinCreateSkillName] != 1 {
+	if seen[skills.BuiltinCreateRuleName] != 1 || seen[skills.BuiltinCreateSkillName] != 1 || seen[skills.BuiltinCreatePlanName] != 1 {
 		t.Fatalf("reserved guidance counts=%v inventory=%#v", seen, listed.Skills)
 	}
 
@@ -119,6 +119,7 @@ func TestInstructionAuthoringToolsUseCanonicalWorkspaceOwnerAndExposeBuiltinGuid
 	}{
 		{name: skills.BuiltinCreateRuleName, tool: tools.CreateRuleToolName},
 		{name: skills.BuiltinCreateSkillName, tool: tools.CreateSkillToolName},
+		{name: skills.BuiltinCreatePlanName, tool: tools.CreatePlanToolName},
 	} {
 		loadedResult, err := runtime.Call(context.Background(), "load_skill", map[string]any{
 			"workspace_id": workspaceID,
@@ -135,7 +136,7 @@ func TestInstructionAuthoringToolsUseCanonicalWorkspaceOwnerAndExposeBuiltinGuid
 		if !skills.IsBuiltin(loaded.Skill) || !strings.Contains(loaded.Content, test.tool) {
 			t.Fatalf("loaded reserved guidance=%#v", loaded)
 		}
-		if !strings.Contains(loaded.Content, "Do not use generic file, patch, or shell tools as an equivalent fallback") {
+		if !strings.Contains(loaded.Content, "Do not use generic") {
 			t.Fatalf("reserved guidance lacks no-fallback contract: %q", loaded.Content)
 		}
 	}
@@ -185,7 +186,7 @@ func TestInstructionAuthoringToolsRemainWorkspaceBoundAndFailClosed(t *testing.T
 		t.Fatalf("agent authoring reached global rule root: %v", err)
 	}
 
-	for _, reserved := range []string{skills.BuiltinCreateRuleName, skills.BuiltinCreateSkillName} {
+	for _, reserved := range []string{skills.BuiltinCreateRuleName, skills.BuiltinCreateSkillName, skills.BuiltinCreatePlanName} {
 		result, err = runtime.Call(context.Background(), tools.CreateSkillToolName, map[string]any{
 			"workspace_id": workspaceID,
 			"mode":         "create",

@@ -73,7 +73,7 @@ func TestDynamicProviderContractIsSharedAcrossProjectContextRulesAndSkills(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loadedSkills) != 5 {
+	if len(loadedSkills) != 6 {
 		t.Fatalf("skills=%#v", loadedSkills)
 	}
 	wantSkillSources := []string{".agents", ".newagent", ".zedagent", "codemcp", "codemcp"}

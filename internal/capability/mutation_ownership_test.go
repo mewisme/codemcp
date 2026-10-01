@@ -80,6 +80,13 @@ func TestSettingLikeMutationsDeclareCanonicalApplicationOwners(t *testing.T) {
 	}
 }
 
+func TestPlanAuthoringMutationHasDedicatedCanonicalOwner(t *testing.T) {
+	ownership, ok := MutationOwnershipFor(PlanCreate)
+	if !ok || ownership.ValidationOwner != MutationOwnerPlanAuthoring || ownership.SideEffectOwner != MutationOwnerPlanAuthoring {
+		t.Fatalf("plan authoring ownership=%#v ok=%t", ownership, ok)
+	}
+}
+
 func TestHumanAdaptersCannotOwnCanonicalBusinessMutations(t *testing.T) {
 	root := capabilityRepositoryRoot(t)
 	adapterRoots := []string{

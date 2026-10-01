@@ -6,6 +6,7 @@ const (
 	BuiltinSource          = "codemcp"
 	BuiltinCreateRuleName  = "create-rule"
 	BuiltinCreateSkillName = "create-skill"
+	BuiltinCreatePlanName  = "create-plan"
 )
 
 const builtinCreateRuleContent = `---
@@ -47,6 +48,27 @@ Use the create_skill tool for CodeMCP-native skill authoring.
 If native authoring fails, report the authoring error. Do not use generic file, patch, or shell tools as an equivalent fallback to write the skill.
 `
 
+const builtinCreatePlanContent = `---
+name: create-plan
+description: Create or update a canonical CodeMCP workspace implementation plan through the plan authoring tool.
+---
+# Create a CodeMCP plan
+
+Use the create_plan tool for canonical workspace plan authoring.
+
+- Treat Plan Mode as a planning workflow: inspect the current workspace architecture, relevant constraints, and existing implementation state before authoring or revising the plan.
+- The agent tool is workspace-scoped. Pass the registered workspace_id; global and provider-owned instruction destinations are not valid plan targets.
+- Use a canonical lowercase name containing letters, digits, and hyphens. The name is the durable semantic identity of the plan.
+- Put the human-readable implementation plan in plan_content. Include the goal, architecture contract, ordered implementation phases, and acceptance criteria needed to execute the work safely.
+- Put the execution sequence in implementation_order. It must contain execution rules, ordering rationale, ordered phase checklists, and terminal acceptance.
+- Set mode to create for a new plan. For update, pass the current expected_content_id so stale sessions cannot overwrite newer progress.
+- Represent progress through the canonical checklist state in the document. Do not maintain a separate active-plan pointer or progress file.
+- Use dry_run: true to validate target resolution, document structure, conflicts, and stale state without mutation when useful.
+- CodeMCP owns the canonical plan destination. Do not use generic file, patch, move, delete, or shell tools to mutate .cm/plans.
+
+If plan authoring fails, report the bounded authoring error and resolve the conflict or stale state explicitly. Do not bypass create_plan with an equivalent filesystem mutation.
+`
+
 type builtinSkill struct {
 	skill   Skill
 	content string
@@ -70,6 +92,15 @@ var builtinSkillCatalog = []builtinSkill{
 			Source:      BuiltinSource,
 		},
 		content: builtinCreateSkillContent,
+	},
+	{
+		skill: Skill{
+			Name:        BuiltinCreatePlanName,
+			Description: "Create or update a canonical CodeMCP workspace implementation plan through the plan authoring tool.",
+			Path:        "codemcp://skills/create-plan",
+			Source:      BuiltinSource,
+		},
+		content: builtinCreatePlanContent,
 	},
 }
 

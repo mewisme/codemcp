@@ -100,13 +100,14 @@ func TestCatalogContractsAreCompleteAndUnique(t *testing.T) {
 	}
 }
 
-func TestInstructionAuthoringOperationsAreAgentMCPOnly(t *testing.T) {
+func TestAgentAuthoringOperationsAreAgentMCPOnly(t *testing.T) {
 	tests := []struct {
 		id   ID
 		tool string
 	}{
 		{id: InstructionRuleCreate, tool: "create_rule"},
 		{id: InstructionSkillCreate, tool: "create_skill"},
+		{id: PlanCreate, tool: "create_plan"},
 	}
 	for _, test := range tests {
 		mapped, ok := ForMCPTool(test.tool)
@@ -119,6 +120,9 @@ func TestInstructionAuthoringOperationsAreAgentMCPOnly(t *testing.T) {
 		}
 		if spec.Audience != AudienceAgent || spec.Kind != KindMutation {
 			t.Fatalf("operation %q contract=%#v", test.id, spec)
+		}
+		if spec.Authorization != AuthorizationAgent || spec.Risk != RiskState || spec.Effects.OpenWorld || spec.Effects.ReadOnly {
+			t.Fatalf("operation %q semantic contract=%#v", test.id, spec)
 		}
 		if len(spec.MCPTools) == 0 || spec.MCPTools[0] != test.tool {
 			t.Fatalf("operation %q MCP tools=%v", test.id, spec.MCPTools)

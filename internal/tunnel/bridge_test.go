@@ -178,6 +178,65 @@ func TestSDKBridgeConfigToolsKeepCanonicalSchemasAndEffects(t *testing.T) {
 	}
 }
 
+func TestSDKBridgeCreatePlanKeepsCanonicalSchemaAndEffects(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- bridge.Run(ctx, serverTransport) }()
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "plan-tunnel-contract-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, ok := runtime.Registry.Schema(tools.CreatePlanToolName)
+	if !ok {
+		t.Fatal("create_plan schema missing")
+	}
+	expected, err := localmcp.ProjectSDKTool(localmcp.OpenAIProfile(), localmcp.DescribeTool(schema), localmcp.ToolProjectionOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var actual *sdkmcp.Tool
+	for _, tool := range listed.Tools {
+		if tool != nil && tool.Name == tools.CreatePlanToolName {
+			actual = tool
+			break
+		}
+	}
+	if actual == nil {
+		t.Fatal("tunnel discovery missing create_plan")
+	}
+	if expected.Name != actual.Name ||
+		!bridgeSchemaSemanticEqual(expected.InputSchema, actual.InputSchema) ||
+		!bridgeSchemaSemanticEqual(expected.OutputSchema, actual.OutputSchema) ||
+		!reflect.DeepEqual(expected.Annotations, actual.Annotations) {
+		t.Fatalf("tunnel create_plan contract drift\nexpected=%#v\nactual=%#v", expected, actual)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case err := <-serverDone:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("bridge run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("bridge did not stop")
+	}
+}
+
 func bridgeSchemaSemanticEqual(left, right any) bool {
 	leftJSON, leftErr := json.Marshal(left)
 	rightJSON, rightErr := json.Marshal(right)

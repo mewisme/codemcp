@@ -25,10 +25,10 @@ func TestDiscoverAcrossProviders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 5 {
+	if len(values) != 6 {
 		t.Fatalf("skills = %#v", values)
 	}
-	if values[3].Name != BuiltinCreateRuleName || values[4].Name != BuiltinCreateSkillName {
+	if values[3].Name != BuiltinCreateRuleName || values[4].Name != BuiltinCreateSkillName || values[5].Name != BuiltinCreatePlanName {
 		t.Fatalf("builtin skills = %#v", values[3:])
 	}
 	loaded, err := Load(root, "cursor", 200000)
@@ -54,7 +54,7 @@ func TestDiscoverIncludesNativeWorkspaceSkills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 3 || values[0].Path != path || values[0].Source != ".cm" || !IsBuiltin(values[1]) || !IsBuiltin(values[2]) {
+	if len(values) != 4 || values[0].Path != path || values[0].Source != ".cm" || !IsBuiltin(values[1]) || !IsBuiltin(values[2]) || !IsBuiltin(values[3]) {
 		t.Fatalf("native skills=%#v", values)
 	}
 }
@@ -80,7 +80,7 @@ func TestDiscoverForWorkspaceUsesSelectedProjectProvidersAndWorkspaceNativeFirst
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 4 || values[0].Source != ".cm" || values[1].Source != ".agents" || !IsBuiltin(values[2]) || !IsBuiltin(values[3]) {
+	if len(values) != 5 || values[0].Source != ".cm" || values[1].Source != ".agents" || !IsBuiltin(values[2]) || !IsBuiltin(values[3]) || !IsBuiltin(values[4]) {
 		t.Fatalf("skills=%#v", values)
 	}
 	for _, value := range values {
@@ -120,10 +120,10 @@ func TestDiscoverWithUserForWorkspaceAppliesProviderPolicyAndSourcePrecedence(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 5 {
+	if len(values) != 6 {
 		t.Fatalf("skills=%#v", values)
 	}
-	want := []string{".cm", ".cm", ".agents", BuiltinSource, BuiltinSource}
+	want := []string{".cm", ".cm", ".agents", BuiltinSource, BuiltinSource, BuiltinSource}
 	for i, source := range want {
 		if values[i].Source != source {
 			t.Fatalf("skill %d=%#v want source=%q", i, values[i], source)
@@ -159,7 +159,7 @@ func TestSkillTraversalAndLoadBoundsRemainBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 3 || values[0].Name != "bounded" || values[0].Path != atLimit || !IsBuiltin(values[1]) || !IsBuiltin(values[2]) {
+	if len(values) != 4 || values[0].Name != "bounded" || values[0].Path != atLimit || !IsBuiltin(values[1]) || !IsBuiltin(values[2]) || !IsBuiltin(values[3]) {
 		t.Fatalf("bounded skills=%#v", values)
 	}
 	loaded, err := Load(root, "bounded", 64)
@@ -189,7 +189,7 @@ func TestReservedBuiltinSkillsCannotBeShadowedByNativeOrProviderFiles(t *testing
 			t.Fatal(err)
 		}
 	}
-	for _, name := range []string{BuiltinCreateRuleName, BuiltinCreateSkillName} {
+	for _, name := range []string{BuiltinCreateRuleName, BuiltinCreateSkillName, BuiltinCreatePlanName} {
 		write(workspaceRoot, ".cm", name)
 		write(workspaceRoot, ".agents", name)
 		write(configRoot, "", name)
@@ -209,11 +209,11 @@ func TestReservedBuiltinSkillsCannotBeShadowedByNativeOrProviderFiles(t *testing
 			}
 		}
 	}
-	if counts[BuiltinCreateRuleName] != 1 || counts[BuiltinCreateSkillName] != 1 {
+	if counts[BuiltinCreateRuleName] != 1 || counts[BuiltinCreateSkillName] != 1 || counts[BuiltinCreatePlanName] != 1 {
 		t.Fatalf("reserved builtin counts=%v inventory=%#v", counts, values)
 	}
 
-	for _, name := range []string{BuiltinCreateRuleName, BuiltinCreateSkillName} {
+	for _, name := range []string{BuiltinCreateRuleName, BuiltinCreateSkillName, BuiltinCreatePlanName} {
 		loaded, err := LoadWithUser(workspaceRoot, home, name, 500_000, policy)
 		if err != nil {
 			t.Fatal(err)

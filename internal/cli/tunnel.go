@@ -319,6 +319,7 @@ func tunnelRunCommand() *cobra.Command {
 		runtime.SetConfigSetApprovalProvider(configProvider)
 		runtime.SetConfigSetApplyProvider(configProvider)
 		runtime.SetInstructionAuthoringProvider(application.NewAgentInstructionAuthoringProvider(runtime.Workspaces, runtime.InstructionChanges))
+		runtime.SetPlanAuthoringProvider(application.NewAgentPlanAuthoringProvider(runtime.Workspaces, runtime.InstructionChanges))
 		runtime.SetPromptProvider(application.NewAgentPromptProvider(runtime.Workspaces))
 		runtime.SetShellPath(cfg.Shell.Path)
 		telemetry.AttachTools(runtime, nil, log)

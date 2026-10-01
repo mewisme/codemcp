@@ -75,7 +75,7 @@ func TestGlobalInstructionsAndWorkspaceContextAPI(t *testing.T) {
 	if strings.Contains(result.InstructionContext.InstructionsText, "USER CLAUDE CONTEXT") {
 		t.Fatalf("disabled user context leaked: %s", result.InstructionContext.InstructionsText)
 	}
-	if result.InstructionContext.Git.Skipped != true || len(result.InstructionContext.Sources) != 2 || result.Summary.Rules != 1 || result.Summary.Skills != 2 {
+	if result.InstructionContext.Git.Skipped != true || len(result.InstructionContext.Sources) != 2 || result.Summary.Rules != 1 || result.Summary.Skills != 3 {
 		t.Fatalf("preview = %#v", result)
 	}
 }
