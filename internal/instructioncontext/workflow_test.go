@@ -162,6 +162,79 @@ func TestAgentWorkflowIsStableAndNonEmpty(t *testing.T) {
 	}
 }
 
+func TestPlanModeDirectiveUsesStandaloneWhitespaceDelimitedToken(t *testing.T) {
+	for _, prompt := range []string{
+		"/plan",
+		" /plan ",
+		"please /plan this change",
+		"/plan\nthen describe the work",
+		"implement this\t/plan\tbut do not code yet",
+		"prefix\u2003/plan\u2003suffix",
+	} {
+		if !RequestsPlanMode(prompt) {
+			t.Fatalf("expected Plan Mode for %q", prompt)
+		}
+	}
+	for _, prompt := range []string{
+		"",
+		"plan",
+		"/PLAN",
+		"/planner",
+		"/plan/foo",
+		"./plan",
+		"https://example.com/plan",
+		"file:///plan",
+		"say '/plan'",
+		"(/plan)",
+		"/plan,",
+		"docs mention /planner mode",
+	} {
+		if RequestsPlanMode(prompt) {
+			t.Fatalf("unexpected Plan Mode for %q", prompt)
+		}
+	}
+}
+
+func TestPlanModeGuidanceIsCanonicalAndStopsBeforeImplementation(t *testing.T) {
+	server := StaticServerInstructions()
+	for _, expected := range []string{
+		"exact standalone whitespace-delimited token",
+		"project_context with memory enabled",
+		"inspect applicable rules and skills",
+		"audit the relevant source plus existing persisted plan state",
+		"persist through create_plan",
+		"do not return only an unpersisted prose plan",
+		"do not perform implementation mutations",
+		"final create_plan mutation",
+		"dominates contradictory same-request implementation wording",
+		"stop before implementation",
+		"do not fall through to implementation",
+		"agent_complete terminal semantics",
+		"Generic MCP servers cannot hard-block unrelated Tool calls",
+		"original raw user prompt",
+		"raw-prompt interpretation belongs to the host agent",
+		"typed local Plan Mode",
+	} {
+		if !strings.Contains(server, expected) {
+			t.Fatalf("Plan Mode guidance missing %q: %s", expected, server)
+		}
+	}
+
+	model := CanonicalServerInstructionModel()
+	count := 0
+	for _, directive := range model.Workflow {
+		if directive.ID == "plan-mode" {
+			count++
+			if directive.Text != guidancePlanMode {
+				t.Fatalf("plan-mode directive text drifted: %q", directive.Text)
+			}
+		}
+	}
+	if count != 1 || strings.Count(server, guidancePlanMode) != 1 {
+		t.Fatalf("plan-mode directive count=%d rendered=%d", count, strings.Count(server, guidancePlanMode))
+	}
+}
+
 func TestSharedGuidanceRendersIntoWorkflowAndServerInstructions(t *testing.T) {
 	workflow := AgentWorkflow()
 	server := StaticServerInstructions()
@@ -203,7 +276,7 @@ func TestCanonicalServerInstructionModelIsDeterministicAndBounded(t *testing.T) 
 	if len(first) == 0 || len(first) > 8192 {
 		t.Fatalf("server instructions length=%d", len(first))
 	}
-	for _, expected := range []string{"workspace_register", "workspace_container_context", "project_context", "load_path_rules", "load_skill", "apply_patch", "run_command", "verify", "agent_complete"} {
+	for _, expected := range []string{"workspace_register", "workspace_container_context", "project_context", "load_path_rules", "load_skill", "/plan", "create_plan", "apply_patch", "run_command", "verify", "agent_complete"} {
 		if !strings.Contains(first, expected) {
 			t.Fatalf("server instructions missing %q", expected)
 		}

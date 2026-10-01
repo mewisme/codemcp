@@ -13,6 +13,7 @@ const (
 	guidanceContext    = "At the start of every MCP session, fetch workspace memory by calling project_context with memory enabled before substantial work; repeat project_context before first work in each additional workspace targeted by that session. Treat project_context as the workspace instruction bundle and follow project/user instructions and unconditional rules from it before acting."
 	guidanceRead       = "Inspect relevant files before changing them. Use read_files/read_text_file for source context and load_path_rules for path-scoped rules before modifying matching files."
 	guidanceSkills     = "Review the skill summaries in project_context. When a skill is applicable, call load_skill with its exact name before using that workflow."
+	guidancePlanMode   = "Treat /plan as Plan Mode only when it appears in the user's request as an exact standalone whitespace-delimited token. In Plan Mode, establish the target workspace, call project_context with memory enabled, inspect applicable rules and skills, and audit the relevant source plus existing persisted plan state before authoring or updating a plan. A successful Plan Mode request must persist through create_plan; do not return only an unpersisted prose plan. Once Plan Mode begins, do not perform implementation mutations except normal workspace bootstrap needed to establish the target and the final create_plan mutation. /plan dominates contradictory same-request implementation wording: create or update the plan, then stop before implementation. If plan authoring cannot be persisted, report the error and do not fall through to implementation. Normal agent_complete terminal semantics still apply after the plan mutation when available. Generic MCP servers cannot hard-block unrelated Tool calls solely because /plan was present because their Tool requests do not carry the original raw user prompt; raw-prompt interpretation belongs to the host agent. First-party harnesses that own raw prompts may map the same directive to a typed local Plan Mode without changing these semantics."
 	guidanceEdit       = "Prefer deterministic edits with apply_patch, edit_file, or multi_edit. Use run_command for commands, builds, tests, formatting, and other shell operations within the persisted workspace cwd."
 	guidanceBackground = "Use start_process for long work; completion is lifecycle-driven. Do not poll process_status/process_output or Tasks to wait. Status/output are inspection/recovery; stop_process is explicit cancellation/intervention. No model continuation is proven, so return control after starting background work. Intentional in-process sleep is valid."
 	guidanceVerify     = "For non-trivial work, make a short plan, implement incrementally, and verify with the repository's relevant tests, lint, typecheck, build, or other documented checks."
@@ -37,6 +38,8 @@ const (
 		"12. " + guidanceMissing + "\n" +
 		"13. " + guidanceScope
 )
+
+const PlanModeDirectiveToken = "/plan"
 
 type ServerInstructionDirective struct {
 	ID   string
@@ -77,6 +80,7 @@ func CanonicalServerInstructionModel() ServerInstructionModel {
 		Workflow: []ServerInstructionDirective{
 			{ID: "inspect", Text: guidanceRead},
 			{ID: "skills", Text: guidanceSkills},
+			{ID: "plan-mode", Text: guidancePlanMode},
 			{ID: "mutate", Text: guidanceEdit},
 			{ID: "background-work", Text: guidanceBackground},
 			{ID: "verify", Text: guidanceVerify},
@@ -127,6 +131,15 @@ var sharedGuidanceSteps = []string{
 
 func AgentWorkflow() string {
 	return DefaultAgentWorkflow
+}
+
+func RequestsPlanMode(prompt string) bool {
+	for _, token := range strings.Fields(prompt) {
+		if token == PlanModeDirectiveToken {
+			return true
+		}
+	}
+	return false
 }
 
 func AgentWorkflowForBackground(capabilities BackgroundWorkCapabilities) string {
