@@ -18,7 +18,7 @@ func (fn ollamaRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, 
 
 func TestOllamaCoreProfileModesAndEndpointClassification(t *testing.T) {
 	provider := DefaultOllama()
-	if provider.BaseURL != OllamaCloudBaseURL || provider.Protocol != ProtocolOpenAI || provider.AuthMode != AuthBearer || provider.Discovery != DiscoveryOllamaTags || provider.CoreKind != CoreOllama {
+	if provider.BaseURL != OllamaCloudBaseURL || provider.Protocol != ProtocolOpenAI || provider.AuthMode != AuthBearer || provider.Discovery != DiscoveryOllamaTags || provider.CoreKind != CoreOllama || provider.Capabilities == nil || !provider.Capabilities.StructuredOutput {
 		t.Fatalf("Ollama defaults=%#v", provider)
 	}
 	class, err := ClassifyOllamaEndpoint(provider.BaseURL)

@@ -34,6 +34,19 @@ Do not infer hidden intent, missing context, credentials, or values represented 
 Return only one JSON object with exactly these keys:
 {"summary":"...","steps":["..."],"effects":["..."],"risk_notes":["..."],"unknowns":["..."]}`
 
+var approvalExplainResponseSchema = json.RawMessage(`{
+  "type":"object",
+  "additionalProperties":false,
+  "properties":{
+    "summary":{"type":"string","minLength":1,"maxLength":600},
+    "steps":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":400}},
+    "effects":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":400}},
+    "risk_notes":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":400}},
+    "unknowns":{"type":"array","maxItems":8,"items":{"type":"string","minLength":1,"maxLength":400}}
+  },
+  "required":["summary","steps","effects","risk_notes","unknowns"]
+}`)
+
 type ApprovalExplanationState string
 
 const (
@@ -345,6 +358,9 @@ func (s *ApprovalExplainService) generate(ctx context.Context, source approval.E
 		MaxOutputTokens: approvalExplainOutputTokens,
 		Temperature:     &zero,
 	}
+	if s.shouldUseStructuredExplanation(ctx) {
+		request.ResponseSchema = append(json.RawMessage(nil), approvalExplainResponseSchema...)
+	}
 	modelResult, err := s.inference.Infer(ctx, request)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -356,7 +372,7 @@ func (s *ApprovalExplainService) generate(ctx context.Context, source approval.E
 	}
 	explanation, err := parseApprovalExplanation(modelResult, s.nowUTC())
 	if err != nil {
-		s.completeFailure(source, key, attempt, "LLM provider returned an invalid explanation")
+		s.completeFailure(source, key, attempt, "LLM provider returned an invalid explanation: "+err.Error())
 		return
 	}
 	current, err := s.manager.ExplanationSource(source.RequestID)
@@ -378,6 +394,14 @@ func (s *ApprovalExplainService) generate(ctx context.Context, source approval.E
 	delete(s.inflight, key)
 	s.mu.Unlock()
 	s.manager.PublishExplanationEvent(current, approval.EventExplanationReady, attempt)
+}
+
+func (s *ApprovalExplainService) shouldUseStructuredExplanation(ctx context.Context) bool {
+	if s == nil || s.llm == nil {
+		return true
+	}
+	provider, err := s.llm.ActiveProvider(ctx)
+	return err == nil && provider.Capabilities != nil && provider.Capabilities.StructuredOutput
 }
 
 func (s *ApprovalExplainService) completeFailure(source approval.ExplanationSource, key string, attempt uint64, reason string) {
@@ -450,10 +474,7 @@ type approvalExplanationWire struct {
 }
 
 func parseApprovalExplanation(result llm.Result, generatedAt time.Time) (ApprovalExplanation, error) {
-	payload := bytes.TrimSpace(result.Structured)
-	if len(payload) == 0 {
-		payload = bytes.TrimSpace([]byte(result.Text))
-	}
+	payload := approvalExplanationPayload(result)
 	if len(payload) == 0 || len(payload) > 32*1024 {
 		return ApprovalExplanation{}, errors.New("invalid explanation payload")
 	}
@@ -495,6 +516,26 @@ func parseApprovalExplanation(result llm.Result, generatedAt time.Time) (Approva
 		Summary: wire.Summary, Steps: cloneStrings(wire.Steps), Effects: cloneStrings(wire.Effects), RiskNotes: cloneStrings(wire.RiskNotes), Unknowns: cloneStrings(wire.Unknowns),
 		ProviderID: result.ProviderID, Model: strings.TrimSpace(result.Model), GeneratedAt: generatedAt,
 	}, nil
+}
+
+func approvalExplanationPayload(result llm.Result) []byte {
+	if payload := bytes.TrimSpace(result.Structured); len(payload) > 0 {
+		return payload
+	}
+	payload := bytes.TrimSpace([]byte(result.Text))
+	if len(payload) == 0 || json.Valid(payload) {
+		return payload
+	}
+	start := bytes.IndexByte(payload, '{')
+	if start < 0 {
+		return payload
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload[start:]))
+	var extracted json.RawMessage
+	if err := decoder.Decode(&extracted); err != nil {
+		return payload
+	}
+	return bytes.TrimSpace(extracted)
 }
 
 func normalizeApprovalExplanationList(list []string) ([]string, error) {

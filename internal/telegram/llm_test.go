@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -139,7 +140,7 @@ func TestTelegramLLMModelsUseBoundedCanonicalQueryWithoutSelectingProvider(t *te
 		t.Fatalf("model calls=%#v", dispatcher.calls)
 	}
 	input := dispatcher.calls[0].Input.(application.LLMProviderModelsInput)
-	if input.ID != string(llm.OllamaID) || input.Query.Offset != telegramLLMPageSize || input.Query.Limit != telegramLLMPageSize || input.Query.Search != "model" {
+	if input.ID != string(llm.OllamaID) || input.Query.Offset != telegramLLMPageSize || input.Query.Limit != telegramLLMPageSize || input.Query.Search != "model" || !input.Query.CheckAccess {
 		t.Fatalf("model query=%#v", input)
 	}
 	if err := validateKeyboard(screen.Keyboard); err != nil {
@@ -172,5 +173,84 @@ func TestTelegramLLMModelsUseBoundedCanonicalQueryWithoutSelectingProvider(t *te
 	}
 	if !foundModel {
 		t.Fatal("model selection action missing")
+	}
+}
+
+func TestTelegramOllamaModelsExposeAccessResultsAndDisableUnavailableModels(t *testing.T) {
+	page := application.LLMModelPage{
+		ProviderID:        llm.OllamaID,
+		TotalCatalog:      3,
+		Matched:           3,
+		Limit:             telegramLLMPageSize,
+		Returned:          3,
+		AccessChecked:     true,
+		AccessAvailable:   1,
+		AccessUnavailable: 1,
+		AccessUnknown:     1,
+		ModelAccess: map[string]application.LLMModelAccessResult{
+			"paid-model": {State: application.LLMModelAccessUnavailable, ErrorCategory: llm.ErrorProvider, Reason: "provider returned HTTP 402"},
+			"free-model": {State: application.LLMModelAccessAvailable},
+			"slow-model": {State: application.LLMModelAccessUnknown, ErrorCategory: llm.ErrorTimeout, Reason: "provider request timed out"},
+		},
+		QueryCapabilities: application.LLMModelQueryCapabilities{Sorts: []string{"id"}},
+		Models:            []llm.Model{{ID: "paid-model"}, {ID: "free-model"}, {ID: "slow-model"}},
+	}
+	ui, owner := newDomainTestInterface(t, &domainTestDispatcher{})
+	screen, err := ui.llmModelPageScreen(owner, ActionState{Route: RouteLLMModels, ResourceID: string(llm.OllamaID)}, page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fallback := strings.ToLower(RichFallback(screen.Rich).Text)
+	for _, want := range []string{"available", "unavailable", "unknown", "http 402"} {
+		if !strings.Contains(fallback, want) {
+			t.Fatalf("model access presentation missing %q: %q", want, fallback)
+		}
+	}
+	labels := keyboardLabels(screen.Keyboard)
+	if strings.Contains(labels, "paid-model") {
+		t.Fatalf("unavailable model remains selectable: %s", labels)
+	}
+	for _, want := range []string{"free-model", "slow-model", "Retest"} {
+		if !strings.Contains(labels, want) {
+			t.Fatalf("model access action %q missing: %s", want, labels)
+		}
+	}
+}
+
+func TestTelegramLLMOperationErrorBackPreservesProviderResource(t *testing.T) {
+	ui, owner := newDomainTestInterface(t, &domainTestDispatcher{})
+	state := ActionState{
+		Route:      RouteOperation,
+		Back:       RouteLLMModels,
+		ResourceID: string(llm.OllamaID),
+		Operation:  capability.LLMProviderConfigure,
+		Input:      "operation payload must not be copied into navigation state",
+	}
+	screen, err := ui.operationErrorScreen(owner, state, errors.New("provider returned HTTP 402"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back Button
+	for _, row := range screen.Keyboard {
+		for _, button := range row {
+			if button.Text == "Back" {
+				back = button
+			}
+		}
+	}
+	if back.CallbackData == "" {
+		t.Fatalf("operation error has no Back action: %#v", screen.Keyboard)
+	}
+	ref, err := ui.callbacks.Decode(back.CallbackData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, err := ui.states.Get(ref.Token, owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backState := value.(ActionState)
+	if backState.Route != RouteLLMModels || backState.ResourceID != string(llm.OllamaID) || backState.Input != nil {
+		t.Fatalf("operation Back lost provider context: %#v", backState)
 	}
 }

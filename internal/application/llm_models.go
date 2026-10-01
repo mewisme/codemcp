@@ -59,11 +59,15 @@ func (s *LLMService) invalidateModelCatalog(id llm.ProviderID) {
 	if s == nil {
 		return
 	}
+	s.clearAutoModel(id)
 	if s.modelCache != nil {
 		s.modelCache.delete(id)
 	}
 	if s.enrichCache != nil {
 		s.enrichCache.delete(id)
+	}
+	if s.accessCache != nil {
+		s.accessCache.delete(id)
 	}
 }
 

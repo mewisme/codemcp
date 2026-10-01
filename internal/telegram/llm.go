@@ -157,6 +157,15 @@ func (ui *Interface) llmProviderScreen(ctx context.Context, owner ViewOwner, sta
 		secondary = append([]Button{use}, secondary...)
 	}
 	if string(provider.CoreKind) == "ollama" {
+		autoModel := application.LLMOllamaAutoModel
+		auto, autoErr := ui.stateButton(owner, "Auto model", CallbackOpen, ActionState{
+			Route: RouteOperation, Back: RouteLLMProvider, ResourceID: id, Operation: capability.LLMProviderConfigure,
+			Input: application.LLMProviderWriteInput{ID: id, Model: &autoModel},
+		})
+		if autoErr != nil {
+			return Screen{}, autoErr
+		}
+		secondary = append(secondary, auto)
 		for _, item := range []struct {
 			label string
 			mode  string
@@ -218,6 +227,9 @@ func (ui *Interface) llmProviderScreen(ctx context.Context, owner ViewOwner, sta
 
 func (ui *Interface) llmModelsScreen(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
 	query := llmQueryFromState(state)
+	if state.ResourceID == application.LLMOllamaProviderID {
+		query.CheckAccess = true
+	}
 	query.Offset = max(0, state.Page) * telegramLLMPageSize
 	query.Limit = telegramLLMPageSize
 	value, err := ui.dispatch(ctx, capability.LLMProviderModels, application.LLMProviderModelsInput{ID: state.ResourceID, Query: query})
@@ -233,6 +245,10 @@ func (ui *Interface) llmModelsScreen(ctx context.Context, owner ViewOwner, state
 
 func (ui *Interface) llmModelPageScreen(owner ViewOwner, state ActionState, page application.LLMModelPage) (Screen, error) {
 	query := llmQueryFromState(state)
+	query.Refresh = false
+	if string(page.ProviderID) == application.LLMOllamaProviderID {
+		query.CheckAccess = true
+	}
 	currentPage := max(0, page.Offset/telegramLLMPageSize)
 	pages := max(1, (page.Matched+telegramLLMPageSize-1)/telegramLLMPageSize)
 	items := make([]string, 0, len(page.Models))
@@ -248,7 +264,17 @@ func (ui *Interface) llmModelPageScreen(owner ViewOwner, state ActionState, page
 		if model.FreeKnown && model.Free {
 			detail += " · free"
 		}
+		access, accessKnown := page.ModelAccess[model.ID]
+		if accessKnown {
+			detail += " · " + string(access.State)
+			if access.State == application.LLMModelAccessUnavailable && access.Reason != "" {
+				detail += " (" + compactPresentationValue(access.Reason) + ")"
+			}
+		}
 		items = append(items, detail)
+		if accessKnown && access.State == application.LLMModelAccessUnavailable {
+			continue
+		}
 		modelID := model.ID
 		button, err := ui.stateButton(owner, modelID, CallbackOpen, ActionState{
 			Route: RouteOperation, Back: RouteLLMModels, ResourceID: string(page.ProviderID), Operation: capability.LLMProviderConfigure,
@@ -267,6 +293,19 @@ func (ui *Interface) llmModelPageScreen(owner ViewOwner, state ActionState, page
 		return Screen{}, err
 	}
 	filters := []Button{search}
+	if string(page.ProviderID) == application.LLMOllamaProviderID {
+		retest := query
+		retest.CheckAccess = true
+		retest.Refresh = true
+		retest.Offset = 0
+		button, buttonErr := ui.stateButton(owner, "Retest", CallbackOpen, ActionState{
+			Route: RouteLLMModels, Back: RouteLLMProvider, ResourceID: string(page.ProviderID), Input: retest,
+		})
+		if buttonErr != nil {
+			return Screen{}, buttonErr
+		}
+		filters = append(filters, button)
+	}
 	if containsTelegramString(page.QueryCapabilities.Filters, "free") {
 		for _, item := range []struct {
 			label string
@@ -320,6 +359,16 @@ func (ui *Interface) llmModelPageScreen(owner ViewOwner, state ActionState, page
 		{"Matched", fmt.Sprint(page.Matched)},
 		{"Catalog", fmt.Sprint(page.TotalCatalog)},
 		{"Returned", fmt.Sprint(page.Returned)},
+	}
+	if page.ModelAccess != nil {
+		meta = append(meta,
+			[]string{"Available", fmt.Sprint(page.AccessAvailable)},
+			[]string{"Unavailable", fmt.Sprint(page.AccessUnavailable)},
+			[]string{"Unknown", fmt.Sprint(page.AccessUnknown)},
+		)
+		if page.AccessError != "" {
+			meta = append(meta, []string{"Access check", page.AccessError})
+		}
 	}
 	if page.RankBasis != "" {
 		meta = append(meta, []string{"Rank basis", page.RankBasis})

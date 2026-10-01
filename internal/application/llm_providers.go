@@ -127,7 +127,7 @@ func (s *LLMService) ProbeProvider(ctx context.Context, rawID string) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.llmClient().Infer(ctx, provider, llm.Request{
+	_, err = s.infer(ctx, provider, llm.Request{
 		Instructions:    "Return a short acknowledgement.",
 		Messages:        []llm.Message{{Role: llm.RoleUser, Content: "Respond with OK."}},
 		MaxOutputTokens: 8,

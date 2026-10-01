@@ -107,6 +107,9 @@ func llmModelsCommandForProvider(fixed string) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if id == application.LLMOllamaProviderID && !cmd.Flags().Changed("check-access") {
+				query.CheckAccess = true
+			}
 			result, err := llmService().ModelCatalog(cmd.Context(), id, query)
 			if err != nil {
 				return err
@@ -131,7 +134,7 @@ type llmModelQueryFlags struct {
 	rank, window, recommendFor, rangeValue                                         string
 	ids, authors, capabilities, parameters, inputs, outputs                        []string
 	families, formats, quantizations, sorts                                        []string
-	free, paid, all, count, refresh                                                bool
+	free, paid, all, count, refresh, checkAccess                                   bool
 	minContext, maxContext, offset, limit                                          int
 	minSize, maxSize, minParameters, maxParameters                                 int64
 	createdAfter, createdBefore, modifiedAfter, modifiedBefore                     string
@@ -175,6 +178,7 @@ func addLLMModelQueryFlags(cmd *cobra.Command, flags *llmModelQueryFlags) {
 	values.BoolVar(&flags.count, "count", false, "Return only the matched model count")
 	values.BoolVar(&flags.all, "all", false, "Return all matched models from the bounded provider catalog")
 	values.BoolVar(&flags.refresh, "refresh", false, "Refresh the remote model catalog")
+	values.BoolVar(&flags.checkAccess, "check-access", false, "Test each model with the configured provider credential")
 	_ = cmd.RegisterFlagCompletionFunc("sort", completeStaticFlag(
 		"id:asc", "id:desc", "name:asc", "name:desc", "context:asc", "context:desc",
 		"prompt-price:asc", "prompt-price:desc", "completion-price:asc", "completion-price:desc",
@@ -206,7 +210,7 @@ func (flags llmModelQueryFlags) query(cmd *cobra.Command) (application.LLMModelQ
 		Capabilities: flags.capabilities, Parameters: flags.parameters, InputModalities: flags.inputs, OutputModalities: flags.outputs,
 		Ollama: application.LLMOllamaModelQuery{Families: flags.families, Formats: flags.formats, Quantizations: flags.quantizations},
 		Rank:   flags.rank, RankWindow: flags.window, RecommendFor: flags.recommendFor,
-		Offset: flags.offset, Limit: flags.limit, All: flags.all, CountOnly: flags.count, Refresh: flags.refresh,
+		Offset: flags.offset, Limit: flags.limit, All: flags.all, CountOnly: flags.count, Refresh: flags.refresh, CheckAccess: flags.checkAccess,
 	}
 	if flags.free || flags.paid {
 		free := flags.free
@@ -666,10 +670,17 @@ func llmProviderModelCommand(id string) *cobra.Command {
 		ValidArgsFunction: func(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			prepareCompletionConfigRoot(cmd)
 			provider, err := llmService().Provider(cmd.Context(), id)
-			if err != nil || strings.TrimSpace(provider.Model) == "" {
+			if err != nil {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return filterCompletions([]string{provider.Model}, toComplete), cobra.ShellCompDirectiveNoFileComp
+			values := make([]string, 0, 2)
+			if string(provider.ID) == application.LLMOllamaProviderID {
+				values = append(values, application.LLMOllamaAutoModel)
+			}
+			if model := strings.TrimSpace(provider.Model); model != "" && model != application.LLMOllamaAutoModel {
+				values = append(values, model)
+			}
+			return filterCompletions(values, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	addJSONResultFlag(cmd, &jsonOutput)
@@ -851,6 +862,17 @@ func renderLLMModels(cmd *cobra.Command, result application.LLMModelCatalogResul
 		presentation.Field{Label: "has more", Value: result.HasMore},
 		presentation.Field{Label: "refreshed", Value: result.Refreshed},
 	)
+	if result.ModelAccess != nil {
+		presenter.Fields(
+			presentation.Field{Label: "access checked", Value: result.AccessChecked},
+			presentation.Field{Label: "available", Value: result.AccessAvailable},
+			presentation.Field{Label: "unavailable", Value: result.AccessUnavailable},
+			presentation.Field{Label: "unknown", Value: result.AccessUnknown},
+		)
+		if result.AccessError != "" {
+			presenter.Fields(presentation.Field{Label: "access error", Value: result.AccessError})
+		}
+	}
 	if result.RankSource != "" {
 		presenter.Fields(presentation.Field{Label: "rank source", Value: result.RankSource}, presentation.Field{Label: "rank window", Value: result.RankWindow}, presentation.Field{Label: "rank basis", Value: result.RankBasis})
 	}
@@ -877,9 +899,13 @@ func renderLLMModels(cmd *cobra.Command, result application.LLMModelCatalogResul
 		if model.Recommendation != nil {
 			rank = fmt.Sprintf("#%d recommend", model.Recommendation.Position)
 		}
-		rows = append(rows, presentation.Row{model.ID, model.Name, contextValue, freeValue, model.PromptPrice, model.CompletionPrice, rank})
+		access := ""
+		if observation, ok := result.ModelAccess[model.ID]; ok {
+			access = string(observation.State)
+		}
+		rows = append(rows, presentation.Row{model.ID, model.Name, contextValue, freeValue, model.PromptPrice, model.CompletionPrice, access, rank})
 	}
 	presenter.Section(fmt.Sprintf("Models · %d", len(rows)))
-	presenter.Rows([]string{"ID", "Name", "Context", "Free", "Prompt", "Completion", "Rank"}, rows...)
+	presenter.Rows([]string{"ID", "Name", "Context", "Free", "Prompt", "Completion", "Access", "Rank"}, rows...)
 	presenter.Complete("Done")
 }

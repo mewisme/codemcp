@@ -239,6 +239,9 @@ func DefaultOllama() Provider {
 		AuthMode:  AuthBearer,
 		Discovery: DiscoveryOllamaTags,
 		CoreKind:  CoreOllama,
+		Capabilities: &ProviderCapabilities{
+			StructuredOutput: true,
+		},
 	}
 }
 
@@ -410,7 +413,7 @@ func normalizeProvider(value Provider, allowCore bool) (Provider, error) {
 				return Provider{}, NewError(ErrorCoreInvariant, "auth_mode", "Ollama Cloud requires bearer authentication")
 			}
 		}
-		value.Capabilities = nil
+		value.Capabilities = &ProviderCapabilities{StructuredOutput: true}
 	}
 	return value, nil
 }

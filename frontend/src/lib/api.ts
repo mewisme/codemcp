@@ -603,6 +603,18 @@ export type LLMModelCatalog = {
   recommendation_basis?: string
   recommendation_source?: string
   recommendation_freshness?: string
+  access_checked?: boolean
+  access_checked_at?: string
+  access_available?: number
+  access_unavailable?: number
+  access_unknown?: number
+  access_error?: string
+  model_access?: Record<string, {
+    state: "available" | "unavailable" | "unknown" | string
+    error_category?: string
+    reason?: string
+    checked_at: string
+  }>
   query_capabilities: LLMModelQueryCapabilities
 }
 
@@ -643,6 +655,7 @@ export type LLMModelQueryParams = {
   count?: boolean
   all?: boolean
   refresh?: boolean
+  check_access?: boolean
 }
 
 export type LLMProviderConfig = {

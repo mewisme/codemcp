@@ -233,7 +233,7 @@ func TestLLMCLIModelQueryGrammarIsSharedAcrossProviderNamespaces(t *testing.T) {
 			"min-prompt-price", "max-prompt-price", "min-completion-price", "max-completion-price",
 			"capability", "parameter", "input", "output", "family", "format", "quantization",
 			"min-parameters", "max-parameters", "min-size", "max-size", "sort", "rank", "window",
-			"recommend-for", "offset", "limit", "range", "count", "all", "refresh",
+			"recommend-for", "offset", "limit", "range", "count", "all", "refresh", "check-access",
 		} {
 			if command.Flags().Lookup(flag) == nil {
 				t.Fatalf("command %q missing --%s", path, flag)

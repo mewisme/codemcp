@@ -175,6 +175,84 @@ func TestOllamaCloudWireUsesBearerForTagsAndOpenAIRoute(t *testing.T) {
 	}
 }
 
+func TestOllamaCloudAccessCheckClassifiesHTTP402AndAutoSkipsUnavailableModel(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	restore := secretstore.UseMemoryForTesting()
+	defer restore()
+	const credential = "ollama-cloud-free-key"
+	const paidModel = "paid-model"
+	const freeModel = "free-model"
+	var tagsCalls atomic.Int32
+	var paidCalls atomic.Int32
+	var freeCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer "+credential {
+			t.Fatalf("authorization=%q", got)
+		}
+		switch r.URL.Path {
+		case "/api/tags":
+			tagsCalls.Add(1)
+			_, _ = fmt.Fprintf(w, "{\"models\":[{\"name\":%q,\"model\":%q},{\"name\":%q,\"model\":%q}]}", paidModel, paidModel, freeModel, freeModel)
+		case "/v1/chat/completions":
+			var request map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+				t.Fatal(err)
+			}
+			model, _ := request["model"].(string)
+			switch model {
+			case paidModel:
+				paidCalls.Add(1)
+				w.WriteHeader(http.StatusPaymentRequired)
+				_, _ = fmt.Fprint(w, "{\"error\":{\"message\":\"model requires paid access\"}}")
+			case freeModel:
+				freeCalls.Add(1)
+				_, _ = fmt.Fprintf(w, "{\"model\":%q,\"choices\":[{\"message\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}", freeModel)
+			default:
+				t.Fatalf("unexpected inference model %q", model)
+			}
+		default:
+			t.Fatalf("unexpected path %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	configureOllamaForApplicationTest(t, root, server.URL+"/v1", llm.AuthBearer, llm.OllamaAutoModel)
+	change, err := llm.CredentialChange(string(llm.OllamaID), credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := secretstore.New(root).Apply([]secretstore.Change{change}); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewLLMService(root)
+	page, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), LLMModelQuery{All: true, CheckAccess: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !page.AccessChecked || page.AccessAvailable != 1 || page.AccessUnavailable != 1 || page.AccessUnknown != 0 {
+		t.Fatalf("access page=%#v", page)
+	}
+	if access := page.ModelAccess[paidModel]; access.State != LLMModelAccessUnavailable || access.ErrorCategory != llm.ErrorProvider || !strings.Contains(access.Reason, "402") {
+		t.Fatalf("paid model access=%#v", access)
+	}
+	if access := page.ModelAccess[freeModel]; access.State != LLMModelAccessAvailable {
+		t.Fatalf("free model access=%#v", access)
+	}
+
+	result, err := service.InferenceFacade().Infer(t.Context(), llm.Request{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "Reply OK."}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Model != freeModel {
+		t.Fatalf("auto result=%#v", result)
+	}
+	if tagsCalls.Load() != 1 || paidCalls.Load() != 1 || freeCalls.Load() != 2 {
+		t.Fatalf("wire calls tags=%d paid=%d free=%d", tagsCalls.Load(), paidCalls.Load(), freeCalls.Load())
+	}
+}
+
 func TestOllamaProbeMapsMissingDaemonToUnavailableWithoutStartupDependency(t *testing.T) {
 	root := isolateSettingServiceConfig(t)
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))

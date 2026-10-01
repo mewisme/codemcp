@@ -196,12 +196,12 @@ func TestLLMAdminModelQueryUsesCanonicalFilteringSortingAndPagination(t *testing
 }
 
 func TestLLMAdminModelQueryParserPreservesRepeatedTypedFilters(t *testing.T) {
-	request := httptest.NewRequest(http.MethodGet, "/api/llm/providers/x/models?author=acme&author=other&capability=tools&capability=reasoning&family=llama&sort=context:desc&sort=name:asc&free=true&min_context=64000&max_size=1234&created_after=2026-09-01T00:00:00Z", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/llm/providers/x/models?author=acme&author=other&capability=tools&capability=reasoning&family=llama&sort=context:desc&sort=name:asc&free=true&min_context=64000&max_size=1234&created_after=2026-09-01T00:00:00Z&check_access=true&refresh=true", nil)
 	query, err := parseLLMModelQuery(request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(query.Authors, []string{"acme", "other"}) || !reflect.DeepEqual(query.Capabilities, []string{"tools", "reasoning"}) || !reflect.DeepEqual(query.Ollama.Families, []string{"llama"}) || len(query.Sort) != 2 || query.Sort[0].Field != "context" || query.Sort[0].Direction != "desc" || query.Free == nil || !*query.Free || query.MinContext == nil || *query.MinContext != 64000 || query.Ollama.MaxSizeBytes == nil || *query.Ollama.MaxSizeBytes != 1234 || query.CreatedAfter == nil {
+	if !reflect.DeepEqual(query.Authors, []string{"acme", "other"}) || !reflect.DeepEqual(query.Capabilities, []string{"tools", "reasoning"}) || !reflect.DeepEqual(query.Ollama.Families, []string{"llama"}) || len(query.Sort) != 2 || query.Sort[0].Field != "context" || query.Sort[0].Direction != "desc" || query.Free == nil || !*query.Free || query.MinContext == nil || *query.MinContext != 64000 || query.Ollama.MaxSizeBytes == nil || *query.Ollama.MaxSizeBytes != 1234 || query.CreatedAfter == nil || !query.CheckAccess || !query.Refresh {
 		t.Fatalf("parsed query=%#v", query)
 	}
 }

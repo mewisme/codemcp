@@ -73,6 +73,22 @@ type LLMModelQuery struct {
 	All                bool                `json:"all,omitempty"`
 	CountOnly          bool                `json:"count_only,omitempty"`
 	Refresh            bool                `json:"refresh,omitempty"`
+	CheckAccess        bool                `json:"check_access,omitempty"`
+}
+
+type LLMModelAccessState string
+
+const (
+	LLMModelAccessAvailable   LLMModelAccessState = "available"
+	LLMModelAccessUnavailable LLMModelAccessState = "unavailable"
+	LLMModelAccessUnknown     LLMModelAccessState = "unknown"
+)
+
+type LLMModelAccessResult struct {
+	State         LLMModelAccessState `json:"state"`
+	ErrorCategory llm.ErrorCategory   `json:"error_category,omitempty"`
+	Reason        string              `json:"reason,omitempty"`
+	CheckedAt     time.Time           `json:"checked_at"`
 }
 
 type LLMModelQueryCapabilities struct {
@@ -84,24 +100,31 @@ type LLMModelQueryCapabilities struct {
 }
 
 type LLMModelPage struct {
-	ProviderID              llm.ProviderID            `json:"provider_id"`
-	TotalCatalog            int                       `json:"total_catalog"`
-	Matched                 int                       `json:"matched"`
-	Offset                  int                       `json:"offset"`
-	Limit                   int                       `json:"limit"`
-	Returned                int                       `json:"returned"`
-	HasMore                 bool                      `json:"has_more"`
-	Refreshed               bool                      `json:"refreshed"`
-	Sort                    []LLMModelSort            `json:"sort"`
-	RankSource              string                    `json:"rank_source,omitempty"`
-	RankWindow              string                    `json:"rank_window,omitempty"`
-	RankBasis               string                    `json:"rank_basis,omitempty"`
-	RankFreshness           string                    `json:"rank_freshness,omitempty"`
-	RecommendationBasis     string                    `json:"recommendation_basis,omitempty"`
-	RecommendationSource    string                    `json:"recommendation_source,omitempty"`
-	RecommendationFreshness string                    `json:"recommendation_freshness,omitempty"`
-	QueryCapabilities       LLMModelQueryCapabilities `json:"query_capabilities"`
-	Models                  []llm.Model               `json:"models"`
+	ProviderID              llm.ProviderID                  `json:"provider_id"`
+	TotalCatalog            int                             `json:"total_catalog"`
+	Matched                 int                             `json:"matched"`
+	Offset                  int                             `json:"offset"`
+	Limit                   int                             `json:"limit"`
+	Returned                int                             `json:"returned"`
+	HasMore                 bool                            `json:"has_more"`
+	Refreshed               bool                            `json:"refreshed"`
+	Sort                    []LLMModelSort                  `json:"sort"`
+	RankSource              string                          `json:"rank_source,omitempty"`
+	RankWindow              string                          `json:"rank_window,omitempty"`
+	RankBasis               string                          `json:"rank_basis,omitempty"`
+	RankFreshness           string                          `json:"rank_freshness,omitempty"`
+	RecommendationBasis     string                          `json:"recommendation_basis,omitempty"`
+	RecommendationSource    string                          `json:"recommendation_source,omitempty"`
+	RecommendationFreshness string                          `json:"recommendation_freshness,omitempty"`
+	AccessChecked           bool                            `json:"access_checked,omitempty"`
+	AccessCheckedAt         *time.Time                      `json:"access_checked_at,omitempty"`
+	AccessAvailable         int                             `json:"access_available,omitempty"`
+	AccessUnavailable       int                             `json:"access_unavailable,omitempty"`
+	AccessUnknown           int                             `json:"access_unknown,omitempty"`
+	AccessError             string                          `json:"access_error,omitempty"`
+	ModelAccess             map[string]LLMModelAccessResult `json:"model_access,omitempty"`
+	QueryCapabilities       LLMModelQueryCapabilities       `json:"query_capabilities"`
+	Models                  []llm.Model                     `json:"models"`
 }
 
 type llmModelEnrichmentCacheEntry struct {
@@ -141,6 +164,15 @@ func (s *LLMService) ModelCatalog(ctx context.Context, rawID string, query LLMMo
 	if err != nil {
 		return LLMModelPage{}, err
 	}
+	var access map[string]LLMModelAccessResult
+	var accessCheckedAt time.Time
+	var accessErr error
+	if query.CheckAccess {
+		access, accessCheckedAt, accessErr = s.modelAccess(ctx, provider, models, query.Refresh)
+		if ctx != nil && ctx.Err() != nil {
+			return LLMModelPage{}, ctx.Err()
+		}
+	}
 	capabilities := modelQueryCapabilities(provider, models)
 	if err := validateLLMModelQueryCapabilities(query, capabilities); err != nil {
 		return LLMModelPage{}, err
@@ -150,6 +182,31 @@ func (s *LLMService) ModelCatalog(ctx context.Context, rawID string, query LLMMo
 		return LLMModelPage{}, err
 	}
 	page := LLMModelPage{ProviderID: provider.ID, TotalCatalog: len(models), Matched: len(filtered), Refreshed: query.Refresh, QueryCapabilities: capabilities}
+	if query.CheckAccess {
+		page.ModelAccess = access
+		page.AccessChecked = accessErr == nil
+		if !accessCheckedAt.IsZero() {
+			checkedAt := accessCheckedAt.UTC()
+			page.AccessCheckedAt = &checkedAt
+		}
+		if accessErr != nil {
+			page.AccessError = llmReadinessReason(accessErr)
+		}
+		for _, model := range models {
+			observation, ok := access[model.ID]
+			if !ok {
+				continue
+			}
+			switch observation.State {
+			case LLMModelAccessAvailable:
+				page.AccessAvailable++
+			case LLMModelAccessUnavailable:
+				page.AccessUnavailable++
+			default:
+				page.AccessUnknown++
+			}
+		}
+	}
 	if query.CountOnly {
 		page.Sort = normalizedSortForResult(query)
 		return page, nil

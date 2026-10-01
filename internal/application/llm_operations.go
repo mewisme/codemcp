@@ -40,6 +40,11 @@ type LLMStatusResult struct {
 
 type LLMModelCatalogResult = LLMModelPage
 
+const (
+	LLMOllamaProviderID = string(llm.OllamaID)
+	LLMOllamaAutoModel  = llm.OllamaAutoModel
+)
+
 type LLMProbeResult struct {
 	ProviderID llm.ProviderID `json:"provider_id"`
 	Model      string         `json:"model,omitempty"`

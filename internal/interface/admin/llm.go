@@ -119,6 +119,9 @@ func parseLLMModelQuery(r *http.Request) (application.LLMModelQuery, error) {
 	if query.Refresh, err = parseOptionalBool(values.Get("refresh"), false); err != nil {
 		return application.LLMModelQuery{}, fmt.Errorf("invalid refresh value")
 	}
+	if query.CheckAccess, err = parseOptionalBool(values.Get("check_access"), false); err != nil {
+		return application.LLMModelQuery{}, fmt.Errorf("invalid check_access value")
+	}
 	if query.All, err = parseOptionalBool(values.Get("all"), false); err != nil {
 		return application.LLMModelQuery{}, fmt.Errorf("invalid all value")
 	}

@@ -3,7 +3,9 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -22,6 +24,64 @@ type llmBackendFixture struct {
 	models        []llm.Model
 	inferErr      error
 	discoverErr   error
+}
+
+type autoModelBackend struct {
+	models        []llm.Model
+	fail          map[string]error
+	inferModels   []string
+	discoverCalls int
+}
+
+type modelAccessBackend struct {
+	mu            sync.Mutex
+	models        []llm.Model
+	fail          map[string]error
+	inferModels   []string
+	discoverCalls int
+}
+
+func (backend *modelAccessBackend) Infer(_ context.Context, provider llm.Provider, _ llm.Request) (llm.Result, error) {
+	backend.mu.Lock()
+	backend.inferModels = append(backend.inferModels, provider.Model)
+	err := backend.fail[provider.Model]
+	backend.mu.Unlock()
+	if err != nil {
+		return llm.Result{}, err
+	}
+	return llm.Result{ProviderID: provider.ID, Model: provider.Model, Text: "OK"}, nil
+}
+
+func (backend *modelAccessBackend) DiscoverModels(context.Context, llm.Provider) ([]llm.Model, error) {
+	backend.mu.Lock()
+	backend.discoverCalls++
+	backend.mu.Unlock()
+	return cloneLLMModels(backend.models), nil
+}
+
+func (backend *modelAccessBackend) resetInferModels() {
+	backend.mu.Lock()
+	backend.inferModels = nil
+	backend.mu.Unlock()
+}
+
+func (backend *modelAccessBackend) snapshot() ([]string, int) {
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	return append([]string(nil), backend.inferModels...), backend.discoverCalls
+}
+
+func (backend *autoModelBackend) Infer(_ context.Context, provider llm.Provider, _ llm.Request) (llm.Result, error) {
+	backend.inferModels = append(backend.inferModels, provider.Model)
+	if err := backend.fail[provider.Model]; err != nil {
+		return llm.Result{}, err
+	}
+	return llm.Result{ProviderID: provider.ID, Model: provider.Model, Text: "OK"}, nil
+}
+
+func (backend *autoModelBackend) DiscoverModels(context.Context, llm.Provider) ([]llm.Model, error) {
+	backend.discoverCalls++
+	return cloneLLMModels(backend.models), nil
 }
 
 func (fixture *llmBackendFixture) Infer(_ context.Context, provider llm.Provider, _ llm.Request) (llm.Result, error) {
@@ -103,6 +163,149 @@ func TestCanonicalLLMOperationsBindStableResultsAndProtectedCredentials(t *testi
 	}
 	if backend.lastProvider != llm.OllamaID {
 		t.Fatalf("backend provider=%q", backend.lastProvider)
+	}
+}
+
+func TestOllamaAutoModelDiscoversFailsOverAndSticksToSuccessfulModel(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	backend := &autoModelBackend{
+		models: []llm.Model{{ID: "model-a"}, {ID: "model-b"}, {ID: "model-c"}},
+		fail: map[string]error{
+			"model-a": llm.NewError(llm.ErrorInvalidResponse, "response", "model-a returned malformed output"),
+		},
+	}
+	service := NewLLMServiceWithBackend(root, backend)
+	if _, err := service.SetProviderModel(t.Context(), string(llm.OllamaID), llm.OllamaAutoModel); err != nil {
+		t.Fatal(err)
+	}
+
+	request := llm.Request{Messages: []llm.Message{{Role: llm.RoleUser, Content: "test"}}}
+	result, err := service.InferenceFacade().Infer(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Model != "model-b" || !reflect.DeepEqual(backend.inferModels, []string{"model-a", "model-b"}) {
+		t.Fatalf("first auto inference result=%#v models=%v", result, backend.inferModels)
+	}
+	if backend.discoverCalls != 1 {
+		t.Fatalf("discover calls=%d want=1", backend.discoverCalls)
+	}
+
+	backend.inferModels = nil
+	result, err = service.InferenceFacade().Infer(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Model != "model-b" || !reflect.DeepEqual(backend.inferModels, []string{"model-b"}) {
+		t.Fatalf("sticky auto inference result=%#v models=%v", result, backend.inferModels)
+	}
+	if backend.discoverCalls != 1 {
+		t.Fatalf("cached discovery calls=%d want=1", backend.discoverCalls)
+	}
+
+	backend.inferModels = nil
+	if err := service.ProbeProvider(t.Context(), string(llm.OllamaID)); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(backend.inferModels, []string{"model-b"}) {
+		t.Fatalf("auto probe models=%v", backend.inferModels)
+	}
+}
+
+func TestOllamaAutoModelDoesNotFailOverProviderWideErrors(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	backend := &autoModelBackend{
+		models: []llm.Model{{ID: "model-a"}, {ID: "model-b"}},
+		fail: map[string]error{
+			"model-a": llm.NewError(llm.ErrorUnauthorized, "", "invalid credential"),
+		},
+	}
+	service := NewLLMServiceWithBackend(root, backend)
+	if _, err := service.SetProviderModel(t.Context(), string(llm.OllamaID), llm.OllamaAutoModel); err != nil {
+		t.Fatal(err)
+	}
+	_, err := service.InferenceFacade().Infer(t.Context(), llm.Request{Messages: []llm.Message{{Role: llm.RoleUser, Content: "test"}}})
+	if !llm.IsCategory(err, llm.ErrorUnauthorized) {
+		t.Fatalf("auto unauthorized err=%v", err)
+	}
+	if !reflect.DeepEqual(backend.inferModels, []string{"model-a"}) {
+		t.Fatalf("provider-wide error should not fail over: %v", backend.inferModels)
+	}
+}
+
+func TestOllamaModelAccessCheckUsesRealInferenceResultsAndCachesThem(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	backend := &modelAccessBackend{
+		models: []llm.Model{{ID: "model-a"}, {ID: "model-b"}, {ID: "model-c"}},
+		fail: map[string]error{
+			"model-a": llm.NewError(llm.ErrorProvider, "", "provider returned HTTP 402"),
+			"model-c": llm.NewError(llm.ErrorTimeout, "", "provider request timed out"),
+		},
+	}
+	service := NewLLMServiceWithBackend(root, backend)
+
+	page, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), LLMModelQuery{CheckAccess: true, All: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !page.AccessChecked || page.AccessAvailable != 1 || page.AccessUnavailable != 1 || page.AccessUnknown != 1 {
+		t.Fatalf("access summary=%#v", page)
+	}
+	if got := page.ModelAccess["model-a"]; got.State != LLMModelAccessUnavailable || got.ErrorCategory != llm.ErrorProvider || !strings.Contains(got.Reason, "402") {
+		t.Fatalf("model-a access=%#v", got)
+	}
+	if got := page.ModelAccess["model-b"]; got.State != LLMModelAccessAvailable {
+		t.Fatalf("model-b access=%#v", got)
+	}
+	if got := page.ModelAccess["model-c"]; got.State != LLMModelAccessUnknown || got.ErrorCategory != llm.ErrorTimeout {
+		t.Fatalf("model-c access=%#v", got)
+	}
+	firstModels, firstDiscoveries := backend.snapshot()
+	if len(firstModels) != 3 || firstDiscoveries != 1 {
+		t.Fatalf("first access scan models=%v discoveries=%d", firstModels, firstDiscoveries)
+	}
+
+	if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), LLMModelQuery{CheckAccess: true, All: true}); err != nil {
+		t.Fatal(err)
+	}
+	secondModels, secondDiscoveries := backend.snapshot()
+	if len(secondModels) != 3 || secondDiscoveries != 1 {
+		t.Fatalf("cached access scan models=%v discoveries=%d", secondModels, secondDiscoveries)
+	}
+
+	if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), LLMModelQuery{CheckAccess: true, Refresh: true, All: true}); err != nil {
+		t.Fatal(err)
+	}
+	thirdModels, thirdDiscoveries := backend.snapshot()
+	if len(thirdModels) != 6 || thirdDiscoveries != 2 {
+		t.Fatalf("refreshed access scan models=%v discoveries=%d", thirdModels, thirdDiscoveries)
+	}
+}
+
+func TestOllamaAutoUsesAccessCheckToSkipUnavailableModels(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	backend := &modelAccessBackend{
+		models: []llm.Model{{ID: "paid-model"}, {ID: "free-model"}, {ID: "backup-model"}},
+		fail: map[string]error{
+			"paid-model": llm.NewError(llm.ErrorProvider, "", "provider returned HTTP 402"),
+		},
+	}
+	service := NewLLMServiceWithBackend(root, backend)
+	if _, err := service.SetProviderModel(t.Context(), string(llm.OllamaID), llm.OllamaAutoModel); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ModelCatalog(t.Context(), string(llm.OllamaID), LLMModelQuery{CheckAccess: true, All: true}); err != nil {
+		t.Fatal(err)
+	}
+	backend.resetInferModels()
+
+	result, err := service.InferenceFacade().Infer(t.Context(), llm.Request{Messages: []llm.Message{{Role: llm.RoleUser, Content: "test"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	models, _ := backend.snapshot()
+	if result.Model != "free-model" || !reflect.DeepEqual(models, []string{"free-model"}) {
+		t.Fatalf("auto result=%#v attempted=%v", result, models)
 	}
 }
 

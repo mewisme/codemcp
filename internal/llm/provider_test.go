@@ -18,14 +18,14 @@ func TestDefaultCatalogLocksCoreIdentityAndSelection(t *testing.T) {
 		t.Fatalf("providers = %#v", value.Providers)
 	}
 	ollama := value.Providers[0]
-	if ollama.ID != OllamaID || ollama.CoreKind != CoreOllama || ollama.BaseURL != OllamaCloudBaseURL || ollama.Protocol != ProtocolOpenAI || ollama.AuthMode != AuthBearer || ollama.Discovery != DiscoveryOllamaTags {
+	if ollama.ID != OllamaID || ollama.CoreKind != CoreOllama || ollama.BaseURL != OllamaCloudBaseURL || ollama.Protocol != ProtocolOpenAI || ollama.AuthMode != AuthBearer || ollama.Discovery != DiscoveryOllamaTags || ollama.Capabilities == nil || !ollama.Capabilities.StructuredOutput {
 		t.Fatalf("ollama = %#v", ollama)
 	}
 }
 
 func TestOllamaCoreDefaultsToCloudWithoutChangingActiveProvider(t *testing.T) {
 	provider := DefaultOllama()
-	if provider.BaseURL != OllamaCloudBaseURL || provider.AuthMode != AuthBearer || provider.Discovery != DiscoveryOllamaTags || provider.CoreKind != CoreOllama {
+	if provider.BaseURL != OllamaCloudBaseURL || provider.AuthMode != AuthBearer || provider.Discovery != DiscoveryOllamaTags || provider.CoreKind != CoreOllama || provider.Capabilities == nil || !provider.Capabilities.StructuredOutput {
 		t.Fatalf("Ollama defaults=%#v", provider)
 	}
 	catalog := DefaultCatalog()

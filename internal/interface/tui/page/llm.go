@@ -236,6 +236,13 @@ func (page *LLMPage) Update(message tea.Msg) (Model, tea.Cmd) {
 			return page, func() tea.Msg { return NavigateMsg{Path: []string{"llm", msg.Row.ID}} }
 		}
 		if page.section == "models" {
+			if access, ok := page.catalog.ModelAccess[msg.Row.ID]; ok && access.State == application.LLMModelAccessUnavailable {
+				page.notice = "Model unavailable"
+				if strings.TrimSpace(access.Reason) != "" {
+					page.notice += ": " + access.Reason
+				}
+				return page, nil
+			}
 			return page, page.setModelCmd(msg.Row.ID)
 		}
 		return page, nil
@@ -730,6 +737,9 @@ func (page *LLMPage) loadModelsCmd(refresh bool) tea.Cmd {
 	if query.Limit <= 0 {
 		query.Limit = 25
 	}
+	if id == application.LLMOllamaProviderID {
+		query.CheckAccess = true
+	}
 	query.Refresh = refresh
 	return func() tea.Msg {
 		result, err := page.service.ModelCatalog(page.ctx, id, query)
@@ -753,7 +763,16 @@ func (page *LLMPage) finishModels(msg llmModelsMsg) tea.Cmd {
 	if selected == "" {
 		selected = page.restoreSelected
 	}
-	rows := make([]component.Row, 0, len(msg.page.Models))
+	rows := make([]component.Row, 0, len(msg.page.Models)+1)
+	if page.resourceID == application.LLMOllamaProviderID {
+		rows = append(rows, component.Row{
+			ID:          application.LLMOllamaAutoModel,
+			Title:       "Auto",
+			Description: "Automatically choose and switch Ollama models",
+			Meta:        "dynamic",
+			Search:      "auto automatic dynamic choose switch model",
+		})
+	}
 	for _, model := range msg.page.Models {
 		description := model.Name
 		if description == "" {
@@ -776,6 +795,9 @@ func (page *LLMPage) finishModels(msg llmModelsMsg) tea.Cmd {
 		if model.Rank != nil {
 			metaParts = append(metaParts, fmt.Sprintf("%s #%d", model.Rank.Kind, model.Rank.Position))
 		}
+		if access, ok := msg.page.ModelAccess[model.ID]; ok {
+			metaParts = append(metaParts, string(access.State))
+		}
 		searchParts := []string{model.ID, model.Name, model.Author, strings.Join(model.Capabilities, " "), strings.Join(model.SupportedParameters, " "), strings.Join(model.InputModalities, " "), strings.Join(model.OutputModalities, " ")}
 		if model.Ollama != nil {
 			searchParts = append(searchParts, model.Ollama.Family, strings.Join(model.Ollama.Families, " "), model.Ollama.Format, model.Ollama.QuantizationLevel, model.Ollama.ParameterSize)
@@ -789,6 +811,12 @@ func (page *LLMPage) finishModels(msg llmModelsMsg) tea.Cmd {
 	page.restoreSelected = ""
 	page.browser.SetHelpExpanded(help)
 	page.notice = fmt.Sprintf("%d matched · %d returned · offset %d", msg.page.Matched, msg.page.Returned, msg.page.Offset)
+	if page.resourceID == application.LLMOllamaProviderID {
+		page.notice += fmt.Sprintf(" · access %d/%d available · auto available", msg.page.AccessAvailable, msg.page.TotalCatalog)
+		if msg.page.AccessError != "" {
+			page.notice += " · " + msg.page.AccessError
+		}
+	}
 	page.resize()
 	return nil
 }

@@ -372,7 +372,7 @@ func (ui *Interface) callbackStateIsStale(ctx context.Context, state ActionState
 }
 
 func (ui *Interface) staleStateScreen(owner ViewOwner, state ActionState) (Screen, error) {
-	back, err := ui.backButton(owner, state.Back)
+	back, err := ui.operationBackButton(owner, state)
 	if err != nil {
 		return Screen{}, err
 	}
@@ -720,7 +720,7 @@ func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, op
 	if err != nil {
 		return ErrorScreen(operationErr), err
 	}
-	back, err := ui.backButton(owner, state.Back)
+	back, err := ui.operationBackButton(owner, state)
 	if err != nil {
 		return ErrorScreen(operationErr), err
 	}
@@ -741,7 +741,8 @@ func (ui *Interface) operationErrorScreen(owner ViewOwner, state ActionState, op
 }
 
 func (ui *Interface) inputPromptScreen(owner ViewOwner, state ActionState, title, prompt string) (Screen, error) {
-	cancel, err := ui.cancelButton(owner, state.Back)
+	target := operationBackState(state)
+	cancel, err := ui.stateButton(owner, "Cancel", CallbackCancel, target)
 	if err != nil {
 		return Screen{}, err
 	}
@@ -758,7 +759,7 @@ func (ui *Interface) inputFailureScreen(owner ViewOwner, state ActionState, inpu
 	if err != nil {
 		return ErrorScreen(inputErr), err
 	}
-	back, err := ui.backButton(owner, state.Back)
+	back, err := ui.operationBackButton(owner, state)
 	if err != nil {
 		return ErrorScreen(inputErr), err
 	}
@@ -844,17 +845,24 @@ func (ui *Interface) terminalOperationKeyboard(owner ViewOwner, state ActionStat
 }
 
 func (ui *Interface) operationBackButton(owner ViewOwner, state ActionState) (Button, error) {
-	parentID := strings.TrimSpace(state.ParentID)
-	if parentID != "" {
-		return ui.stateButton(owner, "Back", CallbackBack, ActionState{Route: state.Back, ResourceID: parentID})
+	return ui.stateButton(owner, "Back", CallbackBack, operationBackState(state))
+}
+
+func operationBackState(state ActionState) ActionState {
+	route := state.Back
+	if route == "" {
+		route = RouteHome
 	}
-	switch state.Back {
-	case RouteUpstream, RouteWorkspace, RouteCodeGraphWS, RouteManagedTunnel:
+	if parentID := strings.TrimSpace(state.ParentID); parentID != "" {
+		return ActionState{Route: route, ResourceID: parentID}
+	}
+	switch route {
+	case RouteUpstream, RouteWorkspace, RouteCodeGraphWS, RouteManagedTunnel, RouteLLMProvider, RouteLLMModels:
 		if resourceID := strings.TrimSpace(state.ResourceID); resourceID != "" {
-			return ui.stateButton(owner, "Back", CallbackBack, ActionState{Route: state.Back, ResourceID: resourceID})
+			return ActionState{Route: route, ResourceID: resourceID}
 		}
 	}
-	return ui.backButton(owner, state.Back)
+	return ActionState{Route: route}
 }
 
 func (ui *Interface) stateButton(owner ViewOwner, label string, action CallbackAction, state ActionState) (Button, error) {

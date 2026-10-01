@@ -13,6 +13,7 @@ import (
 const (
 	OllamaLocalBaseURL = "http://localhost:11434/v1"
 	OllamaCloudBaseURL = "https://ollama.com/v1"
+	OllamaAutoModel    = "auto"
 )
 
 type OllamaMode string

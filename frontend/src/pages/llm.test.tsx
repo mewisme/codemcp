@@ -65,7 +65,7 @@ describe("LLMPage", () => {
     expect(screen.getAllByText("sk-…abcd").length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole("button", { name: "Manage provider" }))
-    await waitFor(() => expect(adminApi.llmModels).toHaveBeenCalledWith("ollama", { limit: 25 }))
+    await waitFor(() => expect(adminApi.llmModels).toHaveBeenCalledWith("ollama", { limit: 25, check_access: true }))
     expect((await screen.findAllByText("qwen3:8b")).length).toBeGreaterThan(0)
     expect(screen.getByLabelText("Search")).toBeInTheDocument()
     expect(screen.getByLabelText("Family")).toBeInTheDocument()
@@ -95,6 +95,7 @@ describe("LLMPage", () => {
       offset: 0,
       limit: 25,
       refresh: false,
+      check_access: true,
     })))
 
     const keyInput = screen.getByLabelText("New API key") as HTMLInputElement

@@ -317,6 +317,7 @@ function ProviderDetail({ provider, busy, open, onOpenChange, onMutate, onEdit, 
         offset,
         limit: modelLimit,
         refresh,
+        check_access: provider.id === "ollama",
       })
       setCatalog(result)
       setModelOffset(result.offset)
@@ -330,7 +331,7 @@ function ProviderDetail({ provider, busy, open, onOpenChange, onMutate, onEdit, 
 
   useEffect(() => {
     let cancelled = false
-    adminApi.llmModels(provider.id, { limit: modelLimit }).then((result) => {
+    adminApi.llmModels(provider.id, { limit: modelLimit, check_access: provider.id === "ollama" }).then((result) => {
       if (!cancelled) { setCatalog(result); setModelOffset(result.offset); setModelsError("") }
     }).catch((value) => { if (!cancelled) { setCatalog(null); setModelsError(errorText(value)) } }).finally(() => { if (!cancelled) setModelsBusy(false) })
     return () => { cancelled = true }
@@ -408,14 +409,27 @@ function ProviderDetail({ provider, busy, open, onOpenChange, onMutate, onEdit, 
             <div className="flex items-end"><Button variant="outline" disabled={modelsBusy} onClick={() => { setModelOffset(0); void loadModels(false, 0) }}>Apply model query</Button></div>
           </div>
           {catalog ? <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
-            <span>{catalog.matched} matched / {catalog.total_catalog} catalog · {catalog.returned ? `${catalog.offset + 1}-${catalog.offset + catalog.returned}` : "0"}</span>
+            <span>
+              {catalog.matched} matched / {catalog.total_catalog} catalog · {catalog.returned ? `${catalog.offset + 1}-${catalog.offset + catalog.returned}` : "0"}
+              {catalog.model_access ? ` · ${catalog.access_available || 0} available · ${catalog.access_unavailable || 0} unavailable · ${catalog.access_unknown || 0} unknown` : ""}
+            </span>
             <span>{catalog.rank_basis || catalog.recommendation_basis || "Catalog order"}</span>
           </div> : null}
+          {catalog?.access_error ? <PageError title="Model access check incomplete" message={catalog.access_error} /> : null}
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <div>
               <Label htmlFor={`llm-model-${provider.id}`}>Model ID</Label>
               <Input id={`llm-model-${provider.id}`} list={`llm-models-${provider.id}`} value={model} onChange={(event) => setModel(event.target.value)} />
-              <datalist id={`llm-models-${provider.id}`}>{models.map((item) => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}</datalist>
+              <datalist id={`llm-models-${provider.id}`}>
+                {provider.id === "ollama" ? <option value="auto">Auto — automatically choose and switch models</option> : null}
+                {models
+                  .filter((item) => catalog?.model_access?.[item.id]?.state !== "unavailable")
+                  .map((item) => {
+                    const access = catalog?.model_access?.[item.id]?.state
+                    const label = item.name || item.id
+                    return <option key={item.id} value={item.id}>{access ? `${label} — ${access}` : label}</option>
+                  })}
+              </datalist>
             </div>
             <Button className="self-end" disabled={busy || !model.trim() || model.trim() === (provider.model || "")} onClick={() => void onMutate(() => adminApi.setLLMProviderModel(provider.id, model.trim()))}>Set model</Button>
           </div>

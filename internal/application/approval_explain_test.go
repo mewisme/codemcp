@@ -112,6 +112,9 @@ func TestApprovalExplainUsesOnlySanitizedExactCommandAndPreservesRequestAuthorit
 	if len(modelRequest.Messages) != 1 {
 		t.Fatalf("messages=%#v", modelRequest.Messages)
 	}
+	if len(modelRequest.ResponseSchema) == 0 || !json.Valid(modelRequest.ResponseSchema) {
+		t.Fatalf("structured response schema=%s", modelRequest.ResponseSchema)
+	}
 	combined := modelRequest.Instructions + "\n" + modelRequest.Messages[0].Content
 	for _, forbidden := range []string{secret, "AGENT_TITLE_MUST_NOT_BE_MODEL_INPUT", "AGENT_GUARD_REASON_MUST_NOT_BE_MODEL_INPUT", "ARGUMENT_COMMAND_MUST_NOT_BE_MODEL_INPUT", "ARGUMENT_TITLE_MUST_NOT_BE_MODEL_INPUT"} {
 		if strings.Contains(combined, forbidden) {
@@ -155,6 +158,31 @@ func TestApprovalExplainUsesOnlySanitizedExactCommandAndPreservesRequestAuthorit
 	}
 	if !foundReady {
 		t.Fatal("ready lifecycle event not published")
+	}
+}
+
+func TestParseApprovalExplanationExtractsJSONFromUnstructuredFallback(t *testing.T) {
+	base := validApprovalExplainResult()
+	for name, text := range map[string]string{
+		"fenced":   "~~~json\n" + base.Text + "\n~~~",
+		"prefixed": "Explanation follows:\n" + base.Text + "\nEnd.",
+	} {
+		t.Run(name, func(t *testing.T) {
+			result := base
+			result.Text = text
+			parsed, err := parseApprovalExplanation(result, time.Now())
+			if err != nil || parsed.Summary == "" || parsed.Model != base.Model {
+				t.Fatalf("parsed=%#v err=%v", parsed, err)
+			}
+		})
+	}
+}
+
+func TestParseApprovalExplanationDoesNotDowngradeInvalidStructuredPayloadToText(t *testing.T) {
+	result := validApprovalExplainResult()
+	result.Structured = json.RawMessage(`{"summary":"ok","unexpected":true}`)
+	if _, err := parseApprovalExplanation(result, time.Now()); err == nil {
+		t.Fatal("invalid structured payload unexpectedly fell back to text")
 	}
 }
 

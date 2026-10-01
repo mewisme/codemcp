@@ -19,7 +19,10 @@ type LLMService struct {
 	store       *llm.Store
 	modelCache  *llmModelCatalogCache
 	enrichCache *llmModelEnrichmentCache
+	accessCache *llmModelAccessCache
 	backend     LLMProviderBackend
+	autoModelMu sync.RWMutex
+	autoModels  map[llm.ProviderID]string
 	readinessMu sync.RWMutex
 	readiness   map[llm.ProviderID]llmReadinessObservation
 }
@@ -43,7 +46,9 @@ func NewLLMServiceWithBackend(root string, backend LLMProviderBackend) *LLMServi
 		store:       llm.NewStore(root),
 		modelCache:  newLLMModelCatalogCache(),
 		enrichCache: newLLMModelEnrichmentCache(),
+		accessCache: newLLMModelAccessCache(),
 		backend:     backend,
+		autoModels:  map[llm.ProviderID]string{},
 		readiness:   map[llm.ProviderID]llmReadinessObservation{},
 	}
 }
