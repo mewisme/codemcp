@@ -58,6 +58,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"oslock":                 "platform",
 	"outboundpolicy":         "domain",
 	"patch":                  "domain",
+	"plan":                   "domain",
 	"projectcontext":         "application",
 	"productadapter":         "application",
 	"rules":                  "domain",

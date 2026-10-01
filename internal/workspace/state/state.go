@@ -57,6 +57,7 @@ func (s Store) RuntimeLockPath() string {
 func (s Store) RulesRoot() string  { return filepath.Join(s.Root(), "rules") }
 func (s Store) SkillsRoot() string { return filepath.Join(s.Root(), "skills") }
 func (s Store) PromptRoot() string { return filepath.Join(s.Root(), "prompts") }
+func (s Store) PlansRoot() string  { return filepath.Join(s.Root(), "plans") }
 
 func (s Store) Join(parts ...string) (string, error) {
 	root := s.Root()

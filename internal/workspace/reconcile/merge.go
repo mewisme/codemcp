@@ -14,6 +14,7 @@ import (
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/memory"
+	plandoc "go.mewis.me/codemcp/internal/plan"
 	"go.mewis.me/codemcp/internal/rules"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/skills"
@@ -81,6 +82,9 @@ func MergeDuplicateState(request workspace.DuplicateMergeRequest) error {
 	if err := mergeValidatedTree("prompts", registeredStore.PromptRoot(), destinationStore.PromptRoot(), outputStore.PromptRoot(), instructioncontext.ValidateWorkspacePromptState, jsonEquivalent); err != nil {
 		return err
 	}
+	if err := mergeValidatedTree("plans", registeredStore.PlansRoot(), destinationStore.PlansRoot(), outputStore.PlansRoot(), plandoc.ValidateWorkspaceState, plandoc.EquivalentDocuments); err != nil {
+		return err
+	}
 	if err := agentcompletion.MergeWorkspaceState(registeredStore, destinationStore, outputStore, request.WorkspaceID); err != nil {
 		return fmt.Errorf("%w: completion history: %v", ErrDurableStateConflict, err)
 	}
@@ -135,6 +139,7 @@ func classifyLocalTree(root string) error {
 		"rules":          "durable-user",
 		"skills":         "durable-user",
 		"prompts":        "durable-user",
+		"plans":          "durable-user",
 		"checkpoints":    "durable-history",
 		"state":          "typed-state",
 		"runtime":        "transient-runtime",

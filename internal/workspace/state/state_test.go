@@ -50,7 +50,7 @@ func TestLayoutPathsStayUnderWorkspaceLocalRootWithoutEagerCreation(t *testing.T
 	paths := []string{
 		store.IdentityPath(), store.ConfigPath(), store.StateRoot(), store.MemoryRoot(),
 		store.CheckpointRoot(), store.CacheRoot(), store.RuntimeRoot(), store.RuntimeLockPath(),
-		store.RulesRoot(), store.SkillsRoot(), store.PromptRoot(),
+		store.RulesRoot(), store.SkillsRoot(), store.PromptRoot(), store.PlansRoot(),
 	}
 	for _, path := range paths {
 		if !contained(store.Root(), path) || !contained(workspaceRoot, path) {
