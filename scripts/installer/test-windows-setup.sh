@@ -131,6 +131,8 @@ grep -Fq 'SetOutPath "$PLUGINSDIR"' "$template" || fail "setup does not use temp
 grep -Fq 'File /oname=cm.exe "${BINARY_PATH}"' "$template" || fail "setup does not embed only canonical cm.exe"
 # shellcheck disable=SC2016
 grep -Fq 'ExecWait '\''"$PLUGINSDIR\cm.exe" install'\''' "$template" || fail "setup does not invoke canonical install"
+# shellcheck disable=SC2016
+grep -Fq 'SetEnvironmentVariable(t, t) i("CM_INSTALL_DIR", "$InstallRoot").r1' "$template" || fail "setup does not pass the selected managed root to cm install"
 grep -Fq 'HKCU "Environment" "Path"' "$template" || fail "setup PATH registration is not user-scoped"
 # shellcheck disable=SC2016
 grep -Fq '$PROFILE\.cm' "$template" || fail "setup PATH registration drifted from canonical Windows layout"

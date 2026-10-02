@@ -31,6 +31,23 @@ func TestRootCommandWithoutArgumentsPrintsHelp(t *testing.T) {
 	}
 }
 
+func TestRootCommandWithOnlyPersistentFlagsPrintsHelp(t *testing.T) {
+	root := newRootCommand()
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"--config-dir", t.TempDir()})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	help := output.String()
+	for _, required := range []string{"Usage:\n  cm [command]", "serve", "Start the MCP server"} {
+		if !strings.Contains(help, required) {
+			t.Fatalf("root invocation with persistent flags missing help content %q:\n%s", required, help)
+		}
+	}
+}
+
 func TestPublicCLIIdentityUsesOnlyCodeMCPAndCM(t *testing.T) {
 	root := newRootCommand()
 	var output bytes.Buffer

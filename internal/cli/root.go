@@ -302,7 +302,9 @@ func executeCommand(command *cobra.Command) error {
 	recordCLIProductUsage(executionContext, executed, err, started)
 	command.SetContext(originalContext)
 	if err != nil {
-		ensureCommandPresentationFallback(executed)
+		if !renderPresentationExemptFailure(executed, err) {
+			ensureCommandPresentationFallback(executed)
+		}
 		logCommandFailure(executed, err, started)
 		closeCommandProgress(executed, err)
 		closeCommandLogger(executed)

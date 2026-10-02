@@ -328,6 +328,11 @@ jobs:
         shell: pwsh
         run: ./scripts/installer/test-windows-setup.ps1
 
+      - name: Normalize macOS temp root
+        if: needs.changes.outputs.full == 'true' && runner.os == 'macOS'
+        shell: bash
+        run: echo "TMPDIR=/private/tmp" >> "$GITHUB_ENV"
+
       - name: Local install smoke
         if: needs.changes.outputs.full == 'true'
         run: make install-local ARGS="--skip-frontend"

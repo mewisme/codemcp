@@ -803,14 +803,6 @@
     "rule_id": "G304",
     "severity": "MEDIUM",
     "confidence": "HIGH",
-    "file": "internal/instructioncontext/imports.go",
-    "details": "Potential file inclusion via variable",
-    "code": "}\n\t\tdata, err := os.ReadFile(resolved)\n\t\tif err != nil {"
-  },
-  {
-    "rule_id": "G304",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
     "file": "internal/instructioncontext/memory.go",
     "details": "Potential file inclusion via variable",
     "code": "}\n\tdata, err := os.ReadFile(path)\n\tif err != nil {"
@@ -1229,14 +1221,6 @@
     "confidence": "HIGH",
     "file": "internal/releaseverify/verify.go",
     "details": "Potential file inclusion via variable",
-    "code": "func verifyMigrationNotes(root string) error {\n\tdata, err := os.ReadFile(filepath.Join(root, \"docs\", \"migration-from-0.2.24.md\"))\n\tif err != nil {"
-  },
-  {
-    "rule_id": "G304",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
-    "file": "internal/releaseverify/verify.go",
-    "details": "Potential file inclusion via variable",
     "code": "func verifyModulePath(root string) error {\n\tdata, err := os.ReadFile(filepath.Join(root, \"go.mod\"))\n\tif err != nil {"
   },
   {
@@ -1582,22 +1566,6 @@
     "file": "scripts/generate/product-presentation/main.go",
     "details": "Expect WriteFile permissions to be 0600 or less",
     "code": "}\n\tif err := os.WriteFile(path, data, 0o644); err != nil {\n\t\tfatal(err)"
-  },
-  {
-    "rule_id": "G703",
-    "severity": "HIGH",
-    "confidence": "HIGH",
-    "file": "internal/instructioncontext/imports.go",
-    "details": "Path traversal via taint analysis",
-    "code": "}\n\t\tdata, err := os.ReadFile(resolved)\n\t\tif err != nil {"
-  },
-  {
-    "rule_id": "G703",
-    "severity": "HIGH",
-    "confidence": "HIGH",
-    "file": "internal/instructioncontext/imports.go",
-    "details": "Path traversal via taint analysis",
-    "code": "}\n\t\tinfo, err := os.Lstat(resolved)\n\t\tif err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {"
   },
   {
     "rule_id": "G703",

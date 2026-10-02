@@ -46,7 +46,7 @@ func TestStatusReportsManagedRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, expected := range []string{"✓ CodeMCP is running", "Runtime", "session", "run_status", "managed", "system · systemd", "service", "cm-system-test", "Endpoints", "Config", "mcp off · admin off", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected", "tunnel_status"} {
+	for _, expected := range []string{"✓ CodeMCP is running", "Runtime", "session", "run_status", "managed", "system · " + runtimeBackendLabel("system"), "service", "cm-system-test", "Endpoints", "Config", "mcp off · admin off", "Tunnel", "✓ OpenAI Secure MCP Tunnel is connected", "tunnel_status"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("status missing %q: %s", expected, text)
 		}

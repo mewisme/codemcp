@@ -37,6 +37,10 @@ try {
   run(["install", "--force"], { quiet: true })
   run(["install", "--force"], { quiet: true })
   await verifySelfInstall()
+  const rootHelp = run([], { quiet: true })
+  if (!rootHelp.includes("Usage:\n  cm [command]") || !/\bserve\s+Start the MCP server/.test(rootHelp)) {
+    fail(`bare cm did not render root help:\n${rootHelp}`)
+  }
   run(["--help"])
   const tuiHelp = run(["tui", "--help"], { quiet: true })
   if (!tuiHelp.includes("Open the full-screen CodeMCP command center")) fail(`tui help is missing command-center guidance:\n${tuiHelp}`)

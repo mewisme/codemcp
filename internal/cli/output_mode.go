@@ -82,6 +82,13 @@ func commandResultWriter(cmd *cobra.Command) io.Writer {
 	return cmd.OutOrStdout()
 }
 
+func commandErrorWriter(cmd *cobra.Command) io.Writer {
+	if cmd == nil {
+		return io.Discard
+	}
+	return cmd.ErrOrStderr()
+}
+
 func commandProcessIO(cmd *cobra.Command) (io.Reader, io.Writer, io.Writer) {
 	if cmd == nil {
 		return nil, io.Discard, io.Discard

@@ -24,6 +24,25 @@ func TestTUICommandRequiresTerminal(t *testing.T) {
 	}
 }
 
+func TestRootTUICommandReportsNonTerminalFailure(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	root := newRootCommand()
+	root.SetIn(&bytes.Buffer{})
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"tui"})
+	if err := executeCommand(root); err == nil || !strings.Contains(err.Error(), "requires terminal stdin and stdout") {
+		t.Fatalf("tui non-terminal error = %v", err)
+	}
+	if got := stderr.String(); !strings.Contains(got, "cm tui requires terminal stdin and stdout") {
+		t.Fatalf("tui non-terminal stderr = %q", got)
+	} else if strings.Contains(got, "\x1b[") {
+		t.Fatalf("tui non-terminal stderr contains ANSI: %q", got)
+	}
+}
+
 func TestTUICommandRejectsUnknownDeepLinkBeforeLaunch(t *testing.T) {
 	command := tuiCommand()
 	command.SetIn(&bytes.Buffer{})

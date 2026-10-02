@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -148,6 +149,14 @@ func commandPresentationTitle(cmd *cobra.Command) string {
 
 func commandPresentationExempt(cmd *cobra.Command) bool {
 	return cmd != nil && strings.TrimSpace(cmd.Annotations[presentationExemptAnnotation]) != ""
+}
+
+func renderPresentationExemptFailure(cmd *cobra.Command, err error) bool {
+	if cmd == nil || err == nil || strings.TrimSpace(cmd.Annotations[presentationExemptAnnotation]) != "alternate-ui" {
+		return false
+	}
+	_, _ = fmt.Fprintln(commandErrorWriter(cmd), sanitizedCommandError(err))
+	return true
 }
 
 func defaultCommandPresentationTitle(cmd *cobra.Command) string {
