@@ -160,9 +160,6 @@ func newWorkspaceContextSourceTree(result projectcontext.Result, isDark bool) tr
 		userSources.Child(providerNode)
 	}
 	root.Child(userSources)
-	if strings.TrimSpace(context.GlobalContext) != "" {
-		root.Child(tree.Root(workspaceContextPreviewNode{Kind: workspaceContextPreviewContent, Resource: "global-context", Content: context.GlobalContext, Label: fmt.Sprintf("Global Context · %s", formatInstructionBytes(len([]byte(context.GlobalContext))))}))
-	}
 	if context.AutoMemory.Loaded {
 		label := fmt.Sprintf("Auto Memory · %d entries · %s", context.AutoMemory.Entries, formatInstructionBytes(context.AutoMemory.Bytes))
 		if context.AutoMemory.Truncated {
@@ -171,7 +168,6 @@ func newWorkspaceContextSourceTree(result projectcontext.Result, isDark bool) tr
 		root.Child(tree.Root(workspaceContextPreviewNode{Kind: workspaceContextPreviewContent, Resource: "auto-memory", Content: context.AutoMemory.Content, Label: label}))
 	}
 	root.Child(workspaceContextSectionTree("Project/User Instruction Files", append(append([]instructioncontext.Section(nil), context.ProjectMemory.Sections...), context.ProjectMemory.Imports...)))
-	root.Child(workspaceContextRuleTree("Global Rules", context.GlobalRules))
 	root.Child(workspaceContextRuleTree("Rules", context.Rules))
 	root.Child(workspaceContextSkillTree(context.Skills))
 	model := tree.New(root, 80, 20)
@@ -470,6 +466,33 @@ func workspaceContextPreviewSummary(result projectcontext.Result, width int) str
 	return component.WrapContent(strings.Join(parts, " · "), max(1, width))
 }
 
+func providerLabel(provider string) string {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "agents":
+		return "Agents"
+	case "claude":
+		return "Claude"
+	case "claudes":
+		return "Claudes"
+	case "cursor":
+		return "Cursor"
+	case "codex":
+		return "Codex"
+	default:
+		return provider
+	}
+}
+
+func formatInstructionBytes(value int) string {
+	if value < 1024 {
+		return fmt.Sprintf("%d B", value)
+	}
+	if value < 10240 {
+		return fmt.Sprintf("%.1f KB", float64(value)/1024)
+	}
+	return fmt.Sprintf("%.0f KB", float64(value)/1024)
+}
+
 func (page *WorkspacePage) workspaceContextSourceViewerHeader(width int) string {
 	state := page.contextPreview
 	if state == nil || state.sourceViewer == nil {
@@ -552,11 +575,6 @@ func workspaceContextSourceContent(result projectcontext.Result, path string) (s
 	for _, section := range append(append([]instructioncontext.Section(nil), result.InstructionContext.ProjectMemory.Sections...), result.InstructionContext.ProjectMemory.Imports...) {
 		if filepath.Clean(section.Path) == clean {
 			return section.Content, nil
-		}
-	}
-	for _, rule := range result.InstructionContext.GlobalRules {
-		if filepath.Clean(rule.Path) == clean {
-			return rule.Content, nil
 		}
 	}
 	for _, rule := range result.InstructionContext.Rules {

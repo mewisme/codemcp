@@ -54,15 +54,6 @@ func TestBrowserPageHintsStayOnBottomRow(t *testing.T) {
 	assertPageBottomHint(t, "runtime with feedback", runtimeView, height, "r refresh")
 	assertPageTitleNotice(t, "runtime", runtimeView, "Runtime & System", runtimePage.notice)
 
-	instructionPage, _ := newTestInstructionPage(t)
-	instructionView := instructionPage.View(width, height)
-	assertPageHeaderGap(t, "instruction", instructionView)
-	rulesPage, err := NewInstructionRoute(t.Context(), "rules")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertPageBottomHint(t, "instruction rules", rulesPage.View(width, height), height, "? more")
-
 	workspacePage, err := NewWorkspaces(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)

@@ -34,14 +34,12 @@ func defaultActionRegistry() *action.Registry {
 		navigationAction("app.go.logs-exec", "Command Execution", Route{Kind: RouteLogsExec}, []string{"logs", "command", "execution", "exec", "output"}, capability.ExecutionFeed, capability.ExecutionStream),
 		navigationAction("app.go.logs-tools", "Tool Calls", Route{Kind: RouteLogsTools}, []string{"logs", "tools", "calls", "tool calls"}),
 		navigationAction("app.go.config", "Config", Route{Kind: RouteConfig}, []string{"config", "settings", "cfg", "telegram"}, capability.ConfigPath, capability.ConfigGet, capability.ConfigSnapshotRead, capability.TelegramSetup),
-		navigationAction("app.go.instruction", "Instruction", Route{Kind: RouteInstruction}, []string{"instruction", "instructions", "global", "context", "rules", "sources"}, capability.InstructionSettingsRead),
 		navigationAction("app.go.prompts", "Prompts", Route{Kind: RoutePrompts}, []string{"prompt", "prompts", "template"}, capability.PromptList, capability.PromptGet, capability.PromptCreate, capability.PromptUpdate, capability.PromptDelete),
 		navigationAction("app.go.runtime", "Runtime", Route{Kind: RouteRuntime}, []string{"runtime", "status", "service"}, capability.AuthStatus),
 		navigationAction("app.go.about", "About", Route{Kind: RouteAbout}, []string{"about", "version", "build", "uptime"}, capability.VersionAbout),
 		navigationAction("app.go.guide", "Guide", Route{Kind: RouteGuide}, []string{"guide", "help", "docs", "documentation"}),
 	}
 	actions = append(actions, guideActions()...)
-	actions = append(actions, instructionNavigationActions()...)
 	actions = append(actions, promptActions()...)
 	actions = append(actions, workspaceActions()...)
 	actions = append(actions, mcpActions()...)
@@ -445,28 +443,6 @@ func workspaceActions() []action.Action {
 		workspaceAction("workspace.container.delete", "Delete container", "Delete the current container without unregistering workspaces", []string{"workspace", "container", "delete"}, []string{"workspace", "container", "delete"}, tuipage.WorkspaceContainerDelete, true, true),
 		workspaceAction("workspace.container.add", "Add container members", "Edit workspace membership for the current container", []string{"workspace", "container", "add", "members"}, []string{"workspace", "container", "add"}, tuipage.WorkspaceContainerMembers, true, true),
 		workspaceAction("workspace.container.remove", "Remove container members", "Edit workspace membership for the current container", []string{"workspace", "container", "remove", "members"}, []string{"workspace", "container", "remove"}, tuipage.WorkspaceContainerMembers, true, true),
-	}
-}
-
-func instructionNavigationActions() []action.Action {
-	return []action.Action{
-		instructionNavigationAction("instruction.open.context", "Open Global Context", "Open managed global instruction context", "context", []string{"instruction", "global", "context"}),
-		editorNavigationAction("instruction.context.edit", "Edit Global Context", "Instruction", "Edit the canonical global instruction context", []string{"instruction", "global", "context", "edit"}, []string{"instructions", "set"}, func(ctx action.Context) bool {
-			return ctx.Route == string(RouteInstruction) && (ctx.Section == "" || ctx.Section == "context")
-		}, func(action.Context) Route { return Route{Kind: RouteInstruction, Section: "context", Action: "edit"} }),
-		instructionNavigationAction("instruction.open.rules", "Open Global Rules", "Open managed global instruction rules", "rules", []string{"instruction", "global", "rules"}),
-		instructionNavigationAction("instruction.open.sources", "Open Instruction Sources", "Open detected user-level instruction sources and source policy", "sources", []string{"instruction", "sources", "policy", "agents", "claude"}),
-	}
-}
-
-func instructionNavigationAction(id, title, description, section string, keywords []string) action.Action {
-	return action.Action{
-		ID: id, Title: title, Category: "Instruction", Description: description, Keywords: keywords, Scope: action.ScopeGlobal,
-		Run: func(context.Context, action.Context) tea.Cmd {
-			return func() tea.Msg {
-				return navigateMsg{route: Route{Kind: RouteInstruction, Section: section}, sibling: true}
-			}
-		},
 	}
 }
 

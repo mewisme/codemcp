@@ -214,6 +214,24 @@ func TestStageReleasedStateIsTransactionalAndSemantic(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(result.StageRoot, "runtime", "environment.json")); err != nil {
 		t.Fatalf("canonical service environment not regenerated: %v", err)
 	}
+	legacySource, err := os.ReadFile(filepath.Join(fixture.sourceRoot, "instructions", "global.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyArchivePath := filepath.Join(result.StageRoot, "instructions", "archive", "legacy-global-settings-v1.json")
+	legacyArchive, err := os.ReadFile(legacyArchivePath)
+	if err != nil {
+		t.Fatalf("legacy global instruction settings were not archived: %v", err)
+	}
+	if !bytes.Equal(legacySource, legacyArchive) {
+		t.Fatalf("legacy global instruction archive changed bytes")
+	}
+	if _, err := os.Stat(filepath.Join(result.StageRoot, "instructions", "global.json")); !os.IsNotExist(err) {
+		t.Fatalf("legacy global instruction settings were reactivated: %v", err)
+	}
+	if outcome, ok := stageDomain(result.Domains, "instructions"); !ok || !strings.Contains(outcome.Detail, "1 legacy archive(s)") {
+		t.Fatalf("instruction migration outcome=%#v ok=%t", outcome, ok)
+	}
 
 	again, err := Stage(t.Context(), StageOptions{
 		Manifest: fixture.manifest, TargetRoot: fixture.targetRoot,
@@ -681,6 +699,11 @@ func newStageFixture(t *testing.T, running bool) stageFixture {
 	writeJSONFixture(t, filepath.Join(sourceRoot, "tui-state.json"), map[string]any{"version": 1, "recent_actions": []string{"logs"}})
 	writeJSONLineFixture(t, filepath.Join(sourceRoot, "logs", "runtime.jsonl"), map[string]any{"event": "ready"})
 	writeFixture(t, filepath.Join(sourceRoot, "instructions", "AGENTS.md"), "Use canonical owners.\n")
+	writeJSONFixture(t, filepath.Join(sourceRoot, "instructions", "global.json"), map[string]any{
+		"version": 1, "context": "legacy context",
+		"rules":   []map[string]any{{"id": "legacy", "enabled": true, "content": "legacy rule"}},
+		"sources": map[string]any{"claude": map[string]any{"enabled": false}},
+	})
 	writeJSONFixture(t, filepath.Join(sourceRoot, "runtime", "environment.json"), map[string]any{"version": 1, "values": map[string]any{"PATH": "/legacy"}})
 	writeJSONFixture(t, filepath.Join(sourceRoot, ".runtime-control.json"), map[string]any{"pid": 1234})
 

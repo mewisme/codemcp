@@ -24,7 +24,7 @@ func TestInstructionContextJSONContract(t *testing.T) {
 	if err := json.Unmarshal(data, &object); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"root", "workspace_id", "workspace_roots", "environment", "git", "project_memory", "auto_memory", "global_rules", "rules", "skills", "sources", "tool_profile", "instructions_text", "instruction_bytes", "loaded_at"} {
+	for _, key := range []string{"root", "workspace_id", "workspace_roots", "environment", "git", "project_memory", "auto_memory", "rules", "skills", "sources", "tool_profile", "instructions_text", "instruction_bytes", "loaded_at"} {
 		if _, ok := object[key]; !ok {
 			t.Fatalf("missing JSON field %q: %s", key, data)
 		}

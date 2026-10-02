@@ -15,7 +15,6 @@ func TestSystemOperationsBindCanonicalOwners(t *testing.T) {
 		capability.VersionAbout,
 		capability.RuntimeUp, capability.RuntimeDown, capability.RuntimeRestart,
 		capability.UpdateCheck, capability.UpdateApply, capability.InstallRun,
-		capability.InstructionSettingsRead, capability.InstructionSettingsWrite,
 		capability.ProjectContextRead, capability.ToolInventoryRead,
 		capability.PromptList, capability.PromptGet, capability.PromptCreate, capability.PromptUpdate, capability.PromptDelete,
 	} {

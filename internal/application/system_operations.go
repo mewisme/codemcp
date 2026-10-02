@@ -22,7 +22,6 @@ type PromptGetInput struct {
 }
 
 type SystemOperationServices struct {
-	Instructions   *InstructionSettingsService
 	ProjectContext *ProjectContextService
 	Tools          *ToolInventoryService
 	Prompts        *PromptService
@@ -31,9 +30,6 @@ type SystemOperationServices struct {
 func BindSystemOperations(dispatcher *Dispatcher, services SystemOperationServices) error {
 	if dispatcher == nil {
 		return errors.New("operation dispatcher is nil")
-	}
-	if services.Instructions == nil {
-		services.Instructions = NewInstructionSettingsService(nil)
 	}
 	if services.ProjectContext == nil {
 		services.ProjectContext = NewDefaultProjectContextService()
@@ -65,14 +61,6 @@ func BindSystemOperations(dispatcher *Dispatcher, services SystemOperationServic
 		})},
 		{capability.InstallRun, typedOperation[InstallCurrentOptions](capability.InstallRun, func(ctx context.Context, input InstallCurrentOptions) (any, error) {
 			return InstallCurrentContext(ctx, input)
-		})},
-		{capability.InstructionSettingsRead, func(ctx context.Context, _ any) (any, error) {
-			result, err := services.Instructions.Read(ctx)
-			return result.Value, err
-		}},
-		{capability.InstructionSettingsWrite, typedOperation[InstructionSettingsPatch](capability.InstructionSettingsWrite, func(ctx context.Context, input InstructionSettingsPatch) (any, error) {
-			result, err := services.Instructions.Write(ctx, input)
-			return result.Value, err
 		})},
 		{capability.ProjectContextRead, typedOperation[ProjectContextInput](capability.ProjectContextRead, func(ctx context.Context, input ProjectContextInput) (any, error) {
 			result, err := services.ProjectContext.Read(ctx, input)

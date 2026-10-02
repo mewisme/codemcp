@@ -79,14 +79,6 @@ export const navItems: NavItem[] = [
     icon: FolderGit2,
   },
   {
-    id: "instructions",
-    path: "/instructions",
-    title: "Global Instructions",
-    description:
-      "Manage global context, rules, and detected user instruction sources.",
-    icon: FileText,
-  },
-  {
     id: "prompts",
     path: "/prompts",
     title: "Prompts",

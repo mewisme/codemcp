@@ -18,7 +18,8 @@ import (
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
 
-func TestServiceBuildUsesManagedPolicyAndSelectedSubproject(t *testing.T) {
+func TestServiceBuildIgnoresLegacyGlobalPolicyAndUsesSelectedSubproject(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -45,13 +46,12 @@ func TestServiceBuildUsesManagedPolicyAndSelectedSubproject(t *testing.T) {
 	policy := instructionpolicy.DefaultConfig()
 	policy.Context = "managed context"
 	policy.Sources["claude"] = instructionpolicy.SourcePolicy{Context: &disabled}
-	policyStore := &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "global.json")}
+	policyStore := instructionpolicy.DefaultStore()
 	if err := policyStore.Save(policy); err != nil {
 		t.Fatal(err)
 	}
 	service := New(manager, func() instructioncontext.ToolProfile { return instructioncontext.ToolProfile{Name: "full", Count: 77} })
 	service.MemoryStore = memory.NewStore(t.TempDir())
-	service.PolicyStore = policyStore
 	service.Environment = func() (bool, int) { return true, 37422 }
 	result, err := service.Build(context.Background(), item.ID, Options{Path: "packages/app", IncludeMemory: true, IncludeSkills: true})
 	if err != nil {
@@ -68,7 +68,7 @@ func TestServiceBuildUsesManagedPolicyAndSelectedSubproject(t *testing.T) {
 	if !os.SameFile(resultRootInfo, subInfo) || result.WorkspaceID != item.ID || result.InstructionContext.ToolProfile.Count != 77 || !result.InstructionContext.Environment.Admin.Enabled || result.InstructionContext.Environment.Admin.URL != "http://127.0.0.1:37422/" {
 		t.Fatalf("result = %#v", result)
 	}
-	if !strings.Contains(result.InstructionContext.InstructionsText, "managed context") || !strings.Contains(result.InstructionContext.InstructionsText, "subproject instruction") || strings.Contains(result.InstructionContext.InstructionsText, "disabled user context") {
+	if strings.Contains(result.InstructionContext.InstructionsText, "managed context") || !strings.Contains(result.InstructionContext.InstructionsText, "subproject instruction") || strings.Contains(result.InstructionContext.InstructionsText, "disabled user context") {
 		t.Fatalf("instructions = %q", result.InstructionContext.InstructionsText)
 	}
 }
@@ -86,7 +86,6 @@ func TestServiceBuildRejectsFilePath(t *testing.T) {
 	}
 	service := New(manager, nil)
 	service.MemoryStore = memory.NewStore(t.TempDir())
-	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
 	if _, err := service.Build(context.Background(), item.ID, Options{Path: "file.txt", IncludeMemory: true, IncludeSkills: true}); err == nil {
 		t.Fatal("expected file path to fail")
 	}
@@ -118,8 +117,7 @@ func TestServiceIncludesIntegrationInstructionsInProviderOrder(t *testing.T) {
 		}
 	}
 	service := NewService(ServiceOptions{
-		Workspaces:  manager,
-		PolicyStore: &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")},
+		Workspaces: manager,
 		IntegrationProviders: []IntegrationInstructionProvider{
 			provider("Alpha", "alpha guidance"),
 			provider("Beta", "beta guidance"),
@@ -147,8 +145,7 @@ func TestServiceIncludesIntegrationProjectionDiagnosticsWithoutRenderingThem(t *
 		t.Fatal(err)
 	}
 	service := NewService(ServiceOptions{
-		Workspaces:  manager,
-		PolicyStore: &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")},
+		Workspaces: manager,
 		IntegrationProjectionProviders: []IntegrationProjectionProvider{
 			func(_ context.Context, workspaceID, projectRoot string) (IntegrationProjection, error) {
 				if workspaceID != item.ID || projectRoot != root {
@@ -188,8 +185,7 @@ func TestServiceRejectsDuplicateIntegrationInstructionIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := NewService(ServiceOptions{
-		Workspaces:  manager,
-		PolicyStore: &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")},
+		Workspaces: manager,
 		IntegrationProviders: []IntegrationInstructionProvider{
 			func(context.Context, string, string) ([]instructioncontext.IntegrationInstruction, error) {
 				return []instructioncontext.IntegrationInstruction{{ID: "same", Content: "first"}}, nil
@@ -217,7 +213,6 @@ func TestServiceBuildSurfacesBoundedPlanSummariesAndInference(t *testing.T) {
 
 	service := New(manager, nil)
 	service.MemoryStore = memory.NewStore(t.TempDir())
-	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
 	result, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
 	if err != nil {
 		t.Fatal(err)
@@ -257,7 +252,6 @@ func TestServiceBuildNeverInfersAmongMultipleUnfinishedPlans(t *testing.T) {
 	writeProjectContextPlan(t, root, "second-plan", false, "second")
 	service := New(manager, nil)
 	service.MemoryStore = memory.NewStore(t.TempDir())
-	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
 
 	result, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
 	if err != nil {
@@ -281,7 +275,6 @@ func TestServiceBuildExactPlanSelectionSurvivesDefaultBounds(t *testing.T) {
 	targetDocument := writeProjectContextPlan(t, root, "z-target", false, "selected body secret")
 	service := New(manager, nil)
 	service.MemoryStore = memory.NewStore(t.TempDir())
-	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
 
 	defaultResult, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
 	if err != nil {
@@ -329,7 +322,6 @@ func TestServiceBuildExactPlanSelectionReturnsTypedNotFound(t *testing.T) {
 	}
 	service := New(manager, nil)
 	service.MemoryStore = memory.NewStore(t.TempDir())
-	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
 
 	_, err = service.Build(context.Background(), item.ID, Options{
 		IncludeMemory: true, IncludeSkills: true, PlanName: "missing-plan",
@@ -358,7 +350,6 @@ func TestServiceBuildSurfacesCorruptPlanDiagnosticsWithoutDroppingValidPlans(t *
 	}
 	service := New(manager, nil)
 	service.MemoryStore = memory.NewStore(t.TempDir())
-	service.PolicyStore = &instructionpolicy.Store{Path: filepath.Join(t.TempDir(), "missing.json")}
 
 	result, err := service.Build(context.Background(), item.ID, Options{IncludeMemory: true, IncludeSkills: true})
 	if err != nil {

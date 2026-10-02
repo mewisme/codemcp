@@ -29,9 +29,8 @@ func TestRankOptionalContextBoundsPayloadAndReturnsSafeUsage(t *testing.T) {
 		}, nil
 	})
 	value := instructioncontext.InstructionContext{
-		Git:           instructioncontext.GitSnapshot{Branch: "main", StatusShort: strings.Repeat("g", 8000)},
-		AutoMemory:    instructioncontext.AutoMemorySnapshot{Loaded: true, Content: "api_key=PRIVATE_SEMANTIC_KEY " + strings.Repeat("m", 8000)},
-		GlobalContext: strings.Repeat("c", 8000),
+		Git:        instructioncontext.GitSnapshot{Branch: "main", StatusShort: strings.Repeat("g", 8000)},
+		AutoMemory: instructioncontext.AutoMemorySnapshot{Loaded: true, Content: "api_key=PRIVATE_SEMANTIC_KEY " + strings.Repeat("m", 8000)},
 		ProjectMemory: instructioncontext.ProjectMemoryBundle{Sections: []instructioncontext.Section{
 			{Kind: instructioncontext.SectionUser, Content: strings.Repeat("u", 8000)},
 			{Kind: instructioncontext.SectionProject, Content: strings.Repeat("p", 8000)},
@@ -40,7 +39,7 @@ func TestRankOptionalContextBoundsPayloadAndReturnsSafeUsage(t *testing.T) {
 	}
 	priority, summary := rankOptionalContext(t.Context(), provider, strings.Repeat("q", 8000), value)
 	if !summary.Used || summary.Fallback || summary.Provider != "fake" || summary.Model != "fixture" ||
-		summary.Candidates != maxSemanticCandidates || summary.InputTokens != 17 || summary.OutputTokens != 6 {
+		summary.Candidates != 5 || summary.InputTokens != 17 || summary.OutputTokens != 6 {
 		t.Fatalf("summary=%#v priority=%v", summary, priority)
 	}
 	state, ok := captured.State.(map[string]any)
@@ -51,7 +50,7 @@ func TestRankOptionalContextBoundsPayloadAndReturnsSafeUsage(t *testing.T) {
 		t.Fatalf("query bytes=%d", len(query))
 	}
 	candidates, ok := state["candidates"].([]map[string]any)
-	if !ok || len(candidates) != maxSemanticCandidates {
+	if !ok || len(candidates) != 5 {
 		t.Fatalf("candidates=%T %#v", state["candidates"], state["candidates"])
 	}
 	for _, candidate := range candidates {
@@ -77,7 +76,7 @@ func TestSemanticPriorityCannotDisplaceRulesOrRequiredContext(t *testing.T) {
 			Path: "/workspace/AGENTS.md", Kind: instructioncontext.SectionProject, Source: "agents",
 			Content: strings.Repeat("P", 900),
 		}}},
-		GlobalRules:             []rules.Rule{{Path: "managed://rule", Source: "CodeMCP", AlwaysApply: true, Content: "SECURITY_RULE_REQUIRED"}},
+		Rules:                   []rules.Rule{{Path: "/workspace/.cm/rules/security.md", Source: ".cm", AlwaysApply: true, Content: "SECURITY_RULE_REQUIRED"}},
 		IntegrationInstructions: []instructioncontext.IntegrationInstruction{{ID: "Guard", Source: "test", Content: "INTEGRATION_REQUIRED"}},
 	}
 	if err := instructioncontext.ApplyFormattedInstructionsLimitWithPriority(&value, 3000, []string{"Project instructions", "Git"}); err != nil {
@@ -102,8 +101,7 @@ func TestSemanticFailureLeavesDeterministicProjectContextSelection(t *testing.T)
 			WorkspaceID: "ws", WorkspaceRoot: "/workspace", CWD: "/workspace",
 			EffectiveRoots: []string{"/workspace"},
 		},
-		Git:           instructioncontext.GitSnapshot{IsRepo: true, Root: "/workspace", Branch: "main"},
-		GlobalContext: "global optional",
+		Git: instructioncontext.GitSnapshot{IsRepo: true, Root: "/workspace", Branch: "main"},
 		ProjectMemory: instructioncontext.ProjectMemoryBundle{Sections: []instructioncontext.Section{{
 			Path: "/workspace/AGENTS.md", Kind: instructioncontext.SectionProject, Content: "project optional",
 		}}},
@@ -128,7 +126,7 @@ func TestSemanticFailureLeavesDeterministicProjectContextSelection(t *testing.T)
 }
 
 func TestSemanticRateLimitAndTimeoutKeepNativeProjectContext(t *testing.T) {
-	value := instructioncontext.InstructionContext{GlobalContext: "native global context"}
+	value := instructioncontext.InstructionContext{ProjectMemory: instructioncontext.ProjectMemoryBundle{Sections: []instructioncontext.Section{{Kind: instructioncontext.SectionProject, Content: "native project context"}}}}
 	for _, category := range []semantic.ErrorCategory{semantic.ErrorRateLimited, semantic.ErrorTimeout} {
 		t.Run(string(category), func(t *testing.T) {
 			provider := semantic.ProviderFunc(func(context.Context, semantic.Request) (semantic.Result, error) {
@@ -153,15 +151,14 @@ func TestRankOptionalContextNeverIncludesRulesAsCandidates(t *testing.T) {
 		return semantic.Result{Answers: answers, ProviderMetadata: semantic.ProviderMetadata{Provider: "fake"}}, nil
 	})
 	value := instructioncontext.InstructionContext{
-		GlobalContext: "ordinary context",
-		GlobalRules:   []rules.Rule{{Path: "managed://security", Content: "SECRET_SECURITY_POLICY"}},
+		ProjectMemory: instructioncontext.ProjectMemoryBundle{Sections: []instructioncontext.Section{{Kind: instructioncontext.SectionProject, Content: "ordinary context"}}},
 		Rules:         []rules.Rule{{Path: "/workspace/.cm/rules/security.md", Content: "WORKSPACE_SECURITY_POLICY"}},
 	}
 	if _, summary := rankOptionalContext(t.Context(), provider, "query", value); !summary.Used {
 		t.Fatalf("summary=%#v", summary)
 	}
 	text := toString(captured.State)
-	if strings.Contains(text, "SECRET_SECURITY_POLICY") || strings.Contains(text, "WORKSPACE_SECURITY_POLICY") {
+	if strings.Contains(text, "WORKSPACE_SECURITY_POLICY") {
 		t.Fatalf("rules leaked into semantic candidate state: %s", text)
 	}
 }

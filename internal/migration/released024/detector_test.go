@@ -65,6 +65,11 @@ func TestDetectReleasedStateBuildsDeterministicSecretSafeManifest(t *testing.T) 
 	writeJSONLineFixture(t, filepath.Join(root, "logs", "runtime.jsonl"), map[string]any{"event": "ready"})
 	writeJSONFixture(t, filepath.Join(root, "tui-state.json"), map[string]any{"version": 1, "recent_actions": []string{"logs"}})
 	writeFixture(t, filepath.Join(root, "instructions", "AGENTS.md"), "Use canonical owners.\n")
+	writeJSONFixture(t, filepath.Join(root, "instructions", "global.json"), map[string]any{
+		"version": 1, "context": "legacy context",
+		"rules":   []map[string]any{{"id": "legacy", "enabled": true, "content": "legacy rule"}},
+		"sources": map[string]any{"claude": map[string]any{"enabled": false}},
+	})
 	writeJSONFixture(t, filepath.Join(root, "state", "update.json"), map[string]any{"status": "pending"})
 	writeFixture(t, filepath.Join(root, "runtime", "processes.json"), "transient")
 	writeFixture(t, filepath.Join(root, "runtime.pid"), "123")
@@ -122,6 +127,7 @@ func TestDetectReleasedStateBuildsDeterministicSecretSafeManifest(t *testing.T) 
 		"logs/runtime.jsonl":                                 ClassDurableMigrate,
 		"tui-state.json":                                     ClassDurableMigrate,
 		"instructions/AGENTS.md":                             ClassDurableMigrate,
+		"instructions/global.json":                           ClassDurableMigrate,
 		"runtime/environment.json":                           ClassRegenerate,
 		".runtime-control.json":                              ClassTransientDrop,
 		"state/update.json":                                  ClassTransientDrop,

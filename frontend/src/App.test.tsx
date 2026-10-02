@@ -69,8 +69,6 @@ describe("admin app runtime smoke", () => {
       integrations: "TypeSafe",
       llm: "LLM providers",
       workspaces: "Register workspace",
-      instructions:
-        "Manage global context, rules, and detected user-level instruction sources.",
       prompts:
         "Global definitions are available to all workspaces; workspace definitions override names locally.",
       tools:
@@ -316,66 +314,6 @@ describe("admin app runtime smoke", () => {
     expect(window.location.pathname).toBe(`/activity/${callID}`)
   })
 
-  it("only renders detected instruction sources and persists their toggles", async () => {
-    const user = userEvent.setup()
-    const detected = [
-      {
-        provider: "claude",
-        kind: "context",
-        paths: ["/home/test/.claude/CLAUDE.md"],
-        count: 1,
-        enabled: true,
-        loaded: false,
-      },
-    ]
-    let savedPolicy: Record<string, unknown> | undefined
-    window.history.replaceState({}, "", "/instructions")
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const path = requestPath(input)
-        if (path === "/api/instructions/global" && init?.method === "PUT") {
-          const body = JSON.parse(String(init.body)) as {
-            source_policy: Record<string, unknown>
-          }
-          savedPolicy = body.source_policy
-          return json({
-            version: 1,
-            context: null,
-            rules: null,
-            source_policy: null,
-            detected_sources: null,
-          })
-        }
-        if (path === "/api/instructions/global")
-          return json({
-            version: 1,
-            context: "",
-            rules: [],
-            source_policy: {},
-            detected_sources: detected,
-          })
-        return mockFetch(input)
-      })
-    )
-    renderAdminApp()
-    await user.click(await screen.findByRole("tab", { name: "Sources" }))
-    expect(screen.getByText("Claude")).toBeInTheDocument()
-    expect(screen.getByText("/home/test/.claude/CLAUDE.md")).toBeInTheDocument()
-    expect(screen.queryByText("Cursor")).not.toBeInTheDocument()
-    await user.click(screen.getByRole("switch", { name: "Claude Context" }))
-    await user.click(screen.getByRole("button", { name: /Save/ }))
-    await waitFor(() =>
-      expect(savedPolicy).toEqual({ claude: { context: false } })
-    )
-    expect(
-      await screen.findByText(
-        "Saved. New project_context calls use these instructions immediately."
-      )
-    ).toBeInTheDocument()
-    expect(screen.getByText("0 detected sources")).toBeInTheDocument()
-  })
-
   it("normalizes root and unknown paths to overview", async () => {
     window.history.replaceState({}, "", "/missing")
     renderAdminApp()
@@ -520,14 +458,6 @@ async function mockFetch(input: RequestInfo | URL): Promise<Response> {
   if (path === "/api/workspaces") return json([])
   if (path === "/api/prompts?workspace_id=") return json([])
   if (path === "/api/workspace-containers") return json([])
-  if (path === "/api/instructions/global")
-    return json({
-      version: 1,
-      context: "",
-      rules: [],
-      source_policy: {},
-      detected_sources: [],
-    })
   if (path === "/api/tools") return json([])
   if (path === "/api/upstream") return json([])
   if (path === "/api/tunnel") return json(tunnel)
@@ -584,7 +514,6 @@ function projectContextFixture() {
       workspace_id: "ws_test",
       instructions_text: "EFFECTIVE PROJECT CONTEXT",
       instruction_bytes: 25,
-      global_rules: [],
       rules: [],
       skills: [],
       sources: [],

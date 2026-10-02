@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/memory"
-	"go.mewis.me/codemcp/internal/rules"
 	"go.mewis.me/codemcp/internal/skills"
 )
 
@@ -22,7 +20,6 @@ type BuildOptions struct {
 	WorkspaceRoots          []string
 	MemoryStore             memory.Store
 	Memory                  MemoryLoadOptions
-	Policy                  instructionpolicy.Config
 	ToolProfile             ToolProfile
 	BackgroundWork          BackgroundWorkCapabilities
 	MaxInstructionBytes     int
@@ -84,7 +81,6 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 		memoryOpts := opts.Memory
 		memoryOpts.WorkspaceRoots = roots
 		memoryOpts.HomeDir = home
-		memoryOpts.SourcePolicy = opts.Policy
 		memoryOpts.Now = func() time.Time { return loadedAt }
 		projectMemory, err = LoadProjectMemory(root, memoryOpts)
 		if err != nil {
@@ -95,13 +91,14 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 			return InstructionContext{}, err
 		}
 	}
-	unconditionalRules, err := LoadUnconditionalRulesWithUserForWorkspace(root, workspaceRoot, home, opts.Policy)
+	policy := instructionpolicy.DefaultConfig()
+	unconditionalRules, err := LoadUnconditionalRulesWithUserForWorkspace(root, workspaceRoot, home, policy)
 	if err != nil {
 		return InstructionContext{}, err
 	}
 	skillSummaries := []skills.Skill(nil)
 	if !opts.SkipSkills {
-		skillSummaries, err = LoadSkillSummariesWithUserForWorkspace(root, workspaceRoot, home, opts.Policy)
+		skillSummaries, err = LoadSkillSummariesWithUserForWorkspace(root, workspaceRoot, home, policy)
 		if err != nil {
 			return InstructionContext{}, err
 		}
@@ -110,25 +107,10 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 	if !opts.SkipGit {
 		gitSnapshot = LoadGitSnapshot(ctx, root, GitSnapshotOptions{WorkspaceRoots: roots})
 	}
-	globalRules := make([]rules.Rule, 0, len(opts.Policy.Rules))
-	for _, rule := range opts.Policy.Rules {
-		content := strings.TrimSpace(rule.Content)
-		if !rule.Enabled || content == "" {
-			continue
-		}
-		id := strings.TrimSpace(rule.ID)
-		if id == "" {
-			id = strings.TrimSpace(rule.Name)
-		}
-		if id == "" {
-			id = "rule"
-		}
-		globalRules = append(globalRules, rules.Rule{Path: filepath.ToSlash("managed://global-rules/" + id), Source: "CodeMCP", Content: content, AlwaysApply: true})
-	}
 	sources := LoadedProjectSources(projectMemory, unconditionalRules, skillSummaries, workspaceRoot)
 	value := InstructionContext{
 		Root: root, WorkspaceID: workspaceID, WorkspaceRoots: roots, Environment: environment,
-		Git: gitSnapshot, ProjectMemory: projectMemory, AutoMemory: autoMemory, GlobalContext: strings.TrimSpace(opts.Policy.Context), GlobalRules: globalRules,
+		Git: gitSnapshot, ProjectMemory: projectMemory, AutoMemory: autoMemory,
 		Rules: unconditionalRules, Skills: skillSummaries,
 		IntegrationInstructions: append([]IntegrationInstruction(nil), opts.IntegrationInstructions...),
 		IntegrationDiagnostics:  append([]IntegrationDiagnostic(nil), opts.IntegrationDiagnostics...),

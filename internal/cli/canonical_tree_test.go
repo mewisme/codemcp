@@ -92,9 +92,6 @@ http security | namespace
 http | namespace
 init | operation:config.init
 install | operation:install.run
-instructions get | operation:instructions.settings.read
-instructions set | operation:instructions.settings.write
-instructions | namespace
 integration caveman disable | operation:config.set:accepted-path
 integration caveman enable | operation:config.set:accepted-path
 integration caveman mode | operation:config.set:accepted-path

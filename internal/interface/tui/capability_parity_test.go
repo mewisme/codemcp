@@ -119,7 +119,7 @@ func TestCapabilityActionsHaveReachableContexts(t *testing.T) {
 		{Route: string(RouteExecutions), Mode: "resource"}, {Route: string(RouteProcesses), Mode: "resource"}, {Route: string(RouteProcesses), Mode: "workspace", ResourceID: "resource"},
 		{Route: string(RouteRequests)}, {Route: string(RouteRequests), ResourceID: "resource"},
 		{Route: string(RouteLLM)}, {Route: string(RouteLLM), ResourceID: "resource"},
-		{Route: string(RouteLogs)}, {Route: string(RouteConfig)}, {Route: string(RouteInstruction)}, {Route: string(RouteInstruction), Section: "context"}, {Route: string(RoutePrompts)}, {Route: string(RouteRuntime)}, {Route: string(RouteAbout)},
+		{Route: string(RouteLogs)}, {Route: string(RouteConfig)}, {Route: string(RoutePrompts)}, {Route: string(RouteRuntime)}, {Route: string(RouteAbout)},
 	}
 	for _, item := range defaultActionRegistry().All() {
 		if len(item.Capabilities) == 0 || (runtime.GOOS == "windows" && (item.ID == "runtime.up.system" || item.ID == "runtime.down.system" || item.ID == "runtime.restart.system")) {

@@ -15,6 +15,7 @@ import (
 )
 
 func DiscoverUserSources(home string, policy instructionpolicy.Config) ([]SourceSnapshot, error) {
+	_ = policy
 	providers, err := instructionsource.DiscoverDynamicProviders(home)
 	if err != nil {
 		return nil, err
@@ -32,12 +33,12 @@ func DiscoverUserSources(home string, policy instructionpolicy.Config) ([]Source
 				Paths: paths, Count: len(paths), Enabled: enabled, Loaded: false,
 			})
 		}
-		appendSnapshot(string(instructionpolicy.ResourceContext), provider.ContextFiles, policy.Enabled(provider.Name, instructionpolicy.ResourceContext))
+		appendSnapshot(string(instructionpolicy.ResourceContext), provider.ContextFiles, true)
 		if provider.RulesDir != "" {
-			appendSnapshot(string(instructionpolicy.ResourceRules), discoverRegularFiles(provider.RulesDir, 3, map[string]bool{".md": true, ".mdc": true}), policy.Enabled(provider.Name, instructionpolicy.ResourceRules))
+			appendSnapshot(string(instructionpolicy.ResourceRules), discoverRegularFiles(provider.RulesDir, 3, map[string]bool{".md": true, ".mdc": true}), true)
 		}
 		if provider.SkillsDir != "" {
-			appendSnapshot(string(instructionpolicy.ResourceSkills), discoverSkillFiles(provider.SkillsDir, 3), policy.Enabled(provider.Name, instructionpolicy.ResourceSkills))
+			appendSnapshot(string(instructionpolicy.ResourceSkills), discoverSkillFiles(provider.SkillsDir, 3), true)
 		}
 	}
 	sortSnapshots(values)

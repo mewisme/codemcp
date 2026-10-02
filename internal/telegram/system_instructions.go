@@ -13,18 +13,16 @@ import (
 	"go.mewis.me/codemcp/internal/doctor"
 	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/instructioncontext"
-	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/tools"
 	updatepkg "go.mewis.me/codemcp/internal/update"
 )
 
 const (
-	inputInstructionPatch = "instructions.patch"
-	inputProjectContext   = "instructions.project-context"
-	inputPromptWorkspace  = "prompts.workspace"
-	inputPromptCreate     = "prompts.create"
-	inputPromptUpdate     = "prompts.update"
+	inputProjectContext  = "instructions.project-context"
+	inputPromptWorkspace = "prompts.workspace"
+	inputPromptCreate    = "prompts.create"
+	inputPromptUpdate    = "prompts.update"
 )
 
 func (ui *Interface) handleSystem(ctx context.Context, update Update) {
@@ -171,25 +169,6 @@ func (ui *Interface) doctorScreen(ctx context.Context, owner ViewOwner, state Ac
 }
 
 func (ui *Interface) instructionsScreen(ctx context.Context, owner ViewOwner) (Screen, error) {
-	value, err := ui.dispatch(ctx, capability.InstructionSettingsRead, nil)
-	if err != nil {
-		return Screen{}, err
-	}
-	settings, ok := value.(application.InstructionSettings)
-	if !ok {
-		return Screen{}, errors.New("instruction settings returned an unexpected result")
-	}
-	sources := make([]string, 0, len(settings.DetectedSources))
-	for _, source := range settings.DetectedSources {
-		sources = append(sources, fmt.Sprintf("%s/%s\n%s · %d item(s) · %s · %s",
-			source.Provider, source.Kind, displayState(source.Scope), source.Count,
-			stateLabel(source.Enabled, "Enabled", "Disabled"),
-			stateLabel(source.Loaded, "Loaded", "Not loaded"),
-		))
-	}
-	if len(sources) == 0 {
-		sources = append(sources, "No provider-native sources detected")
-	}
 	projectContext, err := ui.stateButton(owner, "Project context", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteInstructions, Operation: capability.ProjectContextRead, InputKind: inputProjectContext})
 	if err != nil {
 		return Screen{}, err
@@ -198,18 +177,13 @@ func (ui *Interface) instructionsScreen(ctx context.Context, owner ViewOwner) (S
 	if err != nil {
 		return Screen{}, err
 	}
-	edit, err := ui.stateButton(owner, "Edit settings", CallbackOpen, ActionState{Route: RouteOperation, Back: RouteInstructions, Operation: capability.InstructionSettingsWrite, InputKind: inputInstructionPatch, ForceConfirm: true})
-	if err != nil {
-		return Screen{}, err
-	}
 	back, _ := ui.backButton(owner, RouteHome)
 	home, _ := ui.homeButton(owner)
 	return Screen{Rich: BuildRichPresentation(
-		RichBlock{Kind: RichHeading, Title: "Instructions", Text: "Instruction settings, project context, and prompts"},
-		FieldsBlock("Overview", []string{"Version", fmt.Sprint(settings.Version)}, []string{"Global context bytes", fmt.Sprint(len([]byte(settings.Context)))}, []string{"Global rules", fmt.Sprint(len(settings.Rules))}, []string{"Source policies", fmt.Sprint(len(settings.SourcePolicy))}),
-		RichBlock{Kind: RichList, Items: sources},
-		RichBlock{Kind: RichDetails, Title: "Native authoring", Text: "Provider-native sources are read-only here. Telegram does not edit provider rule or skill files."},
-	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{projectContext, prompts}, Secondary: []Button{edit, {Text: "Author rule (unavailable)", Disabled: true, Role: ButtonRoleNeutral}, {Text: "Author skill (unavailable)", Disabled: true, Role: ButtonRoleNeutral}}, Navigation: []Button{back, home}})}, nil
+		RichBlock{Kind: RichHeading, Title: "Instructions", Text: "Project context, discovered instruction sources, native rules and skills, and prompts"},
+		RichBlock{Kind: RichDetails, Title: "Source discovery", Text: "Provider-native instruction sources are discovered read-only with canonical precedence. Telegram does not expose a source-policy override."},
+		RichBlock{Kind: RichDetails, Title: "Native authoring", Text: "CodeMCP-native rules and skills remain authored through their canonical MCP tools. Prompts remain an independent writable domain."},
+	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{projectContext, prompts}, Navigation: []Button{back, home}})}, nil
 }
 
 func (ui *Interface) promptsScreen(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
@@ -311,69 +285,6 @@ func systemInputPrompt(state ActionState) (title, prompt, placeholder string) {
 
 func (ui *Interface) systemInputFlow(ctx context.Context, state ActionState) (inputFlowDescriptor, bool, error) {
 	switch state.InputKind {
-	case inputInstructionPatch:
-		value, err := ui.dispatch(ctx, capability.InstructionSettingsRead, nil)
-		if err != nil {
-			return inputFlowDescriptor{}, true, err
-		}
-		settings, ok := value.(application.InstructionSettings)
-		if !ok {
-			return inputFlowDescriptor{}, true, errors.New("instruction settings returned an unexpected result")
-		}
-		rulesJSON, _ := json.MarshalIndent(settings.Rules, "", "  ")
-		policyJSON, _ := json.MarshalIndent(settings.SourcePolicy, "", "  ")
-		fields := []inputFlowField{
-			{
-				Key: "context", Label: "Global context", Description: "Global instruction context included with project-specific instructions.",
-				Kind: inputFlowMultiline, HasDefault: true, Default: settings.Context, CanClear: true,
-			},
-			{
-				Key: "rules", Label: "Global rules", Description: "JSON array of global rule objects. Each rule contains id, optional name, enabled, and content.",
-				Kind: inputFlowJSON, HasDefault: true, Default: string(rulesJSON), CanClear: true,
-				Example:  `[{"id":"safe","enabled":true,"content":"Keep changes scoped."}]`,
-				Validate: inputFlowJSONValidator(func() any { return &[]instructionpolicy.GlobalRule{} }),
-			},
-			{
-				Key: "source_policy", Label: "Source policy", Description: "JSON object keyed by provider/source name. Each entry may control enabled, context, rules, and skills.",
-				Kind: inputFlowJSON, HasDefault: true, Default: string(policyJSON), CanClear: true,
-				Example:  `{"claude":{"enabled":true,"rules":true}}`,
-				Validate: inputFlowJSONValidator(func() any { return &map[string]instructionpolicy.SourcePolicy{} }),
-			},
-		}
-		return inputFlowDescriptor{
-			Title: "Edit instruction settings", Description: "Update global instruction context, rules, and source policy.", SubmitLabel: "Save instructions",
-			Fields: fields,
-			Build: func(data inputFlowData) (any, error) {
-				patch := application.InstructionSettingsPatch{}
-				changed := false
-				if raw, explicit := data.Explicit("context"); explicit {
-					value := raw
-					patch.Context, changed = &value, true
-				}
-				if raw, explicit := data.Explicit("rules"); explicit {
-					var rules []instructionpolicy.GlobalRule
-					if strings.TrimSpace(raw) != "" {
-						if err := json.Unmarshal([]byte(raw), &rules); err != nil {
-							return nil, fmt.Errorf("invalid rules JSON: %w", err)
-						}
-					}
-					patch.Rules, changed = &rules, true
-				}
-				if raw, explicit := data.Explicit("source_policy"); explicit {
-					policy := map[string]instructionpolicy.SourcePolicy{}
-					if strings.TrimSpace(raw) != "" {
-						if err := json.Unmarshal([]byte(raw), &policy); err != nil {
-							return nil, fmt.Errorf("invalid source policy JSON: %w", err)
-						}
-					}
-					patch.SourcePolicy, changed = policy, true
-				}
-				if !changed {
-					return nil, errors.New("no instruction changes selected")
-				}
-				return patch, nil
-			},
-		}, true, nil
 	case inputPromptCreate:
 		return promptCreateInputFlow(), true, nil
 	case inputPromptUpdate:
@@ -563,9 +474,6 @@ func (ui *Interface) systemOperationResultScreen(ctx context.Context, owner View
 			RichBlock{Kind: RichHeading, Title: "Tool inventory", Text: fmt.Sprintf("%d tool(s) · %s", len(result), PaginationLabel(page, pages))},
 			RichBlock{Kind: RichList, Items: items[start:end]},
 		), Keyboard: keyboard}, true, nil
-	case application.InstructionSettings:
-		screen, err := ui.instructionsScreen(ctx, owner)
-		return screen, true, err
 	case projectcontext.Result:
 		rules := make([]string, 0, len(result.InstructionContext.Rules))
 		for _, rule := range result.InstructionContext.Rules {
@@ -589,7 +497,7 @@ func (ui *Interface) systemOperationResultScreen(ctx context.Context, owner View
 		if len(diagnostics) > 0 {
 			blocks = append(blocks, RichBlock{Kind: RichList, Title: "Integration diagnostics", Items: diagnostics})
 		}
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Source policy", Text: "Provider-native rule and skill sources are read-only here. Telegram does not edit those files."})
+		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Source discovery", Text: "Provider-native rule and skill sources are read-only and follow canonical discovery precedence."})
 		return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{Navigation: []Button{back, home}})}, true, nil
 	case []instructioncontext.ScopedPrompt:
 		workspaceID := ""

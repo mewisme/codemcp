@@ -73,12 +73,18 @@ func unavailableSkillMethod(context.Context, FeatureRequest) (map[string]any, er
 }
 
 func globalResolvedSkills() ([]skills.Skill, error) {
-	policy, err := instructionpolicy.DefaultStore().Load()
+	home, _ := os.UserHomeDir()
+	values, err := skills.DiscoverUser(home, instructionpolicy.DefaultConfig())
 	if err != nil {
 		return nil, err
 	}
-	home, _ := os.UserHomeDir()
-	return skills.DiscoverUser(home, policy)
+	result := make([]skills.Skill, 0, len(values))
+	for _, value := range values {
+		if value.Source == ".cm" || skills.IsBuiltin(value) {
+			result = append(result, value)
+		}
+	}
+	return result, nil
 }
 
 func workspaceResolvedSkills(runtime *tools.Runtime, workspaceID string) ([]skills.Skill, error) {
@@ -89,12 +95,8 @@ func workspaceResolvedSkills(runtime *tools.Runtime, workspaceID string) ([]skil
 	if err != nil {
 		return nil, err
 	}
-	policy, err := instructionpolicy.DefaultStore().Load()
-	if err != nil {
-		return nil, err
-	}
 	home, _ := os.UserHomeDir()
-	return skills.DiscoverWithUser(item.Path, home, policy)
+	return skills.DiscoverWithUser(item.Path, home, instructionpolicy.DefaultConfig())
 }
 
 func skillDescriptors(values []skills.Skill) []SkillDescriptor {
@@ -123,12 +125,7 @@ func loadCanonicalSkill(runtime *tools.Runtime, workspaceID, name string, maxByt
 		return skills.Loaded{}, errors.New("max skill bytes is out of range")
 	}
 	if workspaceID == "" {
-		policy, err := instructionpolicy.DefaultStore().Load()
-		if err != nil {
-			return skills.Loaded{}, err
-		}
-		home, _ := os.UserHomeDir()
-		values, err := skills.DiscoverUser(home, policy)
+		values, err := globalResolvedSkills()
 		if err != nil {
 			return skills.Loaded{}, err
 		}

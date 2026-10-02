@@ -102,7 +102,6 @@ func optionalContextCandidates(value instructioncontext.InstructionContext) []op
 	if value.AutoMemory.Loaded {
 		appendCandidate("Auto memory", value.AutoMemory.Content)
 	}
-	appendCandidate("Global context", value.GlobalContext)
 	var user, project strings.Builder
 	for _, section := range value.ProjectMemory.Sections {
 		switch section.Kind {

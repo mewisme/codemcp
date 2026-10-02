@@ -74,24 +74,12 @@ export const adminRoutes: RouteObject[] = [
         handle: navHandle("workspaces", "WorkspacesPage"),
       },
       {
-        path: "instructions",
-        lazy: () =>
-          import("@/pages/global-instructions").then((module) => ({
-            Component: module.GlobalInstructionsPage,
-          })),
-        handle: navHandle("instructions", "GlobalInstructionsPage"),
-      },
-      {
         path: "prompts",
         lazy: () =>
           import("@/pages/prompts").then((module) => ({
             Component: module.PromptsPage,
           })),
         handle: navHandle("prompts", "PromptsPage"),
-      },
-      {
-        path: "workspaces/global",
-        element: <Navigate replace to="/instructions" />,
       },
       {
         path: "workspaces/:workspaceID",

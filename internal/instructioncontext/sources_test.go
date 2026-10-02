@@ -37,7 +37,7 @@ func TestDiscoverUserSourcesDetectsProviderResourcesWithoutLoadingThem(t *testin
 	}
 }
 
-func TestDiscoverUserSourcesKeepsDisabledProviderVisible(t *testing.T) {
+func TestDiscoverUserSourcesIgnoresLegacyProviderPolicy(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0755); err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestDiscoverUserSourcesKeepsDisabledProviderVisible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 1 || values[0].Provider != "claude" || values[0].Enabled || values[0].Loaded || values[0].Scope != "user-provider" || len(values[0].Paths) != 1 || values[0].Paths[0] != path {
+	if len(values) != 1 || values[0].Provider != "claude" || !values[0].Enabled || values[0].Loaded || values[0].Scope != "user-provider" || len(values[0].Paths) != 1 || values[0].Paths[0] != path {
 		t.Fatalf("sources = %#v", values)
 	}
 }

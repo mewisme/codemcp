@@ -101,7 +101,6 @@ func buildMutationOwners() map[ID]MutationOwner {
 		IntegrationCFInstall, IntegrationCFUpdate, IntegrationCFRemove,
 		IntegrationTypeSafeEnable, IntegrationTypeSafeDisable,
 	)
-	add(MutationOwnerApplicationInstructions, InstructionSettingsWrite)
 	add(MutationOwnerApplicationProcesses, ProcessClear)
 	add(MutationOwnerApplicationLogs, LogsClear)
 	add(MutationOwnerApplicationLLM,

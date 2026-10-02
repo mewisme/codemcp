@@ -1,10 +1,7 @@
 package cli
 
 import (
-	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -12,51 +9,6 @@ import (
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/projectcontext"
 )
-
-func instructionsCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "instructions", Short: "Read and update global instruction settings"}
-	var getJSON bool
-	get := &cobra.Command{Use: "get", Short: "Show global instruction settings", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		result, err := application.NewInstructionSettingsService(nil).Read(cmd.Context())
-		if err != nil {
-			return err
-		}
-		if getJSON {
-			return writeResultJSON(cmd, result.Value)
-		}
-		p := commandPresenter(cmd)
-		p.Frame("Global instructions")
-		p.Fields(presentation.Field{Label: "context", Value: result.Value.Context}, presentation.Field{Label: "rules", Value: len(result.Value.Rules)}, presentation.Field{Label: "sources", Value: len(result.Value.DetectedSources)})
-		p.Complete("Settings loaded")
-		return nil
-	}}
-	addJSONResultFlag(get, &getJSON)
-
-	var patchJSON string
-	var setJSON bool
-	set := &cobra.Command{Use: "set", Short: "Apply a JSON patch to global instruction settings", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if strings.TrimSpace(patchJSON) == "" {
-			return errors.New("--patch-json is required")
-		}
-		var patch application.InstructionSettingsPatch
-		if err := json.Unmarshal([]byte(patchJSON), &patch); err != nil {
-			return err
-		}
-		result, err := application.NewInstructionSettingsService(nil).Write(cmd.Context(), patch)
-		if err != nil {
-			return err
-		}
-		if setJSON {
-			return writeResultJSON(cmd, result.Value)
-		}
-		renderMutationSuccess(cmd, "Instruction settings updated", presentation.Field{Label: "rules", Value: len(result.Value.Rules)}, presentation.Field{Label: "sources", Value: len(result.Value.DetectedSources)})
-		return nil
-	}}
-	set.Flags().StringVar(&patchJSON, "patch-json", "", "JSON instruction settings patch")
-	addJSONResultFlag(set, &setJSON)
-	cmd.AddCommand(get, set)
-	return cmd
-}
 
 func toolsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "tools", Short: "Inspect canonical MCP tools"}

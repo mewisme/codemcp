@@ -311,9 +311,5 @@ func TestSkillsToolFallbackMatchesNativeSkillContent(t *testing.T) {
 
 func skillsPolicy(t *testing.T) instructionpolicy.Config {
 	t.Helper()
-	policy, err := instructionpolicy.DefaultStore().Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return policy
+	return instructionpolicy.DefaultConfig()
 }

@@ -605,7 +605,7 @@ func stageOAuth(sourceRoot, stageRoot string) error {
 }
 
 func stageGlobalDurableArtifacts(manifest Manifest, stageRoot string, journal *StageJournal) error {
-	instructions, logs, skippedLogs := 0, 0, 0
+	instructions, instructionArchives, logs, skippedLogs := 0, 0, 0, 0
 	tuiState := "absent"
 	for _, artifact := range manifest.Artifacts {
 		if artifact.Classification == ClassOptionalSkipWithReport {
@@ -633,6 +633,12 @@ func stageGlobalDurableArtifacts(manifest Manifest, stageRoot string, journal *S
 				return err
 			}
 			instructions++
+		case "instructions-legacy-global":
+			destination := filepath.Join(stageRoot, "instructions", "archive", "legacy-global-settings-v1.json")
+			if err := copyRegularFile(source, destination); err != nil {
+				return err
+			}
+			instructionArchives++
 		case "log":
 			if err := copyRegularFile(source, filepath.Join(stageRoot, filepath.FromSlash(artifact.Path))); err != nil {
 				return err
@@ -657,7 +663,7 @@ func stageGlobalDurableArtifacts(manifest Manifest, stageRoot string, journal *S
 	}
 	journal.Domains = append(journal.Domains,
 		DomainOutcome{Domain: "instance", State: instanceState},
-		DomainOutcome{Domain: "instructions", State: "staged", Detail: fmt.Sprintf("%d file(s)", instructions)},
+		DomainOutcome{Domain: "instructions", State: "staged", Detail: fmt.Sprintf("%d active file(s), %d legacy archive(s)", instructions, instructionArchives)},
 		DomainOutcome{Domain: "logs", State: logState, Detail: fmt.Sprintf("%d staged, %d skipped", logs, skippedLogs)},
 	)
 	if tuiState != "absent" {

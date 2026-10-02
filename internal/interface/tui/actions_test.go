@@ -47,22 +47,8 @@ func TestWorkspaceActionAvailabilityFollowsRouteContext(t *testing.T) {
 	}
 }
 
-func TestInstructionAndWorkspaceContextNavigationActions(t *testing.T) {
+func TestWorkspaceContextNavigationAction(t *testing.T) {
 	registry := defaultActionRegistry()
-	for id, section := range map[string]string{
-		"instruction.open.context": "context",
-		"instruction.open.rules":   "rules",
-		"instruction.open.sources": "sources",
-	} {
-		cmd, err := registry.Execute(context.Background(), id, action.Context{Route: string(RouteHome)})
-		if err != nil || cmd == nil {
-			t.Fatalf("execute %s cmd=%v err=%v", id, cmd != nil, err)
-		}
-		message, ok := cmd().(navigateMsg)
-		if !ok || message.route != (Route{Kind: RouteInstruction, Section: section}) || !message.sibling {
-			t.Fatalf("%s navigation=%#v", id, message)
-		}
-	}
 	cmd, err := registry.Execute(context.Background(), "workspace.context.preview", action.Context{Route: string(RouteWorkspaces), ResourceID: "ws_demo"})
 	if err != nil || cmd == nil {
 		t.Fatalf("workspace preview cmd=%v err=%v", cmd != nil, err)

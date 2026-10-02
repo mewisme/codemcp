@@ -88,7 +88,6 @@ func TestMajorPagesResponsiveMatrixBeforeRootFrame(t *testing.T) {
 		{name: "requests", make: func() (Model, error) { return NewRequests(ctx, "") }},
 		{name: "logs", make: func() (Model, error) { return NewLogs(ctx) }},
 		{name: "config", make: func() (Model, error) { return NewConfig(ctx) }},
-		{name: "instruction", make: func() (Model, error) { return NewInstruction(ctx) }},
 		{name: "runtime", make: func() (Model, error) { return NewRuntime(ctx) }},
 		{name: "about", make: func() (Model, error) { return NewAbout(ctx) }},
 	}

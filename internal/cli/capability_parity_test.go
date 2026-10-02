@@ -108,8 +108,6 @@ func TestLegacyFeatureAndBuiltinsCommandGroupsAreAbsent(t *testing.T) {
 
 func TestRestoredCanonicalCLIReachabilityMatrix(t *testing.T) {
 	expected := map[capability.ID]string{
-		capability.InstructionSettingsRead:             "instructions get",
-		capability.InstructionSettingsWrite:            "instructions set",
 		capability.ProjectContextRead:                  "workspace context",
 		capability.ToolInventoryRead:                   "tools list",
 		capability.ExecutionList:                       "execution list",

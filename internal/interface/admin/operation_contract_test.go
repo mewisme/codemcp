@@ -47,8 +47,6 @@ func TestPublicAdminOperationsHaveCanonicalIDs(t *testing.T) {
 		{Method: "POST", Path: "/api/auth/admin/enable"},
 		{Method: "POST", Path: "/api/auth/admin/disable"},
 		{Method: "PUT", Path: "/api/telegram/setup"},
-		{Method: "GET", Path: "/api/instructions/global"},
-		{Method: "PUT", Path: "/api/instructions/global"},
 		{Method: "GET", Path: "/api/prompts"},
 		{Method: "POST", Path: "/api/prompts"},
 		{Method: "GET", Path: "/api/prompts/{name}"},

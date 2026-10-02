@@ -9,7 +9,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/instructionsource"
 )
 
@@ -22,7 +21,6 @@ const (
 type MemoryLoadOptions struct {
 	WorkspaceRoots     []string
 	HomeDir            string
-	SourcePolicy       instructionpolicy.Config
 	DisableUser        bool
 	MaxTotalBytes      int
 	MaxBytesPerSection int
@@ -138,9 +136,6 @@ func LoadProjectMemory(root string, opts MemoryLoadOptions) (ProjectMemoryBundle
 	appendAll(root, projectMemoryCandidates)
 	for _, provider := range providers {
 		for _, path := range provider.ContextFiles {
-			if !opts.SourcePolicy.Enabled(provider.Name, instructionpolicy.ResourceContext) {
-				continue
-			}
 			appendCandidate(filepath.Dir(path), memoryCandidate{Relative: filepath.Base(path), Kind: SectionProject, Source: provider.Name})
 		}
 	}

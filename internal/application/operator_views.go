@@ -55,14 +55,6 @@ func (s *ToolInventoryService) runtime() (*tools.Runtime, error) {
 	return runtime, nil
 }
 
-func (service *InstructionSettingsService) Read(ctx context.Context) (Result[InstructionSettings], error) {
-	return runOperation(ctx, "INSTRUCTIONS", capability.InstructionSettingsRead, "Reading instruction settings", nil, service.Load)
-}
-
-func (service *InstructionSettingsService) Write(ctx context.Context, patch InstructionSettingsPatch) (Result[InstructionSettings], error) {
-	return runOperation(ctx, "INSTRUCTIONS", capability.InstructionSettingsWrite, "Updating instruction settings", nil, func() (InstructionSettings, error) { return service.Save(patch) })
-}
-
 type ProjectContextInput struct {
 	WorkspaceID string
 	Options     projectcontext.Options

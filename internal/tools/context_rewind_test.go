@@ -184,7 +184,7 @@ func TestProjectContextUsesInjectedEnvironment(t *testing.T) {
 	}
 }
 
-func TestContextToolsApplyManagedGlobalPolicyToUserSources(t *testing.T) {
+func TestContextToolsIgnoreLegacyGlobalPolicyAndLoadCanonicalUserSources(t *testing.T) {
 	runtime, workspaceID, _, _ := newContextToolRuntime(t)
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -220,38 +220,25 @@ func TestContextToolsApplyManagedGlobalPolicyToUserSources(t *testing.T) {
 		t.Fatalf("project_context failed: %#v %v", ctxResult, err)
 	}
 	project := ctxResult.StructuredContent.(ProjectContextResult)
-	for _, expected := range []string{"MANAGED GLOBAL CONTEXT", "MANAGED GLOBAL RULE"} {
-		if !strings.Contains(project.InstructionContext.InstructionsText, expected) {
-			t.Fatalf("missing %q in instructions: %s", expected, project.InstructionContext.InstructionsText)
+	for _, legacy := range []string{"MANAGED GLOBAL CONTEXT", "MANAGED GLOBAL RULE"} {
+		if strings.Contains(project.InstructionContext.InstructionsText, legacy) {
+			t.Fatalf("legacy managed instruction leaked %q: %s", legacy, project.InstructionContext.InstructionsText)
 		}
 	}
-	for _, unexpected := range []string{"USER CLAUDE CONTEXT", "USER CLAUDE RULE", "USER CLAUDE SKILL"} {
-		if strings.Contains(project.InstructionContext.InstructionsText, unexpected) {
-			t.Fatalf("disabled source leaked %q: %s", unexpected, project.InstructionContext.InstructionsText)
-		}
-	}
-	if len(project.InstructionContext.Sources) != 1 ||
-		project.InstructionContext.Sources[0].Provider != "codemcp" ||
-		project.InstructionContext.Sources[0].Kind != string(instructionpolicy.ResourceSkills) ||
-		project.InstructionContext.Sources[0].Scope != "builtin" ||
-		project.InstructionContext.Sources[0].Count != 3 {
-		t.Fatalf("sources = %#v", project.InstructionContext.Sources)
-	}
-
 	listResult, err := runtime.Call(context.Background(), "list_skills", map[string]any{"workspace_id": workspaceID})
 	if err != nil || listResult.IsError {
 		t.Fatalf("list_skills failed: %#v %v", listResult, err)
 	}
-	if listResult.StructuredContent.(SkillsListResult).Count != 3 {
-		t.Fatalf("disabled user skill leaked: %#v", listResult.StructuredContent)
+	if listResult.StructuredContent.(SkillsListResult).Count != 4 {
+		t.Fatalf("canonical user skill missing: %#v", listResult.StructuredContent)
 	}
 	loadResult, err := runtime.Call(context.Background(), "load_skill", map[string]any{"workspace_id": workspaceID, "name": "user-review"})
-	if err != nil || !loadResult.IsError {
-		t.Fatalf("disabled load_skill bypassed policy: %#v %v", loadResult, err)
+	if err != nil || loadResult.IsError {
+		t.Fatalf("canonical user skill failed to load: %#v %v", loadResult, err)
 	}
 	rulesResult, err := runtime.Call(context.Background(), "load_path_rules", map[string]any{"workspace_id": workspaceID, "path": "src/app.ts"})
-	if err != nil || rulesResult.IsError || rulesResult.StructuredContent.(PathRulesResult).Count != 0 {
-		t.Fatalf("disabled user rule leaked: %#v %v", rulesResult, err)
+	if err != nil || rulesResult.IsError || rulesResult.StructuredContent.(PathRulesResult).Count != 1 {
+		t.Fatalf("canonical user rule missing: %#v %v", rulesResult, err)
 	}
 }
 

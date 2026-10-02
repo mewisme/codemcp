@@ -41,7 +41,6 @@ func TestDynamicProviderContractIsSharedAcrossProjectContextRulesAndSkills(t *te
 	bundle, err := LoadProjectMemory(projectRoot, MemoryLoadOptions{
 		WorkspaceRoots: []string{workspaceRoot},
 		HomeDir:        home,
-		SourcePolicy:   policy,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -65,7 +64,7 @@ func TestDynamicProviderContractIsSharedAcrossProjectContextRulesAndSkills(t *te
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(loadedRules) != 2 || loadedRules[0].Source != ".agents" || loadedRules[1].Source != ".zedagent" {
+	if len(loadedRules) != 3 || loadedRules[0].Source != ".agents" || loadedRules[1].Source != ".newagent" || loadedRules[2].Source != ".zedagent" {
 		t.Fatalf("rules=%#v", loadedRules)
 	}
 
@@ -86,14 +85,18 @@ func TestDynamicProviderContractIsSharedAcrossProjectContextRulesAndSkills(t *te
 	sources := LoadedProjectSources(bundle, loadedRules, loadedSkills, workspaceRoot)
 	providerOrder := make([]string, 0)
 	seen := map[string]bool{}
+	newAgentRuleLoaded := false
 	for _, source := range sources {
 		if !seen[source.Provider] {
 			seen[source.Provider] = true
 			providerOrder = append(providerOrder, source.Provider)
 		}
 		if source.Provider == ".newagent" && source.Kind == string(instructionpolicy.ResourceRules) {
-			t.Fatalf("disabled rule source advertised as loaded: %#v", sources)
+			newAgentRuleLoaded = source.Loaded
 		}
+	}
+	if !newAgentRuleLoaded {
+		t.Fatalf("legacy source policy still filtered provider-native rules: %#v", sources)
 	}
 	wantProviderOrder := []string{"agents", ".agents", ".newagent", ".zedagent", "codemcp"}
 	if len(providerOrder) != len(wantProviderOrder) {

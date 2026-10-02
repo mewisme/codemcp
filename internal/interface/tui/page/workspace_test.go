@@ -877,8 +877,6 @@ func TestWorkspaceProjectContextBuildUsesVolatileSession(t *testing.T) {
 				Root: project, WorkspaceID: item.ID, ToolProfile: instructioncontext.ToolProfile{Name: "full", Count: 77}, InstructionsText: "# Context Document\n\nUse compact code.", InstructionTruncated: true,
 				ProjectMemory: instructioncontext.ProjectMemoryBundle{Sections: []instructioncontext.Section{{Path: sourcePath, Kind: instructioncontext.SectionProject, Content: "# AGENTS\n\nSource body.", LoadedBytes: 22}}},
 				AutoMemory:    instructioncontext.AutoMemorySnapshot{Loaded: true, Content: "## general\n\n- remember compact code", Bytes: 36, Entries: 1, Truncated: true},
-				GlobalContext: "# Global Context\n\nShared policy.",
-				GlobalRules:   []rules.Rule{{Path: "managed://global-rule", Source: "managed", Content: "# Global Rule\n\nAlways apply."}},
 				Rules:         []rules.Rule{{Path: filepath.Join(project, ".agents", "rules", "project.md"), Source: "agents", Content: "# Project Rule\n\nProject only."}},
 				Skills:        []skills.Skill{{Name: "review", Description: "Review changes", Path: filepath.Join(project, ".agents", "skills", "review", "SKILL.md"), Source: "agents"}},
 				Sources:       []instructioncontext.SourceSnapshot{{Provider: "claude", Kind: "context", Paths: []string{sourcePath}, Count: 1, Enabled: true, Loaded: true}},
@@ -920,7 +918,7 @@ func TestWorkspaceProjectContextBuildUsesVolatileSession(t *testing.T) {
 	updated, _ = preview.Update(tea.KeyPressMsg{Code: '2', Text: "2"})
 	preview = updated.(*WorkspacePage)
 	sourcesView := ansi.Strip(preview.View(110, 30))
-	for _, want := range []string{"User-level Sources", "Claude", "Context · 1 · included", "Global Context", "Auto Memory", "Project/User Instruction Files · 1", "Global Rules · 1", "Rules · 1"} {
+	for _, want := range []string{"User-level Sources", "Claude", "Context · 1 · included", "Auto Memory", "Project/User Instruction Files · 1", "Rules · 1"} {
 		if !strings.Contains(sourcesView, want) {
 			t.Fatalf("sources preview missing %q: %q", want, sourcesView)
 		}
@@ -1274,7 +1272,6 @@ func TestWorkspaceProjectContextPreviewResponsiveLayouts(t *testing.T) {
 		InstructionContext: instructioncontext.InstructionContext{
 			Root: project, WorkspaceID: item.ID,
 			InstructionsText: "# Responsive Project Context\n\n" + strings.Repeat("Long markdown content for width verification. ", 20),
-			GlobalContext:    strings.Repeat("global-context-", 20),
 			Sources:          []instructioncontext.SourceSnapshot{{Provider: "agents", Kind: "context", Paths: []string{filepath.Join(project, "AGENTS.md")}, Count: 1, Enabled: true, Loaded: true}},
 		},
 		Summary: projectcontext.Summary{InstructionBytes: 4096, MemoryBytes: 1024, Rules: 2, Skills: 1},

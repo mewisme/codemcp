@@ -30,13 +30,12 @@ func TestMutationInputKindsUseStructuredFlows(t *testing.T) {
 		},
 	}
 	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{
-		capability.LLMProviderGet:          provider,
-		capability.TunnelStatus:            application.TunnelView{Enabled: true},
-		capability.TunnelGet:               tunnel.Metadata{ID: "tunnel_1", Name: "Managed"},
-		capability.UpstreamServerShow:      upstream.Server{ID: "remote", Name: "Remote", Transport: "http", Enabled: true, URL: "https://mcp.example.com", Auth: upstream.AuthConfig{Type: "none"}, Expose: "all", IdleTimeoutSec: 600},
-		capability.ConfigGet:               application.SettingResult{Spec: config.FieldSpec{Key: "example.mode", Label: "Example mode", Description: "Select the example mode.", Kind: config.FieldEnum, Options: []string{"one", "two"}, Editable: true}, Value: "one"},
-		capability.InstructionSettingsRead: application.InstructionSettings{},
-		capability.PromptGet:               prompt,
+		capability.LLMProviderGet:     provider,
+		capability.TunnelStatus:       application.TunnelView{Enabled: true},
+		capability.TunnelGet:          tunnel.Metadata{ID: "tunnel_1", Name: "Managed"},
+		capability.UpstreamServerShow: upstream.Server{ID: "remote", Name: "Remote", Transport: "http", Enabled: true, URL: "https://mcp.example.com", Auth: upstream.AuthConfig{Type: "none"}, Expose: "all", IdleTimeoutSec: 600},
+		capability.ConfigGet:          application.SettingResult{Spec: config.FieldSpec{Key: "example.mode", Label: "Example mode", Description: "Select the example mode.", Kind: config.FieldEnum, Options: []string{"one", "two"}, Editable: true}, Value: "one"},
+		capability.PromptGet:          prompt,
 	}}
 	ui, _ := newDomainTestInterface(t, dispatcher)
 	states := []ActionState{
@@ -61,7 +60,6 @@ func TestMutationInputKindsUseStructuredFlows(t *testing.T) {
 		{InputKind: inputSettingsApply},
 		{InputKind: inputConfigPatch},
 		{InputKind: inputTelegramUserManual, ExpectedVersion: "42"},
-		{InputKind: inputInstructionPatch},
 		{InputKind: inputPromptCreate},
 		{InputKind: inputPromptUpdate, ResourceID: "review-code", ExpectedVersion: "ws_1"},
 	}

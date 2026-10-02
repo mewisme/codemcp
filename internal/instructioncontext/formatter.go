@@ -43,18 +43,12 @@ func instructionBlocks(value InstructionContext) []instructionBlock {
 	if value.AutoMemory.Loaded && strings.TrimSpace(value.AutoMemory.Content) != "" {
 		blocks = append(blocks, instructionBlock{title: "Auto memory", content: shiftMarkdownHeadings(strings.TrimSpace(value.AutoMemory.Content), 1)})
 	}
-	if strings.TrimSpace(value.GlobalContext) != "" {
-		blocks = append(blocks, instructionBlock{title: "Global context", content: strings.TrimSpace(value.GlobalContext)})
-	}
 	user, project := splitMemorySections(value.ProjectMemory.Sections)
 	if user != "" {
 		blocks = append(blocks, instructionBlock{title: "User instructions", content: user})
 	}
 	if project != "" {
 		blocks = append(blocks, instructionBlock{title: "Project instructions", content: project})
-	}
-	if globalRulesText := formatRules(value.GlobalRules); globalRulesText != "" {
-		blocks = append(blocks, instructionBlock{title: "Global rules", content: globalRulesText})
 	}
 	if rulesText := formatRules(value.Rules); rulesText != "" {
 		blocks = append(blocks, instructionBlock{title: "Always-on rules", content: rulesText})
@@ -201,7 +195,6 @@ func optionalSelectionOrder(blocks []instructionBlock, priority []string) []inst
 		}
 	}
 	// Policy/rule blocks remain deterministic and outrank semantic context.
-	appendTitle("Global rules")
 	appendTitle("Always-on rules")
 	for _, title := range priority {
 		appendTitle(strings.TrimSpace(title))

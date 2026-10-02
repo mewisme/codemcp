@@ -35,11 +35,19 @@ func DiscoverForWorkspace(projectRoot, workspaceRoot string) ([]Skill, error) {
 }
 
 func DiscoverUser(home string, policy instructionpolicy.Config) ([]Skill, error) {
-	_ = home
 	_ = policy
 	result := make([]Skill, 0)
 	seen := map[string]bool{}
 	walkSkills(filepath.Join(configformat.RootPath(), "skills"), instructionsource.NativeSource, 0, &result, seen)
+	providers, err := instructionsource.DiscoverDynamicProviders(home)
+	if err != nil {
+		return nil, err
+	}
+	for _, provider := range providers {
+		if provider.SkillsDir != "" {
+			walkSkills(provider.SkillsDir, provider.Name, 0, &result, seen)
+		}
+	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Name == result[j].Name {
 			return result[i].Path < result[j].Path
@@ -50,10 +58,49 @@ func DiscoverUser(home string, policy instructionpolicy.Config) ([]Skill, error)
 }
 
 func DiscoverWithUser(workspaceRoot, home string, policy instructionpolicy.Config) ([]Skill, error) {
-	return DiscoverWithUserForWorkspace(workspaceRoot, workspaceRoot, home, policy)
+	project, err := DiscoverForWorkspace(workspaceRoot, workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+	user, err := DiscoverUser(home, policy)
+	if err != nil {
+		return nil, err
+	}
+	ordered := make([]Skill, 0, len(project)+len(user))
+	for _, skill := range project {
+		if skill.Source == instructionsource.NativeSource && !IsBuiltin(skill) {
+			ordered = append(ordered, skill)
+		}
+	}
+	for _, skill := range user {
+		if skill.Source == instructionsource.NativeSource && !IsBuiltin(skill) {
+			ordered = append(ordered, skill)
+		}
+	}
+	for _, skill := range project {
+		if skill.Source != instructionsource.NativeSource && !IsBuiltin(skill) {
+			ordered = append(ordered, skill)
+		}
+	}
+	for _, skill := range user {
+		if skill.Source != instructionsource.NativeSource && !IsBuiltin(skill) {
+			ordered = append(ordered, skill)
+		}
+	}
+	seen := map[string]bool{}
+	result := make([]Skill, 0, len(ordered))
+	for _, skill := range ordered {
+		if IsReservedName(skill.Name) || seen[skill.Name] {
+			continue
+		}
+		seen[skill.Name] = true
+		result = append(result, skill)
+	}
+	return append(result, BuiltinSkills()...), nil
 }
 
 func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, policy instructionpolicy.Config) ([]Skill, error) {
+	_ = policy
 	project, err := DiscoverForWorkspace(projectRoot, workspaceRoot)
 	if err != nil {
 		return nil, err
@@ -74,7 +121,7 @@ func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, polic
 		}
 	}
 	for _, skill := range project {
-		if skill.Source != instructionsource.NativeSource && !IsBuiltin(skill) && policy.Enabled(skill.Source, instructionpolicy.ResourceSkills) {
+		if skill.Source != instructionsource.NativeSource && !IsBuiltin(skill) {
 			ordered = append(ordered, skill)
 		}
 	}

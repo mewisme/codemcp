@@ -119,7 +119,6 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 	memoryStore := memory.NewWorkspaceStore(memory.DefaultRoot(), workspaces)
 	memoryIndex := memory.NewHybridIndex(memory.NewLocalEmbedder(), memory.DefaultHybridWeights())
 	memoryLifecycle := memory.NewIndexLifecycle(memoryStore, memoryIndex)
-	policyStore := instructionpolicy.DefaultStore()
 	var environment ProjectContextEnvironment
 	if len(environments) > 0 {
 		environment = environments[0]
@@ -127,7 +126,6 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 	contextService := projectcontext.NewService(projectcontext.ServiceOptions{
 		Workspaces:  workspaces,
 		MemoryStore: &memoryStore,
-		PolicyStore: policyStore,
 		ToolProfile: func() instructioncontext.ToolProfile {
 			return instructioncontext.ToolProfile{Name: "full", Count: len(registry.ListSchemas())}
 		},
@@ -147,12 +145,8 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		if err != nil {
 			return Result{}, err
 		}
-		policy, err := policyStore.Load()
-		if err != nil {
-			return Result{}, err
-		}
 		home, _ := os.UserHomeDir()
-		values, err := skills.DiscoverWithUser(item.Path, home, policy)
+		values, err := skills.DiscoverWithUser(item.Path, home, instructionpolicy.DefaultConfig())
 		if err != nil {
 			return Result{}, err
 		}
@@ -172,12 +166,8 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		if err != nil {
 			return Result{}, err
 		}
-		policy, err := policyStore.Load()
-		if err != nil {
-			return Result{}, err
-		}
 		home, _ := os.UserHomeDir()
-		value, err := skills.LoadWithUser(item.Path, home, name, maxBytes, policy)
+		value, err := skills.LoadWithUser(item.Path, home, name, maxBytes, instructionpolicy.DefaultConfig())
 		if err != nil {
 			return Result{}, err
 		}
@@ -454,12 +444,8 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		if err != nil {
 			return Result{}, err
 		}
-		policy, err := policyStore.Load()
-		if err != nil {
-			return Result{}, err
-		}
 		home, _ := os.UserHomeDir()
-		values, err := rules.LoadForFileWithUser(item.Path, target, home, policy)
+		values, err := rules.LoadForFileWithUser(item.Path, target, home, instructionpolicy.DefaultConfig())
 		if err != nil {
 			return Result{}, err
 		}

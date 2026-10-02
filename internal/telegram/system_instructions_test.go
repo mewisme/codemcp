@@ -81,25 +81,22 @@ func TestPaginatorWindowKeepsFirstLastAndFiveNearbyPages(t *testing.T) {
 	}
 }
 
-func TestInstructionsExposeProviderSourcesReadOnly(t *testing.T) {
-	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{
-		capability.InstructionSettingsRead: application.InstructionSettings{
-			Version:         1,
-			DetectedSources: []instructioncontext.SourceSnapshot{{Provider: "claude", Kind: "rules", Scope: "user", Count: 3, Enabled: true, Loaded: true}},
-		},
-	}}
-	ui, owner := newDomainTestInterface(t, dispatcher)
+func TestInstructionsExposeProjectContextPromptsAndReadOnlySourceDiscovery(t *testing.T) {
+	ui, owner := newDomainTestInterface(t, &domainTestDispatcher{})
 	screen, err := ui.instructionsScreen(t.Context(), owner)
 	if err != nil {
 		t.Fatal(err)
 	}
 	text := RichFallback(screen.Rich).Text
-	if !strings.Contains(text, "claude/rules") || !strings.Contains(text, "read-only here") {
-		t.Fatalf("instruction provenance missing: %q", text)
+	if !strings.Contains(text, "canonical precedence") || !strings.Contains(text, "canonical MCP tools") {
+		t.Fatalf("instruction discovery guidance missing: %q", text)
 	}
 	labels := keyboardLabels(screen.Keyboard)
-	if !strings.Contains(labels, "Author rule") || !strings.Contains(labels, "Author skill") {
-		t.Fatalf("unsafe authoring is not explicitly unavailable: %s", labels)
+	if !strings.Contains(labels, "Project context") || !strings.Contains(labels, "Prompts") {
+		t.Fatalf("instruction navigation missing: %s", labels)
+	}
+	if strings.Contains(labels, "Edit settings") || strings.Contains(text, "Global context") || strings.Contains(text, "Source policies") {
+		t.Fatalf("legacy global instruction settings remain exposed: text=%q labels=%q", text, labels)
 	}
 }
 

@@ -75,7 +75,6 @@ const browserSurfaces: { prefix: string; surface: BrowserSurface }[] = [
   { prefix: "logs.", surface: { route: "/logs", component: "LogsPage" } },
   { prefix: "activity.", surface: { route: "/activity", component: "ActivityPage" } },
   { prefix: "completion.", surface: { route: "/completions", component: "CompletionsPage" } },
-  { prefix: "instructions.", surface: { route: "/instructions", component: "GlobalInstructionsPage" } },
   { prefix: "prompt.", surface: { route: "/prompts", component: "PromptsPage" } },
   { prefix: "tools.", surface: { route: "/tools", component: "ToolsPage" } },
   { prefix: "config.", surface: { route: "/settings", component: "SettingsPage" } },

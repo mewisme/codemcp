@@ -11,6 +11,9 @@ import (
 	"go.mewis.me/codemcp/internal/state"
 )
 
+// Version is the schema version of the retired global instruction settings file.
+// The schema remains readable only for lossless legacy-state handling and tests;
+// it is not an active runtime policy authority.
 const Version = 1
 
 type ResourceKind string
@@ -42,6 +45,8 @@ type Config struct {
 	Sources map[string]SourcePolicy `json:"sources,omitempty"`
 }
 
+// Store accesses the retired instructions/global.json format. Active instruction
+// discovery and authoring must not depend on this store.
 type Store struct{ Path string }
 
 func DefaultPath() string {

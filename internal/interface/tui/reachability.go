@@ -126,8 +126,6 @@ func tuiNavigationActionRoute(id string) string {
 		return string(RouteLogs)
 	case "app.go.config":
 		return string(RouteConfig)
-	case "app.go.instruction":
-		return string(RouteInstruction)
 	case "app.go.prompts":
 		return string(RoutePrompts)
 	case "app.go.runtime":
@@ -158,7 +156,6 @@ func tuiReachabilityContexts() []action.Context {
 		{Route: string(RouteCompletions)},
 		{Route: string(RouteLogs)},
 		{Route: string(RouteConfig)},
-		{Route: string(RouteInstruction)},
 		{Route: string(RoutePrompts)},
 		{Route: string(RouteRuntime)},
 		{Route: string(RouteAbout)},

@@ -106,7 +106,7 @@ func TestDiscoverForWorkspaceUsesSelectedProjectProvidersAndWorkspaceNativeFirst
 	}
 }
 
-func TestDiscoverWithUserForWorkspaceAppliesProviderPolicyAndSourcePrecedence(t *testing.T) {
+func TestDiscoverWithUserForWorkspaceIgnoresLegacyProviderPolicyAndKeepsSourcePrecedence(t *testing.T) {
 	configRoot := t.TempDir()
 	t.Setenv("CM_CONFIG_DIR", configRoot)
 	workspaceRoot := t.TempDir()
@@ -134,18 +134,18 @@ func TestDiscoverWithUserForWorkspaceAppliesProviderPolicyAndSourcePrecedence(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 3 {
+	if len(values) != 4 {
 		t.Fatalf("rules=%#v", values)
 	}
-	want := []string{".cm", ".cm", ".agents"}
+	want := []string{".cm", ".cm", ".agents", ".newagent"}
 	for i, source := range want {
 		if values[i].Source != source {
 			t.Fatalf("rule %d=%#v want source=%q", i, values[i], source)
 		}
 	}
 	for _, value := range values {
-		if value.Content == "future provider" || value.Content == "home provider" {
-			t.Fatalf("disabled or home provider loaded: %#v", values)
+		if value.Content == "home provider" {
+			t.Fatalf("home provider leaked into workspace-scoped discovery: %#v", values)
 		}
 	}
 }

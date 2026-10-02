@@ -96,18 +96,6 @@ export type ExecutionFeedSnapshot = {
   executions: ExecutionInfo[]
   latest_sequence: number
 }
-export type InstructionSourcePolicy = {
-  enabled?: boolean
-  context?: boolean
-  rules?: boolean
-  skills?: boolean
-}
-export type GlobalInstructionRule = {
-  id: string
-  name?: string
-  enabled: boolean
-  content: string
-}
 export type InstructionSource = {
   provider: string
   kind: "context" | "rules" | "skills" | string
@@ -115,13 +103,6 @@ export type InstructionSource = {
   count: number
   enabled: boolean
   loaded: boolean
-}
-export type GlobalInstructions = {
-  version: number
-  context: string
-  rules: GlobalInstructionRule[]
-  source_policy: Record<string, InstructionSourcePolicy>
-  detected_sources: InstructionSource[]
 }
 export type PromptDefinition = {
   version: number
@@ -186,8 +167,6 @@ export type ProjectContextResult = {
     instructions_text: string
     instruction_bytes: number
     instruction_truncated?: boolean
-    global_context?: string
-    global_rules: InstructionRule[]
     rules: InstructionRule[]
     skills: InstructionSkill[]
     sources: InstructionSource[]
@@ -1105,7 +1084,6 @@ export const adminApi = {
         body: JSON.stringify({ container_ids: containerIDs }),
       }
     ),
-  globalInstructions: () => api<GlobalInstructions>("/api/instructions/global"),
   prompts: (workspaceID = "") =>
     api<ScopedPrompt[]>(
       `/api/prompts?workspace_id=${encodeURIComponent(workspaceID)}`
@@ -1137,15 +1115,6 @@ export const adminApi = {
       `/api/prompts/${encodeURIComponent(name)}?workspace_id=${encodeURIComponent(workspaceID)}`,
       { method: "DELETE" }
     ),
-  saveGlobalInstructions: (
-    patch: Partial<
-      Pick<GlobalInstructions, "context" | "rules" | "source_policy">
-    >
-  ) =>
-    api<GlobalInstructions>("/api/instructions/global", {
-      method: "PUT",
-      body: JSON.stringify(patch),
-    }),
   workspaceContext: (id: string, options: ProjectContextOptions = {}) => {
     const query = new URLSearchParams()
     if (options.path?.trim()) query.set("path", options.path.trim())

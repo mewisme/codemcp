@@ -25,7 +25,6 @@ const (
 	RouteLogsExec     RouteKind = "logs-exec"
 	RouteLogsTools    RouteKind = "logs-tools"
 	RouteConfig       RouteKind = "config"
-	RouteInstruction  RouteKind = "instruction"
 	RoutePrompts      RouteKind = "prompts"
 	RouteRuntime      RouteKind = "runtime"
 	RouteAbout        RouteKind = "about"
@@ -54,7 +53,6 @@ var headerPages = []headerPage{
 	{Kind: RouteLLM, Label: "LLM"},
 	{Kind: RouteLogs, Label: "Logs"},
 	{Kind: RouteConfig, Label: "Config", CompactLabel: "Cfg"},
-	{Kind: RouteInstruction, Label: "Instruction", CompactLabel: "Instr"},
 	{Kind: RouteRuntime, Label: "Runtime", CompactLabel: "Run"},
 }
 
@@ -102,8 +100,6 @@ func ParseRoute(args []string) (Route, error) {
 		return parseLogsToolsRoute(parts)
 	case RouteConfig:
 		return parseConfigRoute(parts)
-	case RouteInstruction:
-		return parseInstructionRoute(parts)
 	case RouteRuntime:
 		return parseRuntimeRoute(parts)
 	case RouteGuide:
@@ -438,37 +434,6 @@ func parseRuntimeRoute(parts []string) (Route, error) {
 	return route, nil
 }
 
-func parseInstructionRoute(parts []string) (Route, error) {
-	route := Route{Kind: RouteInstruction}
-	if len(parts) == 1 {
-		return route, nil
-	}
-	section, ok := normalizeRouteSection(RouteInstruction, parts[1])
-	if !ok {
-		return Route{}, fmt.Errorf("unsupported instruction tab %q", parts[1])
-	}
-	route.Section = section
-	if len(parts) == 2 {
-		return route, nil
-	}
-	if route.Section == "context" && len(parts) == 3 && parts[2] == "edit" {
-		route.Action = "edit"
-		return route, nil
-	}
-	if route.Section != "rules" {
-		return Route{}, fmt.Errorf("instruction tab %q does not accept editor routes", route.Section)
-	}
-	if len(parts) == 3 && parts[2] == "create" {
-		route.Action = "create"
-		return route, nil
-	}
-	if len(parts) == 4 && parts[2] != "" && parts[3] == "edit" {
-		route.ResourceID, route.Action = parts[2], "edit"
-		return route, nil
-	}
-	return Route{}, fmt.Errorf("unsupported instruction editor path %q", strings.Join(parts, " "))
-}
-
 func parseRequestsRoute(parts []string) (Route, error) {
 	route := Route{Kind: RouteRequests}
 	if len(parts) == 1 {
@@ -570,8 +535,6 @@ func parseRouteKind(value string) (RouteKind, bool) {
 		return RouteLogsTools, true
 	case "config", "cfg":
 		return RouteConfig, true
-	case "instruction", "instructions", "instr":
-		return RouteInstruction, true
 	case "prompt", "prompts":
 		return RoutePrompts, true
 	case "runtime", "status":
@@ -588,25 +551,16 @@ func parseRouteKind(value string) (RouteKind, bool) {
 func (route Route) Title() string {
 	base := map[RouteKind]string{
 		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "Upstreams", RouteTunnel: "Tunnel", RouteTools: "Tools", RouteIntegrations: "Integrations", RouteDoctor: "Doctor", RouteExecutions: "Command Executions", RouteProcesses: "Background Processes",
-		RouteRequests: "Requests", RouteLLM: "LLM", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RouteInstruction: "Instruction", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
+		RouteRequests: "Requests", RouteLLM: "LLM", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
 	}[route.Kind]
 	if route.Kind == RouteRequests && route.Mode != "" {
 		base += " · " + routeSectionTitle(route.Mode)
 	}
-	if route.Kind == RouteInstruction {
-		if route.Section != "" {
-			base += " · " + routeSectionTitle(route.Section)
-		}
-		if route.ResourceID != "" {
-			base += " · " + route.ResourceID
-		}
-	} else {
-		if route.ResourceID != "" {
-			base += " · " + route.ResourceID
-		}
-		if route.Section != "" {
-			base += " · " + routeSectionTitle(route.Section)
-		}
+	if route.ResourceID != "" {
+		base += " · " + route.ResourceID
+	}
+	if route.Section != "" {
+		base += " · " + routeSectionTitle(route.Section)
 	}
 	if route.Action != "" {
 		base += " · " + routeSectionTitle(route.Action)
@@ -620,13 +574,12 @@ func normalizeRouteSection(kind RouteKind, value string) (string, bool) {
 		return "", true
 	}
 	allowed := map[RouteKind]map[string]bool{
-		RouteWorkspaces:  {"access": true, "containers": true, "context": true, "context-preview": true},
-		RouteInstruction: {"context": true, "rules": true, "sources": true},
-		RouteContainers:  {"workspaces": true},
-		RouteMCP:         {"health": true, "tools": true, "oauth": true},
-		RouteRequests:    {"command": true, "arguments": true, "guard": true},
-		RouteLLM:         {"models": true},
-		RouteLogs:        {"fields": true},
+		RouteWorkspaces: {"access": true, "containers": true, "context": true, "context-preview": true},
+		RouteContainers: {"workspaces": true},
+		RouteMCP:        {"health": true, "tools": true, "oauth": true},
+		RouteRequests:   {"command": true, "arguments": true, "guard": true},
+		RouteLLM:        {"models": true},
+		RouteLogs:       {"fields": true},
 	}
 	return value, allowed[kind][value]
 }
@@ -698,11 +651,6 @@ func breadcrumbRootRouteLabel(route Route) string {
 			return "Pending"
 		}
 		return routeSectionTitle(route.Mode)
-	case RouteInstruction:
-		if route.Section == "" {
-			return "Context"
-		}
-		return breadcrumbSectionLabel(route.Kind, route.Section)
 	default:
 		return breadcrumbRootLabel(route.Kind)
 	}
@@ -742,8 +690,6 @@ func breadcrumbRootLabel(kind RouteKind) string {
 		return "Tool Calls"
 	case RouteConfig:
 		return "Config"
-	case RouteInstruction:
-		return "Instruction"
 	case RoutePrompts:
 		return "Prompts"
 	case RouteRuntime:
@@ -810,8 +756,6 @@ func breadcrumbSectionLabel(kind RouteKind, section string) string {
 
 func breadcrumbActionLabel(route Route) string {
 	switch {
-	case route.Kind == RouteInstruction && route.Section == "rules" && route.Action == "edit" && route.ResourceID != "":
-		return "Edit " + route.ResourceID
 	case route.Kind == RouteTunnel && route.Section == "admin-key" && route.Action == "edit":
 		return "Edit Admin Key"
 	case route.Kind == RouteLogs && route.Action == "filter":
@@ -878,8 +822,6 @@ func routeStack(route Route) []Route {
 		return genericRouteStack(route)
 	case RouteRequests:
 		return requestRouteStack(route)
-	case RouteInstruction:
-		return instructionRouteStack(route)
 	case RouteConfig:
 		return configRouteStack(route)
 	case RouteTunnel:
@@ -923,15 +865,6 @@ func requestRouteStack(route Route) []Route {
 		parent.Section = route.Section
 		stack = append(stack, parent)
 	}
-	if route.Action != "" {
-		stack = append(stack, route)
-	}
-	return dedupeRouteStack(stack)
-}
-
-func instructionRouteStack(route Route) []Route {
-	root := Route{Kind: RouteInstruction, Section: route.Section}
-	stack := []Route{root}
 	if route.Action != "" {
 		stack = append(stack, route)
 	}

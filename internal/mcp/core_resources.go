@@ -283,41 +283,32 @@ func decodeResourceModel(value any, target any) error {
 }
 
 func globalInstructionSources() (map[string]any, error) {
-	policy, err := instructionpolicy.DefaultStore().Load()
-	if err != nil {
-		return nil, err
-	}
+	policy := instructionpolicy.DefaultConfig()
 	home, _ := os.UserHomeDir()
-	nativeRules, err := rules.DiscoverUser(home, policy)
+	allRules, err := rules.DiscoverUser(home, policy)
 	if err != nil {
 		return nil, err
 	}
-	nativeSkills, err := skills.DiscoverUser(home, policy)
+	allSkills, err := skills.DiscoverUser(home, policy)
 	if err != nil {
 		return nil, err
 	}
 
-	sources := make([]map[string]any, 0, 5)
-	if strings.TrimSpace(policy.Context) != "" {
-		sources = append(sources, sourceResourceMap("codemcp", string(instructionpolicy.ResourceContext), "global-managed", 1, true, true))
-	}
-	managedRules := 0
-	for _, rule := range policy.Rules {
-		if rule.Enabled && strings.TrimSpace(rule.Content) != "" {
-			managedRules++
+	sources := make([]map[string]any, 0, 4)
+	nativeRuleCount := 0
+	for _, rule := range allRules {
+		if rule.Source == ".cm" {
+			nativeRuleCount++
 		}
 	}
-	if managedRules > 0 {
-		sources = append(sources, sourceResourceMap("codemcp", string(instructionpolicy.ResourceRules), "global-managed", managedRules, true, true))
-	}
-	if len(nativeRules) > 0 {
-		sources = append(sources, sourceResourceMap(".cm", string(instructionpolicy.ResourceRules), "global-native", len(nativeRules), true, true))
+	if nativeRuleCount > 0 {
+		sources = append(sources, sourceResourceMap(".cm", string(instructionpolicy.ResourceRules), "global-native", nativeRuleCount, true, true))
 	}
 	nativeSkillCount, builtinSkillCount := 0, 0
-	for _, skill := range nativeSkills {
+	for _, skill := range allSkills {
 		if skills.IsBuiltin(skill) {
 			builtinSkillCount++
-		} else {
+		} else if skill.Source == ".cm" {
 			nativeSkillCount++
 		}
 	}
@@ -331,12 +322,7 @@ func globalInstructionSources() (map[string]any, error) {
 }
 
 func globalSkillCatalog() (map[string]any, error) {
-	policy, err := instructionpolicy.DefaultStore().Load()
-	if err != nil {
-		return nil, err
-	}
-	home, _ := os.UserHomeDir()
-	values, err := skills.DiscoverUser(home, policy)
+	values, err := globalResolvedSkills()
 	if err != nil {
 		return nil, err
 	}

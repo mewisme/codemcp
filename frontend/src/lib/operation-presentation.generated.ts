@@ -315,24 +315,6 @@ export const canonicalPresentationContract = {
       "confirmation": "none",
       "input": "form"
     },
-    "instructions.settings.read": {
-      "operation": "instructions.settings.read",
-      "title": "Get Instructions",
-      "subject": "Instructions",
-      "category": "read",
-      "danger": "none",
-      "confirmation": "none",
-      "input": "none"
-    },
-    "instructions.settings.write": {
-      "operation": "instructions.settings.write",
-      "title": "Set Instructions",
-      "subject": "Instructions",
-      "category": "change",
-      "danger": "none",
-      "confirmation": "none",
-      "input": "form"
-    },
     "integration.cf.install": {
       "operation": "integration.cf.install",
       "title": "Install Integration CF",

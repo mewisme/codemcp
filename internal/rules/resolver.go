@@ -35,19 +35,57 @@ func DiscoverForWorkspace(projectRoot, workspaceRoot string) ([]Rule, error) {
 }
 
 func DiscoverUser(home string, policy instructionpolicy.Config) ([]Rule, error) {
-	_ = home
 	_ = policy
 	result := make([]Rule, 0)
 	walkRules(filepath.Join(configformat.RootPath(), "rules"), instructionsource.NativeSource, 0, &result)
+	providers, err := instructionsource.DiscoverDynamicProviders(home)
+	if err != nil {
+		return nil, err
+	}
+	for _, provider := range providers {
+		if provider.RulesDir != "" {
+			walkRules(provider.RulesDir, provider.Name, 0, &result)
+		}
+	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Path < result[j].Path })
 	return result, nil
 }
 
 func DiscoverWithUser(workspaceRoot, home string, policy instructionpolicy.Config) ([]Rule, error) {
-	return DiscoverWithUserForWorkspace(workspaceRoot, workspaceRoot, home, policy)
+	project, err := DiscoverForWorkspace(workspaceRoot, workspaceRoot)
+	if err != nil {
+		return nil, err
+	}
+	user, err := DiscoverUser(home, policy)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]Rule, 0, len(project)+len(user))
+	for _, rule := range project {
+		if rule.Source == instructionsource.NativeSource {
+			result = append(result, rule)
+		}
+	}
+	for _, rule := range user {
+		if rule.Source == instructionsource.NativeSource {
+			result = append(result, rule)
+		}
+	}
+	for _, rule := range project {
+		if rule.Source != instructionsource.NativeSource {
+			result = append(result, rule)
+		}
+	}
+	for _, rule := range user {
+		if rule.Source != instructionsource.NativeSource {
+			result = append(result, rule)
+		}
+	}
+	return result, nil
 }
 
 func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, policy instructionpolicy.Config) ([]Rule, error) {
+	_ = policy
 	project, err := DiscoverForWorkspace(projectRoot, workspaceRoot)
 	if err != nil {
 		return nil, err
@@ -68,7 +106,7 @@ func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, polic
 		}
 	}
 	for _, rule := range project {
-		if rule.Source != instructionsource.NativeSource && policy.Enabled(rule.Source, instructionpolicy.ResourceRules) {
+		if rule.Source != instructionsource.NativeSource {
 			result = append(result, rule)
 		}
 	}

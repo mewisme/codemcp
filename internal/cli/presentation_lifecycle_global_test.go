@@ -32,7 +32,6 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"http":         "http mcp enable",
 		"init":         "init",
 		"install":      "install",
-		"instructions": "instructions get",
 		"integration":  "integration rtk disable",
 		"llm":          "llm status",
 		"logs":         "logs path",

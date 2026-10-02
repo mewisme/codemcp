@@ -40,12 +40,12 @@ func TestCrossSurfaceLifecycleRegressionEvidenceMatrix(t *testing.T) {
 		{
 			domain:  "rule provider precedence",
 			file:    "internal/rules/resolver_test.go",
-			markers: []string{"TestDiscoverWithUserForWorkspaceAppliesProviderPolicyAndSourcePrecedence"},
+			markers: []string{"TestDiscoverWithUserForWorkspaceIgnoresLegacyProviderPolicyAndKeepsSourcePrecedence"},
 		},
 		{
 			domain:  "skill provider precedence",
 			file:    "internal/skills/resolver_test.go",
-			markers: []string{"TestDiscoverWithUserForWorkspaceAppliesProviderPolicyAndSourcePrecedence"},
+			markers: []string{"TestDiscoverWithUserForWorkspaceIgnoresLegacyProviderPolicyAndKeepsSourcePrecedence"},
 		},
 		{
 			domain: "workspace identity reconnect",

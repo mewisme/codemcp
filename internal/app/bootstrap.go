@@ -108,7 +108,6 @@ func (a *App) Bootstrap() error {
 			return
 		}
 		if err := application.BindSystemOperations(a.Operations, application.SystemOperationServices{
-			Instructions:   application.NewInstructionSettingsService(nil),
 			ProjectContext: application.NewApplicationProjectContextService(a.Tools.Workspaces),
 			Tools:          application.NewToolInventoryServiceWithRuntime(a.Tools),
 			Prompts: &application.PromptService{

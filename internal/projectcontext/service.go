@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/instructioncontext"
-	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/integrations/semantic"
 	"go.mewis.me/codemcp/internal/memory"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -103,7 +102,6 @@ func DefaultOptions() Options {
 type Service struct {
 	Workspaces                     *workspace.Manager
 	MemoryStore                    memory.Store
-	PolicyStore                    *instructionpolicy.Store
 	ToolProfile                    func() instructioncontext.ToolProfile
 	Environment                    func() (bool, int)
 	IntegrationProviders           []IntegrationInstructionProvider
@@ -123,7 +121,6 @@ type IntegrationProjectionProvider func(context.Context, string, string) (Integr
 type ServiceOptions struct {
 	Workspaces                     *workspace.Manager
 	MemoryStore                    *memory.Store
-	PolicyStore                    *instructionpolicy.Store
 	ToolProfile                    func() instructioncontext.ToolProfile
 	Environment                    func() (bool, int)
 	IntegrationProviders           []IntegrationInstructionProvider
@@ -134,7 +131,6 @@ type ServiceOptions struct {
 func NewService(options ServiceOptions) *Service {
 	service := &Service{
 		Workspaces:                     options.Workspaces,
-		PolicyStore:                    options.PolicyStore,
 		ToolProfile:                    options.ToolProfile,
 		Environment:                    options.Environment,
 		IntegrationProviders:           append([]IntegrationInstructionProvider(nil), options.IntegrationProviders...),
@@ -145,9 +141,6 @@ func NewService(options ServiceOptions) *Service {
 		service.MemoryStore = *options.MemoryStore
 	} else {
 		service.MemoryStore = memory.NewWorkspaceStore(memory.DefaultRoot(), options.Workspaces)
-	}
-	if service.PolicyStore == nil {
-		service.PolicyStore = instructionpolicy.DefaultStore()
 	}
 	return service
 }
@@ -185,13 +178,6 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 	roots, err := s.Workspaces.EffectiveRoots(item.ID)
 	if err != nil {
 		return Result{}, err
-	}
-	policy := instructionpolicy.DefaultConfig()
-	if s.PolicyStore != nil {
-		policy, err = s.PolicyStore.Load()
-		if err != nil {
-			return Result{}, err
-		}
 	}
 	profile := instructioncontext.ToolProfile{}
 	if s.ToolProfile != nil {
@@ -261,8 +247,8 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 	}
 	value, err := instructioncontext.Build(ctx, instructioncontext.BuildOptions{
 		Root: root, WorkspaceID: item.ID, WorkspaceRoot: item.Path, CWD: item.Path, WorkspaceRoots: roots, MemoryStore: s.MemoryStore,
-		Memory: instructioncontext.MemoryLoadOptions{ImportMaxDepth: instructioncontext.DefaultImportMaxDepth, MaxBytesPerSection: opts.MaxSectionBytes, MaxLinesPerSection: opts.MaxLinesPerSection},
-		Policy: policy, ToolProfile: profile, MaxInstructionBytes: opts.MaxInstructionBytes,
+		Memory:      instructioncontext.MemoryLoadOptions{ImportMaxDepth: instructioncontext.DefaultImportMaxDepth, MaxBytesPerSection: opts.MaxSectionBytes, MaxLinesPerSection: opts.MaxLinesPerSection},
+		ToolProfile: profile, MaxInstructionBytes: opts.MaxInstructionBytes,
 		BackgroundWork: opts.BackgroundWork,
 		MemoryQuery:    opts.MemoryQuery, MaxMemoryEntries: opts.MaxMemoryEntries, MaxMemoryBytes: opts.MaxMemoryBytes,
 		SkipGit: !opts.IncludeGit, SkipMemory: !opts.IncludeMemory, SkipSkills: !opts.IncludeSkills,
@@ -305,7 +291,7 @@ func FromInstructionContext(value instructioncontext.InstructionContext) Result 
 		Summary: Summary{
 			MemoryFiles: files, MemoryBytes: value.ProjectMemory.TotalBytes, InstructionBytes: value.InstructionBytes,
 			Git:   GitSummary{Skipped: value.Git.Skipped, IsRepo: value.Git.IsRepo, Branch: value.Git.Branch, Commits: len(value.Git.RecentCommits)},
-			Rules: len(value.GlobalRules) + len(value.Rules), Skills: len(value.Skills),
+			Rules: len(value.Rules), Skills: len(value.Skills),
 		},
 	}
 }

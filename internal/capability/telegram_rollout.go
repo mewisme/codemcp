@@ -106,7 +106,7 @@ var telegramLiveAdapterOperations = idSet(
 	TelemetryStatus, TelemetryShow, TelemetryEnable, TelemetryDisable,
 	NetworkInterfacesList, NotificationStatus,
 	TelegramSetup,
-	InstructionSettingsRead, InstructionSettingsWrite, ProjectContextRead, ToolInventoryRead,
+	ProjectContextRead, ToolInventoryRead,
 	ExecutionList, ExecutionView, ExecutionFeed, ExecutionStream, ProcessList, ProcessView, ProcessClear,
 	ActivityStream, ActivityView,
 	IntegrationRTKStatus, IntegrationRTKEnable, IntegrationRTKDisable, IntegrationRTKProbe, IntegrationRTKInstall, IntegrationRTKInstallGlobal,

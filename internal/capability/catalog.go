@@ -123,8 +123,6 @@ const (
 	NetworkInterfacesList             ID = "network.interfaces.list"
 	ConfigSnapshotRead                ID = "config.snapshot.read"
 	ConfigPatch                       ID = "config.patch"
-	InstructionSettingsRead           ID = "instructions.settings.read"
-	InstructionSettingsWrite          ID = "instructions.settings.write"
 	WorkspaceContainerMembershipList  ID = "workspace.container.membership.list"
 	ProjectContextRead                ID = "project.context.read"
 	ToolInventoryRead                 ID = "tools.inventory.read"

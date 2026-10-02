@@ -696,8 +696,10 @@ func classifyArtifact(relative string, size int64) (Classification, string, stri
 		return ClassDurableMigrate, "instance-identity", "instance identity is durable migration input"
 	case strings.HasPrefix(clean, "state/secrets/"):
 		return ClassDurableMigrate, "credential-state", "credential files are handled by the canonical credential transformer"
+	case clean == "instructions/global.json":
+		return ClassDurableMigrate, "instructions-legacy-global", "legacy global instruction settings are preserved as an inactive archive"
 	case strings.HasPrefix(clean, "instructions/"):
-		return ClassDurableMigrate, "instructions", "global instruction state is durable"
+		return ClassDurableMigrate, "instructions", "instruction source state is durable"
 	case clean == "tui-state.json":
 		if size > maxRegularFileBytes {
 			return ClassOptionalSkipWithReport, "tui-state", "oversize TUI state may be skipped with a report"

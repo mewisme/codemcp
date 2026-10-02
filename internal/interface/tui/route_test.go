@@ -52,12 +52,6 @@ func TestParseRoute(t *testing.T) {
 		{[]string{"completions"}, Route{Kind: RouteCompletions}},
 		{[]string{"completion", "completion_abc"}, Route{Kind: RouteCompletions, ResourceID: "completion_abc"}},
 		{[]string{"config", "runtime.port"}, Route{Kind: RouteConfig, ResourceID: "runtime.port"}},
-		{[]string{"instruction"}, Route{Kind: RouteInstruction}},
-		{[]string{"instructions"}, Route{Kind: RouteInstruction}},
-		{[]string{"instr"}, Route{Kind: RouteInstruction}},
-		{[]string{"instruction", "context"}, Route{Kind: RouteInstruction, Section: "context"}},
-		{[]string{"instruction", "rules"}, Route{Kind: RouteInstruction, Section: "rules"}},
-		{[]string{"instructions", "sources"}, Route{Kind: RouteInstruction, Section: "sources"}},
 		{[]string{"runtime", "service.user"}, Route{Kind: RouteRuntime, ResourceID: "service.user"}},
 		{[]string{"cfg"}, Route{Kind: RouteConfig}},
 		{[]string{"status"}, Route{Kind: RouteRuntime}},
@@ -111,9 +105,6 @@ func TestParseEditorRoutes(t *testing.T) {
 		{[]string{"llm", "ollama", "models", "query"}, Route{Kind: RouteLLM, ResourceID: "ollama", Section: "models", Action: "query"}},
 		{[]string{"llm", "ollama", "models", "set"}, Route{Kind: RouteLLM, ResourceID: "ollama", Section: "models", Action: "set"}},
 		{[]string{"logs", "filter"}, Route{Kind: RouteLogs, Action: "filter"}},
-		{[]string{"instruction", "context", "edit"}, Route{Kind: RouteInstruction, Section: "context", Action: "edit"}},
-		{[]string{"instruction", "rules", "create"}, Route{Kind: RouteInstruction, Section: "rules", Action: "create"}},
-		{[]string{"instruction", "rules", "rule_1", "edit"}, Route{Kind: RouteInstruction, ResourceID: "rule_1", Section: "rules", Action: "edit"}},
 	}
 	for _, test := range tests {
 		got, err := ParseRoute(test.args)
@@ -164,14 +155,6 @@ func TestEditorRouteStacksFollowSemanticAncestry(t *testing.T) {
 			[]Route{{Kind: RouteWorkspaces}, {Kind: RouteWorkspaces, ResourceID: "ws_1"}, {Kind: RouteWorkspaces, ResourceID: "ws_1", Section: "access"}, {Kind: RouteWorkspaces, ResourceID: "ws_1", Section: "access", Action: "add"}},
 		},
 		{
-			Route{Kind: RouteInstruction, Section: "rules", Action: "create"},
-			[]Route{{Kind: RouteInstruction, Section: "rules"}, {Kind: RouteInstruction, Section: "rules", Action: "create"}},
-		},
-		{
-			Route{Kind: RouteInstruction, ResourceID: "rule_1", Section: "rules", Action: "edit"},
-			[]Route{{Kind: RouteInstruction, Section: "rules"}, {Kind: RouteInstruction, ResourceID: "rule_1", Section: "rules", Action: "edit"}},
-		},
-		{
 			Route{Kind: RouteConfig, Section: "storage", Action: "export"},
 			[]Route{{Kind: RouteConfig}, {Kind: RouteConfig, ResourceID: "storage"}, {Kind: RouteConfig, Section: "storage", Action: "export"}},
 		},
@@ -203,16 +186,15 @@ func TestEditorRouteStacksFollowSemanticAncestry(t *testing.T) {
 
 func TestRouteStacksTreatTopLevelTabsAsRoots(t *testing.T) {
 	for route, want := range map[Route][]Route{
-		{Kind: RouteContainers}:                    {{Kind: RouteContainers}},
-		{Kind: RouteTools}:                         {{Kind: RouteTools}},
-		{Kind: RouteIntegrations}:                  {{Kind: RouteIntegrations}},
-		{Kind: RouteDoctor}:                        {{Kind: RouteDoctor}},
-		{Kind: RouteExecutions, Mode: "ws_demo"}:   {{Kind: RouteExecutions}, {Kind: RouteExecutions, Mode: "ws_demo"}},
-		{Kind: RouteProcesses, Mode: "ws_demo"}:    {{Kind: RouteProcesses}, {Kind: RouteProcesses, Mode: "ws_demo"}},
-		{Kind: RouteLogsExec}:                      {{Kind: RouteLogsExec}},
-		{Kind: RouteLogsTools}:                     {{Kind: RouteLogsTools}},
-		{Kind: RouteRequests, Mode: "pending"}:     {{Kind: RouteRequests, Mode: "pending"}},
-		{Kind: RouteInstruction, Section: "rules"}: {{Kind: RouteInstruction, Section: "rules"}},
+		{Kind: RouteContainers}:                  {{Kind: RouteContainers}},
+		{Kind: RouteTools}:                       {{Kind: RouteTools}},
+		{Kind: RouteIntegrations}:                {{Kind: RouteIntegrations}},
+		{Kind: RouteDoctor}:                      {{Kind: RouteDoctor}},
+		{Kind: RouteExecutions, Mode: "ws_demo"}: {{Kind: RouteExecutions}, {Kind: RouteExecutions, Mode: "ws_demo"}},
+		{Kind: RouteProcesses, Mode: "ws_demo"}:  {{Kind: RouteProcesses}, {Kind: RouteProcesses, Mode: "ws_demo"}},
+		{Kind: RouteLogsExec}:                    {{Kind: RouteLogsExec}},
+		{Kind: RouteLogsTools}:                   {{Kind: RouteLogsTools}},
+		{Kind: RouteRequests, Mode: "pending"}:   {{Kind: RouteRequests, Mode: "pending"}},
 	} {
 		got := routeStack(route)
 		if len(got) != len(want) {
@@ -242,7 +224,6 @@ func TestRouteBreadcrumbLabelsUseNavigableAncestry(t *testing.T) {
 		{Route{Kind: RouteLogsTools}, []string{"Tool Calls"}},
 		{Route{Kind: RouteLogsTools, ResourceID: "call_demo"}, []string{"Tool Calls", "call_demo"}},
 		{Route{Kind: RouteConfig, Section: "storage", Action: "export"}, []string{"Config", "Storage", "Export"}},
-		{Route{Kind: RouteInstruction, ResourceID: "rule_demo", Section: "rules", Action: "edit"}, []string{"Rules", "Edit rule_demo"}},
 		{Route{Kind: RouteGuide, ResourceID: "config/storage/envelopes"}, []string{"Guide", "Config", "Storage", "Envelopes"}},
 	}
 	for _, test := range tests {
@@ -295,10 +276,6 @@ func TestRouteBreadcrumbInventoryCoversAllChildFamilies(t *testing.T) {
 		{Kind: RouteConfig, ResourceID: "shell"},
 		{Kind: RouteConfig, ResourceID: "http.mcp.port", Action: "edit"},
 		{Kind: RouteConfig, Section: "storage", Action: "export"},
-		{Kind: RouteInstruction, Section: "context"},
-		{Kind: RouteInstruction, Section: "rules"},
-		{Kind: RouteInstruction, Section: "context", Action: "edit"},
-		{Kind: RouteInstruction, ResourceID: "rule_a", Section: "rules", Action: "edit"},
 		{Kind: RouteRuntime, ResourceID: "service"},
 		{Kind: RouteRuntime, Action: "install"},
 		{Kind: RouteGuide, ResourceID: "config/storage/envelopes"},
@@ -318,26 +295,13 @@ func TestRouteBreadcrumbInventoryCoversAllChildFamilies(t *testing.T) {
 
 func TestEditorRouteTitlesIncludeActionWithoutChangingLegacyOrder(t *testing.T) {
 	for route, want := range map[Route]string{
-		{Kind: RouteMCP, Action: "create"}:                                               "Upstreams · Create",
-		{Kind: RouteMCP, ResourceID: "github", Action: "edit"}:                           "Upstreams · github · Edit",
-		{Kind: RouteMCP, ResourceID: "github", Section: "oauth", Action: "login"}:        "Upstreams · github · Oauth · Login",
-		{Kind: RouteInstruction, Section: "context", Action: "edit"}:                     "Instruction · Context · Edit",
-		{Kind: RouteInstruction, ResourceID: "rule_1", Section: "rules", Action: "edit"}: "Instruction · Rules · rule_1 · Edit",
+		{Kind: RouteMCP, Action: "create"}:                                        "Upstreams · Create",
+		{Kind: RouteMCP, ResourceID: "github", Action: "edit"}:                    "Upstreams · github · Edit",
+		{Kind: RouteMCP, ResourceID: "github", Section: "oauth", Action: "login"}: "Upstreams · github · Oauth · Login",
 	} {
 		if got := route.Title(); got != want {
 			t.Fatalf("%#v title=%q want=%q", route, got, want)
 		}
-	}
-}
-
-func TestInstructionTabsAreBreadcrumbRoots(t *testing.T) {
-	route := Route{Kind: RouteInstruction, Section: "rules"}
-	router := NewRouter(route)
-	if router.Current() != route || len(router.stack) != 1 || router.stack[0] != route {
-		t.Fatalf("instruction route stack=%#v", router.stack)
-	}
-	if router.Back() {
-		t.Fatalf("instruction tab root backed unexpectedly: route=%#v stack=%#v", router.Current(), router.stack)
 	}
 }
 

@@ -143,16 +143,6 @@ const bindings: BrowserOperationBinding[] = [
     pattern: "/api/integrations/typesafe/disable",
     operation: "integration.typesafe.disable",
   },
-  {
-    method: "GET",
-    pattern: "/api/instructions/global",
-    operation: "instructions.settings.read",
-  },
-  {
-    method: "PUT",
-    pattern: "/api/instructions/global",
-    operation: "instructions.settings.write",
-  },
   { method: "GET", pattern: "/api/prompts", operation: "prompt.list" },
   { method: "POST", pattern: "/api/prompts", operation: "prompt.create" },
   { method: "GET", pattern: "/api/prompts/{name}", operation: "prompt.get" },

@@ -17,7 +17,6 @@ import (
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
-	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/interface/tui/component"
 	tuipage "go.mewis.me/codemcp/internal/interface/tui/page"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -39,10 +38,10 @@ func TestModelWorkspaceContextSessionsAreScopedAndStable(t *testing.T) {
 }
 
 func TestModelRemembersLastStableRoutePerHeaderOwner(t *testing.T) {
-	route := Route{Kind: RouteInstruction, Section: "rules"}
+	route := Route{Kind: RouteConfig, ResourceID: "runtime"}
 	model := NewModel(route)
 	model.switchPage(Route{Kind: RouteTunnel})
-	updated, _ := model.requestNavigation(navigationIntent{route: Route{Kind: RouteInstruction}, replace: true, restoreRemembered: true})
+	updated, _ := model.requestNavigation(navigationIntent{route: Route{Kind: RouteConfig}, replace: true, restoreRemembered: true})
 	model = updated.(Model)
 	if model.router.Current() != route {
 		t.Fatalf("restored route=%#v want=%#v", model.router.Current(), route)
@@ -109,7 +108,6 @@ func TestModelStableRouteMemoryCoversHeaderOwners(t *testing.T) {
 		{name: "request mode", stored: Route{Kind: RouteRequests, Mode: "pending"}, entry: Route{Kind: RouteRequests}},
 		{name: "logs execution route", stored: Route{Kind: RouteLogsExec}, entry: Route{Kind: RouteLogs}},
 		{name: "config detail", stored: Route{Kind: RouteConfig, ResourceID: "http.mcp.port"}, entry: Route{Kind: RouteConfig}},
-		{name: "instruction section", stored: Route{Kind: RouteInstruction, Section: "rules"}, entry: Route{Kind: RouteInstruction}},
 		{name: "runtime section", stored: Route{Kind: RouteRuntime, Section: "status"}, entry: Route{Kind: RouteRuntime}},
 	}
 	for _, test := range tests {
@@ -344,7 +342,7 @@ func TestModelFillsExactTerminalSizeWithoutMinimumLayout(t *testing.T) {
 	if err := configformat.SetRootPath(t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	for _, route := range []Route{{Kind: RouteHome}, {Kind: RouteWorkspaces}, {Kind: RouteMCP}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteInstruction}, {Kind: RouteRuntime}, {Kind: RouteAbout}} {
+	for _, route := range []Route{{Kind: RouteHome}, {Kind: RouteWorkspaces}, {Kind: RouteMCP}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteRuntime}, {Kind: RouteAbout}} {
 		for _, size := range [][2]int{{120, 40}, {20, 8}, {3, 3}, {1, 1}} {
 			model := NewModel(route)
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
@@ -473,14 +471,14 @@ func TestModelHidesNavbarWhenTerminalIsTooNarrow(t *testing.T) {
 	}
 	header, _ := model.header(56, 2, 1)
 	plain := ansi.Strip(header)
-	if !strings.Contains(plain, "Instr") || strings.Contains(plain, "Instruction") {
-		t.Fatalf("compact header=%q", plain)
+	if strings.Contains(plain, "Instr") || strings.Contains(plain, "Instruction") {
+		t.Fatalf("legacy instruction header remains: %q", plain)
 	}
 	updated, _ = model.Update(tea.WindowSizeMsg{Width: 140, Height: 20})
 	model = updated.(Model)
 	header, _ = model.header(136, 2, 1)
-	if plain = ansi.Strip(header); !strings.Contains(plain, "Instruction") {
-		t.Fatalf("full header=%q", plain)
+	if plain = ansi.Strip(header); strings.Contains(plain, "Instruction") {
+		t.Fatalf("legacy instruction header remains: %q", plain)
 	}
 }
 
@@ -619,89 +617,6 @@ func TestModelEscBacksToCurrentMainThenHomeThenQuits(t *testing.T) {
 	}
 	if _, ok := cmd().(tea.QuitMsg); !ok {
 		t.Fatalf("third escape message=%T", cmd())
-	}
-}
-
-func TestModelInstructionTabDeepLinkIsRoot(t *testing.T) {
-	route := Route{Kind: RouteInstruction, Section: "rules"}
-	model := NewModel(route)
-	if model.router.Current() != route || len(model.router.stack) != 1 {
-		t.Fatalf("instruction route=%#v stack=%#v", model.router.Current(), model.router.stack)
-	}
-	updated, cmd := model.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
-	model = updated.(Model)
-	if cmd != nil || model.router.Current() != (Route{Kind: RouteHome}) {
-		t.Fatalf("escape route=%#v cmd=%v", model.router.Current(), cmd != nil)
-	}
-}
-
-func TestModelInstructionRuleEditorDeepLinkLoadsRoutedEditor(t *testing.T) {
-	defer configformat.SetRootPath("")
-	if err := configformat.SetRootPath(t.TempDir()); err != nil {
-		t.Fatal(err)
-	}
-	value := instructionpolicy.DefaultConfig()
-	value.Rules = []instructionpolicy.GlobalRule{{ID: "rule_one", Name: "One rule", Enabled: true, Content: "Always verify."}}
-	if err := instructionpolicy.DefaultStore().Save(value); err != nil {
-		t.Fatal(err)
-	}
-	route := Route{Kind: RouteInstruction, Section: "rules", ResourceID: "rule_one", Action: "edit"}
-	model := NewModel(route)
-	if model.notice != "" || model.router.Current() != route || len(model.router.stack) != 2 {
-		t.Fatalf("route=%#v stack=%#v notice=%q", model.router.Current(), model.router.stack, model.notice)
-	}
-	plain := ansi.Strip(model.View().Content)
-	for _, want := range []string{"Rules", "Edit rule_one", "enter next"} {
-		if !strings.Contains(plain, want) {
-			t.Fatalf("rule editor missing %q: %q", want, plain)
-		}
-	}
-	guard, ok := model.currentPage.(tuipage.NavigationGuardModel)
-	if !ok || guard.Dirty() || !model.currentPage.InputActive() {
-		t.Fatalf("editor guard=%t dirty=%t input=%t", ok, ok && guard.Dirty(), model.currentPage.InputActive())
-	}
-}
-
-func TestModelInstructionContextEditorNavigationUsesDirtyGuard(t *testing.T) {
-	defer configformat.SetRootPath("")
-	if err := configformat.SetRootPath(t.TempDir()); err != nil {
-		t.Fatal(err)
-	}
-	model := NewModel(Route{Kind: RouteInstruction, Section: "context", Action: "edit"})
-	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyPressMsg{Code: 'x', Text: "x"})
-	model = updated.(Model)
-	guard, ok := model.currentPage.(tuipage.NavigationGuardModel)
-	if !ok || !guard.Dirty() {
-		t.Fatalf("context guard=%t dirty=%t", ok, ok && guard.Dirty())
-	}
-	page, ok := model.currentPage.(mousePage)
-	if !ok {
-		t.Fatal("instruction page does not expose mouse targets")
-	}
-	targets := page.MouseTargets(0, 0, 10)
-	var tabs []component.MouseTarget
-	for _, target := range targets {
-		if target.ID == "instruction.tab" {
-			tabs = append(tabs, target)
-		}
-	}
-	if len(tabs) < 2 {
-		t.Fatalf("instruction tab targets=%d", len(tabs))
-	}
-	updated, cmd := model.Update(tabs[1].Handle(component.MouseEvent{Button: tea.MouseLeft}))
-	model = updated.(Model)
-	if cmd == nil {
-		t.Fatal("rules tab click produced no navigation command")
-	}
-	updated, _ = model.Update(cmd())
-	model = updated.(Model)
-	if model.pendingNavigation == nil || model.router.Current() != (Route{Kind: RouteInstruction, Section: "context", Action: "edit"}) {
-		t.Fatalf("dirty context navigation escaped: route=%#v pending=%v", model.router.Current(), model.pendingNavigation != nil)
-	}
-	if !strings.Contains(ansi.Strip(model.View().Content), "Discard changes?") {
-		t.Fatal("dirty context navigation did not render discard guard")
 	}
 }
 
@@ -898,28 +813,6 @@ func TestModelBreadcrumbRendersAndNavigatesAncestors(t *testing.T) {
 	model = updated.(Model)
 	if model.router.Current() != (Route{Kind: RouteWorkspaces}) || len(model.router.stack) != 1 {
 		t.Fatalf("root breadcrumb route=%#v stack=%#v", model.router.Current(), model.router.stack)
-	}
-}
-
-func TestModelBreadcrumbNavigationRespectsDirtyGuard(t *testing.T) {
-	model := NewModel(Route{Kind: RouteInstruction, Section: "context", Action: "edit"})
-	model.currentPage = &navigationGuardTestPage{dirty: true, input: true}
-	_, targets := model.breadcrumb(96, 2, 3)
-	var message tea.Msg
-	for _, target := range targets {
-		candidate := target.Handle(component.MouseEvent{Button: tea.MouseLeft})
-		if navigation, ok := candidate.(navigateMsg); ok && navigation.route == (Route{Kind: RouteInstruction, Section: "context"}) {
-			message = candidate
-			break
-		}
-	}
-	if message == nil {
-		t.Fatal("instruction context breadcrumb root target not found")
-	}
-	updated, cmd := model.Update(message)
-	model = updated.(Model)
-	if cmd != nil || model.pendingNavigation == nil || model.router.Current() != (Route{Kind: RouteInstruction, Section: "context", Action: "edit"}) {
-		t.Fatalf("breadcrumb bypassed dirty guard: route=%#v pending=%v cmd=%v", model.router.Current(), model.pendingNavigation != nil, cmd != nil)
 	}
 }
 
@@ -1271,7 +1164,7 @@ func TestModelPendingApprovalOverlaysEveryRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := testPendingApproval("req_global")
-	for _, route := range []Route{{Kind: RouteHome}, {Kind: RouteWorkspaces}, {Kind: RouteContainers}, {Kind: RouteMCP}, {Kind: RouteTunnel}, {Kind: RouteTools}, {Kind: RouteIntegrations}, {Kind: RouteDoctor}, {Kind: RouteRequests}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteInstruction}, {Kind: RouteRuntime}, {Kind: RouteAbout}} {
+	for _, route := range []Route{{Kind: RouteHome}, {Kind: RouteWorkspaces}, {Kind: RouteContainers}, {Kind: RouteMCP}, {Kind: RouteTunnel}, {Kind: RouteTools}, {Kind: RouteIntegrations}, {Kind: RouteDoctor}, {Kind: RouteRequests}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteRuntime}, {Kind: RouteAbout}} {
 		t.Run(string(route.Kind), func(t *testing.T) {
 			model := NewModel(route)
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
@@ -1709,7 +1602,7 @@ func TestModelToastRendersAsDialogAcrossRoutes(t *testing.T) {
 	if err := configformat.SetRootPath(t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
-	for _, route := range []Route{{Kind: RouteWorkspaces}, {Kind: RouteContainers}, {Kind: RouteMCP}, {Kind: RouteTunnel}, {Kind: RouteTools}, {Kind: RouteIntegrations}, {Kind: RouteDoctor}, {Kind: RouteRequests}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteInstruction}, {Kind: RouteRuntime}} {
+	for _, route := range []Route{{Kind: RouteWorkspaces}, {Kind: RouteContainers}, {Kind: RouteMCP}, {Kind: RouteTunnel}, {Kind: RouteTools}, {Kind: RouteIntegrations}, {Kind: RouteDoctor}, {Kind: RouteRequests}, {Kind: RouteLogs}, {Kind: RouteConfig}, {Kind: RouteRuntime}} {
 		t.Run(string(route.Kind), func(t *testing.T) {
 			model := NewModel(route)
 			updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})

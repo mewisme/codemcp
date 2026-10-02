@@ -33,7 +33,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 	}
 	add(commandTraceTrivial, nil, "config", "doctor", "health", "network interfaces", "notification status", "tunnel config", "activity view", "logs path", "version")
 	add(commandTraceTrivial, nil,
-		"instructions get", "instructions set", "tools list",
+		"tools list",
 		"execution list", "execution view", "process list", "process view", "process clear", "workspace context", "workspace container membership list",
 	)
 	add(commandTraceTrivial, nil, "prompt list", "prompt get", "prompt create", "prompt update", "prompt delete")

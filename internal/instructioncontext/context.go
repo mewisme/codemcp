@@ -121,8 +121,6 @@ type InstructionContext struct {
 	Git                     GitSnapshot              `json:"git"`
 	ProjectMemory           ProjectMemoryBundle      `json:"project_memory"`
 	AutoMemory              AutoMemorySnapshot       `json:"auto_memory"`
-	GlobalContext           string                   `json:"global_context,omitempty"`
-	GlobalRules             []rules.Rule             `json:"global_rules"`
 	Rules                   []rules.Rule             `json:"rules"`
 	Skills                  []skills.Skill           `json:"skills"`
 	IntegrationInstructions []IntegrationInstruction `json:"integration_instructions,omitempty"`

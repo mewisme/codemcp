@@ -19,24 +19,22 @@ func TestFormatInstructionsStableOrderingAndByteCount(t *testing.T) {
 			WorkspaceID: "ws_test", WorkspaceRoot: "/workspace", CWD: "/workspace/sub", EffectiveRoots: []string{"/workspace", "/shared"},
 			Admin: AdminSnapshot{Enabled: true, URL: "http://127.0.0.1:37422/"},
 		},
-		Git:           GitSnapshot{IsRepo: true, Root: "/workspace", Branch: "main", StatusShort: "## main\n M a.go", RecentCommits: []string{"abc first", "def second"}},
-		AutoMemory:    AutoMemorySnapshot{Loaded: true, Content: "remember pnpm", Bytes: 13},
-		GlobalContext: "managed context",
+		Git:        GitSnapshot{IsRepo: true, Root: "/workspace", Branch: "main", StatusShort: "## main\n M a.go", RecentCommits: []string{"abc first", "def second"}},
+		AutoMemory: AutoMemorySnapshot{Loaded: true, Content: "remember pnpm", Bytes: 13},
 		ProjectMemory: ProjectMemoryBundle{Sections: []Section{
 			{Path: "/home/user/.agents/AGENTS.md", Kind: SectionUser, Source: "agents", Content: "user instruction"},
 			{Path: "/workspace/AGENTS.md", Kind: SectionProject, Source: "agents", Content: "project instruction"},
 			{Path: "/workspace/CLAUDE.md", Kind: SectionProject, Source: "claude", Content: "claude fallback", Truncated: true},
 		}},
-		GlobalRules: []rules.Rule{{Path: "managed://global-rules/base", Source: "CodeMCP", Content: "managed rule"}},
-		Rules:       []rules.Rule{{Path: "/workspace/.agents/rules/global.md", Source: ".agents", Content: "global rule"}},
-		Skills:      []skills.Skill{{Name: "release", Description: "Release workflow", Source: ".agents", Path: "/workspace/.agents/skills/release/SKILL.md"}},
+		Rules:  []rules.Rule{{Path: "/workspace/.agents/rules/global.md", Source: ".agents", Content: "global rule"}},
+		Skills: []skills.Skill{{Name: "release", Description: "Release workflow", Source: ".agents", Path: "/workspace/.agents/skills/release/SKILL.md"}},
 	}
 	text, size := FormatInstructions(value)
 	if size != len([]byte(text)) {
 		t.Fatalf("size = %d, bytes = %d", size, len([]byte(text)))
 	}
 	ordered := []string{
-		"## Agent workflow", "## Tool profile", "## Environment", "## Git", "## Auto memory", "## Global context", "## User instructions", "## Project instructions", "## Global rules", "## Always-on rules", "## Skills", "## Quick pointers",
+		"## Agent workflow", "## Tool profile", "## Environment", "## Git", "## Auto memory", "## User instructions", "## Project instructions", "## Always-on rules", "## Skills", "## Quick pointers",
 	}
 	last := -1
 	for _, heading := range ordered {

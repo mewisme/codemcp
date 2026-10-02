@@ -182,7 +182,6 @@ func New(api API) http.Handler {
 	mux.HandleFunc("/api/integrations/codegraph/", api.handleCodeGraph)
 	mux.HandleFunc("/api/integrations/cf", api.handleCFIntegration)
 	mux.HandleFunc("/api/integrations/cf/", api.handleCFIntegration)
-	mux.HandleFunc("/api/instructions/global", api.handleGlobalInstructions)
 	mux.HandleFunc("/api/prompts", api.handlePrompts)
 	mux.HandleFunc("/api/prompts/{name}", api.handlePrompt)
 	mux.HandleFunc("/api/workspaces", api.handleWorkspaces)

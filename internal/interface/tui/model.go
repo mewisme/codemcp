@@ -1337,8 +1337,6 @@ func (model *Model) loadPage(route Route) {
 		value, err = tuipage.NewGuide(model.ctx, route.ResourceID)
 	case RouteConfig:
 		value, err = tuipage.NewConfigRouteAction(model.ctx, route.ResourceID, route.Section, route.Action)
-	case RouteInstruction:
-		value, err = tuipage.NewInstructionRouteAction(model.ctx, route.Section, route.ResourceID, route.Action)
 	case RoutePrompts:
 		value = tuipage.NewPrompts(model.ctx)
 	}
@@ -1942,8 +1940,6 @@ func routeDescription(route Route) string {
 		return "Inspect live command execution output."
 	case RouteConfig:
 		return "Browse and manage validated runtime configuration."
-	case RouteInstruction:
-		return "Manage global context, rules, and detected instruction sources."
 	case RouteRuntime:
 		return "Inspect and control the local managed runtime."
 	case RouteAbout:
