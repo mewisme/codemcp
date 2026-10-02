@@ -226,12 +226,34 @@ func RemoveConfigRootContext(ctx context.Context, root string) error {
 }
 
 func removeOwnedConfigRootEntries(root string) error {
-	for _, name := range []string{"state", "logs", "instructions", "workspaces", "tunnels", "llm"} {
+	for _, name := range []string{
+		"state",
+		"logs",
+		"instructions",
+		"workspaces",
+		"tunnels",
+		"llm",
+		"rules",
+		"skills",
+		"prompts",
+		"managed-assets",
+		"runtime",
+	} {
 		if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
 			return err
 		}
 	}
-	for _, name := range []string{"tui-state.json", ".llm-providers.lock"} {
+	for _, name := range []string{
+		"tui-state.json",
+		".runtime-control.json",
+		".llm-providers.lock",
+		"workspace-registry.mutation.lock",
+		"executions.json",
+		"background-deliveries.json",
+		"telegram-topics.json",
+		"telegram-approval-messages.json",
+		"telegram-operation-messages.json",
+	} {
 		if err := removeIfExists(filepath.Join(root, name)); err != nil {
 			return err
 		}

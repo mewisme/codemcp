@@ -19,7 +19,31 @@ type VerifyResult struct {
 
 var currentStructuredStateNames = map[string]bool{
 	"config": true, "tunnel": true, "upstream": true, "workspaces": true, "oauth": true,
-	"shell": true, "index": true, "manifest": true,
+	"shell": true, "index": true, "manifest": true, "tree-manifest": true,
+}
+
+var currentStructuredStatePaths = map[string]bool{
+	"config":                          true,
+	"tunnel":                          true,
+	"upstream":                        true,
+	"upstreams":                       true,
+	"workspaces":                      true,
+	"oauth":                           true,
+	"tui-state":                       true,
+	".runtime-control":                true,
+	"executions":                      true,
+	"background-deliveries":           true,
+	"telegram-topics":                 true,
+	"telegram-approval-messages":      true,
+	"telegram-operation-messages":     true,
+	"state/instance":                  true,
+	"state/update":                    true,
+	"state/product-telemetry":         true,
+	"state/agent-completion-sequence": true,
+	"state/telegram-pairing":          true,
+	"instructions/global":             true,
+	"llm/providers":                   true,
+	"runtime/environment":             true,
 }
 
 type currentStructuredFile struct {
@@ -94,7 +118,7 @@ func collectCurrentStructuredFiles(root string) ([]currentStructuredFile, error)
 			return nil
 		}
 		base := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		if !currentStructuredStateNames[base] && !isTunnelMetadataFile(root, path) {
+		if !isCurrentStructuredStateFile(root, path, base) {
 			return nil
 		}
 		files = append(files, currentStructuredFile{path: path, ext: ext})
@@ -107,6 +131,43 @@ func collectCurrentStructuredFiles(root string) ([]currentStructuredFile, error)
 		return nil, errors.New("no structured config files found")
 	}
 	return files, nil
+}
+
+func isCurrentStructuredStateFile(root, path, base string) bool {
+	if isAuthoredContentPath(root, path) {
+		return false
+	}
+	if currentStructuredStateNames[base] || isTunnelMetadataFile(root, path) {
+		return true
+	}
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	relative = filepath.ToSlash(filepath.Clean(relative))
+	ext := filepath.Ext(relative)
+	stem := strings.TrimSuffix(relative, ext)
+	if currentStructuredStatePaths[stem] {
+		return true
+	}
+	return strings.HasPrefix(stem, "state/secrets/")
+}
+
+func isAuthoredContentPath(root, path string) bool {
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(filepath.ToSlash(filepath.Clean(relative)), "/")
+	if len(parts) == 0 {
+		return false
+	}
+	switch parts[0] {
+	case "rules", "skills", "prompts":
+		return true
+	default:
+		return false
+	}
 }
 
 func isTunnelMetadataFile(root, path string) bool {

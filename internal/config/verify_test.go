@@ -45,6 +45,62 @@ func TestVerifyAtRejectsMixedFormat(t *testing.T) {
 	}
 }
 
+func TestVerifyAtRejectsAlternateFormatsForCanonicalNestedState(t *testing.T) {
+	tests := []string{
+		"llm/providers.yaml",
+		"state/product-telemetry.toml",
+		"state/agent-completion-sequence.yml",
+		"instructions/global.yaml",
+		"runtime/environment.toml",
+		"telegram-topics.yaml",
+		"executions.toml",
+	}
+	for _, relative := range tests {
+		t.Run(relative, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(`{"server":{"port":37421,"allow_unauthenticated_loopback":true,"expose":{"mode":"none","interfaces":[]}},"admin":{"enabled":false,"port":37422},"auth":{"mcp_enabled":false,"admin_enabled":false},"tunnel":{"enabled":false}}`), 0600); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, filepath.FromSlash(relative))
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte("value = true\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := verifyAt(root, false); err == nil {
+				t.Fatalf("alternate structured state format was accepted: %s", relative)
+			}
+		})
+	}
+}
+
+func TestVerifyAtKeepsAuthoredContentOutsideMachineStateFormatGate(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(`{"server":{"port":37421,"allow_unauthenticated_loopback":true,"expose":{"mode":"none","interfaces":[]}},"admin":{"enabled":false,"port":37422},"auth":{"mcp_enabled":false,"admin_enabled":false},"tunnel":{"enabled":false}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, relative := range []string{
+		"rules/example.yaml",
+		"rules/index.yaml",
+		"skills/example/reference.toml",
+		"skills/example/manifest.toml",
+		"prompts/example.yaml",
+		"prompts/shell.yaml",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("human-authored content\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := verifyAt(root, false); err != nil {
+		t.Fatalf("authored content was treated as structured machine state: %v", err)
+	}
+}
+
 func TestVerifyAtRejectsInvalidStructuredFile(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(`{"server":{"port":37421,"allow_unauthenticated_loopback":true,"expose":{"mode":"none","interfaces":[]}},"admin":{"enabled":false,"port":37422},"auth":{"mcp_enabled":false,"admin_enabled":false},"tunnel":{"enabled":false}}`), 0600); err != nil {
