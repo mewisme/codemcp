@@ -184,7 +184,7 @@ func CleanupRetainedBackup(ctx context.Context, options CleanupOptions) (Cleanup
 		}
 	}
 	if pathExists(journal.SourceRoot) {
-		hash, err := fingerprintExactTree(journal.SourceRoot)
+		hash, err := fingerprintRetainedTree(journal.SourceRoot)
 		if err != nil {
 			return CleanupResult{}, fmt.Errorf("fingerprint retained backup before cleanup: %w", err)
 		}

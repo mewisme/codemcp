@@ -44,13 +44,14 @@ type FileRecord struct {
 }
 
 type Manifest struct {
-	Version           int          `json:"version"`
-	SourceRelease     string       `json:"source_release"`
-	SourceSHA256      string       `json:"source_sha256"`
-	LegacyWorkspaceID string       `json:"legacy_workspace_id"`
-	TargetWorkspaceID string       `json:"target_workspace_id"`
-	WorkspaceRoot     string       `json:"workspace_root"`
-	Files             []FileRecord `json:"files"`
+	Version            int          `json:"version"`
+	SourceRelease      string       `json:"source_release"`
+	SourceSHA256       string       `json:"source_sha256"`
+	LegacyWorkspaceID  string       `json:"legacy_workspace_id"`
+	TargetWorkspaceID  string       `json:"target_workspace_id"`
+	WorkspaceRoot      string       `json:"workspace_root"`
+	Files              []FileRecord `json:"files"`
+	SkippedCheckpoints []string     `json:"skipped_checkpoints,omitempty"`
 }
 
 type Result struct {
@@ -65,6 +66,11 @@ type legacyShellState struct {
 	StartedAt      string   `json:"started_at"`
 	UpdatedAt      string   `json:"updated_at"`
 	RecentCommands []string `json:"recent_commands"`
+}
+
+type checkpointMigrationPlan struct {
+	Index   checkpoint.Index
+	Skipped map[string]bool
 }
 
 func Transform(input Input) (Result, error) {
@@ -205,12 +211,15 @@ func inspectSource(input Input, source string) (Manifest, error) {
 			return Manifest{}, err
 		}
 	}
+	skipped := map[string]bool{}
 	if checkpointRoot := filepath.Join(source, "checkpoints"); dirExists(checkpointRoot) {
-		if err := validateLegacyCheckpoints(checkpointRoot, input.LegacyWorkspaceID, input.WorkspaceRoot); err != nil {
+		plan, err := planLegacyCheckpoints(checkpointRoot, input.LegacyWorkspaceID, input.WorkspaceRoot)
+		if err != nil {
 			return Manifest{}, err
 		}
+		skipped = plan.Skipped
 	}
-	fingerprint, err := fingerprintTree(source)
+	fingerprint, err := fingerprintTree(source, skipped)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -218,7 +227,16 @@ func inspectSource(input Input, source string) (Manifest, error) {
 }
 
 func materialize(input Input, source, stage string) (Manifest, error) {
-	fingerprint, err := fingerprintTree(source)
+	plan := checkpointMigrationPlan{Skipped: map[string]bool{}}
+	checkpointRoot := filepath.Join(source, "checkpoints")
+	if dirExists(checkpointRoot) {
+		var err error
+		plan, err = planLegacyCheckpoints(checkpointRoot, input.LegacyWorkspaceID, input.WorkspaceRoot)
+		if err != nil {
+			return Manifest{}, err
+		}
+	}
+	fingerprint, err := fingerprintTree(source, plan.Skipped)
 	if err != nil {
 		return Manifest{}, err
 	}
@@ -243,7 +261,11 @@ func materialize(input Input, source, stage string) (Manifest, error) {
 		}
 	}
 	if src := filepath.Join(source, "checkpoints"); dirExists(src) {
-		if err := copyCheckpointTree(src, filepath.Join(stage, "checkpoints"), input, stage, &manifest); err != nil {
+		for id := range plan.Skipped {
+			manifest.SkippedCheckpoints = append(manifest.SkippedCheckpoints, id)
+		}
+		sort.Strings(manifest.SkippedCheckpoints)
+		if err := copyCheckpointTree(src, filepath.Join(stage, "checkpoints"), input, plan, stage, &manifest); err != nil {
 			return Manifest{}, err
 		}
 	}
@@ -265,47 +287,63 @@ func validateLegacyShell(path, legacyID string) error {
 	return nil
 }
 
-func validateLegacyCheckpoints(root, legacyID, workspaceRoot string) error {
+func planLegacyCheckpoints(root, legacyID, workspaceRoot string) (checkpointMigrationPlan, error) {
 	info, err := os.Lstat(root)
 	if err != nil {
-		return err
+		return checkpointMigrationPlan{}, err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("released checkpoints must be a real directory")
+		return checkpointMigrationPlan{}, errors.New("released checkpoints must be a real directory")
 	}
 	indexPath := filepath.Join(root, "index.json")
 	var index checkpoint.Index
 	if err := decodeStrictFile(indexPath, &index); err != nil {
-		return err
+		return checkpointMigrationPlan{}, err
 	}
 	if index.Version != 1 {
-		return fmt.Errorf("unsupported released checkpoint index version: %d", index.Version)
+		return checkpointMigrationPlan{}, fmt.Errorf("unsupported released checkpoint index version: %d", index.Version)
+	}
+	plan := checkpointMigrationPlan{
+		Index:   checkpoint.Index{Version: index.Version, Checkpoints: make([]checkpoint.Summary, 0, len(index.Checkpoints))},
+		Skipped: map[string]bool{},
 	}
 	allowed := map[string]struct{}{"index.json": {}}
 	for _, summary := range index.Checkpoints {
 		if strings.TrimSpace(summary.ID) == "" {
-			return errors.New("released checkpoint index contains empty id")
+			return checkpointMigrationPlan{}, errors.New("released checkpoint index contains empty id")
 		}
 		manifestRel := filepath.Join("data", summary.ID, "manifest.json")
 		manifestPath := filepath.Join(root, manifestRel)
+		manifestInfo, err := os.Lstat(manifestPath)
+		if err != nil {
+			return checkpointMigrationPlan{}, fmt.Errorf("inspect released checkpoint %s manifest: %w", summary.ID, err)
+		}
+		if !manifestInfo.Mode().IsRegular() || manifestInfo.Mode()&os.ModeSymlink != 0 {
+			return checkpointMigrationPlan{}, fmt.Errorf("released checkpoint manifest is not a regular non-symlink file: %s", manifestPath)
+		}
+		if manifestInfo.Size() > maxStructuredBytes {
+			plan.Skipped[summary.ID] = true
+			continue
+		}
 		var manifest checkpoint.Manifest
 		if err := decodeStrictFile(manifestPath, &manifest); err != nil {
-			return fmt.Errorf("load released checkpoint %s manifest: %w", summary.ID, err)
+			return checkpointMigrationPlan{}, fmt.Errorf("load released checkpoint %s manifest: %w", summary.ID, err)
 		}
 		if manifest.Version != 1 || manifest.ID != summary.ID || manifest.WorkspaceID != legacyID {
-			return fmt.Errorf("released checkpoint manifest ownership mismatch: %s", manifestPath)
+			return checkpointMigrationPlan{}, fmt.Errorf("released checkpoint manifest ownership mismatch: %s", manifestPath)
 		}
 		if filepath.Clean(manifest.WorkspaceRoot) != filepath.Clean(workspaceRoot) {
-			return fmt.Errorf("released checkpoint manifest root mismatch: %s", manifestPath)
+			return checkpointMigrationPlan{}, fmt.Errorf("released checkpoint manifest root mismatch: %s", manifestPath)
 		}
+		plan.Index.Checkpoints = append(plan.Index.Checkpoints, summary)
 		allowed[filepath.ToSlash(manifestRel)] = struct{}{}
 		for _, snapshot := range manifest.Files {
 			if err := addSnapshotBlobs(allowed, summary.ID, snapshot); err != nil {
-				return err
+				return checkpointMigrationPlan{}, err
 			}
 		}
 	}
-	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -315,15 +353,34 @@ func validateLegacyCheckpoints(root, legacyID, workspaceRoot string) error {
 		if entry.IsDir() {
 			return nil
 		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("released checkpoint state contains non-regular file: %s", path)
+		}
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return err
 		}
-		if _, ok := allowed[filepath.ToSlash(rel)]; !ok {
-			return fmt.Errorf("unsupported released checkpoint state entry: %s", filepath.ToSlash(rel))
+		rel = filepath.ToSlash(rel)
+		if skippedCheckpointPath(rel, plan.Skipped) {
+			return nil
+		}
+		if _, ok := allowed[rel]; !ok {
+			return fmt.Errorf("unsupported released checkpoint state entry: %s", rel)
 		}
 		return nil
-	})
+	}); err != nil {
+		return checkpointMigrationPlan{}, err
+	}
+	return plan, nil
+}
+
+func skippedCheckpointPath(relative string, skipped map[string]bool) bool {
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	return len(parts) >= 3 && parts[0] == "data" && skipped[parts[1]]
 }
 
 func addSnapshotBlobs(allowed map[string]struct{}, checkpointID string, snapshot checkpoint.FileSnapshot) error {
@@ -342,7 +399,7 @@ func addSnapshotBlobs(allowed map[string]struct{}, checkpointID string, snapshot
 	return nil
 }
 
-func copyCheckpointTree(srcRoot, dstRoot string, input Input, stage string, manifest *Manifest) error {
+func copyCheckpointTree(srcRoot, dstRoot string, input Input, plan checkpointMigrationPlan, stage string, manifest *Manifest) error {
 	return filepath.WalkDir(srcRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -356,6 +413,10 @@ func copyCheckpointTree(srcRoot, dstRoot string, input Input, stage string, mani
 		}
 		if rel == "." {
 			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		if entry.IsDir() && skippedCheckpointPath(relSlash+"/placeholder", plan.Skipped) {
+			return filepath.SkipDir
 		}
 		dst := filepath.Join(dstRoot, rel)
 		if entry.IsDir() {
@@ -373,10 +434,7 @@ func copyCheckpointTree(srcRoot, dstRoot string, input Input, stage string, mani
 			}
 			return appendRecord(dst, "checkpoint_manifest", stage, manifest)
 		case "index.json":
-			var value checkpoint.Index
-			if err := decodeStrictFile(path, &value); err != nil {
-				return err
-			}
+			value := plan.Index
 			if value.Version == 0 {
 				value.Version = 1
 			}
@@ -422,7 +480,7 @@ func copyFileRecord(src, dst, kind, stage string, manifest *Manifest) error {
 }
 
 func appendRecord(path, kind, stage string, manifest *Manifest) error {
-	data, err := os.ReadFile(path)
+	sum, size, err := hashRegularFile(path)
 	if err != nil {
 		return err
 	}
@@ -430,8 +488,7 @@ func appendRecord(path, kind, stage string, manifest *Manifest) error {
 	if err != nil {
 		return err
 	}
-	sum := sha256.Sum256(data)
-	manifest.Files = append(manifest.Files, FileRecord{Kind: kind, Path: filepath.ToSlash(rel), SHA256: hex.EncodeToString(sum[:]), Bytes: int64(len(data))})
+	manifest.Files = append(manifest.Files, FileRecord{Kind: kind, Path: filepath.ToSlash(rel), SHA256: sum, Bytes: size})
 	return nil
 }
 
@@ -453,12 +510,11 @@ func verifyDestination(root string, manifest Manifest) error {
 			return fmt.Errorf("duplicate migration record path: %s", record.Path)
 		}
 		path := filepath.Join(root, clean)
-		data, err := os.ReadFile(path)
+		sum, size, err := hashRegularFile(path)
 		if err != nil {
 			return err
 		}
-		sum := sha256.Sum256(data)
-		if hex.EncodeToString(sum[:]) != record.SHA256 || int64(len(data)) != record.Bytes {
+		if sum != record.SHA256 || size != record.Bytes {
 			return fmt.Errorf("migration record integrity mismatch: %s", record.Path)
 		}
 		expected[key] = struct{}{}
@@ -492,7 +548,7 @@ func verifyDestination(root string, manifest Manifest) error {
 	return nil
 }
 
-func fingerprintTree(root string) (string, error) {
+func fingerprintTree(root string, skipped map[string]bool) (string, error) {
 	type entryHash struct {
 		path string
 		sum  string
@@ -505,6 +561,16 @@ func fingerprintTree(root string) (string, error) {
 		if entry.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("released workspace state contains symlink: %s", path)
 		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if rel != "." && skippedWorkspaceCheckpointPath(filepath.ToSlash(rel), skipped) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 		if entry.IsDir() {
 			return nil
 		}
@@ -515,16 +581,11 @@ func fingerprintTree(root string) (string, error) {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("released workspace state contains non-regular file: %s", path)
 		}
-		data, err := os.ReadFile(path)
+		sum, _, err := hashRegularFile(path)
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		sum := sha256.Sum256(data)
-		entries = append(entries, entryHash{path: filepath.ToSlash(rel), sum: hex.EncodeToString(sum[:])})
+		entries = append(entries, entryHash{path: filepath.ToSlash(rel), sum: sum})
 		return nil
 	})
 	if err != nil {
@@ -539,6 +600,32 @@ func fingerprintTree(root string) (string, error) {
 		_, _ = io.WriteString(hash, "\n")
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func skippedWorkspaceCheckpointPath(relative string, skipped map[string]bool) bool {
+	parts := strings.Split(filepath.ToSlash(relative), "/")
+	return len(parts) >= 3 && parts[0] == "checkpoints" && parts[1] == "data" && skipped[parts[2]]
+}
+
+func hashRegularFile(path string) (string, int64, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", 0, err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return "", 0, fmt.Errorf("migration file is not regular: %s", path)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	written, err := io.Copy(hash, file)
+	if err != nil {
+		return "", written, err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), written, nil
 }
 
 func loadManifest(root string) (Manifest, error) {

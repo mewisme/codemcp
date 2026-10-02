@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -624,6 +625,14 @@ func TestStageBundleUsesCanonicalSemanticStager(t *testing.T) {
 }
 
 func newStageFixture(t *testing.T, running bool) stageFixture {
+	return newStageFixtureWithProductionHistory(t, running, false)
+}
+
+func newProductionStageFixture(t *testing.T, running bool) stageFixture {
+	return newStageFixtureWithProductionHistory(t, running, true)
+}
+
+func newStageFixtureWithProductionHistory(t *testing.T, running, productionHistory bool) stageFixture {
 	t.Helper()
 	currentRoot := filepath.Join(t.TempDir(), "current")
 	t.Setenv("CM_CONFIG_DIR", currentRoot)
@@ -706,6 +715,35 @@ func newStageFixture(t *testing.T, running bool) stageFixture {
 	})
 	writeJSONFixture(t, filepath.Join(sourceRoot, "runtime", "environment.json"), map[string]any{"version": 1, "values": map[string]any{"PATH": "/legacy"}})
 	writeJSONFixture(t, filepath.Join(sourceRoot, ".runtime-control.json"), map[string]any{"pid": 1234})
+	if productionHistory {
+		launcher := ".service-launcher-" + historicalServiceID(sourceRoot, "user") + ".vbs"
+		writeFixture(t, filepath.Join(sourceRoot, launcher), "Set shell = CreateObject(\"WScript.Shell\")\n")
+		for index := 0; index < 5; index++ {
+			id := fmt.Sprintf("tunnel_stage_%d", index)
+			writeJSONFixture(t, filepath.Join(sourceRoot, "tunnels", id+".json"), map[string]any{"version": 1, "id": id})
+		}
+		writeJSONFixture(t, filepath.Join(sourceRoot, "workspaces", "ws_legacy", "checkpoints", "index.json"), map[string]any{
+			"version": 1,
+			"checkpoints": []map[string]any{{
+				"id": "cp_large", "created_at": "2026-01-02T00:00:00Z", "tool": "edit_file", "summary": "oversized production history",
+			}},
+		})
+		largeManifest := filepath.Join(sourceRoot, "workspaces", "ws_legacy", "checkpoints", "data", "cp_large", "manifest.json")
+		if err := os.MkdirAll(filepath.Dir(largeManifest), 0700); err != nil {
+			t.Fatal(err)
+		}
+		file, err := os.OpenFile(largeManifest, os.O_CREATE|os.O_WRONLY, 0600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := file.Truncate(maxRegularFileBytes + 1); err != nil {
+			_ = file.Close()
+			t.Fatal(err)
+		}
+		if err := file.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	controller := &fakeHistoricalController{running: running}
 	serviceID := historicalServiceID(sourceRoot, "user")

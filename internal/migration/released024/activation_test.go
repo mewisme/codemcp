@@ -92,7 +92,16 @@ type activationHarness struct {
 
 func newActivationHarness(t *testing.T) activationHarness {
 	t.Helper()
-	fixture := newStageFixture(t, false)
+	return newActivationHarnessForFixture(t, newStageFixture(t, false))
+}
+
+func newProductionActivationHarness(t *testing.T) activationHarness {
+	t.Helper()
+	return newActivationHarnessForFixture(t, newProductionStageFixture(t, false))
+}
+
+func newActivationHarnessForFixture(t *testing.T, fixture stageFixture) activationHarness {
+	t.Helper()
 	stage, err := Stage(t.Context(), StageOptions{
 		Manifest: fixture.manifest, TargetRoot: fixture.targetRoot,
 		RefreshManifest: fixture.refresh, ServiceControl: fixture.controller,

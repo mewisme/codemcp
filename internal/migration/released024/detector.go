@@ -580,6 +580,11 @@ func inventoryRoot(root string, instance InstanceInspection) ([]Artifact, string
 			return nil
 		}
 		artifact.Classification, artifact.Kind, artifact.Reason = classifyArtifact(relative, info.Size())
+		if isHistoricalServiceLauncher(root, relative) {
+			artifact.Classification = ClassRegenerate
+			artifact.Kind = "service-launcher"
+			artifact.Reason = "historical Windows service launcher is retired with its managed service"
+		}
 		if relative == "state/instance.json" && !instance.Valid {
 			artifact.Classification = ClassRegenerate
 			artifact.Reason = "released instance identity is invalid and will be regenerated"
@@ -592,7 +597,11 @@ func inventoryRoot(root string, instance InstanceInspection) ([]Artifact, string
 			artifact.Classification = ClassOptionalSkipWithReport
 			artifact.Reason = "released TUI state is invalid and will be skipped with a report"
 		}
-		if info.Size() > maxRegularFileBytes && artifact.Classification != ClassOptionalSkipWithReport {
+		if artifact.Kind == "tunnel-metadata-cache" && !validReleasedTunnelMetadata(path, relative) {
+			artifact.Classification = ClassUnsupportedFailClosed
+			artifact.Reason = "released tunnel metadata cache is not a valid CodeMCP metadata envelope"
+		}
+		if info.Size() > maxRegularFileBytes && artifact.Kind != "checkpoint" && artifact.Classification != ClassOptionalSkipWithReport {
 			artifact.Classification = ClassUnsupportedFailClosed
 			artifact.Reason = "released state file exceeds migration inspection limit"
 			artifacts = append(artifacts, artifact)
@@ -631,6 +640,34 @@ func inventoryRoot(root string, instance InstanceInspection) ([]Artifact, string
 		}
 	}
 	return artifacts, hex.EncodeToString(h.Sum(nil)), unsupported, nil
+}
+
+func isHistoricalServiceLauncher(root, relative string) bool {
+	relative = filepath.ToSlash(filepath.Clean(filepath.FromSlash(relative)))
+	for _, scope := range []string{"user", "system"} {
+		expected := ".service-launcher-" + historicalServiceID(root, scope) + ".vbs"
+		if strings.EqualFold(relative, expected) {
+			return true
+		}
+	}
+	return false
+}
+
+func validReleasedTunnelMetadata(path, relative string) bool {
+	data, err := readBoundedRegular(path, maxRegularFileBytes)
+	if err != nil {
+		return false
+	}
+	var envelope struct {
+		Version int    `json:"version"`
+		ID      string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &envelope); err != nil || envelope.Version != 1 {
+		return false
+	}
+	filename := filepath.Base(filepath.FromSlash(relative))
+	id := strings.TrimSuffix(filename, filepath.Ext(filename))
+	return strings.TrimSpace(envelope.ID) == "" || strings.TrimSpace(envelope.ID) == id
 }
 
 func validReleasedLog(path string) bool {
@@ -692,6 +729,8 @@ func classifyArtifact(relative string, size int64) (Classification, string, stri
 		return ClassDurableMigrate, "workspace-registry", "validated released workspace registry"
 	case clean == "upstream.json" || clean == "oauth.json" || clean == "tunnel.json":
 		return ClassDurableMigrate, "domain-store", "released domain state has a canonical migration owner"
+	case strings.HasPrefix(clean, "tunnels/") && strings.HasSuffix(strings.ToLower(clean), ".json"):
+		return ClassTransientDrop, "tunnel-metadata-cache", "tunnel metadata cache is regenerated from canonical tunnel state"
 	case clean == "state/instance.json":
 		return ClassDurableMigrate, "instance-identity", "instance identity is durable migration input"
 	case strings.HasPrefix(clean, "state/secrets/"):

@@ -64,6 +64,38 @@ func TestCleanupRetainedBackupHonorsRetentionAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestFingerprintRetainedTreeStreamsFilesLargerThanMigrationInspectionLimit(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "workspaces", "ws_one", "checkpoints", "data", "cp_large", "manifest.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(maxRegularFileBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, filepath.Join(root, "config.json"), "{}")
+
+	first, err := fingerprintRetainedTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := fingerprintRetainedTree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == "" || first != second {
+		t.Fatalf("retained fingerprint is not deterministic: first=%q second=%q", first, second)
+	}
+}
+
 func TestCleanupRetainedBackupRefusesChangedRollbackState(t *testing.T) {
 	h, activation := activatedRetirementHarness(t)
 	fixed := time.Date(2026, 9, 29, 9, 0, 0, 0, time.UTC)

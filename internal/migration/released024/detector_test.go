@@ -62,6 +62,9 @@ func TestDetectReleasedStateBuildsDeterministicSecretSafeManifest(t *testing.T) 
 	})
 	writeJSONFixture(t, filepath.Join(root, "runtime", "environment.json"), map[string]any{"values": map[string]any{"PATH": "/legacy"}})
 	writeJSONFixture(t, filepath.Join(root, ".runtime-control.json"), map[string]any{"pid": 99})
+	serviceLauncherName := ".service-launcher-" + historicalServiceID(root, "user") + ".vbs"
+	writeFixture(t, filepath.Join(root, serviceLauncherName), "service launcher")
+	writeJSONFixture(t, filepath.Join(root, "tunnels", "tunnel_fixture.json"), map[string]any{"version": 1, "id": "tunnel_fixture"})
 	writeJSONLineFixture(t, filepath.Join(root, "logs", "runtime.jsonl"), map[string]any{"event": "ready"})
 	writeJSONFixture(t, filepath.Join(root, "tui-state.json"), map[string]any{"version": 1, "recent_actions": []string{"logs"}})
 	writeFixture(t, filepath.Join(root, "instructions", "AGENTS.md"), "Use canonical owners.\n")
@@ -129,7 +132,9 @@ func TestDetectReleasedStateBuildsDeterministicSecretSafeManifest(t *testing.T) 
 		"instructions/AGENTS.md":                             ClassDurableMigrate,
 		"instructions/global.json":                           ClassDurableMigrate,
 		"runtime/environment.json":                           ClassRegenerate,
+		serviceLauncherName:                                  ClassRegenerate,
 		".runtime-control.json":                              ClassTransientDrop,
+		"tunnels/tunnel_fixture.json":                        ClassTransientDrop,
 		"state/update.json":                                  ClassTransientDrop,
 		"runtime/processes.json":                             ClassTransientDrop,
 		"runtime.pid":                                        ClassTransientDrop,
@@ -138,6 +143,9 @@ func TestDetectReleasedStateBuildsDeterministicSecretSafeManifest(t *testing.T) 
 		if classes[path] != want {
 			t.Errorf("artifact %s class=%q want=%q", path, classes[path], want)
 		}
+	}
+	if first.Unsupported != 0 {
+		t.Fatalf("known released state was classified unsupported: %d", first.Unsupported)
 	}
 	encoded, err := json.Marshal(first)
 	if err != nil {
@@ -152,6 +160,44 @@ func TestDetectReleasedStateBuildsDeterministicSecretSafeManifest(t *testing.T) 
 	if len(first.Services) != 2 || first.Services[0].Ownership == OwnershipAbsent {
 		t.Fatalf("services=%#v", first.Services)
 	}
+}
+
+func TestDetectDoesNotFailClosedOnLargeOwnedCheckpointHistory(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "released")
+	writeFixture(t, filepath.Join(root, legacyRootMarkerName), legacyRootMarkerValue)
+	manifestPath := filepath.Join(root, "workspaces", "ws_one", "checkpoints", "data", "cp_large", "manifest.json")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(manifestPath, os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(maxRegularFileBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest, err := Detect(t.Context(), isolatedOptions(home, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Unsupported != 0 {
+		t.Fatalf("large owned checkpoint blocked cutover: unsupported=%d artifacts=%#v", manifest.Unsupported, manifest.Artifacts)
+	}
+	for _, artifact := range manifest.Artifacts {
+		if artifact.Path == "workspaces/ws_one/checkpoints/data/cp_large/manifest.json" {
+			if artifact.Kind != "checkpoint" || artifact.Classification != ClassDurableMigrate {
+				t.Fatalf("large checkpoint artifact=%#v", artifact)
+			}
+			return
+		}
+	}
+	t.Fatal("large checkpoint artifact missing")
 }
 
 func TestResolveSourceExplicitWinsAndImplicitAmbiguityFailsClosed(t *testing.T) {
@@ -243,6 +289,25 @@ func TestDetectReportsUnknownSourceAsFailClosedWithoutDeletingIt(t *testing.T) {
 	data, err := os.ReadFile(unknown)
 	if err != nil || string(data) != "preserve me" {
 		t.Fatalf("unknown source was changed: data=%q err=%v", data, err)
+	}
+}
+
+func TestDetectKeepsReservedMigrationNamespacesFailClosedWhenOwnershipIsInvalid(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "released")
+	writeFixture(t, filepath.Join(root, legacyRootMarkerName), legacyRootMarkerValue)
+	writeFixture(t, filepath.Join(root, ".service-launcher-operator.vbs"), "operator data")
+	writeJSONFixture(t, filepath.Join(root, "tunnels", "tunnel_expected.json"), map[string]any{
+		"version": 1,
+		"id":      "tunnel_other",
+	})
+
+	manifest, err := Detect(t.Context(), isolatedOptions(home, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Unsupported != 2 {
+		t.Fatalf("unsupported=%d artifacts=%#v", manifest.Unsupported, manifest.Artifacts)
 	}
 }
 

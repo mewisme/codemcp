@@ -708,6 +708,7 @@ func stageWorkspaces(manifest Manifest, stageRoot string, now func() time.Time) 
 		payloadBase := filepath.Join(stageRoot, "workspace-payloads", item.ID)
 		transformRoot := filepath.Join(payloadBase, "transformed")
 		desiredRoot := filepath.Join(payloadBase, "root", workspace.LocalDirName)
+		skippedCheckpoints := 0
 		if dirExists(filepath.Join(manifest.Source.Root, "workspaces", legacyID)) {
 			transformed, err := workspace024.Transform(workspace024.Input{
 				SourceConfigRoot: manifest.Source.Root, WorkspaceRoot: item.Path,
@@ -718,6 +719,7 @@ func stageWorkspaces(manifest Manifest, stageRoot string, now func() time.Time) 
 				return nil, fmt.Errorf("stage workspace %s: %w", item.ID, err)
 			}
 			outcome.SourceSHA256 = transformed.Manifest.SourceSHA256
+			skippedCheckpoints = len(transformed.Manifest.SkippedCheckpoints)
 			if err := copyWorkspaceTransformPayload(transformRoot, desiredRoot); err != nil {
 				return nil, err
 			}
@@ -752,6 +754,14 @@ func stageWorkspaces(manifest Manifest, stageRoot string, now func() time.Time) 
 			outcome.Detail = "existing workspace local state is byte-identical"
 		} else {
 			outcome.State = "staged"
+		}
+		if skippedCheckpoints > 0 {
+			detail := fmt.Sprintf("%d oversized legacy checkpoint(s) retained in rollback source", skippedCheckpoints)
+			if outcome.Detail == "" {
+				outcome.Detail = detail
+			} else {
+				outcome.Detail += "; " + detail
+			}
 		}
 		outcomes = append(outcomes, outcome)
 	}
@@ -947,6 +957,76 @@ func fingerprintExactTree(root string) (string, error) {
 		_, _ = io.WriteString(hash, record.path+"\x00"+record.sum+"\n")
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func fingerprintRetainedTree(root string) (string, error) {
+	type record struct{ path, sum string }
+	records := []record{}
+	entries := 0
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path != root {
+			entries++
+			if entries > maxInventoryEntries {
+				return fmt.Errorf("retained state tree exceeds %d entries", maxInventoryEntries)
+			}
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("retained state tree contains symlink: %s", path)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("retained state tree contains non-regular file: %s", path)
+		}
+		sum, _, err := hashRegularFileUnbounded(path)
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		records = append(records, record{path: filepath.ToSlash(relative), sum: sum})
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Slice(records, func(i, j int) bool { return records[i].path < records[j].path })
+	hash := sha256.New()
+	for _, record := range records {
+		_, _ = io.WriteString(hash, record.path+"\x00"+record.sum+"\n")
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func hashRegularFileUnbounded(path string) (string, int64, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", 0, err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return "", 0, fmt.Errorf("retained state file is not regular: %s", path)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	written, err := io.Copy(hash, file)
+	if err != nil {
+		return "", written, err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), written, nil
 }
 
 func fingerprintStageTree(root string) (string, error) {

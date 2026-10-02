@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -96,6 +97,54 @@ func TestTransformRollbackSafeOnInvalidReleasedState(t *testing.T) {
 		if strings.Contains(entry.Name(), ".workspace024-") {
 			t.Fatalf("staging residue: %s", entry.Name())
 		}
+	}
+}
+
+func TestTransformSkipsOversizedLegacyCheckpointWithoutDroppingOtherHistory(t *testing.T) {
+	input, source := releasedFixture(t)
+	indexPath := filepath.Join(source, "checkpoints", "index.json")
+	var index checkpoint.Index
+	readJSON(t, indexPath, &index)
+	index.Checkpoints = append(index.Checkpoints, checkpoint.Summary{ID: "cp_large", CreatedAt: "2026-01-02T00:00:00Z", Tool: "edit_file", Summary: "oversized"})
+	writeJSONFixture(t, indexPath, index)
+
+	largeRoot := filepath.Join(source, "checkpoints", "data", "cp_large")
+	if err := os.MkdirAll(filepath.Join(largeRoot, "blobs"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	largeManifest := filepath.Join(largeRoot, "manifest.json")
+	file, err := os.OpenFile(largeManifest, os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(maxStructuredBytes + 1); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(largeRoot, "blobs", "ignored.bin"), []byte("retained in rollback source"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Transform(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(result.Manifest.SkippedCheckpoints, []string{"cp_large"}) {
+		t.Fatalf("skipped checkpoints=%#v", result.Manifest.SkippedCheckpoints)
+	}
+	var migrated checkpoint.Index
+	readJSON(t, filepath.Join(input.Destination, "checkpoints", "index.json"), &migrated)
+	if len(migrated.Checkpoints) != 1 || migrated.Checkpoints[0].ID != "cp_one" {
+		t.Fatalf("migrated checkpoint index=%#v", migrated)
+	}
+	if _, err := os.Stat(filepath.Join(input.Destination, "checkpoints", "data", "cp_large")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("oversized checkpoint was copied: %v", err)
+	}
+	if info, err := os.Stat(largeManifest); err != nil || info.Size() != maxStructuredBytes+1 {
+		t.Fatalf("rollback source changed: info=%v err=%v", info, err)
 	}
 }
 

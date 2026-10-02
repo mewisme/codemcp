@@ -209,7 +209,7 @@ func Retire(ctx context.Context, options RetireOptions) (RetirementResult, error
 	}
 	emit("runtime-metadata", "success", "Historical runtime metadata cleanup complete", false)
 
-	retainedSHA256, err := fingerprintExactTree(journal.SourceRoot)
+	retainedSHA256, err := fingerprintRetainedTree(journal.SourceRoot)
 	if err != nil {
 		return fail("retention", fmt.Errorf("fingerprint retained released backup: %w", err))
 	}
