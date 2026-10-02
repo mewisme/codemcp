@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	appcore "go.mewis.me/codemcp/internal/app"
 	"go.mewis.me/codemcp/internal/cli/presentation"
+	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
@@ -63,6 +65,29 @@ func TestInitWithConfigDirDoesNotTouchDefaultRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(isolated, "config.json")); err != nil {
 		t.Fatalf("isolated config missing: %v", err)
+	}
+	loaded, err := config.LoadAt(isolated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range config.DefaultOnCapabilityContracts() {
+		value, err := config.RawValue(loaded, contract.Key)
+		if err != nil {
+			t.Fatalf("%s: %v", contract.Key, err)
+		}
+		if value != "true" {
+			t.Fatalf("fresh init %s = %q, want true", contract.Key, value)
+		}
+	}
+	runtime, err := appcore.New(loaded)
+	if err != nil {
+		t.Fatalf("fresh init config is not runtime-constructible: %v", err)
+	}
+	if err := runtime.Start(t.Context()); err != nil {
+		t.Fatalf("fresh init config is not runtime-bootable: %v", err)
+	}
+	if err := runtime.Stop(); err != nil {
+		t.Fatalf("stop fresh init runtime: %v", err)
 	}
 	data, err := os.ReadFile(sentinel)
 	if err != nil || string(data) != "keep" {

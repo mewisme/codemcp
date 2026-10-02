@@ -96,6 +96,8 @@ cm tunnel configure \
 
 The runtime key should have **Tunnels Read + Use**. It is not an OpenAI Admin API key and is not used to call a language model.
 
+Fresh configuration records optional capabilities such as the Secure MCP Tunnel as enabled intent by default, but they become effective only when their prerequisites are configured. An enabled tunnel with no tunnel ID/runtime key stays inactive; it does not block the local runtime. Explicit `false` settings remain durable opt-outs; `--enabled` above also makes the setup command explicitly re-enable a previously opted-out tunnel.
+
 ### 4. Start the managed runtime
 
 ```bash

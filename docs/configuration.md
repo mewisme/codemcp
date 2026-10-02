@@ -120,7 +120,7 @@ cm config set http.admin.enabled true
 
 Values are parsed according to the schema and validated before persistence. `key=value` syntax is also accepted by the CLI.
 
-At least one MCP transport must remain enabled: direct MCP HTTP (`http.mcp.enabled`) or OpenAI Secure MCP Tunnel (`tunnel.enabled`). The default ChatGPT path is the tunnel; direct HTTP is an optional transport for clients that need it.
+At least one MCP transport must remain usable: direct MCP HTTP (`http.mcp.enabled`) or a configured OpenAI Secure MCP Tunnel (`tunnel.enabled` plus its runtime prerequisites). Fresh configuration records several optional capabilities as enabled intent by default; missing third-party credentials or external resources leave those capabilities degraded/unavailable instead of making the whole runtime invalid. Explicit `false` values remain durable operator opt-outs across reload, import, and migration.
 
 ## Applying changes to a running runtime
 

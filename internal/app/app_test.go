@@ -100,8 +100,6 @@ func TestStartAllowsDefaultOnCapabilitiesWithoutOptionalPrerequisites(t *testing
 func TestAcceptedCompletionNotificationFailureDoesNotChangeCompletionTruth(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	cfg := config.Default()
-	cfg.Notifications.Completion.Enabled = true
-	cfg.Notifications.Completion.DesktopEnabled = true
 	cfg.Notifications.Completion.TelegramEnabled = false
 	app, err := New(cfg)
 	if err != nil {

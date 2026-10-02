@@ -94,6 +94,8 @@ cm tunnel status
 
 The runtime key is kept in the selected config root's managed secret store and is not printed by normal status/config output.
 
+On fresh configuration, tunnel intent is enabled by default. Until both the tunnel ID and runtime key are configured, the tunnel remains unavailable/inactive rather than making `cm up` fail. Explicit `false` remains a durable opt-out; the `--enabled` flag above intentionally re-enables the tunnel when configuring a previously opted-out installation.
+
 ## 5. Start the runtime
 
 For normal use:

@@ -103,6 +103,37 @@ func TestReloadConfigReconcilesTelegramSubfeaturePreferencesWithoutPrerequisites
 	}
 }
 
+func TestReloadConfigPreservesExplicitDefaultOnOptOuts(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	cfg := config.Default()
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
+	app, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	disabled := cfg
+	for _, contract := range config.DefaultOnCapabilityContracts() {
+		if err := config.SetValue(&disabled, contract.Key, "false"); err != nil {
+			t.Fatalf("disable %s: %v", contract.Key, err)
+		}
+	}
+	if err := app.ReloadConfig(disabled); err != nil {
+		t.Fatal(err)
+	}
+	got := app.Config.Snapshot()
+	for _, contract := range config.DefaultOnCapabilityContracts() {
+		value, err := config.RawValue(got, contract.Key)
+		if err != nil {
+			t.Fatalf("%s: %v", contract.Key, err)
+		}
+		if value != "false" {
+			t.Fatalf("reloaded explicit opt-out %s = %q, want false", contract.Key, value)
+		}
+	}
+}
+
 func TestReloadConfigKeepsTelegramNotificationProviderRegisteredAcrossAvailabilityChanges(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	cfg := config.Default()
