@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 
+	"go.mewis.me/codemcp/internal/instructionsource"
 	"go.mewis.me/codemcp/internal/workspace"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
@@ -24,15 +25,69 @@ const (
 	maxTextLineOffset     = 1_000_000_000
 )
 
-func rejectManagedPlanMutation(item workspace.Workspace, paths ...string) error {
-	plansRoot := filepath.Clean(workspacestate.New(item.Path).PlansRoot())
+func rejectManagedFilesystemMutation(item workspace.Workspace, paths ...string) error {
+	store := workspacestate.New(item.Path)
+	plansRoot := filepath.Clean(store.PlansRoot())
+	instructionRoots := []string{filepath.Clean(store.RulesRoot()), filepath.Clean(store.SkillsRoot())}
 	for _, candidate := range paths {
 		candidate = filepath.Clean(candidate)
 		if pathsOverlap(candidate, plansRoot) {
 			return fmt.Errorf("path is managed by the canonical plan authoring service: %s", candidate)
 		}
+		for _, instructionRoot := range instructionRoots {
+			if pathsOverlap(candidate, instructionRoot) {
+				return fmt.Errorf("path is managed by the canonical instruction authoring service: %s", candidate)
+			}
+		}
+		if providerRoot, ok := readOnlyDynamicProviderRoot(item.Path, candidate); ok {
+			return fmt.Errorf("path belongs to a read-only dynamic instruction provider: %s", providerRoot)
+		}
 	}
 	return nil
+}
+
+func readOnlyDynamicProviderRoot(workspaceRoot, candidate string) (string, bool) {
+	workspaceRoot = filepath.Clean(workspaceRoot)
+	relative, err := filepath.Rel(workspaceRoot, filepath.Clean(candidate))
+	if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	parts := strings.Split(relative, string(filepath.Separator))
+	for index, part := range parts {
+		if _, ok := instructionsource.DynamicProviderIdentity(part); !ok {
+			continue
+		}
+		providerRoot := filepath.Join(append([]string{workspaceRoot}, parts[:index+1]...)...)
+		remainder := parts[index+1:]
+		if dynamicProviderResourcePath(remainder) || dynamicProviderIsDiscovered(providerRoot) {
+			return providerRoot, true
+		}
+	}
+	return "", false
+}
+
+func dynamicProviderResourcePath(relative []string) bool {
+	if len(relative) == 0 {
+		return false
+	}
+	if len(relative) == 1 && (relative[0] == "AGENTS.md" || relative[0] == "CLAUDE.md") {
+		return true
+	}
+	return relative[0] == "rules" || relative[0] == "skills"
+}
+
+func dynamicProviderIsDiscovered(providerRoot string) bool {
+	providers, err := instructionsource.DiscoverDynamicProviders(filepath.Dir(providerRoot))
+	if err != nil {
+		return false
+	}
+	providerRoot = filepath.Clean(providerRoot)
+	for _, provider := range providers {
+		if filepath.Clean(provider.Path) == providerRoot {
+			return true
+		}
+	}
+	return false
 }
 
 func pathsOverlap(left, right string) bool {

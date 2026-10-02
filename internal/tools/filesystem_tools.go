@@ -120,7 +120,7 @@ func handleWriteFile(workspaces *workspace.Manager, checkpoints *checkpoint.Stor
 		if err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, file); err != nil {
+		if err := rejectManagedFilesystemMutation(item, file); err != nil {
 			return Result{}, err
 		}
 		content, err := stringArgAllowEmpty(args, "content")
@@ -152,7 +152,7 @@ func handleWriteFileBase64(workspaces *workspace.Manager, checkpoints *checkpoin
 		if err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, file); err != nil {
+		if err := rejectManagedFilesystemMutation(item, file); err != nil {
 			return Result{}, err
 		}
 		content, err := stringArgAllowEmpty(args, "content")
@@ -185,7 +185,7 @@ func handleEditFile(workspaces *workspace.Manager, checkpoints *checkpoint.Store
 		if err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, file); err != nil {
+		if err := rejectManagedFilesystemMutation(item, file); err != nil {
 			return Result{}, err
 		}
 		oldText, err := stringArg(args, "old_text")
@@ -240,7 +240,7 @@ func handleMultiEdit(workspaces *workspace.Manager, checkpoints *checkpoint.Stor
 		if err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, file); err != nil {
+		if err := rejectManagedFilesystemMutation(item, file); err != nil {
 			return Result{}, err
 		}
 		edits, err := editSpecs(args["edits"])
@@ -294,7 +294,7 @@ func handleReplaceRegex(workspaces *workspace.Manager, checkpoints *checkpoint.S
 		if err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, file); err != nil {
+		if err := rejectManagedFilesystemMutation(item, file); err != nil {
 			return Result{}, err
 		}
 		pattern, err := stringArg(args, "pattern")
@@ -399,7 +399,7 @@ func handleApplyPatch(workspaces *workspace.Manager, checkpoints *checkpoint.Sto
 				if err != nil {
 					return Result{}, fmt.Errorf("patch path %q: %w", op.Path, err)
 				}
-				if err := rejectManagedPlanMutation(item, resolved); err != nil {
+				if err := rejectManagedFilesystemMutation(item, resolved); err != nil {
 					return Result{}, err
 				}
 				op.Path = resolved
@@ -501,7 +501,7 @@ func handleApplyPatch(workspaces *workspace.Manager, checkpoints *checkpoint.Sto
 		if err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, file); err != nil {
+		if err := rejectManagedFilesystemMutation(item, file); err != nil {
 			return Result{}, err
 		}
 		rooted, err := openRootedPath(workspaces, item.ID, file)
@@ -716,7 +716,7 @@ func handleDeleteFile(workspaces *workspace.Manager, checkpoints *checkpoint.Sto
 		if err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, file); err != nil {
+		if err := rejectManagedFilesystemMutation(item, file); err != nil {
 			return Result{}, err
 		}
 		rooted, err := openRootedPath(workspaces, item.ID, file)
@@ -748,7 +748,7 @@ func handleCreateDirectory(workspaces *workspace.Manager) Handler {
 		if err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, dir); err != nil {
+		if err := rejectManagedFilesystemMutation(item, dir); err != nil {
 			return Result{}, err
 		}
 		rooted, err := openRootedPath(workspaces, item.ID, dir)
@@ -784,7 +784,7 @@ func handleDeleteDirectory(workspaces *workspace.Manager, checkpoints *checkpoin
 		if err := rejectEffectiveRootMutation(workspaces, item.ID, dir, "delete"); err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, dir); err != nil {
+		if err := rejectManagedFilesystemMutation(item, dir); err != nil {
 			return Result{}, err
 		}
 		checkpointID, err := checkpointBefore(checkpoints, workspaces, item, "delete_directory", []string{dir}, false)
@@ -820,7 +820,7 @@ func handleCopyFile(workspaces *workspace.Manager, checkpoints *checkpoint.Store
 		if err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, destination); err != nil {
+		if err := rejectManagedFilesystemMutation(item, destination); err != nil {
 			return Result{}, err
 		}
 		sourceRooted, err := openRootedPath(workspaces, item.ID, source)
@@ -876,7 +876,7 @@ func handleMoveFile(workspaces *workspace.Manager, checkpoints *checkpoint.Store
 		if err := rejectEffectiveRootMutation(workspaces, item.ID, source, "move"); err != nil {
 			return Result{}, err
 		}
-		if err := rejectManagedPlanMutation(item, source, destination); err != nil {
+		if err := rejectManagedFilesystemMutation(item, source, destination); err != nil {
 			return Result{}, err
 		}
 		checkpointID, err := checkpointBefore(checkpoints, workspaces, item, "move_file", []string{source, destination}, false)
