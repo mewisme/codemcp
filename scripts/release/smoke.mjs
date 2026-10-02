@@ -116,7 +116,7 @@ try {
   runExpectFailure(["config", "reload"])
 
   const history = run(["logs", "--debug", "--event", "server.*", "--tail", "200"], { quiet: true })
-  if (!history.includes("server.ready") && !history.includes("Server ready")) fail(`runtime history missing server readiness event:\n${history}`)
+  if (!history.includes("server.config.load.completed") && !history.includes("Server runtime configuration loaded")) fail(`runtime history missing server config load event:\n${history}`)
   if (!history.includes("── session run_")) fail(`runtime history missing session boundary:\n${history}`)
   if (!/^\d{2}:\d{2}:\d{2} /m.test(history)) fail(`runtime history missing replay timestamp:\n${history}`)
   const noTimeHistory = run(["logs", "--event", "server.*", "--tail", "10", "--no-time"], { quiet: true })
@@ -136,9 +136,12 @@ try {
   await waitForHealth(`http://127.0.0.1:${reloadedAdminPort}/api/health`, child, () => `${stdout}\n${stderr}`)
 
   const managedStatus = await waitForStatus(child, () => `${stdout}\n${stderr}`)
-  for (const expected of ["✓ CodeMCP is running", "managed     user ·", `service     ${managedServiceID}`, "session     run_", "OpenAI Secure MCP Tunnel is disabled"]) {
+  for (const expected of ["✓ CodeMCP is running", "OpenAI Secure MCP Tunnel is not configured"]) {
     if (!managedStatus.includes(expected)) fail(`managed status missing ${JSON.stringify(expected)}:\n${managedStatus}`)
   }
+  if (!/^\s*managed\s+user\s+·/m.test(managedStatus)) fail(`managed status missing user service scope:\n${managedStatus}`)
+  if (!/^\s*service\s+release-smoke-managed\s*$/m.test(managedStatus)) fail(`managed status missing service id:\n${managedStatus}`)
+  if (!/^\s*session\s+run_/m.test(managedStatus)) fail(`managed status missing runtime session:\n${managedStatus}`)
   const managedLogs = run(["logs", "--debug", "--event", "server.*", "--grep", "Server", "--tail", "50"], { quiet: true })
   if (!managedLogs.includes("server.ready") && !managedLogs.includes("Server ready")) fail(`managed runtime logs filter returned no server event:\n${managedLogs}`)
   const managedJSON = run(["--log-format=json", "logs", "--event", "server.ready", "--tail", "1"], { quiet: true })
