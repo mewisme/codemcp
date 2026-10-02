@@ -250,6 +250,7 @@ func TestLifecycleTelemetryFailureDoesNotBlockProcessReapingOrBackgroundDelivery
 	deadline := time.Now().Add(2 * time.Second)
 	var terminal bool
 	var deliveries []backgrounddelivery.Delivery
+	var telemetry []capturedRuntimeProductEvent
 	for time.Now().Before(deadline) {
 		statuses, statusErr := runtime.Processes.Status(workspace.ID, started.ID)
 		if statusErr != nil {
@@ -260,7 +261,8 @@ func TestLifecycleTelemetryFailureDoesNotBlockProcessReapingOrBackgroundDelivery
 		if err != nil {
 			t.Fatal(err)
 		}
-		if terminal && len(deliveries) == 1 {
+		telemetry = recorder.snapshot()
+		if terminal && len(deliveries) == 1 && len(telemetry) == 1 {
 			break
 		}
 		time.Sleep(time.Millisecond)
@@ -271,10 +273,10 @@ func TestLifecycleTelemetryFailureDoesNotBlockProcessReapingOrBackgroundDelivery
 	if len(deliveries) != 1 || deliveries[0].State != backgrounddelivery.DeliveryPending {
 		t.Fatalf("background deliveries=%#v", deliveries)
 	}
-	if got := recorder.snapshot(); len(got) != 1 ||
-		got[0].name != producttelemetry.EventBackgroundCompleted ||
-		got[0].usage.Feature != "background.success.exit" {
-		t.Fatalf("telemetry events=%#v", got)
+	if len(telemetry) != 1 ||
+		telemetry[0].name != producttelemetry.EventBackgroundCompleted ||
+		telemetry[0].usage.Feature != "background.success.exit" {
+		t.Fatalf("telemetry events=%#v", telemetry)
 	}
 }
 

@@ -114,7 +114,7 @@ try {
   child = null
 
   const history = run(["logs", "--debug", "--event", "server.*", "--tail", "200"], { quiet: true })
-  if (!history.includes("server.config.load.completed") && !history.includes("Server runtime configuration loaded")) fail(`runtime history missing server config load event:\n${history}`)
+  if (!history.includes("server.reload.completed") && !history.includes("Server runtime reloaded")) fail(`runtime history missing successful server reload event:\n${history}`)
   if (!history.includes("── session run_")) fail(`runtime history missing session boundary:\n${history}`)
   if (!/^\d{2}:\d{2}:\d{2} /m.test(history)) fail(`runtime history missing replay timestamp:\n${history}`)
   const noTimeHistory = run(["logs", "--event", "server.*", "--tail", "10", "--no-time"], { quiet: true })
