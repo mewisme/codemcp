@@ -33,7 +33,9 @@ EOF
 chmod +x "$fakebin/upx"
 
 PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" windows_amd64_v1
+before_arm64=$(cat "$tmp/arm64/cm.exe")
 PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/arm64/cm.exe" windows_arm64_v8.0
+[ "$(cat "$tmp/arm64/cm.exe")" = "$before_arm64" ] || fail "Windows arm64 binary was modified by release packing"
 before_darwin=$(cat "$tmp/amd64/cm.exe")
 PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" darwin_amd64_v1
 [ "$(cat "$tmp/amd64/cm.exe")" = "$before_darwin" ] || fail "Darwin binary was modified by release packing"

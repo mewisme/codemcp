@@ -5,8 +5,8 @@ binary=${1:-}
 target=${2:-}
 
 case "$target" in
-	linux_*|windows_*) ;;
-	darwin_*) exit 0 ;;
+	linux_amd64*|linux_arm64*|windows_amd64*) ;;
+	windows_arm64*|darwin_*) exit 0 ;;
 	*)
 		echo "release pack: unsupported target $target" >&2
 		exit 2
