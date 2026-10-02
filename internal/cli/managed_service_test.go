@@ -19,6 +19,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/logger"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	"go.mewis.me/codemcp/internal/secretstore"
 	managed "go.mewis.me/codemcp/internal/service"
@@ -249,6 +250,40 @@ func TestManagedRestartKeepsServiceInstalledAndStartsNewRuntime(t *testing.T) {
 		if strings.Contains(text, unexpected) {
 			t.Fatalf("restart unexpectedly reinstalled service: %s", text)
 		}
+	}
+}
+
+func TestManagedReadinessProgressLogsComponentsWithoutReplacingPollingPhase(t *testing.T) {
+	var output bytes.Buffer
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
+	commandProgressSession(cmd).SetTitle("Restart CodeMCP")
+	progress := managedLifecycleProgress(cmd)
+	progress.Start("service.runtime.waiting", "Waiting for managed runtime readiness", "Managed runtime ready")
+	readiness := newManagedReadinessProgress(progress)
+
+	readiness.Observe(runtimeStatusResult{Readiness: []runtimecontrol.ReadinessComponent{
+		{ID: "mcp-http", Label: "MCP HTTP server", Configured: true, Ready: true},
+		{ID: "openai-tunnel", Label: "OpenAI Secure MCP Tunnel", Configured: true, Ready: false},
+		{ID: "telegram", Label: "Telegram runtime", Configured: false, Ready: true},
+	}})
+	readiness.Observe(runtimeStatusResult{Readiness: []runtimecontrol.ReadinessComponent{
+		{ID: "mcp-http", Label: "MCP HTTP server", Configured: true, Ready: true},
+		{ID: "openai-tunnel", Label: "OpenAI Secure MCP Tunnel", Configured: true, Ready: true},
+	}})
+	progress.Complete()
+
+	text := output.String()
+	for _, expected := range []string{"MCP HTTP server ready", "OpenAI Secure MCP Tunnel ready", "Managed runtime ready"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("readiness output missing %q: %s", expected, text)
+		}
+	}
+	if strings.Contains(text, "Telegram runtime ready") {
+		t.Fatalf("unconfigured component was rendered: %s", text)
+	}
+	if strings.Count(text, "MCP HTTP server ready") != 1 {
+		t.Fatalf("component readiness was rendered more than once: %s", text)
 	}
 }
 

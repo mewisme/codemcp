@@ -34,6 +34,7 @@ type Lifecycle struct {
 	WaitStatusChange RuntimeStatusWait
 	Timeout          time.Duration
 	Observe          LifecycleObserver
+	ObserveStatus    func(runtimecontrol.RuntimeStatus)
 }
 
 type RuntimeOwnerConflictKind string
@@ -378,14 +379,14 @@ func (l Lifecycle) waitReady(ctx context.Context, previousRunID string) (runtime
 	if wait == nil {
 		wait = runtimecontrol.WaitStatusChange
 	}
-	return waitRuntimeReady(ctx, l.Spec, l.Probe, wait, previousRunID, l.timeout())
+	return waitRuntimeReady(ctx, l.Spec, l.Probe, wait, previousRunID, l.timeout(), l.ObserveStatus)
 }
 
 func WaitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, previousRunID string, timeout time.Duration) (runtimecontrol.RuntimeStatus, error) {
-	return waitRuntimeReady(ctx, spec, probe, runtimecontrol.WaitStatusChange, previousRunID, timeout)
+	return waitRuntimeReady(ctx, spec, probe, runtimecontrol.WaitStatusChange, previousRunID, timeout, nil)
 }
 
-func waitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, waitStatusChange RuntimeStatusWait, previousRunID string, timeout time.Duration) (runtimecontrol.RuntimeStatus, error) {
+func waitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, waitStatusChange RuntimeStatusWait, previousRunID string, timeout time.Duration, observeStatus func(runtimecontrol.RuntimeStatus)) (runtimecontrol.RuntimeStatus, error) {
 	if probe == nil {
 		return runtimecontrol.RuntimeStatus{}, errors.New("managed runtime probe is unavailable")
 	}
@@ -404,6 +405,9 @@ func waitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, waitSt
 	for time.Now().Before(deadline) {
 		attempts++
 		status, running, err := probe(ctx)
+		if err == nil && running && observeStatus != nil {
+			observeStatus(status)
+		}
 		if firstProbe {
 			tracepkg.Emit(ctx, "SERVICE", "service.runtime.probe", "Probed managed runtime", tracepkg.String("mode", "ready"), tracepkg.Int("attempt", attempts), tracepkg.Bool("running", running), tracepkg.Bool("error_present", err != nil), tracepkg.Int64("elapsed_ms", time.Since(started).Milliseconds()))
 			firstProbe = false
@@ -431,7 +435,7 @@ func waitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, waitSt
 				lastErr = errors.New("previous managed runtime is still shutting down")
 			} else if status.Starting {
 				lastErr = errors.New("managed runtime is still starting")
-				if status.Lifecycle != "" && waitStatusChange != nil {
+				if observeStatus == nil && status.Lifecycle != "" && waitStatusChange != nil {
 					waitCtx, cancel := context.WithTimeout(ctx, min(10*time.Second, time.Until(deadline)))
 					_, waitErr := waitStatusChange(waitCtx, status.Lifecycle)
 					cancel()

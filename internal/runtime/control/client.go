@@ -54,30 +54,38 @@ type UpstreamReloadResult struct {
 }
 
 type RuntimeStatus struct {
-	PID               int                 `json:"pid"`
-	RunID             string              `json:"run_id,omitempty"`
-	Lifecycle         string              `json:"lifecycle,omitempty"`
-	Starting          bool                `json:"starting,omitempty"`
-	Managed           bool                `json:"managed"`
-	ServiceID         string              `json:"service_id,omitempty"`
-	ServiceScope      string              `json:"service_scope,omitempty"`
-	StartedAt         time.Time           `json:"started_at"`
-	ConfigRoot        string              `json:"config_root"`
-	ConfigFingerprint string              `json:"config_fingerprint,omitempty"`
-	ServerEnabled     bool                `json:"server_enabled"`
-	ServerPort        int                 `json:"server_port"`
-	AdminEnabled      bool                `json:"admin_enabled"`
-	AdminPort         int                 `json:"admin_port"`
-	Exposure          config.ExposureMode `json:"exposure"`
-	TunnelEnabled     bool                `json:"tunnel_enabled"`
-	TunnelConfigured  bool                `json:"tunnel_configured"`
-	TunnelRunning     bool                `json:"tunnel_running"`
-	TunnelReady       bool                `json:"tunnel_ready"`
-	TunnelRestarting  bool                `json:"tunnel_restarting"`
-	TunnelID          string              `json:"tunnel_id,omitempty"`
-	TunnelLastError   string              `json:"tunnel_last_error,omitempty"`
-	ToolProfile       string              `json:"tool_profile,omitempty"`
-	ToolCount         int                 `json:"tool_count,omitempty"`
+	PID               int                  `json:"pid"`
+	RunID             string               `json:"run_id,omitempty"`
+	Lifecycle         string               `json:"lifecycle,omitempty"`
+	Starting          bool                 `json:"starting,omitempty"`
+	Managed           bool                 `json:"managed"`
+	ServiceID         string               `json:"service_id,omitempty"`
+	ServiceScope      string               `json:"service_scope,omitempty"`
+	StartedAt         time.Time            `json:"started_at"`
+	ConfigRoot        string               `json:"config_root"`
+	ConfigFingerprint string               `json:"config_fingerprint,omitempty"`
+	ServerEnabled     bool                 `json:"server_enabled"`
+	ServerPort        int                  `json:"server_port"`
+	AdminEnabled      bool                 `json:"admin_enabled"`
+	AdminPort         int                  `json:"admin_port"`
+	Exposure          config.ExposureMode  `json:"exposure"`
+	TunnelEnabled     bool                 `json:"tunnel_enabled"`
+	TunnelConfigured  bool                 `json:"tunnel_configured"`
+	TunnelRunning     bool                 `json:"tunnel_running"`
+	TunnelReady       bool                 `json:"tunnel_ready"`
+	TunnelRestarting  bool                 `json:"tunnel_restarting"`
+	TunnelID          string               `json:"tunnel_id,omitempty"`
+	TunnelLastError   string               `json:"tunnel_last_error,omitempty"`
+	ToolProfile       string               `json:"tool_profile,omitempty"`
+	ToolCount         int                  `json:"tool_count,omitempty"`
+	Readiness         []ReadinessComponent `json:"readiness,omitempty"`
+}
+
+type ReadinessComponent struct {
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	Configured bool   `json:"configured"`
+	Ready      bool   `json:"ready"`
 }
 
 type State struct {

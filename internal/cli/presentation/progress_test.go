@@ -277,6 +277,23 @@ func TestProgressSessionJSONNeverEmitsProvisionalFrame(t *testing.T) {
 	}
 }
 
+func TestProgressSessionCheckpointKeepsActivePhase(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{Unicode: true, Interactive: true, CursorControl: true})
+	session.SetTitle("Restart CodeMCP")
+	session.Update(ProgressPhase{ID: "readiness", Label: "Waiting for runtime readiness", State: ProgressRunning})
+	if !session.Checkpoint(ProgressPhase{ID: "mcp", Label: "MCP HTTP server", State: ProgressSuccess, Message: "MCP HTTP server ready"}) {
+		t.Fatal("checkpoint was not rendered")
+	}
+	if !session.FailActive("Runtime readiness failed") {
+		t.Fatal("checkpoint replaced the active readiness phase")
+	}
+	text := output.String()
+	if !strings.Contains(text, "MCP HTTP server ready") || !strings.Contains(text, "Runtime readiness failed") {
+		t.Fatalf("checkpoint output=%q", text)
+	}
+}
+
 func TestProgressSessionASCIIAnimationUsesPhaseGlyphPair(t *testing.T) {
 	var output bytes.Buffer
 	session := NewProgressSession(&output, ModeHuman, Capabilities{

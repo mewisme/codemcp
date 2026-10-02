@@ -202,6 +202,47 @@ func (session *ProgressSession) Success(id, label, message string) bool {
 	return session.Update(ProgressPhase{ID: id, Label: label, State: ProgressSuccess, Message: message})
 }
 
+// Checkpoint renders a terminal progress event without replacing the active
+// running phase. This is used by readiness polling: completed components are
+// committed to the log while the readiness spinner immediately resumes.
+func (session *ProgressSession) Checkpoint(phase ProgressPhase) bool {
+	if session == nil || phase.State == ProgressPending || phase.State == ProgressRunning {
+		return false
+	}
+	phase.ID = strings.TrimSpace(phase.ID)
+	phase.Label = strings.TrimSpace(phase.Label)
+	phase.Message = strings.TrimSpace(phase.Message)
+	if phase.ID == "" {
+		phase.ID = phase.Label
+	}
+	if phase.Label == "" {
+		phase.Label = phase.ID
+	}
+	if phase.ID == "" {
+		return false
+	}
+
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if session.closed {
+		return false
+	}
+	session.beginLocked()
+	if previous, ok := session.phases[phase.ID]; ok && previous == phase {
+		return false
+	}
+	activeID := session.activeID
+	active, hasActive := session.phases[activeID]
+	session.clearTransientLocked()
+	session.phases[phase.ID] = phase
+	session.renderTerminalLocked(phase)
+	if hasActive && active.State == ProgressRunning && activeID != phase.ID {
+		session.activeID = activeID
+		session.renderRunningLocked(active)
+	}
+	return true
+}
+
 func (session *ProgressSession) Skip(id, label, message string) bool {
 	return session.Update(ProgressPhase{ID: id, Label: label, State: ProgressSkipped, Message: message})
 }

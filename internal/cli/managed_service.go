@@ -137,6 +137,7 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 		return err
 	}
 	progress := managedLifecycleProgress(cmd)
+	readiness := newManagedReadinessProgress(progress)
 	lastGroup := ""
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
 		group := managedRestartLifecycleGroup(event.Phase)
@@ -147,7 +148,7 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 			lastGroup = group
 		}
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
-	}}
+	}, ObserveStatus: readiness.Observe}
 	result, err := lifecycle.Restart(cmd.Context())
 	if err != nil {
 		progress.Stop()
@@ -290,9 +291,10 @@ func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager
 		}
 	}
 	progress := managedLifecycleProgress(cmd)
+	readiness := newManagedReadinessProgress(progress)
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
-	}}
+	}, ObserveStatus: readiness.Observe}
 	result, err := lifecycle.Up(cmd.Context())
 	if err != nil {
 		progress.Stop()
@@ -453,6 +455,33 @@ func managedStopCommand(spec managed.Spec) string {
 
 func managedLifecycleProgress(cmd *cobra.Command) *commandProgress {
 	return newCommandProgress(cmd, "SERVICE")
+}
+
+type managedReadinessProgress struct {
+	progress *commandProgress
+	seen     map[string]bool
+}
+
+func newManagedReadinessProgress(progress *commandProgress) *managedReadinessProgress {
+	return &managedReadinessProgress{progress: progress, seen: map[string]bool{}}
+}
+
+func (value *managedReadinessProgress) Observe(status runtimeStatusResult) {
+	if value == nil || value.progress == nil || value.progress.name != "service.runtime.waiting" {
+		return
+	}
+	for _, component := range status.Readiness {
+		if !component.Configured || !component.Ready || value.seen[component.ID] {
+			continue
+		}
+		value.seen[component.ID] = true
+		message := component.Label + " ready"
+		value.progress.session.Checkpoint(presentation.ProgressPhase{
+			ID: "service.readiness." + component.ID, Label: component.Label,
+			State: presentation.ProgressSuccess, Message: message,
+		})
+		value.progress.log.Verbose("SERVICE", "service.readiness."+component.ID, message)
+	}
 }
 
 func managedLifecycleDoneMessage(event managed.LifecycleEvent) string {

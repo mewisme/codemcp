@@ -81,6 +81,7 @@ func TestRuntimeDiagnosticFieldsRequireExplicitDoctorReconciliation(t *testing.T
 		"tunnel_last_error":  dispositionContext,
 		"tool_profile":       dispositionContext,
 		"tool_count":         dispositionMetric,
+		"readiness":          dispositionContext,
 	}
 	assertReflectedFieldInventory(t, reflect.TypeOf(runtimecontrol.RuntimeStatus{}), expected)
 

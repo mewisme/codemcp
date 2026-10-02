@@ -47,3 +47,7 @@ func (a *App) telegramStatusOverview(ctx context.Context) (application.StatusOve
 		SemanticApprovalEffective:  cfg.Approval.Semantic.Enabled && semanticHealth.Available,
 	}, nil
 }
+
+func (a *App) StatusOverview(ctx context.Context) (application.StatusOverview, error) {
+	return a.telegramStatusOverview(ctx)
+}

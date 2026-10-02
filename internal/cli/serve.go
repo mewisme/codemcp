@@ -14,10 +14,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/app"
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/idgen"
 	"go.mewis.me/codemcp/internal/logger"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
@@ -375,8 +377,9 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		cfgSnapshot, lifecycleSnapshot := currentCfg, lifecycle
 		stateMu.RUnlock()
 		tunnelStatus := runtime.Tunnel.Status()
+		overview, _ := runtime.StatusOverview(runtimeCtx)
 		fingerprint, _ := config.RuntimeFingerprint(cfgSnapshot)
-		return runtimeStatusResult{PID: os.Getpid(), RunID: metadata.RunID, Lifecycle: lifecycleSnapshot, Starting: runtimeLifecycleStarting(lifecycleSnapshot), Managed: metadata.Managed, ServiceID: metadata.ServiceID, ServiceScope: metadata.ServiceScope, StartedAt: startedAt, ConfigRoot: config.RootPath(), ConfigFingerprint: fingerprint, ServerEnabled: cfgSnapshot.HTTP.MCP.Enabled, ServerPort: cfgSnapshot.HTTP.MCP.Port, AdminEnabled: cfgSnapshot.HTTP.Admin.Enabled, AdminPort: cfgSnapshot.HTTP.Admin.Port, Exposure: cfgSnapshot.HTTP.Exposure.Mode, TunnelEnabled: cfgSnapshot.Tunnel.Enabled, TunnelConfigured: tunnel.Configured(cfgSnapshot.Tunnel), TunnelRunning: tunnelStatus.Running, TunnelReady: tunnelStatus.Ready, TunnelRestarting: tunnelStatus.Restarting, TunnelID: strings.TrimSpace(cfgSnapshot.Tunnel.ID), TunnelLastError: tunnelStatus.LastError, ToolProfile: "full", ToolCount: len(runtime.Tools.List())}
+		return runtimeStatusResult{PID: os.Getpid(), RunID: metadata.RunID, Lifecycle: lifecycleSnapshot, Starting: runtimeLifecycleStarting(lifecycleSnapshot), Managed: metadata.Managed, ServiceID: metadata.ServiceID, ServiceScope: metadata.ServiceScope, StartedAt: startedAt, ConfigRoot: config.RootPath(), ConfigFingerprint: fingerprint, ServerEnabled: cfgSnapshot.HTTP.MCP.Enabled, ServerPort: cfgSnapshot.HTTP.MCP.Port, AdminEnabled: cfgSnapshot.HTTP.Admin.Enabled, AdminPort: cfgSnapshot.HTTP.Admin.Port, Exposure: cfgSnapshot.HTTP.Exposure.Mode, TunnelEnabled: cfgSnapshot.Tunnel.Enabled, TunnelConfigured: tunnel.Configured(cfgSnapshot.Tunnel), TunnelRunning: tunnelStatus.Running, TunnelReady: tunnelStatus.Ready, TunnelRestarting: tunnelStatus.Restarting, TunnelID: strings.TrimSpace(cfgSnapshot.Tunnel.ID), TunnelLastError: tunnelStatus.LastError, ToolProfile: "full", ToolCount: len(runtime.Tools.List()), Readiness: runtimeReadinessComponents(cfgSnapshot, overview, lifecycleSnapshot)}
 	}
 	statusWait := func(ctx context.Context, previous string) runtimeStatusResult {
 		for {
@@ -524,6 +527,49 @@ func runtimeLifecycleStarting(state string) bool {
 	default:
 		return true
 	}
+}
+
+func runtimeReadinessComponents(cfg config.Config, overview application.StatusOverview, lifecycle string) []runtimecontrol.ReadinessComponent {
+	listenersReady := lifecycle == "listeners_ready" || lifecycle == "tunnel_connecting" || lifecycle == "ready"
+	components := make([]runtimecontrol.ReadinessComponent, 0, 9)
+	add := func(id, label string, configured, ready bool) {
+		if configured {
+			components = append(components, runtimecontrol.ReadinessComponent{ID: id, Label: label, Configured: true, Ready: ready})
+		}
+	}
+	if cfg.HTTP.MCP.Enabled {
+		add("mcp-http", "MCP HTTP server", true, listenersReady)
+	}
+	if cfg.HTTP.Admin.Enabled {
+		add("admin-http", "Admin HTTP server", true, listenersReady)
+	}
+	if overview.TypeSafeEnabled {
+		add("typesafe", "TypeSafe semantic provider", overview.TypeSafeConfigured, overview.TypeSafeAvailable)
+	}
+	if overview.SemanticApprovalEnabled {
+		add("semantic-approval", "Semantic approval", overview.TypeSafeConfigured, overview.SemanticApprovalEffective)
+	}
+	if overview.TelegramEnabled {
+		add("telegram", "Telegram runtime", overview.TelegramConfigured, overview.TelegramRunning)
+	}
+	if overview.TelegramTopicsEnabled {
+		add("telegram-topics", "Telegram topics", overview.TelegramConfigured, overview.TelegramTopicsEffective && overview.TelegramTopicsStoreHealthy)
+	}
+	if overview.LogsMiniAppEnabled {
+		add("telegram-logs-mini-app", "Telegram Logs Mini App", overview.TelegramConfigured && overview.LogsMiniAppAvailable, overview.LogsMiniAppEffective)
+	}
+	if cfg.Notifications.Approval.Enabled {
+		configured := cfg.Notifications.Approval.DesktopEnabled || (cfg.Notifications.Approval.TelegramEnabled && overview.TelegramConfigured)
+		add("approval-notifications", "Approval notifications", configured, overview.RuntimeRunning)
+	}
+	if cfg.Notifications.Completion.Enabled {
+		configured := cfg.Notifications.Completion.DesktopEnabled || (cfg.Notifications.Completion.TelegramEnabled && overview.TelegramConfigured)
+		add("completion-notifications", "Completion notifications", configured, overview.RuntimeRunning)
+	}
+	if overview.TunnelEnabled {
+		add("openai-tunnel", "OpenAI Secure MCP Tunnel", overview.TunnelConfigured, overview.TunnelReady)
+	}
+	return components
 }
 
 func runtimeSessionMode(metadata runtimeevent.Metadata) string {
