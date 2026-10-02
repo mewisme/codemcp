@@ -58,7 +58,7 @@ jobs:
         env:
           RELEASE_REPOSITORY: ${{ github.repository }}
         run: |
-          go run ./scripts/release-cutover \
+          go run ./scripts/release/verify \
             --repository-root . \
             --github-repository "${RELEASE_REPOSITORY}" \
             --vanity-url "https://go.mewis.me/codemcp?go-get=1"
@@ -71,7 +71,7 @@ jobs:
       - name: Verify product telemetry release metadata
         env:
           TELEMETRY_ENDPOINT: ${{ vars.TELEMETRY_ENDPOINT }}
-        run: go run ./scripts/verify-release-telemetry.go
+        run: go run ./scripts/release/verify --telemetry-endpoint
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
@@ -109,7 +109,7 @@ jobs:
         run: |
           snapshot_binary=$(find dist -type f -name cm -perm -111 -print -quit)
           test -n "${snapshot_binary}"
-          go run ./scripts/release-cutover --binary "${snapshot_binary}" --expect-telemetry absent
+          go run ./scripts/release/verify --binary "${snapshot_binary}" --expect-telemetry absent
 
       - name: Install pinned Windows release tools
         run: |
@@ -136,10 +136,10 @@ jobs:
           TELEMETRY_ENDPOINT: ${{ vars.TELEMETRY_ENDPOINT }}
 
       - name: Verify draft release artifacts
-        run: go run ./scripts/release-cutover --dist dist --expect-telemetry present
+        run: go run ./scripts/release/verify --dist dist --expect-telemetry present
 
       - name: Verify Windows setup payloads
-        run: sh scripts/verify-windows-setup-payload.sh dist
+        run: sh scripts/release/verify-windows-setup-payload.sh dist
 
       - name: Verify checksum signature
         run: |

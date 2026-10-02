@@ -11,7 +11,7 @@ import (
 	"go.mewis.me/codemcp/internal/capability"
 )
 
-//go:generate go run ../../scripts/productpresentationgen -out ../../frontend/src/lib/operation-presentation.generated.ts
+//go:generate go run ../../scripts/generate/product-presentation -out ../../frontend/src/lib/operation-presentation.generated.ts
 
 type ActionCategory string
 

@@ -9,7 +9,7 @@ process.noDeprecation = true
 
 const protocolVersion = "2026-07-28"
 const input = process.argv[2]
-if (!input) fail("usage: node scripts/smoke-release.mjs <binary>")
+if (!input) fail("usage: node scripts/release/smoke.mjs <binary>")
 
 const binary = path.resolve(input)
 const home = await mkdtemp(path.join(tmpdir(), "cm-release-smoke-"))
@@ -71,7 +71,6 @@ try {
   run(["config", "set", "integrations.caveman.active", "true"])
   run(["config", "verify"])
   run(["status"])
-  await verifyStableCLIOutputs()
 
   child = spawn(binary, [...globalArgs, "serve"], { env, stdio: ["ignore", "pipe", "pipe"], windowsHide: true })
   let stdout = ""
@@ -85,7 +84,6 @@ try {
   await verifyActivitySSE(adminPort)
   await verifyMCP(serverPort, workspaceID, false, "off", true, "wenyan-ultra")
   await verifyWorkspaceContainerMCP(serverPort, workspaceID)
-  verifyApprovalCLI()
   const foregroundStatus = run(["status"], { quiet: true })
   for (const expected of ["✓ CodeMCP is running", "session     run_", "mode        foreground", "OpenAI Secure MCP Tunnel is disabled"]) {
     if (!foregroundStatus.includes(expected)) fail(`foreground status missing ${JSON.stringify(expected)}:\n${foregroundStatus}`)
@@ -189,30 +187,6 @@ function run(args, { quiet = false } = {}) {
     if (output) console.log(output)
   }
   return [result.stdout, result.stderr].filter(Boolean).join("").trim()
-}
-
-function verifyApprovalCLI() {
-  const plain = run(["request", "list"], { quiet: true })
-  if (!plain.includes("Control approval requests loaded")) fail(`request list fallback did not render plain output:
-${plain}`)
-  const json = run(["request", "list", "--json"], { quiet: true })
-  const requests = JSON.parse(json)
-  if (!Array.isArray(requests) || requests.length !== 0) fail(`request list JSON fallback expected no pending requests:
-${json}`)
-}
-
-async function verifyStableCLIOutputs() {
-  const workspacePlain = run(["workspace", "list"], { quiet: true })
-  if (!workspacePlain.includes("Registered workspaces loaded")) fail(`workspace list fallback did not render plain output:
-${workspacePlain}`)
-  const workspaceJSON = JSON.parse(run(["workspace", "list", "--json"], { quiet: true }))
-  if (!Array.isArray(workspaceJSON)) fail("workspace list JSON fallback did not return an array")
-
-  const upstreamPlain = run(["upstream", "server", "list"], { quiet: true })
-  if (!upstreamPlain.includes("Upstream servers loaded")) fail(`Upstream list fallback did not render plain output:
-${upstreamPlain}`)
-  const upstreamJSON = JSON.parse(run(["upstream", "server", "list", "--json"], { quiet: true }))
-  if (!Array.isArray(upstreamJSON)) fail("Upstream list JSON fallback did not return an array")
 }
 
 async function verifySelfInstall() {

@@ -2,7 +2,10 @@
 
 GO ?= go
 PNPM ?= pnpm
+NODE ?= node
+GIT ?= git
 ARGS ?=
+BINARY ?= dist/cm
 LOCAL_TELEMETRY_ENDPOINT ?= https://telemetry.mewis.me/v1/products/codemcp/events
 LOCAL_LDFLAGS = -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint=$(LOCAL_TELEMETRY_ENDPOINT)
 
@@ -12,7 +15,7 @@ FRONTEND_BUILD = $(PNPM) --dir frontend build
 CM_COMMANDS = install upgrade init uninit down logs request llm tui config auth tools execution process workspace prompt upstream mcp tunnel http permissions shell notification telemetry telegram integration status health network activity doctor agent completion version
 CM_FRONTEND_COMMANDS = up restart serve
 CM_PASSTHROUGH_TARGETS = run $(CM_COMMANDS) $(CM_FRONTEND_COMMANDS)
-CM_DEVELOPER_TARGETS = help bootstrap frontend-build check test test-race build frontend-dev
+CM_DEVELOPER_TARGETS = help bootstrap frontend-build check test test-race build frontend-dev generate check-generated install-local release-smoke security-gosec security-baseline
 CM_KNOWN_TARGETS = $(CM_DEVELOPER_TARGETS) $(CM_PASSTHROUGH_TARGETS)
 CM_PRIMARY_GOAL := $(firstword $(MAKECMDGOALS))
 CM_FORWARDING := $(filter $(CM_PRIMARY_GOAL),$(CM_PASSTHROUGH_TARGETS))
@@ -35,6 +38,12 @@ help:
 		'  test           Run the full Go test suite with isolated config' \
 		'  test-race      Run the full Go race suite with isolated config' \
 		'  build          Build local dist/cm' \
+		'  generate       Regenerate committed product presentation output' \
+		'  check-generated Regenerate and fail if committed output drifts' \
+		'  install-local  Build/install source locally; pass ARGS="..."' \
+		'  release-smoke  Run built-binary smoke; override BINARY=path' \
+		'  security-gosec Check the canonical gosec baseline' \
+		'  security-baseline Regenerate the gosec baseline intentionally' \
 		'  run            Build frontend, then run CodeMCP; pass ARGS="..."' \
 		'  up|restart     Build frontend, then manage the runtime' \
 		'  serve          Build frontend, then serve CodeMCP in foreground' \
@@ -54,7 +63,7 @@ frontend-build:
 	$(FRONTEND_BUILD)
 
 check:
-	./scripts/check.sh
+	./scripts/dev/check.sh
 
 test:
 	@tmp=$$(mktemp -d) || exit 1; status=0; \
@@ -69,6 +78,25 @@ test-race:
 build: frontend-build
 	mkdir -p dist
 	$(GO) build -trimpath -ldflags "$(LOCAL_LDFLAGS)" -o dist/cm .
+
+generate:
+	$(GO) generate ./internal/productadapter
+
+check-generated:
+	$(GO) generate ./internal/productadapter
+	$(GIT) diff --exit-code -- frontend/src/lib/operation-presentation.generated.ts
+
+install-local:
+	$(NODE) scripts/dev/install-local.mjs $(ARGS)
+
+release-smoke:
+	$(NODE) scripts/release/smoke.mjs $(BINARY)
+
+security-gosec:
+	$(NODE) scripts/ci/security/gosec-baseline.mjs
+
+security-baseline:
+	$(NODE) scripts/ci/security/gosec-baseline.mjs --update
 
 frontend-dev:
 	$(PNPM) --dir frontend dev

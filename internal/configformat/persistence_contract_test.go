@@ -19,6 +19,9 @@ func TestRuntimePersistenceHasNoLegacyFormatReadersOrCGMBundles(t *testing.T) {
 		filepath.FromSlash("mcp/core_skills.go"): {
 			`"gopkg.in/yaml.v3"`: true, // SKILL.md frontmatter, not configuration persistence.
 		},
+		filepath.FromSlash("releaseverify/verify.go"): {
+			`"gopkg.in/yaml.v3"`: true, // Repository release configuration verification, not runtime persistence.
+		},
 	}
 	err := filepath.WalkDir(internalRoot, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {

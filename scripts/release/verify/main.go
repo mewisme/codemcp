@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"go.mewis.me/codemcp/scripts/releaseverify"
+	"go.mewis.me/codemcp/internal/releaseverify"
 )
 
 func main() {
@@ -18,6 +18,7 @@ func main() {
 	binary := flag.String("binary", "", "verify telemetry metadata from this binary")
 	dist := flag.String("dist", "", "verify GoReleaser artifacts and package manifests")
 	expectTelemetry := flag.String("expect-telemetry", "", "telemetry expectation: absent or present")
+	telemetryEndpoint := flag.Bool("telemetry-endpoint", false, "verify TELEMETRY_ENDPOINT release metadata")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -38,6 +39,13 @@ func main() {
 		fmt.Println("Go vanity metadata verified")
 	}
 	expectation := releaseverify.TelemetryExpectation(strings.TrimSpace(*expectTelemetry))
+	if *telemetryEndpoint {
+		runs++
+		if err := releaseverify.VerifyTelemetryEndpoint(os.Getenv("TELEMETRY_ENDPOINT")); err != nil {
+			fatal(err)
+		}
+		fmt.Println("release telemetry endpoint metadata verified")
+	}
 	if strings.TrimSpace(*binary) != "" {
 		runs++
 		if err := releaseverify.VerifyBinaryTelemetry(ctx, *binary, expectation); err != nil {
@@ -58,6 +66,6 @@ func main() {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "release cutover verification failed:", err)
+	fmt.Fprintln(os.Stderr, "release verification failed:", err)
 	os.Exit(1)
 }

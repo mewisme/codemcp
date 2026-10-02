@@ -35,8 +35,8 @@ repos:
         files: ^install\.sh$
         pass_filenames: true
       - id: local-check-script
-        name: scripts/check.sh (fast)
-        entry: scripts/check.sh
+        name: make check (fast)
+        entry: make check
         language: system
         pass_filenames: false
         stages: [manual]

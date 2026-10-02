@@ -31,7 +31,7 @@ builds:
       - -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint={{ index .Env "TELEMETRY_ENDPOINT" }}
     hooks:
       post:
-        - cmd: 'sh scripts/build-windows-setup.sh "{{ .Path }}" "{{ .Target }}" dist'
+        - cmd: 'sh scripts/release/build-windows-setup.sh "{{ .Path }}" "{{ .Target }}" dist'
           output: true
 
 # Keep macOS binaries untouched for Gatekeeper compatibility.

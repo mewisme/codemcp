@@ -61,6 +61,7 @@ var canonicalTopLevelScopes = map[string]string{
 	"plan":                   "domain",
 	"projectcontext":         "application",
 	"productadapter":         "application",
+	"releaseverify":          "tooling",
 	"rules":                  "domain",
 	"runtime":                "runtime",
 	"sequence":               "domain",

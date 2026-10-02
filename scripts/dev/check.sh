@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Fast local quality checks (subset of CI). Usage: ./scripts/check.sh
+# Fast local quality checks (subset of CI). Prefer: make check
 set -euo pipefail
 
-root="$(cd "$(dirname "$0")/.." && pwd)"
+root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
 
 check_config_dir="$(mktemp -d)"
@@ -29,13 +29,13 @@ go test ./internal/outboundpolicy/ ./internal/approval/ ./internal/config/ ./int
 
 echo "==> shellcheck install.sh"
 if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck install.sh scripts/test-install-sh.sh
+  shellcheck install.sh scripts/installer/test-unix.sh scripts/release/build-windows-setup.sh scripts/installer/test-windows-setup.sh scripts/release/verify-windows-setup-payload.sh
 else
   echo "skip: shellcheck not installed"
 fi
 
 echo "==> installer verification policy"
-sh scripts/test-install-sh.sh
+sh scripts/installer/test-unix.sh
 
 echo "==> frontend lint/typecheck (if pnpm available)"
 if command -v pnpm >/dev/null 2>&1 && [[ -d frontend/node_modules ]]; then

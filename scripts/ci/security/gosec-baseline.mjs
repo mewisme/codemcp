@@ -1,10 +1,28 @@
 import fs from "node:fs"
 import path from "node:path"
+import process from "node:process"
+import { spawnSync } from "node:child_process"
+import { fileURLToPath } from "node:url"
 
-const [inputPath, baselinePath, mode] = process.argv.slice(2)
-if (!inputPath || !baselinePath) throw new Error("usage: node scripts/check-gosec-baseline.mjs <gosec.json> <baseline.json> [--update]")
+const args = process.argv.slice(2)
+if (args.length > 1 || (args[0] && args[0] !== "--update")) {
+  throw new Error("usage: node scripts/ci/security/gosec-baseline.mjs [--update]")
+}
+const mode = args[0]
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..")
+const baselinePath = path.join(root, "scripts", "ci", "security", "gosec-baseline.json")
+const gosec = process.env.GOSEC || "gosec"
+const scan = spawnSync(gosec, ["-quiet", "-fmt=json", "./..."], {
+  cwd: root,
+  encoding: "utf8",
+  windowsHide: true,
+  maxBuffer: 32 * 1024 * 1024,
+})
+if (scan.error) throw scan.error
+if (!scan.stdout.trim()) {
+  throw new Error(`gosec produced no JSON report${scan.stderr.trim() ? `: ${scan.stderr.trim()}` : ""}`)
+}
 
-const root = process.cwd()
 const normalizeCode = (value = "") => value.split("\n").map((line) => line.replace(/^\s*\d+:\s?/, "")).join("\n").trim()
 const normalize = (issue) => ({
   rule_id: issue.rule_id,
@@ -15,7 +33,7 @@ const normalize = (issue) => ({
   code: normalizeCode(issue.code),
 })
 const sortIssues = (issues) => issues.map(normalize).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
-const report = JSON.parse(fs.readFileSync(inputPath, "utf8"))
+const report = JSON.parse(scan.stdout)
 const current = sortIssues(report.Issues || [])
 
 if (mode === "--update") {

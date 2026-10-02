@@ -56,7 +56,7 @@ if [ "$binary_bytes" -le 0 ] || [ "$binary_bytes" -gt 268435456 ]; then
 fi
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-repo_root=$(CDPATH='' cd -- "$script_dir/.." && pwd)
+repo_root=$(CDPATH='' cd -- "$script_dir/../.." && pwd)
 template="$repo_root/installer/windows/codemcp.nsi"
 if [ ! -f "$template" ] || [ -L "$template" ]; then
 	echo "windows setup: NSIS template is missing or unsafe: $template" >&2

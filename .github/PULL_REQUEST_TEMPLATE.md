@@ -4,7 +4,7 @@
 
 ## Test plan
 
-- [ ] `./scripts/check.sh` (or equivalent local gate)
+- [ ] `make check` (or equivalent local gate)
 - [ ] `CM_CONFIG_DIR="$(mktemp -d)" go test ./...` when Go code changed
 - [ ] `pnpm --dir frontend test` / `lint` / `typecheck` when Admin UI changed
 - [ ] Docs updated if behavior or UX changed

@@ -34,6 +34,19 @@ func TestRepositoryReleaseContracts(t *testing.T) {
 	}
 }
 
+func TestVerifyTelemetryEndpointDoesNotLeakInvalidValue(t *testing.T) {
+	if err := VerifyTelemetryEndpoint("https://telemetry.example/v1/products/codemcp/events"); err != nil {
+		t.Fatal(err)
+	}
+	err := VerifyTelemetryEndpoint("https://secret-host.example/wrong")
+	if err == nil {
+		t.Fatal("invalid release endpoint unexpectedly passed")
+	}
+	if strings.Contains(err.Error(), "secret-host.example") {
+		t.Fatalf("release endpoint validation leaked endpoint: %v", err)
+	}
+}
+
 func TestReleaseWorkflowTelemetryContractRejectsDrift(t *testing.T) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -44,9 +57,8 @@ func TestReleaseWorkflowTelemetryContractRejectsDrift(t *testing.T) {
 	for _, relative := range []string{
 		filepath.Join(".github", "workflows", "release.yml"),
 		filepath.Join(".github", "workflows", "ci.yml"),
-		filepath.Join("scripts", "verify-release-telemetry.go"),
-		filepath.Join("scripts", "verify-windows-setup-payload.sh"),
-		filepath.Join("scripts", "release-cutover", "main.go"),
+		filepath.Join("scripts", "release", "verify-windows-setup-payload.sh"),
+		filepath.Join("scripts", "release", "verify", "main.go"),
 	} {
 		data, err := os.ReadFile(filepath.Join(root, relative))
 		if err != nil {

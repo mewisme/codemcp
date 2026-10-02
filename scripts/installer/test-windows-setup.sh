@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-builder="$repo_root/scripts/build-windows-setup.sh"
+repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
+builder="$repo_root/scripts/release/build-windows-setup.sh"
 template="$repo_root/installer/windows/codemcp.nsi"
 tmp=$(mktemp -d)
 cleanup() {
@@ -93,8 +93,8 @@ cp "$1" "$output/cm.exe"
 EOF
 chmod +x "$fakebin/7zz"
 
-PATH="$fakebin:$PATH" TEST_DIST="$dist" SEVENZIP=7zz sh "$repo_root/scripts/verify-windows-setup-payload.sh" "$dist" >/dev/null
-if PATH="$fakebin:$PATH" TEST_DIST="$dist" TEST_PAYLOAD_WRONG=1 SEVENZIP=7zz sh "$repo_root/scripts/verify-windows-setup-payload.sh" "$dist" >/dev/null 2>&1; then
+PATH="$fakebin:$PATH" TEST_DIST="$dist" SEVENZIP=7zz sh "$repo_root/scripts/release/verify-windows-setup-payload.sh" "$dist" >/dev/null
+if PATH="$fakebin:$PATH" TEST_DIST="$dist" TEST_PAYLOAD_WRONG=1 SEVENZIP=7zz sh "$repo_root/scripts/release/verify-windows-setup-payload.sh" "$dist" >/dev/null 2>&1; then
 	fail "payload verifier accepted the wrong architecture cm.exe"
 fi
 

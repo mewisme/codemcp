@@ -3,7 +3,7 @@ if (-not $IsWindows -and $env:OS -ne 'Windows_NT') {
   throw 'Windows setup smoke must run on Windows.'
 }
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $makensisCommand = Get-Command makensis.exe -ErrorAction SilentlyContinue
 $makensisPath = if ($makensisCommand) { $makensisCommand.Source } else { $null }
 if (-not $makensisPath) {

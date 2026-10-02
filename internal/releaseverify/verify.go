@@ -23,6 +23,7 @@ import (
 	"golang.org/x/net/html"
 	"gopkg.in/yaml.v3"
 
+	producttelemetry "go.mewis.me/codemcp/internal/telemetry/product"
 	updatepkg "go.mewis.me/codemcp/internal/update"
 )
 
@@ -33,6 +34,14 @@ const (
 	ExpectedGitRemote         = "https://github.com/mewisme/codemcp"
 	packageMaintainerTemplate = `{{ index .Env "PACKAGE_MAINTAINER" }}`
 )
+
+func VerifyTelemetryEndpoint(raw string) error {
+	metadata, err := producttelemetry.ParseEndpoint(raw)
+	if err != nil || !metadata.Available || metadata.Product != "codemcp" {
+		return errors.New("release telemetry endpoint metadata is missing or invalid")
+	}
+	return nil
+}
 
 type TelemetryExpectation string
 
@@ -210,7 +219,7 @@ func verifyGoReleaser(root string) error {
 		}
 		setupHook := mapValue(post[0])
 		output, _ := setupHook["output"].(bool)
-		if stringValue(setupHook["cmd"]) != "sh scripts/build-windows-setup.sh \"{{ .Path }}\" \"{{ .Target }}\" dist" || !output {
+		if stringValue(setupHook["cmd"]) != "sh scripts/release/build-windows-setup.sh \"{{ .Path }}\" \"{{ .Target }}\" dist" || !output {
 			return errors.New("release build Windows setup hook drifted from the canonical OSS wrapper")
 		}
 	}
@@ -248,7 +257,7 @@ func verifyGoReleaser(root string) error {
 }
 
 func verifyWindowsSetupBootstrap(root string) error {
-	wrapperPath := filepath.Join(root, "scripts", "build-windows-setup.sh")
+	wrapperPath := filepath.Join(root, "scripts", "release", "build-windows-setup.sh")
 	wrapperData, err := os.ReadFile(wrapperPath)
 	if err != nil {
 		return fmt.Errorf("read Windows setup wrapper: %w", err)
@@ -322,6 +331,7 @@ func verifyReleaseWorkflows(root string) error {
 		"--vanity-url",
 		ExpectedVanityURL,
 		"TELEMETRY_ENDPOINT: " + telemetryExpr,
+		"--telemetry-endpoint",
 		"args: build --snapshot --clean --single-target",
 		"TELEMETRY_ENDPOINT: ''",
 		"--expect-telemetry absent",
@@ -331,7 +341,7 @@ func verifyReleaseWorkflows(root string) error {
 		"version: 'v2.18.0'",
 		"args: release --clean --draft",
 		"--dist dist --expect-telemetry present",
-		"scripts/verify-windows-setup-payload.sh dist",
+		"scripts/release/verify-windows-setup-payload.sh dist",
 		"cosign verify-blob",
 		"dist/scoop/codemcp.json",
 		"dist/homebrew/Casks/codemcp.rb",
@@ -342,9 +352,8 @@ func verifyReleaseWorkflows(root string) error {
 		}
 	}
 	for _, script := range []string{
-		filepath.Join("scripts", "release-cutover", "main.go"),
-		filepath.Join("scripts", "verify-release-telemetry.go"),
-		filepath.Join("scripts", "verify-windows-setup-payload.sh"),
+		filepath.Join("scripts", "release", "verify", "main.go"),
+		filepath.Join("scripts", "release", "verify-windows-setup-payload.sh"),
 	} {
 		if _, err := os.Stat(filepath.Join(root, script)); err != nil {
 			return fmt.Errorf("release workflow helper %s is unavailable: %w", filepath.ToSlash(script), err)
@@ -355,7 +364,7 @@ func verifyReleaseWorkflows(root string) error {
 	}
 	draftIndex := strings.Index(release, "args: release --clean --draft")
 	verifyIndex := strings.Index(release, "--dist dist --expect-telemetry present")
-	payloadIndex := strings.Index(release, "scripts/verify-windows-setup-payload.sh dist")
+	payloadIndex := strings.Index(release, "scripts/release/verify-windows-setup-payload.sh dist")
 	signatureIndex := strings.Index(release, "cosign verify-blob")
 	manifestIndex := strings.Index(release, "gh release upload")
 	publishIndex := strings.Index(release, `gh release edit "${GITHUB_REF_NAME}" --draft=false --latest`)
@@ -373,10 +382,10 @@ func verifyReleaseWorkflows(root string) error {
 		return errors.New("ci workflow does not verify endpoint-less source build telemetry boundary")
 	}
 	for _, required := range []string{
-		"scripts/test-windows-setup.sh",
-		"scripts/verify-windows-setup-payload.sh",
+		"scripts/installer/test-windows-setup.sh",
+		"scripts/release/verify-windows-setup-payload.sh",
 		"choco install nsis -y --no-progress",
-		"scripts/test-windows-setup.ps1",
+		"scripts/installer/test-windows-setup.ps1",
 	} {
 		if !strings.Contains(ci, required) {
 			return fmt.Errorf("ci workflow is missing Windows setup smoke contract %q", required)

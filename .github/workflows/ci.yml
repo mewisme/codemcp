@@ -188,9 +188,11 @@ jobs:
 
       - name: Security analysis
         if: needs.changes.outputs.full == 'true'
-        run: |
-          gosec -quiet -fmt=json ./... > "${RUNNER_TEMP}/gosec.json" || true
-          node scripts/check-gosec-baseline.mjs "${RUNNER_TEMP}/gosec.json" scripts/gosec-baseline.json
+        run: make security-gosec
+
+      - name: Verify generated presentation contract
+        if: needs.changes.outputs.full == 'true'
+        run: make check-generated
 
       - name: Go coverage gate
         if: needs.changes.outputs.full == 'true'
@@ -208,7 +210,7 @@ jobs:
 
       - name: Installer lint
         if: needs.changes.outputs.full == 'true'
-        run: shellcheck install.sh scripts/test-install-sh.sh scripts/build-windows-setup.sh scripts/test-windows-setup.sh scripts/verify-windows-setup-payload.sh
+        run: shellcheck install.sh scripts/installer/test-unix.sh scripts/release/build-windows-setup.sh scripts/installer/test-windows-setup.sh scripts/release/verify-windows-setup-payload.sh
 
   race:
     name: Race test
@@ -294,21 +296,21 @@ jobs:
 
       - name: Validate Unix installer
         if: needs.changes.outputs.full == 'true' && runner.os != 'Windows'
-        run: sh scripts/test-install-sh.sh
+        run: sh scripts/installer/test-unix.sh
 
       - name: Validate Windows setup wrapper
         if: needs.changes.outputs.full == 'true' && runner.os == 'Linux'
-        run: sh scripts/test-windows-setup.sh
+        run: sh scripts/installer/test-windows-setup.sh
 
       - name: Validate PowerShell installer
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/test-install-ps1.ps1
+        run: ./scripts/installer/test-powershell.ps1
 
       - name: Validate Windows PowerShell installer
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
         shell: powershell
-        run: ./scripts/test-install-ps1.ps1
+        run: ./scripts/installer/test-powershell.ps1
 
       - name: Install NSIS for Windows setup smoke
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
@@ -318,11 +320,11 @@ jobs:
       - name: Validate Windows NSIS setup
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/test-windows-setup.ps1
+        run: ./scripts/installer/test-windows-setup.ps1
 
       - name: Local install smoke
         if: needs.changes.outputs.full == 'true'
-        run: node scripts/install-local.mjs --skip-frontend
+        run: make install-local ARGS="--skip-frontend"
 
       - name: Test
         if: needs.changes.outputs.full == 'true'
@@ -340,11 +342,11 @@ jobs:
 
       - name: Verify source build release boundary
         if: needs.changes.outputs.full == 'true'
-        run: go run ./scripts/release-cutover --binary ./dist-smoke/${{ matrix.binary }} --expect-telemetry absent
+        run: go run ./scripts/release/verify --binary ./dist-smoke/${{ matrix.binary }} --expect-telemetry absent
 
       - name: Runtime smoke
         if: needs.changes.outputs.full == 'true'
-        run: node scripts/smoke-release.mjs ./dist-smoke/${{ matrix.binary }}
+        run: make release-smoke BINARY=./dist-smoke/${{ matrix.binary }}
 
   cross-build:
     name: Cross build ${{ matrix.os }}/${{ matrix.arch }}

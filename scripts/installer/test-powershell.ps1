@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$installer = Resolve-Path (Join-Path $PSScriptRoot '..\install.ps1')
+$installer = Resolve-Path (Join-Path $PSScriptRoot '..\..\install.ps1')
 $source = Get-Content -Raw -LiteralPath $installer
 $tokens = $null
 $errors = $null
@@ -69,7 +69,7 @@ function Get-ReleaseContract {
   param([string]$Architecture)
   Push-Location $repoRoot
   try {
-    $lines = & go run ./scripts/release-layout-contract --os windows --arch $Architecture
+    $lines = & go run ./scripts/installer/release-layout-contract --os windows --arch $Architecture
     if ($LASTEXITCODE -ne 0) { throw "release-layout contract helper failed for windows/$Architecture" }
   } finally {
     Pop-Location
@@ -133,7 +133,7 @@ try {
     $zipPath = Join-Path $fixtureRoot "$fixtureCase.zip"
     Push-Location $repoRoot
     try {
-      & go run ./scripts/release-archive-fixture --format zip --case $fixtureCase --output $zipPath
+      & go run ./scripts/installer/archive-fixture --format zip --case $fixtureCase --output $zipPath
       if ($LASTEXITCODE -ne 0) { throw "failed to generate ZIP fixture $fixtureCase" }
     } finally {
       Pop-Location

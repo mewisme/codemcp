@@ -19,7 +19,7 @@ Tagged release jobs additionally use GoReleaser OSS `v2.18.0`, Cosign, nFPM thro
 Fast local gate (subset of CI):
 
 ```bash
-./scripts/check.sh
+make check
 ```
 
 Optional [pre-commit](https://pre-commit.com/) hooks (fmt/imports/vet/staticcheck + basic file hygiene):
@@ -37,7 +37,7 @@ CI remains the source of truth (`govulncheck`, `gosec` baseline, coverage, matri
 
 ## Makefile developer facade
 
-The root `Makefile` is a thin convenience layer over the canonical Go, pnpm, and repository scripts. Run `make` or `make help` to list the supported developer targets.
+The root `Makefile` is the developer command facade over the canonical Go, pnpm, and repository automation. Run `make` or `make help` to list the supported targets; helper paths under `scripts/` are implementation details for maintainers and CI.
 
 Common workflows:
 
@@ -48,6 +48,11 @@ make check
 make test
 make test-race
 make build
+make generate
+make check-generated
+make install-local
+make release-smoke
+make security-gosec
 make init
 make uninit
 make run ARGS="status --json"
@@ -62,7 +67,7 @@ make frontend-dev
 
 `make init` and `make uninit` delegate directly to the canonical `cm` commands. `make init` does not add `--force`; pass it explicitly through `ARGS` only when token rotation is intended.
 
-`make test` and `make test-race` always allocate a fresh `CM_CONFIG_DIR` and remove it after the test command. The Makefile intentionally has no CI, release/publish, or destructive clean target.
+`make test` and `make test-race` always allocate a fresh `CM_CONFIG_DIR` and remove it after the test command. `make generate` owns committed product-presentation generation and `make check-generated` is the corresponding drift gate. `make security-gosec` checks the canonical security baseline; maintainers may intentionally regenerate that baseline with `make security-baseline` after reviewing the delta. The Makefile intentionally has no release/publish or destructive clean target.
 
 The direct commands below remain the underlying debugging interface.
 
@@ -154,16 +159,16 @@ This rule applies especially to commands such as:
 ## Local source install
 
 ```bash
-node scripts/install-local.mjs
+make install-local
 ```
 
-The script builds the frontend directly into the embedded asset directory and runs the local Go installation flow.
+The target builds the frontend directly into the embedded asset directory and runs the local Go installation flow.
 
 Variants:
 
 ```bash
-node scripts/install-local.mjs --no-deps
-node scripts/install-local.mjs --skip-frontend
+make install-local ARGS="--no-deps"
+make install-local ARGS="--skip-frontend"
 ```
 
 `--skip-frontend` requires an existing `internal/interface/web/dist/index.html` and is useful when those embedded assets were already built.
@@ -172,26 +177,26 @@ Managed installs expose only the `cm` executable.
 
 ## Release smoke
 
-Build a native binary:
+Build the canonical local binary:
 
 ```bash
-pnpm --dir frontend build
-go build -trimpath -o cm ./
+make build
 ```
 
 Run:
 
 ```bash
-node scripts/smoke-release.mjs ./cm
+make release-smoke
 ```
 
-The portable smoke verifies behavior such as:
+Override `BINARY` when testing another built artifact, for example `make release-smoke BINARY=./dist-smoke/cm`.
+
+The portable smoke intentionally focuses on built-binary and cross-process behavior such as:
 
 - managed direct self-install and idempotent reinstall
 - repeated managed install preserves the canonical `cm` command without creating legacy executable aliases
 - `cm tui --help` is present and documents the Command Center
 - `cm tui` refuses redirected/non-TTY execution without writing a full-screen UI
-- stable workspace/request/upstream plain and JSON CLI output remains usable outside the TUI
 - isolated init/uninit
 - config verify/export/import
 - config/status commands
@@ -205,6 +210,12 @@ The portable smoke verifies behavior such as:
 - integration coverage for Admin, TUI, and MCP workspace-registration mutations verifies each persistent registry change reloads runtime state before success is reported
 - modern MCP error behavior
 - clean stop/shutdown
+
+Pure CLI rendering and JSON-shape contracts are owned by Go tests rather than duplicated in the release smoke.
+
+## Automation ownership
+
+Normal development uses the Makefile plus frontend-specific `pnpm --dir frontend ...` commands. The retained repository helpers are grouped by purpose under `scripts/`; see [scripts/README.md](../scripts/README.md) for the ownership map. Root `install.sh` and `install.ps1` remain public bootstrap product artifacts rather than developer helper scripts.
 
 ## Repository YAML files
 
@@ -232,7 +243,7 @@ Control-approval native smoke additionally verifies:
 - CLI plain/JSON behavior and non-TTY safety
 - Admin loopback and remote-auth policy
 
-The portable runtime smoke also checks that `request_control_approval` is present in the MCP catalog and that `cm request list` reaches the running runtime. A dedicated native TUI release gate exercises route parsing, non-TTY refusal, Commands/resource navigation model integration, and public-command capability parity without attempting to drive a real alternate-screen terminal session inside CI.
+The portable runtime smoke also checks that `request_control_approval` is present in the MCP catalog through a real MCP session. A dedicated native TUI release gate exercises route parsing, non-TTY refusal, Commands/resource navigation model integration, and public-command capability parity without attempting to drive a real alternate-screen terminal session inside CI.
 
 Updater and control-approval integration gates run in every native Linux, macOS, and Windows CI/release job. Cross-build jobs continue to compile all six release OS/architecture targets.
 

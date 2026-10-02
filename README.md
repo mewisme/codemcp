@@ -177,7 +177,7 @@ See the [documentation index](docs/README.md) for the recommended reading paths.
 Source builds require Go 1.27+, Node.js 24+, and pnpm 11+.
 
 ```bash
-./scripts/check.sh
+make check
 ```
 
 See [Development](docs/development.md) for the complete verification, CI, and release workflow, and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution expectations.

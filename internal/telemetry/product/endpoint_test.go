@@ -82,18 +82,6 @@ func TestParseEndpointRequiresExactReleaseRoute(t *testing.T) {
 	}
 }
 
-func TestReleasePreflightDoesNotEchoEndpoint(t *testing.T) {
-	cmd := exec.Command("go", "run", "../../../scripts/verify-release-telemetry.go")
-	cmd.Env = append(os.Environ(), "TELEMETRY_ENDPOINT=https://secret-host.example/wrong")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatal("invalid release endpoint unexpectedly passed preflight")
-	}
-	if strings.Contains(string(output), "secret-host.example") {
-		t.Fatalf("preflight leaked endpoint: %s", output)
-	}
-}
-
 func TestGoTestsDoNotReferenceProductionTelemetryHost(t *testing.T) {
 	root := filepath.Clean(filepath.Join("..", "..", ".."))
 	productionHost := "telemetry." + "mewis.me"

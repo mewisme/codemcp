@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process"
 
 process.noDeprecation = true
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
 const args = process.argv.slice(2)
 const options = { installDeps: true, skipFrontend: false }
 
@@ -15,7 +15,7 @@ for (const arg of args) {
   if (arg === "--no-deps") options.installDeps = false
   else if (arg === "--skip-frontend") options.skipFrontend = true
   else if (arg === "--help" || arg === "-h") {
-    console.log(`Usage: node scripts/install-local.mjs [--no-deps] [--skip-frontend]
+    console.log(`Usage: make install-local ARGS="[--no-deps] [--skip-frontend]"
 
 Cross-platform local build/install for Linux, Windows, and macOS.
 

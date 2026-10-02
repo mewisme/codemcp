@@ -21,16 +21,16 @@ Requirements:
 Quick path:
 
 ```bash
-pnpm --dir frontend install
-pnpm --dir frontend build
-CM_CONFIG_DIR="$(mktemp -d)" go test ./...
-go build -trimpath ./
+make bootstrap
+make frontend-build
+make test
+make build
 ```
 
 Fast local gate (subset of CI):
 
 ```bash
-./scripts/check.sh
+make check
 ```
 
 Tests must never use the real default/global config directory. Always isolate with `CM_CONFIG_DIR` or `--config-dir`. See [docs/development.md](docs/development.md).
@@ -45,9 +45,8 @@ Tests must never use the real default/global config directory. Always isolate wi
 Suggested local checks before opening a PR:
 
 ```bash
-./scripts/check.sh
-CM_CONFIG_DIR="$(mktemp -d)" go test ./...
-go vet ./...
+make check
+make test
 pnpm --dir frontend test
 pnpm --dir frontend lint
 pnpm --dir frontend typecheck

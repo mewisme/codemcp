@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-root="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
+root="$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)"
 installer="$root/install.sh"
 
 sh -n "$installer"
@@ -34,7 +34,7 @@ case "$(uname -m)" in
 esac
 
 version=v9.9.9
-contract="$(cd "$root" && go run ./scripts/release-layout-contract --os "$os" --arch "$arch")"
+contract="$(cd "$root" && go run ./scripts/installer/release-layout-contract --os "$os" --arch "$arch")"
 contract_value() {
 	printf '%s\n' "$contract" | awk -F= -v key="$1" '$1 == key { sub(/^[^=]*=/, ""); print; exit }'
 }
@@ -53,7 +53,7 @@ fi
 archive="$tmp/$asset"
 (
 	cd "$root"
-	go run ./scripts/release-archive-fixture --format tar --case valid --output "$archive"
+	go run ./scripts/installer/archive-fixture --format tar --case valid --output "$archive"
 )
 
 archive_hash() {
@@ -241,7 +241,7 @@ run_unsafe_archive_case() {
 	case_archive="$tmp/$fixture_case-$asset"
 	(
 		cd "$root"
-		go run ./scripts/release-archive-fixture --format tar --case "$fixture_case" --output "$case_archive"
+		go run ./scripts/installer/archive-fixture --format tar --case "$fixture_case" --output "$case_archive"
 	)
 	case_checksums="$tmp/$fixture_case-$checksum_name"
 	printf '%s  %s\n' "$(archive_hash "$case_archive")" "$asset" >"$case_checksums"
