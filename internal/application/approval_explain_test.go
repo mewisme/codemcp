@@ -235,6 +235,77 @@ func TestApprovalExplainAutoAndManualDeduplicateInflightGeneration(t *testing.T)
 	}
 }
 
+func TestApprovalExplainStopCancelsInflightAndRestartDoesNotReuseStaleWorker(t *testing.T) {
+	manager := approval.NewManager("instance-approval-explain-restart")
+	request := createApprovalExplainRequest(t, manager, "run_command", "echo lifecycle")
+	before, ok := manager.Get(request.ID)
+	if !ok {
+		t.Fatal("request missing before lifecycle test")
+	}
+
+	started := make(chan struct{}, 1)
+	cancelled := make(chan struct{}, 1)
+	fixture := &approvalExplainInferenceFixture{}
+	fixture.infer = func(ctx context.Context, request llm.Request) (llm.Result, error) {
+		if fixture.calls.Load() == 1 {
+			started <- struct{}{}
+			<-ctx.Done()
+			cancelled <- struct{}{}
+			return llm.Result{}, ctx.Err()
+		}
+		return validApprovalExplainResult(), nil
+	}
+	service := newApprovalExplainService(manager, nil, fixture, func() config.ApprovalExplainMode { return config.ApprovalExplainAuto })
+	if err := service.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("initial explanation did not start")
+	}
+
+	stopped := make(chan struct{})
+	go func() {
+		service.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown did not cancel inflight explanation")
+	}
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown left explanation worker running")
+	}
+	afterStop, ok := manager.Get(request.ID)
+	if !ok || afterStop.Status != approval.StatusPending || !afterStop.ExpiresAt.Equal(before.ExpiresAt) || !afterStop.RetryUntil.Equal(before.RetryUntil) {
+		t.Fatalf("shutdown changed approval authority: before=%#v after=%#v ok=%t", before, afterStop, ok)
+	}
+	value, err := service.Read(t.Context(), request.ID)
+	if err != nil || value.State != ApprovalExplanationNone {
+		t.Fatalf("cancelled generation survived shutdown: value=%#v err=%v", value, err)
+	}
+	if _, err := service.Trigger(t.Context(), ApprovalExplainInput{ID: request.ID}); err == nil || !strings.Contains(err.Error(), "stopping") {
+		t.Fatalf("stopped service accepted new generation: %v", err)
+	}
+
+	if err := service.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	ready := waitApprovalExplanationState(t, service, request.ID, ApprovalExplanationReady)
+	service.Stop()
+	if ready.Attempt != 2 || fixture.calls.Load() != 2 {
+		t.Fatalf("restart reused stale generation: ready=%#v calls=%d", ready, fixture.calls.Load())
+	}
+	afterRestart, ok := manager.Get(request.ID)
+	if !ok || afterRestart.Status != approval.StatusPending || !afterRestart.ExpiresAt.Equal(before.ExpiresAt) || !afterRestart.RetryUntil.Equal(before.RetryUntil) {
+		t.Fatalf("restart explanation changed approval authority: before=%#v after=%#v ok=%t", before, afterRestart, ok)
+	}
+}
+
 func TestApprovalExplainFailureRequiresExplicitRetryAndReviewRemainsUsable(t *testing.T) {
 	manager := approval.NewManager("instance-approval-explain-retry")
 	request := createApprovalExplainRequest(t, manager, "run_command", "git status")

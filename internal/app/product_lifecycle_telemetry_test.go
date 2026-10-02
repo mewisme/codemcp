@@ -160,6 +160,58 @@ func TestLifecycleTelemetryStopRemovesProcessSubscription(t *testing.T) {
 	}
 }
 
+func TestLifecycleTelemetryRestartOwnsExactlyOneSubscriptionSet(t *testing.T) {
+	manager := approval.NewManager("instance-lifecycle-restart")
+	processes := shellruntime.NewProcessManager(nil, nil)
+	recorder := &lifecycleRecorder{}
+	bridge := newProductLifecycleTelemetry(recorder, manager, processes)
+
+	bridge.Start(t.Context())
+	if got := processes.Diagnostics().TerminalSubscribers; got != 1 {
+		t.Fatalf("initial terminal subscribers=%d want=1", got)
+	}
+	bridge.Stop()
+	if got := processes.Diagnostics().TerminalSubscribers; got != 0 {
+		t.Fatalf("terminal subscribers after stop=%d want=0", got)
+	}
+	bridge.Start(t.Context())
+	if got := processes.Diagnostics().TerminalSubscribers; got != 1 {
+		t.Fatalf("terminal subscribers after restart=%d want=1", got)
+	}
+
+	challenge, _, err := manager.CreateChallenge(approval.ChallengeInput{
+		CallerID: "caller-restart", SessionHash: "session-restart", WorkspaceID: "workspace-restart",
+		Source: "tunnel", TargetTool: "run_command", Arguments: map[string]any{"command": "echo restart"},
+		GuardCode: "test", GuardReason: "guarded", Title: "restart",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _, err := manager.CreateRequest(challenge.ID, "caller-restart", "workspace-restart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Deny(request.ID, "reviewer", "restart"); err != nil {
+		t.Fatal(err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if len(recorder.snapshot()) == 2 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	events := recorder.snapshot()
+	if len(events) != 2 || events[0].name != producttelemetry.EventApprovalRequested || events[1].name != producttelemetry.EventApprovalResolved {
+		t.Fatalf("restart lifecycle events=%#v", events)
+	}
+	bridge.Stop()
+	if got := processes.Diagnostics().TerminalSubscribers; got != 0 {
+		t.Fatalf("terminal subscribers after final stop=%d want=0", got)
+	}
+}
+
 func TestLifecycleTelemetryFailureDoesNotBlockProcessReapingOrBackgroundDelivery(t *testing.T) {
 	t.Setenv(configformat.EnvConfigDir, t.TempDir())
 	if os.PathSeparator != '\\' && os.Getenv("SHELL") == "" {

@@ -237,13 +237,13 @@ func (s *ApprovalExplainService) Trigger(ctx context.Context, input ApprovalExpl
 		s.mu.Unlock()
 		return cloneApprovalExplanationResult(current), nil
 	}
-	s.attempts[key]++
-	attempt := s.attempts[key]
 	runCtx, cancel, ok := s.beginGeneration()
 	if !ok {
 		s.mu.Unlock()
 		return ApprovalExplanationResult{}, errors.New("approval Explain service is stopping")
 	}
+	s.attempts[key]++
+	attempt := s.attempts[key]
 	result := ApprovalExplanationResult{RequestID: source.RequestID, State: ApprovalExplanationPending, Attempt: attempt, UpdatedAt: s.nowUTC()}
 	s.records[key] = result
 	s.inflight[key] = cancel
