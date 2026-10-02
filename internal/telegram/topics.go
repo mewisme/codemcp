@@ -36,9 +36,10 @@ var managedTopicRoles = []struct {
 }
 
 type topicStore struct {
-	mu   sync.RWMutex
-	path string
-	ids  map[string]map[TopicRole]int
+	mu      sync.RWMutex
+	path    string
+	ids     map[string]map[TopicRole]int
+	loadErr error
 }
 
 type topicStoreFile struct {
@@ -53,7 +54,7 @@ func newTopicStore(root string) *topicStore {
 		path: filepath.Join(root, "telegram-topics.json"),
 		ids:  map[string]map[TopicRole]int{},
 	}
-	_ = store.load()
+	store.loadErr = store.load()
 	return store
 }
 
@@ -77,7 +78,30 @@ func (s *topicStore) load() error {
 	if persisted.Topics == nil {
 		persisted.Topics = map[string]map[TopicRole]int{}
 	}
+	if err := validateTopicMappings(persisted.Topics); err != nil {
+		return err
+	}
 	s.ids = persisted.Topics
+	s.loadErr = nil
+	return nil
+}
+
+func validateTopicMappings(values map[string]map[TopicRole]int) error {
+	validRoles := map[TopicRole]bool{}
+	for _, managed := range managedTopicRoles {
+		validRoles[managed.Role] = true
+	}
+	for rawChatID, roles := range values {
+		chatID, err := strconv.ParseInt(rawChatID, 10, 64)
+		if err != nil || chatID <= 0 {
+			return errors.New("telegram topic metadata contains an invalid chat id")
+		}
+		for role, threadID := range roles {
+			if !validRoles[role] || threadID <= 0 {
+				return errors.New("telegram topic metadata contains an invalid managed mapping")
+			}
+		}
+	}
 	return nil
 }
 
@@ -133,6 +157,63 @@ func (s *topicStore) count() int {
 	return total
 }
 
+func (s *topicStore) loadError() error {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.loadErr
+}
+
+func (s *topicStore) retainChats(allowed []int64) error {
+	if s == nil {
+		return nil
+	}
+	wanted := make(map[string]bool, len(allowed))
+	for _, chatID := range allowed {
+		if chatID > 0 {
+			wanted[strconv.FormatInt(chatID, 10)] = true
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	for key := range s.ids {
+		if !wanted[key] {
+			delete(s.ids, key)
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return s.saveLocked()
+}
+
+func (s *topicStore) repairCorrupt() error {
+	if s == nil {
+		return errors.New("telegram topic metadata store is unavailable")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.loadErr == nil {
+		return nil
+	}
+	if _, err := os.Stat(s.path); err == nil {
+		backup := s.path + ".corrupt"
+		if _, existsErr := os.Stat(backup); existsErr == nil {
+			return errors.New("telegram topic metadata corrupt backup already exists")
+		}
+		if err := os.Rename(s.path, backup); err != nil {
+			return err
+		}
+	}
+	s.ids = map[string]map[TopicRole]int{}
+	s.loadErr = nil
+	return s.saveLocked()
+}
+
 func (s *topicStore) saveLocked() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
@@ -166,13 +247,32 @@ func (runtime *Runtime) reconcileTopicsBounded(ctx context.Context, api API, cfg
 	if runtime == nil {
 		return
 	}
+	defer runtime.finishTopicReconcile()
 	runtime.mu.Lock()
 	runtime.health.TopicsConfigured = cfg.TopicsEnabled
 	runtime.health.TopicsSupported = supported
-	runtime.health.TopicsEffective = cfg.TopicsEnabled && supported
+	runtime.health.TopicsEffective = false
+	runtime.health.TopicStoreHealthy = true
 	runtime.health.TopicCount = 0
 	runtime.health.TopicLastError = ""
 	runtime.mu.Unlock()
+	runtime.mu.Lock()
+	if runtime.topics == nil {
+		runtime.topics = newTopicStore(runtime.root)
+	}
+	store := runtime.topics
+	runtime.mu.Unlock()
+	if store.loadError() != nil {
+		runtime.mu.Lock()
+		runtime.health.TopicStoreHealthy = false
+		runtime.health.TopicLastError = "telegram topic metadata is corrupt; explicit repair is required"
+		runtime.mu.Unlock()
+		return
+	}
+	if err := store.retainChats(cfg.AllowedUserIDs); err != nil {
+		runtime.setTopicError("telegram topic metadata reconciliation failed")
+		return
+	}
 	if !cfg.TopicsEnabled || !supported {
 		return
 	}
@@ -181,12 +281,6 @@ func (runtime *Runtime) reconcileTopicsBounded(ctx context.Context, api API, cfg
 		runtime.setTopicError("telegram topic API is unavailable")
 		return
 	}
-	runtime.mu.Lock()
-	if runtime.topics == nil {
-		runtime.topics = newTopicStore(runtime.root)
-	}
-	store := runtime.topics
-	runtime.mu.Unlock()
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -209,7 +303,21 @@ func (runtime *Runtime) reconcileTopicsBounded(ctx context.Context, api API, cfg
 		}
 	}
 	runtime.mu.Lock()
+	runtime.health.TopicsEffective = true
+	runtime.health.TopicStoreHealthy = true
 	runtime.health.TopicCount = store.count()
+	runtime.health.TopicReconcilePending = false
+	runtime.topicRepairScheduled = false
+	runtime.mu.Unlock()
+}
+
+func (runtime *Runtime) finishTopicReconcile() {
+	if runtime == nil {
+		return
+	}
+	runtime.mu.Lock()
+	runtime.topicRepairScheduled = false
+	runtime.health.TopicReconcilePending = false
 	runtime.mu.Unlock()
 }
 
@@ -217,4 +325,75 @@ func (runtime *Runtime) setTopicError(message string) {
 	runtime.mu.Lock()
 	runtime.health.TopicLastError = strings.TrimSpace(message)
 	runtime.mu.Unlock()
+}
+
+func (runtime *Runtime) invalidateManagedTopic(chatID int64, role TopicRole) {
+	if runtime == nil {
+		return
+	}
+	runtime.mu.RLock()
+	store := runtime.topics
+	runtime.mu.RUnlock()
+	if store != nil {
+		store.delete(chatID, role)
+	}
+	runtime.mu.Lock()
+	if store != nil {
+		runtime.health.TopicCount = store.count()
+	}
+	runtime.health.TopicLastError = "telegram managed topic is missing; using General chat"
+	runtime.mu.Unlock()
+	runtime.scheduleTopicRepair()
+}
+
+func (runtime *Runtime) scheduleTopicRepair() {
+	if runtime == nil {
+		return
+	}
+	runtime.mu.Lock()
+	if runtime.topicRepairScheduled || !runtime.health.Running || !runtime.health.TopicsConfigured || !runtime.health.TopicsSupported {
+		runtime.mu.Unlock()
+		return
+	}
+	runtime.topicRepairScheduled = true
+	runtime.health.TopicReconcilePending = true
+	generation := runtime.generation
+	api := runtime.api
+	cfg := runtime.config
+	runtime.mu.Unlock()
+	go func() {
+		runtime.mu.RLock()
+		valid := runtime.generation == generation && runtime.health.Running
+		runtime.mu.RUnlock()
+		if !valid {
+			runtime.mu.Lock()
+			runtime.topicRepairScheduled = false
+			runtime.health.TopicReconcilePending = false
+			runtime.mu.Unlock()
+			return
+		}
+		runtime.reconcileTopicsBounded(context.Background(), api, cfg, true)
+	}()
+}
+
+// RepairTopics explicitly quarantines corrupt persisted adapter metadata before
+// rebuilding managed topic mappings. It never changes Telegram authorization.
+func (runtime *Runtime) RepairTopics(ctx context.Context) error {
+	if runtime == nil {
+		return errors.New("telegram runtime is unavailable")
+	}
+	runtime.mu.Lock()
+	if runtime.topics == nil {
+		runtime.topics = newTopicStore(runtime.root)
+	}
+	store := runtime.topics
+	api := runtime.api
+	cfg := runtime.config
+	supported := runtime.health.TopicsSupported
+	runtime.mu.Unlock()
+	if err := store.repairCorrupt(); err != nil {
+		return err
+	}
+	runtime.reconcileTopicsBounded(ctx, api, cfg, supported)
+	return nil
 }

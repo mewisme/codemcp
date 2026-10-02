@@ -38,6 +38,8 @@ type Health struct {
 	TopicsConfigured        bool              `json:"topics_configured"`
 	TopicsSupported         bool              `json:"topics_supported"`
 	TopicsEffective         bool              `json:"topics_effective"`
+	TopicStoreHealthy       bool              `json:"topic_store_healthy"`
+	TopicReconcilePending   bool              `json:"topic_reconcile_pending"`
 	TopicCount              int               `json:"topic_count"`
 	TopicLastError          string            `json:"topic_last_error,omitempty"`
 	Running                 bool              `json:"running"`
@@ -101,6 +103,7 @@ type Runtime struct {
 	setupMode            bool
 	generation           uint64
 	topics               *topicStore
+	topicRepairScheduled bool
 	approvalMessages     *approvalMessageStore
 	notificationMessages map[int64]map[string]int64
 	logsMiniApp          *LogsMiniAppRuntime
@@ -419,8 +422,7 @@ func (runtime *Runtime) SendChatActionToTopic(ctx context.Context, chatID int64,
 				if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
 					return err
 				}
-				topics.delete(chatID, role)
-				runtime.setTopicError("telegram managed topic is missing; using General chat")
+				runtime.invalidateManagedTopic(chatID, role)
 			}
 		}
 	}
@@ -469,8 +471,7 @@ func (runtime *Runtime) SendDocumentToTopic(ctx context.Context, chatID int64, r
 				if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
 					return err
 				}
-				topics.delete(chatID, role)
-				runtime.setTopicError("telegram managed topic is missing; using General chat")
+				runtime.invalidateManagedTopic(chatID, role)
 			}
 		}
 	}
@@ -498,8 +499,7 @@ func (runtime *Runtime) SendRichMessageToTopic(ctx context.Context, chatID int64
 				if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
 					return 0, err
 				}
-				topics.delete(chatID, role)
-				runtime.setTopicError("telegram managed topic is missing; using General chat")
+				runtime.invalidateManagedTopic(chatID, role)
 			}
 		}
 	}
@@ -868,8 +868,7 @@ func (runtime *Runtime) SendNotification(ctx context.Context, message notificati
 						continue
 					}
 					if kind := transportErrorKind(err); kind == transportErrorBadRequest || kind == transportErrorNotFound {
-						topics.delete(userID, role)
-						runtime.setTopicError("telegram managed topic is missing; using General chat")
+						runtime.invalidateManagedTopic(userID, role)
 					} else {
 						result = errors.Join(result, err)
 						continue

@@ -1094,10 +1094,16 @@ func (ui *Interface) statusOverviewPresentation(status application.StatusOvervie
 	if status.TelegramEnabled {
 		polling = effectiveState(true, status.TelegramConfigured, status.TelegramHealthy)
 	}
+	topicsState := effectiveState(status.TelegramTopicsEnabled, status.TelegramTopicsSupported, status.TelegramTopicsEffective)
+	if status.TelegramTopicsRepairing {
+		topicsState = "Repairing"
+	} else if strings.TrimSpace(status.TelegramTopicsError) != "" {
+		topicsState = "Degraded"
+	}
 	telegramRows := [][]string{
 		{"Bot", boolState(status.TelegramEnabled)},
 		{"Polling", polling},
-		{"Topics", effectiveState(status.TelegramTopicsEnabled, status.TelegramTopicsSupported, status.TelegramTopicsEffective)},
+		{"Topics", topicsState},
 		{"Logs App", effectiveState(status.LogsMiniAppEnabled, status.LogsMiniAppAvailable, status.LogsMiniAppEffective)},
 	}
 	var logsNotice *RichBlock

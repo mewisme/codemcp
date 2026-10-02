@@ -20,12 +20,13 @@ type Chat struct {
 }
 
 type Message struct {
-	MessageID      int64     `json:"message_id"`
-	From           *User     `json:"from,omitempty"`
-	Chat           Chat      `json:"chat"`
-	Text           string    `json:"text,omitempty"`
-	ReplyToMessage *Message  `json:"reply_to_message,omitempty"`
-	Document       *Document `json:"document,omitempty"`
+	MessageID       int64     `json:"message_id"`
+	MessageThreadID int       `json:"message_thread_id,omitempty"`
+	From            *User     `json:"from,omitempty"`
+	Chat            Chat      `json:"chat"`
+	Text            string    `json:"text,omitempty"`
+	ReplyToMessage  *Message  `json:"reply_to_message,omitempty"`
+	Document        *Document `json:"document,omitempty"`
 }
 
 type Document struct {

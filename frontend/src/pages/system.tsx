@@ -162,6 +162,10 @@ export function SystemPage() {
               ? "Disabled"
               : !status.telegram_topics_supported
                 ? "Enabled, unsupported"
+                : status.telegram_topics_repairing
+                  ? "Repairing"
+                  : status.telegram_topics_error
+                    ? "Degraded"
                 : status.telegram_topics_effective
                   ? "Effective"
                   : "Available, inactive"

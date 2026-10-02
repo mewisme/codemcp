@@ -765,7 +765,7 @@ func messageFromModel(message *models.Message) *Message {
 	if message == nil {
 		return nil
 	}
-	result := &Message{MessageID: int64(message.ID), Chat: chatFromModel(message.Chat), Text: message.Text}
+	result := &Message{MessageID: int64(message.ID), MessageThreadID: message.MessageThreadID, Chat: chatFromModel(message.Chat), Text: message.Text}
 	if message.From != nil {
 		user := userFromModel(*message.From)
 		result.From = &user
@@ -783,7 +783,7 @@ func messageToModel(message *Message) *models.Message {
 	if message == nil {
 		return nil
 	}
-	result := &models.Message{ID: int(message.MessageID), Chat: chatToModel(message.Chat), Text: message.Text}
+	result := &models.Message{ID: int(message.MessageID), MessageThreadID: message.MessageThreadID, Chat: chatToModel(message.Chat), Text: message.Text}
 	if message.From != nil {
 		user := userToModel(*message.From)
 		result.From = &user

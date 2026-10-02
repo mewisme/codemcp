@@ -730,6 +730,9 @@ export type StatusOverview = {
   telegram_topics_enabled: boolean
   telegram_topics_supported: boolean
   telegram_topics_effective: boolean
+  telegram_topics_store_healthy: boolean
+  telegram_topics_repairing: boolean
+  telegram_topics_error?: string
   logs_mini_app_enabled: boolean
   logs_mini_app_available: boolean
   logs_mini_app_effective: boolean

@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/notification"
@@ -15,16 +18,18 @@ import (
 type topicTestAPI struct {
 	mu sync.Mutex
 
-	nextThreadID      int
-	created           []string
-	threadSends       []string
-	richThreadScreens []Screen
-	richThreadIDs     []int
-	editedMessageIDs  []int64
-	editedScreens     []Screen
-	generalSends      []string
-	threadErr         error
-	editErr           error
+	nextThreadID        int
+	created             []string
+	threadSends         []string
+	richThreadScreens   []Screen
+	richThreadIDs       []int
+	chatActionThreadIDs []int
+	documentThreadIDs   []int
+	editedMessageIDs    []int64
+	editedScreens       []Screen
+	generalSends        []string
+	threadErr           error
+	editErr             error
 }
 
 func (api *topicTestAPI) GetMe(context.Context) (User, error) {
@@ -58,15 +63,32 @@ func (api *topicTestAPI) SendMessageThread(_ context.Context, chatID int64, thre
 
 func (api *topicTestAPI) SendRichMessageThread(_ context.Context, _ int64, threadID int, screen Screen, _ RichMessageOptions) (int64, error) {
 	api.mu.Lock()
+	defer api.mu.Unlock()
+	if api.threadErr != nil {
+		return 0, api.threadErr
+	}
 	api.richThreadIDs = append(api.richThreadIDs, threadID)
 	api.richThreadScreens = append(api.richThreadScreens, screen)
-	api.mu.Unlock()
 	return 1, nil
 }
 
-func (*topicTestAPI) SendChatActionThread(context.Context, int64, int, string) error { return nil }
+func (api *topicTestAPI) SendChatActionThread(_ context.Context, _ int64, threadID int, _ string) error {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if api.threadErr != nil {
+		return api.threadErr
+	}
+	api.chatActionThreadIDs = append(api.chatActionThreadIDs, threadID)
+	return nil
+}
 
-func (*topicTestAPI) SendDocumentThread(context.Context, int64, int, DocumentUpload) error {
+func (api *topicTestAPI) SendDocumentThread(_ context.Context, _ int64, threadID int, _ DocumentUpload) error {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if api.threadErr != nil {
+		return api.threadErr
+	}
+	api.documentThreadIDs = append(api.documentThreadIDs, threadID)
 	return nil
 }
 
@@ -159,6 +181,106 @@ func TestTopicReconcileCreatesStableManagedTopicsOnce(t *testing.T) {
 		if got := reloaded.get(42, managed.Role); got != runtime.topics.get(42, managed.Role) {
 			t.Fatalf("reloaded role=%q thread=%d want=%d", managed.Role, got, runtime.topics.get(42, managed.Role))
 		}
+	}
+}
+
+func TestTopicDeliveryPrimitivesUseManagedRoleThreads(t *testing.T) {
+	api := &topicTestAPI{}
+	store := newTopicStore(t.TempDir())
+	roles := []TopicRole{TopicRequests, TopicCompletions, TopicRuntime, TopicLogs}
+	for index, role := range roles {
+		if err := store.put(42, role, 200+index); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtime := &Runtime{
+		api: api, topics: store,
+		health: Health{Running: true, TopicsEffective: true},
+	}
+	for _, role := range roles {
+		if _, err := runtime.SendRichMessageToTopic(t.Context(), 42, role, Screen{Text: "message"}, RichMessageOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		if err := runtime.SendChatActionToTopic(t.Context(), 42, role, "typing"); err != nil {
+			t.Fatal(err)
+		}
+		if err := runtime.SendDocumentToTopic(t.Context(), 42, role, DocumentUpload{FileName: "artifact.txt", Data: []byte("x")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []int{200, 201, 202, 203}
+	if fmt.Sprint(api.richThreadIDs) != fmt.Sprint(want) {
+		t.Fatalf("rich threads=%v want=%v", api.richThreadIDs, want)
+	}
+	if fmt.Sprint(api.chatActionThreadIDs) != fmt.Sprint(want) {
+		t.Fatalf("chat action threads=%v want=%v", api.chatActionThreadIDs, want)
+	}
+	if fmt.Sprint(api.documentThreadIDs) != fmt.Sprint(want) {
+		t.Fatalf("document threads=%v want=%v", api.documentThreadIDs, want)
+	}
+}
+
+func TestTopicReconcilePrunesRemovedAllowlistUsersOnly(t *testing.T) {
+	api := &topicTestAPI{nextThreadID: 500}
+	root := t.TempDir()
+	store := newTopicStore(root)
+	for _, userID := range []int64{42, 43} {
+		for index, role := range []TopicRole{TopicRequests, TopicCompletions, TopicRuntime, TopicLogs} {
+			if err := store.put(userID, role, int(userID)*10+index); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	runtime := &Runtime{api: api, topics: store}
+	cfg := config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true}
+	runtime.reconcileTopicsBounded(t.Context(), api, cfg, true)
+	for _, role := range []TopicRole{TopicRequests, TopicCompletions, TopicRuntime, TopicLogs} {
+		if store.get(42, role) == 0 {
+			t.Fatalf("authorized user's %q mapping was pruned", role)
+		}
+		if store.get(43, role) != 0 {
+			t.Fatalf("removed user's %q mapping survived allowlist reconcile", role)
+		}
+	}
+	if len(api.created) != 0 || runtime.Health().TopicCount != 4 {
+		t.Fatalf("reconcile created=%v health=%#v", api.created, runtime.Health())
+	}
+	reloaded := newTopicStore(root)
+	for _, role := range []TopicRole{TopicRequests, TopicCompletions, TopicRuntime, TopicLogs} {
+		if reloaded.get(42, role) == 0 || reloaded.get(43, role) != 0 {
+			t.Fatalf("persisted prune drift role=%q authorized=%d removed=%d", role, reloaded.get(42, role), reloaded.get(43, role))
+		}
+	}
+}
+
+func TestTopicDisableReenableRetainsOnlyAuthorizedMappings(t *testing.T) {
+	api := &topicTestAPI{}
+	store := newTopicStore(t.TempDir())
+	for index, role := range []TopicRole{TopicRequests, TopicCompletions, TopicRuntime, TopicLogs} {
+		if err := store.put(42, role, 300+index); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtime := &Runtime{
+		api: api, topics: store,
+		config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true},
+		health: Health{Enabled: true, Running: true, PollingHealthy: true, AuthorizationConfigured: true},
+	}
+	disabled := runtime.config
+	disabled.TopicsEnabled = false
+	runtime.reconcileTopicsBounded(t.Context(), api, disabled, true)
+	if runtime.Health().TopicsEffective {
+		t.Fatal("disabled topics remained effective")
+	}
+	if err := runtime.SendNotification(t.Context(), notification.Message{Kind: notification.KindApprovalPending, Title: "general"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(api.generalSends) != 1 || len(api.threadSends) != 0 {
+		t.Fatalf("disabled routing thread=%v general=%v", api.threadSends, api.generalSends)
+	}
+	runtime.reconcileTopicsBounded(t.Context(), api, runtime.config, true)
+	if !runtime.Health().TopicsEffective || len(api.created) != 0 || store.get(42, TopicRequests) != 300 {
+		t.Fatalf("re-enabled state created=%v health=%#v requests=%d", api.created, runtime.Health(), store.get(42, TopicRequests))
 	}
 }
 
@@ -373,11 +495,22 @@ func TestMissingManagedTopicFallsBackToGeneralAndInvalidatesMetadata(t *testing.
 	if len(api.generalSends) != 1 {
 		t.Fatalf("General fallback deliveries=%v", api.generalSends)
 	}
-	if got := store.get(42, TopicRequests); got != 0 {
-		t.Fatalf("stale topic metadata retained thread=%d", got)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		health := runtime.Health()
+		if store.get(42, TopicRequests) != 0 && !health.TopicReconcilePending && health.TopicCount == len(managedTopicRoles) {
+			break
+		}
+		time.Sleep(time.Millisecond)
 	}
-	if runtime.Health().TopicLastError == "" {
-		t.Fatal("missing topic was not surfaced in diagnostics")
+	if got := store.get(42, TopicRequests); got <= 0 || got == 77 {
+		t.Fatalf("missing topic was not repaired: thread=%d created=%v", got, api.created)
+	}
+	if len(api.generalSends) != 1 {
+		t.Fatalf("repair duplicated current notification in General: %v", api.generalSends)
+	}
+	if health := runtime.Health(); health.TopicReconcilePending || health.TopicLastError != "" || health.TopicCount != len(managedTopicRoles) {
+		t.Fatalf("repaired topic health=%#v", health)
 	}
 }
 
@@ -423,5 +556,54 @@ func TestUnsupportedTopicCapabilityKeepsGeneralBaseline(t *testing.T) {
 	}
 	if len(api.generalSends) != 1 || len(api.threadSends) != 0 {
 		t.Fatalf("unsupported routing thread=%v general=%v", api.threadSends, api.generalSends)
+	}
+}
+
+func TestCorruptTopicStoreBlocksAutomaticCreationUntilExplicitRepair(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "telegram-topics.json")
+	if err := os.WriteFile(path, []byte(`{"topics":{"42":{"requests":0}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	api := &topicTestAPI{nextThreadID: 700}
+	runtime := &Runtime{
+		root: root, api: api,
+		config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true},
+	}
+	runtime.reconcileTopicsBounded(t.Context(), api, runtime.config, true)
+	health := runtime.Health()
+	if health.TopicsEffective || health.TopicStoreHealthy || health.TopicLastError == "" || len(api.created) != 0 {
+		t.Fatalf("corrupt store silently reconciled health=%#v created=%v", health, api.created)
+	}
+	if err := runtime.RepairTopics(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	health = runtime.Health()
+	if !health.TopicsEffective || !health.TopicStoreHealthy || health.TopicLastError != "" || health.TopicCount != len(managedTopicRoles) {
+		t.Fatalf("repaired corrupt store health=%#v", health)
+	}
+	if len(api.created) != len(managedTopicRoles) {
+		t.Fatalf("explicit repair created=%v", api.created)
+	}
+	if _, err := os.Stat(path + ".corrupt"); err != nil {
+		t.Fatalf("corrupt metadata was not quarantined: %v", err)
+	}
+}
+
+func TestIncomingThreadIDNeverChangesAuthorizationOrManagedRouting(t *testing.T) {
+	cfg := config.TelegramConfig{AllowedUserIDs: []int64{42}}
+	for _, threadID := range []int{0, 123, 999999} {
+		authorized := Update{Message: &Message{MessageID: 1, MessageThreadID: threadID, From: &User{ID: 42}, Chat: Chat{ID: 42, Type: "private"}}}
+		if !authorizedUpdate(cfg, authorized) {
+			t.Fatalf("authorized private message rejected for thread=%d", threadID)
+		}
+		unauthorized := Update{Message: &Message{MessageID: 2, MessageThreadID: threadID, From: &User{ID: 43}, Chat: Chat{ID: 43, Type: "private"}}}
+		if authorizedUpdate(cfg, unauthorized) {
+			t.Fatalf("thread=%d granted unauthorized user access", threadID)
+		}
+		callback := Update{CallbackQuery: &CallbackQuery{ID: "cb", From: User{ID: 42}, Message: &Message{MessageID: 3, MessageThreadID: threadID, Chat: Chat{ID: 42, Type: "private"}}}}
+		if !authorizedUpdate(cfg, callback) {
+			t.Fatalf("authorized callback rejected for thread=%d", threadID)
+		}
 	}
 }

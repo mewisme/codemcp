@@ -204,7 +204,7 @@ func TestTelegramDoctorProjectsTransportNavigationAndMiniAppHealth(t *testing.T)
 		Running: true, PollingHealthy: true,
 		DeliveryDegraded: true, DeliveryRateLimited: true, DeliveryFailures: 3, DeliveryRetryAfterMS: 1250,
 		RichMessageSupported: true, RichMessageFallback: true,
-		TopicsSupported: true, TopicsEffective: true,
+		TopicsConfigured: true, TopicsSupported: true, TopicsEffective: true, TopicStoreHealthy: true, TopicCount: 4,
 		CommandsPublished: true, CommandCount: 14, MenuReconciled: true, MenuDriftCount: 2,
 		AllowedUpdateCount: 2, MaxFileTransferBytes: 20 << 20,
 		LogsMiniAppEnabled: true, LogsMiniAppState: "ready", LogsMiniAppDependency: true,
@@ -216,7 +216,7 @@ func TestTelegramDoctorProjectsTransportNavigationAndMiniAppHealth(t *testing.T)
 	flags := stringSet(flagIDs(component))
 	for _, id := range []string{
 		"delivery_degraded", "delivery_rate_limited", "rich_message_supported", "rich_message_fallback",
-		"topics_supported", "topics_effective", "commands_published", "menu_reconciled",
+		"topics_configured", "topics_supported", "topics_effective", "topic_store_healthy", "topic_reconcile_pending", "commands_published", "menu_reconciled",
 		"logs_mini_app_listener_ready", "logs_mini_app_tunnel_running", "logs_mini_app_ingress_ready",
 	} {
 		if !flags[id] {
@@ -224,10 +224,35 @@ func TestTelegramDoctorProjectsTransportNavigationAndMiniAppHealth(t *testing.T)
 		}
 	}
 	metrics := stringSet(metricIDs(component))
-	for _, id := range []string{"delivery_failures", "delivery_retry_after_ms", "command_count", "menu_drift", "allowed_updates", "max_file_transfer_bytes", "logs_mini_app_generation"} {
+	for _, id := range []string{"delivery_failures", "delivery_retry_after_ms", "command_count", "menu_drift", "allowed_updates", "max_file_transfer_bytes", "topic_count", "logs_mini_app_generation"} {
 		if !metrics[id] {
 			t.Fatalf("telegram doctor missing metric %q: %#v", id, component.Metrics)
 		}
+	}
+}
+
+func TestTelegramDoctorTreatsUnsupportedTopicsAsCapabilityAbsenceNotFailure(t *testing.T) {
+	component := telegramDoctorComponent(TelegramHealthSnapshot{
+		Enabled: true, TokenConfigured: true, AuthorizationConfigured: true,
+		Running: true, PollingHealthy: true,
+		TopicsConfigured: true, TopicsSupported: false, TopicsEffective: false, TopicStoreHealthy: true,
+		CommandsPublished: true, MenuReconciled: true,
+	})
+	if component.State != doctor.StateHealthy || component.Severity != doctor.SeverityInfo {
+		t.Fatalf("unsupported topics degraded Telegram baseline: %#v", component)
+	}
+}
+
+func TestTelegramDoctorSurfacesTopicReconciliationFailure(t *testing.T) {
+	component := telegramDoctorComponent(TelegramHealthSnapshot{
+		Enabled: true, TokenConfigured: true, AuthorizationConfigured: true,
+		Running: true, PollingHealthy: true,
+		TopicsConfigured: true, TopicsSupported: true, TopicsEffective: false,
+		TopicStoreHealthy: false, TopicLastError: "telegram topic metadata is corrupt; explicit repair is required",
+		CommandsPublished: true, MenuReconciled: true,
+	})
+	if component.State != doctor.StateDegraded || component.Severity != doctor.SeverityWarning || component.Summary != "Telegram topic routing requires attention" {
+		t.Fatalf("topic reconciliation failure component=%#v", component)
 	}
 }
 

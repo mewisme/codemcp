@@ -21,6 +21,8 @@ describe("SystemPage", () => {
       telegram_topics_enabled: true,
       telegram_topics_supported: true,
       telegram_topics_effective: true,
+      telegram_topics_store_healthy: true,
+      telegram_topics_repairing: false,
       logs_mini_app_enabled: true,
       logs_mini_app_available: true,
       logs_mini_app_effective: true,
