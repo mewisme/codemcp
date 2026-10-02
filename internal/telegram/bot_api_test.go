@@ -375,7 +375,7 @@ func TestBotAPIAdapterUsesTypedMessageEditAndCallbackMethods(t *testing.T) {
 	if seen["sendrichmessage"]["chat_id"] != "42" || seen["sendrichmessage"]["rich_message"] == "" || !strings.Contains(seen["sendrichmessage"]["reply_markup"], "signed") {
 		t.Fatalf("sendRichMessage form=%#v", seen["sendrichmessage"])
 	}
-	if seen["editmessagetext"]["message_id"] != "9" || seen["editmessagetext"]["rich_message"] == "" {
+	if seen["editmessagetext"]["message_id"] != "9" || seen["editmessagetext"]["text"] != "<b>Hello</b>" || seen["editmessagetext"]["parse_mode"] != "HTML" || seen["editmessagetext"]["rich_message"] == "" {
 		t.Fatalf("editMessageText form=%#v", seen["editmessagetext"])
 	}
 	if seen["answercallbackquery"]["callback_query_id"] != "callback-1" || seen["answercallbackquery"]["show_alert"] != "true" {

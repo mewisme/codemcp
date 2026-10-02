@@ -456,12 +456,12 @@ func (client *apiClient) EditScreen(ctx context.Context, chatID, messageID int64
 	if messageID <= 0 || messageID > int64(^uint(0)>>1) {
 		return errors.New("telegram message id is invalid")
 	}
-	params := &telegrambot.EditMessageTextParams{ChatID: chatID, MessageID: int(messageID), ReplyMarkup: screenKeyboard(screen.Keyboard)}
+	params := &telegrambot.EditMessageTextParams{
+		ChatID: chatID, MessageID: int(messageID), Text: screenText(screen), ParseMode: models.ParseModeHTML,
+		ReplyMarkup: screenKeyboard(screen.Keyboard),
+	}
 	if rich, ok := screenRichMessage(screen); ok {
 		params.RichMessage = &rich
-	} else {
-		params.Text = screenText(screen)
-		params.ParseMode = models.ParseModeHTML
 	}
 	_, err := client.bot.EditMessageText(nonNilContext(ctx), params)
 	if err != nil && params.RichMessage != nil && richMessageFallbackAllowed(err) {
