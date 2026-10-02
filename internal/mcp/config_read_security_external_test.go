@@ -31,7 +31,9 @@ func TestConfigReadHTTPNeverReturnsManagedSecretsOrUnsafeURLValues(t *testing.T)
 	cfg := config.Default()
 	cfg.HTTP.MCP.Auth.TokenHash = "configured-mcp-hash"
 	cfg.HTTP.Admin.Auth.TokenHash = "configured-admin-hash"
-	cfg.Permissions.MCPConfigRead = true
+	if !cfg.Permissions.MCPConfigRead {
+		t.Fatal("fresh config must enable bounded MCP config reads")
+	}
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +100,76 @@ func TestConfigReadHTTPNeverReturnsManagedSecretsOrUnsafeURLValues(t *testing.T)
 	}
 }
 
-func TestOrdinaryMCPSessionCannotWriteGlobalConfigWithoutOperatorOptIn(t *testing.T) {
+func TestDefaultMCPConfigWriteEligibilityStillRequiresCanonicalApproval(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(configformat.EnvConfigDir, root)
+	previous := configformat.RootPath()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
+	cfg := config.Default()
+	cfg.HTTP.MCP.Auth.TokenHash = "configured-mcp-hash"
+	cfg.HTTP.Admin.Auth.TokenHash = "configured-admin-hash"
+	if !cfg.Permissions.MCPConfigWrite {
+		t.Fatal("fresh config must enable MCP config write eligibility")
+	}
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	runtime := tools.NewRuntime()
+	provider := application.NewMCPConfigReadService()
+	runtime.SetConfigSetApprovalProvider(provider)
+	runtime.SetConfigSetApplyProvider(provider)
+	workspace, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := mcp.NewSDKHTTPHandler(runtime, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(handler)
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "config-write-approval-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, &sdkmcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", DisableStandaloneSSE: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
+		Name: mcpconfigwire.SetToolName,
+		Arguments: map[string]any{"workspace_id": workspace.ID, "changes": []any{
+			map[string]any{"key": "http.mcp.port", "value": "41001"},
+		}},
+	})
+	if err != nil || !result.IsError {
+		t.Fatalf("pre-approval MCP write result=%#v err=%v", result, err)
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "approval_required") || strings.Contains(string(data), string(mcpconfigwire.ErrorAccessDenied)) {
+		t.Fatalf("default-eligible MCP write did not require approval: %s", data)
+	}
+	if requests := runtime.Approvals.List(approval.Filter{}); len(requests) != 0 {
+		t.Fatalf("approval challenge unexpectedly created a review request automatically: %#v", requests)
+	}
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.HTTP.MCP.Port != cfg.HTTP.MCP.Port {
+		t.Fatalf("pre-approval MCP write mutated config: before=%d after=%d", cfg.HTTP.MCP.Port, loaded.HTTP.MCP.Port)
+	}
+}
+
+func TestExplicitMCPConfigWriteOptOutRemainsImmediate(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv(configformat.EnvConfigDir, root)
 	previous := configformat.RootPath()
@@ -122,45 +193,21 @@ func TestOrdinaryMCPSessionCannotWriteGlobalConfigWithoutOperatorOptIn(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := mcp.NewSDKHTTPHandler(runtime, "", false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := httptest.NewServer(handler)
-	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "config-write-denial-test", Version: "1.0.0"}, nil)
-	session, err := client.Connect(ctx, &sdkmcp.StreamableClientTransport{Endpoint: server.URL + "/mcp", DisableStandaloneSSE: true}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer session.Close()
-
-	result, err := session.CallTool(ctx, &sdkmcp.CallToolParams{
-		Name: mcpconfigwire.SetToolName,
-		Arguments: map[string]any{"workspace_id": workspace.ID, "changes": []any{
-			map[string]any{"key": "http.mcp.port", "value": "41001"},
-		}},
+	result, err := runtime.Call(tools.WithApprovalCorrelation(tools.WithCallSource(t.Context(), "http"), "opt-out", "opt-out-request"), mcpconfigwire.SetToolName, map[string]any{
+		"workspace_id": workspace.ID,
+		"changes":      []any{map[string]any{"key": "http.mcp.port", "value": "41001"}},
 	})
 	if err != nil || !result.IsError {
-		t.Fatalf("ordinary MCP write result=%#v err=%v", result, err)
+		t.Fatalf("opt-out result=%#v err=%v", result, err)
 	}
 	data, err := json.Marshal(result)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), string(mcpconfigwire.ErrorAccessDenied)) || strings.Contains(string(data), "approval_required") {
-		t.Fatalf("ordinary MCP write denial=%s", data)
+		t.Fatalf("opt-out denial=%s", data)
 	}
 	if requests := runtime.Approvals.List(approval.Filter{}); len(requests) != 0 {
-		t.Fatalf("denied ordinary MCP write created approval state: %#v", requests)
-	}
-	loaded, err := config.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.HTTP.MCP.Port != cfg.HTTP.MCP.Port {
-		t.Fatalf("denied ordinary MCP write mutated config: before=%d after=%d", cfg.HTTP.MCP.Port, loaded.HTTP.MCP.Port)
+		t.Fatalf("opt-out created approval state: %#v", requests)
 	}
 }

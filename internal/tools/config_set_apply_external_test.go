@@ -258,6 +258,38 @@ func TestConfigSetInvalidBatchIsRejectedBeforeApproval(t *testing.T) {
 	}
 }
 
+func TestConfigSetDefaultEligibilityCannotBypassProtectedSettings(t *testing.T) {
+	harness := newRealConfigSetHarness(t)
+	for _, test := range []struct {
+		name string
+		key  string
+		code mcpconfigwire.ErrorCode
+	}{
+		{name: "managed-secret", key: "tunnel.api_key", code: mcpconfigwire.ErrorSecretWriteForbidden},
+		{name: "generated-secret", key: "http.mcp.auth.token", code: mcpconfigwire.ErrorSecretWriteForbidden},
+		{name: "authorization-derived", key: "telegram.allowed_user_ids", code: mcpconfigwire.ErrorUnsupportedSetting},
+		{name: "privacy-control", key: "telemetry.enabled", code: mcpconfigwire.ErrorUnsupportedSetting},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: test.key, Value: "unsafe"})
+			result, err := harness.runtime.Call(configApprovalContext("protected-"+test.name, "protected-request"), mcpconfigwire.SetToolName, args)
+			if err != nil || !result.IsError || harness.provider.applies.Load() != 0 {
+				t.Fatalf("protected setting result=%#v err=%v applies=%d", result, err, harness.provider.applies.Load())
+			}
+			data, err := json.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(data), string(test.code)) || strings.Contains(string(data), "approval_required") {
+				t.Fatalf("protected setting code=%s result=%s", test.code, data)
+			}
+			if requests := harness.runtime.Approvals.List(approval.Filter{}); len(requests) != 0 {
+				t.Fatalf("protected setting created approval state: %#v", requests)
+			}
+		})
+	}
+}
+
 func TestConfigSetClaimedApprovalSurvivesDisablingHTTPListener(t *testing.T) {
 	harness := newRealConfigSetHarness(t)
 	cfg, err := config.Load()
