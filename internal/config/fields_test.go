@@ -11,8 +11,8 @@ import (
 
 func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 	cfg := Default()
-	if cfg.Notifications.Completion.Enabled || !cfg.Notifications.Completion.DesktopEnabled || cfg.Notifications.Completion.TelegramEnabled {
-		t.Fatalf("completion notification defaults are not safe opt-in: %#v", cfg.Notifications.Completion)
+	if !cfg.Notifications.Completion.Enabled || !cfg.Notifications.Completion.DesktopEnabled || !cfg.Notifications.Completion.TelegramEnabled {
+		t.Fatalf("completion notification defaults are not enabled: %#v", cfg.Notifications.Completion)
 	}
 	cfg.HTTP.MCP.Auth.Enabled = false
 	cfg.HTTP.Admin.Auth.Enabled = false
@@ -52,6 +52,7 @@ func TestInteractiveFieldIsRemoved(t *testing.T) {
 
 func TestFieldSetValueValidationIsTransactional(t *testing.T) {
 	cfg := Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.TokenHash = "mcp"
 	cfg.HTTP.Admin.Auth.TokenHash = "admin"
 	original := cfg.HTTP.MCP.Port

@@ -22,6 +22,7 @@ func TestConfigGetKeepsManagedSecretsOutOfResultsAndActivity(t *testing.T) {
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 
 	cfg := config.Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.TokenHash = "configured-mcp-hash"
 	cfg.HTTP.Admin.Auth.TokenHash = "configured-admin-hash"
 	cfg.Permissions.MCPConfigRead = true

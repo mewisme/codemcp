@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/config"
 	currentformat "go.mewis.me/codemcp/internal/configformat"
 )
 
@@ -99,6 +100,57 @@ func TestTransformReleasedFormatsAndEnabledAlias(t *testing.T) {
 				t.Fatalf("caveman = %#v", value["caveman"])
 			}
 		})
+	}
+}
+
+func TestTransformPreservesExplicitDefaultOnFalseAndLeavesAbsentNewFields(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	root := t.TempDir()
+	source := filepath.Join(root, "released-config.json")
+	destination := filepath.Join(root, "staged", "config.json")
+	fixture := "{\n" +
+		"  \"features\": {\n" +
+		"    \"ponytail\": {\"active\": true, \"mode\": \"full\"},\n" +
+		"    \"caveman\": {\"active\": true, \"mode\": \"full\"}\n" +
+		"  },\n" +
+		"  \"telegram\": {\"enabled\": false, \"topics_enabled\": false, \"logs_mini_app\": {\"enabled\": false}},\n" +
+		"  \"approval\": {\"semantic\": {\"enabled\": false}},\n" +
+		"  \"permissions\": {\"mcp_config_read\": false, \"mcp_config_write\": false},\n" +
+		"  \"notifications\": {\n" +
+		"    \"approval\": {\"enabled\": false, \"telegram_enabled\": false},\n" +
+		"    \"completion\": {\"enabled\": false, \"telegram_enabled\": false}\n" +
+		"  },\n" +
+		"  \"tunnel\": {\"enabled\": false}\n" +
+		"}\n"
+	if err := os.WriteFile(source, []byte(fixture), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Transform(Input{SourcePath: source, DestinationPath: destination}); err != nil {
+		t.Fatal(err)
+	}
+	raw := decodeJSONFile(t, destination)
+	integrations := raw["integrations"].(map[string]any)
+	if _, exists := integrations["typesafe"]; exists {
+		t.Fatalf("migration synthesized an absent TypeSafe preference: %#v", integrations)
+	}
+	loaded, err := config.LoadAt(filepath.Dir(destination))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range config.DefaultOnCapabilityContracts() {
+		value, err := config.RawValue(loaded, contract.Key)
+		if err != nil {
+			t.Fatalf("%s: %v", contract.Key, err)
+		}
+		if contract.Key == "integrations.typesafe.enabled" {
+			if value != "true" {
+				t.Fatalf("absent %s = %q, want new default true", contract.Key, value)
+			}
+			continue
+		}
+		if value != "false" {
+			t.Fatalf("migrated explicit %s = %q, want false", contract.Key, value)
+		}
 	}
 }
 

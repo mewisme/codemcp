@@ -190,26 +190,26 @@ func Default() Config {
 			}},
 			Admin: AdminHTTPConfig{Enabled: true, Port: 37422, Auth: HTTPAuthConfig{Enabled: true}},
 		},
-		Permissions: PermissionsConfig{AllowDirs: []string{}},
+		Permissions: PermissionsConfig{AllowDirs: []string{}, MCPConfigRead: true, MCPConfigWrite: true},
 		Shell:       ShellConfig{Path: []string{}},
 		Notifications: NotificationsConfig{
 			Approval: ApprovalNotificationConfig{
-				Enabled: false, Pending: true, Resolved: true, DesktopEnabled: true, TelegramEnabled: false,
+				Enabled: true, Pending: true, Resolved: true, DesktopEnabled: true, TelegramEnabled: true,
 			},
-			Completion: CompletionNotificationConfig{Enabled: false, DesktopEnabled: true, TelegramEnabled: false},
+			Completion: CompletionNotificationConfig{Enabled: true, DesktopEnabled: true, TelegramEnabled: true},
 		},
 		Approval: ApprovalConfig{
 			Semantic: SemanticApprovalConfig{
-				Enabled: false, Provider: "typesafe", TimeoutMS: 1500, MinimumConfidence: 0.8,
+				Enabled: true, Provider: "typesafe", TimeoutMS: 1500, MinimumConfidence: 0.8,
 				FailMode: "require_approval", LowAction: "allow", MediumAction: "require_approval",
 				HighAction: "require_approval", CriticalAction: "deny",
 			},
 		},
 		Explain:      ExplainConfig{Mode: ExplainOff},
 		Telemetry:    TelemetryConfig{Enabled: true},
-		Telegram:     TelegramConfig{Enabled: false, AllowedUserIDs: []int64{}, TopicsEnabled: false, LogsMiniApp: TelegramLogsMiniAppConfig{Enabled: false}},
+		Telegram:     TelegramConfig{Enabled: true, AllowedUserIDs: []int64{}, TopicsEnabled: true, LogsMiniApp: TelegramLogsMiniAppConfig{Enabled: true}},
 		Integrations: integrations.Default(),
-		Tunnel:       tunnel.Config{Enabled: false, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}},
+		Tunnel:       tunnel.Config{Enabled: true, Admin: tunnel.AdminConfig{Enabled: true, EnabledSet: true}},
 	}
 }
 

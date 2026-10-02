@@ -68,7 +68,7 @@ func Default() Config {
 		Caveman:   Caveman{Active: true, Mode: "full"},
 		RTK:       RTK{Enabled: true},
 		CodeGraph: CodeGraph{Enabled: true},
-		TypeSafe:  TypeSafe{Enabled: false, Model: "jev-latest", TimeoutMS: 3000},
+		TypeSafe:  TypeSafe{Enabled: true, Model: "jev-latest", TimeoutMS: 3000},
 	}
 }
 

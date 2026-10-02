@@ -1370,6 +1370,7 @@ func isolateSettingServiceConfig(t *testing.T) string {
 		_ = configformat.SetRootPath(previous)
 	})
 	cfg := config.Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
 	cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	if err := config.Save(cfg); err != nil {

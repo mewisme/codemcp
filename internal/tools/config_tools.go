@@ -44,7 +44,7 @@ func RegisterConfigTools(registry *Registry, runtime *Runtime) {
 	registry.MustRegister(mcpconfigwire.ListToolName, Schema{
 		Name:         mcpconfigwire.ListToolName,
 		Title:        "List Configuration",
-		Description:  "List the bounded, agent-safe projection of global CodeMCP settings. Requires explicit operator opt-in and never returns managed secret values.",
+		Description:  "List the bounded, agent-safe projection of global CodeMCP settings when operator-controlled read eligibility is enabled. Never returns managed secret values.",
 		InputSchema:  mcpconfigwire.ListInputSchema,
 		OutputSchema: mcpconfigwire.ListOutputSchema,
 		Annotations:  ToolAnnotations(RiskRead),
@@ -52,7 +52,7 @@ func RegisterConfigTools(registry *Registry, runtime *Runtime) {
 	registry.MustRegister(mcpconfigwire.GetToolName, Schema{
 		Name:         mcpconfigwire.GetToolName,
 		Title:        "Get Configuration Setting",
-		Description:  "Read one agent-safe global CodeMCP setting. Requires explicit operator opt-in and returns configured-state metadata instead of managed secret values.",
+		Description:  "Read one agent-safe global CodeMCP setting when operator-controlled read eligibility is enabled. Returns configured-state metadata instead of managed secret values.",
 		InputSchema:  mcpconfigwire.GetInputSchema,
 		OutputSchema: mcpconfigwire.GetOutputSchema,
 		Annotations:  ToolAnnotations(RiskRead),

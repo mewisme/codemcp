@@ -213,6 +213,47 @@ func TestExportAndImportKeepLLMProviderStateSecretFree(t *testing.T) {
 	}
 }
 
+func TestImportPreservesExplicitDefaultOnDisables(t *testing.T) {
+	cfg := config.Default()
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
+	for _, contract := range config.DefaultOnCapabilityContracts() {
+		if err := config.SetValue(&cfg, contract.Key, "false"); err != nil {
+			t.Fatalf("disable %s: %v", contract.Key, err)
+		}
+	}
+	data, err := configformat.Marshal(configformat.JSON, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(t.TempDir(), "portable-default-on.json")
+	writeEnvelopeFile(t, source, Bundle{
+		Version:      Version,
+		CreatedAt:    time.Now().UTC(),
+		Source:       currentPlatform(),
+		SecretPolicy: SecretPolicyExcluded,
+		Files:        []File{{Path: "config.json", Data: data}},
+	})
+	target := filepath.Join(t.TempDir(), "imported")
+	if _, err := Import(target, source, ImportOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.LoadAt(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contract := range config.DefaultOnCapabilityContracts() {
+		value, err := config.RawValue(loaded, contract.Key)
+		if err != nil {
+			t.Fatalf("%s: %v", contract.Key, err)
+		}
+		if value != "false" {
+			t.Fatalf("imported %s = %q, want false", contract.Key, value)
+		}
+	}
+}
+
 func TestExportRequiresCanonicalConfigJSON(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "config.toml"), []byte("[server]\nport = 37421\n"), 0600); err != nil {
@@ -597,6 +638,7 @@ func TestValidateEnvelopeRejectsSensitiveState(t *testing.T) {
 
 func validConfig() config.Config {
 	cfg := config.Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.TokenHash = "mcp-hash"
 	cfg.HTTP.Admin.Auth.TokenHash = "admin-hash"
 	return cfg

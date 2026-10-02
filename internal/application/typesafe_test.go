@@ -44,18 +44,18 @@ func TestTypeSafeStatusMutationAndProbeAreExplicit(t *testing.T) {
 	t.Setenv("TYPESAFE_API_KEY", "ignored-environment-secret")
 
 	status, err := service.Status(t.Context())
-	if err != nil || status.State != TypeSafeDisabled || status.APIKeyConfigured {
+	if err != nil || !status.Enabled || status.State != TypeSafeMisconfigured || status.APIKeyConfigured {
 		t.Fatalf("initial status=%#v err=%v", status, err)
 	}
 	if _, err := service.Probe(t.Context()); err == nil {
-		t.Fatal("disabled TypeSafe probe unexpectedly succeeded")
+		t.Fatal("unconfigured TypeSafe probe unexpectedly succeeded")
 	}
 	doctor, err := service.Doctor(t.Context(), false)
 	if err != nil || len(doctor.Checks) != 2 || doctor.Probe != nil || calls.Load() != 0 {
 		t.Fatalf("local doctor=%#v err=%v calls=%d", doctor, err, calls.Load())
 	}
 	if calls.Load() != 0 {
-		t.Fatalf("disabled TypeSafe reached provider: calls=%d", calls.Load())
+		t.Fatalf("unconfigured TypeSafe reached provider: calls=%d", calls.Load())
 	}
 	if _, err := service.Enable(t.Context()); err != nil {
 		t.Fatal(err)
@@ -124,7 +124,7 @@ func TestTypeSafeCanonicalOperationsAreBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	status, ok := result.Value.(TypeSafeStatus)
-	if !ok || status.State != TypeSafeDisabled {
+	if !ok || !status.Enabled || status.State != TypeSafeMisconfigured {
 		t.Fatalf("status result=%#v", result.Value)
 	}
 	result, err = dispatcher.Dispatch(context.Background(), DispatchRequest{Operation: capability.IntegrationTypeSafeDoctor, Input: TypeSafeDoctorInput{Probe: false}})
@@ -167,6 +167,7 @@ func TestTypeSafeSettingServiceRejectsMixedSecretTransaction(t *testing.T) {
 
 func typeSafeTestConfig() config.Config {
 	cfg := config.Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
 	cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	return cfg

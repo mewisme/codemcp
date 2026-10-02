@@ -4,10 +4,11 @@ import "testing"
 
 func TestSemanticApprovalDefaultsAndFieldMutation(t *testing.T) {
 	cfg := Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.TokenHash = "test-mcp-hash"
 	cfg.HTTP.Admin.Auth.TokenHash = "test-admin-hash"
 	got := cfg.Approval.Semantic
-	if got.Enabled || got.Provider != "typesafe" || got.TimeoutMS != 1500 || got.MinimumConfidence != 0.8 ||
+	if !got.Enabled || got.Provider != "typesafe" || got.TimeoutMS != 1500 || got.MinimumConfidence != 0.8 ||
 		got.FailMode != "require_approval" || got.LowAction != "allow" || got.MediumAction != "require_approval" ||
 		got.HighAction != "require_approval" || got.CriticalAction != "deny" {
 		t.Fatalf("semantic approval defaults=%#v", got)

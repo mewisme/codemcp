@@ -51,6 +51,7 @@ func newConfigApprovalHarness(t *testing.T) *configApprovalHarness {
 	}
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 	cfg := config.Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
 	cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	cfg.Permissions.MCPConfigWrite = true
@@ -257,6 +258,7 @@ func TestConfigSetApprovalRejectsChangedOrderAndStaleConfig(t *testing.T) {
 			t.Fatal(err)
 		}
 		cfg := config.Default()
+		cfg.Tunnel.Enabled = false
 		cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
 		cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 		cfg.Permissions.MCPConfigWrite = true

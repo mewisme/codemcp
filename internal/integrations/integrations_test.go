@@ -9,7 +9,7 @@ import (
 
 func TestDefaultActivatesFirstPartyIntegrations(t *testing.T) {
 	value := Default()
-	if !value.Ponytail.Active || value.Ponytail.Mode != "full" || !value.Caveman.Active || value.Caveman.Mode != "full" || !value.RTK.Enabled || value.RTK.Path != "" || !value.CodeGraph.Enabled || value.CodeGraph.Path != "" {
+	if !value.Ponytail.Active || value.Ponytail.Mode != "full" || !value.Caveman.Active || value.Caveman.Mode != "full" || !value.RTK.Enabled || value.RTK.Path != "" || !value.CodeGraph.Enabled || value.CodeGraph.Path != "" || !value.TypeSafe.Enabled || value.TypeSafe.Model != "jev-latest" || value.TypeSafe.TimeoutMS != 3000 {
 		t.Fatalf("default integrations = %#v", value)
 	}
 }

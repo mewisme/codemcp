@@ -17,6 +17,7 @@ import (
 
 func TestValidateRequiresAuthTokens(t *testing.T) {
 	cfg := Default()
+	cfg.Tunnel.Enabled = false
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected missing auth token validation error")
 	}
@@ -29,6 +30,7 @@ func TestValidateRequiresAuthTokens(t *testing.T) {
 
 func TestValidateRequiresAtLeastOneMCPTransport(t *testing.T) {
 	cfg := Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.Enabled = false
 	cfg.HTTP.Admin.Auth.Enabled = false
 	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
@@ -71,6 +73,7 @@ func TestValidateNetworkExposureRequiresAuth(t *testing.T) {
 	} {
 		t.Run(string(exposure.Mode), func(t *testing.T) {
 			cfg := Default()
+			cfg.Tunnel.Enabled = false
 			cfg.HTTP.Exposure = exposure
 			cfg.HTTP.Security.AllowInsecure = true
 			cfg.HTTP.MCP.Auth.TokenHash = "mcp"
@@ -107,6 +110,7 @@ func TestValidateNetworkExposureRequiresAuth(t *testing.T) {
 
 func TestValidateNetworkExposureRequiresExplicitInsecureHTTPOptIn(t *testing.T) {
 	cfg := Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.Exposure = ExposureConfig{Mode: ExposureAll, Interfaces: []string{}}
 	cfg.HTTP.MCP.Auth.TokenHash = "mcp"
 	cfg.HTTP.Admin.Auth.TokenHash = "admin"
@@ -121,6 +125,7 @@ func TestValidateNetworkExposureRequiresExplicitInsecureHTTPOptIn(t *testing.T) 
 
 func TestValidateUnauthenticatedLoopbackRequiresAcknowledgement(t *testing.T) {
 	cfg := Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.Enabled = false
 	cfg.HTTP.Admin.Auth.Enabled = false
 	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "allow_unauthenticated_loopback") {
@@ -139,6 +144,7 @@ func TestValidateUnauthenticatedLoopbackRequiresAcknowledgement(t *testing.T) {
 
 func TestValidateUnauthenticatedLoopbackAppliesPerEnabledEndpoint(t *testing.T) {
 	cfg := Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.TokenHash = "mcp"
 	cfg.HTTP.Admin.Auth.Enabled = false
 	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "allow_unauthenticated_loopback") {
@@ -538,6 +544,7 @@ func TestDefaultIntegrationsActive(t *testing.T) {
 
 func TestValidatePonytailDefaultMode(t *testing.T) {
 	cfg := Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.Enabled = false
 	cfg.HTTP.Admin.Auth.Enabled = false
 	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
@@ -557,6 +564,7 @@ func TestValidatePonytailDefaultMode(t *testing.T) {
 
 func TestValidateCavemanDefaultMode(t *testing.T) {
 	cfg := Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.Enabled = false
 	cfg.HTTP.Admin.Auth.Enabled = false
 	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true

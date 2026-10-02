@@ -52,6 +52,7 @@ func newRealConfigSetHarness(t *testing.T) realConfigSetHarness {
 	}
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 	cfg := config.Default()
+	cfg.Tunnel.Enabled = false
 	cfg.HTTP.MCP.Auth.TokenHash = "mcp-configured-hash"
 	cfg.HTTP.Admin.Auth.TokenHash = "admin-configured-hash"
 	cfg.Permissions.MCPConfigWrite = true
@@ -184,7 +185,7 @@ func TestConfigSetNoOpStillRequiresApprovalAndDoesNotReload(t *testing.T) {
 	writeConfigSetRuntimeState(t, harness.root, runtimecontrol.State{
 		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: harness.root,
 	})
-	args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "notifications.approval.enabled", Value: "false"})
+	args := configSetArgs(harness.workspaceID, mcpconfigwire.Change{Key: "notifications.approval.enabled", Value: "true"})
 	result := approveAndRetryConfigSet(t, harness, "noop", args)
 	if result.IsError {
 		t.Fatalf("no-op result=%#v", result)

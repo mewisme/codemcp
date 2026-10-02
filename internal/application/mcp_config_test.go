@@ -14,12 +14,20 @@ import (
 
 func TestMCPConfigReadServiceRequiresOptInAndSanitizesCanonicalSettings(t *testing.T) {
 	isolateSettingServiceConfig(t)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Permissions.MCPConfigRead = false
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
 	provider := NewMCPConfigReadService()
 	if _, code := provider.Get(t.Context(), "http.mcp.port"); code != mcpconfig.ErrorAccessDenied {
 		t.Fatalf("read without opt-in code=%q", code)
 	}
 
-	cfg, err := config.Load()
+	cfg, err = config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +116,14 @@ func TestMCPConfigReadServiceRequiresOptInAndSanitizesCanonicalSettings(t *testi
 
 func TestMCPConfigSetApprovalBindingIsPrivateCanonicalAndStateBound(t *testing.T) {
 	root := isolateSettingServiceConfig(t)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Permissions.MCPConfigWrite = false
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
 	provider := NewMCPConfigReadService()
 	args := map[string]any{
 		"workspace_id": " ws_scope ",
@@ -120,7 +136,7 @@ func TestMCPConfigSetApprovalBindingIsPrivateCanonicalAndStateBound(t *testing.T
 		t.Fatalf("write without opt-in code=%q", code)
 	}
 
-	cfg, err := config.Load()
+	cfg, err = config.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
