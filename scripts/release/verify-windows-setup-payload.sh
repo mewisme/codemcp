@@ -2,7 +2,7 @@
 set -eu
 
 dist=${1:-dist}
-sevenzip=${SEVENZIP:-7zz}
+sevenzip=${SEVENZIP:-}
 
 fail() {
 	echo "windows setup payload verification: $*" >&2
@@ -11,6 +11,17 @@ fail() {
 
 if [ ! -d "$dist" ] || [ -L "$dist" ]; then
 	fail "distribution directory is unavailable or unsafe: $dist"
+fi
+if [ -z "$sevenzip" ]; then
+	for candidate in 7z 7zz 7za; do
+		if command -v "$candidate" >/dev/null 2>&1; then
+			sevenzip=$candidate
+			break
+		fi
+	done
+fi
+if [ -z "$sevenzip" ]; then
+	fail "7-Zip executable is required (tried 7z, 7zz, 7za)"
 fi
 if ! command -v "$sevenzip" >/dev/null 2>&1; then
 	fail "7-Zip executable is required: $sevenzip"

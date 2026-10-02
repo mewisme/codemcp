@@ -66,7 +66,7 @@ grep -Fq "arm64|2.3.4.0|$tmp/arm64/cm.exe|$template" "$tmp/makensis.log" ||
 mkdir -p "$dist/codemcp_windows_amd64_v1" "$dist/codemcp_windows_arm64_v8.0"
 cp "$tmp/amd64/cm.exe" "$dist/codemcp_windows_amd64_v1/cm.exe"
 cp "$tmp/arm64/cm.exe" "$dist/codemcp_windows_arm64_v8.0/cm.exe"
-cat >"$fakebin/7zz" <<'EOF'
+cat >"$fakebin/7z" <<'EOF'
 #!/bin/sh
 set -eu
 output=
@@ -94,10 +94,10 @@ set -- "$TEST_DIST/codemcp_windows_${arch}_"*/cm.exe
 mkdir -p "$output"
 cp "$1" "$output/cm.exe"
 EOF
-chmod +x "$fakebin/7zz"
+chmod +x "$fakebin/7z"
 
-PATH="$fakebin:$PATH" TEST_DIST="$dist" SEVENZIP=7zz sh "$repo_root/scripts/release/verify-windows-setup-payload.sh" "$dist" >/dev/null
-if PATH="$fakebin:$PATH" TEST_DIST="$dist" TEST_PAYLOAD_WRONG=1 SEVENZIP=7zz sh "$repo_root/scripts/release/verify-windows-setup-payload.sh" "$dist" >/dev/null 2>&1; then
+PATH="$fakebin:$PATH" TEST_DIST="$dist" sh "$repo_root/scripts/release/verify-windows-setup-payload.sh" "$dist" >/dev/null
+if PATH="$fakebin:$PATH" TEST_DIST="$dist" TEST_PAYLOAD_WRONG=1 sh "$repo_root/scripts/release/verify-windows-setup-payload.sh" "$dist" >/dev/null 2>&1; then
 	fail "payload verifier accepted the wrong architecture cm.exe"
 fi
 
