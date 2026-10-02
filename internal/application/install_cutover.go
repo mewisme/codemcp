@@ -113,15 +113,21 @@ func migrateReleasedInstallIfNeeded(ctx context.Context, options InstallCurrentO
 		return InstallCurrentResult{}, false, nil
 	}
 	if manifest.Unsupported > 0 {
-		emitInstallCutover(options.Observe, "detect", "warning", fmt.Sprintf("Released state contains %d unsupported artifact(s); discarding predecessor state and continuing with a fresh install", manifest.Unsupported), false)
-		emitInstallCutover(options.Observe, "cleanup", "running", "Cleaning unsupported released predecessor state", false)
+		emitInstallCutover(options.Observe, "detect", "warning", "Previous CodeMCP state requires a clean install", false)
+		emitInstallCutover(options.Observe, "detect", "warning", fmt.Sprintf("%s cannot be migrated", installCutoverCount(manifest.Unsupported, "unsupported artifact", "unsupported artifacts")), true)
+		emitInstallCutover(options.Observe, "cleanup", "running", "Removing previous CodeMCP state", false)
 		discarded, err := deps.Discard(ctx, released024.DiscardOptions{Manifest: manifest})
 		if err != nil {
 			emitInstallCutover(options.Observe, "cleanup", "failed", err.Error(), false)
 			return InstallCurrentResult{}, false, err
 		}
-		message := fmt.Sprintf("Released predecessor state removed; retired %d service(s) and removed %d launcher(s)", discarded.ServicesRetired, discarded.LaunchersRemoved)
-		emitInstallCutover(options.Observe, "cleanup", "success", message, false)
+		if discarded.ServicesRetired > 0 {
+			emitInstallCutover(options.Observe, "cleanup", "success", "Retired "+installCutoverCount(discarded.ServicesRetired, "previous service", "previous services"), true)
+		}
+		if discarded.LaunchersRemoved > 0 {
+			emitInstallCutover(options.Observe, "cleanup", "success", "Removed "+installCutoverCount(discarded.LaunchersRemoved, "previous launcher", "previous launchers"), true)
+		}
+		emitInstallCutover(options.Observe, "cleanup", "success", "Previous CodeMCP state removed", false)
 		return InstallCurrentResult{}, false, nil
 	}
 	targetRoot := config.RootPath()
@@ -195,6 +201,14 @@ func migrateReleasedInstallIfNeeded(ctx context.Context, options InstallCurrentO
 		},
 		Supplemental: supplemental, Version: version.Version, Binary: activated.Binary, Command: layout.CanonicalBinary,
 	}, true, nil
+}
+
+func installCutoverCount(count int, singular, plural string) string {
+	label := plural
+	if count == 1 {
+		label = singular
+	}
+	return fmt.Sprintf("%d %s", count, label)
 }
 
 func emitSupplementalOutcomes(observe func(InstallCutoverEvent), result SupplementalBootstrapResult) {

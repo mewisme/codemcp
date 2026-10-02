@@ -10,7 +10,10 @@ import (
 )
 
 func installCutoverObserver(cmd *cobra.Command) func(application.InstallCutoverEvent) {
-	session := commandProgressSession(cmd)
+	return installCutoverProgressObserver(commandProgressSession(cmd))
+}
+
+func installCutoverProgressObserver(session *presentation.ProgressSession) func(application.InstallCutoverEvent) {
 	if session != nil {
 		session.SetTitle("Install CodeMCP")
 	}
@@ -39,6 +42,9 @@ func installCutoverObserver(cmd *cobra.Command) func(application.InstallCutoverE
 			state = presentation.ProgressFailed
 		case "skipped":
 			state = presentation.ProgressSkipped
+		}
+		if strings.TrimSpace(event.Stage) == "cleanup" && state == presentation.ProgressSuccess {
+			session.Presenter().Spacer()
 		}
 		session.Update(presentation.ProgressPhase{
 			ID: "install." + event.Stage, Label: installCutoverStageLabel(event.Stage), State: state, Message: event.Message,

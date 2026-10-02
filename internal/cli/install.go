@@ -55,17 +55,4 @@ func renderSupplementalInstallSummary(cmd *cobra.Command, result application.Sup
 	for _, warning := range result.Warnings {
 		session.Append(func(p *presentation.Presenter) { p.ChildStatus(presentation.StatusWarning, warning) })
 	}
-	if !result.UsageNotice {
-		return
-	}
-	source := string(result.TelemetrySource)
-	message := "Anonymous usage telemetry is enabled"
-	if source != "" {
-		message += " · source=" + source
-	}
-	message += " · disable with CM_TELEMETRY=0 or cm telemetry disable"
-	if source == "env" {
-		message += " · persisted preference unchanged"
-	}
-	session.Append(func(p *presentation.Presenter) { p.ChildStatus(presentation.StatusInfo, message) })
 }

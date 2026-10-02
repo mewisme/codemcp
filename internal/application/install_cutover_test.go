@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/configformat"
@@ -175,6 +177,7 @@ func TestInstallCurrentDiscardsUnsupportedReleasedStateThenFreshInstalls(t *test
 		t.Fatal(err)
 	}
 	sequence := []string{}
+	events := []InstallCutoverEvent{}
 	deps := defaultInstallCutoverDependencies()
 	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
 		sequence = append(sequence, "detect")
@@ -200,7 +203,9 @@ func TestInstallCurrentDiscardsUnsupportedReleasedStateThenFreshInstalls(t *test
 		sequence = append(sequence, "supplemental")
 		return SupplementalBootstrapResult{}
 	}
-	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{}, deps)
+	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{Observe: func(event InstallCutoverEvent) {
+		events = append(events, event)
+	}}, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,5 +215,25 @@ func TestInstallCurrentDiscardsUnsupportedReleasedStateThenFreshInstalls(t *test
 	want := []string{"detect", "discard", "install", "supplemental"}
 	if !reflect.DeepEqual(sequence, want) {
 		t.Fatalf("sequence=%v want=%v", sequence, want)
+	}
+	var messages []string
+	for _, event := range events {
+		messages = append(messages, event.Message)
+	}
+	wantMessages := []string{
+		"Previous CodeMCP state requires a clean install",
+		"5 unsupported artifacts cannot be migrated",
+		"Removing previous CodeMCP state",
+		"Previous CodeMCP state removed",
+	}
+	for _, wantMessage := range wantMessages {
+		if !slices.Contains(messages, wantMessage) {
+			t.Fatalf("events missing %q: %#v", wantMessage, events)
+		}
+	}
+	for _, message := range messages {
+		if strings.Contains(message, "0 service") || strings.Contains(message, "0 launcher") {
+			t.Fatalf("zero-value cleanup detail leaked into presentation: %q", message)
+		}
 	}
 }
