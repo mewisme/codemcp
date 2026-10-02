@@ -34,9 +34,6 @@ else
   echo "skip: shellcheck not installed"
 fi
 
-echo "==> installer verification policy"
-sh scripts/installer/test-unix.sh
-
 echo "==> frontend lint/typecheck (if pnpm available)"
 if command -v pnpm >/dev/null 2>&1 && [[ -d frontend/node_modules ]]; then
   pnpm --dir frontend lint

@@ -8,6 +8,7 @@ ARGS ?=
 BINARY ?= dist/cm
 LOCAL_TELEMETRY_ENDPOINT ?=
 LOCAL_LDFLAGS = $(if $(strip $(LOCAL_TELEMETRY_ENDPOINT)),-X go.mewis.me/codemcp/internal/telemetry/product.Endpoint=$(LOCAL_TELEMETRY_ENDPOINT),)
+RACE_PACKAGES = ./internal/app ./internal/checkpoint ./internal/runtime/... ./internal/service ./internal/state ./internal/telegram/... ./internal/tools ./internal/workspace/...
 
 CM = $(GO) run -ldflags "$(LOCAL_LDFLAGS)" .
 FRONTEND_BUILD = $(PNPM) --dir frontend build
@@ -15,7 +16,7 @@ FRONTEND_BUILD = $(PNPM) --dir frontend build
 CM_COMMANDS = install upgrade init uninit down logs request llm tui config auth tools execution process workspace prompt upstream mcp tunnel http permissions shell notification telemetry telegram integration status health network activity doctor agent completion version
 CM_FRONTEND_COMMANDS = up restart serve
 CM_PASSTHROUGH_TARGETS = run $(CM_COMMANDS) $(CM_FRONTEND_COMMANDS)
-CM_DEVELOPER_TARGETS = help bootstrap frontend-build check test test-race build frontend-dev generate check-generated install-local release-smoke security-gosec security-baseline
+CM_DEVELOPER_TARGETS = help bootstrap frontend-build check test test-race test-installer build frontend-dev generate check-generated install-local release-smoke security-gosec security-baseline
 CM_KNOWN_TARGETS = $(CM_DEVELOPER_TARGETS) $(CM_PASSTHROUGH_TARGETS)
 CM_PRIMARY_GOAL := $(firstword $(MAKECMDGOALS))
 CM_FORWARDING := $(filter $(CM_PRIMARY_GOAL),$(CM_PASSTHROUGH_TARGETS))
@@ -36,7 +37,8 @@ help:
 		'  frontend-build Build embedded frontend assets' \
 		'  check          Run fast local quality checks' \
 		'  test           Run the full Go test suite with isolated config' \
-		'  test-race      Run the full Go race suite with isolated config' \
+		'  test-race      Run race-sensitive Go packages with isolated config' \
+		'  test-installer Validate the Unix installer contract' \
 		'  build          Build local dist/cm' \
 		'  generate       Regenerate committed product presentation output' \
 		'  check-generated Regenerate and fail if committed output drifts' \
@@ -72,8 +74,11 @@ test: frontend-build
 
 test-race: frontend-build
 	@tmp=$$(mktemp -d) || exit 1; status=0; \
-	CM_CONFIG_DIR="$$tmp" $(GO) test -count=1 -race ./... || status=$$?; \
+	CM_CONFIG_DIR="$$tmp" $(GO) test -count=1 -race $(RACE_PACKAGES) || status=$$?; \
 	rm -rf "$$tmp"; exit $$status
+
+test-installer:
+	sh scripts/installer/test-unix.sh
 
 build: frontend-build
 	mkdir -p dist

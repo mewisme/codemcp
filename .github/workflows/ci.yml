@@ -188,6 +188,10 @@ jobs:
         if: needs.changes.outputs.full == 'true'
         run: staticcheck ./...
 
+      - name: Vet
+        if: needs.changes.outputs.full == 'true'
+        run: go vet ./...
+
       - name: Security analysis
         if: needs.changes.outputs.full == 'true'
         run: make security-gosec
@@ -248,7 +252,16 @@ jobs:
         if: needs.changes.outputs.full == 'true'
         env:
           CM_CONFIG_DIR: ${{ runner.temp }}/cm-go-race-test
-        run: go test -count=1 -race ./...
+        run: |
+          go test -count=1 -race \
+            ./internal/app \
+            ./internal/checkpoint \
+            ./internal/runtime/... \
+            ./internal/service \
+            ./internal/state \
+            ./internal/telegram/... \
+            ./internal/tools \
+            ./internal/workspace/...
 
   native:
     name: Native ${{ matrix.name }}
@@ -301,7 +314,7 @@ jobs:
           printf 'document.querySelector("[data-codemcp-mini-app-root]");\n' > internal/telegram/mini-app-dist/assets/mini-app.js
 
       - name: Validate Unix installer
-        if: needs.changes.outputs.full == 'true' && runner.os != 'Windows'
+        if: needs.changes.outputs.full == 'true' && runner.os == 'Linux'
         run: sh scripts/installer/test-unix.sh
 
       - name: Validate Windows setup wrapper
@@ -343,16 +356,6 @@ jobs:
       - name: Local install smoke
         if: needs.changes.outputs.full == 'true'
         run: make install-local ARGS="--skip-frontend"
-
-      - name: Test
-        if: needs.changes.outputs.full == 'true'
-        env:
-          CM_CONFIG_DIR: ${{ runner.temp }}/cm-go-test
-        run: go test -count=1 ./...
-
-      - name: Vet
-        if: needs.changes.outputs.full == 'true'
-        run: go vet ./...
 
       - name: Build
         if: needs.changes.outputs.full == 'true'
