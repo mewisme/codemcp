@@ -253,40 +253,6 @@ func TestManagedRestartKeepsServiceInstalledAndStartsNewRuntime(t *testing.T) {
 	}
 }
 
-func TestManagedReadinessProgressLogsComponentsWithoutReplacingPollingPhase(t *testing.T) {
-	var output bytes.Buffer
-	cmd := &cobra.Command{Use: "test"}
-	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
-	commandProgressSession(cmd).SetTitle("Restart CodeMCP")
-	progress := managedLifecycleProgress(cmd)
-	progress.Start("service.runtime.waiting", "Waiting for managed runtime readiness", "Managed runtime ready")
-	readiness := newManagedReadinessProgress(progress)
-
-	readiness.Observe(runtimeStatusResult{Readiness: []runtimecontrol.ReadinessComponent{
-		{ID: "mcp-http", Label: "MCP HTTP server", Configured: true, Ready: true},
-		{ID: "openai-tunnel", Label: "OpenAI Secure MCP Tunnel", Configured: true, Ready: false},
-		{ID: "telegram", Label: "Telegram runtime", Configured: false, Ready: true},
-	}})
-	readiness.Observe(runtimeStatusResult{Readiness: []runtimecontrol.ReadinessComponent{
-		{ID: "mcp-http", Label: "MCP HTTP server", Configured: true, Ready: true},
-		{ID: "openai-tunnel", Label: "OpenAI Secure MCP Tunnel", Configured: true, Ready: true},
-	}})
-	progress.Complete()
-
-	text := output.String()
-	for _, expected := range []string{"MCP HTTP server ready", "OpenAI Secure MCP Tunnel ready", "Managed runtime ready"} {
-		if !strings.Contains(text, expected) {
-			t.Fatalf("readiness output missing %q: %s", expected, text)
-		}
-	}
-	if strings.Contains(text, "Telegram runtime ready") {
-		t.Fatalf("unconfigured component was rendered: %s", text)
-	}
-	if strings.Count(text, "MCP HTTP server ready") != 1 {
-		t.Fatalf("component readiness was rendered more than once: %s", text)
-	}
-}
-
 func TestManagedLifecycleResultRendersConnectedTunnelAsNestedList(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := t.TempDir()
@@ -339,6 +305,46 @@ func TestManagedLifecycleResultRendersConnectedTunnelAsNestedList(t *testing.T) 
 		if strings.Contains(text, unexpected) {
 			t.Fatalf("connected tunnel metadata still renders as peer node %q: %s", unexpected, text)
 		}
+	}
+}
+
+func TestManagedLifecycleResultGroupsReadinessByScope(t *testing.T) {
+	var output bytes.Buffer
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
+	status := runtimeStatusResult{
+		PID: 4242,
+		Readiness: []runtimecontrol.ReadinessComponent{
+			{ID: "typesafe", Label: "TypeSafe semantic provider", Configured: true, Ready: true},
+			{ID: "semantic-approval", Label: "Semantic approval", Configured: true, Ready: true},
+			{ID: "telegram", Label: "Telegram runtime", Configured: true, Ready: true},
+			{ID: "telegram-topics", Label: "Telegram topics", Configured: true, Ready: true},
+			{ID: "telegram-logs-mini-app", Label: "Telegram Logs Mini App", Configured: true, Ready: true},
+			{ID: "approval-notifications", Label: "Approval notifications", Configured: true, Ready: true},
+			{ID: "completion-notifications", Label: "Completion notifications", Configured: true, Ready: true},
+			{ID: "ignored", Label: "Unconfigured", Configured: false, Ready: true},
+		},
+	}
+	renderManagedLifecycleResult(cmd, "Managed service restarted", managed.Spec{Scope: managed.ScopeUser}, &fakeServiceManager{}, status, tunnel.Config{})
+	text := output.String()
+	for _, expected := range []string{
+		"│  ✓ Semantic — ready",
+		"│  │  TypeSafe semantic provider — ready",
+		"│  │  Semantic approval — ready",
+		"│  ✓ Telegram — ready",
+		"│  │  Telegram runtime — ready",
+		"│  │  Telegram topics — ready",
+		"│  │  Telegram Logs Mini App — ready",
+		"│  ✓ Notifications — ready",
+		"│  │  Approval notifications — ready",
+		"│  │  Completion notifications — ready",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("grouped readiness missing %q: %s", expected, text)
+		}
+	}
+	if strings.Contains(text, "Unconfigured") {
+		t.Fatalf("unconfigured readiness leaked into output: %s", text)
 	}
 }
 

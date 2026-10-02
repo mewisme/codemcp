@@ -17,6 +17,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/logger"
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	managed "go.mewis.me/codemcp/internal/service"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -137,7 +138,6 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 		return err
 	}
 	progress := managedLifecycleProgress(cmd)
-	readiness := newManagedReadinessProgress(progress)
 	lastGroup := ""
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
 		group := managedRestartLifecycleGroup(event.Phase)
@@ -148,7 +148,7 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 			lastGroup = group
 		}
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
-	}, ObserveStatus: readiness.Observe}
+	}}
 	result, err := lifecycle.Restart(cmd.Context())
 	if err != nil {
 		progress.Stop()
@@ -291,10 +291,9 @@ func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager
 		}
 	}
 	progress := managedLifecycleProgress(cmd)
-	readiness := newManagedReadinessProgress(progress)
 	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
-	}, ObserveStatus: readiness.Observe}
+	}}
 	result, err := lifecycle.Up(cmd.Context())
 	if err != nil {
 		progress.Stop()
@@ -408,6 +407,7 @@ func renderManagedLifecycleResult(cmd *cobra.Command, message string, spec manag
 			fields = append(fields, presentation.Field{Label: "admin", Value: fmt.Sprintf("http://127.0.0.1:%d/", status.AdminPort)})
 		}
 		presenter.NestedFields(fields...)
+		renderManagedReadinessScopes(presenter, status)
 		presenter.Spacer()
 		state := statusTunnelState(status, true)
 		presenter.ChildState(statusPresentationKind(state), "OpenAI Secure MCP Tunnel", state)
@@ -457,31 +457,48 @@ func managedLifecycleProgress(cmd *cobra.Command) *commandProgress {
 	return newCommandProgress(cmd, "SERVICE")
 }
 
-type managedReadinessProgress struct {
-	progress *commandProgress
-	seen     map[string]bool
-}
-
-func newManagedReadinessProgress(progress *commandProgress) *managedReadinessProgress {
-	return &managedReadinessProgress{progress: progress, seen: map[string]bool{}}
-}
-
-func (value *managedReadinessProgress) Observe(status runtimeStatusResult) {
-	if value == nil || value.progress == nil || value.progress.name != "service.runtime.waiting" {
+func renderManagedReadinessScopes(presenter *presentation.Presenter, status runtimeStatusResult) {
+	if presenter == nil {
 		return
 	}
+	components := make(map[string]runtimecontrol.ReadinessComponent, len(status.Readiness))
 	for _, component := range status.Readiness {
-		if !component.Configured || !component.Ready || value.seen[component.ID] {
-			continue
+		if component.Configured {
+			components[component.ID] = component
 		}
-		value.seen[component.ID] = true
-		message := component.Label + " ready"
-		value.progress.session.Checkpoint(presentation.ProgressPhase{
-			ID: "service.readiness." + component.ID, Label: component.Label,
-			State: presentation.ProgressSuccess, Message: message,
-		})
-		value.progress.log.Verbose("SERVICE", "service.readiness."+component.ID, message)
 	}
+	renderGroup := func(label string, ids ...string) {
+		fields := make([]presentation.Field, 0, len(ids))
+		allReady := true
+		for _, id := range ids {
+			component, ok := components[id]
+			if !ok {
+				continue
+			}
+			state := "ready"
+			if !component.Ready {
+				state = "not ready"
+				allReady = false
+			}
+			fields = append(fields, presentation.Field{Label: component.Label, Value: state})
+		}
+		if len(fields) == 0 {
+			return
+		}
+		kind := presentation.StatusSuccess
+		state := "ready"
+		if !allReady {
+			kind = presentation.StatusWarning
+			state = "partial"
+		}
+		presenter.Spacer()
+		presenter.ChildState(kind, label, state)
+		presenter.NestedFields(fields...)
+	}
+
+	renderGroup("Semantic", "typesafe", "semantic-approval")
+	renderGroup("Telegram", "telegram", "telegram-topics", "telegram-logs-mini-app")
+	renderGroup("Notifications", "approval-notifications", "completion-notifications")
 }
 
 func managedLifecycleDoneMessage(event managed.LifecycleEvent) string {
