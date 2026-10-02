@@ -32,7 +32,10 @@ func (a *App) ReloadConfig(next config.Config) error {
 	shellPathChanged := !slices.Equal(previous.Shell.Path, next.Shell.Path)
 	semanticApprovalChanged := previous.Approval.Semantic != next.Approval.Semantic
 	telemetryChanged := previous.Telemetry != next.Telemetry
-	telegramChanged := previous.Telegram.Enabled != next.Telegram.Enabled || !slices.Equal(previous.Telegram.AllowedUserIDs, next.Telegram.AllowedUserIDs)
+	telegramChanged := previous.Telegram.Enabled != next.Telegram.Enabled ||
+		previous.Telegram.TopicsEnabled != next.Telegram.TopicsEnabled ||
+		previous.Telegram.LogsMiniApp != next.Telegram.LogsMiniApp ||
+		!slices.Equal(previous.Telegram.AllowedUserIDs, next.Telegram.AllowedUserIDs)
 	tunnelChanged := previous.Tunnel != next.Tunnel
 
 	if _, err := a.Config.Update(func(config.Config) (config.Config, error) { return next, nil }); err != nil {

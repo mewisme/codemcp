@@ -720,9 +720,24 @@ export type StatusOverview = {
   mcp_http_enabled: boolean
   admin_enabled: boolean
   tunnel_enabled: boolean
+  tunnel_configured: boolean
+  tunnel_running: boolean
+  tunnel_ready: boolean
   telegram_enabled: boolean
+  telegram_configured: boolean
   telegram_running: boolean
   telegram_healthy: boolean
+  telegram_topics_enabled: boolean
+  telegram_topics_supported: boolean
+  telegram_topics_effective: boolean
+  logs_mini_app_enabled: boolean
+  logs_mini_app_available: boolean
+  logs_mini_app_effective: boolean
+  typesafe_enabled: boolean
+  typesafe_configured: boolean
+  typesafe_available: boolean
+  semantic_approval_enabled: boolean
+  semantic_approval_effective: boolean
 }
 
 export type AuthStatus = {

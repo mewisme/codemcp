@@ -1087,25 +1087,22 @@ func (ui *Interface) statusOverviewPresentation(status application.StatusOvervie
 		FieldsBlock("Services",
 			[]string{"MCP HTTP", boolState(status.MCPHTTPEnabled)},
 			[]string{"Admin UI", boolState(status.AdminEnabled)},
-			[]string{"Secure MCP Tunnel", boolState(status.TunnelEnabled)},
+			[]string{"Secure MCP Tunnel", effectiveState(status.TunnelEnabled, status.TunnelConfigured, status.TunnelReady || status.TunnelRunning)},
 		),
 	}
 	polling := "Disabled"
 	if status.TelegramEnabled {
-		polling = stateLabel(status.TelegramHealthy, "Healthy", "Unavailable")
+		polling = effectiveState(true, status.TelegramConfigured, status.TelegramHealthy)
 	}
 	telegramRows := [][]string{
 		{"Bot", boolState(status.TelegramEnabled)},
 		{"Polling", polling},
+		{"Topics", effectiveState(status.TelegramTopicsEnabled, status.TelegramTopicsSupported, status.TelegramTopicsEffective)},
+		{"Logs App", effectiveState(status.LogsMiniAppEnabled, status.LogsMiniAppAvailable, status.LogsMiniAppEffective)},
 	}
 	var logsNotice *RichBlock
 	if ui != nil && ui.runtime != nil {
 		health := ui.runtime.Health().LogsMiniApp
-		logsState := "Disabled"
-		if health.Enabled {
-			logsState = displayState(string(health.State))
-		}
-		telegramRows = append(telegramRows, []string{"Logs App", logsState})
 		if health.Enabled && health.State != MiniAppReady && health.State != MiniAppStarting {
 			detail := strings.TrimSpace(health.LastError)
 			if detail == "" {
@@ -1120,6 +1117,19 @@ func (ui *Interface) statusOverviewPresentation(status application.StatusOvervie
 		blocks = append(blocks, *logsNotice)
 	}
 	return BuildRichPresentation(blocks...)
+}
+
+func effectiveState(enabled, configuredOrAvailable, effective bool) string {
+	if !enabled {
+		return "Disabled"
+	}
+	if effective {
+		return "Running"
+	}
+	if !configuredOrAvailable {
+		return "Unavailable"
+	}
+	return "Available"
 }
 
 func withRouteBreadcrumb(screen Screen, state ActionState) Screen {

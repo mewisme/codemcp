@@ -241,7 +241,7 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 		}
 		runtime.mu.Lock()
 		runtime.config = cfg
-		runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: false, AuthorizationConfigured: authorizationConfigured, SetupMode: setupMode, LastError: "telegram token is unavailable"}
+		runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: false, AuthorizationConfigured: authorizationConfigured, TopicsConfigured: cfg.TopicsEnabled, SetupMode: setupMode, LastError: "telegram token is unavailable"}
 		runtime.mu.Unlock()
 		return tokenErr
 	}
@@ -253,7 +253,7 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 		runtime.mu.Lock()
 		runtime.config = cfg
 		runtime.setupMode = false
-		runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: tokenConfigured, AuthorizationConfigured: authorizationConfigured}
+		runtime.health = Health{Enabled: cfg.Enabled, TokenConfigured: tokenConfigured, AuthorizationConfigured: authorizationConfigured, TopicsConfigured: cfg.TopicsEnabled}
 		runtime.mu.Unlock()
 		return nil
 	}

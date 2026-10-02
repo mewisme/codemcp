@@ -333,6 +333,50 @@ func TestTypeSafeRuntimeCredentialRotationReplacesBothCapabilitiesTogether(t *te
 	}
 }
 
+func TestTypeSafeRuntimeReconcilesCredentialRemovalAndRestoreWithoutPreferenceToggle(t *testing.T) {
+	cfg := isolateTypeSafeApp(t)
+	fake := newTypeSafeFakeServer(t)
+	app, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.typeSafeHTTPClient = fake.server.Client()
+	app.typeSafeBaseURL = fake.server.URL
+
+	if err := typesafeintegration.UpdateAPIKey(config.RootPath(), "generation-one"); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ReloadConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if health := app.Tools.Semantic.Health(); !health.Available {
+		t.Fatalf("configured TypeSafe did not activate: %#v", health)
+	}
+
+	if err := typesafeintegration.UpdateAPIKey(config.RootPath(), ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ReloadConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if health := app.Tools.Semantic.Health(); health.Available || health.LastErrorCategory != semantic.ErrorMisconfigured {
+		t.Fatalf("removed TypeSafe credential did not deactivate provider: %#v", health)
+	}
+	if snapshot := app.Config.Snapshot(); !snapshot.Integrations.TypeSafe.Enabled || !snapshot.Approval.Semantic.Enabled {
+		t.Fatalf("credential removal changed persisted enabled intent: %#v", snapshot)
+	}
+
+	if err := typesafeintegration.UpdateAPIKey(config.RootPath(), "generation-two"); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.ReloadConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if health := app.Tools.Semantic.Health(); !health.Available || health.Provider != typeSafeSemanticProvider {
+		t.Fatalf("restored TypeSafe credential did not reactivate provider: %#v", health)
+	}
+}
+
 func TestTypeSafeProductionFailuresPreserveSemanticFallbackAndRequireRiskReview(t *testing.T) {
 	cfg := isolateTypeSafeApp(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

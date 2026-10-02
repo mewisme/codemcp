@@ -11,9 +11,24 @@ describe("SystemPage", () => {
       mcp_http_enabled: true,
       admin_enabled: true,
       tunnel_enabled: true,
+      tunnel_configured: true,
+      tunnel_running: true,
+      tunnel_ready: true,
       telegram_enabled: true,
+      telegram_configured: true,
       telegram_running: true,
       telegram_healthy: true,
+      telegram_topics_enabled: true,
+      telegram_topics_supported: true,
+      telegram_topics_effective: true,
+      logs_mini_app_enabled: true,
+      logs_mini_app_available: true,
+      logs_mini_app_effective: true,
+      typesafe_enabled: true,
+      typesafe_configured: true,
+      typesafe_available: true,
+      semantic_approval_enabled: true,
+      semantic_approval_effective: true,
     })
     vi.spyOn(adminApi, "telemetry").mockResolvedValue({
       persisted_enabled: true,
@@ -41,7 +56,11 @@ describe("SystemPage", () => {
     const user = userEvent.setup()
     render(<SystemPage />)
     expect(await screen.findByText("Healthy")).toBeInTheDocument()
-    expect(screen.getByText("Running")).toBeInTheDocument()
+    expect(screen.getAllByText("Running").length).toBeGreaterThan(0)
+    expect(screen.getByText("Telegram topics")).toBeInTheDocument()
+    expect(screen.getByText("Logs Mini App")).toBeInTheDocument()
+    expect(screen.getByText("TypeSafe")).toBeInTheDocument()
+    expect(screen.getByText("Semantic approval")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Restart" }))
     await waitFor(() =>
       expect(adminApi.runtimeAction).toHaveBeenCalledWith("restart")

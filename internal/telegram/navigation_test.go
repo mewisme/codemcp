@@ -369,9 +369,11 @@ func TestStatusOverviewPresentationAvoidsGenericCompletionAndStaleLogsWarning(t 
 	ui := &Interface{runtime: runtime}
 	text := RichFallback(ui.statusOverviewPresentation(application.StatusOverview{
 		RuntimeRunning: true, MCPHTTPEnabled: false, AdminEnabled: false,
-		TunnelEnabled: true, TelegramEnabled: true, TelegramHealthy: true,
+		TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true,
+		TelegramEnabled: true, TelegramConfigured: true, TelegramHealthy: true,
+		LogsMiniAppEnabled: true, LogsMiniAppAvailable: true, LogsMiniAppEffective: true,
 	})).Text
-	for _, want := range []string{"Runtime Running", "Services", "Secure MCP Tunnel", "Telegram", "Logs App", "Ready"} {
+	for _, want := range []string{"Runtime Running", "Services", "Secure MCP Tunnel", "Telegram", "Logs App", "Running"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("status overview missing %q: %q", want, text)
 		}

@@ -126,8 +126,18 @@ export function SystemPage() {
         />
         <StateCard
           title="Secure tunnel"
-          active={status?.tunnel_enabled}
-          detail={status?.tunnel_enabled ? "Enabled" : "Disabled"}
+          active={status?.tunnel_ready}
+          detail={
+            !status?.tunnel_enabled
+              ? "Disabled"
+              : !status.tunnel_configured
+                ? "Enabled, not configured"
+                : status.tunnel_ready
+                  ? "Ready"
+                  : status.tunnel_running
+                    ? "Running"
+                    : "Configured, inactive"
+          }
         />
         <StateCard
           title="Telegram"
@@ -139,7 +149,59 @@ export function SystemPage() {
                 ? "Healthy"
                 : status.telegram_running
                   ? "Running, degraded"
-                  : "Stopped"
+                  : status.telegram_configured
+                    ? "Configured, inactive"
+                    : "Enabled, not configured"
+          }
+        />
+        <StateCard
+          title="Telegram topics"
+          active={status?.telegram_topics_effective}
+          detail={
+            !status?.telegram_topics_enabled
+              ? "Disabled"
+              : !status.telegram_topics_supported
+                ? "Enabled, unsupported"
+                : status.telegram_topics_effective
+                  ? "Effective"
+                  : "Available, inactive"
+          }
+        />
+        <StateCard
+          title="Logs Mini App"
+          active={status?.logs_mini_app_effective}
+          detail={
+            !status?.logs_mini_app_enabled
+              ? "Disabled"
+              : !status.logs_mini_app_available
+                ? "Enabled, unavailable"
+                : status.logs_mini_app_effective
+                  ? "Effective"
+                  : "Available, inactive"
+          }
+        />
+        <StateCard
+          title="TypeSafe"
+          active={status?.typesafe_available}
+          detail={
+            !status?.typesafe_enabled
+              ? "Disabled"
+              : !status.typesafe_configured
+                ? "Enabled, not configured"
+                : status.typesafe_available
+                  ? "Available"
+                  : "Configured, unavailable"
+          }
+        />
+        <StateCard
+          title="Semantic approval"
+          active={status?.semantic_approval_effective}
+          detail={
+            !status?.semantic_approval_enabled
+              ? "Disabled"
+              : status.semantic_approval_effective
+                ? "Effective"
+                : "Enabled, unavailable"
           }
         />
       </div>

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/notification"
 	"go.mewis.me/codemcp/internal/tools"
 )
 
@@ -54,6 +55,92 @@ func TestReloadConfigUpdatesShellPath(t *testing.T) {
 	if got := app.Tools.Workspaces.ShellPath(); len(got) != 1 || got[0] != next.Shell.Path[0] {
 		t.Fatalf("runtime shell path = %#v", got)
 	}
+}
+
+func TestReloadConfigReconcilesTelegramSubfeaturePreferencesWithoutPrerequisites(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	cfg := config.Default()
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
+	app, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = app.Stop() })
+
+	health := app.Telegram.Health()
+	if !health.Enabled || !health.TopicsConfigured || !health.LogsMiniApp.Enabled || health.Running {
+		t.Fatalf("initial default-on Telegram state=%#v", health)
+	}
+
+	disabled := cfg
+	disabled.Telegram.TopicsEnabled = false
+	disabled.Telegram.LogsMiniApp.Enabled = false
+	if err := app.ReloadConfig(disabled); err != nil {
+		t.Fatal(err)
+	}
+	health = app.Telegram.Health()
+	if health.TopicsConfigured || health.LogsMiniApp.Enabled || health.Running {
+		t.Fatalf("disabled Telegram subfeature state=%#v", health)
+	}
+
+	reenabled := disabled
+	reenabled.Telegram.TopicsEnabled = true
+	reenabled.Telegram.LogsMiniApp.Enabled = true
+	if err := app.ReloadConfig(reenabled); err != nil {
+		t.Fatal(err)
+	}
+	health = app.Telegram.Health()
+	if !health.TopicsConfigured || !health.LogsMiniApp.Enabled || health.Running {
+		t.Fatalf("re-enabled Telegram subfeature state=%#v", health)
+	}
+	if got := app.Config.Snapshot().Telegram; !got.TopicsEnabled || !got.LogsMiniApp.Enabled {
+		t.Fatalf("persisted Telegram preference drifted: %#v", got)
+	}
+}
+
+func TestReloadConfigKeepsTelegramNotificationProviderRegisteredAcrossAvailabilityChanges(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	cfg := config.Default()
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
+	app, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(app.Notifications.Stop)
+	assertTelegramProvider := func(wantEnabled bool) {
+		t.Helper()
+		status := app.Notifications.Status(map[string]bool{notification.ProviderTelegram: wantEnabled})
+		for _, provider := range status.Providers {
+			if provider.Provider == notification.ProviderTelegram {
+				if !provider.Registered || provider.Enabled != wantEnabled {
+					t.Fatalf("telegram notification provider=%#v want_enabled=%t", provider, wantEnabled)
+				}
+				return
+			}
+		}
+		t.Fatal("telegram notification provider disappeared")
+	}
+	assertTelegramProvider(true)
+
+	disabled := cfg
+	disabled.Notifications.Approval.TelegramEnabled = false
+	disabled.Notifications.Completion.TelegramEnabled = false
+	if err := app.ReloadConfig(disabled); err != nil {
+		t.Fatal(err)
+	}
+	assertTelegramProvider(false)
+
+	if err := app.ReloadConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	assertTelegramProvider(true)
 }
 
 func TestReloadConfigSyncsTunnelAdminKeyWithoutRuntimeReconfigure(t *testing.T) {
