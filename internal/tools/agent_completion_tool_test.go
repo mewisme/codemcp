@@ -272,6 +272,8 @@ func newCompletionToolRuntime(t *testing.T) (*Runtime, string) {
 	t.Helper()
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	runtime := NewRuntime()
+	runtime.CompletionHooks.Unregister("codegraph")
+	t.Cleanup(runtime.CompletionHooks.Stop)
 	item, err := runtime.Workspaces.Register(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

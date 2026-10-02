@@ -23,6 +23,7 @@ func TestCompletionReadSurfacesShareRuntimeHistory(t *testing.T) {
 	defer func() { _ = configformat.SetRootPath(previous) }()
 
 	runtime := tools.NewRuntime()
+	runtime.CompletionHooks.Unregister("codegraph")
 	defer runtime.CompletionHooks.Stop()
 	workspace, err := runtime.Workspaces.Register(t.TempDir())
 	if err != nil {
@@ -142,6 +143,7 @@ func TestCompletionCLIHumanOutputUsesSharedPresentation(t *testing.T) {
 	defer func() { _ = configformat.SetRootPath(previous) }()
 
 	runtime := tools.NewRuntime()
+	runtime.CompletionHooks.Unregister("codegraph")
 	defer runtime.CompletionHooks.Stop()
 	workspace, err := runtime.Workspaces.Register(t.TempDir())
 	if err != nil {
