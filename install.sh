@@ -113,10 +113,10 @@ fi
 	exit 1
 }
 
-sigstore_ok=0
-sigstore_reason=""
-if curl -fsSL "$signature_url" -o "$signature"; then
-	if command -v cosign >/dev/null 2>&1; then
+if command -v cosign >/dev/null 2>&1; then
+	sigstore_ok=0
+	sigstore_reason=""
+	if curl -fsSL "$signature_url" -o "$signature"; then
 		if cosign verify-blob \
 			--bundle="$signature" \
 			--certificate-identity="$cert_identity" \
@@ -128,13 +128,11 @@ if curl -fsSL "$signature_url" -o "$signature"; then
 			sigstore_reason="Sigstore/cosign verification failed for $SIGNATURE_NAME"
 		fi
 	else
-		sigstore_reason="cosign is not installed or not on PATH"
+		sigstore_reason="could not download $SIGNATURE_NAME from $signature_url"
 	fi
-else
-	sigstore_reason="could not download $SIGNATURE_NAME from $signature_url"
-fi
-if [ "$sigstore_ok" -eq 0 ]; then
-	echo "WARNING: $sigstore_reason; SHA-256 checksum verified, continuing without signature verification." >&2
+	if [ "$sigstore_ok" -eq 0 ]; then
+		echo "WARNING: $sigstore_reason; SHA-256 checksum verified, continuing without signature verification." >&2
+	fi
 fi
 
 listing="$tmp/listing.txt"

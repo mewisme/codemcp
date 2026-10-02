@@ -220,22 +220,17 @@ func verifyGoReleaser(root string) error {
 		}
 		hooks := mapValue(build["hooks"])
 		post := sliceValue(hooks["post"])
-		if len(post) != 2 {
-			return errors.New("release build must pack the canonical binary before building the Windows setup")
+		if len(post) != 1 {
+			return errors.New("release build must only run the canonical Windows setup post-build hook")
 		}
-		packHook := mapValue(post[0])
-		packOutput, _ := packHook["output"].(bool)
-		if stringValue(packHook["cmd"]) != "sh scripts/release/pack-release-binary.sh \"{{ .Path }}\" \"{{ .Target }}\"" || !packOutput {
-			return errors.New("release build packing hook drifted from the canonical OSS wrapper")
-		}
-		setupHook := mapValue(post[1])
+		setupHook := mapValue(post[0])
 		output, _ := setupHook["output"].(bool)
 		if stringValue(setupHook["cmd"]) != "sh scripts/release/build-windows-setup.sh \"{{ .Path }}\" \"{{ .Target }}\" dist \"{{ .Version }}\"" || !output {
 			return errors.New("release build Windows setup hook drifted from the canonical OSS wrapper")
 		}
 	}
 	if len(sliceValue(cfg["upx"])) != 0 {
-		return errors.New("release build must not use the native UPX pipe after Windows setup generation")
+		return errors.New("release build must not configure UPX compression")
 	}
 	if !buildFound {
 		return errors.New("canonical CodeMCP release build is missing")

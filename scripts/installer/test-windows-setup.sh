@@ -22,26 +22,6 @@ mkdir -p "$fakebin" "$dist" "$tmp/amd64"
 printf 'amd64-cm\n' >"$tmp/amd64/cm.exe"
 chmod +x "$tmp/amd64/cm.exe"
 
-cat >"$fakebin/upx" <<'EOF'
-#!/bin/sh
-set -eu
-[ "$1" = "--best" ] || exit 20
-[ -f "$2" ] || exit 21
-printf 'packed:' >>"$2"
-EOF
-chmod +x "$fakebin/upx"
-
-PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" windows_amd64_v1
-before_darwin=$(cat "$tmp/amd64/cm.exe")
-PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" darwin_amd64_v1
-[ "$(cat "$tmp/amd64/cm.exe")" = "$before_darwin" ] || fail "Darwin binary was modified by release packing"
-if PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" windows_arm64_v8.0 >/dev/null 2>&1; then
-	fail "release packing accepted unsupported windows/arm64"
-fi
-if PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" darwin_arm64_v8.0 >/dev/null 2>&1; then
-	fail "release packing accepted unsupported darwin/arm64"
-fi
-
 cat >"$fakebin/makensis" <<'EOF'
 #!/bin/sh
 set -eu

@@ -290,37 +290,37 @@ try {
   $actual = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLowerInvariant()
   if ($actual -ne $expected) { throw "cm: checksum verification failed for $asset" }
 
-  $sigstoreOk = $false
-  $sigstoreReason = $null
-  try {
-    Invoke-WebRequest -Uri $signatureUrl -OutFile $signature
-  } catch {
-    $sigstoreReason = "could not download $signatureName from $signatureUrl"
-  }
-
   $cosign = Get-Command cosign -ErrorAction SilentlyContinue
-  if (-not $sigstoreReason -and $cosign) {
+  if ($cosign) {
+    $sigstoreOk = $false
+    $sigstoreReason = $null
     try {
-      & $cosign.Source verify-blob `
-        --bundle=$signature `
-        --certificate-identity=$certIdentity `
-        --certificate-oidc-issuer=$oidcIssuer `
-        $checksums
-      if ($LASTEXITCODE -eq 0) {
-        $sigstoreOk = $true
-        Write-Host "Sigstore signature verified for $checksumName."
-      } else {
-        $sigstoreReason = "Sigstore/cosign verification failed for $signatureName"
-      }
+      Invoke-WebRequest -Uri $signatureUrl -OutFile $signature
     } catch {
-      $sigstoreReason = "Sigstore/cosign verification failed for ${signatureName}: $($_.Exception.Message)"
+      $sigstoreReason = "could not download $signatureName from $signatureUrl"
     }
-  } elseif (-not $sigstoreReason) {
-    $sigstoreReason = 'cosign is not installed or not on PATH'
-  }
 
-  if (-not $sigstoreOk) {
-    Write-Warning "$sigstoreReason; SHA-256 checksum verified, continuing without signature verification."
+    if (-not $sigstoreReason) {
+      try {
+        & $cosign.Source verify-blob `
+          --bundle=$signature `
+          --certificate-identity=$certIdentity `
+          --certificate-oidc-issuer=$oidcIssuer `
+          $checksums
+        if ($LASTEXITCODE -eq 0) {
+          $sigstoreOk = $true
+          Write-Host "Sigstore signature verified for $checksumName."
+        } else {
+          $sigstoreReason = "Sigstore/cosign verification failed for $signatureName"
+        }
+      } catch {
+        $sigstoreReason = "Sigstore/cosign verification failed for ${signatureName}: $($_.Exception.Message)"
+      }
+    }
+
+    if (-not $sigstoreOk) {
+      Write-Warning "$sigstoreReason; SHA-256 checksum verified, continuing without signature verification."
+    }
   }
 
   $extract = Join-Path $tmp 'extract'

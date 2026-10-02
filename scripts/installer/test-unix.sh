@@ -14,8 +14,8 @@ if grep -q 'Sigstore/cosign verification is required' "$installer"; then
 	echo 'Unix installer still blocks when Sigstore/cosign is unavailable.' >&2
 	exit 1
 fi
-if ! grep -q 'SHA-256 checksum verified, continuing without signature verification' "$installer"; then
-	echo 'Unix installer is missing the non-blocking checksum fallback warning.' >&2
+if grep -q 'cosign is not installed or not on PATH' "$installer"; then
+	echo 'Unix installer still warns when optional cosign is unavailable.' >&2
 	exit 1
 fi
 if ! grep -Fq 'linux/amd64|linux/arm64|darwin/amd64)' "$installer"; then
@@ -142,6 +142,7 @@ EOF
 	fi
 	marker="$tmp/installed-$mode"
 	log="$tmp/install-$mode.log"
+	signature_marker="$tmp/signature-requested-$mode"
 	if ! PATH="$fakebin" \
 		HOME="$tmp/home-$mode" \
 		CM_VERSION="$version" \
@@ -153,6 +154,7 @@ EOF
 		TEST_FIXTURE_ASSET="$asset" \
 		TEST_CHECKSUM_NAME="$checksum_name" \
 		TEST_SIGNATURE_NAME="$signature_name" \
+		TEST_SIGNATURE_REQUEST_MARKER="$signature_marker" \
 		TEST_INSTALL_MARKER="$marker" \
 		/bin/sh "$installer" >"$log" 2>&1; then
 		echo "Unix installer failed during $mode cosign fallback case." >&2
@@ -164,11 +166,27 @@ EOF
 		cat "$log" >&2
 		exit 1
 	}
-	grep -q 'SHA-256 checksum verified, continuing without signature verification' "$log" || {
-		echo "Unix installer did not report checksum fallback for $mode cosign verification." >&2
-		cat "$log" >&2
-		exit 1
-	}
+	if [ "$mode" = missing ]; then
+		[ ! -e "$signature_marker" ] || {
+			echo 'Unix installer requested Sigstore metadata even though cosign is unavailable.' >&2
+			exit 1
+		}
+		if grep -q 'WARNING:' "$log"; then
+			echo 'Unix installer warned when optional cosign is unavailable.' >&2
+			cat "$log" >&2
+			exit 1
+		fi
+	else
+		[ -e "$signature_marker" ] || {
+			echo 'Unix installer did not request Sigstore metadata when cosign is available.' >&2
+			exit 1
+		}
+		grep -q 'SHA-256 checksum verified, continuing without signature verification' "$log" || {
+			echo "Unix installer did not report checksum fallback for $mode cosign verification." >&2
+			cat "$log" >&2
+			exit 1
+		}
+	fi
 }
 
 run_fallback_case missing

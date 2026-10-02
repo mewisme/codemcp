@@ -216,7 +216,7 @@ jobs:
 
       - name: Installer lint
         if: needs.changes.outputs.full == 'true'
-        run: shellcheck install.sh scripts/installer/test-unix.sh scripts/release/pack-release-binary.sh scripts/release/build-windows-setup.sh scripts/installer/test-windows-setup.sh scripts/release/verify-windows-setup-payload.sh
+        run: shellcheck install.sh scripts/installer/test-unix.sh scripts/release/build-windows-setup.sh scripts/installer/test-windows-setup.sh scripts/release/verify-windows-setup-payload.sh
 
   race:
     name: Race test

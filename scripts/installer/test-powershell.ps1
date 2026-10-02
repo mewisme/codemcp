@@ -16,8 +16,8 @@ if ($source -match 'INSTALL_ALLOW_CHECKSUM_ONLY') {
 if ($source -match 'Sigstore/cosign verification is required') {
   throw 'PowerShell installer still blocks when Sigstore/cosign is unavailable.'
 }
-if ($source -notmatch 'SHA-256 checksum verified, continuing without signature verification') {
-  throw 'PowerShell installer is missing the non-blocking checksum fallback warning.'
+if ($source -match 'cosign is not installed or not on PATH') {
+  throw 'PowerShell installer still warns when optional cosign is unavailable.'
 }
 $sigstoreThrows = $ast.FindAll({
   param($candidate)
