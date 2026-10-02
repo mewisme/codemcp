@@ -218,7 +218,19 @@ esac
 extract="$tmp/extract"
 mkdir -p "$extract"
 binary="$extract/$BINARY_NAME"
-tar -xOzf "$archive" "$BINARY_NAME" | dd bs=1048576 count=257 2>/dev/null >"$binary"
+stream_bytes="$(tar -xOzf "$archive" "$BINARY_NAME" | head -c $((MAX_BINARY_BYTES + 1)) | wc -c | tr -d '[:space:]')"
+case "$stream_bytes" in
+	''|*[!0-9]*) echo "cm: invalid release binary stream size." >&2; exit 1 ;;
+esac
+if [ "$stream_bytes" -le 0 ] || [ "$stream_bytes" -gt "$MAX_BINARY_BYTES" ]; then
+	echo "cm: release binary has invalid size $stream_bytes" >&2
+	exit 1
+fi
+tar -xzf "$archive" -C "$extract" "$BINARY_NAME"
+if [ ! -f "$binary" ] || [ -L "$binary" ]; then
+	echo "cm: extracted release binary is not a regular file" >&2
+	exit 1
+fi
 binary_bytes="$(wc -c <"$binary" | tr -d '[:space:]')"
 case "$binary_bytes" in
 	''|*[!0-9]*) echo "cm: invalid release binary size." >&2; exit 1 ;;
@@ -227,7 +239,28 @@ if [ "$binary_bytes" -le 0 ] || [ "$binary_bytes" -gt "$MAX_BINARY_BYTES" ]; the
 	echo "cm: release binary has invalid size $binary_bytes" >&2
 	exit 1
 fi
+[ "$binary_bytes" = "$stream_bytes" ] || {
+	echo "cm: extracted release binary size mismatch: got $binary_bytes, expected $stream_bytes" >&2
+	exit 1
+}
 chmod +x "$binary"
+
+set +e
+("$binary" --version >/dev/null 2>&1) 2>/dev/null
+startup_status=$?
+set -e
+if [ "$startup_status" -ne 0 ]; then
+	echo "cm: downloaded CodeMCP binary failed its startup self-check (exit $startup_status)." >&2
+	case "$startup_status" in
+		135) echo "cm: process terminated by SIGBUS (signal 7)." >&2 ;;
+		139) echo "cm: process terminated by SIGSEGV (signal 11)." >&2 ;;
+	esac
+	if [ "$os" = "linux" ]; then
+		host="$(uname -srmo 2>/dev/null || uname -a 2>/dev/null || true)"
+		[ -z "$host" ] || echo "cm: host: $host" >&2
+	fi
+	exit "$startup_status"
+fi
 
 "$binary" install
 

@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"compress/gzip"
 	"errors"
 	"flag"
@@ -86,13 +87,16 @@ type tarItem struct {
 }
 
 func tarFixture(fixture string) ([]tarItem, error) {
-	binary := []byte("#!/bin/sh\n: >\"$TEST_INSTALL_MARKER\"\n")
+	binary := []byte("#!/bin/sh\nif [ \"${TEST_STARTUP_EXIT:-0}\" != 0 ] && [ \"${1:-}\" = \"--version\" ]; then exit \"$TEST_STARTUP_EXIT\"; fi\n: >\"$TEST_INSTALL_MARKER\"\n")
 	regular := func(name string, content []byte) tarItem {
 		return tarItem{name: name, content: content, kind: tar.TypeReg}
 	}
 	switch fixture {
 	case "valid":
 		return []tarItem{regular("cm", binary)}, nil
+	case "valid-large":
+		padding := bytes.Repeat([]byte("# release extraction padding\n"), 500_000)
+		return []tarItem{regular("cm", append(binary, padding...))}, nil
 	case "traversal":
 		return []tarItem{regular("../escape", []byte("bad")), regular("cm", binary)}, nil
 	case "absolute":

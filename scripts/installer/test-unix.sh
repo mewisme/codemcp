@@ -192,6 +192,76 @@ EOF
 run_fallback_case missing
 run_fallback_case failed
 
+large_archive="$tmp/large-$asset"
+(
+	cd "$root"
+	go run ./scripts/installer/archive-fixture --format tar --case valid-large --output "$large_archive"
+)
+large_checksums="$tmp/large-$checksum_name"
+printf '%s  %s\n' "$(archive_hash "$large_archive")" "$asset" >"$large_checksums"
+large_fakebin="$tmp/bin-large"
+make_fake_path "$large_fakebin"
+large_marker="$tmp/installed-large"
+large_log="$tmp/install-large.log"
+if ! PATH="$large_fakebin" \
+	HOME="$tmp/home-large" \
+	CM_VERSION="$version" \
+	CM_INSTALL_DIR="$tmp/home-large/.cm" \
+	CM_BIN_DIR="$tmp/home-large/bin" \
+	TEST_FIXTURE_ARCHIVE="$large_archive" \
+	TEST_FIXTURE_CHECKSUMS="$large_checksums" \
+	TEST_FIXTURE_SIGNATURE="$signature" \
+	TEST_FIXTURE_ASSET="$asset" \
+	TEST_CHECKSUM_NAME="$checksum_name" \
+	TEST_SIGNATURE_NAME="$signature_name" \
+	TEST_INSTALL_MARKER="$large_marker" \
+	/bin/sh "$installer" >"$large_log" 2>&1; then
+	echo 'Unix installer truncated or rejected a valid large release binary.' >&2
+	cat "$large_log" >&2
+	exit 1
+fi
+[ -f "$large_marker" ] || {
+	echo 'Unix installer did not execute the complete large release binary.' >&2
+	cat "$large_log" >&2
+	exit 1
+}
+
+startup_fakebin="$tmp/bin-startup-failure"
+make_fake_path "$startup_fakebin"
+startup_marker="$tmp/installed-startup-failure"
+startup_log="$tmp/install-startup-failure.log"
+if PATH="$startup_fakebin" \
+	HOME="$tmp/home-startup-failure" \
+	CM_VERSION="$version" \
+	CM_INSTALL_DIR="$tmp/home-startup-failure/.cm" \
+	CM_BIN_DIR="$tmp/home-startup-failure/bin" \
+	TEST_FIXTURE_ARCHIVE="$archive" \
+	TEST_FIXTURE_CHECKSUMS="$checksums" \
+	TEST_FIXTURE_SIGNATURE="$signature" \
+	TEST_FIXTURE_ASSET="$asset" \
+	TEST_CHECKSUM_NAME="$checksum_name" \
+	TEST_SIGNATURE_NAME="$signature_name" \
+	TEST_STARTUP_EXIT=139 \
+	TEST_INSTALL_MARKER="$startup_marker" \
+	/bin/sh "$installer" >"$startup_log" 2>&1; then
+	echo 'Unix installer accepted a release binary that failed its startup self-check.' >&2
+	exit 1
+fi
+grep -q 'startup self-check (exit 139)' "$startup_log" || {
+	echo 'Unix installer did not report the startup self-check failure.' >&2
+	cat "$startup_log" >&2
+	exit 1
+}
+grep -q 'SIGSEGV (signal 11)' "$startup_log" || {
+	echo 'Unix installer did not explain the startup signal.' >&2
+	cat "$startup_log" >&2
+	exit 1
+}
+[ ! -e "$startup_marker" ] || {
+	echo 'Unix installer continued into installation after startup preflight failure.' >&2
+	exit 1
+}
+
 latest_fakebin="$tmp/bin-latest"
 make_fake_path "$latest_fakebin"
 latest_marker="$tmp/installed-latest"
