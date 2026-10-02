@@ -17,7 +17,7 @@ var canonicalNonOperationCommandRoles = map[string]string{
 	"tui":        "alternate-ui",
 }
 
-const frozenCanonicalCommandTree = `<root> | operation:server.foreground:accepted-path
+const frozenCanonicalCommandTree = `<root> | namespace
 activity stream | operation:activity.stream
 activity view | operation:activity.view
 activity | namespace

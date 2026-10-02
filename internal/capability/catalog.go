@@ -171,7 +171,7 @@ var specs = buildSpecs()
 
 func buildSpecs() []Spec {
 	values := []Spec{
-		operatorRuntime(ServerForeground, "serve", true, RootPath),
+		operatorRuntime(ServerForeground, "serve", true),
 		operatorSensitive(InstallRun, "install", false),
 		operatorSensitive(UpdateApply, "upgrade", true),
 		operatorQueryOpenWorld(UpdateCheck, "upgrade check"),

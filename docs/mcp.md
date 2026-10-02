@@ -8,6 +8,8 @@ The OpenAI profile comes first because it is the normal ChatGPT path.
 
 ### Secure MCP Tunnel
 
+Create or manage the tunnel directly in [OpenAI Platform → Tunnels](https://platform.openai.com/settings/organization/tunnels), then configure CodeMCP with that tunnel ID.
+
 ```bash
 cm tunnel configure --enabled --id tunnel_...
 cm tunnel key set

@@ -34,6 +34,8 @@ Registration creates a stable `ws_*` identity. See [Workspaces](workspaces.md).
 
 ## Configure OpenAI Secure MCP Tunnel
 
+Create the tunnel in [OpenAI Platform → Tunnels](https://platform.openai.com/settings/organization/tunnels), then configure CodeMCP with its `tunnel_...` ID:
+
 ```bash
 cm tunnel configure --enabled --id tunnel_...
 cm tunnel key set

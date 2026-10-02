@@ -6,6 +6,31 @@ import (
 	"testing"
 )
 
+func TestRootCommandWithoutArgumentsPrintsHelp(t *testing.T) {
+	root := newRootCommand()
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs(nil)
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	help := output.String()
+	for _, required := range []string{
+		"A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.",
+		"Usage:\n  cm [command]",
+		"Available Commands:",
+		"serve",
+	} {
+		if !strings.Contains(help, required) {
+			t.Fatalf("root invocation missing help content %q:\n%s", required, help)
+		}
+	}
+	if strings.Contains(help, "Server ready") {
+		t.Fatalf("root invocation unexpectedly entered server lifecycle:\n%s", help)
+	}
+}
+
 func TestPublicCLIIdentityUsesOnlyCodeMCPAndCM(t *testing.T) {
 	root := newRootCommand()
 	var output bytes.Buffer
@@ -18,7 +43,7 @@ func TestPublicCLIIdentityUsesOnlyCodeMCPAndCM(t *testing.T) {
 	help := output.String()
 	for _, required := range []string{
 		"A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.",
-		"Usage:\n  cm [flags]",
+		"Usage:\n  cm [command]",
 		"Generate shell completion for cm",
 		"env: CM_CONFIG_DIR",
 	} {

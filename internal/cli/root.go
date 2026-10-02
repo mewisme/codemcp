@@ -31,7 +31,6 @@ func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               cliUseName(),
 		Short:             "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.",
-		RunE:              runServer,
 		Version:           version.Short(),
 		SilenceErrors:     true,
 		SilenceUsage:      true,
@@ -100,6 +99,9 @@ func newRootCommand() *cobra.Command {
 	bindAliasHelpCompletion(cmd)
 	bindCanonicalCommandOperations(cmd)
 	bindCommandPresentation(cmd)
+	if commandPresentationTitle(cmd) == "" {
+		setCommandPresentationTitle(cmd, defaultCommandPresentationTitle(cmd))
+	}
 	return cmd
 }
 

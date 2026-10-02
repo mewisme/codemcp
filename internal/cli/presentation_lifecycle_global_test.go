@@ -79,8 +79,11 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		sort.Strings(missing)
 		t.Fatalf("top-level CLI families missing presentation representative: %v", missing)
 	}
-	if !root.Runnable() || commandPresentationTitle(root) == "" {
-		t.Fatalf("root command lacks human presentation contract")
+	if root.Runnable() {
+		t.Fatal("root command must remain help-only")
+	}
+	if commandPresentationTitle(root) == "" {
+		t.Fatal("root help/failure presentation contract is missing")
 	}
 }
 

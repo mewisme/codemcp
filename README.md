@@ -133,6 +133,8 @@ Release executable/package/setup assets are covered by `codemcp_checksums.txt`; 
 
 ## 5-minute OpenAI setup
 
+Create the tunnel in [OpenAI Platform → Tunnels](https://platform.openai.com/settings/organization/tunnels), then use its `tunnel_...` ID below.
+
 ```bash
 cm init
 cm workspace register ~/projects/my-project
