@@ -222,7 +222,7 @@ func TestLLMAndApprovalExplainRemainFourSurfaceRequiredBaseline(t *testing.T) {
 }
 
 func TestAgentInstructionOperationsRemainProtocolOnlyOnProductSurfaces(t *testing.T) {
-	for _, id := range []ID{InstructionRuleCreate, InstructionSkillCreate, SkillList, SkillLoad, RulesLoadPath} {
+	for _, id := range []ID{InstructionRuleCreate, InstructionSkillCreate, PlanCreate, SkillList, SkillLoad, RulesLoadPath} {
 		spec, ok := Lookup(id)
 		if !ok {
 			t.Fatalf("operation %s missing", id)
@@ -232,6 +232,9 @@ func TestAgentInstructionOperationsRemainProtocolOnlyOnProductSurfaces(t *testin
 		}
 		if len(spec.MCPTools) == 0 {
 			t.Fatalf("operation %s lost MCP tool binding", id)
+		}
+		if spec.HasCLI() || len(spec.Admin) != 0 {
+			t.Fatalf("agent-only operation %s gained human/admin binding: %#v", id, spec)
 		}
 		for _, surface := range ProductSurfaces {
 			contract, ok := spec.Surface(surface)
