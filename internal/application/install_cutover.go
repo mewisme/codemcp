@@ -42,6 +42,7 @@ type InstallCurrentResult struct {
 
 type installCutoverDependencies struct {
 	Detect      func(context.Context, released024.Options) (released024.Manifest, error)
+	Discard     func(context.Context, released024.DiscardOptions) (released024.DiscardResult, error)
 	Stage       func(context.Context, released024.StageOptions) (released024.StageResult, error)
 	Activate    func(context.Context, released024.ActivateOptions) (released024.ActivationResult, error)
 	Retire      func(context.Context, released024.RetireOptions) (released024.RetirementResult, error)
@@ -54,7 +55,8 @@ type installCutoverDependencies struct {
 
 func defaultInstallCutoverDependencies() installCutoverDependencies {
 	return installCutoverDependencies{
-		Detect: released024.Detect, Stage: released024.Stage, Activate: released024.Activate, Retire: released024.Retire,
+		Detect: released024.Detect, Discard: released024.DiscardUnsupportedPredecessor,
+		Stage: released024.Stage, Activate: released024.Activate, Retire: released024.Retire,
 		Install: install.Install, PostInstall: RunPostInstallBootstrap, Layout: install.DefaultLayout,
 		Executable: os.Executable, Stat: os.Stat,
 	}
@@ -111,9 +113,16 @@ func migrateReleasedInstallIfNeeded(ctx context.Context, options InstallCurrentO
 		return InstallCurrentResult{}, false, nil
 	}
 	if manifest.Unsupported > 0 {
-		err := fmt.Errorf("released state contains %d unsupported artifact(s); migration must be resolved before install", manifest.Unsupported)
-		emitInstallCutover(options.Observe, "detect", "failed", err.Error(), false)
-		return InstallCurrentResult{}, false, err
+		emitInstallCutover(options.Observe, "detect", "warning", fmt.Sprintf("Released state contains %d unsupported artifact(s); discarding predecessor state and continuing with a fresh install", manifest.Unsupported), false)
+		emitInstallCutover(options.Observe, "cleanup", "running", "Cleaning unsupported released predecessor state", false)
+		discarded, err := deps.Discard(ctx, released024.DiscardOptions{Manifest: manifest})
+		if err != nil {
+			emitInstallCutover(options.Observe, "cleanup", "failed", err.Error(), false)
+			return InstallCurrentResult{}, false, err
+		}
+		message := fmt.Sprintf("Released predecessor state removed; retired %d service(s) and removed %d launcher(s)", discarded.ServicesRetired, discarded.LaunchersRemoved)
+		emitInstallCutover(options.Observe, "cleanup", "success", message, false)
+		return InstallCurrentResult{}, false, nil
 	}
 	targetRoot := config.RootPath()
 	if _, statErr := deps.Stat(targetRoot); statErr == nil {

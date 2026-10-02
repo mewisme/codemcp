@@ -162,3 +162,53 @@ func TestReleasedInstallMigrationFailureDoesNotInstallOrBootstrap(t *testing.T) 
 		t.Fatalf("migrated=%t err=%v", migrated, err)
 	}
 }
+
+func TestInstallCurrentDiscardsUnsupportedReleasedStateThenFreshInstalls(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "canonical")
+	previous := configformat.RootPath()
+	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	layout, err := install.NewLayout(filepath.Join(t.TempDir(), "install"), filepath.Join(t.TempDir(), "bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequence := []string{}
+	deps := defaultInstallCutoverDependencies()
+	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
+		sequence = append(sequence, "detect")
+		return released024.Manifest{Found: true, Unsupported: 5}, nil
+	}
+	deps.Discard = func(context.Context, released024.DiscardOptions) (released024.DiscardResult, error) {
+		sequence = append(sequence, "discard")
+		return released024.DiscardResult{RootRemoved: true}, nil
+	}
+	deps.Stage = func(context.Context, released024.StageOptions) (released024.StageResult, error) {
+		t.Fatal("stage ran for unsupported predecessor state")
+		return released024.StageResult{}, nil
+	}
+	deps.Install = func(install.Options) (install.Result, error) {
+		sequence = append(sequence, "install")
+		return install.Result{
+			Layout: layout, Version: "v0.3.2",
+			Staged:    install.Staged{Binary: filepath.Join(layout.Versions, "v0.3.2", layout.BinaryName)},
+			Canonical: install.CanonicalStatus{Path: layout.CanonicalBinary},
+		}, nil
+	}
+	deps.PostInstall = func(context.Context) SupplementalBootstrapResult {
+		sequence = append(sequence, "supplemental")
+		return SupplementalBootstrapResult{}
+	}
+	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{}, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Version != "v0.3.2" {
+		t.Fatalf("result=%#v", result)
+	}
+	want := []string{"detect", "discard", "install", "supplemental"}
+	if !reflect.DeepEqual(sequence, want) {
+		t.Fatalf("sequence=%v want=%v", sequence, want)
+	}
+}
