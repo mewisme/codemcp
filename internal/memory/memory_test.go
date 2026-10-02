@@ -112,7 +112,7 @@ func TestWorkspaceStoreUsesLocalCMRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(root, ".cm", "memory", "MEMORY.md")
+	want := filepath.Join(item.Path, ".cm", "memory", "MEMORY.md")
 	if path != want {
 		t.Fatalf("memory path=%q want=%q", path, want)
 	}

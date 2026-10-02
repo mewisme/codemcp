@@ -3,6 +3,7 @@ package oslock
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -73,6 +74,25 @@ func (l *Lock) Release() error {
 		return err
 	}
 	return closeErr
+}
+
+func (l *Lock) ReadContent() ([]byte, error) {
+	if l == nil || l.file == nil {
+		return nil, errors.New("file lock is not held")
+	}
+	info, err := l.file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() <= 0 {
+		return nil, nil
+	}
+	data := make([]byte, info.Size())
+	n, err := l.file.ReadAt(data, 0)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return data[:n], nil
 }
 
 func (l *Lock) ReplaceContent(data []byte) error {

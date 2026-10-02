@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -484,6 +485,9 @@ func TestPlanAuthoringFailsClosedWhenWorkspaceStateDisappearsDuringActivation(t 
 }
 
 func TestPlanAuthoringFailsClosedWhenWorkspaceRelocatesDuringActivation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not permit renaming the workspace while staged plan files remain open")
+	}
 	service, manager, item := newPlanAuthoringHarness(t)
 	changes := instructioncontext.NewChangeStream()
 	service.Changes = changes

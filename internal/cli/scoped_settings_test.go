@@ -92,6 +92,10 @@ func TestScopedSettingGrammarMatchesCanonicalCapabilities(t *testing.T) {
 func TestScopedAndUniversalStaticSettingParity(t *testing.T) {
 	allowDirA := t.TempDir()
 	allowDirB := t.TempDir()
+	shellPathA := t.TempDir()
+	shellPathB := t.TempDir()
+	rtkPath := filepath.Join(t.TempDir(), "rtk")
+	codegraphPath := filepath.Join(t.TempDir(), "codegraph")
 	tests := []struct {
 		name       string
 		key        string
@@ -103,7 +107,7 @@ func TestScopedAndUniversalStaticSettingParity(t *testing.T) {
 		{name: "http-admin", key: "http.admin.port", value: "43124", scopedArgs: []string{"http", "admin", "port", "43124"}, want: "43124"},
 		{name: "auth", key: "http.mcp.auth.legacy_bearer", value: "false", scopedArgs: []string{"auth", "mcp", "legacy", "bearer", "disable"}, want: "false"},
 		{name: "permissions", key: "permissions.allow_dirs", value: allowDirA + "," + allowDirB, scopedArgs: []string{"permissions", "allow", "dir", "add", allowDirA}, want: allowDirA + "," + allowDirB},
-		{name: "shell", key: "shell.path", value: "/opt/scoped-a,/opt/scoped-b", scopedArgs: []string{"shell", "path", "/opt/scoped-a,/opt/scoped-b"}, want: "/opt/scoped-a,/opt/scoped-b"},
+		{name: "shell", key: "shell.path", value: shellPathA + "," + shellPathB, scopedArgs: []string{"shell", "path", shellPathA + "," + shellPathB}, want: shellPathA + "," + shellPathB},
 		{name: "notification-approval", key: "notifications.approval.enabled", value: "true", scopedArgs: []string{"notification", "approval", "enable"}, want: "true"},
 		{name: "notification-pending", key: "notifications.approval.pending", value: "false", scopedArgs: []string{"notification", "approval", "pending", "disable"}, want: "false"},
 		{name: "notification-resolved", key: "notifications.approval.resolved", value: "false", scopedArgs: []string{"notification", "approval", "resolved", "disable"}, want: "false"},
@@ -114,8 +118,8 @@ func TestScopedAndUniversalStaticSettingParity(t *testing.T) {
 		{name: "notification-completion-telegram", key: "notifications.completion.telegram_enabled", value: "true", scopedArgs: []string{"notification", "completion", "telegram", "enable"}, want: "true"},
 		{name: "ponytail", key: "integrations.ponytail.mode", value: "lite", scopedArgs: []string{"integration", "ponytail", "mode", "lite"}, want: "lite"},
 		{name: "caveman", key: "integrations.caveman.mode", value: "wenyan-lite", scopedArgs: []string{"integration", "caveman", "mode", "wenyan-lite"}, want: "wenyan-lite"},
-		{name: "rtk", key: "integrations.rtk.path", value: "/opt/rtk", scopedArgs: []string{"integration", "rtk", "path", "/opt/rtk"}, want: "/opt/rtk"},
-		{name: "codegraph", key: "integrations.codegraph.path", value: "/opt/codegraph", scopedArgs: []string{"integration", "codegraph", "path", "/opt/codegraph"}, want: "/opt/codegraph"},
+		{name: "rtk", key: "integrations.rtk.path", value: rtkPath, scopedArgs: []string{"integration", "rtk", "path", rtkPath}, want: rtkPath},
+		{name: "codegraph", key: "integrations.codegraph.path", value: codegraphPath, scopedArgs: []string{"integration", "codegraph", "path", codegraphPath}, want: codegraphPath},
 		{name: "tunnel", key: "tunnel.id", value: "tun_scoped", scopedArgs: []string{"tunnel", "configure", "--id", "tun_scoped"}, want: "tun_scoped"},
 	}
 	for _, test := range tests {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -281,7 +282,7 @@ func TestInstructionAuthoringWorkspaceCreateUpdateDryRunAndResolverVisibility(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if executableInfo.Mode().Perm() != 0o700 || plainInfo.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && (executableInfo.Mode().Perm() != 0o700 || plainInfo.Mode().Perm() != 0o600) {
 		t.Fatalf("supporting modes executable=%o plain=%o", executableInfo.Mode().Perm(), plainInfo.Mode().Perm())
 	}
 

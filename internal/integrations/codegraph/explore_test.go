@@ -20,6 +20,7 @@ func TestNormalizeExploreInputBoundsAndScope(t *testing.T) {
 		t.Fatalf("normalized=%#v", valid)
 	}
 
+	absolutePath := filepath.Join(t.TempDir(), "absolute")
 	tests := []struct {
 		name      string
 		workspace string
@@ -30,7 +31,7 @@ func TestNormalizeExploreInputBoundsAndScope(t *testing.T) {
 		{name: "blank query", workspace: "ws_test", query: "   "},
 		{name: "query too large", workspace: "ws_test", query: strings.Repeat("x", MaxQueryBytes+1)},
 		{name: "query nul", workspace: "ws_test", query: "find\x00Foo"},
-		{name: "absolute path", workspace: "ws_test", query: "find Foo", path: filepath.Join(string(filepath.Separator), "tmp")},
+		{name: "absolute path", workspace: "ws_test", query: "find Foo", path: absolutePath},
 		{name: "escaping path", workspace: "ws_test", query: "find Foo", path: "../outside"},
 		{name: "path too large", workspace: "ws_test", query: "find Foo", path: strings.Repeat("p", MaxProjectPathBytes+1)},
 		{name: "path nul", workspace: "ws_test", query: "find Foo", path: "src\x00pkg"},

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
@@ -148,6 +149,9 @@ func TestRelocateRewritesAllowDirsUnderMovedRoot(t *testing.T) {
 }
 
 func TestRelocateActiveWorkspaceAfterPhysicalMove(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not permit moving a workspace tree with an open runtime lock")
+	}
 	manager := newTestManager(t)
 	parent := t.TempDir()
 	oldRoot := filepath.Join(parent, "old")

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -69,6 +70,9 @@ func TestRuntimeOwnershipDetectsLostIdentity(t *testing.T) {
 }
 
 func TestRuntimeOwnershipDetectsReplacedLockFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not permit renaming an open locked file")
+	}
 	store := filepath.Join(t.TempDir(), "workspaces.json")
 	root := t.TempDir()
 	manager := NewManager(store)

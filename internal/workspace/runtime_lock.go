@@ -146,11 +146,11 @@ func (m *Manager) RuntimeDiagnostics() RuntimeDiagnostics {
 	m.mu.RLock()
 	result.Active = m.runtime != nil && m.runtime.active
 	items := make([]Workspace, 0, len(m.items))
-	owned := map[string]bool{}
+	owned := map[string]*oslock.Lock{}
 	if m.runtime != nil {
 		result.Owned = len(m.runtime.locks)
-		for id := range m.runtime.locks {
-			owned[id] = true
+		for id, lock := range m.runtime.locks {
+			owned[id] = lock
 		}
 	}
 	for _, item := range m.items {
@@ -163,7 +163,7 @@ func (m *Manager) RuntimeDiagnostics() RuntimeDiagnostics {
 			WorkspaceID: item.ID,
 			Root:        item.Path,
 			LockPath:    workspacestate.New(item.Path).RuntimeLockPath(),
-			Owned:       owned[item.ID],
+			Owned:       owned[item.ID] != nil,
 			GitHygiene:  InspectLocalStateGitHygiene(context.Background(), item.Path),
 		}
 		if !item.Available() {
@@ -173,9 +173,15 @@ func (m *Manager) RuntimeDiagnostics() RuntimeDiagnostics {
 		} else {
 			diagnostic.Valid = true
 		}
-		if data, err := os.ReadFile(diagnostic.LockPath); err == nil {
+		var lockData []byte
+		if lock := owned[item.ID]; lock != nil {
+			lockData, _ = lock.ReadContent()
+		} else {
+			lockData, _ = os.ReadFile(diagnostic.LockPath)
+		}
+		if len(lockData) > 0 {
 			var metadata runtimeLockMetadata
-			if json.Unmarshal(data, &metadata) == nil {
+			if json.Unmarshal(lockData, &metadata) == nil {
 				diagnostic.PID = metadata.PID
 				diagnostic.InstanceID = metadata.InstanceID
 				diagnostic.StartedAt = metadata.StartedAt

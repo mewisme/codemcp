@@ -70,10 +70,6 @@ func (h *lifecycleHarness) start(t *testing.T, owner backgrounddelivery.Owner, p
 }
 
 func delayedCompletionCommand(delay time.Duration, marker string) string {
-	if os.PathSeparator == '\\' {
-		milliseconds := max(int(delay.Milliseconds()), 1)
-		return fmt.Sprintf("Start-Sleep -Milliseconds %d; Write-Output %q", milliseconds, marker)
-	}
 	seconds := float64(delay) / float64(time.Second)
 	return fmt.Sprintf("sleep %.3f; printf '%%s' %q", seconds, marker)
 }

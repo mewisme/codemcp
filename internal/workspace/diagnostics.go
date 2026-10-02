@@ -74,7 +74,10 @@ func (m *Manager) Diagnose(ctx context.Context, id string) (LocalStateDiagnostic
 	loaded := m.loaded
 	canonical := m.canonicalIDLocked(requested)
 	item, ok := m.items[canonical]
-	owned := m.runtime != nil && m.runtime.locks[canonical] != nil
+	var ownedLock *oslock.Lock
+	if m.runtime != nil {
+		ownedLock = m.runtime.locks[canonical]
+	}
 	m.mu.RUnlock()
 	if !loaded {
 		var err error
@@ -83,12 +86,12 @@ func (m *Manager) Diagnose(ctx context.Context, id string) (LocalStateDiagnostic
 			return LocalStateDiagnostic{}, err
 		}
 		ok = true
-		owned = false
+		ownedLock = nil
 	}
 	if !ok {
 		return LocalStateDiagnostic{}, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
-	return diagnoseWorkspaceLocalState(ctx, item, owned), nil
+	return diagnoseWorkspaceLocalState(ctx, item, ownedLock), nil
 }
 
 func (m *Manager) DiagnoseRelocation(_ context.Context, id, destination string) (RelocationDiagnostic, error) {
@@ -168,7 +171,7 @@ func (m *Manager) diagnosticRegistryWorkspace(requested string) (Workspace, erro
 	return Workspace{}, fmt.Errorf("%w: %s", ErrNotFound, requested)
 }
 
-func diagnoseWorkspaceLocalState(ctx context.Context, item Workspace, owned bool) LocalStateDiagnostic {
+func diagnoseWorkspaceLocalState(ctx context.Context, item Workspace, ownedLock *oslock.Lock) LocalStateDiagnostic {
 	local := workspacestate.New(item.Path)
 	result := LocalStateDiagnostic{
 		WorkspaceID: item.ID, Root: item.Path, LocalRoot: local.Root(),
@@ -205,7 +208,7 @@ func diagnoseWorkspaceLocalState(ctx context.Context, item Workspace, owned bool
 		result.Error = err.Error()
 	}
 	result.GitHygiene = InspectLocalStateGitHygiene(ctx, item.Path)
-	inspectDiagnosticRuntimeLock(&result, owned)
+	inspectDiagnosticRuntimeLock(&result, ownedLock)
 	return result
 }
 
@@ -236,11 +239,20 @@ func inspectLocalStateSize(root string) (int64, int, error) {
 	return bytes, files, err
 }
 
-func inspectDiagnosticRuntimeLock(result *LocalStateDiagnostic, owned bool) {
+func inspectDiagnosticRuntimeLock(result *LocalStateDiagnostic, ownedLock *oslock.Lock) {
 	if result == nil || result.LockPath == "" {
 		return
 	}
-	data, err := os.ReadFile(result.LockPath)
+	owned := ownedLock != nil
+	var (
+		data []byte
+		err  error
+	)
+	if owned {
+		data, err = ownedLock.ReadContent()
+	} else {
+		data, err = os.ReadFile(result.LockPath)
+	}
 	if err == nil {
 		var metadata runtimeLockMetadata
 		if decodeErr := json.Unmarshal(data, &metadata); decodeErr != nil {

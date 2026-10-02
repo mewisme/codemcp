@@ -557,9 +557,6 @@ func TestStopPublishesProcessTerminalTruthBeforeClosingBroker(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := "sleep 30"
-	if os.PathSeparator == '\\' {
-		command = "Start-Sleep -Seconds 30"
-	}
 	started, err := runtime.Processes.Start(context.Background(), item.ID, command)
 	if err != nil {
 		t.Fatal(err)

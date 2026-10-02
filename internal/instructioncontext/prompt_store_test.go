@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestPromptStoreScopesAndWorkspacePrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workspace prompt was not stored beneath .cm/prompts: %v", err)
 	}
-	if workspaceInfo.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && workspaceInfo.Mode().Perm() != 0600 {
 		t.Fatalf("workspace prompt mode=%#o", workspaceInfo.Mode().Perm())
 	}
 	if _, err := os.Stat(filepath.Join(store.GlobalRoot(), "shared.json")); err != nil {

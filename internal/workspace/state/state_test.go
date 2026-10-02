@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -28,7 +29,7 @@ func TestEnsureIdentityCreatesLazyAtomicLayout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("identity marker mode=%v err=%v", info.Mode(), err)
 	}
 	entries, err := os.ReadDir(store.Root())

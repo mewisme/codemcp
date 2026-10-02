@@ -1,6 +1,7 @@
 package productadapter
 
 import (
+	"bytes"
 	"os"
 	"testing"
 	"time"
@@ -105,6 +106,7 @@ func TestGeneratedBrowserPresentationContractIsCurrent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	got = bytes.ReplaceAll(got, []byte("\r\n"), []byte("\n"))
 	if string(got) != string(want) {
 		t.Fatal("generated browser presentation contract is stale; run go generate ./internal/productadapter")
 	}

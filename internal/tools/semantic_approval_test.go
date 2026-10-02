@@ -229,7 +229,11 @@ func TestSemanticApprovalNativeGuardPrecedesClassifier(t *testing.T) {
 }
 
 func TestSemanticApprovalPathAndNetworkGuardsPrecedeClassifier(t *testing.T) {
-	for _, command := range []string{"touch /tmp/codemcp-semantic-outside", "ftp example.com"} {
+	outsideMutation := "touch /tmp/codemcp-semantic-outside"
+	if os.PathSeparator == '\\' {
+		outsideMutation = "touch " + filepath.Join(t.TempDir(), "codemcp-semantic-outside")
+	}
+	for _, command := range []string{outsideMutation, "ftp example.com"} {
 		t.Run(command, func(t *testing.T) {
 			runtime, workspaceID := newApprovalShellRuntime(t)
 			var calls atomic.Int32

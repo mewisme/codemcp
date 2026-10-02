@@ -24,6 +24,7 @@ func TestCanonicalSkillProjectionMatchesNativeResolver(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	root = item.Path
 	if err := os.MkdirAll(filepath.Join(root, ".cm", "skills", "native"), 0o755); err != nil {
 		t.Fatal(err)
 	}

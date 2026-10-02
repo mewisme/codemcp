@@ -130,6 +130,9 @@ func TestSystemResolutionRejectsDanglingAndUnsafeSymlinkTargets(t *testing.T) {
 }
 
 func TestResolveGlobalOnlyDiscoversUserInstalledExecutable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux external executable fixture requires POSIX mode semantics")
+	}
 	value := New(Options{Enabled: true, ManagedRoot: t.TempDir()})
 	value.goos, value.goarch = "linux", "amd64"
 	value.lookPath = func(name string) (string, error) {
@@ -290,6 +293,9 @@ func TestSafeEnvironmentDoesNotForwardUnrelatedSecrets(t *testing.T) {
 
 func installTestManagedCodeGraph(t *testing.T) (*Runtime, string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux managed CodeGraph fixture requires POSIX mode semantics")
+	}
 	archive := codegraphTestZip(t)
 	spec, asset := codegraphTestSpec(archive)
 	value := &Runtime{

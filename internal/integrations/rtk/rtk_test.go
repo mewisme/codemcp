@@ -56,6 +56,9 @@ func TestPlatformMetadataMatchesPinnedRelease(t *testing.T) {
 }
 
 func TestResolveGlobalOnlyDiscoversUserInstalledExecutable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux external executable fixture requires POSIX mode semantics")
+	}
 	manager := New(Options{Enabled: true, ManagedRoot: t.TempDir()})
 	manager.goos, manager.goarch = "linux", "amd64"
 	manager.lookPath = func(name string) (string, error) {

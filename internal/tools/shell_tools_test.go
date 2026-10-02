@@ -37,9 +37,6 @@ func TestRunCommandExecutionCarriesSafeCallAttribution(t *testing.T) {
 	}
 	runtime, workspaceID, _ := newShellToolTestRuntime(t)
 	command := "printf attribution"
-	if os.PathSeparator == '\\' {
-		command = "Write-Output attribution"
-	}
 	const sessionID = "raw-session-secret"
 	ctx := WithCallSource(WithMCPSessionID(context.Background(), sessionID), "tunnel")
 	result, err := runtime.Call(ctx, "run_command", map[string]any{"workspace_id": workspaceID, "command": command})
@@ -181,9 +178,6 @@ func TestShellMutationAllowsCWDDirectiveIntoAllowedDirectory(t *testing.T) {
 }
 
 func backgroundLifecycleCommand() string {
-	if os.PathSeparator == '\\' {
-		return "Write-Output ready; Start-Sleep -Milliseconds 100"
-	}
 	return "printf ready; sleep 0.1"
 }
 

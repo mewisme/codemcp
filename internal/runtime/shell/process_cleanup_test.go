@@ -64,9 +64,6 @@ func TestProcessManagerResolvesRelocatedWorkspaceAliases(t *testing.T) {
 	shell := NewManager(manager, filepath.Join(t.TempDir(), "shell-state"))
 	processes := NewProcessManager(manager, shell)
 	command := "printf relocate-process"
-	if os.PathSeparator == '\\' {
-		command = "Write-Output relocate-process"
-	}
 	started, err := processes.Start(context.Background(), item.ID, command)
 	if err != nil {
 		t.Fatal(err)
@@ -116,9 +113,6 @@ func TestClearFinishedProcessRejectsRunningAndDeletesFinished(t *testing.T) {
 	shell := NewManager(manager, filepath.Join(t.TempDir(), "shell-state"))
 	processes := NewProcessManager(manager, shell)
 	command := "sleep 0.2"
-	if os.PathSeparator == '\\' {
-		command = "Start-Sleep -Milliseconds 200"
-	}
 	started, err := processes.Start(t.Context(), item.ID, command)
 	if err != nil {
 		t.Fatal(err)
@@ -183,9 +177,6 @@ func TestProcessManagerShutdownStopsRunningProcess(t *testing.T) {
 	}
 	processes := NewProcessManager(manager, NewManager(manager, filepath.Join(t.TempDir(), "shell-state")))
 	command := "sleep 30"
-	if os.PathSeparator == '\\' {
-		command = "Start-Sleep -Seconds 30"
-	}
 	started, err := processes.Start(t.Context(), item.ID, command)
 	if err != nil {
 		t.Fatal(err)
@@ -216,9 +207,6 @@ func TestProcessManagerPublishesCommittedNaturalTerminalTruth(t *testing.T) {
 	defer processes.UnsubscribeTerminal(sub)
 	ctx := WithExecutionMetadata(t.Context(), ExecutionMetadata{SessionHash: "session-safe", CallID: "call-safe"})
 	command := "printf terminal-ok"
-	if os.PathSeparator == '\\' {
-		command = "Write-Output terminal-ok"
-	}
 	started, err := processes.Start(ctx, item.ID, command)
 	if err != nil {
 		t.Fatal(err)
@@ -302,9 +290,6 @@ func TestProcessManagerShutdownPublishesShutdownTerminalReason(t *testing.T) {
 	sub := processes.SubscribeTerminal()
 	defer processes.UnsubscribeTerminal(sub)
 	command := "sleep 30"
-	if os.PathSeparator == '\\' {
-		command = "Start-Sleep -Seconds 30"
-	}
 	started, err := processes.Start(t.Context(), item.ID, command)
 	if err != nil {
 		t.Fatal(err)
@@ -346,9 +331,6 @@ func TestProcessManagerTerminalStreamDropsSlowSubscriberWithoutBlockingCompletio
 		processes.publishTerminal(&managedProcess{id: fmt.Sprintf("blocked-%d", index), workspace: item.ID}, ExecutionStatusSuccess, BackgroundTerminalExit, nil, nil, false)
 	}
 	command := "printf stream-done"
-	if os.PathSeparator == '\\' {
-		command = "Write-Output stream-done"
-	}
 	started, err := processes.Start(t.Context(), item.ID, command)
 	if err != nil {
 		t.Fatal(err)

@@ -22,7 +22,7 @@ func TestProjectContextProjectionTracksEffectiveAvailability(t *testing.T) {
 	}
 	executable := testExecutable(t, "codegraph")
 
-	project := filepath.Join(root, "project")
+	project := filepath.Join(item.Path, "project")
 	if err := os.MkdirAll(project, 0700); err != nil {
 		t.Fatal(err)
 	}

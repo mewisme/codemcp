@@ -133,10 +133,22 @@ func TestConfigSetApprovalExactRetryIsPrivateAndOneShot(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("request=%#v created=%t err=%v", request, created, err)
 	}
-	privateJSON := string(request.Arguments)
-	for _, required := range []string{firstValue, secondValue, harness.root, "__codemcp_config_binding", "config_fingerprint"} {
-		if !strings.Contains(privateJSON, required) {
-			t.Fatalf("private approval binding lost %q: %s", required, privateJSON)
+	var privateArguments map[string]any
+	if err := json.Unmarshal(request.Arguments, &privateArguments); err != nil {
+		t.Fatalf("decode private approval arguments: %v", err)
+	}
+	binding, ok := privateArguments["__codemcp_config_binding"].(map[string]any)
+	if !ok || binding["config_root"] != harness.root || binding["config_fingerprint"] == "" {
+		t.Fatalf("private approval binding=%#v", binding)
+	}
+	changes, ok := privateArguments["changes"].([]any)
+	if !ok || len(changes) != 2 {
+		t.Fatalf("private approval changes=%#v", privateArguments["changes"])
+	}
+	for index, required := range []string{firstValue, secondValue} {
+		change, ok := changes[index].(map[string]any)
+		if !ok || change["value"] != required {
+			t.Fatalf("private approval change[%d]=%#v want value=%q", index, changes[index], required)
 		}
 	}
 	publicRequest, err := json.Marshal(approval.PublicRequest(request))

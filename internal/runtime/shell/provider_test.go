@@ -17,6 +17,9 @@ import (
 
 func TestProviderExplicitShellWinsOnEveryPlatform(t *testing.T) {
 	t.Run("posix", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("POSIX executable-bit fixture is not representable on Windows")
+		}
 		executable := writeProviderFixture(t, "custom-shell", 0755, "#!/bin/sh\nexit 0\n")
 		resolver := NewProviderResolver()
 		resolver.goos = "linux"
@@ -97,6 +100,9 @@ func TestWindowsConfiguredShellPathWinsBeforeAutomaticDiscovery(t *testing.T) {
 }
 
 func TestConfiguredShellPathWinsOverInheritedShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX executable-bit fixture is not representable on Windows")
+	}
 	configuredDir := t.TempDir()
 	configured := filepath.Join(configuredDir, "bash")
 	if err := os.WriteFile(configured, []byte("#!/bin/sh\nexit 0\n"), 0755); err != nil {
@@ -276,6 +282,9 @@ func TestProviderRejectsRelativeConfiguredSearchPath(t *testing.T) {
 }
 
 func TestProviderDiagnosticIsBoundedAndOmitsExecutablePath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX executable-bit fixture is not representable on Windows")
+	}
 	bin := t.TempDir()
 	executable := writeProviderFixtureAt(t, filepath.Join(bin, "bash"), 0755, "#!/bin/sh\n")
 	resolver := NewProviderResolver()

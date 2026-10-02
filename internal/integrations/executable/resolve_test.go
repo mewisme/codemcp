@@ -55,13 +55,19 @@ func TestResolveExternalRejectsUnsafeTargets(t *testing.T) {
 
 func TestResolveExternalPlatformPermissionRules(t *testing.T) {
 	path := writeExecutable(t, "tool", 0644, "binary")
-	if _, err := ResolveExternal(path, "linux"); err == nil {
-		t.Fatal("linux non-executable target accepted")
+	if runtime.GOOS != "windows" {
+		if _, err := ResolveExternal(path, "linux"); err == nil {
+			t.Fatal("linux non-executable target accepted")
+		}
+		if _, err := ResolveExternal(path, "darwin"); err == nil {
+			t.Fatal("darwin non-executable target accepted")
+		}
 	}
-	if _, err := ResolveExternal(path, "darwin"); err == nil {
-		t.Fatal("darwin non-executable target accepted")
+	want, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if resolved, err := ResolveExternal(path, "windows"); err != nil || resolved != path {
+	if resolved, err := ResolveExternal(path, "windows"); err != nil || resolved != want {
 		t.Fatalf("windows executable resolution=%q err=%v", resolved, err)
 	}
 }

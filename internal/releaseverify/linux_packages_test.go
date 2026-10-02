@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -99,6 +100,9 @@ func TestNormalizedPackagePathRejectsTraversal(t *testing.T) {
 }
 
 func TestVerifyPackagedBinaryVersionDisablesTelemetryState(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux package executable fixture requires a POSIX host")
+	}
 	binary := []byte("#!/bin/sh\n" +
 		"if [ \"${CM_TELEMETRY:-}\" != \"0\" ]; then mkdir -p \"$CM_CONFIG_DIR\"; printf leaked > \"$CM_CONFIG_DIR/state\"; fi\n" +
 		"printf 'cm version 9.9.9 (fixture) fixture\\n'\n")

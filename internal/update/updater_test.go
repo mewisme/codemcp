@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -390,7 +391,11 @@ func updateReleaseFixture(t *testing.T, version string, binary []byte, validChec
 func updateTestLayout(t *testing.T) install.Layout {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "install")
-	layout, err := install.NewLayout(root, filepath.Join(root, "bin"))
+	binDir := filepath.Join(root, "bin")
+	if runtime.GOOS == "windows" {
+		binDir = filepath.Join(root, "current")
+	}
+	layout, err := install.NewLayout(root, binDir)
 	if err != nil {
 		t.Fatal(err)
 	}

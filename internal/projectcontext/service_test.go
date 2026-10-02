@@ -110,7 +110,7 @@ func TestServiceIncludesIntegrationInstructionsInProviderOrder(t *testing.T) {
 	}
 	provider := func(id, content string) IntegrationInstructionProvider {
 		return func(_ context.Context, workspaceID, projectRoot string) ([]instructioncontext.IntegrationInstruction, error) {
-			if workspaceID != item.ID || projectRoot != root {
+			if workspaceID != item.ID || projectRoot != item.Path {
 				t.Fatalf("provider args workspace=%q root=%q", workspaceID, projectRoot)
 			}
 			return []instructioncontext.IntegrationInstruction{{ID: id, Source: "test", Content: content}}, nil
@@ -148,7 +148,7 @@ func TestServiceIncludesIntegrationProjectionDiagnosticsWithoutRenderingThem(t *
 		Workspaces: manager,
 		IntegrationProjectionProviders: []IntegrationProjectionProvider{
 			func(_ context.Context, workspaceID, projectRoot string) (IntegrationProjection, error) {
-				if workspaceID != item.ID || projectRoot != root {
+				if workspaceID != item.ID || projectRoot != item.Path {
 					t.Fatalf("provider args workspace=%q root=%q", workspaceID, projectRoot)
 				}
 				return IntegrationProjection{

@@ -369,8 +369,5 @@ func TestRunCommandStreamsBeforeReturningAndPreservesFinalResult(t *testing.T) {
 }
 
 func streamingTestCommand() string {
-	if os.PathSeparator == '\\' {
-		return `Write-Output first; Start-Sleep -Milliseconds 150; [Console]::Error.WriteLine("second"); Start-Sleep -Milliseconds 150; Write-Output third`
-	}
 	return `printf 'first\n'; sleep 0.15; printf 'second\n' >&2; sleep 0.15; printf 'third\n'`
 }

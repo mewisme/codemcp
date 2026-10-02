@@ -306,7 +306,7 @@ func TestWorkspaceCheckpointStoreUsesLocalCMRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := NewWorkspaceStore(t.TempDir(), manager)
-	if got, want := store.Path(item.ID), filepath.Join(workspaceRoot, ".cm", "checkpoints"); got != want {
+	if got, want := store.Path(item.ID), filepath.Join(item.Path, ".cm", "checkpoints"); got != want {
 		t.Fatalf("checkpoint path=%q want=%q", got, want)
 	}
 }

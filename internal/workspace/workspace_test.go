@@ -133,6 +133,7 @@ func TestDefaultHomeWorkspaceCannotClaimGlobalCMRoot(t *testing.T) {
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv(configformat.EnvConfigDir, "")
 	if err := configformat.SetRootPath(""); err != nil {
 		t.Fatal(err)

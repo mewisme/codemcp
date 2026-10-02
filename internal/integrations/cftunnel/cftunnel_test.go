@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -26,6 +27,9 @@ func TestSupportedPlatforms(t *testing.T) {
 }
 
 func TestManagedInstallUpdateResolveProbeAndRemove(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux managed executable fixture requires POSIX mode semantics")
+	}
 	archives := map[string][]byte{
 		"v0.0.1": testTarGz(t, "cf-tunnel", []byte("#!/bin/sh\necho v0.0.1\n")),
 		"v0.0.2": testTarGz(t, "cf-tunnel", []byte("#!/bin/sh\necho v0.0.2\n")),
@@ -80,6 +84,9 @@ func TestManagedInstallUpdateResolveProbeAndRemove(t *testing.T) {
 }
 
 func TestSystemExecutableWinsAndManagedRemoveNeverDeletesIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Linux system executable fixture requires POSIX mode semantics")
+	}
 	root := t.TempDir()
 	systemPath := filepath.Join(t.TempDir(), "cf-tunnel")
 	if err := os.WriteFile(systemPath, []byte("system"), 0o755); err != nil {

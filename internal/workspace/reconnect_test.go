@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -377,6 +378,9 @@ func TestRegisterReconnectRespectsForeignAndOwnedRuntimeLocks(t *testing.T) {
 	})
 
 	t.Run("owned_same_file_move", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows does not permit moving a workspace tree with an open runtime lock")
+		}
 		manager := newTestManager(t)
 		parent := t.TempDir()
 		source := filepath.Join(parent, "source")

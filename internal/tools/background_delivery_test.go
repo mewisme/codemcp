@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"runtime"
 	"testing"
 	"time"
 
@@ -24,9 +23,6 @@ func TestStartProcessRegistersOwnerScopedBackgroundDelivery(t *testing.T) {
 	ctx := backgrounddelivery.WithOwner(context.Background(), owner)
 	ctx = WithCallSource(ctx, "test")
 	command := "printf broker-ok"
-	if runtime.GOOS == "windows" {
-		command = "Write-Output broker-ok"
-	}
 	result, err := runtimeTools.Call(ctx, "start_process", map[string]any{
 		"workspace_id": workspaceItem.ID,
 		"command":      command,
@@ -63,9 +59,6 @@ func TestStartProcessWithoutLogicalOwnerDoesNotCreateDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := "printf no-owner"
-	if runtime.GOOS == "windows" {
-		command = "Write-Output no-owner"
-	}
 	result, err := runtimeTools.Call(WithCallSource(context.Background(), "test"), "start_process", map[string]any{
 		"workspace_id": workspaceItem.ID,
 		"command":      command,

@@ -3,6 +3,7 @@ package product
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/configformat"
@@ -38,7 +39,7 @@ func TestIdentityStoreCreatesOnlyForEligibleTelemetry(t *testing.T) {
 		t.Fatalf("eligible ensure=(%q,%t,%v)", id, created, err)
 	}
 	info, err := os.Stat(store.Path())
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0600) {
 		t.Fatalf("identity state mode=%v err=%v", info, err)
 	}
 	again, created, err := store.Ensure(true, testEndpoint)
