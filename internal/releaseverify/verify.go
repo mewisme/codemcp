@@ -330,7 +330,7 @@ func verifyReleaseWorkflows(root string) error {
 	repositoryExpr := "$" + "{{ github.repository }}"
 	repositoryOwnerExpr := "$" + "{{ github.repository_owner }}"
 	repositoryOwnerIDExpr := "$" + "{{ github.repository_owner_id }}"
-	telemetryExpr := "$" + "{{ vars.TELEMETRY_ENDPOINT }}"
+	telemetryExpr := "$" + "{{ secrets.TELEMETRY_ENDPOINT }}"
 	for _, required := range []string{
 		"RELEASE_REPOSITORY: " + repositoryExpr,
 		`PACKAGE_MAINTAINER: "` + repositoryOwnerExpr + " <" + repositoryOwnerIDExpr + "+" + repositoryOwnerExpr + `@users.noreply.github.com>"`,

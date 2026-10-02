@@ -65,7 +65,7 @@ func TestReleaseWorkflowTelemetryContractRejectsDrift(t *testing.T) {
 			t.Fatal(err)
 		}
 		if strings.HasSuffix(relative, "release.yml") {
-			needle := "TELEMETRY_ENDPOINT: $" + "{{ vars.TELEMETRY_ENDPOINT }}"
+			needle := "TELEMETRY_ENDPOINT: $" + "{{ secrets.TELEMETRY_ENDPOINT }}"
 			data = []byte(strings.ReplaceAll(string(data), needle, "TELEMETRY_ENDPOINT: ''"))
 		}
 		target := filepath.Join(fixture, relative)
