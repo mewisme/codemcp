@@ -35,6 +35,8 @@ const (
 	packageMaintainerTemplate = `{{ index .Env "PACKAGE_MAINTAINER" }}`
 )
 
+var retiredExecutableIdentityPattern = regexp.MustCompile(`(?i)(^|[^a-z0-9_])(chatgpt-mcp(?:\.exe)?|cgm(?:\.exe|\.cmd)?|cmcp(?:\.exe|\.cmd)?)([^a-z0-9_]|$)`)
+
 func VerifyTelemetryEndpoint(raw string) error {
 	metadata, err := producttelemetry.ParseEndpoint(raw)
 	if err != nil || !metadata.Available || metadata.Product != "codemcp" {
@@ -275,10 +277,13 @@ func verifyWindowsSetupBootstrap(root string) error {
 			return fmt.Errorf("windows setup wrapper is missing required contract %q", required)
 		}
 	}
-	for _, forbidden := range []string{"Program Files", "WriteUninstaller", "cgm", "chatgpt-mcp"} {
+	for _, forbidden := range []string{"Program Files", "WriteUninstaller"} {
 		if strings.Contains(wrapper, forbidden) {
 			return fmt.Errorf("windows setup wrapper contains forbidden installer ownership %q", forbidden)
 		}
+	}
+	if retiredExecutableIdentityPattern.MatchString(wrapper) {
+		return errors.New("windows setup wrapper contains a retired executable identity")
 	}
 
 	templatePath := filepath.Join(root, "installer", "windows", "codemcp.nsi")
@@ -302,10 +307,13 @@ func verifyWindowsSetupBootstrap(root string) error {
 			return fmt.Errorf("windows setup template is missing required contract %q", required)
 		}
 	}
-	for _, forbidden := range []string{"WriteUninstaller", "$PROGRAMFILES", "$PROGRAMFILES64", "cgm", "chatgpt-mcp"} {
+	for _, forbidden := range []string{"WriteUninstaller", "$PROGRAMFILES", "$PROGRAMFILES64"} {
 		if strings.Contains(template, forbidden) {
 			return fmt.Errorf("windows setup template contains forbidden installer ownership %q", forbidden)
 		}
+	}
+	if retiredExecutableIdentityPattern.MatchString(template) {
+		return errors.New("windows setup template contains a retired executable identity")
 	}
 	if strings.Count(template, "File /oname=cm.exe \"${BINARY_PATH}\"") != 1 {
 		return errors.New("windows setup template must embed exactly one canonical cm.exe payload")
@@ -912,7 +920,7 @@ func verifyZipArchive(path string, platform updatepkg.ReleasePlatform) ([]byte, 
 
 func retiredExecutable(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "chatgpt-mcp", "chatgpt-mcp.exe", "cgm", "cgm.exe", "cgm.cmd":
+	case "chatgpt-mcp", "chatgpt-mcp.exe", "cgm", "cgm.exe", "cgm.cmd", "cmcp", "cmcp.exe", "cmcp.cmd":
 		return true
 	default:
 		return false
@@ -940,7 +948,7 @@ func verifyPackageManifests(root string) error {
 	if regexp.MustCompile(`codemcp_[0-9]`).Match(scoopData) {
 		return errors.New("scoop manifest contains a version-coupled artifact filename")
 	}
-	if strings.Contains(string(scoopData), "chatgpt-mcp") || strings.Contains(string(scoopData), "\"cgm\"") {
+	if retiredExecutableIdentityPattern.Match(scoopData) {
 		return errors.New("scoop manifest contains a retired executable identity")
 	}
 
@@ -961,7 +969,7 @@ func verifyPackageManifests(root string) error {
 	if regexp.MustCompile(`codemcp_[0-9]`).MatchString(cask) {
 		return errors.New("homebrew cask contains a version-coupled artifact filename")
 	}
-	if strings.Contains(cask, "chatgpt-mcp") || regexp.MustCompile(`["']cgm["']`).MatchString(cask) {
+	if retiredExecutableIdentityPattern.MatchString(cask) {
 		return errors.New("homebrew cask contains a retired executable identity")
 	}
 	return nil

@@ -116,6 +116,26 @@ func TestVerifyDistRejectsRetiredExecutableAlias(t *testing.T) {
 	}
 }
 
+func TestRetiredExecutableIdentitySetIsComplete(t *testing.T) {
+	for _, name := range []string{
+		"chatgpt-mcp", "chatgpt-mcp.exe",
+		"cgm", "cgm.exe", "cgm.cmd",
+		"cmcp", "cmcp.exe", "cmcp.cmd",
+	} {
+		if !retiredExecutable(name) {
+			t.Errorf("retired executable %q was accepted as current", name)
+		}
+		if !retiredExecutableIdentityPattern.MatchString(name) {
+			t.Errorf("retired executable identity %q is missing from text validation", name)
+		}
+	}
+	for _, name := range []string{"cm", "cm.exe", "codemcp"} {
+		if retiredExecutable(name) || retiredExecutableIdentityPattern.MatchString(name) {
+			t.Errorf("canonical identity %q was classified as retired", name)
+		}
+	}
+}
+
 func TestVerifyDistRejectsVersionedPublishedArchive(t *testing.T) {
 	root := buildDistFixture(t, false)
 	if err := os.WriteFile(filepath.Join(root, "codemcp_9.9.9_linux_amd64.tar.gz"), []byte("stray"), 0644); err != nil {
