@@ -47,15 +47,6 @@ Section "CodeMCP"
   ${EndIf}
   StrCpy $CurrentDir "$InstallRoot\current"
 
-  ; Make the selected root explicit for the delegated managed installer rather
-  ; than relying on launcher-specific environment inheritance.
-  System::Call 'kernel32::SetEnvironmentVariable(t, t) i("CM_INSTALL_DIR", "$InstallRoot").r1'
-  ${If} $1 == 0
-    DetailPrint "Could not prepare the managed install root."
-    SetErrorLevel 1
-    Quit
-  ${EndIf}
-
   DetailPrint "Installing CodeMCP through the canonical managed installer..."
   ExecWait '"$PLUGINSDIR\cm.exe" install' $0
   ${If} $0 != 0

@@ -297,7 +297,6 @@ func verifyWindowsSetupBootstrap(root string) error {
 		"ExecWait '\"$PLUGINSDIR\\cm.exe\" install'",
 		"ReadEnvStr $InstallRoot \"CM_INSTALL_DIR\"",
 		"StrCpy $InstallRoot \"$PROFILE\\.cm\"",
-		"SetEnvironmentVariable(t, t) i(\"CM_INSTALL_DIR\", \"$InstallRoot\").r1",
 		"ReadRegStr $0 HKCU \"Environment\" \"Path\"",
 		"WriteRegExpandStr HKCU \"Environment\" \"Path\"",
 		"WM_SETTINGCHANGE",

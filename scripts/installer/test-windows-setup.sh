@@ -4,6 +4,7 @@ set -eu
 repo_root=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 builder="$repo_root/scripts/release/build-windows-setup.sh"
 template="$repo_root/installer/windows/codemcp.nsi"
+powershell_smoke="$repo_root/scripts/installer/test-windows-setup.ps1"
 tmp=$(mktemp -d)
 cleanup() {
 	rm -rf "$tmp"
@@ -131,11 +132,13 @@ grep -Fq 'SetOutPath "$PLUGINSDIR"' "$template" || fail "setup does not use temp
 grep -Fq 'File /oname=cm.exe "${BINARY_PATH}"' "$template" || fail "setup does not embed only canonical cm.exe"
 # shellcheck disable=SC2016
 grep -Fq 'ExecWait '\''"$PLUGINSDIR\cm.exe" install'\''' "$template" || fail "setup does not invoke canonical install"
-# shellcheck disable=SC2016
-grep -Fq 'SetEnvironmentVariable(t, t) i("CM_INSTALL_DIR", "$InstallRoot").r1' "$template" || fail "setup does not pass the selected managed root to cm install"
 grep -Fq 'HKCU "Environment" "Path"' "$template" || fail "setup PATH registration is not user-scoped"
 # shellcheck disable=SC2016
 grep -Fq '$PROFILE\.cm' "$template" || fail "setup PATH registration drifted from canonical Windows layout"
+# GUI installers must be awaited explicitly by the PowerShell smoke before asserting managed output.
+# shellcheck disable=SC2016
+grep -Fq 'Start-Process -FilePath $setup' "$powershell_smoke" || fail "PowerShell setup smoke does not launch NSIS through Start-Process"
+grep -Fq -- "-ArgumentList '/S' -Wait -PassThru" "$powershell_smoke" || fail "PowerShell setup smoke does not wait for the NSIS process"
 if grep -Eiq 'WriteUninstaller|ProgramFiles|cgm|chatgpt-mcp' "$template"; then
 	fail "setup contains a second uninstall/root path or retired executable identity"
 fi

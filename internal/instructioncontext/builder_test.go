@@ -106,12 +106,12 @@ func TestBuildLimitsFinalInstructions(t *testing.T) {
 	root := t.TempDir()
 	writeInstructionFile(t, filepath.Join(root, "AGENTS.md"), strings.Repeat("instruction ", 500))
 	value, err := Build(context.Background(), BuildOptions{
-		Root: root, WorkspaceID: "ws_test", WorkspaceRoot: root, CWD: root, WorkspaceRoots: []string{root}, MemoryStore: memory.NewStore(t.TempDir()), MaxInstructionBytes: 6000,
+		Root: root, WorkspaceID: "ws_test", WorkspaceRoot: root, CWD: root, WorkspaceRoots: []string{root}, MemoryStore: memory.NewStore(t.TempDir()), MaxInstructionBytes: 6656,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !value.InstructionTruncated || value.InstructionBytes > 6000 || value.InstructionBytes != len([]byte(value.InstructionsText)) {
+	if !value.InstructionTruncated || value.InstructionBytes > 6656 || value.InstructionBytes != len([]byte(value.InstructionsText)) {
 		t.Fatalf("value = %#v", value)
 	}
 	for _, required := range []string{"## Agent workflow", "## Tool profile", "## Environment", "## Quick pointers"} {

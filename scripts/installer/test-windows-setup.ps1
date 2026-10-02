@@ -36,8 +36,8 @@ try {
   $env:CM_INSTALL_DIR = Join-Path $tmp 'managed'
   $env:CM_CONFIG_DIR = Join-Path $tmp 'config'
   $env:CM_TELEMETRY = '0'
-  & $setup '/S'
-  if ($LASTEXITCODE -ne 0) { throw "setup smoke failed with exit code $LASTEXITCODE" }
+  $setupProcess = Start-Process -FilePath $setup -ArgumentList '/S' -Wait -PassThru
+  if ($setupProcess.ExitCode -ne 0) { throw "setup smoke failed with exit code $($setupProcess.ExitCode)" }
 
   $installed = Join-Path $env:CM_INSTALL_DIR 'current\cm.exe'
   if (-not (Test-Path -LiteralPath $installed -PathType Leaf)) {
