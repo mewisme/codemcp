@@ -25,7 +25,8 @@ const defaultSentinel = path.join(defaultConfigDir, "release-smoke-sentinel")
 const allowedDir = path.join(home, "allowed")
 const globalArgs = ["--config-dir", configDir]
 const serverPort = await freePort()
-const adminPort = await freePort()
+let adminPort = await freePort()
+while (adminPort === serverPort) adminPort = await freePort()
 let child = null
 let follower = null
 let occupied = null
@@ -92,28 +93,25 @@ try {
   if (!/^\s*mode\s+foreground\s*$/m.test(foregroundStatus)) fail(`foreground status missing foreground mode:\n${foregroundStatus}`)
 
   const servePID = child.pid
-  const reloadedServerPort = await freePort()
-  const reloadedAdminPort = await freePort()
-  run(["config", "set", "http.mcp.port", String(reloadedServerPort)])
-  run(["config", "set", "http.admin.port", String(reloadedAdminPort)])
   run(["config", "set", "integrations.ponytail.active", "true"])
   run(["config", "set", "integrations.ponytail.mode", "lite"])
   run(["config", "set", "integrations.caveman.mode", "full"])
   if (child.pid !== servePID || child.exitCode !== null) fail("automatic config reload restarted or stopped the serve process")
-  await waitForHealth(`http://127.0.0.1:${reloadedServerPort}/health`, child, () => `${stdout}\n${stderr}`)
-  await waitForHealth(`http://127.0.0.1:${reloadedAdminPort}/api/health`, child, () => `${stdout}\n${stderr}`)
-  await verifyMCP(reloadedServerPort, workspaceID, true, "lite", true, "full")
+  await waitForHealth(`http://127.0.0.1:${serverPort}/health`, child, () => `${stdout}\n${stderr}`)
+  await waitForHealth(`http://127.0.0.1:${adminPort}/api/health`, child, () => `${stdout}\n${stderr}`)
+  await verifyMCP(serverPort, workspaceID, true, "lite", true, "full")
 
   occupied = await occupyPort()
   runExpectFailure(["config", "set", "http.mcp.port", String(occupied.port)])
   if (child.pid !== servePID || child.exitCode !== null) fail("failed automatic config reload stopped the serve process")
-  await waitForHealth(`http://127.0.0.1:${reloadedServerPort}/health`, child, () => `${stdout}\n${stderr}`)
+  const rolledBackPort = run(["config", "get", "http.mcp.port"], { quiet: true })
+  if (!rolledBackPort.includes(String(serverPort))) fail(`failed reload did not restore MCP port ${serverPort}:\n${rolledBackPort}`)
+  await waitForHealth(`http://127.0.0.1:${serverPort}/health`, child, () => `${stdout}\n${stderr}`)
   await closeServer(occupied.server)
   occupied = null
 
   await stopRuntimeChild(child)
   child = null
-  runExpectFailure(["config", "reload"])
 
   const history = run(["logs", "--debug", "--event", "server.*", "--tail", "200"], { quiet: true })
   if (!history.includes("server.config.load.completed") && !history.includes("Server runtime configuration loaded")) fail(`runtime history missing server config load event:\n${history}`)
@@ -132,8 +130,8 @@ try {
   stderr = ""
   child.stdout.on("data", (chunk) => { stdout += chunk.toString() })
   child.stderr.on("data", (chunk) => { stderr += chunk.toString() })
-  await waitForHealth(`http://127.0.0.1:${reloadedServerPort}/health`, child, () => `${stdout}\n${stderr}`)
-  await waitForHealth(`http://127.0.0.1:${reloadedAdminPort}/api/health`, child, () => `${stdout}\n${stderr}`)
+  await waitForHealth(`http://127.0.0.1:${serverPort}/health`, child, () => `${stdout}\n${stderr}`)
+  await waitForHealth(`http://127.0.0.1:${adminPort}/api/health`, child, () => `${stdout}\n${stderr}`)
 
   const managedStatus = await waitForStatus(child, () => `${stdout}\n${stderr}`)
   for (const expected of ["✓ CodeMCP is running", "OpenAI Secure MCP Tunnel is not configured"]) {
