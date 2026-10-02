@@ -615,11 +615,23 @@ func hashRegularFile(path string) (string, int64, error) {
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return "", 0, fmt.Errorf("migration file is not regular: %s", path)
 	}
-	file, err := os.Open(path)
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return "", 0, err
+	}
+	defer root.Close()
+	file, err := root.Open(filepath.Base(path))
 	if err != nil {
 		return "", 0, err
 	}
 	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil {
+		return "", 0, err
+	}
+	if !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		return "", 0, fmt.Errorf("migration file changed while opening: %s", path)
+	}
 	hash := sha256.New()
 	written, err := io.Copy(hash, file)
 	if err != nil {

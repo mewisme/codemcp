@@ -219,14 +219,6 @@
     "rule_id": "G122",
     "severity": "HIGH",
     "confidence": "MEDIUM",
-    "file": "internal/migration/workspace024/transformer.go",
-    "details": "Filesystem operation in filepath.Walk/WalkDir callback uses race-prone path; consider root-scoped APIs (e.g. os.Root) to prevent symlink TOCTOU traversal",
-    "code": "}\n\t\tdata, err := os.ReadFile(path)\n\t\tif err != nil {"
-  },
-  {
-    "rule_id": "G122",
-    "severity": "HIGH",
-    "confidence": "MEDIUM",
     "file": "internal/workspace/reconcile/merge.go",
     "details": "Filesystem operation in filepath.Walk/WalkDir callback uses race-prone path; consider root-scoped APIs (e.g. os.Root) to prevent symlink TOCTOU traversal",
     "code": "}\n\t\tdata, err := os.ReadFile(path)\n\t\tif err != nil {"
@@ -1077,14 +1069,6 @@
     "confidence": "HIGH",
     "file": "internal/migration/workspace024/transformer.go",
     "details": "Potential file inclusion via variable",
-    "code": "}\n\t\tdata, err := os.ReadFile(path)\n\t\tif err != nil {"
-  },
-  {
-    "rule_id": "G304",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
-    "file": "internal/migration/workspace024/transformer.go",
-    "details": "Potential file inclusion via variable",
     "code": "}\n\tin, err := os.Open(src)\n\tif err != nil {"
   },
   {
@@ -1101,23 +1085,7 @@
     "confidence": "HIGH",
     "file": "internal/migration/workspace024/transformer.go",
     "details": "Potential file inclusion via variable",
-    "code": "func appendRecord(path, kind, stage string, manifest *Manifest) error {\n\tdata, err := os.ReadFile(path)\n\tif err != nil {"
-  },
-  {
-    "rule_id": "G304",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
-    "file": "internal/migration/workspace024/transformer.go",
-    "details": "Potential file inclusion via variable",
     "code": "func decodeStrictFile(path string, target any) error {\n\tfile, err := os.Open(path)\n\tif err != nil {"
-  },
-  {
-    "rule_id": "G304",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
-    "file": "internal/migration/workspace024/transformer.go",
-    "details": "Potential file inclusion via variable",
-    "code": "path := filepath.Join(root, clean)\n\t\tdata, err := os.ReadFile(path)\n\t\tif err != nil {"
   },
   {
     "rule_id": "G304",
