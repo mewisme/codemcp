@@ -183,6 +183,9 @@ func TestUpdaterDoesNotCreateHistoricalAlias(t *testing.T) {
 
 func TestUpdaterDoesNotOverwriteUnrelatedCanonicalExecutable(t *testing.T) {
 	layout := updateTestLayout(t)
+	if filepath.Clean(layout.CanonicalBinary) == filepath.Clean(layout.CurrentBinary) {
+		t.Skip("platform canonical executable is the managed current executable, not an external launcher")
+	}
 	installCurrentVersion(t, layout, "v1.0.0", "old")
 	if err := os.Remove(layout.CanonicalBinary); err != nil {
 		t.Fatal(err)

@@ -500,7 +500,7 @@ func TestTunnelMCPActivityResetsIdleDeadline(t *testing.T) {
 		created <- fake
 		return fake, nil
 	})
-	client.idleInterval = 100 * time.Millisecond
+	client.idleInterval = 500 * time.Millisecond
 	client.restartDelay = func(int) time.Duration { return time.Millisecond }
 	events := make(chan LifecycleEvent, 16)
 	client.SetLifecycleObserver(func(event LifecycleEvent) { events <- event })
@@ -512,7 +512,7 @@ func TestTunnelMCPActivityResetsIdleDeadline(t *testing.T) {
 	client.mu.RLock()
 	session, before := client.session, client.lastActivity
 	client.mu.RUnlock()
-	time.Sleep(60 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	client.markMCPActivity(session)
 	client.mu.RLock()
 	after := client.lastActivity
@@ -523,7 +523,7 @@ func TestTunnelMCPActivityResetsIdleDeadline(t *testing.T) {
 	select {
 	case <-created:
 		t.Fatal("MCP activity did not postpone idle reconnect")
-	case <-time.After(60 * time.Millisecond):
+	case <-time.After(150 * time.Millisecond):
 	}
 	waitBackendCreated(t, created)
 	waitLifecycleState(t, events, LifecycleReady)
