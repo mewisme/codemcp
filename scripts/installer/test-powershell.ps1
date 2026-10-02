@@ -101,13 +101,18 @@ foreach ($contractArch in @('amd64')) {
   }
 }
 $unsupportedContractOutput = $null
+$unsupportedContractExitCode = $null
+$previousErrorActionPreference = $ErrorActionPreference
 Push-Location $repoRoot
 try {
+  $ErrorActionPreference = 'Continue'
   $unsupportedContractOutput = & go run ./scripts/installer/release-layout-contract --os windows --arch arm64 2>&1
-  if ($LASTEXITCODE -eq 0) { throw 'canonical release contract still accepts windows/arm64' }
+  $unsupportedContractExitCode = $LASTEXITCODE
 } finally {
+  $ErrorActionPreference = $previousErrorActionPreference
   Pop-Location
 }
+if ($unsupportedContractExitCode -eq 0) { throw 'canonical release contract still accepts windows/arm64' }
 if (-not $source.Contains('$asset = "${packageName}_windows_${arch}.zip"')) {
   throw 'PowerShell bootstrap asset naming formula drifted from canonical release contract.'
 }
