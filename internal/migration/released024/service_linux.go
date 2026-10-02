@@ -60,7 +60,7 @@ func inspectPlatformServices(ctx context.Context, descriptor SourceDescriptor) (
 
 func inspectSystemdOwnership(definition string, descriptor SourceDescriptor) (Ownership, string) {
 	args := releasedSystemdArgs(definition)
-	if len(args) == 0 || filepath.Base(args[0]) != descriptor.BinaryName {
+	if len(args) == 0 || !isReleasedExecutableName(filepath.Base(args[0]), descriptor) {
 		return OwnershipAmbiguous, "historical service identity exists but executable ownership is not verified"
 	}
 	configRoot, serviceRun := "", false
@@ -81,6 +81,11 @@ func inspectSystemdOwnership(definition string, descriptor SourceDescriptor) (Ow
 		return OwnershipVerified, "historical service definition references the released root and executable"
 	}
 	return OwnershipAmbiguous, "historical service identity exists but definition ownership is not verified"
+}
+
+func isReleasedExecutableName(name string, descriptor SourceDescriptor) bool {
+	name = strings.TrimSpace(name)
+	return name != "" && (name == descriptor.BinaryName || name == descriptor.AliasName)
 }
 
 func inspectSystemdLauncher(definition string) string {
