@@ -31,15 +31,10 @@ builds:
       - -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint={{ index .Env "TELEMETRY_ENDPOINT" }}
     hooks:
       post:
+        - cmd: 'sh scripts/release/pack-release-binary.sh "{{ .Path }}" "{{ .Target }}"'
+          output: true
         - cmd: 'sh scripts/release/build-windows-setup.sh "{{ .Path }}" "{{ .Target }}" dist "{{ .Version }}"'
           output: true
-
-# Keep macOS binaries untouched for Gatekeeper compatibility.
-upx:
-  - enabled: true
-    ids: [codemcp]
-    goos: [linux, windows]
-    compress: best
 
 archives:
   - id: codemcp
