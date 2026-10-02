@@ -114,6 +114,12 @@ The shared Explain capability may use the configured LLM to generate fallible in
 
 The runtime may also support time-bounded grants for matching command patterns when explicitly approved by the operator. These grants remain runtime-controlled and revocable; they are not an Agent-controlled “allow everything” mode.
 
+### Semantic risk classification
+
+When TypeSafe System One is enabled, the same selected integration supplies semantic evaluation and command-risk classification. It is an additional signal inside CodeMCP's approval pipeline, not an authorization source.
+
+Deterministic native policy always runs first: a native deny remains denied and a native require-approval remains approval-gated regardless of the semantic result. Low-risk semantic evidence can only preserve an action that native policy already considered eligible. If command-risk classification fails, times out, is rate-limited, returns malformed data, or lacks sufficient confidence, CodeMCP falls back to manual review or a stricter configured deny rather than execution. See [LLM providers](llm.md#typesafe-system-one).
+
 ### Approval review authorization by interface
 
 All reviewer interfaces call the same approval manager/review operations; authorization differs only at the adapter boundary:
@@ -189,7 +195,7 @@ For ChatGPT, prefer OpenAI Secure MCP Tunnel and avoid public MCP ingress entire
 Direct exposure modes such as selected interfaces, `all`, or `0.0.0.0` are advanced configuration and should be reviewed with:
 
 ```bash
-cm config explain http.exposure
+cm config why http.exposure
 cm config verify --strict
 ```
 
@@ -254,6 +260,23 @@ cm logs path
 ```
 
 Review diagnostic logs before publishing them because project paths or command output may still be sensitive to your environment.
+
+## Product telemetry and privacy
+
+Product telemetry is separate from runtime logs and is enabled by default unless disabled by configuration or `CM_TELEMETRY`. Inspect or change it with:
+
+```bash
+cm telemetry status
+cm telemetry disable
+cm telemetry enable
+cm telemetry show
+```
+
+The anonymous identifier is a random per-config-root UUID stored under protected state; it is not derived from the machine or user identity. Disabling telemetry preserves that identifier so re-enabling does not create a new identity, while uninitializing the config root removes it.
+
+Telemetry is limited to bounded product metadata such as event name, anonymous ID, CodeMCP version, OS/architecture, interface, command/feature, success/error code, and duration. It does **not** include command arguments, stdout/stderr, project paths, prompts/rules/skills/Project Context, tool request/response payloads, environment variables, credentials, tunnel/OAuth/Telegram identifiers, approval/process IDs, upstream content, semantic prompts/responses, or raw logs.
+
+Delivery uses a bounded in-memory queue and short timeout with no persistent spool; telemetry failure cannot fail the primary operation. Source/CI builds without a telemetry endpoint remain endpointless.
 
 ## Config/state isolation
 

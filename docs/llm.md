@@ -214,6 +214,26 @@ Without explicit ranking/recommendation/sort, results have a stable ID ordering.
 
 Ranking/recommendation is not synthesized for Ollama. If a custom backend does not provide explicit enrichment metadata, rank/recommendation queries return an unsupported-query error.
 
+## TypeSafe System One
+
+TypeSafe is an optional semantic integration, not a chat/LLM provider. When it is enabled with a configured API key and model, CodeMCP registers one System One client for both semantic evaluation and command-risk classification.
+
+Configure it without putting the key in command history:
+
+```bash
+cm integration typesafe key set
+cm integration typesafe model jev-latest
+cm integration typesafe enable
+cm integration typesafe probe
+cm integration typesafe status
+```
+
+The API key is protected secret input and is stored in the managed secret store rather than normal config values.
+
+System One can improve semantic ranking/search/context consumers, but those consumers retain their deterministic fallback when semantic evaluation is unavailable. Command-risk classification is stricter: provider failure, timeout, rate limiting, malformed output, or insufficient confidence cannot fall through to execution; the action remains subject to manual review or a stricter configured deny.
+
+TypeSafe never grants authority. Native deterministic deny and require-approval decisions run first and always win. A low-risk System One result can only preserve an action that was already eligible under native policy.
+
 ## Explain
 
 Explain is a shared, informational LLM capability for supported CodeMCP operations. Its canonical setting is `explain.mode = off|manual|auto`; it is not owned by approval policy. The existing request commands are reviewer-facing facades over that shared setting:
@@ -253,6 +273,6 @@ Provider URLs may not embed credentials. API keys remain in the managed secret s
 
 Sending an LLM request necessarily sends the feature's prepared input to the configured remote provider, so choose provider endpoints according to your data-handling requirements. CodeMCP does not silently fail over to another provider when the configured provider fails.
 
-General LLM inference is not a security decision mechanism. Any future semantic command classifier must integrate through CodeMCP's existing semantic/risk-classification contract, where deterministic deny/approval rules retain their precedence; it must not treat an arbitrary LLM response as approval authority.
+General LLM inference is not a security decision mechanism. TypeSafe System One integrates through CodeMCP's semantic/risk-classification contract, where deterministic deny/approval rules retain precedence and semantic output never becomes approval authority.
 
 See [Security](security.md) for the broader trust model and [Configuration](configuration.md) for config-root, secret-store, export/import, and purge behavior.

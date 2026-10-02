@@ -1,6 +1,6 @@
 # Configuration
 
-`CodeMCP` keeps persistent configuration and runtime state under one selected config root. Use this guide for the configuration model and common operations; use `cm config explain` for the exhaustive schema of the installed version.
+`CodeMCP` keeps persistent configuration and runtime state under one selected config root. Use this guide for the configuration model and common operations; use `cm config why` for the exhaustive schema of the installed version.
 
 ## Config root
 
@@ -51,14 +51,14 @@ Sensitive fields are redacted.
 
 ## Explain the schema
 
-`cm config explain` is the authoritative configuration reference for the installed binary:
+`cm config why` is the authoritative configuration reference for the installed binary:
 
 ```bash
-cm config explain
-cm config explain http
-cm config explain http.exposure.mode
-cm config explain shell.path
-cm config explain shell.path --json
+cm config why
+cm config why http
+cm config why http.exposure.mode
+cm config why shell.path
+cm config why shell.path --json
 ```
 
 A branch explains a subtree; a leaf reports its type, built-in default, editability, valid values, guidance, and related settings where applicable.
@@ -198,7 +198,9 @@ Other supported exposure modes can bind selected interfaces or broader addresses
 For ChatGPT, prefer the Secure MCP Tunnel instead of opening the MCP listener publicly:
 
 ```bash
-cm tunnel configure --enabled --id tunnel_... --api-key 'sk-...'
+cm tunnel configure --enabled --id tunnel_...
+cm tunnel key set
+# automation: cm tunnel key set --from-env OPENAI_TUNNEL_API_KEY
 ```
 
 Read [Security](security.md#network-exposure) before widening exposure.
@@ -238,10 +240,8 @@ See [Security](security.md#shell-execution-boundary).
 Configure the default ChatGPT transport:
 
 ```bash
-cm tunnel configure \
-  --enabled \
-  --id tunnel_... \
-  --api-key 'sk-...'
+cm tunnel configure --enabled --id tunnel_...
+cm tunnel key set
 ```
 
 See [OpenAI + ChatGPT](openai-chatgpt.md) for Platform and ChatGPT setup. Use `cm tunnel --help` for the current local/managed tunnel command surface.

@@ -28,7 +28,6 @@ const (
 	RoutePrompts      RouteKind = "prompts"
 	RouteRuntime      RouteKind = "runtime"
 	RouteAbout        RouteKind = "about"
-	RouteGuide        RouteKind = "guide"
 )
 
 type Route struct {
@@ -102,12 +101,6 @@ func ParseRoute(args []string) (Route, error) {
 		return parseConfigRoute(parts)
 	case RouteRuntime:
 		return parseRuntimeRoute(parts)
-	case RouteGuide:
-		route := Route{Kind: RouteGuide}
-		if len(parts) > 1 {
-			route.ResourceID = strings.Join(parts[1:], "/")
-		}
-		return route, nil
 	default:
 		if len(parts) != 1 {
 			return Route{}, fmt.Errorf("TUI path %q does not accept child segments", parts[0])
@@ -541,8 +534,6 @@ func parseRouteKind(value string) (RouteKind, bool) {
 		return RouteRuntime, true
 	case "about", "version":
 		return RouteAbout, true
-	case "guide", "help":
-		return RouteGuide, true
 	default:
 		return "", false
 	}
@@ -551,7 +542,7 @@ func parseRouteKind(value string) (RouteKind, bool) {
 func (route Route) Title() string {
 	base := map[RouteKind]string{
 		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "Upstreams", RouteTunnel: "Tunnel", RouteTools: "Tools", RouteIntegrations: "Integrations", RouteDoctor: "Doctor", RouteExecutions: "Command Executions", RouteProcesses: "Background Processes",
-		RouteRequests: "Requests", RouteLLM: "LLM", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About", RouteGuide: "Guide",
+		RouteRequests: "Requests", RouteLLM: "LLM", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About",
 	}[route.Kind]
 	if route.Kind == RouteRequests && route.Mode != "" {
 		base += " · " + routeSectionTitle(route.Mode)
@@ -630,10 +621,6 @@ func breadcrumbRouteLabel(stack []Route, index int) string {
 				return label
 			}
 		}
-		if route.Kind == RouteGuide {
-			parts := strings.Split(strings.Trim(route.ResourceID, "/"), "/")
-			return breadcrumbSegmentLabel(parts[len(parts)-1])
-		}
 		return route.ResourceID
 	}
 	if route.Section != previous.Section && route.Section != "" {
@@ -696,8 +683,6 @@ func breadcrumbRootLabel(kind RouteKind) string {
 		return "Runtime"
 	case RouteAbout:
 		return "About"
-	case RouteGuide:
-		return "Guide"
 	default:
 		return routeSectionTitle(string(kind))
 	}
@@ -719,23 +704,6 @@ func configBreadcrumbResourceLabel(resourceID string) string {
 		return "Storage"
 	default:
 		return ""
-	}
-}
-
-func breadcrumbSegmentLabel(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "mcp":
-		return "Upstreams"
-	case "tui":
-		return "TUI"
-	case "oauth":
-		return "OAuth"
-	case "api":
-		return "API"
-	case "json":
-		return "JSON"
-	default:
-		return routeSectionTitle(value)
 	}
 }
 
@@ -803,17 +771,6 @@ func (router *Router) Back() bool {
 func routeStack(route Route) []Route {
 	if route.Kind == RouteHome {
 		return []Route{{Kind: RouteHome}}
-	}
-	if route.Kind == RouteGuide {
-		stack := []Route{{Kind: RouteGuide}}
-		if route.ResourceID == "" {
-			return stack
-		}
-		parts := strings.Split(strings.Trim(route.ResourceID, "/"), "/")
-		for i := range parts {
-			stack = append(stack, Route{Kind: RouteGuide, ResourceID: strings.Join(parts[:i+1], "/")})
-		}
-		return stack
 	}
 	switch route.Kind {
 	case RouteContainers:

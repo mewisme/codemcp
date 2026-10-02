@@ -63,10 +63,8 @@ Do not replace the runtime key with a Platform Admin API key.
 Reconfigure when necessary:
 
 ```bash
-cm tunnel configure \
-  --enabled \
-  --id tunnel_... \
-  --api-key 'sk-...'
+cm tunnel configure --enabled --id tunnel_...
+cm tunnel key set
 ```
 
 Then:

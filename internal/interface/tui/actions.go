@@ -7,7 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"go.mewis.me/codemcp/docs/tuiguide"
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/interface/tui/action"
@@ -37,9 +36,7 @@ func defaultActionRegistry() *action.Registry {
 		navigationAction("app.go.prompts", "Prompts", Route{Kind: RoutePrompts}, []string{"prompt", "prompts", "template"}, capability.PromptList, capability.PromptGet, capability.PromptCreate, capability.PromptUpdate, capability.PromptDelete),
 		navigationAction("app.go.runtime", "Runtime", Route{Kind: RouteRuntime}, []string{"runtime", "status", "service"}, capability.AuthStatus),
 		navigationAction("app.go.about", "About", Route{Kind: RouteAbout}, []string{"about", "version", "build", "uptime"}, capability.VersionAbout),
-		navigationAction("app.go.guide", "Guide", Route{Kind: RouteGuide}, []string{"guide", "help", "docs", "documentation"}),
 	}
-	actions = append(actions, guideActions()...)
 	actions = append(actions, promptActions()...)
 	actions = append(actions, workspaceActions()...)
 	actions = append(actions, mcpActions()...)
@@ -126,22 +123,6 @@ func llmActions() []action.Action {
 		command("llm.provider.credential.clear", "Clear LLM API key", "Clear the managed credential for the current provider", capability.LLMProviderCredentialClear, tuipage.LLMCredentialClear, resource),
 		command("llm.provider.remove", "Remove LLM provider", "Remove the current custom provider", capability.LLMProviderRemove, tuipage.LLMRemove, custom),
 	}
-}
-
-func guideActions() []action.Action {
-	topics := tuiguide.Topics()
-	actions := make([]action.Action, 0, len(topics))
-	for _, topic := range topics {
-		topic := topic
-		actions = append(actions, action.Action{
-			ID: "guide." + strings.ReplaceAll(topic.ID, "/", "."), Title: topic.Title, Category: "Guide", Description: topic.Description,
-			Keywords: topic.Keywords, Scope: action.ScopeGlobal,
-			Run: func(context.Context, action.Context) tea.Cmd {
-				return func() tea.Msg { return navigateMsg{route: Route{Kind: RouteGuide, ResourceID: topic.ID}} }
-			},
-		})
-	}
-	return actions
 }
 
 func systemActions() []action.Action {

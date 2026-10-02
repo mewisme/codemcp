@@ -56,9 +56,6 @@ func TestParseRoute(t *testing.T) {
 		{[]string{"cfg"}, Route{Kind: RouteConfig}},
 		{[]string{"status"}, Route{Kind: RouteRuntime}},
 		{[]string{"version"}, Route{Kind: RouteAbout}},
-		{[]string{"guide"}, Route{Kind: RouteGuide}},
-		{[]string{"help", "mcp"}, Route{Kind: RouteGuide, ResourceID: "mcp"}},
-		{[]string{"guide", "config", "storage", "envelopes"}, Route{Kind: RouteGuide, ResourceID: "config/storage/envelopes"}},
 	}
 	for _, test := range tests {
 		got, err := ParseRoute(test.args)
@@ -66,7 +63,7 @@ func TestParseRoute(t *testing.T) {
 			t.Fatalf("ParseRoute(%v) = %#v, %v; want %#v", test.args, got, err, test.want)
 		}
 	}
-	for _, args := range [][]string{{"missing"}, {"mcp"}, {"server"}, {"servers"}, {"tunnels"}, {"managed-tunnels"}, {"tunnel", "extra"}, {"integrations", "rtk", "install"}, {"integrations", "codegraph", "workspace"}, {"executions"}, {"processes"}, {"upstream", "a", "missing"}, {"config", "key", "extra"}, {"logs-exec", "settings"}, {"logs-exec", "exec_a", "extra"}, {"logs-tools", "call_a", "extra"}, {"upstream", "a", "health", "extra"}, {"requests", "history", "req", "guard", "extra"}, {"llm", "ollama", "missing"}, {"llm", "ollama", "models", "missing"}, {"llm", "ollama", "models", "query", "extra"}, {"completions", "completion_a", "extra"}, {"instruction", "missing"}, {"instruction", "rules", "extra"}} {
+	for _, args := range [][]string{{"missing"}, {"mcp"}, {"server"}, {"servers"}, {"guide"}, {"help"}, {"help", "mcp"}, {"tunnels"}, {"managed-tunnels"}, {"tunnel", "extra"}, {"integrations", "rtk", "install"}, {"integrations", "codegraph", "workspace"}, {"executions"}, {"processes"}, {"upstream", "a", "missing"}, {"config", "key", "extra"}, {"logs-exec", "settings"}, {"logs-exec", "exec_a", "extra"}, {"logs-tools", "call_a", "extra"}, {"upstream", "a", "health", "extra"}, {"requests", "history", "req", "guard", "extra"}, {"llm", "ollama", "missing"}, {"llm", "ollama", "models", "missing"}, {"llm", "ollama", "models", "query", "extra"}, {"completions", "completion_a", "extra"}, {"instruction", "missing"}, {"instruction", "rules", "extra"}} {
 		if _, err := ParseRoute(args); err == nil {
 			t.Fatalf("ParseRoute(%v) unexpectedly succeeded", args)
 		}
@@ -162,14 +159,6 @@ func TestEditorRouteStacksFollowSemanticAncestry(t *testing.T) {
 			Route{Kind: RouteTunnel, Section: "admin-key", Action: "edit"},
 			[]Route{{Kind: RouteTunnel}, {Kind: RouteTunnel, Section: "admin-key", Action: "edit"}},
 		},
-		{
-			Route{Kind: RouteGuide, ResourceID: "mcp"},
-			[]Route{{Kind: RouteGuide}, {Kind: RouteGuide, ResourceID: "mcp"}},
-		},
-		{
-			Route{Kind: RouteGuide, ResourceID: "config/storage/envelopes"},
-			[]Route{{Kind: RouteGuide}, {Kind: RouteGuide, ResourceID: "config"}, {Kind: RouteGuide, ResourceID: "config/storage"}, {Kind: RouteGuide, ResourceID: "config/storage/envelopes"}},
-		},
 	}
 	for _, test := range tests {
 		got := routeStack(test.route)
@@ -224,7 +213,6 @@ func TestRouteBreadcrumbLabelsUseNavigableAncestry(t *testing.T) {
 		{Route{Kind: RouteLogsTools}, []string{"Tool Calls"}},
 		{Route{Kind: RouteLogsTools, ResourceID: "call_demo"}, []string{"Tool Calls", "call_demo"}},
 		{Route{Kind: RouteConfig, Section: "storage", Action: "export"}, []string{"Config", "Storage", "Export"}},
-		{Route{Kind: RouteGuide, ResourceID: "config/storage/envelopes"}, []string{"Guide", "Config", "Storage", "Envelopes"}},
 	}
 	for _, test := range tests {
 		_, labels := routeBreadcrumb(test.route)
@@ -278,7 +266,6 @@ func TestRouteBreadcrumbInventoryCoversAllChildFamilies(t *testing.T) {
 		{Kind: RouteConfig, Section: "storage", Action: "export"},
 		{Kind: RouteRuntime, ResourceID: "service"},
 		{Kind: RouteRuntime, Action: "install"},
-		{Kind: RouteGuide, ResourceID: "config/storage/envelopes"},
 	}
 	for _, route := range routes {
 		stack, labels := routeBreadcrumb(route)

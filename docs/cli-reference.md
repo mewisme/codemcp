@@ -64,7 +64,9 @@ The hook only redirects completion when the command starts with `go run .`; othe
 | `--expose[=<value>]` | one-run network exposure override for commands that start the server |
 | `-v`, `--version` | print binary version |
 
-## Command tree
+## Curated command map
+
+This map highlights common operator families; it is intentionally not exhaustive. Use `cm --help` and `cm <command> --help` for the installed command tree.
 
 ```text
 cm
@@ -74,7 +76,7 @@ cm
 │   └── status
 ├── completion
 ├── config
-│   ├── explain
+│   ├── why
 │   ├── export
 │   ├── get
 │   ├── import
@@ -87,6 +89,10 @@ cm
 ├── down
 ├── init
 ├── install
+├── integration
+│   ├── codegraph
+│   ├── rtk
+│   └── typesafe
 ├── http
 │   ├── admin
 │   │   ├── disable
@@ -120,10 +126,10 @@ cm
 │   ├── probe
 │   ├── provider
 │   └── ollama
+├── doctor
 ├── mcp
 │   ├── http
-│   ├── stdio
-│   └── server      # deprecated compatibility path
+│   └── stdio
 ├── request
 │   ├── approve
 │   ├── create
@@ -246,7 +252,7 @@ cm tui logs
 cm tui config
 ```
 
-The TUI requires terminal stdin/stdout. `Ctrl+K` opens Commands for actions, pages, resources, and Guide topics; `Alt+Left` / `Alt+Right` cycle top-level pages, and `Esc` closes the nearest overlay or navigates back.
+The TUI requires terminal stdin/stdout. `Ctrl+K` opens Commands for actions, pages, and resources; `Alt+Left` / `Alt+Right` cycle top-level pages, and `Esc` closes the nearest overlay or navigates back. Page-local shortcuts provide contextual help; the TUI does not embed a separate documentation browser.
 
 Use explicit `cm tui` for interactive work and ordinary CLI/JSON output for automation. List commands do not auto-open a TUI and no longer expose per-command `--interactive` / `--no-interactive` flags.
 
@@ -348,14 +354,14 @@ cm config list http.admin
 Explain schema keys and branches:
 
 ```bash
-cm config explain
-cm config explain shell
-cm config explain shell.path
-cm config explain http.exposure.mode
-cm config explain shell.path --json
+cm config why
+cm config why shell
+cm config why shell.path
+cm config why http.exposure.mode
+cm config why shell.path --json
 ```
 
-`config explain` is schema-driven and read-only. With no key it walks the full config schema; a branch such as `shell` returns that subtree; a leaf returns its description, details, type, built-in default, editability, valid enum values, guidance, and related keys when available. The reported default is the schema default, not the current persisted value. Legacy aliases are canonicalized before lookup, and sensitive fields expose metadata only, never secret values.
+`config why` is schema-driven and read-only. With no key it walks the full config schema; a branch such as `shell` returns that subtree; a leaf returns its description, details, type, built-in default, editability, valid enum values, guidance, and related keys when available. The reported default is the schema default, not the current persisted value. Legacy aliases are canonicalized before lookup, and sensitive fields expose metadata only, never secret values.
 
 Set:
 
@@ -526,10 +532,8 @@ cm workspace access remove ws_... /path/to/cache
 Configure:
 
 ```bash
-cm tunnel configure \
-  --enabled \
-  --id tunnel_... \
-  --api-key 'sk-...'
+cm tunnel configure --enabled --id tunnel_...
+cm tunnel key set
 ```
 
 Optional flags:

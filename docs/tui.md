@@ -26,14 +26,13 @@ cm tui requests
 cm tui logs
 cm tui config
 cm tui runtime
-cm tui guide
 ```
 
 ## Global navigation
 
 | Key | Action |
 | --- | --- |
-| `Ctrl+K` | open Commands for actions, pages, resources, and Guide topics |
+| `Ctrl+K` | open Commands for actions, pages, and resources |
 | `Alt+Left` / `Alt+Right` | cycle top-level pages |
 | `Esc` | close the nearest overlay/child page, then navigate back/exit |
 | `Backspace` | navigate back when an input is not consuming the key |
@@ -54,7 +53,6 @@ upstream server add
 request approve
 config verify
 restart
-guide logs
 ```
 
 Commands is the primary discovery surface. There is no separate Quick Open workflow.
@@ -64,10 +62,10 @@ Commands is the primary discovery surface. There is no separate Quick Open workf
 The top-level navigation covers:
 
 ```text
-Workspaces | Upstreams | Tunnel | Requests | Logs | Config | Instruction | Runtime
+Workspaces | Upstreams | Tunnel | Requests | LLM | Logs | Config | Runtime
 ```
 
-Child resources remain owned by their parent area. Additional resources such as workspace containers, managed tunnels, About/build information, and embedded Guide topics are reachable through Commands or deep links.
+Child resources remain owned by their parent area. Additional resources such as workspace containers, managed OpenAI tunnels, Prompts, and About/build information are reachable through Commands or deep links.
 
 ## Editors and confirmations
 
@@ -153,11 +151,11 @@ While a Logs page is active, follow keeps the selected view at the newest visibl
 
 Leaving Logs for another top-level page closes its live feeds. Returning reconstructs the page from fresh history/snapshots and **resumes follow automatically** instead of restoring a stale paused stream.
 
-## Config and Instruction
+## Config and Project Context
 
-Config is schema-driven. Use it for typed configuration editing and storage/maintenance operations; exhaustive configuration semantics remain available through `cm config explain` and [Configuration](configuration.md).
+Config is schema-driven. Use it for typed configuration editing and storage/maintenance operations; exhaustive configuration semantics remain available through `cm config why` and [Configuration](configuration.md).
 
-Instruction manages Global Context, managed rules, and detected instruction sources used by Project Context assembly.
+Instruction sources, Rules, Skills, memory, and prompts are assembled through workspace Project Context. Use the Workspaces area to configure or preview that context; authoring operations remain available through the canonical CLI/MCP surfaces where applicable. See [Workspaces](workspaces.md) and [MCP and upstreams](mcp.md).
 
 ## Runtime
 
@@ -165,19 +163,11 @@ Runtime is the operational control surface for service state, authentication, in
 
 For scripts or remote automation, use the equivalent CLI commands instead. See [Runtime and operations](runtime.md).
 
-## Embedded Guide
+## Contextual help
 
-The Markdown tree under [`tuiguide/`](tuiguide/) is embedded into the binary as contextual help.
+The TUI keeps help local to the current page instead of embedding a separate documentation browser. Visible shortcut hints describe the common actions for the active page; press `?` where supported for additional page-local bindings. Use `Ctrl+K` to discover executable actions and resources.
 
-Open Commands (`Ctrl+K`) and search for **Guide**, or deep-link directly:
-
-```bash
-cm tui guide
-cm tui guide logs
-cm tui guide mcp
-```
-
-The embedded Guide intentionally explains the current page/editor instead of duplicating the complete public documentation.
+For operational guidance outside the current screen, use the public documentation starting from [Documentation](README.md).
 
 ## Scripting and automation
 

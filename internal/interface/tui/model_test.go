@@ -411,19 +411,6 @@ func TestModelRendersDeepLinkAndNavigation(t *testing.T) {
 	}
 }
 
-func TestModelRendersEmbeddedGuideDeepLink(t *testing.T) {
-	model := NewModel(Route{Kind: RouteGuide, ResourceID: "mcp"})
-	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 32})
-	model = updated.(Model)
-	plain := ansi.Strip(model.View().Content)
-	if !strings.Contains(plain, "Upstreams") || !strings.Contains(plain, "Use Topics for detailed documentation") || strings.Contains(plain, "Shell & Execution") {
-		t.Fatalf("guide deep-link=%q", plain)
-	}
-	if len(model.router.stack) != 2 || model.router.stack[0] != (Route{Kind: RouteGuide}) {
-		t.Fatalf("guide route stack=%#v", model.router.stack)
-	}
-}
-
 func TestModelHeaderCellsFillUsableWidth(t *testing.T) {
 	model := NewModel(Route{Kind: RouteRequests})
 	for _, width := range []int{52, 73, 96, 117} {

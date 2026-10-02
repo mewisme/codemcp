@@ -1333,8 +1333,6 @@ func (model *Model) loadPage(route Route) {
 		value, err = tuipage.NewRuntimeRouteAction(model.ctx, route.ResourceID, route.Action)
 	case RouteAbout:
 		value, err = tuipage.NewAbout(model.ctx)
-	case RouteGuide:
-		value, err = tuipage.NewGuide(model.ctx, route.ResourceID)
 	case RouteConfig:
 		value, err = tuipage.NewConfigRouteAction(model.ctx, route.ResourceID, route.Section, route.Action)
 	case RoutePrompts:
@@ -1944,8 +1942,6 @@ func routeDescription(route Route) string {
 		return "Inspect and control the local managed runtime."
 	case RouteAbout:
 		return "Build and runtime information."
-	case RouteGuide:
-		return "Browse embedded TUI documentation by topic."
 	default:
 		return ""
 	}

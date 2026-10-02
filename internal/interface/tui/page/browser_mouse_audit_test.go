@@ -221,16 +221,4 @@ func TestBrowserOwnerHitboxesMatchRenderedRowsWithFeedback(t *testing.T) {
 		}
 	})
 
-	t.Run("guide", func(t *testing.T) {
-		page, err := NewGuide(t.Context(), "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		view := page.View(100, 30)
-		row, ok := page.browser.Selected()
-		if !ok {
-			t.Fatal("guide browser has no selected row")
-		}
-		assertBrowserRowTargetMatchesRenderedRow(t, view, row, page.MouseTargets(0, 0, 10))
-	})
 }

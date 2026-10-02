@@ -22,7 +22,7 @@ cm
 - The tunnel associated with the ChatGPT workspace/account that should discover it.
 - ChatGPT Developer Mode access for the user creating the custom app.
 
-The runtime API key is only for the tunnel transport. It is not used to call a language model.
+The runtime API key is only for the tunnel transport. It is not used to call a language model. Secure MCP Tunnel uses CodeMCP's OpenAI MCP projection, but that projection changes compatibility metadata only: the same canonical tools, workspace boundaries, authentication requirements, control guards, approvals, and result semantics apply as on direct MCP transports.
 
 ## Keep these values separate
 
@@ -80,10 +80,8 @@ See [Workspaces](workspaces.md) for how workspace scope works.
 ## 4. Configure the local tunnel
 
 ```bash
-cm tunnel configure \
-  --enabled \
-  --id tunnel_... \
-  --api-key 'sk-...'
+cm tunnel configure --enabled --id tunnel_...
+cm tunnel key set
 ```
 
 Inspect the result:
@@ -190,7 +188,7 @@ Permission/association changes can take time to propagate.
 
 ### Tunnel authentication fails
 
-The runtime key likely lacks **Tunnels Read + Use**, belongs to the wrong scope, or is no longer valid. Reconfigure it with `cm tunnel configure` after correcting the Platform permission.
+The runtime key likely lacks **Tunnels Read + Use**, belongs to the wrong scope, or is no longer valid. Replace it with `cm tunnel key set` after correcting the Platform permission.
 
 ### Scan Tools fails
 

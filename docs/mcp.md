@@ -222,4 +222,32 @@ cm mcp stdio --help
 cm mcp http --help
 ```
 
-Protocol-specific implementation details such as the exact revision, method/header validation, MRTR support, and compatibility behavior are intentionally kept out of the normal setup path because most users do not need them to connect or operate the runtime.
+Protocol-specific implementation details such as the exact revision, method/header validation, and compatibility behavior are intentionally kept out of the normal setup path because most users do not need them to connect or operate the runtime.
+
+### Base and OpenAI profiles
+
+The base profile is generic MCP. Direct Streamable HTTP can opt into OpenAI-compatible projection when needed:
+
+```bash
+cm mcp http --profile openai
+```
+
+The OpenAI profile changes presentation/compatibility metadata only. Canonical tool schemas, effects, authentication requirements, workspace scope, control guards, and approval authority remain the same. OpenAI Secure MCP Tunnel always uses this profile, so direct HTTP and tunnel transport reach the same CodeMCP tool/runtime authority.
+
+Per-tool authentication metadata is projected from the canonical auth contract, including compatibility metadata used by OpenAI clients. Authentication/linking never substitutes for CodeMCP authorization or local approval. When reauthorization is required, CodeMCP preserves the MCP `mcp/www_authenticate` result metadata expected by compatible clients.
+
+Streamable HTTP is the primary remote transport. Legacy SSE remains an optional compatibility endpoint for older clients and is not an authority source for OpenAI-specific behavior; disable it with `cm mcp http --no-sse` when it is unnecessary.
+
+### Skills and client snapshots
+
+CodeMCP remains the live Skill authority. Clients that support the MCP Skills extension can import the OpenAI-profile projection; clients that do not still use the canonical `list_skills` and `load_skill` tools.
+
+OpenAI-profile import is intentionally bounded: at most five Skills per scan, 100 files per Skill, 256 KiB for `SKILL.md`, 1 MiB per supporting file, 5 MiB per Skill, and 8 MiB aggregate raw resource data. For this projection, the directory containing `SKILL.md` must match the Skill name.
+
+A client import is a snapshot. After changing a Skill, rescan/reconnect the client if its imported copy needs to change.
+
+### Background work and continuation
+
+Process completion and model continuation are separate capabilities. Background processes complete event-driven inside CodeMCP and remain recoverable through the normal process/execution surfaces; agents should not repeatedly poll.
+
+CodeMCP advertises automatic model continuation only when a concrete client adapter has demonstrated that capability. For ordinary base/OpenAI stdio or HTTP clients and Secure MCP Tunnel, do not assume host-side continuation merely because background work completed. Return control after starting background work and use the explicit recovery/completion surfaces when the client does not provide continuation.

@@ -133,10 +133,8 @@ Read [Workspaces](workspaces.md) before adding extra filesystem roots or using w
 Create a tunnel in OpenAI Platform and a restricted runtime API key with **Tunnels Read + Use**, then configure them locally:
 
 ```bash
-cm tunnel configure \
-  --enabled \
-  --id tunnel_... \
-  --api-key 'sk-...'
+cm tunnel configure --enabled --id tunnel_...
+cm tunnel key set
 ```
 
 Check the local configuration:
