@@ -77,7 +77,7 @@ type tunnelSecretLoadPolicy struct {
 	allowMissingAdmin   bool
 }
 
-func loadTunnelSecretsWithPolicy(path string, cfg *tunnel.Config, legacyRuntime, legacyAdmin string, policy tunnelSecretLoadPolicy) (bool, error) {
+func loadTunnelSecretsWithPolicy(path string, cfg *tunnel.Config, legacyRuntime, legacyAdmin string, legacyRuntimeConfigured, legacyAdminConfigured bool, policy tunnelSecretLoadPolicy) (bool, error) {
 	stored, err := loadTunnelSecretAt(path)
 	if err != nil {
 		return false, err
@@ -100,18 +100,19 @@ func loadTunnelSecretsWithPolicy(path string, cfg *tunnel.Config, legacyRuntime,
 		legacyRuntime = stored.APIKey
 	}
 	store := secretstore.New(filepath.Dir(path))
-	runtimeKey, runtimeMigration, err := resolveStoredSecret(store, tunnelRuntimeSecretName, stored.RuntimeKeyConfigured, legacyRuntime, "tunnel runtime key", policy.allowMissingRuntime)
+	runtimeConfigured := stored.RuntimeKeyConfigured || legacyRuntimeConfigured
+	runtimeKey, runtimeMigration, err := resolveStoredSecret(store, tunnelRuntimeSecretName, runtimeConfigured, legacyRuntime, "tunnel runtime key", policy.allowMissingRuntime)
 	if err != nil {
 		return false, err
 	}
-	adminConfigured := stored.Admin != nil && stored.Admin.KeyConfigured
+	adminConfigured := (stored.Admin != nil && stored.Admin.KeyConfigured) || legacyAdminConfigured
 	adminKey, adminMigration, err := resolveStoredSecret(store, tunnelAdminSecretName, adminConfigured, legacyAdmin, "tunnel admin key", policy.allowMissingAdmin)
 	if err != nil {
 		return false, err
 	}
 	cfg.APIKey = runtimeKey
 	cfg.Admin.Key = adminKey
-	return runtimeMigration || adminMigration || stored.APIKey != "", nil
+	return runtimeMigration || adminMigration || stored.APIKey != "" || legacyRuntimeConfigured || legacyAdminConfigured, nil
 }
 
 func resolveStoredSecret(store *secretstore.Store, name string, configured bool, legacy, label string, allowMissing bool) (string, bool, error) {

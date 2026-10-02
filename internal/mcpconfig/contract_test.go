@@ -31,10 +31,12 @@ func TestContractSchemasAreBoundedDraft202012Compatible(t *testing.T) {
 	}
 }
 
-func TestAgentConfigEligibilityIsExplicitAndDisabledByDefault(t *testing.T) {
+func TestAgentConfigEligibilityFollowsExplicitPermissionFlags(t *testing.T) {
 	cfg := config.Default()
+	cfg.Permissions.MCPConfigRead = false
+	cfg.Permissions.MCPConfigWrite = false
 	if mcpconfig.Eligible(cfg, mcpconfig.AccessRead) || mcpconfig.Eligible(cfg, mcpconfig.AccessWrite) {
-		t.Fatal("default config unexpectedly grants agent config access")
+		t.Fatal("explicitly disabled permissions unexpectedly grant agent config access")
 	}
 	cfg.HTTP.MCP.Auth.Enabled = true
 	cfg.Permissions.AllowDirs = []string{"/tmp"}

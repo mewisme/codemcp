@@ -72,32 +72,36 @@ func (a *App) Start(ctx context.Context) error {
 	}
 	if a.Tunnel != nil {
 		tunnelSpan := tracepkg.Start(ctx, "APP", "app.tunnel.start", "Starting tunnel runtime")
-		if err := a.Tunnel.StartContext(ctx); err != nil {
-			tunnelSpan.FailMessage("Tunnel runtime start failed", err)
-			span.FailMessage("Application runtime start failed", err)
-			if a.ApprovalNotifications != nil {
-				a.ApprovalNotifications.Stop()
+		snapshot := a.Tunnel.Snapshot()
+		if snapshot.Status.Enabled && snapshot.Configured {
+			if err := a.Tunnel.StartContext(ctx); err != nil {
+				tunnelSpan.FailMessage("Tunnel runtime start failed", err)
+				span.FailMessage("Application runtime start failed", err)
+				if a.ApprovalNotifications != nil {
+					a.ApprovalNotifications.Stop()
+				}
+				if a.ApprovalExplain != nil {
+					a.ApprovalExplain.Stop()
+				}
+				if a.BackgroundNotifications != nil {
+					a.BackgroundNotifications.Stop()
+				}
+				if a.Tools != nil && a.Tools.Completions != nil {
+					a.Tools.Completions.Close()
+				}
+				if a.Tools != nil && a.Tools.CompletionHooks != nil {
+					a.Tools.CompletionHooks.Stop()
+				}
+				a.runtimeCtx = nil
+				if a.Tools != nil && a.Tools.Workspaces != nil {
+					err = errors.Join(err, a.Tools.Workspaces.Deactivate())
+				}
+				a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, err)
+				return err
 			}
-			if a.ApprovalExplain != nil {
-				a.ApprovalExplain.Stop()
-			}
-			if a.BackgroundNotifications != nil {
-				a.BackgroundNotifications.Stop()
-			}
-			if a.Tools != nil && a.Tools.Completions != nil {
-				a.Tools.Completions.Close()
-			}
-			if a.Tools != nil && a.Tools.CompletionHooks != nil {
-				a.Tools.CompletionHooks.Stop()
-			}
-			a.runtimeCtx = nil
-			if a.Tools != nil && a.Tools.Workspaces != nil {
-				err = errors.Join(err, a.Tools.Workspaces.Deactivate())
-			}
-			a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, err)
-			return err
 		}
-		tunnelSpan.EndMessage("Tunnel runtime started", tracepkg.Bool("enabled", a.Tunnel.Status().Enabled), tracepkg.Bool("running", a.Tunnel.Status().Running))
+		status := a.Tunnel.Status()
+		tunnelSpan.EndMessage("Tunnel runtime reconciled", tracepkg.Bool("enabled", status.Enabled), tracepkg.Bool("configured", snapshot.Configured), tracepkg.Bool("running", status.Running))
 	}
 	if a.ProductLifecycleTelemetry != nil {
 		a.ProductLifecycleTelemetry.Start(ctx)

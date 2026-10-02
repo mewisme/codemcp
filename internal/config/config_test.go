@@ -39,6 +39,9 @@ func TestValidateRequiresAtLeastOneMCPTransport(t *testing.T) {
 		t.Fatalf("both transports disabled err=%v", err)
 	}
 	cfg.Tunnel.Enabled = true
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "at least one MCP transport") {
+		t.Fatalf("enabled unconfigured tunnel satisfied transport requirement err=%v", err)
+	}
 	cfg.Tunnel.ID = "tunnel_test"
 	cfg.Tunnel.APIKey = "runtime-secret"
 	if err := Validate(cfg); err != nil {
@@ -183,12 +186,12 @@ func TestValidateBuiltinOpenAITunnel(t *testing.T) {
 	cfg.HTTP.Admin.Auth.Enabled = false
 	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
 	cfg.Tunnel.Enabled = true
-	if err := Validate(cfg); err == nil {
-		t.Fatal("expected missing tunnel id/api key validation error")
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("enabled unconfigured tunnel blocked generic validation: %v", err)
 	}
 	cfg.Tunnel.ID = "tunnel_0123456789abcdef0123456789abcdef"
-	if err := Validate(cfg); err == nil {
-		t.Fatal("expected missing tunnel API key validation error")
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("missing optional runtime key blocked generic validation: %v", err)
 	}
 	cfg.Tunnel.APIKey = "sk-test"
 	if err := Validate(cfg); err != nil {

@@ -307,7 +307,7 @@ func tunnelRunCommand() *cobra.Command {
 		}
 		tunnelConfig := cfg.Tunnel
 		tunnelConfig.Enabled = true
-		if err := tunnel.ValidateConfig(tunnelConfig); err != nil {
+		if err := tunnel.ValidateActivationConfig(tunnelConfig); err != nil {
 			return err
 		}
 

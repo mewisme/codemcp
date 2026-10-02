@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/secretstore"
 	"go.mewis.me/codemcp/internal/state"
 )
 
@@ -79,7 +80,7 @@ func TestRuntimeLoadAllowsMissingSecretsWhenTunnelDisabled(t *testing.T) {
 	}
 }
 
-func TestRuntimeLoadStillRequiresRuntimeSecretWhenTunnelEnabled(t *testing.T) {
+func TestRuntimeLoadAllowsMissingRuntimeSecretWhenTunnelEnabled(t *testing.T) {
 	root := t.TempDir()
 	configPath := filepath.Join(root, "config.json")
 	secretPath := filepath.Join(root, "tunnel.json")
@@ -110,8 +111,50 @@ func TestRuntimeLoadStillRequiresRuntimeSecretWhenTunnelEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Validate(loaded); err == nil || !strings.Contains(err.Error(), "OpenAI tunnel is enabled but API key is empty") {
-		t.Fatalf("enabled tunnel missing runtime key validation err=%v", err)
+	if !loaded.Tunnel.Enabled || loaded.Tunnel.ID != "tunnel_test" || loaded.Tunnel.APIKey != "" {
+		t.Fatalf("runtime recovery state=%#v", loaded.Tunnel)
+	}
+	if err := Validate(loaded); err != nil {
+		t.Fatalf("enabled tunnel missing optional runtime key blocked generic validation: %v", err)
+	}
+}
+
+func TestLegacyTunnelSecretMarkerHydratesCanonicalSecretStore(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.json")
+	secretPath := filepath.Join(root, "tunnel.json")
+	cfg := Default()
+	cfg.HTTP.MCP.Enabled = false
+	cfg.Tunnel.Enabled = true
+	cfg.Tunnel.ID = "tunnel_test"
+	cfg.Tunnel.APIKey = secretFileMarker
+	configData, err := configformat.MarshalPath(configPath, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := state.WriteFileAtomic(configPath, configData, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := secretstore.New(root).Apply([]secretstore.Change{{
+		Name:  tunnelRuntimeSecretName,
+		Value: "runtime-secret",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := loadAt(configPath, secretPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Tunnel.APIKey != "runtime-secret" {
+		t.Fatalf("runtime key=%q", loaded.Tunnel.APIKey)
+	}
+	stored, err := loadTunnelSecretAt(secretPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stored.RuntimeKeyConfigured {
+		t.Fatalf("canonical tunnel secret state=%#v", stored)
 	}
 }
 

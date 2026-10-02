@@ -71,6 +71,32 @@ func TestBootstrapRegistersTelegramNotificationProvider(t *testing.T) {
 	t.Fatal("telegram provider is missing from notification status")
 }
 
+func TestStartAllowsDefaultOnCapabilitiesWithoutOptionalPrerequisites(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	cfg := config.Default()
+	app, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := app.Start(t.Context()); err != nil {
+		t.Fatalf("default-on optional prerequisites blocked runtime start: %v", err)
+	}
+	t.Cleanup(func() { _ = app.Stop() })
+
+	snapshot := app.Tunnel.Snapshot()
+	if !snapshot.Status.Enabled || snapshot.Configured || snapshot.Status.Running {
+		t.Fatalf("fresh tunnel runtime state=%#v", snapshot)
+	}
+	telegramHealth := app.Telegram.Health()
+	if !telegramHealth.Enabled || telegramHealth.TokenConfigured || telegramHealth.AuthorizationConfigured || telegramHealth.Running {
+		t.Fatalf("fresh Telegram runtime state=%#v", telegramHealth)
+	}
+	semanticHealth := app.Tools.Semantic.Health()
+	if semanticHealth.Available || semanticHealth.LastErrorCategory == "" {
+		t.Fatalf("fresh semantic runtime should report unavailable provider: %#v", semanticHealth)
+	}
+}
+
 func TestAcceptedCompletionNotificationFailureDoesNotChangeCompletionTruth(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	cfg := config.Default()
@@ -414,14 +440,15 @@ func TestAdminHandlerSharesApprovalManager(t *testing.T) {
 }
 
 func TestTunnelLifecyclePublishesActivityFromSourceObserver(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	cfg := config.Default()
 	cfg.Tunnel.Enabled = true
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := app.Start(context.Background()); err == nil {
-		t.Fatal("expected invalid tunnel configuration to fail")
+	if err := app.Tunnel.Start(); err == nil {
+		t.Fatal("expected explicit tunnel start without runtime configuration to fail")
 	}
 	recent := app.Activity.Recent(10)
 	if len(recent) == 0 {

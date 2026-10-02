@@ -131,6 +131,7 @@ func isolateTypeSafeApp(t *testing.T) config.Config {
 
 func TestTypeSafeRuntimeDisabledAndMissingCredentialAreExplicit(t *testing.T) {
 	cfg := isolateTypeSafeApp(t)
+	cfg.Integrations.TypeSafe.Enabled = false
 	disabled, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -423,6 +424,7 @@ func TestTypeSafeProductionFailuresPreserveSemanticFallbackAndRequireRiskReview(
 
 func TestTypeSafeRuntimeRejectsPartialProductionRegistration(t *testing.T) {
 	cfg := isolateTypeSafeApp(t)
+	cfg.Integrations.TypeSafe.Enabled = false
 	app, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)

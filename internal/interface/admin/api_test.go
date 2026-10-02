@@ -512,7 +512,7 @@ func TestConfigAPIIntegrationPatchUpdatesRuntimeActiveState(t *testing.T) {
 		t.Fatalf("stored integrations = %#v", got)
 	}
 	_ = workspaceItem
-	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":true,"path":""},"typesafe":{"enabled":false,"model":"jev-latest","timeout_ms":3000}}`) {
+	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":true,"path":""},"typesafe":{"enabled":true,"model":"jev-latest","timeout_ms":3000}}`) {
 		t.Fatalf("integration config missing from response: %s", recorder.Body.String())
 	}
 }

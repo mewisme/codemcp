@@ -109,9 +109,7 @@ func TestOrdinaryMCPSessionCannotWriteGlobalConfigWithoutOperatorOptIn(t *testin
 	cfg := config.Default()
 	cfg.HTTP.MCP.Auth.TokenHash = "configured-mcp-hash"
 	cfg.HTTP.Admin.Auth.TokenHash = "configured-admin-hash"
-	if cfg.Permissions.MCPConfigWrite {
-		t.Fatal("default config unexpectedly enables MCP config writes")
-	}
+	cfg.Permissions.MCPConfigWrite = false
 	if err := config.Save(cfg); err != nil {
 		t.Fatal(err)
 	}

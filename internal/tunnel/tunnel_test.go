@@ -76,6 +76,22 @@ func TestValidateConfigRequiresHTTPSControlPlane(t *testing.T) {
 	if err := ValidateConfig(base); err != nil {
 		t.Fatal(err)
 	}
+	if err := ValidateConfig(Config{Enabled: true}); err != nil {
+		t.Fatalf("enabled unconfigured tunnel should be valid generic config: %v", err)
+	}
+	if err := ValidateConfig(Config{Enabled: false, ControlPlaneBaseURL: "http://api.openai.com"}); err == nil {
+		t.Fatal("disabled tunnel accepted invalid non-loopback HTTP control plane")
+	}
+	for _, cfg := range []Config{
+		{Enabled: true, ID: " tunnel_test"},
+		{Enabled: false, ID: "tunnel_test "},
+		{Enabled: true, APIKey: " secret"},
+		{Enabled: false, APIKey: "secret "},
+	} {
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatalf("generic validation accepted malformed configured value: %#v", cfg)
+		}
+	}
 	if err := ValidateConfig(Config{Enabled: true, ID: "tunnel_test", APIKey: "secret", ControlPlaneBaseURL: "https://api.openai.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -87,6 +103,15 @@ func TestValidateConfigRequiresHTTPSControlPlane(t *testing.T) {
 	}
 	if err := ValidateConfig(Config{Enabled: true, ID: "tunnel_test", APIKey: "secret", ControlPlaneBaseURL: "http://api.openai.com"}); err == nil {
 		t.Fatal("expected non-loopback http control plane to fail")
+	}
+}
+
+func TestValidateActivationConfigRequiresRuntimeSetup(t *testing.T) {
+	if err := ValidateActivationConfig(Config{Enabled: true}); err == nil || !strings.Contains(err.Error(), "id is not configured") {
+		t.Fatalf("missing id activation error=%v", err)
+	}
+	if err := ValidateActivationConfig(Config{Enabled: true, ID: "tunnel_test"}); err == nil || !strings.Contains(err.Error(), "runtime API key is not configured") {
+		t.Fatalf("missing runtime key activation error=%v", err)
 	}
 }
 
@@ -574,6 +599,21 @@ func TestEnabledTunnelRequiresRuntimeIDAndAPIKey(t *testing.T) {
 				t.Fatal("expected validation error")
 			}
 		})
+	}
+}
+
+func TestEnabledUnconfiguredTunnelReconcileStaysInactive(t *testing.T) {
+	called := false
+	client := newConfigured(Config{}, &tools.Runtime{Registry: tools.NewRegistry()}, func(Config, sdkmcp.Transport) (backend, error) {
+		called = true
+		return newFakeBackend(), nil
+	})
+	if err := client.Reconcile(Config{Enabled: true}, nil, true); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := client.Snapshot()
+	if !snapshot.Status.Enabled || snapshot.Configured || snapshot.Status.Running || called {
+		t.Fatalf("enabled unconfigured tunnel became active: snapshot=%#v backend_called=%t", snapshot, called)
 	}
 }
 

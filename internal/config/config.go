@@ -364,13 +364,15 @@ func loadAtWithTunnelSecretPolicy(configPath, secretPath string, policy tunnelSe
 	}
 	cfg.HTTP.Exposure = NormalizeExposure(cfg.HTTP.Exposure)
 	legacyRuntime, legacyAdmin := cfg.Tunnel.APIKey, cfg.Tunnel.Admin.Key
-	if legacyRuntime == secretFileMarker {
+	legacyRuntimeMarker := legacyRuntime == secretFileMarker
+	legacyAdminMarker := legacyAdmin == secretFileMarker
+	if legacyRuntimeMarker {
 		legacyRuntime = ""
 	}
-	if legacyAdmin == secretFileMarker {
+	if legacyAdminMarker {
 		legacyAdmin = ""
 	}
-	migrateSecrets, err := loadTunnelSecretsWithPolicy(secretPath, &cfg.Tunnel, legacyRuntime, legacyAdmin, policy)
+	migrateSecrets, err := loadTunnelSecretsWithPolicy(secretPath, &cfg.Tunnel, legacyRuntime, legacyAdmin, legacyRuntimeMarker, legacyAdminMarker, policy)
 	if err != nil {
 		return cfg, err
 	}

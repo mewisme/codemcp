@@ -95,6 +95,80 @@ func TestOpenHTTPBindingsFallsBackWhenAdminPortIsBusy(t *testing.T) {
 	}
 }
 
+func TestDefaultOnUnconfiguredTunnelKeepsMCPHTTPRuntimeAvailable(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := t.TempDir()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := testServerPort(t, listener.Addr())
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.HTTP.MCP.Port = port
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
+	if err := config.Save(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetContext(ctx)
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	done := make(chan error, 1)
+	go func() { done <- runServer(cmd, nil) }()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		status, statusErr := requestRuntimeStatus(context.Background())
+		if statusErr == nil {
+			if status.Starting || status.Lifecycle != "ready" {
+				time.Sleep(25 * time.Millisecond)
+				continue
+			}
+			if !status.ServerEnabled || !status.TunnelEnabled || status.TunnelConfigured || status.TunnelRunning {
+				t.Fatalf("default-on unconfigured tunnel runtime status=%#v", status)
+			}
+			response, requestErr := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/health")
+			if requestErr != nil {
+				t.Fatalf("local MCP HTTP health request failed: %v", requestErr)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("local MCP HTTP health status=%d", response.StatusCode)
+			}
+			if err := requestRuntimeShutdown(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-done:
+				if err != nil && !errors.Is(err, context.Canceled) {
+					t.Fatal(err)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("default-on local MCP HTTP runtime did not stop")
+			}
+			return
+		}
+		if !runtimecontrol.IsUnavailable(statusErr) {
+			t.Fatal(statusErr)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("default-on local MCP HTTP runtime did not become ready")
+}
+
 func TestTunnelOnlyServePublishesRuntimeControl(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := t.TempDir()

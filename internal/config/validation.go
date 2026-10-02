@@ -169,8 +169,8 @@ func SecurityWarnings(cfg Config) []string {
 }
 
 func ValidateMCPTransports(cfg Config) error {
-	if !cfg.HTTP.MCP.Enabled && !cfg.Tunnel.Enabled {
-		return errors.New("at least one MCP transport must be enabled: MCP HTTP (http.mcp.enabled) or OpenAI Secure MCP Tunnel (tunnel.enabled)")
+	if !cfg.HTTP.MCP.Enabled && (!cfg.Tunnel.Enabled || !tunnel.Configured(cfg.Tunnel)) {
+		return errors.New("at least one MCP transport must be usable: enable MCP HTTP (http.mcp.enabled) or fully configure the OpenAI Secure MCP Tunnel (tunnel.enabled, tunnel.id, and runtime API key)")
 	}
 	return nil
 }

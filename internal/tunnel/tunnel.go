@@ -449,14 +449,11 @@ func newOpenAIBackend(cfg Config, transport sdkmcp.Transport, logWriter io.Write
 }
 
 func ValidateConfig(cfg Config) error {
-	if !cfg.Enabled {
-		return nil
+	if cfg.ID != strings.TrimSpace(cfg.ID) {
+		return errors.New("OpenAI tunnel id must not contain leading or trailing whitespace")
 	}
-	if strings.TrimSpace(cfg.ID) == "" {
-		return errors.New("OpenAI tunnel is enabled but tunnel id is empty")
-	}
-	if strings.TrimSpace(cfg.APIKey) == "" {
-		return errors.New("OpenAI tunnel is enabled but API key is empty")
+	if cfg.APIKey != strings.TrimSpace(cfg.APIKey) {
+		return errors.New("OpenAI tunnel API key must not contain leading or trailing whitespace")
 	}
 	if raw := strings.TrimSpace(cfg.ControlPlaneBaseURL); raw != "" {
 		parsed, err := url.Parse(raw)
@@ -466,6 +463,19 @@ func ValidateConfig(cfg Config) error {
 		if parsed.Scheme == "http" && !isLoopbackHost(parsed.Hostname()) {
 			return fmt.Errorf("OpenAI tunnel control plane base URL must use HTTPS unless the host is loopback")
 		}
+	}
+	return nil
+}
+
+func ValidateActivationConfig(cfg Config) error {
+	if err := ValidateConfig(cfg); err != nil {
+		return err
+	}
+	if strings.TrimSpace(cfg.ID) == "" {
+		return errors.New("OpenAI tunnel id is not configured")
+	}
+	if strings.TrimSpace(cfg.APIKey) == "" {
+		return errors.New("OpenAI tunnel runtime API key is not configured")
 	}
 	return nil
 }
@@ -571,7 +581,7 @@ func (c *Client) Reconcile(cfg Config, metadata *Metadata, runtimeActive bool) e
 		}
 	}
 	status = c.Status()
-	shouldRun := runtimeActive && cfg.Enabled
+	shouldRun := runtimeActive && cfg.Enabled && Configured(cfg)
 	switch {
 	case shouldRun && !status.Running && !status.Restarting:
 		return c.Start()
@@ -608,7 +618,7 @@ func (c *Client) reconcileRunningConfig(cfg Config, metadata *Metadata) error {
 			return rollback(err)
 		}
 	}
-	if cfg.Enabled {
+	if cfg.Enabled && Configured(cfg) {
 		if err := c.Start(); err != nil {
 			return rollback(err)
 		}
@@ -647,6 +657,11 @@ func (c *Client) reconfigure(cfg Config, metadata *Metadata, persist func() erro
 	}
 	if err := ValidateConfig(cfg); err != nil {
 		return err
+	}
+	if cfg.Enabled {
+		if err := ValidateActivationConfig(cfg); err != nil {
+			return err
+		}
 	}
 	c.reconfigureMu.Lock()
 	defer c.reconfigureMu.Unlock()
@@ -706,6 +721,13 @@ func (c *Client) StartContext(parent context.Context) error {
 		c.mu.Unlock()
 		return nil
 	}
+	if err := ValidateActivationConfig(c.config); err != nil {
+		id := c.config.ID
+		c.lastError = err.Error()
+		c.mu.Unlock()
+		c.emitLifecycle(LifecycleDegraded, id, err.Error())
+		return err
+	}
 	if c.running || c.stopping || c.restarting || c.sessionCancel != nil {
 		c.mu.Unlock()
 		return errors.New("OpenAI tunnel already running")
@@ -756,7 +778,7 @@ func (c *Client) startGeneration(session uint64, parent context.Context, initial
 		c.emitLifecycle(LifecycleDegraded, id, err.Error())
 		return err
 	}
-	if err := ValidateConfig(c.config); err != nil {
+	if err := ValidateActivationConfig(c.config); err != nil {
 		c.lastError = err.Error()
 		c.mu.Unlock()
 		c.emitLifecycle(LifecycleDegraded, id, err.Error())

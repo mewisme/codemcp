@@ -270,8 +270,8 @@ func TestRenderStatusRuntimeAndTunnelStatesAcrossPresentationModes(t *testing.T)
 			snapshot:        statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default()},
 			humanWant:       "×  CodeMCP is stopped",
 			plainWant:       "[ERR] CodeMCP is stopped",
-			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel — disabled",
-			plainTunnelWant: "OpenAI Secure MCP Tunnel is disabled",
+			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel — not configured",
+			plainTunnelWant: "OpenAI Secure MCP Tunnel is not configured",
 		},
 	}
 	for _, test := range cases {
@@ -293,9 +293,11 @@ func TestRenderStatusRuntimeAndTunnelStatesAcrossPresentationModes(t *testing.T)
 }
 
 func TestRenderStatusDisabledTunnelGoldenRailHierarchy(t *testing.T) {
+	cfg := config.Default()
+	cfg.Tunnel.Enabled = false
 	snapshot := statusSnapshot{
 		Source:  configformat.Source{Path: "/tmp/config.json", Exists: true},
-		Config:  config.Default(),
+		Config:  cfg,
 		Running: true,
 		Runtime: runtimeStatusResult{PID: 4242, RunID: "run_abcd"},
 	}

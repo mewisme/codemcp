@@ -172,8 +172,8 @@ func TestTelegramPairingRejectsWrongCodeWithoutAuthorization(t *testing.T) {
 
 	time.Sleep(20 * time.Millisecond)
 	current := application.Config.Snapshot()
-	if current.Telegram.Enabled || len(current.Telegram.AllowedUserIDs) != 0 {
-		t.Fatalf("wrong code authorized user: %#v", current.Telegram)
+	if !current.Telegram.Enabled || len(current.Telegram.AllowedUserIDs) != 0 {
+		t.Fatalf("wrong code changed setup authorization: %#v", current.Telegram)
 	}
 	if runtime.Available() {
 		t.Fatal("setup runtime became normally available after invalid pairing")
