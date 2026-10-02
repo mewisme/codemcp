@@ -242,20 +242,38 @@ func TestTypeSafeRuntimeWiresMemorySearchAndApprovalRiskThroughOneSystemOneClien
 		}
 	}
 
+	backgroundTarget := filepath.Join(root, "risk-high-background")
+	backgroundCtx := tools.WithCallSource(context.Background(), "tunnel")
+	backgroundCtx = tools.WithApprovalCorrelation(backgroundCtx, "typesafe-background", "request-background")
+	background, err := app.Tools.Call(backgroundCtx, "start_process", map[string]any{
+		"workspace_id": workspace.ID,
+		"command":      "touch " + filepath.Base(backgroundTarget),
+	})
+	if err != nil || !background.IsError || background.StructuredContent == nil {
+		t.Fatalf("background TypeSafe classification result=%#v err=%v", background, err)
+	}
+	if _, err := os.Stat(backgroundTarget); !os.IsNotExist(err) {
+		t.Fatalf("background command executed despite high-risk review: %v", err)
+	}
+
 	observations := fake.snapshot()
 	semanticCalls, riskCalls := 0, 0
+	backgroundRiskSeen := false
 	for _, observation := range observations {
 		if observation.Authorization != "Bearer generation-one" {
 			t.Fatalf("unexpected credential generation: %#v", observation)
 		}
 		if observation.Risk {
 			riskCalls++
+			if strings.Contains(observation.Command, filepath.Base(backgroundTarget)) {
+				backgroundRiskSeen = true
+			}
 		} else {
 			semanticCalls++
 		}
 	}
-	if semanticCalls == 0 || riskCalls != 4 {
-		t.Fatalf("System One calls semantic=%d risk=%d observations=%#v", semanticCalls, riskCalls, observations)
+	if semanticCalls == 0 || riskCalls != 5 || !backgroundRiskSeen {
+		t.Fatalf("System One calls semantic=%d risk=%d background=%t observations=%#v", semanticCalls, riskCalls, backgroundRiskSeen, observations)
 	}
 }
 

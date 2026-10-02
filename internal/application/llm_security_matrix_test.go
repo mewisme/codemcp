@@ -218,6 +218,53 @@ func TestLLMProviderOutageAndCatalogRefreshFailureNeverMutatePersistedSelectionO
 	}
 }
 
+func TestLLMProviderRuntimeFailureMatrixRemainsTypedAndDoesNotMutatePersistedState(t *testing.T) {
+	for _, category := range []llm.ErrorCategory{
+		llm.ErrorUnavailable,
+		llm.ErrorUnauthorized,
+		llm.ErrorRateLimited,
+		llm.ErrorInvalidResponse,
+	} {
+		t.Run(string(category), func(t *testing.T) {
+			root := isolateSettingServiceConfig(t)
+			backend := &llmSecurityMatrixBackend{
+				inferErr:    llm.NewError(category, "", "fixture inference failure"),
+				discoverErr: llm.NewError(category, "", "fixture discovery failure"),
+			}
+			service := NewLLMServiceWithBackend(root, backend)
+			if _, err := service.AddCustomProvider(t.Context(), "failure-fixture", CustomLLMProviderConfig{
+				Name: "Failure Fixture", Protocol: llm.ProtocolOpenAI, BaseURL: "https://failure.example/v1",
+				Model: "fixture/model", AuthMode: llm.AuthNone, Discovery: llm.DiscoveryOpenAIModels,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.SelectProvider(t.Context(), "failure-fixture"); err != nil {
+				t.Fatal(err)
+			}
+			before, err := service.Catalog(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := service.ModelCatalog(t.Context(), "failure-fixture", LLMModelQuery{Refresh: true}); !llm.IsCategory(err, category) {
+				t.Fatalf("catalog failure category=%s err=%v", category, err)
+			}
+			if _, err := service.Probe(t.Context(), "failure-fixture"); !llm.IsCategory(err, category) {
+				t.Fatalf("probe failure category=%s err=%v", category, err)
+			}
+			after, err := NewLLMServiceWithBackend(root, backend).Catalog(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(before, after) {
+				t.Fatalf("provider failure %s mutated persisted state:\nbefore=%#v\nafter=%#v", category, before, after)
+			}
+			if after.ActiveProvider != "failure-fixture" {
+				t.Fatalf("provider failure %s changed active selection to %q", category, after.ActiveProvider)
+			}
+		})
+	}
+}
+
 func TestLLMOllamaFreshCloudDefaultAndPersistedLocalOrCustomStateSurviveReopen(t *testing.T) {
 	root := isolateSettingServiceConfig(t)
 	fresh := NewLLMService(root)

@@ -102,6 +102,33 @@ func TestExternalResolutionCanonicalizesSymlinksWithoutChangingSource(t *testing
 	}
 }
 
+func TestSystemResolutionRejectsDanglingAndUnsafeSymlinkTargets(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation is not reliably available on Windows test hosts")
+	}
+	for _, test := range []struct {
+		name   string
+		target func(*testing.T) string
+	}{
+		{name: "dangling", target: func(t *testing.T) string { return filepath.Join(t.TempDir(), "missing-codegraph") }},
+		{name: "directory", target: func(t *testing.T) string { return t.TempDir() }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			target := test.target(t)
+			link := filepath.Join(t.TempDir(), "codegraph")
+			if err := os.Symlink(target, link); err != nil {
+				t.Skipf("symlink unavailable: %v", err)
+			}
+			value := New(Options{Enabled: true, ManagedRoot: t.TempDir()})
+			value.lookPath = func(string) (string, error) { return link, nil }
+			resolution, err := value.Resolve()
+			if err != nil || resolution.Source != ExecutableUnavailable || resolution.Path != "" || resolution.Verified {
+				t.Fatalf("unsafe system symlink resolution=%#v err=%v", resolution, err)
+			}
+		})
+	}
+}
+
 func TestResolveGlobalOnlyDiscoversUserInstalledExecutable(t *testing.T) {
 	value := New(Options{Enabled: true, ManagedRoot: t.TempDir()})
 	value.goos, value.goarch = "linux", "amd64"
