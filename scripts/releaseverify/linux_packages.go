@@ -282,6 +282,7 @@ func readDebControl(compressed []byte) (map[string]string, error) {
 	}
 	defer reader.Close()
 	tarReader := tar.NewReader(reader)
+	var control map[string]string
 	for {
 		header, err := tarReader.Next()
 		if errors.Is(err, io.EOF) {
@@ -294,19 +295,32 @@ func readDebControl(compressed []byte) (map[string]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if name != "control" {
-			continue
-		}
 		if header.Typeflag != tar.TypeReg && header.Typeflag != 0 {
-			return nil, errors.New("deb control entry is not regular")
+			return nil, fmt.Errorf("deb control archive contains unsupported entry type for %q", header.Name)
 		}
-		content, err := io.ReadAll(io.LimitReader(tarReader, 1<<20))
-		if err != nil {
-			return nil, err
+		switch name {
+		case "md5sums":
+			if _, err := io.Copy(io.Discard, io.LimitReader(tarReader, 1<<20)); err != nil {
+				return nil, err
+			}
+			continue
+		case "control":
+			if control != nil {
+				return nil, errors.New("deb control archive contains duplicate control metadata")
+			}
+			content, err := io.ReadAll(io.LimitReader(tarReader, 1<<20))
+			if err != nil {
+				return nil, err
+			}
+			control = parseDebControlFields(string(content))
+		default:
+			return nil, fmt.Errorf("deb control archive contains unexpected maintainer metadata %q", header.Name)
 		}
-		return parseDebControlFields(string(content)), nil
 	}
-	return nil, errors.New("deb control archive is missing control metadata")
+	if control == nil {
+		return nil, errors.New("deb control archive is missing control metadata")
+	}
+	return control, nil
 }
 
 func parseDebControlFields(content string) map[string]string {
@@ -399,6 +413,9 @@ func inspectRPMPackage(path string) (linuxPackageInfo, error) {
 	if err != nil {
 		return linuxPackageInfo{}, fmt.Errorf("parse rpm main header: %w", err)
 	}
+	if err := rejectRPMScriptlets(main.values); err != nil {
+		return linuxPackageInfo{}, err
+	}
 	if main.values[1124] != "cpio" || main.values[1125] != "gzip" {
 		return linuxPackageInfo{}, fmt.Errorf("rpm payload = %q/%q, want cpio/gzip", main.values[1124], main.values[1125])
 	}
@@ -420,6 +437,28 @@ func inspectRPMPackage(path string) (linuxPackageInfo, error) {
 		License:     main.values[1014],
 		Binary:      binaryData,
 	}, nil
+}
+
+func rejectRPMScriptlets(values map[uint32]string) error {
+	scriptlets := map[uint32]string{
+		1023: "pre-install",
+		1024: "post-install",
+		1025: "pre-uninstall",
+		1026: "post-uninstall",
+		1079: "verify",
+		1085: "pre-install program",
+		1086: "post-install program",
+		1087: "pre-uninstall program",
+		1088: "post-uninstall program",
+		1151: "pre-transaction",
+		1152: "post-transaction",
+	}
+	for tag, name := range scriptlets {
+		if strings.TrimSpace(values[tag]) != "" {
+			return fmt.Errorf("rpm package contains unexpected %s scriptlet", name)
+		}
+	}
+	return nil
 }
 
 func parseRPMHeader(data []byte, offset int) (rpmHeader, error) {

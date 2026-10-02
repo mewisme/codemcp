@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -42,6 +43,16 @@ func TestInspectDebPackageRejectsExtraExecutable(t *testing.T) {
 	}
 }
 
+func TestInspectDebPackageRejectsMaintainerScript(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "codemcp_linux_amd64.deb")
+	if err := os.WriteFile(path, buildDebFixtureWithControlEntry(t, "postinst"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inspectDebPackage(path); err == nil || !strings.Contains(err.Error(), "unexpected maintainer metadata") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestInspectRPMPackageCanonicalContents(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "codemcp_linux_amd64.rpm")
 	if err := os.WriteFile(path, buildRPMFixture(t, false), 0644); err != nil {
@@ -56,6 +67,16 @@ func TestInspectRPMPackageCanonicalContents(t *testing.T) {
 	}
 	if string(info.Binary) != "fixture-cm" {
 		t.Fatalf("binary = %q", info.Binary)
+	}
+}
+
+func TestInspectRPMPackageRejectsMaintainerScriptlet(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "codemcp_linux_amd64.rpm")
+	if err := os.WriteFile(path, buildRPMFixtureWithHeaderTag(t, 1024, "#!/bin/sh\nprintf mutated\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inspectRPMPackage(path); err == nil || !strings.Contains(err.Error(), "post-install scriptlet") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -92,11 +113,27 @@ func buildDebFixture(t *testing.T, includeAlias bool) []byte {
 
 func buildDebFixtureForArch(t *testing.T, arch string, includeAlias bool, binaryData []byte) []byte {
 	t.Helper()
-	control := makeGzipTar(t, []tarFixtureEntry{{
+	return buildDebFixtureForArchWithControlEntries(t, arch, includeAlias, binaryData, nil)
+}
+
+func buildDebFixtureWithControlEntry(t *testing.T, name string) []byte {
+	t.Helper()
+	return buildDebFixtureForArchWithControlEntries(t, "amd64", false, []byte("fixture-cm"), []tarFixtureEntry{{
+		name: name,
+		mode: 0755,
+		data: []byte("#!/bin/sh\nprintf mutated\n"),
+	}})
+}
+
+func buildDebFixtureForArchWithControlEntries(t *testing.T, arch string, includeAlias bool, binaryData []byte, extraControl []tarFixtureEntry) []byte {
+	t.Helper()
+	controlEntries := []tarFixtureEntry{{
 		name: "control",
 		mode: 0644,
 		data: []byte("Package: codemcp\nVersion: 1.2.3~next\nSection: utils\nPriority: optional\nArchitecture: " + arch + "\nMaintainer: " + testLinuxPackageMaintainer + "\nHomepage: " + ExpectedGitRemote + "\nDescription: " + linuxPackageDescription + "\n"),
-	}})
+	}}
+	controlEntries = append(controlEntries, extraControl...)
+	control := makeGzipTar(t, controlEntries)
 	entries := []tarFixtureEntry{
 		{name: "./usr/", mode: 0755, directory: true},
 		{name: "./usr/bin/", mode: 0755, directory: true},
@@ -176,6 +213,16 @@ func buildRPMFixture(t *testing.T, includeUserState bool) []byte {
 
 func buildRPMFixtureForArch(t *testing.T, arch string, includeUserState bool, binaryData []byte) []byte {
 	t.Helper()
+	return buildRPMFixtureForArchWithHeaderTags(t, arch, includeUserState, binaryData, nil)
+}
+
+func buildRPMFixtureWithHeaderTag(t *testing.T, tag uint32, value string) []byte {
+	t.Helper()
+	return buildRPMFixtureForArchWithHeaderTags(t, "x86_64", false, []byte("fixture-cm"), map[uint32]string{tag: value})
+}
+
+func buildRPMFixtureForArchWithHeaderTags(t *testing.T, arch string, includeUserState bool, binaryData []byte, extraTags map[uint32]string) []byte {
+	t.Helper()
 	payloadEntries := []cpioFixtureEntry{{
 		name: "/usr/bin/cm",
 		mode: 0100755,
@@ -206,6 +253,9 @@ func buildRPMFixtureForArch(t *testing.T, arch string, includeUserState bool, bi
 		1124: "cpio",
 		1125: "gzip",
 		1126: "9",
+	}
+	for tag, value := range extraTags {
+		values[tag] = value
 	}
 	main := buildRPMHeader(values)
 	var out bytes.Buffer
