@@ -85,7 +85,7 @@ try {
   await verifyMCP(serverPort, workspaceID, false, "off", true, "wenyan-ultra")
   await verifyWorkspaceContainerMCP(serverPort, workspaceID)
   const foregroundStatus = run(["status"], { quiet: true })
-  for (const expected of ["✓ CodeMCP is running", "OpenAI Secure MCP Tunnel is disabled"]) {
+  for (const expected of ["✓ CodeMCP is running", "OpenAI Secure MCP Tunnel is not configured"]) {
     if (!foregroundStatus.includes(expected)) fail(`foreground status missing ${JSON.stringify(expected)}:\n${foregroundStatus}`)
   }
   if (!/^\s*session\s+run_/m.test(foregroundStatus)) fail(`foreground status missing runtime session:\n${foregroundStatus}`)
