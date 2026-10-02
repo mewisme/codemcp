@@ -17,7 +17,7 @@ func TestPublicCLIIdentityUsesOnlyCodeMCPAndCM(t *testing.T) {
 	}
 	help := output.String()
 	for _, required := range []string{
-		"CodeMCP workspace-bound local MCP server for ChatGPT",
+		"A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.",
 		"Usage:\n  cm [flags]",
 		"Generate shell completion for cm",
 		"env: CM_CONFIG_DIR",

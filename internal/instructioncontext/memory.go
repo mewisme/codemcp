@@ -77,6 +77,7 @@ func LoadProjectMemory(root string, opts MemoryLoadOptions) (ProjectMemoryBundle
 		return ProjectMemoryBundle{}, err
 	}
 	expander := newImportExpander(workspaceRoots, home, opts.ImportMaxDepth, maxBytes, maxLines)
+	defer expander.Close()
 	capacity := len(projectMemoryCandidates)
 	for _, provider := range providers {
 		capacity += len(provider.ContextFiles)

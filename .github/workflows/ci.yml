@@ -159,8 +159,10 @@ jobs:
       - name: Prepare frontend fixture
         if: needs.changes.outputs.full == 'true'
         run: |
-          mkdir -p internal/interface/web/dist
+          mkdir -p internal/interface/web/dist internal/telegram/mini-app-dist/assets
           printf '<!doctype html><html><body>CI</body></html>\n' > internal/interface/web/dist/index.html
+          printf '<!doctype html><html><head><script src="https://telegram.org/js/telegram-web-app.js?56"></script></head><body><div data-codemcp-mini-app-root>Loading CodeMCP Mini App</div><script type="module" src="/assets/mini-app.js"></script></body></html>\n' > internal/telegram/mini-app-dist/mini-app.html
+          printf 'document.querySelector("[data-codemcp-mini-app-root]");\n' > internal/telegram/mini-app-dist/assets/mini-app.js
 
       - name: Install security tooling
         if: needs.changes.outputs.full == 'true'
@@ -237,8 +239,10 @@ jobs:
       - name: Prepare frontend fixture
         if: needs.changes.outputs.full == 'true'
         run: |
-          mkdir -p internal/interface/web/dist
+          mkdir -p internal/interface/web/dist internal/telegram/mini-app-dist/assets
           printf '<!doctype html><html><body>CI</body></html>\n' > internal/interface/web/dist/index.html
+          printf '<!doctype html><html><head><script src="https://telegram.org/js/telegram-web-app.js?56"></script></head><body><div data-codemcp-mini-app-root>Loading CodeMCP Mini App</div><script type="module" src="/assets/mini-app.js"></script></body></html>\n' > internal/telegram/mini-app-dist/mini-app.html
+          printf 'document.querySelector("[data-codemcp-mini-app-root]");\n' > internal/telegram/mini-app-dist/assets/mini-app.js
 
       - name: Test with race detector
         if: needs.changes.outputs.full == 'true'
@@ -291,8 +295,10 @@ jobs:
         if: needs.changes.outputs.full == 'true'
         shell: bash
         run: |
-          mkdir -p internal/interface/web/dist
+          mkdir -p internal/interface/web/dist internal/telegram/mini-app-dist/assets
           printf '<!doctype html><html><body>CI</body></html>\n' > internal/interface/web/dist/index.html
+          printf '<!doctype html><html><head><script src="https://telegram.org/js/telegram-web-app.js?56"></script></head><body><div data-codemcp-mini-app-root>Loading CodeMCP Mini App</div><script type="module" src="/assets/mini-app.js"></script></body></html>\n' > internal/telegram/mini-app-dist/mini-app.html
+          printf 'document.querySelector("[data-codemcp-mini-app-root]");\n' > internal/telegram/mini-app-dist/assets/mini-app.js
 
       - name: Validate Unix installer
         if: needs.changes.outputs.full == 'true' && runner.os != 'Windows'
@@ -390,8 +396,10 @@ jobs:
       - name: Prepare frontend fixture
         if: needs.changes.outputs.full == 'true'
         run: |
-          mkdir -p internal/interface/web/dist
+          mkdir -p internal/interface/web/dist internal/telegram/mini-app-dist/assets
           printf '<!doctype html><html><body>CI</body></html>\n' > internal/interface/web/dist/index.html
+          printf '<!doctype html><html><head><script src="https://telegram.org/js/telegram-web-app.js?56"></script></head><body><div data-codemcp-mini-app-root>Loading CodeMCP Mini App</div><script type="module" src="/assets/mini-app.js"></script></body></html>\n' > internal/telegram/mini-app-dist/mini-app.html
+          printf 'document.querySelector("[data-codemcp-mini-app-root]");\n' > internal/telegram/mini-app-dist/assets/mini-app.js
 
       - name: Build
         if: needs.changes.outputs.full == 'true'

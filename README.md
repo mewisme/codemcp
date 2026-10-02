@@ -2,7 +2,7 @@
 
 # CodeMCP
 
-**A secure, workspace-bound bridge between ChatGPT and your machine.**
+**A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.**
 
 Single Go binary · OpenAI Secure MCP Tunnel · Linux, macOS, and Windows
 
@@ -11,177 +11,207 @@ Single Go binary · OpenAI Secure MCP Tunnel · Linux, macOS, and Windows
 [![Go](https://img.shields.io/github/go-mod/go-version/mewisme/codemcp?style=flat-square&logo=go)](go.mod)
 [![License](https://img.shields.io/github/license/mewisme/codemcp?style=flat-square)](LICENSE)
 
-[Get started](docs/getting-started.md) · [Connect ChatGPT](docs/openai-chatgpt.md) · [Command Center](docs/tui.md) · [Security](docs/security.md) · [Documentation](docs/README.md)
+[Get started](docs/getting-started.md) · [MCP profiles](docs/mcp.md) · [Security](docs/security.md) · [Documentation](docs/README.md)
 
 </div>
 
-`CodeMCP` lets ChatGPT work with local projects through explicitly registered workspaces. The default setup uses **OpenAI Secure MCP Tunnel**, so the runtime can stay private without exposing an inbound MCP port to the public internet.
+CodeMCP runs locally and gives supported AI clients controlled access to explicitly registered projects. For ChatGPT, the primary path is **OpenAI Secure MCP Tunnel**: the local runtime makes an outbound connection to OpenAI, so the MCP server does not need a public inbound endpoint. Generic MCP clients can use the same runtime through local stdio or Streamable HTTP.
 
 ## Overview
 
 <p align="center">
-  <img src="docs/architecture/overview.svg" alt="CodeMCP architecture overview" width="100%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/overview-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/architecture/overview-light.svg">
+    <img src="docs/architecture/overview-light.svg" alt="CodeMCP system architecture overview" width="100%">
+  </picture>
 </p>
 
-The main path is intentionally small: ChatGPT reaches the local runtime through the Secure MCP Tunnel, then `CodeMCP` applies workspace scope before filesystem, shell, Git, process, or Upstream work happens.
+One runtime owns the canonical tool schemas, workspace scope, approvals, config, secrets, history, and integrations. MCP profiles only change the client-facing projection:
+
+1. **OpenAI profile** — used by OpenAI Secure MCP Tunnel and available to direct HTTP clients with `--profile openai`.
+2. **Base profile** — standards-oriented generic MCP projection and the default for direct local MCP transports.
+
+See [MCP profiles and transports](docs/mcp.md).
 
 ### Why CodeMCP
 
-- **Private by default for ChatGPT** — the Secure MCP Tunnel is outbound-only from your machine; public MCP ingress is not required.
-- **Workspace-bound access** — filesystem, shell, Git, process, context, memory, rules, skills, and checkpoints operate against explicit `ws_*` workspace targets.
-- **Local control stays local** — use the CLI, full-screen TUI, or embedded Admin UI to inspect and operate the runtime.
-- **Upstream aggregation** — optionally expose tools from remote MCP endpoints through the same runtime.
-- **One cross-platform binary** — native releases for Linux, macOS, and Windows on amd64 and arm64, with managed background-service support.
+- **Private OpenAI path** — Secure MCP Tunnel keeps the default ChatGPT connection outbound-only from your machine.
+- **Workspace-bound execution** — filesystem, shell, Git, process, context, memory, rules, skills, plans, and checkpoints operate against registered `ws_*` scopes.
+- **Local authority** — approvals, control guards, secrets, and runtime policy remain local even when the client projection changes.
+- **Multiple operator surfaces** — CLI, TUI, Browser Admin, and Telegram use the same application services.
+- **Extensible runtime** — optional RTK, CodeGraph, TypeSafe/SystemOne, LLM providers, and upstream MCP servers extend the same runtime.
 
 ## Install
 
-For most developer machines, use the managed direct installer. It keeps CodeMCP under your user account and gives `cm upgrade` a transactional, rollback-capable install layout.
+The installed command is always **`cm`**. Pick one installation owner and keep using that owner for upgrades.
 
-### Linux / macOS
+### Managed direct install
+
+Best when you want a per-user installation managed by CodeMCP itself. `cm upgrade` verifies, stages, activates, and can roll back managed-direct releases.
+
+**Linux / macOS**
 
 ```bash
 curl -fsSL get.mewis.me/codemcp.sh | sh
 ```
 
-### Windows
+**Windows PowerShell**
 
 ```powershell
 irm https://get.mewis.me/codemcp.ps1 | iex
 ```
 
-Prefer a normal setup executable? Download the latest [Windows amd64 setup](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_amd64_setup.exe) or [Windows arm64 setup](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_arm64_setup.exe). Both bootstrap the same managed direct layout as the PowerShell installer.
+**Windows setup executables**
 
-### Package managers
+- [Windows amd64 setup](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_amd64_setup.exe)
+- [Windows arm64 setup](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_arm64_setup.exe)
+
+The setup executable bootstraps the same managed-direct layout as the PowerShell installer.
+
+### Homebrew
 
 ```bash
 brew tap mewisme/mew
 brew install --cask codemcp
 ```
 
+Homebrew owns upgrades for this installation.
+
+### Scoop
+
 ```powershell
 scoop bucket add mew https://github.com/mewisme/scoop-mew
 scoop install mew/codemcp
 ```
 
-Debian and RPM release packages are also available for Linux amd64/arm64. Package-manager installs remain package-manager-owned; see [Getting started](docs/getting-started.md#native-linux-packages) for download names and ownership details.
+Scoop owns upgrades for this installation.
 
-The installed executable is always `cm`.
+### Debian packages
 
-## 5-minute setup
+| Architecture | Package |
+| --- | --- |
+| amd64 | [`codemcp_linux_amd64.deb`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_amd64.deb) |
+| arm64 | [`codemcp_linux_arm64.deb`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_arm64.deb) |
 
-### 1. Initialize
+```bash
+sudo apt install ./codemcp_linux_amd64.deb
+```
+
+Use the `arm64` package on ARM64. Debian owns upgrades after package installation.
+
+### RPM packages
+
+| Architecture | Package |
+| --- | --- |
+| amd64 | [`codemcp_linux_amd64.rpm`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_amd64.rpm) |
+| arm64 | [`codemcp_linux_arm64.rpm`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_arm64.rpm) |
+
+```bash
+sudo dnf install ./codemcp_linux_amd64.rpm
+```
+
+Use the `arm64` package on ARM64. RPM/DNF owns upgrades after package installation.
+
+### Manual release archives
+
+Release asset filenames are stable; the Git tag carries the release version.
+
+| Platform | amd64 | arm64 |
+| --- | --- | --- |
+| Linux | [`codemcp_linux_amd64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_amd64.tar.gz) | [`codemcp_linux_arm64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_arm64.tar.gz) |
+| macOS | [`codemcp_darwin_amd64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_darwin_amd64.tar.gz) | [`codemcp_darwin_arm64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_darwin_arm64.tar.gz) |
+| Windows | [`codemcp_windows_amd64.zip`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_amd64.zip) | [`codemcp_windows_arm64.zip`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_arm64.zip) |
+
+For an exact version, pin the tag while keeping the stable filename:
+
+```text
+https://github.com/mewisme/codemcp/releases/download/vX.Y.Z/codemcp_linux_amd64.tar.gz
+```
+
+Release executable/package/setup assets are covered by `codemcp_checksums.txt`; its Sigstore bundle is `codemcp_checksums.txt.sigstore.json`.
+
+## 5-minute OpenAI setup
 
 ```bash
 cm init
-```
-
-### 2. Register the project ChatGPT may work with
-
-```bash
 cm workspace register ~/projects/my-project
-```
-
-The command returns a stable `ws_*` workspace ID. Register only roots you intentionally want the runtime to reach.
-
-### 3. Configure the Secure MCP Tunnel
-
-Create a tunnel and a restricted runtime API key in OpenAI Platform, then configure them locally:
-
-```bash
 cm tunnel configure --enabled --id tunnel_...
 cm tunnel key set
-```
-
-The runtime key should have **Tunnels Read + Use**. It is not an OpenAI Admin API key and is not used to call a language model.
-
-Fresh configuration records optional capabilities such as the Secure MCP Tunnel as enabled intent by default, but they become effective only when their prerequisites are configured. An enabled tunnel with no tunnel ID/runtime key stays inactive; it does not block the local runtime. Explicit `false` settings remain durable opt-outs; `--enabled` above also makes the setup command explicitly re-enable a previously opted-out tunnel.
-
-### 4. Start the managed runtime
-
-```bash
 cm up
-```
-
-Verify locally:
-
-```bash
 cm status
 cm tunnel status
 ```
 
-### 5. Connect ChatGPT
+Use an OpenAI runtime key with **Tunnels Read + Use**. It is not an OpenAI Admin API key.
 
-Enable Developer Mode in ChatGPT, create a custom app using **Tunnel**, select the same tunnel, and **Scan Tools**.
+In ChatGPT developer mode, create a developer-mode app/plugin using **Tunnel**, select the same tunnel, scan tools, review the discovered surface, and enable it.
 
-The complete Platform permissions and ChatGPT setup flow is in [Connect ChatGPT with OpenAI Secure MCP Tunnel](docs/openai-chatgpt.md).
+OpenAI's current Secure MCP Tunnel documentation is the source of truth for Platform permissions, workspace associations, and ChatGPT UI details: <https://developers.openai.com/api/docs/guides/secure-mcp-tunnels>.
 
-## Operate it
+## Generic MCP clients
 
-For interactive administration:
-
-```bash
-cm tui
-```
-
-For scripts and automation, use the normal CLI:
-
-```bash
-cm status
-cm workspace list
-cm logs -f
-cm config verify
-```
-
-Use `cm <command> --help` for the live command surface. The [CLI reference](docs/cli-reference.md) is a curated command map rather than a second source of command truth.
-
-## Other MCP clients
-
-The tunnel-first flow above is the default ChatGPT setup. Generic local MCP clients can instead use dedicated `stdio` or local Streamable HTTP transports:
+The Base profile is the default for direct local transports:
 
 ```bash
 cm mcp stdio --workspace ~/projects/my-project
 cm mcp http --workspace ws_...
 ```
 
-See [MCP clients and Upstreams](docs/mcp.md).
+A direct HTTP client can request the OpenAI projection explicitly:
+
+```bash
+cm mcp http --profile openai --workspace ws_...
+```
+
+Profiles do not bypass CodeMCP authentication, workspace scope, control guards, or approvals. See [MCP profiles and transports](docs/mcp.md).
+
+## Operate CodeMCP
+
+```bash
+cm status
+cm logs -f
+cm config verify
+cm workspace list
+cm tui
+```
+
+Use `cm <command> --help` for the installed binary's exact command and flag surface.
 
 ## Security model
 
-`CodeMCP` provides an application-level workspace and control-plane boundary, not a kernel sandbox. Paths are canonicalized, symlink escapes are rejected, trusted control-plane mutations are separated from ordinary workspace operations, and sensitive managed credentials are not stored as plaintext structured config.
+CodeMCP is an application-level workspace and control boundary, not a kernel sandbox. It canonicalizes workspace roots, uses root-anchored filesystem operations for sensitive paths, rejects unsafe symlink escapes, separates control-plane mutations from ordinary workspace work, and stores managed credentials outside normal plaintext structured config.
 
-If you need isolation from deliberately hostile native code running as the same OS user, use an OS sandbox, container/VM, or separate operating-system identity.
+For isolation from hostile native code running as the same OS user, use an OS sandbox, container/VM, or separate operating-system identity.
 
-Read [Security](docs/security.md) before widening network exposure or filesystem access.
+Read [Security](docs/security.md) before widening filesystem or network access.
 
 ## Documentation
 
-| Goal | Read |
+| Goal | Guide |
 | --- | --- |
 | Install and connect ChatGPT | [Getting started](docs/getting-started.md) |
-| Configure OpenAI Secure MCP Tunnel and the ChatGPT app | [OpenAI + ChatGPT](docs/openai-chatgpt.md) |
-| Understand workspace scope and containers | [Workspaces](docs/workspaces.md) |
-| Run, stop, inspect, update, and read logs | [Runtime and operations](docs/runtime.md) |
-| Use the full-screen terminal UI | [TUI Command Center](docs/tui.md) |
-| Configure auth, exposure, storage, and runtime settings | [Configuration](docs/configuration.md) |
-| Configure LLM providers, shared Explain, and TypeSafe semantics | [LLM providers](docs/llm.md) |
-| Connect generic MCP clients or configure Upstreams | [MCP clients and Upstreams](docs/mcp.md) |
-| Look up commands and flags | [CLI reference](docs/cli-reference.md) |
-| Understand trust boundaries, approvals, telemetry, and privacy | [Security](docs/security.md) |
-| Diagnose common failures | [Troubleshooting](docs/troubleshooting.md) |
-| Build and contribute | [Development](docs/development.md) |
+| Understand OpenAI and Base MCP profiles | [MCP profiles and transports](docs/mcp.md) |
+| Scope projects and additional roots | [Workspaces](docs/workspaces.md) |
+| Run, inspect, update, and use operator UIs | [Operations](docs/operations.md) |
+| Configure settings, auth, and secrets | [Configuration](docs/configuration.md) |
+| Configure RTK, CodeGraph, TypeSafe, LLM, and Telegram | [Integrations](docs/integrations.md) |
+| Understand trust boundaries and privacy | [Security](docs/security.md) |
+| Diagnose failures | [Troubleshooting](docs/troubleshooting.md) |
+| Build, test, and contribute | [Development](docs/development.md) |
 
-See the [documentation index](docs/README.md) for the recommended reading paths.
+See the [documentation index](docs/README.md) for suggested reading paths.
 
 ## Development
 
-Source builds require Go 1.27+, Node.js 24+, and pnpm 11+.
-
 ```bash
+make bootstrap
 make check
+make test
 ```
 
-See [Development](docs/development.md) for the complete verification, CI, and release workflow, and [CONTRIBUTING.md](CONTRIBUTING.md) for contribution expectations.
+See [Development](docs/development.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT License. Copyright (c) 2026 Mew.
+[MIT](LICENSE)

@@ -2,35 +2,227 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "CodeMCP overview",
+    "title": "CodeMCP System Overview",
+    "subtitle": "Workspace-bound MCP runtime, control surfaces, transports, integrations, and state",
     "locale": "en",
+    "visual_preset": "blueprint",
+    "animation": "trace",
     "quality_profile": "showcase",
-    "viewBox": [1160, 640]
+    "viewBox": [1460, 800],
+    "views": [
+      {
+        "id": "openai-path",
+        "label": "OpenAI path",
+        "focus": ["chatgpt", "tunnel", "profiles", "runtime", "workspaces", "tools"],
+        "note": "ChatGPT reaches the local runtime through OpenAI Secure MCP Tunnel and the OpenAI projection."
+      },
+      {
+        "id": "base-path",
+        "label": "Base MCP path",
+        "focus": ["generic_clients", "profiles", "runtime", "workspaces", "tools"],
+        "note": "Generic clients use local stdio or Streamable HTTP with the Base profile by default."
+      },
+      {
+        "id": "local-ownership",
+        "label": "Local ownership",
+        "focus": ["control", "runtime", "workspaces", "tools", "state"],
+        "note": "Control, authorization, workspace scope, execution, and durable state remain local."
+      },
+      {
+        "id": "extensions",
+        "label": "Extensions",
+        "focus": ["runtime", "integrations", "providers", "upstreams"],
+        "note": "Optional integrations, semantic providers, and upstream MCP servers extend the same runtime."
+      }
+    ]
   },
   "components": [
-    { "id": "chatgpt", "type": "external", "label": "ChatGPT", "sublabel": "MCP client", "pos": [40, 260], "size": [140, 64] },
-    { "id": "tunnel", "type": "cloud", "label": "OpenAI Secure MCP Tunnel", "sublabel": "default private transport", "pos": [250, 250], "size": [190, 84] },
-    { "id": "runtime", "type": "backend", "label": "CodeMCP", "sublabel": "local runtime", "pos": [520, 250], "size": [170, 84], "tag": "single binary" },
-    { "id": "workspaces", "type": "security", "label": "Registered Workspaces", "sublabel": "explicit ws_* scopes", "pos": [810, 120], "size": [190, 72] },
-    { "id": "execution", "type": "backend", "label": "Filesystem / Shell / Git", "sublabel": "workspace-bound tools", "pos": [810, 250], "size": [190, 72] },
-    { "id": "upstreams", "type": "external", "label": "Upstream MCP Servers", "sublabel": "optional aggregation", "pos": [810, 380], "size": [190, 72] },
-    { "id": "control", "type": "frontend", "label": "CLI / TUI / Admin", "sublabel": "local control surfaces", "pos": [500, 440], "size": [210, 72] }
+    {
+      "id": "chatgpt",
+      "type": "external",
+      "label": "ChatGPT",
+      "sublabel": "OpenAI MCP client",
+      "pos": [35, 125],
+      "size": [150, 66]
+    },
+    {
+      "id": "generic_clients",
+      "type": "external",
+      "label": "MCP Clients",
+      "sublabel": "Claude · Cursor · agents",
+      "pos": [35, 330],
+      "size": [150, 66]
+    },
+    {
+      "id": "tunnel",
+      "type": "cloud",
+      "label": "OpenAI Secure MCP Tunnel",
+      "sublabel": "outbound-only transport",
+      "pos": [245, 125],
+      "size": [190, 76],
+      "sources": [
+        {"path": "internal/tunnel/tunnel.go", "label": "tunnel runtime"}
+      ]
+    },
+    {
+      "id": "profiles",
+      "type": "security",
+      "label": "MCP Profile Projection",
+      "sublabel": "OpenAI first · Base generic",
+      "pos": [500, 225],
+      "size": [180, 76],
+      "sources": [
+        {"path": "internal/mcp/profile.go", "label": "base profile"},
+        {"path": "internal/mcp/openai_profile.go", "label": "OpenAI profile"}
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "CodeMCP Runtime",
+      "sublabel": "single local authority",
+      "tag": "Go binary",
+      "pos": [750, 225],
+      "size": [175, 82],
+      "sources": [
+        {"path": "internal/app/app.go", "label": "runtime composition"}
+      ]
+    },
+    {
+      "id": "control",
+      "type": "frontend",
+      "label": "Local Control Surfaces",
+      "sublabel": "CLI · TUI · Admin · Telegram",
+      "pos": [735, 55],
+      "size": [205, 72],
+      "sources": [
+        {"path": "internal/capability/catalog.go", "label": "operation catalog"}
+      ]
+    },
+    {
+      "id": "workspaces",
+      "type": "security",
+      "label": "Registered Workspaces",
+      "sublabel": "explicit ws_* scopes",
+      "pos": [1010, 145],
+      "size": [190, 72],
+      "sources": [
+        {"path": "internal/workspace/workspace.go", "label": "workspace authority"}
+      ]
+    },
+    {
+      "id": "tools",
+      "type": "backend",
+      "label": "Execution & Tools",
+      "sublabel": "filesystem · shell · Git · process",
+      "pos": [1010, 300],
+      "size": [190, 76],
+      "sources": [
+        {"path": "internal/tools/runtime.go", "label": "tool runtime"}
+      ]
+    },
+    {
+      "id": "state",
+      "type": "database",
+      "label": "Local State",
+      "sublabel": "config · secrets · history · memory",
+      "pos": [735, 505],
+      "size": [205, 76],
+      "sources": [
+        {"path": "internal/config/config.go", "label": "config"},
+        {"path": "internal/secretstore/store.go", "label": "secrets"}
+      ]
+    },
+    {
+      "id": "integrations",
+      "type": "backend",
+      "label": "Integrations",
+      "sublabel": "RTK · CodeGraph · TypeSafe · CF",
+      "pos": [1010, 480],
+      "size": [190, 76],
+      "sources": [
+        {"path": "internal/integrations/integrations.go", "label": "integration config"}
+      ]
+    },
+    {
+      "id": "providers",
+      "type": "external",
+      "label": "LLM / Semantic Providers",
+      "sublabel": "Ollama · SystemOne",
+      "pos": [1260, 480],
+      "size": [170, 76],
+      "sources": [
+        {"path": "internal/llm/client.go", "label": "LLM client"},
+        {"path": "internal/integrations/typesafe/systemone.go", "label": "semantic provider"}
+      ]
+    },
+    {
+      "id": "upstreams",
+      "type": "external",
+      "label": "Upstream MCP Servers",
+      "sublabel": "optional aggregated tools",
+      "pos": [1260, 300],
+      "size": [170, 76],
+      "sources": [
+        {"path": "internal/upstream/manager.go", "label": "upstream manager"}
+      ]
+    }
   ],
   "boundaries": [
-    { "kind": "region", "label": "Your machine", "wraps": ["runtime", "workspaces", "execution", "control"], "pad": 34 },
-    { "kind": "security-group", "label": "Workspace boundary", "wraps": ["workspaces", "execution"], "pad": 24 }
+    {
+      "kind": "region",
+      "label": "Your machine",
+      "wraps": ["profiles", "runtime", "control", "workspaces", "tools", "state", "integrations"],
+      "pad": 26
+    },
+    {
+      "kind": "security-group",
+      "label": "Workspace execution boundary",
+      "wraps": ["workspaces", "tools"],
+      "pad": 18
+    }
   ],
   "connections": [
-    { "id": "chatgpt-tunnel", "from": "chatgpt", "to": "tunnel", "label": "MCP", "variant": "emphasis" },
-    { "id": "tunnel-runtime", "from": "tunnel", "to": "runtime", "label": "outbound-only", "variant": "security" },
-    { "id": "runtime-workspaces", "from": "runtime", "to": "workspaces", "label": "explicit workspace_id" },
-    { "id": "runtime-execution", "from": "runtime", "to": "execution", "label": "scoped tools", "variant": "emphasis" },
-    { "id": "runtime-upstreams", "from": "runtime", "to": "upstreams", "label": "proxy / aggregate", "variant": "dashed" },
-    { "id": "control-runtime", "from": "control", "to": "runtime", "label": "operate locally" }
+    {"from": "chatgpt", "to": "tunnel", "label": "MCP", "variant": "emphasis"},
+    {"from": "tunnel", "to": "profiles", "label": "OpenAI profile", "variant": "security"},
+    {"from": "generic_clients", "to": "profiles", "label": "stdio / HTTP", "variant": "emphasis"},
+    {"from": "profiles", "to": "runtime", "label": "canonical operations", "variant": "emphasis"},
+    {"from": "control", "to": "runtime", "label": "operate locally"},
+    {"from": "runtime", "to": "workspaces", "label": "resolve scope", "variant": "security"},
+    {"from": "runtime", "to": "tools", "label": "dispatch"},
+    {"from": "workspaces", "to": "tools", "label": "authorize paths", "variant": "security"},
+    {"from": "runtime", "to": "state", "label": "persist"},
+    {"from": "runtime", "to": "integrations", "label": "optional capabilities"},
+    {"from": "integrations", "to": "providers", "label": "semantic / inference", "variant": "dashed"},
+    {"from": "runtime", "to": "upstreams", "label": "aggregate MCP", "variant": "dashed"}
   ],
   "cards": [
-    { "dot": "cyan", "title": "Default path", "items": ["ChatGPT connects through OpenAI Secure MCP Tunnel", "No public inbound MCP port is required"] },
-    { "dot": "emerald", "title": "Bounded access", "items": ["Filesystem, shell, Git, and process tools stay inside registered workspace scope"] },
-    { "dot": "violet", "title": "Extensible", "items": ["Optional upstream MCP servers are exposed through the same runtime"] }
+    {
+      "dot": "cyan",
+      "title": "OpenAI-first path",
+      "items": [
+        "ChatGPT connects through OpenAI Secure MCP Tunnel",
+        "The OpenAI profile changes projection, not authorization authority",
+        "No public inbound MCP port is required for the default path"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Workspace boundary",
+      "items": [
+        "Filesystem, shell, Git, and process work targets registered workspaces",
+        "Control guards and approvals remain local",
+        "Managed secrets stay outside ordinary structured config"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "One runtime, optional extensions",
+      "items": [
+        "CLI, TUI, Admin, and Telegram operate the same application services",
+        "RTK, CodeGraph, TypeSafe, and upstream MCP servers extend the same runtime",
+        "Base profile remains available for generic MCP clients"
+      ]
+    }
   ]
 }

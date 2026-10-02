@@ -30,7 +30,7 @@ func commandUsesExecuteLifecycle(cmd *cobra.Command) bool {
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               cliUseName(),
-		Short:             "CodeMCP workspace-bound local MCP server for ChatGPT",
+		Short:             "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.",
 		RunE:              runServer,
 		Version:           version.Short(),
 		SilenceErrors:     true,

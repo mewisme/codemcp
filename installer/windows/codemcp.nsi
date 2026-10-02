@@ -10,6 +10,9 @@ RequestExecutionLevel user
 !ifndef SETUP_ARCH
   !error "SETUP_ARCH is required"
 !endif
+!ifndef SETUP_VERSION
+  !define SETUP_VERSION "0.0.0.0"
+!endif
 
 !include "LogicLib.nsh"
 !include "StrFunc.nsh"
@@ -20,6 +23,11 @@ Name "CodeMCP"
 Caption "CodeMCP Setup (${SETUP_ARCH})"
 BrandingText "CodeMCP"
 OutFile "${OUTPUT_PATH}"
+VIProductVersion "${SETUP_VERSION}"
+VIAddVersionKey /LANG=1033 "ProductName" "CodeMCP"
+VIAddVersionKey /LANG=1033 "FileDescription" "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine."
+VIAddVersionKey /LANG=1033 "FileVersion" "${SETUP_VERSION}"
+VIAddVersionKey /LANG=1033 "CompanyName" "mewisme"
 SetCompressor /SOLID lzma
 ShowInstDetails show
 AutoCloseWindow true

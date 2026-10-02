@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -43,13 +44,34 @@ func SetupTelegram(ctx context.Context, input TelegramSetupInput) (TelegramSetup
 	if token == "" {
 		return TelegramSetupResult{}, errors.New("telegram bot token is required")
 	}
-	presented, err := NewSettingService().SetWithOptions(ctx, "telegram.token", token, SettingSetOptions{SecretSource: "browser-protected-input"})
+	previousConfigured, err := telegramTokenConfigured()
+	if err != nil {
+		return TelegramSetupResult{}, err
+	}
+	previousToken := ""
+	if previousConfigured {
+		previousToken, err = readTelegramToken()
+		if err != nil {
+			return TelegramSetupResult{}, err
+		}
+	}
+	settings := NewSettingService()
+	presented, err := settings.SetWithOptions(ctx, "telegram.token", token, SettingSetOptions{SecretSource: "browser-protected-input"})
 	if err != nil {
 		return TelegramSetupResult{}, err
 	}
 	cfg, err := SetTelegramAuthorizedUser(ctx, input.UserID, true, TelegramAuthorizationOptions{ReloadRuntime: true})
 	if err != nil {
-		return TelegramSetupResult{}, err
+		var restoreErr error
+		if previousConfigured {
+			_, restoreErr = settings.SetWithOptions(ctx, "telegram.token", previousToken, SettingSetOptions{SecretSource: "telegram-setup-rollback"})
+		} else {
+			_, restoreErr = settings.Unset(ctx, "telegram.token")
+		}
+		if restoreErr != nil {
+			return TelegramSetupResult{}, errors.Join(err, fmt.Errorf("restore Telegram credential: %w", restoreErr), ErrConfigReconciliationRequired)
+		}
+		return TelegramSetupResult{}, errors.Join(err, ErrConfigMutationRolledBack)
 	}
 	return TelegramSetupResult{
 		Token: presented, Enabled: cfg.Telegram.Enabled,

@@ -132,6 +132,29 @@ func testRuntime(t *testing.T, api *fakeAPI, cfg config.TelegramConfig) *Runtime
 	return runtime
 }
 
+func TestRuntimeReconcileSameFingerprintSkipsTokenRevalidation(t *testing.T) {
+	api := &fakeAPI{}
+	cfg := config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}}
+	runtime := testRuntime(t, api, cfg)
+	generation := runtime.Generation()
+
+	api.mu.Lock()
+	initialCalls := api.getMeCalls
+	api.mu.Unlock()
+	if initialCalls != 1 {
+		t.Fatalf("initial GetMe calls=%d", initialCalls)
+	}
+	if err := runtime.Reconcile(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	api.mu.Lock()
+	calls := api.getMeCalls
+	api.mu.Unlock()
+	if calls != initialCalls || runtime.Generation() != generation {
+		t.Fatalf("same-fingerprint reconcile revalidated token: calls=%d generation=%d want calls=%d generation=%d", calls, runtime.Generation(), initialCalls, generation)
+	}
+}
+
 func TestRuntimeAuthorizesEveryMessageAndCallbackBeforeDispatch(t *testing.T) {
 	const allowed = int64(42)
 	api := &fakeAPI{results: []fakePollResult{{updates: []Update{

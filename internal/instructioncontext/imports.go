@@ -12,21 +12,47 @@ const DefaultImportMaxDepth = 4
 
 var htmlCommentPattern = regexp.MustCompile(`(?s)<!--.*?-->`)
 
+type importRoot struct {
+	path string
+	root *os.Root
+}
+
 type importExpander struct {
-	roots      []string
-	home       string
-	maxDepth   int
-	maxBytes   int
-	maxLines   int
-	imports    []Section
-	importSeen map[string]bool
+	roots       []string
+	rootHandles []importRoot
+	home        string
+	maxDepth    int
+	maxBytes    int
+	maxLines    int
+	imports     []Section
+	importSeen  map[string]bool
 }
 
 func newImportExpander(roots []string, home string, maxDepth, maxBytes, maxLines int) *importExpander {
 	if maxDepth <= 0 {
 		maxDepth = DefaultImportMaxDepth
 	}
-	return &importExpander{roots: cleanPaths(roots), home: filepath.Clean(home), maxDepth: maxDepth, maxBytes: maxBytes, maxLines: maxLines, importSeen: map[string]bool{}}
+	cleaned := cleanPaths(roots)
+	handles := make([]importRoot, 0, len(cleaned))
+	for _, path := range cleaned {
+		root, err := os.OpenRoot(path)
+		if err == nil {
+			handles = append(handles, importRoot{path: path, root: root})
+		}
+	}
+	return &importExpander{roots: cleaned, rootHandles: handles, home: filepath.Clean(home), maxDepth: maxDepth, maxBytes: maxBytes, maxLines: maxLines, importSeen: map[string]bool{}}
+}
+
+func (e *importExpander) Close() {
+	if e == nil {
+		return
+	}
+	for _, handle := range e.rootHandles {
+		if handle.root != nil {
+			_ = handle.root.Close()
+		}
+	}
+	e.rootHandles = nil
 }
 
 func (e *importExpander) expand(content, sourcePath string) string {
@@ -70,12 +96,7 @@ func (e *importExpander) expandDepth(content, baseDir string, visited map[string
 			out = append(out, fmt.Sprintf("<!-- skipped circular import %s -->", resolved))
 			continue
 		}
-		info, err := os.Lstat(resolved)
-		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-			out = append(out, fmt.Sprintf("<!-- import failed: %s -->", resolved))
-			continue
-		}
-		data, err := os.ReadFile(resolved)
+		data, err := e.readResolvedImport(resolved)
 		if err != nil {
 			out = append(out, fmt.Sprintf("<!-- import failed: %s -->", resolved))
 			continue
@@ -95,6 +116,30 @@ func (e *importExpander) expandDepth(content, baseDir string, visited map[string
 		out = append(out, fmt.Sprintf("<!-- @import %s -->", resolved), limited)
 	}
 	return strings.Join(out, "\n")
+}
+
+func (e *importExpander) readResolvedImport(resolved string) ([]byte, error) {
+	if e == nil {
+		return nil, fmt.Errorf("import expander is unavailable")
+	}
+	for _, handle := range e.rootHandles {
+		if handle.root == nil {
+			continue
+		}
+		relative, err := filepath.Rel(handle.path, resolved)
+		if err != nil || relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		info, err := handle.root.Lstat(relative)
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			if err != nil {
+				return nil, err
+			}
+			return nil, fmt.Errorf("import is not a regular file")
+		}
+		return handle.root.ReadFile(relative)
+	}
+	return nil, fmt.Errorf("import is outside effective workspace roots")
 }
 
 func parseImportLine(line string) (string, bool) {

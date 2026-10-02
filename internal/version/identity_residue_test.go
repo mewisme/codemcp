@@ -78,6 +78,9 @@ func TestCurrentUserFacingSurfacesHaveNoLegacyProductIdentity(t *testing.T) {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
 			t.Fatalf("read tracked user-facing file %s: %v", relative, err)
 		}
@@ -118,8 +121,6 @@ func isCurrentUserFacingIdentitySurface(path string) bool {
 	switch path {
 	case "README.md", "install.sh", "install.ps1", ".goreleaser.yaml":
 		return true
-	case "docs/migration-from-0.2.24.md":
-		return false
 	}
 	if strings.HasPrefix(path, "docs/") || strings.HasPrefix(path, ".github/") ||
 		strings.HasPrefix(path, "frontend/") || strings.HasPrefix(path, "installer/") {

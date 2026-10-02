@@ -232,6 +232,37 @@ func TestTelegramTokenManagedSecretSetting(t *testing.T) {
 	}
 }
 
+func TestTelegramTokenMutationReloadsRunningRuntime(t *testing.T) {
+	root := isolateSettingServiceConfig(t)
+	restore := secretstore.UseMemoryForTesting()
+	defer restore()
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		_ = json.NewEncoder(w).Encode(runtimecontrol.ReloadResult{PID: os.Getpid()})
+	}))
+	defer server.Close()
+	writeRuntimeState(t, root, runtimecontrol.State{
+		PID: os.Getpid(), Address: strings.TrimPrefix(server.URL, "http://"), Token: "token", ConfigRoot: root,
+	})
+
+	service := NewSettingService()
+	set, err := service.Set(t.Context(), "telegram.token", "123456:runtime-reload")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !set.RuntimeReloaded || calls.Load() != 1 {
+		t.Fatalf("set result=%#v reloads=%d", set, calls.Load())
+	}
+	cleared, err := service.Unset(t.Context(), "telegram.token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cleared.RuntimeReloaded || calls.Load() != 2 {
+		t.Fatalf("clear result=%#v reloads=%d", cleared, calls.Load())
+	}
+}
+
 func TestSettingServiceNormalMutationReloadsRunningRuntimeExactlyOnce(t *testing.T) {
 	root := isolateSettingServiceConfig(t)
 	var calls atomic.Int32

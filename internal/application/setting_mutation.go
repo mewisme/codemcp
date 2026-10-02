@@ -396,8 +396,38 @@ func (s *SettingService) applyTelegramSecretSettingChange(ctx context.Context, i
 	if item.change.Unset {
 		value = ""
 	}
+	previous, err := readTelegramToken()
+	previousExists := err == nil
+	if err != nil && !errors.Is(err, secretstore.ErrNotFound) {
+		return SettingApplyResult{}, err
+	}
 	if err := writeTelegramToken(value); err != nil {
 		return SettingApplyResult{}, err
+	}
+	_, reloaded, reloadErr := reloadPersistedConfigIfRunning(ctx)
+	if reloadErr != nil {
+		restoreValue := ""
+		if previousExists {
+			restoreValue = previous
+		}
+		if restoreErr := writeTelegramToken(restoreValue); restoreErr != nil {
+			return SettingApplyResult{}, errors.Join(
+				fmt.Errorf("reload Telegram credential runtime: %w", reloadErr),
+				fmt.Errorf("restore Telegram credential: %w", restoreErr),
+				ErrConfigReconciliationRequired,
+			)
+		}
+		if _, _, reconcileErr := reloadPersistedConfigIfRunning(ctx); reconcileErr != nil {
+			return SettingApplyResult{}, errors.Join(
+				fmt.Errorf("reload Telegram credential runtime: %w", reloadErr),
+				fmt.Errorf("reconcile restored Telegram credential runtime: %w", reconcileErr),
+				ErrConfigReconciliationRequired,
+			)
+		}
+		return SettingApplyResult{}, errors.Join(
+			fmt.Errorf("reload Telegram credential runtime: %w", reloadErr),
+			ErrConfigMutationRolledBack,
+		)
 	}
 	presented, err := s.Present(ctx, item.spec.Key)
 	if err != nil {
@@ -407,7 +437,8 @@ func (s *SettingService) applyTelegramSecretSettingChange(ctx context.Context, i
 	if err != nil {
 		return SettingApplyResult{}, err
 	}
-	return SettingApplyResult{Results: []SettingResult{presented}, Config: cfg}, nil
+	presented.RuntimeReloaded = reloaded
+	return SettingApplyResult{Results: []SettingResult{presented}, Config: cfg, RuntimeReloaded: reloaded}, nil
 }
 
 func resolveSettingChanges(changes []SettingChange) ([]resolvedSettingChange, error) {

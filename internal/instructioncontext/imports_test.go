@@ -119,6 +119,41 @@ func TestProjectMemoryDeniesSymlinkImportEscapingWorkspace(t *testing.T) {
 	}
 }
 
+func TestImportReadRejectsSymlinkSwapOutsideWorkspace(t *testing.T) {
+	if os.PathSeparator == '\\' {
+		t.Skip("symlink creation may require Windows Developer Mode or elevation")
+	}
+	root := t.TempDir()
+	outside := t.TempDir()
+	safeDir := filepath.Join(root, "safe")
+	if err := os.Mkdir(safeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	inside := filepath.Join(safeDir, "import.md")
+	writeInstructionFile(t, inside, "inside")
+	writeInstructionFile(t, filepath.Join(outside, "import.md"), "outside secret")
+
+	expander := newImportExpander([]string{root}, "", DefaultImportMaxDepth, DefaultSectionMaxBytes, DefaultSectionMaxLines)
+	defer expander.Close()
+	resolved, err := expander.resolveImport("safe/import.md", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(inside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(safeDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, safeDir); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	data, err := expander.readResolvedImport(resolved)
+	if err == nil || strings.Contains(string(data), "outside secret") {
+		t.Fatalf("rooted import followed swapped symlink: data=%q err=%v", data, err)
+	}
+}
+
 func TestProjectMemoryImportDepthLimit(t *testing.T) {
 	root := t.TempDir()
 	writeInstructionFile(t, filepath.Join(root, "AGENTS.md"), "@one.md")

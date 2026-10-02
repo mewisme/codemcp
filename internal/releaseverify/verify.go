@@ -77,9 +77,6 @@ func VerifyRepository(root, observedRepository string) error {
 	if err := verifyReleaseWorkflows(root); err != nil {
 		return err
 	}
-	if err := verifyMigrationNotes(root); err != nil {
-		return err
-	}
 	return verifyNoLegacyRepositoryURLs(root)
 }
 
@@ -221,7 +218,7 @@ func verifyGoReleaser(root string) error {
 		}
 		setupHook := mapValue(post[0])
 		output, _ := setupHook["output"].(bool)
-		if stringValue(setupHook["cmd"]) != "sh scripts/release/build-windows-setup.sh \"{{ .Path }}\" \"{{ .Target }}\" dist" || !output {
+		if stringValue(setupHook["cmd"]) != "sh scripts/release/build-windows-setup.sh \"{{ .Path }}\" \"{{ .Target }}\" dist \"{{ .Version }}\"" || !output {
 			return errors.New("release build Windows setup hook drifted from the canonical OSS wrapper")
 		}
 	}
@@ -272,6 +269,7 @@ func verifyWindowsSetupBootstrap(root string) error {
 		"if [ \"$(basename \"$binary\")\" != \"cm.exe\" ]",
 		"if [ ! -f \"$binary\" ] || [ -L \"$binary\" ]",
 		"makensis=${MAKENSIS:-makensis}",
+		"-DSETUP_VERSION=$setup_version",
 	} {
 		if !strings.Contains(wrapper, required) {
 			return fmt.Errorf("windows setup wrapper is missing required contract %q", required)
@@ -302,6 +300,8 @@ func verifyWindowsSetupBootstrap(root string) error {
 		"ReadRegStr $0 HKCU \"Environment\" \"Path\"",
 		"WriteRegExpandStr HKCU \"Environment\" \"Path\"",
 		"WM_SETTINGCHANGE",
+		"VIProductVersion \"${SETUP_VERSION}\"",
+		"VIAddVersionKey /LANG=1033 \"FileDescription\" \"A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.\"",
 	} {
 		if !strings.Contains(template, required) {
 			return fmt.Errorf("windows setup template is missing required contract %q", required)
@@ -397,20 +397,6 @@ func verifyReleaseWorkflows(root string) error {
 	} {
 		if !strings.Contains(ci, required) {
 			return fmt.Errorf("ci workflow is missing Windows setup smoke contract %q", required)
-		}
-	}
-	return nil
-}
-
-func verifyMigrationNotes(root string) error {
-	data, err := os.ReadFile(filepath.Join(root, "docs", "migration-from-0.2.24.md"))
-	if err != nil {
-		return fmt.Errorf("read released migration notes: %w", err)
-	}
-	text := string(data)
-	for _, required := range []string{"chatgpt-mcp", "cgm", "executable aliases", "cm upgrade", "update", "upg", "command aliases"} {
-		if !strings.Contains(text, required) {
-			return fmt.Errorf("released migration notes are missing %q", required)
 		}
 	}
 	return nil

@@ -6,8 +6,8 @@ NODE ?= node
 GIT ?= git
 ARGS ?=
 BINARY ?= dist/cm
-LOCAL_TELEMETRY_ENDPOINT ?= https://telemetry.mewis.me/v1/products/codemcp/events
-LOCAL_LDFLAGS = -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint=$(LOCAL_TELEMETRY_ENDPOINT)
+LOCAL_TELEMETRY_ENDPOINT ?=
+LOCAL_LDFLAGS = $(if $(strip $(LOCAL_TELEMETRY_ENDPOINT)),-X go.mewis.me/codemcp/internal/telemetry/product.Endpoint=$(LOCAL_TELEMETRY_ENDPOINT),)
 
 CM = $(GO) run -ldflags "$(LOCAL_LDFLAGS)" .
 FRONTEND_BUILD = $(PNPM) --dir frontend build
@@ -62,15 +62,15 @@ bootstrap:
 frontend-build:
 	$(FRONTEND_BUILD)
 
-check:
+check: frontend-build
 	./scripts/dev/check.sh
 
-test:
+test: frontend-build
 	@tmp=$$(mktemp -d) || exit 1; status=0; \
 	CM_CONFIG_DIR="$$tmp" $(GO) test -count=1 ./... || status=$$?; \
 	rm -rf "$$tmp"; exit $$status
 
-test-race:
+test-race: frontend-build
 	@tmp=$$(mktemp -d) || exit 1; status=0; \
 	CM_CONFIG_DIR="$$tmp" $(GO) test -count=1 -race ./... || status=$$?; \
 	rm -rf "$$tmp"; exit $$status

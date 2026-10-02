@@ -31,7 +31,7 @@ builds:
       - -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint={{ index .Env "TELEMETRY_ENDPOINT" }}
     hooks:
       post:
-        - cmd: 'sh scripts/release/build-windows-setup.sh "{{ .Path }}" "{{ .Target }}" dist'
+        - cmd: 'sh scripts/release/build-windows-setup.sh "{{ .Path }}" "{{ .Target }}" dist "{{ .Version }}"'
           output: true
 
 # Keep macOS binaries untouched for Gatekeeper compatibility.
@@ -68,7 +68,7 @@ nfpms:
     vendor: mewisme
     homepage: "https://github.com/mewisme/codemcp"
     maintainer: '{{ index .Env "PACKAGE_MAINTAINER" }}'
-    description: "Secure, workspace-bound bridge between AI agents and your machine."
+    description: "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine."
     license: MIT
     section: utils
     priority: optional
@@ -78,7 +78,7 @@ nfpms:
     deb:
       compression: gzip
     rpm:
-      summary: "Secure, workspace-bound bridge between AI agents and your machine."
+      summary: "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine."
       compression: gzip
 
 checksum:
@@ -126,7 +126,7 @@ scoops:
       - codemcp
     url_template: "https://github.com/mewisme/codemcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     homepage: "https://github.com/mewisme/codemcp"
-    description: "Self-hosted MCP 2026-07-28 runtime with local tools, Upstream aggregation, and OpenAI tunnel support"
+    description: "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine."
     license: MIT
     goamd64: v1
     skip_upload: true
@@ -144,7 +144,7 @@ homebrew_casks:
     binaries:
       - cm
     homepage: "https://github.com/mewisme/codemcp"
-    description: "Self-hosted MCP 2026-07-28 runtime with local tools, Upstream aggregation, and OpenAI tunnel support"
+    description: "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine."
     url:
       template: "https://github.com/mewisme/codemcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     directory: Casks

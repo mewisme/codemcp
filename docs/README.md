@@ -1,44 +1,26 @@
-# Documentation
+# CodeMCP documentation
 
-Start with the task you need to complete. The runtime remains the authoritative reference for the installed command and configuration surface.
+A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.
 
-## Start and operate
+Start with [Getting started](getting-started.md). Use the other guides when you need to change a boundary, transport, integration, or operator workflow.
 
-| I want to… | Read |
+| Task | Guide |
 | --- | --- |
-| Install CodeMCP and make the first useful connection | [Getting started](getting-started.md) |
-| Connect ChatGPT through OpenAI Secure MCP Tunnel | [OpenAI + ChatGPT](openai-chatgpt.md) |
-| Register, move, group, or recover workspaces | [Workspaces](workspaces.md) |
-| Operate services, updates, logs, background work, and recovery | [Runtime and operations](runtime.md) |
-| Use the interactive terminal interface | [TUI Command Center](tui.md) |
-| Diagnose a failure | [Troubleshooting](troubleshooting.md) |
-| Upgrade an existing 0.2.24 installation safely | [Migration from 0.2.24](migration-from-0.2.24.md) |
+| Install, initialize, register a project, and connect ChatGPT | [Getting started](getting-started.md) |
+| Choose an MCP profile or transport; configure upstream MCP servers | [MCP profiles and transports](mcp.md) |
+| Understand registered workspaces and additional roots | [Workspaces](workspaces.md) |
+| Run the service, inspect logs, update, and use operator UIs | [Operations](operations.md) |
+| Work with config roots, settings, auth, and managed secrets | [Configuration](configuration.md) |
+| Configure RTK, CodeGraph, TypeSafe/SystemOne, LLM providers, or Telegram | [Integrations](integrations.md) |
+| Review approvals, containment, network policy, telemetry, and privacy | [Security](security.md) |
+| Diagnose common failures | [Troubleshooting](troubleshooting.md) |
+| Build and verify the repository | [Development](development.md) |
 
-## Configure and integrate
+## MCP profiles
 
-| Topic | Guide |
-| --- | --- |
-| Config roots, authentication, HTTP exposure, import/export, and settings | [Configuration](configuration.md) |
-| LLM providers, model discovery, protected credentials, Explain, and TypeSafe semantics | [LLM providers](llm.md) |
-| Generic MCP clients, Plan Mode, Upstreams, OAuth, profiles, Skills, and background behavior | [MCP and upstreams](mcp.md) |
-| Trust boundaries, approvals, secrets, network policy, telemetry, and privacy | [Security](security.md) |
+CodeMCP has one canonical runtime authority and multiple client projections:
 
-## Reference
+1. **OpenAI profile** — automatic on OpenAI Secure MCP Tunnel; direct HTTP can opt in with `--profile openai`.
+2. **Base profile** — generic MCP projection and default for direct stdio/HTTP.
 
-Use the installed binary for exact command and setting lookup:
-
-```bash
-cm --help
-cm <command> --help
-cm config why
-cm config why <key>
-```
-
-The [CLI reference](cli-reference.md) is the curated command map. [Configuration](configuration.md) explains configuration concepts; `cm config why` is the exhaustive schema reference for the installed version.
-
-## Develop and contribute
-
-- [Development](development.md) — source builds, tests, CI, and release workflow
-- [Contributing](../CONTRIBUTING.md) — contribution and PR expectations
-- [Security policy](../SECURITY.md) — private vulnerability reporting
-- [Code of Conduct](../CODE_OF_CONDUCT.md)
+Profiles change presentation and compatibility metadata, not tool effects, workspace scope, authentication requirements, control guards, or approval authority.

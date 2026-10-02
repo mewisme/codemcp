@@ -261,6 +261,17 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 		return nil
 	}
 
+	fingerprint := runtimeFingerprint(token, cfg, setupMode)
+	runtime.mu.RLock()
+	same := runtime.cancel != nil && runtime.fingerprint == fingerprint
+	runtime.mu.RUnlock()
+	if same {
+		if runtime.logsMiniApp != nil && !setupMode {
+			_ = runtime.logsMiniApp.Reconcile(ctx, cfg, token)
+		}
+		return nil
+	}
+
 	api := runtime.factory(token)
 	validateCtx := ctx
 	if validateCtx == nil {
@@ -279,16 +290,6 @@ func (runtime *Runtime) reconcile(ctx context.Context, cfg config.TelegramConfig
 		return errors.New("telegram bot token validation failed")
 	}
 
-	fingerprint := runtimeFingerprint(token, cfg, setupMode)
-	runtime.mu.RLock()
-	same := runtime.cancel != nil && runtime.fingerprint == fingerprint
-	runtime.mu.RUnlock()
-	if same {
-		if runtime.logsMiniApp != nil && !setupMode {
-			_ = runtime.logsMiniApp.Reconcile(ctx, cfg, token)
-		}
-		return nil
-	}
 	runtime.Stop()
 	if ctx == nil {
 		ctx = context.Background()

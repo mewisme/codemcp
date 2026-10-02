@@ -69,7 +69,7 @@ func (a *App) applyRuntimeConfig(next config.Config, typeSafeCandidate typeSafeR
 	if telemetryChanged && a.ProductTelemetry != nil {
 		a.ProductTelemetry.SetEnabled(config.ResolveTelemetryEnabled(next, true).Enabled)
 	}
-	if telegramChanged && a.running && a.Telegram != nil {
+	if a.running && a.Telegram != nil {
 		if err := a.Telegram.Reconcile(a.runtimeCtx, next.Telegram); err != nil {
 			return err
 		}

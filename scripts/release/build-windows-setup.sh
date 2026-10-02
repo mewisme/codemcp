@@ -4,6 +4,7 @@ set -eu
 binary=${1:-}
 target=${2:-}
 dist=${3:-dist}
+version=${4:-0.0.0}
 
 if [ -z "$target" ]; then
 	echo "windows setup: target is required" >&2
@@ -84,10 +85,36 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 staged="$tmpdir/setup.exe"
 
+numeric_version=${version#v}
+numeric_version=${numeric_version%%-*}
+numeric_version=${numeric_version%%+*}
+major=${numeric_version%%.*}
+remainder=${numeric_version#*.}
+if [ "$remainder" = "$numeric_version" ]; then
+	echo "windows setup: invalid release version $version" >&2
+	exit 2
+fi
+minor=${remainder%%.*}
+patch=${remainder#*.}
+if [ "$patch" = "$remainder" ] || [ -z "$patch" ] || [ "${patch#*.}" != "$patch" ]; then
+	echo "windows setup: invalid release version $version" >&2
+	exit 2
+fi
+for part in "$major" "$minor" "$patch"; do
+	case "$part" in
+		''|*[!0-9]*)
+			echo "windows setup: invalid release version $version" >&2
+			exit 2
+			;;
+	esac
+done
+setup_version="$major.$minor.$patch.0"
+
 "$makensis" -V2 \
 	"-DBINARY_PATH=$binary" \
 	"-DOUTPUT_PATH=$staged" \
 	"-DSETUP_ARCH=$arch" \
+	"-DSETUP_VERSION=$setup_version" \
 	"$template"
 
 if [ ! -f "$staged" ] || [ -L "$staged" ]; then
