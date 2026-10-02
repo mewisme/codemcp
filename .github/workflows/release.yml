@@ -70,7 +70,7 @@ jobs:
 
       - name: Verify product telemetry release metadata
         env:
-          TELEMETRY_ENDPOINT: ${{ vars.TELEMETRY_ENDPOINT }}
+          TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
         run: go run ./scripts/release/verify --telemetry-endpoint
 
       - name: Setup pnpm
@@ -133,7 +133,7 @@ jobs:
           args: release --clean --draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TELEMETRY_ENDPOINT: ${{ vars.TELEMETRY_ENDPOINT }}
+          TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
 
       - name: Verify draft release artifacts
         run: go run ./scripts/release/verify --dist dist --expect-telemetry present
