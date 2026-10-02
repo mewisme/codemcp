@@ -185,7 +185,7 @@ func TestVerifyDistRejectsVersionedLinuxPackage(t *testing.T) {
 
 func TestVerifyDistRejectsMissingWindowsSetup(t *testing.T) {
 	root := buildDistFixture(t, false)
-	name, err := updatepkg.ArtifactName(updatepkg.ArtifactSetup, "windows", "arm64")
+	name, err := updatepkg.ArtifactName(updatepkg.ArtifactSetup, "windows", "amd64")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,15 +294,15 @@ func buildDistFixture(t *testing.T, includeRetired bool) string {
 		}
 	}
 	fixtureBinary := []byte("#!/bin/sh\nprintf 'cm version 9.9.9 (fixture) fixture\\n'\n")
-	for _, arch := range []string{"amd64", "arm64"} {
-		setupName, err := updatepkg.ArtifactName(updatepkg.ArtifactSetup, "windows", arch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(root, setupName), []byte("MZfixture-setup-"+arch), 0644); err != nil {
-			t.Fatal(err)
-		}
+	setupName, err := updatepkg.ArtifactName(updatepkg.ArtifactSetup, "windows", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, setupName), []byte("MZfixture-setup-amd64"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
+	for _, arch := range []string{"amd64", "arm64"} {
 		debName, err := updatepkg.ArtifactName(updatepkg.ArtifactDebian, "linux", arch)
 		if err != nil {
 			t.Fatal(err)

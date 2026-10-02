@@ -18,10 +18,9 @@ fail() {
 
 fakebin="$tmp/bin"
 dist="$tmp/dist"
-mkdir -p "$fakebin" "$dist" "$tmp/amd64" "$tmp/arm64"
+mkdir -p "$fakebin" "$dist" "$tmp/amd64"
 printf 'amd64-cm\n' >"$tmp/amd64/cm.exe"
-printf 'arm64-cm\n' >"$tmp/arm64/cm.exe"
-chmod +x "$tmp/amd64/cm.exe" "$tmp/arm64/cm.exe"
+chmod +x "$tmp/amd64/cm.exe"
 
 cat >"$fakebin/upx" <<'EOF'
 #!/bin/sh
@@ -33,12 +32,15 @@ EOF
 chmod +x "$fakebin/upx"
 
 PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" windows_amd64_v1
-before_arm64=$(cat "$tmp/arm64/cm.exe")
-PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/arm64/cm.exe" windows_arm64_v8.0
-[ "$(cat "$tmp/arm64/cm.exe")" = "$before_arm64" ] || fail "Windows arm64 binary was modified by release packing"
 before_darwin=$(cat "$tmp/amd64/cm.exe")
 PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" darwin_amd64_v1
 [ "$(cat "$tmp/amd64/cm.exe")" = "$before_darwin" ] || fail "Darwin binary was modified by release packing"
+if PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" windows_arm64_v8.0 >/dev/null 2>&1; then
+	fail "release packing accepted unsupported windows/arm64"
+fi
+if PATH="$fakebin:$PATH" sh "$repo_root/scripts/release/pack-release-binary.sh" "$tmp/amd64/cm.exe" darwin_arm64_v8.0 >/dev/null 2>&1; then
+	fail "release packing accepted unsupported darwin/arm64"
+fi
 
 cat >"$fakebin/makensis" <<'EOF'
 #!/bin/sh
@@ -68,21 +70,15 @@ chmod +x "$fakebin/makensis"
 
 PATH="$fakebin:$PATH" TEST_MAKENSIS_LOG="$tmp/makensis.log" \
 	sh "$builder" "$tmp/amd64/cm.exe" windows_amd64_v1 "$dist" "v1.2.3" >/dev/null
-PATH="$fakebin:$PATH" TEST_MAKENSIS_LOG="$tmp/makensis.log" \
-	sh "$builder" "$tmp/arm64/cm.exe" windows_arm64_v8.0 "$dist" "2.3.4-next" >/dev/null
 
 [ -f "$dist/codemcp_windows_amd64_setup.exe" ] || fail "amd64 setup artifact missing"
-[ -f "$dist/codemcp_windows_arm64_setup.exe" ] || fail "arm64 setup artifact missing"
-[ "$(find "$dist" -maxdepth 1 -type f -name 'codemcp_windows_*_setup.exe' | wc -l | tr -d '[:space:]')" = "2" ] ||
-	fail "wrapper did not emit exactly two stable setup artifacts"
+[ "$(find "$dist" -maxdepth 1 -type f -name 'codemcp_windows_*_setup.exe' | wc -l | tr -d '[:space:]')" = "1" ] ||
+	fail "wrapper did not emit exactly one stable setup artifact"
 grep -Fq "amd64|1.2.3.0|$tmp/amd64/cm.exe|$template" "$tmp/makensis.log" ||
 	fail "amd64 setup did not embed the exact target cm.exe and release version"
-grep -Fq "arm64|2.3.4.0|$tmp/arm64/cm.exe|$template" "$tmp/makensis.log" ||
-	fail "arm64 setup did not embed the exact target cm.exe and release version"
 
-mkdir -p "$dist/codemcp_windows_amd64_v1" "$dist/codemcp_windows_arm64_v8.0"
+mkdir -p "$dist/codemcp_windows_amd64_v1"
 cp "$tmp/amd64/cm.exe" "$dist/codemcp_windows_amd64_v1/cm.exe"
-cp "$tmp/arm64/cm.exe" "$dist/codemcp_windows_arm64_v8.0/cm.exe"
 cat >"$fakebin/7z" <<'EOF'
 #!/bin/sh
 set -eu
@@ -97,14 +93,12 @@ done
 [ -n "$output" ] && [ -n "$setup" ] || exit 40
 case "$(basename "$setup")" in
 	codemcp_windows_amd64_setup.exe) arch=amd64 ;;
-	codemcp_windows_arm64_setup.exe) arch=arm64 ;;
 	*) exit 41 ;;
 esac
 if [ "${TEST_PAYLOAD_WRONG:-0}" = "1" ]; then
-	case "$arch" in
-		amd64) arch=arm64 ;;
-		arm64) arch=amd64 ;;
-	esac
+	mkdir -p "$output"
+	printf 'wrong-payload\n' >"$output/cm.exe"
+	exit 0
 fi
 set -- "$TEST_DIST/codemcp_windows_${arch}_"*/cm.exe
 [ "$#" -eq 1 ] && [ -f "$1" ] || exit 42
@@ -127,6 +121,10 @@ after=$(wc -l <"$tmp/makensis.log" | tr -d '[:space:]')
 if PATH="$fakebin:$PATH" TEST_MAKENSIS_LOG="$tmp/makensis.log" \
 	sh "$builder" "$tmp/amd64/cm.exe" windows_386 "$tmp/unsupported" >/dev/null 2>&1; then
 	fail "unsupported Windows architecture was accepted"
+fi
+if PATH="$fakebin:$PATH" TEST_MAKENSIS_LOG="$tmp/makensis.log" \
+	sh "$builder" "$tmp/amd64/cm.exe" windows_arm64_v8.0 "$tmp/unsupported-arm64" >/dev/null 2>&1; then
+	fail "unsupported Windows arm64 target was accepted"
 fi
 
 printf 'wrong\n' >"$tmp/amd64/not-cm.exe"

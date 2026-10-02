@@ -55,6 +55,13 @@ case "$arch" in
 	x86_64|amd64) arch="amd64" ;;
 	*) echo "cm: unsupported architecture '$arch'." >&2; exit 1 ;;
 esac
+case "$os/$arch" in
+	linux/amd64|linux/arm64|darwin/amd64) ;;
+	*)
+		echo "cm: unsupported release platform '$os/$arch'; supported: linux/amd64, linux/arm64, darwin/amd64." >&2
+		exit 1
+		;;
+esac
 
 version="${CM_VERSION:-}"
 if [ -z "$version" ]; then

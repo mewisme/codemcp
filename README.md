@@ -65,7 +65,6 @@ irm https://get.mewis.me/codemcp.ps1 | iex
 **Windows setup executables**
 
 - [Windows amd64 setup](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_amd64_setup.exe)
-- [Windows arm64 setup](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_arm64_setup.exe)
 
 The setup executable bootstraps the same managed-direct layout as the PowerShell installer.
 
@@ -115,13 +114,14 @@ Use the `arm64` package on ARM64. RPM/DNF owns upgrades after package installati
 
 ### Manual release archives
 
-Release asset filenames are stable; the Git tag carries the release version.
+Release asset filenames are stable; the Git tag carries the release version. Supported release targets are Linux x64/ARM64, macOS x64, and Windows x64.
 
-| Platform | amd64 | arm64 |
+| Platform | Architecture | Archive |
 | --- | --- | --- |
-| Linux | [`codemcp_linux_amd64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_amd64.tar.gz) | [`codemcp_linux_arm64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_arm64.tar.gz) |
-| macOS | [`codemcp_darwin_amd64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_darwin_amd64.tar.gz) | [`codemcp_darwin_arm64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_darwin_arm64.tar.gz) |
-| Windows | [`codemcp_windows_amd64.zip`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_amd64.zip) | [`codemcp_windows_arm64.zip`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_arm64.zip) |
+| Linux | amd64 / x64 | [`codemcp_linux_amd64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_amd64.tar.gz) |
+| Linux | arm64 | [`codemcp_linux_arm64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_linux_arm64.tar.gz) |
+| macOS | amd64 / x64 | [`codemcp_darwin_amd64.tar.gz`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_darwin_amd64.tar.gz) |
+| Windows | amd64 / x64 | [`codemcp_windows_amd64.zip`](https://github.com/mewisme/codemcp/releases/latest/download/codemcp_windows_amd64.zip) |
 
 For an exact version, pin the tag while keeping the stable filename:
 

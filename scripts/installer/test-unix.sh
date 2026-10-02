@@ -18,6 +18,14 @@ if ! grep -q 'SHA-256 checksum verified, continuing without signature verificati
 	echo 'Unix installer is missing the non-blocking checksum fallback warning.' >&2
 	exit 1
 fi
+if ! grep -Fq 'linux/amd64|linux/arm64|darwin/amd64)' "$installer"; then
+	echo 'Unix installer supported release platform guard drifted.' >&2
+	exit 1
+fi
+if grep -Fq 'darwin/arm64)' "$installer"; then
+	echo 'Unix installer still accepts unsupported darwin/arm64 releases.' >&2
+	exit 1
+fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT

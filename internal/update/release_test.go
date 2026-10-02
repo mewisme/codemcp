@@ -12,7 +12,8 @@ func TestArchiveNameDoesNotContainReleaseVersion(t *testing.T) {
 		goos, goarch, want string
 	}{
 		{"linux", "amd64", "codemcp_linux_amd64.tar.gz"},
-		{"darwin", "arm64", "codemcp_darwin_arm64.tar.gz"},
+		{"linux", "arm64", "codemcp_linux_arm64.tar.gz"},
+		{"darwin", "amd64", "codemcp_darwin_amd64.tar.gz"},
 		{"windows", "amd64", "codemcp_windows_amd64.zip"},
 	}
 	for _, test := range tests {
@@ -59,9 +60,7 @@ func TestPrimaryReleaseLayoutContract(t *testing.T) {
 		{OS: "linux", Arch: "amd64", ArchiveExtension: ".tar.gz", BinaryName: "cm"},
 		{OS: "linux", Arch: "arm64", ArchiveExtension: ".tar.gz", BinaryName: "cm"},
 		{OS: "darwin", Arch: "amd64", ArchiveExtension: ".tar.gz", BinaryName: "cm"},
-		{OS: "darwin", Arch: "arm64", ArchiveExtension: ".tar.gz", BinaryName: "cm"},
 		{OS: "windows", Arch: "amd64", ArchiveExtension: ".zip", BinaryName: "cm.exe"},
-		{OS: "windows", Arch: "arm64", ArchiveExtension: ".zip", BinaryName: "cm.exe"},
 	}
 	if !reflect.DeepEqual(layout.Platforms, wantPlatforms) {
 		t.Fatalf("platforms = %#v, want %#v", layout.Platforms, wantPlatforms)
@@ -70,15 +69,12 @@ func TestPrimaryReleaseLayoutContract(t *testing.T) {
 		{Kind: ArtifactArchive, OS: "linux", Arch: "amd64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
 		{Kind: ArtifactArchive, OS: "linux", Arch: "arm64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
 		{Kind: ArtifactArchive, OS: "darwin", Arch: "amd64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
-		{Kind: ArtifactArchive, OS: "darwin", Arch: "arm64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
 		{Kind: ArtifactArchive, OS: "windows", Arch: "amd64", FilenameSuffix: ".zip", BinaryName: "cm.exe"},
-		{Kind: ArtifactArchive, OS: "windows", Arch: "arm64", FilenameSuffix: ".zip", BinaryName: "cm.exe"},
 		{Kind: ArtifactDebian, OS: "linux", Arch: "amd64", FilenameSuffix: ".deb", BinaryName: "cm"},
 		{Kind: ArtifactDebian, OS: "linux", Arch: "arm64", FilenameSuffix: ".deb", BinaryName: "cm"},
 		{Kind: ArtifactRPM, OS: "linux", Arch: "amd64", FilenameSuffix: ".rpm", BinaryName: "cm"},
 		{Kind: ArtifactRPM, OS: "linux", Arch: "arm64", FilenameSuffix: ".rpm", BinaryName: "cm"},
 		{Kind: ArtifactSetup, OS: "windows", Arch: "amd64", FilenameSuffix: "_setup.exe", BinaryName: "cm.exe"},
-		{Kind: ArtifactSetup, OS: "windows", Arch: "arm64", FilenameSuffix: "_setup.exe", BinaryName: "cm.exe"},
 	}
 	if !reflect.DeepEqual(layout.Artifacts, wantArtifacts) {
 		t.Fatalf("artifacts = %#v, want %#v", layout.Artifacts, wantArtifacts)
@@ -98,15 +94,12 @@ func TestArtifactNameSupportedTuples(t *testing.T) {
 		{string(ArtifactArchive), "linux", "amd64"}:   "codemcp_linux_amd64.tar.gz",
 		{string(ArtifactArchive), "linux", "arm64"}:   "codemcp_linux_arm64.tar.gz",
 		{string(ArtifactArchive), "darwin", "amd64"}:  "codemcp_darwin_amd64.tar.gz",
-		{string(ArtifactArchive), "darwin", "arm64"}:  "codemcp_darwin_arm64.tar.gz",
 		{string(ArtifactArchive), "windows", "amd64"}: "codemcp_windows_amd64.zip",
-		{string(ArtifactArchive), "windows", "arm64"}: "codemcp_windows_arm64.zip",
 		{string(ArtifactDebian), "linux", "amd64"}:    "codemcp_linux_amd64.deb",
 		{string(ArtifactDebian), "linux", "arm64"}:    "codemcp_linux_arm64.deb",
 		{string(ArtifactRPM), "linux", "amd64"}:       "codemcp_linux_amd64.rpm",
 		{string(ArtifactRPM), "linux", "arm64"}:       "codemcp_linux_arm64.rpm",
 		{string(ArtifactSetup), "windows", "amd64"}:   "codemcp_windows_amd64_setup.exe",
-		{string(ArtifactSetup), "windows", "arm64"}:   "codemcp_windows_arm64_setup.exe",
 	}
 	for tuple, expected := range want {
 		got, err := ArtifactName(ArtifactKind(tuple[0]), tuple[1], tuple[2])
@@ -124,6 +117,9 @@ func TestArtifactNameSupportedTuples(t *testing.T) {
 		{string(ArtifactDebian), "darwin", "amd64"},
 		{string(ArtifactRPM), "windows", "amd64"},
 		{string(ArtifactSetup), "linux", "amd64"},
+		{string(ArtifactArchive), "darwin", "arm64"},
+		{string(ArtifactArchive), "windows", "arm64"},
+		{string(ArtifactSetup), "windows", "arm64"},
 		{string(ArtifactArchive), "linux", "386"},
 		{"unknown", "linux", "amd64"},
 	} {

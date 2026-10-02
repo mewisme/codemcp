@@ -13,7 +13,6 @@ fi
 
 case "$target" in
 	windows_amd64|windows_amd64_*) arch=amd64 ;;
-	windows_arm64|windows_arm64_*) arch=arm64 ;;
 	windows_*)
 		echo "windows setup: unsupported Windows target $target" >&2
 		exit 2

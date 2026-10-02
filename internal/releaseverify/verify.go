@@ -129,13 +129,12 @@ func verifyGoReleaser(root string) error {
 	}
 	setupExtraFiles := []string{
 		"./dist/codemcp_windows_amd64_setup.exe",
-		"./dist/codemcp_windows_arm64_setup.exe",
 	}
 	if !sameStrings(extraFileGlobs(checksum["extra_files"]), setupExtraFiles) {
-		return errors.New("goreleaser checksum extra files do not cover both canonical Windows setup artifacts")
+		return errors.New("goreleaser checksum extra files do not match the canonical Windows setup artifact")
 	}
 	if !sameStrings(extraFileGlobs(release["extra_files"]), setupExtraFiles) {
-		return errors.New("goreleaser release extra files do not publish both canonical Windows setup artifacts")
+		return errors.New("goreleaser release extra files do not publish the canonical Windows setup artifact")
 	}
 	replaceDraft, _ := release["replace_existing_draft"].(bool)
 	if !replaceDraft {
@@ -207,6 +206,14 @@ func verifyGoReleaser(root string) error {
 			!sameStrings(stringSlice(build["goarch"]), []string{"amd64", "arm64"}) {
 			return errors.New("release platform matrix drifted from the canonical updater contract")
 		}
+		ignored := map[string]bool{}
+		for _, item := range sliceValue(build["ignore"]) {
+			entry := mapValue(item)
+			ignored[stringValue(entry["goos"])+"/"+stringValue(entry["goarch"])] = true
+		}
+		if len(ignored) != 2 || !ignored["darwin/arm64"] || !ignored["windows/arm64"] {
+			return errors.New("release platform exclusions must limit macOS and Windows to amd64")
+		}
 		wantLDFlag := "-X " + ExpectedModulePath + "/internal/telemetry/product.Endpoint={{ index .Env \"TELEMETRY_ENDPOINT\" }}"
 		if !containsExact(stringSlice(build["ldflags"]), wantLDFlag) {
 			return errors.New("release build does not inject product telemetry through the canonical ldflag")
@@ -272,7 +279,6 @@ func verifyWindowsSetupBootstrap(root string) error {
 	wrapper := string(wrapperData)
 	for _, required := range []string{
 		"windows_amd64|windows_amd64_*",
-		"windows_arm64|windows_arm64_*",
 		"codemcp_windows_${arch}_setup.exe",
 		"if [ \"$(basename \"$binary\")\" != \"cm.exe\" ]",
 		"if [ ! -f \"$binary\" ] || [ -L \"$binary\" ]",
@@ -282,6 +288,9 @@ func verifyWindowsSetupBootstrap(root string) error {
 		if !strings.Contains(wrapper, required) {
 			return fmt.Errorf("windows setup wrapper is missing required contract %q", required)
 		}
+	}
+	if strings.Contains(wrapper, "windows_arm64") {
+		return errors.New("windows setup wrapper still accepts unsupported windows/arm64")
 	}
 	for _, forbidden := range []string{"Program Files", "WriteUninstaller"} {
 		if strings.Contains(wrapper, forbidden) {
@@ -691,7 +700,7 @@ func publishedArtifactLike(name string) bool {
 }
 
 func verifyWindowsSetups(root string) error {
-	for _, arch := range []string{"amd64", "arm64"} {
+	for _, arch := range []string{"amd64"} {
 		name, err := updatepkg.ArtifactName(updatepkg.ArtifactSetup, "windows", arch)
 		if err != nil {
 			return err

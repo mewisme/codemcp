@@ -53,19 +53,16 @@ var primaryReleaseArtifacts = []ReleaseArtifact{
 	{Kind: ArtifactArchive, OS: "linux", Arch: "amd64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
 	{Kind: ArtifactArchive, OS: "linux", Arch: "arm64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
 	{Kind: ArtifactArchive, OS: "darwin", Arch: "amd64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
-	{Kind: ArtifactArchive, OS: "darwin", Arch: "arm64", FilenameSuffix: ".tar.gz", BinaryName: "cm"},
 	{Kind: ArtifactArchive, OS: "windows", Arch: "amd64", FilenameSuffix: ".zip", BinaryName: "cm.exe"},
-	{Kind: ArtifactArchive, OS: "windows", Arch: "arm64", FilenameSuffix: ".zip", BinaryName: "cm.exe"},
 	{Kind: ArtifactDebian, OS: "linux", Arch: "amd64", FilenameSuffix: ".deb", BinaryName: "cm"},
 	{Kind: ArtifactDebian, OS: "linux", Arch: "arm64", FilenameSuffix: ".deb", BinaryName: "cm"},
 	{Kind: ArtifactRPM, OS: "linux", Arch: "amd64", FilenameSuffix: ".rpm", BinaryName: "cm"},
 	{Kind: ArtifactRPM, OS: "linux", Arch: "arm64", FilenameSuffix: ".rpm", BinaryName: "cm"},
 	{Kind: ArtifactSetup, OS: "windows", Arch: "amd64", FilenameSuffix: "_setup.exe", BinaryName: "cm.exe"},
-	{Kind: ArtifactSetup, OS: "windows", Arch: "arm64", FilenameSuffix: "_setup.exe", BinaryName: "cm.exe"},
 }
 
 func PrimaryReleaseLayout() ReleaseLayout {
-	platforms := make([]ReleasePlatform, 0, 6)
+	platforms := make([]ReleasePlatform, 0, 4)
 	for _, artifact := range primaryReleaseArtifacts {
 		if artifact.Kind != ArtifactArchive {
 			continue

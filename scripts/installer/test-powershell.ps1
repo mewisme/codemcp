@@ -52,6 +52,7 @@ $names = @(
   'Get-CodeMCPProcessorMachineArchitecture',
   'Get-CodeMCPRegistryProcessorIdentifier',
   'Resolve-CodeMCPArchitecture',
+  'Assert-CodeMCPSupportedArchitecture',
   'Test-CodeMCPSafeArchivePath',
   'Expand-CodeMCPBinaryFromZip'
 )
@@ -81,7 +82,7 @@ function Get-ReleaseContract {
   return $values
 }
 
-foreach ($contractArch in @('amd64', 'arm64')) {
+foreach ($contractArch in @('amd64')) {
   $contract = Get-ReleaseContract $contractArch
   if (-not $contract.package -or -not $contract.checksum -or -not $contract.signature -or -not $contract.asset -or -not $contract.binary) {
     throw "canonical release contract is incomplete for windows/$contractArch"
@@ -98,6 +99,14 @@ foreach ($contractArch in @('amd64', 'arm64')) {
   if ($contract.asset -ne "$($contract.package)_windows_${contractArch}.zip") {
     throw "canonical release asset tuple is unexpected: $($contract.asset)"
   }
+}
+$unsupportedContractOutput = $null
+Push-Location $repoRoot
+try {
+  $unsupportedContractOutput = & go run ./scripts/installer/release-layout-contract --os windows --arch arm64 2>&1
+  if ($LASTEXITCODE -eq 0) { throw 'canonical release contract still accepts windows/arm64' }
+} finally {
+  Pop-Location
 }
 if (-not $source.Contains('$asset = "${packageName}_windows_${arch}.zip"')) {
   throw 'PowerShell bootstrap asset naming formula drifted from canonical release contract.'
@@ -116,7 +125,7 @@ if ($latestResolve -lt 0 -or $exactDownload -lt 0 -or $latestResolve -gt $exactD
 if (-not $source.Contains('$checksumName = "$packageName`_checksums.txt"') -or -not $source.Contains('$signatureName = "$checksumName.sigstore.json"')) {
   throw 'PowerShell bootstrap checksum/signature naming formula drifted from canonical release contract.'
 }
-$installFlowStart = $source.IndexOf('$arch = Resolve-CodeMCPArchitecture')
+$installFlowStart = $source.IndexOf('$arch = Assert-CodeMCPSupportedArchitecture (Resolve-CodeMCPArchitecture)')
 $installInvoke = $source.IndexOf('& $exe install', $installFlowStart)
 if ($installFlowStart -lt 0 -or $installInvoke -lt 0) {
   throw 'PowerShell bootstrap install flow could not be identified.'
@@ -196,6 +205,12 @@ Assert-Architecture 'arm64' (Merge-Arguments $empty @{ RegistryProcessorIdentifi
 Assert-Architecture 'amd64' (Merge-Arguments $empty @{ OSArchitecture = '64-bit' })
 Assert-Architecture 'arm64' (Merge-Arguments $empty @{ Override = 'aarch64' })
 Assert-Architecture 'amd64' (Merge-Arguments $empty @{ Override = 'x64' })
+if ((Assert-CodeMCPSupportedArchitecture 'amd64') -ne 'amd64') {
+  throw 'Windows amd64 support guard rejected the supported architecture'
+}
+$failed = $false
+try { Assert-CodeMCPSupportedArchitecture 'arm64' | Out-Null } catch { $failed = $_.Exception.Message -match 'windows/amd64' }
+if (-not $failed) { throw 'Windows arm64 passed the release support guard' }
 
 $failed = $false
 $invalidOverride = Merge-Arguments $empty @{ Override = 'x86' }

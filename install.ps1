@@ -5,7 +5,7 @@
 # Environment:
 #   CM_VERSION           release tag (default: latest)
 #   CM_INSTALL_DIR       install location (default: $HOME\.cm)
-#   CM_ARCH              architecture override: amd64 or arm64
+#   CM_ARCH              architecture override: amd64 (Windows releases are x64 only)
 
 param(
   [switch]$Uninstall
@@ -86,7 +86,7 @@ function Resolve-CodeMCPArchitecture {
   if ($Override) {
     $resolved = ConvertTo-CodeMCPArchitecture $Override
     if ($resolved) { return $resolved }
-    throw "cm: unsupported CM_ARCH '$Override'; expected amd64 or arm64."
+    throw "cm: unsupported CM_ARCH '$Override'; expected amd64 for Windows releases."
   }
 
   foreach ($candidate in @($RuntimeArchitecture, $ProcessorArchitectureW6432, $ProcessorArchitecture, $ProcessorIdentifier, $RegistryProcessorIdentifier, $OSArchitecture)) {
@@ -112,7 +112,15 @@ function Resolve-CodeMCPArchitecture {
     "registryIdentifier='$RegistryProcessorIdentifier'",
     "OSArchitecture='$OSArchitecture'"
   ) -join ', '
-  throw "cm: unsupported architecture; probes: $diagnostics. Set CM_ARCH=amd64 or arm64 to override."
+  throw "cm: unsupported architecture; probes: $diagnostics. Set CM_ARCH=amd64 to force the supported Windows x64 release."
+}
+
+function Assert-CodeMCPSupportedArchitecture {
+  param([Parameter(Mandatory = $true)][string]$Architecture)
+  if ($Architecture -ne 'amd64') {
+    throw "cm: unsupported Windows release architecture '$Architecture'; supported: windows/amd64."
+  }
+  return $Architecture
 }
 
 function Test-CodeMCPSafeArchivePath {
@@ -252,7 +260,7 @@ if ($Uninstall) {
   return
 }
 
-$arch = Resolve-CodeMCPArchitecture
+$arch = Assert-CodeMCPSupportedArchitecture (Resolve-CodeMCPArchitecture)
 
 $version = $env:CM_VERSION
 if (-not $version) {

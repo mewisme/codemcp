@@ -216,7 +216,7 @@ jobs:
 
       - name: Installer lint
         if: needs.changes.outputs.full == 'true'
-        run: shellcheck install.sh scripts/installer/test-unix.sh scripts/release/build-windows-setup.sh scripts/installer/test-windows-setup.sh scripts/release/verify-windows-setup-payload.sh
+        run: shellcheck install.sh scripts/installer/test-unix.sh scripts/release/pack-release-binary.sh scripts/release/build-windows-setup.sh scripts/installer/test-windows-setup.sh scripts/release/verify-windows-setup-payload.sh
 
   race:
     name: Race test
@@ -276,11 +276,14 @@ jobs:
           - name: Linux
             runner: ubuntu-latest
             binary: cm
+          - name: Linux ARM64
+            runner: ubuntu-24.04-arm
+            binary: cm
           - name: Windows
             runner: windows-latest
             binary: cm.exe
           - name: macOS
-            runner: macos-latest
+            runner: macos-15-intel
             binary: cm
     steps:
       - name: Skip heavy checks
@@ -314,11 +317,11 @@ jobs:
           printf 'document.querySelector("[data-codemcp-mini-app-root]");\n' > internal/telegram/mini-app-dist/assets/mini-app.js
 
       - name: Validate Unix installer
-        if: needs.changes.outputs.full == 'true' && runner.os == 'Linux'
+        if: needs.changes.outputs.full == 'true' && matrix.name == 'Linux'
         run: sh scripts/installer/test-unix.sh
 
       - name: Validate Windows setup wrapper
-        if: needs.changes.outputs.full == 'true' && runner.os == 'Linux'
+        if: needs.changes.outputs.full == 'true' && matrix.name == 'Linux'
         run: sh scripts/installer/test-windows-setup.sh
 
       - name: Validate PowerShell installer
@@ -386,12 +389,8 @@ jobs:
             arch: arm64
           - os: windows
             arch: amd64
-          - os: windows
-            arch: arm64
           - os: darwin
             arch: amd64
-          - os: darwin
-            arch: arm64
     steps:
       - name: Skip heavy checks
         if: needs.changes.outputs.full != 'true'

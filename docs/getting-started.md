@@ -8,7 +8,7 @@ install → init → register workspace → configure tunnel → cm up → conne
 
 ## Requirements
 
-- Linux, macOS, or Windows on amd64 or arm64.
+- Linux on amd64 or arm64, macOS on amd64, or Windows on amd64.
 - A normal user account; do not run the MCP runtime as root.
 - For ChatGPT: an OpenAI Secure MCP Tunnel, a runtime key with **Tunnels Read + Use**, and outbound HTTPS to OpenAI.
 - No public inbound MCP listener is required for the tunnel path.
