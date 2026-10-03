@@ -248,6 +248,17 @@ func TestAgentCompleteAllowsCompletedAfterPersistedPlanTransitionClosesBinding(t
 	if !value.Created || value.Record.Status != agentcompletion.StatusCompleted {
 		t.Fatalf("completion=%#v", value)
 	}
+	if _, ok := runtime.PlanExecutions.Lookup(sessionKey, workspaceID); ok {
+		t.Fatal("completed plan binding was not released")
+	}
+	rebind := plandoc.ExecutionBinding{
+		WorkspaceID: workspaceID, PlanName: "completion-plan",
+		BaselineContentID: completed.ContentID(),
+		Phase:             plandoc.Phase{ID: "2B", Title: "Continue next phase"},
+	}
+	if _, err := runtime.PlanExecutions.Bind(sessionKey, rebind); err != nil {
+		t.Fatalf("rebind after completed phase failed: %v", err)
+	}
 }
 
 func TestAgentCompleteNonCompletedStatusesReleasePlanBindingAfterAccept(t *testing.T) {

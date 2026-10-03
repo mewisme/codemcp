@@ -80,7 +80,7 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 		if err != nil {
 			return Result{}, err
 		}
-		if planExecutions != nil && completionStatus != agentcompletion.StatusCompleted {
+		if planExecutions != nil {
 			planExecutions.Release(sessionKey, workspaceID)
 		}
 		return JSONResult(AgentCompleteResult{Record: record, Created: created}), nil
