@@ -32,12 +32,8 @@ builds:
       - -s -w
       - -X go.mewis.me/codemcp/internal/version.ReleaseTag={{.Tag}}
       - -X go.mewis.me/codemcp/internal/version.Commit={{.Commit}}
-      - -X go.mewis.me/codemcp/internal/version.Date={{.Date}}
+      - -X go.mewis.me/codemcp/internal/version.Date={{.CommitDate}}
       - -X go.mewis.me/codemcp/internal/telemetry/product.Endpoint={{ index .Env "TELEMETRY_ENDPOINT" }}
-    hooks:
-      post:
-        - cmd: 'sh scripts/release/build-windows-setup.sh "{{ .Path }}" "{{ .Target }}" dist "{{ .Version }}"'
-          output: true
 
 archives:
   - id: codemcp
@@ -82,7 +78,7 @@ nfpms:
 checksum:
   name_template: codemcp_checksums.txt
   extra_files:
-    - glob: ./dist/codemcp_windows_amd64_setup.exe
+    - glob: ./.release-staging/windows-setup/codemcp_windows_amd64_setup.exe
 
 signs:
   - id: checksums
@@ -103,7 +99,7 @@ release:
     owner: mewisme
     name: codemcp
   extra_files:
-    - glob: ./dist/codemcp_windows_amd64_setup.exe
+    - glob: ./.release-staging/windows-setup/codemcp_windows_amd64_setup.exe
   replace_existing_draft: true
 
 changelog:

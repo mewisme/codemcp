@@ -14,8 +14,114 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  windows-setup:
+    name: Build Windows setup
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Build frontend
+        shell: pwsh
+        run: |
+          pnpm --dir frontend install --frozen-lockfile
+          pnpm --dir frontend build
+
+      - name: Build canonical Windows binary
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
+        with:
+          distribution: goreleaser
+          version: 'v2.18.0'
+          args: build --clean --single-target
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
+
+      - name: Install pinned Inno Setup compiler
+        shell: pwsh
+        run: |
+          $contract = Get-Content -LiteralPath installer/windows/setup-contract.json -Raw | ConvertFrom-Json
+          $version = [string]$contract.toolchain.version
+          $releaseID = $version.Replace('.', '_')
+          $installer = Join-Path $env:RUNNER_TEMP "innosetup-$version-x64.exe"
+          $installRoot = Join-Path $env:RUNNER_TEMP "inno-$version"
+          $uri = "https://github.com/jrsoftware/issrc/releases/download/is-$releaseID/innosetup-$version-x64.exe"
+          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $installer
+          $process = Start-Process -FilePath $installer -ArgumentList @(
+            '/PORTABLE=1',
+            '/VERYSILENT',
+            '/SUPPRESSMSGBOXES',
+            '/NORESTART',
+            '/NOICONS',
+            "/DIR=$installRoot"
+          ) -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "Inno Setup portable install failed with exit code $($process.ExitCode)"
+          }
+          $compiler = Join-Path $installRoot 'ISCC.exe'
+          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
+            throw "Pinned Inno Setup compiler was not installed at $compiler"
+          }
+          $observed = (& $compiler --version | Out-String).Trim()
+          if ($observed -ne $version) {
+            throw "Inno Setup compiler version $observed does not match pinned version $version"
+          }
+          "INNO_ISCC=$compiler" >> $env:GITHUB_ENV
+
+      - name: Build staged Windows setup
+        shell: pwsh
+        run: |
+          $binaries = @(Get-ChildItem -LiteralPath dist -Recurse -File -Filter cm.exe)
+          if ($binaries.Count -ne 1) {
+            throw "Expected exactly one canonical Windows cm.exe, found $($binaries.Count)"
+          }
+          $staging = Join-Path $env:RUNNER_TEMP 'windows-setup-staging'
+          & ./scripts/release/build-windows-setup.ps1 `
+            -BinaryPath $binaries[0].FullName `
+            -Version $env:GITHUB_REF_NAME `
+            -OutputDirectory $staging `
+            -CompilerPath $env:INNO_ISCC
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows setup builder failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload staged Windows setup
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codemcp-windows-setup-staging
+          path: |
+            ${{ runner.temp }}/windows-setup-staging/codemcp_windows_amd64_setup.exe
+            ${{ runner.temp }}/windows-setup-staging/codemcp_windows_amd64_cm.sha256
+          if-no-files-found: error
+          retention-days: 1
+
   release:
     name: Publish release
+    needs: windows-setup
     runs-on: ubuntu-24.04
     env:
       PACKAGE_MAINTAINER: "${{ github.repository_owner }} <${{ github.repository_owner_id }}+${{ github.repository_owner }}@users.noreply.github.com>"
@@ -105,14 +211,21 @@ jobs:
           test -n "${snapshot_binary}"
           go run ./scripts/release/verify --binary "${snapshot_binary}" --expect-telemetry absent
 
-      - name: Install pinned Windows release tools
+      - name: Download staged Windows setup
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: codemcp-windows-setup-staging
+          path: .release-staging/windows-setup
+
+      - name: Verify staged Windows setup inputs
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            nsis=3.09-4ubuntu1 \
-            7zip=23.01+dfsg-11
-          test "$(dpkg-query -W -f='${Version}' nsis)" = "3.09-4ubuntu1"
-          test "$(dpkg-query -W -f='${Version}' 7zip)" = "23.01+dfsg-11"
+          set -eu
+          staging=.release-staging/windows-setup
+          test -f "${staging}/codemcp_windows_amd64_setup.exe"
+          test ! -L "${staging}/codemcp_windows_amd64_setup.exe"
+          test -f "${staging}/codemcp_windows_amd64_cm.sha256"
+          test ! -L "${staging}/codemcp_windows_amd64_cm.sha256"
+          test "$(find "${staging}" -maxdepth 1 -type f | wc -l | tr -d '[:space:]')" = "2"
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -129,11 +242,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
 
+      - name: Verify Windows setup provenance
+        run: sh scripts/release/verify-windows-setup-payload.sh .release-staging/windows-setup dist
+
+      - name: Stage Windows setup for local draft verification
+        run: cp .release-staging/windows-setup/codemcp_windows_amd64_setup.exe dist/codemcp_windows_amd64_setup.exe
+
       - name: Verify draft release artifacts
         run: go run ./scripts/release/verify --dist dist --expect-telemetry present
 
-      - name: Verify Windows setup payloads
-        run: sh scripts/release/verify-windows-setup-payload.sh dist
+      - name: Verify draft contains one Windows setup
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          count=$(gh release view "${GITHUB_REF_NAME}" --json assets --jq \
+            '[.assets[].name | select(. == "codemcp_windows_amd64_setup.exe")] | length')
+          if [ "${count}" != "1" ]; then
+            echo "::error::Draft release contains ${count} Windows setup assets, want 1."
+            exit 1
+          fi
 
       - name: Verify checksum signature
         run: |

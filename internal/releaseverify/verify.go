@@ -131,7 +131,7 @@ func verifyGoReleaser(root string) error {
 		return errors.New("goreleaser checksum must cover the complete canonical artifact set")
 	}
 	setupExtraFiles := []string{
-		"./dist/codemcp_windows_amd64_setup.exe",
+		"./.release-staging/windows-setup/codemcp_windows_amd64_setup.exe",
 	}
 	if !sameStrings(extraFileGlobs(checksum["extra_files"]), setupExtraFiles) {
 		return errors.New("goreleaser checksum extra files do not match the canonical Windows setup artifact")
@@ -221,15 +221,14 @@ func verifyGoReleaser(root string) error {
 		if !containsExact(stringSlice(build["ldflags"]), wantLDFlag) {
 			return errors.New("release build does not inject product telemetry through the canonical ldflag")
 		}
+		wantDateLDFlag := "-X " + ExpectedModulePath + "/internal/version.Date={{.CommitDate}}"
+		if !containsExact(stringSlice(build["ldflags"]), wantDateLDFlag) {
+			return errors.New("release build date must use the commit date for cross-job reproducibility")
+		}
 		hooks := mapValue(build["hooks"])
 		post := sliceValue(hooks["post"])
-		if len(post) != 1 {
-			return errors.New("release build must only run the canonical Windows setup post-build hook")
-		}
-		setupHook := mapValue(post[0])
-		output, _ := setupHook["output"].(bool)
-		if stringValue(setupHook["cmd"]) != "sh scripts/release/build-windows-setup.sh \"{{ .Path }}\" \"{{ .Target }}\" dist \"{{ .Version }}\"" || !output {
-			return errors.New("release build Windows setup hook drifted from the canonical OSS wrapper")
+		if len(post) != 0 {
+			return errors.New("release build must not compile the Windows setup through a GoReleaser post-build hook")
 		}
 	}
 	if len(sliceValue(cfg["upx"])) != 0 {
@@ -269,69 +268,17 @@ func verifyGoReleaser(root string) error {
 }
 
 func verifyWindowsSetupBootstrap(root string) error {
-	wrapperPath := filepath.Join(root, "scripts", "release", "build-windows-setup.sh")
-	wrapperData, err := os.ReadFile(wrapperPath)
-	if err != nil {
-		return fmt.Errorf("read Windows setup wrapper: %w", err)
-	}
-	wrapper := string(wrapperData)
-	for _, required := range []string{
-		"windows_amd64|windows_amd64_*",
-		"codemcp_windows_${arch}_setup.exe",
-		"if [ \"$(basename \"$binary\")\" != \"cm.exe\" ]",
-		"if [ ! -f \"$binary\" ] || [ -L \"$binary\" ]",
-		"makensis=${MAKENSIS:-makensis}",
-		"-DSETUP_VERSION=$setup_version",
+	for _, relative := range []string{
+		filepath.Join("scripts", "release", "build-windows-setup.ps1"),
+		filepath.Join("installer", "windows", "codemcp.iss"),
 	} {
-		if !strings.Contains(wrapper, required) {
-			return fmt.Errorf("windows setup wrapper is missing required contract %q", required)
+		info, err := os.Lstat(filepath.Join(root, relative))
+		if err != nil {
+			return fmt.Errorf("windows setup source %s is unavailable: %w", filepath.ToSlash(relative), err)
 		}
-	}
-	if strings.Contains(wrapper, "windows_arm64") {
-		return errors.New("windows setup wrapper still accepts unsupported windows/arm64")
-	}
-	for _, forbidden := range []string{"Program Files", "WriteUninstaller"} {
-		if strings.Contains(wrapper, forbidden) {
-			return fmt.Errorf("windows setup wrapper contains forbidden installer ownership %q", forbidden)
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 {
+			return fmt.Errorf("windows setup source %s must be a non-empty regular non-symlink file", filepath.ToSlash(relative))
 		}
-	}
-	if retiredExecutableIdentityPattern.MatchString(wrapper) {
-		return errors.New("windows setup wrapper contains a retired executable identity")
-	}
-
-	templatePath := filepath.Join(root, "installer", "windows", "codemcp.nsi")
-	templateData, err := os.ReadFile(templatePath)
-	if err != nil {
-		return fmt.Errorf("read Windows setup template: %w", err)
-	}
-	template := string(templateData)
-	for _, required := range []string{
-		"RequestExecutionLevel user",
-		"SetOutPath \"$PLUGINSDIR\"",
-		"File /oname=cm.exe \"${BINARY_PATH}\"",
-		"ExecWait '\"$PLUGINSDIR\\cm.exe\" install'",
-		"ReadEnvStr $InstallRoot \"CM_INSTALL_DIR\"",
-		"StrCpy $InstallRoot \"$PROFILE\\.cm\"",
-		"ReadRegStr $0 HKCU \"Environment\" \"Path\"",
-		"WriteRegExpandStr HKCU \"Environment\" \"Path\"",
-		"WM_SETTINGCHANGE",
-		"VIProductVersion \"${SETUP_VERSION}\"",
-		"VIAddVersionKey /LANG=1033 \"FileDescription\" \"A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.\"",
-	} {
-		if !strings.Contains(template, required) {
-			return fmt.Errorf("windows setup template is missing required contract %q", required)
-		}
-	}
-	for _, forbidden := range []string{"WriteUninstaller", "$PROGRAMFILES", "$PROGRAMFILES64"} {
-		if strings.Contains(template, forbidden) {
-			return fmt.Errorf("windows setup template contains forbidden installer ownership %q", forbidden)
-		}
-	}
-	if retiredExecutableIdentityPattern.MatchString(template) {
-		return errors.New("windows setup template contains a retired executable identity")
-	}
-	if strings.Count(template, "File /oname=cm.exe \"${BINARY_PATH}\"") != 1 {
-		return errors.New("windows setup template must embed exactly one canonical cm.exe payload")
 	}
 	return nil
 }
@@ -358,13 +305,20 @@ func verifyReleaseWorkflows(root string) error {
 		"args: build --snapshot --clean --single-target",
 		"TELEMETRY_ENDPOINT: ''",
 		"--expect-telemetry absent",
-		"nsis=3.09-4ubuntu1",
-		"7zip=23.01+dfsg-11",
+		"windows-setup:",
+		"runs-on: windows-latest",
+		"args: build --clean --single-target",
+		"GOOS: windows",
+		"GOARCH: amd64",
+		"codemcp-windows-setup-staging",
+		"path: .release-staging/windows-setup",
+		"needs: windows-setup",
 		"distribution: goreleaser",
 		"version: 'v2.18.0'",
 		"args: release --clean --draft",
+		"scripts/release/verify-windows-setup-payload.sh .release-staging/windows-setup dist",
 		"--dist dist --expect-telemetry present",
-		"scripts/release/verify-windows-setup-payload.sh dist",
+		"gh release view \"${GITHUB_REF_NAME}\" --json assets",
 		"cosign verify-blob",
 		"dist/scoop/codemcp.json",
 		"dist/homebrew/Casks/codemcp.rb",
@@ -385,15 +339,17 @@ func verifyReleaseWorkflows(root string) error {
 	if strings.Contains(release, "goreleaser-pro") {
 		return errors.New("release workflow must use GoReleaser OSS")
 	}
+	stagingIndex := strings.Index(release, "path: .release-staging/windows-setup")
 	draftIndex := strings.Index(release, "args: release --clean --draft")
+	provenanceIndex := strings.Index(release, "scripts/release/verify-windows-setup-payload.sh .release-staging/windows-setup dist")
 	verifyIndex := strings.Index(release, "--dist dist --expect-telemetry present")
-	payloadIndex := strings.Index(release, "scripts/release/verify-windows-setup-payload.sh dist")
+	assetIndex := strings.Index(release, "gh release view \"${GITHUB_REF_NAME}\" --json assets")
 	signatureIndex := strings.Index(release, "cosign verify-blob")
 	manifestIndex := strings.Index(release, "gh release upload")
 	publishIndex := strings.Index(release, `gh release edit "${GITHUB_REF_NAME}" --draft=false --latest`)
-	if draftIndex < 0 || verifyIndex <= draftIndex || payloadIndex <= verifyIndex ||
-		signatureIndex <= payloadIndex || manifestIndex <= signatureIndex || publishIndex <= manifestIndex {
-		return errors.New("release workflow must verify the signed draft and attach package manifests before publishing it")
+	if stagingIndex < 0 || draftIndex <= stagingIndex || provenanceIndex <= draftIndex || verifyIndex <= provenanceIndex ||
+		assetIndex <= verifyIndex || signatureIndex <= assetIndex || manifestIndex <= signatureIndex || publishIndex <= manifestIndex {
+		return errors.New("release workflow must verify staged setup provenance, signed draft, and package manifests before publishing it")
 	}
 
 	ciData, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
