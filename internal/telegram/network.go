@@ -175,7 +175,7 @@ func tunnelViewBlocks(view application.TunnelView) []RichBlock {
 		blocks = append(blocks, RichBlock{Kind: RichCopy, Title: "Tunnel ID", Text: view.ID, CopyText: view.ID})
 	}
 	if text := tunnelScopeText(view.Admin.Scope); text != "" {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Admin scope", Text: text})
+		blocks = append(blocks, expandableTextBlock("Admin scope", text))
 	}
 	if strings.TrimSpace(view.Status.LastError) != "" {
 		blocks = append(blocks, NoticeBlock(ToneWarning, "Runtime error", compactPresentationValue(tracepkg.SanitizeText(view.Status.LastError))))
@@ -722,7 +722,7 @@ func (ui *Interface) networkOperationResultScreen(owner ViewOwner, state ActionS
 			),
 		), Keyboard: keyboard}, true, nil
 	case application.TunnelVerifyResult:
-		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Tunnel admin verified", Text: fmt.Sprintf("%d visible tunnel(s)", result.Count)}, RichBlock{Kind: RichDetails, Title: "Scope", Text: tunnelScopeText(result.Scope)}), Keyboard: keyboard}, true, nil
+		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Tunnel admin verified", Text: fmt.Sprintf("%d visible tunnel(s)", result.Count)}, expandableTextBlock("Scope", tunnelScopeText(result.Scope))), Keyboard: keyboard}, true, nil
 	case tunnel.Metadata:
 		return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Tunnel metadata synced", Text: result.Name}, RichBlock{Kind: RichCopy, Title: "Tunnel ID", Text: result.ID, CopyText: result.ID}), Keyboard: keyboard}, true, nil
 	case upstream.Server:

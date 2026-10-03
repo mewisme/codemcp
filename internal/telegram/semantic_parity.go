@@ -271,7 +271,7 @@ func (ui *Interface) managedTunnelDetailScreen(ctx context.Context, owner ViewOw
 	return Screen{Rich: BuildRichPresentation(
 		RichBlock{Kind: RichHeading, Title: metadata.Name, Text: "Managed OpenAI tunnel"},
 		RichBlock{Kind: RichCopy, Title: "ID", Text: metadata.ID, CopyText: metadata.ID},
-		RichBlock{Kind: RichDetails, Title: "Description", Text: metadata.Description},
+		expandableTextBlock("Description", metadata.Description),
 		FieldsBlock("Scope", []string{"Organizations", strings.Join(metadata.OrganizationIDs, ", ")}, []string{"Workspaces", strings.Join(metadata.WorkspaceIDs, ", ")}, []string{"Tenants", strings.Join(metadata.TenantIDs, ", ")}),
 	), Keyboard: BoundedActionGroups(ActionGroups{Primary: []Button{use}, Secondary: []Button{update}, Destructive: []Button{remove}, Navigation: []Button{back, home}})}, nil
 }

@@ -194,7 +194,7 @@ func (ui *Interface) settingDetailScreen(ctx context.Context, owner ViewOwner, s
 		{Kind: RichFields, Title: "Setting", Rows: rows},
 	}
 	if state.Detail && strings.TrimSpace(spec.Details) != "" {
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Details", Text: spec.Details})
+		blocks = append(blocks, expandableTextBlock("Details", spec.Details))
 	}
 	primary := []Button{}
 	secondary := []Button{}
