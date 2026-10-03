@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	managedagent "go.mewis.me/codemcp/internal/agent"
 	"go.mewis.me/codemcp/internal/integrations/caveman"
 	"go.mewis.me/codemcp/internal/integrations/ponytail"
 	"go.mewis.me/codemcp/internal/tunnel"
@@ -17,6 +18,15 @@ import (
 func Validate(cfg Config) error {
 	if err := ValidateMCPTransports(cfg); err != nil {
 		return err
+	}
+	if cfg.Agent.DefaultBackend != strings.TrimSpace(cfg.Agent.DefaultBackend) {
+		return errors.New("agent.default_backend must not contain leading or trailing whitespace")
+	}
+	if _, err := managedagent.NormalizeBackendID(cfg.Agent.DefaultBackend); err != nil {
+		return fmt.Errorf("agent.default_backend: %w", err)
+	}
+	if cfg.Agent.MaxParallel < 1 || cfg.Agent.MaxParallel > managedagent.MaxParallelLimit {
+		return fmt.Errorf("agent.max_parallel must be between 1 and %d: %d", managedagent.MaxParallelLimit, cfg.Agent.MaxParallel)
 	}
 	for _, id := range cfg.Telegram.AllowedUserIDs {
 		if id <= 0 {

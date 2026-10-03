@@ -103,6 +103,8 @@ const (
 )
 
 var fieldSpecs = []FieldSpec{
+	{Key: "agent.default_backend", Label: "Default agent backend", Section: FieldSectionRuntime, Description: "sets the backend used when managed agent spawn omits an explicit backend", Details: "Defaults to chatgpt-web. Backend selection remains readiness-gated; CodeMCP never silently falls back when the selected backend is unavailable.", Kind: FieldString, Editable: true, Related: []string{"agent.max_parallel", "integrations.chatgpt_web.enabled"}},
+	{Key: "agent.max_parallel", Label: "Maximum parallel agents", Section: FieldSectionRuntime, Description: "sets the global concurrent managed-agent limit", Details: "This global limit is independent of each backend limit. Effective concurrency is the lower of this value and the selected backend capacity.", Kind: FieldInt, Editable: true, Input: boundedIntInput(1, 128), Related: []string{"agent.default_backend", "integrations.chatgpt_web.max_agents"}},
 	{Key: "http.mcp.enabled", Label: "MCP HTTP server", Section: FieldSectionRuntime, Description: "controls whether the MCP HTTP transport is enabled", Details: "When disabled, clients cannot connect through the local HTTP MCP server. At least one MCP transport must remain enabled, so the Secure MCP Tunnel must be enabled before this can be disabled by itself.", Kind: FieldBool, Editable: true, Related: []string{"http.mcp.port", "http.exposure.mode", "http.mcp.auth.enabled", "tunnel.enabled"}},
 	{Key: "http.exposure.mode", Label: "Exposure", Section: FieldSectionRuntime, Description: "controls which local network addresses expose the HTTP servers", Details: "Loopback access is always retained. Any non-loopback exposure requires http.security.allow_insecure=true and valid authentication for each enabled HTTP endpoint.", Kind: FieldEnum, Options: []string{"none", "all", "0.0.0.0", "interfaces"}, Values: []FieldValueSpec{{Value: "none", Description: "Bind only to loopback."}, {Value: "all", Description: "Bind loopback plus every eligible address discovered on all interfaces."}, {Value: "0.0.0.0", Description: "Bind one IPv4 wildcard listener and expose eligible IPv4 addresses."}, {Value: "interfaces", Description: "Bind loopback plus addresses from http.exposure.interfaces."}}, Editable: true, Related: []string{"http.exposure.interfaces", "http.security.allow_insecure", "http.mcp.auth.enabled", "http.admin.auth.enabled"}},
 	{Key: "http.exposure.interfaces", Label: "Exposure interfaces", Section: FieldSectionRuntime, Description: "lists network interfaces used when exposure mode is interfaces", Details: "Each name must resolve to an available interface with at least one eligible IP address at runtime. Duplicate names are removed and values are normalized before persistence.", Kind: FieldList, Editable: true, Input: FieldInputSpec{ItemShape: "interface"}, Guidance: "Set http.exposure.mode=interfaces before relying on this list.", Related: []string{"http.exposure.mode", "http.security.allow_insecure"}},
@@ -289,6 +291,11 @@ func SetValue(cfg *Config, key, raw string) error {
 		}
 	}
 	switch key {
+	case "agent.default_backend":
+		cfg.Agent.DefaultBackend = strings.ToLower(strings.TrimSpace(raw))
+	case "agent.max_parallel":
+		value, _ := strconv.Atoi(strings.TrimSpace(raw))
+		cfg.Agent.MaxParallel = value
 	case "http.mcp.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -668,6 +675,10 @@ func SetValueValidated(cfg *Config, key, raw string) error {
 func RawValue(cfg Config, key string) (string, error) {
 	key = canonicalFieldKey(key)
 	switch key {
+	case "agent.default_backend":
+		return cfg.Agent.DefaultBackend, nil
+	case "agent.max_parallel":
+		return strconv.Itoa(cfg.Agent.MaxParallel), nil
 	case "http.mcp.enabled":
 		return strconv.FormatBool(cfg.HTTP.MCP.Enabled), nil
 	case "http.exposure":

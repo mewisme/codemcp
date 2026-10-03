@@ -62,6 +62,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"config.why.lookup.completed", "config.why.render.completed"}, "config why")
 	add(commandTraceInstrumented, []string{"setting.set.completed"}, "config set")
 	add(commandTraceInstrumented, []string{"setting.set.completed"},
+		"agent config backend", "agent config parallel",
 		"http mcp enable", "http mcp disable", "http mcp port", "http exposure mode", "http exposure interface add", "http exposure interface remove",
 		"http security insecure allow", "http security insecure deny", "http security loopback auth allow", "http security loopback auth require",
 		"http admin enable", "http admin disable", "http admin port",

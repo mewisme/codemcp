@@ -48,6 +48,16 @@ func (a *App) Bootstrap() error {
 			a.Operations = application.NewDispatcher()
 		}
 		a.Operations.SetObserver(application.ProductOperationObserver(a.ProductTelemetry))
+		if err := application.ConfigureManagedAgentRuntime(a.Tools.Agents, a.Config.Snapshot()); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		chatGPTWebService := application.NewChatGPTWebService()
+		chatGPTWebService.LoadConfig = func() (config.Config, error) { return a.Config.Snapshot(), nil }
+		if err := application.RegisterChatGPTWebAgentBackend(a.Tools.Agents, chatGPTWebService); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		if err := application.BindStatusOperations(a.Operations, a.telegramStatusOverview); err != nil {
 			a.bootstrapErr = err
 			return
@@ -267,7 +277,7 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
-		if err := application.BindChatGPTWebOperations(a.Operations, application.NewChatGPTWebService()); err != nil {
+		if err := application.BindChatGPTWebOperations(a.Operations, chatGPTWebService); err != nil {
 			a.bootstrapErr = err
 			return
 		}

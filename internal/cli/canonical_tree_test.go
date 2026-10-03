@@ -28,6 +28,9 @@ agent completion feed | operation:completion.feed
 agent completion list | operation:completion.list
 agent completion view | operation:completion.view
 agent completion | namespace
+agent config backend | operation:config.set:accepted-path
+agent config parallel | operation:config.set:accepted-path
+agent config | namespace
 agent get | operation:managed-agent.get
 agent list | operation:managed-agent.list
 agent send | operation:managed-agent.send

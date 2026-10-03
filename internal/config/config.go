@@ -16,6 +16,7 @@ import (
 
 type Config struct {
 	HTTP          HTTPConfig          `json:"http"`
+	Agent         AgentConfig         `json:"agent"`
 	Permissions   PermissionsConfig   `json:"permissions"`
 	Shell         ShellConfig         `json:"shell"`
 	Notifications NotificationsConfig `json:"notifications"`
@@ -25,6 +26,11 @@ type Config struct {
 	Telegram      TelegramConfig      `json:"telegram"`
 	Integrations  IntegrationsConfig  `json:"integrations"`
 	Tunnel        tunnel.Config       `json:"tunnel"`
+}
+
+type AgentConfig struct {
+	DefaultBackend string `json:"default_backend"`
+	MaxParallel    int    `json:"max_parallel"`
 }
 
 type TelemetryConfig struct {
@@ -190,6 +196,7 @@ func Default() Config {
 			}},
 			Admin: AdminHTTPConfig{Enabled: true, Port: 37422, Auth: HTTPAuthConfig{Enabled: true}},
 		},
+		Agent:       AgentConfig{DefaultBackend: "chatgpt-web", MaxParallel: 5},
 		Permissions: PermissionsConfig{AllowDirs: []string{}, MCPConfigRead: true, MCPConfigWrite: true},
 		Shell:       ShellConfig{Path: []string{}},
 		Notifications: NotificationsConfig{

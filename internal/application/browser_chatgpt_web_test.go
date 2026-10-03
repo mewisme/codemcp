@@ -51,6 +51,8 @@ func (runtime *fakeChatGPTBrowserRuntime) Tab(agentID string) (browser.BrowserTa
 	return runtime.tab, true
 }
 
+func (runtime *fakeChatGPTBrowserRuntime) Touch(string) error { return nil }
+
 func (runtime *fakeChatGPTBrowserRuntime) Release(_ context.Context, agentID string) error {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()

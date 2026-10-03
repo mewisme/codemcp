@@ -9,6 +9,7 @@ import (
 
 	managedagent "go.mewis.me/codemcp/internal/agent"
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -48,6 +49,17 @@ type ManagedAgentSendInput struct {
 
 func NewManagedAgentService(manager *managedagent.Manager, workspaces *workspace.Manager) *ManagedAgentService {
 	return &ManagedAgentService{Manager: manager, Workspaces: workspaces}
+}
+
+func ConfigureManagedAgentRuntime(manager *managedagent.Manager, cfg config.Config) error {
+	if manager == nil {
+		return errors.New("managed agent manager is unavailable")
+	}
+	backend, err := managedagent.NormalizeBackendID(cfg.Agent.DefaultBackend)
+	if err != nil {
+		return fmt.Errorf("agent.default_backend: %w", err)
+	}
+	return manager.Configure(backend, managedagent.Capacity{MaxParallel: cfg.Agent.MaxParallel})
 }
 
 func (service *ManagedAgentService) Spawn(ctx context.Context, input ManagedAgentSpawnInput) (managedagent.Snapshot, error) {

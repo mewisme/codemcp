@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
+	managedagent "go.mewis.me/codemcp/internal/agent"
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	plandoc "go.mewis.me/codemcp/internal/plan"
 )
@@ -17,7 +19,7 @@ type AgentCompleteResult struct {
 	Created bool                   `json:"created"`
 }
 
-func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Service, planExecutions *plandoc.ExecutionManager) {
+func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Service, planExecutions *plandoc.ExecutionManager, managedAgents *managedagent.Manager) {
 	if registry == nil {
 		return
 	}
@@ -62,6 +64,17 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 			return Result{}, errors.New("agent completion requires trusted runtime correlation")
 		}
 		completionStatus := agentcompletion.Status(status)
+		var managedBinding managedagent.ClaimBinding
+		managedBound := false
+		if managedAgents != nil {
+			sessionID := strings.TrimSpace(MCPSessionID(ctx))
+			if sessionID != "" {
+				managedBinding, managedBound = managedAgents.SessionBinding(sessionID)
+				if managedBound && managedBinding.Active && managedBinding.WorkspaceID != workspaceID {
+					return Result{}, errors.New("claimed managed agent completion workspace mismatch")
+				}
+			}
+		}
 		sessionKey := planExecutionSessionKey(ctx)
 		if planExecutions != nil {
 			if binding, ok := planExecutions.Lookup(sessionKey, workspaceID); ok && completionStatus == agentcompletion.StatusCompleted && !binding.Closed {
@@ -83,6 +96,32 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 		if planExecutions != nil {
 			planExecutions.Release(sessionKey, workspaceID)
 		}
+		if managedBound && managedBinding.Active {
+			terminal, err := managedCompletionState(completionStatus)
+			if err != nil {
+				return Result{}, fmt.Errorf("completion persisted but managed-agent status correlation failed: %w", err)
+			}
+			if err := managedAgents.ObserveAcceptedCompletion(managedagent.CompletionEvent{
+				AgentID: managedBinding.AgentID, WorkspaceID: workspaceID, Status: terminal,
+			}); err != nil {
+				return Result{}, fmt.Errorf("completion persisted but managed-agent correlation failed: %w", err)
+			}
+		}
 		return JSONResult(AgentCompleteResult{Record: record, Created: created}), nil
 	})
+}
+
+func managedCompletionState(status agentcompletion.Status) (managedagent.State, error) {
+	switch status {
+	case agentcompletion.StatusCompleted:
+		return managedagent.StateCompleted, nil
+	case agentcompletion.StatusPartial:
+		return managedagent.StatePartial, nil
+	case agentcompletion.StatusBlocked:
+		return managedagent.StateBlocked, nil
+	case agentcompletion.StatusCancelled:
+		return managedagent.StateCancelled, nil
+	default:
+		return "", fmt.Errorf("unsupported accepted completion status %q", status)
+	}
 }

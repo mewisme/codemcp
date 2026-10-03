@@ -223,6 +223,7 @@ func buildSpecs() []Spec {
 		operatorQuery(ConfigList, "config list"),
 		operatorMutation(ConfigSet, "config set", RiskState, false,
 			"config unset", "config rotate", "config reveal",
+			"agent config backend", "agent config parallel",
 			"http mcp enable", "http mcp disable", "http mcp port", "http exposure mode", "http exposure interface add", "http exposure interface remove",
 			"http security insecure allow", "http security insecure deny", "http security loopback auth allow", "http security loopback auth require",
 			"http admin enable", "http admin disable", "http admin port",

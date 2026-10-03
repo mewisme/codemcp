@@ -130,6 +130,72 @@ func (manager *Manager) RegisterBackend(backend Backend) error {
 	return nil
 }
 
+func (manager *Manager) Configure(defaultBackend BackendID, globalCapacity Capacity) error {
+	if manager == nil {
+		return errors.New("managed agent manager is unavailable")
+	}
+	if defaultBackend != "" {
+		normalized, err := NormalizeBackendID(string(defaultBackend))
+		if err != nil {
+			return fmt.Errorf("default backend: %w", err)
+		}
+		defaultBackend = normalized
+	}
+	if globalCapacity.MaxParallel == 0 {
+		globalCapacity.MaxParallel = DefaultMaxParallel
+	}
+	if err := globalCapacity.Validate(); err != nil {
+		return fmt.Errorf("global capacity: %w", err)
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	manager.defaultBackend = defaultBackend
+	manager.globalCapacity = globalCapacity
+	return nil
+}
+
+// WaitBackendRunnable lets an asynchronous backend defer externally visible
+// work until Spawn has installed its handle and advanced the managed record out
+// of the starting state.
+func (manager *Manager) WaitBackendRunnable(ctx context.Context, id ID) error {
+	if manager == nil {
+		return errors.New("managed agent manager is unavailable")
+	}
+	if err := ValidateID(id); err != nil {
+		return err
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for {
+		manager.mu.RLock()
+		item := manager.entries[id]
+		if item == nil {
+			manager.mu.RUnlock()
+			return ErrAgentNotFound
+		}
+		state := item.record.State
+		notify := item.notify
+		manager.mu.RUnlock()
+		switch state {
+		case StateStarting:
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-notify:
+				continue
+			}
+		case StateWorking, StateIdle, StateCompletionPending:
+			return nil
+		default:
+			if state.Terminal() {
+				return fmt.Errorf("managed agent became terminal before backend start: %s", state)
+			}
+			return fmt.Errorf("managed agent backend cannot start from state %s", state)
+		}
+	}
+}
+
 func (manager *Manager) Spawn(ctx context.Context, controller Controller, request ManagedSpawnRequest) (Snapshot, error) {
 	if manager == nil {
 		return Snapshot{}, errors.New("managed agent manager is unavailable")

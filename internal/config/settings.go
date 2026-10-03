@@ -243,6 +243,12 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 	}
 
 	switch spec.Key {
+	case "agent.default_backend":
+		spec.ApplicationOwner = "agent.runtime"
+		spec.ScopedCommands = []string{"agent config backend"}
+	case "agent.max_parallel":
+		spec.ApplicationOwner = "agent.runtime"
+		spec.ScopedCommands = []string{"agent config parallel"}
 	case "http.mcp.enabled":
 		spec.ScopedCommands = []string{"http mcp enable", "http mcp disable"}
 	case "http.exposure.mode":

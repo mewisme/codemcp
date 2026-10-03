@@ -17,9 +17,14 @@ const completionReadTimeout = 5 * time.Second
 
 func agentCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "agent", Short: "Inspect and control managed agent lifecycle state"}
+	configCmd := &cobra.Command{Use: "config", Short: "Manage managed-agent runtime defaults"}
+	configCmd.AddCommand(
+		scopedValueCommand("backend", "Set default managed-agent backend", "Default managed-agent backend updated", "agent.default_backend"),
+		scopedValueCommand("parallel", "Set global managed-agent concurrency", "Managed-agent concurrency updated", "agent.max_parallel"),
+	)
 	completion := &cobra.Command{Use: "completion", Short: "Inspect durable agent completion history"}
 	completion.AddCommand(agentCompletionCurrentCommand(), agentCompletionListCommand(), agentCompletionViewCommand(), agentCompletionDoctorCommand(), agentCompletionFeedCommand())
-	cmd.AddCommand(completion)
+	cmd.AddCommand(configCmd, completion)
 	cmd.AddCommand(managedAgentCommands()...)
 	return cmd
 }

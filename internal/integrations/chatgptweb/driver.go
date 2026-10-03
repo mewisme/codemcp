@@ -131,6 +131,8 @@ func (driver *Driver) Start(ctx context.Context, request TurnRequest) (TurnResul
 	if err := driver.waitFreshSurface(turnCtx); err != nil {
 		return TurnResult{}, err
 	}
+	request.Bootstrap = ""
+	request.Prompt = ""
 	driver.mu.Lock()
 	driver.request = request
 	driver.started = true

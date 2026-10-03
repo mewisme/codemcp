@@ -7,12 +7,61 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	managedagent "go.mewis.me/codemcp/internal/agent"
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
 	plandoc "go.mewis.me/codemcp/internal/plan"
 )
+
+type completionManagedBackend struct {
+	mu     sync.Mutex
+	phase  managedagent.BackendPhase
+	result string
+	closes int
+}
+
+func (*completionManagedBackend) ID() managedagent.BackendID { return "completion-test" }
+func (*completionManagedBackend) Ready(context.Context) (managedagent.Readiness, error) {
+	return managedagent.Readiness{Available: true, Capacity: managedagent.Capacity{MaxParallel: 5}}, nil
+}
+func (backend *completionManagedBackend) Spawn(_ context.Context, request managedagent.BackendSpawnRequest) (managedagent.Handle, error) {
+	if err := managedagent.ValidateBackendSpawnRequest(request); err != nil {
+		return nil, err
+	}
+	backend.mu.Lock()
+	backend.phase = managedagent.BackendPhaseWorking
+	backend.mu.Unlock()
+	return string(request.AgentID), nil
+}
+func (*completionManagedBackend) Send(context.Context, managedagent.Handle, managedagent.Message) error {
+	return nil
+}
+func (backend *completionManagedBackend) Snapshot(context.Context, managedagent.Handle) (managedagent.BackendSnapshot, error) {
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	return managedagent.BackendSnapshot{Phase: backend.phase, Result: backend.result}, nil
+}
+func (*completionManagedBackend) Cancel(context.Context, managedagent.Handle) error { return nil }
+func (backend *completionManagedBackend) Close(context.Context, managedagent.Handle) error {
+	backend.mu.Lock()
+	backend.closes++
+	backend.mu.Unlock()
+	return nil
+}
+func (backend *completionManagedBackend) finish(result string) {
+	backend.mu.Lock()
+	backend.phase = managedagent.BackendPhaseIdle
+	backend.result = result
+	backend.mu.Unlock()
+}
+func (backend *completionManagedBackend) closeCount() int {
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	return backend.closes
+}
 
 func TestNewRuntimeRegistersAgentComplete(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
@@ -160,6 +209,111 @@ func TestAgentCompleteDuplicateCallsRemainDomainIdempotent(t *testing.T) {
 	case event := <-sub.Events:
 		t.Fatalf("duplicate completion event=%#v", event)
 	default:
+	}
+}
+
+func TestAgentCompleteCorrelatesClaimedManagedAgentAfterDurableAccept(t *testing.T) {
+	runtime, workspaceID := newCompletionToolRuntime(t)
+	backend := &completionManagedBackend{}
+	if err := runtime.Agents.RegisterBackend(backend); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Agents.Configure("completion-test", managedagent.Capacity{MaxParallel: 5}); err != nil {
+		t.Fatal(err)
+	}
+	spawned, err := runtime.Agents.Spawn(context.Background(), managedagent.OperatorController(), managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: workspaceID, Prompt: "managed child task",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := runtime.Agents.IssueClaim(spawned.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const sessionID = "claimed-completion-session"
+	if _, err := runtime.Agents.ConsumeClaim(spawned.ID, credential.Token(), sessionID); err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithMCPSessionID(context.Background(), sessionID)
+	ctx = WithCallSource(ctx, "tunnel")
+	ctx = WithApprovalCorrelation(ctx, "apc_managed_child", "apr_managed_child")
+	result, err := runtime.Call(ctx, AgentCompleteToolName, map[string]any{
+		"workspace_id": workspaceID, "status": "completed", "title": "Managed child finished",
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("agent_complete result=%#v err=%v", result, err)
+	}
+	value := result.StructuredContent.(AgentCompleteResult)
+	if !value.Created || value.Record.Status != agentcompletion.StatusCompleted {
+		t.Fatalf("durable completion=%#v", value)
+	}
+	recent, err := runtime.Completions.Recent(10)
+	if err != nil || len(recent) != 1 || recent[0].ID != value.Record.ID {
+		t.Fatalf("durable history=%#v err=%v", recent, err)
+	}
+	pending, err := runtime.Agents.Get(context.Background(), managedagent.OperatorController(), spawned.ID)
+	if err != nil || pending.State != managedagent.StateCompletionPending {
+		t.Fatalf("managed pending=%#v err=%v", pending, err)
+	}
+	if backend.closeCount() != 0 {
+		t.Fatal("managed backend closed at agent_complete before browser final response")
+	}
+	backend.finish("browser final response")
+	terminal, err := runtime.Agents.Get(context.Background(), managedagent.OperatorController(), spawned.ID)
+	if err != nil || terminal.State != managedagent.StateCompleted || terminal.Result != "browser final response" {
+		t.Fatalf("managed terminal=%#v err=%v", terminal, err)
+	}
+	if backend.closeCount() != 1 {
+		t.Fatalf("managed backend close count=%d want=1", backend.closeCount())
+	}
+}
+
+func TestAgentCompleteRejectsClaimedManagedWorkspaceMismatchBeforePersistence(t *testing.T) {
+	runtime, workspaceID := newCompletionToolRuntime(t)
+	other, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &completionManagedBackend{}
+	if err := runtime.Agents.RegisterBackend(backend); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Agents.Configure("completion-test", managedagent.Capacity{MaxParallel: 5}); err != nil {
+		t.Fatal(err)
+	}
+	spawned, err := runtime.Agents.Spawn(context.Background(), managedagent.OperatorController(), managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: workspaceID, Prompt: "managed child task",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := runtime.Agents.IssueClaim(spawned.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const sessionID = "claimed-workspace-mismatch"
+	if _, err := runtime.Agents.ConsumeClaim(spawned.ID, credential.Token(), sessionID); err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithMCPSessionID(context.Background(), sessionID)
+	ctx = WithCallSource(ctx, "tunnel")
+	ctx = WithApprovalCorrelation(ctx, "apc_mismatch", "apr_mismatch")
+	result, err := runtime.Call(ctx, AgentCompleteToolName, map[string]any{
+		"workspace_id": other.ID, "status": "completed", "title": "Wrong workspace",
+	})
+	if err == nil && !result.IsError {
+		t.Fatalf("workspace mismatch unexpectedly persisted: %#v", result)
+	}
+	if !strings.Contains(completionErrorText(result, err), "bound to workspace") {
+		t.Fatalf("workspace mismatch error=%q", completionErrorText(result, err))
+	}
+	if recent, recentErr := runtime.Completions.Recent(10); recentErr != nil || len(recent) != 0 {
+		t.Fatalf("mismatched managed completion history=%#v err=%v", recent, recentErr)
+	}
+	pending, getErr := runtime.Agents.Get(context.Background(), managedagent.OperatorController(), spawned.ID)
+	if getErr != nil || pending.State != managedagent.StateWorking {
+		t.Fatalf("managed state changed after rejected completion=%#v err=%v", pending, getErr)
 	}
 }
 

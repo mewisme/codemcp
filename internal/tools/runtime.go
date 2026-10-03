@@ -135,7 +135,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	RegisterPromptTools(registry, runtime)
 	RegisterManagedAgentTools(registry, runtime)
 	RegisterAgentClaimTool(registry, runtime)
-	RegisterAgentCompletionTool(registry, runtime.Completions, runtime.PlanExecutions)
+	RegisterAgentCompletionTool(registry, runtime.Completions, runtime.PlanExecutions, runtime.Agents)
 	RegisterApprovalTools(registry, runtime)
 	RegisterConfigTools(registry, runtime)
 	RegisterUpstreamTools(registry, upstreams)

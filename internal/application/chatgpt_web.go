@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	managedagent "go.mewis.me/codemcp/internal/agent"
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/integrations/browser"
@@ -53,9 +54,94 @@ type ChatGPTWebLogoutInput struct {
 type chatGPTBrowserRuntime interface {
 	Acquire(context.Context, string) (browser.LeaseSnapshot, error)
 	Tab(string) (browser.BrowserTab, bool)
+	Touch(string) error
 	Release(context.Context, string) error
 	Snapshot() browser.ManagerSnapshot
 	Close(context.Context) error
+}
+
+func (service *ChatGPTWebService) AgentBackendSettings(ctx context.Context) (chatgptweb.AgentBackendSettings, error) {
+	if service == nil {
+		return chatgptweb.AgentBackendSettings{}, errors.New("ChatGPT Web integration service is unavailable")
+	}
+	status, err := service.Status(ctx)
+	if err != nil {
+		return chatgptweb.AgentBackendSettings{}, err
+	}
+	reason := strings.TrimSpace(status.Reason)
+	if reason == "" && status.State != chatgptweb.StateReady {
+		reason = "ChatGPT Web is " + string(status.State)
+	}
+	return chatgptweb.AgentBackendSettings{
+		Available:     status.State == chatgptweb.StateReady,
+		Reason:        reason,
+		MaxAgents:     status.MaxAgents,
+		ConnectorName: status.ConnectorName,
+	}, nil
+}
+
+func (service *ChatGPTWebService) AgentBrowserRuntime(ctx context.Context, maxAgents int) (chatgptweb.AgentBackendRuntime, error) {
+	if service == nil {
+		return nil, errors.New("ChatGPT Web integration service is unavailable")
+	}
+	if maxAgents < 1 || maxAgents > chatgptweb.DefaultMaxAgents {
+		return nil, fmt.Errorf("ChatGPT Web max agents must be between 1 and %d", chatgptweb.DefaultMaxAgents)
+	}
+	status, err := service.Status(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if status.State != chatgptweb.StateReady {
+		reason := strings.TrimSpace(status.Reason)
+		if reason == "" {
+			reason = "state is " + string(status.State)
+		}
+		return nil, fmt.Errorf("ChatGPT Web backend unavailable: %s", boundedIntegrationReason(reason))
+	}
+	_, capability, err := service.capability(ctx)
+	if err != nil {
+		return nil, err
+	}
+	service.browserMu.Lock()
+	defer service.browserMu.Unlock()
+	if service.OwnedManager != nil {
+		snapshot := service.OwnedManager.Snapshot()
+		if snapshot.State == browser.ManagerClosed {
+			service.OwnedManager = nil
+		} else {
+			if snapshot.MaxTabs != 0 && snapshot.MaxTabs != maxAgents {
+				return nil, fmt.Errorf("ChatGPT Web browser runtime capacity is %d but configuration requires %d; restart CodeMCP to apply the new capacity", snapshot.MaxTabs, maxAgents)
+			}
+			return service.OwnedManager, nil
+		}
+	}
+	if service.NewManager == nil {
+		return nil, errors.New("ChatGPT Web browser manager factory is unavailable")
+	}
+	runtime, err := service.NewManager(browser.ManagerOptions{Capability: capability, MaxTabs: maxAgents})
+	if err != nil {
+		return nil, err
+	}
+	service.OwnedManager = runtime
+	return runtime, nil
+}
+
+func RegisterChatGPTWebAgentBackend(manager *managedagent.Manager, service *ChatGPTWebService) error {
+	if manager == nil {
+		return errors.New("managed agent manager is unavailable")
+	}
+	if service == nil {
+		return errors.New("ChatGPT Web integration service is unavailable")
+	}
+	backend, err := chatgptweb.NewAgentBackend(chatgptweb.AgentBackendOptions{
+		Manager:  manager,
+		Settings: service.AgentBackendSettings,
+		Runtime:  service.AgentBrowserRuntime,
+	})
+	if err != nil {
+		return err
+	}
+	return manager.RegisterBackend(backend)
 }
 
 type ChatGPTWebService struct {

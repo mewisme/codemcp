@@ -218,6 +218,12 @@ func TestDriverStartUsesFreshTemporaryChatAndStableFinal(t *testing.T) {
 	if len(tab.navigations) != 1 || tab.navigations[0] != TemporaryChatURL {
 		t.Fatalf("navigations=%v", tab.navigations)
 	}
+	driver.mu.Lock()
+	retained := driver.request
+	driver.mu.Unlock()
+	if retained.Bootstrap != "" || retained.Prompt != "" {
+		t.Fatalf("driver retained private initial prompt material: %#v", retained)
+	}
 }
 
 func TestDriverFollowUpReusesSameTabAndConversation(t *testing.T) {
