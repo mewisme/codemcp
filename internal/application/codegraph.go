@@ -17,11 +17,17 @@ import (
 )
 
 type CodeGraphService struct {
-	LoadConfig  func() (config.Config, error)
-	ManagedRoot string
-	HTTPClient  *http.Client
-	Workspaces  *workspace.Manager
-	Now         func() time.Time
+	LoadConfig    func() (config.Config, error)
+	ManagedRoot   string
+	HTTPClient    *http.Client
+	Workspaces    *workspace.Manager
+	Now           func() time.Time
+	ensureRuntime func() (codeGraphEnsureRuntime, error)
+}
+
+type codeGraphEnsureRuntime interface {
+	Status() (codegraph.Status, error)
+	Install(context.Context) (codegraph.InstallResult, error)
 }
 
 type CodeGraphWorkspaceInput struct {
@@ -68,28 +74,47 @@ func (s *CodeGraphService) Install(ctx context.Context) (codegraph.InstallResult
 	return runtime.Install(ctx)
 }
 
-func (s *CodeGraphService) EnsureAvailable(ctx context.Context) (IntegrationEnsureResult, error) {
-	status, err := s.Status(ctx)
+func (s *CodeGraphService) EnsureAvailable(ctx context.Context, values ...IntegrationEnsureOptions) (IntegrationEnsureResult, error) {
+	options := integrationEnsureOptions(values)
+	emitIntegrationEnsureEvent(options.Observe, "codegraph", "check", "running", "checking existing executable")
+	runtime, err := s.ensureAvailabilityRuntime()
+	if err != nil {
+		result := IntegrationEnsureResult{Integration: "codegraph", State: "failed", Detail: err.Error(), Retry: "cm integration codegraph install"}
+		emitIntegrationEnsureEvent(options.Observe, "codegraph", "check", "failed", result.Detail)
+		return result, err
+	}
+	status, err := runtime.Status()
 	result := IntegrationEnsureResult{Integration: "codegraph", Source: string(status.Resolution.Source), Retry: "cm integration codegraph install"}
 	if err != nil {
 		result.State, result.Detail = "failed", err.Error()
+		emitIntegrationEnsureEvent(options.Observe, "codegraph", "check", "failed", result.Detail)
 		return result, err
 	}
 	if !status.Enabled || status.Resolution.Source == codegraph.ExecutableDisabled {
 		result.State, result.Detail = "skipped", "disabled by configuration"
+		emitIntegrationEnsureEvent(options.Observe, "codegraph", "check", "skipped", result.Detail)
 		return result, nil
 	}
 	if status.Resolution.Verified && status.Resolution.Path != "" && status.Resolution.Source != codegraph.ExecutableUnavailable {
 		result.State = "available"
+		emitIntegrationEnsureEvent(options.Observe, "codegraph", "check", "success", "existing executable available")
 		return result, nil
 	}
 	if !status.ManagedSupported {
 		result.State, result.Detail = "unavailable", "managed CodeGraph is unsupported on this platform"
+		emitIntegrationEnsureEvent(options.Observe, "codegraph", "check", "unavailable", result.Detail)
 		return result, nil
 	}
-	installed, err := s.Install(ctx)
+	if options.SkipManagedInstall {
+		result.State, result.Detail = "skipped", "managed installation disabled for this invocation"
+		emitIntegrationEnsureEvent(options.Observe, "codegraph", "check", "skipped", result.Detail)
+		return result, nil
+	}
+	emitIntegrationEnsureEvent(options.Observe, "codegraph", "install", "running", "installing managed asset")
+	installed, err := runtime.Install(ctx)
 	if err != nil {
 		result.State, result.Detail = "failed", err.Error()
+		emitIntegrationEnsureEvent(options.Observe, "codegraph", "install", "failed", result.Detail)
 		return result, err
 	}
 	result.Source = string(installed.Status.Resolution.Source)
@@ -100,7 +125,15 @@ func (s *CodeGraphService) EnsureAvailable(ctx context.Context) (IntegrationEnsu
 	} else {
 		result.State = "unavailable"
 	}
+	emitIntegrationEnsureEvent(options.Observe, "codegraph", "install", result.State, "managed asset processed")
 	return result, nil
+}
+
+func (s *CodeGraphService) ensureAvailabilityRuntime() (codeGraphEnsureRuntime, error) {
+	if s != nil && s.ensureRuntime != nil {
+		return s.ensureRuntime()
+	}
+	return s.runtime()
 }
 
 func (s *CodeGraphService) ResolveGlobal(context.Context) (codegraph.GlobalResolutionResult, error) {

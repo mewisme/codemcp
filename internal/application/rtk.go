@@ -18,6 +18,12 @@ type RTKService struct {
 	ManagedRoot       string
 	HTTPClient        *http.Client
 	SignatureVerifier rtk.SignatureVerifier
+	ensureManager     func() (rtkEnsureManager, error)
+}
+
+type rtkEnsureManager interface {
+	Status() (rtk.Status, error)
+	Install(context.Context) (rtk.InstallResult, error)
 }
 
 func NewRTKService() *RTKService {
@@ -59,28 +65,47 @@ func (s *RTKService) Install(ctx context.Context) (rtk.InstallResult, error) {
 	return manager.Install(ctx)
 }
 
-func (s *RTKService) EnsureAvailable(ctx context.Context) (IntegrationEnsureResult, error) {
-	status, err := s.Status(ctx)
+func (s *RTKService) EnsureAvailable(ctx context.Context, values ...IntegrationEnsureOptions) (IntegrationEnsureResult, error) {
+	options := integrationEnsureOptions(values)
+	emitIntegrationEnsureEvent(options.Observe, "rtk", "check", "running", "checking existing executable")
+	manager, err := s.ensureAvailabilityManager()
+	if err != nil {
+		result := IntegrationEnsureResult{Integration: "rtk", State: "failed", Detail: err.Error(), Retry: "cm integration rtk install"}
+		emitIntegrationEnsureEvent(options.Observe, "rtk", "check", "failed", result.Detail)
+		return result, err
+	}
+	status, err := manager.Status()
 	result := IntegrationEnsureResult{Integration: "rtk", Source: string(status.Source), Retry: "cm integration rtk install"}
 	if err != nil {
 		result.State, result.Detail = "failed", err.Error()
+		emitIntegrationEnsureEvent(options.Observe, "rtk", "check", "failed", result.Detail)
 		return result, err
 	}
 	if !status.Enabled || status.Source == rtk.SourceDisabled {
 		result.State, result.Detail = "skipped", "disabled by configuration"
+		emitIntegrationEnsureEvent(options.Observe, "rtk", "check", "skipped", result.Detail)
 		return result, nil
 	}
 	if status.Verified && status.Path != "" && status.Source != rtk.SourceUnavailable {
 		result.State = "available"
+		emitIntegrationEnsureEvent(options.Observe, "rtk", "check", "success", "existing executable available")
 		return result, nil
 	}
 	if !status.ManagedSupported {
 		result.State, result.Detail = "unavailable", "managed RTK is unsupported on this platform"
+		emitIntegrationEnsureEvent(options.Observe, "rtk", "check", "unavailable", result.Detail)
 		return result, nil
 	}
-	installed, err := s.Install(ctx)
+	if options.SkipManagedInstall {
+		result.State, result.Detail = "skipped", "managed installation disabled for this invocation"
+		emitIntegrationEnsureEvent(options.Observe, "rtk", "check", "skipped", result.Detail)
+		return result, nil
+	}
+	emitIntegrationEnsureEvent(options.Observe, "rtk", "install", "running", "installing managed asset")
+	installed, err := manager.Install(ctx)
 	if err != nil {
 		result.State, result.Detail = "failed", err.Error()
+		emitIntegrationEnsureEvent(options.Observe, "rtk", "install", "failed", result.Detail)
 		return result, err
 	}
 	result.Source = string(installed.Status.Source)
@@ -91,7 +116,15 @@ func (s *RTKService) EnsureAvailable(ctx context.Context) (IntegrationEnsureResu
 	} else {
 		result.State = "unavailable"
 	}
+	emitIntegrationEnsureEvent(options.Observe, "rtk", "install", result.State, "managed asset processed")
 	return result, nil
+}
+
+func (s *RTKService) ensureAvailabilityManager() (rtkEnsureManager, error) {
+	if s != nil && s.ensureManager != nil {
+		return s.ensureManager()
+	}
+	return s.manager()
 }
 
 func (s *RTKService) ResolveGlobal(context.Context) (rtk.GlobalResolutionResult, error) {

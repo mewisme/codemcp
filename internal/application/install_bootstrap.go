@@ -27,6 +27,11 @@ type IntegrationEnsureEvent struct {
 	Message     string `json:"message,omitempty"`
 }
 
+type IntegrationEnsureOptions struct {
+	SkipManagedInstall bool
+	Observe            func(IntegrationEnsureEvent)
+}
+
 type PostInstallBootstrapOptions struct {
 	SkipMissingIntegrations bool
 	Observe                 func(IntegrationEnsureEvent)
@@ -68,6 +73,7 @@ type postInstallCoordinator struct {
 	Telemetry *TelemetryService
 	RTK       *RTKService
 	CodeGraph *CodeGraphService
+	CFTunnel  *CFTunnelService
 	Recorder  func(config.Config, bool, *producttelemetry.IdentityStore) (supplementalRecorder, error)
 }
 
@@ -84,6 +90,7 @@ func newPostInstallCoordinator() *postInstallCoordinator {
 		Telemetry: NewTelemetryService(),
 		RTK:       NewRTKService(),
 		CodeGraph: NewCodeGraphService(),
+		CFTunnel:  NewCFTunnelService(),
 		Recorder: func(cfg config.Config, configured bool, identity *producttelemetry.IdentityStore) (supplementalRecorder, error) {
 			effective := config.ResolveTelemetryEnabled(cfg, configured)
 			return producttelemetry.NewRecorder(producttelemetry.RecorderOptions{
@@ -93,7 +100,7 @@ func newPostInstallCoordinator() *postInstallCoordinator {
 	}
 }
 
-func (coordinator *postInstallCoordinator) Run(ctx context.Context, _ PostInstallBootstrapOptions) SupplementalBootstrapResult {
+func (coordinator *postInstallCoordinator) Run(ctx context.Context, options PostInstallBootstrapOptions) SupplementalBootstrapResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -121,25 +128,33 @@ func (coordinator *postInstallCoordinator) Run(ctx context.Context, _ PostInstal
 
 	ensure := []struct {
 		name string
-		run  func(context.Context) (IntegrationEnsureResult, error)
+		run  func(context.Context, IntegrationEnsureOptions) (IntegrationEnsureResult, error)
 	}{
-		{name: "rtk", run: func(ctx context.Context) (IntegrationEnsureResult, error) {
+		{name: "rtk", run: func(ctx context.Context, ensureOptions IntegrationEnsureOptions) (IntegrationEnsureResult, error) {
 			service := coordinator.RTK
 			if service == nil {
 				service = NewRTKService()
 			}
-			return service.EnsureAvailable(ctx)
+			return service.EnsureAvailable(ctx, ensureOptions)
 		}},
-		{name: "codegraph", run: func(ctx context.Context) (IntegrationEnsureResult, error) {
+		{name: "codegraph", run: func(ctx context.Context, ensureOptions IntegrationEnsureOptions) (IntegrationEnsureResult, error) {
 			service := coordinator.CodeGraph
 			if service == nil {
 				service = NewCodeGraphService()
 			}
-			return service.EnsureAvailable(ctx)
+			return service.EnsureAvailable(ctx, ensureOptions)
+		}},
+		{name: "cf-tunnel", run: func(ctx context.Context, ensureOptions IntegrationEnsureOptions) (IntegrationEnsureResult, error) {
+			service := coordinator.CFTunnel
+			if service == nil {
+				service = NewCFTunnelService()
+			}
+			return service.EnsureAvailable(ctx, ensureOptions)
 		}},
 	}
+	ensureOptions := IntegrationEnsureOptions{SkipManagedInstall: options.SkipMissingIntegrations, Observe: options.Observe}
 	for _, item := range ensure {
-		outcome, err := item.run(ctx)
+		outcome, err := item.run(ctx, ensureOptions)
 		if outcome.Integration == "" {
 			outcome.Integration = item.name
 		}
@@ -181,4 +196,18 @@ func (coordinator *postInstallCoordinator) Run(ctx context.Context, _ PostInstal
 		}
 	}
 	return result
+}
+
+func integrationEnsureOptions(values []IntegrationEnsureOptions) IntegrationEnsureOptions {
+	if len(values) == 0 {
+		return IntegrationEnsureOptions{}
+	}
+	return values[0]
+}
+
+func emitIntegrationEnsureEvent(observe func(IntegrationEnsureEvent), integration, phase, state, message string) {
+	if observe == nil {
+		return
+	}
+	observe(IntegrationEnsureEvent{Integration: integration, Phase: phase, State: state, Message: message})
 }
