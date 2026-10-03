@@ -149,6 +149,7 @@ type Record struct {
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
 	Turn            uint64     `json:"turn"`
+	Revision        uint64     `json:"revision"`
 	Result          string     `json:"result,omitempty"`
 	Error           string     `json:"error,omitempty"`
 	Owner           Controller `json:"-"`
@@ -166,6 +167,7 @@ type Snapshot struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	Turn            uint64    `json:"turn"`
+	Revision        uint64    `json:"revision"`
 	Result          string    `json:"result,omitempty"`
 	Error           string    `json:"error,omitempty"`
 }
@@ -175,7 +177,7 @@ func (record Record) Snapshot() Snapshot {
 		ID: record.ID, Backend: record.Backend, WorkspaceID: record.WorkspaceID,
 		ParentID: record.ParentID, Depth: record.Depth, Model: record.Model,
 		ReasoningEffort: record.ReasoningEffort, State: record.State,
-		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, Turn: record.Turn,
+		CreatedAt: record.CreatedAt, UpdatedAt: record.UpdatedAt, Turn: record.Turn, Revision: record.Revision,
 		Result: BoundResult(record.Result), Error: BoundErrorText(record.Error),
 	}
 }
