@@ -46,6 +46,7 @@ type App struct {
 	ProductLifecycleTelemetry    *productLifecycleTelemetry
 	Operations                   *application.Dispatcher
 	CFTunnel                     *application.CFTunnelService
+	chatGPTWeb                   *application.ChatGPTWebService
 	Telegram                     *telegram.Runtime
 	TelegramPairing              *telegram.PairingStore
 	TelegramUI                   *telegram.Interface

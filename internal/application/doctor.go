@@ -48,6 +48,8 @@ type DoctorDependencies struct {
 	OAuth                *mcpoauth.Store
 	Tunnel               *tunnel.Client
 	LLM                  *LLMService
+	BrowserStatus        func(context.Context) (BrowserIntegrationStatus, error)
+	ChatGPTWebStatus     func(context.Context) (ChatGPTWebStatus, error)
 }
 
 type TelegramHealthSnapshot struct {
@@ -344,6 +346,44 @@ func defaultDoctorProviders(deps DoctorDependencies) []doctor.Provider {
 				return doctor.Component{}, err
 			}
 			return typeSafeDoctorComponent(cfg.Enabled, credential.Configured), nil
+		}),
+		doctorProvider(doctor.ComponentIntegrationBrowser, func(ctx context.Context) (doctor.Component, error) {
+			var status BrowserIntegrationStatus
+			var err error
+			if deps.BrowserStatus != nil {
+				status, err = deps.BrowserStatus(ctx)
+			} else {
+				inspection, inspectErr := snapshot.inspectConfig()
+				if inspectErr != nil {
+					return doctor.Component{}, inspectErr
+				}
+				service := NewBrowserIntegrationService()
+				service.LoadConfig = func() (config.Config, error) { return inspection.Config, nil }
+				status, err = service.Status(ctx)
+			}
+			if err != nil {
+				return doctor.Component{}, err
+			}
+			return browserOptionalDoctorComponent(status), nil
+		}),
+		doctorProvider(doctor.ComponentIntegrationChatGPTWeb, func(ctx context.Context) (doctor.Component, error) {
+			var status ChatGPTWebStatus
+			var err error
+			if deps.ChatGPTWebStatus != nil {
+				status, err = deps.ChatGPTWebStatus(ctx)
+			} else {
+				inspection, inspectErr := snapshot.inspectConfig()
+				if inspectErr != nil {
+					return doctor.Component{}, inspectErr
+				}
+				service := NewChatGPTWebService()
+				service.LoadConfig = func() (config.Config, error) { return inspection.Config, nil }
+				status, err = service.Status(ctx)
+			}
+			if err != nil {
+				return doctor.Component{}, err
+			}
+			return chatGPTWebOptionalDoctorComponent(status), nil
 		}),
 		doctorProvider(doctor.ComponentLLMProvider, func(ctx context.Context) (doctor.Component, error) {
 			status, err := deps.LLM.Status(ctx)
@@ -672,6 +712,42 @@ func serviceDoctorProvider(id doctor.ComponentID, scope managed.Scope) doctor.Pr
 
 func healthy(summary string, flags ...doctor.Flag) doctor.Component {
 	return doctor.Component{State: doctor.StateHealthy, Severity: doctor.SeverityInfo, Summary: summary, Flags: flags}
+}
+
+func browserOptionalDoctorComponent(status BrowserIntegrationStatus) doctor.Component {
+	if !status.Enabled {
+		return disabled("optional browser integration is disabled")
+	}
+	available := status.State == BrowserIntegrationAvailable || status.State == BrowserIntegrationRunning
+	summary := "optional browser capability is available"
+	if !available {
+		summary = "optional browser capability is unavailable; unrelated CodeMCP features remain healthy"
+	} else if status.Running {
+		summary = "optional browser capability is available and the CodeMCP profile is in use"
+	}
+	return healthy(summary,
+		doctor.Flag{ID: "available", Value: available},
+		doctor.Flag{ID: "running", Value: status.Running},
+	)
+}
+
+func chatGPTWebOptionalDoctorComponent(status ChatGPTWebStatus) doctor.Component {
+	if !status.Enabled {
+		return disabled("optional ChatGPT Web integration is disabled")
+	}
+	summary := "optional ChatGPT Web integration is ready"
+	switch {
+	case status.RuntimePending:
+		summary = "ChatGPT Web runtime configuration is pending until active agent tabs finish"
+	case status.State != "ready":
+		summary = "optional ChatGPT Web integration is not ready; unrelated CodeMCP features remain healthy"
+	}
+	return healthy(summary,
+		doctor.Flag{ID: "ready", Value: status.State == "ready" && !status.RuntimePending},
+		doctor.Flag{ID: "authenticated", Value: status.Authenticated},
+		doctor.Flag{ID: "connector_available", Value: status.ConnectorAvailable},
+		doctor.Flag{ID: "runtime_pending", Value: status.RuntimePending},
+	)
 }
 
 func disabled(summary string) doctor.Component {

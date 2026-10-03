@@ -76,3 +76,45 @@ func TestDoctorRemediationOperationsAreCanonicalCapabilities(t *testing.T) {
 		}
 	}
 }
+
+func TestOptionalBrowserAbsenceDoesNotDegradeAggregateDoctorHealth(t *testing.T) {
+	browserDef, ok := doctor.DefinitionFor(doctor.ComponentIntegrationBrowser)
+	if !ok {
+		t.Fatal("browser doctor definition missing")
+	}
+	chatGPTDef, ok := doctor.DefinitionFor(doctor.ComponentIntegrationChatGPTWeb)
+	if !ok {
+		t.Fatal("chatgpt-web doctor definition missing")
+	}
+	service, err := NewDoctorServiceWithProviders(
+		doctor.ProviderFunc{
+			Definition: browserDef.ProviderSpec(),
+			Run: func(context.Context) (doctor.Component, error) {
+				return browserOptionalDoctorComponent(BrowserIntegrationStatus{
+					Enabled: true, State: BrowserIntegrationUnavailable, Reason: "no supported browser",
+				}), nil
+			},
+		},
+		doctor.ProviderFunc{
+			Definition: chatGPTDef.ProviderSpec(),
+			Run: func(context.Context) (doctor.Component, error) {
+				return chatGPTWebOptionalDoctorComponent(ChatGPTWebStatus{Enabled: true}), nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Value.Healthy || result.Value.Warnings != 0 || result.Value.Errors != 0 {
+		t.Fatalf("optional integrations degraded doctor report: %#v", result.Value)
+	}
+	for _, component := range result.Value.Components {
+		if component.State != doctor.StateHealthy || component.Severity != doctor.SeverityInfo {
+			t.Fatalf("optional integration component=%#v", component)
+		}
+	}
+}

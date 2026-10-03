@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -61,5 +62,42 @@ func TestCodeGraphEnsureAvailableNeverInitializesOrIndexesWorkspaces(t *testing.
 	}
 	if !foundInstall {
 		t.Fatal("CodeGraph managed Install not found")
+	}
+}
+
+func TestPostInstallBootstrapDoesNotOwnOrInstallBrowserRuntime(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve test path")
+	}
+	path := filepath.Join(filepath.Dir(file), "install_bootstrap.go")
+	content, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var coordinator *ast.StructType
+	for _, declaration := range content.Decls {
+		typeDecl, ok := declaration.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range typeDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok || typeSpec.Name.Name != "postInstallCoordinator" {
+				continue
+			}
+			coordinator, _ = typeSpec.Type.(*ast.StructType)
+		}
+	}
+	if coordinator == nil {
+		t.Fatal("postInstallCoordinator not found")
+	}
+	for _, field := range coordinator.Fields.List {
+		for _, name := range field.Names {
+			lower := strings.ToLower(name.Name)
+			if strings.Contains(lower, "browser") || strings.Contains(lower, "chatgpt") {
+				t.Fatalf("normal install bootstrap owns browser integration field %q", name.Name)
+			}
+		}
 	}
 }

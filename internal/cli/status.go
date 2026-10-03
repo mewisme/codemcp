@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
@@ -35,6 +36,8 @@ type statusSnapshot struct {
 	ListenerError error
 	Tunnel        tunnel.Status
 	Update        *updatepkg.CachedCheck
+	Browser       application.BrowserIntegrationStatus
+	ChatGPTWeb    application.ChatGPTWebStatus
 }
 
 const statusTunnelWatchTimeout = 35 * time.Second
@@ -146,7 +149,13 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 	updateSpan := tracepkg.Start(ctx, "STATUS", "status.update-cache.lookup", "Looking up cached update status")
 	cachedUpdate := cachedUpdateStatus(time.Now())
 	updateSpan.EndMessage("Cached update status lookup completed", tracepkg.Bool("cached", cachedUpdate != nil))
-	snapshot := statusSnapshot{Source: source, Config: cfg, Runtime: runtimeStatus, Running: running, Workspaces: len(workspaces), Upstreams: upstreamCount, ListenerPlan: plan, ListenerError: listenerErr, Tunnel: tunnelStatus, Update: cachedUpdate}
+	browserService := application.NewBrowserIntegrationService()
+	browserService.LoadConfig = func() (config.Config, error) { return cfg, nil }
+	browserStatus, _ := browserService.Status(ctx)
+	chatGPTWebService := application.NewChatGPTWebService()
+	chatGPTWebService.LoadConfig = func() (config.Config, error) { return cfg, nil }
+	chatGPTWebStatus, _ := chatGPTWebService.Status(ctx)
+	snapshot := statusSnapshot{Source: source, Config: cfg, Runtime: runtimeStatus, Running: running, Workspaces: len(workspaces), Upstreams: upstreamCount, ListenerPlan: plan, ListenerError: listenerErr, Tunnel: tunnelStatus, Update: cachedUpdate, Browser: browserStatus, ChatGPTWeb: chatGPTWebStatus}
 	if !running {
 		serviceInspectSpan := tracepkg.Start(ctx, "STATUS", "status.managed-services.inspect", "Inspecting installed managed services")
 		snapshot.Services = installedManagedServices(ctx, account)
@@ -232,6 +241,7 @@ func renderRunningStatus(presenter *presentation.Presenter, snapshot statusSnaps
 	presenter.Fields(fields...)
 	renderStatusEndpoints(presenter, snapshot, verbose)
 	renderStatusConfig(presenter, snapshot, verbose)
+	renderStatusOptionalIntegrations(presenter, snapshot, verbose)
 }
 
 func renderStoppedStatus(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
@@ -240,6 +250,7 @@ func renderStoppedStatus(presenter *presentation.Presenter, snapshot statusSnaps
 	presenter.Fields(presentation.Field{Label: "status", Value: "stopped"})
 	renderStatusEndpoints(presenter, snapshot, verbose)
 	renderStatusConfig(presenter, snapshot, verbose)
+	renderStatusOptionalIntegrations(presenter, snapshot, verbose)
 	if len(snapshot.Services) == 0 {
 		return
 	}
@@ -250,6 +261,38 @@ func renderStoppedStatus(presenter *presentation.Presenter, snapshot statusSnaps
 		fields = append(fields, presentation.Field{Label: string(item.spec.Scope), Value: fmt.Sprintf("installed %s %s", presenter.Separator(), managedBackendLabel(item.manager, item.spec))})
 	}
 	presenter.Fields(fields...)
+}
+
+func renderStatusOptionalIntegrations(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
+	presenter.Spacer()
+	presenter.Section("Optional integrations")
+	browserValue := string(snapshot.Browser.State)
+	if snapshot.Browser.Running {
+		browserValue = "running"
+	}
+	if browserValue == "" {
+		browserValue = "unavailable"
+	}
+	chatGPTValue := string(snapshot.ChatGPTWeb.State)
+	if chatGPTValue == "" {
+		chatGPTValue = "unavailable"
+	}
+	if snapshot.ChatGPTWeb.RuntimePending {
+		chatGPTValue += " " + presenter.Separator() + " runtime change pending"
+	}
+	presenter.Fields(
+		presentation.Field{Label: "browser", Value: browserValue},
+		presentation.Field{Label: "chatgpt web", Value: chatGPTValue},
+	)
+	if verbose {
+		fields := []presentation.Field{
+			{Label: "browser family", Value: snapshot.Browser.Family},
+			{Label: "browser transport", Value: snapshot.Browser.Transport},
+			{Label: "connector", Value: snapshot.ChatGPTWeb.ConnectorName},
+			{Label: "agent capacity", Value: snapshot.ChatGPTWeb.MaxAgents},
+		}
+		presenter.NestedFields(fields...)
+	}
 }
 
 func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
@@ -485,6 +528,8 @@ func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {
 			log.Detail("service "+string(item.spec.Scope), fmt.Sprintf("installed (%s)", managedBackendLabel(item.manager, item.spec)))
 		}
 	}
+	log.Detail("browser", optionalBrowserStatusSummary(snapshot.Browser))
+	log.Detail("chatgpt web", optionalChatGPTWebStatusSummary(snapshot.ChatGPTWeb))
 	if snapshot.Tunnel.Metadata != nil {
 		log.Detail("tunnel name", snapshot.Tunnel.Metadata.Name)
 		log.Detail("tunnel description", snapshot.Tunnel.Metadata.Description)
@@ -501,6 +546,27 @@ func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {
 	log.Detail("workspaces", snapshot.Workspaces)
 	log.Detail("upstreams", snapshot.Upstreams)
 	logCachedUpdate(log, snapshot.Update)
+}
+
+func optionalBrowserStatusSummary(status application.BrowserIntegrationStatus) string {
+	if status.Running {
+		return "running"
+	}
+	if status.State != "" {
+		return string(status.State)
+	}
+	return "unavailable"
+}
+
+func optionalChatGPTWebStatusSummary(status application.ChatGPTWebStatus) string {
+	value := string(status.State)
+	if value == "" {
+		value = "unavailable"
+	}
+	if status.RuntimePending {
+		value += " (runtime change pending)"
+	}
+	return value
 }
 
 func statusExposureSummary(snapshot statusSnapshot, separator string) string {

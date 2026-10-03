@@ -2,12 +2,60 @@ package app
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	managedagent "go.mewis.me/codemcp/internal/agent"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/notification"
 	"go.mewis.me/codemcp/internal/tools"
 )
+
+func TestReloadConfigReducesAgentCapacityWithoutKillingExistingWork(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	cfg := config.Default()
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
+	app, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := &lifecycleClaimBackend{}
+	if err := app.Tools.Agents.RegisterBackend(backend); err != nil {
+		t.Fatal(err)
+	}
+	next := cfg
+	next.Agent.DefaultBackend = string(backend.ID())
+	next.Agent.MaxParallel = 2
+	if err := app.ReloadConfig(next); err != nil {
+		t.Fatal(err)
+	}
+	owner := managedagent.OperatorController()
+	spawn := func(prompt string) managedagent.Snapshot {
+		snapshot, err := app.Tools.Agents.Spawn(context.Background(), owner, managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{WorkspaceID: "ws_reload", Prompt: prompt}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return snapshot
+	}
+	first := spawn("first")
+	second := spawn("second")
+	reduced := next
+	reduced.Agent.MaxParallel = 1
+	if err := app.ReloadConfig(reduced); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []managedagent.ID{first.ID, second.ID} {
+		snapshot, err := app.Tools.Agents.Get(context.Background(), owner, id)
+		if err != nil || snapshot.State != managedagent.StateWorking {
+			t.Fatalf("existing agent after capacity reduction=%#v err=%v", snapshot, err)
+		}
+	}
+	if _, err := app.Tools.Agents.Spawn(context.Background(), owner, managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{WorkspaceID: "ws_reload", Prompt: "new"}}); !errors.Is(err, managedagent.ErrCapacityReached) {
+		t.Fatalf("new spawn after capacity reduction error=%v", err)
+	}
+}
 
 func TestReloadConfigUpdatesLiveRuntime(t *testing.T) {
 	cfg := config.Default()

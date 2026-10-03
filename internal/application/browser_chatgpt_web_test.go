@@ -89,6 +89,12 @@ func (runtime *fakeChatGPTBrowserRuntime) Close(context.Context) error {
 	return nil
 }
 
+func (runtime *fakeChatGPTBrowserRuntime) closedSnapshot() bool {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	return runtime.closed
+}
+
 type fakeChatGPTBrowserTab struct {
 	mu          sync.Mutex
 	id          string
@@ -456,6 +462,142 @@ func TestBrowserAndChatGPTWebOperationsAreBound(t *testing.T) {
 	}
 }
 
+func TestChatGPTWebReconcileDefersProfileChangeWhileAgentLeaseActive(t *testing.T) {
+	root := t.TempDir()
+	profile := applicationTestProfile(root)
+	if err := browser.PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := chatgptweb.WriteAuthMarker(root, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	cfg := applicationChatGPTWebConfig()
+	cfg.Integrations.Browser.Path = "/usr/bin/chromium"
+	service := NewChatGPTWebService()
+	service.Root = func() string { return root }
+	service.LoadConfig = func() (config.Config, error) { return cfg, nil }
+	service.Detect = func(context.Context, browser.Options) browser.Capability {
+		return applicationTestCapabilityWithExecutable(profile, cfg.Integrations.Browser.Path)
+	}
+	var runtimes []*fakeChatGPTBrowserRuntime
+	service.NewManager = func(options browser.ManagerOptions) (chatGPTBrowserRuntime, error) {
+		runtime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{State: browser.ManagerStopped, MaxTabs: options.MaxTabs}}
+		runtimes = append(runtimes, runtime)
+		return runtime, nil
+	}
+	runtime, err := service.AgentBrowserRuntime(context.Background(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.Acquire(context.Background(), "agent-active"); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Integrations.Browser.Path = "/opt/chromium-next"
+	if err := service.ReconcileRuntimeConfig(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if runtimes[0].closedSnapshot() {
+		t.Fatal("profile-affecting reload closed browser with active agent lease")
+	}
+	status, err := service.Status(context.Background())
+	if err != nil || !status.RuntimePending {
+		t.Fatalf("pending status=%#v err=%v", status, err)
+	}
+	settings, err := service.AgentBackendSettings(context.Background())
+	if err != nil || settings.Available {
+		t.Fatalf("pending settings=%#v err=%v", settings, err)
+	}
+	if err := runtime.Release(context.Background(), "agent-active"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ReconcileRuntimeConfig(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !runtimes[0].closedSnapshot() {
+		t.Fatal("idle stale browser runtime was not retired")
+	}
+	if _, err := service.AgentBrowserRuntime(context.Background(), 5); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtimes) != 2 {
+		t.Fatalf("runtime creations=%d want=2", len(runtimes))
+	}
+}
+
+func TestChatGPTWebReconcileCapacityReductionKeepsExistingAgents(t *testing.T) {
+	root := t.TempDir()
+	profile := applicationTestProfile(root)
+	if err := browser.PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := chatgptweb.WriteAuthMarker(root, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	cfg := applicationChatGPTWebConfig()
+	service := NewChatGPTWebService()
+	service.Root = func() string { return root }
+	service.LoadConfig = func() (config.Config, error) { return cfg, nil }
+	service.Detect = func(context.Context, browser.Options) browser.Capability { return applicationTestCapability(profile) }
+	runtime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{State: browser.ManagerStopped, MaxTabs: 5}}
+	service.NewManager = func(browser.ManagerOptions) (chatGPTBrowserRuntime, error) { return runtime, nil }
+	owned, err := service.AgentBrowserRuntime(context.Background(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"a", "b", "c"} {
+		if _, err := owned.Acquire(context.Background(), id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cfg.Integrations.ChatGPTWeb.MaxAgents = 2
+	if err := service.ReconcileRuntimeConfig(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.closedSnapshot() || runtime.Snapshot().ActiveLeases != 3 {
+		t.Fatalf("capacity reduction disrupted live runtime: %#v", runtime.Snapshot())
+	}
+	settings, err := service.AgentBackendSettings(context.Background())
+	if err != nil || !settings.Available || settings.MaxAgents != 2 {
+		t.Fatalf("reduced settings=%#v err=%v", settings, err)
+	}
+}
+
+func TestChatGPTWebDisableBlocksNewSpawnsWithoutKillingExistingAgents(t *testing.T) {
+	root := t.TempDir()
+	profile := applicationTestProfile(root)
+	if err := browser.PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := chatgptweb.WriteAuthMarker(root, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	cfg := applicationChatGPTWebConfig()
+	service := NewChatGPTWebService()
+	service.Root = func() string { return root }
+	service.LoadConfig = func() (config.Config, error) { return cfg, nil }
+	service.Detect = func(context.Context, browser.Options) browser.Capability { return applicationTestCapability(profile) }
+	runtime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{State: browser.ManagerStopped, MaxTabs: 5}}
+	service.NewManager = func(browser.ManagerOptions) (chatGPTBrowserRuntime, error) { return runtime, nil }
+	owned, err := service.AgentBrowserRuntime(context.Background(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := owned.Acquire(context.Background(), "existing"); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Integrations.ChatGPTWeb.Enabled = false
+	if err := service.ReconcileRuntimeConfig(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.closedSnapshot() || runtime.Snapshot().ActiveLeases != 1 {
+		t.Fatalf("disable killed existing agent runtime: %#v", runtime.Snapshot())
+	}
+	settings, err := service.AgentBackendSettings(context.Background())
+	if err != nil || settings.Available {
+		t.Fatalf("disabled settings=%#v err=%v", settings, err)
+	}
+}
+
 func newApplicationChatGPTWebTestService(root string, cfg config.Config, profile browser.ProfileRef) *ChatGPTWebService {
 	service := NewChatGPTWebService()
 	service.Root = func() string { return root }
@@ -487,8 +629,12 @@ func applicationTestProfile(root string) browser.ProfileRef {
 }
 
 func applicationTestCapability(profile browser.ProfileRef) browser.Capability {
+	return applicationTestCapabilityWithExecutable(profile, "/usr/bin/chromium")
+}
+
+func applicationTestCapabilityWithExecutable(profile browser.ProfileRef, executable string) browser.Capability {
 	candidate := browser.Candidate{
-		Family: browser.FamilyChromium, Executable: "/usr/bin/chromium", LocalExecutable: "/usr/bin/chromium",
+		Family: browser.FamilyChromium, Executable: executable, LocalExecutable: executable,
 		HostPlatform: "linux", Transport: browser.TransportNative, Source: browser.SourceConfigured,
 	}
 	return browser.Capability{

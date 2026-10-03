@@ -13,6 +13,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configbundle"
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/integrations/browser"
 	mcpoauth "go.mewis.me/codemcp/internal/oauth"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	"go.mewis.me/codemcp/internal/secretinventory"
@@ -147,6 +148,10 @@ func UninitializeContext(ctx context.Context, root string) error {
 		span.FailMessage("Local configuration secret purge failed", err, tracepkg.String("root", root))
 		return err
 	}
+	if err := removeOwnedBrowserProfiles(ctx, root, browser.ResolveOwnedProfiles); err != nil {
+		span.FailMessage("CodeMCP browser profile cleanup failed", err, tracepkg.String("root", root))
+		return err
+	}
 	if err := RemoveConfigRootContext(ctx, root); err != nil {
 		span.FailMessage("Local configuration root removal failed", err, tracepkg.String("root", root))
 		return err
@@ -238,6 +243,7 @@ func removeOwnedConfigRootEntries(root string) error {
 		"prompts",
 		"managed-assets",
 		"runtime",
+		"browser",
 	} {
 		if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
 			return err
@@ -263,6 +269,66 @@ func removeOwnedConfigRootEntries(root string) error {
 			if err := removeIfExists(filepath.Join(root, stem+extension)); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+type ownedBrowserProfileResolver func(context.Context, browser.OwnedProfileOptions) ([]browser.ProfileRef, error)
+
+func removeOwnedBrowserProfiles(ctx context.Context, root string, resolve ownedBrowserProfileResolver) error {
+	if resolve == nil {
+		return errors.New("browser profile resolver is unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	profiles, err := resolve(ctx, browser.OwnedProfileOptions{StateRoot: root})
+	if err != nil {
+		return err
+	}
+	locks := make([]*browser.ProfileLock, 0, len(profiles))
+	releaseLocks := func() error {
+		var releaseErr error
+		for _, lock := range locks {
+			releaseErr = errors.Join(releaseErr, lock.Release())
+		}
+		locks = nil
+		return releaseErr
+	}
+	for _, profile := range profiles {
+		lock, ok, lockErr := browser.TryAcquireProfile(profile)
+		if lockErr != nil {
+			_ = releaseLocks()
+			return lockErr
+		}
+		if !ok {
+			_ = releaseLocks()
+			return browser.ErrProfileBusy
+		}
+		locks = append(locks, lock)
+	}
+	for _, profile := range profiles {
+		if err := browser.RemoveProfile(profile); err != nil {
+			_ = releaseLocks()
+			return err
+		}
+	}
+	if err := releaseLocks(); err != nil {
+		return err
+	}
+	for _, profile := range profiles {
+		lockPath := filepath.Clean(strings.TrimSpace(profile.LockPath))
+		if lockPath == "." || lockPath == "" {
+			continue
+		}
+		if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if profile.Transport == browser.TransportWSLHost {
+			browserDir := filepath.Dir(lockPath)
+			_ = os.Remove(browserDir)
+			_ = os.Remove(filepath.Dir(browserDir))
 		}
 	}
 	return nil

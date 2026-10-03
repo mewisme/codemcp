@@ -54,6 +54,7 @@ func (a *App) Bootstrap() error {
 		}
 		chatGPTWebService := application.NewChatGPTWebService()
 		chatGPTWebService.LoadConfig = func() (config.Config, error) { return a.Config.Snapshot(), nil }
+		a.chatGPTWeb = chatGPTWebService
 		if err := application.RegisterChatGPTWebAgentBackend(a.Tools.Agents, chatGPTWebService); err != nil {
 			a.bootstrapErr = err
 			return
@@ -212,6 +213,8 @@ func (a *App) Bootstrap() error {
 			})
 		}
 		a.Upstream = a.Tools.Upstream
+		browserDoctorService := application.NewBrowserIntegrationService()
+		browserDoctorService.LoadConfig = func() (config.Config, error) { return a.Config.Snapshot(), nil }
 		doctorDeps := application.DoctorDependencies{
 			Workspaces:           a.Tools.Workspaces,
 			Checkpoints:          a.Tools.Checkpoints,
@@ -223,6 +226,8 @@ func (a *App) Bootstrap() error {
 			OAuth:                a.OAuth,
 			Tunnel:               a.Tunnel,
 			LLM:                  llmService,
+			BrowserStatus:        browserDoctorService.Status,
+			ChatGPTWebStatus:     chatGPTWebService.Status,
 		}
 		if a.Telegram != nil {
 			doctorDeps.TelegramHealth = func() application.TelegramHealthSnapshot {

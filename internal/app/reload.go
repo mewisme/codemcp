@@ -5,6 +5,7 @@ import (
 	"slices"
 	"time"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/integrations/semantic"
 	"go.mewis.me/codemcp/internal/tools"
@@ -27,6 +28,7 @@ func (a *App) ReloadConfig(next config.Config) error {
 		return err
 	}
 	httpChanged := previous.HTTP.MCP.Enabled != next.HTTP.MCP.Enabled
+	agentChanged := previous.Agent != next.Agent
 	integrationsChanged := previous.Integrations != next.Integrations
 	permissionsChanged := !slices.Equal(previous.Permissions.AllowDirs, next.Permissions.AllowDirs)
 	shellPathChanged := !slices.Equal(previous.Shell.Path, next.Shell.Path)
@@ -44,17 +46,27 @@ func (a *App) ReloadConfig(next config.Config) error {
 	if reloadTestAfterCommit != nil {
 		reloadTestAfterCommit()
 	}
-	if err := a.applyRuntimeConfig(next, typeSafeCandidate, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged); err != nil {
+	if err := a.applyRuntimeConfig(next, typeSafeCandidate, httpChanged, agentChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged); err != nil {
 		_, restoreErr := a.Config.Update(func(config.Config) (config.Config, error) { return previous, nil })
-		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged))
+		return errors.Join(err, restoreErr, a.rollbackRuntimeConfig(previous, httpChanged, agentChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged))
 	}
 	return nil
 }
 
-func (a *App) applyRuntimeConfig(next config.Config, typeSafeCandidate typeSafeRuntimeCandidate, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged bool) error {
+func (a *App) applyRuntimeConfig(next config.Config, typeSafeCandidate typeSafeRuntimeCandidate, httpChanged, agentChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged bool) error {
+	if agentChanged {
+		if err := application.ConfigureManagedAgentRuntime(a.Tools.Agents, next); err != nil {
+			return err
+		}
+	}
 	if integrationsChanged {
 		if err := a.Tools.SyncIntegrations(next.Integrations); err != nil {
 			return err
+		}
+		if a.chatGPTWeb != nil {
+			if err := a.chatGPTWeb.ReconcileRuntimeConfig(a.runtimeCtx); err != nil {
+				return err
+			}
 		}
 	}
 	if permissionsChanged {
@@ -85,13 +97,19 @@ func (a *App) applyRuntimeConfig(next config.Config, typeSafeCandidate typeSafeR
 	return a.commitTypeSafe(typeSafeCandidate)
 }
 
-func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged bool) error {
+func (a *App) rollbackRuntimeConfig(previous config.Config, httpChanged, agentChanged, integrationsChanged, permissionsChanged, shellPathChanged, semanticApprovalChanged, telemetryChanged, telegramChanged, tunnelChanged bool) error {
 	var rollbackErr error
 	if tunnelChanged && a.Tunnel != nil {
 		rollbackErr = errors.Join(rollbackErr, a.Tunnel.Reconcile(previous.Tunnel, cachedTunnelMetadata(previous.Tunnel), a.running))
 	}
 	if integrationsChanged {
 		rollbackErr = errors.Join(rollbackErr, a.Tools.SyncIntegrations(previous.Integrations))
+		if a.chatGPTWeb != nil {
+			rollbackErr = errors.Join(rollbackErr, a.chatGPTWeb.ReconcileRuntimeConfig(a.runtimeCtx))
+		}
+	}
+	if agentChanged {
+		rollbackErr = errors.Join(rollbackErr, application.ConfigureManagedAgentRuntime(a.Tools.Agents, previous))
 	}
 	if permissionsChanged {
 		a.Tools.SetGlobalAllowDirs(previous.Permissions.AllowDirs)

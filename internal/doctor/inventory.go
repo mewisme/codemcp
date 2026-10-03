@@ -25,34 +25,36 @@ type Definition struct {
 }
 
 const (
-	ComponentInstallCurrent       ComponentID = "install.current"
-	ComponentConfigOverview       ComponentID = "config.overview"
-	ComponentWorkspaceRegistry    ComponentID = "workspace.registry"
-	ComponentWorkspaceLocalState  ComponentID = "workspace.local_state"
-	ComponentSecretInventory      ComponentID = "storage.secrets"
-	ComponentServiceUser          ComponentID = "service.user"
-	ComponentServiceSystem        ComponentID = "service.system"
-	ComponentRuntimeControl       ComponentID = "runtime.control"
-	ComponentRuntimeListeners     ComponentID = "runtime.listeners"
-	ComponentShellProvider        ComponentID = "shell.provider"
-	ComponentIntegrationRTK       ComponentID = "integration.rtk"
-	ComponentIntegrationCodeGraph ComponentID = "integration.codegraph"
-	ComponentIntegrationTypeSafe  ComponentID = "integration.typesafe"
-	ComponentLLMProvider          ComponentID = "llm.provider"
-	ComponentUpstreamHealth       ComponentID = "upstream.health"
-	ComponentOAuthStatus          ComponentID = "oauth.status"
-	ComponentNetworkExposure      ComponentID = "network.exposure"
-	ComponentMCPRegistry          ComponentID = "mcp.registry"
-	ComponentMCPOpenAIProfile     ComponentID = "mcp.openai_profile"
-	ComponentTunnelSecureMCP      ComponentID = "tunnel.secure_mcp"
-	ComponentCheckpointHistory    ComponentID = "checkpoint.history"
-	ComponentCompletionHistory    ComponentID = "completion.history"
-	ComponentApprovalLifecycle    ComponentID = "approval.lifecycle"
-	ComponentBackgroundDelivery   ComponentID = "background.delivery"
-	ComponentNotificationsHealth  ComponentID = "notifications.health"
-	ComponentTelegramHealth       ComponentID = "telegram.health"
-	ComponentUpdateAvailability   ComponentID = "update.availability"
-	ComponentMigrationReadiness   ComponentID = "migration.readiness"
+	ComponentInstallCurrent        ComponentID = "install.current"
+	ComponentConfigOverview        ComponentID = "config.overview"
+	ComponentWorkspaceRegistry     ComponentID = "workspace.registry"
+	ComponentWorkspaceLocalState   ComponentID = "workspace.local_state"
+	ComponentSecretInventory       ComponentID = "storage.secrets"
+	ComponentServiceUser           ComponentID = "service.user"
+	ComponentServiceSystem         ComponentID = "service.system"
+	ComponentRuntimeControl        ComponentID = "runtime.control"
+	ComponentRuntimeListeners      ComponentID = "runtime.listeners"
+	ComponentShellProvider         ComponentID = "shell.provider"
+	ComponentIntegrationRTK        ComponentID = "integration.rtk"
+	ComponentIntegrationCodeGraph  ComponentID = "integration.codegraph"
+	ComponentIntegrationTypeSafe   ComponentID = "integration.typesafe"
+	ComponentIntegrationBrowser    ComponentID = "integration.browser"
+	ComponentIntegrationChatGPTWeb ComponentID = "integration.chatgpt_web"
+	ComponentLLMProvider           ComponentID = "llm.provider"
+	ComponentUpstreamHealth        ComponentID = "upstream.health"
+	ComponentOAuthStatus           ComponentID = "oauth.status"
+	ComponentNetworkExposure       ComponentID = "network.exposure"
+	ComponentMCPRegistry           ComponentID = "mcp.registry"
+	ComponentMCPOpenAIProfile      ComponentID = "mcp.openai_profile"
+	ComponentTunnelSecureMCP       ComponentID = "tunnel.secure_mcp"
+	ComponentCheckpointHistory     ComponentID = "checkpoint.history"
+	ComponentCompletionHistory     ComponentID = "completion.history"
+	ComponentApprovalLifecycle     ComponentID = "approval.lifecycle"
+	ComponentBackgroundDelivery    ComponentID = "background.delivery"
+	ComponentNotificationsHealth   ComponentID = "notifications.health"
+	ComponentTelegramHealth        ComponentID = "telegram.health"
+	ComponentUpdateAvailability    ComponentID = "update.availability"
+	ComponentMigrationReadiness    ComponentID = "migration.readiness"
 )
 
 var canonicalInventory = []Definition{
@@ -69,6 +71,8 @@ var canonicalInventory = []Definition{
 	{ID: ComponentIntegrationRTK, Domain: "integrations", Owner: "integrations.rtk", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentIntegrationCodeGraph, Domain: "integrations", Owner: "integrations.codegraph", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentIntegrationTypeSafe, Domain: "integrations", Owner: "application.typesafe", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
+	{ID: ComponentIntegrationBrowser, Domain: "integrations", Owner: "application.browser", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
+	{ID: ComponentIntegrationChatGPTWeb, Domain: "integrations", Owner: "application.chatgpt-web", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentLLMProvider, Domain: "llm", Owner: "application.llm-service", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
 	{ID: ComponentUpstreamHealth, Domain: "upstream", Owner: "upstream", Probe: ProbeBoundedNetworkRead, Source: SourceDomainReadModel, Timeout: 8 * time.Second},
 	{ID: ComponentOAuthStatus, Domain: "oauth", Owner: "oauth", Probe: ProbeLocalRead, Source: SourceDomainReadModel},
