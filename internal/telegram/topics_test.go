@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/notification"
 )
@@ -527,6 +530,87 @@ func TestApprovalResolvedDeleteFailureDoesNotSendFreshMessage(t *testing.T) {
 	}
 	if store.get(42, "req_1") != 9 {
 		t.Fatal("delete failure cleared retryable approval message reference")
+	}
+}
+
+func TestApprovalCallbackAndResolvedNotificationOrderingNeverDuplicatesFreshCard(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		notificationFirst bool
+	}{
+		{name: "callback-before-notification"},
+		{name: "notification-before-callback", notificationFirst: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			api := &topicTestAPI{}
+			topics := newTopicStore(root)
+			if err := topics.put(42, TopicRequests, 120); err != nil {
+				t.Fatal(err)
+			}
+			runtime := &Runtime{
+				root: root, api: api, topics: topics, generation: 7,
+				config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}, TopicsEnabled: true},
+				health: Health{Running: true, Enabled: true, AuthorizationConfigured: true, TopicsEffective: true},
+				notificationRenderer: func(_ context.Context, _ int64, message notification.Message) (Screen, bool, error) {
+					return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: string(message.Kind)})}, true, nil
+				},
+			}
+			if err := runtime.SendNotification(t.Context(), notification.Message{
+				Kind: notification.KindApprovalPending, RequestID: "req_race",
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if runtime.approvalMessages == nil || runtime.approvalMessages.get(42, "req_race") != 1 {
+				t.Fatal("pending approval reference was not persisted")
+			}
+
+			ui, err := NewInterface(InterfaceOptions{
+				Runtime:    runtime,
+				Dispatcher: &recordingDispatcher{result: approval.Request{ID: "req_race", Status: approval.StatusApproved}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 7}
+			button, err := ui.stateButton(owner, "Approve once", CallbackOpen, ActionState{
+				Route: RouteOperation, Back: RouteRequests, Operation: capability.RequestApprove, ResourceID: "req_race",
+				Input: application.RequestResolutionInput{ID: "req_race"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			callback := func() {
+				ui.handleCallback(t.Context(), Update{CallbackQuery: &CallbackQuery{
+					ID: "cb_race", From: User{ID: 42}, Data: button.CallbackData,
+					Message: &Message{MessageID: 1, Chat: Chat{ID: 42, Type: "private"}},
+				}})
+			}
+			resolved := func() {
+				if err := runtime.SendNotification(t.Context(), notification.Message{
+					Kind: notification.KindApprovalResolved, RequestID: "req_race",
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if test.notificationFirst {
+				resolved()
+				callback()
+			} else {
+				callback()
+				resolved()
+			}
+
+			if got := len(api.richThreadScreens); got != 2 {
+				t.Fatalf("fresh rich deliveries=%d want pending+one resolved", got)
+			}
+			if got := runtime.approvalMessages.get(42, "req_race"); got != 0 {
+				t.Fatalf("terminal approval reference=%d want=0", got)
+			}
+			if len(api.editedMessageIDs) != 0 {
+				t.Fatalf("terminal race edited pending card: %v", api.editedMessageIDs)
+			}
+		})
 	}
 }
 

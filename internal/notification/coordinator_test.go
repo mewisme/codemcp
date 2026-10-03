@@ -127,6 +127,37 @@ func TestApprovalExplanationRefreshTargetsTelegramOnly(t *testing.T) {
 	}
 }
 
+func TestApprovalTerminalEventsShareResolvedNotificationKind(t *testing.T) {
+	tests := []struct {
+		name  string
+		event string
+		body  string
+	}{
+		{name: "approved", event: approval.EventApproved, body: "was approved"},
+		{name: "denied", event: approval.EventDenied, body: "was denied"},
+		{name: "expired", event: approval.EventExpired, body: "expired"},
+		{name: "cancelled", event: approval.EventCancelled, body: "was cancelled"},
+		{name: "revoked", event: approval.EventRevoked, body: "grant was revoked"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			message, ok := approvalMessage(approval.Event{
+				Name: test.event, Subject: approval.EventSubjectRequest, RequestID: "req_terminal",
+				WorkspaceID: "ws_1", TargetTool: "run_command",
+			})
+			if !ok {
+				t.Fatal("terminal approval event was not mapped")
+			}
+			if message.Kind != KindApprovalResolved || message.RequestID != "req_terminal" {
+				t.Fatalf("terminal message=%#v", message)
+			}
+			if !strings.Contains(message.Body, test.body) {
+				t.Fatalf("terminal body=%q want fragment=%q", message.Body, test.body)
+			}
+		})
+	}
+}
+
 func TestCoordinatorConsumesCanonicalEventsWithoutConsumingReviewSurface(t *testing.T) {
 	manager := approval.NewManager("instance-notify")
 	reviewer := manager.Events().Subscribe()
