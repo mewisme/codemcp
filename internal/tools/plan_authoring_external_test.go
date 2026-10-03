@@ -440,6 +440,115 @@ func TestProjectContextPlanExecutionFailsClosedForAmbiguityCompletionAndConflict
 	assertToolErrorContains(t, done, err, "no incomplete phase")
 }
 
+func TestCreatePlanExecutionProgressClosesOnlyAfterSuccessfulCanonicalWrite(t *testing.T) {
+	runtime, workspaceID, _ := newPlanAuthoringRuntime(t)
+	planBody, orderBody := agentTwoPhasePlanFixture(false, false, "")
+	createdResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "progress-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || createdResult.IsError {
+		t.Fatalf("create plan err=%v result=%#v", err, createdResult)
+	}
+	created := createdResult.StructuredContent.(application.PlanAuthoringResult)
+	ctx := tools.WithMCPSessionID(context.Background(), "progress-session")
+	boundResult, err := runtime.Call(ctx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "progress-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || boundResult.IsError {
+		t.Fatalf("bind execution err=%v result=%#v", err, boundResult)
+	}
+
+	editedPlan, editedOrder := agentTwoPhasePlanFixture(false, false, "future-note")
+	dryRun, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "progress-plan",
+		"plan_content": editedPlan, "implementation_order": editedOrder,
+		"expected_content_id": created.ContentID, "dry_run": true,
+	})
+	if err != nil || dryRun.IsError {
+		t.Fatalf("dry-run update err=%v result=%#v", err, dryRun)
+	}
+	stale, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "progress-plan",
+		"plan_content": editedPlan, "implementation_order": editedOrder,
+		"expected_content_id": "sha256:" + strings.Repeat("0", 64),
+	})
+	assertToolErrorContains(t, stale, err, "bound baseline")
+
+	runtime.SetPlanAuthoringProvider(rejectingPlanAuthoringProvider{})
+	providerFailure, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "progress-plan",
+		"plan_content": editedPlan, "implementation_order": editedOrder,
+		"expected_content_id": created.ContentID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !providerFailure.IsError {
+		t.Fatalf("provider failure unexpectedly succeeded: %#v", providerFailure)
+	}
+	runtime.SetPlanAuthoringProvider(application.NewAgentPlanAuthoringProvider(runtime.Workspaces, runtime.InstructionChanges))
+
+	editResult, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "progress-plan",
+		"plan_content": editedPlan, "implementation_order": editedOrder,
+		"expected_content_id": created.ContentID,
+	})
+	if err != nil || editResult.IsError {
+		t.Fatalf("non-progress update err=%v result=%#v", err, editResult)
+	}
+	edited := editResult.StructuredContent.(application.PlanAuthoringResult)
+	completedPlan, completedOrder := agentTwoPhasePlanFixture(true, false, "future-note")
+	completedResult, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "progress-plan",
+		"plan_content": completedPlan, "implementation_order": completedOrder,
+		"expected_content_id": edited.ContentID,
+	})
+	if err != nil || completedResult.IsError {
+		t.Fatalf("phase completion update err=%v result=%#v", err, completedResult)
+	}
+	completed := completedResult.StructuredContent.(application.PlanAuthoringResult)
+	if completed.CompletedPhaseCount != 1 || completed.NextPhase == nil || completed.NextPhase.ID != "1B" {
+		t.Fatalf("completed result=%#v", completed)
+	}
+	afterClosePlan, afterCloseOrder := agentTwoPhasePlanFixture(true, false, "future-note-after-close")
+	afterClose, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "progress-plan",
+		"plan_content": afterClosePlan, "implementation_order": afterCloseOrder,
+		"expected_content_id": completed.ContentID,
+	})
+	assertToolErrorContains(t, afterClose, err, "already closed")
+}
+
+func TestCreatePlanExecutionRejectsMultiplePhaseCompletion(t *testing.T) {
+	runtime, workspaceID, _ := newPlanAuthoringRuntime(t)
+	planBody, orderBody := agentTwoPhasePlanFixture(false, false, "")
+	createdResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "single-phase-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || createdResult.IsError {
+		t.Fatalf("create plan err=%v result=%#v", err, createdResult)
+	}
+	created := createdResult.StructuredContent.(application.PlanAuthoringResult)
+	ctx := tools.WithMCPSessionID(context.Background(), "single-phase-session")
+	boundResult, err := runtime.Call(ctx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "single-phase-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || boundResult.IsError {
+		t.Fatalf("bind execution err=%v result=%#v", err, boundResult)
+	}
+	multiPlan, multiOrder := agentTwoPhasePlanFixture(true, true, "")
+	result, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "single-phase-plan",
+		"plan_content": multiPlan, "implementation_order": multiOrder,
+		"expected_content_id": created.ContentID,
+	})
+	assertToolErrorContains(t, result, err, "only bound phase")
+}
+
 func assertToolErrorContains(t *testing.T, result tools.Result, err error, expected string) {
 	t.Helper()
 	if err != nil {
@@ -482,4 +591,21 @@ func agentPlanFixture(completed bool) (string, string) {
 	}
 	return "# Persisted plan\n\n## Goal\nPersist safely.\n\n## Phase 1A - Persist state\n\n- [" + mark + "] Persist the state.\n\n## Acceptance\nState is durable.",
 		"## Execution rules\nComplete the phase.\n\n## Why this order\nPersistence comes first.\n\n## Ordered phases\n\n- [" + mark + "] Phase 1A - Persist state\n\n## Terminal acceptance\n\n- [" + mark + "] Durable-state validation passes."
+}
+
+func agentTwoPhasePlanFixture(firstDone, secondDone bool, futureNote string) (string, string) {
+	first, second := " ", " "
+	if firstDone {
+		first = "x"
+	}
+	if secondDone {
+		second = "x"
+	}
+	plan := "# Persisted plan\n\n## Goal\nPersist safely.\n\n## Phase 1A - Persist state\n\n- [" + first + "] Persist the state.\n\n## Phase 1B - Verify state\n\n- [" + second + "] Verify the state."
+	if futureNote != "" {
+		plan += "\n- [ ] " + futureNote + "."
+	}
+	plan += "\n\n## Acceptance\nState is durable."
+	order := "## Execution rules\nComplete one phase.\n\n## Why this order\nPersistence comes first.\n\n## Ordered phases\n\n- [" + first + "] Phase 1A - Persist state\n- [" + second + "] Phase 1B - Verify state\n\n## Terminal acceptance\n\n- [ ] Durable-state validation passes."
+	return plan, order
 }

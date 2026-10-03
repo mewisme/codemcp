@@ -260,7 +260,8 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 			}
 			binding, err := planExecutions.Bind(sessionKey, plandoc.ExecutionBinding{
 				WorkspaceID: item.ID, PlanName: target.Name, BaselineContentID: target.ContentID,
-				Phase: plandoc.Phase{ID: target.NextPhase.ID, Title: target.NextPhase.Title},
+				CompletedPhases: target.CompletedPhaseCount,
+				Phase:           plandoc.Phase{ID: target.NextPhase.ID, Title: target.NextPhase.Title},
 			})
 			if err != nil {
 				return Result{}, err

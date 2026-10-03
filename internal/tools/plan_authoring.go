@@ -6,6 +6,8 @@ import (
 	"errors"
 	"strings"
 	"sync"
+
+	plandoc "go.mewis.me/codemcp/internal/plan"
 )
 
 const (
@@ -53,6 +55,24 @@ func RegisterPlanAuthoringTool(registry *Registry, runtime *Runtime) {
 		OutputSchema: json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"name":{"type":"string"},"content_id":{"type":"string","pattern":"^sha256:[0-9a-f]{64}$"},"status":{"type":"string","enum":["pending","in_progress","completed"]},"phase_count":{"type":"integer","minimum":1,"maximum":128},"completed_phase_count":{"type":"integer","minimum":0,"maximum":128},"next_phase":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string"}},"required":["id","title"],"additionalProperties":false},"dry_run":{"type":"boolean"}},"required":["path","name","content_id","status","phase_count","completed_phase_count","dry_run"],"additionalProperties":false}`),
 		Annotations:  ToolAnnotations(RiskEdit),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
+		var transition plandoc.ExecutionTransition
+		transitionPrepared := false
+		dryRun, _ := args["dry_run"].(bool)
+		if runtime != nil && runtime.PlanExecutions != nil && stringArgument(args, "mode") == "update" {
+			sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+			workspaceID := stringArgument(args, "workspace_id")
+			if _, ok := runtime.PlanExecutions.Lookup(sessionKey, workspaceID); ok {
+				next, err := plandoc.ParseParts(stringArgument(args, "plan_content"), stringArgument(args, "implementation_order"))
+				if err != nil {
+					return boundedPlanAuthoringError(err), nil
+				}
+				transition, err = runtime.PlanExecutions.PrepareUpdate(sessionKey, workspaceID, stringArgument(args, "name"), stringArgument(args, "expected_content_id"), next)
+				if err != nil {
+					return boundedPlanAuthoringError(err), nil
+				}
+				transitionPrepared = true
+			}
+		}
 		provider := runtime.planAuthoringProvider()
 		if provider == nil {
 			return boundedPlanAuthoringError(errors.New("plan authoring is unavailable")), nil
@@ -60,6 +80,11 @@ func RegisterPlanAuthoringTool(registry *Registry, runtime *Runtime) {
 		value, err := provider.AuthorPlan(ctx, cloneMap(args))
 		if err != nil {
 			return boundedPlanAuthoringError(err), nil
+		}
+		if transitionPrepared && !dryRun {
+			if err := runtime.PlanExecutions.CommitUpdate(mcpSessionStateKey(MCPSessionID(ctx)), transition); err != nil {
+				return boundedPlanAuthoringError(err), nil
+			}
 		}
 		return JSONResult(value), nil
 	})
