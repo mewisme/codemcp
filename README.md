@@ -23,11 +23,11 @@ CodeMCP runs locally and gives supported AI clients controlled access to explici
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/overview-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="docs/architecture/overview-light.svg">
-    <img src="docs/architecture/overview-light.svg" alt="CodeMCP system architecture overview" width="100%">
+    <img src="docs/architecture/overview-light.svg" alt="CodeMCP runtime, workspace, policy, operations, and integration architecture" width="100%">
   </picture>
 </p>
 
-One runtime owns the canonical tool schemas, workspace scope, approvals, config, secrets, history, and integrations. MCP profiles only change the client-facing projection:
+One runtime owns canonical feature execution. Workspace scope and permissions constrain host access, while instruction context, approvals, local control surfaces, Telegram, and managed integrations feed the same runtime. MCP profiles only change the client-facing projection:
 
 1. **OpenAI profile** — used by OpenAI Secure MCP Tunnel and available to direct HTTP clients with `--profile openai`.
 2. **Base profile** — standards-oriented generic MCP projection and the default for direct local MCP transports.

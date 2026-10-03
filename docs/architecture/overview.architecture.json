@@ -2,227 +2,45 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "CodeMCP System Overview",
-    "subtitle": "Workspace-bound MCP runtime, control surfaces, transports, integrations, and state",
-    "locale": "en",
-    "visual_preset": "blueprint",
-    "animation": "trace",
+    "title": "CodeMCP — System Overview",
     "quality_profile": "showcase",
-    "viewBox": [1460, 800],
     "views": [
-      {
-        "id": "openai-path",
-        "label": "OpenAI path",
-        "focus": ["chatgpt", "tunnel", "profiles", "runtime", "workspaces", "tools"],
-        "note": "ChatGPT reaches the local runtime through OpenAI Secure MCP Tunnel and the OpenAI projection."
-      },
-      {
-        "id": "base-path",
-        "label": "Base MCP path",
-        "focus": ["generic_clients", "profiles", "runtime", "workspaces", "tools"],
-        "note": "Generic clients use local stdio or Streamable HTTP with the Base profile by default."
-      },
-      {
-        "id": "local-ownership",
-        "label": "Local ownership",
-        "focus": ["control", "runtime", "workspaces", "tools", "state"],
-        "note": "Control, authorization, workspace scope, execution, and durable state remain local."
-      },
-      {
-        "id": "extensions",
-        "label": "Extensions",
-        "focus": ["runtime", "integrations", "providers", "upstreams"],
-        "note": "Optional integrations, semantic providers, and upstream MCP servers extend the same runtime."
-      }
+      {"id":"agent-path","label":"Agent request path","focus":["agents","mcp","runtime","workspace","machine"],"note":"Luồng chính từ AI agent vào máy qua workspace-bound execution."},
+      {"id":"policy-path","label":"Context & policy","focus":["instructions","approval","runtime","workspace"],"note":"Rules, Skills, Plans và approval semantics điều khiển cách tool được thực thi."},
+      {"id":"ops-path","label":"Operations","focus":["cli","service","telegram","integrations","runtime"],"note":"CLI/TUI, service runtime, Telegram và managed integrations cùng hội tụ vào runtime canonical."}
     ]
   },
   "components": [
-    {
-      "id": "chatgpt",
-      "type": "external",
-      "label": "ChatGPT",
-      "sublabel": "OpenAI MCP client",
-      "pos": [35, 125],
-      "size": [150, 66]
-    },
-    {
-      "id": "generic_clients",
-      "type": "external",
-      "label": "MCP Clients",
-      "sublabel": "Claude · Cursor · agents",
-      "pos": [35, 330],
-      "size": [150, 66]
-    },
-    {
-      "id": "tunnel",
-      "type": "cloud",
-      "label": "OpenAI Secure MCP Tunnel",
-      "sublabel": "outbound-only transport",
-      "pos": [245, 125],
-      "size": [190, 76],
-      "sources": [
-        {"path": "internal/tunnel/tunnel.go", "label": "tunnel runtime"}
-      ]
-    },
-    {
-      "id": "profiles",
-      "type": "security",
-      "label": "MCP Profile Projection",
-      "sublabel": "OpenAI first · Base generic",
-      "pos": [500, 225],
-      "size": [180, 76],
-      "sources": [
-        {"path": "internal/mcp/profile.go", "label": "base profile"},
-        {"path": "internal/mcp/openai_profile.go", "label": "OpenAI profile"}
-      ]
-    },
-    {
-      "id": "runtime",
-      "type": "backend",
-      "label": "CodeMCP Runtime",
-      "sublabel": "single local authority",
-      "tag": "Go binary",
-      "pos": [750, 225],
-      "size": [175, 82],
-      "sources": [
-        {"path": "internal/app/app.go", "label": "runtime composition"}
-      ]
-    },
-    {
-      "id": "control",
-      "type": "frontend",
-      "label": "Local Control Surfaces",
-      "sublabel": "CLI · TUI · Admin · Telegram",
-      "pos": [735, 55],
-      "size": [205, 72],
-      "sources": [
-        {"path": "internal/capability/catalog.go", "label": "operation catalog"}
-      ]
-    },
-    {
-      "id": "workspaces",
-      "type": "security",
-      "label": "Registered Workspaces",
-      "sublabel": "explicit ws_* scopes",
-      "pos": [1010, 145],
-      "size": [190, 72],
-      "sources": [
-        {"path": "internal/workspace/workspace.go", "label": "workspace authority"}
-      ]
-    },
-    {
-      "id": "tools",
-      "type": "backend",
-      "label": "Execution & Tools",
-      "sublabel": "filesystem · shell · Git · process",
-      "pos": [1010, 300],
-      "size": [190, 76],
-      "sources": [
-        {"path": "internal/tools/runtime.go", "label": "tool runtime"}
-      ]
-    },
-    {
-      "id": "state",
-      "type": "database",
-      "label": "Local State",
-      "sublabel": "config · secrets · history · memory",
-      "pos": [735, 505],
-      "size": [205, 76],
-      "sources": [
-        {"path": "internal/config/config.go", "label": "config"},
-        {"path": "internal/secretstore/store.go", "label": "secrets"}
-      ]
-    },
-    {
-      "id": "integrations",
-      "type": "backend",
-      "label": "Integrations",
-      "sublabel": "RTK · CodeGraph · TypeSafe · CF",
-      "pos": [1010, 480],
-      "size": [190, 76],
-      "sources": [
-        {"path": "internal/integrations/integrations.go", "label": "integration config"}
-      ]
-    },
-    {
-      "id": "providers",
-      "type": "external",
-      "label": "LLM / Semantic Providers",
-      "sublabel": "Ollama · SystemOne",
-      "pos": [1260, 480],
-      "size": [170, 76],
-      "sources": [
-        {"path": "internal/llm/client.go", "label": "LLM client"},
-        {"path": "internal/integrations/typesafe/systemone.go", "label": "semantic provider"}
-      ]
-    },
-    {
-      "id": "upstreams",
-      "type": "external",
-      "label": "Upstream MCP Servers",
-      "sublabel": "optional aggregated tools",
-      "pos": [1260, 300],
-      "size": [170, 76],
-      "sources": [
-        {"path": "internal/upstream/manager.go", "label": "upstream manager"}
-      ]
-    }
+    {"id":"agents","type":"external","label":"AI Agents","sublabel":"ChatGPT / Claude / clients","pos":[40,285],"size":[150,72]},
+    {"id":"mcp","type":"backend","label":"MCP Server","sublabel":"Base + OpenAI profiles","pos":[260,285],"size":[150,72]},
+    {"id":"runtime","type":"backend","label":"Tool Runtime","sublabel":"Canonical feature execution","pos":[500,285],"size":[160,72]},
+    {"id":"workspace","type":"security","label":"Workspace Boundary","sublabel":"Bound workspace + permissions","pos":[750,285],"size":[170,72]},
+    {"id":"machine","type":"external","label":"Host Machine","sublabel":"Filesystem / shell / local tools","pos":[1010,285],"size":[170,72]},
+    {"id":"instructions","type":"backend","label":"Instruction Context","sublabel":"Rules / Skills / Plans / Memory","pos":[500,80],"size":[175,72]},
+    {"id":"approval","type":"security","label":"Approval & Semantics","sublabel":"Fail-closed gated actions","pos":[750,80],"size":[175,72]},
+    {"id":"cli","type":"frontend","label":"cm CLI / TUI","sublabel":"Local control surface","pos":[40,500],"size":[150,72]},
+    {"id":"service","type":"backend","label":"Managed Service","sublabel":"Runtime lifecycle + tunnel","pos":[270,500],"size":[160,72]},
+    {"id":"telegram","type":"external","label":"Telegram","sublabel":"Topics / approvals / notifications","pos":[500,500],"size":[175,72]},
+    {"id":"integrations","type":"backend","label":"Managed Integrations","sublabel":"rtk / codegraph / cf","pos":[750,500],"size":[175,72]}
   ],
   "boundaries": [
-    {
-      "kind": "region",
-      "label": "Your machine",
-      "wraps": ["profiles", "runtime", "control", "workspaces", "tools", "state", "integrations"],
-      "pad": 26
-    },
-    {
-      "kind": "security-group",
-      "label": "Workspace execution boundary",
-      "wraps": ["workspaces", "tools"],
-      "pad": 18
-    }
+    {"kind":"security-group","label":"CodeMCP trust boundary","wraps":["mcp","runtime","workspace","instructions","approval","service","integrations"],"pad":28}
   ],
   "connections": [
-    {"from": "chatgpt", "to": "tunnel", "label": "MCP", "variant": "emphasis"},
-    {"from": "tunnel", "to": "profiles", "label": "OpenAI profile", "variant": "security"},
-    {"from": "generic_clients", "to": "profiles", "label": "stdio / HTTP", "variant": "emphasis"},
-    {"from": "profiles", "to": "runtime", "label": "canonical operations", "variant": "emphasis"},
-    {"from": "control", "to": "runtime", "label": "operate locally"},
-    {"from": "runtime", "to": "workspaces", "label": "resolve scope", "variant": "security"},
-    {"from": "runtime", "to": "tools", "label": "dispatch"},
-    {"from": "workspaces", "to": "tools", "label": "authorize paths", "variant": "security"},
-    {"from": "runtime", "to": "state", "label": "persist"},
-    {"from": "runtime", "to": "integrations", "label": "optional capabilities"},
-    {"from": "integrations", "to": "providers", "label": "semantic / inference", "variant": "dashed"},
-    {"from": "runtime", "to": "upstreams", "label": "aggregate MCP", "variant": "dashed"}
+    {"id":"agent-mcp","from":"agents","to":"mcp","label":"MCP requests","variant":"emphasis"},
+    {"id":"mcp-runtime","from":"mcp","to":"runtime","label":"typed tools / resources","variant":"emphasis","labelDy":-30},
+    {"id":"runtime-workspace","from":"runtime","to":"workspace","label":"bound execution","variant":"security"},
+    {"id":"workspace-machine","from":"workspace","to":"machine","label":"filesystem / shell","variant":"emphasis","labelDy":-30},
+    {"id":"instructions-runtime","from":"instructions","to":"runtime","label":"context + workflows","fromSide":"bottom","toSide":"top","labelDy":24},
+    {"id":"approval-runtime","from":"approval","to":"runtime","label":"authorize gated actions","variant":"security","fromSide":"bottom","toSide":"top"},
+    {"id":"cli-service","from":"cli","to":"service","label":"install / serve / restart","labelDy":60},
+    {"id":"service-runtime","from":"service","to":"runtime","label":"managed backend","fromSide":"top","toSide":"bottom"},
+    {"id":"runtime-telegram","from":"runtime","to":"telegram","label":"notifications / approvals","variant":"dashed","fromSide":"bottom","toSide":"top","labelAt":[680,390]},
+    {"id":"integrations-runtime","from":"integrations","to":"runtime","label":"local integration capabilities","fromSide":"top","toSide":"bottom"}
   ],
   "cards": [
-    {
-      "dot": "cyan",
-      "title": "OpenAI-first path",
-      "items": [
-        "ChatGPT connects through OpenAI Secure MCP Tunnel",
-        "The OpenAI profile changes projection, not authorization authority",
-        "No public inbound MCP port is required for the default path"
-      ]
-    },
-    {
-      "dot": "emerald",
-      "title": "Workspace boundary",
-      "items": [
-        "Filesystem, shell, Git, and process work targets registered workspaces",
-        "Control guards and approvals remain local",
-        "Managed secrets stay outside ordinary structured config"
-      ]
-    },
-    {
-      "dot": "violet",
-      "title": "One runtime, optional extensions",
-      "items": [
-        "CLI, TUI, Admin, and Telegram operate the same application services",
-        "RTK, CodeGraph, TypeSafe, and upstream MCP servers extend the same runtime",
-        "Base profile remains available for generic MCP clients"
-      ]
-    }
+    {"dot":"cyan","title":"Canonical request path","items":["AI agent → MCP Server → Tool Runtime → Workspace Boundary → Host Machine","Workspace binding and permissions are enforced before host-side execution"]},
+    {"dot":"violet","title":"Instruction model","items":["Rules apply by always-apply or path/glob semantics","Skills are discovered dynamically and exact-loaded; Plans own persisted implementation workflow"]},
+    {"dot":"emerald","title":"Operations","items":["CLI/TUI manages local lifecycle","Telegram projects approvals, topics and completion signals","Managed integrations extend local capabilities without creating a second runtime owner"]}
   ]
 }
