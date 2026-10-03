@@ -81,6 +81,88 @@ func TestRichMessageHTMLUsesNativeBlockStructureInsteadOfWhitespaceLayout(t *tes
 	}
 }
 
+func TestRichExpandableGroupsStructuredChildrenAndUsesTelegramFallback(t *testing.T) {
+	rich := BuildRichPresentation(
+		RichBlock{Kind: RichHeading, Title: "Approval"},
+		RichBlock{
+			Kind:  RichExpandable,
+			Title: "AI explanation",
+			Children: []RichBlock{
+				{Kind: RichDetails, Text: "Summary <safe>"},
+				{Kind: RichList, Items: []string{"step one", "step two"}},
+				{Kind: RichCode, Text: "cm status"},
+				FieldsBlock("Effects", []string{"Files", "2"}, []string{"Risk", "Low"}),
+			},
+		},
+	)
+	if len(rich.Blocks) != 2 || len(rich.Blocks[1].Children) != 4 {
+		t.Fatalf("expandable normalization=%#v", rich.Blocks)
+	}
+	native := string(RichMessageHTML(rich))
+	wantNative := "<details><summary>AI explanation</summary><p>Summary &lt;safe&gt;</p>\n<ul><li>step one</li><li>step two</li></ul>\n<pre><code>cm status</code></pre>\n<h3>Effects</h3><table compact><tr><th>Files</th><td>2</td></tr><tr><th>Risk</th><td>Low</td></tr></table></details>"
+	if !strings.Contains(native, wantNative) {
+		t.Fatalf("expandable rich markup=%q", native)
+	}
+	fallback := RichFallback(rich)
+	html := string(fallback.HTML)
+	if !strings.Contains(html, "<blockquote expandable><b>AI explanation</b>") {
+		t.Fatalf("expandable fallback markup=%q", html)
+	}
+	for _, want := range []string{"Summary &lt;safe&gt;", "step one", "step two", "<pre>cm status</pre>", "<b>Files:</b> 2", "<b>Risk:</b> Low"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("expandable fallback missing %q: %q", want, html)
+		}
+	}
+	if !strings.Contains(fallback.Text, "AI explanation") || !strings.Contains(fallback.Text, "step two") || !strings.Contains(fallback.Text, "cm status") {
+		t.Fatalf("expandable plain fallback=%q", fallback.Text)
+	}
+}
+
+func TestRichExpandableNormalizesUnsupportedChildrenWithoutRecursion(t *testing.T) {
+	rich := BuildRichPresentation(RichBlock{
+		Kind:  RichExpandable,
+		Title: "Outer",
+		Children: []RichBlock{
+			{Kind: RichButtons, Buttons: [][]Button{{{Text: "Approve"}}}},
+			{Kind: RichCopy, Title: "ID", Text: "req_1", CopyText: "req_1"},
+			{Kind: RichQuote, Text: "nested quote"},
+			{
+				Kind:  RichExpandable,
+				Title: "Nested",
+				Children: []RichBlock{
+					{Kind: RichList, Items: []string{"kept"}},
+				},
+			},
+		},
+	})
+	children := rich.Blocks[0].Children
+	if len(children) != 2 || children[0].Kind != RichSection || children[0].Title != "Nested" || children[1].Kind != RichList {
+		t.Fatalf("normalized children=%#v", children)
+	}
+	native := string(RichMessageHTML(rich))
+	if strings.Count(native, "<details>") != 1 || strings.Contains(native, "Approve") || strings.Contains(native, "req_1") || strings.Contains(native, "nested quote") {
+		t.Fatalf("unsupported nested content leaked: %q", native)
+	}
+	if !strings.Contains(native, "<h3>Nested</h3>") || !strings.Contains(native, "<li>kept</li>") {
+		t.Fatalf("flattened nested content missing: %q", native)
+	}
+}
+
+func TestRichExpandableDoesNotChangeOrdinaryDetailsOrApplyLengthThreshold(t *testing.T) {
+	long := strings.Repeat("long detail ", 200)
+	rich := BuildRichPresentation(
+		RichBlock{Kind: RichDetails, Title: "Compact detail", Text: long},
+		RichBlock{Kind: RichExpandable, Title: "Grouped", Children: []RichBlock{{Kind: RichDetails, Text: long}}},
+	)
+	if rich.Blocks[0].Kind != RichDetails || rich.Blocks[0].Text != strings.TrimSpace(long) {
+		t.Fatalf("ordinary detail changed=%#v", rich.Blocks[0])
+	}
+	html := string(RichMessageHTML(rich))
+	if strings.Count(html, "<details>") != 2 || !strings.Contains(html, "<summary>Compact detail</summary>") || !strings.Contains(html, "<summary>Grouped</summary>") {
+		t.Fatalf("detail/expandable rendering=%q", html)
+	}
+}
+
 func TestScreenRenderingUsesBreadcrumbInRichAndHTMLFallback(t *testing.T) {
 	screen := Screen{
 		Rich:       BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "Workspace", Text: "Workspace detail"}),

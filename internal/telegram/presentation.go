@@ -12,20 +12,21 @@ const richPageSize = 12
 type RichBlockKind string
 
 const (
-	RichHeading  RichBlockKind = "heading"
-	RichSection  RichBlockKind = "section"
-	RichState    RichBlockKind = "state"
-	RichFields   RichBlockKind = "fields"
-	RichNotice   RichBlockKind = "notice"
-	RichList     RichBlockKind = "list"
-	RichTable    RichBlockKind = "table"
-	RichDetails  RichBlockKind = "details"
-	RichQuote    RichBlockKind = "quote"
-	RichCode     RichBlockKind = "code"
-	RichLink     RichBlockKind = "link"
-	RichDocument RichBlockKind = "document"
-	RichButtons  RichBlockKind = "buttons"
-	RichCopy     RichBlockKind = "copy"
+	RichHeading    RichBlockKind = "heading"
+	RichSection    RichBlockKind = "section"
+	RichState      RichBlockKind = "state"
+	RichFields     RichBlockKind = "fields"
+	RichNotice     RichBlockKind = "notice"
+	RichList       RichBlockKind = "list"
+	RichTable      RichBlockKind = "table"
+	RichDetails    RichBlockKind = "details"
+	RichExpandable RichBlockKind = "expandable"
+	RichQuote      RichBlockKind = "quote"
+	RichCode       RichBlockKind = "code"
+	RichLink       RichBlockKind = "link"
+	RichDocument   RichBlockKind = "document"
+	RichButtons    RichBlockKind = "buttons"
+	RichCopy       RichBlockKind = "copy"
 )
 
 type RichBlock struct {
@@ -38,6 +39,7 @@ type RichBlock struct {
 	Buttons      [][]Button
 	DocumentName string
 	CopyText     string
+	Children     []RichBlock
 	Tone         PresentationTone
 }
 
@@ -48,26 +50,54 @@ type RichPresentation struct {
 func BuildRichPresentation(blocks ...RichBlock) *RichPresentation {
 	out := make([]RichBlock, 0, len(blocks))
 	for _, block := range blocks {
-		block.Title = compactPresentationValue(block.Title)
-		block.Text = compactPresentationValue(block.Text)
-		block.CopyText = strings.TrimSpace(block.CopyText)
-		if block.Kind == RichCopy {
-			if block.CopyText == "" {
-				block.CopyText = block.Text
-			}
-			if !validCopyText(block.CopyText) {
-				block.CopyText = ""
-			}
-		}
-		if block.Kind == RichLink && block.LinkURL != "" {
-			parsed, err := url.Parse(block.LinkURL)
-			if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
-				block.LinkURL = ""
-			}
-		}
-		out = append(out, block)
+		out = append(out, normalizeRichBlock(block))
 	}
 	return &RichPresentation{Blocks: out}
+}
+
+func normalizeRichBlock(block RichBlock) RichBlock {
+	block.Title = compactPresentationValue(block.Title)
+	block.Text = compactPresentationValue(block.Text)
+	block.CopyText = strings.TrimSpace(block.CopyText)
+	if block.Kind == RichCopy {
+		if block.CopyText == "" {
+			block.CopyText = block.Text
+		}
+		if !validCopyText(block.CopyText) {
+			block.CopyText = ""
+		}
+	}
+	if block.Kind == RichLink && block.LinkURL != "" {
+		parsed, err := url.Parse(block.LinkURL)
+		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+			block.LinkURL = ""
+		}
+	}
+	if block.Kind == RichExpandable {
+		block.Children = normalizeExpandableChildren(block.Children)
+	} else {
+		block.Children = nil
+	}
+	return block
+}
+
+func normalizeExpandableChildren(children []RichBlock) []RichBlock {
+	out := make([]RichBlock, 0, len(children))
+	for _, child := range children {
+		child = normalizeRichBlock(child)
+		switch child.Kind {
+		case RichButtons, RichCopy, RichQuote:
+			continue
+		case RichExpandable:
+			if child.Title != "" {
+				out = append(out, RichBlock{Kind: RichSection, Title: child.Title, Text: child.Text})
+			}
+			out = append(out, child.Children...)
+		default:
+			out = append(out, child)
+		}
+	}
+	return out
 }
 
 func RichFallback(rich *RichPresentation) Presentation {
@@ -125,6 +155,8 @@ func RichFallback(rich *RichPresentation) Presentation {
 			parts = append(parts, PresentationPart{Text: label + ": " + block.LinkURL, HTML: SafeHTML("<a href=\"" + EscapeText(block.LinkURL) + "\">" + EscapeText(label) + "</a>")})
 		case RichDetails:
 			parts = append(parts, DetailBlock(block.Title, block.Text))
+		case RichExpandable:
+			parts = append(parts, richExpandableFallback(block))
 		case RichDocument:
 			parts = append(parts, MetadataBlock(MetadataItem{Label: "Document", Value: block.DocumentName}, MetadataItem{Label: "Detail", Value: block.Text}))
 		case RichButtons:
@@ -224,6 +256,13 @@ func richBlockHTML(block RichBlock) string {
 			body = richParagraphHTML(text)
 		}
 		return "<details><summary>" + richInlineHTML(title) + "</summary>" + body + "</details>"
+	case RichExpandable:
+		title := strings.TrimSpace(block.Title)
+		children := richExpandableChildrenHTML(block.Children)
+		if title == "" {
+			return children
+		}
+		return "<details><summary>" + richInlineHTML(title) + "</summary>" + children + "</details>"
 	case RichQuote:
 		text := strings.TrimSpace(block.Text)
 		if text == "" {
@@ -294,6 +333,41 @@ func richBlockHTML(block RichBlock) string {
 		return "<p><b>" + richInlineHTML(label) + ":</b> <code>" + richInlineHTML(value) + "</code></p>"
 	default:
 		return ""
+	}
+}
+
+func richExpandableChildrenHTML(children []RichBlock) string {
+	parts := make([]string, 0, len(children))
+	for _, child := range children {
+		if rendered := richBlockHTML(child); rendered != "" {
+			parts = append(parts, rendered)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func richExpandableFallback(block RichBlock) PresentationPart {
+	title := strings.TrimSpace(block.Title)
+	children := RichFallback(&RichPresentation{Blocks: block.Children})
+	if title == "" {
+		return PresentationPart(children)
+	}
+	plain := make([]string, 0, 2)
+	plain = append(plain, title)
+	if body := strings.TrimSpace(children.Text); body != "" {
+		plain = append(plain, body)
+	}
+	html := make([]string, 0, 2)
+	html = append(html, "<b>"+EscapeText(title)+"</b>")
+	if body := strings.TrimSpace(string(children.HTML)); body != "" {
+		html = append(html, body)
+	}
+	if len(html) == 0 {
+		return PresentationPart{}
+	}
+	return PresentationPart{
+		Text: strings.Join(plain, "\n"),
+		HTML: SafeHTML("<blockquote expandable>" + strings.Join(html, "\n") + "</blockquote>"),
 	}
 }
 
