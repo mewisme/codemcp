@@ -58,45 +58,7 @@ func DiscoverUser(home string, policy instructionpolicy.Config) ([]Skill, error)
 }
 
 func DiscoverWithUser(workspaceRoot, home string, policy instructionpolicy.Config) ([]Skill, error) {
-	project, err := DiscoverForWorkspace(workspaceRoot, workspaceRoot)
-	if err != nil {
-		return nil, err
-	}
-	user, err := DiscoverUser(home, policy)
-	if err != nil {
-		return nil, err
-	}
-	ordered := make([]Skill, 0, len(project)+len(user))
-	for _, skill := range project {
-		if skill.Source == instructionsource.NativeSource && !IsBuiltin(skill) {
-			ordered = append(ordered, skill)
-		}
-	}
-	for _, skill := range user {
-		if skill.Source == instructionsource.NativeSource && !IsBuiltin(skill) {
-			ordered = append(ordered, skill)
-		}
-	}
-	for _, skill := range project {
-		if skill.Source != instructionsource.NativeSource && !IsBuiltin(skill) {
-			ordered = append(ordered, skill)
-		}
-	}
-	for _, skill := range user {
-		if skill.Source != instructionsource.NativeSource && !IsBuiltin(skill) {
-			ordered = append(ordered, skill)
-		}
-	}
-	seen := map[string]bool{}
-	result := make([]Skill, 0, len(ordered))
-	for _, skill := range ordered {
-		if IsReservedName(skill.Name) || seen[skill.Name] {
-			continue
-		}
-		seen[skill.Name] = true
-		result = append(result, skill)
-	}
-	return append(result, BuiltinSkills()...), nil
+	return DiscoverWithUserForWorkspace(workspaceRoot, workspaceRoot, home, policy)
 }
 
 func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, policy instructionpolicy.Config) ([]Skill, error) {
@@ -121,6 +83,11 @@ func DiscoverWithUserForWorkspace(projectRoot, workspaceRoot, home string, polic
 		}
 	}
 	for _, skill := range project {
+		if skill.Source != instructionsource.NativeSource && !IsBuiltin(skill) {
+			ordered = append(ordered, skill)
+		}
+	}
+	for _, skill := range user {
 		if skill.Source != instructionsource.NativeSource && !IsBuiltin(skill) {
 			ordered = append(ordered, skill)
 		}
@@ -163,6 +130,10 @@ func Load(workspaceRoot, name string, maxBytes int) (Loaded, error) {
 func LoadWithUser(workspaceRoot, home, name string, maxBytes int, policy instructionpolicy.Config) (Loaded, error) {
 	values, err := DiscoverWithUser(workspaceRoot, home, policy)
 	return loadFrom(values, err, name, maxBytes)
+}
+
+func LoadFromInventory(values []Skill, name string, maxBytes int) (Loaded, error) {
+	return loadFrom(values, nil, name, maxBytes)
 }
 
 func loadFrom(all []Skill, err error, name string, maxBytes int) (Loaded, error) {

@@ -90,7 +90,7 @@ func TestDiscoverForWorkspaceUsesSelectedProjectProvidersAndWorkspaceNativeFirst
 	}
 }
 
-func TestDiscoverWithUserForWorkspaceIgnoresLegacyProviderPolicyAndKeepsSourcePrecedence(t *testing.T) {
+func TestDiscoverWithUserForWorkspaceIncludesUserProvidersAndKeepsSourcePrecedence(t *testing.T) {
 	configRoot := t.TempDir()
 	t.Setenv("CM_CONFIG_DIR", configRoot)
 	workspaceRoot := t.TempDir()
@@ -120,19 +120,94 @@ func TestDiscoverWithUserForWorkspaceIgnoresLegacyProviderPolicyAndKeepsSourcePr
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 7 {
+	if len(values) != 8 {
 		t.Fatalf("skills=%#v", values)
 	}
-	want := []string{".cm", ".cm", ".agents", ".newagent", BuiltinSource, BuiltinSource, BuiltinSource}
+	want := []string{".cm", ".cm", ".agents", ".newagent", ".agents", BuiltinSource, BuiltinSource, BuiltinSource}
 	for i, source := range want {
 		if values[i].Source != source {
 			t.Fatalf("skill %d=%#v want source=%q", i, values[i], source)
 		}
 	}
-	for _, value := range values {
-		if value.Name == "home-provider" {
-			t.Fatalf("home provider leaked into workspace-scoped discovery: %#v", values)
+	if values[4].Name != "home-provider" {
+		t.Fatalf("home provider missing from effective inventory: %#v", values)
+	}
+}
+
+func TestDiscoverWithUserForWorkspaceDeduplicatesByCanonicalPrecedence(t *testing.T) {
+	configRoot := t.TempDir()
+	t.Setenv("CM_CONFIG_DIR", configRoot)
+	workspaceRoot := t.TempDir()
+	home := t.TempDir()
+
+	write := func(root, provider, description string) string {
+		t.Helper()
+		dir := filepath.Join(root, provider, "skills", "shared")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
 		}
+		path := filepath.Join(dir, "SKILL.md")
+		content := "---\nname: shared\ndescription: " + description + "\n---\n" + description + "\n"
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	workspacePath := write(workspaceRoot, ".cm", "workspace native")
+	write(configRoot, "", "user native")
+	write(workspaceRoot, ".agents", "workspace provider")
+	write(home, ".agents", "user provider")
+
+	values, err := DiscoverWithUserForWorkspace(workspaceRoot, workspaceRoot, home, instructionpolicy.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, value := range values {
+		if value.Name != "shared" {
+			continue
+		}
+		count++
+		if value.Path != workspacePath || value.Source != ".cm" || value.Description != "workspace native" {
+			t.Fatalf("shared winner=%#v", value)
+		}
+	}
+	if count != 1 {
+		t.Fatalf("shared count=%d inventory=%#v", count, values)
+	}
+}
+
+func TestLoadFromInventoryPreservesSafeExactLoading(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "SKILL.md")
+	content := "---\nname: exact\ndescription: exact\n---\nbody\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	values := []Skill{{Name: "exact", Description: "exact", Path: path, Source: ".cm"}}
+
+	loaded, err := LoadFromInventory(values, "exact", 500_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Content != content || loaded.Skill != values[0] || loaded.Truncated {
+		t.Fatalf("loaded=%#v", loaded)
+	}
+	if _, err := LoadFromInventory(values, "exa", 500_000); err == nil {
+		t.Fatal("non-exact skill name unexpectedly loaded")
+	}
+
+	target := filepath.Join(root, "target.md")
+	if err := os.WriteFile(target, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "linked.md")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if _, err := LoadFromInventory([]Skill{{Name: "linked", Path: link, Source: ".cm"}}, "linked", 500_000); err == nil || !strings.Contains(err.Error(), "regular non-symlink") {
+		t.Fatalf("symlink load error=%v", err)
 	}
 }
 

@@ -139,24 +139,7 @@ func loadCanonicalSkill(runtime *tools.Runtime, workspaceID, name string, maxByt
 }
 
 func loadResolvedSkill(values []skills.Skill, name string, maxBytes int) (skills.Loaded, error) {
-	for _, value := range values {
-		if value.Name != name {
-			continue
-		}
-		if skills.IsBuiltin(value) {
-			return skills.LoadWithUser("", "", name, maxBytes, instructionpolicy.Config{})
-		}
-		data, err := os.ReadFile(value.Path)
-		if err != nil {
-			return skills.Loaded{}, err
-		}
-		truncated := len(data) > maxBytes
-		if truncated {
-			data = data[:maxBytes]
-		}
-		return skills.Loaded{Skill: value, Content: string(data), Truncated: truncated}, nil
-	}
-	return skills.Loaded{}, errors.New("unknown project skill: " + name)
+	return skills.LoadFromInventory(values, name, maxBytes)
 }
 
 func skillContentIdentity(content string) string {

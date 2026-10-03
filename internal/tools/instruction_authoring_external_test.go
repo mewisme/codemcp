@@ -101,7 +101,11 @@ func TestInstructionAuthoringToolsUseCanonicalWorkspaceOwnerAndExposeBuiltinGuid
 		t.Fatal(err)
 	}
 	seen := map[string]int{}
+	agentSkillListed := false
 	for _, skill := range listed.Skills {
+		if skill.Name == "agent-skill" {
+			agentSkillListed = true
+		}
 		if skill.Name == skills.BuiltinCreateRuleName || skill.Name == skills.BuiltinCreateSkillName || skill.Name == skills.BuiltinCreatePlanName {
 			seen[skill.Name]++
 			if !skills.IsBuiltin(skill) {
@@ -111,6 +115,24 @@ func TestInstructionAuthoringToolsUseCanonicalWorkspaceOwnerAndExposeBuiltinGuid
 	}
 	if seen[skills.BuiltinCreateRuleName] != 1 || seen[skills.BuiltinCreateSkillName] != 1 || seen[skills.BuiltinCreatePlanName] != 1 {
 		t.Fatalf("reserved guidance counts=%v inventory=%#v", seen, listed.Skills)
+	}
+	if !agentSkillListed {
+		t.Fatalf("newly authored skill missing without restart: %#v", listed.Skills)
+	}
+	agentSkillResult, err := runtime.Call(context.Background(), "load_skill", map[string]any{
+		"workspace_id": workspaceID,
+		"name":         "agent-skill",
+		"max_bytes":    500_000,
+	})
+	if err != nil || agentSkillResult.IsError {
+		t.Fatalf("load_skill(agent-skill) err=%v result=%#v", err, agentSkillResult)
+	}
+	var agentSkill skills.Loaded
+	if err := json.Unmarshal([]byte(agentSkillResult.Content[0].Text), &agentSkill); err != nil {
+		t.Fatal(err)
+	}
+	if agentSkill.Skill.Name != "agent-skill" || !strings.Contains(agentSkill.Content, "agent skill body") {
+		t.Fatalf("newly authored skill load=%#v", agentSkill)
 	}
 
 	for _, test := range []struct {
