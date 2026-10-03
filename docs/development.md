@@ -59,3 +59,5 @@ CI additionally runs race tests, frontend lint/typecheck/tests/E2E/build, instal
 ## Release ownership
 
 Release artifacts use stable versionless filenames; the Git tag is the version identity. `.goreleaser.yaml`, `.github/workflows/release.yml`, and `scripts/release/` own the artifact matrix, checksums, signatures, and package metadata checks.
+
+The Windows amd64 setup is compiled natively with the pinned Inno Setup toolchain on a Windows runner. It embeds the canonical release `cm.exe` only as a temporary bootstrap, delegates durable installation to `cm install`, and is staged back into the GoReleaser release so the same checksum/signature authority covers it. The setup does not own a Program Files tree, Add/Remove Programs entry, updater, or independent uninstall path. Repository builds do not require Authenticode signing or an Inno license secret.

@@ -122,6 +122,10 @@ try {
   if (-not (Test-Path -LiteralPath $digest -PathType Leaf)) {
     throw 'setup payload digest was not generated'
   }
+  $digestText = [IO.File]::ReadAllText($digest)
+  if ($digestText.Contains("`r") -or $digestText -notmatch '^[0-9a-f]{64}  cm\.exe\n$') {
+    throw 'setup payload digest is not canonical LF-delimited sha256sum format'
+  }
 
   $profileRoot = Join-Path $tmp 'profile'
   New-Item -ItemType Directory -Force -Path $profileRoot | Out-Null

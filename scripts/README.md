@@ -27,11 +27,11 @@ Frontend-only development, tests, coverage, lint, typechecking, formatting, end-
 | `generate/product-presentation/main.go` | `go generate ./internal/productadapter`, `make generate`, and the CI drift gate. |
 | `installer/test-unix.sh` | Native Unix CI and `make check`; covers installer verification and malicious archives. |
 | `installer/test-powershell.ps1` | Native Windows CI for both PowerShell editions. |
-| `installer/test-windows-setup.sh` | Linux CI contract test for the Windows setup wrapper and payload verification. |
-| `installer/test-windows-setup.ps1` | Native Windows/NSIS CI validation. |
+| `installer/test-windows-setup.ps1` | Native Windows Inno Setup compile/execute smoke for managed-direct installation, PATH ownership, and delegated failure handling. |
 | `installer/release-layout-contract/main.go` | Shared installer-test lookup used by Unix and PowerShell installer tests. |
 | `installer/archive-fixture/main.go` | Generates valid and malicious archive fixtures for installer security tests. |
 | `release/verify/main.go` | Thin canonical release verifier used by CI and tagged release workflows. |
-| `release/build-windows-setup.sh` | GoReleaser post-build hook for OSS NSIS setup generation. |
-| `release/verify-windows-setup-payload.sh` | Tagged release verification and Windows setup wrapper tests. |
+| `release/install-inno-setup.ps1` | Install and verify the pinned Inno Setup compiler used by Windows CI and tagged releases. |
+| `release/build-windows-setup.ps1` | Compile the native Windows setup from canonical `cm.exe` and emit its payload SHA-256 provenance record. |
+| `release/verify-windows-setup-payload.sh` | Verify staged setup payload provenance against the canonical GoReleaser Windows archive before publication. |
 | `release/smoke.mjs` | `make release-smoke` and native CI; cross-process built-binary/runtime behavior only. |

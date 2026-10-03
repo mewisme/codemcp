@@ -152,7 +152,7 @@ try {
   $payloadHash = (Get-FileHash -LiteralPath $binary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
   $stagedDigest = Join-Path $tempRoot $digestName
   $utf8NoBom = [Text.UTF8Encoding]::new($false)
-  [IO.File]::WriteAllText($stagedDigest, ($payloadHash + '  cm.exe' + [Environment]::NewLine), $utf8NoBom)
+  [IO.File]::WriteAllText($stagedDigest, ($payloadHash + '  cm.exe' + "`n"), $utf8NoBom)
 
   Move-Item -LiteralPath $staged.FullName -Destination $outputPath
   Move-Item -LiteralPath $stagedDigest -Destination $digestPath
