@@ -2,29 +2,50 @@ package app
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 
 	managedagent "go.mewis.me/codemcp/internal/agent"
 	"go.mewis.me/codemcp/internal/tools"
 )
 
-type lifecycleClaimBackend struct{}
+type lifecycleClaimBackend struct {
+	mu      sync.Mutex
+	cancels int
+	closes  int
+}
 
-func (lifecycleClaimBackend) ID() managedagent.BackendID { return "lifecycle-claim-test" }
-func (lifecycleClaimBackend) Ready(context.Context) (managedagent.Readiness, error) {
+func (*lifecycleClaimBackend) ID() managedagent.BackendID { return "lifecycle-claim-test" }
+func (*lifecycleClaimBackend) Ready(context.Context) (managedagent.Readiness, error) {
 	return managedagent.Readiness{Available: true, Capacity: managedagent.Capacity{MaxParallel: 2}}, nil
 }
-func (lifecycleClaimBackend) Spawn(_ context.Context, request managedagent.BackendSpawnRequest) (managedagent.Handle, error) {
+func (*lifecycleClaimBackend) Spawn(_ context.Context, request managedagent.BackendSpawnRequest) (managedagent.Handle, error) {
 	return string(request.AgentID), nil
 }
-func (lifecycleClaimBackend) Send(context.Context, managedagent.Handle, managedagent.Message) error {
+func (*lifecycleClaimBackend) Send(context.Context, managedagent.Handle, managedagent.Message) error {
 	return nil
 }
-func (lifecycleClaimBackend) Snapshot(context.Context, managedagent.Handle) (managedagent.BackendSnapshot, error) {
+func (*lifecycleClaimBackend) Snapshot(context.Context, managedagent.Handle) (managedagent.BackendSnapshot, error) {
 	return managedagent.BackendSnapshot{Phase: managedagent.BackendPhaseWorking}, nil
 }
-func (lifecycleClaimBackend) Cancel(context.Context, managedagent.Handle) error { return nil }
-func (lifecycleClaimBackend) Close(context.Context, managedagent.Handle) error  { return nil }
+func (backend *lifecycleClaimBackend) Cancel(context.Context, managedagent.Handle) error {
+	backend.mu.Lock()
+	backend.cancels++
+	backend.mu.Unlock()
+	return nil
+}
+func (backend *lifecycleClaimBackend) Close(context.Context, managedagent.Handle) error {
+	backend.mu.Lock()
+	backend.closes++
+	backend.mu.Unlock()
+	return nil
+}
+func (backend *lifecycleClaimBackend) counts() (int, int) {
+	backend.mu.Lock()
+	defer backend.mu.Unlock()
+	return backend.cancels, backend.closes
+}
 
 func TestStopRevokesManagedAgentClaimsAndSessionBindings(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
@@ -32,7 +53,8 @@ func TestStopRevokesManagedAgentClaimsAndSessionBindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.RegisterBackend(lifecycleClaimBackend{}); err != nil {
+	backend := &lifecycleClaimBackend{}
+	if err := manager.RegisterBackend(backend); err != nil {
 		t.Fatal(err)
 	}
 	claimedAgent, err := manager.Spawn(t.Context(), managedagent.OperatorController(), managedagent.ManagedSpawnRequest{
@@ -77,5 +99,19 @@ func TestStopRevokesManagedAgentClaimsAndSessionBindings(t *testing.T) {
 	}
 	if _, err := manager.ConsumeClaim(pendingAgent.ID, pendingCredential.Token(), "late-session"); err == nil {
 		t.Fatal("runtime stop retained outstanding claim")
+	}
+	for _, id := range []managedagent.ID{claimedAgent.ID, pendingAgent.ID} {
+		snapshot, err := manager.Get(context.Background(), managedagent.OperatorController(), id)
+		if err != nil || snapshot.State != managedagent.StateCancelled || snapshot.Error != "runtime shutdown" {
+			t.Fatalf("shutdown snapshot=%#v err=%v", snapshot, err)
+		}
+	}
+	if cancels, closes := backend.counts(); cancels != 2 || closes != 2 {
+		t.Fatalf("shutdown cleanup cancel=%d close=%d", cancels, closes)
+	}
+	if _, err := manager.Spawn(context.Background(), managedagent.OperatorController(), managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: "ws_after_stop", Prompt: "must not start",
+	}}); !errors.Is(err, managedagent.ErrManagerClosed) {
+		t.Fatalf("spawn after app stop error=%v", err)
 	}
 }

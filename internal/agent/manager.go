@@ -42,6 +42,7 @@ type Manager struct {
 	backends      map[BackendID]Backend
 	entries       map[ID]*entry
 	terminalOrder []ID
+	closed        bool
 
 	defaultBackend  BackendID
 	globalCapacity  Capacity
@@ -123,6 +124,9 @@ func (manager *Manager) RegisterBackend(backend Backend) error {
 	}
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
+	if manager.closed {
+		return ErrManagerClosed
+	}
 	if _, exists := manager.backends[id]; exists {
 		return fmt.Errorf("managed agent backend %q is already registered", id)
 	}
@@ -149,6 +153,9 @@ func (manager *Manager) Configure(defaultBackend BackendID, globalCapacity Capac
 	}
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
+	if manager.closed {
+		return ErrManagerClosed
+	}
 	manager.defaultBackend = defaultBackend
 	manager.globalCapacity = globalCapacity
 	return nil
@@ -218,6 +225,10 @@ func (manager *Manager) Spawn(ctx context.Context, controller Controller, reques
 	}
 
 	manager.mu.RLock()
+	if manager.closed {
+		manager.mu.RUnlock()
+		return Snapshot{}, ErrManagerClosed
+	}
 	backends := make(map[BackendID]Backend, len(manager.backends))
 	for id, backend := range manager.backends {
 		backends[id] = backend
@@ -249,6 +260,10 @@ func (manager *Manager) Spawn(ctx context.Context, controller Controller, reques
 
 	manager.mu.Lock()
 	manager.pruneTerminalLocked(now)
+	if manager.closed {
+		manager.mu.Unlock()
+		return Snapshot{}, ErrManagerClosed
+	}
 	if manager.activeCountLocked() >= manager.globalCapacity.MaxParallel {
 		manager.mu.Unlock()
 		return Snapshot{}, fmt.Errorf("%w: global limit %d", ErrCapacityReached, manager.globalCapacity.MaxParallel)
@@ -297,6 +312,7 @@ func (manager *Manager) Spawn(ctx context.Context, controller Controller, reques
 		snapshot := current.record.Snapshot()
 		manager.mu.Unlock()
 		if handle != nil {
+			_ = backend.Cancel(context.Background(), handle)
 			_ = backend.Close(context.Background(), handle)
 		}
 		return snapshot, fmt.Errorf("managed agent terminated during spawn: %s", snapshot.State)
@@ -599,4 +615,56 @@ func (manager *Manager) SweepExpired(ctx context.Context) int {
 		_ = item.backend.Close(context.Background(), item.handle)
 	}
 	return expired
+}
+
+// Shutdown prevents new managed agents from starting, terminalizes every live
+// agent, revokes child claims and bindings, and releases all backend handles.
+// Terminal records remain readable until normal retention pruning removes them.
+func (manager *Manager) Shutdown(ctx context.Context) error {
+	if manager == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	type closing struct {
+		backend Backend
+		handle  Handle
+	}
+	var closings []closing
+
+	manager.mu.Lock()
+	if manager.closed {
+		manager.mu.Unlock()
+		return nil
+	}
+	manager.closed = true
+	now := manager.now()
+	for _, item := range manager.entries {
+		if item.record.State.Terminal() {
+			continue
+		}
+		if item.handle != nil {
+			closings = append(closings, closing{backend: item.backend, handle: item.handle})
+		}
+		_ = manager.markTerminalLocked(item, StateCancelled, item.record.Result, "runtime shutdown", now)
+	}
+	for _, item := range manager.entries {
+		item.claim = claimState{}
+		item.hasClaimedSession = false
+		item.claimedSession = [32]byte{}
+	}
+	clear(manager.claimedSessions)
+	manager.mu.Unlock()
+
+	var shutdownErr error
+	for _, item := range closings {
+		if err := item.backend.Cancel(ctx, item.handle); err != nil {
+			shutdownErr = errors.Join(shutdownErr, err)
+		}
+		if err := item.backend.Close(ctx, item.handle); err != nil {
+			shutdownErr = errors.Join(shutdownErr, err)
+		}
+	}
+	return shutdownErr
 }

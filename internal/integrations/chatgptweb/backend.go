@@ -22,6 +22,7 @@ type AgentBackendSettings struct {
 
 type AgentBackendRuntime interface {
 	Acquire(context.Context, string) (browser.LeaseSnapshot, error)
+	Lease(string) (browser.LeaseSnapshot, bool)
 	Tab(string) (browser.BrowserTab, bool)
 	Touch(string) error
 	Release(context.Context, string) error
@@ -59,6 +60,7 @@ type agentBackendHandle struct {
 	result   string
 	failure  string
 	running  bool
+	acquired bool
 	released bool
 	closed   bool
 }
@@ -179,7 +181,10 @@ func (backend *AgentBackend) Send(_ context.Context, raw managedagent.Handle, me
 	agentID := string(handle.agentID)
 	handle.mu.Unlock()
 
-	_ = runtime.Touch(agentID)
+	if err := runtime.Touch(agentID); err != nil {
+		backend.finishFailure(handle, fmt.Errorf("touch ChatGPT Web tab lease: %w", err))
+		return fmt.Errorf("touch ChatGPT Web tab lease: %w", err)
+	}
 	go backend.runFollowUp(handle, driver, message.Content)
 	return nil
 }
@@ -188,6 +193,30 @@ func (backend *AgentBackend) Snapshot(_ context.Context, raw managedagent.Handle
 	handle, err := requireAgentBackendHandle(raw)
 	if err != nil {
 		return managedagent.BackendSnapshot{}, err
+	}
+	handle.mu.Lock()
+	acquired := handle.acquired
+	released := handle.released
+	closed := handle.closed
+	running := handle.running
+	runtime := handle.runtime
+	agentID := string(handle.agentID)
+	handle.mu.Unlock()
+	if acquired && !released && !closed && runtime != nil {
+		lease, ok := runtime.Lease(agentID)
+		if !ok {
+			backend.finishFailure(handle, errors.New("ChatGPT Web browser tab lease disappeared"))
+		} else if lease.State != browser.LeaseActive {
+			reason := strings.TrimSpace(lease.Failure)
+			if reason == "" {
+				reason = fmt.Sprintf("browser tab lease is %s", lease.State)
+			}
+			backend.finishFailure(handle, errors.New(reason))
+		} else if running {
+			if err := runtime.Touch(agentID); err != nil {
+				backend.finishFailure(handle, fmt.Errorf("touch ChatGPT Web tab lease: %w", err))
+			}
+		}
 	}
 	handle.mu.Lock()
 	defer handle.mu.Unlock()
@@ -252,6 +281,14 @@ func (backend *AgentBackend) runInitial(handle *agentBackendHandle, request mana
 		backend.finishFailure(handle, fmt.Errorf("acquire ChatGPT Web tab: %w", err))
 		return
 	}
+	handle.mu.Lock()
+	handle.acquired = true
+	closed := handle.closed
+	handle.mu.Unlock()
+	if closed {
+		_ = backend.release(context.Background(), handle, handle.runtime, string(request.AgentID))
+		return
+	}
 	tab, ok := handle.runtime.Tab(lease.AgentID)
 	if !ok || tab == nil {
 		backend.finishFailure(handle, errors.New("ChatGPT Web leased tab is unavailable"))
@@ -280,7 +317,10 @@ func (backend *AgentBackend) runInitial(handle *agentBackendHandle, request mana
 		backend.finishFailure(handle, err)
 		return
 	}
-	_ = handle.runtime.Touch(string(request.AgentID))
+	if err := handle.runtime.Touch(string(request.AgentID)); err != nil {
+		backend.finishFailure(handle, fmt.Errorf("touch ChatGPT Web tab lease: %w", err))
+		return
+	}
 	backend.finishIdle(handle, result.Text)
 }
 
@@ -290,14 +330,17 @@ func (backend *AgentBackend) runFollowUp(handle *agentBackendHandle, driver Agen
 		backend.finishFailure(handle, err)
 		return
 	}
-	_ = handle.runtime.Touch(string(handle.agentID))
+	if err := handle.runtime.Touch(string(handle.agentID)); err != nil {
+		backend.finishFailure(handle, fmt.Errorf("touch ChatGPT Web tab lease: %w", err))
+		return
+	}
 	backend.finishIdle(handle, result.Text)
 }
 
 func (backend *AgentBackend) finishIdle(handle *agentBackendHandle, result string) {
 	handle.mu.Lock()
 	defer handle.mu.Unlock()
-	if handle.closed {
+	if handle.closed || handle.phase == managedagent.BackendPhaseFailed {
 		return
 	}
 	handle.running = false
@@ -320,6 +363,10 @@ func (backend *AgentBackend) finishFailure(handle *agentBackendHandle, failure e
 func (backend *AgentBackend) release(ctx context.Context, handle *agentBackendHandle, runtime AgentBackendRuntime, agentID string) error {
 	handle.mu.Lock()
 	if handle.released {
+		handle.mu.Unlock()
+		return nil
+	}
+	if !handle.acquired {
 		handle.mu.Unlock()
 		return nil
 	}

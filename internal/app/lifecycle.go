@@ -200,9 +200,13 @@ func (a *App) Stop() error {
 	started := time.Now()
 	span := tracepkg.StartObserver(a.trace, "APP", "app.runtime.stop", "Stopping application runtime")
 	var stopErr error
+	agentCtx, agentCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if a.Tools != nil && a.Tools.Agents != nil {
-		a.Tools.Agents.RevokeAllClaimsAndBindings()
+		if err := a.Tools.Agents.Shutdown(agentCtx); err != nil {
+			stopErr = errors.Join(stopErr, err)
+		}
 	}
+	agentCancel()
 	if a.Tools != nil && a.Tools.Approvals != nil {
 		for _, request := range a.Tools.Approvals.List(approval.Filter{Status: approval.StatusPending}) {
 			if _, err := a.Tools.Approvals.Cancel(request.ID, "runtime", "runtime shutdown"); err != nil {

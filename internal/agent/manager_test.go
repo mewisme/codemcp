@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -557,4 +558,230 @@ func TestConcurrentSpawnWaitSendCancelIsRaceSafe(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestRepeatedBoundedWaitPollingDoesNotOwnAgentLifetime(t *testing.T) {
+	backend := newManagerTestBackend("test", 5)
+	manager := newTestManager(t, ManagerOptions{
+		GlobalCapacity: Capacity{MaxParallel: 5}, PollInterval: time.Hour,
+	}, backend)
+	owner, _ := NewMCPController("session-bounded-wait")
+	spawned := spawnTestAgent(t, manager, owner, "")
+
+	started := time.Now()
+	for range 3 {
+		snapshot, err := manager.Wait(context.Background(), owner, spawned.ID, spawned.Revision, 5*time.Millisecond)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snapshot.State != StateWorking || snapshot.Revision != spawned.Revision {
+			t.Fatalf("bounded wait snapshot=%#v", snapshot)
+		}
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("bounded waits held parent too long: %s", elapsed)
+	}
+
+	backend.setSnapshot(spawned.ID, BackendSnapshot{Phase: BackendPhaseIdle, Result: "after tool rounds"})
+	idle, err := manager.Wait(context.Background(), owner, spawned.ID, spawned.Revision, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idle.State != StateIdle || idle.Result != "after tool rounds" {
+		t.Fatalf("idle after repeated polling=%#v", idle)
+	}
+}
+
+func TestShutdownCancelsActiveHandlesAndPreventsInPlaceResume(t *testing.T) {
+	backend := newManagerTestBackend("test", 5)
+	manager := newTestManager(t, ManagerOptions{GlobalCapacity: Capacity{MaxParallel: 5}}, backend)
+	owner, _ := NewMCPController("session-shutdown")
+	first := spawnTestAgent(t, manager, owner, "")
+	second := spawnTestAgent(t, manager, owner, "")
+
+	if err := manager.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Shutdown(context.Background()); err != nil {
+		t.Fatalf("second shutdown must be idempotent: %v", err)
+	}
+	for _, id := range []ID{first.ID, second.ID} {
+		snapshot, err := manager.Get(context.Background(), owner, id)
+		if err != nil || snapshot.State != StateCancelled || snapshot.Error != "runtime shutdown" {
+			t.Fatalf("shutdown snapshot=%#v err=%v", snapshot, err)
+		}
+	}
+	_, _, cancels, closes := backend.counts()
+	if cancels != 2 || closes != 2 {
+		t.Fatalf("shutdown cleanup cancel=%d close=%d", cancels, closes)
+	}
+	if _, err := manager.Spawn(context.Background(), owner, ManagedSpawnRequest{Input: SpawnInput{WorkspaceID: "ws_test", Prompt: "must not resume"}}); !errors.Is(err, ErrManagerClosed) {
+		t.Fatalf("spawn after shutdown error=%v", err)
+	}
+
+	restarted, err := NewManager(ManagerOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := restarted.List(context.Background(), OperatorController())
+	if err != nil || len(list) != 0 {
+		t.Fatalf("fresh runtime restored managed agents: %#v err=%v", list, err)
+	}
+}
+
+func TestShutdownDuringSpawnCancelsLateHandle(t *testing.T) {
+	backend := newManagerTestBackend("test", 5)
+	started := make(chan struct{}, 1)
+	gate := make(chan struct{})
+	backend.spawnStarted = started
+	backend.spawnGate = gate
+	manager := newTestManager(t, ManagerOptions{GlobalCapacity: Capacity{MaxParallel: 5}}, backend)
+	owner, _ := NewMCPController("session-shutdown-spawn")
+
+	spawnDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Spawn(context.Background(), owner, ManagedSpawnRequest{Input: SpawnInput{
+			WorkspaceID: "ws_test", Prompt: "shutdown while spawning",
+		}})
+		spawnDone <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("backend spawn did not start")
+	}
+	if err := manager.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	close(gate)
+	select {
+	case err := <-spawnDone:
+		if err == nil || !strings.Contains(err.Error(), "terminated during spawn") {
+			t.Fatalf("spawn after concurrent shutdown error=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("spawn did not finish after shutdown")
+	}
+	_, _, cancels, closes := backend.counts()
+	if cancels != 1 || closes != 1 {
+		t.Fatalf("late handle cleanup cancel=%d close=%d", cancels, closes)
+	}
+}
+
+func TestCompletionCancelRaceProducesSingleTerminalState(t *testing.T) {
+	for range 25 {
+		backend := newManagerTestBackend("test", 5)
+		manager := newTestManager(t, ManagerOptions{GlobalCapacity: Capacity{MaxParallel: 5}}, backend)
+		owner, _ := NewMCPController("session-completion-cancel")
+		spawned := spawnTestAgent(t, manager, owner, "")
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_ = manager.ObserveAcceptedCompletion(CompletionEvent{AgentID: spawned.ID, WorkspaceID: "ws_test", Status: StateCompleted})
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _ = manager.Cancel(context.Background(), owner, spawned.ID)
+		}()
+		close(start)
+		wg.Wait()
+
+		snapshot, err := manager.Get(context.Background(), owner, spawned.ID)
+		if err != nil || snapshot.State != StateCancelled {
+			t.Fatalf("completion/cancel race snapshot=%#v err=%v", snapshot, err)
+		}
+		_, _, cancels, closes := backend.counts()
+		if cancels != 1 || closes != 1 {
+			t.Fatalf("completion/cancel cleanup cancel=%d close=%d", cancels, closes)
+		}
+	}
+}
+
+func TestSendExpiryRaceDoesNotDoubleTerminal(t *testing.T) {
+	for range 25 {
+		now := time.Date(2026, 10, 4, 0, 0, 0, 0, time.UTC)
+		backend := newManagerTestBackend("test", 5)
+		manager := newTestManager(t, ManagerOptions{
+			GlobalCapacity: Capacity{MaxParallel: 5}, IdleTTL: time.Minute, Now: func() time.Time { return now },
+		}, backend)
+		owner, _ := NewMCPController("session-send-expiry")
+		spawned := spawnTestAgent(t, manager, owner, "")
+		backend.setSnapshot(spawned.ID, BackendSnapshot{Phase: BackendPhaseIdle, Result: "idle"})
+		idle, err := manager.Get(context.Background(), owner, spawned.ID)
+		if err != nil || idle.State != StateIdle {
+			t.Fatalf("idle=%#v err=%v", idle, err)
+		}
+		now = now.Add(2 * time.Minute)
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _ = manager.Send(context.Background(), owner, spawned.ID, Message{Content: "race expiry"})
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			manager.SweepExpired(context.Background())
+		}()
+		close(start)
+		wg.Wait()
+
+		snapshot, err := manager.Get(context.Background(), owner, spawned.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch snapshot.State {
+		case StateExpired:
+		case StateWorking:
+			if _, err := manager.Cancel(context.Background(), owner, spawned.ID); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			t.Fatalf("send/expiry race state=%s", snapshot.State)
+		}
+	}
+}
+
+func TestClaimCancelRaceAlwaysRevokesChildAuthority(t *testing.T) {
+	for range 25 {
+		backend := newManagerTestBackend("test", 5)
+		manager := newTestManager(t, ManagerOptions{GlobalCapacity: Capacity{MaxParallel: 5}}, backend)
+		owner, _ := NewMCPController("session-claim-cancel")
+		spawned := spawnTestAgent(t, manager, owner, "")
+		credential, err := manager.IssueClaim(spawned.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _ = manager.ConsumeClaim(spawned.ID, credential.Token(), "child-race-session")
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			_, _ = manager.Cancel(context.Background(), owner, spawned.ID)
+		}()
+		close(start)
+		wg.Wait()
+
+		if binding, ok := manager.SessionBinding("child-race-session"); ok && binding.Active {
+			t.Fatalf("cancel left active child binding: %#v", binding)
+		}
+		if _, err := manager.ConsumeClaim(spawned.ID, credential.Token(), "late-session"); err == nil {
+			t.Fatal("cancel left claim reusable")
+		}
+	}
 }

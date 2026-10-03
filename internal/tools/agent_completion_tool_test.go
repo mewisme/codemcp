@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -266,6 +267,20 @@ func TestAgentCompleteCorrelatesClaimedManagedAgentAfterDurableAccept(t *testing
 	}
 	if backend.closeCount() != 1 {
 		t.Fatalf("managed backend close count=%d want=1", backend.closeCount())
+	}
+	if err := runtime.Agents.Shutdown(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	restartedAgents, err := managedagent.NewManager(managedagent.ManagerOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := restartedAgents.Get(context.Background(), managedagent.OperatorController(), spawned.ID); !errors.Is(err, managedagent.ErrAgentNotFound) {
+		t.Fatalf("fresh managed runtime restored terminal agent: %v", err)
+	}
+	persisted, found, err := runtime.Completions.Current(value.Record.AgentID, workspaceID)
+	if err != nil || !found || persisted.ID != value.Record.ID || persisted.Status != agentcompletion.StatusCompleted {
+		t.Fatalf("durable completion after managed restart=%#v found=%t err=%v", persisted, found, err)
 	}
 }
 

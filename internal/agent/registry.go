@@ -11,6 +11,7 @@ var (
 	ErrAgentNotFound = errors.New("managed agent not found")
 	ErrAgentBusy     = errors.New("managed agent is busy")
 	ErrAgentNotIdle  = errors.New("managed agent is not idle")
+	ErrManagerClosed = errors.New("managed agent manager is closed")
 )
 
 type entry struct {

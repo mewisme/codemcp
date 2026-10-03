@@ -51,6 +51,15 @@ func (runtime *fakeChatGPTBrowserRuntime) Tab(agentID string) (browser.BrowserTa
 	return runtime.tab, true
 }
 
+func (runtime *fakeChatGPTBrowserRuntime) Lease(agentID string) (browser.LeaseSnapshot, bool) {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.closed || runtime.snapshot.ActiveLeases == 0 || agentID == "" {
+		return browser.LeaseSnapshot{}, false
+	}
+	return browser.LeaseSnapshot{AgentID: agentID, TabID: runtime.tab.ID(), State: browser.LeaseActive}, true
+}
+
 func (runtime *fakeChatGPTBrowserRuntime) Touch(string) error { return nil }
 
 func (runtime *fakeChatGPTBrowserRuntime) Release(_ context.Context, agentID string) error {

@@ -53,6 +53,7 @@ type ChatGPTWebLogoutInput struct {
 
 type chatGPTBrowserRuntime interface {
 	Acquire(context.Context, string) (browser.LeaseSnapshot, error)
+	Lease(string) (browser.LeaseSnapshot, bool)
 	Tab(string) (browser.BrowserTab, bool)
 	Touch(string) error
 	Release(context.Context, string) error

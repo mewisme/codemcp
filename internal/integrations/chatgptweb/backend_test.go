@@ -14,18 +14,34 @@ import (
 )
 
 type backendTestRuntime struct {
-	mu       sync.Mutex
-	tabs     map[string]*backendTestTab
-	acquired []string
-	released []string
-	touched  []string
+	mu             sync.Mutex
+	tabs           map[string]*backendTestTab
+	leases         map[string]browser.LeaseSnapshot
+	acquired       []string
+	released       []string
+	touched        []string
+	acquireStarted chan struct{}
+	acquireGate    <-chan struct{}
 }
 
 func newBackendTestRuntime() *backendTestRuntime {
-	return &backendTestRuntime{tabs: map[string]*backendTestTab{}}
+	return &backendTestRuntime{tabs: map[string]*backendTestTab{}, leases: map[string]browser.LeaseSnapshot{}}
 }
 
-func (runtime *backendTestRuntime) Acquire(_ context.Context, agentID string) (browser.LeaseSnapshot, error) {
+func (runtime *backendTestRuntime) Acquire(ctx context.Context, agentID string) (browser.LeaseSnapshot, error) {
+	if runtime.acquireStarted != nil {
+		select {
+		case runtime.acquireStarted <- struct{}{}:
+		default:
+		}
+	}
+	if runtime.acquireGate != nil {
+		select {
+		case <-ctx.Done():
+			return browser.LeaseSnapshot{}, ctx.Err()
+		case <-runtime.acquireGate:
+		}
+	}
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	if runtime.tabs[agentID] != nil {
@@ -34,7 +50,9 @@ func (runtime *backendTestRuntime) Acquire(_ context.Context, agentID string) (b
 	tab := &backendTestTab{id: agentID, done: make(chan struct{})}
 	runtime.tabs[agentID] = tab
 	runtime.acquired = append(runtime.acquired, agentID)
-	return browser.LeaseSnapshot{AgentID: agentID, TabID: tab.id, State: browser.LeaseActive}, nil
+	lease := browser.LeaseSnapshot{AgentID: agentID, TabID: tab.id, State: browser.LeaseActive}
+	runtime.leases[agentID] = lease
+	return lease, nil
 }
 
 func (runtime *backendTestRuntime) Tab(agentID string) (browser.BrowserTab, bool) {
@@ -44,11 +62,22 @@ func (runtime *backendTestRuntime) Tab(agentID string) (browser.BrowserTab, bool
 	return tab, ok
 }
 
+func (runtime *backendTestRuntime) Lease(agentID string) (browser.LeaseSnapshot, bool) {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	lease, ok := runtime.leases[agentID]
+	return lease, ok
+}
+
 func (runtime *backendTestRuntime) Touch(agentID string) error {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
-	if runtime.tabs[agentID] == nil {
+	lease, ok := runtime.leases[agentID]
+	if runtime.tabs[agentID] == nil || !ok {
 		return browser.ErrLeaseNotFound
+	}
+	if lease.State != browser.LeaseActive {
+		return errors.New(lease.Failure)
 	}
 	runtime.touched = append(runtime.touched, agentID)
 	return nil
@@ -61,6 +90,7 @@ func (runtime *backendTestRuntime) Release(_ context.Context, agentID string) er
 		return browser.ErrLeaseNotFound
 	}
 	delete(runtime.tabs, agentID)
+	delete(runtime.leases, agentID)
 	runtime.released = append(runtime.released, agentID)
 	return nil
 }
@@ -69,6 +99,21 @@ func (runtime *backendTestRuntime) counts() (int, int) {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	return len(runtime.acquired), len(runtime.released)
+}
+
+func (runtime *backendTestRuntime) touchedCount() int {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	return len(runtime.touched)
+}
+
+func (runtime *backendTestRuntime) setLeaseState(agentID string, state browser.LeaseState, failure string) {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	lease := runtime.leases[agentID]
+	lease.State = state
+	lease.Failure = failure
+	runtime.leases[agentID] = lease
 }
 
 type backendTestTab struct {
@@ -337,6 +382,240 @@ func TestAgentBackendReadinessFailsClosed(t *testing.T) {
 	owner, _ := managedagent.NewMCPController("owner")
 	if _, err := manager.Spawn(context.Background(), owner, managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{WorkspaceID: "ws_test", Prompt: "must not silently fall back"}}); !errors.Is(err, managedagent.ErrBackendUnavailable) || !strings.Contains(err.Error(), "needs_login") {
 		t.Fatalf("spawn readiness error=%v", err)
+	}
+}
+
+func TestAgentBackendBoundedWaitPollingKeepsWorkingTurnAlive(t *testing.T) {
+	manager := newBackendTestManager(t, 2)
+	runtime := newBackendTestRuntime()
+	startCalled := make(chan struct{}, 1)
+	startGate := make(chan struct{})
+	registerBackendTestAdapter(t, manager, runtime, 2, func(browser.BrowserTab) (AgentTurnDriver, error) {
+		return &backendTestDriver{
+			startCalled: startCalled,
+			startGate:   startGate,
+			startResult: TurnResult{State: TurnFinal, Text: "finished after tool rounds"},
+		}, nil
+	})
+	owner, _ := managedagent.NewMCPController("owner-bounded-wait")
+	spawned, err := manager.Spawn(context.Background(), owner, managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: "ws_test", Prompt: "perform several tool rounds",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-startCalled:
+	case <-time.After(time.Second):
+		t.Fatal("ChatGPT Web turn did not start")
+	}
+
+	started := time.Now()
+	for range 3 {
+		snapshot, err := manager.Wait(context.Background(), owner, spawned.ID, spawned.Revision, 5*time.Millisecond)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snapshot.State != managedagent.StateWorking {
+			t.Fatalf("bounded wait snapshot=%#v", snapshot)
+		}
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("bounded ChatGPT waits held parent too long: %s", elapsed)
+	}
+	if touches := runtime.touchedCount(); touches < 3 {
+		t.Fatalf("working lease touches=%d want>=3", touches)
+	}
+
+	close(startGate)
+	idle := waitBackendTestState(t, manager, owner, spawned.ID, managedagent.StateIdle)
+	if idle.Result != "finished after tool rounds" {
+		t.Fatalf("idle after tool rounds=%#v", idle)
+	}
+}
+
+func TestAgentBackendCancelDuringAcquireReleasesLateLease(t *testing.T) {
+	manager := newBackendTestManager(t, 2)
+	runtime := newBackendTestRuntime()
+	started := make(chan struct{}, 1)
+	gate := make(chan struct{})
+	runtime.acquireStarted = started
+	runtime.acquireGate = gate
+	registerBackendTestAdapter(t, manager, runtime, 2, func(browser.BrowserTab) (AgentTurnDriver, error) {
+		return &backendTestDriver{startResult: TurnResult{State: TurnFinal, Text: "unused"}}, nil
+	})
+	owner, _ := managedagent.NewMCPController("owner-cancel-acquire")
+	spawned, err := manager.Spawn(context.Background(), owner, managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: "ws_test", Prompt: "cancel while acquiring",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("browser acquire did not start")
+	}
+	if _, err := manager.Cancel(context.Background(), owner, spawned.ID); err != nil {
+		t.Fatal(err)
+	}
+	close(gate)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		acquired, released := runtime.counts()
+		if acquired == 1 && released == 1 {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	acquired, released := runtime.counts()
+	t.Fatalf("late browser lease leaked: acquired=%d released=%d", acquired, released)
+}
+
+func TestAgentBackendBrowserLeaseFailureBecomesStickyManagedFailure(t *testing.T) {
+	manager := newBackendTestManager(t, 2)
+	runtime := newBackendTestRuntime()
+	startCalled := make(chan struct{}, 1)
+	startGate := make(chan struct{})
+	registerBackendTestAdapter(t, manager, runtime, 2, func(browser.BrowserTab) (AgentTurnDriver, error) {
+		return &backendTestDriver{
+			startCalled: startCalled,
+			startGate:   startGate,
+			startResult: TurnResult{State: TurnFinal, Text: "late final must not revive crash"},
+		}, nil
+	})
+	owner, _ := managedagent.NewMCPController("owner-browser-crash")
+	spawned, err := manager.Spawn(context.Background(), owner, managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: "ws_test", Prompt: "work through browser crash",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-startCalled:
+	case <-time.After(time.Second):
+		t.Fatal("driver did not enter active turn")
+	}
+	runtime.setLeaseState(string(spawned.ID), browser.LeaseFailed, "browser disconnected during active turn")
+	failed, err := manager.Get(context.Background(), owner, spawned.ID)
+	if err != nil || failed.State != managedagent.StateFailed || !strings.Contains(failed.Error, "browser disconnected") {
+		t.Fatalf("browser crash snapshot=%#v err=%v", failed, err)
+	}
+	close(startGate)
+	time.Sleep(10 * time.Millisecond)
+	again, err := manager.Get(context.Background(), owner, spawned.ID)
+	if err != nil || again.State != managedagent.StateFailed {
+		t.Fatalf("late final revived failed browser agent: %#v err=%v", again, err)
+	}
+	acquired, released := runtime.counts()
+	if acquired != 1 || released != 1 {
+		t.Fatalf("browser crash cleanup acquired=%d released=%d", acquired, released)
+	}
+}
+
+func TestAgentBackendSendFailsWhenIdleBrowserLeaseExpired(t *testing.T) {
+	manager := newBackendTestManager(t, 2)
+	runtime := newBackendTestRuntime()
+	driver := &backendTestDriver{startResult: TurnResult{State: TurnFinal, Text: "idle"}, followUpResult: TurnResult{State: TurnFinal, Text: "must not run"}}
+	registerBackendTestAdapter(t, manager, runtime, 2, func(browser.BrowserTab) (AgentTurnDriver, error) { return driver, nil })
+	owner, _ := managedagent.NewMCPController("owner-expired-send")
+	spawned, err := manager.Spawn(context.Background(), owner, managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: "ws_test", Prompt: "become idle",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitBackendTestState(t, manager, owner, spawned.ID, managedagent.StateIdle)
+	runtime.setLeaseState(string(spawned.ID), browser.LeaseExpired, "idle browser lease expired")
+	if _, err := manager.Send(context.Background(), owner, spawned.ID, managedagent.Message{Content: "too late"}); err == nil {
+		t.Fatal("send unexpectedly accepted expired browser lease")
+	}
+	failed, err := manager.Get(context.Background(), owner, spawned.ID)
+	if err != nil || failed.State != managedagent.StateFailed || !strings.Contains(failed.Error, "idle browser lease expired") {
+		t.Fatalf("expired send snapshot=%#v err=%v", failed, err)
+	}
+	if got := driver.followUpSnapshot(); len(got) != 0 {
+		t.Fatalf("expired lease started hidden follow-up: %v", got)
+	}
+	_, released := runtime.counts()
+	if released != 1 {
+		t.Fatalf("expired send did not release tab: %d", released)
+	}
+}
+
+func TestAgentBackendMapsAuthenticationAndConnectorLossToManagedFailure(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "authentication", err: driverError(ErrorAuthentication, "follow-up", "ChatGPT session expired", nil), want: "session expired"},
+		{name: "connector", err: driverError(ErrorConnectorMismatch, "connector", "CodeMCP connector disappeared", nil), want: "connector disappeared"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manager := newBackendTestManager(t, 2)
+			runtime := newBackendTestRuntime()
+			driver := &backendTestDriver{startResult: TurnResult{State: TurnFinal, Text: "idle"}, followUpErr: test.err}
+			registerBackendTestAdapter(t, manager, runtime, 2, func(browser.BrowserTab) (AgentTurnDriver, error) { return driver, nil })
+			owner, _ := managedagent.NewMCPController("owner-loss-" + test.name)
+			spawned, err := manager.Spawn(context.Background(), owner, managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+				WorkspaceID: "ws_test", Prompt: "become idle",
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitBackendTestState(t, manager, owner, spawned.ID, managedagent.StateIdle)
+			if _, err := manager.Send(context.Background(), owner, spawned.ID, managedagent.Message{Content: "follow up"}); err != nil {
+				t.Fatal(err)
+			}
+			failed := waitBackendTestState(t, manager, owner, spawned.ID, managedagent.StateFailed)
+			if !strings.Contains(strings.ToLower(failed.Error), strings.ToLower(test.want)) {
+				t.Fatalf("mapped failure=%#v", failed)
+			}
+			_, released := runtime.counts()
+			if released != 1 {
+				t.Fatalf("failure did not release tab: %d", released)
+			}
+		})
+	}
+}
+
+func TestAgentBackendManagedIdleExpiryReleasesTab(t *testing.T) {
+	now := time.Date(2026, 10, 4, 0, 0, 0, 0, time.UTC)
+	manager, err := managedagent.NewManager(managedagent.ManagerOptions{
+		DefaultBackend: AgentBackendID,
+		GlobalCapacity: managedagent.Capacity{MaxParallel: 2},
+		PollInterval:   time.Millisecond,
+		IdleTTL:        time.Minute,
+		Now:            func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := newBackendTestRuntime()
+	registerBackendTestAdapter(t, manager, runtime, 2, func(browser.BrowserTab) (AgentTurnDriver, error) {
+		return &backendTestDriver{startResult: TurnResult{State: TurnFinal, Text: "idle"}}, nil
+	})
+	owner, _ := managedagent.NewMCPController("owner-idle-expiry")
+	spawned, err := manager.Spawn(context.Background(), owner, managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: "ws_test", Prompt: "idle until expiry",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitBackendTestState(t, manager, owner, spawned.ID, managedagent.StateIdle)
+	now = now.Add(2 * time.Minute)
+	if expired := manager.SweepExpired(context.Background()); expired != 1 {
+		t.Fatalf("expired=%d want=1", expired)
+	}
+	snapshot, err := manager.Get(context.Background(), owner, spawned.ID)
+	if err != nil || snapshot.State != managedagent.StateExpired {
+		t.Fatalf("expired snapshot=%#v err=%v", snapshot, err)
+	}
+	_, released := runtime.counts()
+	if released != 1 {
+		t.Fatalf("idle expiry did not release tab: %d", released)
 	}
 }
 
