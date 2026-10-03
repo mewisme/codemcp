@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "toolchain": {
+    "compiler": "ISCC.exe",
+    "package_id": "JRSoftware.InnoSetup.7",
+    "version": "7.1.0",
+    "edition": "x64"
+  },
+  "target": {
+    "os": "windows",
+    "arch": "amd64",
+    "binary_name": "cm.exe",
+    "artifact_name": "codemcp_windows_amd64_setup.exe",
+    "setup_architecture": "x64",
+    "architectures_allowed": "x64compatible"
+  },
+  "script": {
+    "path": "installer/windows/codemcp.iss",
+    "defines": {
+      "binary_path": "BinaryPath",
+      "setup_version": "SetupVersion",
+      "output_dir": "OutputDir",
+      "output_base_filename": "OutputBaseFilename",
+      "target_arch": "TargetArch"
+    },
+    "privileges_required": "lowest",
+    "create_app_dir": false,
+    "uninstallable": false,
+    "add_remove_programs": false,
+    "payload_count": 1,
+    "delegate_command": "cm.exe install",
+    "path_scope": "hkcu-default-managed-root-only"
+  },
+  "ci": {
+    "silent_switches": [
+      "/VERYSILENT",
+      "/SUPPRESSMSGBOXES",
+      "/NORESTART",
+      "/SP-"
+    ]
+  },
+  "handoff": {
+    "windows_job": "windows-setup",
+    "linux_job": "release",
+    "workflow_artifact": "codemcp-windows-setup-staging",
+    "staging_directory": ".release-staging/windows-setup",
+    "setup_filename": "codemcp_windows_amd64_setup.exe",
+    "payload_digest_filename": "codemcp_windows_amd64_cm.sha256",
+    "payload_digest_algorithm": "sha256",
+    "archive_filename": "codemcp_windows_amd64.zip",
+    "archive_payload_path": "cm.exe"
+  },
+  "publication": {
+    "checksum_authority": "goreleaser",
+    "signature_authority": "goreleaser",
+    "release_authority": "goreleaser",
+    "windows_job_publishes_directly": false
+  },
+  "constraints": {
+    "wine_allowed": false,
+    "goreleaser_pro_required": false,
+    "authenticode_required": false,
+    "commercial_license_compliance_external": true,
+    "ci_license_key_required": false
+  }
+}

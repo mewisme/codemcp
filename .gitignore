@@ -6,3 +6,4 @@ apply-*
 /frontend/test-results/
 .agents/
 .local/
+.release-staging/

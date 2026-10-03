@@ -71,6 +71,9 @@ func VerifyRepository(root, observedRepository string) error {
 	if updatepkg.DefaultOwner+"/"+updatepkg.DefaultRepo != ExpectedGitHubRepository || updatepkg.PackageName != "codemcp" {
 		return errors.New("updater release metadata does not target the canonical CodeMCP repository")
 	}
+	if err := verifyWindowsSetupContract(root); err != nil {
+		return err
+	}
 	if err := verifyGoReleaser(root); err != nil {
 		return err
 	}

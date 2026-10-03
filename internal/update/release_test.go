@@ -129,6 +129,31 @@ func TestArtifactNameSupportedTuples(t *testing.T) {
 	}
 }
 
+func TestWindowsSetupReleaseLayoutRemainsAmd64Only(t *testing.T) {
+	var setups []ReleaseArtifact
+	for _, artifact := range PrimaryReleaseLayout().Artifacts {
+		if artifact.Kind == ArtifactSetup {
+			setups = append(setups, artifact)
+		}
+	}
+	want := []ReleaseArtifact{
+		{Kind: ArtifactSetup, OS: "windows", Arch: "amd64", FilenameSuffix: "_setup.exe", BinaryName: "cm.exe"},
+	}
+	if !reflect.DeepEqual(setups, want) {
+		t.Fatalf("setup artifacts = %#v, want %#v", setups, want)
+	}
+	name, err := ArtifactName(ArtifactSetup, "windows", "amd64")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "codemcp_windows_amd64_setup.exe" {
+		t.Fatalf("setup artifact name = %q", name)
+	}
+	if _, err := ArtifactName(ArtifactSetup, "windows", "arm64"); err == nil {
+		t.Fatal("windows/arm64 setup unexpectedly became supported")
+	}
+}
+
 func TestReleasePlatformContractOwnsBinaryNames(t *testing.T) {
 	for _, platform := range PrimaryReleaseLayout().Platforms {
 		asset, err := ArchiveName(platform.OS, platform.Arch)
