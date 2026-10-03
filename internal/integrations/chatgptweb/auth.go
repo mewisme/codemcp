@@ -24,7 +24,7 @@ func (DOMAuthProbe) Probe(ctx context.Context, tab browser.BrowserTab) (AuthEvid
 	return evidence, nil
 }
 
-const authEvidenceExpression = `(async () => {
+const authEvidenceExpression = `/*codemcp:auth*/(async () => {
   const locationURL = new URL(window.location.href);
   const originOK = locationURL.origin === "https://chatgpt.com";
   const temporaryChat = locationURL.pathname === "/" && locationURL.searchParams.get("temporary-chat") === "true";
@@ -41,11 +41,7 @@ const authEvidenceExpression = `(async () => {
       authenticated = Boolean(payload && payload.user);
     }
   } catch (_) {}
-  const composer = Boolean(
-    document.querySelector("#prompt-textarea") ||
-    document.querySelector('[data-testid="prompt-textarea"]') ||
-    document.querySelector('[contenteditable="true"][role="textbox"]')
-  );
+  const composer = Boolean(document.querySelector('` + ComposerSelector + `'));
   return {
     origin_ok: originOK,
     temporary_chat: temporaryChat,
