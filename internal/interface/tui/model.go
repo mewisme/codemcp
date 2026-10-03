@@ -1321,6 +1321,8 @@ func (model *Model) loadPage(route Route) {
 		value, err = tuipage.NewRequestsRouteAction(model.ctx, route.Mode, route.ResourceID, route.Section, route.Action)
 	case RouteLLM:
 		value, err = tuipage.NewLLMRouteAction(model.ctx, route.ResourceID, route.Section, route.Action)
+	case RouteAgents:
+		value, err = tuipage.NewManagedAgentsRoute(model.ctx, route.ResourceID, route.Action)
 	case RouteCompletions:
 		value, err = tuipage.NewCompletionsRoute(model.ctx, route.ResourceID)
 	case RouteLogs:
@@ -1930,6 +1932,8 @@ func routeDescription(route Route) string {
 		return "Review control approval requests."
 	case RouteLLM:
 		return "Manage LLM providers, credentials, models, discovery, and probes."
+	case RouteAgents:
+		return "Inspect and control managed child agents in the running CodeMCP runtime."
 	case RouteCompletions:
 		return "Inspect durable agent completion history and live accepted completion events."
 	case RouteLogs:

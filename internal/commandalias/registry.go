@@ -24,6 +24,9 @@ var registry = map[string][]Definition{
 		{Command: "list", Aliases: []string{"ls"}},
 		{Command: "view", Aliases: []string{"show", "info"}},
 	},
+	"agent": {
+		{Command: "list", Aliases: []string{"ls"}},
+	},
 	"auth": {
 		{Command: "status", Aliases: []string{"st"}},
 	},

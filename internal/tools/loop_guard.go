@@ -248,7 +248,7 @@ func toolCallFingerprint(name string, args map[string]any) string {
 
 func toolLoopClassFor(name string, schema Schema, args map[string]any) toolLoopClass {
 	switch strings.TrimSpace(name) {
-	case "process_status", "process_output", "workspace_status", "shell_status", "agent_status", "get_version", "request_control_approval", AgentCompleteToolName, AgentClaimToolName:
+	case "process_status", "process_output", "workspace_status", "shell_status", "agent_status", "get_version", "request_control_approval", AgentCompleteToolName, AgentClaimToolName, AgentListToolName, AgentWaitToolName:
 		return toolLoopClassExempt
 	case "project_context", "load_path_rules", "list_skills", "load_skill":
 		return toolLoopClassContext

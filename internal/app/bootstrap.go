@@ -60,6 +60,10 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
+		if err := application.BindManagedAgentOperations(a.Operations, application.NewManagedAgentService(a.Tools.Agents, a.Tools.Workspaces)); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		if err := application.BindRequestOperations(a.Operations); err != nil {
 			a.bootstrapErr = err
 			return

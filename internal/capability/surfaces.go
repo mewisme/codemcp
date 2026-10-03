@@ -24,6 +24,12 @@ var remoteHostLocalOperationIDs = idSet(
 	MCPStdio,
 	MCPHTTP,
 	TunnelForeground,
+	ManagedAgentSpawn,
+	ManagedAgentList,
+	ManagedAgentGet,
+	ManagedAgentWait,
+	ManagedAgentSend,
+	ManagedAgentCancel,
 )
 
 var telegramBootstrapOperationIDs = idSet(

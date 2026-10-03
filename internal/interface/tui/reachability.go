@@ -120,6 +120,8 @@ func tuiNavigationActionRoute(id string) string {
 		return string(RouteRequests)
 	case "app.go.llm":
 		return string(RouteLLM)
+	case "app.go.agents":
+		return string(RouteAgents)
 	case "app.go.completions":
 		return string(RouteCompletions)
 	case "app.go.logs":
@@ -153,6 +155,8 @@ func tuiReachabilityContexts() []action.Context {
 		{Route: string(RouteRequests), ResourceID: "resource"},
 		{Route: string(RouteLLM)},
 		{Route: string(RouteLLM), ResourceID: "custom-provider"},
+		{Route: string(RouteAgents)},
+		{Route: string(RouteAgents), ResourceID: "agent_0123456789abcdef"},
 		{Route: string(RouteCompletions)},
 		{Route: string(RouteLogs)},
 		{Route: string(RouteConfig)},

@@ -181,3 +181,27 @@ func TestProfileInstructionPresentationPreservesCanonicalSemantics(t *testing.T)
 		t.Fatalf("profile changed canonical instruction semantics")
 	}
 }
+
+func TestBaseAndOpenAIProfilesShareManagedAgentDelegationSemantics(t *testing.T) {
+	base := ProjectServerInstructions(BaseProfile())
+	openai := ProjectServerInstructions(OpenAIProfile())
+	for _, instructions := range []string{base, openai} {
+		for _, expected := range []string{
+			"Delegate only meaningful independent work",
+			"Parallel mutations require disjoint ownership",
+			"bounded agent_wait",
+			"agent_send only to a live idle child",
+			"claim assigned workspace",
+			"project_context with memory enabled",
+			"claimed children cannot spawn",
+			"not a slash mode",
+		} {
+			if !strings.Contains(instructions, expected) {
+				t.Fatalf("profile instructions missing managed-agent guidance %q: %s", expected, instructions)
+			}
+		}
+	}
+	if strings.Contains(base, "/agent") || strings.Contains(openai, "/agent") {
+		t.Fatalf("managed-agent delegation unexpectedly exposed slash directive: base=%q openai=%q", base, openai)
+	}
+}

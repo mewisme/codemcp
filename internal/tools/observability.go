@@ -304,6 +304,27 @@ func observableToolArguments(name string, args map[string]any) map[string]any {
 		return observablePlanAuthoringArguments(args)
 	case AgentClaimToolName:
 		return map[string]any{"agent_id": stringArgument(args, "agent_id")}
+	case AgentSpawnToolName:
+		return map[string]any{
+			"workspace_id":     stringArgument(args, "workspace_id"),
+			"backend":          stringArgument(args, "backend"),
+			"model":            stringArgument(args, "model"),
+			"reasoning_effort": stringArgument(args, "reasoning_effort"),
+			"prompt_bytes":     len([]byte(stringArgument(args, "prompt"))),
+		}
+	case AgentSendToolName:
+		return map[string]any{
+			"agent_id":      stringArgument(args, "agent_id"),
+			"message_bytes": len([]byte(stringArgument(args, "message"))),
+		}
+	case AgentWaitToolName:
+		return map[string]any{
+			"agent_id":       stringArgument(args, "agent_id"),
+			"after_revision": args["after_revision"],
+			"timeout_ms":     args["timeout_ms"],
+		}
+	case AgentCancelToolName:
+		return map[string]any{"agent_id": stringArgument(args, "agent_id")}
 	default:
 		return cloneMap(args)
 	}
@@ -311,7 +332,7 @@ func observableToolArguments(name string, args map[string]any) map[string]any {
 
 func observableToolEnvelope(name string, value, publicArgs map[string]any) map[string]any {
 	out := cloneMap(value)
-	if name == mcpconfigwire.SetToolName || name == CreateRuleToolName || name == CreateSkillToolName || name == CreatePlanToolName || name == AgentClaimToolName {
+	if name == mcpconfigwire.SetToolName || name == CreateRuleToolName || name == CreateSkillToolName || name == CreatePlanToolName || name == AgentClaimToolName || name == AgentSpawnToolName || name == AgentSendToolName || name == AgentWaitToolName || name == AgentCancelToolName {
 		out["arguments"] = cloneMap(publicArgs)
 	}
 	return out

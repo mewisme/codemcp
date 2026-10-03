@@ -110,7 +110,10 @@ func buildMutationOwners() map[ID]MutationOwner {
 	)
 	add(MutationOwnerApproval, RequestApprove, RequestDeny, RequestGrantRevoke, RequestControlApproval)
 	add(MutationOwnerAgentCompletion, AgentComplete)
-	add(MutationOwnerManagedAgent, AgentClaim)
+	add(MutationOwnerManagedAgent,
+		AgentClaim, AgentSpawn, AgentSend, AgentCancel,
+		ManagedAgentSpawn, ManagedAgentSend, ManagedAgentCancel,
+	)
 	add(MutationOwnerFilesystem,
 		FileWriteText, FileWriteBinary, FileEdit, FileMultiEdit, FileReplaceRegex, FileCopy, FileMove, FileDelete,
 		DirectoryCreate, DirectoryDelete,

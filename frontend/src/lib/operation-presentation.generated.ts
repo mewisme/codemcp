@@ -659,6 +659,60 @@ export const canonicalPresentationContract = {
       "confirmation": "none",
       "input": "none"
     },
+    "managed-agent.cancel": {
+      "operation": "managed-agent.cancel",
+      "title": "Cancel Agent",
+      "subject": "Agent",
+      "category": "change",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "form"
+    },
+    "managed-agent.get": {
+      "operation": "managed-agent.get",
+      "title": "Get Agent",
+      "subject": "Agent",
+      "category": "read",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "resource"
+    },
+    "managed-agent.list": {
+      "operation": "managed-agent.list",
+      "title": "List Agent",
+      "subject": "Agent",
+      "category": "read",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "none"
+    },
+    "managed-agent.send": {
+      "operation": "managed-agent.send",
+      "title": "Send Agent",
+      "subject": "Agent",
+      "category": "change",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "form"
+    },
+    "managed-agent.spawn": {
+      "operation": "managed-agent.spawn",
+      "title": "Spawn Agent",
+      "subject": "Agent",
+      "category": "change",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "form"
+    },
+    "managed-agent.wait": {
+      "operation": "managed-agent.wait",
+      "title": "Wait Agent",
+      "subject": "Agent",
+      "category": "read",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "none"
+    },
     "mcp.http": {
       "operation": "mcp.http",
       "title": "HTTP MCP",

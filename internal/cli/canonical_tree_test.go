@@ -21,12 +21,18 @@ const frozenCanonicalCommandTree = `<root> | namespace
 activity stream | operation:activity.stream
 activity view | operation:activity.view
 activity | namespace
+agent cancel | operation:managed-agent.cancel
 agent completion current | operation:completion.current
 agent completion doctor | operation:completion.doctor
 agent completion feed | operation:completion.feed
 agent completion list | operation:completion.list
 agent completion view | operation:completion.view
 agent completion | namespace
+agent get | operation:managed-agent.get
+agent list | operation:managed-agent.list
+agent send | operation:managed-agent.send
+agent spawn | operation:managed-agent.spawn
+agent wait | operation:managed-agent.wait
 agent | namespace
 auth admin create | operation:auth.admin.rotate
 auth admin disable | operation:auth.admin.disable

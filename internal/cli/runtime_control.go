@@ -172,6 +172,7 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 		writeControlJSON(w, requests, err)
 	}))
 	registerRuntimeCompletionRoutes(mux, controlState.Token, options.Completions)
+	registerRuntimeManagedAgentRoutes(mux, controlState.Token, options.Operations)
 	mux.HandleFunc("/requests/stream", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
 		serveRuntimeApprovalFeed(w, r, options.Approvals)
 	}))

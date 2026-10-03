@@ -119,6 +119,7 @@ func TestCapabilityActionsHaveReachableContexts(t *testing.T) {
 		{Route: string(RouteExecutions), Mode: "resource"}, {Route: string(RouteProcesses), Mode: "resource"}, {Route: string(RouteProcesses), Mode: "workspace", ResourceID: "resource"},
 		{Route: string(RouteRequests)}, {Route: string(RouteRequests), ResourceID: "resource"},
 		{Route: string(RouteLLM)}, {Route: string(RouteLLM), ResourceID: "resource"},
+		{Route: string(RouteAgents)}, {Route: string(RouteAgents), ResourceID: "agent_0123456789abcdef"},
 		{Route: string(RouteLogs)}, {Route: string(RouteConfig)}, {Route: string(RoutePrompts)}, {Route: string(RouteRuntime)}, {Route: string(RouteAbout)},
 	}
 	for _, item := range defaultActionRegistry().All() {

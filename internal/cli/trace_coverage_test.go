@@ -35,6 +35,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceTrivial, nil,
 		"tools list",
 		"execution list", "execution view", "process list", "process view", "process clear", "workspace context", "workspace container membership list",
+		"agent spawn", "agent list", "agent get", "agent send", "agent wait", "agent cancel",
 	)
 	add(commandTraceTrivial, nil, "prompt list", "prompt get", "prompt create", "prompt update", "prompt delete")
 	add(commandTraceStreaming, []string{"logs.snapshot.load.completed"}, "logs")

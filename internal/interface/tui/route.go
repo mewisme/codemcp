@@ -20,6 +20,7 @@ const (
 	RouteProcesses    RouteKind = "processes"
 	RouteRequests     RouteKind = "requests"
 	RouteLLM          RouteKind = "llm"
+	RouteAgents       RouteKind = "agents"
 	RouteCompletions  RouteKind = "completions"
 	RouteLogs         RouteKind = "logs"
 	RouteLogsExec     RouteKind = "logs-exec"
@@ -89,6 +90,8 @@ func ParseRoute(args []string) (Route, error) {
 		return parseRequestsRoute(parts)
 	case RouteLLM:
 		return parseLLMRoute(parts)
+	case RouteAgents:
+		return parseManagedAgentRoute(parts)
 	case RouteCompletions:
 		return parseCompletionRoute(parts)
 	case RouteLogs:
@@ -106,6 +109,34 @@ func ParseRoute(args []string) (Route, error) {
 			return Route{}, fmt.Errorf("TUI path %q does not accept child segments", parts[0])
 		}
 		return Route{Kind: kind}, nil
+	}
+}
+
+func parseManagedAgentRoute(parts []string) (Route, error) {
+	route := Route{Kind: RouteAgents}
+	if len(parts) == 1 {
+		return route, nil
+	}
+	if len(parts) == 2 && parts[1] == "spawn" {
+		route.Action = "spawn"
+		return route, nil
+	}
+	if len(parts) > 3 {
+		return Route{}, fmt.Errorf("managed agent path is too deep: %s", strings.Join(parts, " "))
+	}
+	route.ResourceID = strings.TrimSpace(parts[1])
+	if route.ResourceID == "" {
+		return Route{}, fmt.Errorf("managed agent id is required")
+	}
+	if len(parts) == 2 {
+		return route, nil
+	}
+	switch parts[2] {
+	case "send", "wait", "cancel":
+		route.Action = parts[2]
+		return route, nil
+	default:
+		return Route{}, fmt.Errorf("unsupported managed agent action %q", parts[2])
 	}
 }
 
@@ -518,6 +549,8 @@ func parseRouteKind(value string) (RouteKind, bool) {
 		return RouteRequests, true
 	case "llm", "model", "models":
 		return RouteLLM, true
+	case "agent", "agents":
+		return RouteAgents, true
 	case "completion", "completions", "done":
 		return RouteCompletions, true
 	case "log", "logs":
@@ -542,7 +575,7 @@ func parseRouteKind(value string) (RouteKind, bool) {
 func (route Route) Title() string {
 	base := map[RouteKind]string{
 		RouteHome: "Home", RouteWorkspaces: "Workspaces", RouteContainers: "Workspaces · Containers", RouteMCP: "Upstreams", RouteTunnel: "Tunnel", RouteTools: "Tools", RouteIntegrations: "Integrations", RouteDoctor: "Doctor", RouteExecutions: "Command Executions", RouteProcesses: "Background Processes",
-		RouteRequests: "Requests", RouteLLM: "LLM", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About",
+		RouteRequests: "Requests", RouteLLM: "LLM", RouteAgents: "Managed Agents", RouteCompletions: "Agent Completions", RouteLogs: "Logs", RouteLogsExec: "Logs · Command Execution", RouteLogsTools: "Logs · Tool Calls", RouteConfig: "Config", RoutePrompts: "Prompts", RouteRuntime: "Runtime", RouteAbout: "About",
 	}[route.Kind]
 	if route.Kind == RouteRequests && route.Mode != "" {
 		base += " · " + routeSectionTitle(route.Mode)
@@ -667,6 +700,8 @@ func breadcrumbRootLabel(kind RouteKind) string {
 		return "Requests"
 	case RouteLLM:
 		return "LLM"
+	case RouteAgents:
+		return "Managed Agents"
 	case RouteCompletions:
 		return "Completions"
 	case RouteLogs:

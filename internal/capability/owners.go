@@ -28,6 +28,8 @@ func CanonicalOwnerFor(id ID) (string, bool) {
 		return string(MutationOwnerApproval), true
 	case strings.HasPrefix(value, "completion."):
 		return OwnerApplicationCompletion, true
+	case strings.HasPrefix(value, "managed-agent."):
+		return string(MutationOwnerManagedAgent), true
 	case id == DoctorRead, id == HealthRead, id == StatusOverview, id == VersionAbout,
 		strings.HasPrefix(value, "network."):
 		return OwnerApplicationDiagnostics, true

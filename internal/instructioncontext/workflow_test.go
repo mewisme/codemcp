@@ -419,6 +419,48 @@ func TestCanonicalServerInstructionModelIsDeterministicAndBounded(t *testing.T) 
 	}
 }
 
+func TestAgentDelegationGuidanceIsCanonicalAndNotSlashActivated(t *testing.T) {
+	workflow := AgentWorkflow()
+	for _, expected := range []string{
+		"Delegate only meaningful independent work",
+		"Parallel mutations require disjoint ownership",
+		"parent-only goal",
+		"never copy full transcript",
+		"continue independent parent work",
+		"bounded agent_wait",
+		"agent_send only to a live idle child",
+		"claim assigned workspace",
+		"project_context with memory enabled",
+		"fresh canonical context",
+		"agent_complete",
+		"Depth is one",
+		"claimed children cannot spawn",
+		"not a slash mode",
+	} {
+		if !strings.Contains(workflow, expected) {
+			t.Fatalf("delegation guidance missing %q: %s", expected, workflow)
+		}
+	}
+	model := CanonicalServerInstructionModel()
+	count := 0
+	for _, directive := range model.Workflow {
+		if directive.ID == "agent-delegation" {
+			count++
+			if directive.Text != guidanceAgentDelegation {
+				t.Fatalf("agent-delegation directive drifted: %q", directive.Text)
+			}
+		}
+	}
+	if count != 1 {
+		t.Fatalf("agent-delegation directive count=%d want=1", count)
+	}
+	for _, name := range CoreSlashDirectiveNames() {
+		if name == "agent" {
+			t.Fatal("managed-agent delegation was exposed as /agent slash mode")
+		}
+	}
+}
+
 func TestCanonicalServerInstructionModelContainsNoTransientWorkspaceContent(t *testing.T) {
 	value := StaticServerInstructions()
 	for _, forbidden := range []string{"ws_secret_runtime", "/tmp/private-workspace", "user@example.com", "Bearer ", "sk-"} {

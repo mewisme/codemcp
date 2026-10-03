@@ -133,6 +133,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	RegisterInstructionAuthoringTools(registry, runtime)
 	RegisterPlanAuthoringTool(registry, runtime)
 	RegisterPromptTools(registry, runtime)
+	RegisterManagedAgentTools(registry, runtime)
 	RegisterAgentClaimTool(registry, runtime)
 	RegisterAgentCompletionTool(registry, runtime.Completions, runtime.PlanExecutions)
 	RegisterApprovalTools(registry, runtime)

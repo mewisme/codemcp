@@ -31,6 +31,12 @@ const (
 	CompletionDoctor           ID = "completion.doctor"
 	CompletionList             ID = "completion.list"
 	CompletionView             ID = "completion.view"
+	ManagedAgentSpawn          ID = "managed-agent.spawn"
+	ManagedAgentList           ID = "managed-agent.list"
+	ManagedAgentGet            ID = "managed-agent.get"
+	ManagedAgentWait           ID = "managed-agent.wait"
+	ManagedAgentSend           ID = "managed-agent.send"
+	ManagedAgentCancel         ID = "managed-agent.cancel"
 	NotificationStatus         ID = "notification.status"
 	ConfigPath                 ID = "config.path"
 	ConfigExport               ID = "config.export"
@@ -197,6 +203,12 @@ func buildSpecs() []Spec {
 		operatorQuery(CompletionDoctor, "agent completion doctor"),
 		operatorQuery(CompletionList, "agent completion list"),
 		operatorQuery(CompletionView, "agent completion view"),
+		operatorMutation(ManagedAgentSpawn, "agent spawn", RiskState, false),
+		operatorQuery(ManagedAgentList, "agent list", "agent ls"),
+		operatorQuery(ManagedAgentGet, "agent get"),
+		operatorQuery(ManagedAgentWait, "agent wait"),
+		operatorMutation(ManagedAgentSend, "agent send", RiskState, false),
+		operatorMutation(ManagedAgentCancel, "agent cancel", RiskState, false),
 		operatorQuery(DoctorRead, "doctor"),
 		operatorQuery(ConfigPath, "config path"),
 		operatorMutation(ConfigExport, "config export", RiskState, false),

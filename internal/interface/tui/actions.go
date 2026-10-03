@@ -28,6 +28,7 @@ func defaultActionRegistry() *action.Registry {
 		navigationAction("app.go.doctor", "Doctor", Route{Kind: RouteDoctor}, []string{"doctor", "diagnostics", "health", "checkpoint", "history"}, capability.DoctorRead, capability.HealthRead, capability.NetworkInterfacesList, capability.NotificationStatus),
 		navigationAction("app.go.requests", "Requests", Route{Kind: RouteRequests}, []string{"request", "approval"}, capability.RequestView, capability.RequestStream, capability.RequestExplanationView, capability.RequestExplainStatus),
 		navigationAction("app.go.llm", "LLM", Route{Kind: RouteLLM}, []string{"llm", "provider", "model", "ollama"}, capability.LLMStatus, capability.LLMProviderList, capability.LLMProviderGet, capability.LLMProviderModels),
+		navigationAction("app.go.agents", "Managed Agents", Route{Kind: RouteAgents}, []string{"agent", "managed", "delegate"}, capability.ManagedAgentList),
 		navigationAction("app.go.completions", "Agent Completions", Route{Kind: RouteCompletions}, []string{"agent", "completion", "completions", "history", "current", "list", "view", "doctor", "health"}, capability.CompletionCurrent, capability.CompletionDoctor, capability.CompletionList, capability.CompletionView, capability.CompletionFeed),
 		navigationAction("app.go.logs", "Logs", Route{Kind: RouteLogs}, []string{"logs", "events", "journal"}, capability.ActivityStream, capability.ActivityView),
 		navigationAction("app.go.logs-exec", "Command Execution", Route{Kind: RouteLogsExec}, []string{"logs", "command", "execution", "exec", "output"}, capability.ExecutionFeed, capability.ExecutionStream),
@@ -45,6 +46,7 @@ func defaultActionRegistry() *action.Registry {
 	actions = append(actions, integrationActions()...)
 	actions = append(actions, requestActions()...)
 	actions = append(actions, llmActions()...)
+	actions = append(actions, managedAgentActions()...)
 	actions = append(actions, logsActions()...)
 	actions = append(actions, systemActions()...)
 	actions = append(actions, configActions()...)
@@ -53,6 +55,35 @@ func defaultActionRegistry() *action.Registry {
 		panic(err)
 	}
 	return registry
+}
+
+func managedAgentActions() []action.Action {
+	managed := func(id, title, description string, operation capability.ID, commandPath []string, available func(action.Context) bool, route func(action.Context) Route) action.Action {
+		return action.Action{
+			ID: id, Title: title, Category: "Managed Agents", Description: description,
+			Keywords: []string{"agent", "managed", "delegate"}, CommandPath: commandPath,
+			Operation: operation, Capabilities: []capability.ID{operation}, Scope: action.ScopeGlobal,
+			Available: available,
+			Run: func(_ context.Context, ctx action.Context) tea.Cmd {
+				return func() tea.Msg { return navigateMsg{route: route(ctx)} }
+			},
+		}
+	}
+	onAgent := func(ctx action.Context) bool { return ctx.Route == string(RouteAgents) && ctx.ResourceID != "" }
+	return []action.Action{
+		managed("agent.list", "List managed agents", "Inspect managed agents in the running runtime.", capability.ManagedAgentList, []string{"agent", "list"}, nil, func(action.Context) Route { return Route{Kind: RouteAgents} }),
+		managed("agent.spawn", "Spawn managed agent", "Delegate a meaningful independent task.", capability.ManagedAgentSpawn, []string{"agent", "spawn"}, nil, func(action.Context) Route { return Route{Kind: RouteAgents, Action: "spawn"} }),
+		managed("agent.get", "View managed agent", "Inspect the selected managed agent.", capability.ManagedAgentGet, []string{"agent", "get"}, onAgent, func(ctx action.Context) Route { return Route{Kind: RouteAgents, ResourceID: ctx.ResourceID} }),
+		managed("agent.send", "Send managed agent follow-up", "Send a follow-up to the selected idle agent.", capability.ManagedAgentSend, []string{"agent", "send"}, onAgent, func(ctx action.Context) Route {
+			return Route{Kind: RouteAgents, ResourceID: ctx.ResourceID, Action: "send"}
+		}),
+		managed("agent.wait", "Wait for managed agent", "Wait up to ten seconds for the selected agent.", capability.ManagedAgentWait, []string{"agent", "wait"}, onAgent, func(ctx action.Context) Route {
+			return Route{Kind: RouteAgents, ResourceID: ctx.ResourceID, Action: "wait"}
+		}),
+		managed("agent.cancel", "Cancel managed agent", "Cancel the selected managed agent.", capability.ManagedAgentCancel, []string{"agent", "cancel"}, onAgent, func(ctx action.Context) Route {
+			return Route{Kind: RouteAgents, ResourceID: ctx.ResourceID, Action: "cancel"}
+		}),
+	}
 }
 
 func promptActions() []action.Action {
