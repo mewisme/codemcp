@@ -243,7 +243,7 @@ func (s *InstructionAuthoringService) WriteSkill(ctx context.Context, request Sk
 	if err != nil {
 		return InstructionAuthoringResult{}, fmt.Errorf("%w: %v", ErrInstructionInvalid, err)
 	}
-	if skills.IsReservedName(name) {
+	if isReservedAuthoredSkillName(name) {
 		return InstructionAuthoringResult{}, fmt.Errorf("%w: skill name %q is reserved by CodeMCP", ErrInstructionInvalid, name)
 	}
 	if err := validateAuthoringMode(request.Mode); err != nil {
@@ -319,6 +319,18 @@ func (s *InstructionAuthoringService) WriteSkill(ctx context.Context, request Sk
 		return InstructionAuthoringResult{}, err
 	}
 	return s.completeInstructionMutation(result, target), nil
+}
+
+func isReservedAuthoredSkillName(name string) bool {
+	if skills.IsReservedName(name) {
+		return true
+	}
+	for _, reserved := range instructioncontext.CoreSlashDirectiveNames() {
+		if name == reserved {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *InstructionAuthoringService) completeInstructionMutation(result InstructionAuthoringResult, target authoringTarget) InstructionAuthoringResult {

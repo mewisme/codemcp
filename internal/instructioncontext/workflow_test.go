@@ -157,6 +157,31 @@ func TestAgentWorkflowDoesNotRequireSkillBodiesUpFront(t *testing.T) {
 	}
 }
 
+func TestAgentAndServerWorkflowExposeCanonicalSlashSemantics(t *testing.T) {
+	for _, value := range []string{AgentWorkflow(), StaticServerInstructions()} {
+		for _, expected := range []string{
+			"/plan",
+			"/create-plan",
+			"/skill",
+			"/create-skill",
+			"/rule",
+			"/create-rule",
+			"/<skill-name>",
+			"skills/list",
+			"skills/get",
+			"list_skills/load_skill",
+			"never fuzzy",
+			"No /<rule-name>",
+			"plan_execution=true",
+			"raw-prompt interpretation belongs to the host agent",
+		} {
+			if !strings.Contains(value, expected) {
+				t.Fatalf("workflow missing slash guidance %q: %s", expected, value)
+			}
+		}
+	}
+}
+
 func TestAgentWorkflowIsStableAndNonEmpty(t *testing.T) {
 	if strings.TrimSpace(DefaultAgentWorkflow) == "" || AgentWorkflow() != DefaultAgentWorkflow {
 		t.Fatalf("workflow = %q", AgentWorkflow())
@@ -259,10 +284,10 @@ func TestPlanModeGuidanceIsCanonicalAndStopsBeforeImplementation(t *testing.T) {
 		"exact standalone whitespace-delimited token",
 		"project_context with memory enabled",
 		"inspect applicable rules and skills",
-		"audit the relevant source plus existing persisted plan state",
+		"audit relevant source plus persisted plan state",
 		"persist through create_plan",
 		"do not return only an unpersisted prose plan",
-		"do not perform implementation mutations",
+		"Do not perform implementation mutations",
 		"final create_plan mutation",
 		"dominates contradictory same-request implementation wording",
 		"stop before implementation",

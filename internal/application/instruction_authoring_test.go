@@ -380,6 +380,15 @@ func TestInstructionAuthoringGlobalRequiresOperatorAndPreservesManagedPolicy(t *
 
 func TestInstructionAuthoringValidationRejectsUnsafeOrOversizeRequests(t *testing.T) {
 	service, _, item := newInstructionAuthoringHarness(t)
+	for _, reserved := range instructioncontext.CoreSlashDirectiveNames() {
+		_, err := service.WriteSkill(t.Context(), SkillAuthoringRequest{
+			Scope: InstructionScopeWorkspace, Mode: InstructionCreate, WorkspaceID: item.ID,
+			Name: reserved, Description: "Reserved", Instructions: "body",
+		})
+		if err == nil || !errors.Is(err, ErrInstructionInvalid) || !strings.Contains(err.Error(), "reserved by CodeMCP") {
+			t.Fatalf("reserved slash skill name %q accepted: %v", reserved, err)
+		}
+	}
 	for _, request := range []RuleAuthoringRequest{
 		{Scope: InstructionScopeWorkspace, Mode: InstructionCreate, WorkspaceID: item.ID, Name: "../escape", AlwaysApply: true, Content: "body"},
 		{Scope: InstructionScopeWorkspace, Mode: InstructionCreate, WorkspaceID: item.ID, Name: "mixed", AlwaysApply: true, Globs: []string{"*.go"}, Content: "body"},
