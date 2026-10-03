@@ -34,8 +34,8 @@ func TestTelemetryConfigDefaultRoundTripAndEffectivePrecedence(t *testing.T) {
 		raw  string
 		want bool
 	}{
-		{"1", true}, {"true", true}, {"yes", true}, {"on", true},
-		{"0", false}, {"false", false}, {"no", false}, {"off", false},
+		{"1", true}, {"true", true}, {" YES ", true}, {"On", true},
+		{"0", false}, {"false", false}, {" NO ", false}, {"Off", false},
 	} {
 		state = ResolveTelemetryEnabledWithLookup(cfg, true, func(string) (string, bool) { return test.raw, true })
 		if state.Enabled != test.want || state.Source != TelemetrySourceEnv {

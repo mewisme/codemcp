@@ -26,8 +26,26 @@ type InstallationOverview struct {
 }
 
 type InstallCurrentOptions struct {
-	Force   bool                      `json:"force,omitempty"`
-	Observe func(InstallCutoverEvent) `json:"-"`
+	Force                   bool                         `json:"force,omitempty"`
+	SkipMissingIntegrations bool                         `json:"skip_missing_integrations,omitempty"`
+	Observe                 func(InstallCutoverEvent)    `json:"-"`
+	ObserveIntegration      func(IntegrationEnsureEvent) `json:"-"`
+}
+
+func resolveInstallCurrentOptions(options InstallCurrentOptions) (InstallCurrentOptions, error) {
+	return resolveInstallCurrentOptionsWithLookup(options, nil)
+}
+
+func resolveInstallCurrentOptionsWithLookup(options InstallCurrentOptions, lookup func(string) (string, bool)) (InstallCurrentOptions, error) {
+	resolved, err := resolvePostInstallBootstrapOptions(PostInstallBootstrapOptions{
+		SkipMissingIntegrations: options.SkipMissingIntegrations,
+		Observe:                 options.ObserveIntegration,
+	}, lookup)
+	if err != nil {
+		return InstallCurrentOptions{}, err
+	}
+	options.SkipMissingIntegrations = resolved.SkipMissingIntegrations
+	return options, nil
 }
 
 type UpdateApplyOptions struct {

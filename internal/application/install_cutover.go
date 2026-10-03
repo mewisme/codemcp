@@ -47,7 +47,7 @@ type installCutoverDependencies struct {
 	Activate    func(context.Context, released024.ActivateOptions) (released024.ActivationResult, error)
 	Retire      func(context.Context, released024.RetireOptions) (released024.RetirementResult, error)
 	Install     func(install.Options) (install.Result, error)
-	PostInstall func(context.Context) SupplementalBootstrapResult
+	PostInstall func(context.Context, PostInstallBootstrapOptions) SupplementalBootstrapResult
 	Layout      func() (install.Layout, error)
 	Executable  func() (string, error)
 	Stat        func(string) (os.FileInfo, error)
@@ -57,13 +57,17 @@ func defaultInstallCutoverDependencies() installCutoverDependencies {
 	return installCutoverDependencies{
 		Detect: released024.Detect, Discard: released024.DiscardUnsupportedPredecessor,
 		Stage: released024.Stage, Activate: released024.Activate, Retire: released024.Retire,
-		Install: install.Install, PostInstall: RunPostInstallBootstrap, Layout: install.DefaultLayout,
+		Install: install.Install, PostInstall: runPostInstallBootstrapWithOptions, Layout: install.DefaultLayout,
 		Executable: os.Executable, Stat: os.Stat,
 	}
 }
 
 func InstallCurrentContext(ctx context.Context, options InstallCurrentOptions) (InstallCurrentResult, error) {
-	return installCurrentWithDependencies(ctx, options, defaultInstallCutoverDependencies())
+	resolved, err := resolveInstallCurrentOptions(options)
+	if err != nil {
+		return InstallCurrentResult{}, err
+	}
+	return installCurrentWithDependencies(ctx, resolved, defaultInstallCutoverDependencies())
 }
 
 func InstallCurrent(options InstallCurrentOptions) (InstallCurrentResult, error) {
@@ -71,7 +75,11 @@ func InstallCurrent(options InstallCurrentOptions) (InstallCurrentResult, error)
 }
 
 func MigrateReleasedInstallIfNeeded(ctx context.Context, options InstallCurrentOptions) (InstallCurrentResult, bool, error) {
-	return migrateReleasedInstallIfNeeded(ctx, options, defaultInstallCutoverDependencies())
+	resolved, err := resolveInstallCurrentOptions(options)
+	if err != nil {
+		return InstallCurrentResult{}, false, err
+	}
+	return migrateReleasedInstallIfNeeded(ctx, resolved, defaultInstallCutoverDependencies())
 }
 
 func installCurrentWithDependencies(ctx context.Context, options InstallCurrentOptions, deps installCutoverDependencies) (InstallCurrentResult, error) {
@@ -89,7 +97,7 @@ func installCurrentWithDependencies(ctx context.Context, options InstallCurrentO
 	}
 	emitInstallCutover(options.Observe, "activate", "success", "Canonical CodeMCP binary installed", false)
 	emitInstallCutover(options.Observe, "cleanup", "running", "Bootstrapping install supplements", false)
-	supplemental := deps.PostInstall(ctx)
+	supplemental := deps.PostInstall(ctx, postInstallBootstrapOptions(options))
 	emitSupplementalOutcomes(options.Observe, supplemental)
 	emitInstallCutover(options.Observe, "cleanup", "success", "Install supplements processed", false)
 	return InstallCurrentResult{
@@ -192,7 +200,7 @@ func migrateReleasedInstallIfNeeded(ctx context.Context, options InstallCurrentO
 		return InstallCurrentResult{}, true, err
 	}
 	emitInstallCutover(options.Observe, "cleanup", "success", "Released predecessor runtime retired", false)
-	supplemental := deps.PostInstall(ctx)
+	supplemental := deps.PostInstall(ctx, postInstallBootstrapOptions(options))
 	emitSupplementalOutcomes(options.Observe, supplemental)
 	return InstallCurrentResult{
 		Migration: &MigrationCutoverResult{
@@ -201,6 +209,13 @@ func migrateReleasedInstallIfNeeded(ctx context.Context, options InstallCurrentO
 		},
 		Supplemental: supplemental, Version: version.Version, Binary: activated.Binary, Command: layout.CanonicalBinary,
 	}, true, nil
+}
+
+func postInstallBootstrapOptions(options InstallCurrentOptions) PostInstallBootstrapOptions {
+	return PostInstallBootstrapOptions{
+		SkipMissingIntegrations: options.SkipMissingIntegrations,
+		Observe:                 options.ObserveIntegration,
+	}
 }
 
 func installCutoverCount(count int, singular, plural string) string {

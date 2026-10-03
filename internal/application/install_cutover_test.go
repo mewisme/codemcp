@@ -38,8 +38,11 @@ func TestInstallCurrentKeepsPrimaryInstallSuccessfulWhenSupplementalBootstrapWar
 			Canonical: install.CanonicalStatus{Path: layout.CanonicalBinary},
 		}, nil
 	}
-	deps.PostInstall = func(context.Context) SupplementalBootstrapResult {
+	deps.PostInstall = func(_ context.Context, options PostInstallBootstrapOptions) SupplementalBootstrapResult {
 		postCalls++
+		if options.SkipMissingIntegrations || options.Observe != nil {
+			t.Fatalf("default bootstrap options=%#v", options)
+		}
 		return SupplementalBootstrapResult{
 			Integrations: []IntegrationEnsureResult{{Integration: "rtk", State: "failed", Detail: "offline", Retry: "cm integration rtk install"}},
 			Warnings:     []string{"telemetry bootstrap failed: offline"},
@@ -105,12 +108,23 @@ func TestReleasedInstallMigrationRunsStageActivateRetireBeforeSupplementalBootst
 		t.Fatal("low-level install must not run outside activation during migration")
 		return install.Result{}, nil
 	}
-	deps.PostInstall = func(context.Context) SupplementalBootstrapResult {
+	var bootstrapOptions PostInstallBootstrapOptions
+	integrationEvents := []IntegrationEnsureEvent{}
+	deps.PostInstall = func(_ context.Context, options PostInstallBootstrapOptions) SupplementalBootstrapResult {
 		sequence = append(sequence, "supplemental")
+		bootstrapOptions = options
+		if options.Observe != nil {
+			options.Observe(IntegrationEnsureEvent{Integration: "rtk", Phase: "check", State: "running", Message: "checking RTK"})
+		}
 		return SupplementalBootstrapResult{}
 	}
 
-	result, migrated, err := migrateReleasedInstallIfNeeded(t.Context(), InstallCurrentOptions{}, deps)
+	result, migrated, err := migrateReleasedInstallIfNeeded(t.Context(), InstallCurrentOptions{
+		SkipMissingIntegrations: true,
+		ObserveIntegration: func(event IntegrationEnsureEvent) {
+			integrationEvents = append(integrationEvents, event)
+		},
+	}, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,6 +134,12 @@ func TestReleasedInstallMigrationRunsStageActivateRetireBeforeSupplementalBootst
 	want := []string{"detect", "stage", "activate", "retire", "supplemental"}
 	if !reflect.DeepEqual(sequence, want) {
 		t.Fatalf("sequence=%v want=%v", sequence, want)
+	}
+	if !bootstrapOptions.SkipMissingIntegrations || bootstrapOptions.Observe == nil {
+		t.Fatalf("bootstrap options=%#v", bootstrapOptions)
+	}
+	if len(integrationEvents) != 1 || integrationEvents[0].Integration != "rtk" || integrationEvents[0].Phase != "check" {
+		t.Fatalf("integration events=%#v", integrationEvents)
 	}
 
 	sequence = nil
@@ -155,7 +175,7 @@ func TestReleasedInstallMigrationFailureDoesNotInstallOrBootstrap(t *testing.T) 
 		t.Fatal("install ran after staging failure")
 		return install.Result{}, nil
 	}
-	deps.PostInstall = func(context.Context) SupplementalBootstrapResult {
+	deps.PostInstall = func(context.Context, PostInstallBootstrapOptions) SupplementalBootstrapResult {
 		t.Fatal("supplemental bootstrap ran after staging failure")
 		return SupplementalBootstrapResult{}
 	}
@@ -199,13 +219,18 @@ func TestInstallCurrentDiscardsUnsupportedReleasedStateThenFreshInstalls(t *test
 			Canonical: install.CanonicalStatus{Path: layout.CanonicalBinary},
 		}, nil
 	}
-	deps.PostInstall = func(context.Context) SupplementalBootstrapResult {
+	var bootstrapOptions PostInstallBootstrapOptions
+	deps.PostInstall = func(_ context.Context, options PostInstallBootstrapOptions) SupplementalBootstrapResult {
 		sequence = append(sequence, "supplemental")
+		bootstrapOptions = options
 		return SupplementalBootstrapResult{}
 	}
-	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{Observe: func(event InstallCutoverEvent) {
-		events = append(events, event)
-	}}, deps)
+	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{
+		SkipMissingIntegrations: true,
+		Observe: func(event InstallCutoverEvent) {
+			events = append(events, event)
+		},
+	}, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,6 +240,9 @@ func TestInstallCurrentDiscardsUnsupportedReleasedStateThenFreshInstalls(t *test
 	want := []string{"detect", "discard", "install", "supplemental"}
 	if !reflect.DeepEqual(sequence, want) {
 		t.Fatalf("sequence=%v want=%v", sequence, want)
+	}
+	if !bootstrapOptions.SkipMissingIntegrations {
+		t.Fatalf("bootstrap options=%#v", bootstrapOptions)
 	}
 	var messages []string
 	for _, event := range events {
@@ -235,5 +263,22 @@ func TestInstallCurrentDiscardsUnsupportedReleasedStateThenFreshInstalls(t *test
 		if strings.Contains(message, "0 service") || strings.Contains(message, "0 launcher") {
 			t.Fatalf("zero-value cleanup detail leaked into presentation: %q", message)
 		}
+	}
+}
+
+func TestInstallCurrentPrimaryFailureDoesNotRunSupplementalBootstrap(t *testing.T) {
+	deps := defaultInstallCutoverDependencies()
+	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
+		return released024.Manifest{Found: false}, nil
+	}
+	deps.Install = func(install.Options) (install.Result, error) {
+		return install.Result{}, errors.New("activation failed")
+	}
+	deps.PostInstall = func(context.Context, PostInstallBootstrapOptions) SupplementalBootstrapResult {
+		t.Fatal("supplemental bootstrap ran after primary install failure")
+		return SupplementalBootstrapResult{}
+	}
+	if _, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{}, deps); err == nil || !strings.Contains(err.Error(), "activation failed") {
+		t.Fatalf("err=%v", err)
 	}
 }

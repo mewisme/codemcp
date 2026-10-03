@@ -3,11 +3,14 @@ package application
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"go.mewis.me/codemcp/internal/config"
 	producttelemetry "go.mewis.me/codemcp/internal/telemetry/product"
 )
+
+const InstallIntegrationsEnv = "CM_INSTALL_INTEGRATIONS"
 
 type IntegrationEnsureResult struct {
 	Integration string `json:"integration"`
@@ -15,6 +18,37 @@ type IntegrationEnsureResult struct {
 	Source      string `json:"source,omitempty"`
 	Detail      string `json:"detail,omitempty"`
 	Retry       string `json:"retry,omitempty"`
+}
+
+type IntegrationEnsureEvent struct {
+	Integration string `json:"integration"`
+	Phase       string `json:"phase"`
+	State       string `json:"state"`
+	Message     string `json:"message,omitempty"`
+}
+
+type PostInstallBootstrapOptions struct {
+	SkipMissingIntegrations bool
+	Observe                 func(IntegrationEnsureEvent)
+}
+
+func resolvePostInstallBootstrapOptions(options PostInstallBootstrapOptions, lookup func(string) (string, bool)) (PostInstallBootstrapOptions, error) {
+	if options.SkipMissingIntegrations {
+		return options, nil
+	}
+	if lookup == nil {
+		lookup = os.LookupEnv
+	}
+	raw, ok := lookup(InstallIntegrationsEnv)
+	if !ok {
+		return options, nil
+	}
+	enabled, valid := config.ParseEnvironmentBool(raw)
+	if !valid {
+		return PostInstallBootstrapOptions{}, fmt.Errorf("%s must be one of 1, true, yes, on, 0, false, no, off", InstallIntegrationsEnv)
+	}
+	options.SkipMissingIntegrations = !enabled
+	return options, nil
 }
 
 type SupplementalBootstrapResult struct {
@@ -38,7 +72,11 @@ type postInstallCoordinator struct {
 }
 
 func RunPostInstallBootstrap(ctx context.Context) SupplementalBootstrapResult {
-	return newPostInstallCoordinator().Run(ctx)
+	return runPostInstallBootstrapWithOptions(ctx, PostInstallBootstrapOptions{})
+}
+
+func runPostInstallBootstrapWithOptions(ctx context.Context, options PostInstallBootstrapOptions) SupplementalBootstrapResult {
+	return newPostInstallCoordinator().Run(ctx, options)
 }
 
 func newPostInstallCoordinator() *postInstallCoordinator {
@@ -55,7 +93,7 @@ func newPostInstallCoordinator() *postInstallCoordinator {
 	}
 }
 
-func (coordinator *postInstallCoordinator) Run(ctx context.Context) SupplementalBootstrapResult {
+func (coordinator *postInstallCoordinator) Run(ctx context.Context, _ PostInstallBootstrapOptions) SupplementalBootstrapResult {
 	if ctx == nil {
 		ctx = context.Background()
 	}
