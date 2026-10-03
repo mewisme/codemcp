@@ -53,6 +53,15 @@ func (m *ExecutionManager) Bind(sessionKey string, binding ExecutionBinding) (Ex
 		if current == binding {
 			return current, nil
 		}
+		if !current.Closed &&
+			current.WorkspaceID == binding.WorkspaceID &&
+			current.PlanName == binding.PlanName &&
+			current.CompletedPhases == binding.CompletedPhases &&
+			current.Phase == binding.Phase {
+			current.BaselineContentID = binding.BaselineContentID
+			m.bindings[key] = current
+			return current, nil
+		}
 		return ExecutionBinding{}, fmt.Errorf("%w: session is already bound to plan %q phase %s", ErrExecutionBindingConflict, current.PlanName, current.Phase.ID)
 	}
 	m.bindings[key] = binding

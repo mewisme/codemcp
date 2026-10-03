@@ -52,6 +52,32 @@ func TestExecutionManagerRejectsConflictingBinding(t *testing.T) {
 	}
 }
 
+func TestExecutionManagerRefreshesBaselineForSameBoundPhase(t *testing.T) {
+	manager := NewExecutionManager()
+	first := ExecutionBinding{
+		WorkspaceID:       "ws_alpha",
+		PlanName:          "alpha-plan",
+		BaselineContentID: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		CompletedPhases:   1,
+		Phase:             Phase{ID: "1B", Title: "Verify model"},
+	}
+	if _, err := manager.Bind("session-one", first); err != nil {
+		t.Fatal(err)
+	}
+	refreshed := first
+	refreshed.BaselineContentID = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	got, err := manager.Bind("session-one", refreshed)
+	if err != nil {
+		t.Fatalf("Bind(refresh baseline) error = %v", err)
+	}
+	if got != refreshed {
+		t.Fatalf("Bind(refresh baseline) = %#v, want %#v", got, refreshed)
+	}
+	if stored, ok := manager.Lookup("session-one", first.WorkspaceID); !ok || stored != refreshed {
+		t.Fatalf("Lookup() = %#v, %v; want %#v, true", stored, ok, refreshed)
+	}
+}
+
 func TestExecutionManagerValidatesAndCommitsBoundProgress(t *testing.T) {
 	manager := NewExecutionManager()
 	basePlan, baseOrder := lifecycleFixture(false, false, false)

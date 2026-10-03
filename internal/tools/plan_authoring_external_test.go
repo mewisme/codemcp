@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/application"
@@ -552,6 +553,313 @@ func TestCreatePlanExecutionRejectsMultiplePhaseCompletion(t *testing.T) {
 		"expected_content_id": created.ContentID,
 	})
 	assertToolErrorContains(t, result, err, "only bound phase")
+}
+
+func TestPlanExecutionEndToEndRequiresPersistedProgressBeforeCompletion(t *testing.T) {
+	runtime, workspaceID, _ := newPlanAuthoringRuntime(t)
+	planBody, orderBody := agentTwoPhasePlanFixture(false, false, "")
+	createdResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "e2e-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || createdResult.IsError {
+		t.Fatalf("create plan err=%v result=%#v", err, createdResult)
+	}
+	created := createdResult.StructuredContent.(application.PlanAuthoringResult)
+	ctx := planCompletionContext("e2e-session", "e2e")
+	bound, err := runtime.Call(ctx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "e2e-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || bound.IsError {
+		t.Fatalf("bind execution err=%v result=%#v", err, bound)
+	}
+
+	premature, err := runtime.Call(ctx, tools.AgentCompleteToolName, map[string]any{
+		"workspace_id": workspaceID, "status": "completed", "title": "Phase finished",
+	})
+	assertToolErrorContains(t, premature, err, "not persisted as completed")
+
+	completedPlan, completedOrder := agentTwoPhasePlanFixture(true, false, "")
+	updatedResult, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "e2e-plan",
+		"plan_content": completedPlan, "implementation_order": completedOrder,
+		"expected_content_id": created.ContentID,
+	})
+	if err != nil || updatedResult.IsError {
+		t.Fatalf("persist progress err=%v result=%#v", err, updatedResult)
+	}
+	updated := updatedResult.StructuredContent.(application.PlanAuthoringResult)
+	if updated.CompletedPhaseCount != 1 || updated.NextPhase == nil || updated.NextPhase.ID != "1B" {
+		t.Fatalf("unexpected progress result=%#v", updated)
+	}
+
+	completed, err := runtime.Call(ctx, tools.AgentCompleteToolName, map[string]any{
+		"workspace_id": workspaceID, "status": "completed", "title": "Phase finished",
+	})
+	if err != nil || completed.IsError {
+		t.Fatalf("agent_complete after progress err=%v result=%#v", err, completed)
+	}
+}
+
+func TestPlanExecutionStaleRetryRefreshesSameBoundPhase(t *testing.T) {
+	runtime, workspaceID, _ := newPlanAuthoringRuntime(t)
+	planBody, orderBody := agentTwoPhasePlanFixture(false, false, "")
+	createdResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "stale-retry-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || createdResult.IsError {
+		t.Fatalf("create plan err=%v result=%#v", err, createdResult)
+	}
+	created := createdResult.StructuredContent.(application.PlanAuthoringResult)
+	ctx := tools.WithMCPSessionID(context.Background(), "stale-retry-session")
+	bound, err := runtime.Call(ctx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "stale-retry-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || bound.IsError {
+		t.Fatalf("bind execution err=%v result=%#v", err, bound)
+	}
+
+	externalPlan, externalOrder := agentTwoPhasePlanFixture(false, false, "external-future-note")
+	externalResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "stale-retry-plan",
+		"plan_content": externalPlan, "implementation_order": externalOrder,
+		"expected_content_id": created.ContentID,
+	})
+	if err != nil || externalResult.IsError {
+		t.Fatalf("external canonical edit err=%v result=%#v", err, externalResult)
+	}
+	external := externalResult.StructuredContent.(application.PlanAuthoringResult)
+
+	completedOldPlan, completedOldOrder := agentTwoPhasePlanFixture(true, false, "")
+	stale, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "stale-retry-plan",
+		"plan_content": completedOldPlan, "implementation_order": completedOldOrder,
+		"expected_content_id": created.ContentID,
+	})
+	assertToolErrorContains(t, stale, err, "stale")
+
+	refreshedResult, err := runtime.Call(ctx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "stale-retry-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || refreshedResult.IsError {
+		t.Fatalf("refresh execution binding err=%v result=%#v", err, refreshedResult)
+	}
+	refreshed := refreshedResult.StructuredContent.(tools.ProjectContextResult).Summary.PlanExecution
+	if refreshed == nil || refreshed.BaselineContentID != external.ContentID || refreshed.Phase.ID != "1A" {
+		t.Fatalf("refreshed binding=%#v external=%#v", refreshed, external)
+	}
+	completedPlan, completedOrder := agentTwoPhasePlanFixture(true, false, "external-future-note")
+	retry, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "stale-retry-plan",
+		"plan_content": completedPlan, "implementation_order": completedOrder,
+		"expected_content_id": external.ContentID,
+	})
+	if err != nil || retry.IsError {
+		t.Fatalf("retry progress err=%v result=%#v", err, retry)
+	}
+}
+
+func TestPlanExecutionConcurrentSessionsCannotBothCloseSameBaselinePhase(t *testing.T) {
+	runtime, workspaceID, _ := newPlanAuthoringRuntime(t)
+	planBody, orderBody := agentTwoPhasePlanFixture(false, false, "")
+	createdResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "race-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || createdResult.IsError {
+		t.Fatalf("create plan err=%v result=%#v", err, createdResult)
+	}
+	created := createdResult.StructuredContent.(application.PlanAuthoringResult)
+	contexts := []context.Context{
+		tools.WithMCPSessionID(context.Background(), "race-session-a"),
+		tools.WithMCPSessionID(context.Background(), "race-session-b"),
+	}
+	for _, ctx := range contexts {
+		result, err := runtime.Call(ctx, "project_context", map[string]any{
+			"workspace_id": workspaceID, "plan_name": "race-plan", "plan_execution": true,
+			"include_git": false, "include_memory": false, "include_skills": false,
+		})
+		if err != nil || result.IsError {
+			t.Fatalf("bind race session err=%v result=%#v", err, result)
+		}
+	}
+	completedPlan, completedOrder := agentTwoPhasePlanFixture(true, false, "")
+	type outcome struct {
+		result tools.Result
+		err    error
+	}
+	outcomes := make(chan outcome, 2)
+	var wg sync.WaitGroup
+	for _, ctx := range contexts {
+		wg.Add(1)
+		go func(ctx context.Context) {
+			defer wg.Done()
+			result, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+				"workspace_id": workspaceID, "mode": "update", "name": "race-plan",
+				"plan_content": completedPlan, "implementation_order": completedOrder,
+				"expected_content_id": created.ContentID,
+			})
+			outcomes <- outcome{result: result, err: err}
+		}(ctx)
+	}
+	wg.Wait()
+	close(outcomes)
+	successes, failures := 0, 0
+	for value := range outcomes {
+		if value.err == nil && !value.result.IsError {
+			successes++
+		} else {
+			failures++
+		}
+	}
+	if successes != 1 || failures != 1 {
+		t.Fatalf("concurrent progress successes=%d failures=%d, want 1/1", successes, failures)
+	}
+}
+
+func TestPlanExecutionBindingsAreIsolatedByWorkspaceWithinOneSession(t *testing.T) {
+	runtime, workspaceA, _ := newPlanAuthoringRuntime(t)
+	otherRoot := t.TempDir()
+	other, err := runtime.Workspaces.Register(otherRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime.SetPlanAuthoringProvider(application.NewAgentPlanAuthoringProvider(runtime.Workspaces, runtime.InstructionChanges))
+	planBody, orderBody := agentTwoPhasePlanFixture(false, false, "")
+	for _, target := range []struct{ workspace, name string }{{workspaceA, "workspace-a-plan"}, {other.ID, "workspace-b-plan"}} {
+		result, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+			"workspace_id": target.workspace, "mode": "create", "name": target.name,
+			"plan_content": planBody, "implementation_order": orderBody,
+		})
+		if err != nil || result.IsError {
+			t.Fatalf("create %s err=%v result=%#v", target.name, err, result)
+		}
+	}
+	ctx := tools.WithMCPSessionID(context.Background(), "shared-workspace-session")
+	for _, target := range []struct{ workspace, name string }{{workspaceA, "workspace-a-plan"}, {other.ID, "workspace-b-plan"}} {
+		result, err := runtime.Call(ctx, "project_context", map[string]any{
+			"workspace_id": target.workspace, "plan_name": target.name, "plan_execution": true,
+			"include_git": false, "include_memory": false, "include_skills": false,
+		})
+		if err != nil || result.IsError {
+			t.Fatalf("bind %s err=%v result=%#v", target.name, err, result)
+		}
+	}
+}
+
+func TestPlanExecutionBindingLossAcrossRuntimeRestartDoesNotMutatePersistedProgress(t *testing.T) {
+	runtime, workspaceID, root := newPlanAuthoringRuntime(t)
+	planBody, orderBody := agentTwoPhasePlanFixture(false, false, "")
+	createdResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "restart-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || createdResult.IsError {
+		t.Fatalf("create plan err=%v result=%#v", err, createdResult)
+	}
+	created := createdResult.StructuredContent.(application.PlanAuthoringResult)
+	ctx := tools.WithMCPSessionID(context.Background(), "runtime-before-restart")
+	bound, err := runtime.Call(ctx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "restart-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || bound.IsError {
+		t.Fatalf("bind before restart err=%v result=%#v", err, bound)
+	}
+
+	restarted := tools.NewRuntime()
+	item, err := restarted.Workspaces.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted.SetPlanAuthoringProvider(application.NewAgentPlanAuthoringProvider(restarted.Workspaces, restarted.InstructionChanges))
+	readResult, err := restarted.Call(context.Background(), "project_context", map[string]any{
+		"workspace_id": item.ID, "plan_name": "restart-plan",
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || readResult.IsError {
+		t.Fatalf("read after restart err=%v result=%#v", err, readResult)
+	}
+	selected := readResult.StructuredContent.(tools.ProjectContextResult).Summary.Plans.Selected
+	if selected == nil || selected.ContentID != created.ContentID || selected.CompletedPhaseCount != 0 || selected.NextPhase == nil || selected.NextPhase.ID != "1A" {
+		t.Fatalf("persisted progress changed across runtime restart: %#v", selected)
+	}
+	newCtx := tools.WithMCPSessionID(context.Background(), "runtime-after-restart")
+	rebound, err := restarted.Call(newCtx, "project_context", map[string]any{
+		"workspace_id": item.ID, "plan_name": "restart-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || rebound.IsError {
+		t.Fatalf("rebind after restart err=%v result=%#v", err, rebound)
+	}
+}
+
+func TestFinalPhaseCompletionDoesNotRequireTerminalAcceptanceToCloseBinding(t *testing.T) {
+	runtime, workspaceID, _ := newPlanAuthoringRuntime(t)
+	planBody, orderBody := finalPhasePlanFixture(false, false)
+	createdResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "final-phase-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || createdResult.IsError {
+		t.Fatalf("create plan err=%v result=%#v", err, createdResult)
+	}
+	created := createdResult.StructuredContent.(application.PlanAuthoringResult)
+	ctx := planCompletionContext("final-phase-session", "final")
+	bound, err := runtime.Call(ctx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "final-phase-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || bound.IsError {
+		t.Fatalf("bind final phase err=%v result=%#v", err, bound)
+	}
+	completedPlan, completedOrder := finalPhasePlanFixture(true, false)
+	updatedResult, err := runtime.Call(ctx, tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "final-phase-plan",
+		"plan_content": completedPlan, "implementation_order": completedOrder,
+		"expected_content_id": created.ContentID,
+	})
+	if err != nil || updatedResult.IsError {
+		t.Fatalf("complete final phase err=%v result=%#v", err, updatedResult)
+	}
+	updated := updatedResult.StructuredContent.(application.PlanAuthoringResult)
+	if updated.CompletedPhaseCount != 1 || updated.NextPhase != nil || updated.Status == "completed" {
+		t.Fatalf("terminal acceptance should remain independent: %#v", updated)
+	}
+	completed, err := runtime.Call(ctx, tools.AgentCompleteToolName, map[string]any{
+		"workspace_id": workspaceID, "status": "completed", "title": "Final phase finished",
+	})
+	if err != nil || completed.IsError {
+		t.Fatalf("agent_complete after final phase err=%v result=%#v", err, completed)
+	}
+	newSession := tools.WithMCPSessionID(context.Background(), "after-final-session")
+	noNext, err := runtime.Call(newSession, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "final-phase-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	assertToolErrorContains(t, noNext, err, "no incomplete phase")
+}
+
+func planCompletionContext(session, suffix string) context.Context {
+	ctx := tools.WithMCPSessionID(context.Background(), session)
+	ctx = tools.WithCallSource(ctx, "stdio")
+	return tools.WithApprovalCorrelation(ctx, "apc_"+suffix, "apr_"+suffix)
+}
+
+func finalPhasePlanFixture(phaseComplete, terminalComplete bool) (string, string) {
+	phase, terminal := " ", " "
+	if phaseComplete {
+		phase = "x"
+	}
+	if terminalComplete {
+		terminal = "x"
+	}
+	return "# Final phase plan\n\n## Goal\nFinish one phase.\n\n## Phase 1A - Finish work\n\n- [" + phase + "] Finish the work.\n\n## Acceptance\nWork is implemented.",
+		"## Execution rules\nComplete the phase.\n\n## Why this order\nThere is one phase.\n\n## Ordered phases\n\n- [" + phase + "] Phase 1A - Finish work\n\n## Terminal acceptance\n\n- [" + terminal + "] Final acceptance is independently complete."
 }
 
 func assertToolErrorContains(t *testing.T, result tools.Result, err error, expected string) {
