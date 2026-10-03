@@ -1149,7 +1149,23 @@
     "confidence": "HIGH",
     "file": "internal/releaseverify/verify.go",
     "details": "Potential file inclusion via variable",
+    "code": "}\n\t\tdata, err := os.ReadFile(path)\n\t\tif err != nil {"
+  },
+  {
+    "rule_id": "G304",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/releaseverify/verify.go",
+    "details": "Potential file inclusion via variable",
     "code": "}\n\tdata, err := os.ReadFile(path)\n\tif err != nil {"
+  },
+  {
+    "rule_id": "G304",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/releaseverify/verify.go",
+    "details": "Potential file inclusion via variable",
+    "code": "}\n\treleaseData, err := os.ReadFile(filepath.Join(root, \".github\", \"workflows\", \"release.yml\"))\n\tif err != nil {"
   },
   {
     "rule_id": "G304",
@@ -1205,14 +1221,6 @@
     "confidence": "HIGH",
     "file": "internal/releaseverify/verify.go",
     "details": "Potential file inclusion via variable",
-    "code": "func verifyReleaseWorkflows(root string) error {\n\treleaseData, err := os.ReadFile(filepath.Join(root, \".github\", \"workflows\", \"release.yml\"))\n\tif err != nil {"
-  },
-  {
-    "rule_id": "G304",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
-    "file": "internal/releaseverify/verify.go",
-    "details": "Potential file inclusion via variable",
     "code": "func verifyTarArchive(path string, platform updatepkg.ReleasePlatform) ([]byte, error) {\n\tfile, err := os.Open(path)\n\tif err != nil {"
   },
   {
@@ -1227,17 +1235,9 @@
     "rule_id": "G304",
     "severity": "MEDIUM",
     "confidence": "HIGH",
-    "file": "internal/releaseverify/verify.go",
+    "file": "internal/releaseverify/windows_setup_contract.go",
     "details": "Potential file inclusion via variable",
-    "code": "templatePath := filepath.Join(root, \"installer\", \"windows\", \"codemcp.nsi\")\n\ttemplateData, err := os.ReadFile(templatePath)\n\tif err != nil {"
-  },
-  {
-    "rule_id": "G304",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
-    "file": "internal/releaseverify/verify.go",
-    "details": "Potential file inclusion via variable",
-    "code": "wrapperPath := filepath.Join(root, \"scripts\", \"release\", \"build-windows-setup.sh\")\n\twrapperData, err := os.ReadFile(wrapperPath)\n\tif err != nil {"
+    "code": "path := filepath.Join(root, filepath.FromSlash(windowsSetupContractPath))\n\tdata, err := os.ReadFile(path)\n\tif err != nil {"
   },
   {
     "rule_id": "G304",

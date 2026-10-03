@@ -29,6 +29,7 @@ VersionInfoProductName=CodeMCP
 VersionInfoVersion={#SetupVersion}
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=
+RedirectionGuard=no
 SetupArchitecture=x64
 ArchitecturesAllowed=x64compatible
 CreateAppDir=no
@@ -105,7 +106,7 @@ begin
   ExtractTemporaryFile('cm.exe');
   BinaryPath := ExpandConstant('{tmp}\cm.exe');
 
-  if not Exec(BinaryPath, 'install', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ExecResult) then
+  if not ExecAndLogOutput(BinaryPath, 'install', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ExecResult, nil) then
   begin
     DelegatedExitCode := ExecResult;
     if DelegatedExitCode = 0 then

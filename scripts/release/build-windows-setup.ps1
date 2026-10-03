@@ -130,11 +130,11 @@ try {
     '--quiet-progress',
     '--no-ide-signtools',
     '--no-signing',
-    ('--define={0}="{1}"' -f $contract.script.defines.binary_path, $binary.FullName),
-    ('--define={0}="{1}"' -f $contract.script.defines.setup_version, $setupVersion),
-    ('--define={0}="{1}"' -f $contract.script.defines.output_dir, $tempRoot),
-    ('--define={0}="{1}"' -f $contract.script.defines.output_base_filename, $outputBaseFilename),
-    ('--define={0}="{1}"' -f $contract.script.defines.target_arch, $TargetArch),
+    ('--define={0}={1}' -f $contract.script.defines.binary_path, $binary.FullName),
+    ('--define={0}={1}' -f $contract.script.defines.setup_version, $setupVersion),
+    ('--define={0}={1}' -f $contract.script.defines.output_dir, $tempRoot),
+    ('--define={0}={1}' -f $contract.script.defines.output_base_filename, $outputBaseFilename),
+    ('--define={0}={1}' -f $contract.script.defines.target_arch, $TargetArch),
     $script.FullName
   )
 

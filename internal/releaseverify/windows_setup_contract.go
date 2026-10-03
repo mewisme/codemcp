@@ -46,6 +46,7 @@ type windowsSetupScriptContract struct {
 	Path               string                  `json:"path"`
 	Defines            windowsSetupDefineNames `json:"defines"`
 	PrivilegesRequired string                  `json:"privileges_required"`
+	RedirectionGuard   string                  `json:"redirection_guard"`
 	CreateAppDir       bool                    `json:"create_app_dir"`
 	Uninstallable      bool                    `json:"uninstallable"`
 	AddRemovePrograms  bool                    `json:"add_remove_programs"`
@@ -132,6 +133,7 @@ func verifyWindowsSetupContract(root string) error {
 			OutputBaseFilename: "OutputBaseFilename", TargetArch: "TargetArch",
 		},
 		PrivilegesRequired: "lowest",
+		RedirectionGuard:   "no",
 		CreateAppDir:       false,
 		Uninstallable:      false,
 		AddRemovePrograms:  false,

@@ -268,25 +268,147 @@ func verifyGoReleaser(root string) error {
 }
 
 func verifyWindowsSetupBootstrap(root string) error {
-	for _, relative := range []string{
-		filepath.Join("scripts", "release", "build-windows-setup.ps1"),
-		filepath.Join("installer", "windows", "codemcp.iss"),
-	} {
-		info, err := os.Lstat(filepath.Join(root, relative))
+	contract, err := loadWindowsSetupContract(root)
+	if err != nil {
+		return err
+	}
+	paths := map[string]string{
+		"template":  contract.Script.Path,
+		"builder":   filepath.ToSlash(filepath.Join("scripts", "release", "build-windows-setup.ps1")),
+		"toolchain": filepath.ToSlash(filepath.Join("scripts", "release", "install-inno-setup.ps1")),
+		"smoke":     filepath.ToSlash(filepath.Join("scripts", "installer", "test-windows-setup.ps1")),
+	}
+	sources := make(map[string]string, len(paths))
+	for label, relative := range paths {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		info, err := os.Lstat(path)
 		if err != nil {
-			return fmt.Errorf("windows setup source %s is unavailable: %w", filepath.ToSlash(relative), err)
+			return fmt.Errorf("windows setup %s source %s is unavailable: %w", label, relative, err)
 		}
-		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 {
-			return fmt.Errorf("windows setup source %s must be a non-empty regular non-symlink file", filepath.ToSlash(relative))
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 || info.Size() > 1<<20 {
+			return fmt.Errorf("windows setup %s source %s must be a bounded non-empty regular non-symlink file", label, relative)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("read windows setup %s source: %w", label, err)
+		}
+		if err := rejectLegacyWindowsSetupTooling(label, data); err != nil {
+			return err
+		}
+		sources[label] = string(data)
+	}
+
+	template := sources["template"]
+	for _, required := range []string{
+		"PrivilegesRequired=lowest",
+		"RedirectionGuard=no",
+		"SetupArchitecture=x64",
+		"ArchitecturesAllowed=x64compatible",
+		"CreateAppDir=no",
+		"Uninstallable=no",
+		"CreateUninstallRegKey=no",
+		"ChangesEnvironment=yes",
+		"Source: \"{#BinaryPath}\"; DestName: \"cm.exe\"; Flags: dontcopy noencryption",
+		"ExtractTemporaryFile('cm.exe');",
+		"ExecAndLogOutput(BinaryPath, 'install', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ExecResult, nil)",
+		"function GetCustomSetupExitCode: Integer;",
+		"GetEnv('CM_INSTALL_DIR')",
+		"GetEnv('USERPROFILE')",
+		"HKEY_CURRENT_USER, 'Environment', 'Path'",
+		"RegWriteExpandStringValue(HKEY_CURRENT_USER, 'Environment', 'Path', NewPath)",
+		"IsDefaultInstallRoot(InstallRoot, DefaultRoot)",
+	} {
+		if !strings.Contains(template, required) {
+			return fmt.Errorf("windows Inno Setup template is missing required contract %q", required)
+		}
+	}
+	if strings.Count(template, "Source: \"{#BinaryPath}\"; DestName: \"cm.exe\"") != contract.Script.PayloadCount {
+		return errors.New("windows Inno Setup template must embed exactly one canonical cm.exe payload")
+	}
+	for _, forbidden := range []string{"ProgramFiles", "HKEY_LOCAL_MACHINE", "UninstallDisplay", "WriteUninstaller", "[Uninstall", "PrivilegesRequired=admin", "RedirectionGuard=yes"} {
+		if strings.Contains(template, forbidden) {
+			return fmt.Errorf("windows Inno Setup template contains forbidden ownership %q", forbidden)
+		}
+	}
+	if retiredExecutableIdentityPattern.MatchString(template) {
+		return errors.New("windows Inno Setup template contains a retired executable identity")
+	}
+
+	builder := sources["builder"]
+	for _, required := range []string{
+		"setup-contract.json",
+		"[ValidateSet('amd64')]",
+		"--no-signing",
+		"Get-FileHash",
+		"-Algorithm SHA256",
+		"payload_digest_filename",
+		"target.artifact_name",
+		"toolchain.version",
+		"& $compiler '--version'",
+	} {
+		if !strings.Contains(builder, required) {
+			return fmt.Errorf("windows setup builder is missing required contract %q", required)
+		}
+	}
+
+	toolchain := sources["toolchain"]
+	for _, required := range []string{
+		"setup-contract.json",
+		"$contract.toolchain.version",
+		"innosetup-$version-x64.exe",
+		"https://github.com/jrsoftware/issrc/releases/download/is-$releaseID/$assetName",
+		"'/PORTABLE=1'",
+		"'/VERYSILENT'",
+		"'/SUPPRESSMSGBOXES'",
+		"'/NORESTART'",
+		"& $compiler '--version'",
+	} {
+		if !strings.Contains(toolchain, required) {
+			return fmt.Errorf("inno setup toolchain installer is missing required contract %q", required)
+		}
+	}
+
+	smoke := sources["smoke"]
+	for _, required := range []string{
+		"contract.ci.silent_switches",
+		"CM_INSTALL_DIR",
+		"CM_CONFIG_DIR",
+		"CM_TELEMETRY",
+		"CM_INSTALL_INTEGRATIONS",
+		"Start-Process -FilePath $SetupPath",
+		"default managed current directory PATH registration is not idempotent",
+		"custom install root unexpectedly changed HKCU PATH ownership",
+		"delegated install failure exit code",
+		"$failureExit -ne 23",
+	} {
+		if !strings.Contains(smoke, required) {
+			return fmt.Errorf("windows inno setup smoke is missing required contract %q", required)
+		}
+	}
+	return nil
+}
+
+func rejectLegacyWindowsSetupTooling(label string, data []byte) error {
+	lower := strings.ToLower(string(data))
+	for _, forbidden := range []string{"makensis", "codemcp.nsi", "choco install nsis", "nsis setup", "wine "} {
+		if strings.Contains(lower, forbidden) {
+			return fmt.Errorf("%s contains retired Windows setup tooling %q", label, forbidden)
 		}
 	}
 	return nil
 }
 
 func verifyReleaseWorkflows(root string) error {
+	contract, err := loadWindowsSetupContract(root)
+	if err != nil {
+		return err
+	}
 	releaseData, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "release.yml"))
 	if err != nil {
 		return fmt.Errorf("read release workflow: %w", err)
+	}
+	if err := rejectLegacyWindowsSetupTooling("release workflow", releaseData); err != nil {
+		return err
 	}
 	release := string(releaseData)
 	repositoryExpr := "$" + "{{ github.repository }}"
@@ -295,7 +417,7 @@ func verifyReleaseWorkflows(root string) error {
 	telemetryExpr := "$" + "{{ secrets.TELEMETRY_ENDPOINT }}"
 	for _, required := range []string{
 		"RELEASE_REPOSITORY: " + repositoryExpr,
-		`PACKAGE_MAINTAINER: "` + repositoryOwnerExpr + " <" + repositoryOwnerIDExpr + "+" + repositoryOwnerExpr + `@users.noreply.github.com>"`,
+		"PACKAGE_MAINTAINER: \"" + repositoryOwnerExpr + " <" + repositoryOwnerIDExpr + "+" + repositoryOwnerExpr + "@users.noreply.github.com>\"",
 		"runs-on: ubuntu-24.04",
 		"--github-repository",
 		"--vanity-url",
@@ -305,24 +427,25 @@ func verifyReleaseWorkflows(root string) error {
 		"args: build --snapshot --clean --single-target",
 		"TELEMETRY_ENDPOINT: ''",
 		"--expect-telemetry absent",
-		"windows-setup:",
+		contract.Handoff.WindowsJob + ":",
 		"runs-on: windows-latest",
 		"args: build --clean --single-target",
 		"GOOS: windows",
 		"GOARCH: amd64",
-		"codemcp-windows-setup-staging",
-		"path: .release-staging/windows-setup",
-		"needs: windows-setup",
+		"scripts/release/install-inno-setup.ps1",
+		contract.Handoff.WorkflowArtifact,
+		"path: " + contract.Handoff.StagingDirectory,
+		"needs: " + contract.Handoff.WindowsJob,
 		"distribution: goreleaser",
 		"version: 'v2.18.0'",
 		"args: release --clean --draft",
-		"scripts/release/verify-windows-setup-payload.sh .release-staging/windows-setup dist",
+		"scripts/release/verify-windows-setup-payload.sh " + contract.Handoff.StagingDirectory + " dist",
 		"--dist dist --expect-telemetry present",
 		"gh release view \"${GITHUB_REF_NAME}\" --json assets",
 		"cosign verify-blob",
 		"dist/scoop/codemcp.json",
 		"dist/homebrew/Casks/codemcp.rb",
-		`gh release edit "${GITHUB_REF_NAME}" --draft=false --latest`,
+		"gh release edit \"${GITHUB_REF_NAME}\" --draft=false --latest",
 	} {
 		if !strings.Contains(release, required) {
 			return fmt.Errorf("release workflow is missing required cutover contract %q", required)
@@ -331,6 +454,7 @@ func verifyReleaseWorkflows(root string) error {
 	for _, script := range []string{
 		filepath.Join("scripts", "release", "verify", "main.go"),
 		filepath.Join("scripts", "release", "verify-windows-setup-payload.sh"),
+		filepath.Join("scripts", "release", "install-inno-setup.ps1"),
 	} {
 		if _, err := os.Stat(filepath.Join(root, script)); err != nil {
 			return fmt.Errorf("release workflow helper %s is unavailable: %w", filepath.ToSlash(script), err)
@@ -339,36 +463,50 @@ func verifyReleaseWorkflows(root string) error {
 	if strings.Contains(release, "goreleaser-pro") {
 		return errors.New("release workflow must use GoReleaser OSS")
 	}
-	stagingIndex := strings.Index(release, "path: .release-staging/windows-setup")
+
+	toolchainIndex := strings.Index(release, "scripts/release/install-inno-setup.ps1")
+	setupBuildIndex := strings.Index(release, "scripts/release/build-windows-setup.ps1")
+	uploadIndex := strings.Index(release, "name: "+contract.Handoff.WorkflowArtifact)
+	stagingIndex := strings.Index(release, "path: "+contract.Handoff.StagingDirectory)
 	draftIndex := strings.Index(release, "args: release --clean --draft")
-	provenanceIndex := strings.Index(release, "scripts/release/verify-windows-setup-payload.sh .release-staging/windows-setup dist")
+	provenanceIndex := strings.Index(release, "scripts/release/verify-windows-setup-payload.sh "+contract.Handoff.StagingDirectory+" dist")
 	verifyIndex := strings.Index(release, "--dist dist --expect-telemetry present")
 	assetIndex := strings.Index(release, "gh release view \"${GITHUB_REF_NAME}\" --json assets")
 	signatureIndex := strings.Index(release, "cosign verify-blob")
 	manifestIndex := strings.Index(release, "gh release upload")
-	publishIndex := strings.Index(release, `gh release edit "${GITHUB_REF_NAME}" --draft=false --latest`)
-	if stagingIndex < 0 || draftIndex <= stagingIndex || provenanceIndex <= draftIndex || verifyIndex <= provenanceIndex ||
-		assetIndex <= verifyIndex || signatureIndex <= assetIndex || manifestIndex <= signatureIndex || publishIndex <= manifestIndex {
-		return errors.New("release workflow must verify staged setup provenance, signed draft, and package manifests before publishing it")
+	publishIndex := strings.Index(release, "gh release edit \"${GITHUB_REF_NAME}\" --draft=false --latest")
+	if toolchainIndex < 0 || setupBuildIndex <= toolchainIndex || uploadIndex <= setupBuildIndex || stagingIndex <= uploadIndex ||
+		draftIndex <= stagingIndex || provenanceIndex <= draftIndex || verifyIndex <= provenanceIndex || assetIndex <= verifyIndex ||
+		signatureIndex <= assetIndex || manifestIndex <= signatureIndex || publishIndex <= manifestIndex {
+		return errors.New("release workflow must build, stage, verify, sign, and publish the Windows setup in canonical order")
 	}
 
 	ciData, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yml"))
 	if err != nil {
 		return fmt.Errorf("read CI workflow: %w", err)
 	}
+	if err := rejectLegacyWindowsSetupTooling("CI workflow", ciData); err != nil {
+		return err
+	}
 	ci := string(ciData)
 	if !strings.Contains(ci, "--expect-telemetry absent") || !strings.Contains(ci, "dist-smoke/") {
 		return errors.New("ci workflow does not verify endpoint-less source build telemetry boundary")
 	}
 	for _, required := range []string{
-		"scripts/installer/test-windows-setup.sh",
-		"scripts/release/verify-windows-setup-payload.sh",
-		"choco install nsis -y --no-progress",
-		"scripts/installer/test-windows-setup.ps1",
+		"Install pinned Inno Setup for Windows setup smoke",
+		"scripts/release/install-inno-setup.ps1",
+		"inno-ci",
+		"INNO_ISCC",
+		"scripts/installer/test-windows-setup.ps1 -CompilerPath $env:INNO_ISCC",
 	} {
 		if !strings.Contains(ci, required) {
-			return fmt.Errorf("ci workflow is missing Windows setup smoke contract %q", required)
+			return fmt.Errorf("ci workflow is missing Windows Inno Setup smoke contract %q", required)
 		}
+	}
+	ciToolchainIndex := strings.Index(ci, "scripts/release/install-inno-setup.ps1")
+	ciSmokeIndex := strings.Index(ci, "scripts/installer/test-windows-setup.ps1 -CompilerPath $env:INNO_ISCC")
+	if ciToolchainIndex < 0 || ciSmokeIndex <= ciToolchainIndex {
+		return errors.New("ci workflow must install the pinned Inno Setup toolchain before running the native smoke")
 	}
 	return nil
 }

@@ -64,32 +64,8 @@ jobs:
       - name: Install pinned Inno Setup compiler
         shell: pwsh
         run: |
-          $contract = Get-Content -LiteralPath installer/windows/setup-contract.json -Raw | ConvertFrom-Json
-          $version = [string]$contract.toolchain.version
-          $releaseID = $version.Replace('.', '_')
-          $installer = Join-Path $env:RUNNER_TEMP "innosetup-$version-x64.exe"
-          $installRoot = Join-Path $env:RUNNER_TEMP "inno-$version"
-          $uri = "https://github.com/jrsoftware/issrc/releases/download/is-$releaseID/innosetup-$version-x64.exe"
-          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $installer
-          $process = Start-Process -FilePath $installer -ArgumentList @(
-            '/PORTABLE=1',
-            '/VERYSILENT',
-            '/SUPPRESSMSGBOXES',
-            '/NORESTART',
-            '/NOICONS',
-            "/DIR=$installRoot"
-          ) -Wait -PassThru
-          if ($process.ExitCode -ne 0) {
-            throw "Inno Setup portable install failed with exit code $($process.ExitCode)"
-          }
-          $compiler = Join-Path $installRoot 'ISCC.exe'
-          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
-            throw "Pinned Inno Setup compiler was not installed at $compiler"
-          }
-          $observed = (& $compiler --version | Out-String).Trim()
-          if ($observed -ne $version) {
-            throw "Inno Setup compiler version $observed does not match pinned version $version"
-          }
+          $compiler = & ./scripts/release/install-inno-setup.ps1 `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'inno-release')
           "INNO_ISCC=$compiler" >> $env:GITHUB_ENV
 
       - name: Build staged Windows setup

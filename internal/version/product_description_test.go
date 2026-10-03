@@ -17,7 +17,7 @@ func TestCanonicalProjectDescriptionDoesNotDrift(t *testing.T) {
 	}{
 		{path: "README.md", count: 1},
 		{path: ".goreleaser.yaml", count: 4},
-		{path: "installer/windows/codemcp.nsi", count: 1},
+		{path: "installer/windows/codemcp.iss", count: 2},
 		{path: "internal/cli/root.go", count: 1},
 		{path: "internal/releaseverify/linux_packages.go", count: 1},
 		{path: "frontend/package.json", count: 1},

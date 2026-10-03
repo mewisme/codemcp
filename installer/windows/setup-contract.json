@@ -24,6 +24,7 @@
       "target_arch": "TargetArch"
     },
     "privileges_required": "lowest",
+    "redirection_guard": "no",
     "create_app_dir": false,
     "uninstallable": false,
     "add_remove_programs": false,

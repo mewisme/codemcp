@@ -216,7 +216,7 @@ jobs:
 
       - name: Installer lint
         if: needs.changes.outputs.full == 'true'
-        run: shellcheck install.sh scripts/installer/test-unix.sh scripts/release/build-windows-setup.sh scripts/installer/test-windows-setup.sh scripts/release/verify-windows-setup-payload.sh
+        run: shellcheck install.sh scripts/installer/test-unix.sh scripts/release/verify-windows-setup-payload.sh
 
   race:
     name: Race test
@@ -320,10 +320,6 @@ jobs:
         if: needs.changes.outputs.full == 'true' && matrix.name == 'Linux'
         run: sh scripts/installer/test-unix.sh
 
-      - name: Validate Windows setup wrapper
-        if: needs.changes.outputs.full == 'true' && matrix.name == 'Linux'
-        run: sh scripts/installer/test-windows-setup.sh
-
       - name: Validate PowerShell installer
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
         shell: pwsh
@@ -334,15 +330,18 @@ jobs:
         shell: powershell
         run: ./scripts/installer/test-powershell.ps1
 
-      - name: Install NSIS for Windows setup smoke
+      - name: Install pinned Inno Setup for Windows setup smoke
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
         shell: pwsh
-        run: choco install nsis -y --no-progress
+        run: |
+          $compiler = & ./scripts/release/install-inno-setup.ps1 `
+            -InstallRoot (Join-Path $env:RUNNER_TEMP 'inno-ci')
+          "INNO_ISCC=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Validate Windows NSIS setup
+      - name: Validate Windows Inno setup
         if: needs.changes.outputs.full == 'true' && runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/installer/test-windows-setup.ps1
+        run: ./scripts/installer/test-windows-setup.ps1 -CompilerPath $env:INNO_ISCC
 
       - name: Normalize macOS temp root
         if: needs.changes.outputs.full == 'true' && runner.os == 'macOS'

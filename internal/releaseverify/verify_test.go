@@ -55,8 +55,10 @@ func TestReleaseWorkflowTelemetryContractRejectsDrift(t *testing.T) {
 	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 	fixture := t.TempDir()
 	for _, relative := range []string{
+		filepath.FromSlash(windowsSetupContractPath),
 		filepath.Join(".github", "workflows", "release.yml"),
 		filepath.Join(".github", "workflows", "ci.yml"),
+		filepath.Join("scripts", "release", "install-inno-setup.ps1"),
 		filepath.Join("scripts", "release", "verify-windows-setup-payload.sh"),
 		filepath.Join("scripts", "release", "verify", "main.go"),
 	} {

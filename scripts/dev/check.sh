@@ -29,7 +29,7 @@ go test ./internal/outboundpolicy/ ./internal/approval/ ./internal/config/ ./int
 
 echo "==> shellcheck install.sh"
 if command -v shellcheck >/dev/null 2>&1; then
-  shellcheck install.sh scripts/installer/test-unix.sh scripts/release/build-windows-setup.sh scripts/installer/test-windows-setup.sh scripts/release/verify-windows-setup-payload.sh
+  shellcheck install.sh scripts/installer/test-unix.sh scripts/release/verify-windows-setup-payload.sh
 else
   echo "skip: shellcheck not installed"
 fi
