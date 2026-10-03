@@ -302,6 +302,8 @@ func observableToolArguments(name string, args map[string]any) map[string]any {
 		return observableSkillAuthoringArguments(args)
 	case CreatePlanToolName:
 		return observablePlanAuthoringArguments(args)
+	case AgentClaimToolName:
+		return map[string]any{"agent_id": stringArgument(args, "agent_id")}
 	default:
 		return cloneMap(args)
 	}
@@ -309,7 +311,7 @@ func observableToolArguments(name string, args map[string]any) map[string]any {
 
 func observableToolEnvelope(name string, value, publicArgs map[string]any) map[string]any {
 	out := cloneMap(value)
-	if name == mcpconfigwire.SetToolName || name == CreateRuleToolName || name == CreateSkillToolName || name == CreatePlanToolName {
+	if name == mcpconfigwire.SetToolName || name == CreateRuleToolName || name == CreateSkillToolName || name == CreatePlanToolName || name == AgentClaimToolName {
 		out["arguments"] = cloneMap(publicArgs)
 	}
 	return out

@@ -11,6 +11,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/backgrounddelivery"
 
+	managedagent "go.mewis.me/codemcp/internal/agent"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/controlguard"
@@ -43,6 +44,7 @@ type Runtime struct {
 	Upstream             *upstream.Manager
 	CallObserver         CallObserver
 	SessionAccess        *SessionWorkspaceAccessManager
+	Agents               *managedagent.Manager
 	Approvals            *approval.Manager
 	Completions          *agentcompletion.Service
 	CompletionHooks      *agentcompletion.CompletionHookBus
@@ -108,7 +110,11 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	if err != nil {
 		panic(err)
 	}
-	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, BackgroundDeliveries: backgroundDeliveries, LoopGuard: NewToolLoopGuard(), InstructionChanges: instructioncontext.NewChangeStream(), PlanExecutions: plandoc.NewExecutionManager(), Semantic: semantic.NewManager(semantic.ManagerOptions{}), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
+	agents, err := managedagent.NewManager(managedagent.ManagerOptions{})
+	if err != nil {
+		panic(err)
+	}
+	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Agents: agents, Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, BackgroundDeliveries: backgroundDeliveries, LoopGuard: NewToolLoopGuard(), InstructionChanges: instructioncontext.NewChangeStream(), PlanExecutions: plandoc.NewExecutionManager(), Semantic: semantic.NewManager(semantic.ManagerOptions{}), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
 	runtime.SetSemanticApprovalPolicy(DefaultSemanticApprovalPolicy())
 	runtime.CodeGraphCompletion = codegraph.NewCompletionHook(func() *codegraph.Runtime {
 		return runtime.codeGraphRuntimeSnapshot()
@@ -127,6 +133,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	RegisterInstructionAuthoringTools(registry, runtime)
 	RegisterPlanAuthoringTool(registry, runtime)
 	RegisterPromptTools(registry, runtime)
+	RegisterAgentClaimTool(registry, runtime)
 	RegisterAgentCompletionTool(registry, runtime.Completions, runtime.PlanExecutions)
 	RegisterApprovalTools(registry, runtime)
 	RegisterConfigTools(registry, runtime)

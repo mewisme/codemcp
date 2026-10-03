@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"crypto/sha256"
 	"errors"
 	"sort"
 	"time"
@@ -13,12 +14,15 @@ var (
 )
 
 type entry struct {
-	record          Record
-	backend         Backend
-	handle          Handle
-	pendingTerminal State
-	terminalAt      time.Time
-	notify          chan struct{}
+	record            Record
+	backend           Backend
+	handle            Handle
+	pendingTerminal   State
+	terminalAt        time.Time
+	notify            chan struct{}
+	claim             claimState
+	claimedSession    [sha256.Size]byte
+	hasClaimedSession bool
 }
 
 func newEntry(record Record, backend Backend) *entry {
@@ -89,6 +93,7 @@ func (manager *Manager) markTerminalLocked(item *entry, state State, result, err
 	}
 	item.pendingTerminal = ""
 	item.handle = nil
+	manager.revokeClaimAndBindingLocked(item)
 	manager.pruneTerminalLocked(now)
 	return nil
 }

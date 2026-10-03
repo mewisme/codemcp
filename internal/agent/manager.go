@@ -26,6 +26,7 @@ type ManagerOptions struct {
 	TerminalTTL    time.Duration
 	IdleTTL        time.Duration
 	PollInterval   time.Duration
+	ClaimTTL       time.Duration
 	Now            func() time.Time
 }
 
@@ -42,13 +43,15 @@ type Manager struct {
 	entries       map[ID]*entry
 	terminalOrder []ID
 
-	defaultBackend BackendID
-	globalCapacity Capacity
-	maxTerminal    int
-	terminalTTL    time.Duration
-	idleTTL        time.Duration
-	pollInterval   time.Duration
-	now            func() time.Time
+	defaultBackend  BackendID
+	globalCapacity  Capacity
+	maxTerminal     int
+	terminalTTL     time.Duration
+	idleTTL         time.Duration
+	pollInterval    time.Duration
+	claimTTL        time.Duration
+	now             func() time.Time
+	claimedSessions map[[32]byte]sessionClaimBinding
 }
 
 func NewManager(options ManagerOptions) (*Manager, error) {
@@ -89,6 +92,12 @@ func NewManager(options ManagerOptions) (*Manager, error) {
 	if options.PollInterval < 0 {
 		return nil, errors.New("poll interval cannot be negative")
 	}
+	if options.ClaimTTL == 0 {
+		options.ClaimTTL = DefaultClaimTTL
+	}
+	if options.ClaimTTL < 0 {
+		return nil, errors.New("claim ttl cannot be negative")
+	}
 	if options.Now == nil {
 		options.Now = time.Now
 	}
@@ -96,7 +105,8 @@ func NewManager(options ManagerOptions) (*Manager, error) {
 		backends: map[BackendID]Backend{}, entries: map[ID]*entry{},
 		defaultBackend: options.DefaultBackend, globalCapacity: options.GlobalCapacity,
 		maxTerminal: options.MaxTerminal, terminalTTL: options.TerminalTTL,
-		idleTTL: options.IdleTTL, pollInterval: options.PollInterval, now: options.Now,
+		idleTTL: options.IdleTTL, pollInterval: options.PollInterval, claimTTL: options.ClaimTTL,
+		now: options.Now, claimedSessions: map[[32]byte]sessionClaimBinding{},
 	}, nil
 }
 

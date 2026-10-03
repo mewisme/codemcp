@@ -2,6 +2,7 @@ package capability
 
 const (
 	AgentComplete                   ID = "agent.complete"
+	AgentClaim                      ID = "agent.claim"
 	AgentStatusRead                 ID = "agent.status.read"
 	FileReadText                    ID = "file.read.text"
 	FileReadBinary                  ID = "file.read.binary"
@@ -74,6 +75,7 @@ const (
 
 var mcpToolBindings = map[ID][]string{
 	AgentComplete:                   {"agent_complete"},
+	AgentClaim:                      {"agent_claim"},
 	VersionAbout:                    {"get_version"},
 	WorkspaceRegister:               {"workspace_register"},
 	WorkspaceList:                   {"workspace_list"},
@@ -157,6 +159,7 @@ var plannedMCPToolBindings = map[ID][]string{}
 func agentOnlySpecs() []Spec {
 	return []Spec{
 		agentMutationSpec(AgentComplete, RiskState, false),
+		agentMutationSpec(AgentClaim, RiskSensitive, false),
 		agentQuerySpec(AgentStatusRead, false),
 		agentQuerySpec(FileReadText, false),
 		agentQuerySpec(FileReadBinary, false),

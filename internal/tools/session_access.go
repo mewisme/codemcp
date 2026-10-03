@@ -18,6 +18,7 @@ type SessionWorkspaceAccessDecision string
 const (
 	SessionWorkspaceAccessNew      SessionWorkspaceAccessDecision = "new"
 	SessionWorkspaceAccessExisting SessionWorkspaceAccessDecision = "existing"
+	SessionWorkspaceAccessClaimed  SessionWorkspaceAccessDecision = "claimed"
 )
 
 type WorkspaceAccess struct {

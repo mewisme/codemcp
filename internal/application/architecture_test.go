@@ -16,6 +16,7 @@ import (
 const internalImportPrefix = "go.mewis.me/codemcp/internal/"
 
 var canonicalTopLevelScopes = map[string]string{
+	"agent":                  "domain",
 	"app":                    "composition",
 	"application":            "application",
 	"approval":               "domain",

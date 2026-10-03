@@ -21,6 +21,7 @@ const (
 	MutationOwnerApplicationLLM          MutationOwner = "application.llm-service"
 	MutationOwnerApproval                MutationOwner = "approval"
 	MutationOwnerAgentCompletion         MutationOwner = "agent-completion"
+	MutationOwnerManagedAgent            MutationOwner = "managed-agent"
 	MutationOwnerFilesystem              MutationOwner = "tools.filesystem"
 	MutationOwnerGit                     MutationOwner = "tools.git"
 	MutationOwnerShell                   MutationOwner = "runtime.shell"
@@ -109,6 +110,7 @@ func buildMutationOwners() map[ID]MutationOwner {
 	)
 	add(MutationOwnerApproval, RequestApprove, RequestDeny, RequestGrantRevoke, RequestControlApproval)
 	add(MutationOwnerAgentCompletion, AgentComplete)
+	add(MutationOwnerManagedAgent, AgentClaim)
 	add(MutationOwnerFilesystem,
 		FileWriteText, FileWriteBinary, FileEdit, FileMultiEdit, FileReplaceRegex, FileCopy, FileMove, FileDelete,
 		DirectoryCreate, DirectoryDelete,
