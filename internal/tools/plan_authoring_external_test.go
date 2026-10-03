@@ -317,7 +317,7 @@ func TestProjectContextPlanExecutionBindsDeterministicNextPhase(t *testing.T) {
 	if !ok {
 		t.Fatal("project_context schema missing")
 	}
-	for _, marker := range []string{"plan_execution=true", "current next phase", "trusted MCP session", "workspace"} {
+	for _, marker := range []string{"plan_execution=true", "current next phase", "trusted runtime identity", "workspace", "trusted agent correlation"} {
 		if !strings.Contains(schema.Description, marker) {
 			t.Fatalf("project_context description missing %q: %q", marker, schema.Description)
 		}
@@ -391,11 +391,24 @@ func TestProjectContextPlanExecutionFailsClosedForAmbiguityCompletionAndConflict
 		}
 	}
 
-	missingSession, err := runtime.Call(context.Background(), "project_context", map[string]any{
+	missingIdentity, err := runtime.Call(context.Background(), "project_context", map[string]any{
 		"workspace_id": workspaceID, "plan_name": "alpha-plan", "plan_execution": true,
 		"include_git": false, "include_memory": false, "include_skills": false,
 	})
-	assertToolErrorContains(t, missingSession, err, "trusted MCP session")
+	assertToolErrorContains(t, missingIdentity, err, "trusted runtime identity")
+
+	fallbackCtx := tools.WithCallSource(context.Background(), "tunnel")
+	fallbackCtx = tools.WithApprovalCorrelation(fallbackCtx, "apc-plan-fallback", "apr-plan-fallback")
+	fallback, err := runtime.Call(fallbackCtx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "alpha-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || fallback.IsError {
+		t.Fatalf("trusted correlation fallback err=%v result=%#v", err, fallback)
+	}
+	if binding := fallback.StructuredContent.(tools.ProjectContextResult).Summary.PlanExecution; binding == nil || binding.PlanName != "alpha-plan" {
+		t.Fatalf("trusted correlation fallback binding=%#v", binding)
+	}
 
 	ambiguousCtx := tools.WithMCPSessionID(context.Background(), "execution-ambiguous")
 	ambiguous, err := runtime.Call(ambiguousCtx, "project_context", map[string]any{

@@ -62,7 +62,7 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 			return Result{}, errors.New("agent completion requires trusted runtime correlation")
 		}
 		completionStatus := agentcompletion.Status(status)
-		sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+		sessionKey := planExecutionSessionKey(ctx)
 		if planExecutions != nil {
 			if binding, ok := planExecutions.Lookup(sessionKey, workspaceID); ok && completionStatus == agentcompletion.StatusCompleted && !binding.Closed {
 				return Result{}, fmt.Errorf("plan %q phase %s (%s) is not persisted as completed; update the canonical plan with create_plan mode=update before agent_complete(status=completed)", binding.PlanName, binding.Phase.ID, binding.Phase.Title)

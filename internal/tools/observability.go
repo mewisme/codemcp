@@ -128,6 +128,17 @@ func MCPSessionID(ctx context.Context) string {
 	return value
 }
 
+func planExecutionSessionKey(ctx context.Context) string {
+	if key := mcpSessionStateKey(MCPSessionID(ctx)); key != "" {
+		return key
+	}
+	correlation := AgentCompletionCorrelationFromContext(ctx)
+	if correlation.AgentID == "" || correlation.Source == "" {
+		return ""
+	}
+	return mcpSessionStateKey("agent:" + correlation.Source + ":" + correlation.AgentID)
+}
+
 func WithApprovalCorrelation(ctx context.Context, callerID, requestID string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()

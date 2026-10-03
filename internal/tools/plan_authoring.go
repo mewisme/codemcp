@@ -57,9 +57,9 @@ func RegisterPlanAuthoringTool(registry *Registry, runtime *Runtime) {
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		var transition plandoc.ExecutionTransition
 		transitionPrepared := false
+		sessionKey := planExecutionSessionKey(ctx)
 		dryRun, _ := args["dry_run"].(bool)
 		if runtime != nil && runtime.PlanExecutions != nil && stringArgument(args, "mode") == "update" {
-			sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
 			workspaceID := stringArgument(args, "workspace_id")
 			if _, ok := runtime.PlanExecutions.Lookup(sessionKey, workspaceID); ok {
 				next, err := plandoc.ParseParts(stringArgument(args, "plan_content"), stringArgument(args, "implementation_order"))
@@ -82,7 +82,7 @@ func RegisterPlanAuthoringTool(registry *Registry, runtime *Runtime) {
 			return boundedPlanAuthoringError(err), nil
 		}
 		if transitionPrepared && !dryRun {
-			if err := runtime.PlanExecutions.CommitUpdate(mcpSessionStateKey(MCPSessionID(ctx)), transition); err != nil {
+			if err := runtime.PlanExecutions.CommitUpdate(sessionKey, transition); err != nil {
 				return boundedPlanAuthoringError(err), nil
 			}
 		}
