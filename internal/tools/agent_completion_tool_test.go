@@ -32,7 +32,7 @@ func TestAgentCompleteToolSchemaExcludesCallerControlledIdentity(t *testing.T) {
 	if !ok {
 		t.Fatal("agent_complete is not registered")
 	}
-	if schema.Title != "Complete Agent Work" || !strings.Contains(schema.Description, "final CodeMCP tool call") || !strings.Contains(schema.Description, "does not close the MCP transport") {
+	if schema.Title != "Complete Agent Work" || !strings.Contains(schema.Description, "final CodeMCP tool call") || !strings.Contains(schema.Description, "create_plan mode=update") || !strings.Contains(schema.Description, "matching embedded ordered phase") || !strings.Contains(schema.Description, "release the ephemeral plan binding") || !strings.Contains(schema.Description, "does not close the MCP transport") {
 		t.Fatalf("schema=%#v", schema)
 	}
 	var input map[string]any

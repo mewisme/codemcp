@@ -186,7 +186,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(value), nil
 	})
 
-	register("project_context", "Project Context", "Build the complete workspace instruction context with environment, Git, selected memory, rules, skills, bounded workspace plan summaries, and ready-to-use instructions.", workspaceOnlySchema(projectContextSchemaFields()), `{"type":"object","properties":{"root":{"type":"string"},"workspace_id":{"type":"string"},"instruction_context":{"type":"object","additionalProperties":true},"summary":{"type":"object","additionalProperties":true}},"required":["root","workspace_id","instruction_context","summary"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
+	register("project_context", "Project Context", "Build the complete workspace instruction context with environment, Git, selected memory, rules, skills, bounded workspace plan summaries, and ready-to-use instructions. Set plan_execution=true only when beginning implementation of a persisted plan; it binds the deterministically selected current next phase to the trusted MCP session and workspace until terminal completion handling.", workspaceOnlySchema(projectContextSchemaFields()), `{"type":"object","properties":{"root":{"type":"string"},"workspace_id":{"type":"string"},"instruction_context":{"type":"object","additionalProperties":true},"summary":{"type":"object","additionalProperties":true}},"required":["root","workspace_id","instruction_context","summary"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
 		defaults := projectcontext.DefaultOptions()
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {

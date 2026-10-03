@@ -105,7 +105,7 @@ func TestCreatePlanToolUsesCanonicalOwnerAndReservedGuidance(t *testing.T) {
 	if err := json.Unmarshal([]byte(loadedResult.Content[0].Text), &loaded); err != nil {
 		t.Fatal(err)
 	}
-	for _, marker := range []string{"create_plan", "Plan Mode", "expected_content_id", ".cm/plans", "Do not use generic"} {
+	for _, marker := range []string{"create_plan", "Plan Mode", "expected_content_id", ".cm/plans", "plan_execution=true", "bound next phase", "embedded Ordered phases", "completed_phase_count", "agent_complete(status=completed)", "partial, blocked, or cancelled", "Do not use generic"} {
 		if !strings.Contains(loaded.Content, marker) {
 			t.Fatalf("create-plan guidance missing %q: %q", marker, loaded.Content)
 		}
@@ -315,6 +315,11 @@ func TestProjectContextPlanExecutionBindsDeterministicNextPhase(t *testing.T) {
 	schema, ok := runtime.Registry.Schema("project_context")
 	if !ok {
 		t.Fatal("project_context schema missing")
+	}
+	for _, marker := range []string{"plan_execution=true", "current next phase", "trusted MCP session", "workspace"} {
+		if !strings.Contains(schema.Description, marker) {
+			t.Fatalf("project_context description missing %q: %q", marker, schema.Description)
+		}
 	}
 	var input map[string]any
 	if err := json.Unmarshal(schema.InputSchema, &input); err != nil {

@@ -67,7 +67,7 @@ func TestOpenAIProfilePrioritizesCanonicalWorkflowGuidance(t *testing.T) {
 	if !strings.HasPrefix(openai, openAIInstructionHeading+" ") || strings.TrimPrefix(openai, openAIInstructionHeading+" ") != base {
 		t.Fatalf("OpenAI instructions changed canonical semantics: %q", openai)
 	}
-	for _, expected := range []string{"/plan", "create_plan", "stop before implementation", "raw-prompt interpretation belongs to the host agent", "exact plan_name wins", "latest expected_content_id"} {
+	for _, expected := range []string{"/plan", "create_plan", "stop before implementation", "raw-prompt interpretation belongs to the host agent", "exact plan_name wins", "plan_execution=true", "bound next phase", "latest expected_content_id", "completed_phase_count", "status=completed is rejected"} {
 		if !strings.Contains(base, expected) || !strings.Contains(openai, expected) {
 			t.Fatalf("profile instructions missing Plan Mode semantics %q: base=%q openai=%q", expected, base, openai)
 		}

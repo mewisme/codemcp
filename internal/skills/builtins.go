@@ -63,6 +63,12 @@ Use the create_plan tool for canonical workspace plan authoring.
 - Put the execution sequence in implementation_order. It must contain execution rules, ordering rationale, ordered phase checklists, and terminal acceptance.
 - Set mode to create for a new plan. For update, pass the current expected_content_id so stale sessions cannot overwrite newer progress.
 - Represent progress through the canonical checklist state in the document. Do not maintain a separate active-plan pointer or progress file.
+- Plan Mode is planning-only: author or revise the canonical document through create_plan, then stop before implementation. Do not enable plan execution binding merely because a plan was created or edited.
+- To implement a persisted plan, select the exact plan when multiple non-completed plans exist and call project_context with plan_execution=true before implementation mutations. This binds the canonical current next phase to the trusted MCP session and workspace.
+- Implement exactly the bound next phase. Complete its validation before changing progress state.
+- Before agent_complete(status=completed), call create_plan mode=update with the latest expected_content_id and mark every finished task/validation item in the phase plus the matching phase under the embedded Ordered phases checklist. Verify the returned completed_phase_count and next_phase reflect exactly one phase advance.
+- If create_plan reports stale state, refresh project_context/read the latest canonical plan and retry from the newest content_id; never bypass the conflict with generic file edits.
+- If the phase ends partial, blocked, or cancelled, do not check unfinished plan items. The terminal completion releases the ephemeral execution binding so a later session can resume the same canonical next phase.
 - Use dry_run: true to validate target resolution, document structure, conflicts, and stale state without mutation when useful.
 - CodeMCP owns the canonical plan destination. Do not use generic file, patch, move, delete, or shell tools to mutate .cm/plans.
 
