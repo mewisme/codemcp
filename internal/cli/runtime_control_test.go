@@ -127,6 +127,59 @@ func TestRuntimeControlReloadStatusAndShutdownRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRuntimeControlStatusUpdateWaitUsesFingerprintHandler(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := t.TempDir()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	previous := runtimeStatusResult{PID: os.Getpid(), RunID: "run_update_wait", Lifecycle: "tunnel_connecting", TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true}
+	release := make(chan struct{})
+	control, err := startRuntimeControl(runtimeControlOptions{
+		RunID:  "run_update_wait",
+		Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil },
+		Status: func() runtimeStatusResult { return previous },
+		StatusUpdateWait: func(ctx context.Context, fingerprint string) runtimeStatusResult {
+			if fingerprint != runtimecontrol.StatusFingerprint(previous) {
+				t.Errorf("fingerprint=%q", fingerprint)
+			}
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			result := previous
+			result.TunnelReady = true
+			return result
+		},
+		Shutdown: func() {}, ClearLogs: func() error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	done := make(chan runtimeStatusResult, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		status, waitErr := runtimecontrol.WaitStatusUpdate(t.Context(), previous)
+		if waitErr != nil {
+			errCh <- waitErr
+			return
+		}
+		done <- status
+	}()
+	close(release)
+	select {
+	case err := <-errCh:
+		t.Fatal(err)
+	case status := <-done:
+		if !status.TunnelReady {
+			t.Fatalf("status=%#v", status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("status update wait did not wake")
+	}
+}
+
 func TestRuntimeControlRejectsUnauthenticatedEvents(t *testing.T) {
 	defer configformat.SetRootPath("")
 	if err := configformat.SetRootPath(t.TempDir()); err != nil {

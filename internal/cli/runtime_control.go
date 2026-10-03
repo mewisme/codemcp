@@ -50,6 +50,7 @@ type runtimeControlOptions struct {
 	ReloadUpstreams  func(context.Context) (upstreamReloadResult, error)
 	Status           func() runtimeStatusResult
 	StatusWait       func(context.Context, string) runtimeStatusResult
+	StatusUpdateWait func(context.Context, string) runtimeStatusResult
 	Shutdown         func()
 	Restart          func()
 	ClearLogs        func() error
@@ -142,6 +143,10 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 		writeControlJSON(w, options.Status(), nil)
 	}))
 	mux.HandleFunc("/status/wait", authenticatedControl(controlState.Token, http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
+		if fingerprint := strings.TrimSpace(r.URL.Query().Get("fingerprint")); fingerprint != "" && options.StatusUpdateWait != nil {
+			writeControlJSON(w, options.StatusUpdateWait(r.Context(), fingerprint), nil)
+			return
+		}
 		if options.StatusWait == nil {
 			writeControlJSON(w, options.Status(), nil)
 			return

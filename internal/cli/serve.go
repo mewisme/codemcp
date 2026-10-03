@@ -396,6 +396,32 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 			}
 		}
 	}
+	statusUpdateWait := func(ctx context.Context, previous string) runtimeStatusResult {
+		sub := recorder.Stream.SubscribeDetailed()
+		defer recorder.Stream.UnsubscribeDetailed(sub)
+		events := sub.Events
+		fallback := time.NewTicker(20 * time.Millisecond)
+		defer fallback.Stop()
+		for {
+			current := status()
+			if previous == "" || runtimecontrol.StatusFingerprint(current) != previous {
+				return current
+			}
+			stateMu.RLock()
+			changed := stateChanged
+			stateMu.RUnlock()
+			select {
+			case <-ctx.Done():
+				return status()
+			case <-changed:
+			case _, ok := <-events:
+				if !ok {
+					events = nil
+				}
+			case <-fallback.C:
+			}
+		}
+	}
 	runtime.Logger.Verbose("CONTROL", "runtime.control.starting", "Starting runtime control endpoint")
 	control, err = startRuntimeControlContext(runtimeCtx, runtimeControlOptions{RunID: metadata.RunID, Managed: metadata.Managed, ServiceID: metadata.ServiceID, ServiceScope: metadata.ServiceScope, StartedAt: startedAt, Events: recorder.Stream, Activity: runtime.Activity, Reload: reload, ReloadWorkspaces: func() (workspaceReloadResult, error) {
 		if err := runtime.Tools.ReloadWorkspaces(); err != nil {
@@ -419,7 +445,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		items := runtime.Tools.Upstream.List()
 		runtime.Logger.Diagnostic(logger.Info, "UPSTREAM", "upstream.registry.reloaded", "Upstream registry reloaded", logger.WithDebug("count", len(items)))
 		return upstreamReloadResult{PID: os.Getpid(), Count: len(items)}, nil
-	}, Status: status, StatusWait: statusWait, Approvals: runtime.Tools.Approvals, Operations: runtime.Operations, Completions: runtime.Tools.Completions, Executions: runtime.Tools.Executions, Log: runtime.Logger, Shutdown: func() {
+	}, Status: status, StatusWait: statusWait, StatusUpdateWait: statusUpdateWait, Approvals: runtime.Tools.Approvals, Operations: runtime.Operations, Completions: runtime.Tools.Completions, Executions: runtime.Tools.Executions, Log: runtime.Logger, Shutdown: func() {
 		runtimeCancel()
 		select {
 		case shutdownRequest <- struct{}{}:
@@ -522,7 +548,7 @@ var errManagedRuntimeSelfRestart = errors.New("managed runtime self-restart requ
 
 func runtimeLifecycleStarting(state string) bool {
 	switch state {
-	case "ready", "reloading", "stopping":
+	case "listeners_ready", "tunnel_connecting", "ready", "reloading", "stopping":
 		return false
 	default:
 		return true
@@ -560,11 +586,11 @@ func runtimeReadinessComponents(cfg config.Config, overview application.StatusOv
 	}
 	if cfg.Notifications.Approval.Enabled {
 		configured := cfg.Notifications.Approval.DesktopEnabled || (cfg.Notifications.Approval.TelegramEnabled && overview.TelegramConfigured)
-		add("approval-notifications", "Approval notifications", configured, overview.RuntimeRunning)
+		add("approval-notifications", "Approval notifications", configured, overview.ApprovalNotificationsReady)
 	}
 	if cfg.Notifications.Completion.Enabled {
 		configured := cfg.Notifications.Completion.DesktopEnabled || (cfg.Notifications.Completion.TelegramEnabled && overview.TelegramConfigured)
-		add("completion-notifications", "Completion notifications", configured, overview.RuntimeRunning)
+		add("completion-notifications", "Completion notifications", configured, overview.CompletionNotificationsReady)
 	}
 	if overview.TunnelEnabled {
 		add("openai-tunnel", "OpenAI Secure MCP Tunnel", overview.TunnelConfigured, overview.TunnelReady)

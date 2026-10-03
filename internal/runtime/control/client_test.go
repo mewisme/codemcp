@@ -180,6 +180,50 @@ func TestValidatePIDAndStatusWaitEmitLifecycleTrace(t *testing.T) {
 	}
 }
 
+func TestStatusFingerprintTracksReadinessButIgnoresSyntheticStarting(t *testing.T) {
+	status := RuntimeStatus{
+		PID: 42, RunID: "run_test", Lifecycle: "tunnel_connecting", Starting: true,
+		TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true,
+		Readiness: []ReadinessComponent{{ID: "telegram", Configured: true, Ready: false}},
+	}
+	fingerprint := StatusFingerprint(status)
+	status.Starting = false
+	if got := StatusFingerprint(status); got != fingerprint {
+		t.Fatalf("synthetic Starting changed readiness fingerprint: %q != %q", got, fingerprint)
+	}
+	status.Readiness[0].Ready = true
+	if got := StatusFingerprint(status); got == fingerprint {
+		t.Fatal("Telegram readiness change did not change status fingerprint")
+	}
+	fingerprint = StatusFingerprint(status)
+	status.TunnelReady = true
+	if got := StatusFingerprint(status); got == fingerprint {
+		t.Fatal("tunnel readiness change did not change status fingerprint")
+	}
+}
+
+func TestWaitStatusUpdateSendsFingerprint(t *testing.T) {
+	previous := RuntimeStatus{PID: os.Getpid(), RunID: "run_wait_update", Lifecycle: "tunnel_connecting", TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/status/wait" || r.URL.Query().Get("fingerprint") != StatusFingerprint(previous) {
+			t.Fatalf("request=%s %s?%s", r.Method, r.URL.Path, r.URL.RawQuery)
+		}
+		result := previous
+		result.TunnelReady = true
+		_ = json.NewEncoder(w).Encode(result)
+	}))
+	defer server.Close()
+	root := setupRuntimeControlRoot(t)
+	writeRuntimeControlState(t, root, server.URL, "runtime-secret")
+	status, err := WaitStatusUpdateAt(t.Context(), root, previous)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.TunnelReady {
+		t.Fatalf("status=%#v", status)
+	}
+}
+
 func runtimeControlTraceFields(events []tracepkg.Event, name string, expected map[string]any) bool {
 	for _, event := range events {
 		if event.Name != name {

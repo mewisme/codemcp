@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.mewis.me/codemcp/internal/application"
@@ -26,37 +27,39 @@ import (
 )
 
 type App struct {
-	Config                    *config.RuntimeStore
-	MCP                       *mcp.HTTPRuntime
-	Upstream                  *upstream.Manager
-	Tools                     *tools.Runtime
-	Activity                  *activity.Stream
-	Tunnel                    *tunnel.Client
-	Logger                    *logger.Logger
-	OAuth                     *mcpoauth.Store
-	OAuthFlows                *mcpoauth.FlowManager
-	Notifications             *notification.Coordinator
-	ApprovalNotifications     *notification.ApprovalBridge
-	Explain                   *explain.Service
-	ApprovalExplain           *application.ApprovalExplainService
-	CompletionNotifications   *notification.CompletionHook
-	BackgroundNotifications   *notification.BackgroundJobBridge
-	ProductTelemetry          productTelemetryRuntime
-	ProductLifecycleTelemetry *productLifecycleTelemetry
-	Operations                *application.Dispatcher
-	CFTunnel                  *application.CFTunnelService
-	Telegram                  *telegram.Runtime
-	TelegramPairing           *telegram.PairingStore
-	TelegramUI                *telegram.Interface
-	typeSafeMu                sync.Mutex
-	typeSafeFingerprint       string
-	typeSafeHTTPClient        *http.Client
-	typeSafeBaseURL           string
-	runtimeCtx                context.Context
-	trace                     tracepkg.Observer
-	running                   bool
-	bootstrap                 sync.Once
-	bootstrapErr              error
+	Config                       *config.RuntimeStore
+	MCP                          *mcp.HTTPRuntime
+	Upstream                     *upstream.Manager
+	Tools                        *tools.Runtime
+	Activity                     *activity.Stream
+	Tunnel                       *tunnel.Client
+	Logger                       *logger.Logger
+	OAuth                        *mcpoauth.Store
+	OAuthFlows                   *mcpoauth.FlowManager
+	Notifications                *notification.Coordinator
+	ApprovalNotifications        *notification.ApprovalBridge
+	Explain                      *explain.Service
+	ApprovalExplain              *application.ApprovalExplainService
+	CompletionNotifications      *notification.CompletionHook
+	BackgroundNotifications      *notification.BackgroundJobBridge
+	ProductTelemetry             productTelemetryRuntime
+	ProductLifecycleTelemetry    *productLifecycleTelemetry
+	Operations                   *application.Dispatcher
+	CFTunnel                     *application.CFTunnelService
+	Telegram                     *telegram.Runtime
+	TelegramPairing              *telegram.PairingStore
+	TelegramUI                   *telegram.Interface
+	typeSafeMu                   sync.Mutex
+	typeSafeFingerprint          string
+	typeSafeHTTPClient           *http.Client
+	typeSafeBaseURL              string
+	runtimeCtx                   context.Context
+	trace                        tracepkg.Observer
+	running                      bool
+	approvalNotificationsReady   atomic.Bool
+	completionNotificationsReady atomic.Bool
+	bootstrap                    sync.Once
+	bootstrapErr                 error
 }
 
 type productTelemetryRuntime interface {

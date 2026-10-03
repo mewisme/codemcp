@@ -32,28 +32,48 @@ func (a *App) Start(ctx context.Context) error {
 		}
 	}
 	a.runtimeCtx = ctx
+	a.approvalNotificationsReady.Store(false)
+	a.completionNotificationsReady.Store(a.CompletionNotifications != nil && a.BackgroundNotifications == nil)
+	tasks := make([]runtimeStartupTask, 0, 5)
 	if a.ApprovalExplain != nil {
-		if err := a.ApprovalExplain.Start(ctx); err != nil {
-			a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, err)
-			span.FailMessage("Approval explanation runtime could not start", err)
-			return err
-		}
+		tasks = append(tasks, runtimeStartupTask{fatal: true, run: func() error {
+			return a.ApprovalExplain.Start(ctx)
+		}})
 	}
 	if a.Telegram != nil {
-		a.Telegram.Reconcile(ctx, a.Config.Snapshot().Telegram)
-		if a.TelegramUI != nil {
-			go a.TelegramUI.ReconcilePendingRuntimeOperations(ctx)
-		}
+		tasks = append(tasks, runtimeStartupTask{run: func() error {
+			err := a.Telegram.Reconcile(ctx, a.Config.Snapshot().Telegram)
+			if a.TelegramUI != nil {
+				go a.TelegramUI.ReconcilePendingRuntimeOperations(ctx)
+			}
+			return err
+		}, onError: func(err error) {
+			if a.Logger != nil {
+				a.Logger.Warning("TELEGRAM", "telegram.runtime.start.failed", "Telegram runtime could not start", err)
+			}
+		}})
 	}
 	if a.ApprovalNotifications != nil {
-		if err := a.ApprovalNotifications.Start(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warning("NOTIFICATION", "notification.coordinator.start.failed", "Approval notification coordinator could not start", err)
-		}
+		tasks = append(tasks, runtimeStartupTask{run: func() error {
+			err := a.ApprovalNotifications.Start(ctx)
+			a.approvalNotificationsReady.Store(err == nil)
+			return err
+		}, onError: func(err error) {
+			if a.Logger != nil {
+				a.Logger.Warning("NOTIFICATION", "notification.coordinator.start.failed", "Approval notification coordinator could not start", err)
+			}
+		}})
 	}
 	if a.BackgroundNotifications != nil {
-		if err := a.BackgroundNotifications.Start(ctx); err != nil && a.Logger != nil {
-			a.Logger.Warning("NOTIFICATION", "notification.background.start.failed", "Background job notification bridge could not start", err)
-		}
+		tasks = append(tasks, runtimeStartupTask{run: func() error {
+			err := a.BackgroundNotifications.Start(ctx)
+			a.completionNotificationsReady.Store(err == nil && a.CompletionNotifications != nil)
+			return err
+		}, onError: func(err error) {
+			if a.Logger != nil {
+				a.Logger.Warning("NOTIFICATION", "notification.background.start.failed", "Background job notification bridge could not start", err)
+			}
+		}})
 	}
 	if a.Tools != nil {
 		go func() {
@@ -71,37 +91,25 @@ func (a *App) Start(ctx context.Context) error {
 		}()
 	}
 	if a.Tunnel != nil {
-		tunnelSpan := tracepkg.Start(ctx, "APP", "app.tunnel.start", "Starting tunnel runtime")
-		snapshot := a.Tunnel.Snapshot()
-		if snapshot.Status.Enabled && snapshot.Configured {
-			if err := a.Tunnel.StartContext(ctx); err != nil {
-				tunnelSpan.FailMessage("Tunnel runtime start failed", err)
-				span.FailMessage("Application runtime start failed", err)
-				if a.ApprovalNotifications != nil {
-					a.ApprovalNotifications.Stop()
+		tasks = append(tasks, runtimeStartupTask{fatal: true, run: func() error {
+			tunnelSpan := tracepkg.Start(ctx, "APP", "app.tunnel.start", "Starting tunnel runtime")
+			snapshot := a.Tunnel.Snapshot()
+			if snapshot.Status.Enabled && snapshot.Configured {
+				if err := a.Tunnel.StartContext(ctx); err != nil {
+					tunnelSpan.FailMessage("Tunnel runtime start failed", err)
+					return err
 				}
-				if a.ApprovalExplain != nil {
-					a.ApprovalExplain.Stop()
-				}
-				if a.BackgroundNotifications != nil {
-					a.BackgroundNotifications.Stop()
-				}
-				if a.Tools != nil && a.Tools.Completions != nil {
-					a.Tools.Completions.Close()
-				}
-				if a.Tools != nil && a.Tools.CompletionHooks != nil {
-					a.Tools.CompletionHooks.Stop()
-				}
-				a.runtimeCtx = nil
-				if a.Tools != nil && a.Tools.Workspaces != nil {
-					err = errors.Join(err, a.Tools.Workspaces.Deactivate())
-				}
-				a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, err)
-				return err
 			}
-		}
-		status := a.Tunnel.Status()
-		tunnelSpan.EndMessage("Tunnel runtime reconciled", tracepkg.Bool("enabled", status.Enabled), tracepkg.Bool("configured", snapshot.Configured), tracepkg.Bool("running", status.Running))
+			status := a.Tunnel.Status()
+			tunnelSpan.EndMessage("Tunnel runtime reconciled", tracepkg.Bool("enabled", status.Enabled), tracepkg.Bool("configured", snapshot.Configured), tracepkg.Bool("running", status.Running))
+			return nil
+		}})
+	}
+	if err := runRuntimeStartupTasks(tasks); err != nil {
+		err = a.rollbackRuntimeStart(ctx, err)
+		a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, err)
+		span.FailMessage("Application runtime start failed", err)
+		return err
 	}
 	if a.ProductLifecycleTelemetry != nil {
 		a.ProductLifecycleTelemetry.Start(ctx)
@@ -110,6 +118,82 @@ func (a *App) Start(ctx context.Context) error {
 	a.recordRuntimeUsage(ctx, producttelemetry.EventRuntimeStarted, started, nil)
 	span.EndMessage("Application runtime started", tracepkg.Bool("running", true))
 	return nil
+}
+
+type runtimeStartupTask struct {
+	run     func() error
+	onError func(error)
+	fatal   bool
+}
+
+type runtimeStartupResult struct {
+	task runtimeStartupTask
+	err  error
+}
+
+func runRuntimeStartupTasks(tasks []runtimeStartupTask) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+	results := make(chan runtimeStartupResult, len(tasks))
+	for _, task := range tasks {
+		task := task
+		go func() {
+			var err error
+			if task.run != nil {
+				err = task.run()
+			}
+			results <- runtimeStartupResult{task: task, err: err}
+		}()
+	}
+	var fatalErr error
+	for range tasks {
+		result := <-results
+		if result.err == nil {
+			continue
+		}
+		if result.task.fatal {
+			fatalErr = errors.Join(fatalErr, result.err)
+			continue
+		}
+		if result.task.onError != nil {
+			result.task.onError(result.err)
+		}
+	}
+	return fatalErr
+}
+
+func (a *App) rollbackRuntimeStart(ctx context.Context, cause error) error {
+	if a.ApprovalNotifications != nil {
+		a.ApprovalNotifications.Stop()
+	}
+	if a.ApprovalExplain != nil {
+		a.ApprovalExplain.Stop()
+	}
+	if a.BackgroundNotifications != nil {
+		a.BackgroundNotifications.Stop()
+	}
+	if a.Telegram != nil {
+		a.Telegram.Stop()
+	}
+	if a.Tunnel != nil {
+		stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		cause = errors.Join(cause, a.Tunnel.StopContext(stopCtx))
+		cancel()
+	}
+	if a.Tools != nil && a.Tools.Completions != nil {
+		a.Tools.Completions.Close()
+	}
+	if a.Tools != nil && a.Tools.CompletionHooks != nil {
+		a.Tools.CompletionHooks.Stop()
+	}
+	a.approvalNotificationsReady.Store(false)
+	a.completionNotificationsReady.Store(false)
+	a.runtimeCtx = nil
+	if a.Tools != nil && a.Tools.Workspaces != nil {
+		cause = errors.Join(cause, a.Tools.Workspaces.Deactivate())
+	}
+	return cause
 }
 
 func (a *App) Stop() error {
@@ -206,6 +290,8 @@ func (a *App) Stop() error {
 	}
 	a.runtimeCtx = nil
 	a.running = false
+	a.approvalNotificationsReady.Store(false)
+	a.completionNotificationsReady.Store(false)
 	a.recordRuntimeUsage(context.Background(), producttelemetry.EventRuntimeStopped, started, stopErr)
 	if a.ProductTelemetry != nil {
 		flushCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)

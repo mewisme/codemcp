@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -260,6 +261,38 @@ func WaitStatusChangeAt(ctx context.Context, root, lifecycle string) (RuntimeSta
 		return RuntimeStatus{}, err
 	}
 	span.EndMessage("Runtime lifecycle changed", tracepkg.String("previous_lifecycle", previous), tracepkg.String("current_lifecycle", result.Lifecycle), tracepkg.Bool("changed", previous != strings.TrimSpace(result.Lifecycle)), tracepkg.Int("pid", result.PID), tracepkg.String("run_id", result.RunID))
+	return result, nil
+}
+
+func StatusFingerprint(status RuntimeStatus) string {
+	var value strings.Builder
+	fmt.Fprintf(&value, "%d|%s|%s|%t|%t|%t|%t|%t", status.PID, status.RunID, status.Lifecycle, status.TunnelEnabled, status.TunnelConfigured, status.TunnelRunning, status.TunnelReady, status.TunnelRestarting)
+	for _, component := range status.Readiness {
+		fmt.Fprintf(&value, "|%s:%t:%t", component.ID, component.Configured, component.Ready)
+	}
+	sum := sha256.Sum256([]byte(value.String()))
+	return fmt.Sprintf("%x", sum)
+}
+
+func WaitStatusUpdate(ctx context.Context, previous RuntimeStatus) (RuntimeStatus, error) {
+	return WaitStatusUpdateAt(ctx, config.RootPath(), previous)
+}
+
+func WaitStatusUpdateAt(ctx context.Context, root string, previous RuntimeStatus) (RuntimeStatus, error) {
+	fingerprint := StatusFingerprint(previous)
+	span := tracepkg.Start(ctx, "CONTROL", "runtime.control.status-update-wait", "Waiting for runtime status update", tracepkg.String("previous_lifecycle", previous.Lifecycle))
+	var result RuntimeStatus
+	path := "/status/wait?fingerprint=" + url.QueryEscape(fingerprint)
+	state, err := RequestAt(ctx, root, http.MethodGet, path, nil, &result)
+	if err != nil {
+		span.FailMessage("Runtime status update wait failed", err, tracepkg.String("previous_lifecycle", previous.Lifecycle))
+		return RuntimeStatus{}, err
+	}
+	if err := ValidatePID(ctx, state.PID, result.PID, "status-update-wait"); err != nil {
+		span.FailMessage("Runtime status update wait PID validation failed", err, tracepkg.String("previous_lifecycle", previous.Lifecycle), tracepkg.String("current_lifecycle", result.Lifecycle))
+		return RuntimeStatus{}, err
+	}
+	span.EndMessage("Runtime status updated", tracepkg.String("previous_lifecycle", previous.Lifecycle), tracepkg.String("current_lifecycle", result.Lifecycle), tracepkg.Bool("changed", fingerprint != StatusFingerprint(result)), tracepkg.Int("pid", result.PID), tracepkg.String("run_id", result.RunID))
 	return result, nil
 }
 

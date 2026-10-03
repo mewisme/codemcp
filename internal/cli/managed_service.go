@@ -133,19 +133,20 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 	if _, err := config.VerifyRuntime(); err != nil {
 		return err
 	}
-	cfg, err := config.LoadRuntime()
-	if err != nil {
-		return err
-	}
 	progress := managedLifecycleProgress(cmd)
+	observeReadiness, _ := managedRestartReadinessObserver(progress)
 	lastGroup := ""
-	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
+	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRestartRuntimeStatus, Shutdown: requestManagedShutdown, WaitStatusUpdate: runtimecontrol.WaitStatusUpdate, Timeout: serviceReadyTimeout, ObserveStatus: observeReadiness, Observe: func(event managed.LifecycleEvent) {
 		group := managedRestartLifecycleGroup(event.Phase)
 		if lastGroup != "" && group != "" && group != lastGroup {
 			progress.Break()
 		}
 		if group != "" {
 			lastGroup = group
+		}
+		if event.Phase == "runtime.waiting" {
+			progress.Start("service."+event.Phase, "Waiting for runtime services", "")
+			return
 		}
 		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
 	}}
@@ -155,9 +156,9 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 		logManagedStartupFailure(cmd, spec, manager, err)
 		return err
 	}
-	progress.Complete()
+	progress.Stop()
 	status := result.Status
-	renderManagedLifecycleResult(cmd, "Managed service restarted", spec, manager, status, cfg.Tunnel)
+	renderManagedRestartResult(cmd, spec, manager, status)
 	return nil
 }
 
@@ -380,6 +381,10 @@ func runManagedDown(cmd *cobra.Command, spec managed.Spec, manager managed.Manag
 }
 
 func renderManagedLifecycleResult(cmd *cobra.Command, message string, spec managed.Spec, manager managed.Manager, status runtimeStatusResult, cfg tunnel.Config) {
+	renderManagedLifecycleResultWithReadiness(cmd, message, spec, manager, status, cfg, nil)
+}
+
+func renderManagedLifecycleResultWithReadiness(cmd *cobra.Command, message string, spec managed.Spec, manager managed.Manager, status runtimeStatusResult, cfg tunnel.Config, skipReadiness map[string]struct{}) {
 	renderMutationBlock(cmd, func(presenter *presentation.Presenter) {
 		presenter.Status(presentation.StatusSuccess, message)
 		presenter.ChildStatus(presentation.StatusSuccess, "Server started")
@@ -407,32 +412,34 @@ func renderManagedLifecycleResult(cmd *cobra.Command, message string, spec manag
 			fields = append(fields, presentation.Field{Label: "admin", Value: fmt.Sprintf("http://127.0.0.1:%d/", status.AdminPort)})
 		}
 		presenter.NestedFields(fields...)
-		renderManagedReadinessScopes(presenter, status)
-		presenter.Spacer()
-		state := statusTunnelState(status, true)
-		presenter.ChildState(statusPresentationKind(state), "OpenAI Secure MCP Tunnel", state)
-		tunnelFields := []presentation.Field{}
-		tunnelScopeFields := []presentation.Field{}
-		if status.TunnelID != "" {
-			tunnelFields = append(tunnelFields, presentation.Field{Label: "id", Value: status.TunnelID})
-		}
-		if state == "connected" {
-			id := strings.TrimSpace(status.TunnelID)
-			if id == "" {
-				id = strings.TrimSpace(cfg.ID)
+		renderManagedReadinessScopesExcept(presenter, status, skipReadiness)
+		if _, streamed := skipReadiness["tunnel"]; !streamed {
+			presenter.Spacer()
+			state := statusTunnelState(status, true)
+			presenter.ChildState(statusPresentationKind(state), "OpenAI Secure MCP Tunnel", state)
+			tunnelFields := []presentation.Field{}
+			tunnelScopeFields := []presentation.Field{}
+			if status.TunnelID != "" {
+				tunnelFields = append(tunnelFields, presentation.Field{Label: "id", Value: status.TunnelID})
 			}
-			if metadata, err := config.LoadTunnelMetadata(id); err == nil {
-				if metadata.Name != "" {
-					tunnelFields = append(tunnelFields, presentation.Field{Label: "name", Value: metadata.Name})
+			if state == "connected" {
+				id := strings.TrimSpace(status.TunnelID)
+				if id == "" {
+					id = strings.TrimSpace(cfg.ID)
 				}
-				if metadata.Description != "" {
-					tunnelFields = append(tunnelFields, presentation.Field{Label: "description", Value: metadata.Description})
+				if metadata, err := config.LoadTunnelMetadata(id); err == nil {
+					if metadata.Name != "" {
+						tunnelFields = append(tunnelFields, presentation.Field{Label: "name", Value: metadata.Name})
+					}
+					if metadata.Description != "" {
+						tunnelFields = append(tunnelFields, presentation.Field{Label: "description", Value: metadata.Description})
+					}
+					tunnelScopeFields = tunnelMetadataScopeFields(metadata)
 				}
-				tunnelScopeFields = tunnelMetadataScopeFields(metadata)
 			}
+			presenter.NestedFields(tunnelFields...)
+			presenter.NestedFieldGroup("scope", tunnelScopeFields...)
 		}
-		presenter.NestedFields(tunnelFields...)
-		presenter.NestedFieldGroup("scope", tunnelScopeFields...)
 		if warning := managed.PersistenceWarning(spec); warning != "" {
 			presenter.ChildStatus(presentation.StatusWarning, warning)
 		}
@@ -441,6 +448,44 @@ func renderManagedLifecycleResult(cmd *cobra.Command, message string, spec manag
 		presenter.NestedFields(
 			presentation.Field{Label: "View logs", Value: "cm logs -f"},
 			presentation.Field{Label: "Stop service", Value: managedStopCommand(spec)},
+		)
+	})
+}
+
+func renderManagedRestartResult(cmd *cobra.Command, spec managed.Spec, manager managed.Manager, status runtimeStatusResult) {
+	renderMutationBlock(cmd, func(presenter *presentation.Presenter) {
+		presenter.ChildState(presentation.StatusSuccess, "Server", "running")
+		runtimeValue := fmt.Sprintf("pid %d", status.PID)
+		if status.RunID != "" {
+			runtimeValue += " · " + shortSessionID(status.RunID)
+		}
+		backendValue := managedBackendLabel(manager, spec) + " · " + string(spec.Scope)
+		if spec.Scope == managed.ScopeSystem && spec.Account.Username != "" {
+			backendValue += " · " + spec.Account.Username
+		}
+		fields := []presentation.Field{
+			{Label: "service", Value: spec.ID},
+			{Label: "runtime", Value: runtimeValue},
+			{Label: "backend", Value: backendValue},
+			{Label: "config", Value: spec.ConfigRoot},
+		}
+		if status.ServerEnabled {
+			fields = append(fields, presentation.Field{Label: "mcp http", Value: fmt.Sprintf("http://127.0.0.1:%d/mcp", status.ServerPort)})
+		} else {
+			fields = append(fields, presentation.Field{Label: "mcp http", Value: "disabled"})
+		}
+		if status.AdminEnabled {
+			fields = append(fields, presentation.Field{Label: "admin", Value: fmt.Sprintf("http://127.0.0.1:%d/", status.AdminPort)})
+		}
+		presenter.NestedFields(fields...)
+		if warning := managed.PersistenceWarning(spec); warning != "" {
+			presenter.ChildStatus(presentation.StatusWarning, warning)
+		}
+		presenter.Spacer()
+		presenter.Subsection("Actions")
+		presenter.NestedFields(
+			presentation.Field{Label: "Logs", Value: "cm logs -f"},
+			presentation.Field{Label: "Stop", Value: managedStopCommand(spec)},
 		)
 	})
 }
@@ -457,20 +502,48 @@ func managedLifecycleProgress(cmd *cobra.Command) *commandProgress {
 	return newCommandProgress(cmd, "SERVICE")
 }
 
-func renderManagedReadinessScopes(presenter *presentation.Presenter, status runtimeStatusResult) {
-	if presenter == nil {
-		return
-	}
+type managedReadinessScope struct {
+	ID           string
+	Label        string
+	ComponentIDs []string
+}
+
+type managedReadinessScopeState struct {
+	Scope  managedReadinessScope
+	Fields []presentation.Field
+	Ready  bool
+}
+
+var managedReadinessScopes = []managedReadinessScope{
+	{ID: "semantic", Label: "Semantic", ComponentIDs: []string{"typesafe", "semantic-approval"}},
+	{ID: "telegram", Label: "Telegram", ComponentIDs: []string{"telegram", "telegram-topics", "telegram-logs-mini-app"}},
+	{ID: "notifications", Label: "Notifications", ComponentIDs: []string{"approval-notifications", "completion-notifications"}},
+}
+
+var managedRestartReadinessScopes = []managedReadinessScope{
+	{ID: "telegram", Label: "Telegram", ComponentIDs: []string{"telegram"}},
+}
+
+func managedReadinessScopeStates(status runtimeStatusResult) []managedReadinessScopeState {
+	return readinessScopeStates(status, managedReadinessScopes)
+}
+
+func managedRestartReadinessScopeStates(status runtimeStatusResult) []managedReadinessScopeState {
+	return readinessScopeStates(status, managedRestartReadinessScopes)
+}
+
+func readinessScopeStates(status runtimeStatusResult, scopes []managedReadinessScope) []managedReadinessScopeState {
 	components := make(map[string]runtimecontrol.ReadinessComponent, len(status.Readiness))
 	for _, component := range status.Readiness {
 		if component.Configured {
 			components[component.ID] = component
 		}
 	}
-	renderGroup := func(label string, ids ...string) {
-		fields := make([]presentation.Field, 0, len(ids))
+	states := make([]managedReadinessScopeState, 0, len(scopes))
+	for _, scope := range scopes {
+		fields := make([]presentation.Field, 0, len(scope.ComponentIDs))
 		allReady := true
-		for _, id := range ids {
+		for _, id := range scope.ComponentIDs {
 			component, ok := components[id]
 			if !ok {
 				continue
@@ -483,22 +556,98 @@ func renderManagedReadinessScopes(presenter *presentation.Presenter, status runt
 			fields = append(fields, presentation.Field{Label: component.Label, Value: state})
 		}
 		if len(fields) == 0 {
+			continue
+		}
+		states = append(states, managedReadinessScopeState{Scope: scope, Fields: fields, Ready: allReady})
+	}
+	return states
+}
+
+func renderManagedReadinessScope(presenter *presentation.Presenter, state managedReadinessScopeState) {
+	if presenter == nil {
+		return
+	}
+	kind := presentation.StatusSuccess
+	value := "ready"
+	if !state.Ready {
+		kind = presentation.StatusWarning
+		value = "partial"
+	}
+	presenter.Spacer()
+	presenter.ChildState(kind, state.Scope.Label, value)
+	presenter.NestedFields(state.Fields...)
+}
+
+func renderManagedReadinessScopesExcept(presenter *presentation.Presenter, status runtimeStatusResult, skip map[string]struct{}) {
+	if presenter == nil {
+		return
+	}
+	for _, state := range managedReadinessScopeStates(status) {
+		if _, ok := skip[state.Scope.ID]; ok {
+			continue
+		}
+		renderManagedReadinessScope(presenter, state)
+	}
+}
+
+func managedRestartReadinessObserver(progress *commandProgress) (func(runtimeStatusResult), map[string]struct{}) {
+	rendered := map[string]struct{}{}
+	return func(status runtimeStatusResult) {
+		if progress == nil || progress.session == nil {
 			return
 		}
-		kind := presentation.StatusSuccess
-		state := "ready"
-		if !allReady {
-			kind = presentation.StatusWarning
-			state = "partial"
+		ready := make([]managedReadinessScopeState, 0, len(managedRestartReadinessScopes))
+		for _, state := range managedRestartReadinessScopeStates(status) {
+			if !state.Ready {
+				continue
+			}
+			if _, ok := rendered[state.Scope.ID]; ok {
+				continue
+			}
+			rendered[state.Scope.ID] = struct{}{}
+			ready = append(ready, state)
 		}
-		presenter.Spacer()
-		presenter.ChildState(kind, label, state)
-		presenter.NestedFields(fields...)
-	}
+		if status.TunnelEnabled && status.TunnelConfigured && status.TunnelReady {
+			if _, ok := rendered["tunnel"]; !ok {
+				rendered["tunnel"] = struct{}{}
+				ready = append(ready, managedReadinessScopeState{
+					Scope: managedReadinessScope{ID: "tunnel", Label: "OpenAI Secure MCP Tunnel"},
+					Ready: true,
+				})
+			}
+		}
+		if len(ready) == 0 {
+			return
+		}
+		progress.session.Suspend()
+		for _, state := range ready {
+			renderManagedReadinessScope(progress.session.Presenter(), state)
+		}
+		progress.session.Resume()
+	}, rendered
+}
 
-	renderGroup("Semantic", "typesafe", "semantic-approval")
-	renderGroup("Telegram", "telegram", "telegram-topics", "telegram-logs-mini-app")
-	renderGroup("Notifications", "approval-notifications", "completion-notifications")
+func managedRestartRuntimeStatus(ctx context.Context) (runtimeStatusResult, bool, error) {
+	status, running, err := managedRuntimeStatus(ctx)
+	if err == nil && running && !managedRestartStatusReady(status) {
+		status.Starting = true
+	}
+	return status, running, err
+}
+
+func managedRestartStatusReady(status runtimeStatusResult) bool {
+	if status.Starting {
+		return false
+	}
+	if status.TunnelEnabled && status.TunnelConfigured && !status.TunnelReady {
+		return false
+	}
+	for _, component := range status.Readiness {
+		if component.ID == "telegram" && component.Configured && !component.Ready {
+			return false
+		}
+	}
+	return true
 }
 
 func managedLifecycleDoneMessage(event managed.LifecycleEvent) string {

@@ -257,14 +257,14 @@ func TestManagedRestartKeepsServiceInstalledAndStartsNewRuntime(t *testing.T) {
 		t.Fatalf("restart reused runtime session %q", previousRunID)
 	}
 	text := output.String()
-	for _, expected := range []string{"Stopped managed runtime", "Stopped managed service backend", "Started managed service backend", "Managed runtime ready", "Managed service restarted", "Server started"} {
+	for _, expected := range []string{"Stopped managed runtime", "Stopped managed service backend", "Started managed service backend", "Server", "service", "runtime", "backend", "config", "mcp http", "Actions", "Logs", "cm logs -f", "Stop", "cm down"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("restart output missing %q: %s", expected, text)
 		}
 	}
-	for _, unexpected := range []string{"Managed service removed", "Managed service installed"} {
+	for _, unexpected := range []string{"Managed service removed", "Managed service installed", "Managed runtime ready", "Managed service restarted", "Server started", "Semantic — ready", "Notifications — ready"} {
 		if strings.Contains(text, unexpected) {
-			t.Fatalf("restart unexpectedly reinstalled service: %s", text)
+			t.Fatalf("restart output contains obsolete status %q: %s", unexpected, text)
 		}
 	}
 }
@@ -364,6 +364,183 @@ func TestManagedLifecycleResultGroupsReadinessByScope(t *testing.T) {
 	}
 }
 
+func TestManagedRestartReadinessObserverStreamsScopesAsTheyBecomeReady(t *testing.T) {
+	var output bytes.Buffer
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true, Animation: true}))
+	commandProgressSession(cmd).SetTitle("Restart CodeMCP")
+	progress := managedLifecycleProgress(cmd)
+	progress.Start("service.runtime.waiting", "Waiting for managed runtime readiness", "Managed runtime ready")
+	observe, streamed := managedRestartReadinessObserver(progress)
+
+	readiness := []runtimecontrol.ReadinessComponent{
+		{ID: "typesafe", Label: "TypeSafe semantic provider", Configured: true, Ready: true},
+		{ID: "semantic-approval", Label: "Semantic approval", Configured: true, Ready: true},
+		{ID: "telegram", Label: "Telegram runtime", Configured: true, Ready: false},
+		{ID: "approval-notifications", Label: "Approval notifications", Configured: true, Ready: true},
+		{ID: "completion-notifications", Label: "Completion notifications", Configured: true, Ready: true},
+	}
+	observe(runtimeStatusResult{Readiness: readiness})
+
+	telegram := append([]runtimecontrol.ReadinessComponent(nil), readiness...)
+	telegram[2].Ready = true
+	observe(runtimeStatusResult{Readiness: telegram})
+
+	observe(runtimeStatusResult{Readiness: telegram, TunnelEnabled: true, TunnelConfigured: true, TunnelReady: true})
+	observe(runtimeStatusResult{Readiness: telegram, TunnelEnabled: true, TunnelConfigured: true, TunnelReady: true})
+	progress.Stop()
+
+	text := output.String()
+	telegramLine := "✓ Telegram — ready"
+	tunnelLine := "✓ OpenAI Secure MCP Tunnel — ready"
+	for _, line := range []string{telegramLine, tunnelLine} {
+		if count := strings.Count(text, line); count != 1 {
+			t.Fatalf("streamed readiness line %q count=%d: %q", line, count, text)
+		}
+	}
+	telegramIndex, tunnelIndex := strings.Index(text, telegramLine), strings.Index(text, tunnelLine)
+	if telegramIndex < 0 || tunnelIndex <= telegramIndex {
+		t.Fatalf("readiness scopes were not emitted in observed completion order: %q", text)
+	}
+	for _, unexpected := range []string{"Semantic — ready", "Notifications — ready"} {
+		if strings.Contains(text, unexpected) {
+			t.Fatalf("non-lifecycle readiness leaked into restart output %q: %q", unexpected, text)
+		}
+	}
+	for _, id := range []string{"telegram", "tunnel"} {
+		if _, ok := streamed[id]; !ok {
+			t.Fatalf("readiness scope %q was not recorded as streamed: %#v", id, streamed)
+		}
+	}
+}
+
+func TestManagedRestartResultUsesCompactServerSummary(t *testing.T) {
+	var output bytes.Buffer
+	cmd := &cobra.Command{Use: "test"}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
+	spec := managed.Spec{ID: "cm-user-test", Scope: managed.ScopeUser, ConfigRoot: "/tmp/cm"}
+	status := runtimeStatusResult{PID: 4242, RunID: "run_1234567890abcdef", ServerEnabled: false}
+	renderManagedRestartResult(cmd, spec, &fakeServiceManager{}, status)
+	text := output.String()
+	for _, expected := range []string{
+		"│  ✓ Server — running",
+		"│  │  service — cm-user-test",
+		"│  │  runtime — pid 4242 · run_1234567890abcdef",
+		"│  │  backend — " + managedBackendLabel(&fakeServiceManager{}, spec) + " · user",
+		"│  │  config — /tmp/cm",
+		"│  │  mcp http — disabled",
+		"│  ◆ Actions",
+		"│  │  Logs — cm logs -f",
+		"│  │  Stop — cm down",
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("compact restart summary missing %q: %s", expected, text)
+		}
+	}
+	for _, unexpected := range []string{"Managed service restarted", "Server started", "Semantic", "Notifications"} {
+		if strings.Contains(text, unexpected) {
+			t.Fatalf("compact restart summary contains obsolete content %q: %s", unexpected, text)
+		}
+	}
+}
+
+func TestManagedRestartStatusReadyWaitsForTelegramAndTunnel(t *testing.T) {
+	base := runtimeStatusResult{
+		TunnelEnabled:    true,
+		TunnelConfigured: true,
+		TunnelReady:      true,
+		Readiness: []runtimecontrol.ReadinessComponent{
+			{ID: "telegram", Configured: true, Ready: true},
+			{ID: "telegram-topics", Configured: true, Ready: true},
+			{ID: "telegram-logs-mini-app", Configured: true, Ready: true},
+		},
+	}
+	if !managedRestartStatusReady(base) {
+		t.Fatal("fully ready Telegram and tunnel should complete restart")
+	}
+	optionalPending := base
+	optionalPending.Readiness = append([]runtimecontrol.ReadinessComponent(nil), base.Readiness...)
+	optionalPending.Readiness[1].Ready = false
+	optionalPending.Readiness[2].Ready = false
+	if !managedRestartStatusReady(optionalPending) {
+		t.Fatal("Telegram topics or Logs Mini App blocked restart")
+	}
+	telegramPending := base
+	telegramPending.Readiness = append([]runtimecontrol.ReadinessComponent(nil), base.Readiness...)
+	telegramPending.Readiness[0].Ready = false
+	if managedRestartStatusReady(telegramPending) {
+		t.Fatal("restart completed before Telegram runtime became ready")
+	}
+	tunnelPending := base
+	tunnelPending.TunnelReady = false
+	if managedRestartStatusReady(tunnelPending) {
+		t.Fatal("restart completed before tunnel became ready")
+	}
+	corePending := base
+	corePending.Starting = true
+	if managedRestartStatusReady(corePending) {
+		t.Fatal("restart completed while core runtime was still starting")
+	}
+}
+
+func TestManagedRestartReadinessScopeTreatsTelegramFeaturesAsNonBlocking(t *testing.T) {
+	states := managedRestartReadinessScopeStates(runtimeStatusResult{Readiness: []runtimecontrol.ReadinessComponent{
+		{ID: "telegram", Label: "Telegram runtime", Configured: true, Ready: true},
+		{ID: "telegram-topics", Label: "Telegram topics", Configured: true, Ready: false},
+		{ID: "telegram-logs-mini-app", Label: "Telegram Logs Mini App", Configured: true, Ready: false},
+	}})
+	if len(states) != 1 || states[0].Scope.ID != "telegram" || !states[0].Ready {
+		t.Fatalf("restart Telegram readiness=%#v", states)
+	}
+	if len(states[0].Fields) != 1 || states[0].Fields[0].Label != "Telegram runtime" {
+		t.Fatalf("restart Telegram fields=%#v", states[0].Fields)
+	}
+	statusStates := managedReadinessScopeStates(runtimeStatusResult{Readiness: []runtimecontrol.ReadinessComponent{
+		{ID: "telegram", Label: "Telegram runtime", Configured: true, Ready: true},
+		{ID: "telegram-topics", Label: "Telegram topics", Configured: true, Ready: false},
+		{ID: "telegram-logs-mini-app", Label: "Telegram Logs Mini App", Configured: true, Ready: false},
+	}})
+	if len(statusStates) != 1 || statusStates[0].Ready {
+		t.Fatalf("full status should still expose optional Telegram readiness: %#v", statusStates)
+	}
+}
+
+func TestManagedRestartRuntimeStatusWaitsForTelegramAndTunnel(t *testing.T) {
+	defer configformat.SetRootPath("")
+	root := t.TempDir()
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root}
+	var ready atomic.Bool
+	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_restart_ready", Managed: true, ServiceID: spec.ID, ServiceScope: string(spec.Scope), Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) {
+		return runtimeReloadResult{PID: os.Getpid()}, nil
+	}, Status: func() runtimeStatusResult {
+		isReady := ready.Load()
+		return runtimeStatusResult{
+			PID: os.Getpid(), RunID: "run_restart_ready", Lifecycle: "tunnel_connecting",
+			Managed: true, ServiceID: spec.ID, ServiceScope: string(spec.Scope), ConfigRoot: root,
+			TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true, TunnelReady: isReady,
+			Readiness: []runtimecontrol.ReadinessComponent{{ID: "telegram", Configured: true, Ready: isReady}},
+		}
+	}, Shutdown: func() {}, ClearLogs: func() error { return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		ready.Store(true)
+	}()
+	status, err := managed.WaitRuntimeReady(t.Context(), spec, managedRestartRuntimeStatus, "", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.TunnelReady || status.Starting || len(status.Readiness) != 1 || !status.Readiness[0].Ready {
+		t.Fatalf("restart readiness returned early: %#v", status)
+	}
+}
+
 func TestWaitManagedRuntimeReadyWaitsForRuntimeStartup(t *testing.T) {
 	defer configformat.SetRootPath("")
 	root := filepath.Join(t.TempDir(), "config")
@@ -406,7 +583,8 @@ func TestWaitManagedRuntimeReadyDoesNotRequireTunnelConnection(t *testing.T) {
 	control, err := startRuntimeControl(runtimeControlOptions{RunID: "run_connecting", Managed: true, ServiceID: spec.ID, ServiceScope: string(spec.Scope), Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) {
 		return runtimeReloadResult{PID: os.Getpid()}, nil
 	}, Status: func() runtimeStatusResult {
-		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_connecting", Managed: true, ServiceID: spec.ID, ServiceScope: string(spec.Scope), ConfigRoot: root, ServerEnabled: false, TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true, TunnelReady: false}
+		lifecycle := "tunnel_connecting"
+		return runtimeStatusResult{PID: os.Getpid(), RunID: "run_connecting", Lifecycle: lifecycle, Starting: runtimeLifecycleStarting(lifecycle), Managed: true, ServiceID: spec.ID, ServiceScope: string(spec.Scope), ConfigRoot: root, ServerEnabled: false, TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true, TunnelReady: false}
 	}, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -416,7 +594,7 @@ func TestWaitManagedRuntimeReadyDoesNotRequireTunnelConnection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.TunnelRunning || status.TunnelReady {
+	if status.Starting || status.Lifecycle != "tunnel_connecting" || !status.TunnelRunning || status.TunnelReady {
 		t.Fatalf("connecting tunnel status=%#v", status)
 	}
 }

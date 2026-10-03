@@ -1,11 +1,15 @@
 package service
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
+
+	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 )
 
 func TestSpecHelpers(t *testing.T) {
@@ -65,6 +69,37 @@ func TestRunCommand(t *testing.T) {
 	}
 	if _, ok := commandSucceeded("definitely-not-a-real-cm-command"); ok {
 		t.Fatal("missing command succeeded")
+	}
+}
+
+func TestWaitRuntimeReadyUsesStatusUpdateWaitWithoutPollDelay(t *testing.T) {
+	spec := Spec{ID: "cm-user-test", Scope: ScopeUser}
+	notReady := runtimecontrol.RuntimeStatus{PID: 42, RunID: "run_test", Lifecycle: "tunnel_connecting", Starting: true, Managed: true, ServiceID: spec.ID, ServiceScope: string(spec.Scope)}
+	ready := notReady
+	ready.Starting = false
+	probeCalls := 0
+	probe := func(context.Context) (runtimecontrol.RuntimeStatus, bool, error) {
+		probeCalls++
+		if probeCalls == 1 {
+			return notReady, true, nil
+		}
+		return ready, true, nil
+	}
+	waitCalls := 0
+	waitUpdate := func(context.Context, runtimecontrol.RuntimeStatus) (runtimecontrol.RuntimeStatus, error) {
+		waitCalls++
+		return ready, nil
+	}
+	started := time.Now()
+	status, err := waitRuntimeReady(t.Context(), spec, probe, nil, waitUpdate, "", time.Second, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Starting || waitCalls != 1 || probeCalls != 2 {
+		t.Fatalf("status=%#v waitCalls=%d probeCalls=%d", status, waitCalls, probeCalls)
+	}
+	if elapsed := time.Since(started); elapsed >= 100*time.Millisecond {
+		t.Fatalf("status update wait fell back to polling: %s", elapsed)
 	}
 }
 

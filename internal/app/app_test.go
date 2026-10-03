@@ -95,6 +95,68 @@ func TestStartAllowsDefaultOnCapabilitiesWithoutOptionalPrerequisites(t *testing
 	if semanticHealth.Available || semanticHealth.LastErrorCategory == "" {
 		t.Fatalf("fresh semantic runtime should report unavailable provider: %#v", semanticHealth)
 	}
+	overview, err := app.StatusOverview(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !overview.ApprovalNotificationsReady || !overview.CompletionNotificationsReady {
+		t.Fatalf("notification runtime readiness=%#v", overview)
+	}
+}
+
+func TestRunRuntimeStartupTasksRunsConcurrently(t *testing.T) {
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	task := func(name string) runtimeStartupTask {
+		return runtimeStartupTask{run: func() error {
+			started <- name
+			<-release
+			return nil
+		}}
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- runRuntimeStartupTasks([]runtimeStartupTask{task("one"), task("two")})
+	}()
+	seen := map[string]bool{}
+	for len(seen) < 2 {
+		select {
+		case name := <-started:
+			seen[name] = true
+		case <-time.After(time.Second):
+			t.Fatalf("startup tasks did not fan out concurrently: %#v", seen)
+		}
+	}
+	close(release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("concurrent startup tasks did not finish")
+	}
+}
+
+func TestRunRuntimeStartupTasksSeparatesFatalAndDegradedFailures(t *testing.T) {
+	fatalErr := errors.New("fatal startup")
+	degradedErr := errors.New("degraded startup")
+	warned := make(chan error, 1)
+	err := runRuntimeStartupTasks([]runtimeStartupTask{
+		{fatal: true, run: func() error { return fatalErr }},
+		{run: func() error { return degradedErr }, onError: func(err error) { warned <- err }},
+	})
+	if !errors.Is(err, fatalErr) || errors.Is(err, degradedErr) {
+		t.Fatalf("fatal startup result = %v", err)
+	}
+	select {
+	case got := <-warned:
+		if !errors.Is(got, degradedErr) {
+			t.Fatalf("degraded callback = %v", got)
+		}
+	default:
+		t.Fatal("degraded startup failure was not reported")
+	}
 }
 
 func TestAcceptedCompletionNotificationFailureDoesNotChangeCompletionTruth(t *testing.T) {

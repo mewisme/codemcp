@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
@@ -72,6 +73,51 @@ func TestTunnelOnlyRuntimeRequiresNoHTTPListeners(t *testing.T) {
 	}
 	if err := waitRuntimeHTTPReady(context.Background(), cfg, 10*time.Millisecond); err != nil {
 		t.Fatalf("tunnel-only HTTP readiness = %v", err)
+	}
+}
+
+func TestRuntimeLifecycleStartingStopsAfterCoreRuntimeIsReady(t *testing.T) {
+	tests := map[string]bool{
+		"bootstrapping":     true,
+		"listeners_ready":   false,
+		"tunnel_connecting": false,
+		"ready":             false,
+		"reloading":         false,
+		"stopping":          false,
+		"unknown":           true,
+	}
+	for state, want := range tests {
+		t.Run(state, func(t *testing.T) {
+			if got := runtimeLifecycleStarting(state); got != want {
+				t.Fatalf("runtimeLifecycleStarting(%q) = %t, want %t", state, got, want)
+			}
+		})
+	}
+}
+
+func TestRuntimeReadinessComponentsUseNotificationServiceReadiness(t *testing.T) {
+	cfg := config.Default()
+	cfg.Notifications.Approval.Enabled = true
+	cfg.Notifications.Approval.DesktopEnabled = true
+	cfg.Notifications.Completion.Enabled = true
+	cfg.Notifications.Completion.DesktopEnabled = true
+	overview := application.StatusOverview{
+		RuntimeRunning:               false,
+		ApprovalNotificationsReady:   true,
+		CompletionNotificationsReady: false,
+	}
+	components := runtimeReadinessComponents(cfg, overview, "bootstrapping")
+	byID := make(map[string]runtimecontrol.ReadinessComponent, len(components))
+	for _, component := range components {
+		byID[component.ID] = component
+	}
+	approval, ok := byID["approval-notifications"]
+	if !ok || !approval.Configured || !approval.Ready {
+		t.Fatalf("approval notification readiness = %#v", approval)
+	}
+	completion, ok := byID["completion-notifications"]
+	if !ok || !completion.Configured || completion.Ready {
+		t.Fatalf("completion notification readiness = %#v", completion)
 	}
 }
 

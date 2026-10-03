@@ -18,6 +18,7 @@ const (
 type RuntimeProbe func(context.Context) (runtimecontrol.RuntimeStatus, bool, error)
 type RuntimeShutdown func(context.Context) error
 type RuntimeStatusWait func(context.Context, string) (runtimecontrol.RuntimeStatus, error)
+type RuntimeStatusUpdateWait func(context.Context, runtimecontrol.RuntimeStatus) (runtimecontrol.RuntimeStatus, error)
 
 type LifecycleEvent struct {
 	Phase   string
@@ -32,6 +33,7 @@ type Lifecycle struct {
 	Probe            RuntimeProbe
 	Shutdown         RuntimeShutdown
 	WaitStatusChange RuntimeStatusWait
+	WaitStatusUpdate RuntimeStatusUpdateWait
 	Timeout          time.Duration
 	Observe          LifecycleObserver
 	ObserveStatus    func(runtimecontrol.RuntimeStatus)
@@ -379,14 +381,14 @@ func (l Lifecycle) waitReady(ctx context.Context, previousRunID string) (runtime
 	if wait == nil {
 		wait = runtimecontrol.WaitStatusChange
 	}
-	return waitRuntimeReady(ctx, l.Spec, l.Probe, wait, previousRunID, l.timeout(), l.ObserveStatus)
+	return waitRuntimeReady(ctx, l.Spec, l.Probe, wait, l.WaitStatusUpdate, previousRunID, l.timeout(), l.ObserveStatus)
 }
 
 func WaitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, previousRunID string, timeout time.Duration) (runtimecontrol.RuntimeStatus, error) {
-	return waitRuntimeReady(ctx, spec, probe, runtimecontrol.WaitStatusChange, previousRunID, timeout, nil)
+	return waitRuntimeReady(ctx, spec, probe, runtimecontrol.WaitStatusChange, nil, previousRunID, timeout, nil)
 }
 
-func waitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, waitStatusChange RuntimeStatusWait, previousRunID string, timeout time.Duration, observeStatus func(runtimecontrol.RuntimeStatus)) (runtimecontrol.RuntimeStatus, error) {
+func waitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, waitStatusChange RuntimeStatusWait, waitStatusUpdate RuntimeStatusUpdateWait, previousRunID string, timeout time.Duration, observeStatus func(runtimecontrol.RuntimeStatus)) (runtimecontrol.RuntimeStatus, error) {
 	if probe == nil {
 		return runtimecontrol.RuntimeStatus{}, errors.New("managed runtime probe is unavailable")
 	}
@@ -435,7 +437,21 @@ func waitRuntimeReady(ctx context.Context, spec Spec, probe RuntimeProbe, waitSt
 				lastErr = errors.New("previous managed runtime is still shutting down")
 			} else if status.Starting {
 				lastErr = errors.New("managed runtime is still starting")
-				if observeStatus == nil && status.Lifecycle != "" && waitStatusChange != nil {
+				if waitStatusUpdate != nil {
+					waitCtx, cancel := context.WithTimeout(ctx, min(10*time.Second, time.Until(deadline)))
+					next, waitErr := waitStatusUpdate(waitCtx, status)
+					cancel()
+					if waitErr == nil {
+						if observeStatus != nil {
+							observeStatus(next)
+						}
+						continue
+					}
+					if ctx.Err() != nil {
+						span.FailMessage("Managed runtime readiness wait canceled", ctx.Err(), tracepkg.Int("attempts", attempts), tracepkg.Int64("elapsed_ms", time.Since(started).Milliseconds()))
+						return runtimecontrol.RuntimeStatus{}, ctx.Err()
+					}
+				} else if observeStatus == nil && status.Lifecycle != "" && waitStatusChange != nil {
 					waitCtx, cancel := context.WithTimeout(ctx, min(10*time.Second, time.Until(deadline)))
 					_, waitErr := waitStatusChange(waitCtx, status.Lifecycle)
 					cancel()
