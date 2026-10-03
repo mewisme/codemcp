@@ -299,6 +299,77 @@ func TestMutationCallbackAcknowledgesBeforeWorkingDispatchAndTerminalEdit(t *tes
 	}
 }
 
+func TestApprovalDecisionCallbackDispatchesThenDeletesWithoutEditing(t *testing.T) {
+	for _, operation := range []capability.ID{capability.RequestApprove, capability.RequestDeny} {
+		t.Run(string(operation), func(t *testing.T) {
+			events := []string{}
+			api := &orderedInteractiveAPI{events: &events}
+			dispatcher := &orderedDispatcher{recordingDispatcher: recordingDispatcher{result: "ok"}, events: &events}
+			runtime := &Runtime{
+				api: api, generation: 4,
+				health: Health{Running: true, AuthorizationConfigured: true},
+			}
+			ui, err := NewInterface(InterfaceOptions{Runtime: runtime, Dispatcher: dispatcher})
+			if err != nil {
+				t.Fatal(err)
+			}
+			owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 4}
+			button, err := ui.stateButton(owner, "Decide", CallbackOpen, ActionState{
+				Route: RouteOperation, Back: RouteRequests, Operation: operation, ResourceID: "req_1",
+				Input: application.RequestResolutionInput{ID: "req_1"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ui.handleCallback(t.Context(), Update{CallbackQuery: &CallbackQuery{
+				ID: "cb_decide", From: User{ID: 42}, Data: button.CallbackData,
+				Message: &Message{MessageID: 9, Chat: Chat{ID: 42, Type: "private"}},
+			}})
+			if got := strings.Join(events, "|"); got != "answer|dispatch|delete" {
+				t.Fatalf("approval callback lifecycle=%s", got)
+			}
+			if len(api.edited) != 0 {
+				t.Fatalf("approval callback edited old card: %#v", api.edited)
+			}
+			if len(api.deleted) != 1 || api.deleted[0] != 9 {
+				t.Fatalf("approval callback deletes=%v", api.deleted)
+			}
+		})
+	}
+}
+
+func TestFailedApprovalDecisionKeepsReviewCardAndRendersErrorState(t *testing.T) {
+	events := []string{}
+	api := &orderedInteractiveAPI{events: &events}
+	dispatcher := &orderedDispatcher{recordingDispatcher: recordingDispatcher{err: errors.New("approval request is no longer pending")}, events: &events}
+	runtime := &Runtime{
+		api: api, generation: 4,
+		health: Health{Running: true, AuthorizationConfigured: true},
+	}
+	ui, err := NewInterface(InterfaceOptions{Runtime: runtime, Dispatcher: dispatcher})
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := ViewOwner{ChatID: 42, UserID: 42, Generation: 4}
+	button, err := ui.stateButton(owner, "Approve once", CallbackOpen, ActionState{
+		Route: RouteOperation, Back: RouteRequests, Operation: capability.RequestApprove, ResourceID: "req_1",
+		Input: application.RequestResolutionInput{ID: "req_1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ui.handleCallback(t.Context(), Update{CallbackQuery: &CallbackQuery{
+		ID: "cb_fail", From: User{ID: 42}, Data: button.CallbackData,
+		Message: &Message{MessageID: 9, Chat: Chat{ID: 42, Type: "private"}},
+	}})
+	if len(api.deleted) != 0 {
+		t.Fatalf("failed approval callback deleted review card: %v", api.deleted)
+	}
+	if len(api.edited) != 1 {
+		t.Fatalf("failed approval callback edits=%d want=1", len(api.edited))
+	}
+}
+
 func TestCloseDismissesOnlyEligibleTerminalMessage(t *testing.T) {
 	events := []string{}
 	api := &orderedInteractiveAPI{events: &events}

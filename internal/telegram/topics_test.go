@@ -23,13 +23,16 @@ type topicTestAPI struct {
 	threadSends         []string
 	richThreadScreens   []Screen
 	richThreadIDs       []int
+	richGeneralScreens  []Screen
 	chatActionThreadIDs []int
 	documentThreadIDs   []int
 	editedMessageIDs    []int64
 	editedScreens       []Screen
+	deletedMessageIDs   []int64
 	generalSends        []string
 	threadErr           error
 	editErr             error
+	deleteErr           error
 }
 
 func (api *topicTestAPI) GetMe(context.Context) (User, error) {
@@ -72,6 +75,15 @@ func (api *topicTestAPI) SendRichMessageThread(_ context.Context, _ int64, threa
 	return 1, nil
 }
 
+func (api *topicTestAPI) SendRichMessage(_ context.Context, _ int64, screen Screen, _ RichMessageOptions) (int64, error) {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	api.richGeneralScreens = append(api.richGeneralScreens, screen)
+	return 1, nil
+}
+
+func (*topicTestAPI) SendChatAction(context.Context, int64, string) error { return nil }
+
 func (api *topicTestAPI) SendChatActionThread(_ context.Context, _ int64, threadID int, _ string) error {
 	api.mu.Lock()
 	defer api.mu.Unlock()
@@ -103,6 +115,13 @@ func (api *topicTestAPI) EditScreen(_ context.Context, _ int64, messageID int64,
 }
 
 func (*topicTestAPI) AnswerCallback(context.Context, string, string, bool) error { return nil }
+
+func (api *topicTestAPI) DeleteMessage(_ context.Context, _ int64, messageID int64) error {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	api.deletedMessageIDs = append(api.deletedMessageIDs, messageID)
+	return api.deleteErr
+}
 
 func TestTopicRoleForNotification(t *testing.T) {
 	tests := map[notification.Kind]TopicRole{
@@ -368,7 +387,7 @@ func TestInteractiveApprovalNotificationUsesRichRequestsTopicDelivery(t *testing
 	}
 }
 
-func TestApprovalResolvedNotificationEditsOriginalRichCardAfterRuntimeRestart(t *testing.T) {
+func TestApprovalResolvedNotificationReplacesOriginalRichCardAfterRuntimeRestart(t *testing.T) {
 	root := t.TempDir()
 	api := &topicTestAPI{}
 	store := newTopicStore(root)
@@ -428,27 +447,30 @@ func TestApprovalResolvedNotificationEditsOriginalRichCardAfterRuntimeRestart(t 
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(api.richThreadScreens) != 1 {
-		t.Fatalf("resolved notification created another rich message: %d", len(api.richThreadScreens))
+	if len(api.richThreadScreens) != 2 {
+		t.Fatalf("resolved notification fresh rich messages=%d want=2 total including pending", len(api.richThreadScreens))
 	}
 	if len(api.generalSends) != 0 || len(api.threadSends) != 0 {
 		t.Fatalf("resolved notification emitted redundant text general=%v thread=%v", api.generalSends, api.threadSends)
 	}
-	if len(api.editedMessageIDs) != 2 || api.editedMessageIDs[1] != 1 {
-		t.Fatalf("resolved edits=%v want update+resolve on message 1", api.editedMessageIDs)
+	if len(api.editedMessageIDs) != 1 || api.editedMessageIDs[0] != 1 {
+		t.Fatalf("resolved edits=%v want only non-terminal update on message 1", api.editedMessageIDs)
+	}
+	if len(api.deletedMessageIDs) != 1 || api.deletedMessageIDs[0] != 1 {
+		t.Fatalf("resolved deletes=%v want=[1]", api.deletedMessageIDs)
 	}
 	if resolvedRuntime.approvalMessages == nil || resolvedRuntime.approvalMessages.get(42, "req_1") != 0 {
 		t.Fatal("resolved approval message reference was not cleared")
 	}
-	fallback := RichFallback(api.editedScreens[1].Rich).Text
+	fallback := RichFallback(api.richThreadScreens[1].Rich).Text
 	if !strings.Contains(fallback, string(notification.KindApprovalResolved)) {
-		t.Fatalf("resolved edit screen=%q", fallback)
+		t.Fatalf("resolved fresh screen=%q", fallback)
 	}
 }
 
-func TestApprovalResolvedBadRequestDoesNotAppendDuplicateMessage(t *testing.T) {
+func TestApprovalResolvedMissingOldCardStillSendsOneFreshMessage(t *testing.T) {
 	root := t.TempDir()
-	api := &topicTestAPI{editErr: &transportError{Class: transportErrorBadRequest}}
+	api := &topicTestAPI{deleteErr: &transportError{Class: transportErrorNotFound}}
 	store := newApprovalMessageStore(root)
 	if err := store.put(42, "req_1", 9); err != nil {
 		t.Fatal(err)
@@ -466,14 +488,45 @@ func TestApprovalResolvedBadRequestDoesNotAppendDuplicateMessage(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(api.editedMessageIDs) != 1 || api.editedMessageIDs[0] != 9 {
-		t.Fatalf("resolved edits=%v want=[9]", api.editedMessageIDs)
+	if len(api.deletedMessageIDs) != 1 || api.deletedMessageIDs[0] != 9 {
+		t.Fatalf("resolved deletes=%v want=[9]", api.deletedMessageIDs)
 	}
-	if len(api.richThreadScreens) != 0 || len(api.generalSends) != 0 || len(api.threadSends) != 0 {
-		t.Fatalf("bad-request edit appended duplicate rich=%d general=%v thread=%v", len(api.richThreadScreens), api.generalSends, api.threadSends)
+	if len(api.richThreadScreens) != 0 || len(api.richGeneralScreens) != 1 || len(api.generalSends) != 0 || len(api.threadSends) != 0 {
+		t.Fatalf("missing old card fresh delivery topic-rich=%d general-rich=%d general=%v thread=%v", len(api.richThreadScreens), len(api.richGeneralScreens), api.generalSends, api.threadSends)
 	}
 	if store.get(42, "req_1") != 0 {
-		t.Fatal("failed resolved edit retained stale approval message reference")
+		t.Fatal("missing old card retained stale approval message reference")
+	}
+}
+
+func TestApprovalResolvedDeleteFailureDoesNotSendFreshMessage(t *testing.T) {
+	root := t.TempDir()
+	api := &topicTestAPI{deleteErr: &transportError{Class: transportErrorForbidden}}
+	store := newApprovalMessageStore(root)
+	if err := store.put(42, "req_1", 9); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &Runtime{
+		root: root, api: api, approvalMessages: store,
+		config: config.TelegramConfig{Enabled: true, AllowedUserIDs: []int64{42}},
+		health: Health{Running: true, Enabled: true, AuthorizationConfigured: true},
+		notificationRenderer: func(_ context.Context, _ int64, _ notification.Message) (Screen, bool, error) {
+			return Screen{Rich: BuildRichPresentation(RichBlock{Kind: RichHeading, Title: "approved"})}, true, nil
+		},
+	}
+	if err := runtime.SendNotification(t.Context(), notification.Message{
+		Kind: notification.KindApprovalResolved, RequestID: "req_1",
+	}); err == nil {
+		t.Fatal("resolved delete failure unexpectedly succeeded")
+	}
+	if len(api.deletedMessageIDs) != 1 || api.deletedMessageIDs[0] != 9 {
+		t.Fatalf("resolved deletes=%v want=[9]", api.deletedMessageIDs)
+	}
+	if len(api.richThreadScreens) != 0 || len(api.richGeneralScreens) != 0 || len(api.generalSends) != 0 || len(api.threadSends) != 0 {
+		t.Fatalf("delete failure emitted fresh message topic-rich=%d general-rich=%d general=%v thread=%v", len(api.richThreadScreens), len(api.richGeneralScreens), api.generalSends, api.threadSends)
+	}
+	if store.get(42, "req_1") != 9 {
+		t.Fatal("delete failure cleared retryable approval message reference")
 	}
 }
 

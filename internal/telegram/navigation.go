@@ -340,6 +340,7 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 	}
 	ui.answerCallback(ctx, update.CallbackQuery.ID, "", false)
 	messageID := update.CallbackQuery.Message.MessageID
+	approvalDecision := state.Operation == capability.RequestApprove || state.Operation == capability.RequestDeny
 	if hasSpec && shouldShowWorking(spec, state) {
 		if err := ui.prepareDurableOperation(ctx, owner, messageID, state); err != nil {
 			screen, _ := ui.operationErrorScreen(owner, state, err)
@@ -347,7 +348,7 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 			return
 		}
 	}
-	if hasSpec && shouldShowWorking(spec, state) {
+	if hasSpec && shouldShowWorking(spec, state) && !approvalDecision {
 		_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, workingScreen(state))
 	}
 	screen, err := ui.renderState(ctx, owner, state)
@@ -358,6 +359,11 @@ func (ui *Interface) handleCallback(ctx context.Context, update Update) {
 		ui.clearDurableOperation(owner.ChatID, messageID, state)
 		screen, _ = ui.operationErrorScreen(owner, state, err)
 		_ = ui.runtime.EditScreen(ctx, owner.ChatID, messageID, withRouteBreadcrumb(screen, state))
+		return
+	}
+	if approvalDecision {
+		_ = ui.runtime.DeleteMessage(ctx, owner.ChatID, messageID)
+		ui.clearDurableOperation(owner.ChatID, messageID, state)
 		return
 	}
 	if editErr := ui.runtime.EditScreen(ctx, owner.ChatID, messageID, screen); editErr == nil {

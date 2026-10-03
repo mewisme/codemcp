@@ -957,14 +957,15 @@ func (runtime *Runtime) handleRenderedNotification(ctx context.Context, chatID i
 	}
 	if message.Kind == notification.KindApprovalResolved {
 		if messageID := store.get(chatID, requestID); messageID > 0 {
-			if err := runtime.EditScreen(ctx, chatID, messageID, screen); err == nil {
-				_ = store.delete(chatID, requestID)
-				return nil
-			} else if kind := transportErrorKind(err); kind != transportErrorBadRequest && kind != transportErrorNotFound {
+			if err := runtime.DeleteMessage(ctx, chatID, messageID); err != nil {
+				kind := transportErrorKind(err)
+				if kind != transportErrorBadRequest && kind != transportErrorNotFound {
+					return err
+				}
+			}
+			if err := store.delete(chatID, requestID); err != nil {
 				return err
 			}
-			_ = store.delete(chatID, requestID)
-			return nil
 		}
 	}
 	messageID, err := runtime.SendRichMessageToTopic(ctx, chatID, role, screen, RichMessageOptions{})
