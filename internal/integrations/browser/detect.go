@@ -98,7 +98,7 @@ func probeCapability(ctx context.Context, root string, runtime Runtime, candidat
 		State: StateAvailable, Enabled: true, Available: true, Usable: true,
 		Family: family, Executable: candidate.Executable, Version: result.Version,
 		HostPlatform: candidate.HostPlatform, Transport: candidate.Transport, Graphical: result.Graphical,
-		ProfileHostPlatform: profile.HostPlatform, Profile: &profile,
+		ProfileHostPlatform: profile.HostPlatform, Profile: &profile, Candidate: &candidate,
 	}
 }
 

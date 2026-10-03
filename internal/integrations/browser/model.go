@@ -74,10 +74,18 @@ type Capability struct {
 	ProfileHostPlatform string      `json:"profile_host_platform,omitempty"`
 	Profile             *ProfileRef `json:"profile,omitempty"`
 	Reason              string      `json:"reason,omitempty"`
+	Candidate           *Candidate  `json:"-"`
 }
 
 const (
 	VersionProbeTimeout = 2 * time.Second
 	LaunchProbeTimeout  = 5 * time.Second
 	ReasonLimit         = 512
+
+	DefaultMaxTabs          = 5
+	DefaultAgentIdleTTL     = 15 * time.Minute
+	DefaultBrowserWarmTTL   = 5 * time.Minute
+	DefaultManagerLaunchTTL = 10 * time.Second
+	DefaultMinimizeTTL      = 2 * time.Second
+	DefaultCloseTTL         = 3 * time.Second
 )
