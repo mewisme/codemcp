@@ -9,6 +9,7 @@ import (
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/integrations/semantic"
 	"go.mewis.me/codemcp/internal/memory"
+	plandoc "go.mewis.me/codemcp/internal/plan"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -42,14 +43,15 @@ type GitSummary struct {
 }
 
 type Summary struct {
-	MemoryFiles      []MemoryFile    `json:"memory_files"`
-	MemoryBytes      int             `json:"memory_bytes"`
-	InstructionBytes int             `json:"instruction_bytes"`
-	Git              GitSummary      `json:"git"`
-	Rules            int             `json:"rules"`
-	Skills           int             `json:"skills"`
-	Plans            PlanContext     `json:"plans"`
-	Semantic         SemanticSummary `json:"semantic,omitempty"`
+	MemoryFiles      []MemoryFile              `json:"memory_files"`
+	MemoryBytes      int                       `json:"memory_bytes"`
+	InstructionBytes int                       `json:"instruction_bytes"`
+	Git              GitSummary                `json:"git"`
+	Rules            int                       `json:"rules"`
+	Skills           int                       `json:"skills"`
+	Plans            PlanContext               `json:"plans"`
+	PlanExecution    *plandoc.ExecutionBinding `json:"plan_execution,omitempty"`
+	Semantic         SemanticSummary           `json:"semantic,omitempty"`
 }
 
 type SemanticSummary struct {

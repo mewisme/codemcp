@@ -128,6 +128,15 @@ func TestParsePartsLifecycleStatesNeedNoExternalState(t *testing.T) {
 	}
 }
 
+func TestParsePartsRejectsCompletedPhaseAfterIncompletePhase(t *testing.T) {
+	planContent, order := lifecycleFixture(false, true, false)
+	_, err := ParseParts(planContent, order)
+	assertErrorCode(t, err, ErrorInvalidChecklist)
+	if err == nil || !strings.Contains(err.Error(), "cannot be completed before an earlier phase") {
+		t.Fatalf("ParseParts() error = %v, want ordered-prefix rejection", err)
+	}
+}
+
 func TestCanonicalNormalizationMakesEquivalentInputStable(t *testing.T) {
 	planContent, order := lifecycleFixture(false, false, false)
 	canonical, err := ParseParts(planContent, order)

@@ -241,6 +241,9 @@ func ParseParts(planContent, implementationOrder string) (Document, error) {
 			completedCount++
 		}
 	}
+	if err := validateCompletedPhasePrefix(phases); err != nil {
+		return Document{}, err
+	}
 
 	status := StatusPending
 	if completedCount == len(phases) && orderResult.terminalAcceptanceComplete {
@@ -272,6 +275,12 @@ func ValidateUpdate(previous, next Document) error {
 	if len(previous.rendered) == 0 || len(next.rendered) == 0 {
 		return validationError(ErrorInvalidFormat, "document", 0, "both previous and next documents must be valid parsed documents")
 	}
+	if err := validateCompletedPhasePrefix(previous.phases); err != nil {
+		return err
+	}
+	if err := validateCompletedPhasePrefix(next.phases); err != nil {
+		return err
+	}
 	nextByID := make(map[string]Phase, len(next.phases))
 	for _, phase := range next.phases {
 		nextByID[phase.ID] = phase
@@ -293,6 +302,20 @@ func ValidateUpdate(previous, next Document) error {
 	}
 	if previous.terminalAcceptanceComplete && !next.terminalAcceptanceComplete {
 		return validationError(ErrorStateRegression, "terminal_acceptance", 0, "completed terminal acceptance cannot regress to incomplete")
+	}
+	return nil
+}
+
+func validateCompletedPhasePrefix(phases []Phase) error {
+	seenIncomplete := false
+	for _, phase := range phases {
+		if !phase.Completed {
+			seenIncomplete = true
+			continue
+		}
+		if seenIncomplete {
+			return validationError(ErrorInvalidChecklist, "phases", 0, fmt.Sprintf("phase %s cannot be completed before an earlier phase", phase.ID))
+		}
 	}
 	return nil
 }

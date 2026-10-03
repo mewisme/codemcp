@@ -17,6 +17,7 @@ func codeGraphProjectContextProviders(runtime *Runtime) ProjectContextProviders 
 	}}
 	if runtime != nil {
 		providers.Semantic = runtime.Semantic
+		providers.PlanExecutions = runtime.PlanExecutions
 	}
 	return providers
 }

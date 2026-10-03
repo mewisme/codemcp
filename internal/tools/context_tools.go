@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/integrations/semantic"
 	"go.mewis.me/codemcp/internal/memory"
+	plandoc "go.mewis.me/codemcp/internal/plan"
 	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/rules"
 	"go.mewis.me/codemcp/internal/skills"
@@ -107,8 +109,9 @@ type AgentStatusResult struct {
 type ProjectContextEnvironment func() (bool, int)
 
 type ProjectContextProviders struct {
-	Projections []projectcontext.IntegrationProjectionProvider
-	Semantic    semantic.Provider
+	Projections    []projectcontext.IntegrationProjectionProvider
+	Semantic       semantic.Provider
+	PlanExecutions *plandoc.ExecutionManager
 }
 
 func RegisterContextTools(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store, environments ...ProjectContextEnvironment) {
@@ -133,6 +136,10 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		IntegrationProjectionProviders: append([]projectcontext.IntegrationProjectionProvider(nil), providers.Projections...),
 		Semantic:                       providers.Semantic,
 	})
+	planExecutions := providers.PlanExecutions
+	if planExecutions == nil {
+		planExecutions = plandoc.NewExecutionManager()
+	}
 	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
 		registry.MustRegister(name, Schema{
 			Name: name, Title: title, Description: description,
@@ -197,6 +204,10 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		if err != nil {
 			return Result{}, err
 		}
+		planExecution, err := optionalBool(args, "plan_execution", false)
+		if err != nil {
+			return Result{}, err
+		}
 		maxMemoryEntries, err := optionalInt(args, "max_memory_entries", defaults.MaxMemoryEntries, projectcontext.MinMemoryEntries, projectcontext.MaxMemoryEntries)
 		if err != nil {
 			return Result{}, err
@@ -237,6 +248,24 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		})
 		if err != nil {
 			return Result{}, err
+		}
+		if planExecution {
+			sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+			if sessionKey == "" {
+				return Result{}, errors.New("plan_execution requires a trusted MCP session")
+			}
+			target, err := planExecutionTarget(value.Summary.Plans)
+			if err != nil {
+				return Result{}, err
+			}
+			binding, err := planExecutions.Bind(sessionKey, plandoc.ExecutionBinding{
+				WorkspaceID: item.ID, PlanName: target.Name, BaselineContentID: target.ContentID,
+				Phase: plandoc.Phase{ID: target.NextPhase.ID, Title: target.NextPhase.Title},
+			})
+			if err != nil {
+				return Result{}, err
+			}
+			value.Summary.PlanExecution = &binding
 		}
 		return JSONResult(value), nil
 	})
@@ -485,7 +514,7 @@ func workspaceOnlySchema(extra string) string {
 
 func projectContextSchemaFields() string {
 	defaults := projectcontext.DefaultOptions()
-	return fmt.Sprintf(`"path":{"type":"string"},"memory_query":{"type":"string"},"plan_name":{"type":"string","minLength":1,"maxLength":64,"pattern":"^[a-z0-9][a-z0-9-]{0,63}$"},"max_memory_entries":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_memory_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_instruction_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_section_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_lines_per_section":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"include_git":{"type":"boolean","default":%t},"include_memory":{"type":"boolean","default":%t},"include_skills":{"type":"boolean","default":%t},`,
+	return fmt.Sprintf(`"path":{"type":"string"},"memory_query":{"type":"string"},"plan_name":{"type":"string","minLength":1,"maxLength":64,"pattern":"^[a-z0-9][a-z0-9-]{0,63}$"},"plan_execution":{"type":"boolean","default":false},"max_memory_entries":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_memory_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_instruction_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_section_bytes":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"max_lines_per_section":{"type":"integer","minimum":%d,"maximum":%d,"default":%d},"include_git":{"type":"boolean","default":%t},"include_memory":{"type":"boolean","default":%t},"include_skills":{"type":"boolean","default":%t},`,
 		projectcontext.MinMemoryEntries, projectcontext.MaxMemoryEntries, defaults.MaxMemoryEntries,
 		projectcontext.MinMemoryBytes, projectcontext.MaxMemoryBytes, defaults.MaxMemoryBytes,
 		projectcontext.MinInstructionBytes, projectcontext.MaxInstructionBytes, defaults.MaxInstructionBytes,
@@ -493,6 +522,31 @@ func projectContextSchemaFields() string {
 		projectcontext.MinLinesPerSection, projectcontext.MaxLinesPerSection, defaults.MaxLinesPerSection,
 		defaults.IncludeGit, defaults.IncludeMemory, defaults.IncludeSkills,
 	)
+}
+
+func planExecutionTarget(plans projectcontext.PlanContext) (projectcontext.PlanSummary, error) {
+	var target *projectcontext.PlanSummary
+	if plans.Selected != nil {
+		target = plans.Selected
+	} else if plans.Inferred != nil {
+		target = plans.Inferred
+	}
+	if target == nil {
+		switch {
+		case plans.DiagnosticCount > 0:
+			return projectcontext.PlanSummary{}, errors.New("plan execution requires plan discovery without diagnostics")
+		case plans.SummariesTruncated || plans.DiagnosticsTruncated || !plans.ScanComplete:
+			return projectcontext.PlanSummary{}, errors.New("plan execution requires complete plan discovery")
+		case plans.NonCompletedCount > 1:
+			return projectcontext.PlanSummary{}, errors.New("plan execution requires an exact plan_name when multiple non-completed plans exist")
+		default:
+			return projectcontext.PlanSummary{}, errors.New("plan execution requires a non-completed plan")
+		}
+	}
+	if target.Status == plandoc.StatusCompleted || target.NextPhase == nil {
+		return projectcontext.PlanSummary{}, fmt.Errorf("plan %q has no incomplete phase to execute", target.Name)
+	}
+	return *target, nil
 }
 
 func workspaceFromArgs(workspaces *workspace.Manager, args map[string]any) (workspace.Workspace, error) {

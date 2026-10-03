@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -307,6 +308,171 @@ func TestProjectContextRefreshesPlanSummaryAfterCanonicalAuthoring(t *testing.T)
 	if refreshed.Summary.Plans.Inferred != nil {
 		t.Fatalf("completed plan was inferred for continuation: %#v", refreshed.Summary.Plans.Inferred)
 	}
+}
+
+func TestProjectContextPlanExecutionBindsDeterministicNextPhase(t *testing.T) {
+	runtime, workspaceID, root := newPlanAuthoringRuntime(t)
+	schema, ok := runtime.Registry.Schema("project_context")
+	if !ok {
+		t.Fatal("project_context schema missing")
+	}
+	var input map[string]any
+	if err := json.Unmarshal(schema.InputSchema, &input); err != nil {
+		t.Fatal(err)
+	}
+	properties, _ := input["properties"].(map[string]any)
+	if _, ok := properties["plan_execution"]; !ok {
+		t.Fatalf("project_context schema missing plan_execution: %#v", input)
+	}
+	for _, forbidden := range []string{"session_id", "agent_id", "phase_id", "content_id"} {
+		if _, ok := properties[forbidden]; ok {
+			t.Fatalf("project_context exposes caller-controlled execution identity %q", forbidden)
+		}
+	}
+
+	planBody, orderBody := agentPlanFixture(false)
+	createdResult, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "alpha-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || createdResult.IsError {
+		t.Fatalf("create alpha plan err=%v result=%#v", err, createdResult)
+	}
+	created := createdResult.StructuredContent.(application.PlanAuthoringResult)
+	before := workspaceStateFiles(t, root)
+
+	ctx := tools.WithMCPSessionID(context.Background(), "execution-inferred")
+	firstResult, err := runtime.Call(ctx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || firstResult.IsError {
+		t.Fatalf("inferred execution context err=%v result=%#v", err, firstResult)
+	}
+	first := firstResult.StructuredContent.(tools.ProjectContextResult)
+	binding := first.Summary.PlanExecution
+	if binding == nil || binding.WorkspaceID != workspaceID || binding.PlanName != "alpha-plan" ||
+		binding.BaselineContentID != created.ContentID || binding.Phase.ID != "1A" || binding.Phase.Title != "Persist state" || binding.Phase.Completed {
+		t.Fatalf("execution binding=%#v created=%#v", binding, created)
+	}
+
+	repeatedResult, err := runtime.Call(ctx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || repeatedResult.IsError {
+		t.Fatalf("repeated execution context err=%v result=%#v", err, repeatedResult)
+	}
+	repeated := repeatedResult.StructuredContent.(tools.ProjectContextResult)
+	if repeated.Summary.PlanExecution == nil || *repeated.Summary.PlanExecution != *binding {
+		t.Fatalf("repeated binding=%#v want=%#v", repeated.Summary.PlanExecution, binding)
+	}
+	if after := workspaceStateFiles(t, root); !slices.Equal(before, after) {
+		t.Fatalf("plan execution binding persisted workspace state: before=%v after=%v", before, after)
+	}
+}
+
+func TestProjectContextPlanExecutionFailsClosedForAmbiguityCompletionAndConflicts(t *testing.T) {
+	runtime, workspaceID, _ := newPlanAuthoringRuntime(t)
+	planBody, orderBody := agentPlanFixture(false)
+	for _, name := range []string{"alpha-plan", "beta-plan"} {
+		result, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+			"workspace_id": workspaceID, "mode": "create", "name": name,
+			"plan_content": planBody, "implementation_order": orderBody,
+		})
+		if err != nil || result.IsError {
+			t.Fatalf("create %s err=%v result=%#v", name, err, result)
+		}
+	}
+
+	missingSession, err := runtime.Call(context.Background(), "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "alpha-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	assertToolErrorContains(t, missingSession, err, "trusted MCP session")
+
+	ambiguousCtx := tools.WithMCPSessionID(context.Background(), "execution-ambiguous")
+	ambiguous, err := runtime.Call(ambiguousCtx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	assertToolErrorContains(t, ambiguous, err, "exact plan_name")
+
+	exactCtx := tools.WithMCPSessionID(context.Background(), "execution-exact")
+	exact, err := runtime.Call(exactCtx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "alpha-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || exact.IsError {
+		t.Fatalf("exact execution context err=%v result=%#v", err, exact)
+	}
+	selected := exact.StructuredContent.(tools.ProjectContextResult).Summary.PlanExecution
+	if selected == nil || selected.PlanName != "alpha-plan" {
+		t.Fatalf("exact binding=%#v", selected)
+	}
+	conflict, err := runtime.Call(exactCtx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "beta-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	assertToolErrorContains(t, conflict, err, "already bound")
+
+	doneCreated, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "create", "name": "done-plan",
+		"plan_content": planBody, "implementation_order": orderBody,
+	})
+	if err != nil || doneCreated.IsError {
+		t.Fatalf("create done plan err=%v result=%#v", err, doneCreated)
+	}
+	doneID := doneCreated.StructuredContent.(application.PlanAuthoringResult).ContentID
+	completedPlan, completedOrder := agentPlanFixture(true)
+	doneUpdated, err := runtime.Call(context.Background(), tools.CreatePlanToolName, map[string]any{
+		"workspace_id": workspaceID, "mode": "update", "name": "done-plan",
+		"plan_content": completedPlan, "implementation_order": completedOrder, "expected_content_id": doneID,
+	})
+	if err != nil || doneUpdated.IsError {
+		t.Fatalf("complete done plan err=%v result=%#v", err, doneUpdated)
+	}
+	doneCtx := tools.WithMCPSessionID(context.Background(), "execution-done")
+	done, err := runtime.Call(doneCtx, "project_context", map[string]any{
+		"workspace_id": workspaceID, "plan_name": "done-plan", "plan_execution": true,
+		"include_git": false, "include_memory": false, "include_skills": false,
+	})
+	assertToolErrorContains(t, done, err, "no incomplete phase")
+}
+
+func assertToolErrorContains(t *testing.T, result tools.Result, err error, expected string) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, expected) {
+		t.Fatalf("tool result=%#v, want error containing %q", result, expected)
+	}
+}
+
+func workspaceStateFiles(t *testing.T, root string) []string {
+	t.Helper()
+	stateRoot := filepath.Join(root, workspacestate.DirectoryName)
+	files := []string{}
+	err := filepath.WalkDir(stateRoot, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(stateRoot, path)
+		if err != nil {
+			return err
+		}
+		files = append(files, filepath.ToSlash(relative))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(files)
+	return files
 }
 
 func agentPlanFixture(completed bool) (string, string) {
