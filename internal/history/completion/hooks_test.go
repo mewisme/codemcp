@@ -227,6 +227,48 @@ func TestCompletionHookStopCancelsOutstandingDispatchAndRejectsNewEvents(t *test
 	}
 }
 
+func TestCompletionHookStopWaitsForHandlerExit(t *testing.T) {
+	bus := NewCompletionHookBus(HookBusOptions{Timeout: 10 * time.Millisecond})
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	if err := bus.Register(testCompletionHook{name: "slow-exit", handle: func(context.Context, HookInvocation) error {
+		started <- struct{}{}
+		<-release
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	record := Record{
+		ID: "completion_stop_wait", Sequence: 4, AgentID: "0123456789abcdef", WorkspaceID: "ws_stop_wait",
+		Status: StatusCompleted, Title: "Stopped", CreatedAt: time.Now().UTC(),
+	}
+	if err := bus.Dispatch(eventFor(record)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("slow hook did not start")
+	}
+
+	stopped := make(chan struct{})
+	go func() {
+		bus.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+		t.Fatal("stop returned before hook handler exited")
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("stop did not return after hook handler exited")
+	}
+}
+
 func TestCompletionHookBusRejectsNonAcceptedEvents(t *testing.T) {
 	bus := NewCompletionHookBus(HookBusOptions{})
 	defer bus.Stop()

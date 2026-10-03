@@ -239,7 +239,9 @@ func (b *CompletionHookBus) execute(name string, hook CompletionHook, invocation
 	defer cancel()
 
 	done := make(chan error, 1)
+	b.wg.Add(1)
 	go func() {
+		defer b.wg.Done()
 		done <- hook.Handle(ctx, invocation)
 	}()
 
