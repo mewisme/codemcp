@@ -39,6 +39,12 @@ if ($source -notmatch 'refusing to remove shared state under \$installDir automa
 if ($source -notmatch '&\s+\$exe\s+install') {
   throw 'PowerShell bootstrap no longer delegates installation to the downloaded canonical binary.'
 }
+$envCapture = $source.IndexOf("`$installIntegrations = [Environment]::GetEnvironmentVariable('CM_INSTALL_INTEGRATIONS', 'Process')")
+$envRestore = $source.IndexOf('if ($null -ne $installIntegrations) { $env:CM_INSTALL_INTEGRATIONS = $installIntegrations }')
+$selfInstall = $source.IndexOf('& $exe install')
+if ($envCapture -lt 0 -or $envRestore -lt 0 -or $selfInstall -lt 0 -or $envCapture -gt $envRestore -or $envRestore -gt $selfInstall) {
+  throw 'PowerShell bootstrap does not preserve CM_INSTALL_INTEGRATIONS to child cm install.'
+}
 $checksumGate = $source.IndexOf('if ($actual -ne $expected) { throw "cm: checksum verification failed for $asset" }')
 $signatureDownload = $source.IndexOf('Invoke-WebRequest -Uri $signatureUrl -OutFile $signature')
 if ($checksumGate -lt 0 -or $signatureDownload -lt 0 -or $checksumGate -gt $signatureDownload) {

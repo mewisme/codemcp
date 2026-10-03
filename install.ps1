@@ -6,6 +6,7 @@
 #   CM_VERSION           release tag (default: latest)
 #   CM_INSTALL_DIR       install location (default: $HOME\.cm)
 #   CM_ARCH              architecture override: amd64 (Windows releases are x64 only)
+#   CM_INSTALL_INTEGRATIONS install missing managed integrations: true/false (default: true)
 
 param(
   [switch]$Uninstall
@@ -23,6 +24,7 @@ $signatureName = "$checksumName.sigstore.json"
 $binaryName = 'cm.exe'
 $maxArchiveEntries = 4096
 $maxBinaryBytes = 268435456
+$installIntegrations = [Environment]::GetEnvironmentVariable('CM_INSTALL_INTEGRATIONS', 'Process')
 
 function ConvertTo-CodeMCPArchitecture {
   param([AllowNull()][object]$Value)
@@ -326,6 +328,7 @@ try {
   $extract = Join-Path $tmp 'extract'
   $exe = Expand-CodeMCPBinaryFromZip -ZipPath $zip -DestinationDir $extract -MemberName $binaryName
 
+  if ($null -ne $installIntegrations) { $env:CM_INSTALL_INTEGRATIONS = $installIntegrations }
   & $exe install
   if ($LASTEXITCODE -ne 0) { throw "cm: self-install failed with exit code $LASTEXITCODE" }
 } finally {

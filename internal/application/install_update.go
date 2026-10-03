@@ -96,6 +96,10 @@ func CheckForUpdate(ctx context.Context) (updatepkg.CheckResult, error) {
 }
 
 func ApplyUpdate(ctx context.Context, options UpdateApplyOptions) (UpdateApplyResult, error) {
+	bootstrapOptions, err := resolvePostInstallBootstrapOptions(PostInstallBootstrapOptions{}, nil)
+	if err != nil {
+		return UpdateApplyResult{}, err
+	}
 	overview, err := LoadInstallationOverview()
 	if err != nil {
 		return UpdateApplyResult{}, err
@@ -157,7 +161,7 @@ func ApplyUpdate(ctx context.Context, options UpdateApplyOptions) (UpdateApplyRe
 	if err := install.FinalizeResultContext(ctx, result.Install); err != nil {
 		appendUpdateNotice(&output.Notice, "update succeeded but old version cleanup failed: "+err.Error())
 	}
-	output.Supplemental = RunPostInstallBootstrap(ctx)
+	output.Supplemental = runPostInstallBootstrapWithOptions(ctx, bootstrapOptions)
 	return output, nil
 }
 

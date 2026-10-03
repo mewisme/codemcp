@@ -14,29 +14,41 @@ import (
 
 func installCommand() *cobra.Command {
 	var force bool
-	cmd := &cobra.Command{Use: "install", Short: "Install this binary into the managed versioned layout", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		logCommandStep(cmd, "INSTALL", "install.plan", "Preparing installation", logger.WithVerbose("version", version.Version), logger.WithDebug("force", force))
-		result, err := application.InstallCurrentContext(cmd.Context(), application.InstallCurrentOptions{
-			Force: force, Observe: installCutoverObserver(cmd), ObserveIntegration: installIntegrationObserver(cmd),
-		})
-		if err != nil {
-			return fmt.Errorf("install managed binary: %w", err)
-		}
-		message := "Binary installed"
-		kind := presentation.StatusSuccess
-		if result.AlreadyInstalled {
-			message = "Already installed"
-			kind = presentation.StatusInfo
-		}
-		renderSupplementalInstallSummary(cmd, result.Supplemental)
-		renderMutationResult(cmd, kind, message,
-			presentation.Field{Label: "version", Value: result.Version},
-			presentation.Field{Label: "binary", Value: result.Binary},
-			presentation.Field{Label: "command", Value: result.Command},
-		)
-		return nil
-	}}
+	var noInstallIntegrations bool
+	cmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install this binary into the managed versioned layout",
+		Long: "Install this binary into the managed versioned layout.\n\n" +
+			"Existing configured, system, or managed integration executables are always detected and reused. " +
+			"Missing eligible managed integrations are installed by default. Use --no-install-integrations to suppress only those missing managed downloads.\n\n" +
+			"Environment: CM_INSTALL_INTEGRATIONS accepts 1/true/yes/on or 0/false/no/off. The flag takes precedence over the environment.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			logCommandStep(cmd, "INSTALL", "install.plan", "Preparing installation", logger.WithVerbose("version", version.Version), logger.WithDebug("force", force))
+			result, err := application.InstallCurrentContext(cmd.Context(), application.InstallCurrentOptions{
+				Force: force, SkipMissingIntegrations: noInstallIntegrations,
+				Observe: installCutoverObserver(cmd), ObserveIntegration: installIntegrationObserver(cmd),
+			})
+			if err != nil {
+				return fmt.Errorf("install managed binary: %w", err)
+			}
+			message := "Binary installed"
+			kind := presentation.StatusSuccess
+			if result.AlreadyInstalled {
+				message = "Already installed"
+				kind = presentation.StatusInfo
+			}
+			renderSupplementalInstallSummary(cmd, result.Supplemental)
+			renderMutationResult(cmd, kind, message,
+				presentation.Field{Label: "version", Value: result.Version},
+				presentation.Field{Label: "binary", Value: result.Binary},
+				presentation.Field{Label: "command", Value: result.Command},
+			)
+			return nil
+		},
+	}
 	cmd.Flags().BoolVar(&force, "force", false, "allow installing a development build")
+	cmd.Flags().BoolVar(&noInstallIntegrations, "no-install-integrations", false, "detect and reuse existing integrations but do not install missing managed integration assets")
 	return cmd
 }
 

@@ -9,6 +9,7 @@
 #   CM_VERSION           release tag (default: latest)
 #   CM_INSTALL_DIR       bundle location (default: ~/.cm)
 #   CM_BIN_DIR           command location (default: ~/.local/bin)
+#   CM_INSTALL_INTEGRATIONS install missing managed integrations: true/false (default: true)
 set -eu
 
 REPO="mewisme/codemcp"
@@ -21,6 +22,12 @@ SIGNATURE_NAME="${CHECKSUM_NAME}.sigstore.json"
 BINARY_NAME="cm"
 MAX_ARCHIVE_ENTRIES=4096
 MAX_BINARY_BYTES=268435456
+install_integrations_set=0
+install_integrations=""
+if [ "${CM_INSTALL_INTEGRATIONS+x}" = x ]; then
+	install_integrations_set=1
+	install_integrations="$CM_INSTALL_INTEGRATIONS"
+fi
 
 for arg in "$@"; do
 	case "$arg" in
@@ -262,7 +269,11 @@ if [ "$startup_status" -ne 0 ]; then
 	exit "$startup_status"
 fi
 
-"$binary" install
+if [ "$install_integrations_set" -eq 1 ]; then
+	CM_INSTALL_INTEGRATIONS="$install_integrations" "$binary" install
+else
+	"$binary" install
+fi
 
 on_path=0
 oldifs="$IFS"

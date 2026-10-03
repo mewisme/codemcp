@@ -192,6 +192,40 @@ EOF
 run_fallback_case missing
 run_fallback_case failed
 
+env_fakebin="$tmp/bin-install-env"
+make_fake_path "$env_fakebin"
+env_marker="$tmp/install-env-value"
+env_install_marker="$tmp/installed-env"
+env_log="$tmp/install-env.log"
+if ! PATH="$env_fakebin" \
+	HOME="$tmp/home-env" \
+	CM_VERSION="$version" \
+	CM_INSTALL_DIR="$tmp/home-env/.cm" \
+	CM_BIN_DIR="$tmp/home-env/bin" \
+	CM_INSTALL_INTEGRATIONS=0 \
+	TEST_FIXTURE_ARCHIVE="$archive" \
+	TEST_FIXTURE_CHECKSUMS="$checksums" \
+	TEST_FIXTURE_SIGNATURE="$signature" \
+	TEST_FIXTURE_ASSET="$asset" \
+	TEST_CHECKSUM_NAME="$checksum_name" \
+	TEST_SIGNATURE_NAME="$signature_name" \
+	TEST_INSTALL_ENV_MARKER="$env_marker" \
+	TEST_INSTALL_MARKER="$env_install_marker" \
+	/bin/sh "$installer" >"$env_log" 2>&1; then
+	echo 'Unix installer failed while preserving CM_INSTALL_INTEGRATIONS.' >&2
+	cat "$env_log" >&2
+	exit 1
+fi
+[ -f "$env_install_marker" ] || {
+	echo 'Unix installer did not invoke cm install during env pass-through test.' >&2
+	exit 1
+}
+[ "$(cat "$env_marker")" = 0 ] || {
+	echo 'Unix installer did not preserve CM_INSTALL_INTEGRATIONS=0 to cm install.' >&2
+	cat "$env_log" >&2
+	exit 1
+}
+
 large_archive="$tmp/large-$asset"
 (
 	cd "$root"

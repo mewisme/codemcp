@@ -87,7 +87,7 @@ type tarItem struct {
 }
 
 func tarFixture(fixture string) ([]tarItem, error) {
-	binary := []byte("#!/bin/sh\nif [ \"${TEST_STARTUP_EXIT:-0}\" != 0 ] && [ \"${1:-}\" = \"--version\" ]; then exit \"$TEST_STARTUP_EXIT\"; fi\n: >\"$TEST_INSTALL_MARKER\"\n")
+	binary := []byte("#!/bin/sh\nif [ \"${1:-}\" = \"--version\" ]; then [ \"${TEST_STARTUP_EXIT:-0}\" = 0 ] || exit \"$TEST_STARTUP_EXIT\"; exit 0; fi\nif [ -n \"${TEST_INSTALL_ENV_MARKER:-}\" ]; then printf '%s' \"${CM_INSTALL_INTEGRATIONS-<unset>}\" >\"$TEST_INSTALL_ENV_MARKER\"; fi\n: >\"$TEST_INSTALL_MARKER\"\n")
 	regular := func(name string, content []byte) tarItem {
 		return tarItem{name: name, content: content, kind: tar.TypeReg}
 	}

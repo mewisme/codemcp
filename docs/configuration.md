@@ -17,6 +17,16 @@ cm --config-dir /tmp/codemcp-test status
 
 A config root owns structured config, secret-store identity, runtime state, logs, metadata cache, and workspace registry.
 
+## Environment overrides
+
+Environment variables are invocation-local unless a command explicitly writes configuration.
+
+- `CM_CONFIG_DIR` selects the config/state root.
+- `CM_INSTALL_INTEGRATIONS=0` (also `false`, `no`, or `off`) keeps install/bootstrap detection and reuse of existing integration executables but suppresses downloads for missing managed integration assets.
+- `CM_INSTALL_INTEGRATIONS=1` (also `true`, `yes`, or `on`) keeps the default behavior of provisioning missing eligible managed integrations.
+
+`cm install --no-install-integrations` is the CLI equivalent of the false environment value and takes precedence over `CM_INSTALL_INTEGRATIONS`. Invalid environment values are rejected rather than treated as enabled.
+
 ## Settings
 
 ```bash

@@ -62,8 +62,11 @@ func internalServiceCommand() *cobra.Command {
 	_ = uninstallOwned.Flags().MarkHidden("external-cleanup")
 	postinstall := &cobra.Command{
 		Use: "postinstall", Short: "Run post-install supplemental bootstrap", Hidden: true, Args: cobra.NoArgs,
-		Run: func(cmd *cobra.Command, _ []string) {
-			result := application.RunPostInstallBootstrap(cmd.Context())
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			result, err := application.RunPostInstallBootstrap(cmd.Context())
+			if err != nil {
+				return err
+			}
 			for _, outcome := range result.Integrations {
 				if outcome.State == "failed" || outcome.State == "unavailable" {
 					commandLogger(cmd).Warning("INSTALL", "install.bootstrap.integration", outcome.Integration+" bootstrap "+outcome.State, nil)
@@ -72,6 +75,7 @@ func internalServiceCommand() *cobra.Command {
 			for _, warning := range result.Warnings {
 				commandLogger(cmd).Warning("INSTALL", "install.bootstrap.warning", warning, nil)
 			}
+			return nil
 		},
 	}
 	setCommandPresentationExempt(postinstall, "internal-runtime")

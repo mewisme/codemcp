@@ -77,8 +77,12 @@ type postInstallCoordinator struct {
 	Recorder  func(config.Config, bool, *producttelemetry.IdentityStore) (supplementalRecorder, error)
 }
 
-func RunPostInstallBootstrap(ctx context.Context) SupplementalBootstrapResult {
-	return runPostInstallBootstrapWithOptions(ctx, PostInstallBootstrapOptions{})
+func RunPostInstallBootstrap(ctx context.Context) (SupplementalBootstrapResult, error) {
+	options, err := resolvePostInstallBootstrapOptions(PostInstallBootstrapOptions{}, nil)
+	if err != nil {
+		return SupplementalBootstrapResult{}, err
+	}
+	return runPostInstallBootstrapWithOptions(ctx, options), nil
 }
 
 func runPostInstallBootstrapWithOptions(ctx context.Context, options PostInstallBootstrapOptions) SupplementalBootstrapResult {

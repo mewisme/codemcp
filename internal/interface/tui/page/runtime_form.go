@@ -8,7 +8,8 @@ import (
 )
 
 type installFormData struct {
-	Force bool
+	Force                   bool
+	SkipMissingIntegrations bool
 }
 
 type updateFormData struct {
@@ -20,6 +21,7 @@ func newInstallEditor() (component.Editor, *installFormData) {
 	data := &installFormData{}
 	editor := component.NewEditor("install", component.EditorSection{ID: "install", Title: "Managed Install", Description: "Install this binary into the managed layout as the canonical cm executable.", Form: component.NewEditorForm(component.Group(
 		component.Switch("Allow development build", &data.Force, "YES", "NO"),
+		component.Switch("Skip missing integration installs (existing integrations are still reused)", &data.SkipMissingIntegrations, "YES", "NO"),
 	))})
 	return editor, data
 }
@@ -28,7 +30,7 @@ func (data *installFormData) Options() application.InstallCurrentOptions {
 	if data == nil {
 		return application.InstallCurrentOptions{}
 	}
-	return application.InstallCurrentOptions{Force: data.Force}
+	return application.InstallCurrentOptions{Force: data.Force, SkipMissingIntegrations: data.SkipMissingIntegrations}
 }
 
 func newUpdateEditor() (component.Editor, *updateFormData) {

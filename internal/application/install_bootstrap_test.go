@@ -117,6 +117,78 @@ func TestInstallCurrentContextRejectsInvalidIntegrationEnvBeforeInstall(t *testi
 	}
 }
 
+func TestRunPostInstallBootstrapRejectsInvalidIntegrationEnvBeforeBootstrap(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	t.Setenv(InstallIntegrationsEnv, "maybe")
+	if _, err := RunPostInstallBootstrap(t.Context()); err == nil || !strings.Contains(err.Error(), InstallIntegrationsEnv) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestApplyUpdateRejectsInvalidIntegrationEnvBeforeUpdateResolution(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	t.Setenv(InstallIntegrationsEnv, "invalid")
+	if _, err := ApplyUpdate(t.Context(), UpdateApplyOptions{}); err == nil || !strings.Contains(err.Error(), InstallIntegrationsEnv) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestInstallIntegrationEnvControlsMissingInstallWithoutPersistingConfig(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(configformat.EnvConfigDir, root)
+	if err := config.Save(config.Default()); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(config.DefaultPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name        string
+		raw         string
+		status      rtk.Status
+		wantState   string
+		wantInstall int
+	}{
+		{name: "false env skips missing", raw: "0", status: rtk.Status{Enabled: true, Source: rtk.SourceUnavailable, ManagedSupported: true}, wantState: "skipped", wantInstall: 0},
+		{name: "false env reuses existing", raw: "off", status: rtk.Status{Enabled: true, Source: rtk.SourceSystem, Path: "/usr/bin/rtk", Verified: true, ManagedSupported: true}, wantState: "available", wantInstall: 0},
+		{name: "true env installs missing", raw: "yes", status: rtk.Status{Enabled: true, Source: rtk.SourceUnavailable, ManagedSupported: true}, wantState: "installed", wantInstall: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolved, err := resolveInstallCurrentOptionsWithLookup(InstallCurrentOptions{}, func(key string) (string, bool) {
+				if key == InstallIntegrationsEnv {
+					return test.raw, true
+				}
+				return "", false
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			manager := &fakeRTKEnsureManager{
+				status: test.status,
+				installResult: rtk.InstallResult{Status: rtk.Status{
+					Enabled: true, Source: rtk.SourceManaged, Path: "/managed/rtk", Verified: true, ManagedSupported: true,
+				}, Installed: true},
+			}
+			service := &RTKService{ensureManager: func() (rtkEnsureManager, error) { return manager, nil }}
+			result, err := service.EnsureAvailable(t.Context(), IntegrationEnsureOptions{SkipManagedInstall: resolved.SkipMissingIntegrations})
+			if err != nil || result.State != test.wantState || manager.installCalls != test.wantInstall {
+				t.Fatalf("result=%#v err=%v installCalls=%d", result, err, manager.installCalls)
+			}
+		})
+	}
+
+	after, err := os.ReadFile(config.DefaultPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("install integration env policy mutated persisted config")
+	}
+}
+
 type fakeRTKEnsureManager struct {
 	status        rtk.Status
 	statusErr     error

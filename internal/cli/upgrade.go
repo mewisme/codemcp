@@ -95,7 +95,11 @@ func upgradeCommand() *cobra.Command {
 		if err := install.FinalizeResultContext(cmd.Context(), result.Install); err != nil {
 			log.Warning("UPDATE", "update.cleanup-failed", "Update succeeded but old version cleanup failed", err)
 		}
-		renderSupplementalInstallSummary(cmd, application.RunPostInstallBootstrap(cmd.Context()))
+		supplemental, err := application.RunPostInstallBootstrap(cmd.Context())
+		if err != nil {
+			return fmt.Errorf("bootstrap install supplements: %w", err)
+		}
+		renderSupplementalInstallSummary(cmd, supplemental)
 		message := "Update complete"
 		if result.Downgrade {
 			message = "Version change complete"
