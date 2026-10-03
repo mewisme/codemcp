@@ -1,6 +1,7 @@
 package instructioncontext
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -192,6 +193,63 @@ func TestPlanModeDirectiveUsesStandaloneWhitespaceDelimitedToken(t *testing.T) {
 		if RequestsPlanMode(prompt) {
 			t.Fatalf("unexpected Plan Mode for %q", prompt)
 		}
+	}
+}
+
+func TestResolveSlashDirectiveUsesCanonicalAliasesAndExactSkillNames(t *testing.T) {
+	tests := []struct {
+		name       string
+		prompt     string
+		skillNames []string
+		want       SlashDirective
+		wantErr    error
+	}{
+		{name: "plan", prompt: "/plan", want: SlashDirective{Kind: SlashDirectivePlanMode}},
+		{name: "create plan alias", prompt: "please /create-plan this", want: SlashDirective{Kind: SlashDirectivePlanMode}},
+		{name: "skill authoring", prompt: "/skill", want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
+		{name: "create skill alias", prompt: "/create-skill", want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
+		{name: "rule authoring", prompt: "/rule", want: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
+		{name: "create rule alias", prompt: "/create-rule", want: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
+		{name: "exact dynamic skill", prompt: "use /release-check now", skillNames: []string{"release", "release-check"}, want: SlashDirective{Kind: SlashDirectiveSkill, SkillName: "release-check"}},
+		{name: "unknown dynamic skill", prompt: "/release-chec", skillNames: []string{"release-check"}, want: SlashDirective{}},
+		{name: "case sensitive", prompt: "/SKILL", want: SlashDirective{}},
+		{name: "punctuation sensitive", prompt: "/skill,", want: SlashDirective{}},
+		{name: "wrapped token", prompt: "(/skill)", want: SlashDirective{}},
+		{name: "embedded slash", prompt: "/skill/foo", want: SlashDirective{}},
+		{name: "double slash", prompt: "//skill", want: SlashDirective{}},
+		{name: "unicode whitespace", prompt: "prefix\u2003/skill\u2003suffix", want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
+		{name: "same workflow aliases are compatible", prompt: "/skill /create-skill", want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
+		{name: "same dynamic skill repeated", prompt: "/release /release", skillNames: []string{"release"}, want: SlashDirective{Kind: SlashDirectiveSkill, SkillName: "release"}},
+		{name: "conflicting authoring directives", prompt: "/skill /rule", wantErr: ErrAmbiguousSlashDirective},
+		{name: "conflicting dynamic skills", prompt: "/release /review", skillNames: []string{"release", "review"}, wantErr: ErrAmbiguousSlashDirective},
+		{name: "unknown token does not create ambiguity", prompt: "/skill /missing", want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
+		{name: "plan dominates authoring", prompt: "/skill /plan /rule", want: SlashDirective{Kind: SlashDirectivePlanMode}},
+		{name: "plan dominates earlier ambiguity", prompt: "/skill /rule /plan", want: SlashDirective{Kind: SlashDirectivePlanMode}},
+		{name: "create plan dominates dynamic skill", prompt: "/release /create-plan", skillNames: []string{"release"}, want: SlashDirective{Kind: SlashDirectivePlanMode}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ResolveSlashDirective(tt.prompt, tt.skillNames)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("ResolveSlashDirective(%q) error = %v, want %v", tt.prompt, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Fatalf("ResolveSlashDirective(%q) = %#v, want %#v", tt.prompt, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCoreSlashDirectiveNamesAreCanonicalAndDefensive(t *testing.T) {
+	want := []string{"plan", "create-plan", "skill", "create-skill", "rule", "create-rule"}
+	got := CoreSlashDirectiveNames()
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("CoreSlashDirectiveNames() = %#v, want %#v", got, want)
+	}
+	got[0] = "mutated"
+	if again := CoreSlashDirectiveNames(); again[0] != "plan" {
+		t.Fatalf("CoreSlashDirectiveNames leaked mutable state: %#v", again)
 	}
 }
 

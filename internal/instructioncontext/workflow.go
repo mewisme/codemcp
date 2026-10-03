@@ -1,6 +1,9 @@
 package instructioncontext
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
 
 const (
 	agentWorkflowIntroduction = "Use CodeMCP as a multi-workspace coding agent with explicit workspace targeting."
@@ -41,6 +44,37 @@ const (
 )
 
 const PlanModeDirectiveToken = "/plan"
+
+type SlashDirectiveKind string
+
+const (
+	SlashDirectiveNone           SlashDirectiveKind = ""
+	SlashDirectivePlanMode       SlashDirectiveKind = "plan"
+	SlashDirectiveSkillAuthoring SlashDirectiveKind = "skill-authoring"
+	SlashDirectiveRuleAuthoring  SlashDirectiveKind = "rule-authoring"
+	SlashDirectiveSkill          SlashDirectiveKind = "skill"
+)
+
+var ErrAmbiguousSlashDirective = errors.New("ambiguous slash directive")
+
+type SlashDirective struct {
+	Kind      SlashDirectiveKind
+	SkillName string
+}
+
+type slashDirectiveAlias struct {
+	name      string
+	directive SlashDirective
+}
+
+var coreSlashDirectiveAliases = []slashDirectiveAlias{
+	{name: "plan", directive: SlashDirective{Kind: SlashDirectivePlanMode}},
+	{name: "create-plan", directive: SlashDirective{Kind: SlashDirectivePlanMode}},
+	{name: "skill", directive: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
+	{name: "create-skill", directive: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
+	{name: "rule", directive: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
+	{name: "create-rule", directive: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
+}
 
 type ServerInstructionDirective struct {
 	ID   string
@@ -135,13 +169,78 @@ func AgentWorkflow() string {
 	return DefaultAgentWorkflow
 }
 
-func RequestsPlanMode(prompt string) bool {
-	for _, token := range strings.Fields(prompt) {
-		if token == PlanModeDirectiveToken {
-			return true
+func CoreSlashDirectiveNames() []string {
+	result := make([]string, 0, len(coreSlashDirectiveAliases))
+	for _, alias := range coreSlashDirectiveAliases {
+		result = append(result, alias.name)
+	}
+	return result
+}
+
+func ResolveSlashDirective(prompt string, skillNames []string) (SlashDirective, error) {
+	knownSkills := make(map[string]struct{}, len(skillNames))
+	for _, name := range skillNames {
+		name = strings.TrimSpace(name)
+		if name != "" {
+			knownSkills[name] = struct{}{}
 		}
 	}
-	return false
+
+	recognized := make([]SlashDirective, 0)
+	for _, token := range strings.Fields(prompt) {
+		name, ok := slashDirectiveName(token)
+		if !ok {
+			continue
+		}
+		directive, isCore := coreSlashDirective(name)
+		if !isCore {
+			if _, exists := knownSkills[name]; !exists {
+				continue
+			}
+			directive = SlashDirective{Kind: SlashDirectiveSkill, SkillName: name}
+		}
+		if directive.Kind == SlashDirectivePlanMode {
+			return directive, nil
+		}
+		recognized = append(recognized, directive)
+	}
+
+	resolved := SlashDirective{}
+	for _, directive := range recognized {
+		if resolved.Kind == SlashDirectiveNone {
+			resolved = directive
+			continue
+		}
+		if resolved != directive {
+			return SlashDirective{}, ErrAmbiguousSlashDirective
+		}
+	}
+	return resolved, nil
+}
+
+func RequestsPlanMode(prompt string) bool {
+	directive, err := ResolveSlashDirective(prompt, nil)
+	return err == nil && directive.Kind == SlashDirectivePlanMode
+}
+
+func coreSlashDirective(name string) (SlashDirective, bool) {
+	for _, alias := range coreSlashDirectiveAliases {
+		if alias.name == name {
+			return alias.directive, true
+		}
+	}
+	return SlashDirective{}, false
+}
+
+func slashDirectiveName(token string) (string, bool) {
+	if len(token) < 2 || token[0] != '/' || token[1] == '/' {
+		return "", false
+	}
+	name := token[1:]
+	if strings.ContainsRune(name, '/') {
+		return "", false
+	}
+	return name, true
 }
 
 func AgentWorkflowForBackground(capabilities BackgroundWorkCapabilities) string {
