@@ -100,6 +100,14 @@ var defaultOnCapabilityContracts = []DefaultOnCapabilityContract{
 		ExplicitDisableBehavior:     "do not select or invoke TypeSafe as a semantic provider",
 	},
 	{
+		Key: "integrations.browser.enabled", FreshDefault: true,
+		Prerequisite:                "a locally usable Chrome, Chromium, or Edge browser with a graphical route",
+		ConfiguredState:             "browser capability detection is enabled",
+		EffectiveState:              "a usable browser route is available to CodeMCP integrations",
+		MissingPrerequisiteBehavior: "retain enabled intent and report browser capability unavailable without degrading unrelated runtime health",
+		ExplicitDisableBehavior:     "skip browser discovery and browser-backed integrations without modifying installed browsers or profiles",
+	},
+	{
 		Key: "tunnel.enabled", FreshDefault: true,
 		Prerequisite:                "tunnel ID and managed runtime API key",
 		ConfiguredState:             "Secure MCP Tunnel transport is requested",

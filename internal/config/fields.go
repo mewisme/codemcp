@@ -151,6 +151,8 @@ var fieldSpecs = []FieldSpec{
 	{Key: "integrations.rtk.path", Label: "RTK executable", Section: FieldSectionIntegrations, Description: "sets an explicit RTK executable path", Details: "Leave empty to resolve RTK from PATH and then the verified managed asset. A configured value must be an absolute path; runtime resolution validates that it is a non-empty executable file before use.", Kind: FieldString, Editable: true, Related: []string{"integrations.rtk.enabled"}},
 	{Key: "integrations.codegraph.enabled", Label: "CodeGraph enabled", Section: FieldSectionIntegrations, Description: "controls whether CodeGraph runtime resolution is active", Details: "Enabled by default. CodeMCP resolves an explicitly configured executable, then the system PATH, then a checksum-verified managed CodeGraph asset.", Kind: FieldBool, Editable: true, Related: []string{"integrations.codegraph.path"}},
 	{Key: "integrations.codegraph.path", Label: "CodeGraph executable", Section: FieldSectionIntegrations, Description: "sets an explicit CodeGraph executable path", Details: "Leave empty to use system/managed resolution. A configured value must be absolute; execution remains bounded and requires an explicit workspace directory.", Kind: FieldString, Editable: true, Related: []string{"integrations.codegraph.enabled"}},
+	{Key: "integrations.browser.enabled", Label: "Browser integration enabled", Section: FieldSectionIntegrations, Description: "controls optional Chrome, Chromium, or Edge capability detection", Details: "Enabled by default. Browser absence is a normal unavailable capability. CodeMCP never downloads or updates a browser and never uses the user's ordinary browser profile.", Kind: FieldBool, Editable: true, Related: []string{"integrations.browser.path"}},
+	{Key: "integrations.browser.path", Label: "Browser executable", Section: FieldSectionIntegrations, Description: "sets an explicit Chrome, Chromium, or Edge executable", Details: "Leave empty for platform discovery. An explicit path has strict precedence: if it is invalid or unusable CodeMCP reports that failure and does not silently fall back to another browser.", Kind: FieldString, Editable: true, Related: []string{"integrations.browser.enabled"}},
 	{Key: "integrations.typesafe.enabled", Label: "TypeSafe enabled", Section: FieldSectionIntegrations, Description: "controls whether the optional TypeSafe semantic provider may be used", Details: "Enabled by default. Enabling does not contact TypeSafe; remote requests occur only when a semantic consumer or explicit probe uses the configured provider.", Kind: FieldBool, Editable: true, Related: []string{"integrations.typesafe.model", "integrations.typesafe.timeout_ms", "integrations.typesafe.api_key"}},
 	{Key: "integrations.typesafe.model", Label: "TypeSafe model", Section: FieldSectionIntegrations, Description: "sets the TypeSafe System One model or alias", Details: "The provider currently documents jev-latest as the stable alias. Versioned model IDs may be used when a consumer needs a pinned calibration target.", Kind: FieldString, Editable: true, Related: []string{"integrations.typesafe.enabled"}},
 	{Key: "integrations.typesafe.timeout_ms", Label: "TypeSafe timeout", Section: FieldSectionIntegrations, Description: "sets the local deadline budget in milliseconds for TypeSafe provider operations", Details: "The timeout is locally enforced and remains bounded even if the provider SDK supports a larger/default timeout.", Kind: FieldInt, Editable: true, Input: boundedIntInput(100, 30000), Related: []string{"integrations.typesafe.enabled"}},
@@ -555,6 +557,14 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Integrations.CodeGraph.Enabled = value
 	case "integrations.codegraph.path":
 		cfg.Integrations.CodeGraph.Path = strings.TrimSpace(raw)
+	case "integrations.browser.enabled":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Integrations.Browser.Enabled = value
+	case "integrations.browser.path":
+		cfg.Integrations.Browser.Path = strings.TrimSpace(raw)
 	case "integrations.typesafe.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -750,6 +760,10 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strconv.FormatBool(cfg.Integrations.CodeGraph.Enabled), nil
 	case "integrations.codegraph.path":
 		return cfg.Integrations.CodeGraph.Path, nil
+	case "integrations.browser.enabled":
+		return strconv.FormatBool(cfg.Integrations.Browser.Enabled), nil
+	case "integrations.browser.path":
+		return cfg.Integrations.Browser.Path, nil
 	case "integrations.typesafe.enabled":
 		return strconv.FormatBool(cfg.Integrations.TypeSafe.Enabled), nil
 	case "integrations.typesafe.model":

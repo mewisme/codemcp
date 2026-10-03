@@ -508,11 +508,11 @@ func TestConfigAPIIntegrationPatchUpdatesRuntimeActiveState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := persisted.Integrations; !got.Ponytail.Active || got.Caveman.Active || !got.RTK.Enabled || got.RTK.Path != "" || !got.CodeGraph.Enabled || got.CodeGraph.Path != "" {
+	if got := persisted.Integrations; !got.Ponytail.Active || got.Caveman.Active || !got.RTK.Enabled || got.RTK.Path != "" || !got.CodeGraph.Enabled || got.CodeGraph.Path != "" || !got.Browser.Enabled || got.Browser.Path != "" {
 		t.Fatalf("stored integrations = %#v", got)
 	}
 	_ = workspaceItem
-	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":true,"path":""},"typesafe":{"enabled":true,"model":"jev-latest","timeout_ms":3000}}`) {
+	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":true,"path":""},"typesafe":{"enabled":true,"model":"jev-latest","timeout_ms":3000},"browser":{"enabled":true,"path":""}}`) {
 		t.Fatalf("integration config missing from response: %s", recorder.Body.String())
 	}
 }

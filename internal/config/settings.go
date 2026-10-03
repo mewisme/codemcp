@@ -333,6 +333,9 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ScopedCommands = []string{"integration codegraph enable", "integration codegraph disable"}
 	case "integrations.codegraph.path":
 		spec.ScopedCommands = []string{"integration codegraph path"}
+	case "integrations.browser.enabled", "integrations.browser.path":
+		spec.ApplicationOwner = "integration:browser"
+		spec.ScopedExemption = "generic config set is the canonical operator facade for browser detection configuration"
 	case "integrations.typesafe.enabled":
 		spec.ApplicationOwner = "integration:typesafe"
 		spec.ScopedCommands = []string{"integration typesafe enable", "integration typesafe disable"}

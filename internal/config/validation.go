@@ -60,6 +60,14 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("integrations.codegraph.path must be absolute: %q", path)
 		}
 	}
+	if path := cfg.Integrations.Browser.Path; path != "" {
+		if path != strings.TrimSpace(path) {
+			return errors.New("integrations.browser.path must not contain leading or trailing whitespace")
+		}
+		if !filepath.IsAbs(path) && !looksLikeWindowsAbsolutePath(path) {
+			return fmt.Errorf("integrations.browser.path must be an absolute native or Windows path: %q", path)
+		}
+	}
 	if strings.TrimSpace(cfg.Integrations.TypeSafe.Model) == "" {
 		return errors.New("integrations.typesafe.model must not be empty")
 	}
@@ -136,6 +144,13 @@ func Validate(cfg Config) error {
 		return err
 	}
 	return nil
+}
+
+func looksLikeWindowsAbsolutePath(value string) bool {
+	value = strings.TrimSpace(value)
+	return len(value) >= 3 &&
+		((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) &&
+		value[1] == ':' && (value[2] == '\\' || value[2] == '/')
 }
 
 func UnauthenticatedLoopbackActive(cfg Config) bool {

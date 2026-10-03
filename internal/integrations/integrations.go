@@ -15,6 +15,7 @@ const (
 	CodeGraphID ID = "codegraph"
 	TypeSafeID  ID = "typesafe"
 	CFTunnelID  ID = "cf-tunnel"
+	BrowserID   ID = "browser"
 )
 
 type Identity struct {
@@ -54,12 +55,18 @@ type TypeSafe struct {
 	TimeoutMS int    `json:"timeout_ms"`
 }
 
+type Browser struct {
+	Enabled bool   `json:"enabled"`
+	Path    string `json:"path"`
+}
+
 type Config struct {
 	Ponytail  Ponytail  `json:"ponytail"`
 	Caveman   Caveman   `json:"caveman"`
 	RTK       RTK       `json:"rtk"`
 	CodeGraph CodeGraph `json:"codegraph"`
 	TypeSafe  TypeSafe  `json:"typesafe"`
+	Browser   Browser   `json:"browser"`
 }
 
 func Default() Config {
@@ -69,6 +76,7 @@ func Default() Config {
 		RTK:       RTK{Enabled: true},
 		CodeGraph: CodeGraph{Enabled: true},
 		TypeSafe:  TypeSafe{Enabled: true, Model: "jev-latest", TimeoutMS: 3000},
+		Browser:   Browser{Enabled: true},
 	}
 }
 
@@ -86,6 +94,8 @@ func IdentityFor(id ID) (Identity, bool) {
 		return Identity{ID: TypeSafeID, Name: "TypeSafe"}, true
 	case CFTunnelID:
 		return Identity{ID: CFTunnelID, Name: "Cloudflare Quick Tunnel"}, true
+	case BrowserID:
+		return Identity{ID: BrowserID, Name: "Browser"}, true
 	default:
 		return Identity{}, false
 	}

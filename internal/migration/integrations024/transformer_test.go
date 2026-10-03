@@ -133,6 +133,9 @@ func TestTransformPreservesExplicitDefaultOnFalseAndLeavesAbsentNewFields(t *tes
 	if _, exists := integrations["typesafe"]; exists {
 		t.Fatalf("migration synthesized an absent TypeSafe preference: %#v", integrations)
 	}
+	if _, exists := integrations["browser"]; exists {
+		t.Fatalf("migration synthesized an absent browser preference: %#v", integrations)
+	}
 	loaded, err := config.LoadAt(filepath.Dir(destination))
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +145,7 @@ func TestTransformPreservesExplicitDefaultOnFalseAndLeavesAbsentNewFields(t *tes
 		if err != nil {
 			t.Fatalf("%s: %v", contract.Key, err)
 		}
-		if contract.Key == "integrations.typesafe.enabled" {
+		if contract.Key == "integrations.typesafe.enabled" || contract.Key == "integrations.browser.enabled" {
 			if value != "true" {
 				t.Fatalf("absent %s = %q, want new default true", contract.Key, value)
 			}
