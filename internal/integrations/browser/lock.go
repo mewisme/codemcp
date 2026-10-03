@@ -2,6 +2,7 @@ package browser
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -17,7 +18,11 @@ func TryAcquireProfile(profile ProfileRef) (*ProfileLock, bool, error) {
 	if path == "" {
 		return nil, false, errors.New("browser profile lock path is required")
 	}
-	lock, ok, err := oslock.TryAcquire(filepath.Clean(path), oslock.Exclusive)
+	path = filepath.Clean(path)
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return nil, false, err
+	}
+	lock, ok, err := oslock.TryAcquire(path, oslock.Exclusive)
 	if err != nil || !ok {
 		return nil, ok, err
 	}

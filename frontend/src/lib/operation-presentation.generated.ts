@@ -315,6 +315,24 @@ export const canonicalPresentationContract = {
       "confirmation": "none",
       "input": "form"
     },
+    "integration.browser.doctor": {
+      "operation": "integration.browser.doctor",
+      "title": "Doctor Integration Browser",
+      "subject": "Integration Browser",
+      "category": "read",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "none"
+    },
+    "integration.browser.status": {
+      "operation": "integration.browser.status",
+      "title": "Status Integration Browser",
+      "subject": "Integration Browser",
+      "category": "read",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "none"
+    },
     "integration.cf.install": {
       "operation": "integration.cf.install",
       "title": "Install Integration CF",
@@ -359,6 +377,42 @@ export const canonicalPresentationContract = {
       "danger": "caution",
       "confirmation": "none",
       "input": "form"
+    },
+    "integration.chatgpt-web.doctor": {
+      "operation": "integration.chatgpt-web.doctor",
+      "title": "Doctor Integration Chatgpt-web",
+      "subject": "Integration Chatgpt-web",
+      "category": "read",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "none"
+    },
+    "integration.chatgpt-web.login": {
+      "operation": "integration.chatgpt-web.login",
+      "title": "Login Integration Chatgpt-web",
+      "subject": "Integration Chatgpt-web",
+      "category": "change",
+      "danger": "caution",
+      "confirmation": "none",
+      "input": "form"
+    },
+    "integration.chatgpt-web.logout": {
+      "operation": "integration.chatgpt-web.logout",
+      "title": "Logout Integration Chatgpt-web",
+      "subject": "Integration Chatgpt-web",
+      "category": "delete",
+      "danger": "destructive",
+      "confirmation": "required",
+      "input": "form"
+    },
+    "integration.chatgpt-web.status": {
+      "operation": "integration.chatgpt-web.status",
+      "title": "Status Integration Chatgpt-web",
+      "subject": "Integration Chatgpt-web",
+      "category": "read",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "none"
     },
     "integration.codegraph.install": {
       "operation": "integration.codegraph.install",

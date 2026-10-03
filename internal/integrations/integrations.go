@@ -9,13 +9,14 @@ import (
 type ID string
 
 const (
-	PonytailID  ID = "ponytail"
-	CavemanID   ID = "caveman"
-	RTKID       ID = "rtk"
-	CodeGraphID ID = "codegraph"
-	TypeSafeID  ID = "typesafe"
-	CFTunnelID  ID = "cf-tunnel"
-	BrowserID   ID = "browser"
+	PonytailID   ID = "ponytail"
+	CavemanID    ID = "caveman"
+	RTKID        ID = "rtk"
+	CodeGraphID  ID = "codegraph"
+	TypeSafeID   ID = "typesafe"
+	CFTunnelID   ID = "cf-tunnel"
+	BrowserID    ID = "browser"
+	ChatGPTWebID ID = "chatgpt-web"
 )
 
 type Identity struct {
@@ -60,23 +61,31 @@ type Browser struct {
 	Path    string `json:"path"`
 }
 
+type ChatGPTWeb struct {
+	Enabled       bool   `json:"enabled"`
+	ConnectorName string `json:"connector_name"`
+	MaxAgents     int    `json:"max_agents"`
+}
+
 type Config struct {
-	Ponytail  Ponytail  `json:"ponytail"`
-	Caveman   Caveman   `json:"caveman"`
-	RTK       RTK       `json:"rtk"`
-	CodeGraph CodeGraph `json:"codegraph"`
-	TypeSafe  TypeSafe  `json:"typesafe"`
-	Browser   Browser   `json:"browser"`
+	Ponytail   Ponytail   `json:"ponytail"`
+	Caveman    Caveman    `json:"caveman"`
+	RTK        RTK        `json:"rtk"`
+	CodeGraph  CodeGraph  `json:"codegraph"`
+	TypeSafe   TypeSafe   `json:"typesafe"`
+	Browser    Browser    `json:"browser"`
+	ChatGPTWeb ChatGPTWeb `json:"chatgpt_web"`
 }
 
 func Default() Config {
 	return Config{
-		Ponytail:  Ponytail{Active: true, Mode: "full"},
-		Caveman:   Caveman{Active: true, Mode: "full"},
-		RTK:       RTK{Enabled: true},
-		CodeGraph: CodeGraph{Enabled: true},
-		TypeSafe:  TypeSafe{Enabled: true, Model: "jev-latest", TimeoutMS: 3000},
-		Browser:   Browser{Enabled: true},
+		Ponytail:   Ponytail{Active: true, Mode: "full"},
+		Caveman:    Caveman{Active: true, Mode: "full"},
+		RTK:        RTK{Enabled: true},
+		CodeGraph:  CodeGraph{Enabled: true},
+		TypeSafe:   TypeSafe{Enabled: true, Model: "jev-latest", TimeoutMS: 3000},
+		Browser:    Browser{Enabled: true},
+		ChatGPTWeb: ChatGPTWeb{Enabled: true, ConnectorName: "CodeMCP", MaxAgents: 5},
 	}
 }
 
@@ -96,6 +105,8 @@ func IdentityFor(id ID) (Identity, bool) {
 		return Identity{ID: CFTunnelID, Name: "Cloudflare Quick Tunnel"}, true
 	case BrowserID:
 		return Identity{ID: BrowserID, Name: "Browser"}, true
+	case ChatGPTWebID:
+		return Identity{ID: ChatGPTWebID, Name: "ChatGPT Web"}, true
 	default:
 		return Identity{}, false
 	}

@@ -262,6 +262,16 @@ func TestFirstPartyIntegrationsHaveCanonicalCapabilities(t *testing.T) {
 			IntegrationTypeSafeDisable,
 			IntegrationTypeSafeProbe,
 		},
+		"browser": {
+			IntegrationBrowserStatus,
+			IntegrationBrowserDoctor,
+		},
+		"chatgpt-web": {
+			IntegrationChatGPTWebStatus,
+			IntegrationChatGPTWebLogin,
+			IntegrationChatGPTWebLogout,
+			IntegrationChatGPTWebDoctor,
+		},
 	}
 	for integration, ids := range groups {
 		if len(ids) == 0 {

@@ -145,7 +145,7 @@ func TestTransformPreservesExplicitDefaultOnFalseAndLeavesAbsentNewFields(t *tes
 		if err != nil {
 			t.Fatalf("%s: %v", contract.Key, err)
 		}
-		if contract.Key == "integrations.typesafe.enabled" || contract.Key == "integrations.browser.enabled" {
+		if contract.Key == "integrations.typesafe.enabled" || contract.Key == "integrations.browser.enabled" || contract.Key == "integrations.chatgpt_web.enabled" {
 			if value != "true" {
 				t.Fatalf("absent %s = %q, want new default true", contract.Key, value)
 			}

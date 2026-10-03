@@ -68,6 +68,13 @@ func Validate(cfg Config) error {
 			return fmt.Errorf("integrations.browser.path must be an absolute native or Windows path: %q", path)
 		}
 	}
+	if cfg.Integrations.ChatGPTWeb.ConnectorName != strings.TrimSpace(cfg.Integrations.ChatGPTWeb.ConnectorName) ||
+		strings.TrimSpace(cfg.Integrations.ChatGPTWeb.ConnectorName) == "" {
+		return errors.New("integrations.chatgpt_web.connector_name must be non-empty without leading or trailing whitespace")
+	}
+	if cfg.Integrations.ChatGPTWeb.MaxAgents < 1 || cfg.Integrations.ChatGPTWeb.MaxAgents > 5 {
+		return fmt.Errorf("integrations.chatgpt_web.max_agents must be between 1 and 5: %d", cfg.Integrations.ChatGPTWeb.MaxAgents)
+	}
 	if strings.TrimSpace(cfg.Integrations.TypeSafe.Model) == "" {
 		return errors.New("integrations.typesafe.model must not be empty")
 	}

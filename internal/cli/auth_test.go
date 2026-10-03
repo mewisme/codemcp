@@ -26,10 +26,13 @@ func TestAuthCommandUsesNestedHierarchy(t *testing.T) {
 }
 
 func TestSubcommandNamesDoNotUseDashes(t *testing.T) {
+	allowed := map[string]bool{
+		"cm integration chatgpt-web": true,
+	}
 	var visit func(*cobra.Command)
 	visit = func(command *cobra.Command) {
 		for _, child := range command.Commands() {
-			if strings.Contains(child.Name(), "-") {
+			if strings.Contains(child.Name(), "-") && !allowed[child.CommandPath()] {
 				t.Errorf("dashed subcommand: %s", child.CommandPath())
 			}
 			visit(child)

@@ -24,6 +24,12 @@ func TestIntegrationLifecycleCommandsReachCanonicalOperations(t *testing.T) {
 		"integration cf install":               capability.IntegrationCFInstall,
 		"integration cf update":                capability.IntegrationCFUpdate,
 		"integration cf remove":                capability.IntegrationCFRemove,
+		"integration browser status":           capability.IntegrationBrowserStatus,
+		"integration browser doctor":           capability.IntegrationBrowserDoctor,
+		"integration chatgpt-web status":       capability.IntegrationChatGPTWebStatus,
+		"integration chatgpt-web login":        capability.IntegrationChatGPTWebLogin,
+		"integration chatgpt-web logout":       capability.IntegrationChatGPTWebLogout,
+		"integration chatgpt-web doctor":       capability.IntegrationChatGPTWebDoctor,
 	}
 	root := newRootCommand()
 	for path, want := range cases {

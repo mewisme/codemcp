@@ -165,6 +165,12 @@ const (
 	IntegrationTypeSafeEnable         ID = "integration.typesafe.enable"
 	IntegrationTypeSafeDisable        ID = "integration.typesafe.disable"
 	IntegrationTypeSafeProbe          ID = "integration.typesafe.probe"
+	IntegrationBrowserStatus          ID = "integration.browser.status"
+	IntegrationBrowserDoctor          ID = "integration.browser.doctor"
+	IntegrationChatGPTWebStatus       ID = "integration.chatgpt-web.status"
+	IntegrationChatGPTWebLogin        ID = "integration.chatgpt-web.login"
+	IntegrationChatGPTWebLogout       ID = "integration.chatgpt-web.logout"
+	IntegrationChatGPTWebDoctor       ID = "integration.chatgpt-web.doctor"
 )
 
 const (

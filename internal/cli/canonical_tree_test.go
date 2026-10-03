@@ -98,6 +98,9 @@ http security | namespace
 http | namespace
 init | operation:config.init
 install | operation:install.run
+integration browser doctor | operation:integration.browser.doctor
+integration browser status | operation:integration.browser.status
+integration browser | namespace
 integration caveman disable | operation:config.set:accepted-path
 integration caveman enable | operation:config.set:accepted-path
 integration caveman mode | operation:config.set:accepted-path
@@ -108,6 +111,11 @@ integration cf remove | operation:integration.cf.remove
 integration cf status | operation:integration.cf.status
 integration cf update | operation:integration.cf.update
 integration cf | namespace
+integration chatgpt-web doctor | operation:integration.chatgpt-web.doctor
+integration chatgpt-web login | operation:integration.chatgpt-web.login
+integration chatgpt-web logout | operation:integration.chatgpt-web.logout
+integration chatgpt-web status | operation:integration.chatgpt-web.status
+integration chatgpt-web | namespace
 integration codegraph disable | operation:config.set:accepted-path
 integration codegraph enable | operation:config.set:accepted-path
 integration codegraph init | operation:integration.codegraph.workspace.init

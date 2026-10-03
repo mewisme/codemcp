@@ -357,6 +357,19 @@ func (manager *Manager) Lease(agentID string) (LeaseSnapshot, bool) {
 	return record.snapshot, true
 }
 
+func (manager *Manager) Tab(agentID string) (BrowserTab, bool) {
+	if manager == nil {
+		return nil, false
+	}
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	record := manager.leases[strings.TrimSpace(agentID)]
+	if record == nil || record.snapshot.State != LeaseActive || record.tab == nil {
+		return nil, false
+	}
+	return record.tab, true
+}
+
 func (manager *Manager) Release(ctx context.Context, agentID string) error {
 	if manager == nil {
 		return errors.New("browser manager is unavailable")

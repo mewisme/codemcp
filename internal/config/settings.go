@@ -336,6 +336,9 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 	case "integrations.browser.enabled", "integrations.browser.path":
 		spec.ApplicationOwner = "integration:browser"
 		spec.ScopedExemption = "generic config set is the canonical operator facade for browser detection configuration"
+	case "integrations.chatgpt_web.enabled", "integrations.chatgpt_web.connector_name", "integrations.chatgpt_web.max_agents":
+		spec.ApplicationOwner = "integration:chatgpt-web"
+		spec.ScopedExemption = "generic config set is the canonical operator facade for ChatGPT Web integration configuration"
 	case "integrations.typesafe.enabled":
 		spec.ApplicationOwner = "integration:typesafe"
 		spec.ScopedCommands = []string{"integration typesafe enable", "integration typesafe disable"}

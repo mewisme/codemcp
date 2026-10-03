@@ -108,6 +108,14 @@ var defaultOnCapabilityContracts = []DefaultOnCapabilityContract{
 		ExplicitDisableBehavior:     "skip browser discovery and browser-backed integrations without modifying installed browsers or profiles",
 	},
 	{
+		Key: "integrations.chatgpt_web.enabled", FreshDefault: true,
+		Prerequisite:                "usable browser capability, authenticated CodeMCP browser profile, and configured CodeMCP connector route",
+		ConfiguredState:             "ChatGPT Web browser-agent integration is enabled",
+		EffectiveState:              "authenticated Temporary Chat surfaces can be used by browser-backed agents",
+		MissingPrerequisiteBehavior: "retain enabled intent and report setup required without degrading unrelated runtime health",
+		ExplicitDisableBehavior:     "do not create or use ChatGPT Web browser-agent surfaces",
+	},
+	{
 		Key: "tunnel.enabled", FreshDefault: true,
 		Prerequisite:                "tunnel ID and managed runtime API key",
 		ConfiguredState:             "Secure MCP Tunnel transport is requested",

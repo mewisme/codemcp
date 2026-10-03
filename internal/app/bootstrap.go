@@ -263,6 +263,14 @@ func (a *App) Bootstrap() error {
 			a.bootstrapErr = err
 			return
 		}
+		if err := application.BindBrowserIntegrationOperations(a.Operations, application.NewBrowserIntegrationService()); err != nil {
+			a.bootstrapErr = err
+			return
+		}
+		if err := application.BindChatGPTWebOperations(a.Operations, application.NewChatGPTWebService()); err != nil {
+			a.bootstrapErr = err
+			return
+		}
 		a.syncMCPHTTP(a.Config.Snapshot().HTTP.MCP.Enabled)
 		a.attachTunnelLifecycle()
 	})

@@ -90,6 +90,10 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceInstrumented, []string{"telegram.authorization.set.completed"}, "telegram logout")
 	add(commandTraceTrivial, nil, "integration typesafe status", "integration typesafe doctor", "integration typesafe probe")
 	add(commandTraceTrivial, nil,
+		"integration browser status", "integration browser doctor",
+		"integration chatgpt-web status", "integration chatgpt-web login", "integration chatgpt-web logout", "integration chatgpt-web doctor",
+	)
+	add(commandTraceTrivial, nil,
 		"integration rtk status", "integration rtk probe", "integration rtk install", "integration rtk install global",
 		"integration codegraph status", "integration codegraph probe", "integration codegraph install", "integration codegraph install global",
 		"integration codegraph init", "integration codegraph sync", "integration codegraph workspace status",

@@ -259,6 +259,8 @@ func integrationSettingsCommand() *cobra.Command {
 		integrationBinarySettingsCommand("codegraph"),
 		cfTunnelCommand(),
 		integrationTypeSafeSettingsCommand(),
+		browserIntegrationCommand(),
+		chatGPTWebIntegrationCommand(),
 	)
 	return cmd
 }

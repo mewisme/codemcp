@@ -150,6 +150,7 @@ type fakeTab struct {
 	mu     sync.Mutex
 	err    error
 	closed bool
+	url    string
 }
 
 func newFakeTab(id string) *fakeTab        { return &fakeTab{id: id, done: make(chan struct{})} }
@@ -160,6 +161,13 @@ func (tab *fakeTab) Err() error {
 	defer tab.mu.Unlock()
 	return tab.err
 }
+func (tab *fakeTab) Navigate(_ context.Context, url string) error {
+	tab.mu.Lock()
+	tab.url = url
+	tab.mu.Unlock()
+	return nil
+}
+func (tab *fakeTab) Evaluate(_ context.Context, _ string, _ any) error { return nil }
 func (tab *fakeTab) Close(context.Context) error {
 	tab.mu.Lock()
 	tab.closed = true
@@ -209,6 +217,25 @@ func TestBrowserManagerSharesOneBrowserAcrossDistinctAgentTabs(t *testing.T) {
 	}
 	if connector.latest() == nil || connector.latest().nextTab != 3 {
 		t.Fatal("expected three tabs on one CDP client")
+	}
+}
+
+func TestBrowserManagerExposesOnlyActiveOwnedTab(t *testing.T) {
+	manager, _, _ := newFakeManager(t, 1, time.Minute, time.Minute)
+	defer manager.Close(context.Background())
+	lease, err := manager.Acquire(context.Background(), "agent-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tab, ok := manager.Tab("agent-a")
+	if !ok || tab.ID() != lease.TabID {
+		t.Fatalf("tab=%v ok=%t lease=%#v", tab, ok, lease)
+	}
+	if err := manager.Release(context.Background(), "agent-a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := manager.Tab("agent-a"); ok {
+		t.Fatal("released tab remained visible through manager")
 	}
 }
 

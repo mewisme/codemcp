@@ -9,7 +9,7 @@ import (
 
 func TestDefaultActivatesFirstPartyIntegrations(t *testing.T) {
 	value := Default()
-	if !value.Ponytail.Active || value.Ponytail.Mode != "full" || !value.Caveman.Active || value.Caveman.Mode != "full" || !value.RTK.Enabled || value.RTK.Path != "" || !value.CodeGraph.Enabled || value.CodeGraph.Path != "" || !value.TypeSafe.Enabled || value.TypeSafe.Model != "jev-latest" || value.TypeSafe.TimeoutMS != 3000 || !value.Browser.Enabled || value.Browser.Path != "" {
+	if !value.Ponytail.Active || value.Ponytail.Mode != "full" || !value.Caveman.Active || value.Caveman.Mode != "full" || !value.RTK.Enabled || value.RTK.Path != "" || !value.CodeGraph.Enabled || value.CodeGraph.Path != "" || !value.TypeSafe.Enabled || value.TypeSafe.Model != "jev-latest" || value.TypeSafe.TimeoutMS != 3000 || !value.Browser.Enabled || value.Browser.Path != "" || !value.ChatGPTWeb.Enabled || value.ChatGPTWeb.ConnectorName != "CodeMCP" || value.ChatGPTWeb.MaxAgents != 5 {
 		t.Fatalf("default integrations = %#v", value)
 	}
 }
@@ -24,6 +24,7 @@ func TestCanonicalIntegrationIdentityAndOwner(t *testing.T) {
 		{RTKID, "RTK"},
 		{CodeGraphID, "CodeGraph"},
 		{BrowserID, "Browser"},
+		{ChatGPTWebID, "ChatGPT Web"},
 	} {
 		identity, ok := IdentityFor(test.id)
 		if !ok || identity.ID != test.id || identity.Name != test.name {

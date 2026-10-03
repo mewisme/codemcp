@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,11 @@ import (
 type ProfileOptions struct {
 	StateRoot string
 	Candidate Candidate
+}
+
+type OwnedProfileOptions struct {
+	StateRoot string
+	Runtime   Runtime
 }
 
 func ResolveProfile(options ProfileOptions) (ProfileRef, error) {
@@ -45,6 +51,42 @@ func ResolveProfile(options ProfileOptions) (ProfileRef, error) {
 	}, nil
 }
 
+func ResolveOwnedProfiles(ctx context.Context, options OwnedProfileOptions) ([]ProfileRef, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	runtime := normalizedRuntime(options.Runtime)
+	native, err := ResolveProfile(ProfileOptions{
+		StateRoot: options.StateRoot,
+		Candidate: Candidate{HostPlatform: runtime.GOOS, Transport: TransportNative},
+	})
+	if err != nil {
+		return nil, err
+	}
+	profiles := []ProfileRef{native}
+	if !isWSL(runtime) {
+		return profiles, nil
+	}
+	hostRoot, localRoot, err := windowsLocalAppData(ctx, runtime)
+	if err != nil {
+		return profiles, nil
+	}
+	host, err := ResolveProfile(ProfileOptions{
+		StateRoot: options.StateRoot,
+		Candidate: Candidate{
+			HostPlatform: "windows", Transport: TransportWSLHost,
+			HostLocalAppData: hostRoot, LocalAppData: localRoot,
+		},
+	})
+	if err != nil {
+		return profiles, nil
+	}
+	if filepath.Clean(host.LocalPath) != filepath.Clean(native.LocalPath) {
+		profiles = append(profiles, host)
+	}
+	return profiles, nil
+}
+
 func PrepareProfile(profile ProfileRef) error {
 	path := strings.TrimSpace(profile.LocalPath)
 	if path == "" {
@@ -59,6 +101,46 @@ func PrepareProfile(profile ProfileRef) error {
 		}
 	}
 	return nil
+}
+
+func ProfileInUse(profile ProfileRef) (bool, error) {
+	lockPath := strings.TrimSpace(profile.LockPath)
+	if lockPath == "" {
+		return false, errors.New("browser profile lock path is required")
+	}
+	if err := os.MkdirAll(filepath.Dir(filepath.Clean(lockPath)), 0700); err != nil {
+		return false, fmt.Errorf("prepare browser profile lock directory: %w", err)
+	}
+	lock, ok, err := TryAcquireProfile(profile)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return true, nil
+	}
+	if err := lock.Release(); err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+func RemoveProfile(profile ProfileRef) error {
+	path := filepath.Clean(strings.TrimSpace(profile.LocalPath))
+	if path == "." || path == "" || !isOwnedChatGPTProfilePath(path, profile.Transport) {
+		return fmt.Errorf("refusing to remove non-CodeMCP ChatGPT browser profile: %q", profile.LocalPath)
+	}
+	if err := os.RemoveAll(path); err != nil {
+		return fmt.Errorf("remove CodeMCP ChatGPT browser profile: %w", err)
+	}
+	return nil
+}
+
+func isOwnedChatGPTProfilePath(path string, transport Transport) bool {
+	normalized := filepath.ToSlash(filepath.Clean(path))
+	if transport == TransportWSLHost {
+		return strings.HasSuffix(strings.ToLower(normalized), "/codemcp/browser/chatgpt")
+	}
+	return strings.HasSuffix(strings.ToLower(normalized), "/browser/chatgpt")
 }
 
 func joinHostPath(goos string, parts ...string) string {

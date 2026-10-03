@@ -11,8 +11,8 @@ import (
 
 func TestDefaultOnCapabilityContractsMatchFreshDefaults(t *testing.T) {
 	contracts := DefaultOnCapabilityContracts()
-	if len(contracts) != 13 {
-		t.Fatalf("default-on contracts = %d, want 13", len(contracts))
+	if len(contracts) != 14 {
+		t.Fatalf("default-on contracts = %d, want 14", len(contracts))
 	}
 	cfg := Default()
 	seen := map[string]bool{}

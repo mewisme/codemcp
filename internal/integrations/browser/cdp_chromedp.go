@@ -10,6 +10,7 @@ import (
 
 	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/inspector"
+	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 )
 
@@ -200,12 +201,47 @@ type chromedpBrowserTab struct {
 
 func (tab *chromedpBrowserTab) ID() string { return tab.id }
 
+func (tab *chromedpBrowserTab) Navigate(ctx context.Context, url string) error {
+	return tab.run(ctx, chromedp.Navigate(url))
+}
+
+func (tab *chromedpBrowserTab) Evaluate(ctx context.Context, expression string, result any) error {
+	return tab.run(ctx, chromedp.Evaluate(expression, result, func(params *cdpruntime.EvaluateParams) *cdpruntime.EvaluateParams {
+		return params.WithAwaitPromise(true)
+	}))
+}
+
 func (tab *chromedpBrowserTab) Done() <-chan struct{} { return tab.done }
 
 func (tab *chromedpBrowserTab) Err() error {
 	tab.mu.Lock()
 	defer tab.mu.Unlock()
 	return tab.err
+}
+
+func (tab *chromedpBrowserTab) run(ctx context.Context, action chromedp.Action) error {
+	if tab == nil {
+		return errors.New("browser tab is unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case <-tab.done:
+		return errors.New("browser tab is closed")
+	default:
+	}
+	opCtx, cancel := context.WithCancel(tab.ctx)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- chromedp.Run(opCtx, action) }()
+	select {
+	case <-ctx.Done():
+		cancel()
+		return ctx.Err()
+	case err := <-done:
+		return err
+	}
 }
 
 func (tab *chromedpBrowserTab) fail(err error) {

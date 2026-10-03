@@ -64,7 +64,7 @@ func ParityMatrix() []ParityRow {
 			Confirmation: operation.Confirmation, Effects: operation.Effects,
 		}
 		for _, contract := range operation.Surfaces {
-			entries, reachable := productAdapterEvidence(operation, contract.Surface)
+			entries, reachable := productAdapterEvidence(operation, contract)
 			mapping := SurfaceMapping{
 				Surface: contract.Surface, State: contract.State, Exemption: contract.Exemption, Reason: contract.Reason,
 				ExemptionOwner: contract.ExemptionOwner, Guard: contract.Guard, SafeAlternative: contract.SafeAlternative,
@@ -100,8 +100,8 @@ func ProductParityReportJSON() ([]byte, error) {
 	return json.Marshal(ProductParityReportSnapshot())
 }
 
-func productAdapterEvidence(operation OperationInventory, surface Surface) ([]string, bool) {
-	switch surface {
+func productAdapterEvidence(operation OperationInventory, contract SurfaceContract) ([]string, bool) {
+	switch contract.Surface {
 	case SurfaceCLI:
 		if operation.CLI.CanonicalPath == "" {
 			return nil, false
@@ -109,6 +109,9 @@ func productAdapterEvidence(operation OperationInventory, surface Surface) ([]st
 		entries := append([]string{operation.CLI.CanonicalPath}, operation.CLI.Aliases...)
 		return entries, true
 	case SurfaceTUI:
+		if contract.State != SurfaceRequired {
+			return nil, false
+		}
 		if entries := tuiInventoryEntryPoints[operation.ID]; len(entries) > 0 {
 			return append([]string(nil), entries...), true
 		}

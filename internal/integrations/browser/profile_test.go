@@ -1,6 +1,8 @@
 package browser
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -85,5 +87,94 @@ func TestProfileLockAllowsOnlyOneProcessOwner(t *testing.T) {
 	}
 	if err := second.Release(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestProfileInUseTracksCanonicalLock(t *testing.T) {
+	root := t.TempDir()
+	profile := ProfileRef{
+		Transport: TransportNative,
+		LocalPath: filepath.Join(root, "browser", "chatgpt"),
+		LockPath:  filepath.Join(root, "browser", "chatgpt.lock"),
+	}
+	busy, err := ProfileInUse(profile)
+	if err != nil || busy {
+		t.Fatalf("initial busy=%t err=%v", busy, err)
+	}
+	lock, ok, err := TryAcquireProfile(profile)
+	if err != nil || !ok {
+		t.Fatalf("lock ok=%t err=%v", ok, err)
+	}
+	defer lock.Release()
+	busy, err = ProfileInUse(profile)
+	if err != nil || !busy {
+		t.Fatalf("locked busy=%t err=%v", busy, err)
+	}
+}
+
+func TestRemoveProfileOnlyDeletesCodeMCPOwnedChatGPTProfile(t *testing.T) {
+	root := t.TempDir()
+	profile := ProfileRef{
+		Transport: TransportNative,
+		LocalPath: filepath.Join(root, "browser", "chatgpt"),
+	}
+	if err := PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profile.LocalPath, "marker"), []byte("owned"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(profile.LocalPath); !os.IsNotExist(err) {
+		t.Fatalf("profile still exists: %v", err)
+	}
+	ordinary := filepath.Join(root, ".config", "google-chrome")
+	if err := os.MkdirAll(ordinary, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveProfile(ProfileRef{Transport: TransportNative, LocalPath: ordinary}); err == nil {
+		t.Fatal("ordinary browser profile deletion was not rejected")
+	}
+	if _, err := os.Stat(ordinary); err != nil {
+		t.Fatalf("ordinary profile changed: %v", err)
+	}
+}
+
+func TestResolveOwnedProfilesIncludesNativeAndWSLHostWithoutInstalledBrowser(t *testing.T) {
+	root := t.TempDir()
+	profiles, err := ResolveOwnedProfiles(context.Background(), OwnedProfileOptions{
+		StateRoot: root,
+		Runtime: Runtime{
+			GOOS: "linux",
+			Env: func(name string) string {
+				if name == "WSL_DISTRO_NAME" {
+					return "Ubuntu"
+				}
+				return ""
+			},
+			WindowsEnv: func(_ context.Context, name string) (string, error) {
+				if name == "LOCALAPPDATA" {
+					return `C:\Users\Mew\AppData\Local`, nil
+				}
+				return "", errors.New("not found")
+			},
+			WindowsToLocal: func(_ context.Context, path string) (string, error) {
+				if strings.EqualFold(path, `C:\Users\Mew\AppData\Local`) {
+					return "/mnt/c/Users/Mew/AppData/Local", nil
+				}
+				return "", errors.New("not found")
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 2 {
+		t.Fatalf("profiles=%#v", profiles)
+	}
+	if profiles[0].Transport != TransportNative || profiles[1].Transport != TransportWSLHost {
+		t.Fatalf("profiles=%#v", profiles)
 	}
 }

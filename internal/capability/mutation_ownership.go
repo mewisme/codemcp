@@ -101,6 +101,7 @@ func buildMutationOwners() map[ID]MutationOwner {
 		IntegrationCodeGraphInstall, IntegrationCodeGraphWorkspaceInit, IntegrationCodeGraphWorkspaceSync,
 		IntegrationCFInstall, IntegrationCFUpdate, IntegrationCFRemove,
 		IntegrationTypeSafeEnable, IntegrationTypeSafeDisable,
+		IntegrationChatGPTWebLogin, IntegrationChatGPTWebLogout,
 	)
 	add(MutationOwnerApplicationProcesses, ProcessClear)
 	add(MutationOwnerApplicationLogs, LogsClear)

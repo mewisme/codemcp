@@ -55,6 +55,8 @@ type BrowserLauncher interface {
 
 type BrowserTab interface {
 	ID() string
+	Navigate(context.Context, string) error
+	Evaluate(context.Context, string, any) error
 	Done() <-chan struct{}
 	Err() error
 	Close(context.Context) error

@@ -24,12 +24,27 @@ var remoteHostLocalOperationIDs = idSet(
 	MCPStdio,
 	MCPHTTP,
 	TunnelForeground,
+	IntegrationBrowserStatus,
+	IntegrationBrowserDoctor,
+	IntegrationChatGPTWebStatus,
+	IntegrationChatGPTWebLogin,
+	IntegrationChatGPTWebLogout,
+	IntegrationChatGPTWebDoctor,
 	ManagedAgentSpawn,
 	ManagedAgentList,
 	ManagedAgentGet,
 	ManagedAgentWait,
 	ManagedAgentSend,
 	ManagedAgentCancel,
+)
+
+var browserLocalIntegrationOperationIDs = idSet(
+	IntegrationBrowserStatus,
+	IntegrationBrowserDoctor,
+	IntegrationChatGPTWebStatus,
+	IntegrationChatGPTWebLogin,
+	IntegrationChatGPTWebLogout,
+	IntegrationChatGPTWebDoctor,
 )
 
 var telegramBootstrapOperationIDs = idSet(
@@ -81,7 +96,8 @@ func productSurfaceExemption(spec Spec, surface Surface) (SurfaceContract, bool)
 			SafeAlternative: cliSafeAlternative(spec),
 		}, true
 	}
-	if (surface == SurfaceBrowser || surface == SurfaceTelegram) && remoteHostLocalOperationIDs[spec.ID] {
+	if ((surface == SurfaceBrowser || surface == SurfaceTelegram) && remoteHostLocalOperationIDs[spec.ID]) ||
+		(surface == SurfaceTUI && browserLocalIntegrationOperationIDs[spec.ID]) {
 		return SurfaceContract{
 			Surface:         surface,
 			State:           SurfaceExempt,
@@ -179,7 +195,8 @@ func exemptionGuardMatches(spec Spec, contract SurfaceContract) bool {
 		return ((contract.Surface == SurfaceBrowser || contract.Surface == SurfaceTelegram) && remoteBootstrapOperationIDs[spec.ID]) ||
 			(contract.Surface == SurfaceTelegram && telegramBootstrapOperationIDs[spec.ID])
 	case SurfaceGuardHostLocalOperation:
-		return (contract.Surface == SurfaceBrowser || contract.Surface == SurfaceTelegram) && remoteHostLocalOperationIDs[spec.ID]
+		return ((contract.Surface == SurfaceBrowser || contract.Surface == SurfaceTelegram) && remoteHostLocalOperationIDs[spec.ID]) ||
+			(contract.Surface == SurfaceTUI && browserLocalIntegrationOperationIDs[spec.ID])
 	case SurfaceGuardRemovedArchitecture:
 		return removedArchitectureOperationIDs[spec.ID]
 	default:
