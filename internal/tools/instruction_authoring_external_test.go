@@ -11,6 +11,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/skills"
 	"go.mewis.me/codemcp/internal/tools"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
@@ -119,6 +120,18 @@ func TestInstructionAuthoringToolsUseCanonicalWorkspaceOwnerAndExposeBuiltinGuid
 	if !agentSkillListed {
 		t.Fatalf("newly authored skill missing without restart: %#v", listed.Skills)
 	}
+	skillNames := make([]string, 0, len(listed.Skills))
+	for _, skill := range listed.Skills {
+		skillNames = append(skillNames, skill.Name)
+	}
+	directive, err := instructioncontext.ResolveSlashDirective("/agent-skill", skillNames)
+	if err != nil || directive.Kind != instructioncontext.SlashDirectiveSkill || directive.SkillName != "agent-skill" {
+		t.Fatalf("authored skill slash resolution=%#v err=%v", directive, err)
+	}
+	ruleDirective, err := instructioncontext.ResolveSlashDirective("/agent-rule", skillNames)
+	if err != nil || ruleDirective.Kind != instructioncontext.SlashDirectiveNone {
+		t.Fatalf("authored rule gained slash activation: %#v err=%v", ruleDirective, err)
+	}
 	agentSkillResult, err := runtime.Call(context.Background(), "load_skill", map[string]any{
 		"workspace_id": workspaceID,
 		"name":         "agent-skill",
@@ -133,6 +146,31 @@ func TestInstructionAuthoringToolsUseCanonicalWorkspaceOwnerAndExposeBuiltinGuid
 	}
 	if agentSkill.Skill.Name != "agent-skill" || !strings.Contains(agentSkill.Content, "agent skill body") {
 		t.Fatalf("newly authored skill load=%#v", agentSkill)
+	}
+
+	updatedSkillResult, err := runtime.Call(context.Background(), tools.CreateSkillToolName, map[string]any{
+		"workspace_id": workspaceID,
+		"mode":         "update",
+		"name":         "agent-skill",
+		"description":  "Agent authored skill updated",
+		"instructions": "updated agent skill body",
+	})
+	if err != nil || updatedSkillResult.IsError {
+		t.Fatalf("update_skill err=%v result=%#v", err, updatedSkillResult)
+	}
+	agentSkillResult, err = runtime.Call(context.Background(), "load_skill", map[string]any{
+		"workspace_id": workspaceID,
+		"name":         "agent-skill",
+		"max_bytes":    500_000,
+	})
+	if err != nil || agentSkillResult.IsError {
+		t.Fatalf("load_skill(updated agent-skill) err=%v result=%#v", err, agentSkillResult)
+	}
+	if err := json.Unmarshal([]byte(agentSkillResult.Content[0].Text), &agentSkill); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(agentSkill.Content, "updated agent skill body") || strings.Contains(agentSkill.Content, "\nagent skill body\n") {
+		t.Fatalf("updated authored skill load=%#v", agentSkill)
 	}
 
 	for _, test := range []struct {

@@ -71,6 +71,10 @@ func TestInstructionAuthoringPublishesCanonicalChangesAfterMutation(t *testing.T
 	if _, err := os.Stat(filepath.Join(workspacestate.New(item.Path).SkillsRoot(), "event-skill", "SKILL.md")); err != nil {
 		t.Fatalf("change was published before active state existed: %v", err)
 	}
+	loaded, err := skills.Load(item.Path, "event-skill", maxAuthoredSkillBytes)
+	if err != nil || loaded.Skill.Name != "event-skill" || !strings.Contains(loaded.Content, "body") {
+		t.Fatalf("published skill was not resolvable from active state: loaded=%#v err=%v", loaded, err)
+	}
 
 	if _, err := service.WriteSkill(t.Context(), SkillAuthoringRequest{
 		Scope: InstructionScopeWorkspace, Mode: InstructionCreate, WorkspaceID: item.ID,

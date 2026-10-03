@@ -310,6 +310,104 @@ func TestSkillsToolFallbackMatchesNativeSkillContent(t *testing.T) {
 	}
 }
 
+func TestDynamicSkillRefreshesNativeSkillsProjectionWithoutRestart(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := tools.NewRuntime()
+	runtime.Workspaces = manager
+	executor := NewFeatureExecutor(FeatureRegistryForRuntime(runtime), runtime, item.ID, "test")
+
+	write := func(description, body string) {
+		t.Helper()
+		dir := filepath.Join(root, ".cm", "skills", "live-skill")
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		content := "---\nname: live-skill\ndescription: " + description + "\n---\n" + body + "\n"
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertNative := func(want string) {
+		t.Helper()
+		listed, err := executor.Invoke(context.Background(), SkillsListMethod, map[string]any{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		items, _ := listed["skills"].([]map[string]any)
+		var uri string
+		for _, entry := range items {
+			if entry["name"] == "live-skill" {
+				uri, _ = entry["uri"].(string)
+				break
+			}
+		}
+		if uri == "" {
+			t.Fatalf("live-skill missing from native list: %#v", listed)
+		}
+		got, err := executor.Invoke(context.Background(), SkillsGetMethod, map[string]any{"uri": uri})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resources, _ := got["resources"].([]map[string]any)
+		if len(resources) == 0 {
+			t.Fatalf("skills/get resources=%#v", got)
+		}
+		read, err := executor.ReadResource(context.Background(), resources[0]["uri"].(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if read.Content.Text == nil || !strings.Contains(*read.Content.Text, want) {
+			t.Fatalf("native authored content=%#v want %q", read.Content, want)
+		}
+	}
+
+	write("Live skill", "first live body")
+	assertNative("first live body")
+	write("Live skill updated", "second live body")
+	assertNative("second live body")
+
+	listed, err := executor.Invoke(context.Background(), SkillsListMethod, map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, _ := listed["skills"].([]map[string]any)
+	builtins := map[string]string{
+		skills.BuiltinCreateRuleName:  tools.CreateRuleToolName,
+		skills.BuiltinCreateSkillName: tools.CreateSkillToolName,
+		skills.BuiltinCreatePlanName:  tools.CreatePlanToolName,
+	}
+	for name, tool := range builtins {
+		var uri string
+		for _, entry := range items {
+			if entry["name"] == name {
+				uri, _ = entry["uri"].(string)
+				break
+			}
+		}
+		if uri == "" {
+			t.Fatalf("builtin %q missing from native list", name)
+		}
+		got, err := executor.Invoke(context.Background(), SkillsGetMethod, map[string]any{"uri": uri})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resources, _ := got["resources"].([]map[string]any)
+		read, err := executor.ReadResource(context.Background(), resources[0]["uri"].(string))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if read.Content.Text == nil || !strings.Contains(*read.Content.Text, tool) {
+			t.Fatalf("builtin %q native content=%#v", name, read.Content)
+		}
+	}
+}
+
 func skillsPolicy(t *testing.T) instructionpolicy.Config {
 	t.Helper()
 	return instructionpolicy.DefaultConfig()

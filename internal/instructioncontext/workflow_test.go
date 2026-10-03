@@ -232,8 +232,10 @@ func TestResolveSlashDirectiveUsesCanonicalAliasesAndExactSkillNames(t *testing.
 		{name: "plan", prompt: "/plan", want: SlashDirective{Kind: SlashDirectivePlanMode}},
 		{name: "create plan alias", prompt: "please /create-plan this", want: SlashDirective{Kind: SlashDirectivePlanMode}},
 		{name: "skill authoring", prompt: "/skill", want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
+		{name: "skill core collision", prompt: "/skill", skillNames: []string{"skill"}, want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
 		{name: "create skill alias", prompt: "/create-skill", want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
 		{name: "rule authoring", prompt: "/rule", want: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
+		{name: "rule core collision", prompt: "/rule", skillNames: []string{"rule"}, want: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
 		{name: "create rule alias", prompt: "/create-rule", want: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
 		{name: "exact dynamic skill", prompt: "use /release-check now", skillNames: []string{"release", "release-check"}, want: SlashDirective{Kind: SlashDirectiveSkill, SkillName: "release-check"}},
 		{name: "unknown dynamic skill", prompt: "/release-chec", skillNames: []string{"release-check"}, want: SlashDirective{}},
@@ -249,6 +251,7 @@ func TestResolveSlashDirectiveUsesCanonicalAliasesAndExactSkillNames(t *testing.
 		{name: "conflicting dynamic skills", prompt: "/release /review", skillNames: []string{"release", "review"}, wantErr: ErrAmbiguousSlashDirective},
 		{name: "unknown token does not create ambiguity", prompt: "/skill /missing", want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
 		{name: "plan dominates authoring", prompt: "/skill /plan /rule", want: SlashDirective{Kind: SlashDirectivePlanMode}},
+		{name: "plan core collision", prompt: "/plan", skillNames: []string{"plan"}, want: SlashDirective{Kind: SlashDirectivePlanMode}},
 		{name: "plan dominates earlier ambiguity", prompt: "/skill /rule /plan", want: SlashDirective{Kind: SlashDirectivePlanMode}},
 		{name: "create plan dominates dynamic skill", prompt: "/release /create-plan", skillNames: []string{"release"}, want: SlashDirective{Kind: SlashDirectivePlanMode}},
 	}
