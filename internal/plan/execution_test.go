@@ -186,3 +186,33 @@ func TestExecutionManagerRejectsPreparedTransitionAfterBindingChanges(t *testing
 		t.Fatalf("second CommitUpdate() error = %v, want ErrExecutionBindingConflict", err)
 	}
 }
+
+func TestExecutionManagerReleaseIsWorkspaceScopedAndIdempotent(t *testing.T) {
+	manager := NewExecutionManager()
+	binding := ExecutionBinding{
+		WorkspaceID:       "ws_alpha",
+		PlanName:          "alpha-plan",
+		BaselineContentID: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Phase:             Phase{ID: "1A", Title: "Define model"},
+	}
+	if _, err := manager.Bind("session-one", binding); err != nil {
+		t.Fatal(err)
+	}
+	other := binding
+	other.WorkspaceID = "ws_beta"
+	if _, err := manager.Bind("session-one", other); err != nil {
+		t.Fatal(err)
+	}
+	if !manager.Release("session-one", binding.WorkspaceID) {
+		t.Fatal("Release() = false, want true")
+	}
+	if manager.Release("session-one", binding.WorkspaceID) {
+		t.Fatal("second Release() = true, want false")
+	}
+	if _, ok := manager.Lookup("session-one", binding.WorkspaceID); ok {
+		t.Fatal("released binding still present")
+	}
+	if got, ok := manager.Lookup("session-one", other.WorkspaceID); !ok || got != other {
+		t.Fatalf("other workspace binding = %#v, %v; want %#v, true", got, ok, other)
+	}
+}

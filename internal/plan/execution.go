@@ -73,6 +73,23 @@ func (m *ExecutionManager) Lookup(sessionKey, workspaceID string) (ExecutionBind
 	return binding, ok
 }
 
+func (m *ExecutionManager) Release(sessionKey, workspaceID string) bool {
+	if m == nil {
+		return false
+	}
+	key := executionBindingKey(strings.TrimSpace(sessionKey), strings.TrimSpace(workspaceID))
+	if key == "" {
+		return false
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.bindings[key]; !ok {
+		return false
+	}
+	delete(m.bindings, key)
+	return true
+}
+
 func (m *ExecutionManager) PrepareUpdate(sessionKey, workspaceID, planName, expectedContentID string, next Document) (ExecutionTransition, error) {
 	if m == nil {
 		return ExecutionTransition{}, errors.New("plan execution manager is unavailable")

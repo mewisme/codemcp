@@ -11,6 +11,7 @@ import (
 	"time"
 
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
+	plandoc "go.mewis.me/codemcp/internal/plan"
 )
 
 func TestNewRuntimeRegistersAgentComplete(t *testing.T) {
@@ -162,6 +163,127 @@ func TestAgentCompleteDuplicateCallsRemainDomainIdempotent(t *testing.T) {
 	}
 }
 
+func TestAgentCompleteRejectsBoundPlanBeforePersistedPhaseCompletion(t *testing.T) {
+	runtime, workspaceID := newCompletionToolRuntime(t)
+	ctx := WithMCPSessionID(context.Background(), "session-plan-guard")
+	ctx = WithCallSource(ctx, "tunnel")
+	ctx = WithApprovalCorrelation(ctx, "apc_plan_guard", "apr_plan_guard")
+	sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+	if _, err := runtime.PlanExecutions.Bind(sessionKey, plandoc.ExecutionBinding{
+		WorkspaceID: workspaceID, PlanName: "guard-plan",
+		BaselineContentID: "sha256:" + strings.Repeat("a", 64),
+		Phase:             plandoc.Phase{ID: "2A", Title: "Gate agent completion"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sub, _ := runtime.Completions.SubscribeSnapshot(0)
+	defer runtime.Completions.Unsubscribe(sub)
+
+	result, err := runtime.Call(ctx, AgentCompleteToolName, map[string]any{
+		"workspace_id": workspaceID,
+		"status":       "completed",
+		"title":        "Finished work",
+	})
+	if err == nil && !result.IsError {
+		t.Fatalf("premature completed unexpectedly succeeded: %#v", result)
+	}
+	message := completionErrorText(result, err)
+	for _, expected := range []string{"guard-plan", "2A", "Gate agent completion", "create_plan mode=update"} {
+		if !strings.Contains(message, expected) {
+			t.Fatalf("guard error missing %q: %q", expected, message)
+		}
+	}
+	if recent, recentErr := runtime.Completions.Recent(10); recentErr != nil || len(recent) != 0 {
+		t.Fatalf("premature completion history=%#v err=%v", recent, recentErr)
+	}
+	select {
+	case event := <-sub.Events:
+		t.Fatalf("premature completion emitted event=%#v", event)
+	default:
+	}
+}
+
+func TestAgentCompleteAllowsCompletedAfterPersistedPlanTransitionClosesBinding(t *testing.T) {
+	runtime, workspaceID := newCompletionToolRuntime(t)
+	basePlan, baseOrder := completionPlanFixture(false)
+	base, err := plandoc.ParseParts(basePlan, baseOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completedPlan, completedOrder := completionPlanFixture(true)
+	completed, err := plandoc.ParseParts(completedPlan, completedOrder)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := WithMCPSessionID(context.Background(), "session-plan-completed")
+	ctx = WithCallSource(ctx, "tunnel")
+	ctx = WithApprovalCorrelation(ctx, "apc_plan_completed", "apr_plan_completed")
+	sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+	if _, err := runtime.PlanExecutions.Bind(sessionKey, plandoc.ExecutionBinding{
+		WorkspaceID: workspaceID, PlanName: "completion-plan",
+		BaselineContentID: base.ContentID(),
+		Phase:             plandoc.Phase{ID: "2A", Title: "Gate agent completion"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	transition, err := runtime.PlanExecutions.PrepareUpdate(sessionKey, workspaceID, "completion-plan", base.ContentID(), completed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.PlanExecutions.CommitUpdate(sessionKey, transition); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := runtime.Call(ctx, AgentCompleteToolName, map[string]any{
+		"workspace_id": workspaceID,
+		"status":       "completed",
+		"title":        "Finished bound phase",
+		"summary":      "Canonical phase progress persisted",
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("agent_complete result=%#v err=%v", result, err)
+	}
+	value := result.StructuredContent.(AgentCompleteResult)
+	if !value.Created || value.Record.Status != agentcompletion.StatusCompleted {
+		t.Fatalf("completion=%#v", value)
+	}
+}
+
+func TestAgentCompleteNonCompletedStatusesReleasePlanBindingAfterAccept(t *testing.T) {
+	for _, status := range []string{"partial", "blocked", "cancelled"} {
+		t.Run(status, func(t *testing.T) {
+			runtime, workspaceID := newCompletionToolRuntime(t)
+			ctx := WithMCPSessionID(context.Background(), "session-release-"+status)
+			ctx = WithCallSource(ctx, "stdio")
+			ctx = WithApprovalCorrelation(ctx, "apc_release_"+status, "apr_release_"+status)
+			sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+			binding := plandoc.ExecutionBinding{
+				WorkspaceID: workspaceID, PlanName: "release-plan",
+				BaselineContentID: "sha256:" + strings.Repeat("b", 64),
+				Phase:             plandoc.Phase{ID: "2A", Title: "Gate agent completion"},
+			}
+			if _, err := runtime.PlanExecutions.Bind(sessionKey, binding); err != nil {
+				t.Fatal(err)
+			}
+			result, err := runtime.Call(ctx, AgentCompleteToolName, map[string]any{
+				"workspace_id": workspaceID, "status": status, "title": "Stopped before phase completion",
+			})
+			if err != nil || result.IsError {
+				t.Fatalf("agent_complete result=%#v err=%v", result, err)
+			}
+			if _, ok := runtime.PlanExecutions.Lookup(sessionKey, workspaceID); ok {
+				t.Fatal("plan binding was not released")
+			}
+			resume := binding
+			resume.BaselineContentID = "sha256:" + strings.Repeat("c", 64)
+			if _, err := runtime.PlanExecutions.Bind(sessionKey, resume); err != nil {
+				t.Fatalf("rebind after terminal %s failed: %v", status, err)
+			}
+		})
+	}
+}
+
 func TestAgentCompleteRejectsMalformedInputDeterministically(t *testing.T) {
 	runtime, workspaceID := newCompletionToolRuntime(t)
 	ctx := WithMCPSessionID(context.Background(), "session-invalid")
@@ -299,4 +421,14 @@ func completionErrorText(result Result, err error) string {
 		return result.Content[0].Text
 	}
 	return ""
+}
+
+func completionPlanFixture(completed bool) (string, string) {
+	mark := " "
+	acceptance := " "
+	if completed {
+		mark = "x"
+	}
+	return "# Completion plan\n\n## Goal\nGuard completion.\n\n## Phase 2A - Gate agent completion\n\n- [" + mark + "] Persist phase completion.\n\n## Acceptance\nPhase completion is guarded.",
+		"## Execution rules\nComplete one phase.\n\n## Why this order\nGuard after binding.\n\n## Ordered phases\n\n- [" + mark + "] Phase 2A - Gate agent completion\n\n## Terminal acceptance\n\n- [" + acceptance + "] Completion guard passes."
 }

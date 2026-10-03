@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
+	plandoc "go.mewis.me/codemcp/internal/plan"
 )
 
 const AgentCompleteToolName = "agent_complete"
@@ -15,7 +17,7 @@ type AgentCompleteResult struct {
 	Created bool                   `json:"created"`
 }
 
-func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Service) {
+func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Service, planExecutions *plandoc.ExecutionManager) {
 	if registry == nil {
 		return
 	}
@@ -59,17 +61,27 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 		if correlation.AgentID == "" || correlation.Source == "" {
 			return Result{}, errors.New("agent completion requires trusted runtime correlation")
 		}
+		completionStatus := agentcompletion.Status(status)
+		sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+		if planExecutions != nil {
+			if binding, ok := planExecutions.Lookup(sessionKey, workspaceID); ok && completionStatus == agentcompletion.StatusCompleted && !binding.Closed {
+				return Result{}, fmt.Errorf("plan %q phase %s (%s) is not persisted as completed; update the canonical plan with create_plan mode=update before agent_complete(status=completed)", binding.PlanName, binding.Phase.ID, binding.Phase.Title)
+			}
+		}
 		record, created, err := service.Accept(
 			agentcompletion.Identity{AgentID: correlation.AgentID, Source: correlation.Source},
 			agentcompletion.Input{
 				WorkspaceID: workspaceID,
-				Status:      agentcompletion.Status(status),
+				Status:      completionStatus,
 				Title:       title,
 				Summary:     summary,
 			},
 		)
 		if err != nil {
 			return Result{}, err
+		}
+		if planExecutions != nil && completionStatus != agentcompletion.StatusCompleted {
+			planExecutions.Release(sessionKey, workspaceID)
 		}
 		return JSONResult(AgentCompleteResult{Record: record, Created: created}), nil
 	})
