@@ -122,7 +122,7 @@ func TestLLMSecretPurgeAndUninitializeLeaveNoManagedCredential(t *testing.T) {
 	if _, err := service.Set(t.Context(), "llm.api_key", secret); err != nil {
 		t.Fatal(err)
 	}
-	if err := UninitializeContext(t.Context(), root); err != nil {
+	if err := uninitializeContext(t.Context(), root, applicationTestOwnedProfileResolver(root)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := llm.LoadCredential(root, "ollama"); !errors.Is(err, secretstore.ErrNotFound) {

@@ -2,15 +2,21 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
 
 	"github.com/chromedp/cdproto/browser"
+	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/inspector"
 	cdpruntime "github.com/chromedp/cdproto/runtime"
+	"github.com/chromedp/cdproto/target"
 	"github.com/chromedp/chromedp"
 )
 
@@ -27,7 +33,11 @@ func (chromedpConnector) Connect(ctx context.Context, endpoint BrowserEndpoint) 
 		return nil, errors.New("browser CDP endpoint is required")
 	}
 	allocatorCtx, allocatorCancel := chromedp.NewRemoteAllocator(context.Background(), url)
-	browserCtx, browserCancel := chromedp.NewContext(allocatorCtx)
+	var contextOptions []chromedp.ContextOption
+	if targetID, targetErr := existingPageTargetID(ctx, url); targetErr == nil && targetID != "" {
+		contextOptions = append(contextOptions, chromedp.WithTargetID(targetID))
+	}
+	browserCtx, browserCancel := chromedp.NewContext(allocatorCtx, contextOptions...)
 	ready := make(chan error, 1)
 	go func() {
 		ready <- chromedp.Run(browserCtx, chromedp.ActionFunc(func(ctx context.Context) error {
@@ -46,9 +56,22 @@ func (chromedpConnector) Connect(ctx context.Context, endpoint BrowserEndpoint) 
 		allocatorCancel()
 		return nil, err
 	}
+	cdpContext := chromedp.FromContext(browserCtx)
+	if cdpContext == nil || cdpContext.Target == nil || strings.TrimSpace(cdpContext.Target.TargetID.String()) == "" {
+		browserCancel()
+		allocatorCancel()
+		return nil, errors.New("browser bootstrap target id is unavailable")
+	}
+	bootstrap := newChromedpBrowserTab(browserCtx, cdpContext.Target.TargetID.String(), true)
+	chromedp.ListenTarget(browserCtx, func(event any) {
+		if _, ok := event.(*inspector.EventTargetCrashed); ok {
+			bootstrap.fail(errors.New("browser tab target crashed"))
+		}
+	})
+	go bootstrap.observe()
 	client := &chromedpBrowserClient{
 		ctx: browserCtx, cancel: browserCancel,
-		allocatorCancel: allocatorCancel, done: make(chan struct{}),
+		allocatorCancel: allocatorCancel, done: make(chan struct{}), bootstrap: bootstrap,
 	}
 	go client.observe()
 	return client, nil
@@ -61,8 +84,9 @@ type chromedpBrowserClient struct {
 	done            chan struct{}
 	closing         atomic.Bool
 
-	mu  sync.Mutex
-	err error
+	mu        sync.Mutex
+	err       error
+	bootstrap *chromedpBrowserTab
 }
 
 func (client *chromedpBrowserClient) observe() {
@@ -87,6 +111,19 @@ func (client *chromedpBrowserClient) NewTab(ctx context.Context, url string) (Br
 		return nil, errors.New("browser CDP connection is closed")
 	default:
 	}
+	client.mu.Lock()
+	bootstrap := client.bootstrap
+	client.bootstrap = nil
+	client.mu.Unlock()
+	if bootstrap != nil {
+		if next := strings.TrimSpace(url); next != "" && next != "about:blank" {
+			if err := bootstrap.Navigate(ctx, next); err != nil {
+				_ = bootstrap.Close(context.Background())
+				return nil, err
+			}
+		}
+		return bootstrap, nil
+	}
 	tabCtx, tabCancel := chromedp.NewContext(client.ctx)
 	ready := make(chan error, 1)
 	go func() {
@@ -107,11 +144,8 @@ func (client *chromedpBrowserClient) NewTab(ctx context.Context, url string) (Br
 		tabCancel()
 		return nil, errors.New("browser tab target id is unavailable")
 	}
-	tab := &chromedpBrowserTab{
-		ctx: tabCtx, cancel: tabCancel,
-		id:   cdpContext.Target.TargetID.String(),
-		done: make(chan struct{}),
-	}
+	tab := newChromedpBrowserTab(tabCtx, cdpContext.Target.TargetID.String(), false)
+	tab.cancel = tabCancel
 	chromedp.ListenTarget(tabCtx, func(event any) {
 		if _, ok := event.(*inspector.EventTargetCrashed); ok {
 			tab.fail(errors.New("browser tab target crashed"))
@@ -133,11 +167,30 @@ func (client *chromedpBrowserClient) Minimize(ctx context.Context) error {
 	result := make(chan error, 1)
 	go func() {
 		result <- chromedp.Run(opCtx, chromedp.ActionFunc(func(ctx context.Context) error {
-			windowID, _, err := browser.GetWindowForTarget().Do(ctx)
+			cdpContext := chromedp.FromContext(client.ctx)
+			if cdpContext == nil || cdpContext.Browser == nil {
+				return errors.New("browser CDP executor is unavailable")
+			}
+			browserExecutor := cdp.WithExecutor(ctx, cdpContext.Browser)
+			targets, err := target.GetTargets().Do(browserExecutor)
 			if err != nil {
 				return err
 			}
-			return browser.SetWindowBounds(windowID, &browser.Bounds{WindowState: browser.WindowStateMinimized}).Do(ctx)
+			var pageTarget target.ID
+			for _, info := range targets {
+				if info.Type == "page" {
+					pageTarget = info.TargetID
+					break
+				}
+			}
+			if pageTarget == "" {
+				return errors.New("browser has no page target to minimize")
+			}
+			windowID, _, err := browser.GetWindowForTarget().WithTargetID(pageTarget).Do(browserExecutor)
+			if err != nil {
+				return err
+			}
+			return browser.SetWindowBounds(windowID, &browser.Bounds{WindowState: browser.WindowStateMinimized}).Do(browserExecutor)
 		}))
 	}()
 	select {
@@ -167,9 +220,13 @@ func (client *chromedpBrowserClient) Close(ctx context.Context) error {
 	}
 	result := make(chan error, 1)
 	go func() {
-		err := chromedp.Run(client.ctx, chromedp.ActionFunc(func(ctx context.Context) error {
-			return browser.Close().Do(ctx)
-		}))
+		cdpContext := chromedp.FromContext(client.ctx)
+		var err error
+		if cdpContext == nil || cdpContext.Browser == nil {
+			err = errors.New("browser CDP executor is unavailable")
+		} else {
+			err = browser.Close().Do(cdp.WithExecutor(client.ctx, cdpContext.Browser))
+		}
 		client.cancel()
 		client.allocatorCancel()
 		result <- err
@@ -193,10 +250,19 @@ type chromedpBrowserTab struct {
 	id     string
 	done   chan struct{}
 
-	closed atomic.Bool
-	once   sync.Once
-	mu     sync.Mutex
-	err    error
+	closed        atomic.Bool
+	once          sync.Once
+	mu            sync.Mutex
+	err           error
+	sharedContext bool
+}
+
+func newChromedpBrowserTab(ctx context.Context, id string, sharedContext bool) *chromedpBrowserTab {
+	tab := &chromedpBrowserTab{ctx: ctx, id: id, done: make(chan struct{}), sharedContext: sharedContext}
+	if sharedContext {
+		tab.cancel = func() {}
+	}
+	return tab
 }
 
 func (tab *chromedpBrowserTab) ID() string { return tab.id }
@@ -250,6 +316,10 @@ func (tab *chromedpBrowserTab) fail(err error) {
 		tab.err = err
 	}
 	tab.mu.Unlock()
+	if tab.sharedContext {
+		tab.once.Do(func() { close(tab.done) })
+		return
+	}
 	tab.cancel()
 }
 
@@ -273,6 +343,24 @@ func (tab *chromedpBrowserTab) Close(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if tab.sharedContext {
+		cdpContext := chromedp.FromContext(tab.ctx)
+		if cdpContext == nil || cdpContext.Browser == nil {
+			tab.once.Do(func() { close(tab.done) })
+			return errors.New("browser CDP executor is unavailable")
+		}
+		result := make(chan error, 1)
+		go func() {
+			result <- target.CloseTarget(target.ID(tab.id)).Do(cdp.WithExecutor(ctx, cdpContext.Browser))
+		}()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-result:
+			tab.once.Do(func() { close(tab.done) })
+			return err
+		}
+	}
 	result := make(chan error, 1)
 	go func() {
 		result <- chromedp.Cancel(tab.ctx)
@@ -285,4 +373,64 @@ func (tab *chromedpBrowserTab) Close(ctx context.Context) error {
 	case err := <-result:
 		return err
 	}
+}
+
+func existingPageTargetID(ctx context.Context, websocketURL string) (target.ID, error) {
+	endpoint, err := devToolsHTTPEndpoint(websocketURL)
+	if err != nil {
+		return "", err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/json/list", nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := (&http.Client{}).Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", fmt.Errorf("CDP target endpoint returned %s", response.Status)
+	}
+	var targets []struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+		URL  string `json:"url"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 256<<10)).Decode(&targets); err != nil {
+		return "", err
+	}
+	var firstPage target.ID
+	for _, item := range targets {
+		if item.Type == "page" && strings.TrimSpace(item.ID) != "" {
+			id := target.ID(strings.TrimSpace(item.ID))
+			if firstPage == "" {
+				firstPage = id
+			}
+			if strings.TrimSpace(item.URL) == "about:blank" {
+				return id, nil
+			}
+		}
+	}
+	return firstPage, nil
+}
+
+func devToolsHTTPEndpoint(websocketURL string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(websocketURL))
+	if err != nil || parsed.Host == "" {
+		return "", errors.New("invalid browser websocket endpoint")
+	}
+	switch parsed.Scheme {
+	case "ws":
+		parsed.Scheme = "http"
+	case "wss":
+		parsed.Scheme = "https"
+	default:
+		return "", errors.New("browser endpoint is not a websocket URL")
+	}
+	parsed.Path = ""
+	parsed.RawPath = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimRight(parsed.String(), "/"), nil
 }

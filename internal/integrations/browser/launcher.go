@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -73,11 +74,14 @@ func launchExecBrowser(ctx context.Context, request LaunchRequest) (BrowserProce
 	if err := cmd.Start(); err != nil {
 		return nil, BrowserEndpoint{}, err
 	}
-	process := newExecBrowserProcess(cmd)
-	endpoint, err := waitBrowserEndpoint(ctx, localProfile, process)
+	var process BrowserProcess = newExecBrowserProcess(cmd)
+	endpoint, relay, err := waitBrowserEndpoint(ctx, request.Candidate, localProfile, process)
 	if err != nil {
 		_ = process.Close(context.Background())
 		return nil, BrowserEndpoint{}, err
+	}
+	if relay != nil {
+		process = newRelayedBrowserProcess(process, relay)
 	}
 	return process, endpoint, nil
 }
@@ -89,6 +93,7 @@ func managerLaunchArgs(profile string, minimized bool) []string {
 		"--remote-debugging-address=127.0.0.1",
 		"--remote-debugging-port=0",
 		"--user-data-dir=" + profile,
+		"--profile-directory=" + managedProfileDirectory,
 		"--new-window",
 	}
 	if minimized {
@@ -97,56 +102,96 @@ func managerLaunchArgs(profile string, minimized bool) []string {
 	return append(args, "about:blank")
 }
 
-func waitBrowserEndpoint(ctx context.Context, localProfile string, process BrowserProcess) (BrowserEndpoint, error) {
+func waitBrowserEndpoint(ctx context.Context, candidate Candidate, localProfile string, process BrowserProcess) (BrowserEndpoint, *loopbackRelay, error) {
 	portFile := filepath.Join(localProfile, "DevToolsActivePort")
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
+	processDone := process.Done()
+	if candidate.Transport == TransportWSLHost {
+		processDone = nil
+	}
 	for {
 		select {
 		case <-ctx.Done():
-			return BrowserEndpoint{}, ctx.Err()
-		case <-process.Done():
+			return BrowserEndpoint{}, nil, ctx.Err()
+		case <-processDone:
 			if err := process.Err(); err != nil {
-				return BrowserEndpoint{}, fmt.Errorf("browser exited before CDP became ready: %w", err)
+				return BrowserEndpoint{}, nil, fmt.Errorf("browser exited before CDP became ready: %w", err)
 			}
-			return BrowserEndpoint{}, errors.New("browser exited before CDP became ready")
+			return BrowserEndpoint{}, nil, errors.New("browser exited before CDP became ready")
 		case <-ticker.C:
 			port, err := readDevToolsPort(portFile)
 			if err != nil {
 				continue
 			}
 			endpoint := fmt.Sprintf("http://127.0.0.1:%d", port)
-			if err := verifyBrowserEndpoint(ctx, endpoint); err == nil {
-				return BrowserEndpoint{URL: endpoint}, nil
+			var relay *loopbackRelay
+			if candidate.Transport == TransportWSLHost {
+				relay, err = startWindowsLoopbackRelay(port)
+				if err != nil {
+					return BrowserEndpoint{}, nil, err
+				}
+				endpoint = relay.URL()
+			}
+			websocketURL, verifyErr := browserWebSocketURL(ctx, endpoint)
+			if verifyErr == nil {
+				if relay != nil {
+					websocketURL, verifyErr = relayWebSocketURL(relay.URL(), websocketURL)
+				}
+				if verifyErr == nil {
+					return BrowserEndpoint{URL: websocketURL}, relay, nil
+				}
+			}
+			if relay != nil {
+				_ = relay.Close()
 			}
 		}
 	}
 }
 
 func verifyBrowserEndpoint(ctx context.Context, endpoint string) error {
+	_, err := browserWebSocketURL(ctx, endpoint)
+	return err
+}
+
+func browserWebSocketURL(ctx context.Context, endpoint string) (string, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(endpoint, "/")+"/json/version", nil)
 	if err != nil {
-		return err
+		return "", err
 	}
-	client := &http.Client{Timeout: 500 * time.Millisecond}
+	client := &http.Client{Timeout: 2 * time.Second}
 	response, err := client.Do(request)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return fmt.Errorf("CDP version endpoint returned %s", response.Status)
+		return "", fmt.Errorf("CDP version endpoint returned %s", response.Status)
 	}
 	var payload struct {
 		WebSocketDebuggerURL string `json:"webSocketDebuggerUrl"`
 	}
 	if err := json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&payload); err != nil {
-		return err
+		return "", err
 	}
-	if strings.TrimSpace(payload.WebSocketDebuggerURL) == "" {
-		return errors.New("CDP version endpoint has no browser websocket")
+	websocketURL := strings.TrimSpace(payload.WebSocketDebuggerURL)
+	if websocketURL == "" {
+		return "", errors.New("CDP version endpoint has no browser websocket")
 	}
-	return nil
+	return websocketURL, nil
+}
+
+func relayWebSocketURL(relayEndpoint, remoteWebSocket string) (string, error) {
+	relayURL, err := url.Parse(strings.TrimSpace(relayEndpoint))
+	if err != nil || relayURL.Host == "" {
+		return "", errors.New("invalid local browser relay endpoint")
+	}
+	websocketURL, err := url.Parse(strings.TrimSpace(remoteWebSocket))
+	if err != nil || websocketURL.Host == "" || (websocketURL.Scheme != "ws" && websocketURL.Scheme != "wss") {
+		return "", errors.New("invalid browser websocket endpoint")
+	}
+	websocketURL.Host = relayURL.Host
+	return websocketURL.String(), nil
 }
 
 type execBrowserProcess struct {

@@ -136,7 +136,7 @@ func TestUninitializeRemovesManagedRoot(t *testing.T) {
 	if _, err := Initialize(InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Uninitialize(root); err != nil {
+	if err := uninitializeContext(t.Context(), root, applicationTestOwnedProfileResolver(root)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(root); !os.IsNotExist(err) {
@@ -204,7 +204,7 @@ func TestUninitializePreservesUnrelatedFilesInManagedRoot(t *testing.T) {
 	if _, err := Initialize(InitOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := Uninitialize(root); err != nil {
+	if err := uninitializeContext(t.Context(), root, applicationTestOwnedProfileResolver(root)); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(unrelated)
@@ -237,7 +237,7 @@ func TestUninitializePreservesWorkspaceLocalState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "workspaces.json"), []byte(`{"workspaces":[]}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := UninitializeContext(t.Context(), root); err != nil {
+	if err := uninitializeContext(t.Context(), root, applicationTestOwnedProfileResolver(root)); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(workspaceFile)

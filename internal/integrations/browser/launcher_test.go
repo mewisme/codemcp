@@ -2,6 +2,10 @@ package browser
 
 import (
 	"context"
+	"io"
+	"net"
+	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -14,6 +18,7 @@ func TestManagerLaunchArgsUseVisibleDedicatedWindowAndPrivateCDP(t *testing.T) {
 		"--remote-debugging-address=127.0.0.1",
 		"--remote-debugging-port=0",
 		"--user-data-dir=/tmp/codemcp-browser-profile",
+		"--profile-directory=Default",
 		"about:blank",
 	} {
 		if !strings.Contains(joined, required) {
@@ -58,5 +63,100 @@ func TestLaunchAdapterRejectsHeadlessManagedRequest(t *testing.T) {
 		Visible: false,
 	}); err == nil {
 		t.Fatal("managed browser launcher accepted a non-visible request")
+	}
+}
+
+func TestLoopbackRelayBindsOnlyLocalhostAndForwardsHTTP(t *testing.T) {
+	remote, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer remote.Close()
+	go func() {
+		for {
+			connection, err := remote.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer connection.Close()
+				buffer := make([]byte, 4096)
+				if count, _ := connection.Read(buffer); count > 0 {
+					_, _ = connection.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"))
+				}
+			}()
+		}
+	}()
+
+	bridge := func(connection net.Conn, port int) {
+		upstream, err := net.Dial("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+		if err != nil {
+			return
+		}
+		defer upstream.Close()
+		done := make(chan struct{}, 1)
+		go func() {
+			_, _ = io.Copy(upstream, connection)
+			done <- struct{}{}
+		}()
+		_, _ = io.Copy(connection, upstream)
+		<-done
+	}
+	relay, err := startLoopbackRelay(remote.Addr().(*net.TCPAddr).Port, bridge)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relay.Close()
+	if !strings.HasPrefix(relay.URL(), "http://127.0.0.1:") {
+		t.Fatalf("relay URL=%q", relay.URL())
+	}
+	response, err := http.Get(relay.URL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != http.StatusOK || string(body) != "ok" {
+		t.Fatalf("status=%s body=%q", response.Status, body)
+	}
+}
+
+func TestRelayWebSocketURLKeepsBrowserPathOnLocalLoopback(t *testing.T) {
+	got, err := relayWebSocketURL(
+		"http://127.0.0.1:40123",
+		"ws://127.0.0.1:59671/devtools/browser/abc123",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "ws://127.0.0.1:40123/devtools/browser/abc123" {
+		t.Fatalf("relay websocket=%q", got)
+	}
+}
+
+func TestRelayedBrowserProcessIgnoresShortLivedWSLLauncherProcess(t *testing.T) {
+	relay, err := startLoopbackRelay(9222, func(net.Conn, int) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := newFakeProcess(42)
+	process := newRelayedBrowserProcess(base, relay)
+	base.stop(nil)
+
+	select {
+	case <-process.Done():
+		t.Fatal("relay process ended when the short-lived Windows launcher exited")
+	default:
+	}
+	if process.PID() != 0 {
+		t.Fatalf("stale launcher pid=%d", process.PID())
+	}
+	if err := process.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-process.Done():
+	default:
+		t.Fatal("relay process did not close")
 	}
 }

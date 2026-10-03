@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const managedProfileDirectory = "Default"
+
 type ProfileOptions struct {
 	StateRoot string
 	Candidate Candidate
@@ -95,9 +97,16 @@ func PrepareProfile(profile ProfileRef) error {
 	if err := os.MkdirAll(path, 0700); err != nil {
 		return fmt.Errorf("create browser profile: %w", err)
 	}
+	defaultProfile := filepath.Join(path, managedProfileDirectory)
+	if err := os.MkdirAll(defaultProfile, 0700); err != nil {
+		return fmt.Errorf("create managed browser Default profile: %w", err)
+	}
 	if profile.Transport == TransportNative {
 		if err := os.Chmod(path, 0700); err != nil {
 			return fmt.Errorf("secure browser profile permissions: %w", err)
+		}
+		if err := os.Chmod(defaultProfile, 0700); err != nil {
+			return fmt.Errorf("secure managed browser Default profile permissions: %w", err)
 		}
 	}
 	return nil

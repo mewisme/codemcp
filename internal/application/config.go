@@ -143,12 +143,16 @@ func Uninitialize(root string) error {
 }
 
 func UninitializeContext(ctx context.Context, root string) error {
+	return uninitializeContext(ctx, root, browser.ResolveOwnedProfiles)
+}
+
+func uninitializeContext(ctx context.Context, root string, resolve ownedBrowserProfileResolver) error {
 	span := tracepkg.Start(ctx, "CONFIG", "config.uninitialize", "Removing local configuration and state", tracepkg.String("root", root))
 	if err := PurgeStoredSecretsContext(ctx, root); err != nil {
 		span.FailMessage("Local configuration secret purge failed", err, tracepkg.String("root", root))
 		return err
 	}
-	if err := removeOwnedBrowserProfiles(ctx, root, browser.ResolveOwnedProfiles); err != nil {
+	if err := removeOwnedBrowserProfiles(ctx, root, resolve); err != nil {
 		span.FailMessage("CodeMCP browser profile cleanup failed", err, tracepkg.String("root", root))
 		return err
 	}

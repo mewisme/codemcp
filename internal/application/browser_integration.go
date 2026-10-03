@@ -56,10 +56,14 @@ func NewBrowserIntegrationService() *BrowserIntegrationService {
 }
 
 func (service *BrowserIntegrationService) Status(ctx context.Context) (BrowserIntegrationStatus, error) {
-	_, capability, err := service.capability(ctx)
+	_, capability, err := service.capability(ctx, true)
 	if err != nil {
 		return BrowserIntegrationStatus{}, err
 	}
+	return browserIntegrationStatus(capability)
+}
+
+func browserIntegrationStatus(capability browser.Capability) (BrowserIntegrationStatus, error) {
 	status := BrowserIntegrationStatus{
 		Enabled: capability.Enabled, Family: capability.Family, Version: capability.Version,
 		HostPlatform: capability.HostPlatform, Transport: capability.Transport,
@@ -92,7 +96,11 @@ func (service *BrowserIntegrationService) Status(ctx context.Context) (BrowserIn
 }
 
 func (service *BrowserIntegrationService) Doctor(ctx context.Context) (BrowserDoctorResult, error) {
-	status, err := service.Status(ctx)
+	_, capability, err := service.capability(ctx, false)
+	if err != nil {
+		return BrowserDoctorResult{}, err
+	}
+	status, err := browserIntegrationStatus(capability)
 	if err != nil {
 		return BrowserDoctorResult{}, err
 	}
@@ -114,7 +122,7 @@ func (service *BrowserIntegrationService) Doctor(ctx context.Context) (BrowserDo
 	return result, nil
 }
 
-func (service *BrowserIntegrationService) capability(ctx context.Context) (config.Config, browser.Capability, error) {
+func (service *BrowserIntegrationService) capability(ctx context.Context, passive bool) (config.Config, browser.Capability, error) {
 	if service == nil || service.LoadConfig == nil || service.Root == nil || service.Detect == nil {
 		return config.Config{}, browser.Capability{}, errors.New("browser integration service is unavailable")
 	}
@@ -127,7 +135,7 @@ func (service *BrowserIntegrationService) capability(ctx context.Context) (confi
 	}
 	capability := service.Detect(ctx, browser.Options{
 		Enabled: cfg.Integrations.Browser.Enabled, ConfiguredPath: cfg.Integrations.Browser.Path,
-		StateRoot: service.Root(),
+		StateRoot: service.Root(), Passive: passive,
 	})
 	return cfg, capability, nil
 }

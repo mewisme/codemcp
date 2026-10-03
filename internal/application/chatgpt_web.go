@@ -73,7 +73,7 @@ func (service *ChatGPTWebService) AgentBackendSettings(ctx context.Context) (cha
 	if service == nil {
 		return chatgptweb.AgentBackendSettings{}, errors.New("ChatGPT Web integration service is unavailable")
 	}
-	status, err := service.Status(ctx)
+	status, err := service.status(ctx, false, false)
 	if err != nil {
 		return chatgptweb.AgentBackendSettings{}, err
 	}
@@ -96,7 +96,7 @@ func (service *ChatGPTWebService) AgentBrowserRuntime(ctx context.Context, maxAg
 	if maxAgents < 1 || maxAgents > chatgptweb.DefaultMaxAgents {
 		return nil, fmt.Errorf("ChatGPT Web max agents must be between 1 and %d", chatgptweb.DefaultMaxAgents)
 	}
-	status, err := service.Status(ctx)
+	status, err := service.status(ctx, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (service *ChatGPTWebService) AgentBrowserRuntime(ctx context.Context, maxAg
 		}
 		return nil, fmt.Errorf("ChatGPT Web backend unavailable: %s", boundedIntegrationReason(reason))
 	}
-	_, capability, err := service.capability(ctx)
+	_, capability, err := service.capability(ctx, false)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func (service *ChatGPTWebService) ReconcileRuntimeConfig(ctx context.Context) er
 	if service == nil {
 		return nil
 	}
-	cfg, capability, err := service.capability(ctx)
+	cfg, capability, err := service.capability(ctx, true)
 	if err != nil {
 		return err
 	}
@@ -255,11 +255,11 @@ func NewChatGPTWebService() *ChatGPTWebService {
 }
 
 func (service *ChatGPTWebService) Status(ctx context.Context) (ChatGPTWebStatus, error) {
-	return service.status(ctx, false)
+	return service.status(ctx, false, true)
 }
 
-func (service *ChatGPTWebService) status(ctx context.Context, browserLocked bool) (ChatGPTWebStatus, error) {
-	cfg, capability, err := service.capability(ctx)
+func (service *ChatGPTWebService) status(ctx context.Context, browserLocked bool, passive bool) (ChatGPTWebStatus, error) {
+	cfg, capability, err := service.capability(ctx, passive)
 	if err != nil {
 		return ChatGPTWebStatus{}, err
 	}
@@ -269,7 +269,7 @@ func (service *ChatGPTWebService) status(ctx context.Context, browserLocked bool
 		status.State = chatgptweb.StateDisabled
 		return status, nil
 	}
-	if capability.State != browser.StateAvailable || !capability.Usable {
+	if capability.State != browser.StateAvailable || (!passive && !capability.Usable) {
 		status.State = chatgptweb.StateBrowserUnavailable
 		status.Reason = boundedIntegrationReason(capability.Reason)
 		return status, nil
@@ -343,7 +343,7 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 	}
 	service.browserMu.Lock()
 	defer service.browserMu.Unlock()
-	cfg, capability, err := service.capability(ctx)
+	cfg, capability, err := service.capability(ctx, false)
 	if err != nil {
 		return ChatGPTWebStatus{}, err
 	}
@@ -401,7 +401,7 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 		}
 		runtimeClosed = true
 	}
-	return service.status(ctx, true)
+	return service.status(ctx, true, true)
 }
 
 func (service *ChatGPTWebService) Doctor(ctx context.Context) (ChatGPTWebDoctorResult, error) {
@@ -410,7 +410,7 @@ func (service *ChatGPTWebService) Doctor(ctx context.Context) (ChatGPTWebDoctorR
 	}
 	service.browserMu.Lock()
 	defer service.browserMu.Unlock()
-	status, err := service.status(ctx, true)
+	status, err := service.status(ctx, true, false)
 	if err != nil {
 		return ChatGPTWebDoctorResult{}, err
 	}
@@ -423,7 +423,7 @@ func (service *ChatGPTWebService) Doctor(ctx context.Context) (ChatGPTWebDoctorR
 	if !status.Enabled || !status.Authenticated || status.BrowserState == BrowserIntegrationUnavailable || status.BrowserState == BrowserIntegrationDisabled {
 		return result, nil
 	}
-	_, capability, err := service.capability(ctx)
+	_, capability, err := service.capability(ctx, false)
 	if err != nil {
 		return ChatGPTWebDoctorResult{}, err
 	}
@@ -519,10 +519,10 @@ func (service *ChatGPTWebService) Logout(ctx context.Context, force bool) (ChatG
 	if err := chatgptweb.RemoveAuthMarker(service.Root()); err != nil {
 		return ChatGPTWebStatus{}, err
 	}
-	return service.status(ctx, true)
+	return service.status(ctx, true, true)
 }
 
-func (service *ChatGPTWebService) capability(ctx context.Context) (config.Config, browser.Capability, error) {
+func (service *ChatGPTWebService) capability(ctx context.Context, passive bool) (config.Config, browser.Capability, error) {
 	if service == nil || service.LoadConfig == nil || service.Root == nil || service.Detect == nil {
 		return config.Config{}, browser.Capability{}, errors.New("ChatGPT Web integration service is unavailable")
 	}
@@ -535,7 +535,7 @@ func (service *ChatGPTWebService) capability(ctx context.Context) (config.Config
 	}
 	capability := service.Detect(ctx, browser.Options{
 		Enabled: cfg.Integrations.Browser.Enabled, ConfiguredPath: cfg.Integrations.Browser.Path,
-		StateRoot: service.Root(),
+		StateRoot: service.Root(), Passive: passive,
 	})
 	return cfg, capability, nil
 }

@@ -183,6 +183,36 @@ func TestBrowserIntegrationStatusDistinguishesUnavailableAndRunning(t *testing.T
 	}
 }
 
+func TestBrowserIntegrationStatusIsPassiveAndDoctorIsActive(t *testing.T) {
+	cfg := config.Default()
+	root := t.TempDir()
+	profile := applicationTestProfile(root)
+	if err := browser.PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	var calls []browser.Options
+	service := &BrowserIntegrationService{
+		LoadConfig: func() (config.Config, error) { return cfg, nil },
+		Root:       func() string { return root },
+		Detect: func(_ context.Context, options browser.Options) browser.Capability {
+			calls = append(calls, options)
+			return applicationTestCapability(profile)
+		},
+	}
+	if _, err := service.Status(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || !calls[0].Passive {
+		t.Fatalf("status detection options=%#v", calls)
+	}
+	if _, err := service.Doctor(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 2 || calls[1].Passive {
+		t.Fatalf("doctor detection options=%#v", calls)
+	}
+}
+
 func TestChatGPTWebStatusStateMatrix(t *testing.T) {
 	root := t.TempDir()
 	profile := applicationTestProfile(root)
@@ -234,6 +264,34 @@ func TestChatGPTWebStatusStateMatrix(t *testing.T) {
 				t.Fatalf("status=%#v err=%v want=%q", status, err, test.want)
 			}
 		})
+	}
+}
+
+func TestChatGPTWebStatusIsPassive(t *testing.T) {
+	root := t.TempDir()
+	profile := applicationTestProfile(root)
+	if err := browser.PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	service := newApplicationChatGPTWebTestService(root, applicationChatGPTWebConfig(), profile)
+	var calls []browser.Options
+	service.Detect = func(_ context.Context, options browser.Options) browser.Capability {
+		calls = append(calls, options)
+		capability := applicationTestCapability(profile)
+		if options.Passive {
+			capability.Usable = false
+		}
+		return capability
+	}
+	status, err := service.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != chatgptweb.StateNeedsLogin {
+		t.Fatalf("status=%#v", status)
+	}
+	if len(calls) != 1 || !calls[0].Passive {
+		t.Fatalf("status detection options=%#v", calls)
 	}
 }
 
@@ -625,6 +683,12 @@ func applicationTestProfile(root string) browser.ProfileRef {
 		Path:         filepath.Join(root, "browser", "chatgpt"),
 		LocalPath:    filepath.Join(root, "browser", "chatgpt"),
 		LockPath:     filepath.Join(root, "browser", "chatgpt.lock"),
+	}
+}
+
+func applicationTestOwnedProfileResolver(root string) ownedBrowserProfileResolver {
+	return func(context.Context, browser.OwnedProfileOptions) ([]browser.ProfileRef, error) {
+		return []browser.ProfileRef{applicationTestProfile(root)}, nil
 	}
 }
 

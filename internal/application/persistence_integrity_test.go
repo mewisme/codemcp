@@ -133,7 +133,7 @@ func TestUninitializeRemovesOwnedGlobalPersistenceAndTelemetryIdentity(t *testin
 		t.Fatal(err)
 	}
 
-	if err := UninitializeContext(t.Context(), root); err != nil {
+	if err := uninitializeContext(t.Context(), root, applicationTestOwnedProfileResolver(root)); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range ownedRoots {

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,11 +20,13 @@ type Options struct {
 	ConfiguredPath string
 	StateRoot      string
 	Runtime        Runtime
+	Passive        bool
 }
 
 type Runtime struct {
 	GOOS           string
 	Env            func(string) string
+	KernelRelease  func() string
 	LookPath       func(string) (string, error)
 	Exists         func(string) bool
 	WindowsEnv     func(context.Context, string) (string, error)
@@ -47,16 +48,23 @@ func Detect(ctx context.Context, options Options) Capability {
 		if err != nil {
 			return unavailable(true, err.Error())
 		}
+		if options.Passive {
+			return discoverCapability(options.StateRoot, runtime, candidate)
+		}
 		return probeCapability(ctx, options.StateRoot, runtime, candidate)
 	}
 
+	var lastFailure Capability
 	for _, candidate := range nativeCandidates(runtime) {
 		if !runtime.Exists(candidate.LocalExecutable) {
 			continue
 		}
-		capability := probeCapability(ctx, options.StateRoot, runtime, candidate)
-		if capability.Usable {
+		capability := evaluateCapability(ctx, options, runtime, candidate)
+		if capability.State == StateAvailable && (options.Passive || capability.Usable) {
 			return capability
+		}
+		if strings.TrimSpace(capability.Reason) != "" {
+			lastFailure = capability
 		}
 	}
 	if isWSL(runtime) {
@@ -64,13 +72,48 @@ func Detect(ctx context.Context, options Options) Capability {
 			if candidate.LocalExecutable == "" || !runtime.Exists(candidate.LocalExecutable) {
 				continue
 			}
-			capability := probeCapability(ctx, options.StateRoot, runtime, candidate)
-			if capability.Usable {
+			capability := evaluateCapability(ctx, options, runtime, candidate)
+			if capability.State == StateAvailable && (options.Passive || capability.Usable) {
 				return capability
+			}
+			if strings.TrimSpace(capability.Reason) != "" {
+				lastFailure = capability
 			}
 		}
 	}
+	if strings.TrimSpace(lastFailure.Reason) != "" {
+		return lastFailure
+	}
 	return unavailable(true, "no usable Chrome, Chromium, or Edge browser was detected")
+}
+
+func evaluateCapability(ctx context.Context, options Options, runtime Runtime, candidate Candidate) Capability {
+	if options.Passive {
+		return discoverCapability(options.StateRoot, runtime, candidate)
+	}
+	return probeCapability(ctx, options.StateRoot, runtime, candidate)
+}
+
+func discoverCapability(root string, runtime Runtime, candidate Candidate) Capability {
+	graphical := graphicalAvailable(runtime, candidate)
+	if !graphical {
+		return Capability{
+			State: StateUnavailable, Enabled: true, Family: candidate.Family,
+			Executable: candidate.Executable, HostPlatform: candidate.HostPlatform,
+			Transport: candidate.Transport, Graphical: false,
+			Reason: "no graphical browser session is available",
+		}
+	}
+	profile, err := ResolveProfile(ProfileOptions{StateRoot: root, Candidate: candidate})
+	if err != nil {
+		return unavailable(true, err.Error())
+	}
+	return Capability{
+		State: StateAvailable, Enabled: true, Available: true, Usable: false,
+		Family: candidate.Family, Executable: candidate.Executable,
+		HostPlatform: candidate.HostPlatform, Transport: candidate.Transport, Graphical: true,
+		ProfileHostPlatform: profile.HostPlatform, Profile: &profile, Candidate: &candidate,
+	}
 }
 
 func probeCapability(ctx context.Context, root string, runtime Runtime, candidate Candidate) Capability {
@@ -233,6 +276,9 @@ func normalizedRuntime(value Runtime) Runtime {
 	if value.Env == nil {
 		value.Env = os.Getenv
 	}
+	if value.KernelRelease == nil {
+		value.KernelRelease = currentKernelRelease
+	}
 	if value.LookPath == nil {
 		value.LookPath = exec.LookPath
 	}
@@ -269,6 +315,9 @@ func probeExecutable(ctx context.Context, runtime Runtime, candidate Candidate) 
 	}
 	family := parseFamily(versionOutput)
 	if family == "" {
+		family = candidate.Family
+	}
+	if family == "" {
 		return ProbeResult{Graphical: true, Reason: "browser version probe did not identify Chrome, Chromium, or Edge"}
 	}
 	version := parseVersion(versionOutput)
@@ -295,6 +344,9 @@ func probeCDPLoopback(ctx context.Context, candidate Candidate) error {
 		return err
 	}
 	defer os.RemoveAll(localProfile)
+	if err := prepareProbeProfile(localProfile, candidate.Transport); err != nil {
+		return err
+	}
 	hostProfile := localProfile
 	if candidate.Transport == TransportWSLHost {
 		hostProfile = joinHostPath("windows", hostParent, filepath.Base(localProfile))
@@ -323,18 +375,30 @@ func probeCDPLoopback(ctx context.Context, candidate Candidate) error {
 			if err != nil {
 				continue
 			}
-			client := &http.Client{Timeout: 500 * time.Millisecond}
-			request, _ := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://127.0.0.1:%d/json/version", port), nil)
-			response, err := client.Do(request)
-			if err != nil {
-				continue
+			endpoint := fmt.Sprintf("http://127.0.0.1:%d", port)
+			var relay *loopbackRelay
+			if candidate.Transport == TransportWSLHost {
+				relay, err = startWindowsLoopbackRelay(port)
+				if err != nil {
+					return err
+				}
+				endpoint = relay.URL()
 			}
-			_ = response.Body.Close()
-			if response.StatusCode >= 200 && response.StatusCode < 300 {
+			if err := verifyBrowserEndpoint(ctx, endpoint); err == nil {
+				if relay != nil {
+					_ = relay.Close()
+				}
 				return nil
+			}
+			if relay != nil {
+				_ = relay.Close()
 			}
 		}
 	}
+}
+
+func prepareProbeProfile(localProfile string, transport Transport) error {
+	return PrepareProfile(ProfileRef{Transport: transport, LocalPath: localProfile})
 }
 
 func readDevToolsPort(path string) (int, error) {
@@ -388,13 +452,13 @@ func browserProbeArgs(profile string) []string {
 		"--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
 		"--disable-component-update", "--disable-sync", "--disable-extensions",
 		"--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0",
-		"--user-data-dir=" + profile, "about:blank",
+		"--user-data-dir=" + profile, "--profile-directory=" + managedProfileDirectory, "about:blank",
 	}
 }
 
 func graphicalAvailable(runtime Runtime, candidate Candidate) bool {
 	if candidate.Transport == TransportWSLHost {
-		return runtime.Env("WSL_INTEROP") != "" || runtime.Env("WSL_DISTRO_NAME") != ""
+		return true
 	}
 	switch candidate.HostPlatform {
 	case "linux":
@@ -409,7 +473,22 @@ func graphicalAvailable(runtime Runtime, candidate Candidate) bool {
 }
 
 func isWSL(runtime Runtime) bool {
-	return runtime.GOOS == "linux" && (strings.TrimSpace(runtime.Env("WSL_INTEROP")) != "" || strings.TrimSpace(runtime.Env("WSL_DISTRO_NAME")) != "")
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	if strings.TrimSpace(runtime.Env("WSL_INTEROP")) != "" || strings.TrimSpace(runtime.Env("WSL_DISTRO_NAME")) != "" {
+		return true
+	}
+	release := strings.ToLower(strings.TrimSpace(runtime.KernelRelease()))
+	return strings.Contains(release, "microsoft") || strings.Contains(release, "wsl")
+}
+
+func currentKernelRelease() string {
+	data, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func windowsLocalAppData(ctx context.Context, runtime Runtime) (string, string, error) {
@@ -437,11 +516,21 @@ func defaultWindowsEnv(ctx context.Context, name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	value := strings.TrimSpace(output)
+	value := lastNonEmptyLine(output)
 	if value == "%"+name+"%" {
 		return "", nil
 	}
 	return value, nil
+}
+
+func lastNonEmptyLine(value string) string {
+	lines := strings.Split(strings.ReplaceAll(value, "\r\n", "\n"), "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		if line := strings.TrimSpace(lines[index]); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func defaultWindowsToLocal(ctx context.Context, value string) (string, error) {

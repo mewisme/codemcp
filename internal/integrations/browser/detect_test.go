@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 type fakeBrowserRuntime struct {
 	goos       string
 	env        map[string]string
+	kernel     string
 	windowsEnv map[string]string
 	look       map[string]string
 	exists     func(string) bool
@@ -21,8 +23,9 @@ type fakeBrowserRuntime struct {
 
 func (fake *fakeBrowserRuntime) runtime() Runtime {
 	return Runtime{
-		GOOS: fake.goos,
-		Env:  func(key string) string { return fake.env[key] },
+		GOOS:          fake.goos,
+		Env:           func(key string) string { return fake.env[key] },
+		KernelRelease: func() string { return fake.kernel },
 		LookPath: func(name string) (string, error) {
 			if value := fake.look[name]; value != "" {
 				return value, nil
@@ -139,6 +142,45 @@ func TestDetectDisabledSkipsAllDiscovery(t *testing.T) {
 	}
 }
 
+func TestDetectPassiveDiscoversBrowserWithoutProbing(t *testing.T) {
+	fake := &fakeBrowserRuntime{
+		goos: "linux",
+		env:  map[string]string{"DISPLAY": ":0"},
+		look: map[string]string{"chromium": "/usr/bin/chromium"},
+		exists: func(path string) bool {
+			return path == "/usr/bin/chromium"
+		},
+		probe: func(Candidate) ProbeResult {
+			t.Fatal("passive detection must not launch/probe the browser")
+			return ProbeResult{}
+		},
+	}
+	root := t.TempDir()
+	capability := Detect(context.Background(), Options{
+		Enabled: true, StateRoot: root, Runtime: fake.runtime(), Passive: true,
+	})
+	if capability.State != StateAvailable || !capability.Available || capability.Usable {
+		t.Fatalf("capability=%#v", capability)
+	}
+	if capability.Family != FamilyChromium || capability.Profile == nil {
+		t.Fatalf("capability=%#v", capability)
+	}
+	if len(fake.probed) != 0 {
+		t.Fatalf("passive detection probed browsers: %#v", fake.probed)
+	}
+}
+
+func TestPrepareProbeProfileBootstrapsManagedDefault(t *testing.T) {
+	root := t.TempDir()
+	if err := prepareProbeProfile(root, TransportNative); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Join(root, managedProfileDirectory))
+	if err != nil || !info.IsDir() {
+		t.Fatalf("probe Default profile missing: info=%v err=%v", info, err)
+	}
+}
+
 func TestDetectBrowserAbsenceIsNormalUnavailableCapability(t *testing.T) {
 	fake := &fakeBrowserRuntime{goos: "linux", env: map[string]string{}, look: map[string]string{}}
 	capability := Detect(context.Background(), Options{Enabled: true, StateRoot: t.TempDir(), Runtime: fake.runtime()})
@@ -217,6 +259,59 @@ func TestDetectWSLWindowsHostFallbackUsesWindowsProfile(t *testing.T) {
 	}
 }
 
+func TestDetectWSLWindowsHostFallbackWhenServiceEnvironmentDropsWSLVariables(t *testing.T) {
+	configRoot := t.TempDir()
+	fake := &fakeBrowserRuntime{
+		goos:   "linux",
+		env:    map[string]string{},
+		kernel: "6.18.33.2-microsoft-standard-WSL2",
+		windowsEnv: map[string]string{
+			"PROGRAMFILES":      `C:\\Program Files`,
+			"PROGRAMFILES(X86)": `C:\\Program Files (x86)`,
+			"LOCALAPPDATA":      `C:\\Users\\Mew\\AppData\\Local`,
+		},
+		look: map[string]string{},
+		exists: func(path string) bool {
+			return strings.HasSuffix(strings.ToLower(strings.ReplaceAll(path, `\\`, "/")), "/microsoft/edge/application/msedge.exe")
+		},
+		probe: func(candidate Candidate) ProbeResult {
+			if candidate.Transport != TransportWSLHost || candidate.Family != FamilyEdge {
+				return ProbeResult{Reason: "unexpected candidate"}
+			}
+			return ProbeResult{Usable: true, Graphical: true, Family: FamilyEdge, Version: "154.0.0.0"}
+		},
+	}
+
+	capability := Detect(context.Background(), Options{Enabled: true, StateRoot: configRoot, Runtime: fake.runtime()})
+	if capability.State != StateAvailable || capability.Transport != TransportWSLHost || capability.HostPlatform != "windows" || !capability.Graphical {
+		t.Fatalf("capability=%#v", capability)
+	}
+	if capability.Profile == nil || capability.Profile.HostPlatform != "windows" {
+		t.Fatalf("profile=%#v", capability.Profile)
+	}
+}
+
+func TestIsWSLUsesKernelFallbackOnlyOnLinux(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		goos   string
+		kernel string
+		want   bool
+	}{
+		{name: "wsl2 kernel", goos: "linux", kernel: "6.18.33.2-microsoft-standard-WSL2", want: true},
+		{name: "legacy microsoft kernel", goos: "linux", kernel: "4.4.0-19041-Microsoft", want: true},
+		{name: "ordinary linux", goos: "linux", kernel: "6.12.0-generic", want: false},
+		{name: "non linux", goos: "darwin", kernel: "microsoft", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeBrowserRuntime{goos: test.goos, env: map[string]string{}, kernel: test.kernel}
+			if got := isWSL(fake.runtime()); got != test.want {
+				t.Fatalf("isWSL=%t want=%t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestDetectWSLWindowsHostRequiresUsablePrivateCDPRoute(t *testing.T) {
 	fake := &fakeBrowserRuntime{
 		goos: "linux",
@@ -289,6 +384,9 @@ func TestBrowserProbeArgumentsBindCDPOnlyToLoopback(t *testing.T) {
 	if !strings.Contains(joined, "--remote-debugging-address=127.0.0.1") || !strings.Contains(joined, "--remote-debugging-port=0") {
 		t.Fatalf("probe args do not use private ephemeral CDP endpoint: %v", args)
 	}
+	if !strings.Contains(joined, "--profile-directory=Default") {
+		t.Fatalf("probe args do not select the managed Default profile: %v", args)
+	}
 	for _, forbidden := range []string{"0.0.0.0", "::", "--remote-allow-origins=*"} {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("probe args expose CDP broadly: %v", args)
@@ -312,6 +410,13 @@ func TestBoundedReasonAndVersionParsing(t *testing.T) {
 	value := strings.Repeat("x", ReasonLimit+100)
 	if got := boundedReason(value); len(got) != ReasonLimit {
 		t.Fatalf("bounded reason len=%d", len(got))
+	}
+}
+
+func TestLastNonEmptyLineIgnoresCmdUNCWorkingDirectoryWarnings(t *testing.T) {
+	output := "'\\\\wsl.localhost\\Ubuntu\\home\\mew'\r\nCMD.EXE was started with the above path as the current directory.\r\nUNC paths are not supported. Defaulting to Windows directory.\r\nC:\\Users\\Mew\\AppData\\Local\r\n"
+	if got := lastNonEmptyLine(output); got != `C:\Users\Mew\AppData\Local` {
+		t.Fatalf("last line=%q", got)
 	}
 }
 

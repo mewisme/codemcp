@@ -38,6 +38,16 @@ func TestResolveNativeProfileIsCodeMCPOwnedAndIsolated(t *testing.T) {
 	if runtime.GOOS != "windows" && info.Mode().Perm() != 0700 {
 		t.Fatalf("native profile permissions=%#o want=0700", info.Mode().Perm())
 	}
+	defaultInfo, err := os.Stat(filepath.Join(profile.LocalPath, managedProfileDirectory))
+	if err != nil {
+		t.Fatalf("managed Default profile was not prepared: %v", err)
+	}
+	if !defaultInfo.IsDir() {
+		t.Fatal("managed Default profile is not a directory")
+	}
+	if runtime.GOOS != "windows" && defaultInfo.Mode().Perm() != 0700 {
+		t.Fatalf("managed Default profile permissions=%#o want=0700", defaultInfo.Mode().Perm())
+	}
 }
 
 func TestResolveWSLHostProfileLivesInWindowsLocalAppData(t *testing.T) {
@@ -61,6 +71,22 @@ func TestResolveWSLHostProfileLivesInWindowsLocalAppData(t *testing.T) {
 	}
 	if strings.HasPrefix(filepath.Clean(profile.LocalPath), filepath.Clean(root)) {
 		t.Fatalf("Windows host profile is inside WSL config root: %#v", profile)
+	}
+}
+
+func TestPrepareWSLHostProfileCreatesManagedDefaultProfile(t *testing.T) {
+	root := t.TempDir()
+	profile := ProfileRef{
+		HostPlatform: "windows",
+		Transport:    TransportWSLHost,
+		Path:         `C:\Users\Mew\AppData\Local\CodeMCP\Browser\ChatGPT`,
+		LocalPath:    filepath.Join(root, "CodeMCP", "Browser", "ChatGPT"),
+	}
+	if err := PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(filepath.Join(profile.LocalPath, managedProfileDirectory)); err != nil || !info.IsDir() {
+		t.Fatalf("managed Default profile missing: info=%v err=%v", info, err)
 	}
 }
 
