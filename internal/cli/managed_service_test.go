@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
@@ -25,6 +26,21 @@ import (
 	managed "go.mewis.me/codemcp/internal/service"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
+
+func TestInternalPostinstallRejectsInvalidInstallIntegrationEnv(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	t.Setenv(application.InstallIntegrationsEnv, "invalid")
+	var output bytes.Buffer
+	root := newRootCommand()
+	root.SetContext(context.Background())
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"_service", "postinstall"})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), application.InstallIntegrationsEnv) {
+		t.Fatalf("err=%v output=%q", err, output.String())
+	}
+}
 
 type fakeServiceManager struct {
 	installed bool

@@ -89,6 +89,36 @@ func TestSupplementalInstallSummaryDeduplicatesWarningsAndPreservesPlainJSONCont
 	}
 }
 
+func TestSupplementalInstallSummaryCoversAllIntegrationOutcomeStates(t *testing.T) {
+	result := application.SupplementalBootstrapResult{
+		Telemetry: application.TelemetryBootstrapResult{Enabled: true, EndpointAvailable: true, IdentityPresent: true},
+		Integrations: []application.IntegrationEnsureResult{
+			{Integration: "ready", State: "available", Source: "system"},
+			{Integration: "installed", State: "installed", Source: "managed"},
+			{Integration: "skipped", State: "skipped", Detail: "disabled for this invocation"},
+			{Integration: "unavailable", State: "unavailable", Detail: "unsupported", Retry: "cm integration cf install"},
+			{Integration: "failed", State: "failed", Detail: "offline", Retry: "cm integration rtk install"},
+		},
+	}
+	var output bytes.Buffer
+	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, RawUnicode: true})
+	session.Begin("Install CodeMCP")
+	renderSupplementalInstallSummaryToSession(session, result)
+	session.CloseWith("Done")
+	got := output.String()
+	for _, want := range []string{
+		"ready · available · system", "installed · installed · managed", "skipped · skipped",
+		"unavailable · unavailable", "failed · failed", "unsupported", "offline",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("summary missing %q: %q", want, got)
+		}
+	}
+	if strings.Count(got, "Install supplements") != 1 {
+		t.Fatalf("supplements group count mismatch: %q", got)
+	}
+}
+
 func TestInstallCutoverUnsupportedStateUsesReadableHierarchy(t *testing.T) {
 	var output bytes.Buffer
 	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, RawUnicode: true})

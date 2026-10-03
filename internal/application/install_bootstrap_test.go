@@ -348,6 +348,63 @@ func TestPostInstallCoordinatorIncludesCFTunnelAndKeepsFailuresSupplemental(t *t
 	}
 }
 
+func TestPostInstallCoordinatorProgressOrderingIsDeterministic(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	t.Setenv(config.TelemetryEnv, "0")
+	cfg := config.Default()
+	cfg.Telemetry.Enabled = false
+
+	rtkManager := &fakeRTKEnsureManager{status: rtk.Status{Enabled: true, Source: rtk.SourceSystem, Path: "/usr/bin/rtk", Verified: true, ManagedSupported: true}}
+	codeGraphRuntime := &fakeCodeGraphEnsureRuntime{
+		status: codegraph.Status{Enabled: true, ManagedSupported: true, Resolution: codegraph.Resolution{Source: codegraph.ExecutableUnavailable}},
+		installResult: codegraph.InstallResult{Status: codegraph.Status{
+			Enabled: true, ManagedSupported: true, Resolution: codegraph.Resolution{Source: codegraph.ExecutableManaged, Path: "/managed/codegraph", Verified: true},
+		}, Installed: true},
+	}
+	cfManager := &fakeCFTunnelManager{status: cftunnel.Status{Source: cftunnel.SourceUnavailable, ManagedSupported: true}, installErr: errors.New("cf download failed")}
+	cfService := NewCFTunnelServiceWithManager(cfManager)
+	cfService.LoadConfig = func() (config.Config, error) { return cfg, nil }
+
+	var events []IntegrationEnsureEvent
+	coordinator := &postInstallCoordinator{
+		Telemetry: &TelemetryService{
+			LoadConfig: func(context.Context) (config.Config, error) { return cfg, nil },
+			Source:     func() (configformat.Source, error) { return configformat.Source{}, nil },
+			Endpoint:   func() string { return "" },
+		},
+		RTK:       &RTKService{ensureManager: func() (rtkEnsureManager, error) { return rtkManager, nil }},
+		CodeGraph: &CodeGraphService{ensureRuntime: func() (codeGraphEnsureRuntime, error) { return codeGraphRuntime, nil }},
+		CFTunnel:  cfService,
+	}
+	result := coordinator.Run(t.Context(), PostInstallBootstrapOptions{Observe: func(event IntegrationEnsureEvent) { events = append(events, event) }})
+
+	wantEvents := []string{
+		"rtk/check/running", "rtk/check/success",
+		"codegraph/check/running", "codegraph/install/running", "codegraph/install/installed",
+		"cf-tunnel/check/running", "cf-tunnel/install/running", "cf-tunnel/install/failed",
+	}
+	gotEvents := make([]string, 0, len(events))
+	for _, event := range events {
+		gotEvents = append(gotEvents, event.Integration+"/"+event.Phase+"/"+event.State)
+	}
+	if strings.Join(gotEvents, "|") != strings.Join(wantEvents, "|") {
+		t.Fatalf("events=%v want=%v", gotEvents, wantEvents)
+	}
+	if len(result.Integrations) != 3 || result.Integrations[0].State != "available" || result.Integrations[1].State != "installed" || result.Integrations[2].State != "failed" {
+		t.Fatalf("result=%#v", result)
+	}
+	if len(result.Warnings) == 0 {
+		t.Fatal("failed supplemental integration was not surfaced as a warning")
+	}
+}
+
+func TestDefaultPostInstallCoordinatorOwnsAllIntegrationServices(t *testing.T) {
+	coordinator := newPostInstallCoordinator()
+	if coordinator == nil || coordinator.Telemetry == nil || coordinator.RTK == nil || coordinator.CodeGraph == nil || coordinator.CFTunnel == nil {
+		t.Fatalf("coordinator=%#v", coordinator)
+	}
+}
+
 func cftunnelStatusUnavailableSupported() cftunnel.Status {
 	return cftunnel.Status{Source: cftunnel.SourceUnavailable, ManagedSupported: true}
 }

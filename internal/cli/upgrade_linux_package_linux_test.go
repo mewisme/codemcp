@@ -14,6 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/install"
 	updatepkg "go.mewis.me/codemcp/internal/update"
 )
@@ -314,6 +316,32 @@ func TestLinuxPackageRuntimeArgsPreserveSystemScope(t *testing.T) {
 	}
 	if len(system) == 0 || system[len(system)-1] != "--system" {
 		t.Fatalf("system args=%#v", system)
+	}
+}
+
+func TestLinuxPackagePostinstallPreservesInstallIntegrationEnv(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	t.Setenv(application.InstallIntegrationsEnv, "0")
+	root := t.TempDir()
+	marker := filepath.Join(root, "env.txt")
+	t.Setenv("TEST_INSTALL_ENV_MARKER", marker)
+	binary := filepath.Join(root, "cm")
+	script := "#!/bin/sh\nprintf '%s' \"${CM_INSTALL_INTEGRATIONS-<unset>}\" >\"$TEST_INSTALL_ENV_MARKER\"\n"
+	if err := os.WriteFile(binary, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	cmd := &cobra.Command{}
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	if err := postinstallLinuxPackageRuntime(t.Context(), cmd, binary); err != nil {
+		t.Fatal(err)
+	}
+	value, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(value) != "0" {
+		t.Fatalf("child postinstall env=%q", value)
 	}
 }
 

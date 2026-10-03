@@ -3,9 +3,12 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
 	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/application"
+	"go.mewis.me/codemcp/internal/install"
 	updatepkg "go.mewis.me/codemcp/internal/update"
 )
 
@@ -139,5 +142,60 @@ func TestPackageUpgradePowerShellHonorsNoRestart(t *testing.T) {
 	script := packageUpgradePowerShell(packageUpgradeHandoff{ParentPID: 1234, Plan: plan, Target: "v1.2.3", ConfigRoot: `C:\cfg`, Runtime: updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true}}, NoRestart: true, ScriptPath: `C:\Temp\upgrade.ps1`, LogPath: `C:\Temp\upgrade.log`})
 	if !strings.Contains(script, "$stopRuntime = $true") || !strings.Contains(script, "$restartRuntime = $false") {
 		t.Fatalf("unexpected no-restart script:\n%s", script)
+	}
+}
+
+func TestPackageUpgradeHandoffPreservesExplicitInstallIntegrationEnv(t *testing.T) {
+	for _, method := range []string{"homebrew", "scoop"} {
+		t.Run(method, func(t *testing.T) {
+			t.Setenv(application.InstallIntegrationsEnv, "0")
+			plan, ok := updatepkg.PackageManagerPlanFor(install.Method(method))
+			if !ok {
+				t.Fatalf("missing package plan for %s", method)
+			}
+			handoff, err := preparePackageUpgradeHandoff(plan, "v1.2.3", t.TempDir(), updateRuntimeState{}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.Remove(handoff.ScriptPath)
+			if !handoff.InstallIntegrationsSet || handoff.InstallIntegrations != "0" {
+				t.Fatalf("handoff=%#v", handoff)
+			}
+			content, err := os.ReadFile(handoff.ScriptPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(content)
+			if method == "homebrew" {
+				if !strings.Contains(text, "export "+application.InstallIntegrationsEnv+"='0'") {
+					t.Fatalf("shell handoff missing env preservation:\n%s", text)
+				}
+			} else if !strings.Contains(text, "$env:"+application.InstallIntegrationsEnv+" = '0'") {
+				t.Fatalf("PowerShell handoff missing env preservation:\n%s", text)
+			}
+		})
+	}
+}
+
+func TestPackageUpgradeHandoffDoesNotInventInstallIntegrationEnv(t *testing.T) {
+	t.Setenv(application.InstallIntegrationsEnv, "")
+	if err := os.Unsetenv(application.InstallIntegrationsEnv); err != nil {
+		t.Fatal(err)
+	}
+	plan, _ := updatepkg.PackageManagerPlanFor(install.MethodHomebrew)
+	handoff, err := preparePackageUpgradeHandoff(plan, "v1.2.3", t.TempDir(), updateRuntimeState{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(handoff.ScriptPath)
+	if handoff.InstallIntegrationsSet {
+		t.Fatalf("handoff invented install integration env: %#v", handoff)
+	}
+	content, err := os.ReadFile(handoff.ScriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), application.InstallIntegrationsEnv) {
+		t.Fatalf("handoff script invented %s:\n%s", application.InstallIntegrationsEnv, content)
 	}
 }

@@ -226,6 +226,35 @@ fi
 	exit 1
 }
 
+default_env_fakebin="$tmp/bin-install-env-default"
+make_fake_path "$default_env_fakebin"
+default_env_marker="$tmp/install-env-default-value"
+default_env_install_marker="$tmp/installed-env-default"
+default_env_log="$tmp/install-env-default.log"
+if ! env -u CM_INSTALL_INTEGRATIONS PATH="$default_env_fakebin" \
+	HOME="$tmp/home-env-default" \
+	CM_VERSION="$version" \
+	CM_INSTALL_DIR="$tmp/home-env-default/.cm" \
+	CM_BIN_DIR="$tmp/home-env-default/bin" \
+	TEST_FIXTURE_ARCHIVE="$archive" \
+	TEST_FIXTURE_CHECKSUMS="$checksums" \
+	TEST_FIXTURE_SIGNATURE="$signature" \
+	TEST_FIXTURE_ASSET="$asset" \
+	TEST_CHECKSUM_NAME="$checksum_name" \
+	TEST_SIGNATURE_NAME="$signature_name" \
+	TEST_INSTALL_ENV_MARKER="$default_env_marker" \
+	TEST_INSTALL_MARKER="$default_env_install_marker" \
+	/bin/sh "$installer" >"$default_env_log" 2>&1; then
+	echo 'Unix installer failed during default integration-env pass-through test.' >&2
+	cat "$default_env_log" >&2
+	exit 1
+fi
+[ "$(cat "$default_env_marker")" = '<unset>' ] || {
+	echo 'Unix installer invented CM_INSTALL_INTEGRATIONS when it was not supplied.' >&2
+	cat "$default_env_log" >&2
+	exit 1
+}
+
 large_archive="$tmp/large-$asset"
 (
 	cd "$root"

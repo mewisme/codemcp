@@ -45,6 +45,9 @@ $selfInstall = $source.IndexOf('& $exe install')
 if ($envCapture -lt 0 -or $envRestore -lt 0 -or $selfInstall -lt 0 -or $envCapture -gt $envRestore -or $envRestore -gt $selfInstall) {
   throw 'PowerShell bootstrap does not preserve CM_INSTALL_INTEGRATIONS to child cm install.'
 }
+if ($source -notmatch 'if \(\$null -ne \$installIntegrations\) \{ \$env:CM_INSTALL_INTEGRATIONS = \$installIntegrations \}') {
+  throw 'PowerShell bootstrap no longer leaves CM_INSTALL_INTEGRATIONS unset by default.'
+}
 $checksumGate = $source.IndexOf('if ($actual -ne $expected) { throw "cm: checksum verification failed for $asset" }')
 $signatureDownload = $source.IndexOf('Invoke-WebRequest -Uri $signatureUrl -OutFile $signature')
 if ($checksumGate -lt 0 -or $signatureDownload -lt 0 -or $checksumGate -gt $signatureDownload) {

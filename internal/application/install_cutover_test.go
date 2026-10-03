@@ -290,3 +290,36 @@ func TestInstallCurrentPrimaryFailureDoesNotRunSupplementalBootstrap(t *testing.
 		t.Fatalf("err=%v", err)
 	}
 }
+
+func TestInstallCurrentSupplementalFailureDoesNotRollbackActivatedBinary(t *testing.T) {
+	deps := defaultInstallCutoverDependencies()
+	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
+		return released024.Manifest{Found: false}, nil
+	}
+	installCalls := 0
+	deps.Install = func(install.Options) (install.Result, error) {
+		installCalls++
+		return install.Result{
+			Version:   "v0.3.2",
+			Staged:    install.Staged{Binary: "/tmp/codemcp/v0.3.2/cm"},
+			Canonical: install.CanonicalStatus{Path: "/tmp/codemcp/current/cm"},
+		}, nil
+	}
+	deps.PostInstall = func(context.Context, PostInstallBootstrapOptions) SupplementalBootstrapResult {
+		return SupplementalBootstrapResult{
+			Integrations: []IntegrationEnsureResult{{Integration: "rtk", State: "failed", Detail: "offline"}},
+			Warnings:     []string{"rtk bootstrap failed: offline"},
+		}
+	}
+
+	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{}, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installCalls != 1 || result.Version != "v0.3.2" || result.Command != "/tmp/codemcp/current/cm" {
+		t.Fatalf("installCalls=%d result=%#v", installCalls, result)
+	}
+	if len(result.Supplemental.Warnings) != 1 || result.Supplemental.Integrations[0].State != "failed" {
+		t.Fatalf("supplemental=%#v", result.Supplemental)
+	}
+}

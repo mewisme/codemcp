@@ -1,9 +1,14 @@
 package cli
 
 import (
+	"bytes"
+	"context"
+	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/capability"
+	"go.mewis.me/codemcp/internal/configformat"
 )
 
 func TestUpgradeCanonicalCommandAndAcceptedAliases(t *testing.T) {
@@ -36,5 +41,20 @@ func TestUpgradeCanonicalCommandAndAcceptedAliases(t *testing.T) {
 				t.Fatalf("accepted spelling %q became separate capability path %q", test.aliasPath, operation)
 			}
 		}
+	}
+}
+
+func TestUpgradeRejectsInvalidInstallIntegrationEnvBeforeUpdateWork(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	t.Setenv(application.InstallIntegrationsEnv, "invalid")
+	var output bytes.Buffer
+	root := newRootCommand()
+	root.SetContext(context.Background())
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"upgrade"})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), application.InstallIntegrationsEnv) {
+		t.Fatalf("err=%v output=%q", err, output.String())
 	}
 }

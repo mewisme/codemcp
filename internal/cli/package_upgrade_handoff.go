@@ -9,18 +9,21 @@ import (
 	"strings"
 	"time"
 
+	"go.mewis.me/codemcp/internal/application"
 	updatepkg "go.mewis.me/codemcp/internal/update"
 )
 
 type packageUpgradeHandoff struct {
-	ParentPID  int
-	Plan       updatepkg.PackageManagerPlan
-	Target     string
-	ConfigRoot string
-	Runtime    updateRuntimeState
-	NoRestart  bool
-	ScriptPath string
-	LogPath    string
+	ParentPID              int
+	Plan                   updatepkg.PackageManagerPlan
+	Target                 string
+	ConfigRoot             string
+	Runtime                updateRuntimeState
+	NoRestart              bool
+	InstallIntegrations    string
+	InstallIntegrationsSet bool
+	ScriptPath             string
+	LogPath                string
 }
 
 func preparePackageUpgradeHandoff(plan updatepkg.PackageManagerPlan, target, configRoot string, state updateRuntimeState, noRestart bool) (packageUpgradeHandoff, error) {
@@ -38,7 +41,12 @@ func preparePackageUpgradeHandoff(plan updatepkg.PackageManagerPlan, target, con
 	path := file.Name()
 	_ = file.Close()
 	logPath := filepath.Join(os.TempDir(), "cm-upgrade-"+strconv.FormatInt(time.Now().UnixNano(), 10)+".log")
-	handoff := packageUpgradeHandoff{ParentPID: os.Getpid(), Plan: plan, Target: target, ConfigRoot: configRoot, Runtime: state, NoRestart: noRestart, ScriptPath: path, LogPath: logPath}
+	installIntegrations, installIntegrationsSet := os.LookupEnv(application.InstallIntegrationsEnv)
+	handoff := packageUpgradeHandoff{
+		ParentPID: os.Getpid(), Plan: plan, Target: target, ConfigRoot: configRoot, Runtime: state, NoRestart: noRestart,
+		InstallIntegrations: installIntegrations, InstallIntegrationsSet: installIntegrationsSet,
+		ScriptPath: path, LogPath: logPath,
+	}
 	content, err := packageUpgradeScript(handoff)
 	if err != nil {
 		_ = os.Remove(path)
@@ -71,7 +79,7 @@ func packageUpgradePowerShell(h packageUpgradeHandoff) string {
 	restart := h.Runtime.Running && !h.NoRestart
 	stopArgs := []string{"--config-dir", h.ConfigRoot, "down"}
 	startArgs := []string{"--config-dir", h.ConfigRoot, "up"}
-	return strings.Join([]string{
+	lines := []string{
 		"$ErrorActionPreference = 'Stop'",
 		"$parentPid = " + strconv.Itoa(h.ParentPID),
 		"$target = " + psQuote(h.Target),
@@ -80,30 +88,36 @@ func packageUpgradePowerShell(h packageUpgradeHandoff) string {
 		"$stopRuntime = " + psBool(stop),
 		"$restartRuntime = " + psBool(restart),
 		"$exitCode = 0",
+	}
+	if h.InstallIntegrationsSet {
+		lines = append(lines, "$env:"+application.InstallIntegrationsEnv+" = "+psQuote(h.InstallIntegrations))
+	}
+	lines = append(lines,
 		"function Invoke-Step([scriptblock]$Action, [string]$Name) {",
 		"    & $Action *>> $logPath",
 		"    if ($LASTEXITCODE -ne 0) { throw \"$Name failed with exit code $LASTEXITCODE\" }",
 		"}",
 		"try {",
 		"    Wait-Process -Id $parentPid -ErrorAction SilentlyContinue",
-		"    if ($stopRuntime) { Invoke-Step { & cm " + psArgs(stopArgs) + " } 'Stopping managed runtime' }",
+		"    if ($stopRuntime) { Invoke-Step { & cm "+psArgs(stopArgs)+" } 'Stopping managed runtime' }",
 		"    Invoke-Step { & scoop update } 'Scoop metadata refresh'",
-		"    Invoke-Step { & scoop update " + updatepkg.ScoopPackage + " } 'Scoop package update'",
+		"    Invoke-Step { & scoop update "+updatepkg.ScoopPackage+" } 'Scoop package update'",
 		"    $version = (& cm --version | Out-String)",
 		"    $version *>> $logPath",
 		"    if (-not $version.Contains($target)) { throw \"updated version mismatch: expected $target, got $($version.Trim())\" }",
-		"    Invoke-Step { & cm " + psArgs([]string{"--config-dir", h.ConfigRoot, "_service", "postinstall"}) + " } 'Bootstrapping install supplements'",
+		"    Invoke-Step { & cm "+psArgs([]string{"--config-dir", h.ConfigRoot, "_service", "postinstall"})+" } 'Bootstrapping install supplements'",
 		"} catch {",
 		"    ($_ | Out-String) *>> $logPath",
 		"    $exitCode = 1",
 		"} finally {",
 		"    if ($restartRuntime) {",
-		"        try { Invoke-Step { & cm " + psArgs(startArgs) + " } 'Restoring managed runtime' } catch { ($_ | Out-String) *>> $logPath; $exitCode = 1 }",
+		"        try { Invoke-Step { & cm "+psArgs(startArgs)+" } 'Restoring managed runtime' } catch { ($_ | Out-String) *>> $logPath; $exitCode = 1 }",
 		"    }",
 		"    Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue",
 		"}",
 		"exit $exitCode",
-	}, "\r\n") + "\r\n"
+	)
+	return strings.Join(lines, "\r\n") + "\r\n"
 }
 
 func packageUpgradeShell(h packageUpgradeHandoff) string {
@@ -115,7 +129,7 @@ func packageUpgradeShell(h packageUpgradeHandoff) string {
 		stopArgs = append(stopArgs, "--system")
 		startArgs = append(startArgs, "--system")
 	}
-	return strings.Join([]string{
+	lines := []string{
 		"#!/bin/sh",
 		"set -eu",
 		"parent_pid=" + strconv.Itoa(h.ParentPID),
@@ -123,11 +137,16 @@ func packageUpgradeShell(h packageUpgradeHandoff) string {
 		"log_path=" + shQuote(h.LogPath),
 		"script_path=" + shQuote(h.ScriptPath),
 		"restart_runtime=" + boolDigit(restart),
+	}
+	if h.InstallIntegrationsSet {
+		lines = append(lines, "export "+application.InstallIntegrationsEnv+"="+shQuote(h.InstallIntegrations))
+	}
+	lines = append(lines,
 		"exec >>\"$log_path\" 2>&1",
 		"cleanup() {",
 		"  status=$?",
 		"  trap - EXIT",
-		"  if [ \"$restart_runtime\" = 1 ]; then cm " + shArgs(startArgs) + " || status=$?; fi",
+		"  if [ \"$restart_runtime\" = 1 ]; then cm "+shArgs(startArgs)+" || status=$?; fi",
 		"  rm -f -- \"$script_path\"",
 		"  exit \"$status\"",
 		"}",
@@ -135,12 +154,13 @@ func packageUpgradeShell(h packageUpgradeHandoff) string {
 		"while kill -0 \"$parent_pid\" 2>/dev/null; do sleep 0.1; done",
 		conditionalShell(stop, "cm "+shArgs(stopArgs)),
 		"brew update",
-		"brew upgrade --cask " + updatepkg.HomebrewCask,
+		"brew upgrade --cask "+updatepkg.HomebrewCask,
 		"version=$(cm --version)",
 		"printf '%s\\n' \"$version\"",
 		"case \"$version\" in *\"$target\"*) ;; *) printf 'updated version mismatch: expected %s, got %s\\n' \"$target\" \"$version\" >&2; exit 1 ;; esac",
-		"cm " + shArgs([]string{"--config-dir", h.ConfigRoot, "_service", "postinstall"}),
-	}, "\n") + "\n"
+		"cm "+shArgs([]string{"--config-dir", h.ConfigRoot, "_service", "postinstall"}),
+	)
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func psQuote(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
