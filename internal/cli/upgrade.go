@@ -17,7 +17,9 @@ func upgradeCommand() *cobra.Command {
 	var targetVersion string
 	var noRestart bool
 	cmd := &cobra.Command{Use: "upgrade", Short: "Check for and install cm upgrades", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		migrated, didMigrate, err := application.MigrateReleasedInstallIfNeeded(cmd.Context(), application.InstallCurrentOptions{Observe: installCutoverObserver(cmd)})
+		migrated, didMigrate, err := application.MigrateReleasedInstallIfNeeded(cmd.Context(), application.InstallCurrentOptions{
+			Observe: installCutoverObserver(cmd), ObserveIntegration: installIntegrationObserver(cmd),
+		})
 		if err != nil {
 			return fmt.Errorf("migrate released installation: %w", err)
 		}

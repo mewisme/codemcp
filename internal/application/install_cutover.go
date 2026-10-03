@@ -98,8 +98,6 @@ func installCurrentWithDependencies(ctx context.Context, options InstallCurrentO
 	emitInstallCutover(options.Observe, "activate", "success", "Canonical CodeMCP binary installed", false)
 	emitInstallCutover(options.Observe, "cleanup", "running", "Bootstrapping install supplements", false)
 	supplemental := deps.PostInstall(ctx, postInstallBootstrapOptions(options))
-	emitSupplementalOutcomes(options.Observe, supplemental)
-	emitInstallCutover(options.Observe, "cleanup", "success", "Install supplements processed", false)
 	return InstallCurrentResult{
 		Install: installed, Supplemental: supplemental, Version: installed.Version,
 		Binary: installed.Staged.Binary, Command: installed.Canonical.Path, AlreadyInstalled: installed.AlreadyInstalled,
@@ -201,7 +199,6 @@ func migrateReleasedInstallIfNeeded(ctx context.Context, options InstallCurrentO
 	}
 	emitInstallCutover(options.Observe, "cleanup", "success", "Released predecessor runtime retired", false)
 	supplemental := deps.PostInstall(ctx, postInstallBootstrapOptions(options))
-	emitSupplementalOutcomes(options.Observe, supplemental)
 	return InstallCurrentResult{
 		Migration: &MigrationCutoverResult{
 			SourceRoot: manifest.Source.Root, TargetRoot: targetRoot, JournalPath: staged.JournalPath,
@@ -224,42 +221,6 @@ func installCutoverCount(count int, singular, plural string) string {
 		label = singular
 	}
 	return fmt.Sprintf("%d %s", count, label)
-}
-
-func emitSupplementalOutcomes(observe func(InstallCutoverEvent), result SupplementalBootstrapResult) {
-	if observe == nil {
-		return
-	}
-	telemetryState := "skipped"
-	telemetryMessage := "Telemetry disabled"
-	if result.Telemetry.Enabled {
-		if result.Telemetry.EndpointAvailable && result.Telemetry.IdentityPresent {
-			telemetryState, telemetryMessage = "success", "Telemetry ready"
-		} else {
-			telemetryState, telemetryMessage = "warning", "Telemetry unavailable"
-		}
-	}
-	emitInstallCutover(observe, "cleanup", telemetryState, telemetryMessage, true)
-	for _, outcome := range result.Integrations {
-		state := "success"
-		if outcome.State == "failed" || outcome.State == "unavailable" {
-			state = "warning"
-		}
-		message := outcome.Integration + " · " + outcome.State
-		if outcome.Source != "" {
-			message += " · " + outcome.Source
-		}
-		if outcome.Detail != "" {
-			message += " · " + outcome.Detail
-		}
-		if (outcome.State == "failed" || outcome.State == "unavailable") && outcome.Retry != "" {
-			message += " · retry: " + outcome.Retry
-		}
-		emitInstallCutover(observe, "cleanup", state, message, true)
-	}
-	for _, warning := range result.Warnings {
-		emitInstallCutover(observe, "cleanup", "warning", warning, true)
-	}
 }
 
 func emitInstallCutover(observe func(InstallCutoverEvent), stage, state, message string, child bool) {

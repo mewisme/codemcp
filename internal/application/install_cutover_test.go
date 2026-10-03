@@ -48,7 +48,10 @@ func TestInstallCurrentKeepsPrimaryInstallSuccessfulWhenSupplementalBootstrapWar
 			Warnings:     []string{"telemetry bootstrap failed: offline"},
 		}
 	}
-	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{}, deps)
+	var events []InstallCutoverEvent
+	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{Observe: func(event InstallCutoverEvent) {
+		events = append(events, event)
+	}}, deps)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,6 +60,11 @@ func TestInstallCurrentKeepsPrimaryInstallSuccessfulWhenSupplementalBootstrapWar
 	}
 	if result.Version != "v1.2.3" || len(result.Supplemental.Warnings) != 1 {
 		t.Fatalf("result=%#v", result)
+	}
+	for _, event := range events {
+		if strings.Contains(event.Message, "rtk bootstrap") || event.Message == "Install supplements processed" {
+			t.Fatalf("supplemental result leaked into permanent cutover events: %#v", events)
+		}
 	}
 }
 

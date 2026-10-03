@@ -13,6 +13,29 @@ func installCutoverObserver(cmd *cobra.Command) func(application.InstallCutoverE
 	return installCutoverProgressObserver(commandProgressSession(cmd))
 }
 
+func installIntegrationObserver(cmd *cobra.Command) func(application.IntegrationEnsureEvent) {
+	return installIntegrationProgressObserver(commandProgressSession(cmd))
+}
+
+func installIntegrationProgressObserver(session *presentation.ProgressSession) func(application.IntegrationEnsureEvent) {
+	return func(event application.IntegrationEnsureEvent) {
+		if session == nil || strings.TrimSpace(event.State) != "running" {
+			return
+		}
+		name := strings.TrimSpace(event.Integration)
+		if name == "" {
+			name = "integration"
+		}
+		verb := "Checking"
+		if strings.TrimSpace(event.Phase) == "install" {
+			verb = "Installing"
+		}
+		session.Update(presentation.ProgressPhase{
+			ID: "install.supplement." + name, Label: verb + " " + name, State: presentation.ProgressRunning,
+		})
+	}
+}
+
 func installCutoverProgressObserver(session *presentation.ProgressSession) func(application.InstallCutoverEvent) {
 	if session != nil {
 		session.SetTitle("Install CodeMCP")
