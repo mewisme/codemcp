@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/fs"
 	"mime"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,7 +15,6 @@ import (
 	"strings"
 
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
-	"gopkg.in/yaml.v3"
 
 	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/skills"
@@ -419,8 +417,7 @@ func buildSkillBundle(value skills.Skill, profile Profile) (skillBundle, error) 
 }
 
 func validateSkillURIName(name string) error {
-	name = strings.TrimSpace(name)
-	if name == "" || name == "." || name == ".." || url.PathEscape(name) != name || strings.ContainsAny(name, "/\\?#%") {
+	if err := skills.ValidateName(name); err != nil {
 		return errors.New("skill name is not safe for skill URI projection")
 	}
 	return nil
@@ -455,25 +452,7 @@ func validateSkillBundleForProfile(bundle skillBundle, profile Profile) (skillBu
 }
 
 func parseSkillFrontmatter(data []byte) (map[string]any, error) {
-	text := strings.ReplaceAll(string(data), "\r\n", "\n")
-	if !strings.HasPrefix(text, "---\n") {
-		return nil, errors.New("skill frontmatter is missing")
-	}
-	rest := strings.TrimPrefix(text, "---\n")
-	end := strings.Index(rest, "\n---")
-	if end < 0 {
-		return nil, errors.New("skill frontmatter is unclosed")
-	}
-	frontmatter := map[string]any{}
-	if err := yaml.Unmarshal([]byte(rest[:end]), &frontmatter); err != nil {
-		return nil, fmt.Errorf("parse skill frontmatter: %w", err)
-	}
-	name, _ := frontmatter["name"].(string)
-	description, _ := frontmatter["description"].(string)
-	if strings.TrimSpace(name) == "" || strings.TrimSpace(description) == "" {
-		return nil, errors.New("skill frontmatter requires name and description")
-	}
-	return frontmatter, nil
+	return skills.ParseFrontmatter(data)
 }
 
 func skillURI(name, relative string) string {

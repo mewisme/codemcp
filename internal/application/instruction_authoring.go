@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -28,10 +27,10 @@ const (
 	maxAuthoredRuleBytes       = 4_000
 	maxAuthoredRuleGlobs       = 64
 	maxAuthoredRuleGlobBytes   = 256
-	maxAuthoredSkillBytes      = 500_000
-	maxAuthoredSkillFiles      = 32
-	maxAuthoredSkillFileBytes  = 256_000
-	maxAuthoredSkillTotalBytes = 1_000_000
+	maxAuthoredSkillBytes      = skills.MaxNativeSkillInstructionsBytes
+	maxAuthoredSkillFiles      = skills.MaxNativeSkillSupportingFiles
+	maxAuthoredSkillFileBytes  = skills.MaxNativeSkillSupportingBytes
+	maxAuthoredSkillTotalBytes = skills.MaxNativeSkillTotalBytes
 	maxExistingArtifactBytes   = 1_000_000
 )
 
@@ -239,7 +238,7 @@ func (s *InstructionAuthoringService) WriteSkill(ctx context.Context, request Sk
 	if s == nil {
 		return InstructionAuthoringResult{}, ErrInstructionUnavailable
 	}
-	name, err := validateArtifactName(request.Name)
+	name, err := skills.ValidateNativeSkillName(request.Name)
 	if err != nil {
 		return InstructionAuthoringResult{}, fmt.Errorf("%w: %v", ErrInstructionInvalid, err)
 	}
@@ -540,19 +539,13 @@ func renderRule(content string, alwaysApply bool, globs []string) []byte {
 }
 
 func validateAndRenderSkill(request SkillAuthoringRequest, name string) ([]authoredFile, string, error) {
-	description := strings.TrimSpace(strings.ReplaceAll(request.Description, "\r\n", "\n"))
-	if description == "" || strings.Contains(description, "\n") {
-		return nil, "", errors.New("skill description must be one non-empty line")
+	description, err := skills.NormalizeNativeSkillDescription(request.Description)
+	if err != nil {
+		return nil, "", err
 	}
-	if len([]byte(description)) > 200 {
-		return nil, "", errors.New("skill description exceeds 200 bytes")
-	}
-	instructions := strings.TrimSpace(strings.ReplaceAll(request.Instructions, "\r\n", "\n"))
-	if instructions == "" {
-		return nil, "", errors.New("skill instructions are required")
-	}
-	if len([]byte(instructions)) > maxAuthoredSkillBytes {
-		return nil, "", fmt.Errorf("skill instructions exceed %d bytes", maxAuthoredSkillBytes)
+	instructions, err := skills.NormalizeNativeSkillInstructions(request.Instructions)
+	if err != nil {
+		return nil, "", err
 	}
 	if len(request.SupportingFiles) > maxAuthoredSkillFiles {
 		return nil, "", fmt.Errorf("skill defines more than %d supporting files", maxAuthoredSkillFiles)
@@ -563,7 +556,7 @@ func validateAndRenderSkill(request SkillAuthoringRequest, name string) ([]autho
 	total := len(main)
 	seen := map[string]bool{"skill.md": true}
 	for _, support := range request.SupportingFiles {
-		clean, err := validateSupportingPath(support.Path)
+		clean, err := skills.ValidateSupportingPath(support.Path)
 		if err != nil {
 			return nil, "", err
 		}
@@ -587,24 +580,6 @@ func validateAndRenderSkill(request SkillAuthoringRequest, name string) ([]autho
 	}
 	sort.Slice(files[1:], func(i, j int) bool { return files[1+i].path < files[1+j].path })
 	return files, authoredFilesContentID(files), nil
-}
-
-func validateSupportingPath(value string) (string, error) {
-	if value != strings.TrimSpace(value) || value == "" || strings.ContainsAny(value, "\x00\\") {
-		return "", fmt.Errorf("invalid skill supporting path %q", value)
-	}
-	if strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") || isPortableVolumePath(value) {
-		return "", fmt.Errorf("skill supporting path must be relative: %q", value)
-	}
-	clean := path.Clean(value)
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, "/") {
-		return "", fmt.Errorf("skill supporting path escapes skill root: %q", value)
-	}
-	return clean, nil
-}
-
-func isPortableVolumePath(value string) bool {
-	return len(value) >= 2 && ((value[0] >= 'a' && value[0] <= 'z') || (value[0] >= 'A' && value[0] <= 'Z')) && value[1] == ':'
 }
 
 func authoredFilesContentID(files []authoredFile) string {

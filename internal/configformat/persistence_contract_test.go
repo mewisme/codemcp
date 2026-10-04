@@ -16,7 +16,7 @@ func TestRuntimePersistenceHasNoLegacyFormatReadersOrCGMBundles(t *testing.T) {
 	internalRoot := filepath.Clean(filepath.Join(filepath.Dir(current), ".."))
 	legacyBundleExt := "." + "cgm"
 	allowedNonPersistenceImports := map[string]map[string]bool{
-		filepath.FromSlash("mcp/core_skills.go"): {
+		filepath.FromSlash("skills/validation.go"): {
 			`"gopkg.in/yaml.v3"`: true, // SKILL.md frontmatter, not configuration persistence.
 		},
 		filepath.FromSlash("releaseverify/verify.go"): {
