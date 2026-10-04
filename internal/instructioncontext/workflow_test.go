@@ -2,6 +2,7 @@ package instructioncontext
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -456,6 +457,36 @@ func TestCanonicalServerInstructionModelIsDeterministicAndBounded(t *testing.T) 
 	for _, expected := range []string{"workspace_register", "workspace_container_context", "project_context", "load_path_rules", "load_skill", "/plan", "create_plan", "apply_patch", "run_command", "verify", "agent_complete"} {
 		if !strings.Contains(first, expected) {
 			t.Fatalf("server instructions missing %q", expected)
+		}
+	}
+}
+
+func TestToolCapabilityDiscoveryGuidanceIsNonCoerciveAndSchemaAuthoritative(t *testing.T) {
+	for _, guidance := range []string{AgentWorkflow(), StaticServerInstructions()} {
+		for _, expected := range []string{
+			"Tool capabilities block",
+			"capability discovery is guidance, not a requirement",
+			"MCP tool schema and description are the source of truth",
+			"run_command remains valid",
+			"never forbids shell equivalents",
+		} {
+			if !strings.Contains(guidance, expected) {
+				t.Fatalf("capability discovery guidance missing %q: %s", expected, guidance)
+			}
+		}
+	}
+}
+
+func TestCapabilityDiscoveryGuidanceDoesNotHardCodeSpecializedInventory(t *testing.T) {
+	for _, path := range []string{"formatter.go", "workflow.go"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, tool := range []string{"git_push", "git_log", "agent_spawn"} {
+			if strings.Contains(string(data), tool) {
+				t.Fatalf("%s hard-codes specialized inventory tool %q", path, tool)
+			}
 		}
 	}
 }

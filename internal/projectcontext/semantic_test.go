@@ -64,7 +64,11 @@ func TestRankOptionalContextBoundsPayloadAndReturnsSafeUsage(t *testing.T) {
 
 func TestSemanticPriorityCannotDisplaceRulesOrRequiredContext(t *testing.T) {
 	value := instructioncontext.InstructionContext{
-		ToolProfile:   instructioncontext.ToolProfile{Name: "full", Count: 2},
+		ToolProfile: instructioncontext.ToolProfile{Name: "full", Count: 2},
+		ToolCapabilities: &instructioncontext.ToolCapabilities{
+			Groups:     []instructioncontext.ToolCapabilityGroup{{Domain: "git", Tools: []string{"git_log", "git_push"}}},
+			TotalTools: 2, IncludedTools: 2,
+		},
 		AgentWorkflow: "MANDATORY_WORKFLOW",
 		Environment: instructioncontext.EnvironmentSnapshot{
 			Platform: "linux", OS: "linux", Arch: "amd64", Go: "go", PID: 1,
@@ -82,7 +86,7 @@ func TestSemanticPriorityCannotDisplaceRulesOrRequiredContext(t *testing.T) {
 	if err := instructioncontext.ApplyFormattedInstructionsLimitWithPriority(&value, 3000, []string{"Project instructions", "Git"}); err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"MANDATORY_WORKFLOW", "SECURITY_RULE_REQUIRED", "INTEGRATION_REQUIRED", "## Quick pointers"} {
+	for _, required := range []string{"MANDATORY_WORKFLOW", "## Tool capabilities", "git_push", "SECURITY_RULE_REQUIRED", "INTEGRATION_REQUIRED", "## Quick pointers"} {
 		if !strings.Contains(value.InstructionsText, required) {
 			t.Fatalf("required context %q missing:\n%s", required, value.InstructionsText)
 		}

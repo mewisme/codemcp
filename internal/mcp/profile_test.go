@@ -191,6 +191,9 @@ func TestFilteredProfileProjectsSameEffectiveInventoryIntoProjectContext(t *test
 	if strings.Contains(string(listedJSON), `"name":"git_push"`) {
 		t.Fatalf("filtered tools/list advertised git_push: %s", listedJSON)
 	}
+	if !strings.Contains(string(listedJSON), `"name":"run_command"`) {
+		t.Fatalf("filtered tools/list lost run_command: %s", listedJSON)
+	}
 
 	value, err := server.Handle(context.Background(), "tools/call", map[string]any{
 		"name": "project_context",
@@ -222,6 +225,9 @@ func TestFilteredProfileProjectsSameEffectiveInventoryIntoProjectContext(t *test
 				t.Fatalf("project_context advertised filtered tool: %#v", capabilities)
 			}
 		}
+	}
+	if !strings.Contains(project.InstructionContext.InstructionsText, "## Tool capabilities") || strings.Contains(project.InstructionContext.InstructionsText, "git_push") || !strings.Contains(project.InstructionContext.InstructionsText, "run_command") {
+		t.Fatalf("filtered capability instructions=%s", project.InstructionContext.InstructionsText)
 	}
 	if _, err := server.Handle(context.Background(), "tools/call", map[string]any{"name": "git_push", "arguments": map[string]any{"workspace_id": item.ID}}); err == nil {
 		t.Fatal("filtered tool remained callable through profile runtime")

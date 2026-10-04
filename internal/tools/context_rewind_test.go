@@ -199,6 +199,11 @@ func TestProjectContextCapabilityInventoryTracksLiveRegistry(t *testing.T) {
 	if initial.InstructionContext.ToolCapabilities == nil || initial.InstructionContext.ToolProfile.Count != initial.InstructionContext.ToolCapabilities.TotalTools {
 		t.Fatalf("initial inventory=%#v/%#v", initial.InstructionContext.ToolProfile, initial.InstructionContext.ToolCapabilities)
 	}
+	for _, expected := range []string{"## Tool capabilities", "project_context", "workspace_status"} {
+		if !strings.Contains(initial.InstructionContext.InstructionsText, expected) {
+			t.Fatalf("initial capability guidance missing %q:\n%s", expected, initial.InstructionContext.InstructionsText)
+		}
+	}
 
 	const dynamicTool = "live_dynamic_probe"
 	if err := runtime.Registry.ReplaceOwned("upstream:test", map[string]Entry{
@@ -231,6 +236,31 @@ func TestProjectContextCapabilityInventoryTracksLiveRegistry(t *testing.T) {
 	filtered := build(WithEffectiveToolSnapshot(context.Background(), "filtered-test", filteredSchemas))
 	if filtered.InstructionContext.ToolProfile.Name != "filtered-test" || filtered.InstructionContext.ToolProfile.Count != 2 || filtered.InstructionContext.ToolCapabilities.TotalTools != 2 {
 		t.Fatalf("filtered inventory=%#v/%#v", filtered.InstructionContext.ToolProfile, filtered.InstructionContext.ToolCapabilities)
+	}
+	if strings.Contains(filtered.InstructionContext.InstructionsText, "git_push") {
+		t.Fatalf("filtered instructions advertised unavailable git_push:\n%s", filtered.InstructionContext.InstructionsText)
+	}
+}
+
+func TestProjectContextCapabilityGuidanceSurfacesRepresentativeFullRuntimeTools(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewRuntime()
+	defer runtime.CompletionHooks.Stop()
+	item, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := runtime.Call(context.Background(), "project_context", map[string]any{
+		"workspace_id": item.ID, "include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("project_context=%#v err=%v", result, err)
+	}
+	project := result.StructuredContent.(ProjectContextResult)
+	for _, expected := range []string{"## Tool capabilities", "git_push", "run_command"} {
+		if !strings.Contains(project.InstructionContext.InstructionsText, expected) {
+			t.Fatalf("full runtime capability guidance missing %q:\n%s", expected, project.InstructionContext.InstructionsText)
+		}
 	}
 }
 

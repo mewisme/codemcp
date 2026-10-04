@@ -7,6 +7,11 @@ workflow
 - name: full
 - tools: 3
 
+## Tool capabilities
+- tools: total=2, indexed=2, shown=2
+- groups:
+  - git: git_log, git_push
+
 ## Environment
 - platform: linux
 - os: linux

@@ -40,6 +40,10 @@ func TestBuildAssemblesInstructionContext(t *testing.T) {
 	value, err := Build(context.Background(), BuildOptions{
 		Root: root, WorkspaceID: "ws_test", WorkspaceRoot: root, CWD: root, WorkspaceRoots: []string{root}, MemoryStore: store,
 		Memory: MemoryLoadOptions{HomeDir: home, MaxBytesPerSection: 25_000}, ToolProfile: ToolProfile{Name: "full", Count: 54},
+		ToolCapabilities: &ToolCapabilities{
+			Groups:     []ToolCapabilityGroup{{Domain: "git", Tools: []string{"git_log", "git_push"}}},
+			TotalTools: 2, IncludedTools: 2,
+		},
 		AdminEnabled: true, AdminPort: 37422, Now: func() time.Time { return loadedAt },
 	})
 	if err != nil {
@@ -58,7 +62,7 @@ func TestBuildAssemblesInstructionContext(t *testing.T) {
 	if !value.AutoMemory.Loaded || len(value.Rules) != 1 || len(value.Skills) != 4 {
 		t.Fatalf("assembled context = %#v", value)
 	}
-	for _, expected := range []string{"primary agents", "claude fallback", "global rule", "Release workflow", "use pnpm"} {
+	for _, expected := range []string{"## Tool capabilities", "git_push", "primary agents", "claude fallback", "global rule", "Release workflow", "use pnpm"} {
 		if !strings.Contains(value.InstructionsText, expected) {
 			t.Fatalf("instructions missing %q:\n%s", expected, value.InstructionsText)
 		}

@@ -11,6 +11,13 @@ import (
 
 const DefaultInstructionMaxBytes = 100_000
 
+const (
+	maxRenderedCapabilityGroups        = 16
+	maxRenderedCapabilityToolsPerGroup = 8
+	maxRenderedCapabilityTools         = 96
+	maxRenderedCapabilityBytes         = 4 * 1024
+)
+
 const QuickPointers = `- Use load_path_rules(path) before editing files covered by path-scoped rules.
 - Use load_skill(name) only for skills whose summaries match the current task.
 - Use workspace_status when workspace root, persisted cwd, or allowed directories need to be re-checked.
@@ -35,8 +42,11 @@ func instructionBlocks(value InstructionContext) []instructionBlock {
 	blocks := []instructionBlock{
 		{title: "Agent workflow", content: workflow, required: true},
 		{title: "Tool profile", content: formatToolProfile(value.ToolProfile), required: true},
-		{title: "Environment", content: formatEnvironment(value.Environment), required: true},
 	}
+	if capabilities := formatToolCapabilities(value.ToolCapabilities); capabilities != "" {
+		blocks = append(blocks, instructionBlock{title: "Tool capabilities", content: capabilities, required: true})
+	}
+	blocks = append(blocks, instructionBlock{title: "Environment", content: formatEnvironment(value.Environment), required: true})
 	if !value.Git.Skipped {
 		blocks = append(blocks, instructionBlock{title: "Git", content: formatGit(value.Git)})
 	}
@@ -252,6 +262,93 @@ func formatToolProfile(profile ToolProfile) string {
 		name = "unknown"
 	}
 	return fmt.Sprintf("- name: %s\n- tools: %d", name, profile.Count)
+}
+
+type renderedToolCapabilityGroup struct {
+	domain    string
+	tools     []string
+	truncated bool
+}
+
+func formatToolCapabilities(capabilities *ToolCapabilities) string {
+	if capabilities == nil {
+		return ""
+	}
+	groups := make([]renderedToolCapabilityGroup, 0, min(len(capabilities.Groups), maxRenderedCapabilityGroups))
+	shown := 0
+	truncated := capabilities.Truncated || capabilities.IncludedTools < capabilities.TotalTools
+	for _, group := range capabilities.Groups {
+		if len(groups) >= maxRenderedCapabilityGroups || shown >= maxRenderedCapabilityTools {
+			truncated = true
+			break
+		}
+		domain := strings.TrimSpace(group.Domain)
+		if domain == "" {
+			domain = "unknown"
+		}
+		rendered := renderedToolCapabilityGroup{domain: domain, truncated: group.Truncated}
+		for _, tool := range group.Tools {
+			tool = strings.TrimSpace(tool)
+			if tool == "" {
+				continue
+			}
+			if len(rendered.tools) >= maxRenderedCapabilityToolsPerGroup || shown >= maxRenderedCapabilityTools {
+				rendered.truncated = true
+				truncated = true
+				break
+			}
+			rendered.tools = append(rendered.tools, tool)
+			shown++
+		}
+		if len(rendered.tools) < len(group.Tools) {
+			rendered.truncated = true
+			truncated = true
+		}
+		groups = append(groups, rendered)
+	}
+	if len(groups) < len(capabilities.Groups) || shown < capabilities.IncludedTools {
+		truncated = true
+	}
+
+	for {
+		text := renderToolCapabilities(capabilities, groups, shown, truncated)
+		if len([]byte(text)) <= maxRenderedCapabilityBytes || len(groups) == 0 {
+			return text
+		}
+		last := len(groups) - 1
+		if len(groups[last].tools) > 0 {
+			groups[last].tools = groups[last].tools[:len(groups[last].tools)-1]
+			groups[last].truncated = true
+			shown--
+			truncated = true
+			continue
+		}
+		groups = groups[:last]
+		truncated = true
+	}
+}
+
+func renderToolCapabilities(capabilities *ToolCapabilities, groups []renderedToolCapabilityGroup, shown int, truncated bool) string {
+	lines := []string{fmt.Sprintf("- tools: total=%d, indexed=%d, shown=%d", capabilities.TotalTools, capabilities.IncludedTools, shown)}
+	if len(groups) == 0 {
+		lines = append(lines, "- groups: none")
+	} else {
+		lines = append(lines, "- groups:")
+		for _, group := range groups {
+			tools := "none"
+			if len(group.tools) > 0 {
+				tools = strings.Join(group.tools, ", ")
+			}
+			if group.truncated {
+				tools += " (truncated)"
+			}
+			lines = append(lines, "  - "+group.domain+": "+tools)
+		}
+	}
+	if truncated {
+		lines = append(lines, "- truncated: true")
+	}
+	return strings.Join(lines, "\n")
 }
 
 func formatEnvironment(env EnvironmentSnapshot) string {
