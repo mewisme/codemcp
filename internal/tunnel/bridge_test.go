@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,7 +15,9 @@ import (
 	"github.com/openai/tunnel-client/pkg/tunnelctx"
 
 	managedagent "go.mewis.me/codemcp/internal/agent"
+	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/controlguard"
 	localmcp "go.mewis.me/codemcp/internal/mcp"
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 	"go.mewis.me/codemcp/internal/tools"
@@ -27,6 +30,20 @@ type bridgeConfigReadProvider struct {
 }
 
 type bridgeManagedAgentBackend struct{}
+
+type bridgeApprovalHarness struct {
+	runtime    *tools.Runtime
+	bridge     *sdkBridge
+	workspaceA string
+	workspaceB string
+	executions *atomic.Int32
+	executed   chan struct{}
+}
+
+type bridgeToolCallResult struct {
+	result *sdkmcp.CallToolResult
+	err    error
+}
 
 func (bridgeManagedAgentBackend) ID() managedagent.BackendID { return "bridge-agent-test" }
 func (bridgeManagedAgentBackend) Ready(context.Context) (managedagent.Readiness, error) {
@@ -43,6 +60,126 @@ func (bridgeManagedAgentBackend) Snapshot(context.Context, managedagent.Handle) 
 }
 func (bridgeManagedAgentBackend) Cancel(context.Context, managedagent.Handle) error { return nil }
 func (bridgeManagedAgentBackend) Close(context.Context, managedagent.Handle) error  { return nil }
+
+func newBridgeApprovalHarness(t *testing.T, approvedHandler func(context.Context, map[string]any, string) (tools.Result, error)) bridgeApprovalHarness {
+	t.Helper()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	workspaceA, err := manager.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspaceB, err := manager.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := manager.Instance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tools.NewRegistry()
+	runtime := &tools.Runtime{
+		Registry: registry, Workspaces: manager, SessionAccess: tools.NewSessionWorkspaceAccessManager(),
+		Approvals: approval.NewManager(identity.ID),
+	}
+	executions := &atomic.Int32{}
+	executed := make(chan struct{}, 8)
+	register := func(name string) {
+		registry.MustRegister(name, tools.Schema{
+			Name:        name,
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`),
+			Approval:    &tools.ApprovalMetadata{Inline: true},
+		}, func(ctx context.Context, args map[string]any) (tools.Result, error) {
+			if requestID := tools.ApprovalRequestID(ctx); requestID != "" {
+				executions.Add(1)
+				select {
+				case executed <- struct{}{}:
+				default:
+				}
+				if approvedHandler != nil {
+					return approvedHandler(ctx, args, requestID)
+				}
+				return tools.JSONResult(map[string]any{"approved_request": requestID, "command": args["command"], "result": "executed"}), nil
+			}
+			command, _ := args["command"].(string)
+			return tools.Result{}, controlguard.New(
+				controlguard.CodeControlPlaneMutation,
+				"guarded action requires approval",
+				true,
+				&controlguard.Invocation{Program: "cm", Args: []string{"update"}, Command: command},
+			)
+		})
+	}
+	register("guarded_controller_action")
+	register("other_guarded_controller_action")
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bridge.tasks != nil {
+		t.Cleanup(bridge.tasks.Close)
+	}
+	return bridgeApprovalHarness{
+		runtime: runtime, bridge: bridge, workspaceA: workspaceA.ID, workspaceB: workspaceB.ID,
+		executions: executions, executed: executed,
+	}
+}
+
+func callBridgeApprovalTool(ctx context.Context, bridge *sdkBridge, session, name string, args map[string]any) (*sdkmcp.CallToolResult, error) {
+	arguments, err := json.Marshal(args)
+	if err != nil {
+		return nil, err
+	}
+	request := &sdkmcp.CallToolRequest{Params: &sdkmcp.CallToolParamsRaw{
+		Name: name, Arguments: arguments,
+		Meta: sdkmcp.Meta{
+			sdkmcp.MetaKeyProtocolVersion: localmcp.SupportedProtocolVersion,
+			"openai/session":              session,
+		},
+	}}
+	return bridge.toolHandler(name)(ctx, request)
+}
+
+func bridgeApprovalChallengeID(t *testing.T, result *sdkmcp.CallToolResult) string {
+	t.Helper()
+	if result == nil || !result.IsError {
+		t.Fatalf("approval challenge result=%#v", result)
+	}
+	body, ok := result.StructuredContent.(map[string]any)
+	if !ok || body["code"] != "approval_required" {
+		t.Fatalf("approval challenge body=%#v", result.StructuredContent)
+	}
+	id, _ := body["challenge_id"].(string)
+	if id == "" {
+		t.Fatalf("approval challenge id missing: %#v", body)
+	}
+	return id
+}
+
+func bridgeInlineApprovalArgs(args map[string]any, challengeID, title string) map[string]any {
+	result := make(map[string]any, len(args)+1)
+	for key, value := range args {
+		result[key] = value
+	}
+	result[tools.InlineApprovalArgumentKey] = map[string]any{
+		tools.InlineApprovalChallengeID: challengeID,
+		tools.InlineApprovalTitle:       title,
+	}
+	return result
+}
+
+func waitForBridgeApproval(t *testing.T, manager *approval.Manager) approval.Request {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		requests := manager.List(approval.Filter{Status: approval.StatusPending})
+		if len(requests) == 1 {
+			return requests[0]
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("approval request did not become pending")
+	return approval.Request{}
+}
 
 func (provider bridgeConfigReadProvider) List(context.Context, string) ([]mcpconfigwire.Setting, mcpconfigwire.ErrorCode) {
 	return []mcpconfigwire.Setting{provider.setting}, ""
@@ -384,6 +521,241 @@ func TestSDKBridgeModernOpenAISessionScopesApprovalCallerPerController(t *testin
 	}
 	if first.RequestID == firstAgain.RequestID || first.RequestID == second.RequestID || firstAgain.RequestID == second.RequestID {
 		t.Fatalf("approval request correlations were not per-call: %#v / %#v / %#v", first, firstAgain, second)
+	}
+}
+
+func TestSDKBridgeInlineApprovalReturnsActualResultOnSecondCall(t *testing.T) {
+	harness := newBridgeApprovalHarness(t, nil)
+	serverTransport, clientTransport := sdkmcp.NewInMemoryTransports()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- harness.bridge.Run(ctx, serverTransport) }()
+	client := sdkmcp.NewClient(&sdkmcp.Implementation{Name: "bridge-inline-approval-test", Version: "1.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]any{"workspace_id": harness.workspaceA, "command": "cm update"}
+	first, err := session.CallTool(ctx, &sdkmcp.CallToolParams{Name: "guarded_controller_action", Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	challengeID := bridgeApprovalChallengeID(t, first)
+	resultCh := make(chan bridgeToolCallResult, 1)
+	go func() {
+		result, callErr := session.CallTool(ctx, &sdkmcp.CallToolParams{
+			Name:      "guarded_controller_action",
+			Arguments: bridgeInlineApprovalArgs(args, challengeID, "Update CodeMCP"),
+		})
+		resultCh <- bridgeToolCallResult{result: result, err: callErr}
+	}()
+	request := waitForBridgeApproval(t, harness.runtime.Approvals)
+	if harness.executions.Load() != 0 {
+		t.Fatalf("guarded handler executed before approval: %d", harness.executions.Load())
+	}
+	if _, err := harness.runtime.Approvals.Approve(request.ID, "reviewer", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	resolved := <-resultCh
+	if resolved.err != nil || resolved.result == nil || resolved.result.IsError {
+		t.Fatalf("second call=%#v err=%v", resolved.result, resolved.err)
+	}
+	payload, ok := resolved.result.StructuredContent.(map[string]any)
+	if !ok || payload["approved_request"] != request.ID || payload["command"] != "cm update" || payload["result"] != "executed" {
+		t.Fatalf("actual guarded-tool result=%#v", resolved.result.StructuredContent)
+	}
+	if harness.executions.Load() != 1 {
+		t.Fatalf("guarded handler executions=%d", harness.executions.Load())
+	}
+	consumed, ok := harness.runtime.Approvals.Get(request.ID)
+	if !ok || consumed.Status != approval.StatusConsumed {
+		t.Fatalf("approval request=%#v ok=%t", consumed, ok)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	select {
+	case err := <-serverDone:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("bridge run: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("bridge server did not stop")
+	}
+}
+
+func TestSDKBridgeInlineApprovalRejectsRetargetedInvocationBeforeReview(t *testing.T) {
+	tests := []struct {
+		name    string
+		session string
+		tool    string
+		mutate  func(bridgeApprovalHarness, map[string]any) map[string]any
+	}{
+		{name: "caller", session: "chat-session-b", tool: "guarded_controller_action"},
+		{name: "workspace", session: "chat-session-a", tool: "guarded_controller_action", mutate: func(h bridgeApprovalHarness, args map[string]any) map[string]any {
+			args["workspace_id"] = h.workspaceB
+			return args
+		}},
+		{name: "tool", session: "chat-session-a", tool: "other_guarded_controller_action"},
+		{name: "arguments", session: "chat-session-a", tool: "guarded_controller_action", mutate: func(_ bridgeApprovalHarness, args map[string]any) map[string]any {
+			args["command"] = "cm restart"
+			return args
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			harness := newBridgeApprovalHarness(t, nil)
+			base := map[string]any{"workspace_id": harness.workspaceA, "command": "cm update"}
+			first, err := callBridgeApprovalTool(context.Background(), harness.bridge, "chat-session-a", "guarded_controller_action", base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			challengeID := bridgeApprovalChallengeID(t, first)
+			secondArgs := map[string]any{"workspace_id": harness.workspaceA, "command": "cm update"}
+			if tc.mutate != nil {
+				secondArgs = tc.mutate(harness, secondArgs)
+			}
+			secondArgs = bridgeInlineApprovalArgs(secondArgs, challengeID, "Update CodeMCP")
+			callCtx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+			defer cancel()
+			second, err := callBridgeApprovalTool(callCtx, harness.bridge, tc.session, tc.tool, secondArgs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if second == nil || !second.IsError {
+				t.Fatalf("retargeted call unexpectedly succeeded: %#v", second)
+			}
+			if harness.executions.Load() != 0 {
+				t.Fatalf("retargeted call dispatched handler: %d", harness.executions.Load())
+			}
+			if pending := harness.runtime.Approvals.List(approval.Filter{Status: approval.StatusPending}); len(pending) != 0 {
+				t.Fatalf("retargeted call created pending review: %#v", pending)
+			}
+		})
+	}
+}
+
+func TestSDKBridgeInlineApprovalCancellationAndDeadlineNeverDispatchLate(t *testing.T) {
+	tests := []struct {
+		name    string
+		context func() (context.Context, context.CancelFunc)
+	}{
+		{name: "cancel", context: func() (context.Context, context.CancelFunc) {
+			return context.WithCancel(context.Background())
+		}},
+		{name: "deadline", context: func() (context.Context, context.CancelFunc) {
+			return context.WithTimeout(context.Background(), 120*time.Millisecond)
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			harness := newBridgeApprovalHarness(t, nil)
+			args := map[string]any{"workspace_id": harness.workspaceA, "command": "cm update"}
+			first, err := callBridgeApprovalTool(context.Background(), harness.bridge, "chat-session-a", "guarded_controller_action", args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			challengeID := bridgeApprovalChallengeID(t, first)
+			callCtx, cancelCall := tc.context()
+			resultCh := make(chan bridgeToolCallResult, 1)
+			go func() {
+				result, callErr := callBridgeApprovalTool(
+					callCtx, harness.bridge, "chat-session-a", "guarded_controller_action",
+					bridgeInlineApprovalArgs(args, challengeID, "Update CodeMCP"),
+				)
+				resultCh <- bridgeToolCallResult{result: result, err: callErr}
+			}()
+			request := waitForBridgeApproval(t, harness.runtime.Approvals)
+			if tc.name == "cancel" {
+				cancelCall()
+			} else {
+				defer cancelCall()
+			}
+			resolved := <-resultCh
+			if resolved.err != nil || resolved.result == nil || !resolved.result.IsError {
+				t.Fatalf("interrupted inline call=%#v err=%v", resolved.result, resolved.err)
+			}
+			if harness.executions.Load() != 0 {
+				t.Fatalf("interrupted inline call dispatched handler: %d", harness.executions.Load())
+			}
+			pending, ok := harness.runtime.Approvals.Get(request.ID)
+			if !ok || pending.Status != approval.StatusPending {
+				t.Fatalf("interrupted request=%#v ok=%t", pending, ok)
+			}
+			if _, err := harness.runtime.Approvals.Approve(request.ID, "reviewer", "approved after waiter ended"); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-harness.executed:
+				t.Fatal("approval after interrupted waiter caused late background execution")
+			case <-time.After(30 * time.Millisecond):
+			}
+			recovered, err := callBridgeApprovalTool(context.Background(), harness.bridge, "chat-session-a", "guarded_controller_action", args)
+			if err != nil || recovered == nil || recovered.IsError {
+				t.Fatalf("exact recovery=%#v err=%v", recovered, err)
+			}
+			if harness.executions.Load() != 1 {
+				t.Fatalf("recovery executions=%d", harness.executions.Load())
+			}
+		})
+	}
+}
+
+func TestSDKBridgeInlineApprovalClaimedExecutionCancellationRemainsOneShot(t *testing.T) {
+	entered := make(chan struct{}, 1)
+	harness := newBridgeApprovalHarness(t, func(ctx context.Context, _ map[string]any, _ string) (tools.Result, error) {
+		select {
+		case entered <- struct{}{}:
+		default:
+		}
+		<-ctx.Done()
+		return tools.Result{}, ctx.Err()
+	})
+	args := map[string]any{"workspace_id": harness.workspaceA, "command": "cm update"}
+	first, err := callBridgeApprovalTool(context.Background(), harness.bridge, "chat-session-a", "guarded_controller_action", args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	challengeID := bridgeApprovalChallengeID(t, first)
+	callCtx, cancelCall := context.WithCancel(context.Background())
+	resultCh := make(chan bridgeToolCallResult, 1)
+	go func() {
+		result, callErr := callBridgeApprovalTool(
+			callCtx, harness.bridge, "chat-session-a", "guarded_controller_action",
+			bridgeInlineApprovalArgs(args, challengeID, "Update CodeMCP"),
+		)
+		resultCh <- bridgeToolCallResult{result: result, err: callErr}
+	}()
+	request := waitForBridgeApproval(t, harness.runtime.Approvals)
+	if _, err := harness.runtime.Approvals.Approve(request.ID, "reviewer", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("approved handler did not start")
+	}
+	claimed, ok := harness.runtime.Approvals.Get(request.ID)
+	if !ok || claimed.Status != approval.StatusConsumed {
+		t.Fatalf("claimed request=%#v ok=%t", claimed, ok)
+	}
+	cancelCall()
+	resolved := <-resultCh
+	if resolved.err != nil || resolved.result == nil || !resolved.result.IsError {
+		t.Fatalf("cancelled execution=%#v err=%v", resolved.result, resolved.err)
+	}
+	if harness.executions.Load() != 1 {
+		t.Fatalf("cancelled execution count=%d", harness.executions.Load())
+	}
+	retry, err := callBridgeApprovalTool(context.Background(), harness.bridge, "chat-session-a", "guarded_controller_action", args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshChallengeID := bridgeApprovalChallengeID(t, retry)
+	if freshChallengeID == challengeID || harness.executions.Load() != 1 {
+		t.Fatalf("claimed approval replayed: old=%q new=%q executions=%d", challengeID, freshChallengeID, harness.executions.Load())
 	}
 }
 

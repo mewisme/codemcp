@@ -124,6 +124,21 @@ func TestRuntimeDuplicateMutationProtectionCountsOnlySuccessfulDispatches(t *tes
 	}
 }
 
+func TestInlineApprovalMetadataDoesNotChangeLoopMutationIdentity(t *testing.T) {
+	business := map[string]any{"workspace_id": "ws_a", "command": "touch file.txt"}
+	withApproval := inlineApprovalArgs(business, "chg_loop_identity", "Touch file")
+	stripped, envelope, err := splitInlineApprovalArguments(withApproval)
+	if err != nil || envelope == nil {
+		t.Fatalf("split inline approval stripped=%#v envelope=%#v err=%v", stripped, envelope, err)
+	}
+	if _, exists := stripped[InlineApprovalArgumentKey]; exists {
+		t.Fatalf("runtime approval metadata remained in loop arguments: %#v", stripped)
+	}
+	if got, want := toolCallFingerprint("run_command", stripped), toolCallFingerprint("run_command", business); got != want {
+		t.Fatalf("inline approval changed loop mutation identity: got=%q want=%q", got, want)
+	}
+}
+
 func TestRuntimeLoopGuardBlocksContextLoopAndMutationResetsIt(t *testing.T) {
 	registry := NewRegistry()
 	readSchema := Schema{Name: "project_context", InputSchema: json.RawMessage(`{"type":"object"}`), Annotations: ToolAnnotations(RiskRead)}

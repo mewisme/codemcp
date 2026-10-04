@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	managedagent "go.mewis.me/codemcp/internal/agent"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/configformat"
@@ -325,6 +326,100 @@ func TestRuntimeInlineApprovalExecutesOnSecondCallAndStripsControlMetadata(t *te
 	}
 	if next, ok := replay.StructuredContent.(approvalRequiredResponse); !ok || next.ChallengeID == "" || next.ChallengeID == challenge.ChallengeID {
 		t.Fatalf("inline replay did not require fresh challenge: %#v", replay.StructuredContent)
+	}
+}
+
+func TestManagedChildInlineApprovalKeepsCanonicalReviewAndSuppressesUserNotifications(t *testing.T) {
+	runtime, workspaceID := newCompletionToolRuntime(t)
+	backend := &completionManagedBackend{}
+	if err := runtime.Agents.RegisterBackend(backend); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Agents.Configure("completion-test", managedagent.Capacity{MaxParallel: 5}); err != nil {
+		t.Fatal(err)
+	}
+	spawned, err := runtime.Agents.Spawn(context.Background(), managedagent.OperatorController(), managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: workspaceID, Prompt: "managed child inline approval",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := runtime.Agents.IssueClaim(spawned.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childCtx := WithTrustedControllerID(context.Background(), "openai:managed-child-inline-approval")
+	childIdentity := RuntimeStateIdentity(childCtx)
+	if _, err := runtime.Agents.ConsumeClaim(spawned.ID, credential.Token(), childIdentity); err != nil {
+		t.Fatal(err)
+	}
+	const toolName = "managed_child_guarded_action"
+	runtime.Registry.MustRegister(toolName, Schema{
+		Name:        toolName,
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`),
+		Approval:    inlineApprovalMetadata(),
+	}, func(ctx context.Context, args map[string]any) (Result, error) {
+		if requestID := ApprovalRequestID(ctx); requestID != "" {
+			return JSONResult(map[string]any{"approved_request": requestID, "command": args["command"]}), nil
+		}
+		command, _ := args["command"].(string)
+		return Result{}, controlguard.New(
+			controlguard.CodeControlPlaneMutation,
+			"managed child action requires approval",
+			true,
+			&controlguard.Invocation{Program: "cm", Args: []string{"update"}, Command: command},
+		)
+	})
+	childCtx = WithCallSource(childCtx, "tunnel")
+	childCtx = WithApprovalCorrelation(childCtx, childIdentity, "managed-child-inline-request")
+	args := map[string]any{"workspace_id": workspaceID, "command": "cm update"}
+	first, err := runtime.Call(childCtx, toolName, args)
+	if err != nil || !first.IsError {
+		t.Fatalf("managed child challenge=%#v err=%v", first, err)
+	}
+	challenge := first.StructuredContent.(approvalRequiredResponse)
+	challengeSuppressed := false
+	for _, event := range runtime.Approvals.Events().Recent(16) {
+		if event.ChallengeID == challenge.ChallengeID && event.SuppressNotifications {
+			challengeSuppressed = true
+		}
+	}
+	if !challengeSuppressed {
+		t.Fatal("managed child approval challenge did not suppress user notifications")
+	}
+	resultCh := make(chan approvalToolCallResult, 1)
+	go func() {
+		result, err := runtime.Call(childCtx, toolName, inlineApprovalArgs(args, challenge.ChallengeID, "Update CodeMCP"))
+		resultCh <- approvalToolCallResult{result: result, err: err}
+	}()
+	request := waitForPendingApproval(t, runtime.Approvals)
+	requestSuppressed := false
+	for _, event := range runtime.Approvals.Events().Recent(16) {
+		if event.RequestID == request.ID && event.SuppressNotifications {
+			requestSuppressed = true
+		}
+	}
+	if !requestSuppressed {
+		t.Fatal("managed child approval request did not suppress user notifications")
+	}
+	review := approval.NewReviewService(runtime.Approvals)
+	visible, err := review.View(request.ID)
+	if err != nil || visible.ID != request.ID || visible.Status != approval.StatusPending {
+		t.Fatalf("canonical review view=%#v err=%v", visible, err)
+	}
+	approved, err := review.Resolve(approval.ReviewInput{
+		Request: request.ID, Decision: approval.ReviewApprove, ResolvedBy: "reviewer", Reason: "reviewed",
+	})
+	if err != nil || approved.Status != approval.StatusApproved {
+		t.Fatalf("canonical review approval=%#v err=%v", approved, err)
+	}
+	resolved := <-resultCh
+	if resolved.err != nil || resolved.result.IsError {
+		t.Fatalf("managed child approved result=%#v err=%v", resolved.result, resolved.err)
+	}
+	consumed, ok := runtime.Approvals.Get(request.ID)
+	if !ok || consumed.Status != approval.StatusConsumed {
+		t.Fatalf("managed child approval request=%#v ok=%t", consumed, ok)
 	}
 }
 

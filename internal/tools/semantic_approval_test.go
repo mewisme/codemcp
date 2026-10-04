@@ -2,11 +2,13 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/controlguard"
@@ -415,6 +417,110 @@ func TestSemanticInlineApprovalSkipsReclassificationAndExecutesSecondCall(t *tes
 	}
 	if calls.Load() != 2 {
 		t.Fatalf("fresh replay did not reclassify: calls=%d", calls.Load())
+	}
+}
+
+func TestSemanticInlineApprovalStartsBackgroundProcessOnlyAfterApproval(t *testing.T) {
+	runtime, workspaceID := newApprovalShellRuntime(t)
+	var calls atomic.Int32
+	configureSemanticApprovalClassifier(t, runtime, semantic.RiskClassifierFunc(func(_ context.Context, input semantic.RiskInput) (semantic.RiskAssessment, error) {
+		calls.Add(1)
+		if input.Invocation.Operation != "start_process" {
+			t.Fatalf("operation=%q", input.Invocation.Operation)
+		}
+		return semanticAssessment(semantic.RiskHigh, 0.95), nil
+	}))
+	args := map[string]any{"workspace_id": workspaceID, "command": "touch semantic-inline-background && sleep 5"}
+	ctx := semanticApprovalContext("semantic-inline-background")
+	first, err := runtime.Call(ctx, "start_process", args)
+	if err != nil || !first.IsError {
+		t.Fatalf("first=%#v err=%v", first, err)
+	}
+	if processes, err := runtime.Processes.Status(workspaceID, ""); err != nil || len(processes) != 0 {
+		t.Fatalf("process started before inline approval: processes=%#v err=%v", processes, err)
+	}
+	challenge := first.StructuredContent.(approvalRequiredResponse)
+	resultCh := make(chan approvalToolCallResult, 1)
+	go func() {
+		result, err := runtime.Call(ctx, "start_process", inlineApprovalArgs(args, challenge.ChallengeID, "Start approved background process"))
+		resultCh <- approvalToolCallResult{result: result, err: err}
+	}()
+	request := waitForPendingApproval(t, runtime.Approvals)
+	if processes, err := runtime.Processes.Status(workspaceID, ""); err != nil || len(processes) != 0 {
+		t.Fatalf("pending approval started process: processes=%#v err=%v", processes, err)
+	}
+	if _, err := runtime.Approvals.Approve(request.ID, "reviewer", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	resolved := <-resultCh
+	if resolved.err != nil || resolved.result.IsError {
+		t.Fatalf("approved start_process=%#v err=%v", resolved.result, resolved.err)
+	}
+	data, err := json.Marshal(resolved.result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	processID, _ := payload["id"].(string)
+	if processID == "" {
+		t.Fatalf("start_process result missing id: %#v", payload)
+	}
+	processes, err := runtime.Processes.Status(workspaceID, processID)
+	if err != nil || len(processes) != 1 {
+		t.Fatalf("approved process lifecycle=%#v err=%v", processes, err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("approved start_process reclassified: calls=%d", calls.Load())
+	}
+	if _, err := runtime.Processes.Stop(workspaceID, processID, true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSemanticInlineApprovedRunCommandUsesRemainingTunnelBudget(t *testing.T) {
+	runtime, workspaceID := newApprovalShellRuntime(t)
+	var calls atomic.Int32
+	configureSemanticApprovalClassifier(t, runtime, semantic.RiskClassifierFunc(func(_ context.Context, input semantic.RiskInput) (semantic.RiskAssessment, error) {
+		calls.Add(1)
+		if input.Invocation.Operation != "run_command" {
+			t.Fatalf("operation=%q", input.Invocation.Operation)
+		}
+		return semanticAssessment(semantic.RiskHigh, 0.95), nil
+	}))
+	args := map[string]any{"workspace_id": workspaceID, "command": "touch semantic-inline-budget && sleep 1"}
+	base := semanticApprovalContext("semantic-inline-budget")
+	first, err := runtime.Call(base, "run_command", args)
+	if err != nil || !first.IsError {
+		t.Fatalf("first=%#v err=%v", first, err)
+	}
+	challenge := first.StructuredContent.(approvalRequiredResponse)
+	callCtx, cancel := context.WithTimeout(base, 600*time.Millisecond)
+	defer cancel()
+	resultCh := make(chan approvalToolCallResult, 1)
+	go func() {
+		result, err := runtime.Call(callCtx, "run_command", inlineApprovalArgs(args, challenge.ChallengeID, "Run approved command"))
+		resultCh <- approvalToolCallResult{result: result, err: err}
+	}()
+	request := waitForPendingApproval(t, runtime.Approvals)
+	if _, err := runtime.Approvals.Approve(request.ID, "reviewer", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	resolved := <-resultCh
+	if resolved.err != nil || !resolved.result.IsError || len(resolved.result.Content) == 0 || !strings.Contains(resolved.result.Content[0].Text, "start_process") {
+		t.Fatalf("budgeted run_command=%#v err=%v", resolved.result, resolved.err)
+	}
+	if callCtx.Err() != nil {
+		t.Fatalf("parent deadline expired before tunnel budget result returned: %v", callCtx.Err())
+	}
+	consumed, ok := runtime.Approvals.Get(request.ID)
+	if !ok || consumed.Status != approval.StatusConsumed {
+		t.Fatalf("budgeted approval request=%#v ok=%t", consumed, ok)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("approved run_command reclassified: calls=%d", calls.Load())
 	}
 }
 

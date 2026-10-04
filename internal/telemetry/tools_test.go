@@ -11,6 +11,8 @@ import (
 
 	"github.com/fatih/color"
 
+	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/logger"
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
 	"go.mewis.me/codemcp/internal/runtime/activity"
@@ -219,6 +221,130 @@ func TestAttachToolsConfigSetActivityAndVerboseLogNeverExposeValues(t *testing.T
 	}
 	if !strings.Contains(output.String(), "Tool call started") || !strings.Contains(output.String(), "Tool call failed") {
 		t.Fatalf("config_set approval lifecycle missing: %q", output.String())
+	}
+}
+
+func TestAttachToolsInlineApprovalMetadataStaysOutOfActivityAndLogs(t *testing.T) {
+	previous := color.NoColor
+	color.NoColor = true
+	defer func() { color.NoColor = previous }()
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	defer runtime.CompletionHooks.Stop()
+	workspace, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const toolName = "telemetry_inline_guard"
+	runtime.Registry.MustRegister(toolName, tools.Schema{
+		Name:        toolName,
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`),
+		Approval:    &tools.ApprovalMetadata{Inline: true},
+	}, func(ctx context.Context, args map[string]any) (tools.Result, error) {
+		if requestID := tools.ApprovalRequestID(ctx); requestID != "" {
+			return tools.JSONResult(map[string]any{"approved_request": requestID, "command": args["command"]}), nil
+		}
+		command, _ := args["command"].(string)
+		return tools.Result{}, controlguard.New(
+			controlguard.CodeControlPlaneMutation,
+			"telemetry inline action requires approval",
+			true,
+			&controlguard.Invocation{Program: "cm", Args: []string{"update"}, Command: command},
+		)
+	})
+	stream := activity.NewStream()
+	var output bytes.Buffer
+	log := logger.NewWithOptions(logger.Options{Level: logger.Info, Mode: logger.ModeVerbose, Writer: &output})
+	AttachTools(runtime, stream, log)
+	args := map[string]any{"workspace_id": workspace.ID, "command": "cm update"}
+	firstCtx := tools.WithCallSource(context.Background(), "tunnel")
+	firstCtx = tools.WithApprovalCorrelation(firstCtx, "telemetry-inline-caller", "telemetry-inline-first")
+	first, err := runtime.Call(firstCtx, toolName, args)
+	if err != nil || !first.IsError {
+		t.Fatalf("first inline challenge=%#v err=%v", first, err)
+	}
+	data, err := json.Marshal(first.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var challenge map[string]any
+	if err := json.Unmarshal(data, &challenge); err != nil {
+		t.Fatal(err)
+	}
+	challengeID, _ := challenge["challenge_id"].(string)
+	if challengeID == "" {
+		t.Fatalf("challenge id missing: %#v", challenge)
+	}
+	output.Reset()
+	const title = "TELEMETRY_INLINE_TITLE_6d9f"
+	inlineArgs := map[string]any{
+		"workspace_id": workspace.ID,
+		"command":      "cm update",
+		tools.InlineApprovalArgumentKey: map[string]any{
+			tools.InlineApprovalChallengeID: challengeID,
+			tools.InlineApprovalTitle:       title,
+		},
+	}
+	params := map[string]any{"name": toolName, "arguments": inlineArgs}
+	request := map[string]any{"jsonrpc": "2.0", "id": "inline-telemetry-call", "method": "tools/call", "params": params}
+	secondCtx := tools.WithCallSource(context.Background(), "tunnel")
+	secondCtx = tools.WithApprovalCorrelation(secondCtx, "telemetry-inline-caller", "telemetry-inline-second")
+	secondCtx = tools.WithCallDetails(secondCtx, "tools/call", params)
+	secondCtx = tools.WithCallRequest(secondCtx, request)
+	type callResult struct {
+		result tools.Result
+		err    error
+	}
+	resultCh := make(chan callResult, 1)
+	go func() {
+		result, err := runtime.Call(secondCtx, toolName, inlineArgs)
+		resultCh <- callResult{result: result, err: err}
+	}()
+	deadline := time.Now().Add(time.Second)
+	var pending approval.Request
+	for time.Now().Before(deadline) {
+		requests := runtime.Approvals.List(approval.Filter{Status: approval.StatusPending})
+		if len(requests) == 1 {
+			pending = requests[0]
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if pending.ID == "" {
+		t.Fatal("inline telemetry approval request did not become pending")
+	}
+	if _, err := runtime.Approvals.Approve(pending.ID, "reviewer", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	resolved := <-resultCh
+	if resolved.err != nil || resolved.result.IsError {
+		t.Fatalf("inline telemetry result=%#v err=%v", resolved.result, resolved.err)
+	}
+	events := stream.Recent(16)
+	if len(events) < 4 {
+		t.Fatalf("activity events=%#v", events)
+	}
+	secondEvents := events[len(events)-2:]
+	detail, ok := stream.FindCallDetail(secondEvents[len(secondEvents)-1].CallID)
+	if !ok {
+		t.Fatal("inline approval activity detail missing")
+	}
+	encodedEvents, err := json.Marshal(secondEvents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encodedDetail, err := json.Marshal(detail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	combined := string(encodedEvents) + "\n" + string(encodedDetail) + "\n" + output.String()
+	for _, forbidden := range []string{tools.InlineApprovalArgumentKey, challengeID, title} {
+		if strings.Contains(combined, forbidden) {
+			t.Fatalf("inline approval metadata leaked through telemetry %q: %s", forbidden, combined)
+		}
+	}
+	if !strings.Contains(string(encodedDetail), "cm update") {
+		t.Fatalf("business arguments disappeared from activity detail: %s", encodedDetail)
 	}
 }
 
