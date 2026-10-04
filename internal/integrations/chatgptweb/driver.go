@@ -244,7 +244,7 @@ func (driver *Driver) runTurn(ctx context.Context, request TurnRequest, prompt s
 	if strings.TrimSpace(request.Model) != "" && !controls.ModelVerified {
 		return TurnResult{}, driverError(ErrorModelMismatch, "model controls", "requested model was not verified", nil)
 	}
-	if strings.TrimSpace(request.ReasoningEffort) != "" && !controls.EffortVerified {
+	if strings.TrimSpace(request.ReasoningEffort) != "" && controls.EffortSupported && !controls.EffortVerified {
 		return TurnResult{}, driverError(ErrorEffortMismatch, "model controls", "requested reasoning effort was not verified", nil)
 	}
 
@@ -289,7 +289,9 @@ func (driver *Driver) runTurn(ctx context.Context, request TurnRequest, prompt s
 	}
 	_, effortLabel, _ := normalizeEffort(request.ReasoningEffort)
 	result.Model = strings.TrimSpace(request.Model)
-	result.Effort = effortLabel
+	if controls.EffortSupported && controls.EffortVerified {
+		result.Effort = effortLabel
+	}
 	result.Connector = connector
 	return result, nil
 }

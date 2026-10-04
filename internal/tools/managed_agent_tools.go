@@ -37,7 +37,7 @@ func registerManagedAgentSpawnTool(registry *Registry, runtime *Runtime) {
 		Name:         AgentSpawnToolName,
 		Title:        "Spawn Managed Agent",
 		Description:  "Delegate meaningful, well-scoped independent work when parallelism, specialization, or deliberate independent review has positive payoff. Avoid trivial work, immediate dependencies, duplicate workers without review intent, and conflicting mutation. Keep the child prompt self-contained with only parent-only decisions, constraints, references, scope, and expected output.",
-		InputSchema:  json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"prompt":{"type":"string","minLength":1,"maxLength":65536},"backend":{"type":"string","maxLength":64},"model":{"type":"string","maxLength":128},"reasoning_effort":{"type":"string","maxLength":64}},"required":["workspace_id","prompt"],"additionalProperties":false}`),
+		InputSchema:  json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"prompt":{"type":"string","minLength":1,"maxLength":65536},"backend":{"type":"string","maxLength":64},"model":{"type":"string","maxLength":128},"reasoning_effort":{"type":"string","maxLength":64,"description":"Optional backend hint. Omit unless a specific effort is useful; backends may use the account default when the UI or account does not expose effort selection."}},"required":["workspace_id","prompt"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(managedAgentSnapshotSchema),
 		Annotations:  ToolAnnotations(RiskEdit),
 		Capability:   toolCapability(CapabilityDomainAgents),

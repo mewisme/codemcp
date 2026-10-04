@@ -35,7 +35,7 @@ type driverFakeTab struct {
 func newDriverFakeTab() *driverFakeTab {
 	return &driverFakeTab{
 		done:     make(chan struct{}),
-		controls: controlResult{ModelVerified: true, EffortVerified: true},
+		controls: controlResult{ModelVerified: true, EffortSupported: true, EffortVerified: true},
 		send:     sendResult{Activated: true},
 	}
 }
@@ -271,6 +271,27 @@ func TestDriverFailsClosedOnExplicitEffortMismatch(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "requested effort is locked") {
 		t.Fatalf("effort failure lost actionable detail: %v", err)
+	}
+}
+
+func TestDriverUsesAccountDefaultWhenEffortControlIsUnsupported(t *testing.T) {
+	tab := newDriverFakeTab()
+	tab.controls = controlResult{ModelVerified: true, EffortSupported: false, EffortVerified: false}
+	fresh := readySurface()
+	submitted := fresh
+	submitted.UserTurns, submitted.AssistantTurns, submitted.Generating = 1, 1, true
+	final := fresh
+	final.UserTurns, final.AssistantTurns = 1, 1
+	final.LatestAssistantText, final.CompletionActionVisible = "default effort", true
+	tab.setSurfaces(fresh, fresh, submitted, final)
+	tab.attachText = "task"
+	driver := testDriver(t, tab)
+	result, err := driver.Start(context.Background(), TurnRequest{Prompt: "task", ReasoningEffort: "high"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "default effort" || result.Effort != "" {
+		t.Fatalf("unsupported effort must use account default without claiming requested selection: %#v", result)
 	}
 }
 
@@ -532,6 +553,9 @@ func TestDriverExpressionsNeverSendConversationBackendRequests(t *testing.T) {
 func TestConfigureControlsExpressionUsesSemanticSliderInteraction(t *testing.T) {
 	expression := configureControlsExpression("", 2, "High")
 	for _, required := range []string{
+		"effort_supported",
+		"allowMissing",
+		"containers.length===1",
 		"aria-valuetext",
 		"aria-valuenow",
 		"HTMLInputElement.prototype",

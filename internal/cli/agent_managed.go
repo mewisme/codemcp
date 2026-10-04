@@ -55,7 +55,7 @@ func managedAgentSpawnCommand() *cobra.Command {
 	cmd.Flags().StringVar(&workspaceID, "workspace", "", "workspace ID assigned to the child")
 	cmd.Flags().StringVar(&backend, "backend", "", "managed-agent backend ID")
 	cmd.Flags().StringVar(&model, "model", "", "backend model name")
-	cmd.Flags().StringVar(&effort, "effort", "", "backend reasoning effort")
+	cmd.Flags().StringVar(&effort, "effort", "", "backend reasoning effort when supported by the account")
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
