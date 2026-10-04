@@ -307,3 +307,58 @@ func TestReservedBuiltinSkillsCannotBeShadowedByNativeOrProviderFiles(t *testing
 		}
 	}
 }
+
+func TestManagedNativeFilesystemRemainsRuntimeTruthWithWorkspacePrecedence(t *testing.T) {
+	configRoot := t.TempDir()
+	t.Setenv("CM_CONFIG_DIR", configRoot)
+	workspaceRoot := t.TempDir()
+	home := t.TempDir()
+
+	write := func(root, name, description, body string) string {
+		t.Helper()
+		dir := filepath.Join(root, name)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, "SKILL.md")
+		content := "---\nname: " + name + "\ndescription: " + description + "\n---\n" + body + "\n"
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	workspaceSkills := filepath.Join(workspaceRoot, ".cm", "skills")
+	globalSkills := filepath.Join(configRoot, "skills")
+	workspaceShared := write(workspaceSkills, "shared-managed", "workspace managed", "workspace body")
+	write(globalSkills, "shared-managed", "global managed", "global body")
+	globalOnly := write(globalSkills, "global-managed", "global only", "global-only body")
+	write(workspaceSkills, "authored-native", "authored native", "authored body")
+
+	for _, root := range []string{workspaceSkills, globalSkills} {
+		if err := os.WriteFile(filepath.Join(root, ManagedSourcesFile), []byte("{not runtime truth}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	values, err := DiscoverWithUserForWorkspace(workspaceRoot, workspaceRoot, home, instructionpolicy.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]Skill{}
+	for _, value := range values {
+		byName[value.Name] = value
+	}
+	if got := byName["shared-managed"]; got.Path != workspaceShared || got.Description != "workspace managed" || got.Source != ".cm" {
+		t.Fatalf("workspace precedence changed: %#v", got)
+	}
+	if got := byName["global-managed"]; got.Path != globalOnly || got.Description != "global only" || got.Source != ".cm" {
+		t.Fatalf("global managed skill missing from effective inventory: %#v", got)
+	}
+	if got := byName["authored-native"]; got.Path == "" || got.Description != "authored native" {
+		t.Fatalf("authored native skill changed by managed metadata: %#v", got)
+	}
+	if _, ok := byName["ghost-managed"]; ok {
+		t.Fatalf("metadata-only skill leaked into runtime inventory: %#v", values)
+	}
+}

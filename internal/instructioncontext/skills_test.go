@@ -115,3 +115,38 @@ func TestLoadSkillSummariesWithUserForWorkspaceExcludesUserProviders(t *testing.
 		}
 	}
 }
+
+func TestLoadSkillSummariesSeesManagedNativeFilesystemWithoutMetadataAuthority(t *testing.T) {
+	configRoot := t.TempDir()
+	t.Setenv("CM_CONFIG_DIR", configRoot)
+	workspaceRoot := t.TempDir()
+	home := t.TempDir()
+
+	workspacePath := writeSkillFile(t, workspaceRoot, ".cm", "managed-context", "managed-context", "Managed context skill", "managed body")
+	globalPath := writeSkillFile(t, configRoot, "", "global-context", "global-context", "Global context skill", "global body")
+	if err := os.WriteFile(filepath.Join(workspaceRoot, ".cm", "skills", ".cm-sources.json"), []byte("{not runtime truth}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configRoot, "skills", ".cm-sources.json"), []byte("{not runtime truth}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := LoadSkillSummariesWithUserForWorkspace(workspaceRoot, workspaceRoot, home, instructionpolicy.DefaultConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	seenWorkspace, seenGlobal := false, false
+	for _, skill := range loaded {
+		switch skill.Name {
+		case "managed-context":
+			seenWorkspace = skill.Source == ".cm" && skill.Path == workspacePath
+		case "global-context":
+			seenGlobal = skill.Source == ".cm" && skill.Path == globalPath
+		case "metadata-only":
+			t.Fatalf("metadata-only skill leaked into instruction context: %#v", loaded)
+		}
+	}
+	if !seenWorkspace || !seenGlobal {
+		t.Fatalf("managed native skills missing from instruction context: %#v", loaded)
+	}
+}

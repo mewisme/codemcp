@@ -202,6 +202,67 @@ func TestInstructionAuthoringToolsUseCanonicalWorkspaceOwnerAndExposeBuiltinGuid
 	}
 }
 
+func TestManagedNativeSkillUsesExistingSlashAndLoadFlowWithoutRestart(t *testing.T) {
+	runtime, workspaceID, root := newInstructionAuthoringRuntime(t)
+	store := workspacestate.New(root)
+	skillDir := filepath.Join(store.SkillsRoot(), "managed-slash")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: managed-slash\ndescription: Managed slash skill\n---\nmanaged slash body\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metadata := "{\n  \"schema\": 1,\n  \"skills\": {\n    \"metadata-only\": {\n      \"source\": \"github:owner/repo\",\n      \"revision\": \"" + strings.Repeat("d", 40) + "\",\n      \"path\": \"metadata-only\"\n    }\n  }\n}\n"
+	if err := os.WriteFile(filepath.Join(store.SkillsRoot(), skills.ManagedSourcesFile), []byte(metadata), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	listResult, err := runtime.Call(context.Background(), "list_skills", map[string]any{"workspace_id": workspaceID})
+	if err != nil || listResult.IsError {
+		t.Fatalf("list_skills err=%v result=%#v", err, listResult)
+	}
+	var listed tools.SkillsListResult
+	if err := json.Unmarshal([]byte(listResult.Content[0].Text), &listed); err != nil {
+		t.Fatal(err)
+	}
+	skillNames := make([]string, 0, len(listed.Skills))
+	seenManaged, seenMetadataOnly := false, false
+	for _, skill := range listed.Skills {
+		skillNames = append(skillNames, skill.Name)
+		seenManaged = seenManaged || skill.Name == "managed-slash"
+		seenMetadataOnly = seenMetadataOnly || skill.Name == "metadata-only"
+	}
+	if !seenManaged || seenMetadataOnly {
+		t.Fatalf("runtime inventory does not follow filesystem truth: %#v", listed.Skills)
+	}
+
+	directive, err := instructioncontext.ResolveSlashDirective("/managed-slash", skillNames)
+	if err != nil || directive.Kind != instructioncontext.SlashDirectiveSkill || directive.SkillName != "managed-slash" {
+		t.Fatalf("managed slash resolution=%#v err=%v", directive, err)
+	}
+	fuzzy, err := instructioncontext.ResolveSlashDirective("/managed", skillNames)
+	if err != nil || fuzzy.Kind != instructioncontext.SlashDirectiveNone {
+		t.Fatalf("managed skill gained fuzzy slash activation: %#v err=%v", fuzzy, err)
+	}
+
+	loadedResult, err := runtime.Call(context.Background(), "load_skill", map[string]any{
+		"workspace_id": workspaceID,
+		"name":         "managed-slash",
+		"max_bytes":    500_000,
+	})
+	if err != nil || loadedResult.IsError {
+		t.Fatalf("load_skill(managed-slash) err=%v result=%#v", err, loadedResult)
+	}
+	var loaded skills.Loaded
+	if err := json.Unmarshal([]byte(loadedResult.Content[0].Text), &loaded); err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Skill.Name != "managed-slash" || loaded.Content != content {
+		t.Fatalf("managed skill load=%#v", loaded)
+	}
+}
+
 func TestInstructionAuthoringToolsRemainWorkspaceBoundAndFailClosed(t *testing.T) {
 	runtime, workspaceID, root := newInstructionAuthoringRuntime(t)
 	otherRoot := t.TempDir()

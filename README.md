@@ -195,6 +195,7 @@ Read [Security](docs/security.md) before widening filesystem or network access.
 | Install and connect ChatGPT | [Getting started](docs/getting-started.md) |
 | Understand OpenAI and Base MCP profiles | [MCP profiles and transports](docs/mcp.md) |
 | Scope projects and additional roots | [Workspaces](docs/workspaces.md) |
+| Manage workspace/global Agent Skills and GitHub-backed skills | [Skills](docs/skills.md) |
 | Run, inspect, update, and use operator UIs | [Operations](docs/operations.md) |
 | Configure settings, auth, and secrets | [Configuration](docs/configuration.md) |
 | Configure RTK, CodeGraph, TypeSafe, LLM, and Telegram | [Integrations](docs/integrations.md) |

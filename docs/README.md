@@ -9,6 +9,7 @@ Start with [Getting started](getting-started.md). Use the other guides when you 
 | Install, initialize, register a project, and connect ChatGPT | [Getting started](getting-started.md) |
 | Choose an MCP profile or transport; configure upstream MCP servers | [MCP profiles and transports](mcp.md) |
 | Understand registered workspaces and additional roots | [Workspaces](workspaces.md) |
+| Manage workspace/global Agent Skills and GitHub-backed skills | [Skills](skills.md) |
 | Run the service, inspect logs, update, and use operator UIs | [Operations](operations.md) |
 | Work with config roots, settings, auth, and managed secrets | [Configuration](configuration.md) |
 | Configure RTK, CodeGraph, TypeSafe/SystemOne, LLM providers, or Telegram | [Integrations](integrations.md) |

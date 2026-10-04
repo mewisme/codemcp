@@ -408,6 +408,85 @@ func TestDynamicSkillRefreshesNativeSkillsProjectionWithoutRestart(t *testing.T)
 	}
 }
 
+func TestManagedSkillFilesystemProjectsThroughMCPWithoutRegistrationOrRestart(t *testing.T) {
+	t.Setenv(configformat.EnvConfigDir, t.TempDir())
+	root := t.TempDir()
+	runtime := tools.NewRuntime()
+	item, err := runtime.Workspaces.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	executor := NewFeatureExecutor(FeatureRegistryForRuntime(runtime), runtime, item.ID, "test")
+
+	assertListed := func(name string) map[string]any {
+		t.Helper()
+		listed, err := executor.Invoke(context.Background(), SkillsListMethod, map[string]any{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		items, _ := listed["skills"].([]map[string]any)
+		for _, entry := range items {
+			if entry["name"] == name {
+				return entry
+			}
+		}
+		t.Fatalf("skill %q missing from MCP inventory: %#v", name, listed)
+		return nil
+	}
+	assertMissing := func(name string) {
+		t.Helper()
+		listed, err := executor.Invoke(context.Background(), SkillsListMethod, map[string]any{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		items, _ := listed["skills"].([]map[string]any)
+		for _, entry := range items {
+			if entry["name"] == name {
+				t.Fatalf("metadata-only skill %q leaked into MCP inventory: %#v", name, listed)
+			}
+		}
+	}
+
+	assertMissing("managed-mcp")
+	skillsRoot := filepath.Join(root, ".cm", "skills")
+	dir := filepath.Join(skillsRoot, "managed-mcp")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: managed-mcp\ndescription: Managed MCP skill\n---\nmanaged MCP body\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metadata := "{\n  \"schema\": 1,\n  \"skills\": {\n    \"ghost-managed\": {\n      \"source\": \"github:owner/repo\",\n      \"revision\": \"" + strings.Repeat("a", 40) + "\",\n      \"path\": \"ghost-managed\"\n    }\n  }\n}\n"
+	if err := os.WriteFile(filepath.Join(skillsRoot, skills.ManagedSourcesFile), []byte(metadata), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	entry := assertListed("managed-mcp")
+	assertMissing("ghost-managed")
+	uri, _ := entry["uri"].(string)
+	got, err := executor.Invoke(context.Background(), SkillsGetMethod, map[string]any{"uri": uri})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resources, _ := got["resources"].([]map[string]any)
+	if len(resources) == 0 {
+		t.Fatalf("skills/get resources=%#v", got)
+	}
+	read, err := executor.ReadResource(context.Background(), resources[0]["uri"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Content.Text == nil || *read.Content.Text != content {
+		t.Fatalf("managed MCP skill content=%#v", read.Content)
+	}
+
+	if err := os.Remove(filepath.Join(skillsRoot, skills.ManagedSourcesFile)); err != nil {
+		t.Fatal(err)
+	}
+	assertListed("managed-mcp")
+}
+
 func skillsPolicy(t *testing.T) instructionpolicy.Config {
 	t.Helper()
 	return instructionpolicy.DefaultConfig()
