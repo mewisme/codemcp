@@ -296,6 +296,56 @@ func TestDriverRequiresWorkspaceIDForConnectorRouting(t *testing.T) {
 	}
 }
 
+func TestDriverDoesNotFailOnChatGPTComposerReformatting(t *testing.T) {
+	tab := newDriverFakeTab()
+	fresh := readySurface()
+	submitted := fresh
+	submitted.UserTurns, submitted.AssistantTurns, submitted.Generating = 1, 1, true
+	final := fresh
+	final.UserTurns, final.AssistantTurns = 1, 1
+	final.LatestAssistantText, final.CompletionActionVisible = "done", true
+	tab.setSurfaces(fresh, fresh, submitted, final)
+	tab.attachText = "bootstrap  \n\n with layout\n\n task   with different formatting"
+	tab.attachConnectorCount = 1
+	driver := testDriver(t, tab)
+	result, err := driver.Start(context.Background(), TurnRequest{
+		Bootstrap: "bootstrap\nwith\nlayout", Prompt: "task with different formatting",
+		WorkspaceID: "ws_test", ConnectorName: "WSL", RequireConnector: true,
+	})
+	if err != nil {
+		t.Fatalf("composer formatting difference must not fail the turn: %v", err)
+	}
+	if result.Text != "done" {
+		t.Fatalf("result=%#v", result)
+	}
+}
+
+func TestDriverRejectsComposerContentMutation(t *testing.T) {
+	tab := newDriverFakeTab()
+	tab.setSurfaces(readySurface(), readySurface())
+	tab.attachText = "task with CHANGED content"
+	tab.attachConnectorCount = 1
+	driver := testDriver(t, tab)
+	_, err := driver.Start(context.Background(), TurnRequest{
+		Prompt: "task with original content", WorkspaceID: "ws_test", ConnectorName: "WSL", RequireConnector: true,
+	})
+	if !IsDriverErrorCode(err, ErrorUIContract) || !strings.Contains(err.Error(), "prompt body changed") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestDriverStillRejectsMissingPromptBody(t *testing.T) {
+	tab := newDriverFakeTab()
+	tab.setSurfaces(readySurface(), readySurface())
+	tab.attachText = "   "
+	tab.attachConnectorCount = 1
+	driver := testDriver(t, tab)
+	_, err := driver.Start(context.Background(), TurnRequest{Prompt: "task", WorkspaceID: "ws_test", ConnectorName: "WSL", RequireConnector: true})
+	if !IsDriverErrorCode(err, ErrorUIContract) || !strings.Contains(err.Error(), "prompt body") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
 func TestDriverFailsClosedOnRateLimitAndUIDrift(t *testing.T) {
 	t.Run("rate limit", func(t *testing.T) {
 		tab := newDriverFakeTab()
@@ -336,6 +386,32 @@ func TestDriverRejectsUnprovenFinalCompletion(t *testing.T) {
 	_, err := driver.Start(context.Background(), TurnRequest{Prompt: "task"})
 	if !IsDriverErrorCode(err, ErrorCompletionAmbiguous) {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestDriverDoesNotFinalizeWhileToolRemainsActive(t *testing.T) {
+	tab := newDriverFakeTab()
+	fresh := readySurface()
+	submitted := fresh
+	submitted.UserTurns, submitted.AssistantTurns, submitted.Generating = 1, 1, true
+	tool := fresh
+	tool.UserTurns, tool.AssistantTurns = 1, 1
+	tool.LatestAssistantText = "intermediate tool text"
+	tool.ToolActive = true
+	tool.CompletionActionVisible = true
+	final := fresh
+	final.UserTurns, final.AssistantTurns = 1, 1
+	final.LatestAssistantText = "actual final"
+	final.CompletionActionVisible = true
+	tab.setSurfaces(fresh, fresh, submitted, tool, tool, tool, final, final, final)
+	tab.attachText = "task"
+	driver := testDriver(t, tab)
+	result, err := driver.Start(context.Background(), TurnRequest{Prompt: "task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Text != "actual final" || !result.ToolObserved {
+		t.Fatalf("result=%#v", result)
 	}
 }
 
@@ -402,6 +478,36 @@ func TestDriverPromptBoundAppliesBeforeBrowserNavigation(t *testing.T) {
 	}
 }
 
+func TestDriverFollowUpPromptBoundIncludesConnectorRoute(t *testing.T) {
+	tab := newDriverFakeTab()
+	driver, err := NewDriver(tab, DriverOptions{AuthProbe: driverAuthProbeReady{}, MaxPromptBytes: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver.started = true
+	driver.state = TurnFinal
+	driver.request = TurnRequest{WorkspaceID: "ws_test", ConnectorName: "WSL", RequireConnector: true}
+	prompt := strings.Repeat("x", 30)
+	if len([]byte(prompt)) > driver.maxPromptBytes {
+		t.Fatal("fixture raw prompt already exceeds bound")
+	}
+	if _, err := driver.FollowUp(context.Background(), prompt); err == nil || !strings.Contains(err.Error(), "follow-up exceeds") {
+		t.Fatalf("routed oversized follow-up error=%v", err)
+	}
+}
+
+func TestSendActivationWaitsForReadyControlBeforeSingleClick(t *testing.T) {
+	expression := activateSendExpression()
+	for _, required := range []string{"attempt<40", "await sleep(100)", "send.click();return {activated:true}", "send control did not become ready"} {
+		if !strings.Contains(expression, required) {
+			t.Fatalf("send activation expression missing %q", required)
+		}
+	}
+	if strings.Count(expression, "send.click()") != 1 {
+		t.Fatalf("send activation must click at most once per evaluation: %q", expression)
+	}
+}
+
 func TestDriverExpressionsNeverSendConversationBackendRequests(t *testing.T) {
 	expressions := []string{
 		domSnapshotExpression(),
@@ -428,11 +534,11 @@ func TestAttachPromptExpressionUsesDirectConnectorMentionWithoutCMDKSelection(t 
 	expression := attachPromptExpression("task", "WSL", workspaceID)
 	for _, required := range []string{
 		`"@WSL ws_5ad2e1f68cd35a46, "`,
+		"c.innerText||c.textContent",
 		"app-mention-display-name",
 		"data-keyword",
 		"aria-label",
-		"raw.startsWith(route)",
-		"raw.startsWith(workspaceRoute)",
+		"raw.startsWith(value)",
 	} {
 		if !strings.Contains(expression, required) {
 			t.Fatalf("connector mention expression missing %q", required)
@@ -442,6 +548,9 @@ func TestAttachPromptExpressionUsesDirectConnectorMentionWithoutCMDKSelection(t 
 		if strings.Contains(expression, forbidden) {
 			t.Fatalf("direct connector mention unexpectedly depends on picker behavior %q", forbidden)
 		}
+	}
+	if strings.Contains(expression, "clone.textContent") {
+		t.Fatal("connector prompt integrity must not use detached textContent because it drops rendered newlines")
 	}
 }
 

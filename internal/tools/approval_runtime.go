@@ -82,7 +82,7 @@ func (r *Runtime) directControlPlaneInvocation(workspaceID, command string) (*co
 	return workspace.DirectControlPlaneInvocation(command)
 }
 
-func (r *Runtime) approvalResultForGuard(guard *controlguard.Error, correlation ApprovalCorrelation, sessionHash, workspaceID, source, name string, args map[string]any, claimed approval.Request) (Result, bool, error) {
+func (r *Runtime) approvalResultForGuard(guard *controlguard.Error, correlation ApprovalCorrelation, sessionHash, workspaceID, source, name string, args map[string]any, claimed approval.Request, suppressNotifications bool) (Result, bool, error) {
 	if guard == nil || !guard.Approvable || claimed.ID != "" || r == nil || r.Approvals == nil || strings.TrimSpace(correlation.CallerID) == "" || strings.TrimSpace(correlation.RequestID) == "" || strings.TrimSpace(workspaceID) == "" {
 		return Result{}, false, nil
 	}
@@ -100,7 +100,7 @@ func (r *Runtime) approvalResultForGuard(guard *controlguard.Error, correlation 
 	}
 	challenge, _, err := r.Approvals.CreateChallenge(approval.ChallengeInput{
 		CallerID: correlation.CallerID, RequestCorrelationID: correlation.RequestID, SessionHash: sessionHash, WorkspaceID: workspaceID, Source: source, TargetTool: name, Arguments: args,
-		GuardCode: guard.Code, GuardReason: guard.Error(), Command: command, SimilarCommandPattern: similarPattern,
+		GuardCode: guard.Code, GuardReason: guard.Error(), Command: command, SimilarCommandPattern: similarPattern, SuppressNotifications: suppressNotifications,
 	})
 	if err != nil {
 		return Result{}, false, err

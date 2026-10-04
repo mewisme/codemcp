@@ -124,6 +124,10 @@ func (b *CompletionHookBus) Unregister(name string) {
 }
 
 func (b *CompletionHookBus) Dispatch(event Event) error {
+	return b.DispatchExcept(event, nil)
+}
+
+func (b *CompletionHookBus) DispatchExcept(event Event, skipped map[string]bool) error {
 	if b == nil {
 		return errors.New("completion hook bus is unavailable")
 	}
@@ -138,6 +142,9 @@ func (b *CompletionHookBus) Dispatch(event Event) error {
 	}
 	hooks := b.snapshotHooks()
 	for name, hook := range hooks {
+		if skipped != nil && skipped[name] {
+			continue
+		}
 		key := name + ":" + event.ID
 		if !b.reserve(key) {
 			b.record(HookDiagnostic{

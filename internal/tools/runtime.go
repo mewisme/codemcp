@@ -276,6 +276,7 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	workspaceID := ""
 	sessionID := MCPSessionID(ctx)
 	stateIdentity := RuntimeStateIdentity(ctx)
+	suppressNotifications := r.suppressNotificationsForIdentity(stateIdentity)
 	sessionHash := MCPSessionFingerprint(sessionID)
 	approvalCorrelation := ApprovalCorrelationFromContext(ctx)
 	sessionAccess := SessionWorkspaceAccessDecision("")
@@ -349,7 +350,7 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	}
 	ctx = WithAgentCompletionCorrelation(ctx, completionIdentity, executedBy, source)
 	ctx = shellruntime.WithExecutionMetadata(ctx, shellruntime.ExecutionMetadata{
-		Source: source, CallID: callID, SessionHash: sessionHash, ReceivedByInstanceID: receivedBy, ExecutedByInstanceID: executedBy,
+		Source: source, CallID: callID, SessionHash: sessionHash, ReceivedByInstanceID: receivedBy, ExecutedByInstanceID: executedBy, SuppressNotifications: suppressNotifications,
 	})
 	raw := callRaw(ctx, source, name, args)
 	raw["call_id"] = callID
@@ -372,7 +373,7 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	}
 	if err != nil {
 		if guard, ok := controlguard.As(err); ok {
-			if guardedResult, handled, guardErr := r.approvalResultForGuard(guard, approvalCorrelation, sessionHash, workspaceID, source, name, approvalArgs, claimedApproval); guardErr != nil {
+			if guardedResult, handled, guardErr := r.approvalResultForGuard(guard, approvalCorrelation, sessionHash, workspaceID, source, name, approvalArgs, claimedApproval, suppressNotifications); guardErr != nil {
 				err = guardErr
 			} else if handled {
 				result, err = guardedResult, nil
@@ -421,6 +422,14 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	finishRaw["result"] = observedResult(name, result)
 	r.observeCall(CallObservation{CallID: callID, Phase: "finish", Source: source, Tool: name, WorkspaceID: workspaceID, Status: status, DurationMS: time.Since(started).Milliseconds(), Message: message, ResultType: result.ResultType, Raw: finishRaw, SessionHash: sessionHash, SessionAccess: sessionAccess, SessionWorkspaceCount: sessionWorkspaceCount, ReceivedByInstanceID: receivedBy, ExecutedByInstanceID: executedBy})
 	return result, nil
+}
+
+func (r *Runtime) suppressNotificationsForIdentity(identity string) bool {
+	if r == nil || r.Agents == nil || strings.TrimSpace(identity) == "" {
+		return false
+	}
+	_, claimed := r.Agents.SessionBinding(identity)
+	return claimed
 }
 
 func (r *Runtime) loopGuard() *ToolLoopGuard {

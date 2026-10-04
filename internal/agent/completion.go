@@ -45,6 +45,55 @@ func (manager *Manager) ObserveAcceptedCompletion(event CompletionEvent) error {
 	defer manager.mu.Unlock()
 	manager.pruneTerminalLocked(now)
 	item := manager.entries[event.AgentID]
+	if err := validateAcceptedCompletionLocked(item, event); err != nil {
+		return err
+	}
+	if item.record.State == StateCompletionPending || item.record.State.Terminal() {
+		return nil
+	}
+	if err := item.transitionLocked(StateCompletionPending, now); err != nil {
+		return err
+	}
+	item.pendingTerminal = event.Status
+	return nil
+}
+
+// CommitAcceptedCompletion serializes durable completion acceptance with the
+// managed-agent state transition so cancellation or backend refresh cannot
+// race between persistence and correlation.
+func (manager *Manager) CommitAcceptedCompletion(event CompletionEvent, persist func() error) error {
+	if manager == nil {
+		return errors.New("managed agent manager is unavailable")
+	}
+	if persist == nil {
+		return errors.New("managed agent completion persistence callback is required")
+	}
+	if err := event.Validate(); err != nil {
+		return err
+	}
+	now := manager.now()
+	manager.mu.Lock()
+	defer manager.mu.Unlock()
+	manager.pruneTerminalLocked(now)
+	item := manager.entries[event.AgentID]
+	if err := validateAcceptedCompletionLocked(item, event); err != nil {
+		return err
+	}
+	alreadyCorrelated := item.record.State == StateCompletionPending || item.record.State.Terminal()
+	if err := persist(); err != nil {
+		return err
+	}
+	if alreadyCorrelated {
+		return nil
+	}
+	if err := item.transitionLocked(StateCompletionPending, now); err != nil {
+		return fmt.Errorf("durable completion accepted but managed-agent transition failed: %w", err)
+	}
+	item.pendingTerminal = event.Status
+	return nil
+}
+
+func validateAcceptedCompletionLocked(item *entry, event CompletionEvent) error {
 	if item == nil {
 		return ErrAgentNotFound
 	}
@@ -66,10 +115,6 @@ func (manager *Manager) ObserveAcceptedCompletion(event CompletionEvent) error {
 	if item.record.State != StateWorking {
 		return fmt.Errorf("managed agent completion requires working state, got %q", item.record.State)
 	}
-	if err := item.transitionLocked(StateCompletionPending, now); err != nil {
-		return err
-	}
-	item.pendingTerminal = event.Status
 	return nil
 }
 

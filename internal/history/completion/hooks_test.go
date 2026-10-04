@@ -158,6 +158,39 @@ func TestCompletionHookBusDeduplicatesPerHookAndCarriesStableCorrelation(t *test
 	}
 }
 
+func TestCompletionHookBusCanSkipNotificationWithoutSkippingOtherHooks(t *testing.T) {
+	bus := NewCompletionHookBus(HookBusOptions{Timeout: time.Second})
+	defer bus.Stop()
+	notificationCalls := make(chan struct{}, 1)
+	otherCalls := make(chan struct{}, 1)
+	if err := bus.Register(testCompletionHook{name: "notification", handle: func(context.Context, HookInvocation) error {
+		notificationCalls <- struct{}{}
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := bus.Register(testCompletionHook{name: "codegraph", handle: func(context.Context, HookInvocation) error {
+		otherCalls <- struct{}{}
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	record := Record{ID: "completion_skip_notification", Sequence: 10, AgentID: "0123456789abcdef", WorkspaceID: "ws_demo", Status: StatusCompleted, Title: "Done", CreatedAt: time.Now().UTC()}
+	if err := bus.DispatchExcept(eventFor(record), map[string]bool{"notification": true}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-otherCalls:
+	case <-time.After(time.Second):
+		t.Fatal("non-notification completion hook did not run")
+	}
+	select {
+	case <-notificationCalls:
+		t.Fatal("skipped notification hook ran")
+	default:
+	}
+}
+
 func TestCompletionHookInvocationIsIndependentValuePerHook(t *testing.T) {
 	bus := NewCompletionHookBus(HookBusOptions{Timeout: time.Second})
 	defer bus.Stop()

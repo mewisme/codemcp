@@ -93,8 +93,7 @@ func (m *Manager) Turn(controllerID, workspaceID, prompt, action string) (Result
 	state, exists := m.states[key]
 	if !exists {
 		if len(m.states) >= maxStates && len(m.stateOrder) > 0 {
-			delete(m.states, m.stateOrder[0])
-			m.stateOrder = m.stateOrder[1:]
+			m.evictForControllerLocked(controllerID)
 		}
 		m.stateOrder = append(m.stateOrder, key)
 		state.Mode = Off
@@ -119,6 +118,22 @@ func (m *Manager) Turn(controllerID, workspaceID, prompt, action string) (Result
 	}
 	m.states[key] = state
 	return result, nil
+}
+
+func (m *Manager) evictForControllerLocked(controllerID string) {
+	index := -1
+	for candidateIndex, candidate := range m.stateOrder {
+		if candidate.Controller == controllerID {
+			index = candidateIndex
+			break
+		}
+	}
+	if index < 0 {
+		index = 0
+	}
+	key := m.stateOrder[index]
+	delete(m.states, key)
+	m.stateOrder = append(m.stateOrder[:index], m.stateOrder[index+1:]...)
 }
 
 func RequestedMode(prompt string, defaultMode Mode) (Mode, bool, error) {

@@ -112,6 +112,9 @@ func (b *BackgroundJobBridge) run(ctx context.Context, sub *shellruntime.Backgro
 }
 
 func (b *BackgroundJobBridge) consume(ctx context.Context, event shellruntime.BackgroundWorkTerminalEvent) {
+	if event.SuppressNotifications {
+		return
+	}
 	policy := b.policy()
 	if !policy.Enabled {
 		return

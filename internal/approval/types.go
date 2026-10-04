@@ -59,6 +59,7 @@ type ChallengeInput struct {
 	Title                 string
 	Command               string
 	SimilarCommandPattern string
+	SuppressNotifications bool
 }
 
 type Challenge struct {
@@ -79,6 +80,7 @@ type Challenge struct {
 	callerID              string
 	requestCorrelationID  string
 	requestID             string
+	suppressNotifications bool
 }
 
 type Request struct {
@@ -106,6 +108,7 @@ type Request struct {
 	ConsumedAt            time.Time         `json:"consumed_at,omitempty"`
 	callerID              string
 	challengeID           string
+	suppressNotifications bool
 }
 
 type RetryInput struct {

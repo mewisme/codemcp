@@ -18,7 +18,7 @@ type ApprovalPolicy struct {
 }
 
 func (p ApprovalPolicy) Allows(event approval.Event) bool {
-	if !p.Enabled || strings.TrimSpace(event.RequestID) == "" {
+	if event.SuppressNotifications || !p.Enabled || strings.TrimSpace(event.RequestID) == "" {
 		return false
 	}
 	switch event.Name {

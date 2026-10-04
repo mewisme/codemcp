@@ -91,6 +91,7 @@ func TestApprovalPolicyDistinguishesRequestAndGrantLifecycle(t *testing.T) {
 		{name: "expired challenge", event: approval.Event{Name: approval.EventExpired, Subject: approval.EventSubjectChallenge, RequestID: "req_1"}, want: false},
 		{name: "revoked grant", event: approval.Event{Name: approval.EventRevoked, Subject: approval.EventSubjectGrant, RequestID: "req_1"}, want: true},
 		{name: "claimed request", event: approval.Event{Name: approval.EventClaimed, Subject: approval.EventSubjectRequest, RequestID: "req_1"}, want: false},
+		{name: "managed child request", event: approval.Event{Name: approval.EventPending, Subject: approval.EventSubjectRequest, RequestID: "req_1", SuppressNotifications: true}, want: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

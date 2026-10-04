@@ -165,11 +165,12 @@ type executionSourceKey struct{}
 type executionMetadataKey struct{}
 
 type ExecutionMetadata struct {
-	Source               string
-	CallID               string
-	SessionHash          string
-	ReceivedByInstanceID string
-	ExecutedByInstanceID string
+	Source                string
+	CallID                string
+	SessionHash           string
+	ReceivedByInstanceID  string
+	ExecutedByInstanceID  string
+	SuppressNotifications bool
 }
 
 func NewExecutionHub() *ExecutionHub {

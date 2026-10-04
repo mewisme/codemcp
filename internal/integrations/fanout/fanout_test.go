@@ -162,6 +162,29 @@ func TestManagerBoundsTransientControllerState(t *testing.T) {
 	}
 }
 
+func TestManagerNoisyControllerEvictsOwnTransientStateFirst(t *testing.T) {
+	manager := NewManager(true, Auto)
+	if value, err := manager.Turn("protected", "ws-protected", "/fanout conservative", "turn"); err != nil || value.Mode != Conservative {
+		t.Fatalf("protected=%#v err=%v", value, err)
+	}
+	if value, err := manager.Turn("noisy", "ws-0000", "/fanout aggressive", "turn"); err != nil || value.Mode != Aggressive {
+		t.Fatalf("noisy seed=%#v err=%v", value, err)
+	}
+	for index := 1; index < maxStates; index++ {
+		workspace := fmt.Sprintf("ws-%04d", index)
+		if _, err := manager.Turn("noisy", workspace, "continue", "turn"); err != nil {
+			t.Fatalf("noisy workspace %d: %v", index, err)
+		}
+	}
+	if _, err := manager.Turn("noisy", "ws-overflow", "continue", "turn"); err != nil {
+		t.Fatal(err)
+	}
+	protected, err := manager.Turn("protected", "ws-protected", "continue", "status")
+	if err != nil || protected.Mode != Conservative {
+		t.Fatalf("noisy controller evicted protected state: %#v err=%v", protected, err)
+	}
+}
+
 func TestInstructionsCoverCanonicalFanoutWorkflowScenarios(t *testing.T) {
 	instructions := Instructions(Auto)
 	for scenario, clauses := range map[string][]string{

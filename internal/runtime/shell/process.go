@@ -80,20 +80,21 @@ const (
 )
 
 type BackgroundWorkTerminalEvent struct {
-	Sequence    uint64                   `json:"sequence,omitempty"`
-	WorkspaceID string                   `json:"workspace_id"`
-	ProcessID   string                   `json:"process_id"`
-	ExecutionID string                   `json:"execution_id,omitempty"`
-	Tool        string                   `json:"tool"`
-	SessionHash string                   `json:"session_hash,omitempty"`
-	CallID      string                   `json:"call_id,omitempty"`
-	Status      string                   `json:"status"`
-	Reason      BackgroundTerminalReason `json:"reason"`
-	ExitCode    *int                     `json:"exit_code,omitempty"`
-	Signal      *string                  `json:"signal,omitempty"`
-	TimedOut    bool                     `json:"timed_out,omitempty"`
-	StartedAt   string                   `json:"started_at"`
-	FinishedAt  string                   `json:"finished_at"`
+	Sequence              uint64                   `json:"sequence,omitempty"`
+	WorkspaceID           string                   `json:"workspace_id"`
+	ProcessID             string                   `json:"process_id"`
+	ExecutionID           string                   `json:"execution_id,omitempty"`
+	Tool                  string                   `json:"tool"`
+	SessionHash           string                   `json:"session_hash,omitempty"`
+	CallID                string                   `json:"call_id,omitempty"`
+	Status                string                   `json:"status"`
+	Reason                BackgroundTerminalReason `json:"reason"`
+	ExitCode              *int                     `json:"exit_code,omitempty"`
+	Signal                *string                  `json:"signal,omitempty"`
+	TimedOut              bool                     `json:"timed_out,omitempty"`
+	StartedAt             string                   `json:"started_at"`
+	FinishedAt            string                   `json:"finished_at"`
+	SuppressNotifications bool                     `json:"-"`
 }
 
 type BackgroundWorkTerminalSubscription = sequence.Subscription[BackgroundWorkTerminalEvent]
@@ -485,18 +486,19 @@ func (m *ProcessManager) publishTerminal(process *managedProcess, status string,
 	}
 	process.mu.Lock()
 	event := BackgroundWorkTerminalEvent{
-		WorkspaceID: process.workspace,
-		ProcessID:   process.id,
-		Tool:        process.tool,
-		SessionHash: process.metadata.SessionHash,
-		CallID:      process.metadata.CallID,
-		Status:      status,
-		Reason:      reason,
-		ExitCode:    cloneInt(exitCode),
-		Signal:      cloneString(signal),
-		TimedOut:    timedOut,
-		StartedAt:   process.startedAt,
-		FinishedAt:  process.finishedAt.UTC().Format(time.RFC3339Nano),
+		WorkspaceID:           process.workspace,
+		ProcessID:             process.id,
+		Tool:                  process.tool,
+		SessionHash:           process.metadata.SessionHash,
+		CallID:                process.metadata.CallID,
+		Status:                status,
+		Reason:                reason,
+		ExitCode:              cloneInt(exitCode),
+		Signal:                cloneString(signal),
+		TimedOut:              timedOut,
+		StartedAt:             process.startedAt,
+		FinishedAt:            process.finishedAt.UTC().Format(time.RFC3339Nano),
+		SuppressNotifications: process.metadata.SuppressNotifications,
 	}
 	if process.execution != nil {
 		event.ExecutionID = process.execution.ID()

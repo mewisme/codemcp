@@ -26,8 +26,10 @@ func TestProcessStartUsesCanonicalRTKRewritePlan(t *testing.T) {
 	shellManager, workspaceID, _ := newShellTestManager(t)
 	shellManager.ConfigureRTK(true, writeFakeRTK(t))
 	manager := NewProcessManagerWithExecutions(shellManager.workspaces, shellManager, shellManager.executions)
+	sub := manager.SubscribeTerminal()
+	defer manager.UnsubscribeTerminal(sub)
 
-	ctx := WithExecutionMetadata(context.Background(), ExecutionMetadata{Source: "admin"})
+	ctx := WithExecutionMetadata(context.Background(), ExecutionMetadata{Source: "admin", SuppressNotifications: true})
 	result, err := manager.Start(ctx, workspaceID, "printf source-a")
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +65,14 @@ func TestProcessStartUsesCanonicalRTKRewritePlan(t *testing.T) {
 	}
 	if strings.TrimSpace(snapshot.Stdout) != "source-a" {
 		t.Fatalf("stdout=%q stderr=%q", snapshot.Stdout, snapshot.Stderr)
+	}
+	select {
+	case terminal := <-sub.Events:
+		if terminal.ProcessID != result.ID || terminal.ExecutionID != result.ExecutionID || !terminal.SuppressNotifications {
+			t.Fatalf("terminal notification metadata=%#v", terminal)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("background terminal event missing")
 	}
 }
 

@@ -66,6 +66,7 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 		completionStatus := agentcompletion.Status(status)
 		var managedBinding managedagent.ClaimBinding
 		managedBound := false
+		var managedEvent *managedagent.CompletionEvent
 		if managedAgents != nil {
 			identity := RuntimeStateIdentity(ctx)
 			if identity != "" {
@@ -75,37 +76,49 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 				}
 			}
 		}
+		if managedBound && managedBinding.Active {
+			terminal, stateErr := managedCompletionState(completionStatus)
+			if stateErr != nil {
+				return Result{}, stateErr
+			}
+			event := managedagent.CompletionEvent{AgentID: managedBinding.AgentID, WorkspaceID: workspaceID, Status: terminal}
+			managedEvent = &event
+		}
 		sessionKey := planExecutionSessionKey(ctx)
 		if planExecutions != nil {
 			if binding, ok := planExecutions.Lookup(sessionKey, workspaceID); ok && completionStatus == agentcompletion.StatusCompleted && !binding.Closed {
 				return Result{}, fmt.Errorf("plan %q phase %s (%s) is not persisted as completed; update the canonical plan with create_plan mode=update before agent_complete(status=completed)", binding.PlanName, binding.Phase.ID, binding.Phase.Title)
 			}
 		}
-		record, created, err := service.Accept(
-			agentcompletion.Identity{AgentID: correlation.AgentID, Source: correlation.Source},
-			agentcompletion.Input{
-				WorkspaceID: workspaceID,
-				Status:      completionStatus,
-				Title:       title,
-				Summary:     summary,
-			},
-		)
-		if err != nil {
+		acceptOptions := agentcompletion.AcceptOptions{}
+		if managedEvent != nil {
+			acceptOptions.SkipHooks = map[string]bool{"notification": true}
+		}
+		var record agentcompletion.Record
+		var created bool
+		persist := func() error {
+			var persistErr error
+			record, created, persistErr = service.AcceptWithOptions(
+				agentcompletion.Identity{AgentID: correlation.AgentID, Source: correlation.Source},
+				agentcompletion.Input{
+					WorkspaceID: workspaceID,
+					Status:      completionStatus,
+					Title:       title,
+					Summary:     summary,
+				},
+				acceptOptions,
+			)
+			return persistErr
+		}
+		if managedEvent != nil {
+			if err := managedAgents.CommitAcceptedCompletion(*managedEvent, persist); err != nil {
+				return Result{}, fmt.Errorf("managed-agent completion acceptance failed: %w", err)
+			}
+		} else if err := persist(); err != nil {
 			return Result{}, err
 		}
 		if planExecutions != nil {
 			planExecutions.Release(sessionKey, workspaceID)
-		}
-		if managedBound && managedBinding.Active {
-			terminal, err := managedCompletionState(completionStatus)
-			if err != nil {
-				return Result{}, fmt.Errorf("completion persisted but managed-agent status correlation failed: %w", err)
-			}
-			if err := managedAgents.ObserveAcceptedCompletion(managedagent.CompletionEvent{
-				AgentID: managedBinding.AgentID, WorkspaceID: workspaceID, Status: terminal,
-			}); err != nil {
-				return Result{}, fmt.Errorf("completion persisted but managed-agent correlation failed: %w", err)
-			}
 		}
 		return JSONResult(AgentCompleteResult{Record: record, Created: created}), nil
 	})

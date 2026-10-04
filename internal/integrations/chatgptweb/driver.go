@@ -164,7 +164,11 @@ func (driver *Driver) FollowUp(ctx context.Context, prompt string) (TurnResult, 
 	if prompt == "" {
 		return TurnResult{}, errors.New("ChatGPT Web follow-up prompt is required")
 	}
-	if len([]byte(prompt)) > driver.maxPromptBytes {
+	routedPrompt := prompt
+	if request.RequireConnector {
+		routedPrompt = connectorRoutePrefix(request.ConnectorName, request.WorkspaceID) + prompt
+	}
+	if len([]byte(routedPrompt)) > driver.maxPromptBytes {
 		return TurnResult{}, fmt.Errorf("ChatGPT Web follow-up exceeds %d bytes", driver.maxPromptBytes)
 	}
 	turnCtx, cancel := context.WithCancel(nonNilContext(ctx))
@@ -263,11 +267,11 @@ func (driver *Driver) runTurn(ctx context.Context, request TurnRequest, prompt s
 	if attachErr != nil {
 		return TurnResult{}, driverError(ErrorUIContract, "composer", "prompt could not be attached without altering connector state", attachErr)
 	}
-	if normalizePrompt(attached.Text) != normalizePrompt(prompt) {
-		return TurnResult{}, uiContractError("composer", "prompt integrity verification failed (expectedChars=%d actualChars=%d)", len([]rune(prompt)), len([]rune(attached.Text)))
-	}
 	if request.RequireConnector && attached.ConnectorCount != 1 {
 		return TurnResult{}, driverError(ErrorConnectorMismatch, "connector", fmt.Sprintf("connector route @%s %s was not retained before submission", connector, workspaceID), nil)
+	}
+	if normalizePromptForIntegrity(attached.Text) != normalizePromptForIntegrity(prompt) {
+		return TurnResult{}, uiContractError("composer", "prompt body changed before submission")
 	}
 
 	driver.setState(TurnSubmitting)
@@ -351,7 +355,7 @@ func (driver *Driver) waitFinal(ctx context.Context, baseline domSnapshot) (Turn
 				driver.setState(TurnGenerating)
 			}
 			text := normalizePrompt(snapshot.LatestAssistantText)
-			candidate := snapshot.AssistantTurns > baseline.AssistantTurns && text != "" && !snapshot.Generating
+			candidate := snapshot.AssistantTurns > baseline.AssistantTurns && text != "" && !snapshot.Generating && !snapshot.ToolActive
 			if snapshot.AssistantTurns <= baseline.AssistantTurns && !snapshot.Generating && !snapshot.ToolActive {
 				if missingSince.IsZero() {
 					missingSince = time.Now()
@@ -362,7 +366,7 @@ func (driver *Driver) waitFinal(ctx context.Context, baseline domSnapshot) (Turn
 			} else {
 				missingSince = time.Time{}
 			}
-			if snapshot.AssistantTurns > baseline.AssistantTurns && text == "" && !snapshot.Generating && snapshot.CompletionActionVisible {
+			if snapshot.AssistantTurns > baseline.AssistantTurns && text == "" && !snapshot.Generating && !snapshot.ToolActive && snapshot.CompletionActionVisible {
 				if emptySince.IsZero() {
 					emptySince = time.Now()
 				}
@@ -512,6 +516,10 @@ func (driver *Driver) normalizeInitialRequest(request TurnRequest) (TurnRequest,
 		return TurnRequest{}, "", fmt.Errorf("ChatGPT Web composed prompt exceeds %d bytes", driver.maxPromptBytes)
 	}
 	return request, prompt, nil
+}
+
+func normalizePromptForIntegrity(value string) string {
+	return strings.Join(strings.Fields(normalizePrompt(value)), " ")
 }
 
 func (driver *Driver) contextTurnError(op string, err error) error {

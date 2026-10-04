@@ -24,6 +24,20 @@ type completionManagedBackend struct {
 	closes int
 }
 
+type completionToolHook struct {
+	name   string
+	called chan agentcompletion.HookInvocation
+}
+
+func (hook completionToolHook) Name() string { return hook.name }
+
+func (hook completionToolHook) Handle(_ context.Context, invocation agentcompletion.HookInvocation) error {
+	if hook.called != nil {
+		hook.called <- invocation
+	}
+	return nil
+}
+
 func (*completionManagedBackend) ID() managedagent.BackendID { return "completion-test" }
 func (*completionManagedBackend) Ready(context.Context) (managedagent.Readiness, error) {
 	return managedagent.Readiness{Available: true, Capacity: managedagent.Capacity{MaxParallel: 5}}, nil
@@ -215,6 +229,14 @@ func TestAgentCompleteDuplicateCallsRemainDomainIdempotent(t *testing.T) {
 
 func TestAgentCompleteCorrelatesClaimedManagedAgentAfterDurableAccept(t *testing.T) {
 	runtime, workspaceID := newCompletionToolRuntime(t)
+	notificationCalls := make(chan agentcompletion.HookInvocation, 1)
+	otherCalls := make(chan agentcompletion.HookInvocation, 1)
+	if err := runtime.CompletionHooks.Register(completionToolHook{name: "notification", called: notificationCalls}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.CompletionHooks.Register(completionToolHook{name: "audit-test", called: otherCalls}); err != nil {
+		t.Fatal(err)
+	}
 	backend := &completionManagedBackend{}
 	if err := runtime.Agents.RegisterBackend(backend); err != nil {
 		t.Fatal(err)
@@ -246,6 +268,19 @@ func TestAgentCompleteCorrelatesClaimedManagedAgentAfterDurableAccept(t *testing
 	})
 	if err != nil || result.IsError {
 		t.Fatalf("agent_complete result=%#v err=%v", result, err)
+	}
+	select {
+	case invocation := <-otherCalls:
+		if invocation.Event.Record.WorkspaceID != workspaceID {
+			t.Fatalf("non-notification hook invocation=%#v", invocation)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("managed child completion did not dispatch non-notification hook")
+	}
+	select {
+	case invocation := <-notificationCalls:
+		t.Fatalf("managed child agent_complete emitted notification hook: %#v", invocation)
+	default:
 	}
 	value := result.StructuredContent.(AgentCompleteResult)
 	if !value.Created || value.Record.Status != agentcompletion.StatusCompleted {
@@ -283,6 +318,80 @@ func TestAgentCompleteCorrelatesClaimedManagedAgentAfterDurableAccept(t *testing
 	persisted, found, err := runtime.Completions.Current(value.Record.AgentID, workspaceID)
 	if err != nil || !found || persisted.ID != value.Record.ID || persisted.Status != agentcompletion.StatusCompleted {
 		t.Fatalf("durable completion after managed restart=%#v found=%t err=%v", persisted, found, err)
+	}
+}
+
+func TestManagedClaimIdentitySuppressesUserNotificationsOnlyForChild(t *testing.T) {
+	runtime, workspaceID := newCompletionToolRuntime(t)
+	backend := &completionManagedBackend{}
+	if err := runtime.Agents.RegisterBackend(backend); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Agents.Configure("completion-test", managedagent.Capacity{MaxParallel: 5}); err != nil {
+		t.Fatal(err)
+	}
+	spawned, err := runtime.Agents.Spawn(context.Background(), managedagent.OperatorController(), managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{
+		WorkspaceID: workspaceID, Prompt: "managed child notification identity",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := runtime.Agents.IssueClaim(spawned.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childCtx := WithTrustedControllerID(context.Background(), "openai:managed-child-notifications")
+	childIdentity := RuntimeStateIdentity(childCtx)
+	if _, err := runtime.Agents.ConsumeClaim(spawned.ID, credential.Token(), childIdentity); err != nil {
+		t.Fatal(err)
+	}
+	if !runtime.suppressNotificationsForIdentity(childIdentity) {
+		t.Fatal("claimed managed child identity did not suppress user notifications")
+	}
+	if runtime.suppressNotificationsForIdentity("mcp:parent-session") {
+		t.Fatal("ordinary parent identity unexpectedly suppresses user notifications")
+	}
+	if _, err := runtime.Agents.Cancel(context.Background(), managedagent.OperatorController(), spawned.ID); err != nil {
+		t.Fatal(err)
+	}
+	if !runtime.suppressNotificationsForIdentity(childIdentity) {
+		t.Fatal("retained managed-child tombstone stopped suppressing late user notifications")
+	}
+}
+
+func TestAgentCompleteRejectsInvalidManagedCorrelationBeforePersistence(t *testing.T) {
+	runtime, workspaceID := newCompletionToolRuntime(t)
+	backend := &completionManagedBackend{}
+	if err := runtime.Agents.RegisterBackend(backend); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Agents.Configure("completion-test", managedagent.Capacity{MaxParallel: 5}); err != nil {
+		t.Fatal(err)
+	}
+	spawned, err := runtime.Agents.Spawn(context.Background(), managedagent.OperatorController(), managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{WorkspaceID: workspaceID, Prompt: "managed child task"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := runtime.Agents.IssueClaim(spawned.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithTrustedControllerID(context.Background(), "openai:invalid-completion-state")
+	if _, err := runtime.Agents.ConsumeClaim(spawned.ID, credential.Token(), RuntimeStateIdentity(ctx)); err != nil {
+		t.Fatal(err)
+	}
+	backend.finish("idle before completion")
+	if _, err := runtime.Agents.Get(context.Background(), managedagent.OperatorController(), spawned.ID); err != nil {
+		t.Fatal(err)
+	}
+	ctx = WithCallSource(ctx, "tunnel")
+	ctx = WithApprovalCorrelation(ctx, "apc_invalid_managed", "apr_invalid_managed")
+	result, err := runtime.Call(ctx, AgentCompleteToolName, map[string]any{"workspace_id": workspaceID, "status": "completed", "title": "Should not persist"})
+	if err == nil && !result.IsError {
+		t.Fatalf("invalid managed completion state persisted: %#v", result)
+	}
+	if recent, historyErr := runtime.Completions.Recent(10); historyErr != nil || len(recent) != 0 {
+		t.Fatalf("invalid managed completion history=%#v err=%v", recent, historyErr)
 	}
 }
 

@@ -114,7 +114,7 @@ func (m *Manager) CreateChallenge(input ChallengeInput) (Challenge, bool, error)
 	}
 	value := Challenge{
 		ID: id, SessionHash: input.SessionHash, WorkspaceID: input.WorkspaceID, Source: input.Source, TargetTool: input.TargetTool, Arguments: arguments, Digest: digest,
-		GuardCode: input.GuardCode, GuardReason: input.GuardReason, Title: input.Title, Command: input.Command, SimilarCommandPattern: input.SimilarCommandPattern, CreatedAt: now, ExpiresAt: now.Add(m.challengeTTL), callerID: callerID, requestCorrelationID: input.RequestCorrelationID,
+		GuardCode: input.GuardCode, GuardReason: input.GuardReason, Title: input.Title, Command: input.Command, SimilarCommandPattern: input.SimilarCommandPattern, CreatedAt: now, ExpiresAt: now.Add(m.challengeTTL), callerID: callerID, requestCorrelationID: input.RequestCorrelationID, suppressNotifications: input.SuppressNotifications,
 	}
 	m.challenges[id] = &challengeRecord{value: value}
 	m.challengeByTarget[key] = id
@@ -193,7 +193,7 @@ func (m *Manager) CreateRequestWithCorrelation(challengeID, callerID, workspaceI
 	value := Request{
 		ID: id, Status: StatusPending, WorkspaceID: challenge.value.WorkspaceID, SessionHash: challenge.value.SessionHash, Source: challenge.value.Source, TargetTool: challenge.value.TargetTool,
 		Arguments: cloneRaw(challenge.value.Arguments), Digest: challenge.value.Digest, GuardCode: challenge.value.GuardCode, GuardReason: challenge.value.GuardReason, Title: title, Command: challenge.value.Command, SimilarCommandPattern: challenge.value.SimilarCommandPattern,
-		CreatedAt: now, ExpiresAt: now.Add(m.requestTTL), callerID: callerID, challengeID: challenge.value.ID,
+		CreatedAt: now, ExpiresAt: now.Add(m.requestTTL), callerID: callerID, challengeID: challenge.value.ID, suppressNotifications: challenge.value.suppressNotifications,
 	}
 	m.requests[id] = &requestRecord{value: value, resolved: make(chan struct{})}
 	m.activeByCaller[callerID] = id
@@ -654,7 +654,7 @@ func (m *Manager) emitLockedWithSubject(name string, subject EventSubject, reque
 	}
 	event := Event{
 		Name: name, Subject: subject, ChallengeID: request.challengeID, RequestID: request.ID, WorkspaceID: request.WorkspaceID, SessionHash: request.SessionHash, Source: request.Source,
-		TargetTool: request.TargetTool, Status: request.Status, CreatedAt: request.CreatedAt, ExpiresAt: request.ExpiresAt, RetryUntil: request.RetryUntil, GrantExpiresAt: request.GrantExpiresAt, Timestamp: m.now().UTC(),
+		TargetTool: request.TargetTool, Status: request.Status, CreatedAt: request.CreatedAt, ExpiresAt: request.ExpiresAt, RetryUntil: request.RetryUntil, GrantExpiresAt: request.GrantExpiresAt, Timestamp: m.now().UTC(), SuppressNotifications: request.suppressNotifications,
 	}
 	if m.events != nil {
 		m.events.Publish(event)
@@ -667,7 +667,7 @@ func (m *Manager) emitChallengeLocked(name string, challenge Challenge) {
 	}
 	event := Event{
 		Name: name, Subject: EventSubjectChallenge, ChallengeID: challenge.ID, WorkspaceID: challenge.WorkspaceID, SessionHash: challenge.SessionHash, Source: challenge.Source,
-		TargetTool: challenge.TargetTool, CreatedAt: challenge.CreatedAt, ExpiresAt: challenge.ExpiresAt, Timestamp: m.now().UTC(),
+		TargetTool: challenge.TargetTool, CreatedAt: challenge.CreatedAt, ExpiresAt: challenge.ExpiresAt, Timestamp: m.now().UTC(), SuppressNotifications: challenge.suppressNotifications,
 	}
 	if m.events != nil {
 		m.events.Publish(event)

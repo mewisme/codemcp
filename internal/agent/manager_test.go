@@ -354,6 +354,53 @@ func TestAcceptedCompletionStaysPendingUntilFinalBackendSnapshot(t *testing.T) {
 	}
 }
 
+func TestCommitAcceptedCompletionDoesNotMutateStateWhenPersistenceFails(t *testing.T) {
+	backend := newManagerTestBackend("test", 5)
+	manager := newTestManager(t, ManagerOptions{GlobalCapacity: Capacity{MaxParallel: 5}}, backend)
+	owner, _ := NewMCPController("session-a")
+	spawned := spawnTestAgent(t, manager, owner, "")
+	wantErr := errors.New("durable completion write failed")
+	err := manager.CommitAcceptedCompletion(
+		CompletionEvent{AgentID: spawned.ID, WorkspaceID: "ws_test", Status: StateCompleted},
+		func() error { return wantErr },
+	)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("commit error=%v want=%v", err, wantErr)
+	}
+	current, err := manager.Get(context.Background(), owner, spawned.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.State != StateWorking {
+		t.Fatalf("failed persistence changed managed state: %#v", current)
+	}
+}
+
+func TestCompletionPendingExpiresAndReleasesCapacity(t *testing.T) {
+	now := time.Date(2026, 10, 4, 0, 0, 0, 0, time.UTC)
+	backend := newManagerTestBackend("test", 1)
+	manager := newTestManager(t, ManagerOptions{
+		GlobalCapacity: Capacity{MaxParallel: 1}, IdleTTL: time.Minute, PollInterval: time.Millisecond,
+		Now: func() time.Time { return now },
+	}, backend)
+	owner, _ := NewMCPController("session-a")
+	spawned := spawnTestAgent(t, manager, owner, "")
+	if err := manager.ObserveAcceptedCompletion(CompletionEvent{AgentID: spawned.ID, WorkspaceID: "ws_test", Status: StateCompleted}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(2 * time.Minute)
+	if expired := manager.SweepExpired(context.Background()); expired != 1 {
+		t.Fatalf("expired=%d want=1", expired)
+	}
+	expired, err := manager.Get(context.Background(), owner, spawned.ID)
+	if err != nil || expired.State != StateExpired {
+		t.Fatalf("expired snapshot=%#v err=%v", expired, err)
+	}
+	if _, err := manager.Spawn(context.Background(), owner, ManagedSpawnRequest{Input: SpawnInput{WorkspaceID: "ws_test", Prompt: "replacement"}, Depth: 1}); err != nil {
+		t.Fatalf("completion_pending expiry did not release capacity: %v", err)
+	}
+}
+
 func TestWaitersWakeOnCompletionRevisionNotification(t *testing.T) {
 	backend := newManagerTestBackend("test", 5)
 	manager := newTestManager(t, ManagerOptions{

@@ -145,6 +145,39 @@ func TestClaimBindingBecomesInactiveOnTerminalState(t *testing.T) {
 	}
 }
 
+func TestInactiveClaimBindingIsRemovedWithTerminalRetention(t *testing.T) {
+	backend := newManagerTestBackend("test", 5)
+	manager := newTestManager(t, ManagerOptions{GlobalCapacity: Capacity{MaxParallel: 5}, MaxTerminal: 1}, backend)
+	owner, _ := NewMCPController("parent-session")
+
+	spawnClaimCancel := func(session string) ID {
+		spawned := spawnTestAgent(t, manager, owner, "")
+		credential, err := manager.IssueClaim(spawned.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.ConsumeClaim(spawned.ID, credential.Token(), session); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := manager.Cancel(context.Background(), owner, spawned.ID); err != nil {
+			t.Fatal(err)
+		}
+		return spawned.ID
+	}
+
+	spawnClaimCancel("child-one")
+	if binding, ok := manager.SessionBinding("child-one"); !ok || binding.Active {
+		t.Fatalf("first terminal binding=%#v ok=%t", binding, ok)
+	}
+	spawnClaimCancel("child-two")
+	if _, ok := manager.SessionBinding("child-one"); ok {
+		t.Fatal("terminal retention pruned agent but retained inactive claim tombstone")
+	}
+	if binding, ok := manager.SessionBinding("child-two"); !ok || binding.Active {
+		t.Fatalf("newest terminal binding=%#v ok=%t", binding, ok)
+	}
+}
+
 func TestConcurrentClaimRaceHasExactlyOneWinner(t *testing.T) {
 	backend := newManagerTestBackend("test", 5)
 	manager := newTestManager(t, ManagerOptions{GlobalCapacity: Capacity{MaxParallel: 5}}, backend)

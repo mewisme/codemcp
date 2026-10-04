@@ -21,6 +21,7 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 		"notifications.approval.desktop_enabled", "notifications.approval.enabled", "notifications.approval.pending",
 		"notifications.approval.resolved", "notifications.approval.telegram_enabled",
 		"notifications.completion.desktop_enabled", "notifications.completion.enabled", "notifications.completion.telegram_enabled",
+		"notifications.background_job.desktop_enabled", "notifications.background_job.enabled", "notifications.background_job.telegram_enabled",
 		"http.security.allow_insecure", "http.security.allow_unauthenticated_loopback", "http.mcp.enabled", "http.exposure.interfaces", "http.exposure.mode", "http.mcp.port",
 		"shell.path",
 		"telemetry.enabled",

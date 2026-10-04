@@ -201,7 +201,7 @@ func (a *App) Bootstrap() error {
 				Explainer: a.Explain,
 				Policy: func() notification.BackgroundJobPolicy {
 					snapshot := a.Config.Snapshot()
-					cfg := snapshot.Notifications.Completion
+					cfg := snapshot.Notifications.BackgroundJob
 					return notification.BackgroundJobPolicy{
 						Enabled: cfg.Enabled, Explain: snapshot.Explain.Mode == config.ExplainAuto,
 						Providers: map[string]bool{

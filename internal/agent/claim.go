@@ -201,3 +201,12 @@ func (manager *Manager) revokeClaimAndBindingLocked(item *entry) {
 		}
 	}
 }
+
+func (manager *Manager) forgetClaimBindingLocked(item *entry) {
+	if item == nil || !item.hasClaimedSession {
+		return
+	}
+	delete(manager.claimedSessions, item.claimedSession)
+	item.hasClaimedSession = false
+	item.claimedSession = [sha256.Size]byte{}
+}

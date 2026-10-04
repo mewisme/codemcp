@@ -79,6 +79,40 @@ func TestBackgroundJobNotificationUsesGenericTelegramProviderWithoutConsumingMod
 	}
 }
 
+func TestBackgroundJobNotificationSuppressionDoesNotConsumeParentDelivery(t *testing.T) {
+	broker := backgrounddelivery.New(nil)
+	t.Cleanup(broker.Close)
+	owner := backgrounddelivery.Owner{ID: "owner-managed-child", Generation: "generation-managed-child"}
+	if !broker.RegisterStart(backgrounddelivery.Registration{WorkspaceID: "ws_child", ProcessID: "proc_child", ExecutionID: "exec_child", Owner: owner}) {
+		t.Fatal("background delivery registration failed")
+	}
+	event := shellruntime.BackgroundWorkTerminalEvent{
+		WorkspaceID: "ws_child", ProcessID: "proc_child", ExecutionID: "exec_child", Tool: "start_process",
+		Status: shellruntime.ExecutionStatusSuccess, Reason: shellruntime.BackgroundTerminalExit,
+		SuppressNotifications: true,
+	}
+	broker.ApplyTerminal(event)
+
+	sender := &backgroundTelegramSender{messages: make(chan Message, 1)}
+	coordinator := NewCoordinator(CoordinatorOptions{Attempts: 1})
+	coordinator.Register(NewTelegramProvider(sender))
+	defer coordinator.Stop()
+	bridge := NewBackgroundJobBridge(nil, coordinator, BackgroundJobBridgeOptions{Policy: func() BackgroundJobPolicy {
+		return BackgroundJobPolicy{Enabled: true, Providers: map[string]bool{ProviderTelegram: true}}
+	}})
+	bridge.consume(context.Background(), event)
+
+	select {
+	case message := <-sender.messages:
+		t.Fatalf("managed child background job emitted notification: %#v", message)
+	default:
+	}
+	values, err := broker.List("ws_child", owner)
+	if err != nil || len(values) != 1 || values[0].State != backgrounddelivery.DeliveryPending {
+		t.Fatalf("parent delivery lost while notification was suppressed: %#v err=%v", values, err)
+	}
+}
+
 func TestBackgroundJobMessageContainsNoCommandOrOutputPayload(t *testing.T) {
 	exitCode := 23
 	signal := "SIGTERM"

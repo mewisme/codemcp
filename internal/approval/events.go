@@ -31,22 +31,23 @@ const (
 )
 
 type Event struct {
-	Sequence           uint64       `json:"sequence,omitempty"`
-	Name               string       `json:"name"`
-	Subject            EventSubject `json:"subject"`
-	ChallengeID        string       `json:"challenge_id,omitempty"`
-	RequestID          string       `json:"request_id,omitempty"`
-	WorkspaceID        string       `json:"workspace_id"`
-	SessionHash        string       `json:"session_hash,omitempty"`
-	Source             string       `json:"source,omitempty"`
-	TargetTool         string       `json:"target_tool"`
-	Status             Status       `json:"status,omitempty"`
-	CreatedAt          time.Time    `json:"created_at"`
-	ExpiresAt          time.Time    `json:"expires_at"`
-	RetryUntil         time.Time    `json:"retry_until,omitempty"`
-	GrantExpiresAt     time.Time    `json:"grant_expires_at,omitempty"`
-	ExplanationAttempt uint64       `json:"explanation_attempt,omitempty"`
-	Timestamp          time.Time    `json:"timestamp"`
+	Sequence              uint64       `json:"sequence,omitempty"`
+	Name                  string       `json:"name"`
+	Subject               EventSubject `json:"subject"`
+	ChallengeID           string       `json:"challenge_id,omitempty"`
+	RequestID             string       `json:"request_id,omitempty"`
+	WorkspaceID           string       `json:"workspace_id"`
+	SessionHash           string       `json:"session_hash,omitempty"`
+	Source                string       `json:"source,omitempty"`
+	TargetTool            string       `json:"target_tool"`
+	Status                Status       `json:"status,omitempty"`
+	CreatedAt             time.Time    `json:"created_at"`
+	ExpiresAt             time.Time    `json:"expires_at"`
+	RetryUntil            time.Time    `json:"retry_until,omitempty"`
+	GrantExpiresAt        time.Time    `json:"grant_expires_at,omitempty"`
+	ExplanationAttempt    uint64       `json:"explanation_attempt,omitempty"`
+	Timestamp             time.Time    `json:"timestamp"`
+	SuppressNotifications bool         `json:"-"`
 }
 
 type EventOverflow = sequence.Overflow

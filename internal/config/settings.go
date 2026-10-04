@@ -323,6 +323,15 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 	case "notifications.completion.telegram_enabled":
 		spec.ApplicationOwner = "notifications.completion"
 		spec.ScopedCommands = []string{"notification completion telegram enable", "notification completion telegram disable"}
+	case "notifications.background_job.enabled":
+		spec.ApplicationOwner = "notifications.background_job"
+		spec.ScopedExemption = "generic config set is the canonical operator facade for background-job notification policy"
+	case "notifications.background_job.desktop_enabled":
+		spec.ApplicationOwner = "notifications.background_job"
+		spec.ScopedExemption = "generic config set is the canonical operator facade for background-job notification policy"
+	case "notifications.background_job.telegram_enabled":
+		spec.ApplicationOwner = "notifications.background_job"
+		spec.ScopedExemption = "generic config set is the canonical operator facade for background-job notification policy"
 	case "integrations.ponytail.active":
 		spec.ScopedCommands = []string{"integration ponytail enable", "integration ponytail disable"}
 	case "integrations.ponytail.mode":

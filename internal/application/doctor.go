@@ -764,8 +764,12 @@ func unavailable(summary string, remediation doctor.Remediation) doctor.Componen
 
 func notificationEnabledMap(cfg config.Config) map[string]bool {
 	return map[string]bool{
-		"desktop":  cfg.Notifications.Approval.Enabled && cfg.Notifications.Approval.DesktopEnabled || cfg.Notifications.Completion.Enabled && cfg.Notifications.Completion.DesktopEnabled,
-		"telegram": cfg.Notifications.Approval.Enabled && cfg.Notifications.Approval.TelegramEnabled || cfg.Notifications.Completion.Enabled && cfg.Notifications.Completion.TelegramEnabled,
+		"desktop": cfg.Notifications.Approval.Enabled && cfg.Notifications.Approval.DesktopEnabled ||
+			cfg.Notifications.Completion.Enabled && cfg.Notifications.Completion.DesktopEnabled ||
+			cfg.Notifications.BackgroundJob.Enabled && cfg.Notifications.BackgroundJob.DesktopEnabled,
+		"telegram": cfg.Notifications.Approval.Enabled && cfg.Notifications.Approval.TelegramEnabled ||
+			cfg.Notifications.Completion.Enabled && cfg.Notifications.Completion.TelegramEnabled ||
+			cfg.Notifications.BackgroundJob.Enabled && cfg.Notifications.BackgroundJob.TelegramEnabled,
 	}
 }
 

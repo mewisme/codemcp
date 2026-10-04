@@ -28,6 +28,10 @@ type Options struct {
 	Hooks        *CompletionHookBus
 }
 
+type AcceptOptions struct {
+	SkipHooks map[string]bool
+}
+
 type EventSubscription = sequence.Subscription[Event]
 type EventSnapshot = sequence.Snapshot[Event]
 
@@ -87,6 +91,10 @@ func NewWorkspaceService(workspaces *workspace.Manager, options Options) (*Servi
 }
 
 func (s *Service) Accept(identity Identity, input Input) (Record, bool, error) {
+	return s.AcceptWithOptions(identity, input, AcceptOptions{})
+}
+
+func (s *Service) AcceptWithOptions(identity Identity, input Input, options AcceptOptions) (Record, bool, error) {
 	if s == nil {
 		return Record{}, false, errors.New("agent completion service is unavailable")
 	}
@@ -146,7 +154,7 @@ func (s *Service) Accept(identity Identity, input Input) (Record, bool, error) {
 	s.events.EnsureSequence(record.Sequence - 1)
 	_ = s.events.Publish(accepted)
 	if s.hooks != nil {
-		_ = s.hooks.Dispatch(accepted)
+		_ = s.hooks.DispatchExcept(accepted, options.SkipHooks)
 	}
 	return record, true, nil
 }

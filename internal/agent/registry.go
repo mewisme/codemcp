@@ -110,6 +110,7 @@ func (manager *Manager) pruneTerminalLocked(now time.Time) {
 			continue
 		}
 		if manager.terminalTTL > 0 && !item.terminalAt.IsZero() && now.Sub(item.terminalAt) >= manager.terminalTTL {
+			manager.forgetClaimBindingLocked(item)
 			delete(manager.entries, id)
 			continue
 		}
@@ -118,6 +119,7 @@ func (manager *Manager) pruneTerminalLocked(now time.Time) {
 	manager.terminalOrder = kept
 	if overflow := len(manager.terminalOrder) - manager.maxTerminal; overflow > 0 {
 		for _, id := range manager.terminalOrder[:overflow] {
+			manager.forgetClaimBindingLocked(manager.entries[id])
 			delete(manager.entries, id)
 		}
 		manager.terminalOrder = append([]ID(nil), manager.terminalOrder[overflow:]...)

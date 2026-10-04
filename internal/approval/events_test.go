@@ -100,6 +100,47 @@ func TestApprovalLifecycleEventsAreSequencedDeduplicatedAndSafe(t *testing.T) {
 	}
 }
 
+func TestApprovalNotificationSuppressionPropagatesWithoutHidingCanonicalLifecycle(t *testing.T) {
+	manager := NewManager("instance-managed-child")
+	challenge, created, err := manager.CreateChallenge(ChallengeInput{
+		CallerID: "managed-child", RequestCorrelationID: "apr-child", SessionHash: "hash-child",
+		WorkspaceID: "ws_child", Source: "tunnel", TargetTool: "run_command",
+		Arguments: map[string]any{"workspace_id": "ws_child", "command": "cm update"},
+		GuardCode: controlguard.CodeControlPlaneMutation, GuardReason: "guarded", Title: "Update CodeMCP",
+		SuppressNotifications: true,
+	})
+	if err != nil || !created {
+		t.Fatalf("challenge=%#v created=%t err=%v", challenge, created, err)
+	}
+	request, created, err := manager.CreateRequest(challenge.ID, "managed-child", "ws_child")
+	if err != nil || !created {
+		t.Fatalf("request=%#v created=%t err=%v", request, created, err)
+	}
+	if _, err := manager.Approve(request.ID, "admin", ""); err != nil {
+		t.Fatal(err)
+	}
+	events := manager.Events().Recent(10)
+	if len(events) != 3 {
+		t.Fatalf("canonical lifecycle events=%#v", events)
+	}
+	for _, event := range events {
+		if !event.SuppressNotifications {
+			t.Fatalf("managed-child notification suppression lost on event: %#v", event)
+		}
+	}
+	encoded, err := json.Marshal(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "SuppressNotifications") || strings.Contains(string(encoded), "suppress_notifications") {
+		t.Fatalf("internal notification suppression leaked into public lifecycle JSON: %s", encoded)
+	}
+	view, err := NewReviewService(manager).View(request.ID)
+	if err != nil || view.Status != StatusApproved {
+		t.Fatalf("canonical approval truth hidden by notification suppression: %#v err=%v", view, err)
+	}
+}
+
 func TestApprovalLifecyclePublishesDeniedExpiredAndRevoked(t *testing.T) {
 	deniedManager := NewManager("instance-denied")
 	deniedChallenge, _, err := deniedManager.CreateChallenge(testChallenge("session-denied", "ws_denied", "cm update"))

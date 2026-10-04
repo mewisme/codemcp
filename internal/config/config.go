@@ -96,8 +96,9 @@ type ShellConfig struct {
 }
 
 type NotificationsConfig struct {
-	Approval   ApprovalNotificationConfig   `json:"approval"`
-	Completion CompletionNotificationConfig `json:"completion"`
+	Approval      ApprovalNotificationConfig      `json:"approval"`
+	Completion    CompletionNotificationConfig    `json:"completion"`
+	BackgroundJob BackgroundJobNotificationConfig `json:"background_job"`
 }
 
 type ApprovalNotificationConfig struct {
@@ -109,6 +110,12 @@ type ApprovalNotificationConfig struct {
 }
 
 type CompletionNotificationConfig struct {
+	Enabled         bool `json:"enabled"`
+	DesktopEnabled  bool `json:"desktop_enabled"`
+	TelegramEnabled bool `json:"telegram_enabled"`
+}
+
+type BackgroundJobNotificationConfig struct {
 	Enabled         bool `json:"enabled"`
 	DesktopEnabled  bool `json:"desktop_enabled"`
 	TelegramEnabled bool `json:"telegram_enabled"`
@@ -204,6 +211,9 @@ func Default() Config {
 				Enabled: true, Pending: true, Resolved: true, DesktopEnabled: true, TelegramEnabled: true,
 			},
 			Completion: CompletionNotificationConfig{Enabled: true, DesktopEnabled: true, TelegramEnabled: true},
+			BackgroundJob: BackgroundJobNotificationConfig{
+				Enabled: false, DesktopEnabled: true, TelegramEnabled: true,
+			},
 		},
 		Approval: ApprovalConfig{
 			Semantic: SemanticApprovalConfig{

@@ -91,7 +91,7 @@ func CanTransition(from, to State) bool {
 	case StateIdle:
 		return to == StateWorking || to == StateExpired || to == StateFailed || to == StateCancelled
 	case StateCompletionPending:
-		return to == StateCompleted || to == StatePartial || to == StateBlocked || to == StateCancelled || to == StateFailed
+		return to == StateCompleted || to == StatePartial || to == StateBlocked || to == StateCancelled || to == StateFailed || to == StateExpired
 	default:
 		return false
 	}

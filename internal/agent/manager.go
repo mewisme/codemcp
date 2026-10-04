@@ -597,7 +597,7 @@ func (manager *Manager) SweepExpired(ctx context.Context) int {
 	manager.mu.Lock()
 	expired := 0
 	for _, item := range manager.entries {
-		if item.record.State != StateIdle || manager.idleTTL <= 0 || now.Sub(item.record.UpdatedAt) < manager.idleTTL {
+		if (item.record.State != StateIdle && item.record.State != StateCompletionPending) || manager.idleTTL <= 0 || now.Sub(item.record.UpdatedAt) < manager.idleTTL {
 			continue
 		}
 		backend, handle := item.backend, item.handle
