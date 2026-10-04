@@ -6,13 +6,15 @@ Fanout guides managed-agent delegation strategy. It is advisory only.
 
 - Existing managed-agent tools own execution and lifecycle.
 - Current runtime/backend readiness and capacity remain authoritative. Never invent or raise concurrency limits.
+- Once Fanout is active and the selected backend is ready, automatic delegation is the default: spawn useful child jobs as soon as safe independent work exists, up to reported effective capacity. The user does not need to request fanout or specify a job count.
 - Workspace access, child claim, plan execution, approvals, and completion rules remain authoritative.
 - Exact workspace binding remains authoritative. Fanout never selects or widens child workspace access.
 - Fanout guidance never grants permissions, workspace access, or nested delegation.
 
 ## Delegation rules
 
-- Delegate only meaningful work with positive payoff from independence, parallelism, specialization, or independent review.
+- Automatically delegate meaningful work with positive payoff from independence, parallelism, specialization, or independent review whenever it can run safely.
+- Choose child jobs dynamically from the work itself; do not create filler jobs merely to consume available capacity.
 - Do not delegate trivial work, immediate sequential dependencies, or work whose coordination cost exceeds doing it directly.
 - Split work by independent subsystem, question, or workstream.
 - Prefer read-only fanout for broad audits and research.
@@ -27,4 +29,4 @@ Fanout guides managed-agent delegation strategy. It is advisory only.
 - Depth is one. Claimed children cannot use `agent_spawn` to create grandchildren.
 - Aggregate child results at the parent. Deduplicate overlapping findings, resolve contradictions, and verify material conclusions before treating them as final.
 
-Tool availability never means delegation is required.
+When no useful independent work exists, continue directly instead of manufacturing delegation.

@@ -166,7 +166,7 @@ func (driver *Driver) FollowUp(ctx context.Context, prompt string) (TurnResult, 
 	}
 	routedPrompt := prompt
 	if request.RequireConnector {
-		routedPrompt = connectorRoutePrefix(request.ConnectorName, request.WorkspaceID) + prompt
+		routedPrompt = connectorRoutePrefix(request.ConnectorName) + prompt
 	}
 	if len([]byte(routedPrompt)) > driver.maxPromptBytes {
 		return TurnResult{}, fmt.Errorf("ChatGPT Web follow-up exceeds %d bytes", driver.maxPromptBytes)
@@ -249,26 +249,21 @@ func (driver *Driver) runTurn(ctx context.Context, request TurnRequest, prompt s
 	}
 
 	connector := ""
-	workspaceID := ""
 	if request.RequireConnector {
 		connector = strings.TrimSpace(request.ConnectorName)
 		if connector == "" {
 			connector = DefaultConnectorName
 		}
-		workspaceID = strings.TrimSpace(request.WorkspaceID)
-		if workspaceID == "" {
-			return TurnResult{}, driverError(ErrorConnectorMismatch, "connector", "workspace ID is required for connector routing", nil)
-		}
 	}
 
 	attachCtx, attachCancel := context.WithTimeout(turnCtx, driver.controlTimeout)
-	attached, attachErr := attachPrompt(attachCtx, driver.tab, prompt, connector, workspaceID)
+	attached, attachErr := attachPrompt(attachCtx, driver.tab, prompt, connector)
 	attachCancel()
 	if attachErr != nil {
 		return TurnResult{}, driverError(ErrorUIContract, "composer", "prompt could not be attached without altering connector state", attachErr)
 	}
 	if request.RequireConnector && attached.ConnectorCount != 1 {
-		return TurnResult{}, driverError(ErrorConnectorMismatch, "connector", fmt.Sprintf("connector route @%s %s was not retained before submission", connector, workspaceID), nil)
+		return TurnResult{}, driverError(ErrorConnectorMismatch, "connector", fmt.Sprintf("connector route @%s was not retained before submission", connector), nil)
 	}
 	if normalizePromptForIntegrity(attached.Text) != normalizePromptForIntegrity(prompt) {
 		return TurnResult{}, uiContractError("composer", "prompt body changed before submission")
@@ -495,7 +490,7 @@ func (driver *Driver) normalizeInitialRequest(request TurnRequest) (TurnRequest,
 			request.ConnectorName = DefaultConnectorName
 		}
 		if request.WorkspaceID == "" {
-			return TurnRequest{}, "", driverError(ErrorConnectorMismatch, "connector", "workspace ID is required for connector routing", nil)
+			return TurnRequest{}, "", driverError(ErrorConnectorMismatch, "connector", "workspace ID is required for managed connector context", nil)
 		}
 	}
 	if request.Prompt == "" {
@@ -510,7 +505,7 @@ func (driver *Driver) normalizeInitialRequest(request TurnRequest) (TurnRequest,
 	}
 	routedPrompt := prompt
 	if request.RequireConnector {
-		routedPrompt = connectorRoutePrefix(request.ConnectorName, request.WorkspaceID) + prompt
+		routedPrompt = connectorRoutePrefix(request.ConnectorName) + prompt
 	}
 	if len([]byte(routedPrompt)) > driver.maxPromptBytes {
 		return TurnRequest{}, "", fmt.Errorf("ChatGPT Web composed prompt exceeds %d bytes", driver.maxPromptBytes)

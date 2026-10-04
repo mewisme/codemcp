@@ -196,6 +196,8 @@ func TestInstructionsCoverCanonicalFanoutWorkflowScenarios(t *testing.T) {
 		"idle follow-up":          {"Use `agent_send` only for useful follow-up to a live idle child."},
 		"cancellation":            {"Use `agent_cancel` when child output is no longer needed."},
 		"capacity rejection":      {"Current runtime/backend readiness and capacity remain authoritative.", "Never invent or raise concurrency limits."},
+		"automatic delegation":    {"automatic delegation is the default", "spawn useful child jobs as soon as safe independent work exists", "user does not need to request fanout or specify a job count"},
+		"dynamic job selection":   {"up to reported effective capacity", "Choose child jobs dynamically from the work itself"},
 	} {
 		for _, clause := range clauses {
 			if !strings.Contains(instructions, clause) {
@@ -210,7 +212,7 @@ func TestInstructionsProjectModeSpecificStrategy(t *testing.T) {
 		mode Mode
 		want string
 	}{
-		{Auto, "Use balanced delegation."},
+		{Auto, "Use automatic balanced delegation."},
 		{Conservative, "Use a high delegation threshold."},
 		{Aggressive, "Proactively decompose substantial work"},
 	}
@@ -231,10 +233,13 @@ func TestInstructionsProjectModeSpecificStrategy(t *testing.T) {
 
 	canonical := Instructions(Auto)
 	for _, expected := range []string{
-		"positive payoff",
+		"Automatically delegate meaningful work",
 		"read-only fanout",
 		"explicit disjoint ownership",
 		"duplicate workers",
+		"automatic delegation is the default",
+		"user does not need to request fanout or specify a job count",
+		"Choose child jobs dynamically from the work itself",
 		"parent-only goal",
 		"Exact workspace binding",
 		"`agent_claim`",
@@ -248,7 +253,7 @@ func TestInstructionsProjectModeSpecificStrategy(t *testing.T) {
 		"Deduplicate overlapping findings",
 		"resolve contradictions",
 		"verify material conclusions",
-		"Tool availability never means delegation is required",
+		"continue directly instead of manufacturing delegation",
 	} {
 		if !strings.Contains(canonical, expected) {
 			t.Fatalf("canonical Fanout policy missing %q: %s", expected, canonical)

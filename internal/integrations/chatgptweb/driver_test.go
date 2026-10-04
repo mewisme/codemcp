@@ -283,7 +283,7 @@ func TestDriverFailsClosedOnConnectorMismatch(t *testing.T) {
 	}
 }
 
-func TestDriverRequiresWorkspaceIDForConnectorRouting(t *testing.T) {
+func TestDriverRequiresWorkspaceIDForManagedConnectorContext(t *testing.T) {
 	tab := newDriverFakeTab()
 	tab.setSurfaces(readySurface(), readySurface())
 	driver := testDriver(t, tab)
@@ -480,7 +480,7 @@ func TestDriverPromptBoundAppliesBeforeBrowserNavigation(t *testing.T) {
 
 func TestDriverFollowUpPromptBoundIncludesConnectorRoute(t *testing.T) {
 	tab := newDriverFakeTab()
-	driver, err := NewDriver(tab, DriverOptions{AuthProbe: driverAuthProbeReady{}, MaxPromptBytes: 40})
+	driver, err := NewDriver(tab, DriverOptions{AuthProbe: driverAuthProbeReady{}, MaxPromptBytes: 34})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,7 +512,7 @@ func TestDriverExpressionsNeverSendConversationBackendRequests(t *testing.T) {
 	expressions := []string{
 		domSnapshotExpression(),
 		configureControlsExpression("GPT-5.6 Sol", 2, "High"),
-		attachPromptExpression("task", "CodeMCP", "ws_test"),
+		attachPromptExpression("task", "CodeMCP"),
 		activateSendExpression(),
 		stopExpression(),
 	}
@@ -527,13 +527,13 @@ func TestDriverExpressionsNeverSendConversationBackendRequests(t *testing.T) {
 }
 
 func TestAttachPromptExpressionUsesDirectConnectorMentionWithoutCMDKSelection(t *testing.T) {
-	const workspaceID = "ws_5ad2e1f68cd35a46"
-	if got, want := connectorRoutePrefix("WSL", workspaceID), "@WSL "+workspaceID+", "; got != want {
+	if got, want := connectorRoutePrefix("WSL"), "@WSL "; got != want {
 		t.Fatalf("connector route prefix=%q want=%q", got, want)
 	}
-	expression := attachPromptExpression("task", "WSL", workspaceID)
+	expression := attachPromptExpression("Workspace ID: ws_5ad2e1f68cd35a46\n\ntask", "WSL")
 	for _, required := range []string{
-		`"@WSL ws_5ad2e1f68cd35a46, "`,
+		`"@WSL "`,
+		`"Workspace ID: ws_5ad2e1f68cd35a46\n\ntask"`,
 		"c.innerText||c.textContent",
 		"app-mention-display-name",
 		"data-keyword",
@@ -543,6 +543,9 @@ func TestAttachPromptExpressionUsesDirectConnectorMentionWithoutCMDKSelection(t 
 		if !strings.Contains(expression, required) {
 			t.Fatalf("connector mention expression missing %q", required)
 		}
+	}
+	if strings.Contains(expression, `"@WSL ws_5ad2e1f68cd35a46`) {
+		t.Fatal("connector route must not duplicate workspace ID outside the prompt body")
 	}
 	for _, forbidden := range []string{"cmdk", "data-list-navigation-item", ".click()", "Personalized", "Unpersonalized"} {
 		if strings.Contains(expression, forbidden) {

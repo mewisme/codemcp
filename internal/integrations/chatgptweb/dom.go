@@ -126,27 +126,26 @@ func configureControls(ctx context.Context, tab browser.BrowserTab, model, effor
 	return result, nil
 }
 
-func attachPromptExpression(prompt, connector, workspaceID string) string {
-	route := connectorRoutePrefix(connector, workspaceID)
+func attachPromptExpression(prompt, connector string) string {
+	route := connectorRoutePrefix(connector)
 	return fmt.Sprintf(`/*codemcp:attach*/(()=>{%s
-const norm=s=>(s||'').replace(/\r\n/g,'\n').trim();const canon=s=>(s||'').replace(/\s+/g,' ').trim().replace(/^@/,'').toLocaleLowerCase();const connector=%s;const workspace=%s;const mention=connector===''?'':'@'+connector;const target=canon(connector);const route=%s;const workspaceRoute=workspace+', ';const composers=[...document.querySelectorAll(%s)].filter(visible);if(composers.length!==1)throw new Error('expected one visible composer');const c=composers[0];
+const norm=s=>(s||'').replace(/\r\n/g,'\n').trim();const canon=s=>(s||'').replace(/\s+/g,' ').trim().replace(/^@/,'').toLocaleLowerCase();const connector=%s;const target=canon(connector);const route=%s;const composers=[...document.querySelectorAll(%s)].filter(visible);if(composers.length!==1)throw new Error('expected one visible composer');const c=composers[0];
 c.focus();document.execCommand('selectAll',false);document.execCommand('delete',false);const value=route+%s;if(!document.execCommand('insertText',false,value)){c.append(document.createTextNode(value));c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));}
-const chosen=[...c.querySelectorAll(%s)].filter(el=>[el.getAttribute('app-mention-display-name'),el.getAttribute('data-keyword'),el.getAttribute('aria-label')].some(v=>canon(v)===target));if(chosen.length>1)throw new Error('duplicate connector mentions');const raw=c.innerText||c.textContent||'';let text=raw,count=0;if(connector!==''){let prefixes=[];if(chosen.length===1){const display=norm(chosen[0].innerText||chosen[0].textContent||chosen[0].getAttribute('app-mention-display-name')||connector).replace(/^@/,'');prefixes=[route,'@'+display+' '+workspaceRoute,display+' '+workspaceRoute];}else{prefixes=[route];}const prefix=prefixes.find(value=>raw.startsWith(value));if(prefix){text=raw.slice(prefix.length);count=1;}}return {text:norm(text),connector_count:count};})()`,
-		visiblePrelude(), jsString(connector), jsString(workspaceID), jsString(route), jsString(ComposerSelector), jsString(prompt), jsString(ConnectorMentionSelector))
+const chosen=[...c.querySelectorAll(%s)].filter(el=>[el.getAttribute('app-mention-display-name'),el.getAttribute('data-keyword'),el.getAttribute('aria-label')].some(v=>canon(v)===target));if(chosen.length>1)throw new Error('duplicate connector mentions');const raw=c.innerText||c.textContent||'';let text=raw,count=0;if(connector!==''){let prefixes=[];if(chosen.length===1){const display=norm(chosen[0].innerText||chosen[0].textContent||chosen[0].getAttribute('app-mention-display-name')||connector).replace(/^@/,'');prefixes=[route,'@'+display+' ',display+' '];}else{prefixes=[route];}const prefix=prefixes.find(value=>raw.startsWith(value));if(prefix){text=raw.slice(prefix.length);count=1;}}return {text:norm(text),connector_count:count};})()`,
+		visiblePrelude(), jsString(connector), jsString(route), jsString(ComposerSelector), jsString(prompt), jsString(ConnectorMentionSelector))
 }
 
-func connectorRoutePrefix(connector, workspaceID string) string {
+func connectorRoutePrefix(connector string) string {
 	connector = strings.TrimSpace(connector)
-	workspaceID = strings.TrimSpace(workspaceID)
 	if connector == "" {
 		return ""
 	}
-	return "@" + connector + " " + workspaceID + ", "
+	return "@" + connector + " "
 }
 
-func attachPrompt(ctx context.Context, tab browser.BrowserTab, prompt, connector, workspaceID string) (promptAttachResult, error) {
+func attachPrompt(ctx context.Context, tab browser.BrowserTab, prompt, connector string) (promptAttachResult, error) {
 	var result promptAttachResult
-	if err := tab.Evaluate(ctx, attachPromptExpression(prompt, connector, workspaceID), &result); err != nil {
+	if err := tab.Evaluate(ctx, attachPromptExpression(prompt, connector), &result); err != nil {
 		return promptAttachResult{}, err
 	}
 	return result, nil

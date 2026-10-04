@@ -276,8 +276,8 @@ func TestBaseAndOpenAIProfilesShareManagedAgentDelegationSemantics(t *testing.T)
 		for _, expected := range []string{
 			"fanout_turn",
 			"exact current user prompt",
-			"Tool availability alone never requires delegation",
-			"strategy only",
+			"automatically delegate safe, meaningful independent workstreams",
+			"do not wait for the user to request fanout or choose a job count",
 		} {
 			if !strings.Contains(instructions, expected) {
 				t.Fatalf("profile instructions missing Fanout bootstrap %q: %s", expected, instructions)

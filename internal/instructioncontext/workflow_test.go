@@ -505,9 +505,9 @@ func TestAgentDelegationGuidanceBootstrapsFanoutWithoutDuplicatingPolicy(t *test
 		"exact current user prompt",
 		"/fanout",
 		"transient Fanout strategy",
-		"Tool availability alone never requires delegation",
-		"strategy only",
-		"never overrides workspace, security, plan",
+		"automatically delegate safe, meaningful independent workstreams",
+		"do not wait for the user to request fanout or choose a job count",
+		"runtime/backend readiness, capacity",
 		"Generic MCP Tool calls do not carry the original raw user prompt",
 		"slash interpretation belongs to the host agent",
 	} {
