@@ -178,6 +178,31 @@ func TestSkillManagementExactSelectionInstallsOnlyRequestedSkill(t *testing.T) {
 	}
 }
 
+func TestSkillManagementExactSelectionFindsDirectRootSkillAlongsidePriorityContainer(t *testing.T) {
+	service, item := newSkillManagementHarness(t)
+	repository := t.TempDir()
+	writeRepositorySkill(t, repository, "archify", "archify")
+	writeRepositorySkill(t, repository, filepath.Join(".agents", "skills", "archify-review"), "archify-review")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("f", 40))
+
+	result, err := service.Add(t.Context(), SkillAddRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "tt-a1i/archify", Skill: "archify",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Skills) != 1 || result.Skills[0].Name != "archify" {
+		t.Fatalf("result=%#v", result)
+	}
+	root := workspacestate.New(item.Path).SkillsRoot()
+	if _, err := os.Stat(filepath.Join(root, "archify", "SKILL.md")); err != nil {
+		t.Fatalf("selected direct-root skill was not installed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "archify-review")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unselected priority-container skill was installed: %v", err)
+	}
+}
+
 func TestSkillManagementAddRejectsUnmanagedConflict(t *testing.T) {
 	service, item := newSkillManagementHarness(t)
 	repository := t.TempDir()

@@ -147,6 +147,30 @@ func TestRepositoryDiscoveryRootSkillShadowsNestedUnlessFullDepth(t *testing.T) 
 	}
 }
 
+func TestRepositoryDiscoveryIncludesDirectRootSkillAlongsidePriorityContainer(t *testing.T) {
+	repository := t.TempDir()
+	writeSkillFixture(t, filepath.Join(repository, "archify"), "archify", "Archify skill")
+	writeSkillFixture(t, filepath.Join(repository, ".agents", "skills", "archify-review"), "archify-review", "Archify review skill")
+
+	values, err := DiscoverRepositorySkills(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 2 {
+		t.Fatalf("candidates=%#v", values)
+	}
+	byName := map[string]RepositorySkillCandidate{}
+	for _, value := range values {
+		byName[value.Skill.Name] = value
+	}
+	if got := byName["archify"]; got.RelativePath != "archify" {
+		t.Fatalf("direct root skill=%#v", got)
+	}
+	if got := byName["archify-review"]; got.RelativePath != ".agents/skills/archify-review" {
+		t.Fatalf("priority-container skill=%#v", got)
+	}
+}
+
 func TestValidateNativeSkillRootFailsClosedForUnsafeContent(t *testing.T) {
 	t.Run("manifest symlink", func(t *testing.T) {
 		root := t.TempDir()

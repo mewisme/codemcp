@@ -152,6 +152,14 @@ func DiscoverRepositorySkillsWithOptions(root string, options RepositoryDiscover
 		}
 	}
 
+	// Direct child skill directories are a common repository layout and should
+	// remain discoverable even when higher-priority provider/catalog containers
+	// also contain skills. Keep this scan shallow so arbitrary repository trees
+	// still require fallback/full-depth discovery.
+	if err := state.walkContainer(root, 0, 0); err != nil {
+		return nil, err
+	}
+
 	for _, container := range repositoryPrioritySkillContainers(root) {
 		if err := state.walkContainer(container, defaultRepositoryContainerDepth, 0); err != nil {
 			return nil, err
