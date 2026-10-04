@@ -208,7 +208,7 @@ func (ui *Interface) currentLogsWebAppButton() (Button, bool) {
 	if health.State != MiniAppReady || strings.TrimSpace(health.PublicURL) == "" {
 		return Button{}, false
 	}
-	return Button{Text: "Open Logs App", WebAppURL: health.PublicURL, Role: ButtonRolePrimary}, true
+	return Button{Text: "Open Activity", WebAppURL: health.PublicURL, Role: ButtonRolePrimary}, true
 }
 
 func (ui *Interface) currentLogsWebAppExecutionButton(executionID string) (Button, bool) {

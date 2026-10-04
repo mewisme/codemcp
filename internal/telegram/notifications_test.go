@@ -58,7 +58,7 @@ func TestCompletionNotificationUsesRichCompletionsTopicWithoutPlainDuplicate(t *
 		t.Fatalf("completion notification repeated heading/status context: %q", fallback.Text)
 	}
 	if len(screen.Keyboard) != 0 {
-		t.Fatalf("completion notification must not expose Logs Mini App action: %#v", screen.Keyboard)
+		t.Fatalf("completion notification must not expose Activity Mini App action: %#v", screen.Keyboard)
 	}
 }
 

@@ -579,7 +579,7 @@ func (ui *Interface) homeScreen(owner ViewOwner) (Screen, error) {
 	if err != nil {
 		return Screen{}, err
 	}
-	logs, err := ui.stateButton(owner, "Logs", CallbackOpen, ActionState{Route: RouteLogs, Back: RouteHome})
+	logs, err := ui.stateButton(owner, "Activity", CallbackOpen, ActionState{Route: RouteLogs, Back: RouteHome})
 	if err != nil {
 		return Screen{}, err
 	}
@@ -861,7 +861,7 @@ func (ui *Interface) terminalOperationKeyboard(owner ViewOwner, state ActionStat
 		if systemErr != nil {
 			return nil, systemErr
 		}
-		logs, logsErr := ui.stateButton(owner, "Logs", CallbackOpen, ActionState{Route: RouteLogs, Back: RouteStatus})
+		logs, logsErr := ui.stateButton(owner, "Activity", CallbackOpen, ActionState{Route: RouteLogs, Back: RouteStatus})
 		if logsErr != nil {
 			return nil, logsErr
 		}
@@ -1110,7 +1110,7 @@ func (ui *Interface) statusOverviewPresentation(status application.StatusOvervie
 		{"Bot", boolState(status.TelegramEnabled)},
 		{"Polling", polling},
 		{"Topics", topicsState},
-		{"Logs App", effectiveState(status.LogsMiniAppEnabled, status.LogsMiniAppAvailable, status.LogsMiniAppEffective)},
+		{"Activity", effectiveState(status.LogsMiniAppEnabled, status.LogsMiniAppAvailable, status.LogsMiniAppEffective)},
 	}
 	var logsNotice *RichBlock
 	if ui != nil && ui.runtime != nil {
@@ -1118,9 +1118,9 @@ func (ui *Interface) statusOverviewPresentation(status application.StatusOvervie
 		if health.Enabled && health.State != MiniAppReady && health.State != MiniAppStarting {
 			detail := strings.TrimSpace(health.LastError)
 			if detail == "" {
-				detail = "Logs App is not ready."
+				detail = "Activity is not ready."
 			}
-			notice := NoticeBlock(ToneWarning, "Logs App unavailable", detail)
+			notice := NoticeBlock(ToneWarning, "Activity unavailable", detail)
 			logsNotice = &notice
 		}
 	}
@@ -1304,7 +1304,7 @@ func routeLabel(route Route) string {
 	case RoutePrompt:
 		return "Prompt"
 	case RouteLogs:
-		return "Logs"
+		return "Activity"
 	case RouteOperation:
 		return "Operation"
 	default:

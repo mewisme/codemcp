@@ -61,7 +61,7 @@ export default defineConfig({
       testMatch: /mini-app\.spec\.ts/,
       use: {
         baseURL: miniAppURL,
-        viewport: { width: 390, height: 844 },
+        viewport: { width: 375, height: 844 },
         isMobile: true,
         hasTouch: true,
       },

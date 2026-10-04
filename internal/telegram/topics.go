@@ -32,7 +32,7 @@ var managedTopicRoles = []struct {
 	{Role: TopicRequests, Name: "Requests"},
 	{Role: TopicCompletions, Name: "Completions"},
 	{Role: TopicRuntime, Name: "Runtime / System"},
-	{Role: TopicLogs, Name: "Logs"},
+	{Role: TopicLogs, Name: "Activity"},
 }
 
 type topicStore struct {

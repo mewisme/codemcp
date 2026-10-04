@@ -226,7 +226,7 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 		statusText = "disabled"
 	}
 	blocks := []RichBlock{
-		{Kind: RichHeading, Title: "Logs", Text: "Retained runtime activity in Telegram"},
+		{Kind: RichHeading, Title: "Activity", Text: "Live and retained runtime activity in Telegram"},
 		StateBlock(statusTone(statusText), displayState(statusText), ""),
 		FieldsBlock("Ingress",
 			[]string{"Quick Tunnel", stateLabel(health.DependencyAvailable, "Available", "Unavailable")},
@@ -236,21 +236,21 @@ func (ui *Interface) logsMiniAppScreen(owner ViewOwner) (Screen, error) {
 	}
 	primary := []Button{}
 	if health.State == MiniAppReady && strings.TrimSpace(health.PublicURL) != "" {
-		primary = append(primary, Button{Text: "Open Logs App", WebAppURL: health.PublicURL, Role: ButtonRolePrimary})
-		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Temporary URL", Text: "The Logs App uses the current Quick Tunnel URL. Refresh this screen after a runtime or tunnel restart."})
+		primary = append(primary, Button{Text: "Open Activity", WebAppURL: health.PublicURL, Role: ButtonRolePrimary})
+		blocks = append(blocks, RichBlock{Kind: RichDetails, Title: "Temporary URL", Text: "The Activity Mini App uses the current Quick Tunnel URL. Refresh this screen after a runtime or tunnel restart."})
 	} else {
-		primary = append(primary, Button{Text: "Open Logs App", Disabled: true, Role: ButtonRoleNeutral})
+		primary = append(primary, Button{Text: "Open Activity", Disabled: true, Role: ButtonRoleNeutral})
 		message := strings.TrimSpace(health.LastError)
 		if message == "" {
 			if !health.Enabled {
-				message = "Enable telegram.logs_mini_app.enabled to start the read-only Logs Mini App."
+				message = "Enable telegram.logs_mini_app.enabled to start the read-only Activity Mini App."
 			} else if !health.DependencyAvailable {
 				message = "Run cm integration cf install for the managed asset or install cf-tunnel globally yourself. Telegram polling and administration remain available without it."
 			} else {
-				message = "The Logs Mini App is not ready yet."
+				message = "The Activity Mini App is not ready yet."
 			}
 		}
-		blocks = append(blocks, NoticeBlock(ToneWarning, "Logs App unavailable", message))
+		blocks = append(blocks, NoticeBlock(ToneWarning, "Activity unavailable", message))
 	}
 	return Screen{Rich: BuildRichPresentation(blocks...), Keyboard: BoundedActionGroups(ActionGroups{
 		Primary: primary, Secondary: []Button{logPath}, Destructive: []Button{clearPersisted}, Navigation: []Button{back, home, refresh},
@@ -270,7 +270,7 @@ func newLogsMiniAppRuntime(launcher QuickTunnelLauncher, resolvers ...func() (st
 
 func (runtime *LogsMiniAppRuntime) Reconcile(ctx context.Context, cfg config.TelegramConfig, botToken string) error {
 	if runtime == nil {
-		return errors.New("telegram Logs Mini App runtime is unavailable")
+		return errors.New("telegram Activity Mini App runtime is unavailable")
 	}
 	botToken = strings.TrimSpace(botToken)
 	fingerprint := miniAppFingerprint(cfg, botToken)
@@ -295,13 +295,13 @@ func (runtime *LogsMiniAppRuntime) Reconcile(ctx context.Context, cfg config.Tel
 		runtime.config = cfg
 		runtime.botToken = ""
 		runtime.fingerprint = fingerprint
-		runtime.health = LogsMiniAppHealth{Enabled: true, State: MiniAppDegraded, LastError: "Telegram bot runtime, bot token, and authorized users are required before the Logs Mini App can start"}
+		runtime.health = LogsMiniAppHealth{Enabled: true, State: MiniAppDegraded, LastError: "Telegram bot runtime, bot token, and authorized users are required before the Activity Mini App can start"}
 		runtime.mu.Unlock()
 		return nil
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		runtime.setDegraded(cfg, fingerprint, fmt.Errorf("start loopback Logs Mini App listener: %w", err))
+		runtime.setDegraded(cfg, fingerprint, fmt.Errorf("start loopback Activity Mini App listener: %w", err))
 		return err
 	}
 	if ctx == nil {

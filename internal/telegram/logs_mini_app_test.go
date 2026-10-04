@@ -373,6 +373,12 @@ func TestLogsScreenUsesCurrentReadyWebAppURLOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if text := RichFallback(first.Rich).Text; !strings.Contains(text, "Activity") {
+		t.Fatalf("activity screen missing Activity identity: %q", text)
+	}
+	if got := webAppButtonText(first.Keyboard); got != "Open Activity" {
+		t.Fatalf("activity web_app button=%q want Open Activity", got)
+	}
 	if got := webAppURL(first.Keyboard); got != "https://first.trycloudflare.com/" {
 		t.Fatalf("first web_app URL=%q", got)
 	}
@@ -401,6 +407,17 @@ func webAppURL(rows [][]Button) string {
 		for _, button := range row {
 			if button.WebAppURL != "" {
 				return button.WebAppURL
+			}
+		}
+	}
+	return ""
+}
+
+func webAppButtonText(rows [][]Button) string {
+	for _, row := range rows {
+		for _, button := range row {
+			if button.WebAppURL != "" {
+				return button.Text
 			}
 		}
 	}

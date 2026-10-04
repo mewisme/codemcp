@@ -3,6 +3,7 @@ import {
   ArrowLeftIcon,
   CirclePauseIcon,
   CirclePlayIcon,
+  ListFilterIcon,
   Maximize2Icon,
   RefreshCwIcon,
   SearchIcon,
@@ -118,6 +119,7 @@ export function MiniApp() {
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<FilterMode>("all")
   const [scope, setScope] = useState("all")
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [selected, setSelected] = useState<SelectedItem | null>(
     () => launchTarget
   )
@@ -324,6 +326,7 @@ export function MiniApp() {
       setFilter("all")
       setScope("all")
       setQuery("")
+      setFiltersOpen(false)
       setSelected(null)
       setConnection("connecting")
       setStreamError("")
@@ -426,7 +429,7 @@ export function MiniApp() {
 
   const requestClearView = useCallback(() => {
     void confirmTelegramAction(
-      "Clear the current Mini App log view? New events will continue to appear."
+      "Clear the current Mini App activity view? New events will continue to appear."
     ).then((confirmed) => {
       if (confirmed) clearView()
     })
@@ -553,6 +556,34 @@ export function MiniApp() {
       : activeFeed === "executions"
         ? filteredExecutions.length
         : filteredTools.length
+  const availableCount =
+    activeFeed === "runtime"
+      ? runtimeEvents.filter(
+          (event) =>
+            (event.sequence || 0) > clearCursor.runtime &&
+            (event.sequence || 0) <= visibleCursor
+        ).length
+      : activeFeed === "executions"
+        ? executions.filter((item) => {
+            const sequence = executionSequenceByID.get(item.id) || 0
+            return (
+              sequence > clearCursor.executions && sequence <= visibleCursor
+            )
+          }).length
+        : toolRecords.filter(
+            (record) =>
+              (record.latest.sequence || 0) > clearCursor.tools &&
+              (record.latest.sequence || 0) <= visibleCursor
+          ).length
+  const activeFilterCount = Number(filter !== "all") + Number(scope !== "all")
+  const hasFilterInput =
+    Boolean(query.trim()) || filter !== "all" || scope !== "all"
+  const activeFilterSummary = [
+    filter !== "all" ? filterLabel(filter, activeFeed) : "",
+    scope !== "all" ? scope : "",
+  ]
+    .filter(Boolean)
+    .join(" · ")
   const selectedDetail = selected
     ? resolveSelected(
         selected,
@@ -582,7 +613,7 @@ export function MiniApp() {
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label="Back to logs"
+              aria-label="Back to activity"
               onClick={() => setSelected(null)}
             >
               <ArrowLeftIcon />
@@ -627,11 +658,11 @@ export function MiniApp() {
       <header className="mb-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold tracking-tight">Logs</h1>
+            <h1 className="text-lg font-semibold tracking-tight">Activity</h1>
             <ConnectionBadge state={connection} paused={paused} />
           </div>
           <p className="mt-0.5 text-xs break-words text-muted-foreground">
-            CodeMCP Mini App · realtime read-only view
+            CodeMCP Mini App · live read-only activity
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -690,9 +721,11 @@ export function MiniApp() {
       {streamError ? (
         <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
           <span>{streamError}</span>
-          <Button size="xs" variant="outline" onClick={reconnect}>
-            Retry
-          </Button>
+          {!nativeControls.mainButton ? (
+            <Button size="xs" variant="outline" onClick={reconnect}>
+              Retry
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -706,10 +739,10 @@ export function MiniApp() {
             Runtime
           </TabsTrigger>
           <TabsTrigger className="flex-none px-3" value="executions">
-            Command Execute
+            Commands
           </TabsTrigger>
           <TabsTrigger className="flex-none px-3" value="tools">
-            Tool Call/MCP
+            Tool calls
           </TabsTrigger>
         </ScrollableTabsList>
       </Tabs>
@@ -744,47 +777,79 @@ export function MiniApp() {
           ) : null}
         </div>
         <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-          <Select
-            value={filter}
-            onValueChange={(value) => setFilter(value as FilterMode)}
-          >
-            <SelectTrigger size="sm" className="max-w-[10rem]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All states</SelectItem>
-              {activeFeed !== "runtime" ? (
-                <SelectItem value="running">Running</SelectItem>
+          {isMobile ? (
+            <Button
+              type="button"
+              size="sm"
+              variant={activeFilterCount ? "secondary" : "outline"}
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((value) => !value)}
+            >
+              <ListFilterIcon />
+              Filters
+              {activeFilterCount ? (
+                <Badge variant="outline">{activeFilterCount}</Badge>
               ) : null}
-              {activeFeed === "runtime" ? (
-                <SelectItem value="warn">Warnings</SelectItem>
-              ) : null}
-              <SelectItem value="success">
-                {activeFeed === "runtime" ? "Info" : "Success"}
-              </SelectItem>
-              <SelectItem value="error">Errors</SelectItem>
-              {activeFeed !== "runtime" ? (
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              ) : null}
-            </SelectContent>
-          </Select>
-          <Select value={scope} onValueChange={setScope}>
-            <SelectTrigger size="sm" className="max-w-[13rem]">
-              <SelectValue placeholder="All workspaces" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All workspaces</SelectItem>
-              {scopes.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {value}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            </Button>
+          ) : null}
+          {isMobile && !filtersOpen && activeFilterSummary ? (
+            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {activeFilterSummary}
+            </span>
+          ) : null}
           <span className="ml-auto text-xs text-muted-foreground tabular-nums">
             {count} visible
           </span>
         </div>
+        {!isMobile || filtersOpen ? (
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+            <Select
+              value={filter}
+              onValueChange={(value) => setFilter(value as FilterMode)}
+            >
+              <SelectTrigger
+                aria-label="Activity state"
+                size="sm"
+                className="min-w-0 flex-1 sm:max-w-[10rem]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All states</SelectItem>
+                {activeFeed !== "runtime" ? (
+                  <SelectItem value="running">Running</SelectItem>
+                ) : null}
+                {activeFeed === "runtime" ? (
+                  <SelectItem value="warn">Warnings</SelectItem>
+                ) : null}
+                <SelectItem value="success">
+                  {activeFeed === "runtime" ? "Info" : "Success"}
+                </SelectItem>
+                <SelectItem value="error">Errors</SelectItem>
+                {activeFeed !== "runtime" ? (
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
+            <Select value={scope} onValueChange={setScope}>
+              <SelectTrigger
+                aria-label="Activity workspace"
+                size="sm"
+                className="min-w-0 flex-1 sm:max-w-[13rem]"
+              >
+                <SelectValue placeholder="All workspaces" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All workspaces</SelectItem>
+                {scopes.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {value}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
       </form>
 
       <div
@@ -801,7 +866,11 @@ export function MiniApp() {
             preferences.density === "compact" && "text-[13px]"
           )}
         >
-          {connection === "connecting" && count === 0 ? <LoadingRows /> : null}
+          {(connection === "connecting" || connection === "reconnecting") &&
+          count === 0 &&
+          availableCount === 0 ? (
+            <LoadingRows />
+          ) : null}
           {activeFeed === "runtime" &&
             filteredRuntime.map((event) => (
               <RuntimeRow
@@ -846,18 +915,23 @@ export function MiniApp() {
                 }
               />
             ))}
-          {connection !== "connecting" && count === 0 ? (
-            <div className="px-4 py-12 text-center">
-              <p className="text-sm font-medium">No events in this view</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Filters and Clear view are local to this Mini App session.
-              </p>
-            </div>
+          {connection !== "connecting" &&
+          connection !== "reconnecting" &&
+          count === 0 ? (
+            <ActivityEmptyState
+              connection={connection}
+              hasFilterInput={hasFilterInput}
+              locallyCleared={
+                clearCursor[activeFeed] > 0 && availableCount === 0
+              }
+              streamError={streamError}
+              availableCount={availableCount}
+            />
           ) : null}
         </section>
 
         {selected && !isMobile ? (
-          <aside className="sticky top-3 hidden h-[calc(var(--tg-viewport-stable-height,100dvh)-14rem)] min-h-0 min-w-0 self-start overflow-hidden rounded-xl border bg-card md:flex md:flex-col">
+          <aside className="sticky top-3 hidden h-[calc(var(--tg-viewport-stable-height,100dvh)-16rem)] min-h-0 min-w-0 self-start overflow-hidden rounded-xl border bg-card md:flex md:flex-col">
             <div className="flex min-w-0 items-start gap-3 border-b px-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-semibold break-words">
@@ -869,14 +943,16 @@ export function MiniApp() {
                   </div>
                 ) : null}
               </div>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label="Close detail"
-                onClick={() => setSelected(null)}
-              >
-                <XIcon />
-              </Button>
+              {!nativeControls.backButton ? (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label="Close detail"
+                  onClick={() => setSelected(null)}
+                >
+                  <XIcon />
+                </Button>
+              ) : null}
             </div>
             <div className="min-h-0 flex-1 p-3">
               <DetailBody
@@ -896,6 +972,7 @@ export function MiniApp() {
         onOpenChange={setSettingsOpen}
         title="View settings"
         description="Presentation preferences only. No authentication data or secrets are stored."
+        showCloseButton={!nativeControls.backButton}
       >
         <div className="space-y-4 pb-1">
           <SettingRow
@@ -946,8 +1023,8 @@ export function MiniApp() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="runtime">Runtime</SelectItem>
-                <SelectItem value="executions">Command Execute</SelectItem>
-                <SelectItem value="tools">Tool Call/MCP</SelectItem>
+                <SelectItem value="executions">Commands</SelectItem>
+                <SelectItem value="tools">Tool calls</SelectItem>
               </SelectContent>
             </Select>
           </SettingRow>
@@ -980,6 +1057,42 @@ function ConnectionBadge({
   if (state === "disconnected")
     return <Badge variant="destructive">Offline</Badge>
   return <Badge variant="secondary">Connecting</Badge>
+}
+
+function ActivityEmptyState({
+  connection,
+  hasFilterInput,
+  locallyCleared,
+  streamError,
+  availableCount,
+}: {
+  connection: StreamState
+  hasFilterInput: boolean
+  locallyCleared: boolean
+  streamError: string
+  availableCount: number
+}) {
+  let title = "No activity yet"
+  let description = "New live activity will appear here as it arrives."
+  if (streamError) {
+    title = "Live activity unavailable"
+    description = "Retry the live connection to continue receiving activity."
+  } else if (connection === "suspended") {
+    title = "Activity suspended"
+    description = "Return to the Mini App to resume the live connection."
+  } else if (locallyCleared) {
+    title = "View cleared"
+    description = "New activity will appear here as it arrives."
+  } else if (hasFilterInput && availableCount > 0) {
+    title = "No activity matches these filters"
+    description = "Adjust the search, state, or workspace filters."
+  }
+  return (
+    <div className="px-4 py-12 text-center">
+      <p className="text-sm font-medium">{title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+    </div>
+  )
 }
 
 function RuntimeRow({
@@ -1650,7 +1763,7 @@ function LoadingShell() {
     <main className="flex min-h-[var(--tg-viewport-stable-height,100dvh)] items-center justify-center bg-background p-6 text-foreground">
       <div className="text-center">
         <RefreshCwIcon className="mx-auto mb-3 size-5 animate-spin text-muted-foreground" />
-        <p className="text-sm font-medium">Opening Logs</p>
+        <p className="text-sm font-medium">Opening Activity</p>
         <p className="mt-1 text-xs text-muted-foreground">
           Authenticating Telegram session…
         </p>
@@ -1663,7 +1776,7 @@ function Unavailable({ message }: { message: string }) {
   return (
     <main className="flex min-h-[var(--tg-viewport-stable-height,100dvh)] items-center justify-center bg-background p-6 text-foreground">
       <div className="max-w-sm rounded-xl border bg-card p-5 text-center shadow-sm">
-        <h1 className="text-base font-semibold">Logs unavailable</h1>
+        <h1 className="text-base font-semibold">Activity unavailable</h1>
         <p className="mt-2 text-sm text-muted-foreground">{message}</p>
       </div>
     </main>
@@ -1834,6 +1947,15 @@ function searchPlaceholder(feed: MiniAppFeed) {
   if (feed === "executions") return "Search command, cwd, workspace…"
   if (feed === "tools") return "Search tool, call ID, workspace…"
   return "Search event, component, message…"
+}
+
+function filterLabel(filter: FilterMode, feed: MiniAppFeed) {
+  if (filter === "all") return "All states"
+  if (filter === "success") return feed === "runtime" ? "Info" : "Success"
+  if (filter === "warn") return "Warnings"
+  if (filter === "error") return "Errors"
+  if (filter === "cancelled") return "Cancelled"
+  return "Running"
 }
 
 function badgeForStatus(

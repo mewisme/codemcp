@@ -24,7 +24,7 @@ class MockWebSocket {
   }
 }
 
-describe("Telegram Logs Mini App", () => {
+describe("Telegram Activity Mini App", () => {
   beforeEach(() => {
     MockWebSocket.instances = []
     vi.stubGlobal("WebSocket", MockWebSocket)
@@ -119,12 +119,8 @@ describe("Telegram Logs Mini App", () => {
       await screen.findByText("Telegram runtime ready")
     ).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "Runtime" })).toBeInTheDocument()
-    expect(
-      screen.getByRole("tab", { name: "Command Execute" })
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole("tab", { name: "Tool Call/MCP" })
-    ).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Commands" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Tool calls" })).toBeInTheDocument()
     expect(screen.getByText("Live")).toBeInTheDocument()
     expect(document.documentElement).toHaveClass("dark")
     expect(
@@ -205,7 +201,7 @@ describe("Telegram Logs Mini App", () => {
       })
     })
 
-    await userEvent.click(screen.getByRole("tab", { name: "Command Execute" }))
+    await userEvent.click(screen.getByRole("tab", { name: "Commands" }))
     await waitFor(() => expect(MockWebSocket.instances).toHaveLength(2))
     expect(MockWebSocket.instances[0].closed).toBeGreaterThan(0)
     expect(MockWebSocket.instances[1].url).toContain("feed=executions")
@@ -248,7 +244,7 @@ describe("Telegram Logs Mini App", () => {
     expect(screen.getByText(/canonical stderr/)).toBeInTheDocument()
   })
 
-  it("opens a background-process execution deep link directly in Command Execute detail", async () => {
+  it("opens a background-process execution deep link directly in Commands detail", async () => {
     window.history.replaceState(
       {},
       "",
@@ -518,7 +514,7 @@ describe("Telegram Logs Mini App", () => {
       })
     })
 
-    await userEvent.click(screen.getByRole("tab", { name: "Tool Call/MCP" }))
+    await userEvent.click(screen.getByRole("tab", { name: "Tool calls" }))
     await waitFor(() => expect(MockWebSocket.instances).toHaveLength(2))
     act(() => {
       MockWebSocket.instances[1].emit({
@@ -616,7 +612,7 @@ describe("Telegram Logs Mini App", () => {
       </TooltipProvider>
     )
 
-    expect(await screen.findByText("Logs unavailable")).toBeInTheDocument()
+    expect(await screen.findByText("Activity unavailable")).toBeInTheDocument()
     expect(
       screen.getByText("Telegram Mini App context is unavailable")
     ).toBeInTheDocument()
@@ -640,7 +636,7 @@ describe("Telegram Logs Mini App", () => {
       </TooltipProvider>
     )
 
-    expect(await screen.findByText("Logs unavailable")).toBeInTheDocument()
+    expect(await screen.findByText("Activity unavailable")).toBeInTheDocument()
     expect(
       screen.getByText(
         "Realtime streaming is unavailable in this Telegram client"

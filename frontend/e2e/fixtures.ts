@@ -400,6 +400,9 @@ export async function installMiniAppMocks(page: Page) {
       return value
     }
     const backButton = button()
+    const mainButton = button()
+    const secondaryButton = button()
+    const settingsButton = button()
 
     window.Telegram = {
       WebApp: {
@@ -430,22 +433,9 @@ export async function installMiniAppMocks(page: Page) {
           callbacks.get(event)?.delete(callback)
         },
         BackButton: backButton,
-        MainButton: button(),
-        SecondaryButton: button(),
-        SettingsButton: {
-          show() {
-            return this
-          },
-          hide() {
-            return this
-          },
-          onClick() {
-            return this
-          },
-          offClick() {
-            return this
-          },
-        },
+        MainButton: mainButton,
+        SecondaryButton: secondaryButton,
+        SettingsButton: settingsButton,
         HapticFeedback: { impactOccurred() {} },
       },
     }
@@ -582,6 +572,21 @@ export async function installMiniAppMocks(page: Page) {
       },
       __telegramBack() {
         backButton.trigger()
+      },
+      __telegramMain() {
+        mainButton.trigger()
+      },
+      __telegramSecondary() {
+        secondaryButton.trigger()
+      },
+      __telegramSettings() {
+        settingsButton.trigger()
+      },
+      __telegramDeactivate() {
+        for (const callback of callbacks.get("deactivated") ?? []) callback()
+      },
+      __telegramActivate() {
+        for (const callback of callbacks.get("activated") ?? []) callback()
       },
     })
   })

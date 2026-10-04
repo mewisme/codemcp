@@ -373,7 +373,7 @@ func TestStatusOverviewPresentationAvoidsGenericCompletionAndStaleLogsWarning(t 
 		TelegramEnabled: true, TelegramConfigured: true, TelegramHealthy: true,
 		LogsMiniAppEnabled: true, LogsMiniAppAvailable: true, LogsMiniAppEffective: true,
 	})).Text
-	for _, want := range []string{"Runtime Running", "Services", "Secure MCP Tunnel", "Telegram", "Logs App", "Running"} {
+	for _, want := range []string{"Runtime Running", "Services", "Secure MCP Tunnel", "Telegram", "Activity", "Running"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("status overview missing %q: %q", want, text)
 		}

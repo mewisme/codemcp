@@ -647,7 +647,7 @@ func cfTunnelStatusBlocks(status cftunnel.Status, reportedVersion string) []Rich
 		{Kind: RichHeading, Title: "Cloudflare Quick Tunnel"},
 		StateBlock(statusTone(state), displayState(state), ""),
 		{Kind: RichFields, Title: "Installation", Rows: rows},
-		{Kind: RichDetails, Title: "Usage", Text: "This integration provides the temporary public URL used by the Telegram Logs App. Secure MCP Tunnel remains separate."},
+		{Kind: RichDetails, Title: "Usage", Text: "This integration provides the temporary public URL used by Telegram Activity. Secure MCP Tunnel remains separate."},
 	}
 	if status.Source == cftunnel.SourceUnavailable {
 		blocks = append(blocks, NoticeBlock(ToneWarning, "Unavailable", "Install the managed asset with cm integration cf install, or install cf-tunnel globally."))

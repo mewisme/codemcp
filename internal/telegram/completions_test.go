@@ -82,7 +82,7 @@ func TestCompletionListAndDetailUseCanonicalResolvers(t *testing.T) {
 		}
 	}
 	if !foundLogs {
-		t.Fatalf("completion detail missing current Logs Mini App button: %#v", detail.Keyboard)
+		t.Fatalf("completion detail missing current Activity Mini App button: %#v", detail.Keyboard)
 	}
 }
 
