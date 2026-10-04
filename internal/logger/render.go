@@ -9,7 +9,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	spinnerlib "github.com/briandowns/spinner"
 	"github.com/fatih/color"
 )
 
@@ -35,24 +34,6 @@ func (l *Logger) renderText(event Event) {
 		defer l.renderMu.Unlock()
 		l.renderDebugText(event)
 		return
-	}
-	if l.animate && event.Kind == KindAction {
-		l.startSpinner(event)
-		return
-	}
-	if l.animate {
-		spinner := l.detachSpinner()
-		if spinner != nil {
-			terminal := spinner.event.Component == event.Component && terminalKind(event.Kind)
-			l.stopSpinnerState(spinner, true)
-			l.renderMu.Lock()
-			l.renderTextEvent(event)
-			l.renderMu.Unlock()
-			if !terminal {
-				l.startSpinner(spinner.event)
-			}
-			return
-		}
 	}
 	l.renderMu.Lock()
 	defer l.renderMu.Unlock()
@@ -82,59 +63,6 @@ func (l *Logger) renderTextEvent(event Event) {
 		}
 		l.renderField(field.Key, field.Value)
 	}
-}
-
-func terminalKind(kind Kind) bool {
-	return kind == KindSuccess || kind == KindWarning || kind == KindError
-}
-
-func (l *Logger) startSpinner(event Event) {
-	if previous := l.detachSpinner(); previous != nil {
-		l.stopSpinnerState(previous, true)
-	}
-	message := capitalizeIconMessage(event.Message)
-	if l.showTime() {
-		message = l.styled(color.Faint).Sprint(l.eventTime(event).Format("15:04:05")) + " " + message
-	}
-	value := spinnerlib.New(randomSpinnerCharset(l.rawUnicodeEnabled()), defaultSpinnerRate, spinnerlib.WithWriter(l.out))
-	if l.terminal == nil || l.terminal.Color {
-		_ = value.Color("fgHiCyan", "bold")
-	}
-	value.HideCursor = false
-	value.Suffix = " " + message
-	state := &spinnerState{event: event, spinner: value}
-	l.spinMu.Lock()
-	l.spinner = state
-	l.spinMu.Unlock()
-	value.Start()
-}
-
-func (l *Logger) detachSpinner() *spinnerState {
-	l.spinMu.Lock()
-	defer l.spinMu.Unlock()
-	state := l.spinner
-	l.spinner = nil
-	return state
-}
-
-func (l *Logger) stopSpinner(clear bool) {
-	if state := l.detachSpinner(); state != nil {
-		l.stopSpinnerState(state, clear)
-	}
-}
-
-func (l *Logger) stopSpinnerState(state *spinnerState, clear bool) {
-	state.spinner.Stop()
-	if !clear {
-		return
-	}
-	width := utf8.RuneCountInString(capitalizeIconMessage(state.event.Message)) + 2
-	if l.showTime() {
-		width += len("15:04:05 ")
-	}
-	l.renderMu.Lock()
-	fmt.Fprint(l.out, "\r", strings.Repeat(" ", width), "\r")
-	l.renderMu.Unlock()
 }
 
 func capitalizeIconMessage(message string) string {
@@ -243,7 +171,7 @@ func (l *Logger) symbol(kind Kind) string {
 	}
 	switch kind {
 	case KindAction:
-		return spinnerlib.CharSets[14][0]
+		return "·"
 	case KindSuccess:
 		return "✓"
 	case KindWarning:

@@ -10,6 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
+	"go.mewis.me/codemcp/internal/logger"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
@@ -87,6 +89,82 @@ func TestCommandLoggerIsSharedForCommandLifecycle(t *testing.T) {
 		t.Fatal("closed command logger was retained")
 	}
 	closeCommandLogger(cmd)
+}
+
+func TestNormalHumanCommandLoggerDoesNotCompeteWithPresenter(t *testing.T) {
+	var output bytes.Buffer
+	cmd := newRootCommand()
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{
+		Width: 100, Unicode: true, RawUnicode: true, Interactive: true,
+	}))
+	cmd.SetErr(&output)
+	cmd.AddCommand(&cobra.Command{Use: "logger-boundary", RunE: func(cmd *cobra.Command, _ []string) error {
+		log := commandLogger(cmd)
+		log.Notice("TEST", "test.notice", "Logger notice must stay hidden")
+		log.Warning("TEST", "test.warning", "Logger warning must stay hidden", nil)
+		log.Ready("TEST", "test.ready", "Logger ready must stay hidden")
+		commandPresenter(cmd).Status(presentation.StatusSuccess, "Presenter owns human output")
+		return nil
+	}})
+	bindCommandPresentation(cmd)
+	cmd.SetArgs(testCommandArgs(t, "logger-boundary"))
+	if err := executeCommand(cmd); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if !strings.Contains(text, "Presenter owns human output") {
+		t.Fatalf("presenter result missing: %q", text)
+	}
+	for _, forbidden := range []string{
+		"Logger notice must stay hidden",
+		"Logger warning must stay hidden",
+		"Logger ready must stay hidden",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("normal human output contains competing logger text %q: %q", forbidden, text)
+		}
+	}
+}
+
+func TestCommandLoggerBoundaryKeepsDiagnosticModes(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "verbose", args: []string{"--verbose"}, want: "Verbose diagnostic"},
+		{name: "debug", args: []string{"--debug"}, want: "Debug diagnostic"},
+		{name: "json", args: []string{"--log-format=json"}, want: "\"event\":\"test.json\""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			cmd := newRootCommand()
+			cmd.SetOut(&output)
+			cmd.SetErr(&output)
+			cmd.AddCommand(&cobra.Command{Use: "logger-diagnostic", RunE: func(cmd *cobra.Command, _ []string) error {
+				log := commandLogger(cmd)
+				switch test.name {
+				case "verbose":
+					log.Verbose("TEST", "test.verbose", "Verbose diagnostic")
+				case "debug":
+					log.Diagnostic(logger.Info, "TEST", "test.debug", "Debug diagnostic")
+				default:
+					log.Notice("TEST", "test.json", "JSON diagnostic")
+				}
+				return nil
+			}})
+			args := append([]string{}, test.args...)
+			args = append(args, "logger-diagnostic")
+			cmd.SetArgs(testCommandArgs(t, args...))
+			if err := executeCommand(cmd); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(output.String(), test.want) {
+				t.Fatalf("%s diagnostic missing %q: %q", test.name, test.want, output.String())
+			}
+		})
+	}
 }
 
 func TestExecuteCommandVerboseEmitsLifecycle(t *testing.T) {

@@ -72,7 +72,14 @@ func logsCommand() *cobra.Command {
 	addLogsFlags(follow, followOptions, false)
 	addLogsCompletions(follow)
 	pathCmd := &cobra.Command{Use: "path", Short: "Show the runtime journal path", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, args []string) {
-		commandLogger(cmd).Notice("LOGS", "logs.path", runtimeevent.Path(config.RootPath()))
+		path := runtimeevent.Path(config.RootPath())
+		if format, _ := commandLogFormat(cmd); format == logger.FormatJSON {
+			commandLogger(cmd).Notice("LOGS", "logs.path", path)
+			return
+		}
+		presenter := commandPresenter(cmd)
+		presenter.Fields(presentation.Field{Label: "path", Value: path})
+		presenter.Complete("Done")
 	}}
 	var forceClear bool
 	clear := &cobra.Command{Use: "clear", Short: "Clear runtime logs", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
@@ -198,7 +205,7 @@ func logReplayLogger(cmd *cobra.Command, showTime bool) *logger.Logger {
 		timeMode = logger.TimeShow
 	}
 	capabilities := commandTerminalCapabilities(cmd)
-	return logger.NewWithOptions(logger.Options{Level: logger.Debug, Mode: logger.ModeFor(verbose, debug), Format: format, TimeMode: timeMode, Writer: commandLogWriter(cmd), Terminal: &logger.TerminalOptions{Color: capabilities.Color, Unicode: capabilities.Unicode, RawUnicode: capabilities.RawUnicode, Animate: false}})
+	return logger.NewWithOptions(logger.Options{Level: logger.Debug, Mode: logger.ModeFor(verbose, debug), Format: format, TimeMode: timeMode, Writer: commandLogWriter(cmd), Terminal: &logger.TerminalOptions{Color: capabilities.Color, Unicode: capabilities.Unicode}})
 }
 
 func renderRuntimeEvent(log *logger.Logger, event runtimeevent.Event) {

@@ -1,7 +1,6 @@
 package logger
 
 import (
-	cryptorand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -10,9 +9,7 @@ import (
 	"sync"
 	"time"
 
-	spinnerlib "github.com/briandowns/spinner"
 	"github.com/fatih/color"
-	"golang.org/x/term"
 
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
@@ -27,10 +24,8 @@ type Options struct {
 }
 
 type TerminalOptions struct {
-	Color      bool
-	Unicode    bool
-	RawUnicode bool
-	Animate    bool
+	Color   bool
+	Unicode bool
 }
 
 type Logger struct {
@@ -40,24 +35,12 @@ type Logger struct {
 	timeMode TimeMode
 	out      io.Writer
 	now      func() time.Time
-	animate  bool
 	terminal *TerminalOptions
 	eventMu  sync.Mutex
 	renderMu sync.Mutex
-	spinMu   sync.Mutex
-	spinner  *spinnerState
 	sinksMu  sync.RWMutex
 	sinks    []Sink
 }
-
-type spinnerState struct {
-	event   Event
-	spinner *spinnerlib.Spinner
-}
-
-const defaultSpinnerRate = 80 * time.Millisecond
-
-var spinnerCharacterSets = [...]int{11, 13, 14, 21, 22, 23, 24}
 
 func New(level Level) *Logger { return NewWithOptions(Options{Level: level, Writer: color.Output}) }
 func NewCLI() *Logger         { return NewWithOptions(Options{Level: Info, Writer: color.Output}) }
@@ -74,26 +57,12 @@ func NewWithOptions(options Options) *Logger {
 	if options.Format == "" {
 		options.Format = FormatText
 	}
-	animate := options.Format == FormatText && options.Mode != ModeDebug && terminalWriter(options.Writer)
 	var terminalOptions *TerminalOptions
 	if options.Terminal != nil {
 		value := *options.Terminal
 		terminalOptions = &value
-		animate = options.Format == FormatText && options.Mode != ModeDebug && value.Animate
 	}
-	return &Logger{level: options.Level, mode: options.Mode, format: options.Format, timeMode: options.TimeMode, out: options.Writer, now: time.Now, animate: animate, terminal: terminalOptions}
-}
-
-func randomSpinnerCharset(unicode bool) []string {
-	if !unicode {
-		return []string{".", "*", "+", "x", "o", "O"}
-	}
-	var random [1]byte
-	if _, err := cryptorand.Read(random[:]); err == nil {
-		id := spinnerCharacterSets[int(random[0])%len(spinnerCharacterSets)]
-		return spinnerlib.CharSets[id]
-	}
-	return spinnerlib.CharSets[14]
+	return &Logger{level: options.Level, mode: options.Mode, format: options.Format, timeMode: options.TimeMode, out: options.Writer, now: time.Now, terminal: terminalOptions}
 }
 
 func (l *Logger) Emit(event Event) {
@@ -117,26 +86,6 @@ func (l *Logger) Emit(event Event) {
 }
 
 func (l *Logger) Close() {
-	l.eventMu.Lock()
-	defer l.eventMu.Unlock()
-	l.stopSpinner(true)
-}
-
-func (l *Logger) StopAnimation() {
-	if l == nil {
-		return
-	}
-	l.eventMu.Lock()
-	defer l.eventMu.Unlock()
-	l.stopSpinner(true)
-}
-
-func CanAnimate(writer io.Writer) bool { return terminalWriter(writer) }
-
-func terminalWriter(writer io.Writer) bool {
-	type fdWriter interface{ Fd() uintptr }
-	value, ok := writer.(fdWriter)
-	return ok && term.IsTerminal(int(value.Fd()))
 }
 
 func (l *Logger) normalize(event Event) Event {
@@ -324,8 +273,4 @@ func (l *Logger) styled(attrs ...color.Attribute) *color.Color {
 
 func (l *Logger) unicodeEnabled() bool {
 	return l == nil || l.terminal == nil || l.terminal.Unicode
-}
-
-func (l *Logger) rawUnicodeEnabled() bool {
-	return l == nil || l.terminal == nil || l.terminal.RawUnicode
 }

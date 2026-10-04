@@ -52,24 +52,28 @@ func workspaceDoctorCommand() *cobra.Command {
 				if asJSON {
 					return writeResultJSON(cmd, diagnostic)
 				}
-				log := commandLogger(cmd)
-				log.Info("WORKSPACE", "workspace relocation diagnostics")
-				log.Detail("id", diagnostic.WorkspaceID)
-				log.Detail("kind", diagnostic.Kind)
-				log.Detail("registered root", diagnostic.RegisteredRoot)
-				log.Detail("registered state", diagnostic.RegisteredState)
-				log.Detail("destination root", diagnostic.DestinationRoot)
-				log.Detail("destination state", diagnostic.DestinationState)
+				presenter := commandPresenter(cmd)
+				presenter.Section("Workspace relocation diagnostics")
+				fields := []presentation.Field{
+					{Label: "id", Value: diagnostic.WorkspaceID},
+					{Label: "kind", Value: diagnostic.Kind},
+					{Label: "registered root", Value: diagnostic.RegisteredRoot},
+					{Label: "registered state", Value: diagnostic.RegisteredState},
+					{Label: "destination root", Value: diagnostic.DestinationRoot},
+					{Label: "destination state", Value: diagnostic.DestinationState},
+				}
 				if len(diagnostic.Resolutions) > 0 {
 					values := make([]string, 0, len(diagnostic.Resolutions))
 					for _, resolution := range diagnostic.Resolutions {
 						values = append(values, string(resolution))
 					}
-					log.Detail("resolutions", strings.Join(values, ", "))
+					fields = append(fields, presentation.Field{Label: "resolutions", Value: strings.Join(values, ", ")})
 				}
 				if diagnostic.Error != "" {
-					log.Detail("error", diagnostic.Error)
+					fields = append(fields, presentation.Field{Label: "error", Value: diagnostic.Error})
 				}
+				presenter.Fields(fields...)
+				presenter.Complete("Done")
 				return nil
 			}
 			diagnostic, err := workspaceManagerForCommand(cmd).Diagnose(cmd.Context(), args[0])
@@ -79,35 +83,39 @@ func workspaceDoctorCommand() *cobra.Command {
 			if asJSON {
 				return writeResultJSON(cmd, diagnostic)
 			}
-			log := commandLogger(cmd)
-			log.Info("WORKSPACE", "workspace local-state diagnostics")
-			log.Detail("id", diagnostic.WorkspaceID)
-			log.Detail("root", diagnostic.Root)
-			log.Detail("local root", diagnostic.LocalRoot)
-			log.Detail("health", diagnostic.Health)
-			log.Detail("available", diagnostic.Available)
-			log.Detail("size bytes", diagnostic.SizeBytes)
-			log.Detail("files", diagnostic.FileCount)
-			log.Detail("locked", diagnostic.Locked)
+			presenter := commandPresenter(cmd)
+			presenter.Section("Workspace local-state diagnostics")
+			fields := []presentation.Field{
+				{Label: "id", Value: diagnostic.WorkspaceID},
+				{Label: "root", Value: diagnostic.Root},
+				{Label: "local root", Value: diagnostic.LocalRoot},
+				{Label: "health", Value: diagnostic.Health},
+				{Label: "available", Value: diagnostic.Available},
+				{Label: "size bytes", Value: diagnostic.SizeBytes},
+				{Label: "files", Value: diagnostic.FileCount},
+				{Label: "locked", Value: diagnostic.Locked},
+			}
 			if diagnostic.LockPID != 0 {
-				log.Detail("lock pid", diagnostic.LockPID)
+				fields = append(fields, presentation.Field{Label: "lock pid", Value: diagnostic.LockPID})
 			}
 			if diagnostic.LockInstanceID != "" {
-				log.Detail("lock instance", diagnostic.LockInstanceID)
+				fields = append(fields, presentation.Field{Label: "lock instance", Value: diagnostic.LockInstanceID})
 			}
 			if diagnostic.GitHygiene.Tracked {
-				log.Detail("git hygiene", "tracked .cm")
+				fields = append(fields, presentation.Field{Label: "git hygiene", Value: "tracked .cm"})
 			} else if diagnostic.GitHygiene.Degraded || !diagnostic.GitHygiene.Protected {
-				log.Detail("git hygiene", "degraded")
+				fields = append(fields, presentation.Field{Label: "git hygiene", Value: "degraded"})
 			} else {
-				log.Detail("git hygiene", "healthy")
+				fields = append(fields, presentation.Field{Label: "git hygiene", Value: "healthy"})
 			}
 			if diagnostic.GitHygiene.Guidance != "" {
-				log.Detail("git guidance", diagnostic.GitHygiene.Guidance)
+				fields = append(fields, presentation.Field{Label: "git guidance", Value: diagnostic.GitHygiene.Guidance})
 			}
 			if diagnostic.Error != "" {
-				log.Detail("error", diagnostic.Error)
+				fields = append(fields, presentation.Field{Label: "error", Value: diagnostic.Error})
 			}
+			presenter.Fields(fields...)
+			presenter.Complete("Done")
 			return nil
 		},
 	}

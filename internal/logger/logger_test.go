@@ -8,11 +8,10 @@ import (
 	"testing"
 	"time"
 
-	spinnerlib "github.com/briandowns/spinner"
 	"github.com/fatih/color"
 )
 
-func TestDefaultRendererIsCLIFirst(t *testing.T) {
+func TestDefaultTextRendererIsReadableRuntimeOutput(t *testing.T) {
 	restoreColor := disableColor()
 	defer restoreColor()
 	var output bytes.Buffer
@@ -40,14 +39,14 @@ func TestTextRendererCapitalizesMessagesAfterIcons(t *testing.T) {
 	log.Action("SERVICE", "service.updating", "updating managed service")
 	log.Info("WORKSPACE", "registered workspaces loaded")
 	text := output.String()
-	for _, expected := range []string{"✓ Managed service updated", "⠋ Updating managed service", "· Registered workspaces loaded"} {
+	for _, expected := range []string{"✓ Managed service updated", "· Updating managed service", "· Registered workspaces loaded"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("output %q missing %q", text, expected)
 		}
 	}
 }
 
-func TestActionAnimatesUntilTerminalResult(t *testing.T) {
+func TestActionRendererIsStaticAndDoesNotOwnTerminalAnimation(t *testing.T) {
 	restoreColor := disableColor()
 	defer restoreColor()
 	var output bytes.Buffer
@@ -55,36 +54,21 @@ func TestActionAnimatesUntilTerminalResult(t *testing.T) {
 	log.Action("TUNNEL", "tunnel.connecting", "connecting tunnel")
 	log.Ready("TUNNEL", "tunnel.connected", "tunnel connected")
 	text := output.String()
-	if !strings.Contains(text, "⠋ Connecting tunnel") || !strings.Contains(text, "✓ Tunnel connected") {
-		t.Fatalf("non-terminal action output = %q", text)
-	}
-}
-
-func TestRandomSpinnerCharsetUsesAllowedSets(t *testing.T) {
-	allowed := map[string]bool{}
-	for _, id := range spinnerCharacterSets {
-		for _, frame := range spinnerlib.CharSets[id] {
-			allowed[frame] = true
+	for _, expected := range []string{"· Connecting tunnel\n", "✓ Tunnel connected\n"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("static action output %q missing %q", text, expected)
 		}
 	}
-	for range 100 {
-		charset := randomSpinnerCharset(true)
-		if len(charset) == 0 || !allowed[charset[0]] {
-			t.Fatalf("unexpected charset: %#v", charset)
-		}
-	}
-	for _, frame := range randomSpinnerCharset(false) {
-		for _, value := range frame {
-			if value > 0x7f {
-				t.Fatalf("ASCII spinner frame %q contains non-ASCII rune %q", frame, value)
-			}
+	for _, forbidden := range []string{"⠋", "\r", "\x1b[?25"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("logger retained terminal animation residue %q: %q", forbidden, text)
 		}
 	}
 }
 
 func TestInjectedTerminalOptionsControlColorAndUnicode(t *testing.T) {
 	var output bytes.Buffer
-	terminal := &TerminalOptions{Color: false, Unicode: false, Animate: false}
+	terminal := &TerminalOptions{Color: false, Unicode: false}
 	log := NewWithOptions(Options{Level: Info, Writer: &output, Terminal: terminal})
 	log.Ready("SERVER", "server.ready", "Server ready")
 	if text := output.String(); text != "[OK] Server ready\n" || strings.Contains(text, "\x1b[") {
@@ -92,7 +76,7 @@ func TestInjectedTerminalOptionsControlColorAndUnicode(t *testing.T) {
 	}
 
 	output.Reset()
-	terminal = &TerminalOptions{Color: true, Unicode: true, Animate: false}
+	terminal = &TerminalOptions{Color: true, Unicode: true}
 	log = NewWithOptions(Options{Level: Info, Writer: &output, Terminal: terminal})
 	log.Ready("SERVER", "server.ready", "Server ready")
 	if text := output.String(); !strings.Contains(text, "✓") || !strings.Contains(text, "Server ready") || !strings.Contains(text, "\x1b[") {

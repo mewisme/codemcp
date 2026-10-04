@@ -56,14 +56,20 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 				ServerID: server.ID, ServerURL: server.URL, Scope: server.Auth.Scope, Issuer: issuer,
 				ClientID: clientID, ClientSecretEnvVar: clientSecretEnv, ClientMetadataURL: clientMetadataURL,
 			}, mcpoauth.LoginOptions{ExtraScope: extraScope, OnURL: func(raw string) error {
-				log.Info("OAUTH", "authorization required")
-				log.Detail("url", raw)
+				commandProgressSession(cmd).Append(func(p *presentation.Presenter) {
+					p.ChildStatus(presentation.StatusInfo, "Authorization required")
+					p.Fields(presentation.Field{Label: "url", Value: raw})
+				})
 				browserSpan := tracepkg.Start(ctx, "OAUTH", "oauth.browser.open", "Opening OAuth authorization in browser", tracepkg.Bool("skipped", noOpen))
 				if noOpen {
 					browserSpan.EndMessage("OAuth browser open skipped", tracepkg.Bool("skipped", true))
 				} else if err := application.OpenBrowser(raw); err != nil {
 					browserSpan.FailMessage("OAuth browser open failed", fmt.Errorf("browser open failed"), tracepkg.Bool("skipped", false))
-					log.Warn("OAUTH", "could not open browser; use the URL above", "error", err)
+					log.Verbose("OAUTH", "oauth.browser.open-failed", "Could not open OAuth browser", logger.WithVerbose("error", err.Error()))
+					commandProgressSession(cmd).Append(func(p *presentation.Presenter) {
+						p.ChildStatus(presentation.StatusWarning, "Could not open browser; use the URL above")
+						p.Fields(presentation.Field{Label: "reason", Value: err.Error()})
+					})
 				} else {
 					browserSpan.EndMessage("OAuth authorization opened in browser", tracepkg.Bool("skipped", false))
 				}
@@ -81,7 +87,13 @@ func upstreamServerAuthLoginCommand() *cobra.Command {
 			status := manager.CheckHealth(ctx, server.ID, true)
 			if status.Health != "connected" {
 				healthSpan.FailMessage("Post-login Upstream health check failed", fmt.Errorf("upstream health check did not connect"), tracepkg.String("health", string(status.Health)))
-				log.Warn("UPSTREAM", "OAuth completed but Upstream health check did not connect", "error", status.LastError)
+				log.Verbose("UPSTREAM", "oauth.post-login.health-warning", "OAuth completed but Upstream health check did not connect", logger.WithVerbose("error", status.LastError))
+				commandProgressSession(cmd).Append(func(p *presentation.Presenter) {
+					p.ChildStatus(presentation.StatusWarning, "OAuth completed but Upstream health check did not connect")
+					if strings.TrimSpace(status.LastError) != "" {
+						p.Fields(presentation.Field{Label: "reason", Value: status.LastError})
+					}
+				})
 			} else {
 				healthSpan.EndMessage("Post-login Upstream health check connected", tracepkg.String("health", string(status.Health)), tracepkg.Int("tool_count", status.ToolCount))
 			}

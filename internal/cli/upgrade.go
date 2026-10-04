@@ -85,7 +85,7 @@ func upgradeCommand() *cobra.Command {
 			return fmt.Errorf("apply update: %w", err)
 		}
 		for _, warning := range result.Warnings {
-			log.Warning("UPDATE", "update.signature-warning", warning, nil)
+			log.Verbose("UPDATE", "update.signature-warning", "Update signature warning", logger.WithVerbose("warning", warning))
 			commandProgressSession(cmd).Append(func(p *presentation.Presenter) { p.ChildStatus(presentation.StatusWarning, warning) })
 		}
 		logCommandStep(cmd, "UPDATE", "update.runtime.coordinating", "Coordinating updated managed runtime", logger.WithVerbose("restart", !noRestart))
@@ -93,7 +93,11 @@ func upgradeCommand() *cobra.Command {
 			return fmt.Errorf("update to %s failed after activation: %w", result.Target, err)
 		}
 		if err := install.FinalizeResultContext(cmd.Context(), result.Install); err != nil {
-			log.Warning("UPDATE", "update.cleanup-failed", "Update succeeded but old version cleanup failed", err)
+			log.Verbose("UPDATE", "update.cleanup-failed", "Update succeeded but old version cleanup failed", logger.WithVerbose("error", err.Error()))
+			commandProgressSession(cmd).Append(func(p *presentation.Presenter) {
+				p.ChildStatus(presentation.StatusWarning, "Update succeeded but old version cleanup failed")
+				p.Fields(presentation.Field{Label: "reason", Value: err.Error()})
+			})
 		}
 		supplemental, err := application.RunPostInstallBootstrap(cmd.Context())
 		if err != nil {

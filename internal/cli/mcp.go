@@ -18,6 +18,7 @@ import (
 	"go.mewis.me/codemcp/internal/app"
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/auth"
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	"go.mewis.me/codemcp/internal/mcp"
@@ -151,6 +152,13 @@ func runMCPHTTP(cmd *cobra.Command, workspace, host string, port int, enableSSE 
 		_ = server.Shutdown(shutdownCtx)
 	}()
 	commandLogger(cmd).Ready("MCP", "mcp.http.ready", "MCP HTTP server ready", logger.With("address", listener.Addr().String()), logger.With("sse", enableSSE))
+	commandProgressSession(cmd).Append(func(presenter *presentation.Presenter) {
+		presenter.ChildStatus(presentation.StatusSuccess, "MCP HTTP server ready")
+		presenter.Fields(
+			presentation.Field{Label: "address", Value: listener.Addr().String()},
+			presentation.Field{Label: "sse", Value: enableSSE},
+		)
+	})
 	err = server.Serve(listener)
 	if errors.Is(err, http.ErrServerClosed) || errors.Is(err, context.Canceled) {
 		return nil

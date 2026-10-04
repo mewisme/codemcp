@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
@@ -66,7 +67,7 @@ func (value *foregroundInterrupt) enableTerminalKeys(cmd *cobra.Command) {
 		}
 		format, _ := commandLogFormat(cmd)
 		if format != "json" {
-			commandLogger(cmd).Notice("CLI", "cli.interrupt.hint", "Press q or Ctrl+C to stop")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Press q or Ctrl+C to stop")
 		}
 	}
 	go func() {

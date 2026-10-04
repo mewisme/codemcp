@@ -86,7 +86,11 @@ func commandLogger(cmd *cobra.Command) *logger.Logger {
 		level = logger.Debug
 	}
 	capabilities := commandTerminalCapabilities(cmd)
-	created := logger.NewWithOptions(logger.Options{Level: level, Mode: logger.ModeFor(verbose, debug), Format: format, Writer: commandLogWriter(cmd), Terminal: &logger.TerminalOptions{Color: capabilities.Color, Unicode: capabilities.Unicode, RawUnicode: capabilities.RawUnicode, Animate: capabilities.Animation}})
+	writer := commandLogWriter(cmd)
+	if commandSuppressDefaultLoggerText(cmd, verbose, debug, format) {
+		writer = io.Discard
+	}
+	created := logger.NewWithOptions(logger.Options{Level: level, Mode: logger.ModeFor(verbose, debug), Format: format, Writer: writer, Terminal: &logger.TerminalOptions{Color: capabilities.Color, Unicode: capabilities.Unicode}})
 	if cmd == nil {
 		return created
 	}
@@ -96,6 +100,16 @@ func commandLogger(cmd *cobra.Command) *logger.Logger {
 		return value.(*logger.Logger)
 	}
 	return created
+}
+
+func commandSuppressDefaultLoggerText(cmd *cobra.Command, verbose, debug bool, format logger.Format) bool {
+	if cmd == nil || verbose || debug || format != logger.FormatText {
+		return false
+	}
+	if commandMachineOutput(cmd) || commandPresentationExempt(cmd) {
+		return false
+	}
+	return true
 }
 
 func closeCommandLogger(cmd *cobra.Command) {

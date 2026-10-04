@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/logger"
 	updatepkg "go.mewis.me/codemcp/internal/update"
@@ -13,7 +14,11 @@ import (
 
 func cacheLatestRelease(cmd *cobra.Command, layout install.Layout, latest string) {
 	if err := updatepkg.WriteCache(layout.UpdateCache, latest, time.Now()); err != nil {
-		commandLogger(cmd).Warning("UPDATE", "update.cache-write-failed", "Update check succeeded but cache write failed", err)
+		commandLogger(cmd).Verbose("UPDATE", "update.cache-write-failed", "Update check succeeded but cache write failed", logger.WithVerbose("error", err.Error()))
+		commandProgressSession(cmd).Append(func(p *presentation.Presenter) {
+			p.ChildStatus(presentation.StatusWarning, "Update check succeeded but cache write failed")
+			p.Fields(presentation.Field{Label: "reason", Value: err.Error()})
+		})
 	}
 }
 
