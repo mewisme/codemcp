@@ -33,6 +33,24 @@ func TestChatGPTWebLoginInstructionRequiresClosingBrowserBeforeVerification(t *t
 	}
 }
 
+func TestChatGPTWebLoginAccountPresentationIsLimitedToNameAndEmail(t *testing.T) {
+	var output strings.Builder
+	presenter := presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100})
+	testEmail := "mew" + "@" + "example.com"
+	renderChatGPTWebLoginAccount(presenter, chatgptweb.AccountSummary{Name: "Mew", Email: testEmail})
+	text := strings.ToLower(output.String())
+	for _, required := range []string{"account", "name", "mew", "email", strings.ToLower(testEmail)} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("login account output missing %q: %s", required, output.String())
+		}
+	}
+	for _, forbidden := range []string{"token", "cookie", "session", "profile", "avatar", "plan"} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("login account output contains forbidden field %q: %s", forbidden, output.String())
+		}
+	}
+}
+
 func TestChatGPTWebLogoutRequiresExplicitConfirmation(t *testing.T) {
 	cmd := chatGPTWebLogoutCommand()
 	cmd.SetArgs(nil)

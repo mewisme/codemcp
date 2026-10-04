@@ -50,6 +50,36 @@ func TestResolveNativeProfileIsCodeMCPOwnedAndIsolated(t *testing.T) {
 	}
 }
 
+func TestResolveNativeProfileUsesPlatformCodeMCPStateRoot(t *testing.T) {
+	for _, host := range []string{"darwin", "windows"} {
+		t.Run(host, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "platform-state", "CodeMCP")
+			profile, err := ResolveProfile(ProfileOptions{
+				StateRoot: root,
+				Candidate: Candidate{HostPlatform: host, Transport: TransportNative},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := filepath.Join(root, "browser", "chatgpt")
+			if profile.HostPlatform != host || profile.Transport != TransportNative ||
+				profile.Path != want || profile.LocalPath != want {
+				t.Fatalf("native %s profile=%#v want=%q", host, profile, want)
+			}
+			if err := PrepareProfile(profile); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(filepath.Join(profile.LocalPath, managedProfileDirectory))
+			if err != nil || !info.IsDir() {
+				t.Fatalf("native %s Default profile unavailable: info=%v err=%v", host, info, err)
+			}
+			if runtime.GOOS != "windows" && info.Mode().Perm() != 0700 {
+				t.Fatalf("native %s Default profile permissions=%#o want=0700", host, info.Mode().Perm())
+			}
+		})
+	}
+}
+
 func TestResolveWSLHostProfileLivesInWindowsLocalAppData(t *testing.T) {
 	root := t.TempDir()
 	profile, err := ResolveProfile(ProfileOptions{

@@ -34,6 +34,14 @@ type ChatGPTWebStatus struct {
 	MaxAgents          int                     `json:"max_agents"`
 	RuntimePending     bool                    `json:"runtime_pending"`
 	Reason             string                  `json:"reason,omitempty"`
+	loginAccount       *chatgptweb.AccountSummary
+}
+
+func (status ChatGPTWebStatus) LoginAccount() (chatgptweb.AccountSummary, bool) {
+	if status.loginAccount == nil || status.loginAccount.Empty() {
+		return chatgptweb.AccountSummary{}, false
+	}
+	return *status.loginAccount, true
 }
 
 type chatGPTBrowserRuntimeIdentity struct {
@@ -424,7 +432,8 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 			"managed browser could not open ChatGPT Temporary Chat after interactive sign-in")
 		return status, fmt.Errorf("open ChatGPT Temporary Chat for verification: %w", err)
 	}
-	if _, err := service.waitForAuth(ctx, tab, service.doctorTimeout()); err != nil {
+	evidence, err := service.waitForAuth(ctx, tab, service.doctorTimeout())
+	if err != nil {
 		status, _ := service.loginFailureStatus(capability, chatgptweb.StateNeedsLogin,
 			"ChatGPT authentication could not be verified after interactive sign-in; rerun login and complete any browser verification before closing the window")
 		return status, fmt.Errorf("verify ChatGPT authentication after interactive sign-in: %w; rerun login and complete any browser verification before closing the window", err)
@@ -442,7 +451,20 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 		}
 		runtimeClosed = true
 	}
-	return service.status(ctx, true, true)
+	status, err := service.status(ctx, true, true)
+	if err != nil {
+		return ChatGPTWebStatus{}, err
+	}
+	return withLoginAccount(status, evidence), nil
+}
+
+func withLoginAccount(status ChatGPTWebStatus, evidence chatgptweb.AuthEvidence) ChatGPTWebStatus {
+	if evidence.Account.Empty() {
+		return status
+	}
+	account := evidence.Account
+	status.loginAccount = &account
+	return status
 }
 
 func (service *ChatGPTWebService) loginFailureStatus(capability browser.Capability, state chatgptweb.State, reason string) (ChatGPTWebStatus, error) {

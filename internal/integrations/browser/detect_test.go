@@ -439,6 +439,53 @@ func TestNativeDiscoveryCoversChromiumFamiliesAcrossPlatforms(t *testing.T) {
 	}
 }
 
+func TestNativeDiscoveryUsesExpectedMacOSAndWindowsBrowserPaths(t *testing.T) {
+	tests := []struct {
+		name string
+		fake *fakeBrowserRuntime
+		want map[Family]string
+	}{
+		{
+			name: "macos",
+			fake: &fakeBrowserRuntime{goos: "darwin", env: map[string]string{"HOME": "/Users/mew"}, look: map[string]string{}},
+			want: map[Family]string{
+				FamilyChrome:   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+				FamilyChromium: "/Applications/Chromium.app/Contents/MacOS/Chromium",
+				FamilyEdge:     "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+			},
+		},
+		{
+			name: "windows",
+			fake: &fakeBrowserRuntime{goos: "windows", env: map[string]string{
+				"PROGRAMFILES": `C:\Program Files`,
+				"LOCALAPPDATA": `C:\Users\Mew\AppData\Local`,
+			}, look: map[string]string{}},
+			want: map[Family]string{
+				FamilyChrome:   `C:\Program Files\Google\Chrome\Application\chrome.exe`,
+				FamilyChromium: `C:\Program Files\Chromium\Application\chrome.exe`,
+				FamilyEdge:     `C:\Program Files\Microsoft\Edge\Application\msedge.exe`,
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidates := nativeCandidates(test.fake.runtime())
+			for family, expected := range test.want {
+				found := false
+				for _, candidate := range candidates {
+					if candidate.Family == family && candidate.Executable == expected && candidate.Transport == TransportNative {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatalf("%s discovery missing %s path %q: %#v", test.name, family, expected, candidates)
+				}
+			}
+		})
+	}
+}
+
 func TestBrowserProbeArgumentsBindCDPOnlyToLoopback(t *testing.T) {
 	args := browserProbeArgs("/tmp/profile")
 	joined := strings.Join(args, " ")

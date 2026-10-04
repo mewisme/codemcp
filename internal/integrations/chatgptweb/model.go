@@ -22,14 +22,24 @@ const (
 )
 
 type AuthEvidence struct {
-	OriginOK      bool `json:"origin_ok"`
-	TemporaryChat bool `json:"temporary_chat"`
-	Authenticated bool `json:"authenticated"`
-	Composer      bool `json:"composer"`
+	OriginOK      bool           `json:"origin_ok"`
+	TemporaryChat bool           `json:"temporary_chat"`
+	Authenticated bool           `json:"authenticated"`
+	Composer      bool           `json:"composer"`
+	Account       AccountSummary `json:"account,omitempty"`
 }
 
 func (evidence AuthEvidence) Ready() bool {
 	return evidence.OriginOK && evidence.TemporaryChat && evidence.Authenticated && evidence.Composer
+}
+
+type AccountSummary struct {
+	Name  string `json:"name,omitempty"`
+	Email string `json:"email,omitempty"`
+}
+
+func (account AccountSummary) Empty() bool {
+	return account.Name == "" && account.Email == ""
 }
 
 type AuthMarker struct {

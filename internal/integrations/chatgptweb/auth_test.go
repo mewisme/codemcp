@@ -41,13 +41,19 @@ func (tab *fakeTab) Done() <-chan struct{} {
 func (tab *fakeTab) Err() error                  { return nil }
 func (tab *fakeTab) Close(context.Context) error { return nil }
 
-func TestDOMAuthProbeReturnsOnlyBooleanEvidence(t *testing.T) {
-	want := AuthEvidence{OriginOK: true, TemporaryChat: true, Authenticated: true, Composer: true}
+func TestDOMAuthProbeReturnsBoundedAccountSummaryWithReadiness(t *testing.T) {
+	want := AuthEvidence{
+		OriginOK: true, TemporaryChat: true, Authenticated: true, Composer: true,
+		Account: AccountSummary{Name: "Mew", Email: "mew@example.com"},
+	}
 	got, err := (DOMAuthProbe{}).Probe(context.Background(), &fakeTab{evidence: want})
 	if err != nil || got != want || !got.Ready() {
 		t.Fatalf("evidence=%#v err=%v", got, err)
 	}
-	for _, forbidden := range []string{"email", "accessToken", "localStorage", "document.cookie"} {
+	for _, forbidden := range []string{
+		"accessToken", "access_token", "localStorage", "sessionStorage", "document.cookie", "user.id", "user.image",
+		"grecaptcha", "turnstile", "captcha", "challenge-platform",
+	} {
 		if strings.Contains(authEvidenceExpression, forbidden) {
 			t.Fatalf("auth probe references sensitive material %q", forbidden)
 		}
@@ -62,10 +68,37 @@ func TestDOMAuthProbeReturnsOnlyBooleanEvidence(t *testing.T) {
 		`Object.keys(user).length > 0`,
 		`!payload.error`,
 		`expiresAt > Date.now()`,
+		`typeof user.name === "string"`,
+		`typeof user.email === "string"`,
 	} {
 		if !strings.Contains(authEvidenceExpression, required) {
 			t.Fatalf("auth probe missing required session evidence %q", required)
 		}
+	}
+}
+
+func TestDOMAuthProbeDropsUnauthenticatedAccountAndBoundsFields(t *testing.T) {
+	longName := strings.Repeat("n", 200)
+	longEmail := strings.Repeat("e", 400)
+	got, err := (DOMAuthProbe{}).Probe(context.Background(), &fakeTab{evidence: AuthEvidence{
+		Account: AccountSummary{Name: longName, Email: longEmail},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Account.Empty() {
+		t.Fatalf("unauthenticated probe retained account=%#v", got.Account)
+	}
+
+	got, err = (DOMAuthProbe{}).Probe(context.Background(), &fakeTab{evidence: AuthEvidence{
+		Authenticated: true,
+		Account:       AccountSummary{Name: "  " + longName + "  ", Email: "  " + longEmail + "  "},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len([]rune(got.Account.Name)) != 160 || len([]rune(got.Account.Email)) != 320 {
+		t.Fatalf("bounded account lengths name=%d email=%d", len([]rune(got.Account.Name)), len([]rune(got.Account.Email)))
 	}
 }
 

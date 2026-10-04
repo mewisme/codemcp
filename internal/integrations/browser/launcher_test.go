@@ -59,6 +59,34 @@ func TestInteractiveLaunchArgsUseIsolatedProfileWithoutAutomationTransport(t *te
 			profile: "/tmp/codemcp-browser-profile",
 		},
 		{
+			name: "macos native",
+			request: InteractiveLaunchRequest{
+				Candidate: Candidate{Transport: TransportNative, HostPlatform: "darwin"},
+				Profile: ProfileRef{
+					HostPlatform: "darwin",
+					Transport:    TransportNative,
+					Path:         "/Users/mew/Library/Application Support/CodeMCP/browser/chatgpt",
+					LocalPath:    "/Users/mew/Library/Application Support/CodeMCP/browser/chatgpt",
+				},
+				URL: "https://chatgpt.com/?temporary-chat=true",
+			},
+			profile: "/Users/mew/Library/Application Support/CodeMCP/browser/chatgpt",
+		},
+		{
+			name: "windows native",
+			request: InteractiveLaunchRequest{
+				Candidate: Candidate{Transport: TransportNative, HostPlatform: "windows"},
+				Profile: ProfileRef{
+					HostPlatform: "windows",
+					Transport:    TransportNative,
+					Path:         `C:\Users\Mew\AppData\Local\CodeMCP\browser\chatgpt`,
+					LocalPath:    `C:\Users\Mew\AppData\Local\CodeMCP\browser\chatgpt`,
+				},
+				URL: "https://chatgpt.com/?temporary-chat=true",
+			},
+			profile: `C:\Users\Mew\AppData\Local\CodeMCP\browser\chatgpt`,
+		},
+		{
 			name: "wsl host",
 			request: InteractiveLaunchRequest{
 				Candidate: Candidate{Transport: TransportWSLHost, HostPlatform: "windows"},

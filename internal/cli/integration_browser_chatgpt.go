@@ -132,9 +132,25 @@ func chatGPTWebLoginCommand() *cobra.Command {
 				presentation.Field{Label: "state", Value: status.State},
 				presentation.Field{Label: "connector", Value: status.ConnectorName},
 			)
+			if account, ok := status.LoginAccount(); ok {
+				renderChatGPTWebLoginAccount(presenter, account)
+			}
 			presenter.Complete("Login complete")
 			return nil
 		},
+	}
+}
+
+func renderChatGPTWebLoginAccount(presenter *presentation.Presenter, account chatgptweb.AccountSummary) {
+	fields := make([]presentation.Field, 0, 2)
+	if value := strings.TrimSpace(account.Name); value != "" {
+		fields = append(fields, presentation.Field{Label: "name", Value: value})
+	}
+	if value := strings.TrimSpace(account.Email); value != "" {
+		fields = append(fields, presentation.Field{Label: "email", Value: value})
+	}
+	if len(fields) > 0 {
+		presenter.NestedFieldGroup("account", fields...)
 	}
 }
 

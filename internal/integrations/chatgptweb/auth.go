@@ -3,6 +3,7 @@ package chatgptweb
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"go.mewis.me/codemcp/internal/integrations/browser"
 )
@@ -21,7 +22,30 @@ func (DOMAuthProbe) Probe(ctx context.Context, tab browser.BrowserTab) (AuthEvid
 	if err := tab.Evaluate(ctx, authEvidenceExpression, &evidence); err != nil {
 		return AuthEvidence{}, err
 	}
+	evidence.Account = sanitizeAccountSummary(evidence.Account)
+	if !evidence.Authenticated {
+		evidence.Account = AccountSummary{}
+	}
 	return evidence, nil
+}
+
+func sanitizeAccountSummary(account AccountSummary) AccountSummary {
+	return AccountSummary{
+		Name:  boundedAccountField(account.Name, 160),
+		Email: boundedAccountField(account.Email, 320),
+	}
+}
+
+func boundedAccountField(value string, maxRunes int) string {
+	value = strings.TrimSpace(value)
+	if maxRunes <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) > maxRunes {
+		runes = runes[:maxRunes]
+	}
+	return string(runes)
 }
 
 const authEvidenceExpression = `/*codemcp:auth*/(async () => {
@@ -29,6 +53,7 @@ const authEvidenceExpression = `/*codemcp:auth*/(async () => {
   const originOK = locationURL.origin === "https://chatgpt.com";
   const temporaryChat = locationURL.pathname === "/" && locationURL.searchParams.get("temporary-chat") === "true";
   let authenticated = false;
+  let account = null;
   try {
     const response = await fetch("https://chatgpt.com/api/auth/session", {
       method: "GET",
@@ -49,6 +74,12 @@ const authEvidenceExpression = `/*codemcp:auth*/(async () => {
         expiryOK = Number.isFinite(expiresAt) && expiresAt > Date.now();
       }
       authenticated = userOK && noError && expiryOK;
+      if (authenticated) {
+        account = {
+          name: typeof user.name === "string" ? user.name : "",
+          email: typeof user.email === "string" ? user.email : ""
+        };
+      }
     }
   } catch (_) {}
   const composer = Boolean(document.querySelector('` + ComposerSelector + `'));
@@ -56,6 +87,7 @@ const authEvidenceExpression = `/*codemcp:auth*/(async () => {
     origin_ok: originOK,
     temporary_chat: temporaryChat,
     authenticated,
-    composer
+    composer,
+    account
   };
 })()`

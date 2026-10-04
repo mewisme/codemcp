@@ -395,9 +395,13 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 	}
 	idleRuntime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{State: browser.ManagerRunning, Running: true}}
 	verificationRuntime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{State: browser.ManagerStopped}}
+	testEmail := "mew" + "@" + "example.com"
 	probe := &sequenceAuthProbe{evidence: []chatgptweb.AuthEvidence{
 		{OriginOK: true, Authenticated: true, Composer: true},
-		{OriginOK: true, TemporaryChat: true, Authenticated: true, Composer: true},
+		{
+			OriginOK: true, TemporaryChat: true, Authenticated: true, Composer: true,
+			Account: chatgptweb.AccountSummary{Name: "Mew", Email: testEmail},
+		},
 	}}
 	service := newApplicationChatGPTWebTestService(root, applicationChatGPTWebConfig(), profile)
 	service.OwnedManager = idleRuntime
@@ -460,6 +464,10 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 	if status.State != chatgptweb.StateReady || !status.Authenticated {
 		t.Fatalf("status=%#v", status)
 	}
+	account, ok := status.LoginAccount()
+	if !ok || account.Name != "Mew" || account.Email != testEmail {
+		t.Fatalf("login account=%#v ok=%t", account, ok)
+	}
 	if interactiveCalls != 1 || managerCreations != 1 {
 		t.Fatalf("login launches plain=%d managed=%d want=1/1", interactiveCalls, managerCreations)
 	}
@@ -486,6 +494,20 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 	}
 	if !verificationRuntime.closed {
 		t.Fatal("one-shot verification browser manager was not closed")
+	}
+	persistedStatus, err := service.Status(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persistedAccount, ok := persistedStatus.LoginAccount(); ok {
+		t.Fatalf("ordinary status retained ephemeral account=%#v", persistedAccount)
+	}
+	encodedStatus, err := json.Marshal(persistedStatus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encodedStatus), testEmail) || strings.Contains(string(encodedStatus), "Mew") {
+		t.Fatalf("ordinary status serialized ephemeral login account: %s", encodedStatus)
 	}
 }
 
@@ -592,7 +614,11 @@ func TestChatGPTWebDoctorLiveVerificationReturnsOnlyReadiness(t *testing.T) {
 		return applicationTestCapability(profile)
 	}
 	service.NewManager = func(browser.ManagerOptions) (chatGPTBrowserRuntime, error) { return runtime, nil }
-	service.Probe = &sequenceAuthProbe{evidence: []chatgptweb.AuthEvidence{{OriginOK: true, TemporaryChat: true, Authenticated: true, Composer: true}}}
+	testEmail := "doctor" + "@" + "example.com"
+	service.Probe = &sequenceAuthProbe{evidence: []chatgptweb.AuthEvidence{{
+		OriginOK: true, TemporaryChat: true, Authenticated: true, Composer: true,
+		Account: chatgptweb.AccountSummary{Name: "Doctor User", Email: testEmail},
+	}}}
 	service.PollInterval = time.Millisecond
 	service.DoctorTimeout = time.Second
 
@@ -612,7 +638,7 @@ func TestChatGPTWebDoctorLiveVerificationReturnsOnlyReadiness(t *testing.T) {
 		}
 	}
 	encoded, _ := json.Marshal(result)
-	for _, forbidden := range []string{"cookie", "bearer", "access_token", "person@example.com"} {
+	for _, forbidden := range []string{"cookie", "bearer", "access_token", "person@example.com", strings.ToLower(testEmail), "doctor user"} {
 		if strings.Contains(strings.ToLower(string(encoded)), forbidden) {
 			t.Fatalf("doctor leaked forbidden auth material %q: %s", forbidden, encoded)
 		}
