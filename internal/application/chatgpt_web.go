@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	chatGPTWebLoginLease  = "__chatgpt_web_login__"
-	chatGPTWebDoctorLease = "__chatgpt_web_doctor__"
+	chatGPTWebVerificationLease = "__chatgpt_web_login_verify__"
+	chatGPTWebDoctorLease       = "__chatgpt_web_doctor__"
 )
 
 type ChatGPTWebStatus struct {
@@ -220,12 +220,13 @@ func RegisterChatGPTWebAgentBackend(manager *managedagent.Manager, service *Chat
 type ChatGPTWebService struct {
 	browserMu sync.Mutex
 
-	LoadConfig func() (config.Config, error)
-	Root       func() string
-	Detect     func(context.Context, browser.Options) browser.Capability
-	NewManager func(browser.ManagerOptions) (chatGPTBrowserRuntime, error)
-	Probe      chatgptweb.AuthProbe
-	Now        func() time.Time
+	LoadConfig     func() (config.Config, error)
+	Root           func() string
+	Detect         func(context.Context, browser.Options) browser.Capability
+	NewManager     func(browser.ManagerOptions) (chatGPTBrowserRuntime, error)
+	RunInteractive func(context.Context, browser.InteractiveBrowserOptions) error
+	Probe          chatgptweb.AuthProbe
+	Now            func() time.Time
 
 	LoginTimeout         time.Duration
 	DoctorTimeout        time.Duration
@@ -245,6 +246,7 @@ func NewChatGPTWebService() *ChatGPTWebService {
 		NewManager: func(options browser.ManagerOptions) (chatGPTBrowserRuntime, error) {
 			return browser.NewManager(options)
 		},
+		RunInteractive:       browser.RunInteractiveBrowser,
 		Probe:                chatgptweb.DOMAuthProbe{},
 		Now:                  time.Now,
 		LoginTimeout:         10 * time.Minute,
@@ -338,39 +340,72 @@ func (service *ChatGPTWebService) withRuntimePending(status ChatGPTWebStatus, ca
 }
 
 func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, error) {
-	if service == nil || service.Probe == nil || service.Now == nil {
+	if service == nil || service.Probe == nil || service.Now == nil || service.RunInteractive == nil {
 		return ChatGPTWebStatus{}, errors.New("ChatGPT Web authentication service is unavailable")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	service.browserMu.Lock()
 	defer service.browserMu.Unlock()
-	cfg, capability, err := service.capability(ctx, false)
+	cfg, capability, err := service.capability(ctx, true)
 	if err != nil {
 		return ChatGPTWebStatus{}, err
 	}
 	if !cfg.Integrations.ChatGPTWeb.Enabled {
 		return ChatGPTWebStatus{}, errors.New("ChatGPT Web integration is disabled")
 	}
-	if capability.State != browser.StateAvailable || !capability.Usable {
+	if capability.State != browser.StateAvailable || !capability.Available || !capability.Launchable {
 		return ChatGPTWebStatus{}, fmt.Errorf("ChatGPT Web browser is unavailable: %s", boundedIntegrationReason(capability.Reason))
+	}
+	if capability.Profile == nil {
+		return ChatGPTWebStatus{}, errors.New("ChatGPT Web browser profile is unresolved")
+	}
+	if service.OwnedManager != nil {
+		snapshot := service.OwnedManager.Snapshot()
+		if snapshot.State != browser.ManagerClosed && snapshot.ActiveLeases > 0 {
+			return ChatGPTWebStatus{}, errors.New("ChatGPT Web login requires exclusive browser profile access while no agent tabs are active")
+		}
+		if snapshot.State != browser.ManagerClosed {
+			if err := service.OwnedManager.Close(applicationContext(ctx)); err != nil {
+				return ChatGPTWebStatus{}, fmt.Errorf("retire idle ChatGPT Web browser before login: %w", err)
+			}
+		}
+		service.OwnedManager = nil
+		service.ownedRuntimeIdentity = chatGPTBrowserRuntimeIdentity{}
+		service.runtimePendingReason = ""
+	}
+	if err := chatgptweb.RemoveAuthMarker(service.Root()); err != nil {
+		return ChatGPTWebStatus{}, err
+	}
+	loginCtx, cancelLogin := context.WithTimeout(ctx, service.loginTimeout())
+	err = service.RunInteractive(loginCtx, browser.InteractiveBrowserOptions{
+		Capability: capability,
+		URL:        chatgptweb.TemporaryChatURL,
+	})
+	cancelLogin()
+	if err != nil {
+		status, _ := service.loginFailureStatus(capability, chatgptweb.StateNeedsLogin,
+			"interactive ChatGPT sign-in did not complete; complete sign-in and close the CodeMCP browser window")
+		return status, fmt.Errorf("interactive ChatGPT sign-in did not complete: %w", err)
 	}
 	runtime, oneShot, err := service.browserRuntime(capability)
 	if err != nil {
-		return ChatGPTWebStatus{}, err
+		status, _ := service.loginFailureStatus(capability, chatgptweb.StateDegraded,
+			"managed browser verification could not start after interactive sign-in")
+		return status, fmt.Errorf("start managed ChatGPT verification browser: %w", err)
 	}
 	runtimeClosed := false
-	if oneShot {
-		defer func() {
-			if !runtimeClosed {
-				_ = runtime.Close(context.Background())
-			}
-		}()
-	}
-	if runtime.Snapshot().ActiveLeases > 0 {
-		return ChatGPTWebStatus{}, errors.New("ChatGPT Web login requires exclusive browser profile access while no agent tabs are active")
-	}
-	lease, err := runtime.Acquire(ctx, chatGPTWebLoginLease)
+	defer func() {
+		if oneShot && !runtimeClosed {
+			_ = runtime.Close(context.Background())
+		}
+	}()
+	lease, err := runtime.Acquire(ctx, chatGPTWebVerificationLease)
 	if err != nil {
-		return ChatGPTWebStatus{}, err
+		status, _ := service.loginFailureStatus(capability, chatgptweb.StateDegraded,
+			"managed browser verification could not acquire the isolated profile after interactive sign-in")
+		return status, fmt.Errorf("acquire managed ChatGPT verification tab: %w", err)
 	}
 	leaseActive := true
 	defer func() {
@@ -380,13 +415,19 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 	}()
 	tab, ok := runtime.Tab(lease.AgentID)
 	if !ok {
-		return ChatGPTWebStatus{}, errors.New("ChatGPT Web login tab is unavailable")
+		status, _ := service.loginFailureStatus(capability, chatgptweb.StateDegraded,
+			"managed browser verification tab is unavailable after interactive sign-in")
+		return status, errors.New("ChatGPT Web verification tab is unavailable")
 	}
 	if err := tab.Navigate(ctx, chatgptweb.TemporaryChatURL); err != nil {
-		return ChatGPTWebStatus{}, fmt.Errorf("open ChatGPT Temporary Chat: %w", err)
+		status, _ := service.loginFailureStatus(capability, chatgptweb.StateDegraded,
+			"managed browser could not open ChatGPT Temporary Chat after interactive sign-in")
+		return status, fmt.Errorf("open ChatGPT Temporary Chat for verification: %w", err)
 	}
-	if _, err := service.waitForAuth(ctx, tab, service.loginTimeout()); err != nil {
-		return ChatGPTWebStatus{}, err
+	if _, err := service.waitForAuth(ctx, tab, service.doctorTimeout()); err != nil {
+		status, _ := service.loginFailureStatus(capability, chatgptweb.StateNeedsLogin,
+			"ChatGPT authentication could not be verified after interactive sign-in; rerun login and complete any browser verification before closing the window")
+		return status, fmt.Errorf("verify ChatGPT authentication after interactive sign-in: %w; rerun login and complete any browser verification before closing the window", err)
 	}
 	if err := chatgptweb.WriteAuthMarker(service.Root(), service.Now()); err != nil {
 		return ChatGPTWebStatus{}, err
@@ -402,6 +443,21 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 		runtimeClosed = true
 	}
 	return service.status(ctx, true, true)
+}
+
+func (service *ChatGPTWebService) loginFailureStatus(capability browser.Capability, state chatgptweb.State, reason string) (ChatGPTWebStatus, error) {
+	if service == nil || service.LoadConfig == nil {
+		return ChatGPTWebStatus{}, errors.New("ChatGPT Web integration service is unavailable")
+	}
+	cfg, err := service.LoadConfig()
+	if err != nil {
+		return ChatGPTWebStatus{}, err
+	}
+	status := service.baseStatus(cfg, capability)
+	status.Authenticated = false
+	status.State = state
+	status.Reason = boundedIntegrationReason(reason)
+	return status, nil
 }
 
 func (service *ChatGPTWebService) Doctor(ctx context.Context) (ChatGPTWebDoctorResult, error) {

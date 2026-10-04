@@ -24,6 +24,15 @@ func TestChatGPTWebLoginNeverAcceptsCredentialMaterial(t *testing.T) {
 	}
 }
 
+func TestChatGPTWebLoginInstructionRequiresClosingBrowserBeforeVerification(t *testing.T) {
+	instruction := strings.ToLower(chatGPTWebLoginInstruction)
+	for _, required := range []string{"complete sign-in", "close", "browser", "verification"} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("login instruction missing %q: %s", required, chatGPTWebLoginInstruction)
+		}
+	}
+}
+
 func TestChatGPTWebLogoutRequiresExplicitConfirmation(t *testing.T) {
 	cmd := chatGPTWebLogoutCommand()
 	cmd.SetArgs(nil)

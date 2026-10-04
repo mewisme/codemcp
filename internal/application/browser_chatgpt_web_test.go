@@ -326,16 +326,61 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 	if err := browser.PrepareProfile(profile); err != nil {
 		t.Fatal(err)
 	}
-	runtime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{State: browser.ManagerStopped}}
+	idleRuntime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{State: browser.ManagerRunning, Running: true}}
+	verificationRuntime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{State: browser.ManagerStopped}}
 	probe := &sequenceAuthProbe{evidence: []chatgptweb.AuthEvidence{
 		{OriginOK: true, Authenticated: true, Composer: true},
 		{OriginOK: true, TemporaryChat: true, Authenticated: true, Composer: true},
 	}}
 	service := newApplicationChatGPTWebTestService(root, applicationChatGPTWebConfig(), profile)
-	service.NewManager = func(browser.ManagerOptions) (chatGPTBrowserRuntime, error) { return runtime, nil }
+	service.OwnedManager = idleRuntime
+	var detectOptions []browser.Options
+	service.Detect = func(_ context.Context, options browser.Options) browser.Capability {
+		detectOptions = append(detectOptions, options)
+		capability := applicationTestCapability(profile)
+		capability.Usable = false
+		return capability
+	}
+	plainClosed := false
+	var interactiveProfile string
+	service.RunInteractive = func(_ context.Context, options browser.InteractiveBrowserOptions) error {
+		if !idleRuntime.closedSnapshot() {
+			t.Fatal("idle managed runtime was not retired before interactive login")
+		}
+		probe.mu.Lock()
+		probeCalls := probe.index
+		probe.mu.Unlock()
+		if probeCalls != 0 {
+			t.Fatalf("authentication probe ran during interactive login: calls=%d", probeCalls)
+		}
+		if _, ok, err := chatgptweb.LoadAuthMarker(root); err != nil || ok {
+			t.Fatalf("auth marker exists during interactive login: ok=%t err=%v", ok, err)
+		}
+		if options.URL != chatgptweb.TemporaryChatURL || options.Capability.Profile == nil {
+			t.Fatalf("interactive options=%#v", options)
+		}
+		interactiveProfile = options.Capability.Profile.LocalPath
+		plainClosed = true
+		return nil
+	}
+	managerCreated := false
+	service.NewManager = func(options browser.ManagerOptions) (chatGPTBrowserRuntime, error) {
+		if !plainClosed {
+			t.Fatal("managed verification runtime was created before interactive browser closed")
+		}
+		if _, ok, err := chatgptweb.LoadAuthMarker(root); err != nil || ok {
+			t.Fatalf("auth marker exists before managed verification: ok=%t err=%v", ok, err)
+		}
+		if options.Capability.Profile == nil || options.Capability.Profile.LocalPath != interactiveProfile {
+			t.Fatalf("managed profile=%#v interactive profile=%q", options.Capability.Profile, interactiveProfile)
+		}
+		managerCreated = true
+		return verificationRuntime, nil
+	}
 	service.Probe = probe
 	service.PollInterval = time.Millisecond
 	service.LoginTimeout = time.Second
+	service.DoctorTimeout = time.Second
 	fixed := time.Date(2026, 10, 4, 2, 3, 4, 0, time.UTC)
 	service.Now = func() time.Time { return fixed }
 
@@ -346,9 +391,15 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 	if status.State != chatgptweb.StateReady || !status.Authenticated {
 		t.Fatalf("status=%#v", status)
 	}
-	navigations := runtime.tab.navigationSnapshot()
+	if !managerCreated {
+		t.Fatal("managed verification runtime was not created")
+	}
+	if len(detectOptions) == 0 || !detectOptions[0].Passive {
+		t.Fatalf("login detection options=%#v", detectOptions)
+	}
+	navigations := verificationRuntime.tab.navigationSnapshot()
 	if len(navigations) < 1 {
-		t.Fatal("login did not navigate browser tab")
+		t.Fatal("managed verification did not navigate browser tab")
 	}
 	for _, url := range navigations {
 		if url != chatgptweb.TemporaryChatURL {
@@ -359,8 +410,94 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 	if err != nil || !ok || !marker.VerifiedAt.Equal(fixed) {
 		t.Fatalf("marker=%#v ok=%t err=%v", marker, ok, err)
 	}
-	if !runtime.closed {
-		t.Fatal("one-shot login browser manager was not closed")
+	if !verificationRuntime.closed {
+		t.Fatal("one-shot verification browser manager was not closed")
+	}
+}
+
+func TestChatGPTWebLoginRejectsActiveAgentBeforeInteractiveLaunch(t *testing.T) {
+	root := t.TempDir()
+	profile := applicationTestProfile(root)
+	activeRuntime := &fakeChatGPTBrowserRuntime{
+		snapshot: browser.ManagerSnapshot{State: browser.ManagerRunning, Running: true, ActiveLeases: 1},
+	}
+	service := newApplicationChatGPTWebTestService(root, applicationChatGPTWebConfig(), profile)
+	service.OwnedManager = activeRuntime
+	interactiveCalls := 0
+	service.RunInteractive = func(context.Context, browser.InteractiveBrowserOptions) error {
+		interactiveCalls++
+		return nil
+	}
+	status, err := service.Login(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "exclusive browser profile access") {
+		t.Fatalf("status=%#v err=%v", status, err)
+	}
+	if interactiveCalls != 0 {
+		t.Fatalf("interactive login calls=%d want=0", interactiveCalls)
+	}
+	if activeRuntime.closedSnapshot() {
+		t.Fatal("login closed runtime with active agent leases")
+	}
+}
+
+func TestChatGPTWebLoginFailedManagedVerificationLeavesMarkerAbsent(t *testing.T) {
+	root := t.TempDir()
+	profile := applicationTestProfile(root)
+	if err := browser.PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := chatgptweb.WriteAuthMarker(root, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{State: browser.ManagerStopped}}
+	service := newApplicationChatGPTWebTestService(root, applicationChatGPTWebConfig(), profile)
+	service.RunInteractive = func(context.Context, browser.InteractiveBrowserOptions) error {
+		if _, ok, err := chatgptweb.LoadAuthMarker(root); err != nil || ok {
+			t.Fatalf("stale auth marker was not cleared before interactive login: ok=%t err=%v", ok, err)
+		}
+		return nil
+	}
+	service.NewManager = func(browser.ManagerOptions) (chatGPTBrowserRuntime, error) { return runtime, nil }
+	service.Probe = &sequenceAuthProbe{evidence: []chatgptweb.AuthEvidence{{OriginOK: true, TemporaryChat: true}}}
+	service.PollInterval = time.Millisecond
+	service.DoctorTimeout = 5 * time.Millisecond
+
+	status, err := service.Login(context.Background())
+	if err == nil || status.State != chatgptweb.StateNeedsLogin || status.Authenticated {
+		t.Fatalf("status=%#v err=%v", status, err)
+	}
+	if !strings.Contains(status.Reason, "rerun login") {
+		t.Fatalf("non-actionable failure reason=%q", status.Reason)
+	}
+	if _, ok, markerErr := chatgptweb.LoadAuthMarker(root); markerErr != nil || ok {
+		t.Fatalf("failed verification persisted auth marker: ok=%t err=%v", ok, markerErr)
+	}
+	if !runtime.closedSnapshot() {
+		t.Fatal("failed one-shot verification runtime was not closed")
+	}
+}
+
+func TestChatGPTWebLoginManagedHandoffFailureReturnsDegradedWithoutMarker(t *testing.T) {
+	root := t.TempDir()
+	profile := applicationTestProfile(root)
+	if err := browser.PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	service := newApplicationChatGPTWebTestService(root, applicationChatGPTWebConfig(), profile)
+	service.RunInteractive = func(context.Context, browser.InteractiveBrowserOptions) error { return nil }
+	service.NewManager = func(browser.ManagerOptions) (chatGPTBrowserRuntime, error) {
+		return nil, errors.New("managed browser unavailable")
+	}
+
+	status, err := service.Login(context.Background())
+	if err == nil || status.State != chatgptweb.StateDegraded || status.Authenticated {
+		t.Fatalf("status=%#v err=%v", status, err)
+	}
+	if !strings.Contains(status.Reason, "verification could not start") {
+		t.Fatalf("handoff reason=%q", status.Reason)
+	}
+	if _, ok, markerErr := chatgptweb.LoadAuthMarker(root); markerErr != nil || ok {
+		t.Fatalf("failed handoff persisted auth marker: ok=%t err=%v", ok, markerErr)
 	}
 }
 

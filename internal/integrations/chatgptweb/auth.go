@@ -30,15 +30,25 @@ const authEvidenceExpression = `/*codemcp:auth*/(async () => {
   const temporaryChat = locationURL.pathname === "/" && locationURL.searchParams.get("temporary-chat") === "true";
   let authenticated = false;
   try {
-    const response = await fetch("/api/auth/session", {
+    const response = await fetch("https://chatgpt.com/api/auth/session", {
       method: "GET",
       credentials: "include",
       cache: "no-store",
+      redirect: "error",
       headers: { "accept": "application/json" }
     });
-    if (response.ok) {
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    if (response.ok && contentType.includes("application/json")) {
       const payload = await response.json();
-      authenticated = Boolean(payload && payload.user);
+      const user = payload && payload.user;
+      const userOK = Boolean(user && typeof user === "object" && !Array.isArray(user) && Object.keys(user).length > 0);
+      const noError = Boolean(payload && !payload.error);
+      let expiryOK = true;
+      if (payload && payload.expires) {
+        const expiresAt = Date.parse(payload.expires);
+        expiryOK = Number.isFinite(expiresAt) && expiresAt > Date.now();
+      }
+      authenticated = userOK && noError && expiryOK;
     }
   } catch (_) {}
   const composer = Boolean(document.querySelector('` + ComposerSelector + `'));

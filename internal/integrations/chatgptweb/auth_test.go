@@ -52,6 +52,21 @@ func TestDOMAuthProbeReturnsOnlyBooleanEvidence(t *testing.T) {
 			t.Fatalf("auth probe references sensitive material %q", forbidden)
 		}
 	}
+	for _, required := range []string{
+		`fetch("https://chatgpt.com/api/auth/session"`,
+		`credentials: "include"`,
+		`cache: "no-store"`,
+		`redirect: "error"`,
+		`headers: { "accept": "application/json" }`,
+		`contentType.includes("application/json")`,
+		`Object.keys(user).length > 0`,
+		`!payload.error`,
+		`expiresAt > Date.now()`,
+	} {
+		if !strings.Contains(authEvidenceExpression, required) {
+			t.Fatalf("auth probe missing required session evidence %q", required)
+		}
+	}
 }
 
 func TestAuthMarkerContainsNoAccountOrSessionMaterial(t *testing.T) {

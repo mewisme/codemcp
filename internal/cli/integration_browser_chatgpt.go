@@ -10,6 +10,8 @@ import (
 	"go.mewis.me/codemcp/internal/integrations/chatgptweb"
 )
 
+const chatGPTWebLoginInstruction = "Complete sign-in in the CodeMCP browser, then close the CodeMCP browser completely to continue verification"
+
 func browserIntegrationCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "browser", Short: "Inspect the optional browser integration"}
 	cmd.AddCommand(browserIntegrationStatusCommand(), browserIntegrationDoctorCommand())
@@ -117,9 +119,12 @@ func chatGPTWebLoginCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			presenter := commandPresenter(cmd)
 			presenter.Frame("ChatGPT Web login")
-			presenter.StateSection(presentation.StatusInfo, "Complete sign-in in the CodeMCP browser window")
+			presenter.StateSection(presentation.StatusInfo, chatGPTWebLoginInstruction)
 			status, err := application.NewChatGPTWebService().Login(cmd.Context())
 			if err != nil {
+				if strings.TrimSpace(status.Reason) != "" {
+					presenter.StateSection(presentation.StatusWarning, status.Reason)
+				}
 				return err
 			}
 			presenter.StateSection(presentation.StatusSuccess, "ChatGPT authentication verified")
