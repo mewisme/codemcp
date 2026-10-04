@@ -15,7 +15,7 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 		"approval.semantic.low_action", "approval.semantic.medium_action", "approval.semantic.minimum_confidence", "approval.semantic.provider", "approval.semantic.timeout_ms",
 		"integrations.browser.enabled", "integrations.browser.minimized", "integrations.browser.path", "integrations.caveman.active", "integrations.caveman.mode", "integrations.codegraph.enabled", "integrations.codegraph.path",
 		"integrations.chatgpt_web.connector_name", "integrations.chatgpt_web.enabled", "integrations.chatgpt_web.max_agents",
-		"integrations.ponytail.active", "integrations.ponytail.mode", "integrations.rtk.enabled", "integrations.rtk.path",
+		"integrations.fanout.active", "integrations.fanout.mode", "integrations.ponytail.active", "integrations.ponytail.mode", "integrations.rtk.enabled", "integrations.rtk.path",
 		"integrations.typesafe.enabled", "integrations.typesafe.model", "integrations.typesafe.timeout_ms",
 		"permissions.allow_dirs", "permissions.mcp_config_read", "permissions.mcp_config_write",
 		"notifications.approval.desktop_enabled", "notifications.approval.enabled", "notifications.approval.pending",

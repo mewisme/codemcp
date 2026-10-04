@@ -477,7 +477,7 @@ func TestConfigAPIUsesCurrentIntegrationReadModel(t *testing.T) {
 			t.Fatalf("legacy config authority %s exposed: %s", legacy, body)
 		}
 	}
-	for _, want := range []string{`"integrations"`, `"ponytail"`, `"caveman"`, `"rtk"`, `"codegraph"`} {
+	for _, want := range []string{`"integrations"`, `"ponytail"`, `"caveman"`, `"fanout"`, `"rtk"`, `"codegraph"`} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("integration read model missing %s: %s", want, body)
 		}
@@ -508,11 +508,11 @@ func TestConfigAPIIntegrationPatchUpdatesRuntimeActiveState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := persisted.Integrations; !got.Ponytail.Active || got.Caveman.Active || !got.RTK.Enabled || got.RTK.Path != "" || !got.CodeGraph.Enabled || got.CodeGraph.Path != "" || !got.Browser.Enabled || got.Browser.Path != "" || got.Browser.Minimized || !got.ChatGPTWeb.Enabled || got.ChatGPTWeb.ConnectorName != "CodeMCP" || got.ChatGPTWeb.MaxAgents != 5 {
+	if got := persisted.Integrations; !got.Ponytail.Active || got.Caveman.Active || !got.Fanout.Active || got.Fanout.Mode != "auto" || !got.RTK.Enabled || got.RTK.Path != "" || !got.CodeGraph.Enabled || got.CodeGraph.Path != "" || !got.Browser.Enabled || got.Browser.Path != "" || got.Browser.Minimized || !got.ChatGPTWeb.Enabled || got.ChatGPTWeb.ConnectorName != "CodeMCP" || got.ChatGPTWeb.MaxAgents != 5 {
 		t.Fatalf("stored integrations = %#v", got)
 	}
 	_ = workspaceItem
-	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":true,"path":""},"typesafe":{"enabled":true,"model":"jev-latest","timeout_ms":3000},"browser":{"enabled":true,"path":"","minimized":false},"chatgpt_web":{"enabled":true,"connector_name":"CodeMCP","max_agents":5}}`) {
+	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"fanout":{"active":true,"mode":"auto"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":true,"path":""},"typesafe":{"enabled":true,"model":"jev-latest","timeout_ms":3000},"browser":{"enabled":true,"path":"","minimized":false},"chatgpt_web":{"enabled":true,"connector_name":"CodeMCP","max_agents":5}}`) {
 		t.Fatalf("integration config missing from response: %s", recorder.Body.String())
 	}
 }

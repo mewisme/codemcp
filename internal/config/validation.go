@@ -11,6 +11,7 @@ import (
 
 	managedagent "go.mewis.me/codemcp/internal/agent"
 	"go.mewis.me/codemcp/internal/integrations/caveman"
+	"go.mewis.me/codemcp/internal/integrations/fanout"
 	"go.mewis.me/codemcp/internal/integrations/ponytail"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
@@ -53,6 +54,9 @@ func Validate(cfg Config) error {
 	}
 	if _, ok := caveman.NormalizeRuntimeMode(cfg.Integrations.Caveman.Mode); !ok {
 		return fmt.Errorf("integrations.caveman.mode must be lite, full, ultra, wenyan-lite, wenyan-full, or wenyan-ultra: %q", cfg.Integrations.Caveman.Mode)
+	}
+	if _, ok := fanout.NormalizeRuntimeMode(cfg.Integrations.Fanout.Mode); !ok {
+		return fmt.Errorf("integrations.fanout.mode must be auto, conservative, or aggressive: %q", cfg.Integrations.Fanout.Mode)
 	}
 	if path := cfg.Integrations.RTK.Path; path != "" {
 		if path != strings.TrimSpace(path) {

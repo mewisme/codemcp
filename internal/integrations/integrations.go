@@ -11,6 +11,7 @@ type ID string
 const (
 	PonytailID   ID = "ponytail"
 	CavemanID    ID = "caveman"
+	FanoutID     ID = "fanout"
 	RTKID        ID = "rtk"
 	CodeGraphID  ID = "codegraph"
 	TypeSafeID   ID = "typesafe"
@@ -36,6 +37,11 @@ type Ponytail struct {
 }
 
 type Caveman struct {
+	Active bool   `json:"active"`
+	Mode   string `json:"mode"`
+}
+
+type Fanout struct {
 	Active bool   `json:"active"`
 	Mode   string `json:"mode"`
 }
@@ -95,6 +101,7 @@ type ChatGPTWeb struct {
 type Config struct {
 	Ponytail   Ponytail   `json:"ponytail"`
 	Caveman    Caveman    `json:"caveman"`
+	Fanout     Fanout     `json:"fanout"`
 	RTK        RTK        `json:"rtk"`
 	CodeGraph  CodeGraph  `json:"codegraph"`
 	TypeSafe   TypeSafe   `json:"typesafe"`
@@ -106,6 +113,7 @@ func Default() Config {
 	return Config{
 		Ponytail:   Ponytail{Active: true, Mode: "full"},
 		Caveman:    Caveman{Active: true, Mode: "full"},
+		Fanout:     Fanout{Active: true, Mode: "auto"},
 		RTK:        RTK{Enabled: true},
 		CodeGraph:  CodeGraph{Enabled: true},
 		TypeSafe:   TypeSafe{Enabled: true, Model: "jev-latest", TimeoutMS: 3000},
@@ -120,6 +128,8 @@ func IdentityFor(id ID) (Identity, bool) {
 		return Identity{ID: PonytailID, Name: "Ponytail"}, true
 	case CavemanID:
 		return Identity{ID: CavemanID, Name: "Caveman"}, true
+	case FanoutID:
+		return Identity{ID: FanoutID, Name: "Fanout"}, true
 	case RTKID:
 		return Identity{ID: RTKID, Name: "RTK"}, true
 	case CodeGraphID:
@@ -157,6 +167,10 @@ func (value *Ponytail) UnmarshalJSON(data []byte) error {
 }
 
 func (value *Caveman) UnmarshalJSON(data []byte) error {
+	return unmarshalMode(data, &value.Active, &value.Mode)
+}
+
+func (value *Fanout) UnmarshalJSON(data []byte) error {
 	return unmarshalMode(data, &value.Active, &value.Mode)
 }
 

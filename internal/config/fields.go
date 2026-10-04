@@ -149,6 +149,8 @@ var fieldSpecs = []FieldSpec{
 	{Key: "integrations.ponytail.mode", Label: "Ponytail mode", Section: FieldSectionIntegrations, Description: "sets the default Ponytail intensity", Details: "This persisted value selects the default runtime intensity when Ponytail is active. Session-only modes such as review/off are not valid persisted values.", Kind: FieldEnum, Options: []string{"lite", "full", "ultra"}, Values: []FieldValueSpec{{Value: "lite", Description: "Build the requested solution but point out a simpler alternative when useful."}, {Value: "full", Description: "Enforce the reuse/stdlib/native-first ladder and prefer the shortest correct implementation."}, {Value: "ultra", Description: "Apply aggressive YAGNI pressure, favor deletion or minimal implementation, and challenge unnecessary scope."}}, Editable: true, Related: []string{"integrations.ponytail.active"}},
 	{Key: "integrations.caveman.active", Label: "Caveman active", Section: FieldSectionIntegrations, Description: "controls whether Caveman response style is active by default", Details: "Caveman compresses assistant prose while preserving technical meaning, exact code, commands, numbers, and safety-critical clarity.", Kind: FieldBool, Editable: true, Related: []string{"integrations.caveman.mode"}},
 	{Key: "integrations.caveman.mode", Label: "Caveman mode", Section: FieldSectionIntegrations, Description: "sets the default Caveman response intensity and language register", Details: "The persisted mode controls how aggressively response prose is compressed. The wenyan variants use progressively stronger classical Chinese compression. Session-only aliases such as off or wenyan are not persisted modes.", Kind: FieldEnum, Options: []string{"lite", "full", "ultra", "wenyan-lite", "wenyan-full", "wenyan-ultra"}, Values: []FieldValueSpec{{Value: "lite", Description: "Remove filler and hedging while keeping normal professional sentences."}, {Value: "full", Description: "Use terse fragments where clear and aggressively remove nonessential prose."}, {Value: "ultra", Description: "Maximize compression while preserving unambiguous technical meaning."}, {Value: "wenyan-lite", Description: "Use a semi-classical Chinese register with moderate compression."}, {Value: "wenyan-full", Description: "Use strongly compressed classical Chinese sentence patterns."}, {Value: "wenyan-ultra", Description: "Use extreme classical Chinese abbreviation while retaining meaning."}}, Editable: true, Related: []string{"integrations.caveman.active"}},
+	{Key: "integrations.fanout.active", Label: "Fanout active", Section: FieldSectionIntegrations, Description: "controls whether managed-agent fanout guidance is active by default", Details: "Fanout is advisory orchestration guidance only. Disabling it does not unregister managed-agent tools or change agent lifecycle, workspace authority, backend readiness, or concurrency enforcement.", Kind: FieldBool, Editable: true, Related: []string{"integrations.fanout.mode"}},
+	{Key: "integrations.fanout.mode", Label: "Fanout mode", Section: FieldSectionIntegrations, Description: "sets the default managed-agent fanout strategy", Details: "Auto balances delegation payoff and coordination cost. Conservative raises the delegation threshold. Aggressive proactively decomposes substantial independent work while runtime capacity and mutation ownership remain authoritative. Off is transient only.", Kind: FieldEnum, Options: []string{"auto", "conservative", "aggressive"}, Values: []FieldValueSpec{{Value: "auto", Description: "Delegate when meaningful independent workstreams benefit from parallelism or specialization."}, {Value: "conservative", Description: "Prefer direct work unless delegation payoff and independence are clear."}, {Value: "aggressive", Description: "Proactively decompose substantial independent work without overriding runtime capacity or safe ownership."}}, Editable: true, Related: []string{"integrations.fanout.active"}},
 	{Key: "integrations.rtk.enabled", Label: "RTK enabled", Section: FieldSectionIntegrations, Description: "controls whether RTK executable resolution is active", Details: "When enabled, CodeMCP resolves RTK in deterministic order: an explicitly configured executable, the system PATH, then a checksum-verified managed asset. Command rewriting is handled separately by the shell integration runtime.", Kind: FieldBool, Editable: true, Related: []string{"integrations.rtk.path"}},
 	{Key: "integrations.rtk.path", Label: "RTK executable", Section: FieldSectionIntegrations, Description: "sets an explicit RTK executable path", Details: "Leave empty to resolve RTK from PATH and then the verified managed asset. A configured value must be an absolute path; runtime resolution validates that it is a non-empty executable file before use.", Kind: FieldString, Editable: true, Related: []string{"integrations.rtk.enabled"}},
 	{Key: "integrations.codegraph.enabled", Label: "CodeGraph enabled", Section: FieldSectionIntegrations, Description: "controls whether CodeGraph runtime resolution is active", Details: "Enabled by default. CodeMCP resolves an explicitly configured executable, then the system PATH, then a checksum-verified managed CodeGraph asset.", Kind: FieldBool, Editable: true, Related: []string{"integrations.codegraph.path"}},
@@ -552,6 +554,20 @@ func SetValue(cfg *Config, key, raw string) error {
 		default:
 			return errors.New("integrations.caveman.mode must be lite, full, ultra, wenyan-lite, wenyan-full, or wenyan-ultra")
 		}
+	case "integrations.fanout.active":
+		value, err := parseBoolField(raw, key)
+		if err != nil {
+			return err
+		}
+		cfg.Integrations.Fanout.Active = value
+	case "integrations.fanout.mode":
+		value := strings.ToLower(strings.TrimSpace(raw))
+		switch value {
+		case "auto", "conservative", "aggressive":
+			cfg.Integrations.Fanout.Mode = value
+		default:
+			return errors.New("integrations.fanout.mode must be auto, conservative, or aggressive")
+		}
 	case "integrations.rtk.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -784,6 +800,10 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strconv.FormatBool(cfg.Integrations.Caveman.Active), nil
 	case "integrations.caveman.mode":
 		return cfg.Integrations.Caveman.Mode, nil
+	case "integrations.fanout.active":
+		return strconv.FormatBool(cfg.Integrations.Fanout.Active), nil
+	case "integrations.fanout.mode":
+		return cfg.Integrations.Fanout.Mode, nil
 	case "integrations.rtk.enabled":
 		return strconv.FormatBool(cfg.Integrations.RTK.Enabled), nil
 	case "integrations.rtk.path":

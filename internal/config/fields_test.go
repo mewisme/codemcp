@@ -20,6 +20,7 @@ func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 	for key, value := range map[string]string{
 		"http.mcp.port": "4000", "http.exposure": "true", "http.admin.enabled": "false",
 		"integrations.ponytail.active": "false", "integrations.ponytail.mode": "ULTRA", "integrations.caveman.active": "false", "integrations.caveman.mode": "WENYAN-ULTRA",
+		"integrations.fanout.active": "false", "integrations.fanout.mode": "AGGRESSIVE",
 		"integrations.rtk.enabled": "false", "integrations.rtk.path": "/opt/rtk/bin/rtk",
 		"integrations.codegraph.enabled": "true", "integrations.codegraph.path": "/opt/codegraph/bin/codegraph",
 		"permissions.allow_dirs": "/tmp\n/var/tmp", "shell.path": "/opt/tools,/usr/local/custom/bin",
@@ -29,7 +30,7 @@ func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 			t.Fatalf("%s: %v", key, err)
 		}
 	}
-	if cfg.HTTP.MCP.Port != 4000 || cfg.HTTP.Exposure.Mode != ExposureWildcard || cfg.HTTP.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "/opt/rtk/bin/rtk" || !cfg.Integrations.CodeGraph.Enabled || cfg.Integrations.CodeGraph.Path != "/opt/codegraph/bin/codegraph" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 || !cfg.Notifications.Completion.Enabled || cfg.Notifications.Completion.DesktopEnabled || !cfg.Notifications.Completion.TelegramEnabled {
+	if cfg.HTTP.MCP.Port != 4000 || cfg.HTTP.Exposure.Mode != ExposureWildcard || cfg.HTTP.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Integrations.Fanout.Active || cfg.Integrations.Fanout.Mode != "aggressive" || cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "/opt/rtk/bin/rtk" || !cfg.Integrations.CodeGraph.Enabled || cfg.Integrations.CodeGraph.Path != "/opt/codegraph/bin/codegraph" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 || !cfg.Notifications.Completion.Enabled || cfg.Notifications.Completion.DesktopEnabled || !cfg.Notifications.Completion.TelegramEnabled {
 		t.Fatalf("cfg=%#v", cfg)
 	}
 	if value, err := RawValue(cfg, "shell.path"); err != nil || value != "/opt/tools,/usr/local/custom/bin" {
@@ -37,6 +38,9 @@ func TestFieldSetValuePreservesTypedBehavior(t *testing.T) {
 	}
 	if value, err := RawValue(cfg, "notifications.completion.enabled"); err != nil || value != "true" {
 		t.Fatalf("completion notification value=%q err=%v", value, err)
+	}
+	if value, err := RawValue(cfg, "integrations.fanout.mode"); err != nil || value != "aggressive" {
+		t.Fatalf("fanout mode value=%q err=%v", value, err)
 	}
 }
 

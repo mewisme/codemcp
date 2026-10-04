@@ -540,7 +540,7 @@ func TestDefaultServerUsesExposurePolicy(t *testing.T) {
 
 func TestDefaultIntegrationsActive(t *testing.T) {
 	cfg := Default()
-	if !cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "full" || !cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "full" || !cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "" || !cfg.Integrations.CodeGraph.Enabled || cfg.Integrations.CodeGraph.Path != "" {
+	if !cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "full" || !cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "full" || !cfg.Integrations.Fanout.Active || cfg.Integrations.Fanout.Mode != "auto" || !cfg.Integrations.RTK.Enabled || cfg.Integrations.RTK.Path != "" || !cfg.Integrations.CodeGraph.Enabled || cfg.Integrations.CodeGraph.Path != "" {
 		t.Fatalf("integrations = %#v", cfg.Integrations)
 	}
 }
@@ -579,6 +579,26 @@ func TestValidateCavemanDefaultMode(t *testing.T) {
 	}
 	for _, mode := range []string{"", "off", "wenyan", "commit", "review", "compress", "max"} {
 		cfg.Integrations.Caveman.Mode = mode
+		if err := Validate(cfg); err == nil {
+			t.Fatalf("mode %q accepted", mode)
+		}
+	}
+}
+
+func TestValidateFanoutDefaultMode(t *testing.T) {
+	cfg := Default()
+	cfg.Tunnel.Enabled = false
+	cfg.HTTP.MCP.Auth.Enabled = false
+	cfg.HTTP.Admin.Auth.Enabled = false
+	cfg.HTTP.Security.AllowUnauthenticatedLoopback = true
+	for _, mode := range []string{"auto", "conservative", "aggressive"} {
+		cfg.Integrations.Fanout.Mode = mode
+		if err := Validate(cfg); err != nil {
+			t.Fatalf("mode %q rejected: %v", mode, err)
+		}
+	}
+	for _, mode := range []string{"", "off", "full", "parallel", "max"} {
+		cfg.Integrations.Fanout.Mode = mode
 		if err := Validate(cfg); err == nil {
 			t.Fatalf("mode %q accepted", mode)
 		}
@@ -659,7 +679,7 @@ func TestLegacyJSONConfigWithoutIntegrationsKeepsEnabledDefaults(t *testing.T) {
 			if !loaded.HTTP.MCP.Enabled {
 				t.Fatal("legacy JSON config disabled MCP HTTP")
 			}
-			if !loaded.Integrations.Ponytail.Active || loaded.Integrations.Ponytail.Mode != "full" || !loaded.Integrations.Caveman.Active || loaded.Integrations.Caveman.Mode != "full" {
+			if !loaded.Integrations.Ponytail.Active || loaded.Integrations.Ponytail.Mode != "full" || !loaded.Integrations.Caveman.Active || loaded.Integrations.Caveman.Mode != "full" || !loaded.Integrations.Fanout.Active || loaded.Integrations.Fanout.Mode != "auto" {
 				t.Fatalf("legacy JSON integrations = %#v", loaded.Integrations)
 			}
 			unchanged, err := os.ReadFile(configPath)
@@ -701,7 +721,7 @@ func TestPartialJSONIntegrationsKeepMissingIntegrationDefault(t *testing.T) {
 		"server":       map[string]any{"port": int64(37421), "expose": map[string]any{"mode": "none", "interfaces": []any{}}},
 		"admin":        map[string]any{"enabled": false, "port": int64(37422)},
 		"auth":         map[string]any{"mcp_enabled": false, "admin_enabled": false},
-		"integrations": map[string]any{"ponytail": map[string]any{"active": false}},
+		"integrations": map[string]any{"ponytail": map[string]any{"active": false}, "fanout": map[string]any{"active": false}},
 		"tunnel":       map[string]any{"enabled": false},
 	}
 	data, err := configformat.EncodeGeneric(configformat.JSON, partial)
@@ -715,7 +735,7 @@ func TestPartialJSONIntegrationsKeepMissingIntegrationDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Integrations.Ponytail.Active || loaded.Integrations.Ponytail.Mode != "full" || !loaded.Integrations.Caveman.Active || loaded.Integrations.Caveman.Mode != "full" {
+	if loaded.Integrations.Ponytail.Active || loaded.Integrations.Ponytail.Mode != "full" || !loaded.Integrations.Caveman.Active || loaded.Integrations.Caveman.Mode != "full" || loaded.Integrations.Fanout.Active || loaded.Integrations.Fanout.Mode != "auto" {
 		t.Fatalf("partial JSON integrations = %#v", loaded.Integrations)
 	}
 }
@@ -752,6 +772,10 @@ func TestIntegrationConfigSerializesActiveOnlyInJSON(t *testing.T) {
 	}
 	if _, exists := caveman["enabled"]; exists {
 		t.Fatalf("legacy enabled key was serialized: %#v", caveman)
+	}
+	fanout := integrationValues["fanout"].(map[string]any)
+	if fanout["active"] != true || fanout["mode"] != "auto" {
+		t.Fatalf("fanout = %#v", fanout)
 	}
 }
 
