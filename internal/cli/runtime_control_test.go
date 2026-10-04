@@ -61,6 +61,54 @@ func TestRuntimeControlRestartRequestsManagedReplacement(t *testing.T) {
 	}
 }
 
+func TestRuntimeControlPreparesChatGPTWebInteractiveLogin(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(configformat.EnvConfigDir, root)
+	defer configformat.SetRootPath("")
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+
+	called := 0
+	control, err := startRuntimeControl(runtimeControlOptions{
+		RunID: "run_chatgpt_login_prepare",
+		Reload: func(context.Context) (runtimeReloadResult, error) {
+			return runtimeReloadResult{PID: os.Getpid()}, nil
+		},
+		PrepareChatGPTWebLogin: func(context.Context) error {
+			called++
+			return nil
+		},
+		Status:    func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} },
+		Shutdown:  func() {},
+		ClearLogs: func() error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+
+	if err := prepareRuntimeChatGPTWebLogin(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if called != 1 {
+		t.Fatalf("prepare callback calls=%d want=1", called)
+	}
+}
+
+func TestRuntimeControlChatGPTWebLoginPreparationIsOptionalWithoutRuntime(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(configformat.EnvConfigDir, root)
+	defer configformat.SetRootPath("")
+	if err := configformat.SetRootPath(root); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := prepareRuntimeChatGPTWebLogin(t.Context()); err != nil {
+		t.Fatalf("login preparation without running runtime: %v", err)
+	}
+}
+
 func TestServeRuntimeControlLogsUnexpectedFailure(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

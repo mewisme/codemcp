@@ -38,27 +38,28 @@ type workspaceReloadResult = runtimecontrol.WorkspaceReloadResult
 type upstreamReloadResult = runtimecontrol.UpstreamReloadResult
 
 type runtimeControlOptions struct {
-	RunID            string
-	Managed          bool
-	ServiceID        string
-	ServiceScope     string
-	StartedAt        time.Time
-	Events           *runtimeevent.Stream
-	Activity         *activity.Stream
-	Reload           func(context.Context) (runtimeReloadResult, error)
-	ReloadWorkspaces func() (workspaceReloadResult, error)
-	ReloadUpstreams  func(context.Context) (upstreamReloadResult, error)
-	Status           func() runtimeStatusResult
-	StatusWait       func(context.Context, string) runtimeStatusResult
-	StatusUpdateWait func(context.Context, string) runtimeStatusResult
-	Shutdown         func()
-	Restart          func()
-	ClearLogs        func() error
-	Approvals        *approval.Manager
-	Operations       application.OperationDispatcher
-	Completions      *agentcompletion.Service
-	Executions       *shellruntime.ExecutionHub
-	Log              *logger.Logger
+	RunID                  string
+	Managed                bool
+	ServiceID              string
+	ServiceScope           string
+	StartedAt              time.Time
+	Events                 *runtimeevent.Stream
+	Activity               *activity.Stream
+	Reload                 func(context.Context) (runtimeReloadResult, error)
+	ReloadWorkspaces       func() (workspaceReloadResult, error)
+	ReloadUpstreams        func(context.Context) (upstreamReloadResult, error)
+	PrepareChatGPTWebLogin func(context.Context) error
+	Status                 func() runtimeStatusResult
+	StatusWait             func(context.Context, string) runtimeStatusResult
+	StatusUpdateWait       func(context.Context, string) runtimeStatusResult
+	Shutdown               func()
+	Restart                func()
+	ClearLogs              func() error
+	Approvals              *approval.Manager
+	Operations             application.OperationDispatcher
+	Completions            *agentcompletion.Service
+	Executions             *shellruntime.ExecutionHub
+	Log                    *logger.Logger
 }
 
 type runtimeControl struct {
@@ -130,6 +131,14 @@ func startRuntimeControlContext(ctx context.Context, options runtimeControlOptio
 		}
 		result, err := options.ReloadWorkspaces()
 		writeControlJSON(w, result, err)
+	}))
+	mux.HandleFunc("/integrations/chatgpt-web/login/prepare", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, r *http.Request) {
+		if options.PrepareChatGPTWebLogin == nil {
+			writeControlJSON(w, nil, errors.New("ChatGPT Web login preparation handler is unavailable"))
+			return
+		}
+		err := options.PrepareChatGPTWebLogin(r.Context())
+		writeControlJSON(w, map[string]bool{"prepared": err == nil}, err)
 	}))
 	mux.HandleFunc("/upstreams/reload", authenticatedControl(controlState.Token, http.MethodPost, func(w http.ResponseWriter, r *http.Request) {
 		if options.ReloadUpstreams == nil {
@@ -670,6 +679,23 @@ func runtimeControlRequest(ctx context.Context, method, path string, output any)
 
 func runtimeControlJSONRequest(ctx context.Context, method, path string, input, output any) (runtimeControlState, error) {
 	return runtimecontrol.Request(ctx, method, path, input, output)
+}
+
+func prepareRuntimeChatGPTWebLogin(ctx context.Context) error {
+	var result struct {
+		Prepared bool `json:"prepared"`
+	}
+	_, err := runtimeControlRequest(ctx, http.MethodPost, "/integrations/chatgpt-web/login/prepare", &result)
+	if err != nil {
+		if runtimecontrol.IsUnavailable(err) {
+			return nil
+		}
+		return err
+	}
+	if !result.Prepared {
+		return errors.New("running CodeMCP runtime did not release the ChatGPT Web browser profile for login")
+	}
+	return nil
 }
 
 func dispatchRuntimeOperation(ctx context.Context, dispatcher application.OperationDispatcher, operation capability.ID, input any) (any, error) {

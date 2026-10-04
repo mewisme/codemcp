@@ -590,6 +590,43 @@ func TestChatGPTWebLoginRejectsActiveAgentBeforeInteractiveLaunch(t *testing.T) 
 	}
 }
 
+func TestChatGPTWebPrepareInteractiveLoginLockedRetiresIdleManagedRuntime(t *testing.T) {
+	idleRuntime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{
+		State: browser.ManagerRunning, Running: true, ActiveLeases: 0, MaxTabs: 5,
+	}}
+	service := NewChatGPTWebService()
+	service.OwnedManager = idleRuntime
+	service.ownedRuntimeIdentity = chatGPTBrowserRuntimeIdentity{Headless: true, ProfilePath: "/owned/profile"}
+	service.runtimePendingReason = "pending runtime configuration"
+
+	if err := service.prepareInteractiveLoginLocked(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !idleRuntime.closedSnapshot() {
+		t.Fatal("idle managed runtime was not retired before interactive login")
+	}
+	if service.OwnedManager != nil || service.ownedRuntimeIdentity != (chatGPTBrowserRuntimeIdentity{}) || service.runtimePendingReason != "" {
+		t.Fatalf("interactive-login preparation retained managed runtime state: manager=%#v identity=%#v reason=%q", service.OwnedManager, service.ownedRuntimeIdentity, service.runtimePendingReason)
+	}
+}
+
+func TestChatGPTWebPrepareInteractiveLoginLockedRejectsActiveManagedRuntime(t *testing.T) {
+	activeRuntime := &fakeChatGPTBrowserRuntime{snapshot: browser.ManagerSnapshot{
+		State: browser.ManagerRunning, Running: true, ActiveLeases: 1, MaxTabs: 5,
+	}}
+	service := NewChatGPTWebService()
+	service.OwnedManager = activeRuntime
+	service.ownedRuntimeIdentity = chatGPTBrowserRuntimeIdentity{Headless: true, ProfilePath: "/owned/profile"}
+
+	err := service.prepareInteractiveLoginLocked(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "exclusive browser profile access") {
+		t.Fatalf("prepare interactive login err=%v", err)
+	}
+	if activeRuntime.closedSnapshot() || service.OwnedManager == nil {
+		t.Fatal("interactive-login preparation closed a runtime with active agent leases")
+	}
+}
+
 func TestChatGPTWebLoginFailedManagedVerificationLeavesMarkerAbsent(t *testing.T) {
 	root := t.TempDir()
 	profile := applicationTestProfile(root)

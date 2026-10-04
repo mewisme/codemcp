@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -127,6 +128,9 @@ func chatGPTWebLoginCommand() *cobra.Command {
 			session.Append(func(presenter *presentation.Presenter) {
 				presenter.StateSection(presentation.StatusInfo, chatGPTWebLoginInstruction)
 			})
+			if err := prepareRuntimeChatGPTWebLogin(cmd.Context()); err != nil {
+				return fmt.Errorf("prepare managed ChatGPT Web runtime for interactive login: %w", err)
+			}
 			session.Update(presentation.ProgressPhase{ID: "chatgpt.login", Label: "Waiting for sign-in and verification", State: presentation.ProgressRunning})
 			status, err := application.NewChatGPTWebService().Login(cmd.Context())
 			if err != nil {

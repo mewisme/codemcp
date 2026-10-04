@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -11,6 +12,7 @@ import (
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/explain"
+	"go.mewis.me/codemcp/internal/integrations/browser"
 	"go.mewis.me/codemcp/internal/interface/admin"
 	"go.mewis.me/codemcp/internal/interface/web"
 	"go.mewis.me/codemcp/internal/logger"
@@ -67,6 +69,27 @@ type productTelemetryRuntime interface {
 	Record(context.Context, producttelemetry.EventName, producttelemetry.Usage) bool
 	SetEnabled(bool)
 	Close(context.Context)
+}
+
+func (a *App) PrepareChatGPTWebLogin(ctx context.Context) error {
+	if a == nil || a.chatGPTWeb == nil {
+		return nil
+	}
+	manager := a.chatGPTWeb.OwnedManager
+	if manager == nil {
+		return nil
+	}
+	snapshot := manager.Snapshot()
+	if snapshot.ActiveLeases > 0 {
+		return errors.New("ChatGPT Web login requires exclusive browser profile access while no agent tabs are active")
+	}
+	if snapshot.State == browser.ManagerClosed {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return manager.Close(ctx)
 }
 
 func New(cfg config.Config) (*App, error) {

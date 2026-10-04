@@ -445,7 +445,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		items := runtime.Tools.Upstream.List()
 		runtime.Logger.Diagnostic(logger.Info, "UPSTREAM", "upstream.registry.reloaded", "Upstream registry reloaded", logger.WithDebug("count", len(items)))
 		return upstreamReloadResult{PID: os.Getpid(), Count: len(items)}, nil
-	}, Status: status, StatusWait: statusWait, StatusUpdateWait: statusUpdateWait, Approvals: runtime.Tools.Approvals, Operations: runtime.Operations, Completions: runtime.Tools.Completions, Executions: runtime.Tools.Executions, Log: runtime.Logger, Shutdown: func() {
+	}, PrepareChatGPTWebLogin: runtime.PrepareChatGPTWebLogin, Status: status, StatusWait: statusWait, StatusUpdateWait: statusUpdateWait, Approvals: runtime.Tools.Approvals, Operations: runtime.Operations, Completions: runtime.Tools.Completions, Executions: runtime.Tools.Executions, Log: runtime.Logger, Shutdown: func() {
 		runtimeCancel()
 		select {
 		case shutdownRequest <- struct{}{}:

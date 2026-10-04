@@ -370,19 +370,8 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 	if capability.Profile == nil {
 		return ChatGPTWebStatus{}, errors.New("ChatGPT Web browser profile is unresolved")
 	}
-	if service.OwnedManager != nil {
-		snapshot := service.OwnedManager.Snapshot()
-		if snapshot.State != browser.ManagerClosed && snapshot.ActiveLeases > 0 {
-			return ChatGPTWebStatus{}, errors.New("ChatGPT Web login requires exclusive browser profile access while no agent tabs are active")
-		}
-		if snapshot.State != browser.ManagerClosed {
-			if err := service.OwnedManager.Close(applicationContext(ctx)); err != nil {
-				return ChatGPTWebStatus{}, fmt.Errorf("retire idle ChatGPT Web browser before login: %w", err)
-			}
-		}
-		service.OwnedManager = nil
-		service.ownedRuntimeIdentity = chatGPTBrowserRuntimeIdentity{}
-		service.runtimePendingReason = ""
+	if err := service.prepareInteractiveLoginLocked(ctx); err != nil {
+		return ChatGPTWebStatus{}, err
 	}
 	if err := chatgptweb.RemoveAuthMarker(service.Root()); err != nil {
 		return ChatGPTWebStatus{}, err
@@ -457,6 +446,25 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 		return ChatGPTWebStatus{}, err
 	}
 	return withLoginAccount(status, evidence), nil
+}
+
+func (service *ChatGPTWebService) prepareInteractiveLoginLocked(ctx context.Context) error {
+	if service.OwnedManager == nil {
+		return nil
+	}
+	snapshot := service.OwnedManager.Snapshot()
+	if snapshot.State != browser.ManagerClosed && snapshot.ActiveLeases > 0 {
+		return errors.New("ChatGPT Web login requires exclusive browser profile access while no agent tabs are active")
+	}
+	if snapshot.State != browser.ManagerClosed {
+		if err := service.OwnedManager.Close(applicationContext(ctx)); err != nil {
+			return fmt.Errorf("retire idle ChatGPT Web browser before login: %w", err)
+		}
+	}
+	service.OwnedManager = nil
+	service.ownedRuntimeIdentity = chatGPTBrowserRuntimeIdentity{}
+	service.runtimePendingReason = ""
+	return nil
 }
 
 func withLoginAccount(status ChatGPTWebStatus, evidence chatgptweb.AuthEvidence) ChatGPTWebStatus {
