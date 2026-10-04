@@ -156,23 +156,42 @@ func TestFirstPartyRuntimeToolsHaveCapabilities(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"grep":                  CapabilityDomainFilesystem,
-		"git_push":              CapabilityDomainGit,
-		"run_command":           CapabilityDomainShell,
-		"workspace_status":      CapabilityDomainWorkspace,
-		"project_context":       CapabilityDomainContext,
-		"load_path_rules":       CapabilityDomainRules,
-		"list_skills":           CapabilityDomainSkills,
-		"remember":              CapabilityDomainMemory,
-		CreatePlanToolName:      CapabilityDomainPlans,
-		ApprovalRequestToolName: CapabilityDomainApprovals,
-		AgentSpawnToolName:      CapabilityDomainAgents,
-		"fanout_turn":           CapabilityDomainIntegrations,
+		"grep":             CapabilityDomainFilesystem,
+		"git_push":         CapabilityDomainGit,
+		"run_command":      CapabilityDomainShell,
+		"workspace_status": CapabilityDomainWorkspace,
+		"project_context":  CapabilityDomainContext,
+		"load_path_rules":  CapabilityDomainRules,
+		"list_skills":      CapabilityDomainSkills,
+		"remember":         CapabilityDomainMemory,
+		CreatePlanToolName: CapabilityDomainPlans,
+		AgentSpawnToolName: CapabilityDomainAgents,
+		"fanout_turn":      CapabilityDomainIntegrations,
 	}
 	for name, domain := range want {
 		schema, ok := runtime.Registry.Schema(name)
 		if !ok || schema.Capability == nil || schema.Capability.Domain != domain {
 			t.Fatalf("%s capability = %#v want %q", name, schema.Capability, domain)
+		}
+	}
+}
+
+func TestFirstPartyRuntimeDoesNotExposeStandaloneApprovalTool(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewRuntime()
+	defer runtime.CompletionHooks.Stop()
+	if _, ok := runtime.Registry.Schema("request_control_approval"); ok {
+		t.Fatal("request_control_approval is still registered")
+	}
+	inventory := InstructionToolInventory(EffectiveToolSnapshot{Profile: "full", Schemas: runtime.Registry.ListSchemas()})
+	for _, group := range inventory.Capabilities.Groups {
+		if group.Domain == "approvals" {
+			t.Fatalf("project-context capability inventory still exposes approval tool group: %#v", group)
+		}
+		for _, name := range group.Tools {
+			if name == "request_control_approval" {
+				t.Fatalf("project-context capability inventory still exposes %s", name)
+			}
 		}
 	}
 }

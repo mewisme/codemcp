@@ -130,7 +130,6 @@ func TestGitPushAllowsNormalPushAndForcePushIsDestructive(t *testing.T) {
 	}
 	runtime.SessionAccess = NewSessionWorkspaceAccessManager()
 	runtime.Approvals = approval.NewManager(identity.ID)
-	RegisterApprovalTools(runtime.Registry, runtime)
 	ctx := approvalContext("git-approval")
 	result, err := runtime.Call(ctx, "git_push", map[string]any{"workspace_id": workspaceID, "remote": "origin"})
 	if err != nil {

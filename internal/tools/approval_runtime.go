@@ -13,7 +13,7 @@ import (
 )
 
 func (r *Runtime) prepareApprovalRetry(ctx context.Context, correlation ApprovalCorrelation, workspaceID, source, name string, args map[string]any) (context.Context, approval.Request, *Result, error) {
-	if r == nil || r.Approvals == nil || strings.TrimSpace(workspaceID) == "" || name == ApprovalRequestToolName {
+	if r == nil || r.Approvals == nil || strings.TrimSpace(workspaceID) == "" {
 		return ctx, approval.Request{}, nil, nil
 	}
 	command, _ := args["command"].(string)

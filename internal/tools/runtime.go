@@ -138,7 +138,6 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	RegisterManagedAgentTools(registry, runtime)
 	RegisterAgentClaimTool(registry, runtime)
 	RegisterAgentCompletionTool(registry, runtime.Completions, runtime.PlanExecutions, runtime.Agents)
-	RegisterApprovalTools(registry, runtime)
 	RegisterConfigTools(registry, runtime)
 	RegisterUpstreamTools(registry, upstreams)
 	if err := runtime.syncIntegrations(integrationConfig, false); err != nil {
@@ -302,9 +301,7 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 				args["workspace_id"] = boundWorkspaceID
 			}
 			workspaceID, preflightErr = requiredString(args, "workspace_id")
-			if preflightErr == nil && name == ApprovalRequestToolName {
-				// Approval requests may target the synthetic local-control scope used by global control-plane tools.
-			} else if preflightErr == nil {
+			if preflightErr == nil {
 				var resolution WorkspaceAccessResolution
 				resolution, preflightErr = r.ResolveWorkspaceAccess(ctx, workspaceID)
 				if preflightErr == nil {

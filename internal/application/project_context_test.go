@@ -64,6 +64,19 @@ func TestApplicationProjectContextUsesLiveRuntimeInventoryWhenAvailable(t *testi
 			t.Fatalf("application project context missing capability %q:\n%s", expected, context.InstructionsText)
 		}
 	}
+	if strings.Contains(context.InstructionsText, "request_control_approval") {
+		t.Fatalf("application project context still advertises retired approval tool:\n%s", context.InstructionsText)
+	}
+	for _, group := range context.ToolCapabilities.Groups {
+		if group.Domain == "approvals" {
+			t.Fatalf("application project context still exposes retired approvals tool group: %#v", group)
+		}
+		for _, name := range group.Tools {
+			if name == "request_control_approval" {
+				t.Fatalf("application project context still exposes retired approval tool: %#v", group)
+			}
+		}
+	}
 }
 
 func TestApplicationProjectContextUsesCodeGraphProjection(t *testing.T) {

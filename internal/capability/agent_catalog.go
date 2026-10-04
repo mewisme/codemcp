@@ -69,7 +69,6 @@ const (
 	PatchApply                      ID = "patch.apply"
 	HistoryRewind                   ID = "history.rewind"
 	UpstreamCall                    ID = "upstream.call"
-	RequestControlApproval          ID = "request.control-approval"
 	IntegrationPonytailTurn         ID = "integration.ponytail.turn"
 	IntegrationCavemanTurn          ID = "integration.caveman.turn"
 	IntegrationFanoutTurn           ID = "integration.fanout.turn"
@@ -155,7 +154,6 @@ var mcpToolBindings = map[ID][]string{
 	PatchApply:                      {"apply_patch"},
 	HistoryRewind:                   {"rewind"},
 	UpstreamCall:                    {"upstream_call"},
-	RequestControlApproval:          {"request_control_approval"},
 	IntegrationPonytailTurn:         {"ponytail_turn"},
 	IntegrationCavemanTurn:          {"caveman_turn"},
 	IntegrationFanoutTurn:           {"fanout_turn"},
@@ -237,7 +235,6 @@ func agentOnlySpecs() []Spec {
 		agentMutationSpec(PatchApply, RiskState, false),
 		agentMutationSpec(HistoryRewind, RiskDestructive, false),
 		agentMutationSpec(UpstreamCall, RiskSensitive, true),
-		agentApprovalSpec(RequestControlApproval),
 		agentMutationSpec(IntegrationPonytailTurn, RiskState, false),
 		agentMutationSpec(IntegrationCavemanTurn, RiskState, false),
 		agentMutationSpec(IntegrationFanoutTurn, RiskState, false),
@@ -262,12 +259,6 @@ func agentMutationSpec(id ID, risk MutationRisk, openWorld bool) Spec {
 		Confirmation: ConfirmationPolicy{Mode: ConfirmationNone},
 		Effects:      SemanticEffects{Key: string(id), Destructive: risk == RiskDestructive, OpenWorld: openWorld},
 	}
-}
-
-func agentApprovalSpec(id ID) Spec {
-	spec := agentMutationSpec(id, RiskSensitive, false)
-	spec.Confirmation.Mode = ConfirmationReview
-	return spec
 }
 
 func agentConfigMutationSpec(id ID) Spec {

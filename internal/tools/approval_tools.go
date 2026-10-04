@@ -1,18 +1,12 @@
 package tools
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
-)
-
-const (
-	ApprovalRequestToolName  = "request_control_approval"
-	approvalControlWorkspace = "__local_control__"
 )
 
 type approvalRequiredResponse struct {
@@ -25,7 +19,7 @@ type approvalRequiredResponse struct {
 	Reason      string    `json:"reason"`
 	Command     string    `json:"command,omitempty"`
 	ExpiresAt   time.Time `json:"expires_at"`
-	RequestTool string    `json:"request_tool"`
+	Instruction string    `json:"instruction"`
 }
 
 type approvalResolutionResponse struct {
@@ -51,49 +45,6 @@ type approvalMismatchResponse struct {
 	Instruction string                 `json:"instruction"`
 }
 
-func RegisterApprovalTools(registry *Registry, runtime *Runtime) {
-	if registry == nil {
-		return
-	}
-	registry.MustRegister(ApprovalRequestToolName, coreSchema(
-		CapabilityDomainApprovals,
-		ApprovalRequestToolName,
-		"Request local human approval for a recent control-guard challenge. You must provide a concise human-readable title that summarizes what the exact command will do. Describe the action, not the tool call; do not copy the raw command, flags, arguments, tokens, secrets, or IDs into the title. Examples: 'Update CodeMCP', 'Delete generated files', 'Push commits to origin'. The request remains bound to the same MCP session, workspace, target tool, and exact arguments.",
-		`{"type":"object","properties":{"workspace_id":{"type":"string"},"challenge_id":{"type":"string"},"title":{"type":"string","minLength":1,"maxLength":120,"description":"Concise human-readable summary of what the guarded command will do. Summarize the action rather than the tool call. Do not copy the raw command, flags, arguments, tokens, secrets, or IDs."}},"required":["workspace_id","challenge_id","title"],"additionalProperties":false}`,
-		`{"type":"object","properties":{"id":{"type":"string"},"status":{"type":"string"},"workspace_id":{"type":"string"},"target_tool":{"type":"string"},"arguments":{},"retry_until":{"type":"string"},"instruction":{"type":"string"}},"required":["id","status","workspace_id","target_tool","arguments","instruction"],"additionalProperties":false}`,
-		RiskEdit,
-	), func(ctx context.Context, args map[string]any) (Result, error) {
-		workspaceID, err := requiredString(args, "workspace_id")
-		if err != nil {
-			return Result{}, err
-		}
-		challengeID, err := requiredString(args, "challenge_id")
-		if err != nil {
-			return Result{}, err
-		}
-		title, err := requiredString(args, "title")
-		if err != nil {
-			return Result{}, err
-		}
-		if runtime == nil || runtime.Approvals == nil {
-			return Result{}, errors.New("control approval manager is unavailable")
-		}
-		correlation := ApprovalCorrelationFromContext(ctx)
-		if correlation.CallerID == "" || correlation.RequestID == "" {
-			return Result{}, errors.New("approval caller and request correlation are required for control approval requests")
-		}
-		request, _, err := runtime.Approvals.CreateRequestWithCorrelation(challengeID, correlation.CallerID, workspaceID, title)
-		if err != nil {
-			return Result{}, err
-		}
-		resolved, err := runtime.Approvals.Wait(ctx, request.ID)
-		if err != nil {
-			return Result{}, err
-		}
-		return approvalResolutionResult(resolved), nil
-	})
-}
-
 func approvalRequiredResult(challenge approval.Challenge) Result {
 	arguments := approval.PublicArguments(challenge.TargetTool, challenge.Arguments)
 	reason, command := challenge.GuardReason, challenge.Command
@@ -101,14 +52,15 @@ func approvalRequiredResult(challenge approval.Challenge) Result {
 		reason = "CodeMCP configuration changes require local approval."
 		command = ""
 	}
+	instruction := fmt.Sprintf(
+		"Call %s again with exactly the original business arguments and add %s containing challenge_id %q and a concise human-readable action title. The title must describe the guarded action rather than the tool call and must not copy raw command arguments, flags, tokens, secrets, or IDs. If local approval is granted before the call deadline, that same call executes the action and returns its actual result.",
+		challenge.TargetTool, InlineApprovalArgumentKey, challenge.ID,
+	)
 	response := approvalRequiredResponse{
 		Code: "approval_required", ChallengeID: challenge.ID, WorkspaceID: challenge.WorkspaceID, TargetTool: challenge.TargetTool, Arguments: arguments,
-		GuardCode: string(challenge.GuardCode), Reason: reason, Command: command, ExpiresAt: challenge.ExpiresAt, RequestTool: ApprovalRequestToolName,
+		GuardCode: string(challenge.GuardCode), Reason: reason, Command: command, ExpiresAt: challenge.ExpiresAt, Instruction: instruction,
 	}
-	text := fmt.Sprintf("This action requires local approval. Call %s with workspace_id %q, challenge_id %q, and a concise human-readable title summarizing what the exact command will do. The title must describe the action rather than the tool call and must not copy raw command arguments, flags, tokens, secrets, or IDs. If approved, retry %s with exactly the original arguments.", ApprovalRequestToolName, challenge.WorkspaceID, challenge.ID, challenge.TargetTool)
-	if challenge.TargetTool != mcpconfigwire.SetToolName {
-		text = fmt.Sprintf("This action requires local approval. Call %s with workspace_id %q, challenge_id %q, and a concise human-readable title summarizing what the exact command will do. The title must describe the action rather than the tool call and must not copy raw command arguments, flags, tokens, secrets, or IDs. If approved, retry %s with exactly the arguments shown in the structured response.", ApprovalRequestToolName, challenge.WorkspaceID, challenge.ID, challenge.TargetTool)
-	}
+	text := "This action requires local approval. " + instruction
 	return Result{Content: []Content{{Type: "text", Text: text}}, StructuredContent: response, IsError: true, ResultType: "complete"}
 }
 

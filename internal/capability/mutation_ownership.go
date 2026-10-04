@@ -111,7 +111,7 @@ func buildMutationOwners() map[ID]MutationOwner {
 		LLMProviderAdd, LLMProviderConfigure, LLMProviderRemove, LLMProviderSelect,
 		LLMProviderCredentialSet, LLMProviderCredentialClear,
 	)
-	add(MutationOwnerApproval, RequestApprove, RequestDeny, RequestGrantRevoke, RequestControlApproval)
+	add(MutationOwnerApproval, RequestApprove, RequestDeny, RequestGrantRevoke)
 	add(MutationOwnerAgentCompletion, AgentComplete)
 	add(MutationOwnerManagedAgent,
 		AgentClaim, AgentSpawn, AgentSend, AgentCancel,

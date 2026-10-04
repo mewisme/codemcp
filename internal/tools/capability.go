@@ -8,7 +8,6 @@ import (
 const (
 	CapabilityDomainUnclassified = "unclassified"
 	CapabilityDomainAgents       = "agents"
-	CapabilityDomainApprovals    = "approvals"
 	CapabilityDomainCodeGraph    = "codegraph"
 	CapabilityDomainConfig       = "config"
 	CapabilityDomainContext      = "context"
