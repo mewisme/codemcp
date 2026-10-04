@@ -34,7 +34,13 @@ const (
 var (
 	ErrChallengeNotFound    = errors.New("approval challenge not found")
 	ErrChallengeExpired     = errors.New("approval challenge expired")
-	ErrChallengeMismatch    = errors.New("approval challenge session or workspace mismatch")
+	ErrChallengeMismatch    = errors.New("approval challenge binding mismatch")
+	ErrChallengeCaller      = errors.New("approval challenge caller mismatch")
+	ErrChallengeSession     = errors.New("approval challenge session mismatch")
+	ErrChallengeWorkspace   = errors.New("approval challenge workspace mismatch")
+	ErrChallengeSource      = errors.New("approval challenge source mismatch")
+	ErrChallengeTool        = errors.New("approval challenge target tool mismatch")
+	ErrChallengeArguments   = errors.New("approval challenge arguments mismatch")
 	ErrRequestNotFound      = errors.New("approval request not found")
 	ErrRequestAmbiguous     = errors.New("approval request prefix is ambiguous")
 	ErrRequestResolved      = errors.New("approval request is already resolved")
@@ -81,6 +87,17 @@ type Challenge struct {
 	requestCorrelationID  string
 	requestID             string
 	suppressNotifications bool
+}
+
+type ChallengeRequestInput struct {
+	ChallengeID string
+	CallerID    string
+	SessionHash string
+	WorkspaceID string
+	Source      string
+	TargetTool  string
+	Arguments   map[string]any
+	Title       string
 }
 
 type Request struct {

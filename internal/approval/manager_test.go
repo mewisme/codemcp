@@ -135,6 +135,96 @@ func TestManagerBindsChallengeToSessionAndWorkspace(t *testing.T) {
 	}
 }
 
+func TestManagerCreateRequestForTargetValidatesExactChallengeBinding(t *testing.T) {
+	manager, _ := testManager()
+	challenge, _, err := manager.CreateChallenge(testChallenge("session-a", "ws_x", "cm update"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	exact := ChallengeRequestInput{
+		ChallengeID: challenge.ID, CallerID: "session-a", SessionHash: "hash-session-a",
+		WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command",
+		Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}, Title: "Apply reviewed update",
+	}
+	request, created, err := manager.CreateRequestForTarget(exact)
+	if err != nil || !created || request.Status != StatusPending || request.Title != "Apply reviewed update" {
+		t.Fatalf("exact request=%#v created=%t err=%v", request, created, err)
+	}
+	reused, created, err := manager.CreateRequestForTarget(exact)
+	if err != nil || created || reused.ID != request.ID {
+		t.Fatalf("reused request=%#v created=%t err=%v", reused, created, err)
+	}
+}
+
+func TestManagerCreateRequestForTargetRejectsBindingMismatchBeforeReview(t *testing.T) {
+	manager, _ := testManager()
+	challenge, _, err := manager.CreateChallenge(testChallenge("session-a", "ws_x", "cm update"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := ChallengeRequestInput{
+		ChallengeID: challenge.ID, CallerID: "session-a", SessionHash: "hash-session-a",
+		WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command",
+		Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}, Title: "Update CodeMCP",
+	}
+	tests := []struct {
+		name string
+		want error
+		edit func(*ChallengeRequestInput)
+	}{
+		{name: "caller", want: ErrChallengeCaller, edit: func(input *ChallengeRequestInput) { input.CallerID = "session-b" }},
+		{name: "session", want: ErrChallengeSession, edit: func(input *ChallengeRequestInput) { input.SessionHash = "hash-other" }},
+		{name: "workspace", want: ErrChallengeWorkspace, edit: func(input *ChallengeRequestInput) { input.WorkspaceID = "ws_y" }},
+		{name: "source", want: ErrChallengeSource, edit: func(input *ChallengeRequestInput) { input.Source = "stdio" }},
+		{name: "tool", want: ErrChallengeTool, edit: func(input *ChallengeRequestInput) { input.TargetTool = "start_process" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			input := base
+			test.edit(&input)
+			if _, _, err := manager.CreateRequestForTarget(input); !errors.Is(err, ErrChallengeMismatch) || !errors.Is(err, test.want) {
+				t.Fatalf("binding mismatch err=%v want=%v", err, test.want)
+			}
+			if pending := manager.List(Filter{Status: StatusPending}); len(pending) != 0 {
+				t.Fatalf("binding mismatch created review request: %#v", pending)
+			}
+		})
+	}
+
+	mutated := base
+	mutated.Arguments = map[string]any{"workspace_id": "ws_x", "command": "cm update --version v2"}
+	if _, _, err = manager.CreateRequestForTarget(mutated); !errors.Is(err, ErrChallengeMismatch) || !errors.Is(err, ErrChallengeArguments) {
+		t.Fatalf("argument mismatch err=%v", err)
+	}
+	if pending := manager.List(Filter{Status: StatusPending}); len(pending) != 0 {
+		t.Fatalf("argument mismatch created review request: %#v", pending)
+	}
+}
+
+func TestManagerCreateRequestForTargetRejectsFakeAndExpiredChallenges(t *testing.T) {
+	manager, now := testManager()
+	input := ChallengeRequestInput{
+		ChallengeID: "chg_missing", CallerID: "session-a", SessionHash: "hash-session-a",
+		WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command",
+		Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}, Title: "Update CodeMCP",
+	}
+	if _, _, err := manager.CreateRequestForTarget(input); !errors.Is(err, ErrChallengeNotFound) {
+		t.Fatalf("fake challenge err=%v", err)
+	}
+	challenge, _, err := manager.CreateChallenge(testChallenge("session-a", "ws_x", "cm update"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.ChallengeID = challenge.ID
+	*now = challenge.ExpiresAt
+	if _, _, err := manager.CreateRequestForTarget(input); !errors.Is(err, ErrChallengeExpired) {
+		t.Fatalf("expired challenge err=%v", err)
+	}
+	if pending := manager.List(Filter{Status: StatusPending}); len(pending) != 0 {
+		t.Fatalf("fake/expired challenge created review request: %#v", pending)
+	}
+}
+
 func TestManagerAllowsOnlyOneActiveRequestPerSession(t *testing.T) {
 	manager, _ := testManager()
 	first, _, _ := manager.CreateChallenge(testChallenge("session-a", "ws_x", "cm update"))
@@ -443,6 +533,105 @@ func TestManagerConcurrentRequestCreationCoalesces(t *testing.T) {
 	}
 	if createdCount != 1 {
 		t.Fatalf("created count = %d, want 1", createdCount)
+	}
+}
+
+func TestManagerConcurrentExactTargetRequestCreationCoalesces(t *testing.T) {
+	manager, _ := testManager()
+	challenge, _, err := manager.CreateChallenge(testChallenge("session-a", "ws_x", "cm update"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := ChallengeRequestInput{
+		ChallengeID: challenge.ID, CallerID: "session-a", SessionHash: "hash-session-a",
+		WorkspaceID: "ws_x", Source: "tunnel", TargetTool: "run_command",
+		Arguments: map[string]any{"workspace_id": "ws_x", "command": "cm update"}, Title: "Update CodeMCP",
+	}
+	const workers = 8
+	start := make(chan struct{})
+	type result struct {
+		request Request
+		created bool
+		err     error
+	}
+	results := make(chan result, workers)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			request, created, err := manager.CreateRequestForTarget(input)
+			results <- result{request: request, created: created, err: err}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	createdCount := 0
+	requestID := ""
+	for item := range results {
+		if item.err != nil {
+			t.Fatal(item.err)
+		}
+		if item.created {
+			createdCount++
+		}
+		if requestID == "" {
+			requestID = item.request.ID
+		} else if item.request.ID != requestID {
+			t.Fatalf("request ids diverged: %s != %s", item.request.ID, requestID)
+		}
+	}
+	if createdCount != 1 {
+		t.Fatalf("created count = %d, want 1", createdCount)
+	}
+}
+
+func TestManagerCreateRequestForTargetConfigSetMismatchStaysValueFreePublicly(t *testing.T) {
+	manager, _ := testManager()
+	const originalValue = "/private/original"
+	const changedValue = "/private/changed"
+	arguments := map[string]any{
+		"workspace_id": "ws_scope",
+		"changes":      []any{map[string]any{"key": "permissions.allow_dirs", "value": originalValue}},
+		mcpconfigwire.SetApprovalBindingKey: map[string]any{
+			"version": mcpconfigwire.SetApprovalBindingVersion, "config_root": "/private/config",
+			"config_fingerprint": "private-fingerprint-a",
+		},
+	}
+	challenge, _, err := manager.CreateChallenge(ChallengeInput{
+		CallerID: "caller-a", SessionHash: "session-hash-a", WorkspaceID: "ws_scope", Source: "tunnel",
+		TargetTool: mcpconfigwire.SetToolName, Arguments: arguments, GuardCode: controlguard.CodeControlPlaneMutation,
+		Title: "Update settings",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := map[string]any{
+		"workspace_id": "ws_scope",
+		"changes":      []any{map[string]any{"key": "permissions.allow_dirs", "value": changedValue}},
+		mcpconfigwire.SetApprovalBindingKey: map[string]any{
+			"version": mcpconfigwire.SetApprovalBindingVersion, "config_root": "/private/config",
+			"config_fingerprint": "private-fingerprint-b",
+		},
+	}
+	_, _, err = manager.CreateRequestForTarget(ChallengeRequestInput{
+		ChallengeID: challenge.ID, CallerID: "caller-a", SessionHash: "session-hash-a",
+		WorkspaceID: "ws_scope", Source: "tunnel", TargetTool: mcpconfigwire.SetToolName,
+		Arguments: mutated, Title: "Update settings",
+	})
+	if !errors.Is(err, ErrChallengeMismatch) || !errors.Is(err, ErrChallengeArguments) {
+		t.Fatalf("config mismatch err=%v", err)
+	}
+	public := err.Error()
+	for _, secret := range []string{originalValue, changedValue, "/private/config", "private-fingerprint-a", "private-fingerprint-b"} {
+		if strings.Contains(public, secret) {
+			t.Fatalf("config mismatch leaked private value %q: %s", secret, public)
+		}
+	}
+	if pending := manager.List(Filter{Status: StatusPending}); len(pending) != 0 {
+		t.Fatalf("config mismatch created review request: %#v", pending)
 	}
 }
 

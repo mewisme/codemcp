@@ -156,6 +156,73 @@ func (m *Manager) CreateRequestWithCorrelation(challengeID, callerID, workspaceI
 	if challenge.value.callerID != callerID || challenge.value.WorkspaceID != workspaceID {
 		return Request{}, false, ErrChallengeMismatch
 	}
+	return m.createRequestLocked(challenge, callerID, workspaceID, title, now)
+}
+
+// CreateRequestForTarget atomically validates a challenge against the exact
+// trusted invocation before creating or reusing its approval request.
+func (m *Manager) CreateRequestForTarget(input ChallengeRequestInput) (Request, bool, error) {
+	if m == nil {
+		return Request{}, false, errors.New("approval manager is unavailable")
+	}
+	input.ChallengeID = strings.TrimSpace(input.ChallengeID)
+	input.CallerID = strings.TrimSpace(input.CallerID)
+	input.SessionHash = strings.TrimSpace(input.SessionHash)
+	input.WorkspaceID = strings.TrimSpace(input.WorkspaceID)
+	input.Source = strings.TrimSpace(input.Source)
+	input.TargetTool = strings.TrimSpace(input.TargetTool)
+	input.Title = strings.TrimSpace(input.Title)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := m.now().UTC()
+	challenge := m.challenges[input.ChallengeID]
+	if challenge == nil {
+		m.purgeExpiredLocked(now)
+		return Request{}, false, ErrChallengeNotFound
+	}
+	if !now.Before(challenge.value.ExpiresAt) {
+		m.removeChallengeLocked(challenge.value)
+		m.purgeExpiredLocked(now)
+		return Request{}, false, ErrChallengeExpired
+	}
+	m.purgeExpiredLocked(now)
+	challenge = m.challenges[input.ChallengeID]
+	if challenge == nil {
+		return Request{}, false, ErrChallengeNotFound
+	}
+	if challenge.value.callerID != input.CallerID {
+		return Request{}, false, challengeBindingMismatch(ErrChallengeCaller)
+	}
+	if challenge.value.SessionHash != input.SessionHash {
+		return Request{}, false, challengeBindingMismatch(ErrChallengeSession)
+	}
+	if challenge.value.WorkspaceID != input.WorkspaceID {
+		return Request{}, false, challengeBindingMismatch(ErrChallengeWorkspace)
+	}
+	if challenge.value.Source != input.Source {
+		return Request{}, false, challengeBindingMismatch(ErrChallengeSource)
+	}
+	if challenge.value.TargetTool != input.TargetTool {
+		return Request{}, false, challengeBindingMismatch(ErrChallengeTool)
+	}
+	digest, _, err := CanonicalTargetDigest(m.instanceID, Target{
+		CallerID: input.CallerID, WorkspaceID: input.WorkspaceID, Source: input.Source,
+		TargetTool: input.TargetTool, Arguments: input.Arguments, GuardCode: challenge.value.GuardCode,
+	})
+	if err != nil {
+		return Request{}, false, err
+	}
+	if digest != challenge.value.Digest {
+		return Request{}, false, challengeBindingMismatch(ErrChallengeArguments)
+	}
+	return m.createRequestLocked(challenge, input.CallerID, input.WorkspaceID, input.Title, now)
+}
+
+func (m *Manager) createRequestLocked(challenge *challengeRecord, callerID, workspaceID, title string, now time.Time) (Request, bool, error) {
+	if challenge == nil {
+		return Request{}, false, ErrChallengeNotFound
+	}
 	if title == "" {
 		title = challenge.value.Title
 	}
@@ -200,6 +267,10 @@ func (m *Manager) CreateRequestWithCorrelation(challengeID, callerID, workspaceI
 	challenge.value.requestID = id
 	m.emitLocked(EventPending, value)
 	return cloneRequest(value), true, nil
+}
+
+func challengeBindingMismatch(specific error) error {
+	return fmt.Errorf("%w: %w", ErrChallengeMismatch, specific)
 }
 
 func (m *Manager) Approve(id, resolvedBy, reason string) (Request, error) {
