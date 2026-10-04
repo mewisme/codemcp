@@ -189,10 +189,13 @@ func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {
 		ctx = localmcp.WithProfileRequestMetadata(ctx, b.profile, map[string]any(request.Params.Meta))
 		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		ctx = tools.WithCallSource(ctx, "tunnel")
+		sessionID := b.sessionID(ctx, request, !requestContext.Modern())
+		if sessionID != "" {
+			ctx = tools.WithMCPSessionID(ctx, sessionID)
+		}
 		if requestContext.Modern() {
 			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller("modern:tunnel"), idgen.Must("apr", 8))
-		} else if sessionID := b.sessionID(ctx, request); sessionID != "" {
-			ctx = tools.WithMCPSessionID(ctx, sessionID)
+		} else if sessionID != "" {
 			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller("legacy:tunnel:"+sessionID), idgen.Must("apr", 8))
 		}
 		if request.Params.Meta != nil {
@@ -215,7 +218,7 @@ func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {
 	}
 }
 
-func (b *sdkBridge) sessionID(ctx context.Context, request *sdkmcp.CallToolRequest) string {
+func (b *sdkBridge) sessionID(ctx context.Context, request *sdkmcp.CallToolRequest, allowSDKSession bool) string {
 	if sessionID, ok := tunnelctx.SessionIDFromContext(ctx); ok {
 		if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
 			return sessionID
@@ -226,7 +229,7 @@ func (b *sdkBridge) sessionID(ctx context.Context, request *sdkmcp.CallToolReque
 			return strings.TrimSpace(sessionID)
 		}
 	}
-	if request != nil && request.Session != nil {
+	if allowSDKSession && request != nil && request.Session != nil {
 		if sessionID := strings.TrimSpace(request.Session.ID()); sessionID != "" {
 			return "sdk:" + sessionID
 		}

@@ -65,6 +65,33 @@ func TestSessionTransportDoesNotInjectIntoNonToolRequest(t *testing.T) {
 	}
 }
 
+func TestSessionTransportStripsUntrustedSessionMetaWithoutTunnelSession(t *testing.T) {
+	base := &captureTransport{conn: &captureConnection{}}
+	conn, err := withSessionTransport(base).Connect(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := &jsonrpc.Request{Method: "tools/call", Params: json.RawMessage(`{"name":"probe","arguments":{},"_meta":{"go.mewis.me/codemcp/mcp-session-id":"spoofed","client":"keep"}}`)}
+	if err := conn.Write(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	written, ok := base.conn.written.(*jsonrpc.Request)
+	if !ok || written == nil {
+		t.Fatalf("written = %#v", base.conn.written)
+	}
+	var params map[string]any
+	if err := json.Unmarshal(written.Params, &params); err != nil {
+		t.Fatal(err)
+	}
+	meta, _ := params["_meta"].(map[string]any)
+	if _, exists := meta[sessionMetaKey]; exists {
+		t.Fatalf("untrusted session metadata survived: %#v", meta)
+	}
+	if meta["client"] != "keep" {
+		t.Fatalf("client metadata changed: %#v", meta)
+	}
+}
+
 func TestSessionTransportReportsMCPRequestActivity(t *testing.T) {
 	base := &captureTransport{conn: &captureConnection{}}
 	activity := 0

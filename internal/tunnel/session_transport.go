@@ -46,27 +46,35 @@ func (c *sessionConnection) Read(ctx context.Context) (jsonrpc.Message, error) {
 
 func (c *sessionConnection) Write(ctx context.Context, msg jsonrpc.Message) error {
 	request, isRequest := msg.(*jsonrpc.Request)
-	if sessionID, ok := tunnelctx.SessionIDFromContext(ctx); ok {
-		if isRequest && request != nil && request.Method == "tools/call" {
-			params := map[string]any{}
-			if len(request.Params) > 0 && string(request.Params) != "null" {
-				if err := json.Unmarshal(request.Params, &params); err != nil {
-					return err
-				}
+	if isRequest && request != nil && request.Method == "tools/call" {
+		params := map[string]any{}
+		if len(request.Params) > 0 && string(request.Params) != "null" {
+			if err := json.Unmarshal(request.Params, &params); err != nil {
+				return err
 			}
-			meta, _ := params["_meta"].(map[string]any)
+		}
+		meta, _ := params["_meta"].(map[string]any)
+		if sessionID, ok := tunnelctx.SessionIDFromContext(ctx); ok {
 			if meta == nil {
 				meta = map[string]any{}
 				params["_meta"] = meta
 			}
 			meta[sessionMetaKey] = sessionID
-			encoded, err := json.Marshal(params)
-			if err != nil {
-				return err
-			}
-			request.Params = encoded
+		} else if meta != nil {
+			delete(meta, sessionMetaKey)
+		} else {
+			return c.write(ctx, msg, isRequest, request)
 		}
+		encoded, err := json.Marshal(params)
+		if err != nil {
+			return err
+		}
+		request.Params = encoded
 	}
+	return c.write(ctx, msg, isRequest, request)
+}
+
+func (c *sessionConnection) write(ctx context.Context, msg jsonrpc.Message, isRequest bool, request *jsonrpc.Request) error {
 	err := c.base.Write(ctx, msg)
 	if err == nil && isRequest && request != nil && c.onActivity != nil {
 		c.onActivity()

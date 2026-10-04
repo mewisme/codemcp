@@ -271,6 +271,33 @@ func TestSDKBridgePropagatesTunnelSessionID(t *testing.T) {
 	}
 }
 
+func TestSDKBridgeModernRequestPropagatesTrustedTunnelSessionToManagedAgentTools(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := &sdkmcp.CallToolRequest{Params: &sdkmcp.CallToolParamsRaw{
+		Name:      tools.AgentListToolName,
+		Arguments: json.RawMessage(`{}`),
+		Meta: sdkmcp.Meta{
+			sdkmcp.MetaKeyProtocolVersion: localmcp.SupportedProtocolVersion,
+			sessionMetaKey:                "session-modern",
+		},
+	}}
+	result, err := bridge.toolHandler(tools.AgentListToolName)(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.IsError {
+		t.Fatalf("agent_list result = %#v", result)
+	}
+	if _, exists := request.Params.Meta[sessionMetaKey]; exists {
+		t.Fatal("internal session metadata was not consumed")
+	}
+}
+
 func TestSDKBridgeConsumesInternalSessionMetaWithoutLoggingIt(t *testing.T) {
 	registry := tools.NewRegistry()
 	seen := make(chan string, 1)

@@ -89,6 +89,14 @@ func (a *App) Start(ctx context.Context) error {
 			}
 			refreshSpan.EndMessage("Initial Upstream discovery completed")
 		}()
+		go func() {
+			catchUpSpan := tracepkg.Start(ctx, "APP", "app.codegraph.completion-catch-up", "Starting CodeGraph completion catch-up")
+			if err := a.Tools.CatchUpCodeGraphCompletions(ctx); err != nil {
+				catchUpSpan.FailMessage("CodeGraph completion catch-up failed", err)
+				return
+			}
+			catchUpSpan.EndMessage("CodeGraph completion catch-up completed")
+		}()
 	}
 	if a.Tunnel != nil {
 		tasks = append(tasks, runtimeStartupTask{fatal: true, run: func() error {

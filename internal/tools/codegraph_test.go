@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +15,7 @@ import (
 	"go.mewis.me/codemcp/internal/integrations"
 	"go.mewis.me/codemcp/internal/integrations/codegraph"
 	"go.mewis.me/codemcp/internal/projectcontext"
+	"go.mewis.me/codemcp/internal/workspace"
 )
 
 func TestCodeGraphExploreToolRegistrationIsStableAcrossIntegrationReload(t *testing.T) {
@@ -256,6 +258,54 @@ func TestCodeGraphIntegrationReloadCatchesUpFailedCompletion(t *testing.T) {
 	}
 	if got := len(strings.Fields(string(data))); got != 1 {
 		t.Fatalf("catch-up sync count=%d data=%q", got, data)
+	}
+}
+
+func TestCodeGraphInitialRuntimeConstructionDefersCompletionCatchUp(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX CodeGraph fixture")
+	}
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	project := t.TempDir()
+	if err := os.Mkdir(filepath.Join(project, ".codegraph"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	manager := workspace.NewManager(workspace.DefaultStorePath())
+	item, err := manager.Register(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := agentcompletion.NewWorkspaceService(manager, agentcompletion.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err := service.Accept(
+		agentcompletion.Identity{AgentID: agentcompletion.DeriveAgentID("caller-startup", "generation-startup"), Source: "mcp"},
+		agentcompletion.Input{WorkspaceID: item.ID, Status: agentcompletion.StatusCompleted, Title: "Done"},
+	); err != nil || !created {
+		t.Fatalf("seed completion created=%t err=%v", created, err)
+	}
+	service.Close()
+	executable := filepath.Join(t.TempDir(), "codegraph")
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\necho sync >> \"$PWD/sync-count\"\nexit 0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := integrations.Default()
+	cfg.CodeGraph.Enabled = true
+	cfg.CodeGraph.Path = executable
+	toolRuntime := NewRuntimeWithIntegrations(cfg)
+	if _, err := os.Stat(filepath.Join(project, "sync-count")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("runtime construction performed completion catch-up: %v", err)
+	}
+	if err := toolRuntime.CatchUpCodeGraphCompletions(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(project, "sync-count"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := len(strings.Fields(string(data))); got != 1 {
+		t.Fatalf("deferred catch-up sync count=%d data=%q", got, data)
 	}
 }
 

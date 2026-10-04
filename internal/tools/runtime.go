@@ -139,7 +139,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	RegisterApprovalTools(registry, runtime)
 	RegisterConfigTools(registry, runtime)
 	RegisterUpstreamTools(registry, upstreams)
-	if err := runtime.SyncIntegrations(integrationConfig); err != nil {
+	if err := runtime.syncIntegrations(integrationConfig, false); err != nil {
 		panic(err)
 	}
 
@@ -157,13 +157,17 @@ func (r *Runtime) RefreshUpstreams(ctx context.Context, force bool) error {
 }
 
 func (r *Runtime) SyncIntegrations(integrationConfig integrations.Config) (syncErr error) {
+	return r.syncIntegrations(integrationConfig, true)
+}
+
+func (r *Runtime) syncIntegrations(integrationConfig integrations.Config, catchUpCompletions bool) (syncErr error) {
 	if r == nil || r.Registry == nil || r.Workspaces == nil {
 		return errors.New("tool runtime is unavailable")
 	}
 	r.integrationMu.Lock()
 	defer func() {
 		r.integrationMu.Unlock()
-		if syncErr == nil && r.CodeGraphCompletion != nil && r.Completions != nil {
+		if syncErr == nil && catchUpCompletions && r.CodeGraphCompletion != nil && r.Completions != nil {
 			ctx, cancel := context.WithTimeout(context.Background(), codegraph.SyncTimeout+5*time.Second)
 			defer cancel()
 			_ = r.CodeGraphCompletion.CatchUp(ctx, r.Completions)
@@ -195,6 +199,18 @@ func (r *Runtime) SyncIntegrations(integrationConfig integrations.Config) (syncE
 	}
 	r.integrations = integrationConfig
 	return nil
+}
+
+func (r *Runtime) CatchUpCodeGraphCompletions(ctx context.Context) error {
+	if r == nil || r.CodeGraphCompletion == nil || r.Completions == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	catchUpCtx, cancel := context.WithTimeout(ctx, codegraph.SyncTimeout+5*time.Second)
+	defer cancel()
+	return r.CodeGraphCompletion.CatchUp(catchUpCtx, r.Completions)
 }
 
 func (r *Runtime) Integrations() integrations.Config {
