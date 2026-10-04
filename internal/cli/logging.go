@@ -117,6 +117,7 @@ func (p *commandProgress) Start(name, message, done string) {
 	}
 	p.Complete()
 	p.name, p.label, p.done = name, message, done
+	p.session.ResetPhase(name)
 	p.session.Update(presentation.ProgressPhase{ID: name, Label: message, State: presentation.ProgressRunning})
 	p.log.Verbose(p.component, name, message)
 }
@@ -256,7 +257,7 @@ func (writer commandDiagnosticWriter) Write(data []byte) (int, error) {
 		if value, ok := commandProgressSessions.Load(writer.cmd); ok {
 			session := value.(*presentation.ProgressSession)
 			session.EnsureBegun()
-			session.Suspend()
+			return session.DiagnosticWrite(writer.out, data)
 		}
 	}
 	return writer.out.Write(data)

@@ -124,7 +124,7 @@ func TestAuthStatusRichPaletteKeepsSectionTextNeutral(t *testing.T) {
 	text := output.String()
 	for _, expected := range []string{
 		theme.Render(presentation.RoleRail, "┌"),
-		theme.Render(presentation.RoleStructure, "◆") + "  " + theme.Render(presentation.RoleHeading, "MCP"),
+		theme.Render(presentation.RoleRail, "│") + "  " + theme.Render(presentation.RoleStructure, "▸") + " " + theme.Render(presentation.RoleHeading, "MCP"),
 		theme.Render(presentation.RoleLabel, "enabled"),
 	} {
 		if !strings.Contains(text, expected) {

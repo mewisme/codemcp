@@ -3,6 +3,7 @@ package presentation
 type GlyphSet struct {
 	FrameStart   string
 	FrameEnd     string
+	Section      string
 	Success      string
 	Error        string
 	Warning      string
@@ -20,6 +21,7 @@ type GlyphSet struct {
 var UnicodeGlyphs = GlyphSet{
 	FrameStart:   "┌",
 	FrameEnd:     "└",
+	Section:      "▸",
 	Success:      "✓",
 	Error:        "×",
 	Warning:      "!",
@@ -28,8 +30,8 @@ var UnicodeGlyphs = GlyphSet{
 	Rail:         "│",
 	PhaseDone:    "◆",
 	PhasePending: "◇",
-	Branch:       "├── ",
-	LastBranch:   "└── ",
+	Branch:       "├─ ",
+	LastBranch:   "└─ ",
 	Horizontal:   "─",
 	Separator:    "·",
 }
@@ -37,6 +39,7 @@ var UnicodeGlyphs = GlyphSet{
 var ASCIIGlyphs = GlyphSet{
 	FrameStart:   "+",
 	FrameEnd:     "+",
+	Section:      ">",
 	Success:      "[OK]",
 	Error:        "[ERR]",
 	Warning:      "[!]",
@@ -45,8 +48,8 @@ var ASCIIGlyphs = GlyphSet{
 	Rail:         "|",
 	PhaseDone:    "*",
 	PhasePending: ".",
-	Branch:       "|-- ",
-	LastBranch:   "`-- ",
+	Branch:       "|- ",
+	LastBranch:   "`- ",
 	Horizontal:   "-",
 	Separator:    "|",
 }

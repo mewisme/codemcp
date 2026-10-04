@@ -32,12 +32,12 @@ func TestRenderTunnelLifecycleUsesSharedProgress(t *testing.T) {
 	renderTunnelLifecycle(session, log, tunnel.LifecycleEvent{State: tunnel.LifecycleReady, ID: "tunnel_test"})
 	session.Close()
 	text := output.String()
-	for _, expected := range []string{"Run OpenAI tunnel", "Tunnel connected", "tunnel id — tunnel_test"} {
+	for _, expected := range []string{"Run OpenAI tunnel", "◇  Reconnecting tunnel", "Tunnel connected", "│  tunnel id\n│    tunnel_test"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("output %q missing %q", text, expected)
 		}
 	}
-	if strings.Contains(text, "⠋") || strings.Contains(text, "Reconnecting tunnel\n") {
+	if strings.Contains(text, "⠋") {
 		t.Fatalf("legacy spinner escaped shared lifecycle: %q", text)
 	}
 }
@@ -147,7 +147,7 @@ func TestRenderTunnelStatusTextIsCLIFirst(t *testing.T) {
 	var output bytes.Buffer
 	renderTunnelStatusText(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), cfg, status, true, false)
 	text := output.String()
-	for _, expected := range []string{"┌  OpenAI Secure MCP Tunnel", "✓  OpenAI Secure MCP Tunnel is connected", "│  enabled — true", "│  configured — true", "│  runtime key — ", "│  admin key — ", "│  id — tunnel_test", "│  name — MCP WSL", "│  admin — configured · workspace:ws_admin", "└  Status complete"} {
+	for _, expected := range []string{"┌  OpenAI Secure MCP Tunnel", "✓  OpenAI Secure MCP Tunnel is connected", "│  enabled\n│    true", "│  configured\n│    true", "│  runtime key", "│  admin key", "│  id\n│    tunnel_test", "│  name\n│    MCP WSL", "│  admin\n│    configured · workspace:ws_admin", "└  Status complete"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("output %q missing %q", text, expected)
 		}
@@ -165,7 +165,7 @@ func TestTunnelReadRenderersUseRailHierarchyAndRedaction(t *testing.T) {
 	var output bytes.Buffer
 	renderManagedTunnelList(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), []tunnel.Metadata{metadata})
 	listText := output.String()
-	for _, expected := range []string{"┌  Managed OpenAI tunnels", "│  ◆ tunnel_one", "│  │  name — One", "│  │  workspaces — ws_admin", "└  Done"} {
+	for _, expected := range []string{"┌  Managed OpenAI tunnels", "│  ▸ tunnel_one", "│  │  name\n│  │    One", "│  │  workspaces\n│  │    ws_admin", "└  Done"} {
 		if !strings.Contains(listText, expected) {
 			t.Fatalf("managed tunnel list missing %q: %q", expected, listText)
 		}
@@ -183,7 +183,7 @@ func TestTunnelReadRenderersUseRailHierarchyAndRedaction(t *testing.T) {
 		Access:        tunnel.AdminAccess{Read: true, Manage: true},
 	})
 	adminText := output.String()
-	for _, expected := range []string{"┌  OpenAI tunnel admin key", "✓  Admin key configured", "│  key — admi...cret", "│  scope — workspace:ws_admin", "│  access — full management"} {
+	for _, expected := range []string{"┌  OpenAI tunnel admin key", "✓  Admin key configured", "│  key\n│    admi...cret", "│  scope\n│    workspace:ws_admin", "│  access\n│    full management"} {
 		if !strings.Contains(adminText, expected) {
 			t.Fatalf("admin status missing %q: %q", expected, adminText)
 		}

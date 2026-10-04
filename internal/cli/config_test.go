@@ -337,7 +337,7 @@ func TestConfigHumanListUsesPresenterRowsWhilePlainRemainsCompatible(t *testing.
 		t.Fatal(err)
 	}
 	closeCommandProgress(human, nil)
-	for _, expected := range []string{"┌  Configuration", "◆  http.admin", "│  ◆ http.admin.enabled — true", "│  ◆ http.admin.port — 37422", "└  Done"} {
+	for _, expected := range []string{"┌  Configuration", "│  ▸ http.admin", "│  ├─ http.admin.enabled", "│  │  Value\n│  │    true", "│  └─ http.admin.port", "│  │    37422", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), expected) {
 			t.Fatalf("human config output missing %q: %q", expected, humanOutput.String())
 		}
@@ -373,7 +373,7 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 	text := output.String()
 	for _, expected := range []string{
 		"┌  Configuration",
-		"│  ◆ http",
+		"│  ▸ http",
 		"Key",
 		"Value",
 		"Accepts",
@@ -381,11 +381,11 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 		"true | false",
 		"http.admin.port",
 		"integer 1..65535",
-		"│  ◆ approval",
+		"│  ▸ approval",
 		"approval.semantic.enabled",
-		"│  ◆ integrations",
+		"│  ▸ integrations",
 		"integrations.codegraph.enabled",
-		"│  ◆ tunnel",
+		"│  ▸ tunnel",
 		"tunnel.admin.enabled",
 		"└  Done",
 	} {
@@ -393,12 +393,12 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 			t.Fatalf("grouped config list missing %q: %q", expected, text)
 		}
 	}
-	if !(strings.Index(text, "│  ◆ approval") < strings.Index(text, "│  ◆ http") &&
-		strings.Index(text, "│  ◆ http") < strings.Index(text, "│  ◆ integrations") &&
-		strings.Index(text, "│  ◆ integrations") < strings.Index(text, "│  ◆ tunnel")) {
+	if !(strings.Index(text, "│  ▸ approval") < strings.Index(text, "│  ▸ http") &&
+		strings.Index(text, "│  ▸ http") < strings.Index(text, "│  ▸ integrations") &&
+		strings.Index(text, "│  ▸ integrations") < strings.Index(text, "│  ▸ tunnel")) {
 		t.Fatalf("config scopes are not sorted: %q", text)
 	}
-	if strings.Contains(text, "\n◆  http") || strings.Contains(text, "\n◆  approval") {
+	if strings.Contains(text, "\n▸  http") || strings.Contains(text, "\n▸  approval") {
 		t.Fatalf("config scopes escaped nested list level: %q", text)
 	}
 
@@ -439,9 +439,9 @@ func TestUniversalConfigHumanListCanHideAcceptsAndStacksOnNarrowTerminals(t *tes
 	}
 	closeCommandProgress(cmd, nil)
 	text := narrow.String()
-	semanticText := strings.NewReplacer("│", " ", "◆", " ", "┌", " ", "└", " ").Replace(text)
+	semanticText := strings.NewReplacer("│", " ", "◆", " ", "▸", " ", "├", " ", "┌", " ", "└", " ", "─", " ").Replace(text)
 	collapsed := strings.Join(strings.Fields(semanticText), " ")
-	for _, want := range []string{"http.mcp.port", "accepts: integer 1..65535", "http.exposure.mode", "accepts: none | all | 0.0.0.0 | interfaces"} {
+	for _, want := range []string{"http.mcp.port", "Accepts integer 1..65535", "http.exposure.mode", "Accepts none | all | 0.0.0.0 | interfaces"} {
 		if !strings.Contains(collapsed, want) {
 			t.Fatalf("narrow config list missing semantic value %q: %q", want, text)
 		}
@@ -486,7 +486,7 @@ func TestConfigListNoAcceptsUsesCanonicalAliasAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, want := range []string{"│  ◆ http", "http.mcp.enabled", "http.mcp.port"} {
+	for _, want := range []string{"│  ▸ http", "http.mcp.enabled", "http.mcp.port"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("config ls --no-accepts missing %q: %q", want, text)
 		}
@@ -580,8 +580,8 @@ func TestConfigRichPaletteSeparatesStructureLabelsAndValues(t *testing.T) {
 	text := output.String()
 	for _, expected := range []string{
 		theme.Render(presentation.RoleRail, "┌"),
-		theme.Render(presentation.RoleStructure, "◆") + "  " + theme.Render(presentation.RoleHeading, "http.admin"),
-		theme.Render(presentation.RoleLabel, "http.admin.enabled") + " — true",
+		theme.Render(presentation.RoleRail, "│") + "  " + theme.Render(presentation.RoleStructure, "▸") + " " + theme.Render(presentation.RoleHeading, "http.admin"),
+		theme.Render(presentation.RoleLabel, "http.admin.enabled"),
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("config palette missing %q: %q", expected, text)
@@ -607,7 +607,7 @@ func TestConfigScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	closeCommandProgress(human, nil)
-	for _, want := range []string{"┌  Configuration", "http.mcp.port — 37421", "└  Done"} {
+	for _, want := range []string{"┌  Configuration", "http.mcp.port\n│    37421", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), want) {
 			t.Fatalf("human scalar config get missing %q: %q", want, humanOutput.String())
 		}
@@ -635,7 +635,7 @@ func TestSettingScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) 
 		t.Fatal(err)
 	}
 	closeCommandProgress(human, nil)
-	for _, want := range []string{"┌  Configuration", "http.mcp.port — 37421", "└  Done"} {
+	for _, want := range []string{"┌  Configuration", "http.mcp.port\n│    37421", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), want) {
 			t.Fatalf("human setting get missing %q: %q", want, humanOutput.String())
 		}
@@ -660,7 +660,7 @@ func TestConfigGetScalarInteractiveLifecycleIsFrameFirst(t *testing.T) {
 	}
 	assertSingleHumanWorkflow(t, text, "Configuration", "Done")
 	frame := strings.Index(text, "┌  Configuration")
-	value := strings.Index(text, "http.mcp.port — 37421")
+	value := strings.Index(text, "http.mcp.port\n│    37421")
 	if frame < 0 || value <= frame {
 		t.Fatalf("interactive scalar result escaped before frame: %q", text)
 	}

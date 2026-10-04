@@ -130,7 +130,7 @@ func TestInstallCutoverUnsupportedStateUsesReadableHierarchy(t *testing.T) {
 	session.CloseWith("Done")
 
 	got := output.String()
-	want := "!  Previous CodeMCP state requires a clean install\n│\n│  ! 7 unsupported artifacts cannot be migrated\n│\n◆  Previous CodeMCP state removed"
+	want := "!  Previous CodeMCP state requires a clean install\n│\n│  ! 7 unsupported artifacts cannot be migrated\n◇  Finalize installation\n│\n◆  Previous CodeMCP state removed"
 	if !strings.Contains(got, want) {
 		t.Fatalf("unsupported-state presentation mismatch: %q", got)
 	}

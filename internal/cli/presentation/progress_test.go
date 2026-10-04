@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -75,40 +76,31 @@ func TestProgressSessionPlainIsDeterministicAndNeverUsesCursorControl(t *testing
 	}
 }
 
-func TestProgressSessionInteractiveFrameKeepsProvisionalTailUntilFinalClosure(t *testing.T) {
+func TestProgressSessionInteractiveFrameStaysOpenUntilFinalClosure(t *testing.T) {
 	var output bytes.Buffer
 	session := NewProgressSession(&output, ModeHuman, Capabilities{
 		Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true,
 	})
 	session.Begin("Configure runtime")
-	begin := output.String()
-	if !strings.HasSuffix(begin, "└\n") {
-		t.Fatalf("interactive frame has no provisional tail after begin: %q", begin)
+	if begin := output.String(); strings.Contains(begin, "└") {
+		t.Fatalf("active frame rendered provisional tail: %q", begin)
 	}
 
 	session.Success("save", "Save", "Configuration saved")
-	afterStep := output.String()
-	if !strings.Contains(afterStep, "\x1b[1A\r\x1b[2K") || !strings.HasSuffix(afterStep, "└\n") {
-		t.Fatalf("stable content did not replace and restore provisional tail: %q", afterStep)
-	}
-
 	session.Append(func(p *Presenter) { p.Note("Note", "Restart required") })
-	afterAppend := output.String()
-	if !strings.Contains(afterAppend, "Restart required") || !strings.HasSuffix(afterAppend, "└\n") {
-		t.Fatalf("append did not preserve provisional tail: %q", afterAppend)
+	beforeClose := output.String()
+	if strings.Contains(beforeClose, "└") {
+		t.Fatalf("active frame closed before command completion: %q", beforeClose)
 	}
 
 	session.CloseWith("Done")
 	got := output.String()
-	if !strings.HasSuffix(got, "└  Done\n") {
-		t.Fatalf("final frame tail is not durable: %q", got)
-	}
-	if !strings.Contains(got, "└\n\x1b[1A\r\x1b[2K") {
-		t.Fatalf("provisional tail was not explicitly erased before replacement: %q", got)
+	if !strings.HasSuffix(got, "└  Done\n") || strings.Count(got, "└") != 1 {
+		t.Fatalf("final frame must close exactly once: %q", got)
 	}
 }
 
-func TestProgressSessionPromptSuspendsProvisionalTailAndRestoresItAfterInput(t *testing.T) {
+func TestProgressSessionInputSuspendsAndRestoresActiveProgressWithoutProvisionalTail(t *testing.T) {
 	var output bytes.Buffer
 	session := NewProgressSession(&output, ModeHuman, Capabilities{
 		Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true, Animation: true,
@@ -125,35 +117,41 @@ func TestProgressSessionPromptSuspendsProvisionalTailAndRestoresItAfterInput(t *
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if strings.HasSuffix(beforeRead, "└\n") {
-		t.Fatalf("provisional tail remained below an active input prompt: %q", beforeRead)
+	if strings.Contains(beforeRead, "└") {
+		t.Fatalf("input prompt rendered provisional frame tail: %q", beforeRead)
 	}
 	if !strings.Contains(beforeRead, "Choose [1-2]") {
 		t.Fatalf("input prompt missing while progress was suspended: %q", beforeRead)
 	}
 	after := output.String()
-	if !strings.HasSuffix(after, "└\n") || !strings.Contains(after, "Working") {
-		t.Fatalf("running phase/provisional tail was not restored after input: %q", after)
+	if !strings.Contains(after, "Working") || strings.Contains(after, "└") {
+		t.Fatalf("running phase was not restored cleanly after input: %q", after)
 	}
 	session.CloseWith("Done")
 }
 
-func TestProgressSessionCursorIneligibleHumanNeverWritesProvisionalControlSequences(t *testing.T) {
+func TestProgressSessionCursorIneligibleHumanShowsRunningAndUsesOnlyFinalTail(t *testing.T) {
 	var output bytes.Buffer
-	session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, Interactive: true, CursorControl: false})
+	session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, Interactive: true, CursorControl: false, Animation: true})
 	session.Begin("Read state")
+	session.Update(ProgressPhase{ID: "read", Label: "Reading state", State: ProgressRunning})
 	session.Success("read", "Read", "State loaded")
 	session.CloseWith("Done")
 	got := output.String()
 	if strings.ContainsAny(got, "\r\x1b") {
 		t.Fatalf("cursor-ineligible human output contains terminal rewrites: %q", got)
 	}
-	if strings.Count(got, "└") != 1 || !strings.HasSuffix(got, "└  Done\n") {
-		t.Fatalf("cursor-ineligible human output should contain only the final tail: %q", got)
+	for _, want := range []string{"◇  Reading state", "◆  State loaded", "└  Done"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("cursor-ineligible human output missing %q: %q", want, got)
+		}
+	}
+	if strings.Count(got, "└") != 1 {
+		t.Fatalf("cursor-ineligible human output must contain only final tail: %q", got)
 	}
 }
 
-func TestProgressSessionDeduplicatesTerminalEventsAndFailureIsStable(t *testing.T) {
+func TestProgressSessionDeduplicatesTerminalEventsAndRejectsRegression(t *testing.T) {
 	var output bytes.Buffer
 	session := NewProgressSession(&output, ModePlain, Capabilities{Width: 80})
 	session.Update(ProgressPhase{ID: "persist", Label: "Save configuration", State: ProgressRunning})
@@ -163,9 +161,51 @@ func TestProgressSessionDeduplicatesTerminalEventsAndFailureIsStable(t *testing.
 	if session.Fail("persist", "Save configuration", "disk full") {
 		t.Fatal("duplicate terminal event was accepted")
 	}
+	if session.Update(ProgressPhase{ID: "persist", Label: "Save configuration", State: ProgressRunning}) {
+		t.Fatal("terminal -> running regression was accepted")
+	}
+	if session.Success("persist", "Save configuration", "unexpected recovery") {
+		t.Fatal("terminal -> terminal rewrite was accepted")
+	}
 	session.Close()
 	if got := output.String(); got != "disk full\n" {
 		t.Fatalf("failure output=%q", got)
+	}
+}
+
+func TestProgressSessionPendingCanTransitionDirectlyToTerminal(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true})
+	if !session.Update(ProgressPhase{ID: "optional", Label: "Optional work", State: ProgressPending}) {
+		t.Fatal("pending phase was ignored")
+	}
+	if !session.Skip("optional", "Optional work", "Optional work skipped") {
+		t.Fatal("pending -> skipped transition was rejected")
+	}
+	if !strings.Contains(output.String(), "◇  Optional work skipped") {
+		t.Fatalf("skipped outcome missing: %q", output.String())
+	}
+}
+
+func TestProgressSessionResetPhaseAllowsExplicitNewGeneration(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModePlain, Capabilities{Width: 80})
+	session.Update(ProgressPhase{ID: "service.backend", Label: "Starting backend", State: ProgressRunning})
+	if !session.Success("service.backend", "Starting backend", "Backend started") {
+		t.Fatal("first generation did not terminate")
+	}
+	if session.Update(ProgressPhase{ID: "service.backend", Label: "Restarting backend", State: ProgressRunning}) {
+		t.Fatal("terminal phase regressed without explicit reset")
+	}
+	session.ResetPhase("service.backend")
+	if !session.Update(ProgressPhase{ID: "service.backend", Label: "Restarting backend", State: ProgressRunning}) {
+		t.Fatal("explicit reset did not open a new lifecycle generation")
+	}
+	if !session.Success("service.backend", "Restarting backend", "Backend restarted") {
+		t.Fatal("second generation did not terminate")
+	}
+	if got := output.String(); got != "Backend started\nBackend restarted\n" {
+		t.Fatalf("explicit reset output=%q", got)
 	}
 }
 
@@ -198,74 +238,43 @@ func TestProgressSessionTerminalStatesUseOutcomeLabelOnly(t *testing.T) {
 	}
 }
 
-func TestProgressSessionTerminalStatesPreserveProvisionalTailUntilClose(t *testing.T) {
-	tests := []struct {
-		name    string
-		state   ProgressState
-		message string
-	}{
-		{name: "success", state: ProgressSuccess, message: "Saved"},
-		{name: "skipped", state: ProgressSkipped, message: "Skipped"},
-		{name: "warning", state: ProgressWarning, message: "Degraded"},
-		{name: "failed", state: ProgressFailed, message: "Failed"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var output bytes.Buffer
-			session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true})
-			session.Begin("Operation")
-			session.Update(ProgressPhase{ID: "phase", Label: "Phase", State: test.state, Message: test.message})
-			beforeClose := output.String()
-			if !strings.HasSuffix(beforeClose, "└\n") {
-				t.Fatalf("%s terminal state lost provisional tail: %q", test.name, beforeClose)
-			}
-			session.CloseWith("Done")
-			got := output.String()
-			if !strings.HasSuffix(got, "└  Done\n") {
-				t.Fatalf("%s final close missing durable tail: %q", test.name, got)
-			}
-		})
-	}
-}
-
-func TestProgressSessionConsecutiveTerminalPhasesReplaceOneProvisionalTail(t *testing.T) {
+func TestProgressSessionTerminalPhasesDoNotCloseFrameUntilClose(t *testing.T) {
 	var output bytes.Buffer
-	session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true})
+	session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, Interactive: true, CursorControl: true})
 	session.Begin("Operation")
 	session.Success("one", "One", "First complete")
 	session.Warn("two", "Two", "Second degraded")
 	session.Skip("three", "Three", "Third skipped")
 	beforeClose := output.String()
-	if !strings.HasSuffix(beforeClose, "└\n") {
-		t.Fatalf("consecutive terminal phases lost provisional tail: %q", beforeClose)
-	}
-	if strings.Count(beforeClose, "\x1b[1A\r\x1b[2K") < 3 {
-		t.Fatalf("consecutive terminal phases did not replace the prior provisional tail: %q", beforeClose)
+	if strings.Contains(beforeClose, "└") {
+		t.Fatalf("terminal phases closed active frame: %q", beforeClose)
 	}
 	session.CloseWith("Done")
-	if got := output.String(); !strings.HasSuffix(got, "└  Done\n") {
-		t.Fatalf("consecutive terminal phases did not close cleanly: %q", got)
+	got := output.String()
+	if !strings.HasSuffix(got, "└  Done\n") || strings.Count(got, "└") != 1 {
+		t.Fatalf("terminal phases did not close cleanly exactly once: %q", got)
 	}
 }
 
-func TestProgressSessionEmptyAndFailureCloseReplaceProvisionalTail(t *testing.T) {
+func TestProgressSessionEmptyOperationRendersOnlyFinalTail(t *testing.T) {
 	for _, completion := range []string{"Done", "Failed"} {
 		t.Run(completion, func(t *testing.T) {
 			var output bytes.Buffer
-			session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true})
+			session := NewProgressSession(&output, ModeHuman, Capabilities{Width: 80, Unicode: true, Interactive: true, CursorControl: true})
 			session.Begin("Empty operation")
-			if !strings.HasSuffix(output.String(), "└\n") {
-				t.Fatalf("empty operation has no provisional tail: %q", output.String())
+			if strings.Contains(output.String(), "└") {
+				t.Fatalf("empty active operation rendered provisional tail: %q", output.String())
 			}
 			session.CloseWith(completion)
-			if got := output.String(); !strings.HasSuffix(got, "└  "+completion+"\n") {
+			got := output.String()
+			if !strings.HasSuffix(got, "└  "+completion+"\n") || strings.Count(got, "└") != 1 {
 				t.Fatalf("empty operation close=%q output=%q", completion, got)
 			}
 		})
 	}
 }
 
-func TestProgressSessionJSONNeverEmitsProvisionalFrame(t *testing.T) {
+func TestProgressSessionJSONNeverEmitsPresentation(t *testing.T) {
 	var output bytes.Buffer
 	session := NewProgressSession(&output, ModeJSON, Capabilities{Width: 80, Unicode: true, Interactive: true, CursorControl: true, Animation: true})
 	session.Begin("JSON operation")
@@ -299,19 +308,63 @@ func TestProgressSessionASCIIAnimationUsesPhaseGlyphPair(t *testing.T) {
 	}
 }
 
-func TestProgressSessionHumanWithoutCursorControlIsNonAnimated(t *testing.T) {
+func TestProgressSessionWrappedAnimationErasesWholeTransientBlock(t *testing.T) {
 	var output bytes.Buffer
 	session := NewProgressSession(&output, ModeHuman, Capabilities{
-		Width: 80, Unicode: true, Interactive: true, CursorControl: false, Animation: true,
+		Width: 22, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
 	})
-	session.Update(ProgressPhase{ID: "work", Label: "Doing work", State: ProgressRunning})
+	session.animationGap = time.Hour
+	session.Begin("Long task")
+	session.Update(ProgressPhase{
+		ID:    "work",
+		Label: "Doing work with a progress message that spans several physical lines",
+		State: ProgressRunning,
+	})
+	if session.transientLines < 2 {
+		t.Fatalf("long running phase did not span multiple physical lines: lines=%d output=%q", session.transientLines, output.String())
+	}
+	renderedLines := session.transientLines
 	session.Success("work", "Doing work", "Work completed")
 	got := output.String()
-	if strings.ContainsAny(got, "\r\x1b") {
-		t.Fatalf("cursor-ineligible progress contains control bytes: %q", got)
+	if strings.Count(got, "\x1b[1A\r\x1b[2K") < renderedLines-1 {
+		t.Fatalf("wrapped progress did not erase every transient physical line: lines=%d output=%q", renderedLines, got)
 	}
-	if strings.Contains(got, "Doing work") || strings.Count(got, "Work completed") != 1 {
-		t.Fatalf("cursor-ineligible progress is not deterministic: %q", got)
+	if !strings.Contains(got, "◆  Work completed") {
+		t.Fatalf("terminal result missing after wrapped transient erase: %q", got)
+	}
+}
+
+func TestProgressSessionDiagnosticWriteRestoresActiveProgress(t *testing.T) {
+	var output bytes.Buffer
+	session := NewProgressSession(&output, ModeHuman, Capabilities{
+		Width: 80, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
+	})
+	session.animationGap = time.Hour
+	session.Begin("Diagnostic task")
+	session.Update(ProgressPhase{ID: "work", Label: "Working", State: ProgressRunning})
+	if _, err := session.DiagnosticWrite(&output, []byte("DBG detail\n")); err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	if !strings.Contains(got, "DBG detail") {
+		t.Fatalf("diagnostic write missing: %q", got)
+	}
+	if strings.Count(got, "◆  Working") < 2 {
+		t.Fatalf("active progress was not redrawn after diagnostic write: %q", got)
+	}
+	session.Success("work", "Working", "Worked")
+	session.CloseWith("Done")
+}
+
+func TestProgressSessionCapturesFirstHumanWriteError(t *testing.T) {
+	first := errors.New("progress write failed")
+	session := NewProgressSession(&failingWriter{err: first}, ModeHuman, Capabilities{Width: 80, Unicode: true})
+	session.SetTitle("Failure")
+	session.EnsureBegun()
+	session.Success("phase", "Phase", "Finished")
+	session.CloseWith("Done")
+	if !errors.Is(session.Err(), first) {
+		t.Fatalf("session err=%v want=%v", session.Err(), first)
 	}
 }
 
@@ -322,7 +375,7 @@ func TestProgressSessionSuspendAndCloseClearTransientState(t *testing.T) {
 	session.Suspend()
 	session.Close()
 	got := output.String()
-	if !strings.HasSuffix(got, "\r\x1b[2K") {
+	if !strings.Contains(got, "\r\x1b[2K") {
 		t.Fatalf("transient line was not cleared: %q", got)
 	}
 }

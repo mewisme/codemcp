@@ -118,7 +118,7 @@ func TestUpstreamReadRenderersUseRailHierarchyWithoutDenseOrSecretValues(t *test
 	var output bytes.Buffer
 	renderUpstreamServer(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), server)
 	text := output.String()
-	for _, expected := range []string{"┌  Upstream server", "│  ◆ demo", "│  │  endpoint — https://mcp.example.test", "<redacted>", "└  Done"} {
+	for _, expected := range []string{"┌  Upstream server", "│  ▸ demo", "│  │  endpoint\n│  │    https://mcp.example.test", "<redacted>", "└  Done"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("upstream detail missing %q: %q", expected, text)
 		}
@@ -134,7 +134,7 @@ func TestUpstreamReadRenderersUseRailHierarchyWithoutDenseOrSecretValues(t *test
 		ServerID: "demo", Configured: true, Issuer: "https://issuer.example.test", Registration: "dynamic", Scopes: []string{"openid", "mcp"}, HasRefreshToken: true,
 	})
 	oauthText := output.String()
-	for _, expected := range []string{"┌  Upstream OAuth authorization", "✓  Authorization configured", "│  ◆ demo", "│  │  issuer — https://issuer.example.test"} {
+	for _, expected := range []string{"┌  Upstream OAuth authorization", "✓  Authorization configured", "│  ▸ demo", "│  │  issuer\n│  │    https://issuer.example.test"} {
 		if !strings.Contains(oauthText, expected) {
 			t.Fatalf("oauth detail missing %q: %q", expected, oauthText)
 		}

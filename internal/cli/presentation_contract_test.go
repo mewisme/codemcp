@@ -23,12 +23,12 @@ func TestCommandPresentationContractMatrix(t *testing.T) {
 		{
 			name: "human-unicode",
 			caps: presentation.Capabilities{Interactive: true, Width: 100, Unicode: true},
-			want: []string{"┌  Contract", "✓  Ready", "│  state — ready", "└  Done"},
+			want: []string{"┌  Contract", "✓  Ready", "│  state\n│    ready", "└  Done"},
 		},
 		{
 			name:      "human-ascii",
 			caps:      presentation.Capabilities{Interactive: true, Width: 100, Unicode: false},
-			want:      []string{"+  Contract", "[OK]  Ready", "|  state - ready", "+  Done"},
+			want:      []string{"+  Contract", "[OK]  Ready", "|  state\n|    ready", "+  Done"},
 			forbidden: []string{"┌", "│", "◆", "✓", "—"},
 		},
 		{

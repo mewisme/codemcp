@@ -123,12 +123,15 @@ func TestInitPresentationUsesCompletedProgressAndSingleBlockGaps(t *testing.T) {
 	for _, expected := range []string{
 		"┌  Initialize CodeMCP",
 		"◆  Saved configuration\n│\n✓  CodeMCP initialized",
-		"│  config — " + filepath.Join(root, "config.json"),
+		"│  config",
 		"└  Done",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("init presentation missing %q: %q", expected, text)
 		}
+	}
+	if !strings.Contains(strings.ReplaceAll(text, "\n│    ", ""), filepath.Join(root, "config.json")) {
+		t.Fatalf("init presentation lost wrapped config path: %q", text)
 	}
 	if strings.Contains(text, "◆  Saving configuration") {
 		t.Fatalf("completed progress kept active wording: %q", text)

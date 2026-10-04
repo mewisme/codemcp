@@ -24,14 +24,17 @@ func TestTypedDesignEntityListMatchesRailHierarchy(t *testing.T) {
 
 	want := "┌  Configuration\n" +
 		"│\n" +
-		"◆  Settings · 2\n" +
+		"│  ▸ Settings · 2\n" +
 		"│\n" +
-		"│  ◆ admin\n" +
-		"│  │  http.admin.enabled — true\n" +
-		"│  │  http.admin.port — 37422\n" +
+		"│  ▸ admin\n" +
+		"│  │  http.admin.enabled\n" +
+		"│  │    true\n" +
+		"│  │  http.admin.port\n" +
+		"│  │    37422\n" +
 		"│\n" +
-		"│  ◆ server\n" +
-		"│  │  http.mcp.enabled — false\n" +
+		"│  ▸ server\n" +
+		"│  │  http.mcp.enabled\n" +
+		"│  │    false\n" +
 		"│\n" +
 		"└  Done\n"
 	if got := output.String(); got != want {
@@ -59,18 +62,18 @@ func TestTypedDesignBlocksComposeExistingPresenterPrimitives(t *testing.T) {
 	got := output.String()
 	for _, want := range []string{
 		"✓  Ready",
-		"│  pid — 42",
-		"◆  Runtime",
-		"│  state — running",
+		"│  pid\n│    42",
+		"│  ▸ Runtime",
+		"│  state\n│    running",
 		"◇  Tunnel",
-		"│  │  tunnel.enabled — false",
+		"│  │  tunnel.enabled\n│  │    false",
 		"│  ! Metadata unavailable",
-		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
-		"◆  Rows",
-		"│  ◆ one — ready",
-		"◆  Items",
-		"│  ◆ alpha",
-		"·  Hint",
+		"│  ◇ OpenAI Secure MCP Tunnel\n│    disabled",
+		"│  ▸ Rows",
+		"│  └─ one\n│  │  State\n│  │    ready",
+		"│  ▸ Items",
+		"│  └─ alpha",
+		"│  · Hint",
 		"└  Done",
 	} {
 		if !strings.Contains(got, want) {
@@ -87,7 +90,7 @@ func TestRenderBlockRendersTypedFragmentWithoutOwningFrame(t *testing.T) {
 	p.Complete("Done")
 
 	got := output.String()
-	for _, want := range []string{"┌  Fragment", "│  ◆ one", "│  │  name — One", "└  Done"} {
+	for _, want := range []string{"┌  Fragment", "│  ▸ one", "│  │  name\n│  │    One", "└  Done"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("typed fragment output missing %q: %q", want, got)
 		}

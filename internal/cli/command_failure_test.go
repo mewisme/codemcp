@@ -65,10 +65,10 @@ func TestActionableFailureStaysInsideCommandWorkflow(t *testing.T) {
 		"┌  Select managed OpenAI tunnel",
 		"◆  Fetched managed tunnel",
 		"×  Runtime API key required",
-		"│  ◆ Actions",
-		"│  │  Generate automatically — cm tunnel use " + tunnelID + " --auto-runtime-key",
-		"│  │  Use an existing runtime key — cm tunnel use " + tunnelID + " --runtime-api-key <key>",
-		"│  │  More options — cm tunnel use --help",
+		"│  ▸ Actions",
+		"│  │  Generate automatically\n│  │    cm tunnel use " + tunnelID + " --auto-runtime-key",
+		"│  │  Use an existing runtime key\n│  │    cm tunnel use " + tunnelID + " --runtime-api-key <key>",
+		"│  │  More options\n│  │    cm tunnel use --help",
 		"└  Failed",
 	} {
 		if !strings.Contains(text, want) {
@@ -107,8 +107,8 @@ func TestUnknownCommandSuggestionUsesCanonicalFailureGrammar(t *testing.T) {
 	text := output.String()
 	for _, want := range []string{
 		"×  Unknown command \"sttus\"",
-		"│  ◆ Suggestions",
-		"│  │  cm status",
+		"│  ▸ Suggestions",
+		"│  │    cm status",
 		"└  Failed",
 	} {
 		if !strings.Contains(text, want) {

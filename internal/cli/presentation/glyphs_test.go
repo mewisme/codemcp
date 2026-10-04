@@ -7,7 +7,7 @@ import (
 )
 
 func TestGlyphSetsRespectUnicodeCapability(t *testing.T) {
-	if got := Glyphs(Capabilities{Unicode: true}); got.Success != "✓" || got.Rail != "│" || got.Info != "·" {
+	if got := Glyphs(Capabilities{Unicode: true}); got.Success != "✓" || got.Rail != "│" || got.Info != "·" || got.Section != "▸" {
 		t.Fatalf("unicode glyphs = %#v", got)
 	}
 	if got := Glyphs(Capabilities{Unicode: false}); got.Success != "[OK]" || got.Rail != "|" {
@@ -20,7 +20,7 @@ func TestGlyphSetsRespectUnicodeCapability(t *testing.T) {
 
 func TestUnicodeGlyphSetAvoidsInformationSourceAndVariationSelectors(t *testing.T) {
 	values := []string{
-		UnicodeGlyphs.FrameStart, UnicodeGlyphs.FrameEnd,
+		UnicodeGlyphs.FrameStart, UnicodeGlyphs.FrameEnd, UnicodeGlyphs.Section,
 		UnicodeGlyphs.Success, UnicodeGlyphs.Error, UnicodeGlyphs.Warning, UnicodeGlyphs.Info,
 		UnicodeGlyphs.Active, UnicodeGlyphs.Rail, UnicodeGlyphs.PhaseDone, UnicodeGlyphs.PhasePending,
 		UnicodeGlyphs.Branch, UnicodeGlyphs.LastBranch, UnicodeGlyphs.Horizontal, UnicodeGlyphs.Separator,
@@ -37,7 +37,7 @@ func TestUnicodeGlyphSetAvoidsInformationSourceAndVariationSelectors(t *testing.
 
 func TestASCIIGlyphSetContainsOnlyASCII(t *testing.T) {
 	values := []string{
-		ASCIIGlyphs.FrameStart, ASCIIGlyphs.FrameEnd,
+		ASCIIGlyphs.FrameStart, ASCIIGlyphs.FrameEnd, ASCIIGlyphs.Section,
 		ASCIIGlyphs.Success, ASCIIGlyphs.Error, ASCIIGlyphs.Warning, ASCIIGlyphs.Info,
 		ASCIIGlyphs.Active, ASCIIGlyphs.Rail, ASCIIGlyphs.PhaseDone, ASCIIGlyphs.PhasePending,
 		ASCIIGlyphs.Branch, ASCIIGlyphs.LastBranch, ASCIIGlyphs.Horizontal, ASCIIGlyphs.Separator,

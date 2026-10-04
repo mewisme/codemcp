@@ -43,7 +43,7 @@ func TestDoctorOutputModesAreDeterministic(t *testing.T) {
 	}
 
 	human := executeDoctorFixture(t, rootPath, true, false)
-	for _, want := range []string{"┌  CodeMCP doctor", "◆  Config", "│  ◆ config.overview", "◆  Runtime", "│  ◆ runtime.control", "└  Diagnostics complete"} {
+	for _, want := range []string{"┌  CodeMCP doctor", "│  ▸ Config", "│  ▸ config.overview", "│  ▸ Runtime", "│  ▸ runtime.control", "└  Diagnostics complete"} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output missing %q: %q", want, human)
 		}

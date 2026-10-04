@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"unicode/utf8"
 
 	"charm.land/glamour/v2"
-	"github.com/charmbracelet/x/ansi"
 )
 
 type ResultMode uint8
@@ -20,6 +18,7 @@ const (
 
 type Presenter struct {
 	out          io.Writer
+	sink         *terminalSink
 	mode         ResultMode
 	capabilities Capabilities
 	theme        Theme
@@ -30,17 +29,26 @@ type Presenter struct {
 	contentGap   bool
 }
 
-// AlignedRows renders a compact table in human mode when it fits the terminal.
-// When a three-column table does not fit, the final column becomes a clearly
-// indented continuation line. Plain mode remains append-only and deterministic.
+// AlignedRows preserves the legacy compact-table call surface while delegating
+// sizing, nesting, and fallback behavior to the canonical table engine.
 func (p *Presenter) AlignedRows(headers []string, rows ...Row) {
-	p.alignedRows(headers, AlignedRowWidths(headers, rows...), false, rows...)
+	p.Table(headers, rows, TableOptions{
+		Border: TableBare,
+		Layout: TableAdaptive,
+		Depth:  1,
+		Widths: AlignedRowWidths(headers, rows...),
+	})
 }
 
 // AlignedNestedRowsWithWidths renders rows one list level below the current
 // subsection while reusing a width set measured across a larger row set.
 func (p *Presenter) AlignedNestedRowsWithWidths(headers []string, widths []int, rows ...Row) {
-	p.alignedRows(headers, widths, true, rows...)
+	p.Table(headers, rows, TableOptions{
+		Border: TableBare,
+		Layout: TableAdaptive,
+		Depth:  2,
+		Widths: widths,
+	})
 }
 
 // AlignedRowWidths returns visible display widths for a table. Callers may
@@ -48,237 +56,16 @@ func (p *Presenter) AlignedNestedRowsWithWidths(headers []string, widths []int, 
 func AlignedRowWidths(headers []string, rows ...Row) []int {
 	widths := make([]int, len(headers))
 	for index, header := range headers {
-		widths[index] = ansi.StringWidth(strings.TrimSpace(header))
+		widths[index] = displayWidth(strings.TrimSpace(header))
 	}
 	for _, row := range rows {
 		for index := 0; index < len(row) && index < len(widths); index++ {
-			if width := ansi.StringWidth(row[index]); width > widths[index] {
+			if width := displayWidth(strings.TrimSpace(row[index])); width > widths[index] {
 				widths[index] = width
 			}
 		}
 	}
 	return widths
-}
-
-func (p *Presenter) alignedRows(headers []string, widths []int, nested bool, rows ...Row) {
-	if p == nil || p.mode == ModeJSON || len(rows) == 0 {
-		return
-	}
-	p.beginContent()
-	if p.mode != ModeHuman {
-		p.Rows(headers, rows...)
-		return
-	}
-	columns := len(headers)
-	if columns == 0 {
-		return
-	}
-	if len(widths) != columns {
-		widths = AlignedRowWidths(headers, rows...)
-	}
-	prefixWidth := ansi.StringWidth(p.alignedRowPrefix(nested))
-	available := p.capabilities.Width - prefixWidth
-	if available < 20 {
-		available = 20
-	}
-	total := 0
-	for _, width := range widths {
-		total += width
-	}
-	total += max(0, columns-1) * 2
-	if total <= available {
-		p.alignedHumanLine(headers, headers, widths, true, nested)
-		for _, row := range rows {
-			p.alignedHumanLine(headers, []string(row), widths, false, nested)
-		}
-		return
-	}
-	if columns == 3 {
-		const minimumAcceptWidth = 16
-		fixed := widths[0] + 2 + widths[1] + 2
-		if fixed+minimumAcceptWidth <= available {
-			wrappedWidths := append([]int(nil), widths...)
-			wrappedWidths[2] = min(widths[2], available-fixed)
-			p.alignedHumanLine(headers, headers, wrappedWidths, true, nested)
-			for _, row := range rows {
-				p.alignedHumanWrappedRow(headers, row, wrappedWidths, nested)
-			}
-			return
-		}
-	}
-	for _, row := range rows {
-		if len(row) == 0 {
-			continue
-		}
-		key := row[0]
-		value := ""
-		if len(row) > 1 {
-			value = row[1]
-		}
-		rowPrefixWidth := prefixWidth
-		if rowPrefixWidth+ansi.StringWidth(key)+2+ansi.StringWidth(value) <= p.capabilities.Width {
-			p.line(p.alignedRowPrefix(nested) + p.theme.Render(RoleLabel, key) + "  " + value)
-		} else {
-			p.line(p.alignedRowPrefix(nested) + p.theme.Render(RoleLabel, key))
-			if strings.TrimSpace(value) != "" {
-				p.alignedContinuation("value", value, nested, false)
-			}
-		}
-		if len(row) > 2 && strings.TrimSpace(row[2]) != "" {
-			label := "accepts"
-			if len(headers) > 2 && strings.TrimSpace(headers[2]) != "" {
-				label = strings.ToLower(strings.TrimSpace(headers[2]))
-			}
-			p.alignedContinuation(label, row[2], nested, true)
-		}
-	}
-}
-
-func (p *Presenter) alignedHumanWrappedRow(headers []string, row Row, widths []int, nested bool) {
-	if len(widths) != 3 {
-		p.alignedHumanLine(headers, []string(row), widths, false, nested)
-		return
-	}
-	values := []string{"", "", ""}
-	for index := range values {
-		if index < len(row) {
-			values[index] = strings.TrimSpace(row[index])
-		}
-	}
-	acceptParts := wrapDisplayWords(values[2], widths[2])
-	if len(acceptParts) == 0 {
-		acceptParts = []string{""}
-	}
-	values[2] = acceptParts[0]
-	p.alignedHumanLine(headers, values, widths, false, nested)
-	acceptOffset := widths[0] + 2 + widths[1] + 2
-	for _, part := range acceptParts[1:] {
-		p.line(p.alignedRowPrefix(nested) + strings.Repeat(" ", acceptOffset) + p.theme.Render(RoleMuted, part))
-	}
-}
-
-func (p *Presenter) alignedContinuation(label, value string, nested, dimValue bool) {
-	label = strings.TrimSpace(label)
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return
-	}
-	basePrefix := p.alignedRowPrefix(nested)
-	plainPrefix := basePrefix + "  " + label + ": "
-	continuationPrefix := basePrefix + strings.Repeat(" ", max(2, ansi.StringWidth(plainPrefix)-ansi.StringWidth(basePrefix)))
-	contentWidth := p.capabilities.Width - ansi.StringWidth(plainPrefix)
-	if contentWidth < 8 {
-		contentWidth = 8
-	}
-	parts := wrapDisplayWords(value, contentWidth)
-	for index, part := range parts {
-		if dimValue {
-			part = p.theme.Render(RoleMuted, part)
-		}
-		if index == 0 {
-			p.line(basePrefix + "  " + p.theme.Render(RoleMuted, label+":") + " " + part)
-			continue
-		}
-		p.line(continuationPrefix + part)
-	}
-}
-
-func wrapDisplayWords(value string, width int) []string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	if width <= 0 || ansi.StringWidth(value) <= width {
-		return []string{value}
-	}
-	words := strings.Fields(value)
-	lines := make([]string, 0, len(words))
-	current := ""
-	for _, word := range words {
-		if ansi.StringWidth(word) > width {
-			if current != "" {
-				lines = append(lines, current)
-				current = ""
-			}
-			for ansi.StringWidth(word) > width {
-				cut := displayPrefix(word, width)
-				lines = append(lines, cut)
-				word = strings.TrimPrefix(word, cut)
-			}
-			current = word
-			continue
-		}
-		candidate := word
-		if current != "" {
-			candidate = current + " " + word
-		}
-		if ansi.StringWidth(candidate) <= width {
-			current = candidate
-			continue
-		}
-		lines = append(lines, current)
-		current = word
-	}
-	if current != "" {
-		lines = append(lines, current)
-	}
-	return lines
-}
-
-func displayPrefix(value string, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	var builder strings.Builder
-	used := 0
-	for _, r := range value {
-		piece := string(r)
-		pieceWidth := ansi.StringWidth(piece)
-		if used+pieceWidth > width {
-			break
-		}
-		builder.WriteRune(r)
-		used += pieceWidth
-	}
-	if builder.Len() == 0 {
-		_, size := utf8.DecodeRuneInString(value)
-		return value[:size]
-	}
-	return builder.String()
-}
-
-func (p *Presenter) alignedHumanLine(headers, values []string, widths []int, header, nested bool) {
-	parts := make([]string, len(widths))
-	for index := range widths {
-		value := ""
-		if index < len(values) {
-			value = strings.TrimSpace(values[index])
-		}
-		padding := widths[index] - ansi.StringWidth(value)
-		if index < len(widths)-1 {
-			padding += 2
-		}
-		if padding < 0 {
-			padding = 0
-		}
-		if header {
-			value = p.theme.Render(RoleHeading, value)
-		} else if index == 0 {
-			value = p.theme.Render(RoleLabel, value)
-		} else if index < len(headers) && strings.EqualFold(strings.TrimSpace(headers[index]), "Accepts") {
-			value = p.theme.Render(RoleMuted, value)
-		}
-		parts[index] = value + strings.Repeat(" ", padding)
-	}
-	p.line(p.alignedRowPrefix(nested) + strings.Join(parts, ""))
-}
-
-func (p *Presenter) alignedRowPrefix(nested bool) string {
-	prefix := p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
-	if nested {
-		prefix += p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
-	}
-	return prefix
 }
 
 type Field struct {
@@ -302,8 +89,10 @@ func New(out io.Writer, mode ResultMode, capabilities Capabilities) *Presenter {
 	if out == nil {
 		out = io.Discard
 	}
+	sink := newTerminalSink(out)
 	return &Presenter{
 		out:          out,
+		sink:         sink,
 		mode:         mode,
 		capabilities: capabilities,
 		theme:        NewTheme(capabilities),
@@ -316,13 +105,21 @@ func newSessionPresenter(session *ProgressSession) *Presenter {
 		return New(io.Discard, ModeJSON, Capabilities{})
 	}
 	return &Presenter{
-		out:          session.out,
+		out:          session.sink.out,
+		sink:         session.sink,
 		mode:         session.mode,
 		capabilities: session.capabilities,
 		theme:        session.theme,
 		glyphs:       session.glyphs,
 		session:      session,
 	}
+}
+
+func (p *Presenter) Err() error {
+	if p == nil || p.sink == nil {
+		return nil
+	}
+	return p.sink.err()
 }
 
 func (p *Presenter) Intro(title string) {
@@ -346,7 +143,12 @@ func (p *Presenter) Frame(title string) {
 		return
 	}
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(RoleRail, p.glyphs.FrameStart) + "  " + p.theme.Render(RoleHeading, title))
+		p.emitWrapped(
+			p.theme.Render(RoleRail, p.glyphs.FrameStart)+"  ",
+			p.theme.Render(RoleRail, p.glyphs.Rail)+"  ",
+			title,
+			func(value string) string { return p.theme.Render(RoleHeading, value) },
+		)
 		p.Spacer()
 		return
 	}
@@ -377,11 +179,16 @@ func (p *Presenter) FrameEnd(message string) {
 	}
 	p.Spacer()
 	if p.mode == ModeHuman {
-		line := p.theme.Render(RoleRail, p.glyphs.FrameEnd)
-		if message != "" {
-			line += "  " + message
+		if message == "" {
+			p.line(p.theme.Render(RoleRail, p.glyphs.FrameEnd))
+			return
 		}
-		p.line(line)
+		p.emitWrapped(
+			p.theme.Render(RoleRail, p.glyphs.FrameEnd)+"  ",
+			"   ",
+			message,
+			nil,
+		)
 		return
 	}
 	if message != "" {
@@ -393,16 +200,22 @@ func (p *Presenter) Section(title string) {
 	if p == nil || p.mode == ModeJSON {
 		return
 	}
-	if strings.TrimSpace(title) == "" {
+	title = strings.TrimSpace(title)
+	if title == "" {
 		return
 	}
 	p.beginBlock()
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + "  " + p.theme.Render(RoleHeading, strings.TrimSpace(title)))
+		p.emitWrapped(
+			p.railPrefix(1)+p.theme.Render(RoleStructure, p.glyphs.Section)+" ",
+			p.railPrefix(1)+"  ",
+			title,
+			func(value string) string { return p.theme.Render(RoleHeading, value) },
+		)
 		p.contentGap = true
 		return
 	}
-	p.line(p.theme.Render(RoleHeading, strings.TrimSpace(title)))
+	p.line(p.theme.Render(RoleHeading, title))
 	p.contentGap = true
 }
 
@@ -420,7 +233,12 @@ func (p *Presenter) StateSection(kind StatusKind, title string) {
 		return
 	}
 	glyph, role := p.statusStyle(kind)
-	p.line(p.theme.Render(role, glyph) + "  " + p.theme.Render(RoleHeading, title))
+	p.emitWrapped(
+		p.theme.Render(role, glyph)+"  ",
+		strings.Repeat(" ", displayWidth(glyph)+2),
+		title,
+		func(value string) string { return p.theme.Render(RoleHeading, value) },
+	)
 	p.contentGap = true
 }
 
@@ -435,7 +253,12 @@ func (p *Presenter) Subsection(title string) {
 	p.beginContent()
 	p.beginBlock()
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + " " + p.theme.Render(RoleHeading, title))
+		p.emitWrapped(
+			p.railPrefix(1)+p.theme.Render(RoleStructure, p.glyphs.Section)+" ",
+			p.railPrefix(1)+"  ",
+			title,
+			func(value string) string { return p.theme.Render(RoleHeading, value) },
+		)
 		return
 	}
 	p.line("  " + p.theme.Render(RoleHeading, title))
@@ -479,7 +302,12 @@ func (p *Presenter) Status(kind StatusKind, message string) {
 	p.beginBlock()
 	glyph, role := p.statusStyle(kind)
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(role, glyph) + "  " + message)
+		p.emitWrapped(
+			p.theme.Render(role, glyph)+"  ",
+			strings.Repeat(" ", displayWidth(glyph)+2),
+			message,
+			nil,
+		)
 		p.contentGap = true
 		return
 	}
@@ -501,7 +329,12 @@ func (p *Presenter) ChildStatus(kind StatusKind, message string) {
 	}
 	p.beginContent()
 	glyph, role := p.statusStyle(kind)
-	p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(role, glyph) + " " + message)
+	p.emitWrapped(
+		p.railPrefix(1)+p.theme.Render(role, glyph)+" ",
+		p.railPrefix(1)+"  ",
+		message,
+		nil,
+	)
 }
 
 func (p *Presenter) ChildState(kind StatusKind, label string, value any) {
@@ -515,7 +348,7 @@ func (p *Presenter) ChildState(kind StatusKind, label string, value any) {
 	}
 	p.beginContent()
 	glyph, role := p.statusStyle(kind)
-	p.richField(p.theme.Render(role, glyph), label, value, false)
+	p.renderFieldDepth(p.theme.Render(role, glyph), label, value, 1)
 }
 
 func (p *Presenter) Fields(fields ...Field) {
@@ -536,9 +369,9 @@ func (p *Presenter) NestedFieldGroup(label string, fields ...Field) {
 		return
 	}
 	if p.mode == ModeHuman {
-		p.richFieldDepth("", label, "", 2)
+		p.renderFieldDepth("", label, "", 2)
 		for _, field := range fields {
-			p.richFieldDepth("", field.Label, field.Value, 3)
+			p.renderFieldDepth("", field.Label, field.Value, 3)
 		}
 		return
 	}
@@ -554,22 +387,21 @@ func (p *Presenter) fields(indent int, fields ...Field) {
 		p.beginContent()
 	}
 	if p.mode == ModeHuman {
+		depth := 1
+		if indent >= 4 {
+			depth = 2
+		}
 		for _, field := range fields {
-			if indent >= 4 {
-				p.richField("", field.Label, field.Value, true)
-				continue
-			}
-			p.richField("", field.Label, field.Value, false)
+			p.renderFieldDepth("", field.Label, field.Value, depth)
 		}
 		return
 	}
+
 	labelWidth := 0
 	for _, field := range fields {
-		if width := utf8.RuneCountInString(strings.TrimSpace(field.Label)); width > labelWidth {
-			labelWidth = width
-		}
+		labelWidth = max(labelWidth, displayWidth(strings.TrimSpace(field.Label)))
 	}
-	stacked := labelWidth+4 >= p.capabilities.Width/2
+	stacked := labelWidth+4 >= effectiveLayoutWidth(p.capabilities.Width)/2
 	for _, field := range fields {
 		label := strings.TrimSpace(field.Label)
 		value := fmt.Sprint(field.Value)
@@ -580,7 +412,7 @@ func (p *Presenter) fields(indent int, fields ...Field) {
 			}
 			continue
 		}
-		padding := strings.Repeat(" ", max(1, labelWidth-utf8.RuneCountInString(label)+2))
+		padding := strings.Repeat(" ", max(1, labelWidth-displayWidth(label)+2))
 		p.line(strings.Repeat(" ", indent) + p.theme.Render(RoleLabel, label) + padding + value)
 	}
 }
@@ -590,19 +422,35 @@ func (p *Presenter) List(items ...string) {
 		return
 	}
 	p.beginContent()
-	for _, item := range items {
-		if p.mode == ModeHuman {
-			lines := strings.Split(strings.TrimSpace(item), "\n")
-			if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
-				continue
+	if p.mode != ModeHuman {
+		for _, item := range items {
+			item = strings.TrimSpace(item)
+			if item != "" {
+				p.line("  " + p.glyphs.Info + " " + item)
 			}
-			p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + " " + lines[0])
-			for _, line := range lines[1:] {
-				p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + line)
-			}
-			continue
 		}
-		p.line("  " + p.glyphs.Info + " " + strings.TrimSpace(item))
+		return
+	}
+	visible := make([]string, 0, len(items))
+	for _, item := range items {
+		if value := strings.TrimSpace(item); value != "" {
+			visible = append(visible, value)
+		}
+	}
+	for index, item := range visible {
+		last := index == len(visible)-1
+		branch := p.glyphs.Branch
+		continuation := p.railPrefix(1) + p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
+		if last {
+			branch = p.glyphs.LastBranch
+			continuation = p.railPrefix(1) + "   "
+		}
+		p.emitWrapped(
+			p.railPrefix(1)+p.theme.Render(RoleStructure, branch),
+			continuation,
+			item,
+			nil,
+		)
 	}
 }
 
@@ -611,63 +459,34 @@ func (p *Presenter) Rows(headers []string, rows ...Row) {
 		return
 	}
 	p.beginContent()
-	if p.mode == ModeHuman {
-		for _, row := range rows {
-			if len(row) == 0 {
-				continue
-			}
-			if len(row) == 2 {
-				p.richField(p.theme.Render(RoleStructure, p.glyphs.PhaseDone), row[0], row[1], false)
-				continue
-			}
-			p.richTextChild(row[0])
-			for i := 1; i < len(row); i++ {
-				label := fmt.Sprintf("column %d", i+1)
-				if i < len(headers) && strings.TrimSpace(headers[i]) != "" {
-					label = headers[i]
-				}
-				p.richField("", label, row[i], true)
-			}
-		}
+	if p.mode != ModeHuman {
+		p.renderPlainTable(headers, rows)
 		return
 	}
-	widths := make([]int, len(headers))
-	for i, header := range headers {
-		widths[i] = utf8.RuneCountInString(header)
-	}
-	for _, row := range rows {
-		for i, value := range row {
-			if i >= len(widths) {
-				break
-			}
-			if width := utf8.RuneCountInString(value); width > widths[i] {
-				widths[i] = width
-			}
+	for rowIndex, row := range rows {
+		if len(row) == 0 {
+			continue
 		}
-	}
-	total := 0
-	for _, width := range widths {
-		total += width + 2
-	}
-	if total > p.capabilities.Width {
-		for _, row := range rows {
-			fields := make([]Field, 0, len(row))
-			for i, value := range row {
-				label := fmt.Sprintf("column %d", i+1)
-				if i < len(headers) && strings.TrimSpace(headers[i]) != "" {
-					label = headers[i]
-				}
-				fields = append(fields, Field{Label: label, Value: value})
-			}
-			p.Fields(fields...)
+		last := rowIndex == len(rows)-1
+		branch := p.glyphs.Branch
+		continuation := p.railPrefix(1) + p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
+		if last {
+			branch = p.glyphs.LastBranch
+			continuation = p.railPrefix(1) + "   "
 		}
-		return
-	}
-	if len(headers) > 0 {
-		p.line(formatRow(headers, widths, true, p.theme))
-	}
-	for _, row := range rows {
-		p.line(formatRow([]string(row), widths, false, p.theme))
+		p.emitWrapped(
+			p.railPrefix(1)+p.theme.Render(RoleStructure, branch),
+			continuation,
+			row[0],
+			func(value string) string { return p.theme.Render(RoleLabel, value) },
+		)
+		for column := 1; column < len(row); column++ {
+			label := fmt.Sprintf("column %d", column+1)
+			if column < len(headers) && strings.TrimSpace(headers[column]) != "" {
+				label = strings.TrimSpace(headers[column])
+			}
+			p.renderFieldDepth("", label, row[column], 2)
+		}
 	}
 }
 
@@ -680,10 +499,15 @@ func (p *Presenter) Note(title, body string) {
 	p.beginBlock()
 	if p.mode == ModeHuman {
 		if title != "" {
-			p.line(p.theme.Render(RoleMuted, p.glyphs.Info) + "  " + p.theme.Render(RoleHeading, title))
+			p.emitWrapped(
+				p.railPrefix(1)+p.theme.Render(RoleMuted, p.glyphs.Info)+" ",
+				p.railPrefix(1)+"  ",
+				title,
+				func(value string) string { return p.theme.Render(RoleHeading, value) },
+			)
 		}
-		for _, line := range strings.Split(strings.TrimSpace(body), "\n") {
-			p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + line)
+		for _, logical := range strings.Split(strings.TrimSpace(body), "\n") {
+			p.emitWrapped(p.railPrefix(1)+"  ", p.railPrefix(1)+"  ", logical, nil)
 		}
 		return
 	}
@@ -706,7 +530,12 @@ func (p *Presenter) Prompt(message string) {
 	p.beginContent()
 	p.beginBlock()
 	if p.mode == ModeHuman {
-		p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleActive, p.glyphs.PhasePending) + " " + message)
+		p.emitWrapped(
+			p.railPrefix(1)+p.theme.Render(RoleActive, p.glyphs.PhasePending)+" ",
+			p.railPrefix(1)+"  ",
+			message,
+			nil,
+		)
 		return
 	}
 	p.line(message)
@@ -725,17 +554,23 @@ func (p *Presenter) ProtectedInput(label string, maskCount int, final bool) {
 	if maskCount < 0 {
 		maskCount = 0
 	}
+	if p.session != nil {
+		p.session.protectedInput(label, maskCount, final)
+		return
+	}
 	line := label + ": " + strings.Repeat("*", maskCount)
 	if p.mode == ModeHuman {
-		line = p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleActive, p.glyphs.PhasePending) + " " + line
+		line = p.railPrefix(1) + p.theme.Render(RoleActive, p.glyphs.PhasePending) + " " + line
 	}
 	if p.capabilities.CursorControl {
-		_, _ = fmt.Fprint(p.out, "\r\x1b[2K", line)
+		_, _ = p.sink.writeString("\r\x1b[2K" + line)
 	} else if maskCount == 0 {
-		_, _ = fmt.Fprint(p.out, line)
+		_, _ = p.sink.writeString(line)
 	}
 	if final {
-		_, _ = fmt.Fprintln(p.out)
+		_, _ = p.sink.writeString("\n")
+		p.emitted = true
+		p.gap = false
 	}
 }
 
@@ -745,9 +580,9 @@ func (p *Presenter) Markdown(source string) error {
 	}
 	p.beginContent()
 	p.beginBlock()
-	width := p.capabilities.Width
+	width := effectiveLayoutWidth(p.capabilities.Width)
 	if p.mode == ModeHuman {
-		width = max(20, width-3)
+		width = max(10, width-displayWidth(p.railPrefix(1)+"  "))
 	}
 	options := []glamour.TermRendererOption{glamour.WithWordWrap(width)}
 	if !p.capabilities.Color {
@@ -763,19 +598,23 @@ func (p *Presenter) Markdown(source string) error {
 	if err != nil {
 		return err
 	}
-	if p.mode != ModeHuman {
-		_, err = io.WriteString(p.out, output)
-		return err
-	}
 	output = strings.TrimRight(output, "\n")
+	if p.mode != ModeHuman {
+		for _, line := range strings.Split(output, "\n") {
+			p.line(line)
+		}
+		return p.Err()
+	}
 	for _, line := range strings.Split(output, "\n") {
 		if strings.TrimSpace(line) == "" {
 			p.line(p.theme.Render(RoleRail, p.glyphs.Rail))
 			continue
 		}
-		p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + line)
+		for _, physical := range hardWrapDisplay(line, width) {
+			p.line(p.railPrefix(1) + "  " + physical)
+		}
 	}
-	return nil
+	return p.Err()
 }
 
 func (p *Presenter) statusStyle(kind StatusKind) (string, Role) {
@@ -793,59 +632,47 @@ func (p *Presenter) statusStyle(kind StatusKind) (string, Role) {
 	}
 }
 
-func (p *Presenter) richField(glyph, label string, value any, continuation bool) {
-	depth := 1
-	if continuation {
-		depth = 2
-	}
-	p.richFieldDepth(glyph, label, value, depth)
-}
-
-func (p *Presenter) richFieldDepth(glyph, label string, value any, depth int) {
-	label = strings.TrimSpace(label)
-	lines := strings.Split(fmt.Sprint(value), "\n")
-	if len(lines) == 0 {
-		lines = []string{""}
-	}
+func (p *Presenter) renderFieldDepth(glyph, label string, value any, depth int) {
 	if depth < 1 {
 		depth = 1
 	}
-	prefix := strings.Repeat(p.theme.Render(RoleRail, p.glyphs.Rail)+"  ", depth)
+	label = strings.TrimSpace(label)
+	labelPrefix := p.railPrefix(depth)
+	labelContinuation := labelPrefix + "  "
 	if glyph != "" {
-		prefix += glyph + " "
+		labelPrefix += glyph + " "
+		labelContinuation = p.railPrefix(depth) + strings.Repeat(" ", displayWidth(glyph)+1)
 	}
-	line := prefix
 	if label != "" {
-		line += p.theme.Render(RoleLabel, label)
-		if lines[0] != "" {
-			line += " " + p.fieldSeparator() + " " + lines[0]
-		}
-	} else {
-		line += lines[0]
+		p.emitWrapped(
+			labelPrefix,
+			labelContinuation,
+			label,
+			func(value string) string { return p.theme.Render(RoleLabel, value) },
+		)
 	}
-	p.line(line)
-	continuationPrefix := strings.Repeat(p.theme.Render(RoleRail, p.glyphs.Rail)+"  ", depth)
-	for _, continuationLine := range lines[1:] {
-		p.line(continuationPrefix + continuationLine)
-	}
-}
-
-func (p *Presenter) richTextChild(value string) {
-	lines := strings.Split(strings.TrimSpace(value), "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) == "" {
+	valueText := strings.TrimSpace(fmt.Sprint(value))
+	if valueText == "" {
 		return
 	}
-	p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleStructure, p.glyphs.PhaseDone) + " " + lines[0])
-	for _, line := range lines[1:] {
-		p.line(p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + p.theme.Render(RoleRail, p.glyphs.Rail) + "  " + line)
+	valuePrefix := p.railPrefix(depth) + "  "
+	for _, logical := range strings.Split(valueText, "\n") {
+		p.emitWrapped(valuePrefix, valuePrefix, logical, nil)
 	}
 }
 
-func (p *Presenter) fieldSeparator() string {
-	if p.capabilities.Unicode {
-		return "—"
+func (p *Presenter) railPrefix(depth int) string {
+	if depth < 1 {
+		depth = 1
 	}
-	return "-"
+	return strings.Repeat(p.theme.Render(RoleRail, p.glyphs.Rail)+"  ", depth)
+}
+
+func (p *Presenter) emitWrapped(prefix, continuation, content string, decorate func(string) string) {
+	layout := newLayoutContext(effectiveLayoutWidth(p.capabilities.Width), prefix, continuation)
+	for _, line := range layout.render(content, decorate) {
+		p.line(line)
+	}
 }
 
 func (p *Presenter) line(value string) {
@@ -853,7 +680,10 @@ func (p *Presenter) line(value string) {
 		p.session.line(value)
 		return
 	}
-	_, _ = fmt.Fprintln(p.out, value)
+	if p.sink == nil {
+		p.sink = newTerminalSink(p.out)
+	}
+	p.sink.line(value)
 	p.emitted = true
 	p.gap = false
 }
@@ -871,7 +701,7 @@ func (p *Presenter) beginBlock() {
 		p.session.beginBlock()
 		return
 	}
-	if p == nil || !p.emitted || p.gap {
+	if !p.emitted || p.gap {
 		return
 	}
 	p.Spacer()
@@ -883,23 +713,4 @@ func (p *Presenter) beginContent() {
 	}
 	p.Spacer()
 	p.contentGap = false
-}
-
-func formatRow(values []string, widths []int, heading bool, theme Theme) string {
-	parts := make([]string, 0, len(widths))
-	for i, width := range widths {
-		value := ""
-		if i < len(values) {
-			value = values[i]
-		}
-		padding := width - utf8.RuneCountInString(value)
-		if padding < 0 {
-			padding = 0
-		}
-		if heading {
-			value = theme.Render(RoleLabel, value)
-		}
-		parts = append(parts, value+strings.Repeat(" ", padding))
-	}
-	return strings.TrimRight(strings.Join(parts, "  "), " ")
 }

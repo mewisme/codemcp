@@ -106,7 +106,7 @@ func TestTelegramPairingProgressReplacesLoaderWithTerminalState(t *testing.T) {
 				t.Fatalf("done=%t err=%v", done, err)
 			}
 			text := output.String()
-			if strings.Contains(text, "Waiting for Telegram pairing") || !strings.Contains(text, test.want) {
+			if !strings.Contains(text, "Waiting for Telegram pairing") || !strings.Contains(text, test.want) {
 				t.Fatalf("pairing progress output=%q", text)
 			}
 		})

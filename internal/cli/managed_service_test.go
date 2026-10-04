@@ -129,12 +129,12 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"│  ✓ Server started",
-		"│  │  scope — user",
-		"│  │  config — " + root,
-		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
-		"│  ◆ Actions",
-		"│  │  View logs — cm logs -f",
-		"│  │  Stop service — cm down",
+		"│  │  scope\n│  │    user",
+		"│  │  config\n│  │    " + root,
+		"│  ◇ OpenAI Secure MCP Tunnel\n│    disabled",
+		"│  ▸ Actions",
+		"│  │  View logs\n│  │    cm logs -f",
+		"│  │  Stop service\n│  │    cm down",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("up output hierarchy missing %q: %s", expected, text)
@@ -302,13 +302,13 @@ func TestManagedLifecycleResultRendersConnectedTunnelAsNestedList(t *testing.T) 
 
 	text := output.String()
 	for _, expected := range []string{
-		"│  ✓ OpenAI Secure MCP Tunnel — connected",
-		"│  │  id — tunnel_demo",
-		"│  │  name — MCP_Tunnel_WSL",
-		"│  │  description — MCP Tunnel WSL",
+		"│  ✓ OpenAI Secure MCP Tunnel\n│    connected",
+		"│  │  id\n│  │    tunnel_demo",
+		"│  │  name\n│  │    MCP_Tunnel_WSL",
+		"│  │  description\n│  │    MCP Tunnel WSL",
 		"│  │  scope",
-		"│  │  │  organization — org_demo",
-		"│  │  │  workspace — ws_demo",
+		"│  │  │  organization\n│  │  │    org_demo",
+		"│  │  │  workspace\n│  │  │    ws_demo",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("connected tunnel hierarchy missing %q: %s", expected, text)
@@ -344,16 +344,16 @@ func TestManagedLifecycleResultGroupsReadinessByScope(t *testing.T) {
 	renderManagedLifecycleResult(cmd, "Managed service restarted", managed.Spec{Scope: managed.ScopeUser}, &fakeServiceManager{}, status, tunnel.Config{})
 	text := output.String()
 	for _, expected := range []string{
-		"│  ✓ Semantic — ready",
-		"│  │  TypeSafe semantic provider — ready",
-		"│  │  Semantic approval — ready",
-		"│  ✓ Telegram — ready",
-		"│  │  Telegram runtime — ready",
-		"│  │  Telegram topics — ready",
-		"│  │  Telegram Logs Mini App — ready",
-		"│  ✓ Notifications — ready",
-		"│  │  Approval notifications — ready",
-		"│  │  Completion notifications — ready",
+		"│  ✓ Semantic\n│    ready",
+		"│  │  TypeSafe semantic provider\n│  │    ready",
+		"│  │  Semantic approval\n│  │    ready",
+		"│  ✓ Telegram\n│    ready",
+		"│  │  Telegram runtime\n│  │    ready",
+		"│  │  Telegram topics\n│  │    ready",
+		"│  │  Telegram Logs Mini App\n│  │    ready",
+		"│  ✓ Notifications\n│    ready",
+		"│  │  Approval notifications\n│  │    ready",
+		"│  │  Completion notifications\n│  │    ready",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("grouped readiness missing %q: %s", expected, text)
@@ -391,8 +391,8 @@ func TestManagedRestartReadinessObserverStreamsScopesAsTheyBecomeReady(t *testin
 	progress.Stop()
 
 	text := output.String()
-	telegramLine := "✓ Telegram — ready"
-	tunnelLine := "✓ OpenAI Secure MCP Tunnel — ready"
+	telegramLine := "✓ Telegram\n│    ready"
+	tunnelLine := "✓ OpenAI Secure MCP Tunnel\n│    ready"
 	for _, line := range []string{telegramLine, tunnelLine} {
 		if count := strings.Count(text, line); count != 1 {
 			t.Fatalf("streamed readiness line %q count=%d: %q", line, count, text)
@@ -402,7 +402,7 @@ func TestManagedRestartReadinessObserverStreamsScopesAsTheyBecomeReady(t *testin
 	if telegramIndex < 0 || tunnelIndex <= telegramIndex {
 		t.Fatalf("readiness scopes were not emitted in observed completion order: %q", text)
 	}
-	for _, unexpected := range []string{"Semantic — ready", "Notifications — ready"} {
+	for _, unexpected := range []string{"✓ Semantic\n│    ready", "✓ Notifications\n│    ready"} {
 		if strings.Contains(text, unexpected) {
 			t.Fatalf("non-lifecycle readiness leaked into restart output %q: %q", unexpected, text)
 		}
@@ -423,15 +423,15 @@ func TestManagedRestartResultUsesCompactServerSummary(t *testing.T) {
 	renderManagedRestartResult(cmd, spec, &fakeServiceManager{}, status)
 	text := output.String()
 	for _, expected := range []string{
-		"│  ✓ Server — running",
-		"│  │  service — cm-user-test",
-		"│  │  runtime — pid 4242 · run_1234567890abcdef",
-		"│  │  backend — " + managedBackendLabel(&fakeServiceManager{}, spec) + " · user",
-		"│  │  config — /tmp/cm",
-		"│  │  mcp http — disabled",
-		"│  ◆ Actions",
-		"│  │  Logs — cm logs -f",
-		"│  │  Stop — cm down",
+		"│  ✓ Server\n│    running",
+		"│  │  service\n│  │    cm-user-test",
+		"│  │  runtime\n│  │    pid 4242 · run_1234567890abcdef",
+		"│  │  backend\n│  │    " + managedBackendLabel(&fakeServiceManager{}, spec) + " · user",
+		"│  │  config\n│  │    /tmp/cm",
+		"│  │  mcp http\n│  │    disabled",
+		"│  ▸ Actions",
+		"│  │  Logs\n│  │    cm logs -f",
+		"│  │  Stop\n│  │    cm down",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("compact restart summary missing %q: %s", expected, text)
@@ -634,8 +634,8 @@ func TestManagedRestartUpdatesChangedDefinitionWithoutUninstall(t *testing.T) {
 	}
 	text := output.String()
 	for _, grouped := range []string{
-		"Stopped managed service backend\n│\n◆  Updated managed service definition",
-		"Updated managed service definition\n│\n◆  Started managed service backend",
+		"Stopped managed service backend\n│\n◇  Updating managed service definition",
+		"Updated managed service definition\n│\n◇  Starting managed service backend",
 	} {
 		if !strings.Contains(text, grouped) {
 			t.Fatalf("restart lifecycle groups are cramped; missing %q: %s", grouped, text)
