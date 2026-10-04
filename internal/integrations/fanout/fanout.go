@@ -15,6 +15,7 @@ const (
 	Auto         Mode = "auto"
 	Conservative Mode = "conservative"
 	Aggressive   Mode = "aggressive"
+	maxStates         = 1024
 )
 
 type State struct {
@@ -40,6 +41,7 @@ type Manager struct {
 	defaultActive bool
 	defaultMode   Mode
 	states        map[stateKey]State
+	stateOrder    []stateKey
 }
 
 func NewManager(defaultActive bool, defaultMode ...Mode) *Manager {
@@ -66,6 +68,7 @@ func (m *Manager) SetDefaults(active bool, mode Mode) {
 	m.defaultActive = active
 	m.defaultMode = mode
 	m.states = map[stateKey]State{}
+	m.stateOrder = nil
 }
 
 func (m *Manager) Turn(controllerID, workspaceID, prompt, action string) (Result, error) {
@@ -89,6 +92,11 @@ func (m *Manager) Turn(controllerID, workspaceID, prompt, action string) (Result
 	key := stateKey{Controller: controllerID, Workspace: workspaceID}
 	state, exists := m.states[key]
 	if !exists {
+		if len(m.states) >= maxStates && len(m.stateOrder) > 0 {
+			delete(m.states, m.stateOrder[0])
+			m.stateOrder = m.stateOrder[1:]
+		}
+		m.stateOrder = append(m.stateOrder, key)
 		state.Mode = Off
 		if m.defaultActive {
 			state.Mode = m.defaultMode

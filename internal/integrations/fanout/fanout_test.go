@@ -1,6 +1,7 @@
 package fanout
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -137,6 +138,27 @@ func TestManagerConcurrentSessionsRemainIsolated(t *testing.T) {
 		if err != nil || value.Mode != target.mode {
 			t.Fatalf("%s mode=%q want=%q err=%v", target.session, value.Mode, target.mode, err)
 		}
+	}
+}
+
+func TestManagerBoundsTransientControllerState(t *testing.T) {
+	manager := NewManager(true, Auto)
+	firstController := "controller-0000"
+	if value, err := manager.Turn(firstController, "ws", "/fanout aggressive", "turn"); err != nil || value.Mode != Aggressive {
+		t.Fatalf("first controller=%#v err=%v", value, err)
+	}
+	for index := 1; index <= maxStates; index++ {
+		controller := fmt.Sprintf("controller-%04d", index)
+		if _, err := manager.Turn(controller, "ws", "continue", "turn"); err != nil {
+			t.Fatalf("controller %d: %v", index, err)
+		}
+	}
+	value, err := manager.Turn(firstController, "ws", "continue", "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value.Mode != Auto {
+		t.Fatalf("evicted controller retained transient mode: %#v", value)
 	}
 }
 

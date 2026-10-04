@@ -3,7 +3,6 @@ package chatgptweb
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -34,12 +33,6 @@ type controlResult struct {
 	ModelVerified   bool     `json:"model_verified"`
 	EffortVerified  bool     `json:"effort_verified"`
 	EffortValue     int      `json:"effort_value"`
-}
-
-type connectorResult struct {
-	Selected     bool     `json:"selected"`
-	Rows         []string `json:"rows"`
-	ComposerText string   `json:"composer_text"`
 }
 
 type promptAttachResult struct {
@@ -133,53 +126,27 @@ func configureControls(ctx context.Context, tab browser.BrowserTab, model, effor
 	return result, nil
 }
 
-func connectorExpression(name, query string) string {
-	return fmt.Sprintf(`/*codemcp:connector*/(async()=>{%s
-const norm=s=>(s||'').replace(/\s+/g,' ').trim();const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const composers=()=>[...document.querySelectorAll(%s)].filter(visible);
-const selected=()=>{const c=composers();if(c.length!==1)return [];return [...c[0].querySelectorAll(%s)].filter(visible).filter(el=>(el.getAttribute('data-keyword')||el.getAttribute('app-mention-display-name'))===%s);};
-if(selected().length===1)return {selected:true,rows:[],composer_text:''};if(selected().length>1)throw new Error('duplicate connector selections');
-let personalizationTried=false;
-for(let attempt=0;attempt<3;attempt++){const cs=composers();if(cs.length!==1)throw new Error('expected one visible composer');const c=cs[0];c.focus();document.execCommand('selectAll',false);document.execCommand('delete',false);document.execCommand('insertText',false,%s);c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:%s}));await sleep(350);
-const rows=[...document.querySelectorAll(%s)].filter(visible);const titles=rows.map(r=>norm((r.innerText||r.textContent||'').split('\n')[0]));const exact=rows.filter((r,i)=>titles[i]===%s);if(exact.length===1){exact[0].click();await sleep(200);const chosen=selected();if(chosen.length===1)return {selected:true,rows:titles,composer_text:norm(c.textContent)};if(chosen.length>1)throw new Error('duplicate connector selections after activation');}if(exact.length>1)throw new Error('connector menu exposed duplicate exact rows');
-if(!personalizationTried){const buttons=[...document.querySelectorAll('button')].filter(visible).filter(el=>/^Unpersonalized$/i.test(norm(el.innerText||el.textContent)));if(buttons.length>1)throw new Error('personalization control is ambiguous');if(buttons.length===1){personalizationTried=true;buttons[0].click();await sleep(120);const choices=[...document.querySelectorAll('[role="menuitemradio"],[role="radio"]')].filter(visible).filter(el=>/^Personalized$/i.test(norm(el.innerText||el.textContent)));if(choices.length!==1)throw new Error('personalization menu did not expose one exact Personalized choice');choices[0].click();await sleep(250);attempt=-1;continue;}}}
-const rows=[...document.querySelectorAll(%s)].filter(visible).map(r=>norm((r.innerText||r.textContent||'').split('\n')[0])).filter(Boolean);return {selected:false,rows,composer_text:composers().length===1?norm(composers()[0].textContent):''};})()`,
-		visiblePrelude(), jsString(ComposerSelector), jsString(SelectedConnectorSelector), jsString(name), jsString(query), jsString(query), jsString(ConnectorMenuRowSelector), jsString(name), jsString(ConnectorMenuRowSelector))
-}
-
-func selectConnector(ctx context.Context, tab browser.BrowserTab, name string) (connectorResult, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return connectorResult{}, errors.New("connector name is required")
-	}
-	query := "@" + strings.ToLower(strings.Map(func(r rune) rune {
-		if r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
-			return r
-		}
-		return -1
-	}, name))
-	if query == "@" {
-		return connectorResult{}, errors.New("connector name has no searchable characters")
-	}
-	var result connectorResult
-	if err := tab.Evaluate(ctx, connectorExpression(name, query), &result); err != nil {
-		return connectorResult{}, err
-	}
-	return result, nil
-}
-
-func attachPromptExpression(prompt, connector string) string {
+func attachPromptExpression(prompt, connector, workspaceID string) string {
+	route := connectorRoutePrefix(connector, workspaceID)
 	return fmt.Sprintf(`/*codemcp:attach*/(()=>{%s
-const norm=s=>(s||'').replace(/\r\n/g,'\n').trimStart();const composers=[...document.querySelectorAll(%s)].filter(visible);if(composers.length!==1)throw new Error('expected one visible composer');const c=composers[0];
-const chosen=[...c.querySelectorAll(%s)].filter(visible).filter(el=>(el.getAttribute('data-keyword')||el.getAttribute('app-mention-display-name'))===%s);if(%s!==''&&chosen.length!==1)throw new Error('configured connector is not selected');
-c.focus();const sel=getSelection();if(sel){const range=document.createRange();range.selectNodeContents(c);range.collapse(false);sel.removeAllRanges();sel.addRange(range);}const value=(%s!==''?' ':'')+%s;if(!document.execCommand('insertText',false,value)){c.append(document.createTextNode(value));c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));}
-const clone=c.cloneNode(true);clone.querySelectorAll(%s).forEach(el=>el.remove());return {text:norm(clone.textContent||''),connector_count:chosen.length};})()`,
-		visiblePrelude(), jsString(ComposerSelector), jsString(SelectedConnectorSelector), jsString(connector), jsString(connector), jsString(connector), jsString(prompt), jsString(SelectedConnectorSelector))
+const norm=s=>(s||'').replace(/\r\n/g,'\n').trim();const canon=s=>(s||'').replace(/\s+/g,' ').trim().replace(/^@/,'').toLocaleLowerCase();const connector=%s;const workspace=%s;const mention=connector===''?'':'@'+connector;const target=canon(connector);const route=%s;const workspaceRoute=workspace+', ';const composers=[...document.querySelectorAll(%s)].filter(visible);if(composers.length!==1)throw new Error('expected one visible composer');const c=composers[0];
+c.focus();document.execCommand('selectAll',false);document.execCommand('delete',false);const value=route+%s;if(!document.execCommand('insertText',false,value)){c.append(document.createTextNode(value));c.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));}
+const clone=c.cloneNode(true);const chosen=[...clone.querySelectorAll(%s)].filter(el=>[el.getAttribute('app-mention-display-name'),el.getAttribute('data-keyword'),el.getAttribute('aria-label')].some(v=>canon(v)===target));if(chosen.length>1)throw new Error('duplicate connector mentions');let count=0;if(connector!==''){if(chosen.length===1){chosen[0].remove();const raw=(clone.textContent||'').trimStart();if(raw.startsWith(workspaceRoute)){clone.textContent=raw.slice(workspaceRoute.length);count=1;}}else{const raw=clone.textContent||'';if(raw.startsWith(route)){clone.textContent=raw.slice(route.length);count=1;}}}return {text:norm(clone.textContent||''),connector_count:count};})()`,
+		visiblePrelude(), jsString(connector), jsString(workspaceID), jsString(route), jsString(ComposerSelector), jsString(prompt), jsString(ConnectorMentionSelector))
 }
 
-func attachPrompt(ctx context.Context, tab browser.BrowserTab, prompt, connector string) (promptAttachResult, error) {
+func connectorRoutePrefix(connector, workspaceID string) string {
+	connector = strings.TrimSpace(connector)
+	workspaceID = strings.TrimSpace(workspaceID)
+	if connector == "" {
+		return ""
+	}
+	return "@" + connector + " " + workspaceID + ", "
+}
+
+func attachPrompt(ctx context.Context, tab browser.BrowserTab, prompt, connector, workspaceID string) (promptAttachResult, error) {
 	var result promptAttachResult
-	if err := tab.Evaluate(ctx, attachPromptExpression(prompt, connector), &result); err != nil {
+	if err := tab.Evaluate(ctx, attachPromptExpression(prompt, connector, workspaceID), &result); err != nil {
 		return promptAttachResult{}, err
 	}
 	return result, nil

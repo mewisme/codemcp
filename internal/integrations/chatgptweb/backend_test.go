@@ -265,7 +265,7 @@ func TestAgentBackendClaimCompletionFinalAndRelease(t *testing.T) {
 		t.Fatal("driver was not associated with managed agent")
 	}
 	request := driver.request()
-	if request.Prompt != "inspect the delegated issue" || request.Model != "GPT-5.6 Sol" || request.ReasoningEffort != "high" || request.ConnectorName != "CodeMCP" || !request.RequireConnector {
+	if request.Prompt != "inspect the delegated issue" || request.WorkspaceID != "ws_test" || request.Model != "GPT-5.6 Sol" || request.ReasoningEffort != "high" || request.ConnectorName != "CodeMCP" || !request.RequireConnector {
 		t.Fatalf("driver request=%#v", request)
 	}
 	for _, required := range []string{string(spawned.ID), "Workspace ID: ws_test", "agent_claim", "project_context", "memory enabled", "no parent transcript", "agent_complete"} {

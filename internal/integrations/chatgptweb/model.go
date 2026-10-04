@@ -61,6 +61,7 @@ const (
 type TurnRequest struct {
 	Bootstrap        string
 	Prompt           string
+	WorkspaceID      string
 	Model            string
 	ReasoningEffort  string
 	ConnectorName    string

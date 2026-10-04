@@ -85,7 +85,7 @@ func registerManagedAgentSpawnTool(registry *Registry, runtime *Runtime) {
 func registerManagedAgentListTool(registry *Registry, runtime *Runtime) {
 	registry.MustRegister(AgentListToolName, Schema{
 		Name: AgentListToolName, Title: "List Managed Agents",
-		Description:  "List managed agents owned by the current trusted MCP session.",
+		Description:  "List managed agents owned by the current trusted controller identity.",
 		InputSchema:  json.RawMessage(`{"type":"object","additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"array","items":` + managedAgentSnapshotSchema + `}`),
 		Annotations:  ToolAnnotations(RiskRead),
@@ -194,16 +194,16 @@ func managedAgentMCPController(ctx context.Context, runtime *Runtime, allowClaim
 	if runtime == nil || runtime.Agents == nil {
 		return managedagent.Controller{}, errors.New("managed agent service is unavailable")
 	}
-	sessionID := strings.TrimSpace(MCPSessionID(ctx))
-	if sessionID == "" {
-		return managedagent.Controller{}, errors.New("managed agent tools require trusted MCP session identity")
+	identity := RuntimeStateIdentity(ctx)
+	if identity == "" {
+		return managedagent.Controller{}, errors.New("managed agent tools require trusted controller identity")
 	}
 	if !allowClaimedChild {
-		if _, claimed := runtime.Agents.SessionBinding(sessionID); claimed {
+		if _, claimed := runtime.Agents.SessionBinding(identity); claimed {
 			return managedagent.Controller{}, errors.New("nested managed-agent delegation is disabled")
 		}
 	}
-	return managedagent.NewMCPController(mcpSessionStateKey(sessionID))
+	return managedagent.NewMCPController(RuntimeStateKey(ctx))
 }
 
 func requiredManagedAgentID(args map[string]any) (managedagent.ID, error) {

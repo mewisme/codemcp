@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	managedagent "go.mewis.me/codemcp/internal/agent"
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
@@ -68,9 +67,9 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 		var managedBinding managedagent.ClaimBinding
 		managedBound := false
 		if managedAgents != nil {
-			sessionID := strings.TrimSpace(MCPSessionID(ctx))
-			if sessionID != "" {
-				managedBinding, managedBound = managedAgents.SessionBinding(sessionID)
+			identity := RuntimeStateIdentity(ctx)
+			if identity != "" {
+				managedBinding, managedBound = managedAgents.SessionBinding(identity)
 				if managedBound && managedBinding.Active && managedBinding.WorkspaceID != workspaceID {
 					return Result{}, errors.New("claimed managed agent completion workspace mismatch")
 				}

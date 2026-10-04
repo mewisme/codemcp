@@ -13,6 +13,7 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/openai/tunnel-client/pkg/tunnelctx"
 
+	managedagent "go.mewis.me/codemcp/internal/agent"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/controlguard"
@@ -26,6 +27,24 @@ import (
 type bridgeConfigReadProvider struct {
 	setting mcpconfigwire.Setting
 }
+
+type bridgeManagedAgentBackend struct{}
+
+func (bridgeManagedAgentBackend) ID() managedagent.BackendID { return "bridge-agent-test" }
+func (bridgeManagedAgentBackend) Ready(context.Context) (managedagent.Readiness, error) {
+	return managedagent.Readiness{Available: true, Capacity: managedagent.Capacity{MaxParallel: 5}}, nil
+}
+func (bridgeManagedAgentBackend) Spawn(_ context.Context, request managedagent.BackendSpawnRequest) (managedagent.Handle, error) {
+	return string(request.AgentID), nil
+}
+func (bridgeManagedAgentBackend) Send(context.Context, managedagent.Handle, managedagent.Message) error {
+	return nil
+}
+func (bridgeManagedAgentBackend) Snapshot(context.Context, managedagent.Handle) (managedagent.BackendSnapshot, error) {
+	return managedagent.BackendSnapshot{Phase: managedagent.BackendPhaseIdle}, nil
+}
+func (bridgeManagedAgentBackend) Cancel(context.Context, managedagent.Handle) error { return nil }
+func (bridgeManagedAgentBackend) Close(context.Context, managedagent.Handle) error  { return nil }
 
 func (provider bridgeConfigReadProvider) List(context.Context, string) ([]mcpconfigwire.Setting, mcpconfigwire.ErrorCode) {
 	return []mcpconfigwire.Setting{provider.setting}, ""
@@ -540,6 +559,76 @@ func TestSDKBridgeModernOpenAISessionIsolatesFanoutControllerState(t *testing.T)
 	}
 	if fanoutB["mode"] != "auto" {
 		t.Fatalf("session B mode = %#v", fanoutB["mode"])
+	}
+}
+
+func TestSDKBridgeModernOpenAISessionCanSpawnManagedAgent(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	defer runtime.CompletionHooks.Stop()
+	if err := runtime.Agents.RegisterBackend(bridgeManagedAgentBackend{}); err != nil {
+		t.Fatal(err)
+	}
+	item, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(session, name string, args map[string]any) *sdkmcp.CallToolResult {
+		t.Helper()
+		arguments, marshalErr := json.Marshal(args)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		request := &sdkmcp.CallToolRequest{Params: &sdkmcp.CallToolParamsRaw{
+			Name:      name,
+			Arguments: arguments,
+			Meta: sdkmcp.Meta{
+				sdkmcp.MetaKeyProtocolVersion: localmcp.SupportedProtocolVersion,
+				"openai/session":              session,
+			},
+		}}
+		result, callErr := bridge.toolHandler(name)(context.Background(), request)
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+		if result == nil || result.IsError {
+			t.Fatalf("%s result for %s = %#v", name, session, result)
+		}
+		return result
+	}
+
+	spawn := call("chat-session-a", tools.AgentSpawnToolName, map[string]any{
+		"workspace_id": item.ID,
+		"prompt":       "inspect one independent subsystem",
+		"backend":      "bridge-agent-test",
+	})
+	if spawn.StructuredContent == nil {
+		t.Fatalf("spawn returned no structured content: %#v", spawn)
+	}
+	owned := call("chat-session-a", tools.AgentListToolName, map[string]any{})
+	foreign := call("chat-session-b", tools.AgentListToolName, map[string]any{})
+	ownedData, err := json.Marshal(owned.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignData, err := json.Marshal(foreign.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ownedAgents []managedagent.Snapshot
+	if err := json.Unmarshal(ownedData, &ownedAgents); err != nil {
+		t.Fatal(err)
+	}
+	var foreignAgents []managedagent.Snapshot
+	if err := json.Unmarshal(foreignData, &foreignAgents); err != nil {
+		t.Fatal(err)
+	}
+	if len(ownedAgents) != 1 || len(foreignAgents) != 0 {
+		t.Fatalf("controller ownership leaked: owned=%#v foreign=%#v", ownedAgents, foreignAgents)
 	}
 }
 

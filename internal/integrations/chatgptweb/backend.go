@@ -309,7 +309,7 @@ func (backend *AgentBackend) runInitial(handle *agentBackendHandle, request mana
 	handle.mu.Unlock()
 
 	result, err := driver.Start(context.Background(), TurnRequest{
-		Bootstrap: bootstrap, Prompt: request.Prompt,
+		Bootstrap: bootstrap, Prompt: request.Prompt, WorkspaceID: request.WorkspaceID,
 		Model: request.Model, ReasoningEffort: request.ReasoningEffort,
 		ConnectorName: connectorName, RequireConnector: true,
 	})

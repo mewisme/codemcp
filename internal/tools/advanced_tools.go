@@ -144,13 +144,13 @@ func fanoutToolEntries(runtime *Runtime) map[string]Entry {
 			if err != nil {
 				return Result{}, err
 			}
-			sessionID := MCPSessionID(ctx)
+			identity := RuntimeStateIdentity(ctx)
 			controllerID := RuntimeStateKey(ctx)
 			if controllerID == "" {
 				return Result{}, errors.New("fanout controller requires trusted controller identity")
 			}
 			if runtime.Agents != nil {
-				if binding, claimed := runtime.Agents.SessionBinding(sessionID); claimed && binding.Active {
+				if binding, claimed := runtime.Agents.SessionBinding(identity); claimed && binding.Active {
 					return JSONResult(fanout.Result{Available: true, Mode: fanout.Off, Active: false}), nil
 				}
 			}

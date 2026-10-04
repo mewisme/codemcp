@@ -27,7 +27,7 @@ func RegisterAgentClaimTool(registry *Registry, runtime *Runtime) {
 	registry.MustRegister(AgentClaimToolName, Schema{
 		Name:         AgentClaimToolName,
 		Title:        "Claim Managed Agent Session",
-		Description:  "Bind the current trusted MCP session to one pre-authorized managed child agent. This is a single-use bootstrap capability. The claim determines the exact workspace; workspace authority is never taken from prompt text or caller-supplied workspace arguments.",
+		Description:  "Bind the current trusted controller identity to one pre-authorized managed child agent. This is a single-use bootstrap capability. The claim determines the exact workspace; workspace authority is never taken from prompt text or caller-supplied workspace arguments.",
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"agent_id":{"type":"string","pattern":"^agent_[0-9a-f]{16}$"},"token":{"type":"string","minLength":40,"maxLength":80}},"required":["agent_id","token"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","properties":{"agent_id":{"type":"string","pattern":"^agent_[0-9a-f]{16}$"},"workspace_id":{"type":"string"},"backend":{"type":"string"},"claimed":{"type":"boolean"}},"required":["agent_id","workspace_id","backend","claimed"],"additionalProperties":false}`),
 		Annotations:  annotations,
@@ -54,17 +54,19 @@ func RegisterAgentClaimTool(registry *Registry, runtime *Runtime) {
 		if len(token) < 40 || len(token) > 80 {
 			return Result{}, errors.New("managed agent claim token has invalid length")
 		}
-		sessionID := strings.TrimSpace(MCPSessionID(ctx))
-		if sessionID == "" {
-			return Result{}, errors.New("managed agent claim requires trusted MCP session identity")
+		identity := RuntimeStateIdentity(ctx)
+		if identity == "" {
+			return Result{}, errors.New("managed agent claim requires trusted controller identity")
 		}
-		binding, err := runtime.Agents.ConsumeClaim(managedagent.ID(agentID), token, sessionID)
+		binding, err := runtime.Agents.ConsumeClaim(managedagent.ID(agentID), token, identity)
 		if err != nil {
 			return Result{}, err
 		}
-		// Any ordinary grants accumulated by this session are discarded once it
+		// Any ordinary transport-session grants are discarded once this controller
 		// becomes a managed child. Future workspace access is exact-bound.
-		runtime.sessionAccessManager().Delete(sessionID)
+		if sessionID := strings.TrimSpace(MCPSessionID(ctx)); sessionID != "" {
+			runtime.sessionAccessManager().Delete(sessionID)
+		}
 		return JSONResult(AgentClaimResult{
 			AgentID: binding.AgentID, WorkspaceID: binding.WorkspaceID,
 			Backend: binding.Backend, Claimed: true,

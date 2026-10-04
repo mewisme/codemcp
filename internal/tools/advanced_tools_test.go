@@ -157,7 +157,10 @@ func TestFanoutToolReloadInactiveSchemaAndAgentLifecycle(t *testing.T) {
 
 func TestFanoutToolSuppressesClaimedChild(t *testing.T) {
 	runtime, workspaceID, _, spawned, credential := newClaimToolRuntime(t)
-	childCtx := WithMCPSessionID(context.Background(), "fanout-managed-child")
+	childCtx := WithTrustedControllerID(context.Background(), "openai:fanout-managed-child")
+	if MCPSessionID(childCtx) != "" {
+		t.Fatal("controller-only managed child unexpectedly has MCP session identity")
+	}
 	claimed, err := runtime.Call(childCtx, AgentClaimToolName, map[string]any{"agent_id": string(spawned.ID), "token": credential.Token()})
 	if err != nil || claimed.IsError {
 		t.Fatalf("claim err=%v result=%#v", err, claimed)

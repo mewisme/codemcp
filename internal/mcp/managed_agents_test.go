@@ -136,7 +136,96 @@ func TestManagedAgentMCPToolsIsolateSessionsAndRejectNestedSpawn(t *testing.T) {
 	}
 }
 
-func TestManagedAgentMCPToolsRequireTrustedSessionAndBoundWait(t *testing.T) {
+func TestManagedAgentMCPToolsUseTrustedOpenAIControllerIdentity(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	toolRuntime := tools.NewRuntime()
+	defer toolRuntime.CompletionHooks.Stop()
+	if err := toolRuntime.Agents.RegisterBackend(managedAgentMCPBackend{}); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := toolRuntime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := toolRuntime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := NewRuntimeWithProfile(toolRuntime, OpenAIProfile())
+	trusted := func(session string) context.Context {
+		return WithIngressIdentity(context.Background(), OpenAIProfile(), map[string]any{
+			openAISessionMetaKey: session,
+		}, IngressIdentityOptions{TrustProfileController: true})
+	}
+	parentA := trusted("parent-a")
+	parentB := trusted("parent-b")
+	if tools.MCPSessionID(parentA) != "" || tools.TrustedControllerID(parentA) != "openai:parent-a" {
+		t.Fatalf("OpenAI parent identity controller=%q mcp=%q", tools.TrustedControllerID(parentA), tools.MCPSessionID(parentA))
+	}
+
+	spawn := callManagedAgentMCP(t, runtime, parentA, tools.AgentSpawnToolName, map[string]any{
+		"workspace_id": workspace.ID,
+		"prompt":       "inspect one independent subsystem",
+		"backend":      "mcp-agent-test",
+	})
+	if spawn.IsError {
+		t.Fatalf("OpenAI controller spawn failed: %#v", spawn)
+	}
+	var child managedagent.Snapshot
+	decodeManagedAgentStructured(t, spawn.StructuredContent, &child)
+	if child.ID == "" || child.WorkspaceID != workspace.ID {
+		t.Fatalf("spawned child=%#v", child)
+	}
+
+	foreign := callManagedAgentMCP(t, runtime, parentB, tools.AgentListToolName, map[string]any{})
+	if foreign.IsError {
+		t.Fatalf("foreign controller list failed: %#v", foreign)
+	}
+	var foreignAgents []managedagent.Snapshot
+	decodeManagedAgentStructured(t, foreign.StructuredContent, &foreignAgents)
+	if len(foreignAgents) != 0 {
+		t.Fatalf("foreign OpenAI controller enumerated agents: %#v", foreignAgents)
+	}
+
+	credential, err := toolRuntime.Agents.IssueClaim(child.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	childCtx := trusted("child-a")
+	claim := callManagedAgentMCP(t, runtime, childCtx, tools.AgentClaimToolName, map[string]any{
+		"agent_id": string(child.ID), "token": credential.Token(),
+	})
+	if claim.IsError {
+		t.Fatalf("OpenAI child claim failed: %#v", claim)
+	}
+	resolution, err := toolRuntime.ResolveWorkspaceAccess(childCtx, workspace.ID)
+	if err != nil || resolution.SessionAccess != tools.SessionWorkspaceAccessClaimed {
+		t.Fatalf("claimed OpenAI workspace resolution=%#v err=%v", resolution, err)
+	}
+	if _, err := toolRuntime.ResolveWorkspaceAccess(childCtx, other.ID); err == nil || !strings.Contains(err.Error(), "bound to workspace") {
+		t.Fatalf("claimed OpenAI child escaped workspace: %v", err)
+	}
+
+	nested := callManagedAgentMCP(t, runtime, childCtx, tools.AgentSpawnToolName, map[string]any{
+		"workspace_id": workspace.ID,
+		"prompt":       "attempt grandchild",
+		"backend":      "mcp-agent-test",
+	})
+	if !nested.IsError || !strings.Contains(nested.Content[0].Text, "nested managed-agent delegation is disabled") {
+		t.Fatalf("claimed OpenAI child spawned nested agent: %#v", nested)
+	}
+
+	completed := callManagedAgentMCP(t, runtime, childCtx, tools.AgentCompleteToolName, map[string]any{
+		"workspace_id": workspace.ID,
+		"status":       "completed",
+		"title":        "Managed child finished",
+	})
+	if completed.IsError {
+		t.Fatalf("OpenAI child completion failed: %#v", completed)
+	}
+}
+
+func TestManagedAgentMCPToolsRequireTrustedControllerAndBoundWait(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	toolRuntime := tools.NewRuntime()
 	defer toolRuntime.CompletionHooks.Stop()
@@ -152,7 +241,7 @@ func TestManagedAgentMCPToolsRequireTrustedSessionAndBoundWait(t *testing.T) {
 	noSession := callManagedAgentMCP(t, runtime, context.Background(), tools.AgentSpawnToolName, map[string]any{
 		"workspace_id": workspace.ID, "prompt": "no session", "backend": "mcp-agent-test",
 	})
-	if !noSession.IsError || !strings.Contains(noSession.Content[0].Text, "trusted MCP session identity") {
+	if !noSession.IsError || !strings.Contains(noSession.Content[0].Text, "trusted controller identity") {
 		t.Fatalf("untrusted spawn=%#v", noSession)
 	}
 

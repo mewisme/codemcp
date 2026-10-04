@@ -25,8 +25,6 @@ type driverFakeTab struct {
 	surfaceAt            int
 	controls             controlResult
 	controlsErr          error
-	connector            connectorResult
-	connectorErr         error
 	attachText           string
 	attachConnectorCount int
 	attachErr            error
@@ -36,10 +34,9 @@ type driverFakeTab struct {
 
 func newDriverFakeTab() *driverFakeTab {
 	return &driverFakeTab{
-		done:      make(chan struct{}),
-		controls:  controlResult{ModelVerified: true, EffortVerified: true},
-		connector: connectorResult{Selected: true},
-		send:      sendResult{Activated: true},
+		done:     make(chan struct{}),
+		controls: controlResult{ModelVerified: true, EffortVerified: true},
+		send:     sendResult{Activated: true},
 	}
 }
 
@@ -86,16 +83,6 @@ func (tab *driverFakeTab) Evaluate(_ context.Context, expression string, result 
 			return errors.New("controls result type mismatch")
 		}
 		*value = tab.controls
-		return nil
-	case strings.Contains(expression, "/*codemcp:connector*/"):
-		if tab.connectorErr != nil {
-			return tab.connectorErr
-		}
-		value, ok := result.(*connectorResult)
-		if !ok {
-			return errors.New("connector result type mismatch")
-		}
-		*value = tab.connector
 		return nil
 	case strings.Contains(expression, "/*codemcp:attach*/"):
 		if tab.attachErr != nil {
@@ -203,7 +190,7 @@ func TestDriverStartUsesFreshTemporaryChatAndStableFinal(t *testing.T) {
 
 	driver := testDriver(t, tab)
 	result, err := driver.Start(context.Background(), TurnRequest{
-		Bootstrap: "bootstrap", Prompt: "task", Model: "GPT-5.6 Sol",
+		Bootstrap: "bootstrap", Prompt: "task", WorkspaceID: "ws_test", Model: "GPT-5.6 Sol",
 		ReasoningEffort: "high", ConnectorName: "CodeMCP", RequireConnector: true,
 	})
 	if err != nil {
@@ -237,7 +224,7 @@ func TestDriverFollowUpReusesSameTabAndConversation(t *testing.T) {
 	tab.setSurfaces(fresh, fresh, submitted, final)
 	tab.attachText, tab.attachConnectorCount = "first task", 1
 	driver := testDriver(t, tab)
-	if _, err := driver.Start(context.Background(), TurnRequest{Prompt: "first task", ConnectorName: "CodeMCP", RequireConnector: true}); err != nil {
+	if _, err := driver.Start(context.Background(), TurnRequest{Prompt: "first task", WorkspaceID: "ws_test", ConnectorName: "CodeMCP", RequireConnector: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -287,11 +274,25 @@ func TestDriverFailsClosedOnExplicitEffortMismatch(t *testing.T) {
 func TestDriverFailsClosedOnConnectorMismatch(t *testing.T) {
 	tab := newDriverFakeTab()
 	tab.setSurfaces(readySurface(), readySurface())
-	tab.connector = connectorResult{Selected: false, Rows: []string{"Other App"}}
+	tab.attachText = "task"
+	tab.attachConnectorCount = 0
 	driver := testDriver(t, tab)
-	_, err := driver.Start(context.Background(), TurnRequest{Prompt: "task", ConnectorName: "CodeMCP", RequireConnector: true})
+	_, err := driver.Start(context.Background(), TurnRequest{Prompt: "task", WorkspaceID: "ws_test", ConnectorName: "CodeMCP", RequireConnector: true})
 	if !IsDriverErrorCode(err, ErrorConnectorMismatch) {
 		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestDriverRequiresWorkspaceIDForConnectorRouting(t *testing.T) {
+	tab := newDriverFakeTab()
+	tab.setSurfaces(readySurface(), readySurface())
+	driver := testDriver(t, tab)
+	_, err := driver.Start(context.Background(), TurnRequest{Prompt: "task", ConnectorName: "WSL", RequireConnector: true})
+	if !IsDriverErrorCode(err, ErrorConnectorMismatch) || !strings.Contains(err.Error(), "workspace ID") {
+		t.Fatalf("error=%v", err)
+	}
+	if len(tab.navigations) != 0 {
+		t.Fatalf("missing workspace route navigated browser: %v", tab.navigations)
 	}
 }
 
@@ -405,8 +406,7 @@ func TestDriverExpressionsNeverSendConversationBackendRequests(t *testing.T) {
 	expressions := []string{
 		domSnapshotExpression(),
 		configureControlsExpression("GPT-5.6 Sol", 2, "High"),
-		connectorExpression("CodeMCP", "@codemcp"),
-		attachPromptExpression("task", "CodeMCP"),
+		attachPromptExpression("task", "CodeMCP", "ws_test"),
 		activateSendExpression(),
 		stopExpression(),
 	}
@@ -416,6 +416,31 @@ func TestDriverExpressionsNeverSendConversationBackendRequests(t *testing.T) {
 			if strings.Contains(lower, forbidden) {
 				t.Fatalf("driver expression calls undocumented conversation backend %q", forbidden)
 			}
+		}
+	}
+}
+
+func TestAttachPromptExpressionUsesDirectConnectorMentionWithoutCMDKSelection(t *testing.T) {
+	const workspaceID = "ws_5ad2e1f68cd35a46"
+	if got, want := connectorRoutePrefix("WSL", workspaceID), "@WSL "+workspaceID+", "; got != want {
+		t.Fatalf("connector route prefix=%q want=%q", got, want)
+	}
+	expression := attachPromptExpression("task", "WSL", workspaceID)
+	for _, required := range []string{
+		`"@WSL ws_5ad2e1f68cd35a46, "`,
+		"app-mention-display-name",
+		"data-keyword",
+		"aria-label",
+		"raw.startsWith(route)",
+		"raw.startsWith(workspaceRoute)",
+	} {
+		if !strings.Contains(expression, required) {
+			t.Fatalf("connector mention expression missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{"cmdk", "data-list-navigation-item", ".click()", "Personalized", "Unpersonalized"} {
+		if strings.Contains(expression, forbidden) {
+			t.Fatalf("direct connector mention unexpectedly depends on picker behavior %q", forbidden)
 		}
 	}
 }

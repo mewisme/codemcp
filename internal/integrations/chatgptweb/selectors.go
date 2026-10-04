@@ -11,6 +11,5 @@ const (
 	CompletionActionSelector      = "button[data-testid=\"copy-turn-action-button\"], [data-turn-key] .turn-action-controls button"
 	AssistantTurnSelector         = "[data-testid^=\"conversation-turn-\"][data-turn=\"assistant\"]:not([data-turn-key] *), [data-testid^=\"conversation-turn-\"][data-message-author-role=\"assistant\"]:not([data-turn-key] *), [data-testid^=\"conversation-turn-\"]:has([data-message-author-role=\"assistant\"]):not([data-turn-key] *), [data-turn-key]:has([data-conversation-role=\"assistant\"], [data-chatgpt-agent-turn-start])"
 	UserTurnSelector              = "[data-testid^=\"conversation-turn-\"][data-turn=\"user\"]:not([data-turn-key] *), [data-testid^=\"conversation-turn-\"][data-message-author-role=\"user\"]:not([data-turn-key] *), [data-testid^=\"conversation-turn-\"]:has([data-message-author-role=\"user\"]):not([data-turn-key] *), [data-turn-key]:has([data-user-message-bubble])"
-	ConnectorMenuRowSelector      = ".__menu-item[tabindex=\"0\"], [data-mention-list-scroll-area] button[data-list-navigation-item=\"true\"]"
-	SelectedConnectorSelector     = "[data-id^=\"plugin:\"][data-keyword], [app-mention-path^=\"app://\"][app-mention-display-name][contenteditable=\"false\"]"
+	ConnectorMentionSelector      = "[data-id^=\"plugin:\"][data-keyword], [app-mention-display-name]"
 )

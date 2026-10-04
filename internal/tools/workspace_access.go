@@ -44,25 +44,25 @@ func (r *Runtime) ResolveWorkspaceAccess(ctx context.Context, requested string) 
 		WorkspaceID:   canonical,
 		SessionAccess: SessionWorkspaceAccessDecision(""),
 	}
-	if sessionID := strings.TrimSpace(MCPSessionID(ctx)); sessionID != "" {
-		if r.Agents != nil {
-			if binding, claimed := r.Agents.SessionBinding(sessionID); claimed {
-				boundCanonical, bindErr := r.Workspaces.CanonicalID(binding.WorkspaceID)
-				if bindErr != nil {
-					return WorkspaceAccessResolution{}, bindErr
-				}
-				if !binding.Active {
-					return WorkspaceAccessResolution{}, fmt.Errorf("managed child session for agent %s is no longer active", binding.AgentID)
-				}
-				if canonical != boundCanonical {
-					return WorkspaceAccessResolution{}, fmt.Errorf("managed child session for agent %s is bound to workspace %s and cannot access workspace %s", binding.AgentID, boundCanonical, canonical)
-				}
-				resolution.WorkspaceID = boundCanonical
-				resolution.SessionAccess = SessionWorkspaceAccessClaimed
-				resolution.SessionWorkspaceCount = 1
-				return resolution, nil
+	if identity := RuntimeStateIdentity(ctx); identity != "" && r.Agents != nil {
+		if binding, claimed := r.Agents.SessionBinding(identity); claimed {
+			boundCanonical, bindErr := r.Workspaces.CanonicalID(binding.WorkspaceID)
+			if bindErr != nil {
+				return WorkspaceAccessResolution{}, bindErr
 			}
+			if !binding.Active {
+				return WorkspaceAccessResolution{}, fmt.Errorf("managed child session for agent %s is no longer active", binding.AgentID)
+			}
+			if canonical != boundCanonical {
+				return WorkspaceAccessResolution{}, fmt.Errorf("managed child session for agent %s is bound to workspace %s and cannot access workspace %s", binding.AgentID, boundCanonical, canonical)
+			}
+			resolution.WorkspaceID = boundCanonical
+			resolution.SessionAccess = SessionWorkspaceAccessClaimed
+			resolution.SessionWorkspaceCount = 1
+			return resolution, nil
 		}
+	}
+	if sessionID := strings.TrimSpace(MCPSessionID(ctx)); sessionID != "" {
 		_, decision, count, accessErr := r.sessionAccessManager().CheckOrGrant(sessionID, canonical)
 		resolution.SessionAccess = decision
 		resolution.SessionWorkspaceCount = count

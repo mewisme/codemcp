@@ -78,7 +78,7 @@ func TestAgentClaimBindsExactWorkspaceAndClearsOrdinaryGrants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !missingSession.IsError || !strings.Contains(missingSession.Content[0].Text, "trusted MCP session") {
+	if !missingSession.IsError || !strings.Contains(missingSession.Content[0].Text, "trusted controller identity") {
 		t.Fatalf("missing-session claim=%#v", missingSession)
 	}
 
@@ -152,7 +152,7 @@ func TestAgentClaimWrongTokenDoesNotCreateAuthority(t *testing.T) {
 	if !result.IsError {
 		t.Fatalf("wrong token succeeded: %#v", result)
 	}
-	if _, ok := runtime.Agents.SessionBinding("wrong-token-session"); ok {
+	if _, ok := runtime.Agents.SessionBinding(RuntimeStateIdentity(ctx)); ok {
 		t.Fatal("wrong token created managed child binding")
 	}
 	// An invalid claim must not silently create exact-workspace authority.

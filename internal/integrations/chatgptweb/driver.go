@@ -245,24 +245,20 @@ func (driver *Driver) runTurn(ctx context.Context, request TurnRequest, prompt s
 	}
 
 	connector := ""
+	workspaceID := ""
 	if request.RequireConnector {
 		connector = strings.TrimSpace(request.ConnectorName)
 		if connector == "" {
 			connector = DefaultConnectorName
 		}
-		connectorCtx, connectorCancel := context.WithTimeout(turnCtx, driver.controlTimeout)
-		selected, selectErr := selectConnector(connectorCtx, driver.tab, connector)
-		connectorCancel()
-		if selectErr != nil {
-			return TurnResult{}, driverError(ErrorConnectorMismatch, "connector", "configured developer-mode connector could not be selected", selectErr)
-		}
-		if !selected.Selected {
-			return TurnResult{}, driverError(ErrorConnectorMismatch, "connector", fmt.Sprintf("connector %q was not exposed as one exact selectable app", connector), nil)
+		workspaceID = strings.TrimSpace(request.WorkspaceID)
+		if workspaceID == "" {
+			return TurnResult{}, driverError(ErrorConnectorMismatch, "connector", "workspace ID is required for connector routing", nil)
 		}
 	}
 
 	attachCtx, attachCancel := context.WithTimeout(turnCtx, driver.controlTimeout)
-	attached, attachErr := attachPrompt(attachCtx, driver.tab, prompt, connector)
+	attached, attachErr := attachPrompt(attachCtx, driver.tab, prompt, connector, workspaceID)
 	attachCancel()
 	if attachErr != nil {
 		return TurnResult{}, driverError(ErrorUIContract, "composer", "prompt could not be attached without altering connector state", attachErr)
@@ -271,7 +267,7 @@ func (driver *Driver) runTurn(ctx context.Context, request TurnRequest, prompt s
 		return TurnResult{}, uiContractError("composer", "prompt integrity verification failed (expectedChars=%d actualChars=%d)", len([]rune(prompt)), len([]rune(attached.Text)))
 	}
 	if request.RequireConnector && attached.ConnectorCount != 1 {
-		return TurnResult{}, driverError(ErrorConnectorMismatch, "connector", "connector selection was lost before submission", nil)
+		return TurnResult{}, driverError(ErrorConnectorMismatch, "connector", fmt.Sprintf("connector route @%s %s was not retained before submission", connector, workspaceID), nil)
 	}
 
 	driver.setState(TurnSubmitting)
@@ -489,6 +485,15 @@ func (driver *Driver) normalizeInitialRequest(request TurnRequest) (TurnRequest,
 	request.Model = strings.TrimSpace(request.Model)
 	request.ReasoningEffort = strings.TrimSpace(request.ReasoningEffort)
 	request.ConnectorName = strings.TrimSpace(request.ConnectorName)
+	request.WorkspaceID = strings.TrimSpace(request.WorkspaceID)
+	if request.RequireConnector {
+		if request.ConnectorName == "" {
+			request.ConnectorName = DefaultConnectorName
+		}
+		if request.WorkspaceID == "" {
+			return TurnRequest{}, "", driverError(ErrorConnectorMismatch, "connector", "workspace ID is required for connector routing", nil)
+		}
+	}
 	if request.Prompt == "" {
 		return TurnRequest{}, "", errors.New("ChatGPT Web task prompt is required")
 	}
@@ -499,7 +504,11 @@ func (driver *Driver) normalizeInitialRequest(request TurnRequest) (TurnRequest,
 	if request.Bootstrap != "" {
 		prompt = request.Bootstrap + "\n\n" + request.Prompt
 	}
-	if len([]byte(prompt)) > driver.maxPromptBytes {
+	routedPrompt := prompt
+	if request.RequireConnector {
+		routedPrompt = connectorRoutePrefix(request.ConnectorName, request.WorkspaceID) + prompt
+	}
+	if len([]byte(routedPrompt)) > driver.maxPromptBytes {
 		return TurnRequest{}, "", fmt.Errorf("ChatGPT Web composed prompt exceeds %d bytes", driver.maxPromptBytes)
 	}
 	return request, prompt, nil

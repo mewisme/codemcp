@@ -232,11 +232,13 @@ func TestAgentCompleteCorrelatesClaimedManagedAgentAfterDurableAccept(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	const sessionID = "claimed-completion-session"
-	if _, err := runtime.Agents.ConsumeClaim(spawned.ID, credential.Token(), sessionID); err != nil {
+	ctx := WithTrustedControllerID(context.Background(), "openai:claimed-completion-session")
+	if MCPSessionID(ctx) != "" {
+		t.Fatal("controller-only managed completion unexpectedly has MCP session identity")
+	}
+	if _, err := runtime.Agents.ConsumeClaim(spawned.ID, credential.Token(), RuntimeStateIdentity(ctx)); err != nil {
 		t.Fatal(err)
 	}
-	ctx := WithMCPSessionID(context.Background(), sessionID)
 	ctx = WithCallSource(ctx, "tunnel")
 	ctx = WithApprovalCorrelation(ctx, "apc_managed_child", "apr_managed_child")
 	result, err := runtime.Call(ctx, AgentCompleteToolName, map[string]any{
@@ -308,10 +310,10 @@ func TestAgentCompleteRejectsClaimedManagedWorkspaceMismatchBeforePersistence(t 
 		t.Fatal(err)
 	}
 	const sessionID = "claimed-workspace-mismatch"
-	if _, err := runtime.Agents.ConsumeClaim(spawned.ID, credential.Token(), sessionID); err != nil {
+	ctx := WithMCPSessionID(context.Background(), sessionID)
+	if _, err := runtime.Agents.ConsumeClaim(spawned.ID, credential.Token(), RuntimeStateIdentity(ctx)); err != nil {
 		t.Fatal(err)
 	}
-	ctx := WithMCPSessionID(context.Background(), sessionID)
 	ctx = WithCallSource(ctx, "tunnel")
 	ctx = WithApprovalCorrelation(ctx, "apc_mismatch", "apr_mismatch")
 	result, err := runtime.Call(ctx, AgentCompleteToolName, map[string]any{
