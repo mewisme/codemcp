@@ -129,7 +129,7 @@ func MCPSessionID(ctx context.Context) string {
 }
 
 func planExecutionSessionKey(ctx context.Context) string {
-	if key := mcpSessionStateKey(MCPSessionID(ctx)); key != "" {
+	if key := RuntimeStateKey(ctx); key != "" {
 		return key
 	}
 	correlation := AgentCompletionCorrelationFromContext(ctx)

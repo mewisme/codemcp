@@ -145,11 +145,7 @@ func fanoutToolEntries(runtime *Runtime) map[string]Entry {
 				return Result{}, err
 			}
 			sessionID := MCPSessionID(ctx)
-			controllerIdentity := TrustedControllerID(ctx)
-			if controllerIdentity == "" {
-				controllerIdentity = sessionID
-			}
-			controllerID := mcpSessionStateKey(controllerIdentity)
+			controllerID := RuntimeStateKey(ctx)
 			if controllerID == "" {
 				return Result{}, errors.New("fanout controller requires trusted controller identity")
 			}

@@ -11,7 +11,6 @@ import (
 
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/sequence"
-	"go.mewis.me/codemcp/internal/tools"
 )
 
 type sdkResourceSubscriptionTracker struct {
@@ -71,16 +70,22 @@ func (t *sdkResourceSubscriptionTracker) uris() []string {
 	return values
 }
 
-func sdkCompletionHandler(executor *FeatureExecutor) func(context.Context, *sdkmcp.CompleteRequest) (*sdkmcp.CompleteResult, error) {
+func sdkCompletionHandler(executor *FeatureExecutor, profile Profile, configuredSessionID string) func(context.Context, *sdkmcp.CompleteRequest) (*sdkmcp.CompleteResult, error) {
 	return func(ctx context.Context, request *sdkmcp.CompleteRequest) (*sdkmcp.CompleteResult, error) {
 		if executor == nil || request == nil || request.Params == nil || request.Params.Ref == nil {
 			return nil, featureJSONRPCError(NewError(ErrInvalidParams, "completion params are required"))
 		}
-		if request.Session != nil {
-			if sessionID := strings.TrimSpace(request.Session.ID()); sessionID != "" {
-				ctx = tools.WithMCPSessionID(ctx, sessionID)
+		meta := map[string]any(request.Params.Meta)
+		ctx = withProfileRequestMetadata(ctx, profile, meta)
+		requestContext := requestContextFromSDKCompletion(request)
+		sessionID := ""
+		if !requestContext.Modern() {
+			sessionID = strings.TrimSpace(configuredSessionID)
+			if sessionID == "" && request.Session != nil {
+				sessionID = strings.TrimSpace(request.Session.ID())
 			}
 		}
+		ctx = WithIngressIdentity(ctx, profile, meta, IngressIdentityOptions{MCPSessionID: sessionID})
 		arguments := map[string]string{}
 		if request.Params.Context != nil {
 			for key, value := range request.Params.Context.Arguments {
@@ -111,16 +116,22 @@ func sdkCompletionHandler(executor *FeatureExecutor) func(context.Context, *sdkm
 	}
 }
 
-func sdkSubscribeHandler(executor *FeatureExecutor, tracker *sdkResourceSubscriptionTracker) func(context.Context, *sdkmcp.SubscribeRequest) error {
+func sdkSubscribeHandler(executor *FeatureExecutor, tracker *sdkResourceSubscriptionTracker, profile Profile, configuredSessionID string) func(context.Context, *sdkmcp.SubscribeRequest) error {
 	return func(ctx context.Context, request *sdkmcp.SubscribeRequest) error {
 		if executor == nil || request == nil || request.Params == nil {
 			return featureJSONRPCError(NewError(ErrInvalidParams, "resource subscription params are required"))
 		}
-		if request.Session != nil {
-			if sessionID := strings.TrimSpace(request.Session.ID()); sessionID != "" {
-				ctx = tools.WithMCPSessionID(ctx, sessionID)
+		meta := map[string]any(request.Params.Meta)
+		ctx = withProfileRequestMetadata(ctx, profile, meta)
+		requestContext := requestContextFromSDKSubscribe(request)
+		sessionID := ""
+		if !requestContext.Modern() {
+			sessionID = strings.TrimSpace(configuredSessionID)
+			if sessionID == "" && request.Session != nil {
+				sessionID = strings.TrimSpace(request.Session.ID())
 			}
 		}
+		ctx = WithIngressIdentity(ctx, profile, meta, IngressIdentityOptions{MCPSessionID: sessionID})
 		parsed, err := executor.AuthorizeResourceSubscription(ctx, request.Params.URI)
 		if err != nil {
 			return featureJSONRPCError(err)

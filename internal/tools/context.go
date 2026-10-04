@@ -108,3 +108,20 @@ func TrustedControllerID(ctx context.Context) string {
 	value, _ := ctx.Value(trustedControllerIDContextKey{}).(string)
 	return strings.TrimSpace(value)
 }
+
+func RuntimeStateIdentity(ctx context.Context) string {
+	if controllerID := TrustedControllerID(ctx); controllerID != "" {
+		if strings.HasPrefix(controllerID, "mcp:") {
+			return controllerID
+		}
+		return "controller:" + controllerID
+	}
+	if sessionID := strings.TrimSpace(MCPSessionID(ctx)); sessionID != "" {
+		return "mcp:" + sessionID
+	}
+	return ""
+}
+
+func RuntimeStateKey(ctx context.Context) string {
+	return mcpSessionStateKey(RuntimeStateIdentity(ctx))
+}

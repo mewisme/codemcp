@@ -155,7 +155,7 @@ func TestAgentCompleteUsesTrustedRuntimeCorrelationAndCanonicalWorkspace(t *test
 	if !ok {
 		t.Fatalf("structured content=%T %#v", result.StructuredContent, result.StructuredContent)
 	}
-	wantAgentID := agentcompletion.DeriveAgentID("apc_trusted", runtime.runtimeInstanceID())
+	wantAgentID := agentcompletion.DeriveAgentID(RuntimeStateIdentity(ctx), runtime.runtimeInstanceID())
 	if !value.Created || value.Record.WorkspaceID != workspaceID || value.Record.AgentID != wantAgentID || value.Record.Source != "tunnel" {
 		t.Fatalf("completion=%#v want_agent=%s", value, wantAgentID)
 	}
@@ -337,7 +337,7 @@ func TestAgentCompleteRejectsBoundPlanBeforePersistedPhaseCompletion(t *testing.
 	ctx := WithMCPSessionID(context.Background(), "session-plan-guard")
 	ctx = WithCallSource(ctx, "tunnel")
 	ctx = WithApprovalCorrelation(ctx, "apc_plan_guard", "apr_plan_guard")
-	sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+	sessionKey := RuntimeStateKey(ctx)
 	if _, err := runtime.PlanExecutions.Bind(sessionKey, plandoc.ExecutionBinding{
 		WorkspaceID: workspaceID, PlanName: "guard-plan",
 		BaselineContentID: "sha256:" + strings.Repeat("a", 64),
@@ -388,7 +388,7 @@ func TestAgentCompleteAllowsCompletedAfterPersistedPlanTransitionClosesBinding(t
 	ctx := WithMCPSessionID(context.Background(), "session-plan-completed")
 	ctx = WithCallSource(ctx, "tunnel")
 	ctx = WithApprovalCorrelation(ctx, "apc_plan_completed", "apr_plan_completed")
-	sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+	sessionKey := RuntimeStateKey(ctx)
 	if _, err := runtime.PlanExecutions.Bind(sessionKey, plandoc.ExecutionBinding{
 		WorkspaceID: workspaceID, PlanName: "completion-plan",
 		BaselineContentID: base.ContentID(),
@@ -437,7 +437,7 @@ func TestAgentCompleteNonCompletedStatusesReleasePlanBindingAfterAccept(t *testi
 			ctx := WithMCPSessionID(context.Background(), "session-release-"+status)
 			ctx = WithCallSource(ctx, "stdio")
 			ctx = WithApprovalCorrelation(ctx, "apc_release_"+status, "apr_release_"+status)
-			sessionKey := mcpSessionStateKey(MCPSessionID(ctx))
+			sessionKey := RuntimeStateKey(ctx)
 			binding := plandoc.ExecutionBinding{
 				WorkspaceID: workspaceID, PlanName: "release-plan",
 				BaselineContentID: "sha256:" + strings.Repeat("b", 64),

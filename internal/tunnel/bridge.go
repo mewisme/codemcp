@@ -190,16 +190,15 @@ func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {
 		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		ctx = tools.WithCallSource(ctx, "tunnel")
 		sessionID := b.sessionID(ctx, request, !requestContext.Modern())
-		if sessionID != "" {
-			ctx = tools.WithMCPSessionID(ctx, sessionID)
-			ctx = tools.WithTrustedControllerID(ctx, "mcp:"+sessionID)
-		} else if requestContext.Modern() && b.profile.ID() == localmcp.OpenAIProfileID {
-			if openAISession := strings.TrimSpace(tools.RequestCorrelationHintsFromContext(ctx).SessionID); openAISession != "" {
-				ctx = tools.WithTrustedControllerID(ctx, "openai:"+openAISession)
-			}
-		}
+		ctx = localmcp.WithIngressIdentity(ctx, b.profile, map[string]any(request.Params.Meta), localmcp.IngressIdentityOptions{
+			MCPSessionID: sessionID, TrustProfileController: requestContext.Modern(),
+		})
 		if requestContext.Modern() {
-			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller("modern:tunnel"), idgen.Must("apr", 8))
+			callerScope := "modern:tunnel"
+			if controllerID := tools.TrustedControllerID(ctx); controllerID != "" {
+				callerScope = "controller:" + controllerID
+			}
+			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller(callerScope), idgen.Must("apr", 8))
 		} else if sessionID != "" {
 			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller("legacy:tunnel:"+sessionID), idgen.Must("apr", 8))
 		}

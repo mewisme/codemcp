@@ -333,6 +333,147 @@ func TestSDKBridgeModernOpenAISessionPromotesTrustedControllerWithoutMCPSession(
 	}
 }
 
+func TestSDKBridgeModernOpenAISessionScopesApprovalCallerPerController(t *testing.T) {
+	registry := tools.NewRegistry()
+	seen := make(chan tools.ApprovalCorrelation, 3)
+	registry.MustRegister("approval_scope_probe", tools.Schema{Name: "approval_scope_probe"}, func(ctx context.Context, _ map[string]any) (tools.Result, error) {
+		seen <- tools.ApprovalCorrelationFromContext(ctx)
+		return tools.TextResult("ok"), nil
+	})
+	bridge, err := newSDKBridge(&tools.Runtime{Registry: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(session string) tools.ApprovalCorrelation {
+		t.Helper()
+		request := &sdkmcp.CallToolRequest{Params: &sdkmcp.CallToolParamsRaw{
+			Name:      "approval_scope_probe",
+			Arguments: json.RawMessage(`{}`),
+			Meta: sdkmcp.Meta{
+				sdkmcp.MetaKeyProtocolVersion: localmcp.SupportedProtocolVersion,
+				"openai/session":              session,
+			},
+		}}
+		if _, err := bridge.toolHandler("approval_scope_probe")(context.Background(), request); err != nil {
+			t.Fatal(err)
+		}
+		return <-seen
+	}
+	first := call("chat-session-a")
+	firstAgain := call("chat-session-a")
+	second := call("chat-session-b")
+	if first.CallerID == "" || first.CallerID != firstAgain.CallerID || first.CallerID == second.CallerID {
+		t.Fatalf("approval caller scopes=%#v / %#v / %#v", first, firstAgain, second)
+	}
+	if first.RequestID == firstAgain.RequestID || first.RequestID == second.RequestID || firstAgain.RequestID == second.RequestID {
+		t.Fatalf("approval request correlations were not per-call: %#v / %#v / %#v", first, firstAgain, second)
+	}
+}
+
+func TestSDKBridgeModernOpenAIApprovalCannotCrossControllerSessions(t *testing.T) {
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := manager.Instance()
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := tools.NewRegistry()
+	runtime := &tools.Runtime{Registry: registry, Workspaces: manager, SessionAccess: tools.NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID)}
+	registry.MustRegister("guarded_controller_action", tools.Schema{Name: "guarded_controller_action", InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`)}, func(ctx context.Context, args map[string]any) (tools.Result, error) {
+		if requestID := tools.ApprovalRequestID(ctx); requestID != "" {
+			return tools.JSONResult(map[string]any{"approved_request": requestID}), nil
+		}
+		command, _ := args["command"].(string)
+		return tools.Result{}, controlguard.New(controlguard.CodeControlPlaneMutation, "guarded action requires approval", true, &controlguard.Invocation{Program: "cm", Args: []string{"update"}, Command: command})
+	})
+	tools.RegisterApprovalTools(registry, runtime)
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	call := func(session, name string, args map[string]any) (*sdkmcp.CallToolResult, error) {
+		t.Helper()
+		arguments, marshalErr := json.Marshal(args)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		request := &sdkmcp.CallToolRequest{Params: &sdkmcp.CallToolParamsRaw{
+			Name:      name,
+			Arguments: arguments,
+			Meta: sdkmcp.Meta{
+				sdkmcp.MetaKeyProtocolVersion: localmcp.SupportedProtocolVersion,
+				"openai/session":              session,
+			},
+		}}
+		return bridge.toolHandler(name)(context.Background(), request)
+	}
+
+	args := map[string]any{"workspace_id": item.ID, "command": "cm update"}
+	guardedA, err := call("chat-session-a", "guarded_controller_action", args)
+	if err != nil || guardedA == nil || !guardedA.IsError {
+		t.Fatalf("session A guarded result=%#v err=%v", guardedA, err)
+	}
+	bodyA, ok := guardedA.StructuredContent.(map[string]any)
+	if !ok || bodyA["code"] != "approval_required" {
+		t.Fatalf("session A approval challenge=%#v", guardedA.StructuredContent)
+	}
+	challengeA, _ := bodyA["challenge_id"].(string)
+	if challengeA == "" {
+		t.Fatalf("session A challenge missing: %#v", bodyA)
+	}
+
+	approvalResult := make(chan *sdkmcp.CallToolResult, 1)
+	approvalErr := make(chan error, 1)
+	go func() {
+		result, callErr := call("chat-session-a", tools.ApprovalRequestToolName, map[string]any{
+			"workspace_id": item.ID,
+			"challenge_id": challengeA,
+			"title":        "Update CodeMCP",
+		})
+		if callErr != nil {
+			approvalErr <- callErr
+			return
+		}
+		approvalResult <- result
+	}()
+	requestA := waitForTunnelApproval(t, runtime.Approvals)
+	if _, err := runtime.Approvals.Approve(requestA.ID, "test", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-approvalErr:
+		t.Fatal(err)
+	case result := <-approvalResult:
+		if result == nil || result.IsError {
+			t.Fatalf("session A approval result=%#v", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("session A approval did not resolve")
+	}
+
+	guardedB, err := call("chat-session-b", "guarded_controller_action", args)
+	if err != nil || guardedB == nil || !guardedB.IsError {
+		t.Fatalf("session B reused session A approval: result=%#v err=%v", guardedB, err)
+	}
+	bodyB, ok := guardedB.StructuredContent.(map[string]any)
+	if !ok || bodyB["code"] != "approval_required" {
+		t.Fatalf("session B did not receive its own approval challenge: %#v", guardedB.StructuredContent)
+	}
+
+	retryA, err := call("chat-session-a", "guarded_controller_action", args)
+	if err != nil || retryA == nil || retryA.IsError {
+		t.Fatalf("session A approved retry=%#v err=%v", retryA, err)
+	}
+	payloadA, ok := retryA.StructuredContent.(map[string]any)
+	if !ok || payloadA["approved_request"] != requestA.ID {
+		t.Fatalf("session A approved retry payload=%#v", retryA.StructuredContent)
+	}
+}
+
 func TestSDKBridgeModernOpenAISessionIsolatesFanoutControllerState(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	runtime := tools.NewRuntime()

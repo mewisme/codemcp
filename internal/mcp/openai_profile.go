@@ -98,6 +98,10 @@ func (openAIProfile) ProjectRequestMetadata(meta map[string]any) requestMetadata
 	return projection
 }
 
+func (openAIProfile) ProjectIdentity(meta map[string]any) IdentityProjection {
+	return IdentityProjection{ControllerHint: openAIHintString(meta[openAISessionMetaKey])}
+}
+
 func withProfileRequestMetadata(ctx context.Context, profile Profile, meta map[string]any) context.Context {
 	provider, ok := profile.(requestMetadataProfile)
 	if !ok {

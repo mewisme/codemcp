@@ -107,7 +107,11 @@ func (h HTTPRuntime) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestCtx := WithRequestContext(r.Context(), canonicalRequest)
 	if req.Method == "tools/call" {
 		if h.ApprovalCallers != nil {
-			requestCtx = tools.WithApprovalCorrelation(requestCtx, h.ApprovalCallers.Caller("modern:http"), idgen.Must("apr", 8))
+			callerScope := "modern:http"
+			if controllerID := tools.TrustedControllerID(requestCtx); controllerID != "" {
+				callerScope = "controller:" + controllerID
+			}
+			requestCtx = tools.WithApprovalCorrelation(requestCtx, h.ApprovalCallers.Caller(callerScope), idgen.Must("apr", 8))
 		}
 		requestCtx = tools.WithCallRequest(requestCtx, map[string]any{"jsonrpc": req.JSONRPC, "id": req.ID, "method": req.Method, "params": params})
 	}

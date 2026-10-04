@@ -275,6 +275,7 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	}
 	workspaceID := ""
 	sessionID := MCPSessionID(ctx)
+	stateIdentity := RuntimeStateIdentity(ctx)
 	sessionHash := MCPSessionFingerprint(sessionID)
 	approvalCorrelation := ApprovalCorrelationFromContext(ctx)
 	sessionAccess := SessionWorkspaceAccessDecision("")
@@ -331,10 +332,10 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 		preflightErr = r.semanticApprovalPreflight(ctx, approvalCorrelation, workspaceID, name, approvalArgs, claimedApproval.ID != "")
 	}
 	loopClass, loopDecision := toolLoopClassMutation, toolLoopDecision{}
-	if preflightErr == nil && forcedResult == nil && strings.TrimSpace(sessionID) != "" && r.Registry != nil {
+	if preflightErr == nil && forcedResult == nil && strings.TrimSpace(stateIdentity) != "" && r.Registry != nil {
 		if schema, ok := r.Registry.Schema(name); ok {
 			loopClass = toolLoopClassFor(name, schema, args)
-			loopDecision = r.loopGuard().Check(sessionID, name, args, loopClass)
+			loopDecision = r.loopGuard().Check(stateIdentity, name, args, loopClass)
 			if loopDecision.blocked {
 				blocked := toolLoopBlockedResult(name, loopDecision)
 				forcedResult = &blocked
@@ -342,7 +343,11 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 		}
 	}
 	executedBy := r.runtimeInstanceID()
-	ctx = WithAgentCompletionCorrelation(ctx, approvalCorrelation.CallerID, executedBy, source)
+	completionIdentity := stateIdentity
+	if completionIdentity == "" {
+		completionIdentity = approvalCorrelation.CallerID
+	}
+	ctx = WithAgentCompletionCorrelation(ctx, completionIdentity, executedBy, source)
 	ctx = shellruntime.WithExecutionMetadata(ctx, shellruntime.ExecutionMetadata{
 		Source: source, CallID: callID, SessionHash: sessionHash, ReceivedByInstanceID: receivedBy, ExecutedByInstanceID: executedBy,
 	})
@@ -377,8 +382,8 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	finishRaw := cloneMap(raw)
 	finishRaw["routing"] = map[string]any{"received_by_instance_id": receivedBy, "executed_by_instance_id": executedBy}
 	if err == nil {
-		if loopClass == toolLoopClassMutation && !result.IsError && forcedResult == nil && strings.TrimSpace(sessionID) != "" {
-			r.loopGuard().MarkMutationSuccess(sessionID, name, args)
+		if loopClass == toolLoopClassMutation && !result.IsError && forcedResult == nil && strings.TrimSpace(stateIdentity) != "" {
+			r.loopGuard().MarkMutationSuccess(stateIdentity, name, args)
 		}
 		result = addToolLoopWarning(result, name, loopDecision)
 		if result.ResultType == "" {

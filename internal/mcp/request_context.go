@@ -96,6 +96,28 @@ func RequestContextFromSDK(request *sdkmcp.CallToolRequest) RequestContext {
 	return cloneRequestContext(value)
 }
 
+func requestContextFromSDKCompletion(request *sdkmcp.CompleteRequest) RequestContext {
+	if request == nil {
+		return RequestContext{}
+	}
+	return RequestContext{
+		ProtocolVersion:    strings.TrimSpace(request.ProtocolVersion()),
+		ClientInfo:         cloneClientInfo(request.ClientInfo()),
+		ClientCapabilities: cloneClientCapabilities(request.ClientCapabilities()),
+	}
+}
+
+func requestContextFromSDKSubscribe(request *sdkmcp.SubscribeRequest) RequestContext {
+	if request == nil {
+		return RequestContext{}
+	}
+	return RequestContext{
+		ProtocolVersion:    strings.TrimSpace(request.ProtocolVersion()),
+		ClientInfo:         cloneClientInfo(request.ClientInfo()),
+		ClientCapabilities: cloneClientCapabilities(request.ClientCapabilities()),
+	}
+}
+
 func cloneRequestContext(value RequestContext) RequestContext {
 	value.ProtocolVersion = strings.TrimSpace(value.ProtocolVersion)
 	value.ClientInfo = cloneClientInfo(value.ClientInfo)

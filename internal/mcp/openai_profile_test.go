@@ -149,6 +149,28 @@ func TestBaseProfileIgnoresOpenAIRequestMetadata(t *testing.T) {
 	}
 }
 
+func TestIngressIdentitySeparatesProfileSemanticsFromTransportTrust(t *testing.T) {
+	meta := map[string]any{openAISessionMetaKey: " chat-session "}
+	if projection := ProjectIdentity(OpenAIProfile(), meta); projection.ControllerHint != "chat-session" {
+		t.Fatalf("OpenAI identity projection=%#v", projection)
+	}
+	if projection := ProjectIdentity(BaseProfile(), meta); projection.ControllerHint != "" {
+		t.Fatalf("base identity projection=%#v", projection)
+	}
+	untrusted := WithIngressIdentity(context.Background(), OpenAIProfile(), meta, IngressIdentityOptions{})
+	if got := tools.TrustedControllerID(untrusted); got != "" {
+		t.Fatalf("untrusted metadata promoted controller identity=%q", got)
+	}
+	trusted := WithIngressIdentity(context.Background(), OpenAIProfile(), meta, IngressIdentityOptions{TrustProfileController: true})
+	if got := tools.TrustedControllerID(trusted); got != "openai:chat-session" || tools.MCPSessionID(trusted) != "" {
+		t.Fatalf("trusted profile identity controller=%q mcp=%q", got, tools.MCPSessionID(trusted))
+	}
+	mcp := WithIngressIdentity(context.Background(), OpenAIProfile(), meta, IngressIdentityOptions{MCPSessionID: "mcp-session", TrustProfileController: true})
+	if tools.MCPSessionID(mcp) != "mcp-session" || tools.TrustedControllerID(mcp) != "mcp:mcp-session" {
+		t.Fatalf("MCP identity did not remain authoritative: controller=%q mcp=%q", tools.TrustedControllerID(mcp), tools.MCPSessionID(mcp))
+	}
+}
+
 func TestOpenAIProfileProjectsOAuthSecuritySchemesFromCanonicalRequirements(t *testing.T) {
 	descriptor := DescribeTool(tools.Schema{
 		Name:        "auth_probe",

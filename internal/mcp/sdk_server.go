@@ -67,8 +67,8 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 	featureExecutor := NewFeatureExecutor(features, toolRuntime, boundWorkspace, source)
 	featureExecutor.Profile = profile
 	resourceSubscriptions := newSDKResourceSubscriptionTracker()
-	options.CompletionHandler = sdkCompletionHandler(featureExecutor)
-	options.SubscribeHandler = sdkSubscribeHandler(featureExecutor, resourceSubscriptions)
+	options.CompletionHandler = sdkCompletionHandler(featureExecutor, profile, sessionID)
+	options.SubscribeHandler = sdkSubscribeHandler(featureExecutor, resourceSubscriptions, profile, sessionID)
 	options.UnsubscribeHandler = sdkUnsubscribeHandler(featureExecutor, resourceSubscriptions)
 	server := sdkmcp.NewServer(implementation, options)
 	server.AddReceivingMiddleware(rejectDeprecatedResourceSubscriptionMiddleware())
@@ -136,8 +136,17 @@ func (s *SDKServer) addTool(schema tools.Schema) error {
 			ctx = withProfileRequestMetadata(ctx, s.Profile, map[string]any(request.Params.Meta))
 		}
 		if requestContext.Modern() {
+			ctx = WithIngressIdentity(ctx, s.Profile, map[string]any(request.Params.Meta), IngressIdentityOptions{})
+			callerScope := "modern:" + s.Source
+			if controllerID := tools.TrustedControllerID(ctx); controllerID != "" {
+				callerScope = "controller:" + controllerID
+			}
 			if s.ModernCallerID != "" {
-				ctx = tools.WithApprovalCorrelation(ctx, s.ModernCallerID, idgen.Must("apr", 8))
+				if callerScope == "modern:"+s.Source {
+					ctx = tools.WithApprovalCorrelation(ctx, s.ModernCallerID, idgen.Must("apr", 8))
+				} else if s.ApprovalCallers != nil {
+					ctx = tools.WithApprovalCorrelation(ctx, s.ApprovalCallers.Caller(callerScope), idgen.Must("apr", 8))
+				}
 			}
 		} else {
 			sessionID := s.SessionID
@@ -145,7 +154,7 @@ func (s *SDKServer) addTool(schema tools.Schema) error {
 				sessionID = request.Session.ID()
 			}
 			if sessionID != "" {
-				ctx = tools.WithMCPSessionID(ctx, sessionID)
+				ctx = WithIngressIdentity(ctx, s.Profile, nil, IngressIdentityOptions{MCPSessionID: sessionID})
 				if s.ApprovalCallers != nil {
 					ctx = tools.WithApprovalCorrelation(ctx, s.ApprovalCallers.Caller("legacy:sdk:"+sessionID), idgen.Must("apr", 8))
 				}

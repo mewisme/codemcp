@@ -149,6 +149,25 @@ func TestRuntimeLoopGuardBlocksContextLoopAndMutationResetsIt(t *testing.T) {
 	}
 }
 
+func TestRuntimeLoopGuardUsesTrustedControllerWithoutMCPSession(t *testing.T) {
+	registry := NewRegistry()
+	registry.MustRegister("project_context", Schema{Name: "project_context", InputSchema: json.RawMessage(`{"type":"object"}`), Annotations: ToolAnnotations(RiskRead)}, func(context.Context, map[string]any) (Result, error) {
+		return TextResult("context"), nil
+	})
+	runtime := &Runtime{Registry: registry, LoopGuard: NewToolLoopGuard()}
+	ctx := WithTrustedControllerID(context.Background(), "openai:loop-session")
+	for index := 0; index < 2; index++ {
+		result, err := runtime.Call(ctx, "project_context", map[string]any{})
+		if err != nil || result.IsError {
+			t.Fatalf("call %d result=%#v err=%v", index, result, err)
+		}
+	}
+	blocked, err := runtime.Call(ctx, "project_context", map[string]any{})
+	if err != nil || !blocked.IsError || len(blocked.Content) == 0 || !strings.Contains(blocked.Content[0].Text, "Tool loop detected") {
+		t.Fatalf("controller loop guard blocked=%#v err=%v", blocked, err)
+	}
+}
+
 func TestToolLoopClassForMixedActionTools(t *testing.T) {
 	schema := Schema{Annotations: ToolAnnotations(RiskDestructive)}
 	for _, test := range []struct {
