@@ -4,6 +4,14 @@ import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemHeader,
+  ItemTitle,
+} from "@/components/ui/item"
 import { Textarea } from "@/components/ui/textarea"
 import {
   adminApi,
@@ -185,21 +193,37 @@ export function PromptsPage() {
                   No Prompts in this view.
                 </p>
               )}
-              {prompts.map((item) => (
-                <button
-                  key={item.definition.name}
-                  className="block w-full rounded border px-3 py-2 text-left text-sm hover:bg-muted"
-                  onClick={() => void choose(item)}
-                >
-                  <span className="font-medium">{item.definition.name}</span>
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {item.scope}
-                  </span>
-                  <span className="block text-muted-foreground">
-                    {item.definition.description}
-                  </span>
-                </button>
-              ))}
+              <ItemGroup>
+                {prompts.map((item) => (
+                  <Item
+                    interactive
+                    key={item.definition.name}
+                    role="button"
+                    selected={selected === item.definition.name}
+                    tabIndex={0}
+                    variant="outline"
+                    onClick={() => void choose(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ")
+                        void choose(item)
+                    }}
+                  >
+                    <ItemContent className="min-w-0">
+                      <ItemHeader>
+                        <ItemTitle className="min-w-0 break-all">
+                          {item.definition.name}
+                        </ItemTitle>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          {item.scope}
+                        </span>
+                      </ItemHeader>
+                      <ItemDescription className="break-words">
+                        {item.definition.description}
+                      </ItemDescription>
+                    </ItemContent>
+                  </Item>
+                ))}
+              </ItemGroup>
             </CardContent>
           </Card>
           <Card>

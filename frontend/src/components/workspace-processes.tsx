@@ -82,11 +82,11 @@ export function WorkspaceProcesses({ workspaceID }: { workspaceID: string }) {
           <Card key={item.id}>
             <CardHeader>
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <CardTitle className="font-mono text-sm">
+                <div className="min-w-0">
+                  <CardTitle className="font-mono text-sm break-all">
                     {item.command}
                   </CardTitle>
-                  <CardDescription>
+                  <CardDescription className="break-all">
                     {item.id} · PID {item.pid}
                   </CardDescription>
                 </div>
@@ -100,7 +100,7 @@ export function WorkspaceProcesses({ workspaceID }: { workspaceID: string }) {
               </div>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs text-muted-foreground">
+              <div className="min-w-0 text-xs break-all text-muted-foreground">
                 {item.cwd} · {item.started_at}
               </div>
               <Button

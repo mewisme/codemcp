@@ -3,6 +3,8 @@ import { RefreshCw, Trash2 } from "lucide-react"
 import { JsonViewer } from "@/components/json-viewer"
 import { PageEmpty, PageError, PageLoading } from "@/components/page-state"
 import { PageHeader } from "@/components/page-header"
+import { ResponsiveDialog } from "@/components/responsive-dialog"
+import { TruncatedText } from "@/components/truncated-text"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -23,6 +25,14 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemHeader,
+  ItemTitle,
+} from "@/components/ui/item"
 import {
   Select,
   SelectContent,
@@ -47,6 +57,7 @@ export function LogsPage() {
   const [busy, setBusy] = useState(false)
   const [viewCleared, setViewCleared] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [selected, setSelected] = useState<LogEvent | null>(null)
   const [error, setError] = useState("")
 
   async function load() {
@@ -230,45 +241,87 @@ export function LogsPage() {
           description="Adjust the filters or refresh after runtime activity."
         />
       ) : (
-        <div className="space-y-3">
+        <ItemGroup>
           {events
             .slice()
             .reverse()
             .map((event, index) => (
-              <LogCard
+              <LogRow
                 key={`${String(event.sequence ?? "event")}-${index}`}
                 event={event}
+                selected={selected === event}
+                onSelect={() => setSelected(event)}
               />
             ))}
-        </div>
+        </ItemGroup>
       )}
+      {selected ? (
+        <ResponsiveDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setSelected(null)
+          }}
+          title={String(selected.name ?? selected.message ?? "runtime event")}
+          description={String(selected.timestamp ?? "")}
+          scrollbars="both"
+        >
+          <JsonViewer value={selected} maxHeight="32rem" />
+        </ResponsiveDialog>
+      ) : null}
     </div>
   )
 }
 
-function LogCard({ event }: { event: LogEvent }) {
+function LogRow({
+  event,
+  selected,
+  onSelect,
+}: {
+  event: LogEvent
+  selected: boolean
+  onSelect: () => void
+}) {
   const title = String(event.name ?? event.message ?? "runtime event")
   const level = String(event.level ?? "info")
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <CardTitle className="text-sm">{title}</CardTitle>
-            <CardDescription>{String(event.timestamp ?? "")}</CardDescription>
-          </div>
-          <div className="flex gap-2">
+    <Item
+      interactive
+      role="button"
+      selected={selected}
+      tabIndex={0}
+      variant="outline"
+      onClick={onSelect}
+      onKeyDown={(value) => {
+        if (value.key === "Enter" || value.key === " ") onSelect()
+      }}
+    >
+      <ItemContent className="min-w-0">
+        <ItemHeader>
+          <ItemTitle className="min-w-0">
+            <TruncatedText lines={1}>{title}</TruncatedText>
+          </ItemTitle>
+          <div className="flex shrink-0 flex-wrap gap-1">
             <Badge variant="outline">{level}</Badge>
             {event.component ? (
               <Badge variant="outline">{String(event.component)}</Badge>
             ) : null}
           </div>
+        </ItemHeader>
+        <ItemDescription>
+          <TruncatedText lines={1}>
+            {String(event.message ?? event.workspace_id ?? "No message")}
+          </TruncatedText>
+        </ItemDescription>
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          <span>{String(event.timestamp ?? "")}</span>
+          {event.workspace_id ? (
+            <span className="font-mono break-all">
+              {String(event.workspace_id)}
+            </span>
+          ) : null}
         </div>
-      </CardHeader>
-      <CardContent>
-        <JsonViewer value={event} maxHeight="16rem" />
-      </CardContent>
-    </Card>
+      </ItemContent>
+    </Item>
   )
 }
 

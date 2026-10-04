@@ -1,15 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { CircleCheckBig, CircleDot, RefreshCw, Search } from "lucide-react"
 import { DetailRow } from "@/components/detail-row"
+import { JsonViewer } from "@/components/json-viewer"
 import { PageEmpty, PageError, PageLoading } from "@/components/page-state"
 import { PageHeader } from "@/components/page-header"
 import { ResponsiveDialog } from "@/components/responsive-dialog"
+import { SemanticStatusBadge } from "@/components/semantic-status-badge"
 import { TruncatedText } from "@/components/truncated-text"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Item, ItemContent, ItemDescription, ItemGroup, ItemHeader, ItemTitle } from "@/components/ui/item"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemGroup,
+  ItemHeader,
+  ItemTitle,
+} from "@/components/ui/item"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { streamCompletions } from "@/lib/completion-stream"
 import { adminApi, type CompletionRecord } from "@/lib/api"
 
@@ -36,7 +51,11 @@ export function CompletionsPage() {
         adminApi.completionDoctor(),
       ])
       setItems(records)
-      setSelected((current) => current ? records.find((record) => record.id === current.id) ?? current : current)
+      setSelected((current) =>
+        current
+          ? (records.find((record) => record.id === current.id) ?? current)
+          : current
+      )
       setDoctor(health)
       setError("")
     } catch (value) {
@@ -52,29 +71,46 @@ export function CompletionsPage() {
     let stopped = false
     async function connect() {
       try {
-        await streamCompletions(controller.signal, {
-          onReady: (snapshot) => {
-            setItems(snapshot.records)
-            setSelected((current) => current ? snapshot.records.find((record) => record.id === current.id) ?? current : current)
-            setConnected(true)
-            setLoading(false)
-            setError("")
+        await streamCompletions(
+          controller.signal,
+          {
+            onReady: (snapshot) => {
+              setItems(snapshot.records)
+              setSelected((current) =>
+                current
+                  ? (snapshot.records.find(
+                      (record) => record.id === current.id
+                    ) ?? current)
+                  : current
+              )
+              setConnected(true)
+              setLoading(false)
+              setError("")
+            },
+            onEvent: (event) => {
+              setConnected(true)
+              setItems((records) => upsertCompletion(records, event.record))
+              setSelected((record) =>
+                record?.id === event.record.id ? event.record : record
+              )
+            },
           },
-          onEvent: (event) => {
-            setConnected(true)
-            setItems((records) => upsertCompletion(records, event.record))
-            setSelected((record) => record?.id === event.record.id ? event.record : record)
-          },
-        }, "", 100)
+          "",
+          100
+        )
       } catch (value) {
         if (controller.signal.aborted || stopped) return
         setConnected(false)
         setLoading(false)
         setError(errorText(value))
-        retryTimer.current = window.setTimeout(() => void connect(), reconnectDelay)
+        retryTimer.current = window.setTimeout(
+          () => void connect(),
+          reconnectDelay
+        )
       }
     }
-    void adminApi.completionDoctor()
+    void adminApi
+      .completionDoctor()
       .then((health) => setDoctor(health))
       .catch(() => undefined)
     void connect()
@@ -90,8 +126,15 @@ export function CompletionsPage() {
     return [...items].reverse().filter((record) => {
       if (status !== "all" && record.status !== status) return false
       if (!needle) return true
-      return [record.id, record.agent_id, record.workspace_id, record.status, record.title, record.summary, record.source]
-        .some((value) => value?.toLowerCase().includes(needle))
+      return [
+        record.id,
+        record.agent_id,
+        record.workspace_id,
+        record.status,
+        record.title,
+        record.summary,
+        record.source,
+      ].some((value) => value?.toLowerCase().includes(needle))
     })
   }, [items, query, status])
 
@@ -104,85 +147,164 @@ export function CompletionsPage() {
     }
   }
 
-  return <div className="space-y-6">
-    <PageHeader
-      title="Agent completions"
-      description="Read-only durable completion history accepted by this runtime."
-      actions={<>
-        <Badge variant={connected ? "secondary" : "outline"}><CircleDot className="size-3" />{connected ? "Live" : "Reconnecting"}</Badge>
-        <Button disabled={refreshing} size="sm" variant="outline" onClick={() => void load(true)}><RefreshCw className={refreshing ? "animate-spin" : ""} />Refresh</Button>
-      </>}
-    />
-    <PageError message={error} />
-    {doctor ? (
-      <div className="rounded-xl border p-4">
-        <div className="mb-2 flex items-center gap-2">
-          <div className="font-medium">Completion health</div>
-          <Badge variant="outline">doctor</Badge>
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Agent completions"
+        description="Read-only durable completion history accepted by this runtime."
+        actions={
+          <>
+            <Badge variant={connected ? "secondary" : "outline"}>
+              <CircleDot className="size-3" />
+              {connected ? "Live" : "Reconnecting"}
+            </Badge>
+            <Button
+              disabled={refreshing}
+              size="sm"
+              variant="outline"
+              onClick={() => void load(true)}
+            >
+              <RefreshCw className={refreshing ? "animate-spin" : ""} />
+              Refresh
+            </Button>
+          </>
+        }
+      />
+      <PageError message={error} />
+      {doctor ? (
+        <div className="rounded-xl border p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <div className="font-medium">Completion health</div>
+            <Badge variant="outline">doctor</Badge>
+          </div>
+          <JsonViewer maxHeight="12rem" value={doctor} />
         </div>
-        <pre className="max-h-48 overflow-auto text-xs text-muted-foreground">
-          {JSON.stringify(doctor, null, 2)}
-        </pre>
+      ) : null}
+      <div className="flex flex-col gap-2 lg:flex-row">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="Search completion, workspace, agent, title..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
+        <Select value={status} onValueChange={setStatus}>
+          <SelectTrigger className="w-full lg:w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            {statuses.map((value) => (
+              <SelectItem key={value} value={value}>
+                {value}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-    ) : null}
-    <div className="flex flex-col gap-2 lg:flex-row">
-      <div className="relative min-w-0 flex-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input className="pl-9" placeholder="Search completion, workspace, agent, title..." value={query} onChange={(event) => setQuery(event.target.value)} />
+      {loading ? (
+        <PageLoading rows={6} />
+      ) : filtered.length === 0 ? (
+        <PageEmpty
+          icon={CircleCheckBig}
+          title="No matching completions"
+          description={
+            items.length
+              ? "Adjust the search or status filter."
+              : "Accepted agent completions will appear here."
+          }
+        />
+      ) : (
+        <ItemGroup>
+          {filtered.map((record) => (
+            <Item
+              interactive
+              selected={selected?.id === record.id}
+              key={record.id}
+              role="button"
+              tabIndex={0}
+              variant="outline"
+              onClick={() => void openCompletion(record)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ")
+                  void openCompletion(record)
+              }}
+            >
+              <ItemContent className="min-w-0">
+                <ItemHeader>
+                  <ItemTitle className="min-w-0">
+                    <TruncatedText lines={1}>{record.title}</TruncatedText>
+                  </ItemTitle>
+                  <SemanticStatusBadge status={record.status} />
+                </ItemHeader>
+                <ItemDescription>
+                  <TruncatedText lines={1}>
+                    {record.summary || "No summary"}
+                  </TruncatedText>
+                </ItemDescription>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <span className="font-mono">{record.id}</span>
+                  <span className="font-mono">{record.workspace_id}</span>
+                  <span>{formatDateTime(record.created_at)}</span>
+                </div>
+              </ItemContent>
+            </Item>
+          ))}
+        </ItemGroup>
+      )}
+      {selected ? (
+        <CompletionDetail
+          record={selected}
+          onOpenChange={(open) => {
+            if (!open) setSelected(null)
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function CompletionDetail({
+  record,
+  onOpenChange,
+}: {
+  record: CompletionRecord
+  onOpenChange: (open: boolean) => void
+}) {
+  return (
+    <ResponsiveDialog
+      open
+      onOpenChange={onOpenChange}
+      title={record.title}
+      description={"Agent completion · " + record.id}
+    >
+      <div className="mb-3">
+        <SemanticStatusBadge status={record.status} />
       </div>
-      <Select value={status} onValueChange={setStatus}>
-        <SelectTrigger className="w-full lg:w-44"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">All statuses</SelectItem>
-          {statuses.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}
-        </SelectContent>
-      </Select>
-    </div>
-    {loading ? <PageLoading rows={6} /> : filtered.length === 0
-      ? <PageEmpty icon={CircleCheckBig} title="No matching completions" description={items.length ? "Adjust the search or status filter." : "Accepted agent completions will appear here."} />
-      : <ItemGroup>{filtered.map((record) =>
-        <Item className="cursor-pointer" key={record.id} role="button" tabIndex={0} variant="outline"
-          onClick={() => void openCompletion(record)}
-          onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") void openCompletion(record) }}>
-          <ItemContent className="min-w-0">
-            <ItemHeader>
-              <ItemTitle className="min-w-0"><TruncatedText lines={1}>{record.title}</TruncatedText></ItemTitle>
-              <CompletionStatusBadge status={record.status} />
-            </ItemHeader>
-            <ItemDescription><TruncatedText lines={1}>{record.summary || "No summary"}</TruncatedText></ItemDescription>
-            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-              <span className="font-mono">{record.id}</span>
-              <span className="font-mono">{record.workspace_id}</span>
-              <span>{formatDateTime(record.created_at)}</span>
-            </div>
-          </ItemContent>
-        </Item>
-      )}</ItemGroup>}
-    {selected ? <CompletionDetail record={selected} onOpenChange={(open) => { if (!open) setSelected(null) }} /> : null}
-  </div>
+      <div className="divide-y">
+        <DetailRow label="Workspace" value={record.workspace_id} mono />
+        <DetailRow label="Completion" value={record.id} mono />
+        <DetailRow label="Agent" value={record.agent_id} mono />
+        <DetailRow label="Sequence" value={record.sequence} mono />
+        <DetailRow label="Source" value={record.source || "-"} mono />
+        <DetailRow label="Created" value={formatDateTime(record.created_at)} />
+        <DetailRow
+          label="Supersedes"
+          value={record.supersedes_id || "-"}
+          mono
+        />
+        <DetailRow label="Summary" value={record.summary || "-"} />
+      </div>
+    </ResponsiveDialog>
+  )
 }
 
-function CompletionDetail({ record, onOpenChange }: { record: CompletionRecord; onOpenChange: (open: boolean) => void }) {
-  return <ResponsiveDialog open onOpenChange={onOpenChange} title={record.title} description={"Agent completion · " + record.id}>
-    <div className="mb-3"><CompletionStatusBadge status={record.status} /></div>
-    <div className="divide-y">
-      <DetailRow label="Workspace" value={record.workspace_id} mono />
-      <DetailRow label="Completion" value={record.id} mono />
-      <DetailRow label="Agent" value={record.agent_id} mono />
-      <DetailRow label="Sequence" value={record.sequence} mono />
-      <DetailRow label="Source" value={record.source || "-"} mono />
-      <DetailRow label="Created" value={formatDateTime(record.created_at)} />
-      <DetailRow label="Supersedes" value={record.supersedes_id || "-"} mono />
-      <DetailRow label="Summary" value={record.summary || "-"} />
-    </div>
-  </ResponsiveDialog>
-}
-
-function CompletionStatusBadge({ status }: { status: string }) {
-  return <Badge variant={status === "blocked" || status === "cancelled" ? "destructive" : status === "completed" ? "secondary" : "outline"}>{status}</Badge>
-}
-
-function upsertCompletion(records: CompletionRecord[], record: CompletionRecord) {
+function upsertCompletion(
+  records: CompletionRecord[],
+  record: CompletionRecord
+) {
   const next = [...records.filter((item) => item.id !== record.id), record]
   next.sort((left, right) => left.sequence - right.sequence)
   return next.slice(-100)

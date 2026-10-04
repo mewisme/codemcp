@@ -6,6 +6,7 @@ import { PageEmpty, PageError, PageLoading } from "@/components/page-state"
 import { PageHeader } from "@/components/page-header"
 import { RequestExplanation } from "@/components/request-explanation"
 import { ResponsiveDialog } from "@/components/responsive-dialog"
+import { SemanticStatusBadge } from "@/components/semantic-status-badge"
 import { TruncatedText } from "@/components/truncated-text"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -261,9 +262,13 @@ export function RequestsPage({
           </div>
           <ItemGroup>
             {grants.map((grant) => (
-              <Item key={grant.id} variant="outline">
+              <Item
+                key={grant.id}
+                selected={selected?.id === grant.id}
+                variant="outline"
+              >
                 <ItemContent
-                  className="min-w-0 cursor-pointer"
+                  className="min-w-0 cursor-pointer rounded-md transition-colors hover:bg-muted/50"
                   onClick={() => void openRequest(grant)}
                 >
                   <ItemHeader>
@@ -334,9 +339,10 @@ export function RequestsPage({
         <ItemGroup>
           {filtered.map((item) => (
             <Item
-              className="cursor-pointer"
+              interactive
               key={item.id}
               role="button"
+              selected={selected?.id === item.id}
               tabIndex={0}
               variant="outline"
               onClick={() => void openRequest(item)}
@@ -352,7 +358,7 @@ export function RequestsPage({
                       {item.title || item.target_tool}
                     </TruncatedText>
                   </ItemTitle>
-                  <ApprovalStatusBadge status={item.status} />
+                  <SemanticStatusBadge status={item.status} />
                 </ItemHeader>
                 <ItemDescription>
                   {item.workspace_id} · {item.target_tool}
@@ -424,7 +430,7 @@ function RequestDetail({
       }
     >
       <div className="mb-3">
-        <ApprovalStatusBadge status={request.status} />
+        <SemanticStatusBadge status={request.status} />
       </div>
       <div className="mb-4 divide-y rounded-lg border">
         <DetailRow label="Agent title" value={request.title || "-"} />
@@ -502,23 +508,6 @@ function RequestDetail({
   )
 }
 
-function ApprovalStatusBadge({ status }: { status: string }) {
-  return (
-    <Badge
-      variant={
-        status === "denied"
-          ? "destructive"
-          : status === "pending" ||
-              status === "approved" ||
-              status === "consumed"
-            ? "secondary"
-            : "outline"
-      }
-    >
-      {status}
-    </Badge>
-  )
-}
 function formatDateTime(value: string) {
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString()

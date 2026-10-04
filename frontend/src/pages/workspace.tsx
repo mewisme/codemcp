@@ -4,6 +4,8 @@ import {
   Link,
   NavLink,
   Outlet,
+  useLocation,
+  useNavigate,
   useOutletContext,
   useParams,
 } from "react-router-dom"
@@ -20,6 +22,7 @@ import {
 import { WorkspaceProcesses } from "@/components/workspace-processes"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { RequestsPage } from "@/pages/requests"
 import { adminApi, type Workspace } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -187,21 +190,74 @@ export function WorkspaceCodeGraphPage() {
 
 function WorkspaceNav({ workspaceID }: { workspaceID: string }) {
   const base = `/workspaces/${encodeURIComponent(workspaceID)}`
+  const navigate = useNavigate()
+  const location = useLocation()
+  const sections = [
+    {
+      label: "Overview",
+      path: "",
+      match: (value: string) => value === "" || value === "/",
+    },
+    {
+      label: "Context",
+      path: "/context",
+      match: (value: string) => value.startsWith("/context"),
+    },
+    {
+      label: "Requests",
+      path: "/requests",
+      match: (value: string) => value.startsWith("/requests"),
+    },
+    {
+      label: "Activity",
+      path: "/activity",
+      match: (value: string) => value.startsWith("/activity"),
+    },
+    {
+      label: "Processes",
+      path: "/processes",
+      match: (value: string) => value.startsWith("/processes"),
+    },
+    {
+      label: "CodeGraph",
+      path: "/codegraph",
+      match: (value: string) => value.startsWith("/codegraph"),
+    },
+  ]
+  const relative = location.pathname.slice(base.length)
+  const current =
+    sections.find((section) => section.match(relative))?.path ?? ""
   return (
-    <ScrollArea className="w-full" scrollbars="horizontal">
-      <div
-        aria-label="Workspace sections"
-        className="inline-flex h-8 w-max min-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground"
-        role="tablist"
-      >
-        <WorkspaceNavLink end label="Overview" to={base} />
-        <WorkspaceNavLink label="Context" to={`${base}/context`} />
-        <WorkspaceNavLink label="Requests" to={`${base}/requests`} />
-        <WorkspaceNavLink label="Activity" to={`${base}/activity`} />
-        <WorkspaceNavLink label="Processes" to={`${base}/processes`} />
-        <WorkspaceNavLink label="CodeGraph" to={`${base}/codegraph`} />
+    <>
+      <div className="md:hidden">
+        <NativeSelect
+          aria-label="Workspace section"
+          className="w-full"
+          value={current}
+          onChange={(event) => navigate(`${base}${event.target.value}`)}
+        >
+          {sections.map((section) => (
+            <NativeSelectOption key={section.path} value={section.path}>
+              {section.label}
+            </NativeSelectOption>
+          ))}
+        </NativeSelect>
       </div>
-    </ScrollArea>
+      <ScrollArea className="hidden w-full md:block" scrollbars="horizontal">
+        <div
+          aria-label="Workspace sections"
+          className="inline-flex h-8 w-max min-w-full items-center rounded-lg bg-muted p-[3px] text-muted-foreground"
+          role="tablist"
+        >
+          <WorkspaceNavLink end label="Overview" to={base} />
+          <WorkspaceNavLink label="Context" to={`${base}/context`} />
+          <WorkspaceNavLink label="Requests" to={`${base}/requests`} />
+          <WorkspaceNavLink label="Activity" to={`${base}/activity`} />
+          <WorkspaceNavLink label="Processes" to={`${base}/processes`} />
+          <WorkspaceNavLink label="CodeGraph" to={`${base}/codegraph`} />
+        </div>
+      </ScrollArea>
+    </>
   )
 }
 

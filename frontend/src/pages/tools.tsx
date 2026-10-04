@@ -195,7 +195,11 @@ export function ToolsPage() {
           }
         />
       ) : mobile ? (
-        <ToolMobileList tools={filtered} onSelect={setSelected} />
+        <ToolMobileList
+          selectedName={selected?.name}
+          tools={filtered}
+          onSelect={setSelected}
+        />
       ) : (
         <DataTable
           columns={columns}
@@ -218,9 +222,11 @@ export function ToolsPage() {
 }
 
 function ToolMobileList({
+  selectedName,
   tools,
   onSelect,
 }: {
+  selectedName?: string
   tools: Tool[]
   onSelect: (tool: Tool) => void
 }) {
@@ -228,9 +234,10 @@ function ToolMobileList({
     <ItemGroup>
       {tools.map((tool) => (
         <Item
-          className="cursor-pointer"
+          interactive
           key={tool.name}
           role="button"
+          selected={selectedName === tool.name}
           tabIndex={0}
           variant="outline"
           onClick={() => onSelect(tool)}

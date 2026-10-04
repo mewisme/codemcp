@@ -34,7 +34,7 @@ function ItemSeparator({
 }
 
 const itemVariants = cva(
-  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [a]:transition-colors [a]:hover:bg-muted",
+  "group/item flex w-full flex-wrap items-center rounded-lg border text-sm transition-colors duration-100 outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[interactive=true]:cursor-pointer data-[interactive=true]:hover:bg-muted/50 data-[state=selected]:border-ring/40 data-[state=selected]:bg-muted [a]:transition-colors [a]:hover:bg-muted",
   {
     variants: {
       variant: {
@@ -60,15 +60,23 @@ function Item({
   variant = "default",
   size = "default",
   asChild = false,
+  interactive = false,
+  selected = false,
   ...props
 }: React.ComponentProps<"div"> &
-  VariantProps<typeof itemVariants> & { asChild?: boolean }) {
+  VariantProps<typeof itemVariants> & {
+    asChild?: boolean
+    interactive?: boolean
+    selected?: boolean
+  }) {
   const Comp = asChild ? Slot.Root : "div"
   return (
     <Comp
       data-slot="item"
       data-variant={variant}
       data-size={size}
+      data-interactive={interactive ? "true" : undefined}
+      data-state={selected ? "selected" : undefined}
       className={cn(itemVariants({ variant, size, className }))}
       {...props}
     />

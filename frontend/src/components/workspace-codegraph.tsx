@@ -79,7 +79,7 @@ export function WorkspaceCodeGraph({ workspaceID }: { workspaceID: string }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <JsonViewer value={status} />
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button disabled={Boolean(busy)} onClick={() => void act("init")}>
               Initialize
             </Button>

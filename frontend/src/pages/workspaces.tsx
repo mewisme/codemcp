@@ -595,7 +595,9 @@ export function WorkspacesPage() {
       >
         <div className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="workspace-relocation-path">Canonical project root</Label>
+            <Label htmlFor="workspace-relocation-path">
+              Canonical project root
+            </Label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 id="workspace-relocation-path"
@@ -619,7 +621,9 @@ export function WorkspacesPage() {
             </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="workspace-access-path">Additional allowed directory</Label>
+            <Label htmlFor="workspace-access-path">
+              Additional allowed directory
+            </Label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 id="workspace-access-path"
@@ -647,7 +651,9 @@ export function WorkspacesPage() {
                   className="flex items-center gap-2 rounded-lg border p-3"
                   key={directory}
                 >
-                  <code className="min-w-0 flex-1 truncate text-xs">{directory}</code>
+                  <code className="min-w-0 flex-1 truncate text-xs">
+                    {directory}
+                  </code>
                   <Button
                     disabled={manageBusy}
                     size="sm"
@@ -813,7 +819,7 @@ function WorkspaceRow({
   ).length
   return (
     <Item
-      className="cursor-pointer"
+      interactive
       role="button"
       tabIndex={0}
       variant="outline"

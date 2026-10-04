@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test"
 
 import {
-  expectBothAxisOverflow,
   expectHorizontalOverflow,
   expectNoViewportOverflow,
   expectVerticalOverflow,
@@ -91,8 +90,16 @@ test.describe("Browser Admin interaction quality", () => {
     await search.fill("payload")
     await page.getByRole("button", { name: "Apply" }).click()
 
-    const eventScroll = page.locator('[data-slot="scroll-area"]').first()
-    await expectBothAxisOverflow(eventScroll)
+    await page.getByText("runtime.long_payload", { exact: true }).click()
+    const eventDialog = page.getByRole("dialog")
+    await expect(eventDialog).toBeVisible()
+    const eventScroll = eventDialog.locator('[data-slot="scroll-area"]').last()
+    await expectVerticalOverflow(
+      eventScroll.locator(':scope > [data-slot="scroll-area-viewport"]')
+    )
+    await expectNoViewportOverflow(page)
+    await page.keyboard.press("Escape")
+    await expect(eventDialog).toHaveCount(0)
 
     await page.getByRole("button", { name: "Clear view" }).click()
     await expect(page.getByText("runtime.long_payload")).toHaveCount(0)
@@ -199,5 +206,76 @@ test.describe("Browser Admin interaction quality", () => {
     await tabTo(page, search)
     await search.fill("tool")
     await expectNoViewportOverflow(page)
+  })
+
+  test("workspace nested navigation preserves deep links, history, actions, and narrow-screen containment", async ({
+    page,
+  }, testInfo) => {
+    await installAdminMocks(page)
+    await page.goto("/workspaces/ws_fixture/activity")
+
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Workspace" })
+    ).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Refresh" }).first()
+    ).toBeVisible()
+    await expect(
+      page.getByRole("main").getByRole("link", { name: "Workspaces" })
+    ).toBeVisible()
+    await expectNoViewportOverflow(page)
+
+    const mobile = testInfo.project.name === "admin-mobile"
+    const section = page.getByLabel("Workspace section", { exact: true })
+    if (mobile) {
+      await expect(section).toBeVisible()
+      await expect(section).toHaveValue("/activity")
+      await section.selectOption("/context")
+    } else {
+      await expect(page.getByRole("tab", { name: "Activity" })).toBeVisible()
+      await page.getByRole("tab", { name: "Context" }).click()
+    }
+    await expect(page).toHaveURL(/\/workspaces\/ws_fixture\/context$/)
+    await expect(page.getByRole("button", { name: "Preview" })).toBeVisible()
+    await expectNoViewportOverflow(page)
+
+    if (mobile) {
+      await section.selectOption("/processes")
+    } else {
+      await page.getByRole("tab", { name: "Processes" }).click()
+    }
+    await expect(page).toHaveURL(/\/workspaces\/ws_fixture\/processes$/)
+    await expect(
+      page.getByRole("button", { name: "Refresh processes" })
+    ).toBeVisible()
+    await expect(page.getByRole("button", { name: "Clear" })).toBeVisible()
+    await expectNoViewportOverflow(page)
+
+    await page.goBack()
+    await expect(page).toHaveURL(/\/workspaces\/ws_fixture\/context$/)
+    if (mobile) await expect(section).toHaveValue("/context")
+    await page.goForward()
+    await expect(page).toHaveURL(/\/workspaces\/ws_fixture\/processes$/)
+    if (mobile) await expect(section).toHaveValue("/processes")
+
+    if (mobile) {
+      await section.selectOption("/activity")
+    } else {
+      await page.getByRole("tab", { name: "Activity" }).click()
+    }
+    await expect(page).toHaveURL(/\/workspaces\/ws_fixture\/activity$/)
+    await page.getByText("printf-", { exact: false }).first().click()
+    await expect(page).toHaveURL(/\/workspaces\/ws_fixture\/activity\/exec_/)
+    if (mobile) await expect(section).toHaveValue("/activity")
+    await expectNoViewportOverflow(page)
+
+    await page.goBack()
+    await expect(page).toHaveURL(/\/workspaces\/ws_fixture\/activity$/)
+
+    if (mobile) {
+      await expect(page).toHaveScreenshot("workspace-mobile.png", {
+        animations: "disabled",
+      })
+    }
   })
 })

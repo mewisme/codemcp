@@ -141,7 +141,128 @@ export async function installAdminMocks(
         body: 'event: ready\ndata: {"latest_sequence":0}\n\n',
       })
     }
-    if (url.pathname === "/api/workspaces") return json([])
+    const workspaceFixture = {
+      id: "ws_fixture",
+      path: `/workspace/${longToken}`,
+      allow_dirs: [`/workspace/extra/${longToken}`],
+      available: true,
+    }
+    const executionFixture = {
+      id: `exec_${longToken}`,
+      workspace_id: "ws_fixture",
+      tool: "run_command",
+      command: `printf-${longToken}`,
+      cwd: `/workspace/${longToken}`,
+      started_at: "2026-10-01T08:00:00Z",
+      finished_at: "2026-10-01T08:00:01Z",
+      status: "success",
+      source: "mcp",
+      exit_code: 0,
+    }
+    if (url.pathname === "/api/workspaces") return json([workspaceFixture])
+    if (url.pathname === "/api/workspaces/ws_fixture")
+      return json(workspaceFixture)
+    if (url.pathname === "/api/workspaces/ws_fixture/context") {
+      const contextText = `# Fixture context\n\n${longToken}\n${longToken}`
+      return json({
+        root: workspaceFixture.path,
+        workspace_id: workspaceFixture.id,
+        summary: {
+          memory_files: [],
+          memory_bytes: contextText.length,
+          instruction_bytes: contextText.length,
+          git: { is_repo: true, branch: "main", commits: 12 },
+          rules: 1,
+          skills: 1,
+        },
+        instruction_context: {
+          root: workspaceFixture.path,
+          workspace_id: workspaceFixture.id,
+          instructions_text: contextText,
+          instruction_bytes: contextText.length,
+          instruction_truncated: false,
+          rules: [
+            {
+              path: `.cm/rules/${longToken}.md`,
+              source: ".cm",
+              content: contextText,
+              always_apply: true,
+            },
+          ],
+          skills: [
+            {
+              name: "fixture-skill",
+              description: longToken,
+              path: `.cm/skills/${longToken}/SKILL.md`,
+              source: ".cm",
+            },
+          ],
+          sources: [],
+          project_memory: {
+            sections: [],
+            imports: [],
+            total_bytes: 0,
+            budget_bytes: 65536,
+            budget_truncated: false,
+          },
+          auto_memory: { loaded: false, bytes: 0 },
+          git: {
+            is_repo: true,
+            root: workspaceFixture.path,
+            branch: "main",
+            status_short: "",
+            recent_commits: ["fixture commit"],
+          },
+          environment: { fixture: longToken },
+        },
+      })
+    }
+    if (url.pathname === "/api/workspaces/ws_fixture/executions/stream") {
+      return route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: `event: ready\ndata: ${JSON.stringify({
+          executions: [executionFixture],
+          events: [],
+          latest_sequence: 1,
+          replay_count: 0,
+        })}\n\n`,
+      })
+    }
+    if (
+      url.pathname ===
+      `/api/workspaces/ws_fixture/executions/${encodeURIComponent(executionFixture.id)}`
+    ) {
+      return json({
+        execution: executionFixture,
+        stdout: `stdout-${longToken}\n${longToken}`,
+        stderr: `stderr-${longToken}`,
+        latest_sequence: 1,
+      })
+    }
+    if (url.pathname === "/api/workspaces/ws_fixture/processes") {
+      return json([
+        {
+          id: `proc_${longToken}`,
+          pid: 4242,
+          command: `background-${longToken}`,
+          cwd: `/workspace/process/${longToken}`,
+          started_at: "2026-10-01T08:00:00Z",
+          running: false,
+          exit_code: 0,
+        },
+      ])
+    }
+    if (url.pathname === "/api/workspaces/ws_fixture/integrations/codegraph") {
+      return json({
+        enabled: true,
+        indexed: true,
+        workspace_id: "ws_fixture",
+        index_path: `/index/${longToken}`,
+      })
+    }
+    if (url.pathname === "/api/requests") return json([])
+    if (url.pathname === "/api/requests/grants") return json([])
     if (url.pathname === "/api/upstream") return json([])
     if (url.pathname === "/api/tunnel") {
       return json({
