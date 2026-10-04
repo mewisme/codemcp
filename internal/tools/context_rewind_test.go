@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,6 +219,9 @@ func TestProjectContextCapabilityInventoryTracksLiveRegistry(t *testing.T) {
 	if withDynamic.InstructionContext.ToolProfile.Count != initial.InstructionContext.ToolProfile.Count+1 || !instructionCapabilityContains(withDynamic.InstructionContext.ToolCapabilities, CapabilityDomainUpstream, dynamicTool) {
 		t.Fatalf("dynamic inventory=%#v/%#v", withDynamic.InstructionContext.ToolProfile, withDynamic.InstructionContext.ToolCapabilities)
 	}
+	if !strings.Contains(withDynamic.InstructionContext.InstructionsText, dynamicTool) {
+		t.Fatalf("classified dynamic tool missing from rendered guidance:\n%s", withDynamic.InstructionContext.InstructionsText)
+	}
 
 	if err := runtime.Registry.ReplaceOwned("upstream:test", map[string]Entry{}); err != nil {
 		t.Fatal(err)
@@ -225,6 +229,9 @@ func TestProjectContextCapabilityInventoryTracksLiveRegistry(t *testing.T) {
 	afterRemoval := build(context.Background())
 	if afterRemoval.InstructionContext.ToolProfile.Count != initial.InstructionContext.ToolProfile.Count || instructionCapabilityContains(afterRemoval.InstructionContext.ToolCapabilities, CapabilityDomainUpstream, dynamicTool) {
 		t.Fatalf("removed dynamic tool remained in inventory=%#v/%#v", afterRemoval.InstructionContext.ToolProfile, afterRemoval.InstructionContext.ToolCapabilities)
+	}
+	if strings.Contains(afterRemoval.InstructionContext.InstructionsText, dynamicTool) {
+		t.Fatalf("removed dynamic tool remained in rendered guidance:\n%s", afterRemoval.InstructionContext.InstructionsText)
 	}
 
 	filteredSchemas := []Schema{}
@@ -257,10 +264,52 @@ func TestProjectContextCapabilityGuidanceSurfacesRepresentativeFullRuntimeTools(
 		t.Fatalf("project_context=%#v err=%v", result, err)
 	}
 	project := result.StructuredContent.(ProjectContextResult)
-	for _, expected := range []string{"## Tool capabilities", "git_push", "run_command"} {
+	for _, expected := range []string{"## Tool capabilities", "glob", "git_push", "run_command", "remember", "create_plan", "agent_spawn", "fanout_turn"} {
 		if !strings.Contains(project.InstructionContext.InstructionsText, expected) {
 			t.Fatalf("full runtime capability guidance missing %q:\n%s", expected, project.InstructionContext.InstructionsText)
 		}
+	}
+}
+
+func TestProjectContextUnclassifiedDynamicGuidanceIsExplicitAndBounded(t *testing.T) {
+	runtime, workspaceID, _, _ := newContextToolRuntime(t)
+	entries := make(map[string]Entry, 40)
+	for index := 0; index < 40; index++ {
+		name := fmt.Sprintf("unknown_probe_%02d", index)
+		entries[name] = Entry{
+			Schema:  Schema{Name: name, InputSchema: json.RawMessage(`{"type":"object"}`)},
+			Handler: func(context.Context, map[string]any) (Result, error) { return TextResult("ok"), nil },
+		}
+	}
+	if err := runtime.Registry.ReplaceOwned("upstream:unclassified", entries); err != nil {
+		t.Fatal(err)
+	}
+	result, err := runtime.Call(context.Background(), "project_context", map[string]any{
+		"workspace_id": workspaceID, "include_git": false, "include_memory": false, "include_skills": false,
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("project_context=%#v err=%v", result, err)
+	}
+	project := result.StructuredContent.(ProjectContextResult)
+	capabilities := project.InstructionContext.ToolCapabilities
+	var unclassified *instructioncontext.ToolCapabilityGroup
+	for index := range capabilities.Groups {
+		if capabilities.Groups[index].Domain == CapabilityDomainUnclassified {
+			unclassified = &capabilities.Groups[index]
+			break
+		}
+	}
+	if unclassified == nil || !unclassified.Truncated || len(unclassified.Tools) != DefaultCapabilityLimits().MaxUnclassifiedTools || !capabilities.Truncated {
+		t.Fatalf("unclassified capability bounds=%#v inventory=%#v", unclassified, capabilities)
+	}
+	instructions := project.InstructionContext.InstructionsText
+	for _, expected := range []string{"- unclassified:", "unknown_probe_00", "(truncated)", "- truncated: true"} {
+		if !strings.Contains(instructions, expected) {
+			t.Fatalf("unclassified rendered guidance missing %q:\n%s", expected, instructions)
+		}
+	}
+	if strings.Contains(instructions, "unknown_probe_08") {
+		t.Fatalf("renderer exceeded per-group capability bound:\n%s", instructions)
 	}
 }
 

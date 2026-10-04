@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/config"
@@ -57,6 +58,11 @@ func TestApplicationProjectContextUsesLiveRuntimeInventoryWhenAvailable(t *testi
 	context := result.Value.InstructionContext
 	if context.ToolCapabilities == nil || context.ToolProfile.Count != len(runtime.ListTools()) || context.ToolCapabilities.TotalTools != len(runtime.ListTools()) {
 		t.Fatalf("runtime inventory=%#v/%#v tools=%d", context.ToolProfile, context.ToolCapabilities, len(runtime.ListTools()))
+	}
+	for _, expected := range []string{"## Tool capabilities", "git_push", "run_command", "agent_spawn", "fanout_turn"} {
+		if !strings.Contains(context.InstructionsText, expected) {
+			t.Fatalf("application project context missing capability %q:\n%s", expected, context.InstructionsText)
+		}
 	}
 }
 

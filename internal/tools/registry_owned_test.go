@@ -77,6 +77,58 @@ func TestOwnedReplacementPreservesCapabilityMetadata(t *testing.T) {
 	}
 }
 
+func TestCapabilityMetadataDoesNotChangeAnnotationsOrExecution(t *testing.T) {
+	registry := NewRegistry()
+	annotations := ToolAnnotations(RiskEdit)
+	handler := func(context.Context, map[string]any) (Result, error) { return TextResult("same-execution"), nil }
+	entry := func(capability *CapabilityMetadata) Entry {
+		return Entry{
+			Schema: Schema{
+				Name:        "test__capability_only",
+				InputSchema: json.RawMessage(`{"type":"object"}`),
+				Annotations: annotations,
+				Capability:  capability,
+			},
+			Handler: handler,
+		}
+	}
+	if err := registry.ReplaceOwned("upstream:test", map[string]Entry{"test__capability_only": entry(nil)}); err != nil {
+		t.Fatal(err)
+	}
+	beforeSchema, ok := registry.Schema("test__capability_only")
+	if !ok {
+		t.Fatal("missing baseline tool")
+	}
+	beforeResult, err := registry.Call(context.Background(), "test__capability_only", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := registry.ReplaceOwned("upstream:test", map[string]Entry{
+		"test__capability_only": entry(&CapabilityMetadata{Domain: CapabilityDomainUpstream}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	afterSchema, ok := registry.Schema("test__capability_only")
+	if !ok || afterSchema.Capability == nil || afterSchema.Capability.Domain != CapabilityDomainUpstream {
+		t.Fatalf("capability metadata=%#v", afterSchema.Capability)
+	}
+	afterResult, err := registry.Call(context.Background(), "test__capability_only", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeAnnotations, _ := json.Marshal(beforeSchema.Annotations)
+	afterAnnotations, _ := json.Marshal(afterSchema.Annotations)
+	beforeExecution, _ := json.Marshal(beforeResult)
+	afterExecution, _ := json.Marshal(afterResult)
+	if string(beforeAnnotations) != string(afterAnnotations) {
+		t.Fatalf("capability metadata changed annotations: before=%s after=%s", beforeAnnotations, afterAnnotations)
+	}
+	if string(beforeExecution) != string(afterExecution) {
+		t.Fatalf("capability metadata changed execution: before=%s after=%s", beforeExecution, afterExecution)
+	}
+}
+
 func TestReplaceOwnedPrefixSwapsMultipleOwnersAtomically(t *testing.T) {
 	registry := NewRegistry()
 	registry.MustRegister("native", Schema{Name: "native"}, func(context.Context, map[string]any) (Result, error) { return TextResult("native"), nil })
