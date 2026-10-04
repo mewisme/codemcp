@@ -31,6 +31,18 @@ type RepositorySkillCandidate struct {
 	Files        []string `json:"files"`
 }
 
+func ParseGitHubIdentity(raw string) (GitHubSource, error) {
+	const prefix = "github:"
+	if raw == "" || raw != strings.TrimSpace(raw) || !strings.HasPrefix(raw, prefix) {
+		return GitHubSource{}, errors.New("github repository identity is invalid")
+	}
+	parsed, err := ParseGitHubSource(strings.TrimPrefix(raw, prefix))
+	if err != nil || parsed.Identity != raw {
+		return GitHubSource{}, errors.New("github repository identity is not canonical")
+	}
+	return parsed, nil
+}
+
 func ParseGitHubSource(raw string) (GitHubSource, error) {
 	if raw == "" || raw != strings.TrimSpace(raw) {
 		return GitHubSource{}, errors.New("github skill source is not canonical")

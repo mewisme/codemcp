@@ -61,6 +61,26 @@ func TestParseGitHubSourceRejectsUnsupportedAndUnsafeForms(t *testing.T) {
 	}
 }
 
+func TestParseGitHubIdentityAcceptsOnlyCanonicalIdentity(t *testing.T) {
+	got, err := ParseGitHubIdentity("github:owner/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Identity != "github:owner/repo" || got.CloneURL != "https://github.com/owner/repo.git" {
+		t.Fatalf("identity=%#v", got)
+	}
+	for _, raw := range []string{
+		"owner/repo",
+		"github:Owner/Repo",
+		"github:owner/repo/extra",
+		"https://github.com/owner/repo",
+	} {
+		if _, err := ParseGitHubIdentity(raw); err == nil {
+			t.Fatalf("identity %q unexpectedly accepted", raw)
+		}
+	}
+}
+
 func TestValidateNativeSkillRootAndRepositoryDiscovery(t *testing.T) {
 	repository := t.TempDir()
 	writeSkillFixture(t, filepath.Join(repository, "skills", "alpha"), "alpha", "Alpha skill")
