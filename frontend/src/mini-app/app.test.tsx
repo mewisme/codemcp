@@ -141,11 +141,14 @@ describe("Telegram Activity Mini App", () => {
     expect(
       (await screen.findAllByText("runtime.ready")).length
     ).toBeGreaterThan(1)
-    expect(screen.getByRole("tab", { name: "Overview" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Summary" })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "Request" })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "Response" })).toBeInTheDocument()
-    expect(screen.getByRole("tab", { name: "Metadata" })).toBeInTheDocument()
-    expect(screen.getByRole("tab", { name: "Raw" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "More" })).toBeInTheDocument()
+    expect(
+      screen.queryByRole("tab", { name: "Metadata" })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "Raw" })).not.toBeInTheDocument()
     expect(backShow).toHaveBeenCalled()
   })
 
@@ -459,7 +462,7 @@ describe("Telegram Activity Mini App", () => {
     expect(screen.getByText("Server ready")).toBeInTheDocument()
   })
 
-  it("renders successful tool calls in green and separates request, response, metadata, and raw detail views", async () => {
+  it("renders successful tool calls in green and groups metadata and raw under More", async () => {
     window.Telegram = {
       WebApp: { initData: "signed-init-data", ready: vi.fn(), expand: vi.fn() },
     }
@@ -562,8 +565,18 @@ describe("Telegram Activity Mini App", () => {
     expect(okBadge.className).toContain("bg-emerald-500/10")
     await userEvent.click(screen.getByText("git_status"))
 
-    const overview = screen.getByText("Tool").parentElement?.parentElement
-    expect(overview?.className).toContain("md:grid-cols-1")
+    expect(screen.getByRole("tab", { name: "Summary" })).toBeInTheDocument()
+    const summary = screen.getByRole("tabpanel", { name: "Summary" })
+    expect(summary).toHaveTextContent("Tool")
+    expect(summary).toHaveTextContent("git_status")
+    expect(summary).toHaveTextContent("Workspace")
+    expect(summary).toHaveTextContent("ws_test")
+    expect(summary).not.toHaveTextContent("call_test")
+    expect(summary.querySelector("code")).toBeNull()
+    expect(
+      screen.queryByRole("tab", { name: "Metadata" })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: "Raw" })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("tab", { name: "Request" }))
     let code = screen.getByRole("code")
@@ -583,7 +596,9 @@ describe("Telegram Activity Mini App", () => {
       "both"
     )
 
-    await userEvent.click(screen.getByRole("tab", { name: "Metadata" }))
+    await userEvent.click(screen.getByRole("tab", { name: "More" }))
+    expect(screen.getByRole("tab", { name: "Metadata" })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Raw" })).toBeInTheDocument()
     code = screen.getByRole("code")
     expect(code.textContent).toContain('"call_id": "call_test"')
     expect(code.closest('[data-slot="scroll-area"]')).toHaveAttribute(

@@ -12,8 +12,10 @@ import {
   XIcon,
 } from "lucide-react"
 
+import { DetailSummary } from "@/components/detail-row"
 import { JsonViewer } from "@/components/json-viewer"
 import { ResponsiveDialog } from "@/components/responsive-dialog"
+import { SemanticStatusBadge } from "@/components/semantic-status-badge"
 import { TextViewer } from "@/components/text-viewer"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -1334,12 +1336,16 @@ function DetailBody({
   )
   return (
     <Tabs
-      defaultValue="overview"
+      defaultValue="summary"
       className={cn("gap-3", fill && "h-full min-h-0")}
     >
-      <ScrollableTabsList className="shrink-0 justify-start" variant="line">
-        <TabsTrigger className="flex-none px-2.5" value="overview">
-          Overview
+      <ScrollableTabsList
+        aria-label="Activity detail"
+        className="shrink-0 justify-start"
+        variant="line"
+      >
+        <TabsTrigger className="flex-none px-2.5" value="summary">
+          Summary
         </TabsTrigger>
         <TabsTrigger className="flex-none px-2.5" value="request">
           Request
@@ -1347,15 +1353,12 @@ function DetailBody({
         <TabsTrigger className="flex-none px-2.5" value="response">
           Response
         </TabsTrigger>
-        <TabsTrigger className="flex-none px-2.5" value="metadata">
-          Metadata
-        </TabsTrigger>
-        <TabsTrigger className="flex-none px-2.5" value="raw">
-          Raw
+        <TabsTrigger className="flex-none px-2.5" value="more">
+          More
         </TabsTrigger>
       </ScrollableTabsList>
-      <DetailTab value="overview" fill={fill}>
-        {sections.overview}
+      <DetailTab value="summary" fill={fill}>
+        {sections.summary}
       </DetailTab>
       <DetailTab value="request" fill={fill}>
         <DetailSection
@@ -1369,18 +1372,46 @@ function DetailBody({
           empty="No response payload is available for this event."
         />
       </DetailTab>
-      <DetailTab value="metadata" fill={fill}>
+      <DetailTab value="more" fill={fill}>
+        <MoreDetail metadata={sections.metadata} raw={sections.raw} />
+      </DetailTab>
+    </Tabs>
+  )
+}
+
+function MoreDetail({
+  metadata,
+  raw,
+}: {
+  metadata: React.ReactNode | unknown
+  raw: React.ReactNode | unknown
+}) {
+  return (
+    <Tabs defaultValue="metadata" className="gap-3">
+      <ScrollableTabsList
+        aria-label="More detail"
+        className="justify-start"
+        variant="line"
+      >
+        <TabsTrigger className="flex-none px-2.5" value="metadata">
+          Metadata
+        </TabsTrigger>
+        <TabsTrigger className="flex-none px-2.5" value="raw">
+          Raw
+        </TabsTrigger>
+      </ScrollableTabsList>
+      <TabsContent value="metadata">
         <DetailSection
-          value={sections.metadata}
+          value={metadata}
           empty="No additional metadata is available."
         />
-      </DetailTab>
-      <DetailTab value="raw" fill={fill}>
+      </TabsContent>
+      <TabsContent value="raw">
         <DetailSection
-          value={sections.raw}
+          value={raw}
           empty="No safe raw projection is available."
         />
-      </DetailTab>
+      </TabsContent>
     </Tabs>
   )
 }
@@ -1418,13 +1449,31 @@ function buildDetailSections(
   if (detail.feed === "runtime") {
     const event = detail.value as LogEvent
     return {
-      overview: (
-        <Overview
-          values={[
-            ["Level", String(event.level || "—")],
-            ["Component", String(event.component || "—")],
-            ["Workspace", String(event.workspace_id || "—")],
-            ["Time", formatTime(event.timestamp || String(event.time || ""))],
+      summary: (
+        <DetailSummary
+          items={[
+            {
+              label: "Level",
+              value: event.level ? (
+                <SemanticStatusBadge status={String(event.level)} />
+              ) : (
+                "—"
+              ),
+            },
+            {
+              label: "Component",
+              value: String(event.component || "—"),
+              mono: true,
+            },
+            {
+              label: "Workspace",
+              value: String(event.workspace_id || "—"),
+              mono: true,
+            },
+            {
+              label: "Time",
+              value: formatTime(event.timestamp || String(event.time || "")),
+            },
           ]}
         />
       ),
@@ -1459,13 +1508,33 @@ function buildDetailSections(
     const resolved =
       canonical && "kind" in canonical ? (canonical as ToolCallDetail) : null
     return {
-      overview: (
-        <Overview
-          values={[
-            ["Tool", latest.tool || "—"],
-            ["Status", latest.status || latest.phase || "—"],
-            ["Workspace", latest.workspace_id || "—"],
-            ["Duration", latest.duration_ms ? latest.duration_ms + " ms" : "—"],
+      summary: (
+        <DetailSummary
+          items={[
+            { label: "Tool", value: latest.tool || "—", mono: true },
+            {
+              label: "Status",
+              value:
+                latest.status || latest.phase ? (
+                  <SemanticStatusBadge
+                    status={String(latest.status || latest.phase)}
+                  />
+                ) : (
+                  "—"
+                ),
+            },
+            {
+              label: "Workspace",
+              value: latest.workspace_id || "—",
+              mono: true,
+            },
+            {
+              label: "Duration",
+              value:
+                latest.duration_ms === undefined
+                  ? "—"
+                  : latest.duration_ms + " ms",
+            },
           ]}
         />
       ),
@@ -1549,16 +1618,25 @@ function buildDetailSections(
       })
     )
   return {
-    overview: (
-      <Overview
-        values={[
-          ["Status", execution.status],
-          ["Workspace", execution.workspace_id],
-          ["Tool", execution.tool],
-          [
-            "Exit code",
-            execution.exit_code == null ? "—" : String(execution.exit_code),
-          ],
+    summary: (
+      <DetailSummary
+        items={[
+          {
+            label: "Status",
+            value: <SemanticStatusBadge status={execution.status} />,
+          },
+          {
+            label: "Workspace",
+            value: execution.workspace_id,
+            mono: true,
+          },
+          { label: "Tool", value: execution.tool, mono: true },
+          {
+            label: "Exit code",
+            value:
+              execution.exit_code == null ? "—" : String(execution.exit_code),
+            mono: true,
+          },
         ]}
       />
     ),
@@ -1678,24 +1756,6 @@ function toolResponseView(event: ActivityEvent & { raw?: unknown }) {
       message: event.message,
       duration_ms: event.duration_ms,
     })
-  )
-}
-
-function Overview({ values }: { values: [string, string][] }) {
-  return (
-    <div className="grid grid-cols-2 gap-2 md:grid-cols-1">
-      {values.map(([label, value]) => (
-        <div
-          key={label}
-          className="min-w-0 rounded-lg border bg-muted/20 p-2.5 md:flex md:items-center md:justify-between md:gap-3"
-        >
-          <div className="text-[11px] text-muted-foreground">{label}</div>
-          <div className="mt-1 text-sm font-medium break-all md:mt-0 md:text-right">
-            {value}
-          </div>
-        </div>
-      ))}
-    </div>
   )
 }
 

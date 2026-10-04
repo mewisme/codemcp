@@ -14,7 +14,7 @@ import { Link, useNavigate, useParams } from "react-router-dom"
 import { DataTable } from "@/components/data-table"
 import { DataTableColumnHeader } from "@/components/data-table-column-header"
 import type { DataTableFeatures } from "@/components/data-table-features"
-import { DetailRow } from "@/components/detail-row"
+import { DetailSummary } from "@/components/detail-row"
 import { JsonViewer } from "@/components/json-viewer"
 import { PageError, PageEmpty, PageLoading } from "@/components/page-state"
 import { PageHeader } from "@/components/page-header"
@@ -463,23 +463,28 @@ function ActivityDetailContent({
         <TabsTrigger value="metadata">Metadata</TabsTrigger>
         <TabsTrigger value="raw">Raw</TabsTrigger>
       </TabsList>
-      <TabsContent className="mt-4 divide-y" value="overview">
-        <DetailRow
-          label="Status"
-          value={
-            event.status ? <SemanticStatusBadge status={event.status} /> : "-"
-          }
-        />
-        <DetailRow label="Tool" value={event.tool || "-"} mono />
-        <DetailRow label="Method" value={event.method || "-"} mono />
-        <DetailRow label="Message" value={event.message || "-"} />
-        <DetailRow
-          label="Duration"
-          value={
-            event.duration_ms === undefined
-              ? "-"
-              : formatDuration(event.duration_ms)
-          }
+      <TabsContent className="mt-4" value="overview">
+        <DetailSummary
+          items={[
+            {
+              label: "Status",
+              value: event.status ? (
+                <SemanticStatusBadge status={event.status} />
+              ) : (
+                "-"
+              ),
+            },
+            { label: "Tool", value: event.tool || "-", mono: true },
+            { label: "Method", value: event.method || "-", mono: true },
+            { label: "Message", value: event.message || "-" },
+            {
+              label: "Duration",
+              value:
+                event.duration_ms === undefined
+                  ? "-"
+                  : formatDuration(event.duration_ms),
+            },
+          ]}
         />
       </TabsContent>
       <TabsContent className="mt-4" value="request">
@@ -488,18 +493,28 @@ function ActivityDetailContent({
       <TabsContent className="mt-4" value="response">
         <JsonViewer value={detail.error ?? detail.response ?? null} />
       </TabsContent>
-      <TabsContent className="mt-4 divide-y" value="metadata">
-        <DetailRow label="Call ID" value={event.call_id || "-"} mono />
-        <DetailRow label="Sequence" value={event.sequence ?? "-"} mono />
-        <DetailRow label="Timestamp" value={formatDateTime(event.timestamp)} />
-        <DetailRow label="Source" value={event.source || "-"} mono />
-        <DetailRow label="Workspace" value={event.workspace_id || "-"} mono />
-        <DetailRow label="Kind" value={event.kind} mono />
-        <DetailRow
-          label="Diagnostic"
-          value={
-            detail.diagnostic ? <JsonViewer value={detail.diagnostic} /> : "-"
-          }
+      <TabsContent className="mt-4" value="metadata">
+        <DetailSummary
+          items={[
+            { label: "Call ID", value: event.call_id || "-", mono: true },
+            { label: "Sequence", value: event.sequence ?? "-", mono: true },
+            { label: "Timestamp", value: formatDateTime(event.timestamp) },
+            { label: "Source", value: event.source || "-", mono: true },
+            {
+              label: "Workspace",
+              value: event.workspace_id || "-",
+              mono: true,
+            },
+            { label: "Kind", value: event.kind, mono: true },
+            {
+              label: "Diagnostic",
+              value: detail.diagnostic ? (
+                <JsonViewer value={detail.diagnostic} />
+              ) : (
+                "-"
+              ),
+            },
+          ]}
         />
       </TabsContent>
       <TabsContent className="mt-4" value="raw">

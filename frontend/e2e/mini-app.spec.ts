@@ -157,6 +157,12 @@ test.describe("Telegram Mini App interaction quality", () => {
         ? page.locator("[data-mini-app-detail-page]")
         : page.locator("aside")
     await expect(detail).toBeVisible()
+    await expect(detail.getByRole("tab", { name: "Summary" })).toBeVisible()
+    await expect(detail.getByRole("tab", { name: "Request" })).toBeVisible()
+    await expect(detail.getByRole("tab", { name: "Response" })).toBeVisible()
+    await expect(detail.getByRole("tab", { name: "More" })).toBeVisible()
+    await expect(detail.getByRole("tab", { name: "Metadata" })).toHaveCount(0)
+    await expect(detail.getByRole("tab", { name: "Raw" })).toHaveCount(0)
 
     const requestTab = detail.getByRole("tab", { name: "Request" })
     await requestTab.focus()
@@ -175,6 +181,18 @@ test.describe("Telegram Mini App interaction quality", () => {
     await expectVerticalOverflow(
       responseArea.locator('[data-slot="scroll-area-viewport"]').first()
     )
+    await expectNoViewportOverflow(page)
+
+    await detail.getByRole("tab", { name: "More" }).click()
+    await expect(detail.getByRole("tab", { name: "Metadata" })).toBeVisible()
+    await expect(detail.getByRole("tab", { name: "Raw" })).toBeVisible()
+    await expect(
+      detail.getByRole("tabpanel", { name: "Metadata" }).getByRole("code")
+    ).toContainText('"call_id": "call_fixture"')
+    await detail.getByRole("tab", { name: "Raw" }).click()
+    await expect(
+      detail.getByRole("tabpanel", { name: "Raw" }).getByRole("code")
+    ).toContainText('"request"')
     await expectNoViewportOverflow(page)
 
     const box = await detail.boundingBox()
