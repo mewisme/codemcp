@@ -281,8 +281,17 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 	approvalCorrelation := ApprovalCorrelationFromContext(ctx)
 	sessionAccess := SessionWorkspaceAccessDecision("")
 	sessionWorkspaceCount := 0
-	var preflightErr error
-	if r.Registry != nil {
+	businessArgs, inlineApproval, preflightErr := splitInlineApprovalArguments(args)
+	args = businessArgs
+	if preflightErr == nil && inlineApproval != nil && r.Registry != nil {
+		schema, registered := r.Registry.Schema(name)
+		if !registered {
+			preflightErr = fmt.Errorf("%w: %s", ErrToolNotFound, name)
+		} else if !supportsInlineApproval(schema) {
+			preflightErr = fmt.Errorf("tool %q does not support inline approval", name)
+		}
+	}
+	if preflightErr == nil && r.Registry != nil {
 		workspaceScoped, err := r.Registry.WorkspaceScoped(name)
 		if err != nil {
 			preflightErr = err
@@ -325,10 +334,10 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 		}
 	}
 	if preflightErr == nil && forcedResult == nil {
-		ctx, claimedApproval, forcedResult, preflightErr = r.prepareApprovalRetry(ctx, approvalCorrelation, workspaceID, source, name, approvalArgs)
+		ctx, claimedApproval, forcedResult, preflightErr = r.prepareInlineApproval(ctx, inlineApproval, approvalCorrelation, sessionHash, workspaceID, source, name, approvalArgs)
 	}
 	if preflightErr == nil && forcedResult == nil {
-		preflightErr = r.semanticApprovalPreflight(ctx, approvalCorrelation, workspaceID, name, approvalArgs, claimedApproval.ID != "")
+		preflightErr = r.semanticApprovalPreflight(ctx, approvalCorrelation, workspaceID, name, approvalArgs, strings.TrimSpace(ApprovalRequestID(ctx)) != "")
 	}
 	loopClass, loopDecision := toolLoopClassMutation, toolLoopDecision{}
 	if preflightErr == nil && forcedResult == nil && strings.TrimSpace(stateIdentity) != "" && r.Registry != nil {

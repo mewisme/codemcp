@@ -330,9 +330,9 @@ func observableToolArguments(name string, args map[string]any) map[string]any {
 	}
 }
 
-func observableToolEnvelope(name string, value, publicArgs map[string]any) map[string]any {
+func observableToolEnvelope(_ string, value, publicArgs map[string]any) map[string]any {
 	out := cloneMap(value)
-	if name == mcpconfigwire.SetToolName || name == CreateRuleToolName || name == CreateSkillToolName || name == CreatePlanToolName || name == AgentClaimToolName || name == AgentSpawnToolName || name == AgentSendToolName || name == AgentWaitToolName || name == AgentCancelToolName {
+	if _, exists := out["arguments"]; exists {
 		out["arguments"] = cloneMap(publicArgs)
 	}
 	return out

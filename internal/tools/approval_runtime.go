@@ -73,6 +73,51 @@ func (r *Runtime) prepareApprovalRetry(ctx context.Context, correlation Approval
 	return ctx, claimed, nil, nil
 }
 
+func (r *Runtime) prepareInlineApproval(ctx context.Context, inline *inlineApprovalRequest, correlation ApprovalCorrelation, sessionHash, workspaceID, source, name string, args map[string]any) (context.Context, approval.Request, *Result, error) {
+	preparedCtx, claimed, forcedResult, err := r.prepareApprovalRetry(ctx, correlation, workspaceID, source, name, args)
+	if err != nil || forcedResult != nil || claimed.ID != "" || strings.TrimSpace(ApprovalRequestID(preparedCtx)) != "" {
+		return preparedCtx, claimed, forcedResult, err
+	}
+	if inline == nil {
+		return preparedCtx, approval.Request{}, nil, nil
+	}
+	if r == nil || r.Approvals == nil {
+		return ctx, approval.Request{}, nil, errors.New("control approval manager is unavailable")
+	}
+	if strings.TrimSpace(correlation.CallerID) == "" || strings.TrimSpace(correlation.RequestID) == "" {
+		return ctx, approval.Request{}, nil, errors.New("approval caller and request correlation are required for inline approval")
+	}
+	request, _, err := r.Approvals.CreateRequestForTarget(approval.ChallengeRequestInput{
+		ChallengeID: inline.ChallengeID,
+		CallerID:    correlation.CallerID,
+		SessionHash: sessionHash,
+		WorkspaceID: workspaceID,
+		Source:      source,
+		TargetTool:  name,
+		Arguments:   args,
+		Title:       inline.Title,
+	})
+	if err != nil {
+		return ctx, approval.Request{}, nil, err
+	}
+	resolved, err := r.Approvals.Wait(ctx, request.ID)
+	if err != nil {
+		return ctx, approval.Request{}, nil, err
+	}
+	if resolved.Status != approval.StatusApproved {
+		result := approvalResolutionResult(resolved)
+		return ctx, approval.Request{}, &result, nil
+	}
+	approvedCtx, claimed, forcedResult, err := r.prepareApprovalRetry(ctx, correlation, workspaceID, source, name, args)
+	if err != nil || forcedResult != nil {
+		return approvedCtx, claimed, forcedResult, err
+	}
+	if claimed.ID == "" && strings.TrimSpace(ApprovalRequestID(approvedCtx)) == "" {
+		return ctx, approval.Request{}, nil, errors.New("approved inline request could not be claimed")
+	}
+	return approvedCtx, claimed, nil, nil
+}
+
 func (r *Runtime) directControlPlaneInvocation(workspaceID, command string) (*controlguard.Invocation, bool) {
 	if r != nil && r.Shell != nil && strings.TrimSpace(workspaceID) != "" {
 		if status, err := r.Shell.Status(workspaceID); err == nil && strings.TrimSpace(status.CWD) != "" {

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
@@ -25,6 +26,11 @@ type configApprovalHarness struct {
 
 type configApprovalApplyFixture struct {
 	applied *atomic.Int32
+}
+
+type configInlineCallResult struct {
+	result tools.Result
+	err    error
 }
 
 func (fixture configApprovalApplyFixture) ApplySet(_ context.Context, _ map[string]any, binding mcpconfigwire.SetApprovalBinding) (mcpconfigwire.MutationResult, *mcpconfigwire.MutationError) {
@@ -104,6 +110,102 @@ func challengeID(t *testing.T, result tools.Result) string {
 		t.Fatalf("approval challenge=%#v", body)
 	}
 	return id
+}
+
+func configInlineApprovalArgs(args map[string]any, challengeID, title string) map[string]any {
+	result := make(map[string]any, len(args)+1)
+	for key, value := range args {
+		result[key] = value
+	}
+	result[tools.InlineApprovalArgumentKey] = map[string]any{
+		tools.InlineApprovalChallengeID: challengeID,
+		tools.InlineApprovalTitle:       title,
+	}
+	return result
+}
+
+func waitForConfigPendingApproval(t *testing.T, manager *approval.Manager) approval.Request {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		requests := manager.List(approval.Filter{Status: approval.StatusPending})
+		if len(requests) == 1 {
+			return requests[0]
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("approval request did not become pending")
+	return approval.Request{}
+}
+
+func TestConfigSetInlineApprovalExecutesAndKeepsPrivateBindingPrivate(t *testing.T) {
+	harness := newConfigApprovalHarness(t)
+	organizationID := "inline-private-organization"
+	privateValue := t.TempDir()
+	args := configSetArgs(harness.workspaceID,
+		mcpconfigwire.Change{Key: "tunnel.organization_id", Value: organizationID},
+		mcpconfigwire.Change{Key: "permissions.allow_dirs", Value: privateValue},
+	)
+	first, err := harness.runtime.Call(configApprovalContext("caller-inline", "transport-a"), mcpconfigwire.SetToolName, args)
+	if err != nil || !first.IsError || harness.applied.Load() != 0 {
+		t.Fatalf("first=%#v err=%v applied=%d", first, err, harness.applied.Load())
+	}
+	id := challengeID(t, first)
+	inlineArgs := configInlineApprovalArgs(args, id, "Update inline settings")
+	observed := make([]tools.CallObservation, 0, 2)
+	harness.runtime.SetCallObserver(func(value tools.CallObservation) {
+		observed = append(observed, value)
+	})
+	resultCh := make(chan configInlineCallResult, 1)
+	go func() {
+		result, err := harness.runtime.Call(configApprovalContext("caller-inline", "transport-b"), mcpconfigwire.SetToolName, inlineArgs)
+		resultCh <- configInlineCallResult{result: result, err: err}
+	}()
+	request := waitForConfigPendingApproval(t, harness.runtime.Approvals)
+	if request.Title != "Update inline settings" {
+		t.Fatalf("inline request title=%q", request.Title)
+	}
+	var privateArguments map[string]any
+	if err := json.Unmarshal(request.Arguments, &privateArguments); err != nil {
+		t.Fatal(err)
+	}
+	binding, ok := privateArguments[mcpconfigwire.SetApprovalBindingKey].(map[string]any)
+	if !ok || binding["config_root"] != harness.root || binding["config_fingerprint"] == "" {
+		t.Fatalf("inline private config binding=%#v", binding)
+	}
+	privateJSON, err := json.Marshal(privateArguments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(privateJSON), privateValue) || !strings.Contains(string(privateJSON), organizationID) {
+		t.Fatalf("inline private request lost exact value: %s", privateJSON)
+	}
+	publicRequest, err := json.Marshal(approval.PublicRequest(request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertConfigApprovalPublicValueFree(t, string(publicRequest), harness.root, organizationID, privateValue)
+	if _, err := harness.runtime.Approvals.Approve(request.ID, "reviewer", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	resolved := <-resultCh
+	if resolved.err != nil || resolved.result.IsError || harness.applied.Load() != 1 {
+		t.Fatalf("inline config result=%#v err=%v applied=%d", resolved.result, resolved.err, harness.applied.Load())
+	}
+	consumed, ok := harness.runtime.Approvals.Get(request.ID)
+	if !ok || consumed.Status != approval.StatusConsumed {
+		t.Fatalf("inline config request=%#v ok=%t", consumed, ok)
+	}
+	observedJSON, err := json.Marshal(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertConfigApprovalPublicValueFree(t, string(observedJSON), harness.root, organizationID, privateValue)
+	for _, forbidden := range []string{tools.InlineApprovalArgumentKey, id, "Update inline settings"} {
+		if strings.Contains(string(observedJSON), forbidden) {
+			t.Fatalf("inline config observation leaked control metadata %q: %s", forbidden, observedJSON)
+		}
+	}
 }
 
 func TestConfigSetApprovalExactRetryIsPrivateAndOneShot(t *testing.T) {

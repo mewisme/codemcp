@@ -37,10 +37,11 @@ func newApprovalRuntime(t *testing.T) (*Runtime, string) {
 	}
 	registry := NewRegistry()
 	runtime := &Runtime{Registry: registry, Workspaces: manager, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID)}
-	guardedSchema := Schema{Name: "guarded_action", InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`)}
+	guardedSchema := Schema{Name: "guarded_action", InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`), Approval: inlineApprovalMetadata()}
 	registry.MustRegister("guarded_action", guardedSchema, func(ctx context.Context, args map[string]any) (Result, error) {
 		if requestID := ApprovalRequestID(ctx); requestID != "" {
-			return JSONResult(map[string]any{"approved_request": requestID, "command": args["command"]}), nil
+			_, hasApprovalMetadata := args[InlineApprovalArgumentKey]
+			return JSONResult(map[string]any{"approved_request": requestID, "command": args["command"], "runtime_metadata_present": hasApprovalMetadata}), nil
 		}
 		command, _ := args["command"].(string)
 		return Result{}, controlguard.New(controlguard.CodeControlPlaneMutation, "guarded action requires approval", true, &controlguard.Invocation{Program: "cm", Args: []string{"update"}, Command: command})
@@ -134,7 +135,7 @@ func newApprovalDispatchRuntime(t *testing.T) (*Runtime, string) {
 	}
 	registry := NewRegistry()
 	runtime := &Runtime{Registry: registry, Workspaces: manager, SessionAccess: NewSessionWorkspaceAccessManager(), Approvals: approval.NewManager(identity.ID)}
-	registry.MustRegister("run_command", Schema{Name: "run_command", InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`)}, func(ctx context.Context, args map[string]any) (Result, error) {
+	registry.MustRegister("run_command", Schema{Name: "run_command", InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`), Approval: inlineApprovalMetadata()}, func(ctx context.Context, args map[string]any) (Result, error) {
 		if granted, ok := controlguard.ApprovalFromContext(ctx); ok {
 			return JSONResult(map[string]any{"request_id": granted.RequestID, "capability": granted.Capability, "command": granted.Invocation.Command}), nil
 		}
@@ -149,6 +150,15 @@ func newApprovalDispatchRuntime(t *testing.T) (*Runtime, string) {
 func approvalContext(sessionID string) context.Context {
 	ctx := WithCallSource(WithMCPSessionID(context.Background(), sessionID), "tunnel")
 	return WithApprovalCorrelation(ctx, sessionID, "apr-test")
+}
+
+func inlineApprovalArgs(args map[string]any, challengeID, title string) map[string]any {
+	result := cloneMap(args)
+	result[InlineApprovalArgumentKey] = map[string]any{
+		InlineApprovalChallengeID: challengeID,
+		InlineApprovalTitle:       title,
+	}
+	return result
 }
 
 func TestApprovalAuthorityRequiresCoreCorrelationNotRawMCPSessionID(t *testing.T) {
@@ -289,6 +299,185 @@ func TestRuntimeApprovalMismatchDoesNotConsumeGrant(t *testing.T) {
 	retry, err := runtime.Call(ctx, "guarded_action", args)
 	if err != nil || retry.IsError {
 		t.Fatalf("exact retry after mismatch = %#v err=%v", retry, err)
+	}
+}
+
+func TestRuntimeInlineApprovalExecutesOnSecondCallAndStripsControlMetadata(t *testing.T) {
+	runtime, workspaceID := newApprovalRuntime(t)
+	ctx := approvalContext("session-inline")
+	args := map[string]any{"workspace_id": workspaceID, "command": "cm update"}
+	first, err := runtime.Call(ctx, "guarded_action", args)
+	if err != nil || !first.IsError {
+		t.Fatalf("first guarded call = %#v err=%v", first, err)
+	}
+	challenge := first.StructuredContent.(approvalRequiredResponse)
+	inlineArgs := inlineApprovalArgs(args, challenge.ChallengeID, "Update CodeMCP")
+	observed := make([]CallObservation, 0, 2)
+	runtime.SetCallObserver(func(value CallObservation) {
+		observed = append(observed, value)
+	})
+	callCtx := WithCallDetails(ctx, "tools/call", map[string]any{"name": "guarded_action", "arguments": inlineArgs})
+	callCtx = WithCallRequest(callCtx, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      "inline-call",
+		"method":  "tools/call",
+		"params":  map[string]any{"name": "guarded_action", "arguments": inlineArgs},
+	})
+	resultCh := make(chan approvalToolCallResult, 1)
+	go func() {
+		result, err := runtime.Call(callCtx, "guarded_action", inlineArgs)
+		resultCh <- approvalToolCallResult{result: result, err: err}
+	}()
+	request := waitForPendingApproval(t, runtime.Approvals)
+	if request.Title != "Update CodeMCP" || request.TargetTool != "guarded_action" {
+		t.Fatalf("pending inline request = %#v", request)
+	}
+	if _, err := runtime.Approvals.Approve(request.ID, "reviewer", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	resolved := <-resultCh
+	if resolved.err != nil || resolved.result.IsError {
+		t.Fatalf("inline approved call = %#v err=%v", resolved.result, resolved.err)
+	}
+	payload, ok := resolved.result.StructuredContent.(map[string]any)
+	if !ok || payload["approved_request"] != request.ID || payload["command"] != "cm update" || payload["runtime_metadata_present"] != false {
+		t.Fatalf("inline approved payload = %#v", resolved.result.StructuredContent)
+	}
+	consumed, ok := runtime.Approvals.Get(request.ID)
+	if !ok || consumed.Status != approval.StatusConsumed || consumed.ConsumedAt.IsZero() {
+		t.Fatalf("inline request not consumed = %#v ok=%t", consumed, ok)
+	}
+	data, err := json.Marshal(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{InlineApprovalArgumentKey, "Update CodeMCP", challenge.ChallengeID} {
+		if strings.Contains(string(data), forbidden) {
+			t.Fatalf("inline control metadata leaked into observation %q: %s", forbidden, data)
+		}
+	}
+	replay, err := runtime.Call(ctx, "guarded_action", args)
+	if err != nil || !replay.IsError {
+		t.Fatalf("inline approval replay = %#v err=%v", replay, err)
+	}
+	if next, ok := replay.StructuredContent.(approvalRequiredResponse); !ok || next.ChallengeID == "" || next.ChallengeID == challenge.ChallengeID {
+		t.Fatalf("inline replay did not require fresh challenge: %#v", replay.StructuredContent)
+	}
+}
+
+func TestRuntimeInlineApprovalTerminalDecisionsDoNotDispatch(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		resolve func(*approval.Manager, string) error
+		status  approval.Status
+	}{
+		{name: "deny", status: approval.StatusDenied, resolve: func(manager *approval.Manager, id string) error {
+			_, err := manager.Deny(id, "reviewer", "not now")
+			return err
+		}},
+		{name: "cancel", status: approval.StatusCancelled, resolve: func(manager *approval.Manager, id string) error {
+			_, err := manager.Cancel(id, "reviewer", "cancelled")
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime, workspaceID := newApprovalRuntime(t)
+			ctx := approvalContext("session-inline-" + test.name)
+			args := map[string]any{"workspace_id": workspaceID, "command": "cm update"}
+			first, _ := runtime.Call(ctx, "guarded_action", args)
+			challenge := first.StructuredContent.(approvalRequiredResponse)
+			resultCh := make(chan approvalToolCallResult, 1)
+			go func() {
+				result, err := runtime.Call(ctx, "guarded_action", inlineApprovalArgs(args, challenge.ChallengeID, "Update CodeMCP"))
+				resultCh <- approvalToolCallResult{result: result, err: err}
+			}()
+			request := waitForPendingApproval(t, runtime.Approvals)
+			if err := test.resolve(runtime.Approvals, request.ID); err != nil {
+				t.Fatal(err)
+			}
+			resolved := <-resultCh
+			if resolved.err != nil || !resolved.result.IsError {
+				t.Fatalf("terminal inline result = %#v err=%v", resolved.result, resolved.err)
+			}
+			body, ok := resolved.result.StructuredContent.(approvalResolutionResponse)
+			if !ok || body.Status != test.status {
+				t.Fatalf("terminal inline body = %#v", resolved.result.StructuredContent)
+			}
+		})
+	}
+}
+
+func TestRuntimeInlineApprovalWaitCancellationDoesNotExecute(t *testing.T) {
+	runtime, workspaceID := newApprovalRuntime(t)
+	base := approvalContext("session-inline-cancelled")
+	args := map[string]any{"workspace_id": workspaceID, "command": "cm update"}
+	first, _ := runtime.Call(base, "guarded_action", args)
+	challenge := first.StructuredContent.(approvalRequiredResponse)
+	ctx, cancel := context.WithCancel(base)
+	resultCh := make(chan approvalToolCallResult, 1)
+	go func() {
+		result, err := runtime.Call(ctx, "guarded_action", inlineApprovalArgs(args, challenge.ChallengeID, "Update CodeMCP"))
+		resultCh <- approvalToolCallResult{result: result, err: err}
+	}()
+	request := waitForPendingApproval(t, runtime.Approvals)
+	cancel()
+	resolved := <-resultCh
+	if resolved.err != nil || !resolved.result.IsError || !strings.Contains(resolved.result.Content[0].Text, "context canceled") {
+		t.Fatalf("cancelled inline wait = %#v err=%v", resolved.result, resolved.err)
+	}
+	value, ok := runtime.Approvals.Get(request.ID)
+	if !ok || value.Status != approval.StatusPending {
+		t.Fatalf("cancelled inline wait mutated request = %#v ok=%t", value, ok)
+	}
+	if _, err := runtime.Approvals.Approve(request.ID, "reviewer", "reviewed after waiter detached"); err != nil {
+		t.Fatal(err)
+	}
+	retry, err := runtime.Call(base, "guarded_action", args)
+	if err != nil || retry.IsError {
+		t.Fatalf("exact recovery after cancelled inline wait = %#v err=%v", retry, err)
+	}
+}
+
+func TestRuntimeRejectsInlineApprovalOnUnmarkedTool(t *testing.T) {
+	runtime, workspaceID := newApprovalRuntime(t)
+	result, err := runtime.Call(approvalContext("session-unmarked"), "hard_guarded_action", map[string]any{
+		"workspace_id": workspaceID,
+		"command":      "read protected state",
+		InlineApprovalArgumentKey: map[string]any{
+			InlineApprovalChallengeID: "chg_fake",
+			InlineApprovalTitle:       "Read protected state",
+		},
+	})
+	if err != nil || !result.IsError || !strings.Contains(result.Content[0].Text, "does not support inline approval") {
+		t.Fatalf("unmarked inline approval = %#v err=%v", result, err)
+	}
+}
+
+func TestRuntimeRejectsMalformedInlineApprovalBeforeDispatch(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		envelope any
+	}{
+		{name: "not object", envelope: "chg_fake"},
+		{name: "missing title", envelope: map[string]any{InlineApprovalChallengeID: "chg_fake"}},
+		{name: "extra field", envelope: map[string]any{InlineApprovalChallengeID: "chg_fake", InlineApprovalTitle: "Review", "approved": true}},
+		{name: "empty challenge", envelope: map[string]any{InlineApprovalChallengeID: " ", InlineApprovalTitle: "Review"}},
+		{name: "empty title", envelope: map[string]any{InlineApprovalChallengeID: "chg_fake", InlineApprovalTitle: " "}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime, workspaceID := newApprovalRuntime(t)
+			result, err := runtime.Call(approvalContext("malformed-"+test.name), "guarded_action", map[string]any{
+				"workspace_id":            workspaceID,
+				"command":                 "cm update",
+				InlineApprovalArgumentKey: test.envelope,
+			})
+			if err != nil || !result.IsError {
+				t.Fatalf("malformed inline result=%#v err=%v", result, err)
+			}
+			if requests := runtime.Approvals.List(approval.Filter{}); len(requests) != 0 {
+				t.Fatalf("malformed inline envelope created approval state: %#v", requests)
+			}
+		})
 	}
 }
 
@@ -505,6 +694,45 @@ func TestDestructiveShellApprovalIsExactOneShotAndWorkspaceBound(t *testing.T) {
 	replayChallenge, ok := replayed.StructuredContent.(approvalRequiredResponse)
 	if !ok || replayChallenge.ChallengeID == "" || replayChallenge.ChallengeID == challenge.ChallengeID {
 		t.Fatalf("destructive replay did not require new approval: %#v", replayed.StructuredContent)
+	}
+}
+
+func TestInlineApprovedShellRetryCarriesOneShotChildCapability(t *testing.T) {
+	runtime, workspaceID := newApprovalDispatchRuntime(t)
+	ctx := approvalContext("session-inline-shell")
+	args := map[string]any{"workspace_id": workspaceID, "command": "cm update"}
+	guarded, err := runtime.Call(ctx, "run_command", args)
+	if err != nil || !guarded.IsError {
+		t.Fatalf("guarded shell call = %#v err=%v", guarded, err)
+	}
+	challenge := guarded.StructuredContent.(approvalRequiredResponse)
+	resultCh := make(chan approvalToolCallResult, 1)
+	go func() {
+		result, err := runtime.Call(ctx, "run_command", inlineApprovalArgs(args, challenge.ChallengeID, "Update CodeMCP"))
+		resultCh <- approvalToolCallResult{result: result, err: err}
+	}()
+	request := waitForPendingApproval(t, runtime.Approvals)
+	if _, err := runtime.Approvals.Approve(request.ID, "reviewer", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	resolved := <-resultCh
+	if resolved.err != nil || resolved.result.IsError {
+		t.Fatalf("inline approved shell retry = %#v err=%v", resolved.result, resolved.err)
+	}
+	payload := resolved.result.StructuredContent.(map[string]any)
+	capability, _ := payload["capability"].(string)
+	if payload["request_id"] != request.ID || capability == "" || payload["command"] != "cm update" {
+		t.Fatalf("inline shell payload = %#v", payload)
+	}
+	value, ok := runtime.Approvals.Get(request.ID)
+	if !ok || value.Status != approval.StatusConsumed {
+		t.Fatalf("inline shell approval not consumed = %#v ok=%t", value, ok)
+	}
+	if requestID, err := runtime.Approvals.ConsumeCLI(capability, []string{"update"}); err != nil || requestID != request.ID {
+		t.Fatalf("inline child capability consume = %q err=%v", requestID, err)
+	}
+	if _, err := runtime.Approvals.ConsumeCLI(capability, []string{"update"}); !errors.Is(err, approval.ErrCapabilityNotFound) {
+		t.Fatalf("inline child capability replay err=%v", err)
 	}
 }
 

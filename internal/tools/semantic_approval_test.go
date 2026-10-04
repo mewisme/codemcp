@@ -367,6 +367,57 @@ func TestSemanticApprovalApprovedRetrySkipsReclassificationAndRemainsOneShot(t *
 	}
 }
 
+func TestSemanticInlineApprovalSkipsReclassificationAndExecutesSecondCall(t *testing.T) {
+	runtime, workspaceID := newApprovalShellRuntime(t)
+	item, _ := runtime.Workspaces.Get(workspaceID)
+	var calls atomic.Int32
+	configureSemanticApprovalClassifier(t, runtime, semantic.RiskClassifierFunc(func(context.Context, semantic.RiskInput) (semantic.RiskAssessment, error) {
+		calls.Add(1)
+		return semanticAssessment(semantic.RiskMedium, 0.95), nil
+	}))
+	target := filepath.Join(item.Path, "semantic-inline-approved")
+	args := map[string]any{"workspace_id": workspaceID, "command": "touch " + filepath.Base(target)}
+	ctx := semanticApprovalContext("semantic-inline")
+	first, err := runtime.Call(ctx, "run_command", args)
+	if err != nil || !first.IsError {
+		t.Fatalf("first=%#v err=%v", first, err)
+	}
+	challenge := first.StructuredContent.(approvalRequiredResponse)
+	resultCh := make(chan approvalToolCallResult, 1)
+	go func() {
+		result, err := runtime.Call(ctx, "run_command", inlineApprovalArgs(args, challenge.ChallengeID, "Create approved file"))
+		resultCh <- approvalToolCallResult{result: result, err: err}
+	}()
+	request := waitForPendingApproval(t, runtime.Approvals)
+	policy := runtime.semanticApprovalPolicy()
+	policy.Actions[semantic.RiskMedium] = SemanticApprovalDeny
+	runtime.SetSemanticApprovalPolicy(policy)
+	if _, err := runtime.Approvals.Approve(request.ID, "reviewer", "reviewed"); err != nil {
+		t.Fatal(err)
+	}
+	resolved := <-resultCh
+	if resolved.err != nil || resolved.result.IsError {
+		t.Fatalf("inline approved result=%#v err=%v", resolved.result, resolved.err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("inline approved call reclassified: calls=%d", calls.Load())
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("inline approved call did not execute: %v", err)
+	}
+	consumed, ok := runtime.Approvals.Get(request.ID)
+	if !ok || consumed.Status != approval.StatusConsumed {
+		t.Fatalf("inline semantic request=%#v ok=%t", consumed, ok)
+	}
+	replay, err := runtime.Call(ctx, "run_command", args)
+	if err != nil || !replay.IsError {
+		t.Fatalf("inline semantic replay=%#v err=%v", replay, err)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("fresh replay did not reclassify: calls=%d", calls.Load())
+	}
+}
+
 func TestSemanticApprovalWorkspaceAuthorizationRunsBeforeClassifier(t *testing.T) {
 	runtime, _ := newApprovalShellRuntime(t)
 	var calls atomic.Int32
