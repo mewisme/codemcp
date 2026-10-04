@@ -52,6 +52,9 @@ const (
 	PromptCreate               ID = "prompt.create"
 	PromptUpdate               ID = "prompt.update"
 	PromptDelete               ID = "prompt.delete"
+	SkillInventoryList         ID = "skill.inventory.list"
+	SkillInventoryInfo         ID = "skill.inventory.info"
+	SkillInstall               ID = "skill.install"
 	AuthMCPRotate              ID = "auth.mcp.rotate"
 	AuthMCPEnable              ID = "auth.mcp.enable"
 	AuthMCPDisable             ID = "auth.mcp.disable"
@@ -258,6 +261,9 @@ func buildSpecs() []Spec {
 		operatorMutation(PromptCreate, "prompt create", RiskState, false),
 		operatorMutation(PromptUpdate, "prompt update", RiskState, false),
 		operatorDestructive(PromptDelete, "prompt delete", false),
+		operatorQuery(SkillInventoryList, "skills list", "skills ls"),
+		operatorQuery(SkillInventoryInfo, "skills info"),
+		operatorMutation(SkillInstall, "skills add", RiskState, true),
 		operatorSensitive(AuthMCPRotate, "auth mcp create", false),
 		operatorSensitive(AuthMCPEnable, "auth mcp enable", false),
 		operatorSensitive(AuthMCPDisable, "auth mcp disable", false),

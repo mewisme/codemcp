@@ -1010,6 +1010,33 @@ export const canonicalPresentationContract = {
       "confirmation": "none",
       "input": "form"
     },
+    "skill.install": {
+      "operation": "skill.install",
+      "title": "Add Skills",
+      "subject": "Skills",
+      "category": "create",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "form"
+    },
+    "skill.inventory.info": {
+      "operation": "skill.inventory.info",
+      "title": "Info Skills",
+      "subject": "Skills",
+      "category": "read",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "none"
+    },
+    "skill.inventory.list": {
+      "operation": "skill.inventory.list",
+      "title": "List Skills",
+      "subject": "Skills",
+      "category": "read",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "none"
+    },
     "status.overview": {
       "operation": "status.overview",
       "title": "Status",

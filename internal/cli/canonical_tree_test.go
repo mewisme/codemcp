@@ -250,6 +250,10 @@ restart | operation:runtime.restart
 serve | operation:server.foreground
 shell path | operation:config.set:accepted-path
 shell | namespace
+skills add | operation:skill.install
+skills info | operation:skill.inventory.info
+skills list | operation:skill.inventory.list
+skills | namespace
 status | operation:status.overview
 telegram logout | operation:config.set:accepted-path
 telegram setup | operation:telegram.setup

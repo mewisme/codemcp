@@ -13,7 +13,7 @@ RACE_PACKAGES = ./internal/app ./internal/checkpoint ./internal/runtime/... ./in
 CM = $(GO) run -ldflags "$(LOCAL_LDFLAGS)" .
 FRONTEND_BUILD = $(PNPM) --dir frontend build
 
-CM_COMMANDS = install upgrade init uninit down logs request llm tui config auth tools execution process workspace prompt upstream mcp tunnel http permissions shell notification telemetry telegram integration status health network activity doctor agent completion version
+CM_COMMANDS = install upgrade init uninit down logs request llm tui config auth tools execution process workspace skills prompt upstream mcp tunnel http permissions shell notification telemetry telegram integration status health network activity doctor agent completion version
 CM_FRONTEND_COMMANDS = up restart serve
 CM_PASSTHROUGH_TARGETS = run $(CM_COMMANDS) $(CM_FRONTEND_COMMANDS)
 CM_DEVELOPER_TARGETS = help bootstrap frontend-build check test test-race test-installer build frontend-dev generate check-generated install-local release-smoke security-gosec security-baseline
@@ -53,7 +53,7 @@ help:
 		'                  positional subcommands/args are forwarded directly' \
 		'                  use ARGS="..." for flags or complex shell quoting' \
 		'                  install upgrade init uninit down logs request llm tui config auth' \
-		'                  tools execution process workspace prompt upstream mcp tunnel' \
+		'                  tools execution process workspace skills prompt upstream mcp tunnel' \
 		'                  http permissions shell notification telemetry telegram integration' \
 		'                  status health network activity doctor agent completion version' \
 		'  frontend-dev   Run the Vite development server'

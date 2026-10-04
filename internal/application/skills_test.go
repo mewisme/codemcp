@@ -24,7 +24,7 @@ func newSkillManagementHarness(t *testing.T) (*SkillManagementService, workspace
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newSkillManagementService(manager), item
+	return NewSkillManagementService(manager), item
 }
 
 func TestSkillManagementScopeResolutionUsesCanonicalStores(t *testing.T) {
@@ -62,7 +62,7 @@ func TestSkillManagementScopeConflictFailsBeforeAcquisitionOrMutation(t *testing
 		return acquiredSkillRepository{}, errors.New("should not acquire")
 	}
 	root := workspacestate.New(item.Path).SkillsRoot()
-	_, err := service.add(t.Context(), SkillAddRequest{
+	_, err := service.Add(t.Context(), SkillAddRequest{
 		Scope: SkillScopeRequest{
 			WorkspaceID: item.ID,
 			Workspace:   true,
@@ -86,7 +86,7 @@ func TestSkillManagementAddInstallsManagedNativeSkill(t *testing.T) {
 	repository, revision := createSkillGitRepository(t, map[string]string{"skill": skillFixture("managed", "Managed skill")})
 	configureGitHubRewrite(t, repository, "owner", "repo")
 
-	result, err := service.add(t.Context(), SkillAddRequest{
+	result, err := service.Add(t.Context(), SkillAddRequest{
 		Scope:  SkillScopeRequest{WorkspaceID: item.ID},
 		Source: "owner/repo",
 	})
@@ -128,7 +128,7 @@ func TestSkillManagementSelectionAndAtomicMultiInstall(t *testing.T) {
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("a", 40))
 
 	request := SkillAddRequest{Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo"}
-	if _, err := service.add(t.Context(), request); err == nil || !strings.Contains(err.Error(), "--skill") {
+	if _, err := service.Add(t.Context(), request); err == nil || !strings.Contains(err.Error(), "--skill") {
 		t.Fatalf("multi-skill request error=%v", err)
 	}
 	root := workspacestate.New(item.Path).SkillsRoot()
@@ -137,7 +137,7 @@ func TestSkillManagementSelectionAndAtomicMultiInstall(t *testing.T) {
 	}
 
 	request.All = true
-	result, err := service.add(t.Context(), request)
+	result, err := service.Add(t.Context(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestSkillManagementExactSelectionInstallsOnlyRequestedSkill(t *testing.T) {
 	writeRepositorySkill(t, repository, "b", "beta")
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("e", 40))
 
-	result, err := service.add(t.Context(), SkillAddRequest{
+	result, err := service.Add(t.Context(), SkillAddRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo", Skill: "beta",
 	})
 	if err != nil {
@@ -192,7 +192,7 @@ func TestSkillManagementAddRejectsUnmanagedConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := service.add(t.Context(), SkillAddRequest{
+	_, err := service.Add(t.Context(), SkillAddRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo",
 	})
 	if err == nil || !strings.Contains(err.Error(), "unmanaged") {
@@ -226,7 +226,7 @@ func TestSkillManagementMalformedMetadataFailsBeforeDestinationMutation(t *testi
 		t.Fatal(err)
 	}
 
-	_, err := service.add(t.Context(), SkillAddRequest{
+	_, err := service.Add(t.Context(), SkillAddRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo",
 	})
 	if err == nil || !strings.Contains(err.Error(), "revision") {
@@ -249,7 +249,7 @@ func TestSkillManagementRollbackPreservesStoreWhenMetadataCommitFails(t *testing
 	priorRepository := t.TempDir()
 	writeRepositorySkill(t, priorRepository, "prior", "prior")
 	service.AcquireRepository = staticRepositoryAcquirer(priorRepository, strings.Repeat("9", 40))
-	if _, err := service.add(t.Context(), SkillAddRequest{
+	if _, err := service.Add(t.Context(), SkillAddRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo",
 	}); err != nil {
 		t.Fatal(err)
@@ -267,7 +267,7 @@ func TestSkillManagementRollbackPreservesStoreWhenMetadataCommitFails(t *testing
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("c", 40))
 	service.BeforeMetadataCommit = func() error { return errors.New("forced metadata failure") }
 
-	_, err = service.add(t.Context(), SkillAddRequest{
+	_, err = service.Add(t.Context(), SkillAddRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo", All: true,
 	})
 	if err == nil || !strings.Contains(err.Error(), "forced metadata failure") {
@@ -302,7 +302,7 @@ func TestSkillManagementGlobalScopeHonorsConfigDir(t *testing.T) {
 	repository := t.TempDir()
 	writeRepositorySkill(t, repository, "skill", "global-skill")
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("d", 40))
-	result, err := service.add(t.Context(), SkillAddRequest{
+	result, err := service.Add(t.Context(), SkillAddRequest{
 		Scope: SkillScopeRequest{Global: true}, Source: "owner/repo",
 	})
 	if err != nil {

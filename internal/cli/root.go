@@ -63,6 +63,7 @@ func newRootCommand() *cobra.Command {
 		executionCommand(),
 		processCommand(),
 		workspaceCommand(),
+		skillsCommand(),
 		networkCommand(),
 		activityCommand(),
 		promptCommand(),

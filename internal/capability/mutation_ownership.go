@@ -9,6 +9,7 @@ const (
 	MutationOwnerApplicationSettings     MutationOwner = "application.setting-service"
 	MutationOwnerApplicationAuth         MutationOwner = "application.auth"
 	MutationOwnerApplicationPrompts      MutationOwner = "application.prompts"
+	MutationOwnerApplicationSkills       MutationOwner = "application.skills"
 	MutationOwnerApplicationWorkspace    MutationOwner = "application.workspace-service"
 	MutationOwnerApplicationUpstream     MutationOwner = "application.upstream-service"
 	MutationOwnerApplicationTunnel       MutationOwner = "application.tunnel"
@@ -82,6 +83,7 @@ func buildMutationOwners() map[ID]MutationOwner {
 		AuthAdminRotate, AuthAdminEnable, AuthAdminDisable,
 	)
 	add(MutationOwnerApplicationPrompts, PromptCreate, PromptUpdate, PromptDelete, AgentPromptCreate, AgentPromptUpdate, AgentPromptDelete)
+	add(MutationOwnerApplicationSkills, SkillInstall)
 	add(MutationOwnerApplicationWorkspace,
 		WorkspaceContainerCreate, WorkspaceContainerRename, WorkspaceContainerDelete, WorkspaceContainerAdd, WorkspaceContainerRemove,
 		WorkspaceAccessAdd, WorkspaceAccessRemove, WorkspaceRegister, WorkspaceRelocate, WorkspaceUnregister, WorkspacePurge,

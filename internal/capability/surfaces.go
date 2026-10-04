@@ -7,7 +7,7 @@ const (
 
 	reasonProtocolOnly        = "operation belongs to the agent or protocol projection rather than an operator/reviewer product workflow"
 	reasonBootstrapOnly       = "operation changes bootstrap state that the remote product surface depends on"
-	reasonHostLocalOnly       = "operation owns an interactive host process or transport primitive that cannot be safely server-driven"
+	reasonHostLocalOnly       = "operation depends on host-local process, filesystem, or transport state that cannot be safely driven by this surface"
 	reasonRemovedArchitecture = "operation belongs to architecture that is no longer part of the current product"
 )
 
@@ -36,15 +36,21 @@ var remoteHostLocalOperationIDs = idSet(
 	ManagedAgentWait,
 	ManagedAgentSend,
 	ManagedAgentCancel,
+	SkillInventoryList,
+	SkillInventoryInfo,
+	SkillInstall,
 )
 
-var browserLocalIntegrationOperationIDs = idSet(
+var tuiHostLocalOperationIDs = idSet(
 	IntegrationBrowserStatus,
 	IntegrationBrowserDoctor,
 	IntegrationChatGPTWebStatus,
 	IntegrationChatGPTWebLogin,
 	IntegrationChatGPTWebLogout,
 	IntegrationChatGPTWebDoctor,
+	SkillInventoryList,
+	SkillInventoryInfo,
+	SkillInstall,
 )
 
 var telegramBootstrapOperationIDs = idSet(
@@ -97,7 +103,7 @@ func productSurfaceExemption(spec Spec, surface Surface) (SurfaceContract, bool)
 		}, true
 	}
 	if ((surface == SurfaceBrowser || surface == SurfaceTelegram) && remoteHostLocalOperationIDs[spec.ID]) ||
-		(surface == SurfaceTUI && browserLocalIntegrationOperationIDs[spec.ID]) {
+		(surface == SurfaceTUI && tuiHostLocalOperationIDs[spec.ID]) {
 		return SurfaceContract{
 			Surface:         surface,
 			State:           SurfaceExempt,
@@ -196,7 +202,7 @@ func exemptionGuardMatches(spec Spec, contract SurfaceContract) bool {
 			(contract.Surface == SurfaceTelegram && telegramBootstrapOperationIDs[spec.ID])
 	case SurfaceGuardHostLocalOperation:
 		return ((contract.Surface == SurfaceBrowser || contract.Surface == SurfaceTelegram) && remoteHostLocalOperationIDs[spec.ID]) ||
-			(contract.Surface == SurfaceTUI && browserLocalIntegrationOperationIDs[spec.ID])
+			(contract.Surface == SurfaceTUI && tuiHostLocalOperationIDs[spec.ID])
 	case SurfaceGuardRemovedArchitecture:
 		return removedArchitectureOperationIDs[spec.ID]
 	default:

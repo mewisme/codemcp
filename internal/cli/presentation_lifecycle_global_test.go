@@ -45,6 +45,7 @@ func TestPresentationFamilyRepresentativesCoverTopLevelCommands(t *testing.T) {
 		"restart":      "restart",
 		"serve":        "serve",
 		"shell":        "shell path",
+		"skills":       "skills list",
 		"status":       "status",
 		"telemetry":    "telemetry status",
 		"telegram":     "telegram token status",

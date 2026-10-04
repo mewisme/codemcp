@@ -71,6 +71,9 @@ var registry = map[string][]Definition{
 	"request grant": {
 		{Command: "list", Aliases: []string{"ls"}},
 	},
+	"skills": {
+		{Command: "list", Aliases: []string{"ls"}},
+	},
 	"telegram token": {
 		{Command: "remove", Aliases: []string{"clear", "rm"}},
 		{Command: "status", Aliases: []string{"st"}},
