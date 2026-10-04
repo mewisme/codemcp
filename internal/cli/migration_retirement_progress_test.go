@@ -14,6 +14,7 @@ func TestMigrationRetirementObserverRendersCleanupAndRetentionRail(t *testing.T)
 	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{
 		Width: 100, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true, Animation: true,
 	})
+	session.SetTitle("Retire released ChatGPT-MCP identities")
 	observe := migrationRetirementProgressObserver(session)
 	observe(released024.RetirementEvent{Stage: "canonical", State: "running", Message: "Verifying canonical runtime"})
 	observe(released024.RetirementEvent{Stage: "canonical", State: "success", Message: "Canonical runtime verified"})

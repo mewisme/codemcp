@@ -333,17 +333,15 @@ func TestConfigHumanListUsesPresenterRowsWhilePlainRemainsCompatible(t *testing.
 	var humanOutput bytes.Buffer
 	human := &cobra.Command{}
 	human.SetOut(presentation.WrapWriter(&humanOutput, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	setCommandPresentationTitle(human, "Configuration")
 	if err := printConfigSelection(human, cfg, "http.admin", true, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	closeCommandProgress(human, nil)
-	for _, expected := range []string{"┌  Configuration", "│  ▸ http.admin", "│  ├─ http.admin.enabled", "│  │  Value\n│  │    true", "│  └─ http.admin.port", "│  │    37422", "└  Done"} {
+	for _, expected := range []string{"┌  Configuration", "│  ▸ http.admin", "│  Key", "Value", "http.admin.enabled", "true", "http.admin.port", "37422", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), expected) {
 			t.Fatalf("human config output missing %q: %q", expected, humanOutput.String())
 		}
-	}
-	if strings.Contains(humanOutput.String(), "Key  Value") {
-		t.Fatalf("human config output regressed to table layout: %q", humanOutput.String())
 	}
 
 	var plainOutput bytes.Buffer
@@ -365,6 +363,7 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 	var output bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	setCommandPresentationTitle(cmd, "Configuration")
 	if err := printSettingSelection(cmd, application.NewSettingService(), "", true, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +438,7 @@ func TestUniversalConfigHumanListCanHideAcceptsAndStacksOnNarrowTerminals(t *tes
 	}
 	closeCommandProgress(cmd, nil)
 	text := narrow.String()
-	semanticText := strings.NewReplacer("│", " ", "◆", " ", "▸", " ", "├", " ", "┌", " ", "└", " ", "─", " ").Replace(text)
+	semanticText := strings.NewReplacer("│", " ", "◆", " ", "▸", " ", "├", " ", "┌", " ", "└", " ", "─", " ", "—", " ").Replace(text)
 	collapsed := strings.Join(strings.Fields(semanticText), " ")
 	for _, want := range []string{"http.mcp.port", "Accepts integer 1..65535", "http.exposure.mode", "Accepts none | all | 0.0.0.0 | interfaces"} {
 		if !strings.Contains(collapsed, want) {
@@ -573,9 +572,11 @@ func TestConfigRichPaletteSeparatesStructureLabelsAndValues(t *testing.T) {
 	caps := presentation.Capabilities{Width: 100, Unicode: true, Color: true, Interactive: true}
 	cmd := &cobra.Command{}
 	cmd.SetOut(presentation.WrapWriter(&output, caps))
+	setCommandPresentationTitle(cmd, "Configuration")
 	if err := printConfigSelection(cmd, cfg, "http.admin", true, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
+	closeCommandProgress(cmd, nil)
 	theme := presentation.NewTheme(caps)
 	text := output.String()
 	for _, expected := range []string{
@@ -603,11 +604,12 @@ func TestConfigScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) {
 	var humanOutput bytes.Buffer
 	human := &cobra.Command{}
 	human.SetOut(presentation.WrapWriter(&humanOutput, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	setCommandPresentationTitle(human, "Configuration")
 	if err := printConfigSelection(human, cfg, "http.mcp.port", false, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	closeCommandProgress(human, nil)
-	for _, want := range []string{"┌  Configuration", "http.mcp.port\n│    37421", "└  Done"} {
+	for _, want := range []string{"┌  Configuration", "http.mcp.port — 37421", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), want) {
 			t.Fatalf("human scalar config get missing %q: %q", want, humanOutput.String())
 		}
@@ -631,11 +633,12 @@ func TestSettingScalarGetUsesHumanFrameAndKeepsPlainValueContract(t *testing.T) 
 	var humanOutput bytes.Buffer
 	human := &cobra.Command{}
 	human.SetOut(presentation.WrapWriter(&humanOutput, presentation.Capabilities{Width: 100, Unicode: true, Interactive: true}))
+	setCommandPresentationTitle(human, "Configuration")
 	if err := printSettingSelection(human, service, "http.mcp.port", false, configOutputOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	closeCommandProgress(human, nil)
-	for _, want := range []string{"┌  Configuration", "http.mcp.port\n│    37421", "└  Done"} {
+	for _, want := range []string{"┌  Configuration", "http.mcp.port — 37421", "└  Done"} {
 		if !strings.Contains(humanOutput.String(), want) {
 			t.Fatalf("human setting get missing %q: %q", want, humanOutput.String())
 		}
@@ -660,7 +663,7 @@ func TestConfigGetScalarInteractiveLifecycleIsFrameFirst(t *testing.T) {
 	}
 	assertSingleHumanWorkflow(t, text, "Configuration", "Done")
 	frame := strings.Index(text, "┌  Configuration")
-	value := strings.Index(text, "http.mcp.port\n│    37421")
+	value := strings.Index(text, "http.mcp.port — 37421")
 	if frame < 0 || value <= frame {
 		t.Fatalf("interactive scalar result escaped before frame: %q", text)
 	}

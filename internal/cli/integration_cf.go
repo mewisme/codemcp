@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -126,7 +125,6 @@ func tunnelCFRemoveCommand() *cobra.Command {
 }
 
 func renderCFTunnelStatus(presenter *presentation.Presenter, status cftunnel.Status, version string) {
-	presenter.Frame("Cloudflare Quick Tunnel integration")
 	state := "unavailable"
 	kind := presentation.StatusInactive
 	if status.Source != cftunnel.SourceUnavailable {
@@ -149,5 +147,4 @@ func renderCFTunnelStatus(presenter *presentation.Presenter, status cftunnel.Sta
 		fields = append(fields, presentation.Field{Label: "reported version", Value: version})
 	}
 	presenter.Fields(fields...)
-	presenter.Complete(fmt.Sprintf("cf-tunnel %s", state))
 }

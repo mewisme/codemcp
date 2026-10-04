@@ -261,7 +261,7 @@ func TestMachineJSONOutputKeepsDiagnosticsOnStderr(t *testing.T) {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	child := &cobra.Command{Use: "machine", RunE: func(cmd *cobra.Command, _ []string) error {
-		logCommandStep(cmd, "TEST", "test.machine.loading", "Loading machine output")
+		logCommandVerbose(cmd, "TEST", "test.machine.loading", "Loading machine output")
 		return writeResultJSON(cmd, map[string]any{"ok": true})
 	}}
 	addJSONResultFlag(child, &asJSON)

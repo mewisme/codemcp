@@ -46,7 +46,6 @@ func telemetryStatusCommand(show bool) *cobra.Command {
 			}
 			presenter := commandPresenter(cmd)
 			if commandResultModeFor(cmd) == resultModeHuman {
-				presenter.Frame("Product telemetry")
 			} else {
 				presenter.Section("Product telemetry")
 			}
@@ -67,7 +66,6 @@ func telemetryStatusCommand(show bool) *cobra.Command {
 				)
 			}
 			presenter.Fields(fields...)
-			presenter.Complete("Status complete")
 			return nil
 		},
 	}

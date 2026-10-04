@@ -38,7 +38,6 @@ func browserIntegrationDoctorCommand() *cobra.Command {
 		Use: "doctor", Short: "Check browser integration health", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			session := commandProgressSession(cmd)
-			session.SetTitle("Browser doctor")
 			session.Update(presentation.ProgressPhase{ID: "browser.doctor", Label: "Checking browser runtime", State: presentation.ProgressRunning})
 			result, err := application.NewBrowserIntegrationService().Doctor(cmd.Context())
 			if err != nil {
@@ -54,14 +53,12 @@ func browserIntegrationDoctorCommand() *cobra.Command {
 					presenter.StateSection(kind, check.Message)
 				}
 			})
-			session.SetCompletion("Doctor complete")
 			return nil
 		},
 	}
 }
 
 func renderBrowserIntegrationStatus(presenter *presentation.Presenter, status application.BrowserIntegrationStatus) {
-	presenter.Frame("Browser integration")
 	kind := presentation.StatusInfo
 	if status.State == application.BrowserIntegrationAvailable || status.State == application.BrowserIntegrationRunning {
 		kind = presentation.StatusSuccess
@@ -91,7 +88,6 @@ func renderBrowserIntegrationStatus(presenter *presentation.Presenter, status ap
 		fields = append(fields, presentation.Field{Label: "reason", Value: status.Reason})
 	}
 	presenter.NestedFields(fields...)
-	presenter.Complete("Status complete")
 }
 
 func chatGPTWebIntegrationCommand() *cobra.Command {
@@ -124,7 +120,6 @@ func chatGPTWebLoginCommand() *cobra.Command {
 		Use: "login", Short: "Sign in to ChatGPT using the isolated CodeMCP browser profile", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			session := commandProgressSession(cmd)
-			session.SetTitle("ChatGPT Web login")
 			session.Append(func(presenter *presentation.Presenter) {
 				presenter.StateSection(presentation.StatusInfo, chatGPTWebLoginInstruction)
 			})
@@ -151,7 +146,6 @@ func chatGPTWebLoginCommand() *cobra.Command {
 					renderChatGPTWebLoginAccount(presenter, account)
 				}
 			})
-			session.SetCompletion("Login complete")
 			return nil
 		},
 	}
@@ -200,7 +194,6 @@ func chatGPTWebDoctorCommand() *cobra.Command {
 		Use: "doctor", Short: "Check ChatGPT Web authentication and connector readiness", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			session := commandProgressSession(cmd)
-			session.SetTitle("ChatGPT Web doctor")
 			session.Update(presentation.ProgressPhase{ID: "chatgpt.doctor", Label: "Checking ChatGPT Web runtime", State: presentation.ProgressRunning})
 			result, err := application.NewChatGPTWebService().Doctor(cmd.Context())
 			if err != nil {
@@ -221,14 +214,12 @@ func chatGPTWebDoctorCommand() *cobra.Command {
 					presentation.Field{Label: "live verified", Value: result.LiveVerified},
 				)
 			})
-			session.SetCompletion("Doctor complete")
 			return nil
 		},
 	}
 }
 
 func renderChatGPTWebStatus(presenter *presentation.Presenter, status application.ChatGPTWebStatus) {
-	presenter.Frame("ChatGPT Web integration")
 	kind := presentation.StatusInfo
 	switch status.State {
 	case chatgptweb.StateReady:
@@ -255,5 +246,4 @@ func renderChatGPTWebStatus(presenter *presentation.Presenter, status applicatio
 		fields = append(fields, presentation.Field{Label: "reason", Value: status.Reason})
 	}
 	presenter.NestedFields(fields...)
-	presenter.Complete("Status complete")
 }

@@ -317,7 +317,6 @@ func renderUpstreamServer(presenter *presentation.Presenter, server upstream.Ser
 	if server.Transport == "stdio" {
 		endpoint = server.Command
 	}
-	presenter.Frame("Upstream server")
 	presenter.Subsection(server.ID)
 	fields := []presentation.Field{
 		{Label: "name", Value: server.Name},
@@ -359,11 +358,9 @@ func renderUpstreamServer(presenter *presentation.Presenter, server upstream.Ser
 		fields = append(fields, presentation.Field{Label: "disabled tools", Value: strings.Join(server.DisabledTools, ", ")})
 	}
 	presenter.NestedFields(fields...)
-	presenter.Complete("Done")
 }
 
 func renderUpstreamStatus(presenter *presentation.Presenter, status upstream.Status) {
-	presenter.Frame("Upstream server status")
 	presenter.StateSection(upstreamHealthPresentationKind(status.Health), upstreamHealthLabel(status.Health))
 	presenter.Subsection(status.ID)
 	fields := []presentation.Field{
@@ -386,7 +383,6 @@ func renderUpstreamStatus(presenter *presentation.Presenter, status upstream.Sta
 	if status.LastError != "" {
 		presenter.ChildStatus(presentation.StatusWarning, status.LastError)
 	}
-	presenter.Complete("Status complete")
 }
 
 func sortedAssignments(values map[string]string) []string {
@@ -434,11 +430,9 @@ func upstreamServerToolsCommand() *cobra.Command {
 				proxied[name] = true
 			}
 			presenter := commandPresenter(cmd)
-			presenter.Frame("Upstream tools")
 			if len(values) == 0 {
 				presenter.StateSection(presentation.StatusInactive, "No tools exposed by upstream server")
 				presenter.Fields(presentation.Field{Label: "server", Value: args[0]})
-				presenter.Complete("Done")
 				return nil
 			}
 			presenter.Section(fmt.Sprintf("Upstream tools · %d", len(values)))
@@ -451,7 +445,6 @@ func upstreamServerToolsCommand() *cobra.Command {
 				presenter.Subsection(tool.Name)
 				presenter.NestedFields(presentation.Field{Label: "exposed as", Value: state})
 			}
-			presenter.Complete("Done")
 			return nil
 		},
 	}
@@ -460,10 +453,8 @@ func upstreamServerToolsCommand() *cobra.Command {
 }
 
 func renderUpstreamServerList(presenter *presentation.Presenter, servers []upstream.Server) {
-	presenter.Frame("Upstream servers")
 	if len(servers) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No Upstream servers configured")
-		presenter.Complete("Done")
 		return
 	}
 	presenter.Section(fmt.Sprintf("Upstream servers · %d", len(servers)))
@@ -480,14 +471,11 @@ func renderUpstreamServerList(presenter *presentation.Presenter, servers []upstr
 			presentation.Field{Label: "endpoint", Value: endpoint},
 		)
 	}
-	presenter.Complete("Done")
 }
 
 func renderUpstreamStatusList(presenter *presentation.Presenter, statuses []upstream.Status) {
-	presenter.Frame("Upstream status")
 	if len(statuses) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No Upstream servers configured")
-		presenter.Complete("Done")
 		return
 	}
 	presenter.Section(fmt.Sprintf("Upstream status · %d", len(statuses)))
@@ -501,7 +489,6 @@ func renderUpstreamStatusList(presenter *presentation.Presenter, statuses []upst
 			presentation.Field{Label: "expose", Value: status.Expose},
 		)
 	}
-	presenter.Complete("Done")
 }
 
 func upstreamHealthPresentationKind(health upstream.Health) presentation.StatusKind {
@@ -699,7 +686,7 @@ func (adapter *upstreamCommandService) Disconnect(id string) error {
 }
 
 func loadUpstreamManagerForCommand(cmd *cobra.Command) (*upstreamCommandService, error) {
-	logCommandStep(cmd, "UPSTREAM", "upstream.store.loading", "Loading Upstream configuration")
+	logCommandVerbose(cmd, "UPSTREAM", "upstream.store.loading", "Loading Upstream configuration")
 	logCommandDebug(cmd, "UPSTREAM", "upstream.store.path", "Upstream configuration path resolved", logger.WithDebug("path", upstream.Path()))
 	manager := upstream.NewManager(upstream.NewStore(upstream.Path())).SetTraceObserver(tracepkg.ObserverFromContext(cmd.Context()))
 	if err := manager.Load(); err != nil {

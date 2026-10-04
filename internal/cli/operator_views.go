@@ -22,13 +22,11 @@ func toolsCommand() *cobra.Command {
 			return writeResultJSON(cmd, result.Value)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("MCP tools")
 		p.Section(fmt.Sprintf("Tools · %d", len(result.Value)))
 		for _, value := range result.Value {
 			p.Subsection(value.Name)
 			p.NestedFields(presentation.Field{Label: "description", Value: value.Description})
 		}
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(list, &asJSON)
@@ -49,13 +47,11 @@ func executionCommand() *cobra.Command {
 			return writeResultJSON(cmd, result.Value)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("Workspace executions")
 		p.Section(fmt.Sprintf("Executions · %d", len(result.Value)))
 		for _, value := range result.Value {
 			p.Subsection(value.ID)
 			p.NestedFields(presentation.Field{Label: "status", Value: value.Status}, presentation.Field{Label: "tool", Value: value.Tool}, presentation.Field{Label: "command", Value: value.Command})
 		}
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(list, &listJSON)
@@ -70,11 +66,9 @@ func executionCommand() *cobra.Command {
 		}
 		v := result.Value
 		p := commandPresenter(cmd)
-		p.Frame("Execution details")
 		p.Fields(presentation.Field{Label: "id", Value: v.Execution.ID}, presentation.Field{Label: "status", Value: v.Execution.Status}, presentation.Field{Label: "tool", Value: v.Execution.Tool}, presentation.Field{Label: "workspace", Value: v.Execution.WorkspaceID}, presentation.Field{Label: "source", Value: v.Execution.Source})
 		renderCLIObservabilitySection(p, "Request", map[string]any{"command": v.Execution.Command, "requested_command": v.Execution.RequestedCommand, "effective_command": v.Execution.EffectiveCommand, "cwd": v.Execution.CWD})
 		renderCLIObservabilitySection(p, "Response", map[string]any{"stdout": v.Stdout, "stderr": v.Stderr, "exit_code": v.Execution.ExitCode, "timed_out": v.Execution.TimedOut, "finished_at": v.Execution.FinishedAt})
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(view, &viewJSON)
@@ -95,13 +89,11 @@ func processCommand() *cobra.Command {
 			return writeResultJSON(cmd, result.Value)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("Workspace processes")
 		p.Section(fmt.Sprintf("Processes · %d", len(result.Value)))
 		for _, value := range result.Value {
 			p.Subsection(value.ID)
 			p.NestedFields(presentation.Field{Label: "pid", Value: value.PID}, presentation.Field{Label: "running", Value: value.Running}, presentation.Field{Label: "command", Value: value.Command})
 		}
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(list, &listJSON)
@@ -116,9 +108,7 @@ func processCommand() *cobra.Command {
 		}
 		v := result.Value
 		p := commandPresenter(cmd)
-		p.Frame("Process details")
 		p.Fields(presentation.Field{Label: "id", Value: v.ID}, presentation.Field{Label: "pid", Value: v.PID}, presentation.Field{Label: "running", Value: v.Running}, presentation.Field{Label: "command", Value: v.Command}, presentation.Field{Label: "cwd", Value: v.CWD})
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(view, &viewJSON)
@@ -141,13 +131,10 @@ func workspaceContextCommand() *cobra.Command {
 		}
 		if commandResultModeFor(cmd) == resultModeHuman {
 			p := commandPresenter(cmd)
-			p.Frame("Project context")
 			p.Note("", result.Value.InstructionContext.InstructionsText)
-			p.Complete("Done")
 			return nil
 		}
-		fmt.Fprintln(commandResultWriter(cmd), result.Value.InstructionContext.InstructionsText)
-		return nil
+		return writePlainResultLine(cmd, result.Value.InstructionContext.InstructionsText)
 	}}
 	cmd.Flags().StringVar(&options.Path, "path", "", "project-relative or absolute path inside the workspace")
 	cmd.Flags().StringVar(&options.MemoryQuery, "memory-query", "", "memory query used for context retrieval")

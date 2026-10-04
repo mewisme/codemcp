@@ -38,7 +38,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 		commandSession = commandProgressSession(cmd)
 		commandSession.Update(presentation.ProgressPhase{ID: "server.starting", Label: "Starting server", State: presentation.ProgressRunning})
 	}
-	logCommandStep(cmd, "SERVER", "server.config.loading", "Loading runtime configuration")
+	logCommandVerbose(cmd, "SERVER", "server.config.loading", "Loading runtime configuration")
 	configSpan := tracepkg.Start(ctx, "CONFIG", "server.config.load", "Loading server runtime configuration", tracepkg.String("config_root", config.RootPath()))
 	source, err := config.Source()
 	if err != nil {
@@ -69,7 +69,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 	runtimeCtx, runtimeCancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer runtimeCancel()
 
-	logCommandStep(cmd, "NETWORK", "server.listeners.resolving", "Resolving listener plan")
+	logCommandVerbose(cmd, "NETWORK", "server.listeners.resolving", "Resolving listener plan")
 	planSpan := tracepkg.Start(runtimeCtx, "NETWORK", "server.listener-plan.resolve", "Resolving server listener plan", tracepkg.String("exposure_mode", string(cfg.HTTP.Exposure.Mode)), tracepkg.Any("interfaces", append([]string(nil), cfg.HTTP.Exposure.Interfaces...)))
 	plan, err := resolveListenerPlan(cfg.HTTP.Exposure)
 	if err != nil {
@@ -96,7 +96,7 @@ func runServer(cmd *cobra.Command, args []string) (runErr error) {
 	defer interrupt.Close()
 	log := commandLogger(cmd)
 	metadata := runtimeevent.Metadata{RunID: idgen.Must("run", 8), PID: os.Getpid(), Managed: serviceInfo.Managed, ServiceID: serviceInfo.ID, ServiceScope: serviceInfo.Scope}
-	logCommandStep(cmd, "SESSION", "runtime.journal.opening", "Opening runtime journal")
+	logCommandVerbose(cmd, "SESSION", "runtime.journal.opening", "Opening runtime journal")
 	journal, err := runtimeevent.NewJournal(config.RootPath(), runtimeevent.Options{Metadata: metadata})
 	if err != nil {
 		return err

@@ -74,7 +74,7 @@ func skillsListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
+			if asJSON {
 				return writeResultJSON(cmd, result)
 			}
 			renderSkillList(cmd, result)
@@ -129,7 +129,7 @@ func skillsAddCommand() *cobra.Command {
 			if progress != nil {
 				progress.Complete()
 			}
-			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
+			if asJSON {
 				return writeResultJSON(cmd, result)
 			}
 			fields := []presentation.Field{
@@ -199,7 +199,7 @@ func skillsUpdateCommand() *cobra.Command {
 			if progress != nil {
 				progress.Complete()
 			}
-			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
+			if asJSON {
 				return writeResultJSON(cmd, result)
 			}
 			changed := 0
@@ -320,7 +320,6 @@ func renderSkillRiskCancelled(cmd *cobra.Command, message string) {
 	session.Append(func(presenter *presentation.Presenter) {
 		presenter.StateSection(presentation.StatusInactive, message)
 	})
-	session.SetCompletion("Cancelled")
 }
 
 func renderSkillSecurityAssessment(cmd *cobra.Command, presenter *presentation.Presenter, assessment skills.SecurityAssessment) {
@@ -452,7 +451,7 @@ func skillsRemoveCommand() *cobra.Command {
 			if progress != nil {
 				progress.Complete()
 			}
-			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
+			if asJSON {
 				return writeResultJSON(cmd, result)
 			}
 			renderMutationSuccess(cmd, "Skill removed",
@@ -486,7 +485,7 @@ func skillsInfoCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
+			if asJSON {
 				return writeResultJSON(cmd, value)
 			}
 			renderSkillInfo(cmd, value)
@@ -500,7 +499,6 @@ func skillsInfoCommand() *cobra.Command {
 
 func renderSkillList(cmd *cobra.Command, result application.SkillListResult) {
 	p := commandPresenter(cmd)
-	p.Frame("Skills")
 	rows := make([]presentation.Row, 0, len(result.Skills))
 	for _, value := range result.Skills {
 		origin := skillOriginLabel(value)
@@ -512,13 +510,15 @@ func renderSkillList(cmd *cobra.Command, result application.SkillListResult) {
 		}
 		rows = append(rows, presentation.Row{value.Name, origin, state})
 	}
-	p.AlignedRows([]string{"Name", "Origin", "State"}, rows...)
-	p.Complete("Skills listed")
+	p.Table([]string{"Name", "Origin", "State"}, rows, presentation.TableOptions{
+		Border: presentation.TableBare,
+		Layout: presentation.TableAdaptive,
+		Depth:  1,
+	})
 }
 
 func renderSkillInfo(cmd *cobra.Command, value application.SkillView) {
 	p := commandPresenter(cmd)
-	p.Frame("Skill")
 	fields := []presentation.Field{
 		{Label: "name", Value: value.Name},
 		{Label: "description", Value: value.Description},
@@ -537,7 +537,6 @@ func renderSkillInfo(cmd *cobra.Command, value application.SkillView) {
 		)
 	}
 	p.Fields(fields...)
-	p.Complete("Skill loaded")
 }
 
 func completeManagedSkillName(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {

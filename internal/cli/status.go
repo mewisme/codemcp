@@ -65,7 +65,7 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 			snapshotSpan.EndMessage("Status snapshot acquisition completed")
 		}
 	}()
-	logCommandStep(cmd, "STATUS", "status.scope.resolving", "Resolving service scope")
+	logCommandVerbose(cmd, "STATUS", "status.scope.resolving", "Resolving service scope")
 	serviceSpan := tracepkg.Start(ctx, "STATUS", "status.service-context", "Resolving status service context")
 	scope := managed.DetectScope()
 	account, err := managed.InvokingAccountContext(ctx, scope)
@@ -103,7 +103,7 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 		renderStatusUninitialized(commandPresenter(cmd))
 		return nil
 	}
-	logCommandStep(cmd, "STATUS", "status.config.loading", "Loading runtime configuration")
+	logCommandVerbose(cmd, "STATUS", "status.config.loading", "Loading runtime configuration")
 	cfg, err := config.Load()
 	if err != nil {
 		configSpan.FailMessage("Status configuration load failed", err, tracepkg.String("path", source.Path), tracepkg.String("format", string(source.Format)))
@@ -125,7 +125,7 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 	}
 	upstreamCount := len(upstreams.List())
 	upstreamSpan.EndMessage("Upstream count queried", tracepkg.Int("count", upstreamCount))
-	logCommandStep(cmd, "STATUS", "status.runtime.inspecting", "Inspecting runtime control endpoint")
+	logCommandVerbose(cmd, "STATUS", "status.runtime.inspecting", "Inspecting runtime control endpoint")
 	runtimeSpan := tracepkg.Start(ctx, "STATUS", "status.runtime-control.query", "Querying runtime control status")
 	runtimeCtx, cancel := context.WithTimeout(ctx, time.Second)
 	runtimeStatus, running, runtimeErr := managedRuntimeStatus(runtimeCtx)
@@ -169,7 +169,6 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 	}
 	presenter := commandPresenter(cmd)
 	if snapshot.Running && transientTunnelState(statusTunnelState(snapshot.Runtime, true)) && commandAnimationEligible(cmd) {
-		presenter.Frame("CodeMCP status")
 		renderStatusBase(presenter, snapshot, verbose)
 		presenter.Spacer()
 		snapshot.Runtime = animateRuntimeTunnelState(cmd, snapshot.Runtime, statusTunnelWatchTimeout)
@@ -179,7 +178,6 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 		snapshot.Tunnel.LastError = snapshot.Runtime.TunnelLastError
 		renderStatusTunnelSection(presenter, statusTunnelState(snapshot.Runtime, true))
 		renderStatusTunnelBody(presenter, snapshot, verbose)
-		presenter.Complete("Status complete")
 		return nil
 	}
 	renderStatus(presenter, snapshot, verbose)
@@ -187,10 +185,8 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 }
 
 func renderStatus(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
-	presenter.Frame("CodeMCP status")
 	renderStatusBase(presenter, snapshot, verbose)
 	renderStatusTunnel(presenter, snapshot, verbose)
-	presenter.Complete("Status complete")
 }
 
 func renderStatusBase(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
@@ -467,11 +463,9 @@ func renderStatusConfig(presenter *presentation.Presenter, snapshot statusSnapsh
 }
 
 func renderStatusUninitialized(presenter *presentation.Presenter) {
-	presenter.Frame("CodeMCP status")
 	presenter.Status(presentation.StatusWarning, "CodeMCP is not initialized")
 	presenter.Spacer()
 	presenter.Note("Run:", cliUseName()+" init")
-	presenter.Complete("Not initialized")
 }
 
 func renderLegacyStatus(cmd *cobra.Command, snapshot statusSnapshot) {

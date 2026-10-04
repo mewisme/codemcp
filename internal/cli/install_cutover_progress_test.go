@@ -122,6 +122,7 @@ func TestSupplementalInstallSummaryCoversAllIntegrationOutcomeStates(t *testing.
 func TestInstallCutoverUnsupportedStateUsesReadableHierarchy(t *testing.T) {
 	var output bytes.Buffer
 	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, RawUnicode: true})
+	session.SetTitle("Install CodeMCP")
 	observe := installCutoverProgressObserver(session)
 	observe(application.InstallCutoverEvent{Stage: "detect", State: "warning", Message: "Previous CodeMCP state requires a clean install"})
 	observe(application.InstallCutoverEvent{Stage: "detect", State: "warning", Message: "7 unsupported artifacts cannot be migrated", Child: true})

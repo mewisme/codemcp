@@ -68,6 +68,24 @@ func TestNestedTableBudgetsWidthAfterDepthPrefix(t *testing.T) {
 	assertDisplayLinesFit(t, got, 28)
 }
 
+func TestAdaptiveBareTableGeneralizesBeyondThreeColumns(t *testing.T) {
+	var output bytes.Buffer
+	p := New(&output, ModeHuman, Capabilities{Width: 58, Unicode: true})
+	p.Table(
+		[]string{"ID", "State", "Workspace", "Description"},
+		[]Row{{"agent_1", "running", "ws_demo", "This description is intentionally long enough to require wrapping"}},
+		TableOptions{Border: TableBare, Layout: TableAdaptive, Depth: 1},
+	)
+	got := output.String()
+	if !strings.Contains(got, "ID") || !strings.Contains(got, "Description") {
+		t.Fatalf("adaptive table lost headers: %q", got)
+	}
+	if strings.Contains(got, "column 2") || strings.Contains(got, "column 3") {
+		t.Fatalf("adaptive table fell back to stacked fields unexpectedly: %q", got)
+	}
+	assertDisplayLinesFit(t, got, 58)
+}
+
 func TestAlignedRowsPreserveSharedWidthsAcrossGroupedTables(t *testing.T) {
 	headers := []string{"Key", "Value", "Accepts"}
 	all := []Row{

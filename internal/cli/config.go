@@ -56,18 +56,15 @@ func configPathCommand() *cobra.Command {
 			}
 			if commandResultModeFor(cmd) == resultModeHuman {
 				presenter := commandPresenter(cmd)
-				presenter.Frame("Configuration path")
 				presenter.Section("Active")
 				presenter.Fields(
 					presentation.Field{Label: "config", Value: source.Path},
 					presentation.Field{Label: "format", Value: source.Format},
 					presentation.Field{Label: "root", Value: config.RootPath()},
 				)
-				presenter.Complete("Done")
 				return nil
 			}
-			fmt.Fprintf(commandResultWriter(cmd), "config = %s\nformat = %s\nroot = %s\n", source.Path, source.Format, config.RootPath())
-			return nil
+			return writePlainResultf(cmd, "config = %s\nformat = %s\nroot = %s\n", source.Path, source.Format, config.RootPath())
 		},
 	}
 	addJSONResultFlag(cmd, &jsonOutput)
@@ -83,7 +80,7 @@ func configExportCommand() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			file := configBundleFile(args)
-			logCommandStep(cmd, "CONFIG", "config.export.preparing", "Exporting configuration envelope", logger.WithVerbose("file", file))
+			logCommandVerbose(cmd, "CONFIG", "config.export.preparing", "Exporting configuration envelope", logger.WithVerbose("file", file))
 			result, err := application.ExportConfigContext(cmd.Context(), file, force)
 			if err != nil {
 				return fmt.Errorf("export configuration envelope: %w", err)
@@ -109,7 +106,7 @@ func configImportCommand() *cobra.Command {
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			file := configBundleFile(args)
-			logCommandStep(cmd, "CONFIG", "config.import.preparing", "Importing configuration envelope", logger.WithVerbose("file", file))
+			logCommandVerbose(cmd, "CONFIG", "config.import.preparing", "Importing configuration envelope", logger.WithVerbose("file", file))
 			ctx, cancel := context.WithTimeout(cmd.Context(), 2*time.Second)
 			defer cancel()
 			result, err := application.ImportConfig(ctx, file, force)
@@ -218,7 +215,7 @@ func configSetCommand() *cobra.Command {
 			} else if ok && spec.Secret {
 				defer zeroProtectedString(&raw)
 			}
-			logCommandStep(cmd, "CONFIG", "config.setting.updating", "Updating canonical setting", logger.WithVerbose("key", key))
+			logCommandVerbose(cmd, "CONFIG", "config.setting.updating", "Updating canonical setting", logger.WithVerbose("key", key))
 			if _, err := application.NewSettingService().Set(cmd.Context(), key, raw); err != nil {
 				return err
 			}
@@ -238,7 +235,7 @@ func configUnsetCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := strings.TrimSpace(args[0])
-			logCommandStep(cmd, "CONFIG", "config.setting.clearing", "Clearing canonical setting", logger.WithVerbose("key", key))
+			logCommandVerbose(cmd, "CONFIG", "config.setting.clearing", "Clearing canonical setting", logger.WithVerbose("key", key))
 			if _, err := application.NewSettingService().Unset(cmd.Context(), key); err != nil {
 				return err
 			}
@@ -257,13 +254,12 @@ func configRotateCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			key := strings.TrimSpace(args[0])
-			logCommandStep(cmd, "CONFIG", "config.setting.rotating", "Rotating canonical setting credential", logger.WithVerbose("key", key))
+			logCommandVerbose(cmd, "CONFIG", "config.setting.rotating", "Rotating canonical setting credential", logger.WithVerbose("key", key))
 			result, err := application.NewSettingService().Rotate(cmd.Context(), key)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(commandResultWriter(cmd), result.Value)
-			return nil
+			return writeMachineResultLine(cmd, result.Value)
 		},
 	}
 	cmd.ValidArgsFunction = completeConfigRotate
@@ -283,8 +279,7 @@ func configRevealCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(commandResultWriter(cmd), result.Value)
-			return nil
+			return writeMachineResultLine(cmd, result.Value)
 		},
 	}
 	cmd.ValidArgsFunction = completeConfigReveal
@@ -317,7 +312,7 @@ func getConfigValue(cfg config.Config, key string) (any, error) {
 
 func configMigrateCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "migrate", Short: "Migrate legacy plaintext credentials into the secret file store", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "CONFIG", "config.secrets.migrating", "Migrating legacy credentials")
+		logCommandVerbose(cmd, "CONFIG", "config.secrets.migrating", "Migrating legacy credentials")
 		if err := application.MigrateLegacySecretsContext(cmd.Context()); err != nil {
 			return fmt.Errorf("migrate legacy credentials: %w", err)
 		}
@@ -330,7 +325,7 @@ func configMigrateCommand() *cobra.Command {
 
 func configMigrateSecretsCommand() *cobra.Command {
 	return &cobra.Command{Use: "secrets", Short: "Migrate legacy secret files to encrypted JSON envelopes", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "CONFIG", "config.secrets.envelope.migrating", "Migrating legacy secret files to encrypted JSON envelopes")
+		logCommandVerbose(cmd, "CONFIG", "config.secrets.envelope.migrating", "Migrating legacy secret files to encrypted JSON envelopes")
 		migrated, err := application.MigrateSecretEnvelopesContext(cmd.Context())
 		if err != nil {
 			return fmt.Errorf("migrate secret envelopes: %w", err)
@@ -349,15 +344,14 @@ func configVerifyCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
 				key := strings.TrimSpace(args[0])
-				commandProgressSession(cmd).SetTitle("Verify configuration setting")
-				logCommandStep(cmd, "CONFIG", "config.setting.verifying", "Verifying canonical setting", logger.WithVerbose("key", key))
+				logCommandVerbose(cmd, "CONFIG", "config.setting.verifying", "Verifying canonical setting", logger.WithVerbose("key", key))
 				if _, err := application.NewSettingService().Verify(cmd.Context(), key); err != nil {
 					return err
 				}
 				renderMutationSuccess(cmd, "Setting verified", presentation.Field{Label: "key", Value: key})
 				return nil
 			}
-			logCommandStep(cmd, "CONFIG", "config.verifying", "Verifying configuration and state")
+			logCommandVerbose(cmd, "CONFIG", "config.verifying", "Verifying configuration and state")
 			result, err := application.VerifyConfigContext(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("verify configuration: %w", err)

@@ -59,14 +59,12 @@ func rtkProbeCommand() *cobra.Command {
 				return err
 			}
 			presenter := commandPresenter(cmd)
-			presenter.Frame("RTK probe")
 			presenter.StateSection(presentation.StatusSuccess, "RTK executable is available")
 			presenter.NestedFields(
 				presentation.Field{Label: "source", Value: result.Status.Source},
 				presentation.Field{Label: "path", Value: result.Path},
 				presentation.Field{Label: "version", Value: result.Version},
 			)
-			presenter.Complete("Probe complete")
 			return nil
 		},
 	}
@@ -123,7 +121,6 @@ func rtkInstallGlobalCommand() *cobra.Command {
 }
 
 func renderRTKStatus(presenter *presentation.Presenter, status rtk.Status) {
-	presenter.Frame("RTK integration")
 	kind := presentation.StatusSuccess
 	message := "RTK is ready"
 	if !status.Enabled || status.Source == rtk.SourceDisabled {
@@ -143,7 +140,6 @@ func renderRTKStatus(presenter *presentation.Presenter, status rtk.Status) {
 		fields = append(fields, presentation.Field{Label: "path", Value: status.Path})
 	}
 	presenter.NestedFields(fields...)
-	presenter.Complete("Status complete")
 }
 
 func codeGraphStatusCommand() *cobra.Command {
@@ -169,14 +165,12 @@ func codeGraphProbeCommand() *cobra.Command {
 				return err
 			}
 			presenter := commandPresenter(cmd)
-			presenter.Frame("CodeGraph probe")
 			presenter.StateSection(presentation.StatusSuccess, "CodeGraph executable is available")
 			presenter.NestedFields(
 				presentation.Field{Label: "source", Value: result.Status.Resolution.Source},
 				presentation.Field{Label: "path", Value: result.Path},
 				presentation.Field{Label: "version", Value: result.Version},
 			)
-			presenter.Complete("Probe complete")
 			return nil
 		},
 	}
@@ -233,7 +227,6 @@ func codeGraphInstallGlobalCommand() *cobra.Command {
 }
 
 func renderCodeGraphStatus(presenter *presentation.Presenter, status codegraph.Status) {
-	presenter.Frame("CodeGraph integration")
 	kind := presentation.StatusSuccess
 	message := "CodeGraph is ready"
 	if !status.Enabled || status.Resolution.Source == codegraph.ExecutableDisabled {
@@ -253,7 +246,6 @@ func renderCodeGraphStatus(presenter *presentation.Presenter, status codegraph.S
 		fields = append(fields, presentation.Field{Label: "path", Value: status.Resolution.Path})
 	}
 	presenter.NestedFields(fields...)
-	presenter.Complete("Status complete")
 }
 
 func codeGraphWorkspaceCommand(action string) *cobra.Command {
@@ -307,14 +299,12 @@ func codeGraphWorkspaceGroupCommand() *cobra.Command {
 				return err
 			}
 			presenter := commandPresenter(cmd)
-			presenter.Frame("CodeGraph workspace")
 			presenter.Fields(
 				presentation.Field{Label: "workspace", Value: status.WorkspaceID},
 				presentation.Field{Label: "project", Value: status.ProjectPath},
 				presentation.Field{Label: "index", Value: status.IndexState},
 				presentation.Field{Label: "freshness", Value: status.Freshness},
 			)
-			presenter.Complete("Status complete")
 			return nil
 		},
 	})

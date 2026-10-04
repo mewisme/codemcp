@@ -117,9 +117,12 @@ func TestAuthStatusRichPaletteKeepsSectionTextNeutral(t *testing.T) {
 	cmd := authStatusCommand()
 	cmd.SetOut(presentation.WrapWriter(&output, caps))
 	cmd.SetErr(presentation.WrapWriter(&output, caps))
+	setCommandPresentationTitle(cmd, "Authentication")
+	prepareCommandPresentation(cmd)
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
+	closeCommandProgress(cmd, nil)
 	theme := presentation.NewTheme(caps)
 	text := output.String()
 	for _, expected := range []string{

@@ -91,11 +91,6 @@ func renderDoctorReport(cmd *cobra.Command, report doctor.Report) {
 		presentation.Field{Label: "errors", Value: report.Errors},
 		presentation.Field{Label: "provider failures", Value: report.ProviderFailures},
 	)
-	completion := "Diagnostics complete"
-	if report.Healthy {
-		completion = "Healthy"
-	}
-	commandProgressSession(cmd).SetCompletion(completion)
 }
 
 func doctorDomainTitle(value string) string {

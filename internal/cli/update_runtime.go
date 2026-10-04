@@ -79,7 +79,7 @@ func coordinateUpdatedRuntimeWith(cmd *cobra.Command, installed install.Result, 
 }
 
 func restartManagedRuntimeAfterUpdate(cmd *cobra.Command, layout install.Layout, status runtimeStatusResult) error {
-	logCommandStep(cmd, "UPDATE", "update.runtime.restart.preparing", "Preparing managed runtime restart after update")
+	logCommandVerbose(cmd, "UPDATE", "update.runtime.restart.preparing", "Preparing managed runtime restart after update")
 	if filepath.Clean(status.ConfigRoot) != filepath.Clean(config.RootPath()) {
 		return fmt.Errorf("managed runtime config root mismatch: runtime %s, selected %s", status.ConfigRoot, config.RootPath())
 	}
@@ -99,14 +99,14 @@ func restartManagedRuntimeAfterUpdate(cmd *cobra.Command, layout install.Layout,
 		return fmt.Errorf("managed runtime service mismatch: runtime %s, expected %s", status.ServiceID, spec.ID)
 	}
 	if scope == managed.ScopeSystem && managed.DetectScope() == managed.ScopeUser {
-		logCommandStep(cmd, "UPDATE", "update.runtime.restart.elevating", "Elevating managed runtime restart")
+		logCommandVerbose(cmd, "UPDATE", "update.runtime.restart.elevating", "Elevating managed runtime restart")
 		environmentHash, err := saveManagedEnvironmentContext(cmd.Context(), spec)
 		if err != nil {
 			return err
 		}
 		return elevateManagedCommandWithBinary(cmd, "restart", environmentHash, layout.CanonicalBinary)
 	}
-	logCommandStep(cmd, "UPDATE", "update.runtime.restart.local", "Restarting managed runtime in place")
+	logCommandVerbose(cmd, "UPDATE", "update.runtime.restart.local", "Restarting managed runtime in place")
 	return restartManagedRuntimeInPlace(cmd.Context(), spec, managed.NewManagerWithObserver(tracepkg.ObserverFromContext(cmd.Context())))
 }
 

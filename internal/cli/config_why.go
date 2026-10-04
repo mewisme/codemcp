@@ -55,14 +55,12 @@ func configWhyCommand() *cobra.Command {
 			)
 			presenter := commandPresenter(cmd)
 			if commandResultModeFor(cmd) == resultModeHuman {
-				presenter.Frame("Config why")
 			}
 			if err := presenter.Markdown(markdown); err != nil {
 				renderSpan.FailMessage("Canonical setting metadata render failed", err, tracepkg.String("key", key))
 				return err
 			}
 			if commandResultModeFor(cmd) == resultModeHuman {
-				presenter.Complete("Done")
 			}
 			renderSpan.EndMessage(
 				"Canonical setting metadata rendered",

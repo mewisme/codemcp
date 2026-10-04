@@ -32,7 +32,7 @@ func TestRenderTunnelLifecycleUsesSharedProgress(t *testing.T) {
 	renderTunnelLifecycle(session, log, tunnel.LifecycleEvent{State: tunnel.LifecycleReady, ID: "tunnel_test"})
 	session.Close()
 	text := output.String()
-	for _, expected := range []string{"Run OpenAI tunnel", "◇  Reconnecting tunnel", "Tunnel connected", "│  tunnel id\n│    tunnel_test"} {
+	for _, expected := range []string{"Run OpenAI tunnel", "◇  Reconnecting tunnel", "Tunnel connected", "│  tunnel id — tunnel_test"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("output %q missing %q", text, expected)
 		}
@@ -145,9 +145,12 @@ func TestRenderTunnelStatusTextIsCLIFirst(t *testing.T) {
 		Metadata: &tunnel.Metadata{ID: "tunnel_test", Name: "MCP WSL", Description: "WSL tunnel"},
 	}
 	var output bytes.Buffer
-	renderTunnelStatusText(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), cfg, status, true, false)
+	presenter := presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true})
+	renderStandalonePresentation(presenter, "OpenAI Secure MCP Tunnel", func() {
+		renderTunnelStatusText(presenter, cfg, status, true, false)
+	})
 	text := output.String()
-	for _, expected := range []string{"┌  OpenAI Secure MCP Tunnel", "✓  OpenAI Secure MCP Tunnel is connected", "│  enabled\n│    true", "│  configured\n│    true", "│  runtime key", "│  admin key", "│  id\n│    tunnel_test", "│  name\n│    MCP WSL", "│  admin\n│    configured · workspace:ws_admin", "└  Status complete"} {
+	for _, expected := range []string{"┌  OpenAI Secure MCP Tunnel", "✓  OpenAI Secure MCP Tunnel is connected", "│  enabled — true", "│  configured — true", "│  runtime key", "│  admin key", "│  id — tunnel_test", "│  name — MCP WSL", "│  admin — configured · workspace:ws_admin", "└  Done"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("output %q missing %q", text, expected)
 		}
@@ -163,9 +166,12 @@ func TestTunnelReadRenderersUseRailHierarchyAndRedaction(t *testing.T) {
 		WorkspaceIDs: []string{"ws_admin"}, OrganizationIDs: []string{"org_demo"},
 	}
 	var output bytes.Buffer
-	renderManagedTunnelList(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), []tunnel.Metadata{metadata})
+	presenter := presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true})
+	renderStandalonePresentation(presenter, "Managed OpenAI tunnels", func() {
+		renderManagedTunnelList(presenter, []tunnel.Metadata{metadata})
+	})
 	listText := output.String()
-	for _, expected := range []string{"┌  Managed OpenAI tunnels", "│  ▸ tunnel_one", "│  │  name\n│  │    One", "│  │  workspaces\n│  │    ws_admin", "└  Done"} {
+	for _, expected := range []string{"┌  Managed OpenAI tunnels", "│  ▸ tunnel_one", "│  │  name — One", "│  │  workspaces — ws_admin", "└  Done"} {
 		if !strings.Contains(listText, expected) {
 			t.Fatalf("managed tunnel list missing %q: %q", expected, listText)
 		}
@@ -175,15 +181,18 @@ func TestTunnelReadRenderersUseRailHierarchyAndRedaction(t *testing.T) {
 	}
 
 	output.Reset()
-	renderTunnelAdminKeyStatus(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), application.TunnelAdminStatus{
-		KeyConfigured: true,
-		KeyPreview:    "admi...cret",
-		Configured:    true,
-		Scope:         tunnel.AdminScope{WorkspaceID: "ws_admin"},
-		Access:        tunnel.AdminAccess{Read: true, Manage: true},
+	presenter = presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true})
+	renderStandalonePresentation(presenter, "OpenAI tunnel admin key", func() {
+		renderTunnelAdminKeyStatus(presenter, application.TunnelAdminStatus{
+			KeyConfigured: true,
+			KeyPreview:    "admi...cret",
+			Configured:    true,
+			Scope:         tunnel.AdminScope{WorkspaceID: "ws_admin"},
+			Access:        tunnel.AdminAccess{Read: true, Manage: true},
+		})
 	})
 	adminText := output.String()
-	for _, expected := range []string{"┌  OpenAI tunnel admin key", "✓  Admin key configured", "│  key\n│    admi...cret", "│  scope\n│    workspace:ws_admin", "│  access\n│    full management"} {
+	for _, expected := range []string{"┌  OpenAI tunnel admin key", "✓  Admin key configured", "│  key — admi...cret", "│  scope — workspace:ws_admin", "│  access — full management"} {
 		if !strings.Contains(adminText, expected) {
 			t.Fatalf("admin status missing %q: %q", expected, adminText)
 		}

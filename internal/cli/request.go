@@ -144,7 +144,7 @@ func requestGrantListCommand() *cobra.Command {
 	var asJSON bool
 	var workspaceID string
 	cmd := &cobra.Command{Use: "list", Short: "List active similar-command runtime grants", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
+		logCommandVerbose(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
 		var progress *commandProgress
 		if !asJSON {
 			progress = newCommandProgress(cmd, "REQUEST")
@@ -172,7 +172,7 @@ func requestGrantListCommand() *cobra.Command {
 func requestGrantRevokeCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{Use: "revoke <request_id>", Short: "Revoke one similar-command runtime grant by request ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("request", args[0]))
+		logCommandVerbose(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("request", args[0]))
 		var progress *commandProgress
 		if !asJSON {
 			progress = newCommandProgress(cmd, "REQUEST")
@@ -199,7 +199,7 @@ func requestGrantRevokeCommand() *cobra.Command {
 func requestListCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{Use: "list", Short: "List control approval requests from the running runtime", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
+		logCommandVerbose(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint")
 		var progress *commandProgress
 		if !asJSON {
 			progress = newCommandProgress(cmd, "REQUEST")
@@ -226,7 +226,7 @@ func requestListCommand() *cobra.Command {
 func requestViewCommand() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{Use: "view <request_id>", Short: "Show one control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("request", args[0]))
+		logCommandVerbose(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("request", args[0]))
 		var progress *commandProgress
 		if !asJSON {
 			progress = newCommandProgress(cmd, "REQUEST")
@@ -274,7 +274,7 @@ func requestResolveCommand(approve bool) *cobra.Command {
 	var reason string
 	var allowSimilar bool
 	cmd := &cobra.Command{Use: action + " <request_id>", Short: label + " one pending control approval request by ID or unique prefix", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("action", action), logger.WithVerbose("request", args[0]))
+		logCommandVerbose(cmd, "REQUEST", "request.runtime.contacting", "Contacting runtime approval endpoint", logger.WithVerbose("action", action), logger.WithVerbose("request", args[0]))
 		var commandPhase *commandProgress
 		if !asJSON {
 			commandPhase = newCommandProgress(cmd, "REQUEST")
@@ -320,10 +320,8 @@ func requestResolveCommand(approve bool) *cobra.Command {
 }
 
 func renderApprovalRequests(presenter *presentation.Presenter, requests []approval.Request) {
-	presenter.Frame("Control approval requests")
 	if len(requests) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No control approval requests")
-		presenter.Complete("Done")
 		return
 	}
 	rows := make([]presentation.Row, 0, len(requests))
@@ -331,15 +329,16 @@ func renderApprovalRequests(presenter *presentation.Presenter, requests []approv
 		rows = append(rows, presentation.Row{request.ID, string(request.Status), request.WorkspaceID, request.TargetTool, request.Title})
 	}
 	presenter.Section(fmt.Sprintf("Requests · %d", len(requests)))
-	presenter.Rows([]string{"ID", "Status", "Workspace", "Tool", "Title"}, rows...)
-	presenter.Complete("Done")
+	presenter.Table([]string{"ID", "Status", "Workspace", "Tool", "Title"}, rows, presentation.TableOptions{
+		Border: presentation.TableBare,
+		Layout: presentation.TableAdaptive,
+		Depth:  1,
+	})
 }
 
 func renderRuntimeGrants(presenter *presentation.Presenter, grants []approval.Request) {
-	presenter.Frame("Runtime session grants")
 	if len(grants) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No active runtime session grants")
-		presenter.Complete("Done")
 		return
 	}
 	rows := make([]presentation.Row, 0, len(grants))
@@ -347,8 +346,11 @@ func renderRuntimeGrants(presenter *presentation.Presenter, grants []approval.Re
 		rows = append(rows, presentation.Row{grant.ID, grant.WorkspaceID, grant.SimilarCommandPattern, formatRequestTime(grant.GrantExpiresAt)})
 	}
 	presenter.Section(fmt.Sprintf("Active runtime grants · %d", len(grants)))
-	presenter.Rows([]string{"ID", "Workspace", "Pattern", "Expires"}, rows...)
-	presenter.Complete("Done")
+	presenter.Table([]string{"ID", "Workspace", "Pattern", "Expires"}, rows, presentation.TableOptions{
+		Border: presentation.TableBare,
+		Layout: presentation.TableAdaptive,
+		Depth:  1,
+	})
 }
 
 func renderApprovalRequest(presenter *presentation.Presenter, request approval.Request) {
@@ -357,7 +359,6 @@ func renderApprovalRequest(presenter *presentation.Presenter, request approval.R
 
 func renderApprovalRequestDetail(presenter *presentation.Presenter, detail approvalRequestDetailResult) {
 	request := detail.Request
-	presenter.Frame("Approval request")
 	presenter.StateSection(approvalPresentationKind(request.Status), approvalStatusLabel(request.Status))
 	presenter.Subsection(request.ID)
 	fields := []presentation.Field{
@@ -416,13 +417,10 @@ func renderApprovalRequestDetail(presenter *presentation.Presenter, detail appro
 		presenter.Spacer()
 		renderApprovalExplanation(presenter, detail.ExplainStatus, detail.Explanation)
 	}
-	presenter.Complete(approvalOutro(request.Status))
 }
 
 func renderApprovalExplainStatus(presenter *presentation.Presenter, status application.ApprovalExplainStatus) {
-	presenter.Frame("Approval explanation")
 	presenter.NestedFields(approvalExplainStatusFields(status)...)
-	presenter.Complete("Done")
 }
 
 func approvalExplainStatusFields(status application.ApprovalExplainStatus) []presentation.Field {
@@ -535,11 +533,4 @@ func approvalStatusLabel(status approval.Status) string {
 	}
 	value := string(status)
 	return strings.ToUpper(value[:1]) + value[1:]
-}
-
-func approvalOutro(status approval.Status) string {
-	if status == approval.StatusPending {
-		return "Awaiting decision"
-	}
-	return "Done"
 }

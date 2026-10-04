@@ -163,20 +163,26 @@ func TestWorkspaceShowAndAccessListDefaultToText(t *testing.T) {
 
 func TestWorkspaceReadRenderersUseRailHierarchy(t *testing.T) {
 	var output bytes.Buffer
-	renderWorkspaceContainer(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), application.WorkspaceContainerView{
-		ID: "wsc_demo", Name: "Demo", WorkspaceIDs: []string{"ws_one", "ws_two"},
+	presenter := presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true})
+	renderStandalonePresentation(presenter, "Workspace container details", func() {
+		renderWorkspaceContainer(presenter, application.WorkspaceContainerView{
+			ID: "wsc_demo", Name: "Demo", WorkspaceIDs: []string{"ws_one", "ws_two"},
+		})
 	})
 	text := output.String()
-	for _, expected := range []string{"┌  Workspace container details", "│  ▸ wsc_demo", "│  │  name\n│  │    Demo", "│  │  workspaces\n│  │    ws_one, ws_two", "└  Done"} {
+	for _, expected := range []string{"┌  Workspace container details", "│  ▸ wsc_demo", "│  │  name — Demo", "│  │  workspaces — ws_one, ws_two", "└  Done"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("workspace container detail missing %q: %q", expected, text)
 		}
 	}
 
 	output.Reset()
-	renderWorkspaceAccess(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true}), "ws_demo", []string{"/data/one", "/data/two"})
+	presenter = presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true})
+	renderStandalonePresentation(presenter, "Allowed directories", func() {
+		renderWorkspaceAccess(presenter, "ws_demo", []string{"/data/one", "/data/two"})
+	})
 	access := output.String()
-	for _, expected := range []string{"┌  Allowed directories", "│  ▸ Allowed directories · 2", "│  ▸ ws_demo", "│  │  allow dirs\n│  │    /data/one, /data/two", "└  Done"} {
+	for _, expected := range []string{"┌  Allowed directories", "│  ▸ Allowed directories · 2", "│  ▸ ws_demo", "│  │  allow dirs — /data/one, /data/two", "└  Done"} {
 		if !strings.Contains(access, expected) {
 			t.Fatalf("workspace access missing %q: %q", expected, access)
 		}

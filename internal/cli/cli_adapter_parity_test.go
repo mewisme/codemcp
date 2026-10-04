@@ -217,6 +217,45 @@ func TestCLIProductionSourcesDoNotWriteHumanOutputDirectly(t *testing.T) {
 	}
 }
 
+func TestCLIProductionRenderersDoNotOwnOuterLifecycle(t *testing.T) {
+	root := filepath.Join(cliAdapterRepositoryRoot(t), "internal", "cli")
+	frameCall := regexp.MustCompile(`\b(?:presenter|p)\.(?:Frame|Complete)\s*\(`)
+	resultWriter := regexp.MustCompile(`fmt\.Fprint(?:f|ln)?\s*\(\s*commandResultWriter\(cmd\)`)
+	allowedResultWriter := map[string]string{
+		"output_mode.go":     "canonical plain, JSON, and machine result gateways",
+		"semantic_parity.go": "explicit retained-event stream transport",
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name != "logging.go" {
+			if match := frameCall.Find(data); match != nil {
+				t.Errorf("%s owns the outer presentation lifecycle via %q; command lifecycle must own frame/completion", name, string(match))
+			}
+		}
+		if match := resultWriter.Find(data); match != nil {
+			if reason := strings.TrimSpace(allowedResultWriter[name]); reason == "" {
+				t.Errorf("%s writes command result output directly via %q; use a classified result gateway", name, string(match))
+			}
+		}
+	}
+	for name, reason := range allowedResultWriter {
+		if strings.TrimSpace(reason) == "" {
+			t.Errorf("result-writer exemption %s has no reason", name)
+		}
+	}
+}
+
 func TestMakefileFacadeMatchesPublicTopLevelCommands(t *testing.T) {
 	rootPath := cliAdapterRepositoryRoot(t)
 	data, err := os.ReadFile(filepath.Join(rootPath, "Makefile"))

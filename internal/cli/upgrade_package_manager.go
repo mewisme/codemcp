@@ -64,7 +64,7 @@ func runPackageManagedUpgrade(cmd *cobra.Command, detection install.Detection, t
 		return fmt.Errorf("unknown update status %q", check.Status)
 	}
 
-	logCommandStep(cmd, "UPDATE", "update.runtime.inspecting", "Inspecting managed runtime state")
+	logCommandVerbose(cmd, "UPDATE", "update.runtime.inspecting", "Inspecting managed runtime state")
 	runtimeState, err := captureUpdateRuntimeState(cmd.Context())
 	if err != nil {
 		return fmt.Errorf("inspect managed runtime before update: %w", err)

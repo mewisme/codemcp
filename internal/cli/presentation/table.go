@@ -63,12 +63,8 @@ func (p *Presenter) Table(headers []string, rows []Row, options TableOptions) {
 	}
 	intrinsic := tableIntrinsicWidth(widths, options.Border)
 	if intrinsic > available {
-		if options.Layout == TableAdaptive && options.Border == TableBare && len(widths) == 3 {
-			const minimumLastColumnWidth = 16
-			fixed := widths[0] + 2 + widths[1] + 2
-			if fixed+minimumLastColumnWidth <= available {
-				adaptive := append([]int(nil), widths...)
-				adaptive[2] = max(minimumLastColumnWidth, available-fixed)
+		if options.Layout == TableAdaptive && options.Border == TableBare {
+			if adaptive, ok := adaptiveBareWidths(widths, available); ok {
 				p.renderAdaptiveBareTable(headers, rows, adaptive, depth)
 				return
 			}
@@ -117,27 +113,57 @@ func (p *Presenter) renderBareTable(headers []string, rows []Row, widths []int, 
 }
 
 func (p *Presenter) renderAdaptiveBareTable(headers []string, rows []Row, widths []int, depth int) {
+	if len(widths) == 0 {
+		return
+	}
 	prefix := p.railPrefix(depth)
 	p.line(prefix + p.formatTableRow(headers, headers, widths, true, TableBare))
-	offset := widths[0] + 2 + widths[1] + 2
+	last := len(widths) - 1
+	offset := 0
+	for index := 0; index < last; index++ {
+		offset += widths[index] + 2
+	}
 	continuation := prefix + strings.Repeat(" ", offset)
 	for _, row := range rows {
-		values := make([]string, 3)
+		values := make([]string, len(widths))
 		for index := range values {
 			if index < len(row) {
 				values[index] = strings.TrimSpace(row[index])
 			}
 		}
-		parts := wrapDisplayWords(values[2], widths[2])
+		parts := wrapDisplayWords(values[last], widths[last])
 		if len(parts) == 0 {
 			parts = []string{""}
 		}
-		values[2] = parts[0]
+		values[last] = parts[0]
 		p.line(prefix + p.formatTableRow(headers, values, widths, false, TableBare))
 		for _, part := range parts[1:] {
 			p.line(continuation + p.theme.Render(RoleMuted, part))
 		}
 	}
+}
+
+func adaptiveBareWidths(widths []int, available int) ([]int, bool) {
+	if len(widths) < 2 || available <= 0 {
+		return nil, false
+	}
+	const minimumFlexibleColumnWidth = 12
+	last := len(widths) - 1
+	fixed := 0
+	for index := 0; index < last; index++ {
+		fixed += widths[index]
+	}
+	fixed += 2 * last
+	remaining := available - fixed
+	if remaining < minimumFlexibleColumnWidth {
+		return nil, false
+	}
+	adaptive := append([]int(nil), widths...)
+	adaptive[last] = min(widths[last], remaining)
+	if adaptive[last] <= 0 {
+		return nil, false
+	}
+	return adaptive, true
 }
 
 func (p *Presenter) renderBoxTable(headers []string, rows []Row, widths []int, depth int, grid bool) {

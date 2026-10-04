@@ -122,10 +122,8 @@ func TestCommandSessionStartsBeforeProgressAndOwnsSingleFrame(t *testing.T) {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			commandProgressSession(cmd).Success("load", "Loading data", "Data loaded")
 			presenter := commandPresenter(cmd)
-			presenter.Frame("Duplicate frame request")
 			presenter.Section("Result")
 			presenter.Fields(presentation.Field{Label: "state", Value: "ready"})
-			commandProgressSession(cmd).SetCompletion("Done")
 			return nil
 		},
 	}
@@ -153,7 +151,7 @@ func TestCommandSessionStartsBeforeProgressAndOwnsSingleFrame(t *testing.T) {
 	if frame < 0 || progress <= frame {
 		t.Fatalf("progress appeared before frame: %q", text)
 	}
-	if !strings.Contains(text, "│  ▸ Result\n│\n│  state\n│    ready") {
+	if !strings.Contains(text, "│  ▸ Result\n│\n│  state — ready") {
 		t.Fatalf("section/content spacing contract missing: %q", text)
 	}
 }

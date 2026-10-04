@@ -219,9 +219,12 @@ func TestRenderStatusUsesCanonicalPresenterCapabilities(t *testing.T) {
 	}
 
 	var unicodeOutput bytes.Buffer
-	renderStatus(presentation.New(&unicodeOutput, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), snapshot, false)
+	presenter := presentation.New(&unicodeOutput, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false})
+	renderStandalonePresentation(presenter, "CodeMCP status", func() {
+		renderStatus(presenter, snapshot, false)
+	})
 	unicodeText := unicodeOutput.String()
-	for _, expected := range []string{"┌  CodeMCP status", "✓  CodeMCP is running", "│  ▸ Runtime", "│  pid\n│    4242", "│  ▸ Endpoints", "│  ▸ Config", "│  ▸ Tunnel", "│  ✓ OpenAI Secure MCP Tunnel\n│    connected", "└  Status complete"} {
+	for _, expected := range []string{"┌  CodeMCP status", "✓  CodeMCP is running", "│  ▸ Runtime", "│  pid — 4242", "│  ▸ Endpoints", "│  ▸ Config", "│  ▸ Tunnel", "│  ✓ OpenAI Secure MCP Tunnel — connected", "└  Done"} {
 		if !strings.Contains(unicodeText, expected) {
 			t.Fatalf("unicode status missing %q: %s", expected, unicodeText)
 		}
@@ -262,7 +265,7 @@ func TestRenderStatusRuntimeAndTunnelStatesAcrossPresentationModes(t *testing.T)
 			snapshot:        statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default(), Running: true, Runtime: runtimeStatusResult{Starting: true, TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true}},
 			humanWant:       "!  CodeMCP is starting",
 			plainWant:       "[!] CodeMCP is starting",
-			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel\n│    connecting",
+			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel — connecting",
 			plainTunnelWant: "OpenAI Secure MCP Tunnel is connecting",
 		},
 		{
@@ -270,7 +273,7 @@ func TestRenderStatusRuntimeAndTunnelStatesAcrossPresentationModes(t *testing.T)
 			snapshot:        statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default()},
 			humanWant:       "×  CodeMCP is stopped",
 			plainWant:       "[ERR] CodeMCP is stopped",
-			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel\n│    not configured",
+			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel — not configured",
 			plainTunnelWant: "OpenAI Secure MCP Tunnel is not configured",
 		},
 	}
@@ -302,20 +305,23 @@ func TestRenderStatusDisabledTunnelGoldenRailHierarchy(t *testing.T) {
 		Runtime: runtimeStatusResult{PID: 4242, RunID: "run_abcd"},
 	}
 	var output bytes.Buffer
-	renderStatus(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), snapshot, false)
+	presenter := presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false})
+	renderStandalonePresentation(presenter, "CodeMCP status", func() {
+		renderStatus(presenter, snapshot, false)
+	})
 	text := output.String()
 	ordered := []string{
 		"┌  CodeMCP status",
 		"✓  CodeMCP is running",
 		"│  ▸ Runtime",
-		"│  pid\n│    4242",
+		"│  pid — 4242",
 		"│  ▸ Endpoints",
 		"│  mcp http",
 		"│  ▸ Config",
 		"│  transports",
 		"◇  Tunnel",
-		"│  ◇ OpenAI Secure MCP Tunnel\n│    disabled",
-		"└  Status complete",
+		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
+		"└  Done",
 	}
 	position := -1
 	for _, expected := range ordered {
@@ -345,7 +351,10 @@ func TestRenderStatusRichPaletteKeepsSettledTextNeutral(t *testing.T) {
 	}
 	var output bytes.Buffer
 	caps := presentation.Capabilities{Width: 100, Unicode: true, Color: true}
-	renderStatus(presentation.New(&output, presentation.ModeHuman, caps), snapshot, false)
+	presenter := presentation.New(&output, presentation.ModeHuman, caps)
+	renderStandalonePresentation(presenter, "CodeMCP status", func() {
+		renderStatus(presenter, snapshot, false)
+	})
 	theme := presentation.NewTheme(caps)
 	text := output.String()
 

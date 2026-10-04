@@ -29,10 +29,8 @@ func healthCommand() *cobra.Command {
 			return writeResultJSON(cmd, value)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("Health")
 		p.StateSection(presentation.StatusSuccess, "CodeMCP configuration is healthy")
 		p.Fields(presentation.Field{Label: "ok", Value: value.OK}, presentation.Field{Label: "admin auth", Value: value.AdminAuthEnabled})
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -51,7 +49,6 @@ func networkCommand() *cobra.Command {
 			return writeResultJSON(cmd, values)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("Network interfaces")
 		if len(values) == 0 {
 			p.StateSection(presentation.StatusInactive, "No eligible interfaces")
 		} else {
@@ -63,7 +60,6 @@ func networkCommand() *cobra.Command {
 				}
 			}
 		}
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(interfaces, &asJSON)
@@ -151,13 +147,11 @@ func workspaceContainerMembershipListCommand() *cobra.Command {
 			return writeResultJSON(cmd, result.Value)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("Container workspaces")
 		p.Section(fmt.Sprintf("Workspaces · %d", len(result.Value)))
 		for _, value := range result.Value {
 			p.Subsection(value.ID)
 			p.NestedFields(presentation.Field{Label: "path", Value: value.Path})
 		}
-		p.Complete("Done")
 		return nil
 	}}
 	cmd.Flags().StringVar(&workspaceID, "workspace", "", "workspace ID whose container membership should be listed")
@@ -277,9 +271,7 @@ func requestExplainViewCommand() *cobra.Command {
 			return writeResultJSON(cmd, result)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("Approval explanation")
 		renderApprovalExplanation(p, status, result)
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -336,14 +328,12 @@ func notificationStatusCommand() *cobra.Command {
 			return writeResultJSON(cmd, value)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("Notifications")
 		p.Fields(
 			presentation.Field{Label: "approval", Value: value["approval_enabled"]},
 			presentation.Field{Label: "desktop", Value: value["desktop_enabled"]},
 			presentation.Field{Label: "telegram", Value: value["telegram_enabled"]},
 			presentation.Field{Label: "completion", Value: value["completion_enabled"]},
 		)
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -374,7 +364,6 @@ func tunnelConfigReadCommand() *cobra.Command {
 			return writeResultJSON(cmd, view)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("Tunnel configuration")
 		p.Fields(
 			presentation.Field{Label: "enabled", Value: view.Enabled},
 			presentation.Field{Label: "id", Value: view.ID},
@@ -382,7 +371,6 @@ func tunnelConfigReadCommand() *cobra.Command {
 			presentation.Field{Label: "runtime key configured", Value: view.RuntimeKeyConfigured},
 			presentation.Field{Label: "admin key configured", Value: view.AdminKeyConfigured},
 		)
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)
@@ -431,7 +419,6 @@ func activityViewCommand() *cobra.Command {
 			return writeResultJSON(cmd, value)
 		}
 		p := commandPresenter(cmd)
-		p.Frame("Tool-call activity")
 		p.Fields(
 			presentation.Field{Label: "call", Value: value.CallID},
 			presentation.Field{Label: "tool", Value: value.Tool},
@@ -449,7 +436,6 @@ func activityViewCommand() *cobra.Command {
 		if value.Diagnostic.Redacted || value.Diagnostic.Truncated {
 			renderCLIObservabilitySection(p, "Diagnostic", value.Diagnostic)
 		}
-		p.Complete("Done")
 		return nil
 	}}
 	addJSONResultFlag(cmd, &asJSON)

@@ -24,7 +24,7 @@ func installCommand() *cobra.Command {
 			"Environment: CM_INSTALL_INTEGRATIONS accepts 1/true/yes/on or 0/false/no/off. The flag takes precedence over the environment.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			logCommandStep(cmd, "INSTALL", "install.plan", "Preparing installation", logger.WithVerbose("version", version.Version), logger.WithDebug("force", force))
+			logCommandVerbose(cmd, "INSTALL", "install.plan", "Preparing installation", logger.WithVerbose("version", version.Version), logger.WithDebug("force", force))
 			result, err := application.InstallCurrentContext(cmd.Context(), application.InstallCurrentOptions{
 				Force: force, SkipMissingIntegrations: noInstallIntegrations,
 				Observe: installCutoverObserver(cmd), ObserveIntegration: installIntegrationObserver(cmd),

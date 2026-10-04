@@ -79,7 +79,6 @@ func logsCommand() *cobra.Command {
 		}
 		presenter := commandPresenter(cmd)
 		presenter.Fields(presentation.Field{Label: "path", Value: path})
-		presenter.Complete("Done")
 	}}
 	var forceClear bool
 	clear := &cobra.Command{Use: "clear", Short: "Clear runtime logs", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
@@ -87,7 +86,7 @@ func logsCommand() *cobra.Command {
 			return errLogsClearConfirmationRequired
 		}
 		log := commandLogger(cmd)
-		logCommandStep(cmd, "LOGS", "logs.runtime.contacting", "Contacting runtime log endpoint")
+		logCommandVerbose(cmd, "LOGS", "logs.runtime.contacting", "Contacting runtime log endpoint")
 		progress := newCommandProgress(cmd, "LOGS")
 		progress.Start("logs.clearing", "Clearing runtime logs", "Runtime logs cleared")
 		if err := clearRuntimeLogs(cmd); err != nil {
@@ -140,7 +139,7 @@ func runLogs(cmd *cobra.Command, options logsOptions) error {
 		options.showTime = false
 	}
 	queryOptions := logsQueryOptions(options)
-	logCommandStep(cmd, "LOGS", "logs.query.validating", "Validating runtime log query")
+	logCommandVerbose(cmd, "LOGS", "logs.query.validating", "Validating runtime log query")
 	if _, err := application.BuildLogsQueryContext(cmd.Context(), queryOptions, time.Now()); err != nil {
 		return err
 	}
@@ -150,7 +149,7 @@ func runLogs(cmd *cobra.Command, options logsOptions) error {
 	var stream *runtimecontrol.EventStream
 	var followErr error
 	if options.follow {
-		logCommandStep(cmd, "LOGS", "logs.stream.connecting", "Connecting to runtime event stream")
+		logCommandVerbose(cmd, "LOGS", "logs.stream.connecting", "Connecting to runtime event stream")
 		interrupt = newForegroundInterrupt(cmd, true)
 		defer interrupt.Close()
 		followCtx = interrupt.Context
@@ -159,7 +158,7 @@ func runLogs(cmd *cobra.Command, options logsOptions) error {
 			defer stream.Close()
 		}
 	}
-	logCommandStep(cmd, "LOGS", "logs.snapshot.loading", "Loading runtime log snapshot")
+	logCommandVerbose(cmd, "LOGS", "logs.snapshot.loading", "Loading runtime log snapshot")
 	snapshot, err := application.LoadLogsContext(cmd.Context(), queryOptions, visibility, 0, time.Now())
 	if err != nil {
 		return err
@@ -178,7 +177,7 @@ func runLogs(cmd *cobra.Command, options logsOptions) error {
 	if followErr != nil {
 		return &runtimeUnavailableError{Operation: "follow logs", Cause: followErr}
 	}
-	logCommandStep(cmd, "LOGS", "logs.stream.following", "Following runtime event stream")
+	logCommandVerbose(cmd, "LOGS", "logs.stream.following", "Following runtime event stream")
 	return followRuntimeEventStream(followCtx, stream, snapshot.Query, visibility, lastByRun, replay)
 }
 

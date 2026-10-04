@@ -60,7 +60,6 @@ func telegramSettingsCommand() *cobra.Command {
 			}
 			configured := result.Configured != nil && *result.Configured
 			presenter := commandPresenter(cmd)
-			presenter.Frame("Telegram bot token")
 			state := presentation.StatusInfo
 			message := "Telegram bot token is not configured"
 			if configured {
@@ -69,7 +68,6 @@ func telegramSettingsCommand() *cobra.Command {
 			}
 			presenter.StateSection(state, message)
 			presenter.NestedFields(presentation.Field{Label: "setting", Value: "telegram.token"})
-			presenter.Complete("Status complete")
 			return nil
 		},
 	}
@@ -143,7 +141,6 @@ func runTelegramSetup(cmd *cobra.Command, _ []string) error {
 
 	session := commandProgressSession(cmd)
 	presenter := session.Presenter()
-	presenter.Frame("Telegram setup")
 	presenter.Section("Pairing ready")
 	fields := []presentation.Field{
 		{Label: "code", Value: challenge.Code},
@@ -189,7 +186,6 @@ func runTelegramSetup(cmd *cobra.Command, _ []string) error {
 						presenter.StateSection(presentation.StatusSuccess, "Running runtime reloaded")
 					}
 				}
-				presenter.Complete("Setup complete")
 				return nil
 			}
 		}

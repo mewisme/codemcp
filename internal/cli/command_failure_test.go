@@ -68,7 +68,7 @@ func TestActionableFailureStaysInsideCommandWorkflow(t *testing.T) {
 		"│  ▸ Actions",
 		"│  │  Generate automatically\n│  │    cm tunnel use " + tunnelID + " --auto-runtime-key",
 		"│  │  Use an existing runtime key\n│  │    cm tunnel use " + tunnelID + " --runtime-api-key <key>",
-		"│  │  More options\n│  │    cm tunnel use --help",
+		"│  │  More options — cm tunnel use --help",
 		"└  Failed",
 	} {
 		if !strings.Contains(text, want) {

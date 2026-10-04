@@ -44,7 +44,7 @@ func promptListCommand() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if asJSON || commandResultModeFor(cmd) != resultModeHuman {
+		if asJSON {
 			return writeResultJSON(cmd, values)
 		}
 		p := commandPresenter(cmd)
@@ -52,7 +52,6 @@ func promptListCommand() *cobra.Command {
 		for _, value := range values {
 			p.Fields(presentation.Field{Label: value.Definition.Name, Value: string(value.Scope) + " · " + value.Definition.Description})
 		}
-		p.Complete("Prompts listed")
 		return nil
 	}}
 	cmd.Flags().StringVar(&workspaceID, "workspace", "", "show the authorized workspace view over global Prompts")
@@ -88,7 +87,7 @@ func promptGetCommand() *cobra.Command {
 			}
 			result = map[string]any{"scope": value.Scope, "definition": value.Definition, "messages": messages}
 		}
-		if asJSON || commandResultModeFor(cmd) != resultModeHuman {
+		if asJSON {
 			return writeResultJSON(cmd, result)
 		}
 		data, err := json.MarshalIndent(result, "", "  ")
@@ -98,7 +97,6 @@ func promptGetCommand() *cobra.Command {
 		p := commandPresenter(cmd)
 		p.Section("Prompt")
 		p.Fields(presentation.Field{Label: "definition", Value: string(data)})
-		p.Complete("Prompt loaded")
 		return nil
 	}}
 	cmd.Flags().StringVar(&workspaceID, "workspace", "", "select workspace Prompts over global Prompts")

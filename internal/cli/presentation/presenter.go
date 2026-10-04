@@ -139,7 +139,7 @@ func (p *Presenter) Frame(title string) {
 		return
 	}
 	if p.session != nil {
-		p.session.Begin(title)
+		p.session.EnsureBegun()
 		return
 	}
 	if p.mode == ModeHuman {
@@ -162,7 +162,6 @@ func (p *Presenter) Complete(message string) {
 	}
 	message = strings.TrimSpace(message)
 	if p.session != nil {
-		p.session.SetCompletion(message)
 		return
 	}
 	p.FrameEnd(message)
@@ -174,7 +173,6 @@ func (p *Presenter) FrameEnd(message string) {
 	}
 	message = strings.TrimSpace(message)
 	if p.session != nil {
-		p.session.CloseWith(message)
 		return
 	}
 	p.Spacer()
@@ -455,39 +453,7 @@ func (p *Presenter) List(items ...string) {
 }
 
 func (p *Presenter) Rows(headers []string, rows ...Row) {
-	if p == nil || p.mode == ModeJSON || len(rows) == 0 {
-		return
-	}
-	p.beginContent()
-	if p.mode != ModeHuman {
-		p.renderPlainTable(headers, rows)
-		return
-	}
-	for rowIndex, row := range rows {
-		if len(row) == 0 {
-			continue
-		}
-		last := rowIndex == len(rows)-1
-		branch := p.glyphs.Branch
-		continuation := p.railPrefix(1) + p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
-		if last {
-			branch = p.glyphs.LastBranch
-			continuation = p.railPrefix(1) + "   "
-		}
-		p.emitWrapped(
-			p.railPrefix(1)+p.theme.Render(RoleStructure, branch),
-			continuation,
-			row[0],
-			func(value string) string { return p.theme.Render(RoleLabel, value) },
-		)
-		for column := 1; column < len(row); column++ {
-			label := fmt.Sprintf("column %d", column+1)
-			if column < len(headers) && strings.TrimSpace(headers[column]) != "" {
-				label = strings.TrimSpace(headers[column])
-			}
-			p.renderFieldDepth("", label, row[column], 2)
-		}
-	}
+	p.Table(headers, rows, TableOptions{Border: TableBare, Layout: TableAdaptive, Depth: 1})
 }
 
 func (p *Presenter) Note(title, body string) {
@@ -643,6 +609,17 @@ func (p *Presenter) renderFieldDepth(glyph, label string, value any, depth int) 
 		labelPrefix += glyph + " "
 		labelContinuation = p.railPrefix(depth) + strings.Repeat(" ", displayWidth(glyph)+1)
 	}
+	valueText := strings.TrimSpace(fmt.Sprint(value))
+	if label != "" && valueText != "" && !strings.Contains(valueText, "\n") {
+		separator := " — "
+		if !p.capabilities.Unicode {
+			separator = " - "
+		}
+		if displayWidth(labelPrefix)+displayWidth(label)+displayWidth(separator)+displayWidth(valueText) <= effectiveLayoutWidth(p.capabilities.Width) {
+			p.line(labelPrefix + p.theme.Render(RoleLabel, label) + p.theme.Render(RoleMuted, separator) + valueText)
+			return
+		}
+	}
 	if label != "" {
 		p.emitWrapped(
 			labelPrefix,
@@ -651,7 +628,6 @@ func (p *Presenter) renderFieldDepth(glyph, label string, value any, depth int) 
 			func(value string) string { return p.theme.Render(RoleLabel, value) },
 		)
 	}
-	valueText := strings.TrimSpace(fmt.Sprint(value))
 	if valueText == "" {
 		return
 	}

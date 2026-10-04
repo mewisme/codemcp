@@ -92,7 +92,6 @@ func newRootCommand() *cobra.Command {
 			logCommandDebug(cmd, "VERSION", "cli.version.resolved", "Version resolved", logger.WithDebug("version", version.String()))
 			presenter := commandPresenter(cmd)
 			presenter.StateSection(presentation.StatusInfo, version.String())
-			presenter.Complete("Done")
 		}},
 	)
 	bindCanonicalScopedSettings(cmd)
@@ -114,7 +113,7 @@ func initCommand() *cobra.Command {
 		Use:   "init",
 		Short: "Initialize configuration and authentication tokens",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logCommandStep(cmd, "INIT", "init.preparing", "Preparing configuration initialization")
+			logCommandVerbose(cmd, "INIT", "init.preparing", "Preparing configuration initialization")
 			logCommandDebug(cmd, "INIT", "init.format.resolved", "Configuration format resolved", logger.WithDebug("format", "json"), logger.WithDebug("force", force))
 			result, err := application.Initialize(application.InitOptions{Context: cmd.Context(), Force: force})
 			if err != nil {
@@ -137,7 +136,7 @@ func uninitCommand() *cobra.Command {
 		Short: "Remove all local CodeMCP configuration and state",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root := config.RootPath()
-			logCommandStep(cmd, "UNINIT", "uninit.removing", "Removing local configuration and state", logger.WithVerbose("root", root))
+			logCommandVerbose(cmd, "UNINIT", "uninit.removing", "Removing local configuration and state", logger.WithVerbose("root", root))
 			if err := application.UninitializeContext(cmd.Context(), root); err != nil {
 				return err
 			}
@@ -182,7 +181,7 @@ func authCreateCommand(kind string) *cobra.Command {
 		Short: "Create or rotate the " + kind + " token",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logCommandStep(cmd, "AUTH", "auth.token.rotating", "Creating or rotating authentication token", logger.WithVerbose("type", kind))
+			logCommandVerbose(cmd, "AUTH", "auth.token.rotating", "Creating or rotating authentication token", logger.WithVerbose("type", kind))
 			key := "http.mcp.auth.token"
 			if kind == "admin" {
 				key = "http.admin.auth.token"
@@ -211,7 +210,7 @@ func authToggleCommand(kind string, enabled bool) *cobra.Command {
 		Use:   action,
 		Short: action + " " + kind + " authentication",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logCommandStep(cmd, "AUTH", "auth.state.updating", "Updating authentication state", logger.WithVerbose("type", kind), logger.WithVerbose("enabled", enabled))
+			logCommandVerbose(cmd, "AUTH", "auth.state.updating", "Updating authentication state", logger.WithVerbose("type", kind), logger.WithVerbose("enabled", enabled))
 			key := "http.mcp.auth.enabled"
 			if kind == "admin" {
 				key = "http.admin.auth.enabled"
@@ -239,14 +238,13 @@ func authStatusCommand() *cobra.Command {
 		Use:   "status",
 		Short: "Show authentication state without revealing token hashes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logCommandStep(cmd, "AUTH", "auth.status.loading", "Loading authentication state")
+			logCommandVerbose(cmd, "AUTH", "auth.status.loading", "Loading authentication state")
 			status, err := application.GetAuthStatusContext(cmd.Context())
 			if err != nil {
 				return err
 			}
 			presenter := commandPresenter(cmd)
 			if commandResultModeFor(cmd) == resultModeHuman {
-				presenter.Frame("Authentication")
 				presenter.Section("MCP")
 				presenter.Fields(
 					presentation.Field{Label: "enabled", Value: status.MCPEnabled},
@@ -259,7 +257,6 @@ func authStatusCommand() *cobra.Command {
 					presentation.Field{Label: "enabled", Value: status.AdminEnabled},
 					presentation.Field{Label: "configured", Value: status.AdminConfigured},
 				)
-				presenter.Complete("Status complete")
 				return nil
 			}
 			presenter.Section("Authentication")

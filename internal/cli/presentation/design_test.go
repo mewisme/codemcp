@@ -27,14 +27,11 @@ func TestTypedDesignEntityListMatchesRailHierarchy(t *testing.T) {
 		"│  ▸ Settings · 2\n" +
 		"│\n" +
 		"│  ▸ admin\n" +
-		"│  │  http.admin.enabled\n" +
-		"│  │    true\n" +
-		"│  │  http.admin.port\n" +
-		"│  │    37422\n" +
+		"│  │  http.admin.enabled — true\n" +
+		"│  │  http.admin.port — 37422\n" +
 		"│\n" +
 		"│  ▸ server\n" +
-		"│  │  http.mcp.enabled\n" +
-		"│  │    false\n" +
+		"│  │  http.mcp.enabled — false\n" +
 		"│\n" +
 		"└  Done\n"
 	if got := output.String(); got != want {
@@ -62,15 +59,16 @@ func TestTypedDesignBlocksComposeExistingPresenterPrimitives(t *testing.T) {
 	got := output.String()
 	for _, want := range []string{
 		"✓  Ready",
-		"│  pid\n│    42",
+		"│  pid — 42",
 		"│  ▸ Runtime",
-		"│  state\n│    running",
+		"│  state — running",
 		"◇  Tunnel",
-		"│  │  tunnel.enabled\n│  │    false",
+		"│  │  tunnel.enabled — false",
 		"│  ! Metadata unavailable",
-		"│  ◇ OpenAI Secure MCP Tunnel\n│    disabled",
+		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
 		"│  ▸ Rows",
-		"│  └─ one\n│  │  State\n│  │    ready",
+		"│  ID   State",
+		"│  one  ready",
 		"│  ▸ Items",
 		"│  └─ alpha",
 		"│  · Hint",
@@ -90,7 +88,7 @@ func TestRenderBlockRendersTypedFragmentWithoutOwningFrame(t *testing.T) {
 	p.Complete("Done")
 
 	got := output.String()
-	for _, want := range []string{"┌  Fragment", "│  ▸ one", "│  │  name\n│  │    One", "└  Done"} {
+	for _, want := range []string{"┌  Fragment", "│  ▸ one", "│  │  name — One", "└  Done"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("typed fragment output missing %q: %q", want, got)
 		}

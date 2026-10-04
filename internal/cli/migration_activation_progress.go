@@ -8,9 +8,6 @@ import (
 )
 
 func migrationActivationProgressObserver(session *presentation.ProgressSession) func(released024.ActivationEvent) {
-	if session != nil {
-		session.SetTitle("Activate migrated CodeMCP state")
-	}
 	return func(event released024.ActivationEvent) {
 		if session == nil {
 			return

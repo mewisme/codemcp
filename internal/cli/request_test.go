@@ -75,7 +75,10 @@ func TestRequestReadPresentationKeepsListSafeAndViewExact(t *testing.T) {
 	}
 
 	var listOutput bytes.Buffer
-	renderApprovalRequests(presentation.New(&listOutput, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), []approval.Request{request})
+	listPresenter := presentation.New(&listOutput, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true})
+	renderStandalonePresentation(listPresenter, "Control approval requests", func() {
+		renderApprovalRequests(listPresenter, []approval.Request{request})
+	})
 	listText := listOutput.String()
 	for _, expected := range []string{"Control approval requests", "req_safe", "pending", "ws_safe", "run_command", "Review exact command"} {
 		if !strings.Contains(listText, expected) {
@@ -89,7 +92,10 @@ func TestRequestReadPresentationKeepsListSafeAndViewExact(t *testing.T) {
 	}
 
 	var viewOutput bytes.Buffer
-	renderApprovalRequest(presentation.New(&viewOutput, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), request)
+	viewPresenter := presentation.New(&viewOutput, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true})
+	renderStandalonePresentation(viewPresenter, "Approval request", func() {
+		renderApprovalRequest(viewPresenter, request)
+	})
 	viewText := viewOutput.String()
 	for _, expected := range []string{"Approval request", "Pending", "req_safe", "Arguments", "deploy --token TOP-SECRET", "external mutation requires approval"} {
 		if !strings.Contains(viewText, expected) {
@@ -197,16 +203,19 @@ func TestRequestRichViewUsesRailHierarchy(t *testing.T) {
 		GuardCode:   controlguard.CodeExternalMutation,
 	}
 	var output bytes.Buffer
-	renderApprovalRequest(presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false}), request)
+	presenter := presentation.New(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, Color: false})
+	renderStandalonePresentation(presenter, "Approval request", func() {
+		renderApprovalRequest(presenter, request)
+	})
 	text := output.String()
 	for _, expected := range []string{
 		"┌  Approval request",
 		"◇  Pending",
 		"│  ▸ req_rail",
-		"│  │  workspace\n│  │    ws_rail",
+		"│  │  workspace — ws_rail",
 		"│  ▸ Arguments",
 		"│  └─ {",
-		"└  Awaiting decision",
+		"└  Done",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("rich request view missing %q: %q", expected, text)
@@ -228,7 +237,10 @@ func TestRequestRichPaletteLocalizesPendingAndStructureColor(t *testing.T) {
 	}
 	var output bytes.Buffer
 	caps := presentation.Capabilities{Width: 100, Unicode: true, Color: true}
-	renderApprovalRequest(presentation.New(&output, presentation.ModeHuman, caps), request)
+	presenter := presentation.New(&output, presentation.ModeHuman, caps)
+	renderStandalonePresentation(presenter, "Approval request", func() {
+		renderApprovalRequest(presenter, request)
+	})
 	theme := presentation.NewTheme(caps)
 	text := output.String()
 	for _, expected := range []string{
@@ -261,7 +273,10 @@ func TestRuntimeGrantListUsesStructuredSafeFields(t *testing.T) {
 		Arguments:             json.RawMessage(`{"command":"git push origin main","token":"DO-NOT-LIST"}`),
 	}
 	var output bytes.Buffer
-	renderRuntimeGrants(presentation.New(&output, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true}), []approval.Request{grant})
+	presenter := presentation.New(&output, presentation.ModePlain, presentation.Capabilities{Width: 100, Unicode: true})
+	renderStandalonePresentation(presenter, "Runtime session grants", func() {
+		renderRuntimeGrants(presenter, []approval.Request{grant})
+	})
 	text := output.String()
 	for _, expected := range []string{"Runtime session grants", "req_grant", "ws_grant", "git push **", "2026-09-25T12:00:00Z"} {
 		if !strings.Contains(text, expected) {

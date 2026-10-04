@@ -32,13 +32,14 @@ func TestPresenterRepresentativeHumanUnicode(t *testing.T) {
 	for _, want := range []string{
 		"┌  CodeMCP status",
 		"│  ▸ Runtime",
-		"│  status\n│    running",
+		"│  status — running",
 		"✓  Ready",
 		"│  ▸ Loopback",
-		"│  │  mcp http\n│  │    http://127.0.0.1:37421/mcp",
+		"│  │  mcp http — http://127.0.0.1:37421/mcp",
 		"│  ├─ alpha",
 		"│  └─ beta",
-		"│  ├─ one",
+		"│  Name  State",
+		"│  one   ready",
 		"│  · Hint",
 		"└  Done",
 	} {
@@ -72,15 +73,12 @@ func TestPresenterRailHierarchyGolden(t *testing.T) {
 		"│\n" +
 		"│  ▸ Runtime\n" +
 		"│\n" +
-		"│  pid\n" +
-		"│    4242\n" +
-		"│  session\n" +
-		"│    run_abcd\n" +
+		"│  pid — 4242\n" +
+		"│  session — run_abcd\n" +
 		"│\n" +
 		"◇  Tunnel\n" +
 		"│\n" +
-		"│  ◇ OpenAI Secure MCP Tunnel\n" +
-		"│    disabled\n" +
+		"│  ◇ OpenAI Secure MCP Tunnel — disabled\n" +
 		"│\n" +
 		"└  Status complete\n"
 	if got := output.String(); got != want {
@@ -88,7 +86,7 @@ func TestPresenterRailHierarchyGolden(t *testing.T) {
 	}
 }
 
-func TestPresenterCollectionRailUsesBranchesAndValueBlocks(t *testing.T) {
+func TestPresenterRowsUseCanonicalBareTable(t *testing.T) {
 	var output bytes.Buffer
 	p := New(&output, ModeHuman, Capabilities{Width: 100, Unicode: true, Color: false})
 	p.Frame("Workspaces")
@@ -104,16 +102,9 @@ func TestPresenterCollectionRailUsesBranchesAndValueBlocks(t *testing.T) {
 		"│\n" +
 		"│  ▸ Registered 2 workspaces\n" +
 		"│\n" +
-		"│  ├─ ws_alpha\n" +
-		"│  │  Status\n" +
-		"│  │    ready\n" +
-		"│  │  Root\n" +
-		"│  │    /work/a\n" +
-		"│  └─ ws_beta\n" +
-		"│  │  Status\n" +
-		"│  │    ready\n" +
-		"│  │  Root\n" +
-		"│  │    /work/b\n" +
+		"│  ID        Status  Root   \n" +
+		"│  ws_alpha  ready   /work/a\n" +
+		"│  ws_beta   ready   /work/b\n" +
 		"│\n" +
 		"└  Done\n"
 	if got := output.String(); got != want {
@@ -138,8 +129,7 @@ func TestPresenterTopLevelBlocksHaveExactlyOneGap(t *testing.T) {
 		"│\n" +
 		"│  ▸ Configuration\n" +
 		"│\n" +
-		"│  config\n" +
-		"│    /tmp/config.json\n" +
+		"│  config — /tmp/config.json\n" +
 		"│\n" +
 		"└  Done\n"
 	if got := output.String(); got != want {
@@ -164,10 +154,8 @@ func TestPresenterEntitySubsectionKeepsNestedFieldsContiguous(t *testing.T) {
 		"│  ▸ Managed tunnel loaded\n" +
 		"│\n" +
 		"│  ▸ tunnel_demo\n" +
-		"│  │  name\n" +
-		"│  │    Demo\n" +
-		"│  │  enabled\n" +
-		"│  │    true\n" +
+		"│  │  name — Demo\n" +
+		"│  │  enabled — true\n" +
 		"│\n" +
 		"└  Done\n"
 	if got := output.String(); got != want {
@@ -188,11 +176,11 @@ func TestPresenterNestedFieldGroupAddsOneHierarchyLevel(t *testing.T) {
 	p.FrameEnd("Done")
 
 	for _, want := range []string{
-		"│  ✓ OpenAI Secure MCP Tunnel\n│    connected",
-		"│  │  id\n│  │    tunnel_demo",
+		"│  ✓ OpenAI Secure MCP Tunnel — connected",
+		"│  │  id — tunnel_demo",
 		"│  │  scope",
-		"│  │  │  organization\n│  │  │    org_demo",
-		"│  │  │  workspace\n│  │  │    ws_demo",
+		"│  │  │  organization — org_demo",
+		"│  │  │  workspace — ws_demo",
 	} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("nested field group missing %q:\n%s", want, output.String())
@@ -200,16 +188,18 @@ func TestPresenterNestedFieldGroupAddsOneHierarchyLevel(t *testing.T) {
 	}
 }
 
-func TestPresenterFieldValuesUseFixedStructuralIndent(t *testing.T) {
+func TestPresenterFieldsStayInlineUntilContentExceedsRemainingWidth(t *testing.T) {
 	var output bytes.Buffer
 	p := New(&output, ModeHuman, Capabilities{Width: 40, Unicode: true})
 	p.Fields(
 		Field{Label: "id", Value: "short"},
+		Field{Label: "source", Value: "compact-value"},
 		Field{Label: "extremely-long-label-that-does-not-control-indent", Value: "a long value that wraps inside the frame correctly"},
 	)
 	got := output.String()
 	for _, want := range []string{
-		"│  id\n│    short",
+		"│  id — short",
+		"│  source — compact-value",
 		"│  extremely-long-label-that-does-not-\n│    control-indent",
 		"│    a long value that wraps inside the\n│    frame correctly",
 	} {

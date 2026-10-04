@@ -141,10 +141,8 @@ func runCompletionRead(cmd *cobra.Command, asJSON bool, phaseID, running, done s
 }
 
 func renderCompletionList(presenter *presentation.Presenter, records []agentcompletion.Record) {
-	presenter.Frame("Agent completion history")
 	if len(records) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No accepted agent completions")
-		presenter.Complete("Done")
 		return
 	}
 	rows := make([]presentation.Row, 0, len(records))
@@ -159,12 +157,14 @@ func renderCompletionList(presenter *presentation.Presenter, records []agentcomp
 		})
 	}
 	presenter.Section(fmt.Sprintf("Completions · %d", len(records)))
-	presenter.Rows([]string{"ID", "Status", "Workspace", "Title", "Created"}, rows...)
-	presenter.Complete("Done")
+	presenter.Table([]string{"ID", "Status", "Workspace", "Title", "Created"}, rows, presentation.TableOptions{
+		Border: presentation.TableBare,
+		Layout: presentation.TableAdaptive,
+		Depth:  1,
+	})
 }
 
 func renderCompletion(presenter *presentation.Presenter, record agentcompletion.Record, title string) {
-	presenter.Frame(title)
 	presenter.StateSection(completionPresentationKind(record.Status), completionStatusLabel(record.Status))
 	presenter.Subsection(record.ID)
 	fields := []presentation.Field{
@@ -185,11 +185,9 @@ func renderCompletion(presenter *presentation.Presenter, record agentcompletion.
 	if strings.TrimSpace(record.Summary) != "" {
 		presenter.List(record.Summary)
 	}
-	presenter.Complete("Done")
 }
 
 func renderCompletionHealth(presenter *presentation.Presenter, health agentcompletion.Health) {
-	presenter.Frame("Agent completion health")
 	presenter.StateSection(completionHealthPresentationKind(health.Status), completionHealthStatusLabel(health.Status))
 	presenter.Subsection(health.WorkspaceID)
 	presenter.NestedFields(
@@ -214,7 +212,6 @@ func renderCompletionHealth(presenter *presentation.Presenter, health agentcompl
 		presenter.Section("Diagnostic error")
 		presenter.List(health.Error)
 	}
-	presenter.Complete("Done")
 }
 
 func completionHealthPresentationKind(status agentcompletion.HealthStatus) presentation.StatusKind {

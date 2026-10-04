@@ -37,9 +37,6 @@ func installIntegrationProgressObserver(session *presentation.ProgressSession) f
 }
 
 func installCutoverProgressObserver(session *presentation.ProgressSession) func(application.InstallCutoverEvent) {
-	if session != nil {
-		session.SetTitle("Install CodeMCP")
-	}
 	return func(event application.InstallCutoverEvent) {
 		if session == nil {
 			return

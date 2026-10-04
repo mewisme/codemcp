@@ -69,7 +69,7 @@ func tunnelStatusCommand() *cobra.Command {
 }
 
 func runTunnelStatus(cmd *cobra.Command, _ []string) error {
-	logCommandStep(cmd, "TUNNEL", "tunnel.status.loading", "Loading tunnel configuration")
+	logCommandVerbose(cmd, "TUNNEL", "tunnel.status.loading", "Loading tunnel configuration")
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load tunnel configuration: %w", err)
@@ -78,7 +78,7 @@ func runTunnelStatus(cmd *cobra.Command, _ []string) error {
 	if status.MetadataError != "" {
 		logCommandDebug(cmd, "TUNNEL", "tunnel.metadata.cached-unavailable", "Cached tunnel metadata unavailable", logger.WithDebug("error", status.MetadataError))
 	}
-	logCommandStep(cmd, "TUNNEL", "tunnel.runtime.inspecting", "Inspecting running tunnel state")
+	logCommandVerbose(cmd, "TUNNEL", "tunnel.runtime.inspecting", "Inspecting running tunnel state")
 	runtimeCtx, cancel := context.WithTimeout(cmd.Context(), time.Second)
 	runtimeStatus, runtimeRunning, err := managedRuntimeStatus(runtimeCtx)
 	cancel()
@@ -113,7 +113,6 @@ func runTunnelStatus(cmd *cobra.Command, _ []string) error {
 func renderTunnelStatusText(presenter *presentation.Presenter, cfg tunnel.Config, status tunnel.Status, runtimeRunning, verbose bool) {
 	status = tunnel.PublicStatus(status)
 	state := tunnelCLIState(cfg, status, runtimeRunning)
-	presenter.Frame("OpenAI Secure MCP Tunnel")
 	presenter.StateSection(statusPresentationKind(state), "OpenAI Secure MCP Tunnel is "+state)
 	fields := []presentation.Field{
 		{Label: "enabled", Value: status.Enabled},
@@ -173,7 +172,6 @@ func renderTunnelStatusText(presenter *presentation.Presenter, cfg tunnel.Config
 	if verbose && status.LastError != "" {
 		presenter.ChildStatus(presentation.StatusError, status.LastError)
 	}
-	presenter.Complete("Status complete")
 }
 
 func tunnelCLIState(cfg tunnel.Config, status tunnel.Status, runtimeRunning bool) string {
@@ -225,7 +223,7 @@ func fetchTunnelStatus(ctx context.Context, cfg tunnel.Config) tunnel.Status {
 
 func tunnelSyncCommand() *cobra.Command {
 	return &cobra.Command{Use: "sync", Short: "Fetch and persist metadata for the configured tunnel", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "TUNNEL", "tunnel.metadata.preparing", "Preparing tunnel metadata synchronization")
+		logCommandVerbose(cmd, "TUNNEL", "tunnel.metadata.preparing", "Preparing tunnel metadata synchronization")
 		ctx, cancel := context.WithTimeout(cmd.Context(), tunnelAdminTimeout)
 		defer cancel()
 		metadata, path, err := application.SyncConfiguredTunnel(ctx)
@@ -245,7 +243,7 @@ func tunnelConfigureCommand() *cobra.Command {
 	var enabled bool
 	var id, apiKey, controlPlaneBaseURL, organizationID string
 	cmd := &cobra.Command{Use: "configure", Short: "Configure the OpenAI Secure MCP Tunnel", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "TUNNEL", "tunnel.config.preparing", "Preparing tunnel configuration update")
+		logCommandVerbose(cmd, "TUNNEL", "tunnel.config.preparing", "Preparing tunnel configuration update")
 		input := application.TunnelRuntimeInput{}
 		if cmd.Flags().Changed("enabled") {
 			input.Enabled = &enabled
@@ -285,7 +283,7 @@ func tunnelToggleCommand(enabled bool) *cobra.Command {
 		use, short = "enable", "Enable the OpenAI Secure MCP Tunnel"
 	}
 	return &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		logCommandStep(cmd, "TUNNEL", "tunnel.state.updating", "Updating tunnel enabled state", logger.WithVerbose("enabled", enabled))
+		logCommandVerbose(cmd, "TUNNEL", "tunnel.state.updating", "Updating tunnel enabled state", logger.WithVerbose("enabled", enabled))
 		if _, err := application.SetTunnelEnabled(cmd.Context(), enabled); err != nil {
 			return err
 		}
@@ -300,7 +298,7 @@ func tunnelToggleCommand(enabled bool) *cobra.Command {
 
 func tunnelRunCommand() *cobra.Command {
 	return &cobra.Command{Use: "run", Short: "Run the OpenAI Secure MCP Tunnel in the foreground", RunE: func(cmd *cobra.Command, args []string) (runErr error) {
-		logCommandStep(cmd, "TUNNEL", "tunnel.runtime.loading", "Loading tunnel runtime configuration")
+		logCommandVerbose(cmd, "TUNNEL", "tunnel.runtime.loading", "Loading tunnel runtime configuration")
 		cfg, err := config.Load()
 		if err != nil {
 			return fmt.Errorf("load tunnel runtime configuration: %w", err)
@@ -312,7 +310,7 @@ func tunnelRunCommand() *cobra.Command {
 		}
 
 		log := commandLogger(cmd)
-		logCommandStep(cmd, "TUNNEL", "tunnel.tools.initializing", "Initializing MCP tool runtime")
+		logCommandVerbose(cmd, "TUNNEL", "tunnel.tools.initializing", "Initializing MCP tool runtime")
 		runtime := tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) { return cfg.HTTP.Admin.Enabled, cfg.HTTP.Admin.Port })
 		configProvider := application.NewMCPConfigReadService()
 		runtime.SetConfigReadProvider(configProvider)
@@ -339,7 +337,7 @@ func tunnelRunCommand() *cobra.Command {
 		}
 		session := commandProgressSession(cmd)
 		client.SetLifecycleObserver(func(event tunnel.LifecycleEvent) { renderTunnelLifecycle(session, log, event) })
-		logCommandStep(cmd, "TUNNEL", "tunnel.runtime.starting", "Starting tunnel runtime", logger.WithVerbose("tunnel_id", tunnelConfig.ID))
+		logCommandVerbose(cmd, "TUNNEL", "tunnel.runtime.starting", "Starting tunnel runtime", logger.WithVerbose("tunnel_id", tunnelConfig.ID))
 		if err := client.StartContext(runtimeCtx); err != nil {
 			return err
 		}

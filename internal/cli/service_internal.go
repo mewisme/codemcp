@@ -29,9 +29,9 @@ func internalServiceCommand() *cobra.Command {
 		Hidden: true,
 		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			logCommandStep(cmd, "SERVICE", "service.internal.starting", "Starting managed service runtime", logger.WithVerbose("service_id", serviceID), logger.WithVerbose("scope", serviceScope))
+			logCommandVerbose(cmd, "SERVICE", "service.internal.starting", "Starting managed service runtime", logger.WithVerbose("service_id", serviceID), logger.WithVerbose("scope", serviceScope))
 			if environmentHash != "" {
-				logCommandStep(cmd, "SERVICE", "service.environment.loading", "Loading managed service environment snapshot")
+				logCommandVerbose(cmd, "SERVICE", "service.environment.loading", "Loading managed service environment snapshot")
 				snapshot, err := managed.LoadEnvironment(config.RootPath(), environmentHash)
 				if err != nil {
 					return err

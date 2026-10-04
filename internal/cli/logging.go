@@ -202,6 +202,7 @@ func commandProgressSession(cmd *cobra.Command) *presentation.ProgressSession {
 	}
 	created := presentation.NewProgressSession(commandResultWriter(cmd), mode, capabilities)
 	created.SetTitle(commandPresentationTitle(cmd))
+	created.SetCompletion("Done")
 	value, loaded := commandProgressSessions.LoadOrStore(cmd, created)
 	if loaded {
 		created.Close()
@@ -401,7 +402,7 @@ func currentWorkingDirectory() string {
 	return value
 }
 
-func logCommandStep(cmd *cobra.Command, component, name, message string, fields ...logger.Field) {
+func logCommandVerbose(cmd *cobra.Command, component, name, message string, fields ...logger.Field) {
 	commandLogger(cmd).Verbose(component, name, message, fields...)
 }
 

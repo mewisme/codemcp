@@ -309,14 +309,12 @@ func llmProbeCommandForProvider(fixed string) *cobra.Command {
 				return writeResultJSON(cmd, result)
 			}
 			presenter := commandPresenter(cmd)
-			presenter.Frame("LLM probe")
 			presenter.StateSection(presentation.StatusSuccess, "Provider ready")
 			presenter.Fields(
 				presentation.Field{Label: "provider", Value: result.ProviderID},
 				presentation.Field{Label: "model", Value: result.Model},
 				presentation.Field{Label: "readiness", Value: result.Readiness},
 			)
-			presenter.Complete("Done")
 			return nil
 		},
 	}
@@ -767,7 +765,6 @@ func completeConfiguredLLMModel(cmd *cobra.Command, args []string, toComplete st
 
 func renderLLMStatus(cmd *cobra.Command, result application.LLMStatusResult) {
 	presenter := commandPresenter(cmd)
-	presenter.Frame("LLM")
 	presenter.Fields(
 		presentation.Field{Label: "active provider", Value: result.ActiveProvider},
 		presentation.Field{Label: "configured", Value: result.Active.Configured},
@@ -786,13 +783,15 @@ func renderLLMStatus(cmd *cobra.Command, result application.LLMStatusResult) {
 		rows = append(rows, presentation.Row{string(provider.ID), selected, string(provider.Protocol), provider.Model, string(provider.Readiness), fmt.Sprint(provider.Configured)})
 	}
 	presenter.Section(fmt.Sprintf("Providers · %d", len(rows)))
-	presenter.Rows([]string{"ID", "Active", "Protocol", "Model", "Readiness", "Configured"}, rows...)
-	presenter.Complete("Done")
+	presenter.Table([]string{"ID", "Active", "Protocol", "Model", "Readiness", "Configured"}, rows, presentation.TableOptions{
+		Border: presentation.TableBare,
+		Layout: presentation.TableAdaptive,
+		Depth:  1,
+	})
 }
 
 func renderLLMProviderList(cmd *cobra.Command, providers []application.LLMProviderResult) {
 	presenter := commandPresenter(cmd)
-	presenter.Frame("LLM providers")
 	rows := make([]presentation.Row, 0, len(providers))
 	for _, provider := range providers {
 		selected := ""
@@ -801,16 +800,17 @@ func renderLLMProviderList(cmd *cobra.Command, providers []application.LLMProvid
 		}
 		rows = append(rows, presentation.Row{string(provider.ID), provider.Name, selected, string(provider.Protocol), provider.Model, string(provider.Readiness)})
 	}
-	presenter.Rows([]string{"ID", "Name", "Active", "Protocol", "Model", "Readiness"}, rows...)
-	presenter.Complete("Done")
+	presenter.Table([]string{"ID", "Name", "Active", "Protocol", "Model", "Readiness"}, rows, presentation.TableOptions{
+		Border: presentation.TableBare,
+		Layout: presentation.TableAdaptive,
+		Depth:  1,
+	})
 }
 
 func renderLLMProvider(cmd *cobra.Command, provider application.LLMProviderResult) {
 	presenter := commandPresenter(cmd)
-	presenter.Frame("LLM provider")
 	presenter.Subsection(string(provider.ID))
 	presenter.NestedFields(llmProviderFields(provider)...)
-	presenter.Complete("Done")
 }
 
 func llmProviderFields(provider application.LLMProviderResult) []presentation.Field {
@@ -851,7 +851,6 @@ func renderLLMCredentialResult(cmd *cobra.Command, result application.LLMCredent
 
 func renderLLMModels(cmd *cobra.Command, result application.LLMModelCatalogResult) {
 	presenter := commandPresenter(cmd)
-	presenter.Frame("LLM models")
 	presenter.Fields(
 		presentation.Field{Label: "provider", Value: result.ProviderID},
 		presentation.Field{Label: "catalog", Value: result.TotalCatalog},
@@ -880,7 +879,6 @@ func renderLLMModels(cmd *cobra.Command, result application.LLMModelCatalogResul
 		presenter.Fields(presentation.Field{Label: "recommendation source", Value: result.RecommendationSource}, presentation.Field{Label: "recommendation basis", Value: result.RecommendationBasis})
 	}
 	if len(result.Models) == 0 {
-		presenter.Complete("Done")
 		return
 	}
 	rows := make([]presentation.Row, 0, len(result.Models))
@@ -906,6 +904,9 @@ func renderLLMModels(cmd *cobra.Command, result application.LLMModelCatalogResul
 		rows = append(rows, presentation.Row{model.ID, model.Name, contextValue, freeValue, model.PromptPrice, model.CompletionPrice, access, rank})
 	}
 	presenter.Section(fmt.Sprintf("Models · %d", len(rows)))
-	presenter.Rows([]string{"ID", "Name", "Context", "Free", "Prompt", "Completion", "Access", "Rank"}, rows...)
-	presenter.Complete("Done")
+	presenter.Table([]string{"ID", "Name", "Context", "Free", "Prompt", "Completion", "Access", "Rank"}, rows, presentation.TableOptions{
+		Border: presentation.TableBare,
+		Layout: presentation.TableAdaptive,
+		Depth:  1,
+	})
 }

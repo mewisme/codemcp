@@ -54,7 +54,7 @@ func TestPromptWorkspaceRelocationResolutionSelections(t *testing.T) {
 			"┌  Workspace relocation",
 			"Duplicate workspace identity ws_test exists at both roots",
 			"│  ▸ Resolution",
-			"│  │  1 destination\n│  │    Keep destination .cm state",
+			"│  │  1 destination — Keep destination .cm state",
 			"Select resolution [1-4], then press Enter",
 			"└  Done",
 		} {

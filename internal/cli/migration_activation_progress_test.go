@@ -12,6 +12,7 @@ import (
 func TestMigrationActivationObserverRendersStagesChildrenAndRollback(t *testing.T) {
 	var output bytes.Buffer
 	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true, Animation: true})
+	session.SetTitle("Activate migrated CodeMCP state")
 	observe := migrationActivationProgressObserver(session)
 	observe(released024.ActivationEvent{Stage: "health", State: "running", Message: "Checking migrated state"})
 	observe(released024.ActivationEvent{Stage: "health", State: "success", Message: "config · verified", Child: true})

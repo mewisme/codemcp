@@ -26,7 +26,7 @@ func upgradeCommand() *cobra.Command {
 		if didMigrate {
 			renderSupplementalInstallSummary(cmd, migrated.Supplemental)
 		}
-		logCommandStep(cmd, "UPDATE", "update.installation.detecting", "Detecting current installation")
+		logCommandVerbose(cmd, "UPDATE", "update.installation.detecting", "Detecting current installation")
 		detection, err := install.DetectCurrent(version.Version)
 		if err != nil {
 			return fmt.Errorf("detect current installation: %w", err)
@@ -73,12 +73,12 @@ func upgradeCommand() *cobra.Command {
 			)
 			return nil
 		}
-		logCommandStep(cmd, "UPDATE", "update.runtime.inspecting", "Inspecting managed runtime state")
+		logCommandVerbose(cmd, "UPDATE", "update.runtime.inspecting", "Inspecting managed runtime state")
 		runtimeState, err := captureUpdateRuntimeState(cmd.Context())
 		if err != nil {
 			return fmt.Errorf("inspect managed runtime before update: %w", err)
 		}
-		logCommandStep(cmd, "UPDATE", "update.release.applying", "Downloading and activating release", logger.WithVerbose("target", plan.Target))
+		logCommandVerbose(cmd, "UPDATE", "update.release.applying", "Downloading and activating release", logger.WithVerbose("target", plan.Target))
 		options.ResolvedRelease = &plan.Release
 		result, err := updater.Apply(cmd.Context(), options)
 		if err != nil {
@@ -88,7 +88,7 @@ func upgradeCommand() *cobra.Command {
 			log.Verbose("UPDATE", "update.signature-warning", "Update signature warning", logger.WithVerbose("warning", warning))
 			commandProgressSession(cmd).Append(func(p *presentation.Presenter) { p.ChildStatus(presentation.StatusWarning, warning) })
 		}
-		logCommandStep(cmd, "UPDATE", "update.runtime.coordinating", "Coordinating updated managed runtime", logger.WithVerbose("restart", !noRestart))
+		logCommandVerbose(cmd, "UPDATE", "update.runtime.coordinating", "Coordinating updated managed runtime", logger.WithVerbose("restart", !noRestart))
 		if err := coordinateUpdatedRuntime(cmd, result.Install, runtimeState, noRestart); err != nil {
 			return fmt.Errorf("update to %s failed after activation: %w", result.Target, err)
 		}
@@ -123,7 +123,7 @@ func upgradeCommand() *cobra.Command {
 
 func upgradeCheckCommand() *cobra.Command {
 	return &cobra.Command{Use: "check", Short: "Check the latest available release", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		logCommandStep(cmd, "UPDATE", "update.release.checking", "Resolving latest release", logger.WithVerbose("current", version.Version))
+		logCommandVerbose(cmd, "UPDATE", "update.release.checking", "Resolving latest release", logger.WithVerbose("current", version.Version))
 		progress := newCommandProgress(cmd, "UPDATE")
 		progress.Start("update.checking", "Checking for updates", "Checked for updates")
 		checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}

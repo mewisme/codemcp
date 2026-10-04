@@ -8,9 +8,6 @@ import (
 )
 
 func migrationRetirementProgressObserver(session *presentation.ProgressSession) func(released024.RetirementEvent) {
-	if session != nil {
-		session.SetTitle("Retire released ChatGPT-MCP identities")
-	}
 	return func(event released024.RetirementEvent) {
 		if session == nil {
 			return

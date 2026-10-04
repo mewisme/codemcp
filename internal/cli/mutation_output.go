@@ -9,7 +9,6 @@ import (
 func renderMutationBlock(cmd *cobra.Command, render func(*presentation.Presenter)) {
 	session := commandProgressSession(cmd)
 	session.Append(render)
-	session.SetCompletion("Done")
 }
 
 func renderMutationResult(cmd *cobra.Command, kind presentation.StatusKind, message string, fields ...presentation.Field) {

@@ -73,7 +73,6 @@ func workspaceDoctorCommand() *cobra.Command {
 					fields = append(fields, presentation.Field{Label: "error", Value: diagnostic.Error})
 				}
 				presenter.Fields(fields...)
-				presenter.Complete("Done")
 				return nil
 			}
 			diagnostic, err := workspaceManagerForCommand(cmd).Diagnose(cmd.Context(), args[0])
@@ -115,7 +114,6 @@ func workspaceDoctorCommand() *cobra.Command {
 				fields = append(fields, presentation.Field{Label: "error", Value: diagnostic.Error})
 			}
 			presenter.Fields(fields...)
-			presenter.Complete("Done")
 			return nil
 		},
 	}
@@ -148,7 +146,6 @@ func workspaceRelocateCommand() *cobra.Command {
 					if cancelled {
 						presenter := commandPresenter(cmd)
 						presenter.StateSection(presentation.StatusInactive, "Workspace relocation cancelled")
-						presenter.Complete("Cancelled")
 						return nil
 					}
 					request.Resolution = resolution
@@ -228,7 +225,7 @@ func promptWorkspaceRelocationResolution(cmd *cobra.Command, conflict applicatio
 
 func workspaceManagerForCommand(cmd *cobra.Command) *workspace.Manager {
 	path := workspace.DefaultStorePath()
-	logCommandStep(cmd, "WORKSPACE", "workspace.store.opening", "Opening workspace registry")
+	logCommandVerbose(cmd, "WORKSPACE", "workspace.store.opening", "Opening workspace registry")
 	logCommandDebug(cmd, "WORKSPACE", "workspace.store.path", "Workspace registry path resolved", logger.WithDebug("path", path))
 	return workspace.NewManager(path).SetTraceObserver(tracepkg.ObserverFromContext(cmd.Context()))
 }
@@ -464,10 +461,8 @@ func workspaceShowCommand() *cobra.Command {
 }
 
 func renderWorkspaceList(cmd *cobra.Command, presenter *presentation.Presenter, items []application.WorkspaceView) {
-	presenter.Frame("Registered workspaces")
 	if len(items) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No registered workspaces")
-		presenter.Complete("Done")
 		return
 	}
 	presenter.Section(fmt.Sprintf("Registered workspaces · %d", len(items)))
@@ -486,11 +481,9 @@ func renderWorkspaceList(cmd *cobra.Command, presenter *presentation.Presenter, 
 		}
 		presenter.NestedFields(fields...)
 	}
-	presenter.Complete("Done")
 }
 
 func renderWorkspace(cmd *cobra.Command, presenter *presentation.Presenter, item application.WorkspaceView) {
-	presenter.Frame("Workspace details")
 	presenter.Subsection(item.ID)
 	fields := []presentation.Field{
 		{Label: "root", Value: item.Path},
@@ -511,7 +504,6 @@ func renderWorkspace(cmd *cobra.Command, presenter *presentation.Presenter, item
 		fields = append(fields, presentation.Field{Label: "legacy ids", Value: strings.Join(item.LegacyIDs, ", ")})
 	}
 	presenter.NestedFields(fields...)
-	presenter.Complete("Done")
 }
 
 func workspaceHygieneFields(cmd *cobra.Command, root string) []presentation.Field {
@@ -530,10 +522,8 @@ func workspaceHygieneFields(cmd *cobra.Command, root string) []presentation.Fiel
 }
 
 func renderWorkspaceContainers(presenter *presentation.Presenter, values []application.WorkspaceContainerView) {
-	presenter.Frame("Workspace containers")
 	if len(values) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No workspace containers")
-		presenter.Complete("Done")
 		return
 	}
 	presenter.Section(fmt.Sprintf("Workspace containers · %d", len(values)))
@@ -548,11 +538,9 @@ func renderWorkspaceContainers(presenter *presentation.Presenter, values []appli
 			presentation.Field{Label: "workspaces", Value: workspaces},
 		)
 	}
-	presenter.Complete("Done")
 }
 
 func renderWorkspaceContainer(presenter *presentation.Presenter, value application.WorkspaceContainerView) {
-	presenter.Frame("Workspace container details")
 	presenter.Subsection(value.ID)
 	workspaces := "none"
 	if len(value.WorkspaceIDs) > 0 {
@@ -562,11 +550,9 @@ func renderWorkspaceContainer(presenter *presentation.Presenter, value applicati
 		presentation.Field{Label: "name", Value: value.Name},
 		presentation.Field{Label: "workspaces", Value: workspaces},
 	)
-	presenter.Complete("Done")
 }
 
 func renderWorkspaceAccess(presenter *presentation.Presenter, workspaceID string, allowDirs []string) {
-	presenter.Frame("Allowed directories")
 	presenter.Section(fmt.Sprintf("Allowed directories · %d", len(allowDirs)))
 	presenter.Subsection(workspaceID)
 	if len(allowDirs) == 0 {
@@ -574,7 +560,6 @@ func renderWorkspaceAccess(presenter *presentation.Presenter, workspaceID string
 	} else {
 		presenter.NestedFields(presentation.Field{Label: "allow dirs", Value: strings.Join(allowDirs, ", ")})
 	}
-	presenter.Complete("Done")
 }
 
 func workspaceUnregisterCommand() *cobra.Command {

@@ -107,7 +107,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"│  ▸ Result\n│\n│  state\n│    ready"},
+			want:       []string{"│  ▸ Result\n│\n│  state — ready"},
 		},
 		{
 			name:  "list",
@@ -121,7 +121,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"│  ▸ Items · 1\n│\n│  ▸ item_one\n│  │  name\n│  │    One"},
+			want:       []string{"│  ▸ Items · 1\n│\n│  ▸ item_one\n│  │  name — One"},
 		},
 		{
 			name:  "detail",
@@ -134,7 +134,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"│  ▸ item_one\n│  │  name\n│  │    One"},
+			want:       []string{"│  ▸ item_one\n│  │  name — One"},
 		},
 		{
 			name:  "mutation",
@@ -144,7 +144,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"✓  Entity updated\n│\n│  ▸ item_one\n│  │  state\n│  │    ready"},
+			want:       []string{"✓  Entity updated\n│\n│  ▸ item_one\n│  │  state — ready"},
 		},
 		{
 			name:  "empty-state",
@@ -169,7 +169,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"◆  Runtime ready", "│  pid\n│    42"},
+			want:       []string{"◆  Runtime ready", "│  pid — 42"},
 		},
 	}
 
@@ -202,7 +202,7 @@ func TestRuntimeFailureUsesCanonicalFailedWorkflow(t *testing.T) {
 	}
 	text := output.String()
 	assertSingleHumanWorkflow(t, text, "Read runtime logs", "Failed")
-	for _, want := range []string{"×  CodeMCP runtime is not running", "│  ▸ Actions", "│  │  Start the managed runtime\n│  │    cm up"} {
+	for _, want := range []string{"×  CodeMCP runtime is not running", "│  ▸ Actions", "│  │  Start the managed runtime — cm up"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("runtime failure missing %q: %q", want, text)
 		}
@@ -245,8 +245,8 @@ func TestTunnelListExactLifecycleContract(t *testing.T) {
 		"┌  Managed OpenAI tunnels",
 		"◆  Loaded managed tunnels · 1",
 		"│  ▸ tunnel_one",
-		"│  │  name\n│  │    One",
-		"│  │  workspaces\n│  │    ws_admin",
+		"│  │  name — One",
+		"│  │  workspaces — ws_admin",
 		"└  Done",
 	)
 	if strings.Count(text, "Loaded managed tunnels") != 1 {
@@ -295,9 +295,9 @@ func TestTunnelUseExactLifecycleContract(t *testing.T) {
 		"◆  Fetched managed tunnel",
 		"✓  Managed tunnel selected",
 		"│  ▸ tunnel_one",
-		"│  │  name\n│  │    One",
-		"│  │  runtime\n│  │    configured",
-		"│  │  enabled\n│  │    true",
+		"│  │  name — One",
+		"│  │  runtime — configured",
+		"│  │  enabled — true",
 		"└  Done",
 	)
 	if strings.Contains(text, "│  ◆ id — tunnel_one") || strings.Count(text, "Managed tunnel selected") != 1 {

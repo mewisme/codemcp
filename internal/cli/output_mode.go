@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 
 	"github.com/spf13/cobra"
@@ -105,4 +106,19 @@ func writeResultJSON(cmd *cobra.Command, value any) error {
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(value)
+}
+
+func writePlainResultLine(cmd *cobra.Command, value any) error {
+	_, err := fmt.Fprintln(commandResultWriter(cmd), value)
+	return err
+}
+
+func writePlainResultf(cmd *cobra.Command, format string, args ...any) error {
+	_, err := fmt.Fprintf(commandResultWriter(cmd), format, args...)
+	return err
+}
+
+func writeMachineResultLine(cmd *cobra.Command, value any) error {
+	_, err := fmt.Fprintln(commandResultWriter(cmd), value)
+	return err
 }

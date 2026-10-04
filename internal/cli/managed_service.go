@@ -49,7 +49,7 @@ func restartCommand() *cobra.Command {
 }
 
 func runUp(cmd *cobra.Command, _ []string) error {
-	logCommandStep(cmd, "SERVICE", "service.scope.resolving", "Resolving managed service scope")
+	logCommandVerbose(cmd, "SERVICE", "service.scope.resolving", "Resolving managed service scope")
 	scope, err := managedScopeForCommand(cmd)
 	if err != nil {
 		return err
@@ -60,7 +60,7 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	}
 	environmentHash, _ := cmd.Flags().GetString("service-environment-hash")
 	if environmentHash == "" {
-		logCommandStep(cmd, "SERVICE", "service.environment.capturing", "Capturing managed service environment")
+		logCommandVerbose(cmd, "SERVICE", "service.environment.capturing", "Capturing managed service environment")
 		environmentHash, err = saveManagedEnvironmentContext(cmd.Context(), spec)
 		if err != nil {
 			return err
@@ -69,14 +69,14 @@ func runUp(cmd *cobra.Command, _ []string) error {
 	spec.EnvironmentHash = environmentHash
 	logCommandDebug(cmd, "SERVICE", "service.spec.resolved", "Managed service specification resolved", logger.WithDebug("scope", spec.Scope), logger.WithDebug("service_id", spec.ID), logger.WithDebug("config", spec.ConfigRoot), logger.WithDebug("binary", spec.Binary), logger.WithDebug("backend", manager.Backend()))
 	if scope == managed.ScopeSystem && managed.DetectScope() == managed.ScopeUser {
-		logCommandStep(cmd, "SERVICE", "service.elevating", "Elevating managed service operation")
+		logCommandVerbose(cmd, "SERVICE", "service.elevating", "Elevating managed service operation")
 		return elevateManagedCommandWithBinary(cmd, "up", environmentHash, spec.Binary)
 	}
 	return runManagedUp(cmd, spec, manager)
 }
 
 func runDown(cmd *cobra.Command, _ []string) error {
-	logCommandStep(cmd, "SERVICE", "service.scope.resolving", "Resolving managed service scope")
+	logCommandVerbose(cmd, "SERVICE", "service.scope.resolving", "Resolving managed service scope")
 	scope, err := managedScopeForCommand(cmd)
 	if err != nil {
 		return err
@@ -92,7 +92,7 @@ func runDown(cmd *cobra.Command, _ []string) error {
 }
 
 func runRestart(cmd *cobra.Command, _ []string) error {
-	logCommandStep(cmd, "SERVICE", "service.scope.resolving", "Resolving managed service scope")
+	logCommandVerbose(cmd, "SERVICE", "service.scope.resolving", "Resolving managed service scope")
 	scope, err := managedScopeForCommand(cmd)
 	if err != nil {
 		return err
@@ -108,7 +108,7 @@ func runRestart(cmd *cobra.Command, _ []string) error {
 	spec.Binary = binary
 	environmentHash, _ := cmd.Flags().GetString("service-environment-hash")
 	if environmentHash == "" {
-		logCommandStep(cmd, "SERVICE", "service.environment.capturing", "Capturing managed service environment")
+		logCommandVerbose(cmd, "SERVICE", "service.environment.capturing", "Capturing managed service environment")
 		environmentHash, err = saveManagedEnvironmentContext(cmd.Context(), spec)
 		if err != nil {
 			return err
@@ -122,7 +122,7 @@ func runRestart(cmd *cobra.Command, _ []string) error {
 }
 
 func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
-	logCommandStep(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
+	logCommandVerbose(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
 	source, err := config.Source()
 	if err != nil {
 		return err
@@ -259,7 +259,7 @@ func resolveManagedConfigRoot(cmd *cobra.Command, scope managed.Scope, account m
 }
 
 func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
-	logCommandStep(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
+	logCommandVerbose(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
 	source, err := config.Source()
 	if err != nil {
 		return err
@@ -274,7 +274,7 @@ func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager
 	if err != nil {
 		return err
 	}
-	logCommandStep(cmd, "SERVICE", "service.backend.inspecting", "Inspecting managed service backend", logger.WithVerbose("backend", manager.Backend()))
+	logCommandVerbose(cmd, "SERVICE", "service.backend.inspecting", "Inspecting managed service backend", logger.WithVerbose("backend", manager.Backend()))
 	backendStatus, err := manager.Status(spec)
 	if err != nil {
 		return err

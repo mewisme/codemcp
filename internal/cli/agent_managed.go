@@ -204,10 +204,8 @@ func outputManagedAgentSnapshot(cmd *cobra.Command, asJSON bool, snapshot manage
 }
 
 func renderManagedAgentList(presenter *presentation.Presenter, snapshots []managedagent.Snapshot) {
-	presenter.Frame("Managed agents")
 	if len(snapshots) == 0 {
 		presenter.StateSection(presentation.StatusInactive, "No managed agents")
-		presenter.Complete("Done")
 		return
 	}
 	rows := make([]presentation.Row, 0, len(snapshots))
@@ -217,12 +215,14 @@ func renderManagedAgentList(presenter *presentation.Presenter, snapshots []manag
 			string(snapshot.Backend), fmt.Sprint(snapshot.Turn), fmt.Sprint(snapshot.Revision),
 		})
 	}
-	presenter.Rows([]string{"ID", "State", "Workspace", "Backend", "Turn", "Revision"}, rows...)
-	presenter.Complete("Done")
+	presenter.Table([]string{"ID", "State", "Workspace", "Backend", "Turn", "Revision"}, rows, presentation.TableOptions{
+		Border: presentation.TableBare,
+		Layout: presentation.TableAdaptive,
+		Depth:  1,
+	})
 }
 
 func renderManagedAgentSnapshot(presenter *presentation.Presenter, snapshot managedagent.Snapshot, title string) {
-	presenter.Frame(title)
 	presenter.StateSection(managedAgentPresentationKind(snapshot.State), strings.ToUpper(string(snapshot.State)))
 	presenter.Subsection(string(snapshot.ID))
 	fields := []presentation.Field{
@@ -248,7 +248,6 @@ func renderManagedAgentSnapshot(presenter *presentation.Presenter, snapshot mana
 		presenter.Section("Error")
 		presenter.List(snapshot.Error)
 	}
-	presenter.Complete("Done")
 }
 
 func managedAgentPresentationKind(state managedagent.State) presentation.StatusKind {

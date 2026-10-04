@@ -90,13 +90,10 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 			}
 			if commandResultModeFor(cmd) == resultModeHuman {
 				presenter := commandPresenter(cmd)
-				presenter.Frame("Configuration")
 				presenter.Fields(presentation.Field{Label: strings.TrimSpace(key), Value: text})
-				presenter.Complete("Done")
 				return nil
 			}
-			fmt.Fprintln(commandResultWriter(cmd), text)
-			return nil
+			return writePlainResultLine(cmd, text)
 		}
 	}
 	lines := make([]string, 0)
@@ -112,18 +109,22 @@ func printConfigSelection(cmd *cobra.Command, cfg config.Config, key string, lis
 			rows = append(rows, presentation.Row{name, value})
 		}
 		presenter := commandPresenter(cmd)
-		presenter.Frame("Configuration")
 		section := strings.TrimSpace(key)
 		if section == "" {
 			section = "Values"
 		}
 		presenter.Section(section)
-		presenter.Rows([]string{"Key", "Value"}, rows...)
-		presenter.Complete("Done")
+		presenter.Table([]string{"Key", "Value"}, rows, presentation.TableOptions{
+			Border: presentation.TableBare,
+			Layout: presentation.TableAdaptive,
+			Depth:  1,
+		})
 		return nil
 	}
 	for _, line := range lines {
-		fmt.Fprintln(commandResultWriter(cmd), line)
+		if err := writePlainResultLine(cmd, line); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -171,13 +172,10 @@ func printSettingSelection(cmd *cobra.Command, service *application.SettingServi
 			}
 			if commandResultModeFor(cmd) == resultModeHuman {
 				presenter := commandPresenter(cmd)
-				presenter.Frame("Configuration")
 				presenter.Fields(presentation.Field{Label: result.Spec.Key, Value: result.Value})
-				presenter.Complete("Done")
 				return nil
 			}
-			fmt.Fprintln(commandResultWriter(cmd), result.Value)
-			return nil
+			return writePlainResultLine(cmd, result.Value)
 		}
 		if spec, ok := config.SettingByKey(key); ok && !spec.InternalOnly {
 			return err
@@ -211,7 +209,6 @@ func printSettingSelection(cmd *cobra.Command, service *application.SettingServi
 	sort.Strings(keys)
 	if commandResultModeFor(cmd) == resultModeHuman {
 		presenter := commandPresenter(cmd)
-		presenter.Frame("Configuration")
 		headers := []string{"Key", "Value"}
 		if !options.noAccepts {
 			headers = append(headers, "Accepts")
@@ -240,13 +237,19 @@ func printSettingSelection(cmd *cobra.Command, service *application.SettingServi
 		widths := presentation.AlignedRowWidths(headers, allRows...)
 		for _, group := range groups {
 			presenter.Subsection(group.scope)
-			presenter.AlignedNestedRowsWithWidths(headers, widths, group.rows...)
+			presenter.Table(headers, group.rows, presentation.TableOptions{
+				Border: presentation.TableBare,
+				Layout: presentation.TableAdaptive,
+				Depth:  2,
+				Widths: widths,
+			})
 		}
-		presenter.Complete("Done")
 		return nil
 	}
 	for _, settingKey := range keys {
-		fmt.Fprintf(commandResultWriter(cmd), "%s = %s\n", settingKey, settingDisplayValue(values[settingKey]))
+		if err := writePlainResultf(cmd, "%s = %s\n", settingKey, settingDisplayValue(values[settingKey])); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -279,15 +282,19 @@ func printSettingDiff(cmd *cobra.Command, service *application.SettingService, p
 			rows = append(rows, presentation.Row{key, settingDisplayValue(value["current"]), settingDisplayValue(value["baseline"])})
 		}
 		presenter := commandPresenter(cmd)
-		presenter.Frame("Configuration diff")
 		presenter.Section(fmt.Sprintf("Changed %d settings", len(keys)))
-		presenter.Rows([]string{"Setting", "Current", "Baseline"}, rows...)
-		presenter.Complete("Done")
+		presenter.Table([]string{"Setting", "Current", "Baseline"}, rows, presentation.TableOptions{
+			Border: presentation.TableBare,
+			Layout: presentation.TableAdaptive,
+			Depth:  1,
+		})
 		return nil
 	}
 	for _, key := range keys {
 		value := values[key].(map[string]any)
-		fmt.Fprintf(commandResultWriter(cmd), "%s = %s (default: %s)\n", key, settingDisplayValue(value["current"]), settingDisplayValue(value["baseline"]))
+		if err := writePlainResultf(cmd, "%s = %s (default: %s)\n", key, settingDisplayValue(value["current"]), settingDisplayValue(value["baseline"])); err != nil {
+			return err
+		}
 	}
 	return nil
 }

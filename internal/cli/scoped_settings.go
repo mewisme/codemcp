@@ -322,7 +322,6 @@ func typeSafeDoctorCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			result, err := application.NewTypeSafeService().Doctor(cmd.Context(), probe)
 			presenter := commandPresenter(cmd)
-			presenter.Frame("TypeSafe doctor")
 			for _, check := range result.Checks {
 				status := presentation.StatusSuccess
 				if !check.OK {
@@ -333,7 +332,6 @@ func typeSafeDoctorCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			presenter.Complete("Doctor complete")
 			return nil
 		},
 	}
@@ -389,20 +387,17 @@ func typeSafeProbeCommand() *cobra.Command {
 				return err
 			}
 			presenter := commandPresenter(cmd)
-			presenter.Frame("TypeSafe probe")
 			presenter.StateSection(presentation.StatusSuccess, "TypeSafe model is available")
 			presenter.NestedFields(
 				presentation.Field{Label: "model", Value: result.Status.Model},
 				presentation.Field{Label: "http", Value: result.Provider.HTTPStatus},
 			)
-			presenter.Complete("Probe complete")
 			return nil
 		},
 	}
 }
 
 func renderTypeSafeStatus(presenter *presentation.Presenter, status application.TypeSafeStatus) {
-	presenter.Frame("TypeSafe integration")
 	kind := presentation.StatusInfo
 	if status.State == application.TypeSafeReady {
 		kind = presentation.StatusSuccess
@@ -416,7 +411,6 @@ func renderTypeSafeStatus(presenter *presentation.Presenter, status application.
 		presentation.Field{Label: "model", Value: status.Model},
 		presentation.Field{Label: "timeout ms", Value: status.TimeoutMS},
 	)
-	presenter.Complete("Status complete")
 }
 
 func configuredLabel(configured bool) string {
