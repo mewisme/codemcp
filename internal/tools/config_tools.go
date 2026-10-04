@@ -67,6 +67,7 @@ func RegisterConfigTools(registry *Registry, runtime *Runtime) {
 		OutputSchema: mcpconfigwire.SetOutputSchema,
 		Annotations:  ToolAnnotations(RiskEdit),
 		Capability:   toolCapability(CapabilityDomainConfig),
+		Approval:     inlineApprovalMetadata(),
 	}, configSetHandler(runtime))
 }
 

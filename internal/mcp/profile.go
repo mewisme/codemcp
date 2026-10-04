@@ -114,7 +114,7 @@ func ProjectTool(profile Profile, descriptor ToolDescriptor, options ToolProject
 	if strings.TrimSpace(descriptor.Name) == "" {
 		return ProjectedTool{}, errors.New("tool descriptor name is required")
 	}
-	input, err := projectInputSchema(descriptor.InputSchema, options.BoundWorkspace)
+	input, err := projectInputSchema(descriptor.InputSchema, options.BoundWorkspace, descriptor.Approval)
 	if err != nil {
 		return ProjectedTool{}, fmt.Errorf("project tool %q input schema: %w", descriptor.Name, err)
 	}
@@ -289,7 +289,7 @@ func ProjectSDKServer(profile Profile, descriptor ProtocolDescriptors) (*sdkmcp.
 	}
 }
 
-func projectInputSchema(input json.RawMessage, boundWorkspace bool) (json.RawMessage, error) {
+func projectInputSchema(input json.RawMessage, boundWorkspace bool, approval *tools.ApprovalMetadata) (json.RawMessage, error) {
 	if len(input) == 0 {
 		input = json.RawMessage(`{"type":"object"}`)
 	}
@@ -297,8 +297,14 @@ func projectInputSchema(input json.RawMessage, boundWorkspace bool) (json.RawMes
 	if err != nil {
 		return nil, err
 	}
+	properties, _ := object["properties"].(map[string]any)
+	if properties != nil {
+		if _, reserved := properties[tools.InlineApprovalArgumentKey]; reserved {
+			return nil, fmt.Errorf("input schema property %q is reserved for runtime approval metadata", tools.InlineApprovalArgumentKey)
+		}
+	}
 	if boundWorkspace {
-		if properties, ok := object["properties"].(map[string]any); ok {
+		if properties != nil {
 			delete(properties, "workspace_id")
 		}
 		if required, ok := object["required"].([]any); ok {
@@ -313,6 +319,30 @@ func projectInputSchema(input json.RawMessage, boundWorkspace bool) (json.RawMes
 			} else {
 				object["required"] = filtered
 			}
+		}
+	}
+	if approval != nil && approval.Inline {
+		if properties == nil {
+			properties = map[string]any{}
+			object["properties"] = properties
+		}
+		properties[tools.InlineApprovalArgumentKey] = map[string]any{
+			"type":        "object",
+			"description": "Request local human approval for the exact previously challenged invocation. This is runtime metadata, not a business argument.",
+			"properties": map[string]any{
+				tools.InlineApprovalChallengeID: map[string]any{
+					"type":      "string",
+					"minLength": 1,
+				},
+				tools.InlineApprovalTitle: map[string]any{
+					"type":        "string",
+					"minLength":   1,
+					"maxLength":   tools.InlineApprovalTitleMaxLen,
+					"description": "Concise human-readable summary of what the guarded action will do. Do not copy raw commands, flags, arguments, tokens, secrets, or IDs.",
+				},
+			},
+			"required":             []any{tools.InlineApprovalChallengeID, tools.InlineApprovalTitle},
+			"additionalProperties": false,
 		}
 	}
 	return json.Marshal(object)

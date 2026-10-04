@@ -130,11 +130,23 @@ func normalizeRegisteredSchema(name string, schema Schema) (Schema, error) {
 		return Schema{}, fmt.Errorf("tool %q capability: %w", name, err)
 	}
 	schema.Capability = capability
+	approval, err := normalizeApprovalMetadata(schema.Approval)
+	if err != nil {
+		return Schema{}, fmt.Errorf("tool %q approval: %w", name, err)
+	}
+	schema.Approval = approval
 	if len(schema.InputSchema) == 0 {
 		schema.InputSchema = json.RawMessage(`{"type":"object"}`)
 	}
 	if err := ValidateSchemaDocument(schema.InputSchema, true); err != nil {
 		return Schema{}, fmt.Errorf("tool %q input schema: %w", name, err)
+	}
+	reserved, err := schemaHasInputProperty(schema, InlineApprovalArgumentKey)
+	if err != nil {
+		return Schema{}, err
+	}
+	if reserved {
+		return Schema{}, fmt.Errorf("tool %q input schema property %q is reserved for runtime approval metadata", name, InlineApprovalArgumentKey)
 	}
 	if len(schema.OutputSchema) > 0 {
 		if err := ValidateSchemaDocument(schema.OutputSchema, false); err != nil {

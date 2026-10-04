@@ -37,6 +37,15 @@ func TestCatalogHashIsOrderIndependentAndSchemaSensitive(t *testing.T) {
 	if withCapability == left {
 		t.Fatal("catalog hash did not change with capability metadata")
 	}
+	second.Capability = nil
+	second.Approval = inlineApprovalMetadata()
+	withApproval, err := CatalogHash([]Schema{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withApproval == left {
+		t.Fatal("catalog hash did not change with approval metadata")
+	}
 }
 
 func TestCapabilityGroupingIsDeterministicBoundedAndExplicitlyUnclassified(t *testing.T) {
@@ -164,6 +173,39 @@ func TestFirstPartyRuntimeToolsHaveCapabilities(t *testing.T) {
 		schema, ok := runtime.Registry.Schema(name)
 		if !ok || schema.Capability == nil || schema.Capability.Domain != domain {
 			t.Fatalf("%s capability = %#v want %q", name, schema.Capability, domain)
+		}
+	}
+}
+
+func TestFirstPartyApprovableToolsAdvertiseInlineApproval(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewRuntime()
+	defer runtime.CompletionHooks.Stop()
+
+	want := map[string]bool{
+		"config_set":    true,
+		"git_push":      true,
+		"git_reset":     true,
+		"git_restore":   true,
+		"rewind":        true,
+		"run_command":   true,
+		"start_process": true,
+	}
+	got := map[string]bool{}
+	for _, schema := range runtime.Registry.ListSchemas() {
+		if schema.Approval != nil && schema.Approval.Inline {
+			got[schema.Name] = true
+			if strings.Contains(string(schema.InputSchema), InlineApprovalArgumentKey) {
+				t.Fatalf("canonical business schema for %q contains reserved approval envelope: %s", schema.Name, schema.InputSchema)
+			}
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("inline approval tool inventory=%v want=%v", got, want)
+	}
+	for name := range want {
+		if !got[name] {
+			t.Fatalf("approvable tool %q missing inline approval metadata: got=%v", name, got)
 		}
 	}
 }

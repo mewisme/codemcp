@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"go.mewis.me/codemcp/internal/controlguard"
 )
 
 func TestRegistryNormalizesAndValidatesToolSchemas(t *testing.T) {
@@ -28,6 +30,17 @@ func TestRegistryNormalizesAndValidatesToolSchemas(t *testing.T) {
 	capabilitySchema, ok := registry.Schema("capability-normalized")
 	if !ok || capabilitySchema.Capability == nil || capabilitySchema.Capability.Domain != "git-operations" {
 		t.Fatalf("normalized capability = %#v", capabilitySchema.Capability)
+	}
+	if err := registry.Register("approval-normalized", Schema{
+		Name: "approval-normalized", Approval: &ApprovalMetadata{Inline: true},
+	}, func(context.Context, map[string]any) (Result, error) {
+		return TextResult("ok"), nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	approvalSchema, ok := registry.Schema("approval-normalized")
+	if !ok || approvalSchema.Approval == nil || !approvalSchema.Approval.Inline {
+		t.Fatalf("normalized approval = %#v", approvalSchema.Approval)
 	}
 
 	cases := map[string]Schema{
@@ -69,6 +82,14 @@ func TestRegistryNormalizesAndValidatesToolSchemas(t *testing.T) {
 			Name:       "reserved-capability",
 			Capability: &CapabilityMetadata{Domain: CapabilityDomainUnclassified},
 		},
+		"invalid-approval": {
+			Name:     "invalid-approval",
+			Approval: &ApprovalMetadata{},
+		},
+		"reserved-approval-input": {
+			Name:        "reserved-approval-input",
+			InputSchema: json.RawMessage(`{"type":"object","properties":{"_approval":{"type":"object"}},"additionalProperties":false}`),
+		},
 	}
 	for name, schema := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -81,6 +102,24 @@ func TestRegistryNormalizesAndValidatesToolSchemas(t *testing.T) {
 				t.Fatal("invalid schema leaked into registry")
 			}
 		})
+	}
+}
+
+func TestInlineApprovalMetadataDoesNotGrantRuntimeAuthority(t *testing.T) {
+	registry := NewRegistry()
+	registry.MustRegister("approval-probe", Schema{
+		Name: "approval-probe", Approval: inlineApprovalMetadata(),
+	}, func(ctx context.Context, _ map[string]any) (Result, error) {
+		_, granted := controlguard.GrantFromContext(ctx)
+		return JSONResult(map[string]any{"granted": granted}), nil
+	})
+	result, err := registry.Call(context.Background(), "approval-probe", map[string]any{})
+	if err != nil || result.IsError {
+		t.Fatalf("call result=%#v err=%v", result, err)
+	}
+	value, ok := result.StructuredContent.(map[string]any)
+	if !ok || value["granted"] != false {
+		t.Fatalf("approval metadata granted authority: %#v", result.StructuredContent)
 	}
 }
 

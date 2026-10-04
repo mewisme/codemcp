@@ -63,6 +63,7 @@ func RegisterRewindTools(registry *Registry, workspaces *workspace.Manager, chec
 		OutputSchema: json.RawMessage(`{"type":"object","additionalProperties":true}`),
 		Annotations:  ToolAnnotations(RiskDestructive),
 		Capability:   toolCapability(CapabilityDomainRewind),
+		Approval:     inlineApprovalMetadata(),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {

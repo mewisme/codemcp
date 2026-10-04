@@ -30,13 +30,14 @@ type ServerDescriptor struct {
 }
 
 type ToolDescriptor struct {
-	Name         string                 `json:"name"`
-	Title        string                 `json:"title,omitempty"`
-	Description  string                 `json:"description,omitempty"`
-	InputSchema  json.RawMessage        `json:"input_schema"`
-	OutputSchema json.RawMessage        `json:"output_schema,omitempty"`
-	Effects      ToolEffects            `json:"effects"`
-	Security     ToolSecurityDescriptor `json:"security"`
+	Name         string                  `json:"name"`
+	Title        string                  `json:"title,omitempty"`
+	Description  string                  `json:"description,omitempty"`
+	InputSchema  json.RawMessage         `json:"input_schema"`
+	OutputSchema json.RawMessage         `json:"output_schema,omitempty"`
+	Effects      ToolEffects             `json:"effects"`
+	Security     ToolSecurityDescriptor  `json:"security"`
+	Approval     *tools.ApprovalMetadata `json:"-"`
 }
 
 // ToolEffects contains semantic MCP hints only. It must not be interpreted as
@@ -151,6 +152,11 @@ func cloneAuthRequirements(requirements []AuthRequirement) []AuthRequirement {
 }
 
 func DescribeTool(schema tools.Schema) ToolDescriptor {
+	var approval *tools.ApprovalMetadata
+	if schema.Approval != nil {
+		copy := *schema.Approval
+		approval = &copy
+	}
 	return ToolDescriptor{
 		Name:         strings.TrimSpace(schema.Name),
 		Title:        strings.TrimSpace(schema.Title),
@@ -159,6 +165,7 @@ func DescribeTool(schema tools.Schema) ToolDescriptor {
 		OutputSchema: cloneRawMessage(schema.OutputSchema),
 		Effects:      effectsFromAnnotations(schema.Annotations),
 		Security:     ToolSecurityDescriptor{ApprovalAuthority: runtimeApprovalAuthority},
+		Approval:     approval,
 	}
 }
 

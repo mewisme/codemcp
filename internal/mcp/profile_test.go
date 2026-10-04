@@ -126,6 +126,99 @@ func TestBaseSDKProjectionMatchesPortableProjection(t *testing.T) {
 	}
 }
 
+func TestApprovalCapableProjectionAddsReservedEnvelopeAcrossProfiles(t *testing.T) {
+	descriptor := DescribeTool(tools.Schema{
+		Name:        "approval_projection_probe",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`),
+		Approval:    &tools.ApprovalMetadata{Inline: true},
+	})
+	for _, profile := range []Profile{BaseProfile(), OpenAIProfile(), presentationOnlyProfile{}} {
+		projected, err := ProjectTool(profile, descriptor, ToolProjectionOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertInlineApprovalProjection(t, projected.InputSchema, true)
+
+		bound, err := ProjectTool(profile, descriptor, ToolProjectionOptions{BoundWorkspace: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertInlineApprovalProjection(t, bound.InputSchema, false)
+	}
+}
+
+func TestProjectionDoesNotAddApprovalEnvelopeToOrdinaryTool(t *testing.T) {
+	descriptor := DescribeTool(tools.Schema{
+		Name:        "ordinary_projection_probe",
+		InputSchema: json.RawMessage(`{"type":"object","additionalProperties":false}`),
+	})
+	projected, err := ProjectTool(BaseProfile(), descriptor, ToolProjectionOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(projected.InputSchema, &schema); err != nil {
+		t.Fatal(err)
+	}
+	properties, _ := schema["properties"].(map[string]any)
+	if _, ok := properties[tools.InlineApprovalArgumentKey]; ok {
+		t.Fatalf("ordinary tool gained inline approval envelope: %s", projected.InputSchema)
+	}
+	if _, ok := schema["properties"]; ok {
+		t.Fatalf("ordinary tool projection changed schema shape: %s", projected.InputSchema)
+	}
+}
+
+func TestProjectionRejectsReservedApprovalInputCollision(t *testing.T) {
+	descriptor := DescribeTool(tools.Schema{
+		Name:        "approval_collision_probe",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"_approval":{"type":"string"}},"additionalProperties":false}`),
+		Approval:    &tools.ApprovalMetadata{Inline: true},
+	})
+	if _, err := ProjectTool(BaseProfile(), descriptor, ToolProjectionOptions{}); err == nil || !strings.Contains(err.Error(), "reserved for runtime approval metadata") {
+		t.Fatalf("reserved approval collision error=%v", err)
+	}
+}
+
+func assertInlineApprovalProjection(t *testing.T, raw json.RawMessage, expectWorkspace bool) {
+	t.Helper()
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	properties, _ := schema["properties"].(map[string]any)
+	_, hasWorkspace := properties["workspace_id"]
+	if hasWorkspace != expectWorkspace {
+		t.Fatalf("workspace projection=%t want=%t schema=%s", hasWorkspace, expectWorkspace, raw)
+	}
+	approval, ok := properties[tools.InlineApprovalArgumentKey].(map[string]any)
+	if !ok {
+		t.Fatalf("inline approval schema missing: %s", raw)
+	}
+	if approval["type"] != "object" || approval["additionalProperties"] != false {
+		t.Fatalf("inline approval object=%#v", approval)
+	}
+	nested, _ := approval["properties"].(map[string]any)
+	challenge, _ := nested[tools.InlineApprovalChallengeID].(map[string]any)
+	title, _ := nested[tools.InlineApprovalTitle].(map[string]any)
+	if challenge["type"] != "string" || challenge["minLength"] != float64(1) {
+		t.Fatalf("challenge schema=%#v", challenge)
+	}
+	if title["type"] != "string" || title["minLength"] != float64(1) || title["maxLength"] != float64(tools.InlineApprovalTitleMaxLen) {
+		t.Fatalf("title schema=%#v", title)
+	}
+	required, _ := approval["required"].([]any)
+	if len(required) != 2 || required[0] != tools.InlineApprovalChallengeID || required[1] != tools.InlineApprovalTitle {
+		t.Fatalf("approval required=%#v", required)
+	}
+	topRequired, _ := schema["required"].([]any)
+	for _, item := range topRequired {
+		if item == tools.InlineApprovalArgumentKey {
+			t.Fatalf("inline approval envelope became top-level required: %#v", topRequired)
+		}
+	}
+}
+
 func TestProfileDoesNotAffectToolExecutionContextOrResult(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.MustRegister("execution_probe", tools.Schema{

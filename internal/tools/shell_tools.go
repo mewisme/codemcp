@@ -24,14 +24,24 @@ func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell
 	if len(brokers) > 0 {
 		broker = brokers[0]
 	}
-	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
-		registry.MustRegister(name, Schema{
+	registerWithApproval := func(name, title, description, input, output string, risk Risk, approval bool, handler Handler) {
+		schema := Schema{
 			Name: name, Title: title, Description: description,
 			InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: ToolAnnotations(risk), Capability: toolCapability(CapabilityDomainShell),
-		}, handler)
+		}
+		if approval {
+			schema.Approval = inlineApprovalMetadata()
+		}
+		registry.MustRegister(name, schema, handler)
+	}
+	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
+		registerWithApproval(name, title, description, input, output, risk, false, handler)
+	}
+	registerApproval := func(name, title, description, input, output string, risk Risk, handler Handler) {
+		registerWithApproval(name, title, description, input, output, risk, true, handler)
 	}
 
-	register("run_command", "Run Command", "Run shell commands in the workspace persisted cwd. Cwd changes persist server-side and all commands remain workspace-contained. Use start_process for builds, tests, or other commands that may run long enough to exceed a synchronous tunnel response deadline.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`, `{"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"},"stdout":{"type":"string"},"stderr":{"type":"string"},"stdout_truncated":{"type":"boolean"},"stderr_truncated":{"type":"boolean"},"exit_code":{"type":"integer"},"timed_out":{"type":"boolean"}},"required":["command","cwd","stdout","stderr","stdout_truncated","stderr_truncated","exit_code","timed_out"],"additionalProperties":false}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
+	registerApproval("run_command", "Run Command", "Run shell commands in the workspace persisted cwd. Cwd changes persist server-side and all commands remain workspace-contained. Use start_process for builds, tests, or other commands that may run long enough to exceed a synchronous tunnel response deadline.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`, `{"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"},"stdout":{"type":"string"},"stderr":{"type":"string"},"stdout_truncated":{"type":"boolean"},"stderr_truncated":{"type":"boolean"},"exit_code":{"type":"integer"},"timed_out":{"type":"boolean"}},"required":["command","cwd","stdout","stderr","stdout_truncated","stderr_truncated","exit_code","timed_out"],"additionalProperties":false}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
 		workspaceID, err := requiredString(args, "workspace_id")
 		if err != nil {
 			return Result{}, err
@@ -80,7 +90,7 @@ func RegisterShellTools(registry *Registry, workspaces *workspace.Manager, shell
 		return JSONResult(value), nil
 	})
 
-	register("start_process", "Start Background Process", "Start a long-running command in the workspace persisted cwd. Background commands cannot contain cwd-changing directives. Completion is lifecycle-driven; do not poll process_status/process_output while waiting.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`, `{"type":"object","properties":{"id":{"type":"string"},"execution_id":{"type":"string"},"pid":{"type":"integer"},"command":{"type":"string"},"cwd":{"type":"string"},"started_at":{"type":"string"}},"required":["id","pid","command","cwd","started_at"],"additionalProperties":false}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
+	registerApproval("start_process", "Start Background Process", "Start a long-running command in the workspace persisted cwd. Background commands cannot contain cwd-changing directives. Completion is lifecycle-driven; do not poll process_status/process_output while waiting.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"command":{"type":"string"}},"required":["workspace_id","command"],"additionalProperties":false}`, `{"type":"object","properties":{"id":{"type":"string"},"execution_id":{"type":"string"},"pid":{"type":"integer"},"command":{"type":"string"},"cwd":{"type":"string"},"started_at":{"type":"string"}},"required":["id","pid","command","cwd","started_at"],"additionalProperties":false}`, RiskCommand, func(ctx context.Context, args map[string]any) (Result, error) {
 		workspaceID, err := requiredString(args, "workspace_id")
 		if err != nil {
 			return Result{}, err
