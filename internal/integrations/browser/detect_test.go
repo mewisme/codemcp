@@ -159,7 +159,7 @@ func TestDetectPassiveDiscoversBrowserWithoutProbing(t *testing.T) {
 	capability := Detect(context.Background(), Options{
 		Enabled: true, StateRoot: root, Runtime: fake.runtime(), Passive: true,
 	})
-	if capability.State != StateAvailable || !capability.Available || capability.Usable {
+	if capability.State != StateAvailable || !capability.Available || !capability.Launchable || capability.Usable {
 		t.Fatalf("capability=%#v", capability)
 	}
 	if capability.Family != FamilyChromium || capability.Profile == nil {
@@ -167,6 +167,67 @@ func TestDetectPassiveDiscoversBrowserWithoutProbing(t *testing.T) {
 	}
 	if len(fake.probed) != 0 {
 		t.Fatalf("passive detection probed browsers: %#v", fake.probed)
+	}
+}
+
+func TestDetectActiveProbeMarksCapabilityUsableAndLaunchable(t *testing.T) {
+	fake := &fakeBrowserRuntime{
+		goos: "linux",
+		env:  map[string]string{"DISPLAY": ":0"},
+		look: map[string]string{"chromium": "/usr/bin/chromium"},
+		exists: func(path string) bool {
+			return path == "/usr/bin/chromium"
+		},
+		probe: func(Candidate) ProbeResult {
+			return ProbeResult{Usable: true, Graphical: true, Family: FamilyChromium, Version: "154.0.0.0"}
+		},
+	}
+	capability := Detect(context.Background(), Options{
+		Enabled: true, StateRoot: t.TempDir(), Runtime: fake.runtime(),
+	})
+	if capability.State != StateAvailable || !capability.Available || !capability.Launchable || !capability.Usable {
+		t.Fatalf("capability=%#v", capability)
+	}
+	if len(fake.probed) != 1 {
+		t.Fatalf("active detection probes=%d want=1", len(fake.probed))
+	}
+}
+
+func TestPassiveCapabilityCanReachManagedLauncherWithoutProbe(t *testing.T) {
+	fake := &fakeBrowserRuntime{
+		goos: "linux",
+		env:  map[string]string{"DISPLAY": ":0"},
+		look: map[string]string{"chromium": "/usr/bin/chromium"},
+		exists: func(path string) bool {
+			return path == "/usr/bin/chromium"
+		},
+		probe: func(Candidate) ProbeResult {
+			t.Fatal("passive detection must not probe before the managed launch")
+			return ProbeResult{}
+		},
+	}
+	capability := Detect(context.Background(), Options{
+		Enabled: true, StateRoot: t.TempDir(), Runtime: fake.runtime(), Passive: true,
+	})
+	launcher := &fakeLauncher{}
+	connector := &fakeConnector{}
+	manager, err := NewManager(ManagerOptions{
+		Capability: capability,
+		Launcher:   launcher,
+		Connector:  connector,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close(context.Background())
+	if err := manager.EnsureRunning(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if launcher.count() != 1 {
+		t.Fatalf("managed launches=%d want=1", launcher.count())
+	}
+	if len(fake.probed) != 0 {
+		t.Fatalf("passive discovery probes=%#v", fake.probed)
 	}
 }
 

@@ -39,6 +39,100 @@ func TestManagerLaunchArgsSupportMinimizedVisibleWindow(t *testing.T) {
 	}
 }
 
+func TestInteractiveLaunchArgsUseIsolatedProfileWithoutAutomationTransport(t *testing.T) {
+	tests := []struct {
+		name    string
+		request InteractiveLaunchRequest
+		profile string
+	}{
+		{
+			name: "native",
+			request: InteractiveLaunchRequest{
+				Candidate: Candidate{Transport: TransportNative, HostPlatform: "linux"},
+				Profile: ProfileRef{
+					Transport: TransportNative,
+					Path:      "/tmp/codemcp-browser-profile",
+					LocalPath: "/tmp/codemcp-browser-profile",
+				},
+				URL: "https://chatgpt.com/?temporary-chat=true",
+			},
+			profile: "/tmp/codemcp-browser-profile",
+		},
+		{
+			name: "wsl host",
+			request: InteractiveLaunchRequest{
+				Candidate: Candidate{Transport: TransportWSLHost, HostPlatform: "windows"},
+				Profile: ProfileRef{
+					HostPlatform: "windows",
+					Transport:    TransportWSLHost,
+					Path:         `C:\Users\Mew\AppData\Local\CodeMCP\Browser\ChatGPT`,
+					LocalPath:    "/mnt/c/Users/Mew/AppData/Local/CodeMCP/Browser/ChatGPT",
+				},
+				URL: "https://chatgpt.com/?temporary-chat=true",
+			},
+			profile: `C:\Users\Mew\AppData\Local\CodeMCP\Browser\ChatGPT`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			args, err := interactiveLaunchArgs(test.request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			joined := strings.Join(args, " ")
+			for _, required := range []string{
+				"--new-window",
+				"--disable-background-mode",
+				"--user-data-dir=" + test.profile,
+				"--profile-directory=Default",
+				"https://chatgpt.com/?temporary-chat=true",
+			} {
+				if !strings.Contains(joined, required) {
+					t.Fatalf("interactive args missing %q: %v", required, args)
+				}
+			}
+			for _, forbidden := range []string{
+				"--remote-debugging",
+				"--headless",
+				"--incognito",
+				"--guest",
+				"--proxy",
+				"--load-extension",
+				"--disable-extensions-except",
+				"--remote-allow-origins",
+				"--enable-automation",
+			} {
+				if strings.Contains(joined, forbidden) {
+					t.Fatalf("interactive args contain forbidden %q: %v", forbidden, args)
+				}
+			}
+		})
+	}
+}
+
+func TestInteractiveLaunchArgsRejectCrossHostAndNonWebTargets(t *testing.T) {
+	if _, err := interactiveLaunchArgs(InteractiveLaunchRequest{
+		Candidate: Candidate{Transport: TransportWSLHost, HostPlatform: "windows"},
+		Profile: ProfileRef{
+			Transport: TransportNative, HostPlatform: "linux",
+			Path: "/tmp/profile", LocalPath: "/tmp/profile",
+		},
+		URL: "https://chatgpt.com/",
+	}); err == nil {
+		t.Fatal("interactive launcher args accepted cross-host profile")
+	}
+	if _, err := interactiveLaunchArgs(InteractiveLaunchRequest{
+		Candidate: Candidate{Transport: TransportNative, HostPlatform: "linux"},
+		Profile: ProfileRef{
+			Transport: TransportNative, HostPlatform: "linux",
+			Path: "/tmp/profile", LocalPath: "/tmp/profile",
+		},
+		URL: "file:///tmp/page.html",
+	}); err == nil {
+		t.Fatal("interactive launcher args accepted non-web URL")
+	}
+}
+
 func TestLaunchAdaptersRejectCrossHostProfileMismatch(t *testing.T) {
 	if _, _, err := launchNativeBrowser(context.Background(), LaunchRequest{
 		Candidate: Candidate{Transport: TransportNative},

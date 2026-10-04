@@ -441,6 +441,70 @@ func TestBrowserManagerMinimizeUsesBoundedCDPClientOperation(t *testing.T) {
 	}
 }
 
+func TestBrowserManagerAcceptsLaunchableCapabilityWithoutActiveProbeEvidence(t *testing.T) {
+	profile := testProfile(t.TempDir())
+	capability := testCapability(profile)
+	capability.Usable = false
+	manager, err := NewManager(ManagerOptions{
+		Capability: capability,
+		Launcher:   &fakeLauncher{},
+		Connector:  &fakeConnector{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close(context.Background())
+	if err := manager.EnsureRunning(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBrowserManagerRejectsStructurallyIncompleteLaunchableCapability(t *testing.T) {
+	profile := testProfile(t.TempDir())
+	tests := []struct {
+		name       string
+		capability Capability
+	}{
+		{name: "not launchable", capability: func() Capability {
+			value := testCapability(profile)
+			value.Launchable = false
+			return value
+		}()},
+		{name: "missing candidate", capability: func() Capability {
+			value := testCapability(profile)
+			value.Candidate = nil
+			return value
+		}()},
+		{name: "missing profile", capability: func() Capability {
+			value := testCapability(profile)
+			value.Profile = nil
+			return value
+		}()},
+		{name: "no graphical route", capability: func() Capability {
+			value := testCapability(profile)
+			value.Graphical = false
+			return value
+		}()},
+		{name: "transport mismatch", capability: func() Capability {
+			value := testCapability(profile)
+			value.Profile = &ProfileRef{
+				HostPlatform: "windows",
+				Transport:    TransportWSLHost,
+				Path:         `C:\Users\Mew\AppData\Local\CodeMCP\Browser\ChatGPT`,
+				LocalPath:    "/mnt/c/Users/Mew/AppData/Local/CodeMCP/Browser/ChatGPT",
+			}
+			return value
+		}()},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := NewManager(ManagerOptions{Capability: test.capability}); err == nil {
+				t.Fatalf("NewManager accepted capability=%#v", test.capability)
+			}
+		})
+	}
+}
+
 func newFakeManager(t *testing.T, maxTabs int, idleTTL, warmTTL time.Duration) (*Manager, *fakeLauncher, *fakeConnector) {
 	t.Helper()
 	root := t.TempDir()
@@ -473,7 +537,7 @@ func testCapability(profile ProfileRef) Capability {
 		HostPlatform: "linux", Transport: TransportNative, Source: SourceConfigured,
 	}
 	return Capability{
-		State: StateAvailable, Enabled: true, Available: true, Usable: true,
+		State: StateAvailable, Enabled: true, Available: true, Launchable: true, Usable: true,
 		Family: FamilyChromium, Executable: candidate.Executable,
 		HostPlatform: "linux", Transport: TransportNative, Graphical: true,
 		ProfileHostPlatform: profile.HostPlatform, Profile: &profile, Candidate: &candidate,

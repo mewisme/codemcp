@@ -102,6 +102,42 @@ func managerLaunchArgs(profile string, minimized bool) []string {
 	return append(args, "about:blank")
 }
 
+func interactiveLaunchArgs(request InteractiveLaunchRequest) ([]string, error) {
+	profilePath := strings.TrimSpace(request.Profile.Path)
+	if profilePath == "" || strings.TrimSpace(request.Profile.LocalPath) == "" {
+		return nil, errors.New("interactive browser profile paths are required")
+	}
+	switch request.Candidate.Transport {
+	case TransportNative:
+		if request.Profile.Transport != TransportNative {
+			return nil, errors.New("native interactive browser requires a native profile")
+		}
+	case TransportWSLHost:
+		if request.Candidate.HostPlatform != "windows" || request.Profile.Transport != TransportWSLHost || request.Profile.HostPlatform != "windows" {
+			return nil, errors.New("WSL-host interactive browser requires a Windows-host profile")
+		}
+	default:
+		return nil, fmt.Errorf("unsupported interactive browser transport %q", request.Candidate.Transport)
+	}
+	targetURL := strings.TrimSpace(request.URL)
+	parsedURL, err := url.Parse(targetURL)
+	if err != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return nil, errors.New("interactive browser URL must be absolute")
+	}
+	if parsedURL.Scheme != "https" && parsedURL.Scheme != "http" {
+		return nil, errors.New("interactive browser URL must use http or https")
+	}
+	return []string{
+		"--no-first-run",
+		"--no-default-browser-check",
+		"--disable-background-mode",
+		"--user-data-dir=" + profilePath,
+		"--profile-directory=" + managedProfileDirectory,
+		"--new-window",
+		targetURL,
+	}, nil
+}
+
 func waitBrowserEndpoint(ctx context.Context, candidate Candidate, localProfile string, process BrowserProcess) (BrowserEndpoint, *loopbackRelay, error) {
 	portFile := filepath.Join(localProfile, "DevToolsActivePort")
 	ticker := time.NewTicker(50 * time.Millisecond)

@@ -53,6 +53,16 @@ type BrowserLauncher interface {
 	Launch(context.Context, LaunchRequest) (BrowserProcess, BrowserEndpoint, error)
 }
 
+type InteractiveLaunchRequest struct {
+	Candidate Candidate
+	Profile   ProfileRef
+	URL       string
+}
+
+type InteractiveBrowserLauncher interface {
+	Launch(context.Context, InteractiveLaunchRequest) (BrowserProcess, error)
+}
+
 type BrowserTab interface {
 	ID() string
 	Navigate(context.Context, string) error

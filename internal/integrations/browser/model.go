@@ -64,6 +64,7 @@ type Capability struct {
 	State               State       `json:"state"`
 	Enabled             bool        `json:"enabled"`
 	Available           bool        `json:"available"`
+	Launchable          bool        `json:"launchable"`
 	Usable              bool        `json:"usable"`
 	Family              Family      `json:"family,omitempty"`
 	Executable          string      `json:"executable,omitempty"`

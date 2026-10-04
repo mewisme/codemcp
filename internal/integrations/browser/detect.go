@@ -109,7 +109,7 @@ func discoverCapability(root string, runtime Runtime, candidate Candidate) Capab
 		return unavailable(true, err.Error())
 	}
 	return Capability{
-		State: StateAvailable, Enabled: true, Available: true, Usable: false,
+		State: StateAvailable, Enabled: true, Available: true, Launchable: true, Usable: false,
 		Family: candidate.Family, Executable: candidate.Executable,
 		HostPlatform: candidate.HostPlatform, Transport: candidate.Transport, Graphical: true,
 		ProfileHostPlatform: profile.HostPlatform, Profile: &profile, Candidate: &candidate,
@@ -124,7 +124,7 @@ func probeCapability(ctx context.Context, root string, runtime Runtime, candidat
 	}
 	if !result.Usable {
 		return Capability{
-			State: StateUnavailable, Enabled: true, Available: false, Usable: false,
+			State: StateUnavailable, Enabled: true, Available: false, Launchable: false, Usable: false,
 			Family: family, Executable: candidate.Executable,
 			HostPlatform: candidate.HostPlatform, Transport: candidate.Transport,
 			Graphical: result.Graphical, Version: result.Version, Reason: boundedReason(result.Reason),
@@ -138,7 +138,7 @@ func probeCapability(ctx context.Context, root string, runtime Runtime, candidat
 		return unavailable(true, err.Error())
 	}
 	return Capability{
-		State: StateAvailable, Enabled: true, Available: true, Usable: true,
+		State: StateAvailable, Enabled: true, Available: true, Launchable: true, Usable: true,
 		Family: family, Executable: candidate.Executable, Version: result.Version,
 		HostPlatform: candidate.HostPlatform, Transport: candidate.Transport, Graphical: result.Graphical,
 		ProfileHostPlatform: profile.HostPlatform, Profile: &profile, Candidate: &candidate,

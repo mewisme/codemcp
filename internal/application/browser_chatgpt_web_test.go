@@ -702,7 +702,7 @@ func applicationTestCapabilityWithExecutable(profile browser.ProfileRef, executa
 		HostPlatform: "linux", Transport: browser.TransportNative, Source: browser.SourceConfigured,
 	}
 	return browser.Capability{
-		State: browser.StateAvailable, Enabled: true, Available: true, Usable: true,
+		State: browser.StateAvailable, Enabled: true, Available: true, Launchable: true, Usable: true,
 		Family: browser.FamilyChromium, Executable: candidate.Executable, Version: "Chromium Test",
 		HostPlatform: "linux", Transport: browser.TransportNative, Graphical: true,
 		ProfileHostPlatform: profile.HostPlatform, Profile: &profile, Candidate: &candidate,
