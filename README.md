@@ -2,7 +2,7 @@
 
 # CodeMCP
 
-**A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.**
+**CodeMCP is a workspace-aware execution, context, and agent orchestration server for AI clients.**
 
 Single Go binary · OpenAI Secure MCP Tunnel · Linux, macOS, and Windows
 

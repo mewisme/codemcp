@@ -30,7 +30,7 @@ func commandUsesExecuteLifecycle(cmd *cobra.Command) bool {
 func newRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               cliUseName(),
-		Short:             "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.",
+		Short:             "CodeMCP is a workspace-aware execution, context, and agent orchestration server for AI clients.",
 		Version:           version.Short(),
 		SilenceErrors:     true,
 		SilenceUsage:      true,

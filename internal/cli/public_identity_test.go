@@ -17,7 +17,7 @@ func TestRootCommandWithoutArgumentsPrintsHelp(t *testing.T) {
 	}
 	help := output.String()
 	for _, required := range []string{
-		"A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.",
+		"CodeMCP is a workspace-aware execution, context, and agent orchestration server for AI clients.",
 		"Usage:\n  cm [command]",
 		"Available Commands:",
 		"serve",
@@ -59,7 +59,7 @@ func TestPublicCLIIdentityUsesOnlyCodeMCPAndCM(t *testing.T) {
 	}
 	help := output.String()
 	for _, required := range []string{
-		"A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.",
+		"CodeMCP is a workspace-aware execution, context, and agent orchestration server for AI clients.",
 		"Usage:\n  cm [command]",
 		"Generate shell completion for cm",
 		"env: CM_CONFIG_DIR",

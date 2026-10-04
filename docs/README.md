@@ -1,6 +1,6 @@
 # CodeMCP documentation
 
-A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine.
+CodeMCP is a workspace-aware execution, context, and agent orchestration server for AI clients.
 
 Start with [Getting started](getting-started.md). Use the other guides when you need to change a boundary, transport, integration, or operator workflow.
 

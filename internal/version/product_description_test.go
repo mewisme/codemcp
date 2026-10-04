@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const canonicalProjectDescription = "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine."
+const canonicalProjectDescription = "CodeMCP is a workspace-aware execution, context, and agent orchestration server for AI clients."
 
 func TestCanonicalProjectDescriptionDoesNotDrift(t *testing.T) {
 	root := repositoryRoot(t)

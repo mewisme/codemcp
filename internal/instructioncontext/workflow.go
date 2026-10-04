@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	agentWorkflowIntroduction = "Use CodeMCP as a multi-workspace coding agent with explicit workspace targeting."
-	serverIntroduction        = "Use CodeMCP for local, workspace-aware coding and project operations."
+	agentWorkflowIntroduction = "CodeMCP is a workspace-aware execution, context, and agent orchestration server for AI clients. Use its capabilities with explicit workspace targeting."
+	serverIntroduction        = "CodeMCP is a workspace-aware execution, context, and agent orchestration server for AI clients."
 	serverWorkspaceBootstrap  = "For project work, use the workspace_id supplied by the MCP profile when available; otherwise use workspace_list to select an already registered workspace. Use workspace_status to inspect its registered root, persisted shell cwd, and allowed directories. Workspace registration is operator-owned and is not exposed as an agent tool. If the user provides a wsc_* workspace container, call workspace_container_context first and choose concrete member ws_* workspace IDs for actual work."
 	serverContextBootstrap    = "Call agent_status when runtime or permission details are needed. If the client negotiated the native Skills extension, use skills/list and skills/get for Skill discovery/content and do not fetch the same Skill again through Tool fallback; otherwise use list_skills/load_skill."
 

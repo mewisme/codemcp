@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	linuxPackageDescription = "A secure, workspace-bound MCP bridge connecting ChatGPT, Claude, and other AI agents to your machine."
+	linuxPackageDescription = "CodeMCP is a workspace-aware execution, context, and agent orchestration server for AI clients."
 	linuxPackageMaintainer  = "mewisme"
 	linuxPackageVendor      = "mewisme"
 )
