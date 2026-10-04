@@ -34,7 +34,7 @@ func TestPresenterRepresentativeHumanUnicode(t *testing.T) {
 		"│  ▸ Runtime",
 		"│  status — running",
 		"✓  Ready",
-		"│  ▸ Loopback",
+		"│  └─ Loopback",
 		"│  │  mcp http — http://127.0.0.1:37421/mcp",
 		"│  ├─ alpha",
 		"│  └─ beta",
@@ -76,9 +76,9 @@ func TestPresenterRailHierarchyGolden(t *testing.T) {
 		"│  pid — 4242\n" +
 		"│  session — run_abcd\n" +
 		"│\n" +
-		"◇  Tunnel\n" +
+		"·  Tunnel\n" +
 		"│\n" +
-		"│  ◇ OpenAI Secure MCP Tunnel — disabled\n" +
+		"│  · OpenAI Secure MCP Tunnel — disabled\n" +
 		"│\n" +
 		"└  Status complete\n"
 	if got := output.String(); got != want {
@@ -153,7 +153,7 @@ func TestPresenterEntitySubsectionKeepsNestedFieldsContiguous(t *testing.T) {
 		"│\n" +
 		"│  ▸ Managed tunnel loaded\n" +
 		"│\n" +
-		"│  ▸ tunnel_demo\n" +
+		"│  └─ tunnel_demo\n" +
 		"│  │  name — Demo\n" +
 		"│  │  enabled — true\n" +
 		"│\n" +
@@ -256,7 +256,7 @@ func TestPresenterRichPaletteLocalizesColorToStructureAndStateTokens(t *testing.
 		theme.Render(RoleSuccess, "✓") + "  CodeMCP is running",
 		theme.Render(RoleRail, "│") + "  " + theme.Render(RoleStructure, "▸") + " " + theme.Render(RoleHeading, "Runtime"),
 		theme.Render(RoleRail, "│") + "  " + theme.Render(RoleLabel, "pid"),
-		theme.Render(RoleMuted, "◇") + "  " + theme.Render(RoleHeading, "Tunnel"),
+		theme.Render(RoleMuted, "·") + "  " + theme.Render(RoleHeading, "Tunnel"),
 		theme.Render(RoleRail, "└") + "  Status complete",
 	} {
 		if !strings.Contains(text, expected) {
@@ -272,6 +272,22 @@ func TestPresenterRichPaletteLocalizesColorToStructureAndStateTokens(t *testing.
 	} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("rich palette leaked role %q into settled text: %q", forbidden, text)
+		}
+	}
+}
+
+func TestInactiveSemanticStateDoesNotReuseProgressGlyphs(t *testing.T) {
+	var output bytes.Buffer
+	p := New(&output, ModeHuman, Capabilities{Width: 100, Unicode: true})
+	p.StateSection(StatusInactive, "Disabled")
+	p.ChildState(StatusInactive, "Optional integration", "disabled")
+	text := output.String()
+	if strings.Contains(text, "◆") || strings.Contains(text, "◇") {
+		t.Fatalf("inactive semantic state reused progress glyphs: %q", text)
+	}
+	for _, want := range []string{"·  Disabled", "│  · Optional integration — disabled"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("inactive semantic state missing %q: %q", want, text)
 		}
 	}
 }

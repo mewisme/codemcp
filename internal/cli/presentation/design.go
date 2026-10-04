@@ -102,8 +102,9 @@ func (block EntityList) render(p *Presenter) {
 	if block.Title != "" {
 		p.Section(block.Title)
 	}
-	for _, item := range block.Items {
-		EntityDetail{Entity: item}.render(p)
+	for index, item := range block.Items {
+		p.SubsectionItem(item.Title, index == len(block.Items)-1)
+		p.NestedFields(item.Fields...)
 	}
 }
 

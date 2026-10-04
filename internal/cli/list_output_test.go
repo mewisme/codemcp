@@ -170,7 +170,7 @@ func TestWorkspaceReadRenderersUseRailHierarchy(t *testing.T) {
 		})
 	})
 	text := output.String()
-	for _, expected := range []string{"┌  Workspace container details", "│  ▸ wsc_demo", "│  │  name — Demo", "│  │  workspaces — ws_one, ws_two", "└  Done"} {
+	for _, expected := range []string{"┌  Workspace container details", "│  └─ wsc_demo", "│  │  name — Demo", "│  │  workspaces — ws_one, ws_two", "└  Done"} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("workspace container detail missing %q: %q", expected, text)
 		}
@@ -182,7 +182,7 @@ func TestWorkspaceReadRenderersUseRailHierarchy(t *testing.T) {
 		renderWorkspaceAccess(presenter, "ws_demo", []string{"/data/one", "/data/two"})
 	})
 	access := output.String()
-	for _, expected := range []string{"┌  Allowed directories", "│  ▸ Allowed directories · 2", "│  ▸ ws_demo", "│  │  allow dirs — /data/one, /data/two", "└  Done"} {
+	for _, expected := range []string{"┌  Allowed directories", "│  ▸ Allowed directories · 2", "│  └─ ws_demo", "│  │  allow dirs — /data/one, /data/two", "└  Done"} {
 		if !strings.Contains(access, expected) {
 			t.Fatalf("workspace access missing %q: %q", expected, access)
 		}

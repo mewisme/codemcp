@@ -23,8 +23,8 @@ func toolsCommand() *cobra.Command {
 		}
 		p := commandPresenter(cmd)
 		p.Section(fmt.Sprintf("Tools · %d", len(result.Value)))
-		for _, value := range result.Value {
-			p.Subsection(value.Name)
+		for index, value := range result.Value {
+			p.SubsectionItem(value.Name, index == len(result.Value)-1)
 			p.NestedFields(presentation.Field{Label: "description", Value: value.Description})
 		}
 		return nil
@@ -48,8 +48,8 @@ func executionCommand() *cobra.Command {
 		}
 		p := commandPresenter(cmd)
 		p.Section(fmt.Sprintf("Executions · %d", len(result.Value)))
-		for _, value := range result.Value {
-			p.Subsection(value.ID)
+		for index, value := range result.Value {
+			p.SubsectionItem(value.ID, index == len(result.Value)-1)
 			p.NestedFields(presentation.Field{Label: "status", Value: value.Status}, presentation.Field{Label: "tool", Value: value.Tool}, presentation.Field{Label: "command", Value: value.Command})
 		}
 		return nil
@@ -90,8 +90,8 @@ func processCommand() *cobra.Command {
 		}
 		p := commandPresenter(cmd)
 		p.Section(fmt.Sprintf("Processes · %d", len(result.Value)))
-		for _, value := range result.Value {
-			p.Subsection(value.ID)
+		for index, value := range result.Value {
+			p.SubsectionItem(value.ID, index == len(result.Value)-1)
 			p.NestedFields(presentation.Field{Label: "pid", Value: value.PID}, presentation.Field{Label: "running", Value: value.Running}, presentation.Field{Label: "command", Value: value.Command})
 		}
 		return nil

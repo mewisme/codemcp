@@ -121,7 +121,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"│  ▸ Items · 1\n│\n│  ▸ item_one\n│  │  name — One"},
+			want:       []string{"│  ▸ Items · 1\n│\n│  └─ item_one\n│  │  name — One"},
 		},
 		{
 			name:  "detail",
@@ -134,7 +134,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"│  ▸ item_one\n│  │  name — One"},
+			want:       []string{"│  └─ item_one\n│  │  name — One"},
 		},
 		{
 			name:  "mutation",
@@ -144,7 +144,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"✓  Entity updated\n│\n│  ▸ item_one\n│  │  state — ready"},
+			want:       []string{"✓  Entity updated\n│\n│  └─ item_one\n│  │  state — ready"},
 		},
 		{
 			name:  "empty-state",
@@ -155,7 +155,7 @@ func TestRepresentativeWorkflowStructures(t *testing.T) {
 				return nil
 			},
 			completion: "Done",
-			want:       []string{"◇  No items"},
+			want:       []string{"·  No items"},
 		},
 		{
 			name:  "long-running",
@@ -244,7 +244,7 @@ func TestTunnelListExactLifecycleContract(t *testing.T) {
 	assertOrderedLifecycle(t, text,
 		"┌  Managed OpenAI tunnels",
 		"◆  Loaded managed tunnels · 1",
-		"│  ▸ tunnel_one",
+		"│  └─ tunnel_one",
 		"│  │  name — One",
 		"│  │  workspaces — ws_admin",
 		"└  Done",
@@ -252,7 +252,7 @@ func TestTunnelListExactLifecycleContract(t *testing.T) {
 	if strings.Count(text, "Loaded managed tunnels") != 1 {
 		t.Fatalf("managed tunnel loading terminal phase duplicated: %q", text)
 	}
-	if !strings.Contains(text, "◆  Loaded managed tunnels · 1\n│\n│  ▸ tunnel_one") {
+	if !strings.Contains(text, "◆  Loaded managed tunnels · 1\n│\n│  └─ tunnel_one") {
 		t.Fatalf("managed tunnel list lost the single block spacer: %q", text)
 	}
 }
@@ -294,7 +294,7 @@ func TestTunnelUseExactLifecycleContract(t *testing.T) {
 		"┌  Select managed OpenAI tunnel",
 		"◆  Fetched managed tunnel",
 		"✓  Managed tunnel selected",
-		"│  ▸ tunnel_one",
+		"│  └─ tunnel_one",
 		"│  │  name — One",
 		"│  │  runtime — configured",
 		"│  │  enabled — true",
@@ -303,7 +303,7 @@ func TestTunnelUseExactLifecycleContract(t *testing.T) {
 	if strings.Contains(text, "│  ◆ id — tunnel_one") || strings.Count(text, "Managed tunnel selected") != 1 {
 		t.Fatalf("managed tunnel entity/result duplicated: %q", text)
 	}
-	if !strings.Contains(text, "✓  Managed tunnel selected\n│\n│  ▸ tunnel_one") {
+	if !strings.Contains(text, "✓  Managed tunnel selected\n│\n│  └─ tunnel_one") {
 		t.Fatalf("managed tunnel result lost the single entity spacer: %q", text)
 	}
 }

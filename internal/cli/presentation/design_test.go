@@ -26,11 +26,11 @@ func TestTypedDesignEntityListMatchesRailHierarchy(t *testing.T) {
 		"│\n" +
 		"│  ▸ Settings · 2\n" +
 		"│\n" +
-		"│  ▸ admin\n" +
+		"│  ├─ admin\n" +
 		"│  │  http.admin.enabled — true\n" +
 		"│  │  http.admin.port — 37422\n" +
 		"│\n" +
-		"│  ▸ server\n" +
+		"│  └─ server\n" +
 		"│  │  http.mcp.enabled — false\n" +
 		"│\n" +
 		"└  Done\n"
@@ -62,10 +62,10 @@ func TestTypedDesignBlocksComposeExistingPresenterPrimitives(t *testing.T) {
 		"│  pid — 42",
 		"│  ▸ Runtime",
 		"│  state — running",
-		"◇  Tunnel",
+		"·  Tunnel",
 		"│  │  tunnel.enabled — false",
 		"│  ! Metadata unavailable",
-		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
+		"│  · OpenAI Secure MCP Tunnel — disabled",
 		"│  ▸ Rows",
 		"│  ID   State",
 		"│  one  ready",
@@ -88,7 +88,7 @@ func TestRenderBlockRendersTypedFragmentWithoutOwningFrame(t *testing.T) {
 	p.Complete("Done")
 
 	got := output.String()
-	for _, want := range []string{"┌  Fragment", "│  ▸ one", "│  │  name — One", "└  Done"} {
+	for _, want := range []string{"┌  Fragment", "│  └─ one", "│  │  name — One", "└  Done"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("typed fragment output missing %q: %q", want, got)
 		}

@@ -176,7 +176,7 @@ func runStatus(cmd *cobra.Command, _ []string) (runErr error) {
 		snapshot.Tunnel.Ready = snapshot.Runtime.TunnelReady
 		snapshot.Tunnel.Restarting = snapshot.Runtime.TunnelRestarting
 		snapshot.Tunnel.LastError = snapshot.Runtime.TunnelLastError
-		renderStatusTunnelSection(presenter, statusTunnelState(snapshot.Runtime, true))
+		renderStatusTunnelSection(presenter)
 		renderStatusTunnelBody(presenter, snapshot, verbose)
 		return nil
 	}
@@ -332,13 +332,13 @@ func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSna
 		}
 		return addresses[i].Host < addresses[j].Host
 	})
-	for _, address := range addresses {
+	for index, address := range addresses {
 		name := address.Interface
 		if name == "" {
 			name = address.Scope
 		}
 		presenter.Spacer()
-		presenter.Subsection(name)
+		presenter.SubsectionItem(name, index == len(addresses)-1)
 		addressFields := []presentation.Field{}
 		if cfg.HTTP.MCP.Enabled {
 			addressFields = append(addressFields, presentation.Field{Label: "mcp http", Value: endpointURL(address.Host, cfg.HTTP.MCP.Port, "/mcp")})
@@ -360,21 +360,12 @@ func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSna
 
 func renderStatusTunnel(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
 	presenter.Spacer()
-	status := snapshot.Runtime
-	if !snapshot.Running {
-		status = runtimeStatusResult{TunnelEnabled: snapshot.Config.Tunnel.Enabled, TunnelConfigured: tunnel.Configured(snapshot.Config.Tunnel), TunnelID: snapshot.Config.Tunnel.ID}
-	}
-	renderStatusTunnelSection(presenter, statusTunnelState(status, snapshot.Running))
+	renderStatusTunnelSection(presenter)
 	renderStatusTunnelBody(presenter, snapshot, verbose)
 }
 
-func renderStatusTunnelSection(presenter *presentation.Presenter, state string) {
-	kind := statusPresentationKind(state)
-	if kind == presentation.StatusSuccess || kind == presentation.StatusInfo {
-		presenter.Section("Tunnel")
-		return
-	}
-	presenter.StateSection(kind, "Tunnel")
+func renderStatusTunnelSection(presenter *presentation.Presenter) {
+	presenter.Section("Tunnel")
 }
 
 func renderStatusTunnelBody(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {

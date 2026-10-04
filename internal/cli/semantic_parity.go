@@ -53,8 +53,8 @@ func networkCommand() *cobra.Command {
 			p.StateSection(presentation.StatusInactive, "No eligible interfaces")
 		} else {
 			p.Section(fmt.Sprintf("Interfaces · %d", len(values)))
-			for _, value := range values {
-				p.Subsection(value.Name)
+			for index, value := range values {
+				p.SubsectionItem(value.Name, index == len(values)-1)
 				for _, address := range value.Addresses {
 					p.NestedFields(presentation.Field{Label: address.Scope, Value: address.Host})
 				}
@@ -148,8 +148,8 @@ func workspaceContainerMembershipListCommand() *cobra.Command {
 		}
 		p := commandPresenter(cmd)
 		p.Section(fmt.Sprintf("Workspaces · %d", len(result.Value)))
-		for _, value := range result.Value {
-			p.Subsection(value.ID)
+		for index, value := range result.Value {
+			p.SubsectionItem(value.ID, index == len(result.Value)-1)
 			p.NestedFields(presentation.Field{Label: "path", Value: value.Path})
 		}
 		return nil

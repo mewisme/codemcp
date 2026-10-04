@@ -339,11 +339,7 @@ func renderManagedTunnelList(presenter *presentation.Presenter, items []tunnel.M
 		}
 		entities = append(entities, presentation.Entity{Title: item.ID, Fields: fields})
 	}
-	presenter.Render(presentation.Design{
-		Title:      "Managed OpenAI tunnels",
-		Completion: "Done",
-		Blocks:     []presentation.DesignBlock{presentation.EntityList{Items: entities}},
-	})
+	presenter.RenderBlock(presentation.EntityList{Items: entities})
 }
 
 func renderManagedTunnel(presenter *presentation.Presenter, metadata tunnel.Metadata) {

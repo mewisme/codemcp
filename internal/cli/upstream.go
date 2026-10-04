@@ -436,13 +436,13 @@ func upstreamServerToolsCommand() *cobra.Command {
 				return nil
 			}
 			presenter.Section(fmt.Sprintf("Upstream tools · %d", len(values)))
-			for _, tool := range values {
+			for index, tool := range values {
 				proxy := upstream.ProxyName(server.ToolPrefix, tool.Name)
 				state := "hidden"
 				if proxied[proxy] {
 					state = proxy
 				}
-				presenter.Subsection(tool.Name)
+				presenter.SubsectionItem(tool.Name, index == len(values)-1)
 				presenter.NestedFields(presentation.Field{Label: "exposed as", Value: state})
 			}
 			return nil
@@ -458,12 +458,12 @@ func renderUpstreamServerList(presenter *presentation.Presenter, servers []upstr
 		return
 	}
 	presenter.Section(fmt.Sprintf("Upstream servers · %d", len(servers)))
-	for _, server := range servers {
+	for index, server := range servers {
 		endpoint := server.URL
 		if server.Transport == "stdio" {
 			endpoint = server.Command
 		}
-		presenter.Subsection(server.ID)
+		presenter.SubsectionItem(server.ID, index == len(servers)-1)
 		presenter.NestedFields(
 			presentation.Field{Label: "transport", Value: server.Transport},
 			presentation.Field{Label: "enabled", Value: server.Enabled},
@@ -479,8 +479,8 @@ func renderUpstreamStatusList(presenter *presentation.Presenter, statuses []upst
 		return
 	}
 	presenter.Section(fmt.Sprintf("Upstream status · %d", len(statuses)))
-	for _, status := range statuses {
-		presenter.Subsection(status.ID)
+	for index, status := range statuses {
+		presenter.SubsectionItem(status.ID, index == len(statuses)-1)
 		presenter.NestedFields(
 			presentation.Field{Label: "transport", Value: status.Transport},
 			presentation.Field{Label: "enabled", Value: status.Enabled},

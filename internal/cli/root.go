@@ -41,7 +41,6 @@ func newRootCommand() *cobra.Command {
 			}
 		},
 	}
-	addExposeFlag(cmd)
 	addConfigDirFlag(cmd)
 	addLoggingFlags(cmd)
 	addTerminalPresentationFlags(cmd)
@@ -260,14 +259,14 @@ func authStatusCommand() *cobra.Command {
 				return nil
 			}
 			presenter.Section("Authentication")
-			presenter.Subsection("MCP")
+			presenter.SubsectionItem("MCP", false)
 			presenter.NestedFields(
 				presentation.Field{Label: "enabled", Value: status.MCPEnabled},
 				presentation.Field{Label: "configured", Value: status.MCPConfigured},
 				presentation.Field{Label: "legacy bearer", Value: status.MCPLegacyBearer},
 			)
 			presenter.Spacer()
-			presenter.Subsection("Admin")
+			presenter.SubsectionItem("Admin", true)
 			presenter.NestedFields(
 				presentation.Field{Label: "enabled", Value: status.AdminEnabled},
 				presentation.Field{Label: "configured", Value: status.AdminConfigured},

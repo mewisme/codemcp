@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 
 	"go.mewis.me/codemcp/internal/application"
@@ -358,7 +359,7 @@ func TestSkillRiskReviewerRendersVercelStyleAssessmentAndOnlyPromptsWhenRisky(t 
 	for _, want := range []string{
 		"Security Risk Assessments", "Gen", "Socket", "Snyk",
 		"risk-demo", "High Risk", "2 alerts", "Safe",
-		"Details:", "https://skills.sh/owner/repo",
+		"details", "https://skills.sh/owner/repo",
 		"Security risks detected. Proceed with installation? [Y/n]",
 	} {
 		if !strings.Contains(text, want) {
@@ -388,6 +389,47 @@ func TestSkillRiskReviewerRendersVercelStyleAssessmentAndOnlyPromptsWhenRisky(t 
 	closeCommandProgress(cmd, nil)
 	if text := output.String(); strings.Contains(text, "Proceed with") || !strings.Contains(text, "Low Risk") || !strings.Contains(text, "0 alerts") {
 		t.Fatalf("safe assessment should render without prompting: %q", text)
+	}
+}
+
+func TestSkillSecurityAssessmentUsesCanonicalNarrowUnicodeTable(t *testing.T) {
+	alerts := 1
+	assessment := skills.SecurityAssessment{
+		Source:     "owner/repo",
+		DetailsURL: "https://skills.sh/owner/repo/very/long/details/path",
+		Skills: []skills.SkillSecurityAssessment{
+			{
+				Name:   "日本語-skill-with-a-long-name",
+				Gen:    &skills.PartnerAudit{Risk: skills.SecurityRiskHigh},
+				Socket: &skills.PartnerAudit{Risk: skills.SecurityRiskUnknown, Alerts: &alerts},
+				Snyk:   &skills.PartnerAudit{Risk: skills.SecurityRiskSafe},
+			},
+			{
+				Name: "short",
+				Gen:  &skills.PartnerAudit{Risk: skills.SecurityRiskLow},
+			},
+		},
+	}
+	root := newRootCommand()
+	var output bytes.Buffer
+	root.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 44, Unicode: true, Interactive: true}))
+	root.SetErr(&bytes.Buffer{})
+	cmd, _, err := root.Find([]string{"skills", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderSkillSecurityAssessment(cmd, commandPresenter(cmd), assessment)
+	closeCommandProgress(cmd, nil)
+	text := output.String()
+	for _, want := range []string{"Security Risk Assessments", "日本語-skill-with-a-long-name", "High Risk", "1 alert", "Safe", "details"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("narrow security assessment missing %q: %q", want, text)
+		}
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if width := ansi.StringWidth(line); width > 44 {
+			t.Fatalf("narrow security assessment line width=%d > 44: %q", width, line)
+		}
 	}
 }
 

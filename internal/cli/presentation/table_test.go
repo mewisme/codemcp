@@ -2,6 +2,7 @@ package presentation
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -66,6 +67,29 @@ func TestNestedTableBudgetsWidthAfterDepthPrefix(t *testing.T) {
 		t.Fatalf("nested table lost depth prefix: %q", got)
 	}
 	assertDisplayLinesFit(t, got, 28)
+}
+
+func TestNestedTableStyleAndLayoutMatrixStaysWithinDepthBudget(t *testing.T) {
+	rows := []Row{{"東京", "ready"}, {"service-two", "degraded"}}
+	for _, border := range []TableBorderStyle{TableBare, TableOutline, TableGrid} {
+		for _, layout := range []TableLayoutPolicy{TableAdaptive, TableFitContent} {
+			name := fmt.Sprintf("border-%d-layout-%d", border, layout)
+			t.Run(name, func(t *testing.T) {
+				var output bytes.Buffer
+				p := New(&output, ModeHuman, Capabilities{Width: 42, Unicode: true})
+				p.Table(
+					[]string{"Name", "State"},
+					rows,
+					TableOptions{Border: border, Layout: layout, Depth: 2},
+				)
+				got := output.String()
+				if !strings.Contains(got, "│  │  ") {
+					t.Fatalf("nested table lost structural depth: %q", got)
+				}
+				assertDisplayLinesFit(t, got, 42)
+			})
+		}
+	}
 }
 
 func TestAdaptiveBareTableGeneralizesBeyondThreeColumns(t *testing.T) {

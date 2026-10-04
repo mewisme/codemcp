@@ -420,7 +420,7 @@ func renderManagedLifecycleResultWithReadiness(cmd *cobra.Command, message strin
 			presenter.ChildStatus(presentation.StatusWarning, warning)
 		}
 		presenter.Spacer()
-		presenter.Subsection("Actions")
+		presenter.Section("Actions")
 		presenter.NestedFields(
 			presentation.Field{Label: "View logs", Value: "cm logs -f"},
 			presentation.Field{Label: "Stop service", Value: managedStopCommand(spec)},
@@ -458,7 +458,7 @@ func renderManagedRestartResult(cmd *cobra.Command, spec managed.Spec, manager m
 			presenter.ChildStatus(presentation.StatusWarning, warning)
 		}
 		presenter.Spacer()
-		presenter.Subsection("Actions")
+		presenter.Section("Actions")
 		presenter.NestedFields(
 			presentation.Field{Label: "Logs", Value: "cm logs -f"},
 			presentation.Field{Label: "Stop", Value: managedStopCommand(spec)},

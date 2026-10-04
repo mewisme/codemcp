@@ -220,6 +220,7 @@ func TestCLIProductionSourcesDoNotWriteHumanOutputDirectly(t *testing.T) {
 func TestCLIProductionRenderersDoNotOwnOuterLifecycle(t *testing.T) {
 	root := filepath.Join(cliAdapterRepositoryRoot(t), "internal", "cli")
 	frameCall := regexp.MustCompile(`\b(?:presenter|p)\.(?:Frame|Complete)\s*\(`)
+	designRender := regexp.MustCompile(`\b(?:presenter|p)\.Render\s*\(\s*presentation\.Design\s*\{`)
 	resultWriter := regexp.MustCompile(`fmt\.Fprint(?:f|ln)?\s*\(\s*commandResultWriter\(cmd\)`)
 	allowedResultWriter := map[string]string{
 		"output_mode.go":     "canonical plain, JSON, and machine result gateways",
@@ -242,6 +243,9 @@ func TestCLIProductionRenderersDoNotOwnOuterLifecycle(t *testing.T) {
 			if match := frameCall.Find(data); match != nil {
 				t.Errorf("%s owns the outer presentation lifecycle via %q; command lifecycle must own frame/completion", name, string(match))
 			}
+			if match := designRender.Find(data); match != nil {
+				t.Errorf("%s owns the outer presentation lifecycle indirectly via %q; render blocks only inside command-owned sessions", name, string(match))
+			}
 		}
 		if match := resultWriter.Find(data); match != nil {
 			if reason := strings.TrimSpace(allowedResultWriter[name]); reason == "" {
@@ -253,6 +257,107 @@ func TestCLIProductionRenderersDoNotOwnOuterLifecycle(t *testing.T) {
 		if strings.TrimSpace(reason) == "" {
 			t.Errorf("result-writer exemption %s has no reason", name)
 		}
+	}
+}
+
+func TestCLIPresentationGlyphLiteralsStayInsidePresentationAuthority(t *testing.T) {
+	root := filepath.Join(cliAdapterRepositoryRoot(t), "internal", "cli")
+	forbidden := []string{"┌", "└", "│", "▸", "├─", "└─", "◆", "◇", "✓", "×"}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if filepath.Clean(path) == filepath.Join(root, "presentation") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, glyph := range forbidden {
+			if strings.Contains(string(data), glyph) {
+				relative, _ := filepath.Rel(root, path)
+				t.Errorf("%s embeds presentation glyph %q outside canonical presentation authority", filepath.ToSlash(relative), glyph)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDeprecatedSpinnerDependencyCannotReturn(t *testing.T) {
+	root := cliAdapterRepositoryRoot(t)
+	const deprecated = "github.com/briandowns/spinner"
+	for _, name := range []string{"go.mod", "go.sum"} {
+		data, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), deprecated) {
+			t.Fatalf("%s reintroduced deprecated spinner dependency %q", name, deprecated)
+		}
+	}
+	err := filepath.WalkDir(filepath.Join(root, "internal"), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(data), deprecated) {
+			relative, _ := filepath.Rel(root, path)
+			t.Errorf("%s imports deprecated spinner dependency", filepath.ToSlash(relative))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCharmSpinnerDependencyStaysInsideTUI(t *testing.T) {
+	root := cliAdapterRepositoryRoot(t)
+	const charmSpinner = "charm.land/bubbles/v2/spinner"
+	var found []string
+	err := filepath.WalkDir(filepath.Join(root, "internal"), func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(data), charmSpinner) {
+			return nil
+		}
+		relative, _ := filepath.Rel(root, path)
+		relative = filepath.ToSlash(relative)
+		found = append(found, relative)
+		if !strings.HasPrefix(relative, "internal/interface/tui/") {
+			t.Errorf("%s imports TUI spinner outside the TUI surface", relative)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) == 0 {
+		t.Fatal("Charm/Bubbles TUI spinner dependency disappeared; update this isolation guard with the new TUI progress authority")
 	}
 }
 

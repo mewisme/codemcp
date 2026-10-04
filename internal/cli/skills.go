@@ -289,61 +289,22 @@ func renderSkillSecurityAssessment(cmd *cobra.Command, presenter *presentation.P
 		return
 	}
 	theme := presentation.NewTheme(commandTerminalCapabilities(cmd))
-	nameWidth := 0
+	rows := make([]presentation.Row, 0, len(assessment.Skills))
 	for _, skill := range assessment.Skills {
-		if width := len(skill.Name); width > nameWidth {
-			nameWidth = width
-		}
+		gen, _ := skillRiskAuditLabel(theme, skill.Gen, false)
+		socket, _ := skillRiskAuditLabel(theme, skill.Socket, true)
+		snyk, _ := skillRiskAuditLabel(theme, skill.Snyk, false)
+		rows = append(rows, presentation.Row{skill.Name, gen, socket, snyk})
 	}
-	if nameWidth > 36 {
-		nameWidth = 36
+	presenter.Section("Security Risk Assessments")
+	presenter.Table([]string{"Skill", "Gen", "Socket", "Snyk"}, rows, presentation.TableOptions{
+		Border: presentation.TableBare,
+		Layout: presentation.TableAdaptive,
+		Depth:  1,
+	})
+	if strings.TrimSpace(assessment.DetailsURL) != "" {
+		presenter.Fields(presentation.Field{Label: "details", Value: assessment.DetailsURL})
 	}
-	if nameWidth < 1 {
-		nameWidth = 1
-	}
-	const providerWidth = 18
-	lines := []string{
-		strings.Repeat(" ", nameWidth+2) +
-			padSkillRiskCell(theme.Render(presentation.RoleMuted, "Gen"), len("Gen"), providerWidth) +
-			padSkillRiskCell(theme.Render(presentation.RoleMuted, "Socket"), len("Socket"), providerWidth) +
-			theme.Render(presentation.RoleMuted, "Snyk"),
-	}
-	for _, skill := range assessment.Skills {
-		name := skill.Name
-		if len(name) > nameWidth {
-			if nameWidth > 1 {
-				name = name[:nameWidth-1] + "…"
-			} else {
-				name = "…"
-			}
-		}
-		lines = append(lines,
-			padSkillRiskCell(theme.Render(presentation.RoleActive, name), len(name), nameWidth+2)+
-				padSkillRiskAudit(theme, skill.Gen, false, providerWidth)+
-				padSkillRiskAudit(theme, skill.Socket, true, providerWidth)+
-				renderSkillRiskAudit(theme, skill.Snyk, false),
-		)
-	}
-	lines = append(lines, "", theme.Render(presentation.RoleMuted, "Details:")+" "+theme.Render(presentation.RoleMuted, assessment.DetailsURL))
-	presenter.Note("Security Risk Assessments", strings.Join(lines, "\n"))
-}
-
-func padSkillRiskCell(value string, visibleWidth, width int) string {
-	padding := width - visibleWidth
-	if padding < 0 {
-		padding = 0
-	}
-	return value + strings.Repeat(" ", padding)
-}
-
-func padSkillRiskAudit(theme presentation.Theme, audit *skills.PartnerAudit, socket bool, width int) string {
-	value, visibleWidth := skillRiskAuditLabel(theme, audit, socket)
-	return padSkillRiskCell(value, visibleWidth, width)
-}
-
-func renderSkillRiskAudit(theme presentation.Theme, audit *skills.PartnerAudit, socket bool) string {
-	value, _ := skillRiskAuditLabel(theme, audit, socket)
-	return value
 }
 
 func skillRiskAuditLabel(theme presentation.Theme, audit *skills.PartnerAudit, socket bool) (string, int) {

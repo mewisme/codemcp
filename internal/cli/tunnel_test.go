@@ -175,7 +175,7 @@ func TestTunnelReadRenderersUseRailHierarchyAndRedaction(t *testing.T) {
 		renderManagedTunnelList(presenter, []tunnel.Metadata{metadata})
 	})
 	listText := output.String()
-	for _, expected := range []string{"┌  Managed OpenAI tunnels", "│  ▸ tunnel_one", "│  │  name — One", "│  │  workspaces — ws_admin", "└  Done"} {
+	for _, expected := range []string{"┌  Managed OpenAI tunnels", "│  └─ tunnel_one", "│  │  name — One", "│  │  workspaces — ws_admin", "└  Done"} {
 		if !strings.Contains(listText, expected) {
 			t.Fatalf("managed tunnel list missing %q: %q", expected, listText)
 		}

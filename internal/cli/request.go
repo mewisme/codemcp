@@ -460,13 +460,13 @@ func renderApprovalExplanation(presenter *presentation.Presenter, status applica
 		return
 	}
 	explanation := result.Explanation
-	presenter.Subsection("Explanation provenance")
+	presenter.Section("Explanation provenance")
 	presenter.NestedFields(
 		presentation.Field{Label: "provider", Value: explanation.ProviderID},
 		presentation.Field{Label: "model", Value: explanation.Model},
 		presentation.Field{Label: "generated", Value: formatRequestTime(explanation.GeneratedAt)},
 	)
-	presenter.Subsection("Summary")
+	presenter.Section("Summary")
 	presenter.List(explanation.Summary)
 	renderApprovalExplanationItems(presenter, "Steps", explanation.Steps)
 	renderApprovalExplanationItems(presenter, "Effects", explanation.Effects)
@@ -478,7 +478,7 @@ func renderApprovalExplanationItems(presenter *presentation.Presenter, title str
 	if len(values) == 0 {
 		return
 	}
-	presenter.Subsection(title)
+	presenter.Section(title)
 	for _, value := range values {
 		presenter.List(value)
 	}

@@ -241,6 +241,10 @@ func (p *Presenter) StateSection(kind StatusKind, title string) {
 }
 
 func (p *Presenter) Subsection(title string) {
+	p.SubsectionItem(title, true)
+}
+
+func (p *Presenter) SubsectionItem(title string, last bool) {
 	if p == nil || p.mode == ModeJSON {
 		return
 	}
@@ -251,9 +255,15 @@ func (p *Presenter) Subsection(title string) {
 	p.beginContent()
 	p.beginBlock()
 	if p.mode == ModeHuman {
+		branch := p.glyphs.Branch
+		continuation := p.railPrefix(1) + p.theme.Render(RoleRail, p.glyphs.Rail) + "  "
+		if last {
+			branch = p.glyphs.LastBranch
+			continuation = p.railPrefix(1) + "   "
+		}
 		p.emitWrapped(
-			p.railPrefix(1)+p.theme.Render(RoleStructure, p.glyphs.Section)+" ",
-			p.railPrefix(1)+"  ",
+			p.railPrefix(1)+p.theme.Render(RoleStructure, branch),
+			continuation,
 			title,
 			func(value string) string { return p.theme.Render(RoleHeading, value) },
 		)
@@ -592,7 +602,7 @@ func (p *Presenter) statusStyle(kind StatusKind) (string, Role) {
 	case StatusError:
 		return p.glyphs.Error, RoleDanger
 	case StatusInactive:
-		return p.glyphs.PhasePending, RoleMuted
+		return p.glyphs.Info, RoleMuted
 	default:
 		return p.glyphs.Info, RoleMuted
 	}

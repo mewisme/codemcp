@@ -134,7 +134,7 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 		"│  ✓ Server started",
 		"│  │  scope — user",
 		"│  │  config — " + root,
-		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
+		"│  · OpenAI Secure MCP Tunnel — disabled",
 		"│  ▸ Actions",
 		"│  │  View logs — cm logs -f",
 		"│  │  Stop service — cm down",

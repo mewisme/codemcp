@@ -210,8 +210,8 @@ func TestRequestRichViewUsesRailHierarchy(t *testing.T) {
 	text := output.String()
 	for _, expected := range []string{
 		"┌  Approval request",
-		"◇  Pending",
-		"│  ▸ req_rail",
+		"·  Pending",
+		"│  └─ req_rail",
 		"│  │  workspace — ws_rail",
 		"│  ▸ Arguments",
 		"│  └─ {",
@@ -245,8 +245,8 @@ func TestRequestRichPaletteLocalizesPendingAndStructureColor(t *testing.T) {
 	text := output.String()
 	for _, expected := range []string{
 		theme.Render(presentation.RoleRail, "┌"),
-		theme.Render(presentation.RoleMuted, "◇") + "  " + theme.Render(presentation.RoleHeading, "Pending"),
-		theme.Render(presentation.RoleStructure, "▸"),
+		theme.Render(presentation.RoleMuted, "·") + "  " + theme.Render(presentation.RoleHeading, "Pending"),
+		theme.Render(presentation.RoleStructure, "└─ "),
 		theme.Render(presentation.RoleHeading, "req_palette"),
 	} {
 		if !strings.Contains(text, expected) {

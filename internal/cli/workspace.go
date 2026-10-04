@@ -183,7 +183,7 @@ func promptWorkspaceRelocationResolution(cmd *cobra.Command, conflict applicatio
 		err := session.WithInput(func(presenter *presentation.Presenter) {
 			if attempts == 0 {
 				presenter.StateSection(presentation.StatusWarning, fmt.Sprintf("Duplicate workspace identity %s exists at both roots", conflict.WorkspaceID))
-				presenter.Subsection("Resolution")
+				presenter.Section("Resolution")
 				presenter.NestedFields(
 					presentation.Field{Label: "1 destination", Value: "Keep destination .cm state"},
 					presentation.Field{Label: "2 registered", Value: "Keep registered .cm state"},
@@ -466,8 +466,8 @@ func renderWorkspaceList(cmd *cobra.Command, presenter *presentation.Presenter, 
 		return
 	}
 	presenter.Section(fmt.Sprintf("Registered workspaces · %d", len(items)))
-	for _, item := range items {
-		presenter.Subsection(item.ID)
+	for index, item := range items {
+		presenter.SubsectionItem(item.ID, index == len(items)-1)
 		fields := []presentation.Field{
 			{Label: "root", Value: item.Path},
 			{Label: "available", Value: item.Available},
@@ -527,8 +527,8 @@ func renderWorkspaceContainers(presenter *presentation.Presenter, values []appli
 		return
 	}
 	presenter.Section(fmt.Sprintf("Workspace containers · %d", len(values)))
-	for _, value := range values {
-		presenter.Subsection(value.ID)
+	for index, value := range values {
+		presenter.SubsectionItem(value.ID, index == len(values)-1)
 		workspaces := "none"
 		if len(value.WorkspaceIDs) > 0 {
 			workspaces = strings.Join(value.WorkspaceIDs, ", ")

@@ -43,10 +43,20 @@ func TestDoctorOutputModesAreDeterministic(t *testing.T) {
 	}
 
 	human := executeDoctorFixture(t, rootPath, true, false)
-	for _, want := range []string{"┌  CodeMCP doctor", "│  ▸ Config", "│  ▸ config.overview", "│  ▸ Runtime", "│  ▸ runtime.control", "└  Done"} {
+	for _, want := range []string{"┌  CodeMCP doctor", "│  ▸ Summary", "│  ▸ Needs attention", "│  ! runtime.control — degraded", "│  │  action — Start the managed runtime", "│  · Healthy detail", "│  ▸ Config", "│  └─ config.overview", "└  Done"} {
 		if !strings.Contains(human, want) {
 			t.Fatalf("human output missing %q: %q", want, human)
 		}
+	}
+	summaryIndex := strings.Index(human, "│  ▸ Summary")
+	issueIndex := strings.Index(human, "│  ▸ Needs attention")
+	actionIndex := strings.Index(human, "Start the managed runtime")
+	healthyIndex := strings.Index(human, "│  · Healthy detail")
+	if !(summaryIndex >= 0 && summaryIndex < issueIndex && issueIndex < actionIndex && actionIndex < healthyIndex) {
+		t.Fatalf("human doctor scan order is not summary -> issues -> remediation -> healthy detail: %q", human)
+	}
+	if configIndex, runtimeIndex := strings.Index(plainOne, "Config"), strings.Index(plainOne, "Runtime"); !(configIndex >= 0 && configIndex < runtimeIndex) {
+		t.Fatalf("plain doctor ordering changed: %q", plainOne)
 	}
 
 	jsonText := executeDoctorFixture(t, rootPath, false, true)

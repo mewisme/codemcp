@@ -372,7 +372,7 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 	text := output.String()
 	for _, expected := range []string{
 		"┌  Configuration",
-		"│  ▸ http",
+		"│  ├─ http",
 		"Key",
 		"Value",
 		"Accepts",
@@ -380,11 +380,11 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 		"true | false",
 		"http.admin.port",
 		"integer 1..65535",
-		"│  ▸ approval",
+		"│  ├─ approval",
 		"approval.semantic.enabled",
-		"│  ▸ integrations",
+		"│  ├─ integrations",
 		"integrations.codegraph.enabled",
-		"│  ▸ tunnel",
+		"│  └─ tunnel",
 		"tunnel.admin.enabled",
 		"└  Done",
 	} {
@@ -392,9 +392,9 @@ func TestUniversalConfigHumanListGroupsSettingsByFirstChildKey(t *testing.T) {
 			t.Fatalf("grouped config list missing %q: %q", expected, text)
 		}
 	}
-	if !(strings.Index(text, "│  ▸ approval") < strings.Index(text, "│  ▸ http") &&
-		strings.Index(text, "│  ▸ http") < strings.Index(text, "│  ▸ integrations") &&
-		strings.Index(text, "│  ▸ integrations") < strings.Index(text, "│  ▸ tunnel")) {
+	if !(strings.Index(text, "│  ├─ approval") < strings.Index(text, "│  ├─ http") &&
+		strings.Index(text, "│  ├─ http") < strings.Index(text, "│  ├─ integrations") &&
+		strings.Index(text, "│  ├─ integrations") < strings.Index(text, "│  └─ tunnel")) {
 		t.Fatalf("config scopes are not sorted: %q", text)
 	}
 	if strings.Contains(text, "\n▸  http") || strings.Contains(text, "\n▸  approval") {
@@ -485,7 +485,7 @@ func TestConfigListNoAcceptsUsesCanonicalAliasAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := output.String()
-	for _, want := range []string{"│  ▸ http", "http.mcp.enabled", "http.mcp.port"} {
+	for _, want := range []string{"│  └─ http", "http.mcp.enabled", "http.mcp.port"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("config ls --no-accepts missing %q: %q", want, text)
 		}

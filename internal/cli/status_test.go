@@ -265,7 +265,7 @@ func TestRenderStatusRuntimeAndTunnelStatesAcrossPresentationModes(t *testing.T)
 			snapshot:        statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default(), Running: true, Runtime: runtimeStatusResult{Starting: true, TunnelEnabled: true, TunnelConfigured: true, TunnelRunning: true}},
 			humanWant:       "!  CodeMCP is starting",
 			plainWant:       "[!] CodeMCP is starting",
-			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel — connecting",
+			humanTunnelWant: "│  · OpenAI Secure MCP Tunnel — connecting",
 			plainTunnelWant: "OpenAI Secure MCP Tunnel is connecting",
 		},
 		{
@@ -273,7 +273,7 @@ func TestRenderStatusRuntimeAndTunnelStatesAcrossPresentationModes(t *testing.T)
 			snapshot:        statusSnapshot{Source: configformat.Source{Path: "/tmp/config.json", Exists: true}, Config: config.Default()},
 			humanWant:       "×  CodeMCP is stopped",
 			plainWant:       "[ERR] CodeMCP is stopped",
-			humanTunnelWant: "│  ◇ OpenAI Secure MCP Tunnel — not configured",
+			humanTunnelWant: "│  · OpenAI Secure MCP Tunnel — not configured",
 			plainTunnelWant: "OpenAI Secure MCP Tunnel is not configured",
 		},
 	}
@@ -319,8 +319,8 @@ func TestRenderStatusDisabledTunnelGoldenRailHierarchy(t *testing.T) {
 		"│  mcp http",
 		"│  ▸ Config",
 		"│  transports",
-		"◇  Tunnel",
-		"│  ◇ OpenAI Secure MCP Tunnel — disabled",
+		"│  ▸ Tunnel",
+		"│  · OpenAI Secure MCP Tunnel — disabled",
 		"└  Done",
 	}
 	position := -1
