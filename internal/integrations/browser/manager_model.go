@@ -63,6 +63,13 @@ type InteractiveBrowserLauncher interface {
 	Launch(context.Context, InteractiveLaunchRequest) (BrowserProcess, error)
 }
 
+type InteractiveBrowserOptions struct {
+	Capability Capability
+	URL        string
+	Launcher   InteractiveBrowserLauncher
+	CloseTTL   time.Duration
+}
+
 type BrowserTab interface {
 	ID() string
 	Navigate(context.Context, string) error

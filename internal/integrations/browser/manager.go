@@ -55,26 +55,8 @@ type leaseRecord struct {
 
 func NewManager(options ManagerOptions) (*Manager, error) {
 	capability := options.Capability
-	if capability.State != StateAvailable || !capability.Available || !capability.Launchable {
-		return nil, errors.New("browser capability must be available and launchable")
-	}
-	if capability.Profile == nil {
-		return nil, errors.New("browser capability profile is required")
-	}
-	if capability.Candidate == nil {
-		return nil, errors.New("browser capability candidate is required")
-	}
-	if !capability.Graphical {
-		return nil, errors.New("browser capability requires a graphical route")
-	}
-	if strings.TrimSpace(capability.Candidate.LocalExecutable) == "" && strings.TrimSpace(capability.Candidate.Executable) == "" {
-		return nil, errors.New("browser capability candidate executable is required")
-	}
-	if strings.TrimSpace(capability.Profile.Path) == "" || strings.TrimSpace(capability.Profile.LocalPath) == "" {
-		return nil, errors.New("browser capability profile paths are required")
-	}
-	if capability.Candidate.Transport != capability.Profile.Transport {
-		return nil, errors.New("browser capability candidate/profile transport mismatch")
+	if err := validateLaunchableCapability(capability); err != nil {
+		return nil, err
 	}
 	if options.MaxTabs == 0 {
 		options.MaxTabs = DefaultMaxTabs
@@ -129,6 +111,31 @@ func NewManager(options ManagerOptions) (*Manager, error) {
 		minimizeTTL: options.MinimizeTTL, closeTTL: options.CloseTTL,
 		now: options.Now, leases: map[string]*leaseRecord{}, pending: map[string]struct{}{},
 	}, nil
+}
+
+func validateLaunchableCapability(capability Capability) error {
+	if capability.State != StateAvailable || !capability.Available || !capability.Launchable {
+		return errors.New("browser capability must be available and launchable")
+	}
+	if capability.Profile == nil {
+		return errors.New("browser capability profile is required")
+	}
+	if capability.Candidate == nil {
+		return errors.New("browser capability candidate is required")
+	}
+	if !capability.Graphical {
+		return errors.New("browser capability requires a graphical route")
+	}
+	if strings.TrimSpace(capability.Candidate.LocalExecutable) == "" && strings.TrimSpace(capability.Candidate.Executable) == "" {
+		return errors.New("browser capability candidate executable is required")
+	}
+	if strings.TrimSpace(capability.Profile.Path) == "" || strings.TrimSpace(capability.Profile.LocalPath) == "" {
+		return errors.New("browser capability profile paths are required")
+	}
+	if capability.Candidate.Transport != capability.Profile.Transport {
+		return errors.New("browser capability candidate/profile transport mismatch")
+	}
+	return nil
 }
 
 func (manager *Manager) EnsureRunning(ctx context.Context) error {
