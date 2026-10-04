@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	tracepkg "go.mewis.me/codemcp/internal/trace"
@@ -18,8 +19,9 @@ import (
 type Scope string
 
 const (
-	ScopeUser   Scope = "user"
-	ScopeSystem Scope = "system"
+	ScopeUser                  Scope = "user"
+	ScopeSystem                Scope = "system"
+	goRunStagedBinaryRetention       = 3
 )
 
 type Account struct {
@@ -184,6 +186,7 @@ func stageGoRunBinary(configRoot, binary, name, sourceRoot string) (string, bool
 				return "", false, err
 			}
 		}
+		pruneGoRunStagedBinaries(configRoot, destination)
 		return filepath.Clean(destination), true, nil
 	} else if statErr != nil && !os.IsNotExist(statErr) {
 		return "", false, statErr
@@ -196,7 +199,63 @@ func stageGoRunBinary(configRoot, binary, name, sourceRoot string) (string, bool
 			return "", false, err
 		}
 	}
+	pruneGoRunStagedBinaries(configRoot, destination)
 	return filepath.Clean(destination), false, nil
+}
+
+type goRunStageEntry struct {
+	path    string
+	modTime int64
+}
+
+func pruneGoRunStagedBinaries(configRoot, protectedBinary string) {
+	root := filepath.Join(configRoot, "runtime", "bin", "go-run")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	protectedDir := filepath.Clean(filepath.Dir(protectedBinary))
+	staged := make([]goRunStageEntry, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || !goRunStageDirectoryName(entry.Name()) {
+			continue
+		}
+		path := filepath.Clean(filepath.Join(root, entry.Name()))
+		if path == protectedDir {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil {
+			continue
+		}
+		staged = append(staged, goRunStageEntry{path: path, modTime: info.ModTime().UnixNano()})
+	}
+	sort.Slice(staged, func(i, j int) bool {
+		if staged[i].modTime == staged[j].modTime {
+			return staged[i].path > staged[j].path
+		}
+		return staged[i].modTime > staged[j].modTime
+	})
+	keepOthers := goRunStagedBinaryRetention - 1
+	if keepOthers < 0 {
+		keepOthers = 0
+	}
+	for index := keepOthers; index < len(staged); index++ {
+		_ = os.RemoveAll(staged[index].path)
+	}
+}
+
+func goRunStageDirectoryName(name string) bool {
+	if len(name) != 16 {
+		return false
+	}
+	for _, value := range name {
+		if value >= '0' && value <= '9' || value >= 'a' && value <= 'f' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func transientGoBuildBinary(path string) bool {

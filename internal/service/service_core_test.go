@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -139,6 +140,84 @@ func TestPrepareManagedBinaryStagesTransientGoBuildBinaryByContent(t *testing.T)
 	}
 	if second == first {
 		t.Fatalf("changed binary reused staged path %q", second)
+	}
+}
+
+func TestPrepareManagedBinaryPrunesOldGoRunStages(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(t.TempDir(), "go-build123", "b001", "exe", "cm")
+	if err := os.MkdirAll(filepath.Dir(source), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	staged := make([]string, 0, goRunStagedBinaryRetention+2)
+	for index := 0; index < goRunStagedBinaryRetention+2; index++ {
+		if err := os.WriteFile(source, []byte(fmt.Sprintf("build-%d", index)), 0755); err != nil {
+			t.Fatal(err)
+		}
+		prepared, err := PrepareManagedBinary(root, source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		staged = append(staged, prepared)
+		time.Sleep(time.Millisecond)
+	}
+
+	stageRoot := filepath.Join(root, "runtime", "bin", "go-run")
+	entries, err := os.ReadDir(stageRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stageDirs := 0
+	for _, entry := range entries {
+		if entry.IsDir() && goRunStageDirectoryName(entry.Name()) {
+			stageDirs++
+		}
+	}
+	if stageDirs != goRunStagedBinaryRetention {
+		t.Fatalf("staged directories=%d want=%d", stageDirs, goRunStagedBinaryRetention)
+	}
+	if _, err := os.Stat(staged[len(staged)-1]); err != nil {
+		t.Fatalf("latest staged binary removed: %v", err)
+	}
+	if _, err := os.Stat(staged[0]); !os.IsNotExist(err) {
+		t.Fatalf("oldest staged binary still exists: err=%v", err)
+	}
+}
+
+func TestPruneGoRunStagedBinariesPreservesNonStageEntries(t *testing.T) {
+	root := t.TempDir()
+	stageRoot := filepath.Join(root, "runtime", "bin", "go-run")
+	if err := os.MkdirAll(filepath.Join(stageRoot, ".build"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(stageRoot, "custom-data"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stageRoot, "source-root"), []byte("/tmp/source\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, path := range []string{
+		filepath.Join(stageRoot, ".build"),
+		filepath.Join(stageRoot, "custom-data"),
+		filepath.Join(stageRoot, "source-root"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("fixture missing before prune %q: %v", path, err)
+		}
+	}
+
+	pruneGoRunStagedBinaries(root, filepath.Join(stageRoot, "0123456789abcdef", "cm"))
+
+	for _, path := range []string{
+		filepath.Join(stageRoot, ".build"),
+		filepath.Join(stageRoot, "custom-data"),
+		filepath.Join(stageRoot, "source-root"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("non-stage entry removed %q: %v", path, err)
+		}
 	}
 }
 

@@ -224,10 +224,13 @@ func TestRenderStatusUsesCanonicalPresenterCapabilities(t *testing.T) {
 		renderStatus(presenter, snapshot, false)
 	})
 	unicodeText := unicodeOutput.String()
-	for _, expected := range []string{"┌  CodeMCP status", "✓  CodeMCP is running", "│  ▸ Runtime", "│  pid — 4242", "│  ▸ Endpoints", "│  ▸ Config", "│  ▸ Tunnel", "│  ✓ OpenAI Secure MCP Tunnel — connected", "└  Done"} {
+	for _, expected := range []string{"┌  CodeMCP status", "✓  CodeMCP is running", "│  ▸ Runtime", "│  │  pid — 4242", "│  ▸ Endpoints", "│  │  mcp http", "│  ▸ Config", "│  │  transports", "│  ▸ Optional integrations", "│  │  browser", "│  ▸ Tunnel", "│  ✓ OpenAI Secure MCP Tunnel — connected", "└  Done"} {
 		if !strings.Contains(unicodeText, expected) {
 			t.Fatalf("unicode status missing %q: %s", expected, unicodeText)
 		}
+	}
+	if !strings.Contains(unicodeText, "│  ▸ Tunnel\n│  ✓ OpenAI Secure MCP Tunnel — connected") {
+		t.Fatalf("tunnel scope should be contiguous with its child state: %q", unicodeText)
 	}
 	if strings.ContainsRune(unicodeText, 'ℹ') {
 		t.Fatalf("unicode status contains information-source glyph: %q", unicodeText)
@@ -314,11 +317,11 @@ func TestRenderStatusDisabledTunnelGoldenRailHierarchy(t *testing.T) {
 		"┌  CodeMCP status",
 		"✓  CodeMCP is running",
 		"│  ▸ Runtime",
-		"│  pid — 4242",
+		"│  │  pid — 4242",
 		"│  ▸ Endpoints",
-		"│  mcp http",
+		"│  │  mcp http",
 		"│  ▸ Config",
-		"│  transports",
+		"│  │  transports",
 		"│  ▸ Tunnel",
 		"│  · OpenAI Secure MCP Tunnel — disabled",
 		"└  Done",

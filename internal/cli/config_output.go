@@ -235,8 +235,8 @@ func printSettingSelection(cmd *cobra.Command, service *application.SettingServi
 			allRows = append(allRows, row)
 		}
 		widths := presentation.AlignedRowWidths(headers, allRows...)
-		for index, group := range groups {
-			presenter.SubsectionItem(group.scope, index == len(groups)-1)
+		for _, group := range groups {
+			presenter.Scope(group.scope)
 			presenter.Table(headers, group.rows, presentation.TableOptions{
 				Border: presentation.TableBare,
 				Layout: presentation.TableAdaptive,

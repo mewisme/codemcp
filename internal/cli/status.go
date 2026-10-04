@@ -234,7 +234,7 @@ func renderRunningStatus(presenter *presentation.Presenter, snapshot statusSnaps
 	} else {
 		fields = append(fields, presentation.Field{Label: "mode", Value: "foreground"})
 	}
-	presenter.Fields(fields...)
+	presenter.NestedFields(fields...)
 	renderStatusEndpoints(presenter, snapshot, verbose)
 	renderStatusConfig(presenter, snapshot, verbose)
 	renderStatusOptionalIntegrations(presenter, snapshot, verbose)
@@ -256,7 +256,7 @@ func renderStoppedStatus(presenter *presentation.Presenter, snapshot statusSnaps
 	for _, item := range snapshot.Services {
 		fields = append(fields, presentation.Field{Label: string(item.spec.Scope), Value: fmt.Sprintf("installed %s %s", presenter.Separator(), managedBackendLabel(item.manager, item.spec))})
 	}
-	presenter.Fields(fields...)
+	presenter.NestedFields(fields...)
 }
 
 func renderStatusOptionalIntegrations(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
@@ -276,7 +276,7 @@ func renderStatusOptionalIntegrations(presenter *presentation.Presenter, snapsho
 	if snapshot.ChatGPTWeb.RuntimePending {
 		chatGPTValue += " " + presenter.Separator() + " runtime change pending"
 	}
-	presenter.Fields(
+	presenter.NestedFields(
 		presentation.Field{Label: "browser", Value: browserValue},
 		presentation.Field{Label: "chatgpt web", Value: chatGPTValue},
 	)
@@ -308,7 +308,7 @@ func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSna
 			fields = append(fields, presentation.Field{Label: "admin", Value: "disabled"})
 		}
 		fields = append(fields, presentation.Field{Label: "exposure", Value: statusExposureSummary(snapshot, presenter.Separator())})
-		presenter.Fields(fields...)
+		presenter.NestedFields(fields...)
 		return
 	}
 	fields := []presentation.Field{{Label: "expose", Value: cfg.HTTP.Exposure.Mode}}
@@ -317,10 +317,10 @@ func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSna
 	}
 	if snapshot.ListenerError != nil {
 		fields = append(fields, presentation.Field{Label: "network", Value: snapshot.ListenerError.Error()})
-		presenter.Fields(fields...)
+		presenter.NestedFields(fields...)
 		return
 	}
-	presenter.Fields(fields...)
+	presenter.NestedFields(fields...)
 	addresses := append([]mcpnetwork.Address(nil), snapshot.ListenerPlan.Addresses...)
 	sort.SliceStable(addresses, func(i, j int) bool {
 		left, right := statusAddressPriority(addresses[i]), statusAddressPriority(addresses[j])
@@ -355,7 +355,7 @@ func renderStatusEndpoints(presenter *presentation.Presenter, snapshot statusSna
 	if !cfg.HTTP.Admin.Enabled && len(addresses) == 0 {
 		trailing = append(trailing, presentation.Field{Label: "admin", Value: "disabled"})
 	}
-	presenter.Fields(trailing...)
+	presenter.NestedFields(trailing...)
 }
 
 func renderStatusTunnel(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
@@ -365,7 +365,7 @@ func renderStatusTunnel(presenter *presentation.Presenter, snapshot statusSnapsh
 }
 
 func renderStatusTunnelSection(presenter *presentation.Presenter) {
-	presenter.Section("Tunnel")
+	presenter.Scope("Tunnel")
 }
 
 func renderStatusTunnelBody(presenter *presentation.Presenter, snapshot statusSnapshot, verbose bool) {
@@ -436,7 +436,7 @@ func renderStatusConfig(presenter *presentation.Presenter, snapshot statusSnapsh
 		presentation.Field{Label: "transports", Value: fmt.Sprintf("http %s %s tunnel %s", onOff(cfg.HTTP.MCP.Enabled), separator, onOff(cfg.Tunnel.Enabled))},
 		presentation.Field{Label: "auth", Value: fmt.Sprintf("mcp %s %s admin %s", onOff(cfg.HTTP.MCP.Auth.Enabled), separator, onOff(cfg.HTTP.Admin.Auth.Enabled))},
 	)
-	presenter.Fields(fields...)
+	presenter.NestedFields(fields...)
 	for _, warning := range config.SecurityWarnings(cfg) {
 		presenter.ChildStatus(presentation.StatusWarning, warning)
 	}
@@ -450,7 +450,7 @@ func renderStatusConfig(presenter *presentation.Presenter, snapshot statusSnapsh
 			secondary = append(secondary, presentation.Field{Label: "checked", Value: snapshot.Update.CheckedAt.Local().Format(time.RFC3339)})
 		}
 	}
-	presenter.Fields(secondary...)
+	presenter.NestedFields(secondary...)
 }
 
 func renderStatusUninitialized(presenter *presentation.Presenter) {

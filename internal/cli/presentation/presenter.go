@@ -195,6 +195,14 @@ func (p *Presenter) FrameEnd(message string) {
 }
 
 func (p *Presenter) Section(title string) {
+	p.section(title, true)
+}
+
+func (p *Presenter) Scope(title string) {
+	p.section(title, false)
+}
+
+func (p *Presenter) section(title string, contentGap bool) {
 	if p == nil || p.mode == ModeJSON {
 		return
 	}
@@ -210,11 +218,11 @@ func (p *Presenter) Section(title string) {
 			title,
 			func(value string) string { return p.theme.Render(RoleHeading, value) },
 		)
-		p.contentGap = true
+		p.contentGap = contentGap
 		return
 	}
 	p.line(p.theme.Render(RoleHeading, title))
-	p.contentGap = true
+	p.contentGap = contentGap
 }
 
 func (p *Presenter) StateSection(kind StatusKind, title string) {
