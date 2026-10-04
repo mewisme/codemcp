@@ -10,6 +10,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/migration/released024"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/version"
 )
 
@@ -89,6 +90,7 @@ func installCurrentWithDependencies(ctx context.Context, options InstallCurrentO
 	if migrated, ok, err := migrateReleasedInstallIfNeeded(ctx, options, deps); err != nil || ok {
 		return migrated, err
 	}
+	options.Observe = traceInstallCutoverObserver(ctx, options.Observe)
 	emitInstallCutover(options.Observe, "activate", "running", "Installing canonical CodeMCP binary", false)
 	installed, err := deps.Install(install.Options{Context: ctx, Version: version.Version, Force: options.Force})
 	if err != nil {
@@ -108,6 +110,7 @@ func migrateReleasedInstallIfNeeded(ctx context.Context, options InstallCurrentO
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	options.Observe = traceInstallCutoverObserver(ctx, options.Observe)
 	emitInstallCutover(options.Observe, "detect", "running", "Detecting released CodeMCP predecessor state", false)
 	manifest, err := deps.Detect(ctx, released024.Options{})
 	if err != nil {
@@ -226,5 +229,26 @@ func installCutoverCount(count int, singular, plural string) string {
 func emitInstallCutover(observe func(InstallCutoverEvent), stage, state, message string, child bool) {
 	if observe != nil {
 		observe(InstallCutoverEvent{Stage: stage, State: state, Message: strings.TrimSpace(message), Child: child})
+	}
+}
+
+func traceInstallCutoverObserver(ctx context.Context, next func(InstallCutoverEvent)) func(InstallCutoverEvent) {
+	return func(event InstallCutoverEvent) {
+		if next != nil {
+			next(event)
+		}
+		phase := tracepkg.PhaseInfo
+		switch strings.TrimSpace(event.State) {
+		case "running":
+			phase = tracepkg.PhaseStart
+		case "success":
+			phase = tracepkg.PhaseEnd
+		case "failed":
+			phase = tracepkg.PhaseError
+		}
+		tracepkg.EmitPhase(ctx, phase, "INSTALL", "install.cutover."+strings.TrimSpace(event.Stage), event.Message,
+			tracepkg.String("state", event.State),
+			tracepkg.Bool("child", event.Child),
+		)
 	}
 }

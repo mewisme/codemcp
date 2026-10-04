@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"go.mewis.me/codemcp/internal/config"
 	producttelemetry "go.mewis.me/codemcp/internal/telemetry/product"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const InstallIntegrationsEnv = "CM_INSTALL_INTEGRATIONS"
@@ -214,4 +216,28 @@ func emitIntegrationEnsureEvent(observe func(IntegrationEnsureEvent), integratio
 		return
 	}
 	observe(IntegrationEnsureEvent{Integration: integration, Phase: phase, State: state, Message: message})
+}
+
+func traceIntegrationEnsureObserver(ctx context.Context, next func(IntegrationEnsureEvent)) func(IntegrationEnsureEvent) {
+	return func(event IntegrationEnsureEvent) {
+		if next != nil {
+			next(event)
+		}
+		tracePhase := tracepkg.PhaseInfo
+		switch strings.TrimSpace(event.State) {
+		case "running":
+			tracePhase = tracepkg.PhaseStart
+		case "success", "installed", "available":
+			tracePhase = tracepkg.PhaseEnd
+		case "failed":
+			tracePhase = tracepkg.PhaseError
+		}
+		tracepkg.EmitPhase(ctx, tracePhase, "INTEGRATION",
+			"integration.ensure."+strings.TrimSpace(event.Integration)+"."+strings.TrimSpace(event.Phase),
+			event.Message,
+			tracepkg.String("integration", event.Integration),
+			tracepkg.String("operation", event.Phase),
+			tracepkg.String("state", event.State),
+		)
+	}
 }

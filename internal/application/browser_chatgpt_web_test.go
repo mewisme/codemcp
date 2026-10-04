@@ -15,6 +15,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/integrations/browser"
 	"go.mewis.me/codemcp/internal/integrations/chatgptweb"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type fakeChatGPTBrowserRuntime struct {
@@ -498,7 +499,11 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 	fixed := time.Date(2026, 10, 4, 2, 3, 4, 0, time.UTC)
 	service.Now = func() time.Time { return fixed }
 
-	status, err := service.Login(context.Background())
+	var traceEvents []tracepkg.Event
+	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) {
+		traceEvents = append(traceEvents, event)
+	})
+	status, err := service.Login(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,6 +548,29 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 	if persistedAccount, ok := persistedStatus.LoginAccount(); ok {
 		t.Fatalf("ordinary status retained ephemeral account=%#v", persistedAccount)
 	}
+	gotTrace := chatGPTAuthTraceNames(traceEvents)
+	wantTrace := []string{
+		"chatgpt.auth.profile.prepare.started",
+		"chatgpt.auth.profile.prepare.completed",
+		"chatgpt.auth.interactive.started",
+		"chatgpt.auth.interactive.completed",
+		"chatgpt.auth.verification.runtime.started",
+		"chatgpt.auth.verification.runtime.completed",
+		"chatgpt.auth.verification.poll.started",
+		"chatgpt.auth.verification.poll.completed",
+		"chatgpt.auth.marker.persist.started",
+		"chatgpt.auth.marker.persist.completed",
+	}
+	if strings.Join(gotTrace, ",") != strings.Join(wantTrace, ",") {
+		t.Fatalf("auth trace=%v want=%v", gotTrace, wantTrace)
+	}
+	encodedTrace, err := json.Marshal(traceEvents)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encodedTrace), testEmail) || strings.Contains(string(encodedTrace), "Mew") {
+		t.Fatalf("auth trace leaked account identity: %s", encodedTrace)
+	}
 	encodedStatus, err := json.Marshal(persistedStatus)
 	if err != nil {
 		t.Fatal(err)
@@ -565,7 +593,11 @@ func TestChatGPTWebLoginRejectsActiveAgentBeforeInteractiveLaunch(t *testing.T) 
 		interactiveCalls++
 		return nil
 	}
-	status, err := service.Login(context.Background())
+	var traceEvents []tracepkg.Event
+	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) {
+		traceEvents = append(traceEvents, event)
+	})
+	status, err := service.Login(ctx)
 	if err == nil || !strings.Contains(err.Error(), "exclusive browser profile access") {
 		t.Fatalf("status=%#v err=%v", status, err)
 	}
@@ -636,7 +668,11 @@ func TestChatGPTWebLoginFailedManagedVerificationLeavesMarkerAbsent(t *testing.T
 	service.PollInterval = time.Millisecond
 	service.DoctorTimeout = 5 * time.Millisecond
 
-	status, err := service.Login(context.Background())
+	var traceEvents []tracepkg.Event
+	ctx := tracepkg.WithObserver(context.Background(), func(event tracepkg.Event) {
+		traceEvents = append(traceEvents, event)
+	})
+	status, err := service.Login(ctx)
 	if err == nil || status.State != chatgptweb.StateNeedsLogin || status.Authenticated {
 		t.Fatalf("status=%#v err=%v", status, err)
 	}
@@ -649,6 +685,32 @@ func TestChatGPTWebLoginFailedManagedVerificationLeavesMarkerAbsent(t *testing.T
 	if !runtime.closedSnapshot() {
 		t.Fatal("failed one-shot verification runtime was not closed")
 	}
+	names := chatGPTAuthTraceNames(traceEvents)
+	if !applicationStringContains(names, "chatgpt.auth.verification.poll.failed") {
+		t.Fatalf("verification failure trace missing: %v", names)
+	}
+	if applicationStringContains(names, "chatgpt.auth.marker.persist.started") {
+		t.Fatalf("failed verification reached auth marker persistence: %v", names)
+	}
+}
+
+func chatGPTAuthTraceNames(events []tracepkg.Event) []string {
+	names := make([]string, 0, len(events))
+	for _, event := range events {
+		if strings.HasPrefix(event.Name, "chatgpt.auth.") {
+			names = append(names, event.Name)
+		}
+	}
+	return names
+}
+
+func applicationStringContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestChatGPTWebLoginManagedHandoffFailureReturnsDegradedWithoutMarker(t *testing.T) {

@@ -2,9 +2,9 @@ package trace
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -75,10 +75,21 @@ func Emit(ctx context.Context, component, name, message string, fields ...Field)
 }
 
 func EmitObserver(observer Observer, component, name, message string, fields ...Field) {
+	EmitPhaseObserver(observer, PhaseInfo, component, name, message, fields...)
+}
+
+func EmitPhase(ctx context.Context, phase Phase, component, name, message string, fields ...Field) {
+	EmitPhaseObserver(ObserverFromContext(ctx), phase, component, name, message, fields...)
+}
+
+func EmitPhaseObserver(observer Observer, phase Phase, component, name, message string, fields ...Field) {
 	if observer == nil {
 		return
 	}
-	observer(normalizeEvent(Event{Component: component, Name: name, Message: message, Phase: PhaseInfo, Fields: fields, Time: time.Now()}))
+	if phase != PhaseStart && phase != PhaseEnd && phase != PhaseInfo && phase != PhaseError {
+		phase = PhaseInfo
+	}
+	notify(observer, normalizeEvent(Event{Component: component, Name: phaseName(name, phase), Message: message, Phase: phase, Fields: fields, Time: time.Now()}))
 }
 
 func Start(ctx context.Context, component, name, message string, fields ...Field) *Span {
@@ -89,7 +100,7 @@ func StartObserver(observer Observer, component, name, message string, fields ..
 	started := time.Now()
 	span := &Span{observer: observer, component: component, name: strings.TrimSuffix(strings.TrimSpace(name), ".started"), message: strings.TrimSpace(message), started: started}
 	if observer != nil {
-		observer(normalizeEvent(Event{Component: component, Name: phaseName(span.name, PhaseStart), Message: message, Phase: PhaseStart, Fields: fields, Time: started}))
+		notify(observer, normalizeEvent(Event{Component: component, Name: phaseName(span.name, PhaseStart), Message: message, Phase: PhaseStart, Fields: fields, Time: started}))
 	}
 	return span
 }
@@ -123,7 +134,17 @@ func (span *Span) finish(message string, err error, fields ...Field) {
 	if strings.TrimSpace(message) == "" {
 		message = span.message
 	}
-	span.observer(normalizeEvent(Event{Component: span.component, Name: phaseName(span.name, phase), Message: message, Phase: phase, Fields: fields, Time: time.Now()}))
+	notify(span.observer, normalizeEvent(Event{Component: span.component, Name: phaseName(span.name, phase), Message: message, Phase: phase, Fields: fields, Time: time.Now()}))
+}
+
+func notify(observer Observer, event Event) {
+	if observer == nil {
+		return
+	}
+	defer func() {
+		_ = recover()
+	}()
+	observer(event)
 }
 
 func String(key, value string) Field                   { return Field{Key: key, Value: value} }
@@ -136,7 +157,12 @@ func Any(key string, value any) Field                  { return Field{Key: key, 
 func Sensitive(key string, value any) Field            { return Field{Key: key, Value: configuredState(value)} }
 func URL(key, value string) Field                      { return Field{Key: key, Value: SanitizeURL(value)} }
 
-const redactedValue = "<redacted>"
+const (
+	redactedValue           = "<redacted>"
+	maxEventFields          = 64
+	maxTraceStringRunes     = 4096
+	maxTraceCollectionItems = 64
+)
 
 var (
 	secretTokenPattern      = regexp.MustCompile(`(?i)\b(?:mcp|admin|runtime)_[A-Za-z0-9_-]{20,}\b`)
@@ -385,38 +411,81 @@ func SanitizeURL(raw string) string {
 }
 
 func normalizeEvent(event Event) Event {
-	event.Component = strings.TrimSpace(event.Component)
+	event.Component = boundTraceString(strings.TrimSpace(event.Component))
 	if event.Component == "" {
 		event.Component = "TRACE"
 	}
-	event.Name = strings.TrimSpace(event.Name)
+	event.Name = boundTraceString(strings.TrimSpace(event.Name))
 	if event.Name == "" {
 		event.Name = "trace.event"
 	}
-	event.Message = strings.TrimSpace(event.Message)
+	event.Message = boundTraceString(SanitizeText(strings.TrimSpace(event.Message)))
 	if event.Message == "" {
 		event.Message = event.Name
 	}
 	if event.Time.IsZero() {
 		event.Time = time.Now()
 	}
+	event.Fields = append([]Field(nil), event.Fields...)
+	if len(event.Fields) > maxEventFields {
+		event.Fields = event.Fields[:maxEventFields]
+	}
 	for index, field := range event.Fields {
-		key := strings.TrimSpace(field.Key)
+		key := boundTraceString(strings.TrimSpace(field.Key))
 		value := field.Value
 		if SensitiveName(key) {
 			value = configuredState(value)
-		} else if strings.EqualFold(key, "command") {
-			value = SanitizeCommand(fmt.Sprint(value))
-		} else if strings.EqualFold(key, "args") {
-			if args, ok := value.([]string); ok {
-				value = SanitizeArgs(args)
-			}
-		} else if looksLikeURLKey(key) {
-			value = SanitizeURL(fmt.Sprint(value))
+		} else {
+			value = SanitizeValue(key, value)
 		}
-		event.Fields[index] = Field{Key: key, Value: value}
+		event.Fields[index] = Field{Key: key, Value: boundTraceValue(value)}
 	}
 	return event
+}
+
+func boundTraceString(value string) string {
+	runes := []rune(value)
+	if len(runes) <= maxTraceStringRunes {
+		return value
+	}
+	return string(runes[:maxTraceStringRunes]) + "…"
+}
+
+func boundTraceValue(value any) any {
+	switch typed := value.(type) {
+	case string:
+		return boundTraceString(typed)
+	case []string:
+		limit := min(len(typed), maxTraceCollectionItems)
+		result := make([]string, limit)
+		for index := 0; index < limit; index++ {
+			result[index] = boundTraceString(typed[index])
+		}
+		return result
+	case []any:
+		limit := min(len(typed), maxTraceCollectionItems)
+		result := make([]any, limit)
+		for index := 0; index < limit; index++ {
+			result[index] = boundTraceValue(typed[index])
+		}
+		return result
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		if len(keys) > maxTraceCollectionItems {
+			keys = keys[:maxTraceCollectionItems]
+		}
+		result := make(map[string]any, len(keys))
+		for _, key := range keys {
+			result[boundTraceString(key)] = boundTraceValue(typed[key])
+		}
+		return result
+	default:
+		return value
+	}
 }
 
 func phaseName(name string, phase Phase) string {

@@ -39,6 +39,7 @@ func coordinateUpdatedRuntime(cmd *cobra.Command, installed install.Result, stat
 }
 
 func coordinateUpdatedRuntimeWith(cmd *cobra.Command, installed install.Result, state updateRuntimeState, noRestart bool, restart updateRuntimeRestartFunc) error {
+	ensureCommandTraceObserver(cmd)
 	logCommandDebug(cmd, "UPDATE", "update.runtime.state", "Resolved runtime coordination state", logger.WithDebug("running", state.Running), logger.WithDebug("managed", state.Status.Managed), logger.WithDebug("pid", state.Status.PID), logger.WithDebug("service", state.Status.ServiceID))
 	if !state.Running {
 		return nil
@@ -55,26 +56,29 @@ func coordinateUpdatedRuntimeWith(cmd *cobra.Command, installed install.Result, 
 		presenter.Fields(presentation.Field{Label: "pid", Value: state.Status.PID})
 		return nil
 	}
-	progress := newCommandProgress(cmd, "UPDATE")
-	progress.Start("update.runtime-restarting", "Restarting managed runtime", "Managed runtime restarted")
+	restartSpan := tracepkg.Start(cmd.Context(), "UPDATE", "update.runtime.restart", "Restarting updated managed runtime")
 	if err := restart(cmd, installed.Layout, state.Status); err != nil {
-		progress.Stop()
+		restartSpan.Fail(err)
 		session.Warn("update.runtime-restarting", "Restarting managed runtime", "Managed runtime restart failed; rolling back")
-		if rollbackErr := install.RollbackResult(installed); rollbackErr != nil {
+		rollbackSpan := tracepkg.Start(cmd.Context(), "UPDATE", "update.rollback", "Rolling back update")
+		if rollbackErr := install.RollbackResultContext(cmd.Context(), installed); rollbackErr != nil {
+			rollbackSpan.Fail(rollbackErr)
 			return fmt.Errorf("managed runtime restart failed: %w; rollback failed: %v", err, rollbackErr)
 		}
+		rollbackSpan.End()
 		previous := installed.Activation.PreviousVersion
-		session.Success("update.rollback-complete", "Restoring previous version", "Previous version restored")
 		if previous != "" {
 			presenter.Fields(presentation.Field{Label: "current", Value: previous})
 		}
+		rollbackRestartSpan := tracepkg.Start(cmd.Context(), "UPDATE", "update.rollback.runtime.restart", "Restarting previous managed runtime")
 		if rollbackRestartErr := restart(cmd, installed.Layout, state.Status); rollbackRestartErr != nil {
+			rollbackRestartSpan.Fail(rollbackRestartErr)
 			return fmt.Errorf("managed runtime restart failed: %w; rolled back to %s but previous runtime restart failed: %v", err, previous, rollbackRestartErr)
 		}
-		session.Success("update.rollback-runtime-restarted", "Restarting previous managed runtime", "Previous managed runtime restarted")
+		rollbackRestartSpan.End()
 		return fmt.Errorf("managed runtime restart failed: %w; rolled back to %s", err, previous)
 	}
-	progress.Complete()
+	restartSpan.End()
 	return nil
 }
 

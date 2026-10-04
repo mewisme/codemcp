@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const (
@@ -33,7 +35,14 @@ type githubReleaseResponse struct {
 	} `json:"assets"`
 }
 
-func LatestGitHubRelease(ctx context.Context, client *http.Client, repository, checksumAsset string) (GitHubRelease, error) {
+func LatestGitHubRelease(ctx context.Context, client *http.Client, repository, checksumAsset string) (result GitHubRelease, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	span := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.release.resolve", "Resolving managed asset release",
+		tracepkg.String("repository", strings.TrimSpace(repository)),
+	)
+	defer func() { span.Finish(err) }()
 	repository = strings.TrimSpace(repository)
 	checksumAsset = strings.TrimSpace(checksumAsset)
 	if !safeGitHubRepository(repository) {
@@ -41,9 +50,6 @@ func LatestGitHubRelease(ctx context.Context, client *http.Client, repository, c
 	}
 	if checksumAsset == "" || strings.ContainsAny(checksumAsset, "/\\") {
 		return GitHubRelease{}, errors.New("GitHub checksum asset name is invalid")
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 	client = releaseHTTPClient(client)
 	endpoint := "https://api.github.com/repos/" + repository + "/releases/latest"

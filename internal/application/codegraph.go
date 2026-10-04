@@ -12,6 +12,7 @@ import (
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/integrations/codegraph"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/workspace"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
@@ -59,23 +60,32 @@ func (s *CodeGraphService) Status(context.Context) (codegraph.Status, error) {
 }
 
 func (s *CodeGraphService) Probe(ctx context.Context) (codegraph.ProbeResult, error) {
+	span := tracepkg.Start(ctx, "INTEGRATION", "integration.codegraph.probe", "Probing CodeGraph")
 	runtime, err := s.runtime()
 	if err != nil {
+		span.Fail(err)
 		return codegraph.ProbeResult{}, err
 	}
-	return runtime.Probe(ctx)
+	result, err := runtime.Probe(ctx)
+	span.Finish(err)
+	return result, err
 }
 
 func (s *CodeGraphService) Install(ctx context.Context) (codegraph.InstallResult, error) {
+	span := tracepkg.Start(ctx, "INTEGRATION", "integration.codegraph.install", "Installing CodeGraph")
 	runtime, err := s.runtime()
 	if err != nil {
+		span.Fail(err)
 		return codegraph.InstallResult{}, err
 	}
-	return runtime.Install(ctx)
+	result, err := runtime.Install(ctx)
+	span.Finish(err)
+	return result, err
 }
 
 func (s *CodeGraphService) EnsureAvailable(ctx context.Context, values ...IntegrationEnsureOptions) (IntegrationEnsureResult, error) {
 	options := integrationEnsureOptions(values)
+	options.Observe = traceIntegrationEnsureObserver(ctx, options.Observe)
 	emitIntegrationEnsureEvent(options.Observe, "codegraph", "check", "running", "checking existing executable")
 	runtime, err := s.ensureAvailabilityRuntime()
 	if err != nil {

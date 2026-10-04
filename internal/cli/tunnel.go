@@ -335,8 +335,9 @@ func tunnelRunCommand() *cobra.Command {
 		} else if !errors.Is(err, os.ErrNotExist) {
 			logCommandDebug(cmd, "TUNNEL", "tunnel.metadata.load-failed", "Cached tunnel metadata could not be loaded", logger.WithDebug("error", err.Error()))
 		}
-		session := commandProgressSession(cmd)
-		client.SetLifecycleObserver(func(event tunnel.LifecycleEvent) { renderTunnelLifecycle(session, log, event) })
+		client.SetLifecycleObserver(tunnel.TraceLifecycleObserver(tracepkg.ObserverFromContext(cmd.Context()), func(event tunnel.LifecycleEvent) {
+			renderTunnelLifecycleDetail(cmd, event)
+		}))
 		logCommandVerbose(cmd, "TUNNEL", "tunnel.runtime.starting", "Starting tunnel runtime", logger.WithVerbose("tunnel_id", tunnelConfig.ID))
 		if err := client.StartContext(runtimeCtx); err != nil {
 			return err
@@ -344,9 +345,9 @@ func tunnelRunCommand() *cobra.Command {
 		defer func() {
 			status := client.Status()
 			if status.Running || status.Restarting {
-				session.Update(presentation.ProgressPhase{ID: "tunnel.stopping", Label: "Stopping tunnel", State: presentation.ProgressRunning})
+				tracepkg.EmitPhase(cmd.Context(), tracepkg.PhaseStart, "TUNNEL", "tunnel.stop", "Stopping tunnel")
 				if err := client.Stop(); err != nil {
-					session.Warn("tunnel.stopping", "Stopping tunnel", "Tunnel stop failed")
+					tracepkg.EmitPhase(cmd.Context(), tracepkg.PhaseError, "TUNNEL", "tunnel.stop", "Tunnel stop failed", tracepkg.String("error", tracepkg.SanitizeError(err)))
 					log.Diagnostic(logger.Error, "TUNNEL", "tunnel.stop.failed", "Failed to stop tunnel", logger.WithVerbose("error", err.Error()), logger.WithVerbose("tunnel_id", tunnelConfig.ID))
 					if runErr == nil {
 						runErr = err
@@ -385,38 +386,13 @@ func tunnelRunCommand() *cobra.Command {
 	}}
 }
 
-func renderTunnelLifecycle(session *presentation.ProgressSession, log *logger.Logger, event tunnel.LifecycleEvent) {
-	fields := []logger.Field{}
-	if event.ID != "" {
-		fields = append(fields, logger.WithVerbose("tunnel_id", event.ID))
-	}
-	if event.Attempt > 0 {
-		fields = append(fields, logger.WithVerbose("attempt", event.Attempt), logger.WithVerbose("retry_in", event.RetryIn.String()))
-	}
-	if event.Message != "" {
-		fields = append(fields, logger.WithVerbose("detail", event.Message))
-	}
-	if log != nil {
-		log.Diagnostic(logger.Debug, "TUNNEL", "tunnel.lifecycle."+string(event.State), "Tunnel lifecycle changed", fields...)
-	}
-	if session == nil {
+func renderTunnelLifecycleDetail(cmd *cobra.Command, event tunnel.LifecycleEvent) {
+	if cmd == nil {
 		return
 	}
-	switch event.State {
-	case tunnel.LifecycleConnecting:
-		session.Update(presentation.ProgressPhase{ID: "tunnel.connection", Label: "Connecting tunnel", State: presentation.ProgressRunning})
-	case tunnel.LifecycleReconnecting:
-		session.Update(presentation.ProgressPhase{ID: "tunnel.connection", Label: "Reconnecting tunnel", State: presentation.ProgressRunning})
-	case tunnel.LifecycleReady:
-		session.Success("tunnel.connection", "Connecting tunnel", "Tunnel connected")
-		if strings.TrimSpace(event.ID) != "" {
-			session.Append(func(presenter *presentation.Presenter) {
-				presenter.Fields(presentation.Field{Label: "tunnel id", Value: event.ID})
-			})
-		}
-	case tunnel.LifecycleDegraded:
-		session.Warn("tunnel.connection", "Connecting tunnel", "Tunnel degraded")
-	case tunnel.LifecycleStopped:
-		session.Success("tunnel.stopping", "Stopping tunnel", "Tunnel stopped")
+	if event.State == tunnel.LifecycleReady && strings.TrimSpace(event.ID) != "" {
+		commandProgressSession(cmd).Append(func(presenter *presentation.Presenter) {
+			presenter.Fields(presentation.Field{Label: "tunnel id", Value: event.ID})
+		})
 	}
 }

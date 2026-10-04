@@ -27,7 +27,7 @@ func installCommand() *cobra.Command {
 			logCommandVerbose(cmd, "INSTALL", "install.plan", "Preparing installation", logger.WithVerbose("version", version.Version), logger.WithDebug("force", force))
 			result, err := application.InstallCurrentContext(cmd.Context(), application.InstallCurrentOptions{
 				Force: force, SkipMissingIntegrations: noInstallIntegrations,
-				Observe: installCutoverObserver(cmd), ObserveIntegration: installIntegrationObserver(cmd),
+				Observe: installCutoverObserver(cmd),
 			})
 			if err != nil {
 				return fmt.Errorf("install managed binary: %w", err)

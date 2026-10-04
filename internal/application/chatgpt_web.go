@@ -14,6 +14,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/integrations/browser"
 	"go.mewis.me/codemcp/internal/integrations/chatgptweb"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
@@ -370,25 +371,34 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 	if capability.Profile == nil {
 		return ChatGPTWebStatus{}, errors.New("ChatGPT Web browser profile is unresolved")
 	}
+	profileSpan := tracepkg.Start(ctx, "CHATGPT", "chatgpt.auth.profile.prepare", "Preparing ChatGPT browser profile")
 	if err := service.prepareInteractiveLoginLocked(ctx); err != nil {
+		profileSpan.Fail(err)
 		return ChatGPTWebStatus{}, err
 	}
 	if err := chatgptweb.RemoveAuthMarker(service.Root()); err != nil {
+		profileSpan.Fail(err)
 		return ChatGPTWebStatus{}, err
 	}
+	profileSpan.End()
 	loginCtx, cancelLogin := context.WithTimeout(ctx, service.loginTimeout())
+	interactiveSpan := tracepkg.Start(ctx, "CHATGPT", "chatgpt.auth.interactive", "Waiting for ChatGPT sign-in")
 	err = service.RunInteractive(loginCtx, browser.InteractiveBrowserOptions{
 		Capability: capability,
 		URL:        chatgptweb.TemporaryChatURL,
 	})
 	cancelLogin()
 	if err != nil {
+		interactiveSpan.Fail(err)
 		status, _ := service.loginFailureStatus(capability, chatgptweb.StateNeedsLogin,
 			"interactive ChatGPT sign-in did not complete; complete sign-in and close the CodeMCP browser window")
 		return status, fmt.Errorf("interactive ChatGPT sign-in did not complete: %w", err)
 	}
+	interactiveSpan.End()
+	verificationRuntimeSpan := tracepkg.Start(ctx, "CHATGPT", "chatgpt.auth.verification.runtime", "Starting authentication verification")
 	runtime, oneShot, err := service.browserRuntime(capability, cfg.Integrations.Browser.Minimized)
 	if err != nil {
+		verificationRuntimeSpan.Fail(err)
 		status, _ := service.loginFailureStatus(capability, chatgptweb.StateDegraded,
 			"managed browser verification could not start after interactive sign-in")
 		return status, fmt.Errorf("start managed ChatGPT verification browser: %w", err)
@@ -401,6 +411,7 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 	}()
 	lease, err := runtime.Acquire(ctx, chatGPTWebVerificationLease)
 	if err != nil {
+		verificationRuntimeSpan.Fail(err)
 		status, _ := service.loginFailureStatus(capability, chatgptweb.StateDegraded,
 			"managed browser verification could not acquire the isolated profile after interactive sign-in")
 		return status, fmt.Errorf("acquire managed ChatGPT verification tab: %w", err)
@@ -413,24 +424,33 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 	}()
 	tab, ok := runtime.Tab(lease.AgentID)
 	if !ok {
+		verificationRuntimeSpan.Fail(errors.New("ChatGPT Web verification tab is unavailable"))
 		status, _ := service.loginFailureStatus(capability, chatgptweb.StateDegraded,
 			"managed browser verification tab is unavailable after interactive sign-in")
 		return status, errors.New("ChatGPT Web verification tab is unavailable")
 	}
 	if err := tab.Navigate(ctx, chatgptweb.TemporaryChatURL); err != nil {
+		verificationRuntimeSpan.Fail(err)
 		status, _ := service.loginFailureStatus(capability, chatgptweb.StateDegraded,
 			"managed browser could not open ChatGPT Temporary Chat after interactive sign-in")
 		return status, fmt.Errorf("open ChatGPT Temporary Chat for verification: %w", err)
 	}
+	verificationRuntimeSpan.End()
+	verificationPollSpan := tracepkg.Start(ctx, "CHATGPT", "chatgpt.auth.verification.poll", "Verifying ChatGPT authentication")
 	evidence, err := service.waitForAuth(ctx, tab, service.doctorTimeout())
 	if err != nil {
+		verificationPollSpan.Fail(err)
 		status, _ := service.loginFailureStatus(capability, chatgptweb.StateNeedsLogin,
 			"ChatGPT authentication could not be verified after interactive sign-in; rerun login and complete any browser verification before closing the window")
 		return status, fmt.Errorf("verify ChatGPT authentication after interactive sign-in: %w; rerun login and complete any browser verification before closing the window", err)
 	}
+	verificationPollSpan.End()
+	markerSpan := tracepkg.Start(ctx, "CHATGPT", "chatgpt.auth.marker.persist", "Saving verified authentication")
 	if err := chatgptweb.WriteAuthMarker(service.Root(), service.Now()); err != nil {
+		markerSpan.Fail(err)
 		return ChatGPTWebStatus{}, err
 	}
+	markerSpan.End()
 	if err := runtime.Release(context.Background(), lease.AgentID); err != nil {
 		return ChatGPTWebStatus{}, err
 	}

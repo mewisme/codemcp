@@ -12,7 +12,32 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"go.mewis.me/codemcp/internal/tools"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
+
+func TestTraceLifecycleObserverMapsLifecycleStates(t *testing.T) {
+	var events []tracepkg.Event
+	observe := TraceLifecycleObserver(func(event tracepkg.Event) { events = append(events, event) }, nil)
+	observe(LifecycleEvent{State: LifecycleConnecting, ID: "tunnel_test"})
+	observe(LifecycleEvent{State: LifecycleReconnecting, ID: "tunnel_test", Attempt: 2, RetryIn: time.Second})
+	observe(LifecycleEvent{State: LifecycleReady, ID: "tunnel_test"})
+	observe(LifecycleEvent{State: LifecycleDegraded, ID: "tunnel_test"})
+	observe(LifecycleEvent{State: LifecycleStopped, ID: "tunnel_test"})
+	got := make([]string, 0, len(events))
+	for _, event := range events {
+		got = append(got, event.Name+":"+string(event.Phase))
+	}
+	want := []string{
+		"tunnel.connection.started:start",
+		"tunnel.connection.started:start",
+		"tunnel.connection.completed:end",
+		"tunnel.connection:info",
+		"tunnel.stop.completed:end",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("trace lifecycle=%v want=%v", got, want)
+	}
+}
 
 type fakeBackend struct {
 	mu        sync.Mutex

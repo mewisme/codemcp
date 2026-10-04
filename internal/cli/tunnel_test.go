@@ -15,7 +15,7 @@ import (
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/configformat"
-	"go.mewis.me/codemcp/internal/logger"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
@@ -25,12 +25,16 @@ func TestRenderTunnelLifecycleUsesSharedProgress(t *testing.T) {
 	defer func() { color.NoColor = previous }()
 
 	var output bytes.Buffer
-	log := logger.NewWithOptions(logger.Options{Level: logger.Debug, Mode: logger.ModeVerbose, Writer: &output})
-	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{Unicode: true})
-	session.Begin("Run OpenAI tunnel")
-	renderTunnelLifecycle(session, log, tunnel.LifecycleEvent{State: tunnel.LifecycleReconnecting, ID: "tunnel_test", Attempt: 3, RetryIn: 4 * time.Second})
-	renderTunnelLifecycle(session, log, tunnel.LifecycleEvent{State: tunnel.LifecycleReady, ID: "tunnel_test"})
-	session.Close()
+	cmd := &cobra.Command{Use: "run"}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Unicode: true, Interactive: true}))
+	setCommandPresentationTitle(cmd, "Run OpenAI tunnel")
+	ensureCommandTraceObserver(cmd)
+	observe := tunnel.TraceLifecycleObserver(tracepkg.ObserverFromContext(cmd.Context()), func(event tunnel.LifecycleEvent) {
+		renderTunnelLifecycleDetail(cmd, event)
+	})
+	observe(tunnel.LifecycleEvent{State: tunnel.LifecycleReconnecting, ID: "tunnel_test", Attempt: 3, RetryIn: 4 * time.Second})
+	observe(tunnel.LifecycleEvent{State: tunnel.LifecycleReady, ID: "tunnel_test"})
+	closeCommandProgress(cmd, nil)
 	text := output.String()
 	for _, expected := range []string{"Run OpenAI tunnel", "◇  Reconnecting tunnel", "Tunnel connected", "│  tunnel id — tunnel_test"} {
 		if !strings.Contains(text, expected) {

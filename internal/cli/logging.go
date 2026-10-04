@@ -16,6 +16,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/logger"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
+	"go.mewis.me/codemcp/internal/tunnel"
 )
 
 var (
@@ -39,27 +40,64 @@ type traceProgressSpec struct {
 }
 
 var traceProgress = map[string]traceProgressSpec{
-	"config.persist":              {start: "Saving configuration", done: "Saved configuration"},
-	"config.persist.rollback":     {start: "Rolling back configuration", done: "Rolled back configuration"},
-	"config.runtime.reload":       {start: "Reloading running runtime", done: "Reloaded runtime configuration"},
-	"install.source.validate":     {start: "Validating source binary", done: "Validated source binary"},
-	"install.legacy.discover":     {start: "Checking legacy installations", done: "Checked legacy installations"},
-	"install.stage":               {start: "Staging installation binary", done: "Staged installation binary"},
-	"install.activate":            {start: "Activating installation", done: "Activated installation"},
-	"install.rollback":            {start: "Rolling back installation", done: "Rolled back installation"},
-	"install.legacy.backup":       {start: "Backing up legacy installation", done: "Backed up legacy installation"},
-	"install.canonical.install":   {start: "Installing canonical command", done: "Installed canonical command"},
-	"install.metadata.write":      {start: "Writing installation metadata", done: "Wrote installation metadata"},
-	"install.versions.cleanup":    {start: "Cleaning old installed versions", done: "Cleaned old installed versions"},
-	"tunnel.admin.verify":         {start: "Verifying tunnel admin access", done: "Verified tunnel admin access"},
-	"tunnel.admin.read-probe":     {start: "Checking tunnel admin read access", done: "Verified tunnel admin read access"},
-	"tunnel.admin.get":            {start: "Fetching managed tunnel", done: "Fetched managed tunnel"},
-	"tunnel.admin.create":         {start: "Creating managed tunnel", done: "Created managed tunnel"},
-	"tunnel.admin.update":         {start: "Updating managed tunnel", done: "Updated managed tunnel"},
-	"tunnel.admin.delete":         {start: "Deleting managed tunnel", done: "Deleted managed tunnel"},
-	"tunnel.runtime-key.generate": {start: "Generating runtime API key", done: "Generated runtime API key"},
-	"tunnel.metadata.fetch":       {start: "Fetching tunnel metadata", done: "Fetched tunnel metadata"},
-	"tunnel.metadata.refresh":     {start: "Refreshing tunnel metadata", done: "Refreshed tunnel metadata"},
+	"config.persist":                    {start: "Saving configuration", done: "Saved configuration"},
+	"config.persist.rollback":           {start: "Rolling back configuration", done: "Rolled back configuration"},
+	"config.runtime.reload":             {start: "Reloading running runtime", done: "Reloaded runtime configuration"},
+	"install.source.validate":           {start: "Validating source binary", done: "Validated source binary"},
+	"install.legacy.discover":           {start: "Checking legacy installations", done: "Checked legacy installations"},
+	"install.stage":                     {start: "Staging installation binary", done: "Staged installation binary"},
+	"install.activate":                  {start: "Activating installation", done: "Activated installation"},
+	"install.rollback":                  {start: "Rolling back installation", done: "Rolled back installation"},
+	"install.legacy.backup":             {start: "Backing up legacy installation", done: "Backed up legacy installation"},
+	"install.canonical.install":         {start: "Installing canonical command", done: "Installed canonical command"},
+	"install.metadata.write":            {start: "Writing installation metadata", done: "Wrote installation metadata"},
+	"install.versions.cleanup":          {start: "Cleaning old installed versions", done: "Cleaned old installed versions"},
+	"tunnel.admin.verify":               {start: "Verifying tunnel admin access", done: "Verified tunnel admin access"},
+	"tunnel.admin.read-probe":           {start: "Checking tunnel admin read access", done: "Verified tunnel admin read access"},
+	"tunnel.admin.get":                  {start: "Fetching managed tunnel", done: "Fetched managed tunnel"},
+	"tunnel.admin.create":               {start: "Creating managed tunnel", done: "Created managed tunnel"},
+	"tunnel.admin.update":               {start: "Updating managed tunnel", done: "Updated managed tunnel"},
+	"tunnel.admin.delete":               {start: "Deleting managed tunnel", done: "Deleted managed tunnel"},
+	"tunnel.runtime-key.generate":       {start: "Generating runtime API key", done: "Generated runtime API key"},
+	"tunnel.metadata.fetch":             {start: "Fetching tunnel metadata", done: "Fetched tunnel metadata"},
+	"tunnel.metadata.refresh":           {start: "Refreshing tunnel metadata", done: "Refreshed tunnel metadata"},
+	"skills.add.repository.acquire":     {start: "Acquiring GitHub skill repository", done: "Acquired GitHub skill repository"},
+	"skills.add.discover":               {start: "Discovering skills", done: "Skills discovered"},
+	"skills.add.security.review":        {start: "Reviewing skill security", done: "Skill security reviewed"},
+	"skills.add.install":                {start: "Installing GitHub skills", done: "GitHub skills installed"},
+	"skills.update.acquire":             {start: "Acquiring managed GitHub skill sources", done: "Managed GitHub skill sources acquired"},
+	"skills.update.security.review":     {start: "Reviewing managed skill security", done: "Managed skill security reviewed"},
+	"skills.update.install":             {start: "Installing managed GitHub skill updates", done: "Managed GitHub skill updates installed"},
+	"skills.remove":                     {start: "Removing native skill", done: "Native skill removed"},
+	"install.cutover.detect":            {start: "Detecting predecessor state", done: "Predecessor state checked"},
+	"install.cutover.stage":             {start: "Staging migration", done: "Migration staged"},
+	"install.cutover.validate":          {start: "Validating staged state", done: "Staged state validated"},
+	"install.cutover.activate":          {start: "Activating CodeMCP", done: "CodeMCP activated"},
+	"install.cutover.cleanup":           {start: "Finalizing installation", done: "Installation finalized"},
+	"chatgpt.auth.profile.prepare":      {start: "Preparing ChatGPT browser profile", done: "ChatGPT browser profile ready"},
+	"chatgpt.auth.interactive":          {start: "Waiting for ChatGPT sign-in", done: "Interactive ChatGPT sign-in completed"},
+	"chatgpt.auth.verification.runtime": {start: "Starting authentication verification", done: "Authentication verification browser ready"},
+	"chatgpt.auth.verification.poll":    {start: "Verifying ChatGPT authentication", done: "ChatGPT authentication verified"},
+	"chatgpt.auth.marker.persist":       {start: "Saving verified authentication", done: "Verified authentication saved"},
+	"update.plan":                       {start: "Checking for updates", done: "Checked for updates"},
+	"update.artifact.download":          {start: "Downloading verified release artifact", done: "Downloaded verified release artifact"},
+	"update.install":                    {start: "Installing resolved update", done: "Resolved update installed"},
+	"update.runtime.inspect":            {start: "Inspecting managed runtime", done: "Managed runtime inspected"},
+	"update.runtime.restart":            {start: "Restarting updated managed runtime", done: "Updated managed runtime restarted"},
+	"update.rollback":                   {start: "Rolling back update", done: "Previous version restored"},
+	"update.rollback.runtime.restart":   {start: "Restarting previous managed runtime", done: "Previous managed runtime restarted"},
+	"update.finalize":                   {start: "Finalizing update", done: "Update finalized"},
+	"update.supplemental.bootstrap":     {start: "Bootstrapping install supplements", done: "Install supplements bootstrapped"},
+	"managed_asset.release.resolve":     {start: "Resolving managed asset release", done: "Managed asset release resolved"},
+	"managed_asset.download":            {start: "Downloading managed asset", done: "Managed asset downloaded"},
+	"managed_asset.verify.archive":      {start: "Verifying managed asset archive", done: "Managed asset archive verified"},
+	"managed_asset.extract":             {start: "Extracting managed asset", done: "Managed asset extracted"},
+	"managed_asset.verify.payload":      {start: "Verifying managed asset payload", done: "Managed asset payload verified"},
+	"managed_asset.activate":            {start: "Activating managed asset", done: "Managed asset activated"},
+	"managed_asset.activate.rollback":   {start: "Restoring previous managed asset", done: "Previous managed asset restored"},
+	"managed_asset.cleanup":             {start: "Cleaning managed asset staging directory", done: "Managed asset staging directory cleaned"},
+	"tunnel.connection":                 {start: "Connecting tunnel", done: "Tunnel connected"},
+	"tunnel.stop":                       {start: "Stopping tunnel", done: "Tunnel stopped"},
 }
 
 func addLoggingFlags(cmd *cobra.Command) {
@@ -420,9 +458,12 @@ func commandTraceObserver(cmd *cobra.Command) tracepkg.Observer {
 		for _, field := range event.Fields {
 			fields = append(fields, logger.WithVerbose(field.Key, field.Value))
 		}
-		if spec, ok := commandTraceProgressSpec(event); ok {
+		if spec, ok := commandTraceProgressSpec(cmd, event); ok {
 			log := commandLogger(cmd)
 			session := commandProgressSession(cmd)
+			if traceProgressBreakBefore(cmd, event) {
+				session.Append(func(p *presentation.Presenter) { p.Spacer() })
+			}
 			phase := tracePresentationPhase(event, spec)
 			if !session.Update(phase) {
 				return
@@ -445,6 +486,21 @@ func commandTraceObserver(cmd *cobra.Command) tracepkg.Observer {
 		}
 		commandLogger(cmd).Verbose(event.Component, event.Name, event.Message, fields...)
 	}
+}
+
+func traceProgressBreakBefore(cmd *cobra.Command, event tracepkg.Event) bool {
+	if cmd == nil || event.Phase != tracepkg.PhaseStart || relativeCommandPath(cmd) != "restart" {
+		return false
+	}
+	name := strings.TrimSuffix(strings.TrimSpace(event.Name), ".started")
+	return name == "service.backend.install" || name == "service.backend.start"
+}
+
+func ensureCommandTraceObserver(cmd *cobra.Command) {
+	if cmd == nil || tracepkg.ObserverFromContext(cmd.Context()) != nil {
+		return
+	}
+	cmd.SetContext(tracepkg.WithObserver(cmd.Context(), commandTraceObserver(cmd)))
 }
 
 func renderTraceProgressTextDiagnostic(log *logger.Logger, event tracepkg.Event, spec traceProgressSpec, fields []logger.Field) {
@@ -473,6 +529,11 @@ func tracePresentationPhase(event tracepkg.Event, spec traceProgressSpec) presen
 		}
 	case tracepkg.PhaseError:
 		phase.State = presentation.ProgressFailed
+	case tracepkg.PhaseInfo:
+		if traceEventString(event, "state") == string(tunnel.LifecycleDegraded) {
+			phase.State = presentation.ProgressWarning
+			phase.Message = event.Message
+		}
 	}
 	return phase
 }
@@ -509,7 +570,7 @@ func renderTraceProgressDiagnostic(log *logger.Logger, event tracepkg.Event, spe
 	}
 }
 
-func commandTraceProgressSpec(event tracepkg.Event) (traceProgressSpec, bool) {
+func commandTraceProgressSpec(cmd *cobra.Command, event tracepkg.Event) (traceProgressSpec, bool) {
 	name := strings.TrimSpace(event.Name)
 	switch event.Phase {
 	case tracepkg.PhaseStart:
@@ -518,9 +579,79 @@ func commandTraceProgressSpec(event tracepkg.Event) (traceProgressSpec, bool) {
 		name = strings.TrimSuffix(name, ".completed")
 	case tracepkg.PhaseError:
 		name = strings.TrimSuffix(name, ".failed")
+	case tracepkg.PhaseInfo:
+		if name != "tunnel.connection" || traceEventString(event, "state") != string(tunnel.LifecycleDegraded) {
+			return traceProgressSpec{}, false
+		}
 	default:
 		return traceProgressSpec{}, false
 	}
+	if traceEventBool(event, "child") {
+		return traceProgressSpec{}, false
+	}
+	if strings.HasPrefix(name, "integration.ensure.") {
+		parts := strings.Split(name, ".")
+		if len(parts) == 4 {
+			integration := strings.TrimSpace(parts[2])
+			phase := strings.TrimSpace(parts[3])
+			switch phase {
+			case "check":
+				return traceProgressSpec{start: "Checking " + integration, done: "Checked " + integration}, true
+			case "install":
+				return traceProgressSpec{start: "Installing " + integration, done: "Installed " + integration}, true
+			}
+		}
+	}
+	if strings.HasPrefix(name, "service.") {
+		path := relativeCommandPath(cmd)
+		if path != "up" && path != "down" && path != "restart" {
+			return traceProgressSpec{}, false
+		}
+		switch name {
+		case "service.runtime.stopped.wait":
+			return traceProgressSpec{start: "Stopping managed runtime", done: "Stopped managed runtime"}, true
+		case "service.backend.stop":
+			return traceProgressSpec{start: "Stopping managed service backend", done: "Stopped managed service backend"}, true
+		case "service.backend.install":
+			if path == "restart" {
+				return traceProgressSpec{start: "Updating managed service definition", done: "Updated managed service definition"}, true
+			}
+			return traceProgressSpec{start: "Installing managed service definition", done: "Installed managed service definition"}, true
+		case "service.backend.start":
+			return traceProgressSpec{start: "Starting managed service backend", done: "Started managed service backend"}, true
+		case "service.backend.uninstall":
+			return traceProgressSpec{start: "Removing managed service definition", done: "Removed managed service definition"}, true
+		case "service.runtime.ready.wait":
+			return traceProgressSpec{start: "Waiting for managed runtime readiness", done: "Managed runtime ready"}, true
+		}
+	}
+	if name == "tunnel.connection" {
+		spec := traceProgress[name]
+		if traceEventString(event, "state") == string(tunnel.LifecycleReconnecting) {
+			spec.start = "Reconnecting tunnel"
+		}
+		return spec, true
+	}
 	spec, ok := traceProgress[name]
 	return spec, ok
+}
+
+func traceEventBool(event tracepkg.Event, key string) bool {
+	for _, field := range event.Fields {
+		if field.Key == key {
+			value, _ := field.Value.(bool)
+			return value
+		}
+	}
+	return false
+}
+
+func traceEventString(event tracepkg.Event, key string) string {
+	for _, field := range event.Fields {
+		if field.Key == key {
+			value, _ := field.Value.(string)
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }

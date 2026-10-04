@@ -13,7 +13,7 @@ func (a *App) attachTunnelLifecycle() {
 	if a == nil || a.Tunnel == nil {
 		return
 	}
-	a.Tunnel.SetLifecycleObserver(func(event tunnel.LifecycleEvent) {
+	a.Tunnel.SetLifecycleObserver(tunnel.TraceLifecycleObserver(a.trace, func(event tunnel.LifecycleEvent) {
 		fields := []logger.Field{}
 		if event.ID != "" {
 			fields = append(fields, logger.WithVerbose("tunnel_id", event.ID))
@@ -48,5 +48,5 @@ func (a *App) attachTunnelLifecycle() {
 			}
 			a.Activity.Publish(activity.Event{Kind: "tunnel." + string(event.State), Source: "tunnel", Status: string(event.State), Message: message})
 		}
-	})
+	}))
 }

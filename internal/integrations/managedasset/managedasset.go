@@ -19,6 +19,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 const (
@@ -213,7 +215,9 @@ func (m Manager) Install(ctx context.Context, spec Spec) (string, error) {
 	cleanupStage := true
 	defer func() {
 		if cleanupStage {
-			_ = os.RemoveAll(stage)
+			cleanupSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.cleanup", "Cleaning managed asset staging directory",
+				tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version))
+			cleanupSpan.Finish(os.RemoveAll(stage))
 		}
 	}()
 	archivePath := filepath.Join(stage, "asset."+strings.ReplaceAll(spec.Archive, ".", "-"))
@@ -221,39 +225,63 @@ func (m Manager) Install(ctx context.Context, spec Spec) (string, error) {
 	if limit <= 0 {
 		limit = defaultDownloadLimit
 	}
+	downloadSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.download", "Downloading managed asset",
+		tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version), tracepkg.URL("url", spec.URL))
 	if err := download(ctx, m.HTTPClient, spec.URL, archivePath, limit); err != nil {
+		downloadSpan.Fail(err)
 		return "", err
 	}
+	downloadSpan.End()
+	archiveSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.verify.archive", "Verifying managed asset archive",
+		tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version))
 	archiveSHA, err := hashFile(archivePath)
 	if err != nil {
+		archiveSpan.Fail(err)
 		return "", err
 	}
 	if !strings.EqualFold(archiveSHA, spec.SHA256) {
-		return "", errors.New("managed asset archive checksum mismatch")
-	}
-	payload := filepath.Join(stage, "payload")
-	binary, err := extractEntrypoint(archivePath, payload, spec.Archive, spec.Entrypoint)
-	if err != nil {
+		err := errors.New("managed asset archive checksum mismatch")
+		archiveSpan.Fail(err)
 		return "", err
 	}
+	archiveSpan.End()
+	payload := filepath.Join(stage, "payload")
+	extractSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.extract", "Extracting managed asset",
+		tracepkg.String("name", spec.Name), tracepkg.String("archive", spec.Archive))
+	binary, err := extractEntrypoint(archivePath, payload, spec.Archive, spec.Entrypoint)
+	if err != nil {
+		extractSpan.Fail(err)
+		return "", err
+	}
+	extractSpan.End()
+	payloadSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.verify.payload", "Verifying managed asset payload",
+		tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version))
 	if err := validateExecutable(binary); err != nil {
+		payloadSpan.Fail(err)
 		return "", err
 	}
 	binarySHA, err := hashFile(binary)
 	if err != nil {
+		payloadSpan.Fail(err)
 		return "", err
 	}
 	manifestData, err := json.MarshalIndent(manifest{Schema: manifestSchema, Name: spec.Name, Version: spec.Version, Platform: spec.Platform, URL: spec.URL, ArchiveSHA: strings.ToLower(spec.SHA256), BinarySHA256: binarySHA, Entrypoint: spec.Entrypoint}, "", "  ")
 	if err != nil {
+		payloadSpan.Fail(err)
 		return "", err
 	}
 	manifestData = append(manifestData, '\n')
 	if err := os.WriteFile(filepath.Join(payload, "manifest.json"), manifestData, 0600); err != nil {
+		payloadSpan.Fail(err)
 		return "", err
 	}
+	payloadSpan.End()
 	target := filepath.Dir(path)
-	validated, keepStage, err := m.activateDirectory(stage, payload, target, func() (string, error) { return m.validateActivated(spec) })
+	activateSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.activate", "Activating managed asset",
+		tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version))
+	validated, keepStage, err := m.activateDirectory(ctx, stage, payload, target, func() (string, error) { return m.validateActivated(spec) })
 	cleanupStage = !keepStage
+	activateSpan.Finish(err)
 	return validated, err
 }
 
@@ -360,7 +388,9 @@ func (m Manager) InstallTree(ctx context.Context, spec TreeSpec) (string, error)
 	cleanupStage := true
 	defer func() {
 		if cleanupStage {
-			_ = os.RemoveAll(stage)
+			cleanupSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.cleanup", "Cleaning managed asset tree staging directory",
+				tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version))
+			cleanupSpan.Finish(os.RemoveAll(stage))
 		}
 	}()
 	archivePath := filepath.Join(stage, "asset."+strings.ReplaceAll(spec.Archive, ".", "-"))
@@ -368,44 +398,69 @@ func (m Manager) InstallTree(ctx context.Context, spec TreeSpec) (string, error)
 	if limit <= 0 {
 		limit = maxTreeDownloadLimit
 	}
+	downloadSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.download", "Downloading managed asset tree",
+		tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version), tracepkg.URL("url", spec.URL))
 	if err := download(ctx, m.HTTPClient, spec.URL, archivePath, limit); err != nil {
+		downloadSpan.Fail(err)
 		return "", err
 	}
+	downloadSpan.End()
+	archiveSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.verify.archive", "Verifying managed asset archive",
+		tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version))
 	archiveSHA, err := hashFile(archivePath)
 	if err != nil {
+		archiveSpan.Fail(err)
 		return "", err
 	}
 	if !strings.EqualFold(archiveSHA, spec.SHA256) {
-		return "", errors.New("managed tree archive checksum mismatch")
-	}
-	payload := filepath.Join(stage, "payload")
-	if err := extractTree(archivePath, payload, spec.Archive); err != nil {
+		err := errors.New("managed tree archive checksum mismatch")
+		archiveSpan.Fail(err)
 		return "", err
 	}
+	archiveSpan.End()
+	payload := filepath.Join(stage, "payload")
+	extractSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.extract", "Extracting managed asset tree",
+		tracepkg.String("name", spec.Name), tracepkg.String("archive", spec.Archive))
+	if err := extractTree(archivePath, payload, spec.Archive); err != nil {
+		extractSpan.Fail(err)
+		return "", err
+	}
+	extractSpan.End()
+	payloadSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.verify.payload", "Verifying managed asset tree payload",
+		tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version))
 	entrypoint := filepath.Join(payload, filepath.FromSlash(spec.Entrypoint))
 	if err := validateTreeEntrypoint(entrypoint, spec.Platform); err != nil {
+		payloadSpan.Fail(err)
 		return "", err
 	}
 	if err := validateRequiredTreeFiles(payload, spec.Required); err != nil {
+		payloadSpan.Fail(err)
 		return "", err
 	}
 	files, err := treeHashes(payload, "tree-manifest.json")
 	if err != nil {
+		payloadSpan.Fail(err)
 		return "", err
 	}
 	manifestData, err := json.MarshalIndent(treeManifest{Schema: manifestSchema, Name: spec.Name, Version: spec.Version, Platform: spec.Platform, URL: spec.URL, ArchiveSHA: strings.ToLower(spec.SHA256), Entrypoint: spec.Entrypoint, Files: files}, "", "  ")
 	if err != nil {
+		payloadSpan.Fail(err)
 		return "", err
 	}
 	if err := os.WriteFile(filepath.Join(payload, "tree-manifest.json"), append(manifestData, '\n'), 0600); err != nil {
+		payloadSpan.Fail(err)
 		return "", err
 	}
-	validated, keepStage, err := m.activateDirectory(stage, payload, target, func() (string, error) { return m.ValidateTree(spec) })
+	payloadSpan.EndMessage("Managed asset tree payload verified", tracepkg.Int("file_count", len(files)))
+	activateSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.activate", "Activating managed asset tree",
+		tracepkg.String("name", spec.Name), tracepkg.String("version", spec.Version))
+	validated, keepStage, err := m.activateDirectory(ctx, stage, payload, target, func() (string, error) { return m.ValidateTree(spec) })
 	cleanupStage = !keepStage
+	activateSpan.Finish(err)
 	return validated, err
 }
 
-func (m Manager) activateDirectory(stage, payload, target string, validate func() (string, error)) (string, bool, error) {
+func (m Manager) activateDirectory(ctx context.Context, stage, payload, target string, validate func() (string, error)) (string, bool, error) {
 	previous := filepath.Join(stage, "previous")
 	hadPrevious := false
 	if _, err := os.Lstat(target); err == nil {
@@ -419,9 +474,12 @@ func (m Manager) activateDirectory(stage, payload, target string, validate func(
 	if err := m.renamePath(payload, target); err != nil {
 		activateErr := fmt.Errorf("activate managed asset: %w", err)
 		if hadPrevious {
+			restoreSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.activate.rollback", "Restoring previous managed asset")
 			if restoreErr := m.renamePath(previous, target); restoreErr != nil {
+				restoreSpan.Fail(restoreErr)
 				return "", true, errors.Join(activateErr, fmt.Errorf("restore previous managed asset: %w", restoreErr))
 			}
+			restoreSpan.End()
 		}
 		return "", false, activateErr
 	}
@@ -434,9 +492,12 @@ func (m Manager) activateDirectory(stage, payload, target string, validate func(
 		return "", true, errors.Join(fmt.Errorf("validate activated managed asset: %w", err), fmt.Errorf("quarantine failed managed asset: %w", moveErr))
 	}
 	if hadPrevious {
+		restoreSpan := tracepkg.Start(ctx, "MANAGED_ASSET", "managed_asset.activate.rollback", "Restoring previous managed asset")
 		if restoreErr := m.renamePath(previous, target); restoreErr != nil {
+			restoreSpan.Fail(restoreErr)
 			return "", true, errors.Join(fmt.Errorf("validate activated managed asset: %w", err), fmt.Errorf("restore previous managed asset: %w", restoreErr))
 		}
+		restoreSpan.End()
 	}
 	return "", false, fmt.Errorf("validate activated managed asset: %w", err)
 }

@@ -13,78 +13,35 @@ func installCutoverObserver(cmd *cobra.Command) func(application.InstallCutoverE
 	return installCutoverProgressObserver(commandProgressSession(cmd))
 }
 
-func installIntegrationObserver(cmd *cobra.Command) func(application.IntegrationEnsureEvent) {
-	return installIntegrationProgressObserver(commandProgressSession(cmd))
-}
-
-func installIntegrationProgressObserver(session *presentation.ProgressSession) func(application.IntegrationEnsureEvent) {
-	return func(event application.IntegrationEnsureEvent) {
-		if session == nil || strings.TrimSpace(event.State) != "running" {
-			return
-		}
-		name := strings.TrimSpace(event.Integration)
-		if name == "" {
-			name = "integration"
-		}
-		verb := "Checking"
-		if strings.TrimSpace(event.Phase) == "install" {
-			verb = "Installing"
-		}
-		session.Update(presentation.ProgressPhase{
-			ID: "install.supplement." + name, Label: verb + " " + name, State: presentation.ProgressRunning,
-		})
-	}
-}
-
 func installCutoverProgressObserver(session *presentation.ProgressSession) func(application.InstallCutoverEvent) {
 	return func(event application.InstallCutoverEvent) {
 		if session == nil {
 			return
 		}
-		if event.Child {
-			kind := presentation.StatusSuccess
-			switch strings.TrimSpace(event.State) {
-			case "failed", "warning", "unavailable":
-				kind = presentation.StatusWarning
-			case "skipped":
-				kind = presentation.StatusInfo
+		if !event.Child {
+			state := strings.TrimSpace(event.State)
+			if state != "warning" && state != "skipped" && state != "unavailable" {
+				return
 			}
-			session.Append(func(p *presentation.Presenter) { p.ChildStatus(kind, event.Message) })
+			name := "install.cutover." + strings.TrimSpace(event.Stage)
+			spec, ok := traceProgress[name]
+			if !ok {
+				return
+			}
+			progressState := presentation.ProgressWarning
+			if state == "skipped" || state == "unavailable" {
+				progressState = presentation.ProgressSkipped
+			}
+			session.Update(presentation.ProgressPhase{ID: name, Label: spec.start, State: progressState, Message: event.Message})
 			return
 		}
-		state := presentation.ProgressSuccess
+		kind := presentation.StatusSuccess
 		switch strings.TrimSpace(event.State) {
-		case "running":
-			state = presentation.ProgressRunning
-		case "warning":
-			state = presentation.ProgressWarning
-		case "failed":
-			state = presentation.ProgressFailed
+		case "failed", "warning", "unavailable":
+			kind = presentation.StatusWarning
 		case "skipped":
-			state = presentation.ProgressSkipped
+			kind = presentation.StatusInfo
 		}
-		if strings.TrimSpace(event.Stage) == "cleanup" && state == presentation.ProgressSuccess {
-			session.Presenter().Spacer()
-		}
-		session.Update(presentation.ProgressPhase{
-			ID: "install." + event.Stage, Label: installCutoverStageLabel(event.Stage), State: state, Message: event.Message,
-		})
-	}
-}
-
-func installCutoverStageLabel(stage string) string {
-	switch strings.TrimSpace(stage) {
-	case "detect":
-		return "Detect predecessor state"
-	case "stage":
-		return "Stage migration"
-	case "validate":
-		return "Validate staged state"
-	case "activate":
-		return "Activate CodeMCP"
-	case "cleanup":
-		return "Finalize installation"
-	default:
-		return stage
+		session.Append(func(p *presentation.Presenter) { p.ChildStatus(kind, event.Message) })
 	}
 }

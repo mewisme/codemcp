@@ -122,6 +122,7 @@ func runRestart(cmd *cobra.Command, _ []string) error {
 }
 
 func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
+	ensureCommandTraceObserver(cmd)
 	logCommandVerbose(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
 	source, err := config.Source()
 	if err != nil {
@@ -133,30 +134,13 @@ func runManagedRestart(cmd *cobra.Command, spec managed.Spec, manager managed.Ma
 	if _, err := config.VerifyRuntime(); err != nil {
 		return err
 	}
-	progress := managedLifecycleProgress(cmd)
-	observeReadiness, _ := managedRestartReadinessObserver(progress)
-	lastGroup := ""
-	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRestartRuntimeStatus, Shutdown: requestManagedShutdown, WaitStatusUpdate: runtimecontrol.WaitStatusUpdate, Timeout: serviceReadyTimeout, ObserveStatus: observeReadiness, Observe: func(event managed.LifecycleEvent) {
-		group := managedRestartLifecycleGroup(event.Phase)
-		if lastGroup != "" && group != "" && group != lastGroup {
-			progress.Break()
-		}
-		if group != "" {
-			lastGroup = group
-		}
-		if event.Phase == "runtime.waiting" {
-			progress.Start("service."+event.Phase, "Waiting for runtime services", "")
-			return
-		}
-		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
-	}}
+	observeReadiness, _ := managedRestartReadinessObserver(commandProgressSession(cmd))
+	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRestartRuntimeStatus, Shutdown: requestManagedShutdown, WaitStatusUpdate: runtimecontrol.WaitStatusUpdate, Timeout: serviceReadyTimeout, ObserveStatus: observeReadiness}
 	result, err := lifecycle.Restart(cmd.Context())
 	if err != nil {
-		progress.Stop()
 		logManagedStartupFailure(cmd, spec, manager, err)
 		return err
 	}
-	progress.Stop()
 	status := result.Status
 	renderManagedRestartResult(cmd, spec, manager, status)
 	return nil
@@ -259,6 +243,7 @@ func resolveManagedConfigRoot(cmd *cobra.Command, scope managed.Scope, account m
 }
 
 func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
+	ensureCommandTraceObserver(cmd)
 	logCommandVerbose(cmd, "SERVICE", "service.config.verifying", "Verifying runtime configuration")
 	source, err := config.Source()
 	if err != nil {
@@ -291,17 +276,12 @@ func runManagedUp(cmd *cobra.Command, spec managed.Spec, manager managed.Manager
 			action = "updated"
 		}
 	}
-	progress := managedLifecycleProgress(cmd)
-	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
-		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
-	}}
+	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout}
 	result, err := lifecycle.Up(cmd.Context())
 	if err != nil {
-		progress.Stop()
 		logManagedStartupFailure(cmd, spec, manager, err)
 		return err
 	}
-	progress.Complete()
 	status := result.Status
 	if !result.Changed {
 		renderManagedLifecycleResult(cmd, "Managed service already running", spec, manager, status, cfg.Tunnel)
@@ -355,16 +335,12 @@ func logManagedStartupFailure(cmd *cobra.Command, spec managed.Spec, manager man
 }
 
 func runManagedDown(cmd *cobra.Command, spec managed.Spec, manager managed.Manager) error {
-	progress := managedLifecycleProgress(cmd)
-	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout, Observe: func(event managed.LifecycleEvent) {
-		progress.Start("service."+event.Phase, event.Message, managedLifecycleDoneMessage(event))
-	}}
+	ensureCommandTraceObserver(cmd)
+	lifecycle := managed.Lifecycle{Manager: manager, Spec: spec, Probe: managedRuntimeStatus, Shutdown: requestManagedShutdown, Timeout: serviceReadyTimeout}
 	result, err := lifecycle.Down(cmd.Context())
 	if err != nil {
-		progress.Stop()
 		return err
 	}
-	progress.Complete()
 	if !result.Changed {
 		renderMutationResult(cmd, presentation.StatusInfo, "Managed service is not installed")
 		return nil
@@ -498,10 +474,6 @@ func managedStopCommand(spec managed.Spec) string {
 	return stop
 }
 
-func managedLifecycleProgress(cmd *cobra.Command) *commandProgress {
-	return newCommandProgress(cmd, "SERVICE")
-}
-
 type managedReadinessScope struct {
 	ID           string
 	Label        string
@@ -590,10 +562,10 @@ func renderManagedReadinessScopesExcept(presenter *presentation.Presenter, statu
 	}
 }
 
-func managedRestartReadinessObserver(progress *commandProgress) (func(runtimeStatusResult), map[string]struct{}) {
+func managedRestartReadinessObserver(session *presentation.ProgressSession) (func(runtimeStatusResult), map[string]struct{}) {
 	rendered := map[string]struct{}{}
 	return func(status runtimeStatusResult) {
-		if progress == nil || progress.session == nil {
+		if session == nil {
 			return
 		}
 		ready := make([]managedReadinessScopeState, 0, len(managedRestartReadinessScopes))
@@ -619,11 +591,11 @@ func managedRestartReadinessObserver(progress *commandProgress) (func(runtimeSta
 		if len(ready) == 0 {
 			return
 		}
-		progress.session.Suspend()
+		session.Suspend()
 		for _, state := range ready {
-			renderManagedReadinessScope(progress.session.Presenter(), state)
+			renderManagedReadinessScope(session.Presenter(), state)
 		}
-		progress.session.Resume()
+		session.Resume()
 	}, rendered
 }
 
@@ -648,41 +620,6 @@ func managedRestartStatusReady(status runtimeStatusResult) bool {
 		}
 	}
 	return true
-}
-
-func managedLifecycleDoneMessage(event managed.LifecycleEvent) string {
-	switch event.Phase {
-	case "runtime.stopping":
-		return "Stopped managed runtime"
-	case "backend.stopping":
-		return "Stopped managed service backend"
-	case "definition.installing":
-		if strings.HasPrefix(strings.ToLower(event.Message), "updating") {
-			return "Updated managed service definition"
-		}
-		return "Installed managed service definition"
-	case "definition.uninstalling":
-		return "Removed managed service definition"
-	case "backend.starting":
-		return "Started managed service backend"
-	case "runtime.waiting":
-		return "Managed runtime ready"
-	default:
-		return event.Message + " complete"
-	}
-}
-
-func managedRestartLifecycleGroup(phase string) string {
-	switch phase {
-	case "runtime.stopping", "backend.stopping":
-		return "stop"
-	case "definition.installing":
-		return "definition"
-	case "backend.starting", "runtime.waiting":
-		return "start"
-	default:
-		return ""
-	}
 }
 
 func managedRuntimeStatus(ctx context.Context) (runtimeStatusResult, bool, error) {

@@ -10,6 +10,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/integrations/rtk"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type RTKService struct {
@@ -50,23 +51,32 @@ func (s *RTKService) Disable(ctx context.Context) (rtk.Status, error) {
 }
 
 func (s *RTKService) Probe(ctx context.Context) (rtk.ProbeResult, error) {
+	span := tracepkg.Start(ctx, "INTEGRATION", "integration.rtk.probe", "Probing RTK")
 	manager, err := s.manager()
 	if err != nil {
+		span.Fail(err)
 		return rtk.ProbeResult{}, err
 	}
-	return manager.Probe(ctx)
+	result, err := manager.Probe(ctx)
+	span.Finish(err)
+	return result, err
 }
 
 func (s *RTKService) Install(ctx context.Context) (rtk.InstallResult, error) {
+	span := tracepkg.Start(ctx, "INTEGRATION", "integration.rtk.install", "Installing RTK")
 	manager, err := s.manager()
 	if err != nil {
+		span.Fail(err)
 		return rtk.InstallResult{}, err
 	}
-	return manager.Install(ctx)
+	result, err := manager.Install(ctx)
+	span.Finish(err)
+	return result, err
 }
 
 func (s *RTKService) EnsureAvailable(ctx context.Context, values ...IntegrationEnsureOptions) (IntegrationEnsureResult, error) {
 	options := integrationEnsureOptions(values)
+	options.Observe = traceIntegrationEnsureObserver(ctx, options.Observe)
 	emitIntegrationEnsureEvent(options.Observe, "rtk", "check", "running", "checking existing executable")
 	manager, err := s.ensureAvailabilityManager()
 	if err != nil {

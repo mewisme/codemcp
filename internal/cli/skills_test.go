@@ -19,6 +19,7 @@ import (
 	"go.mewis.me/codemcp/internal/configformat"
 	gitpkg "go.mewis.me/codemcp/internal/git"
 	"go.mewis.me/codemcp/internal/skills"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -202,7 +203,7 @@ func TestSkillsAddHumanProgressStartsBeforeRepositoryMutation(t *testing.T) {
 	repository, _ := createCLISkillGitRepository(t, "streamed-skill")
 	configureCLIGitHubRewrite(t, repository, "owner", "repo")
 
-	gate := newProgressGateWriter("Cloning GitHub repository")
+	gate := newProgressGateWriter("Acquiring GitHub skill repository")
 	cmd := newRootCommand()
 	cmd.SetOut(presentation.WrapWriter(gate, presentation.Capabilities{
 		Width: 120, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
@@ -234,8 +235,8 @@ func TestSkillsAddHumanProgressStartsBeforeRepositoryMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := gate.String()
-	if !strings.Contains(text, "Repository cloned") ||
-		!strings.Contains(text, "Found 1 skill") ||
+	if !strings.Contains(text, "Acquired GitHub skill repository") ||
+		!strings.Contains(text, "Skills discovered") ||
 		!strings.Contains(text, "Skill: streamed-skill") ||
 		!strings.Contains(text, "GitHub skills installed") ||
 		!strings.Contains(text, "Skills installed") {
@@ -486,17 +487,19 @@ func TestSkillMutationHumanFlowOrdersAcquireAuditAskThenInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	progress := newCommandProgress(cmd, "SKILLS")
-	progress.Start("skills.add.cloning", "Cloning GitHub repository", "Repository cloned")
-	observe := skillMutationProgressObserver(progress, "add")
-	observe(application.SkillMutationEvent{Phase: application.SkillMutationPhaseRepositoryAcquired})
-	observe(application.SkillMutationEvent{Phase: application.SkillMutationPhaseDiscovered, Count: 1})
-	observe(application.SkillMutationEvent{
+	traceObserve := commandTraceObserver(cmd)
+	detailObserve := skillMutationDetailObserver(cmd)
+	traceObserve(tracepkg.Event{Component: "SKILLS", Name: "skills.add.repository.acquire.started", Message: "Acquiring GitHub skill repository", Phase: tracepkg.PhaseStart})
+	traceObserve(tracepkg.Event{Component: "SKILLS", Name: "skills.add.repository.acquire.completed", Message: "GitHub skill repository acquired", Phase: tracepkg.PhaseEnd})
+	traceObserve(tracepkg.Event{Component: "SKILLS", Name: "skills.add.discover.started", Message: "Discovering repository skills", Phase: tracepkg.PhaseStart})
+	traceObserve(tracepkg.Event{Component: "SKILLS", Name: "skills.add.discover.completed", Message: "Repository skills discovered", Phase: tracepkg.PhaseEnd})
+	detailObserve(application.SkillMutationEvent{
 		Phase: application.SkillMutationPhaseSelected,
 		Skills: []application.SkillMutationSelection{{
 			Name: "risk-demo", Description: "Risk demo skill",
 		}},
 	})
+	traceObserve(tracepkg.Event{Component: "SKILLS", Name: "skills.add.security.review.started", Message: "Reviewing skill security", Phase: tracepkg.PhaseStart})
 	assessment := skills.SecurityAssessment{
 		Source: "owner/repo", DetailsURL: "https://skills.sh/owner/repo",
 		Skills: []skills.SkillSecurityAssessment{{
@@ -506,15 +509,16 @@ func TestSkillMutationHumanFlowOrdersAcquireAuditAskThenInstall(t *testing.T) {
 	if err := skillRiskReviewer(cmd, false, "installation")(assessment); err != nil {
 		t.Fatal(err)
 	}
-	observe(application.SkillMutationEvent{Phase: application.SkillMutationPhaseInstalling})
-	progress.Complete()
+	traceObserve(tracepkg.Event{Component: "SKILLS", Name: "skills.add.security.review.completed", Message: "Skill security reviewed", Phase: tracepkg.PhaseEnd})
+	traceObserve(tracepkg.Event{Component: "SKILLS", Name: "skills.add.install.started", Message: "Installing GitHub skills", Phase: tracepkg.PhaseStart})
+	traceObserve(tracepkg.Event{Component: "SKILLS", Name: "skills.add.install.completed", Message: "GitHub skills installed", Phase: tracepkg.PhaseEnd})
 	closeCommandProgress(cmd, nil)
 
 	text := output.String()
 	parts := []string{
-		"Repository cloned",
+		"Acquired GitHub skill repository",
 		"Discovering skills",
-		"Found 1 skill",
+		"Skills discovered",
 		"Skill: risk-demo",
 		"Security Risk Assessments",
 		"Security risks detected. Proceed with installation? [Y/n]",

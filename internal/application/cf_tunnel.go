@@ -7,6 +7,7 @@ import (
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/integrations/cftunnel"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type CFTunnelAssetManager interface {
@@ -39,21 +40,32 @@ func (service *CFTunnelService) Status(context.Context) (cftunnel.Status, error)
 }
 
 func (service *CFTunnelService) Probe(ctx context.Context) (cftunnel.ProbeResult, error) {
+	span := tracepkg.Start(ctx, "INTEGRATION", "integration.cf.probe", "Probing Cloudflare Quick Tunnel")
 	if service == nil || service.manager == nil {
-		return cftunnel.ProbeResult{}, errors.New("cf-tunnel service is unavailable")
+		err := errors.New("cf-tunnel service is unavailable")
+		span.Fail(err)
+		return cftunnel.ProbeResult{}, err
 	}
-	return service.manager.Probe(ctx)
+	result, err := service.manager.Probe(ctx)
+	span.Finish(err)
+	return result, err
 }
 
 func (service *CFTunnelService) Install(ctx context.Context) (cftunnel.InstallResult, error) {
+	span := tracepkg.Start(ctx, "INTEGRATION", "integration.cf.install", "Installing Cloudflare Quick Tunnel")
 	if service == nil || service.manager == nil {
-		return cftunnel.InstallResult{}, errors.New("cf-tunnel service is unavailable")
+		err := errors.New("cf-tunnel service is unavailable")
+		span.Fail(err)
+		return cftunnel.InstallResult{}, err
 	}
-	return service.manager.Install(ctx)
+	result, err := service.manager.Install(ctx)
+	span.Finish(err)
+	return result, err
 }
 
 func (service *CFTunnelService) EnsureAvailable(ctx context.Context, values ...IntegrationEnsureOptions) (IntegrationEnsureResult, error) {
 	options := integrationEnsureOptions(values)
+	options.Observe = traceIntegrationEnsureObserver(ctx, options.Observe)
 	result := IntegrationEnsureResult{Integration: "cf-tunnel", Retry: "cm integration cf install"}
 	if service == nil || service.LoadConfig == nil {
 		result.State, result.Detail = "failed", "cf-tunnel config loader is unavailable"

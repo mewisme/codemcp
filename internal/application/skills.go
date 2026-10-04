@@ -14,6 +14,7 @@ import (
 	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/instructionsource"
 	"go.mewis.me/codemcp/internal/skills"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/workspace"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
@@ -101,11 +102,19 @@ type SkillMutationSelection struct {
 }
 
 const (
-	SkillMutationPhaseRepositoryAcquired = "repository_acquired"
-	SkillMutationPhaseDiscovered         = "discovered"
-	SkillMutationPhaseSelected           = "selected"
-	SkillMutationPhaseAcquired           = "acquired"
-	SkillMutationPhaseInstalling         = "installing"
+	SkillMutationPhaseRepositoryAcquiring = "repository_acquiring"
+	SkillMutationPhaseRepositoryAcquired  = "repository_acquired"
+	SkillMutationPhaseDiscovering         = "discovering"
+	SkillMutationPhaseDiscovered          = "discovered"
+	SkillMutationPhaseSelected            = "selected"
+	SkillMutationPhaseSecurityReviewing   = "security_reviewing"
+	SkillMutationPhaseSecurityReviewed    = "security_reviewed"
+	SkillMutationPhaseAcquiring           = "acquiring"
+	SkillMutationPhaseAcquired            = "acquired"
+	SkillMutationPhaseInstalling          = "installing"
+	SkillMutationPhaseInstalled           = "installed"
+	SkillMutationPhaseRemoving            = "removing"
+	SkillMutationPhaseRemoved             = "removed"
 )
 
 type SkillUpdateItem struct {
@@ -127,8 +136,9 @@ type SkillUpdateResult struct {
 }
 
 type SkillRemoveRequest struct {
-	Scope SkillScopeRequest `json:"scope"`
-	Name  string            `json:"name"`
+	Scope    SkillScopeRequest        `json:"scope"`
+	Name     string                   `json:"name"`
+	Progress func(SkillMutationEvent) `json:"-"`
 }
 
 type SkillRemoveResult struct {
@@ -245,6 +255,7 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 	if s == nil || s.AcquireRepository == nil {
 		return SkillAddResult{}, errors.New("github skill repository acquisition is unavailable")
 	}
+	emitSkillMutationEvent(ctx, request.Progress, "add", SkillMutationEvent{Phase: SkillMutationPhaseRepositoryAcquiring})
 	acquired, err := s.AcquireRepository(ctx, source)
 	if err != nil {
 		return SkillAddResult{}, err
@@ -252,12 +263,13 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 	if acquired.Cleanup != nil {
 		defer acquired.Cleanup()
 	}
-	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseRepositoryAcquired})
+	emitSkillMutationEvent(ctx, request.Progress, "add", SkillMutationEvent{Phase: SkillMutationPhaseRepositoryAcquired})
+	emitSkillMutationEvent(ctx, request.Progress, "add", SkillMutationEvent{Phase: SkillMutationPhaseDiscovering})
 	candidates, err := skills.DiscoverRepositorySkillsWithOptions(acquired.Root, skills.RepositoryDiscoveryOptions{FullDepth: request.FullDepth})
 	if err != nil {
 		return SkillAddResult{}, err
 	}
-	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseDiscovered, Count: len(candidates)})
+	emitSkillMutationEvent(ctx, request.Progress, "add", SkillMutationEvent{Phase: SkillMutationPhaseDiscovered, Count: len(candidates)})
 	selected, err := selectSkillCandidates(candidates, selector, request.All)
 	if err != nil {
 		return SkillAddResult{}, err
@@ -277,11 +289,13 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 			Name: candidate.Skill.Name, Description: candidate.Skill.Description,
 		})
 	}
-	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseSelected, Skills: selections})
+	emitSkillMutationEvent(ctx, request.Progress, "add", SkillMutationEvent{Phase: SkillMutationPhaseSelected, Skills: selections})
+	emitSkillMutationEvent(ctx, request.Progress, "add", SkillMutationEvent{Phase: SkillMutationPhaseSecurityReviewing, Count: len(selectedNames)})
 	if err := s.reviewSkillSecurity(ctx, source, selectedNames, request.ReviewRisk); err != nil {
 		return SkillAddResult{}, err
 	}
-	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseInstalling})
+	emitSkillMutationEvent(ctx, request.Progress, "add", SkillMutationEvent{Phase: SkillMutationPhaseSecurityReviewed, Count: len(selectedNames)})
+	emitSkillMutationEvent(ctx, request.Progress, "add", SkillMutationEvent{Phase: SkillMutationPhaseInstalling, Count: len(selected)})
 
 	staged, err := skills.StageManagedSkills(target.Root, selected)
 	if err != nil {
@@ -299,6 +313,7 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 	if err := skills.CommitStagedManagedSkills(target.Root, staged, nextMetadata, s.BeforeMetadataCommit); err != nil {
 		return SkillAddResult{}, err
 	}
+	emitSkillMutationEvent(ctx, request.Progress, "add", SkillMutationEvent{Phase: SkillMutationPhaseInstalled, Count: len(selected)})
 
 	installed := make([]skills.Skill, 0, len(selected))
 	for _, candidate := range selected {
@@ -383,6 +398,7 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 			}
 		}
 	}()
+	emitSkillMutationEvent(ctx, request.Progress, "update", SkillMutationEvent{Phase: SkillMutationPhaseAcquiring, Count: len(keys)})
 	for _, key := range keys {
 		acquired, err := s.AcquireRepository(ctx, groupSources[key])
 		if err != nil {
@@ -397,7 +413,8 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 		}
 		acquiredGroups[key] = acquiredUpdateGroup{repository: acquired, candidates: candidates}
 	}
-	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseAcquired})
+	emitSkillMutationEvent(ctx, request.Progress, "update", SkillMutationEvent{Phase: SkillMutationPhaseAcquired, Count: len(keys)})
+	emitSkillMutationEvent(ctx, request.Progress, "update", SkillMutationEvent{Phase: SkillMutationPhaseSecurityReviewing, Count: len(names)})
 	for _, key := range keys {
 		groupNames := append([]string(nil), groups[key]...)
 		sort.Strings(groupNames)
@@ -405,7 +422,8 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 			return SkillUpdateResult{}, err
 		}
 	}
-	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseInstalling})
+	emitSkillMutationEvent(ctx, request.Progress, "update", SkillMutationEvent{Phase: SkillMutationPhaseSecurityReviewed, Count: len(names)})
+	emitSkillMutationEvent(ctx, request.Progress, "update", SkillMutationEvent{Phase: SkillMutationPhaseInstalling, Count: len(names)})
 	result := SkillUpdateResult{Scope: target.Scope, WorkspaceID: target.WorkspaceID, Root: target.Root}
 	currentMetadata := skills.CloneManagedSources(metadata)
 	for _, key := range keys {
@@ -457,12 +475,102 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 			})
 		}
 	}
+	emitSkillMutationEvent(ctx, request.Progress, "update", SkillMutationEvent{Phase: SkillMutationPhaseInstalled, Count: len(result.Skills)})
 	return result, nil
 }
 
-func emitSkillMutationEvent(observer func(SkillMutationEvent), event SkillMutationEvent) {
+func emitSkillMutationEvent(ctx context.Context, observer func(SkillMutationEvent), operation string, event SkillMutationEvent) {
 	if observer != nil {
 		observer(event)
+	}
+	name, phase := skillMutationTracePhase(operation, event.Phase)
+	if name == "" {
+		return
+	}
+	fields := []tracepkg.Field{
+		tracepkg.String("operation", operation),
+		tracepkg.String("milestone", event.Phase),
+	}
+	if event.Count > 0 {
+		fields = append(fields, tracepkg.Int("count", event.Count))
+	}
+	if len(event.Skills) > 0 {
+		names := make([]string, 0, min(len(event.Skills), 16))
+		for _, selected := range event.Skills {
+			if len(names) == 16 {
+				break
+			}
+			names = append(names, selected.Name)
+		}
+		fields = append(fields, tracepkg.Any("skills", names), tracepkg.Int("skill_count", len(event.Skills)))
+	}
+	tracepkg.EmitPhase(ctx, phase, "SKILLS", name, skillMutationTraceMessage(operation, event), fields...)
+}
+
+func skillMutationTracePhase(operation, milestone string) (string, tracepkg.Phase) {
+	base := "skills." + strings.TrimSpace(operation)
+	switch milestone {
+	case SkillMutationPhaseRepositoryAcquiring:
+		return base + ".repository.acquire", tracepkg.PhaseStart
+	case SkillMutationPhaseRepositoryAcquired:
+		return base + ".repository.acquire", tracepkg.PhaseEnd
+	case SkillMutationPhaseDiscovering:
+		return base + ".discover", tracepkg.PhaseStart
+	case SkillMutationPhaseDiscovered:
+		return base + ".discover", tracepkg.PhaseEnd
+	case SkillMutationPhaseSelected:
+		return base + ".selected", tracepkg.PhaseInfo
+	case SkillMutationPhaseSecurityReviewing:
+		return base + ".security.review", tracepkg.PhaseStart
+	case SkillMutationPhaseSecurityReviewed:
+		return base + ".security.review", tracepkg.PhaseEnd
+	case SkillMutationPhaseAcquiring:
+		return base + ".acquire", tracepkg.PhaseStart
+	case SkillMutationPhaseAcquired:
+		return base + ".acquire", tracepkg.PhaseEnd
+	case SkillMutationPhaseInstalling:
+		return base + ".install", tracepkg.PhaseStart
+	case SkillMutationPhaseInstalled:
+		return base + ".install", tracepkg.PhaseEnd
+	case SkillMutationPhaseRemoving:
+		return base, tracepkg.PhaseStart
+	case SkillMutationPhaseRemoved:
+		return base, tracepkg.PhaseEnd
+	default:
+		return "", tracepkg.PhaseInfo
+	}
+}
+
+func skillMutationTraceMessage(operation string, event SkillMutationEvent) string {
+	switch event.Phase {
+	case SkillMutationPhaseRepositoryAcquiring:
+		return "Acquiring GitHub skill repository"
+	case SkillMutationPhaseRepositoryAcquired:
+		return "GitHub skill repository acquired"
+	case SkillMutationPhaseDiscovering:
+		return "Discovering repository skills"
+	case SkillMutationPhaseDiscovered:
+		return "Repository skills discovered"
+	case SkillMutationPhaseSelected:
+		return "Skills selected"
+	case SkillMutationPhaseSecurityReviewing:
+		return "Reviewing skill security"
+	case SkillMutationPhaseSecurityReviewed:
+		return "Skill security reviewed"
+	case SkillMutationPhaseAcquiring:
+		return "Acquiring managed skill sources"
+	case SkillMutationPhaseAcquired:
+		return "Managed skill sources acquired"
+	case SkillMutationPhaseInstalling:
+		return "Installing skills"
+	case SkillMutationPhaseInstalled:
+		return "Skills installed"
+	case SkillMutationPhaseRemoving:
+		return "Removing skill"
+	case SkillMutationPhaseRemoved:
+		return "Skill removed"
+	default:
+		return strings.TrimSpace(operation + " skill mutation")
 	}
 }
 
@@ -509,7 +617,10 @@ func resolveManagedUpdateCandidate(candidates []skills.RepositorySkillCandidate,
 	return skills.RepositorySkillCandidate{}, false, fmt.Errorf("managed skill %q relocation is ambiguous", name)
 }
 
-func (s *SkillManagementService) Remove(request SkillRemoveRequest) (SkillRemoveResult, error) {
+func (s *SkillManagementService) Remove(ctx context.Context, request SkillRemoveRequest) (SkillRemoveResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	target, err := s.resolveScope(request.Scope)
 	if err != nil {
 		return SkillRemoveResult{}, err
@@ -531,6 +642,7 @@ func (s *SkillManagementService) Remove(request SkillRemoveRequest) (SkillRemove
 		return SkillRemoveResult{}, err
 	}
 	managed := skills.IsManaged(metadata, name)
+	emitSkillMutationEvent(ctx, request.Progress, "remove", SkillMutationEvent{Phase: SkillMutationPhaseRemoving, Count: 1})
 	if managed {
 		next := skills.CloneManagedSources(metadata)
 		delete(next.Skills, name)
@@ -542,6 +654,7 @@ func (s *SkillManagementService) Remove(request SkillRemoveRequest) (SkillRemove
 			return SkillRemoveResult{}, err
 		}
 	}
+	emitSkillMutationEvent(ctx, request.Progress, "remove", SkillMutationEvent{Phase: SkillMutationPhaseRemoved, Count: 1})
 	return SkillRemoveResult{
 		Scope: target.Scope, WorkspaceID: target.WorkspaceID, Root: target.Root, Name: name, Managed: managed,
 	}, nil

@@ -126,7 +126,6 @@ func chatGPTWebLoginCommand() *cobra.Command {
 			if err := prepareRuntimeChatGPTWebLogin(cmd.Context()); err != nil {
 				return fmt.Errorf("prepare managed ChatGPT Web runtime for interactive login: %w", err)
 			}
-			session.Update(presentation.ProgressPhase{ID: "chatgpt.login", Label: "Waiting for sign-in and verification", State: presentation.ProgressRunning})
 			status, err := application.NewChatGPTWebService().Login(cmd.Context())
 			if err != nil {
 				if strings.TrimSpace(status.Reason) != "" {
@@ -136,7 +135,6 @@ func chatGPTWebLoginCommand() *cobra.Command {
 				}
 				return err
 			}
-			session.Success("chatgpt.login", "Waiting for sign-in and verification", "ChatGPT authentication verified")
 			session.Append(func(presenter *presentation.Presenter) {
 				presenter.NestedFields(
 					presentation.Field{Label: "state", Value: status.State},

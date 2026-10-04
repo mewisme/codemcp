@@ -18,6 +18,7 @@ import (
 	"go.mewis.me/codemcp/internal/install"
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	managed "go.mewis.me/codemcp/internal/service"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 type updateRuntimeManager struct {
@@ -159,6 +160,11 @@ func TestCoordinateUpdatedRuntimeRollsBackAndRestartsPreviousVersion(t *testing.
 	var output bytes.Buffer
 	cmd := newRootCommand()
 	cmd.SetOut(&output)
+	var traceEvents []tracepkg.Event
+	cmd.SetContext(tracepkg.WithObserver(cmd.Context(), func(event tracepkg.Event) {
+		traceEvents = append(traceEvents, event)
+		commandTraceObserver(cmd)(event)
+	}))
 	state := updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true, PID: 789}}
 	calls := 0
 	restart := func(*cobra.Command, install.Layout, runtimeStatusResult) error {
@@ -195,12 +201,27 @@ func TestCoordinateUpdatedRuntimeRollsBackAndRestartsPreviousVersion(t *testing.
 			t.Fatalf("output missing %q: %s", expected, text)
 		}
 	}
+	wantTrace := []string{
+		"update.runtime.restart.started",
+		"update.runtime.restart.failed",
+		"update.rollback.started",
+		"update.rollback.completed",
+		"update.rollback.runtime.restart.started",
+		"update.rollback.runtime.restart.completed",
+	}
+	if got := traceNamesWithPrefix(traceEvents, "update."); strings.Join(got, ",") != strings.Join(wantTrace, ",") {
+		t.Fatalf("rollback trace=%v want=%v", got, wantTrace)
+	}
 }
 
 func TestCoordinateUpdatedRuntimeReportsPreviousRestartFailure(t *testing.T) {
 	layout := updateInstallLayout(t)
 	installed := updateInstallVersions(t, layout)
 	cmd := newRootCommand()
+	var traceEvents []tracepkg.Event
+	cmd.SetContext(tracepkg.WithObserver(cmd.Context(), func(event tracepkg.Event) {
+		traceEvents = append(traceEvents, event)
+	}))
 	state := updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true}}
 	calls := 0
 	restart := func(*cobra.Command, install.Layout, runtimeStatusResult) error {
@@ -214,6 +235,10 @@ func TestCoordinateUpdatedRuntimeReportsPreviousRestartFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "previous runtime restart failed") || !strings.Contains(err.Error(), "old runtime unhealthy") {
 		t.Fatalf("error = %v", err)
 	}
+	names := traceNamesWithPrefix(traceEvents, "update.")
+	if len(names) == 0 || names[len(names)-1] != "update.rollback.runtime.restart.failed" {
+		t.Fatalf("previous runtime restart failure trace=%v", names)
+	}
 }
 
 func TestCoordinateUpdatedRuntimeReportsRollbackFailure(t *testing.T) {
@@ -221,6 +246,10 @@ func TestCoordinateUpdatedRuntimeReportsRollbackFailure(t *testing.T) {
 	installed := updateInstallVersions(t, layout)
 	installed.Activation.PreviousTarget = filepath.Join(t.TempDir(), "outside")
 	cmd := newRootCommand()
+	var traceEvents []tracepkg.Event
+	cmd.SetContext(tracepkg.WithObserver(cmd.Context(), func(event tracepkg.Event) {
+		traceEvents = append(traceEvents, event)
+	}))
 	state := updateRuntimeState{Running: true, Status: runtimeStatusResult{Managed: true}}
 	restart := func(*cobra.Command, install.Layout, runtimeStatusResult) error {
 		return errors.New("new runtime unhealthy")
@@ -229,6 +258,34 @@ func TestCoordinateUpdatedRuntimeReportsRollbackFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "rollback failed") {
 		t.Fatalf("error = %v", err)
 	}
+	names := traceNamesWithPrefix(traceEvents, "update.")
+	if !stringSliceContains(names, "update.rollback.failed") {
+		t.Fatalf("rollback failure trace=%v", names)
+	}
+	for _, name := range names {
+		if strings.HasPrefix(name, "update.rollback.runtime.restart.") {
+			t.Fatalf("rollback restart ran after rollback failure: %v", names)
+		}
+	}
+}
+
+func traceNamesWithPrefix(events []tracepkg.Event, prefix string) []string {
+	names := make([]string, 0, len(events))
+	for _, event := range events {
+		if strings.HasPrefix(event.Name, prefix) {
+			names = append(names, event.Name)
+		}
+	}
+	return names
+}
+
+func stringSliceContains(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRestartManagedRuntimeAfterUpdateRejectsServiceMismatch(t *testing.T) {

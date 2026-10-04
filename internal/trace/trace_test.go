@@ -43,6 +43,67 @@ func TestNoopObserverIsSafe(t *testing.T) {
 	span := Start(context.Background(), "TEST", "noop", "No-op")
 	span.End()
 	Emit(context.Background(), "TEST", "noop.info", "No-op")
+	EmitPhase(context.Background(), PhaseStart, "TEST", "noop.phase", "No-op phase")
+}
+
+func TestEmitPhaseUsesCanonicalNamesAndSanitization(t *testing.T) {
+	const secret = "runtime_secret_12345678901234567890"
+	events := []Event{}
+	observer := func(event Event) { events = append(events, event) }
+	EmitPhaseObserver(observer, PhaseStart, "AUTH", "auth.login", "Starting login", String("api_key", secret))
+	EmitPhaseObserver(observer, PhaseEnd, "AUTH", "auth.login", "Login complete")
+	EmitPhaseObserver(observer, PhaseError, "AUTH", "auth.verify", "Verification failed", String("error", "token="+secret))
+	if len(events) != 3 {
+		t.Fatalf("events=%#v", events)
+	}
+	for index, want := range []struct {
+		name  string
+		phase Phase
+	}{
+		{name: "auth.login.started", phase: PhaseStart},
+		{name: "auth.login.completed", phase: PhaseEnd},
+		{name: "auth.verify.failed", phase: PhaseError},
+	} {
+		if events[index].Name != want.name || events[index].Phase != want.phase {
+			t.Fatalf("event[%d]=%#v want name=%q phase=%q", index, events[index], want.name, want.phase)
+		}
+	}
+	if value, _ := fieldValue(events[0], "api_key"); value != "configured" {
+		t.Fatalf("sensitive field=%v", value)
+	}
+	if strings.Contains(fmt.Sprint(events), secret) {
+		t.Fatalf("phase events leaked secret: %#v", events)
+	}
+}
+
+func TestObserverPanicCannotChangeOperationFlow(t *testing.T) {
+	observer := func(Event) { panic("observer failed") }
+	EmitPhaseObserver(observer, PhaseStart, "TEST", "operation", "Starting")
+	span := StartObserver(observer, "TEST", "operation", "Starting")
+	span.EndMessage("Completed")
+}
+
+func TestTracePayloadIsBoundedAndSanitized(t *testing.T) {
+	const secret = "runtime_secret_12345678901234567890"
+	fields := make([]Field, 0, maxEventFields+8)
+	for index := 0; index < maxEventFields+8; index++ {
+		fields = append(fields, String(fmt.Sprintf("field_%d", index), strings.Repeat("x", maxTraceStringRunes+32)))
+	}
+	fields[0] = String("token", secret)
+	var event Event
+	EmitObserver(func(value Event) { event = value }, "TEST", "bounded", "bearer "+secret+" "+strings.Repeat("m", maxTraceStringRunes+32), fields...)
+	if len(event.Fields) != maxEventFields {
+		t.Fatalf("field count=%d want=%d", len(event.Fields), maxEventFields)
+	}
+	if strings.Contains(fmt.Sprint(event), secret) {
+		t.Fatalf("bounded trace leaked secret: %#v", event)
+	}
+	if len([]rune(event.Message)) > maxTraceStringRunes+1 {
+		t.Fatalf("message was not bounded: %d runes", len([]rune(event.Message)))
+	}
+	if value, _ := event.Fields[1].Value.(string); len([]rune(value)) > maxTraceStringRunes+1 {
+		t.Fatalf("field value was not bounded: %d runes", len([]rune(value)))
+	}
 }
 
 func TestWithoutObserverShadowsParentObserver(t *testing.T) {

@@ -398,6 +398,33 @@ func (c *Client) SetLifecycleObserver(observer LifecycleObserver) {
 	c.lifecycleMu.Unlock()
 }
 
+func TraceLifecycleObserver(observer tracepkg.Observer, next LifecycleObserver) LifecycleObserver {
+	return func(event LifecycleEvent) {
+		fields := []tracepkg.Field{tracepkg.String("state", string(event.State))}
+		if strings.TrimSpace(event.ID) != "" {
+			fields = append(fields, tracepkg.String("tunnel_id", event.ID))
+		}
+		if event.Attempt > 0 {
+			fields = append(fields, tracepkg.Int("attempt", event.Attempt), tracepkg.DurationMS("retry_in", event.RetryIn))
+		}
+		switch event.State {
+		case LifecycleConnecting:
+			tracepkg.EmitPhaseObserver(observer, tracepkg.PhaseStart, "TUNNEL", "tunnel.connection", "Connecting tunnel", fields...)
+		case LifecycleReconnecting:
+			tracepkg.EmitPhaseObserver(observer, tracepkg.PhaseStart, "TUNNEL", "tunnel.connection", "Reconnecting tunnel", fields...)
+		case LifecycleReady:
+			tracepkg.EmitPhaseObserver(observer, tracepkg.PhaseEnd, "TUNNEL", "tunnel.connection", "Tunnel connected", fields...)
+		case LifecycleDegraded:
+			tracepkg.EmitPhaseObserver(observer, tracepkg.PhaseInfo, "TUNNEL", "tunnel.connection", "Tunnel degraded", fields...)
+		case LifecycleStopped:
+			tracepkg.EmitPhaseObserver(observer, tracepkg.PhaseEnd, "TUNNEL", "tunnel.stop", "Tunnel stopped", fields...)
+		}
+		if next != nil {
+			next(event)
+		}
+	}
+}
+
 func (c *Client) emitLifecycle(state LifecycleState, id, message string) {
 	c.emitLifecycleEvent(LifecycleEvent{State: state, ID: id, Message: message})
 }

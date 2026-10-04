@@ -9,6 +9,7 @@ import (
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/install"
 	"go.mewis.me/codemcp/internal/logger"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	updatepkg "go.mewis.me/codemcp/internal/update"
 	"go.mewis.me/codemcp/internal/version"
 )
@@ -18,7 +19,7 @@ func upgradeCommand() *cobra.Command {
 	var noRestart bool
 	cmd := &cobra.Command{Use: "upgrade", Short: "Check for and install cm upgrades", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		migrated, didMigrate, err := application.MigrateReleasedInstallIfNeeded(cmd.Context(), application.InstallCurrentOptions{
-			Observe: installCutoverObserver(cmd), ObserveIntegration: installIntegrationObserver(cmd),
+			Observe: installCutoverObserver(cmd),
 		})
 		if err != nil {
 			return fmt.Errorf("migrate released installation: %w", err)
@@ -33,7 +34,6 @@ func upgradeCommand() *cobra.Command {
 		}
 		policy := updatepkg.PolicyForInstallation(detection)
 		log := commandLogger(cmd)
-		progress := newCommandProgress(cmd, "UPDATE")
 		logCommandDebug(cmd, "UPDATE", "update.policy.resolved", "Update policy resolved", logger.WithDebug("method", policy.Method), logger.WithDebug("action", policy.Action))
 		if policy.Action == updatepkg.PolicyDelegate {
 			return runPackageManagedUpgrade(cmd, detection, targetVersion, noRestart)
@@ -50,13 +50,10 @@ func upgradeCommand() *cobra.Command {
 			Downloader: updatepkg.Downloader{UserAgent: version.ClientName + "/" + version.Version},
 		}
 		options := updatepkg.ApplyOptions{Layout: layout, CurrentVersion: version.Version, TargetVersion: targetVersion}
-		progress.Start("update.checking", "Checking for updates", "Checked for updates")
 		plan, err := updater.Resolve(cmd.Context(), options)
 		if err != nil {
-			progress.Stop()
 			return fmt.Errorf("check update: %w", err)
 		}
-		progress.Complete()
 		if targetVersion == "" {
 			cacheLatestRelease(cmd, layout, plan.Target)
 		}
@@ -74,10 +71,13 @@ func upgradeCommand() *cobra.Command {
 			return nil
 		}
 		logCommandVerbose(cmd, "UPDATE", "update.runtime.inspecting", "Inspecting managed runtime state")
+		runtimeInspectSpan := tracepkg.Start(cmd.Context(), "UPDATE", "update.runtime.inspect", "Inspecting managed runtime")
 		runtimeState, err := captureUpdateRuntimeState(cmd.Context())
 		if err != nil {
+			runtimeInspectSpan.Fail(err)
 			return fmt.Errorf("inspect managed runtime before update: %w", err)
 		}
+		runtimeInspectSpan.End()
 		logCommandVerbose(cmd, "UPDATE", "update.release.applying", "Downloading and activating release", logger.WithVerbose("target", plan.Target))
 		options.ResolvedRelease = &plan.Release
 		result, err := updater.Apply(cmd.Context(), options)
@@ -92,17 +92,24 @@ func upgradeCommand() *cobra.Command {
 		if err := coordinateUpdatedRuntime(cmd, result.Install, runtimeState, noRestart); err != nil {
 			return fmt.Errorf("update to %s failed after activation: %w", result.Target, err)
 		}
+		finalizeSpan := tracepkg.Start(cmd.Context(), "UPDATE", "update.finalize", "Finalizing update")
 		if err := install.FinalizeResultContext(cmd.Context(), result.Install); err != nil {
+			finalizeSpan.Fail(err)
 			log.Verbose("UPDATE", "update.cleanup-failed", "Update succeeded but old version cleanup failed", logger.WithVerbose("error", err.Error()))
 			commandProgressSession(cmd).Append(func(p *presentation.Presenter) {
 				p.ChildStatus(presentation.StatusWarning, "Update succeeded but old version cleanup failed")
 				p.Fields(presentation.Field{Label: "reason", Value: err.Error()})
 			})
+		} else {
+			finalizeSpan.End()
 		}
+		bootstrapSpan := tracepkg.Start(cmd.Context(), "UPDATE", "update.supplemental.bootstrap", "Bootstrapping install supplements")
 		supplemental, err := application.RunPostInstallBootstrap(cmd.Context())
 		if err != nil {
+			bootstrapSpan.Fail(err)
 			return fmt.Errorf("bootstrap install supplements: %w", err)
 		}
+		bootstrapSpan.End()
 		renderSupplementalInstallSummary(cmd, supplemental)
 		message := "Update complete"
 		if result.Downgrade {
@@ -124,15 +131,14 @@ func upgradeCommand() *cobra.Command {
 func upgradeCheckCommand() *cobra.Command {
 	return &cobra.Command{Use: "check", Short: "Check the latest available release", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		logCommandVerbose(cmd, "UPDATE", "update.release.checking", "Resolving latest release", logger.WithVerbose("current", version.Version))
-		progress := newCommandProgress(cmd, "UPDATE")
-		progress.Start("update.checking", "Checking for updates", "Checked for updates")
 		checker := updatepkg.Checker{Source: updatepkg.Client{UserAgent: version.ClientName + "/" + version.Version}}
+		planSpan := tracepkg.Start(cmd.Context(), "UPDATE", "update.plan", "Checking for updates")
 		result, err := checker.Check(cmd.Context(), version.Version)
 		if err != nil {
-			progress.Stop()
+			planSpan.Fail(err)
 			return fmt.Errorf("check latest release: %w", err)
 		}
-		progress.Complete()
+		planSpan.End()
 		cacheLatestReleaseForCurrentInstall(cmd, result.Latest)
 		kind := presentation.StatusInfo
 		message := ""

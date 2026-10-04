@@ -106,28 +106,17 @@ func skillsAddCommand() *cobra.Command {
 			if selectedSkill != "" && all {
 				return errors.New("--skill and --all are mutually exclusive")
 			}
-			var progress *commandProgress
-			if !asJSON && commandResultModeFor(cmd) == resultModeHuman {
-				progress = newCommandProgress(cmd, "SKILLS")
-				progress.Start("skills.add.cloning", "Cloning GitHub repository", "Repository cloned")
-			}
 			result, err := service.Add(cmd.Context(), application.SkillAddRequest{
 				Scope: scope, Source: args[0], Skill: selectedSkill, All: all, FullDepth: fullDepth,
 				ReviewRisk: skillRiskReviewer(cmd, yes, "installation"),
-				Progress:   skillMutationProgressObserver(progress, "add"),
+				Progress:   skillMutationDetailObserver(cmd),
 			})
 			if err != nil {
-				if progress != nil {
-					progress.Stop()
-				}
 				if errors.Is(err, errSkillRiskCancelled) {
 					renderSkillRiskCancelled(cmd, "Skill installation cancelled")
 					return nil
 				}
 				return err
-			}
-			if progress != nil {
-				progress.Complete()
 			}
 			if asJSON {
 				return writeResultJSON(cmd, result)
@@ -177,27 +166,16 @@ func skillsUpdateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var progress *commandProgress
-			if !asJSON && commandResultModeFor(cmd) == resultModeHuman {
-				progress = newCommandProgress(cmd, "SKILLS")
-				progress.Start("skills.update.acquiring", "Acquiring managed GitHub skill sources", "Managed GitHub skill sources acquired")
-			}
 			result, err := service.Update(cmd.Context(), application.SkillUpdateRequest{
 				Scope: scope, Name: name, All: all, ReviewRisk: skillRiskReviewer(cmd, yes, "update"),
-				Progress: skillMutationProgressObserver(progress, "update"),
+				Progress: skillMutationDetailObserver(cmd),
 			})
 			if err != nil {
-				if progress != nil {
-					progress.Stop()
-				}
 				if errors.Is(err, errSkillRiskCancelled) {
 					renderSkillRiskCancelled(cmd, "Skill update cancelled")
 					return nil
 				}
 				return err
-			}
-			if progress != nil {
-				progress.Complete()
 			}
 			if asJSON {
 				return writeResultJSON(cmd, result)
@@ -223,45 +201,29 @@ func skillsUpdateCommand() *cobra.Command {
 	return cmd
 }
 
-func skillMutationProgressObserver(progress *commandProgress, operation string) func(application.SkillMutationEvent) {
-	if progress == nil {
+func skillMutationDetailObserver(cmd *cobra.Command) func(application.SkillMutationEvent) {
+	if cmd == nil || commandResultModeFor(cmd) != resultModeHuman {
 		return nil
 	}
 	return func(event application.SkillMutationEvent) {
-		switch event.Phase {
-		case application.SkillMutationPhaseRepositoryAcquired:
-			progress.Start("skills.add.discovering", "Discovering skills", "Skills discovered")
-		case application.SkillMutationPhaseDiscovered:
-			label := "skills"
-			if event.Count == 1 {
-				label = "skill"
-			}
-			progress.CompleteWith(fmt.Sprintf("Found %d %s", event.Count, label))
-		case application.SkillMutationPhaseSelected:
-			progress.session.Append(func(presenter *presentation.Presenter) {
-				if len(event.Skills) == 1 {
-					selected := event.Skills[0]
-					presenter.ChildStatus(presentation.StatusInfo, "Skill: "+selected.Name)
-					if strings.TrimSpace(selected.Description) != "" {
-						presenter.NestedFields(presentation.Field{Label: "description", Value: selected.Description})
-					}
-					return
-				}
-				names := make([]string, 0, len(event.Skills))
-				for _, selected := range event.Skills {
-					names = append(names, selected.Name)
-				}
-				presenter.ChildStatus(presentation.StatusInfo, fmt.Sprintf("Selected %d skills: %s", len(names), strings.Join(names, ", ")))
-			})
-		case application.SkillMutationPhaseAcquired:
-			progress.Complete()
-		case application.SkillMutationPhaseInstalling:
-			if operation == "update" {
-				progress.Start("skills.update.installing", "Installing managed GitHub skill updates", "Managed GitHub skill updates installed")
-			} else {
-				progress.Start("skills.add.installing", "Installing GitHub skills", "GitHub skills installed")
-			}
+		if event.Phase != application.SkillMutationPhaseSelected {
+			return
 		}
+		commandProgressSession(cmd).Append(func(presenter *presentation.Presenter) {
+			if len(event.Skills) == 1 {
+				selected := event.Skills[0]
+				presenter.ChildStatus(presentation.StatusInfo, "Skill: "+selected.Name)
+				if strings.TrimSpace(selected.Description) != "" {
+					presenter.NestedFields(presentation.Field{Label: "description", Value: selected.Description})
+				}
+				return
+			}
+			names := make([]string, 0, len(event.Skills))
+			for _, selected := range event.Skills {
+				names = append(names, selected.Name)
+			}
+			presenter.ChildStatus(presentation.StatusInfo, fmt.Sprintf("Selected %d skills: %s", len(names), strings.Join(names, ", ")))
+		})
 	}
 }
 
@@ -436,20 +398,9 @@ func skillsRemoveCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var progress *commandProgress
-			if !asJSON && commandResultModeFor(cmd) == resultModeHuman {
-				progress = newCommandProgress(cmd, "SKILLS")
-				progress.Start("skills.remove.removing", "Removing native skill", "Native skill removed")
-			}
-			result, err := service.Remove(application.SkillRemoveRequest{Scope: scope, Name: args[0]})
+			result, err := service.Remove(cmd.Context(), application.SkillRemoveRequest{Scope: scope, Name: args[0]})
 			if err != nil {
-				if progress != nil {
-					progress.Stop()
-				}
 				return err
-			}
-			if progress != nil {
-				progress.Complete()
 			}
 			if asJSON {
 				return writeResultJSON(cmd, result)

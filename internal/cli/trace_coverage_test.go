@@ -38,7 +38,10 @@ func commandTraceContracts() map[string]commandTraceContract {
 		"agent spawn", "agent list", "agent get", "agent send", "agent wait", "agent cancel",
 	)
 	add(commandTraceTrivial, nil, "prompt list", "prompt get", "prompt create", "prompt update", "prompt delete")
-	add(commandTraceTrivial, nil, "skills list", "skills info", "skills add", "skills update", "skills remove")
+	add(commandTraceTrivial, nil, "skills list", "skills info")
+	add(commandTraceInstrumented, []string{"skills.add.repository.acquire.completed", "skills.add.security.review.completed", "skills.add.install.completed"}, "skills add")
+	add(commandTraceInstrumented, []string{"skills.update.acquire.completed", "skills.update.security.review.completed", "skills.update.install.completed"}, "skills update")
+	add(commandTraceInstrumented, []string{"skills.remove.completed"}, "skills remove")
 	add(commandTraceStreaming, []string{"logs.snapshot.load.completed"}, "logs")
 	add(commandTraceStreaming, []string{"runtime.events.connect.completed", "logs.snapshot.load.completed"}, "logs follow")
 	add(commandTraceStreaming, nil, "tui", "activity stream", "execution feed", "execution stream", "request stream", "agent completion feed")
@@ -94,14 +97,18 @@ func commandTraceContracts() map[string]commandTraceContract {
 	add(commandTraceTrivial, nil, "integration typesafe status", "integration typesafe doctor", "integration typesafe probe")
 	add(commandTraceTrivial, nil,
 		"integration browser status", "integration browser doctor",
-		"integration chatgpt-web status", "integration chatgpt-web login", "integration chatgpt-web logout", "integration chatgpt-web doctor",
+		"integration chatgpt-web status", "integration chatgpt-web logout", "integration chatgpt-web doctor",
 	)
-	add(commandTraceTrivial, nil,
-		"integration rtk status", "integration rtk probe", "integration rtk install", "integration rtk install global",
-		"integration codegraph status", "integration codegraph probe", "integration codegraph install", "integration codegraph install global",
-		"integration codegraph init", "integration codegraph sync", "integration codegraph workspace status",
-		"integration cf status", "integration cf probe", "integration cf install", "integration cf update", "integration cf remove",
-	)
+	add(commandTraceInstrumented, []string{"chatgpt.auth.verification.poll.completed"}, "integration chatgpt-web login")
+	add(commandTraceTrivial, nil, "integration rtk status")
+	add(commandTraceInstrumented, []string{"integration.rtk.probe.completed"}, "integration rtk probe")
+	add(commandTraceInstrumented, []string{"integration.rtk.install.completed"}, "integration rtk install", "integration rtk install global")
+	add(commandTraceTrivial, nil, "integration codegraph status", "integration codegraph init", "integration codegraph sync", "integration codegraph workspace status")
+	add(commandTraceInstrumented, []string{"integration.codegraph.probe.completed"}, "integration codegraph probe")
+	add(commandTraceInstrumented, []string{"integration.codegraph.install.completed"}, "integration codegraph install", "integration codegraph install global")
+	add(commandTraceTrivial, nil, "integration cf status", "integration cf update", "integration cf remove")
+	add(commandTraceInstrumented, []string{"integration.cf.probe.completed"}, "integration cf probe")
+	add(commandTraceInstrumented, []string{"integration.cf.install.completed"}, "integration cf install")
 	add(commandTraceTrivial, nil, "telemetry status", "telemetry show")
 	add(commandTraceInstrumented, []string{"setting.set.completed"}, "telemetry enable", "telemetry disable")
 	add(commandTraceInstrumented, []string{"setting.rotate.completed"}, "config rotate")

@@ -246,7 +246,7 @@ func TestSkillManagementRiskReviewGatesAddBeforeMutation(t *testing.T) {
 	if !reviewed || len(result.Skills) != 1 || result.Skills[0].Name != "risky" {
 		t.Fatalf("reviewed=%v result=%#v", reviewed, result)
 	}
-	if got := strings.Join(events, ","); got != "repository_acquired,discovered,selected,review,installing" {
+	if got := strings.Join(events, ","); got != "repository_acquiring,repository_acquired,discovering,discovered,selected,security_reviewing,review,security_reviewed,installing,installed" {
 		t.Fatalf("add lifecycle order=%q", got)
 	}
 }
@@ -298,7 +298,7 @@ func TestSkillManagementRiskReviewRejectsUpdateBeforeAnyMutation(t *testing.T) {
 	if string(metadataAfter) != string(metadataBefore) {
 		t.Fatalf("update mutated metadata before review\nbefore=%s\nafter=%s", metadataBefore, metadataAfter)
 	}
-	if got := strings.Join(events, ","); got != "acquired,review" {
+	if got := strings.Join(events, ","); got != "acquiring,acquired,security_reviewing,review" {
 		t.Fatalf("denied update lifecycle order=%q", got)
 	}
 }
@@ -667,7 +667,7 @@ func TestSkillManagementRemoveManagedAndUnmanagedWithRollback(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.BeforeMetadataCommit = func() error { return errors.New("forced remove metadata failure") }
-	if _, err := service.Remove(SkillRemoveRequest{
+	if _, err := service.Remove(t.Context(), SkillRemoveRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "managed",
 	}); err == nil || !strings.Contains(err.Error(), "forced remove metadata failure") {
 		t.Fatalf("managed removal rollback err=%v", err)
@@ -680,7 +680,7 @@ func TestSkillManagementRemoveManagedAndUnmanagedWithRollback(t *testing.T) {
 		t.Fatalf("managed metadata changed after rollback: err=%v", err)
 	}
 	service.BeforeMetadataCommit = nil
-	removed, err := service.Remove(SkillRemoveRequest{
+	removed, err := service.Remove(t.Context(), SkillRemoveRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "managed",
 	})
 	if err != nil || !removed.Managed {
@@ -697,7 +697,7 @@ func TestSkillManagementRemoveManagedAndUnmanagedWithRollback(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(unmanaged, "SKILL.md"), []byte(skillFixture("authored", "authored")), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	unmanagedResult, err := service.Remove(SkillRemoveRequest{
+	unmanagedResult, err := service.Remove(t.Context(), SkillRemoveRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "authored",
 	})
 	if err != nil || unmanagedResult.Managed {
@@ -706,7 +706,7 @@ func TestSkillManagementRemoveManagedAndUnmanagedWithRollback(t *testing.T) {
 	if _, err := os.Stat(unmanaged); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("unmanaged skill still exists: %v", err)
 	}
-	if _, err := service.Remove(SkillRemoveRequest{
+	if _, err := service.Remove(t.Context(), SkillRemoveRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: skills.BuiltinCreatePlanName,
 	}); err == nil || !strings.Contains(err.Error(), "not removable") {
 		t.Fatalf("builtin removal err=%v", err)

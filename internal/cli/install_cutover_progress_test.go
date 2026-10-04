@@ -5,26 +5,32 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
 
 func TestInstallIntegrationProgressIsTransientAndSummaryIsCanonical(t *testing.T) {
 	var output bytes.Buffer
-	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{
+	cmd := &cobra.Command{Use: "install"}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{
 		Width: 100, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true, Animation: true,
-	})
-	session.Begin("Install CodeMCP")
-	observe := installIntegrationProgressObserver(session)
-	observe(application.IntegrationEnsureEvent{Integration: "rtk", Phase: "check", State: "running"})
+	}))
+	setCommandPresentationTitle(cmd, "Install CodeMCP")
+	session := commandProgressSession(cmd)
+	observe := commandTraceObserver(cmd)
+	observe(tracepkg.Event{Component: "INTEGRATION", Name: "integration.ensure.rtk.check.started", Message: "Checking rtk", Phase: tracepkg.PhaseStart})
 	if !strings.Contains(output.String(), "Checking rtk") {
 		t.Fatalf("integration check did not enter loading state: %q", output.String())
 	}
-	observe(application.IntegrationEnsureEvent{Integration: "rtk", Phase: "check", State: "success"})
-	observe(application.IntegrationEnsureEvent{Integration: "rtk", Phase: "install", State: "running"})
+	observe(tracepkg.Event{Component: "INTEGRATION", Name: "integration.ensure.rtk.check.completed", Message: "Checked rtk", Phase: tracepkg.PhaseEnd})
+	observe(tracepkg.Event{Component: "INTEGRATION", Name: "integration.ensure.rtk.install.started", Message: "Installing rtk", Phase: tracepkg.PhaseStart})
 	if !strings.Contains(output.String(), "Installing rtk") {
 		t.Fatalf("managed install did not enter loading state: %q", output.String())
 	}
+	observe(tracepkg.Event{Component: "INTEGRATION", Name: "integration.ensure.rtk.install.completed", Message: "Installed rtk", Phase: tracepkg.PhaseEnd})
 	renderSupplementalInstallSummaryToSession(session, application.SupplementalBootstrapResult{
 		Telemetry: application.TelemetryBootstrapResult{Enabled: true, EndpointAvailable: true, IdentityPresent: true},
 		Integrations: []application.IntegrationEnsureResult{
@@ -121,17 +127,20 @@ func TestSupplementalInstallSummaryCoversAllIntegrationOutcomeStates(t *testing.
 
 func TestInstallCutoverUnsupportedStateUsesReadableHierarchy(t *testing.T) {
 	var output bytes.Buffer
-	session := presentation.NewProgressSession(&output, presentation.ModeHuman, presentation.Capabilities{Width: 100, Unicode: true, RawUnicode: true})
-	session.SetTitle("Install CodeMCP")
+	cmd := &cobra.Command{Use: "install"}
+	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, RawUnicode: true, Interactive: true}))
+	setCommandPresentationTitle(cmd, "Install CodeMCP")
+	session := commandProgressSession(cmd)
 	observe := installCutoverProgressObserver(session)
 	observe(application.InstallCutoverEvent{Stage: "detect", State: "warning", Message: "Previous CodeMCP state requires a clean install"})
 	observe(application.InstallCutoverEvent{Stage: "detect", State: "warning", Message: "7 unsupported artifacts cannot be migrated", Child: true})
-	observe(application.InstallCutoverEvent{Stage: "cleanup", State: "running", Message: "Removing previous CodeMCP state"})
-	observe(application.InstallCutoverEvent{Stage: "cleanup", State: "success", Message: "Previous CodeMCP state removed"})
+	traceObserve := commandTraceObserver(cmd)
+	traceObserve(tracepkg.Event{Component: "INSTALL", Name: "install.cutover.cleanup.started", Message: "Removing previous CodeMCP state", Phase: tracepkg.PhaseStart})
+	traceObserve(tracepkg.Event{Component: "INSTALL", Name: "install.cutover.cleanup.completed", Message: "Previous CodeMCP state removed", Phase: tracepkg.PhaseEnd})
 	session.CloseWith("Done")
 
 	got := output.String()
-	want := "!  Previous CodeMCP state requires a clean install\n│\n│  ! 7 unsupported artifacts cannot be migrated\n◇  Finalize installation\n│\n◆  Previous CodeMCP state removed"
+	want := "!  Previous CodeMCP state requires a clean install\n│\n│  ! 7 unsupported artifacts cannot be migrated\n◇  Finalizing installation\n◆  Installation finalized"
 	if !strings.Contains(got, want) {
 		t.Fatalf("unsupported-state presentation mismatch: %q", got)
 	}

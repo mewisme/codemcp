@@ -24,6 +24,7 @@ import (
 	runtimeevent "go.mewis.me/codemcp/internal/runtime/event"
 	"go.mewis.me/codemcp/internal/secretstore"
 	managed "go.mewis.me/codemcp/internal/service"
+	tracepkg "go.mewis.me/codemcp/internal/trace"
 	"go.mewis.me/codemcp/internal/tunnel"
 )
 
@@ -112,7 +113,9 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
 	manager := &fakeServiceManager{}
 	var output bytes.Buffer
-	cmd := &cobra.Command{Use: "test"}
+	rootCmd := &cobra.Command{Use: "cm"}
+	cmd := &cobra.Command{Use: "up"}
+	rootCmd.AddCommand(cmd)
 	cmd.SetContext(context.Background())
 	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
 	if err := runManagedUp(cmd, spec, manager); err != nil {
@@ -153,7 +156,12 @@ func TestManagedUpAndDownLifecycle(t *testing.T) {
 		t.Fatalf("idempotent up failed: installs=%d starts=%d output=%q", manager.installs, manager.starts, output.String())
 	}
 	output.Reset()
-	if err := runManagedDown(cmd, spec, manager); err != nil {
+	downRoot := &cobra.Command{Use: "cm"}
+	downCmd := &cobra.Command{Use: "down"}
+	downRoot.AddCommand(downCmd)
+	downCmd.SetContext(context.Background())
+	downCmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
+	if err := runManagedDown(downCmd, spec, manager); err != nil {
 		t.Fatal(err)
 	}
 	if manager.removes != 1 || manager.installed {
@@ -204,7 +212,7 @@ func TestManagedUpAllowsHTTPTransportWhenDisabledTunnelSecretIsMissing(t *testin
 
 	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
 	manager := &fakeServiceManager{}
-	cmd := &cobra.Command{Use: "test"}
+	cmd := &cobra.Command{Use: "up"}
 	cmd.SetContext(context.Background())
 	cmd.SetOut(&bytes.Buffer{})
 	if _, err := saveManagedEnvironment(spec); err != nil {
@@ -238,7 +246,9 @@ func TestManagedRestartKeepsServiceInstalledAndStartsNewRuntime(t *testing.T) {
 	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
 	manager := &fakeServiceManager{}
 	var output bytes.Buffer
-	cmd := &cobra.Command{Use: "test"}
+	setupRoot := &cobra.Command{Use: "cm"}
+	cmd := &cobra.Command{Use: "up"}
+	setupRoot.AddCommand(cmd)
 	cmd.SetContext(context.Background())
 	cmd.SetOut(&output)
 	if err := runManagedUp(cmd, spec, manager); err != nil {
@@ -247,7 +257,12 @@ func TestManagedRestartKeepsServiceInstalledAndStartsNewRuntime(t *testing.T) {
 	previousRunID := manager.control.state.RunID
 	output.Reset()
 	starts, stops, installs, removes := manager.starts, manager.stops, manager.installs, manager.removes
-	if err := runManagedRestart(cmd, spec, manager); err != nil {
+	restartRoot := &cobra.Command{Use: "cm"}
+	restartCmd := &cobra.Command{Use: "restart"}
+	restartRoot.AddCommand(restartCmd)
+	restartCmd.SetContext(context.Background())
+	restartCmd.SetOut(&output)
+	if err := runManagedRestart(restartCmd, spec, manager); err != nil {
 		t.Fatal(err)
 	}
 	if !manager.running || manager.starts != starts+1 || manager.stops != stops+1 || manager.installs != installs || manager.removes != removes {
@@ -262,10 +277,13 @@ func TestManagedRestartKeepsServiceInstalledAndStartsNewRuntime(t *testing.T) {
 			t.Fatalf("restart output missing %q: %s", expected, text)
 		}
 	}
-	for _, unexpected := range []string{"Managed service removed", "Managed service installed", "Managed runtime ready", "Managed service restarted", "Server started", "Semantic — ready", "Notifications — ready"} {
+	for _, unexpected := range []string{"Managed service removed", "Managed service installed", "Managed service restarted", "Server started", "Semantic — ready", "Notifications — ready"} {
 		if strings.Contains(text, unexpected) {
 			t.Fatalf("restart output contains obsolete status %q: %s", unexpected, text)
 		}
+	}
+	if count := strings.Count(text, "Managed runtime ready"); count != 1 {
+		t.Fatalf("managed runtime readiness count=%d want=1: %s", count, text)
 	}
 }
 
@@ -368,10 +386,11 @@ func TestManagedRestartReadinessObserverStreamsScopesAsTheyBecomeReady(t *testin
 	var output bytes.Buffer
 	cmd := &cobra.Command{Use: "test"}
 	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, RawUnicode: true, Interactive: true, CursorControl: true, Animation: true}))
-	commandProgressSession(cmd).SetTitle("Restart CodeMCP")
-	progress := managedLifecycleProgress(cmd)
-	progress.Start("service.runtime.waiting", "Waiting for managed runtime readiness", "Managed runtime ready")
-	observe, streamed := managedRestartReadinessObserver(progress)
+	session := commandProgressSession(cmd)
+	session.SetTitle("Restart CodeMCP")
+	traceObserve := commandTraceObserver(cmd)
+	traceObserve(tracepkg.Event{Component: "SERVICE", Name: "service.runtime.ready.wait.started", Message: "Waiting for managed runtime readiness", Phase: tracepkg.PhaseStart})
+	observe, streamed := managedRestartReadinessObserver(session)
 
 	readiness := []runtimecontrol.ReadinessComponent{
 		{ID: "typesafe", Label: "TypeSafe semantic provider", Configured: true, Ready: true},
@@ -388,7 +407,7 @@ func TestManagedRestartReadinessObserverStreamsScopesAsTheyBecomeReady(t *testin
 
 	observe(runtimeStatusResult{Readiness: telegram, TunnelEnabled: true, TunnelConfigured: true, TunnelReady: true})
 	observe(runtimeStatusResult{Readiness: telegram, TunnelEnabled: true, TunnelConfigured: true, TunnelReady: true})
-	progress.Stop()
+	traceObserve(tracepkg.Event{Component: "SERVICE", Name: "service.runtime.ready.wait.completed", Message: "Managed runtime ready", Phase: tracepkg.PhaseEnd})
 
 	text := output.String()
 	telegramLine := "✓ Telegram — ready"
@@ -613,7 +632,9 @@ func TestManagedRestartUpdatesChangedDefinitionWithoutUninstall(t *testing.T) {
 	}
 	spec := managed.Spec{ID: managed.ID(root, managed.ScopeUser), Scope: managed.ScopeUser, ConfigRoot: root, Binary: "/fake/cm", Account: managed.Account{Username: "mew", HomeDir: t.TempDir()}}
 	manager := &fakeServiceManager{}
-	setupCmd := &cobra.Command{Use: "test"}
+	setupRoot := &cobra.Command{Use: "cm"}
+	setupCmd := &cobra.Command{Use: "up"}
+	setupRoot.AddCommand(setupCmd)
 	setupCmd.SetContext(context.Background())
 	setupCmd.SetOut(&bytes.Buffer{})
 	if err := runManagedUp(setupCmd, spec, manager); err != nil {
@@ -621,7 +642,9 @@ func TestManagedRestartUpdatesChangedDefinitionWithoutUninstall(t *testing.T) {
 	}
 	manager.matches = false
 	var output bytes.Buffer
-	cmd := &cobra.Command{Use: "test"}
+	restartRoot := &cobra.Command{Use: "cm"}
+	cmd := &cobra.Command{Use: "restart"}
+	restartRoot.AddCommand(cmd)
 	cmd.SetContext(context.Background())
 	cmd.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{Width: 100, Unicode: true, Color: false, Interactive: true}))
 	commandProgressSession(cmd).SetTitle("Restart CodeMCP")
