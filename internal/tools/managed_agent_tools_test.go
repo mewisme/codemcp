@@ -32,6 +32,29 @@ func TestManagedAgentToolSchemasAreStrictAndBounded(t *testing.T) {
 	}
 }
 
+func TestManagedAgentSpawnDescriptionStaysConciseAndAlignedWithFanout(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewRuntime()
+	defer runtime.CompletionHooks.Stop()
+	spawn, ok := runtime.Registry.Schema(AgentSpawnToolName)
+	if !ok {
+		t.Fatal("agent_spawn schema missing")
+	}
+	for _, expected := range []string{"independent work", "positive payoff", "specialization", "independent review", "trivial work", "immediate dependencies", "conflicting mutation", "self-contained"} {
+		if !strings.Contains(spawn.Description, expected) {
+			t.Fatalf("agent_spawn description missing %q: %s", expected, spawn.Description)
+		}
+	}
+	for _, detailed := range []string{"agent_wait", "agent_send", "agent_cancel", "agent_claim", "project_context", "Deduplicate overlapping findings"} {
+		if strings.Contains(spawn.Description, detailed) {
+			t.Fatalf("agent_spawn description duplicated Fanout policy %q: %s", detailed, spawn.Description)
+		}
+	}
+	if len(spawn.Description) > 600 {
+		t.Fatalf("agent_spawn description grew into a second policy document: %d bytes", len(spawn.Description))
+	}
+}
+
 func TestManagedAgentObservabilityRedactsPromptAndMessageBodies(t *testing.T) {
 	prompt := "highly-sensitive-delegation-prompt"
 	message := "highly-sensitive-follow-up"

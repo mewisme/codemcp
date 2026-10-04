@@ -419,27 +419,36 @@ func TestCanonicalServerInstructionModelIsDeterministicAndBounded(t *testing.T) 
 	}
 }
 
-func TestAgentDelegationGuidanceIsCanonicalAndNotSlashActivated(t *testing.T) {
+func TestAgentDelegationGuidanceBootstrapsFanoutWithoutDuplicatingPolicy(t *testing.T) {
 	workflow := AgentWorkflow()
+	server := StaticServerInstructions()
 	for _, expected := range []string{
-		"Delegate only meaningful independent work",
-		"Parallel mutations require disjoint ownership",
-		"parent-only goal",
-		"never copy full transcript",
-		"continue independent parent work",
-		"bounded agent_wait",
-		"agent_send only to a live idle child",
-		"claim assigned workspace",
-		"project_context with memory enabled",
-		"fresh canonical context",
-		"agent_complete",
-		"Depth is one",
-		"claimed children cannot spawn",
-		"not a slash mode",
+		"fanout_turn",
+		"exact current user prompt",
+		"Tool availability alone never requires delegation",
+		"strategy only",
+		"never overrides workspace, security, plan",
 	} {
 		if !strings.Contains(workflow, expected) {
-			t.Fatalf("delegation guidance missing %q: %s", expected, workflow)
+			t.Fatalf("workflow missing Fanout bootstrap %q: %s", expected, workflow)
 		}
+		if !strings.Contains(server, expected) {
+			t.Fatalf("server instructions missing Fanout bootstrap %q: %s", expected, server)
+		}
+	}
+	for _, detailed := range []string{
+		"Parallel mutation requires explicit disjoint ownership",
+		"bounded `agent_wait`",
+		"live idle child",
+		"claimed children cannot use `agent_spawn`",
+		"Deduplicate overlapping findings",
+	} {
+		if strings.Contains(workflow, detailed) || strings.Contains(server, detailed) {
+			t.Fatalf("detailed Fanout policy leaked into unconditional workflow: %q", detailed)
+		}
+	}
+	if len(workflow) == 0 || len(workflow) > 8192 {
+		t.Fatalf("project-context workflow length=%d", len(workflow))
 	}
 	model := CanonicalServerInstructionModel()
 	count := 0

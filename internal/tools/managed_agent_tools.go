@@ -36,7 +36,7 @@ func registerManagedAgentSpawnTool(registry *Registry, runtime *Runtime) {
 	registry.MustRegister(AgentSpawnToolName, Schema{
 		Name:         AgentSpawnToolName,
 		Title:        "Spawn Managed Agent",
-		Description:  "Delegate meaningful, well-scoped independent work to a managed child when delegation or parallelism saves parent work. Make the prompt self-contained with only parent-only decisions, constraints, references, scope, and expected output; do not copy the full transcript or workspace context the child can load canonically. Do not use for trivial or immediately dependent work.",
+		Description:  "Delegate meaningful, well-scoped independent work when parallelism, specialization, or deliberate independent review has positive payoff. Avoid trivial work, immediate dependencies, duplicate workers without review intent, and conflicting mutation. Keep the child prompt self-contained with only parent-only decisions, constraints, references, scope, and expected output.",
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"prompt":{"type":"string","minLength":1,"maxLength":65536},"backend":{"type":"string","maxLength":64},"model":{"type":"string","maxLength":128},"reasoning_effort":{"type":"string","maxLength":64}},"required":["workspace_id","prompt"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(managedAgentSnapshotSchema),
 		Annotations:  ToolAnnotations(RiskEdit),

@@ -187,17 +187,23 @@ func TestBaseAndOpenAIProfilesShareManagedAgentDelegationSemantics(t *testing.T)
 	openai := ProjectServerInstructions(OpenAIProfile())
 	for _, instructions := range []string{base, openai} {
 		for _, expected := range []string{
-			"Delegate only meaningful independent work",
-			"Parallel mutations require disjoint ownership",
-			"bounded agent_wait",
-			"agent_send only to a live idle child",
-			"claim assigned workspace",
-			"project_context with memory enabled",
-			"claimed children cannot spawn",
-			"not a slash mode",
+			"fanout_turn",
+			"exact current user prompt",
+			"Tool availability alone never requires delegation",
+			"strategy only",
 		} {
 			if !strings.Contains(instructions, expected) {
-				t.Fatalf("profile instructions missing managed-agent guidance %q: %s", expected, instructions)
+				t.Fatalf("profile instructions missing Fanout bootstrap %q: %s", expected, instructions)
+			}
+		}
+		for _, detailed := range []string{
+			"Parallel mutation requires explicit disjoint ownership",
+			"bounded `agent_wait`",
+			"claimed children cannot use `agent_spawn`",
+			"Deduplicate overlapping findings",
+		} {
+			if strings.Contains(instructions, detailed) {
+				t.Fatalf("profile instructions duplicated detailed Fanout policy %q: %s", detailed, instructions)
 			}
 		}
 	}

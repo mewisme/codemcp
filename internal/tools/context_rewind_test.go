@@ -565,8 +565,9 @@ func TestProjectContextInputControlsCollectorsAndLimits(t *testing.T) {
 		}
 	}
 
+	maxInstructionBytes := skipped.InstructionContext.InstructionBytes + 256
 	limitedResult, err := runtime.Call(context.Background(), "project_context", map[string]any{
-		"workspace_id": workspaceID, "max_instruction_bytes": 6656, "max_section_bytes": 8, "max_lines_per_section": 1,
+		"workspace_id": workspaceID, "max_instruction_bytes": maxInstructionBytes, "max_section_bytes": 8, "max_lines_per_section": 1,
 	})
 	if err != nil || limitedResult.IsError {
 		t.Fatalf("project_context limits failed: %#v %v", limitedResult, err)
@@ -579,7 +580,7 @@ func TestProjectContextInputControlsCollectorsAndLimits(t *testing.T) {
 	if !section.Truncated || section.LoadedBytes > 8 || strings.Contains(section.Content, "second line") {
 		t.Fatalf("section = %#v", section)
 	}
-	if !limited.InstructionContext.InstructionTruncated || limited.InstructionContext.InstructionBytes > 6656 {
+	if !limited.InstructionContext.InstructionTruncated || limited.InstructionContext.InstructionBytes > maxInstructionBytes {
 		t.Fatalf("instruction limit = %#v", limited.InstructionContext)
 	}
 	for _, required := range []string{"## Agent workflow", "## Tool profile", "## Environment", "## Quick pointers"} {

@@ -113,4 +113,30 @@ func TestInstructionsProjectModeSpecificStrategy(t *testing.T) {
 	if Instructions(Off) != "" {
 		t.Fatal("off instructions must be empty")
 	}
+
+	canonical := Instructions(Auto)
+	for _, expected := range []string{
+		"positive payoff",
+		"read-only fanout",
+		"explicit disjoint ownership",
+		"duplicate workers",
+		"parent-only goal",
+		"Exact workspace binding",
+		"`agent_claim`",
+		"`project_context` with memory enabled",
+		"bounded `agent_wait`",
+		"`agent_send` only",
+		"`agent_cancel`",
+		"Depth is one",
+		"cannot use `agent_spawn`",
+		"Aggregate child results at the parent",
+		"Deduplicate overlapping findings",
+		"resolve contradictions",
+		"verify material conclusions",
+		"Tool availability never means delegation is required",
+	} {
+		if !strings.Contains(canonical, expected) {
+			t.Fatalf("canonical Fanout policy missing %q: %s", expected, canonical)
+		}
+	}
 }
