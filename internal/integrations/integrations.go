@@ -57,9 +57,33 @@ type TypeSafe struct {
 }
 
 type Browser struct {
-	Enabled  bool   `json:"enabled"`
-	Path     string `json:"path"`
-	Headless bool   `json:"headless"`
+	Enabled   bool   `json:"enabled"`
+	Path      string `json:"path"`
+	Minimized bool   `json:"minimized"`
+}
+
+func (value *Browser) UnmarshalJSON(data []byte) error {
+	var decoded struct {
+		Enabled   *bool   `json:"enabled"`
+		Path      *string `json:"path"`
+		Minimized *bool   `json:"minimized"`
+		Headless  *bool   `json:"headless"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.Enabled != nil {
+		value.Enabled = *decoded.Enabled
+	}
+	if decoded.Path != nil {
+		value.Path = *decoded.Path
+	}
+	if decoded.Minimized != nil {
+		value.Minimized = *decoded.Minimized
+	} else if decoded.Headless != nil && *decoded.Headless {
+		value.Minimized = true
+	}
+	return nil
 }
 
 type ChatGPTWeb struct {
@@ -85,7 +109,7 @@ func Default() Config {
 		RTK:        RTK{Enabled: true},
 		CodeGraph:  CodeGraph{Enabled: true},
 		TypeSafe:   TypeSafe{Enabled: true, Model: "jev-latest", TimeoutMS: 3000},
-		Browser:    Browser{Enabled: true, Headless: false},
+		Browser:    Browser{Enabled: true, Minimized: false},
 		ChatGPTWeb: ChatGPTWeb{Enabled: true, ConnectorName: "CodeMCP", MaxAgents: 5},
 	}
 }

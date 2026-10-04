@@ -16,22 +16,22 @@ func TestLocalBrowserManagerSmoke(t *testing.T) {
 		t.Skip("set CM_BROWSER_SMOKE=1 to run the local real-browser fixture")
 	}
 	for _, mode := range []struct {
-		name     string
-		headless bool
+		name      string
+		minimized bool
 	}{
 		{name: "visible"},
-		{name: "headless", headless: true},
+		{name: "minimized", minimized: true},
 	} {
 		t.Run(mode.name, func(t *testing.T) {
 			root := t.TempDir()
 			t.Setenv("CM_CONFIG_DIR", root)
-			capability := Detect(context.Background(), Options{Enabled: true, StateRoot: root, Passive: true, Headless: mode.headless})
+			capability := Detect(context.Background(), Options{Enabled: true, StateRoot: root, Passive: true})
 			if capability.State != StateAvailable || !capability.Available || !capability.Launchable {
 				t.Fatalf("local browser unavailable: %#v", capability)
 			}
 			manager, err := NewManager(ManagerOptions{
 				Capability: capability,
-				Headless:   mode.headless,
+				Minimized:  mode.minimized,
 				MaxTabs:    2, AgentIdleTTL: time.Minute, BrowserWarmTTL: time.Minute,
 			})
 			if err != nil {
@@ -75,10 +75,8 @@ func TestLocalBrowserManagerSmoke(t *testing.T) {
 			if got := smokePageTargetCount(t, endpoint); got != 1 {
 				t.Fatalf("page targets after first release=%d want=1", got)
 			}
-			if !mode.headless {
-				if err := manager.Minimize(context.Background()); err != nil {
-					t.Fatalf("minimize after bootstrap release: %v", err)
-				}
+			if err := manager.Minimize(context.Background()); err != nil {
+				t.Fatalf("minimize after bootstrap release: %v", err)
 			}
 			if err := manager.Release(context.Background(), second.AgentID); err != nil {
 				t.Fatal(err)

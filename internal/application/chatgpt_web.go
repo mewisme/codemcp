@@ -49,7 +49,7 @@ type chatGPTBrowserRuntimeIdentity struct {
 	HostPlatform string
 	Transport    browser.Transport
 	ProfilePath  string
-	Headless     bool
+	Minimized    bool
 }
 
 type ChatGPTWebDoctorCheck struct {
@@ -122,7 +122,7 @@ func (service *ChatGPTWebService) AgentBrowserRuntime(ctx context.Context, maxAg
 	}
 	service.browserMu.Lock()
 	defer service.browserMu.Unlock()
-	desiredIdentity := browserRuntimeIdentity(capability, cfg.Integrations.Browser.Headless)
+	desiredIdentity := browserRuntimeIdentity(capability, cfg.Integrations.Browser.Minimized)
 	if service.OwnedManager != nil {
 		snapshot := service.OwnedManager.Snapshot()
 		if snapshot.State == browser.ManagerClosed {
@@ -152,7 +152,7 @@ func (service *ChatGPTWebService) AgentBrowserRuntime(ctx context.Context, maxAg
 	if service.NewManager == nil {
 		return nil, errors.New("ChatGPT Web browser manager factory is unavailable")
 	}
-	runtime, err := service.NewManager(browser.ManagerOptions{Capability: capability, MaxTabs: maxAgents, Headless: cfg.Integrations.Browser.Headless})
+	runtime, err := service.NewManager(browser.ManagerOptions{Capability: capability, MaxTabs: maxAgents, Minimized: cfg.Integrations.Browser.Minimized})
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (service *ChatGPTWebService) ReconcileRuntimeConfig(ctx context.Context) er
 		service.runtimePendingReason = ""
 		return nil
 	}
-	desiredIdentity := browserRuntimeIdentity(capability, cfg.Integrations.Browser.Headless)
+	desiredIdentity := browserRuntimeIdentity(capability, cfg.Integrations.Browser.Minimized)
 	profileChanged := capability.State == browser.StateAvailable && service.ownedRuntimeIdentity != (chatGPTBrowserRuntimeIdentity{}) && service.ownedRuntimeIdentity != desiredIdentity
 	capacityIncrease := snapshot.MaxTabs > 0 && cfg.Integrations.ChatGPTWeb.MaxAgents > snapshot.MaxTabs
 	shouldRetire := !cfg.Integrations.Browser.Enabled || !cfg.Integrations.ChatGPTWeb.Enabled || profileChanged || capacityIncrease
@@ -275,7 +275,7 @@ func (service *ChatGPTWebService) status(ctx context.Context, browserLocked bool
 		return ChatGPTWebStatus{}, err
 	}
 	status := service.baseStatus(cfg, capability)
-	status = service.withRuntimePending(status, capability, cfg.Integrations.Browser.Headless, browserLocked)
+	status = service.withRuntimePending(status, capability, cfg.Integrations.Browser.Minimized, browserLocked)
 	if !cfg.Integrations.ChatGPTWeb.Enabled {
 		status.State = chatgptweb.StateDisabled
 		return status, nil
@@ -319,7 +319,7 @@ func (service *ChatGPTWebService) status(ctx context.Context, browserLocked bool
 	return status, nil
 }
 
-func (service *ChatGPTWebService) withRuntimePending(status ChatGPTWebStatus, capability browser.Capability, headless, browserLocked bool) ChatGPTWebStatus {
+func (service *ChatGPTWebService) withRuntimePending(status ChatGPTWebStatus, capability browser.Capability, minimized, browserLocked bool) ChatGPTWebStatus {
 	if service == nil {
 		return status
 	}
@@ -334,7 +334,7 @@ func (service *ChatGPTWebService) withRuntimePending(status ChatGPTWebStatus, ca
 	if snapshot.State == browser.ManagerClosed || snapshot.ActiveLeases == 0 {
 		return status
 	}
-	desiredIdentity := browserRuntimeIdentity(capability, headless)
+	desiredIdentity := browserRuntimeIdentity(capability, minimized)
 	profileChanged := capability.State == browser.StateAvailable && service.ownedRuntimeIdentity != (chatGPTBrowserRuntimeIdentity{}) && service.ownedRuntimeIdentity != desiredIdentity
 	capacityIncrease := snapshot.MaxTabs > 0 && status.MaxAgents > snapshot.MaxTabs
 	reason := strings.TrimSpace(service.runtimePendingReason)
@@ -387,7 +387,7 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 			"interactive ChatGPT sign-in did not complete; complete sign-in and close the CodeMCP browser window")
 		return status, fmt.Errorf("interactive ChatGPT sign-in did not complete: %w", err)
 	}
-	runtime, oneShot, err := service.browserRuntime(capability, cfg.Integrations.Browser.Headless)
+	runtime, oneShot, err := service.browserRuntime(capability, cfg.Integrations.Browser.Minimized)
 	if err != nil {
 		status, _ := service.loginFailureStatus(capability, chatgptweb.StateDegraded,
 			"managed browser verification could not start after interactive sign-in")
@@ -518,7 +518,7 @@ func (service *ChatGPTWebService) Doctor(ctx context.Context) (ChatGPTWebDoctorR
 		result.Checks = append(result.Checks, ChatGPTWebDoctorCheck{ID: "live_auth", OK: false, Message: "live authentication probe deferred because another CodeMCP process owns the browser profile"})
 		return result, nil
 	}
-	runtime, oneShot, err := service.browserRuntime(capability, cfg.Integrations.Browser.Headless)
+	runtime, oneShot, err := service.browserRuntime(capability, cfg.Integrations.Browser.Minimized)
 	if err != nil {
 		return ChatGPTWebDoctorResult{}, err
 	}
@@ -622,7 +622,7 @@ func (service *ChatGPTWebService) capability(ctx context.Context, passive bool) 
 	}
 	capability := service.Detect(ctx, browser.Options{
 		Enabled: cfg.Integrations.Browser.Enabled, ConfiguredPath: cfg.Integrations.Browser.Path,
-		StateRoot: service.Root(), Passive: passive, Headless: cfg.Integrations.Browser.Headless,
+		StateRoot: service.Root(), Passive: passive,
 	})
 	return cfg, capability, nil
 }
@@ -640,7 +640,7 @@ func (service *ChatGPTWebService) loginCapability(ctx context.Context) (config.C
 	}
 	capability := service.Detect(ctx, browser.Options{
 		Enabled: cfg.Integrations.Browser.Enabled, ConfiguredPath: cfg.Integrations.Browser.Path,
-		StateRoot: service.Root(), Passive: true, Headless: false,
+		StateRoot: service.Root(), Passive: true,
 	})
 	return cfg, capability, nil
 }
@@ -667,10 +667,10 @@ func (service *ChatGPTWebService) baseStatus(cfg config.Config, capability brows
 	}
 }
 
-func browserRuntimeIdentity(capability browser.Capability, headless bool) chatGPTBrowserRuntimeIdentity {
+func browserRuntimeIdentity(capability browser.Capability, minimized bool) chatGPTBrowserRuntimeIdentity {
 	identity := chatGPTBrowserRuntimeIdentity{
 		Executable: strings.TrimSpace(capability.Executable), HostPlatform: strings.TrimSpace(capability.HostPlatform), Transport: capability.Transport,
-		Headless: headless,
+		Minimized: minimized,
 	}
 	if capability.Profile != nil {
 		identity.ProfilePath = strings.TrimSpace(capability.Profile.LocalPath)
@@ -689,14 +689,14 @@ func pendingBrowserRuntimeReason(profileChanged, capacityIncrease bool) string {
 	}
 }
 
-func (service *ChatGPTWebService) browserRuntime(capability browser.Capability, headless bool) (chatGPTBrowserRuntime, bool, error) {
+func (service *ChatGPTWebService) browserRuntime(capability browser.Capability, minimized bool) (chatGPTBrowserRuntime, bool, error) {
 	if service.OwnedManager != nil {
 		return service.OwnedManager, false, nil
 	}
 	if service.NewManager == nil {
 		return nil, false, errors.New("ChatGPT Web browser manager factory is unavailable")
 	}
-	runtime, err := service.NewManager(browser.ManagerOptions{Capability: capability, MaxTabs: 1, Headless: headless})
+	runtime, err := service.NewManager(browser.ManagerOptions{Capability: capability, MaxTabs: 1, Minimized: minimized})
 	if err != nil {
 		return nil, false, err
 	}

@@ -220,14 +220,14 @@ func TestBrowserManagerSharesOneBrowserAcrossDistinctAgentTabs(t *testing.T) {
 	}
 }
 
-func TestBrowserManagerHeadlessLaunchDoesNotRequestVisibleWindow(t *testing.T) {
+func TestBrowserManagerMinimizedLaunchRemainsVisible(t *testing.T) {
 	root := t.TempDir()
 	launcher := &fakeLauncher{}
 	connector := &fakeConnector{}
 	manager, err := NewManager(ManagerOptions{
 		Capability:  testCapability(testProfile(root)),
 		MaxTabs:     1,
-		Headless:    true,
+		Minimized:   true,
 		LaunchTTL:   time.Second,
 		CloseTTL:    time.Second,
 		MinimizeTTL: time.Second,
@@ -238,12 +238,15 @@ func TestBrowserManagerHeadlessLaunchDoesNotRequestVisibleWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer manager.Close(context.Background())
-	if _, err := manager.Acquire(context.Background(), "agent-headless"); err != nil {
+	if _, err := manager.Acquire(context.Background(), "agent-minimized"); err != nil {
 		t.Fatal(err)
 	}
 	request := launcher.request(0)
-	if !request.Headless || request.Visible {
-		t.Fatalf("headless launch request=%#v", request)
+	if !request.Visible || !request.Minimized {
+		t.Fatalf("minimized launch request=%#v", request)
+	}
+	if connector.latest() == nil || connector.latest().minimized != 1 {
+		t.Fatal("managed minimized mode did not enforce minimized window after CDP connect")
 	}
 }
 

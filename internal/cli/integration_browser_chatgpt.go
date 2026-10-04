@@ -71,7 +71,7 @@ func renderBrowserIntegrationStatus(presenter *presentation.Presenter, status ap
 	presenter.StateSection(kind, "Browser is "+string(status.State))
 	fields := []presentation.Field{
 		{Label: "enabled", Value: status.Enabled},
-		{Label: "headless", Value: status.Headless},
+		{Label: "minimized", Value: status.Minimized},
 		{Label: "graphical", Value: status.Graphical},
 		{Label: "running", Value: status.Running},
 	}

@@ -170,7 +170,7 @@ func TestDetectPassiveDiscoversBrowserWithoutProbing(t *testing.T) {
 	}
 }
 
-func TestDetectPassiveHeadlessDoesNotRequireGraphicalSession(t *testing.T) {
+func TestDetectPassiveRequiresGraphicalSession(t *testing.T) {
 	fake := &fakeBrowserRuntime{
 		goos: "linux",
 		env:  map[string]string{},
@@ -179,25 +179,16 @@ func TestDetectPassiveHeadlessDoesNotRequireGraphicalSession(t *testing.T) {
 			return path == "/usr/bin/chromium"
 		},
 		probe: func(Candidate) ProbeResult {
-			t.Fatal("passive headless detection must not probe the browser")
+			t.Fatal("passive detection must not probe the browser")
 			return ProbeResult{}
 		},
 	}
 	root := t.TempDir()
-	headful := Detect(context.Background(), Options{
+	capability := Detect(context.Background(), Options{
 		Enabled: true, StateRoot: root, Runtime: fake.runtime(), Passive: true,
 	})
-	if headful.State != StateUnavailable || headful.Graphical {
-		t.Fatalf("headful capability without display=%#v", headful)
-	}
-	headless := Detect(context.Background(), Options{
-		Enabled: true, StateRoot: root, Runtime: fake.runtime(), Passive: true, Headless: true,
-	})
-	if headless.State != StateAvailable || !headless.Available || !headless.Launchable || headless.Usable || headless.Graphical {
-		t.Fatalf("headless capability=%#v", headless)
-	}
-	if headless.Profile == nil || headless.Candidate == nil {
-		t.Fatalf("headless capability lacks launch ownership: %#v", headless)
+	if capability.State != StateUnavailable || capability.Graphical || capability.Available || capability.Launchable {
+		t.Fatalf("capability without display=%#v", capability)
 	}
 }
 

@@ -20,7 +20,7 @@ const (
 
 type BrowserIntegrationStatus struct {
 	Enabled      bool                    `json:"enabled"`
-	Headless     bool                    `json:"headless"`
+	Minimized    bool                    `json:"minimized"`
 	State        BrowserIntegrationState `json:"state"`
 	Family       browser.Family          `json:"family,omitempty"`
 	Version      string                  `json:"version,omitempty"`
@@ -61,12 +61,12 @@ func (service *BrowserIntegrationService) Status(ctx context.Context) (BrowserIn
 	if err != nil {
 		return BrowserIntegrationStatus{}, err
 	}
-	return browserIntegrationStatus(capability, cfg.Integrations.Browser.Headless)
+	return browserIntegrationStatus(capability, cfg.Integrations.Browser.Minimized)
 }
 
-func browserIntegrationStatus(capability browser.Capability, headless bool) (BrowserIntegrationStatus, error) {
+func browserIntegrationStatus(capability browser.Capability, minimized bool) (BrowserIntegrationStatus, error) {
 	status := BrowserIntegrationStatus{
-		Enabled: capability.Enabled, Headless: headless, Family: capability.Family, Version: capability.Version,
+		Enabled: capability.Enabled, Minimized: minimized, Family: capability.Family, Version: capability.Version,
 		HostPlatform: capability.HostPlatform, Transport: capability.Transport,
 		Graphical: capability.Graphical, Reason: capability.Reason,
 	}
@@ -101,16 +101,11 @@ func (service *BrowserIntegrationService) Doctor(ctx context.Context) (BrowserDo
 	if err != nil {
 		return BrowserDoctorResult{}, err
 	}
-	status, err := browserIntegrationStatus(capability, cfg.Integrations.Browser.Headless)
+	status, err := browserIntegrationStatus(capability, cfg.Integrations.Browser.Minimized)
 	if err != nil {
 		return BrowserDoctorResult{}, err
 	}
 	result := BrowserDoctorResult{Status: status}
-	graphicalOK := status.Graphical || status.Headless
-	graphicalMessage := "a graphical browser route is available"
-	if status.Headless {
-		graphicalMessage = "managed browser headless mode does not require a graphical session"
-	}
 	result.Checks = append(result.Checks,
 		BrowserDoctorCheck{
 			ID: "enabled", OK: status.Enabled,
@@ -121,8 +116,8 @@ func (service *BrowserIntegrationService) Doctor(ctx context.Context) (BrowserDo
 			Message: "a supported Chrome, Chromium, or Edge route is usable",
 		},
 		BrowserDoctorCheck{
-			ID: "graphical", OK: graphicalOK,
-			Message: graphicalMessage,
+			ID: "graphical", OK: status.Graphical,
+			Message: "a graphical browser route is available",
 		},
 	)
 	return result, nil
@@ -141,7 +136,7 @@ func (service *BrowserIntegrationService) capability(ctx context.Context, passiv
 	}
 	capability := service.Detect(ctx, browser.Options{
 		Enabled: cfg.Integrations.Browser.Enabled, ConfiguredPath: cfg.Integrations.Browser.Path,
-		StateRoot: service.Root(), Passive: passive, Headless: cfg.Integrations.Browser.Headless,
+		StateRoot: service.Root(), Passive: passive,
 	})
 	return cfg, capability, nil
 }

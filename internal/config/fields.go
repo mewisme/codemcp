@@ -153,9 +153,9 @@ var fieldSpecs = []FieldSpec{
 	{Key: "integrations.rtk.path", Label: "RTK executable", Section: FieldSectionIntegrations, Description: "sets an explicit RTK executable path", Details: "Leave empty to resolve RTK from PATH and then the verified managed asset. A configured value must be an absolute path; runtime resolution validates that it is a non-empty executable file before use.", Kind: FieldString, Editable: true, Related: []string{"integrations.rtk.enabled"}},
 	{Key: "integrations.codegraph.enabled", Label: "CodeGraph enabled", Section: FieldSectionIntegrations, Description: "controls whether CodeGraph runtime resolution is active", Details: "Enabled by default. CodeMCP resolves an explicitly configured executable, then the system PATH, then a checksum-verified managed CodeGraph asset.", Kind: FieldBool, Editable: true, Related: []string{"integrations.codegraph.path"}},
 	{Key: "integrations.codegraph.path", Label: "CodeGraph executable", Section: FieldSectionIntegrations, Description: "sets an explicit CodeGraph executable path", Details: "Leave empty to use system/managed resolution. A configured value must be absolute; execution remains bounded and requires an explicit workspace directory.", Kind: FieldString, Editable: true, Related: []string{"integrations.codegraph.enabled"}},
-	{Key: "integrations.browser.enabled", Label: "Browser integration enabled", Section: FieldSectionIntegrations, Description: "controls optional Chrome, Chromium, or Edge capability detection", Details: "Enabled by default. Browser absence is a normal unavailable capability. CodeMCP never downloads or updates a browser and never uses the user's ordinary browser profile.", Kind: FieldBool, Editable: true, Related: []string{"integrations.browser.path", "integrations.browser.headless"}},
-	{Key: "integrations.browser.path", Label: "Browser executable", Section: FieldSectionIntegrations, Description: "sets an explicit Chrome, Chromium, or Edge executable", Details: "Leave empty for platform discovery. An explicit path has strict precedence: if it is invalid or unusable CodeMCP reports that failure and does not silently fall back to another browser.", Kind: FieldString, Editable: true, Related: []string{"integrations.browser.enabled", "integrations.browser.headless"}},
-	{Key: "integrations.browser.headless", Label: "Managed browser headless", Section: FieldSectionIntegrations, Description: "runs managed browser verification and agent tabs without a visible window", Details: "Disabled by default. When enabled, managed CDP verification and ChatGPT Web agent tabs use Chromium headless mode. Interactive ChatGPT login always remains visible so the user can complete sign-in and browser challenges directly.", Kind: FieldBool, Editable: true, Related: []string{"integrations.browser.enabled", "integrations.browser.path", "integrations.chatgpt_web.enabled"}},
+	{Key: "integrations.browser.enabled", Label: "Browser integration enabled", Section: FieldSectionIntegrations, Description: "controls optional Chrome, Chromium, or Edge capability detection", Details: "Enabled by default. Browser absence is a normal unavailable capability. CodeMCP never downloads or updates a browser and never uses the user's ordinary browser profile.", Kind: FieldBool, Editable: true, Related: []string{"integrations.browser.path", "integrations.browser.minimized"}},
+	{Key: "integrations.browser.path", Label: "Browser executable", Section: FieldSectionIntegrations, Description: "sets an explicit Chrome, Chromium, or Edge executable", Details: "Leave empty for platform discovery. An explicit path has strict precedence: if it is invalid or unusable CodeMCP reports that failure and does not silently fall back to another browser.", Kind: FieldString, Editable: true, Related: []string{"integrations.browser.enabled", "integrations.browser.minimized"}},
+	{Key: "integrations.browser.minimized", Label: "Managed browser minimized", Section: FieldSectionIntegrations, Description: "starts managed browser verification and agent windows minimized", Details: "Disabled by default. When enabled, managed CDP verification and ChatGPT Web agent windows remain normal graphical browser windows but start minimized. Interactive ChatGPT login always opens normally so the user can complete sign-in and browser challenges directly.", Kind: FieldBool, Editable: true, Related: []string{"integrations.browser.enabled", "integrations.browser.path", "integrations.chatgpt_web.enabled"}},
 	{Key: "integrations.chatgpt_web.enabled", Label: "ChatGPT Web enabled", Section: FieldSectionIntegrations, Description: "controls whether CodeMCP may use the optional ChatGPT Web browser-agent backend", Details: "Enabled by default. Effective use still requires a usable isolated browser profile, an authenticated ChatGPT session, and the configured CodeMCP connector route. Missing prerequisites do not degrade unrelated CodeMCP runtime health.", Kind: FieldBool, Editable: true, Related: []string{"integrations.chatgpt_web.connector_name", "integrations.chatgpt_web.max_agents", "integrations.browser.enabled"}},
 	{Key: "integrations.chatgpt_web.connector_name", Label: "ChatGPT Web connector", Section: FieldSectionIntegrations, Description: "sets the ChatGPT developer connector/app name expected by the browser integration", Details: "The value identifies the connector that later turn-driving verifies and attaches. It is not a credential and must be a non-empty exact name.", Kind: FieldString, Editable: true, Related: []string{"integrations.chatgpt_web.enabled"}},
 	{Key: "integrations.chatgpt_web.max_agents", Label: "ChatGPT Web max agents", Section: FieldSectionIntegrations, Description: "sets the maximum number of concurrent ChatGPT Web browser-agent tabs", Details: "The phase-one browser backend is bounded to at most five active tabs in one CodeMCP-owned browser profile.", Kind: FieldInt, Editable: true, Input: boundedIntInput(1, 5), Related: []string{"integrations.chatgpt_web.enabled"}},
@@ -576,12 +576,12 @@ func SetValue(cfg *Config, key, raw string) error {
 		cfg.Integrations.Browser.Enabled = value
 	case "integrations.browser.path":
 		cfg.Integrations.Browser.Path = strings.TrimSpace(raw)
-	case "integrations.browser.headless":
+	case "integrations.browser.minimized":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
 			return err
 		}
-		cfg.Integrations.Browser.Headless = value
+		cfg.Integrations.Browser.Minimized = value
 	case "integrations.chatgpt_web.enabled":
 		value, err := parseBoolField(raw, key)
 		if err != nil {
@@ -796,8 +796,8 @@ func RawValue(cfg Config, key string) (string, error) {
 		return strconv.FormatBool(cfg.Integrations.Browser.Enabled), nil
 	case "integrations.browser.path":
 		return cfg.Integrations.Browser.Path, nil
-	case "integrations.browser.headless":
-		return strconv.FormatBool(cfg.Integrations.Browser.Headless), nil
+	case "integrations.browser.minimized":
+		return strconv.FormatBool(cfg.Integrations.Browser.Minimized), nil
 	case "integrations.chatgpt_web.enabled":
 		return strconv.FormatBool(cfg.Integrations.ChatGPTWeb.Enabled), nil
 	case "integrations.chatgpt_web.connector_name":

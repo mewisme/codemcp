@@ -42,13 +42,13 @@ cm integration chatgpt-web doctor
 
 Browser discovery is automatic unless an absolute executable is configured through `integrations.browser.path`. The browser profile is CodeMCP-owned and persistent so authentication can survive runtime restarts. Under WSL, CodeMCP prefers a usable native WSL/WSLg browser and otherwise may use an installed Windows browser with its profile stored under Windows LocalAppData.
 
-Managed browser verification and agent tabs are visible by default. They can run headless:
+Managed browser verification and agent tabs are normal graphical browser windows. They can start minimized:
 
 ```bash
-cm config set integrations.browser.headless true
+cm config set integrations.browser.minimized true
 ```
 
-`integrations.browser.headless` affects only managed CDP sessions: post-login authentication verification, doctor live verification, and browser-backed agent tabs. **Interactive login is always headful**, even when this setting is enabled. The login command opens a normal visible CodeMCP-owned browser window without remote debugging or automation attachment so the user can complete ChatGPT/identity-provider login and any browser challenge directly. Close that browser after sign-in; CodeMCP then reopens the same isolated profile under private managed CDP and verifies the authenticated Temporary Chat session.
+`integrations.browser.minimized` affects only managed CDP sessions: post-login authentication verification, doctor live verification, and browser-backed agent tabs. Those sessions remain headful and graphical, but CodeMCP starts and enforces the browser window in the minimized state. **Interactive login always opens normally**, even when this setting is enabled. The login command opens a visible CodeMCP-owned browser window without remote debugging or automation attachment so the user can complete ChatGPT/identity-provider login and any browser challenge directly. Close that browser after sign-in; CodeMCP then reopens the same isolated profile under private managed CDP and verifies the authenticated Temporary Chat session.
 
 Managed CDP binds only to loopback. WSL Windows-host automation uses a WSL-local loopback relay to Windows loopback; interactive login does not create that relay. Plain login and managed automation never own the same profile concurrently.
 

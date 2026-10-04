@@ -21,7 +21,6 @@ type Options struct {
 	StateRoot      string
 	Runtime        Runtime
 	Passive        bool
-	Headless       bool
 }
 
 type Runtime struct {
@@ -50,7 +49,7 @@ func Detect(ctx context.Context, options Options) Capability {
 			return unavailable(true, err.Error())
 		}
 		if options.Passive {
-			return discoverCapability(options.StateRoot, runtime, candidate, options.Headless)
+			return discoverCapability(options.StateRoot, runtime, candidate)
 		}
 		return probeCapability(ctx, options.StateRoot, runtime, candidate)
 	}
@@ -90,14 +89,14 @@ func Detect(ctx context.Context, options Options) Capability {
 
 func evaluateCapability(ctx context.Context, options Options, runtime Runtime, candidate Candidate) Capability {
 	if options.Passive {
-		return discoverCapability(options.StateRoot, runtime, candidate, options.Headless)
+		return discoverCapability(options.StateRoot, runtime, candidate)
 	}
 	return probeCapability(ctx, options.StateRoot, runtime, candidate)
 }
 
-func discoverCapability(root string, runtime Runtime, candidate Candidate, headless bool) Capability {
+func discoverCapability(root string, runtime Runtime, candidate Candidate) Capability {
 	graphical := graphicalAvailable(runtime, candidate)
-	if !graphical && !headless {
+	if !graphical {
 		return Capability{
 			State: StateUnavailable, Enabled: true, Family: candidate.Family,
 			Executable: candidate.Executable, HostPlatform: candidate.HostPlatform,

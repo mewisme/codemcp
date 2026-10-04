@@ -202,20 +202,20 @@ func TestBrowserIntegrationStatusIsPassiveAndDoctorIsActive(t *testing.T) {
 	if _, err := service.Status(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 1 || !calls[0].Passive || calls[0].Headless {
+	if len(calls) != 1 || !calls[0].Passive {
 		t.Fatalf("status detection options=%#v", calls)
 	}
 	if _, err := service.Doctor(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 || calls[1].Passive || calls[1].Headless {
+	if len(calls) != 2 || calls[1].Passive {
 		t.Fatalf("doctor detection options=%#v", calls)
 	}
 }
 
-func TestBrowserIntegrationHeadlessModeMakesGraphicalSessionOptional(t *testing.T) {
+func TestBrowserIntegrationMinimizedModeStillRequiresGraphicalSession(t *testing.T) {
 	cfg := config.Default()
-	cfg.Integrations.Browser.Headless = true
+	cfg.Integrations.Browser.Minimized = true
 	root := t.TempDir()
 	profile := applicationTestProfile(root)
 	if err := browser.PrepareProfile(profile); err != nil {
@@ -225,25 +225,22 @@ func TestBrowserIntegrationHeadlessModeMakesGraphicalSessionOptional(t *testing.
 		LoadConfig: func() (config.Config, error) { return cfg, nil },
 		Root:       func() string { return root },
 		Detect: func(_ context.Context, options browser.Options) browser.Capability {
-			if !options.Headless {
-				t.Fatalf("browser headless config not propagated: %#v", options)
-			}
 			capability := applicationTestCapability(profile)
 			capability.Graphical = false
 			return capability
 		},
 	}
 	status, err := service.Status(context.Background())
-	if err != nil || !status.Headless || status.Graphical {
-		t.Fatalf("headless status=%#v err=%v", status, err)
+	if err != nil || !status.Minimized || status.Graphical {
+		t.Fatalf("minimized status=%#v err=%v", status, err)
 	}
 	result, err := service.Doctor(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, check := range result.Checks {
-		if check.ID == "graphical" && !check.OK {
-			t.Fatalf("headless doctor incorrectly required graphical session: %#v", check)
+		if check.ID == "graphical" && check.OK {
+			t.Fatalf("minimized doctor accepted missing graphical session: %#v", check)
 		}
 	}
 }
@@ -309,7 +306,7 @@ func TestChatGPTWebStatusIsPassive(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := applicationChatGPTWebConfig()
-	cfg.Integrations.Browser.Headless = true
+	cfg.Integrations.Browser.Minimized = true
 	service := newApplicationChatGPTWebTestService(root, cfg, profile)
 	var calls []browser.Options
 	service.Detect = func(_ context.Context, options browser.Options) browser.Capability {
@@ -336,7 +333,7 @@ func TestChatGPTWebReconcileRuntimeConfigIsPassive(t *testing.T) {
 	root := t.TempDir()
 	profile := applicationTestProfile(root)
 	cfg := applicationChatGPTWebConfig()
-	cfg.Integrations.Browser.Headless = true
+	cfg.Integrations.Browser.Minimized = true
 	service := newApplicationChatGPTWebTestService(root, cfg, profile)
 	var calls []browser.Options
 	service.Detect = func(_ context.Context, options browser.Options) browser.Capability {
@@ -348,7 +345,7 @@ func TestChatGPTWebReconcileRuntimeConfigIsPassive(t *testing.T) {
 	if err := service.ReconcileRuntimeConfig(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 1 || !calls[0].Passive || !calls[0].Headless {
+	if len(calls) != 1 || !calls[0].Passive {
 		t.Fatalf("reconcile browser detection options=%#v", calls)
 	}
 }
@@ -443,7 +440,7 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 		},
 	}}
 	cfg := applicationChatGPTWebConfig()
-	cfg.Integrations.Browser.Headless = true
+	cfg.Integrations.Browser.Minimized = true
 	service := newApplicationChatGPTWebTestService(root, cfg, profile)
 	service.OwnedManager = idleRuntime
 	var detectOptions []browser.Options
@@ -488,8 +485,8 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 		if options.Capability.Profile == nil || options.Capability.Profile.LocalPath != interactiveProfile {
 			t.Fatalf("managed profile=%#v interactive profile=%q", options.Capability.Profile, interactiveProfile)
 		}
-		if !options.Headless {
-			t.Fatal("managed verification did not honor browser headless configuration")
+		if !options.Minimized {
+			t.Fatal("managed verification did not honor browser minimized configuration")
 		}
 		managerCreations++
 		return verificationRuntime, nil
@@ -522,16 +519,6 @@ func TestChatGPTWebLoginUsesExactTemporaryChatAndPersistsOnlySafeMarker(t *testi
 		if !options.Passive {
 			t.Fatalf("login browser detection call %d was active: %#v", index, options)
 		}
-	}
-	if detectOptions[0].Headless {
-		t.Fatalf("interactive login discovery inherited managed headless mode: %#v", detectOptions[0])
-	}
-	foundManagedHeadlessDetection := false
-	for _, options := range detectOptions[1:] {
-		foundManagedHeadlessDetection = foundManagedHeadlessDetection || options.Headless
-	}
-	if !foundManagedHeadlessDetection {
-		t.Fatalf("managed verification/status never restored configured headless detection: %#v", detectOptions)
 	}
 	navigations := verificationRuntime.tab.navigationSnapshot()
 	if len(navigations) < 1 {
@@ -596,7 +583,7 @@ func TestChatGPTWebPrepareInteractiveLoginLockedRetiresIdleManagedRuntime(t *tes
 	}}
 	service := NewChatGPTWebService()
 	service.OwnedManager = idleRuntime
-	service.ownedRuntimeIdentity = chatGPTBrowserRuntimeIdentity{Headless: true, ProfilePath: "/owned/profile"}
+	service.ownedRuntimeIdentity = chatGPTBrowserRuntimeIdentity{Minimized: true, ProfilePath: "/owned/profile"}
 	service.runtimePendingReason = "pending runtime configuration"
 
 	if err := service.prepareInteractiveLoginLocked(context.Background()); err != nil {
@@ -616,7 +603,7 @@ func TestChatGPTWebPrepareInteractiveLoginLockedRejectsActiveManagedRuntime(t *t
 	}}
 	service := NewChatGPTWebService()
 	service.OwnedManager = activeRuntime
-	service.ownedRuntimeIdentity = chatGPTBrowserRuntimeIdentity{Headless: true, ProfilePath: "/owned/profile"}
+	service.ownedRuntimeIdentity = chatGPTBrowserRuntimeIdentity{Minimized: true, ProfilePath: "/owned/profile"}
 
 	err := service.prepareInteractiveLoginLocked(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "exclusive browser profile access") {
@@ -923,7 +910,7 @@ func TestChatGPTWebReconcileDefersProfileChangeWhileAgentLeaseActive(t *testing.
 	}
 }
 
-func TestChatGPTWebManagedRuntimeHonorsHeadlessAndDefersModeChange(t *testing.T) {
+func TestChatGPTWebManagedRuntimeHonorsMinimizedAndDefersModeChange(t *testing.T) {
 	root := t.TempDir()
 	profile := applicationTestProfile(root)
 	if err := browser.PrepareProfile(profile); err != nil {
@@ -933,7 +920,7 @@ func TestChatGPTWebManagedRuntimeHonorsHeadlessAndDefersModeChange(t *testing.T)
 		t.Fatal(err)
 	}
 	cfg := applicationChatGPTWebConfig()
-	cfg.Integrations.Browser.Headless = true
+	cfg.Integrations.Browser.Minimized = true
 	service := NewChatGPTWebService()
 	service.Root = func() string { return root }
 	service.LoadConfig = func() (config.Config, error) { return cfg, nil }
@@ -951,22 +938,22 @@ func TestChatGPTWebManagedRuntimeHonorsHeadlessAndDefersModeChange(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(managerOptions) != 1 || !managerOptions[0].Headless {
+	if len(managerOptions) != 1 || !managerOptions[0].Minimized {
 		t.Fatalf("initial managed runtime options=%#v", managerOptions)
 	}
 	if _, err := runtime.Acquire(context.Background(), "agent-active"); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Integrations.Browser.Headless = false
+	cfg.Integrations.Browser.Minimized = false
 	if err := service.ReconcileRuntimeConfig(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	status, err := service.Status(context.Background())
 	if err != nil || !status.RuntimePending || !strings.Contains(status.Reason, "runtime configuration") {
-		t.Fatalf("headless mode change status=%#v err=%v", status, err)
+		t.Fatalf("minimized mode change status=%#v err=%v", status, err)
 	}
 	if runtimes[0].closedSnapshot() {
-		t.Fatal("headless mode change closed runtime with active agent")
+		t.Fatal("minimized mode change closed runtime with active agent")
 	}
 	if err := runtime.Release(context.Background(), "agent-active"); err != nil {
 		t.Fatal(err)
@@ -975,12 +962,12 @@ func TestChatGPTWebManagedRuntimeHonorsHeadlessAndDefersModeChange(t *testing.T)
 		t.Fatal(err)
 	}
 	if !runtimes[0].closedSnapshot() {
-		t.Fatal("idle runtime was not retired after headless mode change")
+		t.Fatal("idle runtime was not retired after minimized mode change")
 	}
 	if _, err := service.AgentBrowserRuntime(context.Background(), 5); err != nil {
 		t.Fatal(err)
 	}
-	if len(managerOptions) != 2 || managerOptions[1].Headless {
+	if len(managerOptions) != 2 || managerOptions[1].Minimized {
 		t.Fatalf("replacement managed runtime options=%#v", managerOptions)
 	}
 }

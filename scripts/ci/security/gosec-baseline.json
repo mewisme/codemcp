@@ -421,7 +421,7 @@
     "confidence": "HIGH",
     "file": "internal/integrations/browser/launcher.go",
     "details": "Subprocess launched with variable",
-    "code": "args := managerLaunchArgs(profilePath, request.Minimized, request.Headless)\n\tcmd := exec.Command(executable, args...)\n\tcmd.Stdout = io.Discard"
+    "code": "args := managerLaunchArgs(profilePath, request.Minimized)\n\tcmd := exec.Command(executable, args...)\n\tcmd.Stdout = io.Discard"
   },
   {
     "rule_id": "G204",

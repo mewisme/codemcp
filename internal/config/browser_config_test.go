@@ -1,13 +1,14 @@
 package config
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
 
 func TestBrowserIntegrationDefaultsEnabledWithoutExecutableOverride(t *testing.T) {
 	cfg := Default()
-	if !cfg.Integrations.Browser.Enabled || cfg.Integrations.Browser.Path != "" || cfg.Integrations.Browser.Headless {
+	if !cfg.Integrations.Browser.Enabled || cfg.Integrations.Browser.Path != "" || cfg.Integrations.Browser.Minimized {
 		t.Fatalf("browser defaults=%#v", cfg.Integrations.Browser)
 	}
 	for _, test := range []struct {
@@ -16,12 +17,29 @@ func TestBrowserIntegrationDefaultsEnabledWithoutExecutableOverride(t *testing.T
 	}{
 		{"integrations.browser.enabled", "true"},
 		{"integrations.browser.path", ""},
-		{"integrations.browser.headless", "false"},
+		{"integrations.browser.minimized", "false"},
 	} {
 		value, err := RawValue(cfg, test.key)
 		if err != nil || value != test.want {
 			t.Fatalf("%s=%q err=%v want=%q", test.key, value, err, test.want)
 		}
+	}
+}
+
+func TestBrowserLegacyHeadlessConfigMigratesToMinimized(t *testing.T) {
+	cfg := Default()
+	if err := json.Unmarshal([]byte(`{"headless":true}`), &cfg.Integrations.Browser); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Integrations.Browser.Enabled || !cfg.Integrations.Browser.Minimized {
+		t.Fatalf("legacy browser config=%#v", cfg.Integrations.Browser)
+	}
+	data, err := json.Marshal(cfg.Integrations.Browser)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "headless") || !strings.Contains(string(data), `"minimized":true`) {
+		t.Fatalf("canonical browser config=%s", data)
 	}
 }
 

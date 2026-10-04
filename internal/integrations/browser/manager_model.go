@@ -36,7 +36,6 @@ type LaunchRequest struct {
 	Profile   ProfileRef
 	Visible   bool
 	Minimized bool
-	Headless  bool
 }
 
 type BrowserEndpoint struct {
@@ -96,7 +95,7 @@ type ManagerOptions struct {
 	Capability Capability
 
 	MaxTabs        int
-	Headless       bool
+	Minimized      bool
 	AgentIdleTTL   time.Duration
 	BrowserWarmTTL time.Duration
 	LaunchTTL      time.Duration

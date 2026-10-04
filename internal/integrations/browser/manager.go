@@ -17,7 +17,7 @@ type Manager struct {
 	connector  BrowserConnector
 
 	maxTabs        int
-	headless       bool
+	minimized      bool
 	agentIdleTTL   time.Duration
 	browserWarmTTL time.Duration
 	launchTTL      time.Duration
@@ -107,7 +107,7 @@ func NewManager(options ManagerOptions) (*Manager, error) {
 	return &Manager{
 		capability: capability,
 		launcher:   options.Launcher, connector: options.Connector,
-		maxTabs: options.MaxTabs, headless: options.Headless, agentIdleTTL: options.AgentIdleTTL,
+		maxTabs: options.MaxTabs, minimized: options.Minimized, agentIdleTTL: options.AgentIdleTTL,
 		browserWarmTTL: options.BrowserWarmTTL, launchTTL: options.LaunchTTL,
 		minimizeTTL: options.MinimizeTTL, closeTTL: options.CloseTTL,
 		now: options.Now, leases: map[string]*leaseRecord{}, pending: map[string]struct{}{},
@@ -221,8 +221,8 @@ func (manager *Manager) start(ctx context.Context) (*browserInstance, error) {
 	process, endpoint, err := manager.launcher.Launch(launchCtx, LaunchRequest{
 		Candidate: *manager.capability.Candidate,
 		Profile:   profile,
-		Visible:   !manager.headless,
-		Headless:  manager.headless,
+		Visible:   true,
+		Minimized: manager.minimized,
 	})
 	if err != nil {
 		_ = profileLock.Release()
@@ -235,6 +235,14 @@ func (manager *Manager) start(ctx context.Context) (*browserInstance, error) {
 		return nil, fmt.Errorf("connect browser CDP: %w", err)
 	}
 	instance.client = client
+	if manager.minimized {
+		minimizeCtx, minimizeCancel := context.WithTimeout(ctx, manager.minimizeTTL)
+		defer minimizeCancel()
+		if err := client.Minimize(minimizeCtx); err != nil {
+			_ = manager.closeInstance(context.Background(), instance)
+			return nil, fmt.Errorf("minimize browser: %w", err)
+		}
+	}
 	return instance, nil
 }
 
