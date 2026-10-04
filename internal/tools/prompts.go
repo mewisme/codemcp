@@ -48,7 +48,7 @@ func RegisterPromptTools(registry *Registry, runtime *Runtime) {
 		if properties != "" {
 			properties = "," + properties
 		}
-		registry.MustRegister(name, Schema{Name: name, Description: description, InputSchema: json.RawMessage(`{"type":"object","properties":{` + workspaceSchema + properties + `},"required":["workspace_id"` + required + `],"additionalProperties":false}`), Annotations: ToolAnnotations(risk)}, handler)
+		registry.MustRegister(name, Schema{Name: name, Description: description, InputSchema: json.RawMessage(`{"type":"object","properties":{` + workspaceSchema + properties + `},"required":["workspace_id"` + required + `],"additionalProperties":false}`), Annotations: ToolAnnotations(risk), Capability: toolCapability(CapabilityDomainPrompts)}, handler)
 	}
 	fail := func(err error) (Result, error) {
 		if err == nil {

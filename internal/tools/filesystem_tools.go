@@ -16,7 +16,7 @@ import (
 
 func RegisterFilesystemTools(registry *Registry, workspaces *workspace.Manager, checkpoints *checkpoint.Store) {
 	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
-		registry.MustRegister(name, Schema{Name: name, Title: title, Description: description, InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: ToolAnnotations(risk)}, handler)
+		registry.MustRegister(name, Schema{Name: name, Title: title, Description: description, InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: ToolAnnotations(risk), Capability: toolCapability(CapabilityDomainFilesystem)}, handler)
 	}
 
 	register("read_text_file", "Read Text File", "Read a file before editing. Full reads are capped at 4 MiB; use offset+limit, head, or tail for bounded reads of larger files.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"path":{"type":"string"},"offset":{"type":"integer","minimum":1,"maximum":1000000000},"limit":{"type":"integer","minimum":1,"maximum":100000},"head":{"type":"integer","minimum":0,"maximum":100000},"tail":{"type":"integer","minimum":0,"maximum":100000}},"required":["workspace_id","path"],"additionalProperties":false}`, `{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"},"offset":{"type":"integer"},"limit":{"type":"integer"},"lines":{"type":"integer"},"head":{"type":"integer"},"tail":{"type":"integer"}},"required":["path","content"],"additionalProperties":false}`, RiskRead, handleReadTextFile(workspaces))

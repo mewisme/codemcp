@@ -106,7 +106,7 @@ func RegisterGitTools(registry *Registry, workspaces *workspace.Manager) {
 	registerAnnotated := func(name, title, description, input, output string, annotations map[string]any, handler Handler) {
 		registry.MustRegister(name, Schema{
 			Name: name, Title: title, Description: description,
-			InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: annotations,
+			InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: annotations, Capability: toolCapability(CapabilityDomainGit),
 		}, handler)
 	}
 	register := func(name, title, description, input, output string, risk Risk, handler Handler) {

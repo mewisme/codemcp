@@ -31,6 +31,7 @@ func RegisterAgentClaimTool(registry *Registry, runtime *Runtime) {
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"agent_id":{"type":"string","pattern":"^agent_[0-9a-f]{16}$"},"token":{"type":"string","minLength":40,"maxLength":80}},"required":["agent_id","token"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","properties":{"agent_id":{"type":"string","pattern":"^agent_[0-9a-f]{16}$"},"workspace_id":{"type":"string"},"backend":{"type":"string"},"claimed":{"type":"boolean"}},"required":["agent_id","workspace_id","backend","claimed"],"additionalProperties":false}`),
 		Annotations:  annotations,
+		Capability:   toolCapability(CapabilityDomainAgents),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		if runtime == nil || runtime.Agents == nil {
 			return Result{}, errors.New("managed agent service is unavailable")

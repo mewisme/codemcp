@@ -48,6 +48,7 @@ func RegisterConfigTools(registry *Registry, runtime *Runtime) {
 		InputSchema:  mcpconfigwire.ListInputSchema,
 		OutputSchema: mcpconfigwire.ListOutputSchema,
 		Annotations:  ToolAnnotations(RiskRead),
+		Capability:   toolCapability(CapabilityDomainConfig),
 	}, configListHandler(runtime))
 	registry.MustRegister(mcpconfigwire.GetToolName, Schema{
 		Name:         mcpconfigwire.GetToolName,
@@ -56,6 +57,7 @@ func RegisterConfigTools(registry *Registry, runtime *Runtime) {
 		InputSchema:  mcpconfigwire.GetInputSchema,
 		OutputSchema: mcpconfigwire.GetOutputSchema,
 		Annotations:  ToolAnnotations(RiskRead),
+		Capability:   toolCapability(CapabilityDomainConfig),
 	}, configGetHandler(runtime))
 	registry.MustRegister(mcpconfigwire.SetToolName, Schema{
 		Name:         mcpconfigwire.SetToolName,
@@ -64,6 +66,7 @@ func RegisterConfigTools(registry *Registry, runtime *Runtime) {
 		InputSchema:  mcpconfigwire.SetInputSchema,
 		OutputSchema: mcpconfigwire.SetOutputSchema,
 		Annotations:  ToolAnnotations(RiskEdit),
+		Capability:   toolCapability(CapabilityDomainConfig),
 	}, configSetHandler(runtime))
 }
 

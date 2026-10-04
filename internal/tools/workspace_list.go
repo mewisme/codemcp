@@ -25,6 +25,7 @@ func RegisterWorkspaceListTool(registry *Registry, runtime *Runtime) {
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","properties":{"workspaces":{"type":"array","items":{"type":"object","properties":{"workspace_id":{"type":"string"},"workspace_root":{"type":"string"}},"required":["workspace_id","workspace_root"],"additionalProperties":false}},"count":{"type":"integer"}},"required":["workspaces","count"],"additionalProperties":false}`),
 		Annotations:  ToolAnnotations(RiskRead),
+		Capability:   toolCapability(CapabilityDomainWorkspace),
 	}, func(context.Context, map[string]any) (Result, error) {
 		value, err := runtime.localWorkspaceList()
 		if err != nil {

@@ -51,7 +51,7 @@ func RegisterUpstreamTools(registry *Registry, manager *upstream.Manager) {
 	registerAnnotated := func(name, title, description, input, output string, annotations map[string]any, handler Handler) {
 		registry.MustRegister(name, Schema{
 			Name: name, Title: title, Description: description,
-			InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: annotations,
+			InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: annotations, Capability: toolCapability(CapabilityDomainUpstream),
 		}, handler)
 	}
 	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
@@ -205,6 +205,7 @@ func buildServerProxyEntries(manager *upstream.Manager, server upstream.Server, 
 			Name: proxyName, Title: tool.Title, Description: description,
 			InputSchema: inputRaw, OutputSchema: outputRaw,
 			Annotations: ToolAnnotationsOpenWorld(RiskCommand),
+			Capability:  toolCapability(CapabilityDomainUpstream),
 		}
 		serverID := server.ID
 		toolName := tool.Name

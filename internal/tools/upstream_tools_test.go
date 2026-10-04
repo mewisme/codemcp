@@ -168,6 +168,59 @@ func TestDynamicProxyBindsCanonicalServerToolAndRisk(t *testing.T) {
 	}
 }
 
+func TestDynamicProxyCapabilityInventoryTracksLiveReplacementAndRemoval(t *testing.T) {
+	client := &bridgeClient{tools: []upstream.Tool{{Name: "echo", InputSchema: map[string]any{"type": "object"}}}}
+	manager := upstream.NewManagerWithClient(nil, client)
+	if err := manager.Add(upstream.Server{ID: "demo", Enabled: true, Transport: "http", URL: "https://example.test", Expose: "all"}); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry()
+	if err := RefreshUpstreamProxies(context.Background(), registry, manager, true); err != nil {
+		t.Fatal(err)
+	}
+	assertUpstreamTools := func(want ...string) {
+		t.Helper()
+		index := GroupCapabilities(registry.ListSchemas())
+		got := []string{}
+		for _, group := range index.Groups {
+			if group.Domain == CapabilityDomainUpstream {
+				got = append(got, group.Tools...)
+			}
+		}
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Fatalf("upstream capability tools=%v want=%v; index=%#v", got, want, index)
+		}
+	}
+	schema, ok := registry.Schema("demo__echo")
+	if !ok || schema.Capability == nil || schema.Capability.Domain != CapabilityDomainUpstream {
+		t.Fatalf("initial proxy capability=%#v", schema.Capability)
+	}
+	assertUpstreamTools("demo__echo")
+
+	client.tools = []upstream.Tool{{Name: "search", InputSchema: map[string]any{"type": "object"}}}
+	if err := RefreshUpstreamProxies(context.Background(), registry, manager, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := registry.Schema("demo__echo"); ok {
+		t.Fatal("replaced upstream proxy remained registered")
+	}
+	if schema, ok := registry.Schema("demo__search"); !ok || schema.Capability == nil || schema.Capability.Domain != CapabilityDomainUpstream {
+		t.Fatalf("replacement proxy capability=%#v exists=%t", schema.Capability, ok)
+	}
+	assertUpstreamTools("demo__search")
+
+	if err := manager.Remove("demo"); err != nil {
+		t.Fatal(err)
+	}
+	if err := RefreshUpstreamProxies(context.Background(), registry, manager, true); err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.ListSchemas()) != 0 {
+		t.Fatalf("removed upstream left proxy schemas: %#v", registry.ListSchemas())
+	}
+	assertUpstreamTools()
+}
+
 func TestDynamicProxyBoundsRemoteOutputBeforeRuntime(t *testing.T) {
 	client := &bridgeClient{
 		tools:  []upstream.Tool{{Name: "echo", InputSchema: map[string]any{"type": "object"}}},

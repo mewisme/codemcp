@@ -49,6 +49,7 @@ func RegisterWorkspaceContainerTools(registry *Registry, manager *workspace.Mana
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","properties":{"containers":{"type":"array","items":{"type":"object","properties":{"container_id":{"type":"string"},"name":{"type":"string"},"workspace_count":{"type":"integer"}},"required":["container_id","name","workspace_count"],"additionalProperties":false}},"count":{"type":"integer"}},"required":["containers","count"],"additionalProperties":false}`),
 		Annotations:  ToolAnnotations(RiskRead),
+		Capability:   toolCapability(CapabilityDomainWorkspace),
 	}, func(ctx context.Context, _ map[string]any) (Result, error) {
 		span := tracepkg.Start(ctx, "WORKSPACE", "workspace.container.list", "Listing workspace containers")
 		values, err := manager.ListContainers()
@@ -71,6 +72,7 @@ func RegisterWorkspaceContainerTools(registry *Registry, manager *workspace.Mana
 		InputSchema:  containerOnlySchema(),
 		OutputSchema: workspaceContainerStatusSchema(),
 		Annotations:  ToolAnnotations(RiskRead),
+		Capability:   toolCapability(CapabilityDomainWorkspace),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		containerID, err := requiredString(args, "container_id")
 		if err != nil {
@@ -94,6 +96,7 @@ func RegisterWorkspaceContainerTools(registry *Registry, manager *workspace.Mana
 		InputSchema:  containerOnlySchema(),
 		OutputSchema: workspaceContainerContextSchema(),
 		Annotations:  ToolAnnotations(RiskRead),
+		Capability:   toolCapability(CapabilityDomainWorkspace),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		containerID, err := requiredString(args, "container_id")
 		if err != nil {

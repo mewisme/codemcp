@@ -62,6 +62,7 @@ func RegisterRewindTools(registry *Registry, workspaces *workspace.Manager, chec
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"action":{"type":"string","enum":["list","preview","restore","status","clear","purge"],"default":"list"},"checkpoint_id":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":30}},"required":["workspace_id"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","additionalProperties":true}`),
 		Annotations:  ToolAnnotations(RiskDestructive),
+		Capability:   toolCapability(CapabilityDomainRewind),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {

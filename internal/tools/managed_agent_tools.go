@@ -40,6 +40,7 @@ func registerManagedAgentSpawnTool(registry *Registry, runtime *Runtime) {
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"prompt":{"type":"string","minLength":1,"maxLength":65536},"backend":{"type":"string","maxLength":64},"model":{"type":"string","maxLength":128},"reasoning_effort":{"type":"string","maxLength":64}},"required":["workspace_id","prompt"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(managedAgentSnapshotSchema),
 		Annotations:  ToolAnnotations(RiskEdit),
+		Capability:   toolCapability(CapabilityDomainAgents),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		controller, err := managedAgentMCPController(ctx, runtime, false)
 		if err != nil {
@@ -88,6 +89,7 @@ func registerManagedAgentListTool(registry *Registry, runtime *Runtime) {
 		InputSchema:  json.RawMessage(`{"type":"object","additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"array","items":` + managedAgentSnapshotSchema + `}`),
 		Annotations:  ToolAnnotations(RiskRead),
+		Capability:   toolCapability(CapabilityDomainAgents),
 	}, func(ctx context.Context, _ map[string]any) (Result, error) {
 		controller, err := managedAgentMCPController(ctx, runtime, true)
 		if err != nil {
@@ -108,6 +110,7 @@ func registerManagedAgentWaitTool(registry *Registry, runtime *Runtime) {
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"agent_id":{"type":"string","pattern":"^agent_[0-9a-f]{16}$"},"after_revision":{"type":"integer","minimum":0},"timeout_ms":{"type":"integer","minimum":0,"maximum":10000,"default":10000}},"required":["agent_id"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(managedAgentSnapshotSchema),
 		Annotations:  ToolAnnotations(RiskRead),
+		Capability:   toolCapability(CapabilityDomainAgents),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		controller, err := managedAgentMCPController(ctx, runtime, true)
 		if err != nil {
@@ -140,6 +143,7 @@ func registerManagedAgentSendTool(registry *Registry, runtime *Runtime) {
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"agent_id":{"type":"string","pattern":"^agent_[0-9a-f]{16}$"},"message":{"type":"string","minLength":1,"maxLength":65536}},"required":["agent_id","message"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(managedAgentSnapshotSchema),
 		Annotations:  ToolAnnotations(RiskEdit),
+		Capability:   toolCapability(CapabilityDomainAgents),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		controller, err := managedAgentMCPController(ctx, runtime, true)
 		if err != nil {
@@ -168,6 +172,7 @@ func registerManagedAgentCancelTool(registry *Registry, runtime *Runtime) {
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"agent_id":{"type":"string","pattern":"^agent_[0-9a-f]{16}$"}},"required":["agent_id"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(managedAgentSnapshotSchema),
 		Annotations:  ToolAnnotations(RiskEdit),
+		Capability:   toolCapability(CapabilityDomainAgents),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		controller, err := managedAgentMCPController(ctx, runtime, true)
 		if err != nil {

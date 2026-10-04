@@ -56,6 +56,7 @@ func RegisterApprovalTools(registry *Registry, runtime *Runtime) {
 		return
 	}
 	registry.MustRegister(ApprovalRequestToolName, coreSchema(
+		CapabilityDomainApprovals,
 		ApprovalRequestToolName,
 		"Request local human approval for a recent control-guard challenge. You must provide a concise human-readable title that summarizes what the exact command will do. Describe the action, not the tool call; do not copy the raw command, flags, arguments, tokens, secrets, or IDs into the title. Examples: 'Update CodeMCP', 'Delete generated files', 'Push commits to origin'. The request remains bound to the same MCP session, workspace, target tool, and exact arguments.",
 		`{"type":"object","properties":{"workspace_id":{"type":"string"},"challenge_id":{"type":"string"},"title":{"type":"string","minLength":1,"maxLength":120,"description":"Concise human-readable summary of what the guarded command will do. Summarize the action rather than the tool call. Do not copy the raw command, flags, arguments, tokens, secrets, or IDs."}},"required":["workspace_id","challenge_id","title"],"additionalProperties":false}`,

@@ -47,16 +47,18 @@ func RegisterInstructionAuthoringTools(registry *Registry, runtime *Runtime) {
 	if registry == nil {
 		return
 	}
-	register := func(name, title, description, input string, handler Handler) {
+	register := func(domain, name, title, description, input string, handler Handler) {
 		registry.MustRegister(name, Schema{
 			Name: name, Title: title, Description: description,
 			InputSchema:  json.RawMessage(input),
 			OutputSchema: json.RawMessage(instructionAuthoringOutputSchema()),
 			Annotations:  ToolAnnotations(RiskEdit),
+			Capability:   toolCapability(domain),
 		}, handler)
 	}
 
 	register(
+		CapabilityDomainRules,
 		CreateRuleToolName,
 		"Create Rule",
 		"Create or update a CodeMCP-native rule for one authorized workspace. CodeMCP selects the destination; global and provider-native authoring are unavailable through this agent tool.",
@@ -77,6 +79,7 @@ func RegisterInstructionAuthoringTools(registry *Registry, runtime *Runtime) {
 	)
 
 	register(
+		CapabilityDomainSkills,
 		CreateSkillToolName,
 		"Create Skill",
 		"Create or update a CodeMCP-native skill for one authorized workspace. CodeMCP selects the destination; global and provider-native authoring are unavailable through this agent tool.",

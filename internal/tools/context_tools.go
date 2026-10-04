@@ -140,14 +140,14 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 	if planExecutions == nil {
 		planExecutions = plandoc.NewExecutionManager()
 	}
-	register := func(name, title, description, input, output string, risk Risk, handler Handler) {
+	register := func(domain, name, title, description, input, output string, risk Risk, handler Handler) {
 		registry.MustRegister(name, Schema{
 			Name: name, Title: title, Description: description,
-			InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: ToolAnnotations(risk),
+			InputSchema: json.RawMessage(input), OutputSchema: json.RawMessage(output), Annotations: ToolAnnotations(risk), Capability: toolCapability(domain),
 		}, handler)
 	}
 
-	register("list_skills", "List Skills", "List project skills and activation descriptions across supported agent providers.", workspaceOnlySchema(``), `{"type":"object","properties":{"skills":{"type":"array","items":{"type":"object","additionalProperties":true}},"count":{"type":"integer"}},"required":["skills","count"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainSkills, "list_skills", "List Skills", "List project skills and activation descriptions across supported agent providers.", workspaceOnlySchema(``), `{"type":"object","properties":{"skills":{"type":"array","items":{"type":"object","additionalProperties":true}},"count":{"type":"integer"}},"required":["skills","count"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
 			return Result{}, err
@@ -160,7 +160,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(SkillsListResult{Skills: values, Count: len(values)}), nil
 	})
 
-	register("load_skill", "Load Skill", "Load one skill's complete instructions by exact name returned from list_skills.", workspaceOnlySchema(`"name":{"type":"string"},"max_bytes":{"type":"integer","minimum":1,"maximum":500000,"default":200000},`), `{"type":"object","properties":{"skill":{"type":"object","additionalProperties":true},"content":{"type":"string"},"truncated":{"type":"boolean"}},"required":["skill","content","truncated"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainSkills, "load_skill", "Load Skill", "Load one skill's complete instructions by exact name returned from list_skills.", workspaceOnlySchema(`"name":{"type":"string"},"max_bytes":{"type":"integer","minimum":1,"maximum":500000,"default":200000},`), `{"type":"object","properties":{"skill":{"type":"object","additionalProperties":true},"content":{"type":"string"},"truncated":{"type":"boolean"}},"required":["skill","content","truncated"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
 			return Result{}, err
@@ -186,7 +186,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(value), nil
 	})
 
-	register("project_context", "Project Context", "Build the complete workspace instruction context with environment, Git, selected memory, rules, skills, bounded workspace plan summaries, and ready-to-use instructions. Set plan_execution=true only when beginning implementation of a persisted plan; it binds the deterministically selected current next phase to trusted runtime identity and workspace until terminal completion handling. MCP session identity is preferred; trusted agent correlation is used when the transport does not expose a session ID.", workspaceOnlySchema(projectContextSchemaFields()), `{"type":"object","properties":{"root":{"type":"string"},"workspace_id":{"type":"string"},"instruction_context":{"type":"object","additionalProperties":true},"summary":{"type":"object","additionalProperties":true}},"required":["root","workspace_id","instruction_context","summary"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainContext, "project_context", "Project Context", "Build the complete workspace instruction context with environment, Git, selected memory, rules, skills, bounded workspace plan summaries, and ready-to-use instructions. Set plan_execution=true only when beginning implementation of a persisted plan; it binds the deterministically selected current next phase to trusted runtime identity and workspace until terminal completion handling. MCP session identity is preferred; trusted agent correlation is used when the transport does not expose a session ID.", workspaceOnlySchema(projectContextSchemaFields()), `{"type":"object","properties":{"root":{"type":"string"},"workspace_id":{"type":"string"},"instruction_context":{"type":"object","additionalProperties":true},"summary":{"type":"object","additionalProperties":true}},"required":["root","workspace_id","instruction_context","summary"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
 		defaults := projectcontext.DefaultOptions()
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
@@ -271,7 +271,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(value), nil
 	})
 
-	register("agent_status", "Agent Status", "Show workspace permissions, runtime, rewind config, upstream configuration, and tool runtime status.", workspaceOnlySchema(``), `{"type":"object","additionalProperties":true}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainRuntime, "agent_status", "Agent Status", "Show workspace permissions, runtime, rewind config, upstream configuration, and tool runtime status.", workspaceOnlySchema(``), `{"type":"object","additionalProperties":true}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 		item, cwd, err := workspaceLocation(workspaces, args)
 		if err != nil {
 			return Result{}, err
@@ -312,7 +312,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		}), nil
 	})
 
-	register("remember", "Remember", "Upsert one canonical cross-session memory entry by scope and optional child key. Omit key for a scope-level note; a key equal to scope is normalized to no child key for compatibility. Read existing memory first and submit the complete canonical replacement note.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"}},"required":["workspace_id","scope","note"],"additionalProperties":false}`, `{"type":"object","properties":{"saved_to":{"type":"string"},"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"}},"required":["saved_to","scope","note"],"additionalProperties":false}`, RiskEdit, func(_ context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainMemory, "remember", "Remember", "Upsert one canonical cross-session memory entry by scope and optional child key. Omit key for a scope-level note; a key equal to scope is normalized to no child key for compatibility. Read existing memory first and submit the complete canonical replacement note.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"}},"required":["workspace_id","scope","note"],"additionalProperties":false}`, `{"type":"object","properties":{"saved_to":{"type":"string"},"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"}},"required":["saved_to","scope","note"],"additionalProperties":false}`, RiskEdit, func(_ context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
 			return Result{}, err
@@ -341,7 +341,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(RememberResult{SavedTo: path, Scope: strings.TrimSpace(scope), Key: resultKey, Note: strings.TrimSpace(note)}), nil
 	})
 
-	register("memory_get", "Memory Get", "Read canonical cross-session memory entries. Omit filters for all entries, set scope for all entries in one scope, or set scope and key for one exact child entry. A repeated scope key addresses the scope-level note for compatibility.", workspaceOnlySchema(`"scope":{"type":"string"},"key":{"type":"string"},`), `{"type":"object","properties":{"entries":{"type":"array","items":{"type":"object","properties":{"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"}},"required":["scope","note"],"additionalProperties":false}},"count":{"type":"integer"}},"required":["entries","count"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainMemory, "memory_get", "Memory Get", "Read canonical cross-session memory entries. Omit filters for all entries, set scope for all entries in one scope, or set scope and key for one exact child entry. A repeated scope key addresses the scope-level note for compatibility.", workspaceOnlySchema(`"scope":{"type":"string"},"key":{"type":"string"},`), `{"type":"object","properties":{"entries":{"type":"array","items":{"type":"object","properties":{"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"}},"required":["scope","note"],"additionalProperties":false}},"count":{"type":"integer"}},"required":["entries","count"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
 			return Result{}, err
@@ -361,7 +361,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(MemoryGetResult{Entries: entries, Count: len(entries)}), nil
 	})
 
-	register("forget", "Forget", "Remove canonical cross-session memory by exact scope and optional key. Scope only removes the entire scope; fuzzy deletion is not supported.", workspaceOnlySchema(`"scope":{"type":"string"},"key":{"type":"string"},`), `{"type":"object","properties":{"removed":{"type":"integer"},"scope":{"type":"string"},"key":{"type":"string"}},"required":["removed","scope"],"additionalProperties":false}`, RiskDestructive, func(_ context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainMemory, "forget", "Forget", "Remove canonical cross-session memory by exact scope and optional key. Scope only removes the entire scope; fuzzy deletion is not supported.", workspaceOnlySchema(`"scope":{"type":"string"},"key":{"type":"string"},`), `{"type":"object","properties":{"removed":{"type":"integer"},"scope":{"type":"string"},"key":{"type":"string"}},"required":["removed","scope"],"additionalProperties":false}`, RiskDestructive, func(_ context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
 			return Result{}, err
@@ -386,7 +386,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(ForgetResult{Removed: removed, Scope: strings.TrimSpace(scope), Key: resultKey}), nil
 	})
 
-	register("memory_search", "Memory Search", "Search canonical cross-session memory by relevance with optional scope filtering. Child-key matches rank above scope and note matches; scope-level entries have no key.", workspaceOnlySchema(`"query":{"type":"string"},"scope":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50,"default":5},`), `{"type":"object","properties":{"matches":{"type":"array","items":{"type":"object","properties":{"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"},"score":{"type":"number"}},"required":["scope","note","score"],"additionalProperties":false}},"count":{"type":"integer"},"semantic":{"type":"object","additionalProperties":true}},"required":["matches","count"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainMemory, "memory_search", "Memory Search", "Search canonical cross-session memory by relevance with optional scope filtering. Child-key matches rank above scope and note matches; scope-level entries have no key.", workspaceOnlySchema(`"query":{"type":"string"},"scope":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":50,"default":5},`), `{"type":"object","properties":{"matches":{"type":"array","items":{"type":"object","properties":{"scope":{"type":"string"},"key":{"type":"string"},"note":{"type":"string"},"score":{"type":"number"}},"required":["scope","note","score"],"additionalProperties":false}},"count":{"type":"integer"},"semantic":{"type":"object","additionalProperties":true}},"required":["matches","count"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
 			return Result{}, err
@@ -442,7 +442,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(MemorySearchResult{Matches: matches, Count: len(matches), Semantic: semanticSummary}), nil
 	})
 
-	register("optimize_memory", "Optimize Memory", "Analyze canonical memory for legacy format, oversized notes, fragmented keys, and high-overlap candidates. This phase is analysis-only and never rewrites semantic memory; reconcile candidates with remember/forget.", workspaceOnlySchema(`"scope":{"type":"string"},"dry_run":{"type":"boolean","default":true},`), `{"type":"object","properties":{"groups":{"type":"array","items":{"type":"object","additionalProperties":true}},"before_bytes":{"type":"integer"},"candidate_savings_bytes":{"type":"integer"},"legacy_format":{"type":"boolean"},"optimization_recommended":{"type":"boolean"},"dry_run":{"type":"boolean"}},"required":["groups","before_bytes","candidate_savings_bytes","legacy_format","optimization_recommended","dry_run"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainMemory, "optimize_memory", "Optimize Memory", "Analyze canonical memory for legacy format, oversized notes, fragmented keys, and high-overlap candidates. This phase is analysis-only and never rewrites semantic memory; reconcile candidates with remember/forget.", workspaceOnlySchema(`"scope":{"type":"string"},"dry_run":{"type":"boolean","default":true},`), `{"type":"object","properties":{"groups":{"type":"array","items":{"type":"object","additionalProperties":true}},"before_bytes":{"type":"integer"},"candidate_savings_bytes":{"type":"integer"},"legacy_format":{"type":"boolean"},"optimization_recommended":{"type":"boolean"},"dry_run":{"type":"boolean"}},"required":["groups","before_bytes","candidate_savings_bytes","legacy_format","optimization_recommended","dry_run"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 		item, err := workspaceFromArgs(workspaces, args)
 		if err != nil {
 			return Result{}, err
@@ -461,7 +461,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		return JSONResult(OptimizeMemoryResult{Groups: analysis.Groups, BeforeBytes: analysis.BeforeBytes, CandidateSavingsBytes: analysis.CandidateSavingsBytes, LegacyFormat: analysis.LegacyFormat, OptimizationRecommended: analysis.OptimizationRecommended, DryRun: true}), nil
 	})
 
-	register("load_path_rules", "Load Path Rules", "Load path-scoped rules from CodeMCP-native and compatible dynamic provider rule sources.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"path":{"type":"string"}},"required":["workspace_id","path"],"additionalProperties":false}`, `{"type":"object","properties":{"path":{"type":"string"},"rules":{"type":"array","items":{"type":"object","additionalProperties":true}},"count":{"type":"integer"}},"required":["path","rules","count"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
+	register(CapabilityDomainRules, "load_path_rules", "Load Path Rules", "Load path-scoped rules from CodeMCP-native and compatible dynamic provider rule sources.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"path":{"type":"string"}},"required":["workspace_id","path"],"additionalProperties":false}`, `{"type":"object","properties":{"path":{"type":"string"},"rules":{"type":"array","items":{"type":"object","additionalProperties":true}},"count":{"type":"integer"}},"required":["path","rules","count"],"additionalProperties":false}`, RiskRead, func(_ context.Context, args map[string]any) (Result, error) {
 		item, cwd, err := workspaceLocation(workspaces, args)
 		if err != nil {
 			return Result{}, err

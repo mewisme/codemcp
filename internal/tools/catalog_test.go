@@ -132,6 +132,42 @@ func TestCapabilityGroupingBoundsBytesAndHandlesEmptyInventory(t *testing.T) {
 	}
 }
 
+func TestFirstPartyRuntimeToolsHaveCapabilities(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewRuntime()
+	defer runtime.CompletionHooks.Stop()
+	missing := []string{}
+	for _, schema := range runtime.Registry.ListSchemas() {
+		if schema.Capability == nil || strings.TrimSpace(schema.Capability.Domain) == "" {
+			missing = append(missing, schema.Name)
+		}
+	}
+	if len(missing) != 0 {
+		t.Fatalf("first-party tools missing capability metadata: %v", missing)
+	}
+
+	want := map[string]string{
+		"grep":                  CapabilityDomainFilesystem,
+		"git_push":              CapabilityDomainGit,
+		"run_command":           CapabilityDomainShell,
+		"workspace_status":      CapabilityDomainWorkspace,
+		"project_context":       CapabilityDomainContext,
+		"load_path_rules":       CapabilityDomainRules,
+		"list_skills":           CapabilityDomainSkills,
+		"remember":              CapabilityDomainMemory,
+		CreatePlanToolName:      CapabilityDomainPlans,
+		ApprovalRequestToolName: CapabilityDomainApprovals,
+		AgentSpawnToolName:      CapabilityDomainAgents,
+		"fanout_turn":           CapabilityDomainIntegrations,
+	}
+	for name, domain := range want {
+		schema, ok := runtime.Registry.Schema(name)
+		if !ok || schema.Capability == nil || schema.Capability.Domain != domain {
+			t.Fatalf("%s capability = %#v want %q", name, schema.Capability, domain)
+		}
+	}
+}
+
 func TestRuntimeDoesNotExposeWorkspaceRelocateTool(t *testing.T) {
 	runtime := NewRuntime()
 	for _, schema := range runtime.ListTools() {

@@ -32,6 +32,7 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string","minLength":1},"status":{"type":"string","enum":["completed","partial","blocked","cancelled"]},"title":{"type":"string","minLength":1,"maxLength":120},"summary":{"type":"string","maxLength":2000}},"required":["workspace_id","status","title"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","properties":{"record":{"type":"object","properties":{"id":{"type":"string"},"sequence":{"type":"integer","minimum":1},"agent_id":{"type":"string","pattern":"^[0-9a-f]{16}$"},"workspace_id":{"type":"string"},"status":{"type":"string","enum":["completed","partial","blocked","cancelled"]},"title":{"type":"string"},"summary":{"type":"string"},"source":{"type":"string"},"supersedes_id":{"type":"string"},"created_at":{"type":"string","format":"date-time"}},"required":["id","sequence","agent_id","workspace_id","status","title","created_at"],"additionalProperties":false},"created":{"type":"boolean"}},"required":["record","created"],"additionalProperties":false}`),
 		Annotations:  annotations,
+		Capability:   toolCapability(CapabilityDomainAgents),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		if service == nil {
 			return Result{}, errors.New("agent completion service is unavailable")

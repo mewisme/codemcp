@@ -35,6 +35,7 @@ func RegisterWorkspaceTools(registry *Registry, manager *workspace.Manager, shel
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"workspace_root":{"type":"string"},"instance_id":{"type":"string"},"instance_name":{"type":"string"}},"required":["workspace_id","workspace_root","instance_id","instance_name"],"additionalProperties":false}`),
 		Annotations:  ToolAnnotations(RiskEdit),
+		Capability:   toolCapability(CapabilityDomainWorkspace),
 	}, func(ctx context.Context, args map[string]any) (Result, error) {
 		path, err := requiredString(args, "path")
 		if err != nil {
@@ -64,6 +65,7 @@ func RegisterWorkspaceTools(registry *Registry, manager *workspace.Manager, shel
 		InputSchema:  json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"}},"required":["workspace_id"],"additionalProperties":false}`),
 		OutputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"workspace_root":{"type":"string"},"shell_cwd":{"type":"string"},"allowed_directories":{"type":"array","items":{"type":"string"}},"instance_id":{"type":"string"},"instance_name":{"type":"string"},"online":{"type":"boolean"}},"required":["workspace_id","workspace_root","shell_cwd","allowed_directories","instance_id","instance_name","online"],"additionalProperties":false}`),
 		Annotations:  ToolAnnotations(RiskRead),
+		Capability:   toolCapability(CapabilityDomainWorkspace),
 	}, func(_ context.Context, args map[string]any) (Result, error) {
 		id, err := requiredString(args, "workspace_id")
 		if err != nil {

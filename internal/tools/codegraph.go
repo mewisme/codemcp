@@ -32,6 +32,7 @@ func codeGraphToolEntries(runtime *Runtime) map[string]Entry {
 				InputSchema:  json.RawMessage(codegraph.ExploreInputSchema()),
 				OutputSchema: json.RawMessage(codegraph.ExploreOutputSchema()),
 				Annotations:  ToolAnnotations(RiskRead),
+				Capability:   toolCapability(CapabilityDomainCodeGraph),
 			},
 			Handler: func(ctx context.Context, args map[string]any) (Result, error) {
 				if runtime == nil {

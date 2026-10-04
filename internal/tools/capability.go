@@ -7,12 +7,34 @@ import (
 
 const (
 	CapabilityDomainUnclassified = "unclassified"
+	CapabilityDomainAgents       = "agents"
+	CapabilityDomainApprovals    = "approvals"
+	CapabilityDomainCodeGraph    = "codegraph"
+	CapabilityDomainConfig       = "config"
+	CapabilityDomainContext      = "context"
+	CapabilityDomainFilesystem   = "filesystem"
+	CapabilityDomainGit          = "git"
+	CapabilityDomainIntegrations = "integrations"
+	CapabilityDomainMemory       = "memory"
+	CapabilityDomainPlans        = "plans"
+	CapabilityDomainPrompts      = "prompts"
+	CapabilityDomainRewind       = "rewind"
+	CapabilityDomainRules        = "rules"
+	CapabilityDomainRuntime      = "runtime"
+	CapabilityDomainShell        = "shell"
+	CapabilityDomainSkills       = "skills"
+	CapabilityDomainUpstream     = "upstream"
+	CapabilityDomainWorkspace    = "workspace"
 
 	maxCapabilityDomainBytes = 48
 )
 
 type CapabilityMetadata struct {
 	Domain string `json:"domain"`
+}
+
+func toolCapability(domain string) *CapabilityMetadata {
+	return &CapabilityMetadata{Domain: domain}
 }
 
 type CapabilityGroup struct {
