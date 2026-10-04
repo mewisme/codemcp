@@ -52,8 +52,8 @@ func launchExecBrowser(ctx context.Context, request LaunchRequest) (BrowserProce
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if !request.Visible {
-		return nil, BrowserEndpoint{}, errors.New("managed browser launch requires a visible dedicated window")
+	if request.Visible == request.Headless {
+		return nil, BrowserEndpoint{}, errors.New("managed browser launch must select exactly one of visible or headless mode")
 	}
 	executable := strings.TrimSpace(request.Candidate.LocalExecutable)
 	if executable == "" {
@@ -67,7 +67,7 @@ func launchExecBrowser(ctx context.Context, request LaunchRequest) (BrowserProce
 	if profilePath == "" || localProfile == "" {
 		return nil, BrowserEndpoint{}, errors.New("browser profile paths are required")
 	}
-	args := managerLaunchArgs(profilePath, request.Minimized)
+	args := managerLaunchArgs(profilePath, request.Minimized, request.Headless)
 	cmd := exec.Command(executable, args...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
@@ -86,7 +86,7 @@ func launchExecBrowser(ctx context.Context, request LaunchRequest) (BrowserProce
 	return process, endpoint, nil
 }
 
-func managerLaunchArgs(profile string, minimized bool) []string {
+func managerLaunchArgs(profile string, minimized, headless bool) []string {
 	args := []string{
 		"--no-first-run",
 		"--no-default-browser-check",
@@ -94,9 +94,13 @@ func managerLaunchArgs(profile string, minimized bool) []string {
 		"--remote-debugging-port=0",
 		"--user-data-dir=" + profile,
 		"--profile-directory=" + managedProfileDirectory,
-		"--new-window",
 	}
-	if minimized {
+	if headless {
+		args = append(args, "--headless=new", "--window-size=1440,1000")
+	} else {
+		args = append(args, "--new-window")
+	}
+	if minimized && !headless {
 		args = append(args, "--start-minimized")
 	}
 	return append(args, "about:blank")

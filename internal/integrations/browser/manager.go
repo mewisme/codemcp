@@ -17,6 +17,7 @@ type Manager struct {
 	connector  BrowserConnector
 
 	maxTabs        int
+	headless       bool
 	agentIdleTTL   time.Duration
 	browserWarmTTL time.Duration
 	launchTTL      time.Duration
@@ -106,7 +107,7 @@ func NewManager(options ManagerOptions) (*Manager, error) {
 	return &Manager{
 		capability: capability,
 		launcher:   options.Launcher, connector: options.Connector,
-		maxTabs: options.MaxTabs, agentIdleTTL: options.AgentIdleTTL,
+		maxTabs: options.MaxTabs, headless: options.Headless, agentIdleTTL: options.AgentIdleTTL,
 		browserWarmTTL: options.BrowserWarmTTL, launchTTL: options.LaunchTTL,
 		minimizeTTL: options.MinimizeTTL, closeTTL: options.CloseTTL,
 		now: options.Now, leases: map[string]*leaseRecord{}, pending: map[string]struct{}{},
@@ -220,7 +221,8 @@ func (manager *Manager) start(ctx context.Context) (*browserInstance, error) {
 	process, endpoint, err := manager.launcher.Launch(launchCtx, LaunchRequest{
 		Candidate: *manager.capability.Candidate,
 		Profile:   profile,
-		Visible:   true,
+		Visible:   !manager.headless,
+		Headless:  manager.headless,
 	})
 	if err != nil {
 		_ = profileLock.Release()

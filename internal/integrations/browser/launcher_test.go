@@ -11,7 +11,7 @@ import (
 )
 
 func TestManagerLaunchArgsUseVisibleDedicatedWindowAndPrivateCDP(t *testing.T) {
-	args := managerLaunchArgs("/tmp/codemcp-browser-profile", false)
+	args := managerLaunchArgs("/tmp/codemcp-browser-profile", false, false)
 	joined := strings.Join(args, " ")
 	for _, required := range []string{
 		"--new-window",
@@ -33,9 +33,31 @@ func TestManagerLaunchArgsUseVisibleDedicatedWindowAndPrivateCDP(t *testing.T) {
 }
 
 func TestManagerLaunchArgsSupportMinimizedVisibleWindow(t *testing.T) {
-	joined := strings.Join(managerLaunchArgs("/tmp/profile", true), " ")
+	joined := strings.Join(managerLaunchArgs("/tmp/profile", true, false), " ")
 	if !strings.Contains(joined, "--start-minimized") || strings.Contains(joined, "--headless") {
 		t.Fatalf("minimized args=%s", joined)
+	}
+}
+
+func TestManagerLaunchArgsSupportHeadlessPrivateCDP(t *testing.T) {
+	joined := strings.Join(managerLaunchArgs("/tmp/profile", true, true), " ")
+	for _, required := range []string{
+		"--headless=new",
+		"--window-size=1440,1000",
+		"--remote-debugging-address=127.0.0.1",
+		"--remote-debugging-port=0",
+		"--user-data-dir=/tmp/profile",
+		"--profile-directory=Default",
+		"about:blank",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("headless args missing %q: %s", required, joined)
+		}
+	}
+	for _, forbidden := range []string{"--new-window", "--start-minimized", "0.0.0.0", "--remote-allow-origins=*"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("headless args contain forbidden %q: %s", forbidden, joined)
+		}
 	}
 }
 
@@ -176,7 +198,7 @@ func TestLaunchAdaptersRejectCrossHostProfileMismatch(t *testing.T) {
 	}
 }
 
-func TestLaunchAdapterRejectsHeadlessManagedRequest(t *testing.T) {
+func TestLaunchAdapterRejectsMissingManagedLaunchMode(t *testing.T) {
 	if _, _, err := launchExecBrowser(context.Background(), LaunchRequest{
 		Candidate: Candidate{Transport: TransportNative, Executable: "/missing"},
 		Profile: ProfileRef{
@@ -184,7 +206,7 @@ func TestLaunchAdapterRejectsHeadlessManagedRequest(t *testing.T) {
 		},
 		Visible: false,
 	}); err == nil {
-		t.Fatal("managed browser launcher accepted a non-visible request")
+		t.Fatal("managed browser launcher accepted a request without visible/headless mode")
 	}
 }
 

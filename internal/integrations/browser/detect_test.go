@@ -170,6 +170,68 @@ func TestDetectPassiveDiscoversBrowserWithoutProbing(t *testing.T) {
 	}
 }
 
+func TestDetectPassiveHeadlessDoesNotRequireGraphicalSession(t *testing.T) {
+	fake := &fakeBrowserRuntime{
+		goos: "linux",
+		env:  map[string]string{},
+		look: map[string]string{"chromium": "/usr/bin/chromium"},
+		exists: func(path string) bool {
+			return path == "/usr/bin/chromium"
+		},
+		probe: func(Candidate) ProbeResult {
+			t.Fatal("passive headless detection must not probe the browser")
+			return ProbeResult{}
+		},
+	}
+	root := t.TempDir()
+	headful := Detect(context.Background(), Options{
+		Enabled: true, StateRoot: root, Runtime: fake.runtime(), Passive: true,
+	})
+	if headful.State != StateUnavailable || headful.Graphical {
+		t.Fatalf("headful capability without display=%#v", headful)
+	}
+	headless := Detect(context.Background(), Options{
+		Enabled: true, StateRoot: root, Runtime: fake.runtime(), Passive: true, Headless: true,
+	})
+	if headless.State != StateAvailable || !headless.Available || !headless.Launchable || headless.Usable || headless.Graphical {
+		t.Fatalf("headless capability=%#v", headless)
+	}
+	if headless.Profile == nil || headless.Candidate == nil {
+		t.Fatalf("headless capability lacks launch ownership: %#v", headless)
+	}
+}
+
+func TestDetectLinuxGraphicalRoutesCoverX11AndWayland(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		env  map[string]string
+	}{
+		{name: "x11", env: map[string]string{"DISPLAY": ":0"}},
+		{name: "wayland", env: map[string]string{"WAYLAND_DISPLAY": "wayland-0"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fake := &fakeBrowserRuntime{
+				goos: "linux",
+				env:  test.env,
+				look: map[string]string{"chromium": "/usr/bin/chromium"},
+				exists: func(path string) bool {
+					return path == "/usr/bin/chromium"
+				},
+				probe: func(Candidate) ProbeResult {
+					t.Fatal("passive graphical detection must not probe the browser")
+					return ProbeResult{}
+				},
+			}
+			capability := Detect(context.Background(), Options{
+				Enabled: true, StateRoot: t.TempDir(), Runtime: fake.runtime(), Passive: true,
+			})
+			if capability.State != StateAvailable || !capability.Graphical || !capability.Launchable {
+				t.Fatalf("%s capability=%#v", test.name, capability)
+			}
+		})
+	}
+}
+
 func TestDetectActiveProbeMarksCapabilityUsableAndLaunchable(t *testing.T) {
 	fake := &fakeBrowserRuntime{
 		goos: "linux",

@@ -36,20 +36,24 @@ func browserIntegrationDoctorCommand() *cobra.Command {
 	return &cobra.Command{
 		Use: "doctor", Short: "Check browser integration health", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			session := commandProgressSession(cmd)
+			session.SetTitle("Browser doctor")
+			session.Update(presentation.ProgressPhase{ID: "browser.doctor", Label: "Checking browser runtime", State: presentation.ProgressRunning})
 			result, err := application.NewBrowserIntegrationService().Doctor(cmd.Context())
 			if err != nil {
 				return err
 			}
-			presenter := commandPresenter(cmd)
-			presenter.Frame("Browser doctor")
-			for _, check := range result.Checks {
-				kind := presentation.StatusSuccess
-				if !check.OK {
-					kind = presentation.StatusWarning
+			session.Success("browser.doctor", "Checking browser runtime", "Browser checks complete")
+			session.Append(func(presenter *presentation.Presenter) {
+				for _, check := range result.Checks {
+					kind := presentation.StatusSuccess
+					if !check.OK {
+						kind = presentation.StatusWarning
+					}
+					presenter.StateSection(kind, check.Message)
 				}
-				presenter.StateSection(kind, check.Message)
-			}
-			presenter.Complete("Doctor complete")
+			})
+			session.SetCompletion("Doctor complete")
 			return nil
 		},
 	}
@@ -66,6 +70,7 @@ func renderBrowserIntegrationStatus(presenter *presentation.Presenter, status ap
 	presenter.StateSection(kind, "Browser is "+string(status.State))
 	fields := []presentation.Field{
 		{Label: "enabled", Value: status.Enabled},
+		{Label: "headless", Value: status.Headless},
 		{Label: "graphical", Value: status.Graphical},
 		{Label: "running", Value: status.Running},
 	}
@@ -117,25 +122,32 @@ func chatGPTWebLoginCommand() *cobra.Command {
 	return &cobra.Command{
 		Use: "login", Short: "Sign in to ChatGPT using the isolated CodeMCP browser profile", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			presenter := commandPresenter(cmd)
-			presenter.Frame("ChatGPT Web login")
-			presenter.StateSection(presentation.StatusInfo, chatGPTWebLoginInstruction)
+			session := commandProgressSession(cmd)
+			session.SetTitle("ChatGPT Web login")
+			session.Append(func(presenter *presentation.Presenter) {
+				presenter.StateSection(presentation.StatusInfo, chatGPTWebLoginInstruction)
+			})
+			session.Update(presentation.ProgressPhase{ID: "chatgpt.login", Label: "Waiting for sign-in and verification", State: presentation.ProgressRunning})
 			status, err := application.NewChatGPTWebService().Login(cmd.Context())
 			if err != nil {
 				if strings.TrimSpace(status.Reason) != "" {
-					presenter.StateSection(presentation.StatusWarning, status.Reason)
+					session.Append(func(presenter *presentation.Presenter) {
+						presenter.StateSection(presentation.StatusWarning, status.Reason)
+					})
 				}
 				return err
 			}
-			presenter.StateSection(presentation.StatusSuccess, "ChatGPT authentication verified")
-			presenter.NestedFields(
-				presentation.Field{Label: "state", Value: status.State},
-				presentation.Field{Label: "connector", Value: status.ConnectorName},
-			)
-			if account, ok := status.LoginAccount(); ok {
-				renderChatGPTWebLoginAccount(presenter, account)
-			}
-			presenter.Complete("Login complete")
+			session.Success("chatgpt.login", "Waiting for sign-in and verification", "ChatGPT authentication verified")
+			session.Append(func(presenter *presentation.Presenter) {
+				presenter.NestedFields(
+					presentation.Field{Label: "state", Value: status.State},
+					presentation.Field{Label: "connector", Value: status.ConnectorName},
+				)
+				if account, ok := status.LoginAccount(); ok {
+					renderChatGPTWebLoginAccount(presenter, account)
+				}
+			})
+			session.SetCompletion("Login complete")
 			return nil
 		},
 	}
@@ -183,25 +195,29 @@ func chatGPTWebDoctorCommand() *cobra.Command {
 	return &cobra.Command{
 		Use: "doctor", Short: "Check ChatGPT Web authentication and connector readiness", Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			session := commandProgressSession(cmd)
+			session.SetTitle("ChatGPT Web doctor")
+			session.Update(presentation.ProgressPhase{ID: "chatgpt.doctor", Label: "Checking ChatGPT Web runtime", State: presentation.ProgressRunning})
 			result, err := application.NewChatGPTWebService().Doctor(cmd.Context())
 			if err != nil {
 				return err
 			}
-			presenter := commandPresenter(cmd)
-			presenter.Frame("ChatGPT Web doctor")
-			for _, check := range result.Checks {
-				kind := presentation.StatusSuccess
-				if !check.OK {
-					kind = presentation.StatusWarning
+			session.Success("chatgpt.doctor", "Checking ChatGPT Web runtime", "ChatGPT Web checks complete")
+			session.Append(func(presenter *presentation.Presenter) {
+				for _, check := range result.Checks {
+					kind := presentation.StatusSuccess
+					if !check.OK {
+						kind = presentation.StatusWarning
+					}
+					presenter.StateSection(kind, check.Message)
 				}
-				presenter.StateSection(kind, check.Message)
-			}
-			presenter.NestedFields(
-				presentation.Field{Label: "state", Value: result.Status.State},
-				presentation.Field{Label: "connector", Value: result.Status.ConnectorName},
-				presentation.Field{Label: "live verified", Value: result.LiveVerified},
-			)
-			presenter.Complete("Doctor complete")
+				presenter.NestedFields(
+					presentation.Field{Label: "state", Value: result.Status.State},
+					presentation.Field{Label: "connector", Value: result.Status.ConnectorName},
+					presentation.Field{Label: "live verified", Value: result.LiveVerified},
+				)
+			})
+			session.SetCompletion("Doctor complete")
 			return nil
 		},
 	}

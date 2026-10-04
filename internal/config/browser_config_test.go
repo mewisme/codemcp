@@ -7,7 +7,7 @@ import (
 
 func TestBrowserIntegrationDefaultsEnabledWithoutExecutableOverride(t *testing.T) {
 	cfg := Default()
-	if !cfg.Integrations.Browser.Enabled || cfg.Integrations.Browser.Path != "" {
+	if !cfg.Integrations.Browser.Enabled || cfg.Integrations.Browser.Path != "" || cfg.Integrations.Browser.Headless {
 		t.Fatalf("browser defaults=%#v", cfg.Integrations.Browser)
 	}
 	for _, test := range []struct {
@@ -16,6 +16,7 @@ func TestBrowserIntegrationDefaultsEnabledWithoutExecutableOverride(t *testing.T
 	}{
 		{"integrations.browser.enabled", "true"},
 		{"integrations.browser.path", ""},
+		{"integrations.browser.headless", "false"},
 	} {
 		value, err := RawValue(cfg, test.key)
 		if err != nil || value != test.want {

@@ -220,6 +220,33 @@ func TestBrowserManagerSharesOneBrowserAcrossDistinctAgentTabs(t *testing.T) {
 	}
 }
 
+func TestBrowserManagerHeadlessLaunchDoesNotRequestVisibleWindow(t *testing.T) {
+	root := t.TempDir()
+	launcher := &fakeLauncher{}
+	connector := &fakeConnector{}
+	manager, err := NewManager(ManagerOptions{
+		Capability:  testCapability(testProfile(root)),
+		MaxTabs:     1,
+		Headless:    true,
+		LaunchTTL:   time.Second,
+		CloseTTL:    time.Second,
+		MinimizeTTL: time.Second,
+		Launcher:    launcher,
+		Connector:   connector,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Close(context.Background())
+	if _, err := manager.Acquire(context.Background(), "agent-headless"); err != nil {
+		t.Fatal(err)
+	}
+	request := launcher.request(0)
+	if !request.Headless || request.Visible {
+		t.Fatalf("headless launch request=%#v", request)
+	}
+}
+
 func TestBrowserManagerExposesOnlyActiveOwnedTab(t *testing.T) {
 	manager, _, _ := newFakeManager(t, 1, time.Minute, time.Minute)
 	defer manager.Close(context.Background())

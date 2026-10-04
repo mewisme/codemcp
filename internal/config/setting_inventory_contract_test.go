@@ -13,7 +13,7 @@ func TestUniversalSettingInventoryCoversPersistedConfigSchema(t *testing.T) {
 		"http.admin.auth.enabled", "http.admin.auth.token_hash", "http.mcp.auth.enabled", "http.mcp.auth.legacy_bearer", "http.mcp.auth.token_hash",
 		"explain.mode", "approval.semantic.critical_action", "approval.semantic.enabled", "approval.semantic.fail_mode", "approval.semantic.high_action",
 		"approval.semantic.low_action", "approval.semantic.medium_action", "approval.semantic.minimum_confidence", "approval.semantic.provider", "approval.semantic.timeout_ms",
-		"integrations.browser.enabled", "integrations.browser.path", "integrations.caveman.active", "integrations.caveman.mode", "integrations.codegraph.enabled", "integrations.codegraph.path",
+		"integrations.browser.enabled", "integrations.browser.headless", "integrations.browser.path", "integrations.caveman.active", "integrations.caveman.mode", "integrations.codegraph.enabled", "integrations.codegraph.path",
 		"integrations.chatgpt_web.connector_name", "integrations.chatgpt_web.enabled", "integrations.chatgpt_web.max_agents",
 		"integrations.ponytail.active", "integrations.ponytail.mode", "integrations.rtk.enabled", "integrations.rtk.path",
 		"integrations.typesafe.enabled", "integrations.typesafe.model", "integrations.typesafe.timeout_ms",

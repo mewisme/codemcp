@@ -83,9 +83,17 @@
     "rule_id": "G104",
     "severity": "LOW",
     "confidence": "HIGH",
-    "file": "internal/app/lifecycle.go",
+    "file": "internal/integrations/browser/manager.go",
     "details": "Errors unhandled",
-    "code": "if a.Telegram != nil {\n\t\ta.Telegram.Reconcile(ctx, a.Config.Snapshot().Telegram)\n\t\tif a.TelegramUI != nil {"
+    "code": "if err != nil {\n\t\tmanager.closeInstance(context.Background(), instance)\n\t\treturn nil, fmt.Errorf(\"connect browser CDP: %w\", err)"
+  },
+  {
+    "rule_id": "G104",
+    "severity": "LOW",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/manager.go",
+    "details": "Errors unhandled",
+    "code": "if instance != nil {\n\t\t\t\tmanager.closeInstance(context.Background(), instance)\n\t\t\t}"
   },
   {
     "rule_id": "G115",
@@ -176,6 +184,14 @@
     "code": "case uint64:\n\t\treturn int(value), uint64(int(value)) == value\n\tcase float64:"
   },
   {
+    "rule_id": "G115",
+    "severity": "HIGH",
+    "confidence": "MEDIUM",
+    "file": "internal/tools/managed_agent_tools.go",
+    "details": "integer overflow conversion int64 -> uint64",
+    "code": "}\n\t\tsnapshot, err := runtime.Agents.Wait(ctx, controller, id, uint64(afterRevision), time.Duration(timeoutMS)*time.Millisecond)\n\t\tif err != nil {"
+  },
+  {
     "rule_id": "G118",
     "severity": "HIGH",
     "confidence": "MEDIUM",
@@ -190,6 +206,22 @@
     "file": "internal/app/product_lifecycle_telemetry.go",
     "details": "Goroutine uses context.Background/TODO while request-scoped context is available",
     "code": "bridge.wg.Add(1)\n\t\tgo bridge.consumeBackground(runCtx, backgroundSub)\n\t}"
+  },
+  {
+    "rule_id": "G118",
+    "severity": "HIGH",
+    "confidence": "MEDIUM",
+    "file": "internal/integrations/chatgptweb/backend.go",
+    "details": "Goroutine uses context.Background/TODO while request-scoped context is available",
+    "code": "}\n\tgo backend.runFollowUp(handle, driver, message.Content)\n\treturn nil"
+  },
+  {
+    "rule_id": "G118",
+    "severity": "HIGH",
+    "confidence": "MEDIUM",
+    "file": "internal/integrations/chatgptweb/backend.go",
+    "details": "Goroutine uses context.Background/TODO while request-scoped context is available",
+    "code": "}\n\tgo backend.runInitial(handle, request, connectorName, bootstrap)\n\treturn handle, nil"
   },
   {
     "rule_id": "G122",
@@ -350,6 +382,62 @@
     "file": "internal/install/package_owner_unix.go",
     "details": "Subprocess launched with variable",
     "code": "func runPackageOwnerProbe(ctx context.Context, command string, args ...string) (string, error) {\n\tprocess := exec.CommandContext(ctx, command, args...)\n\tvar stdout, stderr boundedPackageOutput"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/detect.go",
+    "details": "Subprocess launched with a potential tainted input or cmd arguments",
+    "code": "args := browserProbeArgs(hostProfile)\n\tcommand := exec.CommandContext(ctx, candidate.LocalExecutable, args...)\n\tcommand.Stdout, command.Stderr = io.Discard, io.Discard"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/detect.go",
+    "details": "Subprocess launched with variable",
+    "code": "func runOutput(ctx context.Context, executable string, args ...string) (string, error) {\n\tcommand := exec.CommandContext(ctx, executable, args...)\n\tdata, err := command.CombinedOutput()"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/interactive.go",
+    "details": "Subprocess launched with variable",
+    "code": "}\n\tcommand := exec.Command(executable, args...)\n\tcommand.Stdout = io.Discard"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/interactive.go",
+    "details": "Subprocess launched with variable",
+    "code": "}\n\tcommand := exec.CommandContext(ctx, powershell, \"-NoProfile\", \"-NonInteractive\", \"-Command\",\n\t\twindowsHostInteractiveStopScript(executable, profilePath))\n\tcommand.Stdout = io.Discard"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/interactive.go",
+    "details": "Subprocess launched with variable",
+    "code": "script := windowsHostInteractiveLaunchScript(executable, request.Profile.Path, args)\n\tcommand := exec.Command(powershell, \"-NoProfile\", \"-NonInteractive\", \"-Command\", script)\n\tcommand.Stdout = io.Discard"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/launcher.go",
+    "details": "Subprocess launched with variable",
+    "code": "args := managerLaunchArgs(profilePath, request.Minimized, request.Headless)\n\tcmd := exec.Command(executable, args...)\n\tcmd.Stdout = io.Discard"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/wsl_relay.go",
+    "details": "Subprocess launched with variable",
+    "code": "\"$c.Dispose()\"\n\tcommand := exec.Command(\"powershell.exe\", \"-NoProfile\", \"-NonInteractive\", \"-Command\", script)\n\tcommand.Stdin = connection"
   },
   {
     "rule_id": "G204",
@@ -534,6 +622,22 @@
     "file": "internal/install/transaction.go",
     "details": "Expect file permissions to be 0600 or less",
     "code": "defer input.Close()\n\toutput, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0755)\n\tif err != nil {"
+  },
+  {
+    "rule_id": "G302",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/profile.go",
+    "details": "Expect file permissions to be 0600 or less",
+    "code": "}\n\t\tif err := os.Chmod(defaultProfile, 0700); err != nil {\n\t\t\treturn fmt.Errorf(\"secure managed browser Default profile permissions: %w\", err)"
+  },
+  {
+    "rule_id": "G302",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/profile.go",
+    "details": "Expect file permissions to be 0600 or less",
+    "code": "if profile.Transport == TransportNative {\n\t\tif err := os.Chmod(path, 0700); err != nil {\n\t\t\treturn fmt.Errorf(\"secure browser profile permissions: %w\", err)"
   },
   {
     "rule_id": "G302",
@@ -798,6 +902,22 @@
     "file": "internal/instructioncontext/memory.go",
     "details": "Potential file inclusion via variable",
     "code": "}\n\tdata, err := os.ReadFile(path)\n\tif err != nil {"
+  },
+  {
+    "rule_id": "G304",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/detect.go",
+    "details": "Potential file inclusion via variable",
+    "code": "func readDevToolsPort(path string) (int, error) {\n\tfile, err := os.Open(path)\n\tif err != nil {"
+  },
+  {
+    "rule_id": "G304",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/chatgptweb/marker.go",
+    "details": "Potential file inclusion via variable",
+    "code": "}\n\tdata, err := os.ReadFile(path)\n\tif errors.Is(err, os.ErrNotExist) {"
   },
   {
     "rule_id": "G304",

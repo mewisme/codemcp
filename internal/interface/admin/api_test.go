@@ -508,11 +508,11 @@ func TestConfigAPIIntegrationPatchUpdatesRuntimeActiveState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := persisted.Integrations; !got.Ponytail.Active || got.Caveman.Active || !got.RTK.Enabled || got.RTK.Path != "" || !got.CodeGraph.Enabled || got.CodeGraph.Path != "" || !got.Browser.Enabled || got.Browser.Path != "" || !got.ChatGPTWeb.Enabled || got.ChatGPTWeb.ConnectorName != "CodeMCP" || got.ChatGPTWeb.MaxAgents != 5 {
+	if got := persisted.Integrations; !got.Ponytail.Active || got.Caveman.Active || !got.RTK.Enabled || got.RTK.Path != "" || !got.CodeGraph.Enabled || got.CodeGraph.Path != "" || !got.Browser.Enabled || got.Browser.Path != "" || got.Browser.Headless || !got.ChatGPTWeb.Enabled || got.ChatGPTWeb.ConnectorName != "CodeMCP" || got.ChatGPTWeb.MaxAgents != 5 {
 		t.Fatalf("stored integrations = %#v", got)
 	}
 	_ = workspaceItem
-	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":true,"path":""},"typesafe":{"enabled":true,"model":"jev-latest","timeout_ms":3000},"browser":{"enabled":true,"path":""},"chatgpt_web":{"enabled":true,"connector_name":"CodeMCP","max_agents":5}}`) {
+	if !strings.Contains(recorder.Body.String(), `"integrations":{"ponytail":{"active":true,"mode":"full"},"caveman":{"active":false,"mode":"full"},"rtk":{"enabled":true,"path":""},"codegraph":{"enabled":true,"path":""},"typesafe":{"enabled":true,"model":"jev-latest","timeout_ms":3000},"browser":{"enabled":true,"path":"","headless":false},"chatgpt_web":{"enabled":true,"connector_name":"CodeMCP","max_agents":5}}`) {
 		t.Fatalf("integration config missing from response: %s", recorder.Body.String())
 	}
 }

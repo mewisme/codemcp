@@ -57,8 +57,9 @@ type TypeSafe struct {
 }
 
 type Browser struct {
-	Enabled bool   `json:"enabled"`
-	Path    string `json:"path"`
+	Enabled  bool   `json:"enabled"`
+	Path     string `json:"path"`
+	Headless bool   `json:"headless"`
 }
 
 type ChatGPTWeb struct {
@@ -84,7 +85,7 @@ func Default() Config {
 		RTK:        RTK{Enabled: true},
 		CodeGraph:  CodeGraph{Enabled: true},
 		TypeSafe:   TypeSafe{Enabled: true, Model: "jev-latest", TimeoutMS: 3000},
-		Browser:    Browser{Enabled: true},
+		Browser:    Browser{Enabled: true, Headless: false},
 		ChatGPTWeb: ChatGPTWeb{Enabled: true, ConnectorName: "CodeMCP", MaxAgents: 5},
 	}
 }

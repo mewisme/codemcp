@@ -21,6 +21,7 @@ type Options struct {
 	StateRoot      string
 	Runtime        Runtime
 	Passive        bool
+	Headless       bool
 }
 
 type Runtime struct {
@@ -49,7 +50,7 @@ func Detect(ctx context.Context, options Options) Capability {
 			return unavailable(true, err.Error())
 		}
 		if options.Passive {
-			return discoverCapability(options.StateRoot, runtime, candidate)
+			return discoverCapability(options.StateRoot, runtime, candidate, options.Headless)
 		}
 		return probeCapability(ctx, options.StateRoot, runtime, candidate)
 	}
@@ -89,14 +90,14 @@ func Detect(ctx context.Context, options Options) Capability {
 
 func evaluateCapability(ctx context.Context, options Options, runtime Runtime, candidate Candidate) Capability {
 	if options.Passive {
-		return discoverCapability(options.StateRoot, runtime, candidate)
+		return discoverCapability(options.StateRoot, runtime, candidate, options.Headless)
 	}
 	return probeCapability(ctx, options.StateRoot, runtime, candidate)
 }
 
-func discoverCapability(root string, runtime Runtime, candidate Candidate) Capability {
+func discoverCapability(root string, runtime Runtime, candidate Candidate, headless bool) Capability {
 	graphical := graphicalAvailable(runtime, candidate)
-	if !graphical {
+	if !graphical && !headless {
 		return Capability{
 			State: StateUnavailable, Enabled: true, Family: candidate.Family,
 			Executable: candidate.Executable, HostPlatform: candidate.HostPlatform,
@@ -111,7 +112,7 @@ func discoverCapability(root string, runtime Runtime, candidate Candidate) Capab
 	return Capability{
 		State: StateAvailable, Enabled: true, Available: true, Launchable: true, Usable: false,
 		Family: candidate.Family, Executable: candidate.Executable,
-		HostPlatform: candidate.HostPlatform, Transport: candidate.Transport, Graphical: true,
+		HostPlatform: candidate.HostPlatform, Transport: candidate.Transport, Graphical: graphical,
 		ProfileHostPlatform: profile.HostPlatform, Profile: &profile, Candidate: &candidate,
 	}
 }
@@ -304,29 +305,26 @@ func normalizedRuntime(value Runtime) Runtime {
 
 func probeExecutable(ctx context.Context, runtime Runtime, candidate Candidate) ProbeResult {
 	graphical := graphicalAvailable(runtime, candidate)
-	if !graphical {
-		return ProbeResult{Graphical: false, Reason: "no graphical browser session is available"}
-	}
 	versionCtx, cancel := context.WithTimeout(ctx, VersionProbeTimeout)
 	defer cancel()
 	versionOutput, err := runOutput(versionCtx, candidate.LocalExecutable, "--version")
 	if err != nil {
-		return ProbeResult{Graphical: true, Reason: "browser version probe failed: " + err.Error()}
+		return ProbeResult{Graphical: graphical, Reason: "browser version probe failed: " + err.Error()}
 	}
 	family := parseFamily(versionOutput)
 	if family == "" {
 		family = candidate.Family
 	}
 	if family == "" {
-		return ProbeResult{Graphical: true, Reason: "browser version probe did not identify Chrome, Chromium, or Edge"}
+		return ProbeResult{Graphical: graphical, Reason: "browser version probe did not identify Chrome, Chromium, or Edge"}
 	}
 	version := parseVersion(versionOutput)
 	launchCtx, launchCancel := context.WithTimeout(ctx, LaunchProbeTimeout)
 	defer launchCancel()
 	if err := probeCDPLoopback(launchCtx, candidate); err != nil {
-		return ProbeResult{Graphical: true, Family: family, Version: version, Reason: "browser launch/CDP probe failed: " + err.Error()}
+		return ProbeResult{Graphical: graphical, Family: family, Version: version, Reason: "browser launch/CDP probe failed: " + err.Error()}
 	}
-	return ProbeResult{Usable: true, Graphical: true, Family: family, Version: version}
+	return ProbeResult{Usable: true, Graphical: graphical, Family: family, Version: version}
 }
 
 func probeCDPLoopback(ctx context.Context, candidate Candidate) error {
