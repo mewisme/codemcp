@@ -298,6 +298,110 @@ func TestSDKBridgeModernRequestPropagatesTrustedTunnelSessionToManagedAgentTools
 	}
 }
 
+func TestSDKBridgeModernOpenAISessionPromotesTrustedControllerWithoutMCPSession(t *testing.T) {
+	registry := tools.NewRegistry()
+	type observed struct {
+		controller string
+		session    string
+	}
+	seen := make(chan observed, 1)
+	registry.MustRegister("controller_probe", tools.Schema{Name: "controller_probe"}, func(ctx context.Context, _ map[string]any) (tools.Result, error) {
+		seen <- observed{controller: tools.TrustedControllerID(ctx), session: tools.MCPSessionID(ctx)}
+		return tools.TextResult("ok"), nil
+	})
+	bridge, err := newSDKBridge(&tools.Runtime{Registry: registry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := &sdkmcp.CallToolRequest{Params: &sdkmcp.CallToolParamsRaw{
+		Name:      "controller_probe",
+		Arguments: json.RawMessage(`{}`),
+		Meta: sdkmcp.Meta{
+			sdkmcp.MetaKeyProtocolVersion: localmcp.SupportedProtocolVersion,
+			"openai/session":              "chat-session-a",
+		},
+	}}
+	if _, err := bridge.toolHandler("controller_probe")(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	value := <-seen
+	if value.controller != "openai:chat-session-a" {
+		t.Fatalf("trusted controller = %q", value.controller)
+	}
+	if value.session != "" {
+		t.Fatalf("modern OpenAI session was promoted to MCP authorization identity: %q", value.session)
+	}
+}
+
+func TestSDKBridgeModernOpenAISessionIsolatesFanoutControllerState(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	defer runtime.CompletionHooks.Stop()
+	item, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge, err := newSDKBridge(runtime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(session, prompt string) {
+		t.Helper()
+		arguments, marshalErr := json.Marshal(map[string]any{"workspace_id": item.ID, "prompt": prompt})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		request := &sdkmcp.CallToolRequest{Params: &sdkmcp.CallToolParamsRaw{
+			Name:      "fanout_turn",
+			Arguments: arguments,
+			Meta: sdkmcp.Meta{
+				sdkmcp.MetaKeyProtocolVersion: localmcp.SupportedProtocolVersion,
+				"openai/session":              session,
+			},
+		}}
+		result, callErr := bridge.toolHandler("fanout_turn")(context.Background(), request)
+		if callErr != nil {
+			t.Fatal(callErr)
+		}
+		if result == nil || result.IsError {
+			t.Fatalf("fanout result for %s = %#v", session, result)
+		}
+	}
+	call("chat-session-a", "/fanout aggressive")
+	call("chat-session-b", "continue")
+
+	resultA, err := runtime.Call(tools.WithTrustedControllerID(context.Background(), "openai:chat-session-a"), "fanout_turn", map[string]any{"workspace_id": item.ID, "prompt": "continue", "action": "status"})
+	if err != nil || resultA.IsError {
+		t.Fatalf("session A status err=%v result=%#v", err, resultA)
+	}
+	var fanoutA map[string]any
+	fanoutAData, err := json.Marshal(resultA.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(fanoutAData, &fanoutA); err != nil {
+		t.Fatal(err)
+	}
+	if fanoutA["mode"] != "aggressive" {
+		t.Fatalf("session A mode = %#v", fanoutA["mode"])
+	}
+	resultB, err := runtime.Call(tools.WithTrustedControllerID(context.Background(), "openai:chat-session-b"), "fanout_turn", map[string]any{"workspace_id": item.ID, "prompt": "continue", "action": "status"})
+	if err != nil || resultB.IsError {
+		t.Fatalf("session B status err=%v result=%#v", err, resultB)
+	}
+	var fanoutB map[string]any
+	fanoutBData, err := json.Marshal(resultB.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(fanoutBData, &fanoutB); err != nil {
+		t.Fatal(err)
+	}
+	if fanoutB["mode"] != "auto" {
+		t.Fatalf("session B mode = %#v", fanoutB["mode"])
+	}
+}
+
 func TestSDKBridgeConsumesInternalSessionMetaWithoutLoggingIt(t *testing.T) {
 	registry := tools.NewRegistry()
 	seen := make(chan string, 1)

@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"strings"
 )
 
 type InputRound struct {
@@ -13,6 +14,7 @@ type inputRoundContextKey struct{}
 type approvalRequestContextKey struct{}
 type boundWorkspaceContextKey struct{}
 type backgroundCapabilitiesContextKey struct{}
+type trustedControllerIDContextKey struct{}
 
 type BackgroundCapabilities struct {
 	TaskObservation    bool
@@ -82,4 +84,27 @@ func BackgroundCapabilitiesFromContext(ctx context.Context) BackgroundCapabiliti
 	}
 	value, _ := ctx.Value(backgroundCapabilitiesContextKey{}).(BackgroundCapabilities)
 	return value
+}
+
+// WithTrustedControllerID attaches a transport-promoted controller identity.
+// Ingress adapters must only call this after establishing the identity from
+// trusted transport/session correlation; generic request metadata and tool
+// arguments must never set it directly.
+func WithTrustedControllerID(ctx context.Context, controllerID string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	controllerID = strings.TrimSpace(controllerID)
+	if controllerID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, trustedControllerIDContextKey{}, controllerID)
+}
+
+func TrustedControllerID(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	value, _ := ctx.Value(trustedControllerIDContextKey{}).(string)
+	return strings.TrimSpace(value)
 }

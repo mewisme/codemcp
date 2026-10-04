@@ -192,6 +192,11 @@ func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {
 		sessionID := b.sessionID(ctx, request, !requestContext.Modern())
 		if sessionID != "" {
 			ctx = tools.WithMCPSessionID(ctx, sessionID)
+			ctx = tools.WithTrustedControllerID(ctx, "mcp:"+sessionID)
+		} else if requestContext.Modern() && b.profile.ID() == localmcp.OpenAIProfileID {
+			if openAISession := strings.TrimSpace(tools.RequestCorrelationHintsFromContext(ctx).SessionID); openAISession != "" {
+				ctx = tools.WithTrustedControllerID(ctx, "openai:"+openAISession)
+			}
 		}
 		if requestContext.Modern() {
 			ctx = tools.WithApprovalCorrelation(ctx, b.approvalCallers.Caller("modern:tunnel"), idgen.Must("apr", 8))

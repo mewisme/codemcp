@@ -95,7 +95,7 @@ func TestFanoutToolIsolatesTrustedSessionsAndWorkspaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !missing.IsError || !strings.Contains(missing.Content[0].Text, "trusted MCP session") {
+	if !missing.IsError || !strings.Contains(missing.Content[0].Text, "trusted controller identity") {
 		t.Fatalf("missing-session result=%#v", missing)
 	}
 	spoofed, err := runtime.Call(ctxA, "fanout_turn", map[string]any{"workspace_id": first.ID, "prompt": "continue", "controller_id": "caller-value"})
