@@ -51,7 +51,7 @@ export default defineConfig({
       testMatch: /admin\.spec\.ts/,
       use: {
         baseURL: adminURL,
-        viewport: { width: 390, height: 844 },
+        viewport: { width: 375, height: 844 },
         isMobile: true,
         hasTouch: true,
       },

@@ -160,7 +160,7 @@ export function WorkspaceContextPage() {
 }
 export function WorkspaceRequestsPage() {
   const { workspace } = useWorkspaceContext()
-  return <RequestsPage workspaceID={workspace.id} />
+  return <RequestsPage workspaceID={workspace.id} showHeader={false} />
 }
 export function WorkspaceActivityPage() {
   const { workspace } = useWorkspaceContext()

@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { RouterProvider } from "react-router-dom"
 import { ThemeProvider } from "@/components/theme-provider"
-import { adminDocumentTitle, navItems } from "@/lib/admin-navigation"
+import { adminDocumentTitle, navGroups, navItems } from "@/lib/admin-navigation"
 import { adminToken } from "@/lib/api"
 import { createAdminRouter } from "@/router"
 
@@ -93,6 +93,37 @@ describe("admin app runtime smoke", () => {
     }
   }, 15_000)
 
+  it("renders grouped navigation and keeps the page as the single title authority", async () => {
+    renderAdminApp()
+
+    await waitFor(() =>
+      expect(document.title).toBe(adminDocumentTitle("Overview"))
+    )
+
+    for (const label of ["Operations", "Projects", "Runtime", "Connections"]) {
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0)
+    }
+    expect(navGroups.map((group) => group.id)).toEqual([
+      "overview",
+      "operations",
+      "projects",
+      "runtime",
+      "connections",
+      "settings",
+    ])
+
+    const shell = screen.getByRole("banner", { name: "Admin shell" })
+    expect(shell).toHaveTextContent("CodeMCP Admin")
+    expect(shell).not.toHaveTextContent("Overview")
+    expect(shell).not.toHaveTextContent(
+      "Runtime health and configuration at a glance."
+    )
+    expect(
+      screen.getAllByRole("heading", { level: 1, name: "Overview" })
+    ).toHaveLength(1)
+    expect(screen.getByLabelText("Sign out")).toBeInTheDocument()
+  })
+
   it("loads a deep-linked page and follows popstate navigation", async () => {
     window.history.replaceState({}, "", "/tunnel")
     renderAdminApp()
@@ -176,10 +207,13 @@ describe("admin app runtime smoke", () => {
     await waitFor(() =>
       expect(document.title).toBe(adminDocumentTitle("Workspace Requests"))
     )
+    expect(await screen.findByText("0 pending")).toBeInTheDocument()
     expect(
-      await screen.findByText(
-        "Review control approvals and resolved request history for ws_test."
-      )
+      screen.getAllByRole("button", { name: "Refresh" }).length
+    ).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1)
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Workspace" })
     ).toBeInTheDocument()
   })
 

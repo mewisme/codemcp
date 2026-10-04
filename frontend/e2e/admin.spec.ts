@@ -10,6 +10,42 @@ import {
 } from "./fixtures"
 
 test.describe("Browser Admin interaction quality", () => {
+  test("shell keeps grouped navigation, one page title, and mobile-safe chrome", async ({
+    page,
+  }, testInfo) => {
+    await installAdminMocks(page)
+    await page.goto("/overview")
+
+    if (testInfo.project.name === "admin-mobile") {
+      await page.getByRole("button", { name: "Toggle Sidebar" }).click()
+    }
+
+    for (const label of ["Operations", "Projects", "Runtime", "Connections"]) {
+      await expect(
+        page.locator('[data-sidebar="group-label"]').filter({ hasText: label })
+      ).toBeVisible()
+    }
+    await expect(
+      page.getByRole("button", { name: "Change theme" })
+    ).toBeVisible()
+    await page.getByRole("link", { name: "Tools" }).click()
+    await expect(page).toHaveURL(/\/tools$/)
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Tools" })
+    ).toHaveCount(1)
+    await expect(page.getByLabel("Admin shell")).not.toContainText("Tools")
+    await expectNoViewportOverflow(page)
+
+    if (testInfo.project.name === "admin-mobile") {
+      await expect(page.getByRole("link", { name: "Tools" })).toBeHidden()
+    } else {
+      await expect(page.getByRole("link", { name: "Tools" })).toHaveAttribute(
+        "data-active",
+        "true"
+      )
+    }
+  })
+
   test("logs stay reachable, scrollable, and distinguish view clear from journal deletion", async ({
     page,
   }) => {

@@ -23,6 +23,13 @@ export type NavItem = {
   icon: LucideIcon
   parent?: string
 }
+
+export type NavGroup = {
+  id: string
+  label?: string
+  items: string[]
+}
+
 export type AdminRouteHandle = Pick<NavItem, "title" | "description"> & {
   component?: string
 }
@@ -68,7 +75,8 @@ export const navItems: NavItem[] = [
     id: "llm",
     path: "/llm",
     title: "LLM",
-    description: "Manage inference providers, models, credentials, and readiness.",
+    description:
+      "Manage inference providers, models, credentials, and readiness.",
     icon: BrainCircuit,
   },
   {
@@ -129,3 +137,24 @@ export const navItems: NavItem[] = [
     icon: Settings,
   },
 ]
+
+export const navGroups: NavGroup[] = [
+  { id: "overview", items: ["overview"] },
+  {
+    id: "operations",
+    label: "Operations",
+    items: ["activity", "logs", "completions"],
+  },
+  { id: "projects", label: "Projects", items: ["workspaces", "prompts"] },
+  { id: "runtime", label: "Runtime", items: ["system", "tools", "llm"] },
+  {
+    id: "connections",
+    label: "Connections",
+    items: ["integrations", "upstreams", "tunnel"],
+  },
+  { id: "settings", items: ["settings"] },
+]
+
+export function navItemByID(id: string) {
+  return navItems.find((item) => item.id === id)
+}
