@@ -79,6 +79,17 @@ func TestFanoutToolIsolatesTrustedSessionsAndWorkspaces(t *testing.T) {
 	if value := call(ctxA, first.ID, "continue"); value.Mode != fanout.Aggressive {
 		t.Fatalf("first workspace lost state=%#v", value)
 	}
+	if value := call(ctxA, first.ID, "/fanout off"); value.Active || value.Mode != fanout.Off || value.ActiveInstructions != "" {
+		t.Fatalf("fanout off=%#v", value)
+	}
+	for _, name := range []string{AgentSpawnToolName, AgentListToolName, AgentWaitToolName, AgentSendToolName, AgentCancelToolName} {
+		if _, ok := runtime.Registry.Schema(name); !ok {
+			t.Fatalf("%s disappeared after /fanout off", name)
+		}
+	}
+	if value := call(ctxB, first.ID, "continue"); value.Mode != fanout.Auto || !value.Active {
+		t.Fatalf("fanout off leaked to another session=%#v", value)
+	}
 	missing, err := runtime.Call(context.Background(), "fanout_turn", map[string]any{"workspace_id": first.ID, "prompt": "continue"})
 	if err != nil {
 		t.Fatal(err)

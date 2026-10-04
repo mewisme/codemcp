@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"sync"
+
+	"go.mewis.me/codemcp/internal/instructioncontext"
 )
 
 type Mode string
@@ -117,26 +119,21 @@ func RequestedMode(prompt string, defaultMode Mode) (Mode, bool, error) {
 	} else {
 		defaultMode = Auto
 	}
-	fields := strings.Fields(prompt)
-	var selected Mode
-	found := false
-	for index := 0; index < len(fields); index++ {
-		if fields[index] != "/fanout" {
-			continue
-		}
-		mode := defaultMode
-		if index+1 < len(fields) {
-			if value, ok := NormalizeMode(fields[index+1]); ok {
-				mode = value
-				index++
-			}
-		}
-		if found && selected != mode {
-			return "", false, errors.New("conflicting fanout mode selections")
-		}
-		selected, found = mode, true
+	directive, err := instructioncontext.ResolveSlashDirective(prompt, nil)
+	if err != nil {
+		return "", false, err
 	}
-	return selected, found, nil
+	if directive.Kind == instructioncontext.SlashDirectivePlanMode || directive.FanoutMode == "" {
+		return "", false, nil
+	}
+	if directive.FanoutMode == "default" {
+		return defaultMode, true, nil
+	}
+	mode, ok := NormalizeMode(directive.FanoutMode)
+	if !ok {
+		return "", false, errors.New("invalid fanout mode")
+	}
+	return mode, true, nil
 }
 
 func NormalizeRuntimeMode(value string) (Mode, bool) {

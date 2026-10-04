@@ -237,6 +237,13 @@ func TestResolveSlashDirectiveUsesCanonicalAliasesAndExactSkillNames(t *testing.
 		{name: "rule authoring", prompt: "/rule", want: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
 		{name: "rule core collision", prompt: "/rule", skillNames: []string{"rule"}, want: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
 		{name: "create rule alias", prompt: "/create-rule", want: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
+		{name: "fanout default", prompt: "/fanout", want: SlashDirective{FanoutMode: "default"}},
+		{name: "fanout auto", prompt: "/fanout auto", want: SlashDirective{FanoutMode: "auto"}},
+		{name: "fanout conservative", prompt: "please /fanout conservative now", want: SlashDirective{FanoutMode: "conservative"}},
+		{name: "fanout aggressive", prompt: "/fanout aggressive", want: SlashDirective{FanoutMode: "aggressive"}},
+		{name: "fanout off", prompt: "/fanout off", want: SlashDirective{FanoutMode: "off"}},
+		{name: "fanout core collision", prompt: "/fanout aggressive", skillNames: []string{"fanout"}, want: SlashDirective{FanoutMode: "aggressive"}},
+		{name: "fanout modifies exact skill", prompt: "/release-check /fanout aggressive", skillNames: []string{"release-check"}, want: SlashDirective{Kind: SlashDirectiveSkill, SkillName: "release-check", FanoutMode: "aggressive"}},
 		{name: "exact dynamic skill", prompt: "use /release-check now", skillNames: []string{"release", "release-check"}, want: SlashDirective{Kind: SlashDirectiveSkill, SkillName: "release-check"}},
 		{name: "unknown dynamic skill", prompt: "/release-chec", skillNames: []string{"release-check"}, want: SlashDirective{}},
 		{name: "case sensitive", prompt: "/SKILL", want: SlashDirective{}},
@@ -249,8 +256,11 @@ func TestResolveSlashDirectiveUsesCanonicalAliasesAndExactSkillNames(t *testing.
 		{name: "same dynamic skill repeated", prompt: "/release /release", skillNames: []string{"release"}, want: SlashDirective{Kind: SlashDirectiveSkill, SkillName: "release"}},
 		{name: "conflicting authoring directives", prompt: "/skill /rule", wantErr: ErrAmbiguousSlashDirective},
 		{name: "conflicting dynamic skills", prompt: "/release /review", skillNames: []string{"release", "review"}, wantErr: ErrAmbiguousSlashDirective},
+		{name: "conflicting fanout modes", prompt: "/fanout conservative /fanout aggressive", wantErr: ErrAmbiguousFanoutMode},
 		{name: "unknown token does not create ambiguity", prompt: "/skill /missing", want: SlashDirective{Kind: SlashDirectiveSkillAuthoring, SkillName: "create-skill"}},
 		{name: "plan dominates authoring", prompt: "/skill /plan /rule", want: SlashDirective{Kind: SlashDirectivePlanMode}},
+		{name: "plan dominates fanout", prompt: "/fanout aggressive /plan", want: SlashDirective{Kind: SlashDirectivePlanMode}},
+		{name: "plan dominates conflicting fanout", prompt: "/fanout conservative /fanout aggressive /plan", want: SlashDirective{Kind: SlashDirectivePlanMode}},
 		{name: "plan core collision", prompt: "/plan", skillNames: []string{"plan"}, want: SlashDirective{Kind: SlashDirectivePlanMode}},
 		{name: "plan dominates earlier ambiguity", prompt: "/skill /rule /plan", want: SlashDirective{Kind: SlashDirectivePlanMode}},
 		{name: "create plan dominates dynamic skill", prompt: "/release /create-plan", skillNames: []string{"release"}, want: SlashDirective{Kind: SlashDirectivePlanMode}},
@@ -270,7 +280,7 @@ func TestResolveSlashDirectiveUsesCanonicalAliasesAndExactSkillNames(t *testing.
 }
 
 func TestCoreSlashDirectiveNamesAreCanonicalAndDefensive(t *testing.T) {
-	want := []string{"plan", "create-plan", "skill", "create-skill", "rule", "create-rule"}
+	want := []string{"plan", "create-plan", "skill", "create-skill", "rule", "create-rule", "fanout"}
 	got := CoreSlashDirectiveNames()
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("CoreSlashDirectiveNames() = %#v, want %#v", got, want)
@@ -278,6 +288,37 @@ func TestCoreSlashDirectiveNamesAreCanonicalAndDefensive(t *testing.T) {
 	got[0] = "mutated"
 	if again := CoreSlashDirectiveNames(); again[0] != "plan" {
 		t.Fatalf("CoreSlashDirectiveNames leaked mutable state: %#v", again)
+	}
+}
+
+func TestFanoutDirectiveUsesExactWhitespaceDelimitedGrammar(t *testing.T) {
+	for _, prompt := range []string{
+		"/fanout",
+		"/fanout auto",
+		"prefix /fanout conservative suffix",
+		"prefix\u2003/fanout\u2003aggressive",
+		"/fanout off",
+	} {
+		directive, err := ResolveSlashDirective(prompt, nil)
+		if err != nil || directive.FanoutMode == "" {
+			t.Fatalf("expected Fanout directive for %q: %#v err=%v", prompt, directive, err)
+		}
+	}
+	for _, prompt := range []string{
+		"/FANOUT aggressive",
+		"/fanout, aggressive",
+		"(/fanout) aggressive",
+		"/fanout/aggressive",
+		"//fanout aggressive",
+	} {
+		directive, err := ResolveSlashDirective(prompt, nil)
+		if err != nil || directive.FanoutMode != "" {
+			t.Fatalf("unexpected Fanout directive for %q: %#v err=%v", prompt, directive, err)
+		}
+	}
+	directive, err := ResolveSlashDirective("/fanout AGGRESSIVE", nil)
+	if err != nil || directive.FanoutMode != "default" {
+		t.Fatalf("case-sensitive mode must leave bare Fanout default: %#v err=%v", directive, err)
 	}
 }
 
@@ -425,9 +466,13 @@ func TestAgentDelegationGuidanceBootstrapsFanoutWithoutDuplicatingPolicy(t *test
 	for _, expected := range []string{
 		"fanout_turn",
 		"exact current user prompt",
+		"/fanout",
+		"transient Fanout strategy",
 		"Tool availability alone never requires delegation",
 		"strategy only",
 		"never overrides workspace, security, plan",
+		"Generic MCP Tool calls do not carry the original raw user prompt",
+		"slash interpretation belongs to the host agent",
 	} {
 		if !strings.Contains(workflow, expected) {
 			t.Fatalf("workflow missing Fanout bootstrap %q: %s", expected, workflow)

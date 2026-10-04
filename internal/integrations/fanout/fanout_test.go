@@ -88,6 +88,25 @@ func TestRequestedModeIsDeterministic(t *testing.T) {
 	if _, _, err := RequestedMode("/fanout conservative then /fanout aggressive", Auto); err == nil {
 		t.Fatal("conflicting selections accepted")
 	}
+	if mode, found, err := RequestedMode("/fanout aggressive /plan implement it", Auto); err != nil || found || mode != "" {
+		t.Fatalf("plan did not dominate Fanout: mode=%q found=%t err=%v", mode, found, err)
+	}
+	if mode, found, err := RequestedMode("/fanout AGGRESSIVE", Conservative); err != nil || !found || mode != Conservative {
+		t.Fatalf("invalid explicit case must preserve configured default: mode=%q found=%t err=%v", mode, found, err)
+	}
+}
+
+func TestManagerRestartClearsTransientModeToConfiguredDefault(t *testing.T) {
+	manager := NewManager(true, Conservative)
+	changed, err := manager.Turn("session", "ws", "/fanout aggressive", "turn")
+	if err != nil || changed.Mode != Aggressive {
+		t.Fatalf("changed=%#v err=%v", changed, err)
+	}
+	restarted := NewManager(true, Conservative)
+	value, err := restarted.Turn("session", "ws", "continue", "turn")
+	if err != nil || value.Mode != Conservative {
+		t.Fatalf("restarted=%#v err=%v", value, err)
+	}
 }
 
 func TestInstructionsProjectModeSpecificStrategy(t *testing.T) {

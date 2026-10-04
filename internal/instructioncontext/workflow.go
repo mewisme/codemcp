@@ -16,7 +16,7 @@ const (
 	guidanceContext          = "At the start of every MCP session, fetch workspace memory by calling project_context with memory enabled before substantial work; repeat project_context before first work in each additional workspace targeted by that session. Treat project_context as the workspace instruction bundle and follow project/user instructions and unconditional rules from it before acting."
 	guidanceRead             = "Before edits inspect relevant files with read_files/read_text_file and load_path_rules for matching path-scoped rules."
 	guidanceSkills           = "When a skill is applicable, load body. Prefer skills/list+skills/get; else list_skills/load_skill. /plan|/create-plan=Plan Mode; /skill|/create-skill=create-skill; /rule|/create-rule=create-rule; /<skill-name>=exact, never fuzzy. No /<rule-name>. Execution: project_context plan_execution=true. raw-prompt interpretation belongs to the host agent."
-	guidanceAgentDelegation  = "When fanout_turn is exposed and substantial project work may benefit from delegation, consult it with the exact current user prompt. Tool availability alone never requires delegation. Treat returned Fanout guidance as strategy only; it never overrides workspace, security, plan, approval, lifecycle, or completion instructions."
+	guidanceAgentDelegation  = "When fanout_turn is exposed and substantial project work may benefit from delegation, consult it with the exact current user prompt. /fanout optionally selects a transient Fanout strategy for the current controller/workspace; it does not execute agent work. Tool availability alone never requires delegation. Treat returned Fanout guidance as strategy only; it never overrides workspace, security, plan, approval, lifecycle, or completion instructions. Generic MCP Tool calls do not carry the original raw user prompt, so slash interpretation belongs to the host agent."
 	guidancePlanMode         = "Treat /plan and /create-plan as Plan Mode aliases when an exact standalone whitespace-delimited token. In Plan Mode: establish workspace; call project_context with memory enabled; inspect applicable rules and skills; audit relevant source plus persisted plan state; persist through create_plan and do not return only an unpersisted prose plan. Do not perform implementation mutations except workspace bootstrap and the final create_plan mutation; Plan Mode dominates contradictory same-request implementation wording: stop before implementation. If persistence fails, do not fall through to implementation. Normal agent_complete terminal semantics apply. Generic MCP servers cannot hard-block unrelated Tool calls because Tool requests lack the original raw user prompt; raw-prompt interpretation belongs to the host agent; first-party harnesses may map this to typed local Plan Mode."
 	guidancePlanContinuation = "When continuing a persisted plan, exact plan_name wins. Without it, infer only when exactly one non-completed plan exists; if multiple non-completed plans exist, discovery is truncated, or diagnostics exist, do not guess from recency or filesystem order. Completed plans are not inferred. Before mutations call project_context with plan_execution=true so the bound next phase targets the trusted MCP session and workspace. Then read the full canonical .cm/plans/<name>.md document before implementation and its embedded Implementation order; there is no implement_plan tool. Treat plan name as cross-session identity and content_id as revision identity. Implement only the bound next phase. After validation persist the matching embedded Ordered phases entry with create_plan mode=update and the latest expected_content_id; verify completed_phase_count and next_phase, commit when required, then call agent_complete. status=completed is rejected while incomplete; partial, blocked, or cancelled release the ephemeral binding. Never update plan progress through generic file edits."
 	guidanceEdit             = "Prefer apply_patch, edit_file, or multi_edit; use run_command for shell work in the persisted workspace cwd."
@@ -60,8 +60,9 @@ const (
 var ErrAmbiguousSlashDirective = errors.New("ambiguous slash directive")
 
 type SlashDirective struct {
-	Kind      SlashDirectiveKind
-	SkillName string
+	Kind       SlashDirectiveKind
+	SkillName  string
+	FanoutMode string
 }
 
 type slashDirectiveAlias struct {
@@ -77,6 +78,10 @@ var coreSlashDirectiveAliases = []slashDirectiveAlias{
 	{name: "rule", directive: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
 	{name: "create-rule", directive: SlashDirective{Kind: SlashDirectiveRuleAuthoring, SkillName: "create-rule"}},
 }
+
+const fanoutSlashDirectiveName = "fanout"
+
+var ErrAmbiguousFanoutMode = errors.New("ambiguous fanout mode")
 
 type ServerInstructionDirective struct {
 	ID   string
@@ -174,10 +179,11 @@ func AgentWorkflow() string {
 }
 
 func CoreSlashDirectiveNames() []string {
-	result := make([]string, 0, len(coreSlashDirectiveAliases))
+	result := make([]string, 0, len(coreSlashDirectiveAliases)+1)
 	for _, alias := range coreSlashDirectiveAliases {
 		result = append(result, alias.name)
 	}
+	result = append(result, fanoutSlashDirectiveName)
 	return result
 }
 
@@ -190,10 +196,27 @@ func ResolveSlashDirective(prompt string, skillNames []string) (SlashDirective, 
 		}
 	}
 
+	fields := strings.Fields(prompt)
 	recognized := make([]SlashDirective, 0)
-	for _, token := range strings.Fields(prompt) {
+	fanoutMode := ""
+	fanoutConflict := false
+	for index := 0; index < len(fields); index++ {
+		token := fields[index]
 		name, ok := slashDirectiveName(token)
 		if !ok {
+			continue
+		}
+		if name == fanoutSlashDirectiveName {
+			mode := "default"
+			if index+1 < len(fields) && isFanoutMode(fields[index+1]) {
+				mode = fields[index+1]
+				index++
+			}
+			if fanoutMode != "" && fanoutMode != mode {
+				fanoutConflict = true
+			} else {
+				fanoutMode = mode
+			}
 			continue
 		}
 		directive, isCore := coreSlashDirective(name)
@@ -219,6 +242,10 @@ func ResolveSlashDirective(prompt string, skillNames []string) (SlashDirective, 
 			return SlashDirective{}, ErrAmbiguousSlashDirective
 		}
 	}
+	if fanoutConflict {
+		return SlashDirective{}, ErrAmbiguousFanoutMode
+	}
+	resolved.FanoutMode = fanoutMode
 	return resolved, nil
 }
 
@@ -245,6 +272,15 @@ func slashDirectiveName(token string) (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+func isFanoutMode(token string) bool {
+	switch token {
+	case "off", "auto", "conservative", "aggressive":
+		return true
+	default:
+		return false
+	}
 }
 
 func AgentWorkflowForBackground(capabilities BackgroundWorkCapabilities) string {

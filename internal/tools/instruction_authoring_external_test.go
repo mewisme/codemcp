@@ -246,7 +246,7 @@ func TestInstructionAuthoringToolsRemainWorkspaceBoundAndFailClosed(t *testing.T
 		t.Fatalf("agent authoring reached global rule root: %v", err)
 	}
 
-	for _, reserved := range []string{skills.BuiltinCreateRuleName, skills.BuiltinCreateSkillName, skills.BuiltinCreatePlanName} {
+	for _, reserved := range []string{skills.BuiltinCreateRuleName, skills.BuiltinCreateSkillName, skills.BuiltinCreatePlanName, "fanout"} {
 		result, err = runtime.Call(context.Background(), tools.CreateSkillToolName, map[string]any{
 			"workspace_id": workspaceID,
 			"mode":         "create",
