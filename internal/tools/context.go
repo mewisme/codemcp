@@ -15,12 +15,18 @@ type approvalRequestContextKey struct{}
 type boundWorkspaceContextKey struct{}
 type backgroundCapabilitiesContextKey struct{}
 type trustedControllerIDContextKey struct{}
+type effectiveToolSnapshotContextKey struct{}
 
 type BackgroundCapabilities struct {
 	TaskObservation    bool
 	ServerNotification bool
 	ModelContinuation  bool
 	InFlightSteering   bool
+}
+
+type EffectiveToolSnapshot struct {
+	Profile string
+	Schemas []Schema
 }
 
 func WithInputRound(ctx context.Context, requestState string, inputResponses map[string]any) context.Context {
@@ -124,4 +130,31 @@ func RuntimeStateIdentity(ctx context.Context) string {
 
 func RuntimeStateKey(ctx context.Context) string {
 	return mcpSessionStateKey(RuntimeStateIdentity(ctx))
+}
+
+func WithEffectiveToolSnapshot(ctx context.Context, profile string, schemas []Schema) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	profile = strings.TrimSpace(profile)
+	if profile == "" && schemas == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, effectiveToolSnapshotContextKey{}, EffectiveToolSnapshot{
+		Profile: profile,
+		Schemas: append([]Schema(nil), schemas...),
+	})
+}
+
+func EffectiveToolSnapshotFromContext(ctx context.Context) (EffectiveToolSnapshot, bool) {
+	if ctx == nil {
+		return EffectiveToolSnapshot{}, false
+	}
+	value, ok := ctx.Value(effectiveToolSnapshotContextKey{}).(EffectiveToolSnapshot)
+	if !ok {
+		return EffectiveToolSnapshot{}, false
+	}
+	value.Profile = strings.TrimSpace(value.Profile)
+	value.Schemas = append([]Schema(nil), value.Schemas...)
+	return value, true
 }

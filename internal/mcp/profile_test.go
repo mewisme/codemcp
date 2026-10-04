@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"go.mewis.me/codemcp/internal/projectcontext"
 	"go.mewis.me/codemcp/internal/tools"
 )
 
@@ -24,6 +25,18 @@ func (presentationOnlyProfile) ToolRepresentation(tool ToolDescriptor) ToolRepre
 
 func (presentationOnlyProfile) InstructionPresentation() InstructionPresentation {
 	return InstructionPresentation{Heading: "Profile presentation."}
+}
+
+type filteredToolProfile struct{}
+
+func (filteredToolProfile) ID() ProfileID { return "filtered-test" }
+
+func (filteredToolProfile) ToolRepresentation(tool ToolDescriptor) ToolRepresentation {
+	return ToolRepresentation{Title: tool.Title, Description: tool.Description}
+}
+
+func (filteredToolProfile) IncludeTool(tool ToolDescriptor) bool {
+	return tool.Name != "git_push"
 }
 
 func TestCanonicalDescriptorsSeparateEffectsFromRuntimeSecurityAuthority(t *testing.T) {
@@ -144,6 +157,74 @@ func TestProfileDoesNotAffectToolExecutionContextOrResult(t *testing.T) {
 	customJSON, _ := json.Marshal(customResult)
 	if string(baseJSON) != string(customJSON) {
 		t.Fatalf("profile changed execution result: base=%s custom=%s", baseJSON, customJSON)
+	}
+}
+
+func TestFilteredProfileProjectsSameEffectiveInventoryIntoProjectContext(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	toolRuntime := tools.NewRuntime()
+	defer toolRuntime.CompletionHooks.Stop()
+	item, err := toolRuntime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := filteredToolProfile{}
+	server := NewRuntimeWithProfile(toolRuntime, profile)
+	effective := EffectiveToolSchemas(profile, toolRuntime.List())
+	if len(effective) == len(toolRuntime.List()) {
+		t.Fatal("filtered profile did not remove a tool")
+	}
+	for _, schema := range effective {
+		if schema.Name == "git_push" {
+			t.Fatal("git_push remained in effective schema snapshot")
+		}
+	}
+
+	listed, err := server.Handle(context.Background(), "tools/list", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listedJSON, err := json.Marshal(listed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(listedJSON), `"name":"git_push"`) {
+		t.Fatalf("filtered tools/list advertised git_push: %s", listedJSON)
+	}
+
+	value, err := server.Handle(context.Background(), "tools/call", map[string]any{
+		"name": "project_context",
+		"arguments": map[string]any{
+			"workspace_id": item.ID, "include_git": false, "include_memory": false, "include_skills": false,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, ok := value.(tools.Result)
+	if !ok || result.IsError {
+		t.Fatalf("project_context result=%#v", value)
+	}
+	project, ok := result.StructuredContent.(projectcontext.Result)
+	if !ok {
+		t.Fatalf("project_context structured content=%T", result.StructuredContent)
+	}
+	if project.InstructionContext.ToolProfile.Name != "filtered-test" || project.InstructionContext.ToolProfile.Count != len(effective) {
+		t.Fatalf("profile/count=%#v effective=%d", project.InstructionContext.ToolProfile, len(effective))
+	}
+	capabilities := project.InstructionContext.ToolCapabilities
+	if capabilities == nil || capabilities.TotalTools != len(effective) || capabilities.IncludedTools != len(effective) {
+		t.Fatalf("capability counts=%#v effective=%d", capabilities, len(effective))
+	}
+	for _, group := range capabilities.Groups {
+		for _, name := range group.Tools {
+			if name == "git_push" {
+				t.Fatalf("project_context advertised filtered tool: %#v", capabilities)
+			}
+		}
+	}
+	if _, err := server.Handle(context.Background(), "tools/call", map[string]any{"name": "git_push", "arguments": map[string]any{"workspace_id": item.ID}}); err == nil {
+		t.Fatal("filtered tool remained callable through profile runtime")
 	}
 }
 

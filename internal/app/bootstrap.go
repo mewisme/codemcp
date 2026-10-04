@@ -123,7 +123,7 @@ func (a *App) Bootstrap() error {
 			return
 		}
 		if err := application.BindSystemOperations(a.Operations, application.SystemOperationServices{
-			ProjectContext: application.NewApplicationProjectContextService(a.Tools.Workspaces),
+			ProjectContext: application.NewApplicationProjectContextService(a.Tools.Workspaces, a.Tools),
 			Tools:          application.NewToolInventoryServiceWithRuntime(a.Tools),
 			Prompts: &application.PromptService{
 				Workspaces:          a.Tools.Workspaces,

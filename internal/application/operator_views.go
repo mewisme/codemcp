@@ -8,6 +8,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/capability"
 	"go.mewis.me/codemcp/internal/config"
+	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/projectcontext"
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
@@ -60,14 +61,21 @@ type ProjectContextInput struct {
 	Options     projectcontext.Options
 }
 
-type ProjectContextService struct{ Workspaces *workspace.Manager }
+type ProjectContextService struct {
+	Workspaces *workspace.Manager
+	Runtime    *tools.Runtime
+}
 
 func NewDefaultProjectContextService() *ProjectContextService {
 	return &ProjectContextService{Workspaces: workspace.NewManager(workspace.DefaultStorePath())}
 }
 
-func NewApplicationProjectContextService(workspaces *workspace.Manager) *ProjectContextService {
-	return &ProjectContextService{Workspaces: workspaces}
+func NewApplicationProjectContextService(workspaces *workspace.Manager, runtimes ...*tools.Runtime) *ProjectContextService {
+	service := &ProjectContextService{Workspaces: workspaces}
+	if len(runtimes) > 0 {
+		service.Runtime = runtimes[0]
+	}
+	return service
 }
 
 func (s *ProjectContextService) Read(ctx context.Context, input ProjectContextInput) (Result[projectcontext.Result], error) {
@@ -79,7 +87,13 @@ func (s *ProjectContextService) Read(ctx context.Context, input ProjectContextIn
 		if workspaceID == "" {
 			return projectcontext.Result{}, errors.New("workspace_id is required")
 		}
-		value, err := NewProjectContextService(ctx, s.Workspaces).Build(ctx, workspaceID, input.Options)
+		service := NewProjectContextService(ctx, s.Workspaces)
+		if s.Runtime != nil {
+			service.ToolInventory = func(context.Context) instructioncontext.ToolInventory {
+				return tools.InstructionToolInventory(tools.EffectiveToolSnapshot{Profile: "full", Schemas: s.Runtime.ListTools()})
+			}
+		}
+		value, err := service.Build(ctx, workspaceID, input.Options)
 		if errors.Is(err, projectcontext.ErrPlanNotFound) {
 			return projectcontext.Result{}, operationError(capability.ProjectContextRead, ErrorNotFound, err)
 		}

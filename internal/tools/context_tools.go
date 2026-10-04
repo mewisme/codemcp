@@ -129,8 +129,12 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 	contextService := projectcontext.NewService(projectcontext.ServiceOptions{
 		Workspaces:  workspaces,
 		MemoryStore: &memoryStore,
-		ToolProfile: func() instructioncontext.ToolProfile {
-			return instructioncontext.ToolProfile{Name: "full", Count: len(registry.ListSchemas())}
+		ToolInventory: func(ctx context.Context) instructioncontext.ToolInventory {
+			snapshot, ok := EffectiveToolSnapshotFromContext(ctx)
+			if !ok {
+				snapshot = EffectiveToolSnapshot{Profile: "full", Schemas: registry.ListSchemas()}
+			}
+			return InstructionToolInventory(snapshot)
 		},
 		Environment:                    environment,
 		IntegrationProjectionProviders: append([]projectcontext.IntegrationProjectionProvider(nil), providers.Projections...),
@@ -486,6 +490,26 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 		}
 		return JSONResult(PathRulesResult{Path: target, Rules: values, Count: len(values)}), nil
 	})
+}
+
+func InstructionToolInventory(snapshot EffectiveToolSnapshot) instructioncontext.ToolInventory {
+	profile := strings.TrimSpace(snapshot.Profile)
+	if profile == "" {
+		profile = "full"
+	}
+	index := GroupCapabilities(snapshot.Schemas)
+	groups := make([]instructioncontext.ToolCapabilityGroup, len(index.Groups))
+	for position, group := range index.Groups {
+		groups[position] = instructioncontext.ToolCapabilityGroup{
+			Domain: group.Domain, Tools: append([]string(nil), group.Tools...), Truncated: group.Truncated,
+		}
+	}
+	return instructioncontext.ToolInventory{
+		Profile: instructioncontext.ToolProfile{Name: profile, Count: index.TotalTools},
+		Capabilities: &instructioncontext.ToolCapabilities{
+			Groups: groups, TotalTools: index.TotalTools, IncludedTools: index.IncludedTools, Truncated: index.Truncated,
+		},
+	}
 }
 
 func projectBackgroundCapabilities(ctx context.Context) instructioncontext.BackgroundWorkCapabilities {

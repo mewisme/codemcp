@@ -21,6 +21,7 @@ type BuildOptions struct {
 	MemoryStore             memory.Store
 	Memory                  MemoryLoadOptions
 	ToolProfile             ToolProfile
+	ToolCapabilities        *ToolCapabilities
 	BackgroundWork          BackgroundWorkCapabilities
 	MaxInstructionBytes     int
 	MemoryQuery             string
@@ -114,11 +115,24 @@ func Build(ctx context.Context, opts BuildOptions) (InstructionContext, error) {
 		Rules: unconditionalRules, Skills: skillSummaries,
 		IntegrationInstructions: append([]IntegrationInstruction(nil), opts.IntegrationInstructions...),
 		IntegrationDiagnostics:  append([]IntegrationDiagnostic(nil), opts.IntegrationDiagnostics...),
-		Sources:                 sources, ToolProfile: opts.ToolProfile,
+		Sources:                 sources, ToolProfile: opts.ToolProfile, ToolCapabilities: cloneToolCapabilities(opts.ToolCapabilities),
 		AgentWorkflow: AgentWorkflowForBackground(opts.BackgroundWork), LoadedAt: loadedAt,
 	}
 	if err := ApplyFormattedInstructionsLimit(&value, opts.MaxInstructionBytes); err != nil {
 		return InstructionContext{}, err
 	}
 	return value, nil
+}
+
+func cloneToolCapabilities(value *ToolCapabilities) *ToolCapabilities {
+	if value == nil {
+		return nil
+	}
+	result := *value
+	result.Groups = make([]ToolCapabilityGroup, len(value.Groups))
+	for index, group := range value.Groups {
+		result.Groups[index] = group
+		result.Groups[index].Tools = append([]string(nil), group.Tools...)
+	}
+	return &result
 }

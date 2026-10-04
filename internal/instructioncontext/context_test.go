@@ -29,6 +29,31 @@ func TestInstructionContextJSONContract(t *testing.T) {
 			t.Fatalf("missing JSON field %q: %s", key, data)
 		}
 	}
+	if _, ok := object["tool_capabilities"]; ok {
+		t.Fatalf("detached context fabricated tool capabilities: %s", data)
+	}
+}
+
+func TestInstructionContextJSONIncludesAdditiveToolCapabilities(t *testing.T) {
+	value := InstructionContext{
+		ToolProfile: ToolProfile{Name: "openai", Count: 2},
+		ToolCapabilities: &ToolCapabilities{
+			Groups:     []ToolCapabilityGroup{{Domain: "git", Tools: []string{"git_log", "git_push"}}},
+			TotalTools: 2, IncludedTools: 2,
+		},
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var object map[string]any
+	if err := json.Unmarshal(data, &object); err != nil {
+		t.Fatal(err)
+	}
+	capabilities, ok := object["tool_capabilities"].(map[string]any)
+	if !ok || capabilities["total_tools"] != float64(2) || capabilities["included_tools"] != float64(2) {
+		t.Fatalf("tool capabilities JSON=%s", data)
+	}
 }
 
 func TestSectionKinds(t *testing.T) {

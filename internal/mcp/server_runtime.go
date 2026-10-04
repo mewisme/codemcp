@@ -56,7 +56,7 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 		}
 		return BuildDiscoverResultWithFeatures(r.Profile, features), nil
 	case "tools/list":
-		descriptors := DescribeProtocol(r.Tools.List(), r.AuthRequirements...).Tools
+		descriptors := DescribeProtocol(EffectiveToolSchemas(r.Profile, r.Tools.List()), r.AuthRequirements...).Tools
 		projected, err := ProjectTools(r.Profile, descriptors, ToolProjectionOptions{})
 		if err != nil {
 			return nil, err
@@ -64,6 +64,17 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 		return cacheableCompleteResult(map[string]any{"tools": projected}), nil
 	case "tools/call":
 		name, _ := params["name"].(string)
+		effectiveSchemas := EffectiveToolSchemas(r.Profile, r.Tools.List())
+		visible := false
+		for _, schema := range effectiveSchemas {
+			if schema.Name == name {
+				visible = true
+				break
+			}
+		}
+		if !visible {
+			return nil, ProtocolError(tools.ErrToolNotFound)
+		}
 		args, _ := params["arguments"].(map[string]any)
 		meta, _ := params["_meta"].(map[string]any)
 		ctx = withProfileRequestMetadata(ctx, r.Profile, meta)
@@ -75,6 +86,7 @@ func (r *Runtime) Handle(ctx context.Context, method string, params map[string]a
 			}
 		}
 		ctx = WithRequestBackgroundCapabilities(ctx, r.Profile, requestContext)
+		ctx = tools.WithEffectiveToolSnapshot(ctx, ToolProfileName(r.Profile), effectiveSchemas)
 		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		ctx = tools.WithCallSource(ctx, "http")
 		ctx = tools.WithCallDetails(ctx, "tools/call", params)

@@ -81,6 +81,24 @@ type ToolProfile struct {
 	Count int    `json:"count"`
 }
 
+type ToolCapabilityGroup struct {
+	Domain    string   `json:"domain"`
+	Tools     []string `json:"tools"`
+	Truncated bool     `json:"truncated,omitempty"`
+}
+
+type ToolCapabilities struct {
+	Groups        []ToolCapabilityGroup `json:"groups"`
+	TotalTools    int                   `json:"total_tools"`
+	IncludedTools int                   `json:"included_tools"`
+	Truncated     bool                  `json:"truncated,omitempty"`
+}
+
+type ToolInventory struct {
+	Profile      ToolProfile
+	Capabilities *ToolCapabilities
+}
+
 type SourceSnapshot struct {
 	Provider string   `json:"provider"`
 	Kind     string   `json:"kind"`
@@ -127,6 +145,7 @@ type InstructionContext struct {
 	IntegrationDiagnostics  []IntegrationDiagnostic  `json:"integration_diagnostics,omitempty"`
 	Sources                 []SourceSnapshot         `json:"sources"`
 	ToolProfile             ToolProfile              `json:"tool_profile"`
+	ToolCapabilities        *ToolCapabilities        `json:"tool_capabilities,omitempty"`
 	AgentWorkflow           string                   `json:"agent_workflow"`
 	InstructionsText        string                   `json:"instructions_text"`
 	InstructionBytes        int                      `json:"instruction_bytes"`

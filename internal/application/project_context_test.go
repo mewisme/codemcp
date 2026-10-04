@@ -10,6 +10,7 @@ import (
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/projectcontext"
+	"go.mewis.me/codemcp/internal/tools"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -34,6 +35,28 @@ func TestApplicationProjectContextMapsExactPlanMissToNotFound(t *testing.T) {
 	var operationErr *OperationError
 	if !errors.As(err, &operationErr) || operationErr.Operation != "project.context.read" {
 		t.Fatalf("project context operation error=%#v", operationErr)
+	}
+}
+
+func TestApplicationProjectContextUsesLiveRuntimeInventoryWhenAvailable(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := tools.NewRuntime()
+	defer runtime.CompletionHooks.Stop()
+	item, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewApplicationProjectContextService(runtime.Workspaces, runtime)
+	result, err := service.Read(t.Context(), ProjectContextInput{
+		WorkspaceID: item.ID,
+		Options:     projectcontext.Options{IncludeGit: false, IncludeMemory: false, IncludeSkills: false},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	context := result.Value.InstructionContext
+	if context.ToolCapabilities == nil || context.ToolProfile.Count != len(runtime.ListTools()) || context.ToolCapabilities.TotalTools != len(runtime.ListTools()) {
+		t.Fatalf("runtime inventory=%#v/%#v tools=%d", context.ToolProfile, context.ToolCapabilities, len(runtime.ListTools()))
 	}
 }
 

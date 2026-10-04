@@ -10,6 +10,7 @@ import (
 
 	"go.mewis.me/codemcp/internal/checkpoint"
 	"go.mewis.me/codemcp/internal/controlguard"
+	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/integrations/semantic"
 	"go.mewis.me/codemcp/internal/projectcontext"
@@ -182,6 +183,72 @@ func TestProjectContextUsesInjectedEnvironment(t *testing.T) {
 	if !project.InstructionContext.Environment.Admin.Enabled || project.InstructionContext.Environment.Admin.URL != "http://127.0.0.1:37422/" {
 		t.Fatalf("admin environment=%#v", project.InstructionContext.Environment.Admin)
 	}
+}
+
+func TestProjectContextCapabilityInventoryTracksLiveRegistry(t *testing.T) {
+	runtime, workspaceID, _, _ := newContextToolRuntime(t)
+	build := func(ctx context.Context) ProjectContextResult {
+		t.Helper()
+		result, err := runtime.Call(ctx, "project_context", map[string]any{"workspace_id": workspaceID, "include_git": false, "include_memory": false, "include_skills": false})
+		if err != nil || result.IsError {
+			t.Fatalf("project_context=%#v err=%v", result, err)
+		}
+		return result.StructuredContent.(ProjectContextResult)
+	}
+	initial := build(context.Background())
+	if initial.InstructionContext.ToolCapabilities == nil || initial.InstructionContext.ToolProfile.Count != initial.InstructionContext.ToolCapabilities.TotalTools {
+		t.Fatalf("initial inventory=%#v/%#v", initial.InstructionContext.ToolProfile, initial.InstructionContext.ToolCapabilities)
+	}
+
+	const dynamicTool = "live_dynamic_probe"
+	if err := runtime.Registry.ReplaceOwned("upstream:test", map[string]Entry{
+		dynamicTool: {
+			Schema:  Schema{Name: dynamicTool, InputSchema: json.RawMessage(`{"type":"object"}`), Capability: toolCapability(CapabilityDomainUpstream)},
+			Handler: func(context.Context, map[string]any) (Result, error) { return TextResult("ok"), nil },
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	withDynamic := build(context.Background())
+	if withDynamic.InstructionContext.ToolProfile.Count != initial.InstructionContext.ToolProfile.Count+1 || !instructionCapabilityContains(withDynamic.InstructionContext.ToolCapabilities, CapabilityDomainUpstream, dynamicTool) {
+		t.Fatalf("dynamic inventory=%#v/%#v", withDynamic.InstructionContext.ToolProfile, withDynamic.InstructionContext.ToolCapabilities)
+	}
+
+	if err := runtime.Registry.ReplaceOwned("upstream:test", map[string]Entry{}); err != nil {
+		t.Fatal(err)
+	}
+	afterRemoval := build(context.Background())
+	if afterRemoval.InstructionContext.ToolProfile.Count != initial.InstructionContext.ToolProfile.Count || instructionCapabilityContains(afterRemoval.InstructionContext.ToolCapabilities, CapabilityDomainUpstream, dynamicTool) {
+		t.Fatalf("removed dynamic tool remained in inventory=%#v/%#v", afterRemoval.InstructionContext.ToolProfile, afterRemoval.InstructionContext.ToolCapabilities)
+	}
+
+	filteredSchemas := []Schema{}
+	for _, schema := range runtime.Registry.ListSchemas() {
+		if schema.Name == "workspace_status" || schema.Name == "project_context" {
+			filteredSchemas = append(filteredSchemas, schema)
+		}
+	}
+	filtered := build(WithEffectiveToolSnapshot(context.Background(), "filtered-test", filteredSchemas))
+	if filtered.InstructionContext.ToolProfile.Name != "filtered-test" || filtered.InstructionContext.ToolProfile.Count != 2 || filtered.InstructionContext.ToolCapabilities.TotalTools != 2 {
+		t.Fatalf("filtered inventory=%#v/%#v", filtered.InstructionContext.ToolProfile, filtered.InstructionContext.ToolCapabilities)
+	}
+}
+
+func instructionCapabilityContains(capabilities *instructioncontext.ToolCapabilities, domain, name string) bool {
+	if capabilities == nil {
+		return false
+	}
+	for _, group := range capabilities.Groups {
+		if group.Domain != domain {
+			continue
+		}
+		for _, tool := range group.Tools {
+			if tool == name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestContextToolsIgnoreLegacyGlobalPolicyAndLoadCanonicalUserSources(t *testing.T) {

@@ -17,12 +17,17 @@ type ProfileID string
 
 const BaseProfileID ProfileID = "base"
 
-// Profile controls presentation-only wire representation. Operation identity,
-// schemas, effects, auth requirements and approval authority are composed by
-// the core projector and cannot be overridden by a profile.
+// Profile controls wire presentation and may optionally filter which canonical
+// tools are exposed. Operation identity, schemas, effects, auth requirements
+// and approval authority are composed by the core projector and cannot be
+// rewritten by a profile.
 type Profile interface {
 	ID() ProfileID
 	ToolRepresentation(ToolDescriptor) ToolRepresentation
+}
+
+type ToolVisibilityProfile interface {
+	IncludeTool(ToolDescriptor) bool
 }
 
 type ToolRepresentation struct {
@@ -162,6 +167,9 @@ func projectSecuritySchemes(requirements []AuthRequirement) []map[string]any {
 func ProjectTools(profile Profile, descriptors []ToolDescriptor, options ToolProjectionOptions) ([]ProjectedTool, error) {
 	result := make([]ProjectedTool, 0, len(descriptors))
 	for _, descriptor := range descriptors {
+		if !ProfileIncludesTool(profile, descriptor) {
+			continue
+		}
 		projected, err := ProjectTool(profile, descriptor, options)
 		if err != nil {
 			return nil, err
@@ -169,6 +177,34 @@ func ProjectTools(profile Profile, descriptors []ToolDescriptor, options ToolPro
 		result = append(result, projected)
 	}
 	return result, nil
+}
+
+func ProfileIncludesTool(profile Profile, descriptor ToolDescriptor) bool {
+	if profile == nil {
+		profile = BaseProfile()
+	}
+	filter, ok := profile.(ToolVisibilityProfile)
+	return !ok || filter.IncludeTool(descriptor)
+}
+
+func EffectiveToolSchemas(profile Profile, schemas []tools.Schema) []tools.Schema {
+	result := make([]tools.Schema, 0, len(schemas))
+	for _, schema := range schemas {
+		if ProfileIncludesTool(profile, DescribeTool(schema)) {
+			result = append(result, schema)
+		}
+	}
+	return result
+}
+
+func ToolProfileName(profile Profile) string {
+	if profile == nil || profile.ID() == BaseProfileID {
+		return "full"
+	}
+	if value := strings.TrimSpace(string(profile.ID())); value != "" {
+		return value
+	}
+	return "full"
 }
 
 func ProjectSDKTool(profile Profile, descriptor ToolDescriptor, options ToolProjectionOptions) (*sdkmcp.Tool, error) {

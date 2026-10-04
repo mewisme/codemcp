@@ -105,6 +105,7 @@ type Service struct {
 	Workspaces                     *workspace.Manager
 	MemoryStore                    memory.Store
 	ToolProfile                    func() instructioncontext.ToolProfile
+	ToolInventory                  func(context.Context) instructioncontext.ToolInventory
 	Environment                    func() (bool, int)
 	IntegrationProviders           []IntegrationInstructionProvider
 	IntegrationProjectionProviders []IntegrationProjectionProvider
@@ -124,6 +125,7 @@ type ServiceOptions struct {
 	Workspaces                     *workspace.Manager
 	MemoryStore                    *memory.Store
 	ToolProfile                    func() instructioncontext.ToolProfile
+	ToolInventory                  func(context.Context) instructioncontext.ToolInventory
 	Environment                    func() (bool, int)
 	IntegrationProviders           []IntegrationInstructionProvider
 	IntegrationProjectionProviders []IntegrationProjectionProvider
@@ -134,6 +136,7 @@ func NewService(options ServiceOptions) *Service {
 	service := &Service{
 		Workspaces:                     options.Workspaces,
 		ToolProfile:                    options.ToolProfile,
+		ToolInventory:                  options.ToolInventory,
 		Environment:                    options.Environment,
 		IntegrationProviders:           append([]IntegrationInstructionProvider(nil), options.IntegrationProviders...),
 		IntegrationProjectionProviders: append([]IntegrationProjectionProvider(nil), options.IntegrationProjectionProviders...),
@@ -182,7 +185,12 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 		return Result{}, err
 	}
 	profile := instructioncontext.ToolProfile{}
-	if s.ToolProfile != nil {
+	var toolCapabilities *instructioncontext.ToolCapabilities
+	if s.ToolInventory != nil {
+		inventory := s.ToolInventory(ctx)
+		profile = inventory.Profile
+		toolCapabilities = inventory.Capabilities
+	} else if s.ToolProfile != nil {
 		profile = s.ToolProfile()
 	}
 	adminEnabled, adminPort := opts.AdminEnabled, opts.AdminPort
@@ -250,7 +258,7 @@ func (s *Service) Build(ctx context.Context, workspaceID string, opts Options) (
 	value, err := instructioncontext.Build(ctx, instructioncontext.BuildOptions{
 		Root: root, WorkspaceID: item.ID, WorkspaceRoot: item.Path, CWD: item.Path, WorkspaceRoots: roots, MemoryStore: s.MemoryStore,
 		Memory:      instructioncontext.MemoryLoadOptions{ImportMaxDepth: instructioncontext.DefaultImportMaxDepth, MaxBytesPerSection: opts.MaxSectionBytes, MaxLinesPerSection: opts.MaxLinesPerSection},
-		ToolProfile: profile, MaxInstructionBytes: opts.MaxInstructionBytes,
+		ToolProfile: profile, ToolCapabilities: toolCapabilities, MaxInstructionBytes: opts.MaxInstructionBytes,
 		BackgroundWork: opts.BackgroundWork,
 		MemoryQuery:    opts.MemoryQuery, MaxMemoryEntries: opts.MaxMemoryEntries, MaxMemoryBytes: opts.MaxMemoryBytes,
 		SkipGit: !opts.IncludeGit, SkipMemory: !opts.IncludeMemory, SkipSkills: !opts.IncludeSkills,

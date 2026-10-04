@@ -25,6 +25,7 @@ type SDKServer struct {
 	Tasks                 *TaskRegistry
 	FeatureRegistry       *FeatureRegistry
 	Features              *FeatureExecutor
+	EffectiveSchemas      []tools.Schema
 	resourceSubscriptions *sdkResourceSubscriptionTracker
 	resourceProjection    *sdkResourceProjectionState
 	resourceListSub       *ResourceListChangeSubscription
@@ -96,8 +97,9 @@ func NewSDKServerWithProfileAuth(toolRuntime *tools.Runtime, source, sessionID, 
 			return nil, err
 		}
 	}
-	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements), Tasks: tasks, FeatureRegistry: features, Features: featureExecutor, resourceSubscriptions: resourceSubscriptions, resourceProjection: resourceProjection, resourceListSub: resourceListSub}
-	for _, schema := range toolRuntime.List() {
+	effectiveSchemas := EffectiveToolSchemas(profile, toolRuntime.List())
+	adapter := &SDKServer{Server: server, Tools: toolRuntime, Source: source, SessionID: sessionID, BoundWorkspace: boundWorkspace, ApprovalCallers: callers, ModernCallerID: callers.Caller("modern:" + source), Profile: profile, AuthRequirements: cloneAuthRequirements(authRequirements), Tasks: tasks, FeatureRegistry: features, Features: featureExecutor, EffectiveSchemas: append([]tools.Schema(nil), effectiveSchemas...), resourceSubscriptions: resourceSubscriptions, resourceProjection: resourceProjection, resourceListSub: resourceListSub}
+	for _, schema := range effectiveSchemas {
 		if err := adapter.addTool(schema); err != nil {
 			features.UnsubscribeResourceListChanges(resourceListSub)
 			return nil, err
@@ -132,6 +134,7 @@ func (s *SDKServer) addTool(schema tools.Schema) error {
 		requestContext := RequestContextFromSDK(request)
 		ctx = WithRequestContext(ctx, requestContext)
 		ctx = WithRequestBackgroundCapabilities(ctx, s.Profile, requestContext)
+		ctx = tools.WithEffectiveToolSnapshot(ctx, ToolProfileName(s.Profile), s.EffectiveSchemas)
 		if request != nil && request.Params != nil {
 			ctx = withProfileRequestMetadata(ctx, s.Profile, map[string]any(request.Params.Meta))
 		}

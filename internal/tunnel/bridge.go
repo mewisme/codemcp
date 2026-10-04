@@ -29,6 +29,7 @@ type sdkBridge struct {
 	featureRegistry  *localmcp.FeatureRegistry
 	mu               sync.Mutex
 	fingerprints     map[string]string
+	exposedSchemas   map[string]tools.Schema
 	sessionNamespace uint64
 	sessionIDs       map[*sdkmcp.ServerSession]string
 	nextSession      uint64
@@ -72,7 +73,7 @@ func newSDKBridgeWithProfile(runtime *tools.Runtime, profile localmcp.Profile) (
 			return nil, err
 		}
 	}
-	bridge := &sdkBridge{runtime: runtime, server: server, profile: profile, tasks: tasks, features: features, featureRegistry: featureRegistry, fingerprints: map[string]string{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
+	bridge := &sdkBridge{runtime: runtime, server: server, profile: profile, tasks: tasks, features: features, featureRegistry: featureRegistry, fingerprints: map[string]string{}, exposedSchemas: map[string]tools.Schema{}, sessionNamespace: sdkBridgeNamespace.Add(1), sessionIDs: map[*sdkmcp.ServerSession]string{}, approvalCallers: approval.NewCallerRegistry()}
 	if err := bridge.syncTools(); err != nil {
 		return nil, err
 	}
@@ -115,9 +116,10 @@ func (b *sdkBridge) syncTools() error {
 	type preparedTool struct {
 		tool        *sdkmcp.Tool
 		fingerprint string
+		schema      tools.Schema
 	}
 	prepared := map[string]preparedTool{}
-	for _, schema := range b.runtime.List() {
+	for _, schema := range localmcp.EffectiveToolSchemas(b.profile, b.runtime.List()) {
 		descriptor := localmcp.DescribeTool(schema)
 		tool, err := localmcp.ProjectSDKTool(b.profile, descriptor, localmcp.ToolProjectionOptions{})
 		if err != nil {
@@ -127,7 +129,7 @@ func (b *sdkBridge) syncTools() error {
 		if err != nil {
 			return fmt.Errorf("fingerprint tool %q: %w", schema.Name, err)
 		}
-		prepared[schema.Name] = preparedTool{tool: tool, fingerprint: string(data)}
+		prepared[schema.Name] = preparedTool{tool: tool, fingerprint: string(data), schema: schema}
 	}
 
 	var removed []string
@@ -157,11 +159,29 @@ func (b *sdkBridge) syncTools() error {
 	}
 
 	next := make(map[string]string, len(prepared))
+	nextSchemas := make(map[string]tools.Schema, len(prepared))
 	for name, item := range prepared {
 		next[name] = item.fingerprint
+		nextSchemas[name] = item.schema
 	}
 	b.fingerprints = next
+	b.exposedSchemas = nextSchemas
 	return nil
+}
+
+func (b *sdkBridge) effectiveSchemas() []tools.Schema {
+	b.mu.Lock()
+	names := make([]string, 0, len(b.exposedSchemas))
+	for name := range b.exposedSchemas {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	result := make([]tools.Schema, 0, len(names))
+	for _, name := range names {
+		result = append(result, b.exposedSchemas[name])
+	}
+	b.mu.Unlock()
+	return result
 }
 
 func addSDKTool(server *sdkmcp.Server, tool *sdkmcp.Tool, handler sdkmcp.ToolHandler) (err error) {
@@ -186,6 +206,7 @@ func (b *sdkBridge) toolHandler(name string) sdkmcp.ToolHandler {
 		requestContext := localmcp.RequestContextFromSDK(request)
 		ctx = localmcp.WithRequestContext(ctx, requestContext)
 		ctx = localmcp.WithRequestBackgroundCapabilities(ctx, b.profile, requestContext)
+		ctx = tools.WithEffectiveToolSnapshot(ctx, localmcp.ToolProfileName(b.profile), b.effectiveSchemas())
 		ctx = localmcp.WithProfileRequestMetadata(ctx, b.profile, map[string]any(request.Params.Meta))
 		ctx = tools.WithInputRound(ctx, requestContext.RequestState, requestContext.InputResponses)
 		ctx = tools.WithCallSource(ctx, "tunnel")

@@ -101,6 +101,67 @@ func TestDefaultOptionsMatchInstructionContextDefaults(t *testing.T) {
 	}
 }
 
+func TestServiceBuildProjectsInventoryAndPreservesDetachedFallback(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	root := t.TempDir()
+	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
+	item, err := manager.Register(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(ServiceOptions{
+		Workspaces: manager,
+		ToolInventory: func(context.Context) instructioncontext.ToolInventory {
+			return instructioncontext.ToolInventory{
+				Profile: instructioncontext.ToolProfile{Name: "filtered-test", Count: 2},
+				Capabilities: &instructioncontext.ToolCapabilities{
+					Groups:     []instructioncontext.ToolCapabilityGroup{{Domain: "git", Tools: []string{"git_log", "git_push"}}},
+					TotalTools: 2, IncludedTools: 2,
+				},
+			}
+		},
+	})
+	result, err := service.Build(context.Background(), item.ID, Options{IncludeGit: false, IncludeMemory: false, IncludeSkills: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.InstructionContext.ToolProfile.Name != "filtered-test" || result.InstructionContext.ToolProfile.Count != 2 {
+		t.Fatalf("tool profile=%#v", result.InstructionContext.ToolProfile)
+	}
+	capabilities := result.InstructionContext.ToolCapabilities
+	if capabilities == nil || capabilities.TotalTools != 2 || capabilities.IncludedTools != 2 || len(capabilities.Groups) != 1 || capabilities.Groups[0].Tools[1] != "git_push" {
+		t.Fatalf("tool capabilities=%#v", capabilities)
+	}
+
+	empty := NewService(ServiceOptions{
+		Workspaces: manager,
+		ToolInventory: func(context.Context) instructioncontext.ToolInventory {
+			return instructioncontext.ToolInventory{
+				Profile:      instructioncontext.ToolProfile{Name: "empty", Count: 0},
+				Capabilities: &instructioncontext.ToolCapabilities{Groups: []instructioncontext.ToolCapabilityGroup{}},
+			}
+		},
+	})
+	emptyResult, err := empty.Build(context.Background(), item.ID, Options{IncludeGit: false, IncludeMemory: false, IncludeSkills: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if emptyResult.InstructionContext.ToolProfile.Count != 0 || emptyResult.InstructionContext.ToolCapabilities == nil || len(emptyResult.InstructionContext.ToolCapabilities.Groups) != 0 {
+		t.Fatalf("empty inventory=%#v/%#v", emptyResult.InstructionContext.ToolProfile, emptyResult.InstructionContext.ToolCapabilities)
+	}
+
+	fallback := New(manager, func() instructioncontext.ToolProfile {
+		return instructioncontext.ToolProfile{Name: "full", Count: 77}
+	})
+	fallbackResult, err := fallback.Build(context.Background(), item.ID, Options{IncludeGit: false, IncludeMemory: false, IncludeSkills: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fallbackResult.InstructionContext.ToolProfile.Count != 77 || fallbackResult.InstructionContext.ToolCapabilities != nil {
+		t.Fatalf("detached fallback fabricated inventory=%#v/%#v", fallbackResult.InstructionContext.ToolProfile, fallbackResult.InstructionContext.ToolCapabilities)
+	}
+}
+
 func TestServiceIncludesIntegrationInstructionsInProviderOrder(t *testing.T) {
 	root := t.TempDir()
 	manager := workspace.NewManager(filepath.Join(t.TempDir(), "workspaces.json"))
