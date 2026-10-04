@@ -269,6 +269,9 @@ func TestDriverFailsClosedOnExplicitEffortMismatch(t *testing.T) {
 	if !IsDriverErrorCode(err, ErrorEffortMismatch) {
 		t.Fatalf("error=%v", err)
 	}
+	if !strings.Contains(err.Error(), "requested effort is locked") {
+		t.Fatalf("effort failure lost actionable detail: %v", err)
+	}
 }
 
 func TestDriverFailsClosedOnConnectorMismatch(t *testing.T) {
@@ -522,6 +525,32 @@ func TestDriverExpressionsNeverSendConversationBackendRequests(t *testing.T) {
 			if strings.Contains(lower, forbidden) {
 				t.Fatalf("driver expression calls undocumented conversation backend %q", forbidden)
 			}
+		}
+	}
+}
+
+func TestConfigureControlsExpressionUsesSemanticSliderInteraction(t *testing.T) {
+	expression := configureControlsExpression("", 2, "High")
+	for _, required := range []string{
+		"aria-valuetext",
+		"aria-valuenow",
+		"HTMLInputElement.prototype",
+		"new KeyboardEvent('keydown'",
+		"await sliderState()",
+		"slider stayed at ",
+		"finally",
+	} {
+		if !strings.Contains(expression, required) {
+			t.Fatalf("semantic effort slider expression missing %q", required)
+		}
+	}
+	for _, forbidden := range []string{
+		"const ticks=[...containers[0].querySelectorAll('[data-selected]')]",
+		"const target=min+requestedEffortIndex",
+		"tick.click();await sleep(150);const current=Number(slider.getAttribute('aria-valuenow'))",
+	} {
+		if strings.Contains(expression, forbidden) {
+			t.Fatalf("effort slider expression retained brittle interaction %q", forbidden)
 		}
 	}
 }

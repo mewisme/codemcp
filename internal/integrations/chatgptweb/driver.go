@@ -239,7 +239,7 @@ func (driver *Driver) runTurn(ctx context.Context, request TurnRequest, prompt s
 		if strings.TrimSpace(request.Model) == "" || strings.Contains(controlDetail, "effort") || strings.Contains(controlDetail, "slider") {
 			code = ErrorEffortMismatch
 		}
-		return TurnResult{}, driverError(code, "model controls", "explicit model/reasoning selection could not be selected and verified", controlErr)
+		return TurnResult{}, driverError(code, "model controls", "explicit model/reasoning selection could not be selected and verified: "+controlErr.Error(), controlErr)
 	}
 	if strings.TrimSpace(request.Model) != "" && !controls.ModelVerified {
 		return TurnResult{}, driverError(ErrorModelMismatch, "model controls", "requested model was not verified", nil)
