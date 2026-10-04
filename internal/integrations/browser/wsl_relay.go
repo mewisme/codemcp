@@ -2,11 +2,13 @@ package browser
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -130,19 +132,27 @@ func bridgeWindowsLoopback(connection net.Conn, remotePort int) {
 }
 
 type relayedBrowserProcess struct {
-	base  BrowserProcess
-	relay *loopbackRelay
-	once  sync.Once
-	done  chan struct{}
+	base        BrowserProcess
+	relay       *loopbackRelay
+	executable  string
+	profilePath string
+	stopHost    func(context.Context, string, string) error
+	once        sync.Once
+	done        chan struct{}
 
 	closeErr error
 }
 
-func newRelayedBrowserProcess(process BrowserProcess, relay *loopbackRelay) BrowserProcess {
+func newRelayedBrowserProcess(process BrowserProcess, relay *loopbackRelay, executable, profilePath string) BrowserProcess {
 	if process == nil || relay == nil {
 		return process
 	}
-	return &relayedBrowserProcess{base: process, relay: relay, done: make(chan struct{})}
+	return &relayedBrowserProcess{
+		base: process, relay: relay,
+		executable: strings.TrimSpace(executable), profilePath: strings.TrimSpace(profilePath),
+		stopHost: stopWindowsHostBrowser,
+		done:     make(chan struct{}),
+	}
 }
 
 func (process *relayedBrowserProcess) PID() int {
@@ -178,8 +188,11 @@ func (process *relayedBrowserProcess) Close(ctx context.Context) error {
 		return nil
 	}
 	process.once.Do(func() {
+		if process.stopHost != nil && process.executable != "" && process.profilePath != "" {
+			process.closeErr = process.stopHost(ctx, process.executable, process.profilePath)
+		}
 		if process.base != nil {
-			process.closeErr = process.base.Close(ctx)
+			process.closeErr = errors.Join(process.closeErr, process.base.Close(ctx))
 		}
 		if process.relay != nil {
 			relayErr := process.relay.Close()

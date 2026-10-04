@@ -155,35 +155,21 @@ func launchWSLHostInteractiveBrowser(request InteractiveLaunchRequest, args []st
 func windowsHostInteractiveLaunchScript(executable, profilePath string, args []string) string {
 	executableExpr := powershellBase64String(executable)
 	argumentExpr := powershellBase64String(windowsCommandLine(args))
-	markerExpr := powershellBase64String("--user-data-dir=" + profilePath)
+	profileExpr := powershellBase64String(profilePath)
 	return "$ErrorActionPreference='Stop';" +
 		"$e=" + executableExpr + ";" +
 		"$a=" + argumentExpr + ";" +
-		"$m=" + markerExpr + ";" +
+		"$d=" + profileExpr + ";" +
 		"$p=Start-Process -FilePath $e -ArgumentList $a -PassThru;" +
 		"$p.WaitForExit();" +
 		"$empty=0;while($empty -lt 3){" +
 		"$owned=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue|" +
 		"Where-Object{$_.ExecutablePath -and $_.CommandLine -and " +
-		"$_.ExecutablePath.Equals($e,[StringComparison]::OrdinalIgnoreCase) -and $_.CommandLine.Contains($m)});" +
+		"$_.ExecutablePath.Equals($e,[StringComparison]::OrdinalIgnoreCase) -and " +
+		"$_.CommandLine.Contains('--user-data-dir') -and $_.CommandLine.Contains($d)});" +
 		"if($owned.Count -gt 0){$empty=0}else{$empty++};" +
 		"Start-Sleep -Milliseconds 100};" +
 		"exit $p.ExitCode"
-}
-
-func windowsHostInteractiveStopScript(executable, profilePath string) string {
-	executableExpr := powershellBase64String(executable)
-	markerExpr := powershellBase64String("--user-data-dir=" + profilePath)
-	return "$ErrorActionPreference='Stop';" +
-		"$e=" + executableExpr + ";" +
-		"$m=" + markerExpr + ";" +
-		"for($i=0;$i -lt 25;$i++){" +
-		"$owned=@(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue|" +
-		"Where-Object{$_.ExecutablePath -and $_.CommandLine -and " +
-		"$_.ExecutablePath.Equals($e,[StringComparison]::OrdinalIgnoreCase) -and $_.CommandLine.Contains($m)});" +
-		"if($owned.Count -eq 0){exit 0};" +
-		"foreach($p in $owned){Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue};" +
-		"Start-Sleep -Milliseconds 100};exit 1"
 }
 
 func powershellBase64String(value string) string {
@@ -285,7 +271,7 @@ func (process *wslInteractiveBrowserProcess) Close(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if err := stopWSLInteractiveBrowser(ctx, process.executable, process.profilePath); err != nil {
+	if err := stopWindowsHostBrowser(ctx, process.executable, process.profilePath); err != nil {
 		return err
 	}
 	select {
@@ -296,21 +282,6 @@ func (process *wslInteractiveBrowserProcess) Close(ctx context.Context) error {
 	case <-time.After(300 * time.Millisecond):
 		return process.base.Close(ctx)
 	}
-}
-
-func stopWSLInteractiveBrowser(ctx context.Context, executable, profilePath string) error {
-	powershell, err := exec.LookPath("powershell.exe")
-	if err != nil {
-		return fmt.Errorf("stop windows-host interactive browser requires powershell.exe: %w", err)
-	}
-	command := exec.CommandContext(ctx, powershell, "-NoProfile", "-NonInteractive", "-Command",
-		windowsHostInteractiveStopScript(executable, profilePath))
-	command.Stdout = io.Discard
-	command.Stderr = io.Discard
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("stop windows-host interactive browser: %w", err)
-	}
-	return nil
 }
 
 type profileOwnedBrowserProcess struct {

@@ -284,7 +284,7 @@ func TestRelayedBrowserProcessIgnoresShortLivedWSLLauncherProcess(t *testing.T) 
 		t.Fatal(err)
 	}
 	base := newFakeProcess(42)
-	process := newRelayedBrowserProcess(base, relay)
+	process := newRelayedBrowserProcess(base, relay, "", "")
 	base.stop(nil)
 
 	select {
@@ -302,5 +302,41 @@ func TestRelayedBrowserProcessIgnoresShortLivedWSLLauncherProcess(t *testing.T) 
 	case <-process.Done():
 	default:
 		t.Fatal("relay process did not close")
+	}
+}
+
+func TestRelayedBrowserProcessStopsExactWindowsHostOwnerOnClose(t *testing.T) {
+	relay, err := startLoopbackRelay(9222, func(net.Conn, int) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := newFakeProcess(42)
+	wrapped := newRelayedBrowserProcess(
+		base,
+		relay,
+		`C:\Program Files\Google\Chrome\Application\chrome.exe`,
+		`C:\Users\Mew\AppData\Local\CodeMCP\Browser\ChatGPT`,
+	)
+	process, ok := wrapped.(*relayedBrowserProcess)
+	if !ok {
+		t.Fatalf("wrapped process type=%T", wrapped)
+	}
+	var gotExecutable, gotProfile string
+	process.stopHost = func(_ context.Context, executable, profile string) error {
+		gotExecutable = executable
+		gotProfile = profile
+		return nil
+	}
+	if err := process.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if gotExecutable != `C:\Program Files\Google\Chrome\Application\chrome.exe` ||
+		gotProfile != `C:\Users\Mew\AppData\Local\CodeMCP\Browser\ChatGPT` {
+		t.Fatalf("host stop executable=%q profile=%q", gotExecutable, gotProfile)
+	}
+	select {
+	case <-base.Done():
+	default:
+		t.Fatal("base launcher process was not closed")
 	}
 }

@@ -356,6 +356,11 @@ func probeCDPLoopback(ctx context.Context, candidate Candidate) error {
 		return err
 	}
 	defer func() {
+		if candidate.Transport == TransportWSLHost {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			_ = stopWindowsHostBrowser(cleanupCtx, candidate.Executable, hostProfile)
+			cancel()
+		}
 		if command.Process != nil {
 			_ = command.Process.Kill()
 		}

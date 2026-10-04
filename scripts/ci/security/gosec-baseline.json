@@ -413,14 +413,6 @@
     "confidence": "HIGH",
     "file": "internal/integrations/browser/interactive.go",
     "details": "Subprocess launched with variable",
-    "code": "}\n\tcommand := exec.CommandContext(ctx, powershell, \"-NoProfile\", \"-NonInteractive\", \"-Command\",\n\t\twindowsHostInteractiveStopScript(executable, profilePath))\n\tcommand.Stdout = io.Discard"
-  },
-  {
-    "rule_id": "G204",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
-    "file": "internal/integrations/browser/interactive.go",
-    "details": "Subprocess launched with variable",
     "code": "script := windowsHostInteractiveLaunchScript(executable, request.Profile.Path, args)\n\tcommand := exec.Command(powershell, \"-NoProfile\", \"-NonInteractive\", \"-Command\", script)\n\tcommand.Stdout = io.Discard"
   },
   {
@@ -430,6 +422,14 @@
     "file": "internal/integrations/browser/launcher.go",
     "details": "Subprocess launched with variable",
     "code": "args := managerLaunchArgs(profilePath, request.Minimized, request.Headless)\n\tcmd := exec.Command(executable, args...)\n\tcmd.Stdout = io.Discard"
+  },
+  {
+    "rule_id": "G204",
+    "severity": "MEDIUM",
+    "confidence": "HIGH",
+    "file": "internal/integrations/browser/windows_host_process.go",
+    "details": "Subprocess launched with variable",
+    "code": "}\n\tcommand := exec.CommandContext(ctx, powershell, \"-NoProfile\", \"-NonInteractive\", \"-Command\",\n\t\twindowsHostBrowserStopScript(executable, profilePath))\n\tcommand.Stdout = io.Discard"
   },
   {
     "rule_id": "G204",

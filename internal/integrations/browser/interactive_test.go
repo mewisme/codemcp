@@ -224,7 +224,13 @@ func TestWSLInteractiveHostObserverWaitsForProfileOwnerWithoutRelay(t *testing.T
 		t.Fatal(err)
 	}
 	script := windowsHostInteractiveLaunchScript(executable, profile, args)
-	for _, required := range []string{"Start-Process", "WaitForExit", "Get-CimInstance Win32_Process", "CommandLine.Contains($m)"} {
+	for _, required := range []string{
+		"Start-Process",
+		"WaitForExit",
+		"Get-CimInstance Win32_Process",
+		"CommandLine.Contains('--user-data-dir')",
+		"CommandLine.Contains($d)",
+	} {
 		if !strings.Contains(script, required) {
 			t.Fatalf("host observer script missing %q: %s", required, script)
 		}
@@ -246,10 +252,11 @@ func TestWSLInteractiveHostObserverWaitsForProfileOwnerWithoutRelay(t *testing.T
 func TestWSLInteractiveStopTargetsExactExecutableAndProfileMarker(t *testing.T) {
 	executable := `C:\Program Files\Google\Chrome\Application\chrome.exe`
 	profile := `C:\Users\Mew\AppData\Local\CodeMCP\Browser\ChatGPT`
-	script := windowsHostInteractiveStopScript(executable, profile)
+	script := windowsHostBrowserStopScript(executable, profile)
 	for _, required := range []string{
 		"ExecutablePath.Equals($e",
-		"CommandLine.Contains($m)",
+		"CommandLine.Contains('--user-data-dir')",
+		"CommandLine.Contains($d)",
 		"Stop-Process -Id $p.ProcessId",
 	} {
 		if !strings.Contains(script, required) {

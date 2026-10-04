@@ -81,7 +81,7 @@ func launchExecBrowser(ctx context.Context, request LaunchRequest) (BrowserProce
 		return nil, BrowserEndpoint{}, err
 	}
 	if relay != nil {
-		process = newRelayedBrowserProcess(process, relay)
+		process = newRelayedBrowserProcess(process, relay, request.Candidate.Executable, profilePath)
 	}
 	return process, endpoint, nil
 }
