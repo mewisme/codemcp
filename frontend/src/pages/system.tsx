@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react"
+import { type FormEvent, useEffect, useState } from "react"
 import { RefreshCw } from "lucide-react"
 import { JsonViewer } from "@/components/json-viewer"
 import { PageError, PageLoading } from "@/components/page-state"
 import { PageHeader } from "@/components/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Card,
   CardContent,
@@ -19,23 +20,36 @@ export function SystemPage() {
   const [telemetry, setTelemetry] = useState<TelemetryStatus | null>(null)
   const [doctor, setDoctor] = useState<unknown>(null)
   const [about, setAbout] = useState<unknown>(null)
+  const [notificationStatus, setNotificationStatus] = useState<Record<
+    string,
+    unknown
+  > | null>(null)
+  const [telegramToken, setTelegramToken] = useState("")
+  const [telegramUserID, setTelegramUserID] = useState("")
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
 
   async function load() {
     try {
-      const [nextStatus, nextTelemetry, nextDoctor, nextAbout] =
-        await Promise.all([
-          adminApi.status(),
-          adminApi.telemetry(),
-          adminApi.doctor(),
-          adminApi.about(),
-        ])
+      const [
+        nextStatus,
+        nextTelemetry,
+        nextDoctor,
+        nextAbout,
+        nextNotifications,
+      ] = await Promise.all([
+        adminApi.status(),
+        adminApi.telemetry(),
+        adminApi.doctor(),
+        adminApi.about(),
+        adminApi.notificationStatus(),
+      ])
       setStatus(nextStatus)
       setTelemetry(nextTelemetry)
       setDoctor(nextDoctor)
       setAbout(nextAbout)
+      setNotificationStatus(nextNotifications)
       setError("")
     } catch (value) {
       setError(errorText(value))
@@ -51,15 +65,25 @@ export function SystemPage() {
       adminApi.telemetry(),
       adminApi.doctor(),
       adminApi.about(),
+      adminApi.notificationStatus(),
     ])
-      .then(([nextStatus, nextTelemetry, nextDoctor, nextAbout]) => {
-        if (!active) return
-        setStatus(nextStatus)
-        setTelemetry(nextTelemetry)
-        setDoctor(nextDoctor)
-        setAbout(nextAbout)
-        setError("")
-      })
+      .then(
+        ([
+          nextStatus,
+          nextTelemetry,
+          nextDoctor,
+          nextAbout,
+          nextNotifications,
+        ]) => {
+          if (!active) return
+          setStatus(nextStatus)
+          setTelemetry(nextTelemetry)
+          setDoctor(nextDoctor)
+          setAbout(nextAbout)
+          setNotificationStatus(nextNotifications)
+          setError("")
+        }
+      )
       .catch((value) => {
         if (active) setError(errorText(value))
       })
@@ -88,6 +112,25 @@ export function SystemPage() {
     setBusy("telemetry")
     try {
       setTelemetry(await adminApi.setTelemetry(!telemetry.persisted_enabled))
+      setError("")
+    } catch (value) {
+      setError(errorText(value))
+    } finally {
+      setBusy("")
+    }
+  }
+
+  async function setupTelegram(event: FormEvent) {
+    event.preventDefault()
+    const token = telegramToken.trim()
+    const userID = Number(telegramUserID)
+    if (!token || !Number.isSafeInteger(userID) || userID <= 0) return
+    setBusy("telegram-setup")
+    try {
+      await adminApi.telegramSetup(token, userID)
+      setTelegramToken("")
+      setTelegramUserID("")
+      await load()
       setError("")
     } catch (value) {
       setError(errorText(value))
@@ -166,9 +209,9 @@ export function SystemPage() {
                   ? "Repairing"
                   : status.telegram_topics_error
                     ? "Degraded"
-                : status.telegram_topics_effective
-                  ? "Effective"
-                  : "Available, inactive"
+                    : status.telegram_topics_effective
+                      ? "Effective"
+                      : "Available, inactive"
           }
         />
         <StateCard
@@ -208,6 +251,59 @@ export function SystemPage() {
                 : "Enabled, unavailable"
           }
         />
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Telegram setup</CardTitle>
+            <CardDescription>
+              Store the bot token through protected input and authorize the
+              first user through the canonical Telegram owner.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              className="grid gap-3 md:grid-cols-[1fr_14rem_auto]"
+              onSubmit={setupTelegram}
+            >
+              <Input
+                autoComplete="new-password"
+                placeholder="Bot token"
+                type="password"
+                value={telegramToken}
+                onChange={(event) => setTelegramToken(event.target.value)}
+              />
+              <Input
+                inputMode="numeric"
+                placeholder="Authorized user ID"
+                value={telegramUserID}
+                onChange={(event) => setTelegramUserID(event.target.value)}
+              />
+              <Button
+                disabled={
+                  busy === "telegram-setup" ||
+                  !telegramToken.trim() ||
+                  !telegramUserID.trim()
+                }
+                type="submit"
+              >
+                {busy === "telegram-setup" ? "Configuring..." : "Configure"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Notifications</CardTitle>
+            <CardDescription>
+              Current notification readiness from the canonical notification
+              owner.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <JsonViewer value={notificationStatus ?? {}} />
+          </CardContent>
+        </Card>
       </div>
       <Card>
         <CardHeader>

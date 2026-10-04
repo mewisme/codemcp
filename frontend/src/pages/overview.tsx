@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react"
 import {
-  Boxes,
   FolderGit2,
   Network,
   RefreshCw,
   Server,
+  ShieldAlert,
   ShieldCheck,
   Wrench,
 } from "lucide-react"
 import { CopyButton } from "@/components/copy-button"
-import { DashboardCard } from "@/components/dashboard-card"
 import { DetailRow } from "@/components/detail-row"
 import { PageError } from "@/components/page-state"
 import { PageHeader } from "@/components/page-header"
@@ -23,7 +22,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import { adminApi } from "@/lib/api"
 
 type DashboardData = {
@@ -45,15 +43,15 @@ export function OverviewPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
+
   useEffect(() => {
     let active = true
     const update = () =>
       void loadDashboard()
         .then((next) => {
-          if (active) {
-            setData(next)
-            setError("")
-          }
+          if (!active) return
+          setData(next)
+          setError("")
         })
         .catch((value) => {
           if (active) setError(errorText(value))
@@ -65,6 +63,7 @@ export function OverviewPage() {
       window.removeEventListener("focus", update)
     }
   }, [])
+
   async function refresh() {
     setBusy(true)
     try {
@@ -76,86 +75,94 @@ export function OverviewPage() {
       setBusy(false)
     }
   }
+
+  const attentionCount = data?.cleartextHTTP ? 1 : 0
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Overview"
-        description="Runtime health, exposure, authentication, and registered resources at a glance."
+        description="Current operator state, connectivity, inventory, and listener protection."
         actions={
-          <>
-            <Badge variant={data?.tunnel === "Ready" ? "default" : "secondary"}>
-              {data?.tunnel === "Ready"
-                ? "Tunnel ready"
-                : data?.tunnel === "Connecting"
-                  ? "Tunnel connecting"
-                  : "Tunnel stopped"}
-            </Badge>
-            <Button
-              disabled={busy}
-              size="sm"
-              variant="outline"
-              onClick={() => void refresh()}
-            >
-              <RefreshCw className={busy ? "animate-spin" : ""} />
-              Refresh
-            </Button>
-          </>
+          <Button
+            disabled={busy}
+            size="sm"
+            variant="outline"
+            onClick={() => void refresh()}
+          >
+            <RefreshCw className={busy ? "animate-spin" : ""} />
+            Refresh
+          </Button>
         }
       />
-      <div className="text-xs text-muted-foreground">
-        {data
-          ? `Updated ${data.updatedAt.toLocaleTimeString()}`
-          : "Loading runtime status..."}
-      </div>
       <PageError message={error} />
-      {data?.cleartextHTTP ? (
-        <Alert variant="destructive">
-          <AlertDescription>
-            Network exposure is enabled (http.exposure is not none). Bearer
-            tokens and request contents travel on cleartext HTTP —
-            CodeMCP has no built-in TLS. Prefer Secure MCP Tunnel, a TLS
-            reverse proxy, or a trusted encrypted network.
-          </AlertDescription>
-        </Alert>
-      ) : null}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard
-          title="Workspaces"
-          value={data?.workspaces ?? "-"}
-          description="Registered project roots"
-          icon={FolderGit2}
-        />
-        <DashboardCard
-          title="Tools"
-          value={data?.tools ?? "-"}
-          description="Currently exposed tools"
-          icon={Wrench}
-        />
-        <DashboardCard
-          title="Upstreams"
-          value={data ? `${data.enabledServers}/${data.servers}` : "-"}
-          description="Enabled Upstreams"
-          icon={Server}
-        />
-        <DashboardCard
-          title="Tunnel"
-          value={data?.tunnel ?? "-"}
-          description={data?.tunnelName || "OpenAI Secure MCP Tunnel"}
-          icon={Network}
-        />
-      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                {attentionCount ? (
+                  <ShieldAlert className="size-4" />
+                ) : (
+                  <ShieldCheck className="size-4" />
+                )}
+                Needs attention
+              </CardTitle>
+              <CardDescription className="mt-1">
+                This view surfaces the explicit cleartext-exposure warning from
+                configuration; it does not infer aggregate health.
+              </CardDescription>
+            </div>
+            <Badge variant={attentionCount ? "destructive" : "secondary"}>
+              {data
+                ? attentionCount
+                  ? `${attentionCount} item`
+                  : "No exposure warning"
+                : "Loading"}
+            </Badge>
+          </div>
+        </CardHeader>
+        {data?.cleartextHTTP ? (
+          <CardContent>
+            <Alert variant="destructive">
+              <AlertDescription>
+                Direct network exposure is enabled over cleartext HTTP. Bearer
+                tokens and request contents are not protected by built-in TLS.
+                Prefer Secure MCP Tunnel, a TLS reverse proxy, or a trusted
+                encrypted network.
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        ) : null}
+      </Card>
+
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Boxes className="size-4" />
-              Runtime
-            </CardTitle>
+            <CardTitle>Runtime and connectivity</CardTitle>
             <CardDescription>
-              Active runtime listeners and endpoints.
+              Observed tunnel state and active listener endpoints.
             </CardDescription>
           </CardHeader>
           <CardContent className="divide-y">
+            <DetailRow
+              label="Secure MCP Tunnel"
+              value={
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <Badge
+                    variant={data?.tunnel === "Ready" ? "secondary" : "outline"}
+                  >
+                    {data?.tunnel ?? "-"}
+                  </Badge>
+                  {data?.tunnelName ? (
+                    <span className="text-sm text-muted-foreground">
+                      {data.tunnelName}
+                    </span>
+                  ) : null}
+                </div>
+              }
+            />
             <EndpointDetail
               label="MCP endpoint"
               value={data?.mcpEndpoint ?? "-"}
@@ -166,22 +173,71 @@ export function OverviewPage() {
             />
           </CardContent>
         </Card>
+
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="size-4" />
-              Authentication
-            </CardTitle>
+            <CardTitle>Listener protection</CardTitle>
             <CardDescription>
-              Protection applied to the local MCP and Admin listeners.
+              Authentication state reported by the current public configuration.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-0">
+          <CardContent className="divide-y">
             <AuthState label="MCP authentication" enabled={data?.mcpAuth} />
-            <Separator />
             <AuthState label="Admin authentication" enabled={data?.adminAuth} />
           </CardContent>
         </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Inventory</CardTitle>
+          <CardDescription>
+            Registered resources available to the current runtime.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <InventoryItem
+            icon={FolderGit2}
+            label="Workspaces"
+            value={data?.workspaces}
+          />
+          <InventoryItem icon={Wrench} label="Tools" value={data?.tools} />
+          <InventoryItem
+            icon={Server}
+            label="Upstreams"
+            value={
+              data
+                ? `${data.enabledServers}/${data.servers} enabled`
+                : undefined
+            }
+          />
+        </CardContent>
+      </Card>
+
+      <div className="text-xs text-muted-foreground">
+        {data
+          ? `Updated ${data.updatedAt.toLocaleTimeString()}`
+          : "Loading runtime status..."}
+      </div>
+    </div>
+  )
+}
+
+function InventoryItem({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Network
+  label: string
+  value?: string | number
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border p-3">
+      <Icon className="size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="mt-0.5 text-sm font-medium">{value ?? "-"}</div>
       </div>
     </div>
   )
@@ -204,26 +260,28 @@ function EndpointDetail({ label, value }: { label: string; value: string }) {
     />
   )
 }
+
 function AuthState({ label, enabled }: { label: string; enabled?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-3">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <Badge variant={enabled ? "secondary" : "outline"}>
-        {enabled === undefined ? "-" : enabled ? "Enabled" : "Disabled"}
-      </Badge>
-    </div>
+    <DetailRow
+      label={label}
+      value={
+        <Badge variant={enabled ? "secondary" : "outline"}>
+          {enabled === undefined ? "-" : enabled ? "Enabled" : "Disabled"}
+        </Badge>
+      }
+    />
   )
 }
 
 async function loadDashboard(): Promise<DashboardData> {
-  const [workspaces, tools, servers, tunnel, config] =
-    await Promise.all([
-      adminApi.workspaces(),
-      adminApi.tools(),
-      adminApi.upstream(),
-      adminApi.tunnel(),
-      adminApi.config(),
-    ])
+  const [workspaces, tools, servers, tunnel, config] = await Promise.all([
+    adminApi.workspaces(),
+    adminApi.tools(),
+    adminApi.upstream(),
+    adminApi.tunnel(),
+    adminApi.config(),
+  ])
   const host = window.location.hostname || "127.0.0.1"
   return {
     workspaces: workspaces.length,

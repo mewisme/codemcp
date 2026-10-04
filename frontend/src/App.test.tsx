@@ -60,7 +60,9 @@ describe("admin app runtime smoke", () => {
       expect(document.title).toBe(adminDocumentTitle("Overview"))
     )
     expect(
-      await screen.findByText("Active runtime listeners and endpoints.")
+      await screen.findByText(
+        "Current operator state, connectivity, inventory, and listener protection."
+      )
     ).toBeInTheDocument()
 
     const pageSmokeText: Record<string, string> = {
@@ -505,6 +507,7 @@ async function mockFetch(input: RequestInfo | URL): Promise<Response> {
     return json({ configured: false, scope: {} })
   if (path === "/api/config") return json(config)
   if (path === "/api/network/interfaces") return json([])
+  if (path === "/api/notifications") return json({})
   if (path === "/api/requests?status=pending") return json([])
   if (path === "/api/requests?status=") return json([])
   if (path === "/api/requests/stream") return approvalStream()

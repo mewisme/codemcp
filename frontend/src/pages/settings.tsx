@@ -56,11 +56,10 @@ export function SettingsPage() {
   const [revealedCredential, setRevealedCredential] = useState("")
   const [settings, setSettings] = useState<SettingResult[]>([])
   const [settingQuery, setSettingQuery] = useState("")
-  const [selectedSetting, setSelectedSetting] = useState<SettingResult | null>(null)
+  const [selectedSetting, setSelectedSetting] = useState<SettingResult | null>(
+    null
+  )
   const [settingValue, setSettingValue] = useState("")
-  const [notificationStatus, setNotificationStatus] = useState<Record<string, unknown> | null>(null)
-  const [telegramToken, setTelegramToken] = useState("")
-  const [telegramUserID, setTelegramUserID] = useState("")
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
@@ -73,19 +72,19 @@ export function SettingsPage() {
       adminApi.tunnelConfig(),
       adminApi.authStatus(),
       adminApi.settings("", ""),
-      adminApi.notificationStatus(),
     ])
-      .then(([nextConfig, nextInterfaces, nextTunnel, nextAuth, nextSettings, nextNotifications]) => {
-        if (!active) return
-        const normalized = normalizeConfig(nextConfig)
-        setConfig(normalized)
-        setSavedConfig(normalized)
-        setInterfaces(nextInterfaces)
-        setTunnelEnabled(nextTunnel.enabled)
-        setAuthStatus(nextAuth)
-        setSettings(nextSettings)
-        setNotificationStatus(nextNotifications)
-      })
+      .then(
+        ([nextConfig, nextInterfaces, nextTunnel, nextAuth, nextSettings]) => {
+          if (!active) return
+          const normalized = normalizeConfig(nextConfig)
+          setConfig(normalized)
+          setSavedConfig(normalized)
+          setInterfaces(nextInterfaces)
+          setTunnelEnabled(nextTunnel.enabled)
+          setAuthStatus(nextAuth)
+          setSettings(nextSettings)
+        }
+      )
       .catch((value) => {
         if (active) setError(errorText(value))
       })
@@ -118,7 +117,7 @@ export function SettingsPage() {
       setConfig(next)
       setSavedConfig(next)
       setMessage(
-        "Saved. Runtime, transport, listener, integration, auth, filesystem, and shell execution changes were applied live."
+        "Saved. Runtime, transport, listener, auth, filesystem, and shell execution changes were applied live."
       )
       setError("")
     } catch (value) {
@@ -145,8 +144,20 @@ export function SettingsPage() {
         setAuthStatus(result)
       }
       const normalized = normalizeConfig(await adminApi.config())
-      setConfig(normalized)
-      setSavedConfig(normalized)
+      if (dirty && config) {
+        setConfig({
+          ...config,
+          http: {
+            ...config.http,
+            mcp: { ...config.http.mcp, auth: normalized.http.mcp.auth },
+            admin: { ...config.http.admin, auth: normalized.http.admin.auth },
+          },
+        })
+        setSavedConfig(normalized)
+      } else {
+        setConfig(normalized)
+        setSavedConfig(normalized)
+      }
       setMessage(
         action === "rotate"
           ? "Credential rotated. Copy the one-time value now; it will be hidden automatically."
@@ -188,7 +199,9 @@ export function SettingsPage() {
       setSelectedSetting(next)
       setSettingValue(next.Spec.Secret ? "" : next.Value)
       await loadSettings()
-      setMessage(`${selectedSetting.Spec.Label || selectedSetting.Spec.Key} updated from canonical settings.`)
+      setMessage(
+        `${selectedSetting.Spec.Label || selectedSetting.Spec.Key} updated from canonical settings.`
+      )
       setError("")
     } catch (value) {
       setError(errorText(value))
@@ -200,8 +213,12 @@ export function SettingsPage() {
   async function exportCanonicalSettings() {
     try {
       const document = await adminApi.exportSettings()
-      const bytes = Uint8Array.from(atob(document.Data), (char) => char.charCodeAt(0))
-      const url = URL.createObjectURL(new Blob([bytes], { type: "application/json" }))
+      const bytes = Uint8Array.from(atob(document.Data), (char) =>
+        char.charCodeAt(0)
+      )
+      const url = URL.createObjectURL(
+        new Blob([bytes], { type: "application/json" })
+      )
       const anchor = window.document.createElement("a")
       anchor.href = url
       anchor.download = document.FileName || "codemcp-config.json"
@@ -210,27 +227,6 @@ export function SettingsPage() {
       setError("")
     } catch (value) {
       setError(errorText(value))
-    }
-  }
-
-  async function setupTelegram(event: React.FormEvent) {
-    event.preventDefault()
-    const token = telegramToken.trim()
-    const userID = Number(telegramUserID)
-    if (!token || !Number.isSafeInteger(userID) || userID <= 0) return
-    setBusy(true)
-    try {
-      const result = await adminApi.telegramSetup(token, userID)
-      setTelegramToken("")
-      setMessage(
-        `Telegram configured for ${result.authorized_users.length} authorized user(s); token ${result.token.Value || "stored securely"}.`
-      )
-      await loadSettings()
-      setError("")
-    } catch (value) {
-      setError(errorText(value))
-    } finally {
-      setBusy(false)
     }
   }
 
@@ -271,9 +267,11 @@ export function SettingsPage() {
   const exposureAuthReady =
     !exposed ||
     ((!config.http.mcp.enabled ||
-      (config.http.mcp.auth.enabled && config.http.mcp.auth.token_configured)) &&
+      (config.http.mcp.auth.enabled &&
+        config.http.mcp.auth.token_configured)) &&
       (!config.http.admin.enabled ||
-        (config.http.admin.auth.enabled && config.http.admin.auth.token_configured)))
+        (config.http.admin.auth.enabled &&
+          config.http.admin.auth.token_configured)))
   const saveDisabled =
     busy ||
     (!config.http.mcp.enabled && !tunnelEnabled) ||
@@ -286,7 +284,20 @@ export function SettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Settings"
-        description="Configure runtime listeners, security, filesystem access, first-party integrations, and the managed execution environment."
+        description="Configure global runtime listeners, security, permissions, canonical settings, and the managed execution environment."
+        actions={
+          <Badge
+            variant={error ? "destructive" : dirty ? "outline" : "secondary"}
+          >
+            {busy
+              ? "Saving..."
+              : error
+                ? "Save failed"
+                : dirty
+                  ? "Unsaved changes"
+                  : "Saved"}
+          </Badge>
+        }
       />
       <PageError message={error} />
       {message ? (
@@ -299,9 +310,8 @@ export function SettingsPage() {
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="network">Network</TabsTrigger>
           <TabsTrigger value="permissions">Permissions</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
           <TabsTrigger value="authentication">Authentication</TabsTrigger>
-          <TabsTrigger value="operations">Operations</TabsTrigger>
+          <TabsTrigger value="operations">Advanced</TabsTrigger>
           <TabsTrigger value="environment">Environment</TabsTrigger>
         </ScrollableTabsList>
         <TabsContent className="mt-6 space-y-6" value="general">
@@ -559,182 +569,6 @@ export function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent className="mt-6" value="integrations">
-          <Card>
-            <CardHeader>
-              <CardTitle>First-party integrations</CardTitle>
-              <CardDescription>
-                Configure first-party CodeMCP integrations. Ponytail and Caveman
-                control response behavior; RTK and CodeGraph manage
-                executable-backed coding workflows.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <FieldGroup>
-                <Toggle
-                  label="Ponytail"
-                  description="Keep the Ponytail coding integration active by default."
-                  checked={config.integrations.ponytail.active}
-                  onCheckedChange={(active) =>
-                    setConfig({
-                      ...config,
-                      integrations: {
-                        ...config.integrations,
-                        ponytail: { ...config.integrations.ponytail, active },
-                      },
-                    })
-                  }
-                />
-                <SettingField
-                  label="Ponytail intensity"
-                  description="Default intensity for new workspace mode state. Review remains session-only."
-                >
-                  <Select
-                    value={config.integrations.ponytail.mode}
-                    onValueChange={(mode) =>
-                      setConfig({
-                        ...config,
-                        integrations: {
-                          ...config.integrations,
-                          ponytail: {
-                            ...config.integrations.ponytail,
-                            mode: mode as PublicConfig["integrations"]["ponytail"]["mode"],
-                          },
-                        },
-                      })
-                    }
-                  >
-                    <SelectTrigger className="w-full sm:w-64">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="lite">Lite</SelectItem>
-                      <SelectItem value="full">Full</SelectItem>
-                      <SelectItem value="ultra">Ultra</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </SettingField>
-                <Toggle
-                  label="Caveman"
-                  description="Keep Caveman mode active by default."
-                  checked={config.integrations.caveman.active}
-                  onCheckedChange={(active) =>
-                    setConfig({
-                      ...config,
-                      integrations: {
-                        ...config.integrations,
-                        caveman: { ...config.integrations.caveman, active },
-                      },
-                    })
-                  }
-                />
-                <SettingField
-                  label="Caveman intensity"
-                  description="Default Caveman level for new workspace mode state. Wenyan levels use classical Chinese compression."
-                >
-                  <Select
-                    value={config.integrations.caveman.mode}
-                    onValueChange={(mode) =>
-                      setConfig({
-                        ...config,
-                        integrations: {
-                          ...config.integrations,
-                          caveman: {
-                            ...config.integrations.caveman,
-                            mode: mode as PublicConfig["integrations"]["caveman"]["mode"],
-                          },
-                        },
-                      })
-                    }
-                  >
-                    <SelectTrigger className="w-full sm:w-64">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="lite">Lite</SelectItem>
-                      <SelectItem value="full">Full</SelectItem>
-                      <SelectItem value="ultra">Ultra</SelectItem>
-                      <SelectItem value="wenyan-lite">Wenyan Lite</SelectItem>
-                      <SelectItem value="wenyan-full">Wenyan Full</SelectItem>
-                      <SelectItem value="wenyan-ultra">Wenyan Ultra</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </SettingField>
-                <Toggle
-                  label="RTK"
-                  description="Enable RTK command rewriting and executable resolution."
-                  checked={config.integrations.rtk.enabled}
-                  onCheckedChange={(enabled) =>
-                    setConfig({
-                      ...config,
-                      integrations: {
-                        ...config.integrations,
-                        rtk: { ...config.integrations.rtk, enabled },
-                      },
-                    })
-                  }
-                />
-                <SettingField
-                  label="RTK executable"
-                  description="Optional absolute executable path. Leave blank for system or verified managed resolution."
-                >
-                  <Input
-                    value={config.integrations.rtk.path}
-                    onChange={(event) =>
-                      setConfig({
-                        ...config,
-                        integrations: {
-                          ...config.integrations,
-                          rtk: {
-                            ...config.integrations.rtk,
-                            path: event.target.value,
-                          },
-                        },
-                      })
-                    }
-                  />
-                </SettingField>
-                <Toggle
-                  label="CodeGraph"
-                  description="Enable CodeGraph runtime resolution and native codegraph_explore support."
-                  checked={config.integrations.codegraph.enabled}
-                  onCheckedChange={(enabled) =>
-                    setConfig({
-                      ...config,
-                      integrations: {
-                        ...config.integrations,
-                        codegraph: {
-                          ...config.integrations.codegraph,
-                          enabled,
-                        },
-                      },
-                    })
-                  }
-                />
-                <SettingField
-                  label="CodeGraph executable"
-                  description="Optional absolute executable path. Leave blank for system or verified managed resolution."
-                >
-                  <Input
-                    value={config.integrations.codegraph.path}
-                    onChange={(event) =>
-                      setConfig({
-                        ...config,
-                        integrations: {
-                          ...config.integrations,
-                          codegraph: {
-                            ...config.integrations.codegraph,
-                            path: event.target.value,
-                          },
-                        },
-                      })
-                    }
-                  />
-                </SettingField>
-              </FieldGroup>
-            </CardContent>
-          </Card>
-        </TabsContent>
         <TabsContent className="mt-6 space-y-6" value="authentication">
           <Card>
             <CardHeader>
@@ -747,8 +581,13 @@ export function SettingsPage() {
             <CardContent className="space-y-5">
               <AuthControl
                 label="MCP authentication"
-                configured={authStatus?.mcp_configured ?? config.http.mcp.auth.token_configured}
-                enabled={authStatus?.mcp_enabled ?? config.http.mcp.auth.enabled}
+                configured={
+                  authStatus?.mcp_configured ??
+                  config.http.mcp.auth.token_configured
+                }
+                enabled={
+                  authStatus?.mcp_enabled ?? config.http.mcp.auth.enabled
+                }
                 busy={authBusy.startsWith("mcp:")}
                 locked={exposed && config.http.mcp.enabled}
                 onRotate={() => void authAction("mcp", "rotate")}
@@ -758,8 +597,13 @@ export function SettingsPage() {
               />
               <AuthControl
                 label="Admin authentication"
-                configured={authStatus?.admin_configured ?? config.http.admin.auth.token_configured}
-                enabled={authStatus?.admin_enabled ?? config.http.admin.auth.enabled}
+                configured={
+                  authStatus?.admin_configured ??
+                  config.http.admin.auth.token_configured
+                }
+                enabled={
+                  authStatus?.admin_enabled ?? config.http.admin.auth.enabled
+                }
                 busy={authBusy.startsWith("admin:")}
                 locked={exposed && config.http.admin.enabled}
                 onRotate={() => void authAction("admin", "rotate")}
@@ -786,12 +630,18 @@ export function SettingsPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => void navigator.clipboard.writeText(revealedCredential)}
+                    onClick={() =>
+                      void navigator.clipboard.writeText(revealedCredential)
+                    }
                   >
                     <Copy />
                     Copy
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setRevealedCredential("")}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setRevealedCredential("")}
+                  >
                     Hide
                   </Button>
                 </div>
@@ -802,16 +652,17 @@ export function SettingsPage() {
         <TabsContent className="mt-6 space-y-6" value="operations">
           <Card>
             <CardHeader>
-              <CardTitle>Canonical settings</CardTitle>
+              <CardTitle>Advanced canonical settings</CardTitle>
               <CardDescription>
-                Search, inspect, update, clear, or export typed settings through
-                the canonical settings service.
+                Low-level typed settings access. Prefer dedicated domain pages
+                such as Integrations, LLM, System, and Tunnel when a setting
+                already has a domain owner.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative min-w-0 flex-1">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     className="pl-9"
                     placeholder="Search setting key, label, owner..."
@@ -825,7 +676,10 @@ export function SettingsPage() {
                 <Button variant="outline" onClick={() => void loadSettings()}>
                   Search
                 </Button>
-                <Button variant="outline" onClick={() => void exportCanonicalSettings()}>
+                <Button
+                  variant="outline"
+                  onClick={() => void exportCanonicalSettings()}
+                >
                   <Download />
                   Export
                 </Button>
@@ -839,11 +693,22 @@ export function SettingsPage() {
                     onClick={() => void openSetting(item)}
                   >
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-medium">{item.Spec.Label || item.Spec.Key}</div>
-                      <div className="truncate font-mono text-xs text-muted-foreground">{item.Spec.Key}</div>
+                      <div className="truncate text-sm font-medium">
+                        {item.Spec.Label || item.Spec.Key}
+                      </div>
+                      <div className="truncate font-mono text-xs text-muted-foreground">
+                        {item.Spec.Key}
+                      </div>
                     </div>
-                    <Badge variant={item.Configured === false ? "outline" : "secondary"}>
-                      {item.Value || (item.Configured === false ? "not configured" : "empty")}
+                    <Badge
+                      variant={
+                        item.Configured === false ? "outline" : "secondary"
+                      }
+                    >
+                      {item.Value ||
+                        (item.Configured === false
+                          ? "not configured"
+                          : "empty")}
                     </Badge>
                   </button>
                 ))}
@@ -851,8 +716,12 @@ export function SettingsPage() {
               {selectedSetting ? (
                 <div className="space-y-3 rounded-lg border p-4">
                   <div>
-                    <div className="font-medium">{selectedSetting.Spec.Label || selectedSetting.Spec.Key}</div>
-                    <div className="font-mono text-xs text-muted-foreground">{selectedSetting.Spec.Key}</div>
+                    <div className="font-medium">
+                      {selectedSetting.Spec.Label || selectedSetting.Spec.Key}
+                    </div>
+                    <div className="font-mono text-xs text-muted-foreground">
+                      {selectedSetting.Spec.Key}
+                    </div>
                     {selectedSetting.Spec.Description ? (
                       <div className="mt-1 text-sm text-muted-foreground">
                         {selectedSetting.Spec.Description}
@@ -883,49 +752,6 @@ export function SettingsPage() {
                   </div>
                 </div>
               ) : null}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Notifications</CardTitle>
-              <CardDescription>
-                Current notification readiness. Notification policy settings are
-                editable above through their canonical keys.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <pre className="max-h-48 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">
-                {JSON.stringify(notificationStatus ?? {}, null, 2)}
-              </pre>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Telegram setup</CardTitle>
-              <CardDescription>
-                Store the bot token through protected input and authorize the
-                first user through the canonical Telegram owner.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="grid gap-3 md:grid-cols-[1fr_14rem_auto]" onSubmit={setupTelegram}>
-                <Input
-                  autoComplete="new-password"
-                  placeholder="Bot token"
-                  type="password"
-                  value={telegramToken}
-                  onChange={(event) => setTelegramToken(event.target.value)}
-                />
-                <Input
-                  inputMode="numeric"
-                  placeholder="Authorized user ID"
-                  value={telegramUserID}
-                  onChange={(event) => setTelegramUserID(event.target.value)}
-                />
-                <Button disabled={busy || !telegramToken.trim() || !telegramUserID.trim()} type="submit">
-                  Configure
-                </Button>
-              </form>
             </CardContent>
           </Card>
         </TabsContent>
@@ -971,24 +797,32 @@ export function SettingsPage() {
               Review and save the current settings before leaving this page.
             </div>
           </div>
-          <ButtonGroup className="self-end sm:self-auto">
-            <Button
-              disabled={busy}
-              variant="outline"
-              onClick={() => {
-                setConfig(savedConfig)
-                setMessage("")
-                setError("")
-              }}
-            >
-              <Undo2 />
-              Reset
-            </Button>
-            <Button disabled={saveDisabled} onClick={() => void save()}>
-              <Save />
-              {busy ? "Saving..." : "Save"}
-            </Button>
-          </ButtonGroup>
+          <div className="flex flex-col items-end gap-2">
+            {saveDisabled && !busy ? (
+              <div className="max-w-sm text-right text-xs text-muted-foreground">
+                Save is unavailable until the current transport, exposure, and
+                authentication requirements are valid.
+              </div>
+            ) : null}
+            <ButtonGroup className="self-end sm:self-auto">
+              <Button
+                disabled={busy}
+                variant="outline"
+                onClick={() => {
+                  setConfig(savedConfig)
+                  setMessage("")
+                  setError("")
+                }}
+              >
+                <Undo2 />
+                Reset
+              </Button>
+              <Button disabled={saveDisabled} onClick={() => void save()}>
+                <Save />
+                {busy ? "Saving..." : "Save"}
+              </Button>
+            </ButtonGroup>
+          </div>
         </div>
       ) : null}
     </div>
@@ -1009,19 +843,33 @@ function CanonicalSettingInput({
     const checked = value.trim().toLowerCase() === "true"
     return (
       <div className="flex items-center gap-3 rounded-lg border p-3">
-        <Switch checked={checked} disabled={disabled} onCheckedChange={(next) => onChange(String(next))} />
-        <span className="text-sm text-muted-foreground">{checked ? "Enabled" : "Disabled"}</span>
+        <Switch
+          checked={checked}
+          disabled={disabled}
+          onCheckedChange={(next) => onChange(String(next))}
+        />
+        <span className="text-sm text-muted-foreground">
+          {checked ? "Enabled" : "Disabled"}
+        </span>
       </div>
     )
   }
   if (spec.Kind === "enum" && spec.Options?.length) {
     return (
       <Select disabled={disabled} value={value} onValueChange={onChange}>
-        <SelectTrigger className="w-full"><SelectValue placeholder="Select a value" /></SelectTrigger>
+        <SelectTrigger className="w-full">
+          <SelectValue placeholder="Select a value" />
+        </SelectTrigger>
         <SelectContent>
           {spec.Options.map((option) => {
-            const detail = spec.Values?.find((item) => item.value === option)?.description
-            return <SelectItem key={option} value={option}>{detail ? `${option} — ${detail}` : option}</SelectItem>
+            const detail = spec.Values?.find(
+              (item) => item.value === option
+            )?.description
+            return (
+              <SelectItem key={option} value={option}>
+                {detail ? `${option} — ${detail}` : option}
+              </SelectItem>
+            )
           })}
         </SelectContent>
       </Select>
@@ -1031,7 +879,11 @@ function CanonicalSettingInput({
     return (
       <Textarea
         disabled={disabled}
-        placeholder={spec.Input?.item_shape ? `Comma-separated ${spec.Input.item_shape} values` : "Comma-separated values"}
+        placeholder={
+          spec.Input?.item_shape
+            ? `Comma-separated ${spec.Input.item_shape} values`
+            : "Comma-separated values"
+        }
         value={value}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -1040,11 +892,33 @@ function CanonicalSettingInput({
   return (
     <Input
       disabled={disabled}
-      min={spec.Kind === "int" && spec.Input?.has_min_int ? spec.Input.min_int : undefined}
-      max={spec.Kind === "int" && spec.Input?.has_max_int ? spec.Input.max_int : undefined}
-      type={spec.Secret ? "password" : spec.Kind === "int" ? "number" : spec.Input?.shape === "url" ? "url" : "text"}
+      min={
+        spec.Kind === "int" && spec.Input?.has_min_int
+          ? spec.Input.min_int
+          : undefined
+      }
+      max={
+        spec.Kind === "int" && spec.Input?.has_max_int
+          ? spec.Input.max_int
+          : undefined
+      }
+      type={
+        spec.Secret
+          ? "password"
+          : spec.Kind === "int"
+            ? "number"
+            : spec.Input?.shape === "url"
+              ? "url"
+              : "text"
+      }
       autoComplete={spec.Secret ? "off" : undefined}
-      placeholder={spec.Secret ? "Enter replacement secret" : spec.Input?.shape ? spec.Input.shape : "Value"}
+      placeholder={
+        spec.Secret
+          ? "Enter replacement secret"
+          : spec.Input?.shape
+            ? spec.Input.shape
+            : "Value"
+      }
       value={value}
       onChange={(event) => onChange(event.target.value)}
     />

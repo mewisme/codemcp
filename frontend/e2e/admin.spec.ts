@@ -46,6 +46,34 @@ test.describe("Browser Admin interaction quality", () => {
     }
   })
 
+  test("overview and global settings stay readable without viewport overflow", async ({
+    page,
+  }) => {
+    await installAdminMocks(page)
+
+    await page.goto("/overview")
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Overview" })
+    ).toBeVisible()
+    await expect(page.getByText("Needs attention")).toBeVisible()
+    await expect(page.getByText("Runtime and connectivity")).toBeVisible()
+    await expect(page.getByText("Inventory", { exact: true })).toBeVisible()
+    await expectNoViewportOverflow(page)
+
+    await page.goto("/settings")
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Settings" })
+    ).toBeVisible()
+    await expect(page.getByText("Saved")).toBeVisible()
+    await expect(page.getByRole("tab", { name: "Integrations" })).toHaveCount(0)
+    await expectNoViewportOverflow(page)
+
+    const port = page.getByRole("spinbutton").first()
+    await port.fill("38421")
+    await expect(page.getByText("Unsaved changes").first()).toBeVisible()
+    await expectNoViewportOverflow(page)
+  })
+
   test("logs stay reachable, scrollable, and distinguish view clear from journal deletion", async ({
     page,
   }) => {

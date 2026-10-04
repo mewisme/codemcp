@@ -42,6 +42,8 @@ describe("SystemPage", () => {
     })
     vi.spyOn(adminApi, "doctor").mockResolvedValue({ healthy: true })
     vi.spyOn(adminApi, "about").mockResolvedValue({ version: "test" })
+    vi.spyOn(adminApi, "notificationStatus").mockResolvedValue({ ready: true })
+    vi.spyOn(adminApi, "telegramSetup").mockResolvedValue({ configured: true })
     vi.spyOn(adminApi, "runtimeAction").mockResolvedValue({})
     vi.spyOn(adminApi, "setTelemetry").mockResolvedValue({
       persisted_enabled: false,
@@ -71,5 +73,19 @@ describe("SystemPage", () => {
     await waitFor(() =>
       expect(adminApi.setTelemetry).toHaveBeenCalledWith(false)
     )
+    expect(screen.getByText("Notifications")).toBeInTheDocument()
+    const token = screen.getByPlaceholderText("Bot token")
+    const userID = screen.getByPlaceholderText("Authorized user ID")
+    expect(token).toHaveAttribute("type", "password")
+    await user.type(token, "bot-token-fixture")
+    await user.type(userID, "12345")
+    await user.click(screen.getByRole("button", { name: "Configure" }))
+    await waitFor(() =>
+      expect(adminApi.telegramSetup).toHaveBeenCalledWith(
+        "bot-token-fixture",
+        12345
+      )
+    )
+    expect(token).toHaveValue("")
   })
 })

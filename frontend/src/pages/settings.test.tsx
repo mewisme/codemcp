@@ -48,19 +48,34 @@ describe("settings authentication", () => {
 
   it("rotates a credential through the canonical auth operation and bounds the reveal lifecycle", async () => {
     const user = userEvent.setup()
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = new URL(input instanceof Request ? input.url : String(input), "http://localhost")
-      if (url.pathname === "/api/config") return json(config)
-      if (url.pathname === "/api/network/interfaces") return json([])
-      if (url.pathname === "/api/tunnel/config") return json({ enabled: false })
-      if (url.pathname === "/api/auth" && (!init?.method || init.method === "GET")) return json(authStatus)
-      if (url.pathname === "/api/settings") return json([])
-      if (url.pathname === "/api/notifications") return json({})
-      if (url.pathname === "/api/auth/mcp/rotate" && init?.method === "POST") {
-        return json({ token: "mcp_test_one_time_secret", status: authStatus })
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+          "http://localhost"
+        )
+        if (url.pathname === "/api/config") return json(config)
+        if (url.pathname === "/api/network/interfaces") return json([])
+        if (url.pathname === "/api/tunnel/config")
+          return json({ enabled: false })
+        if (
+          url.pathname === "/api/auth" &&
+          (!init?.method || init.method === "GET")
+        )
+          return json(authStatus)
+        if (url.pathname === "/api/settings") return json([])
+        if (url.pathname === "/api/notifications") return json({})
+        if (
+          url.pathname === "/api/auth/mcp/rotate" &&
+          init?.method === "POST"
+        ) {
+          return json({ token: "mcp_test_one_time_secret", status: authStatus })
+        }
+        throw new Error(
+          `Unhandled request: ${init?.method ?? "GET"} ${url.pathname}${url.search}`
+        )
       }
-      throw new Error(`Unhandled request: ${init?.method ?? "GET"} ${url.pathname}${url.search}`)
-    })
+    )
     vi.stubGlobal("fetch", fetchMock)
 
     render(
@@ -86,7 +101,9 @@ describe("settings authentication", () => {
       )
     )
     await user.click(screen.getByRole("button", { name: "Hide" }))
-    expect(screen.queryByText("mcp_test_one_time_secret")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("mcp_test_one_time_secret")
+    ).not.toBeInTheDocument()
   })
 
   it("renders canonical setting choices and numeric bounds from FieldSpec metadata", async () => {
@@ -122,23 +139,37 @@ describe("settings authentication", () => {
         Writable: true,
         Secret: false,
         Clearable: false,
-        Input: { min_int: 1, max_int: 65535, has_min_int: true, has_max_int: true },
+        Input: {
+          min_int: 1,
+          max_int: 65535,
+          has_min_int: true,
+          has_max_int: true,
+        },
       },
       Value: "37421",
       RuntimeReloaded: false,
     }
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = new URL(input instanceof Request ? input.url : String(input), "http://localhost")
-      if (url.pathname === "/api/config") return json(config)
-      if (url.pathname === "/api/network/interfaces") return json([])
-      if (url.pathname === "/api/tunnel/config") return json({ enabled: false })
-      if (url.pathname === "/api/auth") return json(authStatus)
-      if (url.pathname === "/api/settings") return json([exposure, port])
-      if (url.pathname === "/api/settings/http.exposure.mode") return json(exposure)
-      if (url.pathname === "/api/settings/http.mcp.port") return json(port)
-      if (url.pathname === "/api/notifications") return json({})
-      throw new Error(`Unhandled request: ${init?.method ?? "GET"} ${url.pathname}${url.search}`)
-    })
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+          "http://localhost"
+        )
+        if (url.pathname === "/api/config") return json(config)
+        if (url.pathname === "/api/network/interfaces") return json([])
+        if (url.pathname === "/api/tunnel/config")
+          return json({ enabled: false })
+        if (url.pathname === "/api/auth") return json(authStatus)
+        if (url.pathname === "/api/settings") return json([exposure, port])
+        if (url.pathname === "/api/settings/http.exposure.mode")
+          return json(exposure)
+        if (url.pathname === "/api/settings/http.mcp.port") return json(port)
+        if (url.pathname === "/api/notifications") return json({})
+        throw new Error(
+          `Unhandled request: ${init?.method ?? "GET"} ${url.pathname}${url.search}`
+        )
+      }
+    )
     vi.stubGlobal("fetch", fetchMock)
 
     render(
@@ -149,7 +180,7 @@ describe("settings authentication", () => {
       </ThemeProvider>
     )
 
-    await user.click(await screen.findByRole("tab", { name: "Operations" }))
+    await user.click(await screen.findByRole("tab", { name: "Advanced" }))
     await user.click(await screen.findByRole("button", { name: /Exposure/ }))
     const select = await screen.findByRole("combobox")
     expect(select).toHaveTextContent("none")
@@ -158,6 +189,55 @@ describe("settings authentication", () => {
     const input = await screen.findByRole("spinbutton")
     expect(input).toHaveAttribute("min", "1")
     expect(input).toHaveAttribute("max", "65535")
+  })
+
+  it("keeps Settings global and preserves dirty edits when a save fails", async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+          "http://localhost"
+        )
+        if (url.pathname === "/api/config" && init?.method === "PUT") {
+          return new Response("save failed", { status: 500 })
+        }
+        if (url.pathname === "/api/config") return json(config)
+        if (url.pathname === "/api/network/interfaces") return json([])
+        if (url.pathname === "/api/tunnel/config")
+          return json({ enabled: false })
+        if (url.pathname === "/api/auth") return json(authStatus)
+        if (url.pathname === "/api/settings") return json([])
+        if (url.pathname === "/api/notifications") return json({})
+        throw new Error(
+          `Unhandled request: ${init?.method ?? "GET"} ${url.pathname}${url.search}`
+        )
+      }
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    render(
+      <ThemeProvider>
+        <TooltipProvider>
+          <SettingsPage />
+        </TooltipProvider>
+      </ThemeProvider>
+    )
+
+    expect(await screen.findByText("Saved")).toBeInTheDocument()
+    expect(
+      screen.queryByRole("tab", { name: "Integrations" })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText("Telegram setup")).not.toBeInTheDocument()
+
+    const port = screen.getAllByRole("spinbutton")[0]
+    await user.clear(port)
+    await user.type(port, "38421")
+    expect(screen.getAllByText("Unsaved changes").length).toBeGreaterThan(0)
+
+    await user.click(screen.getByRole("button", { name: "Save" }))
+    expect(await screen.findByText("Save failed")).toBeInTheDocument()
+    expect(port).toHaveValue(38421)
   })
 })
 

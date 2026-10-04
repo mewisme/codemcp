@@ -141,6 +141,70 @@ export async function installAdminMocks(
         body: 'event: ready\ndata: {"latest_sequence":0}\n\n',
       })
     }
+    if (url.pathname === "/api/workspaces") return json([])
+    if (url.pathname === "/api/upstream") return json([])
+    if (url.pathname === "/api/tunnel") {
+      return json({
+        provider: "openai",
+        enabled: true,
+        running: true,
+        ready: true,
+        metadata: { name: "Fixture tunnel" },
+      })
+    }
+    if (url.pathname === "/api/tunnel/config") return json({ enabled: true })
+    if (url.pathname === "/api/network/interfaces") return json([])
+    if (url.pathname === "/api/auth") {
+      return json({
+        mcp_enabled: true,
+        mcp_configured: true,
+        mcp_legacy_bearer: false,
+        admin_enabled: true,
+        admin_configured: true,
+        unauthenticated_loopback: false,
+        cleartext_http: false,
+      })
+    }
+    if (url.pathname === "/api/settings") return json([])
+    if (url.pathname === "/api/notifications") return json({})
+    if (url.pathname === "/api/config") {
+      return json({
+        http: {
+          exposure: { mode: "none", interfaces: [] },
+          security: {
+            allow_insecure: false,
+            allow_unauthenticated_loopback: false,
+          },
+          mcp: {
+            enabled: true,
+            port: 37421,
+            auth: {
+              enabled: true,
+              legacy_bearer: true,
+              token_configured: true,
+            },
+          },
+          admin: {
+            enabled: true,
+            port: 37422,
+            auth: { enabled: true, token_configured: true },
+          },
+        },
+        permissions: { allow_dirs: [] },
+        shell: { path: [] },
+        integrations: {
+          ponytail: { active: true, mode: "full" },
+          caveman: { active: true, mode: "full" },
+          rtk: { enabled: true, path: "" },
+          codegraph: { enabled: false, path: "" },
+          typesafe: {
+            enabled: false,
+            model: "fixture-model",
+            timeout_ms: 5000,
+          },
+        },
+      })
+    }
     return json({})
   })
 
