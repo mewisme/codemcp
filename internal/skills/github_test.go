@@ -103,19 +103,47 @@ func TestValidateNativeSkillRootAndRepositoryDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 2 {
+	if len(values) != 1 {
 		t.Fatalf("candidates=%#v", values)
 	}
-	if values[0].Skill.Name != "beta" || values[0].RelativePath != "nested/beta" {
+	if values[0].Skill.Name != "alpha" || values[0].RelativePath != "skills/alpha" {
 		t.Fatalf("first candidate=%#v", values[0])
-	}
-	if values[1].Skill.Name != "alpha" || values[1].RelativePath != "skills/alpha" {
-		t.Fatalf("second candidate=%#v", values[1])
 	}
 	for _, value := range values {
 		if !reflect.DeepEqual(value.Files, []string{"SKILL.md", "notes.txt"}) {
 			t.Fatalf("candidate files=%#v", value.Files)
 		}
+	}
+	fullDepth, err := DiscoverRepositorySkillsWithOptions(repository, RepositoryDiscoveryOptions{FullDepth: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fullDepth) != 2 || fullDepth[0].Skill.Name != "alpha" || fullDepth[1].Skill.Name != "beta" {
+		t.Fatalf("full-depth candidates=%#v", fullDepth)
+	}
+}
+
+func TestRepositoryDiscoveryRootSkillShadowsNestedUnlessFullDepth(t *testing.T) {
+	repository := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repository, "SKILL.md"), []byte(validSkillManifest("root-skill")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeSkillFixture(t, filepath.Join(repository, "skills", "nested"), "nested", "Nested skill")
+
+	values, err := DiscoverRepositorySkills(repository)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 || values[0].Skill.Name != "root-skill" || values[0].RelativePath != "" {
+		t.Fatalf("default root discovery=%#v", values)
+	}
+
+	fullDepth, err := DiscoverRepositorySkillsWithOptions(repository, RepositoryDiscoveryOptions{FullDepth: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fullDepth) != 2 || fullDepth[0].Skill.Name != "nested" || fullDepth[1].Skill.Name != "root-skill" {
+		t.Fatalf("full-depth root discovery=%#v", fullDepth)
 	}
 }
 
@@ -171,7 +199,7 @@ func TestValidateNativeSkillRootFailsClosedForUnsafeContent(t *testing.T) {
 	})
 }
 
-func TestExistingNativeSkillDiscoveryRemainsCompatible(t *testing.T) {
+func TestNativeSkillDiscoveryRequiresCanonicalManifestName(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, ".cm", "skills", "legacy")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -184,7 +212,7 @@ func TestExistingNativeSkillDiscoveryRemainsCompatible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 4 || values[0].Name != "legacy" {
+	if len(values) != 3 || !IsBuiltin(values[0]) || !IsBuiltin(values[1]) || !IsBuiltin(values[2]) {
 		t.Fatalf("inventory=%#v", values)
 	}
 }

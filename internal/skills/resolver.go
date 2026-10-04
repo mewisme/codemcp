@@ -178,83 +178,26 @@ func walkSkills(dir, source string, depth int, result *[]Skill, seen map[string]
 			continue
 		}
 		full := filepath.Join(dir, entry.Name())
-		skillFile := ""
-		for _, candidate := range []string{"SKILL.md", "skill.md"} {
-			path := filepath.Join(full, candidate)
-			info, err := os.Lstat(path)
-			if err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
-				skillFile = path
-				break
-			}
-		}
-		if skillFile == "" {
+		skillFile := filepath.Join(full, "SKILL.md")
+		info, err := os.Lstat(skillFile)
+		if errors.Is(err, os.ErrNotExist) {
 			walkSkills(full, source, depth+1, result, seen)
+			continue
+		}
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 			continue
 		}
 		if seen[skillFile] {
 			continue
 		}
-		data, err := os.ReadFile(skillFile)
+		validated, err := ValidateNativeSkillManifestDirectory(full)
 		if err != nil {
 			continue
 		}
-		name, description := parseFrontmatter(string(data))
-		if name == "" {
-			name = entry.Name()
-		}
-		if description == "" {
-			description = firstDescriptionLine(string(data))
-		}
-		if description == "" {
-			description = name
-		}
-		if len(description) > 200 {
-			description = description[:200]
-		}
 		seen[skillFile] = true
-		*result = append(*result, Skill{Name: name, Description: description, Path: skillFile, Source: source})
+		skill := validated.Skill
+		skill.Description = strings.Join(strings.Fields(skill.Description), " ")
+		skill.Source = source
+		*result = append(*result, skill)
 	}
-}
-
-func parseFrontmatter(content string) (string, string) {
-	if !strings.HasPrefix(content, "---") {
-		return "", ""
-	}
-	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
-	if len(lines) < 3 || strings.TrimSpace(lines[0]) != "---" {
-		return "", ""
-	}
-	name := ""
-	description := ""
-	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) == "---" {
-			break
-		}
-		key, value, ok := strings.Cut(line, ":")
-		if !ok {
-			continue
-		}
-		switch strings.TrimSpace(key) {
-		case "name":
-			name = trimYAMLScalar(value)
-		case "description":
-			description = trimYAMLScalar(value)
-		}
-	}
-	return name, description
-}
-
-func firstDescriptionLine(content string) string {
-	for _, line := range strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n") {
-		value := strings.TrimSpace(line)
-		if value == "" || strings.HasPrefix(value, "#") || value == "---" || strings.Contains(value, ":") {
-			continue
-		}
-		return value
-	}
-	return ""
-}
-
-func trimYAMLScalar(value string) string {
-	return strings.Trim(strings.TrimSpace(value), `"'`)
 }

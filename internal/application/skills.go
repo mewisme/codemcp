@@ -38,10 +38,11 @@ type SkillScopeResolution struct {
 }
 
 type SkillAddRequest struct {
-	Scope  SkillScopeRequest `json:"scope"`
-	Source string            `json:"source"`
-	Skill  string            `json:"skill,omitempty"`
-	All    bool              `json:"all,omitempty"`
+	Scope     SkillScopeRequest `json:"scope"`
+	Source    string            `json:"source"`
+	Skill     string            `json:"skill,omitempty"`
+	All       bool              `json:"all,omitempty"`
+	FullDepth bool              `json:"full_depth,omitempty"`
 }
 
 type SkillAddResult struct {
@@ -76,6 +77,43 @@ type SkillListResult struct {
 type SkillInfoRequest struct {
 	Scope SkillScopeRequest `json:"scope"`
 	Name  string            `json:"name"`
+}
+
+type SkillUpdateRequest struct {
+	Scope SkillScopeRequest `json:"scope"`
+	Name  string            `json:"name,omitempty"`
+	All   bool              `json:"all,omitempty"`
+}
+
+type SkillUpdateItem struct {
+	Name             string `json:"name"`
+	PreviousRevision string `json:"previous_revision"`
+	Revision         string `json:"revision"`
+	PreviousPath     string `json:"previous_path"`
+	Path             string `json:"path"`
+	ContentHash      string `json:"content_hash"`
+	Changed          bool   `json:"changed"`
+	Relocated        bool   `json:"relocated"`
+}
+
+type SkillUpdateResult struct {
+	Scope       SkillManagementScope `json:"scope"`
+	WorkspaceID string               `json:"workspace_id,omitempty"`
+	Root        string               `json:"root"`
+	Skills      []SkillUpdateItem    `json:"skills"`
+}
+
+type SkillRemoveRequest struct {
+	Scope SkillScopeRequest `json:"scope"`
+	Name  string            `json:"name"`
+}
+
+type SkillRemoveResult struct {
+	Scope       SkillManagementScope `json:"scope"`
+	WorkspaceID string               `json:"workspace_id,omitempty"`
+	Root        string               `json:"root"`
+	Name        string               `json:"name"`
+	Managed     bool                 `json:"managed"`
 }
 
 type acquiredSkillRepository struct {
@@ -188,7 +226,7 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 	if acquired.Cleanup != nil {
 		defer acquired.Cleanup()
 	}
-	candidates, err := skills.DiscoverRepositorySkills(acquired.Root)
+	candidates, err := skills.DiscoverRepositorySkillsWithOptions(acquired.Root, skills.RepositoryDiscoveryOptions{FullDepth: request.FullDepth})
 	if err != nil {
 		return SkillAddResult{}, err
 	}
@@ -211,9 +249,10 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 	defer skills.CleanupStagedManagedSkills(target.Root, staged)
 
 	nextMetadata := skills.CloneManagedSources(metadata)
-	for _, candidate := range selected {
+	for index, candidate := range selected {
 		nextMetadata.Skills[candidate.Skill.Name] = skills.ManagedSource{
 			Source: source.Identity, Revision: acquired.Revision, Path: candidate.RelativePath,
+			ContentHash: staged[index].ContentHash,
 		}
 	}
 	if err := skills.CommitStagedManagedSkills(target.Root, staged, nextMetadata, s.BeforeMetadataCommit); err != nil {
@@ -231,6 +270,202 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 	return SkillAddResult{
 		Scope: target.Scope, WorkspaceID: target.WorkspaceID, Root: target.Root,
 		Source: source, Revision: acquired.Revision, Skills: installed,
+	}, nil
+}
+
+func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdateRequest) (SkillUpdateResult, error) {
+	target, err := s.resolveScope(request.Scope)
+	if err != nil {
+		return SkillUpdateResult{}, err
+	}
+	name := strings.TrimSpace(request.Name)
+	if request.All && name != "" {
+		return SkillUpdateResult{}, errors.New("skill name and --all are mutually exclusive")
+	}
+	if !request.All && name == "" {
+		return SkillUpdateResult{}, errors.New("skill name or --all is required")
+	}
+	if name != "" {
+		if _, err := skills.ValidateNativeSkillName(name); err != nil {
+			return SkillUpdateResult{}, err
+		}
+	}
+	metadata, err := skills.ReadManagedSources(target.Root)
+	if err != nil {
+		return SkillUpdateResult{}, err
+	}
+	names := []string{name}
+	if request.All {
+		names = skills.ManagedNames(metadata)
+	}
+	if len(names) == 0 {
+		return SkillUpdateResult{Scope: target.Scope, WorkspaceID: target.WorkspaceID, Root: target.Root}, nil
+	}
+	for _, item := range names {
+		if _, ok := metadata.Skills[item]; !ok {
+			return SkillUpdateResult{}, fmt.Errorf("skill %q is not a managed native skill", item)
+		}
+	}
+	if s == nil || s.AcquireRepository == nil {
+		return SkillUpdateResult{}, errors.New("github skill repository acquisition is unavailable")
+	}
+
+	groups := map[string][]string{}
+	groupSources := map[string]skills.GitHubSource{}
+	for _, item := range names {
+		entry := metadata.Skills[item]
+		if entry.Ref != "" {
+			return SkillUpdateResult{}, fmt.Errorf("managed skill %q uses unsupported ref %q", item, entry.Ref)
+		}
+		source, err := skills.ParseGitHubIdentity(entry.Source)
+		if err != nil {
+			return SkillUpdateResult{}, err
+		}
+		key := entry.Source + "\x00" + entry.Ref
+		groups[key] = append(groups[key], item)
+		groupSources[key] = source
+	}
+	keys := make([]string, 0, len(groups))
+	for key := range groups {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := SkillUpdateResult{Scope: target.Scope, WorkspaceID: target.WorkspaceID, Root: target.Root}
+	currentMetadata := skills.CloneManagedSources(metadata)
+	for _, key := range keys {
+		groupNames := groups[key]
+		sort.Strings(groupNames)
+		acquired, err := s.AcquireRepository(ctx, groupSources[key])
+		if err != nil {
+			return SkillUpdateResult{}, err
+		}
+		candidates, discoverErr := skills.DiscoverRepositorySkillsWithOptions(acquired.Root, skills.RepositoryDiscoveryOptions{FullDepth: true})
+		if discoverErr != nil {
+			if acquired.Cleanup != nil {
+				acquired.Cleanup()
+			}
+			return SkillUpdateResult{}, discoverErr
+		}
+		for _, item := range groupNames {
+			entry := currentMetadata.Skills[item]
+			installedRoot := filepath.Join(target.Root, item)
+			currentHash, err := skills.HashNativeSkillRoot(installedRoot)
+			if err != nil {
+				if acquired.Cleanup != nil {
+					acquired.Cleanup()
+				}
+				return SkillUpdateResult{}, fmt.Errorf("hash installed skill %q: %w", item, err)
+			}
+			if entry.ContentHash != "" && currentHash != entry.ContentHash {
+				if acquired.Cleanup != nil {
+					acquired.Cleanup()
+				}
+				return SkillUpdateResult{}, fmt.Errorf("managed skill %q has local changes; refusing update", item)
+			}
+			candidate, relocated, err := resolveManagedUpdateCandidate(candidates, item, entry.Path)
+			if err != nil {
+				if acquired.Cleanup != nil {
+					acquired.Cleanup()
+				}
+				return SkillUpdateResult{}, err
+			}
+			staged, err := skills.StageManagedSkills(target.Root, []skills.RepositorySkillCandidate{candidate})
+			if err != nil {
+				if acquired.Cleanup != nil {
+					acquired.Cleanup()
+				}
+				return SkillUpdateResult{}, err
+			}
+			stagedItem := staged[0]
+			nextMetadata := skills.CloneManagedSources(currentMetadata)
+			nextEntry := entry
+			nextEntry.Revision = acquired.Revision
+			nextEntry.Path = candidate.RelativePath
+			nextEntry.ContentHash = stagedItem.ContentHash
+			nextMetadata.Skills[item] = nextEntry
+			changed := stagedItem.ContentHash != currentHash
+			if changed {
+				err = skills.ReplaceStagedManagedSkill(target.Root, stagedItem, nextMetadata, s.BeforeMetadataCommit)
+			} else {
+				err = skills.WriteManagedSources(target.Root, nextMetadata, s.BeforeMetadataCommit)
+			}
+			skills.CleanupStagedManagedSkills(target.Root, staged)
+			if err != nil {
+				if acquired.Cleanup != nil {
+					acquired.Cleanup()
+				}
+				return SkillUpdateResult{}, err
+			}
+			currentMetadata = nextMetadata
+			result.Skills = append(result.Skills, SkillUpdateItem{
+				Name: item, PreviousRevision: entry.Revision, Revision: acquired.Revision,
+				PreviousPath: entry.Path, Path: candidate.RelativePath, ContentHash: stagedItem.ContentHash,
+				Changed: changed, Relocated: relocated,
+			})
+		}
+		if acquired.Cleanup != nil {
+			acquired.Cleanup()
+		}
+	}
+	return result, nil
+}
+
+func resolveManagedUpdateCandidate(candidates []skills.RepositorySkillCandidate, name, recordedPath string) (skills.RepositorySkillCandidate, bool, error) {
+	for _, candidate := range candidates {
+		if candidate.RelativePath == recordedPath && candidate.Skill.Name == name {
+			return candidate, false, nil
+		}
+	}
+	matches := make([]skills.RepositorySkillCandidate, 0, 1)
+	for _, candidate := range candidates {
+		if candidate.Skill.Name == name {
+			matches = append(matches, candidate)
+		}
+	}
+	if len(matches) == 1 {
+		return matches[0], matches[0].RelativePath != recordedPath, nil
+	}
+	if len(matches) == 0 {
+		return skills.RepositorySkillCandidate{}, false, fmt.Errorf("managed skill %q no longer exists at %q and no relocation was found", name, recordedPath)
+	}
+	return skills.RepositorySkillCandidate{}, false, fmt.Errorf("managed skill %q relocation is ambiguous", name)
+}
+
+func (s *SkillManagementService) Remove(request SkillRemoveRequest) (SkillRemoveResult, error) {
+	target, err := s.resolveScope(request.Scope)
+	if err != nil {
+		return SkillRemoveResult{}, err
+	}
+	name, err := skills.ValidateNativeSkillName(strings.TrimSpace(request.Name))
+	if err != nil {
+		return SkillRemoveResult{}, err
+	}
+	destination := filepath.Join(target.Root, name)
+	validated, err := skills.ValidateNativeSkillDirectory(destination)
+	if err != nil {
+		return SkillRemoveResult{}, fmt.Errorf("native skill %q is not removable in %s scope: %w", name, target.Scope, err)
+	}
+	if validated.Skill.Name != name {
+		return SkillRemoveResult{}, fmt.Errorf("native skill %q identity mismatch", name)
+	}
+	metadata, err := skills.ReadManagedSources(target.Root)
+	if err != nil {
+		return SkillRemoveResult{}, err
+	}
+	managed := skills.IsManaged(metadata, name)
+	if managed {
+		next := skills.CloneManagedSources(metadata)
+		delete(next.Skills, name)
+		if err := skills.CommitManagedSkillRemoval(target.Root, name, next, s.BeforeMetadataCommit); err != nil {
+			return SkillRemoveResult{}, err
+		}
+	} else {
+		if err := skills.RemoveUnmanagedNativeSkill(target.Root, name); err != nil {
+			return SkillRemoveResult{}, err
+		}
+	}
+	return SkillRemoveResult{
+		Scope: target.Scope, WorkspaceID: target.WorkspaceID, Root: target.Root, Name: name, Managed: managed,
 	}, nil
 }
 

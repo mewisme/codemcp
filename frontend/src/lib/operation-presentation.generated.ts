@@ -1037,6 +1037,24 @@ export const canonicalPresentationContract = {
       "confirmation": "none",
       "input": "none"
     },
+    "skill.remove": {
+      "operation": "skill.remove",
+      "title": "Remove Skills",
+      "subject": "Skills",
+      "category": "delete",
+      "danger": "destructive",
+      "confirmation": "recommended",
+      "input": "form"
+    },
+    "skill.update": {
+      "operation": "skill.update",
+      "title": "Update Skills",
+      "subject": "Skills",
+      "category": "change",
+      "danger": "none",
+      "confirmation": "none",
+      "input": "form"
+    },
     "status.overview": {
       "operation": "status.overview",
       "title": "Status",

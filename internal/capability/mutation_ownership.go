@@ -83,7 +83,7 @@ func buildMutationOwners() map[ID]MutationOwner {
 		AuthAdminRotate, AuthAdminEnable, AuthAdminDisable,
 	)
 	add(MutationOwnerApplicationPrompts, PromptCreate, PromptUpdate, PromptDelete, AgentPromptCreate, AgentPromptUpdate, AgentPromptDelete)
-	add(MutationOwnerApplicationSkills, SkillInstall)
+	add(MutationOwnerApplicationSkills, SkillInstall, SkillUpdate, SkillRemove)
 	add(MutationOwnerApplicationWorkspace,
 		WorkspaceContainerCreate, WorkspaceContainerRename, WorkspaceContainerDelete, WorkspaceContainerAdd, WorkspaceContainerRemove,
 		WorkspaceAccessAdd, WorkspaceAccessRemove, WorkspaceRegister, WorkspaceRelocate, WorkspaceUnregister, WorkspacePurge,

@@ -35,7 +35,7 @@ func CanonicalOwnerFor(id ID) (string, bool) {
 		return OwnerApplicationDiagnostics, true
 	case strings.HasPrefix(value, "prompt."):
 		return string(MutationOwnerApplicationPrompts), true
-	case strings.HasPrefix(value, "skill.inventory."):
+	case strings.HasPrefix(value, "skill."):
 		return string(MutationOwnerApplicationSkills), true
 	case strings.HasPrefix(value, "auth."):
 		return string(MutationOwnerApplicationAuth), true

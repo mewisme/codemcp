@@ -24,9 +24,11 @@ const (
 )
 
 type ManagedSource struct {
-	Source   string `json:"source"`
-	Revision string `json:"revision"`
-	Path     string `json:"path"`
+	Source      string `json:"source"`
+	Ref         string `json:"ref,omitempty"`
+	Revision    string `json:"revision"`
+	Path        string `json:"path"`
+	ContentHash string `json:"content_hash,omitempty"`
 }
 
 type ManagedSources struct {
@@ -35,8 +37,9 @@ type ManagedSources struct {
 }
 
 type StagedManagedSkill struct {
-	Name     string
-	StageRel string
+	Name        string
+	StageRel    string
+	ContentHash string
 }
 
 func EmptyManagedSources() ManagedSources {
@@ -117,6 +120,24 @@ func ValidateManagedSources(value ManagedSources) error {
 		if err := validateRepositoryRelativePath(source.Path); err != nil {
 			return fmt.Errorf("managed skill %q path: %w", name, err)
 		}
+		if err := validateManagedSourceRef(source.Ref); err != nil {
+			return fmt.Errorf("managed skill %q ref: %w", name, err)
+		}
+		if source.ContentHash != "" {
+			if err := ValidateSkillContentHash(source.ContentHash); err != nil {
+				return fmt.Errorf("managed skill %q content hash: %w", name, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateManagedSourceRef(value string) error {
+	if value == "" {
+		return nil
+	}
+	if value != strings.TrimSpace(value) || len(value) > 255 || strings.ContainsAny(value, "\x00\r\n") {
+		return errors.New("git ref is invalid")
 	}
 	return nil
 }
@@ -198,6 +219,12 @@ func StageManagedSkills(skillsRoot string, candidates []RepositorySkillCandidate
 			cleanup()
 			return nil, fmt.Errorf("staged skill identity changed from %q to %q", name, validated.Skill.Name)
 		}
+		hash, err := HashValidatedNativeSkill(validated)
+		if err != nil {
+			cleanup()
+			return nil, fmt.Errorf("hash staged skill %q: %w", name, err)
+		}
+		staged[len(staged)-1].ContentHash = hash
 	}
 	return staged, nil
 }
@@ -279,6 +306,182 @@ func CommitStagedManagedSkills(skillsRoot string, staged []StagedManagedSkill, m
 	}
 	if err := statepkg.WriteFileAtomicRoot(root, filepath.Join(skillsDir, ManagedSourcesFile), data, 0o600); err != nil {
 		return rollback(fmt.Errorf("write managed skill metadata: %w", err))
+	}
+	return nil
+}
+
+func ReplaceStagedManagedSkill(skillsRoot string, staged StagedManagedSkill, metadata ManagedSources, beforeMetadata func() error) error {
+	if _, err := ValidateNativeSkillName(staged.Name); err != nil {
+		return err
+	}
+	if staged.ContentHash == "" {
+		return errors.New("staged managed skill content hash is required")
+	}
+	if err := ValidateSkillContentHash(staged.ContentHash); err != nil {
+		return err
+	}
+	if err := ValidateManagedSources(metadata); err != nil {
+		return err
+	}
+	root, skillsDir, _, err := openManagedSkillTransactionRoot(skillsRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	stageInfo, err := root.Lstat(staged.StageRel)
+	if err != nil {
+		return fmt.Errorf("inspect staged skill %q: %w", staged.Name, err)
+	}
+	if !stageInfo.IsDir() || stageInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("staged skill %q is not a real directory", staged.Name)
+	}
+	destinationRel := filepath.Join(skillsDir, staged.Name)
+	destinationInfo, err := root.Lstat(destinationRel)
+	if err != nil {
+		return fmt.Errorf("inspect installed skill %q: %w", staged.Name, err)
+	}
+	if !destinationInfo.IsDir() || destinationInfo.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("installed skill %q is not a real directory", staged.Name)
+	}
+
+	backupRel, err := uniqueStageName(root)
+	if err != nil {
+		return err
+	}
+	if err := root.Rename(destinationRel, backupRel); err != nil {
+		return fmt.Errorf("backup installed skill %q: %w", staged.Name, err)
+	}
+	oldMoved, newMoved := true, false
+	rollback := func(cause error) error {
+		var rollbackErr error
+		if newMoved {
+			if err := root.Rename(destinationRel, staged.StageRel); err != nil {
+				rollbackErr = errors.Join(rollbackErr, fmt.Errorf("rollback replacement skill %q: %w", staged.Name, err))
+			} else {
+				newMoved = false
+			}
+		}
+		if oldMoved {
+			if err := root.Rename(backupRel, destinationRel); err != nil {
+				rollbackErr = errors.Join(rollbackErr, fmt.Errorf("restore installed skill %q: %w", staged.Name, err))
+			} else {
+				oldMoved = false
+			}
+		}
+		if rollbackErr != nil {
+			return errors.Join(cause, rollbackErr)
+		}
+		return cause
+	}
+
+	if err := root.Rename(staged.StageRel, destinationRel); err != nil {
+		return rollback(fmt.Errorf("activate replacement skill %q: %w", staged.Name, err))
+	}
+	newMoved = true
+	if err := writeManagedSourcesRoot(root, skillsDir, metadata, beforeMetadata); err != nil {
+		return rollback(err)
+	}
+	oldMoved = false
+	_ = root.RemoveAll(backupRel)
+	return nil
+}
+
+func WriteManagedSources(skillsRoot string, metadata ManagedSources, beforeMetadata func() error) error {
+	if err := ValidateManagedSources(metadata); err != nil {
+		return err
+	}
+	root, skillsDir, _, err := openOrCreateManagedSkillTransactionRoot(skillsRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return writeManagedSourcesRoot(root, skillsDir, metadata, beforeMetadata)
+}
+
+func CommitManagedSkillRemoval(skillsRoot, name string, metadata ManagedSources, beforeMetadata func() error) error {
+	if _, err := ValidateNativeSkillName(name); err != nil {
+		return err
+	}
+	if err := ValidateManagedSources(metadata); err != nil {
+		return err
+	}
+	root, skillsDir, _, err := openManagedSkillTransactionRoot(skillsRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	destinationRel := filepath.Join(skillsDir, name)
+	info, err := root.Lstat(destinationRel)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("installed skill %q is not a real directory", name)
+	}
+	backupRel, err := uniqueStageName(root)
+	if err != nil {
+		return err
+	}
+	if err := root.Rename(destinationRel, backupRel); err != nil {
+		return fmt.Errorf("stage removal of skill %q: %w", name, err)
+	}
+	if err := writeManagedSourcesRoot(root, skillsDir, metadata, beforeMetadata); err != nil {
+		if restoreErr := root.Rename(backupRel, destinationRel); restoreErr != nil {
+			return errors.Join(err, fmt.Errorf("restore removed skill %q: %w", name, restoreErr))
+		}
+		return err
+	}
+	_ = root.RemoveAll(backupRel)
+	return nil
+}
+
+func RemoveUnmanagedNativeSkill(skillsRoot, name string) error {
+	if _, err := ValidateNativeSkillName(name); err != nil {
+		return err
+	}
+	root, skillsDir, _, err := openManagedSkillTransactionRoot(skillsRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	destinationRel := filepath.Join(skillsDir, name)
+	info, err := root.Lstat(destinationRel)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("installed skill %q is not a real directory", name)
+	}
+	backupRel, err := uniqueStageName(root)
+	if err != nil {
+		return err
+	}
+	if err := root.Rename(destinationRel, backupRel); err != nil {
+		return fmt.Errorf("stage removal of skill %q: %w", name, err)
+	}
+	if err := root.RemoveAll(backupRel); err != nil {
+		if restoreErr := root.Rename(backupRel, destinationRel); restoreErr != nil {
+			return errors.Join(err, fmt.Errorf("restore unmanaged skill %q: %w", name, restoreErr))
+		}
+		return err
+	}
+	return nil
+}
+
+func writeManagedSourcesRoot(root *os.Root, skillsDir string, metadata ManagedSources, beforeMetadata func() error) error {
+	if beforeMetadata != nil {
+		if err := beforeMetadata(); err != nil {
+			return err
+		}
+	}
+	data, err := marshalManagedSources(metadata)
+	if err != nil {
+		return err
+	}
+	if err := statepkg.WriteFileAtomicRoot(root, filepath.Join(skillsDir, ManagedSourcesFile), data, 0o600); err != nil {
+		return fmt.Errorf("write managed skill metadata: %w", err)
 	}
 	return nil
 }
@@ -416,6 +619,10 @@ func copyCandidateIntoStage(destination *os.Root, stageRel string, candidate Rep
 
 	files := append([]string(nil), candidate.Files...)
 	sort.Strings(files)
+	if len(files) > maxImportedSkillFiles {
+		return fmt.Errorf("candidate skill exceeds import safety limit of %d files", maxImportedSkillFiles)
+	}
+	var totalCopied int64
 	for _, relative := range files {
 		clean, err := ValidateSupportingPath(relative)
 		if relative == "SKILL.md" {
@@ -436,10 +643,7 @@ func copyCandidateIntoStage(destination *os.Root, stageRel string, candidate Rep
 		if err != nil {
 			return err
 		}
-		maxBytes := int64(MaxNativeSkillSupportingBytes)
-		if relative == "SKILL.md" {
-			maxBytes = int64(MaxNativeSkillTotalBytes)
-		}
+		maxBytes := int64(maxImportedSkillFileBytes)
 		data, readErr := io.ReadAll(io.LimitReader(input, maxBytes+1))
 		closeErr := input.Close()
 		if readErr != nil {
@@ -450,6 +654,10 @@ func copyCandidateIntoStage(destination *os.Root, stageRel string, candidate Rep
 		}
 		if int64(len(data)) > maxBytes {
 			return fmt.Errorf("candidate skill file exceeds staging size limit: %s", relative)
+		}
+		totalCopied += int64(len(data))
+		if totalCopied > maxImportedSkillTotalBytes {
+			return fmt.Errorf("candidate skill exceeds staging safety limit of %d bytes", maxImportedSkillTotalBytes)
 		}
 		destinationRel := filepath.Join(stageRel, rel)
 		parent := filepath.Dir(destinationRel)

@@ -55,6 +55,8 @@ const (
 	SkillInventoryList         ID = "skill.inventory.list"
 	SkillInventoryInfo         ID = "skill.inventory.info"
 	SkillInstall               ID = "skill.install"
+	SkillUpdate                ID = "skill.update"
+	SkillRemove                ID = "skill.remove"
 	AuthMCPRotate              ID = "auth.mcp.rotate"
 	AuthMCPEnable              ID = "auth.mcp.enable"
 	AuthMCPDisable             ID = "auth.mcp.disable"
@@ -264,6 +266,8 @@ func buildSpecs() []Spec {
 		operatorQuery(SkillInventoryList, "skills list", "skills ls"),
 		operatorQuery(SkillInventoryInfo, "skills info"),
 		operatorMutation(SkillInstall, "skills add", RiskState, true),
+		operatorMutation(SkillUpdate, "skills update", RiskState, true),
+		operatorDestructive(SkillRemove, "skills remove", true),
 		operatorSensitive(AuthMCPRotate, "auth mcp create", false),
 		operatorSensitive(AuthMCPEnable, "auth mcp enable", false),
 		operatorSensitive(AuthMCPDisable, "auth mcp disable", false),

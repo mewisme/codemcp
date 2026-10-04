@@ -27,10 +27,10 @@ const (
 	maxAuthoredRuleBytes       = 4_000
 	maxAuthoredRuleGlobs       = 64
 	maxAuthoredRuleGlobBytes   = 256
-	maxAuthoredSkillBytes      = skills.MaxNativeSkillInstructionsBytes
-	maxAuthoredSkillFiles      = skills.MaxNativeSkillSupportingFiles
-	maxAuthoredSkillFileBytes  = skills.MaxNativeSkillSupportingBytes
-	maxAuthoredSkillTotalBytes = skills.MaxNativeSkillTotalBytes
+	maxAuthoredSkillBytes      = 500_000
+	maxAuthoredSkillFiles      = 32
+	maxAuthoredSkillFileBytes  = 256_000
+	maxAuthoredSkillTotalBytes = 1_000_000
 	maxExistingArtifactBytes   = 1_000_000
 )
 
@@ -546,6 +546,9 @@ func validateAndRenderSkill(request SkillAuthoringRequest, name string) ([]autho
 	instructions, err := skills.NormalizeNativeSkillInstructions(request.Instructions)
 	if err != nil {
 		return nil, "", err
+	}
+	if len([]byte(instructions)) > maxAuthoredSkillBytes {
+		return nil, "", fmt.Errorf("skill instructions exceed %d bytes", maxAuthoredSkillBytes)
 	}
 	if len(request.SupportingFiles) > maxAuthoredSkillFiles {
 		return nil, "", fmt.Errorf("skill defines more than %d supporting files", maxAuthoredSkillFiles)

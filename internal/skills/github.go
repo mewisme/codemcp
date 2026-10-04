@@ -2,8 +2,6 @@ package skills
 
 import (
 	"errors"
-	"fmt"
-	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,9 +10,10 @@ import (
 )
 
 const (
-	maxRepositorySkillDepth = 8
-	maxRepositoryEntries    = 20_000
-	maxRepositoryCandidates = 256
+	maxRepositorySkillDepth         = 8
+	defaultRepositoryContainerDepth = 3
+	maxRepositoryEntries            = 20_000
+	maxRepositoryCandidates         = 256
 )
 
 type GitHubSource struct {
@@ -29,6 +28,10 @@ type RepositorySkillCandidate struct {
 	Root         string   `json:"root"`
 	RelativePath string   `json:"relative_path"`
 	Files        []string `json:"files"`
+}
+
+type RepositoryDiscoveryOptions struct {
+	FullDepth bool
 }
 
 func ParseGitHubIdentity(raw string) (GitHubSource, error) {
@@ -125,6 +128,10 @@ func validateGitHubRepository(value string) error {
 }
 
 func DiscoverRepositorySkills(root string) ([]RepositorySkillCandidate, error) {
+	return DiscoverRepositorySkillsWithOptions(root, RepositoryDiscoveryOptions{})
+}
+
+func DiscoverRepositorySkillsWithOptions(root string, options RepositoryDiscoveryOptions) ([]RepositorySkillCandidate, error) {
 	root, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
@@ -136,75 +143,173 @@ func DiscoverRepositorySkills(root string) ([]RepositorySkillCandidate, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return nil, errors.New("repository root must be a regular directory")
 	}
-	candidateRoots := make([]string, 0)
-	entries := 0
-	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	state := repositoryDiscoveryState{
+		root: root, visited: map[string]bool{}, candidates: map[string]RepositorySkillCandidate{},
+	}
+	if state.tryCandidate(root) {
+		if !options.FullDepth {
+			return state.result(), nil
 		}
-		if path == root {
-			return nil
+	}
+
+	for _, container := range repositoryPrioritySkillContainers(root) {
+		if err := state.walkContainer(container, defaultRepositoryContainerDepth, 0); err != nil {
+			return nil, err
 		}
-		entries++
-		if entries > maxRepositoryEntries {
-			return errors.New("repository skill discovery exceeded entry limit")
+	}
+	if len(state.candidates) == 0 || options.FullDepth {
+		if err := state.walkContainer(root, maxRepositorySkillDepth, 0); err != nil {
+			return nil, err
 		}
-		relative, err := filepath.Rel(root, path)
-		if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return errors.New("repository skill discovery escaped repository root")
-		}
-		segments := strings.Split(filepath.ToSlash(relative), "/")
-		if entry.Name() == ".git" {
-			if entry.IsDir() {
-				return filepath.SkipDir
+	}
+	return state.result(), nil
+}
+
+type repositoryDiscoveryState struct {
+	root       string
+	entries    int
+	visited    map[string]bool
+	candidates map[string]RepositorySkillCandidate
+}
+
+func repositoryPrioritySkillContainers(root string) []string {
+	values := []string{
+		filepath.Join(root, "skills"),
+		filepath.Join(root, "skills", ".curated"),
+		filepath.Join(root, "skills", ".experimental"),
+		filepath.Join(root, "skills", ".system"),
+		filepath.Join(root, "data", "skills"),
+		filepath.Join(root, "agent", "skills"),
+	}
+	entries, err := os.ReadDir(root)
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !strings.HasPrefix(entry.Name(), ".") || entry.Name() == ".git" {
+				continue
 			}
-			return nil
+			values = append(values, filepath.Join(root, entry.Name(), "skills"))
 		}
-		if entry.IsDir() && len(segments) > maxRepositorySkillDepth {
-			return filepath.SkipDir
+	}
+	seen := map[string]bool{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		clean := filepath.Clean(value)
+		if seen[clean] {
+			continue
 		}
-		if entry.Name() != "SKILL.md" {
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("skill manifest is a symlink: %s", filepath.ToSlash(relative))
-		}
-		entryInfo, err := entry.Info()
-		if err != nil {
+		seen[clean] = true
+		result = append(result, clean)
+	}
+	return result
+}
+
+func (s *repositoryDiscoveryState) walkContainer(dir string, maxDepth, depth int) error {
+	if depth > maxDepth {
+		return nil
+	}
+	info, err := os.Lstat(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		if err := s.visit(path); err != nil {
 			return err
 		}
-		if !entryInfo.Mode().IsRegular() {
-			return fmt.Errorf("skill manifest is not regular: %s", filepath.ToSlash(relative))
+		if entry.Type()&os.ModeSymlink != 0 {
+			continue
 		}
-		candidateRoots = append(candidateRoots, filepath.Dir(path))
-		if len(candidateRoots) > maxRepositoryCandidates {
-			return errors.New("repository skill discovery exceeded candidate limit")
+		if entry.Name() == ".git" || entry.Name() == "node_modules" || entry.Name() == "dist" || entry.Name() == "build" || entry.Name() == "__pycache__" {
+			continue
 		}
+		if !entry.IsDir() {
+			continue
+		}
+		if s.tryCandidate(path) {
+			continue
+		}
+		if depth < maxDepth {
+			if err := s.walkContainer(path, maxDepth, depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *repositoryDiscoveryState) visit(path string) error {
+	clean := filepath.Clean(path)
+	if s.visited[clean] {
 		return nil
-	})
+	}
+	s.visited[clean] = true
+	s.entries++
+	if s.entries > maxRepositoryEntries {
+		return errors.New("repository skill discovery exceeded entry limit")
+	}
+	relative, err := filepath.Rel(s.root, clean)
+	if err != nil || relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errors.New("repository skill discovery escaped repository root")
+	}
+	return nil
+}
+
+func (s *repositoryDiscoveryState) tryCandidate(root string) bool {
+	manifestPath := filepath.Join(root, "SKILL.md")
+	info, err := os.Lstat(manifestPath)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	var validated ValidatedNativeSkill
+	if filepath.Clean(root) == filepath.Clean(s.root) {
+		validated, err = validateNativeSkillRoot(root, true)
+	} else {
+		validated, err = validateManagedNativeSkillDirectory(root)
+	}
 	if err != nil {
-		return nil, err
+		return false
 	}
-	sort.Strings(candidateRoots)
-	result := make([]RepositorySkillCandidate, 0, len(candidateRoots))
-	for _, candidateRoot := range candidateRoots {
-		validated, err := ValidateNativeSkillRoot(candidateRoot)
-		if err != nil {
-			relative, _ := filepath.Rel(root, candidateRoot)
-			return nil, fmt.Errorf("validate repository skill %s: %w", filepath.ToSlash(relative), err)
-		}
-		relative, err := filepath.Rel(root, candidateRoot)
-		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return nil, errors.New("repository skill path escaped repository root")
-		}
-		if relative == "." {
-			relative = ""
-		}
-		result = append(result, RepositorySkillCandidate{
-			Skill: validated.Skill, Root: candidateRoot,
-			RelativePath: filepath.ToSlash(relative),
-			Files:        append([]string(nil), validated.Files...),
-		})
+	relative, err := filepath.Rel(s.root, root)
+	if err != nil || relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return false
 	}
-	return result, nil
+	if relative == "." {
+		relative = ""
+	}
+	key := filepath.Clean(root)
+	if _, exists := s.candidates[key]; exists {
+		return true
+	}
+	if len(s.candidates) >= maxRepositoryCandidates {
+		return false
+	}
+	s.candidates[key] = RepositorySkillCandidate{
+		Skill: validated.Skill, Root: root, RelativePath: filepath.ToSlash(relative),
+		Files: append([]string(nil), validated.Files...),
+	}
+	return true
+}
+
+func (s *repositoryDiscoveryState) result() []RepositorySkillCandidate {
+	result := make([]RepositorySkillCandidate, 0, len(s.candidates))
+	for _, candidate := range s.candidates {
+		result = append(result, candidate)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Skill.Name != result[j].Skill.Name {
+			return result[i].Skill.Name < result[j].Skill.Name
+		}
+		return result[i].RelativePath < result[j].RelativePath
+	})
+	return result
 }

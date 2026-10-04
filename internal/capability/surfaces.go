@@ -39,6 +39,8 @@ var remoteHostLocalOperationIDs = idSet(
 	SkillInventoryList,
 	SkillInventoryInfo,
 	SkillInstall,
+	SkillUpdate,
+	SkillRemove,
 )
 
 var tuiHostLocalOperationIDs = idSet(
@@ -51,6 +53,8 @@ var tuiHostLocalOperationIDs = idSet(
 	SkillInventoryList,
 	SkillInventoryInfo,
 	SkillInstall,
+	SkillUpdate,
+	SkillRemove,
 )
 
 var telegramBootstrapOperationIDs = idSet(

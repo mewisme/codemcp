@@ -83,7 +83,7 @@ func TestSkillManagementScopeConflictFailsBeforeAcquisitionOrMutation(t *testing
 
 func TestSkillManagementAddInstallsManagedNativeSkill(t *testing.T) {
 	service, item := newSkillManagementHarness(t)
-	repository, revision := createSkillGitRepository(t, map[string]string{"skill": skillFixture("managed", "Managed skill")})
+	repository, revision := createSkillGitRepository(t, map[string]string{"managed": skillFixture("managed", "Managed skill")})
 	configureGitHubRewrite(t, repository, "owner", "repo")
 
 	result, err := service.Add(t.Context(), SkillAddRequest{
@@ -102,7 +102,7 @@ func TestSkillManagementAddInstallsManagedNativeSkill(t *testing.T) {
 		t.Fatal(err)
 	}
 	entry := metadata.Skills["managed"]
-	if entry.Source != "github:owner/repo" || entry.Revision != revision || entry.Path != "skill" {
+	if entry.Source != "github:owner/repo" || entry.Revision != revision || entry.Path != "managed" || entry.ContentHash == "" {
 		t.Fatalf("metadata=%#v", metadata)
 	}
 	values, err := skills.DiscoverWithUser(item.Path, t.TempDir(), instructionpolicy.DefaultConfig())
@@ -123,8 +123,8 @@ func TestSkillManagementAddInstallsManagedNativeSkill(t *testing.T) {
 func TestSkillManagementSelectionAndAtomicMultiInstall(t *testing.T) {
 	service, item := newSkillManagementHarness(t)
 	repository := t.TempDir()
-	writeRepositorySkill(t, repository, "a", "alpha")
-	writeRepositorySkill(t, repository, "b", "beta")
+	writeRepositorySkill(t, repository, "alpha", "alpha")
+	writeRepositorySkill(t, repository, "beta", "beta")
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("a", 40))
 
 	request := SkillAddRequest{Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo"}
@@ -156,8 +156,8 @@ func TestSkillManagementSelectionAndAtomicMultiInstall(t *testing.T) {
 func TestSkillManagementExactSelectionInstallsOnlyRequestedSkill(t *testing.T) {
 	service, item := newSkillManagementHarness(t)
 	repository := t.TempDir()
-	writeRepositorySkill(t, repository, "a", "alpha")
-	writeRepositorySkill(t, repository, "b", "beta")
+	writeRepositorySkill(t, repository, "alpha", "alpha")
+	writeRepositorySkill(t, repository, "beta", "beta")
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("e", 40))
 
 	result, err := service.Add(t.Context(), SkillAddRequest{
@@ -181,7 +181,7 @@ func TestSkillManagementExactSelectionInstallsOnlyRequestedSkill(t *testing.T) {
 func TestSkillManagementAddRejectsUnmanagedConflict(t *testing.T) {
 	service, item := newSkillManagementHarness(t)
 	repository := t.TempDir()
-	writeRepositorySkill(t, repository, "skill", "conflict")
+	writeRepositorySkill(t, repository, "conflict", "conflict")
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("b", 40))
 	root := workspacestate.New(item.Path).SkillsRoot()
 	existing := filepath.Join(root, "conflict")
@@ -214,7 +214,7 @@ func TestSkillManagementAddRejectsUnmanagedConflict(t *testing.T) {
 func TestSkillManagementMalformedMetadataFailsBeforeDestinationMutation(t *testing.T) {
 	service, item := newSkillManagementHarness(t)
 	repository := t.TempDir()
-	writeRepositorySkill(t, repository, "skill", "candidate")
+	writeRepositorySkill(t, repository, "candidate", "candidate")
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("f", 40))
 	root := workspacestate.New(item.Path).SkillsRoot()
 	if err := os.MkdirAll(root, 0o700); err != nil {
@@ -262,8 +262,8 @@ func TestSkillManagementRollbackPreservesStoreWhenMetadataCommitFails(t *testing
 	}
 
 	repository := t.TempDir()
-	writeRepositorySkill(t, repository, "a", "alpha")
-	writeRepositorySkill(t, repository, "b", "beta")
+	writeRepositorySkill(t, repository, "alpha", "alpha")
+	writeRepositorySkill(t, repository, "beta", "beta")
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("c", 40))
 	service.BeforeMetadataCommit = func() error { return errors.New("forced metadata failure") }
 
@@ -300,7 +300,7 @@ func TestSkillManagementGlobalScopeHonorsConfigDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	repository := t.TempDir()
-	writeRepositorySkill(t, repository, "skill", "global-skill")
+	writeRepositorySkill(t, repository, "global-skill", "global-skill")
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("d", 40))
 	result, err := service.Add(t.Context(), SkillAddRequest{
 		Scope: SkillScopeRequest{Global: true}, Source: "owner/repo",
@@ -314,6 +314,265 @@ func TestSkillManagementGlobalScopeHonorsConfigDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(want, "global-skill", "SKILL.md")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSkillManagementUpdateUsesContentHashAndPreservesUnchangedTrees(t *testing.T) {
+	service, item := newSkillManagementHarness(t)
+	repository := t.TempDir()
+	writeRepositorySkill(t, repository, "managed", "managed")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("1", 40))
+	if _, err := service.Add(t.Context(), SkillAddRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root := workspacestate.New(item.Path).SkillsRoot()
+	before, err := skills.ReadManagedSources(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldHash := before.Skills["managed"].ContentHash
+
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("2", 40))
+	unchanged, err := service.Update(t.Context(), SkillUpdateRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "managed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(unchanged.Skills) != 1 || unchanged.Skills[0].Changed || unchanged.Skills[0].ContentHash != oldHash {
+		t.Fatalf("unchanged update=%#v", unchanged)
+	}
+	metadata, err := skills.ReadManagedSources(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Skills["managed"].Revision != strings.Repeat("2", 40) || metadata.Skills["managed"].ContentHash != oldHash {
+		t.Fatalf("metadata after unchanged update=%#v", metadata)
+	}
+
+	if err := os.WriteFile(filepath.Join(repository, "managed", "notes.txt"), []byte("new content\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("3", 40))
+	changed, err := service.Update(t.Context(), SkillUpdateRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "managed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changed.Skills) != 1 || !changed.Skills[0].Changed || changed.Skills[0].ContentHash == oldHash {
+		t.Fatalf("changed update=%#v", changed)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "managed", "notes.txt"))
+	if err != nil || string(data) != "new content\n" {
+		t.Fatalf("updated resource err=%v data=%q", err, data)
+	}
+}
+
+func TestSkillManagementUpdateRejectsLocalDriftAndRollsBackMetadataFailure(t *testing.T) {
+	service, item := newSkillManagementHarness(t)
+	repository := t.TempDir()
+	writeRepositorySkill(t, repository, "managed", "managed")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("4", 40))
+	if _, err := service.Add(t.Context(), SkillAddRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root := workspacestate.New(item.Path).SkillsRoot()
+	installedManifest := filepath.Join(root, "managed", "SKILL.md")
+	originalManifest, err := os.ReadFile(installedManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadataPath := filepath.Join(root, skills.ManagedSourcesFile)
+	originalMetadata, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(installedManifest, append(originalManifest, []byte("\nlocal drift\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repository, "managed", "remote.txt"), []byte("remote\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("5", 40))
+	if _, err := service.Update(t.Context(), SkillUpdateRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "managed",
+	}); err == nil || !strings.Contains(err.Error(), "local changes") {
+		t.Fatalf("local drift update err=%v", err)
+	}
+	if err := os.WriteFile(installedManifest, originalManifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	service.BeforeMetadataCommit = func() error { return errors.New("forced update metadata failure") }
+	if _, err := service.Update(t.Context(), SkillUpdateRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "managed",
+	}); err == nil || !strings.Contains(err.Error(), "forced update metadata failure") {
+		t.Fatalf("metadata rollback update err=%v", err)
+	}
+	afterManifest, err := os.ReadFile(installedManifest)
+	if err != nil || string(afterManifest) != string(originalManifest) {
+		t.Fatalf("installed manifest changed after rollback: err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "managed", "remote.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("replacement resource leaked after rollback: %v", err)
+	}
+	afterMetadata, err := os.ReadFile(metadataPath)
+	if err != nil || string(afterMetadata) != string(originalMetadata) {
+		t.Fatalf("metadata changed after rollback: err=%v\nbefore=%s\nafter=%s", err, originalMetadata, afterMetadata)
+	}
+	assertNoSkillStages(t, root)
+}
+
+func TestSkillManagementUpdateRelocatesUnambiguousSkillAndGroupsAcquisition(t *testing.T) {
+	service, item := newSkillManagementHarness(t)
+	repository := t.TempDir()
+	writeRepositorySkill(t, repository, filepath.Join("skills", "alpha"), "alpha")
+	writeRepositorySkill(t, repository, filepath.Join("skills", "beta"), "beta")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("6", 40))
+	if _, err := service.Add(t.Context(), SkillAddRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo", All: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(repository, "skills", "alpha"), filepath.Join(repository, "alpha")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repository, "alpha", "moved.txt"), []byte("moved\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repository, "skills", "beta", "changed.txt"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	acquisitions := 0
+	service.AcquireRepository = func(context.Context, skills.GitHubSource) (acquiredSkillRepository, error) {
+		acquisitions++
+		return acquiredSkillRepository{Root: repository, Revision: strings.Repeat("7", 40)}, nil
+	}
+	result, err := service.Update(t.Context(), SkillUpdateRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, All: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acquisitions != 1 || len(result.Skills) != 2 {
+		t.Fatalf("acquisitions=%d result=%#v", acquisitions, result)
+	}
+	var alpha SkillUpdateItem
+	for _, value := range result.Skills {
+		if value.Name == "alpha" {
+			alpha = value
+		}
+	}
+	if !alpha.Relocated || alpha.PreviousPath != "skills/alpha" || alpha.Path != "alpha" || !alpha.Changed {
+		t.Fatalf("relocated alpha=%#v", alpha)
+	}
+}
+
+func TestSkillManagementUpdateRejectsAmbiguousRelocation(t *testing.T) {
+	service, item := newSkillManagementHarness(t)
+	repository := t.TempDir()
+	writeRepositorySkill(t, repository, filepath.Join("skills", "alpha"), "alpha")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("8", 40))
+	if _, err := service.Add(t.Context(), SkillAddRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(repository, "skills")); err != nil {
+		t.Fatal(err)
+	}
+	writeRepositorySkill(t, repository, filepath.Join("one", "alpha"), "alpha")
+	writeRepositorySkill(t, repository, filepath.Join("two", "alpha"), "alpha")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("a", 40))
+	if _, err := service.Update(t.Context(), SkillUpdateRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "alpha",
+	}); err == nil || !strings.Contains(err.Error(), "ambiguous") {
+		t.Fatalf("ambiguous relocation err=%v", err)
+	}
+}
+
+func TestSkillManagementRemoveManagedAndUnmanagedWithRollback(t *testing.T) {
+	service, item := newSkillManagementHarness(t)
+	repository := t.TempDir()
+	writeRepositorySkill(t, repository, "managed", "managed")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("b", 40))
+	if _, err := service.Add(t.Context(), SkillAddRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root := workspacestate.New(item.Path).SkillsRoot()
+	metadataPath := filepath.Join(root, skills.ManagedSourcesFile)
+	metadataBefore, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.BeforeMetadataCommit = func() error { return errors.New("forced remove metadata failure") }
+	if _, err := service.Remove(SkillRemoveRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "managed",
+	}); err == nil || !strings.Contains(err.Error(), "forced remove metadata failure") {
+		t.Fatalf("managed removal rollback err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "managed", "SKILL.md")); err != nil {
+		t.Fatalf("managed skill was lost after rollback: %v", err)
+	}
+	metadataAfter, err := os.ReadFile(metadataPath)
+	if err != nil || string(metadataAfter) != string(metadataBefore) {
+		t.Fatalf("managed metadata changed after rollback: err=%v", err)
+	}
+	service.BeforeMetadataCommit = nil
+	removed, err := service.Remove(SkillRemoveRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "managed",
+	})
+	if err != nil || !removed.Managed {
+		t.Fatalf("managed removal=%#v err=%v", removed, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "managed")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("managed skill still exists: %v", err)
+	}
+
+	unmanaged := filepath.Join(root, "authored")
+	if err := os.MkdirAll(unmanaged, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(unmanaged, "SKILL.md"), []byte(skillFixture("authored", "authored")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unmanagedResult, err := service.Remove(SkillRemoveRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: "authored",
+	})
+	if err != nil || unmanagedResult.Managed {
+		t.Fatalf("unmanaged removal=%#v err=%v", unmanagedResult, err)
+	}
+	if _, err := os.Stat(unmanaged); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unmanaged skill still exists: %v", err)
+	}
+	if _, err := service.Remove(SkillRemoveRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Name: skills.BuiltinCreatePlanName,
+	}); err == nil || !strings.Contains(err.Error(), "not removable") {
+		t.Fatalf("builtin removal err=%v", err)
+	}
+}
+
+func TestManagedSourceLegacyMetadataRemainsReadable(t *testing.T) {
+	root := t.TempDir()
+	legacy := []byte("{\n  \"schema\": 1,\n  \"skills\": {\n    \"legacy\": {\n      \"source\": \"github:owner/repo\",\n      \"revision\": \"" + strings.Repeat("c", 40) + "\",\n      \"path\": \"skills/legacy\"\n    }\n  }\n}\n")
+	if err := os.WriteFile(filepath.Join(root, skills.ManagedSourcesFile), legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := skills.ReadManagedSources(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := metadata.Skills["legacy"]
+	if entry.Ref != "" || entry.ContentHash != "" || entry.Path != "skills/legacy" {
+		t.Fatalf("legacy metadata=%#v", metadata)
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 func TestDiscoverAcrossProviders(t *testing.T) {
 	root := t.TempDir()
 	for _, provider := range []string{".agents", ".claude", ".cursor"} {
-		dir := filepath.Join(root, provider, "skills", provider[1:]+"-skill")
+		dir := filepath.Join(root, provider, "skills", provider[1:])
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			t.Fatal(err)
 		}
@@ -216,7 +216,7 @@ func TestLoadFromInventoryPreservesSafeExactLoading(t *testing.T) {
 func TestSkillTraversalAndLoadBoundsRemainBounded(t *testing.T) {
 	root := t.TempDir()
 	providerRoot := filepath.Join(root, ".newagent", "skills")
-	atLimit := filepath.Join(providerRoot, "one", "two", "three", "at-limit", "SKILL.md")
+	atLimit := filepath.Join(providerRoot, "one", "two", "three", "bounded", "SKILL.md")
 	beyond := filepath.Join(providerRoot, "one", "two", "three", "four", "beyond", "SKILL.md")
 	if err := os.MkdirAll(filepath.Dir(atLimit), 0o755); err != nil {
 		t.Fatal(err)

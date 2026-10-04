@@ -73,6 +73,7 @@ var registry = map[string][]Definition{
 	},
 	"skills": {
 		{Command: "list", Aliases: []string{"ls"}},
+		{Command: "remove", Aliases: []string{"rm"}},
 	},
 	"telegram token": {
 		{Command: "remove", Aliases: []string{"clear", "rm"}},

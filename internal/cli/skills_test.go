@@ -24,7 +24,7 @@ func TestSkillsCommandGrammarAliasesScopeConflictAndCompletion(t *testing.T) {
 	writeCLISkill(t, filepath.Join(workspaceRoot, ".cm", "skills", "workspace-alpha"), "workspace-alpha", "Workspace alpha")
 
 	root := newRootCommand()
-	for _, path := range [][]string{{"skills", "list"}, {"skills", "add"}, {"skills", "info"}} {
+	for _, path := range [][]string{{"skills", "list"}, {"skills", "add"}, {"skills", "info"}, {"skills", "update"}, {"skills", "remove"}} {
 		command, remaining, err := root.Find(path)
 		if err != nil || command == nil || len(remaining) != 0 || !command.Runnable() {
 			t.Fatalf("command %v: command=%v remaining=%v err=%v", path, command, remaining, err)
@@ -39,8 +39,16 @@ func TestSkillsCommandGrammarAliasesScopeConflictAndCompletion(t *testing.T) {
 		t.Fatal("skills scope shorthand flags are missing")
 	}
 	add, _, _ := root.Find([]string{"skills", "add"})
-	if add.Flags().Lookup("skill") == nil || add.Flags().Lookup("all") == nil {
+	if add.Flags().Lookup("skill") == nil || add.Flags().Lookup("all") == nil || add.Flags().Lookup("full-depth") == nil {
 		t.Fatal("skills add selection flags are missing")
+	}
+	update, _, _ := root.Find([]string{"skills", "update"})
+	if update.Flags().Lookup("all") == nil {
+		t.Fatal("skills update --all flag is missing")
+	}
+	removeAlias, remaining, err := root.Find([]string{"skills", "rm"})
+	if err != nil || removeAlias == nil || removeAlias.Name() != "remove" || len(remaining) != 0 {
+		t.Fatalf("skills rm: command=%v remaining=%v err=%v", removeAlias, remaining, err)
 	}
 
 	var help bytes.Buffer
@@ -197,6 +205,47 @@ func TestSkillsAddRejectsSelectionAndScopeConflictsBeforeNetwork(t *testing.T) {
 	}
 }
 
+func TestSkillsCLIUpdateAndRemoveManagedSkill(t *testing.T) {
+	configRoot, workspaceRoot := newSkillsCLIFixture(t)
+	repository, _ := createCLISkillGitRepository(t, "managed-cli")
+	configureCLIGitHubRewrite(t, repository, "owner", "repo")
+
+	executeSkillsCLI(t, configRoot, "skills", "add", "owner/repo", "--json")
+	if err := os.WriteFile(filepath.Join(repository, "managed-cli", "updated.txt"), []byte("updated\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "."}, {"commit", "--quiet", "-m", "update fixture"}} {
+		if _, err := gitpkg.OrThrow(t.Context(), repository, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	updateText := executeSkillsCLI(t, configRoot, "skills", "update", "managed-cli", "--json")
+	var updated application.SkillUpdateResult
+	if err := json.Unmarshal([]byte(updateText), &updated); err != nil {
+		t.Fatalf("decode update result: %v\n%s", err, updateText)
+	}
+	if len(updated.Skills) != 1 || updated.Skills[0].Name != "managed-cli" || !updated.Skills[0].Changed {
+		t.Fatalf("update result=%#v", updated)
+	}
+	installed := filepath.Join(workspaceRoot, ".cm", "skills", "managed-cli")
+	if data, err := os.ReadFile(filepath.Join(installed, "updated.txt")); err != nil || string(data) != "updated\n" {
+		t.Fatalf("updated file err=%v data=%q", err, data)
+	}
+
+	removeText := executeSkillsCLI(t, configRoot, "skills", "rm", "managed-cli", "--json")
+	var removed application.SkillRemoveResult
+	if err := json.Unmarshal([]byte(removeText), &removed); err != nil {
+		t.Fatalf("decode remove result: %v\n%s", err, removeText)
+	}
+	if removed.Name != "managed-cli" || !removed.Managed || removed.Scope != application.SkillScopeWorkspace {
+		t.Fatalf("remove result=%#v", removed)
+	}
+	if _, err := os.Stat(installed); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("managed skill still exists after remove: %v", err)
+	}
+}
+
 func newSkillsCLIFixture(t *testing.T) (string, string) {
 	t.Helper()
 	previousRoot := configformat.RootPath()
@@ -296,7 +345,7 @@ func containsString(values []string, target string) bool {
 func createCLISkillGitRepository(t *testing.T, skillName string) (string, string) {
 	t.Helper()
 	repository := t.TempDir()
-	writeCLISkill(t, filepath.Join(repository, "skill"), skillName, "Managed CLI skill")
+	writeCLISkill(t, filepath.Join(repository, skillName), skillName, "Managed CLI skill")
 	for _, args := range [][]string{
 		{"init", "--quiet"},
 		{"config", "user.email", "test@example.com"},

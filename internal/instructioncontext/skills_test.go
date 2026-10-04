@@ -25,7 +25,7 @@ func TestLoadSkillSummariesPrefersAgentsAndReturnsMetadataOnly(t *testing.T) {
 	root := t.TempDir()
 	agentsPath := writeSkillFile(t, root, ".agents", "release", "release", "Release workflow", "SECRET BODY MUST NOT APPEAR")
 	claudePath := writeSkillFile(t, root, ".claude", "review", "review", "Review workflow", "review body")
-	cursorPath := writeSkillFile(t, root, ".cursor", "release-alt", "release", "Alternative release workflow", "alternate body")
+	cursorPath := writeSkillFile(t, root, ".cursor", "release", "release", "Alternative release workflow", "alternate body")
 
 	loaded, err := LoadSkillSummaries(root)
 	if err != nil {

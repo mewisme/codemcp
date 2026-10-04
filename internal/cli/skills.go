@@ -18,7 +18,7 @@ type skillScopeFlags struct {
 
 func skillsCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "skills", Short: "Manage native skills and inspect effective skill inventory"}
-	cmd.AddCommand(skillsListCommand(), skillsAddCommand(), skillsInfoCommand())
+	cmd.AddCommand(skillsListCommand(), skillsAddCommand(), skillsInfoCommand(), skillsUpdateCommand(), skillsRemoveCommand())
 	return cmd
 }
 
@@ -82,6 +82,7 @@ func skillsAddCommand() *cobra.Command {
 	var scopeFlags skillScopeFlags
 	var selectedSkill string
 	var all bool
+	var fullDepth bool
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "add <source>",
@@ -98,7 +99,7 @@ func skillsAddCommand() *cobra.Command {
 			}
 			logCommandStep(cmd, "SKILLS", "skills.add.acquiring", "Acquiring and validating GitHub skills")
 			result, err := service.Add(cmd.Context(), application.SkillAddRequest{
-				Scope: scope, Source: args[0], Skill: selectedSkill, All: all,
+				Scope: scope, Source: args[0], Skill: selectedSkill, All: all, FullDepth: fullDepth,
 			})
 			if err != nil {
 				return err
@@ -119,6 +120,94 @@ func skillsAddCommand() *cobra.Command {
 	addSkillScopeFlags(cmd, &scopeFlags)
 	cmd.Flags().StringVar(&selectedSkill, "skill", "", "install exactly one discovered skill by validated name")
 	cmd.Flags().BoolVar(&all, "all", false, "install all discovered skills")
+	cmd.Flags().BoolVar(&fullDepth, "full-depth", false, "search nested repository paths even when canonical skill locations are found")
+	addJSONResultFlag(cmd, &asJSON)
+	return cmd
+}
+
+func skillsUpdateCommand() *cobra.Command {
+	var scopeFlags skillScopeFlags
+	var all bool
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:               "update [name]",
+		Short:             "Update managed GitHub skills from recorded sources",
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeManagedSkillName,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := ""
+			if len(args) == 1 {
+				name = args[0]
+			}
+			if all && name != "" {
+				return errors.New("skill name and --all are mutually exclusive")
+			}
+			if !all && name == "" {
+				return errors.New("skill name or --all is required")
+			}
+			service := skillServiceForCommand(cmd)
+			scope, err := resolveSkillScope(cmd, service, scopeFlags)
+			if err != nil {
+				return err
+			}
+			logCommandStep(cmd, "SKILLS", "skills.update.acquiring", "Checking managed GitHub skills")
+			result, err := service.Update(cmd.Context(), application.SkillUpdateRequest{Scope: scope, Name: name, All: all})
+			if err != nil {
+				return err
+			}
+			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
+				return writeResultJSON(cmd, result)
+			}
+			changed := 0
+			for _, item := range result.Skills {
+				if item.Changed {
+					changed++
+				}
+			}
+			renderMutationSuccess(cmd, "Skills updated",
+				presentation.Field{Label: "scope", Value: result.Scope},
+				presentation.Field{Label: "checked", Value: len(result.Skills)},
+				presentation.Field{Label: "changed", Value: changed},
+			)
+			return nil
+		},
+	}
+	addSkillScopeFlags(cmd, &scopeFlags)
+	cmd.Flags().BoolVar(&all, "all", false, "update every managed skill in the selected scope")
+	addJSONResultFlag(cmd, &asJSON)
+	return cmd
+}
+
+func skillsRemoveCommand() *cobra.Command {
+	var scopeFlags skillScopeFlags
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:               "remove <name>",
+		Short:             "Remove an exact native skill from the selected scope",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeNativeSkillName,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			service := skillServiceForCommand(cmd)
+			scope, err := resolveSkillScope(cmd, service, scopeFlags)
+			if err != nil {
+				return err
+			}
+			result, err := service.Remove(application.SkillRemoveRequest{Scope: scope, Name: args[0]})
+			if err != nil {
+				return err
+			}
+			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
+				return writeResultJSON(cmd, result)
+			}
+			renderMutationSuccess(cmd, "Skill removed",
+				presentation.Field{Label: "scope", Value: result.Scope},
+				presentation.Field{Label: "name", Value: result.Name},
+				presentation.Field{Label: "managed", Value: result.Managed},
+			)
+			return nil
+		},
+	}
+	addSkillScopeFlags(cmd, &scopeFlags)
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
@@ -185,12 +274,49 @@ func renderSkillInfo(cmd *cobra.Command, value application.SkillView) {
 	if value.GitHub != nil {
 		fields = append(fields,
 			presentation.Field{Label: "source", Value: value.GitHub.Source},
+			presentation.Field{Label: "ref", Value: value.GitHub.Ref},
 			presentation.Field{Label: "revision", Value: value.GitHub.Revision},
 			presentation.Field{Label: "repository path", Value: value.GitHub.Path},
+			presentation.Field{Label: "content hash", Value: value.GitHub.ContentHash},
 		)
 	}
 	p.Fields(fields...)
 	p.Complete("Skill loaded")
+}
+
+func completeManagedSkillName(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	values := completeScopedSkillViews(cmd, toComplete, func(value application.SkillView) bool { return value.Managed })
+	return values, cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeNativeSkillName(cmd *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	values := completeScopedSkillViews(cmd, toComplete, func(application.SkillView) bool { return true })
+	return values, cobra.ShellCompDirectiveNoFileComp
+}
+
+func completeScopedSkillViews(cmd *cobra.Command, toComplete string, include func(application.SkillView) bool) []string {
+	prepareCompletionConfigRoot(cmd)
+	workspaceFlag, _ := cmd.Flags().GetBool("workspace")
+	globalFlag, _ := cmd.Flags().GetBool("global")
+	service := skillServiceForCommand(cmd)
+	scope, err := resolveSkillScope(cmd, service, skillScopeFlags{workspace: workspaceFlag, global: globalFlag})
+	if err != nil {
+		return nil
+	}
+	if !scope.Global {
+		scope.Workspace = true
+	}
+	result, err := service.List(application.SkillListRequest{Scope: scope})
+	if err != nil {
+		return nil
+	}
+	values := make([]string, 0, len(result.Skills))
+	for _, value := range result.Skills {
+		if include(value) && strings.HasPrefix(value.Name, toComplete) {
+			values = append(values, value.Name)
+		}
+	}
+	return values
 }
 
 func skillOriginLabel(value application.SkillView) string {

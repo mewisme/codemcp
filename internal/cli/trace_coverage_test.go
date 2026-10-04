@@ -38,7 +38,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 		"agent spawn", "agent list", "agent get", "agent send", "agent wait", "agent cancel",
 	)
 	add(commandTraceTrivial, nil, "prompt list", "prompt get", "prompt create", "prompt update", "prompt delete")
-	add(commandTraceTrivial, nil, "skills list", "skills info", "skills add")
+	add(commandTraceTrivial, nil, "skills list", "skills info", "skills add", "skills update", "skills remove")
 	add(commandTraceStreaming, []string{"logs.snapshot.load.completed"}, "logs")
 	add(commandTraceStreaming, []string{"runtime.events.connect.completed", "logs.snapshot.load.completed"}, "logs follow")
 	add(commandTraceStreaming, nil, "tui", "activity stream", "execution feed", "execution stream", "request stream", "agent completion feed")
