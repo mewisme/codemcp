@@ -46,6 +46,37 @@ func TestRegistryOwnedReplacementSignalsChange(t *testing.T) {
 	}
 }
 
+func TestOwnedReplacementPreservesCapabilityMetadata(t *testing.T) {
+	registry := NewRegistry()
+	handler := func(context.Context, map[string]any) (Result, error) { return TextResult("ok"), nil }
+	if err := registry.ReplaceOwned("upstream:test", map[string]Entry{
+		"test__one": {
+			Schema:  Schema{Name: "test__one", Capability: &CapabilityMetadata{Domain: "  Upstream  "}},
+			Handler: handler,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	schema, ok := registry.Schema("test__one")
+	if !ok || schema.Capability == nil || schema.Capability.Domain != "upstream" {
+		t.Fatalf("owned capability = %#v", schema.Capability)
+	}
+	if err := registry.ReplaceOwnedPrefix("upstream:", map[string]map[string]Entry{
+		"upstream:test": {
+			"test__two": {
+				Schema:  Schema{Name: "test__two", Capability: &CapabilityMetadata{Domain: "external-tools"}},
+				Handler: handler,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	schema, ok = registry.Schema("test__two")
+	if !ok || schema.Capability == nil || schema.Capability.Domain != "external-tools" {
+		t.Fatalf("prefix replacement capability = %#v", schema.Capability)
+	}
+}
+
 func TestReplaceOwnedPrefixSwapsMultipleOwnersAtomically(t *testing.T) {
 	registry := NewRegistry()
 	registry.MustRegister("native", Schema{Name: "native"}, func(context.Context, map[string]any) (Result, error) { return TextResult("native"), nil })

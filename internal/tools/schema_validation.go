@@ -125,6 +125,11 @@ func normalizeRegisteredSchema(name string, schema Schema) (Schema, error) {
 	if schema.Name == "" {
 		schema.Name = name
 	}
+	capability, err := normalizeCapabilityMetadata(schema.Capability)
+	if err != nil {
+		return Schema{}, fmt.Errorf("tool %q capability: %w", name, err)
+	}
+	schema.Capability = capability
 	if len(schema.InputSchema) == 0 {
 		schema.InputSchema = json.RawMessage(`{"type":"object"}`)
 	}

@@ -18,6 +18,17 @@ func TestRegistryNormalizesAndValidatesToolSchemas(t *testing.T) {
 	if !ok || string(schema.InputSchema) != `{"type":"object"}` {
 		t.Fatalf("normalized schema = %#v", schema)
 	}
+	if err := registry.Register("capability-normalized", Schema{
+		Name: "capability-normalized", Capability: &CapabilityMetadata{Domain: "  Git-Operations  "},
+	}, func(context.Context, map[string]any) (Result, error) {
+		return TextResult("ok"), nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	capabilitySchema, ok := registry.Schema("capability-normalized")
+	if !ok || capabilitySchema.Capability == nil || capabilitySchema.Capability.Domain != "git-operations" {
+		t.Fatalf("normalized capability = %#v", capabilitySchema.Capability)
+	}
 
 	cases := map[string]Schema{
 		"malformed-input": {
@@ -45,6 +56,18 @@ func TestRegistryNormalizesAndValidatesToolSchemas(t *testing.T) {
 			Name:        "invalid-annotation",
 			InputSchema: json.RawMessage(`{"type":"object"}`),
 			Annotations: map[string]any{"readOnlyHint": "yes"},
+		},
+		"empty-capability": {
+			Name:       "empty-capability",
+			Capability: &CapabilityMetadata{},
+		},
+		"invalid-capability": {
+			Name:       "invalid-capability",
+			Capability: &CapabilityMetadata{Domain: "git tools"},
+		},
+		"reserved-capability": {
+			Name:       "reserved-capability",
+			Capability: &CapabilityMetadata{Domain: CapabilityDomainUnclassified},
 		},
 	}
 	for name, schema := range cases {

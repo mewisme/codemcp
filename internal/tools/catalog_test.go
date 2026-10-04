@@ -28,6 +28,108 @@ func TestCatalogHashIsOrderIndependentAndSchemaSensitive(t *testing.T) {
 	if changed == left {
 		t.Fatal("catalog hash did not change with schema")
 	}
+	second.Description = "two"
+	second.Capability = &CapabilityMetadata{Domain: "git"}
+	withCapability, err := CatalogHash([]Schema{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withCapability == left {
+		t.Fatal("catalog hash did not change with capability metadata")
+	}
+}
+
+func TestCapabilityGroupingIsDeterministicBoundedAndExplicitlyUnclassified(t *testing.T) {
+	schemas := []Schema{
+		{Name: "git_push", Capability: &CapabilityMetadata{Domain: "git"}},
+		{Name: "grep", Capability: &CapabilityMetadata{Domain: "filesystem"}},
+		{Name: "git_log", Capability: &CapabilityMetadata{Domain: "git"}},
+		{Name: "mystery_c"},
+		{Name: "mystery_a"},
+		{Name: "mystery_b"},
+	}
+	left := GroupCapabilitiesWithLimits(schemas, CapabilityLimits{
+		MaxGroups: 8, MaxToolsPerGroup: 8, MaxTools: 16, MaxBytes: 1024, MaxUnclassifiedTools: 2,
+	})
+	reversed := append([]Schema(nil), schemas...)
+	for i, j := 0, len(reversed)-1; i < j; i, j = i+1, j-1 {
+		reversed[i], reversed[j] = reversed[j], reversed[i]
+	}
+	right := GroupCapabilitiesWithLimits(reversed, CapabilityLimits{
+		MaxGroups: 8, MaxToolsPerGroup: 8, MaxTools: 16, MaxBytes: 1024, MaxUnclassifiedTools: 2,
+	})
+	leftJSON, err := json.Marshal(left)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rightJSON, err := json.Marshal(right)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(leftJSON) != string(rightJSON) {
+		t.Fatalf("grouping depends on registration order:\n%s\n%s", leftJSON, rightJSON)
+	}
+	if left.TotalTools != 6 || left.IncludedTools != 5 || !left.Truncated {
+		t.Fatalf("capability index = %#v", left)
+	}
+	wantDomains := []string{"filesystem", "git", CapabilityDomainUnclassified}
+	if len(left.Groups) != len(wantDomains) {
+		t.Fatalf("groups = %#v", left.Groups)
+	}
+	for index, domain := range wantDomains {
+		if left.Groups[index].Domain != domain {
+			t.Fatalf("group[%d] domain=%q want=%q", index, left.Groups[index].Domain, domain)
+		}
+	}
+	if got := left.Groups[1].Tools; len(got) != 2 || got[0] != "git_log" || got[1] != "git_push" {
+		t.Fatalf("git tools = %#v", got)
+	}
+	unclassified := left.Groups[2]
+	if !unclassified.Truncated || len(unclassified.Tools) != 2 || unclassified.Tools[0] != "mystery_a" || unclassified.Tools[1] != "mystery_b" {
+		t.Fatalf("unclassified = %#v", unclassified)
+	}
+}
+
+func TestCapabilityGroupingBoundsGroupsAndTools(t *testing.T) {
+	schemas := []Schema{
+		{Name: "a_one", Capability: &CapabilityMetadata{Domain: "alpha"}},
+		{Name: "a_two", Capability: &CapabilityMetadata{Domain: "alpha"}},
+		{Name: "b_one", Capability: &CapabilityMetadata{Domain: "beta"}},
+		{Name: "c_one", Capability: &CapabilityMetadata{Domain: "charlie"}},
+		{Name: "unknown"},
+	}
+	index := GroupCapabilitiesWithLimits(schemas, CapabilityLimits{
+		MaxGroups: 2, MaxToolsPerGroup: 1, MaxTools: 2, MaxBytes: 128, MaxUnclassifiedTools: 1,
+	})
+	if !index.Truncated || index.IncludedTools != 2 || len(index.Groups) != 2 {
+		t.Fatalf("bounded index = %#v", index)
+	}
+	if index.Groups[0].Domain != "alpha" || len(index.Groups[0].Tools) != 1 || !index.Groups[0].Truncated {
+		t.Fatalf("classified group = %#v", index.Groups[0])
+	}
+	if index.Groups[1].Domain != CapabilityDomainUnclassified || len(index.Groups[1].Tools) != 1 {
+		t.Fatalf("unclassified group = %#v", index.Groups[1])
+	}
+}
+
+func TestCapabilityGroupingBoundsBytesAndHandlesEmptyInventory(t *testing.T) {
+	empty := GroupCapabilities(nil)
+	if empty.TotalTools != 0 || empty.IncludedTools != 0 || len(empty.Groups) != 0 || empty.Truncated {
+		t.Fatalf("empty capability index = %#v", empty)
+	}
+
+	index := GroupCapabilitiesWithLimits([]Schema{
+		{Name: "short", Capability: &CapabilityMetadata{Domain: "alpha"}},
+		{Name: "tool_that_will_not_fit", Capability: &CapabilityMetadata{Domain: "alpha"}},
+	}, CapabilityLimits{
+		MaxGroups: 8, MaxToolsPerGroup: 8, MaxTools: 8, MaxBytes: len("alpha") + len("short") + 1, MaxUnclassifiedTools: 8,
+	})
+	if !index.Truncated || index.TotalTools != 2 || index.IncludedTools != 1 || len(index.Groups) != 1 {
+		t.Fatalf("byte-bounded index = %#v", index)
+	}
+	if got := index.Groups[0]; got.Domain != "alpha" || len(got.Tools) != 1 || got.Tools[0] != "short" || !got.Truncated {
+		t.Fatalf("byte-bounded group = %#v", got)
+	}
 }
 
 func TestRuntimeDoesNotExposeWorkspaceRelocateTool(t *testing.T) {
