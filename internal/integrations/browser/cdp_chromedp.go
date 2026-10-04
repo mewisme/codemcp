@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	cdproto "github.com/chromedp/cdproto"
 	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/inspector"
@@ -220,13 +221,7 @@ func (client *chromedpBrowserClient) Close(ctx context.Context) error {
 	}
 	result := make(chan error, 1)
 	go func() {
-		cdpContext := chromedp.FromContext(client.ctx)
-		var err error
-		if cdpContext == nil || cdpContext.Browser == nil {
-			err = errors.New("browser CDP executor is unavailable")
-		} else {
-			err = browser.Close().Do(cdp.WithExecutor(client.ctx, cdpContext.Browser))
-		}
+		err := chromedp.Cancel(client.ctx)
 		client.cancel()
 		client.allocatorCancel()
 		result <- err
@@ -237,11 +232,24 @@ func (client *chromedpBrowserClient) Close(ctx context.Context) error {
 		client.allocatorCancel()
 		return ctx.Err()
 	case err := <-result:
-		if err != nil && !errors.Is(err, context.Canceled) && !strings.Contains(strings.ToLower(err.Error()), "websocket") {
-			return fmt.Errorf("close browser over CDP: %w", err)
+		if !benignChromedpBrowserCloseError(err) {
+			return fmt.Errorf("close browser gracefully: %w", err)
 		}
 		return nil
 	}
+}
+
+func benignChromedpBrowserCloseError(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return true
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "websocket") {
+		return true
+	}
+	var protocolErr *cdproto.Error
+	return errors.As(err, &protocolErr) &&
+		protocolErr.Code == -32602 &&
+		strings.Contains(strings.ToLower(protocolErr.Message), "no session with given id")
 }
 
 type chromedpBrowserTab struct {

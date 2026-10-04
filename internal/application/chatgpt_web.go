@@ -73,7 +73,7 @@ func (service *ChatGPTWebService) AgentBackendSettings(ctx context.Context) (cha
 	if service == nil {
 		return chatgptweb.AgentBackendSettings{}, errors.New("ChatGPT Web integration service is unavailable")
 	}
-	status, err := service.status(ctx, false, false)
+	status, err := service.status(ctx, false, true)
 	if err != nil {
 		return chatgptweb.AgentBackendSettings{}, err
 	}
@@ -96,7 +96,7 @@ func (service *ChatGPTWebService) AgentBrowserRuntime(ctx context.Context, maxAg
 	if maxAgents < 1 || maxAgents > chatgptweb.DefaultMaxAgents {
 		return nil, fmt.Errorf("ChatGPT Web max agents must be between 1 and %d", chatgptweb.DefaultMaxAgents)
 	}
-	status, err := service.status(ctx, false, false)
+	status, err := service.status(ctx, false, true)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +107,7 @@ func (service *ChatGPTWebService) AgentBrowserRuntime(ctx context.Context, maxAg
 		}
 		return nil, fmt.Errorf("ChatGPT Web backend unavailable: %s", boundedIntegrationReason(reason))
 	}
-	_, capability, err := service.capability(ctx, false)
+	_, capability, err := service.capability(ctx, true)
 	if err != nil {
 		return nil, err
 	}

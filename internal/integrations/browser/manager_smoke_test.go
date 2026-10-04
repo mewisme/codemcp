@@ -28,7 +28,6 @@ func TestLocalBrowserManagerSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer manager.Close(context.Background())
 	lease, err := manager.Acquire(context.Background(), "smoke-agent")
 	if err != nil {
 		t.Fatal(err)
@@ -72,6 +71,9 @@ func TestLocalBrowserManagerSmoke(t *testing.T) {
 	}
 	if err := manager.Release(context.Background(), second.AgentID); err != nil {
 		t.Fatal(err)
+	}
+	if err := manager.Close(context.Background()); err != nil {
+		t.Fatalf("close managed browser: %v", err)
 	}
 }
 

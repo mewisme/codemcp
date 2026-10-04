@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	cdproto "github.com/chromedp/cdproto"
 )
 
 func TestDevToolsHTTPEndpointFromBrowserWebSocket(t *testing.T) {
@@ -46,3 +48,28 @@ func TestExistingPageTargetPrefersLaunchBootstrapBlankPage(t *testing.T) {
 		t.Fatalf("target id=%q want bootstrap", id)
 	}
 }
+
+func TestBenignChromedpBrowserCloseError(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", want: true},
+		{name: "context canceled", err: context.Canceled, want: true},
+		{name: "closed websocket", err: errText("websocket: close 1006"), want: true},
+		{name: "closed target session", err: &cdproto.Error{Code: -32602, Message: "No session with given id"}, want: true},
+		{name: "different protocol error", err: &cdproto.Error{Code: -32000, Message: "Target crashed"}, want: false},
+		{name: "ordinary error", err: errText("permission denied"), want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := benignChromedpBrowserCloseError(test.err); got != test.want {
+				t.Fatalf("benign close error=%t want=%t err=%v", got, test.want, test.err)
+			}
+		})
+	}
+}
+
+type errText string
+
+func (err errText) Error() string { return string(err) }
