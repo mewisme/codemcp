@@ -421,6 +421,9 @@ func TestManagedRestartReadinessObserverStreamsScopesAsTheyBecomeReady(t *testin
 	if telegramIndex < 0 || tunnelIndex <= telegramIndex {
 		t.Fatalf("readiness scopes were not emitted in observed completion order: %q", text)
 	}
+	if !strings.Contains(text, tunnelLine+"\n│\n") {
+		t.Fatalf("final tunnel readiness scope is missing its trailing spacer: %q", text)
+	}
 	for _, unexpected := range []string{"✓ Semantic — ready", "✓ Notifications — ready"} {
 		if strings.Contains(text, unexpected) {
 			t.Fatalf("non-lifecycle readiness leaked into restart output %q: %q", unexpected, text)

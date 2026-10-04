@@ -592,8 +592,13 @@ func managedRestartReadinessObserver(session *presentation.ProgressSession) (fun
 			return
 		}
 		session.Suspend()
+		endsReadiness := false
 		for _, state := range ready {
 			renderManagedReadinessScope(session.Presenter(), state)
+			endsReadiness = endsReadiness || state.Scope.ID == "tunnel"
+		}
+		if endsReadiness {
+			session.Presenter().Spacer()
 		}
 		session.Resume()
 	}, rendered
