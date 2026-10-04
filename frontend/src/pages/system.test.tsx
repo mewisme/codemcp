@@ -43,7 +43,7 @@ describe("SystemPage", () => {
     vi.spyOn(adminApi, "doctor").mockResolvedValue({ healthy: true })
     vi.spyOn(adminApi, "about").mockResolvedValue({ version: "test" })
     vi.spyOn(adminApi, "notificationStatus").mockResolvedValue({ ready: true })
-    vi.spyOn(adminApi, "telegramSetup").mockResolvedValue({ configured: true })
+    // vi.spyOn(adminApi, "telegramSetup").mockResolvedValue({  })
     vi.spyOn(adminApi, "runtimeAction").mockResolvedValue({})
     vi.spyOn(adminApi, "setTelemetry").mockResolvedValue({
       persisted_enabled: false,
