@@ -240,6 +240,7 @@ func TestFirstPartyIntegrationsHaveCanonicalCapabilities(t *testing.T) {
 	groups := map[string][]ID{
 		"ponytail": {IntegrationPonytailTurn},
 		"caveman":  {IntegrationCavemanTurn},
+		"fanout":   {IntegrationFanoutTurn},
 		"rtk": {
 			IntegrationRTKStatus,
 			IntegrationRTKEnable,

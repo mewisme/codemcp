@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/integrations/caveman"
+	"go.mewis.me/codemcp/internal/integrations/fanout"
 	"go.mewis.me/codemcp/internal/integrations/ponytail"
 	"go.mewis.me/codemcp/internal/jsruntime"
 	"go.mewis.me/codemcp/internal/workspace"
@@ -110,6 +111,50 @@ func cavemanToolEntries(workspaces *workspace.Manager, cavemanManager *caveman.M
 				return Result{}, err
 			}
 			value, err := cavemanManager.Turn(item.ID, prompt, action)
+			if err != nil {
+				return Result{}, err
+			}
+			return JSONResult(value), nil
+		}),
+	}
+}
+
+func fanoutToolEntries(runtime *Runtime) map[string]Entry {
+	return map[string]Entry{
+		"fanout_turn": integrationEntry("fanout_turn", "Fanout Turn Controller", "Fanout integration controller. Consult for substantial work that may benefit from managed-agent delegation. Strategy is advisory and never overrides workspace, security, plan, lifecycle, readiness, or capacity authority. Pass the exact current user prompt.", `{"type":"object","properties":{"workspace_id":{"type":"string"},"prompt":{"type":"string"},"action":{"type":"string","enum":["turn","refresh","status"],"default":"turn"}},"required":["workspace_id","prompt"],"additionalProperties":false}`, `{"type":"object","properties":{"available":{"type":"boolean"},"mode":{"type":"string","enum":["off","auto","conservative","aggressive"]},"active":{"type":"boolean"},"active_instructions":{"type":"string"},"refresh_hint":{"type":"string"}},"required":["available","mode","active"],"additionalProperties":false}`, RiskRead, func(ctx context.Context, args map[string]any) (Result, error) {
+			if runtime == nil || runtime.Workspaces == nil || runtime.fanoutManager == nil {
+				return Result{}, errors.New("fanout integration is unavailable")
+			}
+			for key := range args {
+				switch key {
+				case "workspace_id", "prompt", "action":
+				default:
+					return Result{}, errors.New("unsupported fanout controller argument")
+				}
+			}
+			item, err := workspaceFromArgs(runtime.Workspaces, args)
+			if err != nil {
+				return Result{}, err
+			}
+			prompt, err := requiredString(args, "prompt")
+			if err != nil {
+				return Result{}, err
+			}
+			action, err := optionalEnum(args, "action", "turn", "turn", "refresh", "status")
+			if err != nil {
+				return Result{}, err
+			}
+			sessionID := MCPSessionID(ctx)
+			controllerID := mcpSessionStateKey(sessionID)
+			if controllerID == "" {
+				return Result{}, errors.New("fanout controller requires trusted MCP session identity")
+			}
+			if runtime.Agents != nil {
+				if binding, claimed := runtime.Agents.SessionBinding(sessionID); claimed && binding.Active {
+					return JSONResult(fanout.Result{Available: true, Mode: fanout.Off, Active: false}), nil
+				}
+			}
+			value, err := runtime.fanoutManager.Turn(controllerID, item.ID, prompt, action)
 			if err != nil {
 				return Result{}, err
 			}

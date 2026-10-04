@@ -21,6 +21,7 @@ import (
 	"go.mewis.me/codemcp/internal/integrations"
 	"go.mewis.me/codemcp/internal/integrations/caveman"
 	"go.mewis.me/codemcp/internal/integrations/codegraph"
+	"go.mewis.me/codemcp/internal/integrations/fanout"
 	"go.mewis.me/codemcp/internal/integrations/ponytail"
 	"go.mewis.me/codemcp/internal/integrations/semantic"
 	mcpconfigwire "go.mewis.me/codemcp/internal/mcpconfig/wire"
@@ -73,6 +74,7 @@ type Runtime struct {
 	integrations         integrations.Config
 	ponytailManager      *ponytail.Manager
 	cavemanManager       *caveman.Manager
+	fanoutManager        *fanout.Manager
 	codegraphRuntime     *codegraph.Runtime
 }
 
@@ -114,7 +116,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	if err != nil {
 		panic(err)
 	}
-	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Agents: agents, Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, BackgroundDeliveries: backgroundDeliveries, LoopGuard: NewToolLoopGuard(), InstructionChanges: instructioncontext.NewChangeStream(), PlanExecutions: plandoc.NewExecutionManager(), Semantic: semantic.NewManager(semantic.ManagerOptions{}), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))}
+	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Agents: agents, Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, BackgroundDeliveries: backgroundDeliveries, LoopGuard: NewToolLoopGuard(), InstructionChanges: instructioncontext.NewChangeStream(), PlanExecutions: plandoc.NewExecutionManager(), Semantic: semantic.NewManager(semantic.ManagerOptions{}), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode)), fanoutManager: fanout.NewManager(integrationConfig.Fanout.Active, fanout.Mode(integrationConfig.Fanout.Mode))}
 	runtime.SetSemanticApprovalPolicy(DefaultSemanticApprovalPolicy())
 	runtime.CodeGraphCompletion = codegraph.NewCompletionHook(func() *codegraph.Runtime {
 		return runtime.codeGraphRuntimeSnapshot()
@@ -179,6 +181,9 @@ func (r *Runtime) syncIntegrations(integrationConfig integrations.Config, catchU
 	if r.cavemanManager == nil {
 		r.cavemanManager = caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))
 	}
+	if r.fanoutManager == nil {
+		r.fanoutManager = fanout.NewManager(integrationConfig.Fanout.Active, fanout.Mode(integrationConfig.Fanout.Mode))
+	}
 	r.codegraphRuntime = codegraph.New(codegraph.Options{
 		Enabled:        integrationConfig.CodeGraph.Enabled,
 		ConfiguredPath: integrationConfig.CodeGraph.Path,
@@ -189,11 +194,15 @@ func (r *Runtime) syncIntegrations(integrationConfig integrations.Config, catchU
 	if err := r.Registry.ReplaceOwned(integrations.Owner(integrations.CavemanID), cavemanToolEntries(r.Workspaces, r.cavemanManager)); err != nil {
 		return err
 	}
+	if err := r.Registry.ReplaceOwned(integrations.Owner(integrations.FanoutID), fanoutToolEntries(r)); err != nil {
+		return err
+	}
 	if err := r.Registry.ReplaceOwned(integrations.Owner(integrations.CodeGraphID), codeGraphToolEntries(r)); err != nil {
 		return err
 	}
 	r.ponytailManager.SetDefaults(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode))
 	r.cavemanManager.SetDefaults(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode))
+	r.fanoutManager.SetDefaults(integrationConfig.Fanout.Active, fanout.Mode(integrationConfig.Fanout.Mode))
 	if r.Shell != nil {
 		r.Shell.ConfigureRTK(integrationConfig.RTK.Enabled, integrationConfig.RTK.Path)
 	}

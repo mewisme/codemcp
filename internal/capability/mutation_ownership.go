@@ -128,7 +128,7 @@ func buildMutationOwners() map[ID]MutationOwner {
 	add(MutationOwnerMemory, MemoryRemember, MemoryForget, MemoryOptimize)
 	add(MutationOwnerPatch, PatchApply)
 	add(MutationOwnerHistory, HistoryRewind)
-	add(MutationOwnerSemanticIntegration, IntegrationPonytailTurn, IntegrationCavemanTurn)
+	add(MutationOwnerSemanticIntegration, IntegrationPonytailTurn, IntegrationCavemanTurn, IntegrationFanoutTurn)
 	add(MutationOwnerAgentConfig, AgentConfigSet)
 	return owners
 }

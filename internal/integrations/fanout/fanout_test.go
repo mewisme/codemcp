@@ -27,6 +27,69 @@ func TestNormalizeModes(t *testing.T) {
 	}
 }
 
+func TestManagerIsolatesControllerAndWorkspaceState(t *testing.T) {
+	manager := NewManager(true, Auto)
+	first, err := manager.Turn("session-a", "ws-a", "/fanout aggressive", "turn")
+	if err != nil || first.Mode != Aggressive || !first.Active {
+		t.Fatalf("first=%#v err=%v", first, err)
+	}
+	otherSession, err := manager.Turn("session-b", "ws-a", "continue", "turn")
+	if err != nil || otherSession.Mode != Auto {
+		t.Fatalf("other session=%#v err=%v", otherSession, err)
+	}
+	otherWorkspace, err := manager.Turn("session-a", "ws-b", "/fanout conservative", "turn")
+	if err != nil || otherWorkspace.Mode != Conservative {
+		t.Fatalf("other workspace=%#v err=%v", otherWorkspace, err)
+	}
+	firstAgain, err := manager.Turn("session-a", "ws-a", "continue", "status")
+	if err != nil || firstAgain.Mode != Aggressive {
+		t.Fatalf("first again=%#v err=%v", firstAgain, err)
+	}
+}
+
+func TestManagerLifecycleDefaultsAndReload(t *testing.T) {
+	manager := NewManager(false, Aggressive)
+	inactive, err := manager.Turn("session", "ws", "continue", "turn")
+	if err != nil || inactive.Active || inactive.Mode != Off || inactive.ActiveInstructions != "" {
+		t.Fatalf("inactive=%#v err=%v", inactive, err)
+	}
+	manager.SetDefaults(true, Conservative)
+	active, err := manager.Turn("session", "ws", "continue", "turn")
+	if err != nil || !active.Active || active.Mode != Conservative || active.ActiveInstructions == "" {
+		t.Fatalf("active=%#v err=%v", active, err)
+	}
+	status, err := manager.Turn("session", "ws", "continue", "status")
+	if err != nil || status.ActiveInstructions != "" || status.RefreshHint == "" {
+		t.Fatalf("status=%#v err=%v", status, err)
+	}
+	refresh, err := manager.Turn("session", "ws", "continue", "refresh")
+	if err != nil || refresh.ActiveInstructions == "" || refresh.RefreshHint != "" {
+		t.Fatalf("refresh=%#v err=%v", refresh, err)
+	}
+}
+
+func TestRequestedModeIsDeterministic(t *testing.T) {
+	for _, test := range []struct {
+		prompt string
+		want   Mode
+		found  bool
+	}{
+		{"/fanout", Auto, true},
+		{"/fanout conservative", Conservative, true},
+		{"please /fanout aggressive now", Aggressive, true},
+		{"/fanout off", Off, true},
+		{"continue", "", false},
+	} {
+		got, found, err := RequestedMode(test.prompt, Auto)
+		if err != nil || got != test.want || found != test.found {
+			t.Fatalf("%q => %q %t err=%v", test.prompt, got, found, err)
+		}
+	}
+	if _, _, err := RequestedMode("/fanout conservative then /fanout aggressive", Auto); err == nil {
+		t.Fatal("conflicting selections accepted")
+	}
+}
+
 func TestInstructionsProjectModeSpecificStrategy(t *testing.T) {
 	tests := []struct {
 		mode Mode

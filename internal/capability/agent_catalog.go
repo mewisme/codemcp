@@ -72,6 +72,7 @@ const (
 	RequestControlApproval          ID = "request.control-approval"
 	IntegrationPonytailTurn         ID = "integration.ponytail.turn"
 	IntegrationCavemanTurn          ID = "integration.caveman.turn"
+	IntegrationFanoutTurn           ID = "integration.fanout.turn"
 	IntegrationCodeGraphExplore     ID = "integration.codegraph.explore"
 	AgentConfigList                 ID = "agent.config.list"
 	AgentConfigGet                  ID = "agent.config.get"
@@ -158,6 +159,7 @@ var mcpToolBindings = map[ID][]string{
 	RequestControlApproval:          {"request_control_approval"},
 	IntegrationPonytailTurn:         {"ponytail_turn"},
 	IntegrationCavemanTurn:          {"caveman_turn"},
+	IntegrationFanoutTurn:           {"fanout_turn"},
 	IntegrationCodeGraphExplore:     {"codegraph_explore"},
 	AgentConfigList:                 {"config_list"},
 	AgentConfigGet:                  {"config_get"},
@@ -239,6 +241,7 @@ func agentOnlySpecs() []Spec {
 		agentApprovalSpec(RequestControlApproval),
 		agentMutationSpec(IntegrationPonytailTurn, RiskState, false),
 		agentMutationSpec(IntegrationCavemanTurn, RiskState, false),
+		agentMutationSpec(IntegrationFanoutTurn, RiskState, false),
 		agentQuerySpec(IntegrationCodeGraphExplore, false),
 		agentQuerySpec(AgentConfigList, false),
 		agentQuerySpec(AgentConfigGet, false),
