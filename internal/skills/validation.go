@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -58,8 +59,8 @@ func ParseManifest(data []byte) (Manifest, error) {
 	if closingEnd < len(rest) && rest[closingEnd] != '\n' {
 		return Manifest{}, errors.New("skill frontmatter is unclosed")
 	}
-	frontmatter := map[string]any{}
-	if err := yaml.Unmarshal([]byte(rest[:end]), &frontmatter); err != nil {
+	frontmatter, err := parseManifestFrontmatter(rest[:end])
+	if err != nil {
 		return Manifest{}, fmt.Errorf("parse skill frontmatter: %w", err)
 	}
 	name, _ := frontmatter["name"].(string)
@@ -78,6 +79,55 @@ func ParseManifest(data []byte) (Manifest, error) {
 		Frontmatter: frontmatter,
 		Name:        name, Description: description, Instructions: instructions,
 	}, nil
+}
+
+func parseManifestFrontmatter(raw string) (map[string]any, error) {
+	frontmatter := map[string]any{}
+	strictErr := yaml.Unmarshal([]byte(raw), &frontmatter)
+	if strictErr == nil {
+		return frontmatter, nil
+	}
+	repaired, ok := repairLooseDescriptionFrontmatter(raw)
+	if !ok {
+		return nil, strictErr
+	}
+	frontmatter = map[string]any{}
+	if err := yaml.Unmarshal([]byte(repaired), &frontmatter); err != nil {
+		return nil, strictErr
+	}
+	return frontmatter, nil
+}
+
+func repairLooseDescriptionFrontmatter(raw string) (string, bool) {
+	lines := strings.Split(raw, "\n")
+	match := -1
+	for index, line := range lines {
+		const prefix = "description:"
+		if !strings.HasPrefix(line, prefix) || len(line) <= len(prefix) || line[len(prefix)] != ' ' && line[len(prefix)] != '\t' {
+			continue
+		}
+		if match >= 0 {
+			return "", false
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		if value == "" || !strings.Contains(value, ": ") {
+			return "", false
+		}
+		switch value[0] {
+		case '\'', '"', '|', '>', '[', '{', '*', '&', '!':
+			return "", false
+		}
+		quoted, err := json.Marshal(value)
+		if err != nil {
+			return "", false
+		}
+		lines[index] = "description: " + string(quoted)
+		match = index
+	}
+	if match < 0 {
+		return "", false
+	}
+	return strings.Join(lines, "\n"), true
 }
 
 func validateOptionalManifestFields(frontmatter map[string]any) error {

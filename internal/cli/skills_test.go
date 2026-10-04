@@ -202,7 +202,7 @@ func TestSkillsAddHumanProgressStartsBeforeRepositoryMutation(t *testing.T) {
 	repository, _ := createCLISkillGitRepository(t, "streamed-skill")
 	configureCLIGitHubRewrite(t, repository, "owner", "repo")
 
-	gate := newProgressGateWriter("Acquiring and installing GitHub skills")
+	gate := newProgressGateWriter("Cloning GitHub repository")
 	cmd := newRootCommand()
 	cmd.SetOut(presentation.WrapWriter(gate, presentation.Capabilities{
 		Width: 120, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
@@ -234,7 +234,11 @@ func TestSkillsAddHumanProgressStartsBeforeRepositoryMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := gate.String()
-	if !strings.Contains(text, "GitHub skills installed") || !strings.Contains(text, "Skills installed") {
+	if !strings.Contains(text, "Repository cloned") ||
+		!strings.Contains(text, "Found 1 skill") ||
+		!strings.Contains(text, "Skill: streamed-skill") ||
+		!strings.Contains(text, "GitHub skills installed") ||
+		!strings.Contains(text, "Skills installed") {
 		t.Fatalf("human add progress/result missing: %q", text)
 	}
 }
@@ -313,7 +317,7 @@ func TestSkillsUpdateAndRemoveHumanProgress(t *testing.T) {
 	}
 
 	updateText := executeSkillsCLI(t, configRoot, "skills", "update", "human-progress")
-	if !strings.Contains(updateText, "Managed GitHub skills checked") || !strings.Contains(updateText, "Skills updated") {
+	if !strings.Contains(updateText, "Managed GitHub skill sources acquired") || !strings.Contains(updateText, "Managed GitHub skill updates installed") || !strings.Contains(updateText, "Skills updated") {
 		t.Fatalf("human update progress/result missing: %q", updateText)
 	}
 	removeText := executeSkillsCLI(t, configRoot, "skills", "rm", "human-progress")
@@ -354,7 +358,7 @@ func TestSkillRiskReviewerRendersVercelStyleAssessmentAndOnlyPromptsWhenRisky(t 
 		"Security Risk Assessments", "Gen", "Socket", "Snyk",
 		"risk-demo", "High Risk", "2 alerts", "Safe",
 		"Details:", "https://skills.sh/owner/repo",
-		"Security risks detected. Proceed with installation? [y/N]",
+		"Security risks detected. Proceed with installation? [Y/n]",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("risk assessment missing %q: %q", want, text)
@@ -445,6 +449,86 @@ func TestSkillRiskReviewerDeclineCancels(t *testing.T) {
 		t.Fatalf("decline err=%v", err)
 	}
 	closeCommandProgress(cmd, nil)
+}
+
+func TestSkillRiskReviewerEnterAcceptsRiskByDefault(t *testing.T) {
+	root := newRootCommand()
+	root.SetOut(presentation.WrapWriter(&bytes.Buffer{}, presentation.Capabilities{
+		Width: 120, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
+	}))
+	root.SetErr(&bytes.Buffer{})
+	root.SetIn(strings.NewReader("\n"))
+	cmd, _, err := root.Find([]string{"skills", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assessment := skills.SecurityAssessment{
+		Source: "owner/repo", DetailsURL: "https://skills.sh/owner/repo",
+		Skills: []skills.SkillSecurityAssessment{{
+			Name: "risk-demo", Gen: &skills.PartnerAudit{Risk: skills.SecurityRiskMedium},
+		}},
+	}
+	if err := skillRiskReviewer(cmd, false, "installation")(assessment); err != nil {
+		t.Fatalf("default Enter should accept risk review: %v", err)
+	}
+	closeCommandProgress(cmd, nil)
+}
+
+func TestSkillMutationHumanFlowOrdersAcquireAuditAskThenInstall(t *testing.T) {
+	root := newRootCommand()
+	var output bytes.Buffer
+	root.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{
+		Width: 120, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
+	}))
+	root.SetErr(&bytes.Buffer{})
+	root.SetIn(strings.NewReader("\n"))
+	cmd, _, err := root.Find([]string{"skills", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	progress := newCommandProgress(cmd, "SKILLS")
+	progress.Start("skills.add.cloning", "Cloning GitHub repository", "Repository cloned")
+	observe := skillMutationProgressObserver(progress, "add")
+	observe(application.SkillMutationEvent{Phase: application.SkillMutationPhaseRepositoryAcquired})
+	observe(application.SkillMutationEvent{Phase: application.SkillMutationPhaseDiscovered, Count: 1})
+	observe(application.SkillMutationEvent{
+		Phase: application.SkillMutationPhaseSelected,
+		Skills: []application.SkillMutationSelection{{
+			Name: "risk-demo", Description: "Risk demo skill",
+		}},
+	})
+	assessment := skills.SecurityAssessment{
+		Source: "owner/repo", DetailsURL: "https://skills.sh/owner/repo",
+		Skills: []skills.SkillSecurityAssessment{{
+			Name: "risk-demo", Gen: &skills.PartnerAudit{Risk: skills.SecurityRiskMedium},
+		}},
+	}
+	if err := skillRiskReviewer(cmd, false, "installation")(assessment); err != nil {
+		t.Fatal(err)
+	}
+	observe(application.SkillMutationEvent{Phase: application.SkillMutationPhaseInstalling})
+	progress.Complete()
+	closeCommandProgress(cmd, nil)
+
+	text := output.String()
+	parts := []string{
+		"Repository cloned",
+		"Discovering skills",
+		"Found 1 skill",
+		"Skill: risk-demo",
+		"Security Risk Assessments",
+		"Security risks detected. Proceed with installation? [Y/n]",
+		"Installing GitHub skills",
+		"GitHub skills installed",
+	}
+	last := -1
+	for _, part := range parts {
+		index := strings.Index(text, part)
+		if index < 0 || index <= last {
+			t.Fatalf("human skill flow out of order at %q: %q", part, text)
+		}
+		last = index
+	}
 }
 
 type progressGateWriter struct {

@@ -149,7 +149,13 @@ func TestRepositoryDiscoveryRootSkillShadowsNestedUnlessFullDepth(t *testing.T) 
 
 func TestRepositoryDiscoveryIncludesDirectRootSkillAlongsidePriorityContainer(t *testing.T) {
 	repository := t.TempDir()
-	writeSkillFixture(t, filepath.Join(repository, "archify"), "archify", "Archify skill")
+	archifyRoot := filepath.Join(repository, "archify")
+	if err := os.MkdirAll(archifyRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(archifyRoot, "SKILL.md"), []byte("---\nname: archify\ndescription: Create architecture and lifecycle diagrams for states: a leave or travel plan\nlicense: MIT\nmetadata:\n  version: \"3.0\"\n---\n# Archify\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	writeSkillFixture(t, filepath.Join(repository, ".agents", "skills", "archify-review"), "archify-review", "Archify review skill")
 
 	values, err := DiscoverRepositorySkills(repository)

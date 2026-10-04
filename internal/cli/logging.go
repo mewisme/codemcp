@@ -132,6 +132,16 @@ func (p *commandProgress) Complete() {
 	p.name, p.label, p.done = "", "", ""
 }
 
+func (p *commandProgress) CompleteWith(message string) {
+	if p == nil {
+		return
+	}
+	if message != "" {
+		p.done = message
+	}
+	p.Complete()
+}
+
 func (p *commandProgress) Break() {
 	if p == nil {
 		return

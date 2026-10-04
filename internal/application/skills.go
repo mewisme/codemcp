@@ -44,6 +44,7 @@ type SkillAddRequest struct {
 	All        bool                                  `json:"all,omitempty"`
 	FullDepth  bool                                  `json:"full_depth,omitempty"`
 	ReviewRisk func(skills.SecurityAssessment) error `json:"-"`
+	Progress   func(SkillMutationEvent)              `json:"-"`
 }
 
 type SkillAddResult struct {
@@ -85,7 +86,27 @@ type SkillUpdateRequest struct {
 	Name       string                                `json:"name,omitempty"`
 	All        bool                                  `json:"all,omitempty"`
 	ReviewRisk func(skills.SecurityAssessment) error `json:"-"`
+	Progress   func(SkillMutationEvent)              `json:"-"`
 }
+
+type SkillMutationEvent struct {
+	Phase  string
+	Count  int
+	Skills []SkillMutationSelection
+}
+
+type SkillMutationSelection struct {
+	Name        string
+	Description string
+}
+
+const (
+	SkillMutationPhaseRepositoryAcquired = "repository_acquired"
+	SkillMutationPhaseDiscovered         = "discovered"
+	SkillMutationPhaseSelected           = "selected"
+	SkillMutationPhaseAcquired           = "acquired"
+	SkillMutationPhaseInstalling         = "installing"
+)
 
 type SkillUpdateItem struct {
 	Name             string `json:"name"`
@@ -231,10 +252,12 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 	if acquired.Cleanup != nil {
 		defer acquired.Cleanup()
 	}
+	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseRepositoryAcquired})
 	candidates, err := skills.DiscoverRepositorySkillsWithOptions(acquired.Root, skills.RepositoryDiscoveryOptions{FullDepth: request.FullDepth})
 	if err != nil {
 		return SkillAddResult{}, err
 	}
+	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseDiscovered, Count: len(candidates)})
 	selected, err := selectSkillCandidates(candidates, selector, request.All)
 	if err != nil {
 		return SkillAddResult{}, err
@@ -246,13 +269,19 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 	if err := rejectSkillInstallConflicts(target.Root, metadata, selected); err != nil {
 		return SkillAddResult{}, err
 	}
+	selections := make([]SkillMutationSelection, 0, len(selected))
 	selectedNames := make([]string, 0, len(selected))
 	for _, candidate := range selected {
 		selectedNames = append(selectedNames, candidate.Skill.Name)
+		selections = append(selections, SkillMutationSelection{
+			Name: candidate.Skill.Name, Description: candidate.Skill.Description,
+		})
 	}
+	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseSelected, Skills: selections})
 	if err := s.reviewSkillSecurity(ctx, source, selectedNames, request.ReviewRisk); err != nil {
 		return SkillAddResult{}, err
 	}
+	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseInstalling})
 
 	staged, err := skills.StageManagedSkills(target.Root, selected)
 	if err != nil {
@@ -342,6 +371,33 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	type acquiredUpdateGroup struct {
+		repository acquiredSkillRepository
+		candidates []skills.RepositorySkillCandidate
+	}
+	acquiredGroups := make(map[string]acquiredUpdateGroup, len(keys))
+	defer func() {
+		for _, group := range acquiredGroups {
+			if group.repository.Cleanup != nil {
+				group.repository.Cleanup()
+			}
+		}
+	}()
+	for _, key := range keys {
+		acquired, err := s.AcquireRepository(ctx, groupSources[key])
+		if err != nil {
+			return SkillUpdateResult{}, err
+		}
+		candidates, err := skills.DiscoverRepositorySkillsWithOptions(acquired.Root, skills.RepositoryDiscoveryOptions{FullDepth: true})
+		if err != nil {
+			if acquired.Cleanup != nil {
+				acquired.Cleanup()
+			}
+			return SkillUpdateResult{}, err
+		}
+		acquiredGroups[key] = acquiredUpdateGroup{repository: acquired, candidates: candidates}
+	}
+	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseAcquired})
 	for _, key := range keys {
 		groupNames := append([]string(nil), groups[key]...)
 		sort.Strings(groupNames)
@@ -349,50 +405,31 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 			return SkillUpdateResult{}, err
 		}
 	}
+	emitSkillMutationEvent(request.Progress, SkillMutationEvent{Phase: SkillMutationPhaseInstalling})
 	result := SkillUpdateResult{Scope: target.Scope, WorkspaceID: target.WorkspaceID, Root: target.Root}
 	currentMetadata := skills.CloneManagedSources(metadata)
 	for _, key := range keys {
 		groupNames := groups[key]
 		sort.Strings(groupNames)
-		acquired, err := s.AcquireRepository(ctx, groupSources[key])
-		if err != nil {
-			return SkillUpdateResult{}, err
-		}
-		candidates, discoverErr := skills.DiscoverRepositorySkillsWithOptions(acquired.Root, skills.RepositoryDiscoveryOptions{FullDepth: true})
-		if discoverErr != nil {
-			if acquired.Cleanup != nil {
-				acquired.Cleanup()
-			}
-			return SkillUpdateResult{}, discoverErr
-		}
+		group := acquiredGroups[key]
+		acquired := group.repository
+		candidates := group.candidates
 		for _, item := range groupNames {
 			entry := currentMetadata.Skills[item]
 			installedRoot := filepath.Join(target.Root, item)
 			currentHash, err := skills.HashNativeSkillRoot(installedRoot)
 			if err != nil {
-				if acquired.Cleanup != nil {
-					acquired.Cleanup()
-				}
 				return SkillUpdateResult{}, fmt.Errorf("hash installed skill %q: %w", item, err)
 			}
 			if entry.ContentHash != "" && currentHash != entry.ContentHash {
-				if acquired.Cleanup != nil {
-					acquired.Cleanup()
-				}
 				return SkillUpdateResult{}, fmt.Errorf("managed skill %q has local changes; refusing update", item)
 			}
 			candidate, relocated, err := resolveManagedUpdateCandidate(candidates, item, entry.Path)
 			if err != nil {
-				if acquired.Cleanup != nil {
-					acquired.Cleanup()
-				}
 				return SkillUpdateResult{}, err
 			}
 			staged, err := skills.StageManagedSkills(target.Root, []skills.RepositorySkillCandidate{candidate})
 			if err != nil {
-				if acquired.Cleanup != nil {
-					acquired.Cleanup()
-				}
 				return SkillUpdateResult{}, err
 			}
 			stagedItem := staged[0]
@@ -410,9 +447,6 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 			}
 			skills.CleanupStagedManagedSkills(target.Root, staged)
 			if err != nil {
-				if acquired.Cleanup != nil {
-					acquired.Cleanup()
-				}
 				return SkillUpdateResult{}, err
 			}
 			currentMetadata = nextMetadata
@@ -422,11 +456,14 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 				Changed: changed, Relocated: relocated,
 			})
 		}
-		if acquired.Cleanup != nil {
-			acquired.Cleanup()
-		}
 	}
 	return result, nil
+}
+
+func emitSkillMutationEvent(observer func(SkillMutationEvent), event SkillMutationEvent) {
+	if observer != nil {
+		observer(event)
+	}
 }
 
 func (s *SkillManagementService) reviewSkillSecurity(

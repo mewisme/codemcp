@@ -48,6 +48,28 @@ func TestNativeSkillManifestCompatibilityRules(t *testing.T) {
 	}
 }
 
+func TestParseManifestAcceptsLoosePlainDescriptionWithColonSpace(t *testing.T) {
+	description := "Create diagrams for everyday subjects with steps, parts, relationships, or states: a leave or travel plan, an application or approval process."
+	manifest, err := ParseManifest([]byte("---\nname: archify\ndescription: " + description + "\nlicense: MIT\nmetadata:\n  version: \"3.0\"\n  author: tt-a1i\n---\n# Archify\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Name != "archify" || manifest.Description != description {
+		t.Fatalf("manifest=%#v", manifest)
+	}
+	metadata, ok := manifest.Frontmatter["metadata"].(map[string]any)
+	if !ok || metadata["author"] != "tt-a1i" {
+		t.Fatalf("metadata=%#v", manifest.Frontmatter["metadata"])
+	}
+}
+
+func TestParseManifestLooseDescriptionFallbackDoesNotMaskOtherMalformedYAML(t *testing.T) {
+	_, err := ParseManifest([]byte("---\nname: broken\ndescription: Contains a colon: but metadata is still malformed\nmetadata: [\n---\n"))
+	if err == nil || !strings.Contains(err.Error(), "parse skill frontmatter") {
+		t.Fatalf("malformed frontmatter err=%v", err)
+	}
+}
+
 func TestValidateNativeSkillDirectoryRequiresNameMatch(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "directory-name")
 	if err := os.MkdirAll(root, 0o755); err != nil {

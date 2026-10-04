@@ -185,7 +185,13 @@ func TestSkillManagementExactSelectionInstallsOnlyRequestedSkill(t *testing.T) {
 func TestSkillManagementExactSelectionFindsDirectRootSkillAlongsidePriorityContainer(t *testing.T) {
 	service, item := newSkillManagementHarness(t)
 	repository := t.TempDir()
-	writeRepositorySkill(t, repository, "archify", "archify")
+	archifyRoot := filepath.Join(repository, "archify")
+	if err := os.MkdirAll(archifyRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(archifyRoot, "SKILL.md"), []byte("---\nname: archify\ndescription: Create architecture and lifecycle diagrams for states: a leave or travel plan\nlicense: MIT\nmetadata:\n  version: \"3.0\"\n---\n# Archify\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	writeRepositorySkill(t, repository, filepath.Join(".agents", "skills", "archify-review"), "archify-review")
 	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("f", 40))
 
@@ -225,17 +231,23 @@ func TestSkillManagementRiskReviewGatesAddBeforeMutation(t *testing.T) {
 		t.Fatalf("risky add mutated before review: %v", err)
 	}
 
+	events := make([]string, 0, 3)
 	reviewed := false
 	request.ReviewRisk = func(assessment skills.SecurityAssessment) error {
+		events = append(events, "review")
 		reviewed = assessment.RequiresConfirmation()
 		return nil
 	}
+	request.Progress = func(event SkillMutationEvent) { events = append(events, event.Phase) }
 	result, err := service.Add(t.Context(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reviewed || len(result.Skills) != 1 || result.Skills[0].Name != "risky" {
 		t.Fatalf("reviewed=%v result=%#v", reviewed, result)
+	}
+	if got := strings.Join(events, ","); got != "repository_acquired,discovered,selected,review,installing" {
+		t.Fatalf("add lifecycle order=%q", got)
 	}
 }
 
@@ -263,12 +275,15 @@ func TestSkillManagementRiskReviewRejectsUpdateBeforeAnyMutation(t *testing.T) {
 		return riskySkillAssessment("owner/repo", "managed-risk"), nil
 	}
 	denied := errors.New("review denied")
+	events := make([]string, 0, 3)
 	_, err = service.Update(t.Context(), SkillUpdateRequest{
 		Scope: SkillScopeRequest{WorkspaceID: item.ID},
 		Name:  "managed-risk",
 		ReviewRisk: func(skills.SecurityAssessment) error {
+			events = append(events, "review")
 			return denied
 		},
+		Progress: func(event SkillMutationEvent) { events = append(events, event.Phase) },
 	})
 	if !errors.Is(err, denied) {
 		t.Fatalf("update review err=%v", err)
@@ -282,6 +297,9 @@ func TestSkillManagementRiskReviewRejectsUpdateBeforeAnyMutation(t *testing.T) {
 	}
 	if string(metadataAfter) != string(metadataBefore) {
 		t.Fatalf("update mutated metadata before review\nbefore=%s\nafter=%s", metadataBefore, metadataAfter)
+	}
+	if got := strings.Join(events, ","); got != "acquired,review" {
+		t.Fatalf("denied update lifecycle order=%q", got)
 	}
 }
 

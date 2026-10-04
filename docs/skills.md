@@ -46,7 +46,7 @@ Only the four GitHub source forms shown above are accepted. Local paths, archive
 
 For repositories that GitHub positively identifies as public, `skills add` and `skills update` perform a best-effort security assessment using the same audit service and partner signals surfaced by the Vercel Labs `skills` CLI. Human output renders the compact `Gen`, `Socket`, and `Snyk` risk table plus the corresponding `skills.sh` details link.
 
-Safe, low-risk, unknown, and zero-alert results do not interrupt the command. Medium, high, or critical Gen/Snyk findings, or any Socket alerts, require confirmation before CodeMCP mutates the skill store:
+Safe, low-risk, unknown, and zero-alert results do not interrupt the command. Warning-level findings and above — currently medium, high, or critical Gen/Snyk findings, or any Socket alerts — require confirmation before CodeMCP mutates the skill store. The interactive prompt is `[Y/n]`, so pressing Enter accepts and continues:
 
 ```bash
 cm skills add owner/repo --skill example
@@ -62,11 +62,15 @@ cm skills update example --yes
 
 Risk checks are advisory and fail open when the audit service or public-repository check is unavailable. CodeMCP does not send repository or skill identifiers to the audit service when GitHub reports the repository as private or when repository visibility cannot be confirmed. `DO_NOT_TRACK` or `DISABLE_TELEMETRY` disables these external audit requests entirely.
 
+Human progress mirrors the useful parts of the Vercel Labs flow while keeping CodeMCP's own presentation model: clone the GitHub repository, discover and count skills, show the selected skill(s), render the security assessment, ask only when required, and only after approval start the install/update mutation phase.
+
 ## Agent Skills compatibility
 
 A native skill uses an exact uppercase `SKILL.md` manifest. `name` and `description` are required. Names use lowercase letters, digits, and hyphens, are at most 64 characters, cannot start or end with a hyphen, and cannot contain consecutive hyphens.
 
 Descriptions may use YAML string forms, including folded or block values, up to 1024 Unicode characters. Standard optional fields such as `license`, `compatibility`, `metadata`, and `allowed-tools` are accepted. Imported skills may have an empty Markdown body and arbitrary supporting files within CodeMCP's managed-import safety limits.
+
+For ecosystem compatibility, CodeMCP also accepts a top-level plain `description:` line whose text contains an unquoted `: ` sequence by treating the entire value as the description string. Other malformed YAML still fails validation.
 
 CodeMCP does not execute downloaded skill scripts during installation or update.
 
