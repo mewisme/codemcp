@@ -131,6 +131,10 @@ integration codegraph sync | operation:integration.codegraph.workspace.sync
 integration codegraph workspace status | operation:integration.codegraph.workspace.status
 integration codegraph workspace | namespace
 integration codegraph | namespace
+integration fanout disable | operation:config.set:accepted-path
+integration fanout enable | operation:config.set:accepted-path
+integration fanout mode | operation:config.set:accepted-path
+integration fanout | namespace
 integration ponytail disable | operation:config.set:accepted-path
 integration ponytail enable | operation:config.set:accepted-path
 integration ponytail mode | operation:config.set:accepted-path

@@ -2,6 +2,7 @@ package fanout
 
 import (
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -106,6 +107,56 @@ func TestManagerRestartClearsTransientModeToConfiguredDefault(t *testing.T) {
 	value, err := restarted.Turn("session", "ws", "continue", "turn")
 	if err != nil || value.Mode != Conservative {
 		t.Fatalf("restarted=%#v err=%v", value, err)
+	}
+}
+
+func TestManagerConcurrentSessionsRemainIsolated(t *testing.T) {
+	manager := NewManager(true, Auto)
+	type target struct {
+		session string
+		mode    Mode
+	}
+	targets := []target{{session: "session-aggressive", mode: Aggressive}, {session: "session-conservative", mode: Conservative}}
+	var wg sync.WaitGroup
+	for _, target := range targets {
+		target := target
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range 100 {
+				if _, err := manager.Turn(target.session, "ws-shared", "/fanout "+string(target.mode), "turn"); err != nil {
+					t.Errorf("%s turn: %v", target.session, err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	for _, target := range targets {
+		value, err := manager.Turn(target.session, "ws-shared", "continue", "status")
+		if err != nil || value.Mode != target.mode {
+			t.Fatalf("%s mode=%q want=%q err=%v", target.session, value.Mode, target.mode, err)
+		}
+	}
+}
+
+func TestInstructionsCoverCanonicalFanoutWorkflowScenarios(t *testing.T) {
+	instructions := Instructions(Auto)
+	for scenario, clauses := range map[string][]string{
+		"read-only audit":         {"Prefer read-only fanout for broad audits and research."},
+		"disjoint implementation": {"Parallel mutation requires explicit disjoint ownership."},
+		"dependent work":          {"immediate sequential dependencies"},
+		"conflicting mutation":    {"Never let workers race on the same files or shared mutable state."},
+		"aggregation":             {"Aggregate child results at the parent.", "Deduplicate overlapping findings", "resolve contradictions", "verify material conclusions"},
+		"idle follow-up":          {"Use `agent_send` only for useful follow-up to a live idle child."},
+		"cancellation":            {"Use `agent_cancel` when child output is no longer needed."},
+		"capacity rejection":      {"Current runtime/backend readiness and capacity remain authoritative.", "Never invent or raise concurrency limits."},
+	} {
+		for _, clause := range clauses {
+			if !strings.Contains(instructions, clause) {
+				t.Fatalf("%s policy missing %q", scenario, clause)
+			}
+		}
 	}
 }
 

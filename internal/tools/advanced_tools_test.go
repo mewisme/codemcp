@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -168,6 +169,80 @@ func TestFanoutToolSuppressesClaimedChild(t *testing.T) {
 	value := result.StructuredContent.(fanout.Result)
 	if value.Active || value.Mode != fanout.Off || value.ActiveInstructions != "" || value.RefreshHint != "" {
 		t.Fatalf("claimed child fanout=%#v", value)
+	}
+	nested, err := runtime.Call(childCtx, AgentSpawnToolName, map[string]any{"workspace_id": workspaceID, "prompt": "nested work"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !nested.IsError || len(nested.Content) == 0 || !strings.Contains(nested.Content[0].Text, "nested managed-agent delegation is disabled") {
+		t.Fatalf("claimed child nested spawn=%#v", nested)
+	}
+}
+
+func TestFanoutModesDoNotMutateManagedAgentToolContracts(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewRuntime()
+	item, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := []string{AgentSpawnToolName, AgentListToolName, AgentWaitToolName, AgentSendToolName, AgentCancelToolName}
+	type contract struct {
+		description string
+		input       string
+		output      string
+	}
+	baseline := map[string]contract{}
+	for _, name := range names {
+		schema, ok := runtime.Registry.Schema(name)
+		if !ok {
+			t.Fatalf("missing baseline tool %s", name)
+		}
+		baseline[name] = contract{description: schema.Description, input: string(schema.InputSchema), output: string(schema.OutputSchema)}
+	}
+	ctx := WithMCPSessionID(context.Background(), "fanout-contracts")
+	for _, mode := range []string{"auto", "conservative", "aggressive", "off"} {
+		result, callErr := runtime.Call(ctx, "fanout_turn", map[string]any{"workspace_id": item.ID, "prompt": "/fanout " + mode})
+		if callErr != nil || result.IsError {
+			t.Fatalf("fanout %s err=%v result=%#v", mode, callErr, result)
+		}
+		for _, name := range names {
+			schema, ok := runtime.Registry.Schema(name)
+			if !ok {
+				t.Fatalf("%s disappeared in Fanout mode %s", name, mode)
+			}
+			got := contract{description: schema.Description, input: string(schema.InputSchema), output: string(schema.OutputSchema)}
+			if got != baseline[name] {
+				t.Fatalf("%s contract changed in Fanout mode %s", name, mode)
+			}
+		}
+	}
+}
+
+func TestFanoutAggressiveCannotOverrideAgentManagerCapacity(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	runtime := NewRuntime()
+	item, err := runtime.Workspaces.Register(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Agents.RegisterBackend(claimToolBackend{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Agents.Configure("claim-test", managedagent.Capacity{MaxParallel: 1}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := WithMCPSessionID(context.Background(), "fanout-capacity")
+	result, err := runtime.Call(ctx, "fanout_turn", map[string]any{"workspace_id": item.ID, "prompt": "/fanout aggressive"})
+	if err != nil || result.IsError || result.StructuredContent.(fanout.Result).Mode != fanout.Aggressive {
+		t.Fatalf("aggressive Fanout err=%v result=%#v", err, result)
+	}
+	request := managedagent.ManagedSpawnRequest{Input: managedagent.SpawnInput{WorkspaceID: item.ID, Prompt: "capacity one", Backend: "claim-test"}}
+	if _, err := runtime.Agents.Spawn(t.Context(), managedagent.OperatorController(), request); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runtime.Agents.Spawn(t.Context(), managedagent.OperatorController(), request); !errors.Is(err, managedagent.ErrCapacityReached) {
+		t.Fatalf("aggressive Fanout bypassed capacity: %v", err)
 	}
 }
 

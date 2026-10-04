@@ -118,6 +118,7 @@ func TestScopedAndUniversalStaticSettingParity(t *testing.T) {
 		{name: "notification-completion-telegram", key: "notifications.completion.telegram_enabled", value: "true", scopedArgs: []string{"notification", "completion", "telegram", "enable"}, want: "true"},
 		{name: "ponytail", key: "integrations.ponytail.mode", value: "lite", scopedArgs: []string{"integration", "ponytail", "mode", "lite"}, want: "lite"},
 		{name: "caveman", key: "integrations.caveman.mode", value: "wenyan-lite", scopedArgs: []string{"integration", "caveman", "mode", "wenyan-lite"}, want: "wenyan-lite"},
+		{name: "fanout", key: "integrations.fanout.mode", value: "aggressive", scopedArgs: []string{"integration", "fanout", "mode", "aggressive"}, want: "aggressive"},
 		{name: "rtk", key: "integrations.rtk.path", value: rtkPath, scopedArgs: []string{"integration", "rtk", "path", rtkPath}, want: rtkPath},
 		{name: "codegraph", key: "integrations.codegraph.path", value: codegraphPath, scopedArgs: []string{"integration", "codegraph", "path", codegraphPath}, want: codegraphPath},
 		{name: "tunnel", key: "tunnel.id", value: "tun_scoped", scopedArgs: []string{"tunnel", "configure", "--id", "tun_scoped"}, want: "tun_scoped"},

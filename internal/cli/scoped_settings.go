@@ -255,6 +255,7 @@ func integrationSettingsCommand() *cobra.Command {
 	cmd.AddCommand(
 		integrationModeSettingsCommand("ponytail"),
 		integrationModeSettingsCommand("caveman"),
+		integrationModeSettingsCommand("fanout"),
 		integrationBinarySettingsCommand("rtk"),
 		integrationBinarySettingsCommand("codegraph"),
 		cfTunnelCommand(),

@@ -53,13 +53,19 @@ func TestSetConfigValueTyped(t *testing.T) {
 	if err := setConfigValue(&cfg, "integrations.caveman.mode", "WENYAN-ULTRA"); err != nil {
 		t.Fatal(err)
 	}
+	if err := setConfigValue(&cfg, "integrations.fanout.active", "false"); err != nil {
+		t.Fatal(err)
+	}
+	if err := setConfigValue(&cfg, "integrations.fanout.mode", "AGGRESSIVE"); err != nil {
+		t.Fatal(err)
+	}
 	if err := setConfigValue(&cfg, "permissions.allow_dirs", "/tmp,/var/tmp"); err != nil {
 		t.Fatal(err)
 	}
 	if err := setConfigValue(&cfg, "shell.path", "/opt/tools,/usr/local/custom/bin"); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.HTTP.MCP.Port != 4000 || cfg.HTTP.Exposure.Mode != config.ExposureWildcard || cfg.HTTP.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Tunnel.ControlPlaneBaseURL != "https://api.openai.com" || cfg.Tunnel.OrganizationID != "org-test" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 {
+	if cfg.HTTP.MCP.Port != 4000 || cfg.HTTP.Exposure.Mode != config.ExposureWildcard || cfg.HTTP.Admin.Enabled || cfg.Integrations.Ponytail.Active || cfg.Integrations.Ponytail.Mode != "ultra" || cfg.Integrations.Caveman.Active || cfg.Integrations.Caveman.Mode != "wenyan-ultra" || cfg.Integrations.Fanout.Active || cfg.Integrations.Fanout.Mode != "aggressive" || cfg.Tunnel.ControlPlaneBaseURL != "https://api.openai.com" || cfg.Tunnel.OrganizationID != "org-test" || len(cfg.Permissions.AllowDirs) != 2 || len(cfg.Shell.Path) != 2 {
 		t.Fatalf("cfg = %#v", cfg)
 	}
 	if err := setConfigValue(&cfg, "integrations.ponytail.mode", "review"); err == nil {
@@ -67,6 +73,9 @@ func TestSetConfigValueTyped(t *testing.T) {
 	}
 	if err := setConfigValue(&cfg, "integrations.caveman.mode", "wenyan"); err == nil {
 		t.Fatal("Caveman runtime alias accepted as configured mode")
+	}
+	if err := setConfigValue(&cfg, "integrations.fanout.mode", "off"); err == nil {
+		t.Fatal("transient Fanout off accepted as configured mode")
 	}
 }
 
@@ -169,6 +178,14 @@ func TestIntegrationConfigTraversal(t *testing.T) {
 	cavemanMode, err := getConfigValue(cfg, "integrations.caveman.mode")
 	if err != nil || cavemanMode != "full" {
 		t.Fatalf("caveman mode = %#v %v", cavemanMode, err)
+	}
+	fanout, ok := integrations["fanout"].(map[string]any)
+	if !ok || fanout["active"] != true || fanout["mode"] != "auto" {
+		t.Fatalf("fanout = %#v", integrations["fanout"])
+	}
+	fanoutMode, err := getConfigValue(cfg, "integrations.fanout.mode")
+	if err != nil || fanoutMode != "auto" {
+		t.Fatalf("fanout mode = %#v %v", fanoutMode, err)
 	}
 }
 

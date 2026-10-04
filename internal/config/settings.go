@@ -331,9 +331,12 @@ func normalizeSettingSpec(spec FieldSpec) FieldSpec {
 		spec.ScopedCommands = []string{"integration caveman enable", "integration caveman disable"}
 	case "integrations.caveman.mode":
 		spec.ScopedCommands = []string{"integration caveman mode"}
-	case "integrations.fanout.active", "integrations.fanout.mode":
+	case "integrations.fanout.active":
 		spec.ApplicationOwner = "integration:fanout"
-		spec.ScopedExemption = "generic config set is the operator facade until the Fanout integration settings surface is projected"
+		spec.ScopedCommands = []string{"integration fanout enable", "integration fanout disable"}
+	case "integrations.fanout.mode":
+		spec.ApplicationOwner = "integration:fanout"
+		spec.ScopedCommands = []string{"integration fanout mode"}
 	case "integrations.rtk.enabled":
 		spec.ScopedCommands = []string{"integration rtk enable", "integration rtk disable"}
 	case "integrations.rtk.path":

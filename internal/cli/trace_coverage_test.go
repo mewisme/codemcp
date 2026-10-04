@@ -79,6 +79,7 @@ func commandTraceContracts() map[string]commandTraceContract {
 		"notification completion telegram enable", "notification completion telegram disable",
 		"integration ponytail enable", "integration ponytail disable", "integration ponytail mode",
 		"integration caveman enable", "integration caveman disable", "integration caveman mode",
+		"integration fanout enable", "integration fanout disable", "integration fanout mode",
 		"integration rtk enable", "integration rtk disable", "integration rtk path",
 		"integration codegraph enable", "integration codegraph disable", "integration codegraph path",
 		"integration typesafe enable", "integration typesafe disable", "integration typesafe model", "integration typesafe timeout", "integration typesafe key set",

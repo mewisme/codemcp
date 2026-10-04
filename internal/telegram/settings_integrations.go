@@ -273,7 +273,7 @@ func (ui *Interface) integrationsScreen(ctx context.Context, owner ViewOwner) (S
 		id    string
 		label string
 	}{
-		{"ponytail", "Ponytail"}, {"caveman", "Caveman"}, {"rtk", "RTK"},
+		{"ponytail", "Ponytail"}, {"caveman", "Caveman"}, {"fanout", "Fanout"}, {"rtk", "RTK"},
 		{"codegraph", "CodeGraph"}, {"cf", "Cloudflare Quick Tunnel"}, {"typesafe", "TypeSafe"}, {"telemetry", "Telemetry"},
 	}
 	items := make([]string, 0, len(entries))
@@ -318,7 +318,7 @@ func (ui *Interface) integrationsScreen(ctx context.Context, owner ViewOwner) (S
 
 func (ui *Interface) integrationSummary(ctx context.Context, id string) (string, error) {
 	switch id {
-	case "ponytail", "caveman":
+	case "ponytail", "caveman", "fanout":
 		value, err := ui.dispatch(ctx, capability.ConfigList, application.ConfigListInput{Prefix: "integrations." + id})
 		if err != nil {
 			return "", err
@@ -383,7 +383,7 @@ func (ui *Interface) integrationSummary(ctx context.Context, id string) (string,
 func (ui *Interface) integrationScreen(ctx context.Context, owner ViewOwner, state ActionState) (Screen, error) {
 	id := strings.ToLower(strings.TrimSpace(state.ResourceID))
 	switch id {
-	case "ponytail", "caveman":
+	case "ponytail", "caveman", "fanout":
 		return ui.simpleSettingIntegrationScreen(ctx, owner, id)
 	case "rtk":
 		value, err := ui.dispatch(ctx, capability.IntegrationRTKStatus, nil)

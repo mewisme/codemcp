@@ -70,16 +70,21 @@ func TestReloadConfigUpdatesLiveRuntime(t *testing.T) {
 	next.HTTP.MCP.Auth.Enabled = true
 	next.HTTP.MCP.Auth.TokenHash = "hash"
 	next.Integrations.Ponytail.Active = false
+	next.Integrations.Fanout.Active = false
+	next.Integrations.Fanout.Mode = "aggressive"
 	next.Permissions.AllowDirs = []string{t.TempDir()}
 	if err := app.ReloadConfig(next); err != nil {
 		t.Fatal(err)
 	}
 	got := app.Config.Snapshot()
-	if !got.HTTP.MCP.Auth.Enabled || got.Integrations.Ponytail.Active || len(got.Permissions.AllowDirs) != 1 {
+	if !got.HTTP.MCP.Auth.Enabled || got.Integrations.Ponytail.Active || got.Integrations.Fanout.Active || got.Integrations.Fanout.Mode != "aggressive" || len(got.Permissions.AllowDirs) != 1 {
 		t.Fatalf("runtime config = %#v", got)
 	}
 	if _, ok := app.Tools.Registry.Schema("ponytail_turn"); !ok {
 		t.Fatal("inactive integration controller tool disappeared")
+	}
+	if _, ok := app.Tools.Registry.Schema("fanout_turn"); !ok {
+		t.Fatal("inactive Fanout controller tool disappeared")
 	}
 }
 

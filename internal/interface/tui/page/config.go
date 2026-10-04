@@ -112,7 +112,7 @@ var configDomains = []configDomain{
 	{ID: "runtime", Title: "Runtime & Network", Description: "MCP HTTP and admin server configuration"},
 	{ID: "access", Title: "Access & Security", Description: "Authentication and filesystem access"},
 	{ID: "shell", Title: "Shell & Execution", Description: "Approval, sandbox, environment, and network policy"},
-	{ID: "integrations", Title: "Integrations", Description: "Ponytail, Caveman, RTK, CodeGraph, and TypeSafe"},
+	{ID: "integrations", Title: "Integrations", Description: "Ponytail, Caveman, Fanout, RTK, CodeGraph, and TypeSafe"},
 	{ID: "tunnel", Title: "Tunnel", Description: "OpenAI Secure MCP Tunnel configuration"},
 	{ID: "storage", Title: "Storage & Maintenance", Description: "Storage, verification, import, export, and migration"},
 }
@@ -983,7 +983,7 @@ func (page *ConfigPage) domainSummary(domain string) string {
 		}
 		return fmt.Sprintf("%d extra PATH entries · risk-based mutation approvals", len(cfg.Shell.Path))
 	case "integrations":
-		return fmt.Sprintf("Ponytail %s · Caveman %s · RTK %s · CodeGraph %s · TypeSafe %s", configOnOff(cfg.Integrations.Ponytail.Active), configOnOff(cfg.Integrations.Caveman.Active), configOnOff(cfg.Integrations.RTK.Enabled), configOnOff(cfg.Integrations.CodeGraph.Enabled), configOnOff(cfg.Integrations.TypeSafe.Enabled))
+		return fmt.Sprintf("Ponytail %s · Caveman %s · Fanout %s · RTK %s · CodeGraph %s · TypeSafe %s", configOnOff(cfg.Integrations.Ponytail.Active), configOnOff(cfg.Integrations.Caveman.Active), configOnOff(cfg.Integrations.Fanout.Active), configOnOff(cfg.Integrations.RTK.Enabled), configOnOff(cfg.Integrations.CodeGraph.Enabled), configOnOff(cfg.Integrations.TypeSafe.Enabled))
 	case "tunnel":
 		return fmt.Sprintf("%s · runtime key %s · admin key %s", configOnOff(cfg.Tunnel.Enabled), configuredState(cfg.Tunnel.APIKey), configuredState(cfg.Tunnel.Admin.Key))
 	case "storage":

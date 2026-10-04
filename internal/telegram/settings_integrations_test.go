@@ -131,9 +131,9 @@ func TestIntegrationsScreenKeepsEveryIntegrationReachable(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantRows := [][]string{
-		{"Ponytail", "Caveman", "RTK"},
-		{"CodeGraph", "Cloudflare Quick Tunnel", "TypeSafe"},
-		{"Telemetry"},
+		{"Ponytail", "Caveman", "Fanout"},
+		{"RTK", "CodeGraph", "Cloudflare Quick Tunnel"},
+		{"TypeSafe", "Telemetry"},
 		{"« Back", "⌂ Home"},
 	}
 	if len(screen.Keyboard) != len(wantRows) {
@@ -155,6 +155,30 @@ func TestIntegrationsScreenKeepsEveryIntegrationReachable(t *testing.T) {
 	}
 	if err := validateKeyboard(screen.Keyboard); err != nil {
 		t.Fatalf("integration keyboard invalid: %v", err)
+	}
+}
+
+func TestFanoutIntegrationScreenUsesCanonicalSettings(t *testing.T) {
+	dispatcher := &domainTestDispatcher{values: map[capability.ID]any{
+		capability.ConfigList: []application.SettingResult{
+			{Spec: config.FieldSpec{Key: "integrations.fanout.active", Label: "Fanout active"}, Value: "true"},
+			{Spec: config.FieldSpec{Key: "integrations.fanout.mode", Label: "Fanout mode"}, Value: "aggressive"},
+		},
+	}}
+	ui, owner := newDomainTestInterface(t, dispatcher)
+	screen, err := ui.integrationScreen(t.Context(), owner, ActionState{Route: RouteIntegration, ResourceID: "fanout"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := RichFallback(screen.Rich).Text
+	for _, want := range []string{"Fanout", "Fanout active", "Enabled", "Fanout mode", "Aggressive"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("Fanout integration screen missing %q: %q", want, text)
+		}
+	}
+	labels := keyboardLabels(screen.Keyboard)
+	if !strings.Contains(labels, "Disable") || !strings.Contains(labels, "Mode") {
+		t.Fatalf("Fanout integration actions=%q", labels)
 	}
 }
 

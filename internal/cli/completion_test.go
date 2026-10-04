@@ -37,7 +37,7 @@ func TestConfigCompletionUsesIntegrationsNamespaceOnly(t *testing.T) {
 	if directive != cobra.ShellCompDirectiveNoFileComp {
 		t.Fatalf("selection directive=%v", directive)
 	}
-	for _, want := range []string{"integrations", "integrations.ponytail.active", "integrations.caveman.active", "integrations.rtk.enabled", "integrations.codegraph.enabled"} {
+	for _, want := range []string{"integrations", "integrations.ponytail.active", "integrations.caveman.active", "integrations.fanout.active", "integrations.rtk.enabled", "integrations.codegraph.enabled"} {
 		if !hasCompletion(values, want) {
 			t.Fatalf("config completion missing %q: %#v", want, values)
 		}

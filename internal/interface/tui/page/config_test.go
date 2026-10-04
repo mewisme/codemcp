@@ -82,7 +82,7 @@ func TestConfigIntegrationsDomainCoversAllFirstPartyIntegrations(t *testing.T) {
 	updated, _ := page.Update(page.Init()())
 	page = updated.(*ConfigPage)
 	view := ansi.Strip(page.View(110, 38))
-	for _, want := range []string{"Ponytail active", "Caveman active", "RTK enabled", "RTK executable", "CodeGraph enabled", "CodeGraph executable"} {
+	for _, want := range []string{"Ponytail active", "Caveman active", "Fanout active", "Fanout mode", "RTK enabled", "RTK executable", "CodeGraph enabled", "CodeGraph executable"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("integrations domain missing %q: %q", want, view)
 		}

@@ -240,6 +240,7 @@ func buildSpecs() []Spec {
 			"notification completion telegram enable", "notification completion telegram disable",
 			"integration ponytail enable", "integration ponytail disable", "integration ponytail mode",
 			"integration caveman enable", "integration caveman disable", "integration caveman mode",
+			"integration fanout enable", "integration fanout disable", "integration fanout mode",
 			"integration rtk path",
 			"integration codegraph enable", "integration codegraph disable", "integration codegraph path",
 			"integration typesafe model", "integration typesafe timeout",

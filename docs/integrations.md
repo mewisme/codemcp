@@ -2,6 +2,24 @@
 
 Integrations extend the same CodeMCP runtime; they do not create a parallel authorization model.
 
+## Fanout
+
+Fanout is the built-in managed-agent orchestration strategy. It is enabled by default in `auto` mode and advises the parent agent when substantial work should be split into independent child workstreams.
+
+```bash
+cm integration fanout enable
+cm integration fanout disable
+cm integration fanout mode auto
+cm integration fanout mode conservative
+cm integration fanout mode aggressive
+```
+
+The configured mode is a default. A host agent can select a transient strategy for its current trusted controller/workspace with `/fanout`, `/fanout auto`, `/fanout conservative`, `/fanout aggressive`, or `/fanout off`. Transient selection is not persisted and resets to configured defaults after restart.
+
+Fanout is advisory only. It does not spawn agents itself, change backend readiness, raise `agent.max_parallel`, widen workspace access, bypass child claims, or permit grandchildren. Existing `agent_spawn`, `agent_list`, `agent_wait`, `agent_send`, and `agent_cancel` remain the execution/lifecycle tools. `/fanout off` suppresses proactive delegation guidance without unregistering those tools.
+
+Parallel mutation should use explicitly disjoint ownership. Child output returns to the parent for aggregation, deduplication, contradiction handling, and verification.
+
 ## RTK
 
 RTK can rewrite eligible shell commands for compact/structured execution. CodeMCP resolves configured, system, and managed installations deterministically and validates managed assets.
