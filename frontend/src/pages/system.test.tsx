@@ -43,7 +43,9 @@ describe("SystemPage", () => {
     vi.spyOn(adminApi, "doctor").mockResolvedValue({ healthy: true })
     vi.spyOn(adminApi, "about").mockResolvedValue({ version: "test" })
     vi.spyOn(adminApi, "notificationStatus").mockResolvedValue({ ready: true })
-    // vi.spyOn(adminApi, "telegramSetup").mockResolvedValue({  })
+    vi.spyOn(adminApi, "telegramSetup").mockResolvedValue(
+      {} as Awaited<ReturnType<typeof adminApi.telegramSetup>>
+    )
     vi.spyOn(adminApi, "runtimeAction").mockResolvedValue({})
     vi.spyOn(adminApi, "setTelemetry").mockResolvedValue({
       persisted_enabled: false,
@@ -62,7 +64,7 @@ describe("SystemPage", () => {
     expect(await screen.findByText("Healthy")).toBeInTheDocument()
     expect(screen.getAllByText("Running").length).toBeGreaterThan(0)
     expect(screen.getByText("Telegram topics")).toBeInTheDocument()
-    expect(screen.getByText("Logs Mini App")).toBeInTheDocument()
+    expect(screen.getByText("Activity Mini App")).toBeInTheDocument()
     expect(screen.getByText("TypeSafe")).toBeInTheDocument()
     expect(screen.getByText("Semantic approval")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "Restart" }))

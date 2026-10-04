@@ -86,10 +86,21 @@ describe("Telegram Mini App adapter", () => {
     expect(setBottomBarColor).toHaveBeenCalledWith("#202020")
 
     webApp.colorScheme = "light"
+    webApp.themeParams = { bg_color: "#fafafa" }
     webApp.viewportStableHeight = 700
     webApp.contentSafeAreaInset = { top: 12, bottom: 24 }
-    listeners.get("viewportChanged")?.()
+    listeners.get("themeChanged")?.()
     expect(document.documentElement).toHaveClass("light")
+    expect(
+      document.documentElement.style.getPropertyValue("--tg-theme-bg-color")
+    ).toBe("#fafafa")
+    expect(
+      document.documentElement.style.getPropertyValue("--tg-theme-text-color")
+    ).toBe("")
+    expect(
+      document.documentElement.style.getPropertyValue("--foreground")
+    ).toBe("")
+    listeners.get("viewportChanged")?.()
     expect(
       document.documentElement.style.getPropertyValue(
         "--tg-viewport-stable-height"
@@ -100,6 +111,13 @@ describe("Telegram Mini App adapter", () => {
         "--tg-content-safe-area-inset-bottom"
       )
     ).toBe("24px")
+    webApp.contentSafeAreaInset = undefined
+    listeners.get("contentSafeAreaChanged")?.()
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--tg-content-safe-area-inset-bottom"
+      )
+    ).toBe("")
 
     cleanup()
     expect(offEvent).toHaveBeenCalled()

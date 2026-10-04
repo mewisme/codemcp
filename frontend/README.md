@@ -1,6 +1,6 @@
 # Frontend (`frontend/`)
 
-Embedded React interfaces for CodeMCP. The Browser Admin and Telegram Mini App share the same React, TypeScript, Tailwind CSS and shadcn/ui component layer while keeping separate HTML/Vite entrypoints and embedded asset bundles. Logs are the first Mini App surface, not the identity of the bundle itself.
+Embedded React interfaces for CodeMCP. The Browser Admin and Telegram Mini App share the same React, TypeScript, Tailwind CSS and shadcn/ui component layer while keeping separate HTML/Vite entrypoints and embedded asset bundles. The Mini App is an Activity companion with feeds for Runtime, Commands, and Tool calls.
 
 ## Requirements
 

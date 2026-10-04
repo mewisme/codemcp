@@ -118,9 +118,16 @@ function applyTelegramTheme(webApp: TelegramWebApp) {
   root.classList.toggle("dark", webApp.colorScheme === "dark")
   root.classList.toggle("light", webApp.colorScheme !== "dark")
   const params = webApp.themeParams || {}
+  const activeThemeProperties = new Set<string>()
   for (const [name, value] of Object.entries(params)) {
     if (!value) continue
-    root.style.setProperty("--tg-theme-" + name.replaceAll("_", "-"), value)
+    const property = "--tg-theme-" + name.replaceAll("_", "-")
+    activeThemeProperties.add(property)
+    root.style.setProperty(property, value)
+  }
+  for (let index = root.style.length - 1; index >= 0; index--) {
+    const property = root.style.item(index)
+    if (property.startsWith("--tg-theme-") && !activeThemeProperties.has(property)) root.style.removeProperty(property)
   }
   const sharedTheme: Record<string, string | undefined> = {
     "--background": params.bg_color,
@@ -144,6 +151,7 @@ function applyTelegramTheme(webApp: TelegramWebApp) {
   }
   for (const [name, value] of Object.entries(sharedTheme)) {
     if (value) root.style.setProperty(name, value)
+    else root.style.removeProperty(name)
   }
   safeTelegramCall(() => webApp.setHeaderColor?.(params.header_bg_color || params.bg_color || "bg_color"))
   safeTelegramCall(() => webApp.setBackgroundColor?.(params.bg_color || "bg_color"))
@@ -152,18 +160,21 @@ function applyTelegramTheme(webApp: TelegramWebApp) {
 
 function applyTelegramViewport(webApp: TelegramWebApp) {
   const root = document.documentElement
-  if (webApp.viewportHeight) root.style.setProperty("--tg-viewport-height", webApp.viewportHeight + "px")
-  if (webApp.viewportStableHeight) root.style.setProperty("--tg-viewport-stable-height", webApp.viewportStableHeight + "px")
+  applyLength(root, "--tg-viewport-height", webApp.viewportHeight)
+  applyLength(root, "--tg-viewport-stable-height", webApp.viewportStableHeight)
   applyInset(root, "--tg-safe-area-inset-", webApp.safeAreaInset)
   applyInset(root, "--tg-content-safe-area-inset-", webApp.contentSafeAreaInset)
 }
 
 function applyInset(root: HTMLElement, prefix: string, inset?: TelegramInset) {
-  if (!inset) return
   for (const side of ["top", "right", "bottom", "left"] as const) {
-    const value = inset[side]
-    if (typeof value === "number") root.style.setProperty(prefix + side, value + "px")
+    applyLength(root, prefix + side, inset?.[side])
   }
+}
+
+function applyLength(root: HTMLElement, property: string, value?: number) {
+  if (typeof value === "number") root.style.setProperty(property, value + "px")
+  else root.style.removeProperty(property)
 }
 
 export function bindBackButton(visible: boolean, callback: () => void) {

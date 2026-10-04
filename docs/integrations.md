@@ -98,7 +98,7 @@ cm telegram --help
 
 Bot credentials are managed secrets. Token set/remove reconciles a running runtime; setup rolls back credential changes when later authorization reconciliation fails.
 
-The Logs Mini App is supplemental. Failure to start its quick-tunnel dependency does not disable core Telegram polling.
+The Activity Mini App is supplemental. Failure to start its quick-tunnel dependency does not disable core Telegram polling.
 
 ## Cloudflare quick tunnel
 

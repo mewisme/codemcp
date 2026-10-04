@@ -26,7 +26,7 @@ async function request(path: string, init?: RequestInit) {
   const response = await fetch(path, { ...init, credentials: "same-origin" })
   const text = response.status === 204 ? "" : await response.text()
   if (!response.ok) {
-    throw new LogsMiniAppError(text.trim() || `Logs Mini App API ${response.status}`, response.status)
+    throw new LogsMiniAppError(text.trim() || `Activity Mini App API ${response.status}`, response.status)
   }
   if (!text) return undefined
   try {

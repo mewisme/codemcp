@@ -150,7 +150,7 @@ export const browserConfirmationEvidence: Record<
   "integration.cf.remove": {
     consumer: "IntegrationsPage confirmation",
     source: "../pages/integrations.tsx",
-    marker: "<AlertDialog open={removeOpen}",
+    marker: "open={removeOpen}",
   },
 }
 

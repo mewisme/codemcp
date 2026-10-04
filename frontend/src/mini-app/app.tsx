@@ -15,6 +15,7 @@ import {
 import { DetailSummary } from "@/components/detail-row"
 import { JsonViewer } from "@/components/json-viewer"
 import { ResponsiveDialog } from "@/components/responsive-dialog"
+import { semanticStatusTone } from "@/components/semantic-status"
 import { SemanticStatusBadge } from "@/components/semantic-status-badge"
 import { TextViewer } from "@/components/text-viewer"
 import { Badge } from "@/components/ui/badge"
@@ -1169,9 +1170,7 @@ function ExecutionRow({
           {formatTime(execution.started_at)}
         </span>
       </div>
-      <Badge variant={badgeForStatus(execution.status)} className="max-w-full">
-        {execution.status}
-      </Badge>
+      <SemanticStatusBadge status={execution.status} className="max-w-full" />
       <div className="min-w-0">
         <div className="font-mono text-[13px] break-all whitespace-normal">
           {execution.command}
@@ -1216,12 +1215,7 @@ function ToolRow({
           {formatTime(event.timestamp)}
         </span>
       </div>
-      <Badge
-        variant={badgeForStatus(status)}
-        className={statusBadgeClass(status)}
-      >
-        {status}
-      </Badge>
+      <SemanticStatusBadge status={status} />
       <div className="min-w-0">
         <div className="font-medium break-words">
           {event.tool || event.method || "Tool call"}
@@ -1782,15 +1776,15 @@ function SettingRow({
 }
 
 function StatusDot({ status }: { status: string }) {
-  const normalized = status.toLowerCase()
+  const tone = semanticStatusTone(status)
   const className =
-    normalized.includes("error") || normalized.includes("fail")
+    tone === "danger"
       ? "bg-destructive"
-      : isSuccessfulStatus(normalized)
+      : tone === "success"
         ? "bg-emerald-500"
-        : normalized.includes("running") || normalized.includes("start")
+        : tone === "active"
           ? "bg-primary"
-          : normalized.includes("warn")
+          : tone === "warning"
             ? "bg-amber-500"
             : "bg-muted-foreground/60"
   return (
@@ -2016,40 +2010,6 @@ function filterLabel(filter: FilterMode, feed: MiniAppFeed) {
   if (filter === "error") return "Errors"
   if (filter === "cancelled") return "Cancelled"
   return "Running"
-}
-
-function badgeForStatus(
-  status: string
-): "default" | "secondary" | "destructive" | "outline" {
-  const value = status.toLowerCase()
-  if (
-    value.includes("error") ||
-    value.includes("fail") ||
-    value.includes("timed")
-  )
-    return "destructive"
-  if (
-    value.includes("running") ||
-    value.includes("start") ||
-    value.includes("progress")
-  )
-    return "secondary"
-  return "outline"
-}
-
-function statusBadgeClass(status: string) {
-  return isSuccessfulStatus(status.toLowerCase())
-    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-    : undefined
-}
-
-function isSuccessfulStatus(status: string) {
-  return (
-    status === "ok" ||
-    status === "success" ||
-    status === "completed" ||
-    status === "finish"
-  )
 }
 
 function formatTime(value?: string) {

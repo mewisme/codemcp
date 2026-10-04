@@ -27,6 +27,13 @@ test.describe("Browser Admin interaction quality", () => {
     await expect(
       page.getByRole("button", { name: "Change theme" })
     ).toBeVisible()
+    await page.getByRole("button", { name: "Change theme" }).click()
+    await page.getByRole("menuitem", { name: "Dark" }).click()
+    await expect(page.locator("html")).toHaveClass(/dark/)
+    await expectNoViewportOverflow(page)
+    await page.getByRole("button", { name: "Change theme" }).click()
+    await page.getByRole("menuitem", { name: "Light" }).click()
+    await expect(page.locator("html")).toHaveClass(/light/)
     await page.getByRole("link", { name: "Tools" }).click()
     await expect(page).toHaveURL(/\/tools$/)
     await expect(

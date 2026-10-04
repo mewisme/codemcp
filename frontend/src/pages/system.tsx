@@ -215,7 +215,7 @@ export function SystemPage() {
           }
         />
         <StateCard
-          title="Logs Mini App"
+          title="Activity Mini App"
           active={status?.logs_mini_app_effective}
           detail={
             !status?.logs_mini_app_enabled

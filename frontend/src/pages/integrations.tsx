@@ -633,7 +633,7 @@ function CFTunnelCard({
           <div>
             <CardTitle>Cloudflare Quick Tunnel</CardTitle>
             <CardDescription className="mt-1">
-              cf-tunnel integration for ephemeral Telegram Logs Mini App
+              cf-tunnel integration for ephemeral Telegram Activity Mini App
               ingress. OpenAI Secure MCP Tunnel remains the persistent MCP
               tunnel authority.
             </CardDescription>
@@ -668,7 +668,7 @@ function CFTunnelCard({
             />
             <IntegrationField
               label="Consumer"
-              value={status.consumer || "Telegram Logs Mini App"}
+              value={activityMiniAppConsumer(status.consumer)}
             />
             {status.path ? (
               <div className="md:col-span-2">
@@ -778,6 +778,12 @@ function IntegrationField({ label, value }: { label: string; value: string }) {
       <div className="mt-1 text-sm font-medium break-all">{value}</div>
     </div>
   )
+}
+
+function activityMiniAppConsumer(value?: string) {
+  if (!value || value === "Telegram Logs Mini App")
+    return "Telegram Activity Mini App"
+  return value
 }
 
 function IntegrationCard({

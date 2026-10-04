@@ -168,6 +168,7 @@ describe("IntegrationsPage", () => {
         /OpenAI Secure MCP Tunnel remains the persistent MCP tunnel authority/
       )
     ).toBeInTheDocument()
+    expect(screen.getByText("Telegram Activity Mini App")).toBeInTheDocument()
     const installButtons = screen.getAllByRole("button", {
       name: "Install managed",
     })

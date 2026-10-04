@@ -1,30 +1,6 @@
 import { Badge } from "@/components/ui/badge"
+import { semanticStatusTone } from "@/components/semantic-status"
 import { cn } from "@/lib/utils"
-
-const danger = new Set([
-  "blocked",
-  "cancelled",
-  "degraded",
-  "denied",
-  "error",
-  "expired",
-  "failed",
-  "timed_out",
-  "unreachable",
-])
-
-const active = new Set([
-  "active",
-  "approved",
-  "completed",
-  "connected",
-  "consumed",
-  "ok",
-  "pending",
-  "ready",
-  "running",
-  "success",
-])
 
 export function SemanticStatusBadge({
   status,
@@ -33,14 +9,21 @@ export function SemanticStatusBadge({
   status: string
   className?: string
 }) {
-  const normalized = status.trim().toLowerCase()
+  const tone = semanticStatusTone(status)
   return (
     <Badge
-      className={cn("shrink-0", className)}
+      className={cn(
+        "shrink-0",
+        tone === "success" &&
+          "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+        tone === "warning" &&
+          "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+        className
+      )}
       variant={
-        danger.has(normalized)
+        tone === "danger"
           ? "destructive"
-          : active.has(normalized)
+          : tone === "active"
             ? "secondary"
             : "outline"
       }
