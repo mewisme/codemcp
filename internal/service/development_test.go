@@ -131,6 +131,40 @@ func TestStagedGoRunRestartRequiresKnownSourceRoot(t *testing.T) {
 	}
 }
 
+func TestPruneDevelopmentGoCacheOnlyTouchesOwnedBoundedCache(t *testing.T) {
+	configRoot := t.TempDir()
+	cacheRoot := filepath.Join(configRoot, "runtime", "cache", "go-build")
+	if err := os.MkdirAll(cacheRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheRoot, "entry"), []byte(strings.Repeat("x", 1025)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOCACHE", cacheRoot)
+	if err := pruneDevelopmentGoCache(configRoot, 1024); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(cacheRoot); !os.IsNotExist(err) {
+		t.Fatalf("owned oversized Go cache still exists: %v", err)
+	}
+
+	external := filepath.Join(t.TempDir(), "go-build")
+	if err := os.MkdirAll(external, 0700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(external, "entry")
+	if err := os.WriteFile(marker, []byte(strings.Repeat("x", 1025)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOCACHE", external)
+	if err := pruneDevelopmentGoCache(configRoot, 1024); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("external Go cache changed: %v", err)
+	}
+}
+
 func writeDevelopmentSourceFixture(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()

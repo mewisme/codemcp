@@ -17,8 +17,8 @@ func installCommand() *cobra.Command {
 	var noInstallIntegrations bool
 	cmd := &cobra.Command{
 		Use:   "install",
-		Short: "Install this binary into the managed versioned layout",
-		Long: "Install this binary into the managed versioned layout.\n\n" +
+		Short: "Install and fully prepare CodeMCP for use",
+		Long: "Install this binary into the managed versioned layout, initialize configuration when needed, start the managed runtime, and bootstrap managed integrations.\n\n" +
 			"Existing configured, system, or managed integration executables are always detected and reused. " +
 			"Missing eligible managed integrations are installed by default. Use --no-install-integrations to suppress only those missing managed downloads.\n\n" +
 			"Environment: CM_INSTALL_INTEGRATIONS accepts 1/true/yes/on or 0/false/no/off. The flag takes precedence over the environment.",
@@ -39,11 +39,25 @@ func installCommand() *cobra.Command {
 				kind = presentation.StatusInfo
 			}
 			renderSupplementalInstallSummary(cmd, result.Supplemental)
-			renderMutationResult(cmd, kind, message,
+			fields := []presentation.Field{
 				presentation.Field{Label: "version", Value: result.Version},
 				presentation.Field{Label: "binary", Value: result.Binary},
 				presentation.Field{Label: "command", Value: result.Command},
-			)
+			}
+			if result.Setup.Initialized {
+				fields = append(fields,
+					presentation.Field{Label: "config", Value: result.Setup.ConfigPath},
+					presentation.Field{Label: "mcp token", Value: result.Setup.MCPToken},
+					presentation.Field{Label: "admin token", Value: result.Setup.AdminToken},
+				)
+			}
+			if result.Setup.Runtime != nil {
+				fields = append(fields, presentation.Field{Label: "runtime", Value: "running"})
+				if result.Setup.Runtime.Service.ID != "" {
+					fields = append(fields, presentation.Field{Label: "service", Value: result.Setup.Runtime.Service.ID})
+				}
+			}
+			renderMutationResult(cmd, kind, message, fields...)
 			return nil
 		},
 	}

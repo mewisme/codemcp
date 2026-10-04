@@ -120,6 +120,49 @@ func TestPrepareWSLHostProfileCreatesManagedDefaultProfile(t *testing.T) {
 	}
 }
 
+func TestPruneProfileCachesPreservesAuthenticationState(t *testing.T) {
+	root := t.TempDir()
+	profile := ProfileRef{
+		Transport: TransportNative,
+		LocalPath: filepath.Join(root, "browser", "chatgpt"),
+	}
+	if err := PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	defaultRoot := filepath.Join(profile.LocalPath, managedProfileDirectory)
+	for _, name := range []string{"Cache", "Code Cache", "GPUCache"} {
+		path := filepath.Join(defaultRoot, name)
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(path, "data"), []byte("cache"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cookies := filepath.Join(defaultRoot, "Cookies")
+	if err := os.WriteFile(cookies, []byte("auth"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	localStorage := filepath.Join(defaultRoot, "Local Storage")
+	if err := os.MkdirAll(localStorage, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := PruneProfileCaches(profile); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Cache", "Code Cache", "GPUCache"} {
+		if _, err := os.Stat(filepath.Join(defaultRoot, name)); !os.IsNotExist(err) {
+			t.Fatalf("cache %q still exists: %v", name, err)
+		}
+	}
+	if data, err := os.ReadFile(cookies); err != nil || string(data) != "auth" {
+		t.Fatalf("cookies changed: data=%q err=%v", data, err)
+	}
+	if _, err := os.Stat(localStorage); err != nil {
+		t.Fatalf("local storage removed: %v", err)
+	}
+}
+
 func TestProfileLockAllowsOnlyOneProcessOwner(t *testing.T) {
 	root := t.TempDir()
 	profile := ProfileRef{LockPath: filepath.Join(root, "browser", "chatgpt.lock")}

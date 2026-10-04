@@ -119,7 +119,185 @@ func (s *Store) archiveAndReplaceActiveLocked(workspaceID string, current Index,
 	for _, candidate := range candidates {
 		_ = os.RemoveAll(s.checkpointDir(workspaceID, candidate.Summary.ID))
 	}
+	_ = s.pruneArchiveHistoryLocked(workspaceID)
 	return len(candidates), nil
+}
+
+func (s *Store) pruneArchiveHistoryLocked(workspaceID string) error {
+	index, err := s.readArchiveIndex(workspaceID)
+	if err != nil {
+		return err
+	}
+	if err := s.cleanupCommittedArchivePruneStagesLocked(workspaceID, index); err != nil {
+		return err
+	}
+	if len(index.Checkpoints) == 0 {
+		return nil
+	}
+	cutoff := time.Now().UTC().Add(-s.archiveRetention())
+	remove := make(map[string]struct{})
+	kept := make([]ArchivedSummary, 0, len(index.Checkpoints))
+	for _, item := range index.Checkpoints {
+		archivedAt, parseErr := time.Parse(time.RFC3339Nano, item.ArchivedAt)
+		if parseErr == nil && archivedAt.Before(cutoff) {
+			remove[item.Checkpoint.ID] = struct{}{}
+			continue
+		}
+		kept = append(kept, item)
+	}
+	for len(kept) > s.archiveMaxCount() {
+		remove[kept[0].Checkpoint.ID] = struct{}{}
+		kept = kept[1:]
+	}
+	sizes := make([]int64, len(kept))
+	var total int64
+	for index, item := range kept {
+		size, sizeErr := checkpointPayloadSize(s.archiveCheckpointDir(workspaceID, item.Checkpoint.ID))
+		if sizeErr != nil {
+			return sizeErr
+		}
+		sizes[index] = size
+		total += size
+	}
+	for len(kept) > 1 && total > s.archiveMaxBytes() {
+		remove[kept[0].Checkpoint.ID] = struct{}{}
+		total -= sizes[0]
+		kept = kept[1:]
+		sizes = sizes[1:]
+	}
+	if len(remove) == 0 {
+		return nil
+	}
+	next := index
+	next.Checkpoints = append([]ArchivedSummary(nil), kept...)
+	moved, err := s.stageArchivePrunePayloadsLocked(workspaceID, remove)
+	if err != nil {
+		return err
+	}
+	rollback := func(operationErr error) error {
+		return errors.Join(operationErr, rollbackArchivePrunePayloads(moved))
+	}
+	if err := s.writeArchiveIndex(workspaceID, next); err != nil {
+		return rollback(err)
+	}
+	var cleanupErr error
+	for _, item := range moved {
+		cleanupErr = errors.Join(cleanupErr, os.RemoveAll(item.temp))
+	}
+	return cleanupErr
+}
+
+type archivePruneMove struct {
+	final string
+	temp  string
+}
+
+func (s *Store) stageArchivePrunePayloadsLocked(workspaceID string, remove map[string]struct{}) ([]archivePruneMove, error) {
+	dataRoot := s.archiveDataRoot(workspaceID)
+	if err := os.MkdirAll(dataRoot, 0700); err != nil {
+		return nil, err
+	}
+	moved := make([]archivePruneMove, 0, len(remove))
+	for id := range remove {
+		final := s.archiveCheckpointDir(workspaceID, id)
+		info, err := os.Lstat(final)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, errors.Join(err, rollbackArchivePrunePayloads(moved))
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, errors.Join(fmt.Errorf("checkpoint archive payload root is not a real directory: %s", final), rollbackArchivePrunePayloads(moved))
+		}
+		placeholder, err := os.MkdirTemp(dataRoot, "."+id+".tmp-prune-")
+		if err != nil {
+			return nil, errors.Join(err, rollbackArchivePrunePayloads(moved))
+		}
+		if err := os.Remove(placeholder); err != nil {
+			return nil, errors.Join(err, rollbackArchivePrunePayloads(moved))
+		}
+		if err := os.Rename(final, placeholder); err != nil {
+			return nil, errors.Join(err, rollbackArchivePrunePayloads(moved))
+		}
+		moved = append(moved, archivePruneMove{final: final, temp: placeholder})
+	}
+	return moved, nil
+}
+
+func rollbackArchivePrunePayloads(moved []archivePruneMove) error {
+	var result error
+	for index := len(moved) - 1; index >= 0; index-- {
+		item := moved[index]
+		if _, err := os.Lstat(item.temp); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			result = errors.Join(result, err)
+			continue
+		}
+		if err := os.Rename(item.temp, item.final); err != nil {
+			result = errors.Join(result, err)
+		}
+	}
+	return result
+}
+
+func (s *Store) cleanupCommittedArchivePruneStagesLocked(workspaceID string, index ArchiveIndex) error {
+	dataRoot := s.archiveDataRoot(workspaceID)
+	entries, err := os.ReadDir(dataRoot)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	owned := make(map[string]struct{}, len(index.Checkpoints))
+	for _, item := range index.Checkpoints {
+		owned[item.Checkpoint.ID] = struct{}{}
+	}
+	var result error
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.Contains(entry.Name(), ".tmp-prune-") {
+			continue
+		}
+		id, ok := archiveTemporaryID(entry.Name())
+		if !ok {
+			continue
+		}
+		if _, stillOwned := owned[id]; stillOwned {
+			continue
+		}
+		result = errors.Join(result, os.RemoveAll(filepath.Join(dataRoot, entry.Name())))
+	}
+	return result
+}
+
+func checkpointPayloadSize(root string) (int64, error) {
+	var total int64
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("checkpoint archive payload contains symlink: %s", path)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() || info.Size() < 0 {
+			return fmt.Errorf("checkpoint archive payload contains invalid file: %s", path)
+		}
+		if total > maxArchiveBytesPerEntry-info.Size() {
+			return errors.New("checkpoint archive payload exceeds size budget")
+		}
+		total += info.Size()
+		return nil
+	})
+	return total, err
 }
 
 func (s *Store) appendArchiveCandidatesLocked(workspaceID string, candidates []archiveCandidate) (archiveMutation, error) {

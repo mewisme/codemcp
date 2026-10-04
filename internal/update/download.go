@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	maxArchiveSize   int64 = 256 << 20
-	maxChecksumSize  int64 = 1 << 20
-	maxSignatureSize int64 = 1 << 20
+	maxArchiveSize    int64 = 256 << 20
+	maxChecksumSize   int64 = 1 << 20
+	maxSignatureSize  int64 = 1 << 20
+	staleWorkspaceAge       = 24 * time.Hour
 )
 
 type SignatureVerifier func(ctx context.Context, checksumPath, signaturePath, version string) error
@@ -71,6 +72,7 @@ func (d Downloader) Download(ctx context.Context, release Release) (result Artif
 	if err := validateReleaseDownload(release); err != nil {
 		return Artifact{}, err
 	}
+	pruneStaleUpdateWorkspaces(strings.TrimSpace(d.TempDir), time.Now())
 	tempSpan := tracepkg.Start(ctx, "UPDATE", "update.workspace.create", "Creating update workspace", tracepkg.String("parent", strings.TrimSpace(d.TempDir)))
 	dir, err := os.MkdirTemp(strings.TrimSpace(d.TempDir), "cm-update-")
 	if err != nil {
@@ -119,6 +121,7 @@ func (d Downloader) DownloadPackage(ctx context.Context, release PackageRelease)
 	if err := validatePackageReleaseDownload(release); err != nil {
 		return PackageArtifact{}, err
 	}
+	pruneStaleUpdateWorkspaces(strings.TrimSpace(d.TempDir), time.Now())
 	dir, err := os.MkdirTemp(strings.TrimSpace(d.TempDir), "cm-package-update-")
 	if err != nil {
 		return PackageArtifact{}, err
@@ -151,6 +154,27 @@ func (d Downloader) DownloadPackage(ctx context.Context, release PackageRelease)
 	ok = true
 	result = artifact
 	return result, nil
+}
+
+func pruneStaleUpdateWorkspaces(parent string, now time.Time) {
+	if parent == "" {
+		parent = os.TempDir()
+	}
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return
+	}
+	cutoff := now.Add(-staleWorkspaceAge)
+	for _, entry := range entries {
+		if !entry.IsDir() || (!strings.HasPrefix(entry.Name(), "cm-update-") && !strings.HasPrefix(entry.Name(), "cm-package-update-")) {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(parent, entry.Name()))
+	}
 }
 
 func (d Downloader) verifyOptionalSignature(ctx context.Context, release Release, checksumPath, signaturePath string) []string {

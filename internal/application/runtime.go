@@ -115,6 +115,10 @@ func loadServiceOverview(scope managed.Scope) ServiceOverview {
 }
 
 func ManagedRuntimeAction(ctx context.Context, action string, scope managed.Scope) (RuntimeActionResult, error) {
+	return managedRuntimeAction(ctx, action, scope, "")
+}
+
+func managedRuntimeAction(ctx context.Context, action string, scope managed.Scope, binary string) (RuntimeActionResult, error) {
 	action = strings.ToLower(strings.TrimSpace(action))
 	if action != "up" && action != "down" && action != "restart" {
 		return RuntimeActionResult{}, fmt.Errorf("unsupported runtime action: %s", action)
@@ -132,7 +136,7 @@ func ManagedRuntimeAction(ctx context.Context, action string, scope managed.Scop
 		command := "cm --config-dir " + strconv.Quote(config.RootPath()) + " " + action + " --system"
 		return RuntimeActionResult{Action: action, Scope: scope, External: &ExternalCommand{Command: command, Reason: "System service changes require elevation outside the TUI."}}, nil
 	}
-	spec, manager, err := managedService(scope, "")
+	spec, manager, err := managedService(scope, binary)
 	if err != nil {
 		return RuntimeActionResult{}, err
 	}

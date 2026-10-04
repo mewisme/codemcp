@@ -217,6 +217,10 @@ func (manager *Manager) start(ctx context.Context) (*browserInstance, error) {
 	if !ok {
 		return nil, ErrProfileBusy
 	}
+	if err := PruneProfileCaches(profile); err != nil {
+		_ = profileLock.Release()
+		return nil, err
+	}
 	instance := &browserInstance{profile: profile, lock: profileLock}
 	process, endpoint, err := manager.launcher.Launch(launchCtx, LaunchRequest{
 		Candidate: *manager.capability.Candidate,

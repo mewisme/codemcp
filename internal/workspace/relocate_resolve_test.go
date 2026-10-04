@@ -7,9 +7,48 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
+
+func TestPruneStaleMergeArtifactsRequiresCanonicalDestination(t *testing.T) {
+	root := t.TempDir()
+	destination := workspacestate.New(root).Root()
+	now := time.Now()
+	old := now.Add(-2 * staleMergeArtifactAge)
+	staleStage := filepath.Join(root, ".cm-merge-stage-old")
+	staleOld := filepath.Join(root, ".cm-merge-old-old")
+	freshStage := filepath.Join(root, ".cm-merge-stage-fresh")
+	for _, path := range []string{staleStage, staleOld, freshStage} {
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, path := range []string{staleStage, staleOld} {
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	pruneStaleMergeArtifacts(root, destination, now)
+	if _, err := os.Stat(staleStage); err != nil {
+		t.Fatalf("stale stage removed without canonical destination: %v", err)
+	}
+
+	if err := os.MkdirAll(destination, 0700); err != nil {
+		t.Fatal(err)
+	}
+	pruneStaleMergeArtifacts(root, destination, now)
+	for _, path := range []string{staleStage, staleOld} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("stale merge artifact still exists %q: %v", path, err)
+		}
+	}
+	if _, err := os.Stat(freshStage); err != nil {
+		t.Fatalf("fresh merge artifact removed: %v", err)
+	}
+}
 
 func TestRelocateDuplicateWithoutResolutionRemainsNonDestructive(t *testing.T) {
 	manager := newTestManager(t)

@@ -57,6 +57,10 @@ func StartInteractiveBrowser(ctx context.Context, options InteractiveBrowserOpti
 	if !ok {
 		return nil, ErrProfileBusy
 	}
+	if err := PruneProfileCaches(profile); err != nil {
+		_ = lock.Release()
+		return nil, err
+	}
 	launcher := options.Launcher
 	if launcher == nil {
 		launcher = newExecInteractiveBrowserLauncher()

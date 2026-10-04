@@ -33,6 +33,7 @@ const (
 	maxTreeExtractedBytes = int64(1 << 30)
 	maxTreeArchiveEntries = 32768
 	maxTreeManifestBytes  = int64(8 << 20)
+	staleManagedStageAge  = time.Hour
 )
 
 type Spec struct {
@@ -202,12 +203,16 @@ func (m Manager) Install(ctx context.Context, spec Spec) (string, error) {
 		return "", err
 	}
 	if existing, err := m.Validate(spec); err == nil {
+		if err := m.RemoveOtherVersions(spec.Name, spec.Version); err != nil {
+			return "", err
+		}
 		return existing, nil
 	}
 	parent := filepath.Dir(filepath.Dir(path))
 	if err := os.MkdirAll(parent, 0700); err != nil {
 		return "", err
 	}
+	pruneStaleManagedStages(parent, time.Now())
 	stage, err := os.MkdirTemp(parent, "."+spec.Platform+"-staging-")
 	if err != nil {
 		return "", err
@@ -282,7 +287,13 @@ func (m Manager) Install(ctx context.Context, spec Spec) (string, error) {
 	validated, keepStage, err := m.activateDirectory(ctx, stage, payload, target, func() (string, error) { return m.validateActivated(spec) })
 	cleanupStage = !keepStage
 	activateSpan.Finish(err)
-	return validated, err
+	if err != nil {
+		return validated, err
+	}
+	if pruneErr := m.RemoveOtherVersions(spec.Name, spec.Version); pruneErr != nil {
+		return "", pruneErr
+	}
+	return validated, nil
 }
 
 func (m Manager) Remove(spec Spec) (bool, error) {
@@ -375,12 +386,16 @@ func (m Manager) InstallTree(ctx context.Context, spec TreeSpec) (string, error)
 		return "", err
 	}
 	if existing, err := m.ValidateTree(spec); err == nil {
+		if err := m.RemoveOtherVersions(spec.Name, spec.Version); err != nil {
+			return "", err
+		}
 		return existing, nil
 	}
 	parent := filepath.Dir(target)
 	if err := os.MkdirAll(parent, 0700); err != nil {
 		return "", err
 	}
+	pruneStaleManagedStages(parent, time.Now())
 	stage, err := os.MkdirTemp(parent, "."+spec.Platform+"-tree-staging-")
 	if err != nil {
 		return "", err
@@ -457,7 +472,32 @@ func (m Manager) InstallTree(ctx context.Context, spec TreeSpec) (string, error)
 	validated, keepStage, err := m.activateDirectory(ctx, stage, payload, target, func() (string, error) { return m.ValidateTree(spec) })
 	cleanupStage = !keepStage
 	activateSpan.Finish(err)
-	return validated, err
+	if err != nil {
+		return validated, err
+	}
+	if pruneErr := m.RemoveOtherVersions(spec.Name, spec.Version); pruneErr != nil {
+		return "", pruneErr
+	}
+	return validated, nil
+}
+
+func pruneStaleManagedStages(parent string, now time.Time) {
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return
+	}
+	cutoff := now.Add(-staleManagedStageAge)
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() || !strings.HasPrefix(name, ".") || (!strings.Contains(name, "-staging-") && !strings.Contains(name, "-tree-staging-")) {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(parent, name))
+	}
 }
 
 func (m Manager) activateDirectory(ctx context.Context, stage, payload, target string, validate func() (string, error)) (string, bool, error) {

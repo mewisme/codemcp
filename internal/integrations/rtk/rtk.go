@@ -311,11 +311,17 @@ func (m *Manager) Install(ctx context.Context) (InstallResult, error) {
 		return InstallResult{}, fmt.Errorf("rtk managed asset is unsupported on %s/%s", m.goos, m.goarch)
 	}
 	if path, err := m.validateManaged(platform); err == nil {
+		if err := m.pruneManagedVersions(); err != nil {
+			return InstallResult{}, err
+		}
 		status, statusErr := m.Status()
 		return InstallResult{Status: status, Path: path, AlreadyInstalled: true}, statusErr
 	}
 	path, err := m.installManaged(nonNilContext(ctx), platform)
 	if err != nil {
+		return InstallResult{}, err
+	}
+	if err := m.pruneManagedVersions(); err != nil {
 		return InstallResult{}, err
 	}
 	status, err := m.Status()

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/oslock"
 	"go.mewis.me/codemcp/internal/service"
 )
@@ -56,6 +57,189 @@ type RecoveryResult struct {
 	JournalPath   string `json:"journal_path"`
 	Phase         string `json:"phase"`
 	ReadyForRetry bool   `json:"ready_for_retry"`
+}
+
+type FreshInstallCleanupOptions struct {
+	TargetRoot     string
+	SourceOptions  Options
+	ServiceManager service.Manager
+}
+
+type FreshInstallCleanupResult struct {
+	TransactionsRemoved int `json:"transactions_removed"`
+	StagesRemoved       int `json:"stages_removed"`
+	TargetsRemoved      int `json:"targets_removed"`
+	SourcesRemoved      int `json:"sources_removed"`
+}
+
+// CleanupForFreshInstall abandons migration-owned state and marker-verified
+// released predecessors so a caller can continue with a clean install. Any
+// ownership ambiguity is reported while unrelated state is left untouched.
+func CleanupForFreshInstall(ctx context.Context, options FreshInstallCleanupOptions) (FreshInstallCleanupResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	result := FreshInstallCleanupResult{}
+	var cleanupErr error
+
+	if strings.TrimSpace(options.TargetRoot) != "" {
+		transactions, err := cleanupMigrationTransactionsForFreshInstall(ctx, options.TargetRoot, options.ServiceManager)
+		result.TransactionsRemoved += transactions.TransactionsRemoved
+		result.StagesRemoved += transactions.StagesRemoved
+		result.TargetsRemoved += transactions.TargetsRemoved
+		cleanupErr = errors.Join(cleanupErr, err)
+	}
+
+	sources, err := VerifiedSources(options.SourceOptions)
+	if err != nil {
+		cleanupErr = errors.Join(cleanupErr, fmt.Errorf("discover released predecessors for fresh install: %w", err))
+		return result, cleanupErr
+	}
+	for _, source := range sources {
+		manifest := Manifest{Version: ManifestVersion, Source: source, Found: true}
+		if launchers, inspectErr := inspectLaunchers(options.SourceOptions, source); inspectErr != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("inspect released launchers before fresh install: %w", inspectErr))
+		} else {
+			manifest.Launchers = launchers
+		}
+		inspectServices := options.SourceOptions.InspectServices
+		if inspectServices == nil {
+			inspectServices = inspectPlatformServices
+		}
+		if services, inspectErr := inspectServices(ctx, source); inspectErr != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("inspect released services before fresh install: %w", inspectErr))
+		} else {
+			manifest.Services = normalizeServices(services)
+		}
+		discarded, discardErr := DiscardPredecessor(ctx, DiscardOptions{Manifest: manifest, BestEffort: true})
+		if discarded.RootRemoved {
+			result.SourcesRemoved++
+		}
+		cleanupErr = errors.Join(cleanupErr, discardErr)
+	}
+	return result, cleanupErr
+}
+
+func cleanupMigrationTransactionsForFreshInstall(ctx context.Context, targetRoot string, manager service.Manager) (FreshInstallCleanupResult, error) {
+	result := FreshInstallCleanupResult{}
+	targetRoot, err := normalizeStageTarget(targetRoot)
+	if err != nil {
+		return result, err
+	}
+	pattern := filepath.Join(filepath.Dir(targetRoot), "."+filepath.Base(targetRoot)+".migration-024-*.journal.json")
+	paths, err := filepath.Glob(pattern)
+	if err != nil {
+		return result, err
+	}
+	if manager == nil {
+		manager = service.NewManager()
+	}
+	var cleanupErr error
+	for _, journalPath := range paths {
+		journal, exists, readErr := readStageJournal(journalPath)
+		if readErr != nil || !exists {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("read migration transaction %s: %w", journalPath, readErr))
+			continue
+		}
+		if !sameComparablePath(journal.TargetRoot, targetRoot) || !sameComparablePath(stageJournalPath(journal), journalPath) {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("migration transaction ownership mismatch: %s", journalPath))
+			continue
+		}
+		_, _, lockPath := stagePaths(journal.TargetRoot, journal.SourceSHA256)
+		lock, lockErr := oslock.Acquire(lockPath, oslock.Exclusive)
+		if lockErr != nil {
+			cleanupErr = errors.Join(cleanupErr, fmt.Errorf("acquire migration cleanup lock: %w", lockErr))
+			continue
+		}
+
+		transactionErr := cleanupMigrationTransactionForFreshInstall(ctx, journal, manager, &result)
+		if transactionErr == nil {
+			if removeErr := os.Remove(journalPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				transactionErr = errors.Join(transactionErr, removeErr)
+			} else {
+				result.TransactionsRemoved++
+			}
+		}
+		_ = lock.Release()
+		if transactionErr == nil {
+			if removeErr := os.Remove(lockPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				transactionErr = errors.Join(transactionErr, removeErr)
+			}
+		}
+		cleanupErr = errors.Join(cleanupErr, transactionErr)
+	}
+	return result, cleanupErr
+}
+
+func cleanupMigrationTransactionForFreshInstall(ctx context.Context, journal StageJournal, manager service.Manager, result *FreshInstallCleanupResult) error {
+	var cleanupErr error
+	if pathExists(journal.TargetRoot) && !journal.Rollback.TargetExists {
+		cleanupErr = errors.Join(cleanupErr, removeCanonicalMigrationService(ctx, journal, manager))
+		if configformat.IsManagedRoot(journal.TargetRoot) {
+			if err := os.RemoveAll(journal.TargetRoot); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("remove migration-owned target root: %w", err))
+			} else if result != nil {
+				result.TargetsRemoved++
+			}
+		} else {
+			cleanupErr = errors.Join(cleanupErr, errors.New("migration target is no longer a managed CodeMCP root; left untouched"))
+		}
+	}
+	if pathExists(journal.StageRoot) {
+		if err := removeOwnedStageRoot(journal.StageRoot, journal); err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+		} else if result != nil {
+			result.StagesRemoved++
+		}
+	}
+	return cleanupErr
+}
+
+func removeCanonicalMigrationService(ctx context.Context, journal StageJournal, manager service.Manager) error {
+	if manager == nil {
+		return nil
+	}
+	scopes := []service.Scope{service.ScopeUser, service.ScopeSystem}
+	if runtime.GOOS == "windows" {
+		scopes = []service.Scope{service.ScopeUser}
+	}
+	if journal.Canonical.Scope != "" {
+		scope := service.Scope(journal.Canonical.Scope)
+		if scope == service.ScopeUser || scope == service.ScopeSystem {
+			scopes = []service.Scope{scope}
+		}
+	}
+	var cleanupErr error
+	for _, scope := range scopes {
+		account, err := service.InvokingAccountContext(ctx, scope)
+		if err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+			continue
+		}
+		spec := service.Spec{ID: service.ID(journal.TargetRoot, scope), Scope: scope, ConfigRoot: journal.TargetRoot, Account: account}
+		if journal.Canonical.Scope == string(scope) {
+			if journal.Canonical.ServiceID != "" {
+				spec.ID = journal.Canonical.ServiceID
+			}
+			spec.Binary = journal.Canonical.Binary
+			spec.EnvironmentHash = journal.Canonical.EnvironmentHash
+		}
+		status, err := manager.Status(spec)
+		if err != nil {
+			cleanupErr = errors.Join(cleanupErr, err)
+			continue
+		}
+		if status.Running {
+			if err := service.StopBackend(manager, spec); err != nil {
+				cleanupErr = errors.Join(cleanupErr, err)
+				continue
+			}
+		}
+		if status.Installed {
+			cleanupErr = errors.Join(cleanupErr, manager.Uninstall(spec))
+		}
+	}
+	return cleanupErr
 }
 
 func InspectStatus(targetRoot string, now time.Time) (MigrationStatus, error) {

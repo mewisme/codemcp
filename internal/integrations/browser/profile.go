@@ -112,6 +112,33 @@ func PrepareProfile(profile ProfileRef) error {
 	return nil
 }
 
+func PruneProfileCaches(profile ProfileRef) error {
+	root := filepath.Clean(strings.TrimSpace(profile.LocalPath))
+	if root == "." || root == "" || !isOwnedChatGPTProfilePath(root, profile.Transport) {
+		return fmt.Errorf("refusing to prune non-CodeMCP ChatGPT browser profile: %q", profile.LocalPath)
+	}
+	defaultRoot := filepath.Join(root, managedProfileDirectory)
+	paths := []string{
+		filepath.Join(defaultRoot, "Cache"),
+		filepath.Join(defaultRoot, "Code Cache"),
+		filepath.Join(defaultRoot, "GPUCache"),
+		filepath.Join(defaultRoot, "DawnCache"),
+		filepath.Join(defaultRoot, "GrShaderCache"),
+		filepath.Join(defaultRoot, "GraphiteDawnCache"),
+		filepath.Join(defaultRoot, "ShaderCache"),
+		filepath.Join(defaultRoot, "Service Worker", "CacheStorage"),
+		filepath.Join(defaultRoot, "Shared Dictionary"),
+		filepath.Join(root, "GrShaderCache"),
+		filepath.Join(root, "ShaderCache"),
+	}
+	for _, path := range paths {
+		if err := os.RemoveAll(path); err != nil {
+			return fmt.Errorf("prune browser cache %s: %w", filepath.Base(path), err)
+		}
+	}
+	return nil
+}
+
 func ProfileInUse(profile ProfileRef) (bool, error) {
 	lockPath := strings.TrimSpace(profile.LockPath)
 	if lockPath == "" {

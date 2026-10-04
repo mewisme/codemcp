@@ -17,6 +17,8 @@ var (
 	ErrVersionConflict   = errors.New("install version already exists with different binary content")
 )
 
+const staleInstallStageAge = 24 * time.Hour
+
 type Staged struct {
 	Layout  Layout
 	Version string
@@ -70,6 +72,7 @@ func Stage(layout Layout, version, source string) (Staged, error) {
 	if err := os.MkdirAll(layout.Versions, 0755); err != nil {
 		return Staged{}, err
 	}
+	pruneStaleInstallStages(layout.Versions, time.Now())
 	staging, err := os.MkdirTemp(layout.Versions, ".staging-"+version+"-")
 	if err != nil {
 		return Staged{}, err
@@ -83,6 +86,24 @@ func Stage(layout Layout, version, source string) (Staged, error) {
 		return Staged{}, fmt.Errorf("activate staged version directory: %w", err)
 	}
 	return Staged{Layout: layout, Version: version, Dir: finalDir, Binary: finalBinary}, nil
+}
+
+func pruneStaleInstallStages(root string, now time.Time) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	cutoff := now.Add(-staleInstallStageAge)
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".staging-") {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		_ = removeAllInstallPath(filepath.Join(root, entry.Name()))
+	}
 }
 
 func Activate(staged Staged) (Activation, error) {

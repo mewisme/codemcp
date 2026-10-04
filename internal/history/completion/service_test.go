@@ -240,6 +240,39 @@ func TestCompletionHotHistoryArchivesOverflowWithoutLosingAcceptedRecords(t *tes
 	}
 }
 
+func TestCompletionArchiveRetentionBoundsPersistedRecords(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	manager := workspace.NewManager(workspace.DefaultStorePath())
+	item := registerTestWorkspace(t, manager, t.TempDir())
+	local := workspacestate.New(item.Path)
+	records := make([]Record, 0, maxArchiveRecords+7)
+	for index := 0; index < maxArchiveRecords+7; index++ {
+		records = append(records, Record{
+			ID:          fmt.Sprintf("completion_%05d", index),
+			Sequence:    uint64(index + 1),
+			AgentID:     fmt.Sprintf("agent_%05d", index),
+			WorkspaceID: item.ID,
+			Status:      StatusCompleted,
+			Title:       "done",
+			Source:      "test",
+			CreatedAt:   time.Unix(int64(index+1), 0).UTC(),
+		})
+	}
+	if err := appendWorkspaceArchive(local, records); err != nil {
+		t.Fatal(err)
+	}
+	archived, err := loadWorkspaceArchive(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archived) != maxArchiveRecords {
+		t.Fatalf("archive records=%d want=%d", len(archived), maxArchiveRecords)
+	}
+	if archived[0].Sequence != 8 || archived[len(archived)-1].Sequence != uint64(maxArchiveRecords+7) {
+		t.Fatalf("archive range=%d..%d", archived[0].Sequence, archived[len(archived)-1].Sequence)
+	}
+}
+
 func TestCompletionStartupCompactsOversizedHotHistory(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	manager := workspace.NewManager(workspace.DefaultStorePath())

@@ -363,6 +363,25 @@ func TestDefaultManagedRootUsesCMConfigRoot(t *testing.T) {
 	}
 }
 
+func TestPruneManagedVersionsKeepsPinnedRTKVersion(t *testing.T) {
+	root := t.TempDir()
+	manager := New(Options{Enabled: true, ManagedRoot: root})
+	for _, version := range []string{"v0.1.0", Version} {
+		if err := os.MkdirAll(filepath.Join(root, "rtk", version, "linux-amd64"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := manager.pruneManagedVersions(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "rtk", Version)); err != nil {
+		t.Fatalf("pinned RTK version removed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "rtk", "v0.1.0")); !os.IsNotExist(err) {
+		t.Fatalf("old RTK version still exists: %v", err)
+	}
+}
+
 func installTestManagedRTK(t *testing.T) (*Manager, string) {
 	t.Helper()
 	key := runtime.GOOS + "/" + runtime.GOARCH

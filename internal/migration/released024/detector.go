@@ -172,6 +172,12 @@ type BundleInspection struct {
 	Inspection bundle024.Inspection `json:"inspection"`
 }
 
+type sourceCandidate struct {
+	root   string
+	source string
+	marker Marker
+}
+
 type Manifest struct {
 	Version      int                        `json:"version"`
 	Source       SourceDescriptor           `json:"source"`
@@ -215,51 +221,51 @@ func Detect(ctx context.Context, options Options) (Manifest, error) {
 	if found {
 		config, err := inspectConfig(descriptor.Root)
 		if err != nil {
-			return Manifest{}, err
+			return manifest, err
 		}
 		manifest.Config = config
 		if config.Exists {
 			integrations, err := integrations024.Inspect(config.Path)
 			if err != nil {
-				return Manifest{}, fmt.Errorf("inspect released integrations: %w", err)
+				return manifest, fmt.Errorf("inspect released integrations: %w", err)
 			}
 			manifest.Integrations = integrations
 		}
 		instance, err := inspectInstance(descriptor.Root)
 		if err != nil {
-			return Manifest{}, err
+			return manifest, err
 		}
 		manifest.Instance = instance
 		workspaces, err := inspectWorkspaces(descriptor.Root)
 		if err != nil {
-			return Manifest{}, err
+			return manifest, err
 		}
 		manifest.Workspaces = workspaces
 		credentials, err := credentials024.Inspect(descriptor.Root)
 		if err != nil {
-			return Manifest{}, fmt.Errorf("inspect released credentials: %w", err)
+			return manifest, fmt.Errorf("inspect released credentials: %w", err)
 		}
 		manifest.Credentials = credentials
 		if upstreamPath, _, exists, err := discoverStructured(descriptor.Root, "upstream"); err != nil {
-			return Manifest{}, err
+			return manifest, err
 		} else if exists {
 			if filepath.Ext(upstreamPath) != ".json" {
-				return Manifest{}, errors.New("released upstream state is not JSON; refusing ambiguous upstream schema")
+				return manifest, errors.New("released upstream state is not JSON; refusing ambiguous upstream schema")
 			}
 			upstream, err := upstream024.Inspect(upstreamPath)
 			if err != nil {
-				return Manifest{}, fmt.Errorf("inspect released upstream state: %w", err)
+				return manifest, fmt.Errorf("inspect released upstream state: %w", err)
 			}
 			manifest.Upstream = upstream
 		}
 		artifacts, sourceSHA, unsupported, err := inventoryRoot(descriptor.Root, instance)
 		if err != nil {
-			return Manifest{}, err
+			return manifest, err
 		}
 		manifest.Artifacts, manifest.SourceSHA256, manifest.Unsupported = artifacts, sourceSHA, unsupported
 		launchers, err := inspectLaunchers(options, descriptor)
 		if err != nil {
-			return Manifest{}, err
+			return manifest, err
 		}
 		manifest.Launchers = launchers
 		inspectServices := options.InspectServices
@@ -268,30 +274,69 @@ func Detect(ctx context.Context, options Options) (Manifest, error) {
 		}
 		services, err := inspectServices(ctx, descriptor)
 		if err != nil {
-			return Manifest{}, fmt.Errorf("inspect released managed services: %w", err)
+			return manifest, fmt.Errorf("inspect released managed services: %w", err)
 		}
 		manifest.Services = normalizeServices(services)
 	}
 	bundles, err := inspectBundles(options.BundlePaths)
 	if err != nil {
-		return Manifest{}, err
+		return manifest, err
 	}
 	manifest.Bundles = bundles
 	return manifest, nil
 }
 
+// VerifiedSources performs ownership-only discovery for released roots. It is
+// intentionally independent from schema inspection so install fallback can
+// safely retire a predecessor even when migration inspection itself fails.
+func VerifiedSources(options Options) ([]SourceDescriptor, error) {
+	descriptor, candidates, err := discoverSourceCandidates(options)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]SourceDescriptor, 0, len(candidates))
+	for _, candidate := range candidates {
+		item := descriptor
+		item.Root, item.RootSource, item.Marker = candidate.root, candidate.source, candidate.marker
+		item.HistoricalServiceIDs = []string{historicalServiceID(candidate.root, "user"), historicalServiceID(candidate.root, "system")}
+		result = append(result, item)
+	}
+	return result, nil
+}
+
 func resolveSource(options Options) (SourceDescriptor, bool, error) {
+	descriptor, candidates, err := discoverSourceCandidates(options)
+	if err != nil {
+		return SourceDescriptor{}, false, err
+	}
+	if len(candidates) > 1 {
+		paths := make([]string, 0, len(candidates))
+		for _, item := range candidates {
+			paths = append(paths, item.root)
+		}
+		sort.Strings(paths)
+		return SourceDescriptor{}, false, fmt.Errorf("multiple authoritative released %s roots found: %s", SourceRelease, strings.Join(paths, ", "))
+	}
+	if len(candidates) == 0 {
+		return descriptor, false, nil
+	}
+	descriptor.Root, descriptor.RootSource, descriptor.Marker = candidates[0].root, candidates[0].source, candidates[0].marker
+	descriptor.HistoricalServiceIDs = []string{historicalServiceID(descriptor.Root, "user"), historicalServiceID(descriptor.Root, "system")}
+	return descriptor, true, nil
+}
+
+func discoverSourceCandidates(options Options) (SourceDescriptor, []sourceCandidate, error) {
 	home := strings.TrimSpace(options.HomeDir)
 	if home == "" {
 		var err error
 		home, err = os.UserHomeDir()
 		if err != nil {
-			return SourceDescriptor{}, false, err
+			return SourceDescriptor{}, nil, err
 		}
 	}
 	absoluteHome, err := filepath.Abs(home)
 	if err != nil {
-		return SourceDescriptor{}, false, err
+		return SourceDescriptor{}, nil, err
 	}
 	home = filepath.Clean(absoluteHome)
 	defaults := legacyPlatformDefaults(home, options.LocalAppData)
@@ -327,26 +372,19 @@ func resolveSource(options Options) (SourceDescriptor, bool, error) {
 	if explicit := strings.TrimSpace(options.SourceRoot); explicit != "" {
 		root, err := normalizeRoot(explicit)
 		if err != nil {
-			return SourceDescriptor{}, false, err
+			return SourceDescriptor{}, nil, err
 		}
 		marker, verified, err := inspectMarker(root)
 		if err != nil {
-			return SourceDescriptor{}, false, err
+			return SourceDescriptor{}, nil, err
 		}
 		if !verified {
-			return SourceDescriptor{}, false, fmt.Errorf("explicit released source does not contain the exact %s marker", legacyRootMarkerName)
+			return SourceDescriptor{}, nil, fmt.Errorf("explicit released source does not contain the exact %s marker", legacyRootMarkerName)
 		}
-		descriptor.Root, descriptor.RootSource, descriptor.Marker = root, "explicit", marker
-		descriptor.HistoricalServiceIDs = []string{historicalServiceID(root, "user"), historicalServiceID(root, "system")}
-		return descriptor, true, nil
+		return descriptor, []sourceCandidate{{root: root, source: "explicit", marker: marker}}, nil
 	}
 
-	type candidate struct {
-		root   string
-		source string
-		marker Marker
-	}
-	candidates := []candidate{}
+	candidates := []sourceCandidate{}
 	seen := map[string]bool{}
 	for _, item := range []struct {
 		root   string
@@ -360,7 +398,7 @@ func resolveSource(options Options) (SourceDescriptor, bool, error) {
 		}
 		root, err := normalizeRoot(item.root)
 		if err != nil {
-			return SourceDescriptor{}, false, err
+			return SourceDescriptor{}, nil, err
 		}
 		key := comparablePath(root)
 		if seen[key] {
@@ -369,26 +407,13 @@ func resolveSource(options Options) (SourceDescriptor, bool, error) {
 		seen[key] = true
 		marker, verified, err := inspectMarker(root)
 		if err != nil {
-			return SourceDescriptor{}, false, err
+			return SourceDescriptor{}, nil, err
 		}
 		if verified {
-			candidates = append(candidates, candidate{root: root, source: item.source, marker: marker})
+			candidates = append(candidates, sourceCandidate{root: root, source: item.source, marker: marker})
 		}
 	}
-	if len(candidates) > 1 {
-		paths := make([]string, 0, len(candidates))
-		for _, item := range candidates {
-			paths = append(paths, item.root)
-		}
-		sort.Strings(paths)
-		return SourceDescriptor{}, false, fmt.Errorf("multiple authoritative released %s roots found: %s", SourceRelease, strings.Join(paths, ", "))
-	}
-	if len(candidates) == 0 {
-		return descriptor, false, nil
-	}
-	descriptor.Root, descriptor.RootSource, descriptor.Marker = candidates[0].root, candidates[0].source, candidates[0].marker
-	descriptor.HistoricalServiceIDs = []string{historicalServiceID(descriptor.Root, "user"), historicalServiceID(descriptor.Root, "system")}
-	return descriptor, true, nil
+	return descriptor, candidates, nil
 }
 
 func inspectMarker(root string) (Marker, bool, error) {
@@ -543,9 +568,14 @@ func inspectWorkspaces(root string) (WorkspaceInventory, error) {
 }
 
 func inventoryRoot(root string, instance InstanceInspection) ([]Artifact, string, int, error) {
+	return inventoryRootWithFingerprintLimit(root, instance, maxFingerprintBytes)
+}
+
+func inventoryRootWithFingerprintLimit(root string, instance InstanceInspection, fingerprintLimit int64) ([]Artifact, string, int, error) {
 	artifacts := []Artifact{}
 	entries := 0
 	var fingerprintBytes int64
+	fingerprintExhausted := false
 	h := sha256.New()
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -615,15 +645,19 @@ func inventoryRoot(root string, instance InstanceInspection) ([]Artifact, string
 			}
 			artifact.SHA256 = fileHash
 		} else if artifact.Classification != ClassTransientDrop && artifact.Classification != ClassRegenerate && info.Size() <= maxRegularFileBytes {
+			if fingerprintExhausted || info.Size() > fingerprintLimit-fingerprintBytes {
+				artifact.Classification = ClassUnsupportedFailClosed
+				artifact.Reason = "released state fingerprint budget exceeded; clean install required"
+				fingerprintExhausted = true
+				artifacts = append(artifacts, artifact)
+				return nil
+			}
 			fileHash, bytesRead, err := hashFile(path, maxRegularFileBytes)
 			if err != nil {
 				return err
 			}
 			artifact.SHA256 = fileHash
 			fingerprintBytes += bytesRead
-			if fingerprintBytes > maxFingerprintBytes {
-				return fmt.Errorf("released state fingerprint exceeds %d bytes", maxFingerprintBytes)
-			}
 			_, _ = io.WriteString(h, relative+"\x00"+fileHash+"\x00"+strconv.FormatInt(info.Size(), 10)+"\n")
 		}
 		artifacts = append(artifacts, artifact)

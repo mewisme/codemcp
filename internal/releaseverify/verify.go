@@ -377,7 +377,7 @@ func verifyWindowsSetupBootstrap(root string) error {
 		"CM_INSTALL_INTEGRATIONS",
 		"Start-Process -FilePath $SetupPath",
 		"default managed current directory PATH registration is not idempotent",
-		"custom install root unexpectedly changed HKCU PATH ownership",
+		"custom managed current directory was not registered exactly once in HKCU PATH",
 		"delegated install failure exit code",
 		"$failureExit -ne 23",
 	} {

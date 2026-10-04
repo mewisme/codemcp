@@ -91,8 +91,9 @@ func RegisterAgentCompletionTool(registry *Registry, service *agentcompletion.Se
 			}
 		}
 		acceptOptions := agentcompletion.AcceptOptions{}
-		if managedEvent != nil {
+		if managedBound {
 			acceptOptions.SkipHooks = map[string]bool{"notification": true}
+			acceptOptions.SuppressLiveDelivery = true
 		}
 		var record agentcompletion.Record
 		var created bool

@@ -13,6 +13,7 @@ type DiscardOptions struct {
 	Manifest       Manifest
 	ServiceRetirer HistoricalServiceRetirer
 	RemoveLauncher LauncherRemovalFunc
+	BestEffort     bool
 }
 
 type DiscardResult struct {
@@ -23,15 +24,22 @@ type DiscardResult struct {
 }
 
 func DiscardUnsupportedPredecessor(ctx context.Context, options DiscardOptions) (DiscardResult, error) {
+	if options.Manifest.Unsupported <= 0 {
+		return DiscardResult{}, errors.New("released predecessor discard requires unsupported migration state")
+	}
+	return DiscardPredecessor(ctx, options)
+}
+
+// DiscardPredecessor removes a marker-verified released predecessor without
+// depending on migration schema validity. It preserves the same ownership
+// checks used by the unsupported-state fallback.
+func DiscardPredecessor(ctx context.Context, options DiscardOptions) (DiscardResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	manifest := options.Manifest
 	if !manifest.Found {
 		return DiscardResult{}, errors.New("released predecessor was not detected")
-	}
-	if manifest.Unsupported <= 0 {
-		return DiscardResult{}, errors.New("released predecessor discard requires unsupported migration state")
 	}
 	if manifest.Source.Release != SourceRelease || !manifest.Source.Marker.Verified {
 		return DiscardResult{}, errors.New("released predecessor ownership is not verified")
@@ -52,6 +60,7 @@ func DiscardUnsupportedPredecessor(ctx context.Context, options DiscardOptions) 
 	}
 
 	result := DiscardResult{SourceRoot: root}
+	var cleanupErr error
 	retirer := options.ServiceRetirer
 	if retirer == nil {
 		retirer = platformHistoricalServiceController{}
@@ -61,10 +70,20 @@ func DiscardUnsupportedPredecessor(ctx context.Context, options DiscardOptions) 
 			continue
 		}
 		if state.Ownership != OwnershipVerified {
-			return DiscardResult{}, fmt.Errorf("historical service %s ownership is not verified", state.ID)
+			err := fmt.Errorf("historical service %s ownership is not verified", state.ID)
+			if options.BestEffort {
+				cleanupErr = errors.Join(cleanupErr, err)
+				continue
+			}
+			return DiscardResult{}, err
 		}
 		if err := retirer.Retire(ctx, manifest.Source, state); err != nil {
-			return DiscardResult{}, fmt.Errorf("retire historical service %s before discard: %w", state.ID, err)
+			err = fmt.Errorf("retire historical service %s before discard: %w", state.ID, err)
+			if options.BestEffort {
+				cleanupErr = errors.Join(cleanupErr, err)
+				continue
+			}
+			return DiscardResult{}, err
 		}
 		result.ServicesRetired++
 	}
@@ -82,7 +101,12 @@ func DiscardUnsupportedPredecessor(ctx context.Context, options DiscardOptions) 
 		}
 		removed, err := removeLauncher(launcher)
 		if err != nil {
-			return DiscardResult{}, fmt.Errorf("remove historical launcher %s before discard: %w", launcher.Path, err)
+			err = fmt.Errorf("remove historical launcher %s before discard: %w", launcher.Path, err)
+			if options.BestEffort {
+				cleanupErr = errors.Join(cleanupErr, err)
+				continue
+			}
+			return DiscardResult{}, err
 		}
 		if removed {
 			result.LaunchersRemoved++
@@ -113,5 +137,5 @@ func DiscardUnsupportedPredecessor(ctx context.Context, options DiscardOptions) 
 		return DiscardResult{}, fmt.Errorf("verify released predecessor discard: %w", err)
 	}
 	result.RootRemoved = true
-	return result, nil
+	return result, cleanupErr
 }

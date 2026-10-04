@@ -27,7 +27,7 @@ func TestInstallCurrentKeepsPrimaryInstallSuccessfulWhenSupplementalBootstrapWar
 		t.Fatal(err)
 	}
 	installCalls, postCalls := 0, 0
-	deps := defaultInstallCutoverDependencies()
+	deps := testInstallCutoverDependencies()
 	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
 		return released024.Manifest{Found: false}, nil
 	}
@@ -68,6 +68,56 @@ func TestInstallCurrentKeepsPrimaryInstallSuccessfulWhenSupplementalBootstrapWar
 	}
 }
 
+func TestInstallCurrentCompletesConfigurationRuntimeAndSupplements(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	layout, err := install.NewLayout(filepath.Join(t.TempDir(), "install"), filepath.Join(t.TempDir(), "bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sequence := []string{}
+	deps := testInstallCutoverDependencies()
+	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
+		return released024.Manifest{Found: false}, nil
+	}
+	deps.Install = func(install.Options) (install.Result, error) {
+		sequence = append(sequence, "install")
+		return install.Result{
+			Layout: layout, Version: "v1.2.3",
+			Staged:    install.Staged{Binary: filepath.Join(layout.Versions, "v1.2.3", layout.BinaryName)},
+			Canonical: install.CanonicalStatus{Path: layout.CanonicalBinary},
+		}, nil
+	}
+	deps.Initialize = func(options InitOptions) (InitResult, error) {
+		sequence = append(sequence, "initialize")
+		if options.Context == nil {
+			t.Fatal("initialize context missing")
+		}
+		return InitResult{ConfigPath: filepath.Join(t.TempDir(), "config.json"), Format: configformat.JSON, MCPToken: "mcp_once", AdminToken: "admin_once"}, nil
+	}
+	deps.RuntimeUp = func(_ context.Context, binary string) (RuntimeActionResult, error) {
+		sequence = append(sequence, "runtime")
+		if binary != layout.CurrentBinary {
+			t.Fatalf("runtime binary=%q want=%q", binary, layout.CurrentBinary)
+		}
+		return RuntimeActionResult{Action: "up", Service: ServiceOverview{Running: true}}, nil
+	}
+	deps.PostInstall = func(context.Context, PostInstallBootstrapOptions) SupplementalBootstrapResult {
+		sequence = append(sequence, "supplemental")
+		return SupplementalBootstrapResult{}
+	}
+
+	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{}, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"install", "initialize", "runtime", "supplemental"}; !reflect.DeepEqual(sequence, want) {
+		t.Fatalf("sequence=%v want=%v", sequence, want)
+	}
+	if !result.Setup.Initialized || result.Setup.MCPToken != "mcp_once" || result.Setup.AdminToken != "admin_once" || result.Setup.Runtime == nil || !result.Setup.Runtime.Service.Running {
+		t.Fatalf("setup=%#v", result.Setup)
+	}
+}
+
 func TestReleasedInstallMigrationRunsStageActivateRetireBeforeSupplementalBootstrap(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "canonical")
 	previous := configformat.RootPath()
@@ -80,7 +130,7 @@ func TestReleasedInstallMigrationRunsStageActivateRetireBeforeSupplementalBootst
 		t.Fatal(err)
 	}
 	sequence := []string{}
-	deps := defaultInstallCutoverDependencies()
+	deps := testInstallCutoverDependencies()
 	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
 		sequence = append(sequence, "detect")
 		return released024.Manifest{
@@ -164,32 +214,148 @@ func TestReleasedInstallMigrationRunsStageActivateRetireBeforeSupplementalBootst
 	}
 }
 
-func TestReleasedInstallMigrationFailureDoesNotInstallOrBootstrap(t *testing.T) {
+func TestInstallCurrentMigrationErrorsCleanAndFreshInstall(t *testing.T) {
+	for _, failAt := range []string{"detect", "discard", "stage", "layout", "executable", "activate", "retire"} {
+		t.Run(failAt, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "canonical")
+			previous := configformat.RootPath()
+			t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
+			if err := configformat.SetRootPath(root); err != nil {
+				t.Fatal(err)
+			}
+			layout, err := install.NewLayout(filepath.Join(t.TempDir(), "install"), filepath.Join(t.TempDir(), "bin"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sequence := []string{}
+			deps := testInstallCutoverDependencies()
+			deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
+				sequence = append(sequence, "detect")
+				manifest := released024.Manifest{Found: true, SourceSHA256: "source-sha", Source: released024.SourceDescriptor{Root: filepath.Join(t.TempDir(), "legacy")}}
+				if failAt == "discard" {
+					manifest.Unsupported = 1
+				}
+				if failAt == "detect" {
+					return manifest, errors.New("detect failed")
+				}
+				return manifest, nil
+			}
+			deps.Discard = func(context.Context, released024.DiscardOptions) (released024.DiscardResult, error) {
+				sequence = append(sequence, "discard")
+				return released024.DiscardResult{}, errors.New("discard failed")
+			}
+			deps.Stat = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
+			deps.Stage = func(context.Context, released024.StageOptions) (released024.StageResult, error) {
+				sequence = append(sequence, "stage")
+				if failAt == "stage" {
+					return released024.StageResult{}, errors.New("stage failed")
+				}
+				return released024.StageResult{JournalPath: filepath.Join(t.TempDir(), "journal.json"), SourceSHA256: "source-sha"}, nil
+			}
+			deps.Layout = func() (install.Layout, error) {
+				sequence = append(sequence, "layout")
+				if failAt == "layout" {
+					return install.Layout{}, errors.New("layout failed")
+				}
+				return layout, nil
+			}
+			deps.Executable = func() (string, error) {
+				sequence = append(sequence, "executable")
+				if failAt == "executable" {
+					return "", errors.New("executable failed")
+				}
+				return filepath.Join(t.TempDir(), "cm"), nil
+			}
+			deps.Activate = func(context.Context, released024.ActivateOptions) (released024.ActivationResult, error) {
+				sequence = append(sequence, "activate")
+				if failAt == "activate" {
+					return released024.ActivationResult{}, errors.New("activate failed")
+				}
+				return released024.ActivationResult{Binary: layout.CurrentBinary, ServiceID: "svc"}, nil
+			}
+			deps.Retire = func(context.Context, released024.RetireOptions) (released024.RetirementResult, error) {
+				sequence = append(sequence, "retire")
+				if failAt == "retire" {
+					return released024.RetirementResult{}, errors.New("retire failed")
+				}
+				return released024.RetirementResult{Retired: true}, nil
+			}
+			deps.FreshCleanup = func(context.Context) (released024.FreshInstallCleanupResult, error) {
+				sequence = append(sequence, "cleanup")
+				return released024.FreshInstallCleanupResult{TransactionsRemoved: 1, SourcesRemoved: 1}, nil
+			}
+			deps.Install = func(install.Options) (install.Result, error) {
+				sequence = append(sequence, "install")
+				return install.Result{
+					Layout: layout, Version: "v0.3.2",
+					Staged:    install.Staged{Binary: filepath.Join(layout.Versions, "v0.3.2", layout.BinaryName)},
+					Canonical: install.CanonicalStatus{Path: layout.CanonicalBinary},
+				}, nil
+			}
+			deps.PostInstall = func(context.Context, PostInstallBootstrapOptions) SupplementalBootstrapResult {
+				sequence = append(sequence, "supplemental")
+				return SupplementalBootstrapResult{}
+			}
+
+			result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{}, deps)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Version != "v0.3.2" {
+				t.Fatalf("result=%#v", result)
+			}
+			cleanup := slices.Index(sequence, "cleanup")
+			fresh := slices.Index(sequence, "install")
+			if cleanup < 0 || fresh < 0 || cleanup > fresh {
+				t.Fatalf("migration failure did not clean before fresh install: %v", sequence)
+			}
+		})
+	}
+}
+
+func TestInstallCurrentMigrationCleanupErrorStillFreshInstalls(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "canonical")
 	previous := configformat.RootPath()
 	t.Cleanup(func() { _ = configformat.SetRootPath(previous) })
 	if err := configformat.SetRootPath(root); err != nil {
 		t.Fatal(err)
 	}
-	deps := defaultInstallCutoverDependencies()
-	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
-		return released024.Manifest{Found: true, SourceSHA256: "source-sha", Source: released024.SourceDescriptor{Root: filepath.Join(t.TempDir(), "legacy")}}, nil
+	layout, err := install.NewLayout(filepath.Join(t.TempDir(), "install"), filepath.Join(t.TempDir(), "bin"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	deps.Stat = func(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
-	deps.Stage = func(context.Context, released024.StageOptions) (released024.StageResult, error) {
-		return released024.StageResult{}, errors.New("stage failed")
+	sequence := []string{}
+	deps := testInstallCutoverDependencies()
+	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
+		sequence = append(sequence, "detect")
+		return released024.Manifest{}, errors.New("detect failed")
+	}
+	deps.FreshCleanup = func(context.Context) (released024.FreshInstallCleanupResult, error) {
+		sequence = append(sequence, "cleanup")
+		return released024.FreshInstallCleanupResult{}, errors.New("cleanup incomplete")
 	}
 	deps.Install = func(install.Options) (install.Result, error) {
-		t.Fatal("install ran after staging failure")
-		return install.Result{}, nil
+		sequence = append(sequence, "install")
+		return install.Result{
+			Layout: layout, Version: "v0.3.2",
+			Staged:    install.Staged{Binary: filepath.Join(layout.Versions, "v0.3.2", layout.BinaryName)},
+			Canonical: install.CanonicalStatus{Path: layout.CanonicalBinary},
+		}, nil
 	}
 	deps.PostInstall = func(context.Context, PostInstallBootstrapOptions) SupplementalBootstrapResult {
-		t.Fatal("supplemental bootstrap ran after staging failure")
+		sequence = append(sequence, "supplemental")
 		return SupplementalBootstrapResult{}
 	}
-	_, migrated, err := migrateReleasedInstallIfNeeded(t.Context(), InstallCurrentOptions{}, deps)
-	if err == nil || migrated {
-		t.Fatalf("migrated=%t err=%v", migrated, err)
+
+	result, err := installCurrentWithDependencies(t.Context(), InstallCurrentOptions{}, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Version != "v0.3.2" {
+		t.Fatalf("result=%#v", result)
+	}
+	if want := []string{"detect", "cleanup", "install", "supplemental"}; !reflect.DeepEqual(sequence, want) {
+		t.Fatalf("sequence=%v want=%v", sequence, want)
 	}
 }
 
@@ -206,7 +372,7 @@ func TestInstallCurrentDiscardsUnsupportedReleasedStateThenFreshInstalls(t *test
 	}
 	sequence := []string{}
 	events := []InstallCutoverEvent{}
-	deps := defaultInstallCutoverDependencies()
+	deps := testInstallCutoverDependencies()
 	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
 		sequence = append(sequence, "detect")
 		return released024.Manifest{Found: true, Unsupported: 5}, nil
@@ -275,7 +441,7 @@ func TestInstallCurrentDiscardsUnsupportedReleasedStateThenFreshInstalls(t *test
 }
 
 func TestInstallCurrentPrimaryFailureDoesNotRunSupplementalBootstrap(t *testing.T) {
-	deps := defaultInstallCutoverDependencies()
+	deps := testInstallCutoverDependencies()
 	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
 		return released024.Manifest{Found: false}, nil
 	}
@@ -292,7 +458,7 @@ func TestInstallCurrentPrimaryFailureDoesNotRunSupplementalBootstrap(t *testing.
 }
 
 func TestInstallCurrentSupplementalFailureDoesNotRollbackActivatedBinary(t *testing.T) {
-	deps := defaultInstallCutoverDependencies()
+	deps := testInstallCutoverDependencies()
 	deps.Detect = func(context.Context, released024.Options) (released024.Manifest, error) {
 		return released024.Manifest{Found: false}, nil
 	}
@@ -322,4 +488,18 @@ func TestInstallCurrentSupplementalFailureDoesNotRollbackActivatedBinary(t *test
 	if len(result.Supplemental.Warnings) != 1 || result.Supplemental.Integrations[0].State != "failed" {
 		t.Fatalf("supplemental=%#v", result.Supplemental)
 	}
+}
+
+func testInstallCutoverDependencies() installCutoverDependencies {
+	deps := defaultInstallCutoverDependencies()
+	deps.Initialize = func(InitOptions) (InitResult, error) {
+		return InitResult{}, ErrConfigurationExists
+	}
+	deps.RuntimeUp = func(context.Context, string) (RuntimeActionResult, error) {
+		return RuntimeActionResult{Action: "up"}, nil
+	}
+	deps.FreshCleanup = func(context.Context) (released024.FreshInstallCleanupResult, error) {
+		return released024.FreshInstallCleanupResult{}, nil
+	}
+	return deps
 }

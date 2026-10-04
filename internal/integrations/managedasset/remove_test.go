@@ -45,3 +45,25 @@ func TestRemoveDeletesOnlyManagedPlatformDirectory(t *testing.T) {
 		t.Fatalf("idempotent remove=%v err=%v", removed, err)
 	}
 }
+
+func TestRemoveOtherVersionsKeepsRequestedVersion(t *testing.T) {
+	root := t.TempDir()
+	manager := Manager{Root: root}
+	for _, version := range []string{"v1", "v2", "v3"} {
+		path := filepath.Join(root, "tool", version, "linux-amd64")
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := manager.RemoveOtherVersions("tool", "v3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "tool", "v3")); err != nil {
+		t.Fatalf("kept version removed: %v", err)
+	}
+	for _, version := range []string{"v1", "v2"} {
+		if _, err := os.Stat(filepath.Join(root, "tool", version)); !os.IsNotExist(err) {
+			t.Fatalf("old version %s still exists: %v", version, err)
+		}
+	}
+}

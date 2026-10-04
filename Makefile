@@ -8,9 +8,11 @@ ARGS ?=
 BINARY ?= dist/cm
 LOCAL_TELEMETRY_ENDPOINT ?=
 LOCAL_LDFLAGS = $(if $(strip $(LOCAL_TELEMETRY_ENDPOINT)),-X go.mewis.me/codemcp/internal/telemetry/product.Endpoint=$(LOCAL_TELEMETRY_ENDPOINT),)
+CM_CONFIG_ROOT ?= $(if $(strip $(CM_CONFIG_DIR)),$(CM_CONFIG_DIR),$(HOME)/.cm)
+CM_GOCACHE ?= $(CM_CONFIG_ROOT)/runtime/cache/go-build
 RACE_PACKAGES = ./internal/app ./internal/checkpoint ./internal/runtime/... ./internal/service ./internal/state ./internal/telegram/... ./internal/tools ./internal/workspace/...
 
-CM = $(GO) run -ldflags "$(LOCAL_LDFLAGS)" .
+CM = GOCACHE="$(CM_GOCACHE)" $(GO) run -ldflags "$(LOCAL_LDFLAGS)" .
 FRONTEND_BUILD = $(PNPM) --dir frontend build
 
 CM_COMMANDS = install upgrade init uninit down logs request llm tui config auth tools execution process workspace skills prompt upstream mcp tunnel http permissions shell notification telemetry telegram integration status health network activity doctor agent completion version

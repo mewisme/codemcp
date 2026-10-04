@@ -47,6 +47,9 @@ func MergeWorkspaceState(registered, destination, output workspacestate.Store, w
 		}
 		return records[i].Sequence < records[j].Sequence
 	})
+	if limit := DefaultMaxRecords + maxArchiveRecords; len(records) > limit {
+		records = records[len(records)-limit:]
+	}
 	archiveCount := len(records) - DefaultMaxRecords
 	if archiveCount < 0 {
 		archiveCount = 0

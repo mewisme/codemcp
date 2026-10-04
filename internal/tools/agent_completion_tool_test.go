@@ -229,6 +229,8 @@ func TestAgentCompleteDuplicateCallsRemainDomainIdempotent(t *testing.T) {
 
 func TestAgentCompleteCorrelatesClaimedManagedAgentAfterDurableAccept(t *testing.T) {
 	runtime, workspaceID := newCompletionToolRuntime(t)
+	completionEvents, _ := runtime.Completions.SubscribeSnapshot(0)
+	defer runtime.Completions.Unsubscribe(completionEvents)
 	notificationCalls := make(chan agentcompletion.HookInvocation, 1)
 	otherCalls := make(chan agentcompletion.HookInvocation, 1)
 	if err := runtime.CompletionHooks.Register(completionToolHook{name: "notification", called: notificationCalls}); err != nil {
@@ -280,6 +282,11 @@ func TestAgentCompleteCorrelatesClaimedManagedAgentAfterDurableAccept(t *testing
 	select {
 	case invocation := <-notificationCalls:
 		t.Fatalf("managed child agent_complete emitted notification hook: %#v", invocation)
+	default:
+	}
+	select {
+	case event := <-completionEvents.Events:
+		t.Fatalf("managed child agent_complete emitted live completion event: %#v", event)
 	default:
 	}
 	value := result.StructuredContent.(AgentCompleteResult)

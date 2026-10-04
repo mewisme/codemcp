@@ -2,13 +2,41 @@ package checkpoint
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"go.mewis.me/codemcp/internal/workspace"
 )
+
+func TestPruneStaleCheckpointBlobTemps(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	old := now.Add(-2 * staleCheckpointBlobTempAge)
+	stale := filepath.Join(root, ".blob-stale")
+	fresh := filepath.Join(root, ".blob-fresh")
+	kept := filepath.Join(root, "payload")
+	for _, path := range []string{stale, fresh, kept} {
+		if err := os.WriteFile(path, []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	pruneStaleCheckpointBlobTemps(root, now)
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale blob temp still exists: %v", err)
+	}
+	for _, path := range []string{fresh, kept} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("kept file removed %q: %v", path, err)
+		}
+	}
+}
 
 func TestCheckpointBeforeAndRestore(t *testing.T) {
 	root := t.TempDir()

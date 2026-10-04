@@ -5,11 +5,17 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
 	"go.mewis.me/codemcp/internal/configformat"
+)
+
+const (
+	maxApprovalMessageRefs      = 512
+	maxApprovalMessageStoreSize = 1 << 20
 )
 
 type approvalMessageStore struct {
@@ -38,10 +44,17 @@ func (s *approvalMessageStore) load() error {
 	if s == nil {
 		return nil
 	}
-	data, err := os.ReadFile(s.path)
+	info, err := os.Stat(s.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maxApprovalMessageStoreSize {
+		return errors.New("telegram approval message store is invalid or too large")
+	}
+	data, err := os.ReadFile(s.path)
 	if err != nil {
 		return err
 	}
@@ -54,7 +67,13 @@ func (s *approvalMessageStore) load() error {
 	}
 	s.mu.Lock()
 	s.refs = persisted.Messages
+	trimmed := s.trimLocked()
 	s.mu.Unlock()
+	if trimmed {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.saveLocked()
+	}
 	return nil
 }
 
@@ -79,6 +98,7 @@ func (s *approvalMessageStore) put(chatID int64, requestID string, messageID int
 		s.refs[chatKey] = map[string]int64{}
 	}
 	s.refs[chatKey][requestID] = messageID
+	s.trimLocked()
 	return s.saveLocked()
 }
 
@@ -112,4 +132,35 @@ func (s *approvalMessageStore) saveLocked() error {
 		return err
 	}
 	return os.Rename(tmp, s.path)
+}
+
+func (s *approvalMessageStore) trimLocked() bool {
+	type key struct {
+		chat    string
+		request string
+	}
+	keys := make([]key, 0)
+	for chat, messages := range s.refs {
+		for request := range messages {
+			keys = append(keys, key{chat: chat, request: request})
+		}
+	}
+	if len(keys) <= maxApprovalMessageRefs {
+		return false
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].chat == keys[j].chat {
+			return keys[i].request < keys[j].request
+		}
+		return keys[i].chat < keys[j].chat
+	})
+	remove := len(keys) - maxApprovalMessageRefs
+	for _, item := range keys[:remove] {
+		messages := s.refs[item.chat]
+		delete(messages, item.request)
+		if len(messages) == 0 {
+			delete(s.refs, item.chat)
+		}
+	}
+	return true
 }

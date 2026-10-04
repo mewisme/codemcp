@@ -26,6 +26,7 @@ const (
 	maxManagedExtracted   = int64(256 << 20)
 	maxManagedEntries     = 4096
 	maxManagedManifest    = int64(64 << 10)
+	staleManagedStageAge  = time.Hour
 )
 
 type managedManifest struct {
@@ -113,6 +114,7 @@ func (m *Manager) installManaged(ctx context.Context, platform Platform) (string
 	if err := os.MkdirAll(parent, 0700); err != nil {
 		return "", err
 	}
+	pruneStaleManagedStages(parent, time.Now())
 	stage, err := os.MkdirTemp(parent, "."+filepath.Base(target)+".staging-")
 	if err != nil {
 		return "", err
@@ -202,6 +204,55 @@ func (m *Manager) installManaged(ctx context.Context, platform Platform) (string
 		}
 	}
 	return "", fmt.Errorf("validate activated managed RTK asset: %w", validateErr)
+}
+
+func (m *Manager) pruneManagedVersions() error {
+	if m == nil || strings.TrimSpace(m.managedRoot) == "" {
+		return nil
+	}
+	base := filepath.Join(m.managedRoot, "rtk")
+	entries, err := os.ReadDir(base)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Name() == Version || !safeComponent(entry.Name()) {
+			continue
+		}
+		path := filepath.Join(base, entry.Name())
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return fmt.Errorf("managed RTK version target is not a regular directory: %s", entry.Name())
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func pruneStaleManagedStages(parent string, now time.Time) {
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return
+	}
+	cutoff := now.Add(-staleManagedStageAge)
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".") || !strings.Contains(entry.Name(), ".staging-") {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(parent, entry.Name()))
+	}
 }
 
 func validatePortable(portable Portable) error {

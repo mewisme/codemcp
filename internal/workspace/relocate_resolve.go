@@ -10,12 +10,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"go.mewis.me/codemcp/internal/oslock"
 	"go.mewis.me/codemcp/internal/state"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 	workspacestate "go.mewis.me/codemcp/internal/workspace/state"
 )
+
+const staleMergeArtifactAge = 24 * time.Hour
 
 type RelocationResolution string
 
@@ -455,6 +458,7 @@ func probeMergeTransientLocks(workspaceRoot, workspaceID string) error {
 
 func activateMergedRelocationState(source, destinationRoot string) error {
 	destination := workspacestate.New(destinationRoot).Root()
+	pruneStaleMergeArtifacts(destinationRoot, destination, time.Now())
 	stage, err := os.MkdirTemp(destinationRoot, ".cm-merge-stage-")
 	if err != nil {
 		return err
@@ -494,6 +498,28 @@ func activateMergedRelocationState(source, destinationRoot string) error {
 		return fmt.Errorf("retire previous destination workspace state: %w", err)
 	}
 	return nil
+}
+
+func pruneStaleMergeArtifacts(destinationRoot, destination string, now time.Time) {
+	info, err := os.Lstat(destination)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return
+	}
+	entries, err := os.ReadDir(destinationRoot)
+	if err != nil {
+		return
+	}
+	cutoff := now.Add(-staleMergeArtifactAge)
+	for _, entry := range entries {
+		if !entry.IsDir() || (!strings.HasPrefix(entry.Name(), ".cm-merge-stage-") && !strings.HasPrefix(entry.Name(), ".cm-merge-old-")) {
+			continue
+		}
+		entryInfo, infoErr := entry.Info()
+		if infoErr != nil || !entryInfo.ModTime().Before(cutoff) {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(destinationRoot, entry.Name()))
+	}
 }
 
 func relocatedWorkspaceMetadata(item Workspace, oldRoot, newRoot string) Workspace {

@@ -200,6 +200,26 @@ func TestDetectDoesNotFailClosedOnLargeOwnedCheckpointHistory(t *testing.T) {
 	t.Fatal("large checkpoint artifact missing")
 }
 
+func TestInventoryRootFingerprintBudgetBecomesUnsupportedState(t *testing.T) {
+	root := t.TempDir()
+	writeFixture(t, filepath.Join(root, "instructions", "one.md"), "12345")
+	writeFixture(t, filepath.Join(root, "instructions", "two.md"), "67890")
+
+	artifacts, _, unsupported, err := inventoryRootWithFingerprintLimit(root, InstanceInspection{}, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unsupported == 0 {
+		t.Fatalf("fingerprint budget exhaustion was not classified unsupported: %#v", artifacts)
+	}
+	for _, artifact := range artifacts {
+		if artifact.Classification == ClassUnsupportedFailClosed && strings.Contains(artifact.Reason, "fingerprint budget exceeded") {
+			return
+		}
+	}
+	t.Fatalf("fingerprint budget exhaustion artifact missing: %#v", artifacts)
+}
+
 func TestResolveSourceExplicitWinsAndImplicitAmbiguityFailsClosed(t *testing.T) {
 	home := t.TempDir()
 	defaultRoot := filepath.Join(home, ".config", "chatgpt-mcp")
@@ -217,6 +237,13 @@ func TestResolveSourceExplicitWinsAndImplicitAmbiguityFailsClosed(t *testing.T) 
 	if _, _, err := resolveSource(Options{HomeDir: home, LookupEnv: lookup}); err == nil || !strings.Contains(err.Error(), "multiple authoritative") {
 		t.Fatalf("implicit ambiguity err=%v", err)
 	}
+	sources, err := VerifiedSources(Options{HomeDir: home, LookupEnv: lookup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sources) != 2 || !sources[0].Marker.Verified || !sources[1].Marker.Verified {
+		t.Fatalf("verified sources=%#v", sources)
+	}
 	descriptor, found, err := resolveSource(Options{HomeDir: home, LookupEnv: lookup, SourceRoot: explicitRoot})
 	if err != nil {
 		t.Fatal(err)
@@ -232,9 +259,12 @@ func TestDetectRejectsAmbiguousStructuredConfig(t *testing.T) {
 	writeFixture(t, filepath.Join(root, legacyRootMarkerName), legacyRootMarkerValue)
 	writeJSONFixture(t, filepath.Join(root, "config.json"), map[string]any{"server": map[string]any{}})
 	writeFixture(t, filepath.Join(root, "config.yaml"), "server: {}\n")
-	_, err := Detect(t.Context(), isolatedOptions(home, root))
+	manifest, err := Detect(t.Context(), isolatedOptions(home, root))
 	if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 		t.Fatalf("ambiguous config err=%v", err)
+	}
+	if !manifest.Found || !manifest.Source.Marker.Verified || manifest.Source.Root != filepath.Clean(root) {
+		t.Fatalf("detect error lost verified predecessor ownership: %#v", manifest)
 	}
 }
 

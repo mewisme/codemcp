@@ -161,9 +161,10 @@ try {
   $customExit = Invoke-Setup -SetupPath $setup -Arguments $silentSwitches -LogPath (Join-Path $tmp 'custom-setup.log')
   if ($customExit -ne 0) { throw "custom-root setup smoke failed with exit code $customExit" }
   Assert-InstalledVersion -InstallRoot $customInstallRoot -ExpectedVersion '9.9.9'
+  $customCurrentDir = Join-Path $customInstallRoot 'current'
   $pathAfterCustom = Get-UserPathState
-  if ($pathAfterCustom.Exists -ne $userPathBefore.Exists -or $pathAfterCustom.Value -ne $userPathBefore.Value) {
-    throw 'custom install root unexpectedly changed HKCU PATH ownership'
+  if ((Get-PathEntryCount -PathValue $pathAfterCustom.Value -ExpectedEntry $customCurrentDir) -ne 1) {
+    throw "custom managed current directory was not registered exactly once in HKCU PATH: $customCurrentDir"
   }
 
   $failureBinaryRoot = Join-Path $tmp 'failure-binary'

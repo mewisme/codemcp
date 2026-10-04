@@ -1,13 +1,63 @@
 package released024
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"go.mewis.me/codemcp/internal/configformat"
+	"go.mewis.me/codemcp/internal/install"
 )
+
+func TestCleanupForFreshInstallRemovesOwnedStageAndPredecessor(t *testing.T) {
+	fixture := newStageFixture(t, false)
+	stage, err := Stage(t.Context(), StageOptions{
+		Manifest: fixture.manifest, TargetRoot: fixture.targetRoot,
+		RefreshManifest: fixture.refresh, ServiceControl: fixture.controller,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := configformat.MarkRoot(fixture.targetRoot); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture.targetRoot, "migration-owned.txt"), []byte("remove"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager := &fakeActivationServiceManager{}
+
+	result, err := CleanupForFreshInstall(t.Context(), FreshInstallCleanupOptions{
+		TargetRoot:     fixture.targetRoot,
+		ServiceManager: manager,
+		SourceOptions: Options{
+			HomeDir:    fixture.home,
+			SourceRoot: fixture.sourceRoot,
+			LookupEnv:  func(string) string { return "" },
+			FindInstallations: func(install.Layout, string) ([]install.LegacyInstallation, error) {
+				return nil, nil
+			},
+			FindAliases: func() ([]install.LegacyAlias, error) { return nil, nil },
+			InspectServices: func(context.Context, SourceDescriptor) ([]ServiceState, error) {
+				return nil, nil
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TransactionsRemoved != 1 || result.StagesRemoved != 1 || result.TargetsRemoved != 1 || result.SourcesRemoved != 1 {
+		t.Fatalf("cleanup result=%#v", result)
+	}
+	for _, path := range []string{stage.StageRoot, stage.JournalPath, fixture.targetRoot, fixture.sourceRoot} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("cleanup left %s: %v", path, err)
+		}
+	}
+}
 
 func TestCleanupRetainedBackupHonorsRetentionAndIsIdempotent(t *testing.T) {
 	h, activation := activatedRetirementHarness(t)

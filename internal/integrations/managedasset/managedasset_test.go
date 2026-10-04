@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
@@ -148,6 +149,34 @@ func managedAssetTraceNames(events []tracepkg.Event) []string {
 		}
 	}
 	return names
+}
+
+func TestPruneStaleManagedStages(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	old := now.Add(-2 * staleManagedStageAge)
+	for _, name := range []string{".linux-amd64-staging-old", ".linux-amd64-tree-staging-old", ".linux-amd64-staging-fresh", "payload"} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(name, "old") {
+			if err := os.Chtimes(path, old, old); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	pruneStaleManagedStages(root, now)
+	for _, name := range []string{".linux-amd64-staging-old", ".linux-amd64-tree-staging-old"} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Fatalf("stale stage %q still exists: %v", name, err)
+		}
+	}
+	for _, name := range []string{".linux-amd64-staging-fresh", "payload"} {
+		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+			t.Fatalf("kept entry %q removed: %v", name, err)
+		}
+	}
 }
 
 func TestSpecValidationRejectsUnsafeIdentityAndTransport(t *testing.T) {

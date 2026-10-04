@@ -336,11 +336,12 @@ func probeCDPLoopback(ctx context.Context, candidate Candidate) error {
 			return err
 		}
 	}
+	pruneStaleProbeProfiles(localParent, time.Now())
 	localProfile, err := os.MkdirTemp(localParent, ".probe-")
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(localProfile)
+	defer removeProbeProfile(localProfile)
 	if err := prepareProbeProfile(localProfile, candidate.Transport); err != nil {
 		return err
 	}
@@ -397,6 +398,37 @@ func probeCDPLoopback(ctx context.Context, candidate Candidate) error {
 			}
 		}
 	}
+}
+
+func removeProbeProfile(path string) {
+	for attempt := 0; attempt < 4; attempt++ {
+		if err := os.RemoveAll(path); err == nil {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func pruneStaleProbeProfiles(parent string, now time.Time) {
+	entries, err := os.ReadDir(parent)
+	if err != nil {
+		return
+	}
+	staleBefore := now.Add(-time.Minute)
+	for _, entry := range entries {
+		if !entry.IsDir() || !probeArtifactName(entry.Name()) {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil || !info.ModTime().Before(staleBefore) {
+			continue
+		}
+		removeProbeProfile(filepath.Join(parent, entry.Name()))
+	}
+}
+
+func probeArtifactName(name string) bool {
+	return strings.HasPrefix(name, ".probe-") || strings.HasPrefix(name, ".diag-")
 }
 
 func prepareProbeProfile(localProfile string, transport Transport) error {

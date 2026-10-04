@@ -1,6 +1,7 @@
 package completion
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ const (
 	maxHistoryFileBytes     = 2 << 20
 	maxSequenceFileBytes    = 64 << 10
 	maxArchiveRecordBytes   = 16 << 10
+	maxArchiveRecords       = 4096
 )
 
 type workspaceHistory struct {
@@ -134,18 +136,17 @@ func appendWorkspaceArchive(local workspacestate.Store, records []Record) error 
 	if err != nil {
 		return err
 	}
-	_, tailIssue, err := scanWorkspaceArchive(local)
+	existing, tailIssue, err := scanWorkspaceArchive(local)
 	if err != nil {
 		return err
 	}
-	repaired, err := statepkg.RepairJSONLTail(path)
-	if err != nil {
-		return fmt.Errorf("repair completion archive tail: %w", err)
+	combined := append(existing, records...)
+	if len(combined) > maxArchiveRecords {
+		combined = combined[len(combined)-maxArchiveRecords:]
+		return writeWorkspaceArchive(path, combined)
 	}
-	if tailIssue && !repaired {
-		if err := statepkg.DropJSONLTailRecord(path); err != nil {
-			return fmt.Errorf("drop corrupt completion archive tail: %w", err)
-		}
+	if tailIssue {
+		return writeWorkspaceArchive(path, combined)
 	}
 	for _, record := range records {
 		if err := statepkg.AppendJSONL(path, record, 0600, maxArchiveRecordBytes); err != nil {
@@ -153,6 +154,40 @@ func appendWorkspaceArchive(local workspacestate.Store, records []Record) error 
 		}
 	}
 	return nil
+}
+
+func compactWorkspaceArchive(local workspacestate.Store) error {
+	path, err := workspaceArchivePath(local)
+	if err != nil {
+		return err
+	}
+	records, _, err := scanWorkspaceArchive(local)
+	if err != nil {
+		return err
+	}
+	if len(records) <= maxArchiveRecords {
+		return nil
+	}
+	if len(records) > maxArchiveRecords {
+		records = records[len(records)-maxArchiveRecords:]
+	}
+	return writeWorkspaceArchive(path, records)
+}
+
+func writeWorkspaceArchive(path string, records []Record) error {
+	var buffer bytes.Buffer
+	for _, record := range records {
+		line, err := json.Marshal(record)
+		if err != nil {
+			return fmt.Errorf("encode completion archive: %w", err)
+		}
+		if len(line)+1 > maxArchiveRecordBytes {
+			return fmt.Errorf("completion archive record exceeds %d byte limit", maxArchiveRecordBytes)
+		}
+		buffer.Write(line)
+		buffer.WriteByte('\n')
+	}
+	return statepkg.WriteFileAtomic(path, buffer.Bytes(), 0600)
 }
 
 func archiveTailIssue(local workspacestate.Store) (bool, error) {

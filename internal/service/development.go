@@ -17,6 +17,8 @@ import (
 
 const codeMCPModulePath = "go.mewis.me/codemcp"
 
+const developmentGoCacheMaxBytes int64 = 4 << 30
+
 var (
 	developmentLookPath = exec.LookPath
 	developmentCommand  = runDevelopmentCommand
@@ -219,8 +221,66 @@ func buildGoRunDevelopmentBinary(ctx context.Context, configRoot, currentBinary,
 		span.FailMessage("Development runtime staging failed", err)
 		return "", err
 	}
+	_ = pruneDevelopmentGoCache(configRoot, developmentGoCacheMaxBytes)
 	span.EndMessage("Development runtime build prepared", tracepkg.String("binary", prepared))
 	return prepared, nil
+}
+
+func pruneDevelopmentGoCache(configRoot string, maxBytes int64) error {
+	if maxBytes <= 0 {
+		return nil
+	}
+	configured := strings.TrimSpace(os.Getenv("GOCACHE"))
+	if configured == "" {
+		return nil
+	}
+	cacheRoot := filepath.Clean(configured)
+	ownedRoot := filepath.Clean(filepath.Join(configRoot, "runtime", "cache", "go-build"))
+	if cacheRoot != ownedRoot {
+		return nil
+	}
+	over, err := directoryExceedsBytes(cacheRoot, maxBytes)
+	if err != nil || !over {
+		return err
+	}
+	return os.RemoveAll(cacheRoot)
+}
+
+func directoryExceedsBytes(root string, maxBytes int64) (bool, error) {
+	var total int64
+	over := false
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			if os.IsNotExist(walkErr) {
+				return nil
+			}
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if !info.Mode().IsRegular() || info.Size() <= 0 {
+			return nil
+		}
+		if info.Size() > maxBytes || total > maxBytes-info.Size() {
+			over = true
+			return filepath.SkipAll
+		}
+		total += info.Size()
+		if total > maxBytes {
+			over = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return over || total > maxBytes, nil
 }
 
 func buildDevelopmentFrontend(ctx context.Context, sourceRoot string) error {

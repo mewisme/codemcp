@@ -23,13 +23,17 @@ import (
 )
 
 const (
-	indexVersion      = 1
-	defaultMaxCount   = 500
-	defaultRetention  = 30 * 24 * time.Hour
-	defaultMaxFile    = 5 * 1024 * 1024
-	maxDirectoryDepth = 32
-	maxIndexBytes     = 16 << 20
-	maxIndexEntries   = 100_000
+	indexVersion               = 1
+	defaultMaxCount            = 500
+	defaultRetention           = 30 * 24 * time.Hour
+	defaultArchiveMaxCount     = 2000
+	defaultArchiveRetention    = 90 * 24 * time.Hour
+	defaultArchiveMaxBytes     = int64(2 << 30)
+	staleCheckpointBlobTempAge = 24 * time.Hour
+	defaultMaxFile             = 5 * 1024 * 1024
+	maxDirectoryDepth          = 32
+	maxIndexBytes              = 16 << 20
+	maxIndexEntries            = 100_000
 )
 
 type Store struct {
@@ -37,6 +41,9 @@ type Store struct {
 	Workspaces        *workspace.Manager
 	MaxCount          int
 	Retention         time.Duration
+	ArchiveMaxCount   int
+	ArchiveRetention  time.Duration
+	ArchiveMaxBytes   int64
 	MaxFileBytes      int64
 	MaxDirectoryDepth int
 	mu                sync.Mutex
@@ -133,7 +140,16 @@ func DefaultRoot() string {
 }
 
 func NewStore(root string) *Store {
-	return &Store{Root: root, MaxCount: defaultMaxCount, Retention: defaultRetention, MaxFileBytes: defaultMaxFile, MaxDirectoryDepth: maxDirectoryDepth}
+	return &Store{
+		Root:              root,
+		MaxCount:          defaultMaxCount,
+		Retention:         defaultRetention,
+		ArchiveMaxCount:   defaultArchiveMaxCount,
+		ArchiveRetention:  defaultArchiveRetention,
+		ArchiveMaxBytes:   defaultArchiveMaxBytes,
+		MaxFileBytes:      defaultMaxFile,
+		MaxDirectoryDepth: maxDirectoryDepth,
+	}
 }
 
 func NewWorkspaceStore(root string, workspaces *workspace.Manager) *Store {
@@ -157,13 +173,16 @@ func (s *Store) Ensure(workspaceID string) error {
 
 func (s *Store) Config(workspaceID string) map[string]any {
 	return map[string]any{
-		"enabled":           true,
-		"store_path":        s.Path(workspaceID),
-		"max_count":         s.maxCount(),
-		"retention_days":    int(s.retention().Hours() / 24),
-		"inline_file_bytes": s.maxFileBytes(),
-		"max_file_bytes":    s.maxFileBytes(),
-		"note":              "File-editing MCP tools are tracked. Retention, restore, and clear preserve history in the archive; purge permanently removes active and archived history. Large files use checkpoint blobs; shell command file changes are not captured.",
+		"enabled":                true,
+		"store_path":             s.Path(workspaceID),
+		"max_count":              s.maxCount(),
+		"retention_days":         int(s.retention().Hours() / 24),
+		"archive_max_count":      s.archiveMaxCount(),
+		"archive_retention_days": int(s.archiveRetention().Hours() / 24),
+		"archive_max_bytes":      s.archiveMaxBytes(),
+		"inline_file_bytes":      s.maxFileBytes(),
+		"max_file_bytes":         s.maxFileBytes(),
+		"note":                   "File-editing MCP tools are tracked. Active retention moves history into a bounded archive; archive count, age, and byte limits remove oldest archived history. Purge permanently removes all remaining history. Large files use checkpoint blobs; shell command file changes are not captured.",
 	}
 }
 
@@ -255,6 +274,7 @@ func (s *Store) BeforeAllowed(workspaceID, workspaceRoot string, allowedRoots []
 	for _, summary := range archived {
 		_ = os.RemoveAll(s.checkpointDir(workspaceID, summary.ID))
 	}
+	_ = s.pruneArchiveHistoryLocked(workspaceID)
 	return id, nil
 }
 
@@ -719,6 +739,7 @@ func (s *Store) writeBlob(workspaceID, checkpointID, source string, input io.Rea
 	if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
 		return "", "", 0, err
 	}
+	pruneStaleCheckpointBlobTemps(filepath.Dir(destination), time.Now())
 	temp, err := os.CreateTemp(filepath.Dir(destination), ".blob-*")
 	if err != nil {
 		return "", "", 0, err
@@ -740,6 +761,24 @@ func (s *Store) writeBlob(workspaceID, checkpointID, source string, input io.Rea
 		return "", "", 0, err
 	}
 	return relative, hex.EncodeToString(hash.Sum(nil)), size, nil
+}
+
+func pruneStaleCheckpointBlobTemps(root string, now time.Time) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	cutoff := now.Add(-staleCheckpointBlobTempAge)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), ".blob-") {
+			continue
+		}
+		info, infoErr := entry.Info()
+		if infoErr != nil || !info.ModTime().Before(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(root, entry.Name()))
+	}
 }
 
 func (s *Store) blobPath(workspaceID, checkpointID, relative string) (string, error) {
@@ -895,6 +934,27 @@ func (s *Store) retention() time.Duration {
 		return s.Retention
 	}
 	return defaultRetention
+}
+
+func (s *Store) archiveMaxCount() int {
+	if s.ArchiveMaxCount > 0 {
+		return s.ArchiveMaxCount
+	}
+	return defaultArchiveMaxCount
+}
+
+func (s *Store) archiveRetention() time.Duration {
+	if s.ArchiveRetention > 0 {
+		return s.ArchiveRetention
+	}
+	return defaultArchiveRetention
+}
+
+func (s *Store) archiveMaxBytes() int64 {
+	if s.ArchiveMaxBytes > 0 {
+		return s.ArchiveMaxBytes
+	}
+	return defaultArchiveMaxBytes
 }
 
 func (s *Store) maxFileBytes() int64 {

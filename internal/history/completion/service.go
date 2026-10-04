@@ -29,7 +29,8 @@ type Options struct {
 }
 
 type AcceptOptions struct {
-	SkipHooks map[string]bool
+	SkipHooks            map[string]bool
+	SuppressLiveDelivery bool
 }
 
 type EventSubscription = sequence.Subscription[Event]
@@ -151,8 +152,12 @@ func (s *Service) AcceptWithOptions(identity Identity, input Input, options Acce
 	}
 
 	accepted := eventFor(record)
-	s.events.EnsureSequence(record.Sequence - 1)
-	_ = s.events.Publish(accepted)
+	if options.SuppressLiveDelivery {
+		s.events.EnsureSequence(record.Sequence)
+	} else {
+		s.events.EnsureSequence(record.Sequence - 1)
+		_ = s.events.Publish(accepted)
+	}
 	if s.hooks != nil {
 		_ = s.hooks.DispatchExcept(accepted, options.SkipHooks)
 	}
@@ -455,6 +460,9 @@ func (s *Service) compactHotHistories() error {
 		local, err := s.workspaces.LocalState(item.ID)
 		if err != nil {
 			continue
+		}
+		if err := compactWorkspaceArchive(local); err != nil {
+			return err
 		}
 		history, exists, err := loadWorkspaceHistory(local)
 		if err != nil {

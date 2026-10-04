@@ -3,6 +3,7 @@ package checkpoint
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,6 +67,144 @@ func TestCountRetentionArchivesWithoutDestroyingHistory(t *testing.T) {
 	got, err := restarted.GetArchived("ws_test", firstID)
 	if err != nil || got == nil || got.Checkpoint.ID != firstID {
 		t.Fatalf("restarted archived checkpoint=%#v err=%v", got, err)
+	}
+}
+
+func TestArchiveHistoryPrunesByCount(t *testing.T) {
+	store := NewStore(t.TempDir())
+	store.ArchiveMaxCount = 2
+	store.ArchiveRetention = 365 * 24 * time.Hour
+	workspaceID := "ws_test"
+	for index := 0; index < 3; index++ {
+		id := fmt.Sprintf("cp_%d", index)
+		dir := store.archiveCheckpointDir(workspaceID, id)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte("{}"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC()
+	index := ArchiveIndex{Version: archiveIndexVersion, Checkpoints: []ArchivedSummary{
+		{Checkpoint: Summary{ID: "cp_0"}, ArchivedAt: now.Add(-3 * time.Hour).Format(time.RFC3339Nano), Reason: ArchiveReasonClear},
+		{Checkpoint: Summary{ID: "cp_1"}, ArchivedAt: now.Add(-2 * time.Hour).Format(time.RFC3339Nano), Reason: ArchiveReasonClear},
+		{Checkpoint: Summary{ID: "cp_2"}, ArchivedAt: now.Add(-time.Hour).Format(time.RFC3339Nano), Reason: ArchiveReasonClear},
+	}}
+	if err := store.writeArchiveIndex(workspaceID, index); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pruneArchiveHistoryLocked(workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.readArchiveIndex(workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Checkpoints) != 2 || got.Checkpoints[0].Checkpoint.ID != "cp_1" || got.Checkpoints[1].Checkpoint.ID != "cp_2" {
+		t.Fatalf("archive=%#v", got.Checkpoints)
+	}
+	if _, err := os.Stat(store.archiveCheckpointDir(workspaceID, "cp_0")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("old archive payload still exists: %v", err)
+	}
+}
+
+func TestArchiveHistoryPrunesByAge(t *testing.T) {
+	store := NewStore(t.TempDir())
+	store.ArchiveMaxCount = 10
+	store.ArchiveRetention = time.Hour
+	store.ArchiveMaxBytes = 1 << 20
+	workspaceID := "ws_test"
+	now := time.Now().UTC()
+	for _, fixture := range []struct {
+		id         string
+		archivedAt time.Time
+	}{
+		{id: "cp_old", archivedAt: now.Add(-2 * time.Hour)},
+		{id: "cp_new", archivedAt: now.Add(-30 * time.Minute)},
+	} {
+		dir := store.archiveCheckpointDir(workspaceID, fixture.id)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "manifest.json"), []byte("{}"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.writeArchiveIndex(workspaceID, ArchiveIndex{Version: archiveIndexVersion, Checkpoints: []ArchivedSummary{
+		{Checkpoint: Summary{ID: "cp_old"}, ArchivedAt: now.Add(-2 * time.Hour).Format(time.RFC3339Nano), Reason: ArchiveReasonClear},
+		{Checkpoint: Summary{ID: "cp_new"}, ArchivedAt: now.Add(-30 * time.Minute).Format(time.RFC3339Nano), Reason: ArchiveReasonClear},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pruneArchiveHistoryLocked(workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.readArchiveIndex(workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Checkpoints) != 1 || got.Checkpoints[0].Checkpoint.ID != "cp_new" {
+		t.Fatalf("archive=%#v", got.Checkpoints)
+	}
+}
+
+func TestArchiveHistoryPrunesByBytesOldestFirst(t *testing.T) {
+	store := NewStore(t.TempDir())
+	store.ArchiveMaxCount = 10
+	store.ArchiveRetention = 365 * 24 * time.Hour
+	store.ArchiveMaxBytes = 10
+	workspaceID := "ws_test"
+	now := time.Now().UTC()
+	items := []ArchivedSummary{}
+	for index, id := range []string{"cp_old", "cp_new"} {
+		dir := store.archiveCheckpointDir(workspaceID, id)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "payload"), []byte("12345678"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		items = append(items, ArchivedSummary{
+			Checkpoint: Summary{ID: id},
+			ArchivedAt: now.Add(time.Duration(index-2) * time.Hour).Format(time.RFC3339Nano),
+			Reason:     ArchiveReasonClear,
+		})
+	}
+	if err := store.writeArchiveIndex(workspaceID, ArchiveIndex{Version: archiveIndexVersion, Checkpoints: items}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pruneArchiveHistoryLocked(workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.readArchiveIndex(workspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Checkpoints) != 1 || got.Checkpoints[0].Checkpoint.ID != "cp_new" {
+		t.Fatalf("archive=%#v", got.Checkpoints)
+	}
+}
+
+func TestArchiveHistoryCleansCommittedPruneStaging(t *testing.T) {
+	store := NewStore(t.TempDir())
+	workspaceID := "ws_test"
+	dataRoot := store.archiveDataRoot(workspaceID)
+	if err := os.MkdirAll(dataRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(dataRoot, ".cp_old.tmp-prune-fixture")
+	if err := os.MkdirAll(stale, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.writeArchiveIndex(workspaceID, ArchiveIndex{Version: archiveIndexVersion, Checkpoints: []ArchivedSummary{}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.pruneArchiveHistoryLocked(workspaceID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("committed prune staging still exists: %v", err)
 	}
 }
 

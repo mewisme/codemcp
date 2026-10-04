@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type fakeBrowserRuntime struct {
@@ -292,6 +293,36 @@ func TestPrepareProbeProfileBootstrapsManagedDefault(t *testing.T) {
 	info, err := os.Stat(filepath.Join(root, managedProfileDirectory))
 	if err != nil || !info.IsDir() {
 		t.Fatalf("probe Default profile missing: info=%v err=%v", info, err)
+	}
+}
+
+func TestPruneStaleProbeProfilesRemovesOnlyOldProbeArtifacts(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	old := now.Add(-2 * time.Minute)
+	for _, name := range []string{".probe-old", ".diag-old", ".probe-fresh", "ChatGPT"} {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if name != ".probe-fresh" && name != "ChatGPT" {
+			if err := os.Chtimes(path, old, old); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	pruneStaleProbeProfiles(root, now)
+
+	for _, name := range []string{".probe-old", ".diag-old"} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Fatalf("stale probe artifact %q still exists: %v", name, err)
+		}
+	}
+	for _, name := range []string{".probe-fresh", "ChatGPT"} {
+		if _, err := os.Stat(filepath.Join(root, name)); err != nil {
+			t.Fatalf("non-stale browser directory %q removed: %v", name, err)
+		}
 	}
 }
 
