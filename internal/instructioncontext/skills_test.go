@@ -3,7 +3,6 @@ package instructioncontext
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"go.mewis.me/codemcp/internal/instructionpolicy"
@@ -100,30 +99,19 @@ func TestLoadSkillSummariesSkipsSymlinkSkills(t *testing.T) {
 	}
 }
 
-func TestLoadSkillSummariesWithUserForWorkspaceIncludesUserProviderMetadata(t *testing.T) {
+func TestLoadSkillSummariesWithUserForWorkspaceExcludesUserProviders(t *testing.T) {
 	t.Setenv("CM_CONFIG_DIR", t.TempDir())
 	workspaceRoot := t.TempDir()
 	home := t.TempDir()
-	path := writeSkillFile(t, home, ".agents", "home-release", "home-release", "Home release workflow", "SECRET HOME BODY")
+	writeSkillFile(t, home, ".agents", "home-release", "home-release", "Home release workflow", "SECRET HOME BODY")
 
 	loaded, err := LoadSkillSummariesWithUserForWorkspace(workspaceRoot, workspaceRoot, home, instructionpolicy.DefaultConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
-	found := false
 	for _, skill := range loaded {
-		if skill.Name != "home-release" {
-			continue
+		if skill.Name == "home-release" {
+			t.Fatalf("global provider leaked into project-context skill summaries: %#v", loaded)
 		}
-		found = true
-		if skill.Source != ".agents" || skill.Path != path || skill.Description != "Home release workflow" {
-			t.Fatalf("home provider summary=%#v", skill)
-		}
-		if strings.Contains(skill.Description, "SECRET HOME BODY") || strings.Contains(skill.Name, "SECRET HOME BODY") {
-			t.Fatalf("skill body leaked into metadata summary: %#v", skill)
-		}
-	}
-	if !found {
-		t.Fatalf("home provider missing from project-context skill summaries: %#v", loaded)
 	}
 }

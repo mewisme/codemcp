@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/controlguard"
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
@@ -330,7 +331,7 @@ func instructionCapabilityContains(capabilities *instructioncontext.ToolCapabili
 	return false
 }
 
-func TestContextToolsIgnoreLegacyGlobalPolicyAndLoadCanonicalUserSources(t *testing.T) {
+func TestContextToolsIgnoreLegacyGlobalPolicyAndLoadOnlyNativeGlobalSources(t *testing.T) {
 	runtime, workspaceID, _, _ := newContextToolRuntime(t)
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -345,11 +346,24 @@ func TestContextToolsIgnoreLegacyGlobalPolicyAndLoadCanonicalUserSources(t *test
 	if err := os.WriteFile(filepath.Join(home, ".claude", "rules", "ts.md"), []byte("---\nglobs: [\"**/*.ts\"]\n---\nUSER CLAUDE RULE"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	skillDir := filepath.Join(home, ".claude", "skills", "user-review")
+	skillDir := filepath.Join(home, ".claude", "skills", "provider-review")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: user-review\ndescription: USER CLAUDE SKILL\n---\nsecret body"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: provider-review\ndescription: USER CLAUDE SKILL\n---\nsecret body"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(configformat.RootPath(), "rules"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configformat.RootPath(), "rules", "ts.md"), []byte("---\nglobs: [\"**/*.ts\"]\n---\nGLOBAL NATIVE RULE"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	nativeSkillDir := filepath.Join(configformat.RootPath(), "skills", "user-review")
+	if err := os.MkdirAll(nativeSkillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nativeSkillDir, "SKILL.md"), []byte("---\nname: user-review\ndescription: GLOBAL NATIVE SKILL\n---\nnative body"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	disabled := false

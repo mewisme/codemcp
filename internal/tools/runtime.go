@@ -308,8 +308,6 @@ func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (R
 					sessionWorkspaceCount = resolution.SessionWorkspaceCount
 				}
 			}
-		} else if name == "workspace_register" {
-			workspaceID = approvalControlWorkspace
 		}
 	}
 	claimedApproval := approval.Request{}

@@ -88,7 +88,6 @@ var mcpToolBindings = map[ID][]string{
 	AgentSend:                       {"agent_send"},
 	AgentCancel:                     {"agent_cancel"},
 	VersionAbout:                    {"get_version"},
-	WorkspaceRegister:               {"workspace_register"},
 	WorkspaceList:                   {"workspace_list"},
 	WorkspaceContainerList:          {"workspace_container_list"},
 	WorkspaceContainerShow:          {"workspace_container_status"},

@@ -428,10 +428,13 @@ func TestSharedGuidanceRendersIntoWorkflowAndServerInstructions(t *testing.T) {
 			t.Fatalf("server instructions missing shared guidance %q", step)
 		}
 	}
-	for _, expected := range []string{"workspace_register", "workspace_status", "workspace_container_context", "persisted shell cwd", "agent_status", "project_context", "list_skills"} {
+	for _, expected := range []string{"workspace_list", "workspace_status", "workspace_container_context", "persisted shell cwd", "agent_status", "project_context", "list_skills"} {
 		if !strings.Contains(server, expected) {
 			t.Fatalf("server instructions missing bootstrap %q: %s", expected, server)
 		}
+	}
+	if strings.Contains(server, "workspace_register") {
+		t.Fatalf("server instructions still expose workspace_register: %s", server)
 	}
 }
 
@@ -454,10 +457,13 @@ func TestCanonicalServerInstructionModelIsDeterministicAndBounded(t *testing.T) 
 	if len(first) == 0 || len(first) > 8192 {
 		t.Fatalf("server instructions length=%d", len(first))
 	}
-	for _, expected := range []string{"workspace_register", "workspace_container_context", "project_context", "load_path_rules", "load_skill", "/plan", "create_plan", "apply_patch", "run_command", "verify", "agent_complete"} {
+	for _, expected := range []string{"workspace_list", "workspace_container_context", "project_context", "load_path_rules", "load_skill", "/plan", "create_plan", "apply_patch", "run_command", "verify", "agent_complete"} {
 		if !strings.Contains(first, expected) {
 			t.Fatalf("server instructions missing %q", expected)
 		}
+	}
+	if strings.Contains(first, "workspace_register") {
+		t.Fatalf("server instructions still expose workspace_register")
 	}
 }
 

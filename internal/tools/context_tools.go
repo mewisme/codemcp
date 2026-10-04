@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"go.mewis.me/codemcp/internal/checkpoint"
+	"go.mewis.me/codemcp/internal/configformat"
 	"go.mewis.me/codemcp/internal/instructioncontext"
 	"go.mewis.me/codemcp/internal/instructionpolicy"
 	"go.mewis.me/codemcp/internal/integrations/semantic"
@@ -183,7 +184,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 			return Result{}, err
 		}
 		if !skills.IsBuiltin(value.Skill) {
-			if _, err := workspaces.ResolvePath(item.ID, item.Path, value.Skill.Path, true); err != nil && !withinDirectory(home, value.Skill.Path) {
+			if _, err := workspaces.ResolvePath(item.ID, item.Path, value.Skill.Path, true); err != nil && !withinDirectory(configformat.RootPath(), value.Skill.Path) {
 				return Result{}, fmt.Errorf("skill path: %w", err)
 			}
 		}
@@ -484,7 +485,7 @@ func registerContextTools(registry *Registry, workspaces *workspace.Manager, che
 			return Result{}, err
 		}
 		for _, rule := range values {
-			if _, err := workspaces.ResolvePath(item.ID, item.Path, rule.Path, true); err != nil && !withinDirectory(home, rule.Path) {
+			if _, err := workspaces.ResolvePath(item.ID, item.Path, rule.Path, true); err != nil && !withinDirectory(configformat.RootPath(), rule.Path) {
 				return Result{}, fmt.Errorf("rule path: %w", err)
 			}
 		}

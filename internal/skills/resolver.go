@@ -35,19 +35,11 @@ func DiscoverForWorkspace(projectRoot, workspaceRoot string) ([]Skill, error) {
 }
 
 func DiscoverUser(home string, policy instructionpolicy.Config) ([]Skill, error) {
+	_ = home
 	_ = policy
 	result := make([]Skill, 0)
 	seen := map[string]bool{}
 	walkSkills(filepath.Join(configformat.RootPath(), "skills"), instructionsource.NativeSource, 0, &result, seen)
-	providers, err := instructionsource.DiscoverDynamicProviders(home)
-	if err != nil {
-		return nil, err
-	}
-	for _, provider := range providers {
-		if provider.SkillsDir != "" {
-			walkSkills(provider.SkillsDir, provider.Name, 0, &result, seen)
-		}
-	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Name == result[j].Name {
 			return result[i].Path < result[j].Path

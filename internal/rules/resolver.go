@@ -35,18 +35,10 @@ func DiscoverForWorkspace(projectRoot, workspaceRoot string) ([]Rule, error) {
 }
 
 func DiscoverUser(home string, policy instructionpolicy.Config) ([]Rule, error) {
+	_ = home
 	_ = policy
 	result := make([]Rule, 0)
 	walkRules(filepath.Join(configformat.RootPath(), "rules"), instructionsource.NativeSource, 0, &result)
-	providers, err := instructionsource.DiscoverDynamicProviders(home)
-	if err != nil {
-		return nil, err
-	}
-	for _, provider := range providers {
-		if provider.RulesDir != "" {
-			walkRules(provider.RulesDir, provider.Name, 0, &result)
-		}
-	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Path < result[j].Path })
 	return result, nil
 }

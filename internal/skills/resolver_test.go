@@ -90,7 +90,7 @@ func TestDiscoverForWorkspaceUsesSelectedProjectProvidersAndWorkspaceNativeFirst
 	}
 }
 
-func TestDiscoverWithUserForWorkspaceIncludesUserProvidersAndKeepsSourcePrecedence(t *testing.T) {
+func TestDiscoverWithUserForWorkspaceLoadsOnlyNativeGlobalSkills(t *testing.T) {
 	configRoot := t.TempDir()
 	t.Setenv("CM_CONFIG_DIR", configRoot)
 	workspaceRoot := t.TempDir()
@@ -111,7 +111,7 @@ func TestDiscoverWithUserForWorkspaceIncludesUserProvidersAndKeepsSourcePreceden
 	write(configRoot, "", "global-native")
 	write(workspaceRoot, ".agents", "agents-provider")
 	write(workspaceRoot, ".newagent", "future-provider")
-	write(home, ".agents", "home-provider")
+	write(home, ".codex", "home-provider")
 
 	disabled := false
 	policy := instructionpolicy.DefaultConfig()
@@ -120,17 +120,19 @@ func TestDiscoverWithUserForWorkspaceIncludesUserProvidersAndKeepsSourcePreceden
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(values) != 8 {
+	if len(values) != 7 {
 		t.Fatalf("skills=%#v", values)
 	}
-	want := []string{".cm", ".cm", ".agents", ".newagent", ".agents", BuiltinSource, BuiltinSource, BuiltinSource}
+	want := []string{".cm", ".cm", ".agents", ".newagent", BuiltinSource, BuiltinSource, BuiltinSource}
 	for i, source := range want {
 		if values[i].Source != source {
 			t.Fatalf("skill %d=%#v want source=%q", i, values[i], source)
 		}
 	}
-	if values[4].Name != "home-provider" {
-		t.Fatalf("home provider missing from effective inventory: %#v", values)
+	for _, value := range values {
+		if value.Name == "home-provider" {
+			t.Fatalf("global provider skill leaked into effective inventory: %#v", values)
+		}
 	}
 }
 

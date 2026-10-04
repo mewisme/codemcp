@@ -5,17 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"go.mewis.me/codemcp/internal/controlguard"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/workspace"
 )
-
-type WorkspaceRegistrationResult struct {
-	WorkspaceID   string `json:"workspace_id"`
-	WorkspaceRoot string `json:"workspace_root"`
-	InstanceID    string `json:"instance_id"`
-	InstanceName  string `json:"instance_name"`
-}
 
 type WorkspaceStatusResult struct {
 	WorkspaceID        string   `json:"workspace_id"`
@@ -28,36 +20,6 @@ type WorkspaceStatusResult struct {
 }
 
 func RegisterWorkspaceTools(registry *Registry, manager *workspace.Manager, shells ...*shellruntime.Manager) {
-	registry.MustRegister("workspace_register", Schema{
-		Name:         "workspace_register",
-		Title:        "Register Workspace",
-		Description:  "Register a local workspace root. Re-registering the same canonical path returns the same workspace_id.",
-		InputSchema:  json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}`),
-		OutputSchema: json.RawMessage(`{"type":"object","properties":{"workspace_id":{"type":"string"},"workspace_root":{"type":"string"},"instance_id":{"type":"string"},"instance_name":{"type":"string"}},"required":["workspace_id","workspace_root","instance_id","instance_name"],"additionalProperties":false}`),
-		Annotations:  ToolAnnotations(RiskEdit),
-		Capability:   toolCapability(CapabilityDomainWorkspace),
-	}, func(ctx context.Context, args map[string]any) (Result, error) {
-		path, err := requiredString(args, "path")
-		if err != nil {
-			return Result{}, err
-		}
-		if grant, ok := controlguard.GrantFromContext(ctx); !ok || grant.Code != controlguard.CodeControlPlaneMutation {
-			return Result{}, controlguard.New(controlguard.CodeControlPlaneMutation, "registering a local workspace requires local approval", true, nil)
-		}
-		item, err := manager.Register(path)
-		if err != nil {
-			return Result{}, err
-		}
-		if err := manager.Reload(); err != nil {
-			return Result{}, fmt.Errorf("workspace registered but runtime workspace reload failed: %w", err)
-		}
-		identity, err := manager.Instance()
-		if err != nil {
-			return Result{}, err
-		}
-		return JSONResult(WorkspaceRegistrationResult{WorkspaceID: item.ID, WorkspaceRoot: item.Path, InstanceID: identity.ID, InstanceName: identity.Name}), nil
-	})
-
 	registry.MustRegister("workspace_status", Schema{
 		Name:         "workspace_status",
 		Title:        "Workspace Status",

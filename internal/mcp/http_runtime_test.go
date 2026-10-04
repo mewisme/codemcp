@@ -100,10 +100,13 @@ func TestHTTPRuntimeDiscoverIsStateless(t *testing.T) {
 	if !ok || instructions != ProjectServerInstructions(BaseProfile()) {
 		t.Fatalf("instructions = %#v", result["instructions"])
 	}
-	for _, expected := range []string{"workspace_register", "workspace_status", "workspace_container_context", "agent_status", "project_context", "list_skills", "load_skill", "load_path_rules", "persisted shell cwd"} {
+	for _, expected := range []string{"workspace_list", "workspace_status", "workspace_container_context", "agent_status", "project_context", "list_skills", "load_skill", "load_path_rules", "persisted shell cwd"} {
 		if !strings.Contains(instructions, expected) {
 			t.Fatalf("instructions missing %q: %s", expected, instructions)
 		}
+	}
+	if strings.Contains(instructions, "workspace_register") {
+		t.Fatalf("instructions still expose workspace_register: %s", instructions)
 	}
 	capabilities, _ := result["capabilities"].(map[string]any)
 	toolsCapability, _ := capabilities["tools"].(map[string]any)
