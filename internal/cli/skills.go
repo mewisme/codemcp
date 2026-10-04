@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 
@@ -9,6 +11,12 @@ import (
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/cli/presentation"
+	"go.mewis.me/codemcp/internal/skills"
+)
+
+var (
+	errSkillRiskConfirmationRequired = errors.New("skill security risk confirmation is required; rerun with --yes")
+	errSkillRiskCancelled            = errors.New("skill security risk review cancelled")
 )
 
 type skillScopeFlags struct {
@@ -83,6 +91,7 @@ func skillsAddCommand() *cobra.Command {
 	var selectedSkill string
 	var all bool
 	var fullDepth bool
+	var yes bool
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "add <source>",
@@ -97,12 +106,27 @@ func skillsAddCommand() *cobra.Command {
 			if selectedSkill != "" && all {
 				return errors.New("--skill and --all are mutually exclusive")
 			}
-			logCommandStep(cmd, "SKILLS", "skills.add.acquiring", "Acquiring and validating GitHub skills")
+			var progress *commandProgress
+			if !asJSON && commandResultModeFor(cmd) == resultModeHuman {
+				progress = newCommandProgress(cmd, "SKILLS")
+				progress.Start("skills.add.installing", "Acquiring and installing GitHub skills", "GitHub skills installed")
+			}
 			result, err := service.Add(cmd.Context(), application.SkillAddRequest{
 				Scope: scope, Source: args[0], Skill: selectedSkill, All: all, FullDepth: fullDepth,
+				ReviewRisk: skillRiskReviewer(cmd, yes, "installation"),
 			})
 			if err != nil {
+				if progress != nil {
+					progress.Stop()
+				}
+				if errors.Is(err, errSkillRiskCancelled) {
+					renderSkillRiskCancelled(cmd, "Skill installation cancelled")
+					return nil
+				}
 				return err
+			}
+			if progress != nil {
+				progress.Complete()
 			}
 			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
 				return writeResultJSON(cmd, result)
@@ -121,6 +145,7 @@ func skillsAddCommand() *cobra.Command {
 	cmd.Flags().StringVar(&selectedSkill, "skill", "", "install exactly one discovered skill by validated name")
 	cmd.Flags().BoolVar(&all, "all", false, "install all discovered skills")
 	cmd.Flags().BoolVar(&fullDepth, "full-depth", false, "search nested repository paths even when canonical skill locations are found")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip security risk confirmation")
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
 }
@@ -128,6 +153,7 @@ func skillsAddCommand() *cobra.Command {
 func skillsUpdateCommand() *cobra.Command {
 	var scopeFlags skillScopeFlags
 	var all bool
+	var yes bool
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:               "update [name]",
@@ -150,10 +176,26 @@ func skillsUpdateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			logCommandStep(cmd, "SKILLS", "skills.update.acquiring", "Checking managed GitHub skills")
-			result, err := service.Update(cmd.Context(), application.SkillUpdateRequest{Scope: scope, Name: name, All: all})
+			var progress *commandProgress
+			if !asJSON && commandResultModeFor(cmd) == resultModeHuman {
+				progress = newCommandProgress(cmd, "SKILLS")
+				progress.Start("skills.update.checking", "Checking and updating managed GitHub skills", "Managed GitHub skills checked")
+			}
+			result, err := service.Update(cmd.Context(), application.SkillUpdateRequest{
+				Scope: scope, Name: name, All: all, ReviewRisk: skillRiskReviewer(cmd, yes, "update"),
+			})
 			if err != nil {
+				if progress != nil {
+					progress.Stop()
+				}
+				if errors.Is(err, errSkillRiskCancelled) {
+					renderSkillRiskCancelled(cmd, "Skill update cancelled")
+					return nil
+				}
 				return err
+			}
+			if progress != nil {
+				progress.Complete()
 			}
 			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
 				return writeResultJSON(cmd, result)
@@ -174,8 +216,165 @@ func skillsUpdateCommand() *cobra.Command {
 	}
 	addSkillScopeFlags(cmd, &scopeFlags)
 	cmd.Flags().BoolVar(&all, "all", false, "update every managed skill in the selected scope")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip security risk confirmation")
 	addJSONResultFlag(cmd, &asJSON)
 	return cmd
+}
+
+func skillRiskReviewer(cmd *cobra.Command, yes bool, action string) func(skills.SecurityAssessment) error {
+	return func(assessment skills.SecurityAssessment) error {
+		if !assessment.HasData() {
+			return nil
+		}
+		risky := assessment.RequiresConfirmation()
+		if commandResultModeFor(cmd) != resultModeHuman {
+			if risky && !yes {
+				return errSkillRiskConfirmationRequired
+			}
+			return nil
+		}
+
+		session := commandProgressSession(cmd)
+		if !risky || yes {
+			return session.WithInput(func(presenter *presentation.Presenter) {
+				renderSkillSecurityAssessment(cmd, presenter, assessment)
+			}, nil)
+		}
+
+		if cmd == nil || cmd.InOrStdin() == nil {
+			return errSkillRiskConfirmationRequired
+		}
+		scanner := bufio.NewScanner(cmd.InOrStdin())
+		answer := ""
+		prompt := "Security risks detected. Proceed with " + strings.TrimSpace(action) + "? [y/N]"
+		if err := session.WithInput(func(presenter *presentation.Presenter) {
+			renderSkillSecurityAssessment(cmd, presenter, assessment)
+			presenter.Prompt(prompt)
+		}, func() error {
+			if !scanner.Scan() {
+				if err := scanner.Err(); err != nil {
+					return err
+				}
+				return errSkillRiskConfirmationRequired
+			}
+			answer = strings.ToLower(strings.TrimSpace(scanner.Text()))
+			return nil
+		}); err != nil {
+			return err
+		}
+		if answer != "y" && answer != "yes" {
+			return errSkillRiskCancelled
+		}
+		return nil
+	}
+}
+
+func renderSkillRiskCancelled(cmd *cobra.Command, message string) {
+	session := commandProgressSession(cmd)
+	session.Append(func(presenter *presentation.Presenter) {
+		presenter.StateSection(presentation.StatusInactive, message)
+	})
+	session.SetCompletion("Cancelled")
+}
+
+func renderSkillSecurityAssessment(cmd *cobra.Command, presenter *presentation.Presenter, assessment skills.SecurityAssessment) {
+	if presenter == nil || !assessment.HasData() {
+		return
+	}
+	theme := presentation.NewTheme(commandTerminalCapabilities(cmd))
+	nameWidth := 0
+	for _, skill := range assessment.Skills {
+		if width := len(skill.Name); width > nameWidth {
+			nameWidth = width
+		}
+	}
+	if nameWidth > 36 {
+		nameWidth = 36
+	}
+	if nameWidth < 1 {
+		nameWidth = 1
+	}
+	const providerWidth = 18
+	lines := []string{
+		strings.Repeat(" ", nameWidth+2) +
+			padSkillRiskCell(theme.Render(presentation.RoleMuted, "Gen"), len("Gen"), providerWidth) +
+			padSkillRiskCell(theme.Render(presentation.RoleMuted, "Socket"), len("Socket"), providerWidth) +
+			theme.Render(presentation.RoleMuted, "Snyk"),
+	}
+	for _, skill := range assessment.Skills {
+		name := skill.Name
+		if len(name) > nameWidth {
+			if nameWidth > 1 {
+				name = name[:nameWidth-1] + "…"
+			} else {
+				name = "…"
+			}
+		}
+		lines = append(lines,
+			padSkillRiskCell(theme.Render(presentation.RoleActive, name), len(name), nameWidth+2)+
+				padSkillRiskAudit(theme, skill.Gen, false, providerWidth)+
+				padSkillRiskAudit(theme, skill.Socket, true, providerWidth)+
+				renderSkillRiskAudit(theme, skill.Snyk, false),
+		)
+	}
+	lines = append(lines, "", theme.Render(presentation.RoleMuted, "Details:")+" "+theme.Render(presentation.RoleMuted, assessment.DetailsURL))
+	presenter.Note("Security Risk Assessments", strings.Join(lines, "\n"))
+}
+
+func padSkillRiskCell(value string, visibleWidth, width int) string {
+	padding := width - visibleWidth
+	if padding < 0 {
+		padding = 0
+	}
+	return value + strings.Repeat(" ", padding)
+}
+
+func padSkillRiskAudit(theme presentation.Theme, audit *skills.PartnerAudit, socket bool, width int) string {
+	value, visibleWidth := skillRiskAuditLabel(theme, audit, socket)
+	return padSkillRiskCell(value, visibleWidth, width)
+}
+
+func renderSkillRiskAudit(theme presentation.Theme, audit *skills.PartnerAudit, socket bool) string {
+	value, _ := skillRiskAuditLabel(theme, audit, socket)
+	return value
+}
+
+func skillRiskAuditLabel(theme presentation.Theme, audit *skills.PartnerAudit, socket bool) (string, int) {
+	if audit == nil {
+		return theme.Render(presentation.RoleMuted, "--"), 2
+	}
+	if socket {
+		alerts := 0
+		if audit.Alerts != nil {
+			alerts = *audit.Alerts
+		}
+		label := fmt.Sprintf("%d alerts", alerts)
+		if alerts == 1 {
+			label = "1 alert"
+		}
+		role := presentation.RoleSuccess
+		if alerts > 0 {
+			role = presentation.RoleDanger
+		}
+		return theme.Render(role, label), len(label)
+	}
+	var label string
+	var role presentation.Role
+	switch audit.Risk {
+	case skills.SecurityRiskCritical:
+		label, role = "Critical Risk", presentation.RoleDanger
+	case skills.SecurityRiskHigh:
+		label, role = "High Risk", presentation.RoleDanger
+	case skills.SecurityRiskMedium:
+		label, role = "Med Risk", presentation.RoleWarning
+	case skills.SecurityRiskLow:
+		label, role = "Low Risk", presentation.RoleSuccess
+	case skills.SecurityRiskSafe:
+		label, role = "Safe", presentation.RoleSuccess
+	default:
+		label, role = "--", presentation.RoleMuted
+	}
+	return theme.Render(role, label), len(label)
 }
 
 func skillsRemoveCommand() *cobra.Command {
@@ -192,9 +391,20 @@ func skillsRemoveCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			var progress *commandProgress
+			if !asJSON && commandResultModeFor(cmd) == resultModeHuman {
+				progress = newCommandProgress(cmd, "SKILLS")
+				progress.Start("skills.remove.removing", "Removing native skill", "Native skill removed")
+			}
 			result, err := service.Remove(application.SkillRemoveRequest{Scope: scope, Name: args[0]})
 			if err != nil {
+				if progress != nil {
+					progress.Stop()
+				}
 				return err
+			}
+			if progress != nil {
+				progress.Complete()
 			}
 			if asJSON || commandResultModeFor(cmd) != resultModeHuman {
 				return writeResultJSON(cmd, result)

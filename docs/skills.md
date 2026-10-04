@@ -42,6 +42,26 @@ Repositories with multiple discovered skills require `--skill <name>` or `--all`
 
 Only the four GitHub source forms shown above are accepted. Local paths, archives, arbitrary URLs, generic Git hosts, package registries, and provider-directory sync are not part of this command surface.
 
+### Security risk assessments
+
+For repositories that GitHub positively identifies as public, `skills add` and `skills update` perform a best-effort security assessment using the same audit service and partner signals surfaced by the Vercel Labs `skills` CLI. Human output renders the compact `Gen`, `Socket`, and `Snyk` risk table plus the corresponding `skills.sh` details link.
+
+Safe, low-risk, unknown, and zero-alert results do not interrupt the command. Medium, high, or critical Gen/Snyk findings, or any Socket alerts, require confirmation before CodeMCP mutates the skill store:
+
+```bash
+cm skills add owner/repo --skill example
+cm skills update example
+```
+
+Use `-y/--yes` to acknowledge detected risks without an interactive prompt:
+
+```bash
+cm skills add owner/repo --skill example --yes
+cm skills update example --yes
+```
+
+Risk checks are advisory and fail open when the audit service or public-repository check is unavailable. CodeMCP does not send repository or skill identifiers to the audit service when GitHub reports the repository as private or when repository visibility cannot be confirmed. `DO_NOT_TRACK` or `DISABLE_TELEMETRY` disables these external audit requests entirely.
+
 ## Agent Skills compatibility
 
 A native skill uses an exact uppercase `SKILL.md` manifest. `name` and `description` are required. Names use lowercase letters, digits, and hyphens, are at most 64 characters, cannot start or end with a hyphen, and cannot contain consecutive hyphens.

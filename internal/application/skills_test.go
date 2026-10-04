@@ -24,7 +24,11 @@ func newSkillManagementHarness(t *testing.T) (*SkillManagementService, workspace
 	if err != nil {
 		t.Fatal(err)
 	}
-	return NewSkillManagementService(manager), item
+	service := NewSkillManagementService(manager)
+	service.AuditSecurity = func(context.Context, skills.GitHubSource, []string) (skills.SecurityAssessment, error) {
+		return skills.SecurityAssessment{}, nil
+	}
+	return service, item
 }
 
 func TestSkillManagementScopeResolutionUsesCanonicalStores(t *testing.T) {
@@ -200,6 +204,112 @@ func TestSkillManagementExactSelectionFindsDirectRootSkillAlongsidePriorityConta
 	}
 	if _, err := os.Stat(filepath.Join(root, "archify-review")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("unselected priority-container skill was installed: %v", err)
+	}
+}
+
+func TestSkillManagementRiskReviewGatesAddBeforeMutation(t *testing.T) {
+	service, item := newSkillManagementHarness(t)
+	repository := t.TempDir()
+	writeRepositorySkill(t, repository, "risky", "risky")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("1", 40))
+	service.AuditSecurity = func(context.Context, skills.GitHubSource, []string) (skills.SecurityAssessment, error) {
+		return riskySkillAssessment("owner/repo", "risky"), nil
+	}
+
+	request := SkillAddRequest{Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo"}
+	if _, err := service.Add(t.Context(), request); err == nil || !strings.Contains(err.Error(), "risk review is required") {
+		t.Fatalf("unreviewed risky add err=%v", err)
+	}
+	root := workspacestate.New(item.Path).SkillsRoot()
+	if _, err := os.Stat(filepath.Join(root, "risky")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("risky add mutated before review: %v", err)
+	}
+
+	reviewed := false
+	request.ReviewRisk = func(assessment skills.SecurityAssessment) error {
+		reviewed = assessment.RequiresConfirmation()
+		return nil
+	}
+	result, err := service.Add(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reviewed || len(result.Skills) != 1 || result.Skills[0].Name != "risky" {
+		t.Fatalf("reviewed=%v result=%#v", reviewed, result)
+	}
+}
+
+func TestSkillManagementRiskReviewRejectsUpdateBeforeAnyMutation(t *testing.T) {
+	service, item := newSkillManagementHarness(t)
+	repository := t.TempDir()
+	writeRepositorySkill(t, repository, "managed-risk", "managed-risk")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("2", 40))
+	if _, err := service.Add(t.Context(), SkillAddRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	root := workspacestate.New(item.Path).SkillsRoot()
+	metadataBefore, err := os.ReadFile(filepath.Join(root, skills.ManagedSourcesFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repository, "managed-risk", "new.txt"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("3", 40))
+	service.AuditSecurity = func(context.Context, skills.GitHubSource, []string) (skills.SecurityAssessment, error) {
+		return riskySkillAssessment("owner/repo", "managed-risk"), nil
+	}
+	denied := errors.New("review denied")
+	_, err = service.Update(t.Context(), SkillUpdateRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID},
+		Name:  "managed-risk",
+		ReviewRisk: func(skills.SecurityAssessment) error {
+			return denied
+		},
+	})
+	if !errors.Is(err, denied) {
+		t.Fatalf("update review err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "managed-risk", "new.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("update mutated tree before review: %v", err)
+	}
+	metadataAfter, err := os.ReadFile(filepath.Join(root, skills.ManagedSourcesFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(metadataAfter) != string(metadataBefore) {
+		t.Fatalf("update mutated metadata before review\nbefore=%s\nafter=%s", metadataBefore, metadataAfter)
+	}
+}
+
+func TestSkillManagementSecurityAuditFailureIsAdvisory(t *testing.T) {
+	service, item := newSkillManagementHarness(t)
+	repository := t.TempDir()
+	writeRepositorySkill(t, repository, "audit-fail-open", "audit-fail-open")
+	service.AcquireRepository = staticRepositoryAcquirer(repository, strings.Repeat("4", 40))
+	service.AuditSecurity = func(context.Context, skills.GitHubSource, []string) (skills.SecurityAssessment, error) {
+		return skills.SecurityAssessment{}, errors.New("audit unavailable")
+	}
+	result, err := service.Add(t.Context(), SkillAddRequest{
+		Scope: SkillScopeRequest{WorkspaceID: item.ID}, Source: "owner/repo",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Skills) != 1 || result.Skills[0].Name != "audit-fail-open" {
+		t.Fatalf("result=%#v", result)
+	}
+}
+
+func riskySkillAssessment(source, name string) skills.SecurityAssessment {
+	return skills.SecurityAssessment{
+		Source: source, DetailsURL: "https://skills.sh/" + source,
+		Skills: []skills.SkillSecurityAssessment{{
+			Name: name, Gen: &skills.PartnerAudit{Risk: skills.SecurityRiskHigh},
+		}},
 	}
 }
 

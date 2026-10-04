@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +18,7 @@ import (
 	"go.mewis.me/codemcp/internal/cli/presentation"
 	"go.mewis.me/codemcp/internal/configformat"
 	gitpkg "go.mewis.me/codemcp/internal/git"
+	"go.mewis.me/codemcp/internal/skills"
 	"go.mewis.me/codemcp/internal/workspace"
 )
 
@@ -42,9 +45,15 @@ func TestSkillsCommandGrammarAliasesScopeConflictAndCompletion(t *testing.T) {
 	if add.Flags().Lookup("skill") == nil || add.Flags().Lookup("all") == nil || add.Flags().Lookup("full-depth") == nil {
 		t.Fatal("skills add selection flags are missing")
 	}
+	if add.Flags().ShorthandLookup("y") == nil || add.Flags().ShorthandLookup("y").Name != "yes" {
+		t.Fatal("skills add -y/--yes flag is missing")
+	}
 	update, _, _ := root.Find([]string{"skills", "update"})
 	if update.Flags().Lookup("all") == nil {
 		t.Fatal("skills update --all flag is missing")
+	}
+	if update.Flags().ShorthandLookup("y") == nil || update.Flags().ShorthandLookup("y").Name != "yes" {
+		t.Fatal("skills update -y/--yes flag is missing")
 	}
 	removeAlias, remaining, err := root.Find([]string{"skills", "rm"})
 	if err != nil || removeAlias == nil || removeAlias.Name() != "remove" || len(remaining) != 0 {
@@ -188,6 +197,48 @@ func TestSkillsAddDefaultsWorkspaceAndInfoShowsManagedSource(t *testing.T) {
 	}
 }
 
+func TestSkillsAddHumanProgressStartsBeforeRepositoryMutation(t *testing.T) {
+	configRoot, workspaceRoot := newSkillsCLIFixture(t)
+	repository, _ := createCLISkillGitRepository(t, "streamed-skill")
+	configureCLIGitHubRewrite(t, repository, "owner", "repo")
+
+	gate := newProgressGateWriter("Acquiring and installing GitHub skills")
+	cmd := newRootCommand()
+	cmd.SetOut(presentation.WrapWriter(gate, presentation.Capabilities{
+		Width: 120, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
+	}))
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SilenceErrors = true
+	cmd.SilenceUsage = true
+	cmd.SetArgs([]string{"--config-dir", configRoot, "skills", "add", "owner/repo"})
+
+	done := make(chan error, 1)
+	go func() { done <- executeCommand(cmd) }()
+
+	select {
+	case <-gate.reached:
+	case <-time.After(5 * time.Second):
+		close(gate.release)
+		t.Fatal("human progress did not render before skill add")
+	}
+	installed := filepath.Join(workspaceRoot, ".cm", "skills", "streamed-skill")
+	if _, err := os.Stat(installed); !errors.Is(err, os.ErrNotExist) {
+		close(gate.release)
+		t.Fatalf("skill mutation started before progress became visible: %v", err)
+	}
+	close(gate.release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(installed, "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	text := gate.String()
+	if !strings.Contains(text, "GitHub skills installed") || !strings.Contains(text, "Skills installed") {
+		t.Fatalf("human add progress/result missing: %q", text)
+	}
+}
+
 func TestSkillsAddRejectsSelectionAndScopeConflictsBeforeNetwork(t *testing.T) {
 	configRoot, _ := newSkillsCLIFixture(t)
 	for _, args := range [][]string{
@@ -246,8 +297,194 @@ func TestSkillsCLIUpdateAndRemoveManagedSkill(t *testing.T) {
 	}
 }
 
+func TestSkillsUpdateAndRemoveHumanProgress(t *testing.T) {
+	configRoot, _ := newSkillsCLIFixture(t)
+	repository, _ := createCLISkillGitRepository(t, "human-progress")
+	configureCLIGitHubRewrite(t, repository, "owner", "repo")
+	executeSkillsCLI(t, configRoot, "skills", "add", "owner/repo", "--json")
+
+	if err := os.WriteFile(filepath.Join(repository, "human-progress", "updated.txt"), []byte("updated\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "."}, {"commit", "--quiet", "-m", "update human progress fixture"}} {
+		if _, err := gitpkg.OrThrow(t.Context(), repository, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	updateText := executeSkillsCLI(t, configRoot, "skills", "update", "human-progress")
+	if !strings.Contains(updateText, "Managed GitHub skills checked") || !strings.Contains(updateText, "Skills updated") {
+		t.Fatalf("human update progress/result missing: %q", updateText)
+	}
+	removeText := executeSkillsCLI(t, configRoot, "skills", "rm", "human-progress")
+	if !strings.Contains(removeText, "Native skill removed") || !strings.Contains(removeText, "Skill removed") {
+		t.Fatalf("human remove progress/result missing: %q", removeText)
+	}
+}
+
+func TestSkillRiskReviewerRendersVercelStyleAssessmentAndOnlyPromptsWhenRisky(t *testing.T) {
+	alerts := 2
+	assessment := skills.SecurityAssessment{
+		Source: "owner/repo", DetailsURL: "https://skills.sh/owner/repo",
+		Skills: []skills.SkillSecurityAssessment{{
+			Name:   "risk-demo",
+			Gen:    &skills.PartnerAudit{Risk: skills.SecurityRiskHigh},
+			Socket: &skills.PartnerAudit{Risk: skills.SecurityRiskUnknown, Alerts: &alerts},
+			Snyk:   &skills.PartnerAudit{Risk: skills.SecurityRiskSafe},
+		}},
+	}
+
+	root := newRootCommand()
+	var output bytes.Buffer
+	root.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{
+		Width: 120, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
+	}))
+	root.SetErr(&bytes.Buffer{})
+	root.SetIn(strings.NewReader("yes\n"))
+	cmd, _, err := root.Find([]string{"skills", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := skillRiskReviewer(cmd, false, "installation")(assessment); err != nil {
+		t.Fatal(err)
+	}
+	closeCommandProgress(cmd, nil)
+	text := output.String()
+	for _, want := range []string{
+		"Security Risk Assessments", "Gen", "Socket", "Snyk",
+		"risk-demo", "High Risk", "2 alerts", "Safe",
+		"Details:", "https://skills.sh/owner/repo",
+		"Security risks detected. Proceed with installation? [y/N]",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("risk assessment missing %q: %q", want, text)
+		}
+	}
+
+	root = newRootCommand()
+	output.Reset()
+	root.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{
+		Width: 120, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
+	}))
+	root.SetErr(&bytes.Buffer{})
+	root.SetIn(strings.NewReader("no\n"))
+	cmd, _, err = root.Find([]string{"skills", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	safeAssessment := assessment
+	safeAssessment.Skills = []skills.SkillSecurityAssessment{{
+		Name: "safe-demo", Gen: &skills.PartnerAudit{Risk: skills.SecurityRiskLow},
+		Socket: &skills.PartnerAudit{Alerts: new(int)}, Snyk: &skills.PartnerAudit{Risk: skills.SecurityRiskSafe},
+	}}
+	if err := skillRiskReviewer(cmd, false, "installation")(safeAssessment); err != nil {
+		t.Fatal(err)
+	}
+	closeCommandProgress(cmd, nil)
+	if text := output.String(); strings.Contains(text, "Proceed with") || !strings.Contains(text, "Low Risk") || !strings.Contains(text, "0 alerts") {
+		t.Fatalf("safe assessment should render without prompting: %q", text)
+	}
+}
+
+func TestSkillRiskReviewerHonorsYesAndRejectsNonInteractiveRiskWithoutIt(t *testing.T) {
+	assessment := skills.SecurityAssessment{
+		Source: "owner/repo", DetailsURL: "https://skills.sh/owner/repo",
+		Skills: []skills.SkillSecurityAssessment{{
+			Name: "risk-demo", Gen: &skills.PartnerAudit{Risk: skills.SecurityRiskCritical},
+		}},
+	}
+
+	root := newRootCommand()
+	var output bytes.Buffer
+	root.SetOut(presentation.WrapWriter(&output, presentation.Capabilities{
+		Width: 120, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
+	}))
+	root.SetErr(&bytes.Buffer{})
+	cmd, _, err := root.Find([]string{"skills", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := skillRiskReviewer(cmd, true, "installation")(assessment); err != nil {
+		t.Fatal(err)
+	}
+	closeCommandProgress(cmd, nil)
+	if text := output.String(); !strings.Contains(text, "Critical Risk") || strings.Contains(text, "Proceed with") {
+		t.Fatalf("--yes risk rendering=%q", text)
+	}
+
+	root = newRootCommand()
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	cmd, _, err = root.Find([]string{"skills", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := skillRiskReviewer(cmd, false, "installation")(assessment); !errors.Is(err, errSkillRiskConfirmationRequired) {
+		t.Fatalf("non-interactive risk err=%v", err)
+	}
+}
+
+func TestSkillRiskReviewerDeclineCancels(t *testing.T) {
+	root := newRootCommand()
+	root.SetOut(presentation.WrapWriter(&bytes.Buffer{}, presentation.Capabilities{
+		Width: 120, Unicode: true, Interactive: true, CursorControl: true, Animation: true,
+	}))
+	root.SetErr(&bytes.Buffer{})
+	root.SetIn(strings.NewReader("n\n"))
+	cmd, _, err := root.Find([]string{"skills", "update"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assessment := skills.SecurityAssessment{
+		Source: "owner/repo", DetailsURL: "https://skills.sh/owner/repo",
+		Skills: []skills.SkillSecurityAssessment{{
+			Name: "risk-demo", Snyk: &skills.PartnerAudit{Risk: skills.SecurityRiskMedium},
+		}},
+	}
+	if err := skillRiskReviewer(cmd, false, "update")(assessment); !errors.Is(err, errSkillRiskCancelled) {
+		t.Fatalf("decline err=%v", err)
+	}
+	closeCommandProgress(cmd, nil)
+}
+
+type progressGateWriter struct {
+	mu      sync.Mutex
+	buffer  bytes.Buffer
+	needle  string
+	reached chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newProgressGateWriter(needle string) *progressGateWriter {
+	return &progressGateWriter{
+		needle: needle, reached: make(chan struct{}), release: make(chan struct{}),
+	}
+}
+
+func (writer *progressGateWriter) Write(data []byte) (int, error) {
+	writer.mu.Lock()
+	_, _ = writer.buffer.Write(data)
+	match := strings.Contains(string(data), writer.needle)
+	writer.mu.Unlock()
+	if match {
+		writer.once.Do(func() {
+			close(writer.reached)
+			<-writer.release
+		})
+	}
+	return len(data), nil
+}
+
+func (writer *progressGateWriter) String() string {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	return writer.buffer.String()
+}
+
 func newSkillsCLIFixture(t *testing.T) (string, string) {
 	t.Helper()
+	t.Setenv("DO_NOT_TRACK", "1")
 	previousRoot := configformat.RootPath()
 	configRoot := filepath.Join(t.TempDir(), "config")
 	t.Setenv(configformat.EnvConfigDir, configRoot)

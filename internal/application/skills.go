@@ -38,11 +38,12 @@ type SkillScopeResolution struct {
 }
 
 type SkillAddRequest struct {
-	Scope     SkillScopeRequest `json:"scope"`
-	Source    string            `json:"source"`
-	Skill     string            `json:"skill,omitempty"`
-	All       bool              `json:"all,omitempty"`
-	FullDepth bool              `json:"full_depth,omitempty"`
+	Scope      SkillScopeRequest                     `json:"scope"`
+	Source     string                                `json:"source"`
+	Skill      string                                `json:"skill,omitempty"`
+	All        bool                                  `json:"all,omitempty"`
+	FullDepth  bool                                  `json:"full_depth,omitempty"`
+	ReviewRisk func(skills.SecurityAssessment) error `json:"-"`
 }
 
 type SkillAddResult struct {
@@ -80,9 +81,10 @@ type SkillInfoRequest struct {
 }
 
 type SkillUpdateRequest struct {
-	Scope SkillScopeRequest `json:"scope"`
-	Name  string            `json:"name,omitempty"`
-	All   bool              `json:"all,omitempty"`
+	Scope      SkillScopeRequest                     `json:"scope"`
+	Name       string                                `json:"name,omitempty"`
+	All        bool                                  `json:"all,omitempty"`
+	ReviewRisk func(skills.SecurityAssessment) error `json:"-"`
 }
 
 type SkillUpdateItem struct {
@@ -125,11 +127,14 @@ type acquiredSkillRepository struct {
 type SkillManagementService struct {
 	Workspaces           *workspace.Manager
 	AcquireRepository    func(context.Context, skills.GitHubSource) (acquiredSkillRepository, error)
+	AuditSecurity        func(context.Context, skills.GitHubSource, []string) (skills.SecurityAssessment, error)
 	BeforeMetadataCommit func() error
 }
 
 func NewSkillManagementService(workspaces *workspace.Manager) *SkillManagementService {
-	return &SkillManagementService{Workspaces: workspaces, AcquireRepository: acquireGitHubSkillRepository}
+	return &SkillManagementService{
+		Workspaces: workspaces, AcquireRepository: acquireGitHubSkillRepository, AuditSecurity: skills.AuditPublicGitHubSkills,
+	}
 }
 
 func (s *SkillManagementService) resolveScope(request SkillScopeRequest) (SkillScopeResolution, error) {
@@ -241,6 +246,13 @@ func (s *SkillManagementService) Add(ctx context.Context, request SkillAddReques
 	if err := rejectSkillInstallConflicts(target.Root, metadata, selected); err != nil {
 		return SkillAddResult{}, err
 	}
+	selectedNames := make([]string, 0, len(selected))
+	for _, candidate := range selected {
+		selectedNames = append(selectedNames, candidate.Skill.Name)
+	}
+	if err := s.reviewSkillSecurity(ctx, source, selectedNames, request.ReviewRisk); err != nil {
+		return SkillAddResult{}, err
+	}
 
 	staged, err := skills.StageManagedSkills(target.Root, selected)
 	if err != nil {
@@ -330,6 +342,13 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	for _, key := range keys {
+		groupNames := append([]string(nil), groups[key]...)
+		sort.Strings(groupNames)
+		if err := s.reviewSkillSecurity(ctx, groupSources[key], groupNames, request.ReviewRisk); err != nil {
+			return SkillUpdateResult{}, err
+		}
+	}
 	result := SkillUpdateResult{Scope: target.Scope, WorkspaceID: target.WorkspaceID, Root: target.Root}
 	currentMetadata := skills.CloneManagedSources(metadata)
 	for _, key := range keys {
@@ -408,6 +427,28 @@ func (s *SkillManagementService) Update(ctx context.Context, request SkillUpdate
 		}
 	}
 	return result, nil
+}
+
+func (s *SkillManagementService) reviewSkillSecurity(
+	ctx context.Context,
+	source skills.GitHubSource,
+	names []string,
+	review func(skills.SecurityAssessment) error,
+) error {
+	if s == nil || s.AuditSecurity == nil {
+		return nil
+	}
+	assessment, err := s.AuditSecurity(ctx, source, names)
+	if err != nil || !assessment.HasData() {
+		return nil
+	}
+	if review != nil {
+		return review(assessment)
+	}
+	if assessment.RequiresConfirmation() {
+		return errors.New("skill security risk review is required before mutation")
+	}
+	return nil
 }
 
 func resolveManagedUpdateCandidate(candidates []skills.RepositorySkillCandidate, name, recordedPath string) (skills.RepositorySkillCandidate, bool, error) {
