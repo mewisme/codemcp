@@ -6,11 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -67,7 +68,13 @@ func launchExecBrowser(ctx context.Context, request LaunchRequest) (BrowserProce
 	if profilePath == "" || localProfile == "" {
 		return nil, BrowserEndpoint{}, errors.New("browser profile paths are required")
 	}
-	args := managerLaunchArgs(profilePath, request.Minimized)
+	// Chrome exposes navigator.webdriver when remote debugging requests port 0.
+	// Reserve an explicit loopback port so CDP does not change the page-visible automation state.
+	remoteDebuggingPort, err := allocateRemoteDebuggingPort(ctx, request.Candidate)
+	if err != nil {
+		return nil, BrowserEndpoint{}, fmt.Errorf("allocate browser debugging port: %w", err)
+	}
+	args := managerLaunchArgs(profilePath, request.Minimized, remoteDebuggingPort)
 	cmd := exec.Command(executable, args...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
@@ -75,7 +82,7 @@ func launchExecBrowser(ctx context.Context, request LaunchRequest) (BrowserProce
 		return nil, BrowserEndpoint{}, err
 	}
 	var process BrowserProcess = newExecBrowserProcess(cmd)
-	endpoint, relay, err := waitBrowserEndpoint(ctx, request.Candidate, localProfile, process)
+	endpoint, relay, err := waitBrowserEndpoint(ctx, request.Candidate, localProfile, remoteDebuggingPort, process)
 	if err != nil {
 		_ = process.Close(context.Background())
 		return nil, BrowserEndpoint{}, err
@@ -86,12 +93,13 @@ func launchExecBrowser(ctx context.Context, request LaunchRequest) (BrowserProce
 	return process, endpoint, nil
 }
 
-func managerLaunchArgs(profile string, minimized bool) []string {
+func managerLaunchArgs(profile string, minimized bool, remoteDebuggingPort int) []string {
 	args := []string{
 		"--no-first-run",
 		"--no-default-browser-check",
+		"--disable-background-mode",
 		"--remote-debugging-address=127.0.0.1",
-		"--remote-debugging-port=0",
+		"--remote-debugging-port=" + strconv.Itoa(remoteDebuggingPort),
 		"--disk-cache-size=67108864",
 		"--media-cache-size=67108864",
 		"--user-data-dir=" + profile,
@@ -102,6 +110,40 @@ func managerLaunchArgs(profile string, minimized bool) []string {
 		args = append(args, "--start-minimized")
 	}
 	return append(args, "about:blank")
+}
+
+func allocateRemoteDebuggingPort(ctx context.Context, candidate Candidate) (int, error) {
+	if candidate.Transport == TransportWSLHost {
+		return allocateWindowsHostLoopbackPort(ctx)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer listener.Close()
+	address, ok := listener.Addr().(*net.TCPAddr)
+	if !ok || address.Port <= 0 || address.Port > 65535 {
+		return 0, errors.New("loopback listener returned an invalid port")
+	}
+	return address.Port, nil
+}
+
+func allocateWindowsHostLoopbackPort(ctx context.Context) (int, error) {
+	powershell, err := exec.LookPath("powershell.exe")
+	if err != nil {
+		return 0, fmt.Errorf("windows-host browser requires powershell.exe: %w", err)
+	}
+	script := "$l=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);" +
+		"$l.Start();try{[Console]::Out.Write($l.LocalEndpoint.Port)}finally{$l.Stop()}"
+	output, err := exec.CommandContext(ctx, powershell, "-NoProfile", "-NonInteractive", "-Command", script).Output()
+	if err != nil {
+		return 0, fmt.Errorf("allocate Windows-host loopback port: %w", err)
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(string(output)))
+	if err != nil || port <= 0 || port > 65535 {
+		return 0, fmt.Errorf("windows-host loopback allocator returned invalid port %q", strings.TrimSpace(string(output)))
+	}
+	return port, nil
 }
 
 func interactiveLaunchArgs(request InteractiveLaunchRequest) ([]string, error) {
@@ -142,8 +184,10 @@ func interactiveLaunchArgs(request InteractiveLaunchRequest) ([]string, error) {
 	}, nil
 }
 
-func waitBrowserEndpoint(ctx context.Context, candidate Candidate, localProfile string, process BrowserProcess) (BrowserEndpoint, *loopbackRelay, error) {
-	portFile := filepath.Join(localProfile, "DevToolsActivePort")
+func waitBrowserEndpoint(ctx context.Context, candidate Candidate, _ string, expectedPort int, process BrowserProcess) (BrowserEndpoint, *loopbackRelay, error) {
+	if expectedPort <= 0 || expectedPort > 65535 {
+		return BrowserEndpoint{}, nil, errors.New("browser debugging port is invalid")
+	}
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	processDone := process.Done()
@@ -160,14 +204,11 @@ func waitBrowserEndpoint(ctx context.Context, candidate Candidate, localProfile 
 			}
 			return BrowserEndpoint{}, nil, errors.New("browser exited before CDP became ready")
 		case <-ticker.C:
-			port, err := readDevToolsPort(portFile)
-			if err != nil {
-				continue
-			}
-			endpoint := fmt.Sprintf("http://127.0.0.1:%d", port)
+			endpoint := fmt.Sprintf("http://127.0.0.1:%d", expectedPort)
 			var relay *loopbackRelay
 			if candidate.Transport == TransportWSLHost {
-				relay, err = startWindowsLoopbackRelay(port)
+				var err error
+				relay, err = startWindowsLoopbackRelay(expectedPort)
 				if err != nil {
 					return BrowserEndpoint{}, nil, err
 				}

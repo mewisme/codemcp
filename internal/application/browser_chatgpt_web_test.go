@@ -184,7 +184,7 @@ func TestBrowserIntegrationStatusDistinguishesUnavailableAndRunning(t *testing.T
 	}
 }
 
-func TestBrowserIntegrationStatusIsPassiveAndDoctorIsActive(t *testing.T) {
+func TestBrowserIntegrationStatusIsPassiveAndDoctorUsesExplicitVerification(t *testing.T) {
 	cfg := config.Default()
 	root := t.TempDir()
 	profile := applicationTestProfile(root)
@@ -192,12 +192,17 @@ func TestBrowserIntegrationStatusIsPassiveAndDoctorIsActive(t *testing.T) {
 		t.Fatal(err)
 	}
 	var calls []browser.Options
+	verifyCalls := 0
 	service := &BrowserIntegrationService{
 		LoadConfig: func() (config.Config, error) { return cfg, nil },
 		Root:       func() string { return root },
 		Detect: func(_ context.Context, options browser.Options) browser.Capability {
 			calls = append(calls, options)
 			return applicationTestCapability(profile)
+		},
+		Verify: func(_ context.Context, capability browser.Capability) browser.ProbeResult {
+			verifyCalls++
+			return browser.ProbeResult{Usable: true, Graphical: capability.Graphical, Family: capability.Family, Version: "154.0.0.0"}
 		},
 	}
 	if _, err := service.Status(context.Background()); err != nil {
@@ -209,8 +214,11 @@ func TestBrowserIntegrationStatusIsPassiveAndDoctorIsActive(t *testing.T) {
 	if _, err := service.Doctor(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(calls) != 2 || calls[1].Passive {
+	if len(calls) != 2 || !calls[1].Passive {
 		t.Fatalf("doctor detection options=%#v", calls)
+	}
+	if verifyCalls != 1 {
+		t.Fatalf("doctor verification calls=%d want=1", verifyCalls)
 	}
 }
 
@@ -229,6 +237,9 @@ func TestBrowserIntegrationMinimizedModeStillRequiresGraphicalSession(t *testing
 			capability := applicationTestCapability(profile)
 			capability.Graphical = false
 			return capability
+		},
+		Verify: func(_ context.Context, capability browser.Capability) browser.ProbeResult {
+			return browser.ProbeResult{Usable: false, Graphical: capability.Graphical, Family: capability.Family, Reason: "no graphical browser session is available"}
 		},
 	}
 	status, err := service.Status(context.Background())
@@ -327,6 +338,40 @@ func TestChatGPTWebStatusIsPassive(t *testing.T) {
 	}
 	if len(calls) != 1 || !calls[0].Passive {
 		t.Fatalf("status detection options=%#v", calls)
+	}
+}
+
+func TestChatGPTWebStatusAndBackendReadinessDoNotCreateManagedRuntime(t *testing.T) {
+	root := t.TempDir()
+	profile := applicationTestProfile(root)
+	if err := browser.PrepareProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	if err := chatgptweb.WriteAuthMarker(root, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	service := newApplicationChatGPTWebTestService(root, applicationChatGPTWebConfig(), profile)
+	service.Detect = func(_ context.Context, options browser.Options) browser.Capability {
+		if !options.Passive {
+			t.Fatalf("readiness detection was active: %#v", options)
+		}
+		capability := applicationTestCapability(profile)
+		capability.Usable = false
+		capability.Version = ""
+		return capability
+	}
+	service.NewManager = func(browser.ManagerOptions) (chatGPTBrowserRuntime, error) {
+		t.Fatal("status/readiness must not create a managed browser runtime")
+		return nil, nil
+	}
+
+	status, err := service.Status(context.Background())
+	if err != nil || status.State != chatgptweb.StateReady {
+		t.Fatalf("status=%#v err=%v", status, err)
+	}
+	settings, err := service.AgentBackendSettings(context.Background())
+	if err != nil || !settings.Available {
+		t.Fatalf("settings=%#v err=%v", settings, err)
 	}
 }
 
@@ -753,7 +798,11 @@ func TestChatGPTWebDoctorLiveVerificationReturnsOnlyReadiness(t *testing.T) {
 		detectOptions = append(detectOptions, options)
 		return applicationTestCapability(profile)
 	}
-	service.NewManager = func(browser.ManagerOptions) (chatGPTBrowserRuntime, error) { return runtime, nil }
+	managerCreations := 0
+	service.NewManager = func(browser.ManagerOptions) (chatGPTBrowserRuntime, error) {
+		managerCreations++
+		return runtime, nil
+	}
 	testEmail := "doctor" + "@" + "example.com"
 	service.Probe = &sequenceAuthProbe{evidence: []chatgptweb.AuthEvidence{{
 		OriginOK: true, TemporaryChat: true, Authenticated: true, Composer: true,
@@ -769,13 +818,33 @@ func TestChatGPTWebDoctorLiveVerificationReturnsOnlyReadiness(t *testing.T) {
 	if !result.LiveVerified || result.Status.State != chatgptweb.StateReady {
 		t.Fatalf("doctor=%#v", result)
 	}
-	if len(detectOptions) == 0 {
-		t.Fatal("doctor did not detect browser capability")
+	if len(detectOptions) != 1 {
+		t.Fatalf("doctor browser detection calls=%d want=1", len(detectOptions))
 	}
 	for index, options := range detectOptions {
-		if options.Passive {
-			t.Fatalf("doctor browser detection call %d was passive: %#v", index, options)
+		if !options.Passive {
+			t.Fatalf("doctor browser detection call %d was active: %#v", index, options)
 		}
+	}
+	if managerCreations != 1 {
+		t.Fatalf("doctor managed runtime creations=%d want=1", managerCreations)
+	}
+	runtime.mu.Lock()
+	acquired := append([]string(nil), runtime.acquired...)
+	released := append([]string(nil), runtime.released...)
+	tab := runtime.tab
+	runtime.mu.Unlock()
+	if len(acquired) != 1 || acquired[0] != chatGPTWebDoctorLease {
+		t.Fatalf("doctor acquired leases=%#v", acquired)
+	}
+	if len(released) != 1 || released[0] != chatGPTWebDoctorLease {
+		t.Fatalf("doctor released leases=%#v", released)
+	}
+	if tab == nil {
+		t.Fatal("doctor did not create a managed browser tab")
+	}
+	if navigations := tab.navigationSnapshot(); len(navigations) != 1 || navigations[0] != chatgptweb.TemporaryChatURL {
+		t.Fatalf("doctor navigations=%#v", navigations)
 	}
 	encoded, _ := json.Marshal(result)
 	for _, forbidden := range []string{"cookie", "bearer", "access_token", "person@example.com", strings.ToLower(testEmail), "doctor user"} {

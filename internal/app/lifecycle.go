@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.mewis.me/codemcp/internal/approval"
+	"go.mewis.me/codemcp/internal/integrations/browser"
 	producttelemetry "go.mewis.me/codemcp/internal/telemetry/product"
 	tracepkg "go.mewis.me/codemcp/internal/trace"
 )
@@ -172,6 +173,9 @@ func runRuntimeStartupTasks(tasks []runtimeStartupTask) error {
 }
 
 func (a *App) rollbackRuntimeStart(ctx context.Context, cause error) error {
+	browserCtx, browserCancel := context.WithTimeout(context.WithoutCancel(ctx), browser.DefaultCloseTTL)
+	cause = errors.Join(cause, a.closeChatGPTWebBrowser(browserCtx))
+	browserCancel()
 	if a.ApprovalNotifications != nil {
 		a.ApprovalNotifications.Stop()
 	}
@@ -215,6 +219,11 @@ func (a *App) Stop() error {
 		}
 	}
 	agentCancel()
+	browserCtx, browserCancel := context.WithTimeout(context.Background(), browser.DefaultCloseTTL)
+	if err := a.closeChatGPTWebBrowser(browserCtx); err != nil {
+		stopErr = errors.Join(stopErr, err)
+	}
+	browserCancel()
 	if a.Tools != nil && a.Tools.Approvals != nil {
 		for _, request := range a.Tools.Approvals.List(approval.Filter{Status: approval.StatusPending}) {
 			if _, err := a.Tools.Approvals.Cancel(request.ID, "runtime", "runtime shutdown"); err != nil {
@@ -316,6 +325,15 @@ func (a *App) Stop() error {
 		span.EndMessage("Application runtime stopped", tracepkg.Bool("running", false))
 	}
 	return stopErr
+}
+
+func (a *App) closeChatGPTWebBrowser(ctx context.Context) error {
+	if a == nil || a.chatGPTWeb == nil || a.chatGPTWeb.OwnedManager == nil {
+		return nil
+	}
+	runtime := a.chatGPTWeb.OwnedManager
+	a.chatGPTWeb.OwnedManager = nil
+	return runtime.Close(ctx)
 }
 
 func (a *App) recordRuntimeUsage(ctx context.Context, name producttelemetry.EventName, started time.Time, err error) {

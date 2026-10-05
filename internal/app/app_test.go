@@ -10,12 +10,14 @@ import (
 	"testing"
 	"time"
 
+	applicationpkg "go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/approval"
 	"go.mewis.me/codemcp/internal/auth"
 	"go.mewis.me/codemcp/internal/backgrounddelivery"
 	"go.mewis.me/codemcp/internal/config"
 	"go.mewis.me/codemcp/internal/controlguard"
 	agentcompletion "go.mewis.me/codemcp/internal/history/completion"
+	"go.mewis.me/codemcp/internal/integrations/browser"
 	"go.mewis.me/codemcp/internal/notification"
 	shellruntime "go.mewis.me/codemcp/internal/runtime/shell"
 	"go.mewis.me/codemcp/internal/tools"
@@ -548,6 +550,39 @@ func TestStopShutsDownUpstreamConnections(t *testing.T) {
 	}
 	if len(client.closed) != 1 || client.closed[0] != "one" {
 		t.Fatalf("closed = %#v", client.closed)
+	}
+}
+
+func TestStopClosesChatGPTWebBrowserManager(t *testing.T) {
+	t.Setenv("CM_CONFIG_DIR", t.TempDir())
+	root := t.TempDir()
+	profile := browser.ProfileRef{
+		HostPlatform: "linux",
+		Transport:    browser.TransportNative,
+		Path:         root,
+		LocalPath:    root,
+		LockPath:     root + ".lock",
+	}
+	candidate := browser.Candidate{
+		Family: browser.FamilyChromium, Executable: "/usr/bin/chromium", LocalExecutable: "/usr/bin/chromium",
+		HostPlatform: "linux", Transport: browser.TransportNative, Source: browser.SourceConfigured,
+	}
+	manager, err := browser.NewManager(browser.ManagerOptions{Capability: browser.Capability{
+		State: browser.StateAvailable, Enabled: true, Available: true, Launchable: true,
+		Family: browser.FamilyChromium, Executable: candidate.Executable, HostPlatform: "linux", Transport: browser.TransportNative, Graphical: true,
+		ProfileHostPlatform: profile.HostPlatform, Profile: &profile, Candidate: &candidate,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := applicationpkg.NewChatGPTWebService()
+	service.OwnedManager = manager
+	application := &App{chatGPTWeb: service}
+	if err := application.Stop(); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot := manager.Snapshot(); snapshot.State != browser.ManagerClosed {
+		t.Fatalf("browser manager state=%q want=%q", snapshot.State, browser.ManagerClosed)
 	}
 }
 

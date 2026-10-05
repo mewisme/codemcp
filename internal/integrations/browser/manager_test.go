@@ -430,6 +430,80 @@ func TestBrowserManagerWarmShutdownReopensSameProfile(t *testing.T) {
 	}
 }
 
+func TestBrowserManagerWarmShutdownWaitsForAllSharedAgentLeases(t *testing.T) {
+	manager, launcher, _ := newFakeManager(t, 5, time.Minute, 25*time.Millisecond)
+	defer manager.Close(context.Background())
+	if _, err := manager.Acquire(context.Background(), "session-a-agent"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Acquire(context.Background(), "session-b-agent"); err != nil {
+		t.Fatal(err)
+	}
+	launcher.mu.Lock()
+	process := launcher.processes[0]
+	launcher.mu.Unlock()
+
+	if err := manager.Release(context.Background(), "session-a-agent"); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if snapshot := manager.Snapshot(); !snapshot.Running || snapshot.ActiveLeases != 1 {
+		t.Fatalf("shared browser stopped while another agent still held a lease: %#v", snapshot)
+	}
+	select {
+	case <-process.Done():
+		t.Fatal("shared browser process exited before the last agent released its lease")
+	default:
+	}
+
+	if err := manager.Release(context.Background(), "session-b-agent"); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, time.Second, func() bool { return manager.Snapshot().State == ManagerStopped })
+	select {
+	case <-process.Done():
+	default:
+		t.Fatal("shared browser process remained alive after the warm idle timeout")
+	}
+}
+
+func TestBrowserManagerCloseOverridesWarmTTLAndActiveLeases(t *testing.T) {
+	manager, launcher, connector := newFakeManager(t, 5, time.Minute, time.Hour)
+	lease, err := manager.Acquire(context.Background(), "agent-active")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := connector.latest()
+	tab := client.tab(lease.TabID)
+	launcher.mu.Lock()
+	process := launcher.processes[0]
+	launcher.mu.Unlock()
+
+	if err := manager.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot := manager.Snapshot(); snapshot.State != ManagerClosed || snapshot.ActiveLeases != 0 {
+		t.Fatalf("closed snapshot=%#v", snapshot)
+	}
+	if !tab.isClosed() {
+		t.Fatal("manager close did not close the active agent tab")
+	}
+	select {
+	case <-process.Done():
+	default:
+		t.Fatal("manager close left the browser process alive")
+	}
+
+	replacement, err := NewManager(ManagerOptions{Capability: manager.capability, Launcher: &fakeLauncher{}, Connector: &fakeConnector{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer replacement.Close(context.Background())
+	if err := replacement.EnsureRunning(context.Background()); err != nil {
+		t.Fatalf("profile lock remained owned after terminal close: %v", err)
+	}
+}
+
 func TestBrowserManagerProfileLockPreventsConcurrentOwner(t *testing.T) {
 	root := t.TempDir()
 	profile := testProfile(root)

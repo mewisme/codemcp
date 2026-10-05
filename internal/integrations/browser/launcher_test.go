@@ -11,12 +11,13 @@ import (
 )
 
 func TestManagerLaunchArgsUseVisibleDedicatedWindowAndPrivateCDP(t *testing.T) {
-	args := managerLaunchArgs("/tmp/codemcp-browser-profile", false)
+	args := managerLaunchArgs("/tmp/codemcp-browser-profile", false, 43123)
 	joined := strings.Join(args, " ")
 	for _, required := range []string{
 		"--new-window",
+		"--disable-background-mode",
 		"--remote-debugging-address=127.0.0.1",
-		"--remote-debugging-port=0",
+		"--remote-debugging-port=43123",
 		"--user-data-dir=/tmp/codemcp-browser-profile",
 		"--profile-directory=Default",
 		"about:blank",
@@ -25,7 +26,7 @@ func TestManagerLaunchArgsUseVisibleDedicatedWindowAndPrivateCDP(t *testing.T) {
 			t.Fatalf("launch args missing %q: %v", required, args)
 		}
 	}
-	for _, forbidden := range []string{"--headless", "0.0.0.0", "--remote-allow-origins=*"} {
+	for _, forbidden := range []string{"--headless", "0.0.0.0", "--remote-allow-origins=*", "--remote-debugging-port=0"} {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("launch args contain unsafe/headless correctness dependency %q: %v", forbidden, args)
 		}
@@ -33,9 +34,19 @@ func TestManagerLaunchArgsUseVisibleDedicatedWindowAndPrivateCDP(t *testing.T) {
 }
 
 func TestManagerLaunchArgsSupportMinimizedVisibleWindow(t *testing.T) {
-	joined := strings.Join(managerLaunchArgs("/tmp/profile", true), " ")
+	joined := strings.Join(managerLaunchArgs("/tmp/profile", true, 43124), " ")
 	if !strings.Contains(joined, "--start-minimized") || strings.Contains(joined, "--headless") {
 		t.Fatalf("minimized args=%s", joined)
+	}
+}
+
+func TestAllocateNativeRemoteDebuggingPortReturnsNonZeroLoopbackPort(t *testing.T) {
+	port, err := allocateRemoteDebuggingPort(context.Background(), Candidate{Transport: TransportNative})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port <= 0 || port > 65535 {
+		t.Fatalf("port=%d", port)
 	}
 }
 

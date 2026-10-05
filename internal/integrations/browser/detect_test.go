@@ -61,20 +61,20 @@ func TestDetectExplicitValidExecutableWins(t *testing.T) {
 		goos:   "linux",
 		env:    map[string]string{"DISPLAY": ":0"},
 		look:   map[string]string{"chromium": "/usr/bin/chromium"},
-		exists: func(path string) bool { return path == "/opt/custom-browser" || path == "/usr/bin/chromium" },
+		exists: func(path string) bool { return path == "/opt/google-chrome" || path == "/usr/bin/chromium" },
 		probe: func(candidate Candidate) ProbeResult {
 			return ProbeResult{Usable: true, Graphical: true, Family: FamilyChrome, Version: "154.0.1.2"}
 		},
 	}
 	root := t.TempDir()
 	capability := Detect(context.Background(), Options{
-		Enabled: true, ConfiguredPath: "/opt/custom-browser", StateRoot: root, Runtime: fake.runtime(),
+		Enabled: true, ConfiguredPath: "/opt/google-chrome", StateRoot: root, Runtime: fake.runtime(),
 	})
-	if capability.State != StateAvailable || capability.Executable != "/opt/custom-browser" || capability.Family != FamilyChrome || capability.Transport != TransportNative {
+	if capability.State != StateAvailable || capability.Executable != "/opt/google-chrome" || capability.Family != FamilyChrome || capability.Transport != TransportNative {
 		t.Fatalf("capability=%#v", capability)
 	}
-	if len(fake.probed) != 1 || fake.probed[0].Source != SourceConfigured {
-		t.Fatalf("probe order=%#v", fake.probed)
+	if len(fake.probed) != 0 {
+		t.Fatalf("detection launched browser probes: %#v", fake.probed)
 	}
 	if capability.Profile == nil || capability.Profile.Path != filepath.Join(root, "browser", "chatgpt") {
 		t.Fatalf("profile=%#v", capability.Profile)
@@ -102,27 +102,25 @@ func TestDetectInvalidExplicitExecutableDoesNotFallThrough(t *testing.T) {
 	}
 }
 
-func TestDetectUnusableExplicitExecutableDoesNotFallThrough(t *testing.T) {
+func TestDetectConfiguredExecutableDoesNotProbeOrFallThrough(t *testing.T) {
 	fake := &fakeBrowserRuntime{
 		goos:   "linux",
 		env:    map[string]string{"DISPLAY": ":0"},
 		look:   map[string]string{"chromium": "/usr/bin/chromium"},
-		exists: func(path string) bool { return path == "/opt/custom-browser" || path == "/usr/bin/chromium" },
+		exists: func(path string) bool { return path == "/opt/google-chrome" || path == "/usr/bin/chromium" },
 		probe: func(candidate Candidate) ProbeResult {
-			if candidate.Source == SourceConfigured {
-				return ProbeResult{Graphical: true, Family: FamilyChrome, Reason: "launch probe failed"}
-			}
-			return ProbeResult{Usable: true, Graphical: true, Family: FamilyChromium}
+			t.Fatal("normal detection must never probe the configured browser")
+			return ProbeResult{}
 		},
 	}
 	capability := Detect(context.Background(), Options{
-		Enabled: true, ConfiguredPath: "/opt/custom-browser", StateRoot: t.TempDir(), Runtime: fake.runtime(),
+		Enabled: true, ConfiguredPath: "/opt/google-chrome", StateRoot: t.TempDir(), Runtime: fake.runtime(),
 	})
-	if capability.State != StateUnavailable || capability.Usable || !strings.Contains(capability.Reason, "launch probe failed") {
+	if capability.State != StateAvailable || !capability.Available || !capability.Launchable || capability.Usable {
 		t.Fatalf("capability=%#v", capability)
 	}
-	if len(fake.probed) != 1 || fake.probed[0].Source != SourceConfigured {
-		t.Fatalf("unusable explicit browser fell through: %#v", fake.probed)
+	if capability.Candidate == nil || capability.Candidate.Source != SourceConfigured || len(fake.probed) != 0 {
+		t.Fatalf("configured discovery=%#v probes=%#v", capability.Candidate, fake.probed)
 	}
 }
 
@@ -224,7 +222,7 @@ func TestDetectLinuxGraphicalRoutesCoverX11AndWayland(t *testing.T) {
 	}
 }
 
-func TestDetectActiveProbeMarksCapabilityUsableAndLaunchable(t *testing.T) {
+func TestVerifyExplicitlyProbesDiscoveredCapability(t *testing.T) {
 	fake := &fakeBrowserRuntime{
 		goos: "linux",
 		env:  map[string]string{"DISPLAY": ":0"},
@@ -239,11 +237,18 @@ func TestDetectActiveProbeMarksCapabilityUsableAndLaunchable(t *testing.T) {
 	capability := Detect(context.Background(), Options{
 		Enabled: true, StateRoot: t.TempDir(), Runtime: fake.runtime(),
 	})
-	if capability.State != StateAvailable || !capability.Available || !capability.Launchable || !capability.Usable {
+	if capability.State != StateAvailable || !capability.Available || !capability.Launchable || capability.Usable {
 		t.Fatalf("capability=%#v", capability)
 	}
+	if len(fake.probed) != 0 {
+		t.Fatalf("detection probes=%d want=0", len(fake.probed))
+	}
+	verification := verifyCapability(context.Background(), capability, fake.runtime())
+	if !verification.Usable || verification.Family != FamilyChromium || verification.Version != "154.0.0.0" {
+		t.Fatalf("verification=%#v", verification)
+	}
 	if len(fake.probed) != 1 {
-		t.Fatalf("active detection probes=%d want=1", len(fake.probed))
+		t.Fatalf("explicit verification probes=%d want=1", len(fake.probed))
 	}
 }
 
@@ -326,6 +331,59 @@ func TestPruneStaleProbeProfilesRemovesOnlyOldProbeArtifacts(t *testing.T) {
 	}
 }
 
+func TestTransientProbeRootsUseSystemTempAndPreserveLegacyCleanupRoot(t *testing.T) {
+	fake := &fakeBrowserRuntime{
+		goos: "linux",
+		windowsEnv: map[string]string{
+			"TEMP": `C:\Users\Mew\AppData\Local\Temp`,
+		},
+	}
+	local, host, legacy, err := transientProbeRoots(context.Background(), fake.runtime(), Candidate{
+		Transport:        TransportWSLHost,
+		HostPlatform:     "windows",
+		LocalAppData:     "/mnt/c/Users/Mew/AppData/Local",
+		HostLocalAppData: `C:\Users\Mew\AppData\Local`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local != "/mnt/c/Users/Mew/AppData/Local/Temp/CodeMCP/Browser" {
+		t.Fatalf("local temp root=%q", local)
+	}
+	if host != `C:\Users\Mew\AppData\Local\Temp\CodeMCP\Browser` {
+		t.Fatalf("host temp root=%q", host)
+	}
+	if legacy != "/mnt/c/Users/Mew/AppData/Local/CodeMCP/Browser" {
+		t.Fatalf("legacy root=%q", legacy)
+	}
+}
+
+func TestTransientProbeRootsUseNativeSystemTemp(t *testing.T) {
+	local, host, legacy, err := transientProbeRoots(context.Background(), Runtime{}, Candidate{Transport: TransportNative})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local != os.TempDir() || host != os.TempDir() || legacy != "" {
+		t.Fatalf("roots local=%q host=%q legacy=%q", local, host, legacy)
+	}
+}
+
+func TestWindowsTempDirFallsBackToTMP(t *testing.T) {
+	fake := &fakeBrowserRuntime{
+		goos: "linux",
+		windowsEnv: map[string]string{
+			"TMP": `C:\Users\Mew\AppData\Local\Temp`,
+		},
+	}
+	host, local, err := windowsTempDir(context.Background(), fake.runtime())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host != `C:\Users\Mew\AppData\Local\Temp` || local != "/mnt/c/Users/Mew/AppData/Local/Temp" {
+		t.Fatalf("temp host=%q local=%q", host, local)
+	}
+}
+
 func TestDetectBrowserAbsenceIsNormalUnavailableCapability(t *testing.T) {
 	fake := &fakeBrowserRuntime{goos: "linux", env: map[string]string{}, look: map[string]string{}}
 	capability := Detect(context.Background(), Options{Enabled: true, StateRoot: t.TempDir(), Runtime: fake.runtime()})
@@ -357,8 +415,8 @@ func TestDetectWSLgNativeRouteWinsBeforeWindowsHostFallback(t *testing.T) {
 	if capability.Transport != TransportNative || capability.HostPlatform != "linux" || capability.Executable != "/usr/bin/chromium" {
 		t.Fatalf("capability=%#v", capability)
 	}
-	if len(fake.probed) != 1 || fake.probed[0].Transport != TransportNative {
-		t.Fatalf("WSLg native route did not win: %#v", fake.probed)
+	if len(fake.probed) != 0 {
+		t.Fatalf("WSLg discovery unexpectedly probed: %#v", fake.probed)
 	}
 	if len(fake.mapped) != 0 {
 		t.Fatalf("Windows fallback was inspected before usable WSLg route: %#v", fake.mapped)
@@ -375,18 +433,9 @@ func TestDetectWSLWindowsHostFallbackUsesWindowsProfile(t *testing.T) {
 			"PROGRAMFILES(X86)": `C:\Program Files (x86)`,
 			"LOCALAPPDATA":      `C:\Users\Mew\AppData\Local`,
 		},
-		look: map[string]string{"chromium": "/usr/bin/chromium"},
+		look: map[string]string{},
 		exists: func(path string) bool {
-			return path == "/usr/bin/chromium" || strings.HasSuffix(strings.ToLower(strings.ReplaceAll(path, `\`, "/")), "/microsoft/edge/application/msedge.exe")
-		},
-		probe: func(candidate Candidate) ProbeResult {
-			if candidate.Transport == TransportNative {
-				return ProbeResult{Graphical: true, Reason: "native launch failed"}
-			}
-			if candidate.Family == FamilyEdge {
-				return ProbeResult{Usable: true, Graphical: true, Version: "154.0.0.0"}
-			}
-			return ProbeResult{Graphical: true, Reason: "not installed"}
+			return strings.HasSuffix(strings.ToLower(strings.ReplaceAll(path, `\`, "/")), "/microsoft/edge/application/msedge.exe")
 		},
 	}
 	capability := Detect(context.Background(), Options{Enabled: true, StateRoot: configRoot, Runtime: fake.runtime()})
@@ -457,7 +506,7 @@ func TestIsWSLUsesKernelFallbackOnlyOnLinux(t *testing.T) {
 	}
 }
 
-func TestDetectWSLWindowsHostRequiresUsablePrivateCDPRoute(t *testing.T) {
+func TestVerifyWSLWindowsHostReportsPrivateCDPFailure(t *testing.T) {
 	fake := &fakeBrowserRuntime{
 		goos: "linux",
 		env:  map[string]string{"WSL_DISTRO_NAME": "Ubuntu"},
@@ -474,11 +523,18 @@ func TestDetectWSLWindowsHostRequiresUsablePrivateCDPRoute(t *testing.T) {
 		},
 	}
 	capability := Detect(context.Background(), Options{Enabled: true, StateRoot: t.TempDir(), Runtime: fake.runtime()})
-	if capability.State != StateUnavailable || capability.Usable || capability.Available {
+	if capability.State != StateAvailable || !capability.Available || !capability.Launchable || capability.Usable {
 		t.Fatalf("capability=%#v", capability)
 	}
-	if len(fake.probed) == 0 {
-		t.Fatal("Windows host browser was not probed")
+	if len(fake.probed) != 0 {
+		t.Fatalf("detection unexpectedly probed Windows host browser: %#v", fake.probed)
+	}
+	verification := verifyCapability(context.Background(), capability, fake.runtime())
+	if verification.Usable || !strings.Contains(verification.Reason, "loopback CDP route is unreachable") {
+		t.Fatalf("verification=%#v", verification)
+	}
+	if len(fake.probed) != 1 || fake.probed[0].Transport != TransportWSLHost {
+		t.Fatalf("verification probes=%#v", fake.probed)
 	}
 }
 

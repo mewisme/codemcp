@@ -83,7 +83,7 @@ func (service *ChatGPTWebService) AgentBackendSettings(ctx context.Context) (cha
 	if service == nil {
 		return chatgptweb.AgentBackendSettings{}, errors.New("ChatGPT Web integration service is unavailable")
 	}
-	status, err := service.status(ctx, false, true)
+	status, err := service.status(ctx, false)
 	if err != nil {
 		return chatgptweb.AgentBackendSettings{}, err
 	}
@@ -106,7 +106,7 @@ func (service *ChatGPTWebService) AgentBrowserRuntime(ctx context.Context, maxAg
 	if maxAgents < 1 || maxAgents > chatgptweb.DefaultMaxAgents {
 		return nil, fmt.Errorf("ChatGPT Web max agents must be between 1 and %d", chatgptweb.DefaultMaxAgents)
 	}
-	status, err := service.status(ctx, false, true)
+	status, err := service.status(ctx, false)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func (service *ChatGPTWebService) AgentBrowserRuntime(ctx context.Context, maxAg
 		}
 		return nil, fmt.Errorf("ChatGPT Web backend unavailable: %s", boundedIntegrationReason(reason))
 	}
-	cfg, capability, err := service.capability(ctx, true)
+	cfg, capability, err := service.capability(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (service *ChatGPTWebService) ReconcileRuntimeConfig(ctx context.Context) er
 	if service == nil {
 		return nil
 	}
-	cfg, capability, err := service.capability(ctx, true)
+	cfg, capability, err := service.capability(ctx)
 	if err != nil {
 		return err
 	}
@@ -267,21 +267,25 @@ func NewChatGPTWebService() *ChatGPTWebService {
 }
 
 func (service *ChatGPTWebService) Status(ctx context.Context) (ChatGPTWebStatus, error) {
-	return service.status(ctx, false, true)
+	return service.status(ctx, false)
 }
 
-func (service *ChatGPTWebService) status(ctx context.Context, browserLocked bool, passive bool) (ChatGPTWebStatus, error) {
-	cfg, capability, err := service.capability(ctx, passive)
+func (service *ChatGPTWebService) status(ctx context.Context, browserLocked bool) (ChatGPTWebStatus, error) {
+	cfg, capability, err := service.capability(ctx)
 	if err != nil {
 		return ChatGPTWebStatus{}, err
 	}
+	return service.statusFromCapability(browserLocked, cfg, capability)
+}
+
+func (service *ChatGPTWebService) statusFromCapability(browserLocked bool, cfg config.Config, capability browser.Capability) (ChatGPTWebStatus, error) {
 	status := service.baseStatus(cfg, capability)
 	status = service.withRuntimePending(status, capability, cfg.Integrations.Browser.Minimized, browserLocked)
 	if !cfg.Integrations.ChatGPTWeb.Enabled {
 		status.State = chatgptweb.StateDisabled
 		return status, nil
 	}
-	if capability.State != browser.StateAvailable || (!passive && !capability.Usable) {
+	if capability.State != browser.StateAvailable {
 		status.State = chatgptweb.StateBrowserUnavailable
 		status.Reason = boundedIntegrationReason(capability.Reason)
 		return status, nil
@@ -461,7 +465,7 @@ func (service *ChatGPTWebService) Login(ctx context.Context) (ChatGPTWebStatus, 
 		}
 		runtimeClosed = true
 	}
-	status, err := service.status(ctx, true, true)
+	status, err := service.status(ctx, true)
 	if err != nil {
 		return ChatGPTWebStatus{}, err
 	}
@@ -517,7 +521,11 @@ func (service *ChatGPTWebService) Doctor(ctx context.Context) (ChatGPTWebDoctorR
 	}
 	service.browserMu.Lock()
 	defer service.browserMu.Unlock()
-	status, err := service.status(ctx, true, false)
+	cfg, capability, err := service.capability(ctx)
+	if err != nil {
+		return ChatGPTWebDoctorResult{}, err
+	}
+	status, err := service.statusFromCapability(true, cfg, capability)
 	if err != nil {
 		return ChatGPTWebDoctorResult{}, err
 	}
@@ -529,10 +537,6 @@ func (service *ChatGPTWebService) Doctor(ctx context.Context) (ChatGPTWebDoctorR
 	)
 	if !status.Enabled || !status.Authenticated || status.BrowserState == BrowserIntegrationUnavailable || status.BrowserState == BrowserIntegrationDisabled {
 		return result, nil
-	}
-	cfg, capability, err := service.capability(ctx, false)
-	if err != nil {
-		return ChatGPTWebDoctorResult{}, err
 	}
 	if status.BrowserState == BrowserIntegrationRunning && service.OwnedManager == nil {
 		result.Checks = append(result.Checks, ChatGPTWebDoctorCheck{ID: "live_auth", OK: false, Message: "live authentication probe deferred because another CodeMCP process owns the browser profile"})
@@ -626,28 +630,10 @@ func (service *ChatGPTWebService) Logout(ctx context.Context, force bool) (ChatG
 	if err := chatgptweb.RemoveAuthMarker(service.Root()); err != nil {
 		return ChatGPTWebStatus{}, err
 	}
-	return service.status(ctx, true, true)
+	return service.status(ctx, true)
 }
 
-func (service *ChatGPTWebService) capability(ctx context.Context, passive bool) (config.Config, browser.Capability, error) {
-	if service == nil || service.LoadConfig == nil || service.Root == nil || service.Detect == nil {
-		return config.Config{}, browser.Capability{}, errors.New("ChatGPT Web integration service is unavailable")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	cfg, err := service.LoadConfig()
-	if err != nil {
-		return config.Config{}, browser.Capability{}, err
-	}
-	capability := service.Detect(ctx, browser.Options{
-		Enabled: cfg.Integrations.Browser.Enabled, ConfiguredPath: cfg.Integrations.Browser.Path,
-		StateRoot: service.Root(), Passive: passive,
-	})
-	return cfg, capability, nil
-}
-
-func (service *ChatGPTWebService) loginCapability(ctx context.Context) (config.Config, browser.Capability, error) {
+func (service *ChatGPTWebService) capability(ctx context.Context) (config.Config, browser.Capability, error) {
 	if service == nil || service.LoadConfig == nil || service.Root == nil || service.Detect == nil {
 		return config.Config{}, browser.Capability{}, errors.New("ChatGPT Web integration service is unavailable")
 	}
@@ -663,6 +649,10 @@ func (service *ChatGPTWebService) loginCapability(ctx context.Context) (config.C
 		StateRoot: service.Root(), Passive: true,
 	})
 	return cfg, capability, nil
+}
+
+func (service *ChatGPTWebService) loginCapability(ctx context.Context) (config.Config, browser.Capability, error) {
+	return service.capability(ctx)
 }
 
 func (service *ChatGPTWebService) baseStatus(cfg config.Config, capability browser.Capability) ChatGPTWebStatus {

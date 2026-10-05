@@ -20,7 +20,9 @@ type Options struct {
 	ConfiguredPath string
 	StateRoot      string
 	Runtime        Runtime
-	Passive        bool
+	// Passive is retained for source compatibility. Detection is always passive;
+	// use Verify when an explicit launch/CDP diagnostic is required.
+	Passive bool
 }
 
 type Runtime struct {
@@ -48,10 +50,7 @@ func Detect(ctx context.Context, options Options) Capability {
 		if err != nil {
 			return unavailable(true, err.Error())
 		}
-		if options.Passive {
-			return discoverCapability(options.StateRoot, runtime, candidate)
-		}
-		return probeCapability(ctx, options.StateRoot, runtime, candidate)
+		return discoverCapability(options.StateRoot, runtime, candidate)
 	}
 
 	var lastFailure Capability
@@ -59,8 +58,8 @@ func Detect(ctx context.Context, options Options) Capability {
 		if !runtime.Exists(candidate.LocalExecutable) {
 			continue
 		}
-		capability := evaluateCapability(ctx, options, runtime, candidate)
-		if capability.State == StateAvailable && (options.Passive || capability.Usable) {
+		capability := discoverCapability(options.StateRoot, runtime, candidate)
+		if capability.State == StateAvailable {
 			return capability
 		}
 		if strings.TrimSpace(capability.Reason) != "" {
@@ -72,8 +71,8 @@ func Detect(ctx context.Context, options Options) Capability {
 			if candidate.LocalExecutable == "" || !runtime.Exists(candidate.LocalExecutable) {
 				continue
 			}
-			capability := evaluateCapability(ctx, options, runtime, candidate)
-			if capability.State == StateAvailable && (options.Passive || capability.Usable) {
+			capability := discoverCapability(options.StateRoot, runtime, candidate)
+			if capability.State == StateAvailable {
 				return capability
 			}
 			if strings.TrimSpace(capability.Reason) != "" {
@@ -84,14 +83,7 @@ func Detect(ctx context.Context, options Options) Capability {
 	if strings.TrimSpace(lastFailure.Reason) != "" {
 		return lastFailure
 	}
-	return unavailable(true, "no usable Chrome, Chromium, or Edge browser was detected")
-}
-
-func evaluateCapability(ctx context.Context, options Options, runtime Runtime, candidate Candidate) Capability {
-	if options.Passive {
-		return discoverCapability(options.StateRoot, runtime, candidate)
-	}
-	return probeCapability(ctx, options.StateRoot, runtime, candidate)
+	return unavailable(true, "no launchable Chrome, Chromium, or Edge browser was detected")
 }
 
 func discoverCapability(root string, runtime Runtime, candidate Candidate) Capability {
@@ -116,33 +108,34 @@ func discoverCapability(root string, runtime Runtime, candidate Candidate) Capab
 	}
 }
 
-func probeCapability(ctx context.Context, root string, runtime Runtime, candidate Candidate) Capability {
-	result := runtime.Probe(ctx, candidate)
-	family := candidate.Family
-	if result.Family != "" {
-		family = result.Family
+// Verify performs an explicit isolated browser launch/CDP diagnostic for an
+// already-discovered capability. Normal detection, status, and readiness paths
+// must not call this function.
+func Verify(ctx context.Context, capability Capability) ProbeResult {
+	return verifyCapability(ctx, capability, Runtime{})
+}
+
+func verifyCapability(ctx context.Context, capability Capability, runtime Runtime) ProbeResult {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	if !result.Usable {
-		return Capability{
-			State: StateUnavailable, Enabled: true, Available: false, Launchable: false, Usable: false,
-			Family: family, Executable: candidate.Executable,
-			HostPlatform: candidate.HostPlatform, Transport: candidate.Transport,
-			Graphical: result.Graphical, Version: result.Version, Reason: boundedReason(result.Reason),
+	if capability.State != StateAvailable || !capability.Available || !capability.Launchable {
+		reason := strings.TrimSpace(capability.Reason)
+		if reason == "" {
+			reason = "browser capability is not launchable"
 		}
+		return ProbeResult{Graphical: capability.Graphical, Family: capability.Family, Reason: boundedReason(reason)}
 	}
-	if family == "" {
-		return unavailable(true, "browser probe could not verify a supported Chrome, Chromium, or Edge family")
+	if capability.Candidate == nil {
+		return ProbeResult{Graphical: capability.Graphical, Family: capability.Family, Reason: "browser capability has no selected candidate"}
 	}
-	profile, err := ResolveProfile(ProfileOptions{StateRoot: root, Candidate: candidate})
-	if err != nil {
-		return unavailable(true, err.Error())
+	runtime = normalizedRuntime(runtime)
+	result := runtime.Probe(ctx, *capability.Candidate)
+	if result.Family == "" {
+		result.Family = capability.Family
 	}
-	return Capability{
-		State: StateAvailable, Enabled: true, Available: true, Launchable: true, Usable: true,
-		Family: family, Executable: candidate.Executable, Version: result.Version,
-		HostPlatform: candidate.HostPlatform, Transport: candidate.Transport, Graphical: result.Graphical,
-		ProfileHostPlatform: profile.HostPlatform, Profile: &profile, Candidate: &candidate,
-	}
+	result.Reason = boundedReason(result.Reason)
+	return result
 }
 
 func configuredCandidate(ctx context.Context, runtime Runtime, configured string) (Candidate, error) {
@@ -320,21 +313,22 @@ func probeExecutable(ctx context.Context, runtime Runtime, candidate Candidate) 
 	version := parseVersion(versionOutput)
 	launchCtx, launchCancel := context.WithTimeout(ctx, LaunchProbeTimeout)
 	defer launchCancel()
-	if err := probeCDPLoopback(launchCtx, candidate); err != nil {
+	if err := probeCDPLoopback(launchCtx, runtime, candidate); err != nil {
 		return ProbeResult{Graphical: graphical, Family: family, Version: version, Reason: "browser launch/CDP probe failed: " + err.Error()}
 	}
 	return ProbeResult{Usable: true, Graphical: graphical, Family: family, Version: version}
 }
 
-func probeCDPLoopback(ctx context.Context, candidate Candidate) error {
-	localParent := os.TempDir()
-	hostParent := localParent
-	if candidate.Transport == TransportWSLHost {
-		localParent = filepath.Join(candidate.LocalAppData, "CodeMCP", "Browser")
-		hostParent = joinHostPath("windows", candidate.HostLocalAppData, "CodeMCP", "Browser")
-		if err := os.MkdirAll(localParent, 0700); err != nil {
-			return err
-		}
+func probeCDPLoopback(ctx context.Context, runtime Runtime, candidate Candidate) error {
+	localParent, hostParent, legacyParent, err := transientProbeRoots(ctx, runtime, candidate)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(localParent, 0700); err != nil {
+		return err
+	}
+	if legacyParent != "" && filepath.Clean(legacyParent) != filepath.Clean(localParent) {
+		pruneStaleProbeProfiles(legacyParent, time.Now())
 	}
 	pruneStaleProbeProfiles(localParent, time.Now())
 	localProfile, err := os.MkdirTemp(localParent, ".probe-")
@@ -398,6 +392,50 @@ func probeCDPLoopback(ctx context.Context, candidate Candidate) error {
 			}
 		}
 	}
+}
+
+func transientProbeRoots(ctx context.Context, runtime Runtime, candidate Candidate) (localParent, hostParent, legacyParent string, err error) {
+	if candidate.Transport != TransportWSLHost {
+		parent := os.TempDir()
+		return parent, parent, "", nil
+	}
+	hostTemp, localTemp, err := windowsTempDir(ctx, runtime)
+	if err != nil {
+		return "", "", "", err
+	}
+	localParent = filepath.Join(strings.TrimSpace(localTemp), "CodeMCP", "Browser")
+	hostParent = joinHostPath("windows", hostTemp, "CodeMCP", "Browser")
+	if strings.TrimSpace(candidate.LocalAppData) != "" {
+		legacyParent = filepath.Join(candidate.LocalAppData, "CodeMCP", "Browser")
+	}
+	return localParent, hostParent, legacyParent, nil
+}
+
+func windowsTempDir(ctx context.Context, runtime Runtime) (string, string, error) {
+	var lastErr error
+	for _, name := range []string{"TEMP", "TMP"} {
+		host, err := runtime.WindowsEnv(ctx, name)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		host = strings.TrimSpace(host)
+		if !looksWindowsPath(host) {
+			continue
+		}
+		local, err := runtime.WindowsToLocal(ctx, host)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if strings.TrimSpace(local) != "" {
+			return host, strings.TrimSpace(local), nil
+		}
+	}
+	if lastErr != nil {
+		return "", "", fmt.Errorf("resolve Windows temp directory: %w", lastErr)
+	}
+	return "", "", errors.New("windows temp directory is unavailable")
 }
 
 func removeProbeProfile(path string) {

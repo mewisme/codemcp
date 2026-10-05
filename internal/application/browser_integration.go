@@ -46,6 +46,7 @@ type BrowserIntegrationService struct {
 	LoadConfig func() (config.Config, error)
 	Root       func() string
 	Detect     func(context.Context, browser.Options) browser.Capability
+	Verify     func(context.Context, browser.Capability) browser.ProbeResult
 }
 
 func NewBrowserIntegrationService() *BrowserIntegrationService {
@@ -53,11 +54,12 @@ func NewBrowserIntegrationService() *BrowserIntegrationService {
 		LoadConfig: config.Load,
 		Root:       config.RootPath,
 		Detect:     browser.Detect,
+		Verify:     browser.Verify,
 	}
 }
 
 func (service *BrowserIntegrationService) Status(ctx context.Context) (BrowserIntegrationStatus, error) {
-	cfg, capability, err := service.capability(ctx, true)
+	cfg, capability, err := service.capability(ctx)
 	if err != nil {
 		return BrowserIntegrationStatus{}, err
 	}
@@ -97,7 +99,7 @@ func browserIntegrationStatus(capability browser.Capability, minimized bool) (Br
 }
 
 func (service *BrowserIntegrationService) Doctor(ctx context.Context) (BrowserDoctorResult, error) {
-	cfg, capability, err := service.capability(ctx, false)
+	cfg, capability, err := service.capability(ctx)
 	if err != nil {
 		return BrowserDoctorResult{}, err
 	}
@@ -106,14 +108,30 @@ func (service *BrowserIntegrationService) Doctor(ctx context.Context) (BrowserDo
 		return BrowserDoctorResult{}, err
 	}
 	result := BrowserDoctorResult{Status: status}
+	verification := browser.ProbeResult{Graphical: capability.Graphical, Family: capability.Family, Reason: capability.Reason}
+	if capability.State == browser.StateAvailable {
+		if service.Verify == nil {
+			return BrowserDoctorResult{}, errors.New("browser integration verifier is unavailable")
+		}
+		verification = service.Verify(ctx, capability)
+		if verification.Version != "" {
+			result.Status.Version = verification.Version
+		}
+		if verification.Family != "" {
+			result.Status.Family = verification.Family
+		}
+		if !verification.Usable && verification.Reason != "" {
+			result.Status.Reason = verification.Reason
+		}
+	}
 	result.Checks = append(result.Checks,
 		BrowserDoctorCheck{
 			ID: "enabled", OK: status.Enabled,
 			Message: "browser capability detection is enabled",
 		},
 		BrowserDoctorCheck{
-			ID: "usable", OK: status.State == BrowserIntegrationAvailable || status.State == BrowserIntegrationRunning,
-			Message: "a supported Chrome, Chromium, or Edge route is usable",
+			ID: "usable", OK: verification.Usable,
+			Message: "the selected browser route launches and exposes private CDP",
 		},
 		BrowserDoctorCheck{
 			ID: "graphical", OK: status.Graphical,
@@ -123,7 +141,7 @@ func (service *BrowserIntegrationService) Doctor(ctx context.Context) (BrowserDo
 	return result, nil
 }
 
-func (service *BrowserIntegrationService) capability(ctx context.Context, passive bool) (config.Config, browser.Capability, error) {
+func (service *BrowserIntegrationService) capability(ctx context.Context) (config.Config, browser.Capability, error) {
 	if service == nil || service.LoadConfig == nil || service.Root == nil || service.Detect == nil {
 		return config.Config{}, browser.Capability{}, errors.New("browser integration service is unavailable")
 	}
@@ -136,7 +154,7 @@ func (service *BrowserIntegrationService) capability(ctx context.Context, passiv
 	}
 	capability := service.Detect(ctx, browser.Options{
 		Enabled: cfg.Integrations.Browser.Enabled, ConfiguredPath: cfg.Integrations.Browser.Path,
-		StateRoot: service.Root(), Passive: passive,
+		StateRoot: service.Root(), Passive: true,
 	})
 	return cfg, capability, nil
 }
