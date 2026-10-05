@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hardened managed Chrome lifecycle and WSL browser-host cleanup.
 - Restored native release smoke coverage after `cm install` began fully initializing config and managed runtime by tearing down the isolated install lifecycle before exercising standalone `init` and `serve`.
 - Isolated the native Windows Inno Setup smoke PATH scenarios and restored the exact pre-smoke HKCU PATH value/type between cases so delegated-install failure checks no longer inherit mutations from earlier successful installs.
+- Kept extracted GitHub release notes in the runner temporary directory so GoReleaser can consume the canonical changelog section without treating the release checkout as a dirty Git tree.
 
 ### Security
 

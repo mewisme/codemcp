@@ -243,7 +243,8 @@ jobs:
           if match is None:
               raise SystemExit(f"missing changelog section for {tag}")
 
-          Path("release-notes.md").write_text(match.group(1).strip() + "\n", encoding="utf-8")
+          notes_path = Path(os.environ["RUNNER_TEMP"]) / "release-notes.md"
+          notes_path.write_text(match.group(1).strip() + "\n", encoding="utf-8")
           PY
 
       - name: Build signed draft release
@@ -251,7 +252,7 @@ jobs:
         with:
           distribution: goreleaser
           version: 'v2.18.0'
-          args: release --clean --draft --release-notes release-notes.md
+          args: release --clean --draft --release-notes ${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TELEMETRY_ENDPOINT: ${{ secrets.TELEMETRY_ENDPOINT }}
