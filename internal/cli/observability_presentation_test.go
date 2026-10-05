@@ -48,13 +48,16 @@ func TestRestoredObservabilityCommandsLockTTYPlainAndJSONPresentation(t *testing
 	})
 
 	executions := shellruntime.NewExecutionHub()
-	run := executions.Begin(shellruntime.ExecutionInput{
+	run, err := executions.Begin(shellruntime.ExecutionInput{
 		WorkspaceID: "ws_quality",
 		Tool:        "run_command",
 		Command:     "printf execution",
 		CWD:         "/workspace",
 		Source:      "mcp",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _ = run.Writer("stdout").Write([]byte("execution-output\n"))
 	exitCode := 0
 	run.Finish(shellruntime.ExecutionStatusSuccess, &exitCode, false)

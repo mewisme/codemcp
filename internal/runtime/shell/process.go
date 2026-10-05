@@ -289,7 +289,17 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 	m.mu.Unlock()
 	var execution *ExecutionRun
 	if m.executions != nil {
-		execution = m.executions.Begin(ExecutionInput{WorkspaceID: workspaceID, Tool: "start_process", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: providerLanguage(ctx, provider), Source: metadata.Source, CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID})
+		execution, err = m.executions.Begin(ExecutionInput{WorkspaceID: workspaceID, Tool: "start_process", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: providerLanguage(ctx, provider), Source: metadata.Source, CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID})
+		if err != nil {
+			_ = signalCommandTree(cmd, true)
+			closePipes()
+			_ = cmd.Wait()
+			m.mu.Lock()
+			delete(m.processes, id)
+			m.compactOrderLocked()
+			m.mu.Unlock()
+			return StartResult{}, fmt.Errorf("persist background execution start: %w", err)
+		}
 		process.mu.Lock()
 		process.execution = execution
 		process.mu.Unlock()
@@ -326,7 +336,7 @@ func (m *ProcessManager) Start(ctx context.Context, workspaceID, command string)
 		process.mu.Unlock()
 		status, reason := processTerminalStatus(false, signal, exitCode, terminalIntent)
 		if execution != nil {
-			execution.Finish(status, exitCode, false)
+			_ = execution.Finish(status, exitCode, false)
 		}
 		m.publishTerminal(process, status, reason, exitCode, signal, false)
 		m.mu.Lock()

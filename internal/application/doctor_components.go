@@ -183,9 +183,10 @@ func backgroundDeliveryDoctorComponent(status backgrounddelivery.Diagnostics) do
 			{ID: "continuation_adapters", Value: int64(status.ContinuationAdapters)},
 			{ID: "continuation_owners", Value: int64(status.ContinuationOwners)},
 			{ID: "oldest_continuation_age_ms", Value: status.OldestContinuationAgeMS},
+			{ID: "persistence_failures", Value: status.PersistenceFailures},
 		},
 	}
-	if status.DeadLetters > 0 || status.OverflowDropped > 0 {
+	if status.DeadLetters > 0 || status.OverflowDropped > 0 || status.PersistenceFailures > 0 {
 		component.State, component.Severity, component.Summary = doctor.StateDegraded, doctor.SeverityWarning, "background delivery requires attention"
 	}
 	return component

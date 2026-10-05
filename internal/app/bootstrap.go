@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 
 	"go.mewis.me/codemcp/internal/application"
 	"go.mewis.me/codemcp/internal/config"
@@ -26,10 +27,15 @@ func (a *App) Bootstrap() error {
 		}
 		if a.Tools == nil {
 			cfg := a.Config.Snapshot()
-			a.Tools = tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) {
+			toolRuntime, err := tools.NewRuntimeWithAccessChecked(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) {
 				current := a.Config.Snapshot()
 				return current.HTTP.Admin.Enabled, current.HTTP.Admin.Port
 			})
+			if err != nil {
+				a.bootstrapErr = fmt.Errorf("initialize tool runtime: %w", err)
+				return
+			}
+			a.Tools = toolRuntime
 		}
 		configProvider := application.NewMCPConfigReadService()
 		a.Tools.SetConfigReadProvider(configProvider)

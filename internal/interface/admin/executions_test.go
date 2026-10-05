@@ -26,7 +26,10 @@ func TestWorkspaceExecutionAPIListSnapshotAndIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	hub := shellruntime.NewExecutionHub()
-	run := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: first.ID, Tool: "run_command", Command: "printf hello", CWD: first.Path, Source: "mcp"})
+	run, err := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: first.ID, Tool: "run_command", Command: "printf hello", CWD: first.Path, Source: "mcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _ = run.Writer("stdout").Write([]byte("hello\n"))
 	code := 0
 	run.Finish(shellruntime.ExecutionStatusSuccess, &code, false)
@@ -62,7 +65,10 @@ func TestWorkspaceExecutionSSEStartsWithSnapshotAndStreamsUntilCompletion(t *tes
 		t.Fatal(err)
 	}
 	hub := shellruntime.NewExecutionHub()
-	run := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: item.ID, Tool: "run_command", Command: "demo", CWD: item.Path, Source: "mcp"})
+	run, err := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: item.ID, Tool: "run_command", Command: "demo", CWD: item.Path, Source: "mcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _ = run.Writer("stdout").Write([]byte("before\n"))
 	server := httptest.NewServer(New(API{Workspaces: manager, Executions: hub}))
 	defer server.Close()
@@ -114,7 +120,10 @@ func TestWorkspaceExecutionFeedSSEReplaysAndContinuesAcrossCommands(t *testing.T
 		t.Fatal(err)
 	}
 	hub := shellruntime.NewExecutionHub()
-	first := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: item.ID, Tool: "run_command", Command: "first", CWD: item.Path, Source: "mcp"})
+	first, err := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: item.ID, Tool: "run_command", Command: "first", CWD: item.Path, Source: "mcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _ = first.Writer("stdout").Write([]byte("before\n"))
 	code := 0
 	first.Finish(shellruntime.ExecutionStatusSuccess, &code, false)
@@ -148,7 +157,10 @@ func TestWorkspaceExecutionFeedSSEReplaysAndContinuesAcrossCommands(t *testing.T
 		t.Fatalf("replay started=%q output=%q completed=%q", replayStarted, replayOutput, replayCompleted)
 	}
 
-	second := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: item.ID, Tool: "run_command", Command: "second", CWD: item.Path, Source: "mcp"})
+	second, err := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: item.ID, Tool: "run_command", Command: "second", CWD: item.Path, Source: "mcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	started := scanEventData(t, scanner, shellruntime.ExecutionEventStarted)
 	if !strings.Contains(started, second.ID()) || !strings.Contains(started, `"command":"second"`) {
 		t.Fatalf("started event=%q", started)

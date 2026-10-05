@@ -107,6 +107,7 @@ type ExecutionDiagnostics struct {
 	FeedOverflowed       int   `json:"feed_overflowed"`
 	ExecutionSubscribers int   `json:"execution_subscribers"`
 	ExecutionOverflowed  int   `json:"execution_overflowed"`
+	PersistenceFailures  int64 `json:"persistence_failures,omitempty"`
 }
 
 type ExecutionSubscription = sequence.Subscription[ExecutionEvent]
@@ -129,13 +130,17 @@ type ExecutionInput struct {
 }
 
 type ExecutionHub struct {
-	mu         sync.RWMutex
-	executions map[string]*executionRecord
-	order      []string
-	maxRecent  int
-	feed       *sequence.Stream[ExecutionFeedEvent]
-	storePath  string
-	closeOnce  sync.Once
+	mu              sync.RWMutex
+	executions      map[string]*executionRecord
+	order           []string
+	maxRecent       int
+	feed            *sequence.Stream[ExecutionFeedEvent]
+	storePath       string
+	closeOnce       sync.Once
+	persistMu       sync.Mutex
+	persistStateMu  sync.RWMutex
+	persistFailures int64
+	persistWrite    func(string, []byte, os.FileMode) error
 }
 
 type executionStoreFile struct {
@@ -175,8 +180,9 @@ type ExecutionMetadata struct {
 
 func NewExecutionHub() *ExecutionHub {
 	return &ExecutionHub{
-		executions: map[string]*executionRecord{},
-		maxRecent:  MaxRecentExecutions,
+		executions:   map[string]*executionRecord{},
+		maxRecent:    MaxRecentExecutions,
+		persistWrite: statepkg.WriteFileAtomic,
 		feed: sequence.New[ExecutionFeedEvent](MaxExecutionFeedEvents, executionFeedBuffer, func(event *ExecutionFeedEvent, value uint64) {
 			event.Sequence = value
 		}),
@@ -231,14 +237,16 @@ func executionSource(ctx context.Context) string {
 	return strings.TrimSpace(value)
 }
 
-func (h *ExecutionHub) Begin(input ExecutionInput) *ExecutionRun {
+func (h *ExecutionHub) Begin(input ExecutionInput) (*ExecutionRun, error) {
 	if h == nil {
-		return nil
+		return nil, errors.New("execution hub is unavailable")
 	}
 	tool := strings.TrimSpace(input.Tool)
 	if tool == "" {
 		tool = "run_command"
 	}
+	h.persistMu.Lock()
+	defer h.persistMu.Unlock()
 	h.mu.Lock()
 	id := idgen.Must("exec", 8)
 	record := &executionRecord{info: ExecutionInfo{
@@ -255,9 +263,22 @@ func (h *ExecutionHub) Begin(input ExecutionInput) *ExecutionRun {
 	h.order = append(h.order, id)
 	h.pruneLocked()
 	h.mu.Unlock()
-	_ = h.persist()
+	if err := h.persistCurrent(); err != nil {
+		h.mu.Lock()
+		delete(h.executions, id)
+		filtered := h.order[:0]
+		for _, current := range h.order {
+			if current != id {
+				filtered = append(filtered, current)
+			}
+		}
+		h.order = filtered
+		h.mu.Unlock()
+		record.stream.Close()
+		return nil, err
+	}
 	h.publishFeed(ExecutionFeedEvent{Type: ExecutionEventStarted, ExecutionID: id, WorkspaceID: record.info.WorkspaceID, Execution: executionInfoPtr(record.info), Status: ExecutionStatusRunning, Timestamp: record.info.StartedAt})
-	return &ExecutionRun{hub: h, record: record}
+	return &ExecutionRun{hub: h, record: record}, nil
 }
 
 func (h *ExecutionHub) List(workspaceID string, limit int) []ExecutionInfo {
@@ -353,7 +374,7 @@ func (h *ExecutionHub) Diagnostics() ExecutionDiagnostics {
 		records = append(records, record)
 	}
 	h.mu.RUnlock()
-	result := ExecutionDiagnostics{}
+	result := ExecutionDiagnostics{PersistenceFailures: h.persistenceFailureCount()}
 	var oldest time.Time
 	for _, record := range records {
 		record.mu.Lock()
@@ -390,40 +411,52 @@ func (r *ExecutionRun) Writer(stream string) *executionWriter {
 	return &executionWriter{run: r, stream: stream}
 }
 
-func (r *ExecutionRun) Finish(status string, exitCode *int, timedOut bool) {
+func (r *ExecutionRun) Finish(status string, exitCode *int, timedOut bool) error {
 	if r == nil || r.record == nil {
-		return
+		return nil
 	}
 	record := r.record
+	if r.hub != nil {
+		r.hub.persistMu.Lock()
+		defer r.hub.persistMu.Unlock()
+	}
 	record.mu.Lock()
 	if record.info.Status != ExecutionStatusRunning {
 		record.mu.Unlock()
-		return
+		return nil
 	}
 	record.info.Status = status
 	record.info.ExitCode = cloneInt(exitCode)
 	record.info.TimedOut = timedOut
 	record.info.FinishedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	record.stream.Publish(ExecutionEvent{
+	completionEvent := ExecutionEvent{
 		Type: ExecutionEventCompleted, ExecutionID: record.info.ID, Status: status,
 		ExitCode: cloneInt(exitCode), TimedOut: timedOut, Timestamp: record.info.FinishedAt,
-	})
-	feedEvent := ExecutionFeedEvent{Type: ExecutionEventCompleted, ExecutionID: record.info.ID, WorkspaceID: record.info.WorkspaceID, Execution: executionInfoPtr(record.info), Status: status, ExitCode: cloneInt(exitCode), TimedOut: timedOut, Timestamp: record.info.FinishedAt}
-	if r.hub != nil {
-		r.hub.publishFeed(feedEvent)
 	}
+	feedEvent := ExecutionFeedEvent{Type: ExecutionEventCompleted, ExecutionID: record.info.ID, WorkspaceID: record.info.WorkspaceID, Execution: executionInfoPtr(record.info), Status: status, ExitCode: cloneInt(exitCode), TimedOut: timedOut, Timestamp: record.info.FinishedAt}
 	record.mu.Unlock()
 	if r.hub != nil {
 		r.hub.mu.Lock()
 		r.hub.pruneLocked()
 		r.hub.mu.Unlock()
-		_ = r.hub.persist()
+		if err := r.hub.persistCurrent(); err != nil {
+			return err
+		}
 	}
+	record.stream.Publish(completionEvent)
+	if r.hub != nil {
+		r.hub.publishFeed(feedEvent)
+	}
+	return nil
 }
 
 func (w *executionWriter) Write(data []byte) (int, error) {
 	if w == nil || w.run == nil || w.run.record == nil || len(data) == 0 {
 		return len(data), nil
+	}
+	if w.run.hub != nil {
+		w.run.hub.persistMu.Lock()
+		defer w.run.hub.persistMu.Unlock()
 	}
 	record := w.run.record
 	record.mu.Lock()
@@ -432,23 +465,29 @@ func (w *executionWriter) Write(data []byte) (int, error) {
 	} else {
 		record.stdout = appendExecutionTail(record.stdout, data)
 	}
-	for _, chunk := range splitExecutionOutput(strings.ToValidUTF8(string(data), "�")) {
-		event := record.stream.Publish(ExecutionEvent{Type: ExecutionEventOutput, ExecutionID: record.info.ID, Stream: w.stream, Data: chunk, Timestamp: time.Now().UTC().Format(time.RFC3339Nano)})
-		if w.run.hub != nil {
-			w.run.hub.publishFeed(ExecutionFeedEvent{Type: ExecutionEventOutput, ExecutionID: record.info.ID, WorkspaceID: record.info.WorkspaceID, Execution: executionInfoPtr(record.info), Stream: event.Stream, Data: event.Data, Timestamp: event.Timestamp})
-		}
-	}
+	workspaceID := record.info.WorkspaceID
+	executionInfo := cloneExecutionInfo(record.info)
+	chunks := splitExecutionOutput(strings.ToValidUTF8(string(data), "�"))
 	record.mu.Unlock()
 	if w.run.hub != nil {
-		_ = w.run.hub.persist()
+		if err := w.run.hub.persistCurrent(); err != nil {
+			return len(data), err
+		}
+	}
+	for _, chunk := range chunks {
+		event := record.stream.Publish(ExecutionEvent{Type: ExecutionEventOutput, ExecutionID: executionInfo.ID, Stream: w.stream, Data: chunk, Timestamp: time.Now().UTC().Format(time.RFC3339Nano)})
+		if w.run.hub != nil {
+			w.run.hub.publishFeed(ExecutionFeedEvent{Type: ExecutionEventOutput, ExecutionID: executionInfo.ID, WorkspaceID: workspaceID, Execution: executionInfoPtr(executionInfo), Stream: event.Stream, Data: event.Data, Timestamp: event.Timestamp})
+		}
 	}
 	return len(data), nil
 }
 
-func (h *ExecutionHub) Close() {
+func (h *ExecutionHub) Close() error {
 	if h == nil {
-		return
+		return nil
 	}
+	var closeErr error
 	h.closeOnce.Do(func() {
 		h.mu.RLock()
 		records := make([]*executionRecord, 0, len(h.executions))
@@ -466,8 +505,9 @@ func (h *ExecutionHub) Close() {
 		if h.feed != nil {
 			h.feed.Close()
 		}
-		_ = h.persist()
+		closeErr = h.persist()
 	})
+	return closeErr
 }
 
 func (h *ExecutionHub) record(workspaceID, id string) (*executionRecord, error) {
@@ -545,6 +585,15 @@ func (h *ExecutionHub) persist() error {
 	if h == nil || h.storePath == "" {
 		return nil
 	}
+	h.persistMu.Lock()
+	defer h.persistMu.Unlock()
+	return h.persistCurrent()
+}
+
+func (h *ExecutionHub) persistCurrent() error {
+	if h == nil || h.storePath == "" {
+		return nil
+	}
 	h.mu.RLock()
 	order := append([]string(nil), h.order...)
 	records := make(map[string]*executionRecord, len(h.executions))
@@ -564,9 +613,37 @@ func (h *ExecutionHub) persist() error {
 	}
 	data, err := json.MarshalIndent(executionStoreFile{Version: executionStoreVersion, Executions: snapshots}, "", "  ")
 	if err != nil {
+		h.setPersistenceError(err)
 		return err
 	}
-	return statepkg.WriteFileAtomic(h.storePath, append(data, '\n'), 0600)
+	write := h.persistWrite
+	if write == nil {
+		write = statepkg.WriteFileAtomic
+	}
+	err = write(h.storePath, append(data, '\n'), 0600)
+	h.setPersistenceError(err)
+	return err
+}
+
+func (h *ExecutionHub) setPersistenceError(err error) {
+	if h == nil {
+		return
+	}
+	if err == nil {
+		return
+	}
+	h.persistStateMu.Lock()
+	h.persistFailures++
+	h.persistStateMu.Unlock()
+}
+
+func (h *ExecutionHub) persistenceFailureCount() int64 {
+	if h == nil {
+		return 0
+	}
+	h.persistStateMu.RLock()
+	defer h.persistStateMu.RUnlock()
+	return h.persistFailures
 }
 
 func (h *ExecutionHub) pruneLocked() {

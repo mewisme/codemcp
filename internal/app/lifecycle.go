@@ -292,7 +292,7 @@ func (a *App) Stop() error {
 		a.Tools.BackgroundDeliveries.Close()
 	}
 	if a.Tools != nil && a.Tools.Executions != nil {
-		a.Tools.Executions.Close()
+		stopErr = errors.Join(stopErr, a.Tools.Executions.Close())
 	}
 	if a.Tools != nil && a.Tools.Processes != nil {
 		a.Tools.Processes.CloseSubscriptions()

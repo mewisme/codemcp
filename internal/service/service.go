@@ -41,10 +41,11 @@ type Spec struct {
 }
 
 type Status struct {
-	Installed bool
-	Running   bool
-	PID       int
-	Backend   string
+	Installed           bool
+	Running             bool
+	PID                 int
+	Backend             string
+	RuntimeStateUnknown bool
 }
 
 type Manager interface {

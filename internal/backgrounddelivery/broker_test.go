@@ -3,6 +3,7 @@ package backgrounddelivery
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -16,10 +17,12 @@ func materializeTestDelivery(t *testing.T, broker *Broker, processID string, own
 	if !broker.RegisterStart(Registration{WorkspaceID: "ws_one", ProcessID: processID, ExecutionID: "exec_" + processID, Owner: owner}) {
 		t.Fatal("registration rejected")
 	}
-	broker.ApplyTerminal(shellruntime.BackgroundWorkTerminalEvent{
+	if err := broker.ApplyTerminal(shellruntime.BackgroundWorkTerminalEvent{
 		WorkspaceID: "ws_one", ProcessID: processID, ExecutionID: "exec_" + processID,
 		Status: "success", Reason: shellruntime.BackgroundTerminalExit,
-	})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	values, err := broker.List("ws_one", owner)
 	if err != nil {
 		t.Fatal(err)
@@ -405,6 +408,89 @@ func TestPersistentBrokerRestartDoesNotRedeliverCommittedDelivery(t *testing.T) 
 	}
 	if !replayed.AlreadyDelivered || replayed.Acquired || replayed.Delivery.State != DeliveryCommitted || replayed.Delivery.Attempts != 1 {
 		t.Fatalf("replayed committed delivery=%#v", replayed)
+	}
+}
+
+func TestPersistentBrokerRollsBackClaimWhenPersistenceFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "background-deliveries.json")
+	owner := Owner{ID: "owner-a", Generation: "generation-a"}
+	broker, err := NewPersistent(nil, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(broker.Close)
+	delivery := materializeTestDelivery(t, broker, "proc_persist_failure", owner)
+	broker.persistWrite = func(string, []byte, os.FileMode) error {
+		return errors.New("simulated delivery store failure")
+	}
+	if claim, err := broker.Claim("ws_one", owner, delivery.ID, "adapter"); err == nil || claim.Acquired {
+		t.Fatalf("claim=%#v err=%v", claim, err)
+	}
+	current, err := broker.Peek("ws_one", owner, delivery.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.State != DeliveryPending || current.Receipt != "" || current.Claimant != "" {
+		t.Fatalf("failed claim changed in-memory truth: %#v", current)
+	}
+	if diagnostics := broker.Diagnostics(); diagnostics.PersistenceFailures != 1 {
+		t.Fatalf("persistence diagnostics=%#v", diagnostics)
+	}
+	reloaded, err := NewPersistent(nil, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reloaded.Close()
+	values, err := reloaded.List("ws_one", owner)
+	if err != nil || len(values) != 1 || values[0].State != DeliveryPending {
+		t.Fatalf("reloaded deliveries=%#v err=%v", values, err)
+	}
+}
+
+func TestPersistentBrokerDoesNotPublishMaterializationBeforePersistence(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "background-deliveries.json")
+	owner := Owner{ID: "owner-a", Generation: "generation-a"}
+	broker, err := NewPersistent(nil, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(broker.Close)
+	if !broker.RegisterStart(Registration{WorkspaceID: "ws_one", ProcessID: "proc_atomic", ExecutionID: "exec_atomic", Owner: owner}) {
+		t.Fatal("registration rejected")
+	}
+	sub, _ := broker.SubscribeSnapshot(0)
+	defer sub.Close()
+	realWrite := broker.persistWrite
+	broker.persistWrite = func(string, []byte, os.FileMode) error {
+		return errors.New("simulated delivery materialization failure")
+	}
+	event := shellruntime.BackgroundWorkTerminalEvent{
+		WorkspaceID: "ws_one", ProcessID: "proc_atomic", ExecutionID: "exec_atomic",
+		Status: "success", Reason: shellruntime.BackgroundTerminalExit,
+	}
+	if err := broker.ApplyTerminal(event); err == nil {
+		t.Fatal("terminal materialization unexpectedly succeeded")
+	}
+	values, err := broker.List("ws_one", owner)
+	if err != nil || len(values) != 0 {
+		t.Fatalf("failed materialization became visible: %#v err=%v", values, err)
+	}
+	select {
+	case observed := <-sub.Events:
+		t.Fatalf("failed durable materialization was published: %#v", observed)
+	case <-time.After(25 * time.Millisecond):
+	}
+	broker.persistWrite = realWrite
+	if err := broker.ApplyTerminal(event); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case observed := <-sub.Events:
+		if observed.ProcessID != event.ProcessID || observed.State != DeliveryPending {
+			t.Fatalf("observed delivery=%#v", observed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("durable materialization was not published")
 	}
 }
 

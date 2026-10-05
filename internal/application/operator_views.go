@@ -51,7 +51,10 @@ func (s *ToolInventoryService) runtime() (*tools.Runtime, error) {
 	if err != nil {
 		return nil, err
 	}
-	runtime := tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, ProjectContextEnvironment)
+	runtime, err := tools.NewRuntimeWithAccessChecked(cfg.Integrations, cfg.Permissions.AllowDirs, ProjectContextEnvironment)
+	if err != nil {
+		return nil, err
+	}
 	runtime.SetShellPath(cfg.Shell.Path)
 	return runtime, nil
 }

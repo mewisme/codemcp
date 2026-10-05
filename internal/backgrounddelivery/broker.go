@@ -183,27 +183,30 @@ type Diagnostics struct {
 	ContinuationAdapters    int    `json:"continuation_adapters"`
 	ContinuationOwners      int    `json:"continuation_owners"`
 	OldestContinuationAgeMS int64  `json:"oldest_continuation_age_ms,omitempty"`
+	PersistenceFailures     int64  `json:"persistence_failures,omitempty"`
 }
 
 type Broker struct {
-	processes     *shellruntime.ProcessManager
-	sub           *shellruntime.BackgroundWorkTerminalSubscription
-	mu            sync.Mutex
-	registrations map[string]Registration
-	deliveries    map[string]Delivery
-	order         []string
-	byOwner       map[string][]string
-	recent        map[string]terminalRecord
-	recentOrder   []string
-	retention     time.Duration
-	maxDeliveries int
-	maxPerOwner   int
-	closed        chan struct{}
-	closeOnce     sync.Once
-	wg            sync.WaitGroup
-	events        *sequence.Stream[Delivery]
-	storePath     string
-	continuations map[string]continuationRegistration
+	processes       *shellruntime.ProcessManager
+	sub             *shellruntime.BackgroundWorkTerminalSubscription
+	mu              sync.Mutex
+	registrations   map[string]Registration
+	deliveries      map[string]Delivery
+	order           []string
+	byOwner         map[string][]string
+	recent          map[string]terminalRecord
+	recentOrder     []string
+	retention       time.Duration
+	maxDeliveries   int
+	maxPerOwner     int
+	closed          chan struct{}
+	closeOnce       sync.Once
+	wg              sync.WaitGroup
+	events          *sequence.Stream[Delivery]
+	storePath       string
+	persistFailures int64
+	persistWrite    func(string, []byte, os.FileMode) error
+	continuations   map[string]continuationRegistration
 }
 
 func New(processes *shellruntime.ProcessManager) *Broker {
@@ -234,6 +237,7 @@ func newBroker(processes *shellruntime.ProcessManager, storePath string) *Broker
 		closed:        make(chan struct{}),
 		events:        sequence.New[Delivery](defaultMaxDeliveries, defaultObserverBuffer, nil),
 		storePath:     storePath,
+		persistWrite:  statepkg.WriteFileAtomic,
 		continuations: map[string]continuationRegistration{},
 	}
 }
@@ -306,7 +310,7 @@ func (b *Broker) consume() {
 			if !ok {
 				return
 			}
-			b.ApplyTerminal(event)
+			_ = b.ApplyTerminal(event)
 		case <-b.closed:
 			return
 		}
@@ -332,11 +336,24 @@ func (b *Broker) RegisterStart(value Registration) bool {
 	b.pruneLocked(now)
 	b.registrations[value.ProcessID] = value
 	if recent, ok := b.recent[value.ProcessID]; ok {
-		b.materializeLocked(value, recent.event, now)
+		delivery, created := b.materializeLocked(value, recent.event, now)
 		delete(b.recent, value.ProcessID)
 		delete(b.registrations, value.ProcessID)
+		if created {
+			if err := b.persistLocked(); err != nil {
+				b.removeDeliveryLocked(delivery)
+				b.removeFromOrderLocked(delivery.ID)
+				b.recent[value.ProcessID] = recent
+				b.registrations[value.ProcessID] = value
+				b.mu.Unlock()
+				return false
+			}
+			if b.events != nil {
+				b.events.Publish(cloneDelivery(delivery))
+			}
+			b.pruneLocked(now)
+		}
 	}
-	_ = b.persistLocked()
 	b.mu.Unlock()
 	return true
 }
@@ -356,38 +373,58 @@ func (b *Broker) AttachTask(processID, taskID string) bool {
 	}
 	for id, delivery := range b.deliveries {
 		if delivery.ProcessID == processID {
+			previous := delivery
 			delivery.TaskID = taskID
 			b.deliveries[id] = delivery
-			_ = b.persistLocked()
+			if err := b.persistLocked(); err != nil {
+				b.deliveries[id] = previous
+				return false
+			}
 			return true
 		}
 	}
 	return false
 }
 
-func (b *Broker) ApplyTerminal(event shellruntime.BackgroundWorkTerminalEvent) {
+func (b *Broker) ApplyTerminal(event shellruntime.BackgroundWorkTerminalEvent) error {
 	if b == nil || strings.TrimSpace(event.ProcessID) == "" {
-		return
+		return nil
 	}
 	now := time.Now().UTC()
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.pruneLocked(now)
 	if registration, ok := b.registrations[event.ProcessID]; ok {
-		b.materializeLocked(registration, event, now)
+		delivery, created := b.materializeLocked(registration, event, now)
 		delete(b.registrations, event.ProcessID)
-		_ = b.persistLocked()
-		return
+		if !created {
+			return nil
+		}
+		if err := b.persistLocked(); err != nil {
+			b.removeDeliveryLocked(delivery)
+			b.removeFromOrderLocked(delivery.ID)
+			b.registrations[event.ProcessID] = registration
+			b.recent[event.ProcessID] = terminalRecord{event: cloneTerminal(event), receivedAt: now}
+			b.recentOrder = append(b.recentOrder, event.ProcessID)
+			b.pruneRecentLocked(now)
+			return err
+		}
+		if b.events != nil {
+			b.events.Publish(cloneDelivery(delivery))
+		}
+		b.pruneLocked(now)
+		return nil
 	}
 	b.recent[event.ProcessID] = terminalRecord{event: cloneTerminal(event), receivedAt: now}
 	b.recentOrder = append(b.recentOrder, event.ProcessID)
 	b.pruneRecentLocked(now)
+	return nil
 }
 
-func (b *Broker) materializeLocked(registration Registration, event shellruntime.BackgroundWorkTerminalEvent, now time.Time) {
+func (b *Broker) materializeLocked(registration Registration, event shellruntime.BackgroundWorkTerminalEvent, now time.Time) (Delivery, bool) {
 	for _, id := range b.byOwner[ownerKey(registration.Owner)] {
 		if existing, ok := b.deliveries[id]; ok && existing.ProcessID == event.ProcessID {
-			return
+			return cloneDelivery(existing), false
 		}
 	}
 	delivery := Delivery{
@@ -414,11 +451,7 @@ func (b *Broker) materializeLocked(registration Registration, event shellruntime
 	b.order = append(b.order, delivery.ID)
 	key := ownerKey(registration.Owner)
 	b.byOwner[key] = append(b.byOwner[key], delivery.ID)
-	if b.events != nil {
-		b.events.Publish(cloneDelivery(delivery))
-	}
-	b.pruneLocked(now)
-	_ = b.persistLocked()
+	return delivery, true
 }
 
 func (b *Broker) SetContinuationAdapter(workspaceID string, owner Owner, adapterID string, supported bool) {
@@ -481,6 +514,7 @@ func (b *Broker) InspectDiagnostics() Diagnostics {
 func (b *Broker) diagnosticsLocked(now time.Time) Diagnostics {
 	result := Diagnostics{
 		ContinuationAdapters: len(b.continuations),
+		PersistenceFailures:  b.persistFailures,
 	}
 	if b.events != nil {
 		result.Subscribers = b.events.SubscriberCount()
@@ -577,12 +611,16 @@ func (b *Broker) Claim(workspaceID string, owner Owner, deliveryID, claimant str
 	}
 	switch delivery.State {
 	case "", DeliveryPending:
+		previous := delivery
 		delivery.State = DeliveryClaimed
 		delivery.Claimant = claimant
 		delivery.Receipt = idgen.Must("receipt", 12)
 		delivery.ClaimedAt = timeRef(now)
 		b.deliveries[delivery.ID] = delivery
-		_ = b.persistLocked()
+		if err := b.persistLocked(); err != nil {
+			b.deliveries[delivery.ID] = previous
+			return ClaimResult{}, err
+		}
 		return ClaimResult{Delivery: cloneDelivery(delivery), Receipt: delivery.Receipt, Acquired: true}, nil
 	case DeliveryClaimed:
 		if delivery.Claimant != claimant {
@@ -619,10 +657,14 @@ func (b *Broker) Commit(workspaceID string, owner Owner, deliveryID, receipt str
 	}
 	switch delivery.State {
 	case DeliveryClaimed:
+		previous := delivery
 		delivery.State = DeliveryCommitted
 		delivery.CommittedAt = timeRef(now)
 		b.deliveries[delivery.ID] = delivery
-		_ = b.persistLocked()
+		if err := b.persistLocked(); err != nil {
+			b.deliveries[delivery.ID] = previous
+			return cloneDelivery(previous), err
+		}
 		return cloneDelivery(delivery), nil
 	case DeliveryCommitted, DeliveryAcknowledged:
 		return cloneDelivery(delivery), nil
@@ -649,10 +691,14 @@ func (b *Broker) Acknowledge(workspaceID string, owner Owner, deliveryID, receip
 	}
 	switch delivery.State {
 	case DeliveryCommitted:
+		previous := delivery
 		delivery.State = DeliveryAcknowledged
 		delivery.AcknowledgedAt = timeRef(now)
 		b.deliveries[delivery.ID] = delivery
-		_ = b.persistLocked()
+		if err := b.persistLocked(); err != nil {
+			b.deliveries[delivery.ID] = previous
+			return cloneDelivery(previous), err
+		}
 		return cloneDelivery(delivery), nil
 	case DeliveryAcknowledged:
 		return cloneDelivery(delivery), nil
@@ -678,12 +724,16 @@ func (b *Broker) Release(workspaceID string, owner Owner, deliveryID, receipt st
 	if delivery.State != DeliveryClaimed || delivery.Receipt == "" || delivery.Receipt != receipt {
 		return cloneDelivery(delivery), ErrReceiptMismatch
 	}
+	previous := delivery
 	delivery.State = DeliveryPending
 	delivery.Claimant = ""
 	delivery.Receipt = ""
 	delivery.ClaimedAt = nil
 	b.deliveries[delivery.ID] = delivery
-	_ = b.persistLocked()
+	if err := b.persistLocked(); err != nil {
+		b.deliveries[delivery.ID] = previous
+		return cloneDelivery(previous), err
+	}
 	return cloneDelivery(delivery), nil
 }
 
@@ -700,11 +750,15 @@ func (b *Broker) RecordAttempt(workspaceID string, owner Owner, deliveryID, rece
 	if delivery.State != DeliveryClaimed || delivery.Receipt == "" || delivery.Receipt != strings.TrimSpace(receipt) {
 		return cloneDelivery(delivery), ErrReceiptMismatch
 	}
+	previous := delivery
 	now := time.Now().UTC()
 	delivery.Attempts++
 	delivery.LastAttemptAt = timeRef(now)
 	b.deliveries[delivery.ID] = delivery
-	_ = b.persistLocked()
+	if err := b.persistLocked(); err != nil {
+		b.deliveries[delivery.ID] = previous
+		return cloneDelivery(previous), err
+	}
 	return cloneDelivery(delivery), nil
 }
 
@@ -721,11 +775,15 @@ func (b *Broker) DeadLetter(workspaceID string, owner Owner, deliveryID, receipt
 	if delivery.State != DeliveryClaimed || delivery.Receipt == "" || delivery.Receipt != strings.TrimSpace(receipt) {
 		return cloneDelivery(delivery), ErrReceiptMismatch
 	}
+	previous := delivery
 	now := time.Now().UTC()
 	delivery.State = DeliveryDeadLetter
 	delivery.DeadLetteredAt = timeRef(now)
 	b.deliveries[delivery.ID] = delivery
-	_ = b.persistLocked()
+	if err := b.persistLocked(); err != nil {
+		b.deliveries[delivery.ID] = previous
+		return cloneDelivery(previous), err
+	}
 	return cloneDelivery(delivery), nil
 }
 
@@ -760,10 +818,14 @@ func (b *Broker) ConsumeRecovery(workspaceID string, owner Owner, deliveryID str
 	}
 	switch delivery.State {
 	case "", DeliveryPending, DeliveryDeadLetter:
+		previous := delivery
 		delivery.State = DeliverySuppressed
 		delivery.SuppressedAt = timeRef(now)
 		b.deliveries[delivery.ID] = delivery
-		_ = b.persistLocked()
+		if err := b.persistLocked(); err != nil {
+			b.deliveries[delivery.ID] = previous
+			return RecoveryResult{}, err
+		}
 		return RecoveryResult{Delivery: cloneDelivery(delivery), Consumed: true}, nil
 	case DeliverySuppressed, DeliveryCommitted, DeliveryAcknowledged:
 		return RecoveryResult{Delivery: cloneDelivery(delivery), AlreadyDelivered: true}, nil
@@ -833,9 +895,18 @@ func (b *Broker) persistLocked() error {
 	}
 	data, err := json.MarshalIndent(storeFile{Version: storeVersion, Deliveries: deliveries}, "", "  ")
 	if err != nil {
+		b.persistFailures++
 		return err
 	}
-	return statepkg.WriteFileAtomic(b.storePath, append(data, '\n'), 0600)
+	write := b.persistWrite
+	if write == nil {
+		write = statepkg.WriteFileAtomic
+	}
+	err = write(b.storePath, append(data, '\n'), 0600)
+	if err != nil {
+		b.persistFailures++
+	}
+	return err
 }
 
 func (b *Broker) pruneLocked(now time.Time) {

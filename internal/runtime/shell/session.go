@@ -204,10 +204,13 @@ func (m *Manager) Exec(ctx context.Context, workspaceID, command string) (ExecRe
 	if source == "" {
 		source = executionSource(ctx)
 	}
-	run := m.executions.Begin(ExecutionInput{
+	run, err := m.executions.Begin(ExecutionInput{
 		WorkspaceID: workspaceID, Tool: "run_command", Command: plan.Effective, RequestedCommand: command, EffectiveCommand: plan.Effective, SecurityCommand: plan.Security, CWD: cwd, Shell: providerLanguage(ctx, provider), Source: source,
 		CallID: metadata.CallID, SessionHash: metadata.SessionHash, ReceivedByInstanceID: metadata.ReceivedByInstanceID, ExecutedByInstanceID: metadata.ExecutedByInstanceID,
 	})
+	if err != nil {
+		return ExecResult{}, fmt.Errorf("persist execution start: %w", err)
+	}
 	result, err := runOnce(ctx, plan.Effective, cwd, m.timeout, run, provider, mergeExecutablePath(provider.Path, commandSearchPath(plan, m.workspaces.ShellPath())))
 	if saveErr := m.save(current.state); saveErr != nil && err == nil {
 		return ExecResult{}, saveErr
@@ -445,8 +448,7 @@ func runOnce(ctx context.Context, command, cwd string, timeout time.Duration, ex
 	defer cancel()
 	cmd, err := commandForProvider(runCtx, command, provider)
 	if err != nil {
-		execution.Finish(ExecutionStatusFailed, nil, false)
-		return ExecResult{}, err
+		return ExecResult{}, errors.Join(err, execution.Finish(ExecutionStatusFailed, nil, false))
 	}
 	cmd.Dir = cwd
 	cmd.Env = shellEnvironment(ctx, shellPath)
@@ -456,19 +458,16 @@ func runOnce(ctx context.Context, command, cwd string, timeout time.Duration, ex
 	cmd.Stderr = io.MultiWriter(stderr, execution.Writer("stderr"))
 	err = cmd.Run()
 	if ctxErr := ctx.Err(); ctxErr != nil {
-		execution.Finish(ExecutionStatusCancelled, nil, false)
-		return ExecResult{}, ctxErr
+		return ExecResult{}, errors.Join(ctxErr, execution.Finish(ExecutionStatusCancelled, nil, false))
 	}
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
-		execution.Finish(ExecutionStatusTimedOut, nil, true)
-		return ExecResult{}, fmt.Errorf("command timed out after %s", timeout)
+		return ExecResult{}, errors.Join(fmt.Errorf("command timed out after %s", timeout), execution.Finish(ExecutionStatusTimedOut, nil, true))
 	}
 	exitCode := 0
 	if err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
-			execution.Finish(ExecutionStatusFailed, nil, false)
-			return ExecResult{}, err
+			return ExecResult{}, errors.Join(err, execution.Finish(ExecutionStatusFailed, nil, false))
 		}
 		exitCode = exitErr.ExitCode()
 	}
@@ -476,10 +475,14 @@ func runOnce(ctx context.Context, command, cwd string, timeout time.Duration, ex
 	if exitCode != 0 {
 		status = ExecutionStatusFailed
 	}
-	execution.Finish(status, &exitCode, false)
+	finishErr := execution.Finish(status, &exitCode, false)
 	stdoutText, stdoutTruncated := stdout.snapshot()
 	stderrText, stderrTruncated := stderr.snapshot()
-	return ExecResult{Command: tracepkg.SanitizeCommand(command), CWD: cwd, Stdout: strings.TrimSpace(stdoutText), Stderr: strings.TrimSpace(stderrText), StdoutTruncated: stdoutTruncated, StderrTruncated: stderrTruncated, ExitCode: exitCode, TimedOut: false}, nil
+	result := ExecResult{Command: tracepkg.SanitizeCommand(command), CWD: cwd, Stdout: strings.TrimSpace(stdoutText), Stderr: strings.TrimSpace(stderrText), StdoutTruncated: stdoutTruncated, StderrTruncated: stderrTruncated, ExitCode: exitCode, TimedOut: false}
+	if finishErr != nil {
+		return result, finishErr
+	}
+	return result, nil
 }
 
 func commandForProvider(ctx context.Context, command string, provider Provider) (*exec.Cmd, error) {

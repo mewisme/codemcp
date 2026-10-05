@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,6 +13,40 @@ import (
 
 	runtimecontrol "go.mewis.me/codemcp/internal/runtime/control"
 )
+
+type stopStatusTestManager struct {
+	status  Status
+	stopErr error
+}
+
+func (m stopStatusTestManager) Backend() string                      { return "test" }
+func (m stopStatusTestManager) DefinitionMatches(Spec) (bool, error) { return true, nil }
+func (m stopStatusTestManager) Install(Spec) error                   { return nil }
+func (m stopStatusTestManager) Start(Spec) error                     { return nil }
+func (m stopStatusTestManager) Stop(Spec) error                      { return m.stopErr }
+func (m stopStatusTestManager) Uninstall(Spec) error                 { return nil }
+func (m stopStatusTestManager) Status(Spec) (Status, error)          { return m.status, nil }
+
+func TestStopBackendDoesNotSuppressStopErrorWhenRuntimeStateIsUnknown(t *testing.T) {
+	stopErr := errors.New("stop failed")
+	manager := stopStatusTestManager{
+		status:  Status{Installed: true, RuntimeStateUnknown: true},
+		stopErr: stopErr,
+	}
+	if err := StopBackend(manager, Spec{ID: "cm-user-test"}); !errors.Is(err, stopErr) {
+		t.Fatalf("stop error=%v want=%v", err, stopErr)
+	}
+}
+
+func TestStopBackendKeepsKnownAlreadyStoppedFallback(t *testing.T) {
+	manager := stopStatusTestManager{
+		status:  Status{Installed: true, Running: false, PID: 0},
+		stopErr: errors.New("backend already stopped"),
+	}
+	if err := StopBackend(manager, Spec{ID: "cm-user-test"}); err != nil {
+		t.Fatalf("known stopped backend returned error: %v", err)
+	}
+}
 
 func TestSpecHelpers(t *testing.T) {
 	binary, err := os.Executable()

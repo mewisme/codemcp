@@ -497,7 +497,7 @@ func waitLifecyclePoll(ctx context.Context) error {
 func StopBackend(manager Manager, spec Spec) error {
 	if err := manager.Stop(spec); err != nil {
 		status, statusErr := manager.Status(spec)
-		if statusErr == nil && status.Installed && !status.Running && status.PID == 0 {
+		if statusErr == nil && !status.RuntimeStateUnknown && status.Installed && !status.Running && status.PID == 0 {
 			return nil
 		}
 		return err

@@ -100,9 +100,8 @@ func NewWithLogger(cfg config.Config, appLogger *logger.Logger) (*App, error) {
 	return NewWithLoggerContext(context.Background(), cfg, appLogger)
 }
 
-// NewWithLoggerContext constructs the runtime application. Shell-policy and Bootstrap
-// failures are returned; tools.NewRuntimeWithAccess may still panic on registry/workspace
-// bootstrap hard failures (crypto/rand-backed auth helpers similarly panic).
+// NewWithLoggerContext constructs the runtime application. Runtime bootstrap
+// failures are returned to the caller rather than terminating the process.
 func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *logger.Logger) (*App, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -120,10 +119,15 @@ func NewWithLoggerContext(ctx context.Context, cfg config.Config, appLogger *log
 		productRecorder = nil
 	}
 	toolSpan := tracepkg.Start(ctx, "APP", "app.tools.bootstrap", "Bootstrapping tool runtime")
-	toolRuntime := tools.NewRuntimeWithAccess(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) {
+	toolRuntime, err := tools.NewRuntimeWithAccessChecked(cfg.Integrations, cfg.Permissions.AllowDirs, func() (bool, int) {
 		current := configStore.Snapshot()
 		return current.HTTP.Admin.Enabled, current.HTTP.Admin.Port
 	})
+	if err != nil {
+		toolSpan.FailMessage("Tool runtime bootstrap failed", err)
+		span.FailMessage("Server runtime application construction failed", err)
+		return nil, err
+	}
 	configProvider := application.NewMCPConfigReadService()
 	toolRuntime.SetConfigReadProvider(configProvider)
 	toolRuntime.SetConfigSetApprovalProvider(configProvider)

@@ -76,45 +76,77 @@ type Runtime struct {
 	cavemanManager       *caveman.Manager
 	fanoutManager        *fanout.Manager
 	codegraphRuntime     *codegraph.Runtime
+	initErr              error
 }
 
 func NewRuntime() *Runtime {
-	return NewRuntimeWithIntegrations(integrations.Default())
+	runtime, err := NewRuntimeChecked()
+	if err != nil {
+		return &Runtime{initErr: err}
+	}
+	return runtime
 }
 
 func NewRuntimeWithIntegrations(integrationConfig integrations.Config) *Runtime {
-	return NewRuntimeWithAccess(integrationConfig, nil)
+	runtime, err := NewRuntimeWithIntegrationsChecked(integrationConfig)
+	if err != nil {
+		return &Runtime{initErr: err}
+	}
+	return runtime
 }
 
 func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs []string, environments ...ProjectContextEnvironment) *Runtime {
+	runtime, err := NewRuntimeWithAccessChecked(integrationConfig, globalAllowDirs, environments...)
+	if err != nil {
+		return &Runtime{initErr: err}
+	}
+	return runtime
+}
+
+func NewRuntimeChecked() (*Runtime, error) {
+	return NewRuntimeWithIntegrationsChecked(integrations.Default())
+}
+
+func NewRuntimeWithIntegrationsChecked(integrationConfig integrations.Config) (*Runtime, error) {
+	return NewRuntimeWithAccessChecked(integrationConfig, nil)
+}
+
+func NewRuntimeWithAccessChecked(integrationConfig integrations.Config, globalAllowDirs []string, environments ...ProjectContextEnvironment) (*Runtime, error) {
 	workspaces := workspace.NewManagerWithGlobalAllowDirs(workspace.DefaultStorePath(), globalAllowDirs)
 	checkpoints := checkpoint.NewWorkspaceStore(checkpoint.DefaultRoot(), workspaces)
 	upstreams := upstream.NewManager(upstream.NewStore(upstream.Path()))
-	_ = upstreams.Load()
+	if err := upstreams.Load(); err != nil {
+		return nil, fmt.Errorf("load upstream store: %w", err)
+	}
 	registry := NewRegistry()
 	identity, err := workspaces.Instance()
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("load workspace runtime identity: %w", err)
 	}
 	stateRoot := shellruntime.DefaultStateRoot()
 	executions, err := shellruntime.NewPersistentExecutionHub(filepath.Join(stateRoot, "executions.json"))
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("load execution state: %w", err)
 	}
 	shell := shellruntime.NewManagerWithExecutions(workspaces, shellruntime.DefaultStateRoot(), executions)
 	processes := shellruntime.NewProcessManagerWithExecutions(workspaces, shell, executions)
 	backgroundDeliveries, err := backgrounddelivery.NewPersistent(processes, filepath.Join(stateRoot, "background-deliveries.json"))
 	if err != nil {
-		panic(err)
+		return nil, errors.Join(fmt.Errorf("load background delivery state: %w", err), executions.Close())
 	}
 	completionHooks := agentcompletion.NewCompletionHookBus(agentcompletion.HookBusOptions{Timeout: codegraph.SyncTimeout + 5*time.Second})
 	completions, err := agentcompletion.NewWorkspaceService(workspaces, agentcompletion.Options{Hooks: completionHooks})
 	if err != nil {
-		panic(err)
+		backgroundDeliveries.Close()
+		completionHooks.Stop()
+		return nil, errors.Join(fmt.Errorf("initialize completion service: %w", err), executions.Close())
 	}
 	agents, err := managedagent.NewManager(managedagent.ManagerOptions{})
 	if err != nil {
-		panic(err)
+		backgroundDeliveries.Close()
+		completions.Close()
+		completionHooks.Stop()
+		return nil, errors.Join(fmt.Errorf("initialize managed agent runtime: %w", err), executions.Close())
 	}
 	runtime := &Runtime{Registry: registry, Workspaces: workspaces, Checkpoints: checkpoints, Upstream: upstreams, SessionAccess: NewSessionWorkspaceAccessManager(), Agents: agents, Approvals: approval.NewManager(identity.ID), Completions: completions, CompletionHooks: completionHooks, Executions: executions, Shell: shell, Processes: processes, BackgroundDeliveries: backgroundDeliveries, LoopGuard: NewToolLoopGuard(), InstructionChanges: instructioncontext.NewChangeStream(), PlanExecutions: plandoc.NewExecutionManager(), Semantic: semantic.NewManager(semantic.ManagerOptions{}), ponytailManager: ponytail.NewManager(integrationConfig.Ponytail.Active, ponytail.Mode(integrationConfig.Ponytail.Mode)), cavemanManager: caveman.NewManager(integrationConfig.Caveman.Active, caveman.Mode(integrationConfig.Caveman.Mode)), fanoutManager: fanout.NewManager(integrationConfig.Fanout.Active, fanout.Mode(integrationConfig.Fanout.Mode))}
 	runtime.SetSemanticApprovalPolicy(DefaultSemanticApprovalPolicy())
@@ -122,7 +154,7 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 		return runtime.codeGraphRuntimeSnapshot()
 	}, workspaces)
 	if err := completionHooks.Register(runtime.CodeGraphCompletion); err != nil {
-		panic(err)
+		return nil, errors.Join(fmt.Errorf("register CodeGraph completion hook: %w", err), cleanupBootstrapRuntime(runtime))
 	}
 	RegisterWorkspaceTools(registry, workspaces, shell)
 	RegisterWorkspaceListTool(registry, runtime)
@@ -141,10 +173,43 @@ func NewRuntimeWithAccess(integrationConfig integrations.Config, globalAllowDirs
 	RegisterConfigTools(registry, runtime)
 	RegisterUpstreamTools(registry, upstreams)
 	if err := runtime.syncIntegrations(integrationConfig, false); err != nil {
-		panic(err)
+		return nil, errors.Join(fmt.Errorf("initialize integrations: %w", err), cleanupBootstrapRuntime(runtime))
 	}
 
-	return runtime
+	return runtime, nil
+}
+
+func cleanupBootstrapRuntime(runtime *Runtime) error {
+	if runtime == nil {
+		return nil
+	}
+	if runtime.BackgroundDeliveries != nil {
+		runtime.BackgroundDeliveries.Close()
+	}
+	if runtime.Processes != nil {
+		runtime.Processes.CloseSubscriptions()
+	}
+	if runtime.Completions != nil {
+		runtime.Completions.Close()
+	}
+	if runtime.CompletionHooks != nil {
+		runtime.CompletionHooks.Stop()
+	}
+	var result error
+	if runtime.Agents != nil {
+		result = errors.Join(result, runtime.Agents.Shutdown(context.Background()))
+	}
+	if runtime.Executions != nil {
+		result = errors.Join(result, runtime.Executions.Close())
+	}
+	return result
+}
+
+func (r *Runtime) InitError() error {
+	if r == nil {
+		return errors.New("tool runtime is unavailable")
+	}
+	return r.initErr
 }
 
 func (r *Runtime) RefreshUpstreams(ctx context.Context, force bool) error {
@@ -258,10 +323,18 @@ func (r *Runtime) SetShellPath(paths []string) {
 	}
 }
 
-func (r *Runtime) List() []Schema      { return r.Registry.ListSchemas() }
+func (r *Runtime) List() []Schema {
+	if r == nil || r.Registry == nil {
+		return []Schema{}
+	}
+	return r.Registry.ListSchemas()
+}
 func (r *Runtime) ListTools() []Schema { return r.List() }
 
 func (r *Runtime) Call(ctx context.Context, name string, args map[string]any) (Result, error) {
+	if err := r.InitError(); err != nil {
+		return Result{}, err
+	}
 	callID := r.nextCallID()
 	started := time.Now()
 	source := CallSource(ctx)

@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -17,10 +19,13 @@ import (
 
 func TestExecutionHubSnapshotsAndStreamsOutput(t *testing.T) {
 	hub := NewExecutionHub()
-	run := hub.Begin(ExecutionInput{
+	run, err := hub.Begin(ExecutionInput{
 		WorkspaceID: "ws_test", Tool: "run_command", Command: "demo", CWD: "/tmp", Source: "mcp", CallID: "call_test",
 		SessionHash: "session-hash", ReceivedByInstanceID: "instance-received", ExecutedByInstanceID: "instance-executed",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	executionHex := strings.TrimPrefix(run.ID(), "exec_")
 	if len(executionHex) != 16 {
 		t.Fatalf("execution id=%q", run.ID())
@@ -65,7 +70,10 @@ func TestExecutionLogicalHistoryIsIndependentFromRawFeedRetention(t *testing.T) 
 	firstID := ""
 	secondID := ""
 	for index := 0; index < MaxRecentExecutions; index++ {
-		run := hub.Begin(ExecutionInput{WorkspaceID: "ws_retention", Tool: "run_command", Command: fmt.Sprintf("echo %d", index), CWD: "/tmp"})
+		run, err := hub.Begin(ExecutionInput{WorkspaceID: "ws_retention", Tool: "run_command", Command: fmt.Sprintf("echo %d", index), CWD: "/tmp"})
+		if err != nil {
+			t.Fatal(err)
+		}
 		if index == 0 {
 			firstID = run.ID()
 		} else if index == 1 {
@@ -105,7 +113,10 @@ func TestExecutionLogicalHistoryIsIndependentFromRawFeedRetention(t *testing.T) 
 			t.Fatalf("oldest execution %q unexpectedly survived raw feed; test no longer proves independent retention", firstID)
 		}
 	}
-	extra := hub.Begin(ExecutionInput{WorkspaceID: "ws_retention", Tool: "run_command", Command: "echo evict", CWD: "/tmp"})
+	extra, err := hub.Begin(ExecutionInput{WorkspaceID: "ws_retention", Tool: "run_command", Command: "echo evict", CWD: "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	extra.Finish(ExecutionStatusSuccess, nil, false)
 	if _, err := hub.Get("ws_retention", firstID); !errors.Is(err, ErrExecutionNotFound) {
 		t.Fatalf("oldest logical execution was not evicted after capacity+1: %v", err)
@@ -119,7 +130,7 @@ func TestExecutionHubRedactsCredentialCommandsFromHistoryAndFeed(t *testing.T) {
 	const secret = "execution-secret-marker"
 	command := "cm config set tunnel.api_key " + secret
 	hub := NewExecutionHub()
-	run := hub.Begin(ExecutionInput{
+	run, err := hub.Begin(ExecutionInput{
 		WorkspaceID:      "ws_test",
 		Tool:             "run_command",
 		Command:          command,
@@ -127,6 +138,9 @@ func TestExecutionHubRedactsCredentialCommandsFromHistoryAndFeed(t *testing.T) {
 		EffectiveCommand: command,
 		SecurityCommand:  command,
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	snapshot, err := hub.Get("ws_test", run.ID())
 	if err != nil {
 		t.Fatal(err)
@@ -171,7 +185,10 @@ func TestPersistentExecutionHubMarksCrashActiveExecutionInterruptedWithoutRecons
 	if err != nil {
 		t.Fatal(err)
 	}
-	run := first.Begin(ExecutionInput{WorkspaceID: "ws_test", Tool: "start_process", Command: "long-work", CWD: t.TempDir()})
+	run, err := first.Begin(ExecutionInput{WorkspaceID: "ws_test", Tool: "start_process", Command: "long-work", CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := run.Writer("stdout").Write([]byte("partial-output")); err != nil {
 		t.Fatal(err)
 	}
@@ -206,9 +223,79 @@ func TestPersistentExecutionHubMarksCrashActiveExecutionInterruptedWithoutRecons
 	}
 }
 
+func TestPersistentExecutionHubRollsBackBeginWhenPersistenceFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "executions.json")
+	hub, err := NewPersistentExecutionHub(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hub.persistWrite = func(string, []byte, os.FileMode) error {
+		return errors.New("simulated execution store failure")
+	}
+	run, err := hub.Begin(ExecutionInput{WorkspaceID: "ws_persist", Tool: "run_command", Command: "echo test"})
+	if err == nil || run != nil {
+		t.Fatalf("begin run=%#v err=%v", run, err)
+	}
+	if values := hub.List("ws_persist", 10); len(values) != 0 {
+		t.Fatalf("failed begin remained visible: %#v", values)
+	}
+	if diagnostics := hub.Diagnostics(); diagnostics.PersistenceFailures != 1 {
+		t.Fatalf("persistence diagnostics=%#v", diagnostics)
+	}
+}
+
+func TestPersistentExecutionHubSerializesConcurrentWrites(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "executions.json")
+	hub, err := NewPersistentExecutionHub(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := hub.Begin(ExecutionInput{WorkspaceID: "ws_first", Tool: "run_command"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := hub.Begin(ExecutionInput{WorkspaceID: "ws_second", Tool: "run_command"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	realWrite := hub.persistWrite
+	var active atomic.Int32
+	var maxActive atomic.Int32
+	hub.persistWrite = func(path string, data []byte, mode os.FileMode) error {
+		current := active.Add(1)
+		defer active.Add(-1)
+		for {
+			previous := maxActive.Load()
+			if current <= previous || maxActive.CompareAndSwap(previous, current) {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+		return realWrite(path, data, mode)
+	}
+	var wg sync.WaitGroup
+	for _, run := range []*ExecutionRun{first, second} {
+		run := run
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, writeErr := run.Writer("stdout").Write([]byte("concurrent\n")); writeErr != nil {
+				t.Errorf("write: %v", writeErr)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := maxActive.Load(); got != 1 {
+		t.Fatalf("concurrent persistence writers=%d want=1", got)
+	}
+}
+
 func TestExecutionDiagnosticsAndFeedSnapshotBarrier(t *testing.T) {
 	hub := NewExecutionHub()
-	run := hub.Begin(ExecutionInput{WorkspaceID: "ws_diag", Tool: "start_process"})
+	run, err := hub.Begin(ExecutionInput{WorkspaceID: "ws_diag", Tool: "start_process"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	sub, snapshot := hub.SubscribeFeed("ws_diag")
 	defer hub.UnsubscribeFeed(sub)
 	if snapshot.LatestSequence != 1 || len(snapshot.Events) != 1 || snapshot.Events[0].Type != ExecutionEventStarted {
@@ -240,7 +327,10 @@ func TestExecutionDiagnosticsAndFeedSnapshotBarrier(t *testing.T) {
 
 func TestExecutionWriterChunksLargeUTF8Output(t *testing.T) {
 	hub := NewExecutionHub()
-	run := hub.Begin(ExecutionInput{WorkspaceID: "ws_chunk", Tool: "run_command"})
+	run, err := hub.Begin(ExecutionInput{WorkspaceID: "ws_chunk", Tool: "run_command"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	data := strings.Repeat("x", maxExecutionEventBytes-1) + "你" + strings.Repeat("y", maxExecutionEventBytes)
 	if _, err := run.Writer("stdout").Write([]byte(data)); err != nil {
 		t.Fatal(err)
@@ -270,9 +360,15 @@ func TestExecutionWriterChunksLargeUTF8Output(t *testing.T) {
 
 func TestExecutionHubWorkspaceFeedReplaysAndFilters(t *testing.T) {
 	hub := NewExecutionHub()
-	first := hub.Begin(ExecutionInput{WorkspaceID: "ws_first", Tool: "run_command", Command: "first", CWD: "/tmp", Source: "mcp"})
+	first, err := hub.Begin(ExecutionInput{WorkspaceID: "ws_first", Tool: "run_command", Command: "first", CWD: "/tmp", Source: "mcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _ = first.Writer("stdout").Write([]byte("before\n"))
-	second := hub.Begin(ExecutionInput{WorkspaceID: "ws_second", Tool: "run_command", Command: "second", CWD: "/tmp", Source: "mcp"})
+	second, err := hub.Begin(ExecutionInput{WorkspaceID: "ws_second", Tool: "run_command", Command: "second", CWD: "/tmp", Source: "mcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _ = second.Writer("stdout").Write([]byte("hidden\n"))
 
 	sub, snapshot := hub.SubscribeFeed("ws_first")

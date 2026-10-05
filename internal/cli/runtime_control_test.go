@@ -412,7 +412,10 @@ func TestRuntimeControlExecutionFeedReplaysAndStreamsCombinedOutput(t *testing.T
 		t.Fatal(err)
 	}
 	hub := shellruntime.NewExecutionHub()
-	run := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: "ws_a", Tool: "run_command", Command: "printf test", CWD: "/tmp", Source: "mcp"})
+	run, err := hub.Begin(shellruntime.ExecutionInput{WorkspaceID: "ws_a", Tool: "run_command", Command: "printf test", CWD: "/tmp", Source: "mcp"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, _ = run.Writer("stdout").Write([]byte("before\n"))
 	control, err := startRuntimeControl(runtimeControlOptions{Executions: hub, Events: runtimeevent.NewStream(runtimeevent.Metadata{}), Reload: func(context.Context) (runtimeReloadResult, error) { return runtimeReloadResult{PID: os.Getpid()}, nil }, Status: func() runtimeStatusResult { return runtimeStatusResult{PID: os.Getpid()} }, Shutdown: func() {}, ClearLogs: func() error { return nil }})
 	if err != nil {

@@ -97,7 +97,7 @@ func (m windowsManager) Uninstall(spec Spec) error {
 
 func (m windowsManager) Status(spec Spec) (Status, error) {
 	_, installed := commandSucceededObserver(m.trace, "schtasks.exe", "/Query", "/TN", windowsTaskName(spec))
-	return Status{Installed: installed, Backend: "task-scheduler"}, nil
+	return Status{Installed: installed, Backend: "task-scheduler", RuntimeStateUnknown: true}, nil
 }
 
 func WindowsTaskXML(spec Spec) (string, error) {
