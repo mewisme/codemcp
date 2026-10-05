@@ -43,6 +43,12 @@ try {
   run(["install", "--force"], { quiet: true })
   await verifySelfInstall()
 
+  // "cm install" fully prepares CodeMCP, including config initialization and
+  // the managed runtime. Tear that isolated setup down before exercising the
+  // standalone init/serve lifecycle below.
+  run(["down"], { quiet: true })
+  run(["uninit"], { quiet: true })
+
   run(["init"], { quiet: true })
   run(["config", "set", "permissions.allow_dirs", allowedDir], { quiet: true })
   run(["config", "set", "http.mcp.port", String(serverPort)], { quiet: true })

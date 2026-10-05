@@ -69,6 +69,7 @@ func ReadManagedSources(skillsRoot string) (ManagedSources, error) {
 	if info.Size() > maxManagedSourcesBytes {
 		return ManagedSources{}, errors.New("managed skill metadata exceeds size limit")
 	}
+	// #nosec G304 -- path is the fixed managed metadata filename under the caller-selected skills root and was lstat-checked above.
 	file, err := os.Open(path)
 	if err != nil {
 		return ManagedSources{}, err

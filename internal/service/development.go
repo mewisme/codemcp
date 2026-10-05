@@ -243,12 +243,14 @@ func pruneDevelopmentGoCache(configRoot string, maxBytes int64) error {
 	if err != nil || !over {
 		return err
 	}
+	// #nosec G703 -- cacheRoot must exactly equal the CodeMCP-owned cache path derived from configRoot above.
 	return os.RemoveAll(cacheRoot)
 }
 
 func directoryExceedsBytes(root string, maxBytes int64) (bool, error) {
 	var total int64
 	over := false
+	// #nosec G703 -- callers pass only the exact CodeMCP-owned development cache root after equality validation.
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			if os.IsNotExist(walkErr) {

@@ -95,6 +95,51 @@ func TestWindowsSetupBootstrapRejectsRetiredCompilerDependency(t *testing.T) {
 	}
 }
 
+func TestWindowsSetupBootstrapRejectsFailurePathIsolationDrift(t *testing.T) {
+	root := windowsSetupRepositoryRoot(t)
+	fixture := copyWindowsSetupBootstrapFixture(t, root)
+	path := filepath.Join(fixture, "scripts", "installer", "test-windows-setup.ps1")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := strings.Replace(string(data), "$pathBeforeFailure = Get-UserPathState", "$pathBeforeFailure = $userPathBefore", 1)
+	if mutated == string(data) {
+		t.Fatal("fixture did not contain failure PATH isolation baseline")
+	}
+	if err := os.WriteFile(path, []byte(mutated), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyWindowsSetupBootstrap(fixture); err == nil || !strings.Contains(err.Error(), "$pathBeforeFailure = Get-UserPathState") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestWindowsSetupBootstrapRejectsUserPathTypeRollbackDrift(t *testing.T) {
+	root := windowsSetupRepositoryRoot(t)
+	fixture := copyWindowsSetupBootstrapFixture(t, root)
+	path := filepath.Join(fixture, "scripts", "installer", "test-windows-setup.ps1")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated := strings.Replace(
+		string(data),
+		"$key.SetValue('Path', $State.Value, $State.Kind)",
+		"$key.SetValue('Path', $State.Value)",
+		1,
+	)
+	if mutated == string(data) {
+		t.Fatal("fixture did not contain typed HKCU PATH restoration")
+	}
+	if err := os.WriteFile(path, []byte(mutated), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyWindowsSetupBootstrap(fixture); err == nil || !strings.Contains(err.Error(), "$key.SetValue('Path', $State.Value, $State.Kind)") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestReleaseWorkflowRejectsRetiredWindowsSetupDependency(t *testing.T) {
 	root := windowsSetupRepositoryRoot(t)
 	fixture := t.TempDir()

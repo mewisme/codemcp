@@ -90,6 +90,27 @@ func TestReleaseSmokeConfigCommandsExist(t *testing.T) {
 	}
 }
 
+func TestReleaseSmokeResetsInstallSetupBeforeStandaloneInit(t *testing.T) {
+	source := releaseSmokeSource(t)
+	steps := []string{
+		`run(["install", "--force"], { quiet: true })`,
+		`run(["down"], { quiet: true })`,
+		`run(["uninit"], { quiet: true })`,
+		`run(["init"], { quiet: true })`,
+	}
+	last := -1
+	for _, step := range steps {
+		index := strings.Index(source, step)
+		if index < 0 {
+			t.Fatalf("release smoke missing lifecycle step %q", step)
+		}
+		if index <= last {
+			t.Fatalf("release smoke lifecycle step %q is out of order", step)
+		}
+		last = index
+	}
+}
+
 func releaseSmokeSource(t *testing.T) string {
 	t.Helper()
 	_, current, _, ok := runtime.Caller(0)

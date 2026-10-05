@@ -13,21 +13,43 @@ if (-not $IsWindows -and $env:OS -ne 'Windows_NT') {
 }
 
 function Get-UserPathState {
-  $key = 'Registry::HKEY_CURRENT_USER\Environment'
-  $properties = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
-  $hasPath = $null -ne $properties -and $properties.PSObject.Properties.Name -contains 'Path'
-  [pscustomobject]@{
-    Exists = $hasPath
-    Value = if ($hasPath) { [string]$properties.Path } else { $null }
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $false)
+  if (-not $key) {
+    return [pscustomobject]@{ Exists = $false; Value = $null; Kind = $null }
+  }
+  try {
+    $value = $key.GetValue('Path', $null, [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    $hasPath = $null -ne $value
+    [pscustomobject]@{
+      Exists = $hasPath
+      Value = if ($hasPath) { [string]$value } else { $null }
+      Kind = if ($hasPath) { $key.GetValueKind('Path') } else { $null }
+    }
+  } finally {
+    $key.Dispose()
   }
 }
 
 function Restore-UserPath([object]$State) {
-  $key = 'Registry::HKEY_CURRENT_USER\Environment'
-  if ($State.Exists) {
-    Set-ItemProperty -LiteralPath $key -Name Path -Value $State.Value
-  } else {
-    Remove-ItemProperty -LiteralPath $key -Name Path -ErrorAction SilentlyContinue
+  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+  if (-not $key) {
+    throw 'could not open HKCU\Environment for PATH restoration'
+  }
+  try {
+    if ($State.Exists) {
+      $key.SetValue('Path', $State.Value, $State.Kind)
+    } else {
+      $key.DeleteValue('Path', $false)
+    }
+  } finally {
+    $key.Dispose()
+  }
+}
+
+function Assert-UserPathState([object]$Expected, [object]$Actual, [string]$Label) {
+  if ($Actual.Exists -ne $Expected.Exists -or $Actual.Value -ne $Expected.Value -or
+      ($Expected.Exists -and $Actual.Kind -ne $Expected.Kind)) {
+    throw "$Label changed HKCU PATH state"
   }
 }
 
@@ -166,6 +188,8 @@ try {
   if ((Get-PathEntryCount -PathValue $pathAfterCustom.Value -ExpectedEntry $customCurrentDir) -ne 1) {
     throw "custom managed current directory was not registered exactly once in HKCU PATH: $customCurrentDir"
   }
+  Restore-UserPath -State $userPathBefore
+  Assert-UserPathState -Expected $userPathBefore -Actual (Get-UserPathState) -Label 'custom-root smoke rollback'
 
   $failureBinaryRoot = Join-Path $tmp 'failure-binary'
   New-Item -ItemType Directory -Force -Path $failureBinaryRoot | Out-Null
@@ -199,14 +223,13 @@ func main() {
 
   $env:CM_INSTALL_DIR = Join-Path $tmp 'failure-managed'
   $env:CM_CONFIG_DIR = Join-Path $tmp 'config-failure'
+  $pathBeforeFailure = Get-UserPathState
   $failureExit = Invoke-Setup -SetupPath $failureSetup -Arguments $silentSwitches -LogPath (Join-Path $tmp 'failure-setup.log') -ExpectedExitCodes @(23)
   if ($failureExit -ne 23) {
     throw "delegated install failure exit code = $failureExit, want 23"
   }
   $pathAfterFailure = Get-UserPathState
-  if ($pathAfterFailure.Exists -ne $userPathBefore.Exists -or $pathAfterFailure.Value -ne $userPathBefore.Value) {
-    throw 'failed delegated install unexpectedly changed HKCU PATH'
-  }
+  Assert-UserPathState -Expected $pathBeforeFailure -Actual $pathAfterFailure -Label 'failed delegated install'
 }
 finally {
   Restore-UserPath -State $userPathBefore

@@ -245,6 +245,7 @@ func validateNativeSkillRoot(root string, enforceImportSafety bool) (ValidatedNa
 	if enforceImportSafety && manifestInfo.Size() > maxImportedSkillFileBytes {
 		return ValidatedNativeSkill{}, fmt.Errorf("skill manifest exceeds import safety limit of %d bytes", maxImportedSkillFileBytes)
 	}
+	// #nosec G304 -- manifestPath is the fixed SKILL.md child of the absolute, non-symlink skill root checked above.
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return ValidatedNativeSkill{}, err
@@ -378,6 +379,7 @@ func ValidateNativeSkillManifestDirectory(root string) (ValidatedNativeSkill, er
 	if manifestInfo.Mode()&os.ModeSymlink != 0 || !manifestInfo.Mode().IsRegular() {
 		return ValidatedNativeSkill{}, errors.New("skill manifest must be a regular non-symlink file")
 	}
+	// #nosec G304 -- manifestPath is the fixed SKILL.md child of the absolute, non-symlink skill root checked above.
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return ValidatedNativeSkill{}, err
@@ -432,6 +434,7 @@ func HashValidatedNativeSkill(validated ValidatedNativeSkill) (string, error) {
 		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("skill hash file is not regular: %s", relative)
 		}
+		// #nosec G115 -- relative is an existing filesystem path validated above; platform path limits are far below uint32.
 		if err := binary.Write(hash, binary.LittleEndian, uint32(len(relative))); err != nil {
 			return "", err
 		}
@@ -441,9 +444,14 @@ func HashValidatedNativeSkill(validated ValidatedNativeSkill) (string, error) {
 			executable = 1
 		}
 		_, _ = hash.Write([]byte{executable})
+		if info.Size() < 0 {
+			return "", fmt.Errorf("skill hash file has invalid negative size: %s", relative)
+		}
+		// #nosec G115 -- regular file size is checked non-negative above, so int64 -> uint64 is lossless.
 		if err := binary.Write(hash, binary.LittleEndian, uint64(info.Size())); err != nil {
 			return "", err
 		}
+		// #nosec G304 -- path is derived from the validated skill root and canonical supporting path, then lstat-checked as non-symlink above.
 		file, err := os.Open(path)
 		if err != nil {
 			return "", err

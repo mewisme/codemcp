@@ -419,14 +419,6 @@
     "rule_id": "G204",
     "severity": "MEDIUM",
     "confidence": "HIGH",
-    "file": "internal/integrations/browser/launcher.go",
-    "details": "Subprocess launched with variable",
-    "code": "args := managerLaunchArgs(profilePath, request.Minimized)\n\tcmd := exec.Command(executable, args...)\n\tcmd.Stdout = io.Discard"
-  },
-  {
-    "rule_id": "G204",
-    "severity": "MEDIUM",
-    "confidence": "HIGH",
     "file": "internal/integrations/browser/windows_host_process.go",
     "details": "Subprocess launched with variable",
     "code": "}\n\tcommand := exec.CommandContext(ctx, powershell, \"-NoProfile\", \"-NonInteractive\", \"-Command\",\n\t\twindowsHostBrowserStopScript(executable, profilePath))\n\tcommand.Stdout = io.Discard"

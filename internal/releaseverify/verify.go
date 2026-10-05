@@ -378,6 +378,11 @@ func verifyWindowsSetupBootstrap(root string) error {
 		"Start-Process -FilePath $SetupPath",
 		"default managed current directory PATH registration is not idempotent",
 		"custom managed current directory was not registered exactly once in HKCU PATH",
+		"[Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames",
+		"$key.SetValue('Path', $State.Value, $State.Kind)",
+		"custom-root smoke rollback",
+		"$pathBeforeFailure = Get-UserPathState",
+		"Assert-UserPathState -Expected $pathBeforeFailure -Actual $pathAfterFailure -Label 'failed delegated install'",
 		"delegated install failure exit code",
 		"$failureExit -ne 23",
 	} {

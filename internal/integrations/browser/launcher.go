@@ -75,6 +75,7 @@ func launchExecBrowser(ctx context.Context, request LaunchRequest) (BrowserProce
 		return nil, BrowserEndpoint{}, fmt.Errorf("allocate browser debugging port: %w", err)
 	}
 	args := managerLaunchArgs(profilePath, request.Minimized, remoteDebuggingPort)
+	// #nosec G204 -- executable is a discovered/configured absolute browser path validated by browser capability detection.
 	cmd := exec.Command(executable, args...)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
@@ -135,6 +136,7 @@ func allocateWindowsHostLoopbackPort(ctx context.Context) (int, error) {
 	}
 	script := "$l=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);" +
 		"$l.Start();try{[Console]::Out.Write($l.LocalEndpoint.Port)}finally{$l.Stop()}"
+	// #nosec G204 -- powershell is resolved with exec.LookPath and the script is a fixed internal constant.
 	output, err := exec.CommandContext(ctx, powershell, "-NoProfile", "-NonInteractive", "-Command", script).Output()
 	if err != nil {
 		return 0, fmt.Errorf("allocate Windows-host loopback port: %w", err)

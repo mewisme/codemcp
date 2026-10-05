@@ -12,6 +12,7 @@ const (
 	presentationExemptAnnotation = "cm.presentation-exempt"
 )
 
+// #nosec G101 -- these are CLI command paths and presentation labels, not credentials.
 var commandPresentationTitleOverrides = map[string]string{
 	"":                         "Run CodeMCP",
 	"init":                     "Initialize CodeMCP",
